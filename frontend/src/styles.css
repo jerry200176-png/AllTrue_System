@@ -100,6 +100,7 @@
   --ds-glass-hairline: color-mix(in srgb, var(--ds-ink) 10%, transparent);
   --ds-glass-highlight: inset 0 1px 0 color-mix(in srgb, var(--ds-canvas) 85%, transparent);
   --ds-glass-solid: var(--ds-canvas);
+  --ds-glass-login-bg: color-mix(in srgb, var(--ds-canvas) 76%, transparent); /* a bit more see-through than thick so the silk reads; text stays AA */
   --ds-ease-ios: cubic-bezier(0.32, 0.72, 0, 1);
   --ds-success: #1a8245;
   --ds-success-wash: #e7f4ec;
@@ -269,6 +270,11 @@
 
 /* ===== 夜間模式（Dark Theme） ===== */
 [data-theme="dark"] {
+  /* dark glass: denser tint (the silk behind is bright), light rim */
+  --ds-glass-login-bg: color-mix(in srgb, var(--ds-canvas) 90%, transparent);
+  --ds-glass-regular-bg: color-mix(in srgb, var(--ds-canvas) 86%, transparent);
+  --ds-glass-border: color-mix(in srgb, var(--ds-ink) 22%, transparent);
+  --ds-glass-highlight: inset 0 1px 0 color-mix(in srgb, var(--ds-ink) 16%, transparent);
   --ds-primary: #FFB74D;
   --ds-primary-text: #FFB74D;
   --ds-primary-deep: #FFCC80;

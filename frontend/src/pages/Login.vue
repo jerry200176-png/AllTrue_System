@@ -296,7 +296,7 @@ onBeforeUnmount(() => {
 /* 玻璃擬態 (Glassmorphism) 卡片設計 */
 .login-card {
   position: relative;
-  --_g-bg: color-mix(in srgb, var(--ds-canvas) 76%, transparent); /* a bit more see-through than --thick so the silk reads; text stays AA */
+  --_g-bg: var(--ds-glass-login-bg);
   border-radius: 28px; /* iOS continuous-corner feel; material, rim and shadow come from .ds-glass */
   width: 100%;
   max-width: 420px;

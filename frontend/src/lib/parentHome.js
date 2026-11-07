@@ -41,6 +41,10 @@ const netPaid = (inv) => (inv.payments || []).reduce((sum, p) => {
  * 要繳的錢: unpaid invoices summed. A stored-"paid" invoice whose Payment rows fall short may still owe
  * (backend Invoice::mayOweSql, #3781); this card does not re-derive that rule, it shows `review: true` (確認中).
  */
+// NT$ has no minor unit: round to whole dollars so float noise (7200.300000000001) never shows. Change CURRENCY_DECIMALS if the currency changes.
+const CURRENCY_DECIMALS = 0;
+const roundMoney = (n) => Number(Math.round(Number(`${n}e${CURRENCY_DECIMALS}`)) + `e-${CURRENCY_DECIMALS}`);
+
 export function pickAmountDue(invoices, paymentAlerts) {
   const list = Array.isArray(invoices) ? invoices : [];
   const isPaid = (i) => String(i?.Status ?? i?.status ?? '').toLowerCase() === 'paid';
@@ -57,7 +61,7 @@ export function pickAmountDue(invoices, paymentAlerts) {
   const unbilled = (Array.isArray(paymentAlerts) ? paymentAlerts : []).some((a) => !billed.has(Number(a?.class_id)));
   // Nothing billed yet: owed but amount unknown (有課程待繳). Some billed, some not: 確認中 rather than a short sum.
   if (staleSuspect || (unbilled && open.length)) return { amount: null, dueDateLabel, review: true, count: open.length };
-  if (open.length) return { amount: open.reduce((sum, i) => sum + i.due, 0), dueDateLabel, count: open.length };
+  if (open.length) return { amount: roundMoney(open.reduce((sum, i) => sum + i.due, 0)), dueDateLabel, count: open.length };
   return unbilled ? { amount: null, dueDateLabel: '', count: 0 } : null;
 }
 

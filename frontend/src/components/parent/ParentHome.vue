@@ -14,7 +14,7 @@ defineEmits(['leave', 'pay', 'learning']);
 // Same digits the old `toLocaleString('en-US')` showed (up to 3 decimals, none when whole).
 const decimalsOf = (n) => Math.min(3, (String(Number(n)).split('.')[1] || '').length);
 const dueSubline = computed(() => [
-  props.home.due?.count > 1 && `共 ${props.home.due.count} 筆`,
+  props.home.due?.count > 1 && !props.home.due.review && `共 ${props.home.due.count} 筆`,
   props.home.due?.dueDateLabel && `繳費期限 ${props.home.due.dueDateLabel}`,
 ].filter(Boolean).join('・'));
 </script>

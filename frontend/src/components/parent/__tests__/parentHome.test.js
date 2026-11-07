@@ -34,6 +34,11 @@ describe('pickAmountDue', () => {
     ];
     expect(pickAmountDue(inv, [])).toEqual({ amount: 9200, dueDateLabel: '11/5', count: 2 });
   });
+  it('rounds the sum to whole NT$ so float noise never reaches the screen', () => {
+    const bill = (amt) => ({ Status: 'unpaid', TotalAmount: amt, DueDate: '2026-11-10', payments: [] });
+    expect(pickAmountDue([bill(7200.1), bill(0.2)], []).amount).toBe(7200);
+    expect(pickAmountDue([{ ...bill(7200.3), payments: [{ Amount: 0.1 }] }], []).amount).toBe(7200);
+  });
   it('stale-paid invoice with short payments is 確認中, never a lower amount or 都繳清了', () => {
     const stale = { Status: 'paid', TotalAmount: 10000, payments: [{ Amount: 4000, Method: 'cash' }] };
     expect(pickAmountDue([stale, { Status: 'unpaid', TotalAmount: 2000, payments: [] }], [])).toMatchObject({ amount: null, review: true });
@@ -95,5 +100,11 @@ describe('ParentHome empty and filled states', () => {
     const many = await html({ nextLesson: null, due: { amount: 9000, dueDateLabel: '11/10', count: 3 }, feedback: null });
     expect(many).toContain('待繳學費');
     expect(many).toContain('共 3 筆');
+  });
+  it('hides 共 N 筆 while 帳務確認中 shows (the count leaves out the course still being confirmed)', async () => {
+    const out = await html({ nextLesson: null, due: { amount: null, review: true, dueDateLabel: '11/10', count: 3 }, feedback: null });
+    expect(out).toContain('帳務確認中');
+    expect(out).not.toContain('共 3 筆');
+    expect(out).toContain('繳費期限 11/10');
   });
 });
