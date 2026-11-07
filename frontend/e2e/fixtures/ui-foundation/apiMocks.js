@@ -121,6 +121,22 @@ export async function installApiMocks(page, mode, pageName = '', authProfile = n
       });
     }
 
+    if (pageName === 'teacher') {
+      const json = (body) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
+      if (p.endsWith('/teacher-attendance/today')) return json({ status: 'normal', sign_in_dt: '2026-01-01 15:02:00', sign_out_dt: null });
+      if (p.endsWith('/me/awaiting-reply-count')) return json({ awaiting_reply_count: 1 });
+      if (p.endsWith('/me/exam-pending-summary')) return json({ data: { rounds: [] } });
+      if (p.includes('/class-sessions')) {
+        const d = new Date();
+        const today = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+        const data = [
+          { id: 901, student_class_id: 801, student_id: 2000, student_name: '測試學生甲', teacher_name: '測試老師', session_date: today, start_time: '16:00', end_time: '17:00', status: 'scheduled', subject: '數學', branch_id: 1 },
+          { id: 902, student_class_id: 802, student_id: 2001, student_name: '測試學生乙', teacher_name: '測試老師', session_date: today, start_time: '18:00', end_time: '19:00', status: 'scheduled', subject: '英文', branch_id: 1 },
+        ];
+        return json(p.endsWith('/projection') ? { api_kind: 'projection', completeness: 'full', data, by_class: {} } : { data, total: data.length });
+      }
+    }
+
     if (p.includes('/parent/dashboard')) {
       return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(PARENT_DASHBOARD) });
     }
