@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import test from 'node:test';
-import { checkRatchet } from './check-ui-ratchet.mjs';
+import { checkRatchet, checkOverlayLimits, countOverlays } from './check-ui-ratchet.mjs';
 
 const at = "import AtButton from '@/components/design-system/AtButton.vue'";
 test('ratchet blocks new At* imports and list growth', () => {
@@ -15,4 +15,15 @@ test('ratchet blocks new At* imports and list growth', () => {
 test('--vs-base fails closed on an unresolvable ref', () => {
   const r = spawnSync('node', [fileURLToPath(new URL('./check-ui-ratchet.mjs', import.meta.url)), '--vs-base', 'no-such-ref-xyz'], { encoding: 'utf8' });
   assert.equal(r.status, 1);
+});
+
+test('overlay counts only go down', () => {
+  const src = '<div class="modal-backdrop"><Teleport to="body"/> if (window.confirm("x")) prompt("y") function confirm() {}';
+  const counts = countOverlays({ 'src/pages/A.vue': src, 'src/components/ui/x.vue': src, 'src/components/__tests__/t.js': src, 'src/lib/l.js': src });
+  assert.deepEqual(counts, { modal: 1, confirm: 1, prompt: 1, teleport: 1 });
+  const limits = { modal: 1, confirm: 1, prompt: 1, teleport: 1 };
+  assert.deepEqual(checkOverlayLimits({ counts, limits }), []);
+  assert.equal(checkOverlayLimits({ counts, limits: { ...limits, prompt: 0 } }).length, 1);
+  assert.equal(checkOverlayLimits({ counts, limits, baseLimits: { ...limits, modal: 0 } }).length, 1);
+  assert.deepEqual(checkOverlayLimits({ counts: { ...counts, modal: 0 }, limits: { ...limits, modal: 0 }, baseLimits: limits }), []);
 });

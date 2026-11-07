@@ -2,6 +2,8 @@
 /**
  * UI ratchet (#4989): a .vue file may import design-system/At* only if it is listed in
  * scripts/ui-legacy-pages.json. Deterministic, so it runs in `npm run build`.
+ * Also (#4989 overlays): counts of `class="modal`, `window.confirm`, `prompt(` and raw `<Teleport` in pages/ and components/
+ * may not exceed scripts/ui-overlay-limits.json; the limits may only shrink.
  * `--vs-base <ref>` (presubmit only) also requires the list not to grow versus that ref; it fails closed
  * if the ref cannot be resolved. A ref that lacks the list file (the introducing PR) skips the grow check.
  */
@@ -12,15 +14,42 @@ import { fileURLToPath } from 'node:url';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const LIST = 'scripts/ui-legacy-pages.json';
+const LIMITS = 'scripts/ui-overlay-limits.json';
+export const OVERLAY_PATTERNS = {
+  modal: /class="modal/g,
+  confirm: /(?<![\w.$])(?<!function )(?:window\.)?confirm\(/g,
+  prompt: /(?<![\w.$])(?:window\.)?prompt\(/g,
+  teleport: /<Teleport\b/g,
+};
+const OVERLAY_DIR = /^src\/(?:pages|components)\//;
+const OVERLAY_SKIP = /(?:^|\/)(?:__tests__|ui|app-overlay)\/|\.(?:test|spec)\./;
 const AT_IMPORT = /design-system\/At[A-Z]/;
 
-export function walkVue(dir, out = []) {
+export function walkVue(dir, out = [], exts = ['.vue']) {
   for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
     const p = path.join(dir, e.name);
-    if (e.isDirectory()) walkVue(p, out);
-    else if (e.name.endsWith('.vue')) out.push(p);
+    if (e.isDirectory()) walkVue(p, out, exts);
+    else if (exts.some((x) => e.name.endsWith(x))) out.push(p);
   }
   return out;
+}
+
+export function countOverlays(sources) {
+  const counts = Object.fromEntries(Object.keys(OVERLAY_PATTERNS).map((k) => [k, 0]));
+  for (const [file, source] of Object.entries(sources)) {
+    if (!OVERLAY_DIR.test(file) || OVERLAY_SKIP.test(file)) continue;
+    for (const [k, re] of Object.entries(OVERLAY_PATTERNS)) counts[k] += (source.match(re) || []).length;
+  }
+  return counts;
+}
+
+export function checkOverlayLimits({ counts, limits, baseLimits }) {
+  const errors = [];
+  for (const k of Object.keys(OVERLAY_PATTERNS)) {
+    if (counts[k] > limits[k]) errors.push(`overlay ratchet: ${k} count ${counts[k]} > limit ${limits[k]}; use components/app-overlay (ConfirmDialog/useConfirm, FormDialog, DetailSheet)`);
+    if (baseLimits && limits[k] > baseLimits[k]) errors.push(`${LIMITS}: ${k} limit rose ${baseLimits[k]} -> ${limits[k]}; limits can only shrink`);
+  }
+  return errors;
 }
 
 export function checkRatchet({ files, list, baseList }) {
@@ -36,7 +65,7 @@ export function checkRatchet({ files, list, baseList }) {
   return errors;
 }
 
-function baseList(ref) {
+function baseJson(ref, file) {
   try {
     execFileSync('git', ['rev-parse', '--verify', `${ref}^{commit}`], { cwd: ROOT, stdio: 'ignore' });
   } catch {
@@ -44,9 +73,9 @@ function baseList(ref) {
     process.exit(1);
   }
   try {
-    return JSON.parse(execFileSync('git', ['show', `${ref}:${LIST}`], { cwd: ROOT, stdio: ['ignore', 'pipe', 'ignore'] }).toString());
+    return JSON.parse(execFileSync('git', ['show', `${ref}:${file}`], { cwd: ROOT, stdio: ['ignore', 'pipe', 'ignore'] }).toString());
   } catch {
-    return null; // list not on base yet (introducing PR)
+    return null; // file not on base yet (introducing PR)
   }
 }
 
@@ -59,7 +88,10 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   }
   const src = path.join(ROOT, 'frontend/src');
   const files = Object.fromEntries(walkVue(src).map((p) => [path.relative(path.join(ROOT, 'frontend'), p).split(path.sep).join('/'), fs.readFileSync(p, 'utf8')]));
-  const errors = checkRatchet({ files, list: JSON.parse(fs.readFileSync(path.join(ROOT, LIST), 'utf8')), baseList: ref ? baseList(ref) : null });
+  const errors = checkRatchet({ files, list: JSON.parse(fs.readFileSync(path.join(ROOT, LIST), 'utf8')), baseList: ref ? baseJson(ref, LIST) : null });
+  const sources = { ...files };
+  for (const p of walkVue(src, [], ['.js'])) sources[path.relative(path.join(ROOT, 'frontend'), p).split(path.sep).join('/')] = fs.readFileSync(p, 'utf8');
+  errors.push(...checkOverlayLimits({ counts: countOverlays(sources), limits: JSON.parse(fs.readFileSync(path.join(ROOT, LIMITS), 'utf8')), baseLimits: ref ? baseJson(ref, LIMITS) : null }));
   if (errors.length) {
     console.error(errors.join('\n'));
     process.exit(1);
