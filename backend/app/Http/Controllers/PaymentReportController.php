@@ -1880,14 +1880,21 @@ class PaymentReportController extends Controller
                     }
                     $alreadyReversed = true;
                 } else {
-                    // In-app #521: a legacy reversal row has no payment_report_id, so this receipt can still read 'confirmed'
-                    // after its money was already taken back. A second -amount row would then cancel another receipt's money
-                    // (a real transfer reads 未繳, staff collect again, the bill ends 多收). The bill keeps at least what its
-                    // other confirmed receipts reported: below that floor, the money is gone already; only the status changes.
-                    $net = max(0, $payments->sum(fn ($p) => (int) $p->Amount > 0 && (string) $p->Method !== 'void' ? (int) $p->Amount : -abs((int) $p->Amount)));
-                    $backedByOthers = (int) PaymentReport::query()->where('InvoiceID', $invoice->id)->where('status', 'confirmed')
-                        ->where('id', '!=', $report->getKey())->whereNotNull('payment_id')->sum('reported_amount');
-                    $alreadyReversed = $net - $originalAmount < $backedByOthers;
+                    // In-app #521: every reversal points at the entry it reverses (payment_report_id), so the check is exact.
+                    // Both reads are of the locked rows above. A reversal already linked to this report: skip (idempotent).
+                    $isReversal = fn ($p) => (int) $p->Amount < 0 || (string) $p->Method === 'void';
+                    $reportId = (int) $report->getKey();
+                    $alreadyReversed = $payments->contains(fn ($p) => $isReversal($p) && (int) $p->payment_report_id === $reportId);
+                    // A legacy unlinked void row (negative or void, no report, not a transfer_out/refund) cannot be matched to its
+                    // receipt: a second reversal might cancel another receipt's money. Refuse until the repair links it.
+                    $legacyUnlinked = $payments->contains(fn ($p) => $isReversal($p) && $p->payment_report_id === null
+                        && !in_array((string) $p->Method, ['transfer_out', 'refund'], true));
+                    if (!$alreadyReversed && $legacyUnlinked) {
+                        return response()->json([
+                            'message' => '這張帳單有舊的沖銷紀錄還沒對帳，請先找系統管理員處理',
+                            'code' => 'legacy_reversal_unreconciled',
+                        ], 409);
+                    }
                 }
             }
 

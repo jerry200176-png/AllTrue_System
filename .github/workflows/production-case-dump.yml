@@ -2702,22 +2702,30 @@ jobs:
             $out['grade_level_map'] = config('payroll.grade_level_map');
             $out['default_rates'] = config('payroll.base_rates') ?? config('payroll.default_rates');
           }} elseif ($case === 'inapp_521_swallowed_receipts') {{
-            // Read-only (in-app #521): live bills whose confirmed receipts (with a payment) report more than the bill's Payment rows
-            // net, i.e. a receipt whose money was reversed twice. Output: numeric IDs and amounts only (no names, notes or free text).
+            // Read-only (in-app #521): repair candidates only. A legacy unlinked void row = negative or void-method Payment on a live bill,
+            // payment_report_id NULL, Method not transfer_out/refund. Each lists the receipts of that bill it could belong to (same
+            // amount, its payment written before the void row). Output: numeric IDs, dates and amounts only (no names, notes or free text).
             if ($targetStudentId || $targetStudentClassId) {{ throw new \\RuntimeException('no_target_allowed'); }}
-            $rows = $db::table('payment_reports as pr')->join('Invoice as i', 'i.id', '=', 'pr.InvoiceID')
-              ->where('pr.status', 'confirmed')->whereNotNull('pr.payment_id')
+            $d = static fn ($v) => $v === null ? null : substr((string) $v, 0, 10);
+            $legacy = $db::table('Payment as p')->join('Invoice as i', 'i.id', '=', 'p.InvoiceID')
+              ->whereNull('p.payment_report_id')
+              ->where(fn ($q) => $q->where('p.Amount', '<', 0)->orWhere('p.Method', 'void'))
+              ->where(fn ($q) => $q->whereNull('p.Method')->orWhereNotIn('p.Method', ['transfer_out', 'refund']))
               ->where(fn ($q) => $q->whereNull('i.Status')->orWhere('i.Status', '!=', 'void'))
-              ->groupBy('i.id', 'i.StudentClassID', 'i.TotalAmount')
-              ->selectRaw('i.id as invoice_id, i.StudentClassID as student_class_id, i.TotalAmount as total, SUM(pr.reported_amount) as reported, COUNT(*) as receipts')
-              ->get()->map(function ($r) {{
-                $net = (int) \\App\\Models\\Invoice::query()->whereKey((int) $r->invoice_id)->selectRaw(\\App\\Models\\Invoice::netPaidSql('Invoice') . ' as n')->value('n');
-                return ['invoice_id' => (int) $r->invoice_id, 'student_class_id' => (int) $r->student_class_id, 'total' => (int) $r->total,
-                  'receipts' => (int) $r->receipts, 'reported' => (int) $r->reported, 'net_paid' => $net];
-              }})->filter(fn ($r) => $r['reported'] > $r['net_paid'])->values();
-            $out['swallowed_invoice_count'] = $rows->count();
-            $out['swallowed_course_count'] = $rows->pluck('student_class_id')->unique()->count();
-            $out['swallowed'] = $rows->take(300)->all();
+              ->orderBy('p.id')->get(['p.id as void_payment_id', 'p.InvoiceID as invoice_id', 'i.StudentClassID as student_class_id', 'p.Amount as amount', 'p.PaidAt as paid_at']);
+            $rows = $legacy->map(function ($r) use ($db, $d) {{
+              $cands = $db::table('payment_reports as pr')->join('Payment as pay', 'pay.id', '=', 'pr.payment_id')
+                ->where('pr.InvoiceID', (int) $r->invoice_id)->where('pr.reported_amount', abs((int) $r->amount))->where('pay.id', '<', (int) $r->void_payment_id)
+                ->orderBy('pr.id')->get(['pr.id as report_id', 'pr.status', 'pr.payment_id', 'pay.PaidAt as payment_paid_at'])
+                ->map(fn ($c) => ['report_id' => (int) $c->report_id, 'status' => preg_match('/^[a-z_]{{1,16}}$/', (string) $c->status) ? $c->status : 'other',
+                  'payment_id' => (int) $c->payment_id, 'payment_paid_at' => $d($c->payment_paid_at)])->values()->all();
+              return ['void_payment_id' => (int) $r->void_payment_id, 'invoice_id' => (int) $r->invoice_id, 'student_class_id' => (int) $r->student_class_id,
+                'amount' => (int) $r->amount, 'paid_at' => $d($r->paid_at), 'candidate_receipts' => $cands];
+            }})->values();
+            $out['legacy_void_row_count'] = $rows->count();
+            $out['legacy_void_invoice_count'] = $rows->pluck('invoice_id')->unique()->count();
+            $out['legacy_void_course_count'] = $rows->pluck('student_class_id')->unique()->count();
+            $out['legacy_void_rows'] = $rows->take(400)->all();
           }} elseif ($case === 'settled_pending_paid_scan') {{
             // Read-only (#4790): settled_pending courses whose non-void invoices are all fully paid, plus the payment/audit history of
             // courses 3511 and 3517. Output: numeric IDs, dates, codes, counts, amounts and audit field NAMES only (no names, notes or free text).
