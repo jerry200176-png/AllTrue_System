@@ -73,6 +73,7 @@ use App\Http\Controllers\TeacherEligibilityInputController;
 use App\Http\Controllers\AssessmentController;
 use App\Http\Controllers\ExamRoundController;
 use App\Http\Controllers\SchoolExamPeriodController;
+use App\Http\Controllers\SchoolMergeController;
 use App\Http\Controllers\QuestionBankController;
 use App\Http\Controllers\PopOperationController;
 use App\Http\Controllers\ContractAmendmentController;
@@ -813,6 +814,7 @@ Route::prefix('v1')->group(function () {
         Route::get('exam-rounds/{examRound}/students', [ExamRoundController::class, 'students'])->whereNumber('examRound');
         Route::get('exam-rounds/{examRound}/history', [ExamRoundController::class, 'history'])->whereNumber('examRound');
         Route::get('exam-periods/schools', [SchoolExamPeriodController::class, 'schools']);
+        Route::get('school-names', [SchoolMergeController::class, 'names']);
         Route::get('exam-periods', [SchoolExamPeriodController::class, 'index']);
         Route::get('students/{student}/exam-periods', [SchoolExamPeriodController::class, 'forStudent'])->whereNumber('student');
     });
@@ -843,6 +845,7 @@ Route::prefix('v1')->group(function () {
         Route::patch('exam-rounds/{examRound}', [ExamRoundController::class, 'update'])->whereNumber('examRound');
         Route::delete('exam-rounds/{examRound}', [ExamRoundController::class, 'destroy'])->whereNumber('examRound');
         Route::post('exam-rounds/{examRound}/restore', [ExamRoundController::class, 'restore'])->whereNumber('examRound');
+        Route::get('school-merge/suggestions', [SchoolMergeController::class, 'suggestions']);
         Route::post('exam-periods', [SchoolExamPeriodController::class, 'store']);
         Route::patch('exam-periods/{period}', [SchoolExamPeriodController::class, 'update'])->whereNumber('period');
         Route::delete('exam-periods/{period}', [SchoolExamPeriodController::class, 'destroy'])->whereNumber('period');
