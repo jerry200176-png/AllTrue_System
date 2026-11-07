@@ -58,6 +58,16 @@ class BugReportController extends Controller
             return response()->json(['message' => 'Forbidden'], 403);
         }
 
+        // Soft dedupe: the same reporter sending the same title and description to the same campus within 10 minutes
+        // (a double tap, a retry after a slow network) gets the report they already made, not a second one.
+        $same = \App\Models\BugReport::query()->where('reporter_user_id', $userId)->where('CampusID', $branchId)
+            ->where('title', $request->input('title'))->where('description', $request->input('description'))
+            ->where('created_at', '>=', now()->subMinutes(10))->orderByDesc('id')->first();
+        if ($same) {
+            return response()->json(['id' => $same->id, 'status' => $same->status, 'created_at' => $same->created_at?->toIso8601String(),
+                'attachment_errors' => 0, 'duplicate' => true], 200);
+        }
+
         $bug = BugReportService::create([
             'CampusID' => $branchId,
             'reporter_user_id' => $userId,

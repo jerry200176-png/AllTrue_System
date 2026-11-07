@@ -1000,13 +1000,13 @@ Route::prefix('v1')->group(function () {
 
     // ── Bug Reports (director + teacher: submit & view own; super_admin: branch queue + status) ──
     Route::middleware(['role:director,teacher', 'require_campus', 'require_password_change'])->group(function () {
-        Route::post('bugs', [BugReportController::class, 'store']);
+        Route::post('bugs', [BugReportController::class, 'store'])->middleware('throttle:bug-report');
         Route::get('bugs', [BugReportController::class, 'index']);
         Route::get('bugs/unread-badge', [BugReportController::class, 'unreadBadge']);
         Route::get('bugs/open-on-page', [BugReportController::class, 'openOnPage']);
         Route::get('bugs/{id}', [BugReportController::class, 'show']);
-        Route::post('bugs/{id}/comments', [BugReportController::class, 'addComment']);
-        Route::post('bugs/{id}/reporter-verify', [BugReportController::class, 'reporterVerify']);
+        Route::post('bugs/{id}/comments', [BugReportController::class, 'addComment'])->middleware('throttle:bug-comment');
+        Route::post('bugs/{id}/reporter-verify', [BugReportController::class, 'reporterVerify'])->middleware('throttle:bug-comment');
     });
     Route::middleware(['super_admin', 'require_campus', 'require_password_change'])->group(function () {
         Route::post('bugs/{id}/status', [BugReportController::class, 'updateStatus']);
