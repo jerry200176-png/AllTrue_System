@@ -57,14 +57,15 @@ final class BillingPeriodRekeyStrategy
             foreach (array_filter($rows, fn ($r) => $r['status'] === 'ready') as $r) {
                 $invoice = DB::table('Invoice')->where('id', $r['invoice_id'])->first();
                 $note = (string) $invoice->Note;
+                $added = !str_contains($note, '[' . self::TAG . ':'); // a bill re-keyed before keeps its first (original) number tag
                 $tagged = trim($note . ' [' . self::TAG . ':' . $r['from'] . ']');
                 $n = DB::table('Invoice')->where('id', $r['invoice_id'])->where('billing_period', $r['from'])
-                    ->update(['billing_period' => $r['to'], 'Note' => str_contains($note, '[' . self::TAG . ':') ? $note : $tagged, 'updated_at' => now()]);
+                    ->update(['billing_period' => $r['to'], 'Note' => $added ? $tagged : $note, 'updated_at' => now()]);
                 if ($n !== 1) throw new RuntimeException('billing_period_rekey_update_' . $r['invoice_id']);
                 $reportIds = DB::table('payment_reports')->where('InvoiceID', $r['invoice_id'])->where('billing_period', $r['from'])->pluck('id')->map(fn ($v) => (int) $v)->all();
                 if ($reportIds !== []) DB::table('payment_reports')->whereIn('id', $reportIds)->update(['billing_period' => $r['to']]);
                 $row = ['invoice_id' => $r['invoice_id'], 'class_id' => $r['class_id'], 'campus_id' => $r['campus_id'], 'from' => $r['from'], 'to' => $r['to'],
-                    'report_ids' => $reportIds];
+                    'report_ids' => $reportIds, 'tag_added' => $added];
                 $this->audit($r['invoice_id'], $r['campus_id'], ['reason_code' => self::REF, 'pop_operation_id' => $operationId,
                     'period_from' => $r['from'], 'period_to' => $r['to'], 'report_count' => count($reportIds), 'outcome' => 'success']);
                 $snapshot[] = $row;
@@ -81,7 +82,8 @@ final class BillingPeriodRekeyStrategy
         if (!array_key_exists('campus_ids', $plan)) $errors[] = 'verify_plan_missing';
         foreach ($result['snapshot']['rows'] ?? [] as $r) {
             $inv = DB::table('Invoice')->where('id', $r['invoice_id'])->first();
-            if (!$inv || $inv->billing_period !== $r['to'] || !str_contains((string) $inv->Note, '[' . self::TAG . ':' . $r['from'] . ']')) $errors[] = "rekey_missing_{$r['invoice_id']}";
+            $tag = '[' . self::TAG . ':' . (($r['tag_added'] ?? true) ? $r['from'] . ']' : '');
+            if (!$inv || $inv->billing_period !== $r['to'] || !str_contains((string) $inv->Note, $tag)) $errors[] = "rekey_missing_{$r['invoice_id']}";
             if ($r['report_ids'] && DB::table('payment_reports')->whereIn('id', $r['report_ids'])->where('billing_period', '!=', $r['to'])->exists()) $errors[] = "report_period_{$r['invoice_id']}";
         }
         if (array_key_exists('campus_ids', $plan)) {
@@ -102,23 +104,36 @@ final class BillingPeriodRekeyStrategy
 
         return DB::transaction(function () use ($rows, $context): array {
             $restored = 0;
-            $skipped = [];
-            foreach ($rows as $r) {
-                $inv = DB::table('Invoice')->where('id', $r['invoice_id'])->lockForUpdate()->first();
-                $tag = ' [' . self::TAG . ':' . $r['from'] . ']';
-                $ours = $inv && $inv->billing_period === $r['to'] && str_contains((string) $inv->Note, trim($tag)) && strtolower((string) $inv->Status) !== 'void'
-                    && !DB::table('Invoice as o')->join('StudentClass as c', 'c.ID', '=', 'o.StudentClassID')
-                        ->where('o.StudentClassID', $inv->StudentClassID)->where('o.billing_period', $r['from'])->where('o.id', '!=', $inv->id)
-                        ->where(fn ($q) => $q->whereNull('o.Status')->orWhere('o.Status', '<>', 'void'))->exists();
-                if (!$ours) { $skipped[] = (int) $r['invoice_id']; continue; }
-                DB::table('Invoice')->where('id', $inv->id)->update(['billing_period' => $r['from'],
-                    // only this run's tag leaves the Note: anything appended since (void / correction audit) stays
-                    'Note' => trim(str_replace([$tag, trim($tag)], '', (string) $inv->Note)), 'updated_at' => now()]);
-                if ($r['report_ids']) DB::table('payment_reports')->whereIn('id', $r['report_ids'])->where('billing_period', $r['to'])->update(['billing_period' => $r['from']]);
-                $this->audit((int) $inv->id, $r['campus_id'] ?? null, ['reason_code' => self::REF, 'pop_operation_id' => (string) ($context['operation_id'] ?? ''),
-                    'period_from' => $r['to'], 'period_to' => $r['from'], 'outcome' => 'success'], '.rollback');
-                $restored++;
-            }
+            // Restore until no more can go back: a chain restores link by link, a month another contract holds now stays put.
+            $pending = array_values($rows);
+            do {
+                $progress = false;
+                foreach ($pending as $i => $r) {
+                    $inv = DB::table('Invoice')->where('id', $r['invoice_id'])->lockForUpdate()->first();
+                    $added = $r['tag_added'] ?? true;
+                    $tag = ' [' . self::TAG . ':' . $r['from'] . ']';
+                    $ours = $inv && $inv->billing_period === $r['to'] && strtolower((string) $inv->Status) !== 'void'
+                        && str_contains((string) $inv->Note, $added ? trim($tag) : '[' . self::TAG . ':');
+                    if ($ours) {
+                        $class = DB::table('StudentClass')->where('ID', $inv->StudentClassID)->first(['StudentID', 'SubjectID']);
+                        $ours = $class && !DB::table('Invoice as o')->join('StudentClass as c', 'c.ID', '=', 'o.StudentClassID')
+                            ->where('c.StudentID', $class->StudentID)->where('c.SubjectID', $class->SubjectID)
+                            ->where('o.billing_period', $r['from'])->where('o.id', '!=', $inv->id)
+                            ->where(fn ($q) => $q->whereNull('o.Status')->orWhere('o.Status', '<>', 'void'))->exists();
+                    }
+                    if (!$ours) continue;
+                    DB::table('Invoice')->where('id', $inv->id)->update(['billing_period' => $r['from'],
+                        // only the tag this run added leaves the Note: anything appended since (void / correction audit) stays
+                        'Note' => $added ? trim(str_replace([$tag, trim($tag)], '', (string) $inv->Note)) : (string) $inv->Note, 'updated_at' => now()]);
+                    if ($r['report_ids']) DB::table('payment_reports')->whereIn('id', $r['report_ids'])->where('billing_period', $r['to'])->update(['billing_period' => $r['from']]);
+                    $this->audit((int) $inv->id, $r['campus_id'] ?? null, ['reason_code' => self::REF, 'pop_operation_id' => (string) ($context['operation_id'] ?? ''),
+                        'period_from' => $r['to'], 'period_to' => $r['from'], 'outcome' => 'success'], '.rollback');
+                    $restored++;
+                    unset($pending[$i]);
+                    $progress = true;
+                }
+            } while ($progress && $pending !== []);
+            $skipped = array_map(fn ($r) => (int) $r['invoice_id'], array_values($pending));
 
             return ['ok' => $skipped === [], 'partial' => $skipped !== [], 'restored' => $restored, 'skipped_ids' => $skipped];
         }, 3);

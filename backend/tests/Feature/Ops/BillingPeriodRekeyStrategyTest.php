@@ -132,4 +132,25 @@ final class BillingPeriodRekeyStrategyTest extends TestCase
         $svc = new \App\Operations\PopOperationService(new \App\Operations\PopOperationCatalog(dirname(__DIR__, 4) . '/operations/catalog.yaml'));
         $this->assertTrue($m->invoke($svc, BillingPeriodRekeyStrategy::class));
     }
+
+    public function test_rerekey_keeps_the_first_tag_and_rollback_refuses_a_month_another_contract_holds(): void
+    {
+        $s = new BillingPeriodRekeyStrategy;
+        $first = $s->plan($this->params('all'));
+        $r1 = $s->execute($s->plan($this->params('all', $first['digest'])), ['operation_id' => 'req-3']);
+        // invoice 1 (class 100) was April -> May with tag 2026-04; an April lesson appears, so the next run moves it back to April
+        DB::table('ClassSession')->insert(['StudentClassID' => 100, 'SessionDate' => '2026-04-30', 'StartTime' => '16:00', 'EndTime' => '18:00', 'Status' => 'scheduled']);
+        $plan = $s->plan($this->params([16]));
+        $row = collect($plan['manifest'])->firstWhere('invoice_id', 1);
+        $this->assertSame(['ready', '2026-05', '2026-04'], [$row['status'], $row['from'], $row['to']]);
+        $pinned = $s->plan($this->params([16], $plan['digest']));
+        $r2 = $s->execute($pinned, ['operation_id' => 'req-4']);
+        $this->assertStringContainsString('[invno_period:2026-04]', DB::table('Invoice')->where('id', 1)->value('Note'));
+        $this->assertStringNotContainsString('invno_period:2026-05', DB::table('Invoice')->where('id', 1)->value('Note'));
+        $this->assertSame([], $s->verify($pinned, $r2)['errors']);
+        // another contract of the same student+subject now holds the original April -> restoring would double up: skipped
+        $this->cycle(300, 1, 1, '2026-04-01', '2026-04-28', '2026-05', ['2026-04-07']);
+        $back = $s->rollback($r2['snapshot'], ['operation_id' => 'req-4']);
+        $this->assertSame([1], $back['skipped_ids'] ?? []);
+    }
 }
