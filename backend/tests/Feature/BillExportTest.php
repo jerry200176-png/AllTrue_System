@@ -69,6 +69,7 @@ class BillExportTest extends TestCase
             $this->assertSame('顯示甲', $e->array()[0][0]);
             $this->assertSame('要開帳單', $e->array()[0][3]);
             $this->assertSame(0, $e->array()[0][7]);
+            $this->assertSame($e->array()[0][6] + $e->array()[0][7], $e->array()[0][5]); // 應收 = 已收 + 未收
 
             return true;
         });
