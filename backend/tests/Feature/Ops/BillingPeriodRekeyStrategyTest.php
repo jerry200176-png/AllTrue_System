@@ -292,4 +292,41 @@ final class BillingPeriodRekeyStrategyTest extends TestCase
         $this->assertLessThan($firstInvoice, $firstClass, 'course before bill, as voidInvoice does');
         $this->assertTrue($clashLocked, 'the collision check is a locking read');
     }
+
+    public function test_rollback_locks_contracts_then_bills_and_its_clash_check_is_a_locking_read(): void
+    {
+        $s = new BillingPeriodRekeyStrategy;
+        $dry = $s->plan($this->params('all'));
+        $result = $s->execute($s->plan($this->params('all', $dry['digest'])), ['operation_id' => 'req-rb']);
+        $log = [];
+        DB::listen(function ($q) use (&$log) { if (stripos($q->sql, 'for update') !== false) $log[] = $q->sql; });
+        $s->rollback($result['snapshot'], ['operation_id' => 'req-rb']);
+        $firstClass = null; $firstInvoice = null; $clashLocked = false;
+        foreach ($log as $i => $sql) {
+            if ($firstClass === null && preg_match('/from `StudentClass`/i', $sql) && !preg_match('/`Invoice`/', $sql)) $firstClass = $i;
+            if ($firstInvoice === null && preg_match('/from `Invoice`/i', $sql)) $firstInvoice = $i;
+            if (preg_match('/`o`\.`billing_period`/', $sql)) $clashLocked = true;
+        }
+        $this->assertNotNull($firstClass);
+        $this->assertLessThan($firstInvoice, $firstClass, 'course before bill, as voidInvoice does');
+        $this->assertTrue($clashLocked, 'the rollback collision check is a locking read');
+    }
+
+    public function test_a_lesson_added_after_the_snapshot_aborts_the_run(): void
+    {
+        $stale = new class extends BillingPeriodRekeyStrategy {
+            public ?array $frozen = null;
+            protected function build(array $campuses): array { return $this->frozen ??= parent::build($campuses); }
+        };
+        $dry = $stale->plan($this->params('all'));
+        $pinned = $stale->plan($this->params('all', $dry['digest']));
+        DB::table('ClassSession')->insert(['StudentClassID' => 100, 'SessionDate' => '2026-04-30', 'StartTime' => '16:00', 'EndTime' => '18:00', 'Status' => 'scheduled']);
+        try {
+            $stale->execute($pinned, ['operation_id' => 'req-t']);
+            $this->fail('expected the in-lock target re-derivation to abort');
+        } catch (\RuntimeException $e) {
+            $this->assertStringStartsWith('billing_period_rekey_target_drift_', $e->getMessage());
+        }
+        $this->assertSame('2026-04', DB::table('Invoice')->where('id', 1)->value('billing_period'));
+    }
 }

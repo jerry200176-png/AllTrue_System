@@ -49,16 +49,7 @@ class BillingPeriodRekeyStrategy
 
         return DB::transaction(function () use ($plan, $context): array {
             $ready = array_values(array_filter($plan['manifest'], fn ($r) => $r['status'] === 'ready'));
-            // Lock order = BillingController::voidInvoice (course first, then bill): every contract of the affected student+subject pairs by id,
-            // then the bills by id, so the clash check below can never take them in the opposite order and deadlock.
-            $pairs = DB::table('Invoice as i')->join('StudentClass as c', 'c.ID', '=', 'i.StudentClassID')->whereIn('i.id', array_column($ready, 'invoice_id'))
-                ->get(['c.StudentID', 'c.SubjectID'])->map(fn ($p) => $p->StudentID . '|' . $p->SubjectID)->unique()->values()->all();
-            if ($pairs !== []) {
-                DB::table('StudentClass')->where(function ($q) use ($pairs) {
-                    foreach ($pairs as $pair) { [$st, $sj] = explode('|', $pair); $q->orWhere(fn ($w) => $w->where('StudentID', $st)->where('SubjectID', $sj)); }
-                })->orderBy('ID')->lockForUpdate()->get(['ID']);
-            }
-            DB::table('Invoice')->whereIn('id', array_column($ready, 'invoice_id'))->orderBy('id')->lockForUpdate()->get();
+            $this->lockContractsThenBills(array_column($ready, 'invoice_id'));
             $rows = $this->build($plan['campus_ids']);
             if (hash('sha256', json_encode($rows, JSON_THROW_ON_ERROR)) !== $plan['digest']) throw new RuntimeException('billing_period_rekey_digest_drift');
             $operationId = (string) ($context['operation_id'] ?? '');
@@ -68,7 +59,19 @@ class BillingPeriodRekeyStrategy
                 $invoice = DB::table('Invoice')->where('id', $r['invoice_id'])->lockForUpdate()->first();
                 if (!$invoice || strtolower((string) $invoice->Status) === 'void' || $invoice->billing_period !== $r['from']) continue;
                 // Collision re-check as a locking (current) read: a bill of this student+subject created after the snapshot is invisible to build().
-                $class = DB::table('StudentClass')->where('ID', $invoice->StudentClassID)->first(['StudentID', 'SubjectID']);
+                $class = DB::table('StudentClass')->where('ID', $invoice->StudentClassID)->lockForUpdate()->first(['StudentID', 'SubjectID', 'StartDate', 'EndDate']);
+                // The target month is re-derived from current reads (shared-lock reads see rows committed since the snapshot): items and lessons.
+                $items = DB::table('InvoiceItem')->where('InvoiceID', $invoice->id)->sharedLock()->get(['StudentClassID', 'PeriodStart', 'PeriodEnd']);
+                $cs = substr((string) $class->StartDate, 0, 10); $ce = substr((string) $class->EndDate, 0, 10);
+                $one = $items->count() === 1 ? $items->first() : null;
+                $lessonDates = DB::table('ClassSession')->where('StudentClassID', $invoice->StudentClassID)->sharedLock()
+                    ->whereNotIn(DB::raw('LOWER(TRIM(Status))'), ['cancelled', 'canceled', 'voided', 'void'])->pluck('SessionDate')
+                    ->map(fn ($d) => substr((string) $d, 0, 10))->filter(fn ($d) => $d >= $cs && $d <= $ce);
+                if (!$one || substr((string) $one->PeriodStart, 0, 10) !== $cs || substr((string) $one->PeriodEnd, 0, 10) !== $ce
+                    || ((int) $one->StudentClassID > 0 && (int) $one->StudentClassID !== (int) $invoice->StudentClassID)
+                    || substr((string) ($lessonDates->min() ?? $cs), 0, 7) !== $r['to']) {
+                    throw new RuntimeException('billing_period_rekey_target_drift_' . $r['invoice_id']);
+                }
                 $readyIds = array_column($ready, 'invoice_id');
                 $clash = DB::table('Invoice as o')->join('StudentClass as c', 'c.ID', '=', 'o.StudentClassID')
                     ->where('c.StudentID', $class->StudentID)->where('c.SubjectID', $class->SubjectID)->where('o.billing_period', $r['to'])
@@ -126,6 +129,7 @@ class BillingPeriodRekeyStrategy
             $restored = 0;
             // Restore until no more can go back: a chain restores link by link, a month another contract holds now stays put.
             $pending = array_values($rows);
+            $this->lockContractsThenBills(array_map(fn ($r) => (int) $r['invoice_id'], $pending));
             do {
                 $progress = false;
                 foreach ($pending as $i => $r) {
@@ -140,11 +144,11 @@ class BillingPeriodRekeyStrategy
                     $ours = $inv && $inv->billing_period === $r['to'] && strtolower((string) $inv->Status) !== 'void'
                         && str_contains((string) $inv->Note, $added ? trim($tag) : '[' . self::TAG . ':');
                     if ($ours) {
-                        $class = DB::table('StudentClass')->where('ID', $inv->StudentClassID)->first(['StudentID', 'SubjectID']);
+                        $class = DB::table('StudentClass')->where('ID', $inv->StudentClassID)->lockForUpdate()->first(['StudentID', 'SubjectID']);
                         $ours = $class && !DB::table('Invoice as o')->join('StudentClass as c', 'c.ID', '=', 'o.StudentClassID')
                             ->where('c.StudentID', $class->StudentID)->where('c.SubjectID', $class->SubjectID)
                             ->where('o.billing_period', $r['from'])->where('o.id', '!=', $inv->id)
-                            ->where(fn ($q) => $q->whereNull('o.Status')->orWhere('o.Status', '<>', 'void'))->exists();
+                            ->where(fn ($q) => $q->whereNull('o.Status')->orWhere('o.Status', '<>', 'void'))->lockForUpdate()->exists();
                     }
                     if (!$ours) continue;
                     DB::table('Invoice')->where('id', $inv->id)->update(['billing_period' => $r['from'],
@@ -163,6 +167,25 @@ class BillingPeriodRekeyStrategy
 
             return ['ok' => $skipped === [], 'partial' => $skipped !== [], 'restored' => $restored, 'skipped_ids' => $skipped];
         }, 3);
+    }
+
+    /**
+     * One lock order for execute and rollback = BillingController::voidInvoice (course first, then bill): every contract of the
+     * affected student+subject pairs by id, then the bills by id. Every later read that decides a write is a locking (current) read.
+     *
+     * @param list<int> $invoiceIds
+     */
+    private function lockContractsThenBills(array $invoiceIds): void
+    {
+        if ($invoiceIds === []) return;
+        $pairs = DB::table('Invoice as i')->join('StudentClass as c', 'c.ID', '=', 'i.StudentClassID')->whereIn('i.id', $invoiceIds)
+            ->get(['c.StudentID', 'c.SubjectID'])->map(fn ($p) => $p->StudentID . '|' . $p->SubjectID)->unique()->values()->all();
+        if ($pairs !== []) {
+            DB::table('StudentClass')->where(function ($q) use ($pairs) {
+                foreach ($pairs as $pair) { [$st, $sj] = explode('|', $pair); $q->orWhere(fn ($w) => $w->where('StudentID', $st)->where('SubjectID', $sj)); }
+            })->orderBy('ID')->lockForUpdate()->get(['ID']);
+        }
+        DB::table('Invoice')->whereIn('id', $invoiceIds)->orderBy('id')->lockForUpdate()->get();
     }
 
     /** @return list<int>|null [] = every campus ('all'); null = invalid input */
