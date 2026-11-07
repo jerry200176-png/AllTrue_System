@@ -35,4 +35,8 @@ items, payments, sessions are untouched. Strict `pop.billing_period_rekey` audit
 
 Workflow `pop-billing-period-rekey.yml` writes before (dry-run manifest) and after (execute snapshot, no Note text) as JSON lines encrypted with
 `DUMP_ARTIFACT_KEY` (openssl aes-256-cbc, same as `production-case-dump.yml`), artifact retention 7 days. Restore by request id: a new
-Founder-approved POP rollback of that request puts back period, report periods and the original Note, only for bills still exactly as this run left them.
+Founder-approved POP rollback of that request (the strategy is in the atomic-financial recovery allowlist) puts back period and report periods and removes only this run's Note tag, for bills still exactly as this run left them (a voided bill is left alone; later Note text stays).
+
+## Order of landing
+
+Lands after the forward-fix PR (#5043): the month report (`FinanceController`) must count a bill in its label month first, else re-keyed bills would show 待確認 in the report. Moving a cycle's label also moves it between report months (April to May for the 04-29 cycles): intended, Founder 2026-11-07.

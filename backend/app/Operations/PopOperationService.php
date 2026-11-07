@@ -477,7 +477,7 @@ final class PopOperationService
 
     private function atomicFinancialRepair(object|string $strategy): bool
     {
-        return in_array(is_object($strategy) ? get_class($strategy) : $strategy, ['App\\Operations\\Strategies\\UnpaidInvoiceChargeAlignmentStrategy', 'App\\Operations\\Strategies\\PaymentReversalRestatementStrategy', 'App\\Operations\\Strategies\\PaymentReportPendingReturnStrategy', 'App\\Operations\\Strategies\\InvoiceHeaderItemRepairStrategy'], true);
+        return in_array(is_object($strategy) ? get_class($strategy) : $strategy, ['App\\Operations\\Strategies\\UnpaidInvoiceChargeAlignmentStrategy', 'App\\Operations\\Strategies\\PaymentReversalRestatementStrategy', 'App\\Operations\\Strategies\\PaymentReportPendingReturnStrategy', 'App\\Operations\\Strategies\\InvoiceHeaderItemRepairStrategy', 'App\\Operations\\Strategies\\BillingPeriodRekeyStrategy'], true);
     }
 
     /**

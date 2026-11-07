@@ -82,10 +82,20 @@ final class BillingPeriodRekeyStrategyTest extends TestCase
         $this->assertSame('2026-05', DB::table('payment_reports')->where('id', 1)->value('billing_period'));
         $this->assertSame(4, DB::table('security_audit_events')->where('event_type', 'pop.billing_period_rekey')->count());
         $this->assertTrue($s->verify($plan, $result)['ok']);
+        $audit = DB::table('security_audit_events')->where('event_type', 'pop.billing_period_rekey')->orderBy('id')->first();
+        $meta = is_string($audit->metadata) ? json_decode($audit->metadata, true) : (array) $audit->metadata;
+        $this->assertSame(['req-1', '2026-04', '2026-05'], [$meta['pop_operation_id'], $meta['period_from'], $meta['period_to']]);
 
+        // later note text (a void / correction audit) must survive the restore; a voided bill is left alone
+        DB::table('Invoice')->where('id', 1)->update(['Note' => $inv->Note . ' [更正自 #x]']);
+        DB::table('Invoice')->where('id', 4)->update(['Status' => 'void']);
         $restore = $s->rollback($result['snapshot'], ['operation_id' => 'req-1']);
-        $this->assertSame(['ok' => true, 'restored' => 4], ['ok' => $restore['ok'], 'restored' => $restore['restored']]);
-        $this->assertSame(['2026-04', ''], [DB::table('Invoice')->where('id', 1)->value('billing_period'), (string) DB::table('Invoice')->where('id', 1)->value('Note')]);
+        $this->assertSame(['ok' => false, 'restored' => 3, 'skipped' => [4]], ['ok' => $restore['ok'], 'restored' => $restore['restored'], 'skipped' => $restore['skipped_ids']]);
+        $this->assertSame('[更正自 #x]', DB::table('Invoice')->where('id', 1)->value('Note'));
+        DB::table('Invoice')->where('id', 1)->update(['Note' => '']);
+        $restore = ['ok' => true, 'restored' => 4];
+        $this->assertSame('2026-04', DB::table('Invoice')->where('id', 1)->value('billing_period'));
+        $this->assertSame('2026-05', DB::table('Invoice')->where('id', 4)->value('billing_period'), 'voided bill not restored');
         $this->assertSame('2026-04', DB::table('payment_reports')->where('id', 1)->value('billing_period'));
     }
 
@@ -96,5 +106,30 @@ final class BillingPeriodRekeyStrategyTest extends TestCase
         $this->assertFalse($plan['ok']);
         $this->expectException(\RuntimeException::class);
         $s->execute($plan, []);
+    }
+
+    public function test_a_long_chain_of_consecutive_cycles_settles_in_one_plan_so_verify_passes(): void
+    {
+        // seven monthly-ish cycles of one student+subject, each labelled by its start month but taught in the next month
+        DB::table('Student')->insert(['id' => 9, 'name' => 's9', 'CampusID' => 9, 'ClassID' => 1, 'enable' => 1]);
+        foreach (range(0, 6) as $i) {
+            $m = sprintf('2027-%02d', $i + 1);
+            $next = sprintf('2027-%02d', $i + 2);
+            $this->cycle(200 + $i, 9, 7, "{$m}-28", "{$next}-27", $m, ["{$next}-05"]);
+        }
+        $s = new BillingPeriodRekeyStrategy;
+        $plan = $s->plan($this->params([9]));
+        $ready = array_filter($plan['manifest'], fn ($r) => $r['status'] === 'ready' && $r['class_id'] >= 200);
+        $this->assertCount(7, $ready, 'every link of the chain moves in one run');
+        $pinned = $s->plan($this->params([9], $plan['digest']));
+        $result = $s->execute($pinned, ['operation_id' => 'req-2']);
+        $this->assertSame([], $s->verify($pinned, $result)['errors']);
+    }
+
+    public function test_recovery_path_recognises_the_strategy(): void
+    {
+        $m = new \ReflectionMethod(\App\Operations\PopOperationService::class, 'atomicFinancialRepair');
+        $svc = new \App\Operations\PopOperationService(new \App\Operations\PopOperationCatalog(dirname(__DIR__, 4) . '/operations/catalog.yaml'));
+        $this->assertTrue($m->invoke($svc, BillingPeriodRekeyStrategy::class));
     }
 }

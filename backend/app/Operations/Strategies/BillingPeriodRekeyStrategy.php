@@ -64,9 +64,9 @@ final class BillingPeriodRekeyStrategy
                 $reportIds = DB::table('payment_reports')->where('InvoiceID', $r['invoice_id'])->where('billing_period', $r['from'])->pluck('id')->map(fn ($v) => (int) $v)->all();
                 if ($reportIds !== []) DB::table('payment_reports')->whereIn('id', $reportIds)->update(['billing_period' => $r['to']]);
                 $row = ['invoice_id' => $r['invoice_id'], 'class_id' => $r['class_id'], 'campus_id' => $r['campus_id'], 'from' => $r['from'], 'to' => $r['to'],
-                    'note_before' => $note, 'report_ids' => $reportIds];
-                $this->audit($r['invoice_id'], $r['campus_id'], ['reason_code' => self::REF, 'operation_id' => $operationId,
-                    'from' => $r['from'], 'to' => $r['to'], 'report_count' => count($reportIds), 'outcome' => 'success']);
+                    'report_ids' => $reportIds];
+                $this->audit($r['invoice_id'], $r['campus_id'], ['reason_code' => self::REF, 'pop_operation_id' => $operationId,
+                    'period_from' => $r['from'], 'period_to' => $r['to'], 'report_count' => count($reportIds), 'outcome' => 'success']);
                 $snapshot[] = $row;
             }
 
@@ -105,15 +105,18 @@ final class BillingPeriodRekeyStrategy
             $skipped = [];
             foreach ($rows as $r) {
                 $inv = DB::table('Invoice')->where('id', $r['invoice_id'])->lockForUpdate()->first();
-                $ours = $inv && $inv->billing_period === $r['to'] && str_contains((string) $inv->Note, '[' . self::TAG . ':' . $r['from'] . ']')
+                $tag = ' [' . self::TAG . ':' . $r['from'] . ']';
+                $ours = $inv && $inv->billing_period === $r['to'] && str_contains((string) $inv->Note, trim($tag)) && strtolower((string) $inv->Status) !== 'void'
                     && !DB::table('Invoice as o')->join('StudentClass as c', 'c.ID', '=', 'o.StudentClassID')
                         ->where('o.StudentClassID', $inv->StudentClassID)->where('o.billing_period', $r['from'])->where('o.id', '!=', $inv->id)
                         ->where(fn ($q) => $q->whereNull('o.Status')->orWhere('o.Status', '<>', 'void'))->exists();
                 if (!$ours) { $skipped[] = (int) $r['invoice_id']; continue; }
-                DB::table('Invoice')->where('id', $inv->id)->update(['billing_period' => $r['from'], 'Note' => $r['note_before'], 'updated_at' => now()]);
+                DB::table('Invoice')->where('id', $inv->id)->update(['billing_period' => $r['from'],
+                    // only this run's tag leaves the Note: anything appended since (void / correction audit) stays
+                    'Note' => trim(str_replace([$tag, trim($tag)], '', (string) $inv->Note)), 'updated_at' => now()]);
                 if ($r['report_ids']) DB::table('payment_reports')->whereIn('id', $r['report_ids'])->where('billing_period', $r['to'])->update(['billing_period' => $r['from']]);
-                $this->audit((int) $inv->id, $r['campus_id'] ?? null, ['reason_code' => self::REF, 'operation_id' => (string) ($context['operation_id'] ?? ''),
-                    'from' => $r['to'], 'to' => $r['from'], 'outcome' => 'success'], '.rollback');
+                $this->audit((int) $inv->id, $r['campus_id'] ?? null, ['reason_code' => self::REF, 'pop_operation_id' => (string) ($context['operation_id'] ?? ''),
+                    'period_from' => $r['to'], 'period_to' => $r['from'], 'outcome' => 'success'], '.rollback');
                 $restored++;
             }
 
@@ -188,10 +191,10 @@ final class BillingPeriodRekeyStrategy
             $to = substr((string) ($dates->min() ?? $start), 0, 7);
             if ($to !== $inv->billing_period) $candidates[] = [$inv, $to];
         }
-        // A month freed by a bill that itself moves out can be taken by another in the same run, so settle to a fixpoint (bounded):
+        // A month freed by a bill that itself moves out can be taken by another in the same run, so settle to a fixpoint (a chain needs at most one pass per bill):
         // after execute, verify then finds nothing left to move.
         $moving = [];
-        for ($pass = 0; $pass < 5; $pass++) {
+        for ($pass = 0, $max = count($candidates) + 1; $pass < $max; $pass++) {
             $taken = [];
             foreach ($live as $o) {
                 if (!isset($moving[$o->id])) $taken[$o->StudentID . '|' . $o->SubjectID . '|' . $o->billing_period] = true;
