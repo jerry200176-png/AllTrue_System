@@ -367,4 +367,22 @@ final class BillingPeriodRekeyStrategyTest extends TestCase
         $again = (new BillingPeriodRekeyStrategy)->rollback(['rows' => []], ['operation_id' => 'req-crash2']);
         $this->assertSame(0, $again['restored'], 'journal entries are marked undone: nothing is restored twice');
     }
+
+    public function test_a_failing_bill_transaction_is_an_error_that_fails_verify_but_leaves_rollback_reachable(): void
+    {
+        $s = new BillingPeriodRekeyStrategy;
+        $dry = $s->plan($this->params('all'));
+        $pinned = $s->plan($this->params('all', $dry['digest']));
+        // force the journal insert of bill 1 to fail (same request + bill key already taken): its whole transaction rolls back
+        $id = (string) \Illuminate\Support\Str::uuid();
+        DB::table('pop_execution_records')->insert(['id' => $id, 'execution_id' => $id, 'operation_id' => 'req-err', 'phase' => 'other', 'result' => 'succeeded',
+            'idempotency_key' => 'req-err:rekey-row:1', 'attempt_key' => 'req-err:rekey-row:1', 'correlation_id' => $id, 'snapshot' => '{}', 'payload' => '{}', 'actor' => 'x', 'created_at' => now()]);
+        $result = $s->execute($pinned, ['operation_id' => 'req-err']);
+        $this->assertTrue($result['ok'], 'execute still returns, so rollback stays reachable');
+        $this->assertSame('error', $result['skipped'][1]);
+        $this->assertSame('2026-04', DB::table('Invoice')->where('id', 1)->value('billing_period'), 'the failed bill wrote nothing');
+        $this->assertContains('rekey_error_1', $s->verify($pinned, $result)['errors']);
+        $this->assertNotContains(1, array_column($result['snapshot']['rows'], 'invoice_id'));
+        $this->assertGreaterThan(0, count($result['snapshot']['rows']), 'the other bills went through');
+    }
 }

@@ -184,7 +184,9 @@ class BillingPeriodRekeyStrategy
             if ($r['report_ids'] && DB::table('payment_reports')->whereIn('id', $r['report_ids'])->where('billing_period', '!=', $r['to'])->exists()) $errors[] = "report_period_{$r['invoice_id']}";
         }
         if (array_key_exists('campus_ids', $plan)) {
-            $skipped = array_keys($result['skipped'] ?? []); // bills this run skipped on drift are reported, not failures
+            // Only drift skips are expected outcomes; an `error` skip (the bill's transaction failed) must fail verification, never pass as success.
+            foreach (($result['skipped'] ?? []) as $id => $why) if ($why === 'error') $errors[] = "rekey_error_{$id}";
+            $skipped = array_keys(array_filter($result['skipped'] ?? [], fn ($why) => in_array($why, ['drifted', 'period_taken', 'note_full'], true)));
             foreach ($this->build($plan['campus_ids']) as $r) {
                 if ($r['status'] === 'ready' && !in_array((int) $r['invoice_id'], $skipped, true)) $errors[] = "still_misfiled_{$r['invoice_id']}";
             }

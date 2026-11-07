@@ -419,8 +419,9 @@ final class PopOperationService
         }
         $plan = $this->safePlan($entry, $parameters, (string) $request->id);
         // After a successful execute, later drift (new work arriving) must not make the repair unverifiable or un-rollbackable.
-        $executed = in_array($phase, ['verify', 'rollback'], true) && DB::table('pop_execution_records')
-            ->where('operation_id', $request->id)->where('phase', 'execute')->where('result', 'succeeded')->exists();
+        $executed = in_array($phase, ['verify', 'rollback'], true) && (DB::table('pop_execution_records')
+            ->where('operation_id', $request->id)->where('phase', 'execute')->where('result', 'succeeded')->exists()
+            || ($phase === 'rollback' && $this->hasRekeyJournal($request)));
         if (!(bool) ($plan['ok'] ?? false) && !$executed) {
             return $this->record($request, $entry, $parameters, $phase, [
                 'ok' => false,
@@ -450,10 +451,12 @@ final class PopOperationService
                     : $executeAndRecord();
             }
             $execution = $this->latest($request, 'execute');
-            if (!$execution) {
+            if (!$execution && !($phase === 'rollback' && $this->hasRekeyJournal($request))) {
                 throw new RuntimeException('POP cannot verify or rollback without an execution record.');
             }
-            $payload = json_decode((string) $execution->payload, true, 512, JSON_THROW_ON_ERROR);
+            // Re-key only: no (or a failed) execute record, but journaled bills exist: rollback() reads the journal, so an empty snapshot is enough.
+            $payload = $execution ? json_decode((string) $execution->payload, true, 512, JSON_THROW_ON_ERROR) : [];
+            if ($phase === 'rollback' && $this->hasRekeyJournal($request)) $payload['snapshot'] = ['rows' => []];
             $strategy = app((string) $entry['strategy_class']);
             $complete = fn () => $this->record($request, $entry, $parameters, $phase,
                 $phase === 'verify' ? $strategy->verify($plan, $payload) : $strategy->rollback($payload['snapshot'] ?? [], ['actor' => $actor, 'operation_id' => $request->id]),
@@ -471,11 +474,23 @@ final class PopOperationService
     /** Strategies whose writes must commit in the same transaction as their POP execution record (no committed repair without its snapshot). */
     private function coCommitsWithRecord(object|string $strategy): bool
     {
-        $class = is_object($strategy) ? get_class($strategy) : $strategy;
-
         // The billing-period re-key runs one short READ COMMITTED transaction per bill itself (it cannot change its level inside an outer one).
-        return ($this->atomicFinancialRepair($strategy) && $class !== \App\Operations\Strategies\BillingPeriodRekeyStrategy::class)
+        if ($this->isRekeyStrategy($strategy)) return false;
+
+        return $this->atomicFinancialRepair($strategy)
             || (is_object($strategy) ? get_class($strategy) : $strategy) === \App\Operations\Strategies\TaughtLessonSignInRepairStrategy::class;
+    }
+
+    private function isRekeyStrategy(object|string $strategy): bool
+    {
+        return (is_object($strategy) ? get_class($strategy) : $strategy) === \App\Operations\Strategies\BillingPeriodRekeyStrategy::class;
+    }
+
+    /** The re-key journals each bill in its own transaction, so an approved rollback is valid for bills that committed before a crash. */
+    private function hasRekeyJournal(object $request): bool
+    {
+        return $this->isRekeyStrategy((string) $request->strategy_id)
+            && DB::table('pop_execution_records')->where('operation_id', $request->id)->where('phase', 'rekey-row')->exists();
     }
 
     private function atomicFinancialRepair(object|string $strategy): bool
@@ -541,7 +556,7 @@ final class PopOperationService
             $retry = $requestId !== null && $this->retryableFinancialExecute($request);
             $records = DB::table('pop_execution_records')->where('operation_id', $request->id);
             $recover = $requestId !== null && $this->atomicFinancialRepair((string) $request->strategy_id)
-                && (clone $records)->where('phase', 'execute')->where('result', 'succeeded')->exists()
+                && ((clone $records)->where('phase', 'execute')->where('result', 'succeeded')->exists() || ($phase === 'rollback' && $this->hasRekeyJournal($request)))
                 && !(clone $records)->where('phase', 'rollback')->when($phase === 'rollback', fn ($q) => $q->where('result', 'rolled_back'))->exists();
             if ($phase === 'execute' ? ((string) $request->status !== 'approved' && !$retry) : !$recover) {
                 return ['ok' => true, 'status' => 'skipped', 'request_id' => (string) $request->id];
