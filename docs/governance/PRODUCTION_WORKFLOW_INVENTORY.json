@@ -92,6 +92,7 @@
       "future_state": "Founder-approved controlled operation or retire after credential migration"
     },
     "1401-impact-audit.yml": {"classification":"read-only-probe","production_mutation":"marker-only","evidence":"SSH/artisan audit command reviewed; SELECT/report path only, no apply or committed write."},
+    "phpunit-random-nightly.yml": {"classification":"non-production","production_mutation":"not-production","evidence":"Artisan key:generate and migrate run against an ephemeral CI MySQL service only; the report job only opens or updates a GitHub issue."},
     "yang-1445-contract-repair.yml": {"classification":"legacy-case-specific-mutation","production_mutation":"confirmed","trigger":"workflow_dispatch","production_command_or_path":"repair:yang-1445-contract-move --execute/--rollback --force","authorization":"Manual exact phrase, actor, pinned production SSH trust; dry-run default; Founder GO before execute","concurrency":"repair-yang-1445; cancel-in-progress=false","rollback":"Command --rollback restores snapshot_before rows from session_corrections; in-transaction and independent post-verify","canonical":false,"required":"case-specific repair","future_state":"Retire after case closure"},
     "actual-duration-acceptance.yml": {
       "classification": "legacy-case-specific-mutation",

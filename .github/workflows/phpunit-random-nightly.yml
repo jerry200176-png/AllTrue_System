@@ -1,0 +1,153 @@
+name: PHPUnit random order (nightly)
+
+# W8 (#4953): main CI went red because 4 race tests used a helper they never loaded, so the result depended on shard
+# order (#5055). This nightly run executes the whole suite in RANDOM order (files shuffled and PHPUnit
+# --order-by=random, same seed) and prints the seed. A failure opens or updates ONE issue with the seed.
+# The PR CI (ci.yml) is unchanged. Re-run a failure with the seed from the issue: workflow_dispatch input `seed`.
+on:
+  schedule:
+    - cron: "37 18 * * *"   # 02:37 Taipei
+  workflow_dispatch:
+    inputs:
+      seed:
+        description: "Replay a failed run with this seed (digits only); empty = new seed"
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+concurrency:
+  group: phpunit-random-nightly
+  cancel-in-progress: false
+
+jobs:
+  seed:
+    name: Pick seed
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    outputs:
+      seed: ${{ steps.pick.outputs.seed }}
+    steps:
+      - id: pick
+        env:
+          INPUT_SEED: ${{ inputs.seed }}
+        run: |
+          set -euo pipefail
+          seed="${INPUT_SEED:-}"
+          if [ -n "$seed" ]; then [[ "$seed" =~ ^[0-9]{1,10}$ ]] || { echo "::error::seed must be 1-10 digits"; exit 1; }; else seed="$(( (RANDOM << 15 | RANDOM) % 2000000000 + 1 ))"; fi
+          echo "seed=$seed" >> "$GITHUB_OUTPUT"
+          echo "::notice title=PHPUnit random seed::$seed"
+
+  phpunit_random:
+    name: PHPUnit random shard
+    needs: seed
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3]
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      DB_PASSWORD: ci-ephemeral # non-sensitive, ephemeral CI-only MySQL
+      SEED: ${{ needs.seed.outputs.seed }}
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: AllTrue_test
+          MYSQL_USER: admin
+          MYSQL_PASSWORD: ci-ephemeral
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h localhost"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962 # 2.40.0
+        with:
+          php-version: "8.2"
+          extensions: mbstring, pdo, pdo_mysql, bcmath, json, tokenizer, xml, ctype
+          coverage: none
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: backend/vendor
+          key: composer-${{ hashFiles('backend/composer.lock') }}
+          restore-keys: composer-
+      - name: Install PHP dependencies
+        working-directory: backend
+        run: composer install --no-interaction --prefer-dist --optimize-autoloader
+      - name: Prepare test DB
+        working-directory: backend
+        run: |
+          cp .env.example .env 2>/dev/null || touch .env
+          php artisan key:generate --force
+          mysql -h 127.0.0.1 -u root -proot -e "GRANT ALL PRIVILEGES ON \`AllTrue\_test%\`.* TO 'admin'@'%'; FLUSH PRIVILEGES;"
+          php artisan migrate --force --database=mysql
+        env:
+          DB_HOST: 127.0.0.1
+          DB_PORT: 3306
+          DB_DATABASE: AllTrue_test
+          DB_USERNAME: admin
+      - name: Build this shard's config (files shuffled with the seed)
+        working-directory: backend
+        env:
+          SHARD: ${{ matrix.shard }}
+        run: |
+          python3 - <<'PYEOF'
+          import os, pathlib, random, re
+          files = sorted(str(p) for d in ("tests/Unit", "tests/Feature") for p in pathlib.Path(d).rglob("*Test.php"))
+          random.Random(int(os.environ["SEED"])).shuffle(files)  # same seed, same order on every shard
+          mine = files[int(os.environ["SHARD"]) - 1::3]
+          suite = "<testsuites><testsuite name=\"Shard\">" + "".join(f"<file>./{f}</file>" for f in mine) + "</testsuite></testsuites>"
+          xml = re.sub(r"<testsuites>.*?</testsuites>", lambda _: suite, open("phpunit.xml").read(), flags=re.S)
+          open("phpunit.shard.xml", "w").write(xml)
+          print(f"seed {os.environ['SEED']} shard {os.environ['SHARD']}: {len(mine)} of {len(files)} test files")
+          PYEOF
+      - name: Run PHPUnit in random order (seed ${{ needs.seed.outputs.seed }})
+        working-directory: backend
+        run: |
+          echo "Random order seed: $SEED"
+          LARAVEL_PARALLEL_TESTING=1 ./vendor/bin/paratest \
+            --configuration=phpunit.shard.xml \
+            --runner='\Illuminate\Testing\ParallelRunner' \
+            --processes=4 \
+            --order-by=random --random-order-seed="$SEED"
+        env:
+          DB_HOST: 127.0.0.1
+          DB_PORT: 3306
+          DB_DATABASE: AllTrue_test
+          DB_USERNAME: admin
+          APP_ENV: testing
+
+  report:
+    name: Open or update the failure issue
+    needs: [seed, phpunit_random]
+    if: ${{ always() && needs.phpunit_random.result == 'failure' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - name: Open or update ONE issue with the seed
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          SEED: ${{ needs.seed.outputs.seed }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          title="Nightly random-order PHPUnit failure"
+          body="Seed: \`$SEED\`
+          Run: $RUN_URL
+
+          Replay: Actions, \"PHPUnit random order (nightly)\", Run workflow, seed \`$SEED\`. A test that fails here but passes in the PR CI depends on execution order (shared state, a helper it never loads, DB leftovers)."
+          n="$(gh issue list --repo "$REPO" --state open --search "\"$title\" in:title" --json number,title --jq "[.[]|select(.title==\"$title\")][0].number // empty")"
+          if [ -n "$n" ]; then gh issue comment "$n" --repo "$REPO" --body "$body"; else gh issue create --repo "$REPO" --title "$title" --body "$body"; fi
