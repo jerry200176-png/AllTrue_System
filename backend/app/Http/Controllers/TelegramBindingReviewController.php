@@ -7,6 +7,7 @@ use App\Models\Student;
 use App\Models\StudentIdentityAuditLog;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 
 /** #5012 item 3: a director reviews the Telegram chats bound to their campus's students and unbinds unknown ones. */
@@ -40,7 +41,7 @@ class TelegramBindingReviewController extends Controller
             foreach (self::SLOTS as $slot => $col) {
                 $chat = trim((string) $s->{$col});
                 if ($chat !== '') {
-                    $bindings[] = ['slot' => $slot, 'telegram_name' => $names[$chat] ?? null];
+                    $bindings[] = ['slot' => $slot, 'fp' => self::fp($chat), 'telegram_name' => $names[$chat] ?? null];
                 }
             }
             if ($bindings) {
@@ -57,25 +58,33 @@ class TelegramBindingReviewController extends Controller
         if ($campus instanceof \Illuminate\Http\JsonResponse) {
             return $campus;
         }
-        $in = $request->validate(['student_id' => 'required|integer', 'slot' => 'required|integer|in:0,1,2']);
-        $student = Student::query()->where('CampusID', $campus->id)->find($in['student_id']);
-        if (!$student) {
-            return response()->json(['message' => 'Student not found'], 404);
-        }
+        $in = $request->validate(['student_id' => 'required|integer', 'slot' => 'required|integer|in:0,1,2', 'fp' => 'required|string|size:16']);
         $slot = (int) $in['slot'];
         $col = self::SLOTS[$slot];
-        $student->{$col} = $slot === 0 ? '' : null; // same empty values the webhook reads
-        $student->MDT = now();
-        $student->save();
-        StudentIdentityAuditLog::query()->create([
-            'student_id' => $student->id,
-            'campus_id' => $campus->id,
-            'actor_user_id' => $request->attributes->get('auth_user')?->id,
-            'action' => 'telegram_unbind',
-            'metadata' => ['slot' => $slot],
-        ]);
 
-        return response()->json(['ok' => true]);
+        // Compare-and-clear: a stale confirmation must not remove a chat bound after the list was loaded.
+        return DB::transaction(function () use ($request, $campus, $in, $slot, $col) {
+            $student = Student::query()->where('CampusID', $campus->id)->lockForUpdate()->find($in['student_id']);
+            if (!$student) {
+                return response()->json(['message' => 'Student not found'], 404);
+            }
+            $chat = trim((string) $student->{$col});
+            if ($chat === '' || !hash_equals(self::fp($chat), $in['fp'])) {
+                return response()->json(['message' => '這個 Telegram 綁定剛被變更，請重新整理後再確認。'], 409);
+            }
+            $student->{$col} = $slot === 0 ? '' : null; // same empty values the webhook reads
+            $student->MDT = now();
+            $student->save();
+            StudentIdentityAuditLog::query()->create([
+                'student_id' => $student->id,
+                'campus_id' => $campus->id,
+                'actor_user_id' => $request->attributes->get('auth_user')?->id,
+                'action' => 'telegram_unbind',
+                'metadata' => ['slot' => $slot],
+            ]);
+
+            return response()->json(['ok' => true]);
+        });
     }
 
     private function campus(Request $request): Campus|\Illuminate\Http\JsonResponse
@@ -90,6 +99,11 @@ class TelegramBindingReviewController extends Controller
         }
 
         return Campus::query()->find($id) ?? response()->json(['message' => 'Campus not found'], 404);
+    }
+
+    private static function fp(string $chat): string
+    {
+        return substr(hash('sha256', 'tg-binding:' . $chat), 0, 16);
     }
 
     /** Best effort, null on any failure. Uncached chats are fetched concurrently (one 3 s window, not 3 s each). */

@@ -36,7 +36,7 @@ const error = ref('');
 const pending = ref(null);
 
 const rows = computed(() => data.value.flatMap((s) => s.bindings.map((b) => ({
-  key: `${s.student_id}-${b.slot}`, student_id: s.student_id, student_name: s.student_name, slot: b.slot, telegram_name: b.telegram_name,
+  key: `${s.student_id}-${b.slot}`, student_id: s.student_id, student_name: s.student_name, slot: b.slot, fp: b.fp, telegram_name: b.telegram_name,
 }))));
 
 async function call(path, opts = {}) {
@@ -62,9 +62,14 @@ async function unbind() {
   const r = pending.value;
   pending.value = null;
   try {
-    const body = { student_id: r.student_id, slot: r.slot };
+    const body = { student_id: r.student_id, slot: r.slot, fp: r.fp };
     if (props.branchId) body.branch_id = props.branchId;
     const res = await call('/unbind', { method: 'POST', body: JSON.stringify(body) });
+    if (res.status === 409) {
+      await load();
+      error.value = '這個 Telegram 綁定剛被變更，已重新整理，請再確認一次。';
+      return;
+    }
     if (!res.ok) throw new Error();
     await load();
   } catch (_) {

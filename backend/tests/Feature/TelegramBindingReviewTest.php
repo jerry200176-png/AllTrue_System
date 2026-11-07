@@ -54,7 +54,7 @@ class TelegramBindingReviewTest extends TestCase
         $res = $this->withHeaders($h)->getJson('/api/v1/telegram/bindings');
         $res->assertOk()->assertJsonCount(1, 'data');
         $res->assertJsonPath('data.0.student_name', 'Alpha Test');
-        $res->assertJsonPath('data.0.bindings.0', ['slot' => 0, 'telegram_name' => 'Parent One']);
+        $res->assertJsonPath('data.0.bindings.0', ['slot' => 0, 'fp' => substr(hash('sha256', 'tg-binding:111'), 0, 16), 'telegram_name' => 'Parent One']);
         $res->assertJsonPath('data.0.bindings.1.slot', 2);
         $this->assertStringNotContainsString(self::SECRET_TOKEN, $res->getContent());
         $this->withHeaders($h)->getJson('/api/v1/telegram/bindings?branch_id=' . $other->id)->assertForbidden();
@@ -65,7 +65,7 @@ class TelegramBindingReviewTest extends TestCase
         $c = $this->campus();
         [, $h] = $this->login('T', $c->id);
         $this->withHeaders($h)->getJson('/api/v1/telegram/bindings')->assertForbidden();
-        $this->withHeaders($h)->postJson('/api/v1/telegram/bindings/unbind', ['student_id' => 1, 'slot' => 0])->assertForbidden();
+        $this->withHeaders($h)->postJson('/api/v1/telegram/bindings/unbind', ['student_id' => 1, 'slot' => 0, 'fp' => str_repeat('0', 16)])->assertForbidden();
     }
 
     public function test_get_chat_failure_gives_null(): void
@@ -85,16 +85,26 @@ class TelegramBindingReviewTest extends TestCase
         $s = $this->student($c->id, 'Delta Test', ['TelegramID' => '1', 'TelegramID1' => '2', 'TelegramID2' => '3']);
         [$user, $h] = $this->login('D', $c->id);
 
-        $this->withHeaders($h)->postJson('/api/v1/telegram/bindings/unbind', ['student_id' => $s->id, 'slot' => 1])->assertOk();
+        $this->withHeaders($h)->postJson('/api/v1/telegram/bindings/unbind', ['student_id' => $s->id, 'slot' => 1, 'fp' => $this->fp('2')])->assertOk();
         $s->refresh();
         $this->assertSame('1', (string) $s->TelegramID);
         $this->assertNull($s->TelegramID1);
         $this->assertSame('3', (string) $s->TelegramID2);
-        $this->withHeaders($h)->postJson('/api/v1/telegram/bindings/unbind', ['student_id' => $s->id, 'slot' => 0])->assertOk();
+        $this->withHeaders($h)->postJson('/api/v1/telegram/bindings/unbind', ['student_id' => $s->id, 'slot' => 0, 'fp' => $this->fp('1')])->assertOk();
         $this->assertSame('', (string) $s->refresh()->TelegramID);
         $log = StudentIdentityAuditLog::query()->where('action', 'telegram_unbind')->orderBy('id')->first();
         $this->assertSame([$s->id, $c->id, $user->id], [$log->student_id, $log->campus_id, $log->actor_user_id]);
         $this->assertSame(2, StudentIdentityAuditLog::query()->where('action', 'telegram_unbind')->count());
+
+        // Stale confirmation: slot 2 now holds a different chat than the one the director saw.
+        $s->forceFill(['TelegramID2' => '4'])->save();
+        $this->withHeaders($h)->postJson('/api/v1/telegram/bindings/unbind', ['student_id' => $s->id, 'slot' => 2, 'fp' => $this->fp('3')])->assertStatus(409);
+        $this->assertSame('4', (string) $s->refresh()->TelegramID2);
+    }
+
+    private function fp(string $chat): string
+    {
+        return substr(hash('sha256', 'tg-binding:' . $chat), 0, 16);
     }
 
     public function test_unbind_refuses_another_campus_student(): void
@@ -104,7 +114,7 @@ class TelegramBindingReviewTest extends TestCase
         $s = $this->student($other->id, 'Eps Test', ['TelegramID' => '9']);
         [, $h] = $this->login('D', $own->id);
 
-        $this->withHeaders($h)->postJson('/api/v1/telegram/bindings/unbind', ['student_id' => $s->id, 'slot' => 0])->assertNotFound();
+        $this->withHeaders($h)->postJson('/api/v1/telegram/bindings/unbind', ['student_id' => $s->id, 'slot' => 0, 'fp' => $this->fp('1')])->assertNotFound();
         $this->assertSame('9', (string) $s->refresh()->TelegramID);
     }
 }
