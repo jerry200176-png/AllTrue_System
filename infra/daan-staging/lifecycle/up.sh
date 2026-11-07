@@ -17,6 +17,7 @@ if [[ -n "${TARGET_SHA}" ]]; then
   fi
 fi
 
+export GIT_SHA="$(git -C "${REPO_ROOT}" rev-parse HEAD)"
 echo "=== build + up ==="
 mem_snapshot
 compose build app nginx

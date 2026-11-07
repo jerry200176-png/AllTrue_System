@@ -30,7 +30,12 @@ main() {
     || { log "ERROR github api unreachable/rate-limited"; return 1; }
   [[ "${sha}" =~ ^[0-9a-f]{40}$ ]] || { log "ERROR bad sha '${sha}'"; return 1; }
   good="$(cat "${STATE}/last_good_sha" 2>/dev/null || true)"
-  if [[ "${sha}" == "${good}" ]]; then log "NOOP green main=${sha:0:12} already deployed"; return 0; fi
+  if [[ "${sha}" == "${good}" ]]; then
+    # Containers use restart:"no"; after a host reboot the SHA matches but nothing runs. Heal by redeploying it.
+    if bash "${DIR}/health.sh" >/dev/null 2>&1; then log "NOOP green main=${sha:0:12} already deployed"; return 0; fi
+    log "UNHEALTHY at ${sha:0:12}; redeploying"
+    if run_cycle "${sha}"; then log "OK ${sha:0:12}"; return 0; else log "FAIL ${sha:0:12}"; return 1; fi
+  fi
 
   log "DEPLOY ${good:0:12} -> ${sha:0:12}"
   git -C "${REPO_ROOT}" fetch -q origin main >>"${EVID}" 2>&1

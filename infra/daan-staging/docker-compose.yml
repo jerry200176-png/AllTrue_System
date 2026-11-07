@@ -49,6 +49,8 @@ services:
     build:
       context: ../..
       dockerfile: infra/daan-staging/Dockerfile.web
+      args:
+        GIT_SHA: ${GIT_SHA:-unknown}
     image: alltrue-stage-web:local
     container_name: alltrue-stage-nginx
     restart: "no"

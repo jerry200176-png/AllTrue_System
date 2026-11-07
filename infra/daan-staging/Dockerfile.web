@@ -2,6 +2,9 @@
 # and serves it with nginx next to the PHP-FPM API. Own ignore file: Dockerfile.web.dockerignore.
 FROM node:22-slim AS fe
 COPY . /repo
+# .git is not in the build context; vite.config.js asks `git rev-parse [--short] HEAD` for build identity.
+ARG GIT_SHA=unknown
+RUN printf '#!/bin/sh\ncase "$*" in *--short*) echo "%s" | cut -c1-7;; *) echo "%s";; esac\n' "$GIT_SHA" "$GIT_SHA" > /usr/local/bin/git && chmod +x /usr/local/bin/git
 WORKDIR /repo/frontend
 ENV NODE_OPTIONS=--max-old-space-size=1280
 # postinstall (scripts/sync-generated.mjs) writes the generated release-note modules
