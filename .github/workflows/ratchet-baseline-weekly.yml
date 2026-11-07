@@ -45,7 +45,9 @@ jobs:
           body: |
             Rollback: revert this PR
 
-            Release-Impact: none
+            Risk-Class: R2
+            Autonomy-Tier: T2
+            Release-Impact: no-user-facing-note
 
             Automated weekly run of the ratchet update commands (`design-style-ratchet.mjs --update-baseline`,
             `controller-db-ratchet.mjs --write`). Baselines only tighten.

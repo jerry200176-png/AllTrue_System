@@ -19,14 +19,22 @@ export function sumCounts(value, key = '') {
   return 0;
 }
 
+// A pure file move keeps every per-file count and only changes the keys: allowed (CI needs the entry to follow).
+const counts = (json) => JSON.stringify(Object.values(json.files ?? {}).map((v) => JSON.stringify(v)).sort());
+export const isRelocation = (before, after) => before.files && after.files && counts(before) === counts(after)
+  && JSON.stringify(Object.keys(before.files).sort()) !== JSON.stringify(Object.keys(after.files).sort());
+
 // changes: [{ path, before: string|null, after: string|null }]. Returns violation strings.
 export function findViolations(changes, branch) {
   if (branch.startsWith('chore/')) return [];
   const out = [];
   for (const { path, before, after } of changes) {
     if (!RATCHET_BASELINES.includes(path) || before === after) continue;
-    const was = before == null ? 0 : sumCounts(JSON.parse(before));
-    const now = after == null ? 0 : sumCounts(JSON.parse(after));
+    const a = before == null ? null : JSON.parse(before);
+    const b = after == null ? null : JSON.parse(after);
+    if (a && b && isRelocation(a, b)) continue;
+    const was = a ? sumCounts(a) : 0;
+    const now = b ? sumCounts(b) : 0;
     if (now <= was) {
       out.push(`${path}: counts did not go up (${was} -> ${now}); lock in gains via the weekly baseline PR`);
     }

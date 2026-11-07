@@ -10,8 +10,9 @@ pre-push:
       run: AGENT_PREFLIGHT_MODE=ci bash scripts/agent-preflight.sh
     size-gate:
       run: |
-        GITHUB_HEAD_REF="$(git branch --show-current)" GITHUB_ENV=/dev/null \
-          bash -e -c "$(python3 scripts/presubmit-step.py '[CHECK 2] PR size')"
+        # Extract first so a missing PyYAML (pip install pyyaml) fails the hook instead of skipping the gate.
+        step="$(python3 scripts/presubmit-step.py '[CHECK 2] PR size')" || exit 1
+        GITHUB_HEAD_REF="$(git branch --show-current)" GITHUB_ENV=/dev/null bash -e -c "$step"
     ui-ratchet:
       glob: "{frontend/**,scripts/ui-legacy-pages.json,scripts/check-ui-ratchet.mjs}"
       run: node scripts/check-ui-ratchet.mjs --vs-base "$(git merge-base origin/main HEAD)"

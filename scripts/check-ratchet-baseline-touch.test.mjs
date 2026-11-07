@@ -23,3 +23,7 @@ test('untouched or unlisted files are ignored', () => {
   assert.deepEqual(findViolations([{ path: P, before: j(5), after: j(5) }], 'feat/x'), []);
   assert.deepEqual(findViolations([{ path: 'other.json', before: '1', after: '0' }], 'feat/x'), []);
 });
+test('a pure file rename (same per-file counts, new key) is allowed', () => {
+  const f = (k) => JSON.stringify({ files: { [k]: { a: 5 }, y: { a: 2 } } });
+  assert.deepEqual(findViolations([{ path: P, before: f('x'), after: f('moved') }], 'feat/x'), []);
+});
