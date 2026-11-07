@@ -124,8 +124,10 @@ function codexGate(comments, head, owner, samePatch = () => false) {
   if (mine.some((b) => b.includes(reviewMarker(head)))) return { ok: true, via: 'independent-review' };
   // A marker carry takes the old head's whole verdict: any Codex record on another SHA with findings, an unfinished
   // review or an unreadable verdict vetoes it (the marker alone never overrides Codex findings).
-  const codexVeto = records.some((r) => r.cr.commit_sha !== head && (r.cr.has_unresolved_findings === true
-    || (r.cr.status === 'completed' && r.cr.has_unresolved_findings !== false) || !['completed', 'failed'].includes(r.cr.status)));
+  // Findings on ANY record veto, including the head's own `failed` sticky state (a usage-limited Codex rewrites its one
+  // comment for the head but keeps the old findings flag).
+  const codexVeto = records.some((r) => r.cr.has_unresolved_findings === true || (r.cr.commit_sha !== head
+    && ((r.cr.status === 'completed' && r.cr.has_unresolved_findings !== false) || !['completed', 'failed'].includes(r.cr.status))));
   const old = codexVeto || tie ? null : carried(mine, head, (b, sha) => b.includes(reviewMarker(sha)), samePatch);
   if (old) return { ok: true, via: `independent-review-carried:${old.slice(0, 7)}` };
   if (!cr) return { ok: false, why: `no Codex review on ${short} yet` };
@@ -201,6 +203,12 @@ export function carryRepo(n, base, repo = REPO, exec = (a) => execFileSync('git'
   return { git, dir };
 }
 
+// Runs fn(git) against a fresh carry repo and always removes it (also when fn or the fetch throws).
+export function withCarryRepo(n, base, fn, open = carryRepo) {
+  const repo = open(n, base);
+  try { return fn(repo.git); } finally { fs.rmSync(repo.dir, { recursive: true, force: true }); }
+}
+
 // Gerrit changekind:TRIVIAL_REBASE for PR n: carry old's review to head only if the PR's diff against main is the same
 // (patch-id plus exact lines) and every commit added since is an automatic merge of main. Reads the API only; any error = false.
 export function trivialRebase(n, head, old) {
@@ -213,11 +221,7 @@ export function trivialRebase(n, head, old) {
     if (!prShas.includes(old) || !prShas.includes(head) || !onlyMainMerged(oldC, headC)) return false;
     const before = new Set(oldC.map((c) => c.sha));
     const added = headC.map((c) => c.sha).filter((sha) => !before.has(sha));
-    let repo = null;
-    try {
-      if (added.length) repo = carryRepo(n, base);
-      if (!added.every((sha) => automaticMerge(repo.git, sha, `origin/${base}`))) return false;
-    } finally { if (repo) fs.rmSync(repo.dir, { recursive: true, force: true }); }
+    if (added.length && !withCarryRepo(n, base, (git) => added.every((sha) => automaticMerge(git, sha, `origin/${base}`)))) return false;
     const diff = (sha) => gh('api', `/repos/${REPO}/compare/${encodeURIComponent(base)}...${sha}`, '-H', 'Accept: application/vnd.github.diff');
     return sameDiff(diff(old), diff(head));
   } catch { return false; }

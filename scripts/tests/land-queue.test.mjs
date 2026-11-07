@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { BATCH_BASE_MESSAGE, BATCH_MAX, batchSerial, guardedSquash, isBatchBase, TRUSTED_AUTHORS, fromPinned, suiteRuns, memberOf, staleReason, batchVerdict, checkStates, decide, marker, memberMessage, neutral, orderQueue, parseMember, planBatch, serialDecision, unresolvedCount } from '../../.github/scripts/land-queue.mjs';
-import { CODEX_LOGIN, REVIEW_CHECK, automaticMerge, carryRepo, classifyScope, decodeEntities, gateMarker, onlyMainMerged, patchId, reviewGate, reviewMarker, sameDiff } from '../../.github/scripts/review-gate.mjs';
+import { CODEX_LOGIN, REVIEW_CHECK, automaticMerge, carryRepo, withCarryRepo, classifyScope, decodeEntities, gateMarker, onlyMainMerged, patchId, reviewGate, reviewMarker, sameDiff } from '../../.github/scripts/review-gate.mjs';
 import fs from 'node:fs';
 import os from 'node:os';
 import { join } from 'node:path';
@@ -670,6 +670,26 @@ test('TRIVIAL_REBASE: a tie between different SHAs fails closed whatever the SHA
   for (const other of ['0'.repeat(40), 'c'.repeat(40)]) {
     assert.equal(G([codex(clean(OLD)), codex(clean(other, { has_unresolved_findings: true }))]).ok, false);
     assert.equal(G([codex(clean(other, { has_unresolved_findings: true })), codex(clean(OLD))]).ok, false);
+  }
+});
+
+test('TRIVIAL_REBASE: the head\'s failed sticky Codex state keeps the old findings flag and still vetoes the marker carry', () => {
+  const owner = (body) => ({ user: { login: OWNER }, body });
+  for (const scope of ['lower', 'r3']) {
+    const G = (cs) => reviewGate(cs, H, OWNER, scope, () => true);
+    const sticky = codex(clean(H, { status: 'failed', has_any_findings: true, has_unresolved_findings: true }));
+    assert.equal(G([sticky, owner(reviewMarker(OLD))]).ok, false);
+    assert.equal(G([sticky, owner(reviewMarker(H))]).ok, true); // a direct marker on the head still passes (failed neither passes nor vetoes)
+  }
+});
+
+test('withCarryRepo removes the temp repo when the check passes, fails or throws', () => {
+  const mk = () => { const dir = fs.mkdtempSync(join(os.tmpdir(), 'wcr-')); return { git: () => '', dir }; };
+  for (const fn of [() => true, () => false, () => { throw new Error('boom'); }]) {
+    let dir;
+    const open = () => { const r = mk(); dir = r.dir; return r; };
+    try { withCarryRepo(1, 'main', fn, open); } catch { /* expected for the throwing case */ }
+    assert.equal(fs.existsSync(dir), false);
   }
 });
 
