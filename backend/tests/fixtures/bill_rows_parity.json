@@ -403,6 +403,54 @@
     "due": "—",
     "owed": 1000
    }
+  },
+  {
+   "row": {
+    "student_id": 1,
+    "student_name": "甲",
+    "subject": "數學",
+    "schedule_mode": "count",
+    "remaining_sessions": 4,
+    "payment_status": "partial",
+    "payable_status": "unbilled",
+    "payable_outstanding": 0,
+    "payable_amount": 5000,
+    "paid_amount": 4000,
+    "course_start_date": "2026-09-01",
+    "course_end_date": "2026-12-31",
+    "id": 17
+   },
+   "expect": {
+    "kind": "issue",
+    "status": "要開帳單",
+    "period": "剩 4 堂",
+    "due": "—",
+    "owed": 0
+   }
+  },
+  {
+   "row": {
+    "student_id": 1,
+    "student_name": "甲",
+    "subject": "數學",
+    "schedule_mode": "count",
+    "remaining_sessions": 4,
+    "payment_status": "pending_reconciliation",
+    "payable_status": "unbilled",
+    "payable_outstanding": 0,
+    "payable_amount": 5000,
+    "paid_amount": 4000,
+    "course_start_date": "2026-09-01",
+    "course_end_date": "2026-12-31",
+    "id": 18
+   },
+   "expect": {
+    "kind": "issue",
+    "status": "要開帳單",
+    "period": "剩 4 堂",
+    "due": "—",
+    "owed": 0
+   }
   }
  ]
 }

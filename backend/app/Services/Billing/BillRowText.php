@@ -105,7 +105,7 @@ final class BillRowText
             $kind === 'review' => self::legacy($r) ? '查無收款' : '需核對',
             $kind === 'waived' => '不收了',
             $kind === 'paid' => '已收',
-            $kind === 'issue' => self::LABELS[$s] ?? '要開帳單',
+            $kind === 'issue' => in_array($s, ['renew_needed', 'monthly_due_soon'], true) ? self::LABELS[$s] : '要開帳單',
             $owed <= 0 => '快到期',
             default => in_array($s, ['partial', 'pending_reconciliation'], true) ? self::LABELS[$s] : '未繳',
         };
