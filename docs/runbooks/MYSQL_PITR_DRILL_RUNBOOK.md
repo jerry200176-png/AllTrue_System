@@ -97,10 +97,16 @@ BINLOG_POS=$(zcat "pitr_baseline_${TS}.sql.gz" | grep -m1 "CHANGE MASTER TO" \
 # Do NOT add --database=${DRILL_DB} here: the filter matches the *original*
 # (source) name, so every event is skipped and the replay silently applies
 # nothing (drill 2026-11-06: baseline-only rows came back, exit status 0).
+# Replay every binlog file from the anchor file onward. Restarts and 100M rotation split the binlog, and
+# --start-position applies to the first file only. Production keeps binlogs in the datadir
+# (log_bin = mysql-bin); the drill cnf in step 1 uses /var/log/mysql/.
+BINLOG_DIR=$(mysql -N -u root -p -e 'SELECT @@datadir')   # drill host: BINLOG_DIR=/var/log/mysql/
+BINLOG_FILES=$(ls "${BINLOG_DIR}"mysql-bin.[0-9]* | sort | awk -v f="${BINLOG_FILE}" '$0 ~ "/" f "$" {on=1} on')
+[ -n "$BINLOG_FILES" ] || { echo "anchor ${BINLOG_FILE} not found in ${BINLOG_DIR}"; exit 1; }
 mysqlbinlog --rewrite-db="${SOURCE_DB}->${DRILL_DB}" \
   --start-position="$BINLOG_POS" \
   --stop-datetime="$TARGET_TIME" \
-  "/var/log/mysql/${BINLOG_FILE}" \
+  $BINLOG_FILES \
   | mysql -u root -p "${DRILL_DB}"
 ```
 
