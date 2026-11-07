@@ -49,7 +49,16 @@ class BillingPeriodRekeyStrategy
 
         return DB::transaction(function () use ($plan, $context): array {
             $ready = array_values(array_filter($plan['manifest'], fn ($r) => $r['status'] === 'ready'));
-            DB::table('Invoice')->whereIn('id', array_column($ready, 'invoice_id'))->lockForUpdate()->get();
+            // Lock order = BillingController::voidInvoice (course first, then bill): every contract of the affected student+subject pairs by id,
+            // then the bills by id, so the clash check below can never take them in the opposite order and deadlock.
+            $pairs = DB::table('Invoice as i')->join('StudentClass as c', 'c.ID', '=', 'i.StudentClassID')->whereIn('i.id', array_column($ready, 'invoice_id'))
+                ->get(['c.StudentID', 'c.SubjectID'])->map(fn ($p) => $p->StudentID . '|' . $p->SubjectID)->unique()->values()->all();
+            if ($pairs !== []) {
+                DB::table('StudentClass')->where(function ($q) use ($pairs) {
+                    foreach ($pairs as $pair) { [$st, $sj] = explode('|', $pair); $q->orWhere(fn ($w) => $w->where('StudentID', $st)->where('SubjectID', $sj)); }
+                })->orderBy('ID')->lockForUpdate()->get(['ID']);
+            }
+            DB::table('Invoice')->whereIn('id', array_column($ready, 'invoice_id'))->orderBy('id')->lockForUpdate()->get();
             $rows = $this->build($plan['campus_ids']);
             if (hash('sha256', json_encode($rows, JSON_THROW_ON_ERROR)) !== $plan['digest']) throw new RuntimeException('billing_period_rekey_digest_drift');
             $operationId = (string) ($context['operation_id'] ?? '');

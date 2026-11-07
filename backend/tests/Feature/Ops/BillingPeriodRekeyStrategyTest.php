@@ -273,4 +273,23 @@ final class BillingPeriodRekeyStrategyTest extends TestCase
         }
         $this->assertSame('2026-04', DB::table('Invoice')->where('id', 1)->value('billing_period'), 'nothing was written');
     }
+
+    public function test_locks_contracts_before_bills_and_the_clash_check_is_a_locking_read(): void
+    {
+        $s = new BillingPeriodRekeyStrategy;
+        $dry = $s->plan($this->params('all'));
+        $pinned = $s->plan($this->params('all', $dry['digest']));
+        $log = [];
+        DB::listen(function ($q) use (&$log) { if (stripos($q->sql, 'for update') !== false) $log[] = $q->sql; });
+        $s->execute($pinned, ['operation_id' => 'req-lock']);
+        $firstClass = null; $firstInvoice = null; $clashLocked = false;
+        foreach ($log as $i => $sql) {
+            if ($firstClass === null && preg_match('/from `StudentClass`/i', $sql) && !preg_match('/`Invoice`/', $sql)) $firstClass = $i;
+            if ($firstInvoice === null && preg_match('/from `Invoice`/i', $sql)) $firstInvoice = $i;
+            if (preg_match('/`o`\.`billing_period`/', $sql)) $clashLocked = true;
+        }
+        $this->assertNotNull($firstClass, 'contracts are locked');
+        $this->assertLessThan($firstInvoice, $firstClass, 'course before bill, as voidInvoice does');
+        $this->assertTrue($clashLocked, 'the collision check is a locking read');
+    }
 }
