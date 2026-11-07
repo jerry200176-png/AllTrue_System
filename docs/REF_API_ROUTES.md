@@ -777,6 +777,18 @@
 | POST | `api/v1/schedules/{schedule}/cancel-makeup` | `ScheduleController@cancelMakeup` | role+campus |
 | POST | `api/v1/schedules/{schedule}/undo-leave` | `ScheduleController@undoLeave` | role+campus |
 
+## /api/v1/school-merge
+
+| Method | URI | Action | Auth |
+|--------|-----|--------|------|
+| GET | `api/v1/school-merge/suggestions` | `SchoolMergeController@suggestions` | role+campus |
+
+## /api/v1/school-names
+
+| Method | URI | Action | Auth |
+|--------|-----|--------|------|
+| GET | `api/v1/school-names` | `SchoolMergeController@names` | role+campus |
+
 ## /api/v1/schools
 
 | Method | URI | Action | Auth |
