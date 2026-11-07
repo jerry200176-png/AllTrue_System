@@ -58,19 +58,20 @@ jobs:
           PREVIEW_DEMO_PARENT_PHONE: ${{ secrets.PREVIEW_DEMO_PARENT_PHONE }}
         run: |
           set -euo pipefail
-          if [ -z "$PREVIEW_API_ORIGIN" ] || [ -z "$PREVIEW_API_GATE_COOKIE" ]; then
-            echo "No staging configured: preview runs on in-browser mocks."; exit 0
-          fi
           # Branch deployments (pr-<n>) use the Pages *preview* environment, which `pages secret put`
           # cannot target, so write its env vars through the Pages API. Values come from the
           # environment (never argv/echo) and are sent as secret_text.
+          # Unset/missing values are sent as null, which deletes them from the project, so removing
+          # the GitHub secret/variable restores the mock fallback. Staging needs both origin and cookie.
+          [ -n "$PREVIEW_API_ORIGIN" ] && [ -n "$PREVIEW_API_GATE_COOKIE" ] || { PREVIEW_API_ORIGIN=; PREVIEW_API_GATE_COOKIE=; }
+          export PREVIEW_API_ORIGIN PREVIEW_API_GATE_COOKIE
           for k in PREVIEW_API_ORIGIN PREVIEW_API_GATE_COOKIE PREVIEW_DEMO_DIRECTOR_PASSWORD PREVIEW_DEMO_TEACHER_PASSWORD PREVIEW_DEMO_PARENT_STUDENT_ID PREVIEW_DEMO_PARENT_PHONE; do
             v="${!k}"; [ -n "$v" ] && echo "::add-mask::$v"
           done
           python3 - > "$RUNNER_TEMP/pages-env.json" <<'PY'
           import json, os
           keys = ["PREVIEW_API_ORIGIN", "PREVIEW_API_GATE_COOKIE", "PREVIEW_DEMO_DIRECTOR_PASSWORD", "PREVIEW_DEMO_TEACHER_PASSWORD", "PREVIEW_DEMO_PARENT_STUDENT_ID", "PREVIEW_DEMO_PARENT_PHONE"]
-          env_vars = {k: {"type": "secret_text", "value": os.environ[k]} for k in keys if os.environ.get(k)}
+          env_vars = {k: ({"type": "secret_text", "value": os.environ[k]} if os.environ.get(k) else None) for k in keys}
           print(json.dumps({"deployment_configs": {"preview": {"env_vars": env_vars}}}))
           PY
           code=$(curl -sS -o "$RUNNER_TEMP/pages-env.out" -w '%{http_code}' -X PATCH \

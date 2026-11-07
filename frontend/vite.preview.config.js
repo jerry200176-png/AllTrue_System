@@ -30,6 +30,7 @@ export default defineConfig({
       'pusher-js': path.resolve(__dirname, 'vendor-modules/pusher-js'),
     },
   },
+  define: { __APP_BUILD_TIME__: JSON.stringify(new Date().toISOString()) },
   build: {
     target: 'esnext',
     outDir: path.resolve(__dirname, 'dist-preview'),
