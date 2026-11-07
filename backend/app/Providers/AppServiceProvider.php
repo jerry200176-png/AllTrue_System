@@ -27,7 +27,7 @@ class AppServiceProvider extends ServiceProvider
         // 意見與建議 anti-abuse: per signed-in user (not per IP: a whole campus shares one), same Chinese answer for every limit.
         $tooMany = fn (Request $r, array $headers) => response()->json(['message' => self::BUG_LIMIT_MESSAGE, 'code' => 'bug_report_rate_limited'], 429, $headers);
         // Throttle middleware is sorted ahead of AttachAuthUser, so auth_user may not be set yet: read the bearer token's user directly.
-        $who = fn (Request $r) => 'user:' . ($r->attributes->get('auth_user')?->id
+        $who = fn (Request $r) => 'user:' . (data_get($r->attributes->get('auth_user'), 'id')
             ?? ($r->bearerToken() ? \App\Models\AuthToken::where('token', $r->bearerToken())->value('user_id') : null) ?? $r->ip());
         RateLimiter::for('bug-report', fn (Request $r) => [
             Limit::perHour(5)->by($who($r))->response($tooMany),
