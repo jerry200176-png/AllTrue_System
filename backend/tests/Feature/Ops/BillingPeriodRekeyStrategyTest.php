@@ -251,4 +251,26 @@ final class BillingPeriodRekeyStrategyTest extends TestCase
         $ids = array_column((new BillingPeriodRekeyStrategy)->plan($this->params([16]))['manifest'], 'invoice_id');
         $this->assertNotContains(601, $ids);
     }
+
+    public function test_a_bill_created_after_the_snapshot_blocks_the_target_month(): void
+    {
+        $stale = new class extends BillingPeriodRekeyStrategy {
+            public ?array $frozen = null;
+            protected function build(array $campuses): array { return $this->frozen ??= parent::build($campuses); }
+        };
+        $dry = $stale->plan($this->params('all'));
+        $pinned = $stale->plan($this->params('all', $dry['digest']));
+        // after the snapshot: another contract of student 1 + subject 1 gets a live May bill (the month invoice 1 would move to)
+        DB::table('StudentClass')->insert(['ID' => 800, 'StudentID' => 1, 'GradeID' => 1, 'SubjectID' => 1, 'TeacherID' => 1, 'by1' => 1, 'Period' => 4, 'Pay' => 0, 'Rate' => 0,
+            'TotalHours' => 4, 'StartDate' => '2026-05-28', 'EndDate' => '2026-05-31', 'ClassType' => 'one_on_one', 'ScheduleMode' => 'date', 'Stop' => 1, 'Paid' => 0, 'Charge' => 1]);
+        DB::table('Invoice')->insert(['id' => 900, 'StudentID' => 1, 'StudentClassID' => 800, 'IssueDate' => '2026-05-28', 'TotalAmount' => 1, 'PaidAmount' => 0, 'Status' => 'unpaid',
+            'Note' => '', 'billing_period' => '2026-05', 'created_at' => now(), 'updated_at' => now()]);
+        try {
+            $stale->execute($pinned, ['operation_id' => 'req-clash']);
+            $this->fail('expected the locked collision re-check to abort');
+        } catch (\RuntimeException $e) {
+            $this->assertStringStartsWith('billing_period_rekey_collision_drift_', $e->getMessage());
+        }
+        $this->assertSame('2026-04', DB::table('Invoice')->where('id', 1)->value('billing_period'), 'nothing was written');
+    }
 }

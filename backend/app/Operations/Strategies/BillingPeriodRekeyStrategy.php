@@ -58,6 +58,14 @@ class BillingPeriodRekeyStrategy
                 // The current locked row (a read after the lock sees what committed since the snapshot): a bill voided or moved meanwhile is skipped.
                 $invoice = DB::table('Invoice')->where('id', $r['invoice_id'])->lockForUpdate()->first();
                 if (!$invoice || strtolower((string) $invoice->Status) === 'void' || $invoice->billing_period !== $r['from']) continue;
+                // Collision re-check as a locking (current) read: a bill of this student+subject created after the snapshot is invisible to build().
+                $class = DB::table('StudentClass')->where('ID', $invoice->StudentClassID)->first(['StudentID', 'SubjectID']);
+                $readyIds = array_column($ready, 'invoice_id');
+                $clash = DB::table('Invoice as o')->join('StudentClass as c', 'c.ID', '=', 'o.StudentClassID')
+                    ->where('c.StudentID', $class->StudentID)->where('c.SubjectID', $class->SubjectID)->where('o.billing_period', $r['to'])
+                    ->where('o.id', '!=', $invoice->id)->whereNotIn('o.id', $readyIds)
+                    ->where(fn ($q) => $q->whereNull('o.Status')->orWhere('o.Status', '<>', 'void'))->lockForUpdate()->exists();
+                if ($clash) throw new RuntimeException('billing_period_rekey_collision_drift_' . $r['invoice_id']);
                 $note = (string) $invoice->Note;
                 $added = !str_contains($note, '[' . self::TAG . ':'); // a bill re-keyed before keeps its first (original) number tag
                 $tagged = \App\Services\Billing\InvoiceNumber::withTag($note, $r['from']) ?? throw new RuntimeException('billing_period_rekey_note_full_' . $r['invoice_id']); // the one freeze path
