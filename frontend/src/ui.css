@@ -16,6 +16,7 @@
 @source "./components/ui";
 @source "./components/parent";
 @source "./pages/DirectorDashboard.vue";
+@source "./components/course-management";
 
 /* Light theme only. Dark comes later: add a `.dark { ... }` block remapping these to dark --ds-* tokens. */
 :root {

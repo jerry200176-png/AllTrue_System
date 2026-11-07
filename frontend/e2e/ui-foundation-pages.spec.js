@@ -1365,6 +1365,20 @@ test.describe('Visual regression @visual', () => {
       });
     }
   }
+  // #4918: 課程管理 drawer (overview, 月曆, 帳務) from fixture props, no API.
+  for (const vp of [{ name: '1280', width: 1280, height: 900 }, { name: '375', width: 375, height: 812 }]) {
+    for (const [name, tab, view] of [['course-manager-overview', 'overview'], ['course-manager-month', 'sessions', 'calendar'], ['course-manager-list', 'sessions', 'list'], ['course-manager-billing', 'billing']]) {
+      test(`${name} @${vp.name}`, async ({ page }) => {
+        await page.clock.setFixedTime(new Date('2026-09-15T10:00:00+08:00'));
+        await page.setViewportSize({ width: vp.width, height: vp.height });
+        await page.goto(`/pilot-mount.html?page=course-manager&tab=${tab}&mode=needs`);
+        await expect(page.locator('html')).toHaveAttribute('data-pilot-ready', '1', { timeout: 15_000 });
+        if (view) await page.locator(`[data-testid="course-manager-view-${view}"]`).click();
+        await page.waitForLoadState('networkidle');
+        await expect(page).toHaveScreenshot(`${name}-${vp.name}.png`, { fullPage: true });
+      });
+    }
+  }
   // #4986 step 1: 家長首頁 3 cards at 390px, mocked dashboard (fake data only).
   test('parent-home @390', async ({ page }) => {
     await page.clock.setFixedTime(new Date('2026-09-15T10:00:00+08:00'));
