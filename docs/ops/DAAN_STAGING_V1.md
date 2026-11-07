@@ -25,3 +25,5 @@ Out of scope: Pi production, production DNS, production DB sync, TrueFit ON, Tem
 **Interim public URL:** until the `alltrue-staging.lifenet.com.tw` CNAME exists in the live zone, the user service
 `alltrue-staging-quick` runs a Cloudflare quick tunnel (`*.trycloudflare.com`, URL changes on restart, current value in
 `~/alltrue-stage/state/public-url`). It sits behind the same cookie gate. The named tunnel service stays disabled until the switch.
+
+**PR preview:** the `ui-preview` workflow proxies to staging via the repo variable `PREVIEW_API_ORIGIN`; when the quick-tunnel URL changes, update that variable until the named tunnel exists.
