@@ -20,18 +20,29 @@ export function parseStryker(json) {
   return out;
 }
 
+// The report comes from an artifact produced by PR code: treat every field as hostile. Only plain path and mutator
+// characters are rendered (no backtick, newline, `<`, `@`, `[`, `!`), rows are capped, the body is length-capped.
+export const MAX_ROWS = 50;
+export const MAX_BODY = 60000; // GitHub rejects comments over 65536 characters
+const SAFE_FILE = /^[A-Za-z0-9_./-]{1,200}$/;
+const SAFE_MUTATOR = /^[A-Za-z0-9_]{1,60}$/;
+const isSafe = (m) => SAFE_FILE.test(String(m.file)) && SAFE_MUTATOR.test(String(m.mutator)) && Number.isInteger(m.line) && m.line > 0 && m.line < 1e7;
+
 export function renderSection(section, mutants) {
-  const body = mutants.length
-    ? mutants.map((m) => `- \`${m.file}:${m.line}\` ${m.mutator}${m.status === 'NoCoverage' ? ' (no test covers it)' : ''}`).join('\n')
-    : 'No surviving mutants on the changed lines.';
-  return `${sectionMark(section)}\n### ${section === 'php' ? 'PHP (Infection)' : 'JS (StrykerJS)'}: ${mutants.length} surviving\n${body}\n${sectionMark(`${section}-end`)}`;
+  const safe = mutants.filter(isSafe);
+  const dropped = mutants.length - safe.length;
+  const rows = safe.slice(0, MAX_ROWS).map((m) => `- \`${m.file}:${m.line}\` ${m.mutator}${m.status === 'NoCoverage' ? ' (no test covers it)' : ''}`);
+  if (safe.length > MAX_ROWS) rows.push(`- +${safe.length - MAX_ROWS} more (see the workflow artifact)`);
+  if (dropped) rows.push(`- ${dropped} entries with unexpected characters skipped`);
+  const body = rows.length ? rows.join('\n') : 'No surviving mutants on the changed lines.';
+  return `${sectionMark(section)}\n### ${section === 'php' ? 'PHP (Infection)' : 'JS (StrykerJS)'}: ${safe.length} surviving\n${body}\n${sectionMark(`${section}-end`)}`;
 }
 
 // Replace this section in the existing sticky body (or append); other sections stay.
 export function mergeBody(existing, section, rendered) {
   const re = new RegExp(`${sectionMark(section)}[\\s\\S]*?${sectionMark(`${section}-end`)}`);
-  if (existing?.includes(MARK)) return re.test(existing) ? existing.replace(re, () => rendered) : `${existing}\n\n${rendered}`;
-  return `${MARK}\n## Surviving mutants (advisory)\nOn a guard line, add a test that fails for each before asking for R3 review (MERGE_SOP).\n\n${rendered}`;
+  if (existing?.includes(MARK)) return (re.test(existing) ? existing.replace(re, () => rendered) : `${existing}\n\n${rendered}`).slice(0, MAX_BODY);
+  return `${MARK}\n## Surviving mutants (advisory)\nOn a guard line, add a test that fails for each before asking for R3 review (MERGE_SOP).\n\n${rendered}`.slice(0, MAX_BODY);
 }
 
 function main() {
@@ -43,10 +54,12 @@ function main() {
   if (!pr || !repo) { console.log(rendered); return; }
   const gh = (...a) => execFileSync('gh', a, { encoding: 'utf8', maxBuffer: 64 << 20 });
   const all = JSON.parse(gh('api', `/repos/${repo}/issues/${pr}/comments?per_page=100`, '--paginate', '--slurp')).flat();
-  const mine = all.find((c) => c.body?.includes(MARK) && c.user?.type === 'Bot');
+  const mine = all.find((c) => c.body?.includes(MARK) && c.user?.login === 'github-actions[bot]');
   const body = mergeBody(mine?.body, section, rendered);
-  if (mine) gh('api', '-X', 'PATCH', `/repos/${repo}/issues/comments/${mine.id}`, '-f', `body=${body}`);
-  else gh('api', '-X', 'POST', `/repos/${repo}/issues/${pr}/comments`, '-f', `body=${body}`);
+  // Body goes through stdin as JSON: never argv, never shell.
+  const input = JSON.stringify({ body });
+  if (mine) execFileSync('gh', ['api', '-X', 'PATCH', `/repos/${repo}/issues/comments/${mine.id}`, '--input', '-'], { input, encoding: 'utf8' });
+  else execFileSync('gh', ['api', '-X', 'POST', `/repos/${repo}/issues/${pr}/comments`, '--input', '-'], { input, encoding: 'utf8' });
 }
 
 if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) main();
