@@ -51,23 +51,28 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           PREVIEW_API_ORIGIN: ${{ vars.PREVIEW_API_ORIGIN }}
-          PREVIEW_API_BASIC_AUTH: ${{ secrets.STAGING_BASIC_AUTH }}
+          PREVIEW_API_GATE_COOKIE: ${{ secrets.STAGING_GATE_COOKIE }}
           PREVIEW_DEMO_DIRECTOR_PASSWORD: ${{ secrets.PREVIEW_DEMO_DIRECTOR_PASSWORD }}
           PREVIEW_DEMO_TEACHER_PASSWORD: ${{ secrets.PREVIEW_DEMO_TEACHER_PASSWORD }}
           PREVIEW_DEMO_PARENT_STUDENT_ID: ${{ secrets.PREVIEW_DEMO_PARENT_STUDENT_ID }}
           PREVIEW_DEMO_PARENT_PHONE: ${{ secrets.PREVIEW_DEMO_PARENT_PHONE }}
         run: |
           set -euo pipefail
-          if [ -z "$PREVIEW_API_ORIGIN" ] || [ -z "$PREVIEW_API_BASIC_AUTH" ]; then
+          if [ -z "$PREVIEW_API_ORIGIN" ] || [ -z "$PREVIEW_API_GATE_COOKIE" ]; then
             echo "No staging configured: preview runs on in-browser mocks."; exit 0
           fi
           # Branch deployments (pr-<n>) use the Pages *preview* environment, which `pages secret put`
           # cannot target, so write its env vars through the Pages API. Values come from the
           # environment (never argv/echo) and are sent as secret_text.
-          for k in PREVIEW_API_ORIGIN PREVIEW_API_BASIC_AUTH PREVIEW_DEMO_DIRECTOR_PASSWORD PREVIEW_DEMO_TEACHER_PASSWORD PREVIEW_DEMO_PARENT_STUDENT_ID PREVIEW_DEMO_PARENT_PHONE; do
+          for k in PREVIEW_API_ORIGIN PREVIEW_API_GATE_COOKIE PREVIEW_DEMO_DIRECTOR_PASSWORD PREVIEW_DEMO_TEACHER_PASSWORD PREVIEW_DEMO_PARENT_STUDENT_ID PREVIEW_DEMO_PARENT_PHONE; do
             v="${!k}"; [ -n "$v" ] && echo "::add-mask::$v"
           done
-          jq -n '[["PREVIEW_API_ORIGIN","PREVIEW_API_BASIC_AUTH","PREVIEW_DEMO_DIRECTOR_PASSWORD","PREVIEW_DEMO_TEACHER_PASSWORD","PREVIEW_DEMO_PARENT_STUDENT_ID","PREVIEW_DEMO_PARENT_PHONE"][] | select((env[.] // "") != "") | {key: ., value: {type: "secret_text", value: env[.]}}] | from_entries | {deployment_configs: {preview: {env_vars: .}}}' > "$RUNNER_TEMP/pages-env.json"
+          python3 - > "$RUNNER_TEMP/pages-env.json" <<'PY'
+          import json, os
+          keys = ["PREVIEW_API_ORIGIN", "PREVIEW_API_GATE_COOKIE", "PREVIEW_DEMO_DIRECTOR_PASSWORD", "PREVIEW_DEMO_TEACHER_PASSWORD", "PREVIEW_DEMO_PARENT_STUDENT_ID", "PREVIEW_DEMO_PARENT_PHONE"]
+          env_vars = {k: {"type": "secret_text", "value": os.environ[k]} for k in keys if os.environ.get(k)}
+          print(json.dumps({"deployment_configs": {"preview": {"env_vars": env_vars}}}))
+          PY
           code=$(curl -sS -o "$RUNNER_TEMP/pages-env.out" -w '%{http_code}' -X PATCH \
             -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" -H "Content-Type: application/json" \
             --data @"$RUNNER_TEMP/pages-env.json" \
