@@ -6,6 +6,7 @@ use App\Http\Middleware\ThrottleRequestsByIp;
 use App\Models\AuthToken;
 use App\Models\Campus;
 use App\Models\ClassSession;
+use App\Models\LearningRecord;
 use App\Models\Student;
 use App\Models\StudentClass;
 use App\Models\User;
@@ -498,7 +499,9 @@ class SecurityHardeningTest extends TestCase
             'Rate' => 1, 'MDate' => now(), 'Stop' => 0, 'ScheduleMode' => 'date', 'SessionCount' => 1, 'SessionDuration' => 120,
             'RemainingSessions' => 0, 'ClassType' => 'one_on_one', 'UsedSessions' => 0, 'monthly_sessions' => 1, 'rate_unit' => 'session',
         ]);
-        ClassSession::create(['StudentClassID' => $course->ID, 'SessionDate' => now()->toDateString(), 'StartTime' => '18:00', 'EndTime' => '20:00', 'Status' => 'scheduled']);
+        $session = ClassSession::create(['StudentClassID' => $course->ID, 'SessionDate' => now()->toDateString(), 'StartTime' => '18:00', 'EndTime' => '20:00', 'Status' => 'scheduled']);
+        LearningRecord::create(['StudentClassID' => $course->ID, 'ClassSessionID' => $session->id, 'TeacherID' => 99, 'Content' => 'x', 'Status' => 'pending',
+            'SessionDate' => now()->toDateString(), 'StartTime' => '18:00', 'EndTime' => '20:00']);
     }
 
     /** @test */

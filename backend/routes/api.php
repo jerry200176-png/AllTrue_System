@@ -283,16 +283,16 @@ Route::prefix('v1')->group(function () {
             $today = now()->startOfDay();
             $db = \Illuminate\Support\Facades\DB::class;
             $scoped = $role !== 'super_admin';
-            $sessions = $db::table('ClassSession as cs')->where('cs.updated_at', '>=', $today);
+            $records = $db::table('LearningRecord as lr')->where('lr.created_at', '>=', $today);
             $bills = $db::table('Invoice as i')->where('i.created_at', '>=', $today);
             $logins = $db::table('user_login_activities as l')->where('l.login_at', '>=', $today)->where('l.success', 1);
             if ($scoped) {
-                $sessions->join('StudentClass as sc', 'sc.ID', '=', 'cs.StudentClassID')->join('Student as st', 'st.id', '=', 'sc.StudentID')->whereIn('st.CampusID', $campusIds);
-                $bills->join('StudentClass as sc', 'sc.ID', '=', 'i.StudentClassID')->join('Student as st', 'st.id', '=', 'sc.StudentID')->whereIn('st.CampusID', $campusIds);
-                $logins->whereIn('l.user_id', $db::table('UserCampus')->whereIn('CampusID', $campusIds)->select('UserID'));
+                $records->join('StudentClass as sc', 'sc.ID', '=', 'lr.StudentClassID')->join('Student as st', 'st.id', '=', 'sc.StudentID')->whereIn('st.CampusID', $campusIds);
+                $bills->join('Student as st', 'st.id', '=', 'i.StudentID')->whereIn('st.CampusID', $campusIds);
+                $logins->whereIn('l.user_id', $db::table('UserCampus')->whereIn('CampusID', $campusIds)->where(fn ($q) => $q->where('Approved', true)->orWhereNull('Approved'))->select('UserID'));
             }
             $business = [
-                'lessons_written_today' => $sessions->count(),
+                'lessons_written_today' => $records->count(),
                 'bills_created_today'   => $bills->count(),
                 'sign_ins_today'        => $logins->count(),
             ];
