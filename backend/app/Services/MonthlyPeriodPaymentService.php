@@ -93,12 +93,16 @@ final class MonthlyPeriodPaymentService
             // A month still running is not a mismatch only while the bill EQUALS what the month's schedule is worth:
             // held lessons (computed) plus the lessons still scheduled, priced the same way. Overbilled or underbilled
             // against the full schedule stays a mismatch; nothing here changes what a guard or a repricing reads.
-            $existing['amount_deferred'] = ($existing['amount_deferred'] ?? false) || ($amount['amount_discrepancy']
+            // Decided per BILL: a month can hold several bills, and one waiting on its remaining lessons must not hide
+            // another bill's real mismatch, so a bill that cannot be deferred raises amount_undeferrable for the month.
+            $deferrable = $amount['amount_discrepancy']
                 && ($amount['computed_total_amount'] ?? null) !== null
                 && $amount['period_start'] && $amount['period_end']
                 && $this->hasUpcomingScheduledLesson($sessions, $start, $end)
                 && $amount['computed_total_amount'] + ($this->billing->remainingScheduledCharge($course, $amount['period_start'], $amount['period_end']) ?? PHP_INT_MAX)
-                    === $amount['stored_total_amount']);
+                    === $amount['stored_total_amount'];
+            $existing['amount_deferred'] = ($existing['amount_deferred'] ?? false) || $deferrable;
+            $existing['amount_undeferrable'] = ($existing['amount_undeferrable'] ?? false) || ($amount['amount_discrepancy'] && !$deferrable);
             $existing['charge'] += $amount['total_amount'];
             $existing['paid_amount'] += $paid;
             $existing['invoice_ids'][] = (int) $invoice->id;
@@ -191,9 +195,10 @@ final class MonthlyPeriodPaymentService
     public function forDisplay(array $summary): array
     {
         $rows = $summary['periods'] ?? [];
-        if (!collect($rows)->contains(fn ($p) => !empty($p['amount_deferred']))) return $summary;
+        $defers = fn ($p) => !empty($p['amount_deferred']) && empty($p['amount_undeferrable']);
+        if (!collect($rows)->contains($defers)) return $summary;
         foreach ($rows as &$row) {
-            if (empty($row['amount_deferred'])) continue;
+            if (!$defers($row)) continue;
             // A deferred bill may have been repriced to the (0) lesson total; show the stored bill, which is what is owed.
             $row['amount_discrepancy'] = false;
             $row['charge'] = $row['stored_charge'];

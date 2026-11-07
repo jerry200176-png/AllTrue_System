@@ -311,6 +311,23 @@ class MonthlyPeriodPaymentTest extends TestCase
         $this->assertTrue($shown['review_required']);
     }
 
+    public function test_one_deferrable_bill_does_not_hide_an_overbilled_bill_in_the_same_month(): void // in-app #518 Codex P2
+    {
+        \Illuminate\Support\Carbon::setTestNow('2026-10-18 12:00:00');
+        [$course, $invoice] = $this->prepaidOctoberCourse(); // NT$2000 bill = full schedule, can wait
+        ClassSession::where('StudentClassID', $course->ID)->where('SessionDate', '2026-10-15')->update(['Status' => 'attended']);
+        $second = Invoice::create(['StudentID' => $course->StudentID, 'StudentClassID' => $course->ID, 'IssueDate' => '2026-10-02',
+            'billing_period' => '2026-10', 'TotalAmount' => 99000, 'PaidAmount' => 0, 'Status' => 'unpaid']);
+        $svc = app(MonthlyPeriodPaymentService::class);
+        $summary = $svc->batch(collect([$course->fresh()]))[$course->ID];
+        $shown = $svc->forDisplay($summary);
+        \Illuminate\Support\Carbon::setTestNow();
+        $this->assertTrue($summary['periods'][0]['amount_deferred']);
+        $this->assertTrue($summary['periods'][0]['amount_undeferrable']);
+        $this->assertTrue($shown['periods'][0]['amount_discrepancy']);
+        $this->assertTrue($shown['review_required']);
+    }
+
     public function test_same_prepaid_month_is_displayed_as_a_discrepancy_after_the_period_ends(): void // in-app #510
     {
         \Illuminate\Support\Carbon::setTestNow('2026-11-02 12:00:00');
