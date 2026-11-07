@@ -53,7 +53,7 @@ async function load() {
     if (!res.ok) throw new Error();
     data.value = (await res.json()).data;
     loaded.value = true;
-  } catch (_) {
+  } catch {
     error.value = '無法載入 Telegram 綁定，請稍後再試。';
   }
 }
@@ -72,7 +72,7 @@ async function unbind() {
     }
     if (!res.ok) throw new Error();
     await load();
-  } catch (_) {
+  } catch {
     error.value = '解除失敗，請稍後再試。';
   }
 }
