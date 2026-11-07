@@ -183,8 +183,8 @@ function onCellClick(cell) {
 .csc-cell { min-height: 72px; display: flex; flex-direction: column; align-items: center; justify-content: flex-start; gap: 2px; padding: 6px 2px; border: 1px solid transparent; border-radius: 12px; background: var(--ds-canvas-soft); color: var(--ds-ink); cursor: default; font-size: var(--tpl-text-body); }
 .csc-cell:disabled { opacity: 1; }
 .csc-cell--muted { opacity: .4; background: transparent; }
-.csc-cell--materialized { background: color-mix(in srgb, var(--ds-cat-blue-deep, var(--ds-info)) 16%, var(--ds-canvas)); border-color: var(--ds-cat-blue-deep, var(--ds-info)); }
-.csc-cell--projected { background: var(--ds-canvas); border: 1px dashed var(--ds-cat-violet-deep, var(--ds-info)); }
+.csc-cell--materialized { background: color-mix(in srgb, var(--ds-cat-blue-deep) 16%, var(--ds-canvas)); border-color: var(--ds-cat-blue-deep); }
+.csc-cell--projected { background: var(--ds-canvas); border: 1px dashed var(--ds-cat-violet-deep); }
 .csc-cell--creatable { cursor: pointer; background: var(--ds-canvas); border: 1px dashed var(--ds-hairline-input); }
 .csc-cell[draggable='true'] { cursor: grab; }
 .csc-cell--drop { outline: 2px dashed var(--ds-ink); outline-offset: -2px; }
@@ -197,7 +197,7 @@ function onCellClick(cell) {
 .csc-legend { display: flex; flex-wrap: wrap; gap: 8px 16px; color: var(--ds-ink-secondary); }
 .csc-chip { display: inline-flex; align-items: center; gap: 8px; }
 .csc-dot { width: 14px; height: 14px; border-radius: 999px; display: inline-block; }
-.csc-dot--mat { background: var(--ds-cat-blue-deep, var(--ds-info)); }
-.csc-dot--proj { border: 2px dashed var(--ds-cat-violet-deep, var(--ds-info)); }
+.csc-dot--mat { background: var(--ds-cat-blue-deep); }
+.csc-dot--proj { border: 2px dashed var(--ds-cat-violet-deep); }
 .csc-dot--warn { background: var(--ds-warning); }
 </style>

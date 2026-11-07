@@ -166,9 +166,7 @@ export default {
       label: 'tw:text-[length:var(--tpl-text-caption)] tw:text-tpl-secondary',
       tile: 'tpl-tile tw:rounded-[0.6875rem] tw:shadow-tpl-tile',
     };
-    // --ds-cat-* arrive with #5027; until then fall back to existing --ds-* colors (vivid per category, never red).
-    const FALLBACK = { blue: 'var(--ds-info)', green: 'var(--ds-success)', violet: 'var(--ds-ink-secondary)' };
-    const cat = (c) => `var(--ds-cat-${c}-deep, ${FALLBACK[c]})`;
+    const cat = (c) => `var(--ds-cat-${c}-deep)`;
     const badgeCls = { ok: 'tw:bg-[var(--ds-success-wash)] tw:text-foreground', warn: 'tw:bg-[var(--ds-warning-wash)] tw:text-foreground', neutral: 'tw:bg-secondary tw:text-tpl-secondary' };
     return {
       cls, badgeCls, cat, CalendarClock, Wallet, Repeat, Hash, panelRef, titleRef, onKeydown, onTabKey, tabs: TABS, activeTab, act, primaryScheduleCta, billingType, statusTone,
@@ -193,7 +191,7 @@ export default {
         </div>
         <div class="tw:mt-2">
           <h2 id="cm-title" ref="titleRef" class="cmw__title tw:flex tw:flex-wrap tw:items-center tw:gap-3 tw:text-[length:var(--tpl-text-page)] tw:font-bold tw:leading-tight" tabindex="-1">
-            <span><template v-if="studentName">{{ studentName }} · </template>{{ subjectLabel }}</span>
+            <span><template v-if="studentName"><span class="tw:whitespace-nowrap">{{ studentName }}</span> · </template><span class="tw:whitespace-nowrap">{{ subjectLabel }}</span></span>
             <Badge variant="outline" class="cmw__badge tw:px-3 tw:py-1 tw:text-[length:var(--tpl-text-caption)]" :class="[`cmw__badge--${statusTone}`, badgeCls[statusTone]]" data-testid="course-manager-status">{{ statusLabel }}</Badge>
           </h2>
           <p class="tw:mt-1 tw:text-tpl-secondary">{{ course.teacher_name || '待指派' }} · {{ classTypeLabel }}<template v-if="course.room_name"> · {{ course.room_name }}</template></p>
