@@ -46,14 +46,16 @@ services:
     cpus: 1.0
 
   nginx:
-    image: nginx:1.25-alpine
+    build:
+      context: ../..
+      dockerfile: infra/daan-staging/Dockerfile.web
+    image: alltrue-stage-web:local
     container_name: alltrue-stage-nginx
     restart: "no"
     # Localhost-only — access via SSH tunnel. Never publish 0.0.0.0.
     ports:
       - "127.0.0.1:${STAGING_HTTP_PORT:-18080}:80"
     volumes:
-      - stage-app-code:/var/www:ro
       - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
     depends_on:
       - app
