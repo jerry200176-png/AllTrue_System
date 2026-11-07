@@ -18,10 +18,10 @@ test('--vs-base fails closed on an unresolvable ref', () => {
 });
 
 test('overlay counts only go down', () => {
-  const src = '<div class="modal-backdrop"><Teleport to="body"/> if (window.confirm("x")) prompt("y") function confirm() {}';
+  const src = '<div class="modal-backdrop"><Teleport to="body"/> if (window.confirm("x")) prompt("y") alert(1) window.alert(2) x.alert(3) function confirm() {}';
   const counts = countOverlays({ 'src/pages/A.vue': src, 'src/components/ui/x.vue': src, 'src/components/__tests__/t.js': src, 'src/lib/l.js': src });
-  assert.deepEqual(counts, { modal: 1, confirm: 1, prompt: 1, teleport: 1 });
-  const limits = { modal: 1, confirm: 1, prompt: 1, teleport: 1 };
+  assert.deepEqual(counts, { modal: 1, confirm: 1, prompt: 1, alert: 2, teleport: 1 });
+  const limits = { modal: 1, confirm: 1, prompt: 1, alert: 2, teleport: 1 };
   assert.deepEqual(checkOverlayLimits({ counts, limits }), []);
   assert.equal(checkOverlayLimits({ counts, limits: { ...limits, prompt: 0 } }).length, 1);
   assert.equal(checkOverlayLimits({ counts, limits, baseLimits: { ...limits, modal: 0 } }).length, 1);

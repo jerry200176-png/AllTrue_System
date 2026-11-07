@@ -2,7 +2,7 @@
 /**
  * UI ratchet (#4989): a .vue file may import design-system/At* only if it is listed in
  * scripts/ui-legacy-pages.json. Deterministic, so it runs in `npm run build`.
- * Also (#4989 overlays): counts of `class="modal`, `window.confirm`, `prompt(` and raw `<Teleport` in pages/ and components/
+ * Also (#4989 overlays): counts of `class="modal`, `window.confirm`, `prompt(`, `alert(` and raw `<Teleport` in pages/ and components/
  * may not exceed scripts/ui-overlay-limits.json; the limits may only shrink.
  * `--vs-base <ref>` (presubmit only) also requires the list not to grow versus that ref; it fails closed
  * if the ref cannot be resolved. A ref that lacks the list file (the introducing PR) skips the grow check.
@@ -19,6 +19,7 @@ export const OVERLAY_PATTERNS = {
   modal: /class="modal/g,
   confirm: /(?<![\w.$])(?<!function )(?:window\.)?confirm\(/g,
   prompt: /(?<![\w.$])(?:window\.)?prompt\(/g,
+  alert: /(?<![\w.$])(?:window\.)?alert\(/g,
   teleport: /<Teleport\b/g,
 };
 const OVERLAY_DIR = /^src\/(?:pages|components)\//;
