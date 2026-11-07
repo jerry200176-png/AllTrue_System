@@ -190,6 +190,8 @@
       </div>
     </div>
 
+    <TelegramBindingReview :branch-id="branchId" />
+
     <div class="card">
       <h3>🧯 常見錯誤排查</h3>
       <ul class="troubleshooting-list">
@@ -208,6 +210,7 @@ import { ref, onMounted, watch, computed } from 'vue';
 import AtButton from '../components/design-system/AtButton.vue';
 import AtCopyButton from '../components/design-system/AtCopyButton.vue';
 import AtPageHeader from '../components/design-system/AtPageHeader.vue';
+import TelegramBindingReview from '../components/TelegramBindingReview.vue';
 import { supabase } from '../supabase';
 import { humanizeApiErrorMessage } from '../lib/humanizeApiErrorMessage.js';
 
