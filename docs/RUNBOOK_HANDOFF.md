@@ -1,6 +1,6 @@
 # 交接狀態 Handoff（活的；每個 milestone 由 coordinator 更新）
 
-Updated: 2026-11-07 17:30 Asia/Taipei
+Updated: 2026-11-07 19:20 Asia/Taipei
 Source SHA: 09af4fd11 (origin/main at write time)
 Owner: coordinator（每個 milestone、PR merge、deploy 後更新；完成的項目直接刪除）
 
@@ -18,15 +18,16 @@ The trackers hold the full detail: flow is #4953 and UI is #4989. This file only
 
 | 項目 | 狀態 | 下一步（誰） | 去哪看 |
 |---|---|---|---|
-| in-app 516 (#5056)：11/7 的調課顯示錯 | 根因已確認：`ensure-projected` 不接受跨日的調課目的地，月曆又顯示一張幽靈 20:00 預排。修正在 PR #5064（R2），已回覆回報者兩次。 | CI 綠燈加 Codex 乾淨後進 `queue`，接著發 release train（Founder Approve），上線後跑 resolve POP | PR #5064；case `inapp_516_projected_slot`（#5058） |
-| in-app 514 (#5043 merged)：帳單期間標籤 | 主修正已 merge。影響數為 0（case `inapp_514_coverage_impact`）。 | 舊帳單 re-key 的 POP 在 PR #5046：R3 已通過並 `queue`。merge 加部署之後，POP 要先 dry-run，再由 **Founder 按**。 | PR #5046 |
-| in-app 517 (#5057)：學校名稱合併 | PR1 #5060 已 merge（名稱建議加主任合併建議，唯讀）。 | PR2：合併與復原走 `security_audit_events`，180 天內可復原，並改名 `school_exam_periods`。R3。從新的 main 開始。 | issue #5057 |
-| in-app 501 (#4918)：課程管理改版 | Part 1 #5063 已 merge（抽屜、月曆）。 | Part 2：`CourseEditForm` 精簡標籤、新 `<Button>` 加 `type="button"`、axe 掃全部分頁、從 `scripts/ui-legacy-pages.json` 移除。R3。 | #4918、#4989 |
-| UI 改版 waves | 登入、家長首頁、主任首頁（#5027）已 merge，待下一班 release 上線。Founder 11/7 已核可外觀，之後每波給一次 before/after，不再逐頁核准。 | 依序做 App shell → 老師首頁 → 出缺勤 → 學生管理 → 學習評量。同一時間最多 2 個頁面 PR。必用 `.claude/skills/` 的 ui-ux-pro-max、impeccable 等工具。 | #4989；`docs/design/UI_FOUNDATION_MIGRATION_SEQUENCING.md` |
+| in-app 516 (#5056)：調課顯示錯 | **完成**：#5064 已上線（`4c46626b3`），回報已 resolved，#5056 已關。 | 後續：#5069（換老師後晶片又出現）、#5072（重調後舊目的地）；都是 P3 | #5069、#5072 |
+| in-app 514：帳單期間標籤 | 主修正 #5043 已上線（`4c46626b3`），影響數 0。 | 舊帳單 re-key 的 POP 在 PR #5046：R3 FAIL，鎖順序要跟 `voidInvoice` 一樣先課程後帳單（會 deadlock）。修好後交 R3 → `queue` → 上線 → POP dry-run → **Founder 按**。回報要等 POP 跑完才 resolve。 | PR #5046 |
+| in-app 517 (#5057)：學校名稱合併 | PR1 #5060 已上線。 | PR2 #5068（合併與 180 天內復原）：R3 delta review 中，用學生 id 排除、U+3000 測試。merge 後要補 students 頁的 visual baseline PR。 | PR #5068 |
+| in-app 501 (#4918)：課程管理改版 | Part 1 #5063 已上線。 | Part 2 #5080 已通過 R3，有 `autoland` 標籤（CI 綠就自動進 `queue`）。之後換 `StudentsList`。 | PR #5080 |
+| UI 改版 waves | 登入、家長首頁、主任首頁（#5027）已上線。Founder 11/7 已核可外觀，之後每波只給一次 before/after。 | 接著：課程管理 part 2 → 學生管理 → App shell → 老師首頁 → 出缺勤。同時最多 2 個頁面 PR，要用 `.claude/skills/` 的 UI 工具。 | #4989 |
 | #5038 per-PR 預覽 | 已 merge。proxy 只放行 GET/HEAD（其他回 405）；staging gate cookie 11/7 已換過。 | quick-tunnel 網址換了，就要更新 repo variable `PREVIEW_API_ORIGIN`（見 `docs/ops/DAAN_STAGING_V1.md`） | PR #5038 |
 | #4995 property tests | R3 FAIL：只檢查邊界，6/8 mutant 活著。 | 套用 reviewer 留言裡的斷言，並加閏日 seed | PR #4995 留言 |
-| #5054 staging pull-deploy | 已 queue | 等 land-queue | PR #5054 |
-| Flow W7–W11 | 計畫在 #4953 的 2026-11-07 留言 | 每項一個 PR | #4953 |
+| #5054 staging pull-deploy | 已 queue。P2 的後續在 #5067 | 等 land-queue | PR #5054 |
+| Flow W7–W11 | #5048（review-gate 標記沿用）已通過 R3 並 queue。 | #5048 merge 後由 flow agent 做 W8–W11 | #4953、PR #5048 |
+| AI 維運閉環 (#5070) | 盤點完成；8 個缺口依風險排序。 | PR #5076（告警開 issue）、#5077（每日營運數字，依校區限制）、#5078（PITR 每月演練）、#5079（AI／Actions 用量）都是 R3，一起交給 reviewer。之後做缺口 2、4、7、8。全校監控帳號待 Founder 決定。 | #5070 |
 | N+1 告警 | 9 張重複的 Sentry 單已併成 #5061 | 照事件量由高到低修，每個修正都要附 query-count 測試 | #5061 |
 
 **Founder-only：**
