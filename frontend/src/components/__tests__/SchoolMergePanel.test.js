@@ -36,7 +36,8 @@ describe('學校整理 panel', () => {
     await btn(w, '確定合併').trigger('click');
     await flushPromises();
     const post = f.mock.calls.find(([, o]) => o?.method === 'POST');
-    expect(JSON.parse(post[1].body)).toEqual({ campus_id: 1, canonical: '在興國中', variants: ['再興國中', '在興國中'] });
+    expect(w.emitted('changed')).toHaveLength(1);
+    expect(JSON.parse(post[1].body)).toEqual({ campus_id: 1, canonical: '在興國中', variants: ['再興國中'] });
   });
 
   it('shows 180-day history and undoes by request id', async () => {
@@ -47,5 +48,6 @@ describe('學校整理 panel', () => {
     await btn(w, '復原').trigger('click');
     await flushPromises();
     expect(f.mock.calls.some(([u, o]) => String(u).endsWith('/school-merge/r-1/undo') && o?.method === 'POST')).toBe(true);
+    expect(w.emitted('changed')).toHaveLength(1);
   });
 });

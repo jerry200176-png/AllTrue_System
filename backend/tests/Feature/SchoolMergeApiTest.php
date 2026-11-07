@@ -121,4 +121,20 @@ class SchoolMergeApiTest extends TestCase
         DB::table('security_audit_events')->where('correlation_id', $id)->update(['retention_until' => now()->subDay()]);
         $this->as($dir)->postJson("/api/v1/school-merge/$id/undo", ['campus_id' => $a])->assertStatus(422);
     }
+
+    public function test_whitespace_variants_alias_periods_and_many_variants(): void
+    {
+        $a = (int) CampusFactory::new()->create()->id;
+        $dir = $this->staff('A', $a);
+        $sp = $this->student($a, ' 乙測國中');
+        $this->student($a, '乙測國中');
+        // Period stored under the display (trimmed) spelling of a grade-suffix variant.
+        $p = $this->period($a, '乙測國二', 1);
+        $this->student($a, '乙測國二');
+        $this->as($dir)->postJson('/api/v1/school-merge', ['campus_id' => $a, 'canonical' => '乙測國中',
+            'variants' => array_merge([' 乙測國中', '乙測國二'], array_map(fn ($i) => "不存在{$i}國中", range(1, 40)))])
+            ->assertCreated()->assertJsonPath('data.students_updated', 2)->assertJsonPath('data.periods_renamed', 1);
+        $this->assertSame('乙測國中', $sp->fresh()->SchoolName);
+        $this->assertSame('乙測國中', $p->fresh()->school_name);
+    }
 }

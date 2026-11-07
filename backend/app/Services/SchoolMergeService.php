@@ -30,7 +30,7 @@ class SchoolMergeService
     {
         return DB::transaction(function () use ($campusId, $actorId, $canonical, $variants) {
             $students = Student::query()->where('CampusID', $campusId)->where('enable', 1)
-                ->whereIn('SchoolName', $variants)->where('SchoolName', '!=', $canonical)
+                ->whereIn(DB::raw('TRIM(SchoolName)'), $variants)->whereRaw('BINARY SchoolName != ?', [$canonical])
                 ->lockForUpdate()->get(['id', 'SchoolName']);
             $s = [];
             foreach ($students as $row) {
@@ -88,10 +88,10 @@ class SchoolMergeService
             $periods = 0;
             foreach ($payload['p'] ?? [] as $old => $ids) {
                 foreach (SchoolExamPeriod::query()->where('campus_id', $campusId)->whereIn('id', $ids)
-                    ->where('school_name', $canonical)->get() as $period) {
+                    ->where('school_name', $canonical)->lockForUpdate()->get() as $period) {
                     if (!$this->conflicts($period, (string) $old)) {
-                        $period->update(['school_name' => (string) $old]);
-                        $periods++;
+                        $periods += SchoolExamPeriod::query()->whereKey($period->id)->where('school_name', $canonical)
+                            ->update(['school_name' => (string) $old]);
                     }
                 }
             }
@@ -127,8 +127,10 @@ class SchoolMergeService
     {
         $renamed = [];
         $skipped = 0;
-        $periods = SchoolExamPeriod::query()->where('campus_id', $campusId)->whereIn('school_name', $variants)
-            ->where('school_name', '!=', $canonical)->lockForUpdate()->orderBy('id')->get();
+        // Periods are stored as SchoolNameGrouper::display(), so match by school identity, not raw spelling.
+        $keys = array_map(fn ($v) => $this->grouper->key($v), $variants);
+        $periods = SchoolExamPeriod::query()->where('campus_id', $campusId)->lockForUpdate()->orderBy('id')->get()
+            ->filter(fn ($p) => $p->school_name !== $canonical && in_array($this->grouper->key($p->school_name), $keys, true));
         foreach ($periods as $period) {
             if ($this->conflicts($period, $canonical)) {
                 $skipped++;

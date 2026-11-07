@@ -47,6 +47,7 @@ import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { supabase } from '../supabase';
 
 const props = defineProps({ branchId: { type: [Number, String], required: true } });
+const emit = defineEmits(['changed']);
 
 const groups = ref([]);
 const history = ref([]);
@@ -94,10 +95,11 @@ async function doMerge(g, i) {
   try {
     const r = await api('/school-merge', {
       method: 'POST',
-      body: JSON.stringify({ campus_id: Number(props.branchId), canonical: chosen(i), variants: g.names.map((n) => n.name) }),
+      body: JSON.stringify({ campus_id: Number(props.branchId), canonical: chosen(i), variants: g.names.map((n) => n.name).filter((n) => n !== chosen(i)) }),
     });
     notice.value = `已合併，改了 ${r.data.students_updated} 位學生。`;
     confirming.value = null;
+    emit('changed');
     await load();
   } catch (e) {
     error.value = e.message;
@@ -112,6 +114,7 @@ async function doUndo(h) {
   try {
     const r = await api(`/school-merge/${h.request_id}/undo`, { method: 'POST', body: JSON.stringify({ campus_id: Number(props.branchId) }) });
     notice.value = `已復原 ${r.data.students_restored} 位學生。`;
+    emit('changed');
     await load();
   } catch (e) {
     error.value = e.message;

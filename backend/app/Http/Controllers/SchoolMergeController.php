@@ -58,11 +58,12 @@ class SchoolMergeController extends Controller
         }
         $data = $request->validate([
             'canonical' => ['required', 'string', 'max:32'],
-            'variants' => ['required', 'array', 'min:1', 'max:20'],
+            'variants' => ['required', 'array', 'min:1', 'max:100'], // ponytail: one campus never has 100 spellings of a school; paginate if it does
             'variants.*' => ['required', 'string', 'max:32'],
         ]);
         $canonical = trim($data['canonical']);
-        $variants = array_values(array_unique(array_filter(array_map('trim', $data['variants']), fn ($v) => $v !== '' && $v !== $canonical)));
+        // Keep raw spellings (the service matches TRIM(SchoolName) and skips the exact canonical value).
+        $variants = array_values(array_unique(array_filter(array_map('trim', $data['variants']), fn ($v) => $v !== '')));
         if ($canonical === '' || $variants === []) {
             return response()->json(['message' => '請選一個保留的校名和至少一個要合併的寫法'], 422);
         }

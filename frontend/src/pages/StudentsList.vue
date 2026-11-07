@@ -883,7 +883,7 @@
       <DialogContent class="tw:max-h-[85vh] tw:max-w-2xl tw:overflow-y-auto">
         <DialogTitle>學校整理</DialogTitle>
         <DialogDescription class="tw:sr-only">把不同寫法的同一所學校合併成一個名稱</DialogDescription>
-        <SchoolMergePanel v-if="showSchoolMerge" :branch-id="props.branchId" />
+        <SchoolMergePanel v-if="showSchoolMerge" :branch-id="props.branchId" @changed="loadStudents({ quiet: true })" />
       </DialogContent>
     </Dialog>
     <div v-if="showGradePromotion" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="grade-promotion-modal-title" @click.self="closeGradePromotion">
