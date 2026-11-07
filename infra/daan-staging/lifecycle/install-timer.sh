@@ -3,7 +3,7 @@
 set -euo pipefail
 DIR="$(cd "$(dirname "$0")/.." && pwd)"
 mkdir -p "${HOME}/.config/systemd/user"
-cp "${DIR}"/systemd/alltrue-staging-update.{service,timer} "${HOME}/.config/systemd/user/"
+cp "${DIR}"/systemd/alltrue-staging-*.{service,timer} "${HOME}/.config/systemd/user/"
 systemctl --user daemon-reload
-systemctl --user enable --now alltrue-staging-update.timer
-systemctl --user list-timers alltrue-staging-update.timer --no-pager
+systemctl --user enable --now alltrue-staging-update.timer alltrue-staging-reset.timer
+systemctl --user list-timers "alltrue-staging-*" --no-pager
