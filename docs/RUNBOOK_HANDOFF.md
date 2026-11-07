@@ -27,6 +27,7 @@ The trackers hold the full detail: flow is #4953 and UI is #4989. This file only
 | #4995 property tests | R3 FAIL：只檢查邊界，6/8 mutant 活著。 | 套用 reviewer 留言裡的斷言，並加閏日 seed | PR #4995 留言 |
 | #5054 staging pull-deploy | 已 queue | 等 land-queue | PR #5054 |
 | Flow W7–W11 | 計畫在 #4953 的 2026-11-07 留言 | 每項一個 PR | #4953 |
+| AI 維運閉環 (#5070) | 8 個缺口，每個一個小 PR。#1 告警轉 issue：PR 進行中（`pi-health.yml` 排程失敗 → 開／更新單一 `[ops-alert]` issue，LINE 保留）。 | 照 #5070 清單順序做 #2–#8；每個 PR 勾掉對應方塊。排程類 workflow 為 R3。 | #5070 |
 | N+1 告警 | 9 張重複的 Sentry 單已併成 #5061 | 照事件量由高到低修，每個修正都要附 query-count 測試 | #5061 |
 
 **Founder-only：**
