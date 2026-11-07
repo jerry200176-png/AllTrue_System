@@ -178,4 +178,24 @@ final class BillingPeriodRekeyStrategyTest extends TestCase
         $s->rollback($result['snapshot'], ['operation_id' => 'req-6']);
         $this->assertSame(['2026-04', '2026-04'], [DB::table('payment_reports')->where('id', 1)->value('billing_period'), DB::table('payment_reports')->where('id', 2)->value('billing_period')]);
     }
+
+    public function test_a_single_item_bill_that_is_not_the_whole_cycle_is_never_a_candidate(): void
+    {
+        // mid-cycle split: the one item covers only part of the contract (04-29 ~ 05-10 of 04-29 ~ 05-27), lessons in May, stored April
+        DB::table('Student')->insert(['id' => 6, 'name' => 's6', 'CampusID' => 16, 'ClassID' => 1, 'enable' => 1]);
+        $this->cycle(400, 6, 1, '2026-04-29', '2026-05-27', '2026-04', ['2026-05-05']);
+        DB::table('InvoiceItem')->where('InvoiceID', 301)->update(['PeriodEnd' => '2026-05-10']);
+        $ids = array_column((new BillingPeriodRekeyStrategy)->plan($this->params('all'))['manifest'], 'invoice_id');
+        $this->assertNotContains(301, $ids, 'a bill whose item is not the whole cycle is out of scope, ready or skipped');
+    }
+
+    public function test_a_cancelled_first_lesson_does_not_decide_the_month(): void
+    {
+        // cycle 04-29 ~ 05-27 stored April; the 04-30 lesson is cancelled, the next lesson (05-05) decides: May
+        DB::table('Student')->insert(['id' => 7, 'name' => 's7', 'CampusID' => 16, 'ClassID' => 1, 'enable' => 1]);
+        $this->cycle(500, 7, 1, '2026-04-29', '2026-05-27', '2026-04', ['2026-05-05']);
+        DB::table('ClassSession')->insert(['StudentClassID' => 500, 'SessionDate' => '2026-04-30', 'StartTime' => '16:00', 'EndTime' => '18:00', 'Status' => 'cancelled']);
+        $row = collect((new BillingPeriodRekeyStrategy)->plan($this->params([16]))['manifest'])->firstWhere('invoice_id', 401);
+        $this->assertSame(['ready', '2026-05'], [$row['status'], $row['to']]);
+    }
 }
