@@ -11,6 +11,6 @@ D="${HOME}/alltrue-stage/state"; mkdir -p "${D}"; umask 077
 rm -f "${D}/pw-preview-proxy"
 printf 'founder:%s\n' "$(openssl passwd -apr1 -stdin <"${D}/pw-founder")" >"${D}/htpasswd"
 chmod 644 "${D}/htpasswd"   # hash only; read by unprivileged nginx workers through the rootless bind mount
-printf 'map $host $gate_secret { default "%s"; }\nmap $cookie_alltrue_staging_gate $gate_ok { default 0; "%s" 1; }\n' \
+printf 'map_hash_bucket_size 128;\nmap $host $gate_secret { default "%s"; }\nmap $cookie_alltrue_staging_gate $gate_ok { default 0; "%s" 1; }\n' \
   "$(cat "${D}/gate-secret")" "$(cat "${D}/gate-secret")" >"${D}/gate.conf"
 echo "GATE_OK files=${D}/{pw-founder,gate-secret}"
