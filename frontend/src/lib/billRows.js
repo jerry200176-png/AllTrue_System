@@ -76,7 +76,10 @@ export function billRows(alertRows, today = ymdInTaipei()) {
       student_name: r.student_name || '',
       subject: r.subject || '',
       period: remaining !== null ? `剩 ${remaining} 堂` : formatCoursePeriod(r.course_start_date, r.course_end_date),
+      // One scope for the money columns (all open periods due by today): 應收 = 已收 + 未收, never one invoice's amount.
       owed: kind === 'owing' ? owed : 0,
+      paid: Number(r.paid_amount) || 0,
+      payable: (Number(r.paid_amount) || 0) + (kind === 'owing' ? owed : 0),
       owed_later: later,
       due_date: nextDue,
       overdue_days: kind === 'owing' && dues[0] ? Math.max(0, Math.round((dayStart(today) - dayStart(dues[0])) / 86400000)) : 0,

@@ -53,7 +53,7 @@ class BillExportController extends Controller
             $t = BillRowText::describe($src, $today);
             $out[] = [
                 (string) ($src['student_name'] ?? ''), (string) ($src['subject'] ?? ''), $t['period'], $t['status'], $t['due'],
-                isset($src['payable_amount']) ? (int) $src['payable_amount'] : null, (int) ($src['paid_amount'] ?? 0), $t['owed'],
+                $t['payable'], $t['paid'], $t['owed'],
             ];
         }
         if (!$out) {

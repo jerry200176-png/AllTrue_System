@@ -17,7 +17,7 @@ final class BillRowText
         'renew_needed' => '續課待處理', 'monthly_due_soon' => '月結將到期',
     ];
 
-    /** @return array{kind: string, status: string, period: string, due: string, owed: int} */
+    /** @return array{kind: string, status: string, period: string, due: string, owed: int, paid: int, payable: int} */
     public static function describe(array $r, string $today): array
     {
         $items = self::items($r);
@@ -53,7 +53,10 @@ final class BillRowText
         $due = $overdue > 0 ? "逾期 {$overdue} 天"
             : ($nextDue && $kind === 'owing' ? (int) substr($nextDue, 5, 2) . '/' . (int) substr($nextDue, 8, 2) . ' 到期' : '—');
 
-        return ['kind' => $kind, 'status' => self::label($kind, $r, $owed), 'period' => $period, 'due' => $due, 'owed' => $owed];
+        // One scope for the money columns, same as billRows.js: 應收 = 已收 + 未收 (all open periods due by today).
+        $paid = (int) round((float) ($r['paid_amount'] ?? 0));
+
+        return ['kind' => $kind, 'status' => self::label($kind, $r, $owed), 'period' => $period, 'due' => $due, 'owed' => $owed, 'paid' => $paid, 'payable' => $paid + $owed];
     }
 
     private static function items(array $r): array

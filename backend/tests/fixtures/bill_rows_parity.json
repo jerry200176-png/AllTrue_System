@@ -23,7 +23,9 @@
     "status": "待確認入帳",
     "period": "剩 4 堂",
     "due": "—",
-    "owed": 0
+    "owed": 0,
+    "paid": 4000,
+    "payable": 4000
    }
   },
   {
@@ -48,7 +50,9 @@
     "status": "未繳",
     "period": "剩 4 堂",
     "due": "逾期 6 天",
-    "owed": 1000
+    "owed": 1000,
+    "paid": 4000,
+    "payable": 5000
    }
   },
   {
@@ -73,7 +77,9 @@
     "status": "快到期",
     "period": "剩 4 堂",
     "due": "11/20 到期",
-    "owed": 0
+    "owed": 0,
+    "paid": 2000,
+    "payable": 2000
    }
   },
   {
@@ -97,7 +103,9 @@
     "status": "續課待處理",
     "period": "剩 4 堂",
     "due": "—",
-    "owed": 0
+    "owed": 0,
+    "paid": 4000,
+    "payable": 4000
    }
   },
   {
@@ -123,7 +131,9 @@
     "status": "需核對",
     "period": "剩 4 堂",
     "due": "—",
-    "owed": 0
+    "owed": 0,
+    "paid": 4000,
+    "payable": 4000
    }
   },
   {
@@ -147,7 +157,9 @@
     "status": "已收",
     "period": "剩 4 堂",
     "due": "—",
-    "owed": 0
+    "owed": 0,
+    "paid": 4000,
+    "payable": 4000
    }
   },
   {
@@ -172,7 +184,9 @@
     "status": "查無收款",
     "period": "剩 4 堂",
     "due": "—",
-    "owed": 0
+    "owed": 0,
+    "paid": 4000,
+    "payable": 4000
    }
   },
   {
@@ -196,7 +210,9 @@
     "status": "不收了",
     "period": "剩 4 堂",
     "due": "—",
-    "owed": 0
+    "owed": 0,
+    "paid": 4000,
+    "payable": 4000
    }
   },
   {
@@ -230,7 +246,9 @@
     "status": "未繳",
     "period": "2026-09-01 ~ 2026-12-31",
     "due": "逾期 35 天",
-    "owed": 300
+    "owed": 300,
+    "paid": 4000,
+    "payable": 4300
    }
   },
   {
@@ -254,7 +272,9 @@
     "status": "要開帳單",
     "period": "剩 4 堂",
     "due": "—",
-    "owed": 0
+    "owed": 0,
+    "paid": 4000,
+    "payable": 4000
    }
   },
   {
@@ -279,7 +299,9 @@
     "status": "已結束，未收",
     "period": "剩 4 堂",
     "due": "11/5 到期",
-    "owed": 1000
+    "owed": 1000,
+    "paid": 4000,
+    "payable": 5000
    }
   },
   {
@@ -303,7 +325,9 @@
     "status": "月結將到期",
     "period": "2026-09-01 ~ —",
     "due": "—",
-    "owed": 0
+    "owed": 0,
+    "paid": 4000,
+    "payable": 4000
    }
   },
   {
@@ -327,7 +351,9 @@
     "status": "已收",
     "period": "剩 4 堂",
     "due": "—",
-    "owed": 0
+    "owed": 0,
+    "paid": 4000,
+    "payable": 4000
    }
   },
   {
@@ -351,7 +377,9 @@
     "status": "需核對",
     "period": "剩 4 堂",
     "due": "—",
-    "owed": 0
+    "owed": 0,
+    "paid": 4000,
+    "payable": 4000
    }
   },
   {
@@ -376,7 +404,9 @@
     "status": "已收",
     "period": "剩 4 堂",
     "due": "—",
-    "owed": 0
+    "owed": 0,
+    "paid": 4000,
+    "payable": 4000
    }
   },
   {
@@ -401,7 +431,9 @@
     "status": "未繳",
     "period": "剩 0 堂",
     "due": "—",
-    "owed": 1000
+    "owed": 1000,
+    "paid": 4000,
+    "payable": 5000
    }
   },
   {
@@ -425,7 +457,45 @@
     "status": "要開帳單",
     "period": "剩 4 堂",
     "due": "—",
-    "owed": 0
+    "owed": 0,
+    "paid": 4000,
+    "payable": 4000
+   }
+  },
+  {
+   "row": {
+    "student_id": 1,
+    "student_name": "甲",
+    "subject": "數學",
+    "schedule_mode": "date",
+    "remaining_sessions": null,
+    "payment_status": "unpaid",
+    "payable_status": "invoiced",
+    "payable_outstanding": 10000,
+    "payable_amount": 5000,
+    "paid_amount": 0,
+    "course_start_date": "2026-09-01",
+    "course_end_date": "2026-12-31",
+    "id": 19,
+    "open_periods": [
+     {
+      "outstanding": 5000,
+      "due_date": "2026-10-01"
+     },
+     {
+      "outstanding": 5000,
+      "due_date": "2026-11-01"
+     }
+    ]
+   },
+   "expect": {
+    "kind": "owing",
+    "status": "未繳",
+    "period": "2026-09-01 ~ 2026-12-31",
+    "due": "逾期 35 天",
+    "owed": 10000,
+    "paid": 0,
+    "payable": 10000
    }
   },
   {
@@ -449,7 +519,9 @@
     "status": "要開帳單",
     "period": "剩 4 堂",
     "due": "—",
-    "owed": 0
+    "owed": 0,
+    "paid": 4000,
+    "payable": 4000
    }
   }
  ]
