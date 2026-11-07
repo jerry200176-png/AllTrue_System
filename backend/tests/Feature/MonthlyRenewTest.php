@@ -553,7 +553,9 @@ class MonthlyRenewTest extends TestCase
             'status' => 'cancelled',
         ]);
         $this->assertSame('scheduled', (string) $extraSchedule->fresh()->status);
-        $this->assertSame('scheduled', (string) $crossDateDestination->fresh()->status);
+        // in-app #516: a cross-date reschedule destination is owned by the occurrence materialized from it,
+        // so cancelling that session cancels its schedule row (otherwise /schedules keeps listing it).
+        $this->assertSame('cancelled', (string) $crossDateDestination->fresh()->status);
         $this->assertSame('cancelled', (string) $sameDayDestination->fresh()->status);
         $this->assertDatabaseHas('ClassSession', [
             'id' => $session->id,
