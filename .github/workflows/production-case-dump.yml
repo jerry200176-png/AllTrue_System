@@ -159,7 +159,7 @@ jobs:
           target_student_class_id = os.environ.get('TARGET_STUDENT_CLASS_ID') or ''
           # Every student-scoped case needs an id (no hard-coded names); three cases may use a StudentClass ID instead.
           id_cases = {'billing_student_numbers', 'schedule_241', 'billing_campus9_student', 'fixed_slot_campus9_student', 'billing_campus9_subject', 'parent_student_probe', 'parent_binding', 'transfer_capacity_student', 'contract_xindian_student', 'contract_muzha_student', 'monthly_slip_student', 'unpaid_months_muzha', 'substitute_calendar_xinzhuang', 'inapp_516_projected_slot'}
-          if case in id_cases and not target_student_id and not (target_student_class_id and case in {'billing_campus9_student', 'fixed_slot_campus9_student', 'transfer_capacity_student'}):
+          if case in id_cases and not target_student_id and not (target_student_class_id and case in {'billing_campus9_student', 'fixed_slot_campus9_student', 'transfer_capacity_student', 'billing_student_numbers'}):
               raise SystemExit(f'{case} requires student_id')
           if case in {'migration_4283_preconditions', 'inapp_514_coverage_impact', 'review_4554_4753', 'inapp_458_receipt_courses', 'settled_pending_paid_scan', 'inapp_460_payroll_1031', 'inapp_461_464_billing', 'inapp_460_payroll_teacher', 'inapp_466_count_contract', 'inapp_468_teacher_calendar'} and (target_student_id or target_student_class_id or os.environ.get('EXPECTED_TEACHER_IDS')):
               raise SystemExit('migration precondition probe takes no target')
@@ -181,7 +181,7 @@ jobs:
               if not secret_class_id.isascii() or not secret_class_id.isdigit() or len(secret_class_id) > 12 or int(secret_class_id) <= 0:
                   raise SystemExit('inapp_414_amount_source requires the CASE_INPUT_STUDENT_CLASS_ID secret as a positive numeric ID')
               target_student_class_id = secret_class_id
-          if target_student_class_id and (case not in {'billing_campus9_student', 'fixed_slot_campus9_student', 'transfer_capacity_student', 'inapp_414_amount_source', 'xinzhuang_fee_cases'} or not target_student_class_id.isdigit()):
+          if target_student_class_id and (case not in {'billing_campus9_student', 'fixed_slot_campus9_student', 'transfer_capacity_student', 'billing_student_numbers', 'inapp_414_amount_source', 'xinzhuang_fee_cases'} or not target_student_class_id.isdigit()):
               raise SystemExit('student_class_id is only supported as a numeric scoped case')
           expected_teacher_ids = os.environ.get('EXPECTED_TEACHER_IDS') or ''
           teacher_ids = expected_teacher_ids.split(',') if expected_teacher_ids else []
@@ -2422,7 +2422,7 @@ jobs:
             // billing_student_numbers runs this same body for one campus-9 student ID (any in-app billing report) and adds the
             // ledger's resolved bill amounts. Output: numeric IDs, dates, amounts, codes and counts only (no names, notes or free text).
             if (!$billingStudentNumbers && ($targetStudentId || $targetStudentClassId)) {{ throw new \\RuntimeException('no_target_allowed'); }}
-            if ($billingStudentNumbers && ($targetStudentClassId || !$targetStudentId)) {{ throw new \\RuntimeException('student_id_only'); }}
+            if ($billingStudentNumbers && (bool) $targetStudentClassId === (bool) $targetStudentId) {{ throw new \\RuntimeException('student_id_or_class_id'); }}
             $code = static fn ($v) => $v === null ? null : (preg_match('/^[a-z_]{{1,32}}$/', (string) $v) ? (string) $v : 'other');
             $d = static fn ($v) => $v === null ? null : substr((string) $v, 0, 19);
             $nums = static function ($row) use ($d) {{
@@ -2436,7 +2436,7 @@ jobs:
             $report = !$billingStudentNumbers ? $db::table('bug_reports')->where('id', 466)->where('CampusID', 9)->first(['title', 'description']) : null;
             $text = $report ? ((string) $report->title . ' ' . (string) $report->description) : '';
             $sids = $billingStudentNumbers
-              ? $db::table('Student')->where('id', $targetStudentId)->pluck('id')->map(fn ($v) => (int) $v)->values()->all()
+              ? $db::table('Student')->where('id', $targetStudentId ?: $db::table('StudentClass')->where('ID', $targetStudentClassId)->value('StudentID'))->pluck('id')->map(fn ($v) => (int) $v)->values()->all()
               : $db::table('Student')->where('CampusID', 9)->get(['id', 'name'])
               ->filter(fn ($s) => mb_strlen(trim((string) $s->name)) >= 2 && $text !== '' && mb_strpos($text, trim((string) $s->name)) !== false)
               ->pluck('id')->map(fn ($v) => (int) $v)->values()->all();
