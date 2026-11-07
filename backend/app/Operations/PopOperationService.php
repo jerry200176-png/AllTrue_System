@@ -919,7 +919,8 @@ final class PopOperationService
         if (($this->isExactUnbilledBacklogCatchup($entry) || $this->isExactBillingPeriodRekey($entry))
             && ($entry['founder_approval_required'] ?? false) === true
             && ($entry['risk'] ?? null) === 'critical'
-            && in_array($entry['blast_radius'] ?? null, ['new_contract_invoice_item_per_uncovered_contract_month', 'invoice_billing_period_and_note_tag_only'], true)
+            && ($entry['blast_radius'] ?? null) === (['unbilled-backlog-catchup-20261006' => 'new_contract_invoice_item_per_uncovered_contract_month',
+                'billing-period-rekey-20261107' => 'invoice_billing_period_and_note_tag_only'][$entry['id'] ?? ''] ?? null)
             && ($entry['reversible'] ?? false) === true
             && ($entry['snapshot_required'] ?? false) === true
             && ($entry['transaction_required'] ?? false) === true
