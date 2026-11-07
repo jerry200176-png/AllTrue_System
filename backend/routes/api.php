@@ -505,6 +505,7 @@ Route::prefix('v1')->group(function () {
         Route::post('backfill/register-subject-units', [BackfillController::class, 'registerSubjectUnits']);
 
         Route::get('alerts/tuition', [AlertController::class, 'tuition']);
+        Route::post('accounting/bills/export', [\App\Http\Controllers\BillExportController::class, 'export']);
         Route::get('alerts/tuition-slip/{studentClassId}', [AlertController::class, 'tuitionSlipData']);
 
         // ── Payment Reports (學收核銷) ──────────────────────────────

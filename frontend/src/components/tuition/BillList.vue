@@ -51,7 +51,7 @@
           <AtButton size="sm" shape="rect" data-testid="bill-batch" @click="$emit('batch', pickedMode, picked.map((b) => b.class_id))">{{ pickedMode === 'confirm' ? '確認入帳' : '登記' }} {{ picked.length }} 筆</AtButton>
           <AtButton variant="secondary" size="sm" shape="rect" data-testid="bill-clear-picked" @click="clearSelection">取消選取</AtButton>
         </template>
-        <AtButton class="bl__csv" variant="secondary" size="sm" shape="rect" :disabled="exportDisabled || !visible.length" data-testid="bill-export" @click="$emit('export', visible.map((b) => b.src))">匯出 CSV</AtButton>
+        <AtButton class="bl__csv" variant="secondary" size="sm" shape="rect" :disabled="exportDisabled || !visible.length" data-testid="bill-export" @click="$emit('export', exportPayload())">匯出 Excel</AtButton>
       </div>
       <AtEmpty v-if="!visible.length && !noRowStudents.length" icon="search_off" :title="query.trim() ? '找不到符合的帳單' : `目前沒有「${chipLabel}」的帳單`" :description="query.trim() ? `找不到符合「${query.trim()}」的學生。請調整搜尋。` : '可以切換上方的狀態看其他帳單。'" data-testid="bill-empty" data-guide="tuition-rows" />
       <template v-else>
@@ -205,6 +205,13 @@ const noRowStudents = computed(() => {
 const money = (v) => 'NT$ ' + Number(v || 0).toLocaleString('zh-TW');
 const md = (d) => { const [, m, day] = String(d).slice(0, 10).split('-'); return `${Number(m)}/${Number(day)}`; };
 const dueText = (b) => (b.overdue_days > 0 ? `逾期 ${b.overdue_days} 天` : b.due_date && b.kind === 'owing' ? `${md(b.due_date)} 到期` : '—');
+
+// Exactly what is on screen (filter, search, tab): the server re-reads the rows and writes these cells.
+const exportPayload = () => ({
+  filter: activeFilter.value,
+  search: query.value.trim(),
+  items: visible.value.map((b) => ({ id: b.class_id, package_id: b.package_id, status: b.label, period: b.period, due: dueText(b), owed: Math.round(b.owed) })),
+});
 
 const menuGroups = (b) => billMenuGroups(b, props);
 

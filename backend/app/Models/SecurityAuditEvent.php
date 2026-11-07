@@ -32,6 +32,8 @@ final class SecurityAuditEvent
         'revoked_session_count',
         // Triage token access log: route name + HMAC refs only (never raw IDs/IPs).
         'route', 'client_ip_ref', 'attachment_ref', 'bug_report_ref',
+        // 帳務中心 export (#5099): the chip key (an enum) and whether a name search was on, never the search text.
+        'filter', 'has_search',
     ];
 
     public static function ref(string $kind, int|string|null $value): ?string
