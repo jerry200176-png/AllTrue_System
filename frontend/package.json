@@ -90,6 +90,7 @@
   "dependencies": {
     "@lucide/vue": "1.65.0",
     "@sentry/vue": "^10.76.2",
+    "@tanstack/vue-table": "8.21.3",
     "@vueuse/core": "15.0.0",
     "class-variance-authority": "0.7.1",
     "clsx": "2.1.1",
