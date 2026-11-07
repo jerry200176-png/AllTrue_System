@@ -5,17 +5,21 @@ import { RENEW_LESSONS_LABEL } from '../../lib/courseIntent.js';
 import { monthlyPaymentLabel, periodPaymentLabel } from '../../lib/courseMoneyState.js';
 import CourseSessionCalendar from './CourseSessionCalendar.vue';
 import ActionMenu from '../ActionMenu.vue';
+import { ArrowLeft, X, CalendarClock, Wallet, Repeat, Hash, ChevronRight } from 'lucide-vue-next';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { BlurFade } from '../motion';
 
 const TABS = [
   { id: 'overview', label: '總覽' },
-  { id: 'sessions', label: '排課與堂次' },
-  { id: 'settings', label: '課程設定' },
-  { id: 'billing', label: '帳務與合約' },
+  { id: 'sessions', label: '堂次' },
+  { id: 'settings', label: '設定' },
+  { id: 'billing', label: '帳務' },
 ];
 
 export default {
   name: 'CourseManager',
-  components: { CourseSessionCalendar, ActionMenu },
+  components: { CourseSessionCalendar, ActionMenu, Button, Badge, BlurFade, ArrowLeft, X, CalendarClock, Wallet, Repeat, Hash, ChevronRight },
   props: {
     course: { type: Object, required: true },
     // { primary, groups } from courseActions(): the same model the course row uses (調課／代課／轉課 live in ⋯).
@@ -154,8 +158,20 @@ export default {
       const u = (props.sessionUnits || []).find((x) => String(x.date || '').slice(0, 10) === date);
       if (u) emit('open-session', { unit: u, date, id: u.id });
     }
+    // Template look (#4918): 56px buttons, gold only on the one primary action, ink/secondary elsewhere.
+    const cls = {
+      primary: 'tw:h-14 tw:px-6 tw:text-[length:var(--tpl-text-body)] tw:font-bold tw:bg-[var(--ds-brand-gold)] tw:text-[var(--ds-brand-glyph)] tw:hover:bg-[var(--ds-brand-gold-deep)]',
+      second: 'tw:h-14 tw:px-5 tw:text-[length:var(--tpl-text-body)]',
+      group: 'tw:overflow-hidden tw:rounded-2xl tw:border tw:border-border tw:bg-card tw:shadow-tpl-card',
+      label: 'tw:text-[length:var(--tpl-text-caption)] tw:text-tpl-secondary',
+      tile: 'tpl-tile tw:rounded-[0.6875rem] tw:shadow-tpl-tile',
+    };
+    // --ds-cat-* arrive with #5027; until then fall back to existing --ds-* colors (vivid per category, never red).
+    const FALLBACK = { blue: 'var(--ds-info)', green: 'var(--ds-success)', violet: 'var(--ds-ink-secondary)' };
+    const cat = (c) => `var(--ds-cat-${c}-deep, ${FALLBACK[c]})`;
+    const badgeCls = { ok: 'tw:bg-[var(--ds-success-wash)] tw:text-foreground', warn: 'tw:bg-[var(--ds-warning-wash)] tw:text-foreground', neutral: 'tw:bg-secondary tw:text-tpl-secondary' };
     return {
-      panelRef, titleRef, onKeydown, onTabKey, tabs: TABS, activeTab, act, primaryScheduleCta, billingType, statusTone,
+      cls, badgeCls, cat, CalendarClock, Wallet, Repeat, Hash, panelRef, titleRef, onKeydown, onTabKey, tabs: TABS, activeTab, act, primaryScheduleCta, billingType, statusTone,
       sessionsView, dangerOpen, listUnits, sessionNo, onSelectDay, onMoveSession, monthlySummary, gapMonths, selectedPeriod, effectivePaymentLabel, periodPaymentLabel,
     };
   },
@@ -163,49 +179,44 @@ export default {
 </script>
 
 <template>
-  <div class="cmw" role="dialog" aria-modal="true" aria-labelledby="cm-title" data-testid="course-manager" @keydown.esc.prevent="$emit('close')" @keydown="onKeydown">
+  <div class="cmw tw:text-[length:var(--tpl-text-body)]" role="dialog" aria-modal="true" aria-labelledby="cm-title" data-testid="course-manager" @keydown.esc.prevent="$emit('close')" @keydown="onKeydown">
     <div class="cmw__scrim" @click="$emit('close')" />
     <div ref="panelRef" class="cmw__panel">
       <header class="cmw__head">
-        <div class="cmw__head-bar">
-          <button type="button" class="cmw__back" data-testid="course-manager-close" @click="$emit('close')">
-            <span class="material-symbols-outlined" aria-hidden="true">arrow_back</span> 課程管理
+        <div class="tw:flex tw:items-center tw:justify-between tw:gap-2">
+          <button type="button" class="cmw__back tw:inline-flex tw:h-14 tw:items-center tw:gap-2 tw:whitespace-nowrap tw:rounded-full tw:pr-4 tw:text-[length:var(--tpl-text-body)] tw:font-semibold tw:text-tpl-secondary" data-testid="course-manager-close" @click="$emit('close')">
+            <ArrowLeft :size="24" :stroke-width="2.2" aria-hidden="true" />課程管理
           </button>
-          <div class="cmw__actions">
-            <button v-if="actionModel?.primary" type="button" class="small primary" data-testid="course-manager-primary" @click="act(actionModel.primary.id)">{{ actionModel.primary.label }}</button>
-            <ActionMenu
-              v-if="actionModel?.groups?.length"
-              :groups="actionModel.groups"
-              :label="`${subjectLabel || '課程'} 的更多課程操作`"
-              trigger-class="cmw__more"
-              @select="act"
-            />
-            <button type="button" class="cmw__x" aria-label="關閉" @click="$emit('close')">
-              <span class="material-symbols-outlined" aria-hidden="true">close</span>
-            </button>
-          </div>
+          <button type="button" class="cmw__x tw:grid tw:size-14 tw:place-items-center tw:rounded-full" aria-label="關閉" @click="$emit('close')">
+            <X :size="26" :stroke-width="2.2" aria-hidden="true" />
+          </button>
         </div>
-        <div class="cmw__id">
-          <h2 id="cm-title" ref="titleRef" class="cmw__title" tabindex="-1">
+        <div class="tw:mt-2">
+          <h2 id="cm-title" ref="titleRef" class="cmw__title tw:flex tw:flex-wrap tw:items-center tw:gap-3 tw:text-[length:var(--tpl-text-page)] tw:font-bold tw:leading-tight" tabindex="-1">
             <span><template v-if="studentName">{{ studentName }} · </template>{{ subjectLabel }}</span>
-            <span class="cmw__badge" :class="`cmw__badge--${statusTone}`" data-testid="course-manager-status">{{ statusLabel }}</span>
+            <Badge variant="outline" class="cmw__badge tw:px-3 tw:py-1 tw:text-[length:var(--tpl-text-caption)]" :class="[`cmw__badge--${statusTone}`, badgeCls[statusTone]]" data-testid="course-manager-status">{{ statusLabel }}</Badge>
           </h2>
-          <p class="cmw__meta">{{ course.teacher_name || '待指派' }} · {{ classTypeLabel }}<template v-if="course.room_name"> · {{ course.room_name }}</template></p>
-          <div class="cmw__kpis" aria-label="課程摘要">
-            <span v-if="remainingLabel" class="cmw__kpi">{{ remainingLabel }}</span>
-            <span v-if="nextSessionLabel" class="cmw__kpi">下堂 {{ nextSessionLabel }}</span>
-            <span v-if="effectivePaymentLabel" class="cmw__kpi">{{ effectivePaymentLabel }}</span>
-          </div>
+          <p class="tw:mt-1 tw:text-tpl-secondary">{{ course.teacher_name || '待指派' }} · {{ classTypeLabel }}<template v-if="course.room_name"> · {{ course.room_name }}</template></p>
+        </div>
+        <div v-if="actionModel?.primary || actionModel?.groups?.length" class="tw:mt-3 tw:flex tw:items-center tw:gap-3">
+          <Button v-if="actionModel?.primary" :class="cls.primary" class="tw:flex-1 tw:sm:flex-none" data-testid="course-manager-primary" @click="act(actionModel.primary.id)">{{ actionModel.primary.label }}</Button>
+          <ActionMenu
+            v-if="actionModel?.groups?.length"
+            :groups="actionModel.groups"
+            :label="`${subjectLabel || '課程'} 的更多課程操作`"
+            trigger-class="cmw__more"
+            @select="act"
+          />
         </div>
       </header>
-      <nav class="cmw__tabs" role="tablist" aria-label="課程管理分區">
+      <nav class="cmw__tabs tw:grid tw:grid-cols-4 tw:gap-1 tw:rounded-2xl tw:bg-secondary tw:p-1" role="tablist" aria-label="課程管理分區">
         <button
           v-for="t in tabs"
           :key="t.id"
           type="button"
           role="tab"
-          class="cmw__tab"
-          :class="{ on: activeTab === t.id }"
+          class="cmw__tab tw:h-14 tw:rounded-xl tw:text-[length:var(--tpl-text-body)] tw:font-semibold tw:text-tpl-secondary"
+          :class="{ on: activeTab === t.id, 'tw:bg-card tw:text-foreground tw:shadow-sm': activeTab === t.id }"
           :data-testid="`course-manager-tab-${t.id}`"
           :aria-selected="activeTab === t.id"
           :id="`cm-tab-${t.id}`"
@@ -216,11 +227,11 @@ export default {
         >{{ t.label }}</button>
       </nav>
       <div class="cmw__body">
-        <section v-if="monthlySummary && ['overview', 'billing'].includes(activeTab)" class="cmw__card" data-testid="monthly-payment-periods" aria-label="月結期間與付款">
-          <h3>合約期間 {{ monthlySummary.contract_start || '待確認' }} ～ {{ monthlySummary.contract_end || '待確認' }}</h3>
-          <label class="cmw__row">查看帳期
-            <select v-model="selectedPeriod" aria-label="查看月結帳期">
-              <option value="">{{ monthlySummary.billing_period }}（目前待處理帳期）</option>
+        <section v-if="monthlySummary && ['overview', 'billing'].includes(activeTab)" class="cmw__card tw:mb-4 tw:p-5" :class="cls.group" data-testid="monthly-payment-periods" aria-label="月結期間與付款">
+          <h3 class="tw:text-[length:var(--tpl-text-list)] tw:font-bold">合約 {{ monthlySummary.contract_start || '待確認' }} ～ {{ monthlySummary.contract_end || '待確認' }}</h3>
+          <label class="tw:mt-3 tw:flex tw:flex-wrap tw:items-center tw:gap-3">查看帳期
+            <select v-model="selectedPeriod" aria-label="查看月結帳期" class="tw:h-14 tw:min-w-0 tw:flex-1 tw:rounded-xl tw:border tw:bg-card tw:px-3">
+              <option value="">{{ monthlySummary.billing_period }}（待處理）</option>
               <option v-for="period in monthlySummary.periods" :key="period.billing_period" :value="period.billing_period">{{ period.billing_period }}</option>
             </select>
           </label>
@@ -250,40 +261,49 @@ export default {
             </div>
             <p class="cmw__hint">試算依已上課日期與當日費率，包含越界堂次；請假、取消與待上課不計入。試算金額尚未成為應收帳單。</p>
           </template>
-          <div v-if="monthlySummary.review_required" class="cmw__row">
-            <button type="button" class="small ghost" @click="act('invoice')">查看登錄帳單與收款</button>
+          <div v-if="monthlySummary.review_required" class="tw:mt-3">
+            <Button variant="secondary" :class="cls.second" @click="act('invoice')">查看登錄帳單與收款</Button>
           </div>
         </section>
+
         <div
           v-if="activeTab === 'overview'"
           id="cm-panel-overview"
           role="tabpanel"
           aria-labelledby="cm-tab-overview"
           data-testid="course-manager-overview"
-          class="cmw__stack cmw__stack--overview"
+          class="cmw__stack"
         >
-          <section class="cmw__metrics" aria-label="營運狀態">
-            <div class="cmw__metric"><span class="cmw__metric-k">堂次</span><strong>{{ remainingLabel || '—' }}</strong></div>
-            <div class="cmw__metric"><span class="cmw__metric-k">下一堂</span><strong>{{ nextSessionLabel || '—' }}</strong></div>
-            <div class="cmw__metric"><span class="cmw__metric-k">付款</span><strong>{{ effectivePaymentLabel || '—' }}</strong></div>
-            <div class="cmw__metric"><span class="cmw__metric-k">固定時段</span><strong>{{ scheduleSummary || '未排定' }}</strong></div>
-          </section>
-          <section v-if="overviewNeeds.length" class="cmw__card cmw__card--needs">
-            <h3>需要處理</h3>
-            <div v-for="n in overviewNeeds" :key="n.id" class="cmw__need">
-              <div><strong>{{ n.title }}</strong><p v-if="n.detail">{{ n.detail }}</p></div>
-              <button v-if="n.action" type="button" class="small primary" @click="act(n.action)">{{ n.actionLabel || '前往' }}</button>
+          <BlurFade :class="cls.group" class="tw:p-5" aria-label="營運狀態">
+            <p :class="cls.label">堂次</p>
+            <p class="tw:text-[length:var(--tpl-text-num-sm)] tw:font-bold tw:leading-none">{{ remainingLabel || '—' }}</p>
+          </BlurFade>
+          <BlurFade :delay="60" :class="cls.group" aria-label="課程摘要">
+            <div v-for="row in [
+              { k: '下一堂', v: nextSessionLabel || '—', icon: CalendarClock, c: 'blue' },
+              { k: '付款', v: effectivePaymentLabel || '—', icon: Wallet, c: 'green' },
+              { k: '固定時段', v: scheduleSummary || '未排定', icon: Repeat, c: 'violet' },
+            ]" :key="row.k" class="tw:flex tw:min-h-[var(--tpl-row-height)] tw:items-center tw:gap-4 tw:border-t tw:px-5 tw:py-3 first:tw:border-t-0">
+              <span :class="cls.tile" :style="{ background: cat(row.c) }"><component :is="row.icon" :size="22" :stroke-width="2.2" aria-hidden="true" /></span>
+              <div class="tw:min-w-0"><p :class="cls.label">{{ row.k }}</p><p class="tw:text-[length:var(--tpl-text-list)] tw:font-semibold tw:break-words">{{ row.v }}</p></div>
             </div>
-          </section>
-          <section class="cmw__card cmw__card--life">
-            <h3>課程狀態</h3>
-            <p class="cmw__hint">目前：{{ statusLabel }}</p>
-            <div class="cmw__row">
-              <button v-if="course.status !== 'inactive'" type="button" class="small ghost" @click="act('pause')">暫停課程</button>
-              <button v-else type="button" class="small primary" @click="act('resume')">恢復課程</button>
-              <button v-if="canClose" type="button" class="small ghost" @click="act('close')">結束課程</button>
+          </BlurFade>
+          <BlurFade v-if="overviewNeeds.length" :delay="120" class="cmw__card--needs tw:p-5" :class="cls.group">
+            <h3 class="tw:text-[length:var(--tpl-text-list)] tw:font-bold">需要處理</h3>
+            <div v-for="n in overviewNeeds" :key="n.id" class="cmw__need tw:mt-3 tw:flex tw:items-center tw:justify-between tw:gap-3 tw:border-t tw:pt-3">
+              <div><strong>{{ n.title }}</strong><p v-if="n.detail" class="tw:text-tpl-secondary">{{ n.detail }}</p></div>
+              <Button v-if="n.action" :class="cls.primary" @click="act(n.action)">{{ n.actionLabel || '前往' }}</Button>
             </div>
-          </section>
+          </BlurFade>
+          <BlurFade :delay="180" class="cmw__card--life tw:p-5" :class="cls.group">
+            <h3 class="tw:text-[length:var(--tpl-text-list)] tw:font-bold">課程狀態</h3>
+            <p class="tw:text-tpl-secondary">目前：{{ statusLabel }}</p>
+            <div class="tw:mt-3 tw:flex tw:flex-wrap tw:gap-3">
+              <Button v-if="course.status !== 'inactive'" variant="secondary" :class="cls.second" @click="act('pause')">暫停課程</Button>
+              <Button v-else :class="cls.primary" @click="act('resume')">恢復課程</Button>
+              <Button v-if="canClose" variant="secondary" :class="cls.second" @click="act('close')">結束課程</Button>
+            </div>
+          </BlurFade>
         </div>
 
         <div
@@ -292,37 +312,36 @@ export default {
           role="tabpanel"
           aria-labelledby="cm-tab-sessions"
           data-testid="course-manager-sessions"
-          class="cmw__stack cmw__stack--sessions"
+          class="cmw__stack"
         >
-          <div class="cmw__toolbar">
-            <div class="cmw__row">
-              <button
+          <div class="tw:flex tw:flex-wrap tw:items-center tw:justify-between tw:gap-3">
+            <div class="tw:flex tw:flex-wrap tw:gap-3">
+              <Button
                 v-if="isSessionMode || isMonthlyMode"
-                type="button"
-                class="small primary"
+                :class="cls.primary"
                 data-testid="course-manager-schedule-cta"
                 @click="act('manual-session')"
-              >{{ primaryScheduleCta() }}</button>
-              <button
+              >{{ primaryScheduleCta() }}</Button>
+              <Button
                 v-if="isSessionMode && canQuickAdd"
-                type="button"
-                class="small ghost"
+                variant="secondary"
+                :class="cls.second"
                 data-testid="course-manager-quick-add"
                 @click="act('quick-add')"
-              >補課／補登</button>
-              <button type="button" class="small ghost" @click="$emit('toggle-notes')">{{ showSessionNotes ? '備註 ▲' : '備註 ▼' }}</button>
-              <button v-if="cancelledUnits.length" type="button" class="small ghost" @click="$emit('toggle-cancelled')">{{ showCancelled ? '已調走／取消 ▲' : `含 ${cancelledUnits.length} 堂已調走／取消 ▼` }}</button>
+              >補課／補登</Button>
+              <Button variant="secondary" :class="cls.second" @click="$emit('toggle-notes')">{{ showSessionNotes ? '備註 ▲' : '備註 ▼' }}</Button>
+              <Button v-if="cancelledUnits.length" variant="secondary" :class="cls.second" @click="$emit('toggle-cancelled')">{{ showCancelled ? '已調走／取消 ▲' : `含 ${cancelledUnits.length} 堂已調走／取消 ▼` }}</Button>
             </div>
-            <div class="cmw__view-toggle" role="group" aria-label="堂次檢視">
-              <button type="button" class="small" :class="{ primary: sessionsView === 'calendar', ghost: sessionsView !== 'calendar' }" data-testid="course-manager-view-calendar" @click="sessionsView = 'calendar'">月曆</button>
-              <button type="button" class="small" :class="{ primary: sessionsView === 'list', ghost: sessionsView !== 'list' }" data-testid="course-manager-view-list" @click="sessionsView = 'list'">列表</button>
+            <div class="tw:grid tw:grid-cols-2 tw:gap-1 tw:rounded-2xl tw:bg-secondary tw:p-1" role="group" aria-label="堂次檢視">
+              <button type="button" class="tw:h-14 tw:rounded-xl tw:border-0 tw:px-5 tw:text-[length:var(--tpl-text-body)] tw:font-semibold" :class="sessionsView === 'calendar' ? 'tw:bg-card tw:shadow-sm' : 'tw:bg-transparent tw:text-tpl-secondary'" data-testid="course-manager-view-calendar" @click="sessionsView = 'calendar'">月曆</button>
+              <button type="button" class="tw:h-14 tw:rounded-xl tw:border-0 tw:px-5 tw:text-[length:var(--tpl-text-body)] tw:font-semibold" :class="sessionsView === 'list' ? 'tw:bg-card tw:shadow-sm' : 'tw:bg-transparent tw:text-tpl-secondary'" data-testid="course-manager-view-list" @click="sessionsView = 'list'">列表</button>
             </div>
           </div>
           <p v-if="sessionLoadFailed || planningStatus" class="cmw__hint">
             <strong>{{ sessionLoadFailed ? '堂次載入失敗' : planningStatus?.title }}</strong>
             — {{ sessionLoadFailed ? '目前無法確認最新堂次狀態。' : planningStatus?.message }}
-            <button v-if="sessionLoadFailed" type="button" class="small primary" @click="act('retry-sessions')">重新載入</button>
-            <button v-else-if="['quick_add','arrange_makeup'].includes(planningStatus?.action) && canQuickAdd" type="button" class="small primary" @click="act('quick-add')">{{ planningStatus?.action === 'arrange_makeup' ? '安排補課' : '補排堂次' }}</button>
+            <Button v-if="sessionLoadFailed" :class="cls.primary" @click="act('retry-sessions')">重新載入</Button>
+            <Button v-else-if="['quick_add','arrange_makeup'].includes(planningStatus?.action) && canQuickAdd" :class="cls.primary" @click="act('quick-add')">{{ planningStatus?.action === 'arrange_makeup' ? '安排補課' : '補排堂次' }}</Button>
           </p>
           <template v-if="sessionsView === 'calendar'">
             <CourseSessionCalendar
@@ -337,42 +356,46 @@ export default {
               @select-day="onSelectDay"
               @move-session="onMoveSession"
             />
-            <p v-else class="cmw__hint">行事曆尚未啟用；請改用列表檢視堂次。</p>
+            <p v-else class="cmw__hint">行事曆尚未啟用，請改用列表。</p>
           </template>
           <template v-else>
-            <div v-if="listUnits.length" class="cmw__session-list" data-testid="course-manager-session-list">
-              <div v-for="u in listUnits" :key="sessionRowKey(u)" class="cmw__session-item">
+            <div v-if="listUnits.length" class="cmw__session-list" :class="cls.group" data-testid="course-manager-session-list">
+              <div v-for="u in listUnits" :key="sessionRowKey(u)" class="cmw__session-item tw:border-t first:tw:border-t-0">
                 <button
                   type="button"
                   class="cmw__session-row"
                   :class="[u.isProjected ? 'is-projected' : 'is-materialized', getSessionStateClass(course, (u.date || '').slice(0,10), u.id)]"
                   @click="$emit('open-session', { unit: u, date: (u.date || '').slice(0,10), id: u.id })"
                 >
-                  <span class="cmw__session-seq">{{ sessionNo(u) ? `第${sessionNo(u)}堂` : '—' }}</span>
-                  <span class="cmw__session-date">{{ formatSessionChipDate(u) }}</span>
-                  <span class="cmw__session-state">{{ u.isProjected ? '預排' : (getSessionStateLabel(course, (u.date || '').slice(0,10), u.id) || '已建立') }}</span>
-                  <span v-if="showSessionNotes && isUserNote(u.note)" class="cmw__session-note">{{ u.note }}</span>
+                  <span :class="cls.tile" :style="{ background: cat(u.isProjected ? 'violet' : 'blue') }"><Hash :size="22" :stroke-width="2.2" aria-hidden="true" /></span>
+                  <span class="tw:min-w-0 tw:flex-1">
+                    <span class="cmw__session-date tw:block tw:text-[length:var(--tpl-text-list)] tw:font-semibold">{{ formatSessionChipDate(u) }}</span>
+                    <span class="cmw__session-seq tw:text-tpl-secondary">{{ sessionNo(u) ? `第${sessionNo(u)}堂` : '' }}</span>
+                    <span v-if="showSessionNotes && isUserNote(u.note)" class="cmw__session-note tw:block tw:text-tpl-secondary">{{ u.note }}</span>
+                  </span>
+                  <span class="cmw__session-state tw:text-tpl-secondary">{{ u.isProjected ? '預排' : (getSessionStateLabel(course, (u.date || '').slice(0,10), u.id) || '已建立') }}</span>
+                  <ChevronRight :size="22" class="tw:text-tpl-secondary" aria-hidden="true" />
                 </button>
                 <span v-if="canMoveLesson(u)" class="cmw__session-moves">
-                  <button type="button" class="small ghost" data-testid="lesson-reschedule" :aria-label="`調課 ${formatSessionChipDate(u)}`" @click="$emit('move-lesson', { mode: 'reschedule', unit: u })">調課</button>
-                  <button type="button" class="small ghost" data-testid="lesson-substitute" :aria-label="`代課 ${formatSessionChipDate(u)}`" @click="$emit('move-lesson', { mode: 'substitute', unit: u })">代課</button>
+                  <Button variant="secondary" :class="cls.second" data-testid="lesson-reschedule" :aria-label="`調課 ${formatSessionChipDate(u)}`" @click="$emit('move-lesson', { mode: 'reschedule', unit: u })">調課</Button>
+                  <Button variant="secondary" :class="cls.second" data-testid="lesson-substitute" :aria-label="`代課 ${formatSessionChipDate(u)}`" @click="$emit('move-lesson', { mode: 'substitute', unit: u })">代課</Button>
                 </span>
               </div>
             </div>
-            <p v-else class="cmw__hint">尚無可顯示堂次（請確認排課設定）。</p>
+            <p v-else class="cmw__hint">還沒有堂次，請先排課。</p>
           </template>
-          <div v-if="showCancelled && cancelledUnits.length" class="cmw__session-list cmw__session-list--cancelled" data-testid="course-manager-cancelled-list">
+          <div v-if="showCancelled && cancelledUnits.length" class="cmw__session-list--cancelled" :class="cls.group" data-testid="course-manager-cancelled-list">
             <div v-for="u in cancelledUnits" :key="'cx-'+sessionRowKey(u)" class="cmw__session-row is-cancelled">
-              <span class="cmw__session-date">{{ formatSessionChipDate(u) }}</span>
-              <span class="cmw__session-state">已取消</span>
-              <button v-if="canRestoreCancelled(u)" type="button" class="small" data-testid="drawer-restore-cancelled" @click="$emit('restore-cancelled', u)">復原</button>
+              <span class="cmw__session-date tw:flex-1 tw:font-semibold">{{ formatSessionChipDate(u) }}</span>
+              <span class="cmw__session-state tw:text-tpl-secondary">已取消</span>
+              <Button v-if="canRestoreCancelled(u)" variant="secondary" :class="cls.second" data-testid="drawer-restore-cancelled" @click="$emit('restore-cancelled', u)">復原</Button>
             </div>
           </div>
-          <div v-if="pendingMakeups.length" class="cmw__card">
+          <div v-if="pendingMakeups.length" class="cmw__card tw:p-5" :class="cls.group">
             <strong>待補課（{{ pendingMakeups.length }} 堂）</strong>
-            <div v-for="ms in pendingMakeups" :key="ms.id" class="cmw__need">
+            <div v-for="ms in pendingMakeups" :key="ms.id" class="cmw__need tw:mt-3 tw:flex tw:items-center tw:justify-between tw:gap-3 tw:border-t tw:pt-3">
               <span>{{ formatMakeupDate(ms) }}</span>
-              <button type="button" class="small" @click="act({ name: 'cancel-makeup', payload: ms })">取消補課</button>
+              <Button variant="secondary" :class="cls.second" @click="act({ name: 'cancel-makeup', payload: ms })">取消補課</Button>
             </div>
           </div>
         </div>
@@ -394,35 +417,33 @@ export default {
           role="tabpanel"
           aria-labelledby="cm-tab-billing"
           data-testid="course-manager-billing"
-          class="cmw__stack cmw__stack--billing"
+          class="cmw__stack"
         >
-          <section class="cmw__card">
-            <h3>帳務摘要</h3>
-            <dl class="cmw__facts">
-              <div><dt>計費</dt><dd>{{ billingType() }}</dd></div>
-              <div><dt>堂次</dt><dd>{{ remainingLabel || '—' }}</dd></div>
-              <div><dt>付款</dt><dd>{{ effectivePaymentLabel || '—' }}</dd></div>
-              <div v-if="course.last_paid_at"><dt>最近付款</dt><dd>{{ course.last_paid_at }}</dd></div>
+          <section class="cmw__card tw:p-5" :class="cls.group">
+            <h3 class="tw:text-[length:var(--tpl-text-list)] tw:font-bold">帳務摘要</h3>
+            <dl class="tw:mt-3 tw:grid tw:grid-cols-2 tw:gap-4">
+              <div><dt :class="cls.label">計費</dt><dd class="tw:text-[length:var(--tpl-text-list)] tw:font-semibold">{{ billingType() }}</dd></div>
+              <div><dt :class="cls.label">堂次</dt><dd class="tw:text-[length:var(--tpl-text-list)] tw:font-semibold">{{ remainingLabel || '—' }}</dd></div>
+              <div><dt :class="cls.label">付款</dt><dd class="tw:text-[length:var(--tpl-text-list)] tw:font-semibold">{{ effectivePaymentLabel || '—' }}</dd></div>
+              <div v-if="course.last_paid_at"><dt :class="cls.label">最近付款</dt><dd class="tw:text-[length:var(--tpl-text-list)] tw:font-semibold">{{ course.last_paid_at }}</dd></div>
             </dl>
-            <div class="cmw__row">
-              <button type="button" class="small ghost" data-testid="course-manager-invoice" @click="act('invoice')">在這裡看帳務</button>
-              <button v-if="course.usage_balance_status === 'review_required'" type="button" class="small primary" @click="act('ledger')">堂數待對帳</button>
+            <div class="tw:mt-4 tw:flex tw:flex-wrap tw:gap-3">
+              <Button variant="secondary" :class="cls.second" data-testid="course-manager-invoice" @click="act('invoice')">在這裡看帳務</Button>
+              <Button v-if="course.usage_balance_status === 'review_required'" :class="cls.primary" @click="act('ledger')">堂數待對帳</Button>
             </div>
           </section>
-          <section class="cmw__card">
-            <h3>合約</h3>
-            <button v-if="isMonthlyMode && monthlySummary && canPreviewCorrection" type="button" class="small ghost" @click="act('monthly-correction')">預覽分期更正</button>
-            <div class="cmw__row">
-              <button type="button" class="small primary" @click="act('purchase')">{{ purchaseLabel }}</button>
-              <button type="button" class="small ghost" @click="act('contract-adjust')">合約／堂次調整</button>
-              <button v-if="canPackagePreview" type="button" class="small ghost" @click="act('package-preview')">轉多科方案預檢</button>
+          <section class="cmw__card tw:p-5" :class="cls.group">
+            <h3 class="tw:text-[length:var(--tpl-text-list)] tw:font-bold">合約</h3>
+            <div class="tw:mt-3 tw:flex tw:flex-wrap tw:gap-3">
+              <Button v-if="isMonthlyMode && monthlySummary && canPreviewCorrection" variant="secondary" :class="cls.second" @click="act('monthly-correction')">預覽分期更正</Button>
+              <Button :class="cls.primary" @click="act('purchase')">{{ purchaseLabel }}</Button>
+              <Button variant="secondary" :class="cls.second" @click="act('contract-adjust')">合約／堂次調整</Button>
+              <Button v-if="canPackagePreview" variant="secondary" :class="cls.second" @click="act('package-preview')">轉多科方案預檢</Button>
             </div>
           </section>
-          <section v-if="paymentNoticeAvailable" class="cmw__card">
-            <h3>收款</h3>
-            <div class="cmw__row">
-              <button type="button" class="small ghost" @click="act('payment-slip')">產生繳費單</button>
-            </div>
+          <section v-if="paymentNoticeAvailable" class="cmw__card tw:p-5" :class="cls.group">
+            <h3 class="tw:text-[length:var(--tpl-text-list)] tw:font-bold">收款</h3>
+            <div class="tw:mt-3"><Button variant="secondary" :class="cls.second" @click="act('payment-slip')">產生繳費單</Button></div>
           </section>
         </div>
       </div>
@@ -432,54 +453,29 @@ export default {
 
 <style scoped>
 .cmw{position:fixed;inset:0;z-index:1200;display:flex;justify-content:flex-end}
-.cmw__scrim{position:absolute;inset:0;background:color-mix(in srgb,var(--ds-ink) 45%,transparent)}
-.cmw__panel{position:relative;display:flex;flex-direction:column;width:min(1120px,100vw);height:100%;background:var(--ds-canvas-soft);color:var(--ds-ink);box-shadow:var(--ds-shadow-2,0 8px 28px color-mix(in srgb,var(--ds-ink) 18%,transparent))}
-.cmw__head{padding:10px 18px 10px;border-bottom:1px solid var(--ds-hairline);background:var(--ds-canvas)}
-.cmw__head-bar{display:flex;align-items:center;justify-content:space-between;gap:8px}
-.cmw__back,.cmw__x{display:inline-flex;align-items:center;gap:4px;border:0;background:transparent;color:var(--ds-ink-mute);font-size:.875rem;cursor:pointer;padding:2px 0}
-.cmw__x{padding:4px;border-radius:6px}
-.cmw__x:hover,.cmw__back:hover{color:var(--ds-ink);background:var(--ds-canvas-soft)}
-.cmw__title{margin:6px 0 4px;font-size:1.2rem;font-weight:650;display:flex;flex-wrap:wrap;gap:8px;align-items:center}
-.cmw__badge{font-size:.75rem;font-weight:600;padding:2px 8px;border-radius:999px}
-.cmw__badge--ok{background:var(--ds-success-wash,color-mix(in srgb,var(--ds-success) 16%,white));color:var(--ds-success)}
-.cmw__badge--warn{background:var(--ds-warning-wash,color-mix(in srgb,var(--ds-warning) 14%,white));color:var(--ds-warning)}
-.cmw__badge--neutral{background:var(--ds-canvas-soft);color:var(--ds-ink-mute);border:1px solid var(--ds-hairline)}
-.cmw__meta{margin:0;color:var(--ds-ink-mute);font-size:.875rem}
-.cmw__kpis{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
-.cmw__kpi{font-size:.78rem;color:var(--ds-ink-secondary);background:var(--ds-canvas-soft);border:1px solid var(--ds-hairline);border-radius:999px;padding:2px 8px}
-.cmw__tabs{display:flex;gap:2px;padding:0 10px;border-bottom:1px solid var(--ds-hairline);background:var(--ds-canvas);overflow-x:auto}
-.cmw__tab{border:0;background:transparent;padding:11px 12px;color:var(--ds-ink-mute);cursor:pointer;border-bottom:2px solid transparent;white-space:nowrap}
-.cmw__title:focus{outline:none}.cmw__tab:focus-visible,.cmw__back:focus-visible,.cmw__x:focus-visible{outline:2px solid var(--ds-primary);outline-offset:2px}.cmw__tab.on{color:var(--ds-ink);border-bottom-color:var(--ds-primary);font-weight:600}
-.cmw__body{flex:1;overflow:auto;padding:14px 18px 24px}
-.cmw__stack{display:grid;gap:12px;width:100%}
-.cmw__stack--overview,.cmw__stack--billing{max-width:960px;margin:0 auto}
-.cmw__stack--sessions{max-width:none}
-.cmw__row{display:flex;flex-wrap:wrap;gap:8px 10px;align-items:center}
-.cmw__toolbar{display:flex;flex-wrap:wrap;gap:10px;justify-content:space-between;align-items:center}
-.cmw__view-toggle{display:inline-flex;gap:4px;padding:3px;border:1px solid var(--ds-hairline);border-radius:8px;background:var(--ds-canvas)}
-.cmw__metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px}
-.cmw__metric{background:var(--ds-canvas);border:1px solid var(--ds-hairline);border-radius:10px;padding:12px 14px}
-.cmw__metric-k{display:block;font-size:.72rem;color:var(--ds-ink-mute);margin-bottom:4px}
-.cmw__metric strong{font-size:.95rem;font-weight:650;word-break:break-word}
-.cmw__card{background:var(--ds-canvas);border:1px solid var(--ds-hairline);border-radius:10px;padding:12px 14px}
-.cmw__card h3{margin:0 0 8px;font-size:.95rem}
-.cmw__card--needs{border-color:color-mix(in srgb,var(--ds-warning) 35%,var(--ds-hairline));background:var(--ds-warning-wash,color-mix(in srgb,var(--ds-warning) 8%,white))}
-.cmw__card--life{opacity:.96}
-.cmw__facts{margin:0;display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:8px 12px}
-.cmw__facts dt{font-size:.72rem;color:var(--ds-ink-mute)}
-.cmw__facts dd{margin:2px 0 0}
-.cmw__need{display:flex;justify-content:space-between;gap:10px;align-items:center;padding:6px 0;border-top:1px solid var(--ds-hairline)}
-.cmw__need:first-of-type{border-top:0}
-.cmw__need p,.cmw__hint{margin:2px 0 0;color:var(--ds-ink-mute);font-size:.85rem}
-.cmw__session-list{display:grid;gap:6px}
-.cmw__session-item{display:flex;gap:6px;align-items:stretch}.cmw__session-item .cmw__session-row{flex:1;min-width:0}.cmw__session-moves{display:flex;gap:6px;align-items:center}.cmw__actions{display:flex;align-items:center;gap:8px}.cmw__session-row{display:grid;grid-template-columns:4.5rem minmax(7rem,1fr) auto;gap:8px 12px;align-items:center;text-align:left;width:100%;padding:10px 12px;border:1px solid var(--ds-hairline);border-radius:8px;background:var(--ds-canvas);cursor:pointer;color:inherit}
-.cmw__session-row.is-projected{border-style:dashed}
-.cmw__session-row.is-cancelled{opacity:.75;cursor:default}
-.cmw__session-seq{font-size:.78rem;color:var(--ds-ink-mute)}
-.cmw__session-date{font-weight:600}
-.cmw__session-state{font-size:.8rem;color:var(--ds-ink-secondary)}
-.cmw__session-note{grid-column:1/-1;font-size:.8rem;color:var(--ds-ink-mute)}
-.cmw__period-table{overflow-x:auto;margin-top:8px}.cmw__period-table table{width:100%;border-collapse:collapse;font-size:.85rem;font-variant-numeric:tabular-nums}.cmw__period-table th,.cmw__period-table td{text-align:left;padding:8px;border-bottom:1px solid var(--ds-hairline)}.cmw__period-table small{display:block;font-weight:400;color:var(--ds-ink-mute)}
-.cmw__settings{max-width:none}
-@media (max-width:720px){.cmw__panel{width:100vw}.cmw__body{padding:12px}.cmw__session-row{grid-template-columns:1fr auto}.cmw__session-item{flex-wrap:wrap}.cmw__session-item .cmw__session-row{flex:1 1 100%}.cmw__session-moves{margin-left:auto}.cmw__session-moves .small{min-height:44px;min-width:44px}}
+.cmw__scrim{position:absolute;inset:0;background:color-mix(in srgb,var(--ds-ink) 30%,transparent)}
+.cmw__panel{position:relative;display:flex;flex-direction:column;width:min(1120px,100vw);height:100%;background:var(--ds-canvas-soft);color:var(--ds-ink);box-shadow:var(--ds-shadow-2)}
+.cmw__head{padding:8px 20px 12px;border-bottom:1px solid var(--ds-hairline);background:var(--ds-canvas)}
+.cmw__back,.cmw__x{border:0;background:transparent;cursor:pointer}
+.cmw__x:hover,.cmw__back:hover{background:var(--ds-canvas-soft)}
+.cmw__title:focus{outline:none}
+.cmw__back:focus-visible,.cmw__x:focus-visible,.cmw__tab:focus-visible{outline:2px solid var(--ds-ink);outline-offset:2px}
+.cmw *{border-color:var(--ds-hairline)}
+.cmw__tabs{width:calc(100% - 40px);max-width:960px;margin:12px auto 0}
+.cmw__tab{border:0;background:transparent;cursor:pointer;white-space:nowrap;font-size:inherit}
+.cmw__body{flex:1;overflow:auto;padding:16px 20px 32px}
+.cmw__stack{display:grid;gap:16px;width:100%;max-width:960px;margin:0 auto}
+.cmw__hint{margin:8px 0 0;color:var(--ds-ink-secondary)}
+.cmw__card--needs{border-color:color-mix(in srgb,var(--ds-warning) 35%,var(--ds-hairline))}
+.cmw__session-item{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.cmw__session-row{display:flex;gap:16px;align-items:center;text-align:left;flex:1 1 100%;min-height:var(--tpl-row-height);padding:12px 20px;border:0;background:transparent;cursor:pointer;color:inherit;font-size:inherit}
+.cmw__session-row.is-cancelled{cursor:default;opacity:.85}
+.cmw__session-moves{display:flex;gap:8px;padding:0 20px 12px;margin-left:auto}
+.cmw__period-table{overflow-x:auto;margin-top:12px}
+.cmw__period-table table{width:100%;border-collapse:collapse;font-size:var(--tpl-text-caption);font-variant-numeric:tabular-nums}
+.cmw__period-table th,.cmw__period-table td{text-align:left;padding:10px 8px;border-bottom:1px solid var(--ds-hairline)}
+.cmw__period-table small{display:block;font-weight:400;color:var(--ds-ink-secondary)}
+:deep(.cmw__more){min-width:56px;min-height:56px;border-radius:999px;font-size:var(--tpl-text-body)}
+@media (max-width:720px){.cmw__head{padding:4px 12px 12px}.cmw__tabs{width:calc(100% - 24px)}.cmw__body{padding:12px}}
+@media (prefers-reduced-motion:reduce){.cmw *{transition:none!important;animation:none!important}}
 </style>

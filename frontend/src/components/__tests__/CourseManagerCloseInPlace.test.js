@@ -13,7 +13,7 @@ const closeFlow = source.slice(source.indexOf('const closedCourseNotice = ref(nu
 
 describe('Course Manager 結束課程 (in-app #415)', () => {
   it('drawer 結束課程 emits the close action', () => {
-    expect(managerSource).toContain("@click=\"act('close')\">結束課程</button>");
+    expect(managerSource).toContain("@click=\"act('close')\">結束課程</Button>");
   });
 
   it('closes in place through the single-flight flow and never navigates to 學生管理', () => {
