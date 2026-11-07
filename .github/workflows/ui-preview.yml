@@ -1,0 +1,78 @@
+# Per-PR UI preview (fake data, in-browser mocks) on Cloudflare Pages.
+# Informational only: not a required check, no relation to the land queue.
+name: ui-preview
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths:
+      - "frontend/**"
+      - ".github/workflows/ui-preview.yml"
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: ui-preview-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  preview:
+    # Forks get no secrets.
+    if: ${{ github.event.pull_request.head.repo.full_name == github.repository }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        with:
+          node-version: "22"
+      - name: Build preview
+        working-directory: frontend
+        run: |
+          npm ci --no-audit --no-fund
+          npm run build:preview
+      - name: Create Pages project (ignore if it exists)
+        continue-on-error: true
+        uses: cloudflare/wrangler-action@953926a2e2182532811c01a25e53647d93bf07c0 # v4.1.3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          wranglerVersion: "4.154.0"
+          command: pages project create alltrue-preview --production-branch=main
+      - name: Deploy
+        id: deploy
+        uses: cloudflare/wrangler-action@953926a2e2182532811c01a25e53647d93bf07c0 # v4.1.3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          wranglerVersion: "4.154.0"
+          workingDirectory: frontend
+          command: pages deploy dist-preview --project-name=alltrue-preview --branch=pr-${{ github.event.pull_request.number }} --commit-dirty=true
+      - name: Sticky PR comment
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+          SHA: ${{ github.event.pull_request.head.sha }}
+          URL: ${{ steps.deploy.outputs.pages-deployment-alias-url || steps.deploy.outputs.deployment-url }}
+        run: |
+          set -euo pipefail
+          {
+            echo "<!-- ui-preview -->"
+            echo "**UI preview** (fake data, read-only) for \`${SHA:0:7}\`"
+            echo
+            echo "- [Index]($URL/)"
+            for s in "login:Login" "parent:家長首頁" "director:主任首頁" "teacher:老師首頁" "course:課程管理" "attendance:出缺勤" "tuition:帳務"; do
+              echo "- [${s#*:}]($URL/ui-preview-screen.html?page=${s%%:*})"
+            done
+          } > body.md
+          id=$(gh api "repos/$GITHUB_REPOSITORY/issues/$PR/comments" --paginate \
+            --jq '[.[] | select(.body | startswith("<!-- ui-preview -->"))][0].id // empty')
+          if [ -n "$id" ]; then
+            gh api -X PATCH "repos/$GITHUB_REPOSITORY/issues/comments/$id" -F body=@body.md >/dev/null
+          else
+            gh api -X POST "repos/$GITHUB_REPOSITORY/issues/$PR/comments" -F body=@body.md >/dev/null
+          fi

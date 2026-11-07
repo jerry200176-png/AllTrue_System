@@ -75,6 +75,7 @@
     "sync-release-notes": "node ../scripts/changelog-to-release-notes.mjs && node ../scripts/staff-updates-to-js.mjs && node ../scripts/parent-updates-to-js.mjs",
     "metrics:design-hex": "bash ../scripts/design-hex-count.sh",
     "lint:design": "bash ../scripts/check-no-raw-hex.sh",
+    "build:preview": "vite build -c vite.preview.config.js",
     "lint:ui-fixtures": "bash ../scripts/check-no-public-ui-fixtures.sh",
     "lint:unhandled-emits": "node ../scripts/ci/check-unhandled-emits.mjs",
     "lint:no-undef": "eslint src --no-warn-ignored",

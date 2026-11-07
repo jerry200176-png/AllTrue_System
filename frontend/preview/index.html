@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self' data: blob:; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; connect-src 'self'; frame-src 'self'" />
+    <title>AllTrue UI 預覽（假資料）</title>
+    <style>
+      body{font:16px/1.5 system-ui,sans-serif;margin:0;padding:16px;max-width:560px}
+      h1{font-size:20px} p{color:#555;margin:.25rem 0 1rem}
+      li{list-style:none;display:flex;gap:8px;margin:8px 0}
+      a{flex:1;display:block;padding:14px;border:1px solid #ccc;border-radius:10px;text-align:center;text-decoration:none;color:#111;min-height:44px;box-sizing:border-box}
+      a.main{flex:2;text-align:left;background:#f4f4f8}
+      ul{padding:0} iframe{border:1px solid #888;transform-origin:0 0}
+    </style>
+  </head>
+  <body>
+    <h1>AllTrue UI 預覽</h1>
+    <p>全部是假資料，不連線真實系統；唯讀。</p>
+    <ul id="list"></ul>
+    <script>
+      const screens = [['login', 'Login 登入'], ['parent', '家長首頁'], ['director', '主任首頁'], ['teacher', '老師首頁'], ['course', '課程管理'], ['attendance', '出缺勤'], ['tuition', '帳務']];
+      const q = new URLSearchParams(location.search);
+      const link = (page, w) => `?${w ? 'w=' + w + '&' : ''}page=${page}`;
+      if (q.get('w') && q.get('page')) {
+        // Framed view: render the screen in an iframe of the chosen width, scaled to fit.
+        const w = Number(q.get('w')), scale = Math.min(1, innerWidth / (w + 4));
+        document.body.innerHTML = `<a href="./" style="display:inline-block;margin-bottom:8px">← 回列表</a><br><iframe src="ui-preview-screen.html?page=${encodeURIComponent(q.get('page'))}" width="${w}" height="${Math.round((innerHeight - 60) / scale)}" style="transform:scale(${scale})"></iframe>`;
+        document.body.style.maxWidth = 'none';
+      } else {
+        list.innerHTML = screens.map(([p, n]) =>
+          `<li><a class="main" href="ui-preview-screen.html?page=${p}">${n}</a><a href="${link(p, 390)}">手機框</a><a href="${link(p, 768)}">平板框</a></li>`).join('');
+      }
+    </script>
+  </body>
+</html>
