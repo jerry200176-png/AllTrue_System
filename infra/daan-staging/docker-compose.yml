@@ -31,6 +31,14 @@ services:
       SESSION_DRIVER: file
       QUEUE_CONNECTION: sync
       LOG_CHANNEL: stderr
+      MAIL_MAILER: log
+      LINE_CHANNEL_ACCESS_TOKEN: ""
+      LINE_CHANNEL_SECRET: ""
+    # Preview clicks must never message a real person: black-hole the messaging APIs (no creds are configured either).
+    extra_hosts:
+      - "api.line.me:127.0.0.1"
+      - "notify-api.line.me:127.0.0.1"
+      - "api.telegram.org:127.0.0.1"
     volumes:
       # Named volume only — never ../../backend host bind mount.
       - stage-app-code:/var/www

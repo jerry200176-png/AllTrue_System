@@ -64,6 +64,10 @@ Passwords are generated on first run into the git-ignored host `.env` (`DEMO_PW_
 **Nightly reset (03:30 Taipei):** `alltrue-staging-reset.timer` runs `seed-demo.sh --reset` (`migrate:fresh` + seed, staging only),
 under the same lock as the pull-deploy, so preview clicks cannot accumulate.
 
+**No outbound messaging:** no LINE/Telegram credentials exist in staging, seeded students and campuses have no chat IDs,
+`MAIL_MAILER=log`, there is no SMS integration, and the app container resolves `api.line.me`, `notify-api.line.me`
+and `api.telegram.org` to 127.0.0.1.
+
 ## Auto-update (pull, no inbound access, no GitHub secrets)
 
 `lifecycle/auto-update.sh` runs from a `systemd --user` timer every 15 minutes (`lifecycle/install-timer.sh`):
