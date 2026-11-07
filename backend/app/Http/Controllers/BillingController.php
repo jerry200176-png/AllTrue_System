@@ -388,7 +388,10 @@ class BillingController extends Controller
 
             $note = trim((string) ($invoice->Note ?? ''));
             $invoice->Status = 'void';
-            $invoice->Note = trim(mb_substr($note, 0, max(0, 254 - mb_strlen($audit))) . ' ' . $audit); // VARCHAR(255): keep the whole audit tag
+            // VARCHAR(255): keep the whole audit tag and the invoice-number tag (in-app #514: an issued number never changes)
+            $keep = preg_match('/\[' . \App\Services\Billing\InvoiceNumber::TAG . ':\d{4}-\d{2}\]/', $note, $kept) ? $kept[0] : '';
+            $free = trim(str_replace($keep, '', $note));
+            $invoice->Note = trim(mb_substr($free, 0, max(0, 253 - mb_strlen($audit) - mb_strlen($keep))) . ' ' . $keep . ' ' . $audit);
             $invoice->save();
 
             Log::info('[InvoiceVoid] invoice voided', [

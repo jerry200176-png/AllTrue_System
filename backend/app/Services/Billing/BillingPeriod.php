@@ -59,9 +59,9 @@ final class BillingPeriod
     }
 
     /**
-     * Of $dates (Y-m-d lessons of this student+subject), those a live bill already covers: the service range of its item(s) owned by
-     * one of this student+subject's contracts holds the date (MonthlyBillingService::serviceRangeForCourse, the single-unowned-item
-     * fallback included), or, when the bill has no dated item at all, its billing_period month does. The label alone never covers a
+     * Of $dates (Y-m-d lessons of this student+subject), those a live bill already covers: one of its dated items owned by one of this student+subject's
+     * contracts holds the date (the same ownership rule as MonthlyBillingService::serviceRangeForCourse, single-unowned-item fallback
+     * included; item ranges are not merged, so a gap stays uncovered), or, when the bill has no dated item at all, its billing_period month does. The label alone never covers a
      * date outside a bill's own range, and another subject's item on a shared bill never covers this subject's lesson.
      *
      * @param list<string> $dates @return list<string>
@@ -75,19 +75,20 @@ final class BillingPeriod
             ->pluck('ID')->map(fn ($id) => (int) $id)->all();
         $invoices = \App\Models\Invoice::query()->notVoided()->with('items')
             ->where(fn ($q) => $q->whereIn('StudentClassID', $mine)->orWhereHas('items', fn ($i) => $i->whereIn('StudentClassID', $mine)))->get();
-        $billing = app(\App\Services\MonthlyBillingService::class);
-        $spans = [];   // [from, to]
+        $spans = [];   // individual owned item ranges: a gap between two items stays uncovered
         $labels = [];  // months of bills with no dated item
         foreach ($invoices as $inv) {
+            $bounded = $inv->items->filter(fn ($i) => $i->PeriodStart && $i->PeriodEnd);
             $found = false;
             foreach ($mine as $classId) {
-                [$from, $to] = $billing->serviceRangeForCourse($inv, $classId);
-                if ($from !== null && $to !== null) {
-                    $spans[] = [$from, $to];
+                // MonthlyBillingService::serviceRangeForCourse ownership: items linked to the contract, else the lone unowned item
+                $linked = $bounded->filter(fn ($i) => (int) ($i->StudentClassID ?? 0) === $classId);
+                foreach ($linked->isNotEmpty() ? $linked : ($inv->items->count() === 1 ? $bounded : collect()) as $i) {
+                    $spans[] = [substr((string) $i->PeriodStart, 0, 10), substr((string) $i->PeriodEnd, 0, 10)];
                     $found = true;
                 }
             }
-            if (!$found && !$inv->items->contains(fn ($i) => $i->PeriodStart && $i->PeriodEnd) && in_array((int) $inv->StudentClassID, $mine, true) && $inv->billing_period) {
+            if (!$found && $bounded->isEmpty() && in_array((int) $inv->StudentClassID, $mine, true) && $inv->billing_period) {
                 $labels[(string) $inv->billing_period] = true;
             }
         }
