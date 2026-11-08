@@ -1,0 +1,6 @@
+## 2026-11-08 — fix(course-management): Preserve chronological contract order across history and working courses
+<!-- release-notes: staff_update=staff-2026-11-08-contract-chronology -->
+- Order the loaded contracts within each student group by declared first class date, oldest first, with stable ID ties and unknown dates last.
+- Render contiguous working/history segments in that order while retaining historical disclosure, pending reconciliation, original accounting actions, and pagination.
+- Show the declared start as「開課」on both working rows and historical cards so staff can assess the chronological sequence; closure dates are not substituted for missing starts.
+- This display correction changes no contract quantities, session ownership, attendance, permissions, or financial records. Case reconciliation remains separate.
