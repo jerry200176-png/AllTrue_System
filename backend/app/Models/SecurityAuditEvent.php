@@ -32,6 +32,8 @@ final class SecurityAuditEvent
         'revoked_session_count',
         // Triage token access log: route name + HMAC refs only (never raw IDs/IPs).
         'route', 'client_ip_ref', 'attachment_ref', 'bug_report_ref',
+        // 帳務中心 export (#5099): the chip key (an enum) and whether a name search was on, never the search text.
+        'filter', 'has_search',
         // School merge (#517): school spellings are not personal data; restore_payload is
         // {"s":{old_school:[student_id,...]},"p":{old_school:[period_id,...]}} so a merge can be undone.
         'canonical_name', 'restore_payload',

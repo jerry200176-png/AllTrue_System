@@ -8,7 +8,7 @@ describe('page wiring (F-5a2)', () => {
   const page = readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), '../../pages/TuitionCollectionPage.vue'), 'utf8');
   it('reuses the table batch preview, submit functions and CSV/session handlers', () => {
     expect(page).toContain('@batch="onBillBatch"');
-    expect(page).toContain('@export="exportCSV"');
+    expect(page).toContain('@export="exportBills"');
     expect(page).toContain('watch(activeAccountingTab, () => { selectedIds.value = []; batchFromList = false; })');
     expect(page).toContain('openSessionDetail(b.src)');
     expect(page).toMatch(/function onBillBatch[\s\S]{0,400}openBatchPreview\(\);/);
