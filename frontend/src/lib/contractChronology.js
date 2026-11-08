@@ -16,7 +16,7 @@ export function buildContractChronology(courses = []) {
   const segments = [];
   for (const [index, course] of ordered.entries()) {
     const kind = isCourseManagementHistory(course) ? 'history' : 'working';
-    let segment = segments.at(-1);
+    let segment = segments[segments.length - 1];
     if (segment?.kind !== kind) {
       segment = { kind, key: `${kind}-${course?.id ?? course?.ID ?? `unknown-${index}`}`, courses: [] };
       segments.push(segment);
