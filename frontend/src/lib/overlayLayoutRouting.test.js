@@ -21,6 +21,6 @@ test('default smoke excludes the dedicated loopback overlay fixture for both bas
 
 test('the dedicated built overlay fixture still collects all sixteen browser regressions', () => {
   const list = collect('playwright.overlay-layout.config.js', 'https://smoke-target.example.invalid');
-  assert.equal((list.match(/overlay-layout\.spec\.js:/g) || []).length, 16);
-  assert.match(list, /Total: 16 tests in 1 file/);
+  assert.equal((list.match(/overlay-layout\.spec\.js:/g) || []).length, 19);
+  assert.match(list, /Total: 19 tests in 1 file/);
 });

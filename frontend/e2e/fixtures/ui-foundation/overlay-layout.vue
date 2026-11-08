@@ -8,11 +8,20 @@ import AtToast from '@/components/AtToast.vue';
 import LearningRecordExportModal from '@/components/learning-records/LearningRecordExportModal.vue';
 import ConfirmDialogHost from '@/components/course-management/ConfirmDialogHost.vue';
 import { askConfirm } from '@/composables/useConfirmDialog';
+import { successorImpactItems } from '@/lib/leaveSuccessorShift';
 
 const open = ref(false), sheet = ref(false), legacy = ref(false), exportOpen = ref(false), result = ref(''), submitted = ref(0);
 const params = new URLSearchParams(location.search);
 const dirty = params.has('dirty'), loading = params.has('loading'), size = params.get('size') || 'md';
-const confirm = async () => { result.value = String(await askConfirm({ title: '測試確認？', message: '僅使用合成資料。', confirmLabel: '繼續' })); };
+const renewalMessage = () => successorImpactItems({
+  moves: Array.from({ length: 24 }, (_, n) => ({
+    role: 'successor',
+    from: { date: `2026-10-${String(n + 1).padStart(2, '0')}`, start: '10:00', end: '12:00' },
+    to: { date: `2026-11-${String(n + 1).padStart(2, '0')}`, start: '10:00', end: '12:00' },
+  })),
+  old_end_date: '2026-10-24', successor_end_date: '2026-11-24', blockers: [],
+}).join('\n');
+const confirm = async () => { result.value = String(await askConfirm({ title: '測試確認？', message: params.has('long-confirm') ? renewalMessage() : '僅使用合成資料。', confirmLabel: '繼續' })); };
 </script>
 <template>
     <main><h1>合成測試</h1>

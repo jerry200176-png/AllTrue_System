@@ -165,6 +165,58 @@ for (const scenario of [{ height: 480, rootSize: 32 }, { height: 240, rootSize: 
   });
 }
 
+// #5094: the real leave-successor formatter can produce many renewal rows.
+for (const scenario of [
+  { width: 390, height: 844, rootSize: 16 },
+  { width: 320, height: 480, rootSize: 32 },
+  { width: 320, height: 240, rootSize: 16 },
+]) {
+  test(`long renewal confirmation is bounded with reachable actions at ${scenario.width}x${scenario.height} root${scenario.rootSize}`, async ({ page }, info) => {
+    await page.setViewportSize({ width: scenario.width, height: scenario.height });
+    await page.goto(`${fixture}?long-confirm`);
+    await page.evaluate((px) => { document.documentElement.style.fontSize = `${px}px`; }, scenario.rootSize);
+    await page.getByRole('button', { name: '開啟舊視窗', exact: true }).click();
+    const opener = page.getByRole('button', { name: '舊視窗內確認', exact: true });
+    await opener.click();
+    const panel = page.locator(alert);
+    await expect(panel.getByTestId('confirm-dialog-cancel')).toBeFocused();
+    await settled(panel);
+    const bounds = await rect(panel);
+    expect(bounds.y).toBeGreaterThanOrEqual(0);
+    expect(bounds.bottom).toBeLessThanOrEqual(scenario.height);
+    expect(bounds.x).toBeGreaterThanOrEqual(0);
+    expect(bounds.right).toBeLessThanOrEqual(scenario.width);
+    await expect(panel.getByTestId('confirm-dialog-message')).toContainText('續約堂次：2026-10-24');
+    await panel.evaluate((el) => { el.scrollTop = 0; });
+    await expect(panel.getByRole('heading', { name: '測試確認？', exact: true })).toBeInViewport();
+    await page.screenshot({ path: info.outputPath('long-renewal-start.png') });
+    const reachable = async (button) => {
+      await button.scrollIntoViewIfNeeded();
+      await expect(button).toBeInViewport();
+      expect(await button.evaluate((el) => {
+        const r = el.getBoundingClientRect();
+        return document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2)?.closest('button') === el;
+      })).toBe(true);
+    };
+    const cancel = panel.getByTestId('confirm-dialog-cancel');
+    await reachable(cancel);
+    await cancel.click();
+    await expect(page.getByTestId('result')).toHaveText('false');
+    await expect(opener).toBeFocused();
+    await opener.click();
+    await expect(panel.getByTestId('confirm-dialog-cancel')).toBeFocused();
+    await page.keyboard.press('Tab');
+    const proceed = panel.getByTestId('confirm-dialog-confirm');
+    await expect(proceed).toBeFocused();
+    await reachable(proceed);
+    await page.screenshot({ path: info.outputPath('long-renewal-actions.png') });
+    await page.keyboard.press('Enter');
+    await expect(page.getByTestId('result')).toHaveText('true');
+    await expect(opener).toBeFocused();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth && scrollY === 0)).toBe(true);
+  });
+}
+
 // #5094: preserve the legacy global toast boundary while the real export error leaves its modal open.
 const learningModalZ = Number(readFileSync(new URL('../src/pages/LearningRecordsPage.vue', import.meta.url), 'utf8')
   .match(/:deep\(\.lr-modal-overlay\)\s*\{\s*z-index:\s*(\d+)/)[1]);
