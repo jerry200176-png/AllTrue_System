@@ -136,8 +136,9 @@ describe('monthly attendance on the real course page', () => {
       { id: 1, student_id: 7, student_name: '測試學生', status: 'active', subject: 'math', payment_type: 'session', ScheduleMode: 'count', SessionCount: 8, sessions_purchased: 8, remaining_sessions: 6 },
       { id: 2, student_id: 7, student_name: '測試學生', status: 'inactive', history_reason: 'completed', subject: 'math', payment_type: 'session', PackageID: 9, package_total_sessions: 12, package_remaining_sessions: 8 },
     ];
-    state.expandedStudentGroups = new Set(['sid:7']); state.expandedHistoryGroups = new Set(['sid:7']);
+    state.expandedStudentGroups = new Set(['sid:7']);
     state.expandedDates = new Set([1, 2]); await flushPromises();
+    await wrapper.get('.history-section__toggle').trigger('click');
     const labels = wrapper.findAll('.dates-panel-title').map(node => node.text());
     expect(labels[0]).toContain('2 / 購買 8 堂');
     expect(labels[1]).toBe('上課日期（本科已上 0 堂｜方案共用 12 堂（已用 4 / 剩 8））');
