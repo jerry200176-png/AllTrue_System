@@ -15,10 +15,10 @@ const studentsSource = readFileSync(studentsPagePath, 'utf8');
 const closeCourseActionSource = readFileSync(closeCourseActionPath, 'utf8');
 const manualSessionModalSource = readFileSync(manualSessionModalPath, 'utf8');
 const packagePreviewModalSource = readFileSync(resolve(__dirname, '../course-management/PackageConversionPreviewModal.vue'), 'utf8');
-const activeActionsStart = source.indexOf('<td class="cell-actions">');
-const activeActionsEnd = source.indexOf('<tr v-if="!courseManagerEnabled && expandedDates.has(c.id)"', activeActionsStart) >= 0
-  ? source.indexOf('<tr v-if="!courseManagerEnabled && expandedDates.has(c.id)"', activeActionsStart)
-  : source.indexOf('<tr v-if="expandedDates.has(c.id)"', activeActionsStart);
+const activeActionsStart = source.indexOf('<div class="cell-actions">');
+const activeActionsEnd = source.indexOf('<div v-if="!courseManagerEnabled && expandedDates.has(c.id)"', activeActionsStart) >= 0
+  ? source.indexOf('<div v-if="!courseManagerEnabled && expandedDates.has(c.id)"', activeActionsStart)
+  : source.indexOf('<div v-if="expandedDates.has(c.id)"', activeActionsStart);
 const activeActions = source.slice(activeActionsStart, activeActionsEnd);
 const legacyActionsStart = activeActions.indexOf('<template v-else>');
 const legacyActions = legacyActionsStart >= 0 ? activeActions.slice(legacyActionsStart) : activeActions;

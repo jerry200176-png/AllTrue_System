@@ -497,6 +497,7 @@ test.describe('UI foundation — real Vue page evidence', () => {
           await expect(page.getByText('目前沒有待處理的家長請假')).toBeVisible({ timeout: 10_000 });
         } else {
           await expect(page.getByText('家長請假待處理', { exact: true })).toBeVisible({ timeout: 10_000 });
+          await page.locator('.pending-leave-disclosure > summary').click();
           await expect(page.getByText('測試學生', { exact: false }).first()).toBeVisible();
           const action = page.getByRole('button', { name: '處理這筆請假' }).first();
           await expect(action).toBeVisible();
@@ -1013,3 +1014,73 @@ test.describe('Visual regression @visual', () => {
     await expect(page).toHaveScreenshot('parent-home-large-390.png', { fullPage: true });
   });
 });
+
+
+// #527 redesign: real course page, existing mocks, no production traffic or baseline updates.
+for (const scenario of [
+  { width: 390, height: 844, root: 16 },
+  { width: 1280, height: 900, root: 16 },
+  { width: 390, height: 844, root: 32 },
+]) {
+  test(`course contract workbench keeps facts, filters and actions reachable @${scenario.width}-root${scenario.root}`, async ({ page }) => {
+    await page.setViewportSize({ width: scenario.width, height: scenario.height });
+    await page.route('**/*', (route) => ['127.0.0.1', 'localhost'].includes(new URL(route.request().url()).hostname)
+      ? route.fallback() : route.abort('blockedbyclient'));
+    await installApiMocks(page, 'normal', 'course');
+    const contract = (id, extra = {}) => ({
+      id, student_id: 900527, student_name: '合成學生', teacher_name: id === 50 ? '合成老師甲' : id === 40 ? '合成老師乙' : '合成老師丙', subject: '英文',
+      first_class_date: id === 50 ? '2025-01-01' : '2026-09-01', status: 'active',
+      ScheduleMode: 'count', payment_type: 'session', sessions_purchased: 8,
+      sessions_used: 3, remaining_sessions: 5, payment_status: 'unpaid', class_type: 'one_on_one', ...extra,
+    });
+    const contracts = [contract(50), contract(40, { status: 'inactive', history_reason: 'completed', closed_reason: 'completed', payment_status: 'paid' }),
+      contract(30, { status: 'inactive', history_reason: 'settled_pending', closed_reason: 'settled_pending', usage_balance_status: 'review_required', sessions_used: 8, remaining_sessions: 0 })];
+    await page.route('**/api/v1/student-classes?**', (route) => {
+      const status = new URL(route.request().url()).searchParams.get('status');
+      const data = status ? contracts.filter((row) => row.status === status) : contracts;
+      return route.fulfill({ json: { data, total: data.length, current_page: 1, last_page: 1 } });
+    });
+    await page.goto('/pilot-mount.html?page=course&mode=normal');
+    await expect(page.locator('html')).toHaveAttribute('data-pilot-ready', '1');
+    await dismissOverlays(page);
+    await page.evaluate((rootSize) => { document.documentElement.style.fontSize = `${rootSize}px`; }, scenario.root);
+    await expect(page.getByRole('heading', { level: 1, name: '課程合約' })).toBeVisible();
+    const status = page.locator('#course-filter-status');
+    expect(await status.evaluate((el) => el.closest('details') === null)).toBe(true);
+    await status.selectOption('active');
+    await expect(page.getByTestId('course-active-filters')).toContainText('進行中');
+    await expect(page.locator('.course-row')).toHaveCount(1);
+    await page.locator('.focus-btn').click();
+    await expect(page.locator('.focus-mode-banner')).toContainText('篩選仍套用');
+    await page.locator('.focus-mode-banner button').click();
+    await expect(status).toHaveValue('active');
+    await page.getByTestId('course-filter-clear').click();
+    await expect(status).toHaveValue('');
+    await expect(page.getByTestId('course-active-filters')).toHaveCount(0);
+    await expect(page.locator('.course-row')).toHaveCount(2);
+    await page.locator('.history-section__toggle').click();
+    const cards = page.locator('.course-row, .history-course-card');
+    expect(await cards.evaluateAll((rows) => rows.map((row) => Number(row.getAttribute('data-contract-id'))))).toEqual([50, 40, 30]);
+    const primaryRow = page.locator('.course-row').filter({ has: page.locator('[data-course-id="50"]') });
+    for (const field of await primaryRow.locator('[data-col], .cell-actions').all()) {
+      await field.scrollIntoViewIfNeeded();
+      await expect(field).toBeInViewport();
+      const rect = await field.boundingBox();
+      expect(rect.x).toBeGreaterThanOrEqual(0);
+      expect(rect.x + rect.width).toBeLessThanOrEqual(scenario.width + 1);
+    }
+    const menu = primaryRow.getByRole('button', { name: /更多/ });
+    await menu.scrollIntoViewIfNeeded();
+    expect((await menu.boundingBox()).height).toBeGreaterThanOrEqual(44);
+    await menu.click();
+    await expect(page.getByRole('menu')).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(menu).toBeFocused();
+    await expect(page.locator('.course-row').filter({ has: page.locator('[data-course-id="30"]') }).getByRole('button', { name: '堂數待對帳', exact: true })).toBeVisible();
+    const overflow = await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1);
+    expect(overflow).toBe(false);
+    fs.mkdirSync(outDir, { recursive: true });
+    await primaryRow.scrollIntoViewIfNeeded();
+    await page.screenshot({ path: path.join(outDir, `course-workbench-${scenario.width}-root${scenario.root}.png`), fullPage: scenario.root === 16 });
+  });
+}
