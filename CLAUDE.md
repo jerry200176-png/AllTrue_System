@@ -1,7 +1,7 @@
 # AllTrue — CLAUDE.md（Claude Code 自動載入）
 
 > 任何 AI 讀取此專案時，先遵守 **[`docs/governance/COMPANY_CONSTITUTION.md`](docs/governance/COMPANY_CONSTITUTION.md)** 與 **[`docs/governance/PRECEDENCE.md`](docs/governance/PRECEDENCE.md)**。  
-> **操作者：** 艦隊 [portfolio-ops `AUTONOMY_POLICY`](https://github.com/jerry200176-png/portfolio-ops/blob/main/governance/AUTONOMY_POLICY.md)。T0/T1 可在 required checks、review 與證據通過後由 Agent squash-merge；T2 另需 independent review 與 rollback boundary；T3 / protected 工作在任何 production activation、data repair、migration/schema cutover、billing／entitlement、identity/authz、破壞性動作、backup restore、security-sensitive credential 或重大產品方向前停下等 Founder GO；但 Founder 指示的工作（含 R3 程式）端到端進行、R3 range 通過自動控制即上線，閘門是擋外來輸入（見 `FOUNDER_STANDING_DECISIONS.md` 2026-10-21（二）之二）；哪些按鈕可以不按，只以同檔 2026-10-28（二）之二為準（此處不摘要）。Pi SSH 只准唯讀（見 R6）。
+> **操作者：** 艦隊 [portfolio-ops `AUTONOMY_POLICY`](https://github.com/jerry200176-png/portfolio-ops/blob/main/governance/AUTONOMY_POLICY.md)。T0/T1 可在 required checks、review 與證據通過後由 Agent squash-merge；T2 另需 independent review 與 rollback boundary；T3 / protected 工作在任何 production activation、data repair、migration/schema cutover、billing／entitlement、identity/authz、破壞性動作、backup restore、security-sensitive credential 或重大產品方向前停下等 Founder GO；但 Founder 指示的工作（含 R3 程式）端到端進行、R3 range 通過自動控制即上線，閘門是擋外來輸入（見 `FOUNDER_STANDING_DECISIONS.md` 2026-10-21（二）之二）；哪些按鈕可以不按，只以同檔 2026-10-28（二）之二為準（此處不摘要）。Pi SSH 的歷史唯讀例外見 R6；不得用它覆蓋目前操作者適用的 machine ban（含間接觸發；見 DELIVERY_LIFECYCLE 自動化對照表）。
 >
 > **Founder 常設決定：** 唯一定義見 [`docs/governance/FOUNDER_STANDING_DECISIONS.md`](docs/governance/FOUNDER_STANDING_DECISIONS.md)（不在此摘要）。
 > 本檔是 **Claude Code adapter**，**不是**凌駕 Constitution / Control Plane 的最高法。  
@@ -51,7 +51,7 @@ Palace：`~/.mempalace/palace`（local-first，cloud session 沒有，跳過即�
 | R3 | 要執行 `git push --force` / `-f` / 直接 push main | ❌ 停。一律推 feature branch，等 PR merge |
 | R4 | 要還原出錯的檔案 | ✅ `git checkout HEAD -- <file>` **完整**還原，禁止部分還原 |
 | R5 | 要執行 `php artisan migrate` | ❌ 不可由 Agent 在 Pi／正式資料庫直接執行；一律由 `deploy.yml` 執行。**只新增**表／欄位／索引、且 PR 內文宣告 `Additive-Migration: yes` 的新 migration 合併時算 T2（`additive_migration_paths()`；身分／權限表除外（含 credential／token／security／PII），帳務表依 2026-10-28（二）之二在 #4560 合併後移出排除；須 Codex 在最終 head 確認；Founder 2026-10-14（三）④＋補充 #1），上線也不必按（`ADDITIVE_MIGRATION_AUTO_ACTIVATION`；#4560 上線後監看 20 分鐘、失敗自動回滾 code；回滾還原不了 schema，所以只限只新增）；會 drop／rename／change／寫資料的 migration 一律須 Founder 對確切範圍批准 |
-| R6 | 要 SSH 到 Pi 直接編輯任何程式碼 | ❌ 停。所有改動依 [WORKTREE_POLICY](docs/governance/WORKTREE_POLICY.md)：雲端 fresh clone 從 `origin/main` 開 feature branch（必要的本機 WSL 任務才用隔離 task worktree）→ PR → CI → 依現行授權由 `deploy.yml` 控制部署。**唯讀例外（Founder 2026-10-07）**：只為查 bug 可 SSH/SCP 讀附件、`tinker --execute` 跑 SELECT；禁止任何寫入、`artisan` 寫入指令、R2 指令；每次在對應 issue 留言記錄讀了什麼（只寫 ID，不寫姓名）；讀回的檔案看完即刪 |
+| R6 | 要 SSH 到 Pi 直接編輯任何程式碼 | ❌ 停。所有改動依 [WORKTREE_POLICY](docs/governance/WORKTREE_POLICY.md)：雲端 fresh clone 從 `origin/main` 開 feature branch（必要的本機 WSL 任務才用隔離 task worktree）→ PR → CI → 依現行授權由 `deploy.yml` 控制部署。**歷史唯讀例外（Founder 2026-10-07；不適用於目前受 Pi SSH machine ban 限制的操作者，操作前先核對 `AGENTS.md`、Constitution 與 [SOP 操作者邊界](docs/sop/DELIVERY_LIFECYCLE.md#in-app-自動化對照表)）**：只為查 bug 可 SSH/SCP 讀附件、`tinker --execute` 跑 SELECT；禁止任何寫入、`artisan` 寫入指令、R2 指令；每次在對應 issue 留言記錄讀了什麼（只寫 ID，不寫姓名）；讀回的檔案看完即刪 |
 
 ## ⚠️ 4 條黃線（違反 = CI 反覆失敗）
 
@@ -84,7 +84,7 @@ Palace：`~/.mempalace/palace`（local-first，cloud session 沒有，跳過即�
 | **開發（2026-10-14 起）** | Claude cloud session：從 `origin/main` 開新 branch → PR → CI。不跑 `agent-start`／本機 preflight。見 [`docs/governance/WORKTREE_POLICY.md`](docs/governance/WORKTREE_POLICY.md) |
 | **本機 WSL（淘汰中）** | 只在必要時用；要用就 `agent-start alltrue <task-id>`，**never** `/home/jerry/alltrue` / `~/alltrue`。見 WORKTREE_POLICY + `AI_REGRESSION_LESSONS` §Y6 |
 | **多 agent 並行** | 每個 session 自己的 branch，不共編同一分支 |
-| **生產伺服器** | Raspberry Pi `/home/admin` — ⛔ 禁止直接 SSH 進去改程式碼；唯讀查資料見 R6 例外 |
+| **生產伺服器** | Raspberry Pi `/home/admin` — ⛔ 禁止直接 SSH 進去改程式碼；歷史唯讀例外與目前操作者限制見 R6 |
 | **部署方式** | `deploy.yml` 是正式應用部署控制面；CI 通過不等於已有正式啟用授權，依實際 environment gate 與完整 production→candidate 風險執行 |
 
 ---
@@ -102,7 +102,7 @@ Palace：`~/.mempalace/palace`（local-first，cloud session 沒有，跳過即�
 | [G-009](docs/agents/GOTCHAS.md) | 課程「繳費狀態」是雙真相 OR 邏輯，`StudentClass.Paid` 壓不過帳單付款 |
 | [G-010](docs/agents/GOTCHAS.md) | 行事曆來源真相 = 已物化的 `ClassSession`；「某天課很少」未必是 bug |
 | [G-011](docs/agents/GOTCHAS.md) | 「一堂 = 幾分鐘」是**每門課自己的**設定，沒有全公司統一值；契約在第一次扣堂後鎖死 |
-| [G-012](docs/agents/GOTCHAS.md) | 雲端／遠端 session（無 SSH、無 DB 連線）撈／回寫 in-app bug 資料——唯讀依既有來源，回寫走受保護 dispatch |
+| [G-012](docs/agents/GOTCHAS.md) | 雲端／遠端 session（無 SSH、無 DB 連線）撈／回寫 in-app bug 資料——唯讀依既有來源，回寫先核對操作者禁令 |
 
 完整 Gotchas G-001 ~ G-012：見 `docs/agents/GOTCHAS.md`；更早的見 `.cursorrules` §核心資料表 gotcha 或 `alltrue-system.mdc`。
 

@@ -125,6 +125,8 @@ last_reviewed: 2026-08-23
 
 #### Phase A — 分診（收到「看 bug 回報／開 issue」；不改 production 程式碼）
 
+本節 A4／A6 與 Phase C 的 workflow 名稱描述既有機制，不授權受 machine ban 限制的操作者直接或間接觸發 production SSH；先核對 [DELIVERY_LIFECYCLE 自動化對照表](sop/DELIVERY_LIFECYCLE.md#in-app-自動化對照表) 的操作者適用邊界。缺合規寫回路徑時保留未回寫狀態，不宣稱完成（#5117）。
+
 | 步驟 | 動作 |
 |------|------|
 | A1 | 讀 §3.6：附件、reporter 歷史、跨分校、comments／status_logs |
@@ -165,7 +167,7 @@ This metadata only preserves GitHub tracking ownership. It does not resolve the 
 
 | 步驟 | 動作 |
 |------|------|
-| C1 | `in_progress` → `resolved`（若仍在 `triaged`，先轉 `in_progress` 再轉 `resolved`）。**勿**再走 `bug-phase-c-allowlist.yml`（2026-10-19 起 SSH 寫入已 retired，見 ADR-POP-015／DELIVERY_LIFECYCLE 自動化對照表）。**目前可跑**：`bug-followup-comment.yml`（僅改用詞、不改狀態）。ADR 規劃的 Pi-local `inapp-report-resolve-after-deploy` 尚未 catalog，不得當成已可執行 |
+| C1 | `in_progress` → `resolved`（若仍在 `triaged`，先轉 `in_progress` 再轉 `resolved`）。**勿**再走 `bug-phase-c-allowlist.yml`（2026-10-19 起 SSH 寫入已 retired，見 ADR-POP-015／DELIVERY_LIFECYCLE 自動化對照表）。**既有留言機制**：`bug-followup-comment.yml`（只留言、不改狀態；使用 production SSH，受 machine ban 限制者不得觸發）。Pi-local `inapp-report-resolve-after-deploy` 的 catalog／現行條件以 DELIVERY_LIFECYCLE 自動化對照表為準；不能由其存在推定 Phase A／follow-up 已有無 SSH 替代路徑 |
 | C2 | **公開留言**：已上線、請至 Bug 回報頁按「確認已修好」或「問題仍存在」；GitHub issue 此時即可關（Phase-C 自動關，例外見 DELIVERY_LIFECYCLE 自動化對照表），不等回報者 |
 | C3 | in-app `closed` 由回報者 `reporter-verify` 或逾時流程完成；若「仍存在」→ 回到 B1，重開或新開 GitHub issue |
 | C4 | `docs/CHANGELOG.md` 一行（有 deployable 修復時） |
