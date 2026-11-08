@@ -18,6 +18,16 @@ const ROWS = [
 const mountList = (props = {}) => mount(BillList, { props: { alertRows: ROWS, today: '2026-11-05', batchModes: { 1: 'confirm', 2: 'report', 6: 'report' }, ...props }, global: { stubs: { teleport: true } } });
 
 describe('BillList', () => {
+  it('匯出 Excel emits exactly the filter, search and rows on screen', async () => {
+    const w = mountList();
+    await w.get('[data-testid="bill-search"]').setValue('乙');
+    await w.get('[data-testid="bill-export"]').trigger('click');
+    const [payload] = w.emitted('export')[0];
+    expect(w.get('[data-testid="bill-export"]').text()).toBe('匯出 Excel');
+    expect(payload).toMatchObject({ filter: 'all', search: '乙' });
+    expect(payload.items).toEqual([{ id: 2, package_id: null }]);
+  });
+
   it('opens on 要處理 with counts, hiding paid rows', () => {
     const w = mountList();
     expect(w.get('[data-testid="bill-filter-todo"]').attributes('aria-pressed')).toBe('true');
