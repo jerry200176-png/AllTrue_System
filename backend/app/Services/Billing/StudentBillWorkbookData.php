@@ -13,6 +13,7 @@ use App\Models\LearningRecord;
 use App\Models\Student;
 use App\Models\StudentClass;
 use App\Models\StudentSignIn;
+use App\Services\OccurrenceAssignmentService;
 use App\Services\SubstituteScheduleService;
 use App\Support\LearningRecordMutableOwnership;
 use App\Support\TeacherProfileDirectory;
@@ -74,6 +75,12 @@ final class StudentBillWorkbookData
         $ordinals = LearningRecordController::batchSessionNumbers($records);
         $recordsBySession = $records->groupBy('ClassSessionID');
         $signIns = StudentSignIn::active()->whereIn('StudentID', $students->keys())->whereIn('StudentClassID', $classIds)->whereIn('ClassSessionID', $sessions->pluck('id'))->get()->groupBy('ClassSessionID');
+        // Zero fallback distinguishes a legacy substitute from an unrecorded instructor, without inventing attendance ownership.
+        $scheduledTeachers = SubstituteScheduleService::teachersForOccurrences($sessions->map(fn ($session) => [
+            'course_id' => (int) $session->StudentClassID, 'date' => substr((string) $session->SessionDate, 0, 10),
+            'start_time' => $session->StartTime, 'contract_teacher_id' => 0,
+        ]));
+        $occurrenceV2 = SubstituteScheduleService::anyCampusOn() && OccurrenceAssignmentService::enabledFor($branch);
         $lessons = [];
         $warnings = [];
         $teacherIds = [];
@@ -92,10 +99,14 @@ final class StudentBillWorkbookData
                 $warnings[$courseId][] = $date . '：堂次與出缺席紀錄不一致，未當作已上課；請至原紀錄核對。';
                 continue;
             }
-            $recordTeacher = $record && LearningRecordMutableOwnership::hasHistoricalInstructorEvidence($record) ? (int) $record->TeacherID : 0;
+            // The already-loaded, same-owner taught session is historical evidence in the canonical ownership helper.
+            // Do not repeat its snapshot/session queries for each pending placeholder LR.
+            $recordTeacher = $record && in_array(strtolower(trim((string) $session->Status)), LearningRecordMutableOwnership::TAUGHT_SESSION_STATUSES, true) ? (int) $record->TeacherID : 0;
             $attendanceTeachers = $attendance->pluck('TeacherID')->filter()->unique();
-            $teacherId = SubstituteScheduleService::resolveSubstituteUserId($courseId, $date, $session->StartTime)
-                ?? ($recordTeacher > 0 ? $recordTeacher : ($attendanceTeachers->count() === 1 ? (int) $attendanceTeachers->first() : 0));
+            $scheduledTeacher = $scheduledTeachers[SubstituteScheduleService::occurrenceKey($courseId, $date, $session->StartTime)] ?? 0;
+            // Flag-on's restored/default contract teacher is not a substitute; historical LR ownership still wins.
+            $substitute = $scheduledTeacher > 0 && (!$occurrenceV2 || $scheduledTeacher !== (int) $course->TeacherID) ? $scheduledTeacher : 0;
+            $teacherId = $substitute > 0 ? $substitute : ($recordTeacher > 0 ? $recordTeacher : ($attendanceTeachers->count() === 1 ? (int) $attendanceTeachers->first() : 0));
             $end = $session->EndTime ? CarbonImmutable::parse($date . ' ' . $session->EndTime, 'Asia/Taipei') : null;
             $lessons[$courseId][] = [
                 'date' => $date, 'ordinal' => $record ? ($ordinals[(int) $record->id] ?? null) : null,
@@ -129,16 +140,33 @@ final class StudentBillWorkbookData
                 $ledger = $response->getData(true);
             }
             $sections = [];
+            $emittedInvoiceIds = [];
             foreach ($studentSources as $source) {
                 $key = self::key($source);
                 abort_unless(isset($summaries[$key]) && count($summaries[$key]) === 8, 422, '帳單摘要欄位不完整。');
                 $details = [];
                 foreach ($selected[$key] as $course) {
-                    $rawInvoices = collect($ledger['invoices'] ?? [])->where('student_class_id', (int) $course->ID);
+                    // Same coverage union as AccountingLedgerModal: a combined invoice can cover a non-anchor contract.
+                    $rawInvoices = collect($ledger['invoices'] ?? [])->filter(fn ($invoice) => in_array((int) $course->ID, array_map('intval', $invoice['covered_student_class_ids'] ?: [$invoice['student_class_id']]), true));
                     $representedReports = $rawInvoices->flatMap(fn ($invoice) => array_merge(
                         array_column($invoice['reports'], 'report_id'), array_column($invoice['payments'], 'report_id')
                     ))->filter()->unique();
-                    $invoices = $rawInvoices->map(fn ($invoice) => $this->invoice($invoice))->values()->all();
+                    $invoices = [];
+                    $sharedReferences = [];
+                    foreach ($rawInvoices as $invoice) {
+                        if (isset($emittedInvoiceIds[(int) $invoice['id']])) {
+                            $sharedReferences[] = $invoice['invoice_no'];
+                            continue;
+                        }
+                        $emittedInvoiceIds[(int) $invoice['id']] = true;
+                        $row = $this->invoice($invoice);
+                        $coveredIds = array_unique(array_map('intval', $invoice['covered_student_class_ids'] ?: [$invoice['student_class_id']]));
+                        if (count($coveredIds) > 1) {
+                            $row['scope_note'] = '跨合約帳單：下列為整張帳單金額與收款，未按合約分攤；同張帳單於本工作表僅列一次。'
+                                . (array_diff($coveredIds, $studentClassIds) !== [] ? '帳單亦涵蓋本次未選取的合約，未加入其課程明細。' : '');
+                        }
+                        $invoices[] = $row;
+                    }
                     $unmatchedReports = collect($ledger['receipts'] ?? [])->where('student_class_id', (int) $course->ID)
                         ->reject(fn ($report) => $representedReports->contains($report['report_id']))
                         ->map(fn ($report) => $this->report($report, true))->values()->all();
@@ -146,7 +174,7 @@ final class StudentBillWorkbookData
                         'subject' => $course->displaySubjectName(), 'start_date' => $course->StartDate ? substr((string) $course->StartDate, 0, 10) : null,
                         'current_rate' => $course->Rate !== null ? (float) $course->Rate : null, 'rate_unit' => $course->rate_unit,
                         'lessons' => $lessons[(int) $course->ID] ?? [], 'warnings' => $warnings[(int) $course->ID] ?? [],
-                        'invoices' => $invoices, 'unmatched_reports' => $unmatchedReports,
+                        'invoices' => $invoices, 'shared_invoice_references' => $sharedReferences, 'unmatched_reports' => $unmatchedReports,
                     ];
                 }
                 $sections[] = ['title' => (string) ($source['subject'] ?? '課程'), 'summary' => array_values($summaries[$key]), 'contracts' => $details];

@@ -8,10 +8,15 @@ use App\Models\Student;
 use App\Models\StudentClass;
 use App\Models\User;
 use App\Services\Billing\StudentBillWorkbookData;
+use App\Exports\BillListExport;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Maatwebsite\Excel\Facades\Excel;
+use PhpOffice\PhpSpreadsheet\Cell\Cell;
+use PhpOffice\PhpSpreadsheet\Cell\DefaultValueBinder;
+use PhpOffice\PhpSpreadsheet\IOFactory;
 use Symfony\Component\HttpKernel\Exception\HttpException;
 use Tests\Concerns\AssertsQueryBudget;
 use Tests\TestCase;
@@ -143,5 +148,118 @@ class StudentBillWorkbookDataTest extends TestCase
         } catch (HttpException $exception) {
             $this->assertSame(428, $exception->getStatusCode());
         }
+    }
+
+    public function test_shared_invoice_keeps_non_anchor_receipt_and_appears_once_without_allocating_money(): void
+    {
+        $student = $this->student();
+        $anchor = $this->course($student);
+        $covered = $this->course($student);
+        $unselected = $this->course($student);
+        $invoice = DB::table('Invoice')->insertGetId(['StudentID' => $student->id, 'StudentClassID' => $anchor->ID, 'TotalAmount' => 1500, 'PaidAmount' => 1500, 'Status' => 'paid', 'IssueDate' => '2026-06-01', 'DueDate' => '2026-06-10']);
+        foreach ([$anchor, $covered] as $course) {
+            DB::table('InvoiceItem')->insert(['InvoiceID' => $invoice, 'StudentClassID' => $course->ID, 'Description' => '合成合併帳單', 'Amount' => 750]);
+        }
+        $payment = DB::table('Payment')->insertGetId(['InvoiceID' => $invoice, 'Amount' => 1500, 'PaidAt' => '2026-06-02', 'Method' => 'cash']);
+        DB::table('payment_reports')->insert(['StudentID' => $student->id, 'StudentClassID' => $anchor->ID, 'InvoiceID' => $invoice, 'reported_by_name' => '合成回報者', 'payment_date' => '2026-06-02', 'payment_method' => 'cash', 'reported_amount' => 1500, 'status' => 'confirmed', 'payment_id' => $payment, 'report_token_hash' => hash('sha256', 'synthetic-shared'), 'token_expires_at' => now()->addDay()]);
+        DB::table('Invoice')->insert(['StudentID' => $student->id, 'StudentClassID' => $unselected->ID, 'TotalAmount' => 9999, 'PaidAmount' => 0, 'Status' => 'unpaid', 'IssueDate' => '2026-06-01', 'DueDate' => '2026-06-10']);
+        $request = $this->request();
+        $source = fn ($course) => ['id' => $course->ID, 'student_id' => $student->id, 'subject' => '合成英文'];
+        $summary = ['合成學生', '合成英文', '剩 6 堂', '已繳', '—', 5000, 5000, 0];
+        $before = $this->fingerprint();
+        $onlyCovered = app(StudentBillWorkbookData::class)->build([$source($covered)], ['course:' . $covered->ID => $summary], $request);
+        $invoices = $onlyCovered[0]['sources'][0]['contracts'][0]['invoices'];
+        $this->assertCount(1, $invoices, 'A selected non-anchor contract must retain its shared invoice.');
+        $this->assertSame(1500, $invoices[0]['total_amount']);
+        $this->assertSame([1500], array_column($invoices[0]['payments'], 'amount'));
+        $this->assertNotEmpty($invoices[0]['payments'][0]['receipt_no']);
+        $this->assertStringContainsString('未按合約分攤', $invoices[0]['scope_note']);
+        $this->assertStringContainsString('未選取', $invoices[0]['scope_note']);
+        $both = app(StudentBillWorkbookData::class)->build([$source($covered), $source($anchor)], ['course:' . $covered->ID => $summary, 'course:' . $anchor->ID => $summary], $request);
+        $contracts = collect($both[0]['sources'])->pluck('contracts')->flatten(1);
+        $allInvoices = $contracts->pluck('invoices')->flatten(1);
+        $this->assertCount(1, $allInvoices, 'Whole-invoice amounts and receipts must not repeat under each covered contract.');
+        $this->assertSame(1500, $allInvoices->sum('total_amount'));
+        $this->assertSame([$invoices[0]['invoice_no']], $contracts[1]['shared_invoice_references']);
+        $this->assertSame([], $contracts[1]['unmatched_reports']);
+        $this->assertStringNotContainsString('9999', json_encode($both));
+        $this->assertSame($before, $this->fingerprint());
+        $path = storage_path('framework/testing/student-bill-shared-invoice-preview.xlsx');
+        \Illuminate\Support\Facades\File::ensureDirectoryExists(dirname($path));
+        file_put_contents($path, Excel::raw(new BillListExport([], $both, '2026-11-08T15:00:00Z'), \Maatwebsite\Excel\Excel::XLSX));
+        $binder = Cell::getValueBinder();
+        $workbook = null;
+        try {
+            Cell::setValueBinder(new DefaultValueBinder());
+            $workbook = IOFactory::load($path);
+            $rows = $workbook->getSheet(0)->toArray();
+            $this->assertCount(1, array_filter($rows, fn ($row) => $row[0] === '帳單總額'));
+            $this->assertCount(1, array_filter($rows, fn ($row) => $row[0] === '跨合約帳單 ' . $invoices[0]['invoice_no'] . ' 已於本工作表前列完整列示；未重複列入本合約金額。'));
+            $this->assertCount(1, array_filter($rows, fn ($row) => $row[1] === $invoices[0]['payments'][0]['receipt_no']));
+            $this->assertStringContainsString('未按合約分攤', json_encode($rows, JSON_UNESCAPED_UNICODE));
+        } finally {
+            $workbook?->disconnectWorksheets();
+            Cell::setValueBinder($binder);
+        }
+    }
+
+    public function test_actual_lesson_teacher_resolution_batches_growth_and_preserves_substitute_precedence(): void
+    {
+        config(['feature_flags.values' => []]);
+        $student = $this->student();
+        $historical = User::create(['LoginName' => 'history@example.test', 'Name' => '合成歷史老師', 'PSW' => 'synthetic', 'type' => 'T', 'phone' => 912345671]);
+        $current = User::create(['LoginName' => 'current@example.test', 'Name' => '合成現任老師', 'PSW' => 'synthetic', 'type' => 'T', 'phone' => 912345672]);
+        DB::table('UserCampus')->insert(['UserID' => $current->id, 'CampusID' => 1, 'Approved' => 1, 'Admin' => 0]);
+        $course = $this->course($student, ['TeacherID' => $current->id]);
+        $request = $this->request();
+        $add = function (int $day) use ($course, $student, $historical) {
+            $date = sprintf('2026-06-%02d', $day);
+            $session = $this->lessonFixture($course, $date, 'attended');
+            DB::table('LearningRecord')->insert(['StudentID' => $student->id, 'StudentClassID' => $course->ID, 'ClassSessionID' => $session, 'TeacherID' => $historical->id, 'Status' => 'pending', 'Content' => '（評量表）', 'SessionDate' => $date, 'StartTime' => '10:00:00', 'EndTime' => '11:30:00', 'created_at' => now(), 'updated_at' => now()]);
+        };
+        $source = [['id' => $course->ID, 'student_id' => $student->id, 'subject' => '合成英文']];
+        $summary = ['course:' . $course->ID => ['合成學生', '合成英文', '剩 6 堂', '未繳', '—', 5000, 0, 5000]];
+        $add(1);
+        $builder = app(StudentBillWorkbookData::class);
+        $small = $this->assertQueryCountAtMost(80, fn () => $builder->build($source, $summary, $request));
+        foreach (range(2, 25) as $day) {
+            $add($day);
+        }
+        $original = DB::table('schedules')->insertGetId(['student_course_id' => $course->ID, 'student_id' => $student->id, 'branch_id' => 1, 'teacher_id' => $current->id, 'day_of_week' => 1, 'schedule_date' => '2026-06-01', 'start_time' => '10:00', 'end_time' => '11:30', 'status' => 'rescheduled', 'type' => 'regular']);
+        DB::table('schedules')->insert(['student_course_id' => $course->ID, 'student_id' => $student->id, 'branch_id' => 1, 'teacher_id' => $current->id, 'day_of_week' => 1, 'schedule_date' => '2026-06-01', 'start_time' => '10:00', 'end_time' => '11:30', 'status' => 'scheduled', 'type' => 'regular', 'original_schedule_id' => $original]);
+        $output = null;
+        $large = $this->assertQueryCountAtMost($small + 4, function () use (&$output, $builder, $source, $summary, $request) {
+            $output = $builder->build($source, $summary, $request);
+        });
+        $lessons = $output[0]['sources'][0]['contracts'][0]['lessons'];
+        $this->assertCount(25, $lessons);
+        $this->assertSame('合成現任老師', $lessons[0]['teacher'], 'A real substitute assignment wins even when its teacher equals the current contract teacher.');
+        $this->assertSame(array_fill(0, 24, '合成歷史老師'), array_column(array_slice($lessons, 1), 'teacher'));
+        $this->assertLessThanOrEqual($small + 4, $large);
+        fwrite(STDOUT, sprintf("\nWorkbook SQL growth: 1 taught lesson=%d; 25 taught lessons=%d.\n", $small, $large));
+    }
+
+    public function test_flag_on_restored_teacher_keeps_historical_author_and_real_substitute_still_wins(): void
+    {
+        config(['feature_flags.values' => ['FEATURE_SCHEDULE_OCCURRENCE_V2' => true]]);
+        $student = $this->student();
+        $teachers = [];
+        foreach (['歷史', '現任', '代課'] as $index => $name) {
+            $teachers[] = $teacher = User::create(['LoginName' => 'v2-' . $index . '@example.test', 'Name' => '合成' . $name . '老師', 'PSW' => 'synthetic', 'type' => 'T', 'phone' => 912345680 + $index]);
+            DB::table('UserCampus')->insert(['UserID' => $teacher->id, 'CampusID' => 1, 'Approved' => 1, 'Admin' => 0]);
+        }
+        $course = $this->course($student, ['TeacherID' => $teachers[1]->id]);
+        $session = $this->lessonFixture($course, '2026-06-01', 'attended');
+        DB::table('LearningRecord')->insert(['StudentID' => $student->id, 'StudentClassID' => $course->ID, 'ClassSessionID' => $session, 'TeacherID' => $teachers[0]->id, 'Status' => 'pending', 'Content' => '（評量表）', 'SessionDate' => '2026-06-01', 'StartTime' => '10:00:00', 'EndTime' => '11:30:00', 'created_at' => now(), 'updated_at' => now()]);
+        $schedule = DB::table('schedules')->insertGetId(['student_course_id' => $course->ID, 'student_id' => $student->id, 'branch_id' => 1, 'teacher_id' => $teachers[1]->id, 'day_of_week' => 1, 'schedule_date' => '2026-06-01', 'start_time' => '10:00', 'end_time' => '11:30', 'status' => 'scheduled', 'type' => 'regular', 'original_schedule_date' => '2026-06-01', 'original_start_time' => '10:00']);
+        $request = $this->request();
+        $source = [['id' => $course->ID, 'student_id' => $student->id, 'subject' => '合成英文']];
+        $summary = ['course:' . $course->ID => ['合成學生', '合成英文', '剩 6 堂', '未繳', '—', 5000, 0, 5000]];
+        $builder = app(StudentBillWorkbookData::class);
+        $restored = $builder->build($source, $summary, $request);
+        $this->assertSame('合成歷史老師', $restored[0]['sources'][0]['contracts'][0]['lessons'][0]['teacher']);
+        DB::table('schedules')->where('id', $schedule)->update(['teacher_id' => $teachers[2]->id]);
+        $substituted = $builder->build($source, $summary, $request);
+        $this->assertSame('合成代課老師', $substituted[0]['sources'][0]['contracts'][0]['lessons'][0]['teacher']);
     }
 }

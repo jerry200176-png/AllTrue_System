@@ -136,6 +136,9 @@ final class StudentBillWorksheet extends DefaultValueBinder implements FromArray
         }
         foreach ($contract['invoices'] as $invoice) {
             $this->add(['帳單', (string) $invoice['invoice_no'], '狀態', self::status($invoice['status'])], true);
+            if (!empty($invoice['scope_note'])) {
+                $this->add([(string) $invoice['scope_note']]);
+            }
             $this->add(['帳單總額', $invoice['total_amount'], '已入帳', $invoice['calculated_applied_amount'], '沖銷', $invoice['voided_amount'], '未收', $invoice['outstanding_amount']]);
             $this->add(['付款日期', '收據編號', '紀錄狀態', '紀錄金額', '本帳單入帳', '超收待核對', '方式', '資料註記'], true);
             foreach ($invoice['payments'] as $payment) {
@@ -148,7 +151,10 @@ final class StudentBillWorksheet extends DefaultValueBinder implements FromArray
                 $this->add([self::date($report['payment_date']), ($report['receipt_no'] ?? null) ?: '尚未有已確認收據', self::status($report['status']), $report['amount'], null, null, self::method($report['payment_method']), '回報金額不當作已入帳']);
             }
         }
-        if ($contract['invoices'] === []) {
+        foreach ($contract['shared_invoice_references'] ?? [] as $invoiceNo) {
+            $this->add(['跨合約帳單 ' . $invoiceNo . ' 已於本工作表前列完整列示；未重複列入本合約金額。']);
+        }
+        if ($contract['invoices'] === [] && empty($contract['shared_invoice_references'])) {
             $this->add(['未有可確認的本合約帳單；不以合約單價推算收據或帳單總額。']);
         }
         if (!empty($contract['unmatched_reports'])) {
