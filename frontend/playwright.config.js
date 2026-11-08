@@ -30,6 +30,8 @@ export default defineConfig({
   testDir: './e2e',
   // Foundation page evidence uses playwright.ui-foundation.config.js + dedicated Vite mount.
   testIgnore: [
+    // Built fake-data preview on 5189; advisory ui-preview job runs its dedicated config.
+    /parent-text-size\.spec\.js$/,
     // Executed by the required foundation suite against the dedicated Vue fixture server.
     /assessment-clarity\.spec\.js$/,
     /ui-foundation-pages\.spec\.js$/,
