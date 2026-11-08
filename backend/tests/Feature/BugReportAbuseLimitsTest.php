@@ -4,13 +4,16 @@ namespace Tests\Feature;
 
 use App\Models\AuthToken;
 use App\Models\BugReport;
+use App\Models\BugReportAttachment;
 use App\Models\User;
 use App\Models\UserCampus;
 use App\Providers\AppServiceProvider;
+use App\Services\BugReportService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
 
@@ -126,5 +129,71 @@ class BugReportAbuseLimitsTest extends TestCase
         $lock = Cache::lock("bug-submit:{$user->id}", 5);
         $this->assertTrue($lock->get(), 'each submit must release its lock, or the next one waits and gets a 429');
         $lock->release();
+    }
+
+    public function test_5090_stale_retry_cannot_append_to_existing_attachments_or_delete_their_file(): void
+    {
+        Storage::fake('public');
+        [$h] = $this->actor('attachment-existing@x');
+        $id = $this->report($h, 1)->json('id');
+        $bug = BugReport::findOrFail($id);
+        $file = UploadedFile::fake()->create('accepted.png', 1, 'image/png');
+        $this->assertSame(0, BugReportService::attachUploadedFiles($bug, [$file]));
+        $accepted = $bug->attachments()->firstOrFail()->stored_path;
+        $this->assertSame(0, BugReportService::attachUploadedFiles($bug, [$file]));
+        $this->assertSame(1, $bug->attachments()->count(), 'repeat the authoritative empty-report check inside the lock');
+        Storage::disk('public')->assertExists($accepted);
+        $this->assertCount(1, Storage::disk('public')->allFiles());
+    }
+
+    public function test_5090_metadata_rollback_cleans_owned_files_and_leaves_retry_possible(): void
+    {
+        Storage::fake('public');
+        [$h] = $this->actor('attachment-rollback@x');
+        $bug = BugReport::findOrFail($this->report($h, 1)->json('id'));
+        $attempt = 0;
+        Event::listen('eloquent.creating: '.BugReportAttachment::class, function () use (&$attempt) {
+            if (++$attempt === 2) throw new \RuntimeException('synthetic metadata failure');
+        });
+        try {
+            $errors = BugReportService::attachUploadedFiles($bug, [
+                UploadedFile::fake()->create('first.png', 1, 'image/png'),
+                UploadedFile::fake()->create('second.png', 1, 'image/png'),
+            ]);
+        } finally {
+            Event::forget('eloquent.creating: '.BugReportAttachment::class);
+        }
+        $this->assertSame(2, $errors);
+        $this->assertSame(0, $bug->attachments()->count());
+        $this->assertSame([], Storage::disk('public')->allFiles());
+        $this->assertSame(0, BugReportService::attachUploadedFiles($bug, [UploadedFile::fake()->create('retry.png', 1, 'image/png')]));
+        $this->assertSame(1, $bug->attachments()->count());
+        $this->assertCount(1, Storage::disk('public')->allFiles());
+    }
+
+    public function test_5090_partial_storage_failure_cleans_its_file_and_keeps_successful_evidence(): void
+    {
+        Storage::fake('public');
+        [$h] = $this->actor('attachment-storage@x');
+        $bug = BugReport::findOrFail($this->report($h, 1)->json('id'));
+        $temp = tempnam(sys_get_temp_dir(), 'bug-upload-');
+        file_put_contents($temp, 'synthetic');
+        $broken = new class($temp, 'broken.png', 'image/png', null, true) extends UploadedFile {
+            public function store($path = '', $options = [])
+            {
+                Storage::disk('public')->put($path.'/'.$this->hashName(), 'partial write');
+                throw new \RuntimeException('synthetic storage failure after partial write');
+            }
+        };
+        try {
+            $this->assertSame(1, BugReportService::attachUploadedFiles($bug, [
+                $broken, UploadedFile::fake()->create('kept.png', 1, 'image/png'),
+            ]));
+            $this->assertSame(1, $bug->attachments()->count());
+            $this->assertSame('kept.png', $bug->attachments()->firstOrFail()->original_name);
+            $this->assertCount(1, Storage::disk('public')->allFiles());
+        } finally {
+            @unlink($temp);
+        }
     }
 }
