@@ -13,6 +13,7 @@ use App\Models\User;
 use App\Models\UserCampus;
 use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
 /**
@@ -188,6 +189,66 @@ class LearningRecordReviewerFromLoginTest extends TestCase
             && !preg_match("/^\\s*('DirectorID' => 'nullable\\|integer',|\\*|\\/\\/)/", $line));
 
         $this->assertSame([], array_values($reads), 'reviewer identity comes from the login (reviewerUserId); DirectorID may only appear as a validation rule or comment');
+    }
+
+    /**
+     * #5120 diagnostic characterization, NOT a backend fix or expected product contract.
+     * Both clients bind approved models before A commits; B then acquires the course lock.
+     * This valid serialized interleaving isolates the stale route-model risk without timing sleeps.
+     */
+    public function test_diagnostic_stale_bound_rollback_decrements_teacher_count_twice_but_reverses_usage_once(): void
+    {
+        $this->assertSame('mysql', DB::connection()->getDriverName());
+        $this->assertStringStartsWith('AllTrue_test', DB::connection()->getDatabaseName());
+        $record = $this->record('pending');
+        $other = $this->record('pending', '2026-04-11');
+        foreach ([$record, $other] as $lr) {
+            $this->api($this->directorToken)->postJson("/api/v1/learning-records/{$lr->id}/approve", [])->assertOk();
+        }
+        $boundByClientB = $record->fresh();
+        $this->assertSame('approved', $boundByClientB->Status);
+        $this->assertSame(2, (int) User::findOrFail($this->teacherId)->TeachingSessionCount);
+        $xpBefore = (int) DB::table('user_engagement')->where('user_id', $this->teacherId)->value('xp_total');
+        $usedBefore = (float) $this->course->fresh()->UsedSessions;
+
+        $this->api($this->directorToken)->postJson("/api/v1/learning-records/{$record->id}/rollback-approval", [])->assertOk();
+        $usedAfterA = (float) $this->course->fresh()->UsedSessions;
+        $xpAfterA = (int) DB::table('user_engagement')->where('user_id', $this->teacherId)->value('xp_total');
+        $this->assertLessThan($usedBefore, $usedAfterA);
+        $this->assertLessThan($xpBefore, $xpAfterA);
+        $this->assertSame(1, (int) User::findOrFail($this->teacherId)->TeachingSessionCount);
+
+        $queries = [];
+        DB::listen(function ($query) use (&$queries) { $queries[] = strtolower($query->sql); });
+        $request = \Illuminate\Http\Request::create('/synthetic-rollback', 'POST', ['ReviewNote' => 'client B stale binding']);
+        $request->attributes->add([
+            'auth_role' => 'director', 'auth_campus_ids' => [1],
+            'auth_user' => User::findOrFail($this->directorId),
+        ]);
+        $response = app(\App\Http\Controllers\LearningRecordController::class)->rollbackApproval($request, $boundByClientB);
+        $this->assertSame(200, $response->getStatusCode(), 'Characterizes the existing flaw; a fresh binding would reject pending.');
+        $this->assertTrue((bool) array_filter($queries, fn ($sql) => str_contains($sql, 'studentclass') && str_contains($sql, 'for update')));
+        $this->assertFalse((bool) array_filter($queries, fn ($sql) => str_contains($sql, 'learningrecord') && str_contains($sql, 'for update')));
+        $positions = [];
+        foreach ($queries as $index => $sql) {
+            if (str_contains($sql, 'studentclass') && str_contains($sql, 'for update')) $positions['course_lock'] ??= $index;
+            if (str_starts_with($sql, 'update `learningrecord`')) $positions['record_write'] ??= $index;
+            if (str_starts_with($sql, 'update `user`') && str_contains($sql, 'teachingsessioncount')) $positions['teacher_write'] ??= $index;
+        }
+        $this->assertArrayHasKey('course_lock', $positions);
+        $this->assertArrayHasKey('record_write', $positions);
+        $this->assertArrayHasKey('teacher_write', $positions);
+        $this->assertLessThan($positions['record_write'], $positions['course_lock']);
+        $this->assertLessThan($positions['teacher_write'], $positions['record_write']);
+        $this->assertSame('pending', $record->fresh()->Status);
+        $this->assertSame('approved', $other->fresh()->Status);
+        $this->assertSame(0, (int) User::findOrFail($this->teacherId)->TeachingSessionCount, 'Another approved lesson still exists: teacher counter has drifted.');
+        $this->assertSame($usedAfterA, (float) $this->course->fresh()->UsedSessions, 'No second usage reversal in this interleaving.');
+        $this->assertSame($xpAfterA, (int) DB::table('user_engagement')->where('user_id', $this->teacherId)->value('xp_total'), 'No second XP revocation in this interleaving.');
+        $this->assertSame(1, SessionDeductionLedger::where('class_session_id', $record->ClassSessionID)->where('event_type', 'reverse')->count());
+        $this->assertNotNull($this->approvalSignIn($record)->VoidedAt);
+        // A genuinely fresh second HTTP request is different: it sees pending and refuses.
+        $this->api($this->directorToken)->postJson("/api/v1/learning-records/{$record->id}/rollback-approval", [])->assertStatus(409);
     }
 
     private function approvalSignIn(LearningRecord $record): ?StudentSignIn
