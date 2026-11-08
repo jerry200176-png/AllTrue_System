@@ -204,4 +204,40 @@ class BugReportAttachmentConcurrencyTest extends TestCase
             $this->raceTerminateAllWorkers();
         }
     }
+
+    public function test_5090_normal_admission_rechecks_peer_attachments_outside_the_callers_old_rr_snapshot(): void
+    {
+        $this->raceAssertMysqlRr();
+        $this->artisan('migrate:fresh', ['--force' => true]);
+        Storage::fake('public');
+        $campus = Campus::factory()->create();
+        $bug = BugReport::create(['CampusID' => $campus->id, 'reporter_user_id' => 900005,
+            'title' => 'synthetic normal admission read view', 'description' => 'synthetic', 'severity' => 'low', 'status' => 'new']);
+        DB::beginTransaction();
+        try {
+            $this->assertSame(0, $bug->attachments()->count()); // Pin an actual outer RR snapshot.
+            $peer = $this->raceSpawn(base_path('tests/Support/bug-attachment-race-worker.php'), [
+                'bug_id' => $bug->id, 'worker' => 'P', 'clock' => '2026-11-08T12:00:00+08:00',
+                'storage_root' => Storage::disk('public')->path(''),
+                'cache_root' => storage_path('framework/testing/normal-view-'.Str::uuid()),
+                'lock_name' => 'bug-submit:synthetic-normal-'.$bug->id,
+            ]);
+            $result = $this->raceFinish($peer); // Public service on a different connection commits five real rows/files.
+            $this->assertSame(0, $result['attachment_errors']);
+            $this->assertSame(0, $bug->attachments()->count(), 'the caller really still sees its pre-peer RR snapshot');
+            $peerPaths = Storage::disk('public')->allFiles();
+            $this->assertCount(5, $peerPaths);
+            $this->assertSame(0, BugReportService::attachUploadedFiles($bug, [
+                UploadedFile::fake()->create('must-not-append.png', 1, 'image/png'),
+            ]));
+            $current = $bug->attachments()->lockForUpdate()->get();
+            $this->assertCount(5, $current, 'normal admission cannot mistake an old snapshot for an empty report');
+            $this->assertTrue($current->every(fn ($attachment) => str_starts_with($attachment->original_name, 'P-')));
+            foreach ($peerPaths as $path) Storage::disk('public')->assertExists($path);
+            $this->assertCount(5, Storage::disk('public')->allFiles(), 'reject and clean only this caller\'s extra staged file');
+        } finally {
+            DB::rollBack();
+            $this->raceTerminateAllWorkers();
+        }
+    }
 }

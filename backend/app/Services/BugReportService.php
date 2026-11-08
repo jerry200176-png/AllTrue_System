@@ -147,10 +147,10 @@ class BugReportService
         try {
             $admitted = DB::transaction(function () use ($bug, $staged) {
                 $locked = BugReport::query()->whereKey($bug->id)->lockForUpdate()->firstOrFail();
-                // Both callers attach to an empty report. Repeat this aggregate
-                // check AFTER the authoritative lock: an expired cache lease
-                // cannot let a late worker append another five screenshots.
-                if ($locked->attachments()->count() > 0) {
+                // Both callers attach to an empty report. A current presence
+                // read is required even after the parent lock: an outer caller
+                // may already have an old RR snapshot that still counts zero.
+                if ($locked->attachments()->select('id')->lockForUpdate()->first() !== null) {
                     return false;
                 }
                 foreach ($staged as $attachment) {
