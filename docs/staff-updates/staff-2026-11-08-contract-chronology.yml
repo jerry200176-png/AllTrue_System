@@ -1,0 +1,13 @@
+updates:
+  - id: staff-2026-11-08-contract-chronology
+    published_at: "2026-11-08"
+    audiences:
+      - director
+    importance: digest
+    title: 課程依開課日排序
+    summary: 同一學生的課程依開課日期由舊到新排列，並顯示開課日，方便辨識各期合約。
+    items:
+      - category: improved
+        text: 展開學生即可依日期查看課程；歷史課程和原有帳務、待對帳入口仍保留。
+    source_refs:
+      - "changelog:2026-11-08:contract-chronology"
