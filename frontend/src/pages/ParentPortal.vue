@@ -783,6 +783,13 @@
 
       <!-- ═══ Settings (⚙): old cards move to step 5 ═══ -->
       <div v-if="activeTab === 'settings'" id="parent-panel-settings" class="pp-tab-panel" role="region" aria-label="設定">
+        <Card class="pp-display-settings">
+          <CardHeader>
+            <CardTitle>顯示設定</CardTitle>
+            <CardDescription>選擇適合您的字級，這台裝置會記住您的選擇。</CardDescription>
+          </CardHeader>
+          <CardContent><TextSizeToggle /></CardContent>
+        </Card>
         <!-- LINE Binding Info -->
         <div class="pp-card">
           <div class="pp-section-header">
@@ -869,6 +876,8 @@ import { getParentDashboard, parentLogin, parentLoginLine, parentSwitchStudent, 
 import { trackParentPortalEvent } from '../lib/adoptionTelemetry';
 import { notesForRole } from '../lib/releaseNotes';
 import ParentHome from '../components/parent/ParentHome.vue';
+import TextSizeToggle from '../components/TextSizeToggle.vue';
+import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
 import { SlidingIndicator } from '../components/motion';
 import { pickNextLesson, pickAmountDue, pickLatestFeedback } from '../lib/parentHome';
 import { lessonStatusLabel, courseTypeLabel, moneyStatusLabel, outOfLessonsLabel } from '../lib/parentLabels';
@@ -1806,6 +1815,8 @@ onMounted(async () => {
   margin-bottom: 12px;
   box-shadow: 0 1px 4px rgba(0,0,0,0.06), 0 0 1px rgba(0,0,0,0.08);
 }
+
+.pp-display-settings { margin-bottom: var(--ds-space-3); }
 
 .pp-hint { color: var(--ds-ink-mute); font-size: 0.85em; margin: 4px 0 0; }
 .pp-hint-bind {
