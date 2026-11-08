@@ -14,6 +14,7 @@ use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 
 class BugReportService
 {
@@ -101,20 +102,35 @@ class BugReportService
             return 0;
         }
 
+        // Slow filesystem I/O must not hold a database row lock. Each attempt owns
+        // an unpredictable directory so a rejected retry can never delete a
+        // previously accepted file, including when an UploadedFile is reused.
+        $directory = 'bug-reports/'.$bug->id.'/'.Str::uuid();
+        $staged = [];
+        $ownedPaths = [];
         $failCount = 0;
         foreach ($files as $file) {
+            $ownedPath = null;
             try {
-                $storedPath = $file->store('bug-reports/' . $bug->id, 'public');
-                BugReportAttachment::create([
+                $ownedPath = $directory.'/'.$file->hashName();
+                $ownedPaths[] = $ownedPath;
+                $storedPath = $file->store($directory, 'public');
+                if ($storedPath !== $ownedPath) {
+                    throw new \RuntimeException('Attachment storage did not complete');
+                }
+                $staged[] = [
                     'bug_report_id' => $bug->id,
                     'stored_path' => $storedPath,
                     'original_name' => $file->getClientOriginalName(),
                     'mime_type' => $file->getClientMimeType(),
                     'size' => (int) $file->getSize(),
                     'created_at' => Carbon::now(),
-                ]);
+                ];
             } catch (\Throwable $e) {
                 $failCount++;
+                if ($ownedPath !== null) {
+                    self::discardAttachmentFiles($bug, [$ownedPath]);
+                }
                 \Illuminate\Support\Facades\Log::warning('[BugReport] attachment storage failed', [
                     'bug_id'   => $bug->id,
                     'filename' => $file->getClientOriginalName(),
@@ -123,7 +139,66 @@ class BugReportService
             }
         }
 
+        if ($staged === []) {
+            return $failCount;
+        }
+
+        $discardPaths = $ownedPaths;
+        try {
+            $admitted = DB::transaction(function () use ($bug, $staged) {
+                $locked = BugReport::query()->whereKey($bug->id)->lockForUpdate()->firstOrFail();
+                // Both callers attach to an empty report. Repeat this aggregate
+                // check AFTER the authoritative lock: an expired cache lease
+                // cannot let a late worker append another five screenshots.
+                if ($locked->attachments()->count() > 0) {
+                    return false;
+                }
+                foreach ($staged as $attachment) {
+                    BugReportAttachment::create($attachment);
+                }
+                return true;
+            });
+        } catch (\Throwable $e) {
+            $admitted = false;
+            $failCount += count($staged);
+            Log::warning('[BugReport] attachment admission interrupted', ['bug_id' => $bug->id, 'error_type' => $e::class]);
+            try {
+                // A commit acknowledgement or after-commit callback can fail
+                // AFTER SQL committed. Never compensate by deleting referenced
+                // evidence. If the writer cannot verify, retain possible orphans.
+                $referenced = BugReportAttachment::query()->useWritePdo()
+                    ->where('bug_report_id', $bug->id)->whereIn('stored_path', $ownedPaths)
+                    ->pluck('stored_path')->all();
+                $discardPaths = array_values(array_diff($ownedPaths, $referenced));
+            } catch (\Throwable $verificationError) {
+                $discardPaths = [];
+                Log::warning('[BugReport] attachment cleanup deferred', ['bug_id' => $bug->id]);
+            }
+        }
+
+        if (!$admitted && !self::discardAttachmentFiles($bug, $discardPaths)) {
+            $failCount = count($files);
+        }
+        $bug->unsetRelation('attachments');
+
         return $failCount;
+    }
+
+    /** Delete only exact paths owned by this attempt, never a report directory or another worker's files. */
+    private static function discardAttachmentFiles(BugReport $bug, array $paths): bool
+    {
+        if ($paths === []) {
+            return true;
+        }
+        try {
+            if (Storage::disk('public')->delete($paths)) {
+                return true;
+            }
+        } catch (\Throwable $e) {
+            // The report/accepted metadata remains intact; cleanup failure is observable.
+        }
+        Log::warning('[BugReport] attachment cleanup failed', ['bug_id' => $bug->id]);
+        return false;
     }
 
     private const SORT_WHITELIST = [
