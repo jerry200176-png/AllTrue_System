@@ -252,7 +252,7 @@ This metadata only preserves GitHub tracking ownership. It does not resolve the 
    - 權限、帳號、金錢：由 Founder 在系統外跟本人確認，因為帳號可能被盜用。
 3. **分診權限最小。**
    - triage token 只能讀（GET）。
-   - 回寫只走 `bug-phase-a-triage.yml` 或 `bug-followup-comment.yml`，欄位固定，`public_reply` 不超過 600 字。
+   - 回寫只走 `bug-phase-a-triage.yml` 或 `bug-followup-comment.yml`，欄位固定，`public_reply` 不超過 600 字。 兩者實際依賴 production SSH；受機器禁令限制的操作者不得直接或間接觸發，不能把本節視為操作授權。此操作者的 Phase A／follow-up 合規寫回路徑尚未驗證，缺口由 #5117 追蹤；見 [SOP 操作者適用邊界](sop/DELIVERY_LIFECYCLE.md#in-app-自動化對照表)，保留未回寫狀態，不宣稱完成。
    - 不要給分診 agent 寫 production 的工具。
 4. **不把回報內容貼到 GitHub**（repo 是公開的）。只寫 in-app 編號、附件 id、分校 id。
 5. **頻率上限，由後端強制；PR 進行中，上線前先人工判斷。**
