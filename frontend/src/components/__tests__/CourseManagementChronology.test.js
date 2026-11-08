@@ -46,6 +46,8 @@ describe('#5124: real CourseManagement contract chronology', () => {
     ]);
     await expandHistory();
     expect(order()).toEqual([812, 820, 2543, 3612]);
+    expect(wrapper.findAll('.course-row, .history-course-card').map((row) => row.text().match(/開課\s*(\d{4}-\d{2}-\d{2})/)?.[1]))
+      .toEqual(['2026-03-01', '2026-05-10', '2026-07-02', '2026-09-06']);
     expect(wrapper.findAll('.course-row')).toHaveLength(3);
     expect(wrapper.get('.course-row').text()).toContain('尚未完成繳費');
   });
@@ -96,5 +98,18 @@ describe('#5124: real CourseManagement contract chronology', () => {
     await ledger.trigger('click');
     expect(wrapper.vm.$.setupState.ledgerOpen).toBe(true);
     expect(wrapper.emitted('navigate')).toBeUndefined();
+  });
+
+  it('shows the declared start with a legacy fallback and marks missing starts without using closure dates', async () => {
+    await open([
+      contract(30, null, null, { EndDate: '2026-12-31' }),
+      contract(20, null, 'completed', { StartDate: '2026-02-01 00:00:00', EndDate: '2026-10-01' }),
+      contract(10, '2026-01-01', null, { EndDate: '2026-09-01' }),
+    ]);
+    await expandHistory();
+    const rows = wrapper.findAll('.course-row, .history-course-card');
+    expect(order()).toEqual([10, 20, 30]);
+    expect(rows.map((row) => row.text().match(/開課\s*(\d{4}-\d{2}-\d{2}|未填)/)?.[1]))
+      .toEqual(['2026-01-01', '2026-02-01', '未填']);
   });
 });

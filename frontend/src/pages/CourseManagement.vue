@@ -320,6 +320,7 @@
                         >⚠ 堂數待對帳 <span class="tag-usage-review__action">查看對帳明細</span></button>
                       </div>
                       <small class="class-type-line"><span class="status-tag" :class="c.class_type">{{ classTypeLabel(c.class_type) }}</span></small>
+                      <small class="class-type-line">開課 {{ contractStartDate(c) || '未填' }}</small>
                       <!-- Warnings stay in the always-visible first cell so the phone layout never hides them. -->
                       <div class="row-warnings" data-testid="row-warnings">
                       <!-- #2007 phase 2: up to 3 warning badges used to stack inline after the
@@ -583,6 +584,7 @@
                     >⚠ 堂數待對帳 <span class="tag-usage-review__action">查看對帳明細</span></button>
                   </div>
                   <div class="history-course-card__details">
+                    <span class="history-course-card__detail"><span class="history-course-card__detail-label">開課</span> {{ contractStartDate(hc) || '未填' }}</span>
                     <span class="history-course-card__detail"><span class="history-course-card__detail-label">老師</span> {{ hc.teacher_name || '—' }}</span>
                     <span class="history-course-card__detail"><span class="history-course-card__detail-label">費用</span> ${{ totalPrice(hc) }}（{{ getRateUnitDisplayLabel(hc) }} ${{ sessionPrice(hc) }}）</span>
                     <span class="history-course-card__detail"><span class="history-course-card__detail-label">堂數</span> <template v-if="isPackageMember(hc)">已上 {{ getCompletedSessionCount(hc) }} 堂｜方案共用 {{ getPackageTotalSessions(hc) }} 堂</template><template v-else>已上 {{ getCompletedSessionCount(hc) }}<template v-if="isSessionMode(hc)"> / 購買 {{ getPurchasedSessions(hc) }}</template> 堂</template></span>
@@ -1363,7 +1365,7 @@ import { isCourseSettled, isPaymentNoticeStatus } from '../lib/paymentStatus.js'
 import { formatCourseRef, formatCoursePeriod } from '../lib/studentBillingRows.js';
 import { clearRowCachesForWinningRequest, createListLoadOutcome, fallbackListRows, isCurrentListRequest } from '../lib/listRefreshState.js';
 import { studentSchoolGradeLabel } from '../lib/studentSchoolGrade.js';
-import { buildContractChronology } from '../lib/contractChronology.js';
+import { buildContractChronology, contractStartDate } from '../lib/contractChronology.js';
 import { supabase } from '../supabase';
 import { authedFetch, getAccessToken } from '../lib/authedFetch';
 import { isDirectorRole } from '../lib/roleCapabilities.js';

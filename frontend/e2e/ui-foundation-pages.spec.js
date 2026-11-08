@@ -55,6 +55,9 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 1280, height: 900 
     await expect(rows).toHaveCount(5);
     expect(await rows.evaluateAll((nodes) => nodes.map((node) => Number(node.textContent.match(/Chronology(\d+)/)?.[1]))))
       .toEqual([10, 20, 30, 40, 50]);
+    for (const [index, row] of (await rows.all()).entries()) {
+      await expect(row.getByText(`開課 2026-0${index + 1}-01`, { exact: true })).toBeVisible();
+    }
     const positions = await rows.evaluateAll((nodes) => nodes.map((node) => node.getBoundingClientRect().top));
     expect(positions).toEqual([...positions].sort((a, b) => a - b));
     for (const row of await rows.all()) {
