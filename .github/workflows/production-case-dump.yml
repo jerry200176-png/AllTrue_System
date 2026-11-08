@@ -494,44 +494,129 @@ jobs:
               'read_only'=>true,
             ];
           }} elseif ($case === 'transfer_capacity_student') {{
+            // #5124: preserve the existing student/class scope; export metadata only, never assessment bodies or names.
+            $counts = [];
+            $complete = true;
+            $readRows = static function ($query, array $columns, string $key, int $cap = 2000) use (&$counts, &$complete) {{
+              $matched = (clone $query)->count();
+              $rows = $query->limit($cap)->get($columns);
+              $counts[$key] = ['matched' => $matched, 'returned' => $rows->count(), 'cap' => $cap,
+                'truncated' => $matched > $cap, 'count_changed' => $rows->count() !== min($matched, $cap)];
+              $complete = $complete && !$counts[$key]['truncated'] && !$counts[$key]['count_changed'];
+              return $rows;
+            }};
+            $date = static fn ($v) => $v === null ? null : substr((string) $v, 0, 10);
+            $hm = static fn ($v) => $v === null ? null : substr((string) $v, 0, 5);
+            $int = static fn ($v) => $v === null ? null : (int) $v;
+            $knownReasons = ['completed', 'contract_amended', 'converted_trial', 'parent_leave_rejected', 'repair_rolled_back', 'settled', 'settled_pending', 'usage_settled', 'waived', 'refunded'];
             $studentIds = $targetStudentClassId !== null
               ? $db::table('StudentClass as sc')->where('sc.ID', $targetStudentClassId)->pluck('sc.StudentID')->map(fn ($id) => (int)$id)->all()
               : $db::table('Student')->where('id', $targetStudentId)->pluck('id')->map(fn ($id) => (int)$id)->all();
             if ($studentIds === [] && $targetStudentClassId === null) {{
               $studentIds = $db::table('Student')->where('id', $targetStudentId)->pluck('id')->map(fn ($id) => (int)$id)->all();
             }}
-            $classes = $db::table('StudentClass as sc')->join('Student as st', 'st.id', '=', 'sc.StudentID')->whereIn('sc.StudentID', $studentIds)
-              ->when($targetStudentClassId !== null, fn ($query) => $query->where('sc.ID', $targetStudentClassId))
-              ->orderBy('sc.ID')->get(['sc.ID as class_id', 'sc.StudentID as student_id', 'st.CampusID as campus_id',
-                'sc.SubjectID as subject_id', 'sc.ScheduleMode as schedule_mode', 'sc.SessionCount as session_count',
-                'sc.UsedSessions as persisted_used', 'sc.RemainingSessions as persisted_remaining', 'sc.Stop as stop']);
+            $classes = $readRows($db::table('StudentClass as sc')->join('Student as st', 'st.id', '=', 'sc.StudentID')->whereIn('sc.StudentID', $studentIds)
+              ->when($targetStudentClassId !== null, fn ($query) => $query->where('sc.ID', $targetStudentClassId))->orderBy('sc.ID'),
+              ['sc.ID as class_id', 'sc.StudentID as student_id', 'st.CampusID as campus_id', 'sc.SubjectID as subject_id',
+                'sc.ScheduleMode as schedule_mode', 'sc.SessionCount as session_count', 'sc.UsedSessions as persisted_used',
+                'sc.RemainingSessions as persisted_remaining', 'sc.Stop as stop', 'sc.StartDate as start_date', 'sc.EndDate as end_date',
+                'sc.closed_reason', 'sc.settlement_locked_at', 'sc.TeacherID as teacher_id', 'sc.PackageID as package_id', 'sc.Paid as paid',
+                'sc.GradeID as grade_id', 'sc.ClassType as class_type', 'sc.by1', 'sc.SessionDuration as session_duration',
+                'sc.deduction_basis', 'sc.standard_lesson_minutes',
+                'sc.week1', 'sc.week2', 'sc.week3', 'sc.week4', 'sc.week5', 'sc.week6',
+                'sc.duration1', 'sc.duration2', 'sc.duration3', 'sc.duration4', 'sc.duration5', 'sc.duration6'], 'target_classes', 200);
             $classIds = $classes->pluck('class_id')->map(fn ($id) => (int)$id)->all();
             $diagnostics = $classIds === [] ? [] : \App\Services\SessionDeductionService::batchExpectedUsedSessionDiagnostics($classIds);
-            $sessions = $classIds === [] ? collect() : $db::table('ClassSession')->whereIn('StudentClassID', $classIds)
-              ->orderBy('StudentClassID')->orderBy('SessionDate')->orderBy('StartTime')->get(['id', 'StudentClassID as class_id', 'SessionDate as session_date', 'StartTime as start_time', 'EndTime as end_time', 'Status as status']);
-            $signins = $classIds === [] ? collect() : $db::table('StudentSingIn')->whereIn('StudentClassID', $classIds)->whereNull('VoidedAt')
-              ->get(['id', 'StudentClassID as class_id', 'ClassSessionID as session_id', 'SessionDeducted as session_deducted', 'Status as status']);
-            $ledger = $classIds === [] ? collect() : $db::table('session_deduction_ledger')->whereIn('student_class_id', $classIds)
-              ->whereIn('source', ['attendance', 'retro_leave', 'status_adjust', 'duplicate_session'])
-              ->get(['id', 'student_class_id as class_id', 'class_session_id as session_id', 'event_type', 'source', 'minutes']);
+            $sessions = $readRows($db::table('ClassSession')->whereIn('StudentClassID', $classIds)
+              ->orderBy('StudentClassID')->orderBy('SessionDate')->orderBy('StartTime')->orderBy('id'),
+              ['id', 'StudentClassID as class_id', 'SessionDate as session_date', 'StartTime as start_time', 'EndTime as end_time',
+                'Status as status', 'OriginalSessionDate as original_session_date', 'OriginalStartTimeHM as original_start_time'], 'class_sessions');
+            $signins = $readRows($db::table('StudentSingIn')->whereIn('StudentClassID', $classIds)->whereNull('VoidedAt')->orderBy('id'),
+              ['id', 'StudentClassID as class_id', 'ClassSessionID as session_id', 'TeacherID as teacher_id', 'SessionDeducted as session_deducted', 'Status as status'], 'active_signins');
+            $ledger = $readRows($db::table('session_deduction_ledger')->whereIn('student_class_id', $classIds)
+              ->whereIn('source', ['attendance', 'retro_leave', 'status_adjust', 'duplicate_session'])->orderBy('id'),
+              ['id', 'student_class_id as class_id', 'class_session_id as session_id', 'event_type', 'source', 'minutes'], 'deduction_ledger');
+            $records = $readRows($db::table('LearningRecord')->whereIn('StudentClassID', $classIds)->orderBy('id'),
+              ['id', 'StudentClassID as class_id', 'ClassSessionID as session_id', 'TeacherID as teacher_id', 'Status as status',
+                'SessionDate as session_date', 'StartTime as start_time', 'EndTime as end_time', 'VoidedAt', 'ExcludeFromSubjectCount'], 'learning_record_metadata');
+            // Load all dated/undated chain rows for this student, including retired hops. Do not chase an out-of-scope parent.
+            $schedules = $readRows($db::table('schedules')->whereIn('student_id', $studentIds)
+              ->when($targetStudentClassId !== null, fn ($query) => $query->where('student_course_id', $targetStudentClassId))->orderBy('id'),
+              ['id', 'student_id', 'student_course_id as class_id', 'branch_id as campus_id', 'teacher_id', 'day_of_week',
+                'schedule_date', 'start_time', 'end_time', 'status', 'type', 'deduction', 'original_schedule_id',
+                'original_schedule_date', 'original_start_time'], 'schedules');
+            // A historical log may outlive its schedule row. Keep all scoped-contract logs, without reading outside-scope schedules.
+            $changes = $readRows($db::table('schedule_change_log')->whereIn('student_course_id', $classIds)->orderBy('id'),
+              ['id', 'schedule_id', 'student_course_id as class_id', 'original_schedule_date', 'original_start_time',
+                'from_date', 'from_time', 'to_date', 'to_time', 'from_teacher_id', 'to_teacher_id', 'from_status', 'to_status'], 'schedule_change_metadata');
             $out['student_ids'] = $studentIds;
             $out['student_count'] = count($studentIds);
-            $out['target_classes'] = $classes->map(fn ($r) => ['class_id'=>(int)$r->class_id, 'student_id'=>(int)$r->student_id,
-              'campus_id'=>$r->campus_id === null ? null : (int)$r->campus_id, 'subject_id'=>(int)$r->subject_id,
-              'schedule_mode'=>(string)($r->schedule_mode ?? ''), 'session_count'=>(int)($r->session_count ?? 0),
-              'persisted_used'=>(int)($r->persisted_used ?? 0), 'persisted_remaining'=>(int)($r->persisted_remaining ?? 0),
-              'diagnostic'=>$diagnostics[(int)$r->class_id] ?? null, 'stop'=>(int)($r->stop ?? 0)])->values()->all();
+            $out['target_classes'] = $classes->map(function ($r) use ($diagnostics, $knownReasons, $int, $date) {{
+              $overrides = [];
+              for ($slot = 1; $slot <= 6; $slot++) {{
+                $overrides[] = ['weekday' => $int($r->{{'week'.$slot}}), 'minutes' => $int($r->{{'duration'.$slot}})];
+              }}
+              $reason = (string) ($r->closed_reason ?? '');
+              return ['class_id'=>(int)$r->class_id, 'student_id'=>(int)$r->student_id, 'campus_id'=>$int($r->campus_id),
+                'subject_id'=>(int)$r->subject_id, 'teacher_id'=>$int($r->teacher_id), 'package_id'=>$int($r->package_id),
+                'start_date'=>$date($r->start_date), 'end_date'=>$date($r->end_date),
+                'closed_reason'=>$reason === '' ? null : (in_array($reason, $knownReasons, true) ? $reason : 'other'),
+                'settlement_locked'=>$r->settlement_locked_at !== null, 'paid'=>(bool)$r->paid,
+                'schedule_mode'=>(string)($r->schedule_mode ?? ''), 'session_count'=>(int)($r->session_count ?? 0),
+                'persisted_used'=>(int)($r->persisted_used ?? 0), 'persisted_remaining'=>(int)($r->persisted_remaining ?? 0),
+                'diagnostic'=>$diagnostics[(int)$r->class_id] ?? null, 'stop'=>(int)($r->stop ?? 0),
+                'payroll_inputs'=>['grade_id'=>$int($r->grade_id), 'class_type'=>(string)($r->class_type ?? ''), 'by1'=>$int($r->by1),
+                  'session_duration_minutes'=>$int($r->session_duration), 'weekday_duration_overrides'=>$overrides],
+                'deduction_basis'=>(string)($r->deduction_basis ?? ''), 'standard_lesson_minutes'=>$int($r->standard_lesson_minutes)];
+            }})->values()->all();
             $out['class_sessions'] = $sessions->map(fn ($r) => ['id'=>(int)$r->id, 'class_id'=>(int)$r->class_id,
-              'session_date'=>(string)$r->session_date, 'start_time'=>substr((string)$r->start_time, 0, 5),
-              'end_time'=>substr((string)$r->end_time, 0, 5), 'status'=>(string)$r->status])->values()->all();
+              'session_date'=>$date($r->session_date), 'start_time'=>$hm($r->start_time), 'end_time'=>$hm($r->end_time),
+              'status'=>(string)$r->status, 'original_session_date'=>$date($r->original_session_date), 'original_start_time'=>$hm($r->original_start_time)])->values()->all();
             $out['active_signins'] = $signins->map(fn ($r) => ['id'=>(int)$r->id, 'class_id'=>(int)$r->class_id,
-              'session_id'=>$r->session_id === null ? null : (int)$r->session_id, 'session_deducted'=>(bool)$r->session_deducted,
+              'session_id'=>$int($r->session_id), 'teacher_id'=>$int($r->teacher_id), 'session_deducted'=>(bool)$r->session_deducted,
               'status'=>(string)($r->status ?? '')])->values()->all();
             $out['deduction_ledger'] = $ledger->map(fn ($r) => ['id'=>(int)$r->id, 'class_id'=>(int)$r->class_id,
-              'session_id'=>$r->session_id === null ? null : (int)$r->session_id, 'event_type'=>(string)$r->event_type,
-              'source'=>(string)$r->source, 'minutes'=>$r->minutes === null ? null : (int)$r->minutes])->values()->all();
-            $out['verification'] = ['student_found'=>count($studentIds) > 0, 'read_only'=>true,
+              'session_id'=>$int($r->session_id), 'event_type'=>(string)$r->event_type, 'source'=>(string)$r->source,
+              'minutes'=>$int($r->minutes)])->values()->all();
+            $out['learning_record_metadata'] = $records->map(fn ($r) => ['id'=>(int)$r->id, 'class_id'=>(int)$r->class_id,
+              'session_id'=>$int($r->session_id), 'teacher_id'=>$int($r->teacher_id), 'status'=>(string)$r->status,
+              'session_date'=>$date($r->session_date), 'start_time'=>$hm($r->start_time), 'end_time'=>$hm($r->end_time),
+              'voided'=>$r->VoidedAt !== null, 'exclude_from_subject_count'=>$r->ExcludeFromSubjectCount === null ? null : (bool)$r->ExcludeFromSubjectCount])->values()->all();
+            $out['schedules'] = $schedules->map(fn ($r) => ['id'=>(int)$r->id, 'student_id'=>(int)$r->student_id,
+              'class_id'=>$int($r->class_id), 'campus_id'=>$int($r->campus_id), 'teacher_id'=>$int($r->teacher_id), 'day_of_week'=>$int($r->day_of_week),
+              'schedule_date'=>$date($r->schedule_date), 'start_time'=>$hm($r->start_time), 'end_time'=>$hm($r->end_time),
+              'status'=>(string)$r->status, 'type'=>(string)$r->type, 'deduction'=>$int($r->deduction),
+              'original_schedule_id'=>$int($r->original_schedule_id), 'original_schedule_date'=>$date($r->original_schedule_date),
+              'original_start_time'=>$hm($r->original_start_time)])->values()->all();
+            $out['schedule_change_metadata'] = $changes->map(fn ($r) => ['id'=>(int)$r->id, 'schedule_id'=>(int)$r->schedule_id, 'class_id'=>(int)$r->class_id,
+              'original_schedule_date'=>$date($r->original_schedule_date), 'original_start_time'=>$hm($r->original_start_time),
+              'from_date'=>$date($r->from_date), 'from_time'=>$hm($r->from_time), 'to_date'=>$date($r->to_date), 'to_time'=>$hm($r->to_time),
+              'from_teacher_id'=>$int($r->from_teacher_id), 'to_teacher_id'=>$int($r->to_teacher_id),
+              'from_status'=>(string)($r->from_status ?? ''), 'to_status'=>(string)($r->to_status ?? '')])->values()->all();
+            $scheduleById = $schedules->keyBy('id');
+            $unresolvedLogRows = $changes->filter(fn ($row) => !$scheduleById->has((int) $row->schedule_id));
+            $unresolvedLogScheduleIds = $unresolvedLogRows->pluck('schedule_id')->map(fn ($id) => (int) $id)->unique()->sort()->values()->all();
+            $unresolvedParents = $cycleIds = [];
+            foreach ($schedules as $row) {{
+              $parentId = (int) ($row->original_schedule_id ?? 0);
+              if ($parentId > 0 && !$scheduleById->has($parentId)) {{ $unresolvedParents[$parentId] = $parentId; }}
+              $seen = [];
+              $cursor = (int) $row->id;
+              while ($cursor > 0 && $scheduleById->has($cursor)) {{
+                if (isset($seen[$cursor])) {{ $cycleIds[$cursor] = $cursor; break; }}
+                $seen[$cursor] = true;
+                $cursor = (int) ($scheduleById->get($cursor)->original_schedule_id ?? 0);
+              }}
+            }}
+            $out['counts'] = $counts;
+            $out['verification'] = ['student_found'=>count($studentIds) > 0, 'read_only'=>true, 'rows_complete'=>$complete,
+              'lineage_complete_within_loaded_scope'=>$complete && $unresolvedParents === [] && $cycleIds === [] && $unresolvedLogScheduleIds === [],
+              'unresolved_parent_ids'=>array_values($unresolvedParents), 'cycle_ids'=>array_values($cycleIds),
+              'unresolved_log_schedule_ids'=>$unresolvedLogScheduleIds, 'unresolved_log_schedule_count'=>count($unresolvedLogScheduleIds), 'unresolved_log_rows'=>$unresolvedLogRows->count(),
+              'external_student_or_contract_lineage_not_queried'=>true,
+              'assessment_content_exported'=>false, 'teacher_lock_still_requires_domain_guard'=>true,
               'future_scheduled_session_ids'=>$sessions->filter(fn ($r) => strtolower((string)$r->status) === 'scheduled' && (string)$r->session_date > now()->toDateString())->pluck('id')->map(fn ($id) => (int)$id)->values()->all()];
+            if (!$complete) {{ $out['ok'] = false; $out['error'] = 'scoped_rows_truncated_or_changed'; }}
           }} elseif ($case === 'monthly_slip_student') {{
             // Read-only, Founder GO 2026-10-02: why two 木柵 monthly slips show no lesson dates.
             // Scope: CampusID 16 and the approved student-ID allowlist only; the dispatched id is

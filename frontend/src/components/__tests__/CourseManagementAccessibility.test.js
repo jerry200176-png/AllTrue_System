@@ -26,10 +26,10 @@ describe('CourseManagement disclosure accessibility', () => {
 
   it('makes history courses a proper disclosure with a stable controlled region', () => {
     expect(source).toContain('class="history-section__toggle"');
-    expect(source).toContain(':aria-expanded="expandedHistoryGroups.has(group.key)"');
-    expect(source).toContain(':aria-controls="historyGroupPanelId(group.key)"');
-    expect(source).toContain(':id="historyGroupPanelId(group.key)"');
-    expect(source).toContain('const historyGroupPanelId = (key)');
+    expect(source).toContain(':aria-expanded="expandedHistoryGroups.has(historySegmentKey(group.key, segment.key))"');
+    expect(source).toContain(':aria-controls="historyGroupPanelId(group.key, segment.key)"');
+    expect(source).toContain(':id="historyGroupPanelId(group.key, segment.key)"');
+    expect(source).toContain('const historyGroupPanelId = (key, segmentKey)');
   });
 
   it('supports keyboard navigation and focus restoration for More menus without changing menu actions', () => {

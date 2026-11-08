@@ -24,6 +24,56 @@ const viewports = [
   { name: '1440', width: 1440, height: 900 },
 ];
 
+// Real page regression for #5124: history must remain in its chronological position.
+for (const viewport of [{ width: 390, height: 844 }, { width: 1280, height: 900 }]) {
+  test(`course chronology across working/history segments @${viewport.width}`, async ({ page }) => {
+    await page.setViewportSize(viewport);
+    // Every response is synthetic. Any unmocked external request is blocked.
+    await page.route('**/*', (route) => ['127.0.0.1', 'localhost'].includes(new URL(route.request().url()).hostname)
+      ? route.fallback() : route.abort('blockedbyclient'));
+    await installApiMocks(page, 'normal', 'course');
+    const contract = (id, reason = null) => ({
+      id, student_id: 900493, student_name: '合成學生', teacher_name: `Chronology${id}`,
+      subject: 'english', first_class_date: `2026-0${id / 10}-01`, status: reason ? 'inactive' : 'active',
+      history_reason: reason, closed_reason: reason, is_active_course: !reason,
+      ScheduleMode: 'count', payment_type: 'session', sessions_purchased: 8,
+      sessions_used: reason ? 8 : 3, remaining_sessions: reason ? 0 : 5, payment_status: 'paid',
+    });
+    await page.route('**/api/v1/student-classes?**', (route) => route.fulfill({ json: {
+      data: [contract(50), contract(40, 'completed'), contract(30), contract(20, 'settled'), contract(10)],
+      total: 5, current_page: 1, last_page: 1,
+    } }));
+    await page.goto('/pilot-mount.html?page=course&mode=normal');
+    await expect(page.locator('html')).toHaveAttribute('data-pilot-ready', '1');
+    await dismissOverlays(page);
+    const toggles = page.locator('.history-section__toggle');
+    await expect(toggles).toHaveCount(2);
+    const targets = await toggles.evaluateAll((buttons) => buttons.map((button) => button.getAttribute('aria-controls')));
+    expect(new Set(targets).size).toBe(2);
+    for (const toggle of await toggles.all()) await toggle.click();
+    const rows = page.locator('.course-row, .history-course-card');
+    await expect(rows).toHaveCount(5);
+    expect(await rows.evaluateAll((nodes) => nodes.map((node) => Number(node.textContent.match(/Chronology(\d+)/)?.[1]))))
+      .toEqual([10, 20, 30, 40, 50]);
+    for (const [index, row] of (await rows.all()).entries()) {
+      await expect(row.getByText(`開課 2026-0${index + 1}-01`, { exact: true })).toBeVisible();
+    }
+    const positions = await rows.evaluateAll((nodes) => nodes.map((node) => node.getBoundingClientRect().top));
+    expect(positions).toEqual([...positions].sort((a, b) => a - b));
+    for (const row of await rows.all()) {
+      await row.scrollIntoViewIfNeeded();
+      await expect(row).toBeInViewport();
+    }
+    for (const id of targets) await expect(page.locator(`[id="${id}"]`)).toHaveCount(1);
+    const bounds = await page.locator('.group-table-wrap').first().boundingBox();
+    expect(bounds.x).toBeGreaterThanOrEqual(0);
+    expect(bounds.x + bounds.width).toBeLessThanOrEqual(viewport.width + 1);
+    await rows.first().scrollIntoViewIfNeeded();
+    fs.mkdirSync(outDir, { recursive: true });
+    await page.screenshot({ path: path.join(outDir, `course-chronology-${viewport.width}.png`), fullPage: true });
+  });
+}
+
 async function openPilot(page, { pageName, mode, viewport, authProfile = null }) {
   await page.setViewportSize({ width: viewport.width, height: viewport.height });
   const mocks = await installApiMocks(page, mode, pageName, authProfile, authProfile?.onAuthRequest);
