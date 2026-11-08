@@ -24,9 +24,9 @@ const viewports = [
   { name: '1440', width: 1440, height: 900 },
 ];
 
-// Real page regression for #5124: history must remain in its chronological position.
+// #527: outer contracts follow creation/ID newest-first; opening dates remain display metadata.
 for (const viewport of [{ width: 390, height: 844 }, { width: 1280, height: 900 }]) {
-  test(`course chronology across working/history segments @${viewport.width}`, async ({ page }) => {
+  test(`newest contracts across working/history segments @${viewport.width}`, async ({ page }) => {
     await page.setViewportSize(viewport);
     // Every response is synthetic. Any unmocked external request is blocked.
     await page.route('**/*', (route) => ['127.0.0.1', 'localhost'].includes(new URL(route.request().url()).hostname)
@@ -34,7 +34,7 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 1280, height: 900 
     await installApiMocks(page, 'normal', 'course');
     const contract = (id, reason = null) => ({
       id, student_id: 900493, student_name: '合成學生', teacher_name: `Chronology${id}`,
-      subject: 'english', first_class_date: `2026-0${id / 10}-01`, status: reason ? 'inactive' : 'active',
+      subject: 'english', first_class_date: id === 50 ? '2025-01-01' : `2026-0${id / 10}-01`, status: reason ? 'inactive' : 'active',
       history_reason: reason, closed_reason: reason, is_active_course: !reason,
       ScheduleMode: 'count', payment_type: 'session', sessions_purchased: 8,
       sessions_used: reason ? 8 : 3, remaining_sessions: reason ? 0 : 5, payment_status: 'paid',
@@ -54,9 +54,10 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 1280, height: 900 
     const rows = page.locator('.course-row, .history-course-card');
     await expect(rows).toHaveCount(5);
     expect(await rows.evaluateAll((nodes) => nodes.map((node) => Number(node.textContent.match(/Chronology(\d+)/)?.[1]))))
-      .toEqual([10, 20, 30, 40, 50]);
+      .toEqual([50, 40, 30, 20, 10]);
     for (const [index, row] of (await rows.all()).entries()) {
-      await expect(row.getByText(`開課 2026-0${index + 1}-01`, { exact: true })).toBeVisible();
+      const date = ['2025-01-01', '2026-04-01', '2026-03-01', '2026-02-01', '2026-01-01'][index];
+      await expect(row.getByText(`開課 ${date}`, { exact: true })).toBeVisible();
     }
     const positions = await rows.evaluateAll((nodes) => nodes.map((node) => node.getBoundingClientRect().top));
     expect(positions).toEqual([...positions].sort((a, b) => a - b));
