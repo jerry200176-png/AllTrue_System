@@ -2,7 +2,7 @@
   <div class="course-page at-page course-workbench tw:text-tpl-body">
     <header class="tpl-bar course-workbench__header tw:mb-4 tw:flex tw:flex-wrap tw:items-start tw:justify-between tw:gap-4" data-guide="course-mgmt-header">
       <div class="course-workbench__intro tw:min-w-0 tw:flex-1">
-        <h1 class="tw:text-[length:var(--tpl-text-page)] tw:font-bold tw:leading-tight">課程合約</h1>
+        <h1 class="tw:text-[length:var(--tpl-text-page)] tw:font-bold tw:leading-tight">課程查找</h1>
         <p class="course-workbench__description tw:mt-1 tw:text-[length:var(--tpl-text-body)] tw:text-tpl-secondary">管理「課」：查找課程、排課、堂次與續課。</p>
         <p class="course-workbench__context tw:mt-1 tw:text-[length:var(--tpl-text-caption)] tw:text-tpl-secondary">
           <span>目前列表 {{ coursesLoading && !groupedCourses.length ? '—' : groupedCourses.length }} 位學生</span>
