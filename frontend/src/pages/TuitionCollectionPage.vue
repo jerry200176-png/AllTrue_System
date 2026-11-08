@@ -73,7 +73,7 @@
         :can-docs="canWaive"
         :export-disabled="csvExporting"
         @batch="onBillBatch"
-        @export="exportCSV"
+        @export="exportBills"
         @student="(b) => openBillLedger(b, null)"
         @quick="onBillQuick"
         @action="onBillAction"
@@ -708,6 +708,7 @@ import { isDirectorRole } from '../lib/roleCapabilities.js';
 import { summarizeBatchResults } from '../lib/batchResultSummary.js';
 import { useToast } from '../composables/useToast';
 import { authedFetch } from '../lib/authedFetch.js';
+import { exportBillsXlsx } from '../lib/billExport.js';
 import * as paymentActions from '../lib/paymentActions.js';
 import MonthlyBillingReview from '../components/MonthlyBillingReview.vue';
 import MonthlyDraftsPanel from '../components/tuition/MonthlyDraftsPanel.vue';
@@ -1359,34 +1360,17 @@ function openLedgerForReport(row) {
 
 // ═══ CSV Export ═══
 const csvExporting = ref(false);
-function exportCSV(data) {
-  if (!data.length) return;
+async function exportBills(payload) {
+  if (!payload.items.length || csvExporting.value) return;
   csvExporting.value = true;
-  const headers = ['學生姓名', '科目', '模式', '狀態', '應繳', '已繳', '未繳', '最近付款日', '到期日', '逾期天數'];
-  const csvRows = data.map(r => [
-    r.student_name || '',
-    r.subject || '',
-    r.schedule_mode === 'date' ? '月結' : '堂數',
-    statusLabel(r),
-    r.payable_status === 'invoiced' ? r.payable_amount ?? '' : '',
-    r.paid_amount ?? '',
-    r.payable_status === 'invoiced' ? r.payable_outstanding ?? '' : '',
-    r.last_paid_at || '',
-    r.due_date || '',
-    (r.days_until_settlement != null && r.days_until_settlement < 0) ? Math.abs(r.days_until_settlement) : '',
-  ]);
-  const bom = '\uFEFF';
-  const csv = bom + [headers, ...csvRows].map(row => row.map(c => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\n');
-  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  const d = new Date();
-  const ymd = `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`;
-  a.href = url;
-  a.download = `催繳名單_${ymd}.csv`;
-  a.click();
-  URL.revokeObjectURL(url);
-  setTimeout(() => { csvExporting.value = false; }, 500);
+  try {
+    await exportBillsXlsx({ branchId: props.branchId, ...payload });
+    showToast(`已匯出 ${payload.items.length} 筆`);
+  } catch (e) {
+    showToast(humanizeApiErrorMessage(e.message, '匯出失敗'), 'error');
+  } finally {
+    csvExporting.value = false;
+  }
 }
 
 async function loadAlerts({ quiet = false } = {}) {

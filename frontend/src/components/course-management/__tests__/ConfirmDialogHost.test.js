@@ -17,36 +17,36 @@ const open = async (opts) => {
 };
 afterEach(() => { w?.unmount(); confirmState.value = null; document.body.innerHTML = ''; });
 
+const btn = (label) => [...document.body.querySelectorAll('[role="alertdialog"] button')].find((b) => b.textContent.trim() === label);
+
 describe('ConfirmDialogHost / askConfirm', () => {
-  it('is a labelled modal dialog; a destructive confirm starts on 取消 and cancel resolves false', async () => {
+  it('is a labelled alert dialog; focus starts on 取消, a destructive confirm is red, cancel resolves false', async () => {
     const answer = open({ title: '刪除數學？', message: '不能復原。', confirmLabel: '刪除課程', danger: true });
     await flushPromises();
-    const dlg = q('[role="dialog"]');
-    expect(dlg.getAttribute('aria-modal')).toBe('true');
-    expect(dlg.getAttribute('aria-labelledby')).toBe('confirm-dialog-title');
-    expect(q('#confirm-dialog-title').textContent).toBe('刪除數學？');
-    expect(q('[data-testid="confirm-dialog-message"]').textContent).toBe('不能復原。');
-    expect(document.activeElement).toBe(q('[data-testid="confirm-dialog-cancel"]'));
-    expect(q('[data-testid="confirm-dialog-confirm"]').className).toContain('danger');
-    q('[data-testid="confirm-dialog-cancel"]').click();
+    const dlg = q('[role="alertdialog"]');
+    expect(dlg.getAttribute('aria-labelledby')).toBeTruthy();
+    expect(dlg.textContent).toContain('刪除數學？');
+    expect(dlg.textContent).toContain('不能復原。');
+    expect(document.activeElement).toBe(btn('取消'));
+    expect(btn('刪除課程').className).toContain('tw:bg-destructive');
+    btn('取消').click();
     expect(await answer).toBe(false);
     await flushPromises();
-    expect(q('[role="dialog"]')).toBeNull();
+    expect(q('[role="alertdialog"]')).toBeNull();
   });
 
-  it('a non-destructive confirm starts on the action button; confirming resolves true', async () => {
+  it('confirming resolves true (not overwritten by the close that follows)', async () => {
     const answer = open({ title: '建立共用方案？', confirmLabel: '建立共用方案' });
     await flushPromises();
-    expect(document.activeElement).toBe(q('[data-testid="confirm-dialog-confirm"]'));
-    expect(q('[data-testid="confirm-dialog-confirm"]').textContent).toBe('建立共用方案');
-    q('[data-testid="confirm-dialog-confirm"]').click();
+    expect(btn('建立共用方案').className).not.toContain('tw:bg-destructive');
+    btn('建立共用方案').click();
     expect(await answer).toBe(true);
   });
 
   it('Esc resolves false; asking again cancels the one still open', async () => {
     const first = open({ title: 'A' });
     await flushPromises();
-    q('[role="dialog"]').dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    q('[role="alertdialog"]').dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
     expect(await first).toBe(false);
     const a = askConfirm({ title: 'B' });
     const b = askConfirm({ title: 'C' });

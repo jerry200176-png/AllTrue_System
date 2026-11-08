@@ -262,6 +262,8 @@
             tabindex="0"
             :aria-labelledby="studentGroupTabId(group.key, 'courses')"
           >
+            <template v-for="segment in chronologicalCourseSegments(group)" :key="segment.key">
+            <template v-if="segment.kind === 'working'">
             <table class="course-table course-table--simple">
               <thead>
                 <tr>
@@ -284,7 +286,7 @@
                     </td>
                   </tr>
                 </template>
-                <template v-for="c in activeCourses(group)" :key="c.id">
+                <template v-for="c in segment.courses" :key="c.id">
                   <!-- Full-width status strip for paused courses (enterprise-style notice row) -->
                   <tr v-if="c.status === 'inactive' && !effectiveClosedReason(c)" class="paused-notice-row" role="status">
                     <td colspan="5" class="paused-notice-td">
@@ -318,6 +320,7 @@
                         >⚠ 堂數待對帳 <span class="tag-usage-review__action">查看對帳明細</span></button>
                       </div>
                       <small class="class-type-line"><span class="status-tag" :class="c.class_type">{{ classTypeLabel(c.class_type) }}</span></small>
+                      <small class="class-type-line">開課 {{ contractStartDate(c) || '未填' }}</small>
                       <!-- Warnings stay in the always-visible first cell so the phone layout never hides them. -->
                       <div class="row-warnings" data-testid="row-warnings">
                       <!-- #2007 phase 2: up to 3 warning badges used to stack inline after the
@@ -539,26 +542,27 @@
                 </template>
               </tbody>
             </table>
+            </template>
             <!-- History courses collapsible section -->
-            <div v-if="historyCourses(group).length" class="history-section">
+            <div v-else class="history-section">
               <button
                 type="button"
                 class="history-section__toggle"
-                :aria-expanded="expandedHistoryGroups.has(group.key)"
-                :aria-controls="historyGroupPanelId(group.key)"
-                @click="toggleHistoryGroup(group.key)"
+                :aria-expanded="expandedHistoryGroups.has(historySegmentKey(group.key, segment.key))"
+                :aria-controls="historyGroupPanelId(group.key, segment.key)"
+                @click="toggleHistoryGroup(historySegmentKey(group.key, segment.key))"
               >
                 <span class="material-symbols-outlined history-section__icon" aria-hidden="true">inventory_2</span>
                 <span class="history-section__label">歷史課程</span>
-                <span class="history-section__count">{{ historyCourses(group).length }} 筆</span>
-                <span class="history-section__chevron">{{ expandedHistoryGroups.has(group.key) ? '▲' : '▼' }}</span>
+                <span class="history-section__count">{{ segment.courses.length }} 筆</span>
+                <span class="history-section__chevron">{{ expandedHistoryGroups.has(historySegmentKey(group.key, segment.key)) ? '▲' : '▼' }}</span>
               </button>
               <div
-                v-if="expandedHistoryGroups.has(group.key)"
-                :id="historyGroupPanelId(group.key)"
+                v-if="expandedHistoryGroups.has(historySegmentKey(group.key, segment.key))"
+                :id="historyGroupPanelId(group.key, segment.key)"
                 class="history-section__body"
               >
-                <div v-for="hc in historyCourses(group)" :key="hc.id" class="history-course-card">
+                <div v-for="hc in segment.courses" :key="hc.id" class="history-course-card">
                   <div class="history-course-card__header">
                     <span class="tag subject-tag history-course-card__subject">{{ getSubjectLabel(hc.subject) }}</span>
                     <span class="status-tag" :class="hc.class_type">{{ classTypeLabel(hc.class_type) }}</span>
@@ -580,6 +584,7 @@
                     >⚠ 堂數待對帳 <span class="tag-usage-review__action">查看對帳明細</span></button>
                   </div>
                   <div class="history-course-card__details">
+                    <span class="history-course-card__detail"><span class="history-course-card__detail-label">開課</span> {{ contractStartDate(hc) || '未填' }}</span>
                     <span class="history-course-card__detail"><span class="history-course-card__detail-label">老師</span> {{ hc.teacher_name || '—' }}</span>
                     <span class="history-course-card__detail"><span class="history-course-card__detail-label">費用</span> ${{ totalPrice(hc) }}（{{ getRateUnitDisplayLabel(hc) }} ${{ sessionPrice(hc) }}）</span>
                     <span class="history-course-card__detail"><span class="history-course-card__detail-label">堂數</span> <template v-if="isPackageMember(hc)">已上 {{ getCompletedSessionCount(hc) }} 堂｜方案共用 {{ getPackageTotalSessions(hc) }} 堂</template><template v-else>已上 {{ getCompletedSessionCount(hc) }}<template v-if="isSessionMode(hc)"> / 購買 {{ getPurchasedSessions(hc) }}</template> 堂</template></span>
@@ -643,6 +648,7 @@
                 </div>
               </div>
             </div>
+            </template>
           </div>
           <div
             v-if="expandedStudentGroups.has(group.key) && studentGroupTab(group.key) === 'billing'"
@@ -1359,6 +1365,7 @@ import { isCourseSettled, isPaymentNoticeStatus } from '../lib/paymentStatus.js'
 import { formatCourseRef, formatCoursePeriod } from '../lib/studentBillingRows.js';
 import { clearRowCachesForWinningRequest, createListLoadOutcome, fallbackListRows, isCurrentListRequest } from '../lib/listRefreshState.js';
 import { studentSchoolGradeLabel } from '../lib/studentSchoolGrade.js';
+import { buildContractChronology, contractStartDate } from '../lib/contractChronology.js';
 import { supabase } from '../supabase';
 import { authedFetch, getAccessToken } from '../lib/authedFetch';
 import { isDirectorRole } from '../lib/roleCapabilities.js';
@@ -4191,7 +4198,8 @@ const domKey = (key) => String(key ?? '').replace(/[^a-zA-Z0-9_-]/g, '-');
 const studentGroupToggleId = (key) => `student-group-toggle-${domKey(key)}`;
 const studentGroupPanelId = (key, tab) => `student-group-panel-${tab}-${domKey(key)}`;
 const studentGroupTabId = (key, tab) => `student-group-tab-${tab}-${domKey(key)}`;
-const historyGroupPanelId = (key) => `student-history-panel-${domKey(key)}`;
+const historySegmentKey = (key, segmentKey) => `${key}:${segmentKey}`;
+const historyGroupPanelId = (key, segmentKey) => `student-history-panel-${domKey(key)}-${domKey(segmentKey)}`;
 
 const resetExpandedStudentGroups = (groups = groupedCourses.value) => {
   expandedStudentGroups.value = new Set(groups.map((g) => g.key));
@@ -4209,6 +4217,12 @@ const groupHasPausedCourse = (group) =>
 
 const activeCourses = (group) => (group?.courses || []).filter(c => !isCourseManagementHistory(c));
 const historyCourses = (group) => (group?.courses || []).filter(c => isCourseManagementHistory(c));
+const chronologicalCourseSegments = (group) => {
+  const segments = buildContractChronology(group?.courses || []);
+  // Retain the existing "no active courses" hint when this loaded group contains only history.
+  if (!segments.some((segment) => segment.kind === 'working')) segments.unshift({ kind: 'working', key: 'empty-working', courses: [] });
+  return segments;
+};
 
 // #2007/#2006: a renewal that left the old course open shows up here as two
 // "進行中" rows fighting over the same teacher slot. Paused rows remain in
