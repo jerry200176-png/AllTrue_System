@@ -156,6 +156,50 @@ class BillExportTest extends TestCase
         $this->assertMatchesRegularExpression('#<c r="G2"[^>]*><v>0</v></c>#', $sheet);
     }
 
+    public function test_real_download_has_xlsx_headers_and_round_trips_only_the_requested_rows(): void
+    {
+        Campus::firstOrCreate(['id' => 1], ['name' => '合成分校', 'code' => 'fixture', 'LineNotifyID' => '', 'Client_ID' => '', 'Client_Secret' => '', 'LIFFID' => '', 'LIFF_URL' => '', 'URL' => '', 'TelegramURL' => '', 'TeachLIFFID' => '', 'TeachLIFF_URL' => '']);
+        Campus::query()->whereKey(1)->update(['code' => 'fixture']);
+        $shown = $this->owing('=1+1');
+        $this->owing('不在匯出範圍');
+        $before = $shown->fresh()->getAttributes();
+
+        // Exercise the actual HTTP response and XLSX writer, without Excel::fake().
+        $filename = '帳務-fixture-' . now('Asia/Taipei')->format('Ymd') . '.xlsx';
+        $response = $this->export($this->token([1]), $this->body([['id' => $shown->ID]]))
+            ->assertOk()
+            ->assertDownload()
+            ->assertHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        // Laravel's filename assertion reads the ASCII fallback; browsers use the RFC5987 UTF-8 filename.
+        $this->assertStringContainsString("filename*=utf-8''" . rawurlencode($filename), $response->headers->get('Content-Disposition'));
+        $this->assertInstanceOf(\Symfony\Component\HttpFoundation\BinaryFileResponse::class, $response->baseResponse);
+        $path = $response->baseResponse->getFile()->getPathname();
+        $binder = \PhpOffice\PhpSpreadsheet\Cell\Cell::getValueBinder();
+        $workbook = null;
+        try {
+            // The writer leaves its text-safe binder installed; read the saved file like a separate consumer.
+            \PhpOffice\PhpSpreadsheet\Cell\Cell::setValueBinder(new \PhpOffice\PhpSpreadsheet\Cell\DefaultValueBinder());
+            $workbook = \PhpOffice\PhpSpreadsheet\IOFactory::load($path);
+            $this->assertSame(1, $workbook->getSheetCount());
+            $sheet = $workbook->getSheet(0);
+            $this->assertSame(['學生', '科目', '期間／剩幾堂', '狀態', '到期／逾期', '應收', '已收', '未收'], $sheet->rangeToArray('A1:H1')[0]);
+            $this->assertSame(2, $sheet->getHighestDataRow());
+            $this->assertSame('=1+1', $sheet->getCell('A2')->getValue());
+            $this->assertSame(\PhpOffice\PhpSpreadsheet\Cell\DataType::TYPE_STRING, $sheet->getCell('A2')->getDataType());
+            $this->assertSame(\PhpOffice\PhpSpreadsheet\Cell\DataType::TYPE_NUMERIC, $sheet->getCell('G2')->getDataType());
+            $this->assertSame(0, $sheet->getCell('G2')->getValue());
+            $this->assertSame($sheet->getCell('G2')->getValue() + $sheet->getCell('H2')->getValue(), $sheet->getCell('F2')->getValue());
+            $this->assertSame($before, $shown->fresh()->getAttributes());
+            $this->assertSame(1, DB::table('security_audit_events')->where('event_type', 'billing.export')->count());
+        } finally {
+            $workbook?->disconnectWorksheets();
+            \PhpOffice\PhpSpreadsheet\Cell\Cell::setValueBinder($binder);
+            if (is_file($path)) {
+                unlink($path);
+            }
+        }
+    }
+
     /** Same fixtures as frontend/src/lib/__tests__/billRowsParity.test.js: the PHP cells equal what billRows.js shows. */
     public function test_cells_match_the_list_rules_on_the_shared_fixtures(): void
     {
