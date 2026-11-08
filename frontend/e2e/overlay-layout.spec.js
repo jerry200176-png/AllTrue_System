@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { readFileSync } from 'node:fs';
 const fixture = '/overlay-layout.html';
 const dialog = '[data-slot="dialog-content"]';
 const alert = '[role="alertdialog"]';
@@ -161,5 +162,41 @@ for (const scenario of [{ height: 480, rootSize: 32 }, { height: 240, rootSize: 
     await expect(panel).toHaveCSS('display', 'block');
     await page.locator('#field-1').focus();
     await unobscured(page.locator('#field-1'));
+  });
+}
+
+// #5094: preserve the legacy global toast boundary while the real export error leaves its modal open.
+const learningModalZ = Number(readFileSync(new URL('../src/pages/LearningRecordsPage.vue', import.meta.url), 'utf8')
+  .match(/:deep\(\.lr-modal-overlay\)\s*\{\s*z-index:\s*(\d+)/)[1]);
+for (const viewport of [{ width: 1280, height: 900 }, { width: 390, height: 844 }]) {
+  test(`export error toast stays above learning modal at ${viewport.width}px`, async ({ page }) => {
+    await page.setViewportSize(viewport);
+    await page.addInitScript(() => {
+      localStorage.setItem('alltrue_session', JSON.stringify({ access_token: 'synthetic-overlay-only' }));
+    });
+    await page.route('**/api/v1/learning-records?**', (route) => route.fulfill({
+      status: 500, contentType: 'application/json', body: JSON.stringify({ message: 'Synthetic query failure' }),
+    }));
+    await page.goto(fixture);
+    await page.evaluate((value) => document.documentElement.style.setProperty('--fixture-lr-modal-z', String(value)), learningModalZ);
+    await page.getByRole('button', { name: '開啟評量匯出', exact: true }).click();
+    const modal = page.locator('.lr-modal-overlay');
+    await expect(modal).toBeVisible();
+    await expect(modal).toHaveCSS('z-index', String(learningModalZ));
+    await page.getByRole('button', { name: '開始匯出', exact: true }).click();
+    const toast = page.locator('.at-toast--error');
+    await expect(toast).toContainText('查詢評量資料失敗');
+    await expect(modal).toBeVisible();
+    await expect(page.getByRole('button', { name: '開始匯出', exact: true })).toBeEnabled();
+    await settled(page.locator('.at-toast-stack'));
+    expect(await z(page.locator('.at-toast-stack'))).toBeGreaterThan(learningModalZ);
+    const close = toast.getByRole('button', { name: '關閉', exact: true });
+    expect(await close.evaluate((el) => {
+      const r = el.getBoundingClientRect();
+      return document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2)?.closest('.at-toast') === el.closest('.at-toast');
+    })).toBe(true);
+    await close.click();
+    await expect(toast).toHaveCount(0);
+    await expect(modal).toBeVisible();
   });
 }
