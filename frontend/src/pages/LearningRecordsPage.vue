@@ -786,6 +786,7 @@
                 <button v-if="canApprove(record)" type="button" class="primary xs" @click="approveRecord(record)">核准</button>
                 <button v-if="canRequestChanges(record)" type="button" class="ghost xs" @click="requestChangesRecord(record)">需修改</button>
                 <button v-if="canReject(record)" type="button" class="danger xs" @click="rejectRecord(record)">退回</button>
+                <button v-if="canRollbackApproval(record)" type="button" class="ghost xs" :disabled="isRollingBack(record) || submitInFlight" @click="rollbackApproval(record)">{{ isRollingBack(record) ? '處理中…' : '退回待審' }}</button>
               </div>
             </article>
           </div>
@@ -955,7 +956,7 @@
                           <button v-if="canApprove(record)" type="button" class="primary xs" @click="approveRecord(record)">核准</button>
                           <button v-if="canRequestChanges(record)" type="button" class="ghost xs" @click="requestChangesRecord(record)">需修改</button>
                           <button v-if="canReject(record)" type="button" class="danger xs" @click="rejectRecord(record)">退回</button>
-                          <button v-if="canRollbackApproval(record)" type="button" class="ghost xs" @click="rollbackApproval(record)">退回待審</button>
+                          <button v-if="canRollbackApproval(record)" type="button" class="ghost xs" :disabled="isRollingBack(record) || submitInFlight" @click="rollbackApproval(record)">{{ isRollingBack(record) ? '處理中…' : '退回待審' }}</button>
                           <button v-if="canDelete(record)" type="button" class="danger xs" @click="deleteRecord(record)">刪除</button>
                         </div>
                       </td>
@@ -1394,7 +1395,10 @@
           <!-- Actions: fixed footer inside modal (mobile-safe; avoids overlap with sticky/chrome) -->
           <div class="lr-form-actions lr-form-actions--modal-footer">
             <button type="button" class="ghost" @click="closeModal">關閉</button>
-            <button v-if="!isReadOnly" type="submit" class="primary" :disabled="submitInFlight">
+            <button v-if="isEditing && canRollbackApproval(_activeRecordRef)" type="button" class="ghost" :disabled="isRollingBack(_activeRecordRef) || submitInFlight" @click="rollbackApproval(_activeRecordRef)">
+              {{ isRollingBack(_activeRecordRef) ? '處理中…' : '退回待審' }}
+            </button>
+            <button v-if="!isReadOnly" type="submit" class="primary" :disabled="submitInFlight || isRollingBack(_activeRecordRef)">
               {{ submitInFlight ? '儲存中…' : (isEditing ? '儲存變更' : '提交評量') }}
             </button>
             <p v-if="submitError" class="lr-time-lock-note" role="alert">{{ submitError }}</p>
@@ -1577,6 +1581,7 @@ import {
 } from '../lib/learningRecordDrafts';
 import { createLearningRecordSaver } from '../composables/useLearningRecordSave';
 import { useSelection } from '../composables/useSelection';
+import { useLearningRecordRollback } from '../composables/useLearningRecordRollback';
 
 const props = defineProps(['branchId', 'userRole', 'userId', 'targetRecordId', 'targetSession', 'targetStudentName', 'feedbackFocusToken']);
 const emit = defineEmits(['feedback-read', 'clear-target-student']);
@@ -3480,7 +3485,9 @@ const clearAllFilters = () => {
 
 // 抓主任審核分頁 badge 用的伺服器端全量 per-status 計數（#139/#595）。
 // 與列表查詢分離，不帶 status/feedback，故得到該分校全量、權威的各狀態總數。
-const fetchStatusCounts = async () => {
+const fetchStatusCounts = async (isCurrent = () => true) => {
+  const owner = JSON.stringify([props.userId, props.branchId, props.userRole]);
+  const ownerIsCurrent = () => owner === JSON.stringify([props.userId, props.branchId, props.userRole]);
   if (!isDirectorRole.value || isTeacher.value) return;
   try {
     const token = await getToken();
@@ -3492,7 +3499,7 @@ const fetchStatusCounts = async () => {
     });
     if (!res.ok) return;
     const data = await res.json();
-    serverStatusCounts.value = data.status_counts || {};
+    if (ownerIsCurrent() && isCurrent()) serverStatusCounts.value = data.status_counts || {};
   } catch (e) {
     console.error('[LR] fetchStatusCounts failed', e);
   }
@@ -3905,7 +3912,7 @@ const submitForm = async () => {
     alert('請從課表點選該堂課進入評量，系統會自動帶入並鎖定上課時間。');
     return;
   }
-  if (submitInFlight.value) return;
+  if (submitInFlight.value || isRollingBack(_activeRecordRef.value)) return;
   submitInFlight.value = true;
   submitError.value = '';
   const submissionSnapshot = JSON.parse(JSON.stringify(form));
@@ -4013,28 +4020,26 @@ const rejectRecord = async (record) => {
   }
 };
 
-const rollbackApproval = async (record) => {
-  const note = prompt('可輸入退回待審原因（選填）：', '');
-  if (note === null) return;
-
-  const token = await getToken();
-  const res = await fetch(`/api/v1/learning-records/${record.id}/rollback-approval`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${token}`
-    },
-    body: JSON.stringify({ ReviewNote: note || null })
-  });
-
-  if (res.ok) {
-    fetchRecords();
-    fetchStatusCounts();
-  } else {
-    const err = await res.json().catch(() => ({}));
-    alert('退回待審失敗: ' + (err.message || '未知錯誤'));
-  }
-};
+const { rollbackApproval, isRollingBack } = useLearningRecordRollback({
+  canRollback: record => canRollbackApproval(record) && !submitInFlight.value,
+  getContext: () => JSON.stringify([props.userId, props.branchId, props.userRole, contextEpoch.value]),
+  getToken,
+  onSuccess: (record, reviewState) => {
+    Object.assign(record, reviewState);
+    for (const row of records.value) {
+      if (String(row.id) === String(record.id)) Object.assign(row, reviewState);
+    }
+    if (showModal.value && String(form.id) === String(record.id)
+      && String(_activeRecordRef.value?.id) === String(record.id)) {
+      Object.assign(_activeRecordRef.value, reviewState);
+      form.Status = reviewState.Status;
+      form.ReviewNote = reviewState.ReviewNote || '';
+    }
+    // The list already has the new state; avoid reloading over dirty inputs.
+    const epoch = contextEpoch.value;
+    void fetchStatusCounts(() => epoch === contextEpoch.value);
+  },
+});
 
 const openChangeTeacherModal = (record) => {
   teacherChangeForm.record_id = record.id;
@@ -4156,7 +4161,7 @@ const canRequestChanges = (record) => {
 
 const canRollbackApproval = (record) => {
   if (!isDirectorRole.value) return false;
-  return record.Status === 'approved';
+  return record?.Status === 'approved';
 };
 
 const isWriteLockedBeforeSessionStart = (record) => {
@@ -4904,6 +4909,10 @@ onBeforeUnmount(() => {
   closeModal();
   window.removeEventListener('resize', updateViewportMode);
 });
+
+watch(() => [props.userId, props.branchId, props.userRole], () => {
+  contextEpoch.value += 1;
+}, { flush: 'sync' });
 
 watch(() => [props.userId, props.branchId], () => {
   closeModal();
