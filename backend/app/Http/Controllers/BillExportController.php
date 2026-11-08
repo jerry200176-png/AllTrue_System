@@ -66,11 +66,6 @@ class BillExportController extends Controller
             'actor_type' => 'user', 'actor_id' => $request->attributes->get('auth_user')?->id, 'campus_id' => $branch,
         ], [
             'export_format' => 'xlsx', 'row_count' => count($out), 'column_count' => count($export->headings()),
-            // BillList.vue CHIPS + MORE + overdue; arbitrary strings must not enter the audit log.
-            'filter' => in_array($data['filter'], [
-                'todo', 'confirm', 'owing', 'issue', 'review', 'paid', 'waived', 'all', 'overdue',
-            ], true) ? $data['filter'] : 'other',
-            'has_search' => ($data['search'] ?? '') !== '',
         ]);
 
         $code = Campus::query()->whereKey($branch)->value('code') ?: $branch;

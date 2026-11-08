@@ -54,6 +54,19 @@ class BillExportTest extends TestCase
         return $extra + ['branch_id' => 1, 'filter' => 'owing', 'search' => '', 'rows' => $rows];
     }
 
+    private function assertMinimalExportAudit(array $metadata): void
+    {
+        ksort($metadata);
+        // The shared writer adds its existing actor/capability context (null for this direct fixture).
+        $this->assertSame([
+            'acting_as' => null,
+            'capability_campus_count' => null,
+            'column_count' => 8,
+            'export_format' => 'xlsx',
+            'row_count' => 1,
+        ], $metadata);
+    }
+
     public function test_exports_only_the_rows_the_list_shows_with_plain_headers_and_audit(): void
     {
         Campus::firstOrCreate(['id' => 1], ['name' => '測試', 'code' => 'daan', 'LineNotifyID' => '', 'Client_ID' => '', 'Client_Secret' => '', 'LIFFID' => '', 'LIFF_URL' => '', 'URL' => '', 'TelegramURL' => '', 'TeachLIFFID' => '', 'TeachLIFF_URL' => '']);
@@ -76,12 +89,13 @@ class BillExportTest extends TestCase
         $row = DB::table('security_audit_events')->where('event_type', 'billing.export')->first();
         $meta = json_decode($row->metadata, true);
         $this->assertSame(1, $meta['row_count']);
-        $this->assertSame('owing', $meta['filter']);
-        $this->assertTrue($meta['has_search']);
+        $this->assertArrayNotHasKey('filter', $meta);
+        $this->assertArrayNotHasKey('has_search', $meta);
+        $this->assertMinimalExportAudit($meta);
         $this->assertStringNotContainsString('顯示', (string) $row->metadata);
     }
 
-    public function test_filter_metadata_preserves_ui_enums_and_masks_unknown_strings_without_changing_export(): void
+    public function test_export_audit_omits_filter_and_search_context_without_changing_export(): void
     {
         Campus::firstOrCreate(['id' => 1], ['name' => '合成分校', 'code' => 'fixture', 'LineNotifyID' => '', 'Client_ID' => '', 'Client_Secret' => '', 'LIFFID' => '', 'LIFF_URL' => '', 'URL' => '', 'TelegramURL' => '', 'TeachLIFFID' => '', 'TeachLIFF_URL' => '']);
         Campus::query()->whereKey(1)->update(['code' => 'fixture']);
@@ -91,9 +105,8 @@ class BillExportTest extends TestCase
         $cells = $headers = $responseHeaders = $responseHeaderNames = null;
         Excel::fake();
 
-        foreach (['todo' => 'todo', 'confirm' => 'confirm', 'owing' => 'owing', 'issue' => 'issue', 'review' => 'review',
-            'paid' => 'paid', 'waived' => 'waived', 'all' => 'all', 'overdue' => 'overdue',
-            'audit@example.test' => 'other', '未定義篩選' => 'other', 'future-filter' => 'other', 'OWING' => 'other'] as $filter => $expected) {
+        foreach (['todo', 'confirm', 'owing', 'issue', 'review', 'paid', 'waived', 'all', 'overdue',
+            'audit@example.test', '未定義篩選', 'future-filter', 'OWING'] as $filter) {
             $count = DB::table('security_audit_events')->where('event_type', 'billing.export')->count();
             $res = $this->export($token, $this->body([['id' => $shown->ID]], ['filter' => $filter, 'search' => '合成']))->assertOk();
             $actualHeaders = $res->headers->all();
@@ -118,8 +131,10 @@ class BillExportTest extends TestCase
             $events = DB::table('security_audit_events')->where('event_type', 'billing.export');
             $this->assertSame($count + 1, $events->count());
             $meta = json_decode($events->orderByDesc('id')->first()->metadata, true);
-            $this->assertSame($expected, $meta['filter']);
-            $this->assertTrue($meta['has_search']);
+            $this->assertArrayNotHasKey('filter', $meta);
+            $this->assertArrayNotHasKey('has_search', $meta);
+            $this->assertMinimalExportAudit($meta);
+            $this->assertStringNotContainsString($filter, (string) $events->orderByDesc('id')->first()->metadata);
             $this->assertSame(1, $meta['row_count']);
             $this->assertStringNotContainsString('合成', json_encode($meta, JSON_UNESCAPED_UNICODE));
             $this->assertSame($before, $shown->fresh()->getAttributes());
