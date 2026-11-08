@@ -81,6 +81,62 @@ class BillExportTest extends TestCase
         $this->assertStringNotContainsString('顯示', (string) $row->metadata);
     }
 
+    public function test_filter_metadata_preserves_ui_enums_and_masks_unknown_strings_without_changing_export(): void
+    {
+        Campus::firstOrCreate(['id' => 1], ['name' => '合成分校', 'code' => 'fixture', 'LineNotifyID' => '', 'Client_ID' => '', 'Client_Secret' => '', 'LIFFID' => '', 'LIFF_URL' => '', 'URL' => '', 'TelegramURL' => '', 'TeachLIFFID' => '', 'TeachLIFF_URL' => '']);
+        Campus::query()->whereKey(1)->update(['code' => 'fixture']);
+        $shown = $this->owing('合成測試');
+        $token = $this->token([1]);
+        $before = $shown->fresh()->getAttributes();
+        $cells = $headers = $responseHeaders = $responseHeaderNames = null;
+        Excel::fake();
+
+        foreach (['todo' => 'todo', 'confirm' => 'confirm', 'owing' => 'owing', 'issue' => 'issue', 'review' => 'review',
+            'paid' => 'paid', 'waived' => 'waived', 'all' => 'all', 'overdue' => 'overdue',
+            'audit@example.test' => 'other', '未定義篩選' => 'other', 'future-filter' => 'other', 'OWING' => 'other'] as $filter => $expected) {
+            $count = DB::table('security_audit_events')->where('event_type', 'billing.export')->count();
+            $res = $this->export($token, $this->body([['id' => $shown->ID]], ['filter' => $filter, 'search' => '合成']))->assertOk();
+            $actualHeaders = $res->headers->all();
+            $responseHeaderNames ??= array_keys($actualHeaders);
+            $this->assertSame($responseHeaderNames, array_keys($actualHeaders));
+            // Request IDs, timing, Date and remaining rate-limit capacity vary per request.
+            foreach (['date', 'x-trace-id', 'x-response-time', 'server-timing', 'x-ratelimit-remaining', 'x-request-id'] as $dynamic) {
+                unset($actualHeaders[$dynamic]);
+            }
+            $responseHeaders ??= $actualHeaders;
+            $this->assertSame($responseHeaders, $actualHeaders);
+            // The fake stores the latest download; compare the actual export object for each request.
+            Excel::assertDownloaded('帳務-fixture-' . now('Asia/Taipei')->format('Ymd') . '.xlsx', function (BillListExport $e) use (&$cells, &$headers) {
+                $cells ??= $e->array();
+                $headers ??= $e->headings();
+                $this->assertSame($cells, $e->array());
+                $this->assertSame($headers, $e->headings());
+                $this->assertSame($e->array()[0][6] + $e->array()[0][7], $e->array()[0][5]);
+
+                return true;
+            });
+            $events = DB::table('security_audit_events')->where('event_type', 'billing.export');
+            $this->assertSame($count + 1, $events->count());
+            $meta = json_decode($events->orderByDesc('id')->first()->metadata, true);
+            $this->assertSame($expected, $meta['filter']);
+            $this->assertTrue($meta['has_search']);
+            $this->assertSame(1, $meta['row_count']);
+            $this->assertStringNotContainsString('合成', json_encode($meta, JSON_UNESCAPED_UNICODE));
+            $this->assertSame($before, $shown->fresh()->getAttributes());
+        }
+    }
+
+    public function test_filter_validation_still_requires_a_string_of_at_most_twenty_characters(): void
+    {
+        $shown = $this->owing('合成驗證');
+        $token = $this->token([1]);
+        foreach ([null, [], str_repeat('x', 21)] as $filter) {
+            $this->export($token, $this->body([['id' => $shown->ID]], ['filter' => $filter]))
+                ->assertUnprocessable()->assertJsonValidationErrors('filter');
+        }
+        $this->assertSame(0, DB::table('security_audit_events')->where('event_type', 'billing.export')->count());
+    }
+
     public function test_text_cells_are_literal_strings_and_numbers_stay_numeric(): void
     {
         $xlsx = Excel::raw(new BillListExport([['=1+1', '@SUM(A1)', '剩 5 堂', '未繳', '—', 5000, 0, 5000]]), \Maatwebsite\Excel\Excel::XLSX);
