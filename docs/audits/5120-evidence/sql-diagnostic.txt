@@ -1,0 +1,61 @@
+PHPUnit 11.5.57 by Sebastian Bergmann and contributors.
+
+Runtime:       PHP 8.2.35
+Configuration: /app/phpunit.xml
+
+ISOLATION_EVIDENCE {"db":"AllTrue_test","isolation":"REPEATABLE-READ","mysql":"8.0.46","transaction_level":1}
+SQL_EVIDENCE {"seq":1,"sql_template":"insert into `ClassSession` (`StudentClassID`, `SessionDate`, `StartTime`, `EndTime`, `Status`, `updated_at`, `created_at`) values (?, ?, ?, ?, ?, ?, ?)"}
+SQL_EVIDENCE {"seq":2,"sql_template":"insert into `LearningRecord` (`StudentClassID`, `ClassSessionID`, `TeacherID`, `Subject`, `Content`, `Progress`, `Status`, `ApprovedBy`, `ApprovedAt`, `SessionDate`, `StartTime`, `EndTime`, `updated_at`, `created_at`) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"}
+SQL_EVIDENCE {"seq":3,"sql_template":"insert into `ClassSession` (`StudentClassID`, `SessionDate`, `StartTime`, `EndTime`, `Status`, `updated_at`, `created_at`) values (?, ?, ?, ?, ?, ?, ?)"}
+SQL_EVIDENCE {"seq":4,"sql_template":"insert into `LearningRecord` (`StudentClassID`, `ClassSessionID`, `TeacherID`, `Subject`, `Content`, `Progress`, `Status`, `ApprovedBy`, `ApprovedAt`, `SessionDate`, `StartTime`, `EndTime`, `updated_at`, `created_at`) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"}
+SQL_EVIDENCE {"seq":5,"sql_template":"update `LearningRecord` set `Status` = ?, `ApprovedBy` = ?, `ApprovedAt` = ?, `LearningRecord`.`updated_at` = ? where `id` = ?"}
+SQL_EVIDENCE {"seq":6,"sql_template":"update `User` set `TeachingSessionCount` = `TeachingSessionCount` + 1 where `id` = ?"}
+SQL_EVIDENCE {"seq":7,"sql_template":"select * from `StudentSingIn` where `ClassSessionID` = ? and `VoidedAt` is null order by `id` asc for update"}
+SQL_EVIDENCE {"seq":8,"sql_template":"select * from `StudentSingIn` where `ClassSessionID` = ? and `VoidedAt` is not null order by `id` desc limit 1 for update"}
+SQL_EVIDENCE {"seq":9,"sql_template":"insert into `StudentSingIn` (`StudentClassID`, `StudentID`, `TeacherID`, `RecordedByUserID`, `GradeID`, `SubjectID`, `Get1byID`, `SignInDT`, `SignOutDT`, `MDT`, `ClassSessionID`, `Status`, `CampusID`, `PersonType`, `SessionDeducted`, `Memo`) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"}
+SQL_EVIDENCE {"seq":10,"sql_template":"select * from `StudentClass` where `ID` = ? limit 1 for update"}
+SQL_EVIDENCE {"seq":11,"sql_template":"select COALESCE(SUM(CASE WHEN event_type='deduct' THEN 1 WHEN event_type='reverse' THEN -1 ELSE 0 END), 0) as net from `session_deduction_ledger` where `student_class_id` = ? and `class_session_id` = ? limit 1 for update"}
+SQL_EVIDENCE {"seq":12,"sql_template":"insert into `session_deduction_ledger` (`student_class_id`, `class_session_id`, `event_type`, `source`, `minutes`, `created_by`, `note`, `updated_at`, `created_at`) values (?, ?, ?, ?, ?, ?, ?, ?, ?)"}
+SQL_EVIDENCE {"seq":13,"sql_template":"update `StudentSingIn` set `SessionDeducted` = ? where `id` = ?"}
+SQL_EVIDENCE {"seq":14,"sql_template":"select * from `StudentClass` where `ID` = ? limit 1 for update"}
+SQL_EVIDENCE {"seq":15,"sql_template":"update `StudentClass` set `PurchasedMinutes` = ?, `RemainingMinutes` = ?, `RemainingSessions` = ?, `UsedSessions` = ? where `ID` = ?"}
+SQL_EVIDENCE {"seq":16,"sql_template":"select exists(select * from `user_engagement_xp_events` where `idempotency_key` = ? for update) as `exists`"}
+SQL_EVIDENCE {"seq":17,"sql_template":"insert into `user_engagement_xp_events` (`idempotency_key`, `user_id`, `event_type`, `xp_delta`, `learning_record_id`, `updated_at`, `created_at`) values (?, ?, ?, ?, ?, ?, ?)"}
+SQL_EVIDENCE {"seq":18,"sql_template":"select * from `user_engagement` where `user_id` = ? limit 1 for update"}
+SQL_EVIDENCE {"seq":19,"sql_template":"insert into `user_engagement` (`user_id`, `role_track`, `rank_key`, `xp_total`, `rank_display_opt_out`, `updated_at`, `created_at`) values (?, ?, ?, ?, ?, ?, ?)"}
+SQL_EVIDENCE {"seq":20,"sql_template":"update `LearningRecord` set `Status` = ?, `ApprovedBy` = ?, `ApprovedAt` = ?, `LearningRecord`.`updated_at` = ? where `id` = ?"}
+SQL_EVIDENCE {"seq":21,"sql_template":"update `User` set `TeachingSessionCount` = `TeachingSessionCount` + 1 where `id` = ?"}
+SQL_EVIDENCE {"seq":22,"sql_template":"select * from `StudentSingIn` where `ClassSessionID` = ? and `VoidedAt` is null order by `id` asc for update"}
+SQL_EVIDENCE {"seq":23,"sql_template":"select * from `StudentSingIn` where `ClassSessionID` = ? and `VoidedAt` is not null order by `id` desc limit 1 for update"}
+SQL_EVIDENCE {"seq":24,"sql_template":"insert into `StudentSingIn` (`StudentClassID`, `StudentID`, `TeacherID`, `RecordedByUserID`, `GradeID`, `SubjectID`, `Get1byID`, `SignInDT`, `SignOutDT`, `MDT`, `ClassSessionID`, `Status`, `CampusID`, `PersonType`, `SessionDeducted`, `Memo`) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"}
+SQL_EVIDENCE {"seq":25,"sql_template":"select * from `StudentClass` where `ID` = ? limit 1 for update"}
+SQL_EVIDENCE {"seq":26,"sql_template":"select COALESCE(SUM(CASE WHEN event_type='deduct' THEN 1 WHEN event_type='reverse' THEN -1 ELSE 0 END), 0) as net from `session_deduction_ledger` where `student_class_id` = ? and `class_session_id` = ? limit 1 for update"}
+SQL_EVIDENCE {"seq":27,"sql_template":"insert into `session_deduction_ledger` (`student_class_id`, `class_session_id`, `event_type`, `source`, `minutes`, `created_by`, `note`, `updated_at`, `created_at`) values (?, ?, ?, ?, ?, ?, ?, ?, ?)"}
+SQL_EVIDENCE {"seq":28,"sql_template":"update `StudentSingIn` set `SessionDeducted` = ? where `id` = ?"}
+SQL_EVIDENCE {"seq":29,"sql_template":"select * from `StudentClass` where `ID` = ? limit 1 for update"}
+SQL_EVIDENCE {"seq":30,"sql_template":"update `StudentClass` set `RemainingMinutes` = ?, `RemainingSessions` = ?, `UsedSessions` = ? where `ID` = ?"}
+SQL_EVIDENCE {"seq":31,"sql_template":"select exists(select * from `user_engagement_xp_events` where `idempotency_key` = ? for update) as `exists`"}
+SQL_EVIDENCE {"seq":32,"sql_template":"insert into `user_engagement_xp_events` (`idempotency_key`, `user_id`, `event_type`, `xp_delta`, `learning_record_id`, `updated_at`, `created_at`) values (?, ?, ?, ?, ?, ?, ?)"}
+SQL_EVIDENCE {"seq":33,"sql_template":"select * from `user_engagement` where `user_id` = ? limit 1 for update"}
+SQL_EVIDENCE {"seq":34,"sql_template":"update `user_engagement` set `xp_total` = ?, `user_engagement`.`updated_at` = ? where `id` = ?"}
+SQL_EVIDENCE {"seq":35,"sql_template":"select * from `StudentClass` where `StudentClass`.`ID` = ? limit 1 for update"}
+SQL_EVIDENCE {"seq":36,"sql_template":"delete from `user_engagement_xp_events` where `id` = ?"}
+SQL_EVIDENCE {"seq":37,"sql_template":"select * from `user_engagement` where `user_id` = ? limit 1 for update"}
+SQL_EVIDENCE {"seq":38,"sql_template":"update `user_engagement` set `xp_total` = ?, `user_engagement`.`updated_at` = ? where `id` = ?"}
+SQL_EVIDENCE {"seq":39,"sql_template":"update `LearningRecord` set `Status` = ?, `ApprovedBy` = ?, `ApprovedAt` = ?, `LearningRecord`.`updated_at` = ? where `id` = ?"}
+SQL_EVIDENCE {"seq":40,"sql_template":"update `User` set `TeachingSessionCount` = `TeachingSessionCount` - 1 where `id` = ? and `TeachingSessionCount` > ?"}
+SQL_EVIDENCE {"seq":41,"sql_template":"update `StudentSingIn` set `VoidedAt` = ?, `VoidedByUserID` = ?, `VoidReason` = ? where `id` = ?"}
+SQL_EVIDENCE {"seq":42,"sql_template":"select * from `StudentClass` where `ID` = ? limit 1 for update"}
+SQL_EVIDENCE {"seq":43,"sql_template":"select COALESCE(SUM(CASE WHEN event_type='deduct' THEN 1 WHEN event_type='reverse' THEN -1 ELSE 0 END), 0) as net from `session_deduction_ledger` where `student_class_id` = ? and `class_session_id` = ? limit 1 for update"}
+SQL_EVIDENCE {"seq":44,"sql_template":"select `minutes` from `session_deduction_ledger` where `student_class_id` = ? and `class_session_id` = ? and `event_type` = ? order by `id` desc limit 1 for update"}
+SQL_EVIDENCE {"seq":45,"sql_template":"insert into `session_deduction_ledger` (`student_class_id`, `class_session_id`, `event_type`, `source`, `minutes`, `created_by`, `note`, `updated_at`, `created_at`) values (?, ?, ?, ?, ?, ?, ?, ?, ?)"}
+SQL_EVIDENCE {"seq":46,"sql_template":"select * from `StudentClass` where `ID` = ? limit 1 for update"}
+SQL_EVIDENCE {"seq":47,"sql_template":"update `StudentClass` set `RemainingMinutes` = ?, `RemainingSessions` = ?, `UsedSessions` = ? where `ID` = ?"}
+SQL_EVIDENCE {"seq":48,"sql_template":"select * from `StudentClass` where `StudentClass`.`ID` = ? limit 1 for update"}
+SQL_EVIDENCE {"seq":49,"sql_template":"update `LearningRecord` set `Status` = ?, `ApprovedBy` = ?, `ApprovedAt` = ?, `ReviewNote` = ?, `LearningRecord`.`updated_at` = ? where `id` = ?"}
+SQL_EVIDENCE {"seq":50,"sql_template":"update `User` set `TeachingSessionCount` = `TeachingSessionCount` - 1 where `id` = ? and `TeachingSessionCount` > ?"}
+.                                                                   1 / 1 (100%)
+
+Time: 00:22.317, Memory: 56.50 MB
+
+OK (1 test, 26 assertions)

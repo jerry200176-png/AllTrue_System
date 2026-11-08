@@ -17,3 +17,5 @@
 - 以兩份先讀為 approved 的 route-model snapshot，重放 A 完成後 B 才取得課程鎖的合法序列。實際 controller／MySQL SQL 順序：狀態判斷 → StudentClass `FOR UPDATE` → XP 撤銷 → LearningRecord UPDATE → User 教學次數減少 → approval sign-in／ledger 收尾；無鎖定重讀 LearningRecord。
 - 合成結果：A、stale B 都回 200，TeachingSessionCount 2→1→0，另一筆 LR 仍 approved。此交錯下 sign-in 僅作廢一次、reverse ledger 一筆、UsedSessions／XP 在 B 不再降低；fresh 第二次 HTTP request 讀到 pending 則回 409。不可外推成所有重送必然錯誤或正式資料已損毀。
 - 限制：這是 controller 層對預綁定模型的決定性序列重放，未執行兩個真實 HTTP process 同時等待鎖，也不是所有可能交錯／deadlock 的證明。前端每頁鎖與讀後確認不提供跨 client 的 exactly-once 保證；既存伺服器風險保留，修復另需授權。
+
+- 完整本機調查、最小保護候選、測試矩陣與 rollback：[rollback concurrency audit](../audits/2026-11-08-5120-rollback-concurrency.md)。
