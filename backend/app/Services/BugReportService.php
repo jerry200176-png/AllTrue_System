@@ -163,12 +163,16 @@ class BugReportService
             $failCount += count($staged);
             Log::warning('[BugReport] attachment admission interrupted', ['bug_id' => $bug->id, 'error_type' => $e::class]);
             try {
-                // A commit acknowledgement or after-commit callback can fail
-                // AFTER SQL committed. Never compensate by deleting referenced
-                // evidence. If the writer cannot verify, retain possible orphans.
-                $referenced = BugReportAttachment::query()->useWritePdo()
-                    ->where('bug_report_id', $bug->id)->whereIn('stored_path', $ownedPaths)
-                    ->pluck('stored_path')->all();
+                // The old server transaction may still be committing after an
+                // acknowledgement error. Wait on the same parent as admission,
+                // then use current reads (also safe in an outer caller's old RR
+                // snapshot). If settlement cannot be verified, retain the files.
+                $referenced = DB::transaction(function () use ($bug, $ownedPaths) {
+                    BugReport::query()->whereKey($bug->id)->lockForUpdate()->firstOrFail();
+                    return BugReportAttachment::query()->useWritePdo()
+                        ->where('bug_report_id', $bug->id)->whereIn('stored_path', $ownedPaths)
+                        ->lockForUpdate()->pluck('stored_path')->all();
+                });
                 $discardPaths = array_values(array_diff($ownedPaths, $referenced));
             } catch (\Throwable $verificationError) {
                 $discardPaths = [];
