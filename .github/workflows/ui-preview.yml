@@ -10,7 +10,6 @@ on:
       - ".github/workflows/ui-preview.yml"
 permissions:
   contents: read
-  pull-requests: write
 concurrency:
   group: ui-preview-${{ github.event.pull_request.number }}
   cancel-in-progress: true
@@ -50,6 +49,9 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
   preview:
+    permissions:
+      contents: read
+      pull-requests: write
     # Forks get no secrets.
     if: ${{ github.event.pull_request.head.repo.full_name == github.repository }}
     runs-on: ubuntu-latest
