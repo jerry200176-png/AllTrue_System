@@ -1,7 +1,8 @@
 <script setup>
 // Form template (dialog): title + 1-line description, sticky footer [取消] [主要動作], loading state,
 // unsaved-changes guard on Esc / outside click (only while `dirty`). Focus starts on the first field. X is top-right (DialogContent).
-import { ref } from 'vue';
+import { nextTick, ref, shallowRef } from 'vue';
+import { useResizeObserver } from '@vueuse/core';
 import { Button } from '@/components/ui/button';
 import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
@@ -21,7 +22,24 @@ const props = defineProps({
 const emit = defineEmits(['update:open', 'submit']);
 
 const askDiscard = ref(false);
-const content = ref(null);
+const panelElement = shallowRef(null);
+const scrollWholeForm = ref(false);
+
+// Keep a useful field viewport; oversized chrome must scroll with the fields instead of covering them.
+function measureLayout() {
+  const panel = panelElement.value;
+  const head = panel?.querySelector('[data-slot="dialog-header"]');
+  const foot = panel?.querySelector('[data-slot="dialog-footer"]');
+  if (!(panel instanceof HTMLElement) || !head || !foot) return;
+  const maximumHeight = parseFloat(getComputedStyle(panel).maxHeight);
+  const minimumBodyHeight = parseFloat(getComputedStyle(document.documentElement).fontSize) * 4;
+  scrollWholeForm.value = head.offsetHeight + foot.offsetHeight + minimumBodyHeight > maximumHeight;
+}
+useResizeObserver(() => [
+  panelElement.value,
+  panelElement.value?.querySelector('[data-slot="dialog-header"]'),
+  panelElement.value?.querySelector('[data-slot="dialog-footer"]'),
+], measureLayout);
 
 function requestClose() {
   if (props.loading) return;
@@ -35,17 +53,24 @@ function discard() {
   emit('update:open', false);
 }
 function focusFirstField(e) {
-  const el = content.value?.$el?.querySelector?.('input:not([type=hidden]):not(:disabled), select:not(:disabled), textarea:not(:disabled)');
-  if (el) { e.preventDefault(); el.focus(); }
+  panelElement.value = e.target;
+  measureLayout();
+  const el = panelElement.value?.querySelector?.('input:not([type=hidden]):not(:disabled), select:not(:disabled), textarea:not(:disabled)');
+  if (el) {
+    e.preventDefault();
+    nextTick(() => el.focus());
+  }
 }
 </script>
 
 <template>
   <Dialog :open="open" @update:open="(v) => (v ? emit('update:open', true) : requestClose())">
     <DialogContent
-      ref="content"
-      :class="size === 'sm' ? 'tw:sm:max-w-sm' : 'tw:sm:max-w-xl'"
-      class="tw:max-h-[90dvh] tw:grid-rows-[auto_minmax(0,1fr)_auto] tw:overflow-hidden tw:gap-0 tw:p-0"
+      :class="[
+        size === 'sm' ? 'tw:sm:max-w-sm' : 'tw:sm:max-w-xl',
+        scrollWholeForm ? 'tw:block tw:overflow-y-auto' : 'tw:grid-rows-[auto_minmax(0,1fr)_auto] tw:overflow-hidden',
+      ]"
+      class="tw:max-h-[90dvh] tw:gap-0 tw:p-0"
       @escape-key-down="dirty && guard($event)"
       @interact-outside="dirty && guard($event)"
       @open-auto-focus="focusFirstField"
@@ -55,8 +80,8 @@ function focusFirstField(e) {
           <DialogTitle>{{ title }}</DialogTitle>
           <DialogDescription>{{ description }}</DialogDescription>
         </DialogHeader>
-        <div class="tw:overflow-y-auto tw:px-6 tw:pb-4"><slot /></div>
-        <DialogFooter class="tw:sticky tw:bottom-0 tw:border-t tw:bg-background tw:p-4 tw:sm:px-6">
+        <div :class="scrollWholeForm ? 'tw:overflow-visible' : 'tw:overflow-y-auto'" class="tw:px-6 tw:pb-4"><slot /></div>
+        <DialogFooter :class="scrollWholeForm ? 'tw:static' : 'tw:sticky tw:bottom-0'" class="tw:border-t tw:bg-background tw:p-4 tw:sm:px-6">
           <Button type="button" variant="outline" :disabled="loading" @click="requestClose">{{ cancelLabel }}</Button>
           <Button type="submit" :disabled="loading" :aria-busy="loading || undefined">{{ loading ? `${submitLabel}中…` : submitLabel }}</Button>
         </DialogFooter>

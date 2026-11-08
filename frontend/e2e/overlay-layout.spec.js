@@ -113,3 +113,53 @@ for (const viewport of [{ width: 1280, height: 900 }, { width: 390, height: 844 
     }
   });
 }
+
+// #5094: fixed header/footer can consume the entire body at short heights or enlarged text.
+for (const scenario of [{ height: 480, rootSize: 32 }, { height: 240, rootSize: 16 }]) {
+  test(`cramped 320x${scenario.height} root${scenario.rootSize}px keeps every field and action reachable`, async ({ page }, info) => {
+    await page.setViewportSize({ width: 320, height: scenario.height });
+    await page.goto(fixture);
+    await page.evaluate((px) => { document.documentElement.style.fontSize = `${px}px`; }, scenario.rootSize);
+    await page.getByRole('button', { name: '開啟表單', exact: true }).click();
+    const panel = page.locator(dialog);
+    await settled(panel);
+    const unobscured = async (locator) => {
+      await locator.scrollIntoViewIfNeeded();
+      await expect(locator).toBeInViewport();
+      expect(await locator.evaluate((el) => {
+        const r = el.getBoundingClientRect();
+        return [r.y + 1, r.y + r.height / 2, r.bottom - 1].every((y) => document.elementFromPoint(r.x + r.width / 2, y) === el);
+      })).toBe(true);
+    };
+    await expect(page.locator('#field-1')).toBeFocused();
+    await unobscured(page.locator('#field-1'));
+    await page.locator('#field-1').fill('first');
+    for (let i = 0; i < 29; i++) await page.keyboard.press('Tab');
+    await expect(page.locator('#field-30')).toBeFocused();
+    await unobscured(page.locator('#field-30'));
+    await page.locator('#field-30').fill('last');
+    await page.keyboard.press('Tab');
+    await expect(panel.getByRole('button', { name: '取消', exact: true })).toBeFocused();
+    await unobscured(panel.getByRole('button', { name: '取消', exact: true }));
+    await page.keyboard.press('Tab');
+    await expect(panel.getByRole('button', { name: '儲存', exact: true })).toBeFocused();
+    await unobscured(panel.getByRole('button', { name: '儲存', exact: true }));
+    await page.keyboard.press('Enter');
+    await expect(page.getByTestId('submitted')).toHaveText('1');
+    await page.screenshot({ path: info.outputPath('cramped-submit.png') });
+    const bounds = await rect(panel);
+    expect(bounds.y).toBeGreaterThanOrEqual(0);
+    expect(bounds.bottom).toBeLessThanOrEqual(scenario.height);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth && scrollY === 0)).toBe(true);
+    // Observe real viewport/text changes, restoring normal body-only scrolling when space returns.
+    await page.evaluate(() => { document.documentElement.style.fontSize = '16px'; });
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await expect(panel).toHaveCSS('display', 'grid');
+    await expect(panel.locator(footer)).toHaveCSS('position', 'sticky');
+    await page.setViewportSize({ width: 320, height: scenario.height });
+    await page.evaluate((px) => { document.documentElement.style.fontSize = `${px}px`; }, scenario.rootSize);
+    await expect(panel).toHaveCSS('display', 'block');
+    await page.locator('#field-1').focus();
+    await unobscured(page.locator('#field-1'));
+  });
+}
