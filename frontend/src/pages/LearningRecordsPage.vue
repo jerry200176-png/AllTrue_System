@@ -783,10 +783,11 @@
               <div class="lr-record-card__actions" @click.stop>
                 <button type="button" class="ghost xs" @click="openRecordAction(record)">{{ primaryActionLabel(record) }}</button>
                 <button v-if="isDirectorRole && record.id" type="button" class="ghost xs lr-btn-director-note" @click="openDirectorNoteModal(record)">主任評語</button>
-                <button v-if="canApprove(record)" type="button" class="primary xs" @click="approveRecord(record)">核准</button>
-                <button v-if="canRequestChanges(record)" type="button" class="ghost xs" @click="requestChangesRecord(record)">需修改</button>
-                <button v-if="canReject(record)" type="button" class="danger xs" @click="rejectRecord(record)">退回</button>
-                <button v-if="canRollbackApproval(record)" type="button" class="ghost xs" :disabled="isRollingBack(record) || submitInFlight" @click="rollbackApproval(record)">{{ isRollingBack(record) ? '處理中…' : '退回待審' }}</button>
+                <button v-if="canApprove(record)" type="button" class="primary xs" :disabled="isRollingBack(record)" @click="approveRecord(record)">核准</button>
+                <button v-if="canRequestChanges(record)" type="button" class="ghost xs" :disabled="isRollingBack(record)" @click="requestChangesRecord(record)">需修改</button>
+                <button v-if="canReject(record)" type="button" class="danger xs" :disabled="isRollingBack(record)" @click="rejectRecord(record)">退回</button>
+                <button v-if="canRollbackApproval(record)" type="button" class="ghost xs" :disabled="isRollingBack(record) || submitInFlight" @click="rollbackApproval(record)">{{ isRollbackPending(record) ? '處理中…' : '退回待審' }}</button>
+                <span v-if="rollbackIssue(record)" role="status">{{ rollbackIssue(record) }} <button type="button" class="ghost xs" :disabled="isRollbackPending(record)" @click="recheckRollback(record)">重新查詢狀態</button></span>
               </div>
             </article>
           </div>
@@ -953,10 +954,11 @@
                           <button v-if="isDirectorRole && record.id" type="button" class="ghost xs lr-btn-director-note" @click="openDirectorNoteModal(record)">主任評語</button>
                           <button v-if="canChangeTeacher(record)" type="button" class="ghost xs" @click="openChangeTeacherModal(record)">換老師</button>
                           <span v-if="showTimeLockHint(record)" class="lr-lock-hint">未開放</span>
-                          <button v-if="canApprove(record)" type="button" class="primary xs" @click="approveRecord(record)">核准</button>
-                          <button v-if="canRequestChanges(record)" type="button" class="ghost xs" @click="requestChangesRecord(record)">需修改</button>
-                          <button v-if="canReject(record)" type="button" class="danger xs" @click="rejectRecord(record)">退回</button>
-                          <button v-if="canRollbackApproval(record)" type="button" class="ghost xs" :disabled="isRollingBack(record) || submitInFlight" @click="rollbackApproval(record)">{{ isRollingBack(record) ? '處理中…' : '退回待審' }}</button>
+                          <button v-if="canApprove(record)" type="button" class="primary xs" :disabled="isRollingBack(record)" @click="approveRecord(record)">核准</button>
+                          <button v-if="canRequestChanges(record)" type="button" class="ghost xs" :disabled="isRollingBack(record)" @click="requestChangesRecord(record)">需修改</button>
+                          <button v-if="canReject(record)" type="button" class="danger xs" :disabled="isRollingBack(record)" @click="rejectRecord(record)">退回</button>
+                          <button v-if="canRollbackApproval(record)" type="button" class="ghost xs" :disabled="isRollingBack(record) || submitInFlight" @click="rollbackApproval(record)">{{ isRollbackPending(record) ? '處理中…' : '退回待審' }}</button>
+                          <span v-if="rollbackIssue(record)" role="status">{{ rollbackIssue(record) }} <button type="button" class="ghost xs" :disabled="isRollbackPending(record)" @click="recheckRollback(record)">重新查詢狀態</button></span>
                           <button v-if="canDelete(record)" type="button" class="danger xs" @click="deleteRecord(record)">刪除</button>
                         </div>
                       </td>
@@ -1396,11 +1398,15 @@
           <div class="lr-form-actions lr-form-actions--modal-footer">
             <button type="button" class="ghost" @click="closeModal">關閉</button>
             <button v-if="isEditing && canRollbackApproval(_activeRecordRef)" type="button" class="ghost" :disabled="isRollingBack(_activeRecordRef) || submitInFlight" @click="rollbackApproval(_activeRecordRef)">
-              {{ isRollingBack(_activeRecordRef) ? '處理中…' : '退回待審' }}
+              {{ isRollbackPending(_activeRecordRef) ? '處理中…' : '退回待審' }}
             </button>
             <button v-if="!isReadOnly" type="submit" class="primary" :disabled="submitInFlight || isRollingBack(_activeRecordRef)">
               {{ submitInFlight ? '儲存中…' : (isEditing ? '儲存變更' : '提交評量') }}
             </button>
+            <p v-if="rollbackIssue(_activeRecordRef)" class="lr-time-lock-note" role="status">
+              {{ rollbackIssue(_activeRecordRef) }}
+              <button type="button" class="ghost" :disabled="isRollbackPending(_activeRecordRef)" @click="recheckRollback(_activeRecordRef)">重新查詢狀態</button>
+            </p>
             <p v-if="submitError" class="lr-time-lock-note" role="alert">{{ submitError }}</p>
           </div>
         </form>
@@ -1643,6 +1649,9 @@ const draftSaveError = ref(false);
 const submitInFlight = ref(false);
 const submitError = ref('');
 const contextEpoch = ref(0);
+const ownerEpoch = ref(0);
+let recordsRequestEpoch = 0;
+let countsRequestEpoch = 0;
 const draftScope = ref(null);
 const saveLearningRecord = createLearningRecordSaver();
 const _draftThrottleTimer = ref(null);
@@ -3486,12 +3495,14 @@ const clearAllFilters = () => {
 // 抓主任審核分頁 badge 用的伺服器端全量 per-status 計數（#139/#595）。
 // 與列表查詢分離，不帶 status/feedback，故得到該分校全量、權威的各狀態總數。
 const fetchStatusCounts = async (isCurrent = () => true) => {
+  const requestEpoch = ++countsRequestEpoch;
+  const scopeEpoch = ownerEpoch.value;
   const owner = JSON.stringify([props.userId, props.branchId, props.userRole]);
   const ownerIsCurrent = () => owner === JSON.stringify([props.userId, props.branchId, props.userRole]);
   if (!isDirectorRole.value || isTeacher.value) return;
   try {
     const token = await getToken();
-    if (!token) return;
+    if (!token || !ownerIsCurrent() || scopeEpoch !== ownerEpoch.value) return false;
     const params = new URLSearchParams({ with_status_counts: '1', per_page: '1' });
     if (props.branchId) params.set('branch_id', props.branchId);
     const res = await fetch(`/api/v1/learning-records?${params.toString()}`, {
@@ -3499,15 +3510,21 @@ const fetchStatusCounts = async (isCurrent = () => true) => {
     });
     if (!res.ok) return;
     const data = await res.json();
-    if (ownerIsCurrent() && isCurrent()) serverStatusCounts.value = data.status_counts || {};
+    if (!ownerIsCurrent() || !isCurrent() || scopeEpoch !== ownerEpoch.value || requestEpoch !== countsRequestEpoch
+      || !data.status_counts || !['pending', 'approved', 'changes_requested', 'rejected'].every(key => Number.isFinite(Number(data.status_counts[key] ?? 0)))) return false;
+    serverStatusCounts.value = data.status_counts;
+    return true;
   } catch (e) {
     console.error('[LR] fetchStatusCounts failed', e);
   }
 };
 
 const fetchRecords = async () => {
+  const requestEpoch = ++recordsRequestEpoch;
+  const scopeEpoch = ownerEpoch.value;
   const owner = [props.userId, props.branchId].map(String).join(':');
-  const ownerIsCurrent = () => owner === [props.userId, props.branchId].map(String).join(':');
+  const ownerIsCurrent = () => owner === [props.userId, props.branchId].map(String).join(':')
+    && scopeEpoch === ownerEpoch.value && requestEpoch === recordsRequestEpoch;
   try {
     const token = await getToken();
     if (!token) { recordsSettled.value = true; return; }
@@ -3976,6 +3993,7 @@ const submitForm = async () => {
 
 // ── Approve / Reject ──
 const approveRecord = async (record) => {
+  if (isRollingBack(record)) return;
   if (!confirm('確定要核准此評量嗎？')) return;
 
   const token = await getToken();
@@ -3999,6 +4017,7 @@ const approveRecord = async (record) => {
 };
 
 const rejectRecord = async (record) => {
+  if (isRollingBack(record)) return;
   const note = prompt('請輸入退回原因：');
   if (!note) return;
 
@@ -4020,24 +4039,58 @@ const rejectRecord = async (record) => {
   }
 };
 
-const { rollbackApproval, isRollingBack } = useLearningRecordRollback({
+const rollbackOwner = () => JSON.stringify([props.userId, props.branchId, props.userRole]);
+const applyRollbackReviewState = (id, reviewState, editorIsCurrent) => {
+  // Replace rows, never mutate an object a newly opened modal may still reference.
+  records.value = records.value.map(row => String(row.id) === String(id) ? { ...row, ...reviewState } : row);
+  if (editorIsCurrent() && showModal.value && String(form.id) === String(id)
+    && String(_activeRecordRef.value?.id) === String(id)) {
+    _activeRecordRef.value = { ..._activeRecordRef.value, ...reviewState };
+    form.Status = reviewState.Status;
+    form.ReviewNote = reviewState.ReviewNote || '';
+  }
+};
+const reconcileRollback = async (record) => {
+  const owner = rollbackOwner();
+  const scopeEpoch = ownerEpoch.value;
+  const editorEpoch = contextEpoch.value;
+  const ownerIsCurrent = () => owner === rollbackOwner() && scopeEpoch === ownerEpoch.value;
+  const token = await getToken();
+  if (!token || !ownerIsCurrent()) return false;
+  // Existing keyset API: exact ID or no match, without the current status/date filters.
+  const params = new URLSearchParams({ before_id: String(Number(record.id) + 1), per_page: '1' });
+  if (props.branchId) params.set('branch_id', props.branchId);
+  if (record.StudentClassID) params.set('student_class_id', record.StudentClassID);
+  const res = await fetch(`/api/v1/learning-records?${params}`, { headers: { Authorization: `Bearer ${token}` } });
+  const body = await res.json().catch(() => null);
+  const current = body?.data?.find(row => String(row.id) === String(record.id));
+  if (!res.ok || !ownerIsCurrent() || !current
+    || !['approved', 'pending', 'changes_requested', 'rejected'].includes(current.Status)) return false;
+  const countsOk = await fetchStatusCounts(ownerIsCurrent);
+  if (!countsOk || !ownerIsCurrent()) return false;
+  ++recordsRequestEpoch; // A list read started before reconciliation cannot put approved back.
+  applyRollbackReviewState(record.id, {
+    Status: current.Status, ReviewNote: current.ReviewNote ?? null,
+    ApprovedBy: current.ApprovedBy ?? null, ApprovedAt: current.ApprovedAt ?? null,
+  }, () => editorEpoch === contextEpoch.value && ownerIsCurrent());
+  return true;
+};
+const { rollbackApproval, isRollingBack, isRollbackPending, rollbackIssue, recheckRollback } = useLearningRecordRollback({
   canRollback: record => canRollbackApproval(record) && !submitInFlight.value,
-  getContext: () => JSON.stringify([props.userId, props.branchId, props.userRole, contextEpoch.value]),
+  getContext: () => JSON.stringify([rollbackOwner(), ownerEpoch.value, contextEpoch.value]),
+  getOwner: rollbackOwner,
   getToken,
-  onSuccess: (record, reviewState) => {
-    Object.assign(record, reviewState);
-    for (const row of records.value) {
-      if (String(row.id) === String(record.id)) Object.assign(row, reviewState);
+  reconcile: reconcileRollback,
+  onSuccess: async (record, reviewState, editorIsCurrent, requestOwner) => {
+    ++recordsRequestEpoch;
+    ++countsRequestEpoch;
+    // Refresh current scope after every confirmed success; a foreign modal is never patched.
+    if (requestOwner === rollbackOwner()) {
+      applyRollbackReviewState(record.id, reviewState, editorIsCurrent);
+      if (!await reconcileRollback(record)) throw new Error('refresh incomplete');
+    } else {
+      await Promise.all([fetchRecords(), fetchStatusCounts()]);
     }
-    if (showModal.value && String(form.id) === String(record.id)
-      && String(_activeRecordRef.value?.id) === String(record.id)) {
-      Object.assign(_activeRecordRef.value, reviewState);
-      form.Status = reviewState.Status;
-      form.ReviewNote = reviewState.ReviewNote || '';
-    }
-    // The list already has the new state; avoid reloading over dirty inputs.
-    const epoch = contextEpoch.value;
-    void fetchStatusCounts(() => epoch === contextEpoch.value);
   },
 });
 
@@ -4320,6 +4373,7 @@ const batchRequestChangesSelected = async () => {
 };
 
 const requestChangesRecord = async (record) => {
+  if (isRollingBack(record)) return;
   const note = prompt('請輸入修改說明：');
   if (!note) return;
   const token = await getToken();
@@ -4911,6 +4965,7 @@ onBeforeUnmount(() => {
 });
 
 watch(() => [props.userId, props.branchId, props.userRole], () => {
+  ownerEpoch.value += 1;
   contextEpoch.value += 1;
 }, { flush: 'sync' });
 

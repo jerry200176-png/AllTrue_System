@@ -29,6 +29,10 @@ for (const viewport of viewports) {
       status: 200, contentType: 'application/json',
       body: JSON.stringify({ id: 502, Status: 'pending', ReviewNote: null }),
     }));
+    await page.route('**/learning-records?**', route => route.fulfill({
+      status: 200, contentType: 'application/json',
+      body: JSON.stringify({ data: [{ id: 502, Status: 'pending', ReviewNote: null }], status_counts: { approved: 0, pending: 2, changes_requested: 1, rejected: 0 } }),
+    }));
     page.once('dialog', dialog => dialog.accept(''));
     const rollback = editor.getByRole('button', { name: '退回待審', exact: true });
     await rollback.scrollIntoViewIfNeeded();

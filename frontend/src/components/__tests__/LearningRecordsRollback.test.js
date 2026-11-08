@@ -12,7 +12,7 @@ const record = (id = 501, Status = 'approved') => ({
 });
 const deferred = () => { let resolve; const promise = new Promise(r => { resolve = r; }); return { promise, resolve }; };
 const json = (body, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
-let wrapper, fetchMock, rollbackResponse;
+let wrapper, fetchMock, rollbackResponse, serverRecords, readResponse;
 const buttons = (root, text) => root.findAll('button').filter(b => b.text() === text);
 const click = async (root, text) => { const b = buttons(root, text)[0]; expect(b, text).toBeTruthy(); await b.trigger('click'); await flushPromises(); };
 const modal = () => wrapper.find('.lr-modal--learning-form');
@@ -41,10 +41,22 @@ beforeEach(() => {
   localStorage.clear();
   vi.spyOn(window, 'prompt').mockReturnValue('重新確認');
   vi.spyOn(window, 'alert').mockImplementation(() => {});
+  serverRecords = [record(), record(502, 'pending')];
+  readResponse = null;
   rollbackResponse = () => Promise.resolve(json({ ...record(), Status: 'pending', ReviewNote: '重新確認', ApprovedBy: null, ApprovedAt: null }));
   fetchMock = vi.fn(async (url) => {
-    if (String(url).endsWith('/rollback-approval')) return rollbackResponse();
-    if (String(url).includes('/learning-records?')) return json({ data: [record(), record(502, 'pending')], status_counts: { approved: 1, pending: 1 } });
+    if (String(url).endsWith('/rollback-approval')) {
+      const response = await rollbackResponse(url);
+      const body = await response.clone().json().catch(() => null);
+      if (response.ok && body?.Status === 'pending') serverRecords = serverRecords.map(r => r.id === body.id ? { ...r, ...body } : r);
+      return response;
+    }
+    if (String(url).includes('/learning-records?')) {
+      if (readResponse) return readResponse(url);
+      const params = new URL(String(url), 'http://local').searchParams;
+      const rows = params.has('before_id') ? serverRecords.filter(r => r.id < Number(params.get('before_id'))).sort((a,b) => b.id-a.id).slice(0,1) : serverRecords;
+      return json({ data: rows, status_counts: { approved: serverRecords.filter(r => r.Status === 'approved').length, pending: serverRecords.filter(r => r.Status === 'pending').length } });
+    }
     return json({ data: [], created: 0 });
   });
   vi.stubGlobal('fetch', fetchMock);
@@ -77,9 +89,9 @@ describe.each([1440, 390])('approval rollback through real page @%i', width => {
     expect(rollbackCalls()).toHaveLength(0);
     expect(modal().text()).toContain('✓ 已核准'); expectDraft();
   });
-  it.each(['http', 'network'])('%s failure preserves inputs and status and allows retry', async kind => {
+  it('a definite 403 refusal preserves inputs and allows retry', async () => {
     await start({ width }); await edit();
-    rollbackResponse = () => kind === 'http' ? Promise.resolve(json({ message: '拒絕此操作' }, 403)) : Promise.reject(new Error('offline'));
+    rollbackResponse = () => Promise.resolve(json({ message: '拒絕此操作' }, 403));
     await click(modal(), '退回待審');
     expect(window.alert).toHaveBeenCalled();
     expect(modal().text()).toContain('✓ 已核准'); expectDraft();
@@ -96,12 +108,14 @@ describe.each([1440, 390])('approval rollback through real page @%i', width => {
     expect(rollbackCalls()).toHaveLength(1);
     pending.resolve(json({ ...record(), Status: 'pending' })); await flushPromises(); expectDraft();
   });
-  it('an old completion cannot change a reopened editor for the same record', async () => {
+  it('success after reopening reconciles status without replacing dirty text', async () => {
     await start({ width }); await edit();
     const pending = deferred(); rollbackResponse = () => pending.promise;
     await click(modal(), '退回待審'); await click(modal(), '關閉'); await edit();
     pending.resolve(json({ ...record(), Status: 'pending' })); await flushPromises();
-    expect(modal().text()).toContain('✓ 已核准'); expectDraft();
+    expect(modal().text()).not.toContain('✓ 已核准'); expectDraft();
+    expect(wrapper.find('#lr-review-tab-approved').text()).toContain('0');
+    expect(wrapper.find('#lr-review-tab-pending').text()).toContain('2');
   });
   it('an old failure cannot alert in a new campus context', async () => {
     await start({ width }); await edit();
@@ -130,14 +144,125 @@ describe.each([1440, 390])('approval rollback through real page @%i', width => {
     expect(modal().text()).not.toContain('old note');
     expect(modal().text()).not.toContain('✓ 已核准');
   });
-  it.each([409, 'malformed', 'wrong-id'])('rejects %s without changing the editor', async kind => {
+  it('a definite 409 refusal does not overwrite the editor', async () => {
     await start({ width }); await edit();
-    rollbackResponse = () => Promise.resolve(kind === 409
-      ? json({ message: '狀態已變更' }, 409)
-      : json(kind === 'malformed' ? {} : { ...record(999), Status: 'pending' }));
+    rollbackResponse = () => Promise.resolve(json({ message: '狀態已變更' }, 409));
     await click(modal(), '退回待審');
     expect(window.alert).toHaveBeenCalled(); expectDraft();
     expect(modal().text()).toContain('✓ 已核准');
+  });
+  it.each(['network', 'invalid-json', 'malformed', 'wrong-id'])('%s after server completion requires a read before retry', async kind => {
+    await start({ width }); await edit();
+    rollbackResponse = () => {
+      serverRecords[0] = { ...serverRecords[0], Status: 'pending' };
+      if (kind === 'network') return Promise.reject(new Error('response lost'));
+      if (kind === 'invalid-json') return Promise.resolve(new Response('broken', { status: 200 }));
+      return Promise.resolve(json(kind === 'malformed' ? {} : { ...record(999), Status: 'pending' }));
+    };
+    await click(modal(), '退回待審'); expectDraft();
+    expect(window.alert).not.toHaveBeenCalled();
+    expect(wrapper.text()).toContain('無法確認退回結果');
+    expect(buttons(modal(), '退回待審')[0].element.disabled).toBe(true);
+    expect(buttons(modal(), '儲存變更')[0].element.disabled).toBe(true);
+    await buttons(modal(), '退回待審')[0].trigger('click'); expect(rollbackCalls()).toHaveLength(1);
+    await click(modal(), '重新查詢狀態');
+    expect(modal().text()).not.toContain('✓ 已核准'); expectDraft();
+    expect(buttons(modal(), '退回待審')).toHaveLength(0);
+    expect(wrapper.find('#lr-review-tab-approved').text()).toContain('0');
+    expect(wrapper.find('#lr-review-tab-pending').text()).toContain('2');
+  });
+  it('failed reconciliation stays locked across close/reopen, then a confirmed approved read permits retry', async () => {
+    await start({ width }); await edit();
+    rollbackResponse = () => Promise.reject(new Error('connection lost'));
+    await click(modal(), '退回待審');
+    readResponse = () => Promise.resolve(json({}, 503));
+    await click(modal(), '重新查詢狀態'); expectDraft();
+    expect(buttons(modal(), '退回待審')[0].element.disabled).toBe(true);
+    await click(modal(), '關閉'); await edit();
+    expect(buttons(modal(), '退回待審')[0].element.disabled).toBe(true);
+    readResponse = null;
+    await click(modal(), '重新查詢狀態'); expectDraft();
+    expect(buttons(modal(), '退回待審')[0].element.disabled).toBe(false);
+    rollbackResponse = () => Promise.resolve(json({ ...record(), Status: 'pending' }));
+    await click(modal(), '退回待審'); expect(rollbackCalls()).toHaveLength(2);
+  });
+  it('success after closing still updates the list and counts', async () => {
+    await start({ width }); await edit();
+    const pending = deferred(); rollbackResponse = () => pending.promise;
+    await click(modal(), '退回待審'); await click(modal(), '關閉');
+    pending.resolve(json({ ...record(), Status: 'pending' })); await flushPromises();
+    expect(buttons(wrapper, '退回待審')).toHaveLength(0);
+    expect(wrapper.find('#lr-review-tab-approved').text()).toContain('0');
+    expect(wrapper.find('#lr-review-tab-pending').text()).toContain('2');
+  });
+  it('a slow pre-rollback list/count response cannot restore approved after success', async () => {
+    await start({ width }); await edit();
+    const old = deferred();
+    readResponse = () => old.promise;
+    await wrapper.findAll('button').find(b => b.text().endsWith('重新整理')).trigger('click'); await flushPromises();
+    readResponse = null;
+    await click(modal(), '退回待審'); expectDraft();
+    old.resolve(json({ data: [record()], status_counts: { approved: 1, pending: 1 } })); await flushPromises();
+    expect(wrapper.find('#lr-review-tab-approved').text()).toContain('0');
+    expect(wrapper.find('#lr-review-tab-pending').text()).toContain('2');
+    expect(modal().text()).not.toContain('✓ 已核准');
+  });
+  it('a reconciliation response cannot overwrite another modal opened during the read', async () => {
+    await start({ width }); await edit();
+    rollbackResponse = () => { serverRecords[0] = { ...serverRecords[0], Status: 'pending' }; return Promise.reject(new Error('response lost')); };
+    await click(modal(), '退回待審');
+    const read = deferred();
+    readResponse = url => String(url).includes('before_id=') ? read.promise : Promise.resolve(json({ data: serverRecords, status_counts: { approved: 0, pending: 2 } }));
+    await click(modal(), '重新查詢狀態'); await click(modal(), '關閉');
+    await wrapper.find('#lr-review-tab-pending').trigger('click'); await flushPromises(); await edit();
+    read.resolve(json({ data: [{ ...record(), Status: 'pending', ReviewNote: 'old review note' }] })); await flushPromises();
+    expectDraft(); expect(modal().text()).not.toContain('old review note');
+    expect(wrapper.find('#lr-review-tab-approved').text()).toContain('0');
+  });
+  it('success for the previous campus refreshes current scope without touching its modal', async () => {
+    await start({ width }); await edit();
+    const pending = deferred(); rollbackResponse = () => pending.promise;
+    await click(modal(), '退回待審');
+    serverRecords = [record(777)];
+    await wrapper.setProps({ branchId: 2 }); await flushPromises(); await edit();
+    pending.resolve(json({ ...record(), Status: 'pending' })); await flushPromises();
+    expectDraft(); expect(modal().text()).toContain('✓ 已核准');
+    expect(wrapper.find('#lr-review-tab-approved').text()).toContain('1');
+  });
+  it('two successful rows finishing in parallel cannot restore older counts', async () => {
+    serverRecords = [record(), record(502)];
+    await start({ width });
+    const a = deferred(), b = deferred(), oldCount = deferred();
+    rollbackResponse = url => String(url).includes('/501/') ? a.promise : b.promise;
+    const controls = buttons(wrapper, '退回待審');
+    await controls[0].trigger('click'); await controls[1].trigger('click'); await flushPromises();
+    let counts = 0;
+    readResponse = url => {
+      const params = new URL(String(url), 'http://local').searchParams;
+      if (params.has('with_status_counts') && ++counts === 1) return oldCount.promise;
+      const rows = params.has('before_id') ? serverRecords.filter(r => r.id === Number(params.get('before_id')) - 1) : serverRecords;
+      return Promise.resolve(json({ data: rows, status_counts: { approved: serverRecords.filter(r => r.Status === 'approved').length, pending: serverRecords.filter(r => r.Status === 'pending').length } }));
+    };
+    a.resolve(json({ ...record(), Status: 'pending' })); await flushPromises();
+    b.resolve(json({ ...record(502), Status: 'pending' })); await flushPromises();
+    oldCount.resolve(json({ data: [], status_counts: { approved: 1, pending: 1 } })); await flushPromises();
+    expect(rollbackCalls()).toHaveLength(2);
+    expect(wrapper.find('#lr-review-tab-approved').text()).toContain('0');
+    expect(wrapper.find('#lr-review-tab-pending').text()).toContain('2');
+    expect(modal().exists()).toBe(false);
+  });
+  it('confirmed success with failed refresh keeps the known state and blocks writes until read recovery', async () => {
+    await start({ width }); await edit();
+    readResponse = () => Promise.resolve(json({}, 503));
+    await click(modal(), '退回待審'); expectDraft();
+    expect(modal().text()).not.toContain('✓ 已核准');
+    expect(modal().text()).toContain('已退回待審；狀態重新整理未完成');
+    expect(buttons(modal(), '儲存變更')[0].element.disabled).toBe(true);
+    readResponse = null;
+    await click(modal(), '重新查詢狀態'); expectDraft();
+    expect(buttons(modal(), '儲存變更')[0].element.disabled).toBe(false);
+    expect(wrapper.find('#lr-review-tab-approved').text()).toContain('0');
+    expect(rollbackCalls()).toHaveLength(1);
   });
   it('hides rollback for pending records', async () => {
     await start({ width, status: 'pending' });
