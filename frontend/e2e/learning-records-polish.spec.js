@@ -11,6 +11,10 @@ for (const viewport of viewports) {
   test(`approval rollback preserves editor inputs @${viewport.name}`, async ({ page }) => {
     await openLearningPilot(page, viewport);
     await page.locator('#lr-review-tab-approved').click();
+    if (viewport.width > 640) {
+      const groupToggle = page.locator('.lr-group .at-disclosure__toggle').first();
+      if (await groupToggle.getAttribute('aria-expanded') === 'false') await groupToggle.click();
+    }
     await expect(page.getByRole('button', { name: '退回待審', exact: true })).toBeVisible();
     await page.getByRole('button', { name: '編輯評量', exact: true }).click();
     const editor = page.locator('.lr-modal--learning-form');
