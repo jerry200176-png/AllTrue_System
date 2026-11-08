@@ -45,7 +45,7 @@ function focusFirstField(e) {
     <DialogContent
       ref="content"
       :class="size === 'sm' ? 'tw:sm:max-w-sm' : 'tw:sm:max-w-xl'"
-      class="tw:max-h-[90dvh] tw:grid-rows-[auto_minmax(0,1fr)_auto] tw:gap-0 tw:p-0"
+      class="tw:max-h-[90dvh] tw:grid-rows-[auto_minmax(0,1fr)_auto] tw:overflow-hidden tw:gap-0 tw:p-0"
       @escape-key-down="dirty && guard($event)"
       @interact-outside="dirty && guard($event)"
       @open-auto-focus="focusFirstField"

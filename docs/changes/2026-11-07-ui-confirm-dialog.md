@@ -2,3 +2,12 @@
 <!-- release-notes: staff_update=staff-2026-11-07-ui-confirm-dialog -->
 - Adds `frontend/src/components/app-overlay/` (ConfirmDialog, FormDialog, DetailSheet, ActionMenu, toast helper) on `components/ui`.
 - `ConfirmDialogHost` (shared `askConfirm` host) now renders `ConfirmDialog`; call signature unchanged. Focus starts on 取消.
+
+### Local review follow-up (2026-11-08)
+
+- Register `components/app-overlay` in the explicit Tailwind source scan. With the original PR CSS the rendered FormDialog regression reports one grid row instead of three.
+- Constrain FormDialog panel overflow: without a panel scroll boundary, Chromium positions its sticky footer over the body. The body remains the only scrolling region; the footer sits below it at the panel bottom.
+- Reproduce locally from `frontend/`: `PLAYWRIGHT_CHROMIUM_EXECUTABLE=/usr/bin/chromium npx playwright test -c playwright.overlay-layout.config.js` (omit the executable override when using Playwright's installed Chromium). Builds only a synthetic fixture with the existing Vite/Tailwind configuration, uses real components and production styles, and blocks non-loopback browser requests. No API, credentials, or production data.
+- Browser coverage: long form at desktop, phone, and short phone viewports; computed geometry, body scrolling, sticky footer, focus trap/keyboard submit, dirty discard/safe focus, and shared confirmation clicks/promise results/focus restoration over both a legacy modal and DetailSheet. Screenshots are evidence only; no baselines change.
+- GitHub threads `discussion_r4501667240` (source scan) and `discussion_r4501667237` (stacking) remain open: this follow-up is local only. The original head already uses confirmation z-index tokens; rendered stacking is verified without another stacking code change.
+- Existing release-impact classification failure is reproduced: the PR body appends prose to `Release-Impact: user-visible`, while the existing gate requires a standalone declaration. Correcting the GitHub body remains outside this local-only task. Advisory visual-regression failure remains unverified; its downloadable log returned Forbidden. No checks or baselines are weakened.
