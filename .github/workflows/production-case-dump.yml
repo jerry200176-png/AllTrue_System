@@ -545,8 +545,8 @@ jobs:
               ['id', 'student_id', 'student_course_id as class_id', 'branch_id as campus_id', 'teacher_id', 'day_of_week',
                 'schedule_date', 'start_time', 'end_time', 'status', 'type', 'deduction', 'original_schedule_id',
                 'original_schedule_date', 'original_start_time'], 'schedules');
-            $scheduleIds = $schedules->pluck('id')->map(fn ($id) => (int)$id)->all();
-            $changes = $readRows($db::table('schedule_change_log')->whereIn('student_course_id', $classIds)->whereIn('schedule_id', $scheduleIds)->orderBy('id'),
+            // A historical log may outlive its schedule row. Keep all scoped-contract logs, without reading outside-scope schedules.
+            $changes = $readRows($db::table('schedule_change_log')->whereIn('student_course_id', $classIds)->orderBy('id'),
               ['id', 'schedule_id', 'student_course_id as class_id', 'original_schedule_date', 'original_start_time',
                 'from_date', 'from_time', 'to_date', 'to_time', 'from_teacher_id', 'to_teacher_id', 'from_status', 'to_status'], 'schedule_change_metadata');
             $out['student_ids'] = $studentIds;
@@ -594,6 +594,8 @@ jobs:
               'from_teacher_id'=>$int($r->from_teacher_id), 'to_teacher_id'=>$int($r->to_teacher_id),
               'from_status'=>(string)($r->from_status ?? ''), 'to_status'=>(string)($r->to_status ?? '')])->values()->all();
             $scheduleById = $schedules->keyBy('id');
+            $unresolvedLogRows = $changes->filter(fn ($row) => !$scheduleById->has((int) $row->schedule_id));
+            $unresolvedLogScheduleIds = $unresolvedLogRows->pluck('schedule_id')->map(fn ($id) => (int) $id)->unique()->sort()->values()->all();
             $unresolvedParents = $cycleIds = [];
             foreach ($schedules as $row) {{
               $parentId = (int) ($row->original_schedule_id ?? 0);
@@ -608,8 +610,9 @@ jobs:
             }}
             $out['counts'] = $counts;
             $out['verification'] = ['student_found'=>count($studentIds) > 0, 'read_only'=>true, 'rows_complete'=>$complete,
-              'lineage_complete_within_loaded_scope'=>$complete && $unresolvedParents === [] && $cycleIds === [],
+              'lineage_complete_within_loaded_scope'=>$complete && $unresolvedParents === [] && $cycleIds === [] && $unresolvedLogScheduleIds === [],
               'unresolved_parent_ids'=>array_values($unresolvedParents), 'cycle_ids'=>array_values($cycleIds),
+              'unresolved_log_schedule_ids'=>$unresolvedLogScheduleIds, 'unresolved_log_schedule_count'=>count($unresolvedLogScheduleIds), 'unresolved_log_rows'=>$unresolvedLogRows->count(),
               'external_student_or_contract_lineage_not_queried'=>true,
               'assessment_content_exported'=>false, 'teacher_lock_still_requires_domain_guard'=>true,
               'future_scheduled_session_ids'=>$sessions->filter(fn ($r) => strtolower((string)$r->status) === 'scheduled' && (string)$r->session_date > now()->toDateString())->pluck('id')->map(fn ($id) => (int)$id)->values()->all()];
