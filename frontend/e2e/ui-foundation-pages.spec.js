@@ -1076,6 +1076,17 @@ for (const scenario of [
     await expect(page.getByRole('menu')).toBeVisible();
     await page.keyboard.press('Escape');
     await expect(menu).toBeFocused();
+    const manager = primaryRow.getByTestId('course-manager-open');
+    if (process.env.VITE_COURSE_MANAGER_V1 === 'true') {
+      await expect(manager).toBeVisible();
+      await manager.click();
+      await expect(page.getByTestId('course-manager')).toBeVisible();
+      await page.keyboard.press('Escape');
+      await expect(page.getByTestId('course-manager')).toHaveCount(0);
+      await expect(manager).toBeFocused();
+    } else {
+      await expect(manager).toHaveCount(0);
+    }
     await expect(page.locator('.course-row').filter({ has: page.locator('[data-course-id="30"]') }).getByRole('button', { name: '堂數待對帳', exact: true })).toBeVisible();
     const overflow = await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1);
     expect(overflow).toBe(false);
