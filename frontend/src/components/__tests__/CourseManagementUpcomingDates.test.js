@@ -25,7 +25,8 @@ describe('CourseManagement upcoming lesson preview (#321)', () => {
 
   it('keeps the four labeled contract facts plus the existing action region', () => {
     expect(pageSource).toContain('管理課程');
-    for (const label of ['科目・老師', '下一堂', '堂數', '繳費']) expect(pageSource).toContain(`<span class="contract-field-label">${label}</span>`);
+    expect([...pageSource.matchAll(/<span class="contract-field-label[^"]*">([^<]+)<\/span>/g)].map(match => match[1]))
+      .toEqual(['科目・老師', '下一堂', '堂數', '繳費']);
     expect(pageSource).not.toContain('<th>時段</th>');
     expect(pageSource).not.toContain('fetch(`/api/v1/student-classes/${c.id}/sessions`');
     expect(pageSource).not.toContain('fetch(`/api/v1/student-classes/${c.id}/session');
