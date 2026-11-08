@@ -36,8 +36,8 @@ beforeEach(() => {
 });
 afterEach(() => { wrapper?.unmount(); vi.unstubAllGlobals(); });
 
-describe('#5124: real CourseManagement contract chronology', () => {
-  it('renders older history before pending-reconciliation and new working contracts', async () => {
+describe('#527: real CourseManagement newest-first contracts', () => {
+  it('renders new working contracts before pending reconciliation and older history', async () => {
     await open([
       contract(3612, '2026-09-06'),
       contract(2543, '2026-07-02', 'settled_pending', { payment_status: 'unpaid' }),
@@ -45,11 +45,11 @@ describe('#5124: real CourseManagement contract chronology', () => {
       contract(812, '2026-03-01', 'settled'),
     ]);
     await expandHistory();
-    expect(order()).toEqual([812, 820, 2543, 3612]);
+    expect(order()).toEqual([3612, 2543, 820, 812]);
     expect(wrapper.findAll('.course-row, .history-course-card').map((row) => row.text().match(/開課\s*(\d{4}-\d{2}-\d{2})/)?.[1]))
-      .toEqual(['2026-03-01', '2026-05-10', '2026-07-02', '2026-09-06']);
+      .toEqual(['2026-09-06', '2026-07-02', '2026-05-10', '2026-03-01']);
     expect(wrapper.findAll('.course-row')).toHaveLength(3);
-    expect(wrapper.get('.course-row').text()).toContain('尚未完成繳費');
+    expect(wrapper.findAll('.course-row').find((row) => row.text().includes('測試老師2543')).text()).toContain('尚未完成繳費');
   });
 
   it('preserves working/history/working order with independent history disclosures and unique aria targets', async () => {
@@ -63,14 +63,14 @@ describe('#5124: real CourseManagement contract chronology', () => {
     expect(new Set(targets).size).toBe(2);
     const before = fetch.mock.calls.length;
     await buttons[0].trigger('click');
-    expect(order()).toEqual([10, 20, 30, 50]);
+    expect(order()).toEqual([50, 40, 30, 10]);
     expect(buttons[0].attributes('aria-expanded')).toBe('true');
     expect(buttons[1].attributes('aria-expanded')).toBe('false');
     await buttons[1].trigger('click');
-    expect(order()).toEqual([10, 20, 30, 40, 50]);
+    expect(order()).toEqual([50, 40, 30, 20, 10]);
     for (const id of targets) expect(wrapper.findAll(`[id="${id}"]`)).toHaveLength(1);
     await buttons[0].trigger('click');
-    expect(order()).toEqual([10, 30, 40, 50]);
+    expect(order()).toEqual([50, 30, 20, 10]);
     expect(fetch.mock.calls).toHaveLength(before);
   });
 
@@ -108,8 +108,22 @@ describe('#5124: real CourseManagement contract chronology', () => {
     ]);
     await expandHistory();
     const rows = wrapper.findAll('.course-row, .history-course-card');
-    expect(order()).toEqual([10, 20, 30]);
+    expect(order()).toEqual([30, 20, 10]);
     expect(rows.map((row) => row.text().match(/開課\s*(\d{4}-\d{2}-\d{2}|未填)/)?.[1]))
-      .toEqual(['2026-01-01', '2026-02-01', '未填']);
+      .toEqual(['未填', '2026-02-01', '2026-01-01']);
+  });
+
+  it('keeps a new backdated contract first across mixed working/history without rewriting its displayed start', async () => {
+    await open([
+      contract(10, '2026-05-01'),
+      contract(30, '2025-01-01', 'settled_pending', { payment_status: 'unpaid' }),
+      contract(20, '2026-06-01', 'completed'),
+    ]);
+    await expandHistory();
+    expect(order()).toEqual([30, 20, 10]);
+    const rows = wrapper.findAll('.course-row, .history-course-card');
+    expect(rows.map((row) => row.text().match(/開課\s*(\d{4}-\d{2}-\d{2})/)?.[1]))
+      .toEqual(['2025-01-01', '2026-06-01', '2026-05-01']);
+    expect(rows[0].text()).toContain('尚未完成繳費');
   });
 });
