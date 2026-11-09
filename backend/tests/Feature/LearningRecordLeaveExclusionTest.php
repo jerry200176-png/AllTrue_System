@@ -25,6 +25,21 @@ class LearningRecordLeaveExclusionTest extends TestCase
 {
     use RefreshDatabase;
 
+    public function test_paused_linked_record_can_be_rolled_back_and_rechecked_by_director(): void
+    {
+        [$token, $teacher, $student] = $this->bootActors('paused-rollback');
+        $course = $this->seedCourse($student, $teacher);
+        $session = $this->seedSession($course, 'scheduled');
+        $record = $this->seedPendingLr($course, $teacher, $session);
+        $record->update(['Status' => 'approved', 'ApprovedAt' => now()]);
+        DB::table('StudentClass')->where('ID', $course)->update(['Stop' => 1]);
+
+        $this->withToken($token)->postJson('/api/v1/learning-records/' . $record->id . '/rollback-approval')
+            ->assertOk()->assertJsonPath('Status', 'pending');
+        $this->withToken($token)->getJson('/api/v1/learning-records?for_conflict_lookup=1&class_session_id=' . $session->id)
+            ->assertOk()->assertJsonPath('data.0.id', $record->id)->assertJsonPath('data.0.Status', 'pending');
+    }
+
     public function test_pending_lr_on_leave_session_is_excluded_from_index(): void
     {
         [$token, $teacherId, $studentId] = $this->bootActors('leave-hidden');
