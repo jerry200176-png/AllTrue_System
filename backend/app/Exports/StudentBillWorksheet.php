@@ -180,7 +180,7 @@ final class StudentBillWorksheet extends DefaultValueBinder implements FromArray
             return '未記錄';
         }
         $date = CarbonImmutable::createFromFormat('!Y-m-d', $value);
-        return $date !== false && $date->format('Y-m-d') === $value ? Date::dateTimeToExcel($date) : '未能確認';
+        return $date !== null && $date->format('Y-m-d') === $value ? Date::dateTimeToExcel($date) : '未能確認';
     }
 
     private static function time(?string $value): float|string
