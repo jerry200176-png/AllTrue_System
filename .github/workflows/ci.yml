@@ -100,6 +100,7 @@ jobs:
           node --test scripts/ci/production-secret-triggers.test.mjs
           node --test scripts/ci/production-ssh-environment.test.mjs
           node --test scripts/tests/register-synthetic-director.test.mjs
+          node --test scripts/tests/task-reconcile.test.mjs
           node --test scripts/tests/land-queue.test.mjs scripts/tests/pr-overlap.test.mjs scripts/tests/land-queue-dispatch-contract.test.mjs
           node --test scripts/tests/repo-hygiene.test.mjs
           python3 scripts/tests/test_branch_hygiene.py

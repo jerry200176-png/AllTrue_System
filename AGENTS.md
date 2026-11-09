@@ -60,6 +60,7 @@
 | 需要回顧決策或舊 bug | `~/.local/bin/mempalace search "<關鍵字>"`（本機搜尋；非跨機器權威）|
 | 任何瀏覽器測試 | `.cursor/.local/test-credentials.md` |
 | 任務牽涉長文件／多份 docs | `docs/INDEX.md` 的速讀卡／治理節奏（`docs/AI_DOC_LITERACY.md` 只是索引 stub）|
+| Codex 長任務接續／交接／重複失敗 | 按需使用 [alltrue-task-continuity](.agents/skills/alltrue-task-continuity/SKILL.md)，沿用 `RUNBOOK_HANDOFF` 並核對現況；不載入整段歷史、不自動重播動作 |
 
 ### Critical-domain architecture orientation
 
