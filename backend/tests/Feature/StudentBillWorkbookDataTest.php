@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\Campus;
 use App\Models\CoursePackage;
+use App\Models\LearningRecord;
 use App\Models\Student;
 use App\Models\StudentClass;
 use App\Models\User;
@@ -203,13 +204,21 @@ class StudentBillWorkbookDataTest extends TestCase
         }
     }
 
-    public function test_actual_lesson_teacher_resolution_batches_growth_and_preserves_substitute_precedence(): void
+    public static function occurrenceModes(): array
     {
-        config(['feature_flags.values' => []]);
+        return ['legacy' => [false], 'v2' => [true]];
+    }
+
+    #[\PHPUnit\Framework\Attributes\DataProvider('occurrenceModes')]
+    public function test_actual_lesson_teacher_resolution_batches_growth_and_preserves_substitute_precedence(bool $v2): void
+    {
+        config(['feature_flags.values' => ['FEATURE_SCHEDULE_OCCURRENCE_V2' => $v2]]);
         $student = $this->student();
         $historical = User::create(['LoginName' => 'history@example.test', 'Name' => '合成歷史老師', 'PSW' => 'synthetic', 'type' => 'T', 'phone' => 912345671]);
         $current = User::create(['LoginName' => 'current@example.test', 'Name' => '合成現任老師', 'PSW' => 'synthetic', 'type' => 'T', 'phone' => 912345672]);
+        $substitute = User::create(['LoginName' => 'substitute@example.test', 'Name' => '合成代課老師', 'PSW' => 'synthetic', 'type' => 'T', 'phone' => 912345673]);
         DB::table('UserCampus')->insert(['UserID' => $current->id, 'CampusID' => 1, 'Approved' => 1, 'Admin' => 0]);
+        DB::table('UserCampus')->insert(['UserID' => $substitute->id, 'CampusID' => 1, 'Approved' => 1, 'Admin' => 0]);
         $course = $this->course($student, ['TeacherID' => $current->id]);
         $request = $this->request();
         $add = function (int $day) use ($course, $student, $historical) {
@@ -226,17 +235,107 @@ class StudentBillWorkbookDataTest extends TestCase
             $add($day);
         }
         $original = DB::table('schedules')->insertGetId(['student_course_id' => $course->ID, 'student_id' => $student->id, 'branch_id' => 1, 'teacher_id' => $current->id, 'day_of_week' => 1, 'schedule_date' => '2026-06-01', 'start_time' => '10:00', 'end_time' => '11:30', 'status' => 'rescheduled', 'type' => 'regular']);
-        DB::table('schedules')->insert(['student_course_id' => $course->ID, 'student_id' => $student->id, 'branch_id' => 1, 'teacher_id' => $current->id, 'day_of_week' => 1, 'schedule_date' => '2026-06-01', 'start_time' => '10:00', 'end_time' => '11:30', 'status' => 'scheduled', 'type' => 'regular', 'original_schedule_id' => $original]);
+        DB::table('schedules')->insert(['student_course_id' => $course->ID, 'student_id' => $student->id, 'branch_id' => 1, 'teacher_id' => $v2 ? $substitute->id : $current->id, 'day_of_week' => 1, 'schedule_date' => '2026-06-01', 'start_time' => '10:00', 'end_time' => '11:30', 'status' => 'scheduled', 'type' => 'regular', 'original_schedule_id' => $original]);
         $output = null;
         $large = $this->assertQueryCountAtMost($small + 4, function () use (&$output, $builder, $source, $summary, $request) {
             $output = $builder->build($source, $summary, $request);
         });
         $lessons = $output[0]['sources'][0]['contracts'][0]['lessons'];
         $this->assertCount(25, $lessons);
-        $this->assertSame('合成現任老師', $lessons[0]['teacher'], 'A real substitute assignment wins even when its teacher equals the current contract teacher.');
+        $this->assertSame($v2 ? '合成代課老師' : '合成現任老師', $lessons[0]['teacher'], 'A real substitute wins; legacy also accepts an assignment equal to the current contract teacher.');
         $this->assertSame(array_fill(0, 24, '合成歷史老師'), array_column(array_slice($lessons, 1), 'teacher'));
         $this->assertLessThanOrEqual($small + 4, $large);
-        fwrite(STDOUT, sprintf("\nWorkbook SQL growth: 1 taught lesson=%d; 25 taught lessons=%d.\n", $small, $large));
+        fwrite(STDOUT, sprintf("\nWorkbook SQL growth (%s): 1 taught lesson=%d; 25 taught lessons=%d.\n", $v2 ? 'v2' : 'legacy', $small, $large));
+    }
+
+    public function test_normal_learning_record_default_keeps_ownership_without_accepting_conflicting_links(): void
+    {
+        $student = $this->student();
+        $other = $this->student();
+        $course = $this->course($student);
+        $foreign = $this->course($other);
+        $teacher = User::create(['LoginName' => 'default-lr@example.test', 'Name' => '合成歷史評量老師', 'PSW' => 'synthetic', 'type' => 'T', 'phone' => 912345674]);
+        $this->lessonFixture($course, '2026-06-01', 'scheduled');
+        foreach ([12, 13, 14] as $day) {
+            $date = sprintf('2026-06-%02d', $day);
+            $session = $this->lessonFixture($course, $date, 'attended');
+            // Normal EnrollmentService/add-session producers use this fillable payload, without StudentID.
+            $record = LearningRecord::create(['StudentClassID' => $day === 14 ? $foreign->ID : $course->ID, 'ClassSessionID' => $session,
+                'TeacherID' => $teacher->id, 'Status' => 'approved', 'Content' => '合成評量', 'SessionDate' => $date,
+                'StartTime' => '10:00:00', 'EndTime' => '11:30:00']);
+            $this->assertSame(0, (int) $record->fresh()->StudentID, 'Exercise the actual model/schema default.');
+            if ($day === 13) DB::table('LearningRecord')->where('id', $record->id)->update(['StudentID' => $other->id]);
+        }
+        $request = $this->request();
+        $before = $this->fingerprint();
+        $summary = ['合成學生', '合成英文', '', '', '', 5000, 0, 5000];
+        $data = app(StudentBillWorkbookData::class)->build([['id' => $course->ID, 'student_id' => $student->id], ['id' => $foreign->ID, 'student_id' => $other->id]],
+            ['course:' . $course->ID => $summary, 'course:' . $foreign->ID => $summary], $request);
+        $lessons = $data[0]['sources'][0]['contracts'][0]['lessons'];
+        $this->assertSame([2, null, null], array_column($lessons, 'ordinal'));
+        $this->assertSame(['合成歷史評量老師', null, null], array_column($lessons, 'teacher'));
+        $this->assertSame([], $data[1]['sources'][0]['contracts'][0]['lessons'], 'A cross-owner LR link cannot create another student lesson.');
+        $this->assertSame($before, $this->fingerprint());
+    }
+
+    public static function unrepresentedPayments(): array
+    {
+        return ['missing payment' => ['missing'], 'unset payment' => ['unset'],
+            'payment on another student invoice' => ['foreign'], 'payment on unselected same-student invoice' => ['unselected']];
+    }
+
+    #[\PHPUnit\Framework\Attributes\DataProvider('unrepresentedPayments')]
+    public function test_invoice_report_with_unrepresented_payment_remains_visible_and_non_applied(string $kind): void
+    {
+        $student = $this->student();
+        $course = $this->course($student);
+        $invoice = DB::table('Invoice')->insertGetId(['StudentID' => $student->id, 'StudentClassID' => $course->ID, 'TotalAmount' => 5000, 'PaidAmount' => 0, 'Status' => 'unpaid', 'IssueDate' => '2026-06-01', 'DueDate' => '2026-06-10']);
+        $payment = $kind === 'unset' ? null : 999999;
+        if (in_array($kind, ['foreign', 'unselected'], true)) {
+            $foreign = $this->course($kind === 'unselected' ? $student : $this->student(2));
+            $otherInvoice = DB::table('Invoice')->insertGetId(['StudentID' => $foreign->StudentID, 'StudentClassID' => $foreign->ID, 'TotalAmount' => 7777, 'PaidAmount' => 7777, 'Status' => 'paid', 'IssueDate' => '2026-06-01', 'DueDate' => '2026-06-10']);
+            $payment = DB::table('Payment')->insertGetId(['InvoiceID' => $otherInvoice, 'Amount' => 7777, 'PaidAt' => '2026-06-02', 'Method' => 'cash', 'Note' => 'PRIVATE_OUTSIDE_PAYMENT']);
+        }
+        DB::table('payment_reports')->insert(['StudentID' => $student->id, 'StudentClassID' => $course->ID, 'InvoiceID' => $invoice, 'reported_by_name' => '合成回報者', 'payment_date' => '2026-06-02', 'payment_method' => 'cash', 'reported_amount' => 1000, 'status' => 'confirmed', 'payment_id' => $payment, 'report_token_hash' => hash('sha256', 'synthetic-mismatch'), 'token_expires_at' => now()->addDay()]);
+        $request = $this->request();
+        $ledgerRequest = Request::create('/api/v1/accounting/ledger', 'GET', ['student_class_id' => $course->ID]);
+        $ledgerRequest->attributes->replace($request->attributes->all());
+        $ledger = app(\App\Http\Controllers\AccountingController::class)->ledger($ledgerRequest)->getData(true);
+        if ($kind !== 'unselected') {
+            $this->assertContains($kind === 'unset' ? 'confirmed_receipt_without_payment' : 'receipt_payment_outside_ledger', array_column($ledger['anomalies'], 'code'));
+        }
+        $before = $this->fingerprint();
+        $data = app(StudentBillWorkbookData::class)->build([['id' => $course->ID, 'student_id' => $student->id]],
+            ['course:' . $course->ID => ['合成學生', '合成英文', '', '', '', 5000, 0, 5000]], $request);
+        $contract = $data[0]['sources'][0]['contracts'][0];
+        $this->assertCount(1, $contract['unmatched_reports']);
+        $report = $contract['unmatched_reports'][0];
+        $this->assertSame($kind === 'unset' ? 'confirmed_without_payment' : 'confirmed_outside_selected_invoice', $report['status']);
+        $this->assertNotEmpty($report['receipt_no']);
+        $this->assertSame(1000, $report['amount']);
+        $this->assertSame([], $contract['invoices'][0]['payments']);
+        $this->assertSame(0, $contract['invoices'][0]['calculated_applied_amount']);
+        $this->assertStringNotContainsString('7777', json_encode($data));
+        $this->assertStringNotContainsString('PRIVATE_OUTSIDE_PAYMENT', json_encode($data));
+        $this->assertSame($before, $this->fingerprint());
+        $path = storage_path('framework/testing/student-bill-mismatch-' . $kind . '.xlsx');
+        \Illuminate\Support\Facades\File::ensureDirectoryExists(dirname($path));
+        file_put_contents($path, Excel::raw(new BillListExport([], $data, '2026-11-09T00:00:00Z'), \Maatwebsite\Excel\Excel::XLSX));
+        $binder = Cell::getValueBinder();
+        $workbook = null;
+        try {
+            Cell::setValueBinder(new DefaultValueBinder());
+            $workbook = IOFactory::load($path);
+            $rows = array_values(array_filter($workbook->getSheet(0)->toArray(null, true, false), fn ($row) => $row[1] === $report['receipt_no']));
+            $this->assertCount(1, $rows);
+            $this->assertSame($kind === 'unset' ? '已確認，收款紀錄待核對' : '已確認，未對到本合約帳單', $rows[0][2]);
+            $this->assertSame(1000, $rows[0][3]);
+            $this->assertNull($rows[0][4], 'Unmatched reported money is never serialized as applied money.');
+            $this->assertSame('未當作本合約已入帳', $rows[0][7]);
+        } finally {
+            $workbook?->disconnectWorksheets();
+            Cell::setValueBinder($binder);
+        }
     }
 
     public function test_flag_on_restored_teacher_keeps_historical_author_and_real_substitute_still_wins(): void

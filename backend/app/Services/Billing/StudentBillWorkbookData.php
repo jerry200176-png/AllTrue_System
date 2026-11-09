@@ -71,7 +71,8 @@ final class StudentBillWorkbookData
             ->whereIn(DB::raw('LOWER(TRIM(Status))'), ['attended', 'completed', 'late'])
             ->whereDate('SessionDate', '<=', $now->toDateString())
             ->orderBy('SessionDate')->orderBy('StartTime')->orderBy('id')->get();
-        $records = LearningRecord::active()->whereIn('StudentID', $students->keys())->whereIn('StudentClassID', $classIds)->whereIn('ClassSessionID', $sessions->pluck('id'))->get();
+        // Normal LR producers leave denormalized StudentID unset; validated contract/session ownership is authoritative.
+        $records = LearningRecord::active()->whereIn('StudentClassID', $classIds)->whereIn('ClassSessionID', $sessions->pluck('id'))->get();
         $ordinals = LearningRecordController::batchSessionNumbers($records);
         $recordsBySession = $records->groupBy('ClassSessionID');
         $signIns = StudentSignIn::active()->whereIn('StudentID', $students->keys())->whereIn('StudentClassID', $classIds)->whereIn('ClassSessionID', $sessions->pluck('id'))->get()->groupBy('ClassSessionID');
@@ -92,7 +93,8 @@ final class StudentBillWorkbookData
             if ($start && $start->gt($now)) {
                 continue;
             }
-            $sameOwner = $recordsBySession->get($session->id, collect())->filter(fn ($record) => (int) $record->StudentClassID === $courseId && (int) $record->StudentID === (int) $course->StudentID);
+            $sameOwner = $recordsBySession->get($session->id, collect())->filter(fn ($record) => (int) $record->StudentClassID === $courseId
+                && ((int) $record->StudentID === 0 || (int) $record->StudentID === (int) $course->StudentID));
             $record = $sameOwner->count() === 1 ? $sameOwner->first() : null;
             $attendance = $signIns->get($session->id, collect())->filter(fn ($row) => (int) $row->StudentClassID === $courseId && (int) $row->StudentID === (int) $course->StudentID);
             if ($attendance->contains(fn ($row) => in_array(strtolower(trim((string) $row->Status)), ['leave', 'leave_adjusted', 'cancelled', 'absent', 'excused'], true))) {
@@ -141,6 +143,10 @@ final class StudentBillWorkbookData
             }
             $sections = [];
             $emittedInvoiceIds = [];
+            $emittedReportIds = [];
+            $representedReports = collect($ledger['invoices'] ?? [])->filter(fn ($invoice) => array_intersect($studentClassIds,
+                $invoice['covered_student_class_ids'] ?: [$invoice['student_class_id']]) !== [])
+                ->flatMap(fn ($invoice) => array_column($invoice['payments'], 'report_id'))->filter()->unique();
             foreach ($studentSources as $source) {
                 $key = self::key($source);
                 abort_unless(isset($summaries[$key]) && count($summaries[$key]) === 8, 422, '帳單摘要欄位不完整。');
@@ -148,9 +154,6 @@ final class StudentBillWorkbookData
                 foreach ($selected[$key] as $course) {
                     // Same coverage union as AccountingLedgerModal: a combined invoice can cover a non-anchor contract.
                     $rawInvoices = collect($ledger['invoices'] ?? [])->filter(fn ($invoice) => in_array((int) $course->ID, array_map('intval', $invoice['covered_student_class_ids'] ?: [$invoice['student_class_id']]), true));
-                    $representedReports = $rawInvoices->flatMap(fn ($invoice) => array_merge(
-                        array_column($invoice['reports'], 'report_id'), array_column($invoice['payments'], 'report_id')
-                    ))->filter()->unique();
                     $invoices = [];
                     $sharedReferences = [];
                     foreach ($rawInvoices as $invoice) {
@@ -167,9 +170,13 @@ final class StudentBillWorkbookData
                         }
                         $invoices[] = $row;
                     }
-                    $unmatchedReports = collect($ledger['receipts'] ?? [])->where('student_class_id', (int) $course->ID)
-                        ->reject(fn ($report) => $representedReports->contains($report['report_id']))
-                        ->map(fn ($report) => $this->report($report, true))->values()->all();
+                    $unmatchedReports = collect($ledger['receipts'] ?? [])->filter(fn ($report) => (int) $report['student_class_id'] === (int) $course->ID
+                        || $rawInvoices->contains('id', $report['invoice_id']))
+                        ->reject(fn ($report) => $representedReports->contains($report['report_id']) || isset($emittedReportIds[$report['report_id']]))
+                        ->map(function ($report) use (&$emittedReportIds) {
+                            $emittedReportIds[$report['report_id']] = true;
+                            return $this->report($report, true);
+                        })->values()->all();
                     $details[] = [
                         'subject' => $course->displaySubjectName(), 'start_date' => $course->StartDate ? substr((string) $course->StartDate, 0, 10) : null,
                         'current_rate' => $course->Rate !== null ? (float) $course->Rate : null, 'rate_unit' => $course->rate_unit,
@@ -198,8 +205,8 @@ final class StudentBillWorkbookData
             }
             return Arr::only($payment, ['paid_at', 'receipt_no', 'application_status', 'amount', 'applied_amount', 'unapplied_amount', 'method']);
         }, $invoice['payments']);
-        $out['unpaid_reports'] = collect($invoice['reports'])->filter(fn ($report) => empty($report['payment_id']))
-            ->map(fn ($report) => $this->report($report, false))->values()->all();
+        // Reports without an exported payment appear once in the contract's explicitly non-applied section.
+        $out['unpaid_reports'] = [];
         return $out;
     }
 
