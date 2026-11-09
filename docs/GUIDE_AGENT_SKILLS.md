@@ -202,6 +202,13 @@ npx skills add https://github.com/Leonxlnx/taste-skill --skill "redesign-existin
 
 ---
 
+## 節省上下文的現成工具
+
+程式碼導航使用 [鎖定版 Repomix／ast-grep](../tools/agent-context/README.md)，
+先指定檔案、限制 token 預算，再讀受影響原文。Vue 壓縮需先量測；本次實測反而變大，
+所以預設不壓縮。政策與 SOP 沿用 `scripts/ci/docs-section.mjs` 的精確章節與來源 hash，
+不要把摘要當成授權，也不要每次重讀無關長清單。工具不新增正式資料權限或發布關卡。
+
 ## 授權
 
 上游 MIT。本地化改動（AllTrue 附錄）以本 repo 授權為準；引用時保留上游連結即可。
