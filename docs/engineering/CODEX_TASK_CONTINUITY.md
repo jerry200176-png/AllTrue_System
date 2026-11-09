@@ -8,7 +8,7 @@ authority and does not initialize or replace the existing harness store.
 | Capability | Observed scope and status |
 |---|---|
 | Runtime | Local `/opt/codex/bin/codex`: **0.163.0**, Node **24.19.0**. Hosted chat/app build and root model are not exposed. |
-| Models | Current collaboration tool advertises five GPT model choices and supported efforts. Actual per-agent model/effort is not exposed; bundled models are not entitlement evidence. No Opus/Sonnet routing. |
+| Models | Current collaboration tool advertises five GPT choices. A real native CLI `model/list` recheck returned eight visible picker entries with supported efforts. These are different client inventories, not inference/entitlement proof; actual per-agent model/effort is not exposed. No Opus/Sonnet routing. |
 | Subagents | This task used two existing reviewers through native tool messages with exact heads, source paths and read-only boundaries. Initial fork arguments are not recoverable here. |
 | Skills/MCP | Native CLI `multi_agent` and `skill_search` enabled; no local configured MCP servers. Host-injected connector tools are a separate capability. Existing Repomix **1.19.0** / ast-grep **0.51.1** are reused. |
 | Memory/session | CLI `memories=false`; experimental step switching/effort override disabled. Native `resume`/`fork` commands exist; machine/session recovery of this hosted chat was not tested. |
@@ -48,6 +48,8 @@ schema rather than assuming all current web features apply:
    deploys, repairs data or replaces harness task/lease authority. All checks are
    observations, not a computed landing verdict. An unknown/missing store still
    requires locating its authorized owner; JSON cannot recover its history.
+   CI progress/failure changes are reported even at an unchanged PR head/state;
+   check ordering alone does not count as progress. This never computes approval.
 
 Private evidence stays in the task workspace, outside Git. Public handoff holds
 deidentified pointers only. Re-read exact PR head, reviews, required checks,
@@ -55,22 +57,26 @@ production identity and prior execution receipt before any side effect.
 
 ## Evidence and limits
 
-- Eight isolated Node tests pass: invalid input, stale heads/state, preserved
+- Ten isolated Node tests pass: invalid input, stale heads/state, preserved
   goals/effect receipts without replay, partial failure, concurrent update, held
   lock, symlink rejection and directory replacement during observation. The suite
   also runs in the existing CI contract job. Command: `node --test scripts/tests/task-reconcile.test.mjs`.
+- Recheck found and reproduced a summary gap: pending-to-failed CI at the same
+  commit produced empty `changes` despite the failure being in the observation.
+  The focused regression failed before the fix; all ten tests pass after it,
+  including failure/recovery/skip transitions and order-independent comparison.
 - A separate real process resumed the private checkpoint, restored its context
-  keys and re-read all external state in **1.013 s** without changing the saved
+  keys and re-read all external state in **1.293 s** without changing the saved
   bytes or invoking a model. Dirty file contents are not fingerprinted: empty
   `changes` is not proof of an unchanged dirty tree. Always read the actual diff.
 - Real reconciliation observed main `2badb606`, production `d1230679`, four merged
   PRs and one open PR on 2026-11-09. These are dated observations, not current guarantees.
 - Representative question: installed context tools and Vue compression default.
-  Full guide: **3,522** tokens; literal relevant section plus provenance: **227**,
+  Full guide: **3,522** tokens; literal relevant section plus provenance: **229**,
   using existing `gpt-tokenizer 4.1.0`, `o200k_base`. Exact-source/provenance
   assertions passed. Seven local reads: median **0.11 ms** full read versus
-  **28.95 ms** section reader including Git verification. Retrieval is smaller
-  and locally slower; this does not measure model-answer quality or overall delivery time.
+  **20.49 ms** section reader including Git verification. Retrieval is smaller
+  and locally slower; this does not measure model-answer quality or overall delivery time. Token counts include the measured source HEAD metadata and may vary slightly with that header.
 - No inference was invoked for this benchmark. Actual billed tokens/cost are
   unavailable; no general savings claim is made. Earlier Vue compression made
   the pack larger, so compression remains opt-in.

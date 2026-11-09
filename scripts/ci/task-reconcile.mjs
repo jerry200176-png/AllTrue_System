@@ -29,6 +29,14 @@ export function parseArgs(args) {
   return options;
 }
 
+function checkState(pr) {
+  return JSON.stringify({
+    pending: [...new Set(pr.pending || [])].sort(),
+    failed: [...new Set(pr.failed || [])].sort(),
+    checks: (pr.checks || []).map(check => JSON.stringify([check.name, check.status, check.conclusion])).sort(),
+  });
+}
+
 export function compare(previous, current) {
   const changes = [];
   if (!previous) return ['No saved observation; verify the task context before acting'];
@@ -40,6 +48,7 @@ export function compare(previous, current) {
   for (const pr of current.prs) {
     const old = previous.prs.find(item => item.number === pr.number);
     if (!old || old.head !== pr.head || old.state !== pr.state) changes.push(`PR #${pr.number} head/state changed`);
+    if (old && checkState(old) !== checkState(pr)) changes.push(`PR #${pr.number} checks changed`);
   }
   return changes;
 }
