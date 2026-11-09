@@ -30,6 +30,7 @@ export default defineConfig({
   testDir: './e2e',
   // Foundation page evidence uses playwright.ui-foundation.config.js + dedicated Vite mount.
   testIgnore: [
+    /director-path-acceptance\.spec\.js$/, // Private acceptance uses its list-only config in the same smoke job.
     // Executed by the required foundation suite against the dedicated Vue fixture server.
     /assessment-clarity\.spec\.js$/,
     /ui-foundation-pages\.spec\.js$/,
@@ -76,6 +77,8 @@ export default defineConfig({
     /truefit-fixture-print\.spec\.js$/,
     // Vitest unit test for the acceptance read-only guard (vitest.config.js).
     /fixtures\/readOnlyAppGuard\.test\.js$/,
+    // Node test-runner self-tests (privacy intentionally launches a failing synthetic browser test).
+    /fixtures\/director(?:ExportGuard|Privacy)\.test\.js$/,
     // Uses only the loopback fixture served by playwright.overlay-layout.config.js.
     /overlay-layout\.spec\.js$/,
   ],
