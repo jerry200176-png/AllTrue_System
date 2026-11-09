@@ -34,7 +34,14 @@ test('only one armed UI export passes; rollback and all other writes stay blocke
       if (index < 0) throw new Error('unguarded request');
       if (!handlers[index].match(url)) return dispatch(index - 1);
       await handlers[index].handle({ request: () => request, continue: async () => { decision = 'sent'; },
-        abort: async () => { decision = 'blocked'; }, fulfill: async () => { decision = 'local'; },
+        fetch: async options => {
+          assert.deepEqual(options, { maxRedirects: 0 });
+          return { status: () => 200, url: () => url.href, headers: () => ({
+            'content-type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            'content-disposition': 'attachment; filename="synthetic.xlsx"',
+          }), body: async () => Buffer.from([0x50, 0x4b, 0x03, 0x04]), dispose: async () => {} };
+        },
+        abort: async () => { decision = 'blocked'; }, fulfill: async options => { decision = options.response ? 'sent' : 'local'; },
         fallback: async () => dispatch(index - 1) });
     }
     await dispatch(handlers.length - 1);

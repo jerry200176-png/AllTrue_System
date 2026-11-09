@@ -2,6 +2,7 @@
 import http from 'node:http';
 import { test, expect } from '@playwright/test';
 import { appOriginOf, installReadOnlyAppGuard } from './fixtures/readOnlyAppGuard.js';
+import { BILL_EXPORT_PATH, installSingleStudentExportGuard } from './fixtures/directorExportGuard.js';
 
 /**
  * Browser self-test for the production acceptance read-only guard. It uses three
@@ -12,6 +13,7 @@ import { appOriginOf, installReadOnlyAppGuard } from './fixtures/readOnlyAppGuar
 function startServer() {
   const received = [];
   const redirects = new Map();
+  const responses = new Map();
   const server = http.createServer((req, res) => {
     received.push({ method: req.method, path: req.url });
     res.setHeader('Access-Control-Allow-Origin', '*');
@@ -22,6 +24,12 @@ function startServer() {
       const { status, location } = redirects.get(req.url);
       res.writeHead(status, { Location: location });
       res.end();
+      return;
+    }
+    if (responses.has(req.url)) {
+      const { status, headers, body } = responses.get(req.url);
+      res.writeHead(status, headers);
+      res.end(body);
       return;
     }
     if (req.url === '/') {
@@ -35,7 +43,7 @@ function startServer() {
   return new Promise((resolve) => {
     server.listen(0, '127.0.0.1', () => {
       const { port } = /** @type {import('node:net').AddressInfo} */ (server.address());
-      resolve({ server, received, redirects, base: `http://127.0.0.1:${port}` });
+      resolve({ server, received, redirects, responses, base: `http://127.0.0.1:${port}` });
     });
   });
 }
@@ -60,8 +68,52 @@ test.describe('read-only acceptance guard self-test', () => {
     app.received.length = 0;
     third.received.length = 0;
     middle.received.length = 0;
+    app.redirects.clear();
+    app.responses.clear();
     third.redirects.clear();
     middle.redirects.clear();
+  });
+
+  for (const status of [301, 302, 303, 307, 308]) {
+    test(`single student export redirect ${status} cannot reach a business POST`, async ({ page, context }) => {
+      app.redirects.set(BILL_EXPORT_PATH, {
+        status, location: `${app.base}/api/v1/learning-records/7/rollback-approval`,
+      });
+      const guard = await installSingleStudentExportGuard(context, app.base, ['c7'], '合成學生');
+      await page.goto(`${app.base}/`);
+      const outcome = await page.evaluate(async path => {
+        try {
+          await fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ branch_id: 1, filter: 'all', search: '合成學生', rows: [{ id: 7, package_id: null }] }) });
+          return 'sent';
+        } catch { return 'blocked'; }
+      }, BILL_EXPORT_PATH);
+      // This checks actual Chromium traffic received by a loopback server, not route-call mocks.
+      expect(app.received.filter(entry => entry.method === 'POST')).toEqual([{ method: 'POST', path: BILL_EXPORT_PATH }]);
+      expect(outcome).toBe('blocked');
+      expect(guard.exportCount()).toBe(0);
+      expect(guard.blocked).toEqual([{ method: 'POST', origin: app.base, path: BILL_EXPORT_PATH }]);
+    });
+  }
+
+  test('single student export rejects a direct HTML response and consumes the one-shot allowance', async ({ page, context }) => {
+    app.responses.set(BILL_EXPORT_PATH, { status: 200, headers: { 'Content-Type': 'text/html' }, body: '<html>synthetic login</html>' });
+    const guard = await installSingleStudentExportGuard(context, app.base, ['c7'], '合成學生');
+    await page.goto(`${app.base}/`);
+    const outcomes = await page.evaluate(async path => {
+      const send = async () => {
+        try {
+          await fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ branch_id: 1, filter: 'all', search: '合成學生', rows: [{ id: 7, package_id: null }] }) });
+          return 'sent';
+        } catch { return 'blocked'; }
+      };
+      return [await send(), await send()];
+    }, BILL_EXPORT_PATH);
+    expect(outcomes).toEqual(['blocked', 'blocked']);
+    expect(app.received.filter(entry => entry.method === 'POST')).toEqual([{ method: 'POST', path: BILL_EXPORT_PATH }]);
+    expect(guard.exportCount()).toBe(0);
+    expect(guard.blocked).toHaveLength(2);
   });
 
   test('(a) a write to the app origin is blocked and recorded', async ({ page, context }) => {

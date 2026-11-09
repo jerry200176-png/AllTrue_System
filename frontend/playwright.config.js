@@ -77,6 +77,8 @@ export default defineConfig({
     /truefit-fixture-print\.spec\.js$/,
     // Vitest unit test for the acceptance read-only guard (vitest.config.js).
     /fixtures\/readOnlyAppGuard\.test\.js$/,
+    // Node test-runner self-tests (privacy intentionally launches a failing synthetic browser test).
+    /fixtures\/director(?:ExportGuard|Privacy)\.test\.js$/,
     // Uses only the loopback fixture served by playwright.overlay-layout.config.js.
     /overlay-layout\.spec\.js$/,
   ],

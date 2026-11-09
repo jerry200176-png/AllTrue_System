@@ -91,10 +91,13 @@ def inspect_workbook(path, expected_name, expected_sources):
             require(value(cells.get("A" + str(number + 1))) == expected_name, "summary-student")
             for column in "FGH":
                 cell = cells.get(column + str(number + 1))
-                if cell is not None and cell.get("t", "n") == "n" and value(cell) != "":
+                require(cell is not None and cell.get("t", "n") == "n" and value(cell) != "", "invalid-amount-type")
+                try:
                     require(math.isfinite(float(value(cell))), "invalid-amount-type")
-                    numeric_amounts += 1
-        require(summaries == expected_sources and invoices > 0 and numeric_amounts > 0, "bill-structure")
+                except (TypeError, ValueError):
+                    raise InvalidWorkbook("invalid-amount-type") from None
+                numeric_amounts += 1
+        require(summaries == expected_sources and invoices > 0 and numeric_amounts == 3 * expected_sources, "bill-structure")
         return {"valid": True, "sheets": 1, "summary_rows": summaries, "numeric_amount_cells": numeric_amounts}
 
 

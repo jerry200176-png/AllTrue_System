@@ -23,13 +23,12 @@ async function privateAcceptance(work) {
   catch { throw new Error('UNVERIFIED: director path acceptance did not complete; private details suppressed.'); }
 }
 
-/** Same login controls and primary-sidebar retry as smoke.spec.js; credentials stay in the runtime browser flow. */
+/** Same login controls as smoke.spec.js; wait for submission before continuing. */
 async function login(page) {
   await page.goto('/');
   await page.locator('#login-account').fill(process.env.SMOKE_DIRECTOR_USER);
   await page.locator('#login-password').fill(process.env.SMOKE_DIRECTOR_PASS);
-  await page.locator('button.login-btn').click({ force: true });
-  if (await page.locator('#login-account').count()) await page.locator('button.login-btn').click({ force: true });
+  await page.locator('button.login-btn').click();
   await expect(page.locator('#login-account')).toHaveCount(0, { timeout: 15_000 });
 }
 
