@@ -78,7 +78,7 @@ describe('CourseManagement student billing tab', () => {
     expect(source).toContain('ledgerInitialAction.value = initialAction;');
     expect(source).toContain('const openTuitionLedger = (course) => openLedgerForCourse(course);');
     expect(source).not.toMatch(/emit\('navigate', buildTuitionCollectNav/);
-    expect(source).toContain('剩幾堂</th>');
+    expect(source).toMatch(/<span class="contract-field-label[^"]*">堂數<\/span>/);
     expect(source).not.toContain('<th>剩餘堂數</th>');
     expect(source).not.toContain("'btn-status'");
     expect(source).not.toContain('>帳務</button>');

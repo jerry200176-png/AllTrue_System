@@ -1,0 +1,15 @@
+updates:
+  - id: staff-2026-11-08-course-contract-workbench
+    published_at: "2026-11-08"
+    audiences:
+      - director
+    importance: digest
+    title: 課程合約更好查找
+    summary: 課程合約列表改為清楚卡片，手機可直接查看堂數、繳費與操作。
+    items:
+      - category: improved
+        text: 目前篩選條件清楚標示，取消專注與清除篩選有不同入口。
+      - category: improved
+        text: 保留新合約在前、開課日期、歷史課程與待對帳入口。
+    source_refs:
+      - "changelog:2026-11-08:course-contract-workbench"

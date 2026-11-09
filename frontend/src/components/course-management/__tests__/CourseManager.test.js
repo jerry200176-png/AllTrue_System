@@ -377,7 +377,7 @@ describe('CourseManager drawer a11y (C-PR4)', () => {
   it('the page falls back to the student group toggle, else the course list card', () => {
     expect(pageSource).toContain(':focus-fallback="focusCourseListAfterDrawerClose"')
     expect(pageSource).toMatch(/function focusCourseListAfterDrawerClose\(course\) \{[\s\S]{0,300}studentGroupToggleId\(`sid:\$\{sid\}`\)[\s\S]{0,120}\(toggle \|\| courseTableCard\.value\)\?\.focus\(\)/)
-    expect(pageSource).toContain('<div ref="courseTableCard" class="card table-card" data-guide="course-mgmt-table" tabindex="-1">')
+    expect(pageSource).toContain('<div ref="courseTableCard" class="table-card course-list-surface" data-guide="course-mgmt-table" tabindex="-1">')
   })
 
   it('traps Tab inside the drawer (wraps last → first, first → last on Shift+Tab)', async () => {
