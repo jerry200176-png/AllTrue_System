@@ -9,6 +9,7 @@ assert.match(app, /^const BranchHealthBoard\s*= asyncPage\(/m);
 const cm = readFileSync(new URL('../pages/CourseManagement.vue', import.meta.url), 'utf8');
 assert.match(cm, /params\.set\('class_type', filters\.value\.class_type\)/);
 assert.doesNotMatch(cm, /typeFilter/, 'fetch-all-pages workaround removed; backend filters class_type');
+assert.match(cm, /const loadStudents = async[\s\S]{0,400}fetchAllPages\(`\/api\/v1\/students\?/, '新增課程 scheduler needs every student page, not the first 500');
 
 const bugs = readFileSync(new URL('../pages/BugReportsPage.vue', import.meta.url), 'utf8');
 assert.match(bugs, /listDisplay\(bug\)\.title/);

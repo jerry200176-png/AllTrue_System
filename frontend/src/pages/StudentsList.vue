@@ -2,7 +2,7 @@
   <div class="students-page at-ops-page at-page">
       <AtPageHeader
         title="學生管理"
-        description="搜尋、篩選與管理本分校學生資料與課程安排。"
+        description="管理「人」：學生資料、家長與聯絡方式。"
         icon="groups"
         data-guide="students-header"
       >
@@ -67,6 +67,7 @@
         </div>
         <div class="filter-toggles">
           <AtButton shape="rect" size="sm" variant="ghost" icon="school" @click="openGradePromotion">年級升級</AtButton>
+          <AtButton shape="rect" size="sm" variant="ghost" icon="merge" @click="showSchoolMerge = true">學校整理</AtButton>
           <AtButton
             shape="rect"
             size="sm"
@@ -878,6 +879,13 @@
       @decision="onEnrollmentConflictDecision"
     />
     <!-- Grade Promotion Modal — server preview/confirm (#297 Phase A); no course Stop. -->
+    <Dialog v-model:open="showSchoolMerge">
+      <DialogContent class="tw:max-h-[85vh] tw:max-w-2xl tw:overflow-y-auto">
+        <DialogTitle>學校整理</DialogTitle>
+        <DialogDescription class="tw:sr-only">把不同寫法的同一所學校合併成一個名稱</DialogDescription>
+        <SchoolMergePanel v-if="showSchoolMerge" :branch-id="props.branchId" @changed="loadStudents({ quiet: true })" />
+      </DialogContent>
+    </Dialog>
     <div v-if="showGradePromotion" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="grade-promotion-modal-title" @click.self="closeGradePromotion">
       <div class="modal" style="width: 560px;">
         <h3 id="grade-promotion-modal-title">年級升級</h3>
@@ -1055,6 +1063,8 @@ import AtIconButton from '../components/design-system/AtIconButton.vue';
 import AtRowMenu from '../components/design-system/AtRowMenu.vue';
 import AtEmpty from '../components/design-system/AtEmpty.vue';
 import SchoolNameInput from '../components/SchoolNameInput.vue';
+import SchoolMergePanel from '../components/SchoolMergePanel.vue';
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from '../components/ui/dialog';
 import { trialTargetPayload } from '../lib/trialTarget.js';
 import { trackedFetch } from '../lib/loadingBar';
 
@@ -1243,6 +1253,7 @@ const getPackageTotalSessions = (course) => poolTotalSessions(course, { fallback
 
 // Grade promotion
 const showGradePromotion = ref(false);
+const showSchoolMerge = ref(false);
 
 // Sessions modal
 const showSessionsModal = ref(false);
@@ -3789,6 +3800,7 @@ table th { font-size: 12.5px; }
 .search-input-wrap input { padding-left: 36px; }
 .filter-toggles {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
   align-items: flex-end;
 }
