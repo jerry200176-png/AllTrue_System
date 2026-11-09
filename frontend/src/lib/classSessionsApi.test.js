@@ -7,10 +7,64 @@ import {
   normalizeClassSessionsPayload,
   createSessionViewModel,
   sessionViewModelFromSessionDatesSlot,
+  sessionViewModelWithLegacyFields,
 } from './classSessionsApi.js';
 
 function materialized(over) {
   return createSessionViewModel({ kind: 'materialized', isProjected: false, ...over });
+}
+
+// In-app #528 / #5145: moving an existing ID must replace its old mutable slot,
+// while an unrelated week, course, real ID or virtual occurrence stays intact.
+{
+  const before = materialized({ id: 7001, studentClassId: 99, date: '2026-11-09', startTime: '20:00', endTime: '22:00', status: 'scheduled', teacherId: 5 });
+  for (const [date, startTime] of [
+    ['2026-11-09', '19:30'], ['2026-11-09', '20:30'],
+    ['2026-11-10', '19:30'], ['2026-11-16', '19:30'],
+  ]) {
+    const incoming = materialized({ ...before, date, startTime, endTime: '21:30' });
+    assert.deepEqual(mergeSessionViewModels([before], [incoming]), [incoming], '#528: one real ID has only its latest supplied location');
+  }
+
+  const history = materialized({ id: 7000, studentClassId: 99, date: '2026-11-02', startTime: '20:00', status: 'attended' });
+  const otherSlot = materialized({ id: 7002, studentClassId: 99, date: '2026-11-09', startTime: '17:00' });
+  const otherCourse = materialized({ id: 7001, studentClassId: 100, date: '2026-11-09', startTime: '20:00' });
+  const virtual = createSessionViewModel({ studentClassId: 99, date: '2026-11-23', startTime: '20:00', isProjected: true });
+  const input = [history, before, otherSlot, virtual];
+  const original = structuredClone(input);
+  input.forEach(Object.freeze); Object.freeze(input);
+  let cache = { 99: input, 100: [otherCourse] };
+  for (const startTime of ['19:30', '18:00']) {
+    const incoming = materialized({ ...before, startTime, endTime: '20:00' });
+    cache = mergeSessionsByCourse(cache, { 99: [incoming] });
+    assert.equal(cache[99].filter(row => row.id === 7001).length, 1);
+    assert.equal(cache[99].find(row => row.id === 7001).startTime, startTime);
+  }
+  assert.deepEqual(input, original, 'merging must not mutate caller-owned snapshots');
+  assert.deepEqual(cache[99].filter(row => row.id !== 7001), [history, otherSlot, virtual]);
+  assert.deepEqual(cache[100], [otherCourse], 'a matching ID in another course is outside this identity');
+
+  const legacy = sessionViewModelWithLegacyFields(before);
+  const moved = materialized({ ...before, date: '2026-11-10', startTime: '19:30', endTime: '21:30' });
+  const [latest] = mergeSessionViewModels([legacy], [moved]);
+  assert.equal(latest.session_date, latest.date, 'legacy aliases must follow the current observation');
+  assert.equal(latest.start_time, latest.startTime);
+  assert.equal(latest.end_time, latest.endTime);
+  assert.deepEqual(mergeSessionViewModels([before, otherCourse], [moved]), [otherCourse, moved], 'same numeric ID in another course must keep its slot');
+
+  const unknown = materialized({ id: 7001, studentClassId: 0, date: before.date, startTime: before.startTime });
+  assert.equal(mergeSessionViewModels([unknown], [{ ...unknown, startTime: '19:30' }]).length, 2, 'unknown course identity must not collapse different slots');
+}
+
+// Keep the existing projected/materialized slot rule, in either arrival order.
+{
+  const virtual = createSessionViewModel({ studentClassId: 99, date: '2026-11-09', startTime: '19:30', isProjected: true });
+  const real = materialized({ id: 7001, studentClassId: 99, date: virtual.date, startTime: virtual.startTime });
+  for (const [oldRows, newRows] of [[[virtual], [real]], [[real], [virtual]]]) {
+    const [row] = mergeSessionViewModels(oldRows, newRows);
+    assert.equal(row.id, 7001);
+    assert.equal(row.isProjected, false);
+  }
 }
 
 // 1. 1v2 共享時段：同 date+startTime、不同 studentClassId 必須兩筆都活著
