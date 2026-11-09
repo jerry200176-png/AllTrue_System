@@ -1,6 +1,7 @@
 // @ts-check
 import { test, expect } from '@playwright/test';
 import { dismissOverlays } from './fixtures/dismissOverlays.js';
+import { installReadOnlyAppGuard, isKnownPostRead } from './fixtures/readOnlyAppGuard.js';
 
 /**
  * 前端 UI smoke / 關鍵業務路徑（#547 起，#730 擴充）。
@@ -111,6 +112,8 @@ test.describe('UI smoke — director', () => {
     page.on('pageerror', (e) => errors.push(String(e)));
 
     await login(page, 'director', DIRECTOR);
+    const appOrigin = new URL(BASE).origin;
+    const blocked = await installReadOnlyAppGuard(page.context(), appOrigin, { allowTransactionTelemetry: true });
     await dismissOverlays(page);
     await navTo(page, '課程查找');
 
@@ -121,6 +124,16 @@ test.describe('UI smoke — director', () => {
     if (await billingTab.count()) {
       await expect(billingTab.first()).toBeVisible({ timeout: 10_000 });
     }
+    // in-app #519: observe the deployed shared entry without creating a course.
+    await page.getByTestId('course-header-create').click();
+    const scheduler = page.locator('.universal-scheduler-modal');
+    await expect(scheduler).toBeVisible();
+    await expect(scheduler.getByRole('heading', { name: '新增課程', exact: true })).toBeVisible();
+    await expect(scheduler.getByRole('button', { name: /一般課程/ })).toBeVisible();
+    await expect(scheduler.getByRole('button', { name: /多科共用方案/ })).toBeVisible();
+    await scheduler.getByRole('button', { name: '取消', exact: true }).click();
+    await expect(scheduler).toHaveCount(0);
+    expect(blocked.filter(request => !isKnownPostRead(appOrigin, request)), 'no business write may be sent during create-entry acceptance').toEqual([]);
     expect(errors, `頁面 JS 錯誤：\n${errors.join('\n')}`).toEqual([]);
   });
 });
