@@ -197,13 +197,14 @@ class BillExportTest extends TestCase
             $workbook = \PhpOffice\PhpSpreadsheet\IOFactory::load($path);
             $this->assertSame(1, $workbook->getSheetCount());
             $sheet = $workbook->getSheet(0);
-            $this->assertSame(['學生', '科目', '期間／剩幾堂', '狀態', '到期／逾期', '應收', '已收', '未收'], $sheet->rangeToArray('A1:H1')[0]);
-            $this->assertSame(2, $sheet->getHighestDataRow());
-            $this->assertSame('=1+1', $sheet->getCell('A2')->getValue());
-            $this->assertSame(\PhpOffice\PhpSpreadsheet\Cell\DataType::TYPE_STRING, $sheet->getCell('A2')->getDataType());
-            $this->assertSame(\PhpOffice\PhpSpreadsheet\Cell\DataType::TYPE_NUMERIC, $sheet->getCell('G2')->getDataType());
-            $this->assertSame(0, $sheet->getCell('G2')->getValue());
-            $this->assertSame($sheet->getCell('G2')->getValue() + $sheet->getCell('H2')->getValue(), $sheet->getCell('F2')->getValue());
+            $this->assertSame(['學生', '科目', '期間／剩幾堂', '狀態', '到期／逾期', '應收', '已收', '未收'], $sheet->rangeToArray('A6:H6')[0]);
+            $this->assertSame('=1+1', $sheet->getCell('A7')->getValue());
+            $this->assertSame(\PhpOffice\PhpSpreadsheet\Cell\DataType::TYPE_STRING, $sheet->getCell('A7')->getDataType());
+            $this->assertSame(\PhpOffice\PhpSpreadsheet\Cell\DataType::TYPE_NUMERIC, $sheet->getCell('G7')->getDataType());
+            $this->assertSame(0, $sheet->getCell('G7')->getValue());
+            $this->assertSame($sheet->getCell('G7')->getValue() + $sheet->getCell('H7')->getValue(), $sheet->getCell('F7')->getValue());
+            $this->assertStringNotContainsString('不在匯出範圍', json_encode($sheet->toArray(), JSON_UNESCAPED_UNICODE));
+            $this->assertSame('=1+1', $sheet->getCell('A1')->getValue());
             $this->assertSame($before, $shown->fresh()->getAttributes());
             $this->assertSame(1, DB::table('security_audit_events')->where('event_type', 'billing.export')->count());
         } finally {
@@ -212,6 +213,46 @@ class BillExportTest extends TestCase
             if (is_file($path)) {
                 unlink($path);
             }
+        }
+    }
+
+    public function test_student_workbook_download_keeps_same_named_students_separate_and_deduplicates_scope(): void
+    {
+        $first = $this->owing('同名合成');
+        $second = $this->owing('同名合成');
+        DB::table('Subject')->insertOrIgnore([
+            ['id' => 1, 'School_id' => 1, 'Grade_no' => 0, 'Subject_Name' => '合成英文'],
+            ['id' => 2, 'School_id' => 1, 'Grade_no' => 0, 'Subject_Name' => '合成數學'],
+        ]);
+        $second->update(['SubjectID' => 2]);
+        $this->owing('未選合成');
+        $foreign = $this->owing('跨校合成', 2);
+        $response = $this->export($this->token([1]), $this->body([['id' => $first->ID], ['id' => $first->ID], ['id' => $second->ID], ['id' => $foreign->ID]]))->assertOk()->assertDownload();
+        $path = $response->baseResponse->getFile()->getPathname();
+        $binder = \PhpOffice\PhpSpreadsheet\Cell\Cell::getValueBinder();
+        $workbook = null;
+        try {
+            \PhpOffice\PhpSpreadsheet\Cell\Cell::setValueBinder(new \PhpOffice\PhpSpreadsheet\Cell\DefaultValueBinder());
+            $workbook = \PhpOffice\PhpSpreadsheet\IOFactory::load($path);
+            $this->assertSame(['同名合成', '同名合成-2'], $workbook->getSheetNames());
+            $this->assertSame('合成英文', $workbook->getSheet(0)->getCell('B7')->getValue());
+            $this->assertSame('合成數學', $workbook->getSheet(1)->getCell('B7')->getValue());
+            foreach ($workbook->getAllSheets() as $sheet) {
+                $this->assertSame('同名合成', $sheet->getCell('A1')->getValue());
+                $this->assertSame('同名合成', $sheet->getCell('A7')->getValue());
+                $this->assertStringNotContainsString('未選合成', json_encode($sheet->toArray(), JSON_UNESCAPED_UNICODE));
+                $this->assertStringNotContainsString('跨校合成', json_encode($sheet->toArray(), JSON_UNESCAPED_UNICODE));
+            }
+            $meta = json_decode(DB::table('security_audit_events')->where('event_type', 'billing.export')->sole()->metadata, true);
+            $this->assertSame(2, $meta['row_count']);
+            $this->assertArrayNotHasKey('filter', $meta);
+            $this->assertArrayNotHasKey('has_search', $meta);
+            \Illuminate\Support\Facades\File::ensureDirectoryExists(storage_path('framework/testing'));
+            copy($path, storage_path('framework/testing/student-bill-http-preview.xlsx'));
+        } finally {
+            $workbook?->disconnectWorksheets();
+            \PhpOffice\PhpSpreadsheet\Cell\Cell::setValueBinder($binder);
+            if (is_file($path)) unlink($path);
         }
     }
 

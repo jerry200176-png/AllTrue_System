@@ -130,6 +130,48 @@ class OccurrenceResolverV2Test extends TestCase
         $this->assertSame($this->aId, SubstituteScheduleService::teacherForOccurrence((int) $this->sc->ID, self::DATE, $this->aId, '13:00'), 'voided LR is ignored');
     }
 
+    public function test_read_batch_preserves_canonical_precedence_across_slots_and_makeup_record_history(): void
+    {
+        $this->flag(true);
+        $this->row(1, 'rescheduled', $this->aId);
+        $this->row(2, 'leave', null, ['original_schedule_date' => self::DATE, 'original_start_time' => '13:00']);
+        $this->row(3, 'scheduled', $this->bId, ['start_time' => '14:00', 'original_schedule_id' => 1]);
+        $this->row(4, 'scheduled', $this->bId, ['start_time' => '15:00', 'type' => 'extra']);
+        $this->row(5, 'scheduled', 999999, ['start_time' => '17:00', 'original_schedule_date' => self::DATE, 'original_start_time' => '17:00']);
+        $this->row(6, 'scheduled', $this->bId, ['start_time' => '18:00', 'original_schedule_date' => self::DATE, 'original_start_time' => '18:00']);
+        $this->row(7, 'scheduled', $this->aId, ['start_time' => '18:00', 'original_schedule_date' => self::DATE, 'original_start_time' => '18:00']);
+        $this->row(8, 'scheduled', $this->aId, ['start_time' => '19:00', 'type' => 'extra']);
+        $this->row(9, 'scheduled', $this->bId, ['start_time' => '20:00', 'type' => 'extra']);
+        foreach ([[$this->bId, null], [0, null], [$this->aId, now()]] as $second => [$teacher, $voided]) {
+            $session = ClassSession::create(['StudentClassID' => $this->sc->ID, 'SessionDate' => self::DATE, 'StartTime' => sprintf('19:00:%02d', $second), 'EndTime' => '20:00:00', 'Status' => 'scheduled']);
+            LearningRecord::create(['StudentClassID' => $this->sc->ID, 'ClassSessionID' => $session->id, 'TeacherID' => $teacher, 'Status' => 'pending', 'Content' => '合成評量', 'VoidedAt' => $voided]);
+        }
+        $items = [];
+        foreach ([null, '', '13:00:59', ' 14:00:00 ', '15:00', '17:00', '18:00', '19:00:30', '20:00', '21:00', 'invalid'] as $start) {
+            $items[] = ['course_id' => (int) $this->sc->ID, 'date' => self::DATE, 'start_time' => $start, 'contract_teacher_id' => 0];
+        }
+        $items[] = ['course_id' => (int) $this->sc->ID, 'date' => '2026-04-20', 'start_time' => '13:00', 'contract_teacher_id' => 0];
+        $expected = [];
+        foreach ($items as $item) {
+            $key = SubstituteScheduleService::occurrenceKey($item['course_id'], $item['date'], $item['start_time']);
+            $expected[$key] = SubstituteScheduleService::teacherForOccurrence($item['course_id'], $item['date'], 0, $item['start_time']);
+        }
+        $this->assertSame($expected, SubstituteScheduleService::teachersForOccurrences($items));
+        $this->assertSame($expected, DB::transaction(fn () => SubstituteScheduleService::teachersForOccurrences($items, true)), 'Locking callers keep the single-occurrence resolver.');
+        $key = fn ($start) => SubstituteScheduleService::occurrenceKey((int) $this->sc->ID, self::DATE, $start);
+        $this->assertSame($this->aId, $expected[$key(null)], 'A stamped row wins across all slots, ahead of newer legacy/makeup rows.');
+        $this->assertSame($this->bId, $expected[$key('19:00:30')], 'Makeup uses the latest positive non-voided LR teacher.');
+        $this->assertSame($this->aId, $expected[$key('17:00')], 'A row owned by a non-teacher is ignored.');
+        StudentClass::where('ID', $this->sc->ID)->update(['TeacherID' => 0]);
+        $fallback = ['course_id' => (int) $this->sc->ID, 'date' => '2026-04-20', 'start_time' => '13:00', 'contract_teacher_id' => $this->bId];
+        $fallbackKey = SubstituteScheduleService::occurrenceKey((int) $this->sc->ID, '2026-04-20', '13:00');
+        $this->assertSame([$fallbackKey => $this->bId], SubstituteScheduleService::teachersForOccurrences([$fallback]), 'No positive actual/live teacher retains the supplied contract fallback.');
+        StudentClass::where('ID', $this->sc->ID)->update(['TeacherID' => $this->aId]);
+        config(['feature_flags.values' => ['FEATURE_SCHEDULE_OCCURRENCE_V2' => true, 'FEATURE_SCHEDULE_OCCURRENCE_V2_CAMPUS_1' => false]]);
+        $legacy = ['course_id' => (int) $this->sc->ID, 'date' => self::DATE, 'start_time' => '14:00:00', 'contract_teacher_id' => 0];
+        $this->assertSame([$key('14:00') => $this->bId], SubstituteScheduleService::teachersForOccurrences([$legacy]), 'Campus override retains the legacy assignment.');
+    }
+
     /** #3590 item 1: flag on -> substitute, flag rolled back, legacy reschedule moves the slot, undo must still go through the writer. */
     public function test_undo_finds_writer_owned_row_after_flag_rollback_and_a_legacy_reschedule(): void
     {
