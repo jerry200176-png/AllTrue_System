@@ -701,7 +701,15 @@ const isMainReceipt = (r) => ['confirmed', 'pending'].includes(r.status) && Numb
 const otherReceipts = computed(() => (payload.value?.receipts || []).filter((r) => !isMainReceipt(r)));
 // in-app #521: when the panel is about one course, receipts of the student's other courses come last, under their own heading.
 const receiptScopeId = computed(() => (props.studentWide ? 0 : Number(payload.value?.scope?.student_class_id || 0)));
-const isForeignReceipt = (r) => receiptScopeId.value > 0 && Number(r.student_class_id) !== receiptScopeId.value;
+const isForeignReceipt = (r) => {
+  if (!receiptScopeId.value) return false;
+  const memberIds = packageMemberIds(receiptScopeId.value);
+  if (memberIds.includes(Number(r.student_class_id))) return false;
+  const invoice = (payload.value?.invoices || []).find((inv) =>
+    (Number(r.invoice_id) > 0 && Number(inv.id) === Number(r.invoice_id))
+    || (inv.payments || []).some((p) => Number(p.report_id) === Number(r.report_id)));
+  return !invoice || !memberIds.some((id) => invoiceCoversCourse(invoice, id));
+};
 const shownReceipts = computed(() => {
   const list = [...(payload.value?.receipts || []).filter(isMainReceipt), ...(showOtherReceipts.value ? otherReceipts.value : [])];
   return [...list.filter((r) => !isForeignReceipt(r)), ...list.filter(isForeignReceipt)];

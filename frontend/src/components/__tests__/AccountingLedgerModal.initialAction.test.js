@@ -250,7 +250,7 @@ describe('學生帳務 · 繳費單與收據 (in-app #425)', () => {
       { report_id: 20, student_class_id: 12, status: 'confirmed', amount: 3000, payment_date: '2026-09-02' },
       { report_id: 21, student_class_id: 11, status: 'confirmed', amount: 4400, payment_date: '2026-10-02' },
     ];
-    const w = mountLedger({ courses: [course(11, { start_date: '2026-09-01' }), course(12)], invoices: [inv(1, 11)], receipts: mixed }, { studentClassId: 11 });
+    const w = mountLedger({ courses: [course(11, { start_date: '2026-09-01' }), course(12)], invoices: [inv(1, 11)], receipts: mixed, props: { studentClassId: 11 } });
     await flushPromises();
     await unfold(w, 'receipts');
     const order = w.findAll('[data-testid^="ledger-receipt-course-"]').map((e) => e.attributes('data-testid'));
@@ -258,6 +258,39 @@ describe('學生帳務 · 繳費單與收據 (in-app #425)', () => {
     expect(w.get('[data-testid="ledger-receipt-course-21"]').text()).toBe('科目11（2026-09-01 開始）');
     expect(w.get('[data-testid="ledger-receipt-course-20"]').text()).toBe('科目12');
     expect(w.findAll('[data-testid="ledger-foreign-receipts"]')).toHaveLength(1);
+    w.unmount();
+  });
+
+  // PR #5107: an invoice/package can pay the opened course through another member.
+  it.each([
+    ['shared package', [course(11, { package_id: 3 }), course(12, { package_id: 3 })], [], { student_class_id: 12 }],
+    ['combined invoice', [course(11), course(12)], [{ ...inv(1, 12), covered_student_class_ids: [11, 12] }], { student_class_id: 12, invoice_id: 1 }],
+    ['combined invoice via its payment', [course(11), course(12)], [{ ...inv(1, 12), covered_student_class_ids: [11, 12], payments: [{ id: 8, report_id: 21 }] }], { student_class_id: 12, invoice_id: null }],
+  ])('keeps a %s receipt with the opened obligation', async (_, courses, invoices, receipt) => {
+    const mixed = [
+      { report_id: 20, student_class_id: 13, status: 'confirmed', amount: 3000 },
+      { report_id: 21, status: 'confirmed', amount: 4400, ...receipt },
+    ];
+    const w = mountLedger({ courses: [...courses, course(13, { package_id: 4 })], invoices, receipts: mixed });
+    await flushPromises();
+    await unfold(w, 'receipts');
+    const section = w.get('#ledger-sec-receipts');
+    expect(section.findAll('[data-testid^="ledger-receipt-course-"]').map((e) => e.attributes('data-testid')))
+      .toEqual(['ledger-receipt-course-21', 'ledger-receipt-course-20']);
+    const headings = section.findAll('[data-testid="ledger-foreign-receipts"]');
+    expect(headings).toHaveLength(1);
+    expect(headings[0].element.nextElementSibling.querySelector('[data-testid="ledger-receipt-course-20"]')).not.toBeNull();
+    expect(global.fetch.mock.calls.filter(([, init]) => (init?.method || 'GET') !== 'GET')).toEqual([]);
+    w.unmount();
+  });
+
+  it('does not call another student-wide receipt foreign', async () => {
+    const w = mountLedger({ courses: [course(11), course(12)], receipts: [
+      { report_id: 20, student_class_id: 12, status: 'confirmed', amount: 3000 },
+    ], props: { studentWide: true } });
+    await flushPromises();
+    await unfold(w, 'receipts');
+    expect(w.find('[data-testid="ledger-foreign-receipts"]').exists()).toBe(false);
     w.unmount();
   });
 
