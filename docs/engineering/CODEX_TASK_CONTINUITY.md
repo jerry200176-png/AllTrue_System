@@ -80,6 +80,12 @@ or ProgRouter/REM installation. No verified original-author Codex integration
 was established for those research names. Use native tools and change strategy
 after repeated evidence of the same failure, without adding paid routing work.
 
+A real policy-reconciliation correction also removed an over-narrow date from
+the AGENTS navigation: the canonical standing decisions already authorize the
+two named Phase-A/follow-up workflows (2026-10-21). This grants no new permission.
+The current task used those existing workflows and read back all ten replies;
+Phase C resolution and reporter acceptance remain separate.
+
 ## Rollback
 
 Revert this change and remove its private `.local/agent-checkpoints` directory

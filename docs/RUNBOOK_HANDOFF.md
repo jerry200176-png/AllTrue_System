@@ -1,6 +1,6 @@
 # 交接狀態 Handoff（活的；每個 milestone 由 coordinator 更新）
 
-Updated: 2026-11-09 07:23 UTC（本輪 in-app／Codex 改善；其他 tracker 需重查）
+Updated: 2026-11-09 07:56 UTC（本輪 in-app／Codex 改善；其他 tracker 需重查）
 Source SHA: 2badb606d604d8d084e057fccdbda7ec538465fb（讀取時 main；不是下一次接續的現況保證）
 Owner: coordinator（每個 milestone、PR merge、deploy 後更新；完成的項目直接刪除）
 
@@ -22,11 +22,11 @@ The trackers hold the full detail: flow is #4953 and UI is #4989. This file only
 | in-app 518 (#5097) | #5085（月結誤報）+ #5087（字級 標準／大）已上線；triage 回覆已送。 | smoke run 42387205840 綠了 → POP resolve（spec `inapp-518-resolve-1`） | #5097 |
 | in-app 517 (#5057) | PR1 #5060 + PR2 #5068（合併＋復原）已上線；回報已 closed，follow-up 留言已送。 | 後續：#5104（binary collation 比對）、lock 測試 PR | #5057、#5104 |
 | in-app 501／527 介面 | #5134 已上線；外層合約維持新到舊，歷史／篩選／帳務入口保留。 | #527 堂次歸屬另案，不能用顯示排序宣告資料修好 | #4918、#5130、#5124 |
-| in-app 519 | 正式主任 smoke run 42570410596 通過開啟新增表單與取消；沒有新增課程。GitHub 證據已回寫。 | 重新讀案件後用合法 POP 回覆；此環境只有 triage 唯讀 token，不代按回報者確認 | #5098 comment 6733599877 |
+| in-app 519 | 正式主任 smoke run 42570410596 通過開啟新增表單與取消；沒有新增課程。GitHub 證據已回寫。 | 既有具名 follow-up run 42582315445 已回覆並逐筆讀回；resolve 另走 POP，不代按回報者確認 | #5098 comment 6733599877 |
 | in-app 521 | #5107 收據分組已 merge；#5110 現為 digest／request-owned inverse／時間戳保護，13 個隔離 MySQL 測試通過，未執行正式修復。 | 最終 exact-head review／CI 後排隊；取得新現況與精確核准包。第三筆爭議維持另案 | #5111、#5116、PR #5110 |
 | in-app 514 | 既有期別／re-key 工具已上線；尚無本輪完整 POP receipt／目前帳單證據。 | 先核對，不盲目重跑歷史更正 | #5035、PR #5046 |
 | in-app 520／526 | #5103 平面匯出已上線；#5135 每學生 XLSX 已 merge，指定主任更新卡已補。 | 上線後實際下載讀回；其餘表格改善仍未完成 | #5099、#5131、PR #5135 |
-| in-app 523 | #5120 f06b810a：8 required checks／獨立審查通過，新增並行刷新 finding 待修。 | 先處理 finding 4510218212，再重新驗證最終 head、排隊；不把舊 PASS 沿用為新 head | #5114、PR #5120 |
+| in-app 523 | #5120 56417abb：96 focused／2 Chromium 通過；並行刷新與背景教師 fixture 碰撞已修、獨立審查通過。 | Phase A run 42582312157 已分診；新 head 完整 CI 後排隊，不沿用舊 PASS | #5114、PR #5120 |
 | in-app 522／524／527 資料 | 422 原因、日期投影、合約堂次仍需最新受控資料。#5137 DBHub view-only 準備已 merge，但未建立正式連線／帳號。 | 原始授課、到班、評量、財務與薪資保留；先逐筆模擬與 inverse，再提出核准 | #5113、#5133、#5124 |
 | Codex 接續改善 | 原生按需 skill＋唯讀 checkpoint reconciliation 已本機實際執行；無自動模型路由／正式新權限。 | 最終 review／CI；用既有 handoff，不複製整段歷史 | `docs/engineering/CODEX_TASK_CONTINUITY.md` |
 | 流程改善 W12–W14 | W13 autoland 已驗證；W14 #5105（28 個沒跑的前端測試，現在全跑）已上線。#5082/#5084 mutation testing、#5083 自檢 待 Codex 乾淨。 | W9–W11 由 flow agent | #4953 |
@@ -53,6 +53,8 @@ The trackers hold the full detail: flow is #4953 and UI is #4989. This file only
 - autoland 的 PR 卡住時先看 `review/final-head` check 的標題，不要只看 land-queue。
 - 本機磁碟：過期副本直接刪，真要留的放 Google Drive；C: 的 WSL vhdx 要 Founder 跑桌面的 `shrink-wsl.ps1` 才會縮。
 - Claude 歷史額度經驗不代表 Codex 模型／額度；以目前 client 可用能力為準。交接只給結論、證據與未解項，不貼原始日誌。
+
+10 筆本輪進度回覆已由具名 workflow 寫入並逐筆讀回（2026-11-09 07:56 UTC）；其餘 9 筆 follow-up run 42582315445。回報者確認未代按；`resolved` 的 97 筆仍獨立追蹤。
 
 ## Deploy / POP 常見坑
 - **Release train 停手**：已有 run 等 approval 時，先讀該 run 的目標 SHA 與現行 SOP；不要重複 dispatch、盲目 force-cancel 或代按 Founder approval。`.github/workflows/deploy.yml`
