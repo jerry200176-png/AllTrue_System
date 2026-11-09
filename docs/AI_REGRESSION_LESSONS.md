@@ -1592,6 +1592,8 @@ Intake consolidation regression (2026-10-17): the oldest trusted SourceRef issue
 - **測試**：`calendarExceptionMerge.test.js`、`calendarOccurrenceMerge.test.js`、`useCourseSessionsDisplay.test.js` 均以本案真實資料（SC#2688 schedules id 7583/7584/7588/7589、ClassSession id 24169；SC#1249 schedules id 7138/7139/7207/7208/7422/7423）新增回歸案例。
 - **延伸（2026-08-14，大安翟君和社會）**：R102 只擋了月結「超排」標記，課程管理「上課日期」標題仍走 `packageMemberSessionSummary()` 的堂數制「已上 / 購買」文案，月結課 `SessionCount` 被讀成購買上限。老師清單也不走週檢視的 `dedupeCalendarRowsByStudentSlot()`，同一學生同時段的兩筆 active 契約會並列。修法：月結標題改「已上 N 堂」；老師清單套用同一套學生+星期+開始時間去重。
 
+- **同類症狀、不同已證原因（2026-11-09，in-app #528／#5145）**：合成資料可獨立重現同一課程、同一實體 `ClassSession.id` 改時段後，快取仍以可變的日期／時間保留兩個 snapshot，消費端最後畫回舊時段。只在 `mergeSessionViewModels` 先合併已知同課程正整數實體 ID，再沿用既有 slot/status 規則；不得用課程全量覆蓋來刪除未涵蓋週次或授課歷史。回歸必須先 RED，再以真 Vue 調課 modal、committed mock POST 與新 projection 驗證只顯新卡。此證據不證明正式回報寫入成功，也不處理舊 HTTP 晚回；不得把全域 latest-request 丟棄不同週合法結果當作順帶修正。
+
 ### R103. in-app #225 的症狀被誤標成 R102 的鬼影方框問題；真正症狀（行事曆有、課程管理沒有）到今天才被正確分診（in-app #225/#226/#227，2026-08-08）
 
 - **自我檢討**：處理 in-app #225 時，直接沿用 R102／TD-076（#1687）既有記錄「in-app #225 = 木柵陳宥翰 SC#1249 鬼影方框」去開 GitHub issue、回覆使用者「已修好」，**沒有先跑 `bug-detail-dump` 撈 #225 在資料庫裡實際的 `description` 欄位**。事後撈證據才發現 #225 真正回報的是完全不同的症狀：「8/7 李維 陳宥翰的數學課程在行事曆有 但是課程管理沒有」——跟 R102 修的「同一堂課出現兩個方框」無關。已發公開留言更正，改開正確 issue（#1690）。**教訓**：既有文件對某個 bug ID 的描述，不能取代重新撈那個 bug 的實際證據；§3.6 規則「先撈附件與描述再分診」對「看起來已經有前例」的 bug 一樣適用，越是看起來眼熟的 bug 越容易因為省略這一步而分診錯目標。

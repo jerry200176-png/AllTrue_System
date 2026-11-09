@@ -3,6 +3,7 @@ import {
   dedupeCalendarRowsByStudentSlot,
   mergeWeekCalendarOccurrences,
 } from './calendarOccurrenceMerge.js';
+import { normalizeClassSessionsPayload, mapSessionViewModelsForCalendar, mergeSessionsByCourse } from './classSessionsApi.js';
 
 const weekDatesByDow = {
   1: '2026-05-04',
@@ -56,6 +57,28 @@ const merge = (overrides = {}) => mergeWeekCalendarOccurrences({
   resolveStudentName: () => '吳艾潼',
   ...overrides,
 });
+
+// In-app #528: the authoritative refresh moves the same physical lesson.
+// Both the cached page and a fresh page must render its new slot exactly once.
+{
+  const course = { ...baseCourse, id: 99, student_id: 1, days_of_week: [1], day_time_slots: [{ day: 1, start_time: '20:00', duration_hours: 2 }] };
+  const projection = start => mapSessionViewModelsForCalendar(normalizeClassSessionsPayload({ data: [{
+    id: 7001, student_class_id: 99, session_date: '2026-11-09', start_time: start,
+    end_time: start === '20:00' ? '22:00' : '21:30', status: 'scheduled',
+  }] }).byClass);
+  const options = {
+    courses: [course], allCourses: [course], weekDatesByDow: { 1: '2026-11-09' },
+    exceptions: [
+      { id: 8001, status: 'rescheduled', student_course_id: 99, schedule_date: '2026-11-09', start_time: '20:00' },
+      { id: 8002, status: 'scheduled', student_course_id: 99, schedule_date: '2026-11-09', start_time: '19:30', original_schedule_id: 8001 },
+    ],
+  };
+  const fresh = merge({ ...options, sessionDatesByCourseId: projection('19:30') });
+  assert.deepEqual(fresh.map(row => row.start_time), ['19:30']);
+  const cached = merge({ ...options, sessionDatesByCourseId: mergeSessionsByCourse(projection('20:00'), projection('19:30')) });
+  assert.deepEqual(cached.map(row => row.start_time), ['19:30'], '#528: a successful earlier reschedule must not keep the old card');
+  assert.deepEqual(cached.map(row => row.class_session_id), [7001]);
+}
 
 const classSessionBackedScheduled = merge({
   sessionDatesByCourseId: {

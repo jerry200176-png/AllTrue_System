@@ -47,6 +47,7 @@ export default defineConfig({
     /teacher-daily-workflow\.spec\.js$/,
     /teacher-calendar-ux\.spec\.js$/,
     /calendar-split-slot-317\.spec\.js$/,
+    /calendar-reschedule-cache-528\.spec\.js$/,
     /product-clarity-browser\.spec\.js$/,
     /admissions-workflow-clarity\.spec\.js$/,
     // Uses the dedicated Vite fixture server in playwright.ui-foundation.config.js.
