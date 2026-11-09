@@ -27,28 +27,28 @@ final class LegacyVoidLinkStrategy
             $errors = [...$errors, ...$rowErrors];
             $states[$id] = $state;
             $manifest[$id] = ['invoice_id' => $case['invoice_id'], 'payment_report_id' => [$live[$id]['report_link'], $case['report_id']],
-                'unchanged' => ['amount' => $live[$id]['amount'], 'invoice_status' => $live[$id]['invoice_status'], 'net_paid' => $live[$id]['net_paid']]];
+                'unchanged' => ['amount' => $live[$id]['amount_raw'], 'receipt_amount' => $live[$id]['report_amount_raw'], 'invoice_status' => $live[$id]['invoice_status'], 'net_paid' => $live[$id]['net_paid']]];
+        }
+        $digest = $this->digest($live);
+        $expectedDigest = (string) ($parameters['expected_digest'] ?? '');
+        if ($expectedDigest !== '' && (!preg_match('/^[0-9a-f]{64}$/D', $expectedDigest) || !hash_equals($digest, $expectedDigest))) {
+            $errors[] = 'preview_digest_mismatch';
         }
         $errors = array_values(array_unique($errors));
 
         return ['ok' => $errors === [], 'errors' => $errors, 'state' => in_array('before', $states, true) ? 'before' : 'after',
             'states' => $states, 'counts' => array_count_values($states),
-            'digest' => hash('sha256', json_encode([$states, $live], JSON_THROW_ON_ERROR)), 'manifest' => $manifest, 'snapshot' => []];
+            'digest' => $digest, 'expected_digest' => $expectedDigest, 'manifest' => $manifest, 'snapshot' => []];
     }
 
     public function execute(array $plan, array $context): array
     {
-        if (($plan['ok'] ?? false) && ($plan['state'] ?? null) === 'after') {
-            $this->audit('pop.legacy_void_link', ['reason_code' => self::REF, 'operation_id' => (string) ($context['operation_id'] ?? ''),
-                'row_count' => 0, 'outcome' => 'already_applied']);
-
-            return ['ok' => true, 'already_applied' => true, 'updated' => 0, 'snapshot' => ['rows' => []]];
-        }
-        if (!($plan['ok'] ?? false) || ($plan['state'] ?? null) !== 'before') {
+        if (!($plan['ok'] ?? false) || !in_array($plan['state'] ?? null, ['before', 'after'], true)
+            || !preg_match('/^[0-9a-f]{64}$/D', (string) ($plan['expected_digest'] ?? ''))) {
             throw new RuntimeException('legacy_void_link_plan_not_ready');
         }
 
-        return DB::transaction(function () use ($context): array {
+        return DB::transaction(function () use ($plan, $context): array {
             $live = $this->inspect(true);
             $todo = [];
             $errors = [];
@@ -62,18 +62,24 @@ final class LegacyVoidLinkStrategy
             if ($errors !== []) {
                 throw new RuntimeException('legacy_void_link_drift:' . implode(',', array_unique($errors)));
             }
+            if (!hash_equals($plan['expected_digest'], $this->digest($live))) {
+                throw new RuntimeException('legacy_void_link_preview_digest_drift');
+            }
             $snapshot = [];
             foreach ($todo as $id => $case) {
-                $n = DB::table('Payment')->where('id', $id)->whereNull('payment_report_id')->update(['payment_report_id' => $case['report_id'], 'updated_at' => now()]);
+                $n = DB::table('Payment')->where('id', $id)->whereNull('payment_report_id')->update(['payment_report_id' => $case['report_id']]);
                 if ($n !== 1) {
                     throw new RuntimeException("legacy_void_link_updated_{$id}_{$n}");
                 }
-                $snapshot[$id] = ['payment_report_id' => null];
+                $snapshot[$id] = ['payment_report_id' => null, 'updated_at' => $live[$id]['updated_at'],
+                    'created_at' => $live[$id]['created_at'], 'paid_at' => $live[$id]['paid_at'], 'method' => $live[$id]['method']];
             }
             $this->audit('pop.legacy_void_link', ['reason_code' => self::REF, 'operation_id' => (string) ($context['operation_id'] ?? ''),
-                'row_count' => count($todo), 'outcome' => 'success']);
+                'row_count' => count($todo), 'outcome' => $todo === [] ? 'already_applied' : 'success']);
 
-            return ['ok' => true, 'snapshot' => ['rows' => $snapshot], 'updated' => count($todo)];
+            $afterDigest = $this->digest($this->inspect(true));
+            return ['ok' => true, 'already_applied' => $todo === [], 'snapshot' => ['rows' => $snapshot, 'after_digest' => $afterDigest],
+                'after_digest' => $afterDigest, 'updated' => count($todo)];
         }, 3);
     }
 
@@ -81,6 +87,7 @@ final class LegacyVoidLinkStrategy
     {
         $errors = ($result['ok'] ?? false) ? [] : ['execution_result_missing'];
         $live = $this->inspect(false);
+        if (!hash_equals((string) ($result['after_digest'] ?? ''), $this->digest($live))) $errors[] = 'post_execution_state_drift';
         foreach (LegacyVoidLinkManifest::cases() as $id => $case) {
             [$state, $rowErrors] = $this->classify($id, $case, $live[$id]);
             $errors = [...$errors, ...$rowErrors, ...($state === 'after' ? [] : ["not_applied_{$id}"])];
@@ -97,14 +104,24 @@ final class LegacyVoidLinkStrategy
             throw new RuntimeException('legacy_void_link_rollback_snapshot_invalid');
         }
 
-        return DB::transaction(function () use ($rows): array {
+        return DB::transaction(function () use ($rows, $snapshot): array {
+            if (!preg_match('/^[0-9a-f]{64}$/D', (string) ($snapshot['after_digest'] ?? ''))
+                || !hash_equals($snapshot['after_digest'], $this->digest($this->inspect(true)))) {
+                throw new RuntimeException('legacy_void_link_rollback_state_drift');
+            }
             $restored = 0;
             $skipped = [];
             foreach (LegacyVoidLinkManifest::cases() as $id => $case) {
                 if (!isset($rows[$id])) {
                     continue;
                 }
-                $n = DB::table('Payment')->where('id', $id)->where('payment_report_id', $case['report_id'])->update(['payment_report_id' => null, 'updated_at' => now()]);
+                if (array_keys($rows[$id]) !== ['payment_report_id', 'updated_at', 'created_at', 'paid_at', 'method']
+                    || $rows[$id]['payment_report_id'] !== null) throw new RuntimeException('legacy_void_link_rollback_snapshot_invalid');
+                $n = DB::table('Payment')->where('id', $id)->where('payment_report_id', $case['report_id'])
+                    ->where('InvoiceID', $case['invoice_id'])->where('Amount', $case['amount'])
+                    ->where('Method', $rows[$id]['method'])->where('PaidAt', $rows[$id]['paid_at'])
+                    ->where('created_at', $rows[$id]['created_at'])->where('updated_at', $rows[$id]['updated_at'])
+                    ->update(['payment_report_id' => null]);
                 $n === 1 ? $restored++ : $skipped[] = $id; // not in the linked state: leave it alone
             }
             $this->audit('pop.legacy_void_link.rollback', ['reason_code' => self::REF, 'restored' => $restored, 'skipped' => count($skipped), 'outcome' => 'success']);
@@ -129,13 +146,22 @@ final class LegacyVoidLinkStrategy
         $out = [];
         foreach (LegacyVoidLinkManifest::cases() as $id => $case) {
             $q = fn ($t) => $lock ? $t->lockForUpdate() : $t;
-            $pay = $q(DB::table('Payment')->where('id', $id))->first();
             $inv = $q(DB::table('Invoice')->where('id', $case['invoice_id']))->first();
+            $payments = $q(DB::table('Payment')->where('InvoiceID', $case['invoice_id'])->orderBy('id'))
+                ->get(['id', 'InvoiceID', 'Amount', 'Method', 'PaidAt', 'payment_report_id', 'created_at', 'updated_at']);
+            $pay = $q(DB::table('Payment')->where('id', $id))->first();
             $rep = $q(DB::table('payment_reports')->where('id', $case['report_id']))->first();
             $out[$id] = [
                 'present' => $pay !== null && $inv !== null && $rep !== null,
-                'pay_invoice_id' => (int) ($pay->InvoiceID ?? 0), 'amount' => (int) ($pay->Amount ?? 0), 'method' => (string) ($pay->Method ?? ''),
+                'pay_invoice_id' => (int) ($pay->InvoiceID ?? 0), 'amount' => (int) ($pay->Amount ?? 0),
+                'amount_raw' => (string) ($pay->Amount ?? ''), 'report_amount_raw' => (string) ($rep->reported_amount ?? ''), 'method' => (string) ($pay->Method ?? ''),
                 'report_link' => isset($pay->payment_report_id) ? (int) $pay->payment_report_id : null,
+                'updated_at' => $pay->updated_at ?? null, 'created_at' => $pay->created_at ?? null, 'paid_at' => $pay->PaidAt ?? null,
+                'invoice_payments_digest' => hash('sha256', json_encode($payments->all(), JSON_THROW_ON_ERROR)),
+                'invoice_state_digest' => hash('sha256', json_encode(array_intersect_key((array) $inv,
+                    array_flip(['id', 'StudentID', 'StudentClassID', 'TotalAmount', 'PaidAmount', 'Status', 'billing_period', 'updated_at'])), JSON_THROW_ON_ERROR)),
+                'receipt_state_digest' => hash('sha256', json_encode(array_intersect_key((array) $rep,
+                    array_flip(['id', 'StudentID', 'StudentClassID', 'InvoiceID', 'payment_id', 'reported_amount', 'status', 'confirmed_at', 'voided_at', 'billing_period', 'updated_at'])), JSON_THROW_ON_ERROR)),
                 'invoice_status' => (string) ($inv->Status ?? ''),
                 'report_invoice_id' => (int) ($rep->InvoiceID ?? 0), 'report_payment_id' => (int) ($rep->payment_id ?? 0), 'report_amount' => (int) ($rep->reported_amount ?? 0),
                 'other_linked_reversals' => $q(DB::table('Payment')->where('payment_report_id', $case['report_id'])->where('id', '!=', $id)
@@ -145,6 +171,13 @@ final class LegacyVoidLinkStrategy
         }
 
         return $out;
+    }
+
+    private function digest(array $live): string
+    {
+        $states = [];
+        foreach (LegacyVoidLinkManifest::cases() as $id => $case) $states[$id] = $this->classify($id, $case, $live[$id])[0];
+        return hash('sha256', json_encode([$states, $live], JSON_THROW_ON_ERROR));
     }
 
     /**
@@ -157,7 +190,8 @@ final class LegacyVoidLinkStrategy
         if (!$l['present']) return ['drift', ["void_{$id}_missing"]];
         $e = [];
         if ($l['pay_invoice_id'] !== $c['invoice_id'] || $l['report_invoice_id'] !== $c['invoice_id']) $e[] = "void_{$id}_invoice";
-        if ($l['amount'] !== $c['amount'] || $l['report_amount'] !== abs($c['amount'])) $e[] = "void_{$id}_amount";
+        if (!preg_match('/^-?\d+(?:\.0+)?$/D', $l['amount_raw']) || !preg_match('/^\d+(?:\.0+)?$/D', $l['report_amount_raw'])
+            || $l['amount'] !== $c['amount'] || $l['report_amount'] !== abs($c['amount'])) $e[] = "void_{$id}_amount";
         if ($l['report_payment_id'] !== $c['payment_id']) $e[] = "void_{$id}_receipt_payment";
         if ($l['invoice_status'] === 'void') $e[] = "void_{$id}_invoice_void";
         if (in_array($l['method'], ['transfer_out', 'refund'], true)) $e[] = "void_{$id}_method"; // not a legacy void row

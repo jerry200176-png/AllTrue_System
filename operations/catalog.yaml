@@ -289,7 +289,7 @@ operations:
     estimated_duration: 5m
     invariant_packs: [billing-entitlement-pack@1.0.0]
     strategy_class: App\Operations\Strategies\LegacyVoidLinkStrategy
-    parameter_keys: [decision_reference]
+    parameter_keys: [decision_reference, expected_digest]
     tags: [repair, billing, inapp-521]
     notes: Exact guards on current values (abort on any drift). Writes Payment.payment_report_id of two exact legacy void rows only (NULL to the receipt they reversed); amounts, methods, invoices, statuses and receipts are never written. Pi-local POP only.
 

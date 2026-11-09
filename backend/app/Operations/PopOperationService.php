@@ -218,6 +218,14 @@ final class PopOperationService
             }
             $lockedParameters = json_decode((string) $locked->parameters, true, 512, JSON_THROW_ON_ERROR);
             $this->assertRequestIntegrity($locked, $entry, $lockedParameters, null, false);
+            if ($this->isExactLegacyVoidLink($entry)) {
+                $preview = $this->safePlan($entry, $lockedParameters, (string) $locked->id);
+                if (!preg_match('/^[0-9a-f]{64}$/D', (string) ($lockedParameters['expected_digest'] ?? ''))
+                    || !($preview['ok'] ?? false)
+                    || !hash_equals($lockedParameters['expected_digest'], (string) ($preview['digest'] ?? ''))) {
+                    throw new RuntimeException('POP legacy void approval requires the exact current reviewed preview digest.');
+                }
+            }
             if ($this->isReviewedFinancialCase($entry)) {
                 if ($reviewedCaseContinuation) {
                     $this->assertPriorReviewedFinancialCaseApproval($locked, $lockedParameters, $entry, $approvalReference, $approver, $approverId);
@@ -1308,7 +1316,7 @@ final class PopOperationService
         return ($entry['id'] ?? null) === 'legacy-void-link-20261107'
             && ($entry['strategy_class'] ?? null) === \App\Operations\Strategies\LegacyVoidLinkStrategy::class
             && ($entry['approval_policy'] ?? null) === 'founder-exact-legacy-void-link'
-            && ($entry['parameter_keys'] ?? null) === ['decision_reference'];
+            && ($entry['parameter_keys'] ?? null) === ['decision_reference', 'expected_digest'];
     }
 
     /** Same single-super_admin Founder-exact shape (in-app #369, invoice 1997 stale values). */
