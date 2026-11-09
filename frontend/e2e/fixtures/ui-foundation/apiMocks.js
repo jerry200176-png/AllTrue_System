@@ -159,6 +159,17 @@ export async function installApiMocks(page, mode, pageName = '', authProfile = n
       await hangPromise;
     }
 
+    // The normal learning pilot uses the controller's empty OFFSET page, not
+    // the generic { data: [] } fallback rejected by the production page reader.
+    if (pageName === 'learning' && mode === 'normal' && p === '/api/v1/learning-records') {
+      const payload = { data: [], current_page: requestedPage, last_page: 1, total: 0,
+        per_page: Number(url.searchParams.get('per_page') || 50), from: null, to: null };
+      if (url.searchParams.get('with_status_counts') === '1' && !url.searchParams.has('status')) {
+        payload.status_counts = []; // Empty Laravel pluck collection.
+      }
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(payload) });
+    }
+
     if (pageName === 'tuition' && p.includes('/student-classes')) {
       return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ last_page: 1, data: [{
         ID: 5105, StudentID: 2000, student_name: '測試月結學生', subject_name: '數學', teacher_name: '測試老師',

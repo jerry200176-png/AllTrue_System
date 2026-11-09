@@ -88,6 +88,26 @@ async function openPilot(page, { pageName, mode, viewport, authProfile = null })
   return mocks;
 }
 
+// #5141 visual follow-up: normal learning fixtures must render an empty queue,
+// not the strict production reader's error state for an incomplete page DTO.
+for (const width of [375, 1280]) {
+  test(`learning visual fixture normal empty page @${width}`, async ({ page }) => {
+    await page.clock.setFixedTime(new Date('2026-09-15T10:00:00+08:00'));
+    await openPilot(page, { pageName: 'learning', mode: 'normal', viewport: { width, height: 812 } });
+    await expect(page.getByText('目前沒有待主任核准的評量', { exact: true })).toBeVisible();
+    await expect(page.locator('.lr-error-state')).toHaveCount(0);
+    await expect(page.getByRole('button', { name: '重新載入', exact: true })).toHaveCount(0);
+  });
+
+  test(`learning visual fixture existing error state @${width}`, async ({ page }) => {
+    await openPilot(page, { pageName: 'learning', mode: 'error', viewport: { width, height: 812 } });
+    await expect(page.locator('.lr-error-state')).toBeVisible();
+    await expect(page.getByText('評量資料載入失敗', { exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: '重新載入', exact: true })).toBeVisible();
+    await expect(page.locator('.lr-empty-state')).toHaveCount(0);
+  });
+}
+
 test.describe('UI foundation — real Vue page evidence', () => {
   test.describe.configure({ mode: 'serial' });
 
