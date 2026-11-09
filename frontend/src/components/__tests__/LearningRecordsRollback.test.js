@@ -360,8 +360,7 @@ describe.each([1440, 390])('approval rollback through real page @%i', width => {
     readResponse = url => {
       const params = new URL(String(url), 'http://local').searchParams;
       if (params.has('with_status_counts') && ++counts === 1) return oldCount.promise;
-      const rows = params.has('for_conflict_lookup') ? serverRecords.filter(r => r.ClassSessionID === Number(params.get('class_session_id'))) : serverRecords;
-      return Promise.resolve(recordsJson({ data: rows, status_counts: { approved: serverRecords.filter(r => r.Status === 'approved').length, pending: serverRecords.filter(r => r.Status === 'pending').length } }));
+      return Promise.resolve(listResponse(url));
     };
     a.resolve(json({ ...record(), Status: 'pending' })); await flushPromises();
     b.resolve(json({ ...record(502), Status: 'pending' })); await flushPromises();
@@ -370,6 +369,99 @@ describe.each([1440, 390])('approval rollback through real page @%i', width => {
     expect(wrapper.find('#lr-review-tab-approved').text()).toContain('0');
     expect(wrapper.find('#lr-review-tab-pending').text()).toContain('2');
     expect(modal().exists()).toBe(false);
+    await wrapper.find('#lr-review-tab-pending').trigger('click'); await flushPromises();
+    expect(wrapper.text()).not.toContain('狀態重新整理未完成');
+    expect(buttons(wrapper, '核准')).toHaveLength(2);
+    expect(buttons(wrapper, '核准').every(button => !button.element.disabled)).toBe(true);
+    await edit(); expectDraft();
+    expect(buttons(modal(), '儲存變更')[0].element.disabled).toBe(false);
+  });
+  // PR #5120 / discussion4510218212: supersession is not a failed rollback refresh.
+  it('awaits a successful tab replacement without waiting for its obsolete response', async () => {
+    await start({ width }); await edit();
+    const old = deferred(); let delayed = false;
+    readResponse = url => {
+      const params = new URL(String(url), 'http://local').searchParams;
+      if (!params.has('with_status_counts') && !delayed) { delayed = true; return old.promise; }
+      return Promise.resolve(listResponse(url));
+    };
+    try {
+      await click(modal(), '退回待審');
+      expect(buttons(modal(), '儲存變更')[0].element.disabled).toBe(true);
+      await wrapper.find('#lr-review-tab-pending').trigger('click'); await flushPromises();
+      expectDraft();
+      expect(buttons(modal(), '儲存變更')[0].element.disabled).toBe(false);
+      expect(wrapper.text()).not.toContain('狀態重新整理未完成');
+    } finally {
+      old.resolve(recordsJson({ data: [record()] })); await flushPromises();
+    }
+    expect(modal().text()).not.toContain('✓ 已核准'); expectDraft();
+  });
+  it.each(['http', 'invalid'])('keeps the lane blocked when its tab replacement fails (%s)', async kind => {
+    await start({ width }); await edit();
+    const old = deferred(); let delayed = false;
+    readResponse = url => {
+      const params = new URL(String(url), 'http://local').searchParams;
+      if (params.has('with_status_counts')) return Promise.resolve(listResponse(url));
+      if (!delayed) { delayed = true; return old.promise; }
+      return Promise.resolve(json({}, kind === 'http' ? 503 : 200));
+    };
+    await click(modal(), '退回待審');
+    await wrapper.find('#lr-review-tab-pending').trigger('click'); await flushPromises();
+    expect(modal().text()).toContain('已退回待審；狀態重新整理未完成');
+    old.resolve(recordsJson({ data: [record()] })); await flushPromises();
+    expectDraft();
+    expect(buttons(modal(), '儲存變更')[0].element.disabled).toBe(true);
+    expect(modal().text()).toContain('已退回待審；狀態重新整理未完成');
+    readResponse = null;
+    await click(modal(), '重新查詢狀態'); expectDraft();
+    expect(buttons(modal(), '儲存變更')[0].element.disabled).toBe(false);
+  });
+  it('follows successive tab replacements while ignoring an obsolete failure', async () => {
+    await start({ width }); await edit();
+    const old = deferred(), middle = deferred(); let reads = 0;
+    readResponse = url => {
+      if (new URL(String(url), 'http://local').searchParams.has('with_status_counts')) return Promise.resolve(listResponse(url));
+      if (++reads === 1) return old.promise;
+      if (reads === 2) return middle.promise;
+      return Promise.resolve(listResponse(url));
+    };
+    try {
+      await click(modal(), '退回待審');
+      await wrapper.find('#lr-review-tab-pending').trigger('click'); await flushPromises();
+      expect(buttons(modal(), '儲存變更')[0].element.disabled).toBe(true);
+      await wrapper.find('#lr-review-tab-approved').trigger('click'); await flushPromises();
+      expect(buttons(modal(), '儲存變更')[0].element.disabled).toBe(false);
+      expectDraft();
+    } finally {
+      middle.resolve(json({}, 503)); old.resolve(recordsJson({ data: [record()] })); await flushPromises();
+    }
+    expect(wrapper.text()).not.toContain('狀態重新整理未完成');
+    expect(modal().text()).not.toContain('✓ 已核准'); expectDraft();
+  });
+  it('cannot use another campus replacement to reconcile the old lane after returning', async () => {
+    await start({ width }); await edit();
+    const old = deferred(); let delayed = false;
+    readResponse = url => {
+      const params = new URL(String(url), 'http://local').searchParams;
+      if (!params.has('with_status_counts') && !delayed) { delayed = true; return old.promise; }
+      return Promise.resolve(listResponse(url));
+    };
+    await click(modal(), '退回待審');
+    const original = serverRecords;
+    serverRecords = [record(777)];
+    await wrapper.setProps({ branchId: 2 }); await flushPromises(); await edit();
+    expectDraft(); expect(modal().text()).toContain('✓ 已核准');
+    expect(buttons(modal(), '儲存變更')[0].element.disabled).toBe(false);
+    serverRecords = original;
+    await wrapper.setProps({ branchId: 1 }); await flushPromises();
+    await wrapper.find('#lr-review-tab-pending').trigger('click'); await flushPromises(); await edit();
+    old.resolve(recordsJson({ data: [record()] })); await flushPromises();
+    expectDraft();
+    expect(buttons(modal(), '儲存變更')[0].element.disabled).toBe(true);
+    readResponse = null;
+    await click(modal(), '重新查詢狀態'); expectDraft();
+    expect(buttons(modal(), '儲存變更')[0].element.disabled).toBe(false);
   });
   it('confirmed success with failed refresh keeps the known state and blocks writes until read recovery', async () => {
     await start({ width }); await edit();

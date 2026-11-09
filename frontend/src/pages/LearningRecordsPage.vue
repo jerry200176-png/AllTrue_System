@@ -1587,7 +1587,7 @@ import {
 } from '../lib/learningRecordDrafts';
 import { createLearningRecordSaver } from '../composables/useLearningRecordSave';
 import { useSelection } from '../composables/useSelection';
-import { useLearningRecordRollback } from '../composables/useLearningRecordRollback';
+import { createLearningRecordReadLane, useLearningRecordRollback } from '../composables/useLearningRecordRollback';
 
 const props = defineProps(['branchId', 'userRole', 'userId', 'targetRecordId', 'targetSession', 'targetStudentName', 'feedbackFocusToken']);
 const emit = defineEmits(['feedback-read', 'clear-target-student']);
@@ -1652,6 +1652,9 @@ const contextEpoch = ref(0);
 const ownerEpoch = ref(0);
 let recordsRequestEpoch = 0;
 let countsRequestEpoch = 0;
+const readScope = () => JSON.stringify([props.userId, props.branchId, props.userRole, ownerEpoch.value]);
+const runRecordsRead = createLearningRecordReadLane(readScope);
+const runCountsRead = createLearningRecordReadLane(readScope);
 const draftScope = ref(null);
 const saveLearningRecord = createLearningRecordSaver();
 const _draftThrottleTimer = ref(null);
@@ -3494,7 +3497,7 @@ const clearAllFilters = () => {
 
 // 抓主任審核分頁 badge 用的伺服器端全量 per-status 計數（#139/#595）。
 // 與列表查詢分離，不帶 status/feedback，故得到該分校全量、權威的各狀態總數。
-const fetchStatusCounts = async (isCurrent = () => true) => {
+const fetchStatusCounts = (isCurrent = () => true) => runCountsRead(async () => {
   const requestEpoch = ++countsRequestEpoch;
   const scopeEpoch = ownerEpoch.value;
   const owner = JSON.stringify([props.userId, props.branchId, props.userRole]);
@@ -3517,13 +3520,13 @@ const fetchStatusCounts = async (isCurrent = () => true) => {
   } catch (e) {
     console.error('[LR] fetchStatusCounts failed', e);
   }
-};
+});
 
 const validOffsetRecords = data => Array.isArray(data?.data)
   && ['current_page', 'last_page', 'total'].every(key => Number.isInteger(data[key]))
   && data.current_page >= 1 && data.last_page >= 1 && data.total >= data.data.length;
 
-const fetchRecords = async () => {
+const fetchRecords = () => runRecordsRead(async () => {
   const requestEpoch = ++recordsRequestEpoch;
   loadingAll.value = false; // A replacement query retires the old load-all owner.
   const scopeEpoch = ownerEpoch.value;
@@ -3564,7 +3567,7 @@ const fetchRecords = async () => {
     recordsPagination.value = { ...recordsPagination.value, loading: false };
     return false;
   }
-};
+});
 
 /**
  * 抓取指定頁或指定 before_id 的記錄並合併到 records.value，回傳載入結果統計。

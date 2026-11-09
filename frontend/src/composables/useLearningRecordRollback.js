@@ -2,6 +2,38 @@ import { reactive } from 'vue';
 import { httpFailureMessage } from '../lib/humanizeApiErrorMessage';
 import { useToast } from './useToast';
 
+/** Follow a replacement read in the same owner epoch, even if the obsolete HTTP request never returns. */
+export function createLearningRecordReadLane(getScope) {
+  let latest;
+  return async (read) => {
+    const scope = getScope();
+    let finish;
+    const result = new Promise(resolve => { finish = resolve; });
+    const request = { scope, result, finish };
+    const previous = latest;
+    latest = request;
+    previous?.finish('superseded');
+    void (async () => {
+      let outcome = 'failed';
+      try {
+        if (await read() === true) outcome = 'applied';
+      } catch {
+        // A failed replacement never counts as a validated refresh.
+      }
+      finish(latest === request && scope === getScope() ? outcome : 'superseded');
+    })();
+
+    let current = request;
+    while (scope === getScope() && current.scope === scope) {
+      const outcome = await current.result;
+      if (scope !== getScope()) return false;
+      if (current === latest) return outcome === 'applied';
+      current = latest;
+    }
+    return false;
+  };
+}
+
 /** Per-owner mutation lanes survive modal changes; editor writes have their own epoch. */
 export function useLearningRecordRollback({ canRollback, getContext, getOwner, getToken, onSuccess, reconcile }) {
   const toast = useToast();
