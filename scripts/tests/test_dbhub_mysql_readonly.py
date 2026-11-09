@@ -51,7 +51,7 @@ def main(binary):
         fixture = [f'CREATE DATABASE {source}', 'CREATE DATABASE alltrue_diagnostics']
         for table, columns in tables.items():
             # Include synthetic sensitive fields to demonstrate view exclusion.
-            columns |= {'name', 'password', 'Notify_Token', 'Memo', 'Comment'}
+            columns |= {'name', 'password', 'Notify_Token', 'Memo', 'Comment', 'closed_reason', 'source', 'reason'}
             definitions = []
             for column in sorted(columns):
                 numeric = column.lower() == 'id' or column.lower().endswith('id') or column.endswith('_id') or column in {'SessionCount', 'CampusID'}
@@ -64,6 +64,12 @@ def main(binary):
             f"INSERT INTO {source}.ClassSession (id,StudentClassID,SessionDate,StartTime,Status) VALUES " + ','.join(f"({n},1,'2026-01-{n:02}','10:00','attended')" for n in range(1, 10)) + ",(10,3,'2026-01-10','10:00','attended')",
         ])
         root_sql(';\n'.join(fixture) + ';\n' + sql.replace('__SOURCE_SCHEMA__', source))
+        sentinel = 'synthetic-contact@example.invalid'
+        root_sql(f"UPDATE {source}.StudentClass SET ClassType='{sentinel}', closed_reason='{sentinel}';"
+                 f"INSERT INTO {source}.course_packages (id,class_type,closed_reason) VALUES (1,'{sentinel}','{sentinel}');"
+                 f"INSERT INTO {source}.Payment (id,Method) VALUES (1,'{sentinel}');"
+                 f"INSERT INTO {source}.session_deduction_ledger (id,event_type,source) VALUES (1,'deduct','{sentinel}');"
+                 f"INSERT INTO {source}.package_session_ledger (id,reason) VALUES (1,'{sentinel}');")
         views = re.findall(r'CREATE SQL SECURITY DEFINER VIEW alltrue_diagnostics\.(\w+)', sql)
         assert len(views) == 11
         root_sql(f"CREATE USER 'agent_test'@'%' IDENTIFIED BY '{password}';\n" + '\n'.join(f"GRANT SELECT ON alltrue_diagnostics.`{view}` TO 'agent_test'@'%';" for view in views))
@@ -85,8 +91,9 @@ def main(binary):
         ]:
             assert native(query).returncode != 0, 'native grant/column refusal failed'
         for view in views:
-            selected = native(f'SELECT * FROM alltrue_diagnostics.`{view}` LIMIT 1')
+            selected = native(f'SELECT * FROM alltrue_diagnostics.`{view}`')
             assert selected.returncode == 0, f'{view}: {selected.stderr}'
+            assert sentinel not in selected.stdout, f'free-text sentinel leaked from {view}'
         port = docker('port', name, '3306/tcp').stdout.strip().rsplit(':', 1)[1]
         with server(binary, f'mysql://agent_test:{password}@127.0.0.1:{port}/alltrue_diagnostics') as tool:
             exercise(tool)

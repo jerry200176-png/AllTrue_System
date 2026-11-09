@@ -15,6 +15,9 @@ store results in private task artifacts, never public GitHub comments.
 LEFT JOIN retains dangling relationships; NULL campus/student is a diagnostic
 signal, not authorization to assign ownership. Campus on these views generally
 reflects the current student; attendance also preserves its recorded campus.
+Caller-controlled closure explanations and ledger source/reason text are omitted.
+Class types, billing modes and payment methods map known values to fixed codes;
+unknown values become `other`, never a guessed repair classification.
 
 ## Proposed activation boundary
 

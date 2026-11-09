@@ -5,11 +5,13 @@ CREATE SQL SECURITY DEFINER VIEW alltrue_diagnostics.contracts AS
 SELECT c.ID AS class_id, c.StudentID AS student_id, s.CampusID AS campus_id,
        c.SubjectID AS subject_id, c.TeacherID AS teacher_id,
        c.StartDate AS start_date, c.EndDate AS end_date,
-       c.ScheduleMode AS schedule_mode, c.ClassType AS class_type,
+       CASE c.ScheduleMode WHEN 'count' THEN 'count' WHEN 'date' THEN 'date' ELSE 'other' END AS schedule_mode,
+       CASE c.ClassType WHEN 'one_on_one' THEN 'one_on_one' WHEN 'one_on_two' THEN 'one_on_two'
+            WHEN 'one_on_three' THEN 'one_on_three' WHEN 'tutoring' THEN 'tutoring' WHEN 'trial' THEN 'trial' ELSE 'other' END AS class_type,
        c.SessionCount AS purchased_units, c.SessionDuration AS session_duration,
        c.UsedSessions AS stored_used_units, c.RemainingSessions AS stored_remaining_units,
        c.PurchasedMinutes AS purchased_minutes, c.RemainingMinutes AS remaining_minutes,
-       c.PackageID AS package_id, c.Stop AS stopped, c.closed_reason,
+       c.PackageID AS package_id, c.Stop AS stopped,
        c.Charge AS charge, c.Paid AS paid, c.MDate AS modified_at
 FROM __SOURCE_SCHEMA__.StudentClass c LEFT JOIN __SOURCE_SCHEMA__.Student s ON s.id = c.StudentID;
 
@@ -46,19 +48,24 @@ LEFT JOIN __SOURCE_SCHEMA__.Student s ON s.id = c.StudentID;
 CREATE SQL SECURITY DEFINER VIEW alltrue_diagnostics.deductions AS
 SELECT l.id AS ledger_id, l.student_class_id AS class_id, l.class_session_id AS session_id,
        c.StudentID AS student_id, s.CampusID AS campus_id,
-       l.event_type, l.source, l.minutes, l.created_at
+       CASE l.event_type WHEN 'deduct' THEN 'deduct' WHEN 'reverse' THEN 'reverse' ELSE 'other' END AS event_type,
+       l.minutes, l.created_at
 FROM __SOURCE_SCHEMA__.session_deduction_ledger l
 LEFT JOIN __SOURCE_SCHEMA__.StudentClass c ON c.ID = l.student_class_id
 LEFT JOIN __SOURCE_SCHEMA__.Student s ON s.id = c.StudentID;
 
 CREATE SQL SECURITY DEFINER VIEW alltrue_diagnostics.packages AS
-SELECT id AS package_id, student_id, campus_id, billing_mode, total_sessions,
-       remaining_sessions, used_sessions, class_type, paid, paid_at, stop, closed_reason, enabled
+SELECT id AS package_id, student_id, campus_id,
+       CASE billing_mode WHEN 'count' THEN 'count' WHEN 'date' THEN 'date' ELSE 'other' END AS billing_mode,
+       total_sessions, remaining_sessions, used_sessions,
+       CASE class_type WHEN 'one_on_one' THEN 'one_on_one' WHEN 'one_on_two' THEN 'one_on_two'
+            WHEN 'one_on_three' THEN 'one_on_three' WHEN 'tutoring' THEN 'tutoring' WHEN 'trial' THEN 'trial' ELSE 'other' END AS class_type,
+       paid, paid_at, stop, enabled
 FROM __SOURCE_SCHEMA__.course_packages;
 
 CREATE SQL SECURITY DEFINER VIEW alltrue_diagnostics.package_deductions AS
 SELECT l.id AS ledger_id, l.package_id, l.student_class_id AS class_id,
-       l.class_session_id AS session_id, p.student_id, p.campus_id, l.delta, l.reason, l.created_at
+       l.class_session_id AS session_id, p.student_id, p.campus_id, l.delta, l.created_at
 FROM __SOURCE_SCHEMA__.package_session_ledger l
 LEFT JOIN __SOURCE_SCHEMA__.course_packages p ON p.id = l.package_id;
 
@@ -81,7 +88,10 @@ LEFT JOIN __SOURCE_SCHEMA__.Student s ON s.id = c.StudentID;
 CREATE SQL SECURITY DEFINER VIEW alltrue_diagnostics.payments AS
 SELECT p.id AS payment_id, p.InvoiceID AS invoice_id, p.payment_report_id AS report_id,
        i.StudentID AS student_id, s.CampusID AS campus_id, i.StudentClassID AS class_id,
-       p.Amount AS amount, p.PaidAt AS paid_at, p.Method AS method, p.created_at, p.updated_at
+       p.Amount AS amount, p.PaidAt AS paid_at,
+       CASE p.Method WHEN 'cash' THEN 'cash' WHEN 'transfer' THEN 'transfer' WHEN 'void' THEN 'void'
+            WHEN 'refund' THEN 'refund' WHEN 'transfer_in' THEN 'transfer_in' WHEN 'transfer_out' THEN 'transfer_out' ELSE 'other' END AS method,
+       p.created_at, p.updated_at
 FROM __SOURCE_SCHEMA__.Payment p
 LEFT JOIN __SOURCE_SCHEMA__.Invoice i ON i.id = p.InvoiceID
 LEFT JOIN __SOURCE_SCHEMA__.Student s ON s.id = i.StudentID;
