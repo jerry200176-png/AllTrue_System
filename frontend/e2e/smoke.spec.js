@@ -1,12 +1,12 @@
 // @ts-check
 import { test, expect } from '@playwright/test';
 import { dismissOverlays } from './fixtures/dismissOverlays.js';
-import { installReadOnlyAppGuard, isKnownPostRead } from './fixtures/readOnlyAppGuard.js';
+import { installReadOnlyAppGuard, isKnownStatefulRead, isKnownBlockedStatefulRead, unexpectedCreateEntryRequests } from './fixtures/readOnlyAppGuard.js';
 
 /**
  * 前端 UI smoke / 關鍵業務路徑（#547 起，#730 擴充）。
  *
- * 覆蓋 API smoke 沒涵蓋的關鍵前端路徑（純讀取導航，不寫入 production）：
+ * 覆蓋 API smoke 沒涵蓋的關鍵前端導航，不提交課程等業務表單；不是全 DB 零寫入證明：
  *  - director：課程查找頁載入（含待補課面板區塊渲染，issue #527）。
  *  - teacher：教學工作台 + 出缺勤 / 課表與評量 / 我的課表 / 科目數統計逐頁載入，
  *             每頁斷言「無 JS 例外」（pageerror）——抓真正會讓老師白畫面的 crash。
@@ -113,6 +113,10 @@ test.describe('UI smoke — director', () => {
 
     await login(page, 'director', DIRECTOR);
     const appOrigin = new URL(BASE).origin;
+    let attemptedStatefulReads = 0;
+    page.context().on('request', request => {
+      if (isKnownStatefulRead(appOrigin, request.method(), request.url())) attemptedStatefulReads += 1;
+    });
     const blocked = await installReadOnlyAppGuard(page.context(), appOrigin, { allowTransactionTelemetry: true });
     await dismissOverlays(page);
     await navTo(page, '課程查找');
@@ -133,7 +137,12 @@ test.describe('UI smoke — director', () => {
     await expect(scheduler.getByRole('button', { name: /多科共用方案/ })).toBeVisible();
     await scheduler.getByRole('button', { name: '取消', exact: true }).click();
     await expect(scheduler).toHaveCount(0);
-    expect(blocked.filter(request => !isKnownPostRead(appOrigin, request)), 'no business write may be sent during create-entry acceptance').toEqual([]);
+    const blockedStatefulReads = blocked.filter(request => isKnownBlockedStatefulRead(appOrigin, request));
+    const unexpected = unexpectedCreateEntryRequests(appOrigin, blocked);
+    console.log(JSON.stringify({ acceptance: 'director-create-entry', attempted_stateful_reads: attemptedStatefulReads,
+      blocked_stateful_reads: blockedStatefulReads.length, unexpected_requests: unexpected.length }));
+    expect(unexpected, 'no unexpected business write-method attempt during create-entry acceptance').toEqual([]);
+    expect(blockedStatefulReads.length, 'every observed known stateful read must have been blocked').toBe(attemptedStatefulReads);
     expect(errors, `頁面 JS 錯誤：\n${errors.join('\n')}`).toEqual([]);
   });
 });
