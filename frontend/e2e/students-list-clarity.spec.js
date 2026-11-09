@@ -72,6 +72,112 @@ const students = [
   { id: 2001, name: '測試學生02', grade: 'J1', school: '測試國中', parent_name: '測試家長', rfid: 'TEST1001', status: 'active', notes: '', line_bound: false },
 ];
 
+// #529 / #5149: real StudentsList + its real API compatibility wrapper.
+// This existing foundation collection is excluded from credentialed smoke.
+test.describe('529 course deletion result feedback', () => {
+  test.use({ viewport: { width: 1440, height: 754 }, serviceWorkers: 'block' });
+
+  async function openCourse(page, info, mode = '422', legacy = false) {
+    const course = { id: 990001, student_id: 2001, subject: 'Math', subject_name: '數學',
+      class_type: 'one_on_one', payment_type: 'session', payment_status: 'unpaid',
+      sessions_purchased: 8, remaining_sessions: 8, status: 'active', stop: 0,
+      branch_id: 1, teacher_id: 3000, teacher_name: '合成老師', days_of_week: [1],
+      start_time: '14:00', end_time: '16:00', duration_hours: 2 };
+    const state = { deletes: 0, refusedReads: 0, removed: false };
+    const origin = new URL(info.project.use.baseURL).origin;
+    await page.route('**/*', async route => {
+      const request = route.request();
+      const url = new URL(request.url());
+      if (url.origin !== origin) return route.abort();
+      if (!url.pathname.startsWith('/api/')) return route.continue();
+      const json = (body, status = 200) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) });
+      if (request.method() === 'DELETE' && url.pathname === '/api/v1/student-classes/990001') {
+        state.deletes += 1;
+        if (mode === 'network' || mode === 'network-committed') {
+          if (mode === 'network-committed') state.removed = true; // Response is lost after a possible commit.
+          return route.abort('failed');
+        }
+        if (mode === 'success' || mode === 'refresh-failure') {
+          state.removed = true;
+          return json({ message: 'Course deleted successfully' });
+        }
+        if (mode === 'malformed') return route.fulfill({ status: 422, contentType: 'text/html', body: '<html>synthetic upstream error</html>' });
+        const status = Number(mode);
+        return json({ message: status >= 500 ? 'SQLSTATE synthetic internal details' : '這門課已有上課紀錄，請使用結案。', code: 'course_has_history' }, status);
+      }
+      if (request.method() === 'POST' && url.pathname.endsWith('/session-dates')) return json({ data: [] });
+      if (request.method() !== 'GET') throw new Error('Unexpected synthetic mutation.');
+      if (url.pathname === '/api/v1/students') return json({ data: [students[1]], total: 1, last_page: 1 });
+      if (url.pathname === '/api/v1/student-classes') {
+        if ((legacy && url.searchParams.has('per_page')) || (state.removed && mode === 'refresh-failure')) {
+          state.refusedReads += 1;
+          return json({ message: 'Synthetic list unavailable' }, 503);
+        }
+        return json({ data: state.removed ? [] : [course], total: state.removed ? 0 : 1, last_page: 1 });
+      }
+      return json({ data: [], total: 0, last_page: 1 });
+    });
+    await page.goto('/pilot-mount.html?page=students');
+    await page.locator('.student-name-cell').click();
+    const card = page.locator('.student-course-card');
+    await expect(card).toHaveCount(1);
+    await card.locator('summary').click();
+    await expect(card.getByRole('button', { name: '刪除', exact: true })).toBeVisible();
+    return { card, state };
+  }
+
+  async function confirmDelete(page, card, accept = true) {
+    page.once('dialog', dialog => accept ? dialog.accept() : dialog.dismiss());
+    await card.getByRole('button', { name: '刪除', exact: true }).click();
+  }
+
+  for (const mode of ['403', '404', '409', '422', '500', 'malformed', 'network', 'network-committed']) {
+    test(`529 shows a safe visible refusal and stops after one DELETE (${mode})`, async ({ page }, info) => {
+      const { card, state } = await openCourse(page, info, mode);
+      await confirmDelete(page, card);
+      try {
+        const toast = page.locator('.twu--error');
+        await expect(toast).toBeVisible({ timeout: 2500 });
+        if (['403', '404', '409', '422'].includes(mode)) await expect(toast).toContainText('請使用結案');
+        else await expect(toast).toContainText(mode.startsWith('network') ? '尚未確認' : '無法刪除');
+        await expect(toast).not.toContainText(/SQLSTATE|<html>|synthetic upstream/);
+        expect(state.deletes).toBe(1);
+        await expect(card).toHaveCount(1);
+        expect(state.removed).toBe(mode === 'network-committed');
+      } finally { console.log(JSON.stringify({ case: `529-${mode}`, delete_attempts: state.deletes })); }
+    });
+  }
+
+  test('529 displays the actual compatibility-wrapper error without a second attempt', async ({ page }, info) => {
+    const { card, state } = await openCourse(page, info, '422', true);
+    expect(state.refusedReads).toBeGreaterThan(0); // Forces the existing legacy loader and real wrapper.
+    await confirmDelete(page, card);
+    await expect(page.locator('.twu--error')).toContainText('請使用結案', { timeout: 2500 });
+    expect(state.deletes).toBe(1);
+    await expect(card).toHaveCount(1);
+  });
+
+  test('529 cancellation sends no DELETE', async ({ page }, info) => {
+    const { card, state } = await openCourse(page, info);
+    await confirmDelete(page, card, false);
+    await expect(card).toHaveCount(1);
+    expect(state.deletes).toBe(0);
+    await expect(page.locator('.twu')).toHaveCount(0);
+  });
+
+  for (const mode of ['success', 'refresh-failure']) {
+    test(`529 confirms the successful deletion without replay (${mode})`, async ({ page }, info) => {
+      const { card, state } = await openCourse(page, info, mode);
+      await confirmDelete(page, card);
+      await expect(page.locator('.twu--success')).toContainText('課程已刪除', { timeout: 2500 });
+      expect(state.deletes).toBe(1);
+      expect(state.removed).toBe(true);
+      if (mode === 'refresh-failure') expect(state.refusedReads).toBeGreaterThan(0);
+      else await expect(card).toHaveCount(0);
+    });
+  }
+});
+
 async function installStudentMocks(page, apiRequests) {
   await page.route('**/api/v1/**', async (route) => {
     const url = new URL(route.request().url());

@@ -740,6 +740,7 @@ Intake consolidation regression (2026-10-17): the oldest trusted SourceRef issue
 
 - `CourseLeaveCascadeService` 才是堂數制請假順延的唯一權威路徑；只寫 `schedules.status='leave'` 會產生「行事曆有請假、`ClassSession` 沒順延、課程管理少一堂」的半套資料。
 - **強制規則**：任何請假 UI 的 API 失敗都必須明確報錯並停止，不可 fallback 到 Supabase-style `schedules` insert。
+- **相同失敗邊界（2026-11-09，in-app #529／#5149）**：學生頁的 API-compatible client 仍呼叫同一個 Laravel endpoint，不是第二個資料來源。首次 DELETE 被拒絕／連線結果未知時，不可 fallback 重送；wrapper 的 `error` 必須顯示。已知刪除成功後的清單刷新失敗，也不能當作重送刪除的理由。以原 handler＋實際 wrappers 和真 Vue 錯誤提示做 RED→GREEN，保留全部 server 刪除資格與授課／帳務 guards；此證據不代表正式個案的拒絕原因已查明。
 - **修復/補救**：既有 `ClassSession.Status='leave'` 但有效堂次少於購買堂數的資料，應透過受權限保護的 `leave-by-session` / cascade 路徑冪等修復，不可手動直接改 production DB。
 - **測試必補**：新增或修改請假流程時，必須覆蓋「已存在 leave 但尚未 cascade」重跑後只補一次尾堂，且有效堂次數等於購買堂數。
 
