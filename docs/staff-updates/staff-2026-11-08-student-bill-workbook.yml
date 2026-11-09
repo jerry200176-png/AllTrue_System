@@ -1,0 +1,13 @@
+updates:
+  - id: staff-2026-11-08-student-bill-workbook
+    published_at: "2026-11-09"
+    audiences:
+      - director
+    importance: digest
+    title: 帳務匯出依學生分頁
+    summary: 帳務中心匯出 Excel，每位學生各有分頁，方便核對到班與收款。
+    items:
+      - category: improved
+        text: 篩選並選取帳務資料後，按「匯出 Excel」，即可查看各學生的課程、實際到班與收款紀錄。
+    source_refs:
+      - "changelog:2026-11-08:student-bill-workbook"
