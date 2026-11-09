@@ -31,6 +31,13 @@ attempt write-method materialization/read acknowledgements: these remain blocked
 The cancel check compares attempted writes before/after the prompt. It does not
 claim those blocked startup paths were exercised successfully.
 
+The ordinary create-entry navigation/cancel check counts guard-produced known
+stateful-read rejections through the same canonical matcher. Its observed
+GET/HEAD attempts must equal its blocked receipts; an escaped read cannot count
+as successful protection. Unexpected business write-method attempts, including
+course creation POSTs, still fail. This verifies that the entry opens/cancels
+with those reads blocked, not that session availability was loaded successfully.
+
 This is a method guard plus explicit known-stateful-read blocks, not a guarantee
 that every allowed GET has zero side effects. Native read redirects retain the
 existing routing limits. Prior cancellation/XLSX results remain evidence for
@@ -42,15 +49,21 @@ Missing runtime inputs or suitable existing data **fail as UNVERIFIED**, not ski
 Do not provision records, obtain a session token, run a repair, or retrieve runtime
 credentials locally to make this pass.
 
-This config uses the list reporter and disables traces, screenshots and video.
+The director config and the default smoke profile when `SMOKE_BASE_URL` is set
+use the list reporter and disable traces, screenshots and video. Without that
+variable, the default synthetic diagnostic profile retains its capture settings;
+the separate visual profile is unchanged.
 Playwright 1.64.1 also automatically captures failure DOM in error-context files:
 `PLAYWRIGHT_NO_COPY_PROMPT=1` stops that snapshot in its installed
 `ArtifactsRecorder._takePageSnapshot`, and the public `preserveOutput: 'never'`
 option removes remaining error/source files. A synthetic Chromium failure
-regression verifies no DOM sentinel enters attachments or console, and output
-files are removed; it cleans its temporary probe output even on failure.
+regression checks both private profiles: no synthetic DOM sentinel enters
+attachments or the probe console, and output files are removed. It requires
+actual browser execution and the expected failure, and cleans temporary output.
+This is not a general stdout scrubber: ordinary assertion/call-log diagnostics
+may still print text. The proof makes no claim that every stdout value is clean.
 The private download is inspected in place with Python stdlib ZIP/XML, then
-deleted. Only boolean/count evidence is printed; neither workbook contents nor
+deleted. The director download test prints boolean/count evidence; neither workbook contents nor
 customer names are attached or uploaded. ZIP size/entry limits, relationships,
 student sheet/summary identity, date type and finite numeric F/G/H cells for every
 source summary (exactly three per source), invoice structure, formula and

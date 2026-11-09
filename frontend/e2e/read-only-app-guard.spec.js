@@ -1,7 +1,7 @@
 // @ts-check
 import http from 'node:http';
 import { test, expect } from '@playwright/test';
-import { appOriginOf, installReadOnlyAppGuard } from './fixtures/readOnlyAppGuard.js';
+import { appOriginOf, installReadOnlyAppGuard, isKnownStatefulRead, isKnownBlockedStatefulRead, unexpectedCreateEntryRequests } from './fixtures/readOnlyAppGuard.js';
 import { BILL_EXPORT_PATH, installSingleStudentExportGuard } from './fixtures/directorExportGuard.js';
 
 /**
@@ -72,6 +72,43 @@ test.describe('read-only acceptance guard self-test', () => {
     app.responses.clear();
     third.redirects.clear();
     middle.redirects.clear();
+  });
+
+  for (const createPost of [false, true]) {
+    test(`create-entry counts actually blocked reads and rejects create POST=${createPost}`, async ({ page, context }) => {
+      let attempts = 0;
+      context.on('request', request => { if (isKnownStatefulRead(app.base, request.method(), request.url())) attempts += 1; });
+      const blocked = await installReadOnlyAppGuard(context, app.base);
+      await page.goto(`${app.base}/`);
+      await page.evaluate(async createPost => {
+        await fetch('/api/v1/class-sessions?branch_id=1').catch(() => null);
+        if (createPost) await fetch('/api/v1/student-classes', { method: 'POST', body: '{}' }).catch(() => null);
+      }, createPost);
+      const known = blocked.filter(request => isKnownBlockedStatefulRead(app.base, request));
+      const unexpected = unexpectedCreateEntryRequests(app.base, blocked);
+      expect(app.received.filter(request => request.path.startsWith('/api/'))).toEqual([]);
+      expect(known).toHaveLength(1);
+      expect(known.length).toBe(attempts);
+      console.log(JSON.stringify({ acceptance: 'create-entry-guard', attempted_stateful_reads: attempts,
+        blocked_stateful_reads: known.length, unexpected_requests: unexpected.length, server_api_requests: 0 }));
+      if (createPost) {
+        expect(unexpected).toContainEqual({ method: 'POST', origin: app.base, path: '/api/v1/student-classes' });
+        expect(() => expect(unexpected).toEqual([])).toThrow();
+      } else expect(unexpected).toEqual([]);
+    });
+  }
+
+  test('an unguarded known GET cannot count as blocked create-entry evidence', async ({ page, context }) => {
+    let attempts = 0;
+    context.on('request', request => { if (isKnownStatefulRead(app.base, request.method(), request.url())) attempts += 1; });
+    await page.goto(`${app.base}/`);
+    await page.evaluate(() => fetch('/api/v1/class-sessions?branch_id=1'));
+    const blocked = [];
+    const known = blocked.filter(request => isKnownBlockedStatefulRead(app.base, request));
+    expect(app.received).toContainEqual({ method: 'GET', path: '/api/v1/class-sessions?branch_id=1' });
+    expect(attempts).toBe(1);
+    expect(known).toHaveLength(0);
+    expect(() => expect(known.length).toBe(attempts)).toThrow();
   });
 
   for (const method of ['GET', 'HEAD']) {

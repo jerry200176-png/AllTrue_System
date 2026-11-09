@@ -131,7 +131,7 @@ function isHttpUrl(url) {
   }
 }
 
-function isKnownStatefulRead(appOrigin, method, url) {
+export function isKnownStatefulRead(appOrigin, method, url) {
   if (!['GET', 'HEAD'].includes(method) || !isAppOriginUrl(appOrigin, url)) return false;
   let path = new URL(String(url)).pathname;
   // Conservatively cover proxy/Laravel percent decoding, without UTF-8 decode
@@ -168,6 +168,19 @@ export function classifyAppRequest(appOrigin, method, url, { allowTransactionTel
 export function isKnownPostRead(appOrigin, blocked) {
   return Boolean(appOrigin) && blocked?.method === 'POST' && blocked.origin === appOrigin
     && KNOWN_POST_READ_PATHS.includes(blocked.path);
+}
+
+/** Classify a guard-produced blocked record using the same route matcher. */
+export function isKnownBlockedStatefulRead(appOrigin, blocked) {
+  return Boolean(blocked && blocked.origin === appOrigin && typeof blocked.path === 'string'
+    && blocked.path.startsWith('/')
+    && isKnownStatefulRead(appOrigin, blocked.method, blocked.origin + blocked.path));
+}
+
+/** Create-entry acceptance inspects blocked records, never merely observed URLs. */
+export function unexpectedCreateEntryRequests(appOrigin, blocked) {
+  return blocked.filter(request => !isKnownPostRead(appOrigin, request)
+    && !isKnownBlockedStatefulRead(appOrigin, request));
 }
 
 /**

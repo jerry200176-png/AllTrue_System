@@ -7,7 +7,7 @@ import { defineConfig, devices } from '@playwright/test';
  * 設計原則：
  *  - 本機未設定 SMOKE_BASE_URL 時 spec 可 skip；正式 ui-smoke workflow
  *    先檢查必要 secrets，缺少時 job 失敗，不能以 skip 當作驗證通過。
- *  - 只跑 chromium，single retry，trace/screenshot on-failure 以利分診。
+ *  - 只跑 chromium；credentialed profile 關閉 capture，synthetic profile 保留分診產物。
  *  - .github/workflows/ui-smoke.yml 在 PR、workflow_dispatch、排程啟動；
  *    PR 在產品前端、smoke 定義、Playwright 設定、依賴或 workflow 有變動時
  *    執行瀏覽器測試。
@@ -25,6 +25,9 @@ const runTag = process.env.GITHUB_RUN_ID
   ? `${process.env.GITHUB_RUN_ID}-${process.env.GITHUB_RUN_ATTEMPT || 1}`
   : `local-${process.pid}-${Date.now()}`;
 const smokeUserAgent = `${devices['Desktop Chrome'].userAgent} AllTrueUISmoke/${runTag}`;
+const privateSmoke = Boolean(process.env.SMOKE_BASE_URL);
+// Pinned Playwright 1.64.1 otherwise adds failure DOM snapshots even with capture off.
+if (privateSmoke) process.env.PLAYWRIGHT_NO_COPY_PROMPT = '1';
 
 export default defineConfig({
   testDir: './e2e',
@@ -88,12 +91,13 @@ export default defineConfig({
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 1 : 0,
   workers: 1,
-  reporter: process.env.CI ? [['list'], ['html', { open: 'never' }]] : 'list',
+  reporter: privateSmoke ? 'list' : process.env.CI ? [['list'], ['html', { open: 'never' }]] : 'list',
+  preserveOutput: privateSmoke ? 'never' : 'always',
   use: {
     baseURL: process.env.SMOKE_BASE_URL || 'http://localhost:5173',
-    trace: 'on-first-retry',
-    screenshot: 'only-on-failure',
-    video: 'retain-on-failure',
+    trace: privateSmoke ? 'off' : 'on-first-retry',
+    screenshot: privateSmoke ? 'off' : 'only-on-failure',
+    video: privateSmoke ? 'off' : 'retain-on-failure',
   },
   projects: [
     { name: 'chromium', use: { ...devices['Desktop Chrome'], userAgent: smokeUserAgent } },
