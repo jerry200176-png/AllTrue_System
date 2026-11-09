@@ -13,7 +13,8 @@ if [ -x "$DEST" ] && printf '%s  %s\n' "$SHA" "$DEST" | sha256sum --check --stat
 fi
 mkdir -p "$(dirname "$DEST")"
 tmp="$(mktemp)"; trap 'rm -f "$tmp"' EXIT
-curl -fsSL --retry 3 --retry-delay 1 --retry-max-time 35 --connect-timeout 10 --max-time 20 -o "$tmp" "https://github.com/mvdan/sh/releases/download/$VER/shfmt_${VER}_linux_amd64"
+curl -fsSL --retry 3 --retry-delay 1 --retry-max-time 35 --connect-timeout 10 --max-time 20 --header 'Accept: application/octet-stream' -o "$tmp" 'https://api.github.com/repos/mvdan/sh/releases/assets/547320883' ||
+  curl -fsSL --retry 3 --retry-delay 1 --retry-max-time 35 --connect-timeout 10 --max-time 20 -o "$tmp" "https://github.com/mvdan/sh/releases/download/$VER/shfmt_${VER}_linux_amd64"
 echo "$SHA  $tmp" | sha256sum -c - >/dev/null || { echo "shfmt sha256 mismatch" >&2; exit 1; }
 install -m 0755 "$tmp" "$DEST"
 echo "installed $DEST ($("$DEST" --version))"

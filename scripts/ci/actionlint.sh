@@ -24,7 +24,10 @@ cached_archive="$cache_dir/${ACTIONLINT_VERSION}-${ACTIONLINT_SHA256}.tar.gz"
 if [ -f "$cached_archive" ] && printf '%s  %s\n' "$ACTIONLINT_SHA256" "$cached_archive" | sha256sum --check --status; then
   archive="$cached_archive"
 else
-  curl --fail --silent --show-error --location --retry 3 --retry-delay 1 --retry-max-time 35 --connect-timeout 10 --max-time 20 "$ACTIONLINT_URL" --output "$archive"
+  # Both addresses are official GitHub release endpoints; API assets avoid
+  # transient failures of the browser download route. The digest is unchanged.
+  curl --fail --silent --show-error --location --retry 3 --retry-delay 1 --retry-max-time 35 --connect-timeout 10 --max-time 20 --header 'Accept: application/octet-stream' 'https://api.github.com/repos/rhysd/actionlint/releases/assets/384924896' --output "$archive" ||
+    curl --fail --silent --show-error --location --retry 3 --retry-delay 1 --retry-max-time 35 --connect-timeout 10 --max-time 20 "$ACTIONLINT_URL" --output "$archive"
   printf '%s  %s\n' "$ACTIONLINT_SHA256" "$archive" | sha256sum --check --status
   mkdir -p "$cache_dir"
   cp "$archive" "$cache_dir/.download-$$"
