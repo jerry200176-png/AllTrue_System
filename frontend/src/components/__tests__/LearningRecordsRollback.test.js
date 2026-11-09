@@ -195,14 +195,31 @@ describe.each([1440, 390])('approval rollback through real page @%i', width => {
     expect(wrapper.find('#lr-review-tab-approved').text()).toContain('0');
     expect(wrapper.find('#lr-review-tab-pending').text()).toContain('2');
   });
-  it('a slow pre-rollback list/count response cannot restore approved after success', async () => {
+  it.each([[false, 200], [false, 503], [true, 200], [true, 503]])('releases obsolete list loading after rollback (recheck=%s, old response=%i)', async (viaRecheck, responseStatus) => {
     await start({ width }); await edit();
+    if (viaRecheck) {
+      rollbackResponse = () => {
+        serverRecords[0] = { ...serverRecords[0], Status: 'pending' };
+        return Promise.reject(new Error('response lost'));
+      };
+      await click(modal(), '退回待審');
+    }
+    const refresh = () => wrapper.findAll('button').find(b => b.text().endsWith('重新整理'));
     const old = deferred();
     readResponse = () => old.promise;
-    await wrapper.findAll('button').find(b => b.text().endsWith('重新整理')).trigger('click'); await flushPromises();
+    await refresh().trigger('click'); await flushPromises();
+    expect(refresh().element.disabled).toBe(true);
     readResponse = null;
-    await click(modal(), '退回待審'); expectDraft();
-    old.resolve(json({ data: [record()], status_counts: { approved: 1, pending: 1 } })); await flushPromises();
+    await click(modal(), viaRecheck ? '重新查詢狀態' : '退回待審'); expectDraft();
+    expect(refresh().element.disabled).toBe(false);
+    const next = deferred();
+    readResponse = () => next.promise;
+    await refresh().trigger('click'); await flushPromises();
+    expect(refresh().element.disabled).toBe(true);
+    old.resolve(json({ data: [record()], status_counts: { approved: 1, pending: 1 } }, responseStatus)); await flushPromises();
+    expect(refresh().element.disabled).toBe(true); // An old completion cannot clear a newer request's loading state.
+    next.resolve(json({ data: serverRecords, status_counts: { approved: 0, pending: 2 } })); await flushPromises();
+    expect(refresh().element.disabled).toBe(false);
     expect(wrapper.find('#lr-review-tab-approved').text()).toContain('0');
     expect(wrapper.find('#lr-review-tab-pending').text()).toContain('2');
     expect(modal().text()).not.toContain('✓ 已核准');

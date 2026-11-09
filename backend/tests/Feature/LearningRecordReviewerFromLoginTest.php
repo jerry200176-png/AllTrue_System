@@ -196,7 +196,7 @@ class LearningRecordReviewerFromLoginTest extends TestCase
      * Both clients bind approved models before A commits; B then acquires the course lock.
      * This valid serialized interleaving isolates the stale route-model risk without timing sleeps.
      */
-    public function test_diagnostic_stale_bound_rollback_decrements_teacher_count_twice_but_reverses_usage_once(): void
+    public function test_stale_bound_rollback_refuses_before_repeating_teacher_usage_or_xp_effects(): void
     {
         $this->assertSame('mysql', DB::connection()->getDriverName());
         $this->assertStringStartsWith('AllTrue_test', DB::connection()->getDatabaseName());
@@ -226,23 +226,21 @@ class LearningRecordReviewerFromLoginTest extends TestCase
             'auth_user' => User::findOrFail($this->directorId),
         ]);
         $response = app(\App\Http\Controllers\LearningRecordController::class)->rollbackApproval($request, $boundByClientB);
-        $this->assertSame(200, $response->getStatusCode(), 'Characterizes the existing flaw; a fresh binding would reject pending.');
+        $this->assertSame(409, $response->getStatusCode(), 'A request bound before the winning rollback must recheck the locked current record.');
         $this->assertTrue((bool) array_filter($queries, fn ($sql) => str_contains($sql, 'studentclass') && str_contains($sql, 'for update')));
-        $this->assertFalse((bool) array_filter($queries, fn ($sql) => str_contains($sql, 'learningrecord') && str_contains($sql, 'for update')));
+        $this->assertTrue((bool) array_filter($queries, fn ($sql) => str_contains($sql, 'learningrecord') && str_contains($sql, 'for update')));
         $positions = [];
         foreach ($queries as $index => $sql) {
             if (str_contains($sql, 'studentclass') && str_contains($sql, 'for update')) $positions['course_lock'] ??= $index;
-            if (str_starts_with($sql, 'update `learningrecord`')) $positions['record_write'] ??= $index;
-            if (str_starts_with($sql, 'update `user`') && str_contains($sql, 'teachingsessioncount')) $positions['teacher_write'] ??= $index;
+            if (str_contains($sql, 'learningrecord') && str_contains($sql, 'for update')) $positions['record_lock'] ??= $index;
         }
         $this->assertArrayHasKey('course_lock', $positions);
-        $this->assertArrayHasKey('record_write', $positions);
-        $this->assertArrayHasKey('teacher_write', $positions);
-        $this->assertLessThan($positions['record_write'], $positions['course_lock']);
-        $this->assertLessThan($positions['teacher_write'], $positions['record_write']);
+        $this->assertArrayHasKey('record_lock', $positions);
+        $this->assertLessThan($positions['record_lock'], $positions['course_lock']);
+        $this->assertFalse((bool) array_filter($queries, fn ($sql) => preg_match('/^(update|insert|delete) /', $sql)));
         $this->assertSame('pending', $record->fresh()->Status);
         $this->assertSame('approved', $other->fresh()->Status);
-        $this->assertSame(0, (int) User::findOrFail($this->teacherId)->TeachingSessionCount, 'Another approved lesson still exists: teacher counter has drifted.');
+        $this->assertSame(1, (int) User::findOrFail($this->teacherId)->TeachingSessionCount, 'The other approved lesson must remain counted.');
         $this->assertSame($usedAfterA, (float) $this->course->fresh()->UsedSessions, 'No second usage reversal in this interleaving.');
         $this->assertSame($xpAfterA, (int) DB::table('user_engagement')->where('user_id', $this->teacherId)->value('xp_total'), 'No second XP revocation in this interleaving.');
         $this->assertSame(1, SessionDeductionLedger::where('class_session_id', $record->ClassSessionID)->where('event_type', 'reverse')->count());
