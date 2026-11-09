@@ -6,6 +6,7 @@ use App\Exports\BillListExport;
 use App\Models\Campus;
 use App\Models\SecurityAuditEvent;
 use App\Services\Billing\BillRowText;
+use App\Services\Billing\StudentBillWorkbookData;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Maatwebsite\Excel\Facades\Excel;
@@ -19,7 +20,7 @@ class BillExportController extends Controller
 {
     public const CAP = 2000;
 
-    public function export(Request $request, AlertController $alerts)
+    public function export(Request $request, AlertController $alerts, StudentBillWorkbookData $workbookData)
     {
         if (count((array) $request->input('rows')) > self::CAP) {
             return response()->json(['message' => '一次最多匯出 ' . self::CAP . ' 筆，請先用篩選縮小範圍。'], 422);
@@ -45,23 +46,32 @@ class BillExportController extends Controller
 
         $today = now('Asia/Taipei')->toDateString();
         $out = [];
+        $selected = [];
+        $summaries = [];
         foreach ($data['rows'] as $want) {
             $src = isset($want['id']) ? $byId->get((int) $want['id']) : $byPkg->get((int) ($want['package_id'] ?? 0));
             if (!$src) {
                 continue; // gone since the list loaded
+            }
+            $key = StudentBillWorkbookData::key($src);
+            if (isset($selected[$key])) {
+                continue;
             }
             $t = BillRowText::describe($src, $today);
             $out[] = [
                 (string) ($src['student_name'] ?? ''), (string) ($src['subject'] ?? ''), $t['period'], $t['status'], $t['due'],
                 $t['payable'], $t['paid'], $t['owed'],
             ];
+            $selected[$key] = $src;
+            $summaries[$key] = $out[array_key_last($out)];
         }
         if (!$out) {
             return response()->json(['message' => '清單已更新，請重新整理後再匯出。'], 404);
         }
 
         $branch = (int) $data['branch_id'];
-        $export = new BillListExport($out);
+        $students = $workbookData->build(array_values($selected), $summaries, $request);
+        $export = new BillListExport($out, $students, now('Asia/Taipei')->toIso8601String());
         SecurityAuditEvent::append('billing.export', 'success', [
             'actor_type' => 'user', 'actor_id' => $request->attributes->get('auth_user')?->id, 'campus_id' => $branch,
         ], [
