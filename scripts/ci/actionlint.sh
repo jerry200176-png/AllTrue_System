@@ -19,7 +19,17 @@ fi
 tmp_dir="$(mktemp -d)"
 trap 'rm -rf "$tmp_dir"' EXIT
 archive="$tmp_dir/actionlint.tar.gz"
-curl --fail --silent --show-error --location "$ACTIONLINT_URL" --output "$archive"
+cache_dir="${XDG_CACHE_HOME:-${HOME}/.cache}/alltrue/actionlint"
+cached_archive="$cache_dir/${ACTIONLINT_VERSION}-${ACTIONLINT_SHA256}.tar.gz"
+if [ -f "$cached_archive" ] && printf '%s  %s\n' "$ACTIONLINT_SHA256" "$cached_archive" | sha256sum --check --status; then
+  archive="$cached_archive"
+else
+  curl --fail --silent --show-error --location --retry 3 --retry-delay 1 --retry-max-time 35 --connect-timeout 10 --max-time 20 "$ACTIONLINT_URL" --output "$archive"
+  printf '%s  %s\n' "$ACTIONLINT_SHA256" "$archive" | sha256sum --check --status
+  mkdir -p "$cache_dir"
+  cp "$archive" "$cache_dir/.download-$$"
+  mv "$cache_dir/.download-$$" "$cached_archive"
+fi
 printf '%s  %s\n' "$ACTIONLINT_SHA256" "$archive" | sha256sum --check --status
 tar --extract --file "$archive" --directory "$tmp_dir"
 exec "$tmp_dir/actionlint" "${actionlint_args[@]}" "$@"
