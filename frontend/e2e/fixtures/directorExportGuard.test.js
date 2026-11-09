@@ -53,6 +53,8 @@ test('only one armed UI export passes; rollback and all other writes stay blocke
   assert.equal(await send('POST', '/api/v1/learning-records/7/rollback-approval'), 'blocked');
   assert.equal(await send('DELETE', '/api/v1/student-classes/7'), 'blocked');
   assert.equal(await send('POST', 'https://other.example.test' + BILL_EXPORT_PATH), 'blocked');
+  assert.equal(await send('GET', '/api/v1/class-sessions?branch_id=1'), 'blocked');
+  assert.equal(await send('HEAD', '/api/v1/class-sessions/projection/'), 'blocked');
   assert.equal(await send('POST', '/api/v1/adoption/events'), 'local');
-  assert.equal(guard.blocked.length, 4);
+  assert.equal(guard.blocked.length, 6);
 });

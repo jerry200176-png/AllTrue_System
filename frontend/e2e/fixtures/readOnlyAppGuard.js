@@ -1,18 +1,21 @@
 // @ts-check
 /**
- * Read-only guard for production acceptance specs.
+ * HTTP method guard plus known stateful-read blocks for acceptance specs.
  *
- * HTTP reads pass through on every origin. App adoption telemetry is answered
+ * Other HTTP reads pass through; that is not proof of zero database effects.
+ * Known app GET/HEAD materializers are blocked. App adoption telemetry is answered
  * locally with 204. An opt-in spec may answer a valid transaction-only Sentry
  * envelope locally; every other HTTP write is aborted and recorded. Blocking the
  * first write hop
  * prevents redirect chains from carrying a write back to the app: Playwright
- * routes only the first request in an HTTP redirect chain.
+ * routes only the first request in an HTTP redirect chain. Native read redirects
+ * remain outside any zero-side-effect guarantee.
  * Self-tests: readOnlyAppGuard.test.js (unit) and
  * e2e/read-only-app-guard.spec.js (browser, local servers only).
  */
 
 export const READ_ONLY_METHODS = Object.freeze(['GET', 'HEAD', 'OPTIONS']);
+const STATEFUL_READ_PATHS = Object.freeze(['/api/v1/class-sessions', '/api/v1/class-sessions/projection']);
 export const ADOPTION_TELEMETRY_PATH = '/api/v1/adoption/events';
 /**
  * Reads the app sends as POST, with the query in the body; the server writes
@@ -128,6 +131,22 @@ function isHttpUrl(url) {
   }
 }
 
+function isKnownStatefulRead(appOrigin, method, url) {
+  if (!['GET', 'HEAD'].includes(method) || !isAppOriginUrl(appOrigin, url)) return false;
+  let path = new URL(String(url)).pathname;
+  // Conservatively cover proxy/Laravel percent decoding, without UTF-8 decode
+  // failures hiding an ASCII route. Bound repeated escaping work to four passes.
+  for (let round = 0; round < 4; round += 1) {
+    const decoded = path.replace(/%([0-9a-f]{2})/gi, (_match, hex) => String.fromCharCode(Number.parseInt(hex, 16)));
+    if (decoded === path) break;
+    path = decoded;
+  }
+  // Routing may normalize separators/dot segments and trim trailing slashes.
+  // This URL is parsed locally only; it is never requested.
+  path = new URL('https://guard.invalid' + path.replace(/\\/g, '/').replace(/\/+/g, '/')).pathname.replace(/\/+$/, '');
+  return STATEFUL_READ_PATHS.includes(path);
+}
+
 /**
  * What the guard does with a request:
  * 'ignore' (not HTTP), 'allow' (read), 'stub-telemetry', or 'block'.
@@ -135,6 +154,7 @@ function isHttpUrl(url) {
 export function classifyAppRequest(appOrigin, method, url, { allowTransactionTelemetry = false } = {}) {
   if (!isHttpUrl(url)) return 'ignore';
   const verb = String(method || '').toUpperCase();
+  if (isKnownStatefulRead(appOrigin, verb, url)) return 'block';
   if (READ_ONLY_METHODS.includes(verb)) return 'allow';
   if (verb === 'POST' && isAppOriginUrl(appOrigin, url)
       && new URL(String(url)).pathname === ADOPTION_TELEMETRY_PATH) {
@@ -152,7 +172,7 @@ export function isKnownPostRead(appOrigin, blocked) {
 
 /**
  * Install the guard on a browser context (covers popups). Returns the list
- * that collects blocked writes as { method, origin, path }.
+ * that collects blocked methods and known stateful reads as { method, origin, path }.
  */
 export async function installReadOnlyAppGuard(context, appOrigin, options = {}) {
   const blocked = [];

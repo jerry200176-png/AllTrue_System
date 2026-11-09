@@ -74,6 +74,34 @@ test.describe('read-only acceptance guard self-test', () => {
     middle.redirects.clear();
   });
 
+  for (const method of ['GET', 'HEAD']) {
+    test(`known stateful ${method} never reaches the server while learning reads pass (#528)`, async ({ page, context }) => {
+      const blocked = await installReadOnlyAppGuard(context, app.base);
+      await page.goto(`${app.base}/`);
+      const paths = ['/api/v1/class-sessions?branch_id=1', '/api/v1/class-sessions/',
+        '/api/v1/class-sessions/projection?start=2026-09-01&end=2026-09-30',
+        '/api/v1/class-sessions/projection/', '/api/v1/%63lass-sessions',
+        '/api/v1/class%2dsessions/%70rojection%2f', '/api%2Fv1%2Fclass-sessions',
+        '/api//v1/class-sessions//projection/', '/api/v1/unused%2f..%2fclass-sessions',
+        '/api/v1/%2563lass-sessions'];
+      const outcomes = await page.evaluate(async ({ method, paths }) => {
+        const results = [];
+        for (const path of paths) {
+          try { results.push((await fetch(path, { method })).status); }
+          catch { results.push('blocked'); }
+        }
+        return results;
+      }, { method, paths });
+      // Native Chromium requests against loopback HTTP counters, not route-call mocks.
+      expect(app.received.filter(entry => !['/', '/favicon.ico'].includes(entry.path))).toEqual([]);
+      expect(outcomes).toEqual(paths.map(() => 'blocked'));
+      expect(blocked).toHaveLength(paths.length);
+      const status = await page.evaluate(async () => (await fetch('/api/v1/learning-records?branch_id=1')).status);
+      expect(status).toBe(200);
+      expect(app.received).toContainEqual({ method: 'GET', path: '/api/v1/learning-records?branch_id=1' });
+    });
+  }
+
   for (const status of [301, 302, 303, 307, 308]) {
     test(`single student export redirect ${status} cannot reach a business POST`, async ({ page, context }) => {
       app.redirects.set(BILL_EXPORT_PATH, {

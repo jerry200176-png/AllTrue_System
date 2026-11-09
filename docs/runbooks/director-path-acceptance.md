@@ -16,16 +16,27 @@ Two real UI paths are checked:
   Export uses **visible filtered rows**, independently of bulk checkboxes. A
   one-shot guard permits only the exact existing export endpoint and matching
   visible identifiers, within its existing 2,000-row cap. The export audit is an
-  expected effect; no course/payment/assessment write is permitted.
+  expected effect; no course/payment/assessment mutation is authorized by this test.
   The request is fetched with `maxRedirects: 0`: every redirect is rejected,
   including 307/308 which otherwise carry the POST past browser routing. Only a
   direct HTTP 200 XLSX attachment with bounded ZIP bytes is fulfilled. A rejected
   or failed attempt consumes the one-shot allowance.
 
-The existing read-only guard is installed after the normal smoke login. Page
-startup may attempt materialization/read acknowledgements: these remain blocked.
+The existing guard is installed after the normal smoke login. It blocks HTTP
+writes and direct app GET/HEAD requests to the known materializers `/api/v1/class-sessions` and
+`/api/v1/class-sessions/projection`, including query, trailing-slash and encoded
+path spellings. Their controller can create ClassSession rows while serving a
+read. They are never counted as harmless POST reads. Page startup may also
+attempt write-method materialization/read acknowledgements: these remain blocked.
 The cancel check compares attempted writes before/after the prompt. It does not
 claim those blocked startup paths were exercised successfully.
+
+This is a method guard plus explicit known-stateful-read blocks, not a guarantee
+that every allowed GET has zero side effects. Native read redirects retain the
+existing routing limits. Prior cancellation/XLSX results remain evidence for
+those two assertions; they do not prove an all-database zero-write run. If a
+blocked materializer prevents a UI path completing, report UNVERIFIED and do not
+create records or relax the guard to make it pass.
 
 Missing runtime inputs or suitable existing data **fail as UNVERIFIED**, not skip.
 Do not provision records, obtain a session token, run a repair, or retrieve runtime
@@ -46,7 +57,7 @@ source summary (exactly three per source), invoice structure, formula and
 external-link absence are checked. This is structural acceptance, not a financial
 reconciliation or repair-data collector.
 
-Offline helper verification, without credentials or network requests:
+Local verification, without production credentials or production requests:
 
 ```sh
 cd frontend
