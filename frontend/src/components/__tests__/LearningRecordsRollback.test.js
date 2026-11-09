@@ -1,6 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { flushPromises, mount } from '@vue/test-utils';
 import LearningRecordsPage from '../../pages/LearningRecordsPage.vue';
+import AtToast from '../AtToast.vue';
+import { useToast } from '../../composables/useToast';
 import { supabase } from '../../supabase';
 
 vi.mock('../../supabase', () => ({ supabase: { auth: { getSession: vi.fn(async () => ({ data: { session: { access_token: 'fixture-token' } } })) } } }));
@@ -12,7 +14,7 @@ const record = (id = 501, Status = 'approved') => ({
 });
 const deferred = () => { let resolve; const promise = new Promise(r => { resolve = r; }); return { promise, resolve }; };
 const json = (body, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
-let wrapper, fetchMock, rollbackResponse, serverRecords, readResponse;
+let wrapper, toastWrapper, fetchMock, rollbackResponse, serverRecords, readResponse;
 const buttons = (root, text) => root.findAll('button').filter(b => b.text() === text);
 const click = async (root, text) => { const b = buttons(root, text)[0]; expect(b, text).toBeTruthy(); await b.trigger('click'); await flushPromises(); };
 const modal = () => wrapper.find('.lr-modal--learning-form');
@@ -39,6 +41,7 @@ function expectDraft() {
 
 beforeEach(() => {
   localStorage.clear();
+  toastWrapper = mount(AtToast, { attachTo: document.body });
   vi.spyOn(window, 'prompt').mockReturnValue('重新確認');
   vi.spyOn(window, 'alert').mockImplementation(() => {});
   serverRecords = [record(), record(502, 'pending')];
@@ -61,7 +64,13 @@ beforeEach(() => {
   });
   vi.stubGlobal('fetch', fetchMock);
 });
-afterEach(() => { wrapper?.unmount(); wrapper = null; vi.restoreAllMocks(); vi.unstubAllGlobals(); document.body.innerHTML = ''; });
+afterEach(() => {
+  wrapper?.unmount(); wrapper = null;
+  const toast = useToast();
+  [...toast.toasts].forEach(item => toast.dismiss(item.id));
+  toastWrapper?.unmount();
+  vi.restoreAllMocks(); vi.unstubAllGlobals(); document.body.innerHTML = '';
+});
 
 describe.each([1440, 390])('approval rollback through real page @%i', width => {
   it('offers the director operation in the list/card and editor; success keeps dirty inputs', async () => {
@@ -93,7 +102,7 @@ describe.each([1440, 390])('approval rollback through real page @%i', width => {
     await start({ width }); await edit();
     rollbackResponse = () => Promise.resolve(json({ message: '拒絕此操作' }, 403));
     await click(modal(), '退回待審');
-    expect(window.alert).toHaveBeenCalled();
+    expect(toastWrapper.text()).toContain('退回待審未執行');
     expect(modal().text()).toContain('✓ 已核准'); expectDraft();
     expect(buttons(modal(), '退回待審')[0].element.disabled).toBe(false);
   });
@@ -117,13 +126,13 @@ describe.each([1440, 390])('approval rollback through real page @%i', width => {
     expect(wrapper.find('#lr-review-tab-approved').text()).toContain('0');
     expect(wrapper.find('#lr-review-tab-pending').text()).toContain('2');
   });
-  it('an old failure cannot alert in a new campus context', async () => {
+  it('an old failure cannot notify in a new campus context', async () => {
     await start({ width }); await edit();
     const pending = deferred(); rollbackResponse = () => pending.promise;
     await click(modal(), '退回待審');
     await wrapper.setProps({ branchId: 2 }); await flushPromises();
     pending.resolve(json({ message: 'old failure' }, 409)); await flushPromises();
-    expect(window.alert).not.toHaveBeenCalled(); expect(modal().exists()).toBe(false);
+    expect(toastWrapper.text()).toBe(''); expect(modal().exists()).toBe(false);
   });
   it('does not send a request after token lookup outlives the editor', async () => {
     await start({ width }); await edit();
@@ -148,7 +157,7 @@ describe.each([1440, 390])('approval rollback through real page @%i', width => {
     await start({ width }); await edit();
     rollbackResponse = () => Promise.resolve(json({ message: '狀態已變更' }, 409));
     await click(modal(), '退回待審');
-    expect(window.alert).toHaveBeenCalled(); expectDraft();
+    expect(toastWrapper.text()).toContain('退回待審未執行'); expectDraft();
     expect(modal().text()).toContain('✓ 已核准');
   });
   it.each(['network', 'invalid-json', 'malformed', 'wrong-id'])('%s after server completion requires a read before retry', async kind => {
@@ -160,7 +169,7 @@ describe.each([1440, 390])('approval rollback through real page @%i', width => {
       return Promise.resolve(json(kind === 'malformed' ? {} : { ...record(999), Status: 'pending' }));
     };
     await click(modal(), '退回待審'); expectDraft();
-    expect(window.alert).not.toHaveBeenCalled();
+    expect(toastWrapper.text()).toBe('');
     expect(wrapper.text()).toContain('無法確認退回結果');
     expect(buttons(modal(), '退回待審')[0].element.disabled).toBe(true);
     expect(buttons(modal(), '儲存變更')[0].element.disabled).toBe(true);

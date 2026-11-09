@@ -1,8 +1,10 @@
 import { reactive } from 'vue';
 import { httpFailureMessage } from '../lib/humanizeApiErrorMessage';
+import { useToast } from './useToast';
 
 /** Per-owner mutation lanes survive modal changes; editor writes have their own epoch. */
 export function useLearningRecordRollback({ canRollback, getContext, getOwner, getToken, onSuccess, reconcile }) {
+  const toast = useToast();
   const pending = reactive(new Set());
   const uncertain = reactive(new Map());
   const keyFor = record => `${getOwner()}:${record?.id}`;
@@ -51,7 +53,7 @@ export function useLearningRecordRollback({ canRollback, getContext, getOwner, g
         // A server error/timeout can occur after commit. Only explicit client refusals are definite.
         if (res.status >= 400 && res.status < 500 && ![408, 425, 429].includes(res.status)) {
           sent = false;
-          if (editorIsCurrent()) window.alert(`退回待審未執行: ${httpFailureMessage(res.status, body || {})}`);
+          if (editorIsCurrent()) toast.error(`退回待審未執行: ${httpFailureMessage(res.status, body || {})}`);
           return;
         }
         throw new Error('outcome unknown');
@@ -64,7 +66,7 @@ export function useLearningRecordRollback({ canRollback, getContext, getOwner, g
       }, editorIsCurrent, owner);
     } catch (error) {
       if (sent) uncertain.set(key, confirmed ? '已退回待審；狀態重新整理未完成。輸入已保留，請重新查詢狀態。' : unknownMessage);
-      else if (editorIsCurrent()) window.alert(`退回待審未執行: ${error.message || '登入狀態無法確認'}`);
+      else if (editorIsCurrent()) toast.error(`退回待審未執行: ${error.message || '登入狀態無法確認'}`);
     } finally {
       pending.delete(key);
     }
