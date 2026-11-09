@@ -26,6 +26,27 @@ test('observes stale heads, merged state, local edits and changed production', (
   assert.equal(compare(old, live).length, 6);
   assert.match(compare(old, live).join(' '), /PR #1 head\/state changed/);
 });
+test('reports CI failure and recovery with the same PR head and state', () => {
+  const stages = [
+    { pending: ['Required test'], failed: [], status: 'IN_PROGRESS', conclusion: null },
+    { pending: [], failed: ['Required test'], status: 'COMPLETED', conclusion: 'FAILURE' },
+    { pending: [], failed: [], status: 'COMPLETED', conclusion: 'SUCCESS' },
+    { pending: [], failed: [], status: 'COMPLETED', conclusion: 'SKIPPED' },
+  ].map(({ status, conclusion, ...buckets }) => {
+    const snapshot = observed();
+    Object.assign(snapshot.prs[0], buckets, { checks: [{ name: 'Required test', status, conclusion }] });
+    return snapshot;
+  });
+  for (let i = 1; i < stages.length; i++) {
+    assert.deepEqual(compare(stages[i - 1], stages[i]), ['PR #1 checks changed']);
+  }
+});
+test('check ordering alone does not report new progress', () => {
+  const old = observed(); old.prs[0].pending = ['Build', 'Tests'];
+  old.prs[0].checks = old.prs[0].pending.map(name => ({ name, status: 'IN_PROGRESS', conclusion: null }));
+  const live = structuredClone(old); live.prs[0].pending.reverse(); live.prs[0].checks.reverse();
+  assert.deepEqual(compare(old, live), []);
+});
 test('save survives a separate read and preserves goals/effect receipts without replay', async () => {
   const f = fixture();
   try {
