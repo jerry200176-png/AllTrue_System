@@ -19,3 +19,5 @@
 - 限制：這是 controller 層對預綁定模型的決定性序列重放，未執行兩個真實 HTTP process 同時等待鎖，也不是所有可能交錯／deadlock 的證明。前端每頁鎖與讀後確認不提供跨 client 的 exactly-once 保證；既存伺服器風險保留，修復另需授權。
 
 - 完整本機調查、最小保護候選、測試矩陣與 rollback：[rollback concurrency audit](../audits/2026-11-08-5120-rollback-concurrency.md)。
+
+- Review follow-up: release loading owned by superseded list requests after rollback/reconciliation; retain newer-request ownership. Re-read and lock the current assessment after the existing course lock before rollback effects, so stale requests cannot decrement the teacher count twice. Regression covers stale bindings and real authenticated two-process lock contention. Historical transaction inventory remains linked at its immutable revision rather than copied in full.

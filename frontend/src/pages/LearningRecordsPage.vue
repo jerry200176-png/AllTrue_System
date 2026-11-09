@@ -4069,6 +4069,7 @@ const reconcileRollback = async (record) => {
   const countsOk = await fetchStatusCounts(ownerIsCurrent);
   if (!countsOk || !ownerIsCurrent()) return false;
   ++recordsRequestEpoch; // A list read started before reconciliation cannot put approved back.
+  recordsPagination.value = { ...recordsPagination.value, loading: false };
   applyRollbackReviewState(record.id, {
     Status: current.Status, ReviewNote: current.ReviewNote ?? null,
     ApprovedBy: current.ApprovedBy ?? null, ApprovedAt: current.ApprovedAt ?? null,
@@ -4083,6 +4084,7 @@ const { rollbackApproval, isRollingBack, isRollbackPending, rollbackIssue, reche
   reconcile: reconcileRollback,
   onSuccess: async (record, reviewState, editorIsCurrent, requestOwner) => {
     ++recordsRequestEpoch;
+    recordsPagination.value = { ...recordsPagination.value, loading: false };
     ++countsRequestEpoch;
     // Refresh current scope after every confirmed success; a foreign modal is never patched.
     if (requestOwner === rollbackOwner()) {
