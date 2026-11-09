@@ -189,6 +189,7 @@ final class PopOperationService
             && !$this->isExactPastScheduledCancel($entry)
             && !$this->isExactInvoice1997StaleValues($entry)
             && !$this->isExactInvoiceHeaderItemRepair($entry)
+            && !$this->isExactLegacyVoidLink($entry)
             && !$this->isExactPackageLedgerNetRepair($entry)
             && !$this->isExactContractChargeCorrection($entry)
             && !$this->isReviewedFinancialCase($entry)
@@ -217,6 +218,28 @@ final class PopOperationService
             }
             $lockedParameters = json_decode((string) $locked->parameters, true, 512, JSON_THROW_ON_ERROR);
             $this->assertRequestIntegrity($locked, $entry, $lockedParameters, null, false);
+            if ($this->isExactLegacyVoidLink($entry)) {
+                if ($approverId === null || $approver !== 'user:' . $approverId
+                    || !DB::table('User')->where('id', $approverId)->where('type', 'S')->exists()) {
+                    throw new RuntimeException('POP legacy void approval requires the authenticated Founder identity.');
+                }
+                if (in_array($this->financialRecoveryPhase($locked), ['recovery', 'rollback'], true)) {
+                    $prior = DB::table('pop_approval_events')->where('operation_id', $locked->id)->where('event_type', 'approved')
+                        ->where('phase', 'execute')->where('approver_role', 'super_admin')->where('approver', $approver)
+                        ->where('approver_id', $approverId)->where('approval_reference', $approvalReference)
+                        ->where('parameters_hash', $locked->parameters_hash)->where('commit_sha', $commitSha)->whereNotNull('token_hash')->exists();
+                    if (!$prior) throw new RuntimeException('POP legacy void recovery requires the original exact Founder approval.');
+                    app(\App\Operations\Strategies\LegacyVoidLinkStrategy::class)
+                        ->assertRecoveryState((string) $locked->id, (string) ($lockedParameters['expected_digest'] ?? ''));
+                } else {
+                    $preview = $this->safePlan($entry, $lockedParameters, (string) $locked->id);
+                    if (!preg_match('/^[0-9a-f]{64}$/D', (string) ($lockedParameters['expected_digest'] ?? ''))
+                        || !($preview['ok'] ?? false)
+                        || !hash_equals($lockedParameters['expected_digest'], (string) ($preview['digest'] ?? ''))) {
+                        throw new RuntimeException('POP legacy void approval requires the exact current reviewed preview digest.');
+                    }
+                }
+            }
             if ($this->isReviewedFinancialCase($entry)) {
                 if ($reviewedCaseContinuation) {
                     $this->assertPriorReviewedFinancialCaseApproval($locked, $lockedParameters, $entry, $approvalReference, $approver, $approverId);
@@ -492,7 +515,7 @@ final class PopOperationService
 
     private function atomicFinancialRepair(object|string $strategy): bool
     {
-        return in_array(is_object($strategy) ? get_class($strategy) : $strategy, ['App\\Operations\\Strategies\\UnpaidInvoiceChargeAlignmentStrategy', 'App\\Operations\\Strategies\\PaymentReversalRestatementStrategy', 'App\\Operations\\Strategies\\PaymentReportPendingReturnStrategy', 'App\\Operations\\Strategies\\InvoiceHeaderItemRepairStrategy', 'App\\Operations\\Strategies\\BillingPeriodRekeyStrategy'], true);
+        return in_array(is_object($strategy) ? get_class($strategy) : $strategy, ['App\\Operations\\Strategies\\UnpaidInvoiceChargeAlignmentStrategy', 'App\\Operations\\Strategies\\PaymentReversalRestatementStrategy', 'App\\Operations\\Strategies\\PaymentReportPendingReturnStrategy', 'App\\Operations\\Strategies\\InvoiceHeaderItemRepairStrategy', 'App\\Operations\\Strategies\\LegacyVoidLinkStrategy', 'App\\Operations\\Strategies\\BillingPeriodRekeyStrategy'], true);
     }
 
     /**
@@ -962,6 +985,21 @@ final class PopOperationService
             return $roles;
         }
 
+        if ($this->isExactLegacyVoidLink($entry)
+            && ($entry['founder_approval_required'] ?? false) === true
+            && ($entry['risk'] ?? null) === 'critical'
+            && ($entry['blast_radius'] ?? null) === 'two_exact_legacy_void_rows'
+            && ($entry['reversible'] ?? false) === true
+            && ($entry['snapshot_required'] ?? false) === true
+            && ($entry['transaction_required'] ?? false) === true
+            && ($entry['rollback_supported'] ?? false) === true
+            && ($entry['verification_required'] ?? false) === true
+            && ($entry['approval_required'] ?? false) === true
+            && ($entry['execution_authority'] ?? null) === 'pop-pi-local'
+            && $roles === ['super_admin']) {
+            return $roles;
+        }
+
         if ($this->isExactContractChargeCorrection($entry)
             && ($entry['founder_approval_required'] ?? false) === true
             && ($entry['risk'] ?? null) === 'critical'
@@ -1284,6 +1322,15 @@ final class PopOperationService
             && ($entry['strategy_class'] ?? null) === \App\Operations\Strategies\InvoiceHeaderItemRepairStrategy::class
             && ($entry['approval_policy'] ?? null) === 'founder-exact-invoice-header-item-repair'
             && ($entry['parameter_keys'] ?? null) === ['decision_reference'];
+    }
+
+    /** Same single-super_admin Founder-exact shape (in-app #521, legacy void row link). */
+    private function isExactLegacyVoidLink(array $entry): bool
+    {
+        return ($entry['id'] ?? null) === 'legacy-void-link-20261107'
+            && ($entry['strategy_class'] ?? null) === \App\Operations\Strategies\LegacyVoidLinkStrategy::class
+            && ($entry['approval_policy'] ?? null) === 'founder-exact-legacy-void-link'
+            && ($entry['parameter_keys'] ?? null) === ['decision_reference', 'expected_digest'];
     }
 
     /** Same single-super_admin Founder-exact shape (in-app #369, invoice 1997 stale values). */
