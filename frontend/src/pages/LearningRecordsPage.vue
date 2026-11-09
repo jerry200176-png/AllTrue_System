@@ -3525,6 +3525,7 @@ const validOffsetRecords = data => Array.isArray(data?.data)
 
 const fetchRecords = async () => {
   const requestEpoch = ++recordsRequestEpoch;
+  loadingAll.value = false; // A replacement query retires the old load-all owner.
   const scopeEpoch = ownerEpoch.value;
   const owner = [props.userId, props.branchId].map(String).join(':');
   const ownerIsCurrent = () => owner === [props.userId, props.branchId].map(String).join(':')

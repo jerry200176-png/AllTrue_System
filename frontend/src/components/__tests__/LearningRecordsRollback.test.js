@@ -152,6 +152,21 @@ describe.each([1440, 390])('approval rollback through real page @%i', width => {
     await more().trigger('click'); await flushPromises();
     expect(buttons(wrapper, '退回待審')).toHaveLength(4);
   });
+  it('retires load-all on an ordinary refresh and lets the next page load', async () => {
+    serverRecords = Array.from({ length: 6 }, (_, i) => record(501 + i)); pageSize = 2;
+    await start({ width });
+    const old = deferred();
+    readResponse = url => new URL(String(url), 'http://local').searchParams.has('before_id') ? old.promise : Promise.resolve(listResponse(url));
+    await wrapper.findAll('button').find(b => b.text().includes('載入全部記錄')).trigger('click'); await flushPromises();
+    await wrapper.find('#lr-review-tab-pending').trigger('click'); await flushPromises();
+    await wrapper.find('#lr-review-tab-approved').trigger('click'); await flushPromises();
+    old.resolve(recordsJson({ data: [record(499)], pagination: 'keyset' })); await flushPromises();
+    const more = wrapper.findAll('button').find(b => b.text().includes('載入下一頁'));
+    expect(more.element.disabled).toBe(false);
+    readResponse = null;
+    await more.trigger('click'); await flushPromises();
+    expect(buttons(wrapper, '退回待審')).toHaveLength(4);
+  });
   it('offers the director operation in the list/card and editor; success keeps dirty inputs', async () => {
     await start({ width });
     expect(buttons(wrapper, '退回待審')).toHaveLength(1);
