@@ -1,7 +1,7 @@
 # 交接狀態 Handoff（活的；每個 milestone 由 coordinator 更新）
 
-Updated: 2026-11-09 13:36 UTC（本輪 in-app／Codex milestone；其他 tracker 保留、需各自重查）
-Source SHA: 81819432b76a173249ee10f4bd0cb783ae014d5c（本次已合併 main；產品正式版本仍為下列 e996，不把 main 當部署）
+Updated: 2026-11-09 14:38 UTC（in-app 529 前端修正準備 milestone；其他 tracker 保留、需重查）
+Source SHA: c88f92bd37838164b40eadd39c4562dc0daaa0cc（本分支 fresh-main 基線；正式 e996 與待核准 c88 release 分開）
 Owner: coordinator（每個 milestone、PR merge、deploy 後更新；完成的項目直接刪除）
 
 **規則**：每次接續都先核對 GitHub 與正式 manifest；未滿 7 天也可能過期。超過 7 天一律 STALE。新 SHA 勝舊 SHA；
@@ -18,7 +18,7 @@ The trackers hold the full detail: flow is #4953 and UI is #4989. This file only
 
 | 項目 | 狀態 | 下一步（誰） | 去哪看 |
 |---|---|---|---|
-| Release `e9964b4470f6` | deploy 42586376118 成功；已讀回 backend/frontend manifest、version 與 health。#5120／#5135／#5107／#5110 已隨此版上線，未執行正式資料修復。 | 後續版本由 coordinator 依既有 release gate 推進；不重複 dispatch／不代按 protected approval | `deployment.json`、deploy 42586376118 |
+| Release `e9964b4470f6` | deploy 42586376118 成功；已讀回 backend/frontend manifest、version 與 health。#5120／#5135／#5107／#5110 已隨此版上線，未執行正式資料修復。 | c88 release 42633109258 等 Founder，目標固定、不含 529；由 coordinator 推進，不重複 dispatch／代按 approval | `deployment.json`、deploy 42586376118 |
 | in-app 518 (#5097) | #5085（月結誤報）+ #5087（字級 標準／大）已上線；triage 回覆已送。 | smoke run 42387205840 綠了 → POP resolve（spec `inapp-518-resolve-1`） | #5097 |
 | in-app 517 (#5057) | PR1 #5060 + PR2 #5068（合併＋復原）已上線；回報已 closed，follow-up 留言已送。 | 後續：#5104（binary collation 比對）、lock 測試 PR | #5057、#5104 |
 | in-app 501／527 介面 | #5134 排序介面已上線；501 現為 closed。 | 527 堂次歸屬尚未修復，保留授課歷史／帳務證據；不能用顯示排序宣告資料修好 | #4918、#5130、#5124 |
@@ -28,8 +28,9 @@ The trackers hold the full detail: flow is #4953 and UI is #4989. This file only
 | in-app 520／526 | #5135 每學生 XLSX 隨 e996 上線；#5141 已 merge，#5147 guard head 的正式 UI 匯出／讀回已驗證。 | 區分匯出證據與其餘表格需求；不宣稱帳務資料已修 | #5099、#5131、ui-smoke 42623336868 |
 | in-app 523 | #5120 已 merge 並隨 e996 上線；正式受影響 UI 可取消且未送退回 POST，未執行實際退回。 | 上線回覆 1433 已讀回；回報者驗收獨立，勿把取消測試當資料回復證據 | #5114、#5120、ui-smoke 42623336868 |
 | in-app 522／524／527 資料 | 422 原因、日期投影、合約堂次仍需最新受控資料。#5137 DBHub view-only 準備已 merge，但未建立正式連線／帳號。 | 原始授課、到班、評量、財務與薪資保留；先逐筆模擬與 inverse，再提出核准 | #5113、#5133、#5124 |
-| in-app 528 | #5145 已分診；#5148 Draft 原修正 c170ffb3 已整合 main；僅修同實體堂次快取位置，已有 source／真 Vue RED→GREEN。 | 本次整合已合併 #5147 的 main，待 final-head review／CI；可選 deployed-frontend 合成驗收本機兩次未 mount，已 DEFER 並撤出候選；B 未做、正式調課 committed UNKNOWN | #5145、PR #5148 |
-| Acceptance／fixture | #5141 `7147a05d`、#5146 `d7b36967`、#5147 `81819432` 已 merge；guard exact-head CI 42623337018、正式 UI 42623336868、合併批次 CI 42625451946 成功。 | 5148 保持 Draft 至 coordinator 完成整合審查；未主張全 DB zero-write、實際調課或 reporter acceptance | #5141、#5146、#5147、#5148 |
+| in-app 528 | #5148 已 merge `c88f92bd`；核心快取位置修正與真 Vue 回歸已通過。 | 隨既有 c88 release gate 交付；可選 deployed-frontend 合成驗收 DEFER，B 未做、正式調課 committed UNKNOWN | #5145、#5148、release 42633109258 |
+| in-app 529 | #5149 已 intake；Phase A 42634761813 成功，triaged／唯一公開回覆 1436 精確讀回。窄範圍前端失敗提示與停止自動重送已有本機 RED→GREEN。 | 本分支準備 Draft／獨立 review／CI，不納入 c88；後端實際 422 原因及資料結果 UNKNOWN，不改刪除資格或正式資料 | #5149、`fix/student-course-delete-feedback-529` |
+| Acceptance／fixture | #5141 `7147a05d`、#5146 `d7b36967`、#5147 `81819432` 已 merge；guard exact-head CI 42623337018、正式 UI 42623336868、合併批次 CI 42625451946 成功。 | 5148 已合併，c88 main CI 42630971912 成功；未主張全 DB zero-write、實際調課或 reporter acceptance | #5141、#5146、#5147、#5148 |
 | Codex 接續改善 | #5140／#5142 已 merge：按需 skill、唯讀 reconciliation 與 CI 狀態差異觀測；不新增路由／正式權限。 | 沿用既有 handoff、接續先 live read；觀測不是 approval／gate 或自動動作重播 | #5140、#5142、`docs/engineering/CODEX_TASK_CONTINUITY.md` |
 | 流程改善 W12–W14 | W13 autoland 已驗證；W14 #5105（28 個沒跑的前端測試，現在全跑）已上線。#5082/#5084 mutation testing、#5083 自檢 待 Codex 乾淨。 | W9–W11 由 flow agent | #4953 |
 | Overlay 樣板 | census #5093 已上線；樣板 #5094、ratchet #5095 等 Codex 乾淨。 | 之後一頁一 PR，before/after 貼 #4989 | #4989 |
