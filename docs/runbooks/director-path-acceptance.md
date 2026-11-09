@@ -5,6 +5,7 @@ after its ordinary smoke suite, using the same serialized account runtime. No ne
 credentials, API, trigger or permission is introduced. Publish/run this acceptance
 after the assessed rollback editor and student workbook changes are deployed.
 Exact deployed-SHA evidence remains a separate release requirement.
+The same step first runs the guard/parser helpers and Chromium privacy proof; either failure stops the production acceptance before its audited export.
 
 Two real UI paths are checked:
 
