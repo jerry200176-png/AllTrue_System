@@ -8,17 +8,28 @@ import { supabase } from '../../supabase';
 vi.mock('../../supabase', () => ({ supabase: { auth: { getSession: vi.fn(async () => ({ data: { session: { access_token: 'fixture-token' } } })) } } }));
 
 const record = (id = 501, Status = 'approved') => ({
-  id, Status, student_id: 1, StudentClassID: 10, TeacherID: 9001,
+  id, Status, student_id: 1, StudentClassID: 10, ClassSessionID: id + 1000, TeacherID: 9001,
   student_name: '測試學生', Subject: '數學', SessionDate: '2026-11-01',
   StartTime: '10:00', EndTime: '11:00', Progress: '已儲存進度', Comment: '已儲存評語',
 });
 const deferred = () => { let resolve; const promise = new Promise(r => { resolve = r; }); return { promise, resolve }; };
 const json = (body, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
-let wrapper, toastWrapper, fetchMock, rollbackResponse, serverRecords, readResponse;
+let wrapper, toastWrapper, fetchMock, rollbackResponse, serverRecords, readResponse, pageSize, hiddenPending;
 const buttons = (root, text) => root.findAll('button').filter(b => b.text() === text);
 const click = async (root, text) => { const b = buttons(root, text)[0]; expect(b, text).toBeTruthy(); await b.trigger('click'); await flushPromises(); };
 const modal = () => wrapper.find('.lr-modal--learning-form');
 const rollbackCalls = () => fetchMock.mock.calls.filter(([url]) => String(url).endsWith('/rollback-approval'));
+const listResponse = url => {
+  const params = new URL(String(url), 'http://local').searchParams;
+  const counts = { approved: serverRecords.filter(r => r.Status === 'approved').length, pending: serverRecords.filter(r => r.Status === 'pending' && !hiddenPending.has(r.id)).length };
+  let rows = serverRecords;
+  if (params.has('for_conflict_lookup')) return json({ data: rows.filter(r => r.ClassSessionID === Number(params.get('class_session_id'))) });
+  rows = rows.filter(r => r.Status !== 'pending' || !hiddenPending.has(r.id));
+  if (params.has('before_id')) return json({ data: rows.filter(r => r.id < Number(params.get('before_id'))).sort((a,b) => b.id-a.id).slice(0,1) });
+  if (params.has('status')) rows = rows.filter(r => r.Status === params.get('status'));
+  const total = rows.length, page = Number(params.get('page') || 1);
+  return json({ data: rows.slice((page - 1) * pageSize, page * pageSize), current_page: page, last_page: Math.ceil(total / pageSize), total, status_counts: counts });
+};
 
 async function start({ width = 1440, role = 'director', status = 'approved' } = {}) {
   window.innerWidth = width;
@@ -45,6 +56,7 @@ beforeEach(() => {
   vi.spyOn(window, 'prompt').mockReturnValue('重新確認');
   vi.spyOn(window, 'alert').mockImplementation(() => {});
   serverRecords = [record(), record(502, 'pending')];
+  pageSize = 50; hiddenPending = new Set();
   readResponse = null;
   rollbackResponse = () => Promise.resolve(json({ ...record(), Status: 'pending', ReviewNote: '重新確認', ApprovedBy: null, ApprovedAt: null }));
   fetchMock = vi.fn(async (url) => {
@@ -56,9 +68,7 @@ beforeEach(() => {
     }
     if (String(url).includes('/learning-records?')) {
       if (readResponse) return readResponse(url);
-      const params = new URL(String(url), 'http://local').searchParams;
-      const rows = params.has('before_id') ? serverRecords.filter(r => r.id < Number(params.get('before_id'))).sort((a,b) => b.id-a.id).slice(0,1) : serverRecords;
-      return json({ data: rows, status_counts: { approved: serverRecords.filter(r => r.Status === 'approved').length, pending: serverRecords.filter(r => r.Status === 'pending').length } });
+      return listResponse(url);
     }
     return json({ data: [], created: 0 });
   });
@@ -73,6 +83,42 @@ afterEach(() => {
 });
 
 describe.each([1440, 390])('approval rollback through real page @%i', width => {
+  it.each([false, true])('recovers a pending record intentionally hidden by a leave session (lost response=%s)', async lost => {
+    hiddenPending.add(501);
+    await start({ width }); await edit();
+    if (lost) rollbackResponse = () => { serverRecords[0] = { ...serverRecords[0], Status: 'pending' }; return Promise.reject(new Error('response lost')); };
+    await click(modal(), '退回待審');
+    if (lost) await click(modal(), '重新查詢狀態');
+    expectDraft();
+    expect(modal().text()).not.toContain('✓ 已核准');
+    expect(buttons(modal(), '儲存變更')[0].element.disabled).toBe(false);
+    expect(wrapper.text()).not.toContain('狀態重新整理未完成');
+  });
+  it('reloads the filtered first page so removing one result does not skip an unseen record', async () => {
+    serverRecords = [record(), record(502), record(503)]; pageSize = 2;
+    await start({ width });
+    expect(buttons(wrapper, '退回待審')).toHaveLength(2);
+    await click(wrapper, '退回待審');
+    expect(buttons(wrapper, '退回待審')).toHaveLength(2);
+    expect(buttons(wrapper, '載入下一頁')).toHaveLength(0);
+  });
+  it('restarts the current tab query after rollback supersedes its in-flight read', async () => {
+    serverRecords = [record(), record(502, 'pending'), record(503, 'pending')];
+    await start({ width });
+    const mutation = deferred(), old = deferred(); rollbackResponse = () => mutation.promise;
+    await click(wrapper, '退回待審');
+    let delayed = false;
+    readResponse = url => {
+      const params = new URL(String(url), 'http://local').searchParams;
+      if (!delayed && params.get('status') === 'pending') { delayed = true; return old.promise; }
+      return Promise.resolve(listResponse(url));
+    };
+    await wrapper.find('#lr-review-tab-pending').trigger('click'); await flushPromises();
+    mutation.resolve(json({ ...record(), Status: 'pending' })); await flushPromises();
+    expect(buttons(wrapper, '編輯評量')).toHaveLength(3);
+    old.resolve(json({ data: [record(502, 'pending'), record(503, 'pending')] })); await flushPromises();
+    expect(buttons(wrapper, '編輯評量')).toHaveLength(3);
+  });
   it('offers the director operation in the list/card and editor; success keeps dirty inputs', async () => {
     await start({ width });
     expect(buttons(wrapper, '退回待審')).toHaveLength(1);
@@ -238,7 +284,7 @@ describe.each([1440, 390])('approval rollback through real page @%i', width => {
     rollbackResponse = () => { serverRecords[0] = { ...serverRecords[0], Status: 'pending' }; return Promise.reject(new Error('response lost')); };
     await click(modal(), '退回待審');
     const read = deferred();
-    readResponse = url => String(url).includes('before_id=') ? read.promise : Promise.resolve(json({ data: serverRecords, status_counts: { approved: 0, pending: 2 } }));
+    readResponse = url => String(url).includes('for_conflict_lookup=') ? read.promise : Promise.resolve(json({ data: serverRecords, status_counts: { approved: 0, pending: 2 } }));
     await click(modal(), '重新查詢狀態'); await click(modal(), '關閉');
     await wrapper.find('#lr-review-tab-pending').trigger('click'); await flushPromises(); await edit();
     read.resolve(json({ data: [{ ...record(), Status: 'pending', ReviewNote: 'old review note' }] })); await flushPromises();
@@ -266,7 +312,7 @@ describe.each([1440, 390])('approval rollback through real page @%i', width => {
     readResponse = url => {
       const params = new URL(String(url), 'http://local').searchParams;
       if (params.has('with_status_counts') && ++counts === 1) return oldCount.promise;
-      const rows = params.has('before_id') ? serverRecords.filter(r => r.id === Number(params.get('before_id')) - 1) : serverRecords;
+      const rows = params.has('for_conflict_lookup') ? serverRecords.filter(r => r.ClassSessionID === Number(params.get('class_session_id'))) : serverRecords;
       return Promise.resolve(json({ data: rows, status_counts: { approved: serverRecords.filter(r => r.Status === 'approved').length, pending: serverRecords.filter(r => r.Status === 'pending').length } }));
     };
     a.resolve(json({ ...record(), Status: 'pending' })); await flushPromises();

@@ -3527,8 +3527,8 @@ const fetchRecords = async () => {
     && scopeEpoch === ownerEpoch.value && requestEpoch === recordsRequestEpoch;
   try {
     const token = await getToken();
-    if (!token) { recordsSettled.value = true; return; }
-    if (!ownerIsCurrent()) return;
+    if (!token) { recordsSettled.value = true; return false; }
+    if (!ownerIsCurrent()) return false;
     recordsLoadError.value = '';
     recordsPagination.value = { ...recordsPagination.value, loading: true };
 
@@ -3540,7 +3540,7 @@ const fetchRecords = async () => {
     if (!res.ok) throw new Error('Fetch failed');
 
     const data = await res.json();
-    if (!ownerIsCurrent()) return;
+    if (!ownerIsCurrent()) return false;
     records.value = data.data || [];
     recordsPagination.value = {
       currentPage: data.current_page || 1,
@@ -3549,12 +3549,14 @@ const fetchRecords = async () => {
       loading: false,
     };
     recordsSettled.value = true;
+    return true;
   } catch (e) {
-    if (!ownerIsCurrent()) return;
+    if (!ownerIsCurrent()) return false;
     recordsSettled.value = true;
     console.error(e);
     recordsLoadError.value = '請檢查網路連線後再試一次。原有資料仍會保留。';
     recordsPagination.value = { ...recordsPagination.value, loading: false };
+    return false;
   }
 };
 
@@ -4050,6 +4052,15 @@ const applyRollbackReviewState = (id, reviewState, editorIsCurrent) => {
     form.ReviewNote = reviewState.ReviewNote || '';
   }
 };
+const refreshRollbackQueue = async (ownerIsCurrent) => {
+  ++recordsRequestEpoch;
+  recordsPagination.value = { ...recordsPagination.value, loading: false };
+  ++countsRequestEpoch;
+  // Restart page one of the active filters. A removed result shifts OFFSET
+  // pages, and an invalidated tab read still needs its complete replacement.
+  const results = await Promise.all([fetchRecords(), fetchStatusCounts(ownerIsCurrent)]);
+  return results.every(result => result === true) && ownerIsCurrent();
+};
 const reconcileRollback = async (record) => {
   const owner = rollbackOwner();
   const scopeEpoch = ownerEpoch.value;
@@ -4057,22 +4068,23 @@ const reconcileRollback = async (record) => {
   const ownerIsCurrent = () => owner === rollbackOwner() && scopeEpoch === ownerEpoch.value;
   const token = await getToken();
   if (!token || !ownerIsCurrent()) return false;
-  // Existing keyset API: exact ID or no match, without the current status/date filters.
-  const params = new URLSearchParams({ before_id: String(Number(record.id) + 1), per_page: '1' });
+  // The existing campus-scoped conflict lookup includes intentionally hidden
+  // leave-session pending records. Legacy rows without a session use keyset.
+  const params = Number(record.ClassSessionID) > 0
+    ? new URLSearchParams({ for_conflict_lookup: '1', class_session_id: String(record.ClassSessionID) })
+    : new URLSearchParams({ before_id: String(Number(record.id) + 1), per_page: '1' });
   if (props.branchId) params.set('branch_id', props.branchId);
-  if (record.StudentClassID) params.set('student_class_id', record.StudentClassID);
+  if (record.StudentClassID) params.set('student_class_ids', record.StudentClassID);
   const res = await fetch(`/api/v1/learning-records?${params}`, { headers: { Authorization: `Bearer ${token}` } });
   const body = await res.json().catch(() => null);
   const current = body?.data?.find(row => String(row.id) === String(record.id));
-  if (!res.ok || !ownerIsCurrent() || !current
+  if (!res.ok || !ownerIsCurrent() || !current || current.VoidedAt
     || !['approved', 'pending', 'changes_requested', 'rejected'].includes(current.Status)) return false;
-  const countsOk = await fetchStatusCounts(ownerIsCurrent);
-  if (!countsOk || !ownerIsCurrent()) return false;
-  ++recordsRequestEpoch; // A list read started before reconciliation cannot put approved back.
-  recordsPagination.value = { ...recordsPagination.value, loading: false };
+  if (!await refreshRollbackQueue(ownerIsCurrent)) return false;
+  const latest = records.value.find(row => String(row.id) === String(record.id)) || current;
   applyRollbackReviewState(record.id, {
-    Status: current.Status, ReviewNote: current.ReviewNote ?? null,
-    ApprovedBy: current.ApprovedBy ?? null, ApprovedAt: current.ApprovedAt ?? null,
+    Status: latest.Status, ReviewNote: latest.ReviewNote ?? null,
+    ApprovedBy: latest.ApprovedBy ?? null, ApprovedAt: latest.ApprovedAt ?? null,
   }, () => editorEpoch === contextEpoch.value && ownerIsCurrent());
   return true;
 };
@@ -4083,13 +4095,17 @@ const { rollbackApproval, isRollingBack, isRollbackPending, rollbackIssue, reche
   getToken,
   reconcile: reconcileRollback,
   onSuccess: async (record, reviewState, editorIsCurrent, requestOwner) => {
-    ++recordsRequestEpoch;
-    recordsPagination.value = { ...recordsPagination.value, loading: false };
-    ++countsRequestEpoch;
     // Refresh current scope after every confirmed success; a foreign modal is never patched.
     if (requestOwner === rollbackOwner()) {
+      const editorEpoch = contextEpoch.value, scopeEpoch = ownerEpoch.value;
+      const ownerIsCurrent = () => requestOwner === rollbackOwner() && scopeEpoch === ownerEpoch.value;
       applyRollbackReviewState(record.id, reviewState, editorIsCurrent);
-      if (!await reconcileRollback(record)) throw new Error('refresh incomplete');
+      if (!await refreshRollbackQueue(ownerIsCurrent)) throw new Error('refresh incomplete');
+      const latest = records.value.find(row => String(row.id) === String(record.id)) || reviewState;
+      applyRollbackReviewState(record.id, {
+        Status: latest.Status, ReviewNote: latest.ReviewNote ?? null,
+        ApprovedBy: latest.ApprovedBy ?? null, ApprovedAt: latest.ApprovedAt ?? null,
+      }, () => editorEpoch === contextEpoch.value && ownerIsCurrent());
     } else {
       await Promise.all([fetchRecords(), fetchStatusCounts()]);
     }
