@@ -57,6 +57,8 @@
     "test:unit:watch": "vitest",
     "test:unit:cov": "vitest run --coverage",
     "test:e2e": "playwright test",
+    "test:e2e:director-acceptance": "playwright test -c playwright.director-acceptance.config.js",
+    "test:director-acceptance-helpers": "node --test e2e/fixtures/directorExportGuard.test.js && python3 ../scripts/tests/test_student_bill_xlsx_acceptance.py",
     "test:e2e:ui-foundation": "playwright test -c playwright.ui-foundation.config.js",
     "test:visual": "bash ../scripts/visual-docker.sh",
     "test:visual:update": "bash ../scripts/visual-docker.sh --update-snapshots",

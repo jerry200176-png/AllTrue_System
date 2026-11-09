@@ -30,6 +30,7 @@ export default defineConfig({
   testDir: './e2e',
   // Foundation page evidence uses playwright.ui-foundation.config.js + dedicated Vite mount.
   testIgnore: [
+    /director-path-acceptance\.spec\.js$/, // Private acceptance uses its list-only config in the same smoke job.
     // Executed by the required foundation suite against the dedicated Vue fixture server.
     /assessment-clarity\.spec\.js$/,
     /ui-foundation-pages\.spec\.js$/,
