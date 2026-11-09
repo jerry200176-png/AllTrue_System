@@ -34,7 +34,12 @@ unknown values become `other`, never a guessed repair classification.
    require TLS with verified CA. No public DB port, agent SSH-to-Pi exception,
    application credential reuse or HTTP MCP listener is part of this proposal.
 4. Bind `ALLTRUE_READONLY_DSN` through environment Secrets, never chat, arguments
-   or committed files. It replaces the encrypted-dump dependency for these reads;
+   or committed files, **only in the approved database/gateway service runtime**.
+   The existing standing decision keeps production passwords out of agent cloud
+   environments. Agents use a scoped, expiring gateway token; no permanent DB
+   password is copied into their workspace. A local DSN is synthetic-test-only
+   unless a separate concrete access decision authorizes another custody model.
+   It replaces the encrypted-dump dependency for these reads;
    it does not extend `ALLTRUE_TRIAGE_TOKEN` permissions.
 5. Enable and verify database/gateway audit records for identity, query, time,
    duration and outcome with private retention. **DBHub alone supplies neither
