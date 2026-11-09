@@ -17,6 +17,7 @@ final class LegacyVoidLinkStrategyTest extends TestCase
 
     /** @var array<int,array<string,int>> void payment id => manifest row */
     private array $cases = [];
+    private array $deploymentFiles = [];
 
     protected function setUp(): void
     {
@@ -37,6 +38,8 @@ final class LegacyVoidLinkStrategyTest extends TestCase
 
     protected function tearDown(): void
     {
+        \Carbon\Carbon::setTestNow();
+        foreach ($this->deploymentFiles as $file) @unlink($file);
         LegacyVoidLinkManifest::useCasesForTesting(null);
         parent::tearDown();
     }
@@ -49,6 +52,24 @@ final class LegacyVoidLinkStrategyTest extends TestCase
     private function readyPlan(LegacyVoidLinkStrategy $strategy): array
     {
         return $strategy->plan(array_replace(self::PARAMS, ['expected_digest' => $strategy->plan(self::PARAMS)['digest']]));
+    }
+
+    private function executedThroughPop(): array
+    {
+        $founder = \App\Models\User::create(['LoginName' => 'synthetic-pop-founder@test.invalid', 'Name' => 'fixture', 'PSW' => 'x', 'type' => 'S']);
+        $actor = 'user:' . $founder->id;
+        $sha = str_repeat('a', 40);
+        $file = tempnam(sys_get_temp_dir(), 'legacy-pop-manifest-');
+        $this->deploymentFiles[] = $file;
+        file_put_contents($file, json_encode(['backend_sha' => $sha], JSON_THROW_ON_ERROR));
+        $pop = new \App\Operations\PopOperationService(new \App\Operations\PopOperationCatalog(dirname(base_path()) . '/operations/catalog.yaml'), null, $file);
+        $parameters = array_replace(self::PARAMS, ['expected_digest' => (new LegacyVoidLinkStrategy())->plan(self::PARAMS)['digest']]);
+        $id = $pop->createDraft('legacy-void-link-20261107', $parameters, (string) \Illuminate\Support\Str::uuid(), $actor, 'super_admin', [])['id'];
+        self::assertTrue($pop->runDryRun($id, $actor, $founder->id, 'super_admin', [])['ok']);
+        $approval = $pop->approve($id, 'founder-go-synthetic-legacy-link', $actor, 'super_admin', $sha, $founder->id);
+        $result = $pop->run($id, 'execute', $approval['token'], $sha);
+        self::assertTrue($result['ok']);
+        return [$pop, $id, $approval, $sha, $result, $founder->id];
     }
 
     /** Everything but payment_report_id / updated_at, to prove nothing else moves. */
@@ -111,9 +132,9 @@ final class LegacyVoidLinkStrategyTest extends TestCase
     {
         $s = new LegacyVoidLinkStrategy();
         $original = $this->payments();
-        $result = $s->execute($this->readyPlan($s), ['operation_id' => 't']);
+        [, $id, , , $result] = $this->executedThroughPop();
 
-        self::assertTrue($s->rollback($result['snapshot'], ['operation_id' => 't'])['ok']);
+        self::assertTrue($s->rollback($result['snapshot'], ['operation_id' => $id])['ok']);
         self::assertSame($original, $this->payments(), 'all original timestamps and fields are restored exactly');
     }
 
@@ -162,17 +183,75 @@ final class LegacyVoidLinkStrategyTest extends TestCase
     {
         $strategy = new LegacyVoidLinkStrategy();
         $plan = $this->readyPlan($strategy);
-        $result = $strategy->execute($plan, ['operation_id' => 't']);
+        [, $id, , , $result] = $this->executedThroughPop();
         $first = array_key_first($this->cases);
         DB::table('Payment')->where('id', $first)->update(['updated_at' => now()->addMinute()]);
         $before = $this->payments();
         self::assertContains('post_execution_state_drift', $strategy->verify($plan, $result)['errors']);
         try {
-            $strategy->rollback($result['snapshot'], ['operation_id' => 't']);
+            $strategy->rollback($result['snapshot'], ['operation_id' => $id]);
             self::fail('rollback must not overwrite later work');
         } catch (\RuntimeException $e) {
             self::assertSame('legacy_void_link_rollback_state_drift', $e->getMessage());
         }
+        self::assertSame($before, $this->payments());
+    }
+
+    public function test_corrupted_or_incomplete_inverse_has_no_partial_writes(): void
+    {
+        [, $id, , , $result] = $this->executedThroughPop();
+        $before = $this->payments();
+        $missing = $result['snapshot']; unset($missing['rows'][array_key_first($missing['rows'])]);
+        $empty = $result['snapshot']; $empty['rows'] = [];
+        $wrongTime = $result['snapshot']; $wrongTime['rows'][array_key_first($wrongTime['rows'])]['paid_at'] = '2000-01-01 00:00:00';
+        foreach ([$missing, $empty, $wrongTime] as $snapshot) {
+            try {
+                (new LegacyVoidLinkStrategy())->rollback($snapshot, ['operation_id' => $id]);
+                self::fail('corrupted snapshot must not apply any inverse');
+            } catch (\RuntimeException $e) {
+                self::assertStringContainsString('legacy_void_link_rollback_', $e->getMessage());
+            }
+            self::assertSame($before, $this->payments());
+        }
+    }
+
+    public function test_expired_approval_renews_for_verify_and_rollback_through_stored_json(): void
+    {
+        $before = $this->payments();
+        [$pop, $id, , $sha, , $founder] = $this->executedThroughPop();
+        \Carbon\Carbon::setTestNow(now()->addMinutes(16));
+        $approval = $pop->approve($id, 'founder-go-synthetic-legacy-link', 'user:' . $founder, 'super_admin', $sha, $founder);
+        self::assertTrue($approval['ready']);
+        self::assertTrue($pop->run($id, 'verify', $approval['token'], $sha)['ok']);
+        self::assertTrue($pop->run($id, 'rollback', $approval['token'], $sha)['ok']);
+        self::assertSame($before, $this->payments());
+    }
+
+    public function test_failed_inverse_is_atomic_and_can_retry_with_recovery_approval(): void
+    {
+        $before = $this->payments();
+        [$pop, $id, $originalApproval, $sha, , $founder] = $this->executedThroughPop();
+        $after = $this->payments();
+        $connection = DB::connection();
+        $dispatcher = $connection->getEventDispatcher();
+        $connection->setEventDispatcher(clone $dispatcher);
+        $armed = true;
+        $connection->listen(function ($query) use (&$armed): void {
+            if ($armed && str_contains(strtolower($query->sql), 'update `payment`') && array_key_exists(0, $query->bindings) && $query->bindings[0] === null) {
+                $armed = false;
+                throw new \RuntimeException('synthetic_inverse_failure');
+            }
+        });
+        try {
+            $failed = $pop->run($id, 'rollback', $originalApproval['token'], $sha);
+            self::assertFalse($failed['ok']);
+            self::assertSame($after, $this->payments(), 'a failed inverse must leave every link applied');
+        } finally {
+            $connection->setEventDispatcher($dispatcher);
+        }
+        \Carbon\Carbon::setTestNow(now()->addMinutes(16));
+        $approval = $pop->approve($id, 'founder-go-synthetic-legacy-link', 'user:' . $founder, 'super_admin', $sha, $founder);
+        self::assertTrue($pop->run($id, 'rollback', $approval['token'], $sha)['ok']);
         self::assertSame($before, $this->payments());
     }
 

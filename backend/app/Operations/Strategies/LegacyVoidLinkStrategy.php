@@ -78,7 +78,8 @@ final class LegacyVoidLinkStrategy
                 'row_count' => count($todo), 'outcome' => $todo === [] ? 'already_applied' : 'success']);
 
             $afterDigest = $this->digest($this->inspect(true));
-            return ['ok' => true, 'already_applied' => $todo === [], 'snapshot' => ['rows' => $snapshot, 'after_digest' => $afterDigest],
+            return ['ok' => true, 'already_applied' => $todo === [], 'snapshot' => ['rows' => $snapshot,
+                'before_digest' => $plan['expected_digest'], 'after_digest' => $afterDigest],
                 'after_digest' => $afterDigest, 'updated' => count($todo)];
         }, 3);
     }
@@ -104,7 +105,12 @@ final class LegacyVoidLinkStrategy
             throw new RuntimeException('legacy_void_link_rollback_snapshot_invalid');
         }
 
-        return DB::transaction(function () use ($rows, $snapshot): array {
+        return DB::transaction(function () use ($rows, $snapshot, $context): array {
+            $proof = $this->executionProof((string) ($context['operation_id'] ?? ''));
+            if ($this->snapshotHash($snapshot) !== $this->snapshotHash($proof['snapshot'])
+                || ($snapshot['before_digest'] ?? null) !== $proof['expected_digest']) {
+                throw new RuntimeException('legacy_void_link_rollback_snapshot_not_owned');
+            }
             if (!preg_match('/^[0-9a-f]{64}$/D', (string) ($snapshot['after_digest'] ?? ''))
                 || !hash_equals($snapshot['after_digest'], $this->digest($this->inspect(true)))) {
                 throw new RuntimeException('legacy_void_link_rollback_state_drift');
@@ -115,14 +121,19 @@ final class LegacyVoidLinkStrategy
                 if (!isset($rows[$id])) {
                     continue;
                 }
-                if (array_keys($rows[$id]) !== ['payment_report_id', 'updated_at', 'created_at', 'paid_at', 'method']
+                $fields = ['payment_report_id', 'updated_at', 'created_at', 'paid_at', 'method'];
+                if (!is_array($rows[$id]) || count($rows[$id]) !== count($fields) || array_diff(array_keys($rows[$id]), $fields) !== []
                     || $rows[$id]['payment_report_id'] !== null) throw new RuntimeException('legacy_void_link_rollback_snapshot_invalid');
                 $n = DB::table('Payment')->where('id', $id)->where('payment_report_id', $case['report_id'])
                     ->where('InvoiceID', $case['invoice_id'])->where('Amount', $case['amount'])
                     ->where('Method', $rows[$id]['method'])->where('PaidAt', $rows[$id]['paid_at'])
                     ->where('created_at', $rows[$id]['created_at'])->where('updated_at', $rows[$id]['updated_at'])
                     ->update(['payment_report_id' => null]);
-                $n === 1 ? $restored++ : $skipped[] = $id; // not in the linked state: leave it alone
+                if ($n !== 1) throw new RuntimeException('legacy_void_link_rollback_row_drift');
+                $restored++;
+            }
+            if (!hash_equals($proof['expected_digest'], $this->digest($this->inspect(true)))) {
+                throw new RuntimeException('legacy_void_link_rollback_incomplete_inverse');
             }
             $this->audit('pop.legacy_void_link.rollback', ['reason_code' => self::REF, 'restored' => $restored, 'skipped' => count($skipped), 'outcome' => 'success']);
 
@@ -178,6 +189,38 @@ final class LegacyVoidLinkStrategy
         $states = [];
         foreach (LegacyVoidLinkManifest::cases() as $id => $case) $states[$id] = $this->classify($id, $case, $live[$id])[0];
         return hash('sha256', json_encode([$states, $live], JSON_THROW_ON_ERROR));
+    }
+
+    /** Renewal is recovery-only; it cannot issue another execute authorization. */
+    public function assertRecoveryState(string $requestId, string $expectedDigest): void
+    {
+        $proof = $this->executionProof($requestId);
+        if (!hash_equals($proof['expected_digest'], $expectedDigest)
+            || !hash_equals((string) ($proof['snapshot']['after_digest'] ?? ''), $this->digest($this->inspect(true)))) {
+            throw new RuntimeException('legacy_void_link_recovery_state_drift');
+        }
+    }
+
+    private function snapshotHash(array $snapshot): string
+    {
+        return hash('sha256', json_encode(\App\Operations\PopOperationService::canonicalParameters($snapshot), JSON_THROW_ON_ERROR));
+    }
+
+    /** The immutable request and successful co-committed receipt own this inverse. */
+    private function executionProof(string $requestId): array
+    {
+        $request = DB::table('pop_operation_requests')->where('id', $requestId)
+            ->where('operation_id', 'legacy-void-link-20261107')->where('strategy_id', self::class)->first();
+        $record = DB::table('pop_execution_records')->where('operation_id', $requestId)
+            ->where('phase', 'execute')->where('result', 'succeeded')->orderByDesc('attempt_no')->first();
+        if (!$request || !$record) throw new RuntimeException('legacy_void_link_execution_proof_missing');
+        $parameters = json_decode((string) $request->parameters, true, 512, JSON_THROW_ON_ERROR);
+        $payload = json_decode((string) $record->payload, true, 512, JSON_THROW_ON_ERROR);
+        $hash = hash('sha256', json_encode(\App\Operations\PopOperationService::canonicalParameters($parameters), JSON_THROW_ON_ERROR));
+        if (!hash_equals((string) $request->parameters_hash, $hash)
+            || !preg_match('/^[0-9a-f]{64}$/D', (string) ($parameters['expected_digest'] ?? ''))
+            || !is_array($payload['snapshot'] ?? null)) throw new RuntimeException('legacy_void_link_execution_proof_invalid');
+        return ['expected_digest' => $parameters['expected_digest'], 'snapshot' => $payload['snapshot']];
     }
 
     /**

@@ -219,11 +219,25 @@ final class PopOperationService
             $lockedParameters = json_decode((string) $locked->parameters, true, 512, JSON_THROW_ON_ERROR);
             $this->assertRequestIntegrity($locked, $entry, $lockedParameters, null, false);
             if ($this->isExactLegacyVoidLink($entry)) {
-                $preview = $this->safePlan($entry, $lockedParameters, (string) $locked->id);
-                if (!preg_match('/^[0-9a-f]{64}$/D', (string) ($lockedParameters['expected_digest'] ?? ''))
-                    || !($preview['ok'] ?? false)
-                    || !hash_equals($lockedParameters['expected_digest'], (string) ($preview['digest'] ?? ''))) {
-                    throw new RuntimeException('POP legacy void approval requires the exact current reviewed preview digest.');
+                if ($approverId === null || $approver !== 'user:' . $approverId
+                    || !DB::table('User')->where('id', $approverId)->where('type', 'S')->exists()) {
+                    throw new RuntimeException('POP legacy void approval requires the authenticated Founder identity.');
+                }
+                if (in_array($this->financialRecoveryPhase($locked), ['recovery', 'rollback'], true)) {
+                    $prior = DB::table('pop_approval_events')->where('operation_id', $locked->id)->where('event_type', 'approved')
+                        ->where('phase', 'execute')->where('approver_role', 'super_admin')->where('approver', $approver)
+                        ->where('approver_id', $approverId)->where('approval_reference', $approvalReference)
+                        ->where('parameters_hash', $locked->parameters_hash)->where('commit_sha', $commitSha)->whereNotNull('token_hash')->exists();
+                    if (!$prior) throw new RuntimeException('POP legacy void recovery requires the original exact Founder approval.');
+                    app(\App\Operations\Strategies\LegacyVoidLinkStrategy::class)
+                        ->assertRecoveryState((string) $locked->id, (string) ($lockedParameters['expected_digest'] ?? ''));
+                } else {
+                    $preview = $this->safePlan($entry, $lockedParameters, (string) $locked->id);
+                    if (!preg_match('/^[0-9a-f]{64}$/D', (string) ($lockedParameters['expected_digest'] ?? ''))
+                        || !($preview['ok'] ?? false)
+                        || !hash_equals($lockedParameters['expected_digest'], (string) ($preview['digest'] ?? ''))) {
+                        throw new RuntimeException('POP legacy void approval requires the exact current reviewed preview digest.');
+                    }
                 }
             }
             if ($this->isReviewedFinancialCase($entry)) {
