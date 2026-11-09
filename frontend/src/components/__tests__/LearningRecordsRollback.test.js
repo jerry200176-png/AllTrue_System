@@ -14,6 +14,7 @@ const record = (id = 501, Status = 'approved') => ({
 });
 const deferred = () => { let resolve; const promise = new Promise(r => { resolve = r; }); return { promise, resolve }; };
 const json = (body, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
+const recordsJson = (body, status = 200) => json({ current_page: 1, last_page: 1, total: body.data?.length ?? 0, ...body }, status);
 let wrapper, toastWrapper, fetchMock, rollbackResponse, serverRecords, readResponse, pageSize, hiddenPending;
 const buttons = (root, text) => root.findAll('button').filter(b => b.text() === text);
 const click = async (root, text) => { const b = buttons(root, text)[0]; expect(b, text).toBeTruthy(); await b.trigger('click'); await flushPromises(); };
@@ -28,7 +29,7 @@ const listResponse = url => {
   if (params.has('before_id')) return json({ data: rows.filter(r => r.id < Number(params.get('before_id'))).sort((a,b) => b.id-a.id).slice(0,1) });
   if (params.has('status')) rows = rows.filter(r => r.Status === params.get('status'));
   const total = rows.length, page = Number(params.get('page') || 1);
-  return json({ data: rows.slice((page - 1) * pageSize, page * pageSize), current_page: page, last_page: Math.ceil(total / pageSize), total, status_counts: counts });
+  return json({ data: rows.slice((page - 1) * pageSize, page * pageSize), current_page: page, last_page: Math.max(1, Math.ceil(total / pageSize)), total, status_counts: counts });
 };
 
 async function start({ width = 1440, role = 'director', status = 'approved' } = {}) {
@@ -116,8 +117,40 @@ describe.each([1440, 390])('approval rollback through real page @%i', width => {
     await wrapper.find('#lr-review-tab-pending').trigger('click'); await flushPromises();
     mutation.resolve(json({ ...record(), Status: 'pending' })); await flushPromises();
     expect(buttons(wrapper, '編輯評量')).toHaveLength(3);
-    old.resolve(json({ data: [record(502, 'pending'), record(503, 'pending')] })); await flushPromises();
+    old.resolve(recordsJson({ data: [record(502, 'pending'), record(503, 'pending')] })); await flushPromises();
     expect(buttons(wrapper, '編輯評量')).toHaveLength(3);
+  });
+  it.each([{}, { data: [], current_page: 'bad', last_page: 1, total: 0 }])('keeps writes blocked when a 200 queue refresh has invalid shape %j', async invalid => {
+    await start({ width }); await edit();
+    readResponse = url => {
+      const params = new URL(String(url), 'http://local').searchParams;
+      return Promise.resolve(params.has('with_status_counts') || params.has('for_conflict_lookup') ? listResponse(url) : json(invalid));
+    };
+    await click(modal(), '退回待審'); expectDraft();
+    expect(buttons(modal(), '儲存變更')[0].element.disabled).toBe(true);
+    await click(modal(), '重新查詢狀態');
+    expect(buttons(modal(), '儲存變更')[0].element.disabled).toBe(true);
+    readResponse = null;
+    await click(modal(), '重新查詢狀態');
+    expect(buttons(modal(), '儲存變更')[0].element.disabled).toBe(false);
+  });
+  it.each(['next', 'all'])('discards an old %s page after rollback resets the offset window', async mode => {
+    serverRecords = Array.from({ length: 6 }, (_, i) => record(501 + i)); pageSize = 2;
+    await start({ width });
+    const old = deferred();
+    readResponse = url => {
+      const params = new URL(String(url), 'http://local').searchParams;
+      return params.get('page') === '2' || params.has('before_id') ? old.promise : Promise.resolve(listResponse(url));
+    };
+    const more = () => wrapper.findAll('button').find(b => b.text().includes('載入下一頁'));
+    const control = mode === 'all' ? wrapper.findAll('button').find(b => b.text().includes('載入全部記錄')) : more();
+    await control.trigger('click'); await flushPromises();
+    readResponse = null;
+    await click(wrapper, '退回待審');
+    old.resolve(recordsJson({ data: [record(503), record(504)], current_page: 2, last_page: 3, total: 6, pagination: mode === 'all' ? 'keyset' : undefined })); await flushPromises();
+    expect(buttons(wrapper, '退回待審')).toHaveLength(2);
+    await more().trigger('click'); await flushPromises();
+    expect(buttons(wrapper, '退回待審')).toHaveLength(4);
   });
   it('offers the director operation in the list/card and editor; success keeps dirty inputs', async () => {
     await start({ width });
@@ -271,9 +304,9 @@ describe.each([1440, 390])('approval rollback through real page @%i', width => {
     readResponse = () => next.promise;
     await refresh().trigger('click'); await flushPromises();
     expect(refresh().element.disabled).toBe(true);
-    old.resolve(json({ data: [record()], status_counts: { approved: 1, pending: 1 } }, responseStatus)); await flushPromises();
+    old.resolve(recordsJson({ data: [record()], status_counts: { approved: 1, pending: 1 } }, responseStatus)); await flushPromises();
     expect(refresh().element.disabled).toBe(true); // An old completion cannot clear a newer request's loading state.
-    next.resolve(json({ data: serverRecords, status_counts: { approved: 0, pending: 2 } })); await flushPromises();
+    next.resolve(recordsJson({ data: serverRecords, status_counts: { approved: 0, pending: 2 } })); await flushPromises();
     expect(refresh().element.disabled).toBe(false);
     expect(wrapper.find('#lr-review-tab-approved').text()).toContain('0');
     expect(wrapper.find('#lr-review-tab-pending').text()).toContain('2');
@@ -284,10 +317,10 @@ describe.each([1440, 390])('approval rollback through real page @%i', width => {
     rollbackResponse = () => { serverRecords[0] = { ...serverRecords[0], Status: 'pending' }; return Promise.reject(new Error('response lost')); };
     await click(modal(), '退回待審');
     const read = deferred();
-    readResponse = url => String(url).includes('for_conflict_lookup=') ? read.promise : Promise.resolve(json({ data: serverRecords, status_counts: { approved: 0, pending: 2 } }));
+    readResponse = url => String(url).includes('for_conflict_lookup=') ? read.promise : Promise.resolve(recordsJson({ data: serverRecords, status_counts: { approved: 0, pending: 2 } }));
     await click(modal(), '重新查詢狀態'); await click(modal(), '關閉');
     await wrapper.find('#lr-review-tab-pending').trigger('click'); await flushPromises(); await edit();
-    read.resolve(json({ data: [{ ...record(), Status: 'pending', ReviewNote: 'old review note' }] })); await flushPromises();
+    read.resolve(recordsJson({ data: [{ ...record(), Status: 'pending', ReviewNote: 'old review note' }] })); await flushPromises();
     expectDraft(); expect(modal().text()).not.toContain('old review note');
     expect(wrapper.find('#lr-review-tab-approved').text()).toContain('0');
   });
@@ -313,11 +346,11 @@ describe.each([1440, 390])('approval rollback through real page @%i', width => {
       const params = new URL(String(url), 'http://local').searchParams;
       if (params.has('with_status_counts') && ++counts === 1) return oldCount.promise;
       const rows = params.has('for_conflict_lookup') ? serverRecords.filter(r => r.ClassSessionID === Number(params.get('class_session_id'))) : serverRecords;
-      return Promise.resolve(json({ data: rows, status_counts: { approved: serverRecords.filter(r => r.Status === 'approved').length, pending: serverRecords.filter(r => r.Status === 'pending').length } }));
+      return Promise.resolve(recordsJson({ data: rows, status_counts: { approved: serverRecords.filter(r => r.Status === 'approved').length, pending: serverRecords.filter(r => r.Status === 'pending').length } }));
     };
     a.resolve(json({ ...record(), Status: 'pending' })); await flushPromises();
     b.resolve(json({ ...record(502), Status: 'pending' })); await flushPromises();
-    oldCount.resolve(json({ data: [], status_counts: { approved: 1, pending: 1 } })); await flushPromises();
+    oldCount.resolve(recordsJson({ data: [], status_counts: { approved: 1, pending: 1 } })); await flushPromises();
     expect(rollbackCalls()).toHaveLength(2);
     expect(wrapper.find('#lr-review-tab-approved').text()).toContain('0');
     expect(wrapper.find('#lr-review-tab-pending').text()).toContain('2');

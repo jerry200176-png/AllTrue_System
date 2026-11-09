@@ -3519,6 +3519,10 @@ const fetchStatusCounts = async (isCurrent = () => true) => {
   }
 };
 
+const validOffsetRecords = data => Array.isArray(data?.data)
+  && ['current_page', 'last_page', 'total'].every(key => Number.isInteger(data[key]))
+  && data.current_page >= 1 && data.last_page >= 1 && data.total >= data.data.length;
+
 const fetchRecords = async () => {
   const requestEpoch = ++recordsRequestEpoch;
   const scopeEpoch = ownerEpoch.value;
@@ -3541,7 +3545,8 @@ const fetchRecords = async () => {
 
     const data = await res.json();
     if (!ownerIsCurrent()) return false;
-    records.value = data.data || [];
+    if (!validOffsetRecords(data)) throw new Error('Invalid records page');
+    records.value = data.data;
     recordsPagination.value = {
       currentPage: data.current_page || 1,
       lastPage: data.last_page || 1,
@@ -3568,13 +3573,19 @@ const fetchRecords = async () => {
  * @param {{ beforeId?: number|null }} opts - beforeId 非空時改用 keyset 模式
  */
 const _fetchRecordsPage = async (targetPage, { beforeId = null } = {}) => {
+  const requestEpoch = recordsRequestEpoch, scopeEpoch = ownerEpoch.value;
+  const owner = JSON.stringify([props.userId, props.branchId, props.userRole]);
+  const ownerIsCurrent = () => requestEpoch === recordsRequestEpoch && scopeEpoch === ownerEpoch.value
+    && owner === JSON.stringify([props.userId, props.branchId, props.userRole]);
+  const params = _buildRecordsParams(targetPage, { beforeId });
   const token = await getToken();
+  if (!ownerIsCurrent()) return { ok: false, reason: 'superseded' };
   if (!token) return { ok: false, reason: 'no-token' };
 
-  const params = _buildRecordsParams(targetPage, { beforeId });
   const res = await fetch(`/api/v1/learning-records?${params.toString()}`, {
     headers: { 'Authorization': `Bearer ${token}` }
   });
+  if (!ownerIsCurrent()) return { ok: false, reason: 'superseded' };
   if (!res.ok) {
     const body = await res.text().catch(() => '');
     console.error('[LR] fetch page failed:', res.status, body);
@@ -3582,13 +3593,17 @@ const _fetchRecordsPage = async (targetPage, { beforeId = null } = {}) => {
   }
 
   const data = await res.json();
-  const newRows = data.data || [];
+  if (!ownerIsCurrent()) return { ok: false, reason: 'superseded' };
+  const isKeyset = beforeId != null;
+  if (!(isKeyset ? Array.isArray(data?.data) && data.pagination === 'keyset' : validOffsetRecords(data))) {
+    return { ok: false, reason: 'invalid-response' };
+  }
+  const newRows = data.data;
   const existingIds = new Set(records.value.map(r => r.id));
   const deduped = newRows.filter(r => !existingIds.has(r.id));
   records.value = [...records.value, ...deduped];
   const pg = recordsPagination.value;
   // Keyset 回應無 current_page/last_page/total，僅推算已載入筆數與 next_before_id
-  const isKeyset = data.pagination === 'keyset' || beforeId != null;
   if (!isKeyset) {
     pg.currentPage = data.current_page || targetPage;
     pg.lastPage = data.last_page || pg.lastPage;
@@ -3647,6 +3662,7 @@ const loadMoreRecords = async () => {
  *   5) MAX_ROUNDS 安全上限 100 輪（即 100 × per_page = 20,000 筆）——超過時提示使用者。
  */
 const loadAllRecords = async () => {
+  const loadEpoch = recordsRequestEpoch, scopeEpoch = ownerEpoch.value;
   const pg = recordsPagination.value;
   if (pg.loading || loadingAll.value) return;
   if (records.value.length === 0) return;
@@ -3665,7 +3681,7 @@ const loadAllRecords = async () => {
       return;
     }
 
-    while (rounds < MAX_ROUNDS) {
+    while (rounds < MAX_ROUNDS && loadEpoch === recordsRequestEpoch && scopeEpoch === ownerEpoch.value) {
       rounds += 1;
       const result = await _fetchRecordsPage(0, { beforeId: anchor });
       if (!result.ok) {
@@ -3688,7 +3704,7 @@ const loadAllRecords = async () => {
     console.error('[LR] load all error:', e);
     alert('載入全部記錄時發生錯誤');
   } finally {
-    loadingAll.value = false;
+    if (loadEpoch === recordsRequestEpoch && scopeEpoch === ownerEpoch.value) loadingAll.value = false;
     pg.loading = false;
   }
 };
@@ -4054,6 +4070,7 @@ const applyRollbackReviewState = (id, reviewState, editorIsCurrent) => {
 };
 const refreshRollbackQueue = async (ownerIsCurrent) => {
   ++recordsRequestEpoch;
+  loadingAll.value = false;
   recordsPagination.value = { ...recordsPagination.value, loading: false };
   ++countsRequestEpoch;
   // Restart page one of the active filters. A removed result shifts OFFSET
