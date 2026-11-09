@@ -116,7 +116,6 @@ final class LegacyVoidLinkStrategy
                 throw new RuntimeException('legacy_void_link_rollback_state_drift');
             }
             $restored = 0;
-            $skipped = [];
             foreach (LegacyVoidLinkManifest::cases() as $id => $case) {
                 if (!isset($rows[$id])) {
                     continue;
@@ -135,9 +134,9 @@ final class LegacyVoidLinkStrategy
             if (!hash_equals($proof['expected_digest'], $this->digest($this->inspect(true)))) {
                 throw new RuntimeException('legacy_void_link_rollback_incomplete_inverse');
             }
-            $this->audit('pop.legacy_void_link.rollback', ['reason_code' => self::REF, 'restored' => $restored, 'skipped' => count($skipped), 'outcome' => 'success']);
+            $this->audit('pop.legacy_void_link.rollback', ['reason_code' => self::REF, 'restored' => $restored, 'skipped' => 0, 'outcome' => 'success']);
 
-            return ['ok' => $skipped === [], 'partial' => $skipped !== [], 'restored' => $restored, 'skipped_ids' => $skipped];
+            return ['ok' => true, 'partial' => false, 'restored' => $restored, 'skipped_ids' => []];
         }, 3);
     }
 
