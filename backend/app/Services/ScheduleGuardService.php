@@ -273,8 +273,54 @@ class ScheduleGuardService
      * Does the course's student already have another live session overlapping the slot?
      * Occupancy: that student's sessions on the date, excluding futureReservationExclusionStatuses;
      * rows of OTHER stopped courses are ignored, the course's own rows always count.
+     * The refusal is explained in the shared conflict shape (type, date, message, overlap_details) so the caller can tell which
+     * lesson holds the slot (in-app #530). Rows are the course student's own sessions, so
+     * they never cross the campus the caller was already authorised for. Null = no overlap.
+     *
+     * @return array<string, mixed>|null
      */
-    public function studentHasOverlap(\App\Models\StudentClass $course, string $date, string $startTime, string $endTime): bool
+    public function studentOverlapConflict(\App\Models\StudentClass $course, string $date, string $startTime, string $endTime): ?array
+    {
+        $entries = $this->studentOverlapEntries($course, $date, $startTime, $endTime);
+        if ($entries === []) {
+            return null;
+        }
+
+        $payload = $this->overlapPayload($entries);
+        $courseId = (int) $course->getKey();
+        $ownById = [];
+        foreach ($entries as $entry) {
+            $ownById[(int) $entry['source_id']] = (int) $entry['course_id'] === $courseId;
+        }
+        $payload['overlap_details'] = array_map(
+            fn (array $detail) => $detail + ['same_contract' => $ownById[(int) $detail['source_id']] ?? false],
+            $payload['overlap_details']
+        );
+
+        $first = $payload['overlap_details'][0];
+        $label = trim(($first['subject_name'] !== '' ? $first['subject_name'] : '課程')
+            . ($first['course_period'] !== '' ? '（' . $first['course_period'] . '）' : ''));
+        $more = count($payload['overlap_details']) > 1 ? sprintf('等 %d 堂', count($payload['overlap_details'])) : '';
+
+        return [
+            'type' => 'student_overlap',
+            'date' => $date,
+            'message' => sprintf(
+                '學生在 %s %s–%s 已有%s%s%s，與這個時段重疊',
+                $date,
+                substr($first['start_time'], 0, 5),
+                substr($first['end_time'], 0, 5),
+                $first['same_contract'] ? '本合約的' : '另一份合約的',
+                $label,
+                $more
+            ),
+        ] + $payload;
+    }
+
+    /**
+     * @return array<int, array{source: string, source_id: int, course_id: int, student_id: int, start_time: string, end_time: string}>
+     */
+    private function studentOverlapEntries(\App\Models\StudentClass $course, string $date, string $startTime, string $endTime): array
     {
         $rows = DB::table('ClassSession as cs')
             ->join('StudentClass as sc', 'sc.ID', '=', 'cs.StudentClassID')
@@ -285,15 +331,24 @@ class ScheduleGuardService
                 $query->where('sc.Stop', 0)->orWhereNull('sc.Stop')
                     ->orWhere('cs.StudentClassID', (int) $course->getKey());
             })
-            ->select(['cs.StartTime', 'cs.EndTime'])
+            ->orderBy('cs.StartTime')->orderBy('cs.id')
+            ->select(['cs.id', 'cs.StudentClassID', 'cs.StartTime', 'cs.EndTime'])
             ->get();
+        $entries = [];
         foreach ($rows as $row) {
             if ($this->timesOverlap($startTime, $endTime, (string) $row->StartTime, (string) $row->EndTime)) {
-                return true;
+                $entries[] = [
+                    'source' => 'class_session',
+                    'source_id' => (int) $row->id,
+                    'course_id' => (int) $row->StudentClassID,
+                    'student_id' => (int) $course->getAttribute('StudentID'),
+                    'start_time' => (string) $row->StartTime,
+                    'end_time' => (string) $row->EndTime,
+                ];
             }
         }
 
-        return false;
+        return $entries;
     }
 
     /**

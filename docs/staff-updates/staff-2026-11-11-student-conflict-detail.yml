@@ -1,0 +1,13 @@
+updates:
+  - id: staff-2026-11-11-student-conflict-detail
+    published_at: "2026-11-11"
+    audiences:
+      - director
+    importance: digest
+    title: 新增下一堂時衝堂會告訴你是哪一堂
+    summary: 學生同時段已有課而無法新增下一堂時，視窗會列出佔用該時段的課。
+    items:
+      - category: improved
+        text: 會顯示日期、時間、科目，並標明是本合約或另一份合約的課，可直接打開那堂課或換時段。
+    source_refs:
+      - "changelog:2026-11-11:inapp-530-student-conflict-detail"

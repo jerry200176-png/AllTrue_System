@@ -60,3 +60,25 @@ describe('schedule conflict notice', () => {
     wrapper.unmount();
   });
 });
+
+describe('student conflict notice (in-app #530)', () => {
+  const studentProps = (same) => ({ show: true, today: '2026-09-29', isMonthly: false,
+    form: { session_date: '2026-10-14', start_time: '16:30' },
+    result: { can_add: false, message: '學生在同一時間已有另一堂課，請改選其他時段',
+      conflict_detail: { type: 'student_overlap', message: '學生在 2026-10-14 16:00–17:00 已有課程，與這個時段重疊' },
+      conflicts: [{ type: 'student_overlap', overlap_details: [
+        { source: 'class_session', source_id: 9, course_id: 41, student_name: '測試學生', subject_name: '英文', course_period: '10/1期',
+          start_time: '16:00:00', end_time: '17:00:00', same_contract: same },
+      ] }] } });
+  it('names the lesson holding the slot and which contract it belongs to', () => {
+    const other = mount(ManualSessionModal, { props: studentProps(false) });
+    const item = other.find('.manual-session-blockers li');
+    expect(item.text()).toContain('測試學生・英文（10/1期），2026-10-14 16:00–17:00（另一份合約的課）');
+    expect(other.text()).toContain('請改選其他時段，或打開那堂課調整後再排');
+    expect(other.find('.manual-session-open-blocker').exists()).toBe(true);
+    other.unmount();
+    const own = mount(ManualSessionModal, { props: studentProps(true) });
+    expect(own.find('.manual-session-blockers li').text()).toContain('（本合約的課）');
+    own.unmount();
+  });
+});
