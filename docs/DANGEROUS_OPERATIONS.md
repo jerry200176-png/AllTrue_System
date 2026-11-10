@@ -220,4 +220,4 @@ git reset --soft <hash>  # 軟還原（保留工作區變更）
 ---
 
 > 最後更新：2026-04-27
-> 相關文件：`.cursor/rules/p0-never-force-push-and-deploy.mdc`、`docs/AI_REGRESSION_LESSONS.md`
+> 相關文件：`docs/AI_REGRESSION_LESSONS.md`

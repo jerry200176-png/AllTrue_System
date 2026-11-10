@@ -1,6 +1,6 @@
 # In-app Bug 公開回覆 Macro Library（白話範本）
 
-> 對應 GitHub #907（M9 Support）。權威寫作規則：`.cursor/rules/user-facing-communication.mdc`、`docs/CHAT_BUG_SYSTEM.md` §3.8。
+> 對應 GitHub #907（M9 Support）。權威寫作規則：`docs/CHAT_BUG_SYSTEM.md` §3.8。
 > 用途：讓任何 AI／人在 in-app bug 回報上，給回報者（老師／主任／家長）的**公開留言**白話、穩定、不暴露內部術語。
 > 使用方式：複製對應情境的「公開留言」，把 `[方括號]` 變數換成實際內容，送出前跑一次「禁用詞檢查」。
 
@@ -189,7 +189,7 @@
 
 ## 4. 與其他文件的關係
 
-- 寫作紅線與對照範例：`docs/CHAT_BUG_SYSTEM.md` §3.8、`.cursor/rules/user-facing-communication.mdc`。
+- 寫作紅線與對照範例：`docs/CHAT_BUG_SYSTEM.md` §3.8。
 - 完整生命週期（分診→修→回寫）：`docs/CHAT_BUG_SYSTEM.md` §3.6–§3.7。
 - 狀態機與 API 操作：MEMORY「bug state machine」、`BugReportController.php`。
 - SLA／積壓指標（回覆時效）：GitHub #895（M9）。

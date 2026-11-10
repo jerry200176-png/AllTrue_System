@@ -364,6 +364,6 @@ CI：`test:unit` blocking（#729）；`frontend/src/**` 變更觸發 UI Smoke E2
 | 主題 | 出處 |
 |------|------|
 | G-007 合併規則 | `CLAUDE.md §G-007` |
-| 效能史（TD-062） | `docs/TECH_DEBT.md` TD-062、`.cursor/plans/calendar-performance-epic_2026-06-01.md` |
+| 效能史（TD-062） | `docs/TECH_DEBT.md` TD-062、`docs/archive/cursor-plans/calendar-performance-epic_2026-06-01.md` |
 | 前端元件測試基建 | #729 / `vitest.config.js` |
 | 設計系統（Wave 1 行事曆） | `docs/RULE_DESIGN_SYSTEM.md` |

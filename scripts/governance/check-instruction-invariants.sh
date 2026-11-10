@@ -26,24 +26,8 @@ if grep -qE '`~/alltrue` — 所有' CLAUDE.md; then
   fail "CLAUDE.md legacy ~/alltrue primary path"
 fi
 
-# .cursorrules must not say only ~/alltrue without 禁止
-if [[ -f .cursorrules ]]; then
-  if grep -q '~/alltrue' .cursorrules && ! grep -q '禁止.*/home/jerry/alltrue\|禁止.*`/home/jerry/alltrue`' .cursorrules; then
-    # allow if WORKTREE_POLICY cited with 禁止
-    if ! grep -q 'WORKTREE_POLICY' .cursorrules; then
-      fail ".cursorrules mentions ~/alltrue without WORKTREE_POLICY"
-    fi
-  fi
-  ok ".cursorrules present (Cursor adapter)"
-fi
-
 grep -qE '\*\*Version:\*\*' docs/governance/COMPANY_CONSTITUTION.md || fail "Constitution missing Version"
 grep -q 'CI green alone\|CI green' docs/governance/EVIDENCE_CONTRACT.md || fail "Evidence Contract missing CI-green anti-metric"
-
-# Skills referenced exist
-for sk in agent-preflight knowledge-graph-link; do
-  [[ -f ".cursor/skills/$sk/SKILL.md" ]] || fail "missing skill .cursor/skills/$sk/SKILL.md"
-done
 
 if [[ "$errors" -gt 0 ]]; then
   echo "invariants: FAIL count=$errors"

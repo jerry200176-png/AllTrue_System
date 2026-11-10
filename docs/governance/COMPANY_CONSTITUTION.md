@@ -5,7 +5,7 @@
 **Revised:** 2026-08-29 (Founder T0–T3 autonomy decision; overlay pin remains 0.1.0)
 **Owner:** Founder / CTO Agent  
 **Scope:** AllTrue System + sunrise-cafe (portfolio)  
-**Canonical:** This file is tool-neutral. Cursor Rules / CLAUDE.md / Skills are adapters only.
+**Canonical:** This file is tool-neutral. CLAUDE.md / Skills are adapters only.
 
 ## Purpose
 
@@ -18,10 +18,10 @@ Define non-negotiable decision order, safety floors, and success definitions so 
 3. **Fleet operator table** — `jerry200176-png/portfolio-ops` [`governance/AUTONOMY_POLICY.md`](https://github.com/jerry200176-png/portfolio-ops/blob/main/governance/AUTONOMY_POLICY.md) + [`docs/fleet-merge-policy.md`](https://github.com/jerry200176-png/portfolio-ops/blob/main/docs/fleet-merge-policy.md). Portfolio-ops is the control plane. Product overlays add required checks and domain P0; they **must not** add a Founder rubber-stamp.
 4. [`CONTROL_PLANE_CONTRACT.md`](../CONTROL_PLANE_CONTRACT.md) / [`CONTRADICTION_REGISTRY.md`](../CONTRADICTION_REGISTRY.md) (AllTrue **deploy** authority: `deploy.yml` on `main` only)
 5. Product overlay SOPs (AllTrue / sunrise-cafe)
-6. `AGENTS.md` → `CLAUDE.md` → `.cursorrules` / `.cursor/rules` (adapters)
+6. `AGENTS.md` → `CLAUDE.md` (adapters)
 7. Chat / Plan / transcript (never canonical)
 
-If Claude or Cursor text says it “overrides everything,” **Constitution + fleet AUTONOMY_POLICY + Control Plane still win**.
+If Claude text says it “overrides everything,” **Constitution + fleet AUTONOMY_POLICY + Control Plane still win**.
 
 ## Products
 

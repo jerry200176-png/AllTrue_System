@@ -299,7 +299,7 @@ last_reviewed: 2026-09-05
 
 ### R5. 禁止 git push --force / 禁止直接 push main
 
-- 見 `.cursor/rules/p0-never-force-push-and-deploy.mdc`
+- 見 `docs/DANGEROUS_OPERATIONS.md`
 - `scripts/git-sync.sh` 已加入守門：在 main branch 執行直接 abort（2026-04-24）
 
 ### R6. deploy.yml 禁止用 `optimize:clear`，改用 `config:cache && route:cache`
@@ -516,7 +516,7 @@ Intake consolidation regression (2026-10-17): the oldest trusted SourceRef issue
 
 **度量與工具（業界對齊，2026-06-06）：**
 - **復發率＝主指標**：同根因 6 個月內再現的比例（業界 postmortem 通用 KPI）。本節家族成員再現即計入；目標逐季下降。
-- **修 bug 前流程**：見 `.cursor/rules/bug-fix-plan.mdc` §B0（查 closed issues + 認領家族 + MemPalace + Sentry regression）。
+- **修 bug 前流程**：見本檔 §復發家族（先查 closed issues + 認領家族 + MemPalace + Sentry regression）。
 - **Sentry**：crash 類請用 Sentry「Resolve」——resolved 後再現會**自動標 regression** 並通知；issue 連回對應 GitHub issue 保留脈絡（this failed before, see #N）。
 - **本節即本專案的 known-issues registry**（OSS 無獨立工具）；新家族成員修完務必回寫本節，讓下一個 AI 不重學。
 
@@ -1046,7 +1046,7 @@ Intake consolidation regression (2026-10-17): the oldest trusted SourceRef issue
 - **強制規則**：
   1. migration 檔案在 production 執行的唯一合法前提＝**該檔案已在 `origin/main`**。
   2. 發現 schema drift 時，修復方向優先「把 migration + 配套 code port 回 main」，不是回滾 production schema（資料已依新 schema 寫入）。
-  3. 手動緊急部署（minutes 凍結）也必須：merge 進 main 之後才跑 migrate —— 見 `.cursor/plans/urgent_login_attendance_leave_handoff_2026-06-20.md` §0 的授權流程。
+  3. 手動緊急部署（minutes 凍結）也必須：merge 進 main 之後才跑 migrate —— 見 `docs/archive/cursor-plans/urgent_login_attendance_leave_handoff_2026-06-20.md` §0 的授權流程。
   4. 接手任何 session 前先 `git log origin/main..<分支>` 檢查有無「已在 prod 生效但未合併」的 migration。
 - **測試必補**：`StudentClassRoomIdSchemaDriftTest` 鎖 `Schema::hasColumn('StudentClass','RoomID') === false`＋Export SELECT/headings 對齊；未來刪欄位一律加同型 drift 測試。
 - **既有欄位採用案例（#4136，2026-10-24）**：`up()` 因欄位已存在而跳過，不代表該 migration 擁有欄位；套件版本或 model cast 也不能證明刪除權。依既有 guarded-adoption 規則保留空 `down()`，回歸須先建立既有欄位與值，再驗證 `up()`／`down()` 後仍保留。原 migration 已在離線測試重現刪除既有 expiry 的問題，候選修補通過六個情境；尚未整合／合併，auth-table migration 核准與歷史 TTL 證據缺口仍保留。
@@ -1421,7 +1421,7 @@ Intake consolidation regression (2026-10-17): the oldest trusted SourceRef issue
 
 - **強制**：請假真相=`exception_workflows`；唯讀 ActionInbox；禁雙寫 Notification。Badge=`badge_total`；紅燈僅 `urgent_total`；空 campus_ids 對非 super_admin **fail-closed**。 Fail-soft 僅同 authorization scope。
 - **測試**：`ActionInboxApiTest`（零校區/未授權 403、pagination 51+、DTO、結案消失、老師 403、count）。
-- **決策**：`.cursor/plans/action-inbox-b-lite-d_2026-07-22.md`
+- **決策**：`docs/archive/cursor-plans/action-inbox-b-lite-d_2026-07-22.md`
 
 ---
 

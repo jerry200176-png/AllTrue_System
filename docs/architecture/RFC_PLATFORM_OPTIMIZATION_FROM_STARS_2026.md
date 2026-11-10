@@ -47,7 +47,7 @@
 
 | 參考 repo | 要學什麼 | 不要學什麼 | 落地位置 |
 |-----------|----------|------------|----------|
-| [Leonxlnx/taste-skill](https://github.com/Leonxlnx/taste-skill)（AllTrue localize：`.cursor/skills/design-taste-frontend`） | Brief inference；後台 dials **VARIANCE=2 / MOTION=2 / DENSITY=8**；禁 emoji 當狀態；anti-slop 檢查清單 | Landing／Awwwards 實驗排版、換字體蓋掉 Inter+Noto | 課程管理、繳費、行事曆 UI 變更的 skill 閘門 |
+| [Leonxlnx/taste-skill](https://github.com/Leonxlnx/taste-skill)（AllTrue localize：`.claude/skills/design-taste-frontend`） | Brief inference；後台 dials **VARIANCE=2 / MOTION=2 / DENSITY=8**；禁 emoji 當狀態；anti-slop 檢查清單 | Landing／Awwwards 實驗排版、換字體蓋掉 Inter+Noto | 課程管理、繳費、行事曆 UI 變更的 skill 閘門 |
 | [nextlevelbuilder/ui-ux-pro-max-skill](https://github.com/nextlevelbuilder/ui-ux-pro-max-skill) | **Forms & Feedback**：確認 dialog、錯誤靠欄位、loading 防雙送、狀態不只靠顏色、progressive disclosure | 用它的 design-system generator 產生整站新色盤蓋過 DS | 暫停／結案／調課／續約 modal；chip 狀態文案 |
 | [pbakaus/impeccable](https://github.com/pbakaus/impeccable) | AI harness「設計語言」：間距／層級／少裝飾 | 另開一套與 `RULE_DESIGN_SYSTEM` 衝突的 token | Agent 產出 UI 時的第二檢查 |
 | [pacifio/ui](https://github.com/pacifio/ui) | **Dense ops UI**：多表面、資訊密度、dashboard／chat 工作台語彙 | 強制 AMOLED 黑主題、整站換成 atlas CSS | 主任儀表板、課程列、行事曆側欄密度 |

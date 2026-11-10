@@ -46,7 +46,6 @@ _T3_PREFIXES = (
     "scripts/production",
     "governance/",
     "docs/governance/",
-    ".cursorrules",
     "AGENTS.md",
     "CLAUDE.md",
     "codex.md",
@@ -72,7 +71,6 @@ _NON_DEPLOYABLE_PATTERNS = (
     "scripts/tests/**",
     "scripts/ci/**",
     "docs/**",
-    ".cursor/**",
     "operations/closeout/**",
 )
 
@@ -112,7 +110,6 @@ _CONTROL_PLANE_PREFIXES = (
 )
 
 _CONTROL_PLANE_EXACT = {
-    ".cursorrules",
     "AGENTS.md",
     "CLAUDE.md",
     "codex.md",
@@ -230,7 +227,6 @@ _ALWAYS_FOUNDER_ACTIVATION_PREFIXES = (
     "scripts/production",
     "governance/",
     "docs/governance/",
-    ".cursorrules",
     "AGENTS.md",
     "CLAUDE.md",
     "codex.md",
@@ -724,7 +720,7 @@ def _is_non_runtime_path(path: str) -> bool:
         normalized.startswith(("backend/tests/", "frontend/e2e/", "scripts/tests/", "scripts/ci/"))
         or "__tests__" in parts
         or any(part.endswith((".test.js", ".test.ts", ".test.tsx")) for part in parts)
-        or normalized.startswith(("docs/", ".cursor/", "operations/closeout/"))
+        or normalized.startswith(("docs/", "operations/closeout/"))
     )
 
 

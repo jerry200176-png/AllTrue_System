@@ -119,6 +119,14 @@ jobs:
           $reply = (string)getenv("PUBLIC_REPLY");
           $bug = \App\Models\BugReport::find($bugId);
           if (!$bug) { throw new \RuntimeException("bug not found: ".$bugId); }
+          // Automation never writes to a report the safety screen flags (its text or the reporter-authored comments); a person handles it in the app.
+          $assertSafe = static function () use ($bug) {
+              $own = \App\Models\BugReportComment::query()->where("bug_report_id", $bug->id)
+                  ->where("author_user_id", $bug->reporter_user_id)->pluck("body")->all();
+              $safety = \App\Services\BugSafetyScreen::screenReport((string)($bug->title ?? ""), (string)($bug->description ?? ""), $own);
+              if ($safety["flagged"]) { throw new \RuntimeException("safety_review_required: ".implode(",", $safety["reasons"])); }
+          };
+          $assertSafe();
           $status = (string)$bug->status;
           // close_as_logged reruns may find the report already closed; closeAsLogged decides idempotently.
           $allowedStatuses = getenv("CLOSE_AS_LOGGED") === "true" ? ["new", "triaged", "closed"] : ["new", "triaged"];
@@ -136,8 +144,10 @@ jobs:
           } else {
           // Same row lock as bugs:auto-intake --ack: whoever runs second re-reads the status after the
           // first commits, so a report is never moved new->triaged twice or answered twice concurrently.
-          \Illuminate\Support\Facades\DB::transaction(function () use ($bugId, $issueUrl, $disposition, $reply, $actor, $svc) {
+          \Illuminate\Support\Facades\DB::transaction(function () use ($bugId, $issueUrl, $disposition, $reply, $actor, $svc, $assertSafe) {
           $locked = \App\Models\BugReport::query()->whereKey($bugId)->lockForUpdate()->first();
+          // Again under the row lock: a comment may have arrived since the first check.
+          $assertSafe();
           $status = (string)$locked->status;
           if (!in_array($status, ["new", "triaged"], true)) { throw new \RuntimeException("refusing status: ".$status); }
           $validatedDisposition = $svc::normalizeDispositionOptions([

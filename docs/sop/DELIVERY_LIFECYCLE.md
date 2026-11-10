@@ -82,7 +82,7 @@ last_reviewed: 2026-11-06
 
 進開發前全部要成立：
 
-- bug：根因已找到（`.cursor/rules/bug-fix-plan.mdc`）；in-app 另依 `CHAT_BUG_SYSTEM.md` §3.7 Phase B 的 B1–B2。功能：規格已過 `gate:pm`。
+- bug：根因已找到（`docs/AI_REGRESSION_LESSONS.md` §復發家族）；in-app 另依 `CHAT_BUG_SYSTEM.md` §3.7 Phase B 的 B1–B2。功能：規格已過 `gate:pm`。
 - 已寫清楚 product intent 與 architecture boundary：API 合約、資料邊界與 ownership、權限、錯誤處理、多校區隔離。
 - 已判斷風險等級、要不要 SEC／OPS／DBA、能不能平行。
 - 已列出不可碰的檔案／邏輯與必讀文件。

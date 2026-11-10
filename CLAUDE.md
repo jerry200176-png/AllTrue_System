@@ -7,7 +7,7 @@
 > 本檔是 **Claude Code adapter**，**不是**凌駕 Constitution / Control Plane 的最高法。  
 > **🗺️ 任何任務開始前：先讀 `docs/INDEX.md` 的 Start here 與任務對應節（導航地圖）。禁止未讀 INDEX 就直接動手。**
 > **現行工程主線：** [`docs/architecture/ALLTRUE_ENGINEERING_NORTH_STAR.md`](docs/architecture/ALLTRUE_ENGINEERING_NORTH_STAR.md) — 不要重寫整個前端／後端；排課資料模型根治見 [`RFC_SCHEDULE_OCCURRENCE_IDENTITY.md`](docs/architecture/RFC_SCHEDULE_OCCURRENCE_IDENTITY.md)。  
-> 通用入口：[`AGENTS.md`](AGENTS.md)。完整工作流程 / 角色規格 / P0 詳細全文：請讀 **`.cursorrules`**（不要跳過）。
+> 通用入口：[`AGENTS.md`](AGENTS.md)。P0 紅黃線全文在下方（不要跳過）。
 
 ---
 
@@ -28,14 +28,14 @@ Palace：`~/.mempalace/palace`（local-first，cloud session 沒有，跳過即�
 
 ---
 
-## In-app Bug 回報（Claude／Cursor 必讀）
+## In-app Bug 回報（Claude 必讀）
 
 處理「系統上 bug 回報」時，唯一長文 SOP：[`docs/CHAT_BUG_SYSTEM.md`](docs/CHAT_BUG_SYSTEM.md) **§3.6–§3.7**。從收件到結案的九個階段、車道與關卡（所有需求共用）：[`docs/sop/DELIVERY_LIFECYCLE.md`](docs/sop/DELIVERY_LIFECYCLE.md)。
 
 | 階段 | 要做什麼 |
 |------|----------|
 | 分診 | §3.6 撈附件 → 開 GitHub issue → in-app `triaged` + **公開回覆** |
-| 修復 | `bug-fix-plan.mdc` → branch → CI → PR merge |
+| 修復 | `docs/AI_REGRESSION_LESSONS.md` §復發家族（先查前例）→ branch → CI → PR merge |
 | 上線後 | in-app `resolved` + 公開回覆 → `reporter-verify` → `closed` |
 
 **禁止**只關 GitHub issue 而不回 App 留言（§R51、§R53）。
@@ -53,7 +53,7 @@ Palace：`~/.mempalace/palace`（local-first，cloud session 沒有，跳過即�
 | R5 | 要執行 `php artisan migrate` | ❌ 不可由 Agent 在 Pi／正式資料庫直接執行；一律由 `deploy.yml` 執行。**只新增**表／欄位／索引、且 PR 內文宣告 `Additive-Migration: yes` 的新 migration 合併時算 T2（`additive_migration_paths()`；身分／權限表除外（含 credential／token／security／PII），帳務表依 2026-10-28（二）之二在 #4560 合併後移出排除；須 Codex 在最終 head 確認；Founder 2026-10-14（三）④＋補充 #1），上線也不必按（`ADDITIVE_MIGRATION_AUTO_ACTIVATION`；#4560 上線後監看 20 分鐘、失敗自動回滾 code；回滾還原不了 schema，所以只限只新增）；會 drop／rename／change／寫資料的 migration 一律須 Founder 對確切範圍批准 |
 | R6 | 要 SSH 到 Pi 直接編輯任何程式碼 | ❌ 停。所有改動依 [WORKTREE_POLICY](docs/governance/WORKTREE_POLICY.md)：雲端 fresh clone 從 `origin/main` 開 feature branch（必要的本機 WSL 任務才用隔離 task worktree）→ PR → CI → 依現行授權由 `deploy.yml` 控制部署。**唯讀例外（Founder 2026-10-07）**：只為查 bug 可 SSH/SCP 讀附件、`tinker --execute` 跑 SELECT；禁止任何寫入、`artisan` 寫入指令、R2 指令；每次在對應 issue 留言記錄讀了什麼（只寫 ID，不寫姓名）；讀回的檔案看完即刪 |
 
-## ⚠️ 4 條黃線（違反 = CI 反覆失敗）
+## ⚠️ 黃線（違反 = CI 反覆失敗）
 
 | # | 觸發情境 | 強制行動 |
 |---|---------|---------|
@@ -61,6 +61,16 @@ Palace：`~/.mempalace/palace`（local-first，cloud session 沒有，跳過即�
 | Y2 | 要在測試用「今日日期」作為 future session | `start_time` 設 `23:00`，避免 `isEndedAtCreateTime=true` |
 | Y3 | 前端有改動要上線 | CI 全綠後依合併與正式啟用授權推進；核對 `deploy.yml` 的實際部署結果，再驗 health / `version.json` |
 | Y4 | PHPStan 報 `undefined property Model::$X` | 到 Model 補 `@property` docblock（欄位來自 migration），**不要**加 `backend/phpstan-baseline.neon`；baseline 只能縮不能長（Presubmit CHECK 0c），罕見例外貼 PR label `phpstan-baseline-growth` 後重跑 |
+| Y5 | 遷移裡 `chunk()` 的 callback 會改自己 WHERE 用的欄位 | 改 `chunkById()`（OFFSET 漂移會漏列）；測試塞超過 chunk size 的資料，驗證 0 筆漏改 |
+| Y6 | 新增帶 DEFAULT 的欄位 | MySQL 會把舊列全回填成 DEFAULT；同 PR 附 backfill migration（`chunkById`） |
+| Y7 | 查自訂 `VoidedAt` 欄位 | 不用 `withTrashed()`，用 `DB::table()` |
+| Y8 | 改前端 | 不手動 `npm run deploy`；不改 `frontend/dist_build/`（build 產物）；`.vue` 不 hard-code token（用 `supabase.auth.getSession()`） |
+| Y9 | 改 Login／auth／品牌首屏 | 沒有 Founder 視覺 GO 不整體改版；token 化 ≠ 扁平化；PR 附前後截圖（桌面+手機）並寫明保留的 mesh／glass／motion |
+| Y10 | 新增後端 query | 必帶 `CampusID`／`branch_id` 隔離；teacher 不可讀他校；`super_admin` 例外須明寫 |
+| Y11 | 改 `AlertController::tuition`、`ApprovalSessionSyncService`、`SessionDeductionService` | 先讀 `docs/AI_REGRESSION_LESSONS.md` 對應 §；`docs/DIRECTOR_PAYMENT_ALERT_RULES.md` 條件勿擅改 |
+| Y12 | 寫給老師／主任／家長的公開留言 | 白話；不漏欄位名、SQL、class 名、PR／內部編號（`docs/CHAT_BUG_SYSTEM.md` §3.8） |
+| Y13 | 同一階段的 CI／測試連修 5 次仍紅 | 停，回報已試清單＋卡點＋需要什麼，不無限燒 Actions minutes |
+| Y14 | Review 發現 Minor 且本次 out of scope | 登記 `docs/TECH_DEBT.md`；Critical／Major 當下修，不登記 |
 
 ---
 
@@ -104,7 +114,7 @@ Palace：`~/.mempalace/palace`（local-first，cloud session 沒有，跳過即�
 | [G-011](docs/agents/GOTCHAS.md) | 「一堂 = 幾分鐘」是**每門課自己的**設定，沒有全公司統一值；契約在第一次扣堂後鎖死 |
 | [G-012](docs/agents/GOTCHAS.md) | 雲端／遠端 session（無 SSH、無 DB 連線）撈／回寫 in-app bug 資料——唯讀依既有來源，回寫走受保護 dispatch |
 
-完整 Gotchas G-001 ~ G-012：見 `docs/agents/GOTCHAS.md`；更早的見 `.cursorrules` §核心資料表 gotcha 或 `alltrue-system.mdc`。
+完整 Gotchas G-001 ~ G-012：見 `docs/agents/GOTCHAS.md`。
 
 ---
 
@@ -142,12 +152,7 @@ See [`docs/sop/MERGE_SOP.md`](docs/sop/MERGE_SOP.md#land-queue-and-auto-delivery
 |---|---|
 | **換手前先讀的交接狀態（SessionStart 會自動印出）** | `docs/RUNBOOK_HANDOFF.md`；SOP 對標大廠 roadmap 見 `docs/SOP_MATURITY.md` |
 | 交付流程（需求／回報 → 上線 → 結案；車道、守門人、SLA） | `docs/sop/DELIVERY_LIFECYCLE.md` |
-| 完整工作流程 + 角色規格 + SOP | `.cursorrules` |
-| P0 紅線速查 + OPS checklist | `.cursor/rules/p0-gate.mdc` |
-| API 路由 / DB schema / Gotchas | `.cursorrules` 或 `alltrue-system.mdc` |
-| 測試規則（NOT NULL / Factory / 時間敏感）| `.cursor/rules/module-test.mdc` |
-| Migration 規則（chunkById）| `.cursor/rules/module-migration.mdc` |
-| 前端 deploy SOP | `.cursor/rules/auto-frontend-deploy.mdc` |
+| 前端 deploy SOP | `docs/RUNBOOK_MERGE_TO_ACTIVATION.md` |
 | 各模組已知坑 | `docs/AI_REGRESSION_LESSONS.md` |
 | 繳費/續課提醒規則 | `docs/DIRECTOR_PAYMENT_ALERT_RULES.md` |
 | 已回報 vs 確認入帳（#1827） | `docs/architecture/RFC_REPORTED_PAID_ACCOUNTING_SPLIT.md` |
