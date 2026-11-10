@@ -208,7 +208,7 @@
                   <span>{{ expandedId === student.id ? '收合' : '課程/購課' }}</span>
                 </button>
                 <AtIconButton icon="edit" label="編輯" @click="editStudent(student)" />
-                <AtIconButton icon="timeline" label="學習歷程" @click="timelineStudent = student" />
+                <AtIconButton icon="timeline" label="學習檔案" @click="timelineStudent = student" />
                 <AtRowMenu>
                   <AtButton shape="rect" size="sm" variant="danger" icon="delete" @click="deleteStudent(student)">刪除學生</AtButton>
                 </AtRowMenu>
