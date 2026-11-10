@@ -323,6 +323,8 @@ class OverlappingCourseGuardTest extends TestCase
         $thu = Carbon::parse($wed)->addDay()->toDateString();
 
         $rangeOverlap = $this->renew($fx, [$thu], ['days_of_week' => [4]])->assertStatus(422)->assertJson(['code' => 'renewal_range_overlap']);
+        // In-app #533: the refusal names the option that fits a parallel course, not only the two renewal fixes.
+        $this->assertStringContainsString('建立獨立課程', (string) $rangeOverlap->json('message'));
         $this->assertStringContainsString('「續課」', (string) $rangeOverlap->json('message')); // in-app #429
         DB::table('StudentClass')->where('ID', $fx[3])->update(['TeacherID' => $fx[2] + 999]); // same class type, other teacher
         $this->renew($fx, [$thu], ['days_of_week' => [4]])->assertStatus(422)->assertJson(['code' => 'renewal_range_overlap']);

@@ -1,0 +1,15 @@
+updates:
+  - id: staff-2026-11-11-renewal-overlap-hint
+    published_at: "2026-11-11"
+    audiences:
+      - director
+    importance: digest
+    title: 同科再開一門課時，提示會告訴您該按哪個鍵
+    summary: 新課日期和原課程重疊時，訊息會說明：要同時上請填原因後按「建立獨立課程」。
+    items:
+      - category: improved
+        text: 同一位學生同科要並行兩門課（例如時數不同）：填寫原因，按「建立獨立課程」。
+      - category: improved
+        text: 要接在原課程之後：把起始日改到原課程結束後，或改用「續課」。
+    source_refs:
+      - "changelog:2026-11-11:inapp-533-renewal-overlap-hint"
