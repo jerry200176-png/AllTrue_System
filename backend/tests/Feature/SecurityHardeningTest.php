@@ -521,4 +521,54 @@ class SecurityHardeningTest extends TestCase
         $this->todaySessionOnCampus($this->campus->id);
         $this->assertSame(1, $get());
     }
+
+    private function loginOnCampus(int $campusId): void
+    {
+        static $n = 0;
+        $n++;
+        $u = User::create(['LoginName' => "sec-login-{$n}@example.com", 'Name' => "SecLogin{$n}", 'PSW' => 'x', 'type' => 'T', 'MustChangePassword' => false]);
+        UserCampus::create(['CampusID' => $campusId, 'UserID' => $u->id, 'Admin' => 0, 'Approved' => 1]);
+        \App\Models\UserLoginActivity::create(['user_id' => $u->id, 'login_at' => now(), 'success' => true]);
+    }
+
+    private function todayInvoiceOnCampus(int $campusId): void
+    {
+        $student = Student::create(['name' => 'inv', 'CampusID' => $campusId, 'ClassID' => 1, 'enable' => 1, 'MDT' => now(), 'Notify_Token' => '']);
+        \App\Models\Invoice::create(['StudentID' => $student->id, 'IssueDate' => now()->toDateString(), 'TotalAmount' => 100, 'PaidAmount' => 0, 'Status' => 'unpaid', 'Note' => '']);
+    }
+
+    /** @test */
+    public function health_detailed_bills_and_sign_ins_are_campus_scoped_for_directors(): void
+    {
+        $campusB = Campus::create(['name' => 'SecCampusB2', 'Token' => 'sec-b2', 'code' => 'secb2', 'Current' => 0, 'LineNotifyID' => '',
+            'Client_ID' => '', 'Client_Secret' => '', 'LIFFID' => '', 'LIFF_URL' => '', 'URL' => '', 'TelegramToken' => '',
+            'TelegramChatID' => '', 'TelegramURL' => '', 'TeachLIFFID' => '', 'TeachLIFF_URL' => '']);
+        [$token] = $this->makeDirectorToken(); // director of campus A only
+        $get = fn (string $k) => $this->withHeaders(['Authorization' => "Bearer {$token}"])->getJson('/api/v1/health/detailed')
+            ->assertStatus(200)->json("business_today.{$k}");
+        $bills = $get('bills_created_today');
+        $logins = $get('sign_ins_today');
+
+        $this->todayInvoiceOnCampus($campusB->id);
+        $this->loginOnCampus($campusB->id);
+        $this->assertSame($bills, $get('bills_created_today'), 'campus B invoice must not count for campus A director');
+        $this->assertSame($logins, $get('sign_ins_today'), 'campus B login must not count for campus A director');
+
+        $this->todayInvoiceOnCampus($this->campus->id);
+        $this->loginOnCampus($this->campus->id);
+        $this->assertSame($bills + 1, $get('bills_created_today'));
+        $this->assertSame($logins + 1, $get('sign_ins_today'));
+    }
+
+    /** @test */
+    public function health_detailed_omits_business_today_for_teachers(): void
+    {
+        $teacher = User::create(['LoginName' => 'sec-teacher@example.com', 'Name' => 'SecTeacher', 'PSW' => 'x', 'type' => 'T', 'MustChangePassword' => false]);
+        UserCampus::create(['CampusID' => $this->campus->id, 'UserID' => $teacher->id, 'Admin' => 0, 'Approved' => 1]);
+        $token = bin2hex(random_bytes(32));
+        AuthToken::create(['user_id' => $teacher->id, 'token' => $token, 'expires_at' => now()->addDay()]);
+
+        $this->withHeaders(['Authorization' => "Bearer {$token}"])->getJson('/api/v1/health/detailed')
+            ->assertStatus(200)->assertJsonMissingPath('business_today');
+    }
 }
