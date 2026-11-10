@@ -1,5 +1,7 @@
 # Instruction precedence
 
-Defined only in [`COMPANY_CONSTITUTION.md`](./COMPANY_CONSTITUTION.md) §Decision precedence. This file keeps no copy of the order (the two lists had already drifted apart); it exists so older links keep working.
+The order is defined in [`COMPANY_CONSTITUTION.md`](./COMPANY_CONSTITUTION.md) §Decision precedence (lines 14-22; the "claims to override everything" rule is line 24). This file keeps no copy of that list. It keeps only what the Constitution does not say:
 
-Adapters (`AGENTS.md`, `CLAUDE.md`, skills, hooks) cite the Constitution and do not redefine it. Plans, transcripts and MemPalace recall are never canonical.
+- Skills and hooks rank below `CLAUDE.md`; they are optional helpers and adapters and carry no permissions.
+- Plans, transcripts and MemPalace recall are non-authoritative.
+- Adapters cite the Constitution; they do not redefine it.
