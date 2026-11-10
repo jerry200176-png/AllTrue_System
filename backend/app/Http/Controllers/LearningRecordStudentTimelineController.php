@@ -48,8 +48,7 @@ class LearningRecordStudentTimelineController extends Controller
         if ($teacherId !== null) {
             // Same rule as GET learning-records for a teacher; sign-ins follow the lessons that rule lets them see.
             LearningRecordController::applyTeacherScopedLearningRecordConstraint($recordQuery, $teacherId);
-            $recordQuery->whereNotExists(fn ($q) => $q->select(DB::raw(1))->from('ClassSession as cancelled')
-                ->whereColumn('cancelled.id', 'LearningRecord.ClassSessionID')->where('cancelled.Status', 'cancelled'));
+            $recordQuery->excludeCancelledClassSessionForTeacherList();
             $sessionIds = $this->lessonsTaughtBy($teacherId, $courseIds);
         }
         $evaluated = (clone $recordQuery)->whereNotNull('ClassSessionID')->pluck('ClassSessionID')->all(); // all of them, not just the capped page
@@ -60,10 +59,12 @@ class LearningRecordStudentTimelineController extends Controller
         if ($teacherId !== null && $records->isEmpty() && $sessionIds === [] && $ownCourseIds === []) {
             return response()->json(['message' => 'Forbidden'], 403);
         }
-        $signIns = DB::table('StudentSingIn')->where('StudentID', $student->id)->whereNull('VoidedAt')
+        // Same latest-active MAX(id) precedence as BackfillSessionStatus; legacy schemas can contain duplicates.
+        $latestSignIns = DB::table('StudentSingIn')->where('StudentID', $student->id)->whereNull('VoidedAt')
             ->whereNotNull('ClassSessionID')->whereIn('StudentClassID', $courseIds)
             ->when($sessionIds !== null, fn ($q) => $q->whereIn('ClassSessionID', array_merge($sessionIds, $records->pluck('ClassSessionID')->filter()->all())))
-            ->pluck('Status', 'ClassSessionID');
+            ->selectRaw('MAX(id)')->groupBy('ClassSessionID');
+        $signIns = DB::table('StudentSingIn')->whereIn('id', $latestSignIns)->pluck('Status', 'ClassSessionID');
         $statusLabel = fn ($code) => $code === null ? null : AttendanceStatus::label((string) $code);
 
         $items = [];
@@ -123,7 +124,7 @@ class LearningRecordStudentTimelineController extends Controller
                 ->flatMap(fn ($c) => TeacherScopeService::subjectNameAliases((string) ($subjectNames[$c->SubjectID] ?? '')))
                 ->unique()->values()->all();
             $scores->whereIn('part.name', $names)->whereJsonContains('round.grade_ids', (int) $student->ClassID);
-            if ((int) $student->enable !== 1) $scores->whereRaw('1 = 0');
+            if ((int) ($student->getAttribute('enable') ?? 1) !== 1) $scores->whereRaw('1 = 0');
         }
         $scoreRows = $scores->orderByRaw('COALESCE(round.exam_date, score_item.recorded_at, score_item.created_at) DESC')
             ->orderByDesc('score_item.id')->limit(self::PER_SOURCE_LIMIT + 1)

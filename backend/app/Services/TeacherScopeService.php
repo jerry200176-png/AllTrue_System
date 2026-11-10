@@ -206,6 +206,7 @@ class TeacherScopeService
     public static function subjectNameAliases(string $raw): array
     {
         $canonical = self::normalizeSubjectName($raw);
+        if (!in_array($canonical, self::SUBJECT_NORMALIZE_MAP, true)) return [];
         return array_values(array_unique(array_filter(array_merge([$raw, $canonical], array_keys(
             array_filter(self::SUBJECT_NORMALIZE_MAP, fn ($name) => $name === $canonical)
         )))));

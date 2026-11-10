@@ -16,7 +16,9 @@ use App\Models\User;
 use App\Models\UserCampus;
 use Database\Factories\CampusFactory;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Foundation\Testing\RefreshDatabaseState;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Tests\TestCase;
 
 /** #4928 step 1: staff read-only learning timeline merged from evaluations, assessment scores and sign-ins. */
@@ -203,6 +205,10 @@ class StudentLearningTimelineTest extends TestCase
         $read = fn () => collect($this->withAuth($teacher['token'])
             ->getJson("/api/v1/students/{$student->id}/learning-timeline")->assertOk()->json('items'))->where('type', 'exam_score');
         $this->assertSame([$visible->id], $read()->pluck('id')->all());
+        $this->schoolScore($student, $campus, 'published', '歷史探究');
+        DB::table('Subject')->where('id', 1)->update(['Subject_Name' => '歷史探究']);
+        $this->assertCount(0, $read()); // matching unknown text is not a canonical subject grant
+        DB::table('Subject')->where('id', 1)->update(['Subject_Name' => 'Math']);
         $course->update(['Stop' => 1]);
         $this->assertCount(0, $read());
         $request = \Illuminate\Http\Request::create('/');
@@ -239,6 +245,66 @@ class StudentLearningTimelineTest extends TestCase
         $request = \Illuminate\Http\Request::create('/');
         $request->attributes->add(['auth_role' => 'director', 'auth_campus_ids' => []]);
         $this->assertSame(403, app(\App\Http\Controllers\LearningRecordStudentTimelineController::class)->show($request, $student)->status());
+    }
+
+    public function test_legacy_nullable_student_and_duplicate_signins_keep_canonical_read_precedence(): void
+    {
+        $this->assertSame('testing', app()->environment());
+        $this->assertStringContainsString('test', strtolower(DB::connection()->getDatabaseName()));
+        // #4937: legacy deployments may lack this test-schema unique index.
+        // End the outer transaction before fixture-only DDL, then restore the schema in finally.
+        while (DB::connection()->transactionLevel() > 0) DB::rollBack();
+        try {
+            Schema::table('StudentSingIn', fn ($table) => $table->dropUnique(['ClassSessionID']));
+            Schema::table('Student', fn ($table) => $table->integer('enable')->nullable()->default(1)->change());
+            $campus = (int) CampusFactory::new()->create()->id;
+            $other = (int) CampusFactory::new()->create()->id;
+            $teacher = $this->staff('T', $campus);
+            $director = $this->staff('A', $campus);
+            $outsider = $this->staff('T', $campus);
+            $otherDirector = $this->staff('A', $other);
+            $student = $this->student($campus);
+            $student->update(['enable' => null]);
+            DB::table('Subject')->insert(['id' => 1, 'School_id' => 1, 'Grade_no' => 0, 'Subject_Name' => 'Math']);
+            $course = $this->course($student->id, $teacher['user']->id, $campus);
+            $first = $this->lesson($course, '2026-10-01');
+            $second = $this->lesson($course, '2026-10-08');
+            LearningRecord::create(['StudentClassID' => $course->ID, 'ClassSessionID' => $first->id,
+                'TeacherID' => $teacher['user']->id, 'Content' => '合成進度', 'Status' => 'approved', 'SessionDate' => '2026-10-01']);
+            $add = fn ($session, $status, $void = false, $date = '2026-10-01 16:00:00') => DB::table('StudentSingIn')->insert([
+                'StudentID' => $student->id, 'StudentClassID' => $course->ID, 'ClassSessionID' => $session->id,
+                'Status' => $status, 'VoidedAt' => $void ? now() : null, 'SignInDT' => $date, 'MDT' => now(), 'PersonType' => 'S',
+            ]);
+            $add($first, 'present'); $add($first, 'absent', false, '2026-09-01 16:00:00'); $add($first, 'late', true);
+            $add($second, 'absent'); $add($second, 'late'); $add($second, 'present'); $add($second, 'absent', true);
+            $visible = $this->schoolScore($student, $campus);
+            $wrongGrade = $this->schoolScore($student, $campus);
+            ExamRound::findOrFail($wrongGrade->exam_round_id)->update(['grade_ids' => [2]]);
+            $this->schoolScore($student, $other);
+            $this->schoolScore($student, $campus, 'published', '英文');
+            $tables = ['Student', 'StudentClass', 'LearningRecord', 'ClassSession', 'StudentSingIn',
+                'session_deduction_ledger', 'exam_scores', 'exam_score_audit_logs'];
+            $snapshot = fn () => array_map(fn ($table) => DB::table($table)->orderBy('id')->get()->toArray(), $tables);
+            $before = $snapshot();
+            foreach ([$teacher, $director] as $actor) {
+                $rows = collect($this->withAuth($actor['token'])->getJson("/api/v1/students/{$student->id}/learning-timeline")->assertOk()->json('items'));
+                $this->assertSame('缺席', $rows->firstWhere('type', 'evaluation')['attendance']);
+                $this->assertSame('到班', $rows->firstWhere('type', 'attendance')['attendance']);
+                if ($actor === $teacher) $this->assertSame([$visible->id], $rows->where('type', 'exam_score')->pluck('id')->all());
+            }
+            foreach ([$outsider, $otherDirector] as $actor) $this->withAuth($actor['token'])
+                ->getJson("/api/v1/students/{$student->id}/learning-timeline")->assertForbidden();
+            $this->assertEquals($before, $snapshot());
+            $student->update(['enable' => 0]); $before = $snapshot();
+            $rows = collect($this->withAuth($teacher['token'])->getJson("/api/v1/students/{$student->id}/learning-timeline")->assertOk()->json('items'));
+            $this->assertCount(0, $rows->where('type', 'exam_score'));
+            $this->assertEquals($before, $snapshot());
+        } finally {
+            $this->artisan('migrate:fresh', $this->migrateFreshUsing());
+            $this->app[\Illuminate\Contracts\Console\Kernel::class]->setArtisan(null);
+            RefreshDatabaseState::$migrated = true;
+            $this->beginDatabaseTransaction();
+        }
     }
 
     /** @return array{token:string,user:User} */
