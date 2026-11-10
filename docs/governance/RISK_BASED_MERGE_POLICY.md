@@ -83,10 +83,13 @@ This policy defines the tiers.
 ## Review checklist (R2/T2)
 
 R2/T2 requires exact-target required CI, rollback readiness, a documented
-risk/production-verification checklist, and resolved bot/reviewer threads. A
-second human or AI verifier is not a prerequisite in the single-Founder model.
-The implementing Agent remains responsible for the final evidence and may
-merge autonomously when no T3/protected action is involved.
+risk/production-verification checklist, and resolved bot/reviewer threads.
+Like every class, it also needs the final-head review evidence in
+[`MERGE_SOP.md`](../sop/MERGE_SOP.md#final-head-review-evidence) (a clean Codex
+summary or a recorded independent review; `review/final-head` enforces it). A
+second human is not a prerequisite in the single-Founder model. The
+implementing Agent remains responsible for the final evidence and may merge
+autonomously when no T3/protected action is involved.
 
 ## T3/protected boundary
 
