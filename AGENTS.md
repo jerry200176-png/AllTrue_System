@@ -1,15 +1,53 @@
 # AGENTS.md — AllTrue AI Agent 入口
 
-> 這裡補充必讀順序與 Commit SOP；P0 紅黃線見 `CLAUDE.md`。
+> 唯一通用入口，只導航：一個主題只有一個權威出處。P0 紅黃線在 `CLAUDE.md`。
 >
-> **AllTrue AI 公司 slogan：前人種樹，後人乘涼。**
-> 所有 Agent 做事前先查 `docs/INDEX.md` 的 Start here 與任務對應節（本機另可查 MemPalace；cloud session 沒有，跳過）；做完把決策寫回文件，讓下一個 AI 不靠猜測。
+> **AllTrue AI 公司 slogan：前人種樹，後人乘涼。** 做事前查 `docs/INDEX.md` 的 Start here 與任務對應節；做完把決策寫回文件，讓下一個 AI 不靠猜測。
+
+## 先收尾再開工
+
+- 開工前先看未結 PR（`gh api 'repos/{owner}/{repo}/pulls?state=open&per_page=100' --jq length`）。自己有衝突或紅燈的 PR，或 repo 未結 PR 超過 8 個：先修好或關掉，再開新分支。
+- 不開新的 tracker／研究 issue 來取代把既有的做完。刪 > 併 > 加。
 
 ## Worktree & path safety (canonical)
 
 **Default (Founder 2026-10-14（三）, [`FOUNDER_STANDING_DECISIONS.md`](docs/governance/FOUNDER_STANDING_DECISIONS.md)):** work in a Claude cloud session. Clone fresh from `origin/main`, branch with an accepted `scripts/ci/branch-policy.mjs` prefix, open a PR. No `agent-start`, no local preflight, no `.agent-session/manifest.json`. The PR diff, risk declaration, review and required checks are the delivery evidence.
-**Local WSL (legacy, being retired):** only if a task truly needs it; then `agent-start alltrue <task-id>` and never the forbidden checkouts.
+**Local WSL:** only if a task truly needs it; use an isolated task worktree as the policy describes, never the forbidden checkouts. `agent-start` is retired.
 **Policy:** [`docs/governance/WORKTREE_POLICY.md`](docs/governance/WORKTREE_POLICY.md)
+
+## 開工前 First-read 順序
+
+**SOP（防重踩同坑）**：收到任務後**先讀文檔再打程式**，禁止只靠對話上下文硬改。
+
+**操作者權限（適用於每一次任務，不是要讀的檔案，是規則本身）**：操作者是 **Agent**。T0/T1 在 required checks、風險適當 review 與證據通過後可自行 merge／關 issue；T2 另需 independent review、rollback boundary 與完整 CI。read-only production-case-dump probe（`.github/workflows/production-case-dump.yml` 僅新增/修正唯讀 case，diff 無寫入標記）為 T2，Agent 於 CI 綠燈 + review 後自行 merge；寫入仍為 T3 Founder GO。T3 / protected 工作可研究、實作、測試並準備 evidence package，但在 production activation、production data repair、migration/schema cutover、billing／entitlement、identity/authz、破壞性動作、backup restore、security-sensitive credential 或重大產品方向前停下等 Founder GO（具名例外依 `docs/governance/FOUNDER_STANDING_DECISIONS.md` 的現行適用條款，此處不摘要）。機器禁令：Pi SSH / artisan / phpunit、印 secrets、force-push、`--admin`、Gmail 刪信。產品 P0 與 Control Plane I1 仍有效。Capabilities 詳見 `docs/governance/AGENT_CAPABILITY_REGISTRY.md`，勿假設權限。
+
+**Founder 常設決定**：唯一定義見 [`docs/governance/FOUNDER_STANDING_DECISIONS.md`](docs/governance/FOUNDER_STANDING_DECISIONS.md)（每次任務都適用；此處不寫摘要，避免分歧）。
+
+### 必讀（4 份，每次任務都讀；這是唯一一份必讀清單）
+
+1. **`docs/governance/COMPANY_CONSTITUTION.md`**（公司根政策）
+2. **`docs/architecture/ALLTRUE_ENGINEERING_NORTH_STAR.md`**（現行工程主線；禁止整包重寫）
+3. **`docs/INDEX.md`** 的 **Start here** + 任務對應節（導航）
+4. **`docs/sop/MERGE_SOP.md`**（開 PR 到上線：審查、land queue、多 agent 並行規則）
+
+其他文件（含 `docs/AI_REGRESSION_LESSONS.md`）都是「碰到對應任務才查」，見下表。
+（不得假設任何 client 已自動載入規則檔，未載入時先讀原文，保留完整 P0。實際載入／截斷未能查證時記 unknown。）
+
+### 條件分支（依任務類型挑對應章節，不用全讀）
+
+| 任務類型 | 加讀 |
+|---|---|
+| 改排課／行事曆／扣堂 | `docs/architecture/RFC_SCHEDULE_OCCURRENCE_IDENTITY.md`（TD-076）+ `AI_REGRESSION_LESSONS.md` 模組索引表對應的 R10x 系列。改容量徽章／代課已滿：先讀 [`docs/plans/2026-08-17-mixed-class-type-occupancy.md`](docs/plans/2026-08-17-mixed-class-type-occupancy.md) 與 **§R116**（#1889）；禁止用較嚴班型上限蓋掉一對三空位；§R114 殘影過濾不可回退 |
+| 改計費／繳費提醒／核帳登記／電子收據時機 | `docs/DIRECTOR_PAYMENT_ALERT_RULES.md` + [`docs/architecture/RFC_REPORTED_PAID_ACCOUNTING_SPLIT.md`](docs/architecture/RFC_REPORTED_PAID_ACCOUNTING_SPLIT.md)（#1827）。禁止把行政登錄再次做成一次 `Paid=1`＋核銷＋開收據。 |
+| 處理 in-app 意見與建議／BugReport 產品閉環 | **先載** [`.agents/skills/alltrue-inapp-product-loop/SKILL.md`](.agents/skills/alltrue-inapp-product-loop/SKILL.md)→ [`docs/plans/INAPP_PRODUCT_LOOP_EXECUTION_POLICY_V1.md`](docs/plans/INAPP_PRODUCT_LOOP_EXECUTION_POLICY_V1.md) + `docs/CHAT_BUG_SYSTEM.md` **§3.6–§3.7**；依風險再開 `alltrue-debugging`／`testing`／`code-review`／`release`／`security` |
+| 處理 in-app Bug（分診或修完上線） | 同上 skill + `AI_REGRESSION_LESSONS.md` **§R51、§R53**（開 issue 與 merge 後都要回系統留言，勿只動 GitHub）|
+| 高風險模組（代課／評量／智慧行事曆合併等）任何改動 | `docs/AI_REGRESSION_LESSONS.md` 文末模組索引表對應 § — 動 `backend/`／`frontend/src/` 前必讀 |
+| 需要回顧決策或舊 bug | `~/.local/bin/mempalace search "<關鍵字>"`（本機搜尋；非跨機器權威）|
+| 任何瀏覽器測試 | `.cursor/.local/test-credentials.md` |
+| 任務牽涉長文件／多份 docs | `docs/INDEX.md` 的速讀卡／治理節奏（`docs/AI_DOC_LITERACY.md` 只是索引 stub）|
+| Codex 長任務接續／交接／重複失敗 | 按需使用 [alltrue-task-continuity](.agents/skills/alltrue-task-continuity/SKILL.md)，沿用 `RUNBOOK_HANDOFF` 並核對現況；不載入整段歷史、不自動重播動作 |
+| 改 critical domain（排課／帳務／出缺勤等） | 先讀 [`docs/architecture/README.md`](docs/architecture/README.md) 中與任務相關的圖（跨 domain 才讀 `alltrue-runtime.architecture.json`）。圖是導覽，不高於程式：與現行實作不一致時，查是文件過期還是 regression |
+| 多 agent／多 PR 任務、PRD／ARCH 規劃、引用外部 agent playbook | [`docs/agents/orchestration.md`](docs/agents/orchestration.md) |
 
 ## Code Review Rules
 
@@ -31,50 +69,6 @@
 - A Codex or other bot review supplies evidence, not a substitute identity for the PR author. Review findings must be addressed; a clean bot review alone does not satisfy tests, rollback readiness, or production verification.
 - For T3/protected actions, prepare the exact target, effect, credible downside, rollback, and verification evidence, then obtain the Founder decision required by the canonical policy. An approval already given for that concrete scope continues through its necessary steps; ask again only if the scope or protected effect materially changes.
 
-
-## 開工前 First-read 順序
-
-**SOP（防重踩同坑）**：收到任務後**先讀文檔再打程式**，禁止只靠對話上下文硬改。
-
-**操作者權限（適用於每一次任務，不是要讀的檔案，是規則本身）**：操作者是 **Agent**。T0/T1 在 required checks、風險適當 review 與證據通過後可自行 merge／關 issue；T2 另需 independent review、rollback boundary 與完整 CI。read-only production-case-dump probe（`.github/workflows/production-case-dump.yml` 僅新增/修正唯讀 case，diff 無寫入標記）為 T2，Agent 於 CI 綠燈 + review 後自行 merge；寫入仍為 T3 Founder GO。T3 / protected 工作可研究、實作、測試並準備 evidence package，但在 production activation、production data repair、migration/schema cutover、billing／entitlement、identity/authz、破壞性動作、backup restore、security-sensitive credential 或重大產品方向前停下等 Founder GO（具名例外依 `docs/governance/FOUNDER_STANDING_DECISIONS.md` 的現行適用條款，此處不摘要）。機器禁令：Pi SSH / artisan / phpunit、印 secrets、force-push、`--admin`、Gmail 刪信。產品 P0 與 Control Plane I1 仍有效。Capabilities 詳見 `docs/governance/AGENT_CAPABILITY_REGISTRY.md`，勿假設權限。
-
-**Founder 常設決定**：唯一定義見 [`docs/governance/FOUNDER_STANDING_DECISIONS.md`](docs/governance/FOUNDER_STANDING_DECISIONS.md)（每次任務都適用；此處不寫摘要，避免分歧）。
-
-### 必讀（3 份，每次任務都讀）
-
-1. **`docs/governance/COMPANY_CONSTITUTION.md`** + **`docs/sop/AGENT_PREFLIGHT.md`**（公司根政策）
-2. **`docs/architecture/ALLTRUE_ENGINEERING_NORTH_STAR.md`**（現行工程主線；禁止整包重寫）
-3. **`docs/INDEX.md`** 的 **Start here** + 任務對應節（導航；本清單與條件分支的政策原文仍須完整載入）
-
-（不得假設任何 client 已自動載入規則檔，未載入時先讀原文，保留完整 P0。實際載入／截斷未能查證時記 unknown。）
-
-### 條件分支（依任務類型挑對應章節，不用全讀）
-
-| 任務類型 | 加讀 |
-|---|---|
-| 改排課／行事曆／扣堂 | `docs/architecture/RFC_SCHEDULE_OCCURRENCE_IDENTITY.md`（TD-076）+ `AI_REGRESSION_LESSONS.md` 模組索引表對應的 R10x 系列。改容量徽章／代課已滿：先讀 [`docs/plans/2026-08-17-mixed-class-type-occupancy.md`](docs/plans/2026-08-17-mixed-class-type-occupancy.md) 與 **§R116**（#1889）；禁止用較嚴班型上限蓋掉一對三空位；§R114 殘影過濾不可回退 |
-| 改計費／繳費提醒／核帳登記／電子收據時機 | `docs/DIRECTOR_PAYMENT_ALERT_RULES.md` + [`docs/architecture/RFC_REPORTED_PAID_ACCOUNTING_SPLIT.md`](docs/architecture/RFC_REPORTED_PAID_ACCOUNTING_SPLIT.md)（#1827）。禁止把行政登錄再次做成一次 `Paid=1`＋核銷＋開收據。 |
-| 處理 in-app 意見與建議／BugReport 產品閉環 | **先載** [`.agents/skills/alltrue-inapp-product-loop/SKILL.md`](.agents/skills/alltrue-inapp-product-loop/SKILL.md)→ [`docs/plans/INAPP_PRODUCT_LOOP_EXECUTION_POLICY_V1.md`](docs/plans/INAPP_PRODUCT_LOOP_EXECUTION_POLICY_V1.md) + `docs/CHAT_BUG_SYSTEM.md` **§3.6–§3.7**；依風險再開 `alltrue-debugging`／`testing`／`code-review`／`release`／`security` |
-| 處理 in-app Bug（分診或修完上線） | 同上 skill + `AI_REGRESSION_LESSONS.md` **§R51、§R53**（開 issue 與 merge 後都要回系統留言，勿只動 GitHub）|
-| 高風險模組（代課／評量／智慧行事曆合併等）任何改動 | `docs/AI_REGRESSION_LESSONS.md` 文末模組索引表對應 § — 動 `backend/`／`frontend/src/` 前必讀 |
-| 需要回顧決策或舊 bug | `~/.local/bin/mempalace search "<關鍵字>"`（本機搜尋；非跨機器權威）|
-| 任何瀏覽器測試 | `.cursor/.local/test-credentials.md` |
-| 任務牽涉長文件／多份 docs | `docs/INDEX.md` 的速讀卡／治理節奏（`docs/AI_DOC_LITERACY.md` 只是索引 stub）|
-| Codex 長任務接續／交接／重複失敗 | 按需使用 [alltrue-task-continuity](.agents/skills/alltrue-task-continuity/SKILL.md)，沿用 `RUNBOOK_HANDOFF` 並核對現況；不載入整段歷史、不自動重播動作 |
-
-### Critical-domain architecture orientation
-
-修改 AllTrue critical domain 前，先讀 [`docs/architecture/README.md`](docs/architecture/README.md)
-中與任務相關的 canonical Archify diagram，理解 system boundary、authoritative
-data flow、lifecycle 與 invariants，再以 current code、schema、tests，以及適用時的
-runtime evidence 驗證實作。只讀任務相關的圖；若任務跨 domain 或 ownership 不明，
-才先讀 `alltrue-runtime.architecture.json`。
-
-Diagram 是 orientation，不是高於 code 的真理。若 diagram 與 current implementation
-不一致，必須辨識是 stale docs 或 regression 並調查，不可盲從。Archify 不新增 CI
-gate、不要求每 PR 更新 diagram；除非未來有實際 evidence 顯示某 domain 因架構理解
-不足反覆出錯，否則不擴充圖稿。
-
 ## 公司治理記錄原則
 
 - 新功能 / bug fix 上線：新增 `docs/changes/<date>-<slug>.md` fragment（不要改凍結的 `docs/CHANGELOG.md`），並依 [`docs/GUIDE_STAFF_UPDATES.md`](docs/GUIDE_STAFF_UPDATES.md) 加上 `staff_update` 或 `silent_ship` 決策標記；教職員可感知的變更必須新增 `docs/staff-updates/<id>.yml`（不要改 `docs/STAFF_UPDATES.yml`）。
@@ -83,38 +77,7 @@ gate、不要求每 PR 更新 diagram；除非未來有實際 evidence 顯示某
 - 複雜架構、資料流或 SOP：更新 `docs/SYSTEM_TECH_GUIDE.md` 或 `docs/OPERATIONS_RUNBOOK.md`。
 - 文件不要複製長 SOP；入口文件只導航，單一主題只保留一個權威出處。
 
-## Agent Orchestration SOP
-
-開工前先判斷任務類型，避免把 AI 協作變成額外認知負擔：
-
-| 類型 | 定義 | 處理方式 |
-|---|---|---|
-| Fire-and-forget | 錯字、footer 日期、單一連結、小型 lint/docs 修正 | 累積到 docs batch；不要單獨開 PR 浪費 Actions |
-| Context-dependent | API 串接、前後端同改、README/Runbook 同步 | 先產 artifact（API contract、diff、測試結果），下游只讀 artifact |
-| Decision-requiring | DB schema、auth、堂數/繳費、CI/CD、備份/還原 | 先進 PLAN/ARCH 或 BUG B1，釐清產品意圖與受保護邊界；可先完成實作、測試與證據包，在受保護的合併、正式啟用或資料操作前取得 Founder 對具體範圍的決定。重大產品方向無明確最佳選項時，先取得決定再實作 |
-
-強制原則：
-- 以 bounded context 切任務，不以 migration/model/controller/frontend/test 這種技術層硬切碎。
-- 規劃/ARCH/BUG B1 不可只靠模型記憶：研究順序為 `本專案 Docs/MemPalace` → `大公司/業界做法` → `相關開源專案實作`，最後才收斂為 AllTrue 的取捨。
-- Agent handoff 只交 output artifact，不要求下游讀完整推理過程。
-- PRD/ARCH 至少寫到 architecture boundary：API 合約、資料邊界、權限、錯誤處理、多校區隔離。
-- 沒有 architecture boundary 的需求，不進 DEV；讓 agent 猜架構會把 decision load 丟給錯的人。
-- 多 agent 或多 PR 任務需指定 `[INT] Integration Owner` 檢查 artifact 能否接起來；完成後由 `[DOCS/MEM] Memory Curator` 決定寫回哪份長期記憶文件。
-- 完成後把有效策略寫回 `AI_REGRESSION_LESSONS.md`、`TECH_DEBT.md` 或 `SYSTEM_TECH_GUIDE.md`，讓下一個 session 不重學。
-
-### 外部 Agent Playbook 引用
-
-可參考 [`msitarzewski/agency-agents`](https://github.com/msitarzewski/agency-agents) 的角色設計、deliverable 格式與多工具整合概念，但它不是 AllTrue 產品功能，也不可整包安裝覆蓋本 repo 規則。
-
-工程技能工作流可參考 [`addyosmani/agent-skills`](https://github.com/addyosmani/agent-skills) — **完整評估與安裝 SOP 見 [`docs/GUIDE_AGENT_SKILLS.md`](docs/GUIDE_AGENT_SKILLS.md)**（繁中）；UI 品味另見同文件 §taste-skill（[`Leonxlnx/taste-skill`](https://github.com/Leonxlnx/taste-skill)，已裝 `design-taste-frontend`／`redesign-existing-projects`）。AllTrue 本地化技能見 [`docs/GUIDE_ALLTRUE_AGENT_SYSTEM_V1.md`](docs/GUIDE_ALLTRUE_AGENT_SYSTEM_V1.md) 與 `.claude/skills/alltrue-*`（只挑技能本地化，禁止整包覆蓋 P0 / PRD 流程；UI 仍以 `docs/RULE_DESIGN_SYSTEM.md` 為準）。
-
-引用時遵守：
-- 只挑選角色/交付物模板，改寫成 AllTrue bounded context 的 artifact handoff。
-- 所有外部 agent 規則都必須服從 `CLAUDE.md` 紅線、P0 gate、分校隔離、CI/deploy SOP。
-- 禁止一鍵匯入大量外部 rule 檔；新增或改 rule 必須走 T0 docs-only PR。
-- 若外部流程與 AllTrue P0 安全規則衝突，永遠以 AllTrue 規則為準。
-
-### Workflow Risk Tiers
+## Workflow risk tiers
 
 大廠 workflow 的重點不是所有任務都變重，而是讓風險決定流程重量。各級定義只看 [`docs/governance/RISK_BASED_MERGE_POLICY.md`](docs/governance/RISK_BASED_MERGE_POLICY.md) §Risk classes；各級要走的車道、九個階段、Definition of Ready（階段 4）與 Definition of Done（階段 9）只看 [`docs/sop/DELIVERY_LIFECYCLE.md`](docs/sop/DELIVERY_LIFECYCLE.md)；Founder 何時要決定或按，只看 `FOUNDER_STANDING_DECISIONS.md`（此處都不摘要）。
 
@@ -123,48 +86,19 @@ gate、不要求每 PR 更新 diagram；除非未來有實際 evidence 顯示某
 - CI/deploy 狀態不明但要回報「完成」。
 - 備份/restore 目標不確定，或無法確認 restore drill 不會碰 production `AllTrue`。
 
-## Land queue
+## Land queue / Parallel agents
 
-See [`docs/sop/MERGE_SOP.md`](docs/sop/MERGE_SOP.md#land-queue-and-auto-delivery-mechanics).
-
-## Parallel agents
-
-- Before starting: run `node scripts/pr-overlap.mjs` (or read the PR's `<!-- pr-overlap -->` sticky comment). If another open PR touches the same files, coordinate with that session or wait. Prefer small PRs that merge fast (limits: `docs/governance/FOUNDER_STANDING_DECISIONS.md`).
-- Landing: add label `queue`. Don't loop `update-branch`, `--auto` or custom merge scripts.
-- No stacked PRs: branch from main after the dependency merges.
-- Before merging an agent PR, read every `-` line of `git diff origin/main...HEAD`; nothing outside the PR's scope may be removed (2026-10-06 PR-C2 #3631 stale-copy revert).
-- Release notes: change fragments only (`docs/changes/…`). Never edit `CHANGELOG.md`, the generated JS or the exemption lists; `phpstan-baseline.neon` may only shrink.
-- Stale-copy guard: presubmit `[CHECK 0d]` fails a PR that deletes lines another PR merged to main in the last 7 days (`scripts/check-recent-work-revert.py`). Rebuild from current main; if intended, add a PR body line `Rewrites: #N — reason` for each listed PR (presubmit re-runs on body edits).
-- Deploys: only `deploy.yml`. A range of R0-R2 PRs, or an R3 range that passes the R3 auto controls (final-head Codex review, no open threads, no freeze; no migration, data-repair, identity/credential or control-plane effect), deploys on its own CI with no Founder click; anything else waits for the release train (`FOUNDER_STANDING_DECISIONS.md` 2026-10-21（二）之二). Gates exist to stop untrusted input (in-app report text, non-Founder GitHub content, bot output), not Founder-directed work.
-- Helpers (subagents) start from fresh `origin/main` in their own branch/session; never copy files from another worktree or session.
-- Review: when Codex is rate-limited, run `/code-review` (control-plane changes: an independent adversarial reviewer) before merging.
-- Presubmit size limits: defined only in [`FOUNDER_STANDING_DECISIONS.md`](docs/governance/FOUNDER_STANDING_DECISIONS.md) 2026-10-28（二）item 3 (presubmit CHECK 2); split, don't stack.
-- A job cancelled after ~15 min with 0 steps is runner starvation — just rerun it.
-- Codex review threads must be replied to and resolved, or they block merge.
-- New classes need a mapping in `scripts/arch-contexts.json` (FIT-10).
-- Anything that needs Jerry: collect it into one list and send it to the coordinating session, not one message per item.
+只在 [`docs/sop/MERGE_SOP.md`](docs/sop/MERGE_SOP.md#land-queue-and-auto-delivery-mechanics)（含 [Parallel agents](docs/sop/MERGE_SOP.md#parallel-agents)）。
 
 ## Commit SOP
 
-每個獨立可驗收的子任務完成後立即 commit：
+每個獨立可驗收的子任務完成後立即 commit：`<type>(<scope>): <one-line summary>`，body 寫 why。
+type：`feat` / `fix` / `refactor` / `test` / `docs` / `chore`；scope：模組名。
+禁止：`git push --force`、跳過 CI、一次 commit 混入多個不相關的改動。
 
-```bash
-git add <相關檔案>
-git commit -m "<type>(<scope>): <one-line summary>
+## 其他入口
 
-<optional body: 說明 why，不是 what>"
-```
-
-- **type**：`feat` / `fix` / `refactor` / `test` / `docs` / `chore`
-- **scope**：模組名（`billing` / `attendance` / `rfid` / `auth` 等）
-- **禁止**：`git push --force`、跳過 CI、一次 commit 混入多個不相關的改動
-
-## 其他工具入口
-
-- **Claude Code**：讀根目錄 `CLAUDE.md`（若存在）
-- **GitHub Copilot**：讀 `.github/copilot-instructions.md`（若存在）
-- **GitHub 協作（分支／PR／Issue／通報）**：`CONTRIBUTING.md`、`SECURITY.md`
-- **人類協作者**：先讀 `README.md`、`docs/INDEX.md`、本檔 `AGENTS.md`
+Claude Code 另讀 `CLAUDE.md`；Codex 另讀 `codex.md`；GitHub 協作見 `CONTRIBUTING.md`、`SECURITY.md`；人類協作者先讀 `README.md`、`docs/INDEX.md`。
 
 ## Portfolio governance overlay
 

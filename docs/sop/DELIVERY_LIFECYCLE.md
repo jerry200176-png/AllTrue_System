@@ -74,7 +74,7 @@ last_reviewed: 2026-11-06
 
 ### 階段 3：定義（功能，或任何 R3；R0–R2 的 bug 修復跳過）
 
-規格寫在 issue 裡：問題、證據、對標（大公司做法或開源實作；研究順序見 `AGENTS.md` §Agent Orchestration SOP）、驗收條件、不做的範圍、上線與回滾方式、要問 Founder 的問題（一次問完，每題最多 2 個選項＋推薦；怎麼開 `needs-founder` issue 見 `FOUNDER_STANDING_DECISIONS.md` 2026-10-14（三）第 5 條）。
+規格寫在 issue 裡：問題、證據、對標（大公司做法或開源實作；研究順序見 `docs/agents/orchestration.md`）、驗收條件、不做的範圍、上線與回滾方式、要問 Founder 的問題（一次問完，每題最多 2 個選項＋推薦；怎麼開 `needs-founder` issue 見 `FOUNDER_STANDING_DECISIONS.md` 2026-10-14（三）第 5 條）。
 
 動到金額、堂數或排課（`area:billing`／`area:calendar`／`area:attendance`）的工作，規格另附〈對標表〉，每列：做法或工具｜來源（官方文件、實際產品行為、開源原始碼＋鎖定版本）｜授權｜防的復發家族（`AI_REGRESSION_LESSONS.md` §復發家族）｜採用方式（函式庫／只抄設計／不採用＋理由）。沒有對標表不給 `gate:pm`。AGPL 與授權不明的專案只能當參考。現行採用清單與順序見 #4991（排課與帳務）、#4989（UI）。
 
