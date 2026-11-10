@@ -33,7 +33,7 @@ const dueSubline = computed(() => [
             {{ [home.nextLesson.subject, home.nextLesson.teacher, home.nextLesson.daysLeft === 0 ? '今天' : `還有 ${home.nextLesson.daysLeft} 天`].filter(Boolean).join('・') }}
           </p>
           <Badge v-if="home.nextLesson.leaveRequested" variant="outline" class="tw:mt-2">請假確認中</Badge>
-          <Button v-else-if="home.nextLesson.canLeave" variant="secondary" class="tw:mt-4 tw:h-14 tw:text-tpl-body tw:w-full" @click="$emit('leave', home.nextLesson.session)">請假</Button>
+          <Button v-else-if="home.nextLesson.canLeave" variant="secondary" class="tw:mt-4 tw:h-14 tw:text-[length:var(--tpl-text-body)] tw:w-full" @click="$emit('leave', home.nextLesson.session)">請假</Button>
         </template>
         <p v-else class="tw:text-tpl-body">目前沒有排定的課，有安排會通知您</p>
       </CardContent>
@@ -55,7 +55,7 @@ const dueSubline = computed(() => [
           </div>
           <p v-if="dueSubline" class="tw:text-tpl-caption tw:text-white/60">{{ dueSubline }}</p>
           <ShineBorder class="tw:mt-4" :colors="['white', 'var(--ds-brand-sun)']">
-            <Button class="tw:h-14 tw:text-tpl-body tw:w-full tw:bg-[var(--ds-brand-sun)] tw:hover:bg-[var(--ds-brand-gold)] tw:font-bold tw:text-[var(--ds-brand-glyph)] tw:transition-transform tw:motion-safe:active:scale-[0.96]" @click="$emit('pay')">繳費方式</Button>
+            <Button class="tw:h-14 tw:text-[length:var(--tpl-text-body)] tw:w-full tw:bg-[var(--ds-brand-sun)] tw:hover:bg-[var(--ds-brand-gold)] tw:font-bold tw:text-[color:var(--ds-brand-glyph)] tw:transition-transform tw:motion-safe:active:scale-[0.96]" @click="$emit('pay')">繳費方式</Button>
           </ShineBorder>
         </template>
         <p v-else class="tw:text-tpl-list tw:font-semibold">本期學費已繳清，謝謝您</p>
@@ -74,7 +74,7 @@ const dueSubline = computed(() => [
           {{ home.feedback.dateLabel }} {{ home.feedback.subject }}{{ home.feedback.text ? `：${home.feedback.text}` : '' }}
         </p>
         <p v-else class="tw:text-tpl-body">目前沒有新回饋</p>
-        <Button variant="secondary" class="tw:mt-4 tw:h-14 tw:text-tpl-body tw:w-full" @click="$emit('learning')">查看回饋並回覆老師</Button>
+        <Button variant="secondary" class="tw:mt-4 tw:h-14 tw:text-[length:var(--tpl-text-body)] tw:w-full" @click="$emit('learning')">查看回饋並回覆老師</Button>
       </CardContent>
     </Card>
     </BlurFade>

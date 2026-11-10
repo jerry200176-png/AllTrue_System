@@ -29,6 +29,9 @@ the existing work; do not replace the goal with the latest investigation.
    A snapshot, green aggregate or old PASS is not permission, current review,
    affected-path verification, or reporter acceptance. Re-read the actual
    execution receipt before repeating an action with side effects.
+   For an already approved scope, follow the canonical
+   [same-scope approval continuation decision](../../../docs/governance/FOUNDER_STANDING_DECISIONS.md#same-scope-approval-continuation)
+   before treating a routine SHA/current-production pin correction as a new decision.
 4. Classify a repeated failure before retrying. A release-download 504 calls for
    bounded transport recovery, a code failure for a focused regression, and a
    disputed review for source/schema evidence. After two identical failures,

@@ -13,4 +13,5 @@ printf 'founder:%s\n' "$(openssl passwd -apr1 -stdin <"${D}/pw-founder")" >"${D}
 chmod 644 "${D}/htpasswd"   # hash only; read by unprivileged nginx workers through the rootless bind mount
 printf 'map_hash_bucket_size 128;\nmap $host $gate_secret { default "%s"; }\nmap $cookie_alltrue_staging_gate $gate_ok { default 0; "%s" 1; }\n' \
   "$(cat "${D}/gate-secret")" "$(cat "${D}/gate-secret")" >"${D}/gate.conf"
+chmod 600 "${D}/pw-founder" "${D}/gate-secret" "${D}/gate.conf"
 echo "GATE_OK files=${D}/{pw-founder,gate-secret}"

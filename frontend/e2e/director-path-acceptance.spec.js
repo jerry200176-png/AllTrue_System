@@ -1,10 +1,11 @@
 // @ts-check
-import { spawnSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { test, expect } from '@playwright/test';
 import { dismissOverlays } from './fixtures/dismissOverlays.js';
 import { appOriginOf, installReadOnlyAppGuard, isKnownPostRead } from './fixtures/readOnlyAppGuard.js';
 import { installSingleStudentExportGuard } from './fixtures/directorExportGuard.js';
+import { installDirectorCalendarMocks, observeDirectorCalendarBundles, readDirectorRuntimeIdentity } from './fixtures/directorCalendarAcceptance.js';
 
 // Run only through playwright.director-acceptance.config.js in the existing credentialed smoke job.
 // No session extraction, screenshots, traces, video, response dumps or downloaded attachments.
@@ -120,5 +121,60 @@ test('director acceptance: one student UI filter downloads a typed native workbo
       console.log(JSON.stringify({ acceptance: 'student-xlsx', verified: true, sheets: summary.sheets,
         summary_rows: summary.summary_rows, numeric_amount_cells: summary.numeric_amount_cells }));
     } finally { await download.delete(); }
+  });
+});
+
+test('director acceptance: 528 deployed calendar replaces a moved card using only mocked reschedule data', async ({ page, context }) => {
+  await privateAcceptance(async () => {
+    const local = ['127.0.0.1', 'localhost'].includes(new URL(ORIGIN).hostname);
+    const readCounters = async () => {
+      const response = await context.request.get(ORIGIN + '/__director-acceptance-counts', { maxRedirects: 0 });
+      try { return await response.json(); } finally { await response.dispose(); }
+    };
+    const localCounters = local ? await readCounters() : null;
+    const before = await readDirectorRuntimeIdentity(context, ORIGIN);
+    const bundles = observeDirectorCalendarBundles(page, ORIGIN);
+    const calendar = await installDirectorCalendarMocks(context, ORIGIN);
+    let pageErrors = 0;
+    page.on('pageerror', () => { pageErrors += 1; });
+    await login(page);
+    const blocked = await installReadOnlyAppGuard(context, ORIGIN, { allowTransactionTelemetry: true });
+    await calendar.install();
+    await page.clock.setFixedTime(new Date('2026-11-09T11:00:00Z'));
+    await navigate(page, '班級行事曆');
+    await page.getByRole('button', { name: '週檢視', exact: true }).click();
+    const card = page.locator('.course-block').filter({ hasText: 'Synthetic Move' });
+    await expect(card).toHaveCount(1);
+    await expect(card).toHaveAttribute('aria-label', /20:00/);
+    await card.click();
+    await page.getByRole('button', { name: '🔄 調課', exact: true }).click();
+    await page.locator('#cal-reschedule-date').fill('2026-11-09');
+    await page.locator('#cal-reschedule-start').selectOption('19:30');
+    const completed = page.waitForEvent('dialog');
+    const submitting = page.getByRole('button', { name: '確認調課', exact: true }).click();
+    const dialog = await completed;
+    expect(dialog.type()).toBe('alert');
+    expect(dialog.message().includes('19:30')).toBe(true);
+    await dialog.accept();
+    await submitting;
+    await expect(page.locator('#cal-reschedule-date')).toHaveCount(0);
+    await expect(card).toHaveCount(1);
+    await expect(card).toHaveAttribute('aria-label', /19:30/);
+    await expect(card).not.toHaveAttribute('aria-label', /20:00/);
+    await expect(page.locator('.course-block').filter({ hasText: 'Synthetic Other' })).toHaveCount(1);
+    expect(calendar.counts.reschedule).toBe(1);
+    expect(calendar.counts.projection).toBeGreaterThan(1);
+    expect(calendar.counts.rejected).toBe(0);
+    expect(calendar.branchBound()).toBe(true);
+    expect(blocked.filter(request => !isKnownPostRead(ORIGIN, request))).toEqual([]);
+    expect(pageErrors).toBe(0);
+    if (local) expect(await readCounters()).toEqual(localCounters);
+    expect(await readDirectorRuntimeIdentity(context, ORIGIN)).toBe(before);
+    const loaded = await bundles();
+    const harness = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: fileURLToPath(new URL('../..', import.meta.url)), encoding: 'utf8' }).trim();
+    console.log(JSON.stringify({ acceptance: 'calendar-528-mocked-reschedule', verified: true,
+      synthetic_path_only: true, production_transaction_committed: 'UNKNOWN',
+      local, harness_sha: harness,
+      frontend_sha_before: before, frontend_sha_after: before, ...calendar.counts, bundles: loaded }));
   });
 });

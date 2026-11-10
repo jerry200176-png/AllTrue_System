@@ -1,0 +1,14 @@
+{
+  "schema": 1,
+  "binding": "case5124-private-reader-v1",
+  "recipient_sha256": "918f44f461aec013c2fe1fd7df2acf47f62753bb63f616e04303922a66186575",
+  "not_before": "2026-11-10T05:00:00Z",
+  "not_after": "2026-11-10T10:00:00Z",
+  "max_captures": 4,
+  "expected_backend_sha": "4d186abcf211e9b5109301285af093a57c8470d4",
+  "deploy_run_id": 42752332278,
+  "source_files_sha256": {
+    ".github/workflows/production-case-dump.yml": "73e21fc0036374a115c91b5aad0d9488dda4a36fd8833b1bd42f092b48853e11",
+    "scripts/case5124-private-reader.py": "beb06ba3d165f65daae65b7d81cc9d9427586aee824deccfe52c92cd920dc5c3"
+  }
+}
