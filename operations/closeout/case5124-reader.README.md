@@ -10,8 +10,8 @@ No real private key belongs in GitHub, a runner, chat or an Agent handoff.
 `DUMP_ARTIFACT_KEY` encryption, cleanup, artifact and permissions. Opting into
 `case5124` permits only the existing `transfer_capacity_student` payload with its
 fixed student/campus selector and empty StudentClass selector; caller target,
-teacher, subject and recipient overrides are refused before SSH. No new query,
-database account, key grant, network listener or production write is added.
+teacher, subject and recipient overrides are refused before SSH. No new database
+query/account/grant, network listener or production write is added.
 
 The following **proposed candidate files are present but not main-trusted**.
 They prepare the exact decision package, not approval or reader registration.
