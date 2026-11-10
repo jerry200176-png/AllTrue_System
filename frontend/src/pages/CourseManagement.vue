@@ -8730,7 +8730,9 @@ button.danger {
 .course-workbench .course-row .row-warnings { max-width: 100%; }
 .course-workbench .course-row .tag-usage-review,
 .course-workbench .course-row .warning-summary-btn { max-width: 100%; white-space: normal; text-align: left; }
-.course-workbench .course-row .payment-status-and-action { align-items: start; }
+.course-workbench .course-row .payment-status-and-action { align-items: start; min-width: 0; }
+/* In-app #532: a long status (需核對…) wraps inside the 繳費 column instead of running under the row's buttons. */
+.course-workbench .course-row .payment-status-badge { max-width: 100%; white-space: normal; text-align: left; }
 .course-workbench .dates-row { margin-top: .75rem; min-width: 0; }
 .course-workbench .dates-row .detail-panel { margin: 0; padding: 1rem; border-radius: inherit; font-size: inherit; }
 .course-workbench .paused-notice-row { display: block; margin-bottom: .75rem; }
