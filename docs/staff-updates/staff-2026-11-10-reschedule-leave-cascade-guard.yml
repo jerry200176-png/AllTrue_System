@@ -1,0 +1,15 @@
+updates:
+  - id: staff-2026-11-10-reschedule-leave-cascade-guard
+    published_at: "2026-11-10"
+    audiences:
+      - director
+    importance: digest
+    title: 請假堂次調課前先取消請假
+    summary: 請先取消請假再調課，系統會同步核對順延堂次。
+    items:
+      - category: fixed
+        text: 請假堂次不會再因調課直接恢復為未上，避免原堂次與順延堂次同時占用堂數。
+      - category: improved
+        text: 需調整日期時，請先使用「取消請假」，再重新調課。
+    source_refs:
+      - "changelog:2026-11-10:reschedule-leave-cascade-guard"

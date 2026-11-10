@@ -81,6 +81,16 @@ class RescheduleSessionService
                 throw new RescheduleSessionException('找不到指定堂次', 422, 'session_not_found');
             }
 
+            // R129 / #5124: moving a leave into the future would reset it to scheduled
+            // without undoing its compensating tail. Use the same dedicated undo as PATCH.
+            if ($session && strtolower(trim((string) $session->Status)) === 'leave') {
+                throw new RescheduleSessionException(
+                    '請先使用「取消請假」，系統會同步回復順延堂次；不可直接改成已上或未上。',
+                    422,
+                    'leave_requires_cascade_undo'
+                );
+            }
+
             if ($session) {
                 $startTime = $startTime ?: $this->normalizeTime($session->StartTime);
                 $endTime = $endTime ?: $this->normalizeTime($session->EndTime);
