@@ -91,7 +91,7 @@ export function aggregate(runs, { days = WINDOW_DAYS, flagPerDay = RUNS_PER_DAY_
     .sort((a, b) => b.minutes - a.minutes);
 }
 
-export function render(rows, { days = WINDOW_DAYS, flagPerDay = RUNS_PER_DAY_FLAG, date, coverage }) {
+export function render(rows, { days = WINDOW_DAYS, flagPerDay = RUNS_PER_DAY_FLAG, date, coverage, aiCommits }) {
   const total = rows.reduce((s, r) => s + r.minutes, 0);
   const lines = [
     MARK,
@@ -109,6 +109,8 @@ export function render(rows, { days = WINDOW_DAYS, flagPerDay = RUNS_PER_DAY_FLA
   ];
   const flagged = rows.filter((r) => r.flagged);
   lines.push('', flagged.length ? `Flagged (more than ${flagPerDay} completed attempts/day in this cohort): ${flagged.map((r) => `**${r.name}**`).join(', ')}. Check cancellations for concurrency churn; consider a longer schedule interval or path filters.` : `No workflow exceeded ${flagPerDay} completed attempts/day in this cohort.`);
+  // AI usage proxy (#5070 gap 6): agent-authored commit count only; token/$ spend lives in each agent's own billing (see 2026-08-08 audit).
+  if (Number.isSafeInteger(aiCommits)) lines.push('', `AI usage proxy: ${aiCommits} commits with a Claude-Session trailer on the default branch in the last ${days} days (count only; not token or dollar cost).`);
   lines.push('', 'Founder one-time action: set a GitHub spending limit / budget alert (Settings > Billing and licensing > Budgets and alerts) so a runaway workflow stops at a known cost.');
   return lines.join('\n');
 }
@@ -133,7 +135,7 @@ export function main({ repo = process.env.GITHUB_REPOSITORY, now = Date.now(), g
   const since = until - WINDOW_DAYS * 86400e3;
   const api = (path) => JSON.parse(gh(['api', path]));
   const { attempts, coverage } = collectAttempts(api, { repo, since, until });
-  const body = render(aggregate(attempts), { date: iso(until).slice(0, 10), coverage });
+  const body = render(aggregate(attempts), { date: iso(until).slice(0, 10), coverage, aiCommits: process.env.AI_COMMITS ? Number(process.env.AI_COMMITS) : undefined });
   // Search all open issues so an existing, unlabelled marker is still reused.
   // Closing the tracker ends that active tracker; this workflow never reopens it.
   const issues = readList(gh, `/repos/${repo}/issues?state=open&sort=created&direction=asc&per_page=100`, validIssue);
