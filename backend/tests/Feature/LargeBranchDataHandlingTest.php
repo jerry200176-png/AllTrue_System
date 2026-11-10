@@ -229,12 +229,19 @@ class LargeBranchDataHandlingTest extends TestCase
 
     private function seedCoursesForBranch(int $campusId, int $count): void
     {
+        // A fixed TeacherID=99 can equal the searched teacher after other tests
+        // advance MySQL's sequence, making every background course match too.
+        $teacher = User::create([
+            'LoginName' => 'background-lb-' . bin2hex(random_bytes(6)) . '@test.com',
+            'Name' => '分頁背景教師', 'PSW' => 'secret', 'type' => 'T', 'phone' => 912345672,
+        ]);
+        UserCampus::create(['CampusID' => $campusId, 'UserID' => $teacher->id, 'Admin' => 0, 'Approved' => 1]);
         for ($i = 0; $i < $count; $i++) {
             $student = Student::create([
                 'name' => "學生{$campusId}_{$i}", 'CampusID' => $campusId, 'ClassID' => 1,
                 'enable' => 1, 'MDT' => now(), 'Notify_Token' => '',
             ]);
-            $this->createCourse($student->id);
+            $this->createCourse($student->id, ['TeacherID' => $teacher->id]);
         }
     }
 

@@ -47,6 +47,8 @@ function course(id, studentId, studentName, paymentStatus, legacyFlagOnly = fals
 for (const { paymentStatus, legacyFlagOnly = false, actionLabel, badge } of STATES) {
   test(`director 課程查找 ${paymentStatus}${legacyFlagOnly ? ' (legacy flag only)' : ''}: payment badge reads ${badge} and ${actionLabel} opens that course's billing in place`, async ({ page }) => {
     await page.setViewportSize({ width: 1440, height: 900 });
+    await page.route('**/*', (route) => ['127.0.0.1', 'localhost'].includes(new URL(route.request().url()).hostname)
+      ? route.fallback() : route.abort('blockedbyclient'));
     const target = course(7101, 7201, '合成目標學生', paymentStatus, legacyFlagOnly);
     const other = course(7102, 7202, '合成其他學生', paymentStatus === 'paid' ? 'unpaid' : 'paid');
     const ledgerIds = [];

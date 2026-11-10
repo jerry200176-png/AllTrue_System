@@ -127,7 +127,7 @@ test('director task friction baseline (read-only)', async ({ page }) => {
     await nav('課程查找');
     await coursesSettled();
     // #4659 step 5: the action is the row's primary button, next to (not inside) the status pill.
-    const row = page.locator('tr.course-row', { has: page.locator('.payment-status-and-action', { hasText: LEGACY_FLAG_UNVERIFIED_LABEL }) }).locator('[data-testid="course-row-primary"][data-action="payment"]').first();
+    const row = page.locator('.course-row', { has: page.locator('.payment-status-and-action', { hasText: LEGACY_FLAG_UNVERIFIED_LABEL }) }).locator('[data-testid="course-row-primary"][data-action="payment"]').first();
     if (!(await visible(row))) return { reached: false, note: 'skipped: no fixture' };
     const ledgerLoaded = await clickAndWaitLedger(row);
     // A legacy-paid row opens the back-fill form directly (initialAction 'legacy-backfill'): that modal counts as reached.

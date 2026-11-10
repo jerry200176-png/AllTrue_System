@@ -238,7 +238,7 @@ export default {
               <thead><tr><th scope="col">帳期／服務期間</th><th scope="col">帳單付款登錄</th><th scope="col">未收金額</th></tr></thead>
               <tbody><tr v-for="period in monthlySummary.periods" :key="period.billing_period">
                 <th scope="row">{{ period.billing_period }}<small v-if="period.period_start"> {{ period.period_start }} ～ {{ period.period_end }}</small></th>
-                <td>{{ periodPaymentLabel(period.payment_status) }}<small v-if="period.source === 'unattributed'">尚無對應帳單</small><small v-if="period.amount_discrepancy">帳單總額與堂次試算不同，需核對約定</small></td>
+                <td>{{ periodPaymentLabel(period.payment_status) }}<small v-if="period.source === 'unattributed'">尚無對應帳單</small><div v-if="period.amount_discrepancy" class="tw:mt-2" data-testid="period-amount-mismatch"><p>帳單金額和已上堂數算的不同，請到帳單更正。</p><Button type="button" variant="secondary" :class="cls.second" class="tw:mt-2" data-testid="period-fix-invoice" @click="act('invoice')">到帳單更正</Button></div></td>
                 <td>{{ period.outstanding_amount == null ? '待核對' : `NT$ ${Number(period.outstanding_amount).toLocaleString()}` }}</td>
               </tr></tbody>
             </table>
@@ -450,7 +450,7 @@ export default {
 </template>
 
 <style scoped>
-.cmw{position:fixed;inset:0;z-index:1200;display:flex;justify-content:flex-end}
+.cmw{position:fixed;inset:0;z-index:var(--ds-z-overlay);display:flex;justify-content:flex-end}
 .cmw__scrim{position:absolute;inset:0;background:color-mix(in srgb,var(--ds-ink) 30%,transparent)}
 .cmw__panel{position:relative;display:flex;flex-direction:column;width:min(1120px,100vw);height:100%;background:var(--ds-canvas-soft);color:var(--ds-ink);box-shadow:var(--ds-shadow-2)}
 .cmw__head{padding:8px 20px 12px;border-bottom:1px solid var(--ds-hairline);background:var(--ds-canvas)}

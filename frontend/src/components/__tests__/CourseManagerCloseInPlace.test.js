@@ -47,7 +47,7 @@ describe('Course Manager 結束課程 (in-app #415)', () => {
 
   it('every list-load failure shows one page-level hint, so pause/resume, close and filters all get it (Codex r4290041474)', () => {
     expect(source).toContain('const courseListOutcome = createListLoadOutcome(listRefreshFailed);');
-    expect(source).toMatch(/<AtInlineAlert v-if="listRefreshFailed"[^>]*data-testid="course-list-refresh-failed"/);
+    expect(source).toMatch(/<Alert v-if="listRefreshFailed"[^>]*data-testid="course-list-refresh-failed"/);
     expect(source).toMatch(/\} = useCoursePause\(\{\s*courseLock: courseCloseFlow,\s*onChanged: async \(\) => \{\s*await loadCourses\(\);/);
   });
 

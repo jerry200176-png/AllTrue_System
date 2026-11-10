@@ -1004,7 +1004,8 @@ class ClassSessionController extends Controller
             });
 
         $schedules = $query->orderBy('id')->get()
-            ->filter(fn (Schedule $schedule): bool => $this->isMaterializableScheduledException($schedule, $sessionDate))
+            ->filter(fn (Schedule $schedule): bool => $this->isMaterializableScheduledException($schedule, $sessionDate)
+                || $this->isCrossDateRescheduleDestination($schedule))
             ->values();
         if ($schedules->isEmpty()) {
             return null;
@@ -1020,15 +1021,29 @@ class ClassSessionController extends Controller
             }
         }
 
-        // Without an exact requested-time match, only a single eligible row is
-        // safe to materialize. Multiple exceptions require an explicit slot.
-        if ($schedules->count() !== 1) {
+        // A valid recurring slot at the requested time is its own occurrence (e.g. a moved-in lesson
+        // lands on a contract weekday at another time): do not let the exception override it.
+        // Same-day reschedules (materializable without the cross-date rule) still own the contract time.
+        if ($requestedStart
+            && $schedules->every(fn (Schedule $sc): bool => !$this->isMaterializableScheduledException($sc, $sessionDate))
+            && $this->resolveProjectedMonthlySlot(
+            $studentClass,
+            (int) Carbon::parse($sessionDate)->dayOfWeekIso,
+            $requestedStart
+        )) {
             return null;
         }
 
-        $schedule = $schedules->first();
+        // Without an exact requested-time match, only a single eligible row is
+        // safe to materialize. Multiple exceptions require an explicit slot.
+        // Same-day rows (base behaviour) take precedence over moved-in rows from another date.
+        $sameDay = $schedules->filter(fn (Schedule $sc): bool => $this->isMaterializableScheduledException($sc, $sessionDate))->values();
+        $pool = $sameDay->isNotEmpty() ? $sameDay : $schedules;
+        if ($pool->count() !== 1) {
+            return null;
+        }
 
-        return $this->scheduleExceptionSlot($schedule);
+        return $this->scheduleExceptionSlot($pool->first());
     }
 
     /**
@@ -1043,6 +1058,34 @@ class ClassSessionController extends Controller
         }
 
         return ['start_time' => $start, 'end_time' => $end];
+    }
+
+    /**
+     * in-app #516: the destination of a cross-date reschedule (anchor row is 'rescheduled' on another day)
+     * is a real one-off occurrence. An explicit ensure-projected must be able to materialize it, otherwise
+     * a destination that was never materialized shows a chip the API rejects with 422. The read-repair
+     * path keeps skipping it (the reschedule flow owns materialization there).
+     */
+    private function isCrossDateRescheduleDestination(Schedule $schedule): bool
+    {
+        $anchorId = (int) ($schedule->original_schedule_id ?? 0);
+
+        if ($anchorId <= 0) {
+            return false;
+        }
+        $anchor = Schedule::query()->whereKey($anchorId)->where('student_course_id', $schedule->student_course_id)->where('status', 'rescheduled')->first();
+        if (!$anchor) {
+            return false;
+        }
+
+        // Partial legacy move: the source ClassSession was not moved yet. Creating the destination now would
+        // leave two actionable sessions for one lesson, so keep refusing until the source is cancelled/moved.
+        return !ClassSession::query()
+            ->where('StudentClassID', (int) $schedule->student_course_id)
+            ->whereDate('SessionDate', Carbon::parse((string) $anchor->schedule_date)->toDateString())
+            ->where('StartTime', 'like', substr((string) $anchor->start_time, 0, 5) . '%')
+            ->whereRaw("LOWER(COALESCE(Status, '')) <> 'cancelled'")
+            ->exists();
     }
 
     private function isMaterializableScheduledException(
@@ -1704,7 +1747,8 @@ class ClassSessionController extends Controller
         ClassSession $session
     ): bool
     {
-        if (!$this->isMaterializableScheduledException($schedule, $sessionDate, true)) {
+        if (!$this->isMaterializableScheduledException($schedule, $sessionDate, true)
+            && !$this->isCrossDateRescheduleDestination($schedule)) {
             return false;
         }
 
