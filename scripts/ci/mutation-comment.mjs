@@ -9,9 +9,10 @@ export const MARK = '<!-- mutation-advisory:v1 -->';
 const sectionMark = (s) => `<!-- mutation-advisory:${s} -->`;
 
 export function parseInfection(text) {
-  // Only the "Escaped mutants:" section; Timed Out / Skipped / Killed / Not Covered sections also list "[M] Name" lines.
-  const escaped = text.match(/^Escaped mutants:\s*$([\s\S]*?)(?=^[A-Z][A-Za-z ]* mutants:\s*$|(?![\s\S]))/m)?.[1] ?? '';
-  return [...escaped.matchAll(/^\s*\d+\)\s+(\S+?):(\d+)\s+\[M\]\s+(\w+)/gm)].map((m) => ({ file: m[1].replace(/^.*?\/(backend\/)?(?=app\/)/, 'backend/'), line: +m[2], mutator: m[3] }));
+  // Escaped (tests ran, mutant lived) and Not Covered (no test ran the line); Timed Out / Skipped / Killed / Errors are ignored.
+  const section = (name) => text.match(new RegExp(`^${name} mutants:\\s*$([\\s\\S]*?)(?=^[A-Z][A-Za-z ]* mutants:\\s*$|(?![\\s\\S]))`, 'm'))?.[1] ?? '';
+  const rows = (body, status) => [...body.matchAll(/^\s*\d+\)\s+(\S+?):(\d+)\s+\[M\]\s+(\w+)/gm)].map((m) => ({ file: m[1].replace(/^.*?\/(backend\/)?(?=app\/)/, 'backend/'), line: +m[2], mutator: m[3], ...(status && { status }) }));
+  return [...rows(section('Escaped')), ...rows(section('Not Covered'), 'NoCoverage')];
 }
 
 export function parseStryker(json) {

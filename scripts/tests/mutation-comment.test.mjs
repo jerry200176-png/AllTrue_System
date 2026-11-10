@@ -13,6 +13,14 @@ test('parseInfection reads file:line and mutator, path rooted at backend/', () =
   assert.deepEqual(parseInfection('no mutants'), []);
 });
 
+test('parseInfection reports Not Covered as NoCoverage, ignores Timed Out; uncovered-only is no all-clear', () => {
+  const m = (h, n, l) => `${h} mutants:\n=====\n\n${n}) /r/backend/app/${l}.php:${n}    [M] Plus\n\n`;
+  const out = parseInfection(m('Escaped', 1, 'A') + m('Not Covered', 2, 'B') + m('Timed Out', 3, 'C'));
+  assert.deepEqual(out.map((x) => [x.line, x.status]), [[1, undefined], [2, 'NoCoverage']]);
+  const only = renderSection('php', parseInfection(m('Not Covered', 2, 'B')));
+  assert.ok(only.includes('1 surviving') && only.includes('(no test covers it)') && !only.includes('No surviving'));
+});
+
 test('parseStryker keeps Survived and NoCoverage only', () => {
   const j = { files: { 'a.mjs': { mutants: [
     { mutatorName: 'ConditionalExpression', status: 'Survived', location: { start: { line: 3 } } },
