@@ -6,7 +6,7 @@
 - [ ] **R0** — docs / generated evidence / no production behavior
 - [ ] **R1** — low-risk reversible code (isolated fix, display); tests + rollback
 - [ ] **R2** — reversible domain/runtime change — required CI + rollback readiness
-- [ ] **R3** — data repair / destructive / privilege / financial / security boundary — `gate:security-data-reviewer` review; protected actions need the Founder
+- [ ] **R3** — data repair / destructive / privilege / financial / security boundary — protected Founder gate
 
 **Risk-Class:** R?  
 **Autonomy-Tier:** T? <!-- R0/T0, R1/T1, R2/T2, R3/T3 -->
@@ -29,7 +29,7 @@ Release-Impact: user-visible
 > **單人 repo Review Gate（#736）**：無第二位強制 reviewer 時，以「自動代理人 + 強制檢查」近似第二雙眼——
 > ①最終 head 審查證據（Codex 乾淨結論或記錄的獨立審查，見 `docs/sop/MERGE_SOP.md`；**merge 前需 resolve 所有 thread**）②高風險檔強制附測試（required check `High-Risk Test Gate`）③下方 self-review checklist。  
 > **T2/R2**：exact-target CI 全綠 + rollback readiness + 本 checklist 據實填寫即可由 Agent merge/deploy；無 protected Founder decision 時不需第二位人類（①的審查證據仍要）。
-> **T3/R3**：不含 migration 的程式 PR，required checks 綠、審查處理完即可由 Agent 合併（`FOUNDER_STANDING_DECISIONS.md` 2026-10-21（二）第 2 條）；正式資料修改／修復、非只新增型 migration、credential 等 protected action 前仍停下取得 Founder GO，不得以假身份或 review 取代該 gate。
+> **T3/R3**：合併與上線條件只看 [`FOUNDER_STANDING_DECISIONS.md`](docs/governance/FOUNDER_STANDING_DECISIONS.md) 與 [`RISK_BASED_MERGE_POLICY.md`](docs/governance/RISK_BASED_MERGE_POLICY.md)（此處不摘要）。
 
 ## 關聯 Issue（Refs / Closes 規則）
 <!-- 多階段、Epic、仍有一截沒做完 → 只填 Refs，不要寫 Closes，避免 GitHub 整張 issue 被關掉 -->

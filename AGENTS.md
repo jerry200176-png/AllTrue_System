@@ -4,11 +4,6 @@
 >
 > **AllTrue AI 公司 slogan：前人種樹，後人乘涼。** 做事前查 `docs/INDEX.md` 的 Start here 與任務對應節；做完把決策寫回文件，讓下一個 AI 不靠猜測。
 
-## 先收尾再開工
-
-- 開工前先看未結 PR（`gh api 'repos/{owner}/{repo}/pulls?state=open&per_page=100' --jq length`）。自己有衝突或紅燈的 PR，或 repo 未結 PR 超過 8 個：先修好或關掉，再開新分支。
-- 不開新的 tracker／研究 issue 來取代把既有的做完。刪 > 併 > 加。
-
 ## Worktree & path safety (canonical)
 
 **Default (Founder 2026-10-14（三）, [`FOUNDER_STANDING_DECISIONS.md`](docs/governance/FOUNDER_STANDING_DECISIONS.md)):** work in a Claude cloud session. Clone fresh from `origin/main`, branch with an accepted `scripts/ci/branch-policy.mjs` prefix, open a PR. No `agent-start`, no local preflight, no `.agent-session/manifest.json`. The PR diff, risk declaration, review and required checks are the delivery evidence.
@@ -23,12 +18,14 @@
 
 **Founder 常設決定**：唯一定義見 [`docs/governance/FOUNDER_STANDING_DECISIONS.md`](docs/governance/FOUNDER_STANDING_DECISIONS.md)（每次任務都適用；此處不寫摘要，避免分歧）。
 
-### 必讀（4 份，每次任務都讀；這是唯一一份必讀清單）
+### 必讀（6 份，每次任務都讀；這是唯一一份必讀清單）
 
 1. **`docs/governance/COMPANY_CONSTITUTION.md`**（公司根政策）
 2. **`docs/architecture/ALLTRUE_ENGINEERING_NORTH_STAR.md`**（現行工程主線；禁止整包重寫）
 3. **`docs/INDEX.md`** 的 **Start here** + 任務對應節（導航）
 4. **`docs/sop/MERGE_SOP.md`**（開 PR 到上線：審查、land queue、多 agent 並行規則）
+5. **`CLAUDE.md`** §紅線／黃線（P0 紅黃線與事故）
+6. **`docs/agents/token-discipline.md`**（省 token 作業規則）
 
 其他文件（含 `docs/AI_REGRESSION_LESSONS.md`）都是「碰到對應任務才查」，見下表。
 （不得假設任何 client 已自動載入規則檔，未載入時先讀原文，保留完整 P0。實際載入／截斷未能查證時記 unknown。）
