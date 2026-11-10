@@ -1,0 +1,48 @@
+# Local stdio only. Supply a dedicated SELECT-only identity, never the application account.
+[[sources]]
+id = "alltrue_diagnostics"
+dsn = "${ALLTRUE_READONLY_DSN}"
+connection_timeout = 10
+query_timeout = 5
+
+[[tools]]
+name = "execute_sql"
+source = "alltrue_diagnostics"
+readonly = true
+max_rows = 200
+
+[[tools]]
+name = "search_objects"
+source = "alltrue_diagnostics"
+
+[[tools]]
+name = "contract_chain"
+source = "alltrue_diagnostics"
+description = "Read one student's contract metadata oldest first, without names or assessment text."
+statement = "SELECT *, COUNT(*) OVER () AS matched_rows FROM contracts WHERE campus_id = ? AND student_id = ? ORDER BY start_date, class_id"
+readonly = true
+max_rows = 200
+[[tools.parameters]]
+name = "campus_id"
+type = "integer"
+description = "Campus identifier within the approved diagnostic scope"
+[[tools.parameters]]
+name = "student_id"
+type = "integer"
+description = "Student identifier, never a name or contact detail"
+
+[[tools]]
+name = "lesson_timeline"
+source = "alltrue_diagnostics"
+description = "Read scoped actual session metadata in date/time order; statuses are evidence, not a repaired usage count."
+statement = "SELECT *, COUNT(*) OVER () AS matched_rows FROM sessions WHERE campus_id = ? AND student_id = ? ORDER BY session_date, start_time, session_id"
+readonly = true
+max_rows = 2000
+[[tools.parameters]]
+name = "campus_id"
+type = "integer"
+description = "Campus identifier within the approved diagnostic scope"
+[[tools.parameters]]
+name = "student_id"
+type = "integer"
+description = "Student identifier, never a name or contact detail"

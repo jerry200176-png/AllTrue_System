@@ -1,0 +1,14 @@
+updates:
+  - id: staff-2026-11-07-ui-confirm-dialog
+    published_at: "2026-11-07"
+    audiences:
+      - director
+      - teacher
+    importance: digest
+    title: 確認視窗換新外觀
+    summary: 課程等頁面的確認視窗改成新樣式，預設停在取消。
+    items:
+      - category: improved
+        text: 確認視窗統一為新樣式：問題、後果一行，取消在左、動作在右，刪除類動作為紅色。
+    source_refs:
+      - "changelog:2026-11-07:ui-confirm-dialog"

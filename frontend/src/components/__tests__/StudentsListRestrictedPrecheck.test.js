@@ -18,7 +18,7 @@ describe('teacher precheck without hidden course disclosure', () => {
       return { ok: true, json: async () => body };
     });
     vi.stubGlobal('fetch', fetchMock);
-    const wrapper = shallowMount(StudentsList, { props: { branchId: 1 }, global: { renderStubDefaultSlot: true, stubs: { ConfirmDialogHost: false, CourseIntentChooser: false, AtDialog: false, teleport: true } } });
+    const wrapper = shallowMount(StudentsList, { props: { branchId: 1 }, global: { renderStubDefaultSlot: true, stubs: { ConfirmDialogHost: false, ConfirmDialog: false, AlertDialog: false, AlertDialogContent: false, AlertDialogHeader: false, AlertDialogTitle: false, AlertDialogDescription: false, AlertDialogFooter: false, AlertDialogCancel: false, AlertDialogAction: false, DialogHeader: false, DialogFooter: false, CourseIntentChooser: false, AtDialog: false, teleport: true } } });
     try {
       await flushPromises();
       await wrapper.find('.student-row').trigger('click');

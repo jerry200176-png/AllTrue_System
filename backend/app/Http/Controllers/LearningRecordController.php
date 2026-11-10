@@ -1597,12 +1597,21 @@ class LearningRecordController extends Controller
         }
         $reviewerId = $this->reviewerUserId($request);
 
-        return DB::transaction(function () use ($learningRecord, $data, $reviewerId) {
+        return DB::transaction(function () use ($request, $learningRecord, $data, $reviewerId) {
+            $courseId = (int) $learningRecord->StudentClassID;
+            $sc = StudentClass::query()->whereKey($courseId)->lockForUpdate()->first();
+            // Route bindings predate the transaction and may wait behind another rollback.
+            $learningRecord = LearningRecord::query()->whereKey($learningRecord->getKey())->lockForUpdate()->first();
+            if (!$learningRecord || (int) $learningRecord->StudentClassID !== $courseId) {
+                return response()->json(['message' => '評量歸屬已變更，請重新整理後再試'], 409);
+            }
+            if ($refusal = $this->campusRefusal($request, $this->campusIdForLearningRecord($learningRecord))) {
+                return $refusal;
+            }
             if ($learningRecord->Status !== 'approved') {
                 return response()->json(['message' => 'Only approved records can be rolled back'], 409);
             }
 
-            $sc = StudentClass::query()->whereKey($learningRecord->StudentClassID)->lockForUpdate()->first();
             if ($refusal = ContractMoneyState::waivedRefusal($sc, '此合約已確認不收，不能退回核准', 'course_waived')) {
                 return $refusal;
             }

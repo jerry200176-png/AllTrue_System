@@ -1,0 +1,14 @@
+updates:
+  - id: staff-2026-11-07-text-size
+    published_at: "2026-11-07"
+    audiences:
+      - director
+      - teacher
+    importance: digest
+    title: 新增字級設定
+    summary: 個人管理與帳號選單可選「標準／大」字。
+    items:
+      - category: added
+        text: 在「個人管理」或右上角帳號選單選字級：標準（預設）或大；各人自己的設定，換裝置要重選。
+    source_refs:
+      - "changelog:2026-11-07:text-size"

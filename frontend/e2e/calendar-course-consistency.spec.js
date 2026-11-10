@@ -612,8 +612,11 @@ test.describe('production acceptance — calendar/course parity', () => {
       await expect(group).toBeVisible({ timeout: 20_000 });
       const toggle = group.locator('.student-group-toggle');
       if (await toggle.getAttribute('aria-expanded') !== 'true') await toggle.click();
-      const row = group.locator('tr.course-row').filter({ hasText: subjectName }).first();
+      const targetCourseId = Number(valueOf(target, 'id', 'ID'));
+      expect(targetCourseId).toBeGreaterThan(0);
+      const row = group.locator(`.course-row[data-contract-id="${targetCourseId}"]`);
       await expect(row).toBeVisible({ timeout: 15_000 });
+      await expect(row).toContainText(subjectName);
       await row.getByRole('button', { name: '詳情', exact: true }).click();
 
       const detail = group.locator('.detail-panel').first();

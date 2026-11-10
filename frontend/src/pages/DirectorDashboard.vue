@@ -24,18 +24,7 @@
             <span v-if="engagementVisible && initialEngagement" class="dash-engagement-chip" data-guide="director-engagement-rank">
               <EngagementRankStrip :engagement="initialEngagement" :reduced-motion="engagementReducedMotion" />
             </span>
-            <div role="radiogroup" aria-label="字的大小" class="tw:flex tw:rounded-full tw:border tw:border-border tw:bg-card tw:p-1" data-testid="text-scale">
-              <button
-                v-for="step in textScaleSteps"
-                :key="step.key"
-                type="button"
-                role="radio"
-                :aria-checked="textScale === step.key"
-                class="tw:h-11 tw:min-w-12 tw:cursor-pointer tw:rounded-full tw:border-0 tw:px-2 tw:text-tpl-caption tw:font-bold tw:outline-none tw:focus-visible:ring-3 tw:focus-visible:ring-ring/50"
-                :class="textScale === step.key ? 'tw:bg-primary tw:text-primary-foreground' : 'tw:bg-transparent tw:text-tpl-secondary'"
-                @click="setTextScale(step.key)"
-              >{{ step.label }}</button>
-            </div>
+            <TextSizeToggle />
             <Button
               class="director-workbench-v2__refresh tw:size-11"
               variant="outline"
@@ -374,7 +363,7 @@ import { Sparkline } from '@/components/ui/sparkline';
 import { Button } from '@/components/ui/button';
 import { BlurFade, NumberTicker, ShineBorder } from '@/components/motion';
 import { owedCard, renewalCount, oldestEvaluationAge, plainTaskTitle, sevenDayEvalCounts } from '../lib/directorHomeCards.js';
-import { useTextScale } from '../composables/useTextScale.js';
+import TextSizeToggle from '../components/TextSizeToggle.vue';
 import RecentSubstitutesCard from '../components/substitute/RecentSubstitutesCard.vue';
 import TeacherAssessmentFillRateCard from '../components/TeacherAssessmentFillRateCard.vue';
 import EngagementRankStrip from '../components/EngagementRankStrip.vue';
@@ -656,7 +645,6 @@ const attendedCount = computed(() =>
 );
 
 // Bento cards (#4949 Phase A): presentation of values already loaded above; no new fetches.
-const { steps: textScaleSteps, current: textScale, setScale: setTextScale } = useTextScale();
 const owed = computed(() => owedCard(tuitionAlertRows.value));
 const oldestEvalDays = computed(() => oldestEvaluationAge(pendingEvaluations.value, localTodayYmd()));
 const TASK_LOOK = {

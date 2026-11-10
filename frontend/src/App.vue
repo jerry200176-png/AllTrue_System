@@ -422,6 +422,7 @@
             <span class="material-symbols-outlined account-menu-chevron" aria-hidden="true">expand_more</span>
           </summary>
           <div class="account-menu-panel">
+            <div class="account-menu-textsize" data-guide="app-text-size"><span>字級</span><TextSizeToggle /></div>
             <button type="button" class="account-menu-btn" @click="setActivePage('profile')">
               <span class="material-symbols-outlined" aria-hidden="true">manage_accounts</span>
               <span>個人管理</span>
@@ -857,6 +858,7 @@
 import { getActiveSpan, getRootSpan } from '@sentry/vue';
 import { computed, defineAsyncComponent, nextTick, ref, watch, onMounted, onBeforeUnmount } from 'vue';
 import { isDirectorRole } from './lib/roleCapabilities.js';
+import TextSizeToggle from './components/TextSizeToggle.vue';
 import AtSkeleton from './components/design-system/AtSkeleton.vue';
 import { supabase } from './supabase';
 import { useDirectorBranchAuthorization } from './lib/directorBranchAuthorization';
@@ -4050,6 +4052,7 @@ function formatBuildTime(rawIso) {
   gap: 4px;
 }
 
+.account-menu-textsize { display: flex; align-items: center; justify-content: space-between; gap: var(--ds-space-3); padding: var(--ds-space-2) var(--ds-space-3); }
 .account-menu-btn {
   border: 0;
   background: transparent;

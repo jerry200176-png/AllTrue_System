@@ -3,6 +3,14 @@
 > 本 repo 對 Founder 常設決定的**唯一**定義。`AGENTS.md`、`CLAUDE.md` 只放指向本檔的連結，不得另寫摘要或複本。
 > 艦隊層權威表：portfolio-ops `governance/AUTONOMY_POLICY.md`（portfolio-ops#134）。兩者不一致時開 PR 修正本檔；**較嚴格的規則優先**：艦隊層只能放寬本檔未另加限制之處，不得削弱本 repo 較嚴格的本地規則或安全規則（例如聚焦回歸測試、權威紀錄核對、產品 P0／紅線）。
 
+<a id="same-scope-approval-continuation"></a>
+## 2026-11-10（二）（同範圍批准接續；#5159）
+
+> Founder 原話（協調 session 確認轉達）：「我當然核准你呀 不要卡我好不好」；「那個會造成我卡的規則把他給我改掉」。
+
+本輪 #5159 已批准即記錄接續；同收件者、唯讀範圍、binding、原窗口及累計上限不變，routine SHA／精確 current-production pin 同步不重問，唯讀證據不綁無關 UI release。
+新 scope、財務結果、資料修復或 materially changed credential／權限仍須具體決定；CI/review、Environment／POP 控制照現況，不冒充 Founder 或繞 gate。
+
 ## 2026-10-28（二）之二（正式啟用只留真正危險的按鈕；對話中選「A」）
 
 > Founder 原話經協調 session 轉達（本 PR 的 session 未直接看到對話），**請 Founder 逐字核對**。

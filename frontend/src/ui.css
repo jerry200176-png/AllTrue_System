@@ -14,21 +14,26 @@
 @import "tailwindcss/utilities.css" layer(utilities) prefix(tw) important source(none);
 @import "tw-animate-css";
 @source "./components/ui";
+@source "./components/app-overlay";
 @source "./components/parent";
 @source "./pages/DirectorDashboard.vue";
+@source "./components/TextSizeToggle.vue";
 @source "./components/course-management";
+@source "./pages/CourseManagement.vue";
+@source "./components/CourseEditForm.vue";
+@source "./components/students/StudentLearningTimeline.vue";
 
 /* Light theme only. Dark comes later: add a `.dark { ... }` block remapping these to dark --ds-* tokens. */
 :root {
-  /* Large-type scale for template pages (elder-friendly, Apple Health style). rem-based; useTextScale sets --tpl-scale (1 / 1.15 / 1.3). */
-  --tpl-scale: 1;
-  --tpl-text-caption: calc(1.0625rem * var(--tpl-scale));
-  --tpl-text-body: calc(1.1875rem * var(--tpl-scale));
-  --tpl-text-list: calc(1.375rem * var(--tpl-scale));
-  --tpl-text-unit: calc(1.5rem * var(--tpl-scale));
-  --tpl-text-page: calc(2.5rem * var(--tpl-scale));
-  --tpl-text-num-sm: calc(3.25rem * var(--tpl-scale));
-  --tpl-text-num: calc(5rem * var(--tpl-scale));
+  /* Text size (字級): 標準 is the default (body 17, titles 28); 大 is body 19, titles 34 (html[data-text-size="large"] below).
+     rem-based; useTextSize sets the attribute. Template pages read these tokens only, never per-component sizes. */
+  --tpl-text-caption: 0.9375rem;
+  --tpl-text-body: 1.0625rem;
+  --tpl-text-list: 1.25rem;
+  --tpl-text-unit: 1.375rem;
+  --tpl-text-page: 1.75rem;
+  --tpl-text-num-sm: 2.75rem;
+  --tpl-text-num: 4rem;
   --tpl-control-height: 3.5rem;
   /* premium layer: gradient icon tiles, glass, shadow, glow (reuse on every template page) */
   --tpl-g-ink: linear-gradient(145deg, var(--ds-brand-ink-2), var(--ds-brand-ink));
@@ -75,6 +80,17 @@
   --ui-radius: 0.875rem;
   /* hero card: warm peach -> cream, from the brand palette */
   --ui-hero-gradient: linear-gradient(135deg, color-mix(in srgb, var(--ds-primary-soft) 38%, var(--ds-canvas)) 0%, var(--ds-primary-wash) 100%);
+}
+
+/* 大: older eyes first (Founder). Body 19, titles 34, numbers 52 / 80. */
+:root[data-text-size="large"] {
+  --tpl-text-caption: 1.0625rem;
+  --tpl-text-body: 1.1875rem;
+  --tpl-text-list: 1.375rem;
+  --tpl-text-unit: 1.5rem;
+  --tpl-text-page: 2.125rem;
+  --tpl-text-num-sm: 3.25rem;
+  --tpl-text-num: 5rem;
 }
 
 @theme inline {

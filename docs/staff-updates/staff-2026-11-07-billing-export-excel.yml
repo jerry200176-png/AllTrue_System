@@ -1,0 +1,13 @@
+updates:
+  - id: staff-2026-11-07-billing-export-excel
+    published_at: "2026-11-07"
+    audiences:
+      - director
+    importance: digest
+    title: 帳單清單可匯出 Excel
+    summary: 帳務中心按「匯出 Excel」，下載畫面上這份篩選後的帳單。
+    items:
+      - category: added
+        text: 帳單清單的「匯出 CSV」改成「匯出 Excel」，只匯出目前篩選後看到的列，一次最多 2000 筆。
+    source_refs:
+      - "changelog:2026-11-07:billing-export-excel"

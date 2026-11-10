@@ -25,6 +25,7 @@
 
 | Method | URI | Action | Auth |
 |--------|-----|--------|------|
+| POST | `api/v1/accounting/bills/export` | `BillExportController@export` | role+campus |
 | GET | `api/v1/accounting/contracts/{studentClass}/sessions` | `ContractSessionCoverageController@show` | role+campus |
 | POST | `api/v1/accounting/courses/{id}/waive` | `AccountingController@waiveCourse` | role+campus |
 | GET | `api/v1/accounting/ledger` | `AccountingController@ledger` | role+campus |
@@ -781,7 +782,10 @@
 
 | Method | URI | Action | Auth |
 |--------|-----|--------|------|
+| POST | `api/v1/school-merge` | `SchoolMergeController@merge` | role+campus |
+| GET | `api/v1/school-merge/history` | `SchoolMergeController@history` | role+campus |
 | GET | `api/v1/school-merge/suggestions` | `SchoolMergeController@suggestions` | role+campus |
+| POST | `api/v1/school-merge/{requestId}/undo` | `SchoolMergeController@undo` | role+campus |
 
 ## /api/v1/school-names
 

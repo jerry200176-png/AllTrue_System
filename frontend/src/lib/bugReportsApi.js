@@ -1,6 +1,7 @@
 import { MAX_BUG_ATTACHMENTS } from './bugReportAttachments';
 
 const API = '/api/v1';
+export const BUG_RATE_LIMIT_MESSAGE = '回報有點多，請稍後再送；急事請直接找主任。';
 
 export function getToken() {
   try {
@@ -26,6 +27,8 @@ async function json(res) {
       const details = Object.values(err.errors).flat().filter(Boolean).join('；');
       if (details) msg = details;
     }
+    // 意見與建議 limit: always the Chinese line, never a framework English "Too Many Attempts." or a bare status.
+    if (res.status === 429) msg = BUG_RATE_LIMIT_MESSAGE;
     const error = new Error(msg || `HTTP ${res.status}`);
     if (err.code) error.code = err.code;
     if (err.allowed_campus_ids) error.allowed_campus_ids = err.allowed_campus_ids;

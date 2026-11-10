@@ -192,7 +192,11 @@
   /* Mobile navigation and its "more" sheet occupy 10000–10002. Dialogs
      and confirmations must remain operable above that persistent control. */
   --ds-z-modal: 12001;
-  --ds-z-toast: 12002;
+  /* Stack, low to high: dropdown < sticky < overlay (side drawer) < modal (dialog, sheet) < confirm (alert dialog)
+     < popover (select, menu, tooltip: may open from inside any of them) < toast. components/ui reads these, never a number. */
+  --ds-z-confirm: 12002;
+  --ds-z-popover: 12003;
+  --ds-z-toast: 12004;
 
   --ds-motion-fast: 120ms;
   --ds-motion-base: 180ms;
