@@ -274,6 +274,32 @@ Route::prefix('v1')->group(function () {
             $logPipeline['tmpfs_healthy']   = $logPipeline['tmpfs_usage_pct'] < 80;
         }
         $sentryDsn = config('sentry.dsn') ?: env('SENTRY_LARAVEL_DSN');
+        // #5070 gap 3: aggregate business counts for the daily health workflow. Numbers only.
+        // super_admin sees all campuses; a director only their own campuses (auth_campus_ids); others get nothing.
+        $business = null;
+        $role = request()->attributes->get('auth_role');
+        $campusIds = array_map('intval', (array) request()->attributes->get('auth_campus_ids', []));
+        if ($role === 'super_admin' || ($role === 'director' && $campusIds !== [])) {
+            $today = now()->startOfDay();
+            $db = \Illuminate\Support\Facades\DB::class;
+            $scoped = $role !== 'super_admin';
+            // Authored today = filled-in content saved today. Attendance auto-creates an empty pending form
+            // (LearningRecordBackfillService), so created_at alone would hide a broken submission flow.
+            $records = $db::table('LearningRecord as lr')->where('lr.updated_at', '>=', $today)
+                ->whereNull('lr.VoidedAt')->whereRaw("TRIM(COALESCE(lr.Content, '')) <> ''");
+            $bills = $db::table('Invoice as i')->where('i.created_at', '>=', $today);
+            $logins = $db::table('user_login_activities as l')->where('l.login_at', '>=', $today)->where('l.success', 1);
+            if ($scoped) {
+                $records->join('StudentClass as sc', 'sc.ID', '=', 'lr.StudentClassID')->join('Student as st', 'st.id', '=', 'sc.StudentID')->whereIn('st.CampusID', $campusIds);
+                $bills->join('Student as st', 'st.id', '=', 'i.StudentID')->whereIn('st.CampusID', $campusIds);
+                $logins->whereIn('l.user_id', $db::table('UserCampus')->whereIn('CampusID', $campusIds)->where(fn ($q) => $q->where('Approved', true)->orWhereNull('Approved'))->select('UserID'));
+            }
+            $business = [
+                'lessons_written_today' => $records->count(),
+                'bills_created_today'   => $bills->count(),
+                'sign_ins_today'        => $logins->count(),
+            ];
+        }
         return response()->json([
             'status'    => 'ok',
             'timestamp' => now()->toIso8601String(),
@@ -286,7 +312,7 @@ Route::prefix('v1')->group(function () {
             'log_pipeline' => $logPipeline,
             'sentry' => ['configured' => !empty($sentryDsn), 'sdk_bound' => app()->bound('sentry')],
             'security' => ['debug_mode' => config('app.debug')],
-        ]);
+        ] + ($business === null ? [] : ['business_today' => $business]));
     });
 
     // ── Engagement / Gamification ──
