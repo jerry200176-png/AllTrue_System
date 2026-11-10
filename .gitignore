@@ -101,8 +101,6 @@ TelegramWebHook/Log/
 .cursor-server/
 .cursor/projects/
 .cursor/data/
-.cursor/skills-cursor/.cursor-managed-skills-manifest.json
-.cursor/skills-cursor/.sync-manifest.json
 .cloudflared/
 .docker/
 .ssh/

@@ -2,7 +2,7 @@
 
 > Moved verbatim from `CLAUDE.md` on 2026-10-31 so every session does not load ~10 KB of detail up front.
 > `CLAUDE.md` keeps a one-line index; references like `CLAUDE.md §G-007` resolve through it to this page.
-> Older gotchas live in `.cursorrules` §核心資料表 gotcha and `.cursor/rules/alltrue-system.mdc`.
+> Older gotchas (naming: `StudentSingIn` typo, `schedules` vs `StudentClass`) are in `docs/SYSTEM_TECH_GUIDE.md`.
 
 
 ### G-001：Teacher.id === User.id（同一人，兩張表 ID 相同）

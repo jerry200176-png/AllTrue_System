@@ -2,7 +2,7 @@
 
 > **狀態**：設計提案（2026-07-08）  
 > **上游參考**：[addyosmani/agent-skills](https://github.com/addyosmani/agent-skills) — 見 [`GUIDE_AGENT_SKILLS.md`](GUIDE_AGENT_SKILLS.md)  
-> **權威 SOP**：`.cursorrules`、`AGENTS.md`、`docs/INDEX.md` — **衝突時永遠以 AllTrue 為準**
+> **權威 SOP**：`CLAUDE.md`、`AGENTS.md`、`docs/INDEX.md` — **衝突時永遠以 AllTrue 為準**
 
 ---
 
@@ -16,7 +16,7 @@
 4. 有證據才宣告完成（CI + deploy + smoke）
 5. 寫回長期記憶（CHANGELOG / AI_REGRESSION）
 
-**不做**：整包安裝 24 個上游 skills；不建立與 `.cursor/rules/*.mdc` 平行的第二套 SOP。
+**不做**：整包安裝 24 個上游 skills；不建立與 `CLAUDE.md`／`docs/sop/` 平行的第二套 SOP。
 
 ---
 
@@ -27,9 +27,9 @@
     ↓
 AGENTS.md（First-read + Risk Tier）
     ↓
-.cursor/skills/alltrue-*（任務技能 — 本系統）
+.claude/skills/alltrue-*（任務技能 — 本系統）
     ↓
-.cursor/rules/*.mdc（模組規格 — 既有）
+.claude/skills 內其餘技能 / CLAUDE.md 黃線（模組規格）
     ↓
 docs/（權威業務規則）
 ```
@@ -38,14 +38,14 @@ docs/（權威業務規則）
 
 | 技能 | 檔案 | 優先級 |
 |------|------|--------|
-| **In-app 產品閉環入口** | [`.agents/skills/alltrue-inapp-product-loop/SKILL.md`](../.agents/skills/alltrue-inapp-product-loop/SKILL.md)（`.cursor/skills/alltrue-inapp-product-loop` symlink） | **P0 —「處理意見與建議」** |
-| 除錯分診 | [`.cursor/skills/alltrue-debugging/SKILL.md`](../.cursor/skills/alltrue-debugging/SKILL.md) | P0 |
-| 回歸測試 | [`.cursor/skills/alltrue-testing/SKILL.md`](../.cursor/skills/alltrue-testing/SKILL.md) | P0 |
-| 上線發布 | [`.cursor/skills/alltrue-release/SKILL.md`](../.cursor/skills/alltrue-release/SKILL.md) | P0 |
-| 安全審查 | [`.cursor/skills/alltrue-security/SKILL.md`](../.cursor/skills/alltrue-security/SKILL.md) | T3 |
-| Code Review | [`.cursor/skills/alltrue-code-review/SKILL.md`](../.cursor/skills/alltrue-code-review/SKILL.md) | 每 PR |
-| UI 品味（外部） | [`.cursor/skills/design-taste-frontend/SKILL.md`](../.cursor/skills/design-taste-frontend/SKILL.md) | 登入／landing 向；見 `GUIDE_AGENT_SKILLS.md` §taste-skill |
-| UI 既有站打磨（外部） | [`.cursor/skills/redesign-existing-projects/SKILL.md`](../.cursor/skills/redesign-existing-projects/SKILL.md) | 「網站變好看」優先；須服從 `RULE_DESIGN_SYSTEM.md` |
+| **In-app 產品閉環入口** | [`.agents/skills/alltrue-inapp-product-loop/SKILL.md`](../.agents/skills/alltrue-inapp-product-loop/SKILL.md)（`.claude/skills/alltrue-inapp-product-loop` symlink） | **P0 —「處理意見與建議」** |
+| 除錯分診 | [`.claude/skills/alltrue-debugging/SKILL.md`](../.claude/skills/alltrue-debugging/SKILL.md) | P0 |
+| 回歸測試 | [`.claude/skills/alltrue-testing/SKILL.md`](../.claude/skills/alltrue-testing/SKILL.md) | P0 |
+| 上線發布 | [`.claude/skills/alltrue-release/SKILL.md`](../.claude/skills/alltrue-release/SKILL.md) | P0 |
+| 安全審查 | [`.claude/skills/alltrue-security/SKILL.md`](../.claude/skills/alltrue-security/SKILL.md) | T3 |
+| Code Review | [`.claude/skills/alltrue-code-review/SKILL.md`](../.claude/skills/alltrue-code-review/SKILL.md) | 每 PR |
+| UI 品味（外部） | [`.claude/skills/design-taste-frontend/SKILL.md`](../.claude/skills/design-taste-frontend/SKILL.md) | 登入／landing 向；見 `GUIDE_AGENT_SKILLS.md` §taste-skill |
+| UI 既有站打磨（外部） | [`.claude/skills/redesign-existing-projects/SKILL.md`](../.claude/skills/redesign-existing-projects/SKILL.md) | 「網站變好看」優先；須服從 `RULE_DESIGN_SYSTEM.md` |
 
 ### 與既有 Cursor skills 的關係
 
@@ -64,9 +64,9 @@ docs/（權威業務規則）
 |-----------|---------|---------|
 | **處理 in-app 意見與建議** | `alltrue-inapp-product-loop` | `INAPP_PRODUCT_LOOP_EXECUTION_POLICY_V1` + `CHAT_BUG_SYSTEM` §3.6–§3.7 |
 | Bug 回報 / 行為異常 | `alltrue-debugging`（或先走 product-loop） | `AI_REGRESSION_LESSONS` 模組索引 |
-| 要改 `backend/` 既有檔 | `alltrue-testing` → DEV | `module-test.mdc`、P0 R1 |
+| 要改 `backend/` 既有檔 | `alltrue-testing` → DEV | `CLAUDE.md` Y1／Y2、P0 R1 |
 | PR merge / 上線 | `alltrue-release` | 公開 `version.json`／`deployment.json`；禁 Pi SSH |
-| auth / PII / RFID | `alltrue-security` | `module-security.mdc` |
+| auth / PII / RFID | `alltrue-security` | `alltrue-security` skill（STRIDE） |
 | PR 準備 merge | `alltrue-code-review` | FR 對照 + 多校區隔離 |
 | 網站變好看／UI 打磨 | `redesign-existing-projects`（± `design-taste-frontend`） | `RULE_DESIGN_SYSTEM.md`；一次一頁 |
 

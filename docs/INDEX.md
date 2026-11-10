@@ -33,7 +33,7 @@ UI 名稱不排除帳務／權限效果；路徑、關鍵字或搜尋 top-k 不�
 其他節可用 `node scripts/ci/docs-section.mjs --outline docs/INDEX.md` 定位；輸出含 path、行範圍、HEAD 與內容 SHA-256。
 舊摘要須對照來源版本；來源不符直接重讀。工具／章節失效時以 `rg -n '^#{1,6} ' <file>`
 定位後讀完整適用章節（含子節、例外及引用），不要把缺資料當允許或自行省略規則。
-搜尋含 `.agents/skills`、`.claude/skills`、`.cursor/rules`、`.cursor/skills`、`.github` 與
+搜尋含 `.agents/skills`、`.claude/skills`、`.github` 與
 `governance` 的必要受信任檔案；只掃任務相關 repo，排除 `.local`、`.env*`、secrets、私人證據。
 `docs/archive`、plans／proposals／舊 run 僅按需搜尋；未生效提案不能取代現行規則。
 
@@ -47,7 +47,7 @@ UI 名稱不排除帳務／權限效果；路徑、關鍵字或搜尋 top-k 不�
 | 這個服務誰負責？ | Machine catalog [`catalog/services.json`](catalog/services.json) → [`catalog/SERVICES_INDEX.md`](catalog/SERVICES_INDEX.md) |
 | production 怎麼部署？ | [`.github/workflows/deploy.yml`](../.github/workflows/deploy.yml) only (contract I1) |
 | 出事怎麼回滾？ | [`RUNBOOK_ROLLBACK.md`](RUNBOOK_ROLLBACK.md) + deploy prior SHA; data repairs use Repair Manifest rollback |
-| 哪份規則是權威？ | Constitution → Control Plane Contract → product overlay → adapters (`AGENTS`/`CLAUDE`/Cursor) |
+| 哪份規則是權威？ | Constitution → Control Plane Contract → product overlay → adapters (`AGENTS`/`CLAUDE`) |
 | 哪些只是歷史？ | Paths under `docs/archive/` + files marked Historical; radar `runs/` = generated evidence |
 | bug 如何追溯到 production？ | [`878-release-deploy-trace.md`](runbooks/878-release-deploy-trace.md) → in-app bug → PR → target SHA/deploy Actions → `deployment.json` backend/frontend identity → health/smoke → repair run/KG row ([`knowledge/KNOWLEDGE_GRAPH.md`](knowledge/KNOWLEDGE_GRAPH.md)) |
 | 文件是否仍有效？ | 日期／連結僅線索。核對適用批准、權威順序與明確 supersedes；規範對照現行政策，事實對照 code/config/runtime。衝突先調查是漂移、未實作或 regression，不盲選較新、較嚴或已在 main 者 |
@@ -151,7 +151,7 @@ AllTrue 現在以 **AllTrue AI 公司** 方式治理。使用者是 CEO；AI Age
 3. Company Core 目錄：[`docs/governance/`](governance/README.md)、[`WORKTREE_POLICY.md`](governance/WORKTREE_POLICY.md)、[`docs/sop/AGENT_PREFLIGHT.md`](sop/AGENT_PREFLIGHT.md)、[`docs/governance/EVIDENCE_CONTRACT.md`](governance/EVIDENCE_CONTRACT.md)。
 4. 規則單一出處：頂層文件只導航，不複製長 SOP；避免文件互相打架。
 5. 任何 AI 不靠記憶硬猜；先查資料，再動手。
-6. `.cursor/plans/**`、`*_ARCHIVE*` 與長篇歷史文件只供 `rg` / MemPalace 搜尋，不通讀；**runtime 衝突時**以 [`CONTROL_PLANE_CONTRACT.md`](CONTROL_PLANE_CONTRACT.md) 為準。
+6. `docs/archive/cursor-plans/**`、`*_ARCHIVE*` 與長篇歷史文件只供 `rg` / MemPalace 搜尋，不通讀；**runtime 衝突時**以 [`CONTROL_PLANE_CONTRACT.md`](CONTROL_PLANE_CONTRACT.md) 為準。
 
 ---
 
@@ -159,7 +159,7 @@ AllTrue 現在以 **AllTrue AI 公司** 方式治理。使用者是 CEO；AI Age
 
 | 檔案 | 內容 | Token 成本 |
 |------|------|-----------|
-| `.cursorrules` §P0 | P0 紅黃線與事故；未確認載入時依 `AGENTS.md` 讀原文 | 依 client 查證 |
+| `CLAUDE.md` §紅線／黃線 | P0 紅黃線與事故；未確認載入時依 `AGENTS.md` 讀原文 | 依 client 查證 |
 | `docs/AI_REGRESSION_LESSONS.md` | 最新防再犯規則摘要與模組索引 | 按需讀 |
 | `docs/agents/token-discipline.md` | 省 token 作業規則（PR 事件只在決策點動作、小輸出、批次 review、helper 限範圍） | 約 1 分鐘 |
 
@@ -172,32 +172,31 @@ AllTrue 現在以 **AllTrue AI 公司** 方式治理。使用者是 CEO；AI Age
   - **Worker 接手（M1 only）**：[`IMPL_HANDOFF_M1`](plans/2026-10-06-director-billing-recon-IMPL_HANDOFF_M1.md) · 貼上用 [`KICKOFF_M1`](plans/2026-10-06-director-billing-recon-KICKOFF_M1.md)（Claude Code／Codex）。
 
 ### 新功能 / Bug 修復
-1. `.cursor/rules/plan-as-prd-cross-functional.mdc` — PRD 14 節格式
-2. `.cursor/rules/bug-fix-plan.mdc` — Bug 調查 SOP（**§B0：修 bug 前必翻歷史 + 認領復發家族，降低復發率**）
-3. `docs/AI_REGRESSION_LESSONS.md` — 對應模組的已知坑（**§復發家族 F1–F6＝known-issues registry，改前先認領**）
-4. **In-app Bug 回報**（分診／上線後回寫）：`docs/CHAT_BUG_SYSTEM.md` §3.6–§3.7；**各階段 workflow／觸發／cloud 能否自行完成** → [`sop/DELIVERY_LIFECYCLE.md`](sop/DELIVERY_LIFECYCLE.md) 的 In-app 自動化對照表；`AI_REGRESSION_LESSONS.md` §R51／§R53；**關閉閘門** → `docs/GUIDE_BUG_CLOSURE_GATE.md`；**內部 ID 外洩盤點** → [`docs/GUIDE_UX_INTERNAL_IDENTIFIER_AUDIT.md`](GUIDE_UX_INTERNAL_IDENTIFIER_AUDIT.md)
-5. **In-app Bug 公開回覆白話範本**：`docs/GUIDE_SUPPORT_REPLY_MACROS.md`（10 個 macro，對應狀態機；送出前跑禁用詞檢查）
-6. **外部工程技能包（選用）**：[`docs/GUIDE_AGENT_SKILLS.md`](GUIDE_AGENT_SKILLS.md) — addyosmani/agent-skills ＋ [Leonxlnx/taste-skill](https://github.com/Leonxlnx/taste-skill) 本地化（§taste-skill）；[`docs/GUIDE_ALLTRUE_AGENT_SYSTEM_V1.md`](GUIDE_ALLTRUE_AGENT_SYSTEM_V1.md) — AllTrue 本地化 `.cursor/skills/alltrue-*`
-7. **資料修復／事故 execution package（需核准）**：[`docs/incidents/189-191-data-repair-plan.md`](incidents/189-191-data-repair-plan.md)、[`docs/incidents/189-191-execution-package.md`](incidents/189-191-execution-package.md)、[`docs/incidents/190-historical-billing-repair-plan.md`](incidents/190-historical-billing-repair-plan.md)、[`docs/incidents/190-reconciliation-report.md`](incidents/190-reconciliation-report.md)、[`docs/incidents/190-billing-technical-options.md`](incidents/190-billing-technical-options.md)、[`docs/incidents/189-191-dryrun-report.md`](incidents/189-191-dryrun-report.md)、[#1127 scheduler output evidence](incidents/1127-scheduler-evidence-execution-package.md)、[2026-07-18 新店出缺勤雙列](incidents/2026-07-18-xindian-duplicate-attendance-slots.md)、[scheduled-cross-sc execution](incidents/2026-07-18-scheduled-cross-sc-execution-package.md)、[木柵高瑞樸 7/30 GHA containment](incidents/muzha-gaorui-2026-07-30-option1-execution-package.md)（[#1466](https://github.com/jerry200176-png/AllTrue_System/pull/1466)）
-8. **Bug 關閉閘門**：[`docs/GUIDE_BUG_CLOSURE_GATE.md`](GUIDE_BUG_CLOSURE_GATE.md) — 根因/測試/驗證/回覆/文件/回滾六項必填
-9. **Release Execution Package**：[`docs/GUIDE_RELEASE_EXECUTION_PACKAGE.md`](GUIDE_RELEASE_EXECUTION_PACKAGE.md) — production 變更標準模板
-10. **#957 D1 Sprint**：[`docs/refactor/957-d1-sprint-design.md`](refactor/957-d1-sprint-design.md)、[`docs/runbooks/957-d1-deploy-runbook.md`](runbooks/957-d1-deploy-runbook.md)、[`docs/runbooks/957-d1-production-readiness-report.md`](runbooks/957-d1-production-readiness-report.md)、[`docs/runbooks/957-d1-pcr.md`](runbooks/957-d1-pcr.md)（SUPERSEDED，見 [`957-d1-pcr-r2.md`](runbooks/957-d1-pcr-r2.md)）
-11. **Course Continuity（#1382）**：[`docs/architecture/RFC_COURSE_CONTINUITY.md`](architecture/RFC_COURSE_CONTINUITY.md) · cohort SQL [`scripts/course-continuity-cohort-discovery.sql`](../scripts/course-continuity-cohort-discovery.sql) — **≠** #1130 歷史修復；MVP API：`/api/v1/course-contract-groups`（空表 migrate；不物理 merge）
-12. **任務導向 Repo 參考（按需）**：[`docs/architecture/STARRED_REPOSITORY_REFERENCE_INDEX.md`](architecture/STARRED_REPOSITORY_REFERENCE_INDEX.md) — 架構／新功能／複雜修復預設依問題選最小參考集；含自有 Repo 路由、Portfolio 過期標記、具日期的公開 Star 觀測、讀碼與授權證據。簡單修復不新增完整研究關卡；舊規劃包見 [`RFC_PLATFORM_OPTIMIZATION_FROM_STARS_2026.md`](architecture/RFC_PLATFORM_OPTIMIZATION_FROM_STARS_2026.md)
-13. **非標準課程時長／分鐘制扣堂調查（規劃，Draft，Founder D1-D7 已拍板，Phase 0A/0B 工具已 merge）**：[`docs/architecture/RFC_NONSTANDARD_SESSION_DURATION_BILLING.md`](architecture/RFC_NONSTANDARD_SESSION_DURATION_BILLING.md) — 現況：`#613 A1` 分鐘制引擎僅覆蓋補課（`schedules.type='extra'`）；購買堂數與排課 occurrence 數量目前被 `EnrollmentService.php:210-222` 硬性等式驗證鎖死（§2.5，D6 拍板以既有 `session_plan` 為 canonical occurrence source）；扣堂 opt-in 採 `deduction_basis` 欄位（D2，R59 改寫提案見 §10，未套用至規則正文）；共用課程包／自動跨期拆帳／entitlement 事件溯源第一版明確排除（D3/D4/D7）；第 6 次超額採 soft block + 明確確認（D5）。**Phase 0A**（唯讀盤點 `sessions:report-nonstandard-duration`）與**Phase 0B**（純 coverage calculator + dry-run contract，`LessonEntitlementCoverageCalculator`／`NonstandardDurationCoveragePreviewContract`）已實作並通過測試，**未啟用任何 production write 或 runtime 扣堂行為變更**；Phase 1/2 詳細計畫見文件 §15；Founder 尚待拍板事項見 §14；技術債見 `TECH_DEBT.md` `TD-072`；**不含業務碼改動**
-14. **現行工程主線／排課 occurrence 身分（規劃，Draft，schema DEV 需 Founder GO）**：[`docs/architecture/ALLTRUE_ENGINEERING_NORTH_STAR.md`](architecture/ALLTRUE_ENGINEERING_NORTH_STAR.md) · [`docs/architecture/RFC_SCHEDULE_OCCURRENCE_IDENTITY.md`](architecture/RFC_SCHEDULE_OCCURRENCE_IDENTITY.md) — 對齊 TD-076／R102／R103；**禁止**整包重寫前端或 Laravel；Phase 0＝盤點寫入／讀取路徑＋鎖現況 golden tests；與 Course Continuity、非標準時長 RFC **分軌**
-15. **已回報 ≠ 已入帳（#1827）**：[`docs/architecture/RFC_REPORTED_PAID_ACCOUNTING_SPLIT.md`](architecture/RFC_REPORTED_PAID_ACCOUNTING_SPLIT.md) — 兩步驟狀態機、通知／批次／課程頁帳務分頁。海森無會計角色，主任 confirm。**禁止**一登就綠色已繳費。與 TD-068 法定收據 **分軌**；改繳費提醒列入條件仍受 [`DIRECTOR_PAYMENT_ALERT_RULES.md`](DIRECTOR_PAYMENT_ALERT_RULES.md) 列管
+1. `docs/sop/DELIVERY_LIFECYCLE.md` — 需求／Bug 交付流程（修 bug 前必翻歷史 + 認領復發家族，降低復發率）
+2. `docs/AI_REGRESSION_LESSONS.md` — 對應模組的已知坑（**§復發家族 F1–F6＝known-issues registry，改前先認領**）
+3. **In-app Bug 回報**（分診／上線後回寫）：`docs/CHAT_BUG_SYSTEM.md` §3.6–§3.7；**各階段 workflow／觸發／cloud 能否自行完成** → [`sop/DELIVERY_LIFECYCLE.md`](sop/DELIVERY_LIFECYCLE.md) 的 In-app 自動化對照表；`AI_REGRESSION_LESSONS.md` §R51／§R53；**關閉閘門** → `docs/GUIDE_BUG_CLOSURE_GATE.md`；**內部 ID 外洩盤點** → [`docs/GUIDE_UX_INTERNAL_IDENTIFIER_AUDIT.md`](GUIDE_UX_INTERNAL_IDENTIFIER_AUDIT.md)
+4. **In-app Bug 公開回覆白話範本**：`docs/GUIDE_SUPPORT_REPLY_MACROS.md`（10 個 macro，對應狀態機；送出前跑禁用詞檢查）
+5. **外部工程技能包（選用）**：[`docs/GUIDE_AGENT_SKILLS.md`](GUIDE_AGENT_SKILLS.md) — addyosmani/agent-skills ＋ [Leonxlnx/taste-skill](https://github.com/Leonxlnx/taste-skill) 本地化（§taste-skill）；[`docs/GUIDE_ALLTRUE_AGENT_SYSTEM_V1.md`](GUIDE_ALLTRUE_AGENT_SYSTEM_V1.md) — AllTrue 本地化 `.claude/skills/alltrue-*`
+6. **資料修復／事故 execution package（需核准）**：[`docs/incidents/189-191-data-repair-plan.md`](incidents/189-191-data-repair-plan.md)、[`docs/incidents/189-191-execution-package.md`](incidents/189-191-execution-package.md)、[`docs/incidents/190-historical-billing-repair-plan.md`](incidents/190-historical-billing-repair-plan.md)、[`docs/incidents/190-reconciliation-report.md`](incidents/190-reconciliation-report.md)、[`docs/incidents/190-billing-technical-options.md`](incidents/190-billing-technical-options.md)、[`docs/incidents/189-191-dryrun-report.md`](incidents/189-191-dryrun-report.md)、[#1127 scheduler output evidence](incidents/1127-scheduler-evidence-execution-package.md)、[2026-07-18 新店出缺勤雙列](incidents/2026-07-18-xindian-duplicate-attendance-slots.md)、[scheduled-cross-sc execution](incidents/2026-07-18-scheduled-cross-sc-execution-package.md)、[木柵高瑞樸 7/30 GHA containment](incidents/muzha-gaorui-2026-07-30-option1-execution-package.md)（[#1466](https://github.com/jerry200176-png/AllTrue_System/pull/1466)）
+7. **Bug 關閉閘門**：[`docs/GUIDE_BUG_CLOSURE_GATE.md`](GUIDE_BUG_CLOSURE_GATE.md) — 根因/測試/驗證/回覆/文件/回滾六項必填
+8. **Release Execution Package**：[`docs/GUIDE_RELEASE_EXECUTION_PACKAGE.md`](GUIDE_RELEASE_EXECUTION_PACKAGE.md) — production 變更標準模板
+9. **#957 D1 Sprint**：[`docs/refactor/957-d1-sprint-design.md`](refactor/957-d1-sprint-design.md)、[`docs/runbooks/957-d1-deploy-runbook.md`](runbooks/957-d1-deploy-runbook.md)、[`docs/runbooks/957-d1-production-readiness-report.md`](runbooks/957-d1-production-readiness-report.md)、[`docs/runbooks/957-d1-pcr.md`](runbooks/957-d1-pcr.md)（SUPERSEDED，見 [`957-d1-pcr-r2.md`](runbooks/957-d1-pcr-r2.md)）
+10. **Course Continuity（#1382）**：[`docs/architecture/RFC_COURSE_CONTINUITY.md`](architecture/RFC_COURSE_CONTINUITY.md) · cohort SQL [`scripts/course-continuity-cohort-discovery.sql`](../scripts/course-continuity-cohort-discovery.sql) — **≠** #1130 歷史修復；MVP API：`/api/v1/course-contract-groups`（空表 migrate；不物理 merge）
+11. **任務導向 Repo 參考（按需）**：[`docs/architecture/STARRED_REPOSITORY_REFERENCE_INDEX.md`](architecture/STARRED_REPOSITORY_REFERENCE_INDEX.md) — 架構／新功能／複雜修復預設依問題選最小參考集；含自有 Repo 路由、Portfolio 過期標記、具日期的公開 Star 觀測、讀碼與授權證據。簡單修復不新增完整研究關卡；舊規劃包見 [`RFC_PLATFORM_OPTIMIZATION_FROM_STARS_2026.md`](architecture/RFC_PLATFORM_OPTIMIZATION_FROM_STARS_2026.md)
+12. **非標準課程時長／分鐘制扣堂調查（規劃，Draft，Founder D1-D7 已拍板，Phase 0A/0B 工具已 merge）**：[`docs/architecture/RFC_NONSTANDARD_SESSION_DURATION_BILLING.md`](architecture/RFC_NONSTANDARD_SESSION_DURATION_BILLING.md) — 現況：`#613 A1` 分鐘制引擎僅覆蓋補課（`schedules.type='extra'`）；購買堂數與排課 occurrence 數量目前被 `EnrollmentService.php:210-222` 硬性等式驗證鎖死（§2.5，D6 拍板以既有 `session_plan` 為 canonical occurrence source）；扣堂 opt-in 採 `deduction_basis` 欄位（D2，R59 改寫提案見 §10，未套用至規則正文）；共用課程包／自動跨期拆帳／entitlement 事件溯源第一版明確排除（D3/D4/D7）；第 6 次超額採 soft block + 明確確認（D5）。**Phase 0A**（唯讀盤點 `sessions:report-nonstandard-duration`）與**Phase 0B**（純 coverage calculator + dry-run contract，`LessonEntitlementCoverageCalculator`／`NonstandardDurationCoveragePreviewContract`）已實作並通過測試，**未啟用任何 production write 或 runtime 扣堂行為變更**；Phase 1/2 詳細計畫見文件 §15；Founder 尚待拍板事項見 §14；技術債見 `TECH_DEBT.md` `TD-072`；**不含業務碼改動**
+13. **現行工程主線／排課 occurrence 身分（規劃，Draft，schema DEV 需 Founder GO）**：[`docs/architecture/ALLTRUE_ENGINEERING_NORTH_STAR.md`](architecture/ALLTRUE_ENGINEERING_NORTH_STAR.md) · [`docs/architecture/RFC_SCHEDULE_OCCURRENCE_IDENTITY.md`](architecture/RFC_SCHEDULE_OCCURRENCE_IDENTITY.md) — 對齊 TD-076／R102／R103；**禁止**整包重寫前端或 Laravel；Phase 0＝盤點寫入／讀取路徑＋鎖現況 golden tests；與 Course Continuity、非標準時長 RFC **分軌**
+14. **已回報 ≠ 已入帳（#1827）**：[`docs/architecture/RFC_REPORTED_PAID_ACCOUNTING_SPLIT.md`](architecture/RFC_REPORTED_PAID_ACCOUNTING_SPLIT.md) — 兩步驟狀態機、通知／批次／課程頁帳務分頁。海森無會計角色，主任 confirm。**禁止**一登就綠色已繳費。與 TD-068 法定收據 **分軌**；改繳費提醒列入條件仍受 [`DIRECTOR_PAYMENT_ALERT_RULES.md`](DIRECTOR_PAYMENT_ALERT_RULES.md) 列管
 - 月結實際費用與續約期間（in-app #369）：[`已上堂次收費與期間預覽`](plans/2026-09-29-confirmed-monthly-fees.md)，準備中，未部署／更正正式帳務。
 - **主任學生帳務對帳 IA（2026-10-06）**：[`plans/2026-10-06-director-student-billing-reconciliation-ia.md`](plans/2026-10-06-director-student-billing-reconciliation-ia.md) — 帳務中心唯一入口；學生帳務檔顯示帳單／收款涵蓋之完整上課日；次要頁只深連；對齊 Stripe／Shopify hub-and-spoke。
-16. **混班型時段容量（#1889，in-app #238 剩餘）**：[`docs/plans/2026-08-17-mixed-class-type-occupancy.md`](plans/2026-08-17-mixed-class-type-occupancy.md) — 剩餘依即將加入／被代課班型；禁止較嚴上限蓋一對三。幽靈殘影見 §R114；本修復見 **§R116**。
-17. **側欄資訊架構與 UX 重構（提案，2026-08-20）**：[`plans/2026-08-20-sidebar-ia-ux-restructure.md`](plans/2026-08-20-sidebar-ia-ux-restructure.md) · [`research/2026-08-20-sidebar-ux-research.md`](research/2026-08-20-sidebar-ux-research.md) — 導航 registry、角色／分校情境、學生／課程／行事曆責任邊界、responsive drawer、無障礙與分階段 rollout。
-18. **學習檢測 MVP（#1934，Slice 1）**：[`architecture/RFC_LEARNING_ASSESSMENT_MVP.md`](architecture/RFC_LEARNING_ASSESSMENT_MVP.md) · [`research/2026-08-learning-assessment-mvp.md`](research/2026-08-learning-assessment-mvp.md) — 獨立於點名／學習紀錄／扣堂的檢測定義、結果登錄、主任審核與 audit；先不做線上題庫與家長端。
-19. **單科堂數制轉多科方案安全流程（2026-08-27，Draft，T3）**：[`plans/2026-08-27-single-course-to-package-conversion.md`](plans/2026-08-27-single-course-to-package-conversion.md) — 預檢、零歷史安全轉換、既有歷史導向新方案；不搬移付款／發票／出席／評量帳本。
-20. **出勤／評量一致性與主任指標（2026-08-28，Implementation slice）**：[`architecture/RFC_ATTENDANCE_ASSESSMENT_INTEGRITY.md`](architecture/RFC_ATTENDANCE_ASSESSMENT_INTEGRITY.md) — ClassSession 單一事件來源、到課必有評量、請假／缺席／取消不產生，主任首屏分開顯示缺表與待完成。
-21. **新生問班招生閉環 V1（runtime activated；E2E／retention sign-off pending）**：[`architecture/RFC_ADMISSIONS_FUNNEL_V1.md`](architecture/RFC_ADMISSIONS_FUNNEL_V1.md) · REP [`runbooks/admissions-funnel-v1-activation-execution-package.md`](runbooks/admissions-funnel-v1-activation-execution-package.md) · brief [`runbooks/admissions-funnel-v1-founder-activation-brief.md`](runbooks/admissions-funnel-v1-founder-activation-brief.md) — code default `ADMISSIONS_FUNNEL_V1` 仍為 off；production 已由 Founder-gated deploy 啟用，完整 staff／public E2E 與 retention／PII sign-off 仍需指定安全測試身份。
-22. **TrueFit v0.1（學習工作台）**：產品／架構邊界 [`truefit/PRODUCT_ARCHITECTURE_BRIEF.md`](truefit/PRODUCT_ARCHITECTURE_BRIEF.md) · 紙本考卷／AI／30 天保留／免重登提案 [`truefit/PAPER_EVIDENCE_AI_SSO_PROPOSAL.md`](truefit/PAPER_EVIDENCE_AI_SSO_PROPOSAL.md) · canonical 狀態 [`truefit/PROGRAM_STATUS.md`](truefit/PROGRAM_STATUS.md) — Slice 0–5、S6-00a/b 與 S6-01 已 merge；flags OFF，尚未 runtime verified／operationally accepted；新 evidence track 尚未實作且不得略過 T3 auth、PII、版權與老師確認閘門。
-23. **App shell 有界拆分（PLAN_READY / DEFERRED）**：[`plans/APP_SHELL_DECOMPOSITION_001.md`](plans/APP_SHELL_DECOMPOSITION_001.md) — 僅 badge／More+Search／Help 三切片；產品訊號驅動才 pull；不自動實作。
-24. **In-app Product Loop 執行政策**：[`plans/INAPP_PRODUCT_LOOP_EXECUTION_POLICY_V1.md`](plans/INAPP_PRODUCT_LOOP_EXECUTION_POLICY_V1.md) — 訊號分類、auto-fix envelope、PLAN_REQUIRED Decision Packet；非 FIFO。常設入口 skill：[`.agents/skills/alltrue-inapp-product-loop/SKILL.md`](../.agents/skills/alltrue-inapp-product-loop/SKILL.md)。
+15. **混班型時段容量（#1889，in-app #238 剩餘）**：[`docs/plans/2026-08-17-mixed-class-type-occupancy.md`](plans/2026-08-17-mixed-class-type-occupancy.md) — 剩餘依即將加入／被代課班型；禁止較嚴上限蓋一對三。幽靈殘影見 §R114；本修復見 **§R116**。
+16. **側欄資訊架構與 UX 重構（提案，2026-08-20）**：[`plans/2026-08-20-sidebar-ia-ux-restructure.md`](plans/2026-08-20-sidebar-ia-ux-restructure.md) · [`research/2026-08-20-sidebar-ux-research.md`](research/2026-08-20-sidebar-ux-research.md) — 導航 registry、角色／分校情境、學生／課程／行事曆責任邊界、responsive drawer、無障礙與分階段 rollout。
+17. **學習檢測 MVP（#1934，Slice 1）**：[`architecture/RFC_LEARNING_ASSESSMENT_MVP.md`](architecture/RFC_LEARNING_ASSESSMENT_MVP.md) · [`research/2026-08-learning-assessment-mvp.md`](research/2026-08-learning-assessment-mvp.md) — 獨立於點名／學習紀錄／扣堂的檢測定義、結果登錄、主任審核與 audit；先不做線上題庫與家長端。
+18. **單科堂數制轉多科方案安全流程（2026-08-27，Draft，T3）**：[`plans/2026-08-27-single-course-to-package-conversion.md`](plans/2026-08-27-single-course-to-package-conversion.md) — 預檢、零歷史安全轉換、既有歷史導向新方案；不搬移付款／發票／出席／評量帳本。
+19. **出勤／評量一致性與主任指標（2026-08-28，Implementation slice）**：[`architecture/RFC_ATTENDANCE_ASSESSMENT_INTEGRITY.md`](architecture/RFC_ATTENDANCE_ASSESSMENT_INTEGRITY.md) — ClassSession 單一事件來源、到課必有評量、請假／缺席／取消不產生，主任首屏分開顯示缺表與待完成。
+20. **新生問班招生閉環 V1（runtime activated；E2E／retention sign-off pending）**：[`architecture/RFC_ADMISSIONS_FUNNEL_V1.md`](architecture/RFC_ADMISSIONS_FUNNEL_V1.md) · REP [`runbooks/admissions-funnel-v1-activation-execution-package.md`](runbooks/admissions-funnel-v1-activation-execution-package.md) · brief [`runbooks/admissions-funnel-v1-founder-activation-brief.md`](runbooks/admissions-funnel-v1-founder-activation-brief.md) — code default `ADMISSIONS_FUNNEL_V1` 仍為 off；production 已由 Founder-gated deploy 啟用，完整 staff／public E2E 與 retention／PII sign-off 仍需指定安全測試身份。
+21. **TrueFit v0.1（學習工作台）**：產品／架構邊界 [`truefit/PRODUCT_ARCHITECTURE_BRIEF.md`](truefit/PRODUCT_ARCHITECTURE_BRIEF.md) · 紙本考卷／AI／30 天保留／免重登提案 [`truefit/PAPER_EVIDENCE_AI_SSO_PROPOSAL.md`](truefit/PAPER_EVIDENCE_AI_SSO_PROPOSAL.md) · canonical 狀態 [`truefit/PROGRAM_STATUS.md`](truefit/PROGRAM_STATUS.md) — Slice 0–5、S6-00a/b 與 S6-01 已 merge；flags OFF，尚未 runtime verified／operationally accepted；新 evidence track 尚未實作且不得略過 T3 auth、PII、版權與老師確認閘門。
+22. **App shell 有界拆分（PLAN_READY / DEFERRED）**：[`plans/APP_SHELL_DECOMPOSITION_001.md`](plans/APP_SHELL_DECOMPOSITION_001.md) — 僅 badge／More+Search／Help 三切片；產品訊號驅動才 pull；不自動實作。
+23. **In-app Product Loop 執行政策**：[`plans/INAPP_PRODUCT_LOOP_EXECUTION_POLICY_V1.md`](plans/INAPP_PRODUCT_LOOP_EXECUTION_POLICY_V1.md) — 訊號分類、auto-fix envelope、PLAN_REQUIRED Decision Packet；非 FIFO。常設入口 skill：[`.agents/skills/alltrue-inapp-product-loop/SKILL.md`](../.agents/skills/alltrue-inapp-product-loop/SKILL.md)。
 
 ### 後端開發
 | 需要什麼 | 去哪裡找 |
@@ -205,8 +204,8 @@ AllTrue 現在以 **AllTrue AI 公司** 方式治理。使用者是 CEO；AI Age
 | API 路由清單 | `backend/routes/api.php`（目前實作） |
 | DB schema / 資料表結構 | `backend/database/migrations/` + 相關 Model；production schema 另需現行證據 |
 | 高風險邏輯（繳費/堂數） | `docs/DIRECTOR_PAYMENT_ALERT_RULES.md` · 核帳拆分 [`architecture/RFC_REPORTED_PAID_ACCOUNTING_SPLIT.md`](architecture/RFC_REPORTED_PAID_ACCOUNTING_SPLIT.md) · 共用方案待收（Accepted；§5c 收尾定案，Phase 2 待實作驗證）[`architecture/RFC_SHARED_PACKAGE_COLLECTION.md`](architecture/RFC_SHARED_PACKAGE_COLLECTION.md) |
-| Migration 規則 | `.cursor/rules/module-migration.mdc` |
-| 測試規則 / Factory | `.cursor/rules/module-test.mdc` |
+| Migration 規則 | `CLAUDE.md` 黃線 Y5／Y6 |
+| 測試規則 / Factory | `CLAUDE.md` 黃線 Y1／Y2／Y7 · `.claude/skills/alltrue-testing/SKILL.md` |
 
 ### 前端開發
 | 需要什麼 | 去哪裡找 |
@@ -216,8 +215,8 @@ AllTrue 現在以 **AllTrue AI 公司** 方式治理。使用者是 CEO；AI Age
 | **UI Foundation（ops 結構/primitives/pilot）** | [`docs/design/ALLTRUE_UI_FOUNDATION.md`](design/ALLTRUE_UI_FOUNDATION.md) · audit [`UI_AUDIT_2026-07-26.md`](design/UI_AUDIT_2026-07-26.md) · sequencing [`UI_FOUNDATION_MIGRATION_SEQUENCING.md`](design/UI_FOUNDATION_MIGRATION_SEQUENCING.md) · evidence [`docs/design/evidence/`](design/evidence/) |
 | **UI 文案 / 空狀態 / Loading 規範** | `docs/GUIDE_UI_COPY.md` |
 | **前端 PR 設計驗收清單** | `docs/GUIDE_DESIGN_QA_SMOKE.md` |
-| Deploy SOP | `.cursor/rules/auto-frontend-deploy.mdc` |
-| UI 設計規則 | `.cursor/rules/module-frontend.mdc` |
+| Deploy SOP | [`RUNBOOK_MERGE_TO_ACTIVATION.md`](RUNBOOK_MERGE_TO_ACTIVATION.md) |
+| 前端禁忌（dist_build／token／品牌首屏） | `CLAUDE.md` 黃線 Y8／Y9 |
 | 行事曆週檢視資料合併規則 | `CLAUDE.md §G-007`（⛔ 禁止分散 if，必走 `calendarOccurrenceMerge.js`）|
 | 混班型時段容量（#1889） | [`plans/2026-08-17-mixed-class-type-occupancy.md`](plans/2026-08-17-mixed-class-type-occupancy.md) — 剩餘依班型；§R114 殘影分軌；**§R116** |
 | 行事曆 ClassSession 投影完整性 | `docs/GUIDE_PROJECTION_INTEGRITY.md`（list vs projection API；CI `ClassSessionProjectionTest`）|
@@ -260,7 +259,7 @@ AllTrue 現在以 **AllTrue AI 公司** 方式治理。使用者是 CEO；AI Age
 ### 資安審查
 | 需要什麼 | 去哪裡找 |
 |----------|---------|
-| STRIDE 速查 | `.cursor/rules/module-security.mdc` |
+| STRIDE 速查 | `.claude/skills/alltrue-security/SKILL.md` |
 | 已知安全漏洞 | `docs/SECURITY.md` |
 | 家長入口安全規則 | `docs/AI_REGRESSION_LESSONS.md §R18` |
 | 家長綁定威脅模型（設計） | [`security/PARENT_BINDING_THREAT_MODEL.md`](security/PARENT_BINDING_THREAT_MODEL.md) |
@@ -272,7 +271,7 @@ AllTrue 現在以 **AllTrue AI 公司** 方式治理。使用者是 CEO；AI Age
 | 需要什麼 | 去哪裡找 |
 |----------|---------|
 | Open 技術債清單 | `docs/TECH_DEBT.md` |
-| 清償流程 | `.cursor/rules/tech-debt.mdc` |
+| 清償流程 | `docs/TECH_DEBT.md`（Minor 且本次 out of scope 才登記；Critical／Major 當下修）|
 | **分層規則 + controller `DB::` ratchet** | `docs/ADR_003_layering_and_controller_db_ban.md`（新 DB:: 不得超基線；`node scripts/controller-db-ratchet.mjs`）|
 | **調課原子寫入邊界** | `docs/ADR_004_atomic_reschedule_boundary.md`（schedule chain／ClassSession／評量同交易，前端 committed gate）|
 | **排課多入口 × 具名 command 邊界** | `docs/ADR_005_scheduling_named_command_boundaries.md`（三 task surface；禁止 generic mutation；command 只收 intent target，不收回推導 domain truth）|
@@ -306,10 +305,8 @@ AllTrue 現在以 **AllTrue AI 公司** 方式治理。使用者是 CEO；AI Age
 ### 核心規則（每次任務按需查）
 | 檔案 | 一行說明 |
 |------|---------|
-| `.cursorrules` | P0 事故紀錄 + 工作流程總覽（自動載入）|
-| `CLAUDE.md` | Claude Code 版總覽（同 `.cursorrules`，不重複讀）|
+| `CLAUDE.md` | Claude Code 版總覽 + P0 紅黃線（自動載入）|
 | `AGENTS.md` | Agent 開工順序 + Commit SOP |
-| `.cursor/rules/p0-gate.mdc` | 5 紅線 3 黃線速查卡 |
 
 ### 防再犯
 | 檔案 | 一行說明 |
@@ -505,7 +502,7 @@ Wings：`alltrue-sessions`（對話）、`alltrue-docs`（文件）、`alltrue-c
 
 **L0 identity（可選）：** 複製 `docs/mempalace-identity.example.txt` → `~/.mempalace/identity.txt`
 
-**已移除：** Cursor / Claude MemPalace hooks（避免多路徑 ingest）。本機若仍設定 `~/.cursor/hooks.json` 或 `.claude/settings.local.json` MemPalace hooks，請刪除。
+**已移除：** MemPalace hooks（避免多路徑 ingest）。本機若仍設定 `~/.cursor/hooks.json` 或 `.claude/settings.local.json` MemPalace hooks，請刪除。
 
 ---
 
@@ -514,10 +511,10 @@ Wings：`alltrue-sessions`（對話）、`alltrue-docs`（文件）、`alltrue-c
 1. **先讀 INDEX.md（本檔）** → 確定要讀哪個文件 → 只讀那個。
 2. **只讀必讀錨點**；其餘章節除非 INDEX 點名否則不讀。
 3. **長文用 `rg`**：`rg -n "關鍵字" docs/某檔.md`（或 MemPalace `search`），不 eyeball 掃全文。
-4. **歷史 / archive**（`*ARCHIVE*`、`.cursor/plans/**`）→ 不通讀，只搜尋。
+4. **歷史 / archive**（`*ARCHIVE*`、`docs/archive/**`）→ 不通讀，只搜尋。
 5. **做完寫回**：`docs/changes/` fragment（依 `GUIDE_STAFF_UPDATES.md` 判斷公告）、`AI_REGRESSION`（新紅線）、`TECH_DEBT`（欠債）。
 
-**Cursor 已確認載入 `.cursorrules` 時不用重讀**；其他 client 依 `AGENTS.md` 查核，不把文件描述當載入證據。`CLAUDE.md` 仍依其 adapter 要求載入。
+其他 client 依 `AGENTS.md` 查核，不把文件描述當載入證據。`CLAUDE.md` 仍依其 adapter 要求載入。
 
 ---
 

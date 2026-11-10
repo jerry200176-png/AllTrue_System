@@ -30,7 +30,7 @@ No additional open-source design repos are adopted as SSOT. Patterns are extract
 |---|---|---|
 | [`docs/archive/PORSCHE_VISUAL_SYSTEM.md`](../../archive/PORSCHE_VISUAL_SYSTEM.md) | **Superseded 2026-06-06** | Archive only; banner points to `RULE_DESIGN_SYSTEM.md` |
 | [`docs/INDEX.md`](../../INDEX.md) | Current | Lists PORSCHE as ⛔ superseded |
-| [`.cursor/plans/bug154_design-governance_learning-handoff_2026-06-06.md`](../../../.cursor/plans/bug154_design-governance_learning-handoff_2026-06-06.md) | Historical handoff | Do not treat as live spec |
+| [`docs/archive/cursor-plans/bug154_design-governance_learning-handoff_2026-06-06.md`](../../archive/cursor-plans/bug154_design-governance_learning-handoff_2026-06-06.md) | Historical handoff | Do not treat as live spec |
 | Epic #687 rollout tracker (in `RULE_DESIGN_SYSTEM.md` §10) | Living tracker | Issue states authoritative; not a second design doc |
 
 No repo-root `DESIGN.md` existed before this recovery; `design.md` (lowercase) added as pointer per Phase 2 convention.

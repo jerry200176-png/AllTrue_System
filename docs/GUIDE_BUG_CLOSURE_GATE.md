@@ -2,7 +2,7 @@
 
 > **角色**：Reliability / QA / AI Agent 在宣告 bug「完成」前的強制檢查清單  
 > **權威流程**：[`CHAT_BUG_SYSTEM.md`](CHAT_BUG_SYSTEM.md) §3.6–§3.7（in-app 狀態機）；各階段 workflow／觸發／cloud 可否自行完成 → [`sop/DELIVERY_LIFECYCLE.md`](sop/DELIVERY_LIFECYCLE.md) 的 In-app 自動化對照表  
-> **衝突時**：P0 規則（`.cursorrules`）> 本指南 > 一般工程習慣
+> **衝突時**：P0 規則（`CLAUDE.md` 紅線）> 本指南 > 一般工程習慣
 
 ---
 
@@ -61,7 +61,7 @@ new → triaged → in_progress → resolved → (reporter-verify 或逾時) →
 ### Gate 1 — 根因
 
 - [ ] 能一句話說明「為什麼會發生」（老師看得懂的版本寫 in-app；技術版本寫 GitHub）
-- [ ] 已排除至少 2 個候選根因（`bug-fix-plan.mdc` §B1）
+- [ ] 已排除至少 2 個候選根因（`docs/AI_REGRESSION_LESSONS.md` §復發家族）
 - [ ] 高風險模組已對照 `AI_REGRESSION_LESSONS.md` 模組索引
 
 ### Gate 2 — 回歸測試
@@ -102,7 +102,7 @@ curl -fsS https://daan.lifenet.com.tw/api/v1/health
 
 ### Gate 4 — 使用者面向更新
 
-- [ ] 公開留言通過 [`user-facing-communication.mdc`](../.cursor/rules/user-facing-communication.mdc) 禁用詞檢查
+- [ ] 公開留言通過 [`CHAT_BUG_SYSTEM.md` §3.8](CHAT_BUG_SYSTEM.md) 禁用詞檢查
 - [ ] 說明「已做什麼」+「請您如何驗收」+「確認已修好 / 問題仍存在」
 - [ ] **禁止**只關 GitHub issue 而不回 in-app（§R51）
 
@@ -163,8 +163,8 @@ Reporter verify: pending / passed
 
 - [`CHAT_BUG_SYSTEM.md`](CHAT_BUG_SYSTEM.md) — in-app 狀態機與 Phase A/B/C
 - [`GUIDE_SUPPORT_REPLY_MACROS.md`](GUIDE_SUPPORT_REPLY_MACROS.md) — 公開回覆範本
-- [`.cursor/skills/alltrue-release/SKILL.md`](../.cursor/skills/alltrue-release/SKILL.md) — deploy 驗證 SOP
-- [`.cursor/skills/alltrue-testing/SKILL.md`](../.cursor/skills/alltrue-testing/SKILL.md) — 測試閘門
+- [`.claude/skills/alltrue-release/SKILL.md`](../.claude/skills/alltrue-release/SKILL.md) — deploy 驗證 SOP
+- [`.claude/skills/alltrue-testing/SKILL.md`](../.claude/skills/alltrue-testing/SKILL.md) — 測試閘門
 
 ---
 

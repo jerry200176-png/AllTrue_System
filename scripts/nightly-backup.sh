@@ -113,14 +113,6 @@ ls -1t "$MONTHLY_DIR"/alltrue_monthly_*.sql.gz 2>/dev/null | tail -n +$((KEEP_MO
   [ -n "$old" ] && rm -f "$old" && log "Removed monthly: $(basename "$old")"
 done
 
-# --- Step 3: Cursor plans 主題索引（失敗不阻斷備份）---
-log "Refreshing plan topic index ..."
-if python3 "$REPO_ROOT/.cursor/plans/list-plans-by-topic.py" --write-index -q; then
-  log "Topic index OK."
-else
-  log "WARN: topic index refresh failed (continuing)."
-fi
-
 log "=== Nightly backup done ==="
 
 # --- 最終通知：備份完成 ---

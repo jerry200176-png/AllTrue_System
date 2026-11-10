@@ -20,7 +20,7 @@ description: >-
 ## 3. Required workflow
 
 1. **讀 INDEX** → 定位模組章節 + `AI_REGRESSION_LESSONS` 文末索引表
-2. **認領復發家族**（F1–F6）— `bug-fix-plan.mdc` §B0
+2. **認領復發家族**（F1–F6）— `docs/AI_REGRESSION_LESSONS.md` §復發家族（修前先查 closed issues、認領家族；回歸測試須 revert-proof，見 `docs/sop/DELIVERY_LIFECYCLE.md`）
 3. **蒐證**（至少 2 個獨立來源）：
    - 公開 production identity／health，或**已授權**的 dump／probe workflow 輸出（⛔ **禁止 Pi SSH**；禁在 Pi 跑 `php artisan test` / phpunit）
    - GitHub issue / in-app 附件
@@ -41,7 +41,7 @@ description: >-
 - 多校區：每個 query 必須說明 `CampusID` / `branch_id` 隔離
 - `StudentSingIn`（歷史 typo）不可改表名
 - 行事曆週檢視唯一合法路徑：`calendarOccurrenceMerge.js`（G-007）
-- Bug 公開留言：白話、禁欄位名/SQL（`user-facing-communication.mdc`）
+- Bug 公開留言：白話、禁欄位名/SQL（`docs/CHAT_BUG_SYSTEM.md` §3.8）
 
 ## 6. Exit criteria
 

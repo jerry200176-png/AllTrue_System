@@ -39,7 +39,7 @@ branch=$(git branch --show-current)
 if [ "$branch" = "main" ]; then
   echo "❌ 禁止直接 push main！"
   echo "   請走 feature branch → PR → CI → merge 流程。"
-  echo "   違反此規則曾造成 5 次生產事故（見 .cursorrules 事故 A-F）"
+  echo "   違反此規則曾造成 5 次生產事故（見 CLAUDE.md 事故 A-F）"
   exit 1
 fi
 exit 0

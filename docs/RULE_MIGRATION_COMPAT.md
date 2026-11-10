@@ -2,7 +2,7 @@
 
 > **P2 規則（#734）**：確保任一版本程式碼能在新舊 schema 上運行，rollback 不卡死。
 >
-> **唯一真相出處**：本文件。`.cursor/rules/module-migration.mdc` 指向本文件 §快查段落。
+> **唯一真相出處**：本文件。`CLAUDE.md` 黃線 Y5／Y6 指向本文件 §快查段落。
 
 ---
 
@@ -137,6 +137,6 @@ public function down(): void
 
 ## 相關文件
 
-- `.cursor/rules/module-migration.mdc`（M1/M2/M3 速查卡）
+- `CLAUDE.md` 黃線 Y5／Y6（速查）
 - `OPERATIONS_RUNBOOK.md §B`（deploy + migration 上線流程）
 - `docs/SUPER_ADMIN_AND_MIGRATIONS.md`（super_admin migrate 操作）

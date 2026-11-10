@@ -16,7 +16,7 @@ use Tests\TestCase;
 /**
  * Regression: 歷史課程（Stop=1）當月若有出席堂次，仍須計入「當月學收」報表。
  *
- * 對應 PRD：.cursor/plans/歷史課程排除學收修正_0ff99e77.plan.md
+ * 對應 PRD：docs/archive/cursor-plans/archive/2026-04/歷史課程排除學收修正_0ff99e77.plan.md
  * FR-001 / FR-002：branchMonthlyTuition 與 export 不再以 Stop=0 過濾。
  * FR-003：course 行新增 is_stopped 欄位。
  */

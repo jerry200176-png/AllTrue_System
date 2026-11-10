@@ -58,7 +58,7 @@ test('current source wins over a stale reference; provenance is explicit', () =>
   assert.doesNotMatch(output, /## 📁 docs\/archive/);
 });
 test('hidden canonical rules work; secrets, untracked files and symlinks do not', () => {
-  assert.match(readSection(root, ['--outline', '.cursor/rules/p0-gate.mdc']), /p0-gate/);
+  assert.match(readSection(root, ['--outline', 'CLAUDE.md']), /5 條紅線/);
   for (const file of ['../AGENTS.md', '.env', 'docs/.env.private.md', '.cursor/.local/test-credentials.md', 'docs/../.env', 'docs/untracked-missing.md']) {
     assert.throws(() => readSection(root, ['--outline', file]));
   }
@@ -77,16 +77,16 @@ test('hidden canonical rules work; secrets, untracked files and symlinks do not'
 // task rows (21426577), not a new classifier. Decisions are evaluated separately
 // by the existing harness/deploy tests and the report's policy cases.
 const cases = [
-  ['UI', [['docs/INDEX.md', '前端開發']], ['RULE_DESIGN_SYSTEM.md', 'module-frontend.mdc']],
+  ['UI', [['docs/INDEX.md', '前端開發']], ['RULE_DESIGN_SYSTEM.md', 'GUIDE_UI_COPY.md']],
   ['schedule', [['docs/INDEX.md', '後端開發'], ['docs/INDEX.md', '前端開發'], ['AGENTS.md', '條件分支（依任務類型挑對應章節，不用全讀）']], ['RFC_SCHEDULE_OCCURRENCE_IDENTITY.md', 'R116']],
   ['billing', [['docs/INDEX.md', '後端開發'], ['AGENTS.md', '條件分支（依任務類型挑對應章節，不用全讀）']], ['DIRECTOR_PAYMENT_ALERT_RULES.md', 'RFC_REPORTED_PAID_ACCOUNTING_SPLIT.md']],
-  ['permission', [['docs/INDEX.md', '資安審查']], ['module-security.mdc', 'PARENT_BINDING_THREAT_MODEL.md']],
+  ['permission', [['docs/INDEX.md', '資安審查']], ['alltrue-security/SKILL.md', 'PARENT_BINDING_THREAT_MODEL.md']],
   ['in-app', [['AGENTS.md', '條件分支（依任務類型挑對應章節，不用全讀）']], ['alltrue-inapp-product-loop/SKILL.md', 'R51', 'R53']],
   ['release', [['docs/INDEX.md', '部署 / 維運']], ['deploy.yml', 'RUNBOOK_ROLLBACK.md']],
-  ['UI with money and permission effects', [['docs/INDEX.md', '前端開發'], ['docs/INDEX.md', '後端開發'], ['docs/INDEX.md', '資安審查']], ['RULE_DESIGN_SYSTEM.md', 'DIRECTOR_PAYMENT_ALERT_RULES.md', 'module-security.mdc']],
+  ['UI with money and permission effects', [['docs/INDEX.md', '前端開發'], ['docs/INDEX.md', '後端開發'], ['docs/INDEX.md', '資安審查']], ['RULE_DESIGN_SYSTEM.md', 'DIRECTOR_PAYMENT_ALERT_RULES.md', 'alltrue-security/SKILL.md']],
   ['restart continuity', [['docs/governance/RISK_BASED_MERGE_POLICY.md', 'Approval continuity within the authorized task']], ['session restart', 'continue independent authorized work']],
   ['superseded merge limit', [['docs/governance/FOUNDER_STANDING_DECISIONS.md', '2. 合併與 R3 上線分批']], ['**(a) 合併**', '取代', '不取代']],
-  ['old safety still applicable', [['docs/INDEX.md', '🚨 開工前必讀（每次都要）'], ['.cursor/rules/p0-gate.mdc', '⛔ 5 條紅線（違反 = P0 故障，零容忍）']], ['token-discipline.md', 'phpunit']],
+  ['old safety still applicable', [['docs/INDEX.md', '🚨 開工前必讀（每次都要）'], ['CLAUDE.md', '⛔ 5 條紅線（違反 = P0 故障，零容忍）']], ['token-discipline.md', 'phpunit']],
 ];
 for (const [name, reads, expected] of cases) test(`policy source coverage: ${name}`, () => {
   const text = reads.map(([file, title]) => section(fs.readFileSync(path.join(root, file), 'utf8'), title).text).join('\n');

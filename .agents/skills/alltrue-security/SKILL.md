@@ -20,7 +20,7 @@ description: >-
 
 ## 3. Required workflow
 
-1. 讀 `module-security.mdc` STRIDE 速查
+1. 走 STRIDE（欺騙／竄改／否認／洩漏／DoS／提權）逐項掃
 2. 確認新路由在 `role` + `require_campus` 群組內（R60）
 3. 檢查：token/PII 不可進 URL query、log、公開留言
 4. 多校區：每個 query 帶 `CampusID` / `branch_id`

@@ -71,7 +71,7 @@ jobs:
         with:
           script: |
             const marker = '<!-- missing-tests-warn -->';
-            const body = `${marker}\n⚠️ **Missing tests warning** — 此 PR 改了 \`backend/app/**\` 或 \`frontend/src/**\` 但沒有任何 \`tests/**\` 變更。\n\n依 P0 規則 R1：\`production code\` 必須先有測試 → CI 綠 → 才能改 production。\n\n如果這是 docs / CSS-only / refactor 無行為變更，請在 PR 描述說明；否則請補測試後再 merge。\n\nRefs: \`.cursor/rules/p0-gate.mdc\`、Execution #487。`;
+            const body = `${marker}\n⚠️ **Missing tests warning** — 此 PR 改了 \`backend/app/**\` 或 \`frontend/src/**\` 但沒有任何 \`tests/**\` 變更。\n\n依 P0 規則 R1：\`production code\` 必須先有測試 → CI 綠 → 才能改 production。\n\n如果這是 docs / CSS-only / refactor 無行為變更，請在 PR 描述說明；否則請補測試後再 merge。\n\nRefs: \`CLAUDE.md\` R1、Execution #487。`;
             const { owner, repo } = context.repo;
             const prNumber = context.payload.pull_request.number;
             const comments = await github.rest.issues.listComments({ owner, repo, issue_number: prNumber, per_page: 100 });

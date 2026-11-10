@@ -154,7 +154,7 @@ sudo systemctl daemon-reload && sudo systemctl restart ollama
 4. Restored branch protection (8 required checks, `enforce_admins: true`)
 5. Fresh clone attack simulation + gitleaks gate before visibility toggle
 
-**Do not re-run filter-repo casually** — force-push main is P0 incident class (see `.cursorrules` 事故 A).
+**Do not re-run filter-repo casually** — force-push main is P0 incident class (see `CLAUDE.md` 事故 A).
 
 ---
 

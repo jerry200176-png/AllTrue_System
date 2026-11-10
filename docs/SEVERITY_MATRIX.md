@@ -63,7 +63,7 @@ MemPalace issues use **MP-*** IDs below — never page CEO for MemPalace alone.
 |----|---------|-----|--------|
 | INFRA-01 | Pi disk >90% | P0 | pi-health / §Z |
 | INFRA-02 | Backup stale >24h | P1 | §P |
-| INFRA-03 | SSL expiry | P1 | .cursorrules IT |
+| INFRA-03 | SSL expiry | P1 | CLAUDE.md IT |
 | INFRA-04 | Google Drive sync failed | P1 | §P |
 
 ---

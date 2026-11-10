@@ -40,7 +40,7 @@ FORBIDDEN = [
 SKIP = (
     "docs/archive/", "docs/changes/", "docs/plans/", "docs/incidents/", "docs/audits/",
     "docs/research/", "docs/reviews/", "docs/proposals/", "docs/truefit/", "docs/radars/",
-    ".cursor/plans/", "operations/closeout/", "frontend/vendor-modules/",
+    "operations/closeout/", "frontend/vendor-modules/",
     "docs/CHANGELOG", "docs/governance/DECISION_RECORD_", "docs/governance/GOVERNANCE_CHANGELOG.md",
 )
 
@@ -70,7 +70,7 @@ def find_violations(docs):
 def main():
     root = Path(subprocess.check_output(["git", "rev-parse", "--show-toplevel"], text=True).strip())
     names = subprocess.check_output(
-        ["git", "-C", str(root), "ls-files", "-z", "--", "*.md", "*.mdc", ".cursorrules"], text=True
+        ["git", "-C", str(root), "ls-files", "-z", "--", "*.md", "*.mdc"], text=True
     ).split("\0")
     docs = {n: (root / n).read_text(encoding="utf-8", errors="replace") for n in names if n and (root / n).is_file()}
     problems = find_violations(docs)
