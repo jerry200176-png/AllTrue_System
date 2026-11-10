@@ -100,6 +100,7 @@ jobs:
           node --test scripts/ci/production-secret-triggers.test.mjs
           node --test scripts/ci/production-ssh-environment.test.mjs
           node --test scripts/tests/register-synthetic-director.test.mjs
+          node --test scripts/tests/task-reconcile.test.mjs
           node --test scripts/tests/land-queue.test.mjs scripts/tests/pr-overlap.test.mjs scripts/tests/land-queue-dispatch-contract.test.mjs
           node --test scripts/tests/repo-hygiene.test.mjs
           python3 scripts/tests/test_branch_hygiene.py
@@ -143,6 +144,9 @@ jobs:
 
       - name: Test bug detail dump contract
         run: python3 scripts/tests/test_bug_detail_dump.py
+
+      - name: Test fixed private reader with synthetic recipients only
+        run: python3 scripts/tests/test_case5124_private_reader.py
 
       - name: Test permanent write-back cursor
         run: python3 -m unittest discover -s scripts/bug-writeback -p 'test_writeback_cursor.py'
@@ -768,6 +772,10 @@ jobs:
       - name: Exception workflow focus reconciliation (pure logic, GitHub #1625)
         working-directory: frontend
         run: npm run test:exception-workflow-focus
+
+      - name: "All plain-node frontend tests (node --test; guard fails on any test file that never runs, W14)"
+        working-directory: frontend
+        run: npm run test:lib-node
 
       - name: "Component unit tests + coverage gate (Vitest, #731)"
         working-directory: frontend

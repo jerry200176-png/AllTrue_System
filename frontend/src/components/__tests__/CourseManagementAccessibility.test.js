@@ -8,7 +8,7 @@ const source = readFileSync(resolve(__dirname, '../../pages/CourseManagement.vue
 
 describe('CourseManagement disclosure accessibility', () => {
   it('uses native buttons for student group disclosure and the sibling focus action', () => {
-    expect(source).toContain('class="student-group-toggle"');
+    expect(source).toMatch(/<button\b[^>]*class="student-group-toggle(?:\s[^"]*)?"/);
     expect(source).toContain(':aria-expanded="expandedStudentGroups.has(group.key)"');
     expect(source).toContain(':aria-controls="studentGroupPanelId(group.key, studentGroupTab(group.key))"');
     expect(source).toContain('class="focus-btn"');
@@ -25,11 +25,11 @@ describe('CourseManagement disclosure accessibility', () => {
   });
 
   it('makes history courses a proper disclosure with a stable controlled region', () => {
-    expect(source).toContain('class="history-section__toggle"');
-    expect(source).toContain(':aria-expanded="expandedHistoryGroups.has(group.key)"');
-    expect(source).toContain(':aria-controls="historyGroupPanelId(group.key)"');
-    expect(source).toContain(':id="historyGroupPanelId(group.key)"');
-    expect(source).toContain('const historyGroupPanelId = (key)');
+    expect(source).toMatch(/<button\b[^>]*class="history-section__toggle(?:\s[^"]*)?"/);
+    expect(source).toContain(':aria-expanded="expandedHistoryGroups.has(historySegmentKey(group.key, segment.key))"');
+    expect(source).toContain(':aria-controls="historyGroupPanelId(group.key, segment.key)"');
+    expect(source).toContain(':id="historyGroupPanelId(group.key, segment.key)"');
+    expect(source).toContain('const historyGroupPanelId = (key, segmentKey)');
   });
 
   it('supports keyboard navigation and focus restoration for More menus without changing menu actions', () => {

@@ -128,19 +128,24 @@ describe('monthly attendance on the real course page', () => {
     expect(wrapper.find('.dates-panel-title').text()).toContain('2 / 購買 4 堂');
     expect(wrapper.find('.dates-panel-title').text()).not.toContain('已上 1 堂');
   });
-  it('keeps count and shared-package summaries on their existing paths', async () => {
+  it.each([{ countId: 1, packageId: 2 }, { countId: 2, packageId: 1 }])(
+    'keeps count and shared-package summaries on their existing paths (count=$countId, package=$packageId)', async ({ countId, packageId }) => {
     wrapper = shallowMount(CourseManagement, { props: { branchId: 7, userRole: 'director' } });
     await flushPromises();
     const state = wrapper.vm.$.setupState;
-    state.courses = [
-      { id: 1, student_id: 7, student_name: '測試學生', status: 'active', subject: 'math', payment_type: 'session', ScheduleMode: 'count', SessionCount: 8, sessions_purchased: 8, remaining_sessions: 6 },
-      { id: 2, student_id: 7, student_name: '測試學生', status: 'inactive', history_reason: 'completed', subject: 'math', payment_type: 'session', PackageID: 9, package_total_sessions: 12, package_remaining_sessions: 8 },
-    ];
-    state.expandedStudentGroups = new Set(['sid:7']); state.expandedHistoryGroups = new Set(['sid:7']);
-    state.expandedDates = new Set([1, 2]); await flushPromises();
-    const labels = wrapper.findAll('.dates-panel-title').map(node => node.text());
-    expect(labels[0]).toContain('2 / 購買 8 堂');
-    expect(labels[1]).toBe('上課日期（本科已上 0 堂｜方案共用 12 堂（已用 4 / 剩 8））');
+    const countContract = { id: countId, student_id: 7, student_name: '測試學生', status: 'active', subject: 'math', payment_type: 'session', ScheduleMode: 'count', SessionCount: 8, sessions_purchased: 8, remaining_sessions: 6 };
+    const packageContract = { id: packageId, student_id: 7, student_name: '測試學生', teacher_name: `共用方案合約${packageId}`, status: 'inactive', history_reason: 'completed', subject: 'math', payment_type: 'session', PackageID: 9, package_total_sessions: 12, package_remaining_sessions: 8 };
+    state.courses = [countContract, packageContract];
+    state.expandedStudentGroups = new Set(['sid:7']);
+    state.expandedDates = new Set([countContract.id, packageContract.id]); await flushPromises();
+    await wrapper.get('.history-section__toggle').trigger('click');
+    const countDetails = wrapper.findAll('.dates-row').find(node => node.element.previousElementSibling
+      ?.querySelector(`[data-course-id="${countContract.id}"]`));
+    const packageCard = wrapper.findAll('.history-course-card').find(node => node.text().includes(packageContract.teacher_name));
+    expect(countDetails).toBeTruthy();
+    expect(packageCard).toBeTruthy();
+    expect(countDetails.get('.dates-panel-title').text()).toContain('2 / 購買 8 堂');
+    expect(packageCard.get('.dates-panel-title').text()).toBe('上課日期（本科已上 0 堂｜方案共用 12 堂（已用 4 / 剩 8））');
     expect(fetcher.mock.calls.filter(([url]) => String(url).startsWith('/api/v1/class-sessions?'))).toHaveLength(0);
   });
   it('shows unavailable instead of a false zero on read failure and permits retry', async () => {

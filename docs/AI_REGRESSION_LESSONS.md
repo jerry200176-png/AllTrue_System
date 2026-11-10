@@ -224,6 +224,7 @@ last_reviewed: 2026-09-05
 - **根因層級**：F1 狀態收尾與 F3 排課生成的流程邊界缺口；一般 PATCH 沒有封鎖 leave→attendance-like，續報也沒有「試聽轉換」這個明確生命週期動作。
 - **強制規則**：leave 只能透過專用撤銷端點復原；缺尾堂時只復原目標堂並回報對帳警示。試聽轉正式須保留原堂歷史、取消未來試聽排課、建立不含試聽堂的正式課程，且必須具備冪等來源關聯。
 - **測試必補**：直接 leave→attended/scheduled 回 422；缺尾堂專用撤銷成功且不刪其他堂；試聽轉正式保留已上試聽堂、取消未來試聽堂、正式課程堂數與實際排課一致，重送回 409。
+- **2026-11-10 補充（#5124／in-app #527 防再發）**：一般狀態 PATCH 的拒絕不涵蓋調課 API。`RescheduleSessionService` 只在目標尚未結束時重設未上狀態；須先完成既有時間 fallback，以目標 clone 沿用 `shouldResetToScheduled`，僅在請假會恢復未上時、建立任何排程前回 `leave_requires_cascade_undo`。過去／今日已結束時段仍可更正且保留請假，不能全面凍結。回歸要先重現「購買堂數個可扣堂＋請假紀錄」調課後多出一個可扣堂，並保留其他已上課、評量與台帳；不得把合成重現當作正式個案的修復清單。
 - **延伸（2026-10-03，F1 狀態收尾）**：`convertTrial` 在交易內先結案試聽、取消未來堂次，之後衝堂／`purchaseBatch` 失敗以 `return` 回 409/422/500，交易照常 commit，試聽被停用卻無正式課程。交易內「已變更狀態後」的錯誤出口必須 throw（如 `HttpResponseException`）才會 rollback，不可 return；測試須斷言失敗後來源 `Stop`／`closed_reason`／未來堂次不變（`TrialConversionTest::test_schedule_conflict_rolls_back_source_trial_mutations`）。
 
 ### R130. 補課候選預覽必須先檢查學生跨合約占用（2026-08-29）
@@ -740,6 +741,7 @@ Intake consolidation regression (2026-10-17): the oldest trusted SourceRef issue
 
 - `CourseLeaveCascadeService` 才是堂數制請假順延的唯一權威路徑；只寫 `schedules.status='leave'` 會產生「行事曆有請假、`ClassSession` 沒順延、課程管理少一堂」的半套資料。
 - **強制規則**：任何請假 UI 的 API 失敗都必須明確報錯並停止，不可 fallback 到 Supabase-style `schedules` insert。
+- **相同失敗邊界（2026-11-09，in-app #529／#5149）**：學生頁的 API-compatible client 仍呼叫同一個 Laravel endpoint，不是第二個資料來源。首次 DELETE 被拒絕／連線結果未知時，不可 fallback 重送；wrapper 的 `error` 必須顯示。已知刪除成功後的清單刷新失敗，也不能當作重送刪除的理由。以原 handler＋實際 wrappers 和真 Vue 錯誤提示做 RED→GREEN，保留全部 server 刪除資格與授課／帳務 guards；此證據不代表正式個案的拒絕原因已查明。
 - **修復/補救**：既有 `ClassSession.Status='leave'` 但有效堂次少於購買堂數的資料，應透過受權限保護的 `leave-by-session` / cascade 路徑冪等修復，不可手動直接改 production DB。
 - **測試必補**：新增或修改請假流程時，必須覆蓋「已存在 leave 但尚未 cascade」重跑後只補一次尾堂，且有效堂次數等於購買堂數。
 
@@ -1591,6 +1593,8 @@ Intake consolidation regression (2026-10-17): the oldest trusted SourceRef issue
   - **落地方向**：根治計畫已寫成 [`docs/architecture/RFC_SCHEDULE_OCCURRENCE_IDENTITY.md`](architecture/RFC_SCHEDULE_OCCURRENCE_IDENTITY.md)（工程主線 [`ALLTRUE_ENGINEERING_NORTH_STAR.md`](architecture/ALLTRUE_ENGINEERING_NORTH_STAR.md)）。Agent 不得在未讀 RFC、未獲 Founder GO 前改 `schedules` 寫入形狀。前端 dedupe 仍是治標，直到 Phase 4+。
 - **測試**：`calendarExceptionMerge.test.js`、`calendarOccurrenceMerge.test.js`、`useCourseSessionsDisplay.test.js` 均以本案真實資料（SC#2688 schedules id 7583/7584/7588/7589、ClassSession id 24169；SC#1249 schedules id 7138/7139/7207/7208/7422/7423）新增回歸案例。
 - **延伸（2026-08-14，大安翟君和社會）**：R102 只擋了月結「超排」標記，課程管理「上課日期」標題仍走 `packageMemberSessionSummary()` 的堂數制「已上 / 購買」文案，月結課 `SessionCount` 被讀成購買上限。老師清單也不走週檢視的 `dedupeCalendarRowsByStudentSlot()`，同一學生同時段的兩筆 active 契約會並列。修法：月結標題改「已上 N 堂」；老師清單套用同一套學生+星期+開始時間去重。
+
+- **同類症狀、不同已證原因（2026-11-09，in-app #528／#5145）**：合成資料可獨立重現同一課程、同一實體 `ClassSession.id` 改時段後，快取仍以可變的日期／時間保留兩個 snapshot，消費端最後畫回舊時段。只在 `mergeSessionViewModels` 先合併已知同課程正整數實體 ID，再沿用既有 slot/status 規則；不得用課程全量覆蓋來刪除未涵蓋週次或授課歷史。回歸必須先 RED，再以真 Vue 調課 modal、committed mock POST 與新 projection 驗證只顯新卡。此證據不證明正式回報寫入成功，也不處理舊 HTTP 晚回；不得把全域 latest-request 丟棄不同週合法結果當作順帶修正。
 
 ### R103. in-app #225 的症狀被誤標成 R102 的鬼影方框問題；真正症狀（行事曆有、課程管理沒有）到今天才被正確分診（in-app #225/#226/#227，2026-08-08）
 

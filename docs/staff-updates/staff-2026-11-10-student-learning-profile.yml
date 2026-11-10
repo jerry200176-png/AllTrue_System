@@ -1,0 +1,18 @@
+updates:
+  - id: staff-2026-11-10-student-learning-profile
+    published_at: "2026-11-10"
+    audiences:
+      - director
+      - teacher
+    importance: digest
+    title: 學生學習檔案
+    summary: 從學生管理開啟，同頁查看授課進度、出席、成績及下一次校考。
+    items:
+      - category: improved
+        text: 點「學習檔案」，依科目或日期查閱上課紀錄。
+      - category: added
+        text: 成績區分段考與單元測驗，缺考和零分清楚顯示。
+      - category: improved
+        text: 只供查閱；老師僅看授權學生與科目，家長尚未開放。
+    source_refs:
+      - "changelog:2026-11-10:student-learning-profile"

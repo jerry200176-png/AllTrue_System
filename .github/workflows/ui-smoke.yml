@@ -151,6 +151,18 @@ jobs:
           SMOKE_TEACHER_PASS: ${{ secrets.SMOKE_TEACHER_PASS }}
         run: npm run test:e2e
 
+      - name: Director affected-path acceptance (private downloads, counts only)
+        working-directory: frontend
+        env:
+          CI: 'true'
+          SMOKE_BASE_URL: ${{ secrets.SMOKE_BASE_URL }}
+          SMOKE_DIRECTOR_USER: ${{ secrets.SMOKE_DIRECTOR_USER }}
+          SMOKE_DIRECTOR_PASS: ${{ secrets.SMOKE_DIRECTOR_PASS }}
+        run: |
+          npm run test:director-acceptance-helpers
+          npm run test:director-acceptance-privacy
+          npm run test:e2e:director-acceptance
+
       - name: Upload Playwright report
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
