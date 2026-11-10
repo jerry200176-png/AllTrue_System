@@ -21,11 +21,10 @@
         <span>預計時段 {{ result.start_time }}–{{ result.end_time }}（{{ result.duration_minutes }} 分鐘）；{{ isMonthly ? '月結會依實際上課計費' : `可預約額度 ${result.available_sessions ?? 0} 堂` }}</span>
         <span v-if="result.renewal_warning" class="manual-session-warning">⚠️ {{ result.renewal_message }}</span>
         <template v-if="result.conflict_detail">
-          <span v-if="result.conflict_detail.type === 'student_overlap'">請改選其他時段，或打開那堂課調整後再排。</span>
           <span v-if="!blockers.length">衝堂詳情：{{ result.conflict_detail.message || result.conflict_detail.type || '已有其他排課' }}</span>
           <ul v-else class="manual-session-blockers" aria-label="衝堂的課">
             <li v-for="b in blockers" :key="`${b.source}-${b.source_id}`">
-              {{ b.student_name || '另一位學生' }}{{ b.subject_name ? `・${b.subject_name}` : '' }}{{ b.course_period ? `（${b.course_period}）` : '' }}，{{ form.session_date }} {{ b.start_time.slice(0, 5) }}–{{ b.end_time.slice(0, 5) }}<template v-if="b.same_contract !== undefined">（{{ b.same_contract ? '本合約的課' : '另一份合約的課' }}）</template>
+              {{ b.student_name || '另一位學生' }}{{ b.subject_name ? `・${b.subject_name}` : '' }}{{ b.course_period ? `（${b.course_period}）` : '' }}，{{ form.session_date }} {{ String(b.start_time ?? '').slice(0, 5) }}–{{ String(b.end_time ?? '').slice(0, 5) }}<template v-if="b.same_contract !== undefined">（{{ b.same_contract ? '本合約的課' : '另一份合約的課' }}）</template>
               <button v-if="b.course_id" type="button" class="ghost small manual-session-open-blocker" @click="$emit('open-course', b)">打開那堂課</button>
             </li>
           </ul>

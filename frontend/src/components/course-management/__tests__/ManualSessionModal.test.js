@@ -74,11 +74,17 @@ describe('student conflict notice (in-app #530)', () => {
     const other = mount(ManualSessionModal, { props: studentProps(false) });
     const item = other.find('.manual-session-blockers li');
     expect(item.text()).toContain('測試學生・英文（10/1期），2026-10-14 16:00–17:00（另一份合約的課）');
-    expect(other.text()).toContain('請改選其他時段，或打開那堂課調整後再排');
+    expect(other.text().match(/請改選其他時段/g)).toHaveLength(1);
     expect(other.find('.manual-session-open-blocker').exists()).toBe(true);
     other.unmount();
     const own = mount(ManualSessionModal, { props: studentProps(true) });
     expect(own.find('.manual-session-blockers li').text()).toContain('（本合約的課）');
     own.unmount();
+    const noTimes = studentProps(false);
+    delete noTimes.result.conflicts[0].overlap_details[0].start_time;
+    delete noTimes.result.conflicts[0].overlap_details[0].end_time;
+    const bare = mount(ManualSessionModal, { props: noTimes });
+    expect(bare.find('.manual-session-blockers li').text()).toContain('測試學生・英文');
+    bare.unmount();
   });
 });

@@ -615,9 +615,11 @@ class ManualSessionBookingTest extends TestCase
     public function test_student_conflict_lists_every_overlapping_lesson(): void
     {
         $date = Carbon::today()->addDays(7)->toDateString();
-        $this->plannedSession($this->otherCourse(), 7);
-        $this->plannedSession($this->otherCourse(), 7);
+        $this->plannedSession($this->otherCourse(), 7); // 16:00-17:00
+        // Touching intervals are allowed for one student, so the second lesson starts where the first ends.
+        ClassSession::create(['StudentClassID' => $this->otherCourse()->ID, 'SessionDate' => $date, 'StartTime' => '17:00:00', 'EndTime' => '18:00:00', 'Status' => 'scheduled']);
 
+        // 16:30-17:30 overlaps both lessons.
         $this->checkStudentSlot('16:30', $date)->assertStatus(422)
             ->assertJsonCount(2, 'conflicts.0.overlap_details');
     }
