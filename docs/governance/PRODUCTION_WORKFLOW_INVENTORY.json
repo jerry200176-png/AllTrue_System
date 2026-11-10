@@ -23,7 +23,7 @@
   "retired_workflows": {
     "bug-phase-c-allowlist.yml": {
       "retired_at": "2026-10-19",
-      "reason": "Runner→SSH→tinker engineering Phase-C resolves retired (ADR-POP-015 / ADR-POP-008). Autodispatch of new allowlist IDs fails closed.",
+      "reason": "Runner→SSH→tinker engineering Phase-C resolves retired (ADR-POP-015 / ADR-POP-008). The workflow and its autodispatch were deleted on 2026-11-11.",
       "evidence": ["PR #4289 merge 20f51a19966be14438cca98fd85ae42c4a9104ac", "Remote step throws legacy_ssh_phase_c_retired before BugReportService writes", "Workflow, its autodispatch and the request file deleted 2026-11-11"],
       "replacement": "bug-followup-comment.yml (comment-only) and the Pi-local POP operation inapp-report-resolve-after-deploy (operations/catalog.yaml); see docs/sop/DELIVERY_LIFECYCLE.md.",
       "production_authority_removed": true
