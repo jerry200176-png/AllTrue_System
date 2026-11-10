@@ -1,0 +1,13 @@
+updates:
+  - id: staff-2026-11-11-course-row-payment-badge
+    published_at: "2026-11-11"
+    audiences:
+      - director
+    importance: digest
+    title: 課程查找的繳費狀態不再被按鈕蓋住
+    summary: 繳費狀態文字較長時會自動換行，完整顯示在「繳費」欄內。
+    items:
+      - category: fixed
+        text: 「需核對」等較長的繳費狀態，不會再被「補登收款」「管理課程」按鈕擋住。
+    source_refs:
+      - "changelog:2026-11-11:inapp-532-course-row-payment-badge"

@@ -115,6 +115,13 @@ for (const { paymentStatus, legacyFlagOnly = false, actionLabel, badge } of STAT
     const heading = page.getByRole('heading', { name: '課程查找', exact: true }).first();
     await expect(heading).toBeVisible({ timeout: 15_000 });
 
+    // In-app #532: the payment badge stays inside its own column, so the row's buttons never cover its text.
+    const badgeCell = page.locator(`.payment-status-and-action[data-course-id="${target.id}"] .payment-status-badge`);
+    await expect(badgeCell).toBeVisible({ timeout: 15_000 });
+    const badgeBox = await badgeCell.boundingBox();
+    const actionsBox = await page.locator(`.course-row:has(.payment-status-and-action[data-course-id="${target.id}"]) [data-testid="course-row-actions"]`).boundingBox();
+    expect(badgeBox.x + badgeBox.width, 'payment badge must end before the row actions start').toBeLessThanOrEqual(actionsBox.x + 1);
+
     await expectCoursePaymentEntryOpensLedgerInPlace(page, { pageHeading: heading, courses, actionLabel });
     await expect(page.locator(`.payment-status-and-action[data-course-id="${target.id}"] .payment-status-badge`)).toHaveText(badge);
     expect(ledgerIds).toEqual([target.id]);
