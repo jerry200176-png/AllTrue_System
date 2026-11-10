@@ -176,11 +176,6 @@ class ContractSessionSchedulePropertiesTest extends TestCase
 
     public function test_count_mode_iso7_and_js0_sunday_give_the_same_result(): void
     {
-        $this->markTestSkipped(
-            'Real counterexample, tracked in #4994: start=2026-01-05, N=2, slots=[{weekday 0, 09:00}] gives 1 row, '
-            . 'but weekday 7 gives 2 (buildSessionsForCount drops JS-0 Sunday). Remove this line when #4994 is fixed.'
-        );
-
         $this->limitTo(self::ITERATIONS)
             ->forAll($this->slotsGen(), $this->startGen(), Generators::choose(1, 40))
             ->then(function (array $slots, string $start, int $n) {
