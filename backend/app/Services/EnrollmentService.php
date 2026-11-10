@@ -1193,7 +1193,7 @@ class EnrollmentService
             })->whereRaw("LOWER(COALESCE(NULLIF(ScheduleMode, ''), 'count')) = ?", ['date'])->exists();
             if ($overlap && $base()->where($overlapping)->exists()) {
                 return response()->json([
-                    'message' => '續報的新課起始日必須在原課程結束之後，請調整起始日或改用「續課」。',
+                    'message' => '這門新課的日期和原課程重疊，不能當作下一期續報。要和原課程同時上：填寫原因後按「建立獨立課程」。要接在原課程之後：把起始日改到原課程結束後，或改用「續課」。',
                     'code' => 'renewal_range_overlap',
                 ], 422);
             }
