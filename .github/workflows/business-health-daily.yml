@@ -48,7 +48,9 @@ jobs:
           bad = []
           if weekday and b["lessons_written_today"] == 0:
               bad.append("no lessons written today (weekday)")
-          nums = "lessons=%s, bills=%s, sign_ins=%s" % (b["lessons_written_today"], b["bills_created_today"], b["sign_ins_today"])
+          # The repo is public: report only whether each count is above zero, never the business numbers.
+          nums = ", ".join("%s=%s" % (k, "yes" if b[f] > 0 else "no") for k, f in (
+              ("lessons", "lessons_written_today"), ("bills", "bills_created_today"), ("sign_ins", "sign_ins_today")))
           print("%s|%s (%s)" % ("1" if bad else "0", "; ".join(bad) or "ok", nums))
           PY
           )"
@@ -75,7 +77,7 @@ jobs:
           set -euo pipefail
           title="[ops-alert] Business health check red"
           n="$(gh issue list --repo "$GITHUB_REPOSITORY" --state open --label area:ops --search "\"$title\" in:title" --json number -q '.[0].number // empty')"
-          msg="${SUMMARY} - ${RUN_URL} (aggregate counts only)"
+          msg="${SUMMARY} - ${RUN_URL} (yes/no only, no counts)"
           if [ -n "$n" ]; then
             gh issue comment "$n" --repo "$GITHUB_REPOSITORY" --body "$msg"
           else
