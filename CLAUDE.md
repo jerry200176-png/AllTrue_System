@@ -1,11 +1,11 @@
 # AllTrue — CLAUDE.md（Claude Code 自動載入）
 
 > 任何 AI 讀取此專案時，先遵守 **[`docs/governance/COMPANY_CONSTITUTION.md`](docs/governance/COMPANY_CONSTITUTION.md)** 與 **[`docs/governance/PRECEDENCE.md`](docs/governance/PRECEDENCE.md)**。  
-> **操作者：** 艦隊 [portfolio-ops `AUTONOMY_POLICY`](https://github.com/jerry200176-png/portfolio-ops/blob/main/governance/AUTONOMY_POLICY.md)。T0/T1 可在 required checks、review 與證據通過後由 Agent squash-merge；T2 另需 independent review 與 rollback boundary；T3 / protected 工作在任何 production activation、data repair、migration/schema cutover、billing／entitlement、identity/authz、破壞性動作、backup restore、security-sensitive credential 或重大產品方向前停下等 Founder GO；但 Founder 指示的工作（含 R3 程式）端到端進行、R3 range 通過自動控制即上線，閘門是擋外來輸入（見 `FOUNDER_STANDING_DECISIONS.md` 2026-10-21（二）之二）；哪些按鈕可以不按，只以同檔 2026-10-28（二）之二為準（此處不摘要）。Pi SSH 只准唯讀（見 R6）。
+> **操作者：** 艦隊 [portfolio-ops `AUTONOMY_POLICY`](https://github.com/jerry200176-png/portfolio-ops/blob/main/governance/AUTONOMY_POLICY.md)。T0/T1 可在 required checks、review 與證據通過後由 Agent squash-merge；T2 另需 independent review 與 rollback boundary；T3 / protected 工作在任何 production activation、data repair、migration/schema cutover、billing／entitlement、identity/authz、破壞性動作、backup restore、security-sensitive credential 或重大產品方向前停下等 Founder GO；但 Founder 指示的工作（含 R3 程式）端到端進行、R3 range 通過自動控制即上線，閘門是擋外來輸入（見 `FOUNDER_STANDING_DECISIONS.md` 2026-10-21（二）之二）；哪些按鈕可以不按，只以同檔 2026-10-28（二）之二為準（此處不摘要）。Pi SSH 的歷史唯讀例外見 R6；不得用它覆蓋目前操作者適用的 machine ban（含間接觸發；見 DELIVERY_LIFECYCLE 自動化對照表）。
 >
 > **Founder 常設決定：** 唯一定義見 [`docs/governance/FOUNDER_STANDING_DECISIONS.md`](docs/governance/FOUNDER_STANDING_DECISIONS.md)（不在此摘要）。
 > 本檔是 **Claude Code adapter**，**不是**凌駕 Constitution / Control Plane 的最高法。  
-> **🗺️ 任何任務開始前：先讀 `docs/INDEX.md` 的 Start here 與任務對應節（導航地圖）。禁止未讀 INDEX 就直接動手。**
+> **🗺️ 任何任務開始前：照 [`AGENTS.md`](AGENTS.md) 的必讀清單（唯一一份；含 `docs/INDEX.md` 的 Start here 與任務對應節）。禁止未讀就直接動手。**
 > **現行工程主線：** [`docs/architecture/ALLTRUE_ENGINEERING_NORTH_STAR.md`](docs/architecture/ALLTRUE_ENGINEERING_NORTH_STAR.md) — 不要重寫整個前端／後端；排課資料模型根治見 [`RFC_SCHEDULE_OCCURRENCE_IDENTITY.md`](docs/architecture/RFC_SCHEDULE_OCCURRENCE_IDENTITY.md)。  
 > 通用入口：[`AGENTS.md`](AGENTS.md)。P0 紅黃線全文在下方（不要跳過）。
 
@@ -51,7 +51,7 @@ Palace：`~/.mempalace/palace`（local-first，cloud session 沒有，跳過即�
 | R3 | 要執行 `git push --force` / `-f` / 直接 push main | ❌ 停。一律推 feature branch，等 PR merge |
 | R4 | 要還原出錯的檔案 | ✅ `git checkout HEAD -- <file>` **完整**還原，禁止部分還原 |
 | R5 | 要執行 `php artisan migrate` | ❌ 不可由 Agent 在 Pi／正式資料庫直接執行；一律由 `deploy.yml` 執行。**只新增**表／欄位／索引、且 PR 內文宣告 `Additive-Migration: yes` 的新 migration 合併時算 T2（`additive_migration_paths()`；身分／權限表除外（含 credential／token／security／PII），帳務表依 2026-10-28（二）之二在 #4560 合併後移出排除；須 Codex 在最終 head 確認；Founder 2026-10-14（三）④＋補充 #1），上線也不必按（`ADDITIVE_MIGRATION_AUTO_ACTIVATION`；#4560 上線後監看 20 分鐘、失敗自動回滾 code；回滾還原不了 schema，所以只限只新增）；會 drop／rename／change／寫資料的 migration 一律須 Founder 對確切範圍批准 |
-| R6 | 要 SSH 到 Pi 直接編輯任何程式碼 | ❌ 停。所有改動依 [WORKTREE_POLICY](docs/governance/WORKTREE_POLICY.md)：雲端 fresh clone 從 `origin/main` 開 feature branch（必要的本機 WSL 任務才用隔離 task worktree）→ PR → CI → 依現行授權由 `deploy.yml` 控制部署。**唯讀例外（Founder 2026-10-07）**：只為查 bug 可 SSH/SCP 讀附件、`tinker --execute` 跑 SELECT；禁止任何寫入、`artisan` 寫入指令、R2 指令；每次在對應 issue 留言記錄讀了什麼（只寫 ID，不寫姓名）；讀回的檔案看完即刪 |
+| R6 | 要 SSH 到 Pi 直接編輯任何程式碼 | ❌ 停。所有改動依 [WORKTREE_POLICY](docs/governance/WORKTREE_POLICY.md)：雲端 fresh clone 從 `origin/main` 開 feature branch（必要的本機 WSL 任務才用隔離 task worktree）→ PR → CI → 依現行授權由 `deploy.yml` 控制部署。**歷史唯讀例外（Founder 2026-10-07；不適用於目前受 Pi SSH machine ban 限制的操作者，操作前先核對 `AGENTS.md`、Constitution 與 [SOP 操作者邊界](docs/sop/DELIVERY_LIFECYCLE.md#in-app-自動化對照表)）**：只為查 bug 可 SSH/SCP 讀附件、`tinker --execute` 跑 SELECT；禁止任何寫入、`artisan` 寫入指令、R2 指令；每次在對應 issue 留言記錄讀了什麼（只寫 ID，不寫姓名）；讀回的檔案看完即刪 |
 
 ## ⚠️ 黃線（違反 = CI 反覆失敗）
 
@@ -92,9 +92,9 @@ Palace：`~/.mempalace/palace`（local-first，cloud session 沒有，跳過即�
 | 環境 | 說明 |
 |---|---|
 | **開發（2026-10-14 起）** | Claude cloud session：從 `origin/main` 開新 branch → PR → CI。不跑 `agent-start`／本機 preflight。見 [`docs/governance/WORKTREE_POLICY.md`](docs/governance/WORKTREE_POLICY.md) |
-| **本機 WSL（淘汰中）** | 只在必要時用；要用就 `agent-start alltrue <task-id>`，**never** `/home/jerry/alltrue` / `~/alltrue`。見 WORKTREE_POLICY + `AI_REGRESSION_LESSONS` §Y6 |
+| **本機 WSL** | 只在必要時用隔離的 task worktree（`agent-start` 已退役）；**never** `/home/jerry/alltrue` / `~/alltrue`。見 WORKTREE_POLICY + `AI_REGRESSION_LESSONS` §Y6 |
 | **多 agent 並行** | 每個 session 自己的 branch，不共編同一分支 |
-| **生產伺服器** | Raspberry Pi `/home/admin` — ⛔ 禁止直接 SSH 進去改程式碼；唯讀查資料見 R6 例外 |
+| **生產伺服器** | Raspberry Pi `/home/admin` — ⛔ 禁止直接 SSH 進去改程式碼；歷史唯讀例外與目前操作者限制見 R6 |
 | **部署方式** | `deploy.yml` 是正式應用部署控制面；CI 通過不等於已有正式啟用授權，依實際 environment gate 與完整 production→candidate 風險執行 |
 
 ---
@@ -112,15 +112,15 @@ Palace：`~/.mempalace/palace`（local-first，cloud session 沒有，跳過即�
 | [G-009](docs/agents/GOTCHAS.md) | 課程「繳費狀態」是雙真相 OR 邏輯，`StudentClass.Paid` 壓不過帳單付款 |
 | [G-010](docs/agents/GOTCHAS.md) | 行事曆來源真相 = 已物化的 `ClassSession`；「某天課很少」未必是 bug |
 | [G-011](docs/agents/GOTCHAS.md) | 「一堂 = 幾分鐘」是**每門課自己的**設定，沒有全公司統一值；契約在第一次扣堂後鎖死 |
-| [G-012](docs/agents/GOTCHAS.md) | 雲端／遠端 session（無 SSH、無 DB 連線）撈／回寫 in-app bug 資料——唯讀依既有來源，回寫走受保護 dispatch |
+| [G-012](docs/agents/GOTCHAS.md) | 雲端／遠端 session（無 SSH、無 DB 連線）撈／回寫 in-app bug 資料——唯讀依既有來源，回寫先核對操作者禁令 |
 
 完整 Gotchas G-001 ~ G-012：見 `docs/agents/GOTCHAS.md`。
 
 ---
 
-## Land queue
+## Land queue / Parallel agents
 
-See [`docs/sop/MERGE_SOP.md`](docs/sop/MERGE_SOP.md#land-queue-and-auto-delivery-mechanics).
+只在 [`docs/sop/MERGE_SOP.md`](docs/sop/MERGE_SOP.md#land-queue-and-auto-delivery-mechanics)（含 Parallel agents）。
 
 ## 任務完成後的記錄原則
 
@@ -128,23 +128,6 @@ See [`docs/sop/MERGE_SOP.md`](docs/sop/MERGE_SOP.md#land-queue-and-auto-delivery
 仍記在本檔 §核心資料表 Gotchas（`G-NNN`），不要在 adapter 複製發布 SOP。
 
 ---
-
-## Parallel agents
-
-- Before starting: run `node scripts/pr-overlap.mjs` (or read the PR's `<!-- pr-overlap -->` sticky comment). If another open PR touches the same files, coordinate with that session or wait. Prefer small PRs that merge fast (limits: `docs/governance/FOUNDER_STANDING_DECISIONS.md`).
-- Landing: add label `queue`. Don't loop `update-branch`, `--auto` or custom merge scripts.
-- No stacked PRs: branch from main after the dependency merges.
-- Before merging an agent PR, read every `-` line of `git diff origin/main...HEAD`; nothing outside the PR's scope may be removed (2026-10-06 PR-C2 #3631 stale-copy revert).
-- Release notes: change fragments only (`docs/changes/…`). Never edit `CHANGELOG.md`, the generated JS or the exemption lists; `phpstan-baseline.neon` may only shrink.
-- Stale-copy guard: presubmit `[CHECK 0d]` fails a PR that deletes lines another PR merged to main in the last 7 days (`scripts/check-recent-work-revert.py`). Rebuild from current main; if intended, add a PR body line `Rewrites: #N — reason` for each listed PR (presubmit re-runs on body edits).
-- Deploys: only `deploy.yml`. A range of R0-R2 PRs, or an R3 range that passes the R3 auto controls (final-head Codex review, no open threads, no freeze; no migration, data-repair, identity/credential or control-plane effect), deploys on its own CI with no Founder click; anything else waits for the release train (`FOUNDER_STANDING_DECISIONS.md` 2026-10-21（二）之二). Gates exist to stop untrusted input (in-app report text, non-Founder GitHub content, bot output), not Founder-directed work.
-- Helpers (subagents) start from fresh `origin/main` in their own branch/session; never copy files from another worktree or session.
-- Review: when Codex is rate-limited, run `/code-review` (control-plane changes: an independent adversarial reviewer) before merging.
-- Presubmit size limits: defined only in [`FOUNDER_STANDING_DECISIONS.md`](docs/governance/FOUNDER_STANDING_DECISIONS.md) 2026-10-28（二）item 3 (presubmit CHECK 2); split, don't stack.
-- A job cancelled after ~15 min with 0 steps is runner starvation — just rerun it.
-- Codex review: fix P1s and regressions; P2s get one fix round, later P2s become follow-up issues (AGENTS.md §PR review; `docs/governance/FOUNDER_STANDING_DECISIONS.md` ④). Reply to and resolve every thread.
-- New classes need a mapping in `scripts/arch-contexts.json` (FIT-10).
-- Anything that needs Jerry: collect it into one list and send it to the coordinating session, not one message per item.
 
 ## On-demand 快查（按需讀，不用全讀）
 
@@ -166,7 +149,7 @@ Issues live in GitHub Issues (`gh` CLI). See `docs/agents/issue-tracker.md`.
 
 ### Triage labels
 
-Default five: `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`. See `docs/agents/triage-labels.md`.
+Label names are defined only in `.github/labels.yml` (`status:triage`, `status:ready`, `status:blocked`, `needs-founder`). See `docs/agents/triage-labels.md`.
 
 ### Domain docs
 
