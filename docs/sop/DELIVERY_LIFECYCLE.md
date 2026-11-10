@@ -294,10 +294,12 @@ completeness flag/reason tokens, byte lengths and the encrypted file's sha256. T
 The default `reader_profile=legacy` keeps that contract. The separately protected
 `case5124` CMS sidecar has a proposed fixed public certificate/policy in its
 preparation candidate; presence is not main trust, registration or activation.
-It remains on HOLD before merge/activation and fails closed without approved trust;
-it is not covered by the existing shared-key custody exception. Its source,
-recipient and bounded capture/read window require concrete Founder approval
-before merge/activation; see [the inactive reader contract](../../operations/closeout/case5124-reader.README.md).
+Its same-scope #5159 proposal has concrete Founder approval under the
+[2026-11-10 continuation decision](../governance/FOUNDER_STANDING_DECISIONS.md#same-scope-approval-continuation);
+required CI/review and installed controls remain. The fixed read pin targets
+verified current production, independently of unrelated UI releases; recipient,
+window and cumulative capture limits remain. This does not extend the shared-key
+custody exception; see [the reader contract](../../operations/closeout/case5124-reader.README.md).
 
 Decrypted files stay inside the authorized private execution environment; never
 paste them into issues, PRs or comments. Do not shortcut any of this with SSH,
