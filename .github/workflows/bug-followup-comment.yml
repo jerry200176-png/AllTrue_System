@@ -130,6 +130,14 @@ jobs:
           $reply = (string)getenv("PUBLIC_REPLY");
           $bug = \App\Models\BugReport::find($bugId);
           if (!$bug) { throw new \RuntimeException("bug not found: ".$bugId); }
+          // Automation never writes to a report the safety screen flags (its text or the reporter-authored comments); a person handles it in the app.
+          $assertSafe = static function () use ($bug) {
+              $own = \App\Models\BugReportComment::query()->where("bug_report_id", $bug->id)
+                  ->where("author_user_id", $bug->reporter_user_id)->pluck("body")->all();
+              $safety = \App\Services\BugSafetyScreen::screenReport((string)($bug->title ?? ""), (string)($bug->description ?? ""), $own);
+              if ($safety["flagged"]) { throw new \RuntimeException("safety_review_required: ".implode(",", $safety["reasons"])); }
+          };
+          $assertSafe();
           if ((string)$bug->status !== $expected) { throw new \RuntimeException("status changed: ".$bug->status); }
           $admin = \Illuminate\Support\Facades\DB::table("UserCampus")
               ->where("Admin", 1)->where("Approved", 1)->orderBy("UserID")->value("UserID");

@@ -1,3 +1,6 @@
+// New-contract default for the fee field (#5158). Existing contracts keep their own rate.
+export const DEFAULT_PRICE_PER_SESSION = 1200;
+
 const toNumber = (value) => {
   const n = Number(value);
   return Number.isFinite(n) ? n : null;

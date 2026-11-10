@@ -12,7 +12,7 @@
 
 - 所有 **T2 / T3 feature**（影響商業流程、UI、家長/老師體驗）
 - 所有以 Epic 形式管理的多 PR 工作項
-- 不適用：純 bug fix（走 `bug-fix-plan.mdc`）、docs-only、CI/infra 變更
+- 不適用：純 bug fix（走 `docs/sop/DELIVERY_LIFECYCLE.md`）、docs-only、CI/infra 變更
 
 ## 流程
 
@@ -51,7 +51,7 @@
 
 ## 與其他 SOP 的關係
 
-- **Bug**：使用者報的 bug → `bug-fix-plan.mdc` + in-app bug system
+- **Bug**：使用者報的 bug → `docs/sop/DELIVERY_LIFECYCLE.md` + in-app bug system
 - **SLO miss**：→ `SRE_POLICY.md` Release Freeze
 - **Feature metric miss**：→ 本檔的 iterate / rollback 決策
 - **長期 KPI**：→ `ADOPTION_QUALITY_METRICS.md`

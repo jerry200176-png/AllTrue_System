@@ -3,6 +3,18 @@
 > 本 repo 對 Founder 常設決定的**唯一**定義。`AGENTS.md`、`CLAUDE.md` 只放指向本檔的連結，不得另寫摘要或複本。
 > 艦隊層權威表：portfolio-ops `governance/AUTONOMY_POLICY.md`（portfolio-ops#134）。兩者不一致時開 PR 修正本檔；**較嚴格的規則優先**：艦隊層只能放寬本檔未另加限制之處，不得削弱本 repo 較嚴格的本地規則或安全規則（例如聚焦回歸測試、權威紀錄核對、產品 P0／紅線）。
 
+## 2026-11-11（三）（收尾與自動化計畫；對話中 4 題都選推薦選項，並核准計畫）
+
+Founder 對 Agent 提的四題各選一個選項（原選項文字）：in-app 意見與建議「全自動」；`lifecycle:frozen` issue「關掉」；Cursor「不用了，刪」；PR 清潔工排程 agent「開」。隨後核准整份計畫。
+
+1. **In-app 全自動**：排程 agent 每小時分類並公開回覆（Phase A）；修復上線後自動結案。被 `BugSafetyScreen` 標記的回報自動化一律不寫，由人在 App 內處理（#5169 合併後生效）。自動結案要等要求端憑證上線，且 Founder 在一次 deploy 打開 `POP_INAPP_STANDING_POLICY`；在那之前由 super_admin 在 POP 核准（`docs/sop/DELIVERY_LIFECYCLE.md`）。
+2. **Cursor 退役**：不再為 Cursor 維護規則檔；入口只留 `AGENTS.md`（通用）與 `CLAUDE.md`（Claude 專屬）。
+3. **frozen issue 關閉**：關成 not planned、留一句理由，要做隨時重開。計畫的例外：仍被未結 PR 或進行中工作引用的先不關。（Agent 執行時另把仍有資安／金流／資料風險的留著沒關；這是 Agent 的判斷，不是 Founder 的指示。）
+4. **PR 清潔工**：排程 agent 一天兩次處理 agent PR 的衝突、紅燈與 review thread；不合併、不加 `queue`、不碰正式環境。
+5. 核准本計畫即 Phase 1 治理文件／`AGENTS.md`／`CLAUDE.md` PR 的 GO（2026-10-14（二）第 5 條所要求）；其他 phase 的治理變更照該條另行批准。
+
+不變：正式資料修改、非只新增型 migration、credential、不可逆動作仍只有 Founder。
+
 <a id="same-scope-approval-continuation"></a>
 ## 2026-11-10（二）（同範圍批准接續；#5159）
 
@@ -104,7 +116,7 @@ Founder 原話（2026-10-21 對話，經協調 session 轉達，逐字）：對�
 
 - **自動（不需 Founder 按）**：`deploy.yml` 的 application deploy／release train 範圍，今天只因含 R3（T3）PR 而停在 `awaiting-activation`，且同時成立：範圍內每個 PR 已合併進 main、provenance 完整、宣告有效、每個 PR 有 rollback 證據、目標 SHA 的 required CI 綠、範圍不改 `deploy.yml`／`autonomy_gate.py`，並通過第 3 條全部必要控制 → `mode=auto-r3`，走與 R0–R2 相同的 `production-auto`（無 reviewer）路徑。merge 自己的 run 即上線，不等 release train。
 - 可自動的 T3 效果：帳務／ledger 語意、隱私／legal 語意、runtime write、`SessionDeduction`／`SessionEntitlement`／`ApprovalSessionSync` 服務、敏感路徑超過檔數／行數上限、宣告 R3 的一般程式。
-- **仍停在 `production-activation`（Founder 按）**：範圍含任何 migration（`ADDITIVE_MIGRATION_AUTO_ACTIVATION = False`：`deploy.yml` 在 migration 後不能自動回滾程式，R5 維持）、資料修復路徑（`Console/Commands/Repair*`、`Services/Repair*`）或「不可逆／資料操作」語意、身分／credential 邊界（`Controllers/Auth`、`StudentIdentity`、`Http/Middleware/`、路徑含 credential／password／secret／token／permission、認證／權限語意）、`backend/routes/api.php`（路由授權變更無法由分類器排除）、release／control plane 路徑（含應用 PR 夾帶的控制面檔案）、部署本身會執行或信任的檔案（`scripts/governance/`、`scripts/production-deploy/`、`.github/actions/`、`scripts/post-deploy-verify.py`、`scripts/post-merge-smoke.sh`；不論在哪個 PR）、路徑含 auth／identity／role／guard／login 的前後端檔案、範圍內有任何改名、比對範圍被截斷（compare 只列出部分 commit）、Rollback 行沒有寫出可行的還原方式（例如「無法回復」）、不可檢視的 diff、provenance 不完整或宣告錯誤、分類器例外／API 錯誤、deploy freeze、缺 final-head review。`workflow_dispatch` 的 manual／`pop-bootstrap`／`parent-portal-smoke`／`phase1-3`（principal rotation）不變；手動觸發的 `release-train` 與排程班次以同一套條件評估（只改時間，不改範圍）。其他 workflow（Phase C、case dump、資料修復）的 `production-activation` 不在本條範圍。
+- **仍停在 `production-activation`（Founder 按）**：範圍含 migration，但符合 2026-10-28（二）之二第 2 條 (c) 的只新增型除外（`Additive-Migration: yes`＋結構檢查＋Codex 最終 head 確認；身分／auth／權限／credential／token／security／PII 表不適用；`ADDITIVE_MIGRATION_AUTO_ACTIVATION = True`）；其餘 migration `deploy.yml` 不能自動回滾，R5 維持、資料修復路徑（`Console/Commands/Repair*`、`Services/Repair*`）或「不可逆／資料操作」語意、身分／credential 邊界（`Controllers/Auth`、`StudentIdentity`、`Http/Middleware/`、路徑含 credential／password／secret／token／permission、認證／權限語意）、`backend/routes/api.php`（路由授權變更無法由分類器排除）、release／control plane 路徑（含應用 PR 夾帶的控制面檔案）、部署本身會執行或信任的檔案（`scripts/governance/`、`scripts/production-deploy/`、`.github/actions/`、`scripts/post-deploy-verify.py`、`scripts/post-merge-smoke.sh`；不論在哪個 PR）、路徑含 auth／identity／role／guard／login 的前後端檔案、範圍內有任何改名、比對範圍被截斷（compare 只列出部分 commit）、Rollback 行沒有寫出可行的還原方式（例如「無法回復」）、不可檢視的 diff、provenance 不完整或宣告錯誤、分類器例外／API 錯誤、deploy freeze、缺 final-head review。`workflow_dispatch` 的 manual／`pop-bootstrap`／`parent-portal-smoke`／`phase1-3`（principal rotation）不變；手動觸發的 `release-train` 與排程班次以同一套條件評估（只改時間，不改範圍）。其他 workflow（Phase C、case dump、資料修復）的 `production-activation` 不在本條範圍。
 - **Release train** 照舊運作，只載仍需 Founder 的範圍。
 - **取代**：只就「R3 application range 的上線」取代 2026-10-08 Q1 A（GO 文字可被任何 Agent 偽造的顧慮不適用：本路徑不讀任何 GO 文字，閘門是 CI＋分類器＋review metadata）、2026-10-14（二）第 4 條「含 T3 的部署每次由 Founder 批准」、2026-10-12 第 1 條的「部署不在此例外內」、2026-10-14 release train 對 R3 範圍的每班核准；若 #4351 合併，也取代其 2026-10-21（二）第 2(b) 條。其他條文不變。
 

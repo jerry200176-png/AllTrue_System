@@ -9,8 +9,7 @@ When adapters conflict, resolve in this order (see also [COMPANY_CONSTITUTION.md
 5. Product SOP / runbook for the repo being edited  
 6. `AGENTS.md` (universal agent entry)  
 7. `CLAUDE.md` (Claude Code adapter — **must not claim absolute override**)  
-8. `.cursorrules` / `.cursor/rules/*.mdc` (Cursor adapter)  
-9. Skills / Hooks (optional helpers)  
-10. Plans, transcripts, MemPalace recall (non-authoritative)
+8. Skills / Hooks (optional helpers)  
+9. Plans, transcripts, MemPalace recall (non-authoritative)
 
 **Rule:** Adapters cite Constitution; they do not redefine it.

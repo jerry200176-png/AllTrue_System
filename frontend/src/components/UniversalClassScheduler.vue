@@ -885,7 +885,7 @@ import { createMultiSubjectPackage } from '../lib/coursePackagesApi';
 import { checkTeacherScope, STUDENT_CLASS_MEMO_MAX_LENGTH } from '../lib/constants';
 import { calculateCoverage, lessonEquivalent } from '../lib/lessonCoverage';
 import perfFlags from '../lib/perfFlags';
-import { estimateCreateCharge } from '../lib/coursePricing';
+import { DEFAULT_PRICE_PER_SESSION, estimateCreateCharge } from '../lib/coursePricing';
 import { fetchTeacherAvailability } from '../lib/substituteApi.js';
 import { getBranchName } from '../lib/useBranches.js';
 import {
@@ -1004,7 +1004,7 @@ const form = reactive({
   day_time_slots: [],
   start_time: seededStart,
   duration_hours: 2,
-  price_per_session: 1000,
+  price_per_session: DEFAULT_PRICE_PER_SESSION,
   payment_type: 'session',
   scheduling_policy: 'auto_recurrence',
   room_id: '',
@@ -1114,7 +1114,7 @@ function resetForm() {
   form.day_time_slots = [];
   form.start_time = seededStart;
   form.duration_hours = 2;
-  form.price_per_session = 1000;
+  form.price_per_session = DEFAULT_PRICE_PER_SESSION;
   form.payment_type = 'session';
   form.room_id = '';
   form.memo = '';
@@ -1127,7 +1127,7 @@ function resetPkgForm() {
   pkgForm.name = '';
   pkgForm.payment_type = 'session';
   pkgForm.total_sessions = 24;
-  pkgForm.rate = 1000;
+  pkgForm.rate = DEFAULT_PRICE_PER_SESSION;
   pkgForm.settlement_day = 5;
   pkgForm.class_type = 'one_on_one';
   pkgForm.paid_at = '';
@@ -1141,7 +1141,7 @@ const pkgForm = reactive({
   name: '',
   payment_type: 'session',
   total_sessions: 24,
-  rate: 1000,
+  rate: DEFAULT_PRICE_PER_SESSION,
   settlement_day: 5,
   class_type: 'one_on_one',
   paid_at: '',

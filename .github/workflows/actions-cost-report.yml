@@ -27,7 +27,17 @@ jobs:
         with:
           fetch-depth: 1
           persist-credentials: false
+      - name: Count agent-authored commits (aggregate only)
+        id: ai
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          since="$(date -u -d '7 days ago' +%F)"
+          n="$(gh api -X GET search/commits -f q="repo:${GITHUB_REPOSITORY} Claude-Session committer-date:>=${since}" -q .total_count)"
+          echo "n=${n}" >> "$GITHUB_OUTPUT"
       - name: Build and post report
         run: node .github/scripts/actions-cost-report.mjs
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          AI_COMMITS: ${{ steps.ai.outputs.n }}

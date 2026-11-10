@@ -151,7 +151,7 @@ GitHub Action `.github/workflows/branch-hygiene.yml` 每日跑報告，結果寫
 **核心規則**
 0. **Required checks 必須永遠有 context**：`ci.yml` 必須在所有 PR 都觸發，由 `Detect changed areas` + job-level `if` 決定是否執行重檢查；禁止只靠 workflow-level `paths` 直接跳過整個 workflow，否則 docs-only PR 會缺少 required status checks。
 1. **PR 舊 run 自動取消**：CI / PHPStan workflow 必須使用 `concurrency`，同一 PR 新 commit 進來時取消舊 run，只驗最新 commit。
-2. **Docs-only 不跑重 CI**：只改 `docs/**`、`.cursor/**`、Markdown 或計畫文件時，只跑 Presubmit；跳過 PHPUnit/MySQL、Vite build、PHPStan。
+2. **Docs-only 不跑重 CI**：只改 `docs/**`、Markdown 或計畫文件時，只跑 Presubmit；跳過 PHPUnit/MySQL、Vite build、PHPStan。
 3. **Frontend-only 不跑後端測試**：只改 `frontend/**` 時跑 Vite build，不跑 PHPUnit/MySQL 與 PHPStan。
 4. **Backend-only 不跑前端 build**：只改 `backend/**` 或 Composer 依賴時跑 PHPUnit/MySQL 與 PHPStan，不跑 Vite build。
 5. **Workflow 改動保守全跑**：修改 `.github/workflows/**` 時，CI 必須保守跑完整前後端檢查，避免 path filter 失手。
@@ -1062,7 +1062,7 @@ gh api repos/jerry200176-png/AllTrue_System/branches/main/protection \
 | Require review from Code Owners | 選用 | 單人時 CODEOWNERS 僅提醒；多人時 ✅ |
 | Dismiss stale approvals on new push | ✅（多人時）| 防 approve 後偷塞 commit |
 | Require status checks before merging | ✅ | 必須全綠才能 merge |
-| Required checks（**GitHub 實際 job 名稱**）| `Presubmit Checks` / `PHPUnit Feature & Unit Tests` / `Vite Frontend Build` / `gitleaks scan` / `Golden scenarios report` / `Docs Integrity Check` / `PHPStan Advisory (php)` | 2026-05-31 全數納入。`PHPStan Advisory (php)`（#545）於移至 GitHub-hosted runner + baseline、連續 3 個 PR 綠燈後納入；job-level `if` skip（非 backend PR → 中性），baseline 既有問題、只擋新增問題 |
+| Required checks（**GitHub 實際 job 名稱**）| `Presubmit Checks` / `PHPUnit Feature & Unit Tests` / `Vite Frontend Build` / `gitleaks scan` / `Golden scenarios report` / `Docs Integrity Check` / `PHPStan Advisory (php)` / `Control Plane Contract Lint` | 前 7 項 2026-05-31 全數納入。`PHPStan Advisory (php)`（#545）於移至 GitHub-hosted runner + baseline、連續 3 個 PR 綠燈後納入；job-level `if` skip（非 backend PR → 中性），baseline 既有問題、只擋新增問題 |
 | Require branches to be up to date | ✅ | PR behind 時先 `update-branch`（§B5）|
 | Require conversation resolution | ✅ | review comment 必須解決 |
 | Restrict force pushes | ✅（即使 admin 也禁止）| 事故 A 防再犯 |

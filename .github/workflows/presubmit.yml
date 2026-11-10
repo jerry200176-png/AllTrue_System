@@ -1,7 +1,7 @@
 name: Presubmit Gate
 
 # Google-style presubmit checks — 任何 PR 合進 main 前必須全過
-# 規則來源：.cursor/rules/module-industry-standards.mdc
+# 規則來源：docs/governance/FOUNDER_STANDING_DECISIONS.md
 # 違反任何一項 = PR 被擋，必須修正才能 merge
 
 on:
@@ -194,7 +194,7 @@ jobs:
           # Vendored agent skills are reviewed as reference artifacts, not production logic.
           # Keep their files in the PR for content/security review, but do not let a long
           # Markdown skill document fail the logical-change size gate.
-          EXTRA_EXCLUDE=(':!.cursor/skills/**' ':!.claude/skills/**')
+          EXTRA_EXCLUDE=(':!.agents/skills/**' ':!.claude/skills/**' ':!.cursor/**')
           if echo "$BRANCH" | grep -qE '^chore/docs-'; then
             EXTRA_EXCLUDE+=(':!docs/CHANGELOG.md' ':!docs/archive/**')
           fi
@@ -255,7 +255,7 @@ jobs:
               echo "❌ PR too large even as deletion-dominant cleanup: -$DEL lines (limit: $DELETION_HARD_LIMIT)"
               echo ""
               echo "Please split into smaller PRs. Each PR should cover one independent feature."
-              echo "Reference: .cursor/rules/module-industry-standards.mdc"
+              echo "Reference: docs/governance/FOUNDER_STANDING_DECISIONS.md (2026-10-28 item 3)"
               exit 1
             fi
             echo "✅ Deletion-dominant cleanup (+$ADD/-$DEL) — exempt from the $HARD_LIMIT insertion-oriented limit (≤ $DELETION_HARD_LIMIT deletions)."
@@ -266,42 +266,12 @@ jobs:
             echo "❌ PR too large: $LOGIC logic lines (limit: $HARD_LIMIT), $TOTAL lines with tests/docs (limit: $TOTAL_LIMIT)"
             echo ""
             echo "Please split into smaller PRs. Each PR should cover one independent feature."
-            echo "Reference: .cursor/rules/module-industry-standards.mdc"
+            echo "Reference: docs/governance/FOUNDER_STANDING_DECISIONS.md (2026-10-28 item 3)"
             exit 1
           elif [ "$LOGIC" -gt 400 ]; then
             echo "::warning title=Large PR::PR has $LOGIC logic lines (recommended ≤ 400). Consider splitting if possible."
           else
             echo "✅ PR size OK: $LOGIC logic lines, $TOTAL total"
-          fi
-
-      # ─────────────────────────────────────────────
-      # CHECK 3：alwaysApply 規則總行數（≤ 500 行）
-      # 防止 AI context 膨脹導致「失憶」
-      # ─────────────────────────────────────────────
-      - name: "[CHECK 3] alwaysApply rule size (≤ 500 lines)"
-        run: |
-          TOTAL=0
-          echo "=== alwaysApply rules ==="
-          for f in .cursor/rules/*.mdc; do
-            if grep -q "alwaysApply: true" "$f" 2>/dev/null; then
-              LINES=$(wc -l < "$f")
-              TOTAL=$((TOTAL + LINES))
-              echo "  🔴 $LINES lines — $(basename $f)"
-            fi
-          done
-          echo ""
-          echo "Total alwaysApply lines: $TOTAL / 500"
-
-          if [ "$TOTAL" -gt 500 ]; then
-            echo "❌ alwaysApply rules too large: $TOTAL lines (max 500)"
-            echo ""
-            echo "AI context bloat detected. Move non-critical rules to glob-based triggers."
-            echo "Reference: .cursor/rules/p0-gate.mdc"
-            exit 1
-          elif [ "$TOTAL" -gt 400 ]; then
-            echo "::warning title=alwaysApply nearing hard limit::alwaysApply is $TOTAL lines (recommended ≤ 400, hard limit 500). Move non-critical guidance to on-demand docs/rules."
-          else
-            echo "✅ alwaysApply size OK: $TOTAL lines"
           fi
 
       # ─────────────────────────────────────────────
@@ -386,7 +356,7 @@ jobs:
             echo "$VIOLATIONS"
             echo ""
             echo "CI workflows must not deploy to production. Only deploy.yml may run production deploy after protected main is green."
-            echo "Reference: .cursor/rules/auto-frontend-deploy.mdc"
+            echo "Reference: docs/RUNBOOK_MERGE_TO_ACTIVATION.md"
             exit 1
           else
             echo "✅ No deploy steps in CI workflows"
@@ -451,7 +421,6 @@ jobs:
           echo "|-------|--------|" >> "$GITHUB_STEP_SUMMARY"
           echo "| Branch naming | See step log |" >> "$GITHUB_STEP_SUMMARY"
           echo "| PR size | ${PR_SIZE:-?} lines |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| alwaysApply rules | See step log |" >> "$GITHUB_STEP_SUMMARY"
           echo "| CHANGELOG | See step log |" >> "$GITHUB_STEP_SUMMARY"
           echo "| No deploy in CI | See step log |" >> "$GITHUB_STEP_SUMMARY"
           echo "| Golden § report | CI — Golden scenarios report |" >> "$GITHUB_STEP_SUMMARY"

@@ -105,7 +105,7 @@ last_reviewed: 2026-08-23
 
 ### 3.7 In-app Bug 完整生命週期（分診 → 修 code → 回寫系統）
 
-**權威流程**：本節 + §3.6，只管 in-app 狀態與回寫；從收件到結案的九個階段、車道與關卡見 [`sop/DELIVERY_LIFECYCLE.md`](sop/DELIVERY_LIFECYCLE.md)。分類、auto-fix／Plan 門檻、閉環證據與模型 handoff 依 [`INAPP_PRODUCT_LOOP_EXECUTION_POLICY_V1`](plans/INAPP_PRODUCT_LOOP_EXECUTION_POLICY_V1.md)；修程式仍沿用 `.cursor/rules/bug-fix-plan.mdc` 的根因、測試、CI 與 review 要求。
+**權威流程**：本節 + §3.6，只管 in-app 狀態與回寫；從收件到結案的九個階段、車道與關卡見 [`sop/DELIVERY_LIFECYCLE.md`](sop/DELIVERY_LIFECYCLE.md)。分類、auto-fix／Plan 門檻、閉環證據與模型 handoff 依 [`INAPP_PRODUCT_LOOP_EXECUTION_POLICY_V1`](plans/INAPP_PRODUCT_LOOP_EXECUTION_POLICY_V1.md)；修程式仍沿用根因、測試（revert-proof）、CI 與 review 要求（見 `docs/AI_REGRESSION_LESSONS.md` §復發家族）。
 
 **口訣**：**開 GitHub issue 時回系統一次；merge 上線後一定要再回系統一次**。不能只關 GitHub。
 
@@ -124,6 +124,8 @@ last_reviewed: 2026-08-23
 - **產品閉環投影**（2026-09-18 起，無 schema migration）：`GET /bugs/{id}` 回傳 `product_loop`（語意階段／定性／GitHub 連結／production SHA／shipped）。定性與工程連結寫入 status_log 標記 `[product_disposition]`；`resolved` 且具 SHA 時同步 append-only `bug_report_evidence`。合併 PR **不算** shipped；需 production SHA 證據。
 
 #### Phase A — 分診（收到「看 bug 回報／開 issue」；不改 production 程式碼）
+
+本節 A4／A6 與 Phase C 的 workflow 名稱描述既有機制，不授權受 machine ban 限制的操作者直接或間接觸發 production SSH；先核對 [DELIVERY_LIFECYCLE 自動化對照表](sop/DELIVERY_LIFECYCLE.md#in-app-自動化對照表) 的操作者適用邊界。缺合規寫回路徑時保留未回寫狀態，不宣稱完成（#5117）。
 
 | 步驟 | 動作 |
 |------|------|
@@ -165,7 +167,7 @@ This metadata only preserves GitHub tracking ownership. It does not resolve the 
 
 | 步驟 | 動作 |
 |------|------|
-| C1 | `in_progress` → `resolved`（若仍在 `triaged`，先轉 `in_progress` 再轉 `resolved`）。**勿**再走 `bug-phase-c-allowlist.yml`（2026-10-19 起 SSH 寫入已 retired）。現行能力與執行先決條件只看 [DELIVERY_LIFECYCLE 的 In-app 自動化對照表](sop/DELIVERY_LIFECYCLE.md#in-app-自動化對照表)；code／catalog 已登錄不等於 scoped requester 憑證、Founder 旗標或 runtime 執行授權已就緒 |
+| C1 | `in_progress` → `resolved`（若仍在 `triaged`，先轉 `in_progress` 再轉 `resolved`）。舊的 SSH allowlist 路徑 2026-10-19 停用、2026-11-11 刪除。現行能力與執行先決條件只看 [DELIVERY_LIFECYCLE 的 In-app 自動化對照表](sop/DELIVERY_LIFECYCLE.md#in-app-自動化對照表)；code／catalog 已登錄不等於 scoped requester 憑證、Founder 旗標或 runtime 執行授權已就緒。`bug-followup-comment.yml` 只留言、不改狀態，且使用 production SSH，受 machine ban 限制者不得觸發；不能由 catalog 已登錄 `inapp-report-resolve-after-deploy` 推定 Phase A／follow-up 已有無 SSH 替代路徑 |
 | C2 | **公開留言**：已上線、請至 Bug 回報頁按「確認已修好」或「問題仍存在」；GitHub issue 此時即可關（Phase-C 自動關，例外見 DELIVERY_LIFECYCLE 自動化對照表），不等回報者 |
 | C3 | in-app `closed` 由回報者 `reporter-verify` 或逾時流程完成；若「仍存在」→ 回到 B1，重開或新開 GitHub issue |
 | C4 | `docs/CHANGELOG.md` 一行（有 deployable 修復時） |
@@ -201,13 +203,13 @@ This metadata only preserves GitHub tracking ownership. It does not resolve the 
 | GitHub | issue 開著，`status:ready` 或 `status:needs-decision` | PR `Refs #nnn`；上線後 Phase-C 自動關 issue（F14） |
 | In-app | `triaged` + 公開回覆 | `resolved` + 公開回覆 → 回報者驗收或逾時 → `closed` |
 
-**自動化（收件建單、Phase-C 自動關 issue F14、reconcile 報表、同類提醒、每日逾時結案、週報）**：哪個 workflow、何時跑、cloud 能否自行完成，一律見 [`sop/DELIVERY_LIFECYCLE.md`](sop/DELIVERY_LIFECYCLE.md) 的 In-app 自動化對照表（含每日 14 天自動逾時；`governance/EVIDENCE_CONTRACT.md` 的 7 日／不排程描述是人工 `--days` 路徑，待更新）。分診前先看 queue dump 的「in-app ↔ issue 不一致」報表。
+**自動化（收件建單、Phase-C 自動關 issue F14、reconcile 報表、同類提醒、每日逾時結案、週報）**：哪個 workflow、何時跑、cloud 能否自行完成，一律見 [`sop/DELIVERY_LIFECYCLE.md`](sop/DELIVERY_LIFECYCLE.md) 的 In-app 自動化對照表（含逾時天數見 [`sop/BUG_REPORTER_TIMEOUT.md`](sop/BUG_REPORTER_TIMEOUT.md) 與 `governance/EVIDENCE_CONTRACT.md`）。分診前先看 queue dump 的「in-app ↔ issue 不一致」報表。
 
 **相關防再犯**：`docs/AI_REGRESSION_LESSONS.md` §R51（分診前必查附件）、§R53（上線後必回 in-app）。
 
 ### 3.8 公開留言寫作：白話優先（給老師／主任）
 
-**權威規則**：`.cursor/rules/user-facing-communication.mdc`（always-applied，本節是同步副本之導引）。
+**權威規則**：本節。
 
 **核心原則**：寫 `is_internal_note=false` 的留言（會通知回報者），一律白話。技術術語留給 GitHub issue 或內部備註。
 
@@ -229,7 +231,7 @@ This metadata only preserves GitHub tracking ownership. It does not resolve the 
 
 ✅ 正例 → `已看您的截圖。系統把「1100」當成「每小時」的費用，所以 8 堂 × 2 小時 = 17,600 元。如果原意是「每一堂 1100」，正確應是 8,800 元才對。我們發現有 12 個學生課程是一樣的情況...麻煩確認三件事：1) ... 2) ... 3) ...`
 
-完整對照表與更多範例見 `.cursor/rules/user-facing-communication.mdc`。
+
 
 ### 3.9 AI 客服：PM 分診流程與防濫用（2026-11-07 起）
 
@@ -250,10 +252,10 @@ This metadata only preserves GitHub tracking ownership. It does not resolve the 
    - 權限、帳號、金錢：由 Founder 在系統外跟本人確認，因為帳號可能被盜用。
 3. **分診權限最小。**
    - triage token 只能讀（GET）。
-   - 回寫只走 `bug-phase-a-triage.yml` 或 `bug-followup-comment.yml`，欄位固定，`public_reply` 不超過 600 字。
+   - 回寫只走 `bug-phase-a-triage.yml` 或 `bug-followup-comment.yml`，欄位固定，`public_reply` 不超過 600 字。 兩者實際依賴 production SSH；受機器禁令限制的操作者不得直接或間接觸發，不能把本節視為操作授權。此操作者的 Phase A／follow-up 合規寫回路徑尚未驗證，缺口由 #5117 追蹤；見 [SOP 操作者適用邊界](sop/DELIVERY_LIFECYCLE.md#in-app-自動化對照表)，保留未回寫狀態，不宣稱完成。
    - 不要給分診 agent 寫 production 的工具。
 4. **不把回報內容貼到 GitHub**（repo 是公開的）。只寫 in-app 編號、附件 id、分校 id。
-5. **頻率上限，由後端強制；PR 進行中，上線前先人工判斷。**
+5. **頻率上限，由後端強制（已上線：`backend/app/Providers/AppServiceProvider.php` 的 `bug-report`／`bug-comment` limiter，超過回 429 `bug_report_rate_limited`；去重在 `BugReportController.php`）。**
    - 回報：每人每小時 5 則、每天 20 則。
    - 留言：每人每小時 30 則。
    - 同一人 10 分鐘內送出相同內容，視為同一單。

@@ -5,6 +5,10 @@ namespace Tests\Feature;
 use App\Http\Middleware\ThrottleRequestsByIp;
 use App\Models\AuthToken;
 use App\Models\Campus;
+use App\Models\ClassSession;
+use App\Models\LearningRecord;
+use App\Models\Student;
+use App\Models\StudentClass;
 use App\Models\User;
 use App\Models\UserCampus;
 use Illuminate\Cache\ArrayStore;
@@ -482,6 +486,89 @@ class SecurityHardeningTest extends TestCase
         $this->withHeaders(['Authorization' => "Bearer {$token}"])
             ->getJson('/api/v1/health/detailed')
             ->assertStatus(200)
-            ->assertJsonStructure(['status', 'timestamp', 'perf_flags', 'log_pipeline', 'sentry', 'security']);
+            ->assertJsonStructure(['status', 'timestamp', 'perf_flags', 'log_pipeline', 'sentry', 'security'])
+            ->assertJsonStructure(['business_today' => ['lessons_written_today', 'bills_created_today', 'sign_ins_today']]);
+    }
+
+    private function todaySessionOnCampus(int $campusId, string $content = 'x'): void
+    {
+        $student = Student::create(['name' => 'iso', 'CampusID' => $campusId, 'ClassID' => 1, 'enable' => 1, 'MDT' => now(), 'Notify_Token' => '']);
+        $course = StudentClass::create([
+            'StudentID' => $student->id, 'GradeID' => 1, 'SubjectID' => 1, 'TeacherID' => 99, 'by1' => 1, 'Period' => 4,
+            'StartDate' => now()->toDateString(), 'EndDate' => now()->toDateString(), 'TotalHours' => 1, 'Charge' => 1, 'Paid' => 0,
+            'Rate' => 1, 'MDate' => now(), 'Stop' => 0, 'ScheduleMode' => 'date', 'SessionCount' => 1, 'SessionDuration' => 120,
+            'RemainingSessions' => 0, 'ClassType' => 'one_on_one', 'UsedSessions' => 0, 'monthly_sessions' => 1, 'rate_unit' => 'session',
+        ]);
+        $session = ClassSession::create(['StudentClassID' => $course->ID, 'SessionDate' => now()->toDateString(), 'StartTime' => '18:00', 'EndTime' => '20:00', 'Status' => 'scheduled']);
+        LearningRecord::create(['StudentClassID' => $course->ID, 'ClassSessionID' => $session->id, 'TeacherID' => 99, 'Content' => $content, 'Status' => 'pending',
+            'SessionDate' => now()->toDateString(), 'StartTime' => '18:00', 'EndTime' => '20:00']);
+    }
+
+    /** @test */
+    public function health_detailed_business_counts_are_campus_scoped_for_directors(): void
+    {
+        $campusB = Campus::create(['name' => 'SecCampusB', 'Token' => 'sec-b', 'code' => 'secb', 'Current' => 0, 'LineNotifyID' => '',
+            'Client_ID' => '', 'Client_Secret' => '', 'LIFFID' => '', 'LIFF_URL' => '', 'URL' => '', 'TelegramToken' => '',
+            'TelegramChatID' => '', 'TelegramURL' => '', 'TeachLIFFID' => '', 'TeachLIFF_URL' => '']);
+        [$token] = $this->makeDirectorToken(); // director of campus A only
+        $get = fn () => $this->withHeaders(['Authorization' => "Bearer {$token}"])->getJson('/api/v1/health/detailed')
+            ->assertStatus(200)->json('business_today.lessons_written_today');
+
+        $this->todaySessionOnCampus($campusB->id);
+        $this->assertSame(0, $get(), 'campus A director must not see campus B counts');
+        $this->todaySessionOnCampus($this->campus->id, '');
+        $this->assertSame(0, $get(), 'an empty auto-generated form is not a written lesson');
+        $this->todaySessionOnCampus($this->campus->id);
+        $this->assertSame(1, $get());
+    }
+
+    private function loginOnCampus(int $campusId): void
+    {
+        static $n = 0;
+        $n++;
+        $u = User::create(['LoginName' => "sec-login-{$n}@example.com", 'Name' => "SecLogin{$n}", 'PSW' => 'x', 'type' => 'T', 'MustChangePassword' => false]);
+        UserCampus::create(['CampusID' => $campusId, 'UserID' => $u->id, 'Admin' => 0, 'Approved' => 1]);
+        \App\Models\UserLoginActivity::create(['user_id' => $u->id, 'login_at' => now(), 'success' => true]);
+    }
+
+    private function todayInvoiceOnCampus(int $campusId): void
+    {
+        $student = Student::create(['name' => 'inv', 'CampusID' => $campusId, 'ClassID' => 1, 'enable' => 1, 'MDT' => now(), 'Notify_Token' => '']);
+        \App\Models\Invoice::create(['StudentID' => $student->id, 'IssueDate' => now()->toDateString(), 'TotalAmount' => 100, 'PaidAmount' => 0, 'Status' => 'unpaid', 'Note' => '']);
+    }
+
+    /** @test */
+    public function health_detailed_bills_and_sign_ins_are_campus_scoped_for_directors(): void
+    {
+        $campusB = Campus::create(['name' => 'SecCampusB2', 'Token' => 'sec-b2', 'code' => 'secb2', 'Current' => 0, 'LineNotifyID' => '',
+            'Client_ID' => '', 'Client_Secret' => '', 'LIFFID' => '', 'LIFF_URL' => '', 'URL' => '', 'TelegramToken' => '',
+            'TelegramChatID' => '', 'TelegramURL' => '', 'TeachLIFFID' => '', 'TeachLIFF_URL' => '']);
+        [$token] = $this->makeDirectorToken(); // director of campus A only
+        $get = fn (string $k) => $this->withHeaders(['Authorization' => "Bearer {$token}"])->getJson('/api/v1/health/detailed')
+            ->assertStatus(200)->json("business_today.{$k}");
+        $bills = $get('bills_created_today');
+        $logins = $get('sign_ins_today');
+
+        $this->todayInvoiceOnCampus($campusB->id);
+        $this->loginOnCampus($campusB->id);
+        $this->assertSame($bills, $get('bills_created_today'), 'campus B invoice must not count for campus A director');
+        $this->assertSame($logins, $get('sign_ins_today'), 'campus B login must not count for campus A director');
+
+        $this->todayInvoiceOnCampus($this->campus->id);
+        $this->loginOnCampus($this->campus->id);
+        $this->assertSame($bills + 1, $get('bills_created_today'));
+        $this->assertSame($logins + 1, $get('sign_ins_today'));
+    }
+
+    /** @test */
+    public function health_detailed_omits_business_today_for_teachers(): void
+    {
+        $teacher = User::create(['LoginName' => 'sec-teacher@example.com', 'Name' => 'SecTeacher', 'PSW' => 'x', 'type' => 'T', 'MustChangePassword' => false]);
+        UserCampus::create(['CampusID' => $this->campus->id, 'UserID' => $teacher->id, 'Admin' => 0, 'Approved' => 1]);
+        $token = bin2hex(random_bytes(32));
+        AuthToken::create(['user_id' => $teacher->id, 'token' => $token, 'expires_at' => now()->addDay()]);
+
+        $this->withHeaders(['Authorization' => "Bearer {$token}"])->getJson('/api/v1/health/detailed')
+            ->assertStatus(200)->assertJsonMissingPath('business_today');
     }
 }

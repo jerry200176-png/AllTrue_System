@@ -43,7 +43,7 @@ export function readSection(root, args) {
     throw new Error('Usage: --outline <file> | --section <file> <exact heading> [source-sha256]');
   }
   // Read only tracked instruction/docs sources. Never walk the machine or .local.
-  const allowed = /^(AGENTS\.md|CLAUDE\.md|\.cursorrules|(?:docs|governance|\.cursor\/rules|\.(?:agents|claude|cursor)\/skills)\/.+\.(?:md|mdc))$/;
+  const allowed = /^(AGENTS\.md|CLAUDE\.md|(?:docs|governance|\.(?:agents|claude)\/skills)\/.+\.(?:md|mdc))$/;
   if (!allowed.test(file) || file.split('/').some(p => p === '..' || p === '.local' || /^\.env|^secrets?$/i.test(p))) {
     throw new Error('Only tracked, public instruction/docs paths are supported; read authorized sources directly');
   }

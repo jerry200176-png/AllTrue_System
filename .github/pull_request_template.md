@@ -84,7 +84,7 @@ Release-Impact: user-visible
 - [ ] 未 `git push --force`、未直推 `main`
 
 ## Threat Note（T2/T3 必填；T0/T1 可略）
-<!-- 對齊 .cursor/rules/module-security.mdc / Execution #480。若改 auth / PII / RFID / LINE webhook / 跨校資料邊界、新增公開端點，務必填寫。 -->
+<!-- 對齊 STRIDE（`.claude/skills/alltrue-security/SKILL.md`）/ Execution #480。若改 auth / PII / RFID / LINE webhook / 跨校資料邊界、新增公開端點，務必填寫。 -->
 - **資產 (Asset)**：<!-- e.g., StudentClass 堂數、家長手機、LINE userId -->
 - **威脅 (Threat / STRIDE)**：<!-- S/T/R/I/D/E 哪一面，1–2 句 -->
 - **緩解 (Mitigation)**：<!-- middleware / rate limit / authz check / audit log / 多校區 filter -->

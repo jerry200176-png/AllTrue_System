@@ -1,0 +1,15 @@
+updates:
+  - id: staff-2026-11-11-default-session-fee-1200
+    published_at: "2026-11-11"
+    audiences:
+      - director
+    importance: digest
+    title: 新增課程的單堂費用預設改為 1200
+    summary: 新增課程或建立續約時，單堂費用會先帶入 1200，仍可自行修改。
+    items:
+      - category: improved
+        text: 單堂費用預設由 1000 改為 1200（單科與多科合約都一樣）。
+      - category: improved
+        text: 已建立的合約、已開的帳單與收款紀錄不會變動。
+    source_refs:
+      - "changelog:2026-11-11:default-session-fee-1200"

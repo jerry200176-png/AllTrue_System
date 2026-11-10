@@ -61,8 +61,6 @@ jobs:
               - 'README.md'
               - 'AGENTS.md'
               - 'CLAUDE.md'
-              - '.cursorrules'
-              - '.cursor/rules/**'
               - 'Makefile'
               - 'scripts/docs-integrity-check.mjs'
               - 'scripts/governance/**'

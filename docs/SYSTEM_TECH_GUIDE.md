@@ -360,7 +360,7 @@ Director 可見（他們用 CampusID 過濾，不用 TeacherID）。
 
 `SwipeRfidController::swipe()` 使用 `$swipeAt = now()`，不接受 `swipe_at` request 參數。  
 測試中的 ClassSession 必須用 `now()` 相對時間（如 `now()->subMinutes(10)`）才能匹配。  
-詳見 Y2 規則（p0-gate.mdc）與 `tests/Feature/SwipeClassSessionSyncTest.php`。
+詳見 Y2 規則（`CLAUDE.md`）與 `tests/Feature/SwipeClassSessionSyncTest.php`。
 
 ### G-006：ClassSession.Status guard — 不覆寫人工決策
 

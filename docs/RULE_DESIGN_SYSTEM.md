@@ -25,7 +25,7 @@ last_reviewed: 2026-11-06
 > **單一真相來源（Single Source of Truth）。** 所有前端頁面、元件、新功能 UI 一律照本文件生成，確保介面統一協調。
 > 取代 `docs/archive/PORSCHE_VISUAL_SYSTEM.md`（已 superseded，移入 archive）。
 > 風格來源：`VoltAgent/awesome-design-md` 的 Stripe `DESIGN.md`，改寫為 AllTrue 補習班管理系統可落地的版本。
-> 品味閘門：`.cursor/rules/frontend-brand-taste.mdc`（#1386 教訓 → #1412 還原）。
+> 品味閘門：`CLAUDE.md` 黃線 Y9（#1386 教訓 → #1412 還原）。
 > Ops 結構／primitives／pilot：[`docs/design/ALLTRUE_UI_FOUNDATION.md`](design/ALLTRUE_UI_FOUNDATION.md)（Pajamas-led；本檔仍是色票 SSOT）。
 
 ## 1. Intent（設計意圖）
@@ -48,7 +48,7 @@ AllTrue 的視覺方向是 **淺色優先、專業可信、為「資料與金流
 - **允許**（且應保留）：暖橘品牌漸層／輕 mesh、glassmorphism 卡片、克制入場 motion。
 - **Token 化**＝色值進 `--ds-*`；**不是**拆掉氣氛換成扁平後台框。
 - **禁止**：以 hex KPI、「去 AI 化」、或本文件 §7「禁 mesh」字面理由，未獲 Founder 視覺 GO 就重寫 Login look。
-- 反例：PR #1386（Agent 拆光 → Founder 退回 #1412）。正向參考與每頁 design QA 步驟、動態規則：見 `docs/design/UI_FOUNDATION_MIGRATION_SEQUENCING.md`（技能已 vendor 於 `.claude/skills/`；另見 `.cursor/rules/frontend-brand-taste.mdc`）。
+- 反例：PR #1386（Agent 拆光 → Founder 退回 #1412）。正向參考與每頁 design QA 步驟、動態規則：見 `docs/design/UI_FOUNDATION_MIGRATION_SEQUENCING.md`（技能已 vendor 於 `.claude/skills/`；另見 `CLAUDE.md` 黃線 Y9）。
 
 ## 2. Design Principles（設計原則）
 
@@ -189,7 +189,7 @@ Epic：[#687](https://github.com/jerry200176-png/AllTrue_System/issues/687)
 | Wave 2 頁面 | AttendancePage | [#695](https://github.com/jerry200176-png/AllTrue_System/issues/695) | **Done** 2026-06-13 |
 | Wave 3 頁面 | ParentPortal / ParttimePayroll / BugReports 等 | [#696](https://github.com/jerry200176-png/AllTrue_System/issues/696) | **Done** 2026-06-13 |
 | Wave 3 頁面 | Login.vue DS polish（pilot） | [#1386](https://github.com/jerry200176-png/AllTrue_System/pull/1386) | **Reverted** by [#1412](https://github.com/jerry200176-png/AllTrue_System/pull/1412)（氣氛不可為 hex 犧牲） |
-| 流程 | 品牌表面品味閘門（Login/Auth） | `.cursor/rules/frontend-brand-taste.mdc` | **Done** 2026-07-24 |
+| 流程 | 品牌表面品味閘門（Login/Auth） | `CLAUDE.md` 黃線 Y9 | **Done** 2026-07-24 |
 | 元件 | 橫切 components（modal/Select/排課器）母單 | [#701](https://github.com/jerry200176-png/AllTrue_System/issues/701) | **Done** 2026-06-14 |
 | UX | 導覽教學去 emoji + Popover DS | [#703](https://github.com/jerry200176-png/AllTrue_System/issues/703) | **Done** 2026-06-13 |
 | 產品決策 | EngagementRank/SystemTrust/AmbientMusic 收斂 | [#704](https://github.com/jerry200176-png/AllTrue_System/issues/704) | **Closed** 2026-06-14 |
