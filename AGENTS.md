@@ -1,6 +1,6 @@
 # AGENTS.md — AllTrue AI Agent 入口
 
-> **Cursor 使用者**：`.cursorrules` 已自動載入，這裡補充必讀順序與 Commit SOP。
+> 這裡補充必讀順序與 Commit SOP；P0 紅黃線見 `CLAUDE.md`。
 >
 > **AllTrue AI 公司 slogan：前人種樹，後人乘涼。**
 > 所有 Agent 做事前先查 `docs/INDEX.md` 的 Start here 與任務對應節（本機另可查 MemPalace；cloud session 沒有，跳過）；做完把決策寫回文件，讓下一個 AI 不靠猜測。
@@ -46,7 +46,7 @@
 2. **`docs/architecture/ALLTRUE_ENGINEERING_NORTH_STAR.md`**（現行工程主線；禁止整包重寫）
 3. **`docs/INDEX.md`** 的 **Start here** + 任務對應節（導航；本清單與條件分支的政策原文仍須完整載入）
 
-（Cursor 通常自動載入 `.cursorrules`；其他 client 不得假設已載入，未載入時先讀原文，保留完整 P0。實際載入／截斷未能查證時記 unknown。）
+（不得假設任何 client 已自動載入規則檔，未載入時先讀原文，保留完整 P0。實際載入／截斷未能查證時記 unknown。）
 
 ### 條件分支（依任務類型挑對應章節，不用全讀）
 
@@ -54,7 +54,7 @@
 |---|---|
 | 改排課／行事曆／扣堂 | `docs/architecture/RFC_SCHEDULE_OCCURRENCE_IDENTITY.md`（TD-076）+ `AI_REGRESSION_LESSONS.md` 模組索引表對應的 R10x 系列。改容量徽章／代課已滿：先讀 [`docs/plans/2026-08-17-mixed-class-type-occupancy.md`](docs/plans/2026-08-17-mixed-class-type-occupancy.md) 與 **§R116**（#1889）；禁止用較嚴班型上限蓋掉一對三空位；§R114 殘影過濾不可回退 |
 | 改計費／繳費提醒／核帳登記／電子收據時機 | `docs/DIRECTOR_PAYMENT_ALERT_RULES.md` + [`docs/architecture/RFC_REPORTED_PAID_ACCOUNTING_SPLIT.md`](docs/architecture/RFC_REPORTED_PAID_ACCOUNTING_SPLIT.md)（#1827）。禁止把行政登錄再次做成一次 `Paid=1`＋核銷＋開收據。 |
-| 處理 in-app 意見與建議／BugReport 產品閉環 | **先載** [`.agents/skills/alltrue-inapp-product-loop/SKILL.md`](.agents/skills/alltrue-inapp-product-loop/SKILL.md)（Cursor：`.cursor/skills/alltrue-inapp-product-loop` → 同內容）→ [`docs/plans/INAPP_PRODUCT_LOOP_EXECUTION_POLICY_V1.md`](docs/plans/INAPP_PRODUCT_LOOP_EXECUTION_POLICY_V1.md) + `docs/CHAT_BUG_SYSTEM.md` **§3.6–§3.7**；依風險再開 `alltrue-debugging`／`testing`／`code-review`／`release`／`security` |
+| 處理 in-app 意見與建議／BugReport 產品閉環 | **先載** [`.agents/skills/alltrue-inapp-product-loop/SKILL.md`](.agents/skills/alltrue-inapp-product-loop/SKILL.md)→ [`docs/plans/INAPP_PRODUCT_LOOP_EXECUTION_POLICY_V1.md`](docs/plans/INAPP_PRODUCT_LOOP_EXECUTION_POLICY_V1.md) + `docs/CHAT_BUG_SYSTEM.md` **§3.6–§3.7**；依風險再開 `alltrue-debugging`／`testing`／`code-review`／`release`／`security` |
 | 處理 in-app Bug（分診或修完上線） | 同上 skill + `AI_REGRESSION_LESSONS.md` **§R51、§R53**（開 issue 與 merge 後都要回系統留言，勿只動 GitHub）|
 | 高風險模組（代課／評量／智慧行事曆合併等）任何改動 | `docs/AI_REGRESSION_LESSONS.md` 文末模組索引表對應 § — 動 `backend/`／`frontend/src/` 前必讀 |
 | 需要回顧決策或舊 bug | `~/.local/bin/mempalace search "<關鍵字>"`（本機搜尋；非跨機器權威）|
@@ -106,12 +106,12 @@ gate、不要求每 PR 更新 diagram；除非未來有實際 evidence 顯示某
 
 可參考 [`msitarzewski/agency-agents`](https://github.com/msitarzewski/agency-agents) 的角色設計、deliverable 格式與多工具整合概念，但它不是 AllTrue 產品功能，也不可整包安裝覆蓋本 repo 規則。
 
-工程技能工作流可參考 [`addyosmani/agent-skills`](https://github.com/addyosmani/agent-skills) — **完整評估與安裝 SOP 見 [`docs/GUIDE_AGENT_SKILLS.md`](docs/GUIDE_AGENT_SKILLS.md)**（繁中）；UI 品味另見同文件 §taste-skill（[`Leonxlnx/taste-skill`](https://github.com/Leonxlnx/taste-skill)，已裝 `design-taste-frontend`／`redesign-existing-projects`）。AllTrue 本地化技能見 [`docs/GUIDE_ALLTRUE_AGENT_SYSTEM_V1.md`](docs/GUIDE_ALLTRUE_AGENT_SYSTEM_V1.md) 與 `.cursor/skills/alltrue-*`（只挑技能本地化，禁止整包覆蓋 P0 / PRD 流程；UI 仍以 `docs/RULE_DESIGN_SYSTEM.md` 為準）。
+工程技能工作流可參考 [`addyosmani/agent-skills`](https://github.com/addyosmani/agent-skills) — **完整評估與安裝 SOP 見 [`docs/GUIDE_AGENT_SKILLS.md`](docs/GUIDE_AGENT_SKILLS.md)**（繁中）；UI 品味另見同文件 §taste-skill（[`Leonxlnx/taste-skill`](https://github.com/Leonxlnx/taste-skill)，已裝 `design-taste-frontend`／`redesign-existing-projects`）。AllTrue 本地化技能見 [`docs/GUIDE_ALLTRUE_AGENT_SYSTEM_V1.md`](docs/GUIDE_ALLTRUE_AGENT_SYSTEM_V1.md) 與 `.claude/skills/alltrue-*`（只挑技能本地化，禁止整包覆蓋 P0 / PRD 流程；UI 仍以 `docs/RULE_DESIGN_SYSTEM.md` 為準）。
 
 引用時遵守：
 - 只挑選角色/交付物模板，改寫成 AllTrue bounded context 的 artifact handoff。
-- 所有外部 agent 規則都必須服從 `.cursorrules`、P0 gate、分校隔離、CI/deploy SOP。
-- 禁止一鍵匯入大量 `.cursor/rules/*.mdc`；新增或改 rule 必須走 T0 docs-only PR。
+- 所有外部 agent 規則都必須服從 `CLAUDE.md` 紅線、P0 gate、分校隔離、CI/deploy SOP。
+- 禁止一鍵匯入大量外部 rule 檔；新增或改 rule 必須走 T0 docs-only PR。
 - 若外部流程與 AllTrue P0 安全規則衝突，永遠以 AllTrue 規則為準。
 
 ### Workflow Risk Tiers

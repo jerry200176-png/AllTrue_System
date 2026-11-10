@@ -114,4 +114,4 @@ ssh admin@pi.lifenet.com.tw "cat /home/admin/backend/public/version.json"
 - Epic #687 子 issue 清單
 - `docs/RULE_DESIGN_SYSTEM.md` §7 禁止清單
 - `docs/GUIDE_UI_COPY.md` 空狀態公式
-- `.cursor/rules/auto-frontend-deploy.mdc` deploy SOP
+- [`RUNBOOK_MERGE_TO_ACTIVATION.md`](RUNBOOK_MERGE_TO_ACTIVATION.md) deploy SOP

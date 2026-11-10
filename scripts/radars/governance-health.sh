@@ -56,9 +56,6 @@ run_check "agent_preflight_self" "AGENT_PREFLIGHT_MODE=ci bash scripts/agent-pre
 # Broken SOP links (deterministic subset)
 run_check "canonical_entrypoints" "test -f AGENTS.md && test -f docs/governance/COMPANY_CONSTITUTION.md && test -f docs/governance/WORKTREE_POLICY.md && test -f docs/sop/AGENT_PREFLIGHT.md" fail
 
-# Skills/rules referenced
-run_check "cursor_adapters_present" "test -f .cursor/rules/no-premature-closure.mdc && test -f .cursor/skills/agent-preflight/SKILL.md" warn
-
 # Self last-run: write pointer
 OVERALL="PASS"
 [[ $severity_fail -eq 0 ]] || OVERALL="FAIL"

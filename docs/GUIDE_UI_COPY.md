@@ -2,7 +2,7 @@
 
 > **單一真相來源。** 所有面向主任/老師/家長的 UI 文字一律照本文件生成。  
 > 適用範圍：頁面標題、空狀態、loading、錯誤訊息、按鈕文字、placeholder、說明文字。  
-> 對齊：[`docs/RULE_DESIGN_SYSTEM.md`](RULE_DESIGN_SYSTEM.md)（視覺）、[`.cursor/rules/user-facing-communication.mdc`](../.cursor/rules/user-facing-communication.mdc)（公開留言）
+> 對齊：[`docs/RULE_DESIGN_SYSTEM.md`](RULE_DESIGN_SYSTEM.md)（視覺）、[`CHAT_BUG_SYSTEM.md` §3.8](CHAT_BUG_SYSTEM.md)（公開留言）
 
 ---
 

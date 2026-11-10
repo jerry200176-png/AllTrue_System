@@ -83,7 +83,7 @@
 | 狀態 | Done |
 | 優先級 | P1 |
 | 發現日期 | 2026-04-21 |
-| 發現來源 | 系統建立時已知（.cursorrules 有記錄） |
+| 發現來源 | 系統建立時已知（CLAUDE.md 有記錄） |
 | 影響模組 | `FinanceController::subjectUnits`、`SubjectUnitsPage.vue` |
 | 描述 | 後端回傳 `{TeacherID, Subject, unit_count}` 但前端期待 `{ teachers: [...], totals: {...} }`，導致科目數統計頁面顯示空白 |
 | 建議做法 | 修正 `FinanceController::subjectUnits` 回傳格式，或在前端做格式轉換層 |
@@ -487,7 +487,7 @@
 
 | 欄位 | 內容 |
 |---|---|
-| 狀態 | Done（Phase 1–3 + P4-a/b + Step 7 composables 已落地；PRD：`.cursor/plans/calendar-performance-epic_2026-06-01.md`）|
+| 狀態 | Done（Phase 1–3 + P4-a/b + Step 7 composables 已落地；PRD：`docs/archive/cursor-plans/calendar-performance-epic_2026-06-01.md`）|
 | 優先級 | P1 |
 | 發現日期 | 2026-06-01 |
 | 發現來源 | [SRE] 行事曆載入慢調查（使用者回報）；對標 Cal.com / FullCalendar |
@@ -504,7 +504,7 @@
 | 狀態 | Open |
 | 優先級 | P2 |
 | 發現日期 | 2026-06-01 |
-| 發現來源 | 開發中（feedback push dark launch，PRD：`.cursor/plans/feedback-push-notifications_2026-06-01.md`）|
+| 發現來源 | 開發中（feedback push dark launch，PRD：`docs/archive/cursor-plans/feedback-push-notifications_2026-06-01.md`）|
 | 影響模組 | `frontend/src/pages/ParentPortal.vue`；perfflag `feedback_push_enabled` |
 | 描述 | 後端推播機制 + 退出權儲存/端點（`GET/PUT parent/notification-preferences`）已上線但 dark launch（flag 預設 false）。家長端尚無「關閉學習回饋通知」UI toggle。|
 | 建議做法 | (1) ParentPortal 設定區加 toggle 串 `parent/notification-preferences`；(2) 確認推播文案/節奏後，設 `PERF_FEEDBACK_PUSH=true` 開啟；(3) 觀察 TD-013（LINE 綁定率）影響觸達上限、補 TD-057 reply-rate KPI。|
@@ -543,7 +543,7 @@
 
 | 欄位 | 內容 |
 |---|---|
-| 狀態 | **Resolved（2026-06-13）** — 改採控制器層欄位級遮罩（`PinGate::isUnlocked()` + `ProfileController` 遮罩 phone/line_id/rfid），不整路掛 require_pin 故不誤傷共享下拉；soft 零回歸。計畫見 `.cursor/plans/td066_teacher_pii_pin_2026-06-13.md`。 |
+| 狀態 | **Resolved（2026-06-13）** — 改採控制器層欄位級遮罩（`PinGate::isUnlocked()` + `ProfileController` 遮罩 phone/line_id/rfid），不整路掛 require_pin 故不誤傷共享下拉；soft 零回歸。計畫見 `docs/archive/cursor-plans/td066_teacher_pii_pin_2026-06-13.md`。 |
 | 優先級 | P2（安全縱深；前端 gate 已覆蓋 UX，後端邊界缺口） |
 | 發現日期 | 2026-06-13 |
 | 發現來源 | [DEV] #769 Phase C 掛 require_pin 時發現 |

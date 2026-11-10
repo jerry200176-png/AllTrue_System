@@ -11,35 +11,21 @@ import { fileURLToPath } from 'node:url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const skillAgents = path.join(root, '.agents/skills/alltrue-inapp-product-loop/SKILL.md');
-const skillCursor = path.join(root, '.cursor/skills/alltrue-inapp-product-loop');
 const agentsMd = path.join(root, 'AGENTS.md');
 const policy = path.join(root, 'docs/plans/INAPP_PRODUCT_LOOP_EXECUTION_POLICY_V1.md');
-const releaseSkill = path.join(root, '.cursor/skills/alltrue-release/SKILL.md');
-const debugSkill = path.join(root, '.cursor/skills/alltrue-debugging/SKILL.md');
+const releaseSkill = path.join(root, '.agents/skills/alltrue-release/SKILL.md');
+const debugSkill = path.join(root, '.agents/skills/alltrue-debugging/SKILL.md');
 
 assert.ok(fs.existsSync(skillAgents), 'canonical skill missing under .agents/skills');
-const cursorTarget = fs.realpathSync(skillCursor);
-assert.equal(
-  cursorTarget,
-  fs.realpathSync(path.dirname(skillAgents)),
-  '.cursor/skills/alltrue-inapp-product-loop must resolve to .agents canonical dir',
-);
-
-// Claude Code loads skills from .claude/skills; each entry links to the canonical copy.
-const claudeSkills = {
-  'alltrue-inapp-product-loop': path.dirname(skillAgents),
-  ...Object.fromEntries(
-    [
-      'alltrue-code-review', 'alltrue-debugging', 'alltrue-release', 'alltrue-security',
-      'alltrue-testing', 'security-audit', 'design-taste-frontend', 'redesign-existing-projects',
-    ].map((n) => [n, path.join(root, '.cursor/skills', n)]),
-  ),
-};
-for (const [name, canonical] of Object.entries(claudeSkills)) {
-  const link = path.join(root, '.claude/skills', name);
-  assert.ok(fs.lstatSync(link).isSymbolicLink(), `.claude/skills/${name} must be a symlink`);
-  assert.equal(fs.realpathSync(link), fs.realpathSync(canonical), `.claude/skills/${name} must resolve to its canonical dir`);
-  assert.ok(fs.existsSync(path.join(link, 'SKILL.md')), `.claude/skills/${name}/SKILL.md missing`);
+// Claude Code loads skills from .claude/skills; each entry is a symlink to its canonical .agents/skills copy.
+for (const n of [
+  'alltrue-inapp-product-loop', 'alltrue-code-review', 'alltrue-debugging', 'alltrue-release', 'alltrue-security',
+  'alltrue-testing', 'security-audit', 'design-taste-frontend', 'redesign-existing-projects',
+]) {
+  const link = path.join(root, '.claude/skills', n);
+  assert.ok(fs.lstatSync(link).isSymbolicLink(), `.claude/skills/${n} must be a symlink`);
+  assert.equal(fs.realpathSync(link), fs.realpathSync(path.join(root, '.agents/skills', n)), `.claude/skills/${n} must resolve to .agents/skills/${n}`);
+  assert.ok(fs.existsSync(path.join(link, 'SKILL.md')), `.claude/skills/${n}/SKILL.md missing`);
 }
 
 const skillBody = fs.readFileSync(skillAgents, 'utf8');

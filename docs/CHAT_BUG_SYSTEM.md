@@ -105,7 +105,7 @@ last_reviewed: 2026-08-23
 
 ### 3.7 In-app Bug 完整生命週期（分診 → 修 code → 回寫系統）
 
-**權威流程**：本節 + §3.6，只管 in-app 狀態與回寫；從收件到結案的九個階段、車道與關卡見 [`sop/DELIVERY_LIFECYCLE.md`](sop/DELIVERY_LIFECYCLE.md)。分類、auto-fix／Plan 門檻、閉環證據與模型 handoff 依 [`INAPP_PRODUCT_LOOP_EXECUTION_POLICY_V1`](plans/INAPP_PRODUCT_LOOP_EXECUTION_POLICY_V1.md)；修程式仍沿用 `.cursor/rules/bug-fix-plan.mdc` 的根因、測試、CI 與 review 要求。
+**權威流程**：本節 + §3.6，只管 in-app 狀態與回寫；從收件到結案的九個階段、車道與關卡見 [`sop/DELIVERY_LIFECYCLE.md`](sop/DELIVERY_LIFECYCLE.md)。分類、auto-fix／Plan 門檻、閉環證據與模型 handoff 依 [`INAPP_PRODUCT_LOOP_EXECUTION_POLICY_V1`](plans/INAPP_PRODUCT_LOOP_EXECUTION_POLICY_V1.md)；修程式仍沿用根因、測試（revert-proof）、CI 與 review 要求（見 `docs/AI_REGRESSION_LESSONS.md` §復發家族）。
 
 **口訣**：**開 GitHub issue 時回系統一次；merge 上線後一定要再回系統一次**。不能只關 GitHub。
 
@@ -209,7 +209,7 @@ This metadata only preserves GitHub tracking ownership. It does not resolve the 
 
 ### 3.8 公開留言寫作：白話優先（給老師／主任）
 
-**權威規則**：`.cursor/rules/user-facing-communication.mdc`（always-applied，本節是同步副本之導引）。
+**權威規則**：本節。
 
 **核心原則**：寫 `is_internal_note=false` 的留言（會通知回報者），一律白話。技術術語留給 GitHub issue 或內部備註。
 
@@ -231,7 +231,7 @@ This metadata only preserves GitHub tracking ownership. It does not resolve the 
 
 ✅ 正例 → `已看您的截圖。系統把「1100」當成「每小時」的費用，所以 8 堂 × 2 小時 = 17,600 元。如果原意是「每一堂 1100」，正確應是 8,800 元才對。我們發現有 12 個學生課程是一樣的情況...麻煩確認三件事：1) ... 2) ... 3) ...`
 
-完整對照表與更多範例見 `.cursor/rules/user-facing-communication.mdc`。
+
 
 ### 3.9 AI 客服：PM 分診流程與防濫用（2026-11-07 起）
 

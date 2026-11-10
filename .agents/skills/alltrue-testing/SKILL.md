@@ -22,7 +22,7 @@ description: >-
 1. **RED**：寫測試反映 bug 行為 → push → 確認 CI **失敗**（或本機 `vendor/bin/phpunit` / `npm run test:*` 在 WSL）
 2. **GREEN**：最小 production 修復 → CI **通過**
 3. **測試資料**：`Campus` 用 Factory；`schedules` 記 S.D.B.；future session 用 `23:00`（Y2）
-4. **高風險模組**：對照 `module-test.mdc` + 模組索引補案例
+4. **高風險模組**：對照 `CLAUDE.md` Y1/Y2 + 模組索引補案例
 
 ## 4. Forbidden actions
 

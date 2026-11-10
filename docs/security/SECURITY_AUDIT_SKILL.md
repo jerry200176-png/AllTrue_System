@@ -2,7 +2,7 @@
 
 This repository vendors Cloudflare's `security-audit-skill` at upstream commit
 `8bac42001ddd90a4dcd8d5a5045199283a8eba75` under
-`.cursor/skills/security-audit/`.
+`.claude/skills/security-audit/`.
 
 ## Operating boundary
 
@@ -17,7 +17,7 @@ This repository vendors Cloudflare's `security-audit-skill` at upstream commit
 2. Run the reconnaissance and hunting guidance from the vendored `SKILL.md` and reference files.
 3. Validate structured findings locally:
 
-   `node .cursor/skills/security-audit/validate-findings.cjs <report.json>`
+   `node .claude/skills/security-audit/validate-findings.cjs <report.json>`
 
 4. Remove sensitive evidence, attach only the sanitized report, and open a security issue with severity, reachability, and remediation owner.
 5. Independently reproduce high-severity findings before changing code or configuration.

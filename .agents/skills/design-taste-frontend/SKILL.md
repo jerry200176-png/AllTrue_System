@@ -15,7 +15,7 @@ description: Anti-slop frontend skill for landing pages, portfolios, and redesig
 ### 權威覆蓋（衝突時以下為準）
 1. [`docs/RULE_DESIGN_SYSTEM.md`](../../../docs/RULE_DESIGN_SYSTEM.md) — 色票／字級／元件語言唯一真相
 2. `frontend/src/styles.css` tokens（`--ds-*` / `--primary`）— 改 token 換膚，勿硬編碼散落 hex
-3. P0／`.cursorrules`／`AGENTS.md` — 禁 push main、禁 Pi 跑測、CI 綠才改 production
+3. P0（`CLAUDE.md` 紅線）／`AGENTS.md` — 禁 push main、禁 Pi 跑測、CI 綠才改 production
 
 ### AllTrue 預設 dials（後台／產品 UI）
 - `DESIGN_VARIANCE`: **2**（對稱、可掃讀；禁止 Awwwards 實驗排版塞進操作後台）

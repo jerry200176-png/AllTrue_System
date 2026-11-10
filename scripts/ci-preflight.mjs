@@ -62,7 +62,7 @@ function checkLegacySize(errors, warnings) {
     ':!*.lock', ':!**/package-lock.json', ':!package-lock.json',
     ':!**/composer.lock', ':!composer.lock', ':!*.sql', ':!*.sql.gz',
     ':!*.min.js', ':!*.min.css', ':!*.log', ':!**/*.log',
-    ':!*phpstan-baseline.neon', ':!**/*.generated.js', ':!.cursor/skills/**',
+    ':!*phpstan-baseline.neon', ':!**/*.generated.js', ':!.agents/skills/**', ':!.cursor/**',
   ], { cwd: ROOT, encoding: 'utf8', maxBuffer: 20 * 1024 * 1024 });
   let total = 0;
   for (const line of out.split('\n')) {

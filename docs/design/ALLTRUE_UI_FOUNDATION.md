@@ -174,7 +174,7 @@ Rollback: revert the stacked PR; page-scoped + additive primitives. See audit ta
 | Component Gallery | https://component.gallery/ | Site content for taxonomy | Component inventory checklist |
 | Shopify Polaris | https://polaris.shopify.com/ | Polaris license (docs) | Optional content hierarchy cues |
 | AllTrue RULE DS | `docs/RULE_DESIGN_SYSTEM.md` | Project | Brand color + auth exceptions |
-| Founder-star references | `.cursor/rules/frontend-brand-taste.mdc` | Reference index | design QA step and motion layer: see `docs/design/UI_FOUNDATION_MIGRATION_SEQUENCING.md` (skills vendored in `.claude/skills/`, `VENDORED.md`); `awesome-design-md`, shadcn/Radix and Carbon/Fluent/Primer remain pattern references; no visual skin copied |
+| Founder-star references | `CLAUDE.md` 黃線 Y9 | Reference index | design QA step and motion layer: see `docs/design/UI_FOUNDATION_MIGRATION_SEQUENCING.md` (skills vendored in `.claude/skills/`, `VENDORED.md`); `awesome-design-md`, shadcn/Radix and Carbon/Fluent/Primer remain pattern references; no visual skin copied |
 
 **Decision (superseded 2026-11-06, #4659):** the pilot built AllTrue-owned `At*` primitives and did not vendor `@gitlab/ui` or `@carbon/vue`. The permanent template is now shadcn-vue in `components/ui`; `@gitlab/ui` and `@carbon/vue` remain not vendored.
 
