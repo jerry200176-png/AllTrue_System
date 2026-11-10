@@ -83,10 +83,14 @@ This policy defines the tiers.
 ## Review checklist (R2/T2)
 
 R2/T2 requires exact-target required CI, rollback readiness, a documented
-risk/production-verification checklist, and resolved bot/reviewer threads. A
-second human or AI verifier is not a prerequisite in the single-Founder model.
-The implementing Agent remains responsible for the final evidence and may
-merge autonomously when no T3/protected action is involved.
+risk/production-verification checklist, and resolved bot/reviewer threads.
+Like every class, it also needs the final-head review evidence in
+[`MERGE_SOP.md`](../sop/MERGE_SOP.md#final-head-review-evidence) (a clean Codex
+summary or a recorded independent review; the land queue enforces it through
+`review-gate.mjs`). A
+second human is not a prerequisite in the single-Founder model. The
+implementing Agent remains responsible for the final evidence and may merge
+autonomously when no T3/protected action is involved.
 
 ## T3/protected boundary
 
@@ -118,7 +122,7 @@ This repo currently has **one** human maintainer (Jerry), who is not a universal
 |---|---|---|
 | `required_approving_review_count` (ruleset `main-protection`) | `0` | `1` |
 | `require_code_owner_review` | `false` | `true` — CODEOWNERS becomes a real blocking gate, not just a review request |
-| T2 review | Risk-appropriate review is advisory; no second identity is required for automatic delivery | A human second maintainer may add review assurance, but is not required by the executor contract |
+| T2 review | Final-head review evidence is required (see `MERGE_SOP.md`); no second human identity is required for automatic delivery | A human second maintainer may add review assurance, but is not required by the executor contract |
 | T3 boundary | Founder decision before protected action; review does not replace the gate | Same protected boundary, with the additional human review if ruleset policy later requires it |
 | `dismiss_stale_reviews_on_push` | `false` | `true` — a stale approval shouldn't survive a force-push-equivalent re-push |
 
