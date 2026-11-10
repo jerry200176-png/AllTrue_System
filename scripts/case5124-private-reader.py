@@ -3,7 +3,8 @@
 
 Native OpenSSL supplies CMS/AEAD; the standard library supplies closed schemas,
 public GitHub provenance, bounded archives and private atomic publication.
-The absent-by-default approval files are deliberately not CLI parameters.
+The fixed approval files are deliberately not CLI parameters; proposed source
+does not grant main trust or approval to merge/activate its recipient.
 """
 import argparse
 import base64
@@ -31,7 +32,7 @@ BINDING = 'case5124-private-reader-v1'
 WORKFLOW = '.github/workflows/production-case-dump.yml'
 HELPER = 'scripts/case5124-private-reader.py'
 POLICY = ROOT / 'operations/closeout/case5124-reader.policy.json'
-CERT = ROOT / 'operations/closeout/case5124-reader.cert.pem'
+CERT = ROOT / 'operations/closeout/case5124-reader.cert.crt'
 LIMIT = 16 * 1024 * 1024
 SIDECAR = 'case5124.cms.der'
 SUMMARY = 'case5124.public.json'
@@ -326,8 +327,8 @@ def seal(p, run, raw, out):
             cipher.chmod(0o600)
             profile(cipher)
             runtime(p)  # Public identity recheck after the same payload was captured.
-            need(now() <= utc(p['not_after']), 'capture_window_closed')
             blob = file_bytes(cipher, private=True)
+            need(now() <= utc(p['not_after']), 'capture_window_closed')
             atomic(out / SIDECAR, blob)
             try:
                 atomic(out / SUMMARY, encoded({'status': 'sealed', 'recipient_sha256': p['recipient_sha256'],
@@ -391,6 +392,7 @@ def unseal(p, run_id, artifact_id, zipped, key, output):
                  and capture['source_sha'] == run['head_sha'] and capture['backend_sha'] == p['expected_backend_sha']
                  and capture['payload_sha256'] == digest(data)
                  and utc(run['created_at']) <= utc(capture['captured_at']) <= utc(p['not_after']), 'capsule_provenance')
+            need(now() <= utc(p['not_after']), 'reader_window_closed')
             atomic(output, data)
         finally:
             purge(archive)

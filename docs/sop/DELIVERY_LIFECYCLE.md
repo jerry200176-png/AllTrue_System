@@ -292,7 +292,9 @@ completeness flag/reason tokens, byte lengths and the encrypted file's sha256. T
 (`sha256sum -c`) and decrypt it with the same command.
 
 The default `reader_profile=legacy` keeps that contract. The separately protected
-`case5124` CMS sidecar is inactive without its approved fixed policy/certificate;
+`case5124` CMS sidecar has a proposed fixed public certificate/policy in its
+preparation candidate; presence is not main trust, registration or activation.
+It remains on HOLD before merge/activation and fails closed without approved trust;
 it is not covered by the existing shared-key custody exception. Its source,
 recipient and bounded capture/read window require concrete Founder approval
 before merge/activation; see [the inactive reader contract](../../operations/closeout/case5124-reader.README.md).

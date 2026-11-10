@@ -118,7 +118,7 @@ jobs:
         with:
           persist-credentials: false
 
-      # R3/T3: no active approval files are included with the preparation candidate.
+      # R3/T3: proposed trust requires concrete Founder GO before main merge.
       # Failure here precedes SSH configuration and any production query.
       - name: Validate fixed private reader approval before production access
         if: inputs.reader_profile == 'case5124'

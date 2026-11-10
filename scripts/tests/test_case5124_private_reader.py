@@ -1,12 +1,14 @@
 """No network or production data: native OpenSSL plus synthetic metadata/certificates."""
 import base64
 import copy
+import contextlib
 import datetime as dt
 import importlib.util
 import io
 import os
 from pathlib import Path
 import subprocess
+import sys
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -205,6 +207,41 @@ class PrivateReader(unittest.TestCase):
     def test_runtime_drift_before_publication_cleans_capsule(self):
         with patch.object(r, 'runtime', side_effect=r.Refused('runtime_mismatch')):
             self.refused(self.capture)
+        self.assertFalse((self.work / r.SIDECAR).exists())
+        self.assertFalse((self.work / r.SUMMARY).exists())
+
+    def test_read_window_expiring_during_native_decrypt_refuses_and_cleans(self):
+        self.capture()
+        end = r.utc(self.p['not_after'])
+        clock = [end - dt.timedelta(seconds=1)]
+        original = r.native
+        def native(args):
+            result = original(args)
+            if '-decrypt' in args:
+                clock[0] = end + dt.timedelta(seconds=5)
+            return result
+        argv = ['reader', 'read', '--run-id', '101', '--artifact-id', '501',
+                '--artifact-zip', str(self.zipped), '--private-key', str(self.key), '--output', str(self.output)]
+        stdout = io.StringIO()
+        with patch.object(r, 'now', side_effect=lambda: clock[0]), patch.object(r, 'native', native), \
+                patch.object(sys, 'argv', argv), contextlib.redirect_stdout(stdout):
+            with self.assertRaises(SystemExit) as refused:
+                r.main()
+        self.assertEqual(refused.exception.code, 1)
+        self.assertEqual(stdout.getvalue(), 'case5124_reader=HOLD\n')
+        self.assertGreater(clock[0], end)
+        self.assertFalse(self.output.exists())
+        self.assertFalse(list(self.work.glob('.case5124-*')))
+
+    def test_seal_window_expiring_during_runtime_check_refuses_and_cleans(self):
+        end = r.utc(self.p['not_after'])
+        clock = [end - dt.timedelta(seconds=1)]
+        before = self.raw.read_bytes()
+        def runtime(_):
+            clock[0] = end + dt.timedelta(seconds=5)
+        with patch.object(r, 'now', side_effect=lambda: clock[0]), patch.object(r, 'runtime', runtime):
+            self.refused(self.capture)
+        self.assertEqual(self.raw.read_bytes(), before)
         self.assertFalse((self.work / r.SIDECAR).exists())
         self.assertFalse((self.work / r.SUMMARY).exists())
 

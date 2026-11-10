@@ -5,7 +5,9 @@
 - R3/T3 preparation only. Existing case-dump/DUMP encryption and cleanup remain;
   the default is legacy. The fixed opt-in refuses access without approved trust.
 - Native CMS and synthetic tests cover private staging, source/artifact/scope
-  binding and failure cleanup. No new database query, production write or reader
+  binding, expiry immediately before read publication and failure cleanup.
+  Proposed public certificate/policy prepare the concrete decision package;
+  they are not main-trusted or activated. No new database query, production write or reader
   registration. Concrete Founder GO is required before merge/activation.
-- [Custody, limits and inactive trust slots](../../operations/closeout/case5124-reader.README.md).
+- [Custody, limits and proposed trust](../../operations/closeout/case5124-reader.README.md).
   This read payload is not a consistent repair/rollback manifest.

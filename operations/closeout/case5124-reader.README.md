@@ -1,4 +1,4 @@
-# Case 5124 private reader — inactive preparation
+# Case 5124 private reader — proposed trust, inactive preparation
 
 **R3 / T3. HOLD before merge, dispatch or recipient registration.** Preparation,
 synthetic tests and CI do not approve a new recipient. The Founder must approve
@@ -13,13 +13,25 @@ fixed student/campus selector and empty StudentClass selector; caller target,
 teacher, subject and recipient overrides are refused before SSH. No new query,
 database account, key grant, network listener or production write is added.
 
-The following **absent files** are the only active trust slots. Fake test
-certificates are generated in temporary private directories and never installed:
+The following **proposed candidate files are present but not main-trusted**.
+They prepare the exact decision package, not approval or reader registration.
+Do not merge/dispatch/use the real recipient before concrete Founder GO. Fake
+test certificates are generated only inside isolated container tmpfs:
 
-* `operations/closeout/case5124-reader.cert.pem`: approved self-signed RSA
+* `operations/closeout/case5124-reader.cert.crt`: proposed self-signed RSA
   3072/4096 public certificate, valid throughout the capture/read window.
-* `operations/closeout/case5124-reader.policy.json`: exact JSON schema below.
-  Placeholder values below are documentation, not an active policy.
+* `operations/closeout/case5124-reader.policy.json`: the exact proposed policy;
+  the schema below documents its fields. The public certificate uses PEM encoding
+  in a conventional `.crt` file; the existing blanket `.pem`/key-file ban remains.
+
+Proposed certificate DER SHA256:
+`918f44f461aec013c2fe1fd7df2acf47f62753bb63f616e04303922a66186575`.
+Proposed window: **2026-11-10 05:00–10:00 UTC**, at most four first-attempt
+dispatches. The proposed backend is
+`f71362ce069c27abd45d98cb9af9a9ce27435980`, canonical deploy run
+`42758532347`. At package preparation this deployment is awaiting its separate
+approval; this is not a current-runtime claim. Capture must refuse until that
+canonical workflow and actual deployment job succeed and runtime identity matches.
 
 ```json
 {
@@ -86,7 +98,9 @@ Private directories must be owned mode 0700, downloaded ZIP/key mode 0600,
 regular single-link files, no symlink. Outputs are mode 0600 and published
 atomically without replacing an existing file. The bounded ZIP, native algorithm
 profile, AEAD result, bounded capsule, exact schema/scope and encrypted run/source
-provenance must all pass first. OpenSSL can write plaintext before authentication
+provenance must all pass first. The current read window is checked again immediately
+before atomic publication, including when native decryption crosses expiry.
+OpenSSL can write plaintext before authentication
 fails: it stays in private staging and is shredded on failure. Nothing is printed
 except fixed verification/HOLD tokens. Shredding is namespace cleanup, not a
 physical erasure guarantee for snapshots/overlay storage; SIGKILL cannot guarantee
