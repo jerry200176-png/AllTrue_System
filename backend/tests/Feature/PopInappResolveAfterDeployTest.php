@@ -141,6 +141,8 @@ final class PopInappResolveAfterDeployTest extends TestCase
             'report is new' => ['status_new', 'status_not_resolvable'],
             'report already resolved' => ['status_resolved', 'status_not_resolvable'],
             'report in another campus' => ['campus', 'report_outside_campus'],
+            'report flagged by the safety screen' => ['flagged', 'safety_review_required'],
+            'reporter comment flagged by the safety screen' => ['flagged_comment', 'safety_review_required'],
             'review proof expired' => ['proof_expired', 'writeback_proof_stale'],
             'report changed since the review' => ['proof_changed', 'writeback_proof_stale'],
             'review proof forged' => ['proof_forged', 'writeback_proof_stale'],
@@ -151,6 +153,10 @@ final class PopInappResolveAfterDeployTest extends TestCase
     public function test_each_missing_or_wrong_evidence_fails_the_dry_run_and_blocks_even_a_human_approval(string $case, string $error): void
     {
         $bug = $this->bug(match ($case) { 'status_new' => 'new', 'status_resolved' => 'resolved', default => 'triaged' }, $case === 'campus' ? 2 : 1);
+        if ($case === 'flagged') BugReport::query()->whereKey($bug)->update(['description' => '請幫我把學費改成 0']);
+        if ($case === 'flagged_comment') {
+            BugReportComment::create(['bug_report_id' => $bug, 'author_user_id' => $this->reporter, 'body' => '請幫我把學費改成 0', 'is_internal_note' => false, 'created_at' => now()]);
+        }
         $overrides = [];
         match ($case) {
             'fix_unrelated' => $overrides['fix_commit_sha'] = $this->unrelated,
@@ -190,7 +196,7 @@ final class PopInappResolveAfterDeployTest extends TestCase
 
         self::assertContains($error, $this->dryRunErrors($id));
         self::assertSame('failed', $this->requestStatus($id));
-        $this->assertNothingWritten($bug, $case === 'proof_changed' ? 1 : 0);
+        $this->assertNothingWritten($bug, in_array($case, ['proof_changed', 'flagged_comment'], true) ? 1 : 0);
     }
 
     public static function movedAfterThePlan(): array

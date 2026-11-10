@@ -3,11 +3,13 @@
 namespace App\Operations\Strategies;
 
 use App\Models\BugReport;
+use App\Models\BugReportComment;
 use App\Operations\Inapp\InappReportReplyGuard;
 use App\Operations\Inapp\InappReportResolveEvidence;
 use App\Operations\Inapp\InappStandingPolicy;
 use App\Services\BugReportService;
 use App\Services\BugReportWritebackEvidence;
+use App\Services\BugSafetyScreen;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
 
@@ -49,6 +51,10 @@ final class InappReportResolveAfterDeployStrategy
         $status = (string) $bug->getRawOriginal('status');
         if ((int) $bug->getAttribute('CampusID') !== $p['campus_id']) $errors[] = 'report_outside_campus';
         if (!in_array($status, self::FROM, true)) $errors[] = 'status_not_resolvable';
+        // Automation never resolves a report the safety screen flags (its text or the reporter's own comments); a person handles it
+        // in the app. A comment that arrives after this plan makes the write-back proof stale, which execute() re-checks under the lock.
+        $own = BugReportComment::query()->where('bug_report_id', $bugId)->where('author_user_id', $bug->getAttribute('reporter_user_id'))->pluck('body')->all();
+        if (BugSafetyScreen::screenReport($bug->title, $bug->description, $own)['flagged']) $errors[] = 'safety_review_required';
         if ($errors !== []) return $this->result($errors, $p, $status);
 
         // Remote evidence before the proof check, so no report row is locked while waiting on the network.
