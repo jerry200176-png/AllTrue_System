@@ -33,6 +33,7 @@ export default defineConfig({
       'src/lib/studentCourseSessionDisplay.test.js',
       'src/lib/studentSchoolGrade.test.js',
       'e2e/fixtures/readOnlyAppGuard.test.js',
+      'e2e/fixtures/classSessionReadResponder.test.js',
     ],
     globals: false,
     coverage: {
