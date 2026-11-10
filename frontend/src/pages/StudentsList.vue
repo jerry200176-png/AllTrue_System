@@ -2,7 +2,7 @@
   <div class="students-page at-ops-page at-page">
       <AtPageHeader
         title="學生管理"
-        description="搜尋、篩選與管理本分校學生資料與課程安排。"
+        description="管理「人」：學生資料、家長與聯絡方式。"
         icon="groups"
         data-guide="students-header"
       >
@@ -67,6 +67,7 @@
         </div>
         <div class="filter-toggles">
           <AtButton shape="rect" size="sm" variant="ghost" icon="school" @click="openGradePromotion">年級升級</AtButton>
+          <AtButton shape="rect" size="sm" variant="ghost" icon="merge" @click="showSchoolMerge = true">學校整理</AtButton>
           <AtButton
             shape="rect"
             size="sm"
@@ -207,7 +208,7 @@
                   <span>{{ expandedId === student.id ? '收合' : '課程/購課' }}</span>
                 </button>
                 <AtIconButton icon="edit" label="編輯" @click="editStudent(student)" />
-                <AtIconButton icon="timeline" label="學習歷程" @click="timelineStudent = student" />
+                <AtIconButton icon="timeline" label="學習檔案" @click="timelineStudent = student" />
                 <AtRowMenu>
                   <AtButton shape="rect" size="sm" variant="danger" icon="delete" @click="deleteStudent(student)">刪除學生</AtButton>
                 </AtRowMenu>
@@ -878,6 +879,13 @@
       @decision="onEnrollmentConflictDecision"
     />
     <!-- Grade Promotion Modal — server preview/confirm (#297 Phase A); no course Stop. -->
+    <Dialog v-model:open="showSchoolMerge">
+      <DialogContent class="tw:max-h-[85vh] tw:max-w-2xl tw:overflow-y-auto">
+        <DialogTitle>學校整理</DialogTitle>
+        <DialogDescription class="tw:sr-only">把不同寫法的同一所學校合併成一個名稱</DialogDescription>
+        <SchoolMergePanel v-if="showSchoolMerge" :branch-id="props.branchId" @changed="loadStudents({ quiet: true })" />
+      </DialogContent>
+    </Dialog>
     <div v-if="showGradePromotion" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="grade-promotion-modal-title" @click.self="closeGradePromotion">
       <div class="modal" style="width: 560px;">
         <h3 id="grade-promotion-modal-title">年級升級</h3>
@@ -986,6 +994,7 @@ import { askConfirm } from '../composables/useConfirmDialog';
 import { ref, onMounted, onBeforeUnmount, onActivated, onDeactivated, watch, computed, nextTick } from 'vue';
 import { supabase } from '../supabase';
 import { authedFetch, getAccessToken } from '../lib/authedFetch';
+import { humanizeApiErrorMessage } from '../lib/humanizeApiErrorMessage.js';
 import { isCourseSettled, isPaymentNoticeStatus } from '../lib/paymentStatus.js';
 import {
   closedReason as effectiveClosedReason, courseHistoryReason, courseProgress, isLowRemaining, isMonthlyPaymentType, isPackageMember, isSessionPaymentLow,
@@ -1055,6 +1064,8 @@ import AtIconButton from '../components/design-system/AtIconButton.vue';
 import AtRowMenu from '../components/design-system/AtRowMenu.vue';
 import AtEmpty from '../components/design-system/AtEmpty.vue';
 import SchoolNameInput from '../components/SchoolNameInput.vue';
+import SchoolMergePanel from '../components/SchoolMergePanel.vue';
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from '../components/ui/dialog';
 import { trialTargetPayload } from '../lib/trialTarget.js';
 import { trackedFetch } from '../lib/loadingBar';
 
@@ -1243,6 +1254,7 @@ const getPackageTotalSessions = (course) => poolTotalSessions(course, { fallback
 
 // Grade promotion
 const showGradePromotion = ref(false);
+const showSchoolMerge = ref(false);
 
 // Sessions modal
 const showSessionsModal = ref(false);
@@ -3314,11 +3326,19 @@ const submitCourse = async () => {
 
 const deleteCourse = async (course) => {
   if (!confirm('確定刪除此課程設定？')) return;
-  if (isLaravelCourse(course)) {
-    try {
+  const notify = (title, description, variant = 'error') => {
+    toastRef.value?.show?.({ title, description, variant, durationMs: 6000 });
+  };
+  const refusalMessage = (error) => parseApiErrorMessage({
+    ...error,
+    message: humanizeApiErrorMessage(error?.message || ''),
+  }, '目前無法刪除此課程，請稍後再試。');
+  let deleted = false;
+  try {
+    if (isLaravelCourse(course)) {
       const token = await getAccessToken();
       if (!token) {
-        alert('請重新登入後再試');
+        notify('無法刪除課程', '請重新登入後再試。');
         return;
       }
       const res = await authedFetch(`/api/v1/student-classes/${course.id}`, {
@@ -3326,16 +3346,32 @@ const deleteCourse = async (course) => {
         credentials: 'include',
         headers: {}
       }, token);
-      if (res.ok) {
-        const sid = selectedStudent.value?.id ?? Object.keys(studentCourses.value).find(sid => (studentCourses.value[sid] || []).some(c => c.id === course.id));
-        if (sid) await loadStudentCourses(sid);
-        await loadAllStudentCourses();
+      if (!res.ok) {
+        const error = await res.json().catch(() => ({}));
+        notify('無法刪除課程', res.status >= 500
+          ? '目前無法刪除此課程，請稍後再試。'
+          : refusalMessage(error));
         return;
       }
-    } catch (_) {}
+      deleted = true;
+      const sid = selectedStudent.value?.id ?? Object.keys(studentCourses.value).find(sid => (studentCourses.value[sid] || []).some(c => c.id === course.id));
+      if (sid) await loadStudentCourses(sid);
+    } else {
+      const { error } = await supabase.from('student-classes').delete().eq('id', course.id);
+      if (error) {
+        notify('無法刪除課程', refusalMessage(error));
+        return;
+      }
+      deleted = true;
+    }
+    await loadAllStudentCourses();
+    notify('課程已刪除', '若清單尚未更新，請重新整理確認。', 'success');
+  } catch (_) {
+    // A successful write followed by a failed refresh must never repeat DELETE.
+    // A transport failure before a response leaves the write outcome unknown.
+    if (deleted) notify('課程已刪除', '清單暫時無法更新，請重新整理確認。', 'warning');
+    else notify('刪除結果尚未確認', '連線暫時中斷，請重新整理確認後再操作。');
   }
-  await supabase.from('student-classes').delete().eq('id', course.id);
-  await loadAllStudentCourses();
 };
 
 // --- Add Sessions (per-course) ---
@@ -3789,6 +3825,7 @@ table th { font-size: 12.5px; }
 .search-input-wrap input { padding-left: 36px; }
 .filter-toggles {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
   align-items: flex-end;
 }

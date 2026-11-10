@@ -291,6 +291,16 @@ completeness flag/reason tokens, byte lengths and the encrypted file's sha256. T
 `production-case-<case_key>` holds only `production-case.full.tar.gz.enc` plus its `.sha256`; check the hash
 (`sha256sum -c`) and decrypt it with the same command.
 
+The default `reader_profile=legacy` keeps that contract. The separately protected
+`case5124` CMS sidecar has a proposed fixed public certificate/policy in its
+preparation candidate; presence is not main trust, registration or activation.
+Its same-scope #5159 proposal has concrete Founder approval under the
+[2026-11-10 continuation decision](../governance/FOUNDER_STANDING_DECISIONS.md#same-scope-approval-continuation);
+required CI/review and installed controls remain. The fixed read pin targets
+verified current production, independently of unrelated UI releases; recipient,
+window and cumulative capture limits remain. This does not extend the shared-key
+custody exception; see [the reader contract](../../operations/closeout/case5124-reader.README.md).
+
 Decrypted files stay inside the authorized private execution environment; never
 paste them into issues, PRs or comments. Do not shortcut any of this with SSH,
 guessed IDs or stale artifacts.

@@ -1,0 +1,15 @@
+updates:
+  - id: staff-2026-11-10-reschedule-leave-cascade-guard
+    published_at: "2026-11-10"
+    audiences:
+      - director
+    importance: digest
+    title: 請假改為未上先取消請假
+    summary: 調到尚未結束的時段前，請先取消請假。
+    items:
+      - category: fixed
+        text: 請假堂次調到尚未結束的時段時，會提醒先取消請假，避免多出可扣堂次。
+      - category: improved
+        text: 只更正已結束時段的日期與時間，仍會保留請假狀態。
+    source_refs:
+      - "changelog:2026-11-10:reschedule-leave-cascade-guard"

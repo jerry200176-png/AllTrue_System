@@ -1,0 +1,15 @@
+updates:
+  - id: staff-2026-11-09-student-course-delete-feedback
+    published_at: "2026-11-09"
+    audiences:
+      - director
+    importance: digest
+    title: 刪除課程會顯示結果
+    summary: 無法刪除時會顯示原因；連線中斷時會提醒先確認結果。
+    items:
+      - category: fixed
+        text: 在學生頁刪除課程，若紀錄需要保留或暫時無法處理，現在會顯示說明。
+      - category: improved
+        text: 若連線中斷，請先重新整理確認結果，再決定是否重試。
+    source_refs:
+      - "changelog:2026-11-09:student-course-delete-feedback-529"
