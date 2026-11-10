@@ -1,7 +1,8 @@
 // @ts-check
 import http from 'node:http';
 import { test, expect } from '@playwright/test';
-import { appOriginOf, installReadOnlyAppGuard } from './fixtures/readOnlyAppGuard.js';
+import { appOriginOf, installReadOnlyAppGuard, isKnownStatefulRead, isKnownBlockedStatefulRead, unexpectedCreateEntryRequests } from './fixtures/readOnlyAppGuard.js';
+import { BILL_EXPORT_PATH, installSingleStudentExportGuard } from './fixtures/directorExportGuard.js';
 
 /**
  * Browser self-test for the production acceptance read-only guard. It uses three
@@ -12,6 +13,7 @@ import { appOriginOf, installReadOnlyAppGuard } from './fixtures/readOnlyAppGuar
 function startServer() {
   const received = [];
   const redirects = new Map();
+  const responses = new Map();
   const server = http.createServer((req, res) => {
     received.push({ method: req.method, path: req.url });
     res.setHeader('Access-Control-Allow-Origin', '*');
@@ -22,6 +24,12 @@ function startServer() {
       const { status, location } = redirects.get(req.url);
       res.writeHead(status, { Location: location });
       res.end();
+      return;
+    }
+    if (responses.has(req.url)) {
+      const { status, headers, body } = responses.get(req.url);
+      res.writeHead(status, headers);
+      res.end(body);
       return;
     }
     if (req.url === '/') {
@@ -35,7 +43,7 @@ function startServer() {
   return new Promise((resolve) => {
     server.listen(0, '127.0.0.1', () => {
       const { port } = /** @type {import('node:net').AddressInfo} */ (server.address());
-      resolve({ server, received, redirects, base: `http://127.0.0.1:${port}` });
+      resolve({ server, received, redirects, responses, base: `http://127.0.0.1:${port}` });
     });
   });
 }
@@ -60,8 +68,117 @@ test.describe('read-only acceptance guard self-test', () => {
     app.received.length = 0;
     third.received.length = 0;
     middle.received.length = 0;
+    app.redirects.clear();
+    app.responses.clear();
     third.redirects.clear();
     middle.redirects.clear();
+  });
+
+  for (const createPost of [false, true]) {
+    test(`create-entry counts actually blocked reads and rejects create POST=${createPost}`, async ({ page, context }) => {
+      let attempts = 0;
+      context.on('request', request => { if (isKnownStatefulRead(app.base, request.method(), request.url())) attempts += 1; });
+      const blocked = await installReadOnlyAppGuard(context, app.base);
+      await page.goto(`${app.base}/`);
+      await page.evaluate(async createPost => {
+        await fetch('/api/v1/class-sessions?branch_id=1').catch(() => null);
+        if (createPost) await fetch('/api/v1/student-classes', { method: 'POST', body: '{}' }).catch(() => null);
+      }, createPost);
+      const known = blocked.filter(request => isKnownBlockedStatefulRead(app.base, request));
+      const unexpected = unexpectedCreateEntryRequests(app.base, blocked);
+      expect(app.received.filter(request => request.path.startsWith('/api/'))).toEqual([]);
+      expect(known).toHaveLength(1);
+      expect(known.length).toBe(attempts);
+      console.log(JSON.stringify({ acceptance: 'create-entry-guard', attempted_stateful_reads: attempts,
+        blocked_stateful_reads: known.length, unexpected_requests: unexpected.length, server_api_requests: 0 }));
+      if (createPost) {
+        expect(unexpected).toContainEqual({ method: 'POST', origin: app.base, path: '/api/v1/student-classes' });
+        expect(() => expect(unexpected).toEqual([])).toThrow();
+      } else expect(unexpected).toEqual([]);
+    });
+  }
+
+  test('an unguarded known GET cannot count as blocked create-entry evidence', async ({ page, context }) => {
+    let attempts = 0;
+    context.on('request', request => { if (isKnownStatefulRead(app.base, request.method(), request.url())) attempts += 1; });
+    await page.goto(`${app.base}/`);
+    await page.evaluate(() => fetch('/api/v1/class-sessions?branch_id=1'));
+    const blocked = [];
+    const known = blocked.filter(request => isKnownBlockedStatefulRead(app.base, request));
+    expect(app.received).toContainEqual({ method: 'GET', path: '/api/v1/class-sessions?branch_id=1' });
+    expect(attempts).toBe(1);
+    expect(known).toHaveLength(0);
+    expect(() => expect(known.length).toBe(attempts)).toThrow();
+  });
+
+  for (const method of ['GET', 'HEAD']) {
+    test(`known stateful ${method} never reaches the server while learning reads pass (#528)`, async ({ page, context }) => {
+      const blocked = await installReadOnlyAppGuard(context, app.base);
+      await page.goto(`${app.base}/`);
+      const paths = ['/api/v1/class-sessions?branch_id=1', '/api/v1/class-sessions/',
+        '/api/v1/class-sessions/projection?start=2026-09-01&end=2026-09-30',
+        '/api/v1/class-sessions/projection/', '/api/v1/%63lass-sessions',
+        '/api/v1/class%2dsessions/%70rojection%2f', '/api%2Fv1%2Fclass-sessions',
+        '/api//v1/class-sessions//projection/', '/api/v1/unused%2f..%2fclass-sessions',
+        '/api/v1/%2563lass-sessions'];
+      const outcomes = await page.evaluate(async ({ method, paths }) => {
+        const results = [];
+        for (const path of paths) {
+          try { results.push((await fetch(path, { method })).status); }
+          catch { results.push('blocked'); }
+        }
+        return results;
+      }, { method, paths });
+      // Native Chromium requests against loopback HTTP counters, not route-call mocks.
+      expect(app.received.filter(entry => !['/', '/favicon.ico'].includes(entry.path))).toEqual([]);
+      expect(outcomes).toEqual(paths.map(() => 'blocked'));
+      expect(blocked).toHaveLength(paths.length);
+      const status = await page.evaluate(async () => (await fetch('/api/v1/learning-records?branch_id=1')).status);
+      expect(status).toBe(200);
+      expect(app.received).toContainEqual({ method: 'GET', path: '/api/v1/learning-records?branch_id=1' });
+    });
+  }
+
+  for (const status of [301, 302, 303, 307, 308]) {
+    test(`single student export redirect ${status} cannot reach a business POST`, async ({ page, context }) => {
+      app.redirects.set(BILL_EXPORT_PATH, {
+        status, location: `${app.base}/api/v1/learning-records/7/rollback-approval`,
+      });
+      const guard = await installSingleStudentExportGuard(context, app.base, ['c7'], '合成學生');
+      await page.goto(`${app.base}/`);
+      const outcome = await page.evaluate(async path => {
+        try {
+          await fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ branch_id: 1, filter: 'all', search: '合成學生', rows: [{ id: 7, package_id: null }] }) });
+          return 'sent';
+        } catch { return 'blocked'; }
+      }, BILL_EXPORT_PATH);
+      // This checks actual Chromium traffic received by a loopback server, not route-call mocks.
+      expect(app.received.filter(entry => entry.method === 'POST')).toEqual([{ method: 'POST', path: BILL_EXPORT_PATH }]);
+      expect(outcome).toBe('blocked');
+      expect(guard.exportCount()).toBe(0);
+      expect(guard.blocked).toEqual([{ method: 'POST', origin: app.base, path: BILL_EXPORT_PATH }]);
+    });
+  }
+
+  test('single student export rejects a direct HTML response and consumes the one-shot allowance', async ({ page, context }) => {
+    app.responses.set(BILL_EXPORT_PATH, { status: 200, headers: { 'Content-Type': 'text/html' }, body: '<html>synthetic login</html>' });
+    const guard = await installSingleStudentExportGuard(context, app.base, ['c7'], '合成學生');
+    await page.goto(`${app.base}/`);
+    const outcomes = await page.evaluate(async path => {
+      const send = async () => {
+        try {
+          await fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ branch_id: 1, filter: 'all', search: '合成學生', rows: [{ id: 7, package_id: null }] }) });
+          return 'sent';
+        } catch { return 'blocked'; }
+      };
+      return [await send(), await send()];
+    }, BILL_EXPORT_PATH);
+    expect(outcomes).toEqual(['blocked', 'blocked']);
+    expect(app.received.filter(entry => entry.method === 'POST')).toEqual([{ method: 'POST', path: BILL_EXPORT_PATH }]);
+    expect(guard.exportCount()).toBe(0);
+    expect(guard.blocked).toHaveLength(2);
   });
 
   test('(a) a write to the app origin is blocked and recorded', async ({ page, context }) => {

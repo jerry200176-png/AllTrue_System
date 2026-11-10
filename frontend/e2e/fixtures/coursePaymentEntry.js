@@ -79,7 +79,7 @@ export async function expectCoursePaymentEntryOpensLedgerInPlace(page, { pageHea
     if (label && (!actionLabel || label === actionLabel)) { paymentCell = cell; wanted = label; break; }
   }
   expect(paymentCell, 'a 課程查找 row with a payment next action').toBeTruthy();
-  const row = paymentCell.locator('xpath=ancestor::tr[contains(concat(" ", normalize-space(@class), " "), " course-row ")][1]');
+  const row = paymentCell.locator('xpath=ancestor::*[contains(concat(" ", normalize-space(@class), " "), " course-row ")][1]');
   const primary = row.getByTestId('course-row-primary');
   const primaryIsPayment = (await primary.getAttribute('data-action')) === 'payment';
   const menuItem = page.getByRole('menuitem', { name: wanted, exact: true });
@@ -95,6 +95,7 @@ export async function expectCoursePaymentEntryOpensLedgerInPlace(page, { pageHea
   const clickedLabel = (await action.innerText()).trim();
   const rowCourseId = Number(await paymentCell.getAttribute('data-course-id'));
   expect(rowCourseId, 'the payment cell names its course (data-course-id)').toBeGreaterThan(0);
+  await expect(row, 'the action region belongs to the payment cell\'s contract').toHaveAttribute('data-contract-id', String(rowCourseId));
   const rowCourse = courses().find((candidate) => Number(candidate?.id ?? candidate?.ID) === rowCourseId);
   expect(rowCourse, `row course ${rowCourseId} must be a course listed on 課程查找`).toBeTruthy();
   await expect(status, `badge for course ${rowCourseId} matches its payment state`).toHaveText(coursePaymentBadge(rowCourse ?? {}, { monthlyPeriod: true }).label);

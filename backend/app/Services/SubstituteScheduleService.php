@@ -57,8 +57,8 @@ class SubstituteScheduleService
 
     /**
      * Effective Teacher for many occurrences (docs/adr/ADR-EFFECTIVE-TEACHER.md): teacherForOccurrence() semantics per distinct
-     * course/date/start (legacy assignments batched), so pay, stats and attribution read the same answer as the calendar and guard.
-     * ponytail: one resolve per distinct occurrence; batch the SQL if a month-wide report gets slow.
+     * course/date/start (unlocked reads batched), so pay, stats and attribution read the same answer as the calendar and guard.
+     * Locking callers retain the single-occurrence locking resolver.
      *
      * @param  iterable<array{course_id:int, date:string, start_time:?string, contract_teacher_id:int}>  $occurrences
      * @return array<string, int> occurrenceKey() => teacher user id
@@ -70,11 +70,16 @@ class SubstituteScheduleService
         if ($items === []) return [];
         $ids = array_values(array_unique(array_column($items, 'course_id')));
         $v2 = [];
+        $contracts = [];
         if (self::anyCampusOn()) {
             $courses = DB::table('StudentClass as sc')->join('Student as s', 's.id', '=', 'sc.StudentID')
-                ->whereIn('sc.ID', $ids)->when($lock, fn ($q) => $q->sharedLock())->get(['sc.ID', 's.CampusID']);
-            foreach ($courses as $course) $v2[(int) $course->ID] = OccurrenceAssignmentService::enabledFor((int) $course->CampusID);
+                ->whereIn('sc.ID', $ids)->when($lock, fn ($q) => $q->sharedLock())->get(['sc.ID', 's.CampusID', 'sc.TeacherID']);
+            foreach ($courses as $course) {
+                $v2[(int) $course->ID] = OccurrenceAssignmentService::enabledFor((int) $course->CampusID);
+                $contracts[(int) $course->ID] = (int) $course->TeacherID;
+            }
         }
+        $readTeachers = !$lock ? self::readOnlyV2Teachers(array_filter($items, fn ($o) => $v2[(int) $o['course_id']] ?? false), $contracts) : [];
         $legacyIds = array_values(array_filter($ids, fn ($id) => !($v2[$id] ?? false)));
         $latest = [];
         if ($legacyIds !== []) {
@@ -93,8 +98,55 @@ class SubstituteScheduleService
         $out = [];
         foreach ($items as $key => $o) {
             $out[$key] = ($v2[(int) $o['course_id']] ?? false)
-                ? self::teacherForOccurrence((int) $o['course_id'], $o['date'], (int) $o['contract_teacher_id'], $o['start_time'] ?? null, $lock)
+                ? ($lock ? self::teacherForOccurrence((int) $o['course_id'], $o['date'], (int) $o['contract_teacher_id'], $o['start_time'] ?? null, true) : $readTeachers[$key])
                 : (($latest[$key] ?? 0) > 0 ? $latest[$key] : max(0, (int) $o['contract_teacher_id']));
+        }
+        return $out;
+    }
+
+    /** Read-only counterpart of occurrence(); reuse the canonical owned-row/precedence SQL, never cache across requests. */
+    private static function readOnlyV2Teachers(array $items, array $contracts): array
+    {
+        $normalized = $out = [];
+        foreach ($items as $key => $item) {
+            $out[$key] = max(0, (int) $item['contract_teacher_id']);
+            try {
+                $normalized[$key] = ['course' => (int) $item['course_id'], 'date' => Carbon::parse((string) $item['date'])->toDateString(),
+                    'start' => self::normalizeTime($item['start_time'] ?? null)];
+            } catch (\Throwable) {
+                // occurrence() returns null for invalid dates; the caller's contract fallback remains authoritative.
+            }
+        }
+        if ($normalized === []) return $out;
+        $ids = array_values(array_unique(array_column($normalized, 'course')));
+        $dates = array_values(array_unique(array_column($normalized, 'date')));
+        $bound = ' AND sub2.student_course_id IN (' . implode(',', $ids) . ') AND DATE(sub2.schedule_date) IN (' . implode(',', array_fill(0, count($dates), '?')) . ')';
+        $rows = DB::query()->fromRaw(self::substituteScheduleDerivedSql($bound) . ' as occurrence_rows', $dates)
+            // A null start means ALL slots: stamped > legacy > makeup still precedes latest id across those slots.
+            ->orderByRaw("CASE WHEN type = 'extra' THEN 3 WHEN original_schedule_date IS NOT NULL AND original_start_time IS NOT NULL THEN 1 ELSE 2 END")
+            ->orderByDesc('id')->get();
+        $latest = [];
+        foreach ($rows as $row) {
+            $latest[self::occurrenceKey((int) $row->student_course_id, (string) $row->schedule_date, (string) $row->start_time)] ??= $row;
+            $latest[self::occurrenceKey((int) $row->student_course_id, (string) $row->schedule_date, null)] ??= $row;
+        }
+        $makeupTeachers = [];
+        if ($rows->contains('type', 'extra')) {
+            $records = DB::table('LearningRecord as lr')->join('ClassSession as cs', 'cs.id', '=', 'lr.ClassSessionID')
+                ->whereIn('cs.StudentClassID', $ids)->whereIn(DB::raw('DATE(cs.SessionDate)'), $dates)
+                ->whereNull('lr.VoidedAt')->where('lr.TeacherID', '>', 0)->orderByDesc('lr.id')
+                ->get(['cs.StudentClassID', 'cs.SessionDate', 'cs.StartTime', 'lr.TeacherID']);
+            foreach ($records as $record) {
+                $makeupTeachers[self::occurrenceKey((int) $record->StudentClassID, (string) $record->SessionDate, (string) $record->StartTime)] ??= (int) $record->TeacherID;
+                $makeupTeachers[self::occurrenceKey((int) $record->StudentClassID, (string) $record->SessionDate, null)] ??= (int) $record->TeacherID;
+            }
+        }
+        foreach ($normalized as $key => $item) {
+            $slot = self::occurrenceKey($item['course'], $item['date'], $item['start']);
+            $row = $latest[$slot] ?? null;
+            $teacher = $row ? ((int) $row->teacher_id ?: $contracts[$item['course']]) : $contracts[$item['course']];
+            $teacher = $row && $row->type === 'extra' ? ($makeupTeachers[$slot] ?? $teacher) : $teacher;
+            $out[$key] = $teacher > 0 ? $teacher : max($out[$key], $contracts[$item['course']], 0);
         }
         return $out;
     }

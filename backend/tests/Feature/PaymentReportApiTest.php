@@ -1975,6 +1975,137 @@ class PaymentReportApiTest extends TestCase
         $this->assertSame('partial', Invoice::where('StudentClassID', $sc->ID)->value('Status'));
     }
 
+    private function confirmedReportOn(Student $student, StudentClass $sc, Invoice $invoice, Payment $pay, int $amount, string $key): PaymentReport
+    {
+        return PaymentReport::create([
+            'StudentID' => $student->id, 'StudentClassID' => $sc->ID, 'InvoiceID' => $invoice->id, 'reported_by_name' => $student->name,
+            'payment_date' => '2026-06-26', 'payment_method' => 'transfer', 'reported_amount' => $amount, 'status' => 'confirmed',
+            'confirmed_by' => 1, 'confirmed_at' => Carbon::now(), 'payment_id' => $pay->id,
+            'report_token_hash' => hash('sha256', $key), 'token_expires_at' => Carbon::now()->addDay(),
+        ]);
+    }
+
+    /** @return array{0:array,1:StudentClass,2:Invoice,3:PaymentReport,4:PaymentReport} in-app #521 ledger: 928 receipt reversed by an unlinked row, then 929 re-recorded */
+    private function receiptReversedByUnlinkedRowFixture(): array
+    {
+        $h = ['Authorization' => 'Bearer ' . $this->createDirectorToken([1]), 'Accept' => 'application/json'];
+        $student = $this->createStudent(1);
+        $sc = $this->createCountModeClass($student->id, ['Paid' => 1, 'Charge' => 8000, 'Stop' => 1]);
+        $invoice = Invoice::create(['StudentID' => $student->id, 'StudentClassID' => $sc->ID,
+            'IssueDate' => '2026-06-26', 'TotalAmount' => 8000, 'PaidAmount' => 8000, 'Status' => 'paid']);
+        $first = Payment::create(['InvoiceID' => $invoice->id, 'Amount' => 8000, 'PaidAt' => '2026-06-26', 'Method' => 'transfer']);
+        Payment::create(['InvoiceID' => $invoice->id, 'Amount' => -8000, 'PaidAt' => '2026-06-26', 'Method' => 'void']); // legacy: no payment_report_id
+        $second = Payment::create(['InvoiceID' => $invoice->id, 'Amount' => 8000, 'PaidAt' => '2026-06-26', 'Method' => 'transfer']);
+        $mk = fn (Payment $pay, string $key) => $this->confirmedReportOn($student, $sc, $invoice, $pay, 8000, $key);
+
+        return [$h, $sc, $invoice, $mk($first, 'r521-a'), $mk($second, 'r521-b')];
+    }
+
+    public function test_inapp_521_bill_with_a_legacy_unlinked_void_row_refuses_void_of_either_receipt(): void
+    {
+        [$h, , $invoice, $stale, $live] = $this->receiptReversedByUnlinkedRowFixture();
+        $rows = Payment::where('InvoiceID', $invoice->id)->count();
+
+        foreach ([$stale, $live] as $report) { // the stale receipt and the live one alike: the legacy row cannot be matched
+            $this->withHeaders($h)->putJson("/api/v1/payment-reports/{$report->id}/void", ['void_reason' => 'x'])
+                ->assertStatus(409)->assertJsonFragment(['code' => 'legacy_reversal_unreconciled']);
+            $this->assertSame('confirmed', $report->fresh()->status);
+        }
+        $this->assertSame($rows, Payment::where('InvoiceID', $invoice->id)->count(), 'nothing written');
+    }
+
+    public function test_inapp_521_partial_legacy_reversal_also_fails_closed(): void
+    {
+        $h = ['Authorization' => 'Bearer ' . $this->createDirectorToken([1]), 'Accept' => 'application/json'];
+        $student = $this->createStudent(1);
+        $sc = $this->createCountModeClass($student->id, ['Paid' => 1, 'Charge' => 8000]);
+        $invoice = Invoice::create(['StudentID' => $student->id, 'StudentClassID' => $sc->ID, 'IssueDate' => '2026-06-26', 'TotalAmount' => 8000, 'PaidAmount' => 5000, 'Status' => 'partial']);
+        $pay = Payment::create(['InvoiceID' => $invoice->id, 'Amount' => 8000, 'PaidAt' => '2026-06-26', 'Method' => 'transfer']);
+        Payment::create(['InvoiceID' => $invoice->id, 'Amount' => -3000, 'PaidAt' => '2026-06-27', 'Method' => 'void']);
+        $report = $this->confirmedReportOn($student, $sc, $invoice, $pay, 8000, 'r521-partial');
+
+        $this->withHeaders($h)->putJson("/api/v1/payment-reports/{$report->id}/void", ['void_reason' => 'x'])
+            ->assertStatus(409)->assertJsonFragment(['code' => 'legacy_reversal_unreconciled']);
+    }
+
+    public function test_inapp_521_transfer_out_row_is_not_a_legacy_void_and_the_receipt_voids_normally(): void
+    {
+        $h = ['Authorization' => 'Bearer ' . $this->createDirectorToken([1]), 'Accept' => 'application/json'];
+        $student = $this->createStudent(1);
+        $sc = $this->createCountModeClass($student->id, ['Paid' => 1, 'Charge' => 8000]);
+        $invoice = Invoice::create(['StudentID' => $student->id, 'StudentClassID' => $sc->ID, 'IssueDate' => '2026-06-26', 'TotalAmount' => 8000, 'PaidAmount' => 8000, 'Status' => 'paid']);
+        $a = Payment::create(['InvoiceID' => $invoice->id, 'Amount' => 8000, 'PaidAt' => '2026-06-26', 'Method' => 'transfer']);
+        Payment::create(['InvoiceID' => $invoice->id, 'Amount' => -3000, 'PaidAt' => '2026-06-27', 'Method' => 'transfer_out']);
+        $report = $this->confirmedReportOn($student, $sc, $invoice, $a, 8000, 'r521-out');
+
+        $this->withHeaders($h)->putJson("/api/v1/payment-reports/{$report->id}/void", ['void_reason' => 'x'])->assertOk();
+
+        $this->assertSame(1, Payment::where('InvoiceID', $invoice->id)->where('payment_report_id', $report->id)->where('Amount', -8000)->count());
+    }
+
+    public function test_inapp_521_void_is_idempotent_when_a_reversal_is_already_linked_to_the_report(): void
+    {
+        $h = ['Authorization' => 'Bearer ' . $this->createDirectorToken([1]), 'Accept' => 'application/json'];
+        $student = $this->createStudent(1);
+        $sc = $this->createCountModeClass($student->id, ['Paid' => 0, 'Charge' => 8000]);
+        $invoice = Invoice::create(['StudentID' => $student->id, 'StudentClassID' => $sc->ID, 'IssueDate' => '2026-06-26', 'TotalAmount' => 8000, 'PaidAmount' => 0, 'Status' => 'unpaid']);
+        $pay = Payment::create(['InvoiceID' => $invoice->id, 'Amount' => 8000, 'PaidAt' => '2026-06-26', 'Method' => 'transfer']);
+        $report = $this->confirmedReportOn($student, $sc, $invoice, $pay, 8000, 'r521-idem');
+        Payment::create(['InvoiceID' => $invoice->id, 'Amount' => -8000, 'PaidAt' => '2026-06-27', 'Method' => 'void', 'payment_report_id' => $report->id]);
+
+        $this->withHeaders($h)->putJson("/api/v1/payment-reports/{$report->id}/void", ['void_reason' => 'x'])->assertOk();
+
+        $this->assertSame('voided', $report->fresh()->status);
+        $this->assertSame(2, Payment::where('InvoiceID', $invoice->id)->count(), 'no second reversal row');
+    }
+
+    public function test_inapp_521_void_matches_its_own_receipts_reversal_not_any_linked_reversal(): void
+    {
+        $h = ['Authorization' => 'Bearer ' . $this->createDirectorToken([1]), 'Accept' => 'application/json'];
+        $student = $this->createStudent(1);
+        $sc = $this->createCountModeClass($student->id, ['Paid' => 1, 'Charge' => 8000]);
+        $invoice = Invoice::create(['StudentID' => $student->id, 'StudentClassID' => $sc->ID, 'IssueDate' => '2026-06-26', 'TotalAmount' => 8000, 'PaidAmount' => 8000, 'Status' => 'paid']);
+        $payA = Payment::create(['InvoiceID' => $invoice->id, 'Amount' => 4000, 'PaidAt' => '2026-06-26', 'Method' => 'transfer']);
+        $payB = Payment::create(['InvoiceID' => $invoice->id, 'Amount' => 4000, 'PaidAt' => '2026-06-27', 'Method' => 'transfer']);
+        $a = $this->confirmedReportOn($student, $sc, $invoice, $payA, 4000, 'r521-match-a');
+        $b = $this->confirmedReportOn($student, $sc, $invoice, $payB, 4000, 'r521-match-b');
+
+        $this->withHeaders($h)->putJson("/api/v1/payment-reports/{$a->id}/void", ['void_reason' => 'x'])->assertOk();
+        $this->withHeaders($h)->putJson("/api/v1/payment-reports/{$b->id}/void", ['void_reason' => 'x'])->assertOk();
+
+        foreach ([$a, $b] as $report) {
+            $this->assertSame(1, Payment::where('InvoiceID', $invoice->id)->where('payment_report_id', $report->id)->where('Amount', -4000)->count(), 'each receipt gets its own reversal');
+        }
+        $this->assertSame('unpaid', $invoice->fresh()->Status);
+    }
+
+    public function test_inapp_521_a_confirmed_transfer_is_not_collected_a_second_time(): void
+    {
+        [$h, $sc, $invoice] = $this->receiptReversedByUnlinkedRowFixture();
+
+        $res = $this->withHeaders($h)->postJson('/api/v1/payment-reports/director-record', [
+            'student_class_id' => $sc->ID, 'payment_date' => Carbon::today()->toDateString(), 'payment_method' => 'cash', 'amount' => 8000,
+        ]);
+
+        $res->assertStatus(422)->assertJsonFragment(['code' => 'course_already_paid']);
+        $this->assertSame(3, Payment::where('InvoiceID', $invoice->id)->count());
+    }
+
+    public function test_inapp_521_a_real_overpayment_still_reads_overpaid(): void
+    {
+        $student = $this->createStudent(1);
+        $sc = $this->createCountModeClass($student->id, ['Paid' => 1, 'Charge' => 8000]);
+        $invoice = Invoice::create(['StudentID' => $student->id, 'StudentClassID' => $sc->ID,
+            'IssueDate' => '2026-06-26', 'TotalAmount' => 8000, 'PaidAmount' => 16000, 'Status' => 'paid']);
+        Payment::create(['InvoiceID' => $invoice->id, 'Amount' => 8000, 'PaidAt' => '2026-06-26', 'Method' => 'transfer']);
+        Payment::create(['InvoiceID' => $invoice->id, 'Amount' => 8000, 'PaidAt' => '2026-07-28', 'Method' => 'transfer']);
+
+        $status = app(\App\Services\BillingPayableResolver::class)->courseStatusesByStudentClassIds([$sc->ID])[$sc->ID];
+
+        $this->assertSame('paid', $status['status']);
+        $this->assertSame(8000, $status['overpaid']);
+    }
+
     public function test_director_can_void_confirmed_report(): void
     {
         $token = $this->createDirectorToken([1]);

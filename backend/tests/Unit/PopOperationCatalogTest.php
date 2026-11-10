@@ -111,6 +111,34 @@ final class PopOperationCatalogTest extends TestCase
         $method->invoke($service, $entry);
     }
 
+    public function test_billing_period_rekey_requires_exact_pop_policy_shape(): void
+    {
+        $catalog = new PopOperationCatalog(dirname(__DIR__, 3) . '/operations/catalog.yaml');
+        $service = new PopOperationService($catalog);
+        $method = new ReflectionMethod($service, 'approvalRoles');
+        $entry = $catalog->operation('billing-period-rekey-20261107');
+        self::assertSame(['campus_ids', 'decision_reference', 'expected_digest'], $entry['parameter_keys']);
+        self::assertSame(['super_admin'], $method->invoke($service, $entry));
+        $entry['blast_radius'] = 'branch_wide';
+        $this->expectException(RuntimeException::class);
+        $method->invoke($service, $entry);
+    }
+
+    public function test_each_exact_billing_operation_accepts_only_its_own_blast_radius(): void
+    {
+        $catalog = new PopOperationCatalog(dirname(__DIR__, 3) . '/operations/catalog.yaml');
+        $method = new ReflectionMethod(new PopOperationService($catalog), 'approvalRoles');
+        $radius = ['unbilled-backlog-catchup-20261006' => 'new_contract_invoice_item_per_uncovered_contract_month', 'billing-period-rekey-20261107' => 'invoice_billing_period_and_note_tag_only'];
+        foreach ($radius as $id => $own) {
+            $entry = $catalog->operation($id);
+            self::assertSame(['super_admin'], $method->invoke(new PopOperationService($catalog), $entry), "$id with its own radius");
+            $entry['blast_radius'] = $radius[array_values(array_diff(array_keys($radius), [$id]))[0]];
+            $refused = false;
+            try { $method->invoke(new PopOperationService($catalog), $entry); } catch (RuntimeException) { $refused = true; }
+            self::assertTrue($refused, "$id must refuse the other operation's radius");
+        }
+    }
+
     public function test_invoice1997_stale_values_requires_exact_pop_policy_shape(): void
     {
         $catalog = new PopOperationCatalog(dirname(__DIR__, 3) . '/operations/catalog.yaml');

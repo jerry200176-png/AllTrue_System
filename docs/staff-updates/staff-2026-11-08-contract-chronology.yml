@@ -1,0 +1,13 @@
+updates:
+  - id: staff-2026-11-08-contract-chronology
+    published_at: "2026-11-08"
+    audiences:
+      - director
+    importance: digest
+    title: 新合約優先顯示
+    summary: 同一學生的課程合約依建立先後由新到舊排列，仍顯示開課日期。
+    items:
+      - category: fixed
+        text: 合約列表恢復新合約在前；歷史課程、待對帳與原有操作都保留。
+    source_refs:
+      - "changelog:2026-11-08:contract-chronology"

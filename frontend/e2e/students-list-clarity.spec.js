@@ -72,6 +72,112 @@ const students = [
   { id: 2001, name: '測試學生02', grade: 'J1', school: '測試國中', parent_name: '測試家長', rfid: 'TEST1001', status: 'active', notes: '', line_bound: false },
 ];
 
+// #529 / #5149: real StudentsList + its real API compatibility wrapper.
+// This existing foundation collection is excluded from credentialed smoke.
+test.describe('529 course deletion result feedback', () => {
+  test.use({ viewport: { width: 1440, height: 754 }, serviceWorkers: 'block' });
+
+  async function openCourse(page, info, mode = '422', legacy = false) {
+    const course = { id: 990001, student_id: 2001, subject: 'Math', subject_name: '數學',
+      class_type: 'one_on_one', payment_type: 'session', payment_status: 'unpaid',
+      sessions_purchased: 8, remaining_sessions: 8, status: 'active', stop: 0,
+      branch_id: 1, teacher_id: 3000, teacher_name: '合成老師', days_of_week: [1],
+      start_time: '14:00', end_time: '16:00', duration_hours: 2 };
+    const state = { deletes: 0, refusedReads: 0, removed: false };
+    const origin = new URL(info.project.use.baseURL).origin;
+    await page.route('**/*', async route => {
+      const request = route.request();
+      const url = new URL(request.url());
+      if (url.origin !== origin) return route.abort();
+      if (!url.pathname.startsWith('/api/')) return route.continue();
+      const json = (body, status = 200) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) });
+      if (request.method() === 'DELETE' && url.pathname === '/api/v1/student-classes/990001') {
+        state.deletes += 1;
+        if (mode === 'network' || mode === 'network-committed') {
+          if (mode === 'network-committed') state.removed = true; // Response is lost after a possible commit.
+          return route.abort('failed');
+        }
+        if (mode === 'success' || mode === 'refresh-failure') {
+          state.removed = true;
+          return json({ message: 'Course deleted successfully' });
+        }
+        if (mode === 'malformed') return route.fulfill({ status: 422, contentType: 'text/html', body: '<html>synthetic upstream error</html>' });
+        const status = Number(mode);
+        return json({ message: status >= 500 ? 'SQLSTATE synthetic internal details' : '這門課已有上課紀錄，請使用結案。', code: 'course_has_history' }, status);
+      }
+      if (request.method() === 'POST' && url.pathname.endsWith('/session-dates')) return json({ data: [] });
+      if (request.method() !== 'GET') throw new Error('Unexpected synthetic mutation.');
+      if (url.pathname === '/api/v1/students') return json({ data: [students[1]], total: 1, last_page: 1 });
+      if (url.pathname === '/api/v1/student-classes') {
+        if ((legacy && url.searchParams.has('per_page')) || (state.removed && mode === 'refresh-failure')) {
+          state.refusedReads += 1;
+          return json({ message: 'Synthetic list unavailable' }, 503);
+        }
+        return json({ data: state.removed ? [] : [course], total: state.removed ? 0 : 1, last_page: 1 });
+      }
+      return json({ data: [], total: 0, last_page: 1 });
+    });
+    await page.goto('/pilot-mount.html?page=students');
+    await page.locator('.student-name-cell').click();
+    const card = page.locator('.student-course-card');
+    await expect(card).toHaveCount(1);
+    await card.locator('summary').click();
+    await expect(card.getByRole('button', { name: '刪除', exact: true })).toBeVisible();
+    return { card, state };
+  }
+
+  async function confirmDelete(page, card, accept = true) {
+    page.once('dialog', dialog => accept ? dialog.accept() : dialog.dismiss());
+    await card.getByRole('button', { name: '刪除', exact: true }).click();
+  }
+
+  for (const mode of ['403', '404', '409', '422', '500', 'malformed', 'network', 'network-committed']) {
+    test(`529 shows a safe visible refusal and stops after one DELETE (${mode})`, async ({ page }, info) => {
+      const { card, state } = await openCourse(page, info, mode);
+      await confirmDelete(page, card);
+      try {
+        const toast = page.locator('.twu--error');
+        await expect(toast).toBeVisible({ timeout: 2500 });
+        if (['403', '404', '409', '422'].includes(mode)) await expect(toast).toContainText('請使用結案');
+        else await expect(toast).toContainText(mode.startsWith('network') ? '尚未確認' : '無法刪除');
+        await expect(toast).not.toContainText(/SQLSTATE|<html>|synthetic upstream/);
+        expect(state.deletes).toBe(1);
+        await expect(card).toHaveCount(1);
+        expect(state.removed).toBe(mode === 'network-committed');
+      } finally { console.log(JSON.stringify({ case: `529-${mode}`, delete_attempts: state.deletes })); }
+    });
+  }
+
+  test('529 displays the actual compatibility-wrapper error without a second attempt', async ({ page }, info) => {
+    const { card, state } = await openCourse(page, info, '422', true);
+    expect(state.refusedReads).toBeGreaterThan(0); // Forces the existing legacy loader and real wrapper.
+    await confirmDelete(page, card);
+    await expect(page.locator('.twu--error')).toContainText('請使用結案', { timeout: 2500 });
+    expect(state.deletes).toBe(1);
+    await expect(card).toHaveCount(1);
+  });
+
+  test('529 cancellation sends no DELETE', async ({ page }, info) => {
+    const { card, state } = await openCourse(page, info);
+    await confirmDelete(page, card, false);
+    await expect(card).toHaveCount(1);
+    expect(state.deletes).toBe(0);
+    await expect(page.locator('.twu')).toHaveCount(0);
+  });
+
+  for (const mode of ['success', 'refresh-failure']) {
+    test(`529 confirms the successful deletion without replay (${mode})`, async ({ page }, info) => {
+      const { card, state } = await openCourse(page, info, mode);
+      await confirmDelete(page, card);
+      await expect(page.locator('.twu--success')).toContainText('課程已刪除', { timeout: 2500 });
+      expect(state.deletes).toBe(1);
+      expect(state.removed).toBe(true);
+      if (mode === 'refresh-failure') expect(state.refusedReads).toBeGreaterThan(0);
+      else await expect(card).toHaveCount(0);
+    });
+  }
+});
+
 async function installStudentMocks(page, apiRequests) {
   await page.route('**/api/v1/**', async (route) => {
     const url = new URL(route.request().url());
@@ -185,6 +291,98 @@ test.describe('In-App #367 shared-pool ownership', () => {
       expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
       expect(requests.every((request) => request.method === 'GET')).toBe(true);
       await page.screenshot({ path: `/tmp/inapp367-shared-pool-${width}.png`, fullPage: true });
+    });
+  }
+});
+
+// #4970 step3a: the real student entry and profile, with large text and keyboard navigation.
+test.describe('4970 student learning profile', () => {
+  test.use({ serviceWorkers: 'block' });
+  for (const width of [375, 1280]) {
+    test(`shows actual history, score and school dates with keyboard @${width}`, async ({ page }, info) => {
+      const writes = [];
+      const errors = [];
+      let schoolUnavailable = false;
+      let primaryReads = 0, schoolReads = 0;
+      const origin = new URL(info.project.use.baseURL).origin;
+      page.on('pageerror', error => errors.push(error.message));
+      await page.addInitScript(() => localStorage.setItem('alltrue_text_size', 'large'));
+      await page.clock.setFixedTime(new Date('2026-11-10T03:00:00Z'));
+      await page.setViewportSize({ width, height: 900 });
+      await page.route('**/*', async route => {
+        const r = route.request(), url = new URL(r.url());
+        if (url.origin !== origin) return route.abort();
+        if (!url.pathname.startsWith('/api/')) return route.continue();
+        if (r.method() !== 'GET') { writes.push(r.method()); return route.abort(); }
+        const json = body => route.fulfill({ json: body });
+        if (url.pathname === '/api/v1/students') return json({ data: [students[0]], total: 1, last_page: 1 });
+        if (url.pathname.endsWith('/learning-timeline')) {
+          primaryReads += 1;
+          if (primaryReads === 1) return route.fulfill({ status: 503, json: {} });
+          return json({ items: [
+          { type: 'evaluation', id: 9, date: '2026-11-10', subject: '數學', content: '（系統自動核准）', approval_status: 'approved', has_substantive_progress: false },
+          { type: 'evaluation', id: 1, date: '2026-11-09', subject: '數學', progress: '完成第二單元', content: '分數應用題與訂正', attendance: '到班', approval_status: 'approved', has_substantive_progress: true },
+          { type: 'exam_score', id: 2, date: '2026-11-01', subject: '數學', title: '第一段考', score: 0, max_score: 100, is_absent: false },
+          { type: 'exam_score', id: 3, date: '2026-10-01', subject: '英文', title: '英文段考', score: null, max_score: 100, is_absent: true },
+          ], coverage: { limit_per_source: 300, capped_sources: [] } });
+        }
+        if (url.pathname.endsWith('/exam-periods')) {
+          schoolReads += 1;
+          return schoolUnavailable ? route.fulfill({ status: 503, json: {} }) : json({ data: [{ id: 1, label: '第二段考', start_date: '2026-11-20', end_date: '2026-11-21' }] });
+        }
+        return json({ data: [], total: 0, last_page: 1 });
+      });
+      await page.goto('/pilot-mount.html?page=students');
+      const entry = page.getByRole('button', { name: '學習檔案', exact: true });
+      await entry.focus(); await page.keyboard.press('Enter');
+      const profile = page.getByRole('dialog', { name: /學習檔案/ });
+      await expect(profile).toContainText('載入失敗，請稍後再試');
+      const retry = profile.getByRole('button', { name: '重新載入', exact: true });
+      await expect(profile.getByRole('button', { name: '關閉學習檔案' })).toBeFocused();
+      await page.keyboard.press('Tab'); await expect(retry).toBeFocused();
+      // Finish finite entrance animations before measuring the real stable touch target.
+      await page.screenshot({ path: info.outputPath(`profile-retry-${width}.png`), fullPage: true, animations: 'disabled' });
+      expect(await retry.evaluate(el => getComputedStyle(el).fontSize)).toBe('19px');
+      expect((await retry.boundingBox()).height).toBeGreaterThanOrEqual(44);
+      expect(primaryReads).toBe(1); expect(schoolReads).toBe(0);
+      await page.keyboard.press('Enter');
+      await expect(profile).toBeVisible(); await expect(profile).toContainText('完成第二單元');
+      await expect(profile).not.toContainText('（系統自動核准）');
+      await expect(profile).toContainText('第二段考'); await expect(profile).toContainText('2026-11-20');
+      expect(primaryReads).toBe(2); expect(schoolReads).toBe(1);
+      await expect(page.locator('html')).toHaveAttribute('data-text-size', 'large');
+      await page.screenshot({ path: info.outputPath(`profile-overview-${width}.png`), fullPage: true, animations: 'disabled' });
+      const overview = profile.getByRole('tab', { name: '總覽', exact: true });
+      expect(await overview.evaluate(el => getComputedStyle(el).fontSize)).toBe('19px');
+      expect((await profile.boundingBox()).width).toBeLessThanOrEqual(width === 375 ? 359 : 768);
+      await expect(profile).toBeFocused(); // Removed retry button returns focus to the dialog scope.
+      await page.keyboard.press('Tab');
+      await expect(profile.getByRole('button', { name: '關閉學習檔案' })).toBeFocused();
+      await overview.focus(); await expect(overview).toBeFocused(); await page.keyboard.press('ArrowRight');
+      await expect(profile.getByRole('tab', { name: '上課紀錄', exact: true })).toBeFocused();
+      await page.keyboard.press('Enter');
+      await expect(profile.getByRole('tab', { name: '上課紀錄', exact: true })).toHaveAttribute('aria-selected', 'true');
+      await expect(profile).toContainText('分數應用題與訂正');
+      await expect(profile).toContainText('（系統自動核准）');
+      await page.keyboard.press('ArrowRight');
+      await expect(profile.getByRole('tab', { name: '成績', exact: true })).toBeFocused();
+      await page.keyboard.press('Enter');
+      await expect(profile.getByRole('tab', { name: '成績', exact: true })).toHaveAttribute('aria-selected', 'true');
+      await expect(profile).toContainText('0/100'); await expect(profile).toContainText('缺考');
+      await page.screenshot({ path: info.outputPath(`profile-scores-${width}.png`), fullPage: true, animations: 'disabled' });
+      await profile.getByLabel('科目', { exact: true }).selectOption('數學');
+      await expect(profile).not.toContainText('缺考');
+      expect(await profile.evaluate(el => el.scrollWidth <= el.clientWidth + 1)).toBe(true);
+      await page.screenshot({ path: info.outputPath(`profile-${width}.png`), fullPage: true, animations: 'disabled' });
+      await page.keyboard.press('Escape'); await expect(profile).toHaveCount(0); await expect(entry).toBeFocused();
+      schoolUnavailable = true; await page.keyboard.press('Enter');
+      await expect(profile).toContainText('校考日期暫時無法載入'); await expect(profile).toContainText('完成第二單元');
+      await profile.getByRole('tab', { name: '上課紀錄', exact: true }).focus(); await page.keyboard.press('Enter');
+      await expect(profile).toContainText('分數應用題與訂正');
+      await page.keyboard.press('Escape'); await expect(profile).toHaveCount(0); await expect(entry).toBeFocused();
+      expect(primaryReads).toBe(3); expect(schoolReads).toBe(2);
+      expect(writes).toEqual([]); expect(errors).toEqual([]);
+      console.log(JSON.stringify({ student_profile: '4970', width, large_text: true, keyboard: true, primary_reads: primaryReads, school_reads: schoolReads, writes: writes.length }));
     });
   }
 });

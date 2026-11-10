@@ -1,0 +1,13 @@
+updates:
+  - id: staff-2026-11-07-inapp-516-moved-lesson
+    published_at: "2026-11-07"
+    audiences:
+      - director
+    importance: digest
+    title: 調到別天的課可正常編輯
+    summary: 調課到非固定日的課，點預排不再出現無法建立錯誤。
+    items:
+      - category: fixed
+        text: 課調到另一天（非原固定上課日）後，點該堂預排現在能建立堂次，可編輯與點名。
+    source_refs:
+      - "changelog:2026-11-07:inapp-516-cross-date-destination"

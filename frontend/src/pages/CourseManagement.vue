@@ -1,17 +1,15 @@
 <template>
-  <div class="course-page at-page">
-    <AtPageHeader
-      title="課程查找"
-      description="查找課程、編輯月結日期與新增堂次，都在這一頁完成。"
-      icon="menu_book"
-      data-guide="course-mgmt-header"
-    >
-      <template #meta>
-        <span>目前列表 {{ coursesLoading && !groupedCourses.length ? '—' : groupedCourses.length }} 位學生</span>
-        <span v-if="pagination.lastPage > 1">第 {{ pagination.page }} / {{ pagination.lastPage }} 頁</span>
-      </template>
-      <template #help>
-        <AtHelpDisclosure label="先看懂這一頁">
+  <div class="course-page at-page course-workbench tw:text-tpl-body">
+    <header class="tpl-bar course-workbench__header tw:mb-4 tw:flex tw:flex-wrap tw:items-start tw:justify-between tw:gap-4" data-guide="course-mgmt-header">
+      <div class="course-workbench__intro tw:min-w-0 tw:flex-1">
+        <h1 class="tw:text-[length:var(--tpl-text-page)] tw:font-bold tw:leading-tight">課程查找</h1>
+        <p class="course-workbench__description tw:mt-1 tw:text-[length:var(--tpl-text-body)] tw:text-tpl-secondary">管理「課」：查找課程、排課、堂次與續課。</p>
+        <p class="course-workbench__context tw:mt-1 tw:text-[length:var(--tpl-text-caption)] tw:text-tpl-secondary">
+          <span>目前列表 {{ coursesLoading && !groupedCourses.length ? '—' : groupedCourses.length }} 位學生</span>
+          <span v-if="pagination.lastPage > 1"> · 第 {{ pagination.page }} / {{ pagination.lastPage }} 頁</span>
+        </p>
+        <details class="course-workbench__help" data-testid="course-help">
+          <summary class="tw:rounded-full" aria-label="課程使用說明" title="課程使用說明"><Info :size="22" aria-hidden="true" /><span class="course-help-label">先看懂這一頁</span></summary>
           <p>查找、排課與營運；建立、續報與購買請從學生管理進入。</p>
           <div class="course-lens-guidance" role="note" data-testid="course-lens-guidance">
             <span class="material-symbols-outlined course-lens-guidance__icon" aria-hidden="true">near_me</span>
@@ -22,19 +20,20 @@
           </div>
 
           <div class="course-lens-summary" aria-label="課程管理摘要" data-testid="course-lens-summary">
-            <article v-for="metric in courseLensMetrics" :key="metric.key" class="course-lens-metric" :class="`course-lens-metric--${metric.tone}`">
+            <Card v-for="metric in courseLensMetrics" :key="metric.key" class="course-lens-metric" :class="`course-lens-metric--${metric.tone}`">
               <span class="course-lens-metric__label">{{ metric.label }}</span>
               <strong class="course-lens-metric__value">{{ metric.value }}</strong>
               <span class="course-lens-metric__hint">{{ metric.hint }}</span>
-            </article>
+            </Card>
           </div>
-        </AtHelpDisclosure>
-      </template>
-      <template #actions>
-        <AtButton class="course-lens-add-action" data-testid="course-header-goto-students-create" shape="rect" variant="secondary" icon="person_add" @click="emit('navigate', 'students')">到學生管理新增課程</AtButton>
-        <AtButton class="course-lens-nav-action" shape="rect" variant="ghost" icon="person_search" @click="emit('navigate', 'students')">前往學生管理</AtButton>
+        </details>
+      </div>
+      <div class="course-workbench__tools tw:flex tw:flex-wrap tw:items-center tw:gap-3">
+        <TextSizeToggle />
+        <Button type="button" class="course-lens-add-action tw:h-14 tw:px-5 tw:text-[length:var(--tpl-text-body)]" data-testid="course-header-create" @click="openCreateCourse"><Plus :size="22" aria-hidden="true" />新增課程</Button>
+        <Button type="button" variant="ghost" class="course-lens-nav-action tw:h-14 tw:px-5 tw:text-[length:var(--tpl-text-body)]" @click="emit('navigate', 'students')"><UserSearch :size="22" aria-hidden="true" />前往學生管理</Button>
         <details class="course-tools-menu">
-          <summary class="btn-soft course-tools-menu__summary">
+          <summary class="btn-soft course-tools-menu__summary tw:text-tpl-caption">
             <span class="material-symbols-outlined btn-icon" aria-hidden="true">more_horiz</span>
             課務工具
           </summary>
@@ -49,45 +48,50 @@
             </button>
           </div>
         </details>
-      </template>
-    </AtPageHeader>
+      </div>
+    </header>
 
-    <div class="card course-header-card">
+    <div class="tpl-card course-header-card tw:rounded-3xl">
 
       <!-- Filters -->
-      <div class="filter-bar grid" data-guide="course-mgmt-filters">
+      <div class="course-filter-primary" data-guide="course-mgmt-filters">
         <div class="filter-field">
-          <label for="course-filter-student">搜尋學生</label>
-          <input id="course-filter-student" v-model="filters.name" type="search" autocomplete="off" placeholder="搜尋學生姓名…" @input="debouncedLoad" />
+          <label class="tw:text-tpl-caption" for="course-filter-student">搜尋學生</label>
+          <input class="tw:rounded-2xl tw:text-tpl-body" id="course-filter-student" v-model="filters.name" type="search" autocomplete="off" placeholder="搜尋學生姓名…" @input="debouncedLoad" />
         </div>
         <div class="filter-field">
-          <label for="course-filter-type">上課類型</label>
-          <select id="course-filter-type" v-model="filters.class_type" @change="loadCourses(1)">
-            <option value="">全部</option>
-            <option value="one_on_one">一對一</option>
-            <option value="one_on_two">一對二</option>
-            <option value="one_on_three">一對三</option>
-            <option value="tutoring">輔導</option>
-            <option value="trial">試聽</option>
-          </select>
-        </div>
-        <div class="filter-field">
-          <label for="course-filter-teacher">搜尋老師</label>
-          <input id="course-filter-teacher" v-model="filters.teacher_name" type="search" autocomplete="off" placeholder="搜尋老師姓名…" @input="debouncedLoad" />
-        </div>
-        <div class="filter-field">
-          <label for="course-filter-status">課程狀態</label>
-          <select id="course-filter-status" v-model="filters.course_status" @change="loadCourses(1)">
+          <label class="tw:text-tpl-caption" for="course-filter-status">課程狀態</label>
+          <select class="tw:rounded-2xl tw:text-tpl-body" id="course-filter-status" v-model="filters.course_status" @change="loadCourses(1)">
             <option value="">全部</option>
             <option value="active">進行中</option>
             <option value="inactive">已暫停</option>
           </select>
         </div>
-        <button v-if="hasActiveCourseFilters" class="course-filter-clear" type="button" data-testid="course-filter-clear" @click="clearCourseFilters">
-          <span class="material-symbols-outlined" aria-hidden="true">filter_alt_off</span>
-          清除篩選
-        </button>
       </div>
+      <div v-if="hasActiveCourseFilters" class="course-active-filters" data-testid="course-active-filters" aria-label="目前篩選條件">
+        <Badge v-for="label in activeCourseFilterLabels" :key="label" class="tw:text-tpl-caption" variant="secondary">{{ label }}</Badge>
+        <Button variant="ghost" class="course-filter-clear tw:text-tpl-caption" type="button" data-testid="course-filter-clear" @click="clearCourseFilters">清除篩選</Button>
+      </div>
+      <details class="course-secondary-filters">
+        <summary class="tw:text-tpl-caption">更多篩選<span class="material-symbols-outlined" aria-hidden="true">tune</span></summary>
+        <div class="course-secondary-filters__fields">
+          <div class="filter-field">
+            <label class="tw:text-tpl-caption" for="course-filter-type">上課類型</label>
+            <select class="tw:rounded-2xl tw:text-tpl-body" id="course-filter-type" v-model="filters.class_type" @change="loadCourses(1)">
+              <option value="">全部</option>
+              <option value="one_on_one">一對一</option>
+              <option value="one_on_two">一對二</option>
+              <option value="one_on_three">一對三</option>
+              <option value="tutoring">輔導</option>
+              <option value="trial">試聽</option>
+            </select>
+          </div>
+          <div class="filter-field">
+            <label class="tw:text-tpl-caption" for="course-filter-teacher">搜尋老師</label>
+            <input class="tw:rounded-2xl tw:text-tpl-body" id="course-filter-teacher" v-model="filters.teacher_name" type="search" autocomplete="off" placeholder="搜尋老師姓名…" @input="debouncedLoad" />
+          </div>
+        </div>
+      </details>
 
       <details class="course-stats-disclosure">
         <summary>
@@ -136,7 +140,7 @@
       <button class="creation-success-banner__close" type="button" @click="closedCourseNotice = null" aria-label="關閉"><span class="material-symbols-outlined" aria-hidden="true">close</span></button>
     </div>
 
-    <section v-if="pendingLeaveLoaded || pendingLeaveLoading || pendingLeaveError" class="pending-leave-summary" aria-live="polite">
+    <section v-if="pendingLeaveLoaded || pendingLeaveLoading || pendingLeaveError" class="pending-leave-summary tw:rounded-3xl" aria-live="polite">
       <div class="pending-leave-summary__header">
         <div class="pending-leave-summary__icon material-symbols-outlined" aria-hidden="true">inbox</div>
         <div class="pending-leave-summary__body">
@@ -154,7 +158,9 @@
       <div v-else-if="pendingLeaveError" class="pending-leave-summary__error-actions">
         <button class="pending-leave-summary__cta" type="button" @click="loadCourses(pagination.page)">再試一次</button>
       </div>
-      <div v-else-if="pendingLeaveWorkflows.length" class="pending-leave-case-list">
+      <details v-else-if="pendingLeaveWorkflows.length" class="pending-leave-disclosure">
+        <summary class="tw:text-tpl-caption">查看案件摘要</summary>
+        <div class="pending-leave-case-list">
         <article v-for="workflow in pendingLeavePreview" :key="workflow.id" class="pending-leave-case" data-testid="pending-leave-case">
           <div class="pending-leave-case__content">
             <div class="pending-leave-case__title-row">
@@ -168,12 +174,13 @@
           <button class="pending-leave-case__cta" type="button" :aria-label="`處理這筆請假：${workflow.student?.name || '未命名學生'}`" @click="openPendingLeaveWorkflow(workflow)">處理這筆請假<span aria-hidden="true">→</span></button>
         </article>
         <button v-if="pendingLeaveWorkflows.length > pendingLeavePreview.length" class="pending-leave-summary__more" type="button" @click="emit('navigate', { target: 'director', section: 'exception-workflows' })">還有 {{ pendingLeaveWorkflows.length - pendingLeavePreview.length }} 筆，查看全部</button>
-      </div>
+        </div>
+      </details>
     </section>
 
     <!-- Course Table -->
-    <div ref="courseTableCard" class="card table-card" data-guide="course-mgmt-table" tabindex="-1">
-      <AtInlineAlert v-if="listRefreshFailed" tone="danger" title="課程列表載入失敗" data-testid="course-list-refresh-failed" style="margin: 0 0 14px;"><p>畫面可能不是最新資料，請稍後重新整理頁面。</p></AtInlineAlert>
+    <div ref="courseTableCard" class="table-card course-list-surface" data-guide="course-mgmt-table" tabindex="-1">
+      <Alert v-if="listRefreshFailed" tone="danger" title="課程列表載入失敗" data-testid="course-list-refresh-failed" style="margin: 0 0 14px;"><p>畫面可能不是最新資料，請稍後重新整理頁面。</p></Alert>
       <div v-if="coursesLoading && !groupedCourses.length" class="course-list-skeleton" role="status" aria-label="課程資料載入中">
         <div v-for="idx in 3" :key="idx" class="course-skeleton-group">
           <div class="course-skeleton-header"></div>
@@ -184,18 +191,19 @@
       <div v-else-if="groupedCourses.length" class="grouped-course-list" :class="{ 'focus-fullscreen-mode': focusedStudentKey }">
         <div v-if="focusedStudentKey" class="focus-mode-banner">
           <span>專注模式：只顯示 {{ visibleGroups[0]?.student_name }}</span>
-          <button @click="focusedStudentKey = null">✕ 回復全部顯示</button>
+          <button @click="focusedStudentKey = null">✕ 取消專注</button>
+          <span v-if="hasActiveCourseFilters" class="focus-mode-filters tw:text-tpl-caption">篩選仍套用：{{ activeCourseFilterLabels.join('、') }}</span>
         </div>
         <section
           v-for="group in visibleGroups"
           :key="group.key"
-          class="student-group-card"
+          class="student-group-card tpl-card tw:rounded-3xl"
           :class="{ 'student-group-has-paused': groupHasPausedCourse(group) }"
         >
-          <div class="student-group-header">
+          <div class="student-group-header tw:rounded-t-3xl">
             <button
               type="button"
-              class="student-group-toggle"
+              class="student-group-toggle tw:text-tpl-list"
               :id="studentGroupToggleId(group.key)"
               :aria-expanded="expandedStudentGroups.has(group.key)"
               :aria-controls="studentGroupPanelId(group.key, studentGroupTab(group.key))"
@@ -224,7 +232,7 @@
             </div>
           </div>
           <div
-            class="student-group-view-tabs"
+            class="student-group-view-tabs tw:rounded-2xl"
             role="tablist"
             aria-label="學生課程與帳務"
             data-testid="student-group-view-tabs"
@@ -233,7 +241,7 @@
           >
             <button
               type="button"
-              class="student-group-view-tab"
+              class="student-group-view-tab tw:rounded-xl"
               :class="{ active: studentGroupTab(group.key) === 'courses' }"
               role="tab"
               :id="studentGroupTabId(group.key, 'courses')"
@@ -245,7 +253,7 @@
             >課程資料</button>
             <button
               type="button"
-              class="student-group-view-tab"
+              class="student-group-view-tab tw:rounded-xl"
               :class="{ active: studentGroupTab(group.key) === 'billing' }"
               role="tab"
               :id="studentGroupTabId(group.key, 'billing')"
@@ -264,32 +272,29 @@
             tabindex="0"
             :aria-labelledby="studentGroupTabId(group.key, 'courses')"
           >
-            <table class="course-table course-table--simple">
-              <thead>
-                <tr>
-                  <th data-col="subject">科目・老師</th>
-                  <th class="col-sm-hide" data-col="next">下一堂</th>
-                  <th class="col-sm-hide" data-col="remaining">剩幾堂</th>
-                  <th data-col="payment">繳費</th>
-                  <th class="col-actions" data-col="actions">操作</th>
-                </tr>
-              </thead>
-              <tbody>
+            <template v-for="segment in chronologicalCourseSegments(group)" :key="segment.key">
+            <template v-if="segment.kind === 'working'">
+            <div class="course-contract-list" role="list" aria-label="課程合約">
+              <div class="contract-list-head tw:text-tpl-caption" aria-hidden="true">
+                <span>科目・老師</span><span>下一堂</span><span>堂數</span><span>繳費</span><span>操作</span>
+              </div>
+              <div class="contract-list-items" role="presentation">
                 <template v-if="activeCourses(group).length === 0">
-                  <tr>
-                    <td colspan="5" class="empty-active-courses">
+                  <div>
+                    <div class="empty-active-courses">
                       <div class="empty-active-courses__inner">
                         <span class="material-symbols-outlined empty-active-courses__icon" aria-hidden="true">school</span>
                         <span class="empty-active-courses__text">目前沒有進行中的課程</span>
                         <span v-if="historyCourses(group).length" class="empty-active-courses__hint">下方有 {{ historyCourses(group).length }} 筆歷史課程</span>
                       </div>
-                    </td>
-                  </tr>
+                    </div>
+                  </div>
                 </template>
-                <template v-for="c in activeCourses(group)" :key="c.id">
+                <template v-for="c in segment.courses" :key="c.id">
+                  <article class="contract-item" role="listitem">
                   <!-- Full-width status strip for paused courses (enterprise-style notice row) -->
-                  <tr v-if="c.status === 'inactive' && !effectiveClosedReason(c)" class="paused-notice-row" role="status">
-                    <td colspan="5" class="paused-notice-td">
+                  <div v-if="c.status === 'inactive' && !effectiveClosedReason(c)" class="paused-notice-row" role="status">
+                    <div class="paused-notice-td tw:rounded-2xl">
                       <div class="paused-notice">
                         <span class="paused-notice__dot" aria-hidden="true"></span>
                         <span class="paused-notice__label">課程暫停中</span>
@@ -297,17 +302,18 @@
                         <span class="paused-notice__desc">未恢復前不排新課、不計入待辦</span>
                         <button v-if="c.closed_reason !== 'waived'" class="paused-notice__btn" type="button" @click.stop="requestCoursePause(c)">▶ 恢復課程</button>
                       </div>
-                    </td>
-                  </tr>
-                  <tr :class="['course-row', courseRowClass(c)]">
-                    <td class="td-subject" data-col="subject">
+                    </div>
+                  </div>
+                  <div :class="['course-row', courseRowClass(c)]" :data-contract-id="c.id">
+                    <div class="td-subject" data-col="subject">
+                      <span class="contract-field-label tw:text-tpl-caption">科目・老師</span>
                       <div v-if="isClosedReason(effectiveClosedReason(c))" class="settled-course-callout" role="status">
                         <span class="settled-course-callout__icon" aria-hidden="true">✅</span>
                         <span class="settled-course-callout__main">{{ effectiveClosedReason(c) === 'contract_amended' ? '合約已提前結束' : '已結案' }}</span>
                         <span class="settled-course-callout__sub">{{ effectiveClosedReason(c) === 'converted_trial' ? '已轉正式，試聽紀錄保留' : (closedPaymentState(c) === 'unknown' ? PAYMENT_STATUS_LOADING_LABEL : closedPaymentState(c) === 'pending' ? `尚未完成繳費，請到帳務中心「${TUITION_STATUS_CONFIG.pending_reconciliation.label}」確認` : closedPaymentState(c) === 'review' ? (reviewReasonText(c) ? `需核對：${reviewReasonText(c)}` : '帳單月份或金額需核對，請到帳務中心確認') : (effectiveClosedReason(c) === 'waived' ? `欠款：${WAIVED_LABEL}` : effectiveClosedReason(c) === 'settled' ? '手動結案，無需續報' : (effectiveClosedReason(c) === 'contract_amended' ? '堂數已調整結束' : '堂數已用完'))) }}</span>
                       </div>
                       <div class="subject-line">
-                        <span class="tag subject-tag" :class="{ 'subject-tag--paused': c.status === 'inactive' }">{{ getSubjectLabel(c.subject) }}</span><span class="subject-teacher">・{{ c.teacher_name || '待指派' }}</span>
+                        <span class="tag subject-tag" :class="{ 'subject-tag--paused': c.status === 'inactive' }">{{ getSubjectLabel(c.subject) }}</span><span class="subject-teacher">{{ c.teacher_name || '待指派' }}</span>
                         <span v-if="isPackageMember(c)" class="tag tag-package" :title="c.PackageName || '多科方案'">方案</span>
                         <span v-else-if="isClosedReason(effectiveClosedReason(c))" class="tag tag-settled">{{ effectiveClosedReason(c) === 'waived' ? WAIVED_LABEL : closedPaymentState(c) === 'unknown' ? PAYMENT_STATUS_LOADING_LABEL : closedPaymentState(c) === 'pending' ? ENDED_PENDING_LABEL : closedPaymentState(c) === 'review' ? ENDED_REVIEW_LABEL : '已結案' }}</span>
                         <button
@@ -319,7 +325,8 @@
                           @click.stop="openLedgerForCourse(c)"
                         >⚠ 堂數待對帳 <span class="tag-usage-review__action">查看對帳明細</span></button>
                       </div>
-                      <small class="class-type-line"><span class="status-tag" :class="c.class_type">{{ classTypeLabel(c.class_type) }}</span></small>
+                      <small class="class-type-line tw:text-tpl-caption"><span class="status-tag" :class="c.class_type">{{ classTypeLabel(c.class_type) }}</span></small>
+                      <small class="class-type-line tw:text-tpl-caption">開課 {{ contractStartDate(c) || '未填' }}</small>
                       <!-- Warnings stay in the always-visible first cell so the phone layout never hides them. -->
                       <div class="row-warnings" data-testid="row-warnings">
                       <!-- #2007 phase 2: up to 3 warning badges used to stack inline after the
@@ -336,8 +343,9 @@
                         <button type="button" class="small ghost" @click="openLedgerForCourse(c)">查看待核對回報</button>
                       </div>
                       </div>
-                    </td>
-                    <td class="cell-schedule col-sm-hide" data-col="next">
+                    </div>
+                    <div class="cell-schedule" data-col="next">
+                      <span class="contract-field-label tw:text-tpl-caption">下一堂</span>
                       <div class="upcoming-session-preview" aria-label="下一堂">
                         <span v-if="coursesLoading" class="hint">載入中…</span>
                         <template v-else-if="sessionDataLoadFailed">
@@ -351,11 +359,14 @@
                           <span v-if="upcomingSessionPreview(c, { todayYmd, limit: 1 }).total === 0" class="hint">{{ formatDayTimeSlotLines(c).length ? '暫無下一堂' : '未排定' }}</span>
                         </template>
                       </div>
-                    </td>
-                    <td data-col="remaining" class="col-sm-hide" :class="{ 'cell-remaining': true, 'low': isSessionMode(c) && isLowRemaining(Number(displayRemainingSessions(c) ?? 0)) }">
+                    </div>
+                    <div data-col="remaining" :class="{ 'cell-remaining': true, 'low': isSessionMode(c) && isLowRemaining(Number(displayRemainingSessions(c) ?? 0)) }">
+                      <span class="contract-field-label tw:text-tpl-caption">堂數</span>
                       {{ courseLessonCountLabel({ isSession: isSessionMode(c), remaining: displayRemainingSessions(c), completed: getCompletedSessionCount(c) }) }}<span v-if="isSessionMode(c) && isPackageMember(c)" class="tag-package-hint">（方案共用）</span>
-                    </td>
-                    <td data-col="payment">
+                      <small v-if="isSessionMode(c)" class="contract-count-source tw:text-tpl-caption"><template v-if="isPackageMember(c)">方案共用 {{ getPackageTotalSessions(c) }} 堂</template><template v-else>購買 {{ getPurchasedSessions(c) }} 堂</template></small>
+                    </div>
+                    <div data-col="payment">
+                      <span class="contract-field-label tw:text-tpl-caption">繳費</span>
                       <div class="payment-status-and-action" :data-course-id="c.id">
                         <span
                           :class="['small', 'payment-status-badge', paymentStatusButtonClass(c)]"
@@ -363,8 +374,8 @@
                           :title="paymentStatusHelpTitle(c)"
                         >{{ paymentStatusButtonLabel(c) }}</span>
                       </div>
-                    </td>
-                    <td class="cell-actions">
+                    </div>
+                    <div class="cell-actions">
                       <!-- Same primary + ⋯ with the course manager on (production): the payment entry stays on the row (in-app #396). -->
                       <template v-for="m in [simpleRowModel(c)]" :key="c.id">
                       <div class="action-btns-row action-btns-row--model" data-testid="course-row-actions">
@@ -390,11 +401,11 @@
                         />
                       </div>
                       </template>
-                    </td>
-                  </tr>
-                  <tr v-if="!courseManagerEnabled && expandedDates.has(c.id)" :class="['dates-row', { 'dates-row-paused': c.status === 'inactive' }]">
-                    <td colspan="5">
-                      <div class="detail-panel">
+                    </div>
+                  </div>
+                  <div v-if="!courseManagerEnabled && expandedDates.has(c.id)" :class="['dates-row', { 'dates-row-paused': c.status === 'inactive' }]">
+                    <div>
+                      <div class="detail-panel tw:rounded-2xl">
                         <div class="detail-summary">
                           <div v-if="courseMemo(c)" class="memo-line">備註：{{ courseMemo(c) }}</div>
                           <div v-if="coursePaymentSummary(c)" class="payment-summary-line" role="note">
@@ -536,31 +547,33 @@
                           </div>
                         </div>
                       </div>
-                    </td>
-                  </tr>
+                    </div>
+                  </div>
+                  </article>
                 </template>
-              </tbody>
-            </table>
+              </div>
+            </div>
+            </template>
             <!-- History courses collapsible section -->
-            <div v-if="historyCourses(group).length" class="history-section">
+            <div v-else class="history-section">
               <button
                 type="button"
-                class="history-section__toggle"
-                :aria-expanded="expandedHistoryGroups.has(group.key)"
-                :aria-controls="historyGroupPanelId(group.key)"
-                @click="toggleHistoryGroup(group.key)"
+                class="history-section__toggle tw:rounded-xl"
+                :aria-expanded="expandedHistoryGroups.has(historySegmentKey(group.key, segment.key))"
+                :aria-controls="historyGroupPanelId(group.key, segment.key)"
+                @click="toggleHistoryGroup(historySegmentKey(group.key, segment.key))"
               >
                 <span class="material-symbols-outlined history-section__icon" aria-hidden="true">inventory_2</span>
                 <span class="history-section__label">歷史課程</span>
-                <span class="history-section__count">{{ historyCourses(group).length }} 筆</span>
-                <span class="history-section__chevron">{{ expandedHistoryGroups.has(group.key) ? '▲' : '▼' }}</span>
+                <span class="history-section__count">{{ segment.courses.length }} 筆</span>
+                <span class="history-section__chevron">{{ expandedHistoryGroups.has(historySegmentKey(group.key, segment.key)) ? '▲' : '▼' }}</span>
               </button>
               <div
-                v-if="expandedHistoryGroups.has(group.key)"
-                :id="historyGroupPanelId(group.key)"
-                class="history-section__body"
+                v-if="expandedHistoryGroups.has(historySegmentKey(group.key, segment.key))"
+                :id="historyGroupPanelId(group.key, segment.key)"
+                class="history-section__body" role="list"
               >
-                <div v-for="hc in historyCourses(group)" :key="hc.id" class="history-course-card">
+                <div v-for="hc in segment.courses" :key="hc.id" class="history-course-card tw:rounded-2xl" role="listitem" :data-contract-id="hc.id">
                   <div class="history-course-card__header">
                     <span class="tag subject-tag history-course-card__subject">{{ getSubjectLabel(hc.subject) }}</span>
                     <span class="status-tag" :class="hc.class_type">{{ classTypeLabel(hc.class_type) }}</span>
@@ -582,6 +595,7 @@
                     >⚠ 堂數待對帳 <span class="tag-usage-review__action">查看對帳明細</span></button>
                   </div>
                   <div class="history-course-card__details">
+                    <span class="history-course-card__detail"><span class="history-course-card__detail-label">開課</span> {{ contractStartDate(hc) || '未填' }}</span>
                     <span class="history-course-card__detail"><span class="history-course-card__detail-label">老師</span> {{ hc.teacher_name || '—' }}</span>
                     <span class="history-course-card__detail"><span class="history-course-card__detail-label">費用</span> ${{ totalPrice(hc) }}（{{ getRateUnitDisplayLabel(hc) }} ${{ sessionPrice(hc) }}）</span>
                     <span class="history-course-card__detail"><span class="history-course-card__detail-label">堂數</span> <template v-if="isPackageMember(hc)">已上 {{ getCompletedSessionCount(hc) }} 堂｜方案共用 {{ getPackageTotalSessions(hc) }} 堂</template><template v-else>已上 {{ getCompletedSessionCount(hc) }}<template v-if="isSessionMode(hc)"> / 購買 {{ getPurchasedSessions(hc) }}</template> 堂</template></span>
@@ -622,7 +636,7 @@
                     </div>
                   </div>
                   <div v-if="expandedDates.has(hc.id)" class="history-course-card__dates">
-                    <div class="detail-panel">
+                    <div class="detail-panel tw:rounded-2xl">
                       <div class="dates-panel">
                         <div class="dates-panel-heading">
                           <strong class="dates-panel-title">上課日期（{{ courseSessionSummaryText(hc) }}）</strong>
@@ -645,6 +659,7 @@
                 </div>
               </div>
             </div>
+            </template>
           </div>
           <div
             v-if="expandedStudentGroups.has(group.key) && studentGroupTab(group.key) === 'billing'"
@@ -771,8 +786,8 @@
 
     <UniversalClassScheduler
       v-if="showBackfillModal"
-      title="新增課程（統一排課介面）"
-      submit-label="建立課程"
+      :title="schedulerMode === 'create' ? '新增排課（統一排課介面）' : '新增課程（統一排課介面）'"
+      :submit-label="schedulerMode === 'create' ? '建立課程並寫入堂次' : '建立課程'"
       :branch-id="props.branchId"
       :students="schedulerStudents"
       :teachers="schedulerTeachers"
@@ -780,7 +795,7 @@
       :initial-student-id="schedulerInitialStudentId"
       :initial-teacher-id="schedulerInitialTeacherId"
       :allow-package-mode="true"
-      mode="backfill"
+      :mode="schedulerMode"
       @cancel="showBackfillModal = false"
       @success="handleUniversalBackfillSuccess"
       @duplicate-course="handleSchedulerDuplicateCM"
@@ -825,8 +840,8 @@
       @toggle-cancelled="toggleCancelledSessions(courseManagerCourse.id)" @toggle-notes="toggleSessionNotes"
     >
       <template #settings>
-        <AtInlineAlert v-if="editabilityLoading" tone="info" title="正在檢查課程狀態" style="margin: 0 0 14px;"><p>正在確認付款、扣堂與對帳狀態；一般欄位仍可編輯。</p></AtInlineAlert>
-        <AtInlineAlert v-if="editabilityError" tone="warning" title="無法完成預檢" style="margin: 0 0 14px;"><p>{{ editabilityError }} 儲存時仍會由後端再次檢查。</p></AtInlineAlert>
+        <Alert v-if="editabilityLoading" tone="info" title="正在檢查課程狀態" style="margin: 0 0 14px;"><p>正在確認付款、扣堂與對帳狀態；一般欄位仍可編輯。</p></Alert>
+        <Alert v-if="editabilityError" tone="warning" title="無法完成預檢" style="margin: 0 0 14px;"><p>{{ editabilityError }} 儲存時仍會由後端再次檢查。</p></Alert>
         <CourseSaveErrorAlert :error="editSaveError" :can-open="canOpenEditabilityAction" @action="openEditabilityAction" />
         <section v-if="editability?.reasons?.length" class="editability-action-panel" data-testid="course-editability-panel" aria-label="課程編輯分流">
           <div class="editability-action-panel__intro"><strong>這門課有資料不能用一般編輯改寫</strong><span>一般欄位可以繼續修改；要處理受保護資料，請從對應流程進入。</span></div>
@@ -859,12 +874,12 @@
     <div v-if="showEditModal && !courseManagerOpen" class="modal-overlay">
       <div class="modal course-modal">
         <h3 class="modal-title">編輯課程</h3>
-        <AtInlineAlert v-if="editabilityLoading" tone="info" title="正在檢查課程狀態" style="margin: 0 0 14px;">
+        <Alert v-if="editabilityLoading" tone="info" title="正在檢查課程狀態" style="margin: 0 0 14px;">
           <p>正在確認付款、扣堂與對帳狀態；一般欄位仍可編輯。</p>
-        </AtInlineAlert>
-        <AtInlineAlert v-if="editabilityError" tone="warning" title="無法完成預檢" style="margin: 0 0 14px;">
+        </Alert>
+        <Alert v-if="editabilityError" tone="warning" title="無法完成預檢" style="margin: 0 0 14px;">
           <p>{{ editabilityError }} 儲存時仍會由後端再次檢查。</p>
-        </AtInlineAlert>
+        </Alert>
         <CourseSaveErrorAlert :error="editSaveError" :can-open="canOpenEditabilityAction" @action="openEditabilityAction" />
         <section v-if="editability?.reasons?.length" class="editability-action-panel" data-testid="course-editability-panel" aria-label="課程編輯分流">
           <div class="editability-action-panel__intro">
@@ -978,7 +993,7 @@
         <div class="billing-correction-warning">
           僅適用於尚未收款的按堂課程。先檢視新舊堂數、金額及受影響未來堂次，再確認送出；已上課紀錄不會被刪除。
         </div>
-        <AtInlineAlert v-if="billingCorrectionPreview" tone="warning" title="請確認本次更正" style="margin-bottom: 12px;">
+        <Alert v-if="billingCorrectionPreview" tone="warning" title="請確認本次更正" style="margin-bottom: 12px;">
           <p style="margin: 0;">堂數：{{ billingCorrectionPreview.old_session_count }} → {{ billingCorrectionPreview.new_session_count }}；費用：${{ Number(billingCorrectionPreview.old_charge).toLocaleString() }} → ${{ Number(billingCorrectionPreview.new_charge).toLocaleString() }}。</p>
           <p v-if="billingCorrectionPreview.affected_scheduled_sessions?.length" style="margin: 6px 0 0;">確認後會取消下列超額的未來預排；系統不會補回舊堂數。</p>
           <ul v-if="billingCorrectionPreview.affected_scheduled_sessions?.length" class="billing-correction-affected-sessions" aria-label="確認後將取消的未來堂次">
@@ -986,8 +1001,8 @@
               <time :datetime="`${session.session_date}T${session.start_time}`">{{ formatBillingCorrectionSessionLabel({ sessionDate: session.session_date, startTime: session.start_time, endTime: session.end_time }) }}</time>
             </li>
           </ul>
-        </AtInlineAlert>
-        <AtInlineAlert v-if="billingCorrectionBlocked" tone="danger" title="還不能更正" style="margin-bottom: 12px;">
+        </Alert>
+        <Alert v-if="billingCorrectionBlocked" tone="danger" title="還不能更正" style="margin-bottom: 12px;">
           <p style="margin: 0;">{{ billingCorrectionBlocked.message }}</p>
           <p v-if="billingCorrectionBlocked.hint" style="margin: 6px 0 0;">{{ billingCorrectionBlocked.hint }}</p>
           <ul
@@ -1007,7 +1022,7 @@
           >
             前往行事曆處理
           </button>
-        </AtInlineAlert>
+        </Alert>
         <label class="form-label">更正後購買堂數
           <input v-model.number="billingCorrectionForm.new_session_count" type="number" min="1" step="1" class="form-input" />
         </label>
@@ -1292,63 +1307,59 @@
 
     <RestoreCancelledSessionDialog :unit="restoreCancelledUnit" @close="restoreCancelledUnit = null" @restored="onCancelledRestored" />
 
-    <AtDialog
-      :open="!!pauseConfirmTarget"
-      :title="pauseConfirmIsResume ? '恢復課程？' : '暫停課程？'"
-      title-id="pause-confirm-title"
-      size="sm"
-      initial-focus="[data-initial-focus]"
-      :close-on-backdrop="!pauseConfirmSubmitting"
-      @close="!pauseConfirmSubmitting && (pauseConfirmTarget = null)"
-    >
-      <template v-if="pauseConfirmTarget">
-        <p class="modal-desc">{{ pauseConfirmTarget.student_name || '學生' }} — {{ getSubjectLabel(pauseConfirmTarget.subject) }}</p>
-        <div class="pause-impact-card">
-          <p class="pause-impact-title">{{ pauseConfirmIsResume ? '恢復後的影響' : '暫停後的影響' }}</p>
-          <ul>
-            <li v-for="item in pauseConfirmImpacts" :key="item">{{ item }}</li>
-          </ul>
-          <label v-if="!pauseConfirmIsResume" style="display:flex;align-items:flex-start;gap:8px;margin-top:12px;font-size:13px;cursor:pointer">
-            <input v-model="pauseCancelRemaining" type="checkbox" style="margin-top:2px" />
-            <span>取消剩餘未上排課（建議勾選；不勾選則只暫停課程、堂次仍留在行事曆）</span>
-          </label>
-          <label v-if="pauseConfirmIsResume && userRole === 'super_admin'" style="display:block;margin-top:12px;font-size:13px">
-            如果是誤結案，寫下原因才能恢復（會留紀錄）
-            <textarea v-model="pauseReopenReason" rows="2" maxlength="500" placeholder="例如：主任誤按結束課程" style="display:block;width:100%;margin-top:4px"></textarea>
-          </label>
-        </div>
-      </template>
-      <template #actions>
-        <button class="ghost" data-initial-focus :disabled="pauseConfirmSubmitting" @click="pauseConfirmTarget = null">取消</button>
-        <button class="primary" :disabled="pauseConfirmSubmitting" :class="{ 'btn-resume-primary': pauseConfirmIsResume }" @click="confirmCoursePause">
-          {{ pauseConfirmSubmitting ? '處理中…' : (pauseConfirmIsResume ? '恢復課程' : '暫停課程') }}
-        </button>
-      </template>
-    </AtDialog>
+    <Dialog :open="!!pauseConfirmTarget" @update:open="(v) => { if (!v && !pauseConfirmSubmitting) pauseConfirmTarget = null; }">
+      <DialogContent class="tw:sm:max-w-sm" @interact-outside="(e) => pauseConfirmSubmitting && e.preventDefault()" @open-auto-focus="(e) => { e.preventDefault(); pauseCancelBtn?.$el?.focus(); }">
+        <DialogHeader>
+          <DialogTitle id="pause-confirm-title">{{ pauseConfirmIsResume ? '恢復課程？' : '暫停課程？' }}</DialogTitle>
+          <DialogDescription class="tw:sr-only">確認後會立即更新課程狀態</DialogDescription>
+        </DialogHeader>
+  <template v-if="pauseConfirmTarget">
+          <p class="modal-desc">{{ pauseConfirmTarget.student_name || '學生' }} — {{ getSubjectLabel(pauseConfirmTarget.subject) }}</p>
+          <div class="pause-impact-card">
+            <p class="pause-impact-title">{{ pauseConfirmIsResume ? '恢復後的影響' : '暫停後的影響' }}</p>
+            <ul>
+              <li v-for="item in pauseConfirmImpacts" :key="item">{{ item }}</li>
+            </ul>
+            <label v-if="!pauseConfirmIsResume" style="display:flex;align-items:flex-start;gap:8px;margin-top:12px;font-size:13px;cursor:pointer">
+              <input v-model="pauseCancelRemaining" type="checkbox" style="margin-top:2px" />
+              <span>取消剩餘未上排課（建議勾選；不勾選則只暫停課程、堂次仍留在行事曆）</span>
+            </label>
+            <label v-if="pauseConfirmIsResume && userRole === 'super_admin'" style="display:block;margin-top:12px;font-size:13px">
+              如果是誤結案，寫下原因才能恢復（會留紀錄）
+              <textarea v-model="pauseReopenReason" rows="2" maxlength="500" placeholder="例如：主任誤按結束課程" style="display:block;width:100%;margin-top:4px"></textarea>
+            </label>
+          </div>
+        </template>
+        <DialogFooter>
+          <Button ref="pauseCancelBtn" type="button" variant="secondary" class="tw:h-14 tw:px-5 tw:text-[length:var(--tpl-text-body)]" :disabled="pauseConfirmSubmitting" @click="pauseConfirmTarget = null">取消</Button>
+          <Button type="button" class="tw:h-14 tw:px-5 tw:text-[length:var(--tpl-text-body)]" :disabled="pauseConfirmSubmitting" :class="{ 'btn-resume-primary': pauseConfirmIsResume }" @click="confirmCoursePause">
+            {{ pauseConfirmSubmitting ? '處理中…' : (pauseConfirmIsResume ? '恢復課程' : '暫停課程') }}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
 
     <!-- Delete Confirm Modal (FR-013) -->
-    <AtDialog
-      :open="!!confirmDeleteTarget"
-      :title="`刪除${confirmDeleteTarget ? (confirmDeleteTarget.subject_name || getSubjectLabel(confirmDeleteTarget.subject)) : ''}？`"
-      title-id="delete-course-title"
-      size="sm"
-      initial-focus="[data-initial-focus]"
-      :close-on-backdrop="!deleteCourseSubmitting"
-      @close="!deleteCourseSubmitting && (confirmDeleteTarget = null)"
-    >
-      <template v-if="confirmDeleteTarget">
-        <p class="modal-desc">
-          {{ confirmDeleteTarget.subject_name || confirmDeleteTarget.subject }}<template v-if="confirmDeleteTarget.student_name"> — {{ confirmDeleteTarget.student_name }}</template>
-        </p>
-        <p class="premium-danger-warning">刪除後無法復原，所有堂次紀錄將一併移除，未繳帳單會一併作廢。</p>
-      </template>
-      <template #actions>
-        <button class="ghost" data-initial-focus :disabled="deleteCourseSubmitting" @click="confirmDeleteTarget = null">取消</button>
-        <button class="danger" :disabled="deleteCourseSubmitting" @click="executeDeleteCourse">
-          {{ deleteCourseSubmitting ? '刪除中…' : '刪除課程' }}
-        </button>
-      </template>
-    </AtDialog>
+    <Dialog :open="!!confirmDeleteTarget" @update:open="(v) => { if (!v && !deleteCourseSubmitting) confirmDeleteTarget = null; }">
+      <DialogContent class="tw:sm:max-w-sm" @interact-outside="(e) => deleteCourseSubmitting && e.preventDefault()" @open-auto-focus="(e) => { e.preventDefault(); deleteCancelBtn?.$el?.focus(); }">
+        <DialogHeader>
+          <DialogTitle id="delete-course-title">{{ `刪除${confirmDeleteTarget ? (confirmDeleteTarget.subject_name || getSubjectLabel(confirmDeleteTarget.subject)) : ''}？` }}</DialogTitle>
+          <DialogDescription class="tw:sr-only">刪除後無法復原</DialogDescription>
+        </DialogHeader>
+  <template v-if="confirmDeleteTarget">
+          <p class="modal-desc">
+            {{ confirmDeleteTarget.subject_name || confirmDeleteTarget.subject }}<template v-if="confirmDeleteTarget.student_name"> — {{ confirmDeleteTarget.student_name }}</template>
+          </p>
+          <p class="premium-danger-warning">刪除後無法復原，所有堂次紀錄將一併移除，未繳帳單會一併作廢。</p>
+        </template>
+        <DialogFooter>
+          <Button ref="deleteCancelBtn" type="button" variant="secondary" class="tw:h-14 tw:px-5 tw:text-[length:var(--tpl-text-body)]" :disabled="deleteCourseSubmitting" @click="confirmDeleteTarget = null">取消</Button>
+          <Button type="button" variant="destructive" class="tw:h-14 tw:px-5 tw:text-[length:var(--tpl-text-body)]" :disabled="deleteCourseSubmitting" @click="executeDeleteCourse">
+            {{ deleteCourseSubmitting ? '刪除中…' : '刪除課程' }}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
     <ConfirmDialogHost />
   </div>
 </template>
@@ -1356,14 +1367,19 @@
 <script setup>
 // Autonomous delivery canary: no runtime behavior change.
 import { ymdInTaipei } from '@/lib/sessionDates.js';
+import { fetchAllPages } from '@/lib/pagedFetchAll.js';
 import { ref, computed, onMounted, onUnmounted, onActivated, onDeactivated, watch, nextTick } from 'vue';
-import AtButton from '../components/design-system/AtButton.vue';
-import AtPageHeader from '../components/design-system/AtPageHeader.vue';
-import AtHelpDisclosure from '../components/design-system/AtHelpDisclosure.vue';
+import { Button } from '@/components/ui/button';
+import { Card } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import TextSizeToggle from '../components/TextSizeToggle.vue';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Info, Plus, UserSearch } from 'lucide-vue-next';
 import { isCourseSettled, isPaymentNoticeStatus } from '../lib/paymentStatus.js';
 import { formatCourseRef, formatCoursePeriod } from '../lib/studentBillingRows.js';
 import { clearRowCachesForWinningRequest, createListLoadOutcome, fallbackListRows, isCurrentListRequest } from '../lib/listRefreshState.js';
 import { studentSchoolGradeLabel } from '../lib/studentSchoolGrade.js';
+import { buildContractChronology, contractStartDate } from '../lib/contractChronology.js';
 import { supabase } from '../supabase';
 import { authedFetch, getAccessToken } from '../lib/authedFetch';
 import { isDirectorRole } from '../lib/roleCapabilities.js';
@@ -1407,13 +1423,12 @@ import { lessonPickerKey, useCourseRowActions } from '../composables/course-mana
 import ActionMenu from '../components/ActionMenu.vue';
 import { courseLessonCountLabel } from '../lib/courseLessonCountLabel.js';
 import ConfirmDialogHost from '../components/course-management/ConfirmDialogHost.vue';
-import AtDialog from '../components/design-system/AtDialog.vue';
 import RestoreCancelledSessionDialog from '../components/course-management/RestoreCancelledSessionDialog.vue';
 import { isVisibleCancelledSession } from '../lib/sessionOccurrenceFilter.js';
 import { askConfirm } from '../composables/useConfirmDialog';
 import LessonPickerSelect from '../components/course-management/LessonPickerSelect.vue';
 import CourseEditForm from '../components/CourseEditForm.vue';
-import AtInlineAlert from '../components/design-system/AtInlineAlert.vue';
+import { Alert } from '@/components/ui/alert';
 import PackageConversionPreviewModal from '../components/course-management/PackageConversionPreviewModal.vue';
 import UniversalClassScheduler from '../components/UniversalClassScheduler.vue';
 import EnrollmentConflictDecisionModal from '../components/EnrollmentConflictDecisionModal.vue';
@@ -1851,6 +1866,8 @@ const bulkLeaveImpactPreview = computed(() => {
 const showBackfillModal = ref(false);
 /** Preset for UniversalClassScheduler when opened from this page */
 const schedulerInitialStudentId = ref('');
+// Same scheduler and flow as 學生管理 (mode 'create'); 'backfill' stays for 複製課程 (雙師).
+const schedulerMode = ref('backfill');
 const schedulerInitialTeacherId = ref('');
 const backfillForm = ref({
   student_id: '', subject: 'Math', teacher_id: '', class_type: 'one_on_one',
@@ -2740,6 +2757,8 @@ async function leaveCourseManagerSettings() {
 }
 // #4178: a drawer close that removed its own opener (course closed under 「進行中」) lands on the student's group, else the list.
 const courseTableCard = ref(null);
+const pauseCancelBtn = ref(null);
+const deleteCancelBtn = ref(null);
 function focusCourseListAfterDrawerClose(course) {
   const sid = course?.student_id ?? course?.StudentID;
   const toggle = sid != null && sid !== '' ? document.getElementById(studentGroupToggleId(`sid:${sid}`)) : null;
@@ -2910,6 +2929,15 @@ function canCloseCourse(c) {
     && c.closed_reason !== 'settled_pending';
 }
 
+// 新增課程: pick the student inside the same UniversalClassScheduler 學生管理 uses, then the same form.
+function openCreateCourse() {
+  schedulerInitialStudentId.value = '';
+  schedulerInitialTeacherId.value = '';
+  schedulerMode.value = 'create';
+  showBackfillModal.value = true;
+  loadRoomsForBranch();
+}
+
 async function duplicateCourseForTeacher(course) {
   const teacherName = course.teacher_name || '目前老師';
   const studentName = course.student_name || '學生';
@@ -2932,6 +2960,7 @@ async function duplicateCourseForTeacher(course) {
   const sid = Number(course.student_id ?? course.StudentID) || '';
   schedulerInitialStudentId.value = sid;
   schedulerInitialTeacherId.value = '';
+  schedulerMode.value = 'backfill';
   showBackfillModal.value = true;
   loadRoomsForBranch();
 }
@@ -4183,7 +4212,8 @@ const domKey = (key) => String(key ?? '').replace(/[^a-zA-Z0-9_-]/g, '-');
 const studentGroupToggleId = (key) => `student-group-toggle-${domKey(key)}`;
 const studentGroupPanelId = (key, tab) => `student-group-panel-${tab}-${domKey(key)}`;
 const studentGroupTabId = (key, tab) => `student-group-tab-${tab}-${domKey(key)}`;
-const historyGroupPanelId = (key) => `student-history-panel-${domKey(key)}`;
+const historySegmentKey = (key, segmentKey) => `${key}:${segmentKey}`;
+const historyGroupPanelId = (key, segmentKey) => `student-history-panel-${domKey(key)}-${domKey(segmentKey)}`;
 
 const resetExpandedStudentGroups = (groups = groupedCourses.value) => {
   expandedStudentGroups.value = new Set(groups.map((g) => g.key));
@@ -4201,6 +4231,12 @@ const groupHasPausedCourse = (group) =>
 
 const activeCourses = (group) => (group?.courses || []).filter(c => !isCourseManagementHistory(c));
 const historyCourses = (group) => (group?.courses || []).filter(c => isCourseManagementHistory(c));
+const chronologicalCourseSegments = (group) => {
+  const segments = buildContractChronology(group?.courses || []);
+  // Retain the existing "no active courses" hint when this loaded group contains only history.
+  if (!segments.some((segment) => segment.kind === 'working')) segments.unshift({ kind: 'working', key: 'empty-working', courses: [] });
+  return segments;
+};
 
 // #2007/#2006: a renewal that left the old course open shows up here as two
 // "進行中" rows fighting over the same teacher slot. Paused rows remain in
@@ -4261,6 +4297,12 @@ const hasActiveCourseFilters = computed(() => (
   ['name', 'class_type', 'teacher_name', 'teacher_id', 'course_status']
     .some((key) => String(filters.value[key] ?? '').trim() !== '')
 ));
+const activeCourseFilterLabels = computed(() => [
+  filters.value.name && `學生：${filters.value.name}`,
+  filters.value.class_type && `類型：${classTypeLabel(filters.value.class_type)}`,
+  (filters.value.teacher_name || filters.value.teacher_id) && `老師：${filters.value.teacher_name || '已指定'}`,
+  filters.value.course_status && `狀態：${filters.value.course_status === 'active' ? '進行中' : '已暫停'}`,
+].filter(Boolean));
 
 function clearCourseFilters() {
   filters.value = { name: '', class_type: '', teacher_name: '', teacher_id: '', course_status: '' };
@@ -4782,24 +4824,16 @@ const loadStudents = async () => {
   try {
     const token = await getAccessToken();
     if (token) {
-      const params = new URLSearchParams({
-        branch_id: branchId,
-        per_page: '500',
+      // Every page: the 新增課程 scheduler searches only these options, so a campus over 500 students needs them all.
+      const { data: arr } = await fetchAllPages(`/api/v1/students?branch_id=${encodeURIComponent(branchId)}`, token, {
+        perPage: 500,
+        fetcher: (url, init) => authedFetch(url, { ...init, credentials: 'include' }, token),
       });
-      const res = await authedFetch(`/api/v1/students?${params.toString()}`, {
-        credentials: 'include',
-        headers: { Accept: 'application/json' },
-      }, token);
-      if (res.ok) {
-        const json = await res.json().catch(() => ({}));
-        const list = json?.data ?? json;
-        const arr = Array.isArray(list) ? list : (Array.isArray(list?.data) ? list.data : []);
-        allStudents.value = arr.map((s) => ({
-          id: Number(s?.id ?? 0),
-          name: String(s?.name ?? '').trim(),
-        })).filter((s) => s.id > 0 && s.name);
-        return;
-      }
+      allStudents.value = arr.map((s) => ({
+        id: Number(s?.id ?? 0),
+        name: String(s?.name ?? '').trim(),
+      })).filter((s) => s.id > 0 && s.name);
+      return;
     }
   } catch (_) {
     // fallback below
@@ -8621,4 +8655,140 @@ button.danger {
   cursor: not-allowed;
   position: relative;
 }
+
+/* Course workbench: reuse template tokens without changing other pages or domain state. */
+.course-workbench { color: var(--ds-ink); font-size: inherit; }
+.course-workbench__header { position: relative; z-index: 1; gap: 1rem; }
+.course-workbench__tools { align-content: start; }
+.course-workbench .course-header-card {
+  padding: 1rem; border: 1px solid var(--ds-hairline); border-radius: inherit;
+  background: var(--ds-canvas); box-shadow: var(--ds-shadow-1); margin-bottom: 1.25rem;
+}
+.course-workbench .course-filter-primary,
+.course-workbench .course-secondary-filters__fields {
+  display: grid; grid-template-columns: minmax(0, 1fr) minmax(8rem, .45fr); gap: 1rem;
+}
+.course-workbench .filter-field { min-width: 0; }
+.course-workbench .filter-field label { font-size: inherit; color: var(--ds-ink-secondary); white-space: normal; }
+.course-workbench .filter-field input,
+.course-workbench .filter-field select {
+  width: 100%; min-width: 0; min-height: 3rem; box-sizing: border-box; font-size: inherit;
+  border-radius: inherit; background: var(--ds-canvas-soft); color: var(--ds-ink);
+}
+.course-active-filters { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; margin-top: .75rem; }
+.course-active-filters :deep([data-slot="badge"]) { max-width: 100%; white-space: normal; overflow-wrap: anywhere; font-size: inherit; }
+.course-workbench .course-filter-clear { margin: 0; min-height: 2.75rem; padding: .5rem .75rem; font-size: inherit; width: auto; flex: 0 0 auto; }
+.course-secondary-filters { margin-top: .75rem; }
+.course-secondary-filters > summary {
+  display: flex; align-items: center; gap: .5rem; min-height: 2.75rem;
+  width: fit-content; cursor: pointer; color: var(--ds-ink-secondary); font-size: inherit; font-weight: 600;
+}
+.course-secondary-filters__fields { padding-top: .5rem; }
+.course-workbench .course-stats-disclosure { margin-top: .5rem; border-top: 1px solid var(--ds-hairline); padding-top: .5rem; }
+.course-workbench .course-list-surface {
+  padding: 0; border: 0; border-radius: 0; background: transparent; box-shadow: none;
+}
+.course-workbench .student-group-card {
+  border: 1px solid var(--ds-hairline); border-radius: inherit; background: var(--ds-canvas);
+  box-shadow: var(--ds-shadow-1); overflow: visible; min-width: 0;
+}
+.course-workbench .student-group-header { border-radius: inherit; padding: .75rem 1rem; background: transparent; }
+.course-workbench .student-group-toggle { min-height: 2.75rem; min-width: 0; font-size: inherit; }
+.course-workbench .student-group-name { overflow-wrap: anywhere; white-space: normal; }
+.course-workbench .student-group-header-actions { flex-shrink: 0; }
+.course-workbench .student-group-view-tabs { width: auto; margin: 0 1rem 1rem; padding: .25rem; border: 0; border-radius: inherit; background: var(--ds-canvas-soft); gap: .25rem; }
+.course-workbench .student-group-view-tab { min-width: 0; white-space: normal; overflow-wrap: anywhere; min-height: 2.75rem; border: 0; border-radius: inherit; font-size: inherit; }
+.course-workbench .student-group-view-tab.active { color: var(--ds-ink); background: var(--ds-canvas); box-shadow: var(--ds-shadow-1); border: 0; }
+.course-workbench .grouped-course-list .group-table-wrap:not(.student-billing-wrap) { max-height: none; overflow: visible; border-top: 0; }
+.course-contract-list { min-width: 0; }
+.contract-list-head { display: none; }
+.contract-item { padding: 1rem; border-top: 1px solid var(--ds-hairline); min-width: 0; }
+.course-workbench .course-row {
+  display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-areas: "subject subject" "next remaining" "payment payment" "actions actions";
+  align-items: start; gap: 1rem; width: auto; min-width: 0;
+}
+.course-workbench .course-row > [data-col],
+.course-workbench .course-row > .cell-actions { min-width: 0; border: 0; padding: 0; background: transparent; font-size: inherit; white-space: normal; overflow-wrap: anywhere; }
+.course-workbench .course-row > [data-col="subject"] { grid-area: subject; }
+.course-workbench .course-row > [data-col="next"] { grid-area: next; display: block; }
+.course-workbench .course-row > [data-col="remaining"] { grid-area: remaining; display: block; }
+.course-workbench .course-row > [data-col="payment"] { grid-area: payment; }
+.course-workbench .course-row > .cell-actions { grid-area: actions; }
+.contract-field-label { display: block; color: var(--ds-ink-secondary); font-size: inherit; margin-bottom: .375rem; font-weight: 500; }
+.course-workbench .course-row .td-subject > .contract-field-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+.course-workbench .course-row .class-type-line { font-size: inherit; margin-top: .375rem; }
+.course-workbench .course-row .upcoming-session-preview { font-size: inherit; }
+.course-workbench .course-row .action-btns-row { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; }
+.course-workbench .course-row button,
+.course-workbench .history-course-card__actions > button,
+.course-workbench .history-course-card__actions .action-menu-trigger {
+  min-height: 2.75rem; max-width: 100%; padding: .5rem .875rem; border-radius: var(--ds-radius-pill);
+  font-size: inherit; white-space: normal; overflow-wrap: anywhere;
+}
+.course-workbench .course-row :deep(.am__trigger) { min-width: 2.75rem; min-height: 2.75rem; font-size: inherit; }
+.course-workbench .course-row .row-warnings { max-width: 100%; }
+.course-workbench .course-row .tag-usage-review,
+.course-workbench .course-row .warning-summary-btn { max-width: 100%; white-space: normal; text-align: left; }
+.course-workbench .course-row .payment-status-and-action { align-items: start; }
+.course-workbench .dates-row { margin-top: .75rem; min-width: 0; }
+.course-workbench .dates-row .detail-panel { margin: 0; padding: 1rem; border-radius: inherit; font-size: inherit; }
+.course-workbench .paused-notice-row { display: block; margin-bottom: .75rem; }
+.course-workbench .paused-notice-td { padding: .75rem; border-radius: inherit; }
+.course-workbench .history-section { margin: 0; border-top: 1px solid var(--ds-hairline); padding: .5rem 1rem; }
+.course-workbench .history-section__toggle { min-height: 2.75rem; font-size: inherit; border-radius: inherit; }
+.course-workbench .history-section__body { padding: .5rem 0; display: grid; gap: .75rem; }
+.course-workbench .history-course-card { min-width: 0; padding: 1rem; background: var(--ds-canvas-soft); border: 1px solid var(--ds-hairline); border-radius: inherit; color: var(--ds-ink); }
+.course-workbench .history-course-card__details { gap: .5rem 1rem; font-size: inherit; color: var(--ds-ink-secondary); }
+.course-workbench .history-course-card__actions { flex-wrap: wrap; gap: .5rem; }
+.course-workbench .focus-mode-banner { flex-wrap: wrap; }
+.focus-mode-filters { flex-basis: 100%; font-size: inherit; color: var(--ds-ink-secondary); }
+.course-workbench button:focus-visible,
+.course-workbench summary:focus-visible { outline: 3px solid var(--ds-primary); outline-offset: 3px; }
+@media (min-width: 1100px) {
+  .contract-list-head,
+  .course-workbench .course-row { grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr) minmax(0, .55fr) minmax(0, .6fr) minmax(0, 1.2fr); grid-template-areas: "subject next remaining payment actions"; }
+  .contract-list-head { display: grid; gap: 1rem; padding: .5rem 1rem; color: var(--ds-ink-secondary); font-size: inherit; }
+  .course-workbench .course-row .contract-field-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); margin: 0; }
+}
+@media (max-width: 640px) {
+  .course-workbench__tools { width: 100%; }
+  .course-workbench .course-filter-primary,
+  .course-workbench .course-secondary-filters__fields { grid-template-columns: minmax(0, 1fr); gap: .75rem; }
+  .course-workbench .student-group-header { padding: .75rem; }
+  .course-workbench .student-group-view-tabs { margin: 0 .75rem .75rem; }
+  .course-workbench .student-group-view-tab { padding: .5rem; }
+  .contract-item { padding: .875rem; }
+  .course-workbench .course-row { gap: .875rem; }
+  .course-workbench .history-section { padding: .5rem .875rem; }
+}
+
+.course-workbench__intro { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: .75rem; align-content: start; }
+.course-workbench__intro > h1 { grid-column: 1; grid-row: 1; }
+.course-workbench__context { grid-column: 1; grid-row: 2; }
+.course-workbench__description { grid-column: 1 / -1; grid-row: 3; }
+.course-workbench__help { grid-column: 2; grid-row: 1 / 3; align-self: start; }
+.course-workbench__help > summary { display: grid; place-items: center; min-height: 2.75rem; min-width: 2.75rem; border-radius: var(--ds-radius-pill); cursor: pointer; }
+.course-help-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+.course-workbench__help[open] { grid-column: 1 / -1; grid-row: auto; }
+.course-workbench__help[open] > summary { justify-self: end; }
+.course-workbench .focus-btn { min-width: 2.75rem; min-height: 2.75rem; }
+.course-workbench .student-group-counts { font-size: inherit; }
+.course-workbench .course-row .payment-status-badge,
+.course-workbench .course-row .subject-tag,
+.course-workbench .course-row .status-tag { font-size: inherit; }
+.course-workbench .course-tools-menu__summary { min-height: 2.75rem; font-size: inherit; }
+.course-workbench .pending-leave-summary { padding: .875rem 1rem; border-radius: inherit; }
+.course-workbench .pending-leave-summary__header { margin: 0; }
+.pending-leave-disclosure { margin-top: .5rem; }
+.pending-leave-disclosure > summary { min-height: 2.75rem; display: flex; align-items: center; cursor: pointer; color: var(--ds-ink-secondary); font-size: inherit; font-weight: 600; }
+@media (max-width: 640px) {
+  .course-workbench__description { display: none; }
+  .course-workbench__tools .course-tools-menu { width: auto; }
+  .course-workbench .course-filter-primary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+.course-workbench .subject-teacher { min-width: 0; overflow-wrap: anywhere; white-space: normal; }
+.contract-count-source { display: block; margin-top: .375rem; color: var(--ds-ink-secondary); font-size: inherit; font-weight: 400; }
+.course-workbench .history-course-card__detail-label { color: var(--ds-ink-secondary); }
 </style>

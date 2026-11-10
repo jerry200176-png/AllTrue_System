@@ -24,6 +24,57 @@ const viewports = [
   { name: '1440', width: 1440, height: 900 },
 ];
 
+// #527: outer contracts follow creation/ID newest-first; opening dates remain display metadata.
+for (const viewport of [{ width: 390, height: 844 }, { width: 1280, height: 900 }]) {
+  test(`newest contracts across working/history segments @${viewport.width}`, async ({ page }) => {
+    await page.setViewportSize(viewport);
+    // Every response is synthetic. Any unmocked external request is blocked.
+    await page.route('**/*', (route) => ['127.0.0.1', 'localhost'].includes(new URL(route.request().url()).hostname)
+      ? route.fallback() : route.abort('blockedbyclient'));
+    await installApiMocks(page, 'normal', 'course');
+    const contract = (id, reason = null) => ({
+      id, student_id: 900493, student_name: '合成學生', teacher_name: `Chronology${id}`,
+      subject: 'english', first_class_date: id === 50 ? '2025-01-01' : `2026-0${id / 10}-01`, status: reason ? 'inactive' : 'active',
+      history_reason: reason, closed_reason: reason, is_active_course: !reason,
+      ScheduleMode: 'count', payment_type: 'session', sessions_purchased: 8,
+      sessions_used: reason ? 8 : 3, remaining_sessions: reason ? 0 : 5, payment_status: 'paid',
+    });
+    await page.route('**/api/v1/student-classes?**', (route) => route.fulfill({ json: {
+      data: [contract(50), contract(40, 'completed'), contract(30), contract(20, 'settled'), contract(10)],
+      total: 5, current_page: 1, last_page: 1,
+    } }));
+    await page.goto('/pilot-mount.html?page=course&mode=normal');
+    await expect(page.locator('html')).toHaveAttribute('data-pilot-ready', '1');
+    await dismissOverlays(page);
+    const toggles = page.locator('.history-section__toggle');
+    await expect(toggles).toHaveCount(2);
+    const targets = await toggles.evaluateAll((buttons) => buttons.map((button) => button.getAttribute('aria-controls')));
+    expect(new Set(targets).size).toBe(2);
+    for (const toggle of await toggles.all()) await toggle.click();
+    const rows = page.locator('.course-row, .history-course-card');
+    await expect(rows).toHaveCount(5);
+    expect(await rows.evaluateAll((nodes) => nodes.map((node) => Number(node.textContent.match(/Chronology(\d+)/)?.[1]))))
+      .toEqual([50, 40, 30, 20, 10]);
+    for (const [index, row] of (await rows.all()).entries()) {
+      const date = ['2025-01-01', '2026-04-01', '2026-03-01', '2026-02-01', '2026-01-01'][index];
+      await expect(row.getByText(`開課 ${date}`, { exact: true })).toBeVisible();
+    }
+    const positions = await rows.evaluateAll((nodes) => nodes.map((node) => node.getBoundingClientRect().top));
+    expect(positions).toEqual([...positions].sort((a, b) => a - b));
+    for (const row of await rows.all()) {
+      await row.scrollIntoViewIfNeeded();
+      await expect(row).toBeInViewport();
+    }
+    for (const id of targets) await expect(page.locator(`[id="${id}"]`)).toHaveCount(1);
+    const bounds = await page.locator('.group-table-wrap').first().boundingBox();
+    expect(bounds.x).toBeGreaterThanOrEqual(0);
+    expect(bounds.x + bounds.width).toBeLessThanOrEqual(viewport.width + 1);
+    await rows.first().scrollIntoViewIfNeeded();
+    fs.mkdirSync(outDir, { recursive: true });
+    await page.screenshot({ path: path.join(outDir, `course-chronology-${viewport.width}.png`), fullPage: true });
+  });
+}
+
 async function openPilot(page, { pageName, mode, viewport, authProfile = null }) {
   await page.setViewportSize({ width: viewport.width, height: viewport.height });
   const mocks = await installApiMocks(page, mode, pageName, authProfile, authProfile?.onAuthRequest);
@@ -35,6 +86,26 @@ async function openPilot(page, { pageName, mode, viewport, authProfile = null })
   await page.goto(`/pilot-mount.html?page=${pageName}&mode=${mode}`);
   await expect(page.locator('html')).toHaveAttribute('data-pilot-ready', '1', { timeout: 15_000 });
   return mocks;
+}
+
+// #5141 visual follow-up: normal learning fixtures must render an empty queue,
+// not the strict production reader's error state for an incomplete page DTO.
+for (const width of [375, 1280]) {
+  test(`learning visual fixture normal empty page @${width}`, async ({ page }) => {
+    await page.clock.setFixedTime(new Date('2026-09-15T10:00:00+08:00'));
+    await openPilot(page, { pageName: 'learning', mode: 'normal', viewport: { width, height: 812 } });
+    await expect(page.getByText('目前沒有待主任核准的評量', { exact: true })).toBeVisible();
+    await expect(page.locator('.lr-error-state')).toHaveCount(0);
+    await expect(page.getByRole('button', { name: '重新載入', exact: true })).toHaveCount(0);
+  });
+
+  test(`learning visual fixture existing error state @${width}`, async ({ page }) => {
+    await openPilot(page, { pageName: 'learning', mode: 'error', viewport: { width, height: 812 } });
+    await expect(page.locator('.lr-error-state')).toBeVisible();
+    await expect(page.getByText('評量資料載入失敗', { exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: '重新載入', exact: true })).toBeVisible();
+    await expect(page.locator('.lr-empty-state')).toHaveCount(0);
+  });
 }
 
 test.describe('UI foundation — real Vue page evidence', () => {
@@ -446,6 +517,7 @@ test.describe('UI foundation — real Vue page evidence', () => {
           await expect(page.getByText('目前沒有待處理的家長請假')).toBeVisible({ timeout: 10_000 });
         } else {
           await expect(page.getByText('家長請假待處理', { exact: true })).toBeVisible({ timeout: 10_000 });
+          await page.locator('.pending-leave-disclosure > summary').click();
           await expect(page.getByText('測試學生', { exact: false }).first()).toBeVisible();
           const action = page.getByRole('button', { name: '處理這筆請假' }).first();
           await expect(action).toBeVisible();
@@ -832,6 +904,35 @@ test.describe('No horizontal overflow (director home, Login)', () => {
   }
 });
 
+// In-app #518 review: a confirm opened over the course drawer must stack above it and be clickable.
+test('course drawer: a confirm dialog is topmost and clickable @drawer-confirm', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto('/pilot-mount.html?page=course-manager&mode=confirm');
+  await expect(page.locator('html')).toHaveAttribute('data-pilot-ready', '1', { timeout: 15_000 });
+  await expect(page.locator('[data-testid="course-manager"]')).toBeVisible();
+  const confirm = page.getByRole('dialog', { name: '暫停課程？' });
+  await expect(confirm).toBeVisible();
+  const cancel = page.locator('[data-testid="confirm-cancel"]');
+  const topmost = await cancel.evaluate((el) => {
+    const r = el.getBoundingClientRect();
+    const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+    return !!hit && (hit === el || el.contains(hit));
+  });
+  expect(topmost).toBe(true);
+  await cancel.click({ timeout: 3000 });
+});
+
+// In-app #519: 新增課程 on 課程查找 opens the shared scheduler with the student still to be picked.
+test('course page: 新增課程 opens the shared create-course form @create-course', async ({ page }) => {
+  await openPilot(page, { pageName: 'course', mode: 'normal', viewport: { width: 1280, height: 900 } });
+  await dismissOverlays(page);
+  await page.locator('[data-testid="course-header-create"]').click();
+  const form = page.locator('.universal-scheduler-modal').first();
+  await expect(form).toBeVisible();
+  await form.getByText('一般課程').first().click(); // same type step as from 學生管理
+  await expect(form.locator('label:visible', { hasText: '學生 *' }).first()).toBeVisible();
+});
+
 // Visual regression (#4952). Tagged @visual: skipped by playwright.ui-foundation.config.js,
 // run only by playwright.visual.config.js inside the pinned Playwright Docker image (npm run test:visual).
 test.describe('Visual regression @visual', () => {
@@ -862,7 +963,7 @@ test.describe('Visual regression @visual', () => {
   }
   // #4918: 課程管理 drawer (overview, 月曆, 帳務) from fixture props, no API.
   for (const vp of [{ name: '1280', width: 1280, height: 900 }, { name: '375', width: 375, height: 812 }]) {
-    for (const [name, tab, view] of [['course-manager-overview', 'overview'], ['course-manager-month', 'sessions', 'calendar'], ['course-manager-list', 'sessions', 'list'], ['course-manager-billing', 'billing']]) {
+    for (const [name, tab, view] of [['course-manager-overview', 'overview'], ['course-manager-month', 'sessions', 'calendar'], ['course-manager-list', 'sessions', 'list'], ['course-manager-settings', 'settings'], ['course-manager-billing', 'billing']]) {
       test(`${name} @${vp.name}`, async ({ page }) => {
         await page.clock.setFixedTime(new Date('2026-09-15T10:00:00+08:00'));
         await page.setViewportSize({ width: vp.width, height: vp.height });
@@ -902,4 +1003,168 @@ test.describe('Visual regression @visual', () => {
     await page.waitForLoadState('networkidle');
     await expect(page).toHaveScreenshot('parent-home-390.png', { fullPage: true });
   });
+
+  // 字級 大: same page with the large size saved (標準 is parent-home-390).
+  // #4986 3 cards at 390px, mocked dashboard (fake data only).
+  test('parent-home-large @390', async ({ page }) => {
+    await page.clock.setFixedTime(new Date('2026-09-15T10:00:00+08:00'));
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.addInitScript(() => { localStorage.setItem('parent_portal_token', 'e2e-parent-visual-token'); localStorage.setItem('alltrue_text_size', 'large'); });
+    await page.route('**/api/v1/**', (route) => {
+      const url = new URL(route.request().url());
+      const json = url.pathname.includes('/parent/dashboard') ? {
+        student: { id: 1, name: '測試學生甲', grade: '國二', campus_id: 1, campus_name: '測試分校', line_linked: false },
+        enrollments: [],
+        cross_campus_access: 'actions',
+        learning_records: [{ id: 1, Subject: '數學', SessionDate: '2026-09-12', Comment: '因式分解進步很多，回家複習講義。', parent_feedback: null }],
+        learning_records_meta: { total: 1, has_more: false },
+        attendance_history: [],
+        upcoming_sessions: [{ id: 11, SessionDate: '2026-09-18', StartTime: '15:00', EndTime: '16:00', Status: 'scheduled', Subject: '英文' }],
+        classes: [],
+        payment_alerts: [{ class_id: 5, subject: '英文', remaining_sessions: 2, paid: false }],
+        invoices: [{ id: 9, Status: 'unpaid', TotalAmount: 7200, DueDate: '2026-09-20', payments: [] }],
+        announcements: [],
+        assessment_progress: { items: [] },
+      } : { data: [] };
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(json) });
+    });
+    await page.goto('/pilot-mount.html?page=parent');
+    await expect(page.locator('[data-guide="parent-home"] [data-slot="card"]')).toHaveCount(3);
+    await page.waitForLoadState('networkidle');
+    await expect(page).toHaveScreenshot('parent-home-large-390.png', { fullPage: true });
+  });
 });
+
+
+// #527 redesign: real course page, existing mocks, no production traffic or baseline updates.
+for (const width of [375, 1280]) {
+  test(`course workbench preserves billing scroll and viewport bounds @${width}`, async ({ page }) => {
+    await page.route('**/*', (route) => ['127.0.0.1', 'localhost'].includes(new URL(route.request().url()).hostname)
+      ? route.fallback() : route.abort('blockedbyclient'));
+    await openPilot(page, { pageName: 'course', mode: 'normal', viewport: { width, height: 900 } });
+    await dismissOverlays(page);
+    const bounds = await page.evaluate(() => ({ viewport: innerWidth, document: document.documentElement.scrollWidth, body: document.body.scrollWidth }));
+    expect.soft(bounds.document).toBeLessThanOrEqual(width);
+    expect.soft(bounds.body).toBeLessThanOrEqual(width);
+    fs.mkdirSync(outDir, { recursive: true });
+    await page.screenshot({ path: path.join(outDir, `course-workbench-default-${width}.png`), fullPage: true });
+    const group = page.locator('.student-group-card').first();
+    await group.getByRole('tab', { name: '帳務資料', exact: true }).click();
+    const billing = group.locator('.student-billing-wrap');
+    await expect(billing.locator('tbody .btn-invoices').first()).toBeAttached();
+    expect(await billing.evaluate((el) => getComputedStyle(el).overflowX)).toBe('auto');
+    if (width === 375) expect(await billing.evaluate((el) => el.scrollWidth > el.clientWidth)).toBe(true);
+    await billing.evaluate((el) => { el.scrollLeft = el.scrollWidth; });
+    const ledger = billing.locator('tbody .btn-invoices').first();
+    await ledger.scrollIntoViewIfNeeded();
+    await expect(ledger).toBeInViewport();
+    await page.screenshot({ path: path.join(outDir, `course-workbench-billing-${width}.png`) });
+    await ledger.click();
+    await expect(page.getByText('學生帳務', { exact: true }).first()).toBeVisible();
+  });
+}
+
+test('course workbench desktop tools stay clickable above the filter card', async ({ page }) => {
+  await page.route('**/*', (route) => ['127.0.0.1', 'localhost'].includes(new URL(route.request().url()).hostname)
+    ? route.fallback() : route.abort('blockedbyclient'));
+  await openPilot(page, { pageName: 'course', mode: 'normal', viewport: { width: 1280, height: 900 } });
+  await dismissOverlays(page);
+  const tools = page.locator('.course-tools-menu');
+  await tools.locator('summary').click();
+  const collapse = tools.getByRole('button', { name: '全部收合', exact: true });
+  const topmost = await collapse.evaluate((el) => {
+    const rect = el.getBoundingClientRect();
+    return el.contains(document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2));
+  });
+  expect(topmost).toBe(true);
+  await collapse.click();
+  await expect(page.locator('.student-group-toggle').first()).toHaveAttribute('aria-expanded', 'false');
+  await tools.getByRole('button', { name: '全部展開', exact: true }).click();
+  await expect(page.locator('.student-group-toggle').first()).toHaveAttribute('aria-expanded', 'true');
+  fs.mkdirSync(outDir, { recursive: true });
+  await page.screenshot({ path: path.join(outDir, 'course-workbench-tools-1280.png') });
+});
+
+for (const scenario of [
+  { width: 390, height: 844, root: 16 },
+  { width: 1280, height: 900, root: 16 },
+  { width: 390, height: 844, root: 32 },
+]) {
+  test(`course contract workbench keeps facts, filters and actions reachable @${scenario.width}-root${scenario.root}`, async ({ page }) => {
+    await page.setViewportSize({ width: scenario.width, height: scenario.height });
+    await page.route('**/*', (route) => ['127.0.0.1', 'localhost'].includes(new URL(route.request().url()).hostname)
+      ? route.fallback() : route.abort('blockedbyclient'));
+    await installApiMocks(page, 'normal', 'course');
+    const contract = (id, extra = {}) => ({
+      id, student_id: 900527, student_name: '合成學生', teacher_name: id === 50 ? '合成老師甲' : id === 40 ? '合成老師乙' : '合成老師丙', subject: '英文',
+      first_class_date: id === 50 ? '2025-01-01' : '2026-09-01', status: 'active',
+      ScheduleMode: 'count', payment_type: 'session', sessions_purchased: 8,
+      sessions_used: 3, remaining_sessions: 5, payment_status: 'unpaid', class_type: 'one_on_one', ...extra,
+    });
+    const contracts = [contract(50), contract(40, { status: 'inactive', history_reason: 'completed', closed_reason: 'completed', payment_status: 'paid' }),
+      contract(30, { status: 'inactive', history_reason: 'settled_pending', closed_reason: 'settled_pending', usage_balance_status: 'review_required', sessions_used: 8, remaining_sessions: 0 })];
+    await page.route('**/api/v1/student-classes?**', (route) => {
+      const status = new URL(route.request().url()).searchParams.get('status');
+      const data = status ? contracts.filter((row) => row.status === status) : contracts;
+      return route.fulfill({ json: { data, total: data.length, current_page: 1, last_page: 1 } });
+    });
+    await page.goto('/pilot-mount.html?page=course&mode=normal');
+    await expect(page.locator('html')).toHaveAttribute('data-pilot-ready', '1');
+    await dismissOverlays(page);
+    await page.evaluate((rootSize) => { document.documentElement.style.fontSize = `${rootSize}px`; }, scenario.root);
+    await expect(page.getByRole('heading', { level: 1, name: '課程查找', exact: true })).toBeVisible();
+    const status = page.locator('#course-filter-status');
+    expect(await status.evaluate((el) => el.closest('details') === null)).toBe(true);
+    await status.selectOption('active');
+    await expect(page.getByTestId('course-active-filters')).toContainText('進行中');
+    await expect(page.locator('.course-row')).toHaveCount(1);
+    await page.locator('.focus-btn').click();
+    await expect(page.locator('.focus-mode-banner')).toContainText('篩選仍套用');
+    await page.locator('.focus-mode-banner button').click();
+    await expect(status).toHaveValue('active');
+    await page.getByTestId('course-filter-clear').click();
+    await expect(status).toHaveValue('');
+    await expect(page.getByTestId('course-active-filters')).toHaveCount(0);
+    await expect(page.locator('.course-row')).toHaveCount(2);
+    await page.locator('.history-section__toggle').click();
+    const cards = page.locator('.course-row, .history-course-card');
+    expect(await cards.evaluateAll((rows) => rows.map((row) => Number(row.getAttribute('data-contract-id'))))).toEqual([50, 40, 30]);
+    const primaryRow = page.locator('.course-row').filter({ has: page.locator('[data-course-id="50"]') });
+    for (const field of await primaryRow.locator('[data-col], .cell-actions').all()) {
+      await field.scrollIntoViewIfNeeded();
+      await expect(field).toBeInViewport();
+      const rect = await field.boundingBox();
+      expect(rect.x).toBeGreaterThanOrEqual(0);
+      expect(rect.x + rect.width).toBeLessThanOrEqual(scenario.width + 1);
+    }
+    const menu = primaryRow.getByRole('button', { name: /更多/ });
+    await menu.scrollIntoViewIfNeeded();
+    expect((await menu.boundingBox()).height).toBeGreaterThanOrEqual(44);
+    await menu.click();
+    await expect(page.getByRole('menu')).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(menu).toBeFocused();
+    const quantityLabel = primaryRow.locator('[data-col="remaining"] .contract-field-label');
+    const standardSize = await quantityLabel.evaluate((el) => parseFloat(getComputedStyle(el).fontSize));
+    await page.getByRole('radio', { name: '大', exact: true }).click();
+    expect(await quantityLabel.evaluate((el) => parseFloat(getComputedStyle(el).fontSize))).toBeGreaterThan(standardSize);
+    await page.getByRole('radio', { name: '標準', exact: true }).click();
+    const manager = primaryRow.getByTestId('course-manager-open');
+    if (process.env.VITE_COURSE_MANAGER_V1 === 'true') {
+      await expect(manager).toBeVisible();
+      await manager.click();
+      await expect(page.getByTestId('course-manager')).toBeVisible();
+      await page.keyboard.press('Escape');
+      await expect(page.getByTestId('course-manager')).toHaveCount(0);
+      await expect(manager).toBeFocused();
+    } else {
+      await expect(manager).toHaveCount(0);
+    }
+    await expect(page.locator('.course-row').filter({ has: page.locator('[data-course-id="30"]') }).getByRole('button', { name: '堂數待對帳', exact: true })).toBeVisible();
+    const overflow = await page.evaluate(() => Math.max(document.documentElement.scrollWidth, document.body.scrollWidth) > innerWidth + 1);
+    expect(overflow).toBe(false);
+    fs.mkdirSync(outDir, { recursive: true });
+    await primaryRow.scrollIntoViewIfNeeded();
+    await page.screenshot({ path: path.join(outDir, `course-workbench-${scenario.width}-root${scenario.root}.png`), fullPage: scenario.root === 16 });
+  });
+}
