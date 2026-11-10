@@ -320,7 +320,8 @@ test.describe('4970 student learning profile', () => {
           primaryReads += 1;
           if (primaryReads === 1) return route.fulfill({ status: 503, json: {} });
           return json({ items: [
-          { type: 'evaluation', id: 1, date: '2026-11-09', subject: '數學', progress: '完成第二單元', content: '分數應用題與訂正', attendance: '到班', approval_status: 'approved' },
+          { type: 'evaluation', id: 9, date: '2026-11-10', subject: '數學', content: '（系統自動核准）', approval_status: 'approved', has_substantive_progress: false },
+          { type: 'evaluation', id: 1, date: '2026-11-09', subject: '數學', progress: '完成第二單元', content: '分數應用題與訂正', attendance: '到班', approval_status: 'approved', has_substantive_progress: true },
           { type: 'exam_score', id: 2, date: '2026-11-01', subject: '數學', title: '第一段考', score: 0, max_score: 100, is_absent: false },
           { type: 'exam_score', id: 3, date: '2026-10-01', subject: '英文', title: '英文段考', score: null, max_score: 100, is_absent: true },
           ], coverage: { limit_per_source: 300, capped_sources: [] } });
@@ -346,6 +347,7 @@ test.describe('4970 student learning profile', () => {
       expect(primaryReads).toBe(1); expect(schoolReads).toBe(0);
       await page.keyboard.press('Enter');
       await expect(profile).toBeVisible(); await expect(profile).toContainText('完成第二單元');
+      await expect(profile).not.toContainText('（系統自動核准）');
       await expect(profile).toContainText('第二段考'); await expect(profile).toContainText('2026-11-20');
       expect(primaryReads).toBe(2); expect(schoolReads).toBe(1);
       await expect(page.locator('html')).toHaveAttribute('data-text-size', 'large');
@@ -361,6 +363,7 @@ test.describe('4970 student learning profile', () => {
       await page.keyboard.press('Enter');
       await expect(profile.getByRole('tab', { name: '上課紀錄', exact: true })).toHaveAttribute('aria-selected', 'true');
       await expect(profile).toContainText('分數應用題與訂正');
+      await expect(profile).toContainText('（系統自動核准）');
       await page.keyboard.press('ArrowRight');
       await expect(profile.getByRole('tab', { name: '成績', exact: true })).toBeFocused();
       await page.keyboard.press('Enter');

@@ -163,9 +163,18 @@ class StudentLearningTimelineTest extends TestCase
         $student = $this->student($campus);
         $course = $this->course($student->id, $director['user']->id, $campus);
         $lesson = $this->lesson($course, '2026-10-01');
-        LearningRecord::create(['StudentClassID' => $course->ID, 'ClassSessionID' => $lesson->id,
+        $real = LearningRecord::create(['StudentClassID' => $course->ID, 'ClassSessionID' => $lesson->id,
             'TeacherID' => $director['user']->id, 'Content' => '分數應用題', 'Progress' => '完成第二單元',
             'Status' => 'approved', 'SessionDate' => '2026-10-01']);
+        $progressFlags = [$real->id => true];
+        foreach ([['（系統自動核准）', null, false], ['（系統補登/扣除堂數）', null, false],
+            ['（評量表）', " \n", false], ['補登／納入科目數', null, false],
+            ['（系統補登）', '完成第三單元', true], ['真實補充內容', null, true]] as $i => [$content, $progress, $expected]) {
+            $date = '2026-10-' . str_pad((string) ($i + 2), 2, '0', STR_PAD_LEFT);
+            $record = LearningRecord::create(['StudentClassID' => $course->ID, 'ClassSessionID' => $this->lesson($course, $date)->id,
+                'TeacherID' => $director['user']->id, 'Content' => $content, 'Progress' => $progress, 'Status' => 'approved', 'SessionDate' => $date]);
+            $progressFlags[$record->id] = $expected;
+        }
         $zero = $this->schoolScore($student, $campus, 'published', '數學', 0);
         $absent = $this->schoolScore($student, $campus, 'closed', '數學', null, true);
         $this->schoolScore($student, $campus, 'draft');
@@ -178,7 +187,10 @@ class StudentLearningTimelineTest extends TestCase
         $before = $snapshot();
         $response = $this->withAuth($director['token'])->getJson("/api/v1/students/{$student->id}/learning-timeline")->assertOk();
         $rows = collect($response->json('items'));
-        $this->assertSame('完成第二單元', $rows->firstWhere('type', 'evaluation')['progress']);
+        $evaluations = $rows->where('type', 'evaluation')->keyBy('id');
+        $this->assertSame('完成第二單元', $evaluations[$real->id]['progress']);
+        $this->assertCount(count($progressFlags), $evaluations); // placeholder rows remain available in history
+        foreach ($progressFlags as $id => $expected) $this->assertSame($expected, $evaluations[$id]['has_substantive_progress']);
         $scores = $rows->where('type', 'exam_score')->keyBy('id');
         $this->assertCount(2, $scores);
         $this->assertEquals(0, $scores[$zero->id]['score']);

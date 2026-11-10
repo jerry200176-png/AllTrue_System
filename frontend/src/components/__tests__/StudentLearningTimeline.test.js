@@ -3,7 +3,7 @@ import { flushPromises, mount } from '@vue/test-utils';
 const ITEMS = [
   { type: 'attendance', id: 3, date: '2026-10-15', subject: '數學', attendance: '缺席' },
   { type: 'assessment', id: 2, date: '2026-10-08', subject: '英文', title: '單元檢測', score: 80, max_score: 100 },
-  { type: 'evaluation', id: 1, date: '2026-10-01', subject: '數學', attendance: '到班', approval_status: 'approved', homework_status: '完成', next_week_scope: '第三章', progress: '完成第二單元', content: '分數應用題' },
+  { type: 'evaluation', id: 1, date: '2026-10-01', subject: '數學', attendance: '到班', approval_status: 'approved', homework_status: '完成', next_week_scope: '第三章', progress: '完成第二單元', content: '分數應用題', has_substantive_progress: true },
   { type: 'exam_score', id: 8, date: '2026-09-30', subject: '數學', title: '期中考', score: 0, max_score: 100, is_absent: false },
   { type: 'exam_score', id: 9, date: '2026-09-20', subject: '英文', title: '第一次段考', score: null, max_score: 100, is_absent: true },
 ];
@@ -36,6 +36,22 @@ describe('student learning profile (#4970 step3a)', () => {
     const w = profile(); await flushPromises(); await activate(w, '成績');
     expect(w.text()).toContain('0/100'); expect(w.text()).toContain('缺考'); expect(w.text()).toContain('段考'); expect(w.text()).toContain('單元檢測');
     expect(w.findAll('[data-testid="timeline-row"]')).toHaveLength(3);
+  });
+  it('keeps the latest system placeholder in history without replacing older real progress', async () => {
+    authedFetch.mockImplementation(async url => response(url.endsWith('/exam-periods') ? { data: [] } : { items: [
+      { type: 'evaluation', id: 20, date: '2026-10-20', content: '（系統自動核准）', approval_status: 'approved', has_substantive_progress: false }, ...ITEMS,
+    ] }));
+    const w = profile(); await flushPromises(); expect(w.text()).toContain('完成第二單元'); expect(w.text()).not.toContain('（系統自動核准）');
+    await activate(w, '上課紀錄'); expect(w.text()).toContain('（系統自動核准）');
+  });
+  it('distinguishes submitted and reviewed assessments without giving school scores review badges', async () => {
+    authedFetch.mockImplementation(async url => response(url.endsWith('/exam-periods') ? { data: [] } : { items: [
+      { ...ITEMS[1], title: '待核單元', approval_status: 'submitted' },
+      { ...ITEMS[1], id: 12, title: '已核單元', approval_status: 'reviewed' }, ITEMS[3],
+    ] }));
+    const w = profile(); await flushPromises(); await activate(w, '成績');
+    const rows = w.findAll('[data-testid="timeline-row"]'); expect(rows[0].text()).toContain('已送出'); expect(rows[1].text()).toContain('已覆核');
+    expect(rows[2].text()).not.toMatch(/已送出|已覆核/);
   });
   it('keeps class history usable when school-date reading fails and explains the cap', async () => {
     authedFetch.mockImplementation(async url => url.endsWith('/exam-periods') ? { ok: false } : response({ items: ITEMS, coverage: { limit_per_source: 300, capped_sources: ['evaluation'] } }));

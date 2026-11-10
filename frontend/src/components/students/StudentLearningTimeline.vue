@@ -18,7 +18,7 @@ const visible = computed(() => items.value.filter(i => (!subject.value || i.subj
   && (!from.value || i.date >= from.value) && (!until.value || i.date <= until.value)));
 const history = computed(() => visible.value.filter(i => ['evaluation', 'attendance'].includes(i.type)));
 const scores = computed(() => visible.value.filter(i => ['assessment', 'exam_score'].includes(i.type)));
-const latest = computed(() => history.value.find(i => i.session_status !== 'cancelled' && (i.progress || i.content)));
+const latest = computed(() => history.value.find(i => i.session_status !== 'cancelled' && i.has_substantive_progress === true));
 const STATUS = { approved: '已核准', pending: '待審', submitted: '已送出', reviewed: '已覆核', rejected: '已退回', changes_requested: '待修改' };
 const scoreText = i => i.is_absent ? '缺考' : i.score == null ? '未登記' : `${i.score}/${i.max_score}`;
 let seq = 0;
@@ -100,7 +100,7 @@ watch(() => [props.show, props.studentId], () => { if (props.show && props.stude
             <p v-if="!scores.length">尚無符合篩選的可見成績。</p>
             <ul v-else class="tw:space-y-3 tw:list-none tw:p-0">
               <li v-for="i in scores" :key="`${i.type}-${i.id}`" data-testid="timeline-row" class="tw:rounded-lg tw:border tw:p-3 tw:space-y-2 tw:break-words">
-                <strong>{{ i.date }}</strong><div class="tw:flex tw:flex-wrap tw:gap-2"><Badge class="tw:text-tpl-caption" variant="secondary">{{ i.type === 'exam_score' ? '段考' : '單元測驗' }}</Badge><Badge class="tw:text-tpl-caption" v-if="i.subject" variant="outline">{{ i.subject }}</Badge></div>
+                <strong>{{ i.date }}</strong><div class="tw:flex tw:flex-wrap tw:gap-2"><Badge class="tw:text-tpl-caption" variant="secondary">{{ i.type === 'exam_score' ? '段考' : '單元測驗' }}</Badge><Badge class="tw:text-tpl-caption" v-if="i.subject" variant="outline">{{ i.subject }}</Badge><Badge class="tw:text-tpl-caption" v-if="i.type === 'assessment' && i.approval_status" variant="outline">{{ STATUS[i.approval_status] || i.approval_status }}</Badge></div>
                 <p>{{ i.title }}</p><p class="tw:text-lg tw:font-semibold">{{ scoreText(i) }}</p>
               </li>
             </ul>
@@ -111,5 +111,5 @@ watch(() => [props.show, props.studentId], () => { if (props.show && props.stude
   </Dialog>
 </template>
 <style scoped>
-.profile-filter { width: 100%; min-width: 0; min-height: 44px; padding: 6px 8px; border: 1px solid var(--ds-border); border-radius: 6px; background: var(--ds-surface); color: inherit; font: inherit; }
+.profile-filter { width: 100%; min-width: 0; min-height: 44px; padding: 6px 8px; border: 1px solid var(--ds-border); border-radius: var(--ds-radius-md); background: var(--ds-surface); color: inherit; font: inherit; }
 </style>

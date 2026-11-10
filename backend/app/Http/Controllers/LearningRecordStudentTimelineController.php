@@ -7,6 +7,7 @@ use App\Models\LearningRecord;
 use App\Models\Student;
 use App\Models\StudentClass;
 use App\Support\AttendanceStatus;
+use App\Support\LearningRecordMutableOwnership;
 use App\Services\TeacherScopeService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -75,6 +76,7 @@ class LearningRecordStudentTimelineController extends Controller
                 'subject_id' => $subjectId, 'subject' => $subjectNames[$subjectId] ?? ($r->Subject ?: null),
                 'homework_status' => $r->HomeworkStatus, 'quiz' => $r->QuizScore, 'next_week_scope' => $r->NextWeekTestScope,
                 'progress' => $r->Progress, 'content' => $r->Content, 'session_status' => $r->classSession?->Status,
+                'has_substantive_progress' => LearningRecordMutableOwnership::hasSubstantiveProgress($r),
                 'approval_status' => $r->Status, 'attendance' => $statusLabel($signIns[$r->ClassSessionID] ?? null),
             ];
         }
