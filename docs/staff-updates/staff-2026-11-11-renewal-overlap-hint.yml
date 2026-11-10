@@ -4,7 +4,7 @@ updates:
     audiences:
       - director
     importance: digest
-    title: 同科再開一門課時，提示會告訴您該按哪個鍵
+    title: 同科並行開課：提示會說該按哪個鍵
     summary: 新課日期和原課程重疊時，訊息會說明：要同時上請填原因後按「建立獨立課程」。
     items:
       - category: improved
