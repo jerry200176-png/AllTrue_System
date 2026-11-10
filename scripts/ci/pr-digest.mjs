@@ -52,6 +52,13 @@ export function markersOn(comments, head, owner) {
   return [...out].sort();
 }
 
+// Untrusted text (check/job names, labels, API strings) must not inject lines or terminal escapes into an agent's context.
+export const clean = (v, max = 60) => {
+  const t = String(v ?? '').replace(/[\x00-\x1f\x7f-\x9f\u2028\u2029]/g, '?');
+  return t.length > max ? `${t.slice(0, max - 1)}~` : t;
+};
+export const ADVISORY = 'advisory digest: land-queue and review/final-head decide; thr:? = thread state not readable via REST; required checks matched by name only';
+
 // Pure: API payloads in, one digest row out.
 // in: {pr (pulls/N), checkRuns, statuses, comments (null = unreadable), behindBy (null = unknown), threads (GraphQL-shaped conn or null),
 //      required: [names], owner}
@@ -75,12 +82,13 @@ export function summarizePr(i) {
     ? reviewGate(i.comments, head, i.owner, 'lower')
     : { ok: false, why: 'PR comments unreadable' };
   const labels = (i.pr.labels || []).map((l) => l.name).filter((n) => WATCH_LABELS.includes(n));
+  const cl = (a) => a.map((x) => clean(x));
   return {
     n: i.pr.number, sha: head.slice(0, 8), draft: !!i.pr.draft, labels,
-    mergeable: i.pr.mergeable_state || 'unknown',
-    req: { ok: okCount, total: req.length, fail, pending, missing },
-    advisoryFail, finalHead,
-    review: rg.ok ? rg.via : `no(${String(rg.why || '').slice(0, 60)})`,
+    mergeable: clean(i.pr.mergeable_state || 'unknown', 20),
+    req: { ok: okCount, total: req.length, fail: cl(fail), pending: cl(pending), missing: cl(missing) },
+    advisoryFail: cl(advisoryFail), finalHead,
+    review: rg.ok ? rg.via : `no(${clean(rg.why, 60)})`,
     markers: markersOn(i.comments, head, i.owner),
     threads: unresolvedCount(i.threads), // null = unknown
     behind: Number.isInteger(i.behindBy) ? i.behindBy : null,
@@ -90,7 +98,7 @@ export function summarizePr(i) {
 const list = (a, max = 6) => (a.length > max ? `${a.slice(0, max).join(',')},+${a.length - max}` : a.join(','));
 
 export function formatRow(r, verbose = false) {
-  if (r.error) return `#${r.n} ERROR ${r.error}`;
+  if (r.error) return `#${r.n} ERROR ${clean(r.error, 160)}`;
   const p = [`#${r.n}`, r.sha];
   if (r.draft) p.push('draft');
   p.push(`ms:${r.mergeable}`, `req:${r.req.ok}/${r.req.total}`);
@@ -127,23 +135,33 @@ export function parseArgs(argv) {
 }
 
 // GET-only REST client with Link-header pagination. Throws on any non-2xx (fail closed).
-export function makeClient(repo, token, fetchImpl = globalThis.fetch) {
+export function makeClient(repo, token, fetchImpl = globalThis.fetch, maxPages = 50) {
   const base = 'https://api.github.com';
   const get = async (path) => {
     let url = `${base}/repos/${repo}/${path}`;
     const pages = [];
-    for (let guard = 0; url && guard < 50; guard++) {
+    for (let guard = 0; url && guard < maxPages; guard++) {
       const res = await fetchImpl(url, { method: 'GET', headers: { Authorization: `Bearer ${token}`,
         Accept: 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28', 'User-Agent': 'pr-digest' } });
       if (!res.ok) throw new Error(`GET ${path} -> HTTP ${res.status}`);
       pages.push(await res.json());
       url = /<([^>]+)>;\s*rel="next"/.exec(res.headers?.get?.('link') || '')?.[1] || null;
+      // The Bearer token must only ever go to the API host.
+      if (url && new URL(url).origin !== base) throw new Error(`GET ${path}: refusing to follow next link to another origin`);
     }
+    if (url) throw new Error(`GET ${path}: more than ${maxPages} pages, result truncated`);
     return pages;
   };
   return {
     one: async (path) => (await get(path))[0],
-    all: async (path, key) => (await get(path)).flatMap((p) => (key ? p[key] : p) || []),
+    all: async (path, key) => {
+      const pages = await get(path);
+      const items = pages.flatMap((p) => (key ? p[key] : p) || []);
+      // total_count (check-runs, combined status) proves the read is complete; a short read never renders as ok.
+      const total = key ? pages[0]?.total_count : undefined;
+      if (Number.isInteger(total) && items.length < total) throw new Error(`GET ${path}: read ${items.length} of ${total} ${key}, result truncated`);
+      return items;
+    },
   };
 }
 
@@ -151,13 +169,13 @@ async function digestOne(api, pr, ctx) {
   const n = pr.number;
   const full = await api.one(`pulls/${n}`);
   const head = full.head.sha;
-  const [checkRuns, status, comments, cmp] = await Promise.all([
+  const [checkRuns, statuses, comments, cmp] = await Promise.all([
     api.all(`commits/${head}/check-runs?per_page=100`, 'check_runs'),
-    api.one(`commits/${head}/status?per_page=100`),
+    api.all(`commits/${head}/status?per_page=100`, 'statuses'),
     api.all(`issues/${n}/comments?per_page=100`),
     api.one(`compare/${encodeURIComponent(full.base?.ref || 'main')}...${head}?per_page=1`),
   ]);
-  return summarizePr({ pr: full, checkRuns, statuses: status?.statuses, comments,
+  return summarizePr({ pr: full, checkRuns, statuses, comments,
     behindBy: cmp?.behind_by, threads: null, required: ctx.required, owner: ctx.owner });
 }
 
@@ -182,16 +200,17 @@ export async function run(argv, env = process.env, deps = {}) {
     for (const pr of prs) {
       try { rows.push(await digestOne(api, pr, ctx)); } catch (e) { failed = true; rows.push({ n: pr.number, error: String(e.message).split('\n')[0] }); }
     }
-    if (o.json) out.push(JSON.stringify(rows));
+    if (o.json) out.push(JSON.stringify({ advisory: ADVISORY, rows }));
     else {
       const shown = rows.slice(0, o.maxLines);
       for (const r of shown) out.push(formatRow(r, o.pr !== null));
       if (rows.length > shown.length) out.push(`... ${rows.length - shown.length} more (raise --max-lines)`);
       if (!rows.length) out.push('no open PRs to main');
+      out.push(ADVISORY);
     }
     return { code: failed ? 1 : 0, stdout: redact(out.join('\n'), token), stderr: '' };
   } catch (e) {
-    err.push(`pr-digest: ${e.message}`);
+    err.push(`pr-digest: ${clean(e.message, 300)}`);
     return { code: 1, stdout: redact(out.join('\n'), token), stderr: redact(err.join('\n'), token) };
   }
 }

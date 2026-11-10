@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { summarizePr, formatRow, markersOn, toRollup, run, redact, parseArgs } from './pr-digest.mjs';
+import { summarizePr, formatRow, markersOn, toRollup, run, redact, parseArgs, makeClient, clean, ADVISORY } from './pr-digest.mjs';
 
 const HEAD = 'a'.repeat(40);
 const OLD = 'b'.repeat(40);
@@ -114,12 +114,14 @@ const happy = () => fakeApi([
 test('run: one line per PR, max-lines truncates, json is compact', async () => {
   const r = await run([], env, { api: happy(), requiredChecks: required });
   assert.equal(r.code, 0);
-  assert.equal(r.stdout.split('\n').length, 2);
+  assert.equal(r.stdout.split('\n').length, 3); // 2 PR lines + advisory footer
+  assert.equal(r.stdout.split('\n').at(-1), ADVISORY);
   assert.match(r.stdout, /#7 aaaaaaaa .*req:1\/2 fail:B/);
   const t = await run(['--max-lines', '1'], env, { api: happy(), requiredChecks: required });
   assert.match(t.stdout, /\.\.\. 1 more/);
   const j = await run(['--json', '--pr', '7'], env, { api: happy(), requiredChecks: required });
-  const rows = JSON.parse(j.stdout);
+  const rows = JSON.parse(j.stdout).rows;
+  assert.equal(JSON.parse(j.stdout).advisory, ADVISORY);
   assert.equal(rows.length, 1);
   assert.equal(rows[0].n, 7);
   assert.equal(j.stdout.includes('\n'), false);
@@ -151,4 +153,59 @@ test('token never appears in stdout or stderr', async () => {
     assert.equal((r.stdout + r.stderr).includes(TOKEN), false);
   }
   assert.equal(redact(`a ${TOKEN} b`, TOKEN), 'a *** b');
+});
+
+// --- client: truncation, origin, sanitising ---
+const res = (body, link) => ({ ok: true, status: 200, json: async () => body, headers: { get: (h) => (h === 'link' ? link : null) } });
+const fetchSeq = (...rs) => { let k = 0; const calls = []; const f = async (url, opt) => { calls.push({ url, opt }); return rs[Math.min(k++, rs.length - 1)]; }; f.calls = calls; return f; };
+const next = (u) => `<${u}>; rel="next"`;
+
+test('pagination: a next link left after the page limit throws (never silently truncates)', async () => {
+  const f = fetchSeq(res([1], next('https://api.github.com/repos/o/r/x?page=2')));
+  await assert.rejects(makeClient('o/r', 't', f, 3).all('x'), /truncated/);
+  assert.equal(f.calls.length, 3);
+  const ok = fetchSeq(res([1], next('https://api.github.com/repos/o/r/x?page=2')), res([2]));
+  assert.deepEqual(await makeClient('o/r', 't', ok, 3).all('x'), [1, 2]);
+});
+
+test('check-runs and statuses shorter than total_count throw; complete reads pass', async () => {
+  const short = fetchSeq(res({ total_count: 150, check_runs: new Array(100).fill({}) }));
+  await assert.rejects(makeClient('o/r', 't', short).all('c', 'check_runs'), /100 of 150/);
+  const shortSt = fetchSeq(res({ total_count: 101, statuses: new Array(100).fill({}) }));
+  await assert.rejects(makeClient('o/r', 't', shortSt).all('s', 'statuses'), /100 of 101/);
+  const full = fetchSeq(res({ total_count: 2, check_runs: [{}, {}] }));
+  assert.equal((await makeClient('o/r', 't', full).all('c', 'check_runs')).length, 2);
+});
+
+test('truncated read becomes ERROR for that PR and a non-zero exit', async () => {
+  const api = { ...happy(), all: async (p, key) => { if (key === 'check_runs') throw new Error('read 100 of 150 check_runs, result truncated'); return happy().all(p, key); } };
+  const r = await run([], env, { api, requiredChecks: required });
+  assert.equal(r.code, 1);
+  assert.match(r.stdout, /#7 ERROR .*truncated/);
+  assert.doesNotMatch(r.stdout, /req:\d/);
+});
+
+test('a next link to another origin is never followed with the token', async () => {
+  const f = fetchSeq(res([1], next('https://evil.example.com/steal')), res([2]));
+  await assert.rejects(makeClient('o/r', 'tok', f).all('x'), /another origin/);
+  assert.equal(f.calls.length, 1);
+  assert.ok(f.calls.every((c) => c.url.startsWith('https://api.github.com/')));
+});
+
+test('control characters and long names are neutralised in text and json', async () => {
+  const evil = 'bad\n#99 ERROR fake\x1b[31m' + 'x'.repeat(200);
+  const r = summarizePr(base({ checkRuns: [cr('A', 'success'), cr('B', 'success'), cr(evil, 'failure')], pr: pr({ mergeable_state: 'x\ny' }) }));
+  const line = formatRow(r, true);
+  assert.equal(line.split('\n').length, 2); // row + failing jobs only
+  assert.doesNotMatch(line, /[\x00-\x09\x0b-\x1f\x1b]/);
+  assert.ok(r.advisoryFail[0].length <= 60);
+  assert.doesNotMatch(r.mergeable, /\n/);
+  assert.equal(clean('a\u0085b\u2028c'), 'a?b?c');
+  assert.doesNotMatch(formatRow({ n: 1, error: 'x\ny' }), /\n/);
+  assert.equal(JSON.parse(JSON.stringify([r]))[0].advisoryFail[0], r.advisoryFail[0]);
+});
+
+test('text output ends with the advisory footer', async () => {
+  const r = await run([], env, { api: happy(), requiredChecks: required });
+  assert.equal(r.stdout.split('\n').at(-1), ADVISORY);
 });
