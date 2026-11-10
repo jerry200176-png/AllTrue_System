@@ -4,12 +4,12 @@ updates:
     audiences:
       - director
     importance: digest
-    title: 請假堂次調課前先取消請假
-    summary: 請先取消請假再調課，系統會同步核對順延堂次。
+    title: 請假改為未上先取消請假
+    summary: 調到尚未結束的時段前，請先取消請假。
     items:
       - category: fixed
-        text: 請假堂次不會再因調課直接恢復為未上，避免原堂次與順延堂次同時占用堂數。
+        text: 請假堂次調到尚未結束的時段時，會提醒先取消請假，避免多出可扣堂次。
       - category: improved
-        text: 需調整日期時，請先使用「取消請假」，再重新調課。
+        text: 只更正已結束時段的日期與時間，仍會保留請假狀態。
     source_refs:
       - "changelog:2026-11-10:reschedule-leave-cascade-guard"

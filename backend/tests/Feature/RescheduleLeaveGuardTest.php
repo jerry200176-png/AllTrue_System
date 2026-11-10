@@ -103,6 +103,72 @@ class RescheduleLeaveGuardTest extends TestCase
         $this->assertSame($before, $this->businessSnapshot());
     }
 
+    /** @dataProvider endedLeaveTargets */
+    public function test_ended_target_keeps_leave_and_does_not_add_billable_lessons(string $date, string $start, string $end, bool $atomic): void
+    {
+        [$token, $courseId, $session] = $this->fixture(3);
+        $headers = ['Authorization' => "Bearer {$token}"];
+        $this->postJson('/api/v1/schedules/leave-by-session', ['class_session_id' => $session->id], $headers)->assertOk();
+        $beforeCount = $this->billableCount($courseId);
+        $beforeIds = ClassSession::where('StudentClassID', $courseId)->orderBy('id')->pluck('id')->all();
+        $beforeLedger = DB::table('session_deduction_ledger')->orderBy('id')->get()->map(fn ($row) => (array) $row)->all();
+        $payload = $this->payload($courseId, $atomic);
+        $payload['new_date'] = $date;
+        $payload['start_time'] = $start;
+        $payload['end_time'] = $end;
+
+        $this->postJson('/api/v1/learning-records/reschedule-session', $payload, $headers)
+            ->assertOk()->assertJsonPath('committed', true)->assertJsonPath('reset_to_scheduled', false);
+
+        $this->assertSame('leave', $session->fresh()->Status);
+        $this->assertSame($date, substr((string) $session->fresh()->SessionDate, 0, 10));
+        $this->assertSame($beforeCount, $this->billableCount($courseId));
+        $this->assertSame($beforeIds, ClassSession::where('StudentClassID', $courseId)->orderBy('id')->pluck('id')->all());
+        $this->assertSame($beforeLedger, DB::table('session_deduction_ledger')->orderBy('id')->get()->map(fn ($row) => (array) $row)->all());
+    }
+
+    public static function endedLeaveTargets(): array
+    {
+        return [
+            'past atomic' => ['2026-11-24', '16:00', '18:00', true],
+            'past legacy' => ['2026-11-24', '16:00', '18:00', false],
+            'today elapsed atomic' => ['2026-12-01', '07:00', '09:00', true],
+            'today elapsed legacy' => ['2026-12-01', '07:00', '09:00', false],
+            'today exact end atomic' => ['2026-12-01', '08:00', '10:00', true],
+            'today exact end legacy' => ['2026-12-01', '08:00', '10:00', false],
+        ];
+    }
+
+    /** @dataProvider unendedLeaveTargets */
+    public function test_unended_target_is_refused_before_writes_using_the_effective_end_time(string $start, ?string $end, bool $atomic): void
+    {
+        [$token, $courseId, $session] = $this->fixture(3);
+        $headers = ['Authorization' => "Bearer {$token}"];
+        $this->postJson('/api/v1/schedules/leave-by-session', ['class_session_id' => $session->id], $headers)->assertOk();
+        $before = $this->businessSnapshot();
+        $payload = $this->payload($courseId, $atomic);
+        $payload['new_date'] = '2026-12-01';
+        $payload['start_time'] = $start;
+        if ($end === null) {
+            unset($payload['end_time']); // Existing source end18:00, rather than a separate guard fallback.
+        } else {
+            $payload['end_time'] = $end;
+        }
+
+        $this->postJson('/api/v1/learning-records/reschedule-session', $payload, $headers)
+            ->assertStatus(422)->assertJsonPath('code', 'leave_requires_cascade_undo');
+        $this->assertSame($before, $this->businessSnapshot());
+    }
+
+    public static function unendedLeaveTargets(): array
+    {
+        return [
+            'today ongoing atomic' => ['08:00', '10:01', true], 'today ongoing legacy' => ['08:00', '10:01', false],
+            'today future atomic' => ['20:00', '22:00', true], 'today future legacy' => ['20:00', '22:00', false],
+            'source end fallback atomic' => ['16:00', null, true], 'source end fallback legacy' => ['16:00', null, false],
+        ];
+    }
+
     public function test_repeating_a_refused_same_slot_leave_request_has_no_side_effects(): void
     {
         [$token, $courseId, $session] = $this->fixture(3);
