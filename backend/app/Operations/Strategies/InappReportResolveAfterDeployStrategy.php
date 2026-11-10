@@ -8,6 +8,7 @@ use App\Operations\Inapp\InappReportResolveEvidence;
 use App\Operations\Inapp\InappStandingPolicy;
 use App\Services\BugReportService;
 use App\Services\BugReportWritebackEvidence;
+use App\Services\BugSafetyScreen;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
 
@@ -49,6 +50,8 @@ final class InappReportResolveAfterDeployStrategy
         $status = (string) $bug->getRawOriginal('status');
         if ((int) $bug->getAttribute('CampusID') !== $p['campus_id']) $errors[] = 'report_outside_campus';
         if (!in_array($status, self::FROM, true)) $errors[] = 'status_not_resolvable';
+        // Automation never resolves a report the safety screen flags; a person handles it in the app.
+        if (BugSafetyScreen::screen($bug->title, $bug->description)['flagged']) $errors[] = 'safety_review_required';
         if ($errors !== []) return $this->result($errors, $p, $status);
 
         // Remote evidence before the proof check, so no report row is locked while waiting on the network.

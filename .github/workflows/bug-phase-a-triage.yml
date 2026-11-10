@@ -119,6 +119,9 @@ jobs:
           $reply = (string)getenv("PUBLIC_REPLY");
           $bug = \App\Models\BugReport::find($bugId);
           if (!$bug) { throw new \RuntimeException("bug not found: ".$bugId); }
+          // Automation never writes to a report the safety screen flags; a person handles it in the app.
+          $safety = \App\Services\BugSafetyScreen::screen($bug->title, $bug->description);
+          if ($safety["flagged"]) { throw new \RuntimeException("safety_review_required: ".implode(",", $safety["reasons"])); }
           $status = (string)$bug->status;
           // close_as_logged reruns may find the report already closed; closeAsLogged decides idempotently.
           $allowedStatuses = getenv("CLOSE_AS_LOGGED") === "true" ? ["new", "triaged", "closed"] : ["new", "triaged"];

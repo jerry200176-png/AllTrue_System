@@ -43,6 +43,11 @@ for (const [workflow, kind, writeJob, nextJob] of workflows) {
   assert.ok(write.includes("          ' </dev/null 2>&1)\"\n"), `${workflow} tinker must never read the script's stdin`);
   assert.ok(write.includes('grep -qx "WRITEBACK_OK $BUG_ID" <<<"$OUT" || {'), `${workflow} counts a row only on its success marker (tinker exits 0 on a throw)`);
   assert.ok(write.includes('[[ "$applied" == "$ROW_COUNT" ]]'), `${workflow} must prove every row ran`);
+  // Flagged reports are for a person: the screen runs right after the report is loaded, before any write call.
+  const screenAt = write.indexOf('$safety = \\App\\Services\\BugSafetyScreen::screen($bug->title, $bug->description);');
+  const firstWrite = write.search(/BugReportService::(?:class|[a-zA-Z]+\()/);
+  assert.ok(screenAt > 0 && firstWrite > screenAt && write.includes('if ($safety["flagged"]) { throw new \\RuntimeException("safety_review_required: '),
+    `${workflow} must refuse a safety-flagged report before any write`);
   assert.ok(jobBlock(source, nextJob).includes(`needs: [preview, ${writeJob}]`), `${nextJob} runs only after every write succeeded`);
   assert.ok(!source.includes('inputs.public_reply') && !source.includes('inputs.rows_json') && !/^\s+(PUBLIC_REPLY|ROWS_JSON):/m.test(source),
     `${workflow} must never expose reply text through env or an expression (step env is printed in public logs)`);

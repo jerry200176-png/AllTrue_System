@@ -130,6 +130,9 @@ jobs:
           $reply = (string)getenv("PUBLIC_REPLY");
           $bug = \App\Models\BugReport::find($bugId);
           if (!$bug) { throw new \RuntimeException("bug not found: ".$bugId); }
+          // Automation never writes to a report the safety screen flags; a person handles it in the app.
+          $safety = \App\Services\BugSafetyScreen::screen($bug->title, $bug->description);
+          if ($safety["flagged"]) { throw new \RuntimeException("safety_review_required: ".implode(",", $safety["reasons"])); }
           if ((string)$bug->status !== $expected) { throw new \RuntimeException("status changed: ".$bug->status); }
           $admin = \Illuminate\Support\Facades\DB::table("UserCampus")
               ->where("Admin", 1)->where("Approved", 1)->orderBy("UserID")->value("UserID");
