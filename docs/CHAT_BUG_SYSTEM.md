@@ -167,7 +167,7 @@ This metadata only preserves GitHub tracking ownership. It does not resolve the 
 
 | 步驟 | 動作 |
 |------|------|
-| C1 | `in_progress` → `resolved`（若仍在 `triaged`，先轉 `in_progress` 再轉 `resolved`）。**勿**再走 `bug-phase-c-allowlist.yml`（2026-10-19 起 SSH 寫入已 retired）。現行能力與執行先決條件只看 [DELIVERY_LIFECYCLE 的 In-app 自動化對照表](sop/DELIVERY_LIFECYCLE.md#in-app-自動化對照表)；code／catalog 已登錄不等於 scoped requester 憑證、Founder 旗標或 runtime 執行授權已就緒。`bug-followup-comment.yml` 只留言、不改狀態，且使用 production SSH，受 machine ban 限制者不得觸發；不能由 catalog 已登錄 `inapp-report-resolve-after-deploy` 推定 Phase A／follow-up 已有無 SSH 替代路徑 |
+| C1 | `in_progress` → `resolved`（若仍在 `triaged`，先轉 `in_progress` 再轉 `resolved`）。舊的 SSH allowlist 路徑 2026-10-19 停用、2026-11-11 刪除。現行能力與執行先決條件只看 [DELIVERY_LIFECYCLE 的 In-app 自動化對照表](sop/DELIVERY_LIFECYCLE.md#in-app-自動化對照表)；code／catalog 已登錄不等於 scoped requester 憑證、Founder 旗標或 runtime 執行授權已就緒。`bug-followup-comment.yml` 只留言、不改狀態，且使用 production SSH，受 machine ban 限制者不得觸發；不能由 catalog 已登錄 `inapp-report-resolve-after-deploy` 推定 Phase A／follow-up 已有無 SSH 替代路徑 |
 | C2 | **公開留言**：已上線、請至 Bug 回報頁按「確認已修好」或「問題仍存在」；GitHub issue 此時即可關（Phase-C 自動關，例外見 DELIVERY_LIFECYCLE 自動化對照表），不等回報者 |
 | C3 | in-app `closed` 由回報者 `reporter-verify` 或逾時流程完成；若「仍存在」→ 回到 B1，重開或新開 GitHub issue |
 | C4 | `docs/CHANGELOG.md` 一行（有 deployable 修復時） |

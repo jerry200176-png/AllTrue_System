@@ -148,9 +148,6 @@ jobs:
       - name: Test fixed private reader with synthetic recipients only
         run: python3 scripts/tests/test_case5124_private_reader.py
 
-      - name: Test permanent write-back cursor
-        run: python3 -m unittest discover -s scripts/bug-writeback -p 'test_writeback_cursor.py'
-
       - name: Test in-app weekly one-pager
         run: python3 scripts/tests/test_inapp_weekly_onepager.py
       - name: Test diagnose scripts print ids only (#3605)

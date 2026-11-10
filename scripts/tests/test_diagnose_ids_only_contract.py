@@ -329,12 +329,8 @@ class WorkflowContractTest(unittest.TestCase):
         self.assertIn("DUMP_ARTIFACT_KEY", text)
         self.assertIn("openssl enc -aes-256-cbc", text)
 
-    def test_allowlist_replies_and_probes_carry_no_names(self):
-        text = (WF / "bug-phase-c-allowlist.yml").read_text(encoding="utf-8")
+    def test_legacy_probes_take_ids_not_names(self):
         probes = (WF / "bug-legacy-production-probes.yml").read_text(encoding="utf-8")
-        for name in ("呂承澔", "楊璦瑄", "張進鴻", "陳姝彣", "張珉恩", "洪家溱", "周芮湘", "樓兆瑄", "陳品承",
-                     "何昀佳", "邱崴", "簡湧耆", "沈柏宇", "王俞方", "芝琳", "鄭老師"):
-            self.assertNotIn(name, text)
         self.assertNotIn("urlencode({\"name\"", probes)
         self.assertIn("student_id_114", dispatch_inputs("bug-legacy-production-probes.yml"))
 
