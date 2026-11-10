@@ -490,7 +490,7 @@ class SecurityHardeningTest extends TestCase
             ->assertJsonStructure(['business_today' => ['lessons_written_today', 'bills_created_today', 'sign_ins_today']]);
     }
 
-    private function todaySessionOnCampus(int $campusId): void
+    private function todaySessionOnCampus(int $campusId, string $content = 'x'): void
     {
         $student = Student::create(['name' => 'iso', 'CampusID' => $campusId, 'ClassID' => 1, 'enable' => 1, 'MDT' => now(), 'Notify_Token' => '']);
         $course = StudentClass::create([
@@ -500,7 +500,7 @@ class SecurityHardeningTest extends TestCase
             'RemainingSessions' => 0, 'ClassType' => 'one_on_one', 'UsedSessions' => 0, 'monthly_sessions' => 1, 'rate_unit' => 'session',
         ]);
         $session = ClassSession::create(['StudentClassID' => $course->ID, 'SessionDate' => now()->toDateString(), 'StartTime' => '18:00', 'EndTime' => '20:00', 'Status' => 'scheduled']);
-        LearningRecord::create(['StudentClassID' => $course->ID, 'ClassSessionID' => $session->id, 'TeacherID' => 99, 'Content' => 'x', 'Status' => 'pending',
+        LearningRecord::create(['StudentClassID' => $course->ID, 'ClassSessionID' => $session->id, 'TeacherID' => 99, 'Content' => $content, 'Status' => 'pending',
             'SessionDate' => now()->toDateString(), 'StartTime' => '18:00', 'EndTime' => '20:00']);
     }
 
@@ -516,6 +516,8 @@ class SecurityHardeningTest extends TestCase
 
         $this->todaySessionOnCampus($campusB->id);
         $this->assertSame(0, $get(), 'campus A director must not see campus B counts');
+        $this->todaySessionOnCampus($this->campus->id, '');
+        $this->assertSame(0, $get(), 'an empty auto-generated form is not a written lesson');
         $this->todaySessionOnCampus($this->campus->id);
         $this->assertSame(1, $get());
     }

@@ -283,7 +283,10 @@ Route::prefix('v1')->group(function () {
             $today = now()->startOfDay();
             $db = \Illuminate\Support\Facades\DB::class;
             $scoped = $role !== 'super_admin';
-            $records = $db::table('LearningRecord as lr')->where('lr.created_at', '>=', $today);
+            // Authored today = filled-in content saved today. Attendance auto-creates an empty pending form
+            // (LearningRecordBackfillService), so created_at alone would hide a broken submission flow.
+            $records = $db::table('LearningRecord as lr')->where('lr.updated_at', '>=', $today)
+                ->whereNull('lr.VoidedAt')->whereRaw("TRIM(COALESCE(lr.Content, '')) <> ''");
             $bills = $db::table('Invoice as i')->where('i.created_at', '>=', $today);
             $logins = $db::table('user_login_activities as l')->where('l.login_at', '>=', $today)->where('l.success', 1);
             if ($scoped) {
