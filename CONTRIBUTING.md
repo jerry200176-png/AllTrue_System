@@ -26,7 +26,7 @@
 
 - 開 PR 時會載入 [`.github/pull_request_template.md`](.github/pull_request_template.md)。
 - **多階段 Issue**：描述欄用 **`Refs #123`**；**全部驗收完成的最後一個 PR** 才用 **`Closes #123`**。
-- **Merge 前**：7 項 required checks 需 **success**（負責人跟到 completed）：`Presubmit Checks`、`PHPUnit Feature & Unit Tests`、`Vite Frontend Build`、`gitleaks scan`、`Golden scenarios report`、`Docs Integrity Check`、`PHPStan Advisory (php)`。清單見 `docs/OPERATIONS_RUNBOOK.md §R1`。
+- **Merge 前**：8 項 required checks 需 **success**（負責人跟到 completed）：`Presubmit Checks`、`PHPUnit Feature & Unit Tests`、`Vite Frontend Build`、`gitleaks scan`、`Golden scenarios report`、`Docs Integrity Check`、`PHPStan Advisory (php)`、`Control Plane Contract Lint`；另需最終 head 的審查證據（`review/final-head`，見 [`docs/sop/MERGE_SOP.md`](docs/sop/MERGE_SOP.md#final-head-review-evidence)）。合併一律加 label `queue`，不手動 merge。清單見 `docs/OPERATIONS_RUNBOOK.md §R1`。
 - 變更 `backend/app/`、`backend/routes/`、`frontend/src/` 時新增 `docs/changes/<date>-<slug>.md` fragment（[`docs/CHANGELOG.md`](docs/CHANGELOG.md) 已凍結），並依 [`docs/GUIDE_STAFF_UPDATES.md`](docs/GUIDE_STAFF_UPDATES.md) 決定教職員版本卡或 `silent_ship` 例外；docs-only／純 workflow 也要留下明確分類，不能無聲漏掉。
 
 ## Issue
@@ -49,7 +49,7 @@
 
 無第二位強制 reviewer 時，用三層「自動代理人 + 強制檢查」近似大廠「每個 CL 至少一個 reviewer + 高風險 owner 把關」：
 
-1. **自動 AI review**：每個 PR 由 AI bot（Bugbot / Copilot review）自動留 review comment（repo Settings 端啟用，屬一次性管理者設定）。
+1. **最終 head 審查（required）**：每個 PR 的最終 head 要有 Codex 乾淨結論，或 owner 記錄的獨立審查（Codex 額度用完時的備案）；規則只在 [`docs/sop/MERGE_SOP.md`](docs/sop/MERGE_SOP.md#final-head-review-evidence)。
 2. **高風險檔強制測試（required）**：[`.github/workflows/high-risk-test-gate.yml`](.github/workflows/high-risk-test-gate.yml)——觸碰堂數扣除 / 繳費 / 刷卡 / 核准同步 / migration 但同 PR 無 `backend/tests/**` 時**擋 merge**。例外需加 label `risk-ack-no-test` 並於描述說明。設為 required：Settings → Branches → main → Require status checks → 勾 `High-risk change requires tests`。
 3. **Self-review checklist**：PR 模板的 Checklist / Design System / Threat Note 三段，提交者以 reviewer 視角逐項自審（多校區隔離、tabular-nums、一區一 CTA、無 raw hex）。
 
@@ -57,7 +57,6 @@
 
 ### 再靠近一點大廠（選配、不強制）
 
-- **Merge queue**：GitHub 原生 merge queue 在此 user-owned repo 不可用，改用自建 [`land-queue.yml`](.github/workflows/land-queue.yml)（PR 加 label `queue`）。
 - **Required reviewers**：第二位 maintainer 出現後，對 `main` 要求至少 1 approve。
 - **Staging**：單機 Pi 可維持現狀；若要 staging，另備環境與 deploy workflow 分流（屬架構決策）。
 
