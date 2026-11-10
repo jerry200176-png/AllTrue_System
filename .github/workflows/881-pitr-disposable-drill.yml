@@ -6,6 +6,8 @@ on:
     paths:
       - ".github/workflows/881-pitr-disposable-drill.yml"
       - "docs/runbooks/MYSQL_PITR_DRILL_RUNBOOK.md"
+  schedule:
+    - cron: '0 3 15 * *'   # monthly on the 15th; backup-restore-test.yml runs on the 1st (#5070 gap 5)
   workflow_dispatch:
 
 permissions:
