@@ -3853,7 +3853,7 @@ async function submit() {
   position: fixed;
   top: 24px;
   right: 24px;
-  z-index: 9999;
+  z-index: var(--ds-z-toast);
   display: inline-flex;
   align-items: center;
   gap: 8px;

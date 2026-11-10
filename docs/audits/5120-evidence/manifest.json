@@ -1,0 +1,22 @@
+{
+  "source_head": "9e81a7356f3b79ebe36dfbd286fa70c120aa8a66",
+  "runtime_same_as": "1ad294d3f8e06b1d98bdd21cdc9ed7ca17cc2715",
+  "database": "AllTrue_test",
+  "isolation": "REPEATABLE-READ",
+  "outer_transaction_level": 1,
+  "mysql": "8.0.46",
+  "php": "8.2.35",
+  "phpunit": "11.5.57",
+  "laravel": "v12.70.1",
+  "files_sha256": {
+    "backend/app/Http/Controllers/LearningRecordController.php": "90ff079ec25e64d217159f66933263aa4530c658c9a51f2092ddf5a109cb4d24",
+    "backend/app/Services/ApprovalSessionSyncService.php": "76686464ed048758f93aabbd6bc030b8f56020d06c0ba848c78464328f16777f",
+    "backend/app/Services/SessionDeductionService.php": "a23fc8a7e9ad167536f4ea0e4553687e403f0e111143aa8cb7b0b4011d6f61a6",
+    "backend/app/Services/PackageDeductionService.php": "f99f53a3dd63ef33f9c76f4c9457c54db8d62db85e4ba2eea402b810b50b22e0",
+    "backend/app/Services/UserEngagementXpAwardService.php": "10c7ce71cad4ac46e269df101790fd7098d9fa31cf3f3372eb49e0532e8bd782",
+    "backend/tests/Feature/LearningRecordReviewerFromLoginTest.php": "90b69a7debd4941763a404fde7e21a0757eb88d1dcc328eca1431e791707d25b",
+    "backend/composer.lock": "26f8088fa68f7a88b0db2be229c2a9d625966611713b564d98f90915d25acb57",
+    "docs/audits/5120-evidence/inventory.php": "2781b75dea105129ffa838f3b097b2fd3f5e9a1f4cdff74e8596a123e5fca617",
+    "docs/audits/5120-evidence/metadata-bootstrap.php": "5a899cd7a812911a9ea489ae4439c0a1a4d9e4c634576ce6ead63727c823d212"
+  }
+}

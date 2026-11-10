@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { BATCH_BASE_MESSAGE, BATCH_MAX, batchSerial, guardedSquash, isBatchBase, TRUSTED_AUTHORS, fromPinned, suiteRuns, memberOf, staleReason, batchVerdict, checkStates, decide, marker, memberMessage, neutral, orderQueue, parseMember, planBatch, serialDecision, unresolvedCount } from '../../.github/scripts/land-queue.mjs';
-import { CODEX_LOGIN, REVIEW_CHECK, classifyScope, decodeEntities, gateMarker, reviewGate, reviewMarker } from '../../.github/scripts/review-gate.mjs';
+import { CODEX_LOGIN, REVIEW_CHECK, automaticMerge, carryChecks, carryRepo, trivialRebase, withCarryRepo, classifyScope, decodeEntities, gateMarker, onlyMainMerged, patchId, reviewGate, reviewMarker, sameDiff } from '../../.github/scripts/review-gate.mjs';
 import fs from 'node:fs';
 import os from 'node:os';
 import { join } from 'node:path';
@@ -574,43 +574,234 @@ test('review gate: R3 marker carries across update-branch only when samePatch', 
   assert.equal(reviewGate([codex(clean())], H, OWNER, 'lower', () => assert.fail('called')).via, 'codex'); // lower unaffected
 });
 
-test('samePrPatch: identical patch needs identical tree mode/blob; truncated tree fails closed', () => {
-  const dir = fs.mkdtempSync(join(os.tmpdir(), 'fakegh-'));
-  const A = 'a'.repeat(40), B = 'b'.repeat(40);
-  fs.writeFileSync(join(dir, 'gh'), `#!/usr/bin/env node
-const u = process.argv[3], m = JSON.parse(process.env.FAKE);
-if (u.endsWith('/o/r/')) process.exit(1); // real GitHub 404s the trailing slash
-if (u.endsWith('/o/r')) { console.log(JSON.stringify({ default_branch: 'main' })); process.exit(0); }
-const key = Object.keys(m).find((k) => u.includes(k));
-if (!key) process.exit(1);
-console.log(JSON.stringify(m[key]));
-`, { mode: 0o755 });
-  const M1 = '1'.repeat(40), M2 = '2'.repeat(40);
-  const run = (tree, f = [{ filename: 'x.sh', status: 'modified', patch: '+x' }]) => {
-    const fake = { '/commits': [[{ sha: A }, { sha: B }]], 'pulls/7': { base: { ref: tree.base || 'main' } },
-      [`compare/main...${A}`]: [{ files: f, merge_base_commit: { sha: M1 } }], [`compare/main...${B}`]: [{ files: f, merge_base_commit: { sha: M2 } }],
-      [`trees/${A}`]: tree.a, [`trees/${B}`]: tree.b, [`trees/${M1}`]: tree.m1 ?? { tree: [] }, [`trees/${M2}`]: tree.m2 ?? { tree: [] } };
-    const out = execFileSync(process.execPath, ['--input-type=module', '-e',
-      `import { samePrPatch } from ${JSON.stringify(new URL('../../.github/scripts/review-gate.mjs', import.meta.url).href)}; console.log(samePrPatch(7, '${B}', '${A}'));`],
-    { encoding: 'utf8', env: { ...process.env, REPO: 'o/r', FAKE: JSON.stringify(fake), PATH: `${dir}:${process.env.PATH}` } });
-    return out.trim() === 'true';
+const DIFF = (line, hunk = '@@ -1,2 +1,2 @@') => `diff --git a/x.js b/x.js\nindex 111..222 100644\n--- a/x.js\n+++ b/x.js\n${hunk}\n ctx\n-old\n+${line}\n`;
+
+test('TRIVIAL_REBASE: identical patch-id carries (hunk line numbers may shift); a changed line does not', () => {
+  assert.ok(patchId(DIFF('new')));
+  assert.equal(sameDiff(DIFF('new'), DIFF('new', '@@ -40,2 +45,2 @@')), true); // main shifted the lines
+  assert.equal(sameDiff(DIFF('new'), DIFF('newer')), false); // conflict-resolution edit
+  assert.equal(sameDiff(DIFF('new'), DIFF('new ')), false); // whitespace-only edit: patch-id ignores it, exact lines do not
+  assert.equal(sameDiff(DIFF('new'), 'Binary files a/x and b/x differ\n'), false);
+  assert.equal(sameDiff('', ''), false); // unreadable diff fails closed
+  assert.equal(sameDiff(DIFF('new'), DIFF('new').replace('100644', '100755').replace('index', 'old mode 100644\nnew mode 100755\nindex')), false); // mode change
+});
+
+test('TRIVIAL_REBASE: only merges from main may sit between old and head', () => {
+  const c = (sha, ...parents) => ({ sha, parents: parents.map((sha) => ({ sha })) });
+  const A = c('a1', 'main0'), B = c('b1', 'a1');
+  const merge = c('m1', 'b1', 'main9'); // second parent is on main (not a PR commit)
+  assert.equal(onlyMainMerged([A, B], [A, B, merge]), true);
+  assert.equal(onlyMainMerged([A, B], [A, B]), true);
+  assert.equal(onlyMainMerged([A, B], [A, B, c('n1', 'b1')]), false); // non-merge commit
+  assert.equal(onlyMainMerged([A, B], [A, B, c('m2', 'b1', 'other', 'x')]), false); // octopus
+  assert.equal(onlyMainMerged([A, B], [A, B, c('m3', 'b1', 'n9'), c('n9', 'a1')]), false); // merges another PR-side branch
+  assert.equal(onlyMainMerged([A, B], [A, c('b2', 'a1')]), false); // old not an ancestor of head
+});
+
+test('TRIVIAL_REBASE: Codex state and independent-review marker carry only through samePatch', () => {
+  const owner = (body) => ({ user: { login: OWNER }, body });
+  const G = (cs, same) => reviewGate(cs, H, OWNER, 'lower', same);
+  assert.deepEqual(G([codex(clean(OLD))], () => true), { ok: true, via: `codex-carried:${OLD.slice(0, 7)}` });
+  assert.equal(G([codex(clean(OLD))], () => false).ok, false);
+  assert.equal(G([codex(clean(OLD))]).ok, false); // default fails closed
+  assert.equal(G([codex(clean(OLD))], () => { throw new Error('api'); }).ok, false);
+  assert.equal(G([codex(clean(OLD, { has_unresolved_findings: true }))], () => true).ok, false); // findings never carry
+  assert.equal(G([codex(clean(OLD, { status: 'in_progress' }))], () => true).ok, false);
+  assert.equal(G([codex(clean(H, { has_unresolved_findings: true }))], () => true).ok, false); // head findings veto
+  assert.equal(G([codex(clean(OLD)), owner(`<!-- independent-review:v1 sha=${H} verdict=fail -->`)], () => true).ok, false);
+  assert.equal(G([owner(reviewMarker(OLD))], () => true).via, `independent-review-carried:${OLD.slice(0, 7)}`);
+  assert.equal(G([owner(reviewMarker(OLD))], () => false).ok, false);
+  assert.equal(G([owner(reviewMarker(OLD)), owner(`<!-- independent-review:v1 sha=${OLD} verdict=fail -->`)], () => true).ok, false);
+  assert.equal(G([{ user: { login: 'someone' }, body: reviewMarker(OLD) }], () => true).ok, false); // non-owner
+});
+
+test('TRIVIAL_REBASE: only an automatic merge of main carries; a hand-built merge moving a reviewed hunk does not', () => {
+  const dir = fs.mkdtempSync(join(os.tmpdir(), 'evil-merge-'));
+  const git = (...a) => execFileSync('git', ['-C', dir, '-c', 'user.email=t@t', '-c', 'user.name=t', ...a], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+  const body = (name, check) => `function ${name}(user) {\n  log(1);\n  log(2);\n  log(3);\n${check ? '  if (!user.isAdmin) throw new Error("no");\n' : ''}  log(4);\n  log(5);\n  log(6);\n}\n`;
+  const write = (f, txt) => fs.writeFileSync(join(dir, f), txt);
+  const both = (a, b) => body('deleteStudent', a) + '\n' + body('legacyDeleteDraft', b);
+  git('init', '-q', '-b', 'main');
+  write('h.js', both(true, true)); write('other.txt', 'a\n');
+  git('add', '-A'); git('commit', '-q', '-m', 'base');
+  git('checkout', '-q', '-b', 'pr');
+  write('h.js', both(true, false)); git('commit', '-qam', 'reviewed: drop check in legacyDeleteDraft');
+  const OLDC = git('rev-parse', 'HEAD').trim();
+  git('checkout', '-q', 'main'); write('other.txt', 'a\nb\n'); git('commit', '-qam', 'main moves');
+  git('update-ref', 'refs/remotes/origin/main', 'HEAD');
+  git('checkout', '-q', 'pr');
+  git('merge', '-q', '--no-edit', 'main');
+  const auto = git('rev-parse', 'HEAD').trim();
+  assert.equal(automaticMerge(git, auto), true); // plain merge of main
+  // Hand-built merge: same parents, but the removal is moved to the other (identical-looking) function.
+  const tree = (() => { git('checkout', '-q', auto); write('h.js', both(false, true)); git('add', '-A'); return git('write-tree').trim(); })();
+  const evil = git('commit-tree', tree, '-p', OLDC, '-p', 'refs/remotes/origin/main', '-m', 'evil').trim();
+  assert.equal(automaticMerge(git, evil), false);
+  assert.equal(automaticMerge(git, OLDC), false); // not a merge
+  assert.equal(automaticMerge(git, auto, `${OLDC}`), false); // second parent not on the given main
+  // The evil diff is still "the same" to patch-id --verbatim + exact lines: only the merge-tree check stops it.
+  const diff = (c) => git('diff', `origin/main...${c}`.replace('origin/main', 'refs/remotes/origin/main'));
+  assert.equal(sameDiff(diff(OLDC), diff(evil)), true);
+});
+
+test('TRIVIAL_REBASE: conflicting equal-timestamp Codex records on the carried SHA are ambiguous, not carried', () => {
+  const G = (cs) => reviewGate(cs, H, OWNER, 'lower', () => true);
+  const bad = codex(clean(OLD, { has_unresolved_findings: true }));
+  assert.equal(G([codex(clean(OLD)), bad]).ok, false);
+  assert.equal(G([bad, codex(clean(OLD))]).ok, false); // order independent
+  assert.equal(G([codex(clean(OLD)), codex(clean(OLD))]).ok, true); // agreeing duplicates are fine
+});
+
+test('TRIVIAL_REBASE: Codex findings on the old SHA veto every carry of its marker (lower tier and R3)', () => {
+  const owner = (body) => ({ user: { login: OWNER }, body });
+  const MID = 'c'.repeat(40);
+  const found = (sha) => codex(clean(sha, { has_unresolved_findings: true }));
+  for (const scope of ['lower', 'r3']) {
+    const G = (cs) => reviewGate(cs, H, OWNER, scope, () => true);
+    assert.equal(G([found(OLD), owner(reviewMarker(OLD))]).ok, false);
+    assert.equal(G([found(MID), owner(reviewMarker(OLD))]).ok, false); // newer record with findings on an in-between head
+    assert.equal(G([codex(clean(OLD, { status: 'in_progress' })), owner(reviewMarker(OLD))]).ok, false); // unfinished
+    assert.equal(G([codex(clean(OLD)), owner(reviewMarker(OLD))]).ok, true); // clean old head still carries
+  }
+});
+
+test('TRIVIAL_REBASE: a tie between different SHAs fails closed whatever the SHA sort order', () => {
+  const G = (cs) => reviewGate(cs, H, OWNER, 'lower', () => true);
+  for (const other of ['0'.repeat(40), 'c'.repeat(40)]) {
+    assert.equal(G([codex(clean(OLD)), codex(clean(other, { has_unresolved_findings: true }))]).ok, false);
+    assert.equal(G([codex(clean(other, { has_unresolved_findings: true })), codex(clean(OLD))]).ok, false);
+  }
+});
+
+test('TRIVIAL_REBASE: the head\'s failed sticky Codex state keeps the old findings flag and still vetoes the marker carry', () => {
+  const owner = (body) => ({ user: { login: OWNER }, body });
+  for (const scope of ['lower', 'r3']) {
+    const G = (cs) => reviewGate(cs, H, OWNER, scope, () => true);
+    const sticky = codex(clean(H, { status: 'failed', has_any_findings: true, has_unresolved_findings: true }));
+    assert.equal(G([sticky, owner(reviewMarker(OLD))]).ok, false);
+    assert.equal(G([sticky, owner(reviewMarker(H))]).ok, true); // a direct marker on the head still passes (failed neither passes nor vetoes)
+  }
+});
+
+test('TRIVIAL_REBASE: a null, missing or non-boolean findings flag vetoes the marker carry (fail closed)', () => {
+  const owner = (body) => ({ user: { login: OWNER }, body });
+  for (const scope of ['lower', 'r3']) {
+    const G = (cs) => reviewGate(cs, H, OWNER, scope, () => true);
+    const rec = (flag) => { const cr = clean(OLD); if (flag === undefined) delete cr.has_unresolved_findings; else cr.has_unresolved_findings = flag; return codex(cr); };
+    for (const flag of [null, undefined, 'false', 0]) assert.equal(G([rec(flag), owner(reviewMarker(OLD))]).ok, false, `flag ${String(flag)}`);
+    assert.equal(G([rec(false), owner(reviewMarker(OLD))]).ok, true);
+  }
+});
+
+test('TRIVIAL_REBASE: findings on an intermediate head B veto the Codex carry of a delayed clean review of A', () => {
+  const A = 'a1'.repeat(20), B = 'b2'.repeat(20);
+  const at = (t, sha, o = {}) => codex(clean(sha, o), { updated_at: t });
+  for (const scope of ['lower', 'r3']) {
+    const G = (cs) => reviewGate(cs, H, OWNER, scope, () => true);
+    // B (findings) reviewed first; the clean review of its predecessor A lands later; main is then merged into B -> H.
+    assert.equal(G([at('2026-10-21T05:00:00Z', B, { has_unresolved_findings: true }), at('2026-10-21T05:05:00Z', A)]).ok, false);
+    assert.equal(G([at('2026-10-21T05:05:00Z', A), at('2026-10-21T05:00:00Z', B, { has_unresolved_findings: true })]).ok, false);
+    if (scope === 'lower') assert.equal(G([at('2026-10-21T05:05:00Z', A)]).ok, true); // A alone still carries
+  }
+});
+
+test('TRIVIAL_REBASE: Codex keeps ONE sticky state, so a Codex PR review on a commit after old vetoes the carry', () => {
+  const c = (sha, ...parents) => ({ sha, parents: parents.map((sha) => ({ sha })) });
+  const A = 'a1'.repeat(20), B = 'b2'.repeat(20);
+  const oldC = [c(A, 'main0')];
+  const headC = [c(A, 'main0'), c(B, A, 'main1'), c(H, B, 'main2')]; // B and H are automatic merges of main
+  const review = (commit_id, login = CODEX_LOGIN) => ({ user: { login }, commit_id });
+  assert.deepEqual(carryChecks(oldC, headC, []), [B, H]);
+  assert.equal(carryChecks(oldC, headC, [review(B)]), null); // B's review survives the sticky overwrite
+  assert.equal(carryChecks(oldC, headC, [review(H)]), null);
+  assert.deepEqual(carryChecks(oldC, headC, [review(A), review('f'.repeat(40)), review(B, 'someone')]), [B, H]); // old's own, unrelated, non-Codex
+  assert.equal(carryChecks(oldC, headC, undefined), null); // unreadable reviews fail closed
+  // End to end through the gate: the sticky comment was overwritten by A's late clean review, B's findings are gone.
+  const sticky = codex(clean(A, { has_any_findings: false }));
+  for (const [reviews, expected] of [[[], true], [[review(B)], false]]) {
+    assert.equal(reviewGate([sticky], H, OWNER, 'lower', () => carryChecks(oldC, headC, reviews) !== null).ok, expected);
+  }
+});
+
+test('TRIVIAL_REBASE mutants: old not an ancestor of head; mode-only and rename-only differences', () => {
+  const c = (sha, ...parents) => ({ sha, parents: parents.map((sha) => ({ sha })) });
+  const A = c('a1', 'm0'), B = c('b1', 'a1');
+  assert.equal(onlyMainMerged([A, B], [A, c('mg', 'a1', 'main9')]), false); // head is a merge of main into A, B is not an ancestor
+  const withLines = (extra) => DIFF('new').replace('index 111..222 100644', `${extra}index 111..222 100644`);
+  assert.equal(sameDiff(DIFF('new'), withLines('')), true);
+  assert.equal(sameDiff(DIFF('new'), withLines('old mode 100644\nnew mode 100755\n')), false); // mode-only
+  assert.equal(sameDiff(DIFF('new'), withLines('rename from y.js\nrename to x.js\n')), false); // rename-only
+});
+
+test('trivialRebase end to end (fake gh + fake git): each guard is load-bearing', () => {
+  const A = 'a1'.repeat(20), M = 'd4'.repeat(20);
+  const c = (sha, ...parents) => ({ sha, parents: parents.map((sha) => ({ sha })) });
+  const base = {
+    base: 'main', prShas: [A, M], oldC: [c(A, 'main0')], headC: [c(A, 'main0'), c(M, A, 'main1')], reviews: [],
+    diffOld: DIFF('new'), diffHead: DIFF('new', '@@ -40,2 +45,2 @@'), automatic: true,
   };
-  const ent = (mode, sha = 'c'.repeat(40)) => ({ tree: [{ path: 'x.sh', mode, type: 'blob', sha }] });
-  assert.equal(run({ a: ent('100644'), b: ent('100644') }), true);
-  assert.equal(run({ a: ent('100644'), b: ent('100644'), base: 'evil' }), false); // retargeted base never carries
-  assert.equal(run({ a: ent('100644'), b: ent('100755') }), false); // mode change
-  assert.equal(run({ a: ent('100644'), b: ent('120000') }), false); // symlink swap
-  assert.equal(run({ a: ent('100644'), b: { tree: [] } }), false); // deleted at head only
-  assert.equal(run({ a: ent('100644'), b: { ...ent('100644'), truncated: true } }), false);
-  // A binary file (e.g. a visual baseline PNG) has no patch: its blob sha stands in, and the tree check still applies.
-  const png = [{ filename: 'x.sh', status: 'modified', sha: 'c'.repeat(40) }];
-  assert.equal(run({ a: ent('100644'), b: ent('100644') }, png), true);
-  assert.equal(run({ a: ent('100644'), b: ent('100644', 'e'.repeat(40)) }, png), false); // content changed at head
-  assert.equal(run({ a: ent('100644'), b: ent('100644') }, [{ filename: 'x.sh', status: 'modified' }]), false); // no patch, no sha
-  // main moved the same binary under the PR (the PR now reverts main's PNG): the base-side entry differs -> no carry.
-  assert.equal(run({ a: ent('100644'), b: ent('100644'), m1: ent('100644', '1'.repeat(40)), m2: ent('100644', '2'.repeat(40)) }, png), false);
-  assert.equal(run({ a: ent('100644'), b: ent('100644'), m1: ent('100644', '1'.repeat(40)), m2: ent('100644', '1'.repeat(40)) }, png), true);
-  assert.equal(run({ a: ent('100644'), b: ent('100644'), m2: { tree: [], truncated: true } }, png), false); // fail closed
+  const run = (o = {}) => {
+    const w = { ...base, ...o };
+    const gh = (_api, url, ...rest) => {
+      if (/^\/repos(\/[^/]+){0,2}$/.test(url)) return JSON.stringify({ default_branch: 'main' });
+      if (/\/pulls\/7$/.test(url)) return JSON.stringify({ base: { ref: w.base } });
+      if (url.includes('/pulls/7/commits')) return JSON.stringify([w.prShas.map((sha) => ({ sha }))]);
+      if (url.includes('/pulls/7/reviews')) return JSON.stringify([w.reviews]);
+      if (rest.includes('Accept: application/vnd.github.diff')) return url.endsWith(`...${A}`) ? w.diffOld : w.diffHead;
+      if (url.includes('/compare/')) return JSON.stringify([{ commits: url.includes(`...${A}?`) ? w.oldC : w.headC }]);
+      throw new Error(`unexpected ${url}`);
+    };
+    const open = () => ({ dir: fs.mkdtempSync(join(os.tmpdir(), 'tr-')), git: (...a) => {
+      if (a[0] === 'rev-list') return `${M} ${A} main1\n`;
+      if (a[0] === 'merge-base') return '';
+      if (a[0] === 'merge-tree') return 'TREE\n';
+      if (a[0] === 'rev-parse') return w.automatic ? 'TREE\n' : 'OTHER\n';
+      throw new Error(`unexpected git ${a[0]}`);
+    } });
+    return trivialRebase(7, M, A, { gh, open });
+  };
+  assert.equal(run(), true);
+  assert.equal(run({ automatic: false }), false); // hand-edited merge (kills: drop automaticMerge)
+  assert.equal(run({ reviews: [{ user: { login: CODEX_LOGIN }, commit_id: M }] }), false); // Codex review after old (kills: drop veto)
+  assert.equal(run({ diffHead: DIFF('different') }), false); // changed line (kills: old diff compared to itself)
+  assert.equal(run({ prShas: [M] }), false); // old not a PR commit (kills: drop PR-commit check)
+  assert.equal(run({ base: 'evil' }), false); // retargeted base (kills: drop base check)
+  assert.equal(run({ headC: [c(A, 'main0'), c('e5'.repeat(20), A)] , prShas: [A, M, 'e5'.repeat(20)] }), false); // non-merge added commit
+});
+
+test('withCarryRepo removes the temp repo when the check passes, fails or throws', () => {
+  const mk = () => { const dir = fs.mkdtempSync(join(os.tmpdir(), 'wcr-')); return { git: () => '', dir }; };
+  for (const fn of [() => true, () => false, () => { throw new Error('boom'); }]) {
+    let dir;
+    const open = () => { const r = mk(); dir = r.dir; return r; };
+    try { withCarryRepo(1, 'main', fn, open); } catch { /* expected for the throwing case */ }
+    assert.equal(fs.existsSync(dir), false);
+  }
+});
+
+test('carryRepo: sets the gh credential helper before fetching, and cleans up when the fetch fails', () => {
+  const calls = [];
+  const { git, dir } = carryRepo(7, 'main', 'o/r', (a) => { calls.push(a.slice(2)); return ''; });
+  assert.ok(fs.existsSync(dir));
+  fs.rmSync(dir, { recursive: true, force: true });
+  const names = calls.map((a) => a[0]);
+  assert.ok(names.indexOf('config') >= 0 && names.indexOf('config') < names.indexOf('fetch'));
+  assert.deepEqual(calls.find((a) => a[0] === 'config'), ['config', 'credential.helper', '!gh auth git-credential']);
+  let made;
+  assert.throws(() => carryRepo(7, 'main', 'o/r', (a) => { made = a[1]; if (a[2] === 'fetch') throw new Error('net'); return ''; }), /net/);
+  assert.equal(fs.existsSync(made), false); // temp repo removed on failure
+});
+
+test('TRIVIAL_REBASE: an owner fail marker on the old head or any in-between head blocks the Codex carry', () => {
+  const owner = (body) => ({ user: { login: OWNER }, body });
+  const MID = 'c'.repeat(40);
+  const G = (cs) => reviewGate(cs, H, OWNER, 'lower', () => true);
+  assert.equal(G([codex(clean(OLD))]).ok, true);
+  assert.equal(G([codex(clean(OLD)), owner(`<!-- independent-review:v1 sha=${OLD} verdict=fail -->`)]).ok, false);
+  assert.equal(G([codex(clean(OLD)), owner(gateMarker('security-data-reviewer', OLD, 'fail'))]).ok, false);
+  assert.equal(G([codex(clean(OLD)), owner(gateMarker('qa-lead', MID, 'fail'))]).ok, false); // in-between head
+  assert.equal(G([owner(reviewMarker(OLD)), owner(gateMarker('qa-lead', MID, 'fail'))]).ok, false); // marker lane too
+  assert.equal(G([{ user: { login: 'someone' }, body: gateMarker('qa-lead', OLD, 'fail') }, codex(clean(OLD))]).ok, true); // non-owner ignored
 });
 
 test('classifyScope: lower only with a stable head and complete, non-R3 evidence', () => {

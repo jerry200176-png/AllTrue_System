@@ -1,0 +1,13 @@
+updates:
+  - id: staff-2026-11-09-calendar-reschedule-cache
+    published_at: "2026-11-09"
+    audiences:
+      - director
+    importance: digest
+    title: 調課後顯示最新時段
+    summary: 行事曆調課後會顯示最新時段，連續調課也能直接確認。
+    items:
+      - category: fixed
+        text: 在行事曆完成調課後，畫面會更新為最新時段，跨週移動也能在新的一週查看。
+    source_refs:
+      - "changelog:2026-11-09:calendar-reschedule-cache-528"

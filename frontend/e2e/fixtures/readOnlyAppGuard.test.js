@@ -8,6 +8,8 @@ import {
   classifySentryEnvelope,
   installReadOnlyAppGuard,
   isKnownPostRead,
+  isKnownBlockedStatefulRead,
+  unexpectedCreateEntryRequests,
 } from './readOnlyAppGuard.js';
 
 const APP = appOriginOf('https://app.example.test/some/path?x=1');
@@ -45,6 +47,27 @@ describe('readOnlyAppGuard', () => {
       expect(classifyAppRequest(APP, method, 'https://app.example.test/api/v1/schedules')).toBe('allow');
     }
     expect(classifyAppRequest(APP, 'POST', 'https://app.example.test/api/v1/adoption/events')).toBe('stub-telemetry');
+  });
+
+  it('blocks known class-session materializers before allowing GET/HEAD, including routed path spellings (#528)', () => {
+    const paths = [
+      '/api/v1/class-sessions', '/api/v1/class-sessions?branch_id=1', '/api/v1/class-sessions///',
+      '/api/v1/class-sessions/projection?start=2026-09-01&end=2026-09-30',
+      '/api/v1/class-sessions/projection/', '/api/v1/%63lass-sessions',
+      '/api/v1/class%2dsessions/%70rojection%2f', '/api%2Fv1%2Fclass-sessions',
+      '/api//v1//class-sessions//projection/', '/api/v1/unused%2f..%2fclass-sessions',
+      '/api/v1/%2563lass-sessions',
+    ];
+    for (const method of ['GET', 'HEAD', 'get']) {
+      for (const path of paths) expect(classifyAppRequest(APP, method, APP + path), path).toBe('block');
+    }
+    for (const path of ['/api/v1/learning-records?branch_id=1', '/api/v1/class-sessions/7/recovery',
+      '/api/v1/class-sessions-other', '/api/v1/class-sessions/projection-other']) {
+      expect(classifyAppRequest(APP, 'GET', APP + path), path).toBe('allow');
+    }
+    expect(classifyAppRequest(APP, 'GET', 'https://other.example.test/api/v1/class-sessions')).toBe('allow');
+    expect(classifyAppRequest(APP, 'OPTIONS', APP + '/api/v1/class-sessions')).toBe('allow');
+    expect(isKnownPostRead(APP, { method: 'GET', origin: APP, path: '/api/v1/class-sessions' })).toBe(false);
   });
 
   it('(b) blocks Sentry and other third-party HTTP writes before redirects', () => {
@@ -118,6 +141,22 @@ describe('readOnlyAppGuard', () => {
     expect(isKnownPostRead(APP, { ...read, origin: 'https://other.example.test' })).toBe(false);
     expect(isKnownPostRead(APP, { ...read, path: '/api/v1/student-classes/session-dates/1' })).toBe(false);
     expect(isKnownPostRead('', read)).toBe(false);
+  });
+
+  it('create-entry counts blocked stateful reads but still rejects business write methods', () => {
+    const known = { method: 'GET', origin: APP, path: '/api/v1/%63lass-sessions/' };
+    const projection = { method: 'HEAD', origin: APP, path: '/api/v1/class-sessions/projection' };
+    const postRead = { method: 'POST', origin: APP, path: '/api/v1/student-classes/session-dates' };
+    expect(isKnownBlockedStatefulRead(APP, known)).toBe(true);
+    expect(isKnownBlockedStatefulRead(APP, projection)).toBe(true);
+    expect(isKnownBlockedStatefulRead(APP, { ...known, origin: 'https://other.example.test' })).toBe(false);
+    expect(isKnownBlockedStatefulRead(APP, undefined)).toBe(false);
+    expect(unexpectedCreateEntryRequests(APP, [known, projection, postRead])).toEqual([]);
+    for (const method of ['POST', 'PUT', 'PATCH', 'DELETE']) {
+      const write = { method, origin: APP, path: '/api/v1/student-classes' };
+      expect(isKnownBlockedStatefulRead(APP, { ...known, method })).toBe(false);
+      expect(unexpectedCreateEntryRequests(APP, [write])).toEqual([write]);
+    }
   });
 
   it('records blocked HTTP writes from every origin', async () => {

@@ -1,0 +1,13 @@
+updates:
+  - id: staff-2026-11-07-inapp-519-course-create
+    published_at: "2026-11-07"
+    audiences:
+      - director
+    importance: digest
+    title: 課程查找可直接新增課程
+    summary: 頁首新增「新增課程」，和學生管理用同一份表單。
+    items:
+      - category: added
+        text: 課程查找頁首新增「新增課程」，開啟與學生管理相同的排課視窗；兩頁也各加一行用途說明。
+    source_refs:
+      - "changelog:2026-11-07:inapp-519-course-create"

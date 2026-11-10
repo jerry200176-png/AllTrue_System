@@ -2,8 +2,11 @@
 
 namespace App\Http\Controllers;
 
+use App\Providers\AppServiceProvider;
 use App\Services\BugReportService;
+use Illuminate\Contracts\Cache\LockTimeoutException;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\ValidationException;
 
@@ -58,29 +61,54 @@ class BugReportController extends Controller
             return response()->json(['message' => 'Forbidden'], 403);
         }
 
-        $bug = BugReportService::create([
-            'CampusID' => $branchId,
-            'reporter_user_id' => $userId,
-            'title' => $request->input('title'),
-            'description' => $request->input('description'),
-            'severity' => $request->input('severity', 'medium'),
-            'status' => 'new',
-            'page_key' => $request->input('page_key'),
-            'url' => $request->input('url'),
-            'client_info' => $request->input('client_info'),
-        ]);
+        // One submission per reporter at a time: the dedupe lookup, the create and the attachment writes are one
+        // step, so a double tap or a retry overlapping a slow upload can't store duplicates or pass MAX_ATTACHMENTS.
+        try {
+            return Cache::lock("bug-submit:{$userId}", 60)->block(15, function () use ($request, $userId, $branchId, $uploaded) {
+                // Soft dedupe: the same reporter sending the same title and description to the same campus within 10 minutes
+                // (a double tap, a retry after a slow network) gets the report they already made, not a second one.
+                $same = \App\Models\BugReport::query()->where('reporter_user_id', $userId)->where('CampusID', $branchId)
+                    ->where('title', $request->input('title'))->where('description', $request->input('description'))
+                    ->where('created_at', '>=', now()->subMinutes(10))->orderByDesc('id')->first();
+                if ($same) {
+                    // A retry after the row saved but screenshot storage failed: keep the evidence. Only a report with no
+                    // attachments yet takes them, so a double tap never stores the same screenshots twice.
+                    $attachmentErrors = 0;
+                    if (is_array($uploaded) && $uploaded !== [] && !$same->attachments()->exists()) {
+                        $attachmentErrors = BugReportService::attachUploadedFiles($same, $uploaded);
+                    }
 
-        $attachmentErrors = 0;
-        if (is_array($uploaded)) {
-            $attachmentErrors = BugReportService::attachUploadedFiles($bug, $uploaded);
+                    return response()->json(['id' => $same->id, 'status' => $same->status, 'created_at' => $same->created_at?->toIso8601String(),
+                        'attachment_errors' => $attachmentErrors, 'duplicate' => true], 200);
+                }
+
+                $bug = BugReportService::create([
+                    'CampusID' => $branchId,
+                    'reporter_user_id' => $userId,
+                    'title' => $request->input('title'),
+                    'description' => $request->input('description'),
+                    'severity' => $request->input('severity', 'medium'),
+                    'status' => 'new',
+                    'page_key' => $request->input('page_key'),
+                    'url' => $request->input('url'),
+                    'client_info' => $request->input('client_info'),
+                ]);
+
+                $attachmentErrors = 0;
+                if (is_array($uploaded)) {
+                    $attachmentErrors = BugReportService::attachUploadedFiles($bug, $uploaded);
+                }
+
+                return response()->json([
+                    'id'               => $bug->id,
+                    'status'           => $bug->status,
+                    'created_at'       => $bug->created_at?->toIso8601String(),
+                    'attachment_errors' => $attachmentErrors,
+                ], 201);
+            });
+        } catch (LockTimeoutException) {
+            return response()->json(['message' => AppServiceProvider::BUG_LIMIT_MESSAGE, 'code' => 'bug_report_rate_limited'], 429);
         }
-
-        return response()->json([
-            'id'               => $bug->id,
-            'status'           => $bug->status,
-            'created_at'       => $bug->created_at?->toIso8601String(),
-            'attachment_errors' => $attachmentErrors,
-        ], 201);
     }
 
     public function index(Request $request)

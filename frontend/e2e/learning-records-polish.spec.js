@@ -6,6 +6,50 @@ const viewports = [
   { name: '1440', width: 1440, height: 900 },
 ];
 
+// in-app #523 / GitHub #5114: real page, local synthetic API only.
+for (const viewport of viewports) {
+  test(`approval rollback preserves editor inputs @${viewport.name}`, async ({ page }) => {
+    const pageErrors = [];
+    page.on('pageerror', error => pageErrors.push(error.message));
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    await openLearningPilot(page, viewport);
+    await page.locator('#lr-review-tab-approved').click();
+    if (viewport.width > 640) {
+      const groupToggle = page.locator('.lr-group .at-disclosure__toggle').first();
+      if (await groupToggle.getAttribute('aria-expanded') === 'false') await groupToggle.click();
+    }
+    await expect(page.getByRole('button', { name: '退回待審', exact: true })).toBeVisible();
+    await page.getByRole('button', { name: '編輯評量', exact: true }).click();
+    expect(pageErrors).toEqual([]);
+    const editor = page.locator('.lr-modal--learning-form');
+    await expect(editor).toBeVisible();
+    const progress = editor.locator('textarea[placeholder="紀錄本次上課內容..."]');
+    await progress.fill('尚未儲存的合成進度');
+    await page.route('**/learning-records/502/rollback-approval', route => route.fulfill({
+      status: 200, contentType: 'application/json',
+      body: JSON.stringify({ id: 502, Status: 'pending', ReviewNote: null }),
+    }));
+    await page.route('**/learning-records?**', route => {
+      const params = new URL(route.request().url()).searchParams;
+      const data = params.get('status') === 'approved' ? [] : [{ id: 502, Status: 'pending', ReviewNote: null }];
+      return route.fulfill({
+        status: 200, contentType: 'application/json',
+        body: JSON.stringify({ data, current_page: 1, last_page: 1, total: data.length,
+          status_counts: { approved: 0, pending: 2, changes_requested: 1, rejected: 0 } }),
+      });
+    });
+    page.once('dialog', dialog => dialog.accept(''));
+    const rollback = editor.getByRole('button', { name: '退回待審', exact: true });
+    await rollback.scrollIntoViewIfNeeded();
+    await expect(rollback).toBeInViewport();
+    await rollback.click();
+    await expect(editor.getByRole('button', { name: '退回待審', exact: true })).toHaveCount(0);
+    await expect(progress).toHaveValue('尚未儲存的合成進度');
+    await expect(editor.getByRole('button', { name: '儲存變更', exact: true })).toBeEnabled();
+    expect(pageErrors).toEqual([]);
+  });
+}
+
 async function openLearningPilot(page, viewport) {
   await page.setViewportSize({ width: viewport.width, height: viewport.height });
   await page.route('**/api/v1/**', async (route) => {

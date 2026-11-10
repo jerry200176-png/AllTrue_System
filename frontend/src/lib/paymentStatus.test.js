@@ -24,7 +24,7 @@ describe('F7 S2 payment status helpers', () => {
     // Old: Paid=1,Charge=0 is false (charge>0 required), Paid=1 without charge was true.
     const legacy = { Paid: 1 };
     expect(oldSettled(legacy)).toBe(true);
-    expect(isCourseSettled(legacy)).toBe(false);
+    expect(isCourseSettled(legacy)).toBeNull(); // unknown status is null (tri-state, #4150), never settled from Paid alone
     expect(isCourseSettled({ payment_status: 'unpaid', Paid: 1 })).toBe(false);
   });
 

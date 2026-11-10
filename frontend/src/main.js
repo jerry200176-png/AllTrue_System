@@ -4,8 +4,10 @@ import * as Sentry from '@sentry/vue';
 import App from './App.vue';
 import './styles.css';
 import './ui.css';
+import { initTextSize } from './composables/useTextSize';
 import { installFetchRecorder, installUiRecorder } from './lib/recentApiFailures';
 
+initTextSize();
 installFetchRecorder();
 installUiRecorder();
 

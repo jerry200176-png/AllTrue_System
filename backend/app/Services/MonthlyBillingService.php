@@ -281,6 +281,30 @@ class MonthlyBillingService
             'sessions' => $details->all()];
     }
 
+    /**
+     * in-app #518 (display only): what the lessons still to be taught in [start,end] (scheduled or rescheduled) are worth,
+     * priced exactly like reviewSessions() (forDate + sessionAmount). Null when any of them has no known price, so the
+     * caller cannot claim a match it did not verify.
+     */
+    public function remainingScheduledCharge(Model $course, string $start, string $end): ?int
+    {
+        $remaining = ClassSession::query()->where('StudentClassID', (int) $course->getKey())
+            ->whereIn('Status', ['scheduled', 'rescheduled'])
+            ->whereBetween('SessionDate', [$start, $end])
+            ->get(['id', 'StudentClassID', 'SessionDate', 'StartTime', 'EndTime', 'Status', 'session_charge']);
+        $total = 0.0;
+        foreach ($remaining as $session) {
+            $pricing = $this->pricing->forDate($course, (string) $session->SessionDate);
+            $known = $pricing['rate'] > 0 && ($pricing['rate_unit'] === 'session'
+                || ($pricing['source'] === 'student_class_rate' && $session->session_charge !== null)
+                || self::minutes((string) $session->EndTime) > self::minutes((string) $session->StartTime));
+            if (!$known) return null;
+            $total += $this->sessionAmount($session, $pricing);
+        }
+
+        return max(0, (int) round($total));
+    }
+
     private function sessionAmount(ClassSession $session, array $pricing): float
     {
         if ($pricing['rate_unit'] === 'session') return (float) $pricing['rate'];

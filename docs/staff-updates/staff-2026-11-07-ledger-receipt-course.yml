@@ -1,0 +1,13 @@
+updates:
+  - id: staff-2026-11-07-ledger-receipt-course
+    published_at: "2026-11-07"
+    audiences:
+      - director
+    importance: digest
+    title: 收款標明是哪門課
+    summary: 學生帳務的收款紀錄標出所屬課程，其他課程的收款另外分開。
+    items:
+      - category: improved
+        text: 每筆收款標出課程；其他課程的收款排在後面並分組。
+    source_refs:
+      - "changelog:2026-11-07:ledger-receipt-course-label"

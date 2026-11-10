@@ -148,6 +148,35 @@ operations:
     tags: [repair, billing, catch-up]
     notes: Bills attended lessons taught outside a monthly contract's dates that no invoice covers (one catch-up contract, invoice and item per contract and month). Run per campus; execute is pinned to the dry-run digest; months without a per-session rate are reported only. No session, sign-in or learning record is touched. Pi-local POP only.
 
+  billing-period-rekey-20261107:
+    lifecycle: active
+    domain: billing-entitlement
+    business_owner: director-data
+    technical_owner: platform-data
+    owner: platform-ops
+    approver_roles: [super_admin]
+    approval_policy: founder-exact-billing-period-rekey
+    founder_approval_required: true
+    runbook: docs/incidents/RM-BILLING-PERIOD-REKEY-20261107.md
+    alert_group: LINE:ops-data
+    escalation_policy: billing-entitlement-critical-escalation
+    capabilities: [repair, plan, dry_run, verify, rollback, snapshot, audit]
+    risk: critical
+    reversible: true
+    snapshot_required: true
+    transaction_required: true
+    rollback_supported: true
+    verification_required: true
+    approval_required: true
+    execution_authority: pop-pi-local
+    blast_radius: invoice_billing_period_and_note_tag_only
+    estimated_duration: 5m
+    invariant_packs: [billing-entitlement-pack@1.0.0]
+    strategy_class: App\Operations\Strategies\BillingPeriodRekeyStrategy
+    parameter_keys: [campus_ids, decision_reference, expected_digest]
+    tags: [repair, billing, in-app-514]
+    notes: Re-keys renewal bills (one dated item = whole cycle) whose billing_period differs from the month of the cycle's first lesson (in-app #514). Writes only Invoice.billing_period, that invoice's payment_reports.billing_period and a [invno_period] Note tag that freezes the invoice number; no amount, status, item or session. campus_ids is a list or ['all']; execute is pinned to the dry-run digest; a collision with a live bill of the same student and subject is refused. Restore by request id. Pi-local POP only.
+
   cancel-past-scheduled-course2942-20261008:
     lifecycle: active
     domain: session
@@ -234,6 +263,35 @@ operations:
     parameter_keys: [decision_reference]
     tags: [repair, billing, github-4850]
     notes: Exact guards on current values (abort on any drift; an item on another invoice fails). Writes Invoice.TotalAmount, InvoiceItem.Amount and InvoiceItem.StudentClassID only; PaidAmount, Status, payments and StudentClass are never written. Pi-local POP only.
+
+  legacy-void-link-20261107:
+    lifecycle: active
+    domain: billing-entitlement
+    business_owner: director-data
+    technical_owner: platform-data
+    owner: platform-ops
+    approver_roles: [super_admin]
+    approval_policy: founder-exact-legacy-void-link
+    founder_approval_required: true
+    runbook: docs/incidents/RM-LEGACY-VOID-LINK-20261107.md
+    alert_group: LINE:ops-data
+    escalation_policy: billing-entitlement-critical-escalation
+    capabilities: [repair, plan, dry_run, verify, rollback, snapshot, audit]
+    risk: critical
+    reversible: true
+    snapshot_required: true
+    transaction_required: true
+    rollback_supported: true
+    verification_required: true
+    approval_required: true
+    execution_authority: pop-pi-local
+    blast_radius: two_exact_legacy_void_rows
+    estimated_duration: 5m
+    invariant_packs: [billing-entitlement-pack@1.0.0]
+    strategy_class: App\Operations\Strategies\LegacyVoidLinkStrategy
+    parameter_keys: [decision_reference, expected_digest]
+    tags: [repair, billing, inapp-521]
+    notes: Exact guards on current values (abort on any drift). Writes Payment.payment_report_id of two exact legacy void rows only (NULL to the receipt they reversed); amounts, methods, invoices, statuses and receipts are never written. Pi-local POP only.
 
   reviewed-monthly-accounting-correction:
     lifecycle: active

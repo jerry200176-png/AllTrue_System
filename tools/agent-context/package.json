@@ -1,0 +1,16 @@
+{
+  "dependencies": {
+    "@ast-grep/cli": "0.51.1",
+    "repomix": "1.19.0"
+  },
+  "name": "alltrue-agent-context-tools",
+  "version": "0.1.0",
+  "private": true,
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "scripts": {
+    "context": "repomix ../.. --no-file-summary --no-directory-structure --token-count-encoding o200k_base --token-budget 12000",
+    "ast": "ast-grep"
+  }
+}

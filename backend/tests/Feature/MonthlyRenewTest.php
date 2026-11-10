@@ -641,7 +641,9 @@ class MonthlyRenewTest extends TestCase
             'status' => 'cancelled',
         ]);
         $this->assertSame('scheduled', (string) $extraSchedule->fresh()->status);
-        $this->assertSame('scheduled', (string) $crossDateDestination->fresh()->status);
+        // in-app #516: a cross-date reschedule destination is owned by the occurrence materialized from it,
+        // so cancelling that session cancels its schedule row (otherwise /schedules keeps listing it).
+        $this->assertSame('cancelled', (string) $crossDateDestination->fresh()->status);
         $this->assertSame('cancelled', (string) $sameDayDestination->fresh()->status);
         $this->assertDatabaseHas('ClassSession', [
             'id' => $session->id,
@@ -781,7 +783,7 @@ class MonthlyRenewTest extends TestCase
             ->assertJsonPath('session.end_time', '16:00');
     }
 
-    public function test_scheduled_exception_projection_ignores_makeups_and_cross_date_reschedules(): void
+    public function test_scheduled_exception_projection_ignores_makeups_and_unverifiable_anchors(): void
     {
         $token = $this->createDirectorToken([1], 'director-scheduled-exception-guards@example.com');
         $student = $this->createStudent();
@@ -826,34 +828,6 @@ class MonthlyRenewTest extends TestCase
             'original_schedule_id' => 999998,
         ]);
 
-        $crossDateAnchor = Schedule::create([
-            'student_id' => $student->id,
-            'teacher_id' => $course->TeacherID,
-            'subject' => '物理',
-            'day_of_week' => 2,
-            'start_time' => '10:00',
-            'end_time' => '12:00',
-            'branch_id' => 1,
-            'schedule_date' => '2026-04-07',
-            'status' => 'rescheduled',
-            'type' => 'normal',
-            'student_course_id' => $course->ID,
-        ]);
-        $crossDateDestination = Schedule::create([
-            'student_id' => $student->id,
-            'teacher_id' => $course->TeacherID,
-            'subject' => '物理',
-            'day_of_week' => 3,
-            'start_time' => '10:00',
-            'end_time' => '12:00',
-            'branch_id' => 1,
-            'schedule_date' => '2026-04-08',
-            'status' => 'scheduled',
-            'type' => 'normal',
-            'student_course_id' => $course->ID,
-            'original_schedule_id' => $crossDateAnchor->id,
-        ]);
-
         $this->withHeaders([
             'Authorization' => "Bearer {$token}",
             'Accept' => 'application/json',
@@ -870,7 +844,185 @@ class MonthlyRenewTest extends TestCase
         ]);
         $this->assertSame('scheduled', (string) $extra->fresh()->status);
         $this->assertSame('scheduled', (string) $unverifiable->fresh()->status);
-        $this->assertSame('scheduled', (string) $crossDateDestination->fresh()->status);
+    }
+
+    public function test_cross_date_reschedule_destination_can_be_materialized_from_phantom_chip(): void
+    {
+        // in-app #516: Fri 20:00 moved to Sat 17:00; Saturday is not a contract day, so the chip carried
+        // the fallback contract time (20:00) and ensure-projected answered 422.
+        $token = $this->createDirectorToken([1], 'director-cross-date-destination@example.com');
+        $student = $this->createStudent();
+
+        $course = $this->createStudentClass($student->id, [
+            'ScheduleMode' => 'date',
+            'StartDate' => '2026-04-01',
+            'EndDate' => '2026-04-30',
+            'SessionCount' => 0,
+            'RemainingSessions' => 0,
+            'week' => 5,
+            'time' => '20:00:00',
+            'SessionDuration' => 120,
+        ]);
+        $anchor = Schedule::create([
+            'student_id' => $student->id, 'teacher_id' => $course->TeacherID, 'subject' => '物理',
+            'day_of_week' => 5, 'start_time' => '20:00', 'end_time' => '22:00', 'branch_id' => 1,
+            'schedule_date' => '2026-04-10', 'status' => 'rescheduled', 'type' => 'normal',
+            'student_course_id' => $course->ID,
+        ]);
+        Schedule::create([
+            'student_id' => $student->id, 'teacher_id' => $course->TeacherID, 'subject' => '物理',
+            'day_of_week' => 6, 'start_time' => '17:00', 'end_time' => '19:00', 'branch_id' => 1,
+            'schedule_date' => '2026-04-11', 'status' => 'scheduled', 'type' => 'normal',
+            'student_course_id' => $course->ID, 'original_schedule_id' => $anchor->id,
+        ]);
+
+        ClassSession::create([
+            'StudentClassID' => $course->ID, 'SubjectID' => $course->SubjectID, 'SessionDate' => '2026-04-10',
+            'StartTime' => '20:00:00', 'EndTime' => '22:00:00', 'Status' => 'cancelled',
+        ]);
+
+        // The same shared projection must not label the chip with the contract fallback time (20:00).
+        $projected = app(\App\Services\SessionProjectionReadService::class)
+            ->buildProjectedFromEffectiveDates((int) $course->ID, ['2026-04-11'], [], $course);
+        $this->assertSame('17:00', $projected[0]['start_time']);
+
+        $this->withHeaders(['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])
+            ->postJson('/api/v1/class-sessions/ensure-projected', [
+                'student_class_id' => (int) $course->ID,
+                'session_date' => '2026-04-11',
+                'start_time' => '20:00',
+                'branch_id' => 1,
+            ])->assertOk()
+            ->assertJsonPath('session.start_time', '17:00')
+            ->assertJsonPath('session.end_time', '19:00')
+            ->assertJsonPath('created', true);
+
+        $sessionId = ClassSession::where('StudentClassID', $course->ID)->whereDate('SessionDate', '2026-04-11')->value('id');
+        $this->withHeaders(['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])
+            ->patchJson("/api/v1/class-sessions/{$sessionId}", ['status' => 'cancelled'])->assertOk();
+        $this->assertSame('cancelled', (string) Schedule::where('original_schedule_id', $anchor->id)->value('status'));
+    }
+
+    public function test_cross_date_destination_is_refused_while_source_session_is_still_active(): void
+    {
+        $token = $this->createDirectorToken([1], 'director-cross-date-partial@example.com');
+        $student = $this->createStudent();
+        $course = $this->createStudentClass($student->id, [
+            'ScheduleMode' => 'date', 'StartDate' => '2026-04-01', 'EndDate' => '2026-04-30',
+            'SessionCount' => 0, 'RemainingSessions' => 0, 'week' => 5, 'time' => '20:00:00', 'SessionDuration' => 120,
+        ]);
+        $anchor = Schedule::create([
+            'student_id' => $student->id, 'teacher_id' => $course->TeacherID, 'subject' => '物理',
+            'day_of_week' => 5, 'start_time' => '20:00', 'end_time' => '22:00', 'branch_id' => 1,
+            'schedule_date' => '2026-04-10', 'status' => 'rescheduled', 'type' => 'normal',
+            'student_course_id' => $course->ID,
+        ]);
+        Schedule::create([
+            'student_id' => $student->id, 'teacher_id' => $course->TeacherID, 'subject' => '物理',
+            'day_of_week' => 6, 'start_time' => '17:00', 'end_time' => '19:00', 'branch_id' => 1,
+            'schedule_date' => '2026-04-11', 'status' => 'scheduled', 'type' => 'normal',
+            'student_course_id' => $course->ID, 'original_schedule_id' => $anchor->id,
+        ]);
+        ClassSession::create([
+            'StudentClassID' => $course->ID, 'SubjectID' => $course->SubjectID, 'SessionDate' => '2026-04-10',
+            'StartTime' => '20:00:00', 'EndTime' => '22:00:00', 'Status' => 'scheduled',
+        ]);
+
+        $this->withHeaders(['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])
+            ->postJson('/api/v1/class-sessions/ensure-projected', [
+                'student_class_id' => (int) $course->ID, 'session_date' => '2026-04-11',
+                'start_time' => '17:00', 'branch_id' => 1,
+            ])->assertStatus(422);
+    }
+
+    public function test_moved_in_lesson_does_not_override_regular_slot_on_same_contract_weekday(): void
+    {
+        $token = $this->createDirectorToken([1], 'director-moved-in-regular@example.com');
+        $student = $this->createStudent();
+        $course = $this->createStudentClass($student->id, [
+            'ScheduleMode' => 'date', 'StartDate' => '2026-04-01', 'EndDate' => '2026-04-30',
+            'SessionCount' => 0, 'RemainingSessions' => 0, 'week' => 5, 'time' => '20:00:00', 'SessionDuration' => 120,
+        ]);
+        $anchor = Schedule::create([
+            'student_id' => $student->id, 'teacher_id' => $course->TeacherID, 'subject' => '物理',
+            'day_of_week' => 4, 'start_time' => '18:00', 'end_time' => '20:00', 'branch_id' => 1,
+            'schedule_date' => '2026-04-09', 'status' => 'rescheduled', 'type' => 'normal',
+            'student_course_id' => $course->ID,
+        ]);
+        Schedule::create([
+            'student_id' => $student->id, 'teacher_id' => $course->TeacherID, 'subject' => '物理',
+            'day_of_week' => 5, 'start_time' => '17:00', 'end_time' => '19:00', 'branch_id' => 1,
+            'schedule_date' => '2026-04-17', 'status' => 'scheduled', 'type' => 'normal',
+            'student_course_id' => $course->ID, 'original_schedule_id' => $anchor->id,
+        ]);
+
+        $this->withHeaders(['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])
+            ->postJson('/api/v1/class-sessions/ensure-projected', [
+                'student_class_id' => (int) $course->ID, 'session_date' => '2026-04-17',
+                'start_time' => '20:00', 'branch_id' => 1,
+            ])->assertOk()
+            ->assertJsonPath('session.start_time', '20:00')
+            ->assertJsonPath('session.end_time', '22:00');
+    }
+
+    public function test_same_day_reschedule_on_contract_weekday_still_resolves_moved_time(): void
+    {
+        $token = $this->createDirectorToken([1], 'director-same-day-moved@example.com');
+        $student = $this->createStudent();
+        $course = $this->createStudentClass($student->id, [
+            'ScheduleMode' => 'date', 'StartDate' => '2026-04-01', 'EndDate' => '2026-04-30',
+            'SessionCount' => 0, 'RemainingSessions' => 0, 'week' => 3, 'time' => '10:00:00', 'SessionDuration' => 120,
+        ]);
+        $anchor = Schedule::create([
+            'student_id' => $student->id, 'teacher_id' => $course->TeacherID, 'subject' => '物理',
+            'day_of_week' => 3, 'start_time' => '10:00', 'end_time' => '12:00', 'branch_id' => 1,
+            'schedule_date' => '2026-04-08', 'status' => 'rescheduled', 'type' => 'normal',
+            'student_course_id' => $course->ID,
+        ]);
+        Schedule::create([
+            'student_id' => $student->id, 'teacher_id' => $course->TeacherID, 'subject' => '物理',
+            'day_of_week' => 3, 'start_time' => '14:30', 'end_time' => '16:00', 'branch_id' => 1,
+            'schedule_date' => '2026-04-08', 'status' => 'scheduled', 'type' => 'normal',
+            'student_course_id' => $course->ID, 'original_schedule_id' => $anchor->id,
+        ]);
+
+        $this->withHeaders(['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])
+            ->postJson('/api/v1/class-sessions/ensure-projected', [
+                'student_class_id' => (int) $course->ID, 'session_date' => '2026-04-08',
+                'start_time' => '10:00', 'branch_id' => 1,
+            ])->assertOk()
+            ->assertJsonPath('session.start_time', '14:30');
+    }
+
+    public function test_same_day_reschedule_wins_over_moved_in_lesson_on_contract_weekday(): void
+    {
+        $token = $this->createDirectorToken([1], 'director-same-day-and-moved-in@example.com');
+        $student = $this->createStudent();
+        $course = $this->createStudentClass($student->id, [
+            'ScheduleMode' => 'date', 'StartDate' => '2026-04-01', 'EndDate' => '2026-04-30',
+            'SessionCount' => 0, 'RemainingSessions' => 0, 'week' => 5, 'time' => '20:00:00', 'SessionDuration' => 120,
+        ]);
+        $mk = fn (string $date, string $start, string $end, string $status, ?int $orig = null) => Schedule::create([
+            'student_id' => $student->id, 'teacher_id' => $course->TeacherID, 'subject' => '物理',
+            'day_of_week' => 5, 'start_time' => $start, 'end_time' => $end, 'branch_id' => 1,
+            'schedule_date' => $date, 'status' => $status, 'type' => 'normal',
+            'student_course_id' => $course->ID, 'original_schedule_id' => $orig,
+        ]);
+        $a1 = $mk('2026-04-10', '20:00', '22:00', 'rescheduled');
+        $mk('2026-04-10', '17:00', '19:00', 'scheduled', $a1->id);
+        $a2 = $mk('2026-04-03', '20:00', '22:00', 'rescheduled');
+        ClassSession::create([
+            'StudentClassID' => $course->ID, 'SubjectID' => $course->SubjectID, 'SessionDate' => '2026-04-03',
+            'StartTime' => '20:00:00', 'EndTime' => '22:00:00', 'Status' => 'cancelled',
+        ]);
+        $mk('2026-04-10', '15:00', '16:00', 'scheduled', $a2->id);
+
+        $this->withHeaders(['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])
+            ->postJson('/api/v1/class-sessions/ensure-projected', [
+                'student_class_id' => (int) $course->ID, 'session_date' => '2026-04-10',
+                'start_time' => '20:00', 'branch_id' => 1,
+            ])->assertOk()
+            ->assertJsonPath('session.start_time', '17:00');
     }
 
     public function test_materializing_projected_session_rejects_inactive_course(): void
