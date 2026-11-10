@@ -2,7 +2,11 @@ import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import test from 'node:test';
-import { checkRatchet, checkOverlayLimits, countOverlays } from './check-ui-ratchet.mjs';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { execFileSync } from 'node:child_process';
+import { baseJson, checkRatchet, checkOverlayLimits, countOverlays } from './check-ui-ratchet.mjs';
 
 const at = "import AtButton from '@/components/design-system/AtButton.vue'";
 test('ratchet blocks new At* imports and list growth', () => {
@@ -35,4 +39,18 @@ test('overlay limits fail closed on missing or non-integer values', () => {
   assert.equal(checkOverlayLimits({ counts, limits, baseLimits: missing }).length, 1);
   assert.equal(checkOverlayLimits({ counts, limits: { ...limits, alert: 1.5 } }).length, 1);
   assert.equal(checkOverlayLimits({ counts, limits: { ...limits, alert: '0' } }).length, 1);
+});
+
+test('baseJson: absent file is null, invalid JSON or bad ref throws', () => {
+  const d = fs.mkdtempSync(path.join(os.tmpdir(), 'ratchet-'));
+  const git = (...a) => execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@t', ...a], { cwd: d, stdio: 'ignore' });
+  git('init', '-q');
+  fs.writeFileSync(path.join(d, 'bad.json'), '{oops');
+  fs.writeFileSync(path.join(d, 'ok.json'), '{"a":1}');
+  git('add', '.');
+  git('commit', '-qm', 'x');
+  assert.equal(baseJson('HEAD', 'missing.json', d), null);
+  assert.deepEqual(baseJson('HEAD', 'ok.json', d), { a: 1 });
+  assert.throws(() => baseJson('HEAD', 'bad.json', d), /cannot read or parse/);
+  assert.throws(() => baseJson('no-such-ref', 'ok.json', d), /cannot resolve/);
 });

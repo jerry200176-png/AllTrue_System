@@ -5,7 +5,7 @@
  * Also (#4989 overlays): counts of `class="modal`, `window.confirm`, `prompt(`, `alert(` and raw `<Teleport` in pages/ and components/
  * may not exceed scripts/ui-overlay-limits.json; the limits may only shrink.
  * `--vs-base <ref>` (presubmit only) also requires the list not to grow versus that ref; it fails closed
- * if the ref cannot be resolved. A ref that lacks the list file (the introducing PR) skips the grow check.
+ * if the ref cannot be resolved. A ref that lacks the file (the introducing PR) skips the grow check; a file that exists but is unreadable or invalid JSON fails closed.
  */
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
@@ -71,21 +71,34 @@ export function checkRatchet({ files, list, baseList }) {
   return errors;
 }
 
-function baseJson(ref, file) {
+export function baseJson(ref, file, cwd = ROOT) {
+  const git = (...args) => execFileSync('git', args, { cwd, stdio: ['ignore', 'pipe', 'ignore'] });
   try {
-    execFileSync('git', ['rev-parse', '--verify', `${ref}^{commit}`], { cwd: ROOT, stdio: 'ignore' });
+    git('rev-parse', '--verify', `${ref}^{commit}`);
   } catch {
-    console.error(`ui ratchet: cannot resolve base ref ${ref} (fail closed)`);
-    process.exit(1);
+    throw new Error(`cannot resolve base ref ${ref}`);
   }
   try {
-    return JSON.parse(execFileSync('git', ['show', `${ref}:${file}`], { cwd: ROOT, stdio: ['ignore', 'pipe', 'ignore'] }).toString());
+    git('cat-file', '-e', `${ref}:${file}`);
   } catch {
-    return null; // file not on base yet (introducing PR)
+    return null; // genuinely absent on base (introducing PR)
+  }
+  try {
+    return JSON.parse(git('show', `${ref}:${file}`).toString());
+  } catch (e) {
+    throw new Error(`cannot read or parse ${file} at ${ref}: ${e.message}`);
   }
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
+  const base = (ref, file) => {
+    try {
+      return baseJson(ref, file);
+    } catch (e) {
+      console.error(`ui ratchet: ${e.message} (fail closed)`);
+      process.exit(1);
+    }
+  };
   const i = process.argv.indexOf('--vs-base');
   const ref = i > -1 ? process.argv[i + 1] : null;
   if (i > -1 && !ref) {
@@ -94,10 +107,10 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   }
   const src = path.join(ROOT, 'frontend/src');
   const files = Object.fromEntries(walkVue(src).map((p) => [path.relative(path.join(ROOT, 'frontend'), p).split(path.sep).join('/'), fs.readFileSync(p, 'utf8')]));
-  const errors = checkRatchet({ files, list: JSON.parse(fs.readFileSync(path.join(ROOT, LIST), 'utf8')), baseList: ref ? baseJson(ref, LIST) : null });
+  const errors = checkRatchet({ files, list: JSON.parse(fs.readFileSync(path.join(ROOT, LIST), 'utf8')), baseList: ref ? base(ref, LIST) : null });
   const sources = { ...files };
   for (const p of walkVue(src, [], ['.js'])) sources[path.relative(path.join(ROOT, 'frontend'), p).split(path.sep).join('/')] = fs.readFileSync(p, 'utf8');
-  errors.push(...checkOverlayLimits({ counts: countOverlays(sources), limits: JSON.parse(fs.readFileSync(path.join(ROOT, LIMITS), 'utf8')), baseLimits: ref ? baseJson(ref, LIMITS) : null }));
+  errors.push(...checkOverlayLimits({ counts: countOverlays(sources), limits: JSON.parse(fs.readFileSync(path.join(ROOT, LIMITS), 'utf8')), baseLimits: ref ? base(ref, LIMITS) : null }));
   if (errors.length) {
     console.error(errors.join('\n'));
     process.exit(1);
