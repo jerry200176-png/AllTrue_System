@@ -131,17 +131,18 @@ changed code expresses it. Unknown or missing evidence fails closed.
 
 ### Parallel agents
 
-- Before starting: run `node scripts/pr-overlap.mjs` (or read the PR's `<!-- pr-overlap -->` sticky comment). If another open PR touches the same files, coordinate with that session or wait. Prefer small PRs that merge fast (limits: [`FOUNDER_STANDING_DECISIONS.md`](../governance/FOUNDER_STANDING_DECISIONS.md)).
+- Before starting: run `node scripts/pr-overlap.mjs` (or read the PR's `<!-- pr-overlap -->` sticky comment). If another open PR touches the same files, coordinate with that session or wait. Prefer small PRs that merge fast (limits: `docs/governance/FOUNDER_STANDING_DECISIONS.md`).
 - Landing: add label `queue`. Don't loop `update-branch`, `--auto` or custom merge scripts.
 - No stacked PRs: branch from main after the dependency merges.
 - Before merging an agent PR, read every `-` line of `git diff origin/main...HEAD`; nothing outside the PR's scope may be removed (2026-10-06 PR-C2 #3631 stale-copy revert).
 - Release notes: change fragments only (`docs/changes/…`). Never edit `CHANGELOG.md`, the generated JS or the exemption lists; `phpstan-baseline.neon` may only shrink.
-- Deploys: only `deploy.yml`. A range whose every PR is R0-R2, or an R3 range accepted by the R3 auto controls (2026-10-21（二）之二), deploys on its own CI; otherwise it waits for the release train, two windows a day at 12:17 and 18:17 Asia/Taipei (Founder 1A, 2026-10-07; batch approvals, 2026-10-14 — see `FOUNDER_STANDING_DECISIONS.md`).
+- Deploys: only `deploy.yml`. A range of R0-R2 PRs, or an R3 range that passes the R3 auto controls (final-head Codex review, no open threads, no freeze; no migration, data-repair, identity/credential or control-plane effect), deploys on its own CI with no Founder click; anything else waits for the release train (`FOUNDER_STANDING_DECISIONS.md` 2026-10-21（二）之二), two windows a day at 12:17 and 18:17 Asia/Taipei (Founder 1A, 2026-10-07; batch approvals, 2026-10-14 — see `FOUNDER_STANDING_DECISIONS.md`). Gates exist to stop untrusted input (in-app report text, non-Founder GitHub content, bot output), not Founder-directed work.
 - Stale-copy guard: presubmit `[CHECK 0d]` fails a PR that deletes lines another PR merged to main in the last 7 days (`scripts/check-recent-work-revert.py`). Rebuild from current main; if intended, add a PR body line `Rewrites: #N — reason` for each listed PR (presubmit re-runs on body edits).
 - Helpers (subagents) start from fresh `origin/main` in their own branch/session; never copy files from another worktree or session.
-- Review: when Codex is rate-limited, record an independent review as in [Final-head review evidence](#final-head-review-evidence) (control-plane changes: an independent adversarial reviewer) before merging.
-- Review findings: fix P1s and regressions; P2s get one fix round, later P2s become follow-up issues (`FOUNDER_STANDING_DECISIONS.md` ④). Reply to and resolve every thread, or it blocks merge.
+- Review: when Codex is rate-limited, run `/code-review` (control-plane changes: an independent adversarial reviewer) before merging.
+- Codex review: fix P1s and regressions; P2s get one fix round, later P2s become follow-up issues (AGENTS.md §PR review; `docs/governance/FOUNDER_STANDING_DECISIONS.md` ④). Reply to and resolve every thread.
+- Codex review threads must be replied to and resolved, or they block merge.
 - Presubmit size limits: defined only in [`FOUNDER_STANDING_DECISIONS.md`](../governance/FOUNDER_STANDING_DECISIONS.md) 2026-10-28（二）item 3 (presubmit CHECK 2); split, don't stack.
 - A job cancelled after ~15 min with 0 steps is runner starvation — just rerun it.
 - New classes need a mapping in `scripts/arch-contexts.json` (FIT-10).
-- Anything that needs Jerry: collect it into one list (one `needs-founder` issue or one message), not one message per item.
+- Anything that needs Jerry: collect it into one list and send it to the coordinating session, not one message per item.

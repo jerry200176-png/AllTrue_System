@@ -18,9 +18,9 @@
 
 **Founder 常設決定**：唯一定義見 [`docs/governance/FOUNDER_STANDING_DECISIONS.md`](docs/governance/FOUNDER_STANDING_DECISIONS.md)（每次任務都適用；此處不寫摘要，避免分歧）。
 
-### 必讀（6 份，每次任務都讀；這是唯一一份必讀清單）
+### 必讀（7 份，每次任務都讀；這是唯一一份必讀清單）
 
-1. **`docs/governance/COMPANY_CONSTITUTION.md`**（公司根政策）
+1. **`docs/governance/COMPANY_CONSTITUTION.md`** + **`docs/sop/AGENT_PREFLIGHT.md`**（公司根政策；cloud session 只略過 AGENT_PREFLIGHT 的步驟 1–2，其餘含 production 主張的 `make production-identity` 照舊）
 2. **`docs/architecture/ALLTRUE_ENGINEERING_NORTH_STAR.md`**（現行工程主線；禁止整包重寫）
 3. **`docs/INDEX.md`** 的 **Start here** + 任務對應節（導航）
 4. **`docs/sop/MERGE_SOP.md`**（開 PR 到上線：審查、land queue、多 agent 並行規則）
@@ -44,7 +44,7 @@
 | 任務牽涉長文件／多份 docs | `docs/INDEX.md` 的速讀卡／治理節奏（`docs/AI_DOC_LITERACY.md` 只是索引 stub）|
 | Codex 長任務接續／交接／重複失敗 | 按需使用 [alltrue-task-continuity](.agents/skills/alltrue-task-continuity/SKILL.md)，沿用 `RUNBOOK_HANDOFF` 並核對現況；不載入整段歷史、不自動重播動作 |
 | 改 critical domain（排課／帳務／出缺勤等） | 先讀 [`docs/architecture/README.md`](docs/architecture/README.md) 中與任務相關的圖（跨 domain 才讀 `alltrue-runtime.architecture.json`）。圖是導覽，不高於程式：與現行實作不一致時，查是文件過期還是 regression |
-| 多 agent／多 PR 任務、PRD／ARCH 規劃、引用外部 agent playbook | [`docs/agents/orchestration.md`](docs/agents/orchestration.md) |
+| 每次任務開工前先判斷任務類型（含多 agent／多 PR、PRD／ARCH 規劃、引用外部 agent playbook） | [`docs/agents/orchestration.md`](docs/agents/orchestration.md) |
 
 ## Code Review Rules
 

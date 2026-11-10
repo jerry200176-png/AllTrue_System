@@ -1,4 +1,4 @@
-# Agent orchestration（多 agent／規劃任務才讀）
+# Agent orchestration（開工前先判斷任務類型）
 
 > 2026-11-11 從 `AGENTS.md` 原文搬來；規則沒有改。
 
