@@ -13,7 +13,7 @@
 
 ## Start here (task navigation)
 
-先讀本節與 §🚨 開工前必讀（每次都要），再按任務讀下方對應節；其餘 catalog／歷史不用通讀。
+先讀本節與 `AGENTS.md` 的必讀清單（每次都要），再按任務讀下方對應節；其餘 catalog／歷史不用通讀。
 `AGENTS.md` 的必讀政策、Founder standing decisions、P0 與條件分支仍完整適用。
 依**任務意圖、操作、實際 diff、依賴與可能效果**選規則聯集；影響擴大時補載。
 UI 名稱不排除帳務／權限效果；路徑、關鍵字或搜尋 top-k 不能單獨決定必讀規則。
@@ -157,11 +157,7 @@ AllTrue 現在以 **AllTrue AI 公司** 方式治理。使用者是 CEO；AI Age
 
 ## 🚨 開工前必讀（每次都要）
 
-| 檔案 | 內容 | Token 成本 |
-|------|------|-----------|
-| `CLAUDE.md` §紅線／黃線 | P0 紅黃線與事故；未確認載入時依 `AGENTS.md` 讀原文 | 依 client 查證 |
-| `docs/AI_REGRESSION_LESSONS.md` | 最新防再犯規則摘要與模組索引 | 按需讀 |
-| `docs/agents/token-discipline.md` | 省 token 作業規則（PR 事件只在決策點動作、小輸出、批次 review、helper 限範圍） | 約 1 分鐘 |
+清單唯一定義在 [`AGENTS.md`](../AGENTS.md) §必讀（含 `CLAUDE.md` §紅線／黃線、`docs/agents/token-discipline.md`）；此處不複製。`docs/AI_REGRESSION_LESSONS.md` 照舊按需讀（見 `AGENTS.md` 條件分支）。
 
 ---
 

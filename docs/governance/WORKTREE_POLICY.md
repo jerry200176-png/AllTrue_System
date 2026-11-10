@@ -25,7 +25,7 @@ Only for a task that genuinely needs the local machine.
 |------|------|------|
 | **Bare object store** | `/home/jerry/workspace/repos/AllTrue_System.git` | fetch/ref/objects only — never write app code |
 | **Task worktrees** | `/home/jerry/workspace/tasks/alltrue/<task-id>/` | Only official Agent write path |
-| **Launch gateway** | `agent-start alltrue <task-id>` | Must succeed before Agent CLI |
+| **Launch gateway** | `agent-start alltrue <task-id>` | Retired (Founder 2026-10-14（三）item 6). Cloud sessions: fresh clone → branch → PR, no `agent-start`. Local tooling is not deleted until backups are verified (item 7) |
 | **Remote baseline** | `origin/main` | Sole code baseline |
 | **Forbidden legacy** | `/home/jerry/alltrue`, `/home/jerry/workspace/AllTrue_System`, `/home/jerry/workspace/AllTrue_System-clean`, runner `_work`, backups, `/mnt/c` | Never Agent delivery — each tree may carry `AGENT_WRITES_FORBIDDEN` |
 
