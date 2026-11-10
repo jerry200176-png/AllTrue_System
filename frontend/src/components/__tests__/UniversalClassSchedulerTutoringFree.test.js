@@ -82,4 +82,19 @@ describe('UniversalClassScheduler tutoring free contract (#325)', () => {
     expect(payload).not.toHaveProperty('paid_at');
     wrapper.unmount();
   });
+
+  it('prefills the fee with the current default for new single and package contracts (#5158)', async () => {
+    const wrapper = mountScheduler();
+    await flushPromises();
+    const vm = wrapper.vm;
+    expect(vm.form.price_per_session).toBe(1200);
+    expect(vm.pkgForm.rate).toBe(1200);
+    vm.form.price_per_session = 800;
+    vm.pkgForm.rate = 800;
+    vm.resetForm();
+    vm.resetPkgForm();
+    expect(vm.form.price_per_session).toBe(1200);
+    expect(vm.pkgForm.rate).toBe(1200);
+    wrapper.unmount();
+  });
 });
