@@ -70,7 +70,7 @@ Pointers (no new gates): [`EVIDENCE_CONTRACT.md`](../../docs/governance/EVIDENCE
 
 See [`BUG_INTAKE_TO_PRODUCTION.md`](../../docs/sop/BUG_INTAKE_TO_PRODUCTION.md):
 
-- **SSH Phase-C allowlist path retired** (2026-10-19; ADR-POP-015 / #4289). Allowlist request-file / `bug-phase-c-allowlist.yml` remote write is **not** an executable path.
+- **SSH Phase-C allowlist path retired** (2026-10-19; ADR-POP-015 / #4289). The allowlist workflow, its autodispatch and the request file were deleted on 2026-11-11.
 - **Currently executable** (when authorized): `bug-followup-comment.yml` — **comment-only** follow-up (main `7c6f3bdf`: #4386 batch path installed, preview → write; evidence and authorization remain required); does **not** change bug status by itself.
 - **Catalogued, not a free-run path:** Pi-local `inapp-report-resolve-after-deploy` is `lifecycle: active` in `operations/catalog.yaml` (ADR-POP-015). It still needs its evidence gates and a POP request; see the DELIVERY_LIFECYCLE automation table.
 - A bare **production-write GO** / WRITE_GO stamp does **not** re-enable retired SSH Phase-C or invent resolve-after-deploy.
