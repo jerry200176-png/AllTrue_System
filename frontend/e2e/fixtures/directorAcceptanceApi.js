@@ -19,14 +19,25 @@ sys.stdout.buffer.write(output.getvalue())`], { cwd: root, maxBuffer: 1024 * 102
   const record = { id: 501, Status: 'approved', student_id: 1, StudentClassID: 7, ClassSessionID: 1501,
     TeacherID: 9001, student_name: student.name, Subject: '數學', SessionDate: '2026-11-01',
     StartTime: '10:00', EndTime: '11:00', Progress: 'Synthetic progress', Comment: 'Synthetic comment' };
+  const received = { materializer: 0, reschedule: 0 };
   return {
     name: 'director-acceptance-local-api',
     configureServer(server) {
       server.middlewares.use(async (req, res, next) => {
         const url = new URL(req.url, 'http://127.0.0.1');
+        if (req.method === 'GET' && url.pathname === '/__director-acceptance-counts') {
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify(received));
+        }
+        if (req.method === 'GET' && ['/version.json', '/deployment.json'].includes(url.pathname)) {
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify({ build_sha: '0'.repeat(40), frontend_sha: '0'.repeat(40), synthetic_local: true }));
+        }
         if (!url.pathname.startsWith('/api/v1/')) return next();
         const json = (body, status = 200) => { res.writeHead(status, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(body)); };
         const path = url.pathname.slice('/api/v1'.length);
+        if (['GET', 'HEAD'].includes(req.method) && ['/class-sessions', '/class-sessions/projection'].includes(path)) received.materializer += 1;
+        if (req.method === 'POST' && path === '/learning-records/reschedule-session') received.reschedule += 1;
         if (req.method === 'POST') {
           let text = '';
           for await (const part of req) text += part;
