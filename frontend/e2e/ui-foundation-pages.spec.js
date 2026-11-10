@@ -7,6 +7,7 @@
  */
 import { test, expect } from '@playwright/test';
 import { dismissOverlays } from './fixtures/dismissOverlays.js';
+import { installApiMocks } from './fixtures/ui-foundation/apiMocks.js';
 import path from 'node:path';
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -23,510 +24,55 @@ const viewports = [
   { name: '1440', width: 1440, height: 900 },
 ];
 
-const CASE_NORMAL = {
-  id: 'case-1001',
-  lane: 'case',
-  title: '請假申請',
-  student_name: '測試學生甲',
-  summary: '數學 · 請假後待安排補課',
-  reason_preview: '身體不適請假一天',
-  status_label: '待確認補課',
-  status_code: 'pending_arrange',
-  priority: 'due_soon',
-  overdue: false,
-  occurred_at: '2026-07-20T10:00:00+08:00',
-  due_at: '2026-07-22T18:00:00+08:00',
-  action: { label: '安排補課' },
-};
-
-const CASE_LONG = {
-  ...CASE_NORMAL,
-  id: 'case-1002',
-  student_name: '測試學生超長姓名用於驗證折行與資訊層級是否清楚',
-  summary: '英文進階班 · 家長來電說明臨時身體不適，希望改到下週同一時段，並請老師協助補齊當週進度與作業說明，文字需要足夠長以驗證版面。',
-  reason_preview: '這段事由非常非常長，用來驗證長內容在真實 Vue 頁面上的折行、間距與 primary action 是否仍然清楚，不應水平爆版。'.repeat(2),
-  overdue: true,
-  priority: 'overdue',
-};
-
-function fakeStudents(count, { longName = false } = {}) {
-  return Array.from({ length: count }, (_, i) => ({
-    id: 2000 + i,
-    name: longName && i === 0
-      ? '測試學生長名字驗證用名稱避免真實個資'
-      : `測試學生${String(i + 1).padStart(2, '0')}`,
-    grade: 'J1',
-    school: longName && i === 0 ? '測試國民中學附設高級中等學校名稱很長' : '測試國中',
-    parent_name: longName && i === 0 ? '測試家長長名稱' : '測試家長',
-    rfid: i % 3 === 0 ? null : `TEST${1000 + i}`,
-    status: 'active',
-    notes: '',
-    line_bound: false,
-  }));
-}
-
-async function installApiMocks(page, mode, pageName = '', authProfile = null, onAuthRequest = null) {
-  const hang = mode === 'loading';
-  let manualBookingCheckCount = 0;
-  let releaseHang;
-  const hangPromise = hang
-    ? new Promise((resolve) => { releaseHang = resolve; })
-    : Promise.resolve();
-
-  await page.route('**/api/v1/**', async (route) => {
-    const url = new URL(route.request().url());
-    const p = url.pathname;
-    const method = route.request().method();
-    const requestedPage = Number(url.searchParams.get('page') || 1);
-
-    if (authProfile && p.endsWith('/me')) {
-      const headers = route.request().headers();
-      const actingAs = headers['x-acting-as'] === 'teacher' ? 'teacher' : 'director';
-      onAuthRequest?.({ actingAs, userId: authProfile.userId });
-      return route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify({
-          id: authProfile.userId,
-          name: 'E2E Dual Staff',
-          role: actingAs,
-          acting_as: actingAs,
-          campuses: actingAs === 'teacher' ? [1] : [1, 2],
-          capability_campuses: { director: [1, 2], teacher: [1] },
-          capabilities: authProfile.capabilities,
-          must_change_password: false,
-        }),
-      });
+// #527: outer contracts follow creation/ID newest-first; opening dates remain display metadata.
+for (const viewport of [{ width: 390, height: 844 }, { width: 1280, height: 900 }]) {
+  test(`newest contracts across working/history segments @${viewport.width}`, async ({ page }) => {
+    await page.setViewportSize(viewport);
+    // Every response is synthetic. Any unmocked external request is blocked.
+    await page.route('**/*', (route) => ['127.0.0.1', 'localhost'].includes(new URL(route.request().url()).hostname)
+      ? route.fallback() : route.abort('blockedbyclient'));
+    await installApiMocks(page, 'normal', 'course');
+    const contract = (id, reason = null) => ({
+      id, student_id: 900493, student_name: '合成學生', teacher_name: `Chronology${id}`,
+      subject: 'english', first_class_date: id === 50 ? '2025-01-01' : `2026-0${id / 10}-01`, status: reason ? 'inactive' : 'active',
+      history_reason: reason, closed_reason: reason, is_active_course: !reason,
+      ScheduleMode: 'count', payment_type: 'session', sessions_purchased: 8,
+      sessions_used: reason ? 8 : 3, remaining_sessions: reason ? 0 : 5, payment_status: 'paid',
+    });
+    await page.route('**/api/v1/student-classes?**', (route) => route.fulfill({ json: {
+      data: [contract(50), contract(40, 'completed'), contract(30), contract(20, 'settled'), contract(10)],
+      total: 5, current_page: 1, last_page: 1,
+    } }));
+    await page.goto('/pilot-mount.html?page=course&mode=normal');
+    await expect(page.locator('html')).toHaveAttribute('data-pilot-ready', '1');
+    await dismissOverlays(page);
+    const toggles = page.locator('.history-section__toggle');
+    await expect(toggles).toHaveCount(2);
+    const targets = await toggles.evaluateAll((buttons) => buttons.map((button) => button.getAttribute('aria-controls')));
+    expect(new Set(targets).size).toBe(2);
+    for (const toggle of await toggles.all()) await toggle.click();
+    const rows = page.locator('.course-row, .history-course-card');
+    await expect(rows).toHaveCount(5);
+    expect(await rows.evaluateAll((nodes) => nodes.map((node) => Number(node.textContent.match(/Chronology(\d+)/)?.[1]))))
+      .toEqual([50, 40, 30, 20, 10]);
+    for (const [index, row] of (await rows.all()).entries()) {
+      const date = ['2025-01-01', '2026-04-01', '2026-03-01', '2026-02-01', '2026-01-01'][index];
+      await expect(row.getByText(`開課 ${date}`, { exact: true })).toBeVisible();
     }
-
-    if (pageName === 'course' && mode === 'booking-race' && method === 'POST' && p.includes('/manual-sessions/check')) {
-      manualBookingCheckCount += 1;
-      if (manualBookingCheckCount === 1) {
-        // Reproduce the stale response that used to overwrite the director's
-        // newer date selection with an old 422 error.
-        await new Promise((resolve) => setTimeout(resolve, 180));
-        return route.fulfill({
-          status: 422,
-          contentType: 'application/json',
-          body: JSON.stringify({ can_add: false, message: '舊日期檢查失敗', conflict_type: 'past_session' }),
-        });
-      }
-      await new Promise((resolve) => setTimeout(resolve, 10));
-      return route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify({ can_add: true, message: '可以預約', duration_minutes: 120, available_sessions: 1, conflict_type: 'none' }),
-      });
+    const positions = await rows.evaluateAll((nodes) => nodes.map((node) => node.getBoundingClientRect().top));
+    expect(positions).toEqual([...positions].sort((a, b) => a - b));
+    for (const row of await rows.all()) {
+      await row.scrollIntoViewIfNeeded();
+      await expect(row).toBeInViewport();
     }
-
-    if (method !== 'GET') {
-      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true }) });
-    }
-
-    if (hang && (p.includes('/action-inbox') || p.includes('/students') || (pageName === 'course' && p.includes('/student-classes')) || pageName === 'calendar' || pageName === 'discrepancy')) {
-      await hangPromise;
-    }
-
-    if (pageName === 'tuition' && p.includes('/student-classes')) {
-      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ last_page: 1, data: [{
-        ID: 5105, StudentID: 2000, student_name: '測試月結學生', subject_name: '數學', teacher_name: '測試老師',
-        monthly_payment: { review_required: true, contract_start: '2026-07-27', contract_end: '2026-09-10', registered_paid_amount: 7500,
-          session_review: [
-            { calendar_month: '2026-08', completed_sessions: 4, estimated_charge: 6000, uncovered_sessions: 4, outside_contract_sessions: 0 },
-            { calendar_month: '2026-09', completed_sessions: 4, estimated_charge: 6000, uncovered_sessions: 4, outside_contract_sessions: 2 },
-          ] },
-      }] }) });
-    }
-
-    if (pageName === 'calendar' && p.includes('/student-classes')) {
-      if (mode === 'error') return route.fulfill({ status: 500, contentType: 'application/json', body: JSON.stringify({ message: '課表資料暫時無法載入' }) });
-      if (mode === 'empty') {
-        return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: [], total: 0 }) });
-      }
-      return route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify({ data: [{ id: 5101, student_id: 2000, student_name: mode === 'long' ? '測試學生超長姓名驗證行事曆卡片折行' : '測試學生甲', subject: 'Math', class_type: 'one_on_one', teacher_id: 3000, teacher_name: '測試老師', day_of_week: 1, start_time: '10:00', end_time: '12:00', duration_hours: 2, status: 'active', stop: 0 }], total: 1 }),
-      });
-    }
-
-    if (pageName === 'calendar' && p.includes('/teachers')) {
-      if (mode === 'empty') return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: [] }) });
-      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: [{ id: 3000, username: '測試老師', name: '測試老師', branch_id: 1, branch_ids: [1] }] }) });
-    }
-
-    if (pageName === 'calendar' && p.includes('/schedules')) {
-      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: [] }) });
-    }
-
-    if (pageName === 'discrepancy' && p.includes('/schedule-discrepancies/summary')) {
-      const total = mode === 'empty' ? 0 : 1;
-      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ pending: total, acknowledged: 0, resolved: 0, withdrawn: 0 }) });
-    }
-
-    if (pageName === 'discrepancy' && p.includes('/schedule-discrepancies')) {
-      if (mode === 'error') return route.fulfill({ status: 500, contentType: 'application/json', body: JSON.stringify({ message: '課表回報暫時無法載入' }) });
-      if (mode === 'empty') return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: [] }) });
-      const studentName = mode === 'long' ? '測試學生超長姓名驗證回報卡片折行' : '測試學生甲';
-      return route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify({ data: [{ id: 6101, reporter_name: '測試老師', branch_name: '測試分校', student_name: studentName, session_date: '2026-08-03', time_range: '10:00–12:00', corrected_time_range: '11:00–13:00', discrepancy_type_label: '時段不符', status: 'pending', notes: mode === 'long' ? '這是一段很長的老師回報備註，用來確認卡片會自然折行，不會把處理動作推到畫面外。'.repeat(2) : '請確認調課後的時段。' }] }),
-      });
-    }
-
-    if (mode === 'dashboard' && p.endsWith('/alerts/tuition')) {
-      return route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify([{ id: 801, class_id: 801, student_id: 2001, student_name: '測試學生甲', subject: '數學', remaining_sessions: 1, alert_type: 'unpaid' }]),
-      });
-    }
-
-    if (pageName === 'tuition' && p.includes('/alerts/tuition')) {
-      return route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify([{ id: 701, student_name: '測試學生甲', subject: '數學', payment_status: 'unpaid', charge: 12000, paid_amount: 0, outstanding: 12000, schedule_mode: 'count', remaining_sessions: 4, course_start_date: '2026-08-01', course_end_date: '2026-10-31', days_until_settlement: 2 }]),
-      });
-    }
-
-    if (pageName === 'tuition' && p.includes('/accounting/settled-courses')) {
-      return route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify({ data: [{ student_class_id: 701, course_ref: '測試課程 #701', student_name: '測試學生甲', subject: '數學', schedule_mode: 'count', paid_amount: 12000, last_paid_at: '2026-08-20', legacy_paid_without_invoice: false, has_exception: false, overpaid_total: 0 }], summary: { course_count: 1, paid_total: 12000, legacy_count: 0, exception_count: 0, overpaid_total: 0 } }),
-      });
-    }
-
-    if (pageName === 'tuition' && p.includes('/accounting/payments')) {
-      return route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify({ data: [], summary: { total_count: 0, total_amount: 0 } }),
-      });
-    }
-
-    if (pageName === 'teachers' && p.includes('/teachers')) {
-      return route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify({ data: [
-          { id: 7101, username: '測試老師甲', account: 'teacher-a', phone: '0912-345-678', branch_id: 1, branch_ids: [1, 2], status: 'active', employment_type: 'full_time', subject_ids: [1], subject_names: ['數學'], subject_level_scopes: [{ subject_id: 1, level: 'junior' }], rfid_by_branch: { '1': 'TEACHER-A-001', '2': 'TEACHER-A-002' } },
-          { id: 7102, username: '測試老師乙', account: 'teacher-b', phone: '', branch_id: 1, branch_ids: [1], status: 'pending', employment_type: 'part_time', subject_ids: [], subject_names: [], subject_level_scopes: [], rfid: null },
-          { id: 7103, username: '測試老師丙', account: 'teacher-c', phone: '', branch_id: 1, branch_ids: [1], status: 'suspended', employment_type: 'full_time', subject_ids: [], subject_names: [], subject_level_scopes: [], rfid: null },
-        ] }),
-      });
-    }
-
-    if (pageName === 'teachers' && p.includes('/subjects')) {
-      return route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify([{ id: 1, name: '數學' }]),
-      });
-    }
-
-    if (pageName === 'teachers' && p.includes('/branches')) {
-      return route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify([{ id: 1, name: '大安分校' }, { id: 2, name: '石牌分校' }]),
-      });
-    }
-
-    if (mode === 'dashboard' && p.includes('/director/operations-trust')) {
-      return route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify({ data: { decision_center: {
-          score: 82,
-          max: 100,
-          status: 'yellow',
-          headline: '有 1 項課務風險需要確認',
-          decisions: [{ key: 'demo-risk', severity: 'warning', why: '測試課表需要主任確認。', next_step: '查看課表', action_label: '查看風險', target: 'course-mgmt', people_total: 0 }],
-          policy_notes: [],
-        }, generated_at: '2026-08-01T04:00:00Z' } }),
-      });
-    }
-
-    if (mode === 'dashboard' && p.includes('/class-sessions')) {
-      return route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify({ data: [{ id: 901, student_class_id: 801, student_name: '測試學生甲', teacher_name: '測試老師', start_time: '10:00', end_time: '11:00', status: 'scheduled', subject: '數學' }] }),
-      });
-    }
-
-    if (mode === 'dashboard' && p.includes('/learning-records')) {
-      return route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify({ data: [{ id: 1001, status: 'pending', student_name: '測試學生甲' }] }),
-      });
-    }
-
-    if ((mode === 'dashboard' || pageName === 'course') && p.includes('/exception-workflows')) {
-      if (pageName === 'course' && mode === 'error') {
-        return route.fulfill({ status: 500, contentType: 'application/json', body: JSON.stringify({ message: '家長請假待辦載入失敗' }) });
-      }
-      if (pageName === 'course' && mode === 'empty') {
-        return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: [], meta: { count: 0 } }) });
-      }
-      return route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify({ data: [{ id: 27, status: 'open', student: { name: mode === 'long' ? '測試學生超長姓名用於驗證處理案件摘要折行' : '測試學生甲' }, class_session: { date: '2026-08-02', start_time: '10:00', end_time: '11:00' }, payload: { reason: mode === 'long' ? '這是一段很長的家長請假原因，用來驗證案件資訊可以折行且主要處理按鈕仍然可見。' : '身體不適' }, due_at: '2026-08-01T18:00:00+08:00' }] }),
-      });
-    }
-
-    if (pageName === 'course' && p.includes('/student-classes')) {
-      if (mode === 'empty') {
-        return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: [], total: 0 }) });
-      }
-      if (mode === 'booking-race') {
-        return route.fulfill({
-          status: 200,
-          contentType: 'application/json',
-          body: JSON.stringify({
-            data: [{
-              id: 5201,
-              student_id: 2000,
-              student_name: '測試學生甲',
-              subject: '英文',
-              teacher_id: 3000,
-              teacher_name: '測試老師',
-              class_type: 'one_on_three',
-              scheduling_policy: 'manual_occurrence',
-              payment_type: 'session',
-              sessions_purchased: 8,
-              sessions_used: 7,
-              remaining_sessions: 1,
-              status: 'active',
-              day_of_week: 6,
-              start_time: '13:00',
-              end_time: '15:00',
-              duration_hours: 2,
-              branch_id: 1,
-            }],
-            total: 1,
-          }),
-        });
-      }
-      return route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify({ data: [{ ID: 801, StudentID: 2000, student_name: '測試學生甲', SubjectID: 1, Subject: '數學', ClassType: 'one_on_one', TeacherID: 3000, teacher_name: '測試老師', Stop: 0 }], total: 1 }),
-      });
-    }
-
-    if (mode === 'dashboard' && p.includes('/schedule-discrepancies/summary')) {
-      return route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify({ pending: 1, acknowledged: 0, resolved: 0, withdrawn: 0 }),
-      });
-    }
-
-    if (p.endsWith('/action-inbox/count')) {
-      // Keep case lane for empty/error so empty/error UI is the case-lane states under test.
-      const empty = mode === 'empty';
-      return route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify({
-          notifications_unread: empty ? 0 : 4,
-          cases_unresolved: empty ? 1 : 2,
-          cases_overdue: empty ? 0 : 1,
-          cases_due_soon: empty ? 0 : 1,
-          cases_candidate_ready: empty ? 0 : 1,
-          urgent_total: empty ? 0 : 1,
-          badge_total: empty ? 1 : 6,
-        }),
-      });
-    }
-
-    if (p.includes('/action-inbox') && !p.includes('/count')) {
-      if (mode === 'error') {
-        return route.fulfill({ status: 500, contentType: 'application/json', body: JSON.stringify({ message: '案件狀態暫時無法更新' }) });
-      }
-      if (mode === 'empty') {
-        return route.fulfill({
-          status: 200,
-          contentType: 'application/json',
-          body: JSON.stringify({
-            cases: { data: [], total: 0, current_page: 1, last_page: 1, per_page: 20, has_more: false },
-            summary: { cases_unresolved: 0 },
-          }),
-        });
-      }
-      const cases = mode === 'disabled' && requestedPage === 3
-        ? [{ ...CASE_NORMAL, id: 'case-1051', student_name: '測試學生第 51 筆', title: '第 51 筆請假申請' }]
-        : mode === 'long'
-          ? [CASE_LONG, CASE_NORMAL]
-          : [CASE_NORMAL, { ...CASE_NORMAL, id: 'case-1003', student_name: '測試學生乙', overdue: true, priority: 'overdue' }];
-      return route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify({
-          cases: {
-            data: cases,
-            total: mode === 'disabled' ? 51 : cases.length,
-            current_page: mode === 'disabled' ? requestedPage : 1,
-            last_page: mode === 'disabled' ? 3 : 1,
-            per_page: 20,
-            has_more: mode === 'disabled' && requestedPage < 3,
-          },
-          summary: { cases_unresolved: mode === 'disabled' ? 51 : cases.length, cases_candidate_ready: 1 },
-        }),
-      });
-    }
-
-    if (p.includes('/notifications')) {
-      return route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify({
-          data: mode === 'dialog' || mode === 'long' ? [{
-            id: 'notification-tuition-1',
-            Type: 'tuition',
-            Title: mode === 'long' ? '測試繳費通知超長標題用於驗證通知操作區在手機上仍然可讀且可操作' : '測試繳費通知',
-            Body: mode === 'long'
-              ? '家長已回報繳費，請登記後等待對帳。這段較長的內容用來驗證篩選、狀態與主要處理按鈕在長中文通知下不會被截斷或推出可視範圍。'
-              : '家長已回報繳費，請登記後等待對帳。',
-            SourceType: 'Invoice',
-            Severity: 'high',
-            read_at: null,
-            ResolvedAt: null,
-            Payload: { student_id: 2000, student_name: '測試學生甲', subject: '數學', charge: 1200 },
-          }] : [],
-          unread_count: mode === 'dashboard' || mode === 'dialog' || mode === 'long' ? 1 : 0,
-          current_page: 1,
-          last_page: 1,
-          total: mode === 'dialog' || mode === 'long' ? 1 : 0,
-        }),
-      });
-    }
-
-    if (p.includes('/students')) {
-      if (mode === 'empty') {
-        return route.fulfill({
-          status: 200,
-          contentType: 'application/json',
-          body: JSON.stringify({ data: [], total: 0 }),
-        });
-      }
-      const count = mode === 'dense' ? 40 : 8;
-      const list = fakeStudents(count, { longName: mode === 'long' });
-      return route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify({ data: list, total: list.length }),
-      });
-    }
-
-    if (p.includes('/student-classes')) {
-      return route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify({
-          data: [
-            {
-              id: 5001,
-              student_id: 2000,
-              subject: 'Math',
-              remaining_sessions: 8,
-              sessions_purchased: 12,
-              sessions_used: 4,
-              payment_type: 'session',
-              payment_status: 'paid',
-              teacher_name: '測試老師甲',
-              days_of_week: [1],
-              branch_name: '測試分校',
-              room_name: '101教室',
-              status: 'active',
-            },
-            {
-              id: 5002,
-              student_id: 2000,
-              subject: 'English',
-              remaining_sessions: 1,
-              sessions_purchased: 8,
-              sessions_used: 7,
-              payment_type: 'session',
-              payment_status: 'paid',
-              teacher_name: '測試老師乙',
-              days_of_week: [2],
-              branch_name: '測試分校',
-              room_name: '202教室',
-              status: 'active',
-            },
-            {
-              id: 5003,
-              student_id: 2000,
-              subject: 'Science',
-              remaining_sessions: 0,
-              sessions_purchased: 8,
-              sessions_used: 8,
-              payment_type: 'session',
-              payment_status: 'paid',
-              teacher_name: '測試老師丙',
-              days_of_week: [3],
-              branch_name: '測試分校',
-              room_name: '303教室',
-              status: 'inactive',
-              closed_reason: 'completed',
-              // Server verdict (StudentClassActivity, in-app #427); the page reads it instead of re-deriving.
-              history_reason: 'completed',
-              is_active_course: false,
-            },
-          ],
-        }),
-      });
-    }
-
-    if (pageName === 'students' && p.includes('/class-sessions')) {
-      if (mode === 'error') {
-        return route.fulfill({ status: 500, contentType: 'application/json', body: JSON.stringify({ message: '上課日期暫時無法載入' }) });
-      }
-      if (mode === 'sessions-empty') {
-        return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: [], projected: { by_class: {} } }) });
-      }
-      const materialized = [
-        ...Array.from({ length: 7 }, (_, index) => ({
-          id: 6100 + index,
-          student_class_id: 5001,
-          session_date: `2026-09-${String(index + 1).padStart(2, '0')}`,
-          start_time: '16:00',
-          end_time: '18:00',
-          status: index === 0 ? 'attended' : 'scheduled',
-        })),
-        ...Array.from({ length: 4 }, (_, index) => ({
-          id: 6200 + index,
-          student_class_id: 5002,
-          session_date: `2026-10-${String(index + 1).padStart(2, '0')}`,
-          start_time: '17:00',
-          end_time: '19:00',
-          status: index === 0 ? 'attended' : 'scheduled',
-        })),
-      ];
-      return route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify({ data: materialized, projected: { by_class: {
-          5003: [{ date: '2026-08-01', start_time: '15:00', end_time: '17:00' }],
-        } } }),
-      });
-    }
-
-    if (p.includes('/teachers') || p.includes('/subjects') || p.includes('/rooms') || p.includes('/temp-rfid')) {
-      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify([]) });
-    }
-
-    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: [] }) });
+    for (const id of targets) await expect(page.locator(`[id="${id}"]`)).toHaveCount(1);
+    const bounds = await page.locator('.group-table-wrap').first().boundingBox();
+    expect(bounds.x).toBeGreaterThanOrEqual(0);
+    expect(bounds.x + bounds.width).toBeLessThanOrEqual(viewport.width + 1);
+    await rows.first().scrollIntoViewIfNeeded();
+    fs.mkdirSync(outDir, { recursive: true });
+    await page.screenshot({ path: path.join(outDir, `course-chronology-${viewport.width}.png`), fullPage: true });
   });
-
-  return { releaseHang: () => releaseHang?.() };
 }
 
 async function openPilot(page, { pageName, mode, viewport, authProfile = null }) {
@@ -540,6 +86,26 @@ async function openPilot(page, { pageName, mode, viewport, authProfile = null })
   await page.goto(`/pilot-mount.html?page=${pageName}&mode=${mode}`);
   await expect(page.locator('html')).toHaveAttribute('data-pilot-ready', '1', { timeout: 15_000 });
   return mocks;
+}
+
+// #5141 visual follow-up: normal learning fixtures must render an empty queue,
+// not the strict production reader's error state for an incomplete page DTO.
+for (const width of [375, 1280]) {
+  test(`learning visual fixture normal empty page @${width}`, async ({ page }) => {
+    await page.clock.setFixedTime(new Date('2026-09-15T10:00:00+08:00'));
+    await openPilot(page, { pageName: 'learning', mode: 'normal', viewport: { width, height: 812 } });
+    await expect(page.getByText('目前沒有待主任核准的評量', { exact: true })).toBeVisible();
+    await expect(page.locator('.lr-error-state')).toHaveCount(0);
+    await expect(page.getByRole('button', { name: '重新載入', exact: true })).toHaveCount(0);
+  });
+
+  test(`learning visual fixture existing error state @${width}`, async ({ page }) => {
+    await openPilot(page, { pageName: 'learning', mode: 'error', viewport: { width, height: 812 } });
+    await expect(page.locator('.lr-error-state')).toBeVisible();
+    await expect(page.getByText('評量資料載入失敗', { exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: '重新載入', exact: true })).toBeVisible();
+    await expect(page.locator('.lr-empty-state')).toHaveCount(0);
+  });
 }
 
 test.describe('UI foundation — real Vue page evidence', () => {
@@ -889,7 +455,7 @@ test.describe('UI foundation — real Vue page evidence', () => {
       });
       await openPilot(page, { pageName: 'director', mode: 'normal', viewport: vp });
 
-      await expect(page.getByText('主任總覽', { exact: true })).toBeVisible({ timeout: 10_000 });
+      await expect(page.getByRole('main', { name: '主任總覽' })).toBeVisible({ timeout: 10_000 });
       await expect(page.getByText('今日摘要', { exact: true })).toBeVisible();
       const layout = await page.evaluate(() => ({
         scrollWidth: document.documentElement.scrollWidth,
@@ -951,6 +517,7 @@ test.describe('UI foundation — real Vue page evidence', () => {
           await expect(page.getByText('目前沒有待處理的家長請假')).toBeVisible({ timeout: 10_000 });
         } else {
           await expect(page.getByText('家長請假待處理', { exact: true })).toBeVisible({ timeout: 10_000 });
+          await page.locator('.pending-leave-disclosure > summary').click();
           await expect(page.getByText('測試學生', { exact: false }).first()).toBeVisible();
           const action = page.getByRole('button', { name: '處理這筆請假' }).first();
           await expect(action).toBeVisible();
@@ -1132,19 +699,20 @@ test.describe('UI foundation — real Vue page evidence', () => {
   ]) {
     test(`director workbench with urgent tasks @${vp.name}`, async ({ page }) => {
       await openPilot(page, { pageName: 'director', mode: 'dashboard', viewport: vp });
-      await expect(page.getByText('主任總覽', { exact: true })).toBeVisible({ timeout: 10_000 });
-      const riskDisclosure = page.locator('.director-risk-disclosure');
-      await expect(riskDisclosure.getByText('查看為什麼這些工作排在前面', { exact: true })).toBeVisible();
-      await riskDisclosure.locator('summary').click();
-      await expect(riskDisclosure.locator('.director-top-risks').getByText('家長請假待主任處理', { exact: true })).toBeVisible();
+      await expect(page.getByRole('main', { name: '主任總覽' })).toBeVisible({ timeout: 10_000 });
+      await expect(page.getByRole('button', { name: /家長請假/ })).toBeVisible();
       const ctas = page.locator('.director-task__action');
       expect(await ctas.count()).toBeGreaterThan(0);
       await expect(ctas.first()).toBeVisible();
       fs.mkdirSync(outDir, { recursive: true });
       await page.locator('.director-workbench-v2').screenshot({ path: path.join(outDir, `vue-director-v2-urgent-focus-${vp.name}.png`) });
-      const leaveTask = page.getByRole('button', { name: '開始處理', exact: true });
+      const leaveTask = page.getByRole('button', { name: /家長請假/ });
       await leaveTask.click();
       await expect(page.getByText('家長請假', { exact: true })).toBeVisible();
+      const riskDisclosure = page.locator('.director-risk-disclosure');
+      await expect(riskDisclosure.getByText('查看為什麼這些工作排在前面', { exact: true })).toBeVisible();
+      await riskDisclosure.locator('summary').click();
+      await expect(riskDisclosure.locator('.director-top-risks').getByText('家長請假待主任處理', { exact: true })).toBeVisible();
       await expect(page.getByRole('button', { name: '尋找補課時段', exact: true })).toBeVisible();
       await page.locator('.director-workbench-v2').screenshot({ path: path.join(outDir, `vue-director-v2-urgent-${vp.name}.png`) });
     });
@@ -1157,7 +725,7 @@ test.describe('UI foundation — real Vue page evidence', () => {
   // later redesign introduced director-workbench-v2; it never renders.)
   test('director 完整營運 cards show empty state with zero counts', async ({ page }) => {
     await openPilot(page, { pageName: 'director', mode: 'empty', viewport: { width: 1440, height: 900 } });
-    await expect(page.getByText('主任總覽', { exact: true })).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByRole('main', { name: '主任總覽' })).toBeVisible({ timeout: 10_000 });
     await page.getByRole('tab', { name: '完整營運', exact: true }).click();
     await expect(page.locator('.director-workbench-v2__full')).toBeVisible();
 
@@ -1173,7 +741,7 @@ test.describe('UI foundation — real Vue page evidence', () => {
 
   test('director 完整營運 cards show counts and rows with data', async ({ page }) => {
     await openPilot(page, { pageName: 'director', mode: 'dashboard', viewport: { width: 1440, height: 900 } });
-    await expect(page.getByText('主任總覽', { exact: true })).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByRole('main', { name: '主任總覽' })).toBeVisible({ timeout: 10_000 });
     await page.getByRole('tab', { name: '完整營運', exact: true }).click();
     await expect(page.locator('.director-workbench-v2__full')).toBeVisible();
 
@@ -1316,6 +884,55 @@ test.describe('UI foundation — real Vue page evidence', () => {
   });
 });
 
+// Sequencing doc item 6: no horizontal overflow on the motion pages at 375 and 390.
+test.describe('No horizontal overflow (director home, Login)', () => {
+  for (const width of [375, 390]) {
+    for (const [name, pageName, mode] of [['director-home', 'director', 'dashboard'], ['login', 'login', 'normal']]) {
+      test(`${name} @${width}`, async ({ page }) => {
+        await openPilot(page, { pageName, mode, viewport: { width, height: 812 } });
+        await dismissOverlays(page);
+        await page.waitForLoadState('networkidle');
+        const wide = await page.evaluate(() => [...document.querySelectorAll('body *')]
+          .filter((e) => e.getBoundingClientRect().right > window.innerWidth + 1)
+          // ignore content clipped by an ancestor (decorative layers such as the Login aurora)
+          .filter((e) => { for (let p = e.parentElement; p; p = p.parentElement) { const o = getComputedStyle(p).overflowX; if (o === 'hidden' || o === 'clip' || o === 'auto' || o === 'scroll') return false; } return true; })
+          .map((e) => `${e.tagName}.${String(e.className).slice(0, 40)}`));
+        expect(wide).toEqual([]);
+        expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+      });
+    }
+  }
+});
+
+// In-app #518 review: a confirm opened over the course drawer must stack above it and be clickable.
+test('course drawer: a confirm dialog is topmost and clickable @drawer-confirm', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto('/pilot-mount.html?page=course-manager&mode=confirm');
+  await expect(page.locator('html')).toHaveAttribute('data-pilot-ready', '1', { timeout: 15_000 });
+  await expect(page.locator('[data-testid="course-manager"]')).toBeVisible();
+  const confirm = page.getByRole('dialog', { name: '暫停課程？' });
+  await expect(confirm).toBeVisible();
+  const cancel = page.locator('[data-testid="confirm-cancel"]');
+  const topmost = await cancel.evaluate((el) => {
+    const r = el.getBoundingClientRect();
+    const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+    return !!hit && (hit === el || el.contains(hit));
+  });
+  expect(topmost).toBe(true);
+  await cancel.click({ timeout: 3000 });
+});
+
+// In-app #519: 新增課程 on 課程查找 opens the shared scheduler with the student still to be picked.
+test('course page: 新增課程 opens the shared create-course form @create-course', async ({ page }) => {
+  await openPilot(page, { pageName: 'course', mode: 'normal', viewport: { width: 1280, height: 900 } });
+  await dismissOverlays(page);
+  await page.locator('[data-testid="course-header-create"]').click();
+  const form = page.locator('.universal-scheduler-modal').first();
+  await expect(form).toBeVisible();
+  await form.getByText('一般課程').first().click(); // same type step as from 學生管理
+  await expect(form.locator('label:visible', { hasText: '學生 *' }).first()).toBeVisible();
+});
+
 // Visual regression (#4952). Tagged @visual: skipped by playwright.ui-foundation.config.js,
 // run only by playwright.visual.config.js inside the pinned Playwright Docker image (npm run test:visual).
 test.describe('Visual regression @visual', () => {
@@ -1328,6 +945,7 @@ test.describe('Visual regression @visual', () => {
     ['students', 'students', 'normal'],
     ['course-management', 'course', 'normal'],
     ['billing-center', 'tuition', 'normal'],
+    ['login', 'login', 'normal'],
   ];
   for (const vp of [{ name: '1280', width: 1280, height: 900 }, { name: '375', width: 375, height: 812 }]) {
     for (const [name, pageName, mode] of pages) {
@@ -1343,4 +961,210 @@ test.describe('Visual regression @visual', () => {
       });
     }
   }
+  // #4918: 課程管理 drawer (overview, 月曆, 帳務) from fixture props, no API.
+  for (const vp of [{ name: '1280', width: 1280, height: 900 }, { name: '375', width: 375, height: 812 }]) {
+    for (const [name, tab, view] of [['course-manager-overview', 'overview'], ['course-manager-month', 'sessions', 'calendar'], ['course-manager-list', 'sessions', 'list'], ['course-manager-settings', 'settings'], ['course-manager-billing', 'billing']]) {
+      test(`${name} @${vp.name}`, async ({ page }) => {
+        await page.clock.setFixedTime(new Date('2026-09-15T10:00:00+08:00'));
+        await page.setViewportSize({ width: vp.width, height: vp.height });
+        await page.goto(`/pilot-mount.html?page=course-manager&tab=${tab}&mode=needs`);
+        await expect(page.locator('html')).toHaveAttribute('data-pilot-ready', '1', { timeout: 15_000 });
+        if (view) await page.locator(`[data-testid="course-manager-view-${view}"]`).click();
+        await page.waitForLoadState('networkidle');
+        await expect(page).toHaveScreenshot(`${name}-${vp.name}.png`, { fullPage: true });
+      });
+    }
+  }
+  // #4986 step 1: 家長首頁 3 cards at 390px, mocked dashboard (fake data only).
+  test('parent-home @390', async ({ page }) => {
+    await page.clock.setFixedTime(new Date('2026-09-15T10:00:00+08:00'));
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.addInitScript(() => localStorage.setItem('parent_portal_token', 'e2e-parent-visual-token'));
+    await page.route('**/api/v1/**', (route) => {
+      const url = new URL(route.request().url());
+      const json = url.pathname.includes('/parent/dashboard') ? {
+        student: { id: 1, name: '測試學生甲', grade: '國二', campus_id: 1, campus_name: '測試分校', line_linked: false },
+        enrollments: [],
+        cross_campus_access: 'actions',
+        learning_records: [{ id: 1, Subject: '數學', SessionDate: '2026-09-12', Comment: '因式分解進步很多，回家複習講義。', parent_feedback: null }],
+        learning_records_meta: { total: 1, has_more: false },
+        attendance_history: [],
+        upcoming_sessions: [{ id: 11, SessionDate: '2026-09-18', StartTime: '15:00', EndTime: '16:00', Status: 'scheduled', Subject: '英文' }],
+        classes: [],
+        payment_alerts: [{ class_id: 5, subject: '英文', remaining_sessions: 2, paid: false }],
+        invoices: [{ id: 9, Status: 'unpaid', TotalAmount: 7200, DueDate: '2026-09-20', payments: [] }],
+        announcements: [],
+        assessment_progress: { items: [] },
+      } : { data: [] };
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(json) });
+    });
+    await page.goto('/pilot-mount.html?page=parent');
+    await expect(page.locator('[data-guide="parent-home"] [data-slot="card"]')).toHaveCount(3);
+    await page.waitForLoadState('networkidle');
+    await expect(page).toHaveScreenshot('parent-home-390.png', { fullPage: true });
+  });
+
+  // 字級 大: same page with the large size saved (標準 is parent-home-390).
+  // #4986 3 cards at 390px, mocked dashboard (fake data only).
+  test('parent-home-large @390', async ({ page }) => {
+    await page.clock.setFixedTime(new Date('2026-09-15T10:00:00+08:00'));
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.addInitScript(() => { localStorage.setItem('parent_portal_token', 'e2e-parent-visual-token'); localStorage.setItem('alltrue_text_size', 'large'); });
+    await page.route('**/api/v1/**', (route) => {
+      const url = new URL(route.request().url());
+      const json = url.pathname.includes('/parent/dashboard') ? {
+        student: { id: 1, name: '測試學生甲', grade: '國二', campus_id: 1, campus_name: '測試分校', line_linked: false },
+        enrollments: [],
+        cross_campus_access: 'actions',
+        learning_records: [{ id: 1, Subject: '數學', SessionDate: '2026-09-12', Comment: '因式分解進步很多，回家複習講義。', parent_feedback: null }],
+        learning_records_meta: { total: 1, has_more: false },
+        attendance_history: [],
+        upcoming_sessions: [{ id: 11, SessionDate: '2026-09-18', StartTime: '15:00', EndTime: '16:00', Status: 'scheduled', Subject: '英文' }],
+        classes: [],
+        payment_alerts: [{ class_id: 5, subject: '英文', remaining_sessions: 2, paid: false }],
+        invoices: [{ id: 9, Status: 'unpaid', TotalAmount: 7200, DueDate: '2026-09-20', payments: [] }],
+        announcements: [],
+        assessment_progress: { items: [] },
+      } : { data: [] };
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(json) });
+    });
+    await page.goto('/pilot-mount.html?page=parent');
+    await expect(page.locator('[data-guide="parent-home"] [data-slot="card"]')).toHaveCount(3);
+    await page.waitForLoadState('networkidle');
+    await expect(page).toHaveScreenshot('parent-home-large-390.png', { fullPage: true });
+  });
 });
+
+
+// #527 redesign: real course page, existing mocks, no production traffic or baseline updates.
+for (const width of [375, 1280]) {
+  test(`course workbench preserves billing scroll and viewport bounds @${width}`, async ({ page }) => {
+    await page.route('**/*', (route) => ['127.0.0.1', 'localhost'].includes(new URL(route.request().url()).hostname)
+      ? route.fallback() : route.abort('blockedbyclient'));
+    await openPilot(page, { pageName: 'course', mode: 'normal', viewport: { width, height: 900 } });
+    await dismissOverlays(page);
+    const bounds = await page.evaluate(() => ({ viewport: innerWidth, document: document.documentElement.scrollWidth, body: document.body.scrollWidth }));
+    expect.soft(bounds.document).toBeLessThanOrEqual(width);
+    expect.soft(bounds.body).toBeLessThanOrEqual(width);
+    fs.mkdirSync(outDir, { recursive: true });
+    await page.screenshot({ path: path.join(outDir, `course-workbench-default-${width}.png`), fullPage: true });
+    const group = page.locator('.student-group-card').first();
+    await group.getByRole('tab', { name: '帳務資料', exact: true }).click();
+    const billing = group.locator('.student-billing-wrap');
+    await expect(billing.locator('tbody .btn-invoices').first()).toBeAttached();
+    expect(await billing.evaluate((el) => getComputedStyle(el).overflowX)).toBe('auto');
+    if (width === 375) expect(await billing.evaluate((el) => el.scrollWidth > el.clientWidth)).toBe(true);
+    await billing.evaluate((el) => { el.scrollLeft = el.scrollWidth; });
+    const ledger = billing.locator('tbody .btn-invoices').first();
+    await ledger.scrollIntoViewIfNeeded();
+    await expect(ledger).toBeInViewport();
+    await page.screenshot({ path: path.join(outDir, `course-workbench-billing-${width}.png`) });
+    await ledger.click();
+    await expect(page.getByText('學生帳務', { exact: true }).first()).toBeVisible();
+  });
+}
+
+test('course workbench desktop tools stay clickable above the filter card', async ({ page }) => {
+  await page.route('**/*', (route) => ['127.0.0.1', 'localhost'].includes(new URL(route.request().url()).hostname)
+    ? route.fallback() : route.abort('blockedbyclient'));
+  await openPilot(page, { pageName: 'course', mode: 'normal', viewport: { width: 1280, height: 900 } });
+  await dismissOverlays(page);
+  const tools = page.locator('.course-tools-menu');
+  await tools.locator('summary').click();
+  const collapse = tools.getByRole('button', { name: '全部收合', exact: true });
+  const topmost = await collapse.evaluate((el) => {
+    const rect = el.getBoundingClientRect();
+    return el.contains(document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2));
+  });
+  expect(topmost).toBe(true);
+  await collapse.click();
+  await expect(page.locator('.student-group-toggle').first()).toHaveAttribute('aria-expanded', 'false');
+  await tools.getByRole('button', { name: '全部展開', exact: true }).click();
+  await expect(page.locator('.student-group-toggle').first()).toHaveAttribute('aria-expanded', 'true');
+  fs.mkdirSync(outDir, { recursive: true });
+  await page.screenshot({ path: path.join(outDir, 'course-workbench-tools-1280.png') });
+});
+
+for (const scenario of [
+  { width: 390, height: 844, root: 16 },
+  { width: 1280, height: 900, root: 16 },
+  { width: 390, height: 844, root: 32 },
+]) {
+  test(`course contract workbench keeps facts, filters and actions reachable @${scenario.width}-root${scenario.root}`, async ({ page }) => {
+    await page.setViewportSize({ width: scenario.width, height: scenario.height });
+    await page.route('**/*', (route) => ['127.0.0.1', 'localhost'].includes(new URL(route.request().url()).hostname)
+      ? route.fallback() : route.abort('blockedbyclient'));
+    await installApiMocks(page, 'normal', 'course');
+    const contract = (id, extra = {}) => ({
+      id, student_id: 900527, student_name: '合成學生', teacher_name: id === 50 ? '合成老師甲' : id === 40 ? '合成老師乙' : '合成老師丙', subject: '英文',
+      first_class_date: id === 50 ? '2025-01-01' : '2026-09-01', status: 'active',
+      ScheduleMode: 'count', payment_type: 'session', sessions_purchased: 8,
+      sessions_used: 3, remaining_sessions: 5, payment_status: 'unpaid', class_type: 'one_on_one', ...extra,
+    });
+    const contracts = [contract(50), contract(40, { status: 'inactive', history_reason: 'completed', closed_reason: 'completed', payment_status: 'paid' }),
+      contract(30, { status: 'inactive', history_reason: 'settled_pending', closed_reason: 'settled_pending', usage_balance_status: 'review_required', sessions_used: 8, remaining_sessions: 0 })];
+    await page.route('**/api/v1/student-classes?**', (route) => {
+      const status = new URL(route.request().url()).searchParams.get('status');
+      const data = status ? contracts.filter((row) => row.status === status) : contracts;
+      return route.fulfill({ json: { data, total: data.length, current_page: 1, last_page: 1 } });
+    });
+    await page.goto('/pilot-mount.html?page=course&mode=normal');
+    await expect(page.locator('html')).toHaveAttribute('data-pilot-ready', '1');
+    await dismissOverlays(page);
+    await page.evaluate((rootSize) => { document.documentElement.style.fontSize = `${rootSize}px`; }, scenario.root);
+    await expect(page.getByRole('heading', { level: 1, name: '課程查找', exact: true })).toBeVisible();
+    const status = page.locator('#course-filter-status');
+    expect(await status.evaluate((el) => el.closest('details') === null)).toBe(true);
+    await status.selectOption('active');
+    await expect(page.getByTestId('course-active-filters')).toContainText('進行中');
+    await expect(page.locator('.course-row')).toHaveCount(1);
+    await page.locator('.focus-btn').click();
+    await expect(page.locator('.focus-mode-banner')).toContainText('篩選仍套用');
+    await page.locator('.focus-mode-banner button').click();
+    await expect(status).toHaveValue('active');
+    await page.getByTestId('course-filter-clear').click();
+    await expect(status).toHaveValue('');
+    await expect(page.getByTestId('course-active-filters')).toHaveCount(0);
+    await expect(page.locator('.course-row')).toHaveCount(2);
+    await page.locator('.history-section__toggle').click();
+    const cards = page.locator('.course-row, .history-course-card');
+    expect(await cards.evaluateAll((rows) => rows.map((row) => Number(row.getAttribute('data-contract-id'))))).toEqual([50, 40, 30]);
+    const primaryRow = page.locator('.course-row').filter({ has: page.locator('[data-course-id="50"]') });
+    for (const field of await primaryRow.locator('[data-col], .cell-actions').all()) {
+      await field.scrollIntoViewIfNeeded();
+      await expect(field).toBeInViewport();
+      const rect = await field.boundingBox();
+      expect(rect.x).toBeGreaterThanOrEqual(0);
+      expect(rect.x + rect.width).toBeLessThanOrEqual(scenario.width + 1);
+    }
+    const menu = primaryRow.getByRole('button', { name: /更多/ });
+    await menu.scrollIntoViewIfNeeded();
+    expect((await menu.boundingBox()).height).toBeGreaterThanOrEqual(44);
+    await menu.click();
+    await expect(page.getByRole('menu')).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(menu).toBeFocused();
+    const quantityLabel = primaryRow.locator('[data-col="remaining"] .contract-field-label');
+    const standardSize = await quantityLabel.evaluate((el) => parseFloat(getComputedStyle(el).fontSize));
+    await page.getByRole('radio', { name: '大', exact: true }).click();
+    expect(await quantityLabel.evaluate((el) => parseFloat(getComputedStyle(el).fontSize))).toBeGreaterThan(standardSize);
+    await page.getByRole('radio', { name: '標準', exact: true }).click();
+    const manager = primaryRow.getByTestId('course-manager-open');
+    if (process.env.VITE_COURSE_MANAGER_V1 === 'true') {
+      await expect(manager).toBeVisible();
+      await manager.click();
+      await expect(page.getByTestId('course-manager')).toBeVisible();
+      await page.keyboard.press('Escape');
+      await expect(page.getByTestId('course-manager')).toHaveCount(0);
+      await expect(manager).toBeFocused();
+    } else {
+      await expect(manager).toHaveCount(0);
+    }
+    await expect(page.locator('.course-row').filter({ has: page.locator('[data-course-id="30"]') }).getByRole('button', { name: '堂數待對帳', exact: true })).toBeVisible();
+    const overflow = await page.evaluate(() => Math.max(document.documentElement.scrollWidth, document.body.scrollWidth) > innerWidth + 1);
+    expect(overflow).toBe(false);
+    fs.mkdirSync(outDir, { recursive: true });
+    await primaryRow.scrollIntoViewIfNeeded();
+    await page.screenshot({ path: path.join(outDir, `course-workbench-${scenario.width}-root${scenario.root}.png`), fullPage: scenario.root === 16 });
+  });
+}

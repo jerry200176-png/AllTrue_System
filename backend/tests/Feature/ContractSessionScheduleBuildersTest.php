@@ -28,6 +28,18 @@ class ContractSessionScheduleBuildersTest extends TestCase
         $this->assertSame(7, $s[0]['StudentClassID']);
     }
 
+    public function test_build_for_count_treats_js_zero_sunday_like_iso_seven(): void
+    {
+        // #4994 shrunk counterexample: JS 0 used to be dropped, giving 1 row instead of 2.
+        $dates = fn (array $slots) => array_map(
+            fn ($r) => $r['SessionDate'],
+            ContractSessionSchedule::buildSessionsForCount(1, '2026-01-05', 2, $slots, 60)
+        );
+        $this->assertSame(['2026-01-05', '2026-01-11'], $dates([['weekday' => 7, 'time' => '09:00']]));
+        $this->assertSame(['2026-01-05', '2026-01-11'], $dates([['weekday' => 0, 'time' => '09:00']]));
+        $this->assertSame(['2026-01-05', '2026-01-11'], $dates([['weekday' => '0', 'time' => '09:00']]));
+    }
+
     public function test_build_for_count_empty_for_no_slots_or_zero_count(): void
     {
         $this->assertSame([], ContractSessionSchedule::buildSessionsForCount(1, '2026-09-02', 0, [['weekday' => 1, 'time' => '10:00']], 60));

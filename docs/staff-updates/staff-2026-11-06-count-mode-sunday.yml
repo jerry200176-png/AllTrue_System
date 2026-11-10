@@ -1,0 +1,13 @@
+updates:
+  - id: staff-2026-11-06-count-mode-sunday
+    published_at: "2026-11-06"
+    audiences:
+      - director
+    importance: digest
+    title: 週日的課不會再少排
+    summary: 按堂數買的課有週日時段時，系統會排滿買的堂數。
+    items:
+      - category: fixed
+        text: 按堂數買的課如果固定在週日上，自動排課以前可能漏掉週日，排出的課比買的少；現在會照買的堂數排滿。
+    source_refs:
+      - "changelog:2026-11-06:count-mode-sunday"

@@ -1,13 +1,28 @@
 name: Production Case Dump (read-only)
+run-name: ${{ inputs.reader_profile == 'case5124' && 'case5124-private-reader-v1' || format('Production Case Dump ({0})', inputs.case_key) }}
 
 on:
   workflow_dispatch:
     inputs:
+      reader_profile:
+        description: 'Encrypted recipient profile (case5124 requires separate approved trust policy)'
+        required: true
+        default: legacy
+        type: choice
+        options:
+          - legacy
+          - case5124
+      expected_backend_sha:
+        description: 'case5124 only: approved exact current backend SHA; legacy ignores this field'
+        required: false
+        default: ''
+        type: string
       case_key:
         description: 'Bounded case to inspect'
         required: true
         type: choice
         options:
+          - inapp_515
           - schedule_241
           - billing_campus9_student
           - fixed_slot_campus9_student
@@ -23,6 +38,7 @@ on:
           - unpaid_months_muzha
           - unpaid_hidden_candidates
           - unbilled_monthly_sessions
+          - inapp_514_coverage_impact
           - f7_prod_discrepancy
           - paid_flag_open_invoice
           - charge_vs_rate_count
@@ -46,11 +62,13 @@ on:
           - review_4554_4753
           - inapp_458_receipt_courses
           - settled_pending_paid_scan
+          - inapp_521_swallowed_receipts
           - inapp_460_payroll_1031
           - inapp_461_464_billing
           - inapp_466_count_contract
           - billing_student_numbers
           - inapp_468_teacher_calendar
+          - inapp_516_projected_slot
           - inapp_460_payroll_teacher
       student_id:
         description: 'Student ID (numeric) for bounded case probe; names are never accepted (public repo)'
@@ -100,6 +118,12 @@ jobs:
         with:
           persist-credentials: false
 
+      # R3/T3: proposed trust requires concrete Founder GO before main merge.
+      # Failure here precedes SSH configuration and any production query.
+      - name: Validate fixed private reader approval before production access
+        if: inputs.reader_profile == 'case5124'
+        run: python3 scripts/case5124-private-reader.py preflight
+
       - name: Configure pinned production SSH trust
         uses: ./.github/actions/production-ssh-trust
         with:
@@ -122,6 +146,8 @@ jobs:
           PI_SSH_USER: ${{ secrets.PI_SSH_USER }}
           PI_SSH_HOST: ${{ secrets.PI_SSH_HOST }}
           CASE_KEY: ${{ inputs.case_key }}
+          READER_PROFILE: ${{ inputs.reader_profile }}
+          EXPECTED_BACKEND_SHA: ${{ inputs.expected_backend_sha }}
           TARGET_STUDENT_ID: ${{ inputs.student_id }}
           TARGET_STUDENT_CLASS_ID: ${{ inputs.student_class_id }}
           EXPECTED_TEACHER_IDS: ${{ inputs.expected_teacher_ids }}
@@ -131,6 +157,7 @@ jobs:
           CASE_INPUT_STUDENT_CLASS_ID: ${{ secrets.CASE_INPUT_STUDENT_CLASS_ID }}
         run: |
           set -euo pipefail
+          if [[ "$READER_PROFILE" == 'case5124' ]]; then umask 077; fi
           mkdir -p -m 700 raw
           if [[ "$CASE_KEY" == "laravel_2833_preflight" ]]; then
             [[ -z "$TARGET_STUDENT_ID" && -z "$TARGET_STUDENT_CLASS_ID" && -z "$EXPECTED_TEACHER_IDS" && "$TARGET_SUBJECT_NAME" == "數學" ]]
@@ -148,17 +175,26 @@ jobs:
           import os
           import json
           case = os.environ['CASE_KEY']
-          if case not in {'schedule_241', 'billing_campus9_student', 'fixed_slot_campus9_student', 'billing_campus9_subject', 'parent_student_probe', 'parent_binding', 'transfer_capacity_student', 'course_2817_incident', 'contract_xindian_student', 'contract_muzha_student', 'swipe_line_path', 'monthly_slip_student', 'unpaid_months_muzha', 'unpaid_hidden_candidates', 'unbilled_monthly_sessions', 'f7_prod_discrepancy', 'paid_flag_open_invoice', 'charge_vs_rate_count', 'confirmed_report_void_blocked', 'class_sessions_explain_319', 'substitute_calendar_xinzhuang', 'substitute_slot_conflicts', 'occurrence_identity_health', 'teacher_scope_probe', 'occurrence_identity_shadow', 'td076_r2_plan_probe', 'paid_status_shadow_log', 'paid_status_shadow_courses', 'inapp_333_multi_teacher_templates', 'billing_correction_past_session_impact', 'inapp_414_amount_source', 'xinzhuang_fee_cases', 'contract_4131_stale_teacher', 'migration_4283_preconditions', 'review_4554_4753', 'inapp_458_receipt_courses', 'settled_pending_paid_scan', 'inapp_460_payroll_1031', 'inapp_461_464_billing', 'inapp_460_payroll_teacher', 'inapp_466_count_contract', 'billing_student_numbers', 'inapp_468_teacher_calendar'}:
+          private_reader = os.environ.get('READER_PROFILE', 'legacy') == 'case5124'
+          if case not in {'inapp_515', 'schedule_241', 'billing_campus9_student', 'fixed_slot_campus9_student', 'billing_campus9_subject', 'parent_student_probe', 'parent_binding', 'transfer_capacity_student', 'course_2817_incident', 'contract_xindian_student', 'contract_muzha_student', 'swipe_line_path', 'monthly_slip_student', 'unpaid_months_muzha', 'unpaid_hidden_candidates', 'unbilled_monthly_sessions', 'inapp_514_coverage_impact', 'f7_prod_discrepancy', 'paid_flag_open_invoice', 'charge_vs_rate_count', 'confirmed_report_void_blocked', 'class_sessions_explain_319', 'substitute_calendar_xinzhuang', 'substitute_slot_conflicts', 'occurrence_identity_health', 'teacher_scope_probe', 'occurrence_identity_shadow', 'td076_r2_plan_probe', 'paid_status_shadow_log', 'paid_status_shadow_courses', 'inapp_333_multi_teacher_templates', 'billing_correction_past_session_impact', 'inapp_414_amount_source', 'xinzhuang_fee_cases', 'contract_4131_stale_teacher', 'migration_4283_preconditions', 'review_4554_4753', 'inapp_458_receipt_courses', 'settled_pending_paid_scan', 'inapp_521_swallowed_receipts', 'inapp_460_payroll_1031', 'inapp_461_464_billing', 'inapp_460_payroll_teacher', 'inapp_466_count_contract', 'billing_student_numbers', 'inapp_468_teacher_calendar', 'inapp_516_projected_slot'}:
               raise SystemExit('unsupported case')
           target_student_id = os.environ.get('TARGET_STUDENT_ID') or ''
           if target_student_id and not target_student_id.isdigit():
               raise SystemExit('student_id must be numeric')
           target_student_class_id = os.environ.get('TARGET_STUDENT_CLASS_ID') or ''
+          if private_reader:
+              # Fixed selector only; recipient/policy never comes from dispatch input.
+              if case != 'transfer_capacity_student' or target_student_id or target_student_class_id or os.environ.get('EXPECTED_TEACHER_IDS') or os.environ.get('TARGET_SUBJECT_NAME', '數學') != '數學':
+                  raise SystemExit('private reader selector rejected')
+              import re
+              if not re.fullmatch('[a-f0-9]{40}', os.environ.get('EXPECTED_BACKEND_SHA', '')):
+                  raise SystemExit('private reader runtime freeze missing')
+              target_student_id = '493'
           # Every student-scoped case needs an id (no hard-coded names); three cases may use a StudentClass ID instead.
-          id_cases = {'billing_student_numbers', 'schedule_241', 'billing_campus9_student', 'fixed_slot_campus9_student', 'billing_campus9_subject', 'parent_student_probe', 'parent_binding', 'transfer_capacity_student', 'contract_xindian_student', 'contract_muzha_student', 'monthly_slip_student', 'unpaid_months_muzha', 'substitute_calendar_xinzhuang'}
-          if case in id_cases and not target_student_id and not (target_student_class_id and case in {'billing_campus9_student', 'fixed_slot_campus9_student', 'transfer_capacity_student'}):
+          id_cases = {'billing_student_numbers', 'schedule_241', 'billing_campus9_student', 'fixed_slot_campus9_student', 'billing_campus9_subject', 'parent_student_probe', 'parent_binding', 'transfer_capacity_student', 'contract_xindian_student', 'contract_muzha_student', 'monthly_slip_student', 'unpaid_months_muzha', 'substitute_calendar_xinzhuang', 'inapp_516_projected_slot'}
+          if case in id_cases and not target_student_id and not (target_student_class_id and case in {'billing_campus9_student', 'fixed_slot_campus9_student', 'transfer_capacity_student', 'billing_student_numbers'}):
               raise SystemExit(f'{case} requires student_id')
-          if case in {'migration_4283_preconditions', 'review_4554_4753', 'inapp_458_receipt_courses', 'settled_pending_paid_scan', 'inapp_460_payroll_1031', 'inapp_461_464_billing', 'inapp_460_payroll_teacher', 'inapp_466_count_contract', 'inapp_468_teacher_calendar'} and (target_student_id or target_student_class_id or os.environ.get('EXPECTED_TEACHER_IDS')):
+          if case in {'migration_4283_preconditions', 'inapp_514_coverage_impact', 'review_4554_4753', 'inapp_458_receipt_courses', 'settled_pending_paid_scan', 'inapp_521_swallowed_receipts', 'inapp_460_payroll_1031', 'inapp_461_464_billing', 'inapp_460_payroll_teacher', 'inapp_466_count_contract', 'inapp_468_teacher_calendar'} and (target_student_id or target_student_class_id or os.environ.get('EXPECTED_TEACHER_IDS')):
               raise SystemExit('migration precondition probe takes no target')
           if case == 'xinzhuang_fee_cases':
               if target_student_id or target_student_class_id not in {'4064', '3753', '3693'}:
@@ -178,7 +214,7 @@ jobs:
               if not secret_class_id.isascii() or not secret_class_id.isdigit() or len(secret_class_id) > 12 or int(secret_class_id) <= 0:
                   raise SystemExit('inapp_414_amount_source requires the CASE_INPUT_STUDENT_CLASS_ID secret as a positive numeric ID')
               target_student_class_id = secret_class_id
-          if target_student_class_id and (case not in {'billing_campus9_student', 'fixed_slot_campus9_student', 'transfer_capacity_student', 'inapp_414_amount_source', 'xinzhuang_fee_cases'} or not target_student_class_id.isdigit()):
+          if target_student_class_id and (case not in {'billing_campus9_student', 'fixed_slot_campus9_student', 'transfer_capacity_student', 'billing_student_numbers', 'inapp_414_amount_source', 'xinzhuang_fee_cases'} or not target_student_class_id.isdigit()):
               raise SystemExit('student_class_id is only supported as a numeric scoped case')
           expected_teacher_ids = os.environ.get('EXPECTED_TEACHER_IDS') or ''
           teacher_ids = expected_teacher_ids.split(',') if expected_teacher_ids else []
@@ -196,9 +232,41 @@ jobs:
           $db = \\Illuminate\\Support\\Facades\\DB::class;
           $out = ['ok' => true, 'case' => $case, 'read_only' => true,
             'prod_head' => trim((string)@shell_exec('git rev-parse HEAD'))];
+          $privateReader = {'true' if private_reader else 'false'};
+          $privateReaderBackend = {json.dumps(os.environ.get('EXPECTED_BACKEND_SHA', '') if private_reader else '')};
+          if ($privateReader && !hash_equals($privateReaderBackend, $out['prod_head'])) {{ throw new \\RuntimeException('private_reader_runtime_mismatch'); }}
             $billingStudentNumbers = $case === 'billing_student_numbers';
             if ($billingStudentNumbers) {{ $case = 'inapp_466_count_contract'; }} // same probe body, scoped to one student ID
-          if ($case === 'schedule_241') {{
+          if ($case === 'inapp_515') {{
+            $date = '2026-11-07';
+            $hm = static fn ($v) => $v === null ? null : substr((string) $v, 0, 5);
+            $cs = $db::table('ClassSession as cs')->join('StudentClass as sc', 'cs.StudentClassID', '=', 'sc.ID')
+              ->leftJoin('Student as st', 'sc.StudentID', '=', 'st.id')->whereDate('cs.SessionDate', $date)
+              ->get(['cs.id as sid', 'cs.StudentClassID as cid', 'cs.StartTime as s', 'cs.EndTime as e', 'cs.Status as status', 'sc.TeacherID as sc_t', 'sc.Stop as stop', 'sc.ClassType as ct', 'sc.room_id as room', 'st.CampusID as campus']);
+            $sch = $db::table('schedules')->whereDate('schedule_date', $date)
+              ->get(['id', 'start_time as s', 'end_time as e', 'status', 'type', 'teacher_id as t', 'branch_id as campus', 'student_course_id as cid', 'original_schedule_id as orig']);
+            $cand = [];
+            foreach ($cs as $r) {{ if ((int) $r->campus === 15 && in_array((int) $r->room, [2, 4], true)) {{ foreach ([(int) $r->sc_t] as $t) {{ if ($t > 0) $cand[$t] = true; }} }} }}
+            foreach ($sch as $r) {{ if ((int) $r->campus === 15 && (int) $r->t > 0) $cand[(int) $r->t] = true; }}
+            $teachers = [];
+            $campusTeachers = $db::table('UserCampus as uc')->join('User as u', 'u.id', '=', 'uc.UserID')->where('uc.CampusID', 15)->where('u.type', 'T')->get(['u.id', 'u.Name']);
+            $out['campus15_teachers'] = $campusTeachers->map(fn ($u) => ['id' => (int) $u->id, 'name' => (string) $u->Name])->values()->all();
+            foreach ($campusTeachers as $u) {{ $cand[(int) $u->id] = true; }}
+            foreach (array_keys($cand) as $t) {{
+              $mineCs = $cs->filter(fn ($r) => (int) $r->sc_t === $t);
+              $mineSch = $sch->filter(fn ($r) => (int) $r->t === $t);
+              $other = $mineCs->filter(fn ($r) => (int) $r->campus !== 15)->count() + $mineSch->filter(fn ($r) => (int) $r->campus !== 15)->count();
+              $own1315 = $mineCs->filter(fn ($r) => (int) $r->campus === 15 && $hm($r->s) === '13:00')->count() + $mineSch->filter(fn ($r) => (int) $r->campus === 15 && $hm($r->s) === '13:00')->count();
+              $matchedFilter = !($other === 0 || $own1315 === 0); // list every candidate; flag whether it matched
+              $busy = app(\\App\\Services\\SubstituteService::class)->collectTeacherBusySlotsWithCapacity($t, $date, [], null);
+              $teachers[] = ['teacher_id' => $t, 'matched' => $matchedFilter,
+                'class_sessions' => $mineCs->map(fn ($r) => ['id' => (int) $r->sid, 'class_id' => (int) $r->cid, 's' => $hm($r->s), 'e' => $hm($r->e), 'status' => (string) $r->status, 'sc_teacher' => (int) $r->sc_t, 'stop' => $r->stop, 'type' => (string) $r->ct, 'room' => $r->room, 'campus' => (int) $r->campus])->values()->all(),
+                'schedules' => $mineSch->map(fn ($r) => ['id' => (int) $r->id, 'class_id' => $r->cid, 's' => $hm($r->s), 'e' => $hm($r->e), 'status' => (string) $r->status, 'type' => (string) $r->type, 'campus' => (int) $r->campus, 'orig' => $r->orig !== null])->values()->all(),
+                'service_busy' => array_map(fn ($b) => ['s' => $b['start_time'], 'e' => $b['end_time'], 'campus' => $b['campus_id'], 'ct' => $b['class_type'], 'remaining' => $b['remaining_capacity'], 'src' => $b['source_types']], $busy)];
+            }}
+            $out['teachers'] = $teachers;
+            $out['counts'] = ['cs_total' => $cs->count(), 'cs_by_campus' => $cs->groupBy(fn ($r) => (string) $r->campus)->map->count()->all(), 'sch_total' => $sch->count(), 'sch_by_campus' => $sch->groupBy(fn ($r) => (string) $r->campus)->map->count()->all(), 'candidates' => count($cand)];
+          }} elseif ($case === 'schedule_241') {{
             $campusId = 9;
             $targetDate = '2026-08-29';
             $targetStudentIds = $db::table('Student')->where('CampusID', $campusId)
@@ -461,44 +529,130 @@ jobs:
               'read_only'=>true,
             ];
           }} elseif ($case === 'transfer_capacity_student') {{
+            // #5124: preserve the existing student/class scope; export metadata only, never assessment bodies or names.
+            $counts = [];
+            $complete = true;
+            $readRows = static function ($query, array $columns, string $key, int $cap = 2000) use (&$counts, &$complete) {{
+              $matched = (clone $query)->count();
+              $rows = $query->limit($cap)->get($columns);
+              $counts[$key] = ['matched' => $matched, 'returned' => $rows->count(), 'cap' => $cap,
+                'truncated' => $matched > $cap, 'count_changed' => $rows->count() !== min($matched, $cap)];
+              $complete = $complete && !$counts[$key]['truncated'] && !$counts[$key]['count_changed'];
+              return $rows;
+            }};
+            $date = static fn ($v) => $v === null ? null : substr((string) $v, 0, 10);
+            $hm = static fn ($v) => $v === null ? null : substr((string) $v, 0, 5);
+            $int = static fn ($v) => $v === null ? null : (int) $v;
+            $knownReasons = ['completed', 'contract_amended', 'converted_trial', 'parent_leave_rejected', 'repair_rolled_back', 'settled', 'settled_pending', 'usage_settled', 'waived', 'refunded'];
             $studentIds = $targetStudentClassId !== null
               ? $db::table('StudentClass as sc')->where('sc.ID', $targetStudentClassId)->pluck('sc.StudentID')->map(fn ($id) => (int)$id)->all()
               : $db::table('Student')->where('id', $targetStudentId)->pluck('id')->map(fn ($id) => (int)$id)->all();
             if ($studentIds === [] && $targetStudentClassId === null) {{
               $studentIds = $db::table('Student')->where('id', $targetStudentId)->pluck('id')->map(fn ($id) => (int)$id)->all();
             }}
-            $classes = $db::table('StudentClass as sc')->join('Student as st', 'st.id', '=', 'sc.StudentID')->whereIn('sc.StudentID', $studentIds)
-              ->when($targetStudentClassId !== null, fn ($query) => $query->where('sc.ID', $targetStudentClassId))
-              ->orderBy('sc.ID')->get(['sc.ID as class_id', 'sc.StudentID as student_id', 'st.CampusID as campus_id',
-                'sc.SubjectID as subject_id', 'sc.ScheduleMode as schedule_mode', 'sc.SessionCount as session_count',
-                'sc.UsedSessions as persisted_used', 'sc.RemainingSessions as persisted_remaining', 'sc.Stop as stop']);
+            $classes = $readRows($db::table('StudentClass as sc')->join('Student as st', 'st.id', '=', 'sc.StudentID')->whereIn('sc.StudentID', $studentIds)
+              ->when($targetStudentClassId !== null, fn ($query) => $query->where('sc.ID', $targetStudentClassId))->orderBy('sc.ID'),
+              ['sc.ID as class_id', 'sc.StudentID as student_id', 'st.CampusID as campus_id', 'sc.SubjectID as subject_id',
+                'sc.ScheduleMode as schedule_mode', 'sc.SessionCount as session_count', 'sc.UsedSessions as persisted_used',
+                'sc.RemainingSessions as persisted_remaining', 'sc.Stop as stop', 'sc.StartDate as start_date', 'sc.EndDate as end_date',
+                'sc.closed_reason', 'sc.settlement_locked_at', 'sc.TeacherID as teacher_id', 'sc.PackageID as package_id', 'sc.Paid as paid',
+                'sc.GradeID as grade_id', 'sc.ClassType as class_type', 'sc.by1', 'sc.SessionDuration as session_duration',
+                'sc.deduction_basis', 'sc.standard_lesson_minutes',
+                'sc.week1', 'sc.week2', 'sc.week3', 'sc.week4', 'sc.week5', 'sc.week6',
+                'sc.duration1', 'sc.duration2', 'sc.duration3', 'sc.duration4', 'sc.duration5', 'sc.duration6'], 'target_classes', 200);
             $classIds = $classes->pluck('class_id')->map(fn ($id) => (int)$id)->all();
+            if ($privateReader && ($classes->isEmpty() || $classes->contains(fn ($row) => (int)$row->campus_id !== 15))) {{ throw new \\RuntimeException('private_reader_scope_mismatch'); }}
             $diagnostics = $classIds === [] ? [] : \App\Services\SessionDeductionService::batchExpectedUsedSessionDiagnostics($classIds);
-            $sessions = $classIds === [] ? collect() : $db::table('ClassSession')->whereIn('StudentClassID', $classIds)
-              ->orderBy('StudentClassID')->orderBy('SessionDate')->orderBy('StartTime')->get(['id', 'StudentClassID as class_id', 'SessionDate as session_date', 'StartTime as start_time', 'EndTime as end_time', 'Status as status']);
-            $signins = $classIds === [] ? collect() : $db::table('StudentSingIn')->whereIn('StudentClassID', $classIds)->whereNull('VoidedAt')
-              ->get(['id', 'StudentClassID as class_id', 'ClassSessionID as session_id', 'SessionDeducted as session_deducted', 'Status as status']);
-            $ledger = $classIds === [] ? collect() : $db::table('session_deduction_ledger')->whereIn('student_class_id', $classIds)
-              ->whereIn('source', ['attendance', 'retro_leave', 'status_adjust', 'duplicate_session'])
-              ->get(['id', 'student_class_id as class_id', 'class_session_id as session_id', 'event_type', 'source', 'minutes']);
+            $sessions = $readRows($db::table('ClassSession')->whereIn('StudentClassID', $classIds)
+              ->orderBy('StudentClassID')->orderBy('SessionDate')->orderBy('StartTime')->orderBy('id'),
+              ['id', 'StudentClassID as class_id', 'SessionDate as session_date', 'StartTime as start_time', 'EndTime as end_time',
+                'Status as status', 'OriginalSessionDate as original_session_date', 'OriginalStartTimeHM as original_start_time'], 'class_sessions');
+            $signins = $readRows($db::table('StudentSingIn')->whereIn('StudentClassID', $classIds)->whereNull('VoidedAt')->orderBy('id'),
+              ['id', 'StudentClassID as class_id', 'ClassSessionID as session_id', 'TeacherID as teacher_id', 'SessionDeducted as session_deducted', 'Status as status'], 'active_signins');
+            $ledger = $readRows($db::table('session_deduction_ledger')->whereIn('student_class_id', $classIds)
+              ->whereIn('source', ['attendance', 'retro_leave', 'status_adjust', 'duplicate_session'])->orderBy('id'),
+              ['id', 'student_class_id as class_id', 'class_session_id as session_id', 'event_type', 'source', 'minutes'], 'deduction_ledger');
+            $records = $readRows($db::table('LearningRecord')->whereIn('StudentClassID', $classIds)->orderBy('id'),
+              ['id', 'StudentClassID as class_id', 'ClassSessionID as session_id', 'TeacherID as teacher_id', 'Status as status',
+                'SessionDate as session_date', 'StartTime as start_time', 'EndTime as end_time', 'VoidedAt', 'ExcludeFromSubjectCount'], 'learning_record_metadata');
+            // Load all dated/undated chain rows for this student, including retired hops. Do not chase an out-of-scope parent.
+            $schedules = $readRows($db::table('schedules')->whereIn('student_id', $studentIds)
+              ->when($targetStudentClassId !== null, fn ($query) => $query->where('student_course_id', $targetStudentClassId))->orderBy('id'),
+              ['id', 'student_id', 'student_course_id as class_id', 'branch_id as campus_id', 'teacher_id', 'day_of_week',
+                'schedule_date', 'start_time', 'end_time', 'status', 'type', 'deduction', 'original_schedule_id',
+                'original_schedule_date', 'original_start_time'], 'schedules');
+            // A historical log may outlive its schedule row. Keep all scoped-contract logs, without reading outside-scope schedules.
+            $changes = $readRows($db::table('schedule_change_log')->whereIn('student_course_id', $classIds)->orderBy('id'),
+              ['id', 'schedule_id', 'student_course_id as class_id', 'original_schedule_date', 'original_start_time',
+                'from_date', 'from_time', 'to_date', 'to_time', 'from_teacher_id', 'to_teacher_id', 'from_status', 'to_status'], 'schedule_change_metadata');
             $out['student_ids'] = $studentIds;
             $out['student_count'] = count($studentIds);
-            $out['target_classes'] = $classes->map(fn ($r) => ['class_id'=>(int)$r->class_id, 'student_id'=>(int)$r->student_id,
-              'campus_id'=>$r->campus_id === null ? null : (int)$r->campus_id, 'subject_id'=>(int)$r->subject_id,
-              'schedule_mode'=>(string)($r->schedule_mode ?? ''), 'session_count'=>(int)($r->session_count ?? 0),
-              'persisted_used'=>(int)($r->persisted_used ?? 0), 'persisted_remaining'=>(int)($r->persisted_remaining ?? 0),
-              'diagnostic'=>$diagnostics[(int)$r->class_id] ?? null, 'stop'=>(int)($r->stop ?? 0)])->values()->all();
+            $out['target_classes'] = $classes->map(function ($r) use ($diagnostics, $knownReasons, $int, $date) {{
+              $overrides = [];
+              for ($slot = 1; $slot <= 6; $slot++) {{
+                $overrides[] = ['weekday' => $int($r->{{'week'.$slot}}), 'minutes' => $int($r->{{'duration'.$slot}})];
+              }}
+              $reason = (string) ($r->closed_reason ?? '');
+              return ['class_id'=>(int)$r->class_id, 'student_id'=>(int)$r->student_id, 'campus_id'=>$int($r->campus_id),
+                'subject_id'=>(int)$r->subject_id, 'teacher_id'=>$int($r->teacher_id), 'package_id'=>$int($r->package_id),
+                'start_date'=>$date($r->start_date), 'end_date'=>$date($r->end_date),
+                'closed_reason'=>$reason === '' ? null : (in_array($reason, $knownReasons, true) ? $reason : 'other'),
+                'settlement_locked'=>$r->settlement_locked_at !== null, 'paid'=>(bool)$r->paid,
+                'schedule_mode'=>(string)($r->schedule_mode ?? ''), 'session_count'=>(int)($r->session_count ?? 0),
+                'persisted_used'=>(int)($r->persisted_used ?? 0), 'persisted_remaining'=>(int)($r->persisted_remaining ?? 0),
+                'diagnostic'=>$diagnostics[(int)$r->class_id] ?? null, 'stop'=>(int)($r->stop ?? 0),
+                'payroll_inputs'=>['grade_id'=>$int($r->grade_id), 'class_type'=>(string)($r->class_type ?? ''), 'by1'=>$int($r->by1),
+                  'session_duration_minutes'=>$int($r->session_duration), 'weekday_duration_overrides'=>$overrides],
+                'deduction_basis'=>(string)($r->deduction_basis ?? ''), 'standard_lesson_minutes'=>$int($r->standard_lesson_minutes)];
+            }})->values()->all();
             $out['class_sessions'] = $sessions->map(fn ($r) => ['id'=>(int)$r->id, 'class_id'=>(int)$r->class_id,
-              'session_date'=>(string)$r->session_date, 'start_time'=>substr((string)$r->start_time, 0, 5),
-              'end_time'=>substr((string)$r->end_time, 0, 5), 'status'=>(string)$r->status])->values()->all();
+              'session_date'=>$date($r->session_date), 'start_time'=>$hm($r->start_time), 'end_time'=>$hm($r->end_time),
+              'status'=>(string)$r->status, 'original_session_date'=>$date($r->original_session_date), 'original_start_time'=>$hm($r->original_start_time)])->values()->all();
             $out['active_signins'] = $signins->map(fn ($r) => ['id'=>(int)$r->id, 'class_id'=>(int)$r->class_id,
-              'session_id'=>$r->session_id === null ? null : (int)$r->session_id, 'session_deducted'=>(bool)$r->session_deducted,
+              'session_id'=>$int($r->session_id), 'teacher_id'=>$int($r->teacher_id), 'session_deducted'=>(bool)$r->session_deducted,
               'status'=>(string)($r->status ?? '')])->values()->all();
             $out['deduction_ledger'] = $ledger->map(fn ($r) => ['id'=>(int)$r->id, 'class_id'=>(int)$r->class_id,
-              'session_id'=>$r->session_id === null ? null : (int)$r->session_id, 'event_type'=>(string)$r->event_type,
-              'source'=>(string)$r->source, 'minutes'=>$r->minutes === null ? null : (int)$r->minutes])->values()->all();
-            $out['verification'] = ['student_found'=>count($studentIds) > 0, 'read_only'=>true,
+              'session_id'=>$int($r->session_id), 'event_type'=>(string)$r->event_type, 'source'=>(string)$r->source,
+              'minutes'=>$int($r->minutes)])->values()->all();
+            $out['learning_record_metadata'] = $records->map(fn ($r) => ['id'=>(int)$r->id, 'class_id'=>(int)$r->class_id,
+              'session_id'=>$int($r->session_id), 'teacher_id'=>$int($r->teacher_id), 'status'=>(string)$r->status,
+              'session_date'=>$date($r->session_date), 'start_time'=>$hm($r->start_time), 'end_time'=>$hm($r->end_time),
+              'voided'=>$r->VoidedAt !== null, 'exclude_from_subject_count'=>$r->ExcludeFromSubjectCount === null ? null : (bool)$r->ExcludeFromSubjectCount])->values()->all();
+            $out['schedules'] = $schedules->map(fn ($r) => ['id'=>(int)$r->id, 'student_id'=>(int)$r->student_id,
+              'class_id'=>$int($r->class_id), 'campus_id'=>$int($r->campus_id), 'teacher_id'=>$int($r->teacher_id), 'day_of_week'=>$int($r->day_of_week),
+              'schedule_date'=>$date($r->schedule_date), 'start_time'=>$hm($r->start_time), 'end_time'=>$hm($r->end_time),
+              'status'=>(string)$r->status, 'type'=>(string)$r->type, 'deduction'=>$int($r->deduction),
+              'original_schedule_id'=>$int($r->original_schedule_id), 'original_schedule_date'=>$date($r->original_schedule_date),
+              'original_start_time'=>$hm($r->original_start_time)])->values()->all();
+            $out['schedule_change_metadata'] = $changes->map(fn ($r) => ['id'=>(int)$r->id, 'schedule_id'=>(int)$r->schedule_id, 'class_id'=>(int)$r->class_id,
+              'original_schedule_date'=>$date($r->original_schedule_date), 'original_start_time'=>$hm($r->original_start_time),
+              'from_date'=>$date($r->from_date), 'from_time'=>$hm($r->from_time), 'to_date'=>$date($r->to_date), 'to_time'=>$hm($r->to_time),
+              'from_teacher_id'=>$int($r->from_teacher_id), 'to_teacher_id'=>$int($r->to_teacher_id),
+              'from_status'=>(string)($r->from_status ?? ''), 'to_status'=>(string)($r->to_status ?? '')])->values()->all();
+            $scheduleById = $schedules->keyBy('id');
+            $unresolvedLogRows = $changes->filter(fn ($row) => !$scheduleById->has((int) $row->schedule_id));
+            $unresolvedLogScheduleIds = $unresolvedLogRows->pluck('schedule_id')->map(fn ($id) => (int) $id)->unique()->sort()->values()->all();
+            $unresolvedParents = $cycleIds = [];
+            foreach ($schedules as $row) {{
+              $parentId = (int) ($row->original_schedule_id ?? 0);
+              if ($parentId > 0 && !$scheduleById->has($parentId)) {{ $unresolvedParents[$parentId] = $parentId; }}
+              $seen = [];
+              $cursor = (int) $row->id;
+              while ($cursor > 0 && $scheduleById->has($cursor)) {{
+                if (isset($seen[$cursor])) {{ $cycleIds[$cursor] = $cursor; break; }}
+                $seen[$cursor] = true;
+                $cursor = (int) ($scheduleById->get($cursor)->original_schedule_id ?? 0);
+              }}
+            }}
+            $out['counts'] = $counts;
+            $out['verification'] = ['student_found'=>count($studentIds) > 0, 'read_only'=>true, 'rows_complete'=>$complete,
+              'lineage_complete_within_loaded_scope'=>$complete && $unresolvedParents === [] && $cycleIds === [] && $unresolvedLogScheduleIds === [],
+              'unresolved_parent_ids'=>array_values($unresolvedParents), 'cycle_ids'=>array_values($cycleIds),
+              'unresolved_log_schedule_ids'=>$unresolvedLogScheduleIds, 'unresolved_log_schedule_count'=>count($unresolvedLogScheduleIds), 'unresolved_log_rows'=>$unresolvedLogRows->count(),
+              'external_student_or_contract_lineage_not_queried'=>true,
+              'assessment_content_exported'=>false, 'teacher_lock_still_requires_domain_guard'=>true,
               'future_scheduled_session_ids'=>$sessions->filter(fn ($r) => strtolower((string)$r->status) === 'scheduled' && (string)$r->session_date > now()->toDateString())->pluck('id')->map(fn ($id) => (int)$id)->values()->all()];
+            if (!$complete) {{ $out['ok'] = false; $out['error'] = 'scoped_rows_truncated_or_changed'; }}
           }} elseif ($case === 'monthly_slip_student') {{
             // Read-only, Founder GO 2026-10-02: why two 木柵 monthly slips show no lesson dates.
             // Scope: CampusID 16 and the approved student-ID allowlist only; the dispatched id is
@@ -1276,6 +1430,70 @@ jobs:
             $out['courses_with_unbilled_lessons'] = count($rows);
             $out['unbilled_lessons_total'] = array_sum(array_map(fn ($r) => array_sum($r['uncovered_billable_by_month']), $rows));
             $out['by_campus_month'] = array_values($summary);
+            $out['rows'] = $rows;
+          }} elseif ($case === 'inapp_514_coverage_impact') {{
+            // Read-only (in-app #514, Founder 2026-11-07 condition for stricter coverage). Active date-mode contracts only. For each
+            // billable lesson taught OUTSIDE its contract's dates (the lessons the renewal blocker and the lessons_outside_contract 422
+            // look at): OLD rule = a live bill of the same student+subject (anchored on any of their contracts) whose billing_period month
+            // equals the lesson month; NEW rule = a dated item range of such a bill holds the date (item owner = a contract of the same
+            // student+subject, or a lone unowned item), the label month counting only for a bill with no dated item. Newly affected =
+            // covered by OLD, not by NEW. IDs, campus, dates and counts only; no names, no writes.
+            $courses = $db::table('StudentClass as sc')->join('Student as st', 'st.id', '=', 'sc.StudentID')
+              ->where('sc.ScheduleMode', 'date')->where(fn ($q) => $q->whereNull('sc.Stop')->orWhere('sc.Stop', 0))
+              ->whereNotNull('sc.StartDate')->whereNotNull('sc.EndDate')
+              ->get(['sc.ID', 'sc.StudentID', 'sc.SubjectID', 'st.CampusID', 'sc.StartDate', 'sc.EndDate']);
+            $students = $courses->pluck('StudentID')->unique()->values()->all();
+            $mineAll = $students === [] ? collect() : $db::table('StudentClass')->whereIn('StudentID', $students)->get(['ID', 'StudentID', 'SubjectID']);
+            $mineBy = $mineAll->groupBy(fn ($c) => $c->StudentID . '|' . $c->SubjectID)->map(fn ($g) => $g->pluck('ID')->map(fn ($v) => (int)$v)->all());
+            $mineIds = $mineAll->pluck('ID')->map(fn ($v) => (int)$v)->all();
+            $invoices = $mineIds === [] ? collect() : $db::table('Invoice')->where(fn ($q) => $q->whereNull('Status')->orWhere('Status', '!=', 'void'))
+              ->where(fn ($q) => $q->whereIn('StudentClassID', $mineIds)->orWhereIn('id', $db::table('InvoiceItem')->whereIn('StudentClassID', $mineIds)->select('InvoiceID')))
+              ->get(['id', 'StudentClassID', 'billing_period']);
+            $items = $invoices->isEmpty() ? collect() : $db::table('InvoiceItem')->whereIn('InvoiceID', $invoices->pluck('id')->all())
+              ->get(['InvoiceID', 'StudentClassID', 'PeriodStart', 'PeriodEnd'])->groupBy('InvoiceID');
+            $ids = $courses->pluck('ID')->map(fn ($v) => (int)$v)->all();
+            $lessons = $ids === [] ? collect() : $db::table('ClassSession')->whereIn('StudentClassID', $ids)->whereRaw("LOWER(Status) IN ('attended', 'completed', 'late')")
+              ->get(['StudentClassID', 'SessionDate'])->groupBy('StudentClassID');
+            $rows = []; $reverse = 0; $outside = 0;
+            foreach ($courses as $c) {{
+              $cid = (int)$c->ID; $mine = $mineBy->get($c->StudentID . '|' . $c->SubjectID, []);
+              $start = substr((string)$c->StartDate, 0, 10); $end = substr((string)$c->EndDate, 0, 10);
+              $dates = ($lessons->get($cid, collect()))->map(fn ($s) => substr((string)$s->SessionDate, 0, 10))->filter(fn ($d) => $d < $start || $d > $end)->sort()->values()->all(); // one entry per lesson (two sessions on a date count twice)
+              if ($dates === []) continue;
+              $spans = []; $labels = []; $oldMonths = [];
+              foreach ($invoices as $inv) {{
+                $its = $items->get($inv->id, collect());
+                $anchorMine = in_array((int)$inv->StudentClassID, $mine, true);
+                $hasItemMine = $its->contains(fn ($i) => in_array((int)$i->StudentClassID, $mine, true));
+                if (!$anchorMine && !$hasItemMine) continue;
+                if ($anchorMine && $inv->billing_period) $oldMonths[(string)$inv->billing_period] = true;
+                $bounded = $its->filter(fn ($i) => $i->PeriodStart && $i->PeriodEnd); $found = false;
+                foreach ($mine as $classId) {{
+                  $linked = $bounded->filter(fn ($i) => (int)$i->StudentClassID === $classId);
+                  $src = $linked->isNotEmpty() ? $linked : ($its->count() === 1 ? $bounded->filter(fn ($i) => !(int)$i->StudentClassID) : collect());
+                  foreach ($src as $i) {{ $spans[] = [substr((string)$i->PeriodStart, 0, 10), substr((string)$i->PeriodEnd, 0, 10)]; $found = true; }}
+                }}
+                if (!$found && $bounded->isEmpty() && $anchorMine && $inv->billing_period) $labels[(string)$inv->billing_period] = true;
+              }}
+              $affected = [];
+              foreach ($dates as $d) {{
+                $outside++;
+                $old = isset($oldMonths[substr($d, 0, 7)]);
+                $new = isset($labels[substr($d, 0, 7)]) || collect($spans)->contains(fn ($r) => $r[0] <= $d && $d <= $r[1]);
+                if ($old && !$new) $affected[] = $d; elseif (!$old && $new) $reverse++;
+              }}
+              if ($affected !== []) $rows[] = ['campus_id' => (int)$c->CampusID, 'contract_id' => $cid, 'first_affected_lesson' => $affected[0], 'affected_lessons' => count($affected)];
+            }}
+            usort($rows, fn ($a, $b) => [$a['campus_id'], $a['contract_id']] <=> [$b['campus_id'], $b['contract_id']]);
+            $byCampus = [];
+            foreach ($rows as $r) {{ $k = $r['campus_id']; $byCampus[$k] = ['campus_id' => $k, 'contracts' => ($byCampus[$k]['contracts'] ?? 0) + 1, 'lessons' => ($byCampus[$k]['lessons'] ?? 0) + $r['affected_lessons']]; }}
+            ksort($byCampus);
+            $out['active_date_mode_contracts'] = $courses->count();
+            $out['outside_contract_lessons_examined'] = $outside;
+            $out['newly_affected_contracts'] = count($rows);
+            $out['newly_affected_lessons'] = array_sum(array_column($rows, 'affected_lessons'));
+            $out['newly_covered_lessons_info'] = $reverse;
+            $out['by_campus'] = array_values($byCampus);
             $out['rows'] = $rows;
           }} elseif ($case === 'paid_flag_open_invoice') {{
             // Read-only (Founder Q2, 2026-10-11): contracts flagged paid (Paid=1 or paid package) whose invoices still owe.
@@ -2326,7 +2544,7 @@ jobs:
             // billing_student_numbers runs this same body for one campus-9 student ID (any in-app billing report) and adds the
             // ledger's resolved bill amounts. Output: numeric IDs, dates, amounts, codes and counts only (no names, notes or free text).
             if (!$billingStudentNumbers && ($targetStudentId || $targetStudentClassId)) {{ throw new \\RuntimeException('no_target_allowed'); }}
-            if ($billingStudentNumbers && ($targetStudentClassId || !$targetStudentId)) {{ throw new \\RuntimeException('student_id_only'); }}
+            if ($billingStudentNumbers && (bool) $targetStudentClassId === (bool) $targetStudentId) {{ throw new \\RuntimeException('student_id_or_class_id'); }}
             $code = static fn ($v) => $v === null ? null : (preg_match('/^[a-z_]{{1,32}}$/', (string) $v) ? (string) $v : 'other');
             $d = static fn ($v) => $v === null ? null : substr((string) $v, 0, 19);
             $nums = static function ($row) use ($d) {{
@@ -2340,7 +2558,7 @@ jobs:
             $report = !$billingStudentNumbers ? $db::table('bug_reports')->where('id', 466)->where('CampusID', 9)->first(['title', 'description']) : null;
             $text = $report ? ((string) $report->title . ' ' . (string) $report->description) : '';
             $sids = $billingStudentNumbers
-              ? $db::table('Student')->where('id', $targetStudentId)->pluck('id')->map(fn ($v) => (int) $v)->values()->all()
+              ? $db::table('Student')->where('id', $targetStudentId ?: $db::table('StudentClass')->where('ID', $targetStudentClassId)->value('StudentID'))->pluck('id')->map(fn ($v) => (int) $v)->values()->all()
               : $db::table('Student')->where('CampusID', 9)->get(['id', 'name'])
               ->filter(fn ($s) => mb_strlen(trim((string) $s->name)) >= 2 && $text !== '' && mb_strpos($text, trim((string) $s->name)) !== false)
               ->pluck('id')->map(fn ($v) => (int) $v)->values()->all();
@@ -2394,6 +2612,24 @@ jobs:
                 ->map(fn ($r) => $nums($r) + ['net_paid' => (int) $r->net_paid,
                   'item_amounts' => $db::table('InvoiceItem')->where('InvoiceID', (int) $r->id)->pluck('Amount')->map(fn ($v) => (int) $v)->all()])->values()->all();
             }}
+          }} elseif ($case === 'inapp_516_projected_slot') {{
+              // Read-only (in-app #516): why ensure-projected answers 422 for a date-mode course on 2026-11-07. Campus 16 only; IDs, dates, times, codes.
+              $hm = static fn ($v) => $v === null ? null : substr((string) $v, 0, 5);
+              $ymd = static fn ($v) => $v === null ? null : substr((string) $v, 0, 10);
+              $code = static fn ($v) => $v === null ? null : (preg_match('/^[a-z_]{{1,32}}$/', strtolower(trim((string) $v))) ? strtolower(trim((string) $v)) : 'other');
+              $courses = $db::table('StudentClass as sc')->join('Student as st', 'st.id', '=', 'sc.StudentID')
+                ->where('st.CampusID', 16)->where('sc.StudentID', $targetStudentId)->where(fn ($q) => $q->where('sc.Stop', 0)->orWhereNull('sc.Stop'))
+                ->orderBy('sc.ID')->get(['sc.ID', 'sc.ScheduleMode', 'sc.StartDate', 'sc.EndDate', 'sc.SessionDuration', 'sc.week', 'sc.time', 'sc.week1', 'sc.time1', 'sc.duration1',
+                  'sc.week2', 'sc.time2', 'sc.duration2', 'sc.week3', 'sc.time3', 'sc.duration3', 'sc.week4', 'sc.time4', 'sc.duration4']);
+              $ids = $courses->pluck('ID')->map(fn ($v) => (int) $v)->all();
+              $out['courses'] = $courses->map(fn ($c) => ['id' => (int) $c->ID, 'mode' => $code($c->ScheduleMode), 'start' => $ymd($c->StartDate), 'end' => $ymd($c->EndDate),
+                'dur' => $c->SessionDuration, 'slots' => [[$c->week, $hm($c->time)], [$c->week1, $hm($c->time1), $c->duration1], [$c->week2, $hm($c->time2), $c->duration2],
+                [$c->week3, $hm($c->time3), $c->duration3], [$c->week4, $hm($c->time4), $c->duration4]]])->values()->all();
+              $out['schedules'] = $db::table('schedules')->whereIn('student_course_id', $ids)->whereBetween('schedule_date', ['2026-11-02', '2026-11-16'])->orderBy('schedule_date')->orderBy('id')->get()
+                ->map(fn ($r) => ['id' => (int) $r->id, 'class_id' => (int) $r->student_course_id, 'date' => $ymd($r->schedule_date), 'start' => $hm($r->start_time), 'end' => $hm($r->end_time),
+                  'status' => $code($r->status), 'type' => $code($r->type), 'orig_id' => $r->original_schedule_id, 'orig_date' => $ymd($r->original_schedule_date ?? null), 'orig_start' => $hm($r->original_start_time ?? null)])->values()->all();
+              $out['class_sessions'] = $db::table('ClassSession')->whereIn('StudentClassID', $ids)->whereBetween('SessionDate', ['2026-11-02', '2026-11-16'])->orderBy('SessionDate')->orderBy('StartTime')->get()
+                ->map(fn ($r) => ['id' => (int) $r->id, 'class_id' => (int) $r->StudentClassID, 'date' => $ymd($r->SessionDate), 'start' => $hm($r->StartTime), 'end' => $hm($r->EndTime), 'status' => $code($r->Status), 'note' => $code($r->Note ?? null)])->values()->all();
           }} elseif ($case === 'inapp_468_teacher_calendar') {{
               // Read-only (in-app #468): the campus-9 student named in report 468 is matched on the server, so the text never leaves it.
               // For each of that student's courses, what the three calendar sources return to a director (branch 9) and to the course's
@@ -2586,6 +2822,31 @@ jobs:
                 'effective_from' => $r->effective_from === null ? null : substr((string) $r->effective_from, 0, 10), 'use_branch_default' => (bool) $r->use_branch_default, 'created_at' => substr((string) $r->created_at, 0, 19)])->values()->all();
             $out['grade_level_map'] = config('payroll.grade_level_map');
             $out['default_rates'] = config('payroll.base_rates') ?? config('payroll.default_rates');
+          }} elseif ($case === 'inapp_521_swallowed_receipts') {{
+            // Read-only (in-app #521): repair candidates only. A legacy unlinked void row = negative or void-method Payment on a live bill,
+            // payment_report_id NULL, Method not transfer_out/refund. Each lists the receipts of that bill it could belong to (same
+            // amount, its payment written before the void row). Output: numeric IDs, dates and amounts only (no names, notes or free text).
+            if ($targetStudentId || $targetStudentClassId) {{ throw new \\RuntimeException('no_target_allowed'); }}
+            $d = static fn ($v) => $v === null ? null : substr((string) $v, 0, 10);
+            $legacy = $db::table('Payment as p')->join('Invoice as i', 'i.id', '=', 'p.InvoiceID')
+              ->whereNull('p.payment_report_id')
+              ->where(fn ($q) => $q->where('p.Amount', '<', 0)->orWhere('p.Method', 'void'))
+              ->where(fn ($q) => $q->whereNull('p.Method')->orWhereNotIn('p.Method', ['transfer_out', 'refund']))
+              ->where(fn ($q) => $q->whereNull('i.Status')->orWhere('i.Status', '!=', 'void'))
+              ->orderBy('p.id')->get(['p.id as void_payment_id', 'p.InvoiceID as invoice_id', 'i.StudentClassID as student_class_id', 'p.Amount as amount', 'p.PaidAt as paid_at']);
+            $rows = $legacy->map(function ($r) use ($db, $d) {{
+              $cands = $db::table('payment_reports as pr')->join('Payment as pay', 'pay.id', '=', 'pr.payment_id')
+                ->where('pr.InvoiceID', (int) $r->invoice_id)->where('pr.reported_amount', abs((int) $r->amount))->where('pay.id', '<', (int) $r->void_payment_id)
+                ->orderBy('pr.id')->get(['pr.id as report_id', 'pr.status', 'pr.payment_id', 'pay.PaidAt as payment_paid_at'])
+                ->map(fn ($c) => ['report_id' => (int) $c->report_id, 'status' => preg_match('/^[a-z_]{{1,16}}$/', (string) $c->status) ? $c->status : 'other',
+                  'payment_id' => (int) $c->payment_id, 'payment_paid_at' => $d($c->payment_paid_at)])->values()->all();
+              return ['void_payment_id' => (int) $r->void_payment_id, 'invoice_id' => (int) $r->invoice_id, 'student_class_id' => (int) $r->student_class_id,
+                'amount' => (int) $r->amount, 'paid_at' => $d($r->paid_at), 'candidate_receipts' => $cands];
+            }})->values();
+            $out['legacy_void_row_count'] = $rows->count();
+            $out['legacy_void_invoice_count'] = $rows->pluck('invoice_id')->unique()->count();
+            $out['legacy_void_course_count'] = $rows->pluck('student_class_id')->unique()->count();
+            $out['legacy_void_rows'] = $rows->take(400)->all();
           }} elseif ($case === 'settled_pending_paid_scan') {{
             // Read-only (#4790): settled_pending courses whose non-void invoices are all fully paid, plus the payment/audit history of
             // courses 3511 and 3517. Output: numeric IDs, dates, codes, counts, amounts and audit field NAMES only (no names, notes or free text).
@@ -3190,6 +3451,7 @@ jobs:
                 'candidate_count'=>$r->candidate_count === null ? null : (int)$r->candidate_count,
                 'phone_match_count'=>$r->phone_match_count === null ? null : (int)$r->phone_match_count])->values()->all();
           }}
+          if ($privateReader && !hash_equals($privateReaderBackend, trim((string)@shell_exec('git rev-parse HEAD')))) {{ throw new \\RuntimeException('private_reader_runtime_changed'); }}
           echo json_encode($out, JSON_UNESCAPED_UNICODE), PHP_EOL;
           ?>''')
           PY
@@ -3337,6 +3599,10 @@ jobs:
           (cd out && sha256sum production-case.full.tar.gz.enc > production-case.full.tar.gz.enc.sha256)
           echo "encrypted_bytes=$(stat -c %s out/production-case.full.tar.gz.enc) sha256=$(cut -d' ' -f1 out/production-case.full.tar.gz.enc.sha256)"
 
+      - name: Seal fixed private reader sidecar from the same captured JSON
+        if: success() && inputs.reader_profile == 'case5124'
+        run: python3 scripts/case5124-private-reader.py seal
+
       - name: Shred plaintext case output
         if: always()
         run: |
@@ -3360,6 +3626,8 @@ jobs:
           path: |
             out/production-case.full.tar.gz.enc
             out/production-case.full.tar.gz.enc.sha256
+            out/case5124.cms.der
+            out/case5124.public.json
           if-no-files-found: ignore
           retention-days: 14
 

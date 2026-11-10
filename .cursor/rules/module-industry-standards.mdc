@@ -10,10 +10,9 @@ alwaysApply: false
 
 # 業界標準對齊規則
 
-## PR 大小限制（Industry Standard: ≤ 400 行）
+## PR 大小限制
 
-- 建議：單一 PR ≤ 400 行（好審、好回滾）；超過時在 PR description 說明為何無法拆分。
-- 硬上限（算哪些行、上限多少）只以 [`FOUNDER_STANDING_DECISIONS.md`](../../docs/governance/FOUNDER_STANDING_DECISIONS.md) 2026-10-28（二）第 3 條為準，由 `presubmit.yml` CHECK 2 執行；實際行數看該 step 的 log。超過就拆成多個 PR，每個 PR 對應一個可獨立測試的功能，不疊 PR。
+- 上限（算哪些行、上限多少）只以 [`FOUNDER_STANDING_DECISIONS.md`](../../docs/governance/FOUNDER_STANDING_DECISIONS.md) 2026-10-28（二）第 3 條為準，由 `presubmit.yml` CHECK 2 執行；實際行數看該 step 的 log。超過就拆成多個 PR，每個 PR 對應一個可獨立測試的功能，不疊 PR。
 
 ### 例外：死碼／技術債刪除（純刪除為主）
 700 行上限的本意是限制「新邏輯的審查負擔」，用同一把尺量純刪除並不合理——刪掉已證明打不到
@@ -158,7 +157,7 @@ exp/<slug>               實驗性（不一定 merge，禁止影響生產）
 |------|---------|--------------|------|
 | Staging 環境 | 有獨立 staging | ❌ 無（直接 production）| 長期：用 Docker Compose 建本地 staging |
 | Feature Flags | LaunchDarkly / 自製 | ❌ 無 | 中期：可用 `.env` flag 做 on/off |
-| PR Size Limit | ≤ 400 行 | ⚠️ 無強制 | ✅ 已寫入此規則 |
+| PR Size Limit | 小 PR | ✅ presubmit CHECK 2 | 見上方連結 |
 | Rollback SLA | 5–10 分鐘 | ⚠️ 未明確 | ✅ 已寫入此規則 |
 | 測試覆蓋率 | ≥ 80% | ⚠️ 不穩定 | ✅ 已定義門檻 |
 | Security Review | STRIDE / OWASP | ⚠️ 無系統化 | ✅ module-security.mdc |

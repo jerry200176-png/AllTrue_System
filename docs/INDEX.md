@@ -237,7 +237,6 @@ AllTrue 現在以 **AllTrue AI 公司** 方式治理。使用者是 CEO；AI Age
 | **Deploy 執行** | [`.github/workflows/deploy.yml`](../.github/workflows/deploy.yml) |
 | **Rollback** | [`docs/RUNBOOK_ROLLBACK.md`](RUNBOOK_ROLLBACK.md) |
 | **CI** | [`.github/workflows/ci.yml`](../.github/workflows/ci.yml) · `docs/OPERATIONS_RUNBOOK.md` §B |
-| **CI minutes 耗盡時 offline merge** | [`docs/OFFLINE_MERGE_SOP.md`](OFFLINE_MERGE_SOP.md) |
 | **Branch protection 升級** | [`docs/BRANCH_PROTECTION_UPGRADE.md`](BRANCH_PROTECTION_UPGRADE.md) |
 | **Backup** | `docs/OPERATIONS_RUNBOOK.md` §P |
 | **完整 SOP** | `docs/OPERATIONS_RUNBOOK.md` |
@@ -345,7 +344,7 @@ AllTrue 現在以 **AllTrue AI 公司** 方式治理。使用者是 CEO；AI Age
 | `docs/TECH_DEBT.md` | TD-NNN 技術債清單 |
 | `docs/DANGEROUS_OPERATIONS.md` | 高風險操作清單與 SOP |
 | `docs/DEPLOYMENT.md` | 部署架構說明 |
-| `docs/GUIDE_STAGING_ENVIRONMENT.md` | staging 環境（獨立主機，非 production Pi）設定與部署流程（issue #868） |
+| `docs/ops/DAAN_STAGING_V1.md` | staging 環境唯一說明（大安主機、rootless Docker、自動更新、Cloudflare Tunnel；issue #868） |
 | `docs/DB_PERF.md` | DB 效能優化記錄 |
 | `docs/SECURITY.md` | 安全設計決策 |
 | `docs/RULE_DESIGN_SYSTEM.md` | **設計系統唯一真相來源**（淺色底 + navy 墨字 + 品牌橘黃主色、金額 tabular、不用 gradient mesh）；所有前端 UI 照此生成 |
@@ -367,7 +366,7 @@ AllTrue 現在以 **AllTrue AI 公司** 方式治理。使用者是 CEO；AI Age
 | `docs/SUPER_ADMIN_AND_MIGRATIONS.md` | super_admin 與 migration 操作速記 |
 | `docs/RULE_MIGRATION_COMPAT.md` | **Migration 向後相容守則**（Expand/Contract、down() 可逆性、PR 必填欄位）|
 | `docs/AMBIENT_AUDIO_LICENSES.md` | 環境音效彩蛋的音檔授權清單 |
-| `docs/REF_GITHUB_RULESET_BASELINE.md` | GitHub repository ruleset（branch/tag protection）現況快照（#880）；漂移檢查見 `OPERATIONAL_CONSISTENCY_CHECK.md` Rule 8 |
+| `docs/REF_GITHUB_RULESET_BASELINE.md` | GitHub repository ruleset 以 live API 為準（無快照，#880）；漂移檢查見 `OPERATIONAL_CONSISTENCY_CHECK.md` Rule 8 |
 
 ### 維運 SOP
 | 檔案 | 一行說明 |

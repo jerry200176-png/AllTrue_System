@@ -162,12 +162,14 @@ class SessionProjectionReadService
 
         $branchId = (int) ($class?->student?->CampusID ?? 0);
 
+        $offContractTimes = $this->offContractScheduledTimes($classId, $class, $effectiveDateList);
+
         $projected = [];
         foreach ($effectiveDateList as $date) {
             if (isset($materializedDateSet[$date])) {
                 continue;
             }
-            $times = $this->resolveSlotTimesForCourseDate($class, $date);
+            $times = $offContractTimes[$date] ?? $this->resolveSlotTimesForCourseDate($class, $date);
             $slot = $this->projectedSlot($classId, $date, $times['start'], $times['end'], $branchId, $class);
             $key = $this->slotKey($slot['session_date'], $slot['start_time']);
             if (isset($materializedSlotSet[$key])) {
@@ -229,6 +231,51 @@ class SessionProjectionReadService
         }
 
         return $projectedByClass;
+    }
+
+    /**
+     * in-app #516: a date that is not a contract weekday is only projected because a scheduled schedules row
+     * (e.g. a cross-date reschedule destination) lives there. Show that row's time, not the contract fallback.
+     *
+     * @param  list<string>  $dates
+     * @return array<string, array{start:string,end:string}>
+     */
+    private function offContractScheduledTimes(int $classId, ?StudentClass $class, array $dates): array
+    {
+        if (!$class || $dates === []) {
+            return [];
+        }
+        $weekdays = [];
+        foreach (['week', 'week1', 'week2', 'week3', 'week4', 'week5', 'week6'] as $field) {
+            $weekdays[(int) ($class->{$field} ?? 0)] = true;
+        }
+        $off = array_values(array_filter($dates, fn ($d) => !isset($weekdays[(int) Carbon::parse($d)->dayOfWeekIso])));
+        if ($off === []) {
+            return [];
+        }
+
+        $times = [];
+        \App\Models\Schedule::query()
+            ->where('student_course_id', $classId)
+            ->where('status', 'scheduled')
+            ->where(fn ($q) => $q->whereNull('type')->orWhere('type', '!=', 'extra'))
+            ->whereDate('schedule_date', '>=', min($off))
+            ->whereDate('schedule_date', '<=', max($off))
+            ->orderBy('start_time')
+            ->get(['schedule_date', 'start_time', 'end_time'])
+            ->each(function ($row) use (&$times, $off) {
+                $d = Carbon::parse($row->schedule_date)->toDateString();
+                if (!in_array($d, $off, true)) {
+                    return;
+                }
+                $start = substr((string) $row->start_time, 0, 5);
+                $end = substr((string) $row->end_time, 0, 5);
+                if (!isset($times[$d]) && $start !== '' && $end !== '') {
+                    $times[$d] = ['start' => $start, 'end' => $end];
+                }
+            });
+
+        return $times;
     }
 
     /**

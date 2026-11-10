@@ -1,3 +1,4 @@
+import { ymdInTaipei } from './sessionDates.js';
 import { isLegacyPaidFlagOnly, LEGACY_FLAG_UNVERIFIED_HELP, LEGACY_FLAG_UNVERIFIED_LABEL, REPORT_STATUS_LABELS, TUITION_STATUS_CONFIG, WAIVED_LABEL } from './courseMoneyState.js';
 import { formatCoursePeriod, isDueLater, isPendingConfirmation, owedItems, pendingReviewAmount, splitOwed } from './studentBillingRows.js';
 import { formatNewerCourseOverlapWarning } from './studentClassDisplay.js';
@@ -55,7 +56,7 @@ function warningsOf(r) {
  * @param {Array} alertRows rows from GET /alerts/tuition
  * @param {string} today    YYYY-MM-DD
  */
-export function billRows(alertRows, today = new Date().toISOString().slice(0, 10)) {
+export function billRows(alertRows, today = ymdInTaipei()) {
   const seen = new Set();
   const out = (alertRows || []).map((r, i) => {
     const items = owedItems(r);
@@ -75,7 +76,10 @@ export function billRows(alertRows, today = new Date().toISOString().slice(0, 10
       student_name: r.student_name || '',
       subject: r.subject || '',
       period: remaining !== null ? `剩 ${remaining} 堂` : formatCoursePeriod(r.course_start_date, r.course_end_date),
+      // One scope for the money columns (all open periods due by today): 應收 = 已收 + 未收, never one invoice's amount.
       owed: kind === 'owing' ? owed : 0,
+      paid: Number(r.paid_amount) || 0,
+      payable: (Number(r.paid_amount) || 0) + (kind === 'owing' ? owed : 0),
       owed_later: later,
       due_date: nextDue,
       overdue_days: kind === 'owing' && dues[0] ? Math.max(0, Math.round((dayStart(today) - dayStart(dues[0])) / 86400000)) : 0,
@@ -91,6 +95,10 @@ export function billRows(alertRows, today = new Date().toISOString().slice(0, 10
   return out.sort((a, b) => KIND_ORDER[a.kind] - KIND_ORDER[b.kind] || b.overdue_days - a.overdue_days || b.owed - a.owed
     || a.student_name.localeCompare(b.student_name, 'zh-Hant'));
 }
+
+const md = (d) => { const [, m, day] = String(d).slice(0, 10).split('-'); return `${Number(m)}/${Number(day)}`; };
+/** The 到期／逾期 cell of a row (the server export has a PHP twin, BillRowText; fixtures keep them equal). */
+export const billDueText = (b) => (b.overdue_days > 0 ? `逾期 ${b.overdue_days} 天` : b.due_date && b.kind === 'owing' ? `${md(b.due_date)} 到期` : '—');
 
 /** Per-kind counts, plus `todo` (the 要處理 union). */
 export function billCounts(rows) {

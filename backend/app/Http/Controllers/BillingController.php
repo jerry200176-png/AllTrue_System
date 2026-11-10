@@ -379,16 +379,26 @@ class BillingController extends Controller
 
             $authUser = $request->attributes->get('auth_user');
             $reason = trim((string) $data['reason']);
+            $note = trim((string) ($invoice->Note ?? ''));
+            // in-app #514: a re-keyed invoice carries [invno_period:YYYY-MM] (its issued number); VARCHAR(255) keeps it AND the audit tag,
+            // so a long reason is cut to what is left, never the number tag.
+            $keep = preg_match('/\[' . \App\Services\Billing\InvoiceNumber::TAG . ':\d{4}-\d{2}\]/', $note, $kept) ? $kept[0] : '';
+            $actor = $authUser?->id ?? 'system';
+            $frame = sprintf('[void: ; user_id=%s; at=%s]', $actor, now()->format('Y-m-d H:i:s'));
+            if ($keep !== '') {
+                $reason = trim(mb_substr($reason, 0, max(0, 254 - mb_strlen($keep) - mb_strlen($frame) - 1)));
+            }
             $audit = sprintf(
                 '[void: %s; user_id=%s; at=%s]',
                 str_replace(["\r", "\n", '[', ']'], ' ', $reason), // D3: user text cannot forge a note tag
-                $authUser?->id ?? 'system',
+                $actor,
                 now()->format('Y-m-d H:i:s')
             );
 
-            $note = trim((string) ($invoice->Note ?? ''));
             $invoice->Status = 'void';
-            $invoice->Note = trim(mb_substr($note, 0, max(0, 254 - mb_strlen($audit))) . ' ' . $audit); // VARCHAR(255): keep the whole audit tag
+            // VARCHAR(255): keep the whole audit tag and the invoice-number tag
+            $free = trim(str_replace($keep, '', $note));
+            $invoice->Note = implode(' ', array_filter([trim(mb_substr($free, 0, max(0, 253 - mb_strlen($audit) - mb_strlen($keep)))), $keep, $audit], fn ($p) => $p !== ''));
             $invoice->save();
 
             Log::info('[InvoiceVoid] invoice voided', [
@@ -404,7 +414,7 @@ class BillingController extends Controller
                 'invoice' => [
                     'id' => (int) $invoice->id,
                     'status' => $invoice->Status,
-                    'note' => $invoice->Note,
+                    'note' => \App\Services\Billing\InvoiceNumber::visibleNote($invoice->Note),
                 ],
             ]);
         });
@@ -507,7 +517,7 @@ class BillingController extends Controller
                     'id' => (int) $invoice->id,
                     'status' => $invoice->Status,
                     'paid_amount' => (int) $invoice->PaidAmount,
-                    'note' => $invoice->Note,
+                    'note' => \App\Services\Billing\InvoiceNumber::visibleNote($invoice->Note),
                 ],
                 'reversal_payment' => $reversalPayment ? [
                     'id' => (int) $reversalPayment->id,
@@ -636,7 +646,7 @@ class BillingController extends Controller
             'paid_amount'  => $amountPending ? null : $paidAmount,
             'remaining'    => $amountPending ? null : $remaining,
             'status'       => $invoice->Status,
-            'note'         => $invoice->Note,
+            'note'         => \App\Services\Billing\InvoiceNumber::visibleNote($invoice->Note),
             'items'        => $items,
             'sessions' => $sessions,
         ] + FeeCharge::slipBlock( // #439: beside tuition, never in it

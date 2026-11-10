@@ -10,11 +10,11 @@
       <div class="pe-info">
         <span class="pe-info-item"><strong>學生</strong>{{ row?.student_name }}</span>
         <span class="pe-info-item"><strong>科目</strong>{{ row?.subject }}</span>
-        <span v-if="row?.billing_period" class="pe-info-item"><strong>期別</strong>{{ row.billing_period }}</span>
+        <span v-if="row?.billing_period" class="pe-info-item"><strong>期別</strong>{{ row.billing_period }}<small v-if="periodRange" class="pe-period-range">（{{ periodRange }}）</small></span>
         <span v-if="row?.payable_status !== 'unbilled'" class="pe-info-item"><strong>{{ row?.payable_status === 'invoiced' ? '帳單應繳' : '應繳' }}</strong>NT$ {{ Number(row?.payable_amount ?? 0).toLocaleString('zh-TW') }}</span>
         <span v-else class="pe-info-item pe-info-item--pending"><strong>應繳</strong>還沒開帳單</span>
         <span v-if="row?.estimated_amount != null" class="pe-info-item pe-info-item--muted"><strong>估算</strong>NT$ {{ Number(row.estimated_amount).toLocaleString('zh-TW') }}</span>
-        <span v-if="row?.billing_period" class="pe-info-item"><strong>帳務期間</strong>{{ row.billing_period }}</span>
+        <span v-if="row?.billing_period" class="pe-info-item"><strong>帳務期間</strong>{{ periodRange || row.billing_period }}</span>
       </div>
 
       <form @submit.prevent="submit">
@@ -69,6 +69,7 @@
             <input type="checkbox" v-model="form.free_gift" data-testid="pe-free-gift" />
             這期是「{{ FREE_GIFT_LABEL }}」：登錄一張 NT$ 0 帳單（不是收款）
           </label>
+          <p v-if="legacyNoObligation" class="pe-hint" data-testid="pe-legacy-zero-hint">{{ LEGACY_ZERO_FEE_HELP }}</p>
           <p v-if="isZeroCharge && !legacyBackfill" class="pe-hint">沒填費用不算免費。免費才勾，要收費請先到課程管理設定。</p>
         </div>
 
@@ -99,6 +100,7 @@
 </template>
 
 <script setup>
+import { ymdInTaipei } from '@/lib/sessionDates.js';
 import { ref, reactive, watch, computed, h } from 'vue';
 import AtDialog from './design-system/AtDialog.vue';
 import { backfillLegacyPayment, recordPayment } from '../lib/paymentActions.js';
@@ -122,6 +124,8 @@ const PlainShell = (p, { slots, emit }) => (p.open
   : null);
 PlainShell.props = ['open', 'placement', 'title', 'panelClass'];
 PlainShell.emits = ['close'];
+const LEGACY_ZERO_FEE_HELP = '這門課費用是 0，無須繳費，不需要補登收款，也不需要改成未繳。若這門課其實要收費，請先到課程管理設定費用，再回來補登。';
+const periodRange = computed(() => (props.row?.billing_period_start && props.row?.billing_period_end ? `${props.row.billing_period_start.replaceAll("-", "/")}–${props.row.billing_period_end.replaceAll("-", "/")}` : ""));
 const legacyBackfill = computed(() => props.mode === 'legacy-backfill');
 const formTitle = computed(() => (legacyBackfill.value ? '補登收款' : '登記收款'));
 // One key per opened form, kept across failed submits: a retry after a lost response replays instead of paying twice.
@@ -139,7 +143,7 @@ const emit = defineEmits(['close', 'confirmed', 'pending', 'conflict']);
 // Esc, backdrop, ×, 取消 and the page leaving all go through here: a save in flight is never abandoned (its result must reach the list).
 function requestClose() { if (!submitting.value) emit('close'); }
 
-const today = computed(() => new Date().toISOString().slice(0, 10));
+const today = computed(() => ymdInTaipei());
 
 const form = reactive({
   payment_date: '',
@@ -153,6 +157,9 @@ const form = reactive({
 const submitting = ref(false);
 const submitError = ref('');
 const isZeroCharge = computed(() => Number(props.row?.charge ?? 0) === 0);
+// Zero charge is not zero obligation: a zero Charge with a positive Rate still owes what the bill / collection period shows.
+const legacyNoObligation = computed(() => legacyBackfill.value && isZeroCharge.value
+  && Number(props.row?.payable_outstanding ?? props.row?.payable_amount ?? props.row?.estimated_amount ?? 0) <= 0);
 
 watch(() => props.show, (val) => {
   if (val && props.row) {
@@ -188,6 +195,11 @@ async function submit(andNext = false) {
     return;
   }
   // #3991 (Founder 2026-10-13): a missing or 0 fee is never free by itself; NT$0 needs the explicit 免費／贈送 mark.
+  // in-app #511: 補登 cannot take NT$0 or 免費／贈送 (the server refuses both), so say what to do instead of asking for a hidden box.
+  if (amount === 0 && legacyBackfill.value) {
+    submitError.value = legacyNoObligation.value ? LEGACY_ZERO_FEE_HELP : '金額要大於 0，請填實際收到的金額。';
+    return;
+  }
   if (amount === 0 && !form.free_gift) {
     submitError.value = `金額為 0 時請勾選「${FREE_GIFT_LABEL}」；若這門課要收費，請先到課程管理設定費用。`;
     return;

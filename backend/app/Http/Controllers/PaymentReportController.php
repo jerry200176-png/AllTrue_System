@@ -1879,6 +1879,22 @@ class PaymentReportController extends Controller
                         return response()->json(['message' => '原帳單已作廢或歸屬不符，請重新核對', 'code' => 'void_invoice_mismatch'], 422);
                     }
                     $alreadyReversed = true;
+                } else {
+                    // In-app #521: every reversal points at the entry it reverses (payment_report_id), so the check is exact.
+                    // Both reads are of the locked rows above. A reversal already linked to this report: skip (idempotent).
+                    $isReversal = fn ($p) => (int) $p->Amount < 0 || (string) $p->Method === 'void';
+                    $reportId = (int) $report->getKey();
+                    $alreadyReversed = $payments->contains(fn ($p) => $isReversal($p) && (int) $p->payment_report_id === $reportId);
+                    // A legacy unlinked void row (negative or void, no report, not a transfer_out/refund) cannot be matched to its
+                    // receipt: a second reversal might cancel another receipt's money. Refuse until the repair links it.
+                    $legacyUnlinked = $payments->contains(fn ($p) => $isReversal($p) && $p->payment_report_id === null
+                        && !in_array((string) $p->Method, ['transfer_out', 'refund'], true));
+                    if (!$alreadyReversed && $legacyUnlinked) {
+                        return response()->json([
+                            'message' => '這張帳單有舊的沖銷紀錄還沒對帳，請先找系統管理員處理',
+                            'code' => 'legacy_reversal_unreconciled',
+                        ], 409);
+                    }
                 }
             }
 

@@ -13,7 +13,7 @@ const closeFlow = source.slice(source.indexOf('const closedCourseNotice = ref(nu
 
 describe('Course Manager 結束課程 (in-app #415)', () => {
   it('drawer 結束課程 emits the close action', () => {
-    expect(managerSource).toContain("@click=\"act('close')\">結束課程</button>");
+    expect(managerSource).toContain("@click=\"act('close')\">結束課程</Button>");
   });
 
   it('closes in place through the single-flight flow and never navigates to 學生管理', () => {
@@ -47,7 +47,7 @@ describe('Course Manager 結束課程 (in-app #415)', () => {
 
   it('every list-load failure shows one page-level hint, so pause/resume, close and filters all get it (Codex r4290041474)', () => {
     expect(source).toContain('const courseListOutcome = createListLoadOutcome(listRefreshFailed);');
-    expect(source).toMatch(/<AtInlineAlert v-if="listRefreshFailed"[^>]*data-testid="course-list-refresh-failed"/);
+    expect(source).toMatch(/<Alert v-if="listRefreshFailed"[^>]*data-testid="course-list-refresh-failed"/);
     expect(source).toMatch(/\} = useCoursePause\(\{\s*courseLock: courseCloseFlow,\s*onChanged: async \(\) => \{\s*await loadCourses\(\);/);
   });
 

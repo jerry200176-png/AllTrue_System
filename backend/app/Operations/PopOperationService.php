@@ -178,6 +178,7 @@ final class PopOperationService
         } elseif (!$this->isExactMuzhaSchedule($entry) && !$this->isExactUnpaidHiddenClosures($entry)
             && !$this->isExactMuzhaChenBillingCatchup($entry)
             && !$this->isExactUnbilledBacklogCatchup($entry)
+            && !$this->isExactBillingPeriodRekey($entry)
             && !$this->isExactSharedPoolTrim($entry)
             && !$this->isExactForwardExtraCancel($entry)
             && !$this->isExactDuplicateHistoryPinRepair($entry)
@@ -188,6 +189,7 @@ final class PopOperationService
             && !$this->isExactPastScheduledCancel($entry)
             && !$this->isExactInvoice1997StaleValues($entry)
             && !$this->isExactInvoiceHeaderItemRepair($entry)
+            && !$this->isExactLegacyVoidLink($entry)
             && !$this->isExactPackageLedgerNetRepair($entry)
             && !$this->isExactContractChargeCorrection($entry)
             && !$this->isReviewedFinancialCase($entry)
@@ -216,6 +218,28 @@ final class PopOperationService
             }
             $lockedParameters = json_decode((string) $locked->parameters, true, 512, JSON_THROW_ON_ERROR);
             $this->assertRequestIntegrity($locked, $entry, $lockedParameters, null, false);
+            if ($this->isExactLegacyVoidLink($entry)) {
+                if ($approverId === null || $approver !== 'user:' . $approverId
+                    || !DB::table('User')->where('id', $approverId)->where('type', 'S')->exists()) {
+                    throw new RuntimeException('POP legacy void approval requires the authenticated Founder identity.');
+                }
+                if (in_array($this->financialRecoveryPhase($locked), ['recovery', 'rollback'], true)) {
+                    $prior = DB::table('pop_approval_events')->where('operation_id', $locked->id)->where('event_type', 'approved')
+                        ->where('phase', 'execute')->where('approver_role', 'super_admin')->where('approver', $approver)
+                        ->where('approver_id', $approverId)->where('approval_reference', $approvalReference)
+                        ->where('parameters_hash', $locked->parameters_hash)->where('commit_sha', $commitSha)->whereNotNull('token_hash')->exists();
+                    if (!$prior) throw new RuntimeException('POP legacy void recovery requires the original exact Founder approval.');
+                    app(\App\Operations\Strategies\LegacyVoidLinkStrategy::class)
+                        ->assertRecoveryState((string) $locked->id, (string) ($lockedParameters['expected_digest'] ?? ''));
+                } else {
+                    $preview = $this->safePlan($entry, $lockedParameters, (string) $locked->id);
+                    if (!preg_match('/^[0-9a-f]{64}$/D', (string) ($lockedParameters['expected_digest'] ?? ''))
+                        || !($preview['ok'] ?? false)
+                        || !hash_equals($lockedParameters['expected_digest'], (string) ($preview['digest'] ?? ''))) {
+                        throw new RuntimeException('POP legacy void approval requires the exact current reviewed preview digest.');
+                    }
+                }
+            }
             if ($this->isReviewedFinancialCase($entry)) {
                 if ($reviewedCaseContinuation) {
                     $this->assertPriorReviewedFinancialCaseApproval($locked, $lockedParameters, $entry, $approvalReference, $approver, $approverId);
@@ -418,8 +442,9 @@ final class PopOperationService
         }
         $plan = $this->safePlan($entry, $parameters, (string) $request->id);
         // After a successful execute, later drift (new work arriving) must not make the repair unverifiable or un-rollbackable.
-        $executed = in_array($phase, ['verify', 'rollback'], true) && DB::table('pop_execution_records')
-            ->where('operation_id', $request->id)->where('phase', 'execute')->where('result', 'succeeded')->exists();
+        $executed = in_array($phase, ['verify', 'rollback'], true) && (DB::table('pop_execution_records')
+            ->where('operation_id', $request->id)->where('phase', 'execute')->where('result', 'succeeded')->exists()
+            || ($phase === 'rollback' && $this->hasRekeyJournal($request)));
         if (!(bool) ($plan['ok'] ?? false) && !$executed) {
             return $this->record($request, $entry, $parameters, $phase, [
                 'ok' => false,
@@ -449,10 +474,11 @@ final class PopOperationService
                     : $executeAndRecord();
             }
             $execution = $this->latest($request, 'execute');
-            if (!$execution) {
+            if (!$execution && !($phase === 'rollback' && $this->hasRekeyJournal($request))) {
                 throw new RuntimeException('POP cannot verify or rollback without an execution record.');
             }
-            $payload = json_decode((string) $execution->payload, true, 512, JSON_THROW_ON_ERROR);
+            $payload = $execution ? json_decode((string) $execution->payload, true, 512, JSON_THROW_ON_ERROR) : [];
+            if ($phase === 'rollback' && $this->hasRekeyJournal($request)) $payload['snapshot'] = ['rows' => []];
             $strategy = app((string) $entry['strategy_class']);
             $complete = fn () => $this->record($request, $entry, $parameters, $phase,
                 $phase === 'verify' ? $strategy->verify($plan, $payload) : $strategy->rollback($payload['snapshot'] ?? [], ['actor' => $actor, 'operation_id' => $request->id]),
@@ -470,13 +496,26 @@ final class PopOperationService
     /** Strategies whose writes must commit in the same transaction as their POP execution record (no committed repair without its snapshot). */
     private function coCommitsWithRecord(object|string $strategy): bool
     {
+        if ($this->isRekeyStrategy($strategy)) return false;
+
         return $this->atomicFinancialRepair($strategy)
             || (is_object($strategy) ? get_class($strategy) : $strategy) === \App\Operations\Strategies\TaughtLessonSignInRepairStrategy::class;
     }
 
+    private function isRekeyStrategy(object|string $strategy): bool
+    {
+        return (is_object($strategy) ? get_class($strategy) : $strategy) === \App\Operations\Strategies\BillingPeriodRekeyStrategy::class;
+    }
+
+    private function hasRekeyJournal(object $request): bool
+    {
+        return $this->isRekeyStrategy((string) $request->strategy_id)
+            && DB::table('pop_execution_records')->where('operation_id', $request->id)->where('phase', 'rekey-row')->exists();
+    }
+
     private function atomicFinancialRepair(object|string $strategy): bool
     {
-        return in_array(is_object($strategy) ? get_class($strategy) : $strategy, ['App\\Operations\\Strategies\\UnpaidInvoiceChargeAlignmentStrategy', 'App\\Operations\\Strategies\\PaymentReversalRestatementStrategy', 'App\\Operations\\Strategies\\PaymentReportPendingReturnStrategy', 'App\\Operations\\Strategies\\InvoiceHeaderItemRepairStrategy'], true);
+        return in_array(is_object($strategy) ? get_class($strategy) : $strategy, ['App\\Operations\\Strategies\\UnpaidInvoiceChargeAlignmentStrategy', 'App\\Operations\\Strategies\\PaymentReversalRestatementStrategy', 'App\\Operations\\Strategies\\PaymentReportPendingReturnStrategy', 'App\\Operations\\Strategies\\InvoiceHeaderItemRepairStrategy', 'App\\Operations\\Strategies\\LegacyVoidLinkStrategy', 'App\\Operations\\Strategies\\BillingPeriodRekeyStrategy'], true);
     }
 
     /**
@@ -488,7 +527,7 @@ final class PopOperationService
     public function runApprovedLocally(?string $requestId = null, string $phase = 'execute'): array
     {
         if (!in_array($phase, ['execute', 'verify', 'rollback'], true) || ($phase !== 'execute' && $requestId === null)) throw new RuntimeException('POP recovery requires one explicit request and valid phase.');
-        $lockName = 'alltrue:pop:executor';
+        $lockName = PopLockName::for('alltrue:pop:executor');
         $lock = DB::selectOne('SELECT GET_LOCK(?, 0) AS acquired', [$lockName]);
         if ((int) ($lock->acquired ?? 0) !== 1) {
             return ['ok' => true, 'status' => 'busy', 'processed' => 0];
@@ -526,7 +565,7 @@ final class PopOperationService
             return ['ok' => true, 'status' => 'idle', 'processed' => 0];
         }
 
-        $lockName = 'alltrue:pop:' . (string) $candidate->id;
+        $lockName = PopLockName::for('alltrue:pop:' . (string) $candidate->id);
         $lock = DB::selectOne('SELECT GET_LOCK(?, 0) AS acquired', [$lockName]);
         if ((int) ($lock->acquired ?? 0) !== 1) {
             return ['ok' => true, 'status' => 'busy', 'request_id' => (string) $candidate->id];
@@ -537,7 +576,7 @@ final class PopOperationService
             $retry = $requestId !== null && $this->retryableFinancialExecute($request);
             $records = DB::table('pop_execution_records')->where('operation_id', $request->id);
             $recover = $requestId !== null && $this->atomicFinancialRepair((string) $request->strategy_id)
-                && (clone $records)->where('phase', 'execute')->where('result', 'succeeded')->exists()
+                && ((clone $records)->where('phase', 'execute')->where('result', 'succeeded')->exists() || ($phase === 'rollback' && $this->hasRekeyJournal($request)))
                 && !(clone $records)->where('phase', 'rollback')->when($phase === 'rollback', fn ($q) => $q->where('result', 'rolled_back'))->exists();
             if ($phase === 'execute' ? ((string) $request->status !== 'approved' && !$retry) : !$recover) {
                 return ['ok' => true, 'status' => 'skipped', 'request_id' => (string) $request->id];
@@ -900,10 +939,11 @@ final class PopOperationService
             return $roles;
         }
 
-        if ($this->isExactUnbilledBacklogCatchup($entry)
+        if (($this->isExactUnbilledBacklogCatchup($entry) || $this->isExactBillingPeriodRekey($entry))
             && ($entry['founder_approval_required'] ?? false) === true
             && ($entry['risk'] ?? null) === 'critical'
-            && ($entry['blast_radius'] ?? null) === 'new_contract_invoice_item_per_uncovered_contract_month'
+            && ($entry['blast_radius'] ?? null) === (['unbilled-backlog-catchup-20261006' => 'new_contract_invoice_item_per_uncovered_contract_month',
+                'billing-period-rekey-20261107' => 'invoice_billing_period_and_note_tag_only'][$entry['id'] ?? ''] ?? null)
             && ($entry['reversible'] ?? false) === true
             && ($entry['snapshot_required'] ?? false) === true
             && ($entry['transaction_required'] ?? false) === true
@@ -934,6 +974,21 @@ final class PopOperationService
             && ($entry['founder_approval_required'] ?? false) === true
             && ($entry['risk'] ?? null) === 'critical'
             && ($entry['blast_radius'] ?? null) === 'three_exact_invoice_totals_and_items'
+            && ($entry['reversible'] ?? false) === true
+            && ($entry['snapshot_required'] ?? false) === true
+            && ($entry['transaction_required'] ?? false) === true
+            && ($entry['rollback_supported'] ?? false) === true
+            && ($entry['verification_required'] ?? false) === true
+            && ($entry['approval_required'] ?? false) === true
+            && ($entry['execution_authority'] ?? null) === 'pop-pi-local'
+            && $roles === ['super_admin']) {
+            return $roles;
+        }
+
+        if ($this->isExactLegacyVoidLink($entry)
+            && ($entry['founder_approval_required'] ?? false) === true
+            && ($entry['risk'] ?? null) === 'critical'
+            && ($entry['blast_radius'] ?? null) === 'two_exact_legacy_void_rows'
             && ($entry['reversible'] ?? false) === true
             && ($entry['snapshot_required'] ?? false) === true
             && ($entry['transaction_required'] ?? false) === true
@@ -1233,6 +1288,14 @@ final class PopOperationService
             && ($entry['parameter_keys'] ?? null) === ['campus_ids', 'decision_reference', 'expected_digest'];
     }
 
+    private function isExactBillingPeriodRekey(array $entry): bool
+    {
+        return ($entry['id'] ?? null) === 'billing-period-rekey-20261107'
+            && ($entry['strategy_class'] ?? null) === \App\Operations\Strategies\BillingPeriodRekeyStrategy::class
+            && ($entry['approval_policy'] ?? null) === 'founder-exact-billing-period-rekey'
+            && ($entry['parameter_keys'] ?? null) === ['campus_ids', 'decision_reference', 'expected_digest'];
+    }
+
     /** Prepared exact single-record repair shapes; activation and every immutable case still require Founder approval. */
     private function isReviewedFinancialCase(array $e): bool
     {
@@ -1259,6 +1322,15 @@ final class PopOperationService
             && ($entry['strategy_class'] ?? null) === \App\Operations\Strategies\InvoiceHeaderItemRepairStrategy::class
             && ($entry['approval_policy'] ?? null) === 'founder-exact-invoice-header-item-repair'
             && ($entry['parameter_keys'] ?? null) === ['decision_reference'];
+    }
+
+    /** Same single-super_admin Founder-exact shape (in-app #521, legacy void row link). */
+    private function isExactLegacyVoidLink(array $entry): bool
+    {
+        return ($entry['id'] ?? null) === 'legacy-void-link-20261107'
+            && ($entry['strategy_class'] ?? null) === \App\Operations\Strategies\LegacyVoidLinkStrategy::class
+            && ($entry['approval_policy'] ?? null) === 'founder-exact-legacy-void-link'
+            && ($entry['parameter_keys'] ?? null) === ['decision_reference', 'expected_digest'];
     }
 
     /** Same single-super_admin Founder-exact shape (in-app #369, invoice 1997 stale values). */

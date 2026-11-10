@@ -861,6 +861,7 @@
               <td>{{ s.teacher_name || '—' }}</td>
               <td>
                 <select v-model="makeupMarkStatus[s.class_session_id]" class="att-status-select" :aria-label="`${s.student_name || ''} 補登點名狀態`.trim()">
+                  <option value="" disabled>請選擇</option>
                   <option value="present">到班</option>
                   <option value="late">遲到</option>
                   <option v-if="s.session_status === 'scheduled'" value="leave">請假</option>
@@ -871,7 +872,7 @@
                 <button
                   class="primary small"
                   type="button"
-                  :disabled="makeupMarkSubmitting[s.class_session_id]"
+                  :disabled="makeupMarkSubmitting[s.class_session_id] || !makeupMarkStatus[s.class_session_id]"
                   @click="submitMakeupMark(s)"
                 >
                   {{ makeupMarkSubmitting[s.class_session_id] ? '送出中…' : '補登' }}
@@ -1087,6 +1088,7 @@
 </template>
 
 <script setup>
+import { ymdInTaipei, recentDaysRangeTaipei } from '@/lib/sessionDates.js';
 import { withPoolNotice } from '../lib/sharedPoolNotice.js';
 import { ref, computed, reactive, onMounted, onBeforeUnmount, watch } from 'vue';
 import { supabase } from '../supabase';
@@ -1170,7 +1172,7 @@ function switchTab(tab) {
 const teacherRecords  = ref([]);
 const teacherUnclosed = ref([]);
 const teacherLoading  = ref(false);
-const teacherDate     = ref(new Date().toISOString().slice(0, 10));
+const teacherDate     = ref(ymdInTaipei());
 
 // 當天每位老師一列（後端依課表重算，跟月出勤表同一套規則）；有課沒刷的老師也在裡面
 const teacherDays = ref([]);
@@ -1241,7 +1243,7 @@ function showTeacherToast(text) {
 }
 
 // ── 月報匯出 refs ──
-const exportMonthRef    = ref(new Date().toISOString().slice(0, 7));
+const exportMonthRef    = ref(ymdInTaipei().slice(0, 7));
 const exportMonthLoading = ref(false);
 
 async function exportTeacherMonthly() {
@@ -1508,7 +1510,7 @@ let refreshTimer = null;
 
 const manualForm = ref({
   personKey: '',
-  date: new Date().toISOString().split('T')[0],
+  date: ymdInTaipei(),
   time: new Date().toTimeString().slice(0, 5),
   status: 'present',
   memo: ''
@@ -1523,7 +1525,7 @@ const dirTimeError = ref('');
 const dirForm = ref({
   studentId: '',
   studentClassId: '',
-  date: new Date().toISOString().split('T')[0],
+  date: ymdInTaipei(),
   startTime: (() => { const d = new Date(); return `${String(d.getHours()).padStart(2,'0')}:${d.getMinutes() < 30 ? '00' : '30'}`; })(),
   endTime: (() => { const d = new Date(); const h = d.getMinutes() < 30 ? d.getHours() : (d.getHours() + 1) % 24; return `${String(h).padStart(2,'0')}:${d.getMinutes() < 30 ? '30' : '00'}`; })(),
   status: 'present',
@@ -1637,15 +1639,10 @@ const halfHourLater = () => {
   return `${String(next).padStart(2,'0')}:00`;
 };
 
-const localTodayYmd = () => {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-};
+const localTodayYmd = () => ymdInTaipei();
 
 const quickMinDate = (() => {
-  const d = new Date();
-  d.setDate(d.getDate() - 14);
-  return d.toISOString().slice(0, 10);
+  return ymdInTaipei(new Date(Date.now() - 14 * 86400000));
 })();
 
 const quickForm = ref({
@@ -1829,11 +1826,7 @@ const fetchRecords = async () => {
       } else {
         // 'week' mode: send explicit start/end so the backend window is fixed to
         // today-6 … today regardless of when the server's "now" is evaluated.
-        const end   = localTodayYmd();
-        const start = (() => {
-          const d = new Date(); d.setDate(d.getDate() - 6);
-          return d.toISOString().slice(0, 10);
-        })();
+        const { start, end } = recentDaysRangeTaipei(7);
         params.set('start_date', start);
         params.set('end_date',   end);
       }
@@ -2108,7 +2101,7 @@ const fetchMakeupSessions = async (page = 1) => {
       makeupTotal.value = json.total ?? makeupSessions.value.length;
       makeupHasMore.value = json.current_page < json.last_page;
       const next = {};
-      makeupSessions.value.forEach(r => { next[r.class_session_id] = makeupMarkStatus.value[r.class_session_id] || 'present'; });
+      makeupSessions.value.forEach(r => { next[r.class_session_id] = makeupMarkStatus.value[r.class_session_id] || ''; });
       makeupMarkStatus.value = next;
     } else if (res.status === 403) {
       makeupMsg.value = '無此分校的存取權限';
@@ -2129,7 +2122,8 @@ const fetchMakeupSessions = async (page = 1) => {
 
 const submitMakeupMark = async (s) => {
   makeupMsg.value = '';
-  const status = makeupMarkStatus.value[s.class_session_id] ?? 'present';
+  const status = makeupMarkStatus.value[s.class_session_id];
+  if (!status) { makeupMsg.value = '請先選擇點名狀態'; makeupMsgType.value = 'error'; return; }
   makeupMarkSubmitting.value = { ...makeupMarkSubmitting.value, [s.class_session_id]: true };
   try {
     const token = await getToken();

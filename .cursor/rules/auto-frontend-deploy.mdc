@@ -1,6 +1,6 @@
 ---
 description: >-
-  前端變更後的 deploy 規則 — 必須經過 CI 全綠 + PR merge，再由 deploy.yml 自動部署
+  前端變更後的 deploy 規則 — 必須經過 CI 全綠 + PR merge，再由 deploy.yml 部署（見 RUNBOOK_MERGE_TO_ACTIVATION.md）
 globs:
   - "frontend/**"
   - ".github/workflows/deploy.yml"
@@ -9,16 +9,9 @@ alwaysApply: false
 
 # 前端 Deploy 規則（SOP 優先）
 
-## ⛔ 唯一合法的 Deploy 順序
+## Deploy 順序
 
-```
-1. 前端變更 → commit → push feature branch
-2. CI 全綠（自己等，自己驗，綠燈才報告）
-3. PR merge → `deploy.yml` 自動部署到 Pi
-4. 確認 deploy workflow success
-5. 確認 backend/public/version.json 時間戳更新（前端有變更時）
-6. `curl /api/v1/health` + smoke test 通過後，才告訴使用者「已上線」
-```
+唯一出處：[`docs/RUNBOOK_MERGE_TO_ACTIVATION.md`](../../docs/RUNBOOK_MERGE_TO_ACTIVATION.md)（CI 綠 → merge → `deploy.yml`；需 Founder 批准的範圍由 Founder 按 Approve）。部署後驗證見該文件 §Runtime verification。
 
 ## ❌ 禁止（違反 = 把未過 CI 的前端推上 production）
 
@@ -37,15 +30,6 @@ gh run list --limit 1       # 看最新 run ID
 gh run view <run_id>        # 看狀態，直到 completed
 # success → merge 後監控 deploy.yml
 # failure → 自己修，不要回報「請你去看 CI」
-```
-
-## 部署驗證
-
-```bash
-# deploy 後必做
-cat /home/admin/backend/public/version.json   # 確認時間戳
-curl -sk https://daan.lifenet.com.tw/api/v1/health | python3 -m json.tool
-# 必須看到 {"status":"ok",...}
 ```
 
 ## 不必執行 deploy 的情況

@@ -290,7 +290,7 @@
 
 | 欄位 | 內容 |
 |---|---|
-| 狀態 | Deferred（2026-05-09） |
+| 狀態 | In progress（2026-11-07 Founder 決定啟用；Founder 執行 `scripts/pi-enable-binlog.sh --apply` 後生效。剩下：binlog 異地同步） |
 | 優先級 | P1 |
 | 發現日期 | 2026-04-27 |
 | 發現來源 | [SRE] 工程成熟度補強 |
@@ -351,7 +351,7 @@
 
 | TD | 來源 issue | 標題 | 狀態 | 優先級 | 備註 |
 |----|----------|------|------|------|------|
-| TD-019 | #475 | Staging / pre-production 環境 | Deferred — 需 CEO 預算決策 | P2 | 設計 → `OPERATIONS_RUNBOOK.md` §U |
+| TD-019 | #475 | Staging / pre-production 環境 | Done — 大安主機 staging（無額外費用） | P2 | `docs/ops/DAAN_STAGING_V1.md` |
 | TD-020 | #488 | Feature flags lite framework | Deferred — 等第一個試點 feature 出現再實作 | P2 | 設計 → `OPERATIONS_RUNBOOK.md` §V |
 | TD-021 | #479 | Playwright visual regression（5 頁） | Deferred — #461 進維護期再啟動 | P3 | 設計 → `OPERATIONS_RUNBOOK.md` §W |
 | TD-022 | #478 | Core API contract / golden tests | Deferred — 等 `route:list` snapshot 工具確定 | P2 | 既有 `QA_GOLDEN_SCENARIOS.md` 已涵蓋部分 |
@@ -753,6 +753,8 @@
 | 建議做法 | 把 `schedules` 的身分從「最新一筆的 id」改成「`student_class_id` + 原始 `schedule_date`/`start_time`（第一次物化後永久不變）」。**計畫 SSOT：** [`docs/architecture/RFC_SCHEDULE_OCCURRENCE_IDENTITY.md`](architecture/RFC_SCHEDULE_OCCURRENCE_IDENTITY.md)。Phase 2 已上線可空欄＋預設關閉雙寫。Phase 3 命令 `schedules:backfill-occurrence-identity` 預設 dry-run；production execute 仍 gated。尚未 unique / 讀取切換 / 停鏈。 |
 | 清償成本估計 | 大（資料模型遷移 + 所有讀寫路徑改寫 + 回填腳本，估需完整 RFC/PRD 規劃後才能估工） |
 | 不做的代價 | 每次「改期的改期」場景出現新的變化（同時間重新提交、跨日期改期、未來可能的批次改期等），下游都要再補一次 dedupe patch——已經發生兩次，且 Cal.com 的先例顯示這個模式在其他成熟產品也會反覆冒出同類 bug，不是修一次就永久免疫 |
+
+**相鄰前端邊界（2026-11-09，in-app #528／#5145）**：同實體 ID 改位置的快取合併修正不清償本項資料模型債，也不處理 `loadCourses` 的舊 HTTP 晚回。request owner/window/per-ID freshness 仍延後，須另有 focused RED 才評估；跨週載入有合法並行結果，不能用全域 latest-request 直接丟棄。此邊界未實作、未新增資料操作或授權。
 
 ## Open
 

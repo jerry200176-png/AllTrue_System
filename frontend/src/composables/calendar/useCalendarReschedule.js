@@ -1,3 +1,4 @@
+import { ymdInTaipei } from '@/lib/sessionDates.js';
 import { ref, computed } from 'vue';
 import {
   dayLabel,
@@ -72,7 +73,7 @@ export function useCalendarReschedule({
   }));
 
   const openRescheduleModal = () => {
-    const exactDate = modalForm.value.action_date || new Date().toISOString().split('T')[0];
+    const exactDate = modalForm.value.action_date || ymdInTaipei();
     const newStart = normalizeTimeTo30(modalForm.value.start_time);
     const dur = modalForm.value.duration_hours || 2;
     rescheduleError.value = '';

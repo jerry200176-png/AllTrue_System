@@ -15,6 +15,8 @@ class EnsureSessionHorizonTest extends TestCase
 {
     use RefreshDatabase;
 
+    private static int $nextStudentId = 120000;
+
     private Carbon $today;
 
     protected function tearDown(): void
@@ -602,7 +604,8 @@ class EnsureSessionHorizonTest extends TestCase
     /** @param array<string,mixed> $over */
     private function course(array $over): int
     {
-        $studentId = 98300 + random_int(1, 8999);
+        // Sequential, and above the fixed owner ids (98222, 98900 + weeks): random 98301-107299 collided with them (flaky 1062).
+        $studentId = ++self::$nextStudentId;
         DB::table('Student')->insert([
             'id' => $studentId, 'name' => 'P1B Test', 'CampusID' => 1, 'ClassID' => 1, 'enable' => 1,
         ]);

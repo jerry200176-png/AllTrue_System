@@ -4,7 +4,8 @@ import path from 'path';
 
 // 元件單元測試設定（#729）。
 // 範圍刻意只含 design-system 共用元件 + 其 __tests__，
-// 不與 src/lib/*.test.js（node:assert 純函式測試，由 node 直接跑）混在一起。
+// 不與 src/lib/*.test.js（node:assert 純函式測試，由 `npm run test:lib-node` 跑）混在一起。
+// 凡是 `from 'vitest'` 的測試檔必須列在 include（scripts/tests/frontend-test-coverage.guard.test.mjs 會擋漏列）。
 export default defineConfig({
   plugins: [vue()],
   resolve: { alias: { '@': path.resolve(__dirname, 'src') } },
@@ -14,6 +15,7 @@ export default defineConfig({
       'src/components/**/__tests__/**/*.test.js',
       'src/composables/**/__tests__/**/*.test.js',
       'src/lib/tokenContrast.test.js',
+      'src/lib/directorHomeCards.test.js',
       'src/lib/billRows.test.js',
       'src/lib/billingDocState.test.js',
       'src/lib/studentBillingRowsList.test.js',
@@ -22,6 +24,14 @@ export default defineConfig({
       'src/lib/statusLabelLength.test.js',
       'src/lib/navigationRegistry.test.js',
       'src/lib/bugResolveReply.test.js',
+      'src/components/students/IdentityLinkModal.test.js',
+      'src/lib/adoptionTelemetry.test.js',
+      'src/lib/batchResultSummary.test.js',
+      'src/lib/courseLessonCountLabel.test.js',
+      'src/lib/paymentStatus.test.js',
+      'src/lib/sharedPoolNotice.test.js',
+      'src/lib/studentCourseSessionDisplay.test.js',
+      'src/lib/studentSchoolGrade.test.js',
       'e2e/fixtures/readOnlyAppGuard.test.js',
     ],
     globals: false,

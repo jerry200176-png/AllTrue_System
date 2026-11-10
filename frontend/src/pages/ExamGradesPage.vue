@@ -6,7 +6,8 @@
       icon="quiz"
     >
       <template #actions>
-        <AtButton v-if="isDirector" variant="primary" shape="rect" icon="add" @click="showCreate = true">開新段考</AtButton>
+        <AtButton v-if="isDirector" variant="primary" shape="rect" icon="add" @click="openCreate">開新段考</AtButton>
+        <label v-if="isDirector" class="exam-void-toggle"><input v-model="showVoid" type="checkbox" @change="loadRounds" /> 顯示已刪除</label>
         <AtButton shape="rect" variant="ghost" icon="refresh" :loading="loading" @click="loadRounds">重新整理</AtButton>
       </template>
     </AtPageHeader>
@@ -40,11 +41,18 @@
           </div>
           <p class="muted">科目：{{ (round.subjects || []).map((s) => s.name).join('、') || '—' }}</p>
           <div class="exam-round-card__actions">
-            <AtButton shape="rect" size="sm" variant="primary" @click="openRound(round)">
+            <AtButton v-if="round.status !== 'void'" shape="rect" size="sm" variant="primary" @click="openRound(round)">
               {{ examRoundActionLabel(round, isDirector) }}
             </AtButton>
+            <AtButton v-if="isDirector && round.status === 'void'" shape="rect" size="sm" variant="primary" @click="restoreRound(round)">復原</AtButton>
             <AtButton v-if="isDirector && round.status === 'draft'" shape="rect" size="sm" variant="ghost" @click="publishRound(round)">發布</AtButton>
             <AtButton v-if="isDirector && round.status === 'published'" shape="rect" size="sm" variant="ghost" @click="askCloseRound(round)">關閉</AtButton>
+            <ActionMenu
+              v-if="isDirector && round.status !== 'void'"
+              :groups="roundMenuGroups"
+              :label="`更多操作：${round.title}`"
+              @select="(id) => onRoundMenu(round, id)"
+            />
           </div>
         </article>
       </div>
@@ -64,18 +72,42 @@
       </template>
     </AtDialog>
 
-    <AtDialog :open="showCreate" title="開新段考" title-id="exam-create-title" @close="showCreate = false">
+    <AtDialog :open="!!pendingDelete" title="刪除段考" title-id="exam-delete-title" @close="pendingDelete = null">
+      <p>確定刪除「{{ pendingDelete?.title }}」嗎？</p>
+      <label v-if="deleteNeedsReason">此段考已有成績，刪除後會隱藏，主任可復原。請填寫原因
+        <input v-model.trim="deleteReason" maxlength="255" />
+      </label>
+      <p v-if="deleteError" class="exam-error">{{ deleteError }}</p>
+      <template #actions>
+        <AtButton shape="rect" variant="ghost" :disabled="deleting" @click="pendingDelete = null">取消</AtButton>
+        <AtButton shape="rect" variant="primary" :loading="deleting" @click="confirmDeleteRound">確定刪除</AtButton>
+      </template>
+    </AtDialog>
+
+    <AtDialog :open="showCreate" :title="editingId ? '編輯段考' : '開新段考'" title-id="exam-create-title" @close="showCreate = false">
       <label>標題<input v-model.trim="createForm.title" maxlength="120" placeholder="例如：113-1 第一次段考" /></label>
       <div class="exam-form-grid">
         <label>考試日<input v-model="createForm.exam_date" type="date" /></label>
         <label>登分截止<input v-model="createForm.entry_deadline" type="date" /></label>
       </div>
-      <label>適用年級（ClassID，逗號分隔）<input v-model.trim="createForm.grade_ids_text" placeholder="例如：1,2,3" /></label>
-      <label>科目（逗號分隔，空白則用國英數社自）<input v-model.trim="createForm.subjects_text" placeholder="國文,英文,數學" /></label>
+      <fieldset class="exam-grade-picker">
+        <legend>適用年級</legend>
+        <label v-for="(g, i) in GRADES" :key="g.value" class="exam-grade-option">
+          <input v-model="createForm.grade_ids" type="checkbox" :value="i + 1" /> {{ g.label }}
+        </label>
+      </fieldset>
+      <fieldset class="exam-subject-editor">
+        <legend>科目{{ editingId ? '' : '（不加則用國英數社自）' }}</legend>
+        <div v-for="(sub, i) in createForm.subjects" :key="i" class="exam-subject-row">
+          <input v-model.trim="sub.name" maxlength="40" :aria-label="`科目 ${i + 1}`" placeholder="例如：國文" />
+          <AtButton shape="rect" size="sm" variant="ghost" @click="createForm.subjects.splice(i, 1)">移除</AtButton>
+        </div>
+        <AtButton shape="rect" size="sm" variant="ghost" icon="add" @click="createForm.subjects.push({ id: null, name: '' })">加科目</AtButton>
+      </fieldset>
       <p v-if="formError" class="exam-error">{{ formError }}</p>
       <template #actions>
         <AtButton shape="rect" variant="ghost" @click="showCreate = false">取消</AtButton>
-        <AtButton shape="rect" variant="primary" :loading="saving" @click="createRound">建立</AtButton>
+        <AtButton shape="rect" variant="primary" :loading="saving" @click="createRound">{{ editingId ? '儲存' : '建立' }}</AtButton>
       </template>
     </AtDialog>
 
@@ -112,15 +144,17 @@
                 <small :class="{ 'exam-complete': row.is_complete }">{{ row.filled_subject_count }}/{{ row.required_subject_count }}</small>
               </td>
               <td v-for="subject in selected.subjects" :key="subject.id">
-                <input
-                  class="exam-score-input"
-                  type="number"
-                  min="0"
+                <ExamScoreCell
+                  :score="cellOf(row, subject.id).score"
+                  :is-absent="cellOf(row, subject.id).is_absent"
+                  :cleared="cellOf(row, subject.id).clear"
                   :max="subject.max_score"
-                  step="0.5"
-                  :disabled="!canEditScores"
-                  :value="scoreValue(row, subject.id)"
-                  @change="onScoreInput(row, subject.id, $event.target.value)"
+                  :editable="canEditScores"
+                  :edited="cellOf(row, subject.id).edited"
+                  :label="`${row.student_name} ${subject.name}`"
+                  @change="(v) => onCellChange(row, subject.id, v)"
+                  @clear="onCellClear(row, subject.id)"
+                  @history="openHistory(row)"
                 />
               </td>
               <td>
@@ -143,6 +177,25 @@
         <AtButton shape="rect" variant="ghost" @click="selected = null">關閉</AtButton>
       </template>
     </AtDialog>
+
+    <AtDialog :open="!!reasonFor" title="更正已截止的成績" title-id="exam-reason-title" @close="reasonFor = null">
+      <label>更正原因（必填）<input v-model.trim="reasonText" maxlength="255" placeholder="例如：登錄時打錯" /></label>
+      <template #actions>
+        <AtButton shape="rect" variant="ghost" @click="reasonFor = null">取消</AtButton>
+        <AtButton shape="rect" variant="primary" :disabled="!reasonText" @click="submitScores(reasonFor, reasonText)">確定更正</AtButton>
+      </template>
+    </AtDialog>
+
+    <AtDialog :open="!!historyRows" :title="`修改紀錄：${historyName}`" title-id="exam-history-title" @close="historyRows = null">
+      <p v-if="!historyRows?.length" class="muted">沒有修改紀錄。</p>
+      <ul v-else class="exam-history">
+        <li v-for="h in historyRows" :key="h.id">
+          <strong>{{ historyActionLabel(h.action) }} {{ subjectName(h.exam_round_subject_id) }}</strong>：{{ describeScore(h.before) }} → {{ describeScore(h.after) }}
+          <small class="muted">{{ (h.created_at || '').slice(0, 16).replace('T', ' ') }}<template v-if="h.reason"> · {{ h.reason }}</template></small>
+        </li>
+      </ul>
+      <template #actions><AtButton shape="rect" variant="ghost" @click="historyRows = null">關閉</AtButton></template>
+    </AtDialog>
   </section>
 </template>
 
@@ -154,9 +207,13 @@ import AtSkeleton from '../components/design-system/AtSkeleton.vue';
 import AtInlineAlert from '../components/design-system/AtInlineAlert.vue';
 import AtEmpty from '../components/design-system/AtEmpty.vue';
 import AtDialog from '../components/design-system/AtDialog.vue';
+import ActionMenu from '../components/ActionMenu.vue';
+import { GRADES } from '../lib/constants';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
 import SchoolExamPeriodsPanel from '../components/SchoolExamPeriodsPanel.vue';
 import { supabase } from '../supabase';
+import ExamScoreCell from '../components/exams/ExamScoreCell.vue';
+import { describeScore, examErrorMessage, historyActionLabel, loadScoreHistory, saveScores } from '../lib/examScoresApi';
 import { canEditExamRound, examRoundActionLabel, filterExamStudents } from '../lib/examScoreStudentFilter';
 
 const props = defineProps({
@@ -175,7 +232,15 @@ const rounds = ref([]);
 const showCreate = ref(false);
 const saving = ref(false);
 const formError = ref('');
-const createForm = reactive({ title: '', exam_date: '', entry_deadline: '', grade_ids_text: '', subjects_text: '' });
+const createForm = reactive({ title: '', exam_date: '', entry_deadline: '', grade_ids: [], subjects: [] });
+const editingId = ref(null);
+const showVoid = ref(false);
+const roundMenuGroups = [{ id: 'round', label: '', items: [{ id: 'edit', label: '編輯' }, { id: 'delete', label: '刪除', danger: true }] }];
+const pendingDelete = ref(null);
+const deleteReason = ref('');
+const deleteNeedsReason = ref(false);
+const deleteError = ref('');
+const deleting = ref(false);
 
 const selected = ref(null);
 const students = ref([]);
@@ -203,19 +268,22 @@ async function api(path, options = {}) {
     },
   });
   const body = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(body.message || `HTTP ${res.status}`);
+  if (!res.ok) {
+    const raw = Object.values(body.errors || {})[0]?.[0] || body.message || `HTTP ${res.status}`;
+    throw Object.assign(new Error(raw), { status: res.status, raw });
+  }
   return body;
 }
 
 function statusLabel(status) {
-  return ({ draft: '草稿', published: '開放中', closed: '已關閉' }[status] || status);
+  return ({ draft: '草稿', published: '開放中', closed: '已關閉', void: '已刪除' }[status] || status);
 }
 
 async function loadRounds() {
   loading.value = true;
   error.value = '';
   try {
-    const res = await api(`/exam-rounds?campus_id=${encodeURIComponent(props.branchId)}&per_page=100`);
+    const res = await api(`/exam-rounds?campus_id=${encodeURIComponent(props.branchId)}&per_page=100${isDirector.value && showVoid.value ? '&include_void=1' : ''}`);
     rounds.value = res.data || [];
     if (props.focusRoundId) {
       const focus = rounds.value.find((r) => String(r.id) === String(props.focusRoundId));
@@ -229,44 +297,99 @@ async function loadRounds() {
   }
 }
 
+function resetForm() {
+  Object.assign(createForm, { title: '', exam_date: '', entry_deadline: '', grade_ids: [], subjects: [] });
+  editingId.value = null;
+  formError.value = '';
+}
+
+function openCreate() {
+  resetForm();
+  showCreate.value = true;
+}
+
+function openEdit(round) {
+  resetForm();
+  editingId.value = round.id;
+  Object.assign(createForm, {
+    title: round.title,
+    exam_date: round.exam_date || '',
+    entry_deadline: round.entry_deadline || '',
+    grade_ids: [...(round.grade_ids || [])],
+    subjects: (round.subjects || []).map((x) => ({ id: x.id, name: x.name, max_score: x.max_score })),
+  });
+  showCreate.value = true;
+}
+
 async function createRound() {
   formError.value = '';
-  const gradeIds = String(createForm.grade_ids_text || '')
-    .split(/[,，\s]+/)
-    .map((x) => Number(x))
-    .filter((n) => Number.isFinite(n) && n > 0);
+  const gradeIds = [...createForm.grade_ids].sort((x, y) => x - y);
   if (!createForm.title || !gradeIds.length) {
-    formError.value = '請填標題與至少一個年級';
+    formError.value = '請填標題與至少選一個年級';
     return;
   }
-  const subjectsText = String(createForm.subjects_text || '').trim();
-  const subjects = subjectsText
-    ? subjectsText.split(/[,，]/).map((name, i) => ({ name: name.trim(), sort_order: i })).filter((s) => s.name)
-    : undefined;
+  const subjects = createForm.subjects
+    .filter((x) => x.name)
+    .map((x, i) => ({ ...(x.id ? { id: x.id, max_score: x.max_score } : {}), name: x.name, sort_order: i }));
+  if (editingId.value && !subjects.length) {
+    formError.value = '至少要有一個科目';
+    return;
+  }
   saving.value = true;
   try {
-    await api('/exam-rounds', {
-      method: 'POST',
+    await api(editingId.value ? `/exam-rounds/${editingId.value}` : '/exam-rounds', {
+      method: editingId.value ? 'PATCH' : 'POST',
       body: JSON.stringify({
-        campus_id: Number(props.branchId),
+        ...(editingId.value ? {} : { campus_id: Number(props.branchId) }),
         title: createForm.title,
         exam_date: createForm.exam_date || null,
         entry_deadline: createForm.entry_deadline || null,
         grade_ids: gradeIds,
-        subjects,
+        subjects: subjects.length ? subjects : undefined,
       }),
     });
     showCreate.value = false;
-    createForm.title = '';
-    createForm.exam_date = '';
-    createForm.entry_deadline = '';
-    createForm.grade_ids_text = '';
-    createForm.subjects_text = '';
+    resetForm();
     await loadRounds();
   } catch (e) {
-    formError.value = e.message || '建立失敗';
+    formError.value = e.message || '儲存失敗';
   } finally {
     saving.value = false;
+  }
+}
+
+function onRoundMenu(round, id) {
+  if (id === 'edit') return openEdit(round);
+  deleteError.value = '';
+  deleteReason.value = '';
+  deleteNeedsReason.value = false;
+  pendingDelete.value = round;
+}
+
+async function confirmDeleteRound() {
+  const round = pendingDelete.value;
+  if (!round) return;
+  deleting.value = true;
+  deleteError.value = '';
+  try {
+    // Try without a reason first: a round with no scores is deleted outright; otherwise the API asks for one (422).
+    await api(`/exam-rounds/${round.id}`, { method: 'DELETE', body: JSON.stringify({ reason: deleteReason.value || undefined }) });
+    pendingDelete.value = null;
+    await loadRounds();
+  } catch (e) {
+    if (/需填寫原因/.test(e.message || '')) deleteNeedsReason.value = true;
+    deleteError.value = e.message || '刪除失敗';
+  } finally {
+    deleting.value = false;
+  }
+}
+
+async function restoreRound(round) {
+  try {
+    await api(`/exam-rounds/${round.id}/restore`, { method: 'POST' });
+    await loadRounds();
+  } catch (e) {
+    error.value = e.message || '復原失敗';
   }
 }
 
@@ -310,11 +433,6 @@ async function openRound(round) {
   try {
     const res = await api(`/exam-rounds/${round.id}/students`);
     students.value = res.data || [];
-    for (const row of students.value) {
-      for (const score of row.scores || []) {
-        draftScores[`${row.student_id}:${score.exam_round_subject_id}`] = score.score;
-      }
-    }
   } catch (e) {
     studentsError.value = e.message || '載入失敗';
     students.value = [];
@@ -323,46 +441,79 @@ async function openRound(round) {
   }
 }
 
-function scoreValue(row, subjectId) {
+function cellOf(row, subjectId) {
   const key = `${row.student_id}:${subjectId}`;
-  if (Object.prototype.hasOwnProperty.call(draftScores, key)) return draftScores[key];
-  const found = (row.scores || []).find((s) => Number(s.exam_round_subject_id) === Number(subjectId));
-  return found?.score ?? '';
+  if (draftScores[key]) return { edited: false, ...serverCell(row, subjectId), ...draftScores[key] };
+  return { clear: false, ...serverCell(row, subjectId) };
 }
 
-function onScoreInput(row, subjectId, raw) {
-  draftScores[`${row.student_id}:${subjectId}`] = raw === '' ? null : Number(raw);
+function serverCell(row, subjectId) {
+  const f = (row.scores || []).find((s) => Number(s.exam_round_subject_id) === Number(subjectId));
+  return { score: f?.score ?? null, is_absent: !!f?.is_absent, edited: !!f?.edited, clear: false };
 }
 
-async function saveStudent(row) {
+function onCellChange(row, subjectId, v) {
+  draftScores[`${row.student_id}:${subjectId}`] = { ...v, clear: false };
+}
+
+function onCellClear(row, subjectId) {
+  draftScores[`${row.student_id}:${subjectId}`] = { score: null, is_absent: false, clear: true };
+}
+
+const reasonFor = ref(null);
+const reasonText = ref('');
+const historyRows = ref(null);
+const historyName = ref('');
+
+function subjectName(id) {
+  return (selected.value?.subjects || []).find((s) => Number(s.id) === Number(id))?.name || '';
+}
+
+async function openHistory(row) {
   scoreError.value = '';
-  const scores = (selected.value.subjects || []).map((subject) => {
-    const key = `${row.student_id}:${subject.id}`;
-    const value = Object.prototype.hasOwnProperty.call(draftScores, key)
-      ? draftScores[key]
-      : (row.scores || []).find((s) => Number(s.exam_round_subject_id) === Number(subject.id))?.score;
-    if (value === '' || value == null || Number.isNaN(Number(value))) return null;
-    return {
+  try {
+    historyRows.value = await loadScoreHistory(api, selected.value.id, row.student_id);
+    historyName.value = row.student_name;
+  } catch (e) {
+    scoreError.value = examErrorMessage(e);
+  }
+}
+
+function saveStudent(row) {
+  scoreError.value = '';
+  if (!(selected.value.subjects || []).some((s) => draftScores[`${row.student_id}:${s.id}`])) {
+    scoreError.value = '沒有改動，請先修改分數';
+    return;
+  }
+  // A director correcting a closed round must give a reason (API 422 otherwise).
+  if (selected.value.status === 'closed') {
+    reasonText.value = '';
+    reasonFor.value = row;
+    return;
+  }
+  return submitScores(row, '');
+}
+
+async function submitScores(row, reason) {
+  const scores = [];
+  for (const subject of selected.value.subjects || []) {
+    const d = draftScores[`${row.student_id}:${subject.id}`];
+    // A typed-then-erased (or ticked-then-unticked 缺考) cell is no entry: skip it, as before E2; only 清除 deletes.
+    if (!d || (!d.clear && !d.is_absent && (d.score === null || d.score === undefined || d.score === ''))) continue;
+    scores.push({
       student_id: row.student_id,
       exam_round_subject_id: subject.id,
-      score: Number(value),
-      is_absent: false,
-    };
-  }).filter(Boolean);
-
-  if (!scores.length) {
-    scoreError.value = '請至少填一科分數';
-    return;
+      ...(d.clear ? { clear: true } : { score: d.is_absent ? null : d.score, is_absent: d.is_absent }),
+    });
   }
   savingStudentId.value = row.student_id;
   try {
-    await api(`/exam-rounds/${selected.value.id}/scores`, {
-      method: 'POST',
-      body: JSON.stringify({ scores }),
-    });
+    await saveScores(api, selected.value.id, scores, reason);
+    reasonFor.value = null;
     await openRound(selected.value);
   } catch (e) {
-    scoreError.value = e.message || '儲存失敗';
+    reasonFor.value = null;
+    scoreError.value = examErrorMessage(e);
   } finally {
     savingStudentId.value = null;
   }
@@ -391,7 +542,15 @@ onMounted(loadRounds);
 .muted { color: var(--text-light); margin: 4px 0 0; font-size: var(--ds-font-size-sm); }
 .status-pill { font-size: var(--ds-font-size-xs); padding: 2px 8px; border-radius: var(--ds-radius-pill); background: var(--ds-canvas-soft); }
 .status-published { background: var(--success-bg); }
+.status-void { background: var(--danger-bg, var(--ds-surface-2)); }
 .status-closed { background: var(--ds-surface-2); }
+.exam-void-toggle { display: inline-flex; align-items: center; gap: 6px; margin: 0; font-size: var(--ds-font-size-sm); }
+.exam-grade-picker, .exam-subject-editor { border: 1px solid var(--border); border-radius: var(--ds-radius-lg); margin: 0 0 10px; padding: 8px 12px; }
+.exam-grade-picker { display: grid; grid-template-columns: repeat(auto-fill, minmax(10rem, 1fr)); gap: 2px 8px; }
+.exam-grade-picker legend { grid-column: 1 / -1; }
+.exam-grade-option { display: flex; align-items: center; gap: 6px; margin: 0; }
+.exam-grade-option input { display: inline; width: auto; margin: 0; }
+.exam-subject-row { display: flex; gap: 8px; align-items: center; margin-bottom: 6px; }
 .exam-form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .exam-error { color: var(--danger); margin-top: 8px; }
 .exam-score-search { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 10px; }
@@ -401,7 +560,8 @@ onMounted(loadRounds);
 .exam-score-table-wrap { overflow-x: auto; }
 .exam-score-table { width: 100%; border-collapse: collapse; }
 .exam-score-table th, .exam-score-table td { padding: 8px; border-bottom: 1px solid var(--border); text-align: left; vertical-align: middle; }
-.exam-score-input { width: 4.5rem; padding: 6px 8px; }
+.exam-history { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; font-size: var(--ds-font-size-lg); }
+.exam-history small { display: block; }
 .exam-complete { color: var(--success); display: block; }
 label { display: block; margin-bottom: 10px; }
 label input, label select, label textarea { display: block; width: 100%; margin-top: 4px; }

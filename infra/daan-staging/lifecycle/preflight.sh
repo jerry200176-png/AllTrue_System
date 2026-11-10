@@ -17,7 +17,7 @@ if ! command -v docker >/dev/null; then
   exit 2
 fi
 if ! docker info >/dev/null 2>&1; then
-  echo "ERROR: cannot talk to Docker daemon (need docker group or sudo bootstrap)" >&2
+  echo "ERROR: cannot talk to Docker daemon (rootless daemon down? systemctl --user start docker)" >&2
   exit 2
 fi
 
@@ -30,12 +30,17 @@ if [[ "${AVAIL}" -lt "${MIN_AVAIL_MB}" ]]; then
   exit 3
 fi
 
-# Port collision checks (must remain free of host binds we refuse to take)
-for spec in "0.0.0.0:8080" "*:8080" "0.0.0.0:3306" "127.0.0.1:3306"; do
-  :
-done
-if ss -lnt 2>/dev/null | grep -qE '127\.0\.0\.1:18080\s'; then
-  echo "WARN: 127.0.0.1:18080 already listening — staging nginx may fail to bind"
+# Port collision checks
+DOCKER_INFO="$(docker info 2>/dev/null || true)"
+if ! grep -qi rootless <<<"${DOCKER_INFO}"; then
+  echo "ERROR: Docker daemon is not rootless; refusing (no docker group / sudo)." >&2
+  exit 2
+fi
+if ss -lnt 2>/dev/null | grep -qE "127\\.0\\.0\\.1:${STAGING_PORT}\\s" \
+  && ! grep -qx 'alltrue-stage-nginx' <<<"$(docker ps --format '{{.Names}}')"; then
+  echo "ERROR: 127.0.0.1:${STAGING_PORT} is held by something other than this stack" >&2
+  echo "(e.g. a legacy rootful alltrue-stage; set STAGING_HTTP_PORT or remove it)." >&2
+  exit 2
 fi
 if ss -lnt 2>/dev/null | grep -qE '0\.0\.0\.0:8080\s'; then
   echo "OK: host :8080 in use (expected Dify) — staging will NOT bind 8080"
@@ -44,6 +49,7 @@ if ss -lnt 2>/dev/null | grep -qE '127\.0\.0\.1:3306\s'; then
   echo "OK: host 127.0.0.1:3306 in use (expected host MySQL) — staging MySQL is Docker-internal only"
 fi
 
+[[ -s "${STAGING_HTPASSWD}" && -s "${STAGING_GATE_CONF}" ]] || { echo "ERROR: ${STAGING_HTPASSWD} missing; run gen-basic-auth.sh (staging is never served without the gate)" >&2; exit 2; }
 echo "=== compose config validate ==="
 compose config -q
 echo "PREFLIGHT_OK"

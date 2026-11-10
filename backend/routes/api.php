@@ -35,6 +35,8 @@ use App\Http\Controllers\TempRfidController;
 use App\Http\Controllers\ResetDataController;
 use App\Http\Controllers\BackfillController;
 use App\Http\Controllers\LineWebhookController;
+use App\Http\Controllers\TelegramBindCodeController;
+use App\Http\Controllers\TelegramBindingReviewController;
 use App\Http\Controllers\TelegramWebhookController;
 use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\ActionInboxController;
@@ -71,6 +73,7 @@ use App\Http\Controllers\TeacherEligibilityInputController;
 use App\Http\Controllers\AssessmentController;
 use App\Http\Controllers\ExamRoundController;
 use App\Http\Controllers\SchoolExamPeriodController;
+use App\Http\Controllers\SchoolMergeController;
 use App\Http\Controllers\QuestionBankController;
 use App\Http\Controllers\PopOperationController;
 use App\Http\Controllers\ContractAmendmentController;
@@ -493,6 +496,8 @@ Route::prefix('v1')->group(function () {
         Route::post('part-time-rate-cards', [PartTimeRateCardController::class, 'store'])->middleware('require_pin');
         Route::put('part-time-rate-cards/{id}', [PartTimeRateCardController::class, 'update'])->whereNumber('id')->middleware('require_pin');
         Route::delete('part-time-rate-cards/{id}', [PartTimeRateCardController::class, 'destroy'])->whereNumber('id')->middleware('require_pin');
+        Route::put('finance/parttime-payroll/admin-bonus', [\App\Http\Controllers\ParttimePayrollAdminBonusController::class, 'upsert'])->middleware('require_pin');
+        Route::delete('finance/parttime-payroll/admin-bonus', [\App\Http\Controllers\ParttimePayrollAdminBonusController::class, 'destroy'])->middleware('require_pin');
         Route::get('finance/parttime-payroll/export', [FinanceController::class, 'parttimePayrollExport'])->middleware('require_pin');
         Route::get('finance/parttime-payroll/{teacherId}/sessions', [FinanceController::class, 'parttimePayrollSessions'])->whereNumber('teacherId')->middleware('require_pin');
         Route::post('finance/parttime-payroll/lock', [FinanceController::class, 'parttimePayrollLock'])->middleware('require_pin');
@@ -500,6 +505,7 @@ Route::prefix('v1')->group(function () {
         Route::post('backfill/register-subject-units', [BackfillController::class, 'registerSubjectUnits']);
 
         Route::get('alerts/tuition', [AlertController::class, 'tuition']);
+        Route::post('accounting/bills/export', [\App\Http\Controllers\BillExportController::class, 'export']);
         Route::get('alerts/tuition-slip/{studentClassId}', [AlertController::class, 'tuitionSlipData']);
 
         // ── Payment Reports (學收核銷) ──────────────────────────────
@@ -807,7 +813,9 @@ Route::prefix('v1')->group(function () {
         Route::get('exam-rounds', [ExamRoundController::class, 'index']);
         Route::get('exam-rounds/{examRound}', [ExamRoundController::class, 'show'])->whereNumber('examRound');
         Route::get('exam-rounds/{examRound}/students', [ExamRoundController::class, 'students'])->whereNumber('examRound');
+        Route::get('exam-rounds/{examRound}/history', [ExamRoundController::class, 'history'])->whereNumber('examRound');
         Route::get('exam-periods/schools', [SchoolExamPeriodController::class, 'schools']);
+        Route::get('school-names', [SchoolMergeController::class, 'names']);
         Route::get('exam-periods', [SchoolExamPeriodController::class, 'index']);
         Route::get('students/{student}/exam-periods', [SchoolExamPeriodController::class, 'forStudent'])->whereNumber('student');
     });
@@ -835,6 +843,13 @@ Route::prefix('v1')->group(function () {
         Route::post('assessment-attempts/{assessmentAttempt}/review', [AssessmentController::class, 'reviewAttempt'])->whereNumber('assessmentAttempt');
 
         Route::post('exam-rounds', [ExamRoundController::class, 'store']);
+        Route::patch('exam-rounds/{examRound}', [ExamRoundController::class, 'update'])->whereNumber('examRound');
+        Route::delete('exam-rounds/{examRound}', [ExamRoundController::class, 'destroy'])->whereNumber('examRound');
+        Route::post('exam-rounds/{examRound}/restore', [ExamRoundController::class, 'restore'])->whereNumber('examRound');
+        Route::get('school-merge/suggestions', [SchoolMergeController::class, 'suggestions']);
+        Route::get('school-merge/history', [SchoolMergeController::class, 'history']);
+        Route::post('school-merge', [SchoolMergeController::class, 'merge']);
+        Route::post('school-merge/{requestId}/undo', [SchoolMergeController::class, 'undo']);
         Route::post('exam-periods', [SchoolExamPeriodController::class, 'store']);
         Route::patch('exam-periods/{period}', [SchoolExamPeriodController::class, 'update'])->whereNumber('period');
         Route::delete('exam-periods/{period}', [SchoolExamPeriodController::class, 'destroy'])->whereNumber('period');
@@ -894,6 +909,8 @@ Route::prefix('v1')->group(function () {
     // PRD-B: rate-limit parent login to mitigate credential stuffing (5 attempts/10min per IP).
     Route::post('parent/login', [ParentPortalController::class, 'login'])
         ->middleware('throttle:5,10');
+    Route::post('parent/telegram-bind-code', [TelegramBindCodeController::class, 'issue'])
+        ->middleware('throttle:5,10');
     Route::get('parent/dashboard', [ParentPortalController::class, 'dashboard']);
     Route::post('parent/switch-student', [ParentPortalController::class, 'switchStudent']);
     Route::post('parent/sessions/{sessionId}/leave', [ParentPortalController::class, 'requestLeave']);
@@ -939,6 +956,8 @@ Route::prefix('v1')->group(function () {
     Route::middleware(['role:director', 'require_campus', 'require_password_change'])->group(function () {
         Route::get('parent/payment-message/{studentId}', [ParentPortalController::class, 'paymentMessage']);
         Route::get('line/status', [LineWebhookController::class, 'status']);
+        Route::get('telegram/bindings', [TelegramBindingReviewController::class, 'index']);
+        Route::post('telegram/bindings/unbind', [TelegramBindingReviewController::class, 'unbind']);
         Route::post('line/settings', [LineWebhookController::class, 'saveSettings']);
         Route::get('line/notify-settings', [LineWebhookController::class, 'notifySettings']);
         Route::put('line/notify-settings', [LineWebhookController::class, 'saveNotifySettings']);
@@ -985,13 +1004,13 @@ Route::prefix('v1')->group(function () {
 
     // ── Bug Reports (director + teacher: submit & view own; super_admin: branch queue + status) ──
     Route::middleware(['role:director,teacher', 'require_campus', 'require_password_change'])->group(function () {
-        Route::post('bugs', [BugReportController::class, 'store']);
+        Route::post('bugs', [BugReportController::class, 'store'])->middleware('throttle:bug-report');
         Route::get('bugs', [BugReportController::class, 'index']);
         Route::get('bugs/unread-badge', [BugReportController::class, 'unreadBadge']);
         Route::get('bugs/open-on-page', [BugReportController::class, 'openOnPage']);
         Route::get('bugs/{id}', [BugReportController::class, 'show']);
-        Route::post('bugs/{id}/comments', [BugReportController::class, 'addComment']);
-        Route::post('bugs/{id}/reporter-verify', [BugReportController::class, 'reporterVerify']);
+        Route::post('bugs/{id}/comments', [BugReportController::class, 'addComment'])->middleware('throttle:bug-comment');
+        Route::post('bugs/{id}/reporter-verify', [BugReportController::class, 'reporterVerify'])->middleware('throttle:bug-comment');
     });
     Route::middleware(['super_admin', 'require_campus', 'require_password_change'])->group(function () {
         Route::post('bugs/{id}/status', [BugReportController::class, 'updateStatus']);

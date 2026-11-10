@@ -1,0 +1,8 @@
+updates:
+  - id: parent-2026-11-06-home-three-cards
+    published_at: "2026-11-06"
+    expires_at: "2026-12-06"
+    kind: improvement
+    title: 首頁只留三件事，下方有四個分頁
+    summary: 首頁只看下一堂課、要繳的錢和老師的新回饋；下方分頁是首頁、課表、學習、繳費。
+    details: 請假、繳費和留言的功能都還在，原本的設定（LINE 綁定、通知）移到右上角的齒輪。

@@ -96,3 +96,7 @@ if (getenv('GITHUB_ACTIONS') !== 'true' && getenv('DB_DATABASE') === 'AllTrue_te
 }
 
 require __DIR__ . '/../vendor/autoload.php';
+
+// Race-test helpers (alltrue_race_isolation_level() etc.) are pure functions.
+// Load them for every test so callers don't depend on shard order.
+require_once __DIR__ . '/Support/alltrueTestDatabase.php';

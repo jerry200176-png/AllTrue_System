@@ -21,7 +21,7 @@ class InvoicesExport implements FromCollection, WithHeadings
             'Status',
             'Note',
             'created_at',
-        ]);
+        ])->each(fn ($invoice) => $invoice->Note = \App\Services\Billing\InvoiceNumber::visibleNote($invoice->Note)); // the number tag is bookkeeping
     }
 
     public function headings(): array

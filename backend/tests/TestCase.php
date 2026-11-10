@@ -70,8 +70,10 @@ abstract class TestCase extends BaseTestCase
         }
         $subjects = ['Chinese', 'English', 'Math', 'Physics', 'Chemistry', 'Science', 'Biology', 'Social'];
         $rows = [];
-        foreach ($subjects as $name) {
-            $rows[] = ['School_id' => 1, 'Grade_no' => 0, 'Subject_Name' => $name];
+        // Fixed high ids: auto-increment ids gave the first test in each worker DB Subject 1 = Chinese, so tests that
+        // insertOrIgnore their own Subject 1/2 (or join SubjectID 1) passed or failed by test order (shards, #5013).
+        foreach ($subjects as $i => $name) {
+            $rows[] = ['id' => 970001 + $i, 'School_id' => 1, 'Grade_no' => 0, 'Subject_Name' => $name];
         }
         DB::table('Subject')->insert($rows);
     }

@@ -100,18 +100,14 @@ class MonthlyBillingService
     /**
      * #4765: the outside dates only when no countable lesson lies inside the contract dates: then billing prices the
      * contract's month from the stored Charge. A makeup taught after the end beside lessons inside stays collectable.
-     * A lesson whose month a catch-up already billed (MonthlyRenewalPeriodService::inspect rule) is settled, so it neither blocks nor counts.
+     * A lesson a live bill's own item range already covers (BillingPeriod::datesCoveredByBills) is settled, so it neither blocks nor counts.
      *
      * @return list<string>
      */
     public function lessonsOnlyOutsideContract(Model $course): array
     {
         $outside = $this->taughtLessonsOutsideContract($course);
-        $billed = $outside === [] ? [] : DB::table('Invoice as inv')->join('StudentClass as sc', 'sc.ID', '=', 'inv.StudentClassID')
-            ->where('sc.StudentID', $course->getAttribute('StudentID'))->where('sc.SubjectID', $course->getAttribute('SubjectID'))
-            ->whereIn('inv.billing_period', array_values(array_unique(array_map(fn (string $d) => substr($d, 0, 7), $outside))))
-            ->where(fn ($q) => $q->whereNull('inv.Status')->orWhere('inv.Status', '<>', 'void'))->pluck('inv.billing_period')->all();
-        $covered = array_values(array_filter($outside, fn (string $d) => in_array(substr($d, 0, 7), $billed, true)));
+        $covered = \App\Services\Billing\BillingPeriod::datesCoveredByBills($course, $outside);
         $open = array_values(array_diff($outside, $covered));
         $rest = $this->countableLessonDates($course)->reject(fn (string $d) => in_array($d, $covered, true));
 
@@ -285,6 +281,30 @@ class MonthlyBillingService
             'sessions' => $details->all()];
     }
 
+    /**
+     * in-app #518 (display only): what the lessons still to be taught in [start,end] (scheduled or rescheduled) are worth,
+     * priced exactly like reviewSessions() (forDate + sessionAmount). Null when any of them has no known price, so the
+     * caller cannot claim a match it did not verify.
+     */
+    public function remainingScheduledCharge(Model $course, string $start, string $end): ?int
+    {
+        $remaining = ClassSession::query()->where('StudentClassID', (int) $course->getKey())
+            ->whereIn('Status', ['scheduled', 'rescheduled'])
+            ->whereBetween('SessionDate', [$start, $end])
+            ->get(['id', 'StudentClassID', 'SessionDate', 'StartTime', 'EndTime', 'Status', 'session_charge']);
+        $total = 0.0;
+        foreach ($remaining as $session) {
+            $pricing = $this->pricing->forDate($course, (string) $session->SessionDate);
+            $known = $pricing['rate'] > 0 && ($pricing['rate_unit'] === 'session'
+                || ($pricing['source'] === 'student_class_rate' && $session->session_charge !== null)
+                || self::minutes((string) $session->EndTime) > self::minutes((string) $session->StartTime));
+            if (!$known) return null;
+            $total += $this->sessionAmount($session, $pricing);
+        }
+
+        return max(0, (int) round($total));
+    }
+
     private function sessionAmount(ClassSession $session, array $pricing): float
     {
         if ($pricing['rate_unit'] === 'session') return (float) $pricing['rate'];
@@ -369,8 +389,8 @@ class MonthlyBillingService
             $anchor = Carbon::today();
         }
 
-        // A prepaid next-period invoice is labelled with the month its service
-        // starts in (e.g. 8/30–9/28 → 2026-08); its own service range, when
+        // A cycle invoice is labelled with the month of its first lesson (in-app #514,
+        // e.g. 8/30–9/28 with September lessons → 2026-09); its own service range, when
         // known, is the window instead of the calendar month (#3445).
         $hasServiceRange = $serviceStart !== null && $serviceEnd !== null;
         $periodStart = $hasServiceRange

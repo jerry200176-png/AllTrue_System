@@ -14,8 +14,9 @@ const slots = normalizeCrossCampusBusySlots([
 
 assert.deepEqual(slots, [
   { start: 600, end: 720, campusId: 16 },
+  { start: 780, end: 900, campusId: 16 },
   { start: 930, end: 990, campusId: 9 },
-], 'only full slots at another campus are presentation candidates');
+], 'every other-campus slot counts, even a group class with a free seat (in-app #515)');
 assert.equal(hasCrossCampusBusySlot(slots, 9), false, 'a slot ending at 10:00 does not mark the next hour');
 assert.equal(hasCrossCampusBusySlot(slots, 10), true, '10:00–11:00 overlaps a cross-campus busy interval');
 assert.equal(hasCrossCampusBusySlot(slots, 15), true, '15:00–16:00 overlaps a 15:30 start');

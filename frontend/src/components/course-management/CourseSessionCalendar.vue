@@ -1,22 +1,18 @@
 <template>
-  <section class="course-session-calendar" data-testid="course-session-calendar" aria-label="課程排課行事曆">
-    <div class="csc-header">
-      <button type="button" class="ghost small csc-nav" data-testid="csc-prev-month" aria-label="上個月" @click="shiftMonth(-1)">
-        <span class="material-symbols-outlined" aria-hidden="true">chevron_left</span>
-      </button>
-      <strong class="csc-month">{{ monthLabel }}</strong>
-      <button type="button" class="ghost small csc-nav" data-testid="csc-next-month" aria-label="下個月" @click="shiftMonth(1)">
-        <span class="material-symbols-outlined" aria-hidden="true">chevron_right</span>
-      </button>
-      <button type="button" class="ghost small" data-testid="csc-today" @click="goToday">今天</button>
+  <section class="course-session-calendar tw:rounded-2xl tw:border tw:border-border tw:bg-card tw:p-3 tw:shadow-tpl-card tw:sm:p-5" data-testid="course-session-calendar" aria-label="課程排課行事曆">
+    <div class="tw:flex tw:items-center tw:gap-2">
+      <Button variant="secondary" size="icon" class="tw:size-14" data-testid="csc-prev-month" aria-label="上個月" @click="shiftMonth(-1)"><ChevronLeft :size="26" aria-hidden="true" /></Button>
+      <strong class="csc-month tw:flex-1 tw:whitespace-nowrap tw:text-center tw:text-[length:var(--tpl-text-list)] tw:font-bold">{{ monthLabel }}</strong>
+      <Button variant="secondary" size="icon" class="tw:size-14" data-testid="csc-next-month" aria-label="下個月" @click="shiftMonth(1)"><ChevronRight :size="26" aria-hidden="true" /></Button>
+      <Button variant="secondary" class="tw:h-14 tw:px-5 tw:text-[length:var(--tpl-text-body)]" data-testid="csc-today" @click="goToday">今天</Button>
     </div>
-    <p class="csc-hint" data-testid="csc-scope-hint">
-      點空白的未來日期可新增堂次；已排與預排堂次會顯示在月曆中。
+    <p class="csc-hint tw:mt-3 tw:text-[length:var(--tpl-text-caption)] tw:text-tpl-secondary" data-testid="csc-scope-hint">
+      點空白的未來日期可新增堂次。
     </p>
-    <div class="csc-weekdays" aria-hidden="true">
+    <div class="csc-weekdays tw:mt-3 tw:text-[length:var(--tpl-text-caption)] tw:font-semibold tw:text-tpl-secondary" aria-hidden="true">
       <span v-for="wd in weekdayLabels" :key="wd">{{ wd }}</span>
     </div>
-    <div class="csc-grid" role="grid">
+    <div class="csc-grid tw:mt-1" role="grid">
       <button
         v-for="cell in cells"
         :key="cell.key"
@@ -26,6 +22,7 @@
           'csc-cell',
           {
             'csc-cell--muted': !cell.inMonth,
+            'csc-cell--today': cell.date === todayYmd,
             'csc-cell--materialized': cell.hasMaterialized,
             'csc-cell--projected': !cell.hasMaterialized && cell.hasProjected,
             'csc-cell--creatable': cell.canCreate && createEnabled,
@@ -47,19 +44,18 @@
         <span class="csc-day-num">{{ cell.day }}</span>
         <small v-if="cell.hasMaterialized" class="csc-label csc-label--mat" :data-testid="`csc-time-${cell.date}`">{{ timeLabel(cell) }}</small>
         <small v-else-if="cell.hasProjected" class="csc-label csc-label--proj">預排{{ timeLabel(cell) === '已排' ? '' : ` ${timeLabel(cell)}` }}</small>
-        <small v-else-if="cell.canCreate && createEnabled" class="csc-label">＋</small>
+        <small v-else-if="cell.canCreate && createEnabled" class="csc-label csc-label--add">＋</small>
         <small v-if="stateWord(cell)" class="csc-label csc-label--warn">{{ stateWord(cell) }}</small>
       </button>
     </div>
-    <div class="csc-legend">
-      <span class="csc-chip csc-chip--mat">19:00 已建立（開始時間）</span>
-      <span class="csc-chip csc-chip--warn">請假／取消／例外 等狀態</span>
-      <span class="csc-chip csc-chip--proj">預排</span>
-      <span v-if="canMove" class="csc-chip">可拖拉未來堂次改期</span>
-      <span v-if="createEnabled" class="csc-chip csc-chip--add">空白未來日可新增</span>
+    <div class="csc-legend tw:mt-4 tw:text-[length:var(--tpl-text-caption)]">
+      <span class="csc-chip"><i class="csc-dot csc-dot--mat" aria-hidden="true" />已排（開始時間）</span>
+      <span class="csc-chip"><i class="csc-dot csc-dot--proj" aria-hidden="true" />預排</span>
+      <span class="csc-chip"><i class="csc-dot csc-dot--warn" aria-hidden="true" />請假／取消</span>
+      <span v-if="canMove" class="csc-chip">可拖拉改期</span>
     </div>
-    <div v-if="showQuickAdd && createEnabled && canQuickAdd" class="csc-secondary">
-      <button type="button" class="ghost small" data-testid="csc-quick-add" @click="$emit('quick-add')">補課／補登…</button>
+    <div v-if="showQuickAdd && createEnabled && canQuickAdd" class="tw:mt-3">
+      <Button variant="secondary" class="tw:h-14 tw:px-5 tw:text-[length:var(--tpl-text-body)]" data-testid="csc-quick-add" @click="$emit('quick-add')">補課／補登…</Button>
     </div>
   </section>
 </template>
@@ -73,6 +69,8 @@ import {
   courseSessionCalendarWeekdayLabels,
   toYmd,
 } from '../../composables/course-management/useCourseSessionCalendar.js';
+import { ChevronLeft, ChevronRight } from 'lucide-vue-next';
+import { Button } from '@/components/ui/button';
 
 const props = defineProps({
   course: { type: Object, required: true },
@@ -179,33 +177,27 @@ function onCellClick(cell) {
 </script>
 
 <style scoped>
-.course-session-calendar { margin-top: 4px; padding: 12px; border: 1px solid var(--ds-border, var(--ds-hairline)); border-radius: 12px; background: var(--ds-surface, var(--ds-canvas)); width: 100%; }
-.csc-header { display: flex; align-items: center; gap: 6px; margin-bottom: 8px; }
-.csc-month { flex: 1; text-align: center; font-size: .95rem; }
-.csc-nav { min-width: 36px; padding-inline: 4px; }
-.csc-nav .material-symbols-outlined { font-size: 20px; line-height: 1; }
-.csc-hint { margin: 0 0 10px; font-size: .82rem; color: var(--ds-text-secondary, var(--ds-ink-mute)); line-height: 1.45; }
+/* Same look as the class calendar (SmartCalendar): colored blocks carry the start time; today is an ink dot. */
 .csc-weekdays, .csc-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px; }
-.csc-weekdays { margin-bottom: 4px; font-size: .75rem; color: var(--ds-text-secondary); text-align: center; }
-.csc-cell { min-height: 52px; display: flex; flex-direction: column; align-items: flex-start; gap: 2px; padding: 6px; border: 1px solid var(--ds-border); border-radius: 8px; background: var(--ds-surface); cursor: default; text-align: left; }
-.csc-cell:disabled { opacity: .55; }
-.csc-cell--muted { opacity: .35; }
-.csc-cell--materialized { background: var(--ds-success-wash); }
-.csc-cell--projected { background: var(--ds-info-wash); }
-.csc-cell--creatable { cursor: pointer; border-style: dashed; }
-.csc-day-num { font-size: .82rem; font-weight: 600; }
-.csc-label { font-size: .68rem; line-height: 1.2; }
-.csc-label--mat { color: var(--ds-success); }
-.csc-label--proj { color: var(--ds-info); }
-.csc-label--warn { color: var(--ds-warning); font-weight: 600; }
+.csc-weekdays { text-align: center; }
+.csc-cell { min-height: 72px; display: flex; flex-direction: column; align-items: center; justify-content: flex-start; gap: 2px; padding: 6px 2px; border: 1px solid transparent; border-radius: 12px; background: var(--ds-canvas-soft); color: var(--ds-ink); cursor: default; font-size: var(--tpl-text-body); }
+.csc-cell:disabled { opacity: 1; }
+.csc-cell--muted { opacity: .4; background: transparent; }
+.csc-cell--materialized { background: color-mix(in srgb, var(--ds-cat-blue-deep) 16%, var(--ds-canvas)); border-color: var(--ds-cat-blue-deep); }
+.csc-cell--projected { background: var(--ds-canvas); border: 1px dashed var(--ds-cat-violet-deep); }
+.csc-cell--creatable { cursor: pointer; background: var(--ds-canvas); border: 1px dashed var(--ds-hairline-input); }
 .csc-cell[draggable='true'] { cursor: grab; }
-.csc-cell--drop { outline: 2px dashed var(--ds-info); outline-offset: -2px; background: var(--ds-info-wash); }
-.csc-label { white-space: nowrap; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
-.csc-legend { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
-.csc-chip { font-size: .75rem; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--ds-border); }
-.csc-chip--mat { background: var(--ds-success-wash); }
-.csc-chip--proj { background: var(--ds-info-wash); }
-.csc-chip--warn { color: var(--ds-warning); }
-.csc-chip--add { border-style: dashed; }
-.csc-secondary { margin-top: 10px; }
+.csc-cell--drop { outline: 2px dashed var(--ds-ink); outline-offset: -2px; }
+.csc-cell:focus-visible { outline: 2px solid var(--ds-ink); outline-offset: 2px; }
+.csc-day-num { display: grid; place-items: center; min-width: 2rem; height: 2rem; border-radius: 999px; font-weight: 700; line-height: 1; }
+.csc-cell--today .csc-day-num { background: var(--ds-ink); color: var(--ds-canvas); }
+.csc-label { font-size: .8125rem; font-weight: 700; line-height: 1.2; white-space: nowrap; max-width: 100%; overflow: hidden; text-overflow: ellipsis; color: var(--ds-ink); }
+.csc-label--warn { color: var(--ds-warning); }
+.csc-label--add { color: var(--ds-ink-secondary); font-size: 1.25rem; }
+.csc-legend { display: flex; flex-wrap: wrap; gap: 8px 16px; color: var(--ds-ink-secondary); }
+.csc-chip { display: inline-flex; align-items: center; gap: 8px; }
+.csc-dot { width: 14px; height: 14px; border-radius: 999px; display: inline-block; }
+.csc-dot--mat { background: var(--ds-cat-blue-deep); }
+.csc-dot--proj { border: 2px dashed var(--ds-cat-violet-deep); }
+.csc-dot--warn { background: var(--ds-warning); }
 </style>

@@ -108,13 +108,9 @@ Palace：`~/.mempalace/palace`（local-first，cloud session 沒有，跳過即�
 
 ---
 
-## Land queue (merge, don't race update-branch)
+## Land queue
 
-Add the label `queue` to a green-ready PR instead of looping on `gh pr update-branch` or `gh pr merge --auto`.
-`.github/workflows/land-queue.yml` takes the oldest labeled PR: it updates the branch when BEHIND, squash-merges when CLEAN with every required check green (no `--admin`), and removes the label with one comment on a conflict, failed check, or unresolved review thread (an unknown thread count never merges). Re-add `queue` after fixing.
-**Batching (only while the main ruleset's strict up-to-date policy is off):** the queue cuts `chore/land-queue-batch-<run>` from the main tip, merges up to 4 oldest eligible heads into it (a conflicting PR is left out with a comment), dispatches the required-check workflows on it, and squash-merges the members in order only when every required context is green and main has not moved. Red or timed out: members get a `batch-failed` comment and land one at a time. One serial merge per run; a head behind main is always updated first (`behindBy`), so strict off never merges an untested combination. Fork PRs never queue.
-GitHub's native merge queue is not used: it is unavailable for this user-owned repo (a `merge_queue` ruleset probe returned 422).
-**Final-head review:** green checks and zero threads still wait (`review-pending`, label retained) for the exact-head evidence in the [canonical merge policy](docs/governance/RISK_BASED_MERGE_POLICY.md#final-head-review-evidence). Serial and batch squashes re-read that evidence; a running/incomplete current-head Codex review cannot be overridden by owner fallback. Native auto-merge stays disabled until the Founder pins `review/final-head` after the default-branch gate has published checks. Existing approval continuity and T3 boundaries remain.
+See [`docs/sop/MERGE_SOP.md`](docs/sop/MERGE_SOP.md#land-queue-and-auto-delivery-mechanics).
 
 ## 任務完成後的記錄原則
 
@@ -125,12 +121,12 @@ GitHub's native merge queue is not used: it is unavailable for this user-owned r
 
 ## Parallel agents
 
-- Before starting: run `node scripts/pr-overlap.mjs` (or read the PR's `<!-- pr-overlap -->` sticky comment). If another open PR touches the same files, coordinate with that session or wait. Prefer small PRs (under ~400 lines) that merge fast.
+- Before starting: run `node scripts/pr-overlap.mjs` (or read the PR's `<!-- pr-overlap -->` sticky comment). If another open PR touches the same files, coordinate with that session or wait. Prefer small PRs that merge fast (limits: `docs/governance/FOUNDER_STANDING_DECISIONS.md`).
 - Landing: add label `queue`. Don't loop `update-branch`, `--auto` or custom merge scripts.
 - No stacked PRs: branch from main after the dependency merges.
 - Before merging an agent PR, read every `-` line of `git diff origin/main...HEAD`; nothing outside the PR's scope may be removed (2026-10-06 PR-C2 #3631 stale-copy revert).
 - Release notes: change fragments only (`docs/changes/…`). Never edit `CHANGELOG.md`, the generated JS or the exemption lists; `phpstan-baseline.neon` may only shrink.
-- Stale-copy guard: presubmit `[CHECK 0d]` fails a PR that deletes lines another PR merged to main in the last 7 days (`scripts/check-recent-work-revert.py`). Rebuild from current main; if intended, add label `intentional-revert` + reason in the PR body, then re-run presubmit.
+- Stale-copy guard: presubmit `[CHECK 0d]` fails a PR that deletes lines another PR merged to main in the last 7 days (`scripts/check-recent-work-revert.py`). Rebuild from current main; if intended, add a PR body line `Rewrites: #N — reason` for each listed PR (presubmit re-runs on body edits).
 - Deploys: only `deploy.yml`. A range of R0-R2 PRs, or an R3 range that passes the R3 auto controls (final-head Codex review, no open threads, no freeze; no migration, data-repair, identity/credential or control-plane effect), deploys on its own CI with no Founder click; anything else waits for the release train (`FOUNDER_STANDING_DECISIONS.md` 2026-10-21（二）之二). Gates exist to stop untrusted input (in-app report text, non-Founder GitHub content, bot output), not Founder-directed work.
 - Helpers (subagents) start from fresh `origin/main` in their own branch/session; never copy files from another worktree or session.
 - Review: when Codex is rate-limited, run `/code-review` (control-plane changes: an independent adversarial reviewer) before merging.

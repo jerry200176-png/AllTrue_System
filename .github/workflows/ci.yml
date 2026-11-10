@@ -100,6 +100,7 @@ jobs:
           node --test scripts/ci/production-secret-triggers.test.mjs
           node --test scripts/ci/production-ssh-environment.test.mjs
           node --test scripts/tests/register-synthetic-director.test.mjs
+          node --test scripts/tests/task-reconcile.test.mjs
           node --test scripts/tests/land-queue.test.mjs scripts/tests/pr-overlap.test.mjs scripts/tests/land-queue-dispatch-contract.test.mjs
           node --test scripts/tests/repo-hygiene.test.mjs
           python3 scripts/tests/test_branch_hygiene.py
@@ -143,6 +144,9 @@ jobs:
 
       - name: Test bug detail dump contract
         run: python3 scripts/tests/test_bug_detail_dump.py
+
+      - name: Test fixed private reader with synthetic recipients only
+        run: python3 scripts/tests/test_case5124_private_reader.py
 
       - name: Test permanent write-back cursor
         run: python3 -m unittest discover -s scripts/bug-writeback -p 'test_writeback_cursor.py'
@@ -201,48 +205,12 @@ jobs:
               - 'frontend/**'
             ci_config:
               - '.github/workflows/**'
+            # Every frontend change runs the whole UI foundation suite (~5-6 min). The old hand-written page list
+            # missed ParttimePayroll*, so #4979 merged with a broken payroll spec and main went red (fixed by #4999).
             ui_foundation:
-              - 'frontend/src/components/design-system/**'
-              - 'frontend/src/pages/NotificationsCenter.vue'
-              - 'frontend/src/pages/DirectorAccountsPage.vue'
-              - 'frontend/e2e/director-accounts-clarity.spec.js'
-              - 'frontend/src/pages/StudentsList.vue'
-              # axe gate dependency (Dependabot bumps of @axe-core/playwright)
-              - 'frontend/package.json'
-              - 'frontend/package-lock.json'
-              # pages scanned by e2e/ui-foundation-a11y-axe.spec.js
-              - 'frontend/src/pages/TeacherHomePage.vue'
-              - 'frontend/src/pages/AdmissionInquiriesPage.vue'
-              - 'frontend/src/pages/SmartCalendar.vue'
-              - 'frontend/src/pages/ChatPage.vue'
-              - 'frontend/src/pages/ParentPortal.vue'
-              - 'frontend/src/pages/AttendancePage.vue'
-              - 'frontend/src/pages/ProfileCenterPage.vue'
-              - 'frontend/src/styles.css'
-              - 'frontend/e2e/fixtures/ui-foundation/**'
-              - 'frontend/e2e/ui-foundation-*.spec.js'
-              - 'frontend/playwright.ui-foundation.config.js'
-              - 'frontend/vite.ui-foundation.config.js'
-              - 'scripts/check-no-public-ui-fixtures.sh'
-              - 'frontend/src/pages/TeacherEligibilityPage.vue'
-              - 'frontend/e2e/teacher-eligibility-clarity.spec.js'
-              - 'frontend/e2e/teacher-eligibility-playwright.config.js'
-              # 科目設定 (subject-settings-clarity.spec.js runs in the ui-foundation suite)
-              - 'frontend/src/pages/SubjectSettingsPage.vue'
-              - 'frontend/e2e/subject-settings-clarity.spec.js'
-              # tuition 繳費單／收據 fixture specs (#3894) + the surfaces, their state helpers and shared fixture they cover
-              - 'frontend/e2e/tuition-*-clarity.spec.js'
-              - 'frontend/src/{pages/TuitionCollectionPage.vue,components/AccountingLedgerModal.vue,components/PaymentSlipModal.vue,components/BillingDocument.vue,components/tuition/*.vue,lib/{legacyPaid,billingDocumentView,courseMoneyState,studentBillingRows,paymentActions}.js}'
+              - 'frontend/**'
               - 'backend/tests/Fixtures/slip_receipt_states_3894.json'
-              # #4180: sidebar search / hub tabs (ui-foundation-sidebar-navigation.spec.js) and the 課程查找 payment
-              # entry (ui-foundation-course-payment-entry.spec.js), incl. the helpers the production acceptance shares
-              - 'frontend/src/App.vue'
-              - 'frontend/src/lib/navigationRegistry.js'
-              - 'frontend/e2e/fixtures/openPageFromSidebarSearch.js'
-              - 'frontend/src/pages/CourseManagement.vue'
-              - 'frontend/e2e/fixtures/coursePaymentEntry.js'
-              - 'frontend/e2e/fixtures/{dismissOverlays,latestGetJson}.js'
-              - 'frontend/src/lib/{roleCapabilities,paymentStatus}.js'
+              - 'scripts/check-no-public-ui-fixtures.sh'
 
   # Visual regression (#4952). ADVISORY: not in the required-check ruleset (adding it needs a ruleset change by Jerry).
   # Runs scripts/visual-docker.sh, which picks the mcr.microsoft.com/playwright image matching package-lock.
@@ -308,14 +276,17 @@ jobs:
           chmod +x .github/scripts/golden-ci-report.sh
           ./.github/scripts/golden-ci-report.sh
 
-  phpunit:
-    name: PHPUnit Feature & Unit Tests
+  # Shard jobs (not required checks themselves): the required `PHPUnit Feature & Unit Tests`
+  # check is the `phpunit` aggregator below. Round-robin split of the sorted test files.
+  phpunit_shard:
+    name: PHPUnit shard
     needs: changes
-    # This job is a required main-branch check. Run it for every non-draft PR:
-    # GitHub rulesets do not treat a path-skipped required job as satisfied.
-    # Keep the real suite and its existing threshold; never synthesize a pass.
+    # Never path-skipped: the aggregator requires every shard to be green.
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3]
     runs-on: ubuntu-latest
-    # Full coverage already takes >13m; retain room for runner/setup variance.
     timeout-minutes: 25
     # Non-sensitive password for the ephemeral CI-only MySQL service.
     env:
@@ -378,12 +349,15 @@ jobs:
         run: composer install --no-interaction --prefer-dist --optimize-autoloader
 
       - name: Verify generated API route reference
+        if: matrix.shard == 1
         run: bash scripts/generate-ref-api-routes.sh --check
 
       - name: Verify Composer audit parser
+        if: matrix.shard == 1
         run: python3 scripts/tests/test_composer_audit_shape.py
 
       - name: Composer audit (security)
+        if: matrix.shard == 1
         working-directory: backend
         run: |
           # 只在 HIGH / CRITICAL 才擋 CI；MEDIUM 印警告
@@ -493,7 +467,26 @@ jobs:
           DB_DATABASE: AllTrue_test
           DB_USERNAME: admin
 
-      - name: Run PHPUnit (with JUnit XML report)
+      - name: Build this shard's phpunit config (sorted files, round-robin)
+        working-directory: backend
+        env:
+          SHARD: ${{ matrix.shard }}
+        run: |
+          python3 - <<'PYEOF'
+          import os, pathlib, re
+          files = sorted(str(p) for d in ("tests/Unit", "tests/Feature") for p in pathlib.Path(d).rglob("*Test.php"))
+          # ponytail: the three ~4 min concurrency files go first so round-robin puts one per shard; re-measure if shards drift.
+          heavy = [f"tests/Feature/{n}Test.php" for n in ("Billing/AgreedFeeConcurrency", "Billing/InvoiceCorrectionReissue", "InvoiceVoidSerialization")]
+          assert all(h in files for h in heavy), heavy
+          files = heavy + [f for f in files if f not in heavy]
+          mine = files[int(os.environ["SHARD"]) - 1::3]
+          suite = "<testsuites><testsuite name=\"Shard\">" + "".join(f"<file>./{f}</file>" for f in mine) + "</testsuite></testsuites>"
+          xml = re.sub(r"<testsuites>.*?</testsuites>", lambda _: suite, open("phpunit.xml").read(), flags=re.S)
+          open("phpunit.shard.xml", "w").write(xml)
+          print(f"shard {os.environ['SHARD']}: {len(mine)} of {len(files)} test files")
+          PYEOF
+
+      - name: Run PHPUnit shard (JUnit + PHP coverage)
         working-directory: backend
         run: |
           mkdir -p storage/test-results
@@ -501,12 +494,12 @@ jobs:
           # AllTrue_test_test_N, created by the GRANT step above). The repo's own
           # `artisan test` wrapper is not parallel-aware, so call paratest directly.
           LARAVEL_PARALLEL_TESTING=1 ./vendor/bin/paratest \
+            --configuration=phpunit.shard.xml \
             --runner='\Illuminate\Testing\ParallelRunner' \
             --processes=4 \
             --cache-directory=storage/framework/phpunit-cache \
-            --coverage-text \
-            --coverage-clover=storage/test-results/coverage.xml \
-            --log-junit=storage/test-results/junit.xml
+            --coverage-php=storage/test-results/coverage-${{ matrix.shard }}.cov \
+            --log-junit=storage/test-results/junit-${{ matrix.shard }}.xml
         env:
           DB_HOST: 127.0.0.1
           DB_PORT: 3306
@@ -514,32 +507,143 @@ jobs:
           DB_USERNAME: admin
           APP_ENV: testing
 
+      - name: Generate API route documentation
+        if: always() && matrix.shard == 1
+        working-directory: backend
+        env:
+          DB_HOST: 127.0.0.1
+          DB_PORT: 3306
+          DB_DATABASE: AllTrue_test
+          DB_USERNAME: admin
+        run: |
+          # Laravel 8 用 text 格式（--json 是 L9+），存成 txt 再用 Python 轉 Markdown
+          php artisan route:list 2>/dev/null > /tmp/routes.txt || true
+          python3 - <<'PYEOF'
+          import re, os
+
+          try:
+              with open("/tmp/routes.txt") as f:
+                  raw = f.read()
+          except Exception:
+              raw = ""
+
+          lines_out = ["# AllTrue API Route Reference",
+                       "> Auto-generated by `php artisan route:list`", ""]
+          lines_out += ["| Method | URI | Name |", "|--------|-----|------|"]
+          count = 0
+          for line in raw.splitlines():
+              # artisan table rows look like: | GET|HEAD  | api/v1/me | me |
+              m = re.match(r'\|\s*([\w|]+)\s*\|\s*(\S+)\s*\|\s*([\w./-]*)\s*\|', line)
+              if m:
+                  method = m.group(1).replace("|HEAD", "")
+                  uri    = m.group(2)
+                  name   = m.group(3) or "-"
+                  lines_out.append(f"| `{method}` | `/{uri}` | {name} |")
+                  count += 1
+
+          md = "\n".join(lines_out)
+          os.makedirs("storage/test-results", exist_ok=True)
+          with open("storage/test-results/api-routes.md", "w") as f:
+              f.write(md)
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as f:
+              f.write("\n\n" + "\n".join(lines_out[:25]) + "\n> ...see artifact for full list\n")
+          print(f"✅ Generated API docs: {count} routes")
+          PYEOF
+
+      - name: Frontend/backend API route contract (advisory)
+        if: always() && matrix.shard == 1
+        run: node scripts/ci/check-frontend-api-routes.mjs
+
+      - name: Upload shard results
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: phpunit-shard-${{ matrix.shard }}
+          path: |
+            backend/storage/test-results/junit-${{ matrix.shard }}.xml
+            backend/storage/test-results/coverage-${{ matrix.shard }}.cov
+            backend/storage/test-results/api-routes.md
+          retention-days: 3
+          if-no-files-found: warn
+
+  # REQUIRED CHECK `PHPUnit Feature & Unit Tests` (exact name; ruleset-required). Aggregates the shards:
+  # merges their coverage, runs the skipped report + coverage gate, and fails unless EVERY shard
+  # succeeded (skipped/cancelled/failed all fail). Never synthesize a pass.
+  phpunit:
+    name: PHPUnit Feature & Unit Tests
+    needs: phpunit_shard
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Setup PHP 8.2
+        uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962 # 2.40.0
+        with:
+          php-version: "8.2"
+          extensions: mbstring, pdo, pdo_mysql, bcmath, json, tokenizer, xml, ctype
+          coverage: none
+
+      - name: Cache Composer packages
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: backend/vendor
+          key: composer-${{ hashFiles('backend/composer.lock') }}
+          restore-keys: composer-
+
+      - name: Install PHP dependencies
+        working-directory: backend
+        run: composer install --no-interaction --prefer-dist --optimize-autoloader
+
+      - name: Download shard results
+        if: always()
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          pattern: phpunit-shard-*
+          merge-multiple: true
+          path: backend/storage/test-results
+
+      - name: Merge shard coverage into coverage.xml (phpcov)
+        if: needs.phpunit_shard.result == 'success'
+        working-directory: backend
+        run: |
+          mkdir -p storage/test-results/cov
+          mv storage/test-results/coverage-*.cov storage/test-results/cov/
+          php -d memory_limit=-1 ./vendor/bin/phpcov merge --clover storage/test-results/coverage.xml storage/test-results/cov
+
       - name: Skipped test report
         if: always()
         working-directory: backend
         run: |
-          XML=storage/test-results/junit.xml
-          if [ ! -f "$XML" ]; then
+          XML=$(ls storage/test-results/junit-*.xml 2>/dev/null | head -1)
+          if [ -z "$XML" ]; then
             echo "JUnit XML not found — skipping report." && exit 0
           fi
 
           SKIPPED=$(python3 - <<'PYEOF'
-          import xml.etree.ElementTree as ET, sys
-          tree = ET.parse("storage/test-results/junit.xml")
-          count = len(tree.findall(".//skipped"))
-          print(count)
+          import glob, xml.etree.ElementTree as ET
+          print(sum(len(ET.parse(f).findall(".//skipped")) for f in glob.glob("storage/test-results/junit-*.xml")))
+          PYEOF
+          )
+          TOTAL=$(python3 - <<'PYEOF'
+          import glob, xml.etree.ElementTree as ET
+          print(sum(len(ET.parse(f).findall(".//testcase")) for f in glob.glob("storage/test-results/junit-*.xml")))
           PYEOF
           )
 
-          echo "### 🧪 PHPUnit — Skipped Tests: ${SKIPPED}" >> "$GITHUB_STEP_SUMMARY"
+          echo "### 🧪 PHPUnit — ${TOTAL} tests, Skipped: ${SKIPPED}" >> "$GITHUB_STEP_SUMMARY"
           if [ "${SKIPPED}" -gt "0" ]; then
             python3 - <<'PYEOF' >> "$GITHUB_STEP_SUMMARY"
-          import xml.etree.ElementTree as ET
-          tree = ET.parse("storage/test-results/junit.xml")
+          import glob, xml.etree.ElementTree as ET
           rows = []
-          for tc in tree.findall(".//testcase"):
-              if tc.find("skipped") is not None:
-                  rows.append(f"| `{tc.get('classname', '')}` | `{tc.get('name', '')}` |")
+          for f in sorted(glob.glob("storage/test-results/junit-*.xml")):
+              for tc in ET.parse(f).findall(".//testcase"):
+                  if tc.find("skipped") is not None:
+                      rows.append(f"| `{tc.get('classname', '')}` | `{tc.get('name', '')}` |")
           if rows:
               print("\n| Class | Test |")
               print("|---|---|")
@@ -590,66 +694,28 @@ jobs:
               print(f"::warning::Coverage {pct}% is below the {WARN_THRESHOLD}% target")
           PYEOF
 
-      - name: Generate API route documentation
-        if: always()
-        working-directory: backend
-        env:
-          DB_HOST: 127.0.0.1
-          DB_PORT: 3306
-          DB_DATABASE: AllTrue_test
-          DB_USERNAME: admin
-        run: |
-          # Laravel 8 用 text 格式（--json 是 L9+），存成 txt 再用 Python 轉 Markdown
-          php artisan route:list 2>/dev/null > /tmp/routes.txt || true
-          python3 - <<'PYEOF'
-          import re, os
-
-          try:
-              with open("/tmp/routes.txt") as f:
-                  raw = f.read()
-          except Exception:
-              raw = ""
-
-          lines_out = ["# AllTrue API Route Reference",
-                       "> Auto-generated by `php artisan route:list`", ""]
-          lines_out += ["| Method | URI | Name |", "|--------|-----|------|"]
-          count = 0
-          for line in raw.splitlines():
-              # artisan table rows look like: | GET|HEAD  | api/v1/me | me |
-              m = re.match(r'\|\s*([\w|]+)\s*\|\s*(\S+)\s*\|\s*([\w./-]*)\s*\|', line)
-              if m:
-                  method = m.group(1).replace("|HEAD", "")
-                  uri    = m.group(2)
-                  name   = m.group(3) or "-"
-                  lines_out.append(f"| `{method}` | `/{uri}` | {name} |")
-                  count += 1
-
-          md = "\n".join(lines_out)
-          os.makedirs("storage/test-results", exist_ok=True)
-          with open("storage/test-results/api-routes.md", "w") as f:
-              f.write(md)
-          with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as f:
-              f.write("\n\n" + "\n".join(lines_out[:25]) + "\n> ...see artifact for full list\n")
-          print(f"✅ Generated API docs: {count} routes")
-          PYEOF
-
-      - name: Frontend/backend API route contract (advisory)
-        if: always()
-        run: node scripts/ci/check-frontend-api-routes.mjs
-
       - name: Upload test results
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: junit-test-results
           path: |
-            backend/storage/test-results/junit.xml
+            backend/storage/test-results/junit-*.xml
             backend/storage/test-results/coverage.xml
             backend/storage/test-results/api-routes.md
           if-no-files-found: warn
 
-  vite-build:
-    name: Vite Frontend Build
+      - name: Require every PHPUnit shard to be green
+        if: always()
+        env:
+          SHARDS: ${{ needs.phpunit_shard.result }}
+        run: |
+          [ "$SHARDS" = "success" ] || { echo "::error::PHPUnit shards result: $SHARDS"; exit 1; }
+
+  # Build, Vitest and the other gates. Page-level Playwright runs in `ui_foundation_e2e` (sharded);
+  # the required `Vite Frontend Build` check is the `vite-build` aggregator below.
+  vite_core:
+    name: Vite core (build, Vitest, gates)
     needs: changes
     # This is a required main-branch check.  Run it for every PR so a
     # backend-only change reports success instead of a skipped required check.
@@ -706,6 +772,10 @@ jobs:
       - name: Exception workflow focus reconciliation (pure logic, GitHub #1625)
         working-directory: frontend
         run: npm run test:exception-workflow-focus
+
+      - name: "All plain-node frontend tests (node --test; guard fails on any test file that never runs, W14)"
+        working-directory: frontend
+        run: npm run test:lib-node
 
       - name: "Component unit tests + coverage gate (Vitest, #731)"
         working-directory: frontend
@@ -768,30 +838,6 @@ jobs:
           ! test -f dist_build/ui-foundation-harness.html
           ! test -f dist_build/ui-foundation-harness-before.html
           ! test -f dist_build/pilot-mount.html
-
-      # Path-scoped: Chromium + real Vue page evidence only when UI foundation
-      # surfaces/fixtures/config change. Still blocking when the filter matches
-      # (no || true / continue-on-error / permanent opt-in skip).
-      - name: Install Playwright Chromium (UI foundation page evidence)
-        if: needs.changes.outputs.ui_foundation == 'true'
-        working-directory: frontend
-        run: npx playwright install --with-deps chromium
-
-      - name: UI foundation page-level Playwright (real Vue + mocked API)
-        if: needs.changes.outputs.ui_foundation == 'true'
-        working-directory: frontend
-        env:
-          UI_FOUNDATION_SHOT_DIR: ${{ github.workspace }}/docs/design/evidence/raw
-        run: npm run test:e2e:ui-foundation
-
-      - name: Upload UI foundation visual evidence
-        if: always() && needs.changes.outputs.ui_foundation == 'true'
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: ui-foundation-page-evidence
-          path: docs/design/evidence/
-          if-no-files-found: warn
-          retention-days: 30
 
       - name: Bundle size budget
         # #1273: route-aware — reports/budgets initial vs. largest-lazy-route
@@ -870,6 +916,80 @@ jobs:
             ${{ runner.temp }}/npm-audit.log
             ${{ runner.temp }}/npm-audit-degraded.json
           if-no-files-found: ignore
+
+  # Path-scoped: Chromium + real Vue page evidence only when UI foundation
+  # surfaces/fixtures/config change. Still blocking when the filter matches.
+  ui_foundation_e2e:
+    name: UI foundation Playwright
+    needs: changes
+    if: needs.changes.outputs.ui_foundation == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2]
+    runs-on: ubuntu-latest
+    # Browsers + system deps are baked in; the tag must equal @playwright/test in frontend/package-lock.json.
+    container: mcr.microsoft.com/playwright:v1.64.1-noble
+    timeout-minutes: 25
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Generate in-app release notes (git-ignored; legacy files + docs/*-updates fragments)
+        working-directory: frontend
+        run: npm run sync-release-notes
+
+      - name: UI foundation page-level Playwright (real Vue + mocked API)
+        working-directory: frontend
+        env:
+          UI_FOUNDATION_SHOT_DIR: ${{ github.workspace }}/docs/design/evidence/raw
+        run: npm run test:e2e:ui-foundation -- --shard=${{ matrix.shard }}/2
+
+      - name: Upload UI foundation visual evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ui-foundation-page-evidence-${{ matrix.shard }}
+          path: docs/design/evidence/
+          if-no-files-found: warn
+          retention-days: 30
+
+  # REQUIRED CHECK `Vite Frontend Build` (exact name; ruleset-required). Fails unless the core job
+  # succeeded and the Playwright shards succeeded (they may be skipped ONLY when the ui_foundation
+  # path filter is false). Never synthesize a pass.
+  vite-build:
+    name: Vite Frontend Build
+    needs: [changes, vite_core, ui_foundation_e2e]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Require core and Playwright shards to be green
+        env:
+          CORE: ${{ needs.vite_core.result }}
+          E2E: ${{ needs.ui_foundation_e2e.result }}
+          NEEDS_E2E: ${{ needs.changes.outputs.ui_foundation }}
+        run: |
+          [ "$CORE" = "success" ] || { echo "::error::vite_core result: $CORE"; exit 1; }
+          if [ "$NEEDS_E2E" = "true" ]; then
+            [ "$E2E" = "success" ] || { echo "::error::ui_foundation_e2e result: $E2E"; exit 1; }
+          else
+            [ "$E2E" = "skipped" ] || { echo "::error::ui_foundation_e2e result: $E2E"; exit 1; }
+          fi
 
   # Advisory only (never a required check): UI "AI-feel" regressions + dead code.
   # impeccable fails only on findings absent from scripts/design/impeccable-baseline.json;

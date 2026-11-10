@@ -7,7 +7,9 @@ name: Presubmit Gate
 on:
   pull_request:
     branches: ["main"]
-    types: [opened, synchronize, reopened, ready_for_review, converted_to_draft]
+    # edited: a body declaration (Release-Impact, Rewrites:) takes effect without a manual re-run. Not `labeled`:
+    # the queue label would re-run presubmit and a skipped job counts as passing.
+    types: [opened, synchronize, reopened, ready_for_review, converted_to_draft, edited]
   workflow_dispatch:
     inputs:
       pr_number:
@@ -103,9 +105,29 @@ jobs:
           git show "$(git merge-base origin/main HEAD):backend/phpstan-baseline.neon" > "$base_file"
           python3 scripts/check-phpstan-baseline-shrink.py "$base_file" backend/phpstan-baseline.neon
 
+      # UI ratchet (#4989): scripts/ui-legacy-pages.json may only shrink. Kept out of `npm run build`
+      # (deploy/rollback build against a moving main). Fails closed if the base cannot be resolved.
+      - name: "[CHECK 0c2] UI legacy-page list only shrinks"
+        if: ${{ github.event_name == 'pull_request' }}
+        run: |
+          set -euo pipefail
+          node --test scripts/check-ui-ratchet.test.mjs
+          node scripts/check-ui-ratchet.mjs --vs-base "$(git merge-base origin/main HEAD)"
+
+      # W4 (#4953): feature PRs must not rewrite ratchet baselines to lock in gains (they conflict across
+      # parallel PRs); the weekly baseline PR (chore/ branch) does it. Counts going up is still allowed.
+      - name: "[CHECK 0c3] Ratchet baselines are locked in by the weekly PR"
+        if: ${{ github.event_name == 'pull_request' }}
+        env:
+          GITHUB_HEAD_REF: ${{ github.head_ref }}
+        run: |
+          set -euo pipefail
+          node --test scripts/check-ratchet-baseline-touch.test.mjs
+          node scripts/check-ratchet-baseline-touch.mjs --base "$(git merge-base origin/main HEAD)" --branch "$GITHUB_HEAD_REF"
+
       # Stale-copy guard: a PR may not delete lines another PR merged to main in the last 7 days.
-      # Escape hatch: PR label `intentional-revert` (+ reason in body). Labels are read live, but
-      # presubmit does not re-trigger on label events: add the label, then re-run this job.
+      # Declare an intended rewrite with a PR body line `Rewrites: #N — reason` (re-runs on edit). The older
+      # `intentional-revert` label still skips the check, but needs a manual re-run (no label trigger).
       - name: "[CHECK 0d] No silent revert of recently merged work"
         if: ${{ env.LQ_BATCH != 'true' }}
         env:
@@ -122,7 +144,12 @@ jobs:
               exit 0
             fi
           fi
-          python3 scripts/check-recent-work-revert.py --base origin/main --head HEAD
+          body=""
+          if [ -n "${PR_NUMBER:-}" ]; then
+            body="$RUNNER_TEMP/pr-body.md"
+            gh api "repos/${REPO}/pulls/${PR_NUMBER}" --jq '.body // ""' > "$body"
+          fi
+          python3 scripts/check-recent-work-revert.py --base origin/main --head HEAD ${body:+--body-file "$body"}
 
       - name: "[CHECK 1] Branch naming convention"
         env:
@@ -167,7 +194,7 @@ jobs:
           # Vendored agent skills are reviewed as reference artifacts, not production logic.
           # Keep their files in the PR for content/security review, but do not let a long
           # Markdown skill document fail the logical-change size gate.
-          EXTRA_EXCLUDE=(':!.cursor/skills/**')
+          EXTRA_EXCLUDE=(':!.cursor/skills/**' ':!.claude/skills/**')
           if echo "$BRANCH" | grep -qE '^chore/docs-'; then
             EXTRA_EXCLUDE+=(':!docs/CHANGELOG.md' ':!docs/archive/**')
           fi

@@ -9,6 +9,7 @@ FORBIDDEN_PATTERNS=(
   'ui-foundation-harness'
   'ui-foundation-harness-before'
   'pilot-mount'
+  'ui-preview'
 )
 
 fail=0
@@ -30,6 +31,12 @@ check_tree() {
 
 check_tree "$PUBLIC" "frontend/public"
 check_tree "$DIST" "frontend/dist_build"
+
+# PR-preview bundle (fake data + in-browser mocks) must never ship in production.
+if [[ -d "$DIST" ]] && grep -rlq '__ALLTRUE_UI_PREVIEW__' "$DIST"; then
+  echo "❌ UI preview code found in frontend/dist_build"
+  fail=1
+fi
 
 if [[ "$fail" -ne 0 ]]; then
   echo "Move fixtures to frontend/e2e/fixtures/ui-foundation/ — never frontend/public/."

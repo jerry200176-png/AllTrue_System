@@ -73,6 +73,7 @@ pop-td076-occurrence-repairs.yml
 pop-telegram-webhook-secret.yml
 pop-shared-pool-trim.yml
 pop-unbilled-backlog-catchup.yml
+pop-billing-period-rekey.yml
 pop-unpaid-hidden-closures.yml
 production-case-dump.yml
 security-1124-migrate-uploads.yml
@@ -93,3 +94,4 @@ xindian-capacity-diagnose.yml
 yang-1445-contract-repair.yml
 laravel-4504-metadata.yml
 forward-overdeduct-probe.yml
+phpunit-random-nightly.yml

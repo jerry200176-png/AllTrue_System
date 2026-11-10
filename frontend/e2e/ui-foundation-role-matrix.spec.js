@@ -1,5 +1,6 @@
 // @ts-check
 import { test, expect } from '@playwright/test';
+import { PARENT_DASHBOARD } from './fixtures/ui-foundation/apiMocks.js';
 
 /**
  * #983 role matrix: deterministic parent portal coverage.
@@ -23,29 +24,7 @@ test('parent portal: mobile home exposes announcements and billing status', asyn
       return route.fulfill({
         status: 200,
         contentType: 'application/json',
-        body: JSON.stringify({
-          student: { id: 2000, name: '測試學生甲', grade: 'J1', school: '測試國中', campus_id: 1, campus_name: '測試分校', line_linked: false },
-          enrollments: [],
-          cross_campus_access: 'actions',
-          progress_summary: {
-            week_label: '8/24–8/30',
-            week_progress: { attended: 1, scheduled: 2 },
-            next_session: { date: '2026-09-01', start_time: '10:00', end_time: '11:00', subject: '數學', is_today: false },
-            payment: { paid_courses: 1, total_courses: 2, status: 'partial' },
-            pending_total: 1,
-          },
-          announcements: [{ id: 9001, Title: '測試公告', Content: '這是給家長看的公告。', campus_name: '測試分校', created_at: '2026-08-28T09:00:00+08:00' }],
-          learning_records: [],
-          learning_records_meta: { total: 0, has_more: false },
-          attendance_history: [],
-          upcoming_sessions: [],
-          classes: [{ id: 9401, subject: '數學', sessions_purchased: 8, used_sessions: 6, remaining_sessions: 2, paid: false, payment_status_label: '待繳費', status: 'active' }],
-          remaining_sessions_total: 2,
-          remaining_by_subject: { 數學: 2 },
-          payment_alerts: [{ class_id: 9401, subject: '數學', remaining_sessions: 2, paid: false }],
-          invoices: [],
-          assessment_progress: { items: [] },
-        }),
+        body: JSON.stringify(PARENT_DASHBOARD),
       });
     }
     if (url.pathname.includes('/parent/notification-preferences')) {
@@ -60,16 +39,20 @@ test('parent portal: mobile home exposes announcements and billing status', asyn
   await page.goto('/pilot-mount.html?page=parent');
   await expect(page.locator('[data-guide="parent-portal-root"]')).toBeVisible();
   await expect(page.locator('[data-guide="parent-student-card"]')).toContainText('測試學生甲');
-  const hub = page.locator('[data-guide="parent-progress-hub"]');
-  await expect(hub).toHaveAttribute('aria-labelledby', 'parent-progress-hub-title');
-  await expect(page.getByRole('heading', { name: '進度中心', exact: true })).toBeVisible();
-  await expect(hub.locator('.pp-hub-cell')).toHaveCount(3);
+  const home = page.locator('[data-guide="parent-home"]');
+  await expect(home.locator('[data-slot="card"]')).toHaveCount(3);
+  await expect(home).toContainText('目前沒有排定的課，有安排會通知您');
+  await expect(home).toContainText('有課程待繳');
+  await expect(home.getByRole('button', { name: '繳費方式', exact: true })).toBeVisible();
+  await expect(home).toContainText('目前沒有新回饋');
+  for (const gone of ['進度中心', '本次學習重點', '需要留意']) await expect(page.getByText(gone)).toHaveCount(0);
+  await page.getByRole('tab', { name: /學習/ }).click();
   await expect(page.getByText('公告', { exact: true })).toBeVisible();
   await expect(page.getByText('這是給家長看的公告。', { exact: true })).toBeVisible();
 
-  const learningTab = page.locator('#parent-tab-learning');
-  await learningTab.focus();
-  await expect(learningTab).toBeFocused();
+  const homeTab = page.locator('#parent-tab-home');
+  await homeTab.focus();
+  await expect(homeTab).toBeFocused();
   await page.keyboard.press('ArrowRight');
   await expect(page.locator('#parent-tab-schedule')).toBeFocused();
   const focusStyle = await page.locator('#parent-tab-schedule').evaluate((el) => {
@@ -80,7 +63,7 @@ test('parent portal: mobile home exposes announcements and billing status', asyn
   expect(Number.parseFloat(focusStyle.outlineWidth)).toBeGreaterThanOrEqual(3);
   expect(focusStyle.minHeight).toBeGreaterThanOrEqual(52);
 
-  await page.locator('.pp-tab').filter({ hasText: '帳務' }).click();
+  await page.locator('.pp-tab').filter({ hasText: '繳費' }).click();
   await expect(page.getByText('繳費提醒', { exact: true })).toBeVisible();
   await expect(page.getByText('剩餘 2 堂', { exact: true })).toBeVisible();
 
@@ -264,11 +247,29 @@ async function runPopulatedParentPortal(page, viewport) {
 
   await page.goto('/pilot-mount.html?page=parent');
   await expect(page.locator('[data-guide="parent-portal-root"]')).toBeVisible();
-  await expect(page.getByText('數學', { exact: true }).first()).toBeVisible();
-  const hub = page.locator('[data-guide="parent-progress-hub"]');
-  await expect(hub).toHaveAttribute('aria-labelledby', 'parent-progress-hub-title');
-  const hubCells = hub.locator('.pp-hub-cell');
-  await expect(hubCells).toHaveCount(3);
+  const home = page.locator('[data-guide="parent-home"]');
+  await expect(home.locator('[data-slot="card"]')).toHaveCount(3);
+  await expect(home.locator('[data-guide="parent-home-next-lesson"]')).toContainText('數學');
+  await expect(home.locator('[data-guide="parent-home-money"]')).toContainText('本期學費已繳清，謝謝您');
+  await expect(home.locator('[data-guide="parent-home-feedback"]')).toContainText('收到，謝謝家長回饋。');
+  await expect(home.locator('[data-guide="parent-home-feedback"]')).toContainText('新');
+  const homeButtons = home.getByRole('button');
+  await expect(homeButtons).toHaveCount(2);
+  for (let index = 0; index < await homeButtons.count(); index += 1) {
+    const button = homeButtons.nth(index);
+    const box = await button.boundingBox();
+    expect(box?.height, `home button ${index} height at ${viewport.width}`).toBeGreaterThanOrEqual(44);
+    await button.focus();
+    await expect(button).toBeFocused();
+    const ring = await button.evaluate((el) => {
+      const style = getComputedStyle(el);
+      return { outlineStyle: style.outlineStyle, boxShadow: style.boxShadow };
+    });
+    expect(ring.outlineStyle === 'solid' || ring.boxShadow !== 'none', `home button ${index} focus ring at ${viewport.width}`).toBe(true);
+  }
+  await page.screenshot({ path: `/tmp/parent-home-after-${viewport.width}.png`, fullPage: true });
+  await home.getByRole('button', { name: '查看回饋並回覆老師', exact: true }).click();
+  await expect(page.locator('#parent-tab-learning')).toHaveAttribute('aria-selected', 'true');
   const attendance = page.locator('#pp-attendance-section');
   await expect(attendance).toHaveAttribute('aria-labelledby', 'parent-attendance-title');
   await expect(page.getByRole('heading', { name: '出缺勤紀錄', exact: true })).toBeVisible();
@@ -288,57 +289,9 @@ async function runPopulatedParentPortal(page, viewport) {
   expect(Number.parseFloat(attendanceFocusStyle.outlineWidth), `attendance more focus width at ${viewport.width}`).toBeGreaterThanOrEqual(3);
   await attendanceMore.click();
   await expect(attendance.locator('.pp-timeline-item')).toHaveCount(12);
-  for (let index = 0; index < await hubCells.count(); index += 1) {
-    const cell = hubCells.nth(index);
-    const box = await cell.boundingBox();
-    expect(box?.height, `progress hub cell ${index} height at ${viewport.width}`).toBeGreaterThanOrEqual(112);
-    await cell.focus();
-    await expect(cell).toBeFocused();
-    const focusStyle = await cell.evaluate((el) => {
-      const style = getComputedStyle(el);
-      return { outlineStyle: style.outlineStyle, outlineWidth: style.outlineWidth };
-    });
-    expect(focusStyle.outlineStyle, `progress hub cell ${index} focus at ${viewport.width}`).toBe('solid');
-    expect(Number.parseFloat(focusStyle.outlineWidth), `progress hub cell ${index} focus width at ${viewport.width}`).toBeGreaterThanOrEqual(3);
-  }
-  const feedbackCta = hub.locator('.pp-hub-feedback-cta');
-  await expect(feedbackCta).toBeVisible();
-  const feedbackBox = await feedbackCta.boundingBox();
-  expect(feedbackBox?.height, `progress hub feedback height at ${viewport.width}`).toBeGreaterThanOrEqual(56);
-  await feedbackCta.focus();
-  await expect(feedbackCta).toBeFocused();
-  const feedbackFocusStyle = await feedbackCta.evaluate((el) => {
-    const style = getComputedStyle(el);
-    return { outlineStyle: style.outlineStyle, outlineWidth: style.outlineWidth };
-  });
-  expect(feedbackFocusStyle.outlineStyle, `progress hub feedback focus at ${viewport.width}`).toBe('solid');
-  expect(Number.parseFloat(feedbackFocusStyle.outlineWidth), `progress hub feedback focus width at ${viewport.width}`).toBeGreaterThanOrEqual(3);
-  await hubCells.first().click();
-  await expect(page.locator('#parent-tab-learning')).toHaveAttribute('aria-selected', 'true');
-  await page.screenshot({ path: `/tmp/parent-progress-hub-after-${viewport.width}.png`, fullPage: true });
-  await page.keyboard.press('Tab');
-  const attention = page.locator('[data-guide="parent-attention-card"]');
-  await expect(attention).toBeVisible();
-  const attentionItems = attention.locator('.pp-attention-item');
-  expect(await attentionItems.count()).toBeGreaterThan(0);
-  for (let index = 0; index < await attentionItems.count(); index += 1) {
-    const item = attentionItems.nth(index);
-    const box = await item.boundingBox();
-    expect(box?.height, `attention item ${index} height at ${viewport.width}`).toBeGreaterThanOrEqual(52);
-    await item.focus();
-    await expect(item).toBeFocused();
-    const focusStyle = await item.evaluate((el) => {
-      const style = getComputedStyle(el);
-      return { outlineStyle: style.outlineStyle, outlineWidth: style.outlineWidth };
-    });
-    expect(focusStyle.outlineStyle, `attention item ${index} focus at ${viewport.width}`).toBe('solid');
-    expect(Number.parseFloat(focusStyle.outlineWidth), `attention item ${index} focus width at ${viewport.width}`).toBeGreaterThanOrEqual(3);
-  }
-  await page.screenshot({ path: `/tmp/parent-attention-after-${viewport.width}.png`, fullPage: true });
-  const feedbackAttentionItem = attentionItems.filter({ hasText: '有學習評量可以留言' });
-  await expect(feedbackAttentionItem).toHaveCount(1);
-  await feedbackAttentionItem.click();
-  await expect(page.locator('#parent-tab-learning')).toHaveAttribute('aria-selected', 'true');
+  const jumpToFeedback = page.locator('.pp-lr-engage-jump');
+  await expect(jumpToFeedback).toBeVisible();
+  await jumpToFeedback.click();
   const pendingFeedbackRecord = page.locator('.pp-report').filter({ hasText: '英文' }).first();
   await expect(pendingFeedbackRecord.locator('.pp-feedback-box')).toBeVisible();
   await expect(pendingFeedbackRecord.locator('textarea[aria-label="給老師的回饋"]')).toBeFocused();
@@ -362,8 +315,9 @@ async function runPopulatedParentPortal(page, viewport) {
   }
 
   const learningTab = page.locator('#parent-tab-learning');
-  await learningTab.focus();
-  await expect(learningTab).toBeFocused();
+  const homeTab = page.locator('#parent-tab-home');
+  await homeTab.focus();
+  await expect(homeTab).toBeFocused();
   await page.keyboard.press('ArrowRight');
   await expect(page.locator('#parent-tab-schedule')).toBeFocused();
   await page.screenshot({ path: `/tmp/parent-tab-focus-after-${viewport.width}.png`, fullPage: false });
@@ -375,6 +329,7 @@ async function runPopulatedParentPortal(page, viewport) {
   expect(Number.parseFloat(focusStyle.outlineWidth)).toBeGreaterThanOrEqual(3);
   expect(focusStyle.minHeight).toBeGreaterThanOrEqual(52);
   await learningTab.click();
+  await expect(learningTab).toHaveAttribute('aria-selected', 'true');
 
   const firstRecord = page.locator('.pp-report').filter({ hasText: '數學' }).first();
   await expect(firstRecord).toBeVisible();
@@ -447,7 +402,8 @@ test('parent portal: header remains clear for empty and long Traditional Chinese
   await expect(page.locator('[data-guide="parent-student-card"]')).toBeVisible();
   await expect(page.locator('#parent-student-switcher-label')).toHaveText(/切換學生/);
   await expect(page.locator('#parent-campus-switcher-label')).toHaveText(/分校範圍/);
-  await expect(page.locator('.pp-attention-empty')).toHaveAttribute('role', 'status');
+  await expect(page.locator('[data-guide="parent-home"] [data-slot="card"]')).toHaveCount(3);
+  await expect(page.locator('[data-guide="parent-home"]')).toContainText('本期學費已繳清，謝謝您');
   for (const selector of ['.pp-btn-logout', '.pp-chip:not([disabled])', '#parent-campus-scope']) {
     const box = await page.locator(selector).first().boundingBox();
     expect(box?.width, `${selector} width`).toBeGreaterThanOrEqual(44);

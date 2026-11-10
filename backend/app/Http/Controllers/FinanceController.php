@@ -954,7 +954,7 @@ class FinanceController extends Controller
             $out = fopen('php://output', 'w');
             fprintf($out, chr(0xEF) . chr(0xBB) . chr(0xBF));
             // FR-003: Added 課程狀態 column to distinguish active vs stopped courses.
-            fputcsv($out, ['學生', '科目', '老師', '班型', '月堂數', '費率', '月學收', '繳費日期', '課程狀態', '收款狀態', '本月未收金額']);
+            $this->putCsv($out, ['學生', '科目', '老師', '班型', '月堂數', '費率', '月學收', '繳費日期', '課程狀態', '收款狀態', '本月未收金額']);
             foreach ($allRows as $c) {
                 $rate = $this->resolveRate($c);
                 $sessions = (int) $c->monthly_session_count;
@@ -962,7 +962,7 @@ class FinanceController extends Controller
                     'one_on_one' => '一對一', 'one_on_two' => '一對二',
                     'one_on_three' => '一對三', 'tutoring' => '輔導', 'trial' => '試聽',
                 ];
-                fputcsv($out, [
+                $this->putCsv($out, [
                     $c->student->name ?? 'Unknown',
                     $c->displaySubjectName(),
                     $c->teacher->Name ?? 'Unknown',
@@ -1048,27 +1048,26 @@ class FinanceController extends Controller
             $gap = collect($coverage[(int) $c->ID]['session_review'] ?? [])->contains(
                 fn ($r) => ($r['calendar_month'] ?? null) === $period && (($r['uncovered_sessions'] ?? 0) > 0 || ($r['outside_contract_sessions'] ?? 0) > 0)
             );
-            // An invoice whose service range spans months counts once, in the month its range starts (Founder 2026-10-31);
+            // An invoice whose service range spans months counts once, in its billing_period month = the month of its first lesson (in-app #514, Founder 2026-11-07; was the range start month, 2026-10-31);
             // later covered months show its status with nothing due, so totals never double-count it.
             $spans = collect($coverage[(int) $c->ID]['periods'] ?? [])->filter(
                 fn ($r) => ($r['invoice_ids'] ?? []) !== [] && substr((string) $r['period_start'], 0, 7) !== substr((string) $r['period_end'], 0, 7)
                     && substr((string) $r['period_start'], 0, 7) <= $period && substr((string) $r['period_end'], 0, 7) >= $period
             );
-            // Only the clean case follows the rule: label month = start month and the period engine sees no ambiguity.
+            // Only the clean case follows the rule: the label month has lessons and the period engine sees no ambiguity.
             // Otherwise keep 待確認 in each covered month, uncounted, so nothing is double-counted or shown paid.
             $spanReview = $monthlyBilled && $spans->isNotEmpty() && (
                 (bool) ($coverage[(int) $c->ID]['review_required'] ?? false)
                 // #4803: a paid shared/multi-line bill is settled but still cannot be placed in one month.
                 || (bool) ($coverage[(int) $c->ID]['attribution_ambiguous'] ?? false)
-                || $spans->contains(fn ($r) => substr((string) $r['billing_period'], 0, 7) !== substr((string) $r['period_start'], 0, 7))
-                // the start month's row only exists when it has lessons; else nothing would carry the invoice amount
-                || $spans->contains(fn ($r) => !collect($coverage[(int) $c->ID]['session_review'] ?? [])->contains('calendar_month', substr((string) $r['period_start'], 0, 7)))
+                // the label month's row only exists when it has lessons; else nothing would carry the invoice amount
+                || $spans->contains(fn ($r) => !collect($coverage[(int) $c->ID]['session_review'] ?? [])->contains('calendar_month', substr((string) $r['billing_period'], 0, 7)))
             );
             if ($spanReview) {
                 $spans = collect();
             }
-            $own = $spans->first(fn ($r) => substr((string) $r['period_start'], 0, 7) === $period);
-            // a separate invoice that starts in the selected month keeps its own status and amounts
+            $own = $spans->first(fn ($r) => substr((string) $r['billing_period'], 0, 7) === $period);
+            // a separate invoice labelled for the selected month keeps its own status and amounts
             $carried = ($own === null && ($p === null || ($p['invoice_ids'] ?? []) === [])) ? $spans->first() : null;
             if ($monthlyBilled && ($own ?? $carried) !== null) {
                 $p = collect($v->periods ?? [])->first(fn ($x) => ($x['billing_period'] ?? null) === ($own ?? $carried)['billing_period']);
@@ -1082,7 +1081,7 @@ class FinanceController extends Controller
             } elseif ($spanReview) {
                 $st = 'review';
             } elseif ($monthlyBilled && $carried !== null) {
-                // counted in the month the range starts: due and outstanding stay 0 here
+                // counted in its label month: due and outstanding stay 0 here
                 $st = ($p === null || $gap || $p['status'] === 'review_required' || !empty($p['amount_discrepancy'])) ? 'review' : $p['status'];
             } elseif ($monthlyBilled && $p !== null && ($p['invoice_ids'] ?? []) !== []) {
                 $st = ($p['status'] === 'review_required' || !empty($p['amount_discrepancy']) || $gap) ? 'review' : $p['status'];
@@ -1202,6 +1201,9 @@ class FinanceController extends Controller
 
         $campusIds = $this->getCampusIds($request);
         $branchId  = $request->filled('branch_id') ? (int) $request->input('branch_id') : ($campusIds[0] ?? null);
+        if ($branchId && !$this->branchInScope($request, $branchId)) {
+            return response()->json(['error' => 'Forbidden'], 403);
+        }
 
         $lockRow  = $branchId ? PayrollMonthStatus::where('branch_id', $branchId)->where('month', $month)->first() : null;
         $ruleCtx  = $this->resolvePayrollRule($branchId, $lockRow, $month);
@@ -1212,6 +1214,7 @@ class FinanceController extends Controller
         $rows = $lockedRun
             ? $this->buildParttimePayrollRowsFromSnapshot($lockedRun)
             : $this->buildParttimePayrollData($month, $campusIds, $ruleCtx);
+        $rows = $this->withAdminBonus($rows, $lockedRun ? [(int) $lockedRun->branch_id] : $campusIds, $month);
 
         if ($request->filled('search')) {
             $q = mb_strtolower($request->input('search'));
@@ -1278,6 +1281,9 @@ class FinanceController extends Controller
         $page       = max((int) $request->input('page', 1), 1);
 
         $branchId = $request->filled('branch_id') ? (int) $request->input('branch_id') : ($campusIds[0] ?? null);
+        if ($branchId && !$this->branchInScope($request, $branchId)) {
+            return response()->json(['error' => 'Forbidden'], 403);
+        }
         $lockRow  = $branchId ? PayrollMonthStatus::where('branch_id', $branchId)->where('month', $month)->first() : null;
         $ruleCtx  = $this->resolvePayrollRule($branchId, $lockRow, $month);
 
@@ -1356,6 +1362,9 @@ class FinanceController extends Controller
 
         $campusIds = $this->getCampusIds($request);
         $branchId  = $request->filled('branch_id') ? (int) $request->input('branch_id') : ($campusIds[0] ?? null);
+        if ($branchId && !$this->branchInScope($request, $branchId)) {
+            abort(403, 'Forbidden');
+        }
         $branchName = $branchId ? (DB::table('Campus')->where('id', $branchId)->value('name') ?? 'all') : 'all';
 
         $startDate = $month . '-01';
@@ -1376,7 +1385,7 @@ class FinanceController extends Controller
             abort(422, "Too many rows ({$totalRows}). Max export is {$maxExport}. Please narrow your scope.");
         }
 
-        $teacherRows = $this->buildParttimePayrollData($month, $campusIds, $ruleCtx);
+        $teacherRows = $this->withAdminBonus($this->buildParttimePayrollData($month, $campusIds, $ruleCtx), $campusIds, $month);
         $rateMap  = $this->buildRateMap($allRecords, $ruleCtx);
         $bonusMap = $this->buildConcurrencyBonusMap($allRecords, $rateMap, $ruleCtx);
 
@@ -1386,22 +1395,23 @@ class FinanceController extends Controller
             $out = fopen('php://output', 'w');
             fprintf($out, chr(0xEF) . chr(0xBB) . chr(0xBF));
 
-            fputcsv($out, ['老師姓名', '總時數', '高中時數', '國中時數', '國小時數', '輔導時數', '應付薪資', '堂次數', '費率來源']);
+            $this->putCsv($out, ['老師姓名', '總時數', '高中時數', '國中時數', '國小時數', '輔導時數', '應付薪資', '堂次數', '費率來源', '行政加給(已含於應付薪資)', '行政加給原因']);
             foreach ($teacherRows as $t) {
-                fputcsv($out, [
+                $this->putCsv($out, [
                     $t['teacher_name'], $t['total_hours'], $t['high_hours'],
                     $t['junior_hours'], $t['elementary_hours'], $t['tutoring_hours'],
                     $t['total_salary'], $t['session_count'],
                     ($t['rule_source'] ?? 'branch_default') === 'teacher_override' ? '個別費率' : '分校預設',
+                    $t['admin_bonus'] ?? 0, $t['admin_bonus_reason'] ?? '',
                 ]);
             }
 
-            fputcsv($out, []);
-            fputcsv($out, ['日期', '老師', '學生', '科目', '學段', '課型', '時數', '基礎時薪', '人數加成', '併堂加給', '實際時薪', '堂次薪資', '費率來源']);
+            $this->putCsv($out, []);
+            $this->putCsv($out, ['日期', '老師', '學生', '科目', '學段', '課型', '時數', '基礎時薪', '人數加成', '併堂加給', '實際時薪', '堂次薪資', '費率來源']);
 
             foreach ($allRecords->sortBy('id') as $r) {
                 $row = $this->buildSessionRow($r, $ruleCtx, $bonusMap);
-                fputcsv($out, [
+                $this->putCsv($out, [
                     $row['session_date'], $row['teacher_name'] ?? '', $row['student_name'],
                     $row['subject'], $row['level_label'], $row['class_type'],
                     $row['hours'], $row['base_rate'], $row['headcount_bonus'],
@@ -1423,6 +1433,9 @@ class FinanceController extends Controller
         $branchId = (int) $request->input('branch_id');
         if (!$month || !$branchId) {
             return response()->json(['error' => 'month and branch_id required'], 422);
+        }
+        if (!$this->branchInScope($request, $branchId)) {
+            return response()->json(['error' => 'Forbidden'], 403);
         }
 
         $row = PayrollMonthStatus::firstOrCreate(
@@ -1450,6 +1463,8 @@ class FinanceController extends Controller
         }
 
         DB::transaction(function () use ($row, $branchId, $month, $userId, $campusIds) {
+            // Serialise with admin-bonus writes (same month-status row lock).
+            PayrollMonthStatus::whereKey($row->id)->lockForUpdate()->first();
             $currentRule = PayrollBranchRule::latestForBranch($branchId);
             $asOfDate    = date('Y-m-t', strtotime($month . '-01'));
             $teacherMap  = PayrollTeacherBranchRule::latestMapForBranch($branchId, $asOfDate);
@@ -1827,6 +1842,52 @@ class FinanceController extends Controller
         return $lessons;
     }
 
+    private function branchInScope(Request $request, int $branchId): bool
+    {
+        return $request->attributes->get('auth_role') === 'super_admin'
+            || in_array($branchId, array_map('intval', $request->attributes->get('auth_campus_ids', [])), true);
+    }
+
+    /** Neutralise spreadsheet formulas in free-text cells. */
+    /** Every exported cell is user-entered somewhere: a text cell starting with = + - @ tab or CR gets a leading ' so spreadsheets never run it. */
+    private function putCsv($out, array $row): void
+    {
+        fputcsv($out, array_map(fn ($v) => is_string($v) && !is_numeric($v) && preg_match('/^[=+\-@\t\r]/', $v) ? "'" . $v : $v, $row));
+    }
+
+    /** #4971: add the manual 行政加給 as its own field and into total_salary (bonus-only teachers get a row). */
+    /** Same campus scope as the attendance rows ([] = every campus, as parttimeBaseQuery); a teacher's bonuses across campuses add up. */
+    private function withAdminBonus(array $rows, array $campusIds, string $month): array
+    {
+        $bonuses = \App\Models\ParttimePayrollAdminBonus::where('month', $month)
+            ->when(!empty($campusIds), fn ($q) => $q->whereIn('campus_id', $campusIds))
+            ->orderBy('campus_id')->get()->groupBy('teacher_id')
+            ->map(fn ($g) => (object) ['amount' => (int) $g->sum('amount'), 'reason' => $g->pluck('reason')->implode('；')]);
+        $names = $bonuses->isEmpty() ? [] : TeacherProfileDirectory::names();
+        $seen = [];
+        foreach ($rows as &$r) {
+            $b = $bonuses->get((int) $r['teacher_id']);
+            $r['admin_bonus'] = $b ? (int) $b->amount : 0;
+            $r['admin_bonus_reason'] = $b ? $b->reason : null;
+            $r['total_salary'] = (int) $r['total_salary'] + $r['admin_bonus'];
+            $seen[(int) $r['teacher_id']] = true;
+        }
+        unset($r);
+        foreach ($bonuses as $tid => $b) {
+            if (isset($seen[(int) $tid])) {
+                continue;
+            }
+            $rows[] = [
+                'teacher_id' => (int) $tid, 'teacher_name' => $names[(int) $tid] ?? 'Unknown',
+                'high_hours' => 0, 'junior_hours' => 0, 'elementary_hours' => 0, 'tutoring_hours' => 0,
+                'total_hours' => 0, 'total_salary' => (int) $b->amount, 'session_count' => 0,
+                'rule_source' => 'branch_default', 'admin_bonus' => (int) $b->amount, 'admin_bonus_reason' => $b->reason,
+            ];
+        }
+
+        return $rows;
+    }
+
     private function buildParttimePayrollRowsFromSnapshot(PayrollRun $run): array
     {
         $buckets = [];
@@ -1885,22 +1946,22 @@ class FinanceController extends Controller
 
     private function exportPayrollSnapshot(PayrollRun $run, string $branchName, string $month): StreamedResponse
     {
-        $teacherRows = $this->buildParttimePayrollRowsFromSnapshot($run);
+        $teacherRows = $this->withAdminBonus($this->buildParttimePayrollRowsFromSnapshot($run), [(int) $run->branch_id], $month);
         $lines = $run->lines->sortBy('id');
         $filename = "兼職薪資_{$branchName}_{$month}.csv";
 
         return response()->streamDownload(function () use ($teacherRows, $lines) {
             $out = fopen('php://output', 'w');
             fprintf($out, chr(0xEF) . chr(0xBB) . chr(0xBF));
-            fputcsv($out, ['老師姓名', '總時數', '高中時數', '國中時數', '國小時數', '輔導時數', '應付薪資', '堂次數', '費率來源']);
+            $this->putCsv($out, ['老師姓名', '總時數', '高中時數', '國中時數', '國小時數', '輔導時數', '應付薪資', '堂次數', '費率來源', '行政加給(已含於應付薪資)', '行政加給原因']);
             foreach ($teacherRows as $t) {
-                fputcsv($out, [$t['teacher_name'], $t['total_hours'], $t['high_hours'], $t['junior_hours'], $t['elementary_hours'], $t['tutoring_hours'], $t['total_salary'], $t['session_count'], ($t['rule_source'] ?? 'branch_default') === 'teacher_override' ? '個別費率' : '分校預設']);
+                $this->putCsv($out, [$t['teacher_name'], $t['total_hours'], $t['high_hours'], $t['junior_hours'], $t['elementary_hours'], $t['tutoring_hours'], $t['total_salary'], $t['session_count'], ($t['rule_source'] ?? 'branch_default') === 'teacher_override' ? '個別費率' : '分校預設', $t['admin_bonus'] ?? 0, $t['admin_bonus_reason'] ?? '']);
             }
-            fputcsv($out, []);
-            fputcsv($out, ['日期', '老師', '學生', '科目', '學段', '課型', '時數', '基礎時薪', '人數加成', '併堂加給', '實際時薪', '堂次薪資', '費率來源']);
+            $this->putCsv($out, []);
+            $this->putCsv($out, ['日期', '老師', '學生', '科目', '學段', '課型', '時數', '基礎時薪', '人數加成', '併堂加給', '實際時薪', '堂次薪資', '費率來源']);
             foreach ($lines as $line) {
                 $row = $line->payload ?: [];
-                fputcsv($out, [$row['session_date'] ?? '', $row['teacher_name'] ?? '', $row['student_name'] ?? '', $row['subject'] ?? '', $row['level_label'] ?? '', $row['class_type'] ?? '', $row['hours'] ?? 0, $row['base_rate'] ?? 0, $row['headcount_bonus'] ?? 0, $row['concurrency_bonus_amount'] ?? 0, $row['effective_rate'] ?? 0, $row['session_salary'] ?? 0, ($row['rule_source'] ?? 'branch_default') === 'teacher_override' ? '個別費率' : '分校預設']);
+                $this->putCsv($out, [$row['session_date'] ?? '', $row['teacher_name'] ?? '', $row['student_name'] ?? '', $row['subject'] ?? '', $row['level_label'] ?? '', $row['class_type'] ?? '', $row['hours'] ?? 0, $row['base_rate'] ?? 0, $row['headcount_bonus'] ?? 0, $row['concurrency_bonus_amount'] ?? 0, $row['effective_rate'] ?? 0, $row['session_salary'] ?? 0, ($row['rule_source'] ?? 'branch_default') === 'teacher_override' ? '個別費率' : '分校預設']);
             }
             fclose($out);
         }, $filename, ['Content-Type' => 'text/csv; charset=UTF-8']);
@@ -2785,9 +2846,9 @@ class FinanceController extends Controller
             $callback = function () use ($rows) {
                 $out = fopen('php://output', 'w');
                 fprintf($out, chr(0xEF) . chr(0xBB) . chr(0xBF));
-                fputcsv($out, ['日期', '科目代碼', '科目名稱', '借方', '貸方', '摘要', '學生']);
+                $this->putCsv($out, ['日期', '科目代碼', '科目名稱', '借方', '貸方', '摘要', '學生']);
                 foreach ($rows as $row) {
-                    fputcsv($out, [
+                    $this->putCsv($out, [
                         $row['date'], $row['account_code'], $row['account_name'],
                         $row['debit'] ?: '', $row['credit'] ?: '',
                         $row['memo'], $row['student'],

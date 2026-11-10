@@ -93,20 +93,18 @@
     <!-- ═══ Dashboard (logged in) ═══ -->
     <template v-if="token && dashboard">
 
-      <!-- Student Profile Card (simplified — no fee ring) -->
-      <div class="pp-card pp-profile-card enterprise-page-header" data-guide="parent-student-card">
+      <!-- Shell header: who, where, settings (#4986 step 1) -->
+      <div class="pp-card pp-profile-card" data-guide="parent-student-card">
         <div class="pp-profile-top">
-          <div class="pp-avatar">{{ (dashboard.student?.name || '?')[0] }}</div>
           <div class="pp-profile-info">
             <h2 class="pp-student-name">{{ dashboard.student?.name || '學生' }}</h2>
             <div class="pp-meta-row">
               <span v-if="dashboard.student?.grade" class="pp-tag pp-tag-grade">{{ dashboard.student.grade }}</span>
-              <span v-if="dashboard.student?.school" class="pp-tag pp-tag-school">{{ dashboard.student.school }}</span>
               <span v-if="dashboard.student?.campus_name" class="pp-tag pp-tag-campus">{{ dashboard.student.campus_name }}</span>
             </div>
           </div>
-          <button type="button" @click="logout" class="pp-btn-logout" title="登出" aria-label="登出">
-            <span class="material-symbols-outlined">logout</span>
+          <button type="button" class="pp-btn-logout" :class="{ active: activeTab === 'settings' }" data-guide="parent-settings-button" aria-label="設定" :aria-pressed="activeTab === 'settings'" @click="activeTab = activeTab === 'settings' ? 'home' : 'settings'">
+            <span class="material-symbols-outlined" aria-hidden="true">settings</span>
           </button>
         </div>
         <!-- Student Switcher (multi-child) -->
@@ -144,187 +142,15 @@
         </div>
       </div>
 
-      <!-- ═══ Progress Hub (PRD enterprise v2) ═══ -->
-      <section class="pp-card pp-hub-card enterprise-page-header" v-if="progressSummary" data-guide="parent-progress-hub" aria-labelledby="parent-progress-hub-title">
-        <div class="pp-hub-header">
-          <h2 id="parent-progress-hub-title" class="pp-hub-title">
-            <span class="material-symbols-outlined" aria-hidden="true">flag</span>
-            進度中心
-          </h2>
-          <span class="pp-hub-week">本週 {{ progressSummary.week_label }}</span>
-        </div>
-        <div class="pp-hub-grid pp-hub-grid--home">
-          <button type="button" class="pp-hub-cell" @click="gotoParentTarget('learning', 'week_progress')">
-            <span class="pp-hub-cell-label">本週學習</span>
-            <span class="pp-hub-cell-val">
-              <strong>{{ progressSummary.week_progress.attended }}</strong>
-              <small> / {{ progressSummary.week_progress.scheduled || 0 }} 堂</small>
-            </span>
-            <span class="pp-hub-cell-cta">查看學習評量</span>
-          </button>
-
-          <button type="button" class="pp-hub-cell" :class="{ 'pp-hub-cell--accent': progressSummary.next_session?.is_today }" @click="gotoParentTarget('schedule', 'next_session')">
-            <span class="pp-hub-cell-label">下次課程</span>
-            <span class="pp-hub-cell-val pp-hub-cell-val--small" v-if="progressSummary.next_session">
-              <strong>{{ formatHubDate(progressSummary.next_session.date) }}</strong>
-              <small>{{ formatHM(progressSummary.next_session.start_time) }}–{{ formatHM(progressSummary.next_session.end_time) }}</small>
-              <small v-if="progressSummary.next_session.subject" class="pp-hub-cell-sub">{{ progressSummary.next_session.subject }}</small>
-            </span>
-            <span class="pp-hub-cell-val pp-hub-cell-val--small" v-else>
-              <strong>—</strong>
-              <small>近期無課程</small>
-            </span>
-            <span class="pp-hub-cell-cta">查看課表</span>
-          </button>
-
-          <button type="button" class="pp-hub-cell pp-hub-cell--span-2" :class="paymentHubClass" @click="gotoParentTarget('billing', 'payment')">
-            <span class="pp-hub-cell-label">繳費狀態</span>
-            <span class="pp-hub-cell-val">
-              <strong>{{ progressSummary.payment.paid_courses || 0 }}</strong>
-              <small> / {{ progressSummary.payment.total_courses || 0 }} 已繳</small>
-            </span>
-            <span class="pp-hub-cell-cta">{{ paymentHubLabel }}</span>
-          </button>
-        </div>
-        <!-- 類 Remind / ClassDojo：把「雙向溝通」從隱藏欄位提升為一級入口 -->
-        <button
-          v-if="allLearningRecords.length"
-          type="button"
-          class="pp-hub-feedback-cta"
-          @click="inviteParentFeedbackFromHub"
-        >
-          <span class="material-symbols-outlined pp-hub-feedback-cta__icon">mark_chat_unread</span>
-          <span class="pp-hub-feedback-cta__main">
-            <span class="pp-hub-feedback-cta__title">想跟老師說什麼？</span>
-            <span class="pp-hub-feedback-cta__sub">前往學習評量，針對<strong>每一堂課</strong>留言，老師與主任都會收到</span>
-          </span>
-          <span class="material-symbols-outlined pp-hub-feedback-cta__chev">chevron_right</span>
-        </button>
-      </section>
-
-      <!-- Parent Portal V1: answer the five parent questions using existing data only. -->
-      <section class="pp-card pp-home-v1" v-if="parentHomeSummary" aria-labelledby="parent-home-v1-title">
-        <div class="pp-home-v1__header">
-          <div>
-            <h2 id="parent-home-v1-title">本次學習重點</h2>
-            <p>從已核准的學習評量、老師建議與目前待辦整理。</p>
-          </div>
-          <span class="pp-home-v1__badge">家長摘要</span>
-        </div>
-        <div class="pp-home-v1__grid">
-          <article class="pp-home-v1__item pp-home-v1__item--wide">
-            <span class="pp-home-v1__label">最近學了什麼</span>
-            <strong v-if="parentHomeSummary.latestRecord">{{ parentHomeSummary.latestRecord.subject }} · {{ parentHomeSummary.latestRecord.date }}</strong>
-            <p>{{ parentHomeSummary.latestText || '目前尚無已核准的學習內容。' }}</p>
-          </article>
-          <article class="pp-home-v1__item">
-            <span class="pp-home-v1__label">本週重點</span>
-            <strong v-if="parentHomeSummary.focusText">{{ parentHomeSummary.focusText }}</strong>
-            <p v-else>目前沒有額外的重點提示。</p>
-          </article>
-          <article class="pp-home-v1__item">
-            <span class="pp-home-v1__label">老師建議／處理</span>
-            <p>{{ parentHomeSummary.teacherText || '老師尚未在這筆評量留下建議。' }}</p>
-          </article>
-          <article class="pp-home-v1__item">
-            <span class="pp-home-v1__label">回家要做什麼</span>
-            <p>{{ parentHomeSummary.homeworkText || '目前沒有記載回家作業。' }}</p>
-          </article>
-          <article class="pp-home-v1__item pp-home-v1__item--wide">
-            <span class="pp-home-v1__label">下一步／目前待辦</span>
-            <ul v-if="parentHomeSummary.nextSteps.length" class="pp-home-v1__next-list">
-              <li v-for="step in parentHomeSummary.nextSteps" :key="step">{{ step }}</li>
-            </ul>
-            <p v-else>目前沒有待處理事項。</p>
-          </article>
-        </div>
-      </section>
-
       <div v-if="dashboardError" class="pp-card pp-dashboard-error" role="alert">
         <strong>目前無法載入家長資料</strong>
         <p>{{ dashboardError }}</p>
         <button type="button" class="pp-btn pp-btn-primary" @click="retryDashboard">重新載入</button>
       </div>
 
-      <section class="pp-card pp-attention-card" v-if="progressSummary" data-guide="parent-attention-card" aria-labelledby="parent-attention-title">
-        <div class="pp-attention-head">
-          <div>
-            <div class="pp-attention-title">
-              <span class="material-symbols-outlined" aria-hidden="true">notifications_active</span>
-              <h3 id="parent-attention-title">需要留意</h3>
-            </div>
-            <p class="pp-attention-subtitle">把需要你查看或回覆的事情集中在這裡。</p>
-          </div>
-          <span v-if="parentActionItems.length" class="pp-attention-count" :aria-label="`${parentActionItems.length} 個待處理事項`">{{ parentActionItems.length }}</span>
-        </div>
-        <div v-if="parentActionItems.length" class="pp-attention-list">
-          <button
-            v-for="item in parentActionItems"
-            :key="item.key"
-            type="button"
-            :class="['pp-attention-item', `pp-attention-item--${item.tone}`]"
-            @click="gotoParentTarget(item.target, `attention_${item.key}`)"
-          >
-            <span class="material-symbols-outlined pp-attention-item__icon" aria-hidden="true">{{ item.icon }}</span>
-            <span class="pp-attention-item__main">
-              <strong>{{ item.title }}</strong>
-              <small>{{ item.detail }}</small>
-            </span>
-            <span class="pp-attention-item__action">{{ item.action }}</span>
-            <span class="material-symbols-outlined pp-attention-item__chevron" aria-hidden="true">chevron_right</span>
-          </button>
-        </div>
-        <div v-else class="pp-attention-empty" role="status">
-          <span class="material-symbols-outlined" aria-hidden="true">task_alt</span>
-          <span>目前沒有需要處理的事項。完整紀錄仍可從下方分頁查看。</span>
-        </div>
-      </section>
-
-      <div class="pp-card pp-parent-update" v-if="progressSummary && parentReleaseNotes.length">
-        <button type="button" class="pp-parent-update__btn" @click="openReleaseNote(parentReleaseNotes[0])">
-          <span class="material-symbols-outlined pp-parent-update__icon">new_releases</span>
-          <span class="pp-parent-update__main">
-            <span class="pp-parent-update__k">與您有關的更新</span>
-            <span class="pp-parent-update__meta">{{ parentReleaseNotes[0].version }} · {{ parentReleaseNotes[0].date }}</span>
-            <span class="pp-parent-update__t">{{ parentNoteTeaser(parentReleaseNotes[0]) }}</span>
-          </span>
-          <span class="material-symbols-outlined pp-parent-update__chev">chevron_right</span>
-        </button>
-        <button
-          v-if="parentReleaseNotes.length > 1"
-          type="button"
-          class="pp-parent-update__more"
-          @click="openReleaseNote(parentReleaseNotes[1])"
-        >
-          <span class="pp-parent-update__more-label">上一則</span>
-          <span class="pp-parent-update__more-t">{{ parentReleaseNotes[1].version }} — {{ parentNoteTeaser(parentReleaseNotes[1]) }}</span>
-        </button>
-      </div>
-      <div class="pp-card pp-release-detail" v-if="selectedReleaseNote">
-        <div class="pp-release-detail-head">
-          <strong>{{ selectedReleaseNote.title }}</strong>
-          <button type="button" class="pp-link-btn" @click="selectedReleaseNote = null">關閉</button>
-        </div>
-        <p class="pp-release-detail-summary">{{ selectedReleaseNote.summary }}</p>
-        <p v-if="selectedReleaseNote.details" class="pp-release-detail-body">{{ selectedReleaseNote.details }}</p>
-      </div>
-
-      <!-- ═══ Tab Bar ═══ -->
-      <div class="pp-tab-bar" role="tablist" aria-label="家長入口分頁">
-        <button id="parent-tab-learning" type="button" role="tab" aria-controls="parent-panel-learning" :aria-selected="activeTab === 'learning'" :tabindex="activeTab === 'learning' ? 0 : -1" :class="['pp-tab', { active: activeTab === 'learning' }]" @click="activeTab = 'learning'" @keydown="onParentTabKeydown($event, 'learning')">
-          <span class="material-symbols-outlined">assignment</span>
-          學習
-          <span v-if="lrRecordsMissingFeedbackCount > 0" class="pp-tab-badge pp-tab-badge--soft" :title="`有 ${lrRecordsMissingFeedbackCount} 堂尚未留言`">{{ lrRecordsMissingFeedbackCount > 9 ? '9+' : lrRecordsMissingFeedbackCount }}</span>
-        </button>
-        <button id="parent-tab-schedule" type="button" role="tab" aria-controls="parent-panel-schedule" :aria-selected="activeTab === 'schedule'" :tabindex="activeTab === 'schedule' ? 0 : -1" :class="['pp-tab', { active: activeTab === 'schedule' }]" @click="activeTab = 'schedule'" @keydown="onParentTabKeydown($event, 'schedule')">
-          <span class="material-symbols-outlined">calendar_today</span>
-          課表
-        </button>
-        <button id="parent-tab-billing" type="button" role="tab" aria-controls="parent-panel-billing" :aria-selected="activeTab === 'billing'" :tabindex="activeTab === 'billing' ? 0 : -1" :class="['pp-tab', { active: activeTab === 'billing' }]" @click="activeTab = 'billing'" @keydown="onParentTabKeydown($event, 'billing')">
-          <span class="material-symbols-outlined">receipt_long</span>
-          帳務
-          <span v-if="billingBadgeCount > 0" class="pp-tab-badge">{{ billingBadgeCount }}</span>
-        </button>
+      <!-- ═══ Tab: 首頁（3 張卡） ═══ -->
+      <div v-if="activeTab === 'home'" id="parent-panel-home" class="pp-tab-panel" role="tabpanel" aria-labelledby="parent-tab-home">
+        <ParentHome :home="parentHome" @leave="startLeaveFromHome" @pay="gotoParentTarget('billing', 'home_pay')" @learning="gotoParentTarget('learning', 'home_feedback')" />
       </div>
 
       <!-- ═══ Tab: 學習（預設首頁） ═══ -->
@@ -625,7 +451,7 @@
                 <div class="pp-timeline-content">
                   <div class="pp-timeline-head">
                     <span class="pp-timeline-date">{{ a.date || (a.SignInDT ? a.SignInDT.substring(0, 10) : '') }}</span>
-                    <span :class="['pp-timeline-status', attendanceStatusClass(a.Status)]">{{ a.status_label || attendanceLabel(a.Status) }}</span>
+                    <span :class="['pp-timeline-status', attendanceStatusClass(a.Status)]">{{ lessonStatusLabel(a.Status) }}</span>
                   </div>
                   <div class="pp-timeline-sub" v-if="a.time || a.subject || a.teacher_name">
                     <span v-if="a.time"><span class="material-symbols-outlined pp-mini-icon" aria-hidden="true">schedule</span>{{ a.time }}</span>
@@ -745,7 +571,7 @@
           <div class="pp-subject-breakdown">
             <div v-for="(count, subject) in dashboard.remaining_by_subject" :key="subject"
                  class="pp-subject-pill" :style="{ borderColor: remainingPillColor(count) }">
-              <span class="pp-pill-subject">{{ subject }}</span>
+              <span class="pp-pill-subject">{{ String(subject).replace('（共用）', '（多科）') }}</span>
               <span class="pp-pill-count" :style="{ color: remainingPillColor(count) }">{{ count }}堂</span>
             </div>
           </div>
@@ -824,8 +650,8 @@
               <div class="pp-course-top">
                 <span class="pp-course-subject">{{ c.subject || '課程' }}</span>
                 <span v-if="c.campus_name" class="pp-campus-label">{{ c.campus_name }}</span>
-                <span v-if="isMonthlyCourse(c)" class="pp-badge pp-badge-info">月結</span>
-                <span v-if="c.is_package" class="pp-badge pp-badge-info-soft">共用方案</span>
+                <span v-if="isMonthlyCourse(c)" class="pp-badge pp-badge-info">{{ courseTypeLabel('monthly') }}</span>
+                <span v-if="c.is_package" class="pp-badge pp-badge-info-soft">{{ courseTypeLabel('package') }}</span>
                 <span v-if="c.is_tutoring || c.payment_status === 'free'" class="pp-badge pp-badge-info-soft">{{ c.payment_status_label || '免費（不適用）' }}</span>
                 <span v-else-if="c.payment_status === 'waived'" class="pp-badge pp-badge-info-soft">{{ c.payment_status_label || '已確認不收' }}</span>
                 <span v-else-if="c.paid" class="pp-badge pp-badge-success">{{ c.payment_status_label || '已繳費' }}</span>
@@ -849,7 +675,7 @@
                   <span class="pp-remaining-label">堂剩餘</span>
                 </div>
                 <p v-if="c.is_package" class="pp-package-hint">
-                  與其他科目共用同一方案（共 {{ c.package_total_sessions ?? 0 }} 堂），剩餘為共用堂數，扣堂一起計算。
+                  與其他科目合併計算（共 {{ c.package_total_sessions ?? 0 }} 堂），剩餘堂數一起使用。
                 </p>
                 <!-- in-app #418：這門課自己的上課日期，不必切到「學習」分頁對科目數 -->
                 <details v-if="lessonViews[c.id]?.total" class="pp-lesson-dates">
@@ -915,7 +741,7 @@
           <div v-for="alert in dashboard.payment_alerts" :key="alert.class_id" class="pp-alert-item">
             <span class="pp-subject-chip">{{ alert.subject || '課程' }}</span>
             <div class="pp-alert-badges">
-              <span v-if="alert.remaining_sessions <= 0" class="pp-badge pp-badge-neutral">堂數用完</span>
+              <span v-if="alert.remaining_sessions <= 0" class="pp-badge pp-badge-neutral">{{ outOfLessonsLabel() }}</span>
               <span v-else class="pp-badge pp-badge-info-soft">剩餘 {{ alert.remaining_sessions }} 堂</span>
               <span v-if="!alert.paid" class="pp-badge pp-badge-info-warn">待繳費</span>
             </div>
@@ -941,16 +767,29 @@
             <div class="pp-invoice-badges">
               <span v-if="inv.campus_name" class="pp-campus-label">{{ inv.campus_name }}</span>
               <span :class="['pp-badge', inv.Status === 'paid' || inv.status === 'paid' ? 'pp-badge-success' : 'pp-badge-warning']">
-                {{ inv.Status === 'paid' || inv.status === 'paid' ? '已付款' : '未付款' }}
+                {{ moneyStatusLabel(inv.Status === 'paid' || inv.status === 'paid' ? 'paid' : 'unpaid') }}
               </span>
-              <span v-if="inv.reconciled_at" class="pp-badge pp-badge-reconciled" title="已核帳確認">
+              <span v-if="inv.reconciled_at" class="pp-badge pp-badge-reconciled" title="已確認">
                 <span class="material-symbols-outlined" style="font-size:14px;vertical-align:middle">verified</span>
-                已核帳
+                已確認
               </span>
             </div>
           </div>
         </div>
 
+        </div>
+      </template>
+      <!-- ／帳務 Tab -->
+
+      <!-- ═══ Settings (⚙): old cards move to step 5 ═══ -->
+      <div v-if="activeTab === 'settings'" id="parent-panel-settings" class="pp-tab-panel" role="region" aria-label="設定">
+        <Card class="pp-display-settings">
+          <CardHeader>
+            <CardTitle>顯示設定</CardTitle>
+            <CardDescription>選擇適合您的字級，這台裝置會記住您的選擇。</CardDescription>
+          </CardHeader>
+          <CardContent><TextSizeToggle /></CardContent>
+        </Card>
         <!-- LINE Binding Info -->
         <div class="pp-card">
           <div class="pp-section-header">
@@ -989,22 +828,59 @@
               <small v-else>綁定 LINE 後才可開啟推播通知</small>
             </span>
           </label>
+          <ParentTelegramBind v-if="dashboard?.student?.telegram_bind_available" :token="token" />
         </div>
 
+        <div v-if="parentReleaseNotes.length" class="pp-card" data-guide="parent-updates">
+          <h3>與您有關的更新</h3>
+          <div v-for="note in parentReleaseNotes" :key="note.id">
+            <strong>{{ note.title }}</strong>
+            <p class="pp-hint">{{ note.summary }}</p>
+          </div>
         </div>
-      </template>
-      <!-- ／帳務 Tab -->
+        <div class="pp-card">
+          <button type="button" class="pp-btn pp-btn-ghost" style="width:100%;min-height:44px;" @click="logout">登出</button>
+        </div>
+      </div>
+
+      <!-- ═══ Bottom tab bar ═══ -->
+      <SlidingIndicator class="pp-tab-bar" role="tablist" aria-label="家長入口分頁" :active="activeTab">
+        <button id="parent-tab-home" type="button" role="tab" aria-controls="parent-panel-home" :aria-selected="activeTab === 'home'" :tabindex="activeTab === 'home' ? 0 : -1" :class="['pp-tab', { active: activeTab === 'home' }]" @click="activeTab = 'home'" @keydown="onParentTabKeydown($event, 'home')">
+          <span class="material-symbols-outlined" aria-hidden="true">home</span>
+          首頁
+        </button>
+        <button id="parent-tab-schedule" type="button" role="tab" aria-controls="parent-panel-schedule" :aria-selected="activeTab === 'schedule'" :tabindex="activeTab === 'schedule' ? 0 : -1" :class="['pp-tab', { active: activeTab === 'schedule' }]" @click="activeTab = 'schedule'" @keydown="onParentTabKeydown($event, 'schedule')">
+          <span class="material-symbols-outlined" aria-hidden="true">calendar_today</span>
+          課表
+        </button>
+        <button id="parent-tab-learning" type="button" role="tab" aria-controls="parent-panel-learning" :aria-selected="activeTab === 'learning'" :tabindex="activeTab === 'learning' ? 0 : -1" :class="['pp-tab', { active: activeTab === 'learning' }]" @click="activeTab = 'learning'" @keydown="onParentTabKeydown($event, 'learning')">
+          <span class="material-symbols-outlined" aria-hidden="true">assignment</span>
+          學習
+          <span v-if="lrRecordsMissingFeedbackCount > 0" class="pp-tab-badge pp-tab-badge--soft" :title="`有 ${lrRecordsMissingFeedbackCount} 堂尚未留言`">{{ lrRecordsMissingFeedbackCount > 9 ? '9+' : lrRecordsMissingFeedbackCount }}</span>
+        </button>
+        <button id="parent-tab-billing" type="button" role="tab" aria-controls="parent-panel-billing" :aria-selected="activeTab === 'billing'" :tabindex="activeTab === 'billing' ? 0 : -1" :class="['pp-tab', { active: activeTab === 'billing' }]" @click="activeTab = 'billing'" @keydown="onParentTabKeydown($event, 'billing')">
+          <span class="material-symbols-outlined" aria-hidden="true">receipt_long</span>
+          繳費
+          <span v-if="billingBadgeCount > 0" class="pp-tab-badge">{{ billingBadgeCount }}</span>
+        </button>
+      </SlidingIndicator>
 
     </template>
   </div>
 </template>
 
 <script setup>
+import ParentTelegramBind from '../components/ParentTelegramBind.vue';
 import { onMounted, ref, computed, reactive, nextTick, watch } from 'vue';
 import { getParentDashboard, parentLogin, parentLoginLine, parentSwitchStudent, upsertParentLearningRecordFeedback, parentReplyLearningRecordFeedback, getParentLearningRecordFeedback, submitParentFeedback, parentRequestLeave, getParentNotificationPreferences, setParentNotificationPreferences } from '../api';
-import { notesForRole, parentReleaseNoteTeaser } from '../lib/releaseNotes';
 import { trackParentPortalEvent } from '../lib/adoptionTelemetry';
-import { buildParentActionItems, buildParentHomeSummary } from '../lib/parentActionItems';
+import { notesForRole } from '../lib/releaseNotes';
+import ParentHome from '../components/parent/ParentHome.vue';
+import TextSizeToggle from '../components/TextSizeToggle.vue';
+import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
+import { SlidingIndicator } from '../components/motion';
+import { pickNextLesson, pickAmountDue, pickLatestFeedback } from '../lib/parentHome';
+import { lessonStatusLabel, courseTypeLabel, moneyStatusLabel, outOfLessonsLabel } from '../lib/parentLabels';
 import { formatAssessmentProgressDate, assessmentProgressScoreLabel, assessmentProgressPercentLabel } from '../lib/parentAssessmentProgress';
 import { isMonthlyPaymentType, remainingTone } from '../lib/courseMoneyState';
 import { isSessionStartedOrPast, isLateLeave, canRequestParentLeave } from '../lib/parentLeavePolicy';
@@ -1089,76 +965,42 @@ async function openAttendanceTimeline() {
   await nextTick();
   document.getElementById('pp-attendance-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
-const activeTab = ref('learning');
-const parentTabKeys = ['learning', 'schedule', 'billing'];
+const activeTab = ref('home');
+const parentReleaseNotes = computed(() => notesForRole('parent'));
+const parentTabKeys = ['home', 'schedule', 'learning', 'billing'];
 const leaveSessionId = ref(null);
 const leaveReason = ref('');
 const leaveSubmitting = ref(false);
 const leaveError = ref('');
 const leaveSuccess = ref('');
-const selectedReleaseNote = ref(null);
 
 const progressSummary = computed(() => dashboard.value?.progress_summary || null);
 const parentAssessmentProgress = computed(() => dashboard.value?.assessment_progress?.items || []);
-const parentReleaseNotes = computed(() => notesForRole('parent').slice(0, 2));
-const parentActionItems = computed(() => buildParentActionItems({
-  progressSummary: progressSummary.value,
-  paymentAlerts: dashboard.value?.payment_alerts,
-  upcomingSessions: dashboard.value?.upcoming_sessions,
-  learningRecords: allLearningRecords.value,
-}));
-const parentHomeSummary = computed(() => {
-  if (!dashboard.value) return null;
-  return buildParentHomeSummary({
-    learningRecords: allLearningRecords.value,
-    assessmentItems: parentAssessmentProgress.value,
-    progressSummary: progressSummary.value,
-    actionItems: parentActionItems.value,
-  });
+// 首頁 3 cards (#4986 step 1): one fact once, from the existing dashboard payload.
+const parentHome = computed(() => {
+  const d = dashboard.value || {};
+  const today = new Date().toLocaleDateString('sv', { timeZone: 'Asia/Taipei' });
+  return {
+    nextLesson: pickNextLesson(d.upcoming_sessions, today, { actionsEnabled: crossCampusActionsEnabled.value }),
+    due: pickAmountDue(d.invoices, d.payment_alerts),
+    feedback: pickLatestFeedback(allLearningRecords.value),
+  };
 });
 
-function parentNoteTeaser(note) {
-  return parentReleaseNoteTeaser(note);
-}
-
-const paymentHubClass = computed(() => {
-  const status = progressSummary.value?.payment?.status;
-  if (status === 'all_pending') return 'pp-hub-cell--warn';
-  if (status === 'partial') return 'pp-hub-cell--accent';
-  if (status === 'all_clear') return 'pp-hub-cell--ok';
-  return '';
-});
-
-const paymentHubLabel = computed(() => {
-  const status = progressSummary.value?.payment?.status;
-  if (status === 'all_pending') return '查看待繳帳務';
-  if (status === 'partial') return '查看部分待繳帳務';
-  if (status === 'all_clear') return '查看帳務明細';
-  return '查看帳務';
-});
-
-function formatHubDate(value) {
-  if (!value) return '—';
-  const m = String(value).match(/^(\d{4})-(\d{2})-(\d{2})/);
-  return m ? `${parseInt(m[2], 10)}/${parseInt(m[3], 10)}` : value;
+async function startLeaveFromHome(session) {
+  activeTab.value = 'schedule';
+  openLeaveBox(session);
+  await nextTick();
+  document.getElementById('parent-panel-schedule')?.scrollIntoView({ block: 'start' });
 }
 
 async function gotoParentTarget(target, source = 'hub_card') {
-  const resolved = ['learning', 'schedule', 'billing'].includes(String(target)) ? String(target) : 'learning';
+  const resolved = parentTabKeys.includes(String(target)) ? String(target) : 'home';
   activeTab.value = resolved;
   trackParentPortalEvent(token.value, 'parent.progress_card_clicked', {
     card: source,
     target: resolved,
   });
-  // The attention card is itself on the learning tab. Selecting its feedback
-  // action must still produce a visible transition: open the first record that
-  // can receive feedback and focus its editor instead of merely reassigning the
-  // already-selected tab.
-  if (source === 'attention_feedback' && resolved === 'learning') {
-    await nextTick();
-    await new Promise((resolveDelay) => setTimeout(resolveDelay, 220));
-    await jumpToFirstFeedbackSlot(source);
-  }
 }
 
 function onParentTabKeydown(event, currentTab) {
@@ -1175,13 +1017,6 @@ function onParentTabKeydown(event, currentTab) {
   const nextTab = parentTabKeys[nextIndex];
   activeTab.value = nextTab;
   nextTick(() => document.getElementById(`parent-tab-${nextTab}`)?.focus());
-}
-
-function openReleaseNote(note) {
-  selectedReleaseNote.value = note;
-  trackParentPortalEvent(token.value, 'parent.release_note_opened', {
-    version: note?.version || '',
-  });
 }
 
 const billingBadgeCount = computed(() => {
@@ -1438,20 +1273,7 @@ const jumpToFirstFeedbackSlot = async (source = 'engage_strip') => {
   await openFeedbackForRecord(target, source);
 };
 
-const inviteParentFeedbackFromHub = async () => {
-  activeTab.value = 'learning';
-  trackParentPortalEvent(token.value, 'parent.hub_feedback_cta', {
-    missing_count: lrRecordsMissingFeedbackCount.value,
-  });
-  await nextTick();
-  await new Promise((r) => setTimeout(r, 220));
-  await jumpToFirstFeedbackSlot('hub_cta');
-};
-
-const statusLabel = (s) => {
-  const map = { scheduled: '排定', rescheduled: '已調課', leave_requested: '請假審核中', leave: '已核准請假', cancelled: '已取消', completed: '已完成' };
-  return map[s] || s;
-};
+const statusLabel = lessonStatusLabel;
 
 const crossCampusActionsEnabled = computed(() => {
   const mode = dashboard.value?.cross_campus_access;
@@ -1831,16 +1653,6 @@ const attendanceIcon = (status) => {
   })[s] || 'help';
 };
 
-const attendanceLabel = (status) => {
-  const s = attendanceStatusClass(status);
-  return ({
-    present: '到班',
-    late: '遲到',
-    absent: '缺席',
-    leave: '請假',
-  })[s] || String(status || '—');
-};
-
 const remainingPillColor = (count) => REMAINING_TONE_COLORS[remainingTone(count)];
 
 const switchError = ref('');
@@ -1859,7 +1671,7 @@ const switchStudent = async (studentId) => {
     campusScope.value = 'all';
     appliedCampusScope.value = 'all';
     expandedRecords.clear();
-    activeTab.value = 'learning';
+    activeTab.value = 'home';
     await loadDashboard();
   } catch (e) {
     console.error('Switch student failed:', e);
@@ -1988,7 +1800,7 @@ onMounted(async () => {
 .pp {
   max-width: 520px;
   margin: 0 auto;
-  padding: 12px;
+  padding: 12px 12px 88px;
   font-family: 'Inter', 'Noto Sans TC', -apple-system, sans-serif;
   color: var(--ds-ink);
   min-height: 100vh;
@@ -2003,6 +1815,8 @@ onMounted(async () => {
   margin-bottom: 12px;
   box-shadow: 0 1px 4px rgba(0,0,0,0.06), 0 0 1px rgba(0,0,0,0.08);
 }
+
+.pp-display-settings { margin-bottom: var(--ds-space-3); }
 
 .pp-hint { color: var(--ds-ink-mute); font-size: 0.85em; margin: 4px 0 0; }
 .pp-hint-bind {
@@ -2074,7 +1888,8 @@ onMounted(async () => {
   min-width: 44px; min-height: 44px; padding: 6px; cursor: pointer; color: var(--ds-ink-mute);
   display: flex; align-items: center; justify-content: center; flex-shrink: 0;
 }
-.pp-btn-logout:hover { background: var(--ds-canvas); }
+.pp-btn-logout:hover, .pp-btn-logout.active { background: var(--ds-canvas); }
+.pp-profile-info { flex: 1; min-width: 0; }
 .pp-btn-logout:focus-visible,
 .pp-chip:focus-visible,
 .pp-campus-select:focus-visible {
@@ -2369,13 +2184,15 @@ onMounted(async () => {
 
 /* ═══ Tab Bar ═══ */
 .pp-tab-bar {
-  display: flex; gap: 0; background: var(--ds-canvas); border-radius: 12px;
-  box-shadow: 0 1px 4px rgba(0,0,0,.08); overflow: hidden; margin-bottom: 4px;
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: var(--ds-z-sticky, 10);
+  display: flex; max-width: 520px; margin: 0 auto;
+  background: var(--ds-canvas); border-top: 1px solid var(--ds-canvas-soft);
+  padding-bottom: env(safe-area-inset-bottom);
 }
 .pp-tab {
-  flex: 1; display: flex; flex-direction: column; align-items: center;
-  gap: 3px; padding: 10px 8px; min-height: 52px; background: none; border: none;
-  cursor: pointer; font-size: 0.8em; color: var(--ds-ink-mute); transition: color .2s, background .2s;
+  flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 2px; padding: 8px 4px; min-height: 56px; min-width: 44px; background: none; border: none;
+  cursor: pointer; font-size: var(--ds-font-size-xs); color: var(--ds-ink-mute); transition: color .2s, background .2s;
   position: relative;
 }
 .pp-tab:focus-visible {
@@ -2384,7 +2201,7 @@ onMounted(async () => {
   outline-offset: -3px;
 }
 .pp-tab .material-symbols-outlined { font-size: 20px; }
-.pp-tab.active { color: var(--ds-ink-mute); background: var(--ds-canvas-soft); font-weight: 600; }
+.pp-tab.active { color: var(--ds-ink); font-weight: 700; }
 .pp-tab:not(.active):hover { background: var(--ds-canvas-soft); color: var(--ds-ink-mute); }
 .pp-tab-badge {
   position: absolute; top: 6px; right: calc(50% - 18px);
@@ -3202,14 +3019,14 @@ onMounted(async () => {
 
 /* ═══ Responsive ═══ */
 @media (max-width: 640px) {
-  .pp { padding: 8px; }
+  .pp { padding: 8px 8px 88px; }
   .pp-card { padding: 14px; border-radius: 10px; }
   .pp-login-card { padding: 20px 16px; }
   .pp-sessions-summary { flex-direction: column; text-align: center; gap: 8px; }
 }
 
 @media (min-width: 521px) {
-  .pp { padding: 20px; }
+  .pp { padding: 20px 20px 88px; }
   .pp-card { padding: 20px 24px; }
   .pp-course-grid { display: grid; grid-template-columns: repeat(2, 1fr); }
 }

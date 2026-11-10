@@ -21,6 +21,8 @@ Founder 2026-11-06: every page, staff and parent, gets the look of the parent �
 - Migrated pages use `components/ui` with `--ds-*` tokens, never new literals. This section overrides the older "Radius low-medium / Elevation minimal" dials for migrated pages.
 - Migration order and definition of done: [`UI_FOUNDATION_MIGRATION_SEQUENCING.md`](UI_FOUNDATION_MIGRATION_SEQUENCING.md).
 
+分類 icon 用繽紛漸層（iOS 風），主要按鈕金色，紅色只給危險（Founder 2026-11-07）。Category hues are `--ds-cat-*` tokens (orange, green, blue, violet, pink, teal, indigo); the hero stays warm and the primary button gold. 登入：橘金流動絲綢（Vue Bits Silk 移植，WebGL，舊機自動退回 CSS）（Founder 2026-11-07）。Elsewhere (parent home): one accent on the primary action, hierarchy by type and whitespace, hairline or soft shadow (never both), neutral badges, motion once and quiet. Parent-facing copy is gentle and polite (您, no blame words such as 欠, 逾期, 未繳).
+
 ## Authority map
 
 For product and operations pages, use the documents in this order:
@@ -172,7 +174,7 @@ Rollback: revert the stacked PR; page-scoped + additive primitives. See audit ta
 | Component Gallery | https://component.gallery/ | Site content for taxonomy | Component inventory checklist |
 | Shopify Polaris | https://polaris.shopify.com/ | Polaris license (docs) | Optional content hierarchy cues |
 | AllTrue RULE DS | `docs/RULE_DESIGN_SYSTEM.md` | Project | Brand color + auth exceptions |
-| Founder-star references | `.cursor/rules/frontend-brand-taste.mdc` | Reference index | `taste-skill` / `impeccable` for anti-slop taste, `awesome-design-md` for design-document discipline, shadcn/Radix and Carbon/Fluent/Primer for accessible product patterns; no code or visual skin copied |
+| Founder-star references | `.cursor/rules/frontend-brand-taste.mdc` | Reference index | design QA step and motion layer: see `docs/design/UI_FOUNDATION_MIGRATION_SEQUENCING.md` (skills vendored in `.claude/skills/`, `VENDORED.md`); `awesome-design-md`, shadcn/Radix and Carbon/Fluent/Primer remain pattern references; no visual skin copied |
 
 **Decision (superseded 2026-11-06, #4659):** the pilot built AllTrue-owned `At*` primitives and did not vendor `@gitlab/ui` or `@carbon/vue`. The permanent template is now shadcn-vue in `components/ui`; `@gitlab/ui` and `@carbon/vue` remain not vendored.
 

@@ -102,10 +102,11 @@ export function decide(pr, required) {
   const states = checkStates(pr.rollup, required);
   const failed = Object.keys(states).filter((n) => states[n] === 'fail');
   if (failed.length) {
-    // Only cancelled (runner starvation, concurrency): rerun those workflow runs once per head instead of dropping (#4700).
+    // Failed or cancelled: rerun those workflow runs once per head before dropping (#4700). A flaky test or a starved
+    // runner passes on the retry; a real failure fails again and is rejected by the executor's once-per-head marker.
     const latest = latestRuns(pr.rollup);
-    const runs = failed.map((n) => String(latest.get(n)?.conclusion).toUpperCase() === 'CANCELLED' && latest.get(n)?.checkSuite?.workflowRun?.databaseId);
-    if (runs.every(Boolean)) return { action: 'rerun', reason: 'rerun-cancelled', runs: [...new Set(runs)], text: `required checks were cancelled, not failed (${failed.join(', ')}); rerunning them once on this head. The label stays.` };
+    const runs = failed.map((n) => latest.get(n)?.checkSuite?.workflowRun?.databaseId);
+    if (runs.every(Boolean)) return { action: 'rerun', reason: 'rerun-once', runs: [...new Set(runs)], text: `required checks failed or were cancelled (${failed.join(', ')}); rerunning them once on this head. The label stays.` };
     return { action: 'reject', reason: 'checks', text: `required checks failed: ${failed.join(', ')}. Fix and re-add \`queue\`` };
   }
   const allGreen = Object.values(states).every((s) => s === 'pass');
@@ -118,7 +119,7 @@ export function decide(pr, required) {
   return { action: 'wait' };
 }
 
-// Batch: up to BATCH_MAX oldest eligible PRs tested together on a branch cut from the main tip.
+// Batch: up to BATCH_MAX oldest eligible PRs (one is enough) tested together on a branch cut from the main tip.
 // cands: [{n, serial}] in queue order, already eligible. A PR whose batch went red is serial-only
 // (until re-queued); if the oldest candidate is serial-only it goes first, alone, no batch.
 export const BATCH_MAX = 4;
@@ -138,7 +139,17 @@ export function isBatchBase(commit, parentTree) {
 export function planBatch(cands) {
   const batch = [];
   for (const c of cands) { if (c.serial || batch.length === BATCH_MAX) break; batch.push(c); }
-  return batch.length >= 2 ? batch : [];
+  return batch;
+}
+// Batching on: a batchable PR is tested merged onto the main tip (a batch of one is fine), so being behind main
+// costs nothing, while updating its branch would restart its CI and void the review on its head (the bors /
+// GitHub merge queue model: test the merge, never rewrite the PR). Only serial-only PRs update and merge serially.
+// A head that already contains main was tested as-is, so it still merges serially with no extra CI run.
+export const isBehind = (pr) => pr.behindBy > 0 || pr.mergeStateStatus === 'BEHIND';
+export function serialDecision(pr, required, batchable) {
+  if (!batchable || !isBehind(pr)) return decide(pr, required);
+  const d = decide(neutral(pr), required);
+  return d.action === 'merge' ? { action: 'wait', reason: 'batch-next' } : d;
 }
 
 // Members live in the batch's first-parent merge commits: "land-queue batch member #N <sha>".
@@ -181,7 +192,7 @@ const apiPages = (path) => JSON.parse(gh('api', `/repos/${REPO}/${path}`, '--pag
 
 // strict: the ruleset still demands up-to-date branches. Batching only runs when it is off
 // (a batch merges PR heads that are behind main, which strict would refuse).
-function requiredChecks() {
+export function requiredChecks() {
   const rules = api('rules/branches/main').filter((r) => r.type === 'required_status_checks');
   const checks = rules.flatMap((r) => r.parameters.required_status_checks);
   // REVIEW_CHECK is evaluated in-process by reviewGate (same module); batch branches have no PR and never get it.
@@ -226,7 +237,7 @@ function unresolvedThreads(n) {
   } catch (e) { console.log(`#${n}: review threads unknown (${e.message}); not merging`); return null; }
 }
 
-function load(n) {
+export function load(n) {
   const [o, r] = REPO.split('/');
   const p = JSON.parse(gh('api', 'graphql', '-f', `query=${Q}`, '-F', `o=${o}`, '-F', `r=${r}`, '-F', `n=${n}`)).data.repository.pullRequest;
   return {
@@ -388,7 +399,7 @@ function startBatch(queue, required) {
   }
   for (const c of cands) c.serial = batchSerial(c.pr, c.serial); // adds the intentional-revert rule
   const batch = planBatch(cands);
-  if (!batch.length) return false;
+  if (!batch.length || (batch.length === 1 && !isBehind(batch[0].pr))) return false; // up to date: serial merge, no extra CI
   const base = mainTip();
   const name = `${BATCH_PREFIX}${process.env.GITHUB_RUN_ID || Date.now()}`;
   // Cut from an empty child of main, not main itself: the merges API fast-forwards when a head descends
@@ -428,9 +439,9 @@ function processQueue() {
     if (open.length ? stepBatch(open[0].ref.replace('refs/heads/', ''), open[0].object.sha, queue, required) : false) return;
     if (startBatch(queue, required)) return;
   }
-  for (const { number: n } of queue) {
+  for (const { number: n, labeledAt } of queue) {
     const pr = load(n);
-    const d = decide(pr, required);
+    const d = serialDecision(pr, required, !strict && !batchSerial(pr, serialOnly(n, labeledAt)));
     console.log(`#${n} ${pr.mergeStateStatus} -> ${d.action}${d.reason ? ' (' + d.reason + ')' : ''}`);
     if (d.action === 'update') {
       try {
@@ -446,9 +457,9 @@ function processQueue() {
     if (d.action === 'reject') { reject(n, pr.sha, d); continue; }
     if (d.action === 'rerun') {
       // Once per workflow run per head: each accepted rerun leaves its own marker (a refused request stays eligible);
-      // a run cancelled again after its rerun rejects.
+      // a run that fails or is cancelled again after its rerun rejects.
       const key = (id) => `${pr.sha}:${id}`;
-      if (d.runs.some((id) => seen(n, marker(d.reason, key(id))))) { reject(n, pr.sha, { reason: 'checks', text: `required checks were cancelled again after one rerun on this head. Rerun them and re-add \`queue\`` }); continue; }
+      if (d.runs.some((id) => seen(n, marker(d.reason, key(id))))) { reject(n, pr.sha, { reason: 'checks', text: `required checks failed again after one rerun on this head. Fix and re-add \`queue\`` }); continue; }
       for (const id of d.runs) {
         try { gh('api', '-X', 'POST', `/repos/${REPO}/actions/runs/${id}/rerun-failed-jobs`); } catch (e) { console.log(`#${n} rerun ${id}: ${e.message}`); continue; }
         note(n, key(id), d.reason, `${d.text} (run ${id})`);

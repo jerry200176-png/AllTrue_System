@@ -6,7 +6,7 @@
 # Exact-SHA application code is baked under /opt/alltrue-src (immutable image
 # layer). At runtime the staging entrypoint syncs into a *named Docker volume*
 # mounted at /var/www. The host Git checkout is never bind-mounted writable.
-FROM php:8.1-fpm
+FROM php:8.2-fpm
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     git \

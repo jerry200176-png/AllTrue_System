@@ -113,19 +113,20 @@ grep 'workflows:' .github/workflows/deploy.yml
 
 ---
 
-## Rule 8 — GitHub ruleset baseline matches documented drift (#880)
+## Rule 8 — GitHub ruleset has no silent drift (#880)
+
+The live ruleset is the source ([`REF_GITHUB_RULESET_BASELINE.md`](REF_GITHUB_RULESET_BASELINE.md)); there is no snapshot to diff against.
 
 | Check | Pass |
 |-------|------|
-| R8.1 | `gh api repos/OWNER/REPO/rulesets` returns exactly the rulesets listed in `docs/REF_GITHUB_RULESET_BASELINE.md` (same names, same `id`s) |
-| R8.2 | For each ruleset, `gh api repos/OWNER/REPO/rulesets/{id}` rules match the baseline doc's recorded rule set — no silently-added/removed rule |
-| R8.3 | `bypass_actors` is `[]` for both rulesets (no drift toward allowing a bypass) |
+| R8.1 | Every ruleset from `gh api repos/OWNER/REPO/rulesets` is expected (name, `enforcement: active`); an unexpected or disabled one is investigated |
+| R8.2 | `bypass_actors` is `[]` for every ruleset (no drift toward allowing a bypass) |
+| R8.3 | The settings in `gh api repos/OWNER/REPO/rules/branches/main` agree with what `RISK_BASED_MERGE_POLICY.md` and `FOUNDER_STANDING_DECISIONS.md` say; a mismatch means the doc is stale or the ruleset drifted (who changed it, was it deliberate?) |
 
 **Verify:**
 ```bash
 gh api repos/jerry200176-png/AllTrue_System/rulesets --jq '.[] | {id,name,enforcement}'
 ```
-If the output doesn't match `REF_GITHUB_RULESET_BASELINE.md`, either the doc is stale (update it) or the ruleset drifted (investigate why — who changed it and was it deliberate).
 
 ---
 

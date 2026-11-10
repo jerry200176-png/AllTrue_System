@@ -24,9 +24,13 @@ localStorage.setItem(
 localStorage.setItem('app_branch', '1');
 localStorage.setItem('notifications_sound_enabled', '0');
 
-const [{ createApp, h }, styles] = await Promise.all([
+const { initTextSize } = await import('../../../src/composables/useTextSize.js');
+initTextSize(); // reads alltrue_text_size, like src/main.js
+
+const [{ createApp, h, ref }, styles] = await Promise.all([
   import('vue'),
   import('../../../src/styles.css'),
+  import('../../../src/ui.css'),
 ]);
 
 const pageModules = {
@@ -44,8 +48,10 @@ const pageModules = {
   teachers: () => import('../../../src/pages/TeachersList.vue'),
   attendance: () => import('../../../src/pages/AttendancePage.vue'),
   classroom: () => import('../../../src/pages/ClassroomManagement.vue'),
+  'course-manager': () => import('../../../src/components/course-management/CourseManager.vue'),
   'course-edit': () => import('../../../src/components/CourseEditForm.vue'),
   parent: () => import('../../../src/pages/ParentPortal.vue'),
+  login: () => import('../../../src/pages/Login.vue'),
   admissions: () => import('../../../src/pages/AdmissionInquiriesPage.vue'),
   profile: () => import('../../../src/pages/ProfileCenterPage.vue'),
   'question-bank': () => import('../../../src/pages/QuestionBankPage.vue'),
@@ -58,6 +64,8 @@ const pageModules = {
 };
 const loadPage = pageModules[page] || pageModules.inbox;
 const PageComponent = (await loadPage()).default;
+const Ui = page === 'course-manager' && mode === 'confirm' ? await import('../../../src/components/ui/dialog/index.js') : null;
+const EditForm = page === 'course-manager' ? (await import('../../../src/components/CourseEditForm.vue')).default : null;
 
 void styles;
 
@@ -69,6 +77,32 @@ createApp({
     }
     if (page === 'truefit-app') {
       return () => h(PageComponent, { token: 'e2e-foundation-token', branchId: 1 });
+    }
+    if (page === 'course-manager') {
+      // Fixture data only (#4918): CourseManager drawer with a fixed set of September 2026 lessons.
+      const tab = ref(params.get('tab') || 'overview');
+      const d = (date, extra = {}) => ({ id: Number(date.slice(-2)), date, startTime: '19:00', start_time: '19:00', ...extra });
+      const units = [d('2026-09-01'), d('2026-09-08'), d('2026-09-15'), d('2026-09-17', { id: 217 }), d('2026-09-22'), d('2026-09-24', { isProjected: true, kind: 'projected', id: 0 }), d('2026-09-29', { isProjected: true, kind: 'projected', id: 0 })];
+      const label = (_c, date) => (date === '2026-09-17' ? '請假' : date < '2026-09-15' ? '已上' : '');
+      const drawer = () => h(PageComponent, {
+        course: { id: 7, student_name: '測試學生甲', subject: '數學', teacher_name: '測試老師', class_type: 'one_on_one', status: 'active', payment_type: 'session', room_name: 'A' },
+        tab: tab.value, 'onUpdate:tab': (t) => { tab.value = t; },
+        studentName: '測試學生甲', subjectLabel: '國中數學', classTypeLabel: '一對一', statusLabel: '進行中',
+        scheduleSummary: '每週二 19:00–20:00', remainingLabel: '剩 5 堂', nextSessionLabel: '9/15（二）19:00', paymentLabel: '已繳費',
+        overviewNeeds: mode === 'needs' ? [{ id: 'n1', title: '續課提醒', detail: '剩 5 堂，快用完了。', action: 'purchase', actionLabel: '續課' }] : [],
+        actionModel: { primary: { id: 'leave', label: '請假／調課' }, groups: [{ id: 'more', label: '更多', items: [{ id: 'substitute', label: '代課' }] }] },
+        canMoveLesson: () => true, calendarEnabled: true, createEnabled: true, canQuickAdd: true, canClose: true, isSessionMode: true,
+        sessionUnits: units, cancelledUnits: [], pendingMakeups: [],
+        formatSessionChipDate: (u) => `${u.date.slice(5).replace('-', '/')}（${'日一二三四五六'[new Date(`${u.date}T12:00:00`).getDay()]}）19:00`,
+        getSessionStateClass: () => '', getSessionStateLabel: label, getSessionNumber: () => null, sessionRowKey: (u) => `${u.date}-${u.id}`,
+        isUserNote: () => false, formatMakeupDate: () => '', purchaseLabel: '續課', onClose: () => {},
+      }, { settings: () => h(EditForm, { modelValue: { class_type: 'one_on_one', subject: 'Math', teacher_id: 3000, rate_per_30min: 1500, rate_unit: 'session', sessions_purchased: 8, remaining_sessions: 5, payment_type: 'session' }, subjects: [{ value: 'Math', label: '數學' }], teachers: [{ id: 3000, name: '測試老師' }], showRemaining: true }) });
+      if (mode !== 'confirm') return drawer;
+      // A confirm (ui Dialog) opened over the open drawer: it must stack above it (in-app #518 review).
+      return () => [drawer(), h(Ui.Dialog, { open: true }, () => h(Ui.DialogContent, { showCloseButton: false }, () => [
+        h(Ui.DialogHeader, null, () => [h(Ui.DialogTitle, null, () => '暫停課程？'), h(Ui.DialogDescription, null, () => '確認後會立即更新課程狀態')]),
+        h(Ui.DialogFooter, null, () => h('button', { type: 'button', 'data-testid': 'confirm-cancel' }, '取消')),
+      ]))];
     }
     if (page === 'course-edit') {
       return () => h(PageComponent, {

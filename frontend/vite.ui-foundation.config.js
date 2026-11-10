@@ -1,6 +1,7 @@
 import { defineConfig } from 'vite';
 import vue from '@vitejs/plugin-vue';
 import path from 'path';
+import tailwindcss from '@tailwindcss/vite';
 
 /** Dev server only — mounts real Vue pilot pages for Playwright. Not used by production build. */
 export default defineConfig({
@@ -11,9 +12,10 @@ export default defineConfig({
   // nonexistent local folder and silently 404 every asset under frontend/public/
   // (fonts, icons, manifest) — point it at the real one to match production serving.
   publicDir: path.resolve(__dirname, 'public'),
-  plugins: [vue()],
+  plugins: [vue(), tailwindcss()],
   resolve: {
     alias: {
+      '@': path.resolve(__dirname, 'src'),
       'laravel-echo': path.resolve(__dirname, 'vendor-modules/laravel-echo'),
       'pusher-js': path.resolve(__dirname, 'vendor-modules/pusher-js'),
     },

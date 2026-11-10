@@ -32,7 +32,15 @@ final class SecurityAuditEvent
         'revoked_session_count',
         // Triage token access log: route name + HMAC refs only (never raw IDs/IPs).
         'route', 'client_ip_ref', 'attachment_ref', 'bug_report_ref',
+        // School merge (#517): school spellings are not personal data; restore_payload is
+        // {"s":{old_school:[student_id,...]},"p":{old_school:[period_id,...]}} so a merge can be undone.
+        'canonical_name', 'restore_payload',
+        // POP billing-period re-key (in-app #514): request id, YYYY-MM periods and a count; no names.
+        'pop_operation_id', 'period_from', 'period_to', 'report_count',
     ];
+
+    /** Keys whose string value may exceed the usual 120-char cap (bounded; callers must check). */
+    public const LONG_METADATA = ['restore_payload' => 60000];
 
     public static function ref(string $kind, int|string|null $value): ?string
     {
@@ -53,7 +61,7 @@ final class SecurityAuditEvent
                 continue;
             }
             if (is_string($value)) {
-                $value = substr(preg_replace('/[\x00-\x1F\x7F]/', '', $value) ?: '', 0, 120);
+                $value = substr(preg_replace('/[\x00-\x1F\x7F]/', '', $value) ?: '', 0, self::LONG_METADATA[$key] ?? 120);
             }
             $safe[$key] = $value;
         }

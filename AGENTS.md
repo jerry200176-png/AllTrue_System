@@ -36,7 +36,7 @@
 
 **SOP（防重踩同坑）**：收到任務後**先讀文檔再打程式**，禁止只靠對話上下文硬改。
 
-**操作者權限（適用於每一次任務，不是要讀的檔案，是規則本身）**：操作者是 **Agent**。T0/T1 在 required checks、風險適當 review 與證據通過後可自行 merge／關 issue；T2 另需 independent review、rollback boundary 與完整 CI。read-only production-case-dump probe（`.github/workflows/production-case-dump.yml` 僅新增/修正唯讀 case，diff 無寫入標記）為 T2，Agent 於 CI 綠燈 + review 後自行 merge；寫入仍為 T3 Founder GO。T3 / protected 工作可研究、實作、測試並準備 evidence package，但在 production activation、production data repair、migration/schema cutover、billing／entitlement、identity/authz、破壞性動作、backup restore、security-sensitive credential 或重大產品方向前停下等 Founder GO（例外只以 `docs/governance/FOUNDER_STANDING_DECISIONS.md` 2026-10-28（二）之二為準，此處不摘要）。機器禁令：Pi SSH / artisan / phpunit、印 secrets、force-push、`--admin`、Gmail 刪信。產品 P0 與 Control Plane I1 仍有效。Capabilities 詳見 `docs/governance/AGENT_CAPABILITY_REGISTRY.md`，勿假設權限。
+**操作者權限（適用於每一次任務，不是要讀的檔案，是規則本身）**：操作者是 **Agent**。T0/T1 在 required checks、風險適當 review 與證據通過後可自行 merge／關 issue；T2 另需 independent review、rollback boundary 與完整 CI。read-only production-case-dump probe（`.github/workflows/production-case-dump.yml` 僅新增/修正唯讀 case，diff 無寫入標記）為 T2，Agent 於 CI 綠燈 + review 後自行 merge；寫入仍為 T3 Founder GO。T3 / protected 工作可研究、實作、測試並準備 evidence package，但在 production activation、production data repair、migration/schema cutover、billing／entitlement、identity/authz、破壞性動作、backup restore、security-sensitive credential 或重大產品方向前停下等 Founder GO（具名例外依 `docs/governance/FOUNDER_STANDING_DECISIONS.md` 的現行適用條款，此處不摘要）。機器禁令：Pi SSH / artisan / phpunit、印 secrets、force-push、`--admin`、Gmail 刪信。產品 P0 與 Control Plane I1 仍有效。Capabilities 詳見 `docs/governance/AGENT_CAPABILITY_REGISTRY.md`，勿假設權限。
 
 **Founder 常設決定**：唯一定義見 [`docs/governance/FOUNDER_STANDING_DECISIONS.md`](docs/governance/FOUNDER_STANDING_DECISIONS.md)（每次任務都適用；此處不寫摘要，避免分歧）。
 
@@ -60,6 +60,7 @@
 | 需要回顧決策或舊 bug | `~/.local/bin/mempalace search "<關鍵字>"`（本機搜尋；非跨機器權威）|
 | 任何瀏覽器測試 | `.cursor/.local/test-credentials.md` |
 | 任務牽涉長文件／多份 docs | `docs/INDEX.md` 的速讀卡／治理節奏（`docs/AI_DOC_LITERACY.md` 只是索引 stub）|
+| Codex 長任務接續／交接／重複失敗 | 按需使用 [alltrue-task-continuity](.agents/skills/alltrue-task-continuity/SKILL.md)，沿用 `RUNBOOK_HANDOFF` 並核對現況；不載入整段歷史、不自動重播動作 |
 
 ### Critical-domain architecture orientation
 
@@ -122,20 +123,18 @@ gate、不要求每 PR 更新 diagram；除非未來有實際 evidence 顯示某
 - CI/deploy 狀態不明但要回報「完成」。
 - 備份/restore 目標不確定，或無法確認 restore drill 不會碰 production `AllTrue`。
 
-## Land queue (merge, don't race update-branch)
+## Land queue
 
-Add the label `queue` to a green-ready PR instead of looping on `gh pr update-branch` or `gh pr merge --auto`.
-`.github/workflows/land-queue.yml` takes the oldest labeled PR: it updates the branch when BEHIND, squash-merges when CLEAN with every required check green (no `--admin`), and removes the label with one comment on a conflict, failed check, or unresolved review thread. Re-add `queue` after fixing.
-GitHub's native merge queue is not used: it is unavailable for this user-owned repo (a `merge_queue` ruleset probe returned 422).
+See [`docs/sop/MERGE_SOP.md`](docs/sop/MERGE_SOP.md#land-queue-and-auto-delivery-mechanics).
 
 ## Parallel agents
 
-- Before starting: run `node scripts/pr-overlap.mjs` (or read the PR's `<!-- pr-overlap -->` sticky comment). If another open PR touches the same files, coordinate with that session or wait. Prefer small PRs (under ~400 lines) that merge fast.
+- Before starting: run `node scripts/pr-overlap.mjs` (or read the PR's `<!-- pr-overlap -->` sticky comment). If another open PR touches the same files, coordinate with that session or wait. Prefer small PRs that merge fast (limits: `docs/governance/FOUNDER_STANDING_DECISIONS.md`).
 - Landing: add label `queue`. Don't loop `update-branch`, `--auto` or custom merge scripts.
 - No stacked PRs: branch from main after the dependency merges.
 - Before merging an agent PR, read every `-` line of `git diff origin/main...HEAD`; nothing outside the PR's scope may be removed (2026-10-06 PR-C2 #3631 stale-copy revert).
 - Release notes: change fragments only (`docs/changes/…`). Never edit `CHANGELOG.md`, the generated JS or the exemption lists; `phpstan-baseline.neon` may only shrink.
-- Stale-copy guard: presubmit `[CHECK 0d]` fails a PR that deletes lines another PR merged to main in the last 7 days (`scripts/check-recent-work-revert.py`). Rebuild from current main; if intended, add label `intentional-revert` + reason in the PR body, then re-run presubmit.
+- Stale-copy guard: presubmit `[CHECK 0d]` fails a PR that deletes lines another PR merged to main in the last 7 days (`scripts/check-recent-work-revert.py`). Rebuild from current main; if intended, add a PR body line `Rewrites: #N — reason` for each listed PR (presubmit re-runs on body edits).
 - Deploys: only `deploy.yml`. A range of R0-R2 PRs, or an R3 range that passes the R3 auto controls (final-head Codex review, no open threads, no freeze; no migration, data-repair, identity/credential or control-plane effect), deploys on its own CI with no Founder click; anything else waits for the release train (`FOUNDER_STANDING_DECISIONS.md` 2026-10-21（二）之二). Gates exist to stop untrusted input (in-app report text, non-Founder GitHub content, bot output), not Founder-directed work.
 - Helpers (subagents) start from fresh `origin/main` in their own branch/session; never copy files from another worktree or session.
 - Review: when Codex is rate-limited, run `/code-review` (control-plane changes: an independent adversarial reviewer) before merging.
