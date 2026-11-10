@@ -190,7 +190,7 @@ class TeacherScopeService
         return self::LEVEL_LABELS[$level] ?? $level;
     }
 
-    private static function normalizeSubjectName(?string $raw): string
+    public static function normalizeSubjectName(?string $raw): string
     {
         $name = trim((string) ($raw ?? ''));
         if ($name === '') {
@@ -200,6 +200,16 @@ class TeacherScopeService
         return self::SUBJECT_NORMALIZE_MAP[$lower]
             ?? self::SUBJECT_NORMALIZE_MAP[$name]
             ?? $name;
+    }
+
+    /** Pure aliases for the existing canonical vocabulary; callers must enforce ownership separately. */
+    public static function subjectNameAliases(string $raw): array
+    {
+        $canonical = self::normalizeSubjectName($raw);
+        if (!in_array($canonical, self::SUBJECT_NORMALIZE_MAP, true)) return [];
+        return array_values(array_unique(array_filter(array_merge([$raw, $canonical], array_keys(
+            array_filter(self::SUBJECT_NORMALIZE_MAP, fn ($name) => $name === $canonical)
+        )))));
     }
 
     /**

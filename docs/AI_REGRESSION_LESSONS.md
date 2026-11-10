@@ -224,6 +224,7 @@ last_reviewed: 2026-09-05
 - **根因層級**：F1 狀態收尾與 F3 排課生成的流程邊界缺口；一般 PATCH 沒有封鎖 leave→attendance-like，續報也沒有「試聽轉換」這個明確生命週期動作。
 - **強制規則**：leave 只能透過專用撤銷端點復原；缺尾堂時只復原目標堂並回報對帳警示。試聽轉正式須保留原堂歷史、取消未來試聽排課、建立不含試聽堂的正式課程，且必須具備冪等來源關聯。
 - **測試必補**：直接 leave→attended/scheduled 回 422；缺尾堂專用撤銷成功且不刪其他堂；試聽轉正式保留已上試聽堂、取消未來試聽堂、正式課程堂數與實際排課一致，重送回 409。
+- **2026-11-10 補充（#5124／in-app #527 防再發）**：一般狀態 PATCH 的拒絕不涵蓋調課 API。`RescheduleSessionService` 只在目標尚未結束時重設未上狀態；須先完成既有時間 fallback，以目標 clone 沿用 `shouldResetToScheduled`，僅在請假會恢復未上時、建立任何排程前回 `leave_requires_cascade_undo`。過去／今日已結束時段仍可更正且保留請假，不能全面凍結。回歸要先重現「購買堂數個可扣堂＋請假紀錄」調課後多出一個可扣堂，並保留其他已上課、評量與台帳；不得把合成重現當作正式個案的修復清單。
 - **延伸（2026-10-03，F1 狀態收尾）**：`convertTrial` 在交易內先結案試聽、取消未來堂次，之後衝堂／`purchaseBatch` 失敗以 `return` 回 409/422/500，交易照常 commit，試聽被停用卻無正式課程。交易內「已變更狀態後」的錯誤出口必須 throw（如 `HttpResponseException`）才會 rollback，不可 return；測試須斷言失敗後來源 `Stop`／`closed_reason`／未來堂次不變（`TrialConversionTest::test_schedule_conflict_rolls_back_source_trial_mutations`）。
 
 ### R130. 補課候選預覽必須先檢查學生跨合約占用（2026-08-29）

@@ -6,6 +6,7 @@
 set -uo pipefail
 DIR="$(cd "$(dirname "$0")" && pwd)"
 source "${DIR}/_common.sh"
+source "${DIR}/deploy-rule.sh"
 
 STATE="${STAGING_STATE_DIR:-${HOME}/alltrue-stage/state}"
 EVID="$(staging_evidence_dir)/auto-update.log"
@@ -30,6 +31,11 @@ main() {
     || { log "ERROR github api unreachable/rate-limited"; return 1; }
   [[ "${sha}" =~ ^[0-9a-f]{40}$ ]] || { log "ERROR bad sha '${sha}'"; return 1; }
   good="$(cat "${STATE}/last_good_sha" 2>/dev/null || true)"
+  git -C "${REPO_ROOT}" fetch -q origin main >>"${EVID}" 2>&1 || { log "ERROR fetch origin main"; return 1; }
+  case "$(rule_decide "${REPO_ROOT}" "${good}" "${sha}")" in
+    NOOP_NOT_ON_MAIN) log "NOOP ${sha:0:12} not on origin/main"; return 0 ;;   # force-pushed away / branch-only
+    NOOP_OLDER) log "NOOP ${sha:0:12} older than deployed ${good:0:12}"; return 0 ;;
+  esac
   if [[ "${sha}" == "${good}" ]]; then
     # Containers use restart:"no"; after a host reboot the SHA matches but nothing runs. Heal by redeploying it.
     if bash "${DIR}/health.sh" >/dev/null 2>&1; then log "NOOP green main=${sha:0:12} already deployed"; return 0; fi
@@ -38,7 +44,6 @@ main() {
   fi
 
   log "DEPLOY ${good:0:12} -> ${sha:0:12}"
-  git -C "${REPO_ROOT}" fetch -q origin main >>"${EVID}" 2>&1
   if run_cycle "${sha}"; then
     echo "${sha}" >"${STATE}/last_good_sha"; log "OK ${sha:0:12}"; return 0
   fi

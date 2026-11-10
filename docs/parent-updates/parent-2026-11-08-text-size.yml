@@ -1,0 +1,7 @@
+updates:
+  - id: parent-2026-11-08-text-size
+    published_at: "2026-11-08"
+    kind: improvement
+    title: 設定裡可以調整字級
+    summary: 到設定選擇標準或大字，首頁按鈕也會一起調整；這台裝置會記住您的選擇。
+    details: 開啟設定的顯示設定，選擇適合您的字級，再回首頁繼續使用。

@@ -72,6 +72,16 @@ final class LearningRecordMutableOwnership
         return str_starts_with($content, '（系統補登') || in_array($content, ['（系統自動核准）', '補登／納入科目數'], true);
     }
 
+    /** Read-only overview eligibility from actual progress/content, independent of approval or other fields. */
+    public static function hasSubstantiveProgress(LearningRecord $record): bool
+    {
+        foreach (['Progress', 'Content'] as $field) {
+            $value = trim((string) $record->getAttribute($field));
+            if (!in_array($value, self::PLACEHOLDER_CONTENT, true) && !self::isSystemFillContent($value)) return true;
+        }
+        return false;
+    }
+
     /** The live protected LR of a session (row-locked when asked, inside a transaction). */
     public static function protectedRecordForSession(int $classSessionId, bool $lock = false): ?LearningRecord
     {
