@@ -271,11 +271,39 @@ function canonicalMaterializedSession(first, second) {
 
 /** @param {SessionViewModel[]} existing @param {SessionViewModel[]} incoming */
 export function mergeSessionViewModels(existing = [], incoming = []) {
+  const snapshots = [];
+  const materializedIndices = new Map();
+  for (const vm of [...existing, ...incoming]) {
+    if (!vm?.date) continue;
+    // #528: a materialized row can move without changing its ID. Retire its
+    // previous location before applying the existing slot/status rules (#281).
+    // This uses supplied observation order, not HTTP freshness; unknown IDs,
+    // other courses and virtual occurrences still use the slot rules below.
+    const knownIdentity = !vm.isProjected && vm.kind !== 'projected'
+      && Number.isSafeInteger(vm.id) && vm.id > 0
+      && Number.isSafeInteger(vm.studentClassId) && vm.studentClassId > 0;
+    if (!knownIdentity) {
+      snapshots.push(vm);
+      continue;
+    }
+    const key = `${vm.studentClassId}|${vm.id}`;
+    const index = materializedIndices.get(key);
+    if (index === undefined) {
+      materializedIndices.set(key, snapshots.length);
+      snapshots.push(vm);
+      continue;
+    }
+    const latest = { ...snapshots[index], ...vm };
+    // Calendar caches also carry legacy aliases; keep them on the same slot.
+    snapshots[index] = 'session_date' in latest || 'start_time' in latest || 'end_time' in latest
+      ? sessionViewModelWithLegacyFields(latest)
+      : latest;
+  }
+
   const bySlot = new Map();
   let anonSeq = 0;
 
-  for (const vm of [...existing, ...incoming]) {
-    if (!vm?.date) continue;
+  for (const vm of snapshots) {
     // R49/#187/#188 共享時段家族：合併鍵必須帶課程身分。只用 (date,startTime) 會把
     // 1v2/1v3 同時段「不同學生」的堂次跨課程合併成一筆（in-app #182 漏顯的真兇）。
     // studentClassId 缺失時退回 id，再缺給唯一序號 —— 寧可不合併也不可吞堂次。

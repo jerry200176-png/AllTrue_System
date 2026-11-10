@@ -505,6 +505,7 @@ Route::prefix('v1')->group(function () {
         Route::post('backfill/register-subject-units', [BackfillController::class, 'registerSubjectUnits']);
 
         Route::get('alerts/tuition', [AlertController::class, 'tuition']);
+        Route::post('accounting/bills/export', [\App\Http\Controllers\BillExportController::class, 'export']);
         Route::get('alerts/tuition-slip/{studentClassId}', [AlertController::class, 'tuitionSlipData']);
 
         // ── Payment Reports (學收核銷) ──────────────────────────────
@@ -846,6 +847,9 @@ Route::prefix('v1')->group(function () {
         Route::delete('exam-rounds/{examRound}', [ExamRoundController::class, 'destroy'])->whereNumber('examRound');
         Route::post('exam-rounds/{examRound}/restore', [ExamRoundController::class, 'restore'])->whereNumber('examRound');
         Route::get('school-merge/suggestions', [SchoolMergeController::class, 'suggestions']);
+        Route::get('school-merge/history', [SchoolMergeController::class, 'history']);
+        Route::post('school-merge', [SchoolMergeController::class, 'merge']);
+        Route::post('school-merge/{requestId}/undo', [SchoolMergeController::class, 'undo']);
         Route::post('exam-periods', [SchoolExamPeriodController::class, 'store']);
         Route::patch('exam-periods/{period}', [SchoolExamPeriodController::class, 'update'])->whereNumber('period');
         Route::delete('exam-periods/{period}', [SchoolExamPeriodController::class, 'destroy'])->whereNumber('period');
@@ -1000,13 +1004,13 @@ Route::prefix('v1')->group(function () {
 
     // ── Bug Reports (director + teacher: submit & view own; super_admin: branch queue + status) ──
     Route::middleware(['role:director,teacher', 'require_campus', 'require_password_change'])->group(function () {
-        Route::post('bugs', [BugReportController::class, 'store']);
+        Route::post('bugs', [BugReportController::class, 'store'])->middleware('throttle:bug-report');
         Route::get('bugs', [BugReportController::class, 'index']);
         Route::get('bugs/unread-badge', [BugReportController::class, 'unreadBadge']);
         Route::get('bugs/open-on-page', [BugReportController::class, 'openOnPage']);
         Route::get('bugs/{id}', [BugReportController::class, 'show']);
-        Route::post('bugs/{id}/comments', [BugReportController::class, 'addComment']);
-        Route::post('bugs/{id}/reporter-verify', [BugReportController::class, 'reporterVerify']);
+        Route::post('bugs/{id}/comments', [BugReportController::class, 'addComment'])->middleware('throttle:bug-comment');
+        Route::post('bugs/{id}/reporter-verify', [BugReportController::class, 'reporterVerify'])->middleware('throttle:bug-comment');
     });
     Route::middleware(['super_admin', 'require_campus', 'require_password_change'])->group(function () {
         Route::post('bugs/{id}/status', [BugReportController::class, 'updateStatus']);

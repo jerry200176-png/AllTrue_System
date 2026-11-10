@@ -1,0 +1,15 @@
+updates:
+  - id: staff-2026-11-08-text-size-keyboard
+    published_at: "2026-11-08"
+    audiences:
+      - director
+      - teacher
+      - super_admin
+    importance: digest
+    title: 字級切換支援方向鍵
+    summary: 在字級選項按方向鍵，就能切換標準或大字；這台裝置會記住您的選擇。
+    items:
+      - category: improved
+        text: 用 Tab 移到字級選項，再按上下或左右方向鍵切換；也可以直接點選。
+    source_refs:
+      - "changelog:2026-11-08:parent-text-size-5119"

@@ -1,0 +1,528 @@
+{
+ "today": "2026-11-05",
+ "cases": [
+  {
+   "row": {
+    "student_id": 1,
+    "student_name": "甲",
+    "subject": "數學",
+    "schedule_mode": "count",
+    "remaining_sessions": 4,
+    "payment_status": "pending_report",
+    "payable_status": "invoiced",
+    "payable_outstanding": 1000,
+    "payable_amount": 5000,
+    "paid_amount": 4000,
+    "course_start_date": "2026-09-01",
+    "course_end_date": "2026-12-31",
+    "id": 1,
+    "latest_payment_report_id": 9
+   },
+   "expect": {
+    "kind": "confirm",
+    "status": "待確認入帳",
+    "period": "剩 4 堂",
+    "due": "—",
+    "owed": 0,
+    "paid": 4000,
+    "payable": 4000
+   }
+  },
+  {
+   "row": {
+    "student_id": 1,
+    "student_name": "甲",
+    "subject": "數學",
+    "schedule_mode": "count",
+    "remaining_sessions": 4,
+    "payment_status": "unpaid",
+    "payable_status": "invoiced",
+    "payable_outstanding": 1000,
+    "payable_amount": 5000,
+    "paid_amount": 4000,
+    "course_start_date": "2026-09-01",
+    "course_end_date": "2026-12-31",
+    "id": 2,
+    "due_date": "2026-10-30"
+   },
+   "expect": {
+    "kind": "owing",
+    "status": "未繳",
+    "period": "剩 4 堂",
+    "due": "逾期 6 天",
+    "owed": 1000,
+    "paid": 4000,
+    "payable": 5000
+   }
+  },
+  {
+   "row": {
+    "student_id": 1,
+    "student_name": "甲",
+    "subject": "數學",
+    "schedule_mode": "count",
+    "remaining_sessions": 4,
+    "payment_status": "partial",
+    "payable_status": "invoiced",
+    "payable_outstanding": 1000,
+    "payable_amount": 5000,
+    "paid_amount": 2000,
+    "course_start_date": "2026-09-01",
+    "course_end_date": "2026-12-31",
+    "id": 3,
+    "due_date": "2026-11-20"
+   },
+   "expect": {
+    "kind": "owing",
+    "status": "快到期",
+    "period": "剩 4 堂",
+    "due": "11/20 到期",
+    "owed": 0,
+    "paid": 2000,
+    "payable": 2000
+   }
+  },
+  {
+   "row": {
+    "student_id": 1,
+    "student_name": "甲",
+    "subject": "數學",
+    "schedule_mode": "count",
+    "remaining_sessions": 4,
+    "payment_status": "renew_needed",
+    "payable_status": "invoiced",
+    "payable_outstanding": 0,
+    "payable_amount": 5000,
+    "paid_amount": 4000,
+    "course_start_date": "2026-09-01",
+    "course_end_date": "2026-12-31",
+    "id": 4
+   },
+   "expect": {
+    "kind": "issue",
+    "status": "續課待處理",
+    "period": "剩 4 堂",
+    "due": "—",
+    "owed": 0,
+    "paid": 4000,
+    "payable": 4000
+   }
+  },
+  {
+   "row": {
+    "student_id": 1,
+    "student_name": "甲",
+    "subject": "數學",
+    "schedule_mode": "count",
+    "remaining_sessions": 4,
+    "payment_status": "amount_review",
+    "payable_status": "invoiced",
+    "payable_outstanding": 1000,
+    "payable_amount": 5000,
+    "paid_amount": 4000,
+    "course_start_date": "2026-09-01",
+    "course_end_date": "2026-12-31",
+    "id": 5,
+    "amount_pending_confirmation": true,
+    "pending_confirmation_amount": 800
+   },
+   "expect": {
+    "kind": "review",
+    "status": "需核對",
+    "period": "剩 4 堂",
+    "due": "—",
+    "owed": 0,
+    "paid": 4000,
+    "payable": 4000
+   }
+  },
+  {
+   "row": {
+    "student_id": 1,
+    "student_name": "甲",
+    "subject": "數學",
+    "schedule_mode": "count",
+    "remaining_sessions": 4,
+    "payment_status": "paid",
+    "payable_status": "invoiced",
+    "payable_outstanding": 0,
+    "payable_amount": 5000,
+    "paid_amount": 4000,
+    "course_start_date": "2026-09-01",
+    "course_end_date": "2026-12-31",
+    "id": 6
+   },
+   "expect": {
+    "kind": "paid",
+    "status": "已收",
+    "period": "剩 4 堂",
+    "due": "—",
+    "owed": 0,
+    "paid": 4000,
+    "payable": 4000
+   }
+  },
+  {
+   "row": {
+    "student_id": 1,
+    "student_name": "甲",
+    "subject": "數學",
+    "schedule_mode": "count",
+    "remaining_sessions": 4,
+    "payment_status": "paid",
+    "payable_status": "invoiced",
+    "payable_outstanding": 0,
+    "payable_amount": 5000,
+    "paid_amount": 4000,
+    "course_start_date": "2026-09-01",
+    "course_end_date": "2026-12-31",
+    "id": 7,
+    "legacy_paid_flag_only": true
+   },
+   "expect": {
+    "kind": "review",
+    "status": "查無收款",
+    "period": "剩 4 堂",
+    "due": "—",
+    "owed": 0,
+    "paid": 4000,
+    "payable": 4000
+   }
+  },
+  {
+   "row": {
+    "student_id": 1,
+    "student_name": "甲",
+    "subject": "數學",
+    "schedule_mode": "count",
+    "remaining_sessions": 4,
+    "payment_status": "waived",
+    "payable_status": "invoiced",
+    "payable_outstanding": 0,
+    "payable_amount": 5000,
+    "paid_amount": 4000,
+    "course_start_date": "2026-09-01",
+    "course_end_date": "2026-12-31",
+    "id": 8
+   },
+   "expect": {
+    "kind": "waived",
+    "status": "不收了",
+    "period": "剩 4 堂",
+    "due": "—",
+    "owed": 0,
+    "paid": 4000,
+    "payable": 4000
+   }
+  },
+  {
+   "row": {
+    "student_id": 1,
+    "student_name": "甲",
+    "subject": "數學",
+    "schedule_mode": "date",
+    "remaining_sessions": null,
+    "payment_status": "unpaid",
+    "payable_status": "invoiced",
+    "payable_outstanding": 1000,
+    "payable_amount": 5000,
+    "paid_amount": 4000,
+    "course_start_date": "2026-09-01",
+    "course_end_date": "2026-12-31",
+    "id": 9,
+    "open_periods": [
+     {
+      "outstanding": 300,
+      "due_date": "2026-10-01"
+     },
+     {
+      "outstanding": 700,
+      "due_date": "2026-12-01"
+     }
+    ]
+   },
+   "expect": {
+    "kind": "owing",
+    "status": "未繳",
+    "period": "2026-09-01 ~ 2026-12-31",
+    "due": "逾期 35 天",
+    "owed": 300,
+    "paid": 4000,
+    "payable": 4300
+   }
+  },
+  {
+   "row": {
+    "student_id": 1,
+    "student_name": "甲",
+    "subject": "數學",
+    "schedule_mode": "count",
+    "remaining_sessions": 4,
+    "payment_status": "unpaid",
+    "payable_status": "unbilled",
+    "payable_outstanding": 0,
+    "payable_amount": 5000,
+    "paid_amount": 4000,
+    "course_start_date": "2026-09-01",
+    "course_end_date": "2026-12-31",
+    "id": 10
+   },
+   "expect": {
+    "kind": "issue",
+    "status": "要開帳單",
+    "period": "剩 4 堂",
+    "due": "—",
+    "owed": 0,
+    "paid": 4000,
+    "payable": 4000
+   }
+  },
+  {
+   "row": {
+    "student_id": 1,
+    "student_name": "甲",
+    "subject": "數學",
+    "schedule_mode": "count",
+    "remaining_sessions": 4,
+    "payment_status": "pending_reconciliation",
+    "payable_status": "invoiced",
+    "payable_outstanding": 1000,
+    "payable_amount": 5000,
+    "paid_amount": 4000,
+    "course_start_date": "2026-09-01",
+    "course_end_date": "2026-12-31",
+    "id": 11,
+    "due_date": "2026-11-05"
+   },
+   "expect": {
+    "kind": "owing",
+    "status": "已結束，未收",
+    "period": "剩 4 堂",
+    "due": "11/5 到期",
+    "owed": 1000,
+    "paid": 4000,
+    "payable": 5000
+   }
+  },
+  {
+   "row": {
+    "student_id": 1,
+    "student_name": "甲",
+    "subject": "數學",
+    "schedule_mode": "date",
+    "remaining_sessions": null,
+    "payment_status": "monthly_due_soon",
+    "payable_status": "invoiced",
+    "payable_outstanding": 0,
+    "payable_amount": 5000,
+    "paid_amount": 4000,
+    "course_start_date": "2026-09-01",
+    "course_end_date": null,
+    "id": 12
+   },
+   "expect": {
+    "kind": "issue",
+    "status": "月結將到期",
+    "period": "2026-09-01 ~ —",
+    "due": "—",
+    "owed": 0,
+    "paid": 4000,
+    "payable": 4000
+   }
+  },
+  {
+   "row": {
+    "student_id": 1,
+    "student_name": "甲",
+    "subject": "數學",
+    "schedule_mode": "count",
+    "remaining_sessions": 4,
+    "payment_status": "free",
+    "payable_status": "invoiced",
+    "payable_outstanding": 0,
+    "payable_amount": 5000,
+    "paid_amount": 4000,
+    "course_start_date": "2026-09-01",
+    "course_end_date": "2026-12-31",
+    "id": 13
+   },
+   "expect": {
+    "kind": "paid",
+    "status": "已收",
+    "period": "剩 4 堂",
+    "due": "—",
+    "owed": 0,
+    "paid": 4000,
+    "payable": 4000
+   }
+  },
+  {
+   "row": {
+    "student_id": 1,
+    "student_name": "甲",
+    "subject": "數學",
+    "schedule_mode": "count",
+    "remaining_sessions": 4,
+    "payment_status": "mystery",
+    "payable_status": "invoiced",
+    "payable_outstanding": 0,
+    "payable_amount": 5000,
+    "paid_amount": 4000,
+    "course_start_date": "2026-09-01",
+    "course_end_date": "2026-12-31",
+    "id": 14
+   },
+   "expect": {
+    "kind": "review",
+    "status": "需核對",
+    "period": "剩 4 堂",
+    "due": "—",
+    "owed": 0,
+    "paid": 4000,
+    "payable": 4000
+   }
+  },
+  {
+   "row": {
+    "student_id": 1,
+    "student_name": "甲",
+    "subject": "數學",
+    "schedule_mode": "count",
+    "remaining_sessions": 4,
+    "payment_status": "renew_needed",
+    "payable_status": "invoiced",
+    "payable_outstanding": 0,
+    "payable_amount": 5000,
+    "paid_amount": 4000,
+    "course_start_date": "2026-09-01",
+    "course_end_date": "2026-12-31",
+    "id": 15,
+    "renewed_by_newer_course": true
+   },
+   "expect": {
+    "kind": "paid",
+    "status": "已收",
+    "period": "剩 4 堂",
+    "due": "—",
+    "owed": 0,
+    "paid": 4000,
+    "payable": 4000
+   }
+  },
+  {
+   "row": {
+    "student_id": 1,
+    "student_name": "甲",
+    "subject": "數學",
+    "schedule_mode": "count",
+    "remaining_sessions": 0,
+    "payment_status": "unpaid",
+    "payable_status": "invoiced",
+    "payable_outstanding": 1000,
+    "payable_amount": 5000,
+    "paid_amount": 4000,
+    "course_start_date": "2026-09-01",
+    "course_end_date": "2026-12-31",
+    "id": 16,
+    "due_date": null
+   },
+   "expect": {
+    "kind": "owing",
+    "status": "未繳",
+    "period": "剩 0 堂",
+    "due": "—",
+    "owed": 1000,
+    "paid": 4000,
+    "payable": 5000
+   }
+  },
+  {
+   "row": {
+    "student_id": 1,
+    "student_name": "甲",
+    "subject": "數學",
+    "schedule_mode": "count",
+    "remaining_sessions": 4,
+    "payment_status": "partial",
+    "payable_status": "unbilled",
+    "payable_outstanding": 0,
+    "payable_amount": 5000,
+    "paid_amount": 4000,
+    "course_start_date": "2026-09-01",
+    "course_end_date": "2026-12-31",
+    "id": 17
+   },
+   "expect": {
+    "kind": "issue",
+    "status": "要開帳單",
+    "period": "剩 4 堂",
+    "due": "—",
+    "owed": 0,
+    "paid": 4000,
+    "payable": 4000
+   }
+  },
+  {
+   "row": {
+    "student_id": 1,
+    "student_name": "甲",
+    "subject": "數學",
+    "schedule_mode": "date",
+    "remaining_sessions": null,
+    "payment_status": "unpaid",
+    "payable_status": "invoiced",
+    "payable_outstanding": 10000,
+    "payable_amount": 5000,
+    "paid_amount": 0,
+    "course_start_date": "2026-09-01",
+    "course_end_date": "2026-12-31",
+    "id": 19,
+    "open_periods": [
+     {
+      "outstanding": 5000,
+      "due_date": "2026-10-01"
+     },
+     {
+      "outstanding": 5000,
+      "due_date": "2026-11-01"
+     }
+    ]
+   },
+   "expect": {
+    "kind": "owing",
+    "status": "未繳",
+    "period": "2026-09-01 ~ 2026-12-31",
+    "due": "逾期 35 天",
+    "owed": 10000,
+    "paid": 0,
+    "payable": 10000
+   }
+  },
+  {
+   "row": {
+    "student_id": 1,
+    "student_name": "甲",
+    "subject": "數學",
+    "schedule_mode": "count",
+    "remaining_sessions": 4,
+    "payment_status": "pending_reconciliation",
+    "payable_status": "unbilled",
+    "payable_outstanding": 0,
+    "payable_amount": 5000,
+    "paid_amount": 4000,
+    "course_start_date": "2026-09-01",
+    "course_end_date": "2026-12-31",
+    "id": 18
+   },
+   "expect": {
+    "kind": "issue",
+    "status": "要開帳單",
+    "period": "剩 4 堂",
+    "due": "—",
+    "owed": 0,
+    "paid": 4000,
+    "payable": 4000
+   }
+  }
+ ]
+}

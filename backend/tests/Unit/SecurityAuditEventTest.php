@@ -27,6 +27,8 @@ class SecurityAuditEventTest extends TestCase
             'row_count' => 12,
             'export_format' => 'xlsx',
             'campus_scope' => 'restricted',
+            'filter' => 'audit@example.test',
+            'has_search' => true,
         ]);
 
         $metadata2 = SecurityAuditEvent::metadata([

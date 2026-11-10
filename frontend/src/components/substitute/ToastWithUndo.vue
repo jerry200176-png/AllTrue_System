@@ -155,7 +155,7 @@ defineExpose({ show, dismiss });
   display: flex;
   flex-direction: column;
   gap: 12px;
-  z-index: 9999;
+  z-index: var(--ds-z-toast);
   max-width: calc(100vw - 48px);
 }
 .twu {
