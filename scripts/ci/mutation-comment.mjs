@@ -9,7 +9,9 @@ export const MARK = '<!-- mutation-advisory:v1 -->';
 const sectionMark = (s) => `<!-- mutation-advisory:${s} -->`;
 
 export function parseInfection(text) {
-  return [...text.matchAll(/^\s*\d+\)\s+(\S+?):(\d+)\s+\[M\]\s+(\w+)/gm)].map((m) => ({ file: m[1].replace(/^.*?\/(backend\/)?(?=app\/)/, 'backend/'), line: +m[2], mutator: m[3] }));
+  // Only the "Escaped mutants:" section; Timed Out / Skipped / Killed / Not Covered sections also list "[M] Name" lines.
+  const escaped = text.match(/^Escaped mutants:\s*$([\s\S]*?)(?=^[A-Z][A-Za-z ]* mutants:\s*$|(?![\s\S]))/m)?.[1] ?? '';
+  return [...escaped.matchAll(/^\s*\d+\)\s+(\S+?):(\d+)\s+\[M\]\s+(\w+)/gm)].map((m) => ({ file: m[1].replace(/^.*?\/(backend\/)?(?=app\/)/, 'backend/'), line: +m[2], mutator: m[3] }));
 }
 
 export function parseStryker(json) {
@@ -46,7 +48,7 @@ export function mergeBody(existing, section, rendered) {
 }
 
 function main() {
-  const arg = (n) => process.argv[process.argv.indexOf(n) + 1];
+  const arg = (n) => { const i = process.argv.indexOf(n); return i < 0 ? undefined : process.argv[i + 1]; };
   const section = arg('--section');
   const raw = fs.readFileSync(arg('--input'), 'utf8');
   const rendered = renderSection(section, section === 'php' ? parseInfection(raw) : parseStryker(JSON.parse(raw)));

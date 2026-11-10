@@ -1,3 +1,5 @@
+import { execFileSync } from 'node:child_process';
+import fs from 'node:fs';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { MARK, MAX_BODY, MAX_ROWS, mergeBody, parseInfection, parseStryker, renderSection } from '../ci/mutation-comment.mjs';
@@ -57,4 +59,18 @@ test('size cap: 3000 survivors stay under the GitHub limit; rows capped with a +
   assert.equal(out.split('\n- `').length - 1, MAX_ROWS);
   const body = mergeBody(mergeBody(undefined, 'php', out), 'js', renderSection('js', many));
   assert.ok(body.length <= MAX_BODY);
+});
+
+test('parseInfection counts only the Escaped section (timed out / skipped are not survivors)', () => {
+  const log = `Escaped mutants:\n===\n\n1) /r/backend/app/A.php:3    [M] Plus\n\nTimed Out mutants:\n===\n\n1) /r/backend/app/B.php:9    [M] Minus\n\nSkipped mutants:\n===\n\n1) /r/backend/app/C.php:1    [M] Plus\n`;
+  assert.deepEqual(parseInfection(log), [{ file: 'backend/app/A.php', line: 3, mutator: 'Plus' }]);
+});
+
+test('CLI without --pr/--repo prints the report and never calls gh', () => {
+  const f = new URL('../../.mutation-cli-test.log', import.meta.url).pathname;
+  fs.writeFileSync(f, LOG);
+  try {
+    const out = execFileSync(process.execPath, [new URL('../ci/mutation-comment.mjs', import.meta.url).pathname, '--section', 'php', '--input', f], { encoding: 'utf8', env: { ...process.env, PATH: '/nonexistent' } });
+    assert.ok(out.includes('PHP (Infection): 2 surviving'));
+  } finally { fs.rmSync(f); }
 });
