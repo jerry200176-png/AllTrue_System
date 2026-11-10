@@ -1,0 +1,14 @@
+updates:
+  - id: staff-2026-11-11-ui-release-notes
+    published_at: "2026-11-11"
+    audiences:
+      - director
+      - teacher
+    importance: digest
+    title: 版本更新頁換新外觀
+    summary: 字更大、按鈕更好按；公告內容和原本一樣。
+    items:
+      - category: improved
+        text: 「版本更新」頁改成大字、大按鈕，最新一則公告放在最上面的暖色卡片。
+    source_refs:
+      - "changelog:2026-11-11:ui-release-notes"

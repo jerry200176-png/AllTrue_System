@@ -61,6 +61,7 @@ const pageModules = {
   'branch-management': () => import('../../../src/pages/BranchManagementPage.vue'),
   'truefit-fixture': () => import('../../../src/pages/TrueFitPaperFixturePage.vue'),
   'truefit-app': () => import('../../../src/pages/TrueFitApp.vue'),
+  'release-notes': () => import('../../../src/pages/ReleaseNotesPage.vue'),
 };
 const loadPage = pageModules[page] || pageModules.inbox;
 const PageComponent = (await loadPage()).default;
@@ -185,6 +186,9 @@ createApp({
     }
     if (page === 'branch-management') {
       return () => h(PageComponent, { branchId: 1, token: 'e2e-foundation-token', standalone: mode === 'public', enabled: true });
+    }
+    if (page === 'release-notes') {
+      return () => h(PageComponent, { userRole: role });
     }
     if (page === 'chat') {
       return () => h(PageComponent, { branchId: 1, userId: 9001, userRole: 'director' });
