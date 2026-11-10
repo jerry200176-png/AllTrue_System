@@ -46,7 +46,12 @@ export function countOverlays(sources) {
 
 export function checkOverlayLimits({ counts, limits, baseLimits }) {
   const errors = [];
+  const valid = (v) => Number.isInteger(v) && v >= 0;
   for (const k of Object.keys(OVERLAY_PATTERNS)) {
+    if (!valid(limits?.[k]) || (baseLimits && !valid(baseLimits[k]))) {
+      errors.push(`${LIMITS}: ${k} limit must be a non-negative integer in current and base limits (got ${limits?.[k]} / ${baseLimits?.[k]})`);
+      continue;
+    }
     if (counts[k] > limits[k]) errors.push(`overlay ratchet: ${k} count ${counts[k]} > limit ${limits[k]}; use components/app-overlay (ConfirmDialog/useConfirm, FormDialog, DetailSheet)`);
     if (baseLimits && limits[k] > baseLimits[k]) errors.push(`${LIMITS}: ${k} limit rose ${baseLimits[k]} -> ${limits[k]}; limits can only shrink`);
   }

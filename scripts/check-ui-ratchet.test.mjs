@@ -27,3 +27,12 @@ test('overlay counts only go down', () => {
   assert.equal(checkOverlayLimits({ counts, limits, baseLimits: { ...limits, modal: 0 } }).length, 1);
   assert.deepEqual(checkOverlayLimits({ counts: { ...counts, modal: 0 }, limits: { ...limits, modal: 0 }, baseLimits: limits }), []);
 });
+test('overlay limits fail closed on missing or non-integer values', () => {
+  const counts = { modal: 0, confirm: 0, prompt: 0, alert: 0, teleport: 0 };
+  const limits = { ...counts };
+  const { modal, ...missing } = limits;
+  assert.equal(checkOverlayLimits({ counts, limits: missing }).length, 1);
+  assert.equal(checkOverlayLimits({ counts, limits, baseLimits: missing }).length, 1);
+  assert.equal(checkOverlayLimits({ counts, limits: { ...limits, alert: 1.5 } }).length, 1);
+  assert.equal(checkOverlayLimits({ counts, limits: { ...limits, alert: '0' } }).length, 1);
+});
