@@ -303,6 +303,7 @@ test.describe('4970 student learning profile', () => {
       const writes = [];
       const errors = [];
       let schoolUnavailable = false;
+      let primaryReads = 0, schoolReads = 0;
       const origin = new URL(info.project.use.baseURL).origin;
       page.on('pageerror', error => errors.push(error.message));
       await page.addInitScript(() => localStorage.setItem('alltrue_text_size', 'large'));
@@ -315,25 +316,45 @@ test.describe('4970 student learning profile', () => {
         if (r.method() !== 'GET') { writes.push(r.method()); return route.abort(); }
         const json = body => route.fulfill({ json: body });
         if (url.pathname === '/api/v1/students') return json({ data: [students[0]], total: 1, last_page: 1 });
-        if (url.pathname.endsWith('/learning-timeline')) return json({ items: [
+        if (url.pathname.endsWith('/learning-timeline')) {
+          primaryReads += 1;
+          if (primaryReads === 1) return route.fulfill({ status: 503, json: {} });
+          return json({ items: [
           { type: 'evaluation', id: 1, date: '2026-11-09', subject: '數學', progress: '完成第二單元', content: '分數應用題與訂正', attendance: '到班', approval_status: 'approved' },
           { type: 'exam_score', id: 2, date: '2026-11-01', subject: '數學', title: '第一段考', score: 0, max_score: 100, is_absent: false },
           { type: 'exam_score', id: 3, date: '2026-10-01', subject: '英文', title: '英文段考', score: null, max_score: 100, is_absent: true },
-        ], coverage: { limit_per_source: 300, capped_sources: [] } });
-        if (url.pathname.endsWith('/exam-periods')) return schoolUnavailable ? route.fulfill({ status: 503, json: {} }) : json({ data: [{ id: 1, label: '第二段考', start_date: '2026-11-20', end_date: '2026-11-21' }] });
+          ], coverage: { limit_per_source: 300, capped_sources: [] } });
+        }
+        if (url.pathname.endsWith('/exam-periods')) {
+          schoolReads += 1;
+          return schoolUnavailable ? route.fulfill({ status: 503, json: {} }) : json({ data: [{ id: 1, label: '第二段考', start_date: '2026-11-20', end_date: '2026-11-21' }] });
+        }
         return json({ data: [], total: 0, last_page: 1 });
       });
       await page.goto('/pilot-mount.html?page=students');
       const entry = page.getByRole('button', { name: '學習檔案', exact: true });
       await entry.focus(); await page.keyboard.press('Enter');
       const profile = page.getByRole('dialog', { name: /學習檔案/ });
+      await expect(profile).toContainText('載入失敗，請稍後再試');
+      const retry = profile.getByRole('button', { name: '重新載入', exact: true });
+      await expect(profile.getByRole('button', { name: '關閉學習檔案' })).toBeFocused();
+      await page.keyboard.press('Tab'); await expect(retry).toBeFocused();
+      // Finish finite entrance animations before measuring the real stable touch target.
+      await page.screenshot({ path: info.outputPath(`profile-retry-${width}.png`), fullPage: true, animations: 'disabled' });
+      expect(await retry.evaluate(el => getComputedStyle(el).fontSize)).toBe('19px');
+      expect((await retry.boundingBox()).height).toBeGreaterThanOrEqual(44);
+      expect(primaryReads).toBe(1); expect(schoolReads).toBe(0);
+      await page.keyboard.press('Enter');
       await expect(profile).toBeVisible(); await expect(profile).toContainText('完成第二單元');
       await expect(profile).toContainText('第二段考'); await expect(profile).toContainText('2026-11-20');
+      expect(primaryReads).toBe(2); expect(schoolReads).toBe(1);
       await expect(page.locator('html')).toHaveAttribute('data-text-size', 'large');
       await page.screenshot({ path: info.outputPath(`profile-overview-${width}.png`), fullPage: true, animations: 'disabled' });
       const overview = profile.getByRole('tab', { name: '總覽', exact: true });
       expect(await overview.evaluate(el => getComputedStyle(el).fontSize)).toBe('19px');
       expect((await profile.boundingBox()).width).toBeLessThanOrEqual(width === 375 ? 359 : 768);
+      await expect(profile).toBeFocused(); // Removed retry button returns focus to the dialog scope.
+      await page.keyboard.press('Tab');
       await expect(profile.getByRole('button', { name: '關閉學習檔案' })).toBeFocused();
       await overview.focus(); await expect(overview).toBeFocused(); await page.keyboard.press('ArrowRight');
       await expect(profile.getByRole('tab', { name: '上課紀錄', exact: true })).toBeFocused();
@@ -356,8 +377,9 @@ test.describe('4970 student learning profile', () => {
       await profile.getByRole('tab', { name: '上課紀錄', exact: true }).focus(); await page.keyboard.press('Enter');
       await expect(profile).toContainText('分數應用題與訂正');
       await page.keyboard.press('Escape'); await expect(profile).toHaveCount(0); await expect(entry).toBeFocused();
+      expect(primaryReads).toBe(3); expect(schoolReads).toBe(2);
       expect(writes).toEqual([]); expect(errors).toEqual([]);
-      console.log(JSON.stringify({ student_profile: '4970', width, large_text: true, keyboard: true, writes: writes.length }));
+      console.log(JSON.stringify({ student_profile: '4970', width, large_text: true, keyboard: true, primary_reads: primaryReads, school_reads: schoolReads, writes: writes.length }));
     });
   }
 });

@@ -61,7 +61,7 @@ watch(() => [props.show, props.studentId], () => { if (props.show && props.stude
         <Button variant="outline" aria-label="關閉學習檔案" class="tw:min-h-11 tw:shrink-0 tw:text-tpl-body" @click="emit('close')">關閉</Button>
       </DialogHeader>
       <p v-if="loading" role="status">載入中…</p>
-      <div v-else-if="error" role="alert"><p>{{ error }}</p><Button variant="outline" @click="load">重新載入</Button></div>
+      <div v-else-if="error" role="alert"><p>{{ error }}</p><Button variant="outline" class="tw:min-h-11 tw:text-tpl-body" @click="load">重新載入</Button></div>
       <template v-else>
         <div class="tw:grid tw:gap-3 tw:sm:grid-cols-3">
           <label class="tw:grid tw:gap-1">科目
