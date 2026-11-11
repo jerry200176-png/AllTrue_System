@@ -26,6 +26,10 @@ _FULL_SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 
 _T3_PREFIXES = (
     ".github/workflows/",
+    # What those workflows execute (review gate, land queue, autoland, SSH trust action): same
+    # control plane as the workflow file, effective at merge. Never "docs" (#5201 row 16).
+    ".github/scripts/",
+    ".github/actions/",
     ".github/CODEOWNERS",
     ".github/dependabot.yml",
     "backend/database/migrations/",
@@ -195,7 +199,8 @@ _T2_MARKERS = (
 
 _ACTIVATION_T3_PREFIXES = tuple(
     prefix for prefix in _T3_PREFIXES
-    if prefix not in {".github/workflows/", "governance/", "docs/governance/"}
+    # Merge-effective control plane: not deployed to the app host, so not an activation signal.
+    if prefix not in {".github/workflows/", ".github/scripts/", ".github/actions/", "governance/", "docs/governance/"}
 )
 _ACTIVATION_T3_PATH_TERMS = (
     "auth", "billing", "payment", "identity", "credential", "password",
