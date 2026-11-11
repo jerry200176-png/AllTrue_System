@@ -1,0 +1,13 @@
+updates:
+  - id: staff-2026-11-11-ui-schedule-discrepancy
+    published_at: "2026-11-11"
+    audiences:
+      - director
+    importance: digest
+    title: 課表回報管理頁換新外觀
+    summary: 字更大、按鈕更好按；處理流程和原本一樣。
+    items:
+      - category: improved
+        text: 「課表回報管理」頁改成大字、大按鈕，手機上也好操作；回報內容與處理步驟不變。
+    source_refs:
+      - "changelog:2026-11-11:ui-schedule-discrepancy"

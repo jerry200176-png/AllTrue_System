@@ -1,282 +1,286 @@
 <template>
-  <div class="sdp-page at-page">
-    <AtPageHeader
-      title="課表回報管理"
-      description="老師回報的課表與實際不符情形。處理後系統會留下稽核紀錄。"
-      icon="flag"
-    >
-      <template #help>
-        <AtHelpDisclosure label="快速處理 SOP">
+  <div class="dsc-page tw:mx-auto tw:flex tw:max-w-6xl tw:flex-col tw:gap-4 tw:px-[calc(var(--ds-space-4)-9px)] tw:text-foreground tw:md:px-0" data-testid="schedule-discrepancy-page">
+    <header class="tw:relative tw:pb-2">
+      <details class="tw:group/help" data-testid="sdp-help">
+        <summary
+          class="tw:flex tw:min-h-12 tw:w-fit tw:max-w-full tw:cursor-pointer tw:list-none tw:items-center tw:gap-2 tw:rounded-md tw:outline-none tw:focus-visible:ring-3 tw:focus-visible:ring-ring/50 tw:[&::-webkit-details-marker]:hidden"
+          title="快速處理 SOP"
+        >
+          <h2 class="tw:flex tw:items-center tw:gap-2 tw:text-tpl-page tw:font-bold tw:tracking-tight">
+            <Flag class="tw:size-6 tw:shrink-0 tw:text-tpl-secondary" :stroke-width="2" aria-hidden="true" />
+            課表回報管理
+          </h2>
+          <Info class="tw:size-5 tw:shrink-0 tw:text-tpl-secondary" :stroke-width="2" aria-hidden="true" />
+        </summary>
+        <div class="tw:mt-2 tw:w-full tw:rounded-xl tw:border tw:bg-card tw:p-4 tw:text-tpl-body tw:shadow-none" role="note">
           <strong>快速處理 SOP（建議流程）</strong>
-          <ol>
+          <ol class="tw:mt-2 tw:list-decimal tw:pl-5">
             <li>先按「已確認」：代表你已接手此回報，避免同事重複處理。</li>
             <li>確認堂次與時段：必要時先複製老師建議時間，完成資料修正後再關單。</li>
             <li>填寫處理說明後按「標記已修正」：請寫清楚「修了什麼」與「影響範圍」。</li>
           </ol>
-        </AtHelpDisclosure>
-      </template>
-      <template #actions>
-        <AtButton variant="secondary" shape="rect" icon="refresh" @click="refresh">重新整理</AtButton>
-      </template>
-    </AtPageHeader>
+        </div>
+      </details>
+      <div class="tw:mt-2 tw:sm:absolute tw:sm:top-0 tw:sm:right-0 tw:sm:mt-0">
+        <Button variant="outline" class="tw:h-12 tw:px-5 tw:text-[length:var(--tpl-text-body)] tw:font-semibold" @click="refresh">
+          <RefreshCw class="tw:size-4" :stroke-width="2" aria-hidden="true" />
+          重新整理
+        </Button>
+      </div>
+      <p class="tw:mt-2 tw:text-tpl-body tw:text-tpl-secondary tw:text-pretty">老師回報的課表與實際不符情形。處理後系統會留下稽核紀錄。</p>
+    </header>
 
     <!-- Tabs -->
-    <AtTabs
-      :model-value="activeTab"
-      class="sdp-tabs"
-      label="回報狀態"
-      id-prefix="sdp"
-      :tabs="tabs"
-      @update:model-value="setTab"
-    >
-      <template #tab="{ tab }">
-        {{ tab.label }}
-        <span v-if="counts[tab.value] > 0" class="sdp-tab-badge" :class="`sdp-tab-badge-${tab.value}`">{{ counts[tab.value] }}</span>
-      </template>
-    </AtTabs>
+    <Tabs :model-value="activeTab" class="dsc-tabs tw:gap-4" @update:model-value="setTab">
+      <TabsList aria-label="回報狀態" class="tw:h-auto tw:w-full tw:justify-start tw:gap-1 tw:overflow-x-auto tw:p-1 tw:sm:w-fit">
+        <TabsTrigger
+          v-for="tab in tabs"
+          :key="tab.value"
+          :value="tab.value"
+          class="tw:min-h-12 tw:flex-1 tw:gap-2 tw:px-2 tw:text-[length:var(--tpl-text-body)] tw:sm:flex-none tw:sm:px-4 tw:font-semibold tw:motion-reduce:transition-none"
+        >
+          {{ tab.label }}
+          <DiscrepancyStatusBadge v-if="counts[tab.value] > 0" :status="tab.value">{{ counts[tab.value] }}</DiscrepancyStatusBadge>
+        </TabsTrigger>
+      </TabsList>
 
-    <section :id="`sdp-panel-${activeTab}`" class="sdp-list-wrap" role="tabpanel" :aria-labelledby="`sdp-tab-${activeTab}`" :aria-busy="loading">
-      <div v-if="!hasBranch" class="sdp-state sdp-state-empty sdp-state-no-branch">
-        <span class="material-symbols-outlined sdp-empty-icon sdp-empty-icon-info" aria-hidden="true">location_city</span>
-        <div class="sdp-empty-title">請先選擇要管理的分校</div>
-        <div class="sdp-empty-sub">課表回報屬於各分校的內部資料；請於上方切換分校後再查看。</div>
-      </div>
-      <div v-else-if="loading" class="sdp-state sdp-state-loading" role="status" aria-live="polite">
-        <div class="sdp-spinner" aria-hidden="true"></div>
-        <span>載入中…</span>
-      </div>
-      <div v-else-if="errorMsg" class="sdp-state sdp-state-error" role="alert" aria-live="assertive">
-        <span class="material-symbols-outlined" aria-hidden="true">error</span>
-        <span>{{ errorMsg }}</span>
-        <button class="ghost xs" type="button" @click="refresh">重試</button>
-      </div>
-      <div v-else-if="rows.length === 0" class="sdp-state sdp-state-empty" role="status">
-        <span class="material-symbols-outlined sdp-empty-icon" aria-hidden="true">{{ emptyIcon }}</span>
-        <div class="sdp-empty-title">{{ emptyTitle }}</div>
-        <div class="sdp-empty-sub">{{ emptySub }}</div>
-      </div>
+      <TabsContent :value="activeTab" class="dsc-list-wrap tw:flex tw:flex-col tw:gap-4" :aria-busy="loading">
+        <Card v-if="!hasBranch" class="dsc-state dsc-state-empty dsc-state-no-branch tw:items-center tw:gap-2 tw:py-10 tw:text-center tw:shadow-none">
+          <MapPin class="tw:size-8 tw:text-tpl-secondary" :stroke-width="1.75" aria-hidden="true" />
+          <h3 class="dsc-empty-title tw:text-tpl-list tw:font-bold">請先選擇要管理的分校</h3>
+          <p class="dsc-empty-sub tw:max-w-prose tw:px-5 tw:text-tpl-body tw:text-tpl-secondary">課表回報屬於各分校的內部資料；請於上方切換分校後再查看。</p>
+        </Card>
+        <Card v-else-if="loading" class="dsc-state dsc-state-loading tw:flex-row tw:items-center tw:justify-center tw:gap-3 tw:py-10 tw:text-tpl-body tw:text-tpl-secondary tw:shadow-none" role="status" aria-live="polite">
+          <Loader2 class="tw:size-5 tw:animate-spin tw:motion-reduce:animate-none" :stroke-width="2" aria-hidden="true" />
+          <span>載入中…</span>
+        </Card>
+        <Card v-else-if="errorMsg" class="dsc-state dsc-state-error tw:flex-row tw:flex-wrap tw:items-center tw:justify-center tw:gap-3 tw:px-5 tw:py-8 tw:text-tpl-body tw:text-[color:var(--ds-danger-text)] tw:shadow-none" role="alert" aria-live="assertive">
+          <CircleAlert class="tw:size-5 tw:shrink-0" :stroke-width="2" aria-hidden="true" />
+          <span>{{ errorMsg }}</span>
+          <Button type="button" variant="outline" class="tw:h-12 tw:px-5 tw:text-[length:var(--tpl-text-body)] tw:font-semibold tw:text-foreground" @click="refresh">重試</Button>
+        </Card>
+        <Card v-else-if="rows.length === 0" class="dsc-state dsc-state-empty tw:items-center tw:gap-2 tw:py-10 tw:text-center tw:shadow-none" role="status">
+          <span class="material-symbols-outlined dsc-empty-icon tw:text-[length:var(--tpl-text-num-sm)] tw:text-tpl-secondary" aria-hidden="true">{{ emptyIcon }}</span>
+          <h3 class="dsc-empty-title tw:text-tpl-list tw:font-bold">{{ emptyTitle }}</h3>
+          <p class="dsc-empty-sub tw:max-w-prose tw:px-5 tw:text-tpl-body tw:text-tpl-secondary">{{ emptySub }}</p>
+        </Card>
 
-      <!-- Desktop table -->
-      <table v-else-if="hasBranch" class="sdp-table sdp-desktop">
-        <thead>
-          <tr>
-            <th style="width:130px">回報時間</th>
-            <th style="width:88px">老師</th>
-            <th style="width:72px">分校</th>
-            <th>堂次 / 出入類型</th>
-            <th style="width:110px">狀態</th>
-            <th style="width:180px; text-align:right">操作</th>
-          </tr>
-        </thead>
-        <tbody>
-          <template v-for="row in rows" :key="row.id">
-            <tr :class="{ 'sdp-row-expanded': expandedId === row.id }">
-              <td>
-                <div class="sdp-ts">{{ formatDateTime(row.created_at) }}</div>
-              </td>
-              <td>{{ row.reporter_name || '未提供老師姓名' }}</td>
-              <td>{{ row.branch_name || '未指定分校' }}</td>
-              <td>
-                <div class="sdp-cell-main">
-                  <span class="sdp-type-pill">{{ row.discrepancy_type_label }}</span>
-                  <span v-if="row.student_name" class="sdp-student">{{ row.student_name }}</span>
-                </div>
-                <div class="sdp-cell-sub">
-                  <span v-if="row.session_date">{{ row.session_date }}</span>
+        <!-- Desktop table -->
+        <Card v-else-if="hasBranch" class="dsc-desktop tw:gap-0 tw:overflow-hidden tw:py-0 tw:shadow-none tw:max-[768px]:hidden">
+          <Table class="dsc-table tw:text-[length:var(--tpl-text-body)] tw:[&_td]:text-[length:var(--tpl-text-body)] tw:[&_th]:text-[length:var(--tpl-text-caption)]">
+            <TableHeader>
+              <TableRow class="tw:hover:bg-transparent">
+                <TableHead class="tw:h-12 tw:px-4 tw:text-tpl-caption tw:font-semibold tw:text-tpl-secondary">回報時間</TableHead>
+                <TableHead class="tw:h-12 tw:px-4 tw:text-tpl-caption tw:font-semibold tw:text-tpl-secondary">老師</TableHead>
+                <TableHead class="tw:h-12 tw:px-4 tw:text-tpl-caption tw:font-semibold tw:text-tpl-secondary">分校</TableHead>
+                <TableHead class="tw:h-12 tw:px-4 tw:text-tpl-caption tw:font-semibold tw:text-tpl-secondary">堂次 / 出入類型</TableHead>
+                <TableHead class="tw:h-12 tw:px-4 tw:text-tpl-caption tw:font-semibold tw:text-tpl-secondary">狀態</TableHead>
+                <TableHead class="tw:h-12 tw:px-4 tw:text-right tw:text-tpl-caption tw:font-semibold tw:text-tpl-secondary">操作</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              <template v-for="row in rows" :key="row.id">
+                <TableRow :class="['tw:align-top', expandedId === row.id && 'dsc-row-expanded tw:bg-muted/50']">
+                  <TableCell class="tw:px-4 tw:py-3 tw:break-keep tw:whitespace-normal tw:tabular-nums">
+                    <div class="dsc-ts">{{ formatDateTime(row.created_at) }}</div>
+                  </TableCell>
+                  <TableCell class="tw:px-4 tw:py-3 tw:break-keep tw:whitespace-normal">{{ row.reporter_name || '未提供老師姓名' }}</TableCell>
+                  <TableCell class="tw:px-4 tw:py-3 tw:break-keep tw:whitespace-normal">{{ row.branch_name || '未指定分校' }}</TableCell>
+                  <TableCell class="tw:px-4 tw:py-3 tw:whitespace-normal">
+                    <div class="dsc-cell-main tw:flex tw:flex-wrap tw:items-center tw:gap-2">
+                      <Badge variant="secondary" class="dsc-type-pill tw:px-3 tw:py-1 tw:text-[length:var(--tpl-text-caption)]">{{ row.discrepancy_type_label }}</Badge>
+                      <span v-if="row.student_name" class="dsc-student tw:font-semibold">{{ row.student_name }}</span>
+                    </div>
+                    <div class="dsc-cell-sub tw:mt-1 tw:flex tw:flex-wrap tw:items-center tw:gap-x-1 tw:text-tpl-caption tw:text-tpl-secondary tw:tabular-nums">
+                      <span v-if="row.session_date">{{ row.session_date }}</span>
+                      <template v-if="row.time_range">
+                        <span class="dsc-time-original" :class="{ 'dsc-time-has-correction': row.corrected_time_range, 'tw:line-through': row.corrected_time_range }">
+                          · {{ row.time_range }}
+                        </span>
+                        <template v-if="row.corrected_time_range">
+                          <ArrowRight class="dsc-time-arrow tw:size-4" :stroke-width="2" aria-hidden="true" />
+                          <span class="dsc-time-corrected tw:font-semibold tw:text-foreground" :title="'老師建議修正為 ' + row.corrected_time_range">{{ row.corrected_time_range }}</span>
+                        </template>
+                      </template>
+                      <span v-if="row.subject">· {{ row.subject }}</span>
+                    </div>
+                  </TableCell>
+                  <TableCell class="tw:px-4 tw:py-3">
+                    <DiscrepancyStatusBadge class="dsc-status" :status="row.status">{{ statusLabel(row.status) }}</DiscrepancyStatusBadge>
+                  </TableCell>
+                  <TableCell class="tw:px-4 tw:py-3 tw:text-right">
+                    <div class="dsc-row-ops tw:flex tw:flex-wrap tw:justify-end tw:gap-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        :class="rowBtn"
+                        :aria-expanded="expandedId === row.id"
+                        :aria-controls="`sdp-detail-${row.id}`"
+                        @click="toggleExpand(row)"
+                      >
+                        {{ expandedId === row.id ? '收合' : scheduleDiscrepancyActionLabel(row.status) }}
+                      </Button>
+                      <Button
+                        v-if="row.status === 'pending'"
+                        type="button"
+                        :class="rowBtn"
+                        :disabled="busyId === row.id"
+                        @click="acknowledge(row)"
+                      >
+                        {{ busyId === row.id && busyAction === 'ack' ? '處理中…' : '標記已確認' }}
+                      </Button>
+                    </div>
+                  </TableCell>
+                </TableRow>
+                <TableRow v-if="expandedId === row.id" class="dsc-detail-row tw:hover:bg-transparent">
+                  <TableCell colspan="6" class="tw:px-4 tw:py-4 tw:whitespace-normal">
+                    <div :id="`sdp-detail-${row.id}`" class="dsc-detail tw:flex tw:flex-col tw:gap-4">
+                      <dl class="dsc-detail-grid tw:grid tw:grid-cols-[repeat(auto-fit,minmax(11rem,1fr))] tw:gap-4">
+                        <div>
+                          <dt class="dsc-detail-label tw:text-tpl-caption tw:font-semibold tw:text-tpl-secondary">備註</dt>
+                          <dd class="dsc-detail-value tw:break-words">{{ row.notes || '（無）' }}</dd>
+                        </div>
+                        <div>
+                          <dt class="dsc-detail-label tw:text-tpl-caption tw:font-semibold tw:text-tpl-secondary">堂次編號</dt>
+                          <dd class="dsc-detail-value">{{ row.class_session_id ? `#${row.class_session_id}` : '— 無對應堂次 —' }}</dd>
+                        </div>
+                        <div>
+                          <dt class="dsc-detail-label tw:text-tpl-caption tw:font-semibold tw:text-tpl-secondary">確認時間</dt>
+                          <dd class="dsc-detail-value tw:tabular-nums">{{ formatDateTime(row.acknowledged_at) || '—' }}</dd>
+                        </div>
+                        <div>
+                          <dt class="dsc-detail-label tw:text-tpl-caption tw:font-semibold tw:text-tpl-secondary">解決時間</dt>
+                          <dd class="dsc-detail-value tw:tabular-nums">{{ formatDateTime(row.resolved_at) || '—' }}</dd>
+                        </div>
+                      </dl>
+
+                      <div v-if="row.corrected_time_range" class="dsc-detail-corrected">
+                        <div class="dsc-detail-label tw:text-tpl-caption tw:font-semibold tw:text-tpl-secondary">老師建議修正為</div>
+                        <div class="dsc-detail-corrected-body tw:mt-1 tw:flex tw:flex-wrap tw:items-center tw:gap-2 tw:tabular-nums">
+                          <span class="dsc-detail-time-original tw:line-through">{{ row.time_range || '—' }}</span>
+                          <ArrowRight class="dsc-detail-arrow tw:size-4" :stroke-width="2" aria-hidden="true" />
+                          <span class="dsc-detail-time-corrected tw:font-semibold">{{ row.corrected_time_range }}</span>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            :class="rowBtn"
+                            :title="'複製「' + row.corrected_time_range + '」'"
+                            @click="copyCorrectedTime(row)"
+                          >
+                            <Copy class="tw:size-4" :stroke-width="2" aria-hidden="true" />
+                            複製
+                          </Button>
+                        </div>
+                      </div>
+
+                      <div v-if="row.status === 'resolved' && row.resolution_note" class="dsc-detail-note">
+                        <div class="dsc-detail-label tw:text-tpl-caption tw:font-semibold tw:text-tpl-secondary">處理說明</div>
+                        <div class="dsc-detail-value dsc-detail-note-text tw:break-words tw:whitespace-pre-wrap">{{ row.resolution_note }}</div>
+                      </div>
+
+                      <DiscrepancyResolveForm
+                        v-if="row.status !== 'resolved' && row.status !== 'withdrawn'"
+                        :row-id="row.id"
+                        :draft="resolutionDrafts[row.id]"
+                        :templates="noteTemplates"
+                        :can-resolve="canResolve(row)"
+                        :busy="busyId === row.id"
+                        :submitting="busyId === row.id && busyAction === 'resolve'"
+                        :error="resolveError[row.id]"
+                        @update:draft="resolutionDrafts[row.id] = $event"
+                        @template="applyTemplate(row, $event)"
+                        @resolve="resolve(row)"
+                      />
+                    </div>
+                  </TableCell>
+                </TableRow>
+              </template>
+            </TableBody>
+          </Table>
+        </Card>
+
+        <!-- Mobile card list -->
+        <div v-if="hasBranch && rows.length > 0" class="dsc-mobile tw:flex tw:flex-col tw:gap-3 tw:min-[769px]:hidden">
+          <Card v-for="row in rows" :key="'m-' + row.id" role="article" class="dsc-mcard tw:gap-3 tw:py-4 tw:shadow-none">
+            <CardContent class="tw:flex tw:flex-col tw:gap-3 tw:px-4">
+              <div class="dsc-mcard-head tw:flex tw:flex-wrap tw:items-center tw:justify-between tw:gap-2">
+                <Badge variant="secondary" class="dsc-type-pill tw:px-3 tw:py-1 tw:text-[length:var(--tpl-text-caption)]">{{ row.discrepancy_type_label }}</Badge>
+                <DiscrepancyStatusBadge class="dsc-status" :status="row.status">{{ statusLabel(row.status) }}</DiscrepancyStatusBadge>
+              </div>
+              <div class="dsc-mcard-meta tw:flex tw:flex-col tw:gap-1 tw:text-tpl-body tw:break-words">
+                <div><span class="dsc-mcard-label tw:text-tpl-secondary">老師</span> {{ row.reporter_name || '未提供老師姓名' }}</div>
+                <div><span class="dsc-mcard-label tw:text-tpl-secondary">分校</span> {{ row.branch_name || '未指定分校' }}</div>
+                <div v-if="row.student_name"><span class="dsc-mcard-label tw:text-tpl-secondary">學生</span> {{ row.student_name }}</div>
+                <div v-if="row.session_date || row.time_range" class="tw:tabular-nums">
+                  <span class="dsc-mcard-label tw:mr-1 tw:text-tpl-secondary">時段</span>
+                  <span>{{ row.session_date || '' }}</span>
                   <template v-if="row.time_range">
-                    <span class="sdp-time-original" :class="{ 'sdp-time-has-correction': row.corrected_time_range }">
-                      · {{ row.time_range }}
+                    <span class="dsc-time-original" :class="{ 'dsc-time-has-correction': row.corrected_time_range, 'tw:line-through': row.corrected_time_range }">
+                      {{ ' ' + row.time_range }}
                     </span>
                     <template v-if="row.corrected_time_range">
-                      <span class="sdp-time-arrow material-symbols-outlined" aria-hidden="true">arrow_forward</span>
-                      <span class="sdp-time-corrected" :title="'老師建議修正為 ' + row.corrected_time_range">{{ row.corrected_time_range }}</span>
+                      <ArrowRight class="dsc-time-arrow tw:inline tw:size-4" :stroke-width="2" aria-hidden="true" />
+                      <span class="dsc-time-corrected tw:font-semibold">{{ row.corrected_time_range }}</span>
                     </template>
                   </template>
-                  <span v-if="row.subject">· {{ row.subject }}</span>
                 </div>
-              </td>
-              <td>
-                <span class="sdp-status" :class="`sdp-status-${row.status}`">{{ statusLabel(row.status) }}</span>
-              </td>
-              <td style="text-align:right">
-                <div class="sdp-row-ops">
-                  <button class="ghost xs" type="button" :aria-expanded="expandedId === row.id" :aria-controls="`sdp-detail-${row.id}`" @click="toggleExpand(row)">
-                    {{ expandedId === row.id ? '收合' : scheduleDiscrepancyActionLabel(row.status) }}
-                  </button>
-                  <button
-                    v-if="row.status === 'pending'"
-                    class="primary xs"
-                    type="button"
-                    :disabled="busyId === row.id"
-                    @click="acknowledge(row)"
-                  >
-                    {{ busyId === row.id && busyAction === 'ack' ? '處理中…' : '標記已確認' }}
-                  </button>
-                </div>
-              </td>
-            </tr>
-            <tr v-if="expandedId === row.id" class="sdp-detail-row">
-              <td colspan="6">
-                <div :id="`sdp-detail-${row.id}`" class="sdp-detail">
-                  <div class="sdp-detail-grid">
-                    <div>
-                      <div class="sdp-detail-label">備註</div>
-                      <div class="sdp-detail-value">{{ row.notes || '（無）' }}</div>
-                    </div>
-                    <div>
-                      <div class="sdp-detail-label">堂次編號</div>
-                      <div class="sdp-detail-value">{{ row.class_session_id ? `#${row.class_session_id}` : '— 無對應堂次 —' }}</div>
-                    </div>
-                    <div>
-                      <div class="sdp-detail-label">確認時間</div>
-                      <div class="sdp-detail-value">{{ formatDateTime(row.acknowledged_at) || '—' }}</div>
-                    </div>
-                    <div>
-                      <div class="sdp-detail-label">解決時間</div>
-                      <div class="sdp-detail-value">{{ formatDateTime(row.resolved_at) || '—' }}</div>
-                    </div>
-                  </div>
-
-                  <div v-if="row.corrected_time_range" class="sdp-detail-corrected">
-                    <div class="sdp-detail-label">老師建議修正為</div>
-                    <div class="sdp-detail-corrected-body">
-                      <span class="sdp-detail-time-original">{{ row.time_range || '—' }}</span>
-                      <span class="material-symbols-outlined sdp-detail-arrow" aria-hidden="true">arrow_forward</span>
-                      <span class="sdp-detail-time-corrected">{{ row.corrected_time_range }}</span>
-                      <button
-                        type="button"
-                        class="sdp-copy-btn"
-                        :title="'複製「' + row.corrected_time_range + '」'"
-                        @click="copyCorrectedTime(row)"
-                      >
-                        <span class="material-symbols-outlined" aria-hidden="true">content_copy</span>
-                        複製
-                      </button>
-                    </div>
-                  </div>
-
-                  <div v-if="row.status === 'resolved' && row.resolution_note" class="sdp-detail-note">
-                    <div class="sdp-detail-label">處理說明</div>
-                    <div class="sdp-detail-value sdp-detail-note-text">{{ row.resolution_note }}</div>
-                  </div>
-
-                  <div v-if="row.status !== 'resolved' && row.status !== 'withdrawn'" class="sdp-resolve-form">
-                    <label class="sdp-detail-label" :for="`sdp-note-${row.id}`">
-                      處理說明 <span class="sdp-required" aria-hidden="true">*</span>
-                      <span class="sdp-note-hint">（至少 10 字）</span>
-                    </label>
-                    <textarea
-                      :id="`sdp-note-${row.id}`"
-                      class="sdp-textarea"
-                      rows="3"
-                      maxlength="500"
-                      v-model="resolutionDrafts[row.id]"
-                      placeholder="請簡述系統已補登 / 已修正哪些資料…"
-                    ></textarea>
-                    <div class="sdp-template-row">
-                      <button
-                        v-for="tpl in noteTemplates"
-                        :key="`${row.id}-${tpl.key}`"
-                        type="button"
-                        class="ghost xs"
-                        @click="applyTemplate(row, tpl.key)"
-                      >
-                        {{ tpl.label }}
-                      </button>
-                    </div>
-                    <div class="sdp-resolve-actions">
-                      <span class="sdp-counter" :class="{ 'sdp-counter-ok': (resolutionDrafts[row.id] || '').trim().length >= 10 }">
-                        {{ (resolutionDrafts[row.id] || '').length }} / 500
-                      </span>
-                      <button
-                        class="primary xs"
-                        type="button"
-                        :disabled="!canResolve(row) || busyId === row.id"
-                        @click="resolve(row)"
-                      >
-                        {{ busyId === row.id && busyAction === 'resolve' ? '送出中…' : '標記已修正' }}
-                      </button>
-                    </div>
-                  </div>
-
-                  <div v-if="resolveError[row.id]" class="sdp-error" role="alert">{{ resolveError[row.id] }}</div>
-                </div>
-              </td>
-            </tr>
-          </template>
-        </tbody>
-      </table>
-
-      <!-- Mobile card list -->
-      <div v-if="hasBranch && rows.length > 0" class="sdp-mobile">
-        <article v-for="row in rows" :key="'m-' + row.id" class="sdp-mcard">
-          <header class="sdp-mcard-head">
-            <span class="sdp-type-pill">{{ row.discrepancy_type_label }}</span>
-            <span class="sdp-status" :class="`sdp-status-${row.status}`">{{ statusLabel(row.status) }}</span>
-          </header>
-          <div class="sdp-mcard-meta">
-            <div><span class="sdp-mcard-label">老師</span> {{ row.reporter_name || '未提供老師姓名' }}</div>
-            <div><span class="sdp-mcard-label">分校</span> {{ row.branch_name || '未指定分校' }}</div>
-            <div v-if="row.student_name"><span class="sdp-mcard-label">學生</span> {{ row.student_name }}</div>
-            <div v-if="row.session_date || row.time_range">
-              <span class="sdp-mcard-label">時段</span>
-              <span>{{ row.session_date || '' }}</span>
-              <template v-if="row.time_range">
-                <span class="sdp-time-original" :class="{ 'sdp-time-has-correction': row.corrected_time_range }">
-                  {{ ' ' + row.time_range }}
-                </span>
-                <template v-if="row.corrected_time_range">
-                  <span class="sdp-time-arrow material-symbols-outlined" aria-hidden="true">arrow_forward</span>
-                  <span class="sdp-time-corrected">{{ row.corrected_time_range }}</span>
-                </template>
-              </template>
-            </div>
-            <div v-if="row.notes"><span class="sdp-mcard-label">備註</span> {{ row.notes }}</div>
-            <div v-if="row.resolution_note"><span class="sdp-mcard-label">處理說明</span> {{ row.resolution_note }}</div>
-          </div>
-          <div class="sdp-mcard-ops">
-            <button v-if="row.status === 'pending'" class="primary xs" type="button" :disabled="busyId === row.id" @click="acknowledge(row)">
-              {{ busyId === row.id && busyAction === 'ack' ? '…' : '已確認' }}
-            </button>
-            <button class="ghost xs" type="button" :aria-expanded="expandedId === row.id" :aria-controls="`sdp-mobile-detail-${row.id}`" @click="toggleExpand(row)">
-              {{ expandedId === row.id ? '收合' : scheduleDiscrepancyActionLabel(row.status) }}
-            </button>
-          </div>
-          <div v-if="expandedId === row.id && row.status !== 'resolved' && row.status !== 'withdrawn'" :id="`sdp-mobile-detail-${row.id}`" class="sdp-resolve-form">
-            <label class="sdp-detail-label">處理說明 <span class="sdp-required">*</span></label>
-            <textarea class="sdp-textarea" rows="3" maxlength="500" v-model="resolutionDrafts[row.id]" placeholder="至少 10 字"></textarea>
-            <div class="sdp-template-row">
-              <button
-                v-for="tpl in noteTemplates"
-                :key="`m-${row.id}-${tpl.key}`"
-                type="button"
-                class="ghost xs"
-                @click="applyTemplate(row, tpl.key)"
-              >
-                {{ tpl.label }}
-              </button>
-            </div>
-            <div class="sdp-resolve-actions">
-              <span class="sdp-counter" :class="{ 'sdp-counter-ok': (resolutionDrafts[row.id] || '').trim().length >= 10 }">
-                {{ (resolutionDrafts[row.id] || '').length }} / 500
-              </span>
-              <button class="primary xs" type="button" :disabled="!canResolve(row) || busyId === row.id" @click="resolve(row)">
-                {{ busyId === row.id && busyAction === 'resolve' ? '…' : '標記已修正' }}
-              </button>
-            </div>
-            <div v-if="resolveError[row.id]" class="sdp-error">{{ resolveError[row.id] }}</div>
-          </div>
-        </article>
-      </div>
-    </section>
+                <div v-if="row.notes"><span class="dsc-mcard-label tw:text-tpl-secondary">備註</span> {{ row.notes }}</div>
+                <div v-if="row.resolution_note"><span class="dsc-mcard-label tw:text-tpl-secondary">處理說明</span> {{ row.resolution_note }}</div>
+              </div>
+              <div class="dsc-mcard-ops tw:flex tw:flex-wrap tw:gap-2">
+                <Button v-if="row.status === 'pending'" type="button" :class="rowBtn" :disabled="busyId === row.id" @click="acknowledge(row)">
+                  {{ busyId === row.id && busyAction === 'ack' ? '…' : '已確認' }}
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  :class="rowBtn"
+                  :aria-expanded="expandedId === row.id"
+                  :aria-controls="`sdp-mobile-detail-${row.id}`"
+                  @click="toggleExpand(row)"
+                >
+                  {{ expandedId === row.id ? '收合' : scheduleDiscrepancyActionLabel(row.status) }}
+                </Button>
+              </div>
+              <div v-if="expandedId === row.id && row.status !== 'resolved' && row.status !== 'withdrawn'" :id="`sdp-mobile-detail-${row.id}`">
+                <DiscrepancyResolveForm
+                  compact
+                  id-prefix="sdp-m"
+                  :row-id="row.id"
+                  :draft="resolutionDrafts[row.id]"
+                  :templates="noteTemplates"
+                  :can-resolve="canResolve(row)"
+                  :busy="busyId === row.id"
+                  :submitting="busyId === row.id && busyAction === 'resolve'"
+                  :error="resolveError[row.id]"
+                  @update:draft="resolutionDrafts[row.id] = $event"
+                  @template="applyTemplate(row, $event)"
+                  @resolve="resolve(row)"
+                />
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      </TabsContent>
+    </Tabs>
 
     <!-- Toast -->
     <Teleport to="body">
-      <Transition name="sdp-toast">
-        <div v-if="toast.visible" class="sdp-toast" :class="`sdp-toast-${toast.tone}`" role="status">
-          <span class="material-symbols-outlined" aria-hidden="true">
-            {{ toast.tone === 'success' ? 'check_circle' : (toast.tone === 'error' ? 'error' : 'info') }}
-          </span>
+      <Transition
+        enter-active-class="tw:transition tw:duration-200 tw:motion-reduce:transition-none"
+        leave-active-class="tw:transition tw:duration-200 tw:motion-reduce:transition-none"
+        enter-from-class="tw:-translate-y-2 tw:opacity-0"
+        leave-to-class="tw:opacity-0"
+      >
+        <div
+          v-if="toast.visible"
+          class="dsc-toast tw:fixed tw:inset-x-4 tw:top-4 tw:z-[100000] tw:mx-auto tw:flex tw:max-w-md tw:items-center tw:gap-3 tw:rounded-xl tw:border tw:bg-card tw:px-4 tw:py-3 tw:text-tpl-body tw:text-card-foreground tw:shadow-tpl-card"
+          :class="toast.tone === 'error' ? 'tw:border-[var(--ds-danger-line)]' : ''"
+          role="status"
+        >
+          <CircleAlert v-if="toast.tone === 'error'" class="tw:size-5 tw:shrink-0 tw:text-[color:var(--ds-danger-text)]" :stroke-width="2" aria-hidden="true" />
+          <CircleCheck v-else-if="toast.tone === 'success'" class="tw:size-5 tw:shrink-0 tw:text-[color:var(--ds-success-text)]" :stroke-width="2" aria-hidden="true" />
+          <Info v-else class="tw:size-5 tw:shrink-0 tw:text-tpl-secondary" :stroke-width="2" aria-hidden="true" />
           <span>{{ toast.text }}</span>
         </div>
       </Transition>
@@ -286,16 +290,23 @@
 
 <script setup>
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
-import AtButton from '../components/design-system/AtButton.vue';
-import AtPageHeader from '../components/design-system/AtPageHeader.vue';
-import AtTabs from '../components/design-system/AtTabs.vue';
-import AtHelpDisclosure from '../components/design-system/AtHelpDisclosure.vue';
+import { ArrowRight, CircleAlert, CircleCheck, Copy, Flag, Info, Loader2, MapPin, RefreshCw } from 'lucide-vue-next';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent } from '@/components/ui/card';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import DiscrepancyResolveForm from '@/components/schedule-discrepancy/DiscrepancyResolveForm.vue';
+import DiscrepancyStatusBadge from '@/components/schedule-discrepancy/DiscrepancyStatusBadge.vue';
 import { fetchDiscrepancies, fetchDiscrepancySummary, updateDiscrepancyStatus, STATUS_LABELS } from '../lib/scheduleDiscrepanciesApi';
 import { scheduleDiscrepancyActionLabel } from '../lib/calendarViewDisplay.js';
 
 const props = defineProps({
   branchId: { type: [Number, String], default: null },
 });
+
+// Markup only (#4989): shared class for the row-level action buttons (48px high, body text).
+const rowBtn = 'tw:h-12 tw:px-4 tw:text-[length:var(--tpl-text-body)] tw:font-semibold';
 
 const tabs = [
   { value: 'pending', label: '待處理' },
@@ -554,6 +565,7 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped>
+/* TODO(#4989): dead since the shadcn-vue migration (no markup uses .sdp-* any more); a deletion-only follow-up PR removes this whole block. */
 
 .sdp-header {
   display: flex;

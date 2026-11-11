@@ -61,7 +61,6 @@
   "src/pages/ParttimePayrollPage.vue",
   "src/pages/ProfileCenterPage.vue",
   "src/pages/QuestionBankPage.vue",
-  "src/pages/ScheduleDiscrepancyPage.vue",
   "src/pages/SmartCalendar.vue",
   "src/pages/StudentsList.vue",
   "src/pages/SubjectSettingsPage.vue",

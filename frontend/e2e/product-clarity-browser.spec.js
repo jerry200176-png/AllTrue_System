@@ -137,33 +137,33 @@ test.describe('Product Clarity — Real Browser Verification', () => {
       await installUnifiedMocks(page);
 
       await page.goto('/pilot-mount.html?page=discrepancy');
-      await page.waitForSelector('.at-help');
+      await page.waitForSelector('[data-testid="sdp-help"]');
 
       // Progressive disclosure of SOP card
-      const sopCard = page.locator('.at-help');
+      const sopCard = page.locator('[data-testid="sdp-help"]');
       expect(await sopCard.evaluate((el) => el.hasAttribute('open'))).toBe(false);
-      await page.click('.at-help > summary');
+      await page.click('[data-testid="sdp-help"] > summary');
       expect(await sopCard.evaluate((el) => el.hasAttribute('open'))).toBe(true);
-      await page.click('.at-help > summary');
+      await page.click('[data-testid="sdp-help"] > summary');
       expect(await sopCard.evaluate((el) => el.hasAttribute('open'))).toBe(false);
       auditLog.push({ route: 'discrepancy', viewport: vp.name, action: 'Toggle SOP details card', expectedResult: 'Expands/collapses', actualResult: 'PASS', errors: [...errors] });
 
       // Check fallbacks & terminology
       if (vp.width > 768) {
-        await page.waitForSelector('.sdp-table');
-        const teacherCell = await page.locator('.sdp-table tbody td').nth(1).textContent();
-        const branchCell = await page.locator('.sdp-table tbody td').nth(2).textContent();
+        await page.waitForSelector('.dsc-table');
+        const teacherCell = await page.locator('.dsc-table tbody td').nth(1).textContent();
+        const branchCell = await page.locator('.dsc-table tbody td').nth(2).textContent();
         expect(teacherCell?.trim()).toBe('未提供老師姓名');
         expect(branchCell?.trim()).toBe('未指定分校');
 
-        await page.click('.sdp-table tbody button.ghost');
-        await page.waitForSelector('.sdp-detail-grid');
-        expect(await page.locator('.sdp-detail-label:has-text("堂次編號")').isVisible()).toBe(true);
-        expect(await page.locator('.sdp-detail-label:has-text("堂次 ID")').count()).toBe(0);
+        await page.click('.dsc-table tbody button[aria-controls^="sdp-detail-"]');
+        await page.waitForSelector('.dsc-detail-grid');
+        expect(await page.locator('.dsc-detail-label:has-text("堂次編號")').isVisible()).toBe(true);
+        expect(await page.locator('.dsc-detail-label:has-text("堂次 ID")').count()).toBe(0);
         auditLog.push({ route: 'discrepancy', viewport: vp.name, action: 'Inspect desktop fallback labels & domain term', expectedResult: '未提供老師姓名, 堂次編號', actualResult: 'PASS', errors: [...errors] });
       } else {
-        await page.waitForSelector('.sdp-mobile');
-        const cardText = await page.locator('.sdp-mcard').first().textContent();
+        await page.waitForSelector('.dsc-mobile');
+        const cardText = await page.locator('.dsc-mcard').first().textContent();
         expect(cardText).toContain('未提供老師姓名');
         expect(cardText).toContain('未指定分校');
         auditLog.push({ route: 'discrepancy', viewport: vp.name, action: 'Inspect mobile card fallback labels', expectedResult: '未提供老師姓名, 未指定分校', actualResult: 'PASS', errors: [...errors] });
