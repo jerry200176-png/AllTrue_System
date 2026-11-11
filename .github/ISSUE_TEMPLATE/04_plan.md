@@ -5,7 +5,7 @@ title: "[plan] "
 labels: ["status:triage"]
 ---
 <!-- plan:v1 -->
-<!-- Fix of ~50 lines or less with no UI change: replace this whole body with the 5-line short form (marker `plan:v1 short`; lines 問題／根因／修法／測試／復原). See docs/sop/ISSUE_PLAN.md. -->
+<!-- Fix of ~50 lines or less with no UI change and not R3 (R3 always uses this full form): replace this whole body with the 5-line short form (marker `plan:v1 short`; lines 問題／根因／修法／測試／復原). See docs/sop/ISSUE_PLAN.md. -->
 
 ## 問題與證據
 <!-- 誰、哪個畫面、現在怎麼做。每項事實標「已證實」（附連結）或「推論」。含根因與參考做法。 -->

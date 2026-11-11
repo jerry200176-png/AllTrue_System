@@ -139,3 +139,33 @@ test('the issue template carries the marker and every required heading, and an u
   assert.deepEqual(r.missing, []);
   assert.deepEqual(r.empty, SECTIONS);
 });
+
+const SHORT_OK = `${SHORT_MARKER}\n` + SHORT_LINES.map((l) => `- ${l}：內容`).join('\n');
+
+test('R3 can never use the short form: --risk R3 and a Risk-Class line both reject it', async () => {
+  assert.equal(checkPlan(SHORT_OK, 'R3').ok, false);
+  assert.match(checkPlan(SHORT_OK, 'r3').note, /R3/);
+  assert.equal(checkPlan(`${SHORT_OK}\nRisk-Class: R3`).ok, false);
+  assert.equal(checkPlan(SHORT_OK, 'R1').ok, true);
+  assert.equal(checkPlan(`${SHORT_OK}\nRisk-Class: R1`).ok, true);
+  assert.equal(checkPlan(`${full()}\nRisk-Class: R3`).ok, true, 'full form is fine for R3');
+  const r = await run(['--risk', 'R3'], {}, { readStdin: async () => SHORT_OK });
+  assert.equal(r.code, 1);
+  assert.match(r.stdout, /full plan form/);
+  assert.equal((await run(['--risk', 'R9'], {}, { readStdin: async () => SHORT_OK })).code, 2);
+});
+
+test('headings inside an HTML comment do not count; a leftover --> is not content', () => {
+  const hidden = `${FULL_MARKER}\n<!--\n${SECTIONS.map((s) => `## ${s}\nx`).join('\n')}\n-->\n`;
+  const r = checkPlan(hidden);
+  assert.equal(r.ok, false);
+  assert.equal(r.missing.length, SECTIONS.length);
+  assert.deepEqual(checkPlan(full({ 驗收條件: '<!-- hint\n-->' })).empty, ['驗收條件']);
+  assert.equal(checkPlan(full()).ok, true, 'marker still recognised');
+});
+
+test('ISSUE_PLAN.md lists every section the checker requires', async () => {
+  const { readFileSync } = await import('node:fs');
+  const doc = readFileSync(new URL('../../docs/sop/ISSUE_PLAN.md', import.meta.url), 'utf8');
+  for (const s of SECTIONS) assert.ok(doc.includes(`| ${s} |`), `ISSUE_PLAN.md table is missing ${s}`);
+});

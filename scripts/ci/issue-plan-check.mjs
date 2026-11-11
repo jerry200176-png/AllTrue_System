@@ -6,11 +6,11 @@
 // pr-digest.mjs: token never printed, any non-2xx fails closed).
 //
 // Usage:
-//   node scripts/ci/issue-plan-check.mjs [--file path | < body.md] [--json]
+//   node scripts/ci/issue-plan-check.mjs [--file path | < body.md] [--json] [--risk R0|R1|R2|R3]
 //   node scripts/ci/issue-plan-check.mjs --issue N [--repo owner/name] [--json]   (token: GH_TOKEN or GITHUB_TOKEN)
 // Exit: 0 plan complete; 1 plan missing/incomplete; 2 usage or API error.
 // Forms: full (marker `<!-- plan:v1 -->`, 7 sections) or short (marker `<!-- plan:v1 short -->`, 5 labelled lines; only
-// for a fix of ~50 lines or less with no UI change). The checker cannot measure size: the reviewer judges the short form.
+// for a fix of ~50 lines or less with no UI change, never R3: --risk R3 or a `Risk-Class: R3` body line rejects it). The checker cannot measure size: the reviewer judges the short form.
 import { readFileSync } from 'node:fs';
 
 export const FULL_MARKER = '<!-- plan:v1 -->';
@@ -30,11 +30,20 @@ export function meaningful(text) {
 }
 
 // Pure: body in, verdict out. Never throws.
-export function checkPlan(body) {
-  const text = String(body ?? '').replace(/\r\n?/g, '\n');
-  const short = text.includes(SHORT_MARKER);
-  const full = !short && text.includes(FULL_MARKER);
+// risk: optional 'R0'..'R3' from --risk; a `Risk-Class: R3` line in the body also counts. R3 always needs the full form.
+export function checkPlan(body, risk = null) {
+  const raw = String(body ?? '').replace(/\r\n?/g, '\n');
+  // Markers are HTML comments themselves, so read them first; then drop all comments so headings or labels
+  // inside a comment (template hints) never count and a leftover `-->` is never content.
+  const short = raw.includes(SHORT_MARKER);
+  const full = !short && raw.includes(FULL_MARKER);
+  const text = raw.replace(/<!--[\s\S]*?-->/g, '');
+  const declared = /^\s*\**Risk-Class\**\s*[:：]\**\s*(R[0-3])\b/im.exec(text)?.[1];
+  const isR3 = String(risk || '').toUpperCase() === 'R3' || String(declared || '').toUpperCase() === 'R3';
   if (!short && !full) return { form: 'none', ok: false, missing: [], empty: [], note: `no plan marker (${FULL_MARKER} or ${SHORT_MARKER})` };
+  if (short && isR3) {
+    return { form: 'short', ok: false, missing: [], empty: [], note: 'R3 work must use the full plan form (risk class: RISK_BASED_MERGE_POLICY.md)' };
+  }
   if (short) {
     const missing = [];
     const empty = [];
@@ -70,6 +79,7 @@ export function checkPlan(body) {
 export function format(r) {
   if (r.ok) return `plan ok (${r.form} form)`;
   if (r.form === 'none') return `plan missing: ${r.note}`;
+  if (r.note) return `plan incomplete (${r.form} form): ${r.note}`;
   const p = [`plan incomplete (${r.form} form)`];
   if (r.missing.length) p.push(`missing: ${r.missing.join(', ')}`);
   if (r.empty.length) p.push(`empty: ${r.empty.join(', ')}`);
@@ -77,13 +87,14 @@ export function format(r) {
 }
 
 export function parseArgs(argv) {
-  const o = { json: false, file: null, issue: null, repo: null };
+  const o = { json: false, file: null, issue: null, repo: null, risk: null };
   for (let k = 0; k < argv.length; k++) {
     const a = argv[k];
     const val = () => { const v = argv[++k]; if (v === undefined) throw new Error(`${a} needs a value`); return v; };
     if (a === '--json') o.json = true;
     else if (a === '--file') o.file = val();
     else if (a === '--repo') o.repo = val();
+    else if (a === '--risk') { o.risk = val().toUpperCase(); if (!/^R[0-3]$/.test(o.risk)) throw new Error('--risk needs R0, R1, R2 or R3'); }
     else if (a === '--issue') { o.issue = Number(val()); if (!Number.isInteger(o.issue) || o.issue < 1) throw new Error('--issue needs an issue number'); }
     else throw new Error(`unknown argument ${a}`);
   }
@@ -116,7 +127,7 @@ export async function run(argv, env = process.env, deps = {}) {
     } else {
       body = await (deps.readStdin || (async () => { let s = ''; for await (const c of process.stdin) s += c; return s; }))();
     }
-    const r = checkPlan(body);
+    const r = checkPlan(body, o.risk);
     const stdout = o.json ? JSON.stringify({ advisory: ADVISORY, ...r }) : `${format(r)}\n${ADVISORY}`;
     return { code: r.ok ? 0 : 1, stdout: redact(stdout), stderr: '' };
   } catch (e) {
