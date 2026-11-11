@@ -1259,6 +1259,15 @@ for (const vp of [{ width: 390, height: 844, titleLines: 2 }, { width: 1280, hei
       // Table headers use the caption token, not the global 12px th rule.
       const th = await root.locator('.dsc-table th').first().evaluate((el) => parseFloat(getComputedStyle(el).fontSize));
       expect(th).toBeGreaterThanOrEqual(15);
+      // The 回報時間 cell stays on one line and the row buttons sit side by side, not stacked.
+      const layout = await root.locator('.dsc-table tbody tr').first().evaluate((tr) => {
+        const ts = tr.querySelector('.dsc-ts');
+        const lh = parseFloat(getComputedStyle(ts).lineHeight);
+        const tops = [...tr.querySelectorAll('.dsc-row-ops button')].map((b) => Math.round(b.getBoundingClientRect().top));
+        return { lines: Math.round(ts.getBoundingClientRect().height / lh), tops };
+      });
+      expect(layout.lines).toBe(1);
+      expect(new Set(layout.tops).size).toBe(1);
     }
 
     // Help open: the panel is a full-width block below the title and the title keeps its lines.
