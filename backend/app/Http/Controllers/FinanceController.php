@@ -747,7 +747,8 @@ class FinanceController extends Controller
         $allRows = (clone $query)->get();
 
         // ── Monthly billing packages: aggregate members into a single row ──
-        // Fetch active monthly billing packages for this branch, always show even with 0 sessions.
+        // Fetch active monthly billing packages for this branch; every one is listed even with 0 sessions (a deliberate rule),
+        // but a row with nothing to collect gets the neutral `none` status, never 未收 (in-app #537).
         $monthlyPkgQuery = CoursePackage::query()
             ->where('billing_mode', CoursePackage::BILLING_MODE_MONTHLY)
             ->where('stop', false);
@@ -813,7 +814,7 @@ class FinanceController extends Controller
         });
 
         // Month-scoped payment status (one verdict batch for every row, so the summary covers all pages).
-        $payStatus = $this->monthPaymentStatuses($regularRows, $monthlyPkgs, $pkgSessionTotals, sprintf('%04d-%02d', $year, $month));
+        $payStatus = $this->monthPaymentStatuses($regularRows, $monthlyPkgs, $pkgSessionTotals, sprintf('%04d-%02d', $year, $month), $memberSessionCounts);
         $courseStatus = $payStatus['course'];
         $pkgStatus    = $payStatus['package'];
         $paySummary   = $payStatus['summary'];
@@ -821,7 +822,7 @@ class FinanceController extends Controller
         $unpaidOnly = $request->boolean('unpaid_only');
         if ($unpaidOnly) {
             $regularRows = $regularRows->filter(fn ($c) => !in_array($courseStatus[(int) $c->ID]['pay_status'], ['paid', 'waived'], true));
-            $monthlyPkgs = $monthlyPkgs->filter(fn ($p) => $pkgStatus[$p->id]['pay_status'] !== 'paid');
+            $monthlyPkgs = $monthlyPkgs->filter(fn ($p) => !in_array($pkgStatus[$p->id]['pay_status'], ['paid', 'none'], true));
         }
 
         $perPage = min((int) $request->input('per_page', 50), 200);
@@ -861,7 +862,9 @@ class FinanceController extends Controller
         })->values()->all();
 
         // Append monthly billing package rows
-        $pkgRows = $monthlyPkgs->map(function ($pkg) use ($pkgSessionTotals, $pkgStatus) {
+        $pkgTeachers = $monthlyPkgs->isEmpty() ? collect() : StudentClass::whereIn('PackageID', $monthlyPkgs->keys())->with('teacher')->get()
+            ->groupBy('PackageID')->map(fn ($ms) => $ms->map(fn ($m) => $m->teacher->Name ?? null)->filter()->unique()->implode('、'));
+        $pkgRows = $monthlyPkgs->map(function ($pkg) use ($pkgSessionTotals, $pkgStatus, $pkgTeachers) {
             $sessions = $pkgSessionTotals[$pkg->id] ?? 0;
             $rate     = (float) $pkg->rate;
             return [
@@ -870,6 +873,8 @@ class FinanceController extends Controller
                 'student_id'         => (int) $pkg->student_id,
                 'student_name'       => $pkg->student->name ?? 'Unknown',
                 'package_name'       => $pkg->name,
+                'subject'            => $pkg->name, // the table's subject/teacher cells were blank for package rows (in-app #537)
+                'teacher_name'       => $pkgTeachers[$pkg->id] ?? '',
                 'billing_mode'       => CoursePackage::BILLING_MODE_MONTHLY,
                 'settlement_day'     => $pkg->settlement_day !== null ? (int) $pkg->settlement_day : null,
                 'rate'               => round($rate, 2),
@@ -987,13 +992,15 @@ class FinanceController extends Controller
      *   no period => unpaid (paid only when the verdict itself is settled/free with an invoice or free).
      * - Count-mode / other course: the verdict of the contract covering the sessions. A partial contract balance is
      *   allocated oldest-sessions-first (receipts cover earlier lessons), so months never double-count one balance.
-     * - Monthly package row: follows the package paid flag (CoursePackage.paid is not month-scoped).
+     * - Monthly package row (in-app #537): follows its member contracts' bills for this month (verdict periods);
+     *   a billed month follows its bills; a taught-but-unbilled member beside billed ones => review; no bill and no lesson =>
+     *   `none` (nothing to collect; the page shows —); no bill but lessons => PackagePaidStatusRule (member verdicts, then flag).
      * - review (待確認): review_required verdicts and legacy Paid flags without invoice/payment evidence. Their amount is
      *   an estimate kept in `estimated_amount` and the summary's `unconfirmed_amount`, never in confirmed due/outstanding.
      *
      * @return array{course: array<int, array>, package: array<int, array>, summary: array}
      */
-    private function monthPaymentStatuses($courses, $packages, array $pkgSessionTotals, string $period): array
+    private function monthPaymentStatuses($courses, $packages, array $pkgSessionTotals, string $period, array $memberSessionCounts = []): array
     {
         $verdicts = app(\App\Services\Billing\ContractMoneyVerdict::class)->forCourses($courses->all());
         $due = $collected = $unconfirmed = 0.0;
@@ -1124,12 +1131,50 @@ class FinanceController extends Controller
             $course[(int) $c->ID] = ['pay_status' => $st, 'due_amount' => round($owed, 2), 'outstanding_amount' => round($out, 2)];
         }
 
+        // Monthly package rows (in-app #537). A billed month is decided by its bills (same verdict periods as regular rows);
+        // a taught member without a bill beside billed ones is 待確認; nothing billed and nothing taught is `none`
+        // (nothing to collect); otherwise the shared package rule (member verdicts, then the flag), as AlertController.
         $package = [];
+        $memberVerdicts = [];
+        $membersByPkg = collect();
+        if ($packages->isNotEmpty()) {
+            $ownerOf = $packages->pluck('student_id', 'id');
+            $membersByPkg = StudentClass::whereIn('PackageID', $packages->pluck('id'))->get(['ID', 'PackageID', 'StudentID'])
+                ->filter(fn ($m) => (int) $m->StudentID === (int) $ownerOf[(int) $m->PackageID]) // a stale PackageID of another student never feeds the row
+                ->groupBy('PackageID');
+            $memberVerdicts = app(\App\Services\Billing\ContractMoneyVerdict::class)
+                ->forCourses(StudentClass::whereIn('ID', $membersByPkg->flatten(1)->pluck('ID'))->get()->all());
+        }
         foreach ($packages as $pkg) {
             $tuition = round(($pkgSessionTotals[$pkg->id] ?? 0) * (float) $pkg->rate, 2);
-            $paid = (bool) $pkg->paid;
-            $note((int) $pkg->student_id, $tuition, $paid ? 0.0 : $tuition);
-            $package[$pkg->id] = ['pay_status' => $paid ? 'paid' : 'unpaid', 'due_amount' => $tuition, 'outstanding_amount' => $paid ? 0.0 : $tuition];
+            $members = $membersByPkg->get($pkg->id, collect());
+            $monthOf = fn ($m) => collect(isset($memberVerdicts[(int) $m->ID]) ? $memberVerdicts[(int) $m->ID]->periods : [])
+                ->filter(fn ($x) => ($x['billing_period'] ?? null) === $period && ($x['invoice_ids'] ?? []) !== []);
+            $monthPeriods = $members->flatMap($monthOf);
+            if ($monthPeriods->isNotEmpty()) {
+                $unbilledTaught = $members->contains(fn ($m) => ($memberSessionCounts[(int) $m->ID] ?? 0) > 0 && $monthOf($m)->isEmpty());
+                if ($unbilledTaught || $monthPeriods->contains(fn ($x) => ($x['status'] ?? null) === 'review_required' || !empty($x['amount_discrepancy']))) {
+                    $unconfirmed += $tuition;
+                    $reviewStudents[(int) $pkg->student_id] = true;
+                    $package[$pkg->id] = ['pay_status' => 'review', 'due_amount' => 0.0, 'outstanding_amount' => 0.0, 'estimated_amount' => $tuition];
+                    continue;
+                }
+                $owed = (float) $monthPeriods->sum('total');
+                $out = (float) $monthPeriods->sum('outstanding');
+                $st = $out <= 0 ? 'paid' : ((float) $monthPeriods->sum('applied') > 0 ? 'partial' : 'unpaid');
+                $out = $st === 'paid' ? 0.0 : $out;
+            } elseif ($tuition <= 0) {
+                $package[$pkg->id] = ['pay_status' => 'none', 'due_amount' => 0.0, 'outstanding_amount' => 0.0];
+                continue;
+            } else {
+                $paid = \App\Services\Billing\PackagePaidStatusRule::settled(
+                    $members->map(fn ($m) => ($memberVerdicts[(int) $m->ID] ?? null)?->status)->filter(),
+                    (bool) $pkg->paid
+                );
+                [$st, $owed, $out] = $paid ? ['paid', $tuition, 0.0] : ['unpaid', $tuition, $tuition];
+            }
+            $note((int) $pkg->student_id, $owed, $out);
+            $package[$pkg->id] = ['pay_status' => $st, 'due_amount' => round($owed, 2), 'outstanding_amount' => round($out, 2)];
         }
 
         return ['course' => $course, 'package' => $package, 'summary' => [
