@@ -1,0 +1,15 @@
+updates:
+  - id: staff-2026-11-11-void-refusal-explained
+    published_at: "2026-11-11"
+    audiences:
+      - director
+    importance: digest
+    title: 撤銷收據被拒絕時會說明原因
+    summary: 收據撤銷不了時，畫面會告訴你為什麼、接下來該怎麼做。
+    items:
+      - category: improved
+        text: 收據綁在別位學生或別張帳單上時，系統不會讓你重複按撤銷；卡片會說明原因，並請你聯絡總部對帳。
+      - category: improved
+        text: 沒寫撤銷原因時，會直接提示「請先寫下撤銷原因」。
+    source_refs:
+      - "changelog:2026-11-11:void-refusal-explained"

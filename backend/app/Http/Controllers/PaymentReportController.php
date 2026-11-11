@@ -1820,9 +1820,15 @@ class PaymentReportController extends Controller
             return response()->json(['message' => $msg], 422);
         }
 
-        $data = $request->validate([
-            'void_reason' => 'required|string|max:500',
-        ]);
+        // in-app #522: a missing reason is a named refusal the screen can explain (was a bare field error).
+        $reasonInput = $request->input('void_reason');
+        if (!is_string($reasonInput) || trim($reasonInput) === '') {
+            return response()->json(['message' => '請先寫下撤銷原因', 'code' => 'void_reason_required'], 422);
+        }
+        $data = $request->validate(
+            ['void_reason' => 'required|string|max:500'],
+            ['void_reason.max' => '撤銷原因請寫在 500 字以內']
+        );
 
         $role = $request->attributes->get('auth_role');
         $campusIds = $role === 'super_admin' ? [] : array_map('intval', (array) $request->attributes->get('auth_campus_ids', []));
@@ -1850,7 +1856,7 @@ class PaymentReportController extends Controller
             // Non-null InvoiceID that cannot be loaded must refuse (do not clear Paid on a missing bill).
             // Legitimate null-InvoiceID legacy path is allowed only when course/report ownership already matches.
             if (!$sc || (int) $sc->StudentID !== $reportStudentId) {
-                return response()->json(['message' => '原帳單已作廢或歸屬不符，請重新核對', 'code' => 'void_invoice_mismatch'], 422);
+                return $this->voidMismatchRefusal($sc ? 'course_other_student' : 'course_not_found');
             }
 
             if ((string) $sc->getAttribute('closed_reason') === 'refunded') {
@@ -1867,7 +1873,7 @@ class PaymentReportController extends Controller
                 if (!$invoice
                     || ((int) $invoice->StudentClassID !== (int) $sc->ID && !$this->ownerPackageSiblingBill($invoice, $sc))
                     || (int) $invoice->StudentID !== $reportStudentId) {
-                    return response()->json(['message' => '原帳單已作廢或歸屬不符，請重新核對', 'code' => 'void_invoice_mismatch'], 422);
+                    return $this->voidMismatchRefusal($invoice ? 'invoice_other_owner' : 'invoice_not_found');
                 }
                 $payments = $invoice->payments()->lockForUpdate()->get();
                 if ((string) $invoice->Status === 'void') {
@@ -1876,7 +1882,7 @@ class PaymentReportController extends Controller
                     // A void bill that still holds money stays refused (Invoice::netPaidSql rule).
                     $net = $payments->sum(fn ($p) => (int) $p->Amount > 0 && (string) $p->Method !== 'void' ? (int) $p->Amount : -abs((int) $p->Amount));
                     if ($net > 0) {
-                        return response()->json(['message' => '原帳單已作廢或歸屬不符，請重新核對', 'code' => 'void_invoice_mismatch'], 422);
+                        return $this->voidMismatchRefusal('invoice_void_holds_money');
                     }
                     $alreadyReversed = true;
                 } else {
@@ -1958,6 +1964,27 @@ class PaymentReportController extends Controller
                 'student_class_paid' => $scPaid,
             ]);
         });
+    }
+
+    /**
+     * in-app #522: the void guard's refusals keep one code (void_invoice_mismatch) but say which shape it is.
+     * Only the wording and the `reason` field are new; when a void is refused is unchanged.
+     */
+    private function voidMismatchRefusal(string $reason): \Illuminate\Http\JsonResponse
+    {
+        $messages = [
+            'course_other_student' => '這張收據記在別位學生的課程上，這裡不能撤銷。請聯絡總部對帳，確認收據該歸誰。',
+            'course_not_found' => '這張收據對應的課程已經找不到，這裡不能撤銷。請聯絡總部對帳，確認收據該歸哪門課。',
+            'invoice_not_found' => '這張收據綁的帳單已經找不到，這裡不能撤銷。請聯絡總部對帳，確認收據該歸哪張帳單。',
+            'invoice_other_owner' => '這張收據綁在別位學生或別門課的帳單上（例如兄弟姊妹合開的帳單），這裡不能撤銷。請聯絡總部對帳，確認收據該歸哪張帳單。',
+            'invoice_void_holds_money' => '這張收據的原帳單已作廢，但帳單上還有收款沒沖回，這裡不能撤銷。請聯絡總部對帳後再處理。',
+        ];
+
+        return response()->json([
+            'message' => $messages[$reason] ?? $messages['invoice_not_found'],
+            'code' => 'void_invoice_mismatch',
+            'reason' => $reason,
+        ], 422);
     }
 
     /**
