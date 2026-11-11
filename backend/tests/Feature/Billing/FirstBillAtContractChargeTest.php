@@ -152,6 +152,32 @@ class FirstBillAtContractChargeTest extends TestCase
         }
     }
 
+    public function test_another_pending_report_on_the_bill_keeps_it_open_and_confirmable(): void
+    {
+        [$h, $sc] = $this->fixture(20000);
+        $reportId = $this->confirmEntered($h, $sc, 9000);
+        $invoice = Invoice::where('StudentClassID', $sc->ID)->sole();
+        $pending = $this->pendingReport($sc, 4000, 'stranded', $invoice->id);
+
+        $this->withHeaders($h)->putJson("/api/v1/payment-reports/{$reportId}/void", ['void_reason' => 'x'])->assertOk();
+        $this->assertNotSame('void', $invoice->refresh()->Status);
+        $this->withHeaders($h)->putJson("/api/v1/payment-reports/{$pending->id}/confirm")->assertOk();
+    }
+
+    public function test_auto_void_audit_tag_survives_a_long_note(): void
+    {
+        [$h, $sc] = $this->fixture(20000);
+        $reportId = $this->confirmEntered($h, $sc, 9000);
+        $invoice = Invoice::where('StudentClassID', $sc->ID)->sole();
+        $invoice->update(['Note' => str_repeat('長', 250)]);
+
+        $this->withHeaders($h)->putJson("/api/v1/payment-reports/{$reportId}/void", ['void_reason' => 'x'])->assertOk();
+        $invoice->refresh();
+        $this->assertSame('void', $invoice->Status);
+        $this->assertLessThanOrEqual(255, mb_strlen($invoice->Note));
+        $this->assertStringContainsString('[void: 唯一收款撤銷，系統自動作廢;', $invoice->Note);
+    }
+
     public function test_courses_without_a_usable_charge_keep_billing_the_entered_amount(): void
     {
         [$h, $sc] = $this->fixture(0, ['Rate' => 1100]);
