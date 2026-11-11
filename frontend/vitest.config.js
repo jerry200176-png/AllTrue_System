@@ -34,6 +34,7 @@ export default defineConfig({
       'src/lib/studentSchoolGrade.test.js',
       'e2e/fixtures/readOnlyAppGuard.test.js',
       'e2e/fixtures/classSessionReadResponder.test.js',
+      'e2e/fixtures/calendarDrawnCards.test.js',
     ],
     globals: false,
     coverage: {
