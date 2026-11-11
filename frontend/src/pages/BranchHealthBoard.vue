@@ -1,5 +1,5 @@
 <template>
-  <div class="branch-health tw:mx-auto tw:flex tw:max-w-6xl tw:flex-col tw:gap-4 tw:px-[calc(var(--ds-space-4)-10px)] tw:text-foreground tw:md:px-0" data-testid="branch-health-board">
+  <main class="branch-health tw:mx-auto tw:flex tw:max-w-6xl tw:flex-col tw:gap-4 tw:px-[calc(var(--ds-space-4)-10px)] tw:text-foreground tw:md:px-0" data-testid="branch-health-board">
     <header class="tw:pb-2" data-testid="branch-health-header">
       <div class="tw:flex tw:flex-wrap tw:items-center tw:justify-between tw:gap-x-4 tw:gap-y-2">
         <h2 class="tw:flex tw:items-center tw:gap-2 tw:text-tpl-page tw:font-bold tw:tracking-tight">
@@ -61,7 +61,7 @@
               </TableHeader>
               <TableBody>
                 <TableRow v-for="row in rows" :key="row.branch_id" :class="['tw:cursor-pointer', selected?.branch_id === row.branch_id && 'tw:bg-muted/50']" @click="select(row)">
-                  <TableHead scope="row" class="tw:bg-transparent tw:px-2 tw:py-2 tw:normal-case tw:text-[length:var(--tpl-text-body)]">
+                  <TableHead scope="row" class="tw:border-0 tw:bg-transparent tw:px-2 tw:py-2 tw:normal-case tw:text-[length:var(--tpl-text-body)]">
                     <Button variant="ghost" class="tw:h-12 tw:px-3 tw:text-[length:var(--tpl-text-body)] tw:font-bold" @click.stop="select(row)">{{ row.branch_name }}</Button>
                   </TableHead>
                   <TableCell v-for="dimension in dimensionOrder" :key="dimension.key" class="tw:px-4 tw:py-3">
@@ -118,7 +118,7 @@
         <p class="tw:border-t tw:pt-3 tw:text-tpl-caption tw:text-tpl-secondary">這份資料只協助總部找出要先看的分校，不代表分校品質保證，也不會自動修改任何資料。</p>
       </section>
     </div>
-  </div>
+  </main>
 </template>
 
 <script setup>

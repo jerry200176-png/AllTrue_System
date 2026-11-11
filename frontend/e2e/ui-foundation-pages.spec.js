@@ -1368,6 +1368,8 @@ for (const vp of [{ width: 390, height: 844, titleLines: 2 }, { width: 1280, hei
     await expect(root).toBeVisible();
     await expect(root.locator('.branch-health__table tbody tr, .branch-health__mobile-card').locator('visible=true').first()).toBeVisible();
 
+    // The shell has no main landmark of its own: the page provides exactly one.
+    await expect(page.locator('main, [role="main"]')).toHaveCount(1);
     const m = await page.evaluate(() => {
       const root = document.querySelector('[data-testid="branch-health-board"]');
       const h2 = root.querySelector('h2');

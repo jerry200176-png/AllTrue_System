@@ -26,6 +26,8 @@ describe('BranchHealthBoard', () => {
     expect(fetchMock).toHaveBeenCalledWith('/api/v1/admin/branch-health', { headers: { Accept: 'application/json', Authorization: 'Bearer tok' } });
     expect(w.find('h2').text()).toBe('分校健康');
     expect(w.find('h1').exists()).toBe(false);
+    expect(w.element.tagName).toBe('MAIN');
+    expect(w.findAll('main')).toHaveLength(1);
     expect(w.text()).toContain('這不是總分或排名');
   });
 
