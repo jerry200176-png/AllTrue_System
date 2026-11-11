@@ -1546,7 +1546,7 @@ final class PopOperationService
 
     private function localDeploymentSha(): string
     {
-        $deployedSha = (string) (new DeploymentManifest($this->deploymentManifestPath))->read()['backend_sha'];
+        $deployedSha = (string) (new DeploymentManifest($this->deploymentManifestPath ?? base_path(DeploymentManifest::RELATIVE_PATH)))->read()['backend_sha'];
         if (!preg_match(self::COMMIT_SHA_PATTERN, $deployedSha)) {
             throw new RuntimeException('POP local executor deployment SHA does not match approval; fail closed.');
         }

@@ -27,10 +27,12 @@ class InappReportResolveEvidence
         return $this->manifest()['shas'];
     }
 
-    /** @return array{state: string, shas: list<string>, backend_sha: ?string} the shared deployment.json reader's result; no SHAs unless state is ok */
+    /** @return array{state: string, shas: list<string>, backend_sha: ?string, source: string} the shared deployment.json reader's result (source: default|override); no SHAs unless state is ok */
     public function manifest(): array
     {
-        return (new DeploymentManifest())->read();
+        $reader = new DeploymentManifest();
+
+        return $reader->read() + ['source' => $reader->source()];
     }
 
     public function isAncestor(string $commit, string $of): bool

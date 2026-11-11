@@ -76,6 +76,23 @@ final class DeploymentManifestTest extends TestCase
         }
     }
 
+    public function test_a_sha_with_a_trailing_newline_is_not_well_formed(): void
+    {
+        $a = str_repeat('a', 40);
+        $this->write(['backend_sha' => $a . "\n", 'frontend_build_sha' => $a . "\n"]);
+        self::assertSame(['state' => 'no_sha', 'shas' => [], 'backend_sha' => null], $this->read());
+    }
+
+    public function test_source_names_the_rule_that_chose_the_path_without_the_path(): void
+    {
+        config(['pop_inapp.deployment_manifest' => null]);
+        self::assertSame('default', (new DeploymentManifest())->source());
+        self::assertSame('explicit', (new DeploymentManifest($this->dir . '/m.json'))->source());
+        config(['pop_inapp.deployment_manifest' => $this->dir . '/o.json']);
+        self::assertSame('override', (new DeploymentManifest())->source());
+        self::assertSame('explicit', (new DeploymentManifest($this->dir . '/m.json'))->source());
+    }
+
     public function test_a_directory_in_place_of_the_file_is_missing(): void
     {
         File::makeDirectory($this->dir . '/m.json');

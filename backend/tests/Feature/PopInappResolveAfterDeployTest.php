@@ -339,9 +339,27 @@ final class PopInappResolveAfterDeployTest extends TestCase
         self::assertContains('deploy_run_not_in_production', $payload['plan']['errors']);
         self::assertNotContains('deployment_manifest_unreadable', $payload['plan']['errors']);
         self::assertSame('ok', $payload['plan']['manifest_state']);
+        self::assertSame('override', $payload['plan']['manifest_source']); // setUp points the config override at the test manifest
         self::assertSame([$this->deployed, $other], $payload['plan']['manifest_shas']);
         self::assertStringNotContainsString($this->dir, json_encode($payload));
         self::assertStringNotContainsString('deployment.json', json_encode($payload));
+    }
+
+    public function test_the_env_override_moves_the_evidence_reader_but_never_the_executor_revision_binding(): void
+    {
+        $default = base_path(\App\Operations\Deployment\DeploymentManifest::RELATIVE_PATH);
+        if (is_file($default)) $this->markTestSkipped('a real manifest exists at the default location');
+        $catalog = new PopOperationCatalog($this->dir . '/catalog.yaml');
+        $executor = new PopOperationService($catalog); // production wiring: no explicit manifest path
+        $read = new \ReflectionMethod($executor, 'localDeploymentSha');
+
+        self::assertSame([$this->deployed], (new \App\Operations\Inapp\InappReportResolveEvidence())->deployedShas());
+        try {
+            $read->invoke($executor);
+            self::fail('the executor must not read the override');
+        } catch (RuntimeException $e) {
+            self::assertStringContainsString('fail closed', $e->getMessage());
+        }
     }
 
     public function test_an_unreadable_manifest_is_reported_by_state_without_shas(): void

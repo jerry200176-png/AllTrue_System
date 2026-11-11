@@ -148,6 +148,7 @@ final class InappReportResolveAfterDeployStrategy
             'from_status' => $status, 'deployed_sha' => $deployedSha, 'policy_blockers' => [],
             // Diagnostic only (public SHAs and a state word, never a path); deliberately outside the digest below.
             'manifest_state' => $manifest['state'] ?? null, 'manifest_shas' => $manifest['shas'] ?? [],
+            'manifest_source' => $manifest['source'] ?? null,
             'digest' => hash('sha256', json_encode([self::OPERATION, $p['bug_id'] ?? null, $p['campus_id'] ?? null, $status, $deployedSha,
                 $p['fix_commit_sha'] ?? null, $p['deploy_run_id'] ?? null, $p['smoke_result_ref'] ?? null, $p['github_issue_url'] ?? null,
                 is_string($reply) ? hash('sha256', $reply) : null, is_array($p['writeback_proof'] ?? null) ? ($p['writeback_proof']['captured_at'] ?? null) : null,

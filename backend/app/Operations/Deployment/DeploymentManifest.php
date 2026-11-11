@@ -20,8 +20,9 @@ final class DeploymentManifest
     public const UNREADABLE = 'unreadable';
     public const MALFORMED = 'malformed';
     public const NO_SHA = 'no_sha';
-    private const SHA = '/^[0-9a-f]{40}$/';
+    private const SHA = '/^[0-9a-f]{40}\z/';
 
+    /** An explicit $path (the executor passes the fixed deploy location) never consults the env override. */
     public function __construct(private readonly ?string $path = null)
     {
     }
@@ -29,6 +30,14 @@ final class DeploymentManifest
     public function path(): string
     {
         return $this->path ?? (string) (config('pop_inapp.deployment_manifest') ?: base_path(self::RELATIVE_PATH));
+    }
+
+    /** @return 'explicit'|'override'|'default' which rule chose path(); never the path itself */
+    public function source(): string
+    {
+        if ($this->path !== null) return 'explicit';
+
+        return config('pop_inapp.deployment_manifest') ? 'override' : 'default';
     }
 
     /**
