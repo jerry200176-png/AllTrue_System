@@ -180,6 +180,7 @@ class FirstBillAtContractChargeTest extends TestCase
         $report = $this->pendingReport($sc, 9000, 'campus');
         $this->withHeaders($other)->putJson("/api/v1/payment-reports/{$report->id}/confirm")->assertStatus(403);
         $this->assertSame(0, Invoice::where('StudentClassID', $sc->ID)->count());
+        $report->update(['status' => 'rejected']); // a pending report would block the next record
 
         $reportId = $this->confirmEntered($h, $sc, 9000);
         $this->withHeaders($other)->putJson("/api/v1/payment-reports/{$reportId}/void", ['void_reason' => 'x'])->assertStatus(403);
