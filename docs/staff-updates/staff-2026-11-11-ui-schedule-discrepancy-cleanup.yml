@@ -1,0 +1,13 @@
+updates:
+  - id: staff-2026-11-11-ui-schedule-discrepancy-cleanup
+    published_at: "2026-11-11"
+    audiences:
+      - director
+    importance: digest
+    title: 課表回報管理的操作導覽恢復
+    summary: 換新外觀後暫時看不到的操作導覽，現在又能用了。
+    items:
+      - category: fixed
+        text: 「課表回報管理」頁的操作導覽（處理流程、狀態分頁、回報清單）恢復顯示；電腦版的回報時間也不再折成兩行。
+    source_refs:
+      - "changelog:2026-11-11:ui-schedule-discrepancy-cleanup"
