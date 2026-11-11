@@ -1,0 +1,14 @@
+updates:
+  - id: staff-2026-11-11-ui-classroom-management
+    published_at: "2026-11-11"
+    audiences:
+      - director
+      - super_admin
+    importance: digest
+    title: 教室管理頁換新外觀
+    summary: 字更大、按鈕更好按；新增、編輯、停用、刪除的步驟和原本一樣。
+    items:
+      - category: improved
+        text: 「教室管理」頁改成大字、大按鈕，手機上每間教室一張卡片；名稱或容量沒填好時，欄位下方會直接說明原因。
+    source_refs:
+      - "changelog:2026-11-11:ui-classroom-management"

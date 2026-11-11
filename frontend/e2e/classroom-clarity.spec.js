@@ -1,5 +1,6 @@
 // @ts-check
 import { test, expect } from '@playwright/test';
+import AxeBuilder from '@axe-core/playwright';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -79,7 +80,7 @@ test.describe('Classroom clarity browser verification', () => {
   test('shared states and dialogs remain recoverable', async ({ page }) => {
     await installMock(page);
     await page.goto('/pilot-mount.html?page=classroom&mode=loading');
-    await expect(page.getByTestId('at-skeleton')).toBeVisible();
+    await expect(page.locator('[data-testid="classroom-loading"][role="status"]')).toBeVisible();
     await expect(page.locator('.room-mobile-card').first()).toContainText('201 教室');
 
     await page.goto('/pilot-mount.html?page=classroom&mode=empty');
@@ -87,7 +88,8 @@ test.describe('Classroom clarity browser verification', () => {
     await page.getByRole('button', { name: '新增教室' }).last().click();
     const createDialog = page.getByRole('dialog', { name: '新增教室' });
     await expect(createDialog).toBeVisible();
-    await expect(createDialog).toBeFocused();
+    // #4989 form template: focus starts on the first field.
+    await expect(createDialog.locator('#classroom-name')).toBeFocused();
     await page.keyboard.press('Escape');
     await expect(createDialog).toBeHidden();
 
@@ -108,3 +110,50 @@ test.describe('Classroom clarity browser verification', () => {
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 2)).toBe(true);
   });
 });
+
+// #4989: a name of spaces only passes the browser's own `required` check; the page must say why nothing was saved.
+test('a spaces-only name or a capacity below 1 is refused next to the field and calls no API', async ({ page }) => {
+  await installMock(page);
+  const writes = [];
+  page.on('request', (request) => { if (request.method() !== 'GET' && request.url().includes('/api/')) writes.push(request.url()); });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto('/pilot-mount.html?page=classroom&mode=normal');
+  await page.getByRole('button', { name: '新增教室' }).first().click();
+  const dialog = page.getByRole('dialog', { name: '新增教室' });
+  const name = dialog.getByLabel('教室名稱');
+  await name.fill('   ');
+  await name.press('Enter');
+  const nameError = dialog.locator('#classroom-name-error');
+  await expect(nameError).toHaveText('請輸入教室名稱');
+  await expect(nameError).toHaveAttribute('role', 'alert');
+  await expect(name).toHaveAttribute('aria-describedby', 'classroom-name-error');
+  await expect(name).toHaveAttribute('aria-invalid', 'true');
+  await expect(name).toBeFocused();
+  // Editing the field takes its error away.
+  await name.fill('302 教室');
+  await expect(nameError).toHaveCount(0);
+  await expect(dialog).toBeVisible();
+  expect(writes).toEqual([]);
+});
+
+// #4989: WCAG A/AA scan with rows shown and with each overlay open (the shared axe spec only sees the error state).
+for (const viewport of [viewports[0], viewports[3]]) {
+  test(`classroom has no axe violations with rows and overlays @${viewport.name}`, async ({ page }) => {
+    await installMock(page);
+    await page.setViewportSize({ width: viewport.width, height: viewport.height });
+    await page.goto('/pilot-mount.html?page=classroom&mode=normal');
+    await expect(page.locator('.room-mobile-card')).toHaveCount(2);
+    const scan = async () => (await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa']).analyze())
+      .violations.map((v) => `${v.id}: ${v.nodes.map((n) => n.target.join(' ')).join(' | ')}`);
+    expect(await scan()).toEqual([]);
+    await page.getByRole('button', { name: '新增教室' }).first().click();
+    const dialog = page.getByRole('dialog', { name: '新增教室' });
+    await expect(dialog).toHaveCSS('opacity', '1');
+    await dialog.getByLabel('教室名稱').press('Enter');
+    expect(await scan()).toEqual([]);
+    await page.keyboard.press('Escape');
+    await page.getByRole('button', { name: '刪除教室：多功能教室' }).locator('visible=true').click();
+    await expect(page.getByRole('alertdialog', { name: '確認刪除' })).toHaveCSS('opacity', '1');
+    expect(await scan()).toEqual([]);
+  });
+}
