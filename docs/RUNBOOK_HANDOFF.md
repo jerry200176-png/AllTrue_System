@@ -1,7 +1,7 @@
 # 交接狀態 Handoff（活的；每個 milestone 由 coordinator 更新）
 
-Updated: 2026-11-11 05:30 UTC（PR 收尾、入口文件去重、驗收修復、in-app 530；release train 仍等核准）
-Source SHA: beb8789be5a0（main；正式 runtime 4d186abcf211e9b5109301285af093a57c8470d4，2026-11-10T03:56Z 部署）
+Updated: 2026-11-11 07:40 UTC（530／522 修正與驗收修復已合併；正式驗收恢復綠燈；release train 仍等核准）
+Source SHA: b28ba73f（main；正式 runtime 4d186abcf211e9b5109301285af093a57c8470d4，2026-11-10T03:56Z 部署）
 Owner: coordinator（每個 milestone、PR merge、deploy 後更新；完成的項目直接刪除）
 
 **規則**：每次接續都先核對 GitHub 與正式 manifest；未滿 7 天也可能過期。超過 7 天一律 STALE。新 SHA 勝舊 SHA；
@@ -18,28 +18,28 @@ The trackers hold the full detail: flow is #4953 and UI is #4989. This file only
 
 | 項目 | 狀態 | 下一步（誰） | 去哪看 |
 |---|---|---|---|
-| Release | 正式站 `4d186abc`；main `beb8789b`。Release train run 42818474421（目標 3c58674）等 `production-activation` 核准，之後的合併都排在它後面。 | Founder 核准（或改開一班以 main 為目標的 train）；核准前 532／533／#5158／#5121 的修正都不在正式站 | run 42818474421、`deploy.yml` |
-| in-app 佇列（11-11 05:30 UTC 讀取） | `new` 0；`triaged` 11：514、520、521、522、524、526、527、530、531、532、533。 | 見下列各行；`resolved` 是回報者確認佇列，獨立計算 | triage API |
+| Release | 正式站 `4d186abc`；main `b28ba73f`。Release train run 42968653236（目標 ae983075）等 `production-activation` 核准；之後的合併排在它後面。 | Founder 核准（或改開一班以 main 為目標的 train）；核准前 530／522／532／533／#5158／#5121 與兩頁 UI 改版都不在正式站 | run 42968653236、`deploy.yml` |
+| in-app 佇列（11-11 07:40 UTC 讀取） | `new` 0；`triaged` 11：514、520、521、522、524、526、527、530、531、532、533。 | 見下列各行；`resolved` 是回報者確認佇列，獨立計算 | triage API |
 | in-app 526 (#5131) | 已上線並驗證；結案資料包備妥（fix d092cfe、deploy run 42752332278、smoke run 42854847807、request_id `inapp-526-resolve-1`）。雲端環境的 POP 機器金鑰被正式站回 401，草稿送不出去。 | Founder 重發金鑰後重送，或在 POP console 直接結案 | #5131、#5162 留言 |
 | in-app 532／533 (#5164／#5165) | 修正 #5167／#5168 已合併、未上線。 | 上線＋smoke 後走 POP resolve | #5164、#5165 |
-| in-app 530 (#5151) | 拒絕本身正確（學生同時段已有課）；缺的是說明。#5176 讓拒絕訊息列出佔住時段的課，審查通過、在 land queue。哪份合約擁有那些固定課仍需一次唯讀診斷。 | 合併→上線→follow-up 回覆 | #5151、#5176 |
+| in-app 530 (#5151) | #5176 已合併、未上線：拒絕訊息列出佔住時段的課。哪份合約擁有那些固定課仍需一次唯讀診斷。 | 上線＋smoke → follow-up 回覆／POP resolve | #5151、#5176 |
 | in-app 531 (#5160) | 根因已確認：堂數制首張帳單照輸入金額開立、沖銷後帳單仍留著。超收已有防護；「低於合約金額」與「沖銷唯一收款後帳單去留」是帳務規則。 | Founder 決定規則（F4）；可先寫唯讀全校掃描 case | #5160 |
-| in-app 522 (#5113) | 「撤銷收據」按鈕在收據與帳單不符時必被後端拒絕（`void_invoice_mismatch`），是死路；另一個可能是缺撤銷理由。 | 用既有 `confirmed_report_void_blocked` case 確認是哪一個，再修 | #5113 |
+| in-app 522 (#5113) | #5185 已合併、未上線：撤銷被拒時說明原因與下一步，拒絕規則未改。「已確認收據掛錯帳單如何更正」沒有定案流程。 | 上線後回覆；Founder 選更正方式（選項在 #5113） | #5113、#5185 |
 | in-app 520 (#5099) | 匯出已上線；搜尋／排序／批次入帳在回報前就有，未與本回報對照驗收。 | 確認現有功能是否滿足，否則另開具名 issue 再回覆 | #5099 |
 | in-app 521 (#5111／#5116) | 程式與 POP 策略已上線；正式帳務未修（2 筆待連結，第 3 筆需人工決定）。 | Founder 在 POP 執行一次（C2） | #5162 |
 | in-app 514／524／527 資料 | 正式資料未修。證據 run 42583118349／42583121077 是加密的，讀取等 #5159 的解密保管決定。 | #5159 GO → 解讀 → manifest → POP | #5162、#5124、#5159 |
-| 正式驗收訊號 | 「Calendar/Course Production Acceptance」自 #5147 起每次合併都紅：單日 `GET class-sessions` 會寫入，被唯讀防護擋下；兩個一致性測試其間是空跑。#5180 修復已審查通過。 | 合併後確認第一個 post-merge run 轉綠才關 #5175；後續 #5177（會寫入的 GET）、#5178（另兩個 spec＋審查留下的 P2） | #5175、#5180、#5177、#5178 |
+| 正式驗收訊號 | 已修復：#5180＋#5184 合併後 run 42972753814（`fed2ba9a`）乾淨通過，#5175 已關。 | 後續 #5177（單日 GET 會寫入）、#5178（另兩個 spec＋審查留下的 P2）、#5183（行事曆載入課程的新舊回應競態） | #5177、#5178、#5183 |
 | 流程／文檔 (#5015、#4953) | 已合併：#5172（入口文件去重）、#5174（優先順序單一出處）、#5179（`scripts/ci/pr-digest.mjs`，一張 PR 一行）。#5015 留言有各項完成度與下三張 PR 的順序。 | 依 #5015 留言順序做；L5（land queue 依車道檢查關卡標記）未做 | #5015、#4953 |
 | 學生個人歷程／學習檔案 | #4970 step 3a 進行中（同上一版）。 | 同上一版 | #4928、#4970 |
-| UI 改版 (#4989) | 零件與 overlay ratchet 已在 main。第一張整頁遷移：版本更新頁 #5181，CI 進行中。 | 過 CI→獨立審查→下一頁（Wave 3 小頁優先，一次最多兩張） | #4989、#5181 |
+| UI 改版 (#4989) | 已合併、未上線：版本更新頁 #5181、課表回報管理 #5186（舊元件清單 79）。#5186 留下 238 行不再套用的舊樣式。 | 開一張只刪除舊樣式的 PR（含 #5186 審查 P2）；下一頁 `DuplicateSessionReviewPage` 需先拆分（超過單張上限） | #4989、#5186 |
 | 資料修復總表 | C12 五張凍結 issue 已做程式面重驗（都還不能關）；其餘各項待重掃。 | 見 #5162 留言 | #5162 |
 | 草稿 #5122 | 落後 main 49 個 commit、有衝突；內容（#5117／#5118 文檔界線）部分已被 #5172 取代。 | 對照 main 後重做成新 PR 或關閉 | #5122、#5117、#5118 |
 | PR 清潔工 | 排程任務「AllTrue PR janitor」每日 01:30／13:30 UTC。 | — | scheduled task |
 
 **等 Founder（2026-11-11，一次列完）：**
-1. 核准 release train run 42818474421（或改開以 main 為目標的一班）。
+1. 核准 release train run 42968653236（或改開以 main 為目標的一班）。
 2. 重發雲端環境的 POP in-app agent 金鑰（header `X-POP-MACHINE-KEY`，正式站回 401）。
-3. in-app 531 的帳務規則（F4）。
+3. in-app 531 的帳務規則（F4）；in-app 522 的收據更正方式（選項在 #5113）。
 4. #5159 解密保管 GO（C1／C3 依賴）。
 5. #5015 的 D1（native merge queue）、D2（ruleset 加 `review/final-head`）。
 6. #5117：Agent 可否 dispatch 會 SSH 正式機的既有 workflow（Phase A／follow-up／case dump）。
