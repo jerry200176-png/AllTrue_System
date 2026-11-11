@@ -3,13 +3,17 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 
+import re
+
 from scripts.governance.autonomy_gate import (
     _LOCAL_ONLY_E2E_SPECS,
     classify_activation_scope,
     classify_scope,
+    is_control_plane_only_paths,
     machine_declaration,
     validate_declaration,
 )
+from scripts.governance.pr_requires_security import requires_security
 
 
 class PrDeclarationGateTest(unittest.TestCase):
@@ -187,6 +191,61 @@ class ReadOnlyProbeTierTest(unittest.TestCase):
         patch = _wf_patch(*self.READ) + "\n" + _wf_patch("# x", path=other)
         self.assertEqual(classify_scope([WF, other], patch)["tier_name"], "T3")
         self.assertEqual(classify_scope([WF], "")["tier_name"], "T3")
+
+
+class WorkflowExecutedScriptTierTest(unittest.TestCase):
+    """Retro #5201 row 16: a diff of only the merge review gate was classed R0 "documentation"."""
+
+    T0_BODY = "Risk-Class: R0\nAutonomy-Tier: T0"
+
+    @staticmethod
+    def _executed_by_workflows() -> set[str]:
+        # Read from the committed workflows and directories, so a new gate script is covered without editing a list.
+        found = set()
+        for workflow in (ROOT / ".github/workflows").glob("*.yml"):
+            found.update(re.findall(r"\.github/(?:scripts|actions)/[\w./-]*\w", workflow.read_text(encoding="utf-8")))
+        for folder in ("scripts", "actions"):
+            found.update(p.relative_to(ROOT).as_posix() for p in (ROOT / ".github" / folder).rglob("*") if p.is_file())
+        return found
+
+    def test_merge_gate_scripts_are_never_docs(self):
+        paths = self._executed_by_workflows()
+        for required in ("review-gate.mjs", "land-queue.mjs", "autoland.mjs"):
+            self.assertIn(f".github/scripts/{required}", paths)
+        for path in sorted(paths):
+            with self.subTest(path=path):
+                generated = machine_declaration([path], "+ const ok = true;")
+                self.assertEqual((generated["risk_class"], generated["autonomy_tier"]), ("R3", "T3"))
+                self.assertNotIn("documentation or generated evidence only", generated["reasons"])
+                rejected = validate_declaration(self.T0_BODY, [path], "+ const ok = true;")
+                self.assertFalse(rejected["valid"])
+                self.assertIn("below", rejected["error"])
+
+    def test_review_gate_change_needs_the_r3_review_of_the_gate_itself(self):
+        files = [{"filename": ".github/scripts/review-gate.mjs", "patch": "+ return { ok: true };"}]
+        for body in (self.T0_BODY, "Risk-Class: R2\nAutonomy-Tier: T2", "Risk-Class: R3\nAutonomy-Tier: T3"):
+            self.assertTrue(requires_security(body, files), body)
+        renamed = [{"filename": "docs/notes.md", "previous_filename": ".github/scripts/land-queue.mjs", "patch": "+x"}]
+        self.assertTrue(requires_security(self.T0_BODY, renamed))
+
+    def test_gate_script_raises_a_mixed_docs_change(self):
+        generated = machine_declaration(["docs/CHANGELOG.md", ".github/scripts/autoland.mjs"], "+ note")
+        self.assertEqual(generated["autonomy_tier"], "T3")
+        self.assertEqual(generated["reasons"], ["protected path: .github/scripts/autoland.mjs"])
+
+    def test_pure_docs_change_stays_r0(self):
+        for paths in (["docs/CHANGELOG.md"], ["README.md", "docs/changes/2026-11-11-x.md"], [".github/pull_request_template.md"]):
+            with self.subTest(paths=paths):
+                generated = machine_declaration(paths, "+ wording")
+                self.assertEqual((generated["risk_class"], generated["autonomy_tier"]), ("R0", "T0"))
+                self.assertTrue(validate_declaration(self.T0_BODY, paths, "+ wording")["valid"])
+
+    def test_gate_script_is_effective_at_merge_not_a_production_activation(self):
+        # Like governance/ docs, these run from main in Actions; nothing is deployed to the app host.
+        path = ".github/scripts/review-gate.mjs"
+        self.assertTrue(is_control_plane_only_paths([path]))
+        activation = classify_activation_scope([path], "+ const ok = true;")
+        self.assertEqual((activation["activation_class"], activation["runtime_paths"]), ("routine", []))
 
 
 class RequiresSecurityTest(unittest.TestCase):
