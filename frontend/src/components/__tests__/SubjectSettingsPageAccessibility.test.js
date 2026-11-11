@@ -132,6 +132,55 @@ describe('SubjectSettingsPage on the template', () => {
     expect(fetchSubjectOptions).toHaveBeenCalledTimes(2);
   });
 
+  it('a spaces-only or empty name calls no API, shows the error tied to the field, and keeps focus there', async () => {
+    const w = await mountPage();
+    const submitForm = () => q('[role=dialog] form').dispatchEvent(new Event('submit', { cancelable: true, bubbles: true }));
+    const assertRefused = async () => {
+      const input = q('#subject-name');
+      const error = q('[role=dialog] [role="alert"]');
+      expect(error.textContent).toBe('請輸入科目名稱');
+      expect(input.getAttribute('aria-describedby')).toBe(error.id);
+      expect(input.getAttribute('aria-invalid')).toBe('true');
+      expect(document.activeElement).toBe(input);
+      expect(q('[role=dialog]')).not.toBeNull();
+      expect(createSubject).not.toHaveBeenCalled();
+      expect(updateSubject).not.toHaveBeenCalled();
+      expect(fetchSubjectOptions).toHaveBeenCalledTimes(1);
+    };
+
+    // Add, empty: a scripted submit skips native `required`, so this covers the handler itself.
+    await w.find('[data-guide="subject-settings-header"] button').trigger('click');
+    await tick();
+    submitForm();
+    await tick();
+    await assertRefused();
+
+    // Add, spaces only (this passes native `required` in a browser). Focus is moved away first.
+    const input = q('#subject-name');
+    input.value = '   ';
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    await tick();
+    q('[role=dialog] button[type="button"]').focus();
+    submitForm();
+    await tick();
+    await assertRefused();
+    q('[role=dialog]').dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+    await tick();
+    expect(q('[role=dialog]')).toBeNull();
+
+    // Rename, cleared to spaces: the earlier error is gone on open, then shown again.
+    await w.findAll('tbody tr')[1].findAll('button')[0].trigger('click');
+    await tick();
+    expect(q('[role=dialog] [role="alert"]')).toBeNull();
+    const rename = q('#subject-name');
+    rename.value = '  ';
+    rename.dispatchEvent(new Event('input', { bubbles: true }));
+    await tick();
+    submitForm();
+    await tick();
+    await assertRefused();
+  });
+
   it('rename dialog: prefilled, calls updateSubject, and a failure stays inline in the open dialog', async () => {
     updateSubject.mockRejectedValueOnce(new Error('名稱重複'));
     const w = await mountPage();

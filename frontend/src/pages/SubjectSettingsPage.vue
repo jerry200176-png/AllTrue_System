@@ -78,8 +78,8 @@
     >
       <div class="tw:flex tw:flex-col tw:gap-2">
         <Label for="subject-name" class="tw:text-tpl-body tw:font-semibold">科目名稱 <span class="tw:text-destructive">*</span></Label>
-        <Input id="subject-name" v-model="formName" class="tw:h-12 tw:text-[length:var(--tpl-text-body)] tw:md:text-[length:var(--tpl-text-body)]" placeholder="例如：程式設計" maxlength="16" required />
-        <p v-if="formError" class="tw:text-tpl-caption tw:text-destructive" role="alert">{{ formError }}</p>
+        <Input id="subject-name" v-model="formName" class="tw:h-12 tw:text-[length:var(--tpl-text-body)] tw:md:text-[length:var(--tpl-text-body)]" placeholder="例如：程式設計" maxlength="16" required :aria-invalid="formError ? 'true' : undefined" :aria-describedby="formError ? 'subject-name-error' : undefined" />
+        <p v-if="formError" id="subject-name-error" class="tw:text-tpl-caption tw:text-destructive" role="alert">{{ formError }}</p>
       </div>
     </FormDialog>
 
@@ -167,7 +167,12 @@ function openEdit(s) {
 
 async function submit() {
   const name = formName.value.trim();
-  if (!name) return false;
+  if (!name) {
+    // Spaces pass the native `required` check: say why nothing was saved and keep the cursor in the field.
+    formError.value = '請輸入科目名稱';
+    document.getElementById('subject-name')?.focus();
+    return false;
+  }
   formError.value = '';
   try {
     if (editingId.value) {
