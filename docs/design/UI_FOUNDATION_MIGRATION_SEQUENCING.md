@@ -34,7 +34,19 @@ The Apple-style look is delivered per page, not by changing global tokens; globa
 4. Fixtures stay out of `public/` / `dist_build`.
 5. No API / DB / permission / billing logic changes.
 6. No unintended horizontal overflow at 390/412/768/1280/1440; primary CTA visible at the two mobile widths; for the director home, a production read-only smoke walk after deploy.
-7. Design QA (in this order, vendored under `.claude/skills/`): `impeccable` critique/audit, then polish; the `make-interfaces-feel-better` checklist; the existing `web-design-guidelines` review; `ui-ux-pro-max` for data-heavy pages (tables, forms, charts). Brand: ink #0B0B0C + gold #F7D917/#F2C40F, amber #E9A51A, red only for danger; body >=16px, touch targets >=44px.
+7. Fixed acceptance items (each one cost a fix round on 2026-11-11; cite the PR in the plan's 驗收條件):
+   - Every page-guide selector still works, with a mounted test (#5186 → #5189).
+   - Landmarks and semantic root elements kept; assert exactly one `main` (#5195).
+   - Toasts and overlays are not hidden behind the phone bottom nav (#5186).
+   - Collapsibles are not placed inside the title row (#5186).
+   - Global `th` / element rules are overridden explicitly (#5186, #5195).
+   - Phone gutter is exactly 16px, measured in the real shell in container coordinates (#5189).
+   - Page title is `h2`; toggles have an accessible name (#5181, #5189).
+   - The old scoped style is removed in the same PR, or the migration does not start (#5186).
+   - Baselines come only from CI's own render (#5181).
+   - Declare the risk class AFTER adding baselines (#5189, #5195).
+   - No staff card unless staff would notice and act on it (#5189).
+8. Design QA (in this order, vendored under `.claude/skills/`): `impeccable` critique/audit, then polish; the `make-interfaces-feel-better` checklist; the existing `web-design-guidelines` review; `ui-ux-pro-max` for data-heavy pages (tables, forms, charts). Brand: ink #0B0B0C + gold #F7D917/#F2C40F, amber #E9A51A, red only for danger; body >=16px, touch targets >=44px.
 
 ## Motion layer
 

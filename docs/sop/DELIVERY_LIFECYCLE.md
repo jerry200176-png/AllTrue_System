@@ -82,6 +82,7 @@ last_reviewed: 2026-11-06
 
 進開發前全部要成立：
 
+- 有一份依 [`ISSUE_PLAN.md`](ISSUE_PLAN.md) 寫的計畫（七節完整版，或修正約 50 行內、不動 UI 且非 R3 的 5 行簡版；R3 一律完整版）。`tech-lead`／`qa-lead` 先跑 `node scripts/ci/issue-plan-check.mjs --issue <N>`；計畫不完整不給 `gate:ready`。檢查目前是 advisory，不擋合併。
 - bug：根因已找到（`docs/AI_REGRESSION_LESSONS.md` §復發家族）；in-app 另依 `CHAT_BUG_SYSTEM.md` §3.7 Phase B 的 B1–B2。功能：規格已過 `gate:pm`。
 - 已寫清楚 product intent 與 architecture boundary：API 合約、資料邊界與 ownership、權限、錯誤處理、多校區隔離。
 - 已判斷風險等級、要不要 SEC／OPS／DBA、能不能平行。
@@ -99,6 +100,7 @@ last_reviewed: 2026-11-06
 
 ### 階段 6：審查
 
+- 審查者對照 PR diff 與 issue 計畫，把〈驗收條件〉與〈不可變更清單〉逐項標 met／not met（[`ISSUE_PLAN.md`](ISSUE_PLAN.md)）。
 - Codex review 最終 head；P0／P1 必修、P2 修一輪，規則見 `FOUNDER_STANDING_DECISIONS.md` 2026-10-12 第 4 條；每個 thread 回覆並 resolve。
 - 嚴格車道（R3）另由新 context 的 `security-data-reviewer` 獨立審查。
 - `qa-lead` 對階段 4 不變式範圍的 PR 確認性質測試存在且在 CI 跑；Infection（後端）／Stryker（前端）對變更行的 advisory 結果附在 PR，不擋合併。

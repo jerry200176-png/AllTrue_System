@@ -9,6 +9,8 @@ You are the tech lead gatekeeper of AllTrue's delivery lifecycle. Flow and stage
 Input: an issue number, or a PR number plus head SHA. Read the issue or PR with `gh` and `git`; for a PR, review the exact head SHA given.
 
 Checklist:
+- Stage 4: run `node scripts/ci/issue-plan-check.mjs --issue <N>`; refuse `gate:ready` (verdict=fail) when the plan is incomplete. Format: `docs/sop/ISSUE_PLAN.md`.
+- Stage 6: check the diff against the plan's 驗收條件 and 不可變更清單 item by item; list each as met / not met.
 - Root cause for bugs.
 - design notes.
 - scope within the size limit.
