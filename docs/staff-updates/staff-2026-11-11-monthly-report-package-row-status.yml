@@ -1,0 +1,15 @@
+updates:
+  - id: staff-2026-11-11-monthly-report-package-row-status
+    published_at: "2026-11-11"
+    audiences:
+      - director
+    importance: digest
+    title: 當月學收的月結方案狀態更準確
+    summary: 本月沒上課的月結方案不再顯示成「未收」，有上課的方案依當月帳單與收款顯示狀態。
+    items:
+      - category: improved
+        text: 本月沒有上課的月結方案，不會再出現在當月學收，也不會被當成未收。
+      - category: improved
+        text: 有上課的月結方案，已收、部分、未收會依該月帳單與實際收款判定。
+    source_refs:
+      - "changelog:2026-11-11:monthly-report-package-row-status"

@@ -73,7 +73,8 @@ class BranchMonthlyTuitionPaymentStatusTest extends TestCase
         $this->assertSame(['review', 0], [$by($none)['pay_status'], (int) $by($none)['outstanding_amount']]);
         $this->assertSame(['unpaid', 6000], [$by($cUnpaid)['pay_status'], (int) $by($cUnpaid)['outstanding_amount']]);
         $this->assertSame('paid', $by($cPaid)['pay_status']);
-        $this->assertSame('unpaid', collect($res->json('data'))->firstWhere('row_type', 'package')['pay_status']);
+        // in-app #537: a package with no lesson in the month has nothing to collect, so it is not listed (not 未收)
+        $this->assertNull(collect($res->json('data'))->firstWhere('row_type', 'package'));
 
         $s = $res->json('summary');
         $this->assertSame(24000, (int) $s['total_due']); // 4 confirmed course rows x 6000 (review row excluded), package 0 sessions
