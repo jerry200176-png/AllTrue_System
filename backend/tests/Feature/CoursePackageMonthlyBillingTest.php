@@ -351,8 +351,9 @@ class CoursePackageMonthlyBillingTest extends TestCase
         $res->assertOk();
         $data = $res->json('data');
         $packageRows = array_values(array_filter($data, fn ($r) => ($r['row_type'] ?? '') === 'package'));
-        // in-app #537: nothing to collect this month => not listed (regular rows without lessons are not listed either)
-        $this->assertCount(0, $packageRows, '無出席的方案本月沒有應收，不列入當月學收');
+        $this->assertCount(1, $packageRows, '無出席仍應出現方案行（讓主任知道方案存在）');
+        $this->assertEquals(0, $packageRows[0]['monthly_sessions']);
+        $this->assertEquals(0, $packageRows[0]['monthly_tuition']);
     }
 
     // ─── FR-006：alerts/tuition 觸發月結多科方案提醒 ─────

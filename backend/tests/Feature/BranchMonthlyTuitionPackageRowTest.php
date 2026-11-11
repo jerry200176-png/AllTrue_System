@@ -83,20 +83,55 @@ class BranchMonthlyTuitionPackageRowTest extends TestCase
             ->getJson('/api/v1/finance/branch-monthly-tuition?branch_id=1&year=2026&month=8')->assertOk();
     }
 
+    private function reportUnpaidOnly()
+    {
+        Carbon::setTestNow(Carbon::parse('2026-10-30', 'Asia/Taipei'));
+
+        return $this->withHeaders(['Authorization' => 'Bearer ' . $this->token(), 'Accept' => 'application/json'])
+            ->getJson('/api/v1/finance/branch-monthly-tuition?branch_id=1&year=2026&month=8&unpaid_only=1')->assertOk();
+    }
+
     private function pkgRow($res, int $pkgId): ?array
     {
         return collect($res->json('data'))->firstWhere('package_id', $pkgId);
     }
 
-    public function test_package_with_no_lesson_in_the_month_is_not_listed_or_counted(): void
+    public function test_package_with_no_lesson_and_no_bill_is_listed_but_neutral_and_not_counted_unpaid(): void
     {
         [$pkgId] = $this->package(0);
         $res = $this->report();
+        $row = $this->pkgRow($res, $pkgId);
 
-        $this->assertNull($this->pkgRow($res, $pkgId));
-        $this->assertSame(0, (int) $res->json('summary.total_students'));
+        $this->assertSame(['none', 0, 0], [$row['pay_status'], (int) $row['due_amount'], (int) $row['outstanding_amount']]);
+        $this->assertSame('pkg-537', $row['subject']);
+        $this->assertNotSame('', $row['teacher_name']);
         $this->assertSame(0, (int) $res->json('summary.unpaid_students'));
-        $this->assertSame(0, (int) $res->json('meta.total'));
+        $this->assertSame(0, (int) $res->json('summary.total_due'));
+        $this->assertNull($this->pkgRow($this->reportUnpaidOnly(), $pkgId));
+    }
+
+    public function test_billed_month_without_any_lesson_still_follows_its_bill(): void
+    {
+        [$pkgId, $student, $m] = $this->package(0);
+        $this->bill($student, $m[0], 1400, 0);
+        $res = $this->report();
+        $row = $this->pkgRow($res, $pkgId);
+
+        $this->assertSame(['unpaid', 1400], [$row['pay_status'], (int) $row['outstanding_amount']]);
+        $this->assertSame(1, (int) $res->json('summary.unpaid_students'));
+    }
+
+    public function test_partly_billed_month_is_review_not_paid(): void
+    {
+        [$pkgId, $student, $m] = $this->package(2);
+        ClassSession::create(['StudentClassID' => $m[1]->ID, 'SessionDate' => '2026-08-04', 'StartTime' => '16:00', 'EndTime' => '18:00', 'Status' => 'attended']);
+        $this->bill($student, $m[0], 1400, 1400); // member A paid, member B taught but not billed
+        $res = $this->report();
+        $row = $this->pkgRow($res, $pkgId);
+
+        $this->assertSame('review', $row['pay_status']);
+        $this->assertSame(0, (int) $res->json('summary.total_collected'));
+        $this->assertSame(1, (int) $res->json('summary.review_students'));
     }
 
     public function test_package_whose_member_bill_for_the_month_is_paid_reads_paid_despite_unset_flag(): void

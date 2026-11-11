@@ -5,11 +5,11 @@ updates:
       - director
     importance: digest
     title: 當月學收的月結方案狀態更準確
-    summary: 本月沒上課的月結方案不再顯示成「未收」，有上課的方案依當月帳單與收款顯示狀態。
+    summary: 沒有應收的月結方案不再顯示成「未收」，帳單只開一部分時會標「待確認」。
     items:
       - category: improved
-        text: 本月沒有上課的月結方案，不會再出現在當月學收，也不會被當成未收。
+        text: 本月沒上課、也沒有帳單的月結方案，狀態顯示「—」，不會再被算成未收；方案行也會顯示科目與老師。
       - category: improved
-        text: 有上課的月結方案，已收、部分、未收會依該月帳單與實際收款判定。
+        text: 有帳單的月結方案，已收、部分、未收依該月帳單與實際收款判定；只有部分科目開了帳單時顯示「待確認」。
     source_refs:
       - "changelog:2026-11-11:monthly-report-package-row-status"
