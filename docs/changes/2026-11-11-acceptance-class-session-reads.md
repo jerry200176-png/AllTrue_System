@@ -1,0 +1,8 @@
+## 2026-11-11 — test: calendar/course production acceptance answers class-session reads locally (#5175)
+<!-- release-notes: silent_ship=silent-2026-11-11-acceptance-class-session-reads -->
+<!-- silent-reason: acceptance test and backend regression test only; no product UI, API or production data change -->
+- Since #5147 the read-only guard aborts browser GETs to `/api/v1/class-sessions` and `/api/v1/class-sessions/projection`, because a one-day window makes the server create class sessions. `calendar-course-consistency.spec.js` still treated those aborts as writes, so the post-deploy acceptance workflow failed on every merge (10 of its tests, all at the guard assertion).
+- The spec now installs `e2e/fixtures/classSessionReadResponder.js` after the unchanged guard. The app's class-session reads are answered in the browser and never sent: the list with an empty list, the projection with the rows the spec loaded. Other methods and odd spellings still fall back to the guard and fail the test. Every observed read must be answered locally or blocked.
+- The spec's own projection read is refused unless the window spans two or more days, which the controller never materializes; `ClassSessionsMultiDayReadDoesNotMaterializeTest` locks that.
+- The two "calendar and course management agree" tests had been checking an empty calendar since #5147. They now open the busiest day of the checked window and require that the calendar received the projection rows and drew cards, before the orphan-target check.
+- Verified locally against a synthetic app only. The production run is verified by the workflow after merge. Days outside the checked window are answered empty; class-session data on 課程查找 and the dashboard is not part of this acceptance.

@@ -13,7 +13,14 @@ import {
 } from './fixtures/coursePaymentEntry.js';
 import { recordLatestGetJson } from './fixtures/latestGetJson.js';
 import { openPageFromSidebarSearch } from './fixtures/openPageFromSidebarSearch.js';
-import { appOriginOf, installReadOnlyAppGuard, isKnownPostRead } from './fixtures/readOnlyAppGuard.js';
+import {
+  appOriginOf,
+  installReadOnlyAppGuard,
+  isKnownBlockedStatefulRead,
+  isKnownPostRead,
+  isKnownStatefulRead,
+} from './fixtures/readOnlyAppGuard.js';
+import { installLocalClassSessionReads, nonMaterializingProjectionPath } from './fixtures/classSessionReadResponder.js';
 
 /**
  * Authenticated, read-only acceptance for the calendar/course-management parity
@@ -331,6 +338,33 @@ function expectAbortedPost(path) {
 const isExpectedAbort = (write) => (countKnownPostReads && isKnownPostRead(APP_ORIGIN, write))
   || (write.method === 'POST' && write.origin === APP_ORIGIN && expectedAbortedPosts.has(write.path));
 
+// #5175: the guard also aborts GET /class-sessions and /class-sessions/projection, because a one-day
+// window makes the server create class sessions, and the director dashboard sends that read after
+// every login. fixtures/classSessionReadResponder.js answers these reads in the browser instead:
+// the list with an empty list, the projection with the rows a test loaded (serveProjection) or with
+// an empty projection. No test here may rely on class-session data it did not supply that way.
+// afterEach requires every observed read to be answered locally or blocked; none reaches the app.
+let classSessionReads = { answered: [], serveProjection() {} };
+let attemptedClassSessionReads = 0;
+
+// Live sessions per day of the loaded projection: what the calendar must draw.
+function liveSessionCountsByDate(sessions) {
+  const counts = new Map();
+  for (const row of sessions) {
+    if (['cancelled', 'voided'].includes(String(valueOf(row, 'status', 'Status') || '').toLowerCase())) continue;
+    const date = ymd(valueOf(row, 'session_date', 'SessionDate'));
+    if (date >= START && date <= END) counts.set(date, (counts.get(date) || 0) + 1);
+  }
+  return counts;
+}
+
+async function showCalendarDate(page, dateInput, date) {
+  await dateInput.fill(date);
+  await dateInput.dispatchEvent('change');
+  await expect(page.locator('.calendar-loading-bar')).toHaveCount(0, { timeout: 20_000 });
+  await page.waitForTimeout(250);
+}
+
 test.describe('production acceptance — calendar/course parity', () => {
   test.skip(!BASE || !SESSION?.access_token || !SESSION?.user?.id,
     'missing controlled production director session');
@@ -340,6 +374,12 @@ test.describe('production acceptance — calendar/course parity', () => {
 
   test.beforeEach(async ({ context }) => {
     blockedHttpWrites = await installReadOnlyAppGuard(context, APP_ORIGIN, { allowTransactionTelemetry: true });
+    // After the guard, so it runs first; what it does not answer falls back to the guard.
+    classSessionReads = await installLocalClassSessionReads(context, APP_ORIGIN);
+    attemptedClassSessionReads = 0;
+    context.on('request', (request) => {
+      if (isKnownStatefulRead(APP_ORIGIN, request.method(), request.url())) attemptedClassSessionReads += 1;
+    });
     countKnownPostReads = false;
     expectedAbortedPosts = new Set();
   });
@@ -350,8 +390,14 @@ test.describe('production acceptance — calendar/course parity', () => {
     }
     const expected = blockedHttpWrites.filter(isExpectedAbort);
     if (expected.length > 0) noteCoverage('expected_aborted_posts', expected.length);
+    if (classSessionReads.answered.length > 0) noteCoverage('local_class_session_reads', classSessionReads.answered.length);
     expect(blockedHttpWrites.filter((write) => !expected.includes(write)),
       'read-only acceptance must not send HTTP writes to any origin').toEqual([]);
+    // A read counted here but neither answered locally nor blocked went to the app.
+    await expect.poll(() => classSessionReads.answered.length
+      + blockedHttpWrites.filter((write) => isKnownBlockedStatefulRead(APP_ORIGIN, write)).length, {
+      timeout: 5_000, message: 'every class-session read the browser sent was answered locally or blocked',
+    }).toBe(attemptedClassSessionReads);
   });
 
   for (const viewport of [
@@ -370,16 +416,14 @@ test.describe('production acceptance — calendar/course parity', () => {
         end: END,
         per_page: '2000',
       });
-      const projectionParams = new URLSearchParams({
-        branch_id: String(BRANCH_ID),
-        start: START,
-        end: END,
-      });
+      // The only class-session read this spec sends to the app. It throws for a one-day window,
+      // which would make the server create class sessions (#5175).
+      const projectionPath = nonMaterializingProjectionPath({ branchId: BRANCH_ID, start: START, end: END });
 
       const [coursesPayload, schedulesPayload, projectionPayload] = await Promise.all([
         getJson(request, `/api/v1/student-classes?${params}`, token),
         getJson(request, `/api/v1/schedules?${params}`, token),
-        getJson(request, `/api/v1/class-sessions/projection?${projectionParams}`, token),
+        getJson(request, projectionPath, token),
       ]);
 
       const courses = listFromPayload(coursesPayload);
@@ -387,6 +431,8 @@ test.describe('production acceptance — calendar/course parity', () => {
       const sessions = listFromPayload(projectionPayload);
       expect(projectionPayload.api_kind).toBe('projection');
       expect(projectionPayload.completeness).toBe('full');
+      // The calendar below is drawn from these rows: its own projection reads are answered with them.
+      classSessionReads.serveProjection({ branchId: BRANCH_ID, start: START, end: END, payload: projectionPayload });
 
       const materializedSlots = new Set(
         sessions
@@ -435,11 +481,28 @@ test.describe('production acceptance — calendar/course parity', () => {
       const orphanDates = [...new Set(orphanTargets
         .map((row) => ymd(valueOf(row, 'schedule_date', 'session_date', 'SessionDate')))
         .filter((date) => date >= START && date <= END))];
+
+      // The calendar must show the checked window with its sessions. Without this, the orphan check
+      // below passes on a calendar that received nothing (the state of this test after #5147).
+      const liveByDate = liveSessionCountsByDate(sessions);
+      const [busiestDate, busiestCount] = [...liveByDate.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))[0] || [];
+      if (!busiestDate) {
+        notePreconditionAbsent('materialized_sessions_in_window');
+      } else {
+        await showCalendarDate(page, dateInput, busiestDate);
+        const servedForDate = () => classSessionReads.answered.filter((read) => read.kind === 'projection'
+          && read.rows > 0 && read.start <= busiestDate && read.end >= busiestDate).length;
+        await expect.poll(servedForDate, {
+          timeout: 20_000, message: 'the calendar loaded the projection for the checked day',
+        }).toBeGreaterThan(0);
+        await expect.poll(() => page.locator('.course-block').count(), {
+          timeout: 20_000, message: 'the calendar draws cards on a day that has materialized sessions',
+        }).toBeGreaterThan(0);
+        noteCoverage('calendar_day_sessions', busiestCount);
+      }
+
       for (const targetDate of orphanDates) {
-        await dateInput.fill(targetDate);
-        await dateInput.dispatchEvent('change');
-        await expect(page.locator('.calendar-loading-bar')).toHaveCount(0, { timeout: 20_000 });
-        await page.waitForTimeout(250);
+        await showCalendarDate(page, dateInput, targetDate);
 
         for (const row of orphanTargets.filter((candidate) => (
           ymd(valueOf(candidate, 'schedule_date', 'session_date', 'SessionDate')) === targetDate
