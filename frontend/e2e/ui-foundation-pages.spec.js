@@ -1228,3 +1228,75 @@ for (const scenario of [
     await page.screenshot({ path: path.join(outDir, `course-workbench-${scenario.width}-root${scenario.root}.png`), fullPage: scenario.root === 16 });
   });
 }
+
+// #4989 課表回報管理 inside the REAL app shell (mocked API): 16px gutter, help panel below the title, toast above the phone nav.
+for (const vp of [{ width: 390, height: 844, titleLines: 2 }, { width: 1280, height: 900, titleLines: 1 }]) {
+  test(`schedule discrepancy in the app shell @${vp.width}`, async ({ page }) => {
+    await page.setViewportSize({ width: vp.width, height: vp.height });
+    const row = { id: 1, reporter_name: '測試老師', branch_name: '內湖分校', student_name: '測試學生', session_date: '2026-09-15', time_range: '10:00–12:00', corrected_time_range: '11:00–13:00', discrepancy_type_label: '時段不符', status: 'pending', notes: '請確認', class_session_id: 5, created_at: '2026-09-15T09:30:00' };
+    await page.route('**/api/v1/**', async (route) => {
+      const p = new URL(route.request().url()).pathname;
+      if (route.request().method() !== 'GET') return route.fulfill({ json: { ok: true } });
+      if (p.endsWith('/me')) return route.fulfill({ json: { id: 9001, name: 'E2E Director', role: 'director', campuses: [1], must_change_password: false, capabilities: [] } });
+      if (p.endsWith('/branches') || p.endsWith('/campuses')) return route.fulfill({ json: [{ id: 1, name: '內湖分校', code: 'neihu' }] });
+      if (p.includes('/notifications')) return route.fulfill({ json: { data: [], unread_count: 0 } });
+      if (p.includes('/schedule-discrepancies/summary')) return route.fulfill({ json: { pending: 1, acknowledged: 0, resolved: 0, withdrawn: 0 } });
+      if (p.includes('/schedule-discrepancies')) return route.fulfill({ json: { data: [row] } });
+      return route.fulfill({ json: { data: [] } });
+    });
+    await page.goto('/pilot-mount.html?page=app');
+    await expect(page.locator('html')).toHaveAttribute('data-pilot-ready', '1');
+    await page.getByText('老師回報課表不對').first().click();
+    const root = page.getByTestId('schedule-discrepancy-page');
+    await expect(root).toBeVisible();
+    await expect(root.locator('.dsc-table tbody tr, .dsc-mcard').first()).toBeAttached();
+
+    // Gutter: the first card's left edge sits 16px from the viewport on phones (shell 10px + page 6px).
+    if (vp.width === 390) {
+      const left = await root.locator('.dsc-mcard').first().evaluate((el) => Math.round(el.getBoundingClientRect().left));
+      expect(left).toBe(16);
+    } else {
+      // Table headers use the caption token, not the global 12px th rule.
+      const th = await root.locator('.dsc-table th').first().evaluate((el) => parseFloat(getComputedStyle(el).fontSize));
+      expect(th).toBeGreaterThanOrEqual(15);
+    }
+
+    // Help open: the panel is a full-width block below the title and the title keeps its lines.
+    await page.locator('[data-testid="sdp-help"] > summary').click();
+    const m = await page.evaluate(() => {
+      const h2 = document.querySelector('[data-testid="sdp-help"] h2');
+      const panel = document.querySelector('[data-testid="sdp-help"] [role="note"]');
+      const header = document.querySelector('[data-testid="schedule-discrepancy-page"] header');
+      const lh = parseFloat(getComputedStyle(h2).lineHeight);
+      return { lines: Math.round(h2.getBoundingClientRect().height / lh), panelTop: panel.getBoundingClientRect().top, titleBottom: h2.getBoundingClientRect().bottom, panelW: panel.getBoundingClientRect().width, headerW: header.getBoundingClientRect().width };
+    });
+    expect(m.lines).toBeLessThanOrEqual(vp.titleLines);
+    expect(m.panelTop).toBeGreaterThanOrEqual(m.titleBottom);
+    expect(m.panelW).toBeGreaterThan(m.headerW * 0.95);
+    fs.mkdirSync(outDir, { recursive: true });
+    await page.screenshot({ path: path.join(outDir, `discrepancy-shell-help-${vp.width}.png`) });
+    await page.locator('[data-testid="sdp-help"] > summary').click();
+
+    // Toast: acknowledging shows feedback that is visible and does not touch the phone bottom nav.
+    await root.getByRole('button', { name: /^(標記已確認|已確認)$/ }).locator('visible=true').first().click();
+    const toast = page.locator('.dsc-toast');
+    await expect(toast).toBeVisible();
+    await expect(toast).toContainText('已標記為處理中');
+    await expect(toast).toHaveCSS('opacity', '1');
+    const box = await toast.boundingBox();
+    expect(box.y).toBeGreaterThanOrEqual(0);
+    // Nothing (topbar, bottom nav) is stacked above the toast: the element at its centre and sides is the toast.
+    const covered = await page.evaluate(({ x, y, width: w, height: h }) => [[x + w / 2, y + h / 2], [x + 16, y + h / 2], [x + w - 16, y + h / 2]]
+      .some(([px, py]) => !document.elementFromPoint(px, py)?.closest('.dsc-toast')), box);
+    expect(covered).toBe(false);
+    const nav = page.locator('.mobile-bottom-nav');
+    if (await nav.isVisible()) {
+      const nb = await nav.boundingBox();
+      const overlap = box.x < nb.x + nb.width && box.x + box.width > nb.x && box.y < nb.y + nb.height && box.y + box.height > nb.y;
+      expect(overlap).toBe(false);
+    }
+    const sw = await page.evaluate(() => [document.documentElement.scrollWidth, document.documentElement.clientWidth]);
+    expect(sw[0]).toBeLessThanOrEqual(sw[1]);
+    await page.screenshot({ path: path.join(outDir, `discrepancy-shell-toast-${vp.width}.png`) });
+  });
+}

@@ -1,33 +1,27 @@
 <template>
-  <div class="dsc-page tw:mx-auto tw:flex tw:max-w-6xl tw:flex-col tw:gap-4 tw:px-1.5 tw:text-foreground tw:md:px-0" data-testid="schedule-discrepancy-page">
-    <header class="tw:pb-2">
-      <div class="tw:flex tw:flex-wrap tw:items-center tw:justify-between tw:gap-x-4 tw:gap-y-2">
-        <div class="tw:flex tw:items-center tw:gap-2">
+  <div class="dsc-page tw:mx-auto tw:flex tw:max-w-6xl tw:flex-col tw:gap-4 tw:px-[calc(var(--ds-space-4)-9px)] tw:text-foreground tw:md:px-0" data-testid="schedule-discrepancy-page">
+    <header class="tw:relative tw:pb-2">
+      <details class="tw:group/help" data-testid="sdp-help">
+        <summary
+          class="tw:flex tw:min-h-12 tw:w-fit tw:max-w-full tw:cursor-pointer tw:list-none tw:items-center tw:gap-2 tw:rounded-md tw:outline-none tw:focus-visible:ring-3 tw:focus-visible:ring-ring/50 tw:[&::-webkit-details-marker]:hidden"
+          title="快速處理 SOP"
+        >
           <h2 class="tw:flex tw:items-center tw:gap-2 tw:text-tpl-page tw:font-bold tw:tracking-tight">
             <Flag class="tw:size-6 tw:shrink-0 tw:text-tpl-secondary" :stroke-width="2" aria-hidden="true" />
             課表回報管理
           </h2>
-          <details class="tw:group/help" data-testid="sdp-help">
-            <Button
-              as="summary"
-              variant="ghost"
-              size="icon"
-              class="tw:size-12 tw:cursor-pointer tw:list-none tw:[&::-webkit-details-marker]:hidden"
-              aria-label="快速處理 SOP"
-              title="快速處理 SOP"
-            >
-              <Info class="tw:size-5" :stroke-width="2" aria-hidden="true" />
-            </Button>
-            <div class="tw:mt-2 tw:rounded-xl tw:border tw:bg-card tw:p-4 tw:text-tpl-body tw:shadow-none" role="note">
-              <strong>快速處理 SOP（建議流程）</strong>
-              <ol class="tw:mt-2 tw:list-decimal tw:pl-5">
-                <li>先按「已確認」：代表你已接手此回報，避免同事重複處理。</li>
-                <li>確認堂次與時段：必要時先複製老師建議時間，完成資料修正後再關單。</li>
-                <li>填寫處理說明後按「標記已修正」：請寫清楚「修了什麼」與「影響範圍」。</li>
-              </ol>
-            </div>
-          </details>
+          <Info class="tw:size-5 tw:shrink-0 tw:text-tpl-secondary" :stroke-width="2" aria-hidden="true" />
+        </summary>
+        <div class="tw:mt-2 tw:w-full tw:rounded-xl tw:border tw:bg-card tw:p-4 tw:text-tpl-body tw:shadow-none" role="note">
+          <strong>快速處理 SOP（建議流程）</strong>
+          <ol class="tw:mt-2 tw:list-decimal tw:pl-5">
+            <li>先按「已確認」：代表你已接手此回報，避免同事重複處理。</li>
+            <li>確認堂次與時段：必要時先複製老師建議時間，完成資料修正後再關單。</li>
+            <li>填寫處理說明後按「標記已修正」：請寫清楚「修了什麼」與「影響範圍」。</li>
+          </ol>
         </div>
+      </details>
+      <div class="tw:mt-2 tw:sm:absolute tw:sm:top-0 tw:sm:right-0 tw:sm:mt-0">
         <Button variant="outline" class="tw:h-12 tw:px-5 tw:text-[length:var(--tpl-text-body)] tw:font-semibold" @click="refresh">
           <RefreshCw class="tw:size-4" :stroke-width="2" aria-hidden="true" />
           重新整理
@@ -43,7 +37,7 @@
           v-for="tab in tabs"
           :key="tab.value"
           :value="tab.value"
-          class="tw:min-h-12 tw:flex-none tw:gap-2 tw:px-4 tw:text-[length:var(--tpl-text-body)] tw:font-semibold tw:motion-reduce:transition-none"
+          class="tw:min-h-12 tw:flex-1 tw:gap-2 tw:px-2 tw:text-[length:var(--tpl-text-body)] tw:sm:flex-none tw:sm:px-4 tw:font-semibold tw:motion-reduce:transition-none"
         >
           {{ tab.label }}
           <DiscrepancyStatusBadge v-if="counts[tab.value] > 0" :status="tab.value">{{ counts[tab.value] }}</DiscrepancyStatusBadge>
@@ -73,7 +67,7 @@
 
         <!-- Desktop table -->
         <Card v-else-if="hasBranch" class="dsc-desktop tw:gap-0 tw:overflow-hidden tw:py-0 tw:shadow-none tw:max-[768px]:hidden">
-          <Table class="dsc-table tw:text-[length:var(--tpl-text-body)] tw:[&_td]:text-[length:var(--tpl-text-body)]">
+          <Table class="dsc-table tw:text-[length:var(--tpl-text-body)] tw:[&_td]:text-[length:var(--tpl-text-body)] tw:[&_th]:text-[length:var(--tpl-text-caption)]">
             <TableHeader>
               <TableRow class="tw:hover:bg-transparent">
                 <TableHead class="tw:h-12 tw:px-4 tw:text-tpl-caption tw:font-semibold tw:text-tpl-secondary">回報時間</TableHead>
@@ -87,11 +81,11 @@
             <TableBody>
               <template v-for="row in rows" :key="row.id">
                 <TableRow :class="['tw:align-top', expandedId === row.id && 'dsc-row-expanded tw:bg-muted/50']">
-                  <TableCell class="tw:px-4 tw:py-3 tw:whitespace-normal tw:tabular-nums">
+                  <TableCell class="tw:px-4 tw:py-3 tw:break-keep tw:whitespace-normal tw:tabular-nums">
                     <div class="dsc-ts">{{ formatDateTime(row.created_at) }}</div>
                   </TableCell>
-                  <TableCell class="tw:px-4 tw:py-3 tw:whitespace-normal">{{ row.reporter_name || '未提供老師姓名' }}</TableCell>
-                  <TableCell class="tw:px-4 tw:py-3 tw:whitespace-normal">{{ row.branch_name || '未指定分校' }}</TableCell>
+                  <TableCell class="tw:px-4 tw:py-3 tw:break-keep tw:whitespace-normal">{{ row.reporter_name || '未提供老師姓名' }}</TableCell>
+                  <TableCell class="tw:px-4 tw:py-3 tw:break-keep tw:whitespace-normal">{{ row.branch_name || '未指定分校' }}</TableCell>
                   <TableCell class="tw:px-4 tw:py-3 tw:whitespace-normal">
                     <div class="dsc-cell-main tw:flex tw:flex-wrap tw:items-center tw:gap-2">
                       <Badge variant="secondary" class="dsc-type-pill tw:px-3 tw:py-1 tw:text-[length:var(--tpl-text-caption)]">{{ row.discrepancy_type_label }}</Badge>
@@ -275,12 +269,12 @@
       <Transition
         enter-active-class="tw:transition tw:duration-200 tw:motion-reduce:transition-none"
         leave-active-class="tw:transition tw:duration-200 tw:motion-reduce:transition-none"
-        enter-from-class="tw:translate-y-2 tw:opacity-0"
+        enter-from-class="tw:-translate-y-2 tw:opacity-0"
         leave-to-class="tw:opacity-0"
       >
         <div
           v-if="toast.visible"
-          class="dsc-toast tw:fixed tw:inset-x-4 tw:bottom-4 tw:z-50 tw:mx-auto tw:flex tw:max-w-md tw:items-center tw:gap-3 tw:rounded-xl tw:border tw:bg-card tw:px-4 tw:py-3 tw:text-tpl-body tw:text-card-foreground tw:shadow-tpl-card"
+          class="dsc-toast tw:fixed tw:inset-x-4 tw:top-4 tw:z-[100000] tw:mx-auto tw:flex tw:max-w-md tw:items-center tw:gap-3 tw:rounded-xl tw:border tw:bg-card tw:px-4 tw:py-3 tw:text-tpl-body tw:text-card-foreground tw:shadow-tpl-card"
           :class="toast.tone === 'error' ? 'tw:border-[var(--ds-danger-line)]' : ''"
           role="status"
         >
