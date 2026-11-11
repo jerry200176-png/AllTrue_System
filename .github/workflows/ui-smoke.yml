@@ -135,14 +135,14 @@ jobs:
         working-directory: frontend
         run: echo "version=$(node -p "require('./package-lock.json').packages['node_modules/@playwright/test'].version")" >> "$GITHUB_OUTPUT"
 
-      - name: Cache Playwright browsers
+      - name: Restore Playwright browsers
         id: playwright-cache
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.cache/ms-playwright
           key: playwright-${{ runner.os }}-${{ steps.playwright-version.outputs.version }}
 
-      # Retry + launch probe so an apt mirror outage is reported as infrastructure, not as a failed smoke.
+      # Probe-first, time-boxed install-deps so an apt mirror outage is reported as infrastructure, not as a failed smoke.
       - name: Install Playwright browser (chromium)
         working-directory: frontend
         env:
@@ -152,8 +152,16 @@ jobs:
           sudo find /etc/apt -type f -exec grep -l 'dl.google.com/linux/chrome' {} + 2>/dev/null | sudo xargs -r rm -f || true
           sudo rm -f /etc/apt/sources.list.d/google-chrome* /etc/apt/sources.list.d/*chrome* || true
           sudo rm -rf /var/lib/apt/lists/partial /var/lib/apt/lists/*chrome* || true
-          sudo apt-get update -y || true
+          sudo timeout -k 5 20 apt-get update -y || true
           bash ../.github/scripts/install-playwright-chromium.sh
+
+      # Saved right after a successful install so the cache survives later test failures or timeouts.
+      - name: Save Playwright browsers
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ steps.playwright-version.outputs.version }}
 
       - name: Run UI smoke
         working-directory: frontend
