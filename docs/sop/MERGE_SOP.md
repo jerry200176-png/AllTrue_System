@@ -21,6 +21,8 @@ All classes also need the exact final-head review evidence described in [Final-h
 
 When the applicable risk gates and exact-head review pass without a T3/protected boundary, add `queue`; do not wait for a blanket human approval. A changed head needs fresh CI and review; `review-pending` retains the queue label while waiting. Mechanics: [below](#land-queue-and-auto-delivery-mechanics).
 
+Right before adding `queue`, run the repo's CI preflight script `npm run ci:preflight` (`scripts/ci-preflight.mjs`; not the retired local agent preflight). It checks the branch name, `sync-generated --check`, workflow YAML sanity, secret patterns in the diff and the legacy PR-size limit. It does not run `routes --check`, the ratchets, presubmit CHECK 0d or the declaration lint; those remain CI's job.
+
 ```bash
 gh pr edit <PR-number> --add-label queue
 ```
@@ -131,7 +133,7 @@ changed code expresses it. Unknown or missing evidence fails closed.
 
 ### Parallel agents
 
-- Before starting: run `node scripts/pr-overlap.mjs` (or read the PR's `<!-- pr-overlap -->` sticky comment). If another open PR touches the same files, coordinate with that session or wait. Prefer small PRs that merge fast (limits: `docs/governance/FOUNDER_STANDING_DECISIONS.md`).
+- Before starting: run `node scripts/pr-overlap.mjs` (or read the PR's `<!-- pr-overlap -->` sticky comment). If another open PR touches the same files, coordinate with that session or wait. Prefer small PRs that merge fast (limits: [`FOUNDER_STANDING_DECISIONS.md`](../governance/FOUNDER_STANDING_DECISIONS.md)).
 - Landing: add label `queue`. Don't loop `update-branch`, `--auto` or custom merge scripts.
 - No stacked PRs: branch from main after the dependency merges.
 - Before merging an agent PR, read every `-` line of `git diff origin/main...HEAD`; nothing outside the PR's scope may be removed (2026-10-06 PR-C2 #3631 stale-copy revert).
