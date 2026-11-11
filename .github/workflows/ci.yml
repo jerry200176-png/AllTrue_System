@@ -130,6 +130,7 @@ jobs:
           bash scripts/tests/verify-db-backup.test.sh
           bash scripts/tests/acceptance-login-contract.test.sh
           bash scripts/tests/synthetic-director-workflow-contract.test.sh
+          bash scripts/tests/install-playwright-chromium.test.sh
 
       - name: Test control plane lint catches violations
         run: |
