@@ -251,7 +251,7 @@
               <div v-if="expandedId === row.id && row.status !== 'resolved' && row.status !== 'withdrawn'" :id="`sdp-mobile-detail-${row.id}`">
                 <DiscrepancyResolveForm
                   compact
-                  id-prefix="dsc-m"
+                  id-prefix="sdp-m"
                   :row-id="row.id"
                   :draft="resolutionDrafts[row.id]"
                   :templates="noteTemplates"
