@@ -38,10 +38,14 @@ describe('calendar drawn cards (#5178)', () => {
     expect(drawsServedSessions(result)).toBe(false);
   });
 
-  it('rejects a card with no served session behind it', () => {
+  it('does not fail a recurrence-only or schedule-only card with no served session, but counts it', () => {
     const result = compareDrawnCards([label('甲', '10:00'), label('戊', '12:00')], rows, DAY);
     expect(result.phantom).toEqual([label('戊', '12:00')]);
-    expect(drawsServedSessions(result)).toBe(false);
+    expect(drawsServedSessions(result)).toBe(true);
+  });
+
+  it('still fails when only cards without a served session are drawn', () => {
+    expect(drawsServedSessions(compareDrawnCards([label('戊', '12:00')], rows, DAY))).toBe(false);
   });
 
   it('matches by time, not by student alone', () => {

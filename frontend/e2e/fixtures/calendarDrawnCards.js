@@ -35,7 +35,7 @@ const labelMatches = (label, item) => label.startsWith(`${item.date} ${item.time
  * Compare drawn card labels with the sessions of the day.
  *  - matched: live sessions with a drawn card;
  *  - wrongDay: labels carrying a date other than `date` (the day view draws only the selected day);
- *  - phantom: labels of this day that match no served session of any status.
+ *  - phantom: labels of this day that match no served session of any status (informational, see drawsServedSessions).
  */
 export function compareDrawnCards(labels, rows, date) {
   const { live, all } = sessionsOfDay(rows, date);
@@ -54,7 +54,12 @@ export function describeDrawnCards(result) {
     + `cards of another day=${result.wrongDay.length}, cards with no served session=${result.phantom.length}`;
 }
 
-/** True when the calendar draws the day correctly: at least one served session is drawn, nothing foreign is. */
+/**
+ * True when the calendar draws the day correctly: at least one served session is drawn and no card of another day.
+ * Cards with no served session that day (`phantom`) are not a failure: the calendar legitimately draws recurrence
+ * cards from the contract weekday, schedule-only makeup/exception cards and cards at the contract slot time
+ * (calendarOccurrenceMerge.js). They are reported as coverage only.
+ */
 export function drawsServedSessions(result) {
-  return result.expected > 0 && result.matched > 0 && result.wrongDay.length === 0 && result.phantom.length === 0;
+  return result.expected > 0 && result.matched > 0 && result.wrongDay.length === 0;
 }
