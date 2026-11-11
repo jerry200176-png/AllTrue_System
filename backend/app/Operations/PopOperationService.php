@@ -3,6 +3,7 @@
 namespace App\Operations;
 
 use App\Models\SecurityAuditEvent;
+use App\Operations\Deployment\DeploymentManifest;
 use App\Operations\Inapp\InappStandingPolicy;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -1545,9 +1546,7 @@ final class PopOperationService
 
     private function localDeploymentSha(): string
     {
-        $path = $this->deploymentManifestPath ?? base_path('public/deployment.json');
-        $manifest = is_file($path) ? json_decode((string) file_get_contents($path), true) : null;
-        $deployedSha = is_array($manifest) ? (string) ($manifest['backend_sha'] ?? '') : '';
+        $deployedSha = (string) (new DeploymentManifest($this->deploymentManifestPath ?? base_path(DeploymentManifest::RELATIVE_PATH)))->read()['backend_sha'];
         if (!preg_match(self::COMMIT_SHA_PATTERN, $deployedSha)) {
             throw new RuntimeException('POP local executor deployment SHA does not match approval; fail closed.');
         }

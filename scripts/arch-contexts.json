@@ -2,6 +2,7 @@
   "_comment": "DEP-1 / 'no undocumented context' enforcement. Every backend Controller and Service must match exactly one context rule (by filename regex). FIT-10 fails on any unmapped file. Contexts mirror OWNERSHIP_REGISTRY.md.",
   "_ruleOrder": "first match wins; order specific -> general. The abstract base Controller.php is excluded by FIT-10.",
   "rules": [
+    { "context": "platform",       "match": "DeploymentManifest" },
     { "context": "support",        "match": "TriageBillingSnapshot|TriageContractLink|StudentClassLookup" },
     { "context": "billing",        "match": "SiblingContractTransfer" },
     { "context": "billing",        "match": "OrdinaryCloseEvidence|OrdinaryCloseCapture|OrdinaryCloseActivityCensus" },

@@ -2,6 +2,7 @@
 
 namespace App\Operations\Inapp;
 
+use App\Operations\Deployment\DeploymentManifest;
 use Illuminate\Support\Facades\Http;
 use Throwable;
 
@@ -23,12 +24,15 @@ class InappReportResolveEvidence
     /** @return list<string> the well-formed backend_sha and frontend_build_sha of the Pi's deployment manifest */
     public function deployedShas(): array
     {
-        $path = (string) (config('pop_inapp.deployment_manifest') ?: base_path('public/deployment.json'));
-        $manifest = is_file($path) ? json_decode((string) file_get_contents($path), true) : null;
-        if (!is_array($manifest)) return [];
-        $shas = array_map(fn (string $key): string => strtolower((string) ($manifest[$key] ?? '')), ['backend_sha', 'frontend_build_sha']);
+        return $this->manifest()['shas'];
+    }
 
-        return array_values(array_unique(array_filter($shas, fn (string $sha): bool => preg_match(self::SHA, $sha) === 1)));
+    /** @return array{state: string, shas: list<string>, backend_sha: ?string, source: string} the shared deployment.json reader's result (source: default|override); no SHAs unless state is ok */
+    public function manifest(): array
+    {
+        $reader = new DeploymentManifest();
+
+        return $reader->read() + ['source' => $reader->source()];
     }
 
     public function isAncestor(string $commit, string $of): bool
