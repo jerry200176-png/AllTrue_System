@@ -120,7 +120,9 @@ final class PopInappResolveAfterDeployTest extends TestCase
             'deploy job did not succeed' => ['job_failed', 'deploy_run_not_successful'],
             'run is not deploy.yml' => ['run_path', 'deploy_run_not_successful'],
             'run target is not what the Pi runs' => ['run_head', 'deploy_run_not_in_production'],
-            'manifest unreadable' => ['manifest_missing', 'deploy_run_not_in_production'],
+            'manifest missing' => ['manifest_missing', 'deployment_manifest_unreadable'],
+            'manifest malformed' => ['manifest_malformed', 'deployment_manifest_unreadable'],
+            'manifest without a well-formed SHA' => ['manifest_no_sha', 'deployment_manifest_unreadable'],
             'fix PR does not reference the issue' => ['pr_unlinked', 'fix_not_linked_to_issue'],
             'smoke failed' => ['smoke_failed', 'smoke_not_passed_after_deploy'],
             'smoke ran before the deploy finished' => ['smoke_early', 'smoke_not_passed_after_deploy'],
@@ -164,6 +166,8 @@ final class PopInappResolveAfterDeployTest extends TestCase
             'run_path' => $this->remote['run_path'] = '.github/workflows/ci.yml',
             'run_head' => $this->remote['run_head'] = $this->fix,
             'manifest_missing' => File::delete($this->dir . '/deployment.json'),
+            'manifest_malformed' => file_put_contents($this->dir . '/deployment.json', '{"backend_sha": "' . $this->deployed),
+            'manifest_no_sha' => file_put_contents($this->dir . '/deployment.json', json_encode(['backend_sha' => 'abc123', 'frontend_build_sha' => null])),
             'pr_unlinked' => $this->remote['pr_body'] = 'Refs #' . (self::ISSUE + 1),
             'smoke_failed' => $this->remote['smoke'] = 'failure',
             'smoke_early' => $this->remote['smoke_at'] = '2026-10-22T08:00:00Z',
@@ -321,6 +325,34 @@ final class PopInappResolveAfterDeployTest extends TestCase
     {
         return BugReport::create(['CampusID' => $campus, 'reporter_user_id' => $this->reporter, 'title' => 'T', 'description' => 'D',
             'severity' => 'low', 'status' => $status])->id;
+    }
+
+    public function test_dry_run_plan_reports_the_shas_actually_read_and_never_the_manifest_path(): void
+    {
+        $this->remote['run_head'] = $this->fix; // a run that is not what the Pi runs
+        $other = str_repeat('c', 40);
+        file_put_contents($this->dir . '/deployment.json', json_encode(['backend_sha' => strtoupper($this->deployed), 'frontend_build_sha' => $other]));
+        $bug = $this->bug('triaged');
+        $id = $this->drafted($bug);
+
+        $payload = json_decode((string) DB::table('pop_execution_records')->where('operation_id', $id)->where('phase', 'dry-run')->value('payload'), true);
+        self::assertContains('deploy_run_not_in_production', $payload['plan']['errors']);
+        self::assertNotContains('deployment_manifest_unreadable', $payload['plan']['errors']);
+        self::assertSame('ok', $payload['plan']['manifest_state']);
+        self::assertSame([$this->deployed, $other], $payload['plan']['manifest_shas']);
+        self::assertStringNotContainsString($this->dir, json_encode($payload));
+        self::assertStringNotContainsString('deployment.json', json_encode($payload));
+    }
+
+    public function test_an_unreadable_manifest_is_reported_by_state_without_shas(): void
+    {
+        File::delete($this->dir . '/deployment.json');
+        $id = $this->drafted($this->bug('triaged'));
+
+        $payload = json_decode((string) DB::table('pop_execution_records')->where('operation_id', $id)->where('phase', 'dry-run')->value('payload'), true);
+        self::assertSame(['deployment_manifest_unreadable'], $payload['plan']['errors']);
+        self::assertSame(['missing', []], [$payload['plan']['manifest_state'], $payload['plan']['manifest_shas']]);
+        self::assertSame('failed', $this->requestStatus($id));
     }
 
     private function dryRunErrors(string $id): array
