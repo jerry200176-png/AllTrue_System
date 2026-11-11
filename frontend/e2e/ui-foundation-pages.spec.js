@@ -659,23 +659,23 @@ test.describe('UI foundation — real Vue page evidence', () => {
         const mocks = await openPilot(page, { pageName: 'discrepancy', mode, viewport: vp });
 
         if (mode === 'loading') {
-          await expect(page.locator('.sdp-state-loading')).toBeVisible({ timeout: 10_000 });
+          await expect(page.locator('.dsc-state-loading')).toBeVisible({ timeout: 10_000 });
           mocks.releaseHang();
         } else if (mode === 'error') {
-          await expect(page.locator('.sdp-state-error')).toContainText('課表回報暫時無法載入', { timeout: 10_000 });
+          await expect(page.locator('.dsc-state-error')).toContainText('課表回報暫時無法載入', { timeout: 10_000 });
         } else {
           await expect(page.getByText('課表回報管理', { exact: true })).toBeVisible({ timeout: 10_000 });
           if (mode === 'empty') {
             await expect(page.getByText('目前沒有待處理的回報', { exact: true })).toBeVisible();
           } else {
             const action = vp.width <= 768
-              ? page.locator('.sdp-mcard').first().getByRole('button', { name: '接手處理', exact: true })
+              ? page.locator('.dsc-mcard').first().getByRole('button', { name: '接手處理', exact: true })
               : page.getByRole('button', { name: '接手處理', exact: true }).first();
             await expect(action).toBeVisible();
             await action.click();
             const detail = vp.width <= 768
-              ? page.locator('.sdp-mcard').first().locator('.sdp-resolve-form')
-              : page.locator('.sdp-detail').first();
+              ? page.locator('.dsc-mcard').first().locator('.dsc-resolve-form')
+              : page.locator('.dsc-detail').first();
             await expect(detail).toBeVisible();
           }
         }
@@ -687,7 +687,7 @@ test.describe('UI foundation — real Vue page evidence', () => {
         expect(layout.scrollWidth).toBeLessThanOrEqual(layout.clientWidth);
         if (mode === 'normal' || mode === 'long') {
           fs.mkdirSync(outDir, { recursive: true });
-          await page.locator('.sdp-page').screenshot({ path: path.join(outDir, `vue-discrepancy-${mode}-${vp.name}.png`) });
+          await page.locator('.dsc-page').screenshot({ path: path.join(outDir, `vue-discrepancy-${mode}-${vp.name}.png`) });
         }
       });
     }
@@ -1004,6 +1004,34 @@ test.describe('Visual regression @visual', () => {
       await page.locator('[data-testid="release-note"] details').first().evaluate((details) => { details.open = true; });
       await page.waitForLoadState('networkidle');
       await expect(page).toHaveScreenshot(`release-notes-${vp.name}.png`, { fullPage: true });
+    });
+  }
+
+  // #4989: 課表回報管理 at 1280 and 390 with three fixed fake reports; the first one is opened on the 處理說明 form.
+  for (const vp of [{ name: '1280', width: 1280, height: 900 }, { name: '390', width: 390, height: 844 }]) {
+    test(`schedule-discrepancy @${vp.name}`, async ({ page }) => {
+      const report = (id, extra) => ({
+        id, reporter_name: '測試老師', branch_name: '測試分校', student_name: `測試學生${id}`, session_date: '2026-09-15',
+        time_range: '10:00–12:00', corrected_time_range: null, discrepancy_type_label: '時段不符', status: 'pending',
+        notes: '', class_session_id: 5000 + id, created_at: '2026-09-15T09:30:00', acknowledged_at: null, resolved_at: null, ...extra,
+      });
+      const data = [
+        report(1, { corrected_time_range: '11:00–13:00', notes: '請確認調課後的時段。' }),
+        report(2, { discrepancy_type_label: '缺少堂次', time_range: '', status: 'pending', subject: '數學' }),
+        report(3, { status: 'pending', notes: '這是一段較長的回報備註，用來確認小螢幕上會自然折行。' }),
+      ];
+      await page.clock.setFixedTime(new Date('2026-09-15T10:00:00+08:00'));
+      await page.setViewportSize({ width: vp.width, height: vp.height });
+      await installApiMocks(page, 'normal', 'discrepancy');
+      await page.route(/schedule-discrepancies\?/, (route) => route.fulfill({ contentType: 'application/json', body: JSON.stringify({ data }) }));
+      await page.goto('/pilot-mount.html?page=discrepancy&mode=normal');
+      await expect(page.locator('html')).toHaveAttribute('data-pilot-ready', '1', { timeout: 15_000 });
+      const first = vp.width <= 768 ? page.locator('.dsc-mcard').first() : page.locator('.dsc-table tbody tr').first();
+      await expect(first).toContainText('測試學生1');
+      await first.getByRole('button', { name: '接手處理', exact: true }).click();
+      await page.mouse.move(0, 0);
+      await page.waitForLoadState('networkidle');
+      await expect(page).toHaveScreenshot(`schedule-discrepancy-${vp.name}.png`, { fullPage: true });
     });
   }
 

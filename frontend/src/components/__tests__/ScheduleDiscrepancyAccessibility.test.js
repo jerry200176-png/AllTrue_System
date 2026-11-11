@@ -8,21 +8,21 @@ const source = readFileSync(resolve(__dirname, '../../pages/ScheduleDiscrepancyP
 
 describe('ScheduleDiscrepancyPage accessibility states', () => {
   it('announces loading progress politely', () => {
-    expect(source).toContain('class="sdp-state sdp-state-loading" role="status" aria-live="polite"');
+    expect(source).toMatch(/dsc-state-loading[^>]*role="status" aria-live="polite"/);
   });
 
   it('announces load failures as assertive alerts', () => {
-    expect(source).toContain('class="sdp-state sdp-state-error" role="alert" aria-live="assertive"');
+    expect(source).toMatch(/dsc-state-error[^>]*role="alert" aria-live="assertive"/);
   });
 
   it('identifies an empty report list as a status update', () => {
-    expect(source).toContain('class="sdp-state sdp-state-empty" role="status"');
+    expect(source).toMatch(/dsc-state-empty tw:items-center[^>]*role="status"/);
   });
 
   it('does not alter the existing API or action handlers', () => {
     expect(source).toContain('@click="refresh"');
     expect(source).toContain('fetchDiscrepancies');
     expect(source).toContain('@click="acknowledge(row)"');
-    expect(source).toContain('@click="resolve(row)"');
+    expect(source).toContain('@resolve="resolve(row)"');
   });
 });
