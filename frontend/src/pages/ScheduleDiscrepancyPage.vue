@@ -1,5 +1,5 @@
 <template>
-  <div class="dsc-page tw:mx-auto tw:flex tw:max-w-6xl tw:flex-col tw:gap-4 tw:px-[calc(var(--ds-space-4)-9px)] tw:text-foreground tw:md:px-0" data-testid="schedule-discrepancy-page">
+  <div class="dsc-page tw:mx-auto tw:flex tw:max-w-6xl tw:flex-col tw:gap-4 tw:px-[calc(var(--ds-space-4)-10px)] tw:text-foreground tw:md:px-0" data-testid="schedule-discrepancy-page">
     <header class="tw:relative tw:pb-2">
       <details class="tw:group/help" data-testid="sdp-help">
         <summary
