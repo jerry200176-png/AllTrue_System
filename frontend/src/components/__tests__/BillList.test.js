@@ -213,4 +213,74 @@ describe('BillList', () => {
     btn.trigger('click');
     expect(w.emitted('action')[0][1]).toBe('open');
   });
+
+  // in-app #520 / #5099: totals for what is on screen and what is ticked; the top 數字條 keeps its meaning.
+  describe('totals (#5099)', () => {
+    const TOTAL_ROWS = [
+      row({ id: 1, payment_status: 'pending_report', latest_payment_report_id: 9 }),
+      row({ id: 2, student_id: 2, student_name: '學生乙', payable_outstanding: 1000 }),
+      row({ id: 5, student_id: 5, student_name: '學生戊', payment_status: 'paid', payable_outstanding: 0 }),
+      row({ id: 6, student_id: 6, student_name: '學生己', payable_outstanding: 2500 }),
+    ];
+    const mountTotals = (props = {}) => mountList({ alertRows: TOTAL_ROWS, ...props });
+    const top = (w) => w.get('[data-testid="bill-sum-owed"]').text();
+    const shown = (w) => w.get('[data-testid="bill-visible-total"]').text();
+    const ticked = (w) => (w.find('[data-testid="bill-picked-total"]').exists() ? w.get('[data-testid="bill-picked-total"]').text() : '');
+
+    it('the top 「到今天未收」 is the sum of every row owed by today', () => {
+      expect(top(mountTotals())).toBe('到今天未收 NT$ 3,500');
+    });
+
+    it('the shown total follows the search, and the top figure does not', async () => {
+      const w = mountTotals();
+      expect(shown(w)).toBe('目前顯示 3 筆，到今天未收合計 NT$ 3,500');
+      await w.get('[data-testid="bill-search"]').setValue('乙');
+      expect(shown(w)).toBe('目前顯示 1 筆，到今天未收合計 NT$ 1,000');
+      expect(top(w)).toBe('到今天未收 NT$ 3,500');
+    });
+
+    it('the shown total follows the chip, and gives no amount when the rows on screen show none', async () => {
+      const w = mountTotals();
+      await w.get('[data-testid="bill-filter-owing"]').trigger('click');
+      expect(shown(w)).toBe('目前顯示 2 筆，到今天未收合計 NT$ 3,500');
+      await w.get('[data-testid="bill-filter-confirm"]').trigger('click');
+      expect(shown(w)).toBe('目前顯示 1 筆');
+      expect(top(w)).toBe('到今天未收 NT$ 3,500');
+    });
+
+    it('the shown total sums the same number as each row’s 未收 cell', () => {
+      const w = mountTotals({ alertRows: [
+        row({ id: 30, payable_outstanding: 700, open_periods: [{ outstanding: 700, due_date: '2026-12-01' }] }),
+        row({ id: 31, student_id: 2, payment_status: 'partial', open_periods: [{ outstanding: 200, due_date: '2026-11-01' }, { outstanding: 300, due_date: '2026-12-01' }] }),
+      ] });
+      expect(shown(w)).toBe('目前顯示 2 筆，到今天未收合計 NT$ 200');
+    });
+
+    it('the ticked total follows ticking, 全選 and 取消選取', async () => {
+      const w = mountTotals();
+      expect(ticked(w)).toBe('');
+      await w.get('[data-testid="bill-pick-c2"]').setValue(true);
+      expect(ticked(w)).toBe('已選 1 筆，到今天未收合計 NT$ 1,000');
+      await w.get('[data-testid="bill-select-all"]').setValue(true);
+      expect(ticked(w)).toBe('已選 2 筆，到今天未收合計 NT$ 3,500');
+      expect(w.get('[data-testid="bill-batch"]').text()).toBe('登記 2 筆');
+      expect(shown(w)).toBe('目前顯示 3 筆，到今天未收合計 NT$ 3,500');
+      await w.get('[data-testid="bill-clear-picked"]').trigger('click');
+      expect(ticked(w)).toBe('');
+    });
+
+    it('ticked 待確認入帳 rows show a count only (their rows show no 未收 amount)', async () => {
+      const w = mountTotals();
+      await w.get('[data-testid="bill-pick-c1"]').setValue(true);
+      expect(ticked(w)).toBe('已選 1 筆');
+    });
+
+    it('shows no total line when nothing is listed, and announces nothing live', async () => {
+      expect(mountTotals({ alertRows: [] }).find('[data-testid="bill-visible-total"]').exists()).toBe(false);
+      const w = mountTotals();
+      expect(w.get('[data-testid="bill-visible-total"]').attributes('aria-live')).toBeUndefined();
+      await w.get('[data-testid="bill-search"]').setValue('查無此人');
+      expect(w.find('[data-testid="bill-visible-total"]').exists()).toBe(false);
+    });
+  });
 });
