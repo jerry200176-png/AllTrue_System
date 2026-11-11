@@ -2,6 +2,10 @@
 
 > 2026-11-11 從 `AGENTS.md` 原文搬來；規則沒有改。
 
+## Brief 規則（協調者 → 實作者）
+
+實作者的 brief = issue 連結 + 限制（分支、大小預算、禁區、回報格式）。範圍、驗收條件、不可變更清單只在 issue 的計畫（[`docs/sop/ISSUE_PLAN.md`](../sop/ISSUE_PLAN.md)）裡；協調者不在 brief 裡重述。brief 與計畫相左時以計畫為準，實作者要在回報裡說出相左之處，不默默擇一。
+
 ## Agent Orchestration SOP
 
 開工前先判斷任務類型，避免把 AI 協作變成額外認知負擔：
