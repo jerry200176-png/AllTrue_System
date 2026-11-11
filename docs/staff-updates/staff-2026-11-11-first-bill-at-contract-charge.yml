@@ -5,7 +5,7 @@ updates:
       - director
     importance: digest
     title: 堂數制第一張帳單照合約金額開立
-    summary: 確認入帳時如果課程還沒有帳單，帳單金額一律是合約金額，收款只記實收；撤銷唯一收款時，系統開的那張帳單會一起作廢。
+    summary: 第一張帳單照合約金額，收款只記實收；撤銷唯一收款會一併作廢。
     items:
       - category: improved
         text: 堂數制課程第一次確認入帳時，帳單金額是合約金額；收到的錢少於合約金額，差額會繼續顯示未繳。
