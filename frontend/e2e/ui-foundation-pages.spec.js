@@ -1007,6 +1007,28 @@ test.describe('Visual regression @visual', () => {
     });
   }
 
+  // #4989: 分校健康 at 1280 and 390 with three fixed fake branches (one of each colour); generated_at is fixed.
+  for (const vp of [{ name: '1280', width: 1280, height: 900 }, { name: '390', width: 390, height: 844 }]) {
+    test(`branch-health @${vp.name}`, async ({ page }) => {
+      const dim = (status, label, extra = {}) => ({ status, label, source: '測試來源', signals: [{ key: 'a', label: '測試訊號', value: '3 筆' }], period: 'rolling_28_days', next_step: '先看測試項目', ...extra });
+      const dims = (over = {}) => ({ students: dim('green', '穩定'), teaching: dim('green', '穩定'), parents: dim('unavailable', '待接資料', { signals: [], period: null }), teachers: dim('green', '穩定'), operations: dim('green', '穩定'), ...over });
+      const data = [
+        { branch_id: 1, branch_name: '測試分校甲', status: 'red', headline: '教師訊號需要優先查看，其他已接入訊號穩定。', dimensions: dims({ teachers: dim('red', '緊急') }) },
+        { branch_id: 2, branch_name: '測試分校乙', status: 'yellow', headline: '教學訊號需要注意。', dimensions: dims({ teaching: dim('yellow', '需注意') }) },
+        { branch_id: 3, branch_name: '測試分校丙', status: 'green', headline: '目前沒有紅色或黃色訊號。', dimensions: dims() },
+      ];
+      await page.setViewportSize({ width: vp.width, height: vp.height });
+      await page.route('**/api/v1/admin/branch-health', (route) => route.fulfill({ contentType: 'application/json', body: JSON.stringify({ data, meta: { generated_at: '2026-09-15T10:00:00+08:00' } }) }));
+      await page.goto('/pilot-mount.html?page=branch-health&role=super_admin');
+      await expect(page.locator('html')).toHaveAttribute('data-pilot-ready', '1', { timeout: 15_000 });
+      await expect(page.locator(vp.width <= 900 ? '.branch-health__mobile-card' : '.branch-health__table tbody tr')).toHaveCount(3);
+      await expect(page.getByRole('heading', { name: '測試分校甲 詳情' })).toBeVisible();
+      await page.mouse.move(0, 0);
+      await page.waitForLoadState('networkidle');
+      await expect(page).toHaveScreenshot(`branch-health-${vp.name}.png`, { fullPage: true });
+    });
+  }
+
   // #4989: 課表回報管理 at 1280 and 390 with three fixed fake reports; the first one is opened on the 處理說明 form.
   for (const vp of [{ name: '1280', width: 1280, height: 900 }, { name: '390', width: 390, height: 844 }]) {
     test(`schedule-discrepancy @${vp.name}`, async ({ page }) => {
@@ -1312,5 +1334,68 @@ for (const vp of [{ width: 390, height: 844, titleLines: 2 }, { width: 1280, hei
     const sw = await page.evaluate(() => [document.documentElement.scrollWidth, document.documentElement.clientWidth]);
     expect(sw[0]).toBeLessThanOrEqual(sw[1]);
     await page.screenshot({ path: path.join(outDir, `discrepancy-shell-toast-${vp.width}.png`) });
+  });
+}
+
+// #4989 分校健康 inside the REAL app shell (mocked API): 16px phone gutter, title lines, 44px+ controls, th token size.
+for (const vp of [{ width: 390, height: 844, titleLines: 2 }, { width: 1280, height: 900, titleLines: 1 }]) {
+  test(`branch health in the app shell @${vp.width}`, async ({ page }) => {
+    await page.setViewportSize({ width: vp.width, height: vp.height });
+    const dim = (status, label) => ({ status, label, source: '測試來源', signals: [{ key: 'a', label: '測試訊號', value: '3 筆' }], period: 'current', next_step: '先看測試項目' });
+    const dimensions = { students: dim('green', '穩定'), teaching: dim('yellow', '需注意'), parents: dim('unavailable', '待接資料'), teachers: dim('red', '緊急'), operations: dim('green', '穩定') };
+    const data = [{ branch_id: 1, branch_name: '內湖分校', status: 'red', headline: '教師訊號需要優先查看。', dimensions }];
+    await page.route('**/api/v1/**', async (route) => {
+      const p = new URL(route.request().url()).pathname;
+      if (route.request().method() !== 'GET') return route.fulfill({ json: { ok: true } });
+      if (p.endsWith('/me')) return route.fulfill({ json: { id: 9001, name: 'E2E Admin', role: 'super_admin', campuses: [1], must_change_password: false, capabilities: [] } });
+      if (p.endsWith('/branches') || p.endsWith('/campuses')) return route.fulfill({ json: [{ id: 1, name: '內湖分校', code: 'neihu' }] });
+      if (p.includes('/notifications')) return route.fulfill({ json: { data: [], unread_count: 0 } });
+      if (p.includes('/admin/branch-health')) return route.fulfill({ json: { data, meta: { generated_at: '2026-09-15T10:00:00+08:00' } } });
+      return route.fulfill({ json: { data: [] } });
+    });
+    await page.goto('/pilot-mount.html?page=app&role=super_admin');
+    await expect(page.locator('html')).toHaveAttribute('data-pilot-ready', '1');
+    // Reach the page like a person: phone 更多 sheet, desktop 系統管理 group.
+    const entry = page.getByText('分校健康', { exact: true }).locator('visible=true');
+    if (vp.width === 390) {
+      await page.locator('.mobile-bottom-nav').getByText('更多').click();
+      await page.getByPlaceholder(/搜尋學生、老師、課程或功能/).fill('分校健康');
+    } else {
+      await page.getByText('系統管理', { exact: true }).click();
+    }
+    await entry.first().click();
+    const root = page.getByTestId('branch-health-board');
+    await expect(root).toBeVisible();
+    await expect(root.locator('.branch-health__table tbody tr, .branch-health__mobile-card').locator('visible=true').first()).toBeVisible();
+
+    // The shell has no main landmark of its own: the page provides exactly one.
+    await expect(page.locator('main, [role="main"]')).toHaveCount(1);
+    const m = await page.evaluate(() => {
+      const root = document.querySelector('[data-testid="branch-health-board"]');
+      const h2 = root.querySelector('h2');
+      const lh = parseFloat(getComputedStyle(h2).lineHeight);
+      const small = [...root.querySelectorAll('button')].filter((b) => b.getBoundingClientRect().width > 0 && b.getBoundingClientRect().height < 44).length;
+      const th = root.querySelector('thead th');
+      const first = root.querySelector('.branch-health__mobile-card, [data-slot="card"]');
+      return {
+        lines: Math.round(h2.getBoundingClientRect().height / lh), small, h1s: document.querySelectorAll('h1').length,
+        thSize: th && th.getBoundingClientRect().width ? parseFloat(getComputedStyle(th).fontSize) : null,
+        left: Math.round(first.getBoundingClientRect().left - root.parentElement.getBoundingClientRect().left),
+        parentLeft: Math.round(root.parentElement.getBoundingClientRect().left),
+        sw: [document.documentElement.scrollWidth, document.documentElement.clientWidth],
+      };
+    });
+    expect(m.lines).toBeLessThanOrEqual(vp.titleLines);
+    expect(m.small).toBe(0);
+    expect(m.sw[0]).toBeLessThanOrEqual(m.sw[1]);
+    if (vp.width === 390) {
+      // Phone gutter: the first card's left edge sits 16px from the viewport (shell 10px + page 6px).
+      const left = await root.locator('.branch-health__mobile-card').first().evaluate((el) => Math.round(el.getBoundingClientRect().left));
+      expect(left).toBe(16);
+    } else {
+      expect(m.thSize).toBeGreaterThanOrEqual(15);
+    }
+    fs.mkdirSync(outDir, { recursive: true });
+    await page.screenshot({ path: path.join(outDir, `branch-health-shell-${vp.width}.png`) });
   });
 }

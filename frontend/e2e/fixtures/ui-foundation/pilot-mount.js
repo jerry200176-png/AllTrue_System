@@ -62,6 +62,7 @@ const pageModules = {
   'truefit-fixture': () => import('../../../src/pages/TrueFitPaperFixturePage.vue'),
   'truefit-app': () => import('../../../src/pages/TrueFitApp.vue'),
   'release-notes': () => import('../../../src/pages/ReleaseNotesPage.vue'),
+  'branch-health': () => import('../../../src/pages/BranchHealthBoard.vue'),
 };
 const loadPage = pageModules[page] || pageModules.inbox;
 const PageComponent = (await loadPage()).default;
@@ -186,6 +187,9 @@ createApp({
     }
     if (page === 'branch-management') {
       return () => h(PageComponent, { branchId: 1, token: 'e2e-foundation-token', standalone: mode === 'public', enabled: true });
+    }
+    if (page === 'branch-health') {
+      return () => h(PageComponent, { token: 'e2e-branch-health-token' });
     }
     if (page === 'release-notes') {
       return () => h(PageComponent, { userRole: role });

@@ -35,6 +35,7 @@ const BASELINE = {
   'attendance&role=teacher': { 'color-contrast': 2 },
   'release-notes': {},
   discrepancy: {},
+  'branch-health': {},
 };
 
 for (const [name, allowed] of Object.entries(BASELINE)) for (const vp of VIEWPORTS) {

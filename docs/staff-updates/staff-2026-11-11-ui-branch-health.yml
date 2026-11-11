@@ -1,0 +1,13 @@
+updates:
+  - id: staff-2026-11-11-ui-branch-health
+    published_at: "2026-11-11"
+    audiences:
+      - super_admin
+    importance: digest
+    title: 分校健康頁換新外觀
+    summary: 字更大、按鈕更好按；資料和原本一樣。
+    items:
+      - category: improved
+        text: 「分校健康」頁改成大字、大按鈕，各分校的狀態標籤和詳情卡片更清楚。
+    source_refs:
+      - "changelog:2026-11-11:ui-branch-health"

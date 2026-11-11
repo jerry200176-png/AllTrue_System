@@ -45,7 +45,6 @@
   "src/pages/BindingConflictReviewPage.vue",
   "src/pages/BindingHealthDashboard.vue",
   "src/pages/BindingManagementPage.vue",
-  "src/pages/BranchHealthBoard.vue",
   "src/pages/BranchManagementPage.vue",
   "src/pages/BugReportsPage.vue",
   "src/pages/ChatPage.vue",

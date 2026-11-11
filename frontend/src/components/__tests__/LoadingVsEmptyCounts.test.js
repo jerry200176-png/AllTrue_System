@@ -22,7 +22,8 @@ describe('loading shows placeholders, not fake zero / fake empty', () => {
   it('BranchHealthBoard starts in loading state with a skeleton', () => {
     const s = read('BranchHealthBoard.vue');
     expect(s).toContain('const loading = ref(true)');
-    expect(s).toContain('<AtSkeleton v-if="showSkeleton"');
+    expect(s).toContain('<div v-if="showSkeleton"');
+    expect(s).toContain('<Skeleton v-for="n in 6"');
   });
 });
 

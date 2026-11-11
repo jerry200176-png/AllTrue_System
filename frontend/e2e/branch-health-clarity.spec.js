@@ -57,8 +57,8 @@ test.describe('Branch health clarity browser verification', () => {
 
     for (const viewport of viewports) {
       await page.setViewportSize({ width: viewport.width, height: viewport.height });
-      await page.goto('/branch-health-pilot-mount.html?mode=normal');
-      await expect(page.getByTestId('at-page-header').getByRole('heading', { name: '分校健康', exact: true })).toBeVisible();
+      await page.goto('/pilot-mount.html?page=branch-health&role=super_admin&mode=normal');
+      await expect(page.getByTestId('branch-health-header').getByRole('heading', { name: '分校健康', exact: true })).toBeVisible();
       if (viewport.width <= 900) {
         await expect(page.locator('.branch-health__mobile-list')).toBeVisible();
         await expect(page.locator('.branch-health__mobile-card')).toHaveCount(2);
@@ -83,20 +83,20 @@ test.describe('Branch health clarity browser verification', () => {
   test('selects a branch and exposes loading, empty, and retryable error states', async ({ page }) => {
     await installMock(page);
     await page.setViewportSize({ width: 390, height: 844 });
-    await page.goto('/branch-health-pilot-mount.html?mode=normal');
+    await page.goto('/pilot-mount.html?page=branch-health&role=super_admin&mode=normal');
     await page.getByRole('button', { name: '台北分校' }).last().click();
     await expect(page.getByRole('heading', { name: '台北分校 詳情' })).toBeVisible();
     await expect(page.locator('.branch-health__mobile-headline').filter({ hasText: '教學訊號需要優先查看' })).toBeVisible();
 
-    await page.goto('/branch-health-pilot-mount.html?mode=loading');
-    await expect(page.getByTestId('at-skeleton')).toBeVisible();
+    await page.goto('/pilot-mount.html?page=branch-health&role=super_admin&mode=loading');
+    await expect(page.getByTestId('branch-health-skeleton')).toBeVisible();
     await expect(page.getByRole('heading', { name: '台北分校 詳情' })).toBeVisible();
 
-    await page.goto('/branch-health-pilot-mount.html?mode=empty');
+    await page.goto('/pilot-mount.html?page=branch-health&role=super_admin&mode=empty');
     await expect(page.getByText('目前沒有啟用中的分校資料', { exact: true })).toBeVisible();
 
     await page.setViewportSize({ width: 390, height: 844 });
-    await page.goto('/branch-health-pilot-mount.html?mode=error');
+    await page.goto('/pilot-mount.html?page=branch-health&role=super_admin&mode=error');
     await expect(page.getByRole('alert')).toContainText('無法載入分校健康');
     await page.evaluate(() => { window.__branchHealthRetryAllowed = true; });
     await page.getByRole('button', { name: '重試' }).click();
@@ -106,7 +106,7 @@ test.describe('Branch health clarity browser verification', () => {
   test('long Chinese content remains reachable at mobile width', async ({ page }) => {
     await installMock(page);
     await page.setViewportSize({ width: 390, height: 844 });
-    await page.goto('/branch-health-pilot-mount.html?mode=long');
+    await page.goto('/pilot-mount.html?page=branch-health&role=super_admin&mode=long');
     await expect(page.locator('.branch-health__mobile-card').first()).toContainText('很長的分校名稱');
     await expect(page.getByRole('button', { name: /很長的分校名稱/ })).toBeVisible();
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 2)).toBe(true);

@@ -1,91 +1,158 @@
 <template>
-  <main class="branch-health at-page" data-testid="branch-health-board">
-    <AtPageHeader title="分校健康" description="總部查看各分校目前可驗證的營運訊號；這不是總分或排名。" icon="monitor_heart">
-      <template #meta><span>資料更新於 <strong>{{ updatedLabel }}</strong></span></template>
-      <template #actions><AtButton shape="rect" variant="secondary" icon="refresh" :disabled="loading" @click="load">重新整理</AtButton></template>
-    </AtPageHeader>
+  <main class="branch-health tw:mx-auto tw:flex tw:max-w-6xl tw:flex-col tw:gap-4 tw:px-[calc(var(--ds-space-4)-10px)] tw:text-foreground tw:md:px-0" data-testid="branch-health-board">
+    <header class="tw:pb-2" data-testid="branch-health-header">
+      <div class="tw:flex tw:flex-wrap tw:items-center tw:justify-between tw:gap-x-4 tw:gap-y-2">
+        <h2 class="tw:flex tw:items-center tw:gap-2 tw:text-tpl-page tw:font-bold tw:tracking-tight">
+          <Activity class="tw:size-6 tw:shrink-0 tw:text-tpl-secondary" :stroke-width="2" aria-hidden="true" />
+          分校健康
+        </h2>
+        <Button variant="outline" class="tw:h-12 tw:px-5 tw:text-[length:var(--tpl-text-body)] tw:font-semibold tw:shadow-none" :disabled="loading" @click="load">
+          <RefreshCw class="tw:size-4" :stroke-width="2" aria-hidden="true" />
+          重新整理
+        </Button>
+      </div>
+      <p class="tw:mt-2 tw:text-tpl-body tw:text-tpl-secondary tw:text-pretty">總部查看各分校目前可驗證的營運訊號；這不是總分或排名。</p>
+      <p class="tw:mt-1 tw:text-tpl-caption tw:text-tpl-secondary">資料更新於 <strong class="tw:text-foreground">{{ updatedLabel }}</strong></p>
+    </header>
 
-    <AtSkeleton v-if="showSkeleton" rows="6" />
-    <AtInlineAlert v-else-if="error" tone="danger" title="無法載入分校健康">
+    <div v-if="showSkeleton" class="tw:flex tw:flex-col tw:gap-3" data-testid="branch-health-skeleton">
+      <Skeleton v-for="n in 6" :key="n" class="tw:h-14 tw:w-full" />
+    </div>
+    <Alert v-else-if="error" tone="danger" title="無法載入分校健康" class="tw:text-tpl-body">
       <p>{{ error }}</p>
-      <template #action><AtButton shape="rect" size="sm" variant="ghost" @click="load">重試</AtButton></template>
-    </AtInlineAlert>
+      <Button variant="outline" class="tw:mt-3 tw:h-12 tw:px-5 tw:text-[length:var(--tpl-text-body)] tw:font-semibold tw:text-foreground" @click="load">重試</Button>
+    </Alert>
 
-    <div v-else class="at-refetch" :class="{ 'is-busy': busy }" :aria-busy="busy ? 'true' : 'false'">
-      <div class="branch-health__note" role="note"><span class="material-symbols-outlined" aria-hidden="true">info</span><span>顏色只根據目前系統有的資料判斷；老師流失、老師可排課量、續班率、家長客訴還沒納入。</span></div>
-      <section class="branch-health__summary" aria-label="分校健康摘要">
-        <AtMetric label="目前分校" :value="rows.length" delta="啟用中的分校" accent="var(--ds-primary)" />
-        <AtMetric label="優先處理" :value="statusCounts.red" delta="有紅色訊號" delta-tone="negative" accent="var(--ds-danger)" />
-        <AtMetric label="需要注意" :value="statusCounts.yellow" delta="有黃色訊號" delta-tone="neutral" accent="var(--ds-warning)" />
-        <AtMetric label="資料不足" :value="unavailableCount" delta="不代表正常" delta-tone="neutral" accent="var(--ds-info)" />
+    <div v-else class="at-refetch tw:flex tw:flex-col tw:gap-4" :class="{ 'is-busy': busy }" :aria-busy="busy ? 'true' : 'false'">
+      <div class="tw:flex tw:items-start tw:gap-2 tw:rounded-xl tw:border tw:bg-secondary tw:px-4 tw:py-3 tw:text-tpl-body tw:text-pretty" role="note">
+        <Info class="tw:mt-0.5 tw:size-5 tw:shrink-0 tw:text-tpl-secondary" :stroke-width="2" aria-hidden="true" />
+        <span>顏色只根據目前系統有的資料判斷；老師流失、老師可排課量、續班率、家長客訴還沒納入。</span>
+      </div>
+
+      <section class="branch-health__summary tw:grid tw:grid-cols-2 tw:gap-3 tw:min-[901px]:grid-cols-4" aria-label="分校健康摘要">
+        <Card v-for="metric in metrics" :key="metric.label" class="tw:gap-0 tw:py-4 tw:shadow-none">
+          <CardContent class="tw:flex tw:flex-col tw:gap-1 tw:px-4">
+            <span class="tw:flex tw:items-center tw:gap-2 tw:text-tpl-caption tw:text-tpl-secondary">
+              <span class="tw:size-2.5 tw:shrink-0 tw:rounded-full" :style="{ backgroundColor: metric.accent }" aria-hidden="true" />{{ metric.label }}
+            </span>
+            <span class="tw:text-tpl-num-sm tw:leading-none tw:font-bold tw:tabular-nums">{{ metric.value }}</span>
+            <span :class="['tw:text-tpl-caption', metric.negative ? 'tw:text-[color:var(--ds-danger-text)]' : 'tw:text-tpl-secondary']">{{ metric.delta }}</span>
+          </CardContent>
+        </Card>
       </section>
 
-      <AtSection title="分校健康看板">
-        <AtEmpty v-if="!rows.length" class="branch-health__empty" icon="monitor_heart" title="目前沒有啟用中的分校資料" description="啟用分校並接入營運訊號後，總部才能在這裡查看詳情。" />
+      <section class="tw:flex tw:flex-col tw:gap-3" aria-labelledby="bh-board-title">
+        <h3 id="bh-board-title" class="tw:text-tpl-list tw:font-bold">分校健康看板</h3>
+        <Card v-if="!rows.length" class="branch-health__empty tw:items-center tw:gap-2 tw:py-10 tw:text-center tw:shadow-none">
+          <Activity class="tw:size-8 tw:text-tpl-secondary" :stroke-width="1.75" aria-hidden="true" />
+          <h4 class="tw:text-tpl-list tw:font-bold">目前沒有啟用中的分校資料</h4>
+          <p class="tw:max-w-prose tw:px-5 tw:text-tpl-body tw:text-tpl-secondary">啟用分校並接入營運訊號後，總部才能在這裡查看詳情。</p>
+        </Card>
         <template v-else>
-          <div class="branch-health__table-wrap">
-            <table class="branch-health__table">
-              <caption class="sr-only">各分校五個營運健康維度</caption>
-              <thead><tr><th scope="col">分校</th><th v-for="dimension in dimensionOrder" :key="dimension.key" scope="col">{{ dimension.label }}</th><th scope="col">主要狀況</th></tr></thead>
-              <tbody>
-                <tr v-for="row in rows" :key="row.branch_id" :class="{ 'is-selected': selected?.branch_id === row.branch_id }" @click="select(row)">
-                  <th scope="row"><AtButton shape="rect" size="sm" variant="ghost" class="branch-health__branch" @click.stop="select(row)">{{ row.branch_name }}</AtButton></th>
-                  <td v-for="dimension in dimensionOrder" :key="dimension.key"><span :class="pillClass(row.dimensions?.[dimension.key])" :title="row.dimensions?.[dimension.key]?.next_step || ''">{{ row.dimensions?.[dimension.key]?.label || '待接資料' }}</span></td>
-                  <td class="branch-health__headline">{{ row.headline }}</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-          <div class="branch-health__mobile-list" aria-label="分校健康清單">
-            <article v-for="row in rows" :key="row.branch_id" class="branch-health__mobile-card" :class="{ 'is-selected': selected?.branch_id === row.branch_id }">
-              <div class="branch-health__mobile-head">
-                <AtButton shape="rect" variant="ghost" class="branch-health__mobile-branch" @click="select(row)">{{ row.branch_name }}</AtButton>
-                <span class="branch-health__mobile-hint">查看詳情</span>
-              </div>
-              <dl class="branch-health__mobile-dimensions">
-                <div v-for="dimension in dimensionOrder" :key="dimension.key">
-                  <dt>{{ dimension.label }}</dt>
-                  <dd><span :class="pillClass(row.dimensions?.[dimension.key])">{{ row.dimensions?.[dimension.key]?.label || '待接資料' }}</span></dd>
+          <Card class="branch-health__table-wrap tw:gap-0 tw:py-0 tw:shadow-none tw:max-[900px]:hidden">
+            <Table class="branch-health__table tw:min-w-[920px] tw:text-[length:var(--tpl-text-body)] tw:[&_td]:text-[length:var(--tpl-text-body)] tw:[&_th]:text-[length:var(--tpl-text-caption)]">
+              <TableCaption class="tw:sr-only">各分校五個營運健康維度</TableCaption>
+              <TableHeader>
+                <TableRow class="tw:hover:bg-transparent">
+                  <TableHead scope="col" :class="headCell">分校</TableHead>
+                  <TableHead v-for="dimension in dimensionOrder" :key="dimension.key" scope="col" :class="headCell">{{ dimension.label }}</TableHead>
+                  <TableHead scope="col" :class="headCell">主要狀況</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                <TableRow v-for="row in rows" :key="row.branch_id" :class="['tw:cursor-pointer', selected?.branch_id === row.branch_id && 'tw:bg-muted/50']" @click="select(row)">
+                  <TableHead scope="row" class="tw:border-0 tw:bg-transparent tw:px-2 tw:py-2 tw:normal-case tw:text-[length:var(--tpl-text-body)]">
+                    <Button variant="ghost" class="tw:h-12 tw:px-3 tw:text-[length:var(--tpl-text-body)] tw:font-bold" @click.stop="select(row)">{{ row.branch_name }}</Button>
+                  </TableHead>
+                  <TableCell v-for="dimension in dimensionOrder" :key="dimension.key" class="tw:px-4 tw:py-3">
+                    <Badge variant="outline" :class="[pillBase, pillClass(row.dimensions?.[dimension.key])]" :title="row.dimensions?.[dimension.key]?.next_step || ''">{{ row.dimensions?.[dimension.key]?.label || '待接資料' }}</Badge>
+                  </TableCell>
+                  <TableCell class="branch-health__headline tw:max-w-[300px] tw:px-4 tw:py-3 tw:whitespace-normal tw:text-tpl-secondary">{{ row.headline }}</TableCell>
+                </TableRow>
+              </TableBody>
+            </Table>
+          </Card>
+          <div class="branch-health__mobile-list tw:flex tw:flex-col tw:gap-3 tw:min-[901px]:hidden" aria-label="分校健康清單">
+            <Card v-for="row in rows" :key="row.branch_id" class="branch-health__mobile-card tw:gap-0 tw:py-4 tw:shadow-none" :class="selected?.branch_id === row.branch_id && 'tw:border-primary tw:ring-2 tw:ring-primary/30'">
+              <CardContent class="tw:flex tw:flex-col tw:gap-4 tw:px-4">
+                <div class="tw:flex tw:items-start tw:justify-between tw:gap-3">
+                  <Button variant="ghost" class="tw:h-auto tw:min-h-12 tw:min-w-0 tw:justify-start tw:px-3 tw:text-left tw:text-[length:var(--tpl-text-body)] tw:font-bold tw:whitespace-normal" @click="select(row)">{{ row.branch_name }}</Button>
+                  <span class="tw:shrink-0 tw:pt-3 tw:text-tpl-caption tw:text-tpl-secondary">查看詳情</span>
                 </div>
-              </dl>
-              <p class="branch-health__mobile-headline"><strong>主要狀況</strong>{{ row.headline || '—' }}</p>
-            </article>
+                <dl class="tw:grid tw:grid-cols-2 tw:gap-2.5">
+                  <div v-for="dimension in dimensionOrder" :key="dimension.key" class="tw:flex tw:min-w-0 tw:flex-col tw:gap-1 tw:rounded-lg tw:bg-secondary tw:p-2.5">
+                    <dt class="tw:text-tpl-caption tw:text-tpl-secondary">{{ dimension.label }}</dt>
+                    <dd><Badge variant="outline" :class="[pillBase, pillClass(row.dimensions?.[dimension.key])]">{{ row.dimensions?.[dimension.key]?.label || '待接資料' }}</Badge></dd>
+                  </div>
+                </dl>
+                <p class="branch-health__mobile-headline tw:grid tw:gap-1 tw:text-tpl-body tw:text-tpl-secondary tw:[overflow-wrap:anywhere]"><strong class="tw:text-foreground">主要狀況</strong>{{ row.headline || '—' }}</p>
+              </CardContent>
+            </Card>
           </div>
         </template>
-      </AtSection>
+      </section>
 
-      <AtSection v-if="selected" :title="`${selected.branch_name} 詳情`">
-        <div class="branch-health__detail-grid">
-          <article v-for="dimension in dimensionOrder" :key="dimension.key" class="branch-health__dimension">
-            <header><div><h3>{{ dimension.label }}</h3><p>{{ selected.dimensions?.[dimension.key]?.source || '—' }}</p></div><span :class="pillClass(selected.dimensions?.[dimension.key])">{{ selected.dimensions?.[dimension.key]?.label || '待接資料' }}</span></header>
-            <dl><div v-for="signal in (selected.dimensions?.[dimension.key]?.signals || [])" :key="signal.key"><dt>{{ signal.label }}</dt><dd>{{ signal.value }}</dd></div></dl>
-            <p class="branch-health__period">期間：{{ periodLabel(selected.dimensions?.[dimension.key]?.period) }}</p>
-            <p class="branch-health__next"><strong>下一步：</strong>{{ selected.dimensions?.[dimension.key]?.next_step || '—' }}</p>
-          </article>
+      <section v-if="selected" class="tw:flex tw:flex-col tw:gap-3" aria-labelledby="bh-detail-title">
+        <h3 id="bh-detail-title" class="tw:text-tpl-list tw:font-bold">{{ `${selected.branch_name} 詳情` }}</h3>
+        <div class="tw:grid tw:grid-cols-1 tw:gap-3 tw:min-[901px]:grid-cols-2">
+          <Card v-for="dimension in dimensionOrder" :key="dimension.key" class="tw:gap-0 tw:py-4 tw:shadow-none">
+            <CardContent class="tw:flex tw:flex-col tw:gap-3 tw:px-4">
+              <header class="tw:flex tw:items-start tw:justify-between tw:gap-3">
+                <div class="tw:min-w-0">
+                  <h4 class="tw:text-tpl-list tw:font-bold">{{ dimension.label }}</h4>
+                  <p class="tw:mt-1 tw:text-tpl-caption tw:text-tpl-secondary">{{ selected.dimensions?.[dimension.key]?.source || '—' }}</p>
+                </div>
+                <Badge variant="outline" :class="[pillBase, pillClass(selected.dimensions?.[dimension.key])]">{{ selected.dimensions?.[dimension.key]?.label || '待接資料' }}</Badge>
+              </header>
+              <dl class="tw:grid tw:grid-cols-[1fr_auto] tw:gap-x-4 tw:gap-y-2 tw:text-tpl-body">
+                <div v-for="signal in (selected.dimensions?.[dimension.key]?.signals || [])" :key="signal.key" class="tw:contents">
+                  <dt class="tw:text-tpl-secondary">{{ signal.label }}</dt>
+                  <dd class="tw:font-bold tw:tabular-nums">{{ signal.value }}</dd>
+                </div>
+              </dl>
+              <p class="tw:text-tpl-caption tw:text-tpl-secondary">期間：{{ periodLabel(selected.dimensions?.[dimension.key]?.period) }}</p>
+              <p class="tw:text-tpl-body"><strong>下一步：</strong>{{ selected.dimensions?.[dimension.key]?.next_step || '—' }}</p>
+            </CardContent>
+          </Card>
         </div>
-        <p class="branch-health__disclaimer">這份資料只協助總部找出要先看的分校，不代表分校品質保證，也不會自動修改任何資料。</p>
-      </AtSection>
+        <p class="tw:border-t tw:pt-3 tw:text-tpl-caption tw:text-tpl-secondary">這份資料只協助總部找出要先看的分校，不代表分校品質保證，也不會自動修改任何資料。</p>
+      </section>
     </div>
   </main>
 </template>
 
 <script setup>
 import { computed, onMounted, ref } from 'vue';
+import { Activity, Info, RefreshCw } from 'lucide-vue-next';
 import { useRefetchView } from '../composables/useDelayedLoading';
-import AtPageHeader from '../components/design-system/AtPageHeader.vue';
-import AtButton from '../components/design-system/AtButton.vue';
-import AtSection from '../components/design-system/AtSection.vue';
-import AtMetric from '../components/design-system/AtMetric.vue';
-import AtEmpty from '../components/design-system/AtEmpty.vue';
-import AtSkeleton from '../components/design-system/AtSkeleton.vue';
-import AtInlineAlert from '../components/design-system/AtInlineAlert.vue';
+import { Alert } from '@/components/ui/alert';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent } from '@/components/ui/card';
+import { Skeleton } from '@/components/ui/skeleton';
+import { Table, TableBody, TableCaption, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 
 const props = defineProps({ token: { type: String, default: '' } });
 const rows = ref([]); const selected = ref(null); const loading = ref(true); const error = ref(''); const updatedAt = ref('');
 const { showSkeleton, busy } = useRefetchView(loading, computed(() => rows.value.length > 0));
+// Presentation only: status pills use status text on its own wash; table heads override the global `th` rule.
+const PILL_TONE = {
+  green: 'tw:bg-[var(--ds-success-wash)] tw:text-[color:var(--ds-success-text)]',
+  yellow: 'tw:bg-[var(--ds-warning-wash)] tw:text-[color:var(--ds-warning-text)]',
+  red: 'tw:bg-[var(--ds-danger-wash)] tw:text-[color:var(--ds-danger-text)]',
+  unavailable: 'tw:bg-secondary tw:text-tpl-secondary',
+};
+const pillBase = 'tw:border-transparent tw:px-3 tw:py-1 tw:text-[length:var(--tpl-text-caption)] tw:font-bold';
+const headCell = 'tw:h-12 tw:px-4 tw:text-tpl-caption tw:font-semibold tw:normal-case tw:text-tpl-secondary';
 const dimensionOrder = [{ key: 'students', label: '學生' }, { key: 'teaching', label: '教學' }, { key: 'parents', label: '家長' }, { key: 'teachers', label: '教師' }, { key: 'operations', label: '營運' }];
 const statusCounts = computed(() => rows.value.reduce((counts, row) => { const status = row.status || 'green'; counts[status] = (counts[status] || 0) + 1; return counts; }, { red: 0, yellow: 0, green: 0 }));
 const unavailableCount = computed(() => rows.value.reduce((count, row) => count + dimensionOrder.filter(({ key }) => row.dimensions?.[key]?.status === 'unavailable').length, 0));
+const metrics = computed(() => [
+  { label: '目前分校', value: rows.value.length, delta: '啟用中的分校', accent: 'var(--ds-primary)' },
+  { label: '優先處理', value: statusCounts.value.red, delta: '有紅色訊號', accent: 'var(--ds-danger)', negative: true },
+  { label: '需要注意', value: statusCounts.value.yellow, delta: '有黃色訊號', accent: 'var(--ds-warning)' },
+  { label: '資料不足', value: unavailableCount.value, delta: '不代表正常', accent: 'var(--ds-info)' },
+]);
 const updatedLabel = computed(() => formatDateTime(updatedAt.value));
 
 function api(path) { return fetch(`/api/v1${path}`, { headers: { Accept: 'application/json', Authorization: `Bearer ${props.token}` } }); }
@@ -99,55 +166,8 @@ async function load() {
   } catch (e) { rows.value = []; selected.value = null; error.value = e?.message || '請稍後再試'; } finally { loading.value = false; }
 }
 function select(row) { selected.value = row; }
-function pillClass(dimension) { return `branch-health__pill branch-health__pill--${dimension?.status || 'unavailable'}`; }
+function pillClass(dimension) { return PILL_TONE[dimension?.status] || PILL_TONE.unavailable; }
 function periodLabel(period) { return { current: '目前資料', next_7_days: '今天起 7 天', rolling_28_days: '近 28 天' }[period] || '未提供'; }
 function formatDateTime(value) { if (!value) return '—'; const date = new Date(value); return Number.isNaN(date.getTime()) ? String(value) : date.toLocaleString('zh-TW', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }); }
 onMounted(load);
 </script>
-
-<style scoped>
-.branch-health__note { display: flex; gap: 8px; align-items: flex-start; margin: 0 0 18px; padding: 12px 14px; color: var(--ds-ink-secondary); background: var(--ds-info-wash); border: 1px solid color-mix(in srgb, var(--ds-info) 25%, transparent); border-radius: 10px; font-size: 13px; line-height: 1.6; }
-.branch-health__note .material-symbols-outlined { color: var(--ds-info); font-size: 19px; }
-.branch-health__summary { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin: 0 0 18px; }
-.branch-health__table-wrap { overflow-x: auto; }
-.branch-health__mobile-list { display: none; }
-.branch-health__table { width: 100%; min-width: 920px; border-collapse: collapse; font-size: 13px; }
-.branch-health__table th, .branch-health__table td { padding: 13px 12px; border-top: 1px solid var(--ds-hairline); text-align: left; vertical-align: middle; }
-.branch-health__table thead th { color: var(--ds-ink-mute); font-size: 11px; font-weight: 800; white-space: nowrap; }
-.branch-health__table tbody tr { cursor: pointer; transition: background .15s ease; }
-.branch-health__table tbody tr:hover, .branch-health__table tbody tr.is-selected { background: var(--ds-surface-subtle); }
-.branch-health__branch { font-weight: 800; }
-.branch-health__headline { max-width: 300px; color: var(--ds-ink-secondary); line-height: 1.5; }
-.branch-health__pill { display: inline-flex; align-items: center; min-height: 26px; padding: 3px 8px; border-radius: 999px; font-size: 11px; font-weight: 800; white-space: nowrap; }
-.branch-health__pill--green { color: var(--ds-success); background: var(--ds-success-wash); }
-.branch-health__pill--yellow { color: var(--ds-warning-ink, var(--ds-warning)); background: var(--ds-warning-wash); }
-.branch-health__pill--red { color: var(--ds-danger); background: var(--ds-danger-wash); }
-.branch-health__pill--unavailable { color: var(--ds-ink-mute); background: var(--ds-surface-subtle); }
-.branch-health__detail-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
-.branch-health__dimension { padding: 16px; border: 1px solid var(--ds-hairline); border-radius: 10px; }
-.branch-health__dimension header { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
-.branch-health__dimension h3 { margin: 0; color: var(--ds-ink); font-size: 15px; }
-.branch-health__dimension header p { margin: 4px 0 0; color: var(--ds-ink-mute); font-size: 11px; line-height: 1.4; }
-.branch-health__dimension dl { display: grid; grid-template-columns: 1fr auto; gap: 8px 14px; margin: 16px 0 10px; }
-.branch-health__dimension dl div { display: contents; }
-.branch-health__dimension dt { color: var(--ds-ink-secondary); }
-.branch-health__dimension dd { margin: 0; color: var(--ds-ink); font-weight: 800; font-variant-numeric: tabular-nums; }
-.branch-health__period, .branch-health__next, .branch-health__disclaimer { margin: 0; color: var(--ds-ink-mute); font-size: 12px; line-height: 1.6; }
-.branch-health__next { margin-top: 8px; color: var(--ds-ink-secondary); }
-.branch-health__disclaimer { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--ds-hairline); }
-.branch-health__empty { margin: 0; }
-.branch-health__mobile-card { padding: 16px; border: 1px solid var(--ds-hairline); border-radius: var(--ds-radius-lg); background: var(--ds-canvas); }
-.branch-health__mobile-card + .branch-health__mobile-card { margin-top: 12px; }
-.branch-health__mobile-card.is-selected { border-color: var(--ds-primary); box-shadow: 0 0 0 2px var(--ds-primary-wash); }
-.branch-health__mobile-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
-.branch-health__mobile-branch { min-width: 0; font-weight: 800; text-align: left; white-space: normal; }
-.branch-health__mobile-hint { flex: 0 0 auto; color: var(--ds-ink-mute); font-size: 12px; }
-.branch-health__mobile-dimensions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin: 16px 0; }
-.branch-health__mobile-dimensions > div { display: flex; flex-direction: column; gap: 5px; min-width: 0; padding: 10px; border-radius: var(--ds-radius-md); background: var(--ds-surface-0); }
-.branch-health__mobile-dimensions dt { color: var(--ds-ink-mute); font-size: 12px; }
-.branch-health__mobile-dimensions dd { margin: 0; }
-.branch-health__mobile-headline { display: grid; gap: 4px; margin: 0; color: var(--ds-ink-secondary); font-size: 13px; line-height: 1.6; overflow-wrap: anywhere; }
-.branch-health :deep(.at-btn) { min-height: 44px; }
-.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
-@media (max-width: 900px) { .branch-health__summary { grid-template-columns: repeat(2, minmax(0, 1fr)); } .branch-health__detail-grid { grid-template-columns: 1fr; } .branch-health__table-wrap { display: none; } .branch-health__mobile-list { display: block; } }
-</style>
