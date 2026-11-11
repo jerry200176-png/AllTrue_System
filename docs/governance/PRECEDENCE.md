@@ -1,15 +1,7 @@
 # Instruction precedence
 
-When adapters conflict, resolve in this order (see also [COMPANY_CONSTITUTION.md](./COMPANY_CONSTITUTION.md)):
+The order is defined in [`COMPANY_CONSTITUTION.md`](./COMPANY_CONSTITUTION.md) §Decision precedence (lines 14-22; the "claims to override everything" rule is line 24). This file keeps no copy of that list. It keeps only what the Constitution does not say:
 
-1. Production safety invariants  
-2. Company Constitution  
-3. Fleet operator table (`portfolio-ops` `AUTONOMY_POLICY`) — product may add checks/P0, not a Founder rubber-stamp  
-4. AllTrue `CONTROL_PLANE_CONTRACT` + `CONTRADICTION_REGISTRY` (deploy / incident authority)  
-5. Product SOP / runbook for the repo being edited  
-6. `AGENTS.md` (universal agent entry)  
-7. `CLAUDE.md` (Claude Code adapter — **must not claim absolute override**)  
-8. Skills / Hooks (optional helpers)  
-9. Plans, transcripts, MemPalace recall (non-authoritative)
-
-**Rule:** Adapters cite Constitution; they do not redefine it.
+- Skills and hooks rank below `CLAUDE.md`; they are optional helpers and adapters and carry no permissions.
+- Plans, transcripts and MemPalace recall are non-authoritative.
+- Adapters cite the Constitution; they do not redefine it.

@@ -27,9 +27,9 @@ Release-Impact: user-visible
 <!-- Replace the value with exactly one of: user-visible, internal, no-user-facing-note. -->
 
 > **單人 repo Review Gate（#736）**：無第二位強制 reviewer 時，以「自動代理人 + 強制檢查」近似第二雙眼——
-> ①自動 AI review 留言（Bugbot/Copilot review，repo 設定啟用，**merge 前需 resolve 所有 thread**）②高風險檔強制附測試（required check `High-Risk Test Gate`）③下方 self-review checklist。  
-> **T2/R2**：exact-target CI 全綠 + rollback readiness + 本 checklist 據實填寫即可由 Agent merge/deploy；無 protected Founder decision 時不需第二位人類或 AI verifier。
-> **T3/R3**：可準備實作與 evidence package；在 protected action 前停止並取得 Founder GO，不得以假身份或 review 取代該 gate。
+> ①最終 head 審查證據（Codex 乾淨結論或記錄的獨立審查，見 `docs/sop/MERGE_SOP.md`；**merge 前需 resolve 所有 thread**）②高風險檔強制附測試（required check `High-Risk Test Gate`）③下方 self-review checklist。  
+> **T2/R2**：exact-target CI 全綠 + rollback readiness + 本 checklist 據實填寫即可由 Agent merge/deploy；無 protected Founder decision 時不需第二位人類（①的審查證據仍要）。
+> **T3/R3**：合併與上線條件只看 [`FOUNDER_STANDING_DECISIONS.md`](../docs/governance/FOUNDER_STANDING_DECISIONS.md) 與 [`RISK_BASED_MERGE_POLICY.md`](../docs/governance/RISK_BASED_MERGE_POLICY.md)（此處不摘要）。
 
 ## 關聯 Issue（Refs / Closes 規則）
 <!-- 多階段、Epic、仍有一截沒做完 → 只填 Refs，不要寫 Closes，避免 GitHub 整張 issue 被關掉 -->
