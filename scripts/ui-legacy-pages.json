@@ -48,7 +48,6 @@
   "src/pages/BranchManagementPage.vue",
   "src/pages/BugReportsPage.vue",
   "src/pages/ChatPage.vue",
-  "src/pages/ClassroomManagement.vue",
   "src/pages/DirectorAccountsPage.vue",
   "src/pages/DirectorDashboard.vue",
   "src/pages/DuplicateSessionReviewPage.vue",

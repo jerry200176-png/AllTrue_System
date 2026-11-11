@@ -136,7 +136,6 @@ Census (#4989, `node scripts/design/overlay-census.mjs`; `--json` adds line, tri
 | `pages/BindingManagementPage.vue` | AtDialog(1) | 0 |
 | `pages/BranchManagementPage.vue` | hand-rolled(2) | 1 |
 | `pages/ChatPage.vue` | AtDialog(3) | 1 |
-| `pages/ClassroomManagement.vue` | AtDialog(2) | 1 |
 | `pages/CourseManagement.vue` | ActionMenu(1) hand-rolled(4) AtDialog(2) | 2 |
 | `pages/DirectorAccountsPage.vue` | AtDialog(1) window.confirm(3) | 2 |
 | `pages/DirectorDashboard.vue` | hand-rolled(1) window.confirm(1) prompt(5) | 1 |
