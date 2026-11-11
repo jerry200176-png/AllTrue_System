@@ -36,6 +36,7 @@ const BASELINE = {
   'release-notes': {},
   discrepancy: {},
   'branch-health': {},
+  'subject-settings': {},
 };
 
 for (const [name, allowed] of Object.entries(BASELINE)) for (const vp of VIEWPORTS) {
