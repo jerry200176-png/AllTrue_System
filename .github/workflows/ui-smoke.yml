@@ -130,15 +130,30 @@ jobs:
         working-directory: frontend
         run: npm ci
 
+      - name: Resolve Playwright version
+        id: playwright-version
+        working-directory: frontend
+        run: echo "version=$(node -p "require('./package-lock.json').packages['node_modules/@playwright/test'].version")" >> "$GITHUB_OUTPUT"
+
+      - name: Cache Playwright browsers
+        id: playwright-cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ steps.playwright-version.outputs.version }}
+
+      # Retry + launch probe so an apt mirror outage is reported as infrastructure, not as a failed smoke.
       - name: Install Playwright browser (chromium)
         working-directory: frontend
+        env:
+          PLAYWRIGHT_CACHE_HIT: ${{ steps.playwright-cache.outputs.cache-hit }}
         run: |
           # Avoid Google Chrome apt hash-mismatch flakes on apt-get update inside --with-deps.
           sudo find /etc/apt -type f -exec grep -l 'dl.google.com/linux/chrome' {} + 2>/dev/null | sudo xargs -r rm -f || true
           sudo rm -f /etc/apt/sources.list.d/google-chrome* /etc/apt/sources.list.d/*chrome* || true
           sudo rm -rf /var/lib/apt/lists/partial /var/lib/apt/lists/*chrome* || true
           sudo apt-get update -y || true
-          npx playwright install --with-deps chromium
+          bash ../.github/scripts/install-playwright-chromium.sh
 
       - name: Run UI smoke
         working-directory: frontend
