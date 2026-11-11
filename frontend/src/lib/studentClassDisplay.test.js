@@ -290,4 +290,5 @@ for (const codes of [['receipt_without_invoice'], ['receipt_payment_outside_ledg
   const h = ledgerReceiptHelp(codes);
   assert.ok(h.hint.startsWith('怎麼處理：'), codes.join());
   assert.ok(/才按「撤銷收據」/.test(h.hint), 'void is only the last step for a receipt issued in error');
+  assert.ok(/若系統說這裡不能撤銷.*聯絡總部對帳/.test(h.hint), 'in-app #522: the hint already says what to do when the server refuses the void');
 }

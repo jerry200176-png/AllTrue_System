@@ -21,6 +21,8 @@ import {
   isKnownStatefulRead,
 } from './fixtures/readOnlyAppGuard.js';
 import { installLocalClassSessionReads, nonMaterializingProjectionPath } from './fixtures/classSessionReadResponder.js';
+import { formatCalendarRange } from '../src/lib/calendarViewDisplay.js';
+import { compareDrawnCards, describeDrawnCards, drawsServedSessions } from './fixtures/calendarDrawnCards.js';
 
 /**
  * Authenticated, read-only acceptance for the calendar/course-management parity
@@ -361,8 +363,14 @@ function liveSessionCountsByDate(sessions) {
 async function showCalendarDate(page, dateInput, date) {
   await dateInput.fill(date);
   await dateInput.dispatchEvent('change');
-  await expect(page.locator('.calendar-loading-bar')).toHaveCount(0, { timeout: 20_000 });
-  await page.waitForTimeout(250);
+  await expect(dateInput).toHaveValue(date);
+  // Positive signal that the view itself moved to the target day: its header states the displayed range
+  // (headerRangeLabel, SmartCalendar.vue). The load a jump starts raises .calendar-loading-overlay in the same
+  // render, so the overlay check below cannot pass before that load began. An in-window jump starts no load.
+  // (The class awaited here before, .calendar-loading-bar, exists only in a stylesheet and passed at once, #5178.)
+  await expect(page.locator('[aria-live="polite"]').filter({ hasText: ` · ${formatCalendarRange(date, date)} · ` }))
+    .toBeVisible({ timeout: 20_000 });
+  await expect(page.locator('.calendar-loading-overlay')).toHaveCount(0, { timeout: 20_000 });
 }
 
 test.describe('production acceptance — calendar/course parity', () => {
@@ -495,9 +503,19 @@ test.describe('production acceptance — calendar/course parity', () => {
         await expect.poll(servedForDate, {
           timeout: 20_000, message: 'the calendar loaded the projection for the checked day',
         }).toBeGreaterThan(0);
-        await expect.poll(() => page.locator('.course-block').count(), {
-          timeout: 20_000, message: 'the calendar draws cards on a day that has materialized sessions',
-        }).toBeGreaterThan(0);
+        // Courses and schedules still come from production after the local projection answer, so wait for
+        // the state an operator sees: cards that name this date, time and student.
+        const drawnLabels = () => page.locator('.course-block').evaluateAll((cards) => cards
+          .map((card) => card.getAttribute('aria-label') || ''));
+        let lastDrawn = null;
+        await expect.poll(async () => {
+          lastDrawn = compareDrawnCards(await drawnLabels(), sessions, busiestDate);
+          return drawsServedSessions(lastDrawn) ? 'drawn' : describeDrawnCards(lastDrawn);
+        }, {
+          timeout: 20_000, message: `the calendar draws the sessions served for ${busiestDate} and nothing else`,
+        }).toBe('drawn');
+        // Recurrence/schedule-only cards are legitimate; the number shows in the run's coverage annotations.
+        noteCoverage('calendar_cards_without_served_session', lastDrawn.phantom.length);
         noteCoverage('calendar_day_sessions', busiestCount);
       }
 
