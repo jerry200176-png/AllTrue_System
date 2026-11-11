@@ -497,6 +497,18 @@ class PaymentReportController extends Controller
                     : ['version' => 1, 'source' => 'package_obligation', 'package_id' => (int) $package->id, 'package_price' => $packagePrice];
             }
 
+            // In-app #531 / #5160 (Founder 2026-11-11): a standalone count course with no bill owes its contract Charge, not what was typed.
+            // Same authority as the over-entry refusal above (resolver `unbilled` = Charge); the Payment below still records only what came in.
+            if (!$invoice && $packageBillSnapshot === null && !$legacyFlagBackfill && $sc && $this->isStandaloneCountCourse($sc)) {
+                $firstBill = $this->contractChargeFirstBill($sc, $billAmount, (int) $report->id);
+                if ($firstBill instanceof JsonResponse) {
+                    return $firstBill;
+                }
+                if ($firstBill !== null) {
+                    [$billAmount, $packageBillSnapshot] = $firstBill;
+                }
+            }
+
             if (!$invoice) {
                 try {
                 $invoice = app(InvoiceIssuer::class)->issue([
@@ -1867,6 +1879,7 @@ class PaymentReportController extends Controller
             $invoiceId = $report->getAttribute('InvoiceID');
             $invoice = null;
             $alreadyReversed = false;
+            $autoVoided = false;
             // Strict non-null: InvoiceID=0 must not take the legacy null path (truthy check would).
             if ($invoiceId !== null) {
                 $invoice = Invoice::query()->whereKey($invoiceId)->lockForUpdate()->first();
@@ -1920,6 +1933,8 @@ class PaymentReportController extends Controller
                     'PaidAmount' => $newPaid,
                     'Status'     => $invoiceStatus,
                 ]);
+                // In-app #531 / #5160: the only receipt of a bill this confirmation auto-issued is gone, so the bill goes with it.
+                $autoVoided = $this->voidAutoIssuedFirstBill($invoice, $report, $payments, $sc, $userId);
             }
             // #4597: money taken back from a count package's bill reopens the package (its mark and every owner member's).
             $package = $invoice && !$alreadyReversed && (string) $invoice->Status !== 'paid' ? $this->lockPackageForCourse($sc) : null;
@@ -1932,7 +1947,7 @@ class PaymentReportController extends Controller
             // A reversed void bill (#436) clears it too unless a live bill backs the settlement: with no live bill the
             // resolver would read the stale flag itself as paid.
             // $sc already required above (missing/mismatched course returns void_invoice_mismatch).
-            $ledgerBacked = $invoice && (!$alreadyReversed || Invoice::query()->where('StudentClassID', $sc->ID)
+            $ledgerBacked = $invoice && !$autoVoided && (!$alreadyReversed || Invoice::query()->where('StudentClassID', $sc->ID)
                 ->where(fn ($q) => $q->whereNull('Status')->orWhere('Status', '!=', 'void'))->exists());
             if ($ledgerBacked && $this->courseResolvedPaid($sc)) {
                 $scPaid = (int) $sc->Paid;
@@ -1964,6 +1979,80 @@ class PaymentReportController extends Controller
                 'student_class_paid' => $scPaid,
             ]);
         });
+    }
+
+    private function isStandaloneCountCourse(StudentClass $sc): bool
+    {
+        return (string) $sc->getAttribute('ScheduleMode') !== 'date' && (int) ($sc->getAttribute('PackageID') ?? 0) <= 0;
+    }
+
+    public const FIRST_BILL_SOURCE = 'contract_charge_first_bill';
+
+    /**
+     * In-app #531 / #5160 (Founder 2026-11-11). For a standalone count course whose resolver verdict is `unbilled`, the first bill is
+     * the contract Charge (the resolver's payable_total, the same authority amountExceedsOutstandingResponse uses). Any other verdict
+     * (free, review_required, paid, partial...) returns null and keeps the existing behaviour. The snapshot is the marker the void path reads.
+     *
+     * @return array{0: int, 1: array<string, mixed>}|JsonResponse|null
+     */
+    private function contractChargeFirstBill(StudentClass $sc, int $enteredAmount, int $reportId): array|JsonResponse|null
+    {
+        try {
+            $courseId = (int) $sc->getKey();
+            $row = app(BillingPayableResolver::class)->courseStatusesByStudentClassIds([$courseId])[$courseId] ?? null;
+        } catch (\Throwable) {
+            return $this->duplicateCoursePaymentResponse('unknown'); // fail closed, like the over-entry guard
+        }
+        $charge = (int) ($row['payable_total'] ?? 0);
+        if (($row['status'] ?? '') !== 'unbilled' || $charge <= 0) {
+            return null;
+        }
+        if ($enteredAmount > $charge) {
+            return response()->json([
+                'message' => sprintf('金額超過此課程未繳餘額 NT$%d，請重新核對後再登記。', $charge),
+                'code' => 'amount_exceeds_outstanding',
+                'expected_amount' => $charge,
+            ], 422);
+        }
+
+        return [$charge, ['version' => 1, 'source' => self::FIRST_BILL_SOURCE, 'payment_report_id' => $reportId, 'contract_charge' => $charge]];
+    }
+
+    /**
+     * Voids $invoice when, and only when, it is the bill that $report's confirmation auto-issued at the contract Charge and
+     * $report's receipt was its only money row: marker names this report, total still the stamped Charge, no items, no
+     * correction link, and the locked payments before this reversal are exactly the one original receipt. Called inside void()'s
+     * transaction (course, report, invoice locked in the existing order), after the reversal row exists.
+     *
+     * @param \Illuminate\Support\Collection<int, Payment> $paymentsBeforeReversal
+     */
+    private function voidAutoIssuedFirstBill(Invoice $invoice, PaymentReport $report, $paymentsBeforeReversal, StudentClass $sc, mixed $userId): bool
+    {
+        $snapshot = is_array($invoice->billing_snapshot) ? $invoice->billing_snapshot : [];
+        $original = $paymentsBeforeReversal->first();
+        $isLoneReceipt = $paymentsBeforeReversal->count() === 1
+            && (int) $original->getKey() === (int) $report->getAttribute('payment_id')
+            && (int) $original->Amount > 0 && (string) $original->Method !== 'void';
+        if (($snapshot['source'] ?? null) !== self::FIRST_BILL_SOURCE
+            || (int) ($snapshot['payment_report_id'] ?? 0) !== (int) $report->getKey()
+            || (int) $invoice->StudentClassID !== (int) $sc->getKey()
+            || (int) $invoice->TotalAmount !== (int) ($snapshot['contract_charge'] ?? -1)
+            || (int) ($snapshot['contract_charge'] ?? 0) <= 0
+            || !$isLoneReceipt
+            || (string) $invoice->Status === 'void'
+            || $invoice->items()->exists()
+            || DB::table('invoice_corrections')->where(fn ($q) => $q->where('original_invoice_id', (int) $invoice->getKey())
+                ->orWhere('replacement_invoice_id', (int) $invoice->getKey()))->exists()) {
+            return false;
+        }
+        $audit = sprintf('[void: 唯一收款撤銷，系統自動作廢; user_id=%s; at=%s]', $userId ?? 'system', now()->format('Y-m-d H:i:s'));
+        $note = trim((string) ($invoice->Note ?? ''));
+        $invoice->Status = 'void';
+        $invoice->Note = mb_strlen($note . ' ' . $audit) <= 255 ? trim($note . ' ' . $audit) : $note;
+        $invoice->save();
+        Log::info('[FirstBillAutoVoid]', ['invoice_id' => $invoice->getKey(), 'report_id' => $report->getKey(), 'student_class_id' => $sc->getKey(), 'user_id' => $userId]);
+
+        return true;
     }
 
     /**
