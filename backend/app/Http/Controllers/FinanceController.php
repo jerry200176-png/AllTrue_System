@@ -1148,7 +1148,7 @@ class FinanceController extends Controller
         foreach ($packages as $pkg) {
             $tuition = round(($pkgSessionTotals[$pkg->id] ?? 0) * (float) $pkg->rate, 2);
             $members = $membersByPkg->get($pkg->id, collect());
-            $monthOf = fn ($m) => collect(($memberVerdicts[(int) $m->ID] ?? null)?->periods ?? [])
+            $monthOf = fn ($m) => collect(isset($memberVerdicts[(int) $m->ID]) ? $memberVerdicts[(int) $m->ID]->periods : [])
                 ->filter(fn ($x) => ($x['billing_period'] ?? null) === $period && ($x['invoice_ids'] ?? []) !== []);
             $monthPeriods = $members->flatMap($monthOf);
             if ($monthPeriods->isNotEmpty()) {
