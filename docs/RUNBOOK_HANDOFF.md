@@ -1,7 +1,7 @@
 # 交接狀態 Handoff（活的；每個 milestone 由 coordinator 更新）
 
 Updated: 2026-11-11 07:40 UTC（530／522 修正與驗收修復已合併；正式驗收恢復綠燈；release train 仍等核准）
-Source SHA: fed2ba9a（main；正式 runtime 4d186abcf211e9b5109301285af093a57c8470d4，2026-11-10T03:56Z 部署）
+Source SHA: b28ba73f（main；正式 runtime 4d186abcf211e9b5109301285af093a57c8470d4，2026-11-10T03:56Z 部署）
 Owner: coordinator（每個 milestone、PR merge、deploy 後更新；完成的項目直接刪除）
 
 **規則**：每次接續都先核對 GitHub 與正式 manifest；未滿 7 天也可能過期。超過 7 天一律 STALE。新 SHA 勝舊 SHA；
@@ -18,7 +18,7 @@ The trackers hold the full detail: flow is #4953 and UI is #4989. This file only
 
 | 項目 | 狀態 | 下一步（誰） | 去哪看 |
 |---|---|---|---|
-| Release | 正式站 `4d186abc`；main `fed2ba9a`。Release train run 42968653236（目標 ae983075）等 `production-activation` 核准；之後的合併排在它後面。 | Founder 核准（或改開一班以 main 為目標的 train）；核准前 530／522／532／533／#5158／#5121 與兩頁 UI 改版都不在正式站 | run 42968653236、`deploy.yml` |
+| Release | 正式站 `4d186abc`；main `b28ba73f`。Release train run 42968653236（目標 ae983075）等 `production-activation` 核准；之後的合併排在它後面。 | Founder 核准（或改開一班以 main 為目標的 train）；核准前 530／522／532／533／#5158／#5121 與兩頁 UI 改版都不在正式站 | run 42968653236、`deploy.yml` |
 | in-app 佇列（11-11 07:40 UTC 讀取） | `new` 0；`triaged` 11：514、520、521、522、524、526、527、530、531、532、533。 | 見下列各行；`resolved` 是回報者確認佇列，獨立計算 | triage API |
 | in-app 526 (#5131) | 已上線並驗證；結案資料包備妥（fix d092cfe、deploy run 42752332278、smoke run 42854847807、request_id `inapp-526-resolve-1`）。雲端環境的 POP 機器金鑰被正式站回 401，草稿送不出去。 | Founder 重發金鑰後重送，或在 POP console 直接結案 | #5131、#5162 留言 |
 | in-app 532／533 (#5164／#5165) | 修正 #5167／#5168 已合併、未上線。 | 上線＋smoke 後走 POP resolve | #5164、#5165 |
@@ -31,7 +31,7 @@ The trackers hold the full detail: flow is #4953 and UI is #4989. This file only
 | 正式驗收訊號 | 已修復：#5180＋#5184 合併後 run 42972753814（`fed2ba9a`）乾淨通過，#5175 已關。 | 後續 #5177（單日 GET 會寫入）、#5178（另兩個 spec＋審查留下的 P2）、#5183（行事曆載入課程的新舊回應競態） | #5177、#5178、#5183 |
 | 流程／文檔 (#5015、#4953) | 已合併：#5172（入口文件去重）、#5174（優先順序單一出處）、#5179（`scripts/ci/pr-digest.mjs`，一張 PR 一行）。#5015 留言有各項完成度與下三張 PR 的順序。 | 依 #5015 留言順序做；L5（land queue 依車道檢查關卡標記）未做 | #5015、#4953 |
 | 學生個人歷程／學習檔案 | #4970 step 3a 進行中（同上一版）。 | 同上一版 | #4928、#4970 |
-| UI 改版 (#4989) | 版本更新頁 #5181 已合併（舊元件清單 80）。課表回報管理 #5186 審查通過、等 land queue；它留下 238 行不再套用的舊樣式，需一張只刪除的 PR。 | #5186 合併後開刪除 PR（含審查 P2）；下一頁 `DuplicateSessionReviewPage` 需先拆分（超過單張上限） | #4989、#5186 |
+| UI 改版 (#4989) | 已合併、未上線：版本更新頁 #5181、課表回報管理 #5186（舊元件清單 79）。#5186 留下 238 行不再套用的舊樣式。 | 開一張只刪除舊樣式的 PR（含 #5186 審查 P2）；下一頁 `DuplicateSessionReviewPage` 需先拆分（超過單張上限） | #4989、#5186 |
 | 資料修復總表 | C12 五張凍結 issue 已做程式面重驗（都還不能關）；其餘各項待重掃。 | 見 #5162 留言 | #5162 |
 | 草稿 #5122 | 落後 main 49 個 commit、有衝突；內容（#5117／#5118 文檔界線）部分已被 #5172 取代。 | 對照 main 後重做成新 PR 或關閉 | #5122、#5117、#5118 |
 | PR 清潔工 | 排程任務「AllTrue PR janitor」每日 01:30／13:30 UTC。 | — | scheduled task |
