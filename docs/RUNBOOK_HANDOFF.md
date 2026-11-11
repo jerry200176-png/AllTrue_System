@@ -1,7 +1,7 @@
 # 交接狀態 Handoff（活的；每個 milestone 由 coordinator 更新）
 
-Updated: 2026-11-10 03:13 UTC（265部署與5155驗收收尾；Founder重申日期/超堂優先、歷程與UI並行）
-Source SHA: 9272df282d3e9c500389008c2891fc493b618bf4（main test/docs；正式runtime265165f112523ce1d80410f8a45da1e83daee308）
+Updated: 2026-11-11 05:30 UTC（PR 收尾、入口文件去重、驗收修復、in-app 530；release train 仍等核准）
+Source SHA: beb8789be5a0（main；正式 runtime 4d186abcf211e9b5109301285af093a57c8470d4，2026-11-10T03:56Z 部署）
 Owner: coordinator（每個 milestone、PR merge、deploy 後更新；完成的項目直接刪除）
 
 **規則**：每次接續都先核對 GitHub 與正式 manifest；未滿 7 天也可能過期。超過 7 天一律 STALE。新 SHA 勝舊 SHA；
@@ -18,25 +18,32 @@ The trackers hold the full detail: flow is #4953 and UI is #4989. This file only
 
 | 項目 | 狀態 | 下一步（誰） | 去哪看 |
 |---|---|---|---|
-| Release `265165f11252` | deploy42642960843 actualSUCCESS；1200s/37checks watch與backend/frontend/build identity一致。5155 test/docs已merge9272df，mainCI42745205440／control-plane42746083617成功，未另啟用app。 | 第一順位#5124日期/堂次；不得重跑已取消7147/c88 train或再問265approval | #5124、#5145、#5149、#5155 |
-| in-app 518 (#5097) | #5085（月結誤報）+ #5087（字級 標準／大）已上線；triage 回覆已送。 | smoke run 42387205840 綠了 → POP resolve（spec `inapp-518-resolve-1`） | #5097 |
-| in-app 517 (#5057) | PR1 #5060 + PR2 #5068（合併＋復原）已上線；回報已 closed，follow-up 留言已送。 | 後續：#5104（binary collation 比對）、lock 測試 PR | #5057、#5104 |
-| in-app 501／527 介面 | #5134 排序介面已上線；501 現為 closed。 | 527 堂次歸屬尚未修復，保留授課歷史／帳務證據；不能用顯示排序宣告資料修好 | #4918、#5130、#5124 |
-| in-app 519 | 正式主任新增表單開啟／取消已驗證；現為 closed。未新增課程、未代按回報者確認。 | 六筆上線回覆已逐筆讀回，勿重送；其他新增操作未列本次驗證 | #5098、follow-up 42608099856 |
-| in-app 521 | #5107／#5110 工程隨 e996 上線；digest、request-owned atomic inverse 與核准恢復測試已有證據。 | 正式帳務未修；仍需新現況、精確核准與 receipt，第三筆爭議維持另案 | #5111、#5116、PR #5110 |
-| in-app 514 | 既有期別／re-key 工具已上線；尚無本輪完整 POP receipt／目前帳單證據。 | 先核對，不盲目重跑歷史更正 | #5035、PR #5046 |
-| in-app 520／526 | #5135 每學生 XLSX 隨 e996 上線；#5141 已 merge，#5147 guard head 的正式 UI 匯出／讀回已驗證。 | 區分匯出證據與其餘表格需求；不宣稱帳務資料已修 | #5099、#5131、ui-smoke 42623336868 |
-| in-app 523 | #5120 已 merge 並隨 e996 上線；正式受影響 UI 可取消且未送退回 POST，未執行實際退回。 | 上線回覆 1433 已讀回；回報者驗收獨立，勿把取消測試當資料回復證據 | #5114、#5120、ui-smoke 42623336868 |
-| in-app 522／524／527 資料 | 正式日期/堂次/帳務未修。527現已隔離重現leave調課繞過undo令8→9，防再發guard另行工程中；原個案root仍需currentrows。 | 原教學/評量/財務/薪資保留；須最新受控讀取/完整manifest/模擬inverse後精確核准，不執行歷史三筆候選 | #5113、#5133、#5124、#5130 |
-| in-app 528 | #5148 cachefix已隨265上線；5155具名正式frontend合成路徑PASS，testharness merge-ref bc5bebd與runtime265分開。 | follow-up1439精確讀回；原調課transaction/currentdata UNKNOWN、sliceB deferred，勿以mock宣告資料已修 | #5145、#5148、#5155、ui42743588674 |
-| in-app 529 | #5150失敗提示/停止自動重送已隨265上線；source CI/review及獨立真Vue回歸通過。 | follow-up1440精確讀回；原422原因UNKNOWN；保留刪除/帳務guard，普通PhaseC仍需既有合法requester | #5149、#5150、follow-up42745236453 |
-| Acceptance／fixture | #5155已nativequeue merge9272df；8required+independent+CodebotPASS，正式private3case實際PASS/regular64pass55skip。 | 只代表具名範圍；排課用mock資料、實際transaction未驗證；無PNG或guard放寬 | #5155、ui42743588674 |
-| 學生個人歷程／學習檔案 | 正確後續#4970（非523評量rollback）；505 resolved只代表第一階段timeline。schooldates/exams已在265；4970step3a在整合真實紀錄/成績/下一校考。 | 以既有API/元件交付可用profile；老師round/subject/campus守門、家長拒絕；模板/計畫/Gantt/完成追蹤仍列後續，未宣告完成 | #4928、#4970、#4989 |
-| in-app 530 | PhaseA42743264849成功，triaged；reply1438精確讀回；25-entry history current+24prior已讀，NEEDS_EVIDENCE。 | 完整雙固定日/實際422原因仍需受控currentdata，勿把截圖衝突等同漏排或265regression | #5151 |
-| Codex 接續改善 | #5140／#5142 已 merge：按需 skill、唯讀 reconciliation 與 CI 狀態差異觀測；不新增路由／正式權限。 | 沿用既有 handoff、接續先 live read；觀測不是 approval／gate 或自動動作重播 | #5140、#5142、`docs/engineering/CODEX_TASK_CONTINUITY.md` |
-| 流程改善 W12–W14 | W13 autoland 已驗證；W14 #5105（28 個沒跑的前端測試，現在全跑）已上線。#5082/#5084 mutation testing、#5083 自檢 待 Codex 乾淨。 | W9–W11 由 flow agent | #4953 |
-| Overlay／UI改版 | #4989持續；#5121原sourceCI綠但與main僅Playwright exclusions衝突，ownedintegration保留兩方隔離後重驗，原branch未覆寫。 | 和學生學習檔案最多兩個pagePR；其他ratchet待各自審查，不更新PNG掩蓋4項既有差異 | #4989、#5119、#5121 |
-| AI 維運閉環 (#5070) | #5076–#5079 等 R3（#5078/#5079 需 security-data-reviewer marker）。 | 一次 R3 pass | #5070 |
+| Release | 正式站 `4d186abc`；main `beb8789b`。Release train run 42818474421（目標 3c58674）等 `production-activation` 核准，之後的合併都排在它後面。 | Founder 核准（或改開一班以 main 為目標的 train）；核准前 532／533／#5158／#5121 的修正都不在正式站 | run 42818474421、`deploy.yml` |
+| in-app 佇列（11-11 05:30 UTC 讀取） | `new` 0；`triaged` 11：514、520、521、522、524、526、527、530、531、532、533。 | 見下列各行；`resolved` 是回報者確認佇列，獨立計算 | triage API |
+| in-app 526 (#5131) | 已上線並驗證；結案資料包備妥（fix d092cfe、deploy run 42752332278、smoke run 42854847807、request_id `inapp-526-resolve-1`）。雲端環境的 POP 機器金鑰被正式站回 401，草稿送不出去。 | Founder 重發金鑰後重送，或在 POP console 直接結案 | #5131、#5162 留言 |
+| in-app 532／533 (#5164／#5165) | 修正 #5167／#5168 已合併、未上線。 | 上線＋smoke 後走 POP resolve | #5164、#5165 |
+| in-app 530 (#5151) | 拒絕本身正確（學生同時段已有課）；缺的是說明。#5176 讓拒絕訊息列出佔住時段的課，審查通過、在 land queue。哪份合約擁有那些固定課仍需一次唯讀診斷。 | 合併→上線→follow-up 回覆 | #5151、#5176 |
+| in-app 531 (#5160) | 根因已確認：堂數制首張帳單照輸入金額開立、沖銷後帳單仍留著。超收已有防護；「低於合約金額」與「沖銷唯一收款後帳單去留」是帳務規則。 | Founder 決定規則（F4）；可先寫唯讀全校掃描 case | #5160 |
+| in-app 522 (#5113) | 「撤銷收據」按鈕在收據與帳單不符時必被後端拒絕（`void_invoice_mismatch`），是死路；另一個可能是缺撤銷理由。 | 用既有 `confirmed_report_void_blocked` case 確認是哪一個，再修 | #5113 |
+| in-app 520 (#5099) | 匯出已上線；搜尋／排序／批次入帳在回報前就有，未與本回報對照驗收。 | 確認現有功能是否滿足，否則另開具名 issue 再回覆 | #5099 |
+| in-app 521 (#5111／#5116) | 程式與 POP 策略已上線；正式帳務未修（2 筆待連結，第 3 筆需人工決定）。 | Founder 在 POP 執行一次（C2） | #5162 |
+| in-app 514／524／527 資料 | 正式資料未修。證據 run 42583118349／42583121077 是加密的，讀取等 #5159 的解密保管決定。 | #5159 GO → 解讀 → manifest → POP | #5162、#5124、#5159 |
+| 正式驗收訊號 | 「Calendar/Course Production Acceptance」自 #5147 起每次合併都紅：單日 `GET class-sessions` 會寫入，被唯讀防護擋下；兩個一致性測試其間是空跑。#5180 修復已審查通過。 | 合併後確認第一個 post-merge run 轉綠才關 #5175；後續 #5177（會寫入的 GET）、#5178（另兩個 spec＋審查留下的 P2） | #5175、#5180、#5177、#5178 |
+| 流程／文檔 (#5015、#4953) | 已合併：#5172（入口文件去重）、#5174（優先順序單一出處）、#5179（`scripts/ci/pr-digest.mjs`，一張 PR 一行）。#5015 留言有各項完成度與下三張 PR 的順序。 | 依 #5015 留言順序做；L5（land queue 依車道檢查關卡標記）未做 | #5015、#4953 |
+| 學生個人歷程／學習檔案 | #4970 step 3a 進行中（同上一版）。 | 同上一版 | #4928、#4970 |
+| UI 改版 (#4989) | 零件與 overlay ratchet 已在 main。第一張整頁遷移：版本更新頁 #5181，CI 進行中。 | 過 CI→獨立審查→下一頁（Wave 3 小頁優先，一次最多兩張） | #4989、#5181 |
+| 資料修復總表 | C12 五張凍結 issue 已做程式面重驗（都還不能關）；其餘各項待重掃。 | 見 #5162 留言 | #5162 |
+| 草稿 #5122 | 落後 main 49 個 commit、有衝突；內容（#5117／#5118 文檔界線）部分已被 #5172 取代。 | 對照 main 後重做成新 PR 或關閉 | #5122、#5117、#5118 |
+| PR 清潔工 | 排程任務「AllTrue PR janitor」每日 01:30／13:30 UTC。 | — | scheduled task |
+
+**等 Founder（2026-11-11，一次列完）：**
+1. 核准 release train run 42818474421（或改開以 main 為目標的一班）。
+2. 重發雲端環境的 POP in-app agent 金鑰（header `X-POP-MACHINE-KEY`，正式站回 401）。
+3. in-app 531 的帳務規則（F4）。
+4. #5159 解密保管 GO（C1／C3 依賴）。
+5. #5015 的 D1（native merge queue）、D2（ruleset 加 `review/final-head`）。
+6. #5117：Agent 可否 dispatch 會 SSH 正式機的既有 workflow（Phase A／follow-up／case dump）。
+7. 環境變數 `ALLTRUE_BUGOPS_*` 的用途未在 repo 定義；未定義前 Agent 不使用。
 
 **Founder-only：**
 - production Approve（release train 的 run 頁面）
