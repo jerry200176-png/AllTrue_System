@@ -549,21 +549,21 @@ const pageGuideConfig = {
 
   'schedule-discrepancy': [
     {
-      target: '.sdp-sop-card',
+      target: '[data-testid="sdp-help"]',
       icon: 'fire_extinguisher',
       title: '先看處理 SOP',
       description: '建議流程是「已確認 -> 核對資料 -> 填寫處理說明後標記已修正」。',
       placement: 'bottom',
     },
     {
-      target: '.sdp-tabs',
+      target: '.dsc-tabs',
       icon: 'folder',
       title: '狀態分頁',
       description: '待處理、處理中、已解決分頁分別對應不同階段，請依流程推進。',
       placement: 'bottom',
     },
     {
-      target: '.sdp-list-wrap',
+      target: '.dsc-list-wrap',
       icon: 'edit_note',
       title: '回報清單',
       description: '展開每筆可看備註、堂次與建議時段，處理後務必留下可追溯說明。',

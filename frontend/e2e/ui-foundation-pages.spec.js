@@ -1251,10 +1251,15 @@ for (const vp of [{ width: 390, height: 844, titleLines: 2 }, { width: 1280, hei
     await expect(root).toBeVisible();
     await expect(root.locator('.dsc-table tbody tr, .dsc-mcard').first()).toBeAttached();
 
-    // Gutter: the first card's left edge sits 16px from the viewport on phones (shell 10px + page 6px).
+    // Gutter: the first card sits shell 10px + page 7px inside the shell's content box on phones. Measure in the scroll
+    // container's own coordinates: the shell's account menu overflows `.main-content` (overflow-x: hidden, scrollWidth > clientWidth),
+    // so focus/scroll can leave it at scrollLeft 1 and shift every viewport-relative rect by 1px.
     if (vp.width === 390) {
-      const left = await root.locator('.dsc-mcard').first().evaluate((el) => Math.round(el.getBoundingClientRect().left));
-      expect(left).toBe(16);
+      const gutter = await root.locator('.dsc-mcard').first().evaluate((el) => {
+        const main = document.querySelector('.main-content');
+        return Math.round(el.getBoundingClientRect().left - main.getBoundingClientRect().left + main.scrollLeft);
+      });
+      expect(gutter).toBe(17);
     } else {
       // Table headers use the caption token, not the global 12px th rule.
       const th = await root.locator('.dsc-table th').first().evaluate((el) => parseFloat(getComputedStyle(el).fontSize));

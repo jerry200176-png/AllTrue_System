@@ -52,6 +52,18 @@ describe('ScheduleDiscrepancyPage (shadcn-vue template)', () => {
     expect(summary.attributes('aria-label')).toContain(w.find('[data-testid="sdp-help"] h2').text());
   });
 
+  it('every page-guide step target matches an element in the mounted page (a rename must not silently drop steps)', async () => {
+    const { resolvePageGuideSteps } = await import('../../../lib/pageGuideConfig.js');
+    const w = mount(ScheduleDiscrepancyPage, { props: { branchId: 1 }, attachTo: document.body, global: { stubs: { teleport: true } } });
+    await flushPromises();
+    const steps = resolvePageGuideSteps('schedule-discrepancy');
+    expect(steps.length).toBeGreaterThan(0);
+    for (const step of steps) {
+      expect(document.querySelector(step.target), `guide step "${step.title}" target ${step.target}`).not.toBeNull();
+    }
+    w.unmount();
+  });
+
   it('page title is an h2 (the app shell owns the h1) and the table keeps its fallbacks', async () => {
     const w = await mountPage();
     expect(w.find('h1').exists()).toBe(false);
