@@ -32,6 +32,13 @@ _T3_PREFIXES = (
     ".github/actions/",
     ".github/CODEOWNERS",
     ".github/dependabot.yml",
+    # Files that relax a required scanner or guard (#5201 row 16b): an exemption is a security-boundary
+    # change, never "docs". Enumerated from the workflows that read them (secret-scan, presubmit CHECK 12,
+    # pii-log-purge); the policy doc lists the same entries and a test compares the two.
+    ".github/zizmor.yml",
+    ".github/pii-log-workflows.exempt.txt",
+    ".gitleaks.toml",
+    ".gitleaksignore",
     "backend/database/migrations/",
     "backend/app/Console/Commands/Repair",
     "backend/app/Services/Repair",
@@ -46,6 +53,9 @@ _T3_PREFIXES = (
     "backend/app/Http/Controllers/Auth",
     "backend/app/Http/Middleware/",
     "backend/routes/api.php",
+    # The classifier and everything else the review gate, Presubmit and deploy.yml load to decide a
+    # tier, an approval or an activation (#5201 row 16a). It must not be able to clear a change to itself.
+    "scripts/governance/",
     "scripts/ops/",
     "scripts/production",
     "governance/",
@@ -54,6 +64,42 @@ _T3_PREFIXES = (
     "CLAUDE.md",
     "codex.md",
 )
+
+# T3 at merge only: these run from main in Actions and are never deployed to the app host, so they are
+# not a production-activation signal (activation behaviour is unchanged by listing a path here).
+_MERGE_ONLY_T3_PREFIXES = (
+    ".github/scripts/",
+    ".github/actions/",
+    ".github/zizmor.yml",
+    ".github/pii-log-workflows.exempt.txt",
+    ".gitleaks.toml",
+    ".gitleaksignore",
+    "scripts/governance/",
+)
+
+# Sensitive at activation, but a bounded read-only change may use the guarded path (not always-Founder).
+_GUARDED_ACTIVATION_T3_PREFIXES = (
+    "backend/app/Http/Controllers/Alert",
+    "backend/app/Http/Controllers/PaymentReport",
+    "backend/app/Http/Controllers/Billing",
+    "backend/app/Http/Controllers/SwipeRfid",
+)
+
+# Unknown-path fallback (#5201 row 16c). Only what is listed here is documentation or evidence (T0);
+# tests and CI fixtures stay T0 through _is_non_runtime_path. Any other path that matches no rule is
+# "unclassified" and gets _UNCLASSIFIED_PATH_TIER instead of silently becoming docs.
+_DOCS_T0_PATTERNS = (
+    "docs/**",
+    "operations/closeout/**",
+    "*.md",
+    "**/README.md",
+    ".github/pull_request_template.md",
+    ".github/ISSUE_TEMPLATE/**",
+    # Agent procedure documents: T0 before this rule existed, kept as is (no tier drift).
+    ".agents/skills/**",
+    ".claude/skills/**",
+)
+_UNCLASSIFIED_PATH_TIER = 1
 
 _T2_PREFIXES = (
     "backend/",
@@ -200,7 +246,7 @@ _T2_MARKERS = (
 _ACTIVATION_T3_PREFIXES = tuple(
     prefix for prefix in _T3_PREFIXES
     # Merge-effective control plane: not deployed to the app host, so not an activation signal.
-    if prefix not in {".github/workflows/", ".github/scripts/", ".github/actions/", "governance/", "docs/governance/"}
+    if prefix not in {".github/workflows/", "governance/", "docs/governance/", *_MERGE_ONLY_T3_PREFIXES}
 )
 _ACTIVATION_T3_PATH_TERMS = (
     "auth", "billing", "payment", "identity", "credential", "password",
@@ -214,27 +260,11 @@ _SAFE_NON_PRODUCTION_WORKFLOWS = {
 # remain Founder-required because they are the release/control plane, an
 # irreversible data boundary, or a service whose public contract is an
 # entitlement/ledger mutation even when the changed lines look small.
-_ALWAYS_FOUNDER_ACTIVATION_PREFIXES = (
-    ".github/workflows/",
-    ".github/CODEOWNERS",
-    ".github/dependabot.yml",
-    "backend/database/migrations/",
-    "backend/app/Console/Commands/Repair",
-    "backend/app/Services/Repair",
-    "backend/app/Services/SessionDeduction",
-    "backend/app/Services/SessionEntitlement",
-    "backend/app/Services/ApprovalSessionSync",
-    "backend/app/Http/Controllers/StudentIdentity",
-    "backend/app/Http/Controllers/Auth",
-    "backend/app/Http/Middleware/",
-    "backend/routes/api.php",
-    "scripts/ops/",
-    "scripts/production",
-    "governance/",
-    "docs/governance/",
-    "AGENTS.md",
-    "CLAUDE.md",
-    "codex.md",
+# Single source (#5201 row 16e): every T3 prefix except the merge-only control plane and the
+# guarded-activation controllers. A test pins the derived tuple to the pre-change literal.
+_ALWAYS_FOUNDER_ACTIVATION_PREFIXES = tuple(
+    prefix for prefix in _T3_PREFIXES
+    if prefix not in _MERGE_ONLY_T3_PREFIXES and prefix not in _GUARDED_ACTIVATION_T3_PREFIXES
 )
 _ALWAYS_FOUNDER_ACTIVATION_PATH_TERMS = (
     "credential", "password", "secret", "token", "permission",
@@ -729,6 +759,22 @@ def _is_non_runtime_path(path: str) -> bool:
     )
 
 
+def _is_docs_t0_path(path: str) -> bool:
+    """Documentation/evidence allowlist for the unknown-path fallback. ``*.md`` means repo root only."""
+
+    normalized = path.replace("\\", "/")
+    for pattern in _DOCS_T0_PATTERNS:
+        if pattern.endswith("/**"):
+            if normalized.startswith(pattern[:-2]):
+                return True
+        elif pattern.startswith("**/"):
+            if normalized == pattern[3:] or normalized.endswith(pattern[2:]):
+                return True
+        elif normalized.count("/") == pattern.count("/") and _path_matches(normalized, pattern):
+            return True
+    return False
+
+
 def _runtime_patch(paths: list[str], patch: str) -> str:
     """Keep semantic-marker scans scoped to deployable file diffs."""
 
@@ -1044,6 +1090,14 @@ def classify_scope(
         elif not non_runtime_only and any(path.startswith(prefix) for prefix in _T2_PREFIXES):
             minimum = max(minimum, 2)
             reasons.append(f"product/runtime path: {path}")
+        elif path.startswith("frontend/") and is_deployable_path(path) and not _is_docs_t0_path(path):
+            # Build config, public assets and vendored modules ship with the bundle: never "docs".
+            minimum = max(minimum, 1)
+            reasons.append(f"frontend runtime path: {path}")
+        elif not _is_non_runtime_path(path) and not _is_docs_t0_path(path):
+            # No rule knows this path. It is not on the docs allowlist, so it is not "documentation".
+            minimum = max(minimum, _UNCLASSIFIED_PATH_TIER)
+            reasons.append(f"unclassified path: {path}")
 
     if not non_runtime_only and marker_paths:
         matched_t3 = [marker for marker in _T3_MARKERS if marker in haystack]

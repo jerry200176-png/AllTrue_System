@@ -4,7 +4,10 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 
 import re
+import subprocess
+import types
 
+from scripts.governance import autonomy_gate
 from scripts.governance.autonomy_gate import (
     _LOCAL_ONLY_E2E_SPECS,
     classify_activation_scope,
@@ -246,6 +249,218 @@ class WorkflowExecutedScriptTierTest(unittest.TestCase):
         self.assertTrue(is_control_plane_only_paths([path]))
         activation = classify_activation_scope([path], "+ const ok = true;")
         self.assertEqual((activation["activation_class"], activation["runtime_paths"]), ("routine", []))
+
+
+class ClassifierSelfProtectionTest(unittest.TestCase):
+    """Retro #5201 rows 16a/16b/16c/16e. Controls only tighten: no path's tier drops, activation is unchanged."""
+
+    PATCH = "+ const ok = true;"
+    # Tiers and activation computed by autonomy_gate.py at this origin/main commit, before #5208 and this change.
+    BASE_SHA = "f8e26b509382f5153de258f4b2fcfd91b3a2192d"
+    G = "scripts/governance/"
+    # (paths, tier at BASE_SHA, tier now, activation class at BASE_SHA, activation tier at BASE_SHA)
+    MATRIX = (
+        ([G + "autonomy_gate.py"], 2, 3, "routine", 1),
+        ([G + "pr_requires_security.py"], 2, 3, "routine", 1),
+        ([G + "check_pr_declaration.py"], 2, 3, "routine", 1),
+        ([G + "pr_declaration.py"], 2, 3, "routine", 1),
+        ([G + "pop_auto_approve.py"], 2, 3, "routine", 1),
+        ([G + "r3_backend_paths.py"], 2, 3, "routine", 1),
+        ([G + "gh_api_retry.py"], 2, 3, "routine", 1),
+        ([".github/pii-log-workflows.exempt.txt"], 0, 3, "routine", 0),
+        ([".github/zizmor.yml"], 0, 3, "routine", 0),
+        ([".gitleaks.toml"], 0, 3, "routine", 0),
+        ([".gitleaksignore"], 0, 3, "routine", 0),
+        ([".github/scripts/review-gate.mjs"], 0, 3, "routine", 0),
+        ([".github/actions/production-ssh-trust/action.yml"], 0, 3, "routine", 0),
+        (["docs/CHANGELOG.md"], 0, 0, "routine", 0),
+        (["README.md"], 0, 0, "routine", 0),
+        (["CONTRIBUTING.md"], 0, 0, "routine", 0),
+        (["frontend/README.md"], 0, 0, "routine", 1),
+        ([".github/pull_request_template.md"], 0, 0, "routine", 0),
+        ([".github/ISSUE_TEMPLATE/02_bug_report.yml"], 0, 0, "routine", 0),
+        (["operations/closeout/2026-11-11-x.md"], 0, 0, "routine", 0),
+        ([".claude/skills/x/SKILL.md"], 0, 0, "routine", 0),
+        ([".agents/skills/x/SKILL.md"], 0, 0, "routine", 0),
+        (["backend/tests/Feature/XTest.php"], 0, 0, "routine", 0),
+        (["scripts/ci/x.test.mjs"], 0, 0, "routine", 0),
+        (["scripts/tests/test_x.py"], 0, 0, "routine", 0),
+        (["frontend/e2e/attendance-clarity.spec.js"], 0, 0, "routine", 0),
+        (["frontend/src/a.test.js"], 0, 0, "routine", 0),
+        (["Makefile"], 0, 1, "routine", 0),
+        (["package.json"], 0, 1, "routine", 0),
+        (["infra/daan-staging/lifecycle/x.sh"], 0, 1, "routine", 0),
+        ([".claude/settings.json"], 0, 1, "routine", 0),
+        ([".claude/hooks/guard_bash.py"], 0, 1, "routine", 0),
+        ([".claude/agents/qa-lead.md"], 0, 1, "routine", 0),
+        ([".github/labels.yml"], 0, 1, "routine", 0),
+        ([".github/pii-log-workflows.txt"], 0, 1, "routine", 0),
+        (["docker-compose.yml"], 0, 1, "routine", 0),
+        (["brand/new/dir/file.xyz"], 0, 1, "routine", 0),
+        (["notes/x.md"], 0, 1, "routine", 0),
+        (["frontend/vite.config.js"], 0, 1, "routine", 1),
+        (["frontend/vendor-modules/x/index.js"], 0, 1, "routine", 1),
+        (["frontend/public/x.png"], 0, 1, "routine", 1),
+        (["frontend/src/App.vue"], 1, 1, "routine", 1),
+        (["frontend/package.json"], 2, 2, "routine", 1),
+        (["backend/app/Models/X.php"], 2, 2, "routine", 1),
+        ([".github/workflows/deploy.yml"], 3, 3, "founder-required", 3),
+        (["backend/database/migrations/2026_01_01_x.php"], 3, 3, "founder-required", 3),
+        (["scripts/ops/x.sh"], 3, 3, "founder-required", 3),
+        (["scripts/post-deploy-verify.py"], 3, 3, "founder-required", 3),
+        (["backend/app/Http/Controllers/BillingController.php"], 3, 3, "guarded-sensitive", 2),
+        (["operations/closeout/bug-queue-dump.request.md"], 1, 1, "routine", 0),
+        (["composer.lock"], 2, 2, "routine", 1),
+        (["scripts/x.sh"], 2, 2, "routine", 1),
+        (["docs/governance/X.md"], 3, 3, "routine", 0),
+        (["AGENTS.md"], 3, 3, "founder-required", 3),
+        (["docs/x.md", "Makefile"], 0, 1, "routine", 0),
+        (["backend/tests/Feature/XTest.php", G + "autonomy_gate.py"], 2, 3, "routine", 1),
+        (["frontend/src/App.vue", ".gitleaks.toml"], 1, 3, "routine", 1),
+        (["docs/x.md", "backend/app/Models/X.php"], 2, 2, "routine", 1),
+        (["docs/x.md", "scripts/ci/x.mjs"], 0, 0, "routine", 0),
+        (["frontend/src/App.vue", "package.json"], 1, 1, "routine", 1),
+    )
+    # _ALWAYS_FOUNDER_ACTIVATION_PREFIXES as the literal tuple at BASE_SHA (row 16e: now derived).
+    ALWAYS_FOUNDER_AT_BASE = (
+        ".github/workflows/", ".github/CODEOWNERS", ".github/dependabot.yml", "backend/database/migrations/",
+        "backend/app/Console/Commands/Repair", "backend/app/Services/Repair", "backend/app/Services/SessionDeduction",
+        "backend/app/Services/SessionEntitlement", "backend/app/Services/ApprovalSessionSync",
+        "backend/app/Http/Controllers/StudentIdentity", "backend/app/Http/Controllers/Auth",
+        "backend/app/Http/Middleware/", "backend/routes/api.php", "scripts/ops/", "scripts/production",
+        "governance/", "docs/governance/", "AGENTS.md", "CLAUDE.md", "codex.md",
+    )
+
+    @staticmethod
+    def _load(source: str):
+        module = types.ModuleType("autonomy_gate_under_test")
+        exec(compile(source, "autonomy_gate_under_test.py", "exec"), module.__dict__)
+        return module
+
+    @staticmethod
+    def _classifier_modules() -> set[str]:
+        # Follow the imports: review-gate.mjs runs pr_requires_security.py; every scripts/governance module that
+        # imports autonomy_gate, and every one a workflow or gate script names, decides a tier or an approval.
+        found = {"scripts/governance/autonomy_gate.py"}
+        for folder in (".github/workflows", ".github/scripts"):
+            for source in (ROOT / folder).iterdir():
+                if source.is_file():
+                    found.update(re.findall(r"scripts/governance/[\w.-]*\w", source.read_text(encoding="utf-8")))
+        for module in (ROOT / "scripts/governance").glob("*.py"):
+            if "autonomy_gate" in module.read_text(encoding="utf-8"):
+                found.add(module.relative_to(ROOT).as_posix())
+        return found
+
+    def test_the_classifier_cannot_clear_a_change_to_itself(self):
+        modules = self._classifier_modules()
+        for required in ("autonomy_gate.py", "pr_requires_security.py", "check_pr_declaration.py", "pr_declaration.py"):
+            self.assertIn(f"scripts/governance/{required}", modules)
+        for path in sorted(modules):
+            with self.subTest(path=path):
+                generated = machine_declaration([path], self.PATCH)
+                self.assertEqual((generated["risk_class"], generated["autonomy_tier"]), ("R3", "T3"))
+                self.assertEqual(generated["reasons"][0], f"protected path: {path}")
+                self.assertFalse(validate_declaration("Risk-Class: R2\nAutonomy-Tier: T2", [path], self.PATCH)["valid"])
+                self.assertTrue(requires_security("Risk-Class: R2\nAutonomy-Tier: T2", [{"filename": path, "patch": "+x"}]))
+
+    def test_scanner_exemption_files_read_by_workflows_are_protected(self):
+        # Enumerated from the workflows, so a renamed or newly referenced exemption file fails here.
+        workflows = "\n".join(p.read_text(encoding="utf-8") for p in (ROOT / ".github/workflows").glob("*.yml"))
+        referenced = set(re.findall(
+            r"(?<![\w/.-])(\.gitleaks\.toml|\.gitleaksignore|\.github/zizmor\.yml|\.github/[\w.-]*exempt[\w-]*\.\w+)", workflows))
+        self.assertLessEqual({".gitleaks.toml", ".github/zizmor.yml", ".github/pii-log-workflows.exempt.txt"}, referenced)
+        for path in sorted(referenced | {".gitleaksignore"}):  # gitleaks reads .gitleaksignore from the source root
+            with self.subTest(path=path):
+                self.assertTrue((ROOT / path).is_file(), path)
+                scope = classify_scope([path], "+ ci.yml  # exempt")
+                self.assertEqual((scope["tier_name"], scope["reasons"]), ("T3", [f"protected path: {path}"]))
+                self.assertFalse(validate_declaration("Risk-Class: R0\nAutonomy-Tier: T0", [path], "+x")["valid"])
+
+    def test_unknown_path_is_unclassified_not_documentation(self):
+        for path in ("Makefile", "package.json", "brand/new/dir/file.xyz", ".claude/settings.json", "notes/x.md"):
+            with self.subTest(path=path):
+                generated = machine_declaration([path], self.PATCH)
+                self.assertEqual((generated["risk_class"], generated["autonomy_tier"]), ("R1", "T1"))
+                self.assertEqual(generated["reasons"], [f"unclassified path: {path}"])
+                self.assertFalse(validate_declaration("Risk-Class: R0\nAutonomy-Tier: T0", [path], self.PATCH)["valid"])
+        mixed = machine_declaration(["docs/x.md", "Makefile"], self.PATCH)
+        self.assertEqual((mixed["autonomy_tier"], mixed["reasons"]), ("T1", ["unclassified path: Makefile"]))
+
+    def test_fallback_tier_is_read_from_the_module_setting(self):
+        original = autonomy_gate._UNCLASSIFIED_PATH_TIER
+        try:
+            autonomy_gate._UNCLASSIFIED_PATH_TIER = 2
+            self.assertEqual(classify_scope(["Makefile"], self.PATCH)["tier_name"], "T2")
+        finally:
+            autonomy_gate._UNCLASSIFIED_PATH_TIER = original
+
+    def test_documentation_and_tests_stay_t0(self):
+        for paths, _before, after, _cls, _tier in self.MATRIX:
+            if after == 0:
+                with self.subTest(paths=paths):
+                    scope = classify_scope(paths, self.PATCH)
+                    self.assertEqual(
+                        (scope["tier_name"], scope["reasons"]), ("T0", ["documentation or generated evidence only"]))
+
+    def test_tier_never_drops_and_activation_is_unchanged(self):
+        for paths, before, after, activation_class, activation_tier in self.MATRIX:
+            with self.subTest(paths=paths):
+                tier = classify_scope(paths, self.PATCH)["machine_minimum_tier"]
+                self.assertGreaterEqual(tier, before)
+                self.assertEqual(tier, after)
+                self.assertEqual(machine_declaration(paths, self.PATCH)["machine_minimum_tier"], after)
+                activation = classify_activation_scope(paths, self.PATCH)
+                self.assertEqual(
+                    (activation["activation_class"], activation["machine_minimum_tier"]), (activation_class, activation_tier))
+
+    def test_always_founder_activation_prefixes_are_derived_and_unchanged(self):
+        self.assertEqual(autonomy_gate._ALWAYS_FOUNDER_ACTIVATION_PREFIXES, self.ALWAYS_FOUNDER_AT_BASE)
+        for name in ("_ALWAYS_FOUNDER_ACTIVATION_PREFIXES", "_MERGE_ONLY_T3_PREFIXES", "_GUARDED_ACTIVATION_T3_PREFIXES"):
+            self.assertLessEqual(set(getattr(autonomy_gate, name)), set(autonomy_gate._T3_PREFIXES), name)
+        # Derived, not copied: a prefix added to _T3_PREFIXES alone becomes always-Founder at activation.
+        source = Path(autonomy_gate.__file__).read_text(encoding="utf-8")
+        marker = '    "codex.md",\n)\n\n# T3 at merge only'
+        self.assertEqual(source.count(marker), 1)
+        varied = self._load(source.replace(marker, '    "codex.md",\n    "backend/app/Services/NewProtected",\n)\n\n# T3 at merge only'))
+        self.assertEqual(
+            varied._ALWAYS_FOUNDER_ACTIVATION_PREFIXES, (*self.ALWAYS_FOUNDER_AT_BASE, "backend/app/Services/NewProtected"))
+
+    def test_against_the_base_commit_when_it_is_in_the_clone(self):
+        # Exact check when history is available (local, full clones); shallow CI checkouts rely on MATRIX above.
+        shown = subprocess.run(["git", "show", f"{self.BASE_SHA}:scripts/governance/autonomy_gate.py"],
+                               cwd=ROOT, capture_output=True, text=True)
+        if shown.returncode != 0:
+            self.skipTest("base commit not in this clone")
+        base = self._load(shown.stdout)
+        for paths, before, _after, _cls, _tier in self.MATRIX:
+            with self.subTest(paths=paths):
+                self.assertEqual(base.classify_scope(paths, self.PATCH)["machine_minimum_tier"], before)
+                self.assertEqual(
+                    classify_activation_scope(paths, self.PATCH), base.classify_activation_scope(paths, self.PATCH))
+        tracked = subprocess.run(["git", "-c", "core.quotepath=off", "ls-files"],
+                                 cwd=ROOT, capture_output=True, text=True, check=True)
+        for path in tracked.stdout.splitlines():
+            new, old = classify_scope([path], ""), base.classify_scope([path], "")
+            self.assertGreaterEqual(new["machine_minimum_tier"], old["machine_minimum_tier"], path)
+            self.assertEqual(classify_activation_scope([path], ""), base.classify_activation_scope([path], ""), path)
+
+    def test_policy_document_lists_the_same_path_families_as_the_code(self):
+        policy = (ROOT / "docs/governance/RISK_BASED_MERGE_POLICY.md").read_text(encoding="utf-8")
+        blocks = re.findall(r"^```classifier-paths\n(.*?)^```", policy, re.DOTALL | re.MULTILINE)
+        self.assertEqual(len(blocks), 1, "the path families live in exactly one place")
+        documented: dict[str, list[str]] = {}
+        for line in blocks[0].splitlines():
+            family, _, path = line.partition(" ")
+            documented.setdefault(family, []).append(path.strip())
+        docs = set(autonomy_gate._DOCS_T0_PATTERNS)
+        code = {
+            "T3": sorted({*autonomy_gate._T3_PREFIXES, *autonomy_gate._DEPLOY_EXECUTOR_PATHS}),
+            "T2": sorted(autonomy_gate._T2_PREFIXES),
+            "T0-docs": sorted(docs),
+            "T0-tests": sorted(set(autonomy_gate._NON_DEPLOYABLE_PATTERNS) - docs),
+            "unmatched": [f"T{autonomy_gate._UNCLASSIFIED_PATH_TIER}"],
+        }
+        self.assertEqual({family: sorted(paths) for family, paths in documented.items()}, code)
 
 
 class RequiresSecurityTest(unittest.TestCase):
