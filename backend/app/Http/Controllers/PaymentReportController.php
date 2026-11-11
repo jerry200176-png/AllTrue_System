@@ -1856,7 +1856,7 @@ class PaymentReportController extends Controller
             // Non-null InvoiceID that cannot be loaded must refuse (do not clear Paid on a missing bill).
             // Legitimate null-InvoiceID legacy path is allowed only when course/report ownership already matches.
             if (!$sc || (int) $sc->StudentID !== $reportStudentId) {
-                return $this->voidMismatchRefusal($sc ? 'course_other_student' : 'course_not_found');
+                return $this->voidMismatchRefusal($sc ? 'course_other_student' : 'course_not_found', $report);
             }
 
             if ((string) $sc->getAttribute('closed_reason') === 'refunded') {
@@ -1873,7 +1873,7 @@ class PaymentReportController extends Controller
                 if (!$invoice
                     || ((int) $invoice->StudentClassID !== (int) $sc->ID && !$this->ownerPackageSiblingBill($invoice, $sc))
                     || (int) $invoice->StudentID !== $reportStudentId) {
-                    return $this->voidMismatchRefusal($invoice ? 'invoice_other_owner' : 'invoice_not_found');
+                    return $this->voidMismatchRefusal($invoice ? 'invoice_other_owner' : 'invoice_not_found', $report);
                 }
                 $payments = $invoice->payments()->lockForUpdate()->get();
                 if ((string) $invoice->Status === 'void') {
@@ -1882,7 +1882,7 @@ class PaymentReportController extends Controller
                     // A void bill that still holds money stays refused (Invoice::netPaidSql rule).
                     $net = $payments->sum(fn ($p) => (int) $p->Amount > 0 && (string) $p->Method !== 'void' ? (int) $p->Amount : -abs((int) $p->Amount));
                     if ($net > 0) {
-                        return $this->voidMismatchRefusal('invoice_void_holds_money');
+                        return $this->voidMismatchRefusal('invoice_void_holds_money', $report);
                     }
                     $alreadyReversed = true;
                 } else {
@@ -1970,8 +1970,18 @@ class PaymentReportController extends Controller
      * in-app #522: the void guard's refusals keep one code (void_invoice_mismatch) but say which shape it is.
      * Only the wording and the `reason` field are new; when a void is refused is unchanged.
      */
-    private function voidMismatchRefusal(string $reason): \Illuminate\Http\JsonResponse
+    private function voidMismatchRefusal(string $reason, ?PaymentReport $report = null): \Illuminate\Http\JsonResponse
     {
+        // Receipt self-correction PR 1 (#5113): count refusals by shape and age. Log only, IDs only; no behaviour change.
+        $createdAt = $report?->getAttribute('created_at');
+        Log::warning('[ReceiptMismatch]', [
+            'reason'      => $reason,
+            'report_id'   => $report ? (int) $report->getKey() : null,
+            'student_id'  => $report ? (int) $report->getAttribute('StudentID') : null,
+            'invoice_id'  => $report && $report->getAttribute('InvoiceID') !== null ? (int) $report->getAttribute('InvoiceID') : null,
+            'age_days'    => $createdAt ? (int) Carbon::parse($createdAt)->diffInDays(Carbon::now()) : null,
+        ]);
+
         $messages = [
             'course_other_student' => '這張收據記在別位學生的課程上，這裡不能撤銷。請聯絡總部對帳，確認收據該歸誰。',
             'course_not_found' => '這張收據對應的課程已經找不到，這裡不能撤銷。請聯絡總部對帳，確認收據該歸哪門課。',
