@@ -1,0 +1,14 @@
+updates:
+  - id: staff-2026-11-11-ui-subject-settings
+    published_at: "2026-11-11"
+    audiences:
+      - director
+      - super_admin
+    importance: digest
+    title: 科目管理頁換新外觀
+    summary: 字更大、按鈕更好按；新增、更名、刪除的步驟和原本一樣。
+    items:
+      - category: improved
+        text: 「科目管理」頁改成大字、大按鈕，手機上每個科目是一張卡片；打開新增或更名視窗時可以直接輸入科目名稱。
+    source_refs:
+      - "changelog:2026-11-11:ui-subject-settings"

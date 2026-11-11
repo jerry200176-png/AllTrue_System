@@ -1029,6 +1029,21 @@ test.describe('Visual regression @visual', () => {
     });
   }
 
+  // #4989: 科目管理 at 1280 and 390 with three fixed fake subjects (one shared, two campus-owned).
+  for (const vp of [{ name: '1280', width: 1280, height: 900 }, { name: '390', width: 390, height: 844 }]) {
+    test(`subject-settings @${vp.name}`, async ({ page }) => {
+      const data = [{ id: 1, name: '測試共用科目', campus_id: null }, { id: 2, name: '測試分校科目甲', campus_id: 1 }, { id: 3, name: '測試分校科目乙', campus_id: 1 }];
+      await page.setViewportSize({ width: vp.width, height: vp.height });
+      await page.route('**/api/v1/**', (route) => route.fulfill({ contentType: 'application/json', body: JSON.stringify(new URL(route.request().url()).pathname === '/api/v1/subjects' ? data : { data: [] }) }));
+      await page.goto('/pilot-mount.html?page=subject-settings');
+      await expect(page.locator('html')).toHaveAttribute('data-pilot-ready', '1', { timeout: 15_000 });
+      await expect(page.locator(vp.width <= 600 ? '.subject-mobile-card' : '.subject-table tbody tr')).toHaveCount(3);
+      await page.mouse.move(0, 0);
+      await page.waitForLoadState('networkidle');
+      await expect(page).toHaveScreenshot(`subject-settings-${vp.name}.png`, { fullPage: true });
+    });
+  }
+
   // #4989: 課表回報管理 at 1280 and 390 with three fixed fake reports; the first one is opened on the 處理說明 form.
   for (const vp of [{ name: '1280', width: 1280, height: 900 }, { name: '390', width: 390, height: 844 }]) {
     test(`schedule-discrepancy @${vp.name}`, async ({ page }) => {
@@ -1397,5 +1412,104 @@ for (const vp of [{ width: 390, height: 844, titleLines: 2 }, { width: 1280, hei
     }
     fs.mkdirSync(outDir, { recursive: true });
     await page.screenshot({ path: path.join(outDir, `branch-health-shell-${vp.width}.png`) });
+  });
+}
+
+// #4989 科目管理 inside the REAL app shell (mocked API): 16px phone gutter, title lines, 44px+ controls, th token size,
+// and both overlays (form dialog, delete confirm) inside the viewport, on top, and clear of the phone bottom nav.
+for (const vp of [{ width: 375, height: 812 }, { width: 390, height: 844 }, { width: 1280, height: 900 }]) {
+  test(`subject settings in the app shell @${vp.width}`, async ({ page }) => {
+    await page.setViewportSize({ width: vp.width, height: vp.height });
+    const subjects = [{ id: 1, name: '測試共用科目', campus_id: null }, { id: 2, name: '測試分校科目', campus_id: 1 }];
+    await page.route('**/api/v1/**', async (route) => {
+      const p = new URL(route.request().url()).pathname;
+      if (route.request().method() !== 'GET') return route.fulfill({ json: { ok: true } });
+      if (p.endsWith('/me')) return route.fulfill({ json: { id: 9001, name: 'E2E Director', role: 'director', campuses: [1], must_change_password: false, capabilities: [] } });
+      if (p.endsWith('/branches') || p.endsWith('/campuses')) return route.fulfill({ json: [{ id: 1, name: '內湖分校', code: 'neihu' }] });
+      if (p.includes('/notifications')) return route.fulfill({ json: { data: [], unread_count: 0 } });
+      if (p === '/api/v1/subjects') return route.fulfill({ json: subjects });
+      return route.fulfill({ json: { data: [] } });
+    });
+    await page.goto('/pilot-mount.html?page=app&app_page=subject-settings');
+    await expect(page.locator('html')).toHaveAttribute('data-pilot-ready', '1');
+    const root = page.getByTestId('subject-settings-page');
+    await expect(root).toBeVisible();
+    // The welcome overlay covers the page for a moment; a click retried under it would scroll the shell sideways.
+    await expect(page.getByText('歡迎回來')).toBeHidden();
+    const phone = vp.width <= 600;
+    const rows = root.locator(phone ? '.subject-mobile-card' : '.subject-table tbody tr');
+    await expect(rows).toHaveCount(2);
+
+    // The page never had a main landmark; the migration adds none (the shell decides that).
+    await expect(root.locator('main, [role="main"]')).toHaveCount(0);
+    const m = await page.evaluate(() => {
+      const root = document.querySelector('[data-testid="subject-settings-page"]');
+      const h2 = root.querySelector('h2');
+      const lh = parseFloat(getComputedStyle(h2).lineHeight);
+      const small = [...root.querySelectorAll('button')].filter((b) => b.getBoundingClientRect().width > 0 && b.getBoundingClientRect().height < 44).length;
+      const th = root.querySelector('thead th');
+      return {
+        lines: Math.round(h2.getBoundingClientRect().height / lh), small, h1s: root.querySelectorAll('h1').length, h2s: root.querySelectorAll('h2').length,
+        thSize: th && th.getBoundingClientRect().width ? parseFloat(getComputedStyle(th).fontSize) : null,
+        thTransform: th ? getComputedStyle(th).textTransform : null,
+        sw: [document.documentElement.scrollWidth, document.documentElement.clientWidth],
+      };
+    });
+    expect(m.lines).toBe(1);
+    expect(m.small).toBe(0);
+    expect([m.h1s, m.h2s]).toEqual([0, 1]);
+    expect(m.sw[0]).toBeLessThanOrEqual(m.sw[1]);
+    if (phone) {
+      // Phone gutter: shell 10px + page 6px = 16px, in the scroll container's own coordinates (#5189).
+      const gutter = await rows.first().evaluate((el) => {
+        const main = document.querySelector('.main-content');
+        return Math.round(el.getBoundingClientRect().left - main.getBoundingClientRect().left + main.scrollLeft);
+      });
+      expect(gutter).toBe(16);
+    } else {
+      expect(m.thSize).toBeGreaterThanOrEqual(15);
+      expect(m.thTransform).toBe('none');
+    }
+    fs.mkdirSync(outDir, { recursive: true });
+    await page.screenshot({ path: path.join(outDir, `subject-settings-shell-${vp.width}.png`) });
+
+    const assertReachable = async (dialog) => {
+      const nav = page.locator('.mobile-bottom-nav');
+      const nb = (await nav.isVisible()) ? await nav.boundingBox() : null;
+      for (const button of await dialog.getByRole('button').all()) {
+        const box = await button.boundingBox();
+        expect(box.y).toBeGreaterThanOrEqual(0);
+        expect(box.y + box.height).toBeLessThanOrEqual(vp.height);
+        // Nothing (bottom nav, topbar) is stacked above the button's centre.
+        const onTop = await button.evaluate((el) => {
+          const r = el.getBoundingClientRect();
+          return el.contains(document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2));
+        });
+        expect(onTop).toBe(true);
+        if (nb) {
+          const overlap = box.x < nb.x + nb.width && box.x + box.width > nb.x && box.y < nb.y + nb.height && box.y + box.height > nb.y;
+          expect(overlap).toBe(false);
+        }
+      }
+    };
+    await root.getByRole('button', { name: '新增科目', exact: true }).click();
+    const form = page.getByRole('dialog', { name: '新增科目', exact: true });
+    await expect(form).toBeVisible();
+    await expect(form.getByLabel('科目名稱')).toBeFocused();
+    await assertReachable(form);
+    await page.screenshot({ path: path.join(outDir, `subject-settings-shell-form-${vp.width}.png`) });
+    await page.keyboard.press('Escape');
+    await expect(form).toBeHidden();
+
+    await rows.nth(1).getByRole('button', { name: '刪除', exact: true }).click();
+    const confirm = page.getByRole('alertdialog', { name: '確認刪除', exact: true });
+    await expect(confirm).toBeVisible();
+    await expect(confirm).toContainText('確定要刪除科目「測試分校科目」嗎？若有課程使用此科目則無法刪除。');
+    await assertReachable(confirm);
+    await page.screenshot({ path: path.join(outDir, `subject-settings-shell-confirm-${vp.width}.png`) });
+    await confirm.getByRole('button', { name: '取消', exact: true }).click();
+    await expect(confirm).toBeHidden();
+    // Opening and closing the overlays leaves the shell where it was.
+    expect(await page.evaluate(() => document.querySelector('.main-content').scrollLeft)).toBe(0);
   });
 }

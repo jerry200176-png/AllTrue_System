@@ -1,5 +1,6 @@
 // @ts-check
 import { test, expect } from '@playwright/test';
+import AxeBuilder from '@axe-core/playwright';
 import fs from 'node:fs';
 import path from 'node:path';
 
@@ -22,6 +23,7 @@ const subjects = (mode) => mode === 'long'
       { id: 2, name: '分校數學', campus_id: 1 },
     ];
 
+// #4989: the table (wide) and the card list (phone) both hold each name; only one of them is displayed.
 async function openPilot(page, { mode = 'normal', viewport }) {
   await page.setViewportSize({ width: viewport.width, height: viewport.height });
   await page.addInitScript(() => {
@@ -72,7 +74,7 @@ for (const viewport of VIEWPORTS) {
 
     await expect(page.getByRole('heading', { name: '科目管理', exact: true })).toBeVisible({ timeout: 10_000 });
     await expect(page.getByRole('button', { name: '新增科目', exact: true })).toBeVisible();
-    await expect(page.getByText('英文', { exact: true })).toBeVisible();
+    await expect(page.getByText('英文', { exact: true }).locator('visible=true')).toBeVisible();
     // Shared subjects (first row) are renamed and deleted by super_admin only (Founder policy 5); the campus row is not.
     await expect(page.getByRole('button', { name: '更名', exact: true }).first()).toBeDisabled();
     await expect(page.getByRole('button', { name: '更名', exact: true }).nth(1)).toBeEnabled();
@@ -90,8 +92,9 @@ for (const viewport of VIEWPORTS) {
     await page.getByRole('button', { name: '更名', exact: true }).nth(1).click();
     const dialog = page.getByRole('dialog', { name: '科目更名', exact: true });
     await expect(dialog).toBeVisible();
-    await expect(dialog).toBeFocused();
-    await expect(dialog.locator('#subject-name')).toHaveAttribute('aria-describedby', 'subject-name-hint');
+    // #4989 form template: focus starts on the first field; the 16-character hint is the dialog's description.
+    await expect(dialog.locator('#subject-name')).toBeFocused();
+    await expect(dialog).toHaveAccessibleDescription('最多 16 個字。');
     await page.keyboard.press('Escape');
     await expect(dialog).toBeHidden();
 
@@ -109,8 +112,8 @@ for (const viewport of VIEWPORTS) {
 
 test('subject settings exposes loading state', async ({ page }) => {
   await openPilot(page, { mode: 'loading', viewport: VIEWPORTS[0] });
-  await expect(page.locator('.subject-settings-page .hint[role="status"]')).toBeVisible();
-  await expect(page.getByText('英文', { exact: true })).toBeVisible({ timeout: 10_000 });
+  await expect(page.locator('.subject-settings-page [data-testid="subject-settings-loading"][role="status"]')).toBeVisible();
+  await expect(page.getByText('英文', { exact: true }).locator('visible=true')).toBeVisible({ timeout: 10_000 });
 });
 
 test('subject settings exposes empty state', async ({ page }) => {
@@ -122,7 +125,7 @@ test('subject settings exposes recoverable error state', async ({ page }) => {
   await openPilot(page, { mode: 'error', viewport: VIEWPORTS[2] });
   await expect(page.getByRole('alert')).toContainText('無法載入科目列表');
   await page.getByRole('button', { name: '重試', exact: true }).click();
-  await expect(page.getByText('英文', { exact: true })).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByText('英文', { exact: true }).locator('visible=true')).toBeVisible({ timeout: 10_000 });
   const layout = await page.evaluate(() => ({ scrollWidth: document.documentElement.scrollWidth, clientWidth: document.documentElement.clientWidth }));
   expect(layout.scrollWidth).toBeLessThanOrEqual(layout.clientWidth);
 });
@@ -142,9 +145,11 @@ test('#4488 Enter and the save button share one pending create request', async (
   const dialog = page.getByRole('dialog', { name: '新增科目', exact: true });
   await dialog.getByLabel('科目名稱').fill('程式設計');
   await dialog.getByLabel('科目名稱').press('Enter');
-  const save = dialog.locator('button.at-submit');
+  const save = dialog.locator('button[type="submit"]');
   await expect(save).toHaveAttribute('aria-busy', 'true');
-  // aria-disabled does not stop a real pointer; force the click Playwright would otherwise wait out.
+  await expect(save).toBeDisabled();
+  // A second Enter while the request is pending is ignored too; a forced click on the disabled button does nothing.
+  await dialog.getByLabel('科目名稱').press('Enter');
   await save.click({ force: true });
   await expect.poll(() => creates.length).toBe(1);
   release();
@@ -154,10 +159,28 @@ test('#4488 Enter and the save button share one pending create request', async (
 
 test('subject settings keeps long Chinese names inside the mobile card layout', async ({ page }) => {
   await openPilot(page, { mode: 'long', viewport: VIEWPORTS[0] });
-  await expect(page.getByText('英文進階長內容驗證科目名稱', { exact: true })).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByText('英文進階長內容驗證科目名稱', { exact: true }).locator('visible=true')).toBeVisible({ timeout: 10_000 });
   const layout = await page.evaluate(() => ({ scrollWidth: document.documentElement.scrollWidth, clientWidth: document.documentElement.clientWidth }));
   expect(layout.scrollWidth).toBeLessThanOrEqual(layout.clientWidth);
   // The first (shared) row is renamed by super_admin only; the campus row stays renameable for a director.
   await expect(page.getByRole('button', { name: '更名', exact: true }).first()).toBeDisabled();
   await expect(page.getByRole('button', { name: '更名', exact: true }).nth(1)).toBeEnabled();
 });
+
+// #4989: WCAG A/AA scan with rows shown and with each overlay open (the shared axe spec only sees the empty state).
+for (const viewport of [VIEWPORTS[0], VIEWPORTS[3]]) {
+  test(`subject settings has no axe violations with rows and overlays @${viewport.name}`, async ({ page }) => {
+    await openPilot(page, { viewport });
+    await expect(page.locator('.subject-table tbody tr')).toHaveCount(2);
+    const scan = async () => (await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa']).analyze())
+      .violations.map((v) => `${v.id}: ${v.nodes.map((n) => n.target.join(' ')).join(' | ')}`);
+    expect(await scan()).toEqual([]);
+    await page.getByRole('button', { name: '新增科目', exact: true }).click();
+    await expect(page.getByRole('dialog', { name: '新增科目', exact: true })).toHaveCSS('opacity', '1');
+    expect(await scan()).toEqual([]);
+    await page.keyboard.press('Escape');
+    await page.getByRole('button', { name: '刪除', exact: true }).locator('visible=true').nth(1).click();
+    await expect(page.getByRole('alertdialog', { name: '確認刪除', exact: true })).toHaveCSS('opacity', '1');
+    expect(await scan()).toEqual([]);
+  });
+}
