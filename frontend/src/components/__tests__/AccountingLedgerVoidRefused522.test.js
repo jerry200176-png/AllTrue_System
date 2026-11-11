@@ -36,6 +36,17 @@ describe('學生帳務 · 撤銷收據被拒絕後', () => {
     expect(w.find('[data-testid="ledger-action-error"]').text()).toContain('這裡不能撤銷');
   });
 
+  it('keeps the button after a repairable 409 (retry can succeed after admin repair)', async () => {
+    const { mountIt } = setup({ ok: false, status: 409, json: async () => ({ message: '這張帳單有舊的沖銷紀錄還沒對帳，請先找系統管理員處理', code: 'legacy_reversal_unreconciled' }) });
+    const w = mountIt();
+    await flushPromises();
+    await w.vm.voidReport(9);
+    await flushPromises();
+    expect(w.findAll('button.ledger-action--danger').length).toBe(1);
+    expect(w.find('[data-testid="ledger-void-refused"]').exists()).toBe(false);
+    expect(w.find('[data-testid="ledger-action-error"]').text()).toContain('系統管理員');
+  });
+
   it('keeps the button after an unrelated failure (retry may work)', async () => {
     const { mountIt } = setup({ ok: false, status: 500, json: async () => ({ message: 'Server error' }) });
     const w = mountIt();

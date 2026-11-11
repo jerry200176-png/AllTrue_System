@@ -1821,7 +1821,8 @@ class PaymentReportController extends Controller
         }
 
         // in-app #522: a missing reason is a named refusal the screen can explain (was a bare field error).
-        if (trim((string) $request->input('void_reason', '')) === '') {
+        $reasonInput = $request->input('void_reason');
+        if (!is_string($reasonInput) || trim($reasonInput) === '') {
             return response()->json(['message' => '請先寫下撤銷原因', 'code' => 'void_reason_required'], 422);
         }
         $data = $request->validate(
@@ -1855,7 +1856,7 @@ class PaymentReportController extends Controller
             // Non-null InvoiceID that cannot be loaded must refuse (do not clear Paid on a missing bill).
             // Legitimate null-InvoiceID legacy path is allowed only when course/report ownership already matches.
             if (!$sc || (int) $sc->StudentID !== $reportStudentId) {
-                return $this->voidMismatchRefusal('course_other_student');
+                return $this->voidMismatchRefusal($sc ? 'course_other_student' : 'course_not_found');
             }
 
             if ((string) $sc->getAttribute('closed_reason') === 'refunded') {
@@ -1973,6 +1974,7 @@ class PaymentReportController extends Controller
     {
         $messages = [
             'course_other_student' => '這張收據記在別位學生的課程上，這裡不能撤銷。請聯絡總部對帳，確認收據該歸誰。',
+            'course_not_found' => '這張收據對應的課程已經找不到，這裡不能撤銷。請聯絡總部對帳，確認收據該歸哪門課。',
             'invoice_not_found' => '這張收據綁的帳單已經找不到，這裡不能撤銷。請聯絡總部對帳，確認收據該歸哪張帳單。',
             'invoice_other_owner' => '這張收據綁在別位學生或別門課的帳單上（例如兄弟姊妹合開的帳單），這裡不能撤銷。請聯絡總部對帳，確認收據該歸哪張帳單。',
             'invoice_void_holds_money' => '這張收據的原帳單已作廢，但帳單上還有收款沒沖回，這裡不能撤銷。請聯絡總部對帳後再處理。',

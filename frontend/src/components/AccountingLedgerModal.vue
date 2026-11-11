@@ -466,7 +466,8 @@ const payload = ref(null);
 const busyReportId = ref(null);
 // in-app #522: receipts the server already refused to void (it said why); the card stops offering the same dead-end click.
 const voidRefused = ref({});
-const VOID_REFUSED_CODES = ['void_invoice_mismatch', 'void_course_refunded', 'legacy_reversal_unreconciled'];
+// Not legacy_reversal_unreconciled (409): it can succeed after an admin repair, so the button stays for a retry.
+const VOID_REFUSED_CODES = ['void_invoice_mismatch', 'void_course_refunded'];
 watch(() => props.show, (open) => { if (open) voidRefused.value = {}; });
 const busyInvoiceId = ref(null);
 const expandedIds = ref(new Set());

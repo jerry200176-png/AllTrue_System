@@ -2424,6 +2424,12 @@ class PaymentReportApiTest extends TestCase
 
         $cases = [
             'course_other_student' => $mk(null, $theirs, 'r522-a'),
+            'course_not_found' => PaymentReport::create([
+                'StudentID' => $student->id, 'StudentClassID' => 999999003, 'InvoiceID' => null,
+                'reported_by_name' => $student->name, 'payment_date' => Carbon::today(), 'payment_method' => 'cash',
+                'reported_amount' => 500, 'status' => 'confirmed', 'confirmed_by' => 1, 'confirmed_at' => Carbon::now(),
+                'report_token_hash' => hash('sha256', 'r522-nocourse'), 'token_expires_at' => Carbon::now()->addDay(),
+            ]),
             'invoice_not_found' => $mk(999999002, $mine, 'r522-b'),
             'invoice_other_owner' => $mk($otherBill->id, $mine, 'r522-c'),
             'invoice_void_holds_money' => $mk($voidBill->id, $mine, 'r522-d'),
@@ -2438,7 +2444,7 @@ class PaymentReportApiTest extends TestCase
             $messages[] = $msg;
             $this->assertSame('confirmed', $report->fresh()->status);
         }
-        $this->assertCount(4, array_unique($messages), 'each shape has its own message');
+        $this->assertCount(5, array_unique($messages), 'each shape has its own message');
         $this->assertSame(0, Payment::where('Method', 'void')->count(), 'refusals write nothing');
     }
 
@@ -2453,7 +2459,7 @@ class PaymentReportApiTest extends TestCase
             'reported_amount' => 500, 'status' => 'confirmed', 'confirmed_by' => 1, 'confirmed_at' => Carbon::now(),
             'report_token_hash' => hash('sha256', 'r522-noreason'), 'token_expires_at' => Carbon::now()->addDay(),
         ]);
-        foreach ([[], ['void_reason' => '   ']] as $body) {
+        foreach ([[], ['void_reason' => '   '], ['void_reason' => ['x']]] as $body) {
             $this->withHeaders(['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])
                 ->putJson("/api/v1/payment-reports/{$report->id}/void", $body)
                 ->assertStatus(422)->assertJsonPath('code', 'void_reason_required')->assertJsonPath('message', '請先寫下撤銷原因');
