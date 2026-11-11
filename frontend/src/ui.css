@@ -26,6 +26,7 @@
 @source "./pages/ReleaseNotesPage.vue";
 @source "./components/schedule-discrepancy";
 @source "./pages/ScheduleDiscrepancyPage.vue";
+@source "./pages/BranchHealthBoard.vue";
 
 /* Light theme only. Dark comes later: add a `.dark { ... }` block remapping these to dark --ds-* tokens. */
 :root {
