@@ -21,6 +21,7 @@ import {
   isKnownStatefulRead,
 } from './fixtures/readOnlyAppGuard.js';
 import { installLocalClassSessionReads, nonMaterializingProjectionPath } from './fixtures/classSessionReadResponder.js';
+import { compareDrawnCards, describeDrawnCards, drawsServedSessions } from './fixtures/calendarDrawnCards.js';
 
 /**
  * Authenticated, read-only acceptance for the calendar/course-management parity
@@ -361,8 +362,10 @@ function liveSessionCountsByDate(sessions) {
 async function showCalendarDate(page, dateInput, date) {
   await dateInput.fill(date);
   await dateInput.dispatchEvent('change');
-  await expect(page.locator('.calendar-loading-bar')).toHaveCount(0, { timeout: 20_000 });
-  await page.waitForTimeout(250);
+  await expect(dateInput).toHaveValue(date);
+  // The calendar shows .calendar-loading-overlay while it loads (SmartCalendar.vue). The class awaited here
+  // before, .calendar-loading-bar, exists only in a stylesheet, so that wait returned at once (#5178).
+  await expect(page.locator('.calendar-loading-overlay')).toHaveCount(0, { timeout: 20_000 });
 }
 
 test.describe('production acceptance — calendar/course parity', () => {
@@ -495,9 +498,16 @@ test.describe('production acceptance — calendar/course parity', () => {
         await expect.poll(servedForDate, {
           timeout: 20_000, message: 'the calendar loaded the projection for the checked day',
         }).toBeGreaterThan(0);
-        await expect.poll(() => page.locator('.course-block').count(), {
-          timeout: 20_000, message: 'the calendar draws cards on a day that has materialized sessions',
-        }).toBeGreaterThan(0);
+        // Courses and schedules still come from production after the local projection answer, so wait for
+        // the state an operator sees: cards that name this date, time and student.
+        const drawnLabels = () => page.locator('.course-block').evaluateAll((cards) => cards
+          .map((card) => card.getAttribute('aria-label') || ''));
+        await expect.poll(async () => {
+          const result = compareDrawnCards(await drawnLabels(), sessions, busiestDate);
+          return drawsServedSessions(result) ? 'drawn' : describeDrawnCards(result);
+        }, {
+          timeout: 20_000, message: `the calendar draws the sessions served for ${busiestDate} and nothing else`,
+        }).toBe('drawn');
         noteCoverage('calendar_day_sessions', busiestCount);
       }
 
