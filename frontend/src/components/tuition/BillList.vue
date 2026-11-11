@@ -50,7 +50,9 @@
         <template v-if="picked.length">
           <AtButton size="sm" shape="rect" data-testid="bill-batch" @click="$emit('batch', pickedMode, picked.map((b) => b.class_id))">{{ pickedMode === 'confirm' ? '確認入帳' : '登記' }} {{ picked.length }} 筆</AtButton>
           <AtButton variant="secondary" size="sm" shape="rect" data-testid="bill-clear-picked" @click="clearSelection">取消選取</AtButton>
+          <span class="bl__total" data-testid="bill-picked-total">已選 {{ picked.length }} 筆<template v-if="pickedOwed > 0">，到今天未收合計 <strong>{{ money(pickedOwed) }}</strong></template></span>
         </template>
+        <span v-if="visible.length" class="bl__total bl__total--shown" data-testid="bill-visible-total">目前顯示 {{ visible.length }} 筆<template v-if="visibleOwed > 0">，到今天未收合計 <strong>{{ money(visibleOwed) }}</strong></template></span>
         <AtButton class="bl__csv" variant="secondary" size="sm" shape="rect" :disabled="exportDisabled || !visible.length" data-testid="bill-export" @click="$emit('export', exportPayload())">匯出 Excel</AtButton>
       </div>
       <AtEmpty v-if="!visible.length && !noRowStudents.length" icon="search_off" :title="query.trim() ? '找不到符合的帳單' : `目前沒有「${chipLabel}」的帳單`" :description="query.trim() ? `找不到符合「${query.trim()}」的學生。請調整搜尋。` : '可以切換上方的狀態看其他帳單。'" data-testid="bill-empty" data-guide="tuition-rows" />
@@ -168,7 +170,7 @@ const moreGroups = [{ id: 'more', label: '', items: MORE.map((m) => ({ id: m.key
 
 const rows = computed(() => billRows(props.alertRows, props.today));
 const counts = computed(() => billCounts(rows.value));
-const totalOwed = computed(() => rows.value.reduce((s, b) => s + b.owed, 0));
+const totalOwed = computed(() => sumOwed(rows.value));
 const overdueCount = computed(() => rows.value.filter((b) => b.overdue_days > 0).length);
 const pending = computed(() => props.loading && !props.alertRows.length && !props.error);
 
@@ -203,6 +205,10 @@ const noRowStudents = computed(() => {
 });
 
 const money = (v) => 'NT$ ' + Number(v || 0).toLocaleString('zh-TW');
+// in-app #520 / #5099: the same number each row's 未收 cell shows (b.owed), summed over the rows on screen and over the ticked rows.
+// No amount when it is 0 (those rows show 「—」), so a 待確認入帳 view never reads as 「NT$ 0」.
+const sumOwed = (list) => list.reduce((s, b) => s + b.owed, 0);
+const visibleOwed = computed(() => sumOwed(visible.value));
 
 // Exactly what is on screen (filter, search, tab): the ids only; the server re-reads the rows and writes every cell.
 const exportPayload = () => ({
@@ -220,6 +226,7 @@ const selectableRows = computed(() => visible.value.filter(selectable));
 const anyCheck = computed(() => selectableRows.value.length > 0);
 // Derived from every selected row (not just the visible ones), and cleared on any view change, so the bar never mixes kinds.
 const picked = computed(() => rows.value.filter((b) => selected.value.has(b.key) && selectable(b)));
+const pickedOwed = computed(() => sumOwed(picked.value));
 const pickedKind = computed(() => picked.value[0]?.kind || '');
 const pickedMode = computed(() => (pickedKind.value === 'confirm' ? 'confirm' : 'report'));
 const allKind = computed(() => pickedKind.value || selectableRows.value[0]?.kind);
@@ -257,6 +264,10 @@ defineExpose({ neighbor, clearSelection, owingQueue });
 .bl__bulk{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
 .bl__bulk-all{display:flex;white-space:nowrap;align-items:center;gap:6px;font-size:var(--ds-font-size-sm);min-height:32px}
 .bl__csv{margin-left:auto}
+.bl__total{font-size:var(--ds-font-size-md);color:var(--ds-ink-mute);font-variant-numeric:tabular-nums;min-width:0}
+.bl__total strong{color:var(--ds-ink)}
+.bl__total--shown{margin-left:auto}
+.bl__total--shown+.bl__csv{margin-left:0}
 .bl__list{list-style:none;margin:0;padding:0;display:grid;gap:6px}
 .bl{--bl-check:0px}
 .bl.has-checks{--bl-check:32px}
@@ -295,6 +306,7 @@ defineExpose({ neighbor, clearSelection, owingQueue });
   /* phone: name + status on the first line, 到期／逾期 and 未收 on the second (the old list kept both) */
   .bl__period{display:none}
   .bl__sort select{min-height:44px}
+  .bl__total--shown{margin-left:0}
   .bl__actions{grid-column:2;justify-content:flex-start;padding:4px 0}
 }
 </style>

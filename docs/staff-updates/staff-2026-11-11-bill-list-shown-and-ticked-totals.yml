@@ -1,0 +1,17 @@
+updates:
+  - id: staff-2026-11-11-bill-list-shown-and-ticked-totals
+    published_at: "2026-11-11"
+    audiences:
+      - director
+    importance: digest
+    title: 帳單清單會顯示目前這幾筆與已選的合計
+    summary: 搜尋、切換狀態或勾選帳單後，清單上方會直接寫出幾筆、到今天未收合計多少。
+    items:
+      - category: improved
+        text: 帳務中心的帳單清單，在「匯出 Excel」旁會寫出目前顯示幾筆、到今天未收合計多少；搜尋或切換狀態後會跟著變。
+      - category: improved
+        text: 勾選帳單後，會寫出已選幾筆、到今天未收合計多少，不用打開確認視窗才看得到。
+      - category: improved
+        text: 最上方的「到今天未收」仍是全部帳單的合計，沒有改變。
+    source_refs:
+      - "changelog:2026-11-11:bill-list-shown-and-ticked-totals"
