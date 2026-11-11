@@ -573,4 +573,80 @@ class ManualSessionBookingTest extends TestCase
         $this->checkStudentSlot('16:30', Carbon::today()->addDays(7)->toDateString())
             ->assertStatus(422)->assertJsonPath('error_code', 'STUDENT_CONFLICT');
     }
+
+    public function test_student_conflict_names_the_other_contract_lesson_in_the_shared_conflict_shape(): void
+    {
+        $other = $this->otherCourse();
+        $held = $this->plannedSession($other, 7); // 16:00-17:00 on another contract
+        $date = Carbon::today()->addDays(7)->toDateString();
+
+        $response = $this->checkStudentSlot('16:30', $date)->assertStatus(422)
+            ->assertJsonPath('error_code', 'STUDENT_CONFLICT')
+            ->assertJsonPath('conflict_detail.type', 'student_overlap')
+            ->assertJsonPath('conflicts.0.type', 'student_overlap')
+            ->assertJsonPath('conflicts.0.date', $date)
+            ->assertJsonPath('conflicts.0.overlap_details.0.source', 'class_session')
+            ->assertJsonPath('conflicts.0.overlap_details.0.source_id', $held->id)
+            ->assertJsonPath('conflicts.0.overlap_details.0.course_id', $other->ID)
+            ->assertJsonPath('conflicts.0.overlap_details.0.same_contract', false)
+            ->assertJsonPath('conflicts.0.overlap_details.0.start_time', '16:00:00')
+            ->assertJsonPath('conflicts.0.overlap_details.0.end_time', '17:00:00');
+        $this->assertStringContainsString('16:00', (string) $response->json('conflict_detail.message'));
+
+        // The create endpoint reports the same detail (409) and writes nothing.
+        $this->withHeaders($this->headers())
+            ->postJson("/api/v1/student-classes/{$this->course->ID}/manual-sessions", ['session_date' => $date, 'start_time' => '16:30'])
+            ->assertStatus(409)
+            ->assertJsonPath('conflicts.0.overlap_details.0.course_id', $other->ID);
+        $this->assertDatabaseCount('ClassSession', 1);
+    }
+
+    public function test_student_conflict_flags_a_lesson_of_the_same_contract(): void
+    {
+        $own = $this->plannedSession($this->course, 7); // own contract, 16:00-17:00
+
+        $this->checkStudentSlot('16:30', Carbon::today()->addDays(7)->toDateString())
+            ->assertStatus(422)
+            ->assertJsonPath('error_code', 'STUDENT_CONFLICT')
+            ->assertJsonPath('conflicts.0.overlap_details.0.source_id', $own->id)
+            ->assertJsonPath('conflicts.0.overlap_details.0.same_contract', true);
+    }
+
+    public function test_student_conflict_lists_every_overlapping_lesson(): void
+    {
+        $date = Carbon::today()->addDays(7)->toDateString();
+        $this->plannedSession($this->otherCourse(), 7); // 16:00-17:00
+        // Touching intervals are allowed for one student, so the second lesson starts where the first ends.
+        ClassSession::create(['StudentClassID' => $this->otherCourse()->ID, 'SessionDate' => $date, 'StartTime' => '17:00:00', 'EndTime' => '18:00:00', 'Status' => 'scheduled']);
+
+        // 16:30-17:30 overlaps both lessons.
+        $this->checkStudentSlot('16:30', $date)->assertStatus(422)
+            ->assertJsonCount(2, 'conflicts.0.overlap_details');
+    }
+
+    public function test_student_conflict_detail_is_not_exposed_to_other_campus_or_teacher_callers(): void
+    {
+        $this->plannedSession($this->otherCourse(), 7);
+        $date = Carbon::today()->addDays(7)->toDateString();
+
+        $foreign = User::create([
+            'LoginName' => 'manual-foreign-' . uniqid() . '@example.com', 'Name' => 'Foreign director',
+            'PSW' => 'secret', 'type' => 'D', 'phone' => '0900000002', 'MustChangePassword' => false,
+        ]);
+        UserCampus::create(['CampusID' => 2, 'UserID' => $foreign->id, 'Admin' => 1, 'Approved' => 1]);
+        $foreignToken = bin2hex(random_bytes(16));
+        AuthToken::create(['user_id' => $foreign->id, 'token' => $foreignToken, 'expires_at' => now()->addDay()]);
+
+        $teacherId = (int) $this->course->TeacherID;
+        $teacherToken = bin2hex(random_bytes(16));
+        AuthToken::create(['user_id' => $teacherId, 'token' => $teacherToken, 'expires_at' => now()->addDay()]);
+
+        foreach ([$foreignToken, $teacherToken] as $token) {
+            $response = $this->withHeaders(['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])
+                ->postJson("/api/v1/student-classes/{$this->course->ID}/manual-sessions/check", ['session_date' => $date, 'start_time' => '16:30'])
+                ->assertForbidden();
+            $this->assertNull($response->json('conflicts'));
+            $this->assertNull($response->json('conflict_detail'));
+        }
+    }
 }

@@ -197,8 +197,13 @@ class ManualSessionBookingService
             $base = array_merge($base, app(SharedPackagePlanningService::class)->summarize($package, 1));
         }
 
-        if ($this->scheduleGuardService->studentHasOverlap($course, $date, $startHm, $end->format('H:i'))) {
-            return $this->blocked($base, 'student_conflict', '學生在同一時間已有另一堂課，請改選其他時段');
+        $studentConflict = $this->scheduleGuardService->studentOverlapConflict($course, $date, $startHm, $end->format('H:i'));
+        if ($studentConflict !== null) {
+            // Same shape as the teacher/room conflict below so the dialog can name the lesson that holds the slot.
+            return array_merge($this->blocked($base, 'student_conflict', '學生在同一時間已有另一堂課，請改選其他時段'), [
+                'conflicts' => [$studentConflict],
+                'conflict_detail' => $studentConflict,
+            ]);
         }
 
         $studentBranch = (int) (Student::where('id', (int) $course->StudentID)->value('CampusID') ?? 0);

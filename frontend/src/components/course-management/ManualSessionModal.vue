@@ -24,7 +24,7 @@
           <span v-if="!blockers.length">衝堂詳情：{{ result.conflict_detail.message || result.conflict_detail.type || '已有其他排課' }}</span>
           <ul v-else class="manual-session-blockers" aria-label="衝堂的課">
             <li v-for="b in blockers" :key="`${b.source}-${b.source_id}`">
-              {{ b.student_name || '另一位學生' }}{{ b.subject_name ? `・${b.subject_name}` : '' }}，{{ form.session_date }} {{ b.start_time }}–{{ b.end_time }}
+              {{ b.student_name || '另一位學生' }}{{ b.subject_name ? `・${b.subject_name}` : '' }}{{ b.course_period ? `（${b.course_period}）` : '' }}，{{ form.session_date }} {{ String(b.start_time ?? '').slice(0, 5) }}–{{ String(b.end_time ?? '').slice(0, 5) }}<template v-if="b.same_contract !== undefined">（{{ b.same_contract ? '本合約的課' : '另一份合約的課' }}）</template>
               <button v-if="b.course_id" type="button" class="ghost small manual-session-open-blocker" @click="$emit('open-course', b)">打開那堂課</button>
             </li>
           </ul>
@@ -93,6 +93,7 @@ const focusDate = () => dateInput.value?.focus();
 .manual-session-state, .manual-session-result { margin-top: 14px; padding: 12px; border-radius: 10px; display: grid; gap: 4px; font-size: .88rem; }
 .manual-session-result.ok { background: var(--ds-success-wash); color: var(--ds-success); }
 .manual-session-result.error { background: var(--ds-danger-wash); color: var(--ds-danger); }
+.manual-session-blockers { margin: 0; padding-left: 18px; overflow-wrap: anywhere; }
 .manual-session-warning { color: var(--ds-warning); font-weight: 600; line-height: 1.5; }
 .manual-session-retry { justify-self: start; margin-top: 4px; }
 .manual-session-next-period { margin-top: 14px; display: grid; gap: 8px; font-size: .88rem; }
