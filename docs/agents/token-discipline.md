@@ -14,6 +14,7 @@ Applies to every Claude/Codex session in this repo, cloud or local. These rules 
 - GitHub lists: `perPage` 5–20, `minimal_output: true`. Page review threads with the `after` cursor instead of re-reading from the start.
 - Never print a whole workflow-run list or check-run list. Pin the query to the current head SHA, or filter it (`python3 -c` / `jq`) keeping head SHA, run ID, name, status and conclusion, so a green run on a superseded head is never mistaken for exact-head CI.
 - CI failures: read the failing job's log tail first (`get_job_logs` with `failed_only` / `tail_lines`); widen the range step by step, up to the full failing-job log, only when the tail does not show the cause.
+- Open-PR and check status: `node scripts/ci/pr-digest.mjs --repo <owner>/<repo>` (one line per PR; `--pr N` for one) instead of GitHub check-run or PR listings. Advisory only; the land queue and review/final-head decide. Measured 2026-11-11: about 200k tokens for five PRs through the listings versus a few hundred through the digest.
 - Files: grep for the symbol, then read the line range you need.
 
 ## 3. Review rounds
@@ -25,6 +26,7 @@ Applies to every Claude/Codex session in this repo, cloud or local. These rules 
 
 - One implementation helper per PR, with an exact file scope, a changed-line budget taken from what is left of the PR's 700-line presubmit limit (minus a reserve for your own integration work), and a final report of at most ~200 words. A reviewer agent that a gate requires (for example when Codex is unavailable) does not count against this limit.
 - Do the fact lookup yourself when you already know the file; delegate only multi-file work.
+- Founder decision 2026-11-11 (chat, 「可以呀 省點token」, replying to the coordinator's proposal): the independent final-head review of an R0 docs-only PR uses a small model; UI page migrations run one page PR at a time (this narrows the "two page PRs in flight" pace in issue #4989; the per-page gates are unchanged); R1+ and any R3 review keep their current model and gates. This changes cost only and relaxes no review, CI, approval or evidence rule.
 - Mechanical tasks (rebases, route-count fixes, release-note fragments) are done inline, not delegated.
 
 ## 5. Status messages to the user
