@@ -2403,6 +2403,64 @@ class PaymentReportApiTest extends TestCase
         $this->assertSame('2026-04-10', $sc->fresh()->PayDate);
     }
 
+    /** in-app #522: every void_invoice_mismatch refusal says which shape it is, in plain words, with a stable reason. */
+    public function test_inapp_522_void_mismatch_refusals_carry_distinct_reasons_and_plain_messages(): void
+    {
+        $token = $this->createDirectorToken([1]);
+        $h = ['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'];
+        $student = $this->createStudent(1);
+        $other = $this->createStudent(1);
+        $mine = $this->createCountModeClass($student->id, ['Paid' => 1, 'Charge' => 500]);
+        $theirs = $this->createCountModeClass($other->id, ['Paid' => 1, 'Charge' => 500]);
+        $mk = fn (?int $invoiceId, StudentClass $course, string $key) => PaymentReport::create([
+            'StudentID' => $student->id, 'StudentClassID' => $course->ID, 'InvoiceID' => $invoiceId,
+            'reported_by_name' => $student->name, 'payment_date' => Carbon::today(), 'payment_method' => 'cash',
+            'reported_amount' => 500, 'status' => 'confirmed', 'confirmed_by' => 1, 'confirmed_at' => Carbon::now(),
+            'report_token_hash' => hash('sha256', $key), 'token_expires_at' => Carbon::now()->addDay(),
+        ]);
+        $otherBill = Invoice::create(['StudentID' => $other->id, 'StudentClassID' => $theirs->ID, 'IssueDate' => '2026-04-01', 'TotalAmount' => 500, 'PaidAmount' => 500, 'Status' => 'paid']);
+        $voidBill = Invoice::create(['StudentID' => $student->id, 'StudentClassID' => $mine->ID, 'IssueDate' => '2026-04-01', 'TotalAmount' => 500, 'PaidAmount' => 500, 'Status' => 'void']);
+        Payment::create(['InvoiceID' => $voidBill->id, 'Amount' => 500, 'PaidAt' => '2026-04-10', 'Method' => 'cash']);
+
+        $cases = [
+            'course_other_student' => $mk(null, $theirs, 'r522-a'),
+            'invoice_not_found' => $mk(999999002, $mine, 'r522-b'),
+            'invoice_other_owner' => $mk($otherBill->id, $mine, 'r522-c'),
+            'invoice_void_holds_money' => $mk($voidBill->id, $mine, 'r522-d'),
+        ];
+        $messages = [];
+        foreach ($cases as $reason => $report) {
+            $res = $this->withHeaders($h)->putJson("/api/v1/payment-reports/{$report->id}/void", ['void_reason' => '測試'])
+                ->assertStatus(422)->assertJsonPath('code', 'void_invoice_mismatch')->assertJsonPath('reason', $reason);
+            $msg = (string) $res->json('message');
+            $this->assertStringNotContainsString('歸屬不符', $msg, "{$reason}: cryptic wording must be gone");
+            $this->assertStringContainsString('聯絡總部', $msg, "{$reason}: names the next step");
+            $messages[] = $msg;
+            $this->assertSame('confirmed', $report->fresh()->status);
+        }
+        $this->assertCount(4, array_unique($messages), 'each shape has its own message');
+        $this->assertSame(0, Payment::where('Method', 'void')->count(), 'refusals write nothing');
+    }
+
+    public function test_inapp_522_void_without_a_reason_is_a_named_refusal(): void
+    {
+        $token = $this->createDirectorToken([1]);
+        $student = $this->createStudent(1);
+        $sc = $this->createCountModeClass($student->id, ['Paid' => 1, 'Charge' => 500]);
+        $report = PaymentReport::create([
+            'StudentID' => $student->id, 'StudentClassID' => $sc->ID, 'InvoiceID' => null,
+            'reported_by_name' => $student->name, 'payment_date' => Carbon::today(), 'payment_method' => 'cash',
+            'reported_amount' => 500, 'status' => 'confirmed', 'confirmed_by' => 1, 'confirmed_at' => Carbon::now(),
+            'report_token_hash' => hash('sha256', 'r522-noreason'), 'token_expires_at' => Carbon::now()->addDay(),
+        ]);
+        foreach ([[], ['void_reason' => '   ']] as $body) {
+            $this->withHeaders(['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])
+                ->putJson("/api/v1/payment-reports/{$report->id}/void", $body)
+                ->assertStatus(422)->assertJsonPath('code', 'void_reason_required')->assertJsonPath('message', '請先寫下撤銷原因');
+        }
+        $this->assertSame('confirmed', $report->fresh()->status);
+    }
+
     public function test_void_null_invoice_legacy_path_clears_paid_when_ownership_matches(): void
     {
         $token = $this->createDirectorToken([1]);

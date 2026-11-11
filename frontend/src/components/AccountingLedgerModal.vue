@@ -63,7 +63,8 @@
                 <strong>{{ x.title }}</strong>
                 <span>{{ x.message }}</span>
                 <small v-if="x.detail">{{ x.detail }}</small>
-                <small v-if="x.hint" class="ledger-muted" data-testid="ledger-exception-hint">{{ x.hint }}</small>
+                <small v-if="x.refused_message" class="ledger-muted" data-testid="ledger-void-refused">{{ x.refused_message }}</small>
+                <small v-else-if="x.hint" class="ledger-muted" data-testid="ledger-exception-hint">{{ x.hint }}</small>
                 <button
                   v-if="x.can_void"
                   class="ledger-action ledger-action--danger"
@@ -463,6 +464,10 @@ const error = ref('');
 const actionError = ref('');
 const payload = ref(null);
 const busyReportId = ref(null);
+// in-app #522: receipts the server already refused to void (it said why); the card stops offering the same dead-end click.
+const voidRefused = ref({});
+const VOID_REFUSED_CODES = ['void_invoice_mismatch', 'void_course_refunded', 'legacy_reversal_unreconciled'];
+watch(() => props.show, (open) => { if (open) voidRefused.value = {}; });
 const busyInvoiceId = ref(null);
 const expandedIds = ref(new Set());
 const showAllExceptions = ref(false);
@@ -692,6 +697,10 @@ const ledgerExceptions = computed(() => {
         severity: 1,
       });
     });
+  });
+  rows.forEach((row) => {
+    const why = row.report_id ? voidRefused.value[row.report_id] : '';
+    if (why) Object.assign(row, { can_void: false, refused_message: why });
   });
   return rows.sort((a, b) => a.severity - b.severity);
 });
@@ -1160,7 +1169,10 @@ async function voidReport(reportId) {
   busyReportId.value = reportId;
   try {
     const res = await voidReportAction(reportId, reason.trim());
-    if (!res.ok) throw new Error(res.message);
+    if (!res.ok) {
+      if (VOID_REFUSED_CODES.includes(res.code) && res.message) voidRefused.value = { ...voidRefused.value, [reportId]: res.message };
+      throw new Error(res.message);
+    }
     await loadLedger();
     emit('changed');
   } catch (e) {
