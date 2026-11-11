@@ -77,6 +77,9 @@ T3 .github/zizmor.yml
 T3 .github/pii-log-workflows.exempt.txt
 T3 .gitleaks.toml
 T3 .gitleaksignore
+T3 .github/pii-log-workflows.txt
+T3 .claude/hooks/
+T3 .claude/settings.json
 T3 backend/database/migrations/
 T3 backend/app/Console/Commands/Repair
 T3 backend/app/Services/Repair
@@ -131,7 +134,8 @@ unmatched T1
 - **T3** is the protected boundary of the table above, plus the control plane that decides it: workflows and
   what they execute, the classifier and every other `scripts/governance/` module the review gate, Presubmit
   or `deploy.yml` loads, and the files that relax a required scanner or guard (zizmor policy, PII-log
-  exemptions, gitleaks config and ignore list). A relaxed scanner is a security-boundary change.
+  exemptions and purge list, gitleaks config and ignore list) or an agent guard (`.claude/settings.json`
+  deny list and hook wiring, `.claude/hooks/`). A relaxed scanner or guard is a security-boundary change.
 - **T2** applies only when the change contains at least one deployable file. `frontend/src/` and every other
   deployable `frontend/` file (build config, public assets, vendored modules) is at least T1.
 - **T0** is only what the two T0 lists name: documentation and evidence (`*.md` means repository root), and

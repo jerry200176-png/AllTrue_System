@@ -39,6 +39,11 @@ _T3_PREFIXES = (
     ".github/pii-log-workflows.exempt.txt",
     ".gitleaks.toml",
     ".gitleaksignore",
+    # Security controls whose weakening needs the R3 review: the list of workflows whose production logs
+    # are purged, and the agent permission deny list, hook wiring and the hooks that enforce machine bans.
+    ".github/pii-log-workflows.txt",
+    ".claude/hooks/",
+    ".claude/settings.json",
     "backend/database/migrations/",
     "backend/app/Console/Commands/Repair",
     "backend/app/Services/Repair",
@@ -74,6 +79,9 @@ _MERGE_ONLY_T3_PREFIXES = (
     ".github/pii-log-workflows.exempt.txt",
     ".gitleaks.toml",
     ".gitleaksignore",
+    ".github/pii-log-workflows.txt",
+    ".claude/hooks/",
+    ".claude/settings.json",
     "scripts/governance/",
 )
 

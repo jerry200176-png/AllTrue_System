@@ -5,6 +5,8 @@ ROOT = Path(__file__).resolve().parents[2]
 
 import re
 import subprocess
+import sys
+import tempfile
 import types
 
 from scripts.governance import autonomy_gate
@@ -290,11 +292,11 @@ class ClassifierSelfProtectionTest(unittest.TestCase):
         (["Makefile"], 0, 1, "routine", 0),
         (["package.json"], 0, 1, "routine", 0),
         (["infra/daan-staging/lifecycle/x.sh"], 0, 1, "routine", 0),
-        ([".claude/settings.json"], 0, 1, "routine", 0),
-        ([".claude/hooks/guard_bash.py"], 0, 1, "routine", 0),
+        ([".claude/settings.json"], 0, 3, "routine", 0),
+        ([".claude/hooks/guard_bash.py"], 0, 3, "routine", 0),
         ([".claude/agents/qa-lead.md"], 0, 1, "routine", 0),
         ([".github/labels.yml"], 0, 1, "routine", 0),
-        ([".github/pii-log-workflows.txt"], 0, 1, "routine", 0),
+        ([".github/pii-log-workflows.txt"], 0, 3, "routine", 0),
         (["docker-compose.yml"], 0, 1, "routine", 0),
         (["brand/new/dir/file.xyz"], 0, 1, "routine", 0),
         (["notes/x.md"], 0, 1, "routine", 0),
@@ -376,8 +378,49 @@ class ClassifierSelfProtectionTest(unittest.TestCase):
                 self.assertEqual((scope["tier_name"], scope["reasons"]), ("T3", [f"protected path: {path}"]))
                 self.assertFalse(validate_declaration("Risk-Class: R0\nAutonomy-Tier: T0", [path], "+x")["valid"])
 
+    def test_agent_guards_and_the_pii_purge_list_are_protected(self):
+        # Enumerated from what wires them: hooks named by .claude/settings.json, every file in .claude/hooks/,
+        # and the purge list pii-log-purge.yml reads.
+        settings = (ROOT / ".claude/settings.json").read_text(encoding="utf-8")
+        paths = {".claude/settings.json", *re.findall(r"\.claude/hooks/[\w.-]*\w", settings)}
+        paths.update(p.relative_to(ROOT).as_posix() for p in (ROOT / ".claude/hooks").rglob("*") if p.is_file())
+        purge = (ROOT / ".github/workflows/pii-log-purge.yml").read_text(encoding="utf-8")
+        paths.update(re.findall(r"\.github/pii-log-workflows\.txt", purge))
+        self.assertLessEqual({".claude/hooks/guard_bash.py", ".github/pii-log-workflows.txt"}, paths)
+        for path in sorted(paths):
+            with self.subTest(path=path):
+                generated = machine_declaration([path], "+ allow")
+                self.assertEqual((generated["risk_class"], generated["autonomy_tier"]), ("R3", "T3"))
+                self.assertEqual(generated["reasons"], [f"protected path: {path}"])
+                for body in ("Risk-Class: R0\nAutonomy-Tier: T0", "Risk-Class: R2\nAutonomy-Tier: T2"):
+                    self.assertFalse(validate_declaration(body, [path], "+ allow")["valid"])
+                    self.assertTrue(requires_security(body, [{"filename": path, "patch": "+ allow"}]))
+                activation = classify_activation_scope([path], "+ allow")
+                self.assertEqual((activation["activation_class"], activation["runtime_paths"]), ("routine", []))
+
+    def test_declaration_helper_reads_a_non_ascii_docs_path_as_docs(self):
+        # git quotes non-ASCII names by default ("docs/\345..."); a quoted string is not a docs path.
+        with tempfile.TemporaryDirectory() as repo:
+            def git(*args):
+                subprocess.run(["git", "-c", "user.name=t", "-c", "user.email=t@example.invalid", *args],
+                               cwd=repo, check=True, capture_output=True)
+            git("init", "-q", "-b", "main")
+            Path(repo, "README.md").write_text("base\n", encoding="utf-8")
+            git("add", "-A")
+            git("commit", "-q", "-m", "base")
+            git("checkout", "-q", "-b", "docs/x")
+            Path(repo, "docs").mkdir()
+            Path(repo, "docs", "排課說明.md").write_text("說明\n", encoding="utf-8")
+            git("add", "-A")
+            git("commit", "-q", "-m", "docs")
+            out = subprocess.run(
+                [sys.executable, str(ROOT / "scripts/governance/pr_declaration.py"), "--base", "main", "--head", "HEAD"],
+                cwd=repo, check=True, capture_output=True, text=True).stdout
+        self.assertEqual(out.splitlines()[:2], ["Risk-Class: R0", "Autonomy-Tier: T0"])
+        self.assertNotIn("unclassified path", out)
+
     def test_unknown_path_is_unclassified_not_documentation(self):
-        for path in ("Makefile", "package.json", "brand/new/dir/file.xyz", ".claude/settings.json", "notes/x.md"):
+        for path in ("Makefile", "package.json", "brand/new/dir/file.xyz", ".claude/agents/qa-lead.md", "notes/x.md"):
             with self.subTest(path=path):
                 generated = machine_declaration([path], self.PATCH)
                 self.assertEqual((generated["risk_class"], generated["autonomy_tier"]), ("R1", "T1"))
