@@ -22,6 +22,8 @@
 @source "./pages/CourseManagement.vue";
 @source "./components/CourseEditForm.vue";
 @source "./components/students/StudentLearningTimeline.vue";
+@source "./components/release-notes";
+@source "./pages/ReleaseNotesPage.vue";
 
 /* Light theme only. Dark comes later: add a `.dark { ... }` block remapping these to dark --ds-* tokens. */
 :root {

@@ -975,6 +975,38 @@ test.describe('Visual regression @visual', () => {
       });
     }
   }
+  // #4989: 版本更新 at 1280 and 390. The page reads a module generated from docs/staff-updates, so the dev
+  // server's answer for that module is replaced with fixed fake notes: the baseline does not move with every new note.
+  for (const vp of [{ name: '1280', width: 1280, height: 900 }, { name: '390', width: 390, height: 844 }]) {
+    test(`release-notes @${vp.name}`, async ({ page }) => {
+      const fakeNote = (n, extra = {}) => ({
+        id: `visual-${n}`, version: `2026.09.${String(15 - n).padStart(2, '0')}`, publishedAt: `2026-09-${String(15 - n).padStart(2, '0')}`, date: `2026-09-${String(15 - n).padStart(2, '0')}`,
+        title: `測試公告標題 ${n}`, summary: `這是第 ${n} 則測試公告的白話摘要，說明這次改了什麼。`, importance: 'digest',
+        sections: [{ title: '你現在可以', items: [`測試操作說明 ${n}-1`, `測試操作說明 ${n}-2`] }], ...extra,
+      });
+      const staffUpdates = [
+        fakeNote(1, { importance: 'major', effectiveAt: '2026-09-16' }),
+        fakeNote(2, { sections: [{ title: '怎麼操作', items: ['先開啟測試頁面。', '再按下測試按鈕。'] }, { title: '要注意', items: ['這是測試資料。'] }] }),
+        fakeNote(3, { importance: 'action_required' }),
+        fakeNote(4, { importance: 'major' }),
+        fakeNote(5),
+        fakeNote(6),
+      ];
+      await page.setViewportSize({ width: vp.width, height: vp.height });
+      await page.route('**/staffUpdates.generated.js*', (route) => route.fulfill({
+        contentType: 'text/javascript', body: `export const staffUpdates = ${JSON.stringify(staffUpdates)};`,
+      }));
+      await page.goto('/pilot-mount.html?page=release-notes&role=director');
+      await expect(page.locator('html')).toHaveAttribute('data-pilot-ready', '1', { timeout: 15_000 });
+      await expect(page.getByTestId('release-note-featured')).toContainText('測試公告標題 1');
+      await expect(page.getByTestId('release-note')).toHaveCount(3);
+      // One 操作細節 is open in the baseline (set directly: no hover or focus ring in the picture).
+      await page.locator('[data-testid="release-note"] details').first().evaluate((details) => { details.open = true; });
+      await page.waitForLoadState('networkidle');
+      await expect(page).toHaveScreenshot(`release-notes-${vp.name}.png`, { fullPage: true });
+    });
+  }
+
   // #4986 step 1: 家長首頁 3 cards at 390px, mocked dashboard (fake data only).
   test('parent-home @390', async ({ page }) => {
     await page.clock.setFixedTime(new Date('2026-09-15T10:00:00+08:00'));

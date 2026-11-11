@@ -1,118 +1,70 @@
 <template>
-  <div class="rn-page">
-    <AtPageHeader title="版本更新" description="用白話整理近期會影響工作的改變；完整工程紀錄仍保留在 CHANGELOG。" icon="new_releases">
-      <template #meta>
-        <span v-if="latestNote">最新版本 <strong>{{ latestNote.version }}</strong></span>
-        <span>{{ notes.length }} 則公告</span>
-      </template>
-      <template #actions>
-        <a class="rn-changelog-link" :href="changelogUrl" target="_blank" rel="noopener noreferrer">查看完整 CHANGELOG</a>
-      </template>
-    </AtPageHeader>
-
-    <div v-if="latestNote" class="rn-featured">
-      <span class="rn-version rn-version--large">{{ latestNote.version }}</span>
-      <div>
-        <div class="rn-title-row">
-          <span v-if="latestNote.importance" class="rn-importance" :data-importance="latestNote.importance">
-            {{ importanceLabel(latestNote.importance) }}
-          </span>
-          <h3>{{ latestNote.title }}</h3>
-        </div>
-        <p>{{ latestNote.summary }}</p>
-        <small
-          v-if="latestNote.effectiveAt && latestNote.effectiveAt !== latestNote.publishedAt"
-          class="rn-effective"
+  <div class="tw:mx-auto tw:flex tw:max-w-3xl tw:flex-col tw:gap-4 tw:text-foreground" data-testid="release-notes-page">
+    <header class="tw:pb-2">
+      <div class="tw:flex tw:flex-wrap tw:items-center tw:justify-between tw:gap-x-4 tw:gap-y-2">
+        <h1 class="tw:text-tpl-page tw:font-bold tw:tracking-tight">版本更新</h1>
+        <Button
+          as="a"
+          variant="outline"
+          class="tw:h-12 tw:px-5 tw:text-[length:var(--tpl-text-body)] tw:font-semibold tw:text-foreground tw:no-underline tw:shadow-none tw:transition-colors"
+          :href="changelogUrl"
+          target="_blank"
+          rel="noopener noreferrer"
         >
-          已於 {{ latestNote.effectiveAt }} 生效
-        </small>
+          查看完整 CHANGELOG
+          <ExternalLink class="tw:size-4" :stroke-width="2" aria-hidden="true" />
+        </Button>
       </div>
-      <span class="rn-featured-label">最近一次更新</span>
-    </div>
+      <p class="tw:mt-2 tw:text-tpl-body tw:text-tpl-secondary tw:text-pretty">用白話整理近期會影響工作的改變；完整工程紀錄仍保留在 CHANGELOG。</p>
+      <p class="tw:mt-1 tw:flex tw:flex-wrap tw:gap-x-3 tw:text-tpl-caption tw:text-tpl-secondary tw:tabular-nums">
+        <span v-if="latestNote">最新版本 <strong class="tw:text-foreground">{{ latestNote.version }}</strong></span>
+        <span>{{ notes.length }} 則公告</span>
+      </p>
+    </header>
 
-    <AtEmpty
-      v-if="notes.length === 0"
-      icon="new_releases"
-      title="目前尚無可顯示的更新內容"
-      description="有新的核准公告時，會在這裡顯示。"
-    />
+    <ReleaseNoteCard v-if="latestNote" :note="latestNote" featured />
 
-    <p v-if="olderNotes.length" class="rn-compact-hint">
+    <Card v-if="notes.length === 0" class="tw:gap-0 tw:py-6 tw:shadow-none" data-testid="release-notes-empty">
+      <CardContent class="tw:px-5">
+        <h2 class="tw:text-tpl-list tw:font-bold">目前尚無可顯示的更新內容</h2>
+        <p class="tw:mt-1 tw:text-tpl-body tw:text-tpl-secondary">有新的核准公告時，會在這裡顯示。</p>
+      </CardContent>
+    </Card>
+
+    <p v-if="olderNotes.length" class="tw:mt-2 tw:text-tpl-caption tw:text-tpl-secondary">
       顯示最近 {{ recentNotes.length + (latestNote ? 1 : 0) }} 則；點擊查看其他公告。
     </p>
 
-    <section v-for="note in recentNotes" :key="note.id || `${note.version}-${note.title}`" class="rn-item">
-      <div class="rn-item-head">
-        <span class="rn-version">{{ note.version }}</span>
-        <div>
-          <div class="rn-title-row">
-            <span v-if="note.importance" class="rn-importance" :data-importance="note.importance">
-              {{ importanceLabel(note.importance) }}
-            </span>
-            <strong>{{ note.title }}</strong>
-          </div>
-          <small v-if="note.date">{{ note.date }}</small>
-        </div>
-      </div>
-      <p v-if="note.summary" class="rn-summary">{{ note.summary }}</p>
-      <details class="rn-sections-details">
-        <summary>查看操作細節</summary>
-        <div class="rn-sections">
-          <section
-            v-for="section in normalizedSections(note)"
-            :key="`${note.id || note.version}-${section.title}`"
-            class="rn-section"
-          >
-            <h4>{{ section.title }}</h4>
-            <ul class="rn-list">
-              <li v-for="row in section.items" :key="row">{{ row }}</li>
-            </ul>
-          </section>
-        </div>
-      </details>
-    </section>
+    <ReleaseNoteCard v-for="note in recentNotes" :key="note.id || `${note.version}-${note.title}`" :note="note" />
 
-    <details v-if="olderNotes.length" class="rn-older-details">
-      <summary>查看更早公告（{{ olderNotes.length }} 則）</summary>
-      <section v-for="note in olderNotes" :key="note.id || `${note.version}-${note.title}`" class="rn-item">
-        <div class="rn-item-head">
-          <span class="rn-version">{{ note.version }}</span>
-          <div>
-            <div class="rn-title-row">
-              <span v-if="note.importance" class="rn-importance" :data-importance="note.importance">
-                {{ importanceLabel(note.importance) }}
-              </span>
-              <strong>{{ note.title }}</strong>
-            </div>
-            <small v-if="note.date">{{ note.date }}</small>
-          </div>
-        </div>
-        <p v-if="note.summary" class="rn-summary">{{ note.summary }}</p>
-        <details class="rn-sections-details">
-          <summary>查看操作細節</summary>
-          <div class="rn-sections">
-            <section
-              v-for="section in normalizedSections(note)"
-              :key="`${note.id || note.version}-${section.title}`"
-              class="rn-section"
-            >
-              <h4>{{ section.title }}</h4>
-              <ul class="rn-list">
-                <li v-for="row in section.items" :key="row">{{ row }}</li>
-              </ul>
-            </section>
-          </div>
-        </details>
-      </section>
+    <details v-if="olderNotes.length" class="tw:group/older" data-testid="release-notes-older" @toggle="olderOpened = olderOpened || $event.target.open">
+      <Button
+        as="summary"
+        variant="outline"
+        class="tw:h-auto tw:min-h-12 tw:w-full tw:cursor-pointer tw:list-none tw:px-5 tw:text-[length:var(--tpl-text-body)] tw:font-semibold tw:shadow-none tw:transition-colors tw:[&::-webkit-details-marker]:hidden"
+      >
+        <ChevronRight class="tw:size-5 tw:transition-transform tw:group-open/older:rotate-90 tw:motion-reduce:transition-none" :stroke-width="2" aria-hidden="true" />
+        查看更早公告（{{ olderNotes.length }} 則）
+      </Button>
+      <div v-if="olderOpened" class="tw:mt-4 tw:flex tw:flex-col tw:gap-4">
+        <ReleaseNoteCard
+          v-for="note in olderNotes"
+          :key="note.id || `${note.version}-${note.title}`"
+          :note="note"
+          class="tw:[content-visibility:auto] tw:[contain-intrinsic-size:auto_13rem]"
+        />
+      </div>
     </details>
   </div>
 </template>
 
 <script setup>
-import { computed } from 'vue';
+import { computed, ref } from 'vue';
+import { ChevronRight, ExternalLink } from 'lucide-vue-next';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent } from '@/components/ui/card';
+import ReleaseNoteCard from '@/components/release-notes/ReleaseNoteCard.vue';
 import { notesForRole } from '../lib/releaseNotes';
-import AtPageHeader from '../components/design-system/AtPageHeader.vue';
-import AtEmpty from '../components/design-system/AtEmpty.vue';
 
 const props = defineProps({
   userRole: { type: String, default: '' },
@@ -125,251 +77,6 @@ const notes = computed(() => notesForRole(props.userRole));
 const latestNote = computed(() => notes.value[0] || null);
 const recentNotes = computed(() => notes.value.slice(1, 4));
 const olderNotes = computed(() => notes.value.slice(4));
-
-function normalizedSections(note) {
-  if (Array.isArray(note.sections) && note.sections.length > 0) {
-    return note.sections;
-  }
-  return [{ title: '你現在可以', items: note.items || [] }];
-}
-
-function importanceLabel(importance) {
-  if (importance === 'action_required') return '需要注意';
-  if (importance === 'major') return '重要更新';
-  return '本週更新';
-}
+// Older notes (600+) are built on first open, then kept: most visits never open them.
+const olderOpened = ref(false);
 </script>
-
-<style scoped>
-.rn-page {
-  max-width: 980px;
-  margin: 0 auto;
-}
-
-.rn-featured {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
-  gap: 14px;
-  align-items: center;
-  margin-top: 0;
-  padding: 16px;
-  border-radius: var(--ds-radius-lg);
-  border: 1px solid color-mix(in srgb, var(--ds-warning) 26%, transparent);
-  background: var(--ds-warning-wash);
-}
-
-.rn-title-row {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px;
-}
-
-.rn-featured h3 {
-  margin: 0 0 4px;
-  color: var(--text);
-  font-size: 17px;
-}
-
-.rn-featured p {
-  margin: 0;
-  color: var(--ds-warning);
-  line-height: 1.55;
-}
-
-.rn-featured-label {
-  grid-column: 1 / -1;
-  color: var(--ds-warning);
-  font-size: 11px;
-  font-weight: 800;
-  letter-spacing: .04em;
-}
-
-.rn-changelog-link {
-  display: inline-flex;
-  align-items: center;
-  min-height: 44px;
-  padding: 8px 12px;
-  border-radius: var(--ds-radius-md);
-  color: var(--ds-primary-text);
-  font-size: 13px;
-  font-weight: 700;
-}
-
-.rn-effective {
-  display: block;
-  margin-top: 6px;
-  color: var(--warning);
-  font-size: 12px;
-}
-
-.rn-importance {
-  display: inline-flex;
-  align-items: center;
-  font-size: 11px;
-  font-weight: 800;
-  border-radius: 999px;
-  padding: 2px 8px;
-  background: var(--ds-canvas-soft);
-  color: var(--ds-ink-secondary);
-}
-
-.rn-importance[data-importance='major'] {
-  background: var(--warning-bg);
-  color: var(--warning);
-}
-
-.rn-importance[data-importance='action_required'] {
-  background: var(--danger-bg);
-  color: var(--danger);
-}
-
-.rn-item {
-  border: 1px solid var(--border);
-  border-radius: var(--ds-radius-lg);
-  padding: 16px;
-  margin-top: 14px;
-  background: var(--card-bg);
-  box-shadow: var(--ds-shadow-1);
-}
-
-.rn-item-head {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.rn-item-head > div {
-  display: grid;
-  gap: 2px;
-}
-
-.rn-item-head strong {
-  color: var(--text);
-}
-
-.rn-item-head small {
-  color: var(--text-light);
-  font-size: 12px;
-}
-
-.rn-version {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 12px;
-  color: #fff;
-  background: var(--ds-cta);
-  border-radius: 999px;
-  padding: 4px 10px;
-  font-weight: 800;
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
-}
-
-.rn-version--large {
-  font-size: 13px;
-  padding: 6px 12px;
-}
-
-.rn-summary {
-  margin: 10px 0 0;
-  color: var(--text-light);
-  line-height: 1.65;
-}
-
-.rn-compact-hint {
-  margin: 14px 0 0;
-  color: var(--text-light);
-  font-size: 12px;
-}
-
-.rn-sections-details,
-.rn-older-details {
-  margin-top: 12px;
-}
-
-.rn-sections-details > summary,
-.rn-older-details > summary {
-  display: flex;
-  align-items: center;
-  min-height: 44px;
-  padding: 8px 12px;
-  border: 1px solid var(--border);
-  border-radius: var(--ds-radius-md);
-  background: var(--ds-canvas-soft);
-  color: var(--ds-primary-text);
-  cursor: pointer;
-  font-size: 13px;
-  font-weight: 700;
-  list-style: none;
-}
-
-.rn-sections-details > summary::-webkit-details-marker,
-.rn-older-details > summary::-webkit-details-marker {
-  display: none;
-}
-
-.rn-sections-details > summary::before,
-.rn-older-details > summary::before {
-  content: 'chevron_right';
-  margin-right: 6px;
-  font-family: 'Material Symbols Outlined';
-  font-size: 18px;
-  transition: transform .15s ease;
-}
-
-.rn-sections-details[open] > summary::before,
-.rn-older-details[open] > summary::before {
-  transform: rotate(90deg);
-}
-
-.rn-sections-details > summary:focus-visible,
-.rn-older-details > summary:focus-visible,
-.rn-changelog-link:focus-visible {
-  outline: 3px solid var(--ds-focus-ring);
-  outline-offset: 2px;
-}
-
-.rn-sections {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
-  gap: 12px;
-  margin-top: 14px;
-}
-
-.rn-section {
-  border: 1px solid var(--border);
-  border-radius: 14px;
-  padding: 12px 14px;
-  background: var(--ds-surface-0);
-}
-
-.rn-section h4 {
-  margin: 0 0 8px;
-  font-size: 13px;
-  color: var(--text);
-}
-
-.rn-list {
-  margin: 0;
-  padding-left: 18px;
-}
-
-.rn-list li {
-  margin: 6px 0;
-  color: var(--text);
-}
-
-@media (max-width: 720px) {
-  .rn-page {
-    width: 100%;
-  }
-  .rn-featured {
-    grid-template-columns: 1fr;
-  }
-  .rn-featured-label {
-    grid-column: auto;
-  }
-}
-</style>
