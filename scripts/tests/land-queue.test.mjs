@@ -289,6 +289,14 @@ test('review gate: Codex completed clean on an older SHA -> wait', () => {
   assert.equal(decideWith([codex(clean(OLD))]).reason, 'review-pending');
 });
 
+test('review gate: Codex failed on the head itself never says "last reviewed X, not head X"', () => {
+  const g = gateOf([codex(clean(H, { status: 'failed' }))]);
+  assert.equal(g.ok, false);
+  assert.doesNotMatch(g.why, /not head/);
+  assert.match(g.why, /Codex review failed on/);
+  assert.match(gateOf([codex(clean(OLD))]).why, /last reviewed .*, not head/);
+});
+
 test('review gate: completed with unresolved findings on head -> wait, and vetoes the fallback marker', () => {
   const findings = codex(clean(H, { has_any_findings: true, has_unresolved_findings: true }));
   assert.equal(decideWith([findings]).action, 'wait');

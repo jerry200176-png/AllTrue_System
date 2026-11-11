@@ -128,7 +128,11 @@ function codexGate(comments, head, owner, samePatch = () => false) {
   const old = codexVeto ? null : carried(mine, head, (b, sha) => b.includes(reviewMarker(sha)), samePatch);
   if (old) return { ok: true, via: `independent-review-carried:${old.slice(0, 7)}` };
   if (!cr) return { ok: false, why: `no Codex review on ${short} yet` };
-  return { ok: false, why: onHead ? `Codex review ${cr.status ?? 'unknown'} on ${short}` : `Codex last reviewed ${String(cr.commit_sha).slice(0, 7)}, not head ${short}` };
+  // `failed` on the head itself leaves onHead false (so it never passes), but it is not "a different commit":
+  // compare full SHAs (prefix-safe for a short one) so the message never calls two identical SHAs different.
+  const crSha = String(cr.commit_sha || '');
+  const sameCommit = crSha.length >= 7 && (head.startsWith(crSha) || crSha.startsWith(head));
+  return { ok: false, why: onHead || sameCommit ? `Codex review ${cr.status ?? 'unknown'} on ${short}` : `Codex last reviewed ${crSha.slice(0, 7)}, not head ${short}` };
 }
 
 const REPO = process.env.REPO || process.env.GITHUB_REPOSITORY;
