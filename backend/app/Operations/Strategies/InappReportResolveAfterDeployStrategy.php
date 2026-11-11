@@ -61,8 +61,10 @@ final class InappReportResolveAfterDeployStrategy
         if (!$this->evidence->issueOwnsReport($issue, $bugId)) $errors[] = 'issue_source_ref_untrusted';
         $deploy = $this->evidence->successfulDeploy($run);
         $head = $deploy['head'] ?? null;
+        $manifest = $this->evidence->manifest();
         if ($deploy === null) $errors[] = 'deploy_run_not_successful';
-        elseif (!in_array($head, $this->evidence->deployedShas(), true)) $errors[] = 'deploy_run_not_in_production';
+        elseif ($manifest['shas'] === []) $errors[] = 'deployment_manifest_unreadable';
+        elseif (!in_array($head, $manifest['shas'], true)) $errors[] = 'deploy_run_not_in_production';
         elseif (!$this->evidence->isAncestor($fix, $head)) $errors[] = 'fix_not_in_deployed_revision';
         if (!$this->evidence->fixLinkedTo($fix, $issue, $bugId)) $errors[] = 'fix_not_linked_to_issue';
         if ($deploy !== null && !$this->evidence->smokePassedAfter($smoke[1], $smoke[2] ?? null, $deploy['completed_at'])) $errors[] = 'smoke_not_passed_after_deploy';
@@ -72,7 +74,7 @@ final class InappReportResolveAfterDeployStrategy
             $errors[] = 'writeback_proof_stale';
         }
 
-        return $this->result($errors, $p, $status, $head);
+        return $this->result($errors, $p, $status, $head, $manifest);
     }
 
     public function execute(array $plan, array $context): array
@@ -137,13 +139,16 @@ final class InappReportResolveAfterDeployStrategy
     }
 
     /** IDs and hashes only: the plan is stored in the execution record. */
-    private function result(array $errors, array $p, ?string $status = null, ?string $deployedSha = null): array
+    private function result(array $errors, array $p, ?string $status = null, ?string $deployedSha = null, ?array $manifest = null): array
     {
         $errors = array_values(array_unique($errors));
         $reply = $p['public_reply'] ?? null;
 
         return ['ok' => $errors === [], 'errors' => $errors, 'bug_id' => is_int($p['bug_id'] ?? null) ? $p['bug_id'] : null,
             'from_status' => $status, 'deployed_sha' => $deployedSha, 'policy_blockers' => [],
+            // Diagnostic only (public SHAs and a state word, never a path); deliberately outside the digest below.
+            'manifest_state' => $manifest['state'] ?? null, 'manifest_shas' => $manifest['shas'] ?? [],
+            'manifest_source' => $manifest['source'] ?? null,
             'digest' => hash('sha256', json_encode([self::OPERATION, $p['bug_id'] ?? null, $p['campus_id'] ?? null, $status, $deployedSha,
                 $p['fix_commit_sha'] ?? null, $p['deploy_run_id'] ?? null, $p['smoke_result_ref'] ?? null, $p['github_issue_url'] ?? null,
                 is_string($reply) ? hash('sha256', $reply) : null, is_array($p['writeback_proof'] ?? null) ? ($p['writeback_proof']['captured_at'] ?? null) : null,
