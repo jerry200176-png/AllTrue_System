@@ -1973,14 +1973,24 @@ class PaymentReportController extends Controller
     private function voidMismatchRefusal(string $reason, ?PaymentReport $report = null): \Illuminate\Http\JsonResponse
     {
         // Receipt self-correction PR 1 (#5113): count refusals by shape and age. Log only, IDs only; no behaviour change.
-        $createdAt = $report?->getAttribute('created_at');
-        Log::warning('[ReceiptMismatch]', [
-            'reason'      => $reason,
-            'report_id'   => $report ? (int) $report->getKey() : null,
-            'student_id'  => $report ? (int) $report->getAttribute('StudentID') : null,
-            'invoice_id'  => $report && $report->getAttribute('InvoiceID') !== null ? (int) $report->getAttribute('InvoiceID') : null,
-            'age_days'    => $createdAt ? (int) Carbon::parse($createdAt)->diffInDays(Carbon::now()) : null,
-        ]);
+        try {
+            $createdAt = $report?->getAttribute('created_at');
+            $ageDays = null;
+            try {
+                $ageDays = $createdAt ? (int) Carbon::parse($createdAt)->diffInDays(Carbon::now()) : null;
+            } catch (\Throwable) {
+                $ageDays = null;
+            }
+            Log::warning('[ReceiptMismatch]', [
+                'reason'      => $reason,
+                'report_id'   => $report ? (int) $report->getKey() : null,
+                'student_id'  => $report ? (int) $report->getAttribute('StudentID') : null,
+                'invoice_id'  => $report && $report->getAttribute('InvoiceID') !== null ? (int) $report->getAttribute('InvoiceID') : null,
+                'age_days'    => $ageDays,
+            ]);
+        } catch (\Throwable) {
+            // Telemetry must never change the refusal the caller gets.
+        }
 
         $messages = [
             'course_other_student' => '這張收據記在別位學生的課程上，這裡不能撤銷。請聯絡總部對帳，確認收據該歸誰。',

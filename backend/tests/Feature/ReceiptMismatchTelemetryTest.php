@@ -96,6 +96,23 @@ class ReceiptMismatchTelemetryTest extends TestCase
         Log::shouldNotHaveReceived('warning', ['[ReceiptMismatch]', \Mockery::any()]);
     }
 
+    public function test_telemetry_failure_never_changes_the_refusal(): void
+    {
+        $h = $this->headers($this->createDirectorToken([1]));
+        $student = $this->createStudent(1);
+        $other = $this->createStudent(1);
+        $theirs = $this->createCountModeClass($other->id, ['Paid' => 1]);
+        $report = $this->confirmedReport($student, (int) $theirs->ID, null);
+
+        $expected = $this->withHeaders($h)->putJson("/api/v1/payment-reports/{$report->id}/void", ['void_reason' => '測試'])
+            ->assertStatus(422)->json();
+
+        Log::partialMock()->shouldReceive('warning')->andThrow(new \RuntimeException('log sink down'));
+        $this->withHeaders($h)->putJson("/api/v1/payment-reports/{$report->id}/void", ['void_reason' => '測試'])
+            ->assertStatus(422)->assertExactJson($expected);
+        $this->assertSame('confirmed', $report->fresh()->status);
+    }
+
     /** Invariant: an entry path ties report, bill and course to the one student, even with other open courses around. */
     public function test_director_record_and_confirm_keep_report_bill_and_course_on_one_student(): void
     {
