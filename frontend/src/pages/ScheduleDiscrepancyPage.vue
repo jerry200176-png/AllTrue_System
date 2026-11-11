@@ -571,6 +571,7 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped>
+/* TODO(#4989): dead since the shadcn-vue migration (no markup uses .sdp-* any more); a deletion-only follow-up PR removes this whole block. */
 
 .sdp-header {
   display: flex;
