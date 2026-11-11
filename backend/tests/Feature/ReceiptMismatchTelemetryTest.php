@@ -107,7 +107,17 @@ class ReceiptMismatchTelemetryTest extends TestCase
         $expected = $this->withHeaders($h)->putJson("/api/v1/payment-reports/{$report->id}/void", ['void_reason' => '測試'])
             ->assertStatus(422)->json();
 
-        Log::partialMock()->shouldReceive('warning')->andThrow(new \RuntimeException('log sink down'));
+        Log::swap(new class {
+            public function warning(): void
+            {
+                throw new \RuntimeException('log sink down');
+            }
+
+            public function __call(string $name, array $args): mixed
+            {
+                return null;
+            }
+        });
         $this->withHeaders($h)->putJson("/api/v1/payment-reports/{$report->id}/void", ['void_reason' => '測試'])
             ->assertStatus(422)->assertExactJson($expected);
         $this->assertSame('confirmed', $report->fresh()->status);
