@@ -1,0 +1,13 @@
+updates:
+  - id: staff-2026-11-11-ui-schedule-discrepancy-cleanup
+    published_at: "2026-11-11"
+    audiences:
+      - director
+    importance: digest
+    title: 課表回報管理頁排版微調
+    summary: 表格一列不再折行，說明按鈕更容易被讀屏軟體辨識。
+    items:
+      - category: improved
+        text: 「課表回報管理」電腦版的回報時間改為單行顯示，每列的兩顆按鈕並排；處理流程與文字不變。
+    source_refs:
+      - "changelog:2026-11-11:ui-schedule-discrepancy-cleanup"
