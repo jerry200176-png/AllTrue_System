@@ -38,6 +38,7 @@ const BASELINE = {
   'branch-health': {},
   'subject-settings': {},
   classroom: {},
+  'binding-conflicts': {},
 };
 
 for (const [name, allowed] of Object.entries(BASELINE)) for (const vp of VIEWPORTS) {

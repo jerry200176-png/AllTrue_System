@@ -1,141 +1,138 @@
 <template>
-  <div class="bcrp-page">
-    <AtPageHeader
-      title="衝突審查"
-      description="同一學生綁定多個 LINE 帳號時在此審查，保留正確的那一側。"
-      icon="gpp_maybe"
-    >
-      <template #meta>
-        <span>待審衝突 <strong>{{ conflicts.length }}</strong> 筆</span>
-      </template>
-      <template #actions>
-        <AtButton shape="rect" variant="ghost" icon="refresh" @click="refresh">重新整理</AtButton>
-      </template>
-    </AtPageHeader>
-
-    <AtFilterBar label="衝突篩選">
-      <div>
-        <label for="bcrp-campus">分校</label>
-        <select
-          id="bcrp-campus"
-          v-model="filters.campusId"
-          :disabled="!isSuperAdmin && branchId != null"
-          @change="load"
-        >
-          <option value="">全部（限權限）</option>
-          <option v-for="b in allBranches" :key="b.id" :value="b.id">{{ b.name }}</option>
-        </select>
+  <div class="bcrp-page tw:mx-auto tw:flex tw:max-w-5xl tw:flex-col tw:gap-4 tw:px-[calc(var(--ds-space-4)-10px)] tw:pb-24 tw:text-foreground tw:md:px-0 tw:md:pb-0" data-testid="binding-conflicts-page">
+    <header class="tw:pb-2">
+      <div class="tw:flex tw:flex-wrap tw:items-center tw:justify-between tw:gap-x-4 tw:gap-y-2">
+        <h2 class="tw:flex tw:items-center tw:gap-2 tw:text-tpl-page tw:font-bold tw:tracking-tight">
+          <ShieldAlert class="tw:size-6 tw:shrink-0 tw:text-tpl-secondary" :stroke-width="2" aria-hidden="true" />
+          衝突審查
+        </h2>
+        <Button variant="outline" :class="rowButton" @click="refresh">
+          <RefreshCw class="tw:size-4" :stroke-width="2" aria-hidden="true" />
+          重新整理
+        </Button>
       </div>
-    </AtFilterBar>
+      <p class="tw:mt-2 tw:text-tpl-body tw:text-tpl-secondary tw:text-pretty">同一學生綁定多個 LINE 帳號時在此審查，保留正確的那一側。</p>
+      <p class="tw:mt-1 tw:text-tpl-body tw:text-tpl-secondary" data-testid="binding-conflicts-count">待審衝突 <strong class="tw:text-foreground tw:tabular-nums">{{ conflicts.length }}</strong> 筆</p>
+    </header>
 
-    <AtSkeleton v-if="loading" rows="3" />
-    <div v-else-if="loadError" class="bcrp-state">
-      <AtInlineAlert tone="danger" title="無法載入衝突清單">
-        <p>{{ loadError }}</p>
-        <template #action>
-          <AtButton shape="rect" size="sm" variant="ghost" @click="refresh">重試</AtButton>
-        </template>
-      </AtInlineAlert>
-    </div>
-    <AtEmpty
-      v-else-if="conflicts.length === 0"
-      icon="task_alt"
-      title="無待審衝突"
-      description="目前沒有同一學生綁定多個 LINE 帳號的衝突案件。"
-    />
-
-    <div v-else class="bcrp-table-wrap">
-      <table class="bcrp-table">
-        <thead>
-          <tr>
-            <th style="width:110px">學生</th>
-            <th>兩方 LINE ID</th>
-            <th style="width:90px">分校</th>
-            <th style="width:110px">綁定時間</th>
-            <th style="width:150px; text-align:right">操作</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr v-for="c in conflicts" :key="c.id">
-            <td>
-              <div class="bcrp-student">
-                <span class="bcrp-avatar">{{ (c.student_name || '?')[0] }}</span>
-                <strong>{{ c.student_name || `#${c.student_id}` }}</strong>
-              </div>
-            </td>
-            <td>
-              <div class="bcrp-lines">
-                <span
-                  v-for="(b, i) in bindingSides(c)"
-                  :key="b.id"
-                  :class="['bcrp-line-chip', { 'bcrp-line-chip--keeper': b.keep }]"
-                >
-                  <code>{{ b.line_user_id_masked || '—' }}</code>
-                  <AtButton
-                    shape="rect"
-                    size="sm"
-                    :variant="b.keep ? 'secondary' : 'ghost'"
-                    :disabled="submittingId === c.id"
-                    @click="openResolveDialog(c, b)"
-                  >
-                    {{ isSuperAdmin ? '保留此側' : '解除此綁定' }}
-                  </AtButton>
-                </span>
-              </div>
-            </td>
-            <td>{{ campusNames(c) }}</td>
-            <td class="bcrp-tabular">{{ formatDate(c.bindings?.[0]?.bound_at) }}</td>
-            <td style="text-align:right">
-              <AtButton
-                shape="rect"
-                size="sm"
-                variant="ghost"
-                :loading="submittingId === c.id"
-                :disabled="submittingId === c.id"
-                @click="openResolveDialog(c, null)"
-              >
-                {{ isSuperAdmin ? '選擇保留側' : '選擇解除側' }}
-              </AtButton>
-            </td>
-          </tr>
-        </tbody>
-      </table>
+    <div role="group" aria-label="衝突篩選" class="tw:flex tw:flex-col tw:gap-2 tw:sm:max-w-xs">
+      <Label for="bcrp-campus" class="tw:text-tpl-body tw:font-semibold">分校</Label>
+      <select
+        id="bcrp-campus"
+        v-model="filters.campusId"
+        class="tw:h-12 tw:w-full tw:rounded-md tw:border tw:border-input tw:bg-background tw:px-3 tw:text-[length:var(--tpl-text-body)] tw:text-foreground tw:outline-none tw:focus-visible:border-ring tw:focus-visible:ring-[3px] tw:focus-visible:ring-ring/50 tw:disabled:cursor-not-allowed tw:disabled:bg-secondary"
+        :disabled="!isSuperAdmin && branchId != null"
+        @change="load"
+      >
+        <option value="">全部（限權限）</option>
+        <option v-for="b in allBranches" :key="b.id" :value="b.id">{{ b.name }}</option>
+      </select>
     </div>
 
-    <!-- 解決衝突確認 -->
-    <AtDialog
-      :open="Boolean(resolveTarget)"
-      :title="isSuperAdmin ? '保留綁定並解除另一側' : '解除此綁定'"
-      size="sm"
-      panel-class="bcrp-dialog"
-      @close="closeResolveDialog"
-    >
-      <p>
-        學生 <strong>{{ resolveTarget?.conflict?.student_name || `#${resolveTarget?.conflict?.student_id}` }}</strong>
-        綁定了 {{ resolveTarget ? bindingSides(resolveTarget.conflict).length : 0 }} 個 LINE 帳號。<template v-if="isSuperAdmin">確認保留
-        <strong>{{ resolveTarget?.binding?.line_user_id_masked || '此帳號' }}</strong>，並解除其他綁定嗎？</template><template v-else>確認解除
-        <strong>{{ resolveTarget?.binding?.line_user_id_masked || '此帳號' }}</strong> 的綁定嗎？</template>
-      </p>
-      <p v-if="resolveError" class="bcrp-dialog-error">{{ resolveError }}</p>
-      <template #actions>
-        <AtButton shape="rect" variant="ghost" :disabled="submitting" @click="closeResolveDialog">取消</AtButton>
-        <AtButton shape="rect" variant="danger" :loading="submitting" @click="confirmResolve">{{ isSuperAdmin ? '確認保留' : '確認解除' }}</AtButton>
+    <div class="tw:flex tw:flex-col tw:gap-4" :aria-busy="loading ? 'true' : 'false'" data-testid="binding-conflicts-content">
+      <div v-if="loading" class="tw:flex tw:flex-col tw:gap-3" role="status" aria-live="polite" data-testid="binding-conflicts-loading">
+        <span class="tw:sr-only">載入中</span>
+        <Skeleton v-for="n in 3" :key="n" class="tw:h-14 tw:w-full" />
+      </div>
+      <Alert v-else-if="loadError" tone="danger" title="無法載入衝突清單" class="tw:text-tpl-body">
+        <p class="tw:text-[length:var(--tpl-text-body)]">{{ loadError }}</p>
+        <Button variant="outline" :class="[rowButton, 'tw:mt-3 tw:text-foreground']" @click="refresh">重試</Button>
+      </Alert>
+      <Card v-else-if="conflicts.length === 0" class="tw:items-center tw:gap-2 tw:py-10 tw:text-center tw:shadow-none" data-testid="binding-conflicts-empty">
+        <CircleCheck class="tw:size-8 tw:text-tpl-secondary" :stroke-width="1.75" aria-hidden="true" />
+        <h3 class="tw:text-tpl-list tw:font-bold">無待審衝突</h3>
+        <p class="tw:max-w-prose tw:px-5 tw:text-tpl-body tw:text-tpl-secondary">目前沒有同一學生綁定多個 LINE 帳號的衝突案件。</p>
+      </Card>
+      <template v-else>
+        <Card class="bcrp-table-wrap tw:gap-0 tw:py-0 tw:shadow-none tw:max-[720px]:hidden">
+          <Table class="bcrp-table tw:text-[length:var(--tpl-text-body)] tw:[&_td]:text-[length:var(--tpl-text-body)] tw:[&_th]:text-[length:var(--tpl-text-caption)]">
+            <TableCaption class="tw:sr-only">待審綁定衝突清單</TableCaption>
+            <TableHeader>
+              <TableRow class="tw:hover:bg-transparent">
+                <TableHead scope="col" :class="headCell">學生</TableHead>
+                <TableHead scope="col" :class="headCell">兩方 LINE ID</TableHead>
+                <TableHead scope="col" :class="headCell">分校</TableHead>
+                <TableHead scope="col" :class="headCell">綁定時間</TableHead>
+                <TableHead scope="col" :class="headCell">操作</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              <TableRow v-for="c in conflicts" :key="c.id">
+                <TableCell class="tw:px-4 tw:py-3 tw:whitespace-normal tw:[overflow-wrap:anywhere]"><strong>{{ studentLabel(c) }}</strong></TableCell>
+                <TableCell class="tw:px-4 tw:py-3">
+                  <ul class="tw:flex tw:list-none tw:flex-col tw:gap-2">
+                    <li v-for="b in bindingSides(c)" :key="b.id" :class="lineChip">
+                      <code :class="lineCode">{{ b.line_user_id_masked || '—' }}</code>
+                      <Button variant="outline" :class="rowButton" :disabled="submittingId === c.id" :aria-label="sideLabel(c, b)" @click="openResolveDialog(c, b)">{{ sideAction }}</Button>
+                    </li>
+                  </ul>
+                  <p v-if="resolveErrorId === c.id" :class="resolveReason" role="alert" data-testid="binding-conflicts-resolve-error">{{ resolveError }}</p>
+                </TableCell>
+                <TableCell class="tw:px-4 tw:py-3 tw:whitespace-normal">{{ campusNames(c) }}</TableCell>
+                <TableCell class="tw:px-4 tw:py-3 tw:tabular-nums tw:text-tpl-secondary">{{ formatDate(c.bindings?.[0]?.bound_at) }}</TableCell>
+                <TableCell class="tw:px-4 tw:py-2">
+                  <Button variant="outline" :class="rowButton" :disabled="submittingId === c.id" :aria-label="`${rowAction}：${studentLabel(c)}`" @click="openResolveDialog(c, null)">{{ rowAction }}</Button>
+                </TableCell>
+              </TableRow>
+            </TableBody>
+          </Table>
+        </Card>
+        <ul class="bcrp-mobile-list tw:flex tw:list-none tw:flex-col tw:gap-3 tw:not-max-[720px]:hidden" aria-label="待審綁定衝突清單">
+          <li v-for="c in conflicts" :key="c.id">
+            <Card class="bcrp-mobile-card tw:gap-0 tw:py-4 tw:shadow-none">
+              <CardContent class="tw:flex tw:flex-col tw:gap-3 tw:px-4">
+                <strong class="tw:min-w-0 tw:text-tpl-list tw:[overflow-wrap:anywhere]">{{ studentLabel(c) }}</strong>
+                <ul class="tw:flex tw:list-none tw:flex-col tw:gap-2" aria-label="綁定的 LINE 帳號">
+                  <li v-for="b in bindingSides(c)" :key="b.id" :class="lineChip">
+                    <code :class="lineCode">{{ b.line_user_id_masked || '—' }}</code>
+                    <Button variant="outline" :class="rowButton" :disabled="submittingId === c.id" :aria-label="sideLabel(c, b)" @click="openResolveDialog(c, b)">{{ sideAction }}</Button>
+                  </li>
+                </ul>
+                <p v-if="resolveErrorId === c.id" :class="resolveReason" role="alert" data-testid="binding-conflicts-resolve-error">{{ resolveError }}</p>
+                <dl class="tw:grid tw:gap-2 tw:text-tpl-body">
+                  <div class="tw:grid tw:grid-cols-[5rem_minmax(0,1fr)] tw:gap-2">
+                    <dt class="tw:font-semibold tw:text-tpl-secondary">分校</dt>
+                    <dd class="tw:min-w-0 tw:[overflow-wrap:anywhere]">{{ campusNames(c) }}</dd>
+                  </div>
+                  <div class="tw:grid tw:grid-cols-[5rem_minmax(0,1fr)] tw:gap-2">
+                    <dt class="tw:font-semibold tw:text-tpl-secondary">綁定時間</dt>
+                    <dd class="tw:tabular-nums">{{ formatDate(c.bindings?.[0]?.bound_at) }}</dd>
+                  </div>
+                </dl>
+                <Button variant="outline" :class="[rowButton, 'tw:w-full']" :disabled="submittingId === c.id" :aria-label="`${rowAction}：${studentLabel(c)}`" @click="openResolveDialog(c, null)">{{ rowAction }}</Button>
+              </CardContent>
+            </Card>
+          </li>
+        </ul>
       </template>
-    </AtDialog>
+    </div>
+
+    <!-- 解決衝突確認. A refused request closes the confirm; its reason shows on that student with role="alert". -->
+    <ConfirmDialog
+      :open="resolveOpen"
+      :title="isSuperAdmin ? '保留綁定並解除另一側' : '解除此綁定'"
+      :description="resolveMessage"
+      :confirm-label="isSuperAdmin ? '確認保留' : '確認解除'"
+      destructive
+      :loading="submitting"
+      @update:open="onResolveOpenChange"
+      @confirm="confirmResolve"
+    />
   </div>
 </template>
 
 <script setup>
-import { ref, computed, onMounted, watch } from 'vue';
+import { ref, computed, nextTick, onMounted, watch } from 'vue';
+import { CircleCheck, RefreshCw, ShieldAlert } from 'lucide-vue-next';
+import { ConfirmDialog } from '@/components/app-overlay';
+import { Alert } from '@/components/ui/alert';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent } from '@/components/ui/card';
+import { Label } from '@/components/ui/label';
+import { Skeleton } from '@/components/ui/skeleton';
+import { Table, TableBody, TableCaption, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { branches } from '../lib/useBranches';
 import { fetchBindingConflicts, resolveBindingConflict } from '../lib/bindingsApi';
-import AtPageHeader from '../components/design-system/AtPageHeader.vue';
-import AtButton from '../components/design-system/AtButton.vue';
-import AtDialog from '../components/design-system/AtDialog.vue';
-import AtFilterBar from '../components/design-system/AtFilterBar.vue';
-import AtSkeleton from '../components/design-system/AtSkeleton.vue';
-import AtEmpty from '../components/design-system/AtEmpty.vue';
-import AtInlineAlert from '../components/design-system/AtInlineAlert.vue';
 
 const props = defineProps({
   branchId: { type: [Number, String], default: null },
@@ -150,8 +147,10 @@ const loadError = ref('');
 const conflicts = ref([]);
 const filters = ref({ campusId: '' });
 const resolveTarget = ref(null);
+const resolveOpen = ref(false);
 const submitting = ref(false);
 const resolveError = ref('');
+const resolveErrorId = ref(null);
 const submittingId = ref(null);
 
 const activeCampusId = computed(() => {
@@ -160,9 +159,27 @@ const activeCampusId = computed(() => {
   return null;
 });
 
+// Presentation only. Table heads override the global `th` rule; row buttons are 48px tall.
+const headCell = 'tw:h-12 tw:px-4 tw:font-semibold tw:normal-case tw:text-tpl-secondary';
+const rowButton = 'tw:h-12 tw:px-4 tw:text-[length:var(--tpl-text-body)] tw:font-semibold tw:shadow-none';
+const lineChip = 'bcrp-line-chip tw:flex tw:flex-wrap tw:items-center tw:justify-between tw:gap-2 tw:rounded-lg tw:border tw:border-border tw:bg-secondary tw:px-3 tw:py-2';
+const resolveReason = 'tw:mt-2 tw:text-tpl-caption tw:font-semibold tw:text-destructive tw:[overflow-wrap:anywhere]';
+const lineCode = 'tw:min-w-0 tw:font-mono tw:text-[length:var(--tpl-text-body)] tw:[overflow-wrap:anywhere]';
+const sideAction = computed(() => (isSuperAdmin.value ? '保留此側' : '解除此綁定'));
+const rowAction = computed(() => (isSuperAdmin.value ? '選擇保留側' : '選擇解除側'));
+const studentLabel = (c) => c?.student_name || `#${c?.student_id}`;
+const sideLabel = (c, b) => `${sideAction.value}：${studentLabel(c)} ${b.line_user_id_masked || '此帳號'}`;
+// The same question as before, as one sentence.
+const resolveMessage = computed(() => {
+  const target = resolveTarget.value;
+  if (!target) return '';
+  const account = target.binding?.line_user_id_masked || '此帳號';
+  return `學生 ${studentLabel(target.conflict)} 綁定了 ${bindingSides(target.conflict).length} 個 LINE 帳號。`
+    + (isSuperAdmin.value ? `確認保留 ${account}，並解除其他綁定嗎？` : `確認解除 ${account} 的綁定嗎？`);
+});
+
 function bindingSides(c) {
-  const sides = Array.isArray(c.bindings) ? c.bindings : [];
-  return sides.map((b, i) => ({ ...b, keep: i === 0 }));
+  return Array.isArray(c.bindings) ? c.bindings : [];
 }
 
 function campusNames(c) {
@@ -183,6 +200,7 @@ function formatDate(s) {
 async function load() {
   loading.value = true;
   loadError.value = '';
+  resolveErrorId.value = null;
   try {
     const data = await fetchBindingConflicts({ campusId: activeCampusId.value });
     conflicts.value = Array.isArray(data?.conflicts) ? data.conflicts : [];
@@ -204,13 +222,20 @@ function openResolveDialog(conflict, binding) {
   if (!keep) return;
   resolveTarget.value = { conflict, binding: keep };
   resolveError.value = '';
+  resolveErrorId.value = null;
+  resolveOpen.value = true;
 }
-function closeResolveDialog() {
+// The confirm button emits both a close request and `confirm` in the same click (order is the library's),
+// so the close is decided one tick later: while the request runs the dialog stays open.
+// The target is kept after closing, so the question does not empty during the close animation.
+async function onResolveOpenChange(open) {
+  await nextTick();
   if (submitting.value) return;
-  resolveTarget.value = null;
+  resolveOpen.value = open;
 }
 async function confirmResolve() {
-  if (!resolveTarget.value) return;
+  // The target is kept after closing, so a click that lands during the close animation must not send again.
+  if (submitting.value || !resolveOpen.value || !resolveTarget.value) return;
   submitting.value = true;
   submittingId.value = resolveTarget.value.conflict.id;
   resolveError.value = '';
@@ -220,10 +245,13 @@ async function confirmResolve() {
       resolveTarget.value.binding.id,
       isSuperAdmin.value ? 'keep' : 'delete',
     );
-    resolveTarget.value = null; // closeResolveDialog() is a no-op while submitting (Codex P2 on #4891)
+    resolveOpen.value = false; // a close request is ignored while submitting (Codex P2 on #4891)
     await load(); // a delete may leave the conflict open, so re-read instead of dropping the row
   } catch (e) {
+    // The reason is shown on the student's row (role="alert"): inside the open dialog it would not be announced.
     resolveError.value = e?.payload?.message || e?.message || '解決衝突失敗，請稍後再試';
+    resolveErrorId.value = resolveTarget.value.conflict.id;
+    resolveOpen.value = false;
   } finally {
     submitting.value = false;
     submittingId.value = null;
@@ -233,53 +261,3 @@ async function confirmResolve() {
 watch(() => props.branchId, () => load());
 onMounted(load);
 </script>
-
-<style scoped>
-.bcrp-page { max-width: 1180px; margin: 0 auto; }
-.bcrp-state { padding: var(--ds-space-4) 0; }
-
-.bcrp-table-wrap {
-  background: var(--ds-surface-1);
-  border: var(--ds-border-width) solid var(--ds-hairline);
-  border-radius: var(--ds-radius-lg);
-  overflow-x: auto;
-}
-.bcrp-table { width: 100%; border-collapse: collapse; font-size: var(--ds-font-size-base); }
-.bcrp-table th {
-  text-align: left; font-size: var(--ds-font-size-xs); font-weight: var(--ds-font-weight-semibold);
-  text-transform: uppercase; letter-spacing: 0.04em; color: var(--ds-ink-mute);
-  padding: var(--ds-space-3); border-bottom: var(--ds-border-width) solid var(--ds-hairline); white-space: nowrap;
-}
-.bcrp-table td { padding: var(--ds-space-3); border-bottom: var(--ds-border-width) solid var(--ds-hairline); color: var(--ds-ink); vertical-align: middle; }
-.bcrp-table tbody tr:hover { background: var(--ds-canvas-soft); }
-
-.bcrp-student { display: flex; align-items: center; gap: var(--ds-space-2); }
-.bcrp-avatar {
-  width: 28px; height: 28px; border-radius: 50%;
-  display: inline-flex; align-items: center; justify-content: center;
-  background: var(--ds-primary-wash); color: var(--ds-primary-text);
-  font-weight: var(--ds-font-weight-bold); font-size: var(--ds-font-size-sm); flex-shrink: 0;
-}
-.bcrp-lines { display: flex; flex-direction: column; gap: var(--ds-space-2); }
-.bcrp-line-chip {
-  display: flex; align-items: center; justify-content: space-between; gap: var(--ds-space-2);
-  border: var(--ds-border-width) solid var(--ds-hairline); border-radius: var(--ds-radius-md);
-  padding: 4px 8px; background: var(--ds-surface-0);
-}
-.bcrp-line-chip code { font-family: 'Courier New', monospace; font-size: var(--ds-font-size-sm); color: var(--ds-ink-secondary); }
-.bcrp-tabular { font-variant-numeric: tabular-nums; color: var(--ds-ink-secondary); white-space: nowrap; }
-
-.bcrp-overlay {
-  position: fixed; inset: 0; z-index: var(--ds-z-modal);
-  background: rgba(15, 23, 42, 0.45); display: grid; place-items: center; padding: var(--ds-space-4);
-}
-.bcrp-dialog {
-  width: min(480px, 100%); background: var(--ds-canvas);
-  border: var(--ds-border-width) solid var(--ds-hairline); border-radius: var(--ds-radius-lg);
-  box-shadow: var(--ds-shadow-2); padding: var(--ds-space-5);
-}
-.bcrp-dialog h3 { margin: 0 0 var(--ds-space-3); font-size: var(--ds-font-size-lg); color: var(--ds-ink); }
-.bcrp-dialog p { margin: 0 0 var(--ds-space-3); font-size: var(--ds-font-size-base); color: var(--ds-ink-secondary); line-height: var(--ds-line-base); }
-.bcrp-dialog-actions { display: flex; justify-content: flex-end; gap: var(--ds-space-2); }
-.bcrp-dialog-error { color: var(--ds-danger); font-size: var(--ds-font-size-sm); }
-</style>

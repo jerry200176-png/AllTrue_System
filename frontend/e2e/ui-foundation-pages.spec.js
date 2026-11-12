@@ -1044,6 +1044,25 @@ test.describe('Visual regression @visual', () => {
     });
   }
 
+  // #4989: 衝突審查 at 1280 and 390 with two fixed fake conflicts (two LINE accounts each), as a super admin.
+  for (const vp of [{ name: '1280', width: 1280, height: 900 }, { name: '390', width: 390, height: 844 }]) {
+    test(`binding-conflicts @${vp.name}`, async ({ page }) => {
+      const side = (id, campus, masked, day) => ({ id, campus_id: campus, campus_name: campus === 1 ? '測試分校甲' : '測試分校乙', line_user_id_masked: masked, bound_at: `2026-10-0${day}T12:00:00+08:00` });
+      const data = { conflicts: [
+        { id: 7, student_id: 7, student_name: '測試學生甲', campus_count: 2, bindings: [side(11, 1, 'U1111111…aaaa', 1), side(12, 2, 'U2222222…bbbb', 2)] },
+        { id: 8, student_id: 8, student_name: '測試學生乙', campus_count: 1, bindings: [side(21, 1, 'U3333333…cccc', 3), side(22, 1, 'U4444444…dddd', 4)] },
+      ] };
+      await page.setViewportSize({ width: vp.width, height: vp.height });
+      await page.route('**/api/v1/**', (route) => route.fulfill({ contentType: 'application/json', body: JSON.stringify(new URL(route.request().url()).pathname === '/api/v1/bindings/conflicts' ? data : { data: [] }) }));
+      await page.goto('/pilot-mount.html?page=binding-conflicts&role=super_admin');
+      await expect(page.locator('html')).toHaveAttribute('data-pilot-ready', '1', { timeout: 15_000 });
+      await expect(page.locator(vp.width <= 720 ? '.bcrp-mobile-card' : '.bcrp-table tbody tr')).toHaveCount(2);
+      await page.mouse.move(0, 0);
+      await page.waitForLoadState('networkidle');
+      await expect(page).toHaveScreenshot(`binding-conflicts-${vp.name}.png`, { fullPage: true });
+    });
+  }
+
   // #4989: 教室管理 at 1280 and 390 with three fixed fake rooms (two active, one inactive with a long memo).
   for (const vp of [{ name: '1280', width: 1280, height: 900 }, { name: '390', width: 390, height: 844 }]) {
     test(`classroom @${vp.name}`, async ({ page }) => {
@@ -1648,6 +1667,130 @@ for (const vp of [{ width: 375, height: 812 }, { width: 390, height: 844 }, { wi
     await expect(confirm).toBeHidden();
     expect(writes).toEqual([]);
     // Opening and closing the overlays leaves the shell where it was.
+    expect(await page.evaluate(() => document.querySelector('.main-content').scrollLeft)).toBe(0);
+  });
+}
+
+// #4989 衝突審查 inside the REAL app shell (mocked API, fake data): 16px phone gutter, title lines, 44px+ controls,
+// th token size, the confirm inside the viewport, on top, and clear of the phone bottom nav, and a refusal reason shown in view.
+for (const vp of [{ width: 375, height: 812 }, { width: 390, height: 844 }, { width: 1280, height: 900 }]) {
+  test(`binding conflict review in the app shell @${vp.width}`, async ({ page }) => {
+    await page.setViewportSize({ width: vp.width, height: vp.height });
+    const side = (id, masked) => ({ id, campus_id: 1, campus_name: '內湖分校', line_user_id_masked: masked, bound_at: '2026-10-01T12:00:00+08:00' });
+    const conflicts = [
+      { id: 7, student_id: 7, student_name: '測試學生甲', campus_count: 1, bindings: [side(11, 'U1111111…aaaa'), side(12, 'U2222222…bbbb')] },
+      { id: 8, student_id: 8, student_name: '測試學生乙', campus_count: 1, bindings: [side(21, 'U3333333…cccc'), side(22, 'U4444444…dddd')] },
+    ];
+    const writes = [];
+    const reads = [];
+    await page.route('**/api/v1/**', async (route) => {
+      const url = new URL(route.request().url());
+      const p = url.pathname;
+      if (route.request().method() !== 'GET') {
+        writes.push(`${route.request().method()} ${p} ${route.request().postData()}`);
+        return route.fulfill({ status: 422, json: { message: '測試：此衝突已由他人處理' } });
+      }
+      if (p.endsWith('/me')) return route.fulfill({ json: { id: 9001, name: 'E2E Director', role: 'director', campuses: [1], must_change_password: false, capabilities: [] } });
+      if (p.endsWith('/branches') || p.endsWith('/campuses')) return route.fulfill({ json: [{ id: 1, name: '內湖分校', code: 'neihu' }] });
+      if (p.includes('/notifications')) return route.fulfill({ json: { data: [], unread_count: 0 } });
+      if (p === '/api/v1/bindings/conflicts') { reads.push(url.search); return route.fulfill({ json: { conflicts } }); }
+      return route.fulfill({ json: { data: [] } });
+    });
+    await page.goto('/pilot-mount.html?page=app&app_page=binding-conflicts');
+    await expect(page.locator('html')).toHaveAttribute('data-pilot-ready', '1');
+    const root = page.getByTestId('binding-conflicts-page');
+    await expect(root).toBeVisible();
+    // The welcome overlay covers the page for a moment; a click retried under it would scroll the shell sideways.
+    await expect(page.getByText('歡迎回來')).toBeHidden();
+    const phone = vp.width <= 720;
+    const rows = root.locator(phone ? '.bcrp-mobile-card' : '.bcrp-table tbody tr');
+    await expect(rows).toHaveCount(2);
+    // A director reads only the own campus, and the filter is locked on it.
+    expect(reads.length).toBeGreaterThanOrEqual(1);
+    expect([...new Set(reads)]).toEqual(['?campus_id=1']);
+    await expect(root.getByLabel('分校')).toBeDisabled();
+
+    // The page never had a main landmark; the migration adds none (the shell decides that).
+    await expect(root.locator('main, [role="main"]')).toHaveCount(0);
+    const m = await page.evaluate(() => {
+      const root = document.querySelector('[data-testid="binding-conflicts-page"]');
+      const h2 = root.querySelector('h2');
+      const lh = parseFloat(getComputedStyle(h2).lineHeight);
+      const small = [...root.querySelectorAll('button, select')].filter((b) => b.getBoundingClientRect().width > 0 && b.getBoundingClientRect().height < 44).length;
+      const th = root.querySelector('thead th');
+      return {
+        lines: Math.round(h2.getBoundingClientRect().height / lh), small, h1s: root.querySelectorAll('h1').length, h2s: root.querySelectorAll('h2').length,
+        thSize: th && th.getBoundingClientRect().width ? parseFloat(getComputedStyle(th).fontSize) : null,
+        thTransform: th ? getComputedStyle(th).textTransform : null,
+        sw: [document.documentElement.scrollWidth, document.documentElement.clientWidth],
+      };
+    });
+    expect(m.lines).toBe(1);
+    expect(m.small).toBe(0);
+    expect([m.h1s, m.h2s]).toEqual([0, 1]);
+    expect(m.sw[0]).toBeLessThanOrEqual(m.sw[1]);
+    if (phone) {
+      // Phone gutter: shell 10px + page 6px = 16px, in the scroll container's own coordinates (#5189).
+      const gutter = await rows.first().evaluate((el) => {
+        const main = document.querySelector('.main-content');
+        return Math.round(el.getBoundingClientRect().left - main.getBoundingClientRect().left + main.scrollLeft);
+      });
+      expect(gutter).toBe(16);
+    } else {
+      expect(m.thSize).toBeGreaterThanOrEqual(15);
+      expect(m.thTransform).toBe('none');
+      // The table fits its card: no sideways scroll inside it at 1280.
+      const fit = await root.locator('.bcrp-table').evaluate((el) => [el.scrollWidth, el.clientWidth]);
+      expect(fit[0]).toBeLessThanOrEqual(fit[1]);
+    }
+    fs.mkdirSync(outDir, { recursive: true });
+    await page.screenshot({ path: path.join(outDir, `binding-conflicts-shell-${vp.width}.png`) });
+
+    const assertReachable = async (dialog) => {
+      const nav = page.locator('.mobile-bottom-nav');
+      const nb = (await nav.isVisible()) ? await nav.boundingBox() : null;
+      for (const button of await dialog.getByRole('button').all()) {
+        const box = await button.boundingBox();
+        expect(box.y).toBeGreaterThanOrEqual(0);
+        expect(box.y + box.height).toBeLessThanOrEqual(vp.height);
+        // Nothing (bottom nav, topbar) is stacked above the button's centre.
+        const onTop = await button.evaluate((el) => {
+          const r = el.getBoundingClientRect();
+          return el.contains(document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2));
+        });
+        expect(onTop).toBe(true);
+        if (nb) {
+          const overlap = box.x < nb.x + nb.width && box.x + box.width > nb.x && box.y < nb.y + nb.height && box.y + box.height > nb.y;
+          expect(overlap).toBe(false);
+        }
+      }
+    };
+    // The shell's floating feedback button can sit over the last card; the page leaves room to scroll the row clear of it.
+    const remove = rows.nth(1).getByRole('button', { name: '解除此綁定：測試學生乙 U4444444…dddd', exact: true });
+    await remove.evaluate((el) => el.scrollIntoView({ block: 'center' }));
+    await remove.click();
+    const confirm = page.getByRole('alertdialog', { name: '解除此綁定', exact: true });
+    await expect(confirm).toBeVisible();
+    await expect(confirm).toContainText('學生 測試學生乙 綁定了 2 個 LINE 帳號。確認解除 U4444444…dddd 的綁定嗎？');
+    await expect(confirm.getByRole('button', { name: '取消', exact: true })).toBeFocused();
+    await assertReachable(confirm);
+    await page.screenshot({ path: path.join(outDir, `binding-conflicts-shell-confirm-${vp.width}.png`) });
+    // A refused request: one POST with the director's action; the dialog closes and the reason is an alert on that student, in view.
+    await confirm.getByRole('button', { name: '確認解除', exact: true }).click();
+    await expect(confirm).toBeHidden();
+    const reason = rows.nth(1).getByRole('alert');
+    await expect(reason).toHaveText('測試：此衝突已由他人處理');
+    await expect(reason).toBeInViewport();
+    await expect(rows.first().getByRole('alert')).toHaveCount(0);
+    expect(writes).toEqual(['POST /api/v1/bindings/conflicts/8/resolve {"action":"delete","binding_id":22}']);
+    await page.screenshot({ path: path.join(outDir, `binding-conflicts-shell-resolve-error-${vp.width}.png`) });
+    // Opening the confirm again takes the reason away; 取消 sends nothing.
+    await remove.click();
+    await expect(reason).toHaveCount(0);
+    await confirm.getByRole('button', { name: '取消', exact: true }).click();
+    await expect(confirm).toBeHidden();
+    expect(writes).toHaveLength(1);
+    // Opening and closing the overlay leaves the shell where it was.
     expect(await page.evaluate(() => document.querySelector('.main-content').scrollLeft)).toBe(0);
   });
 }
