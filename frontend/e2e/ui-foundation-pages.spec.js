@@ -1063,6 +1063,39 @@ test.describe('Visual regression @visual', () => {
     });
   }
 
+  // #4989: 綁定健康度 at 1280 and 390 with fixed fake metrics; the clock is fixed because the header shows the load time.
+  for (const vp of [{ name: '1280', width: 1280, height: 900 }, { name: '390', width: 390, height: 844 }]) {
+    test(`binding-health @${vp.name}`, async ({ page }) => {
+      const data = {
+        overall: { bound_count: 82, student_total: 100 },
+        weekly_summary: { bound: 7, unbound: 2, net: 5 },
+        by_campus: [
+          { campus_id: 1, campus_name: '測試分校甲', rate: 0.86, bound_count: 43, student_total: 50 },
+          { campus_id: 2, campus_name: '測試分校乙', rate: 0.78, bound_count: 39, student_total: 50 },
+        ],
+        trend: { day: [60, 64, 63, 70, 75, 74, 82].map((bound, i) => ({ date: `2026-09-0${i + 1}`, bound })), week: [{ week: '2026-W35', bound: 70 }, { week: '2026-W36', bound: 82 }] },
+        unbound_active: [
+          { student_id: 11, student_name: '測試學生甲', campus_id: 1, campus_name: '測試分校甲' },
+          { student_id: 12, student_name: '測試學生乙', campus_id: 2, campus_name: '測試分校乙' },
+        ],
+        anomalies: [
+          { id: 101, type: '重複綁定', severity: 'warning', campus_id: 2, campus_name: '測試分校乙', student_name: '測試學生丙', occurred_at: '' },
+          { id: 102, type: '綁定失效', severity: 'danger', campus_id: 1, campus_name: '測試分校甲', occurred_at: '' },
+        ],
+      };
+      await page.clock.setFixedTime(new Date('2026-09-15T10:00:00+08:00'));
+      await page.setViewportSize({ width: vp.width, height: vp.height });
+      await page.route('**/api/v1/**', (route) => route.fulfill({ contentType: 'application/json', body: JSON.stringify(new URL(route.request().url()).pathname === '/api/v1/bindings/metrics' ? data : { data: [] }) }));
+      await page.goto('/pilot-mount.html?page=binding-health&role=director');
+      await expect(page.locator('html')).toHaveAttribute('data-pilot-ready', '1', { timeout: 15_000 });
+      await expect(page.locator('.bhd-metric')).toHaveCount(4);
+      await expect(page.locator('.bhd-line')).toBeVisible();
+      await page.mouse.move(0, 0);
+      await page.waitForLoadState('networkidle');
+      await expect(page).toHaveScreenshot(`binding-health-${vp.name}.png`, { fullPage: true });
+    });
+  }
+
   // #4989: 教室管理 at 1280 and 390 with three fixed fake rooms (two active, one inactive with a long memo).
   for (const vp of [{ name: '1280', width: 1280, height: 900 }, { name: '390', width: 390, height: 844 }]) {
     test(`classroom @${vp.name}`, async ({ page }) => {
@@ -1791,6 +1824,110 @@ for (const vp of [{ width: 375, height: 812 }, { width: 390, height: 844 }, { wi
     await expect(confirm).toBeHidden();
     expect(writes).toHaveLength(1);
     // Opening and closing the overlay leaves the shell where it was.
+    expect(await page.evaluate(() => document.querySelector('.main-content').scrollLeft)).toBe(0);
+  });
+}
+
+// #4989 綁定健康度 inside the REAL app shell (mocked API, fake data): 16px phone gutter, one title line, 44px+ controls,
+// no sideways scroll, the director's own campus only, and nothing but reads.
+for (const vp of [{ width: 375, height: 812 }, { width: 390, height: 844 }, { width: 1280, height: 900 }]) {
+  test(`binding health in the app shell @${vp.width}`, async ({ page }) => {
+    await page.setViewportSize({ width: vp.width, height: vp.height });
+    const metrics = {
+      overall: { bound_count: 82, student_total: 100 },
+      weekly_summary: { bound: 7, unbound: 2, net: 5 },
+      by_campus: [{ campus_id: 1, campus_name: '內湖分校', rate: 0.82, bound_count: 82, student_total: 100 }],
+      trend: { day: [{ date: '2026-09-01', bound: 72 }, { date: '2026-09-02', bound: 78 }, { date: '2026-09-03', bound: 82 }], week: [{ week: '2026-W35', bound: 70 }, { week: '2026-W36', bound: 82 }] },
+      unbound_active: [
+        { student_id: 11, student_name: '測試學生甲', campus_id: 1, campus_name: '內湖分校' },
+        { student_id: 12, student_name: '測試學生乙', campus_id: 1, campus_name: '內湖分校' },
+      ],
+      anomalies: [{ id: 101, type: '重複綁定', severity: 'warning', campus_id: 1, campus_name: '內湖分校', student_name: '測試學生丙', occurred_at: '2026-09-09T09:30:00' }],
+    };
+    const writes = [];
+    const reads = [];
+    let fail = false;
+    await page.route('**/api/v1/**', async (route) => {
+      const url = new URL(route.request().url());
+      const p = url.pathname;
+      if (route.request().method() !== 'GET') {
+        writes.push(`${route.request().method()} ${p}`);
+        return route.fulfill({ status: 422, json: { message: 'unexpected write' } });
+      }
+      if (p.endsWith('/me')) return route.fulfill({ json: { id: 9001, name: 'E2E Director', role: 'director', campuses: [1], must_change_password: false, capabilities: [] } });
+      if (p.endsWith('/branches') || p.endsWith('/campuses')) return route.fulfill({ json: [{ id: 1, name: '內湖分校', code: 'neihu' }] });
+      if (p.includes('/notifications')) return route.fulfill({ json: { data: [], unread_count: 0 } });
+      if (p === '/api/v1/bindings/metrics') {
+        reads.push(url.search);
+        return fail ? route.fulfill({ status: 503, json: { message: '測試：綁定健康資料暫時無法載入' } }) : route.fulfill({ json: metrics });
+      }
+      return route.fulfill({ json: { data: [] } });
+    });
+    await page.goto('/pilot-mount.html?page=app&app_page=binding-health');
+    await expect(page.locator('html')).toHaveAttribute('data-pilot-ready', '1');
+    const root = page.getByTestId('binding-health-page');
+    await expect(root).toBeVisible();
+    // The welcome overlay covers the page for a moment; a click retried under it would scroll the shell sideways.
+    await expect(page.getByText('歡迎回來')).toBeHidden();
+    await expect(root.locator('.bhd-metric')).toHaveCount(4);
+    // A director reads only the own campus.
+    expect(reads.length).toBeGreaterThanOrEqual(1);
+    expect([...new Set(reads)]).toEqual(['?campus_id=1']);
+
+    // The page never had a main landmark; the migration adds none (the shell decides that).
+    await expect(root.locator('main, [role="main"]')).toHaveCount(0);
+    const m = await page.evaluate(() => {
+      const root = document.querySelector('[data-testid="binding-health-page"]');
+      const h2 = root.querySelector('h2');
+      const lh = parseFloat(getComputedStyle(h2).lineHeight);
+      const small = [...root.querySelectorAll('button, select')].filter((b) => b.getBoundingClientRect().width > 0 && b.getBoundingClientRect().height < 44).length;
+      return {
+        lines: Math.round(h2.getBoundingClientRect().height / lh), small, h1s: root.querySelectorAll('h1').length, h2s: root.querySelectorAll('h2').length,
+        sw: [document.documentElement.scrollWidth, document.documentElement.clientWidth],
+        columns: [...root.querySelectorAll('.bhd-grid')].map((g) => getComputedStyle(g).gridTemplateColumns.split(' ').length),
+      };
+    });
+    expect(m.lines).toBe(1);
+    expect(m.small).toBe(0);
+    expect([m.h1s, m.h2s]).toEqual([0, 1]);
+    expect(m.sw[0]).toBeLessThanOrEqual(m.sw[1]);
+    const phone = vp.width <= 768;
+    expect(m.columns).toEqual(phone ? [1, 1] : [2, 2]);
+    if (phone) {
+      // Phone gutter: shell 10px + page 6px = 16px, in the scroll container's own coordinates (#5189).
+      const gutter = await root.locator('.bhd-metric').first().evaluate((el) => {
+        const main = document.querySelector('.main-content');
+        return Math.round(el.getBoundingClientRect().left - main.getBoundingClientRect().left + main.scrollLeft);
+      });
+      expect(gutter).toBe(16);
+    }
+    fs.mkdirSync(outDir, { recursive: true });
+    await page.screenshot({ path: path.join(outDir, `binding-health-shell-${vp.width}.png`) });
+
+    // 週 is a pressed toggle; the chart stays in its card.
+    await root.getByRole('button', { name: '週', exact: true }).click();
+    await expect(root.getByRole('button', { name: '週', exact: true })).toHaveAttribute('aria-pressed', 'true');
+    const chart = await root.locator('.bhd-line').boundingBox();
+    expect(chart.x).toBeGreaterThanOrEqual(0);
+    expect(chart.x + chart.width).toBeLessThanOrEqual(vp.width);
+
+    // A failed reload is announced, in view, and 重試 brings the numbers back.
+    fail = true;
+    await root.getByRole('button', { name: '重新整理', exact: true }).click();
+    const alert = root.getByRole('alert');
+    await expect(alert).toContainText('無法載入綁定健康度');
+    await expect(alert).toContainText('測試：綁定健康資料暫時無法載入');
+    await expect(alert).toBeInViewport();
+    await page.screenshot({ path: path.join(outDir, `binding-health-shell-error-${vp.width}.png`) });
+    fail = false;
+    await alert.getByRole('button', { name: '重試', exact: true }).focus();
+    await page.keyboard.press('Enter');
+    await expect(root.locator('.bhd-metric')).toHaveCount(4);
+    await expect(root.getByRole('alert')).toHaveCount(0);
+    // 重試 left the screen with the alert; keyboard focus is on 重新整理, not dropped.
+    await expect(root.getByRole('button', { name: '重新整理', exact: true })).toBeFocused();
+    expect([...new Set(reads)]).toEqual(['?campus_id=1']);
+    expect(writes).toEqual([]);
     expect(await page.evaluate(() => document.querySelector('.main-content').scrollLeft)).toBe(0);
   });
 }

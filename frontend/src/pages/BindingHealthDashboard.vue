@@ -1,162 +1,176 @@
 <template>
-  <div class="bhd-page">
-    <AtPageHeader
-      title="綁定健康度"
-      description="全校與各分校 LINE 綁定概況、趨勢與異常事件。"
-      icon="monitor_heart"
-    >
-      <template #meta>
-        <span>更新於 <strong>{{ updatedLabel }}</strong></span>
-      </template>
-      <template #actions>
-        <AtButton shape="rect" variant="ghost" icon="refresh" @click="refresh">重新整理</AtButton>
-      </template>
-    </AtPageHeader>
-
-    <AtSkeleton v-if="loading" rows="5" />
-    <div v-else-if="loadError" class="bhd-state">
-      <AtInlineAlert tone="danger" title="無法載入綁定健康度">
-        <p>{{ loadError }}</p>
-        <template #action>
-          <AtButton shape="rect" size="sm" variant="ghost" @click="refresh">重試</AtButton>
-        </template>
-      </AtInlineAlert>
-    </div>
-
-    <div v-else-if="!hasMetricsData" class="bhd-state">
-      <AtEmpty
-        icon="monitor_heart"
-        title="目前沒有可顯示的綁定健康度資料"
-        description="資料準備好後會顯示在這裡。請使用右上角重新整理。"
-      />
-    </div>
-
-    <template v-else>
-      <!-- 每週摘要卡 -->
-      <div class="bhd-stats">
-        <AtMetric label="本週新增綁定" :value="weekly.bound ?? '—'" delta="週綁定數" delta-tone="positive" accent="var(--ds-success)" />
-        <AtMetric label="本週解除綁定" :value="weekly.unbound ?? '—'" delta="週解除數" delta-tone="negative" accent="var(--ds-danger)" />
-        <AtMetric label="本週淨增" :value="weekly.net ?? '—'" :delta-tone="(weekly.net ?? 0) >= 0 ? 'positive' : 'negative'" accent="var(--ds-primary)" />
-        <AtMetric label="全校綁定率" :value="overallRateLabel" delta="已綁定/活躍學生" delta-tone="neutral" accent="var(--ds-info)" />
+  <div class="bhd-page tw:mx-auto tw:flex tw:max-w-6xl tw:flex-col tw:gap-4 tw:px-[calc(var(--ds-space-4)-10px)] tw:pb-24 tw:text-foreground tw:md:px-0 tw:md:pb-0" data-testid="binding-health-page">
+    <header class="tw:pb-2">
+      <div class="tw:flex tw:flex-wrap tw:items-center tw:justify-between tw:gap-x-4 tw:gap-y-2">
+        <h2 class="tw:flex tw:items-center tw:gap-2 tw:text-tpl-page tw:font-bold tw:tracking-tight">
+          <HeartPulse class="tw:size-6 tw:shrink-0 tw:text-tpl-secondary" :stroke-width="2" aria-hidden="true" />
+          綁定健康度
+        </h2>
+        <Button ref="refreshButton" variant="outline" :class="actionButton" @click="refresh">
+          <RefreshCw class="tw:size-4" :stroke-width="2" aria-hidden="true" />
+          重新整理
+        </Button>
       </div>
+      <p class="tw:mt-2 tw:text-tpl-body tw:text-tpl-secondary tw:text-pretty">全校與各分校 LINE 綁定概況、趨勢與異常事件。</p>
+      <p class="tw:mt-1 tw:text-tpl-caption tw:text-tpl-secondary" data-testid="binding-health-updated">更新於 <strong class="tw:text-foreground tw:tabular-nums">{{ updatedLabel }}</strong></p>
+    </header>
 
-      <div class="bhd-grid">
-        <!-- 全校綁定率環形圖 -->
-        <AtSection title="全校綁定率">
-          <div class="bhd-ring-wrap">
-            <svg :viewBox="`0 0 ${RING * 2} ${RING * 2}`" class="bhd-ring" role="img" :aria-label="`全校綁定率 ${overallRateLabel}`">
-              <circle class="bhd-ring-bg" :cx="RING" :cy="RING" :r="RING - 6" fill="none" />
-              <circle
-                class="bhd-ring-fg"
-                :cx="RING" :cy="RING" :r="RING - 6" fill="none"
-                :stroke-dasharray="`${ringDash} ${CIRCUMFERENCE - ringDash}`"
-                stroke-dashoffset="0"
-              />
-            </svg>
-            <div class="bhd-ring-center">
-              <strong>{{ overallRateLabel }}</strong>
-              <span>已綁定 {{ overall.bound_count ?? 0 }}</span>
-            </div>
-          </div>
-        </AtSection>
-
-        <!-- 各分校水平長條圖 -->
-        <AtSection title="各分校綁定率">
-          <ul class="bhd-bars">
-            <li v-for="c in campusRates" :key="c.campus_id">
-              <div class="bhd-bar-head">
-                <span>{{ c.campus_name || `#${c.campus_id}` }}</span>
-                <span class="bhd-tabular">{{ rateLabel(c.rate) }}（{{ c.bound_count }}/{{ c.student_total }}）</span>
-              </div>
-              <div class="bhd-bar-track">
-                <div class="bhd-bar-fill" :style="{ width: barWidth(c.rate) }"></div>
-              </div>
-            </li>
-          </ul>
-        </AtSection>
+    <div class="tw:flex tw:flex-col tw:gap-4" :aria-busy="loading ? 'true' : 'false'" data-testid="binding-health-content">
+      <div v-if="loading" class="tw:flex tw:flex-col tw:gap-3" role="status" aria-live="polite" data-testid="binding-health-loading">
+        <span class="tw:sr-only">載入中</span>
+        <Skeleton v-for="n in 5" :key="n" class="tw:h-14 tw:w-full" />
       </div>
+      <Alert v-else-if="loadError" tone="danger" title="無法載入綁定健康度" class="tw:text-tpl-body">
+        <p class="tw:text-[length:var(--tpl-text-body)] tw:[overflow-wrap:anywhere]">{{ loadError }}</p>
+        <Button variant="outline" :class="[actionButton, 'tw:mt-3 tw:text-foreground']" @click="retry">重試</Button>
+      </Alert>
+      <Card v-else-if="!hasMetricsData" class="tw:items-center tw:gap-2 tw:py-10 tw:text-center tw:shadow-none" data-testid="binding-health-empty">
+        <HeartPulse class="tw:size-8 tw:text-tpl-secondary" :stroke-width="1.75" aria-hidden="true" />
+        <h3 class="tw:text-tpl-list tw:font-bold">目前沒有可顯示的綁定健康度資料</h3>
+        <p class="tw:max-w-prose tw:px-5 tw:text-tpl-body tw:text-tpl-secondary">資料準備好後會顯示在這裡。請使用右上角重新整理。</p>
+      </Card>
 
-      <!-- 趨勢折線圖 -->
-      <AtSection title="綁定趨勢">
-        <template #actions>
-          <div class="bhd-gran">
-            <AtButton
-              v-for="g in ['day', 'week']"
-              :key="g"
-              shape="rect"
-              size="md"
-              :variant="granularity === g ? 'secondary' : 'ghost'"
-              :aria-pressed="granularity === g ? 'true' : 'false'"
-              @click="setGranularity(g)"
-            >{{ g === 'day' ? '日' : '週' }}</AtButton>
-          </div>
-        </template>
-        <div v-if="trendSeries.length" class="bhd-line-wrap">
-          <svg :viewBox="`0 0 ${CHART_W} ${CHART_H}`" class="bhd-line" role="img" aria-label="綁定趨勢折線圖">
-            <polyline class="bhd-line-grid" :points="gridPoints" fill="none" />
-            <polyline class="bhd-line-path" :points="linePoints" fill="none" />
-            <polyline class="bhd-line-area" :points="areaPoints" />
-            <circle
-              v-for="p in linePointsArr" :key="p.key"
-              class="bhd-line-dot" :cx="p.x" :cy="p.y" r="3"
-            />
-          </svg>
-        </div>
-        <AtEmpty
-          v-else
-          icon="show_chart"
-          title="目前沒有趨勢資料"
-          description="選擇其他期間或稍後重新整理，查看最新綁定變化。"
-        />
-      </AtSection>
+      <template v-else>
+        <!-- 每週摘要卡 -->
+        <section class="bhd-stats tw:grid tw:grid-cols-2 tw:gap-3 tw:min-[901px]:grid-cols-4" aria-label="本週綁定摘要">
+          <Card v-for="metric in weeklyMetrics" :key="metric.label" class="bhd-metric tw:gap-0 tw:py-4 tw:shadow-none">
+            <CardContent class="tw:flex tw:flex-col tw:gap-1 tw:px-4">
+              <span class="tw:flex tw:items-center tw:gap-2 tw:text-tpl-caption tw:text-tpl-secondary">
+                <span :class="['tw:size-2.5 tw:shrink-0 tw:rounded-full', metric.dot]" aria-hidden="true" />{{ metric.label }}
+              </span>
+              <span class="tw:text-tpl-num-sm tw:leading-none tw:font-bold tw:tabular-nums">{{ metric.value }}</span>
+              <span v-if="metric.delta" :class="['tw:text-tpl-caption', metric.deltaClass]">{{ metric.delta }}</span>
+            </CardContent>
+          </Card>
+        </section>
 
-      <div class="bhd-grid bhd-grid--lower">
-        <!-- 未綁定活躍學生 -->
-        <AtSection title="未綁定活躍學生（近 30 天有課）">
-          <ul v-if="unboundActive.length" class="bhd-list">
-            <li v-for="s in unboundActive" :key="s.student_id">
-              <div>
-                <strong>{{ s.student_name }}</strong>
-                <span class="bhd-list-meta">{{ s.campus_name || `#${s.campus_id}` }}</span>
-              </div>
-              <AtButton shape="rect" size="sm" variant="ghost" icon="visibility" @click="viewStudent(s)">查看</AtButton>
-            </li>
-          </ul>
-          <AtEmpty v-else icon="check_circle" title="沒有未綁定的活躍學生" />
-        </AtSection>
-
-        <!-- 異常事件時間軸 -->
-        <AtSection title="異常事件（近 7 天）">
-          <ul v-if="anomalies.length" class="bhd-timeline">
-            <li v-for="a in anomalies" :key="a.id" class="bhd-tl-item">
-              <span class="bhd-tl-dot" :class="`bhd-tl-dot--${a.severity || 'warning'}`" aria-hidden="true"></span>
-              <div>
-                <div class="bhd-tl-head">
-                  <AtBadge tone="warning" :label="a.type || a.reason_code || '異常'" />
-                  <span class="bhd-tl-time bhd-tabular">{{ formatDateTime(a.occurred_at) }}</span>
+        <div :class="twoColumns">
+          <!-- 全校綁定率 -->
+          <section :class="panel" aria-labelledby="bhd-overall-title">
+            <Card :class="panelCard">
+              <h3 id="bhd-overall-title" :class="panelTitle">全校綁定率</h3>
+              <div class="bhd-ring-wrap tw:flex tw:flex-wrap tw:items-center tw:gap-5">
+                <ActivityRing :done="overallBound" :total="overallTotal" :label="`全校綁定率 ${overallRateLabel}`" />
+                <div class="tw:flex tw:min-w-0 tw:flex-col tw:gap-1">
+                  <strong class="tw:text-tpl-num-sm tw:leading-none tw:font-bold tw:tabular-nums">{{ overallRateLabel }}</strong>
+                  <span class="tw:text-tpl-body tw:text-tpl-secondary tw:tabular-nums">已綁定 {{ overall.bound_count ?? 0 }}</span>
                 </div>
-                <div class="bhd-tl-desc">{{ a.campus_name || `#${a.campus_id}` }}{{ a.student_name ? ` · ${a.student_name}` : '' }}</div>
               </div>
-            </li>
-          </ul>
-          <AtEmpty v-else icon="shield" title="近 7 天無異常事件" />
-        </AtSection>
-      </div>
-    </template>
+            </Card>
+          </section>
+
+          <!-- 各分校綁定率 -->
+          <section :class="panel" aria-labelledby="bhd-campus-title">
+            <Card :class="panelCard">
+              <h3 id="bhd-campus-title" :class="panelTitle">各分校綁定率</h3>
+              <ul class="bhd-bars tw:flex tw:list-none tw:flex-col tw:gap-4">
+                <li v-for="c in campusRates" :key="c.campus_id" class="tw:flex tw:flex-col tw:gap-2">
+                  <div class="tw:flex tw:flex-wrap tw:items-baseline tw:justify-between tw:gap-x-3 tw:gap-y-1 tw:text-tpl-body">
+                    <span class="tw:min-w-0 tw:[overflow-wrap:anywhere]">{{ campusLabel(c) }}</span>
+                    <span class="tw:whitespace-nowrap tw:tabular-nums tw:text-tpl-secondary">{{ rateLabel(c.rate) }}（{{ c.bound_count }}/{{ c.student_total }}）</span>
+                  </div>
+                  <Progress :model-value="barValue(c.rate)" :get-value-label="() => `${campusLabel(c)}綁定率 ${rateLabel(c.rate)}`" />
+                </li>
+              </ul>
+            </Card>
+          </section>
+        </div>
+
+        <!-- 綁定趨勢 -->
+        <section :class="panel" aria-labelledby="bhd-trend-title">
+          <Card :class="panelCard">
+            <div class="tw:flex tw:flex-wrap tw:items-center tw:justify-between tw:gap-x-4 tw:gap-y-2">
+              <h3 id="bhd-trend-title" :class="panelTitle">綁定趨勢</h3>
+              <div class="bhd-gran tw:flex tw:gap-1" role="group" aria-label="趨勢單位">
+                <Button
+                  v-for="g in granularities"
+                  :key="g.value"
+                  :variant="granularity === g.value ? 'secondary' : 'ghost'"
+                  :class="[actionButton, 'tw:min-w-12']"
+                  :aria-pressed="granularity === g.value ? 'true' : 'false'"
+                  @click="setGranularity(g.value)"
+                >{{ g.label }}</Button>
+              </div>
+            </div>
+            <Sparkline v-if="trendPoints.length > 1" class="bhd-line tw:h-40!" :values="trendValues" tone="amber" label="綁定趨勢折線圖" />
+            <p v-else-if="trendPoints.length === 1" class="tw:flex tw:items-baseline tw:gap-3 tw:text-tpl-body" data-testid="binding-health-trend-single">
+              <span class="tw:text-tpl-secondary tw:tabular-nums">{{ trendPoints[0].key }}</span>
+              <strong class="tw:text-tpl-list tw:font-bold tw:tabular-nums">{{ trendPoints[0].bound }}</strong>
+            </p>
+            <div v-else :class="panelEmpty">
+              <ChartLine class="tw:size-6 tw:shrink-0 tw:text-tpl-secondary" :stroke-width="1.75" aria-hidden="true" />
+              <div>
+                <p class="tw:font-semibold">目前沒有趨勢資料</p>
+                <p class="tw:text-tpl-secondary">選擇其他期間或稍後重新整理，查看最新綁定變化。</p>
+              </div>
+            </div>
+          </Card>
+        </section>
+
+        <div :class="twoColumns">
+          <!-- 未綁定活躍學生 -->
+          <section :class="panel" aria-labelledby="bhd-unbound-title">
+            <Card :class="panelCard">
+              <h3 id="bhd-unbound-title" :class="panelTitle">未綁定活躍學生（近 30 天有課）</h3>
+              <ul v-if="unboundActive.length" class="bhd-list tw:flex tw:list-none tw:flex-col tw:gap-2">
+                <li v-for="s in unboundActive" :key="s.student_id" :class="[listRow, 'tw:items-center tw:justify-between']">
+                  <div class="tw:flex tw:min-w-0 tw:flex-col">
+                    <strong class="tw:text-tpl-body tw:[overflow-wrap:anywhere]">{{ s.student_name }}</strong>
+                    <span class="tw:text-tpl-caption tw:text-tpl-secondary tw:[overflow-wrap:anywhere]">{{ campusLabel(s) }}</span>
+                  </div>
+                  <Button variant="outline" :class="actionButton" :aria-label="`查看：${s.student_name}`" @click="viewStudent(s)">
+                    <Eye class="tw:size-4" :stroke-width="2" aria-hidden="true" />
+                    查看
+                  </Button>
+                </li>
+              </ul>
+              <div v-else :class="panelEmpty">
+                <CircleCheck class="tw:size-6 tw:shrink-0 tw:text-tpl-secondary" :stroke-width="1.75" aria-hidden="true" />
+                <p class="tw:font-semibold">沒有未綁定的活躍學生</p>
+              </div>
+            </Card>
+          </section>
+
+          <!-- 異常事件 -->
+          <section :class="panel" aria-labelledby="bhd-anomaly-title">
+            <Card :class="panelCard">
+              <h3 id="bhd-anomaly-title" :class="panelTitle">異常事件（近 7 天）</h3>
+              <ul v-if="anomalies.length" class="bhd-timeline tw:flex tw:list-none tw:flex-col tw:gap-2">
+                <li v-for="a in anomalies" :key="a.id" :class="[listRow, 'tw:items-start']">
+                  <span :class="['bhd-tl-dot tw:mt-2 tw:size-2.5 tw:shrink-0 tw:rounded-full', severityDot(a.severity)]" aria-hidden="true" />
+                  <div class="tw:flex tw:min-w-0 tw:flex-col tw:gap-1">
+                    <div class="tw:flex tw:flex-wrap tw:items-center tw:gap-2">
+                      <Badge variant="outline" :class="anomalyBadge">{{ a.type || a.reason_code || '異常' }}</Badge>
+                      <span class="tw:text-tpl-caption tw:tabular-nums tw:text-tpl-secondary">{{ formatDateTime(a.occurred_at) }}</span>
+                    </div>
+                    <p class="tw:text-tpl-body tw:[overflow-wrap:anywhere]">{{ campusLabel(a) }}{{ a.student_name ? ` · ${a.student_name}` : '' }}</p>
+                  </div>
+                </li>
+              </ul>
+              <div v-else :class="panelEmpty">
+                <ShieldCheck class="tw:size-6 tw:shrink-0 tw:text-tpl-secondary" :stroke-width="1.75" aria-hidden="true" />
+                <p class="tw:font-semibold">近 7 天無異常事件</p>
+              </div>
+            </Card>
+          </section>
+        </div>
+      </template>
+    </div>
   </div>
 </template>
 
 <script setup>
 import { ref, computed, onMounted, watch } from 'vue';
+import { ChartLine, CircleCheck, Eye, HeartPulse, RefreshCw, ShieldCheck } from 'lucide-vue-next';
+import { ActivityRing } from '@/components/ui/activity-ring';
+import { Alert } from '@/components/ui/alert';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent } from '@/components/ui/card';
+import { Progress } from '@/components/ui/progress';
+import { Skeleton } from '@/components/ui/skeleton';
+import { Sparkline } from '@/components/ui/sparkline';
 import { fetchBindingMetrics } from '../lib/bindingsApi';
-import AtPageHeader from '../components/design-system/AtPageHeader.vue';
-import AtButton from '../components/design-system/AtButton.vue';
-import AtSection from '../components/design-system/AtSection.vue';
-import AtMetric from '../components/design-system/AtMetric.vue';
-import AtSkeleton from '../components/design-system/AtSkeleton.vue';
-import AtEmpty from '../components/design-system/AtEmpty.vue';
-import AtInlineAlert from '../components/design-system/AtInlineAlert.vue';
-import AtBadge from '../components/design-system/AtBadge.vue';
 
 const props = defineProps({
   branchId: { type: [Number, String], default: null },
@@ -168,12 +182,20 @@ const loadError = ref('');
 const data = ref(null);
 const granularity = ref('day');
 const updatedLabel = ref('—');
+const refreshButton = ref(null);
 
-const RING = 56;
-const CIRCUMFERENCE = 2 * Math.PI * (RING - 6);
-const CHART_W = 600;
-const CHART_H = 200;
-const PAD = 20;
+// Presentation only. Controls are 48px tall; panels are hairline cards; the two-column grids fold to one at 768px and below.
+const actionButton = 'tw:h-12 tw:px-4 tw:text-[length:var(--tpl-text-body)] tw:font-semibold tw:shadow-none';
+const panel = 'tw:flex tw:min-w-0';
+const panelCard = 'tw:w-full tw:min-w-0 tw:gap-4 tw:p-4 tw:shadow-none';
+const panelTitle = 'tw:text-tpl-list tw:font-bold';
+const panelEmpty = 'tw:flex tw:items-start tw:gap-3 tw:rounded-lg tw:border tw:border-dashed tw:border-border tw:px-4 tw:py-5 tw:text-tpl-body';
+const twoColumns = 'bhd-grid tw:grid tw:grid-cols-1 tw:gap-4 tw:min-[769px]:grid-cols-2';
+const listRow = 'tw:flex tw:gap-3 tw:rounded-lg tw:border tw:border-border tw:bg-secondary tw:px-3 tw:py-2';
+const anomalyBadge = 'tw:border-transparent tw:bg-[var(--ds-warning-wash)] tw:px-3 tw:py-1 tw:text-[length:var(--tpl-text-caption)] tw:font-bold tw:text-[color:var(--ds-warning-text)]';
+const SEVERITY_DOT = { danger: 'tw:bg-destructive', info: 'tw:bg-[var(--ds-info)]' };
+const severityDot = (severity) => SEVERITY_DOT[severity] || 'tw:bg-[var(--ds-warning)]';
+const granularities = [{ value: 'day', label: '日' }, { value: 'week', label: '週' }];
 
 const overall = computed(() => data.value?.overall || {});
 const weekly = computed(() => data.value?.weekly_summary || {});
@@ -197,49 +219,38 @@ const overallRateLabel = computed(() => {
   if (!o || !o.student_total) return '—';
   return `${((o.bound_count / o.student_total) * 100).toFixed(1)}%`;
 });
-const ringDash = computed(() => {
-  const o = overall.value;
-  const rate = o?.student_total ? o.bound_count / o.student_total : 0;
-  return Math.max(0, Math.min(1, rate)) * CIRCUMFERENCE;
-});
+const overallBound = computed(() => Number(overall.value?.bound_count) || 0);
+const overallTotal = computed(() => Number(overall.value?.student_total) || 0);
+const weeklyMetrics = computed(() => [
+  { label: '本週新增綁定', value: weekly.value.bound ?? '—', delta: '週綁定數', deltaClass: 'tw:text-[color:var(--ds-success-text)]', dot: 'tw:bg-[var(--ds-success)]' },
+  { label: '本週解除綁定', value: weekly.value.unbound ?? '—', delta: '週解除數', deltaClass: 'tw:text-[color:var(--ds-danger-text)]', dot: 'tw:bg-[var(--ds-danger)]' },
+  { label: '本週淨增', value: weekly.value.net ?? '—', delta: '', deltaClass: '', dot: 'tw:bg-primary' },
+  { label: '全校綁定率', value: overallRateLabel.value, delta: '已綁定/活躍學生', deltaClass: 'tw:text-tpl-secondary', dot: 'tw:bg-[var(--ds-info)]' },
+]);
 
+const campusLabel = (row) => row.campus_name || `#${row.campus_id}`;
 function rateLabel(rate) {
   if (rate == null) return '—';
   return `${(Number(rate) * 100).toFixed(0)}%`;
 }
-function barWidth(rate) {
+// The bar is the rate kept inside 0–100 (one decimal), as before.
+function barValue(rate) {
   const pct = rate == null ? 0 : Number(rate) * 100;
-  return `${Math.max(0, Math.min(100, pct)).toFixed(1)}%`;
+  return Number(Math.max(0, Math.min(100, pct)).toFixed(1)) || 0;
 }
 
-/* ── 折線圖計算 ── */
-const trendSeries = computed(() => {
+/* ── 趨勢 ── */
+const trendPoints = computed(() => {
   const raw = data.value?.trend || {};
   const points = Array.isArray(raw.points) ? raw.points
     : Array.isArray(raw[granularity.value]) ? raw[granularity.value]
     : [];
-  if (!points.length) return [];
-  const key = (p) => (granularity.value === 'day' ? p.date : p.week) ?? p.period ?? '';
-  const max = Math.max(1, ...points.map((p) => Number(p.bound || 0)));
-  const n = points.length;
-  const stepX = (CHART_W - PAD * 2) / Math.max(1, n - 1);
-  return points.map((p, i) => ({
-    key: key(p) || i,
-    x: PAD + i * stepX,
-    y: CHART_H - PAD - (Number(p.bound || 0) / max) * (CHART_H - PAD * 2),
+  return points.map((p) => ({
+    key: (granularity.value === 'day' ? p.date : p.week) ?? p.period ?? '',
+    bound: Number(p.bound || 0),
   }));
 });
-const linePoints = computed(() => trendSeries.value.map((p) => `${p.x},${p.y}`).join(' '));
-const areaPoints = computed(() => {
-  const pts = trendSeries.value;
-  if (!pts.length) return '';
-  return `${PAD},${CHART_H - PAD} ${pts.map((p) => `${p.x},${p.y}`).join(' ')} ${CHART_W - PAD},${CHART_H - PAD}`;
-});
-const gridPoints = computed(() => {
-  const ys = [0.25, 0.5, 0.75].map((r) => PAD + r * (CHART_H - PAD * 2));
-  return ys.map((y) => `${PAD},${y} ${CHART_W - PAD},${y}`).join(' ');
-});
-const linePointsArr = computed(() => trendSeries.value);
+const trendValues = computed(() => trendPoints.value.map((p) => p.bound));
 
 function setGranularity(g) { granularity.value = g; }
 
@@ -276,75 +287,12 @@ async function load() {
   }
 }
 function refresh() { load(); }
+// 重試 sits in the alert, which goes away while loading; keyboard focus moves to 重新整理 instead of being dropped.
+function retry() {
+  refreshButton.value?.$el?.focus?.();
+  load();
+}
 
 watch(() => props.branchId, () => load());
 onMounted(load);
 </script>
-
-<style scoped>
-.bhd-page { max-width: 1180px; margin: 0 auto; }
-.bhd-page :deep(.at-btn) { min-height: 44px; }
-.bhd-state { padding: var(--ds-space-4) 0; }
-
-.bhd-stats {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-  gap: var(--ds-space-3);
-  margin-bottom: var(--ds-space-3);
-}
-
-.bhd-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: var(--ds-space-3);
-  margin-bottom: var(--ds-space-3);
-}
-.bhd-grid--lower { grid-template-columns: 1fr 1fr; }
-
-/* 環形圖 */
-.bhd-ring-wrap { position: relative; display: grid; place-items: center; padding: var(--ds-space-2); }
-.bhd-ring { width: 140px; height: 140px; transform: rotate(-90deg); }
-.bhd-ring-bg { stroke: var(--ds-hairline); stroke-width: 10; }
-.bhd-ring-fg { stroke: var(--ds-primary); stroke-width: 10; stroke-linecap: round; transition: stroke-dasharray var(--ds-motion-slow) var(--ds-ease-standard); }
-.bhd-ring-center {
-  position: absolute; inset: 0; display: flex; flex-direction: column;
-  align-items: center; justify-content: center; gap: 2px; pointer-events: none;
-}
-.bhd-ring-center strong { font-size: 20px; color: var(--ds-ink); font-variant-numeric: tabular-nums; }
-.bhd-ring-center span { font-size: var(--ds-font-size-sm); color: var(--ds-ink-mute); }
-
-/* 水平長條圖 */
-.bhd-bars { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--ds-space-3); }
-.bhd-bar-head { display: flex; justify-content: space-between; font-size: var(--ds-font-size-md); color: var(--ds-ink); margin-bottom: 4px; gap: 8px; }
-.bhd-tabular { font-variant-numeric: tabular-nums; color: var(--ds-ink-mute); white-space: nowrap; }
-.bhd-bar-track { height: 8px; border-radius: var(--ds-radius-pill); background: var(--ds-surface-0); overflow: hidden; }
-.bhd-bar-fill { height: 100%; border-radius: var(--ds-radius-pill); background: var(--ds-primary); transition: width var(--ds-motion-slow) var(--ds-ease-standard); }
-
-/* 折線圖 */
-.bhd-gran { display: inline-flex; gap: var(--ds-space-1); }
-.bhd-gran :deep(.at-btn) { min-width: 44px; min-height: 44px; }
-.bhd-line-wrap { overflow-x: auto; }
-.bhd-line { width: 100%; min-width: 320px; height: auto; }
-.bhd-line-grid { stroke: var(--ds-hairline); stroke-width: 1; stroke-dasharray: 4 4; }
-.bhd-line-path { stroke: var(--ds-primary); stroke-width: 2; fill: none; }
-.bhd-line-area { fill: var(--ds-primary-wash); stroke: none; }
-.bhd-line-dot { fill: var(--ds-primary); }
-
-/* 列表 */
-.bhd-list, .bhd-timeline { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--ds-space-2); }
-.bhd-list li { display: flex; align-items: center; justify-content: space-between; gap: var(--ds-space-3); padding: var(--ds-space-2) var(--ds-space-3); border: var(--ds-border-width) solid var(--ds-hairline); border-radius: var(--ds-radius-md); background: var(--ds-surface-1); }
-.bhd-list-meta { display: block; font-size: var(--ds-font-size-sm); color: var(--ds-ink-mute); }
-
-/* 時間軸 */
-.bhd-tl-item { display: flex; gap: var(--ds-space-3); padding: var(--ds-space-2) var(--ds-space-3); border: var(--ds-border-width) solid var(--ds-hairline); border-radius: var(--ds-radius-md); background: var(--ds-surface-1); }
-.bhd-tl-dot { width: 8px; height: 8px; border-radius: 50%; margin-top: 6px; flex-shrink: 0; background: var(--ds-warning); }
-.bhd-tl-dot--danger { background: var(--ds-danger); }
-.bhd-tl-dot--info { background: var(--ds-info); }
-.bhd-tl-head { display: flex; align-items: center; gap: var(--ds-space-2); flex-wrap: wrap; }
-.bhd-tl-time { font-size: var(--ds-font-size-sm); color: var(--ds-ink-mute); }
-.bhd-tl-desc { font-size: var(--ds-font-size-sm); color: var(--ds-ink-secondary); margin-top: 4px; }
-
-@media (max-width: 768px) {
-  .bhd-grid, .bhd-grid--lower { grid-template-columns: 1fr; }
-}
-</style>
