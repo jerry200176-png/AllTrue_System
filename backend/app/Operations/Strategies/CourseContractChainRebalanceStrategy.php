@@ -37,7 +37,8 @@ use RuntimeException;
  * (`counters_not_derived`), so the counters an undo recomputes are the ones stored before the execute.
  *
  * Failure: POP rolls back every data change of a failed execute, verify or rollback before it writes the failed receipt
- * (PopOperationService::run, PopPhaseAborted), also when a lock-wait timeout skipped the nested savepoint rollback.
+ * (PopOperationService::run, PopPhaseAborted), also when a lock-wait timeout skipped the nested savepoint rollback, and
+ * also when a deadlock made that rollback itself throw: the receipt is written for whatever escapes a phase that began.
  *
  * Output carries ids, dates, statuses and counts: no names, no amounts.
  */

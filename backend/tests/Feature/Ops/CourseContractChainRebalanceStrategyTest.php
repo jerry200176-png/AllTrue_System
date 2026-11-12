@@ -13,9 +13,11 @@ use App\Operations\PopOperationCatalog;
 use App\Operations\PopOperationService;
 use App\Operations\Strategies\CourseContractChainRebalanceStrategy;
 use App\Services\SessionDeductionService;
+use Illuminate\Database\Events\TransactionRolledBack;
 use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Str;
 use ReflectionMethod;
 use RuntimeException;
@@ -1251,6 +1253,57 @@ final class CourseContractChainRebalanceStrategyTest extends TestCase
         $back = $this->viaPop($service, $restore);
         $this->assertSame(['succeeded', 'succeeded'], [$back['execute']['result'], $back['verify']['result']]);
         $this->assertSame($before, $this->rowsOf($x['contracts']));
+    }
+
+    /**
+     * #5236 review P2: after a true deadlock MySQL has already dropped the transaction with its savepoints, so the rollback
+     * of POP's own transaction throws in place of PopPhaseAborted. The request used to stay `approved` with no receipt.
+     * Stood in for here by a rollback listener that throws once POP's transaction has been rolled back.
+     */
+    public function test_a_failed_execute_gets_its_failed_receipt_also_when_the_rollback_itself_throws(): void
+    {
+        $x = $this->decided();
+        $before = $this->rowsOf($x['contracts']);
+        $service = $this->service();
+        $base = DB::transactionLevel(); // the test's own transaction; POP's is the one that rolls back to it
+        $armed = false;
+        ClassSessionReassignment::creating(function (ClassSessionReassignment $row) use ($x, &$armed): void {
+            if ((int) $row->class_session_id === $x['sessions'][3][7]) {
+                $armed = true;
+                throw new RuntimeException('injected');
+            }
+        });
+        Event::listen(TransactionRolledBack::class, function () use (&$armed, $base): void {
+            if ($armed && DB::transactionLevel() === $base) {
+                $armed = false;
+                throw new RuntimeException('rollback_failed');
+            }
+        });
+        try {
+            $run = $this->viaPop($service, $x['params'], ['execute']);
+        } finally {
+            ClassSessionReassignment::flushEventListeners();
+            Event::forget(TransactionRolledBack::class);
+        }
+
+        $this->assertFalse($armed, 'the rollback of the POP transaction did throw');
+        $this->assertSame(['failed', ['execution_failed']], [$run['execute']['result'], $run['execute']['errors']]);
+        $this->assertSame($base, DB::transactionLevel());
+        $this->assertSame($before, $this->rowsOf($x['contracts']), 'a failed execute left a row of the chain changed');
+        $this->assertSame([['failed', null]], DB::table('pop_execution_records')->where('operation_id', $run['id'])->where('phase', 'execute')
+            ->get(['result', 'snapshot'])->map(fn (\stdClass $r): array => [(string) $r->result, $r->snapshot])->all());
+        $again = $this->viaPop($service, $x['params']);
+        $this->assertSame(['succeeded', 'succeeded', [8, 8, 8, 8, 2]], [$again['execute']['result'], $again['verify']['result'], $this->taughtNow($x['contracts'])]);
+
+        // A refusal before the phase begins is still an exception, not a receipt: nothing ran, so there is nothing to record.
+        $records = DB::table('pop_execution_records')->count();
+        try {
+            $service->run($again['id'], 'rollback', null, $again['sha'], 'pop-pi-local');
+            $this->fail('a run without an approval token must be refused');
+        } catch (RuntimeException $e) {
+            $this->assertSame('POP approval token is missing; fail closed.', $e->getMessage());
+        }
+        $this->assertSame($records, DB::table('pop_execution_records')->count());
     }
 
     // ── Scope at execute time (acceptance 15; Y10) ──
