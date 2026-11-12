@@ -33,7 +33,7 @@ Every implementer agent follows this. The coordinator sends only the task-specif
 - Record choices you made yourself under "Agent 決定的事" ([`ISSUE_PLAN.md`](../sop/ISSUE_PLAN.md); rule: `FOUNDER_STANDING_DECISIONS.md` 2026-11-12 (四)).
 
 ## Review cap
-- P2 handling follows the committed rule: [`MERGE_SOP.md`](../sop/MERGE_SOP.md) and `AGENTS.md` (one fix round, later P2s become follow-ups).
+- P0/P1 and any regression this PR introduces are always fixed before merge. Other P2 handling: only as written in `FOUNDER_STANDING_DECISIONS.md` 2026-10-12 item 4 and [`MERGE_SOP.md`](../sop/MERGE_SOP.md); do not restate it here.
 - A change that LOWERS a risk tier, or touches money or data repair, keeps full review on every head.
 
 ## Public repo
