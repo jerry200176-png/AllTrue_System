@@ -26,6 +26,7 @@ export async function run(map, { apply = false, api, families } = {}) {
   const lines = [];
   for (const { number, label } of validateMap(map, families)) {
     const issue = await api('GET', `/issues/${number}`);
+    if (issue.pull_request) throw new Error(`#${number} is a pull request, not an issue`);
     const have = (issue.labels || []).map((l) => l.name).filter((n) => n.startsWith('rootfam:'));
     if (have.length) {
       lines.push(`skip #${number}: already ${have.length > 1 ? 'has multiple rootfam labels' : have[0]}`);

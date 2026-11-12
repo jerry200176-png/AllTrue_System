@@ -112,6 +112,19 @@ class FamilyTableTest(unittest.TestCase):
         import re
         self.assertEqual(set(re.findall(r'name: "(rootfam:[a-z0-9-]+)"', text)), set(op.ROOTFAM))
 
+    def test_month_uses_taipei_time(self):
+        edge = [_issue(30, "2026-09-30T17:00:00Z", ["rootfam:money"]), _issue(31, "2026-09-30T15:59:00Z", ["rootfam:money"])]
+        self.assertEqual(op.family_table(edge, MONDAY, OWNER)["rows"]["rootfam:money"], {"2026-09": 1, "2026-10": 1})
+
+    def test_truncation_is_reported_when_list_hit_the_cap(self):
+        issues = ISSUES + FAM_ISSUES
+        _, capped = op.render(SNAP, issues, MONDAY, OWNER, cap=len(issues))
+        self.assertIn(f"truncated at {len(issues)}", capped)
+        _, roomy = op.render(SNAP, issues, MONDAY, OWNER, cap=len(issues) + 1)
+        self.assertNotIn("truncated", roomy)
+        _, nocap = op.render(SNAP, issues, MONDAY, OWNER)
+        self.assertNotIn("truncated", nocap)
+
     def test_no_in_app_issues_still_renders_unlabelled_row(self):
         _, body = op.render(SNAP, [], MONDAY, OWNER)
         self.assertIn("| 未標家族 |", body)

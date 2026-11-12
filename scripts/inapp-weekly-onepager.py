@@ -134,7 +134,7 @@ def iso_week(now):
     return f"{year}-W{week:02d}"
 
 
-def render(snapshot, issues, now, owner):
+def render(snapshot, issues, now, owner, cap=None):
     data = parse_snapshot(snapshot)
     title = f"in-app 週報 {iso_week(now)}"
     week_ids = sorted(set(data["new"]) | set(data["resolved"]) | set(data["closed"]) | set(data["reopened"]))
@@ -158,6 +158,7 @@ def render(snapshot, issues, now, owner):
         f"- 之前修過、又被回報的（重開）：{len(data['reopened'])} 筆（{fmt(data['reopened'])}）",
         "",
         *render_family_table(family_table(issues, now, owner)),
+        *([f"注意：issue 清單已達上限 {cap} 筆（truncated at {cap}），上表的過去月份可能不完整。"] if cap and len(issues) >= cap else []),
         "",
         f"資料產生時間：{snapshot.get('generated_at', '未知')}。來源：bug-sla-weekly-report 工作流程。",
     ]
@@ -171,11 +172,12 @@ def main():
     ap.add_argument("--out-dir", required=True)
     ap.add_argument("--now", default=None)
     ap.add_argument("--owner", required=True, help="repository owner login (trusted issue author)")
+    ap.add_argument("--cap", type=int, default=None, help="the --limit the issue list was fetched with; report truncation when reached")
     args = ap.parse_args()
     now = datetime.fromisoformat(args.now) if args.now else datetime.now(timezone.utc)
     snapshot = json.loads(Path(args.snapshot).read_text(encoding="utf-8"))
     issues = json.loads(Path(args.issues).read_text(encoding="utf-8"))
-    title, body = render(snapshot, issues, now, args.owner)
+    title, body = render(snapshot, issues, now, args.owner, args.cap)
     out = Path(args.out_dir)
     out.mkdir(parents=True, exist_ok=True)
     (out / "title.txt").write_text(title, encoding="utf-8")

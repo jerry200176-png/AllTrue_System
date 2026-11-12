@@ -23,4 +23,7 @@ assert.ok(calls.every(([m]) => m === 'GET'), 'dry-run (default) never writes');
 calls.length = 0;
 out = await run(map, { api, apply: true });
 assert.deepEqual(calls.filter(([m]) => m === 'POST'), [['POST', '/issues/1/labels', { labels: ['rootfam:write-guard'] }]], 'apply writes only the unlabelled issue');
+store[4] = [];
+const prApi = async (m, path) => ({ labels: [], pull_request: {} });
+await assert.rejects(run({ 4: 'money' }, { api: prApi, apply: true }), /#4 is a pull request/);
 console.log('rootfam-backfill: PASS');
