@@ -365,9 +365,12 @@ class InvoiceAmountParityCensusTest extends TestCase
         $ok = $this->census();
         $this->assertSame([2, 1], [$ok['mismatch_count'], $ok['bills_with_findings']]);
 
-        $others = function (): array {
+        // Artisan::output() drains the buffer, so keep the raw output of the last run here.
+        $lastRaw = '';
+        $others = function () use (&$lastRaw): array {
             $exit = Artisan::call('bugs:verify-reproductions', ['--json' => true]);
-            $json = json_decode(Artisan::output(), true);
+            $lastRaw = Artisan::output();
+            $json = json_decode($lastRaw, true);
 
             return [$exit, $json['regressed'], array_values(array_map(
                 static fn (array $c): array => [$c['key'], $c['count'], $c['state']],
@@ -382,7 +385,8 @@ class InvoiceAmountParityCensusTest extends TestCase
         $this->app->bind(InvoiceAmountParityCensus::class, static fn () => throw new \RuntimeException('SYNTHETIC_PRIVATE_TEXT'));
         $this->assertSame($healthy, $others());
 
-        $raw = Artisan::output();
+        $raw = $lastRaw;
+        $this->assertNotSame('', $raw);
         $this->assertStringNotContainsString('SYNTHETIC_PRIVATE_TEXT', $raw);
         $row = collect(json_decode($raw, true)['conditions'])->firstWhere('key', 'screen_amount_vs_resolver');
         $this->assertSame([0, 'INCOMPLETE', 1], [$row['count'], $row['state'], $row['census_error']]);
