@@ -157,7 +157,7 @@ AllTrue 現在以 **AllTrue AI 公司** 方式治理。使用者是 CEO；AI Age
 
 ## 🚨 開工前必讀（每次都要）
 
-清單唯一定義在 [`AGENTS.md`](../AGENTS.md) §必讀（含 `CLAUDE.md` §紅線／黃線、`docs/agents/token-discipline.md`）；此處不複製。`docs/AI_REGRESSION_LESSONS.md` 照舊按需讀（見 `AGENTS.md` 條件分支）。 實作者 brief 的固定部分：[`agents/IMPLEMENTER_BRIEF.md`](agents/IMPLEMENTER_BRIEF.md)。
+清單唯一定義在 [`AGENTS.md`](../AGENTS.md) §必讀（含 `CLAUDE.md` §紅線／黃線、`docs/agents/token-discipline.md`）；此處不複製。`docs/AI_REGRESSION_LESSONS.md` 照舊按需讀（見 `AGENTS.md` 條件分支）。實作者 brief 的固定部分：[`agents/IMPLEMENTER_BRIEF.md`](agents/IMPLEMENTER_BRIEF.md)。
 
 ---
 

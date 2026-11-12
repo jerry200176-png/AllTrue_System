@@ -9,8 +9,8 @@ Every implementer agent follows this. The coordinator sends only the task-specif
 ## Token rules
 - Grep first, then read line ranges. No raw JSON, check-run or log dumps ([`token-discipline.md`](token-discipline.md)). Use `node scripts/ci/pr-digest.mjs` for PR and CI state.
 - Push, open the PR, then hand back. Never poll or wait for CI.
-- Model routing: mid model by default. Top model only for R3 review and for money or data-repair logic.
-- WIP limit: at most 3 agents at once.
+- Model: per rulebook K3 and the lane table in [`DELIVERY_LIFECYCLE.md`](../sop/DELIVERY_LIFECYCLE.md); when unsure use the mid model.
+- WIP limit: at most 3 agents at once (coordinator practice, retro #5201 row 30).
 
 ## Correctness
 - Tests first (RED, then GREEN). Never lower a test, assertion, allowlist or baseline.
@@ -33,8 +33,8 @@ Every implementer agent follows this. The coordinator sends only the task-specif
 - Record choices you made yourself under "Agent 決定的事" ([`ISSUE_PLAN.md`](../sop/ISSUE_PLAN.md); rule: `FOUNDER_STANDING_DECISIONS.md` 2026-11-12 (四)).
 
 ## Review cap
-- After two review rounds with no P0/P1 finding, the remaining P2s become follow-ups on the tracker issue, not more rounds.
-- A change that LOWERS a risk tier, or touches money or data repair, keeps full review.
+- P2 handling follows the committed rule: [`MERGE_SOP.md`](../sop/MERGE_SOP.md) and `AGENTS.md` (one fix round, later P2s become follow-ups).
+- A change that LOWERS a risk tier, or touches money or data repair, keeps full review on every head.
 
 ## Public repo
 - Issues, PRs and comments are public: write IDs only, no names, contact details or secrets.
