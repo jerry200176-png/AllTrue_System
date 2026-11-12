@@ -38,6 +38,8 @@ export function useCalendarDataLoad({
   // `teachers` / `teachersLoaded`, so a slow response for an old campus can
   // neither mark readiness nor overwrite the newer campus's options.
   let teachersRequestSeq = 0;
+  // #5183: only the latest window/campus load owns course state and progress.
+  let coursesRequestSeq = 0;
   const lastCalendarFetch = ref(null);
 
   const isCourseActiveForCalendar = (course) => {
@@ -55,6 +57,8 @@ export function useCalendarDataLoad({
 
   // quiet: background refetch for a kept-alive page, no loading flag/overlay; rows stay until the new ones arrive.
   const loadCourses = async (opts) => {
+    const requestSeq = ++coursesRequestSeq;
+    const isCurrent = () => requestSeq === coursesRequestSeq;
     const quiet = opts?.quiet === true;
     const session = JSON.parse(localStorage.getItem('alltrue_session') || '{}');
     const token = session?.access_token || '';
@@ -113,6 +117,7 @@ export function useCalendarDataLoad({
           schedEnd,
           fetchAllPages,
           onProgress: (loaded, total) => {
+            if (!isCurrent()) return;
             if (!quiet) calendarLoadProgress.value = `載入課程與排程中… ${loaded}/${total}`;
           },
         }),
@@ -126,6 +131,7 @@ export function useCalendarDataLoad({
           userId: uid,
         }),
       });
+      if (!isCurrent()) return;
       courseList = coursesResult.list;
       courseApiSucceeded = coursesResult.apiSucceeded;
       excData = schedules.list;
@@ -143,6 +149,7 @@ export function useCalendarDataLoad({
       if (!teacherMode && bid) query = query.eq('branch_id', bid);
       if (teacherMode && uid) query = query.eq('teacher_id', uid);
       const { data } = await query;
+      if (!isCurrent()) return;
       supabaseList = (data || []).map((c) => ({
         ...c,
         student_name: c.student?.name || c.student_name || '—',
@@ -184,6 +191,7 @@ export function useCalendarDataLoad({
       if (!teacherMode && bid) excQuery = excQuery.eq('branch_id', bid);
       if (teacherMode && uid) excQuery = excQuery.eq('teacher_id', uid);
       const { data: excRaw } = await excQuery;
+      if (!isCurrent()) return;
       excData = Array.isArray(excRaw) ? excRaw : (excRaw?.data || []);
     }
 
@@ -208,6 +216,7 @@ export function useCalendarDataLoad({
     if (token && (bid || teacherMode)) {
       try {
         const projection = await sessionProjectionPromise;
+        if (!isCurrent()) return;
         if (!projection) throw new Error('class-sessions projection unavailable');
         const { byClass } = projection;
         // #220/#221: this fetch is windowed to the currently-viewed week (±buffer), so it
