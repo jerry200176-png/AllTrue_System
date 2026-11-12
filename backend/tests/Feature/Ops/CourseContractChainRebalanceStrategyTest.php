@@ -13,6 +13,7 @@ use App\Operations\PopOperationCatalog;
 use App\Operations\PopOperationService;
 use App\Operations\Strategies\CourseContractChainRebalanceStrategy;
 use App\Services\SessionDeductionService;
+use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -1116,6 +1117,99 @@ final class CourseContractChainRebalanceStrategyTest extends TestCase
         // The same pinned plan still runs once the cause is gone: nothing was half-applied.
         $this->assertTrue($this->strategy()->execute($pinned, $this->context())['ok']);
         $this->assertSame([8, 8, 8, 8, 2], $this->taughtNow($x['contracts']));
+    }
+
+    /**
+     * #5236 review P1. POP opens the outer transaction and the strategy's own transaction is nested in it. Laravel treats
+     * "Lock wait timeout exceeded" in a nested transaction as a concurrency error: it lowers the level and rethrows with no
+     * ROLLBACK TO SAVEPOINT, and InnoDB undoes only the statement that timed out. Recording `execution_failed` in the same
+     * outer transaction then committed the moves made before the failure, with no snapshot to restore them from. Any
+     * failure must leave the chain exactly as it was: field by field, through the real POP path.
+     */
+    public function test_a_failure_in_the_middle_of_the_moves_commits_nothing_through_pop(): void
+    {
+        $failures = [
+            'a lock-wait timeout (nested: no savepoint rollback by the framework)' => fn (): \Throwable => new QueryException('mysql',
+                'insert into `class_session_reassignments` (`class_session_id`) values (?)', [0],
+                new \PDOException('SQLSTATE[HY000]: General error: 1205 Lock wait timeout exceeded; try restarting transaction')),
+            'any other failure' => fn (): \Throwable => new RuntimeException('injected_failure_on_last_move'),
+        ];
+        foreach ($failures as $label => $failure) {
+            $x = $this->decided();
+            $this->mirrors($x['sessions'][2][8], $x['contracts'][2], $x['student']);
+            $before = $this->rowsOf($x['contracts']);
+            $last = $x['sessions'][3][7];
+            $service = $this->service();
+            $auditCount = fn (): int => DB::table('security_audit_events')->where('event_type', 'like', self::AUDIT . '%')->count();
+            $audits = $auditCount();
+            // The reassigner writes its reassignment row last: when the second lesson fails there, move 1 is complete.
+            $reached = 0;
+            ClassSessionReassignment::creating(function (ClassSessionReassignment $row) use ($last, $failure, &$reached): void {
+                if ((int) $row->class_session_id === $last) {
+                    $reached++;
+                    throw $failure();
+                }
+            });
+            try {
+                $run = $this->viaPop($service, $x['params'], ['execute']);
+            } finally {
+                ClassSessionReassignment::flushEventListeners();
+            }
+
+            $this->assertSame(1, $reached, $label . ': the failure was injected after the first move');
+            $this->assertSame(['failed', ['execution_failed']], [$run['execute']['result'], $run['execute']['errors']], $label);
+            $this->assertSame($before, $this->rowsOf($x['contracts']), $label . ': a failed execute left a row of the chain changed');
+            $this->assertSame([$x['contracts'][2], $x['contracts'][3]], $this->owners([$x['sessions'][2][8], $last]), $label);
+            $this->assertSame(0, DB::table('class_session_reassignments')->whereIn('class_session_id', [$x['sessions'][2][8], $last])->count(), $label);
+            $this->assertSame($audits, $auditCount(), $label . ': a failed execute left its audit event');
+            // The receipt says failed and holds no snapshot; the request is failed and is no restore source.
+            $records = DB::table('pop_execution_records')->where('operation_id', $run['id'])->where('phase', 'execute')->get(['result', 'snapshot']);
+            $this->assertSame([['failed', null]], $records->map(fn (\stdClass $r): array => [(string) $r->result, $r->snapshot])->all(), $label);
+            $this->assertSame('failed', DB::table('pop_operation_requests')->where('id', $run['id'])->value('status'), $label);
+            $this->assertArrayNotHasKey('snapshot', $run['execute'], $label);
+            $moves = [$x['moves'][1], $x['moves'][0]];
+            $this->assertSame(['restore_source_not_found'], $this->strategy()->plan(['restore_request_id' => $run['id'], 'moves' => $moves]
+                + $this->params($x['student'], $x['contracts'], $moves))['errors'], $label);
+
+            // Nothing was half-applied: a new request with the same manifest runs once the cause is gone.
+            $again = $this->viaPop($service, $x['params']);
+            $this->assertSame(['succeeded', 'succeeded'], [$again['execute']['result'], $again['verify']['result']], $label);
+            $this->assertSame([8, 8, 8, 8, 2], $this->taughtNow($x['contracts']), $label);
+        }
+    }
+
+    /** #5236 review P1, the restore side: a restore request that fails on its second move puts nothing back, and still works afterwards. */
+    public function test_a_failure_in_the_middle_of_a_restore_commits_nothing_through_pop(): void
+    {
+        $x = $this->decided();
+        $before = $this->rowsOf($x['contracts']);
+        $service = $this->service();
+        $run = $this->viaPop($service, $x['params']);
+        $this->assertSame(['succeeded', 'succeeded'], [$run['execute']['result'], $run['verify']['result']]);
+        $executed = $this->rowsOf($x['contracts']);
+        $inverse = $run['execute']['restore_moves'];
+        $restore = ['restore_request_id' => $run['id'], 'moves' => $inverse] + $this->params($x['student'], $x['contracts'], $inverse);
+        $last = (int) $inverse[1]['session_id'];
+        ClassSessionReassignment::creating(function (ClassSessionReassignment $row) use ($last): void {
+            if ((int) $row->class_session_id === $last) {
+                throw new QueryException('mysql', 'insert into `class_session_reassignments` (`class_session_id`) values (?)', [0],
+                    new \PDOException('SQLSTATE[HY000]: General error: 1205 Lock wait timeout exceeded; try restarting transaction'));
+            }
+        });
+        try {
+            $failed = $this->viaPop($service, $restore, ['execute']);
+        } finally {
+            ClassSessionReassignment::flushEventListeners();
+        }
+
+        $this->assertSame(['failed', ['execution_failed']], [$failed['execute']['result'], $failed['execute']['errors']]);
+        $this->assertSame($executed, $this->rowsOf($x['contracts']), 'a failed restore put a lesson back');
+        $this->assertNull(DB::table('pop_execution_records')->where('operation_id', $failed['id'])->where('phase', 'execute')->value('snapshot'));
+
+        // The source is not marked restored by a failed attempt: a new restore request brings the chain back.
+        $back = $this->viaPop($service, $restore);
+        $this->assertSame(['succeeded', 'succeeded'], [$back['execute']['result'], $back['verify']['result']]);
+        $this->assertSame($before, $this->rowsOf($x['contracts']));
     }
 
     // ── Scope at execute time (acceptance 15; Y10) ──
