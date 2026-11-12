@@ -9,6 +9,7 @@ use App\Operations\PopOperationCatalog;
 use App\Operations\PopOperationService;
 use App\Operations\Strategies\InappReportReporterTimeoutStrategy;
 use App\Operations\Strategies\InappReportResolveAfterDeployStrategy;
+use App\Operations\Strategies\InappReportTriageStrategy;
 use Illuminate\Support\Facades\DB;
 use Throwable;
 
@@ -23,6 +24,7 @@ final class InappStandingPolicy
     public const OPERATIONS = [
         InappReportReporterTimeoutStrategy::OPERATION => InappReportReporterTimeoutStrategy::class,
         InappReportResolveAfterDeployStrategy::OPERATION => InappReportResolveAfterDeployStrategy::class,
+        InappReportTriageStrategy::OPERATION => InappReportTriageStrategy::class,
     ];
 
     public function __construct(private readonly PopOperationCatalog $catalog) {}
