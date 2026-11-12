@@ -411,7 +411,7 @@ operations:
     notes: Founder-approved single-student repair; the sole super_admin approval must carry a founder-go reference. Execution is fail-closed to this exact catalog and deployed commit.
 
   course-contract-chain-rebalance:
-    lifecycle: planned
+    lifecycle: active
     domain: billing-entitlement
     business_owner: director-data
     technical_owner: platform-data
@@ -422,12 +422,12 @@ operations:
     runbook: docs/OPERATIONS_RUNBOOK.md
     alert_group: LINE:ops-data
     escalation_policy: billing-entitlement-critical-escalation
-    capabilities: [plan, dry_run]
+    capabilities: [repair, plan, dry_run, verify, rollback, snapshot, audit]
     risk: critical
-    reversible: false
+    reversible: true
     snapshot_required: true
     transaction_required: true
-    rollback_supported: false
+    rollback_supported: true
     verification_required: true
     approval_required: true
     execution_authority: pop-pi-local
@@ -437,7 +437,7 @@ operations:
     strategy_class: App\Operations\Strategies\CourseContractChainRebalanceStrategy
     parameter_keys: [campus_id, student_id, subject_id, contract_ids, moves, allow_active_contracts, allow_order_only_moves, future_reservation_policy, expected_digest, restore_request_id, reason, decision_reference]
     tags: [repair, contract, entitlement, chain, issue-5124]
-    notes: Planned only (GitHub #5124, #5162). Dry-run validates one student's count-contract chain of one subject and an explicit ordered list of lesson moves as a single plan; it reads only. The strategy refuses execute, verify and rollback with strategy_planned_only, and POP issues no approval while the lifecycle is planned or for this approval policy. Activation needs the execute half, its review and Founder GO.
+    notes: GitHub #5124, #5162. One student's count-contract chain of one subject and an explicit, reviewed, ordered list of lesson moves, validated as a single plan. Execute needs a Founder approval for that exact request (founder-go reference, one super_admin, requester and approver differ) and is never part of a standing or automatic approval. It runs only a plan pinned to its dry-run digest, plans again under row locks and refuses on any difference, and makes every move through ClassSessionContractReassigner in one transaction (lesson, sign-in, ledger and learning record follow; counters recomputed; one reassignment row and one audit event per move). No lesson is cancelled or created and no money row is written; the money fingerprint of the chain must be identical before and after. The snapshot keeps each lesson's prior owner; rollback, or a new approved request with restore_request_id, moves exactly those lessons back in reverse order and refuses with a per-lesson report when a moved lesson changed. Pi-local POP only.
 
   supersede-renewal:
     lifecycle: active

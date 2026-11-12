@@ -500,7 +500,8 @@ final class PopOperationService
         if ($this->isRekeyStrategy($strategy)) return false;
 
         return $this->atomicFinancialRepair($strategy)
-            || (is_object($strategy) ? get_class($strategy) : $strategy) === \App\Operations\Strategies\TaughtLessonSignInRepairStrategy::class;
+            || in_array(is_object($strategy) ? get_class($strategy) : $strategy, [\App\Operations\Strategies\TaughtLessonSignInRepairStrategy::class,
+                \App\Operations\Strategies\CourseContractChainRebalanceStrategy::class], true); // #5124: moves and their snapshot commit together
     }
 
     private function isRekeyStrategy(object|string $strategy): bool
@@ -796,6 +797,25 @@ final class PopOperationService
             && ($entry['verification_required'] ?? false) === true
             && $roles === ['super_admin'];
         if ($isFounderScopedRepair) {
+            return $roles;
+        }
+
+        // #5124: one student's contract chain. Founder approval per request (founder-go reference, one super_admin, requester
+        // and approver differ); never a standing or automatic approval. Any other catalog shape fails closed below.
+        if ($policy === 'founder-explicit-chain-rebalance'
+            && ($entry['id'] ?? null) === \App\Operations\Strategies\CourseContractChainRebalanceStrategy::OPERATION
+            && ($entry['strategy_class'] ?? null) === \App\Operations\Strategies\CourseContractChainRebalanceStrategy::class
+            && ($entry['founder_approval_required'] ?? false) === true
+            && ($entry['risk'] ?? null) === 'critical'
+            && ($entry['blast_radius'] ?? null) === 'single_student_subject_contract_chain'
+            && ($entry['reversible'] ?? false) === true
+            && ($entry['snapshot_required'] ?? false) === true
+            && ($entry['transaction_required'] ?? false) === true
+            && ($entry['rollback_supported'] ?? false) === true
+            && ($entry['verification_required'] ?? false) === true
+            && ($entry['approval_required'] ?? false) === true
+            && ($entry['execution_authority'] ?? null) === 'pop-pi-local'
+            && $roles === ['super_admin']) {
             return $roles;
         }
 

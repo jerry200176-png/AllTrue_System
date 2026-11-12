@@ -12,7 +12,10 @@ existing Pi-local scheduler remain the execution boundary. The
 exception: it requires one authenticated `super_admin` approval carrying a
 `founder-go-...` reference, and remains restricted by its exact
 `single_student_contract`, reversible, snapshot, rollback, and verification
-catalog invariants. Founder-scoped approvals elsewhere need a `founder-go-...` reference; the one exception
+catalog invariants. `course-contract-chain-rebalance` (#5124) has the same approval shape (one
+authenticated `super_admin`, a `founder-go-...` reference, requester and approver differ) under its own
+exact catalog invariants (`single_student_subject_contract_chain`, reversible, snapshot, rollback,
+verification, Pi-local); it is in no standing or automatic approval. Founder-scoped approvals elsewhere need a `founder-go-...` reference; the one exception
 (Founder 2026-10-28 A) is `standing-a-auto-<workflow>-<digest12>`, accepted only for
 `td076-r2-history-pins-20261006` (`PopOperationService::STANDING_A_AUTO`)
 after `scripts/governance/pop_auto_approve.py` matched the cited dry-run. The proposed reviewed monthly exception below has its own exact-case boundary. All other operations retain their catalog-defined quorum;
