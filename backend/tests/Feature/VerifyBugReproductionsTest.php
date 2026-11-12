@@ -4,6 +4,8 @@ namespace Tests\Feature;
 
 use App\Models\Campus;
 use App\Models\Student;
+use App\Support\SchedulerEvidence;
+use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
@@ -21,6 +23,36 @@ class VerifyBugReproductionsTest extends TestCase
     public function test_passes_when_no_enforced_condition_is_violated(): void
     {
         $this->artisan('bugs:verify-reproductions')->assertExitCode(0);
+    }
+
+    public function test_canonical_json_fits_failed_evidence_contract_without_changing_failure(): void
+    {
+        $this->assertSame(0, Artisan::call('bugs:verify-reproductions', ['--json' => true]));
+        $raw = Artisan::output();
+        $decoded = json_decode($raw, true, 32, JSON_THROW_ON_ERROR);
+        $date = CarbonImmutable::parse('2042-06-04 12:00:00', SchedulerEvidence::TIMEZONE);
+        $output = SchedulerEvidence::outputPath('bugs-verify-reproductions', $date);
+        $ledger = SchedulerEvidence::ledgerPath($date);
+        SchedulerEvidence::ensureDirectories();
+        @unlink($ledger);
+        try {
+            file_put_contents($output, $raw);
+            // Even a complete zero-regression result cannot override a failed
+            // ledger record (e.g. a command/postlude failure).
+            SchedulerEvidence::recordCompletion('bugs-verify-reproductions', 'failed', $date);
+            $summary = SchedulerEvidence::summarize($date->toDateString(), $date);
+            $job = $summary['jobs']['bugs-verify-reproductions'];
+            $this->assertNotNull($job['observed_result']);
+            $this->assertSame($decoded['regressed'], $job['observed_result']['regressed']);
+            $this->assertSame(array_column($decoded['conditions'], 'key'), array_column($job['observed_result']['conditions'], 'key'));
+            $this->assertSame('failed', $job['run_status']);
+            $this->assertFalse($summary['execution_healthy']);
+            $this->assertFalse($job['zero_work']);
+            $this->assertSame($raw, file_get_contents($output));
+        } finally {
+            @unlink($output);
+            @unlink($ledger);
+        }
     }
 
     public function test_fails_when_a_fixed_bug_regresses(): void
