@@ -1,7 +1,7 @@
 // @ts-check
 import { recordLatestGetJson } from './latestGetJson.js';
 import { expect } from '@playwright/test';
-import { REPORT_STATUS_LABELS, coursePaymentBadge } from '../../src/lib/courseMoneyState.js';
+import { REPORT_STATUS_LABELS, coursePaymentBadge, shortPaymentLabel } from '../../src/lib/courseMoneyState.js';
 
 const UNPAID_ACTION = '登記收款';
 const PENDING_REPORT_ACTION = `查看「${REPORT_STATUS_LABELS.pending}」`;
@@ -98,7 +98,10 @@ export async function expectCoursePaymentEntryOpensLedgerInPlace(page, { pageHea
   await expect(row, 'the action region belongs to the payment cell\'s contract').toHaveAttribute('data-contract-id', String(rowCourseId));
   const rowCourse = courses().find((candidate) => Number(candidate?.id ?? candidate?.ID) === rowCourseId);
   expect(rowCourse, `row course ${rowCourseId} must be a course listed on 課程查找`).toBeTruthy();
-  await expect(status, `badge for course ${rowCourseId} matches its payment state`).toHaveText(coursePaymentBadge(rowCourse ?? {}, { monthlyPeriod: true }).label);
+  // The chip shows the short form of a long billing sentence (#5230); the full sentence is its accessible name.
+  const badgeLabel = coursePaymentBadge(rowCourse ?? {}, { monthlyPeriod: true }).label;
+  await expect(status, `badge for course ${rowCourseId} matches its payment state`).toHaveText(shortPaymentLabel(badgeLabel));
+  await expect(status, `badge for course ${rowCourseId} carries the full sentence`).toHaveAttribute('aria-label', badgeLabel);
   const rowStudent = (await paymentCell
     .locator('xpath=ancestor::*[contains(concat(" ", normalize-space(@class), " "), " student-group-card ")][1]')
     .locator('.cell-student').first().innerText()).trim();
