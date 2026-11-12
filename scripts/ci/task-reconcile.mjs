@@ -4,6 +4,7 @@ import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
+import { checkStates } from '../../.github/scripts/land-queue.mjs';
 
 const execute = promisify(execFile);
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
@@ -112,14 +113,14 @@ async function command(binary, args) {
   return (await execute(binary, args, { cwd: root, timeout: 25000, maxBuffer: 256 * 1024 })).stdout.trim();
 }
 
-export async function observe(prs) {
-  const fields = prs.map(number => `p${number}:pullRequest(number:${number}){number state headRefOid mergeCommit{oid} statusCheckRollup{contexts(first:100){pageInfo{hasNextPage} nodes{__typename ... on CheckRun{name status conclusion} ... on StatusContext{context state}}}}}`).join(' ');
+export async function observe(prs, { runner = command } = {}) {
+  const fields = prs.map(number => `p${number}:pullRequest(number:${number}){number state headRefOid mergeCommit{oid} statusCheckRollup{contexts(first:100){pageInfo{hasNextPage} nodes{__typename ... on CheckRun{name status conclusion startedAt} ... on StatusContext{context state createdAt}}}}}`).join(' ');
   const query = `query{repository(owner:"${repo.owner}",name:"${repo.name}"){defaultBranchRef{target{oid}} ${fields}}}`;
   const [head, changed, github, manifest] = await Promise.all([
-    command('git', ['rev-parse', 'HEAD']),
-    command('git', ['status', '--porcelain', '--untracked-files=normal']),
-    command('gh', ['api', 'graphql', '-f', `query=${query}`]),
-    command('curl', ['--fail', '--silent', '--show-error', '--max-time', '20', '--max-redirs', '0', 'https://daan.lifenet.com.tw/deployment.json']),
+    runner('git', ['rev-parse', 'HEAD']),
+    runner('git', ['status', '--porcelain', '--untracked-files=normal']),
+    runner('gh', ['api', 'graphql', '-f', `query=${query}`]),
+    runner('curl', ['--fail', '--silent', '--show-error', '--max-time', '20', '--max-redirs', '0', 'https://daan.lifenet.com.tw/deployment.json']),
   ]);
   const payload = JSON.parse(github);
   const repository = payload.data?.repository;
@@ -134,9 +135,12 @@ export async function observe(prs) {
       const pr = repository[`p${number}`];
       if (!pr || !sha.test(pr.headRefOid) || pr.statusCheckRollup?.contexts.pageInfo.hasNextPage) throw new Error('Missing or truncated PR status');
       const checks = pr.statusCheckRollup?.contexts.nodes || [];
+      // Match the existing queue/digest retry semantics; keep every attempt below
+      // for diagnosis. This summary is advisory, never a merge or approval gate.
+      const states = checkStates(checks, [...new Set(checks.map(c => c.name || c.context))]);
       return { number, head: pr.headRefOid, state: pr.state, merge: pr.mergeCommit?.oid || null,
-        pending: checks.filter(c => c.__typename === 'CheckRun' ? c.status !== 'COMPLETED' : c.state === 'PENDING').map(c => c.name || c.context),
-        failed: checks.filter(c => ['FAILURE', 'ERROR', 'TIMED_OUT', 'ACTION_REQUIRED', 'CANCELLED', 'STARTUP_FAILURE', 'STALE'].includes(c.conclusion || c.state)).map(c => c.name || c.context),
+        pending: Object.keys(states).filter(name => states[name] === 'pending'),
+        failed: Object.keys(states).filter(name => states[name] === 'fail'),
         checks: checks.map(c => ({ name: c.name || c.context, status: c.status || c.state, conclusion: c.conclusion || null })) };
     }),
   };
