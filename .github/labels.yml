@@ -287,6 +287,10 @@
   color: "0e8a16"
   description: "land-queue: merge when green"
 
+- name: "claimed"
+  color: "5319e7"
+  description: "An agent is working on this issue; see the claim comment for the branch"
+
 - name: "release-note-none"
   color: "c5def5"
   description: "CHECK 4A: silent ship on a UI/API change is intended, no staff card (reason in PR body)"

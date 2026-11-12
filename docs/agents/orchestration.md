@@ -6,6 +6,16 @@
 
 實作者的 brief = issue 連結 + 限制（分支、大小預算、禁區、回報格式）。範圍、驗收條件、不可變更清單只在 issue 的計畫（[`docs/sop/ISSUE_PLAN.md`](../sop/ISSUE_PLAN.md)）裡；協調者不在 brief 裡重述。brief 與計畫相左時以計畫為準，實作者要在回報裡說出相左之處，不默默擇一。
 
+每個 brief 的固定部分（起手、省 token、正確性、UI、PR、回報格式）在 [`IMPLEMENTER_BRIEF.md`](IMPLEMENTER_BRIEF.md)；協調者只送任務專屬的差異。
+
+## Claim convention
+
+兩個 agent（例如 Claude 與 Codex）共用一個 repo 時，避免撞單：
+- 開工前查：開著的 PR 是否有 `Refs #N`、issue 是否已有 `claimed` 標籤。
+- 沒人認領就加 `claimed` 標籤，並留一則留言：`Claimed by <agent> — branch <name>`。
+- PR 合併或放棄時移除 `claimed`。
+- 認領超過 24 小時且沒有開著的 PR 即視為過期，其他 agent 可留言後接手。
+
 ## Agent Orchestration SOP
 
 開工前先判斷任務類型，避免把 AI 協作變成額外認知負擔：

@@ -1,0 +1,46 @@
+# Implementer brief (standing part)
+
+Every implementer agent follows this. The coordinator sends only the task-specific delta (issue link, branch name, size budget, no-go areas). Rules live elsewhere; this file points to them. If the delta and this file disagree, the issue plan wins and you say so in your report.
+
+## Start
+- `git fetch origin main`, then branch from `origin/main`. Never work on `main`.
+- Read the required list in [`AGENTS.md`](../../AGENTS.md) and the issue plan ([`docs/sop/ISSUE_PLAN.md`](../sop/ISSUE_PLAN.md)). Read nothing else until you need it.
+
+## Token rules
+- Grep first, then read line ranges. No raw JSON, check-run or log dumps ([`token-discipline.md`](token-discipline.md)). Use `node scripts/ci/pr-digest.mjs` for PR and CI state.
+- Push, open the PR, then hand back. Never poll or wait for CI.
+- Model: per rulebook K3 and the lane table in [`DELIVERY_LIFECYCLE.md`](../sop/DELIVERY_LIFECYCLE.md); when unsure use the mid model.
+- WIP limit: at most 3 agents at once (coordinator practice, retro #5201 row 30).
+
+## Correctness
+- Tests first (RED, then GREEN). Never lower a test, assertion, allowlist or baseline.
+- If PHPUnit or Vitest could not run locally, write "not run locally" in the report. Do not imply it passed.
+- A renamed test file must rename its class too.
+- No empty commits, no force-push. Merge `main` into the branch; do not rebase.
+- CI stuck or cancelled: rerun the failed jobs through the REST API, or report it.
+
+## UI changes
+- Search the production-run specs for every selector, class name and label helper you change, and update them in the same PR: `frontend/e2e/calendar-course-consistency.spec.js`, `frontend/e2e/*production*.spec.js`, `frontend/e2e/fixtures/**`.
+- Do not put native `required` or `min` on a field that shows inline errors.
+- A confirm handler must return early when its dialog is already closed.
+
+## PR hygiene
+- Use the headings in `.github/pull_request_template.md`.
+- Paste the declaration block from `python3 scripts/governance/pr_declaration.py --base origin/main --head HEAD`.
+- Add `Rewrites: #N` lines where the PR replaces earlier work.
+- Check the PR number before editing a PR body.
+- After you fix a review thread, reply to it AND resolve it.
+- Record choices you made yourself under "Agent 決定的事" ([`ISSUE_PLAN.md`](../sop/ISSUE_PLAN.md); rule: `FOUNDER_STANDING_DECISIONS.md` 2026-11-12 (四)).
+
+## Review cap
+- P0/P1 and any regression this PR introduces are always fixed before merge. Other P2 handling: only as written in `FOUNDER_STANDING_DECISIONS.md` 2026-10-12 item 4 and [`MERGE_SOP.md`](../sop/MERGE_SOP.md); do not restate it here.
+- A change that LOWERS a risk tier, or touches money or data repair, keeps full review on every head.
+
+## Public repo
+- Issues, PRs and comments are public: write IDs only, no names, contact details or secrets.
+
+## Claim before you start
+- Check open PRs that reference the issue and the `claimed` label; see [`orchestration.md`](orchestration.md#claim-convention).
+
+## Report format (under 150 words)
+- PR number, head SHA, what changed, tests run / not run, deviations from the brief or plan.
