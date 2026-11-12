@@ -48,7 +48,7 @@ class SchedulerFailedBugObservationTest extends TestCase
         $this->assertSame('failed', $job['run_status']);
         $this->assertSame('failed', $job['legacy_status']);
         $this->assertFalse($summary['execution_healthy']);
-        $this->assertSame(1, $summary['counts']['failed']);
+        $this->assertSame(1, $summary['critical_jobs']['failed']);
         $this->assertFalse($job['zero_work']);
         $this->assertNull($job['processed_count']);
         $this->assertNotNull($job['observed_result']);
