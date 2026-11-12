@@ -308,6 +308,13 @@ export const periodPaymentLabel = (status) => ({
   review_required: REVIEW_REQUIRED_LABEL, unknown: REVIEW_REQUIRED_LABEL,
 })[status] || UNKNOWN_STATUS_LABEL;
 
+/**
+ * The one place a long billing sentence becomes its chip text (UI plan #4659 Q6: chips stay short, the sentence goes in
+ * title / accessible name). Pass the badge `label`; labels with no short form come back unchanged.
+ */
+const SHORT_LABELS = { [REVIEW_REQUIRED_LABEL]: REVIEW_REQUIRED_SHORT_LABEL };
+export const shortPaymentLabel = (label) => SHORT_LABELS[label] ?? label;
+
 export function monthlyPaymentLabel(course) {
   const summary = course?.monthly_payment;
   if (!summary) return null;

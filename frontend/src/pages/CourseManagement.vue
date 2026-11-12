@@ -8,26 +8,26 @@
           <span>目前列表 {{ coursesLoading && !groupedCourses.length ? '—' : groupedCourses.length }} 位學生</span>
           <span v-if="pagination.lastPage > 1"> · 第 {{ pagination.page }} / {{ pagination.lastPage }} 頁</span>
         </p>
-        <details class="course-workbench__help" data-testid="course-help">
-          <summary class="tw:rounded-full" aria-label="課程使用說明" title="課程使用說明"><Info :size="22" aria-hidden="true" /><span class="course-help-label">先看懂這一頁</span></summary>
-          <p>查找、排課與營運；建立、續報與購買請從學生管理進入。</p>
-          <div class="course-lens-guidance" role="note" data-testid="course-lens-guidance">
-            <span class="material-symbols-outlined course-lens-guidance__icon" aria-hidden="true">near_me</span>
-            <div>
-              <strong>這一頁適合查找與分流</strong>
-              <span>建立、續報、購買與學生資料由「學生管理」負責；本頁保留查找、排課、課程營運與既有課程編輯。</span>
-            </div>
-          </div>
-
-          <div class="course-lens-summary" aria-label="課程管理摘要" data-testid="course-lens-summary">
-            <Card v-for="metric in courseLensMetrics" :key="metric.key" class="course-lens-metric" :class="`course-lens-metric--${metric.tone}`">
-              <span class="course-lens-metric__label">{{ metric.label }}</span>
-              <strong class="course-lens-metric__value">{{ metric.value }}</strong>
-              <span class="course-lens-metric__hint">{{ metric.hint }}</span>
-            </Card>
-          </div>
-        </details>
       </div>
+      <details class="course-workbench__help" data-testid="course-help">
+        <summary class="tw:rounded-full" aria-label="課程使用說明" title="課程使用說明"><Info :size="22" aria-hidden="true" /><span class="course-help-label">先看懂這一頁</span></summary>
+        <p>查找、排課與營運；建立、續報與購買請從學生管理進入。</p>
+        <div class="course-lens-guidance" role="note" data-testid="course-lens-guidance">
+          <span class="material-symbols-outlined course-lens-guidance__icon" aria-hidden="true">near_me</span>
+          <div>
+            <strong>這一頁適合查找與分流</strong>
+            <span>建立、續報、購買與學生資料由「學生管理」負責；本頁保留查找、排課、課程營運與既有課程編輯。</span>
+          </div>
+        </div>
+
+        <div class="course-lens-summary" aria-label="課程管理摘要" data-testid="course-lens-summary" :style="courseLensGridStyle">
+          <Card v-for="metric in courseLensMetrics" :key="metric.key" class="course-lens-metric" :class="`course-lens-metric--${metric.tone}`">
+            <span class="course-lens-metric__label">{{ metric.label }}</span>
+            <strong class="course-lens-metric__value">{{ metric.value }}</strong>
+            <span class="course-lens-metric__hint">{{ metric.hint }}</span>
+          </Card>
+        </div>
+      </details>
       <div class="course-workbench__tools tw:flex tw:flex-wrap tw:items-center tw:gap-3">
         <TextSizeToggle />
         <Button type="button" class="course-lens-add-action tw:h-14 tw:px-5 tw:text-[length:var(--tpl-text-body)]" data-testid="course-header-create" @click="openCreateCourse"><Plus :size="22" aria-hidden="true" />新增課程</Button>
@@ -372,7 +372,8 @@
                           :class="['small', 'payment-status-badge', paymentStatusButtonClass(c)]"
                           role="status"
                           :title="paymentStatusHelpTitle(c)"
-                        >{{ paymentStatusButtonLabel(c) }}</span>
+                          :aria-label="paymentStatusButtonLabel(c)"
+                        >{{ paymentStatusChipText(c) }}</span>
                       </div>
                     </div>
                     <div class="cell-actions">
@@ -726,7 +727,8 @@
                       :class="['small', 'payment-status-badge', paymentStatusButtonClass(row.course)]"
                       role="status"
                       :title="paymentStatusHelpTitle(row.course)"
-                    >{{ paymentStatusButtonLabel(row.course) }}</span>
+                      :aria-label="paymentStatusButtonLabel(row.course)"
+                    >{{ paymentStatusChipText(row.course) }}</span>
                   </td>
                   <td>
                     <template v-if="row.reports?.[0]">
@@ -1438,9 +1440,10 @@ import MonthlyCorrectionPreviewModal from '../components/course-management/Month
 import { useMonthlyCorrectionPreview } from '../composables/course-management/useMonthlyCorrectionPreview.js';
 import { loadNextMonthlyContract } from '../lib/nextMonthlyContract.js';
 import {
-  REPORT_STATUS_LABELS, closedReason as effectiveClosedReason, isClosedReason, courseHistoryReason, isActiveCourse, isCourseManagementHistory, isLowRemaining, isMonthlyPaymentType, isPackageMember, TUITION_STATUS_CONFIG, ENDED_PENDING_LABEL, ENDED_REVIEW_LABEL, reviewReasonText, WAIVED_LABEL, coursePaymentBadge, isLegacyPaidFlagOnly, LEGACY_FLAG_ACTION_HELP,
+  REPORT_STATUS_LABELS, closedReason as effectiveClosedReason, isClosedReason, courseHistoryReason, isActiveCourse, isCourseManagementHistory, isLowRemaining, isMonthlyPaymentType, isPackageMember, TUITION_STATUS_CONFIG, ENDED_PENDING_LABEL, ENDED_REVIEW_LABEL, reviewReasonText, WAIVED_LABEL, coursePaymentBadge, shortPaymentLabel, isLegacyPaidFlagOnly, LEGACY_FLAG_ACTION_HELP,
   ownRemainingSessions, poolTotalSessions, poolUsedSessions, closedPaymentState, PAYMENT_STATUS_LOADING_LABEL, sharedPackageBillingLead,
 } from '../lib/courseMoneyState.js';
+import { summaryGridStyle } from '../lib/summaryGrid.js';
 import { nextManualSessionDate } from '../lib/manualSessionDate.js';
 import {
   buildBillingCorrectionBlockedState,
@@ -4363,6 +4366,7 @@ const courseLensMetrics = computed(() => {
 
 // #4150: label/tone/next action come from the shared coursePaymentBadge; only the CSS class and button text are local.
 const BADGE_CLASS = { anomaly: 'tag-billing-anomaly', no_payment: 'tag-no-payment', settled: 'tag-paid', free: 'tag-paid', owing: 'tag-unpaid' };
+const courseLensGridStyle = computed(() => summaryGridStyle(courseLensMetrics.value.length));
 const paymentBadge = (course) => coursePaymentBadge(course, { monthlyPeriod: true });
 const paymentStatusButtonClass = (course) => BADGE_CLASS[paymentBadge(course).tone] || 'tag-pending-report';
 const currentInvoiceForBillingRow = (row) => {
@@ -4370,6 +4374,8 @@ const currentInvoiceForBillingRow = (row) => {
   return invoices.find((invoice) => ['unpaid', 'partial'].includes(invoice?.status)) || invoices[0] || null;
 };
 const paymentStatusButtonLabel = (course) => paymentBadge(course).label;
+// Chip text: long billing sentences shorten through the one helper (courseMoneyState); the full sentence stays in title / aria-label.
+const paymentStatusChipText = (course) => shortPaymentLabel(paymentStatusButtonLabel(course));
 const paymentNextActionLabel = (course) => {
   const nextAction = paymentBadge(course).nextAction;
   if (nextAction === 'none') return '';
@@ -5803,9 +5809,17 @@ onUnmounted(() => {
 
 .course-lens-summary {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  /* Column counts come from summaryGridColumns() so no row ends with one orphan card (in-app #538). */
+  grid-template-columns: repeat(var(--summary-cols-wide, 4), minmax(0, 1fr));
   gap: 10px;
   margin-top: 16px;
+}
+@media (max-width: 1023px) {
+  .course-lens-summary { grid-template-columns: repeat(var(--summary-cols-mid, 2), minmax(0, 1fr)); }
+}
+@media (max-width: 640px) {
+  .course-lens-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .course-lens-summary > :last-child:nth-child(odd) { grid-column: 1 / -1; }
 }
 
 .course-lens-metric {
@@ -6263,9 +6277,6 @@ onUnmounted(() => {
   .header-buttons {
     width: 100%;
     justify-content: flex-start;
-  }
-  .course-lens-summary {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
   .stats-strip {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -8731,7 +8742,7 @@ button.danger {
 .course-workbench .course-row .tag-usage-review,
 .course-workbench .course-row .warning-summary-btn { max-width: 100%; white-space: normal; text-align: left; }
 .course-workbench .course-row .payment-status-and-action { align-items: start; min-width: 0; }
-/* In-app #532: a long status (需核對…) wraps inside the 繳費 column instead of running under the row's buttons. */
+/* In-app #532: a long status still wraps inside the 繳費 column instead of running under the row's buttons; the review sentence itself is a short chip (#539). */
 .course-workbench .course-row .payment-status-badge { max-width: 100%; white-space: normal; text-align: left; }
 .course-workbench .dates-row { margin-top: .75rem; min-width: 0; }
 .course-workbench .dates-row .detail-panel { margin: 0; padding: 1rem; border-radius: inherit; font-size: inherit; }
@@ -8765,15 +8776,16 @@ button.danger {
   .course-workbench .history-section { padding: .5rem .875rem; }
 }
 
-.course-workbench__intro { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: .75rem; align-content: start; }
+.course-workbench__intro { display: grid; grid-template-columns: minmax(0, 1fr); align-content: start; }
 .course-workbench__intro > h1 { grid-column: 1; grid-row: 1; }
 .course-workbench__context { grid-column: 1; grid-row: 2; }
 .course-workbench__description { grid-column: 1 / -1; grid-row: 3; }
-.course-workbench__help { grid-column: 2; grid-row: 1 / 3; align-self: start; }
+/* The help is a header sibling (not inside the intro column), so opened it can take the whole header width. */
+.course-workbench__help { align-self: start; min-width: 0; }
 .course-workbench__help > summary { display: grid; place-items: center; min-height: 2.75rem; min-width: 2.75rem; border-radius: var(--ds-radius-pill); cursor: pointer; }
 .course-help-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
-.course-workbench__help[open] { grid-column: 1 / -1; grid-row: auto; }
-.course-workbench__help[open] > summary { justify-self: end; }
+.course-workbench__help[open] { flex: 0 0 100%; order: 3; }
+.course-workbench__help[open] > summary { width: 2.75rem; margin-left: auto; }
 .course-workbench .focus-btn { min-width: 2.75rem; min-height: 2.75rem; }
 .course-workbench .student-group-counts { font-size: inherit; }
 .course-workbench .course-row .payment-status-badge,

@@ -1,6 +1,6 @@
 // @ts-check
 import { test, expect } from '@playwright/test';
-import { LEGACY_FLAG_UNVERIFIED_HELP, REPORT_STATUS_LABELS, TUITION_STATUS_CONFIG } from '../src/lib/courseMoneyState.js';
+import { LEGACY_FLAG_UNVERIFIED_HELP, REPORT_STATUS_LABELS, REVIEW_REQUIRED_LABEL, REVIEW_REQUIRED_SHORT_LABEL, TUITION_STATUS_CONFIG } from '../src/lib/courseMoneyState.js';
 import { dismissOverlays } from './fixtures/dismissOverlays.js';
 import { expectCoursePaymentEntryOpensLedgerInPlace, recordCourseLists } from './fixtures/coursePaymentEntry.js';
 
@@ -135,5 +135,67 @@ for (const { paymentStatus, legacyFlagOnly = false, actionLabel, badge } of STAT
       await expect(page.locator('#ledger-modal-title')).toHaveText(`${target.student_name}的帳務`);
     }
     expect(writes, 'payment entry must not issue any non-GET API request').toEqual([]);
+  });
+}
+
+// In-app #538 / #539: layout of the 課程查找 header help and the review-required payment chip at phone, tablet and desktop widths.
+// The page is opened at desktop width (the sidebar is reliable there) and then resized, so only CSS decides the layout.
+for (const width of [375, 768, 1280]) {
+  test(`課程查找 at ${width}px: opened help spans the header, no orphan summary card, review badge stays on one line`, async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.route('**/*', (route) => ['127.0.0.1', 'localhost'].includes(new URL(route.request().url()).hostname)
+      ? route.fallback() : route.abort('blockedbyclient'));
+    const review = course(7301, 7401, '合成核對學生', 'review_required');
+    const paid = course(7302, 7402, '合成已收學生', 'paid');
+    await page.route('**/api/v1/**', async (route) => {
+      const p = new URL(route.request().url()).pathname;
+      if (route.request().method() !== 'GET') {
+        await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true }) });
+        return;
+      }
+      if (p.endsWith('/me')) {
+        await route.fulfill({ json: { id: 9001, name: 'E2E Director', role: 'director', campuses: [1], must_change_password: false, capabilities: [] } });
+      } else if (p.endsWith('/branches') || p.endsWith('/campuses')) {
+        await route.fulfill({ json: [{ id: 1, name: '內湖分校', code: 'neihu' }] });
+      } else if (p.includes('/notifications')) {
+        await route.fulfill({ json: { data: [], unread_count: 0 } });
+      } else if (p === '/api/v1/student-classes') {
+        await route.fulfill({ json: { data: [review, paid], current_page: 1, last_page: 1, total: 2 } });
+      } else {
+        await route.fulfill({ json: { data: [] } });
+      }
+    });
+    await page.goto('/pilot-mount.html?page=app');
+    await expect(page.locator('html')).toHaveAttribute('data-pilot-ready', '1');
+    await dismissOverlays(page);
+    await page.locator('nav.sidebar-nav').getByRole('button', { name: '課程查找' }).click();
+    const badge = page.locator(`.payment-status-and-action[data-course-id="${review.id}"] .payment-status-badge`);
+    const paidBadge = page.locator(`.payment-status-and-action[data-course-id="${paid.id}"] .payment-status-badge`);
+    await expect(badge).toBeVisible({ timeout: 15_000 });
+    await page.setViewportSize({ width, height: 900 });
+
+    // #539: short chip on one line (same height as the 已收 chip); the sentence stays as title and accessible name.
+    await expect(badge).toHaveText(REVIEW_REQUIRED_SHORT_LABEL);
+    await expect(badge).toHaveAttribute('aria-label', REVIEW_REQUIRED_LABEL);
+    await expect(badge).toHaveAttribute('title', new RegExp(REVIEW_REQUIRED_LABEL));
+    const [badgeBox, paidBox] = [await badge.boundingBox(), await paidBadge.boundingBox()];
+    expect(Math.abs(badgeBox.height - paidBox.height), 'review chip is one line like the 已收 chip').toBeLessThanOrEqual(2);
+
+    // #538: the opened help is as wide as the header content and no summary row holds a single card.
+    const header = page.locator('[data-guide="course-mgmt-header"]');
+    await page.locator('[data-testid="course-help"] > summary').click();
+    const help = page.locator('[data-testid="course-help"]');
+    await expect(help).toHaveAttribute('open', '');
+    const [headerBox, helpBox] = [await header.boundingBox(), await help.boundingBox()];
+    const pad = await header.evaluate((el) => { const cs = getComputedStyle(el); return parseFloat(cs.paddingLeft) + parseFloat(cs.paddingRight); });
+    expect(Math.abs(helpBox.width - (headerBox.width - pad)), 'help spans the header content width').toBeLessThanOrEqual(2);
+    const rows = await page.locator('[data-testid="course-lens-summary"] > *').evaluateAll((cards) => {
+      const byTop = new Map();
+      for (const c of cards) { const top = Math.round(c.getBoundingClientRect().top); byTop.set(top, (byTop.get(top) || 0) + 1); }
+      return [...byTop.values()];
+    });
+    expect(rows.length, 'summary cards rendered').toBeGreaterThan(0);
+    if (rows.length > 1) expect(rows, 'a row with one card is an orphan unless it spans the row').not.toContain(1);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1), 'no horizontal page scroll').toBe(true);
   });
 }

@@ -456,7 +456,7 @@
                       <div>
                         <dt>付款</dt>
                         <dd>
-                          <span :class="['student-course-card__payment', `student-course-card__payment--${paymentCardModifier(course)}`]">{{ paymentStatusButtonLabel(course) }}</span>
+                          <span :class="['student-course-card__payment', `student-course-card__payment--${paymentCardModifier(course)}`]" :title="paymentStatusHelpTitle(course)" :aria-label="paymentStatusButtonLabel(course)">{{ paymentStatusChipText(course) }}</span>
                           <span v-if="isTutoringBillingAnomaly(course)" class="payment-anomaly-hint" role="alert">帳務資料需修正</span>
                           <span v-if="course.last_paid_at" class="paid-date-hint">{{ course.last_paid_at }}</span>
                         </dd>
@@ -471,7 +471,7 @@
                     <details class="student-course-card__actions">
                       <summary>更多操作</summary>
                       <div class="student-course-card__actions-body">
-                        <span :class="['small', 'payment-status-badge', paymentStatusButtonClass(course)]" role="status" :title="paymentStatusHelpTitle(course)">{{ paymentStatusButtonLabel(course) }}</span>
+                        <span :class="['small', 'payment-status-badge', paymentStatusButtonClass(course)]" role="status" :title="paymentStatusHelpTitle(course)" :aria-label="paymentStatusButtonLabel(course)">{{ paymentStatusChipText(course) }}</span>
                         <span v-if="isTutoringBillingAnomaly(course)" class="payment-anomaly-hint" role="alert">帳務資料需由主任檢查，暫不提供付款操作。</span>
                         <button v-if="shouldShowPaymentAction(course)" type="button" class="small ghost" @click="goToTuitionBilling(course)">{{ paymentNextActionLabel(course) }}</button>
                         <button type="button" class="small ghost" @click="openAddSessionsForCourse(course)">{{ isTutoringCourse(course) ? '延續輔導課（不收費）' : isTrialCourse(course) ? '轉為正式課程' : course.payment_type === 'monthly' ? '結算 / 續約下月' : RENEW_LESSONS_LABEL }}</button>
@@ -998,7 +998,7 @@ import { humanizeApiErrorMessage } from '../lib/humanizeApiErrorMessage.js';
 import { isCourseSettled, isPaymentNoticeStatus } from '../lib/paymentStatus.js';
 import {
   closedReason as effectiveClosedReason, courseHistoryReason, courseProgress, isLowRemaining, isMonthlyPaymentType, isPackageMember, isSessionPaymentLow,
-  modalRemainingSessions, ownRemainingSessions, poolTotalSessions, REPORT_STATUS_LABELS, ENDED_PENDING_LABEL, ENDED_REVIEW_LABEL, reviewReasonText, WAIVED_LABEL, coursePaymentBadge, closedPaymentState,
+  modalRemainingSessions, ownRemainingSessions, poolTotalSessions, REPORT_STATUS_LABELS, ENDED_PENDING_LABEL, ENDED_REVIEW_LABEL, reviewReasonText, WAIVED_LABEL, coursePaymentBadge, shortPaymentLabel, closedPaymentState,
 } from '../lib/courseMoneyState.js';
 import { closeCourseNoRenew as runCloseCourseNoRenew } from '../lib/closeCourseNoRenew.js';
 import { GRADES, SUBJECTS, getSubjectLabel as getSubjectText } from '../lib/constants';
@@ -1302,6 +1302,8 @@ const paymentStatusButtonClass = (course) => BADGE_CLASS[coursePaymentBadge(cour
 const CARD_MODIFIER = { anomaly: 'overdue', no_payment: 'paid', settled: 'paid', free: 'paid', owing: 'unpaid', review: 'pending' };
 const paymentCardModifier = (course) => CARD_MODIFIER[coursePaymentBadge(course).tone] || 'unknown';
 const paymentStatusButtonLabel = (course) => coursePaymentBadge(course).label;
+// Chip text: long billing sentences shorten through the one helper; the full sentence stays in title / aria-label.
+const paymentStatusChipText = (course) => shortPaymentLabel(paymentStatusButtonLabel(course));
 const paymentNextActionLabel = (course) => {
   if (isCourseSettled(course) === null) return '';
   return {
