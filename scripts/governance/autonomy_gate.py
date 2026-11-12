@@ -44,6 +44,10 @@ _T3_PREFIXES = (
     ".github/pii-log-workflows.txt",
     ".claude/hooks/",
     ".claude/settings.json",
+    # Agent definitions (role, tools, model of each subagent) and the local settings file that is merged
+    # over settings.json: the same agent control plane as the two entries above (#5201 row 20).
+    ".claude/agents/",
+    ".claude/settings.local.json",
     "backend/database/migrations/",
     "backend/app/Console/Commands/Repair",
     "backend/app/Services/Repair",
@@ -82,6 +86,8 @@ _MERGE_ONLY_T3_PREFIXES = (
     ".github/pii-log-workflows.txt",
     ".claude/hooks/",
     ".claude/settings.json",
+    ".claude/agents/",
+    ".claude/settings.local.json",
     "scripts/governance/",
 )
 
@@ -103,11 +109,27 @@ _DOCS_T0_PATTERNS = (
     "**/README.md",
     ".github/pull_request_template.md",
     ".github/ISSUE_TEMPLATE/**",
-    # Agent procedure documents: T0 before this rule existed, kept as is (no tier drift).
-    ".agents/skills/**",
-    ".claude/skills/**",
 )
 _UNCLASSIFIED_PATH_TIER = 1
+
+# Skills are procedures agents execute, not documentation (#5201 row 20): T2, so a change gets the
+# exact-head review. Not T3: a procedure wording fix must not need the R3 security review each time.
+_AGENT_PROCEDURE_T2_PREFIXES = (
+    ".agents/skills/",
+    ".claude/skills/",
+)
+
+# Files under docs/ that the product shows to users (#5201 row 20): the frontend build bundles them into
+# the staff 版本更新 page and the parent portal update card (scripts/staff-updates-to-js.mjs,
+# scripts/parent-updates-to-js.mjs; gotcha G-008). User-visible content, so at least T1, never "docs".
+# docs/CHANGELOG.md and docs/changes/ (read by SystemTrustController for the trust panel) are not listed:
+# an existing test keeps a changelog-only change at R0, and changing that rule is a separate decision.
+_RUNTIME_CONTENT_T1_PATTERNS = (
+    "docs/PARENT_UPDATES.yml",
+    "docs/parent-updates/**",
+    "docs/STAFF_UPDATES.yml",
+    "docs/staff-updates/**",
+)
 
 _T2_PREFIXES = (
     "backend/",
@@ -783,6 +805,16 @@ def _is_docs_t0_path(path: str) -> bool:
     return False
 
 
+def _is_runtime_content_path(path: str) -> bool:
+    """Docs-tree files the product shows to users; an entry is an exact path or a ``dir/**`` prefix."""
+
+    normalized = path.replace("\\", "/")
+    return any(
+        normalized.startswith(pattern[:-2]) if pattern.endswith("/**") else normalized == pattern
+        for pattern in _RUNTIME_CONTENT_T1_PATTERNS
+    )
+
+
 def _runtime_patch(paths: list[str], patch: str) -> str:
     """Keep semantic-marker scans scoped to deployable file diffs."""
 
@@ -1092,6 +1124,12 @@ def classify_scope(
         elif path in _DEPLOY_EXECUTOR_PATHS or any(path.startswith(prefix) for prefix in _T3_PREFIXES):
             minimum = max(minimum, 3)
             reasons.append(f"protected path: {path}")
+        elif any(path.startswith(prefix) for prefix in _AGENT_PROCEDURE_T2_PREFIXES):
+            minimum = max(minimum, 2)
+            reasons.append(f"agent procedure path: {path}")
+        elif _is_runtime_content_path(path):
+            minimum = max(minimum, 1)
+            reasons.append(f"user-visible content path: {path}")
         elif not non_runtime_only and path.startswith("frontend/src/"):
             minimum = max(minimum, 1)
             reasons.append(f"frontend runtime path: {path}")

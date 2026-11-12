@@ -1,6 +1,6 @@
 # Risk-Based Merge Policy
 
-**Version:** 1.9.0
+**Version:** 1.10.0
 **Effective:** 2026-08-29 (Founder T0–T3 autonomy decision; supersedes the prior solo-mode R2/R3 merge wording)
 **Owner:** Founder / CTO Agent  
 **Status:** Canonical  
@@ -80,6 +80,8 @@ T3 .gitleaksignore
 T3 .github/pii-log-workflows.txt
 T3 .claude/hooks/
 T3 .claude/settings.json
+T3 .claude/agents/
+T3 .claude/settings.local.json
 T3 backend/database/migrations/
 T3 backend/app/Console/Commands/Repair
 T3 backend/app/Services/Repair
@@ -111,14 +113,18 @@ T2 composer.lock
 T2 frontend/package.json
 T2 frontend/package-lock.json
 T2 scripts/
+T2-agent-procedures .agents/skills/
+T2-agent-procedures .claude/skills/
+T1-content docs/PARENT_UPDATES.yml
+T1-content docs/parent-updates/**
+T1-content docs/STAFF_UPDATES.yml
+T1-content docs/staff-updates/**
 T0-docs docs/**
 T0-docs operations/closeout/**
 T0-docs *.md
 T0-docs **/README.md
 T0-docs .github/pull_request_template.md
 T0-docs .github/ISSUE_TEMPLATE/**
-T0-docs .agents/skills/**
-T0-docs .claude/skills/**
 T0-tests backend/tests/**
 T0-tests frontend/e2e/**
 T0-tests frontend/playwright*.config.js
@@ -136,6 +142,12 @@ unmatched T1
   or `deploy.yml` loads, and the files that relax a required scanner or guard (zizmor policy, PII-log
   exemptions and purge list, gitleaks config and ignore list) or an agent guard (`.claude/settings.json`
   deny list and hook wiring, `.claude/hooks/`). A relaxed scanner or guard is a security-boundary change.
+  Agent definitions (`.claude/agents/`) and `.claude/settings.local.json` are the same agent control plane.
+- **T2-agent-procedures** are skills: procedures agents execute, not documentation, whatever else is in the
+  change. They are T2 and not T3 so that a procedure wording fix gets the exact-head review without the R3
+  security review each time.
+- **T1-content** are files under `docs/` that the frontend build bundles into the staff 版本更新 page and the
+  parent portal update card. They are user-visible content, so never T0.
 - **T2** applies only when the change contains at least one deployable file. `frontend/src/` and every other
   deployable `frontend/` file (build config, public assets, vendored modules) is at least T1.
 - **T0** is only what the two T0 lists name: documentation and evidence (`*.md` means repository root), and

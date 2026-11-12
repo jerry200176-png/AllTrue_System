@@ -38,3 +38,4 @@ issue 內文放標記 `<!-- plan:v1 -->`，並依序有下列七個標題。每�
 - 階段 4：`tech-lead`、`qa-lead` 先跑檢查；計畫不完整就不給 `gate:ready`。
 - 階段 6：審查者對照 PR diff，把〈驗收條件〉與〈不可變更清單〉逐項標「met／not met」。
 - 協調者交給實作者的 brief 與計畫相左時，以計畫為準，實作者要說出來（`docs/agents/orchestration.md`）。
+- brief 要寫明：CI 卡在排隊沒有 job，或因基礎設施失敗時，重跑失敗的 job 或回報協調者；不要推空 commit 來重觸發 CI。
