@@ -1381,6 +1381,32 @@ gh run view <run_id>                                  # 讀 Step Summary 四指�
 POP verify 比對更正後完整資料指紋；rollback 使用原快照恢復所有原歸屬與合約欄位，只有本次新建的目標可刪除。更正後有新出勤、收款、備註或群組等資料變動時拒絕自動回復，需另審修復清單。部署回復用 revert commit／前一部署 SHA，不可當成資料回復。
 
 
+#### 同學生同科目多份堂數合約的堂次歸屬重排（`course-contract-chain-rebalance`，僅乾跑）
+
+GitHub #5124／#5162。目錄狀態 `planned`：只能建立草稿與乾跑，POP 不發核准，策略的 execute／verify／rollback 一律回 `strategy_planned_only`。乾跑只讀資料，不寫任何表。
+
+用途：一位學生同一科目有多份堂數合約（一條鏈），已上的堂掛錯合約，造成某份合約已上堂數超過購買堂數。`course-contract-repair` 一次只處理兩份合約，這個作業一次驗整條鏈。
+
+清單欄位（全部必填，鍵名須與目錄一致）：`campus_id`、`student_id`、`subject_id`、`contract_ids`（該生該科目全部非方案的堂數合約，少一份就拒絕）、`moves`（有順序；每筆 `session_id`、`from`、`to`、`date`、`start_time`、`status`）、`allow_active_contracts`、`allow_order_only_moves`（兩個都預設 `false`，對應 Founder 待決事項）、`future_reservation_policy`（`block`／`report`）、`expected_digest`（第一次乾跑留空）、`restore_request_id`（本版只收空字串）、`reason`（代碼，不寫自由文字）、`decision_reference`。
+
+乾跑一次驗完，任何一條不成立就 `ok=false` 並回代碼：
+
+| 類別 | 代碼 |
+|---|---|
+| 清單格式 | `campus_id_invalid`、`student_id_invalid`、`subject_id_invalid`、`contract_ids_invalid`、`moves_invalid`、`flag_invalid`、`future_reservation_policy_invalid`、`digest_format`、`reason_invalid`、`decision_reference_invalid`、`restore_not_available_plan_only` |
+| 範圍（分校／學生／科目／整條鏈） | `student_campus_mismatch`（在讀任何合約或堂次前就拒絕；`super_admin` 也不例外）、`contract_not_owned_by_student`（不存在或屬於別的學生，同一個代碼）、`contract_subject_mismatch`、`contract_chain_incomplete`、`package_contract_unsupported`、`non_count_contract_unsupported`、`session_not_found_in_campus`（不存在或在別的分校，同一個代碼）、`session_student_mismatch`、`session_subject_mismatch`、`session_not_in_chain`、`chain_too_large` |
+| 清單與現況不符 | `move_from_mismatch`（`from` 不是這堂目前的合約，含前面幾筆搬動後）、`session_drift`（日期、時間或狀態變了）、`session_moved_twice`、`move_noop`、`move_contract_not_in_chain`、`session_status_unsupported`、`digest_mismatch` |
+| 搬完後的結果 | `taught_exceeds_purchased`、`taught_total_not_conserved`、`future_reservations_exceed_remaining`（`report` 時只列出不擋） |
+| 金額與結算 | `contract_terminal_money_closure`、`contract_settlement_locked`、`session_charge_override_present`、`actual_duration_contract_unsupported`、`partial_minutes_unsupported`、`session_duration_differs`、`contract_session_count_invalid` |
+| 改派服務會拒絕的 | `target_slot_taken`、`assessment_locked` |
+| 鏡像資料不一致 | `mirror_inconsistent`（簽到、學習紀錄、扣堂帳的合約與堂次不同；或合約的扣堂帳、觀察到的使用與已上堂數對不起來；或要搬的堂扣堂淨額不是剛好一筆） |
+| 需 Founder 決定 | `decision_required_active_contract`、`decision_required_order_only` |
+
+輸出只有 ID、日期、狀態與數量：每份合約搬動前後的已上與預約堂數、過期仍為 `scheduled` 的堂次（只列出；取消走既有的過期堂次作業）、只調順序的搬動編號、受影響的老師月份數、`digest`，以及「最舊合約先用完」的對照（`advisor`，只供比較，從不執行）。`digest` 綁定整份清單、當天日期與讀到的合約、堂次、鏡像狀態；任何一項變了，帶著舊 `expected_digest` 的乾跑回 `digest_mismatch`。
+
+權限：草稿與乾跑走既有 POP 控制面（主任限自己分校、`super_admin`；老師不行）。啟用前還需要 execute／verify／restore、其審查與 Founder GO；本節到時再補執行與復原步驟。
+
+
 #### 月結跨期單堂排課
 
 舊期結束後的新增堂次回傳 `AFTER_COURSE_END` 及涵蓋指定日期的既有合約候選。先選用候選；沒有候選時開啟原續報預覽，建立下一期未繳費合約後回到原日期／時間，必須重新核對衝堂再確認新增。切換時重新讀取目標合約，不沿用舊合約付款標記。已存在的越界堂次不能藉冪等查詢繞過期間檢查。
