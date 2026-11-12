@@ -125,6 +125,16 @@ test.describe('Binding conflict review clarity browser verification', () => {
     await expect(page.locator('.bcrp-mobile-card').first()).toContainText('測試學生甲');
   });
 
+  test('exactly one of the card list and the table shows on both sides of the breakpoint', async ({ page }) => {
+    await installMock(page);
+    for (const [width, cards] of [[719, true], [720, false], [721, false]]) {
+      await page.setViewportSize({ width, height: 900 });
+      await open(page);
+      await expect(page.locator(cards ? '.bcrp-mobile-card' : '.bcrp-table tbody tr')).toHaveCount(2);
+      expect([await page.locator('.bcrp-mobile-list').isVisible(), await page.locator('.bcrp-table-wrap').isVisible()]).toEqual([cards, !cards]);
+    }
+  });
+
   test('long Chinese content remains usable at mobile width', async ({ page }) => {
     await installMock(page);
     await page.setViewportSize({ width: 390, height: 844 });
@@ -154,7 +164,7 @@ test.describe('Binding conflict review clarity browser verification', () => {
     expect(calls.reads[1]).toMatch(/^\/api\/v1\/bindings\/conflicts\?campus_id=\d+$/);
   });
 
-  test('the confirm starts on 取消, sends one request, and a refused request keeps the reason in the dialog', async ({ page }) => {
+  test('the confirm starts on 取消, sends one request, and a refused request is announced on that student', async ({ page }) => {
     const state = { resolve: 'refuse' };
     const calls = await installMock(page, state);
     await page.setViewportSize({ width: 390, height: 844 });
@@ -171,13 +181,22 @@ test.describe('Binding conflict review clarity browser verification', () => {
 
     await page.getByRole('button', { name: '保留此側：測試學生甲 U2222222…bbbb' }).locator('visible=true').click();
     await confirm.getByRole('button', { name: '確認保留' }).click();
-    await expect(confirm).toContainText('測試：此衝突已由他人處理');
-    await expect(confirm).toBeVisible();
+    // Refused: the dialog closes and the reason shows on that student's card, as an alert, in view.
+    await expect(confirm).toBeHidden();
+    const reason = page.getByTestId('binding-conflicts-resolve-error').locator('visible=true');
+    await expect(reason).toHaveCount(1);
+    await expect(reason).toHaveText('測試：此衝突已由他人處理');
+    await expect(reason).toHaveAttribute('role', 'alert');
+    await expect(reason).toBeInViewport();
+    await expect(page.locator('.bcrp-mobile-card').first().getByRole('alert')).toHaveText('測試：此衝突已由他人處理');
+    await expect(page.locator('.bcrp-mobile-card').nth(1).getByRole('alert')).toHaveCount(0);
     expect(calls.writes).toEqual([{ method: 'POST', path: '/api/v1/bindings/conflicts/7/resolve', body: { action: 'keep', binding_id: 12 } }]);
 
-    // The retry succeeds: the dialog closes and the list is read again.
+    // The retry succeeds: the reason goes away, the dialog closes and the list is read again.
     state.resolve = 'ok';
     const readsBefore = calls.reads.length;
+    await page.getByRole('button', { name: '保留此側：測試學生甲 U2222222…bbbb' }).locator('visible=true').click();
+    await expect(reason).toHaveCount(0);
     await confirm.getByRole('button', { name: '確認保留' }).click();
     await expect(confirm).toBeHidden();
     await expect.poll(() => calls.reads.length).toBe(readsBefore + 1);
@@ -185,7 +204,7 @@ test.describe('Binding conflict review clarity browser verification', () => {
   });
 });
 
-// #4989: WCAG A/AA scan with rows shown, with the confirm open, and with the refusal reason in it
+// #4989: WCAG A/AA scan with rows shown, with the confirm open, and with the refusal reason shown
 // (the shared axe spec only sees the empty state).
 for (const viewport of [viewports[0], viewports[3]]) {
   test(`binding conflict review has no axe violations with rows, the confirm and its error state @${viewport.name}`, async ({ page }) => {
@@ -201,7 +220,10 @@ for (const viewport of [viewports[0], viewports[3]]) {
     await expect(confirm).toHaveCSS('opacity', '1');
     expect(await scan()).toEqual([]);
     await confirm.getByRole('button', { name: '確認保留' }).click();
-    await expect(confirm).toContainText('測試：此衝突已由他人處理');
+    await expect(confirm).toHaveCount(0);
+    const reason = page.getByRole('alert').locator('visible=true');
+    await expect(reason).toHaveText('測試：此衝突已由他人處理');
+    await expect(reason).toHaveAttribute('data-testid', 'binding-conflicts-resolve-error');
     expect(await scan()).toEqual([]);
 
     await open(page, 'error');

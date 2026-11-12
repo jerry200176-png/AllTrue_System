@@ -9,6 +9,6 @@ updates:
     summary: 字更大、按鈕更好按；審查和處理衝突的步驟和原本一樣。
     items:
       - category: improved
-        text: 「衝突審查」頁改成大字、大按鈕，手機上每位學生一張卡片；處理失敗時，確認視窗會留著並寫出原因。
+        text: 「衝突審查」頁改成大字、大按鈕，手機上每位學生一張卡片；處理失敗時，原因會用紅字顯示在該位學生下方。
     source_refs:
       - "changelog:2026-11-12:ui-binding-conflict-review"

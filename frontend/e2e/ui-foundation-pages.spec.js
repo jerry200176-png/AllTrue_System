@@ -1672,7 +1672,7 @@ for (const vp of [{ width: 375, height: 812 }, { width: 390, height: 844 }, { wi
 }
 
 // #4989 衝突審查 inside the REAL app shell (mocked API, fake data): 16px phone gutter, title lines, 44px+ controls,
-// th token size, and the confirm (also with a refusal reason in it) inside the viewport, on top, and clear of the phone bottom nav.
+// th token size, the confirm inside the viewport, on top, and clear of the phone bottom nav, and a refusal reason shown in view.
 for (const vp of [{ width: 375, height: 812 }, { width: 390, height: 844 }, { width: 1280, height: 900 }]) {
   test(`binding conflict review in the app shell @${vp.width}`, async ({ page }) => {
     await page.setViewportSize({ width: vp.width, height: vp.height });
@@ -1775,12 +1775,18 @@ for (const vp of [{ width: 375, height: 812 }, { width: 390, height: 844 }, { wi
     await expect(confirm.getByRole('button', { name: '取消', exact: true })).toBeFocused();
     await assertReachable(confirm);
     await page.screenshot({ path: path.join(outDir, `binding-conflicts-shell-confirm-${vp.width}.png`) });
-    // A refused request: one POST with the director's action, the reason shows in the dialog, buttons still reachable.
+    // A refused request: one POST with the director's action; the dialog closes and the reason is an alert on that student, in view.
     await confirm.getByRole('button', { name: '確認解除', exact: true }).click();
-    await expect(confirm).toContainText('測試：此衝突已由他人處理');
+    await expect(confirm).toBeHidden();
+    const reason = rows.nth(1).getByRole('alert');
+    await expect(reason).toHaveText('測試：此衝突已由他人處理');
+    await expect(reason).toBeInViewport();
+    await expect(rows.first().getByRole('alert')).toHaveCount(0);
     expect(writes).toEqual(['POST /api/v1/bindings/conflicts/8/resolve {"action":"delete","binding_id":22}']);
-    await assertReachable(confirm);
-    await page.screenshot({ path: path.join(outDir, `binding-conflicts-shell-confirm-error-${vp.width}.png`) });
+    await page.screenshot({ path: path.join(outDir, `binding-conflicts-shell-resolve-error-${vp.width}.png`) });
+    // Opening the confirm again takes the reason away; 取消 sends nothing.
+    await remove.click();
+    await expect(reason).toHaveCount(0);
     await confirm.getByRole('button', { name: '取消', exact: true }).click();
     await expect(confirm).toBeHidden();
     expect(writes).toHaveLength(1);

@@ -5,6 +5,7 @@ import axe from 'axe-core';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import BindingConflictReviewPage from '../../pages/BindingConflictReviewPage.vue';
+import { ConfirmDialog } from '../app-overlay';
 
 // #4989: 衝突審查 on components/ui + app-overlay ConfirmDialog, mounted with fetch mocked (fake data only).
 beforeAll(() => {
@@ -242,37 +243,73 @@ describe('BindingConflictReviewPage on the template', () => {
     expect(q('[role=alertdialog]')).toBeNull();
   });
 
-  it('a refused resolve keeps the confirm open with the reason, does not reload, and can be retried', async () => {
+  it('a refused resolve closes the confirm and announces the reason on that student, does not reload, and can be retried', async () => {
     const w = await mountPage();
+    const reasons = () => w.findAll('[data-testid="binding-conflicts-resolve-error"]');
     await w.findAll('tbody tr')[0].findAll('button')[0].trigger('click');
     await tick();
+    // The question never carries a reason; it is shown on the page, where it is announced.
+    expect(q('[data-testid="confirm-dialog-message"]').textContent).toBe('學生 測試學生甲 綁定了 2 個 LINE 帳號。確認保留 U1111111…aaaa，並解除其他綁定嗎？');
     fetchMock.mockResolvedValueOnce(json({ message: '測試：此衝突已由他人處理' }, 422));
     const loadsBefore = reads().length;
     q('[data-testid="confirm-dialog-confirm"]').click();
     await tick();
-    expect(q('[role=alertdialog]')).not.toBeNull();
-    expect(q('[data-testid="confirm-dialog-message"]').textContent).toBe('學生 測試學生甲 綁定了 2 個 LINE 帳號。確認保留 U1111111…aaaa，並解除其他綁定嗎？\n\n測試：此衝突已由他人處理');
-    expect(q('[data-testid="confirm-dialog-confirm"]').disabled).toBe(false);
-    expect(reads()).toHaveLength(loadsBefore);
-
-    // Escape closes it; opening again starts without the old reason.
-    q('[role=alertdialog]').dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
-    await tick();
     expect(q('[role=alertdialog]')).toBeNull();
+    expect(reads()).toHaveLength(loadsBefore);
+    // One reason in the table row and one in the phone card of that student only; the stylesheet shows one of them.
+    expect(reasons()).toHaveLength(2);
+    for (const reason of reasons()) {
+      expect(reason.attributes('role')).toBe('alert');
+      expect(reason.text()).toBe('測試：此衝突已由他人處理');
+      expect(reason.classes()).toContain('tw:text-destructive');
+    }
+    expect(w.findAll('tbody tr')[0].find('[role="alert"]').exists()).toBe(true);
+    expect(w.findAll('tbody tr')[1].find('[role="alert"]').exists()).toBe(false);
+    expect(w.findAll('.bcrp-mobile-card')[0].find('[role="alert"]').exists()).toBe(true);
+    expect(w.findAll('.bcrp-mobile-card')[1].find('[role="alert"]').exists()).toBe(false);
+    await noAxeViolations(w.element);
+
+    // Opening a confirm again takes the old reason away.
     await w.findAll('tbody tr')[0].findAll('button')[0].trigger('click');
     await tick();
-    expect(q('[data-testid="confirm-dialog-message"]').textContent).not.toContain('測試：此衝突已由他人處理');
+    expect(reasons()).toHaveLength(0);
 
-    // A network failure without a message uses the page's own sentence; the retry then succeeds.
+    // A network failure without a message uses the page's own sentence; the retry then succeeds and reloads.
     fetchMock.mockRejectedValueOnce({});
     q('[data-testid="confirm-dialog-confirm"]').click();
     await tick();
-    expect(q('[data-testid="confirm-dialog-message"]').textContent).toContain('\n\n解決衝突失敗，請稍後再試');
+    expect(reasons().map((r) => r.text())).toEqual(['解決衝突失敗，請稍後再試', '解決衝突失敗，請稍後再試']);
+    await w.findAll('tbody tr')[0].findAll('button')[0].trigger('click');
+    await tick();
     q('[data-testid="confirm-dialog-confirm"]').click();
     await tick();
     expect(writes()).toHaveLength(3);
     expect(q('[role=alertdialog]')).toBeNull();
+    expect(reasons()).toHaveLength(0);
     expect(reads()).toHaveLength(loadsBefore + 1);
+  });
+
+  it('a confirm that arrives after the dialog closed (close animation still on screen) sends nothing', async () => {
+    const w = await mountPage({ userRole: 'director', branchId: 1 });
+    await w.findAll('tbody tr')[0].findAll('button')[0].trigger('click');
+    await tick();
+    q('[data-testid="confirm-dialog-confirm"]').click();
+    await tick();
+    expect(writes()).toHaveLength(1);
+    expect(q('[role=alertdialog]')).toBeNull();
+    // In a browser the button is still clickable while the dialog fades out; the event is replayed here.
+    w.findComponent(ConfirmDialog).vm.$emit('confirm');
+    await tick();
+    expect(writes()).toHaveLength(1);
+
+    // The same after 取消.
+    await w.findAll('tbody tr')[0].findAll('button')[1].trigger('click');
+    await tick();
+    q('[data-testid="confirm-dialog-cancel"]').click();
+    await tick();
+    w.findComponent(ConfirmDialog).vm.$emit('confirm');
+    await tick();
+    expect(writes()).toHaveLength(1);
   });
 
   it('has no legacy parts, scoped style or inline style left and is off the legacy list', () => {

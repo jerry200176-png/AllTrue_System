@@ -66,6 +66,7 @@
                       <Button variant="outline" :class="rowButton" :disabled="submittingId === c.id" :aria-label="sideLabel(c, b)" @click="openResolveDialog(c, b)">{{ sideAction }}</Button>
                     </li>
                   </ul>
+                  <p v-if="resolveErrorId === c.id" :class="resolveReason" role="alert" data-testid="binding-conflicts-resolve-error">{{ resolveError }}</p>
                 </TableCell>
                 <TableCell class="tw:px-4 tw:py-3 tw:whitespace-normal">{{ campusNames(c) }}</TableCell>
                 <TableCell class="tw:px-4 tw:py-3 tw:tabular-nums tw:text-tpl-secondary">{{ formatDate(c.bindings?.[0]?.bound_at) }}</TableCell>
@@ -76,7 +77,7 @@
             </TableBody>
           </Table>
         </Card>
-        <ul class="bcrp-mobile-list tw:flex tw:list-none tw:flex-col tw:gap-3 tw:min-[721px]:hidden" aria-label="待審綁定衝突清單">
+        <ul class="bcrp-mobile-list tw:flex tw:list-none tw:flex-col tw:gap-3 tw:not-max-[720px]:hidden" aria-label="待審綁定衝突清單">
           <li v-for="c in conflicts" :key="c.id">
             <Card class="bcrp-mobile-card tw:gap-0 tw:py-4 tw:shadow-none">
               <CardContent class="tw:flex tw:flex-col tw:gap-3 tw:px-4">
@@ -87,6 +88,7 @@
                     <Button variant="outline" :class="rowButton" :disabled="submittingId === c.id" :aria-label="sideLabel(c, b)" @click="openResolveDialog(c, b)">{{ sideAction }}</Button>
                   </li>
                 </ul>
+                <p v-if="resolveErrorId === c.id" :class="resolveReason" role="alert" data-testid="binding-conflicts-resolve-error">{{ resolveError }}</p>
                 <dl class="tw:grid tw:gap-2 tw:text-tpl-body">
                   <div class="tw:grid tw:grid-cols-[5rem_minmax(0,1fr)] tw:gap-2">
                     <dt class="tw:font-semibold tw:text-tpl-secondary">分校</dt>
@@ -105,7 +107,7 @@
       </template>
     </div>
 
-    <!-- 解決衝突確認. A refused request keeps the confirm open and adds the reason under the question. -->
+    <!-- 解決衝突確認. A refused request closes the confirm; its reason shows on that student with role="alert". -->
     <ConfirmDialog
       :open="resolveOpen"
       :title="isSuperAdmin ? '保留綁定並解除另一側' : '解除此綁定'"
@@ -148,6 +150,7 @@ const resolveTarget = ref(null);
 const resolveOpen = ref(false);
 const submitting = ref(false);
 const resolveError = ref('');
+const resolveErrorId = ref(null);
 const submittingId = ref(null);
 
 const activeCampusId = computed(() => {
@@ -160,19 +163,19 @@ const activeCampusId = computed(() => {
 const headCell = 'tw:h-12 tw:px-4 tw:font-semibold tw:normal-case tw:text-tpl-secondary';
 const rowButton = 'tw:h-12 tw:px-4 tw:text-[length:var(--tpl-text-body)] tw:font-semibold tw:shadow-none';
 const lineChip = 'bcrp-line-chip tw:flex tw:flex-wrap tw:items-center tw:justify-between tw:gap-2 tw:rounded-lg tw:border tw:border-border tw:bg-secondary tw:px-3 tw:py-2';
+const resolveReason = 'tw:mt-2 tw:text-tpl-caption tw:font-semibold tw:text-destructive tw:[overflow-wrap:anywhere]';
 const lineCode = 'tw:min-w-0 tw:font-mono tw:text-[length:var(--tpl-text-body)] tw:[overflow-wrap:anywhere]';
 const sideAction = computed(() => (isSuperAdmin.value ? '保留此側' : '解除此綁定'));
 const rowAction = computed(() => (isSuperAdmin.value ? '選擇保留側' : '選擇解除側'));
 const studentLabel = (c) => c?.student_name || `#${c?.student_id}`;
 const sideLabel = (c, b) => `${sideAction.value}：${studentLabel(c)} ${b.line_user_id_masked || '此帳號'}`;
-// The same question as before, as one sentence; a refused request adds its reason on a new line.
+// The same question as before, as one sentence.
 const resolveMessage = computed(() => {
   const target = resolveTarget.value;
   if (!target) return '';
   const account = target.binding?.line_user_id_masked || '此帳號';
-  const question = `學生 ${studentLabel(target.conflict)} 綁定了 ${bindingSides(target.conflict).length} 個 LINE 帳號。`
+  return `學生 ${studentLabel(target.conflict)} 綁定了 ${bindingSides(target.conflict).length} 個 LINE 帳號。`
     + (isSuperAdmin.value ? `確認保留 ${account}，並解除其他綁定嗎？` : `確認解除 ${account} 的綁定嗎？`);
-  return resolveError.value ? `${question}\n\n${resolveError.value}` : question;
 });
 
 function bindingSides(c) {
@@ -197,6 +200,7 @@ function formatDate(s) {
 async function load() {
   loading.value = true;
   loadError.value = '';
+  resolveErrorId.value = null;
   try {
     const data = await fetchBindingConflicts({ campusId: activeCampusId.value });
     conflicts.value = Array.isArray(data?.conflicts) ? data.conflicts : [];
@@ -218,6 +222,7 @@ function openResolveDialog(conflict, binding) {
   if (!keep) return;
   resolveTarget.value = { conflict, binding: keep };
   resolveError.value = '';
+  resolveErrorId.value = null;
   resolveOpen.value = true;
 }
 // The confirm button emits both a close request and `confirm` in the same click (order is the library's),
@@ -229,7 +234,8 @@ async function onResolveOpenChange(open) {
   resolveOpen.value = open;
 }
 async function confirmResolve() {
-  if (submitting.value || !resolveTarget.value) return;
+  // The target is kept after closing, so a click that lands during the close animation must not send again.
+  if (submitting.value || !resolveOpen.value || !resolveTarget.value) return;
   submitting.value = true;
   submittingId.value = resolveTarget.value.conflict.id;
   resolveError.value = '';
@@ -242,7 +248,10 @@ async function confirmResolve() {
     resolveOpen.value = false; // a close request is ignored while submitting (Codex P2 on #4891)
     await load(); // a delete may leave the conflict open, so re-read instead of dropping the row
   } catch (e) {
+    // The reason is shown on the student's row (role="alert"): inside the open dialog it would not be announced.
     resolveError.value = e?.payload?.message || e?.message || '解決衝突失敗，請稍後再試';
+    resolveErrorId.value = resolveTarget.value.conflict.id;
+    resolveOpen.value = false;
   } finally {
     submitting.value = false;
     submittingId.value = null;
