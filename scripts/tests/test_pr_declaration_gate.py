@@ -4,6 +4,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -858,6 +859,80 @@ class ProductionE2eFailClosedTest(unittest.TestCase):
             self.assertTrue(is_production_e2e_path("frontend/e2e/fixtures/ui-foundation/mocks.js", root))
             self.assertFalse(is_production_e2e_path("frontend/e2e/fixtures/ui-foundation/other.js", root))
 
+
+class DeploySparseCheckoutTest(unittest.TestCase):
+    """Codex on #5237: the release train loads the gate from sparse checkouts; it must classify e2e files like a full one."""
+
+    @staticmethod
+    def _cone_tree(dest: Path, entries) -> Path:
+        # git cone mode: everything under an entry, plus the files directly inside each entry's ancestors.
+        ancestors = {"/".join(entry.split("/")[:i]) for entry in entries for i in range(len(entry.split("/")))}
+        tracked = subprocess.run(["git", "ls-files", "-z"], cwd=ROOT, capture_output=True, text=True, check=True)
+        for path in filter(None, tracked.stdout.split("\0")):
+            inside = any(path == e or path.startswith(e + "/") for e in entries)
+            if (inside or path.rpartition("/")[0] in ancestors) and (ROOT / path).is_file():
+                (dest / path).parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(ROOT / path, dest / path)
+        return dest
+
+    @staticmethod
+    def _gate_from(tree: Path):
+        import importlib.util
+        spec = importlib.util.spec_from_file_location("sparse_gate", tree / "scripts/governance/autonomy_gate.py")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        return module
+
+    @staticmethod
+    def _e2e_paths() -> list[str]:
+        listed = subprocess.run(["git", "ls-files", "-z", "--", "frontend/e2e", "frontend/playwright*.js"],
+                                cwd=ROOT, capture_output=True, text=True, check=True)
+        return [p for p in listed.stdout.split("\0") if p]
+
+    def test_scripts_governance_alone_misclassifies_what_a_full_checkout_lowers(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            gate = self._gate_from(self._cone_tree(Path(tmp), ["scripts/governance"]))
+            spec = "frontend/e2e/subject-settings-clarity.spec.js"
+            declared = classify_scope([spec, "frontend/src/pages/Page.vue"], "")["machine_minimum_tier"]  # full tree
+            self.assertEqual(declared, 1)
+            self.assertEqual(gate.classify_scope([spec, "frontend/src/pages/Page.vue"], "")["machine_minimum_tier"], 3)
+
+    def test_the_derivation_inputs_make_a_sparse_checkout_classify_like_a_full_one(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            gate = self._gate_from(self._cone_tree(Path(tmp), ["scripts/governance", *autonomy_gate.E2E_DERIVATION_INPUT_PATHS]))
+            self.assertIsNotNone(gate.production_e2e_paths())
+            paths = self._e2e_paths()
+            self.assertGreater(len(paths), 60)
+            for path in paths:
+                self.assertEqual(
+                    gate.classify_scope([path], "")["machine_minimum_tier"], classify_scope([path], "")["machine_minimum_tier"], path)
+            mixed = ["frontend/e2e/subject-settings-clarity.spec.js", "frontend/src/pages/Page.vue"]
+            self.assertEqual(gate.classify_scope(mixed, "")["machine_minimum_tier"], 1)
+
+    def test_every_trusted_sparse_checkout_of_the_gate_carries_the_derivation_inputs(self):
+        found = 0
+        for workflow in sorted((ROOT / ".github/workflows").glob("*.yml")):
+            lines = workflow.read_text(encoding="utf-8").split("\n")
+            for index, line in enumerate(lines):
+                match = re.match(r"(\s*)sparse-checkout:\s*(\S.*)?$", line)
+                if not match:
+                    continue
+                entries = [match.group(2).strip()] if match.group(2) and match.group(2).strip() != "|" else []
+                for follow in lines[index + 1:]:
+                    if follow.strip() and len(follow) - len(follow.lstrip()) > len(match.group(1)):
+                        entries.append(follow.strip())
+                    else:
+                        break
+                entries = [e for e in entries if not e.startswith("sparse-checkout")]
+                if not {"scripts/governance", "scripts"} & set(entries):
+                    continue  # does not load the gate module
+                found += 1
+                nearby = "\n".join(lines[max(0, index - 8):index + len(entries) + 4])
+                self.assertNotIn("sparse-checkout-cone-mode: false", nearby, f"{workflow.name}:{index + 1} must use cone mode")
+                for needed in autonomy_gate.E2E_DERIVATION_INPUT_PATHS:
+                    covered = any(needed == e or needed.startswith(e + "/") for e in entries)
+                    self.assertTrue(covered, f"{workflow.name}:{index + 1} sparse-checks out scripts/governance without {needed}")
+        self.assertGreaterEqual(found, 4)  # deploy.yml: trusted-policy x2, gate-target, gate-trusted
 
 class AgentInstructionAndContentPathTest(unittest.TestCase):
     """Retro #5201 row 20. Agent definitions, agent procedures and runtime-read docs content are not "docs"."""

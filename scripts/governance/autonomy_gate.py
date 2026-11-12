@@ -216,6 +216,19 @@ _E2E_PR_ONLY_WORKFLOWS = (
     "ui-preview.yml",
 )
 _E2E_DERIVED_PATTERNS = ("frontend/e2e/**",)
+# Directories the derivation reads, as git cone-mode sparse-checkout entries. A checkout that loads this module
+# from `scripts/governance` alone (the release train's trusted-policy / gate-target / gate-trusted checkouts in
+# deploy.yml) must carry all of them, or every e2e path falls back to T3 there and a declaration made in a full
+# checkout is judged invalid. Cone mode also brings the files directly under `frontend/` (package.json and the
+# Playwright configs) with `frontend/e2e`. A test pins every sparse checkout of scripts/governance to this list.
+E2E_DERIVATION_INPUT_PATHS = (
+    ".github/actions",
+    ".github/scripts",
+    ".github/workflows",
+    "frontend/e2e",
+    "frontend/scripts",
+    "scripts",
+)
 _E2E_PREFIX = "frontend/e2e/"
 _E2E_NON_PRODUCTION_KINDS = (
     "fixtures/ui-foundation/",

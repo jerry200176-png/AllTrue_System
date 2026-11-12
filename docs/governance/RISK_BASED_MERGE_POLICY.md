@@ -161,6 +161,9 @@ e2e-pr-only-workflow ui-preview.yml
   `frontend/src/**/*.test.js`. There is no hand-kept list; a test fails when a production workflow runs a spec
   this rule does not treat as T3. The word "payment" in a diff still raises a change to T3 when it is in
   runtime logic; it never counted in tests, docs, comments or CSS selectors.
+  The release train's sparse checkouts of `scripts/governance` in `deploy.yml` carry the derivation's inputs
+  (`E2E_DERIVATION_INPUT_PATHS` in the classifier; a test pins every such checkout to it), so a declaration made in a
+  full checkout is judged the same there.
 - **T2-agent-procedures** are skills: procedures agents execute, not documentation, whatever else is in the
   change. They are T2 and not T3 so that a procedure wording fix gets the exact-head review without the R3
   security review each time.
