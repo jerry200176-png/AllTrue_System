@@ -3,6 +3,7 @@
 namespace App\Console\Commands;
 
 use App\Models\Invoice;
+use App\Services\Billing\AmountParityCensus;
 use App\Support\AttendanceStatus;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
@@ -20,7 +21,9 @@ use Illuminate\Support\Facades\DB;
  *   - non-enforced conditions are KNOWN-OPEN divergences (owner-gated fixes #1062/#957/#964);
  *     reported with their tracking issue so "production state vs bug state" is measurable nightly.
  *
- * Read-only: only SELECT COUNT(*). Scheduled nightly (Kernel) — feeds #904 recurrence report.
+ * Read-only: only SELECT. Scheduled nightly (Kernel) — feeds #904 recurrence report.
+ * `screen_amount_vs_resolver` (#4991 item 2) is counted by AmountParityCensus instead of one COUNT(*); its JSON row
+ * carries a `detail` (per campus, per type, named exclusions, truncated flag).
  */
 class VerifyBugReproductions extends Command
 {
@@ -29,7 +32,7 @@ class VerifyBugReproductions extends Command
     protected $description = 'Run every recurring bug reproduction query against production; fail if a FIXED bug regresses (#1080).';
 
     /**
-     * @return list<array{key:string,label:string,issue:string,enforced:bool,sql:string}>
+     * @return list<array{key:string,label:string,issue:string,enforced:bool,sql?:string}>
      */
     private function conditions(): array
     {
@@ -159,6 +162,12 @@ class VerifyBugReproductions extends Command
                                 AND EXISTS (SELECT 1 FROM Invoice i WHERE {$link})
                                 AND NOT EXISTS (SELECT 1 FROM Invoice i WHERE {$link} AND i.TotalAmount > " . Invoice::netPaidSql('i') . ")))",
             ],
+            [
+                // No `sql`: counted by AmountParityCensus. Reported first; enforce after 14 nights at 0 (#4991 item 2).
+                'key' => 'screen_amount_vs_resolver',
+                'label' => 'Live bills whose header, line items and the amount the screens show (resolver) do not agree',
+                'issue' => '#4991/#3521', 'enforced' => false,
+            ],
         ];
     }
 
@@ -168,7 +177,8 @@ class VerifyBugReproductions extends Command
         $regressed = 0;
 
         foreach ($this->conditions() as $cond) {
-            $count = (int) (DB::selectOne($cond['sql'])->c ?? 0);
+            $detail = isset($cond['sql']) ? null : app(AmountParityCensus::class)->run();
+            $count = $detail === null ? (int) (DB::selectOne($cond['sql'])->c ?? 0) : $detail['mismatch_count'];
             // Known-baseline allowance (config/reproduction_baselines.php): an enforced condition fails only above it;
             // a listed null means the baseline is not measured yet (reported, never failing).
             $baseline = config('reproduction_baselines.' . $cond['key'], 0);
@@ -185,9 +195,10 @@ class VerifyBugReproductions extends Command
                 'baseline' => $baseline,
                 'state' => $cond['enforced']
                     ? ($count === 0 ? 'FIXED-OK' : ($pending ? 'BASELINE-PENDING' : ($isRegression ? 'REGRESSED' : 'WITHIN-BASELINE')))
-                    : ($count === 0 ? 'OPEN-CLEARED' : 'OPEN'),
+                    // A census cut short by a bound proves nothing about the bills it did not read.
+                    : ($count > 0 ? 'OPEN' : (($detail['truncated'] ?? false) ? 'INCOMPLETE' : 'OPEN-CLEARED')),
                 'label' => $cond['label'],
-            ];
+            ] + ($detail === null ? [] : ['detail' => $detail]);
         }
 
         if ($this->option('json')) {
