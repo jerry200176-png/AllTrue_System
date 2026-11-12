@@ -1,0 +1,17 @@
+updates:
+  - id: staff-2026-11-12-course-mgmt-help-and-badge-layout
+    published_at: "2026-11-12"
+    audiences:
+      - director
+      - super_admin
+      - teacher
+    importance: digest
+    title: 課程查找的說明與繳費標籤更好讀
+    summary: 說明打開後排滿整個頁首，月結待核對改成一行的短標籤。
+    items:
+      - category: fixed
+        text: 「課程查找」打開「先看懂這一頁」後，說明與摘要卡片會跟頁首一樣寬，卡片也不再單獨掉到下一排。
+      - category: improved
+        text: 課程列的月結帳單核對提示改顯示「月結待核對」一行短標籤；滑鼠停在標籤上仍看得到完整說明。
+    source_refs:
+      - "changelog:2026-11-12:course-mgmt-help-and-badge-layout"
