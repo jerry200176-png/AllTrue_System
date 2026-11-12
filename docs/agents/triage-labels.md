@@ -13,3 +13,7 @@ The skills speak in terms of five canonical triage roles. This file maps those r
 When a skill mentions a role (e.g. "apply the AFK-ready triage label"), use the corresponding label string from this table.
 
 Label names are defined only in [`.github/labels.yml`](../../.github/labels.yml).
+
+## Root-cause family (in-app issues)
+
+Every in-app issue gets exactly one `rootfam:*` label at triage (by mechanism, not by screen). Definitions: [#4991 comment](https://github.com/jerry200176-png/AllTrue_System/issues/4991#issuecomment-6817263700); label list: `.github/labels.yml`. Backfill: `scripts/ci/rootfam-backfill.mjs` (dry-run by default).
