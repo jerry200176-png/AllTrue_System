@@ -410,6 +410,35 @@ operations:
     tags: [repair, contract, entitlement, billing]
     notes: Founder-approved single-student repair; the sole super_admin approval must carry a founder-go reference. Execution is fail-closed to this exact catalog and deployed commit.
 
+  course-contract-chain-rebalance:
+    lifecycle: planned
+    domain: billing-entitlement
+    business_owner: director-data
+    technical_owner: platform-data
+    owner: platform-ops
+    approver_roles: [super_admin]
+    approval_policy: founder-explicit-chain-rebalance
+    founder_approval_required: true
+    runbook: docs/OPERATIONS_RUNBOOK.md
+    alert_group: LINE:ops-data
+    escalation_policy: billing-entitlement-critical-escalation
+    capabilities: [plan, dry_run]
+    risk: critical
+    reversible: false
+    snapshot_required: true
+    transaction_required: true
+    rollback_supported: false
+    verification_required: true
+    approval_required: true
+    execution_authority: pop-pi-local
+    blast_radius: single_student_subject_contract_chain
+    estimated_duration: 5m
+    invariant_packs: [billing-entitlement-pack@1.0.0]
+    strategy_class: App\Operations\Strategies\CourseContractChainRebalanceStrategy
+    parameter_keys: [campus_id, student_id, subject_id, contract_ids, moves, allow_active_contracts, allow_order_only_moves, future_reservation_policy, expected_digest, restore_request_id, reason, decision_reference]
+    tags: [repair, contract, entitlement, chain, issue-5124]
+    notes: Planned only (GitHub #5124, #5162). Dry-run validates one student's count-contract chain of one subject and an explicit ordered list of lesson moves as a single plan; it reads only. The strategy refuses execute, verify and rollback with strategy_planned_only, and POP issues no approval while the lifecycle is planned or for this approval policy. Activation needs the execute half, its review and Founder GO.
+
   supersede-renewal:
     lifecycle: active
     domain: session

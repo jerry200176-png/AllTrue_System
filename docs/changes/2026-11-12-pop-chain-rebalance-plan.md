@@ -1,0 +1,4 @@
+## 2026-11-12 — feat(ops): POP dry-run for re-assigning lessons across one student's contract chain (#5124)
+<!-- release-notes: silent_ship=silent-2026-11-12-pop-chain-rebalance-plan -->
+<!-- silent-reason: planned-only ops operation (dry-run, read-only); no screen, no API route, no data change -->
+- New POP operation `course-contract-chain-rebalance` (#5124, #5162), catalog lifecycle `planned`. Its dry-run checks an explicit ordered list of lesson moves across all count contracts of one student and one subject as a single plan and answers with reason codes, per-contract before/after counts, a digest and an oldest-first comparison. It only reads; execute, verify and rollback refuse with `strategy_planned_only`, and POP issues no approval for a planned entry. Runbook: `docs/OPERATIONS_RUNBOOK.md`.
