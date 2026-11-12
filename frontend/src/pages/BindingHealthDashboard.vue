@@ -6,7 +6,7 @@
           <HeartPulse class="tw:size-6 tw:shrink-0 tw:text-tpl-secondary" :stroke-width="2" aria-hidden="true" />
           綁定健康度
         </h2>
-        <Button variant="outline" :class="actionButton" @click="refresh">
+        <Button ref="refreshButton" variant="outline" :class="actionButton" @click="refresh">
           <RefreshCw class="tw:size-4" :stroke-width="2" aria-hidden="true" />
           重新整理
         </Button>
@@ -22,7 +22,7 @@
       </div>
       <Alert v-else-if="loadError" tone="danger" title="無法載入綁定健康度" class="tw:text-tpl-body">
         <p class="tw:text-[length:var(--tpl-text-body)] tw:[overflow-wrap:anywhere]">{{ loadError }}</p>
-        <Button variant="outline" :class="[actionButton, 'tw:mt-3 tw:text-foreground']" @click="refresh">重試</Button>
+        <Button variant="outline" :class="[actionButton, 'tw:mt-3 tw:text-foreground']" @click="retry">重試</Button>
       </Alert>
       <Card v-else-if="!hasMetricsData" class="tw:items-center tw:gap-2 tw:py-10 tw:text-center tw:shadow-none" data-testid="binding-health-empty">
         <HeartPulse class="tw:size-8 tw:text-tpl-secondary" :stroke-width="1.75" aria-hidden="true" />
@@ -182,6 +182,7 @@ const loadError = ref('');
 const data = ref(null);
 const granularity = ref('day');
 const updatedLabel = ref('—');
+const refreshButton = ref(null);
 
 // Presentation only. Controls are 48px tall; panels are hairline cards; the two-column grids fold to one at 768px and below.
 const actionButton = 'tw:h-12 tw:px-4 tw:text-[length:var(--tpl-text-body)] tw:font-semibold tw:shadow-none';
@@ -286,6 +287,11 @@ async function load() {
   }
 }
 function refresh() { load(); }
+// 重試 sits in the alert, which goes away while loading; keyboard focus moves to 重新整理 instead of being dropped.
+function retry() {
+  refreshButton.value?.$el?.focus?.();
+  load();
+}
 
 watch(() => props.branchId, () => load());
 onMounted(load);

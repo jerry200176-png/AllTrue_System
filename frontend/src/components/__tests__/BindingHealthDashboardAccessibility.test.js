@@ -226,8 +226,12 @@ describe('BindingHealthDashboard on the template', () => {
     expect(w.find('[role="alert"]').text()).toContain('無法載入健康度資料');
 
     const before = calls().length;
+    button(w, '重試').element.focus();
     await button(w, '重試').trigger('click');
+    // 重試 leaves the screen with the alert; focus goes to 重新整理 instead of being dropped.
+    expect(document.activeElement).toBe(button(w, '重新整理').element);
     await tick();
+    expect(document.activeElement).toBe(button(w, '重新整理').element);
     expect(calls().slice(before)).toEqual([['GET', '/api/v1/bindings/metrics?campus_id=1']]);
     expect(w.find('[role="alert"]').exists()).toBe(false);
     expect(w.find('.bhd-stats').exists()).toBe(true);

@@ -1920,9 +1920,12 @@ for (const vp of [{ width: 375, height: 812 }, { width: 390, height: 844 }, { wi
     await expect(alert).toBeInViewport();
     await page.screenshot({ path: path.join(outDir, `binding-health-shell-error-${vp.width}.png`) });
     fail = false;
-    await alert.getByRole('button', { name: '重試', exact: true }).click();
+    await alert.getByRole('button', { name: '重試', exact: true }).focus();
+    await page.keyboard.press('Enter');
     await expect(root.locator('.bhd-metric')).toHaveCount(4);
     await expect(root.getByRole('alert')).toHaveCount(0);
+    // 重試 left the screen with the alert; keyboard focus is on 重新整理, not dropped.
+    await expect(root.getByRole('button', { name: '重新整理', exact: true })).toBeFocused();
     expect([...new Set(reads)]).toEqual(['?campus_id=1']);
     expect(writes).toEqual([]);
     expect(await page.evaluate(() => document.querySelector('.main-content').scrollLeft)).toBe(0);
