@@ -88,7 +88,7 @@ final class InappReportTriageStrategy
                     'disposition' => self::DISPOSITION,
                     'github_issue_url' => (string) $p['github_issue_url'],
                 ]);
-                if (($result['ok'] ?? false) !== true) {
+                if ($result['ok'] !== true) {
                     throw new RuntimeException('inapp_triage_rejected_' . preg_replace('/[^a-z_]/', '', (string) ($result['code'] ?? 'unknown')));
                 }
                 BugReportService::addComment($bugId, $actor, (string) $p['public_reply'], false);
