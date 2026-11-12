@@ -426,14 +426,24 @@ jobs:
 
       - name: Install MySQL client
         run: |
+          # Probe first: runner images already ship mysql / mysqladmin. Running
+          # `apt-get install mysql-client` after `apt-get update` upgrades the image's whole
+          # MySQL package set, including mysql-server, whose post-install step fails on the
+          # runner and reds every PHPUnit shard before a single test runs (2026-11-12, #5201 row 21).
+          if command -v mysql >/dev/null 2>&1 && command -v mysqladmin >/dev/null 2>&1; then
+            echo "mysql client already on the runner: $(mysql --version)"
+            exit 0
+          fi
           # Runner images ship a Google Chrome apt source that periodically 502/hash-mismatches
           # and fails unrelated apt-get update (blocks PHPUnit). Drop every dl.google.com chrome
-          # entry (.list / .sources / fragments) before installing mysql-client.
+          # entry (.list / .sources / fragments) before installing the client.
           sudo find /etc/apt -type f -exec grep -l 'dl.google.com/linux/chrome' {} + 2>/dev/null | sudo xargs -r rm -f || true
           sudo rm -f /etc/apt/sources.list.d/google-chrome* /etc/apt/sources.list.d/*chrome* || true
           sudo rm -rf /var/lib/apt/lists/partial /var/lib/apt/lists/*chrome* || true
           sudo apt-get update -y || sudo apt-get update -y --allow-releaseinfo-change || true
-          sudo apt-get install -y mysql-client
+          # Client only: never pull or upgrade the server package (the DB is the service container).
+          sudo apt-get install -y --no-install-recommends mysql-client
+          command -v mysql >/dev/null && command -v mysqladmin >/dev/null
 
       - name: Wait for MySQL
         run: |
