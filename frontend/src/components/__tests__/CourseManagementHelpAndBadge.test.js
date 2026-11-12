@@ -96,6 +96,6 @@ describe('payment badge text goes through the one short-label helper', () => {
   it.each(users)('%s imports shortPaymentLabel and never prints the raw badge label as text', (f) => {
     const src = fs.readFileSync(path.join(pagesDir, f), 'utf8');
     expect(src).toMatch(/\bshortPaymentLabel\b/);
-    expect(src, 'chip text must use the short label; the sentence belongs in title / aria-label').not.toMatch(/>\s*\{\{\s*paymentStatusButtonLabel\(/);
+    expect(src, 'chip text must use the short label; the sentence belongs in title / aria-label').not.toMatch(/(?<!sr-only\")>\s*\{\{\s*paymentStatusButtonLabel\(/);
   });
 });

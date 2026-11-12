@@ -456,7 +456,7 @@
                       <div>
                         <dt>付款</dt>
                         <dd>
-                          <span :class="['student-course-card__payment', `student-course-card__payment--${paymentCardModifier(course)}`]" :title="paymentStatusHelpTitle(course)"><span aria-hidden="true">{{ paymentStatusChipText(course) }}</span><span class="tw:sr-only">{{ paymentStatusButtonLabel(course) }}</span></span>
+                          <span :class="['student-course-card__payment', `student-course-card__payment--${paymentCardModifier(course)}`]" :title="paymentStatusHelpTitle(course)"><template v-if="paymentChipIsShort(course)"><span aria-hidden="true">{{ paymentStatusChipText(course) }}</span><span class="tw:sr-only">{{ paymentStatusButtonLabel(course) }}</span></template><template v-else>{{ paymentStatusChipText(course) }}</template></span>
                           <span v-if="isTutoringBillingAnomaly(course)" class="payment-anomaly-hint" role="alert">帳務資料需修正</span>
                           <span v-if="course.last_paid_at" class="paid-date-hint">{{ course.last_paid_at }}</span>
                         </dd>
@@ -1304,6 +1304,8 @@ const paymentCardModifier = (course) => CARD_MODIFIER[coursePaymentBadge(course)
 const paymentStatusButtonLabel = (course) => coursePaymentBadge(course).label;
 // Chip text: long billing sentences shorten through the one helper; the full sentence stays in title / aria-label.
 const paymentStatusChipText = (course) => shortPaymentLabel(paymentStatusButtonLabel(course));
+// Role-less chip: aria-label would be ignored, so a shortened chip carries the full sentence as visually hidden text.
+const paymentChipIsShort = (course) => paymentStatusChipText(course) !== paymentStatusButtonLabel(course);
 const paymentNextActionLabel = (course) => {
   if (isCourseSettled(course) === null) return '';
   return {
