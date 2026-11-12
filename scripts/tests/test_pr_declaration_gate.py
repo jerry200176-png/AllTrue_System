@@ -11,7 +11,8 @@ import types
 
 from scripts.governance import autonomy_gate
 from scripts.governance.autonomy_gate import (
-    _LOCAL_ONLY_E2E_SPECS,
+    is_production_e2e_path,
+    production_e2e_paths,
     classify_activation_scope,
     classify_scope,
     is_control_plane_only_paths,
@@ -19,6 +20,26 @@ from scripts.governance.autonomy_gate import (
     validate_declaration,
 )
 from scripts.governance.pr_requires_security import requires_security
+
+
+# The only tiers this classifier is allowed to lower (retro #5201, Founder 2026-11-12 on token waste). Everything
+# else may only rise. Each entry: (predicate on the path, why it is not release evidence).
+INTENDED_LOWERINGS = (
+    (lambda p: p.startswith("frontend/e2e/__screenshots__/") and p.endswith(".png"),
+     "visual baselines: read only by ci.yml's Docker visual job in PR CI"),
+    (lambda p: p.startswith("frontend/e2e/") and p.endswith(".spec.js"),
+     "specs that every production config ignores or never matches: PR-CI fake-data suites"),
+    (lambda p: p.startswith("frontend/e2e/fixtures/") and p.endswith((".js", ".mjs", ".html", ".vue")),
+     "fixtures that no production spec imports"),
+)
+
+
+def _is_intended_lowering(path: str, new: int, old: int) -> bool:
+    return (
+        (old, new) == (3, 0)
+        and not is_production_e2e_path(path)
+        and any(matches(path) for matches, _reason in INTENDED_LOWERINGS)
+    )
 
 
 class PrDeclarationGateTest(unittest.TestCase):
@@ -78,14 +99,119 @@ class PrDeclarationGateTest(unittest.TestCase):
                 declaration = machine_declaration([path], "+ weaken production smoke evidence")
                 self.assertEqual((declaration["risk_class"], declaration["autonomy_tier"]), ("R3", "T3"))
 
-    def test_local_only_playwright_specs_remain_test_only(self):
-        config = (Path(__file__).resolve().parents[2] / "frontend/playwright.config.js").read_text(encoding="utf-8")
-        for path in _LOCAL_ONLY_E2E_SPECS:
+    def test_pr_ci_only_e2e_files_are_ordinary_test_files(self):
+        # Retro #5201: specs and baselines that only PR CI runs (fake-data Vite fixture) are tests, not release evidence.
+        for path in (
+            "frontend/e2e/ui-foundation-course-payment-entry.spec.js",
+            "frontend/e2e/ui-foundation-sidebar-navigation.spec.js",
+            "frontend/e2e/binding-conflict-clarity.spec.js",
+            "frontend/e2e/calendar-reschedule-cache-528.spec.js",
+            "frontend/e2e/subject-settings-clarity.spec.js",
+            "frontend/e2e/__screenshots__/subject-settings-1280.png",
+            "frontend/e2e/fixtures/ui-foundation/apiMocks.js",
+            "frontend/e2e/fixtures/directorAcceptanceApi.js",
+        ):
             with self.subTest(path=path):
-                self.assertTrue((Path(__file__).resolve().parents[2] / path).is_file())
-                stem = Path(path).name.removesuffix(".spec.js")
-                self.assertIn(stem, config, f"{stem} must remain ignored by the default production smoke config")
-                self.assertEqual(classify_scope([path], "")["tier_name"], "T0")
+                self.assertFalse(is_production_e2e_path(path))
+                self.assertEqual(classify_scope([path], "+ payment")["tier_name"], "T0")
+        # Same tier as the other frontend test files, alone and next to runtime code.
+        test_file = "frontend/src/components/__tests__/Widget.test.js"
+        for others in ([], ["frontend/src/pages/Page.vue"]):
+            self.assertEqual(
+                classify_scope(["frontend/e2e/subject-settings-clarity.spec.js", *others], "")["machine_minimum_tier"],
+                classify_scope([test_file, *others], "")["machine_minimum_tier"],
+            )
+        # A production spec next to it still takes the whole PR to T3.
+        mixed = classify_scope(["frontend/e2e/subject-settings-clarity.spec.js", "frontend/e2e/smoke.spec.js"], "")
+        self.assertEqual(mixed["tier_name"], "T3")
+        self.assertEqual(mixed["reasons"], ["production smoke control path: frontend/e2e/smoke.spec.js"])
+
+    def test_production_e2e_set_is_derived_from_the_production_workflows(self):
+        derived = production_e2e_paths(ROOT)
+        self.assertIsNotNone(derived)
+        pr_only = set(autonomy_gate._E2E_PR_ONLY_WORKFLOWS)
+        refs: set[str] = set()
+        for workflow in sorted((ROOT / ".github/workflows").glob("*.yml")):
+            if workflow.name in pr_only:
+                continue
+            refs.update(re.findall(r"\be2e/[\w./-]+?\.spec\.js\b", workflow.read_text(encoding="utf-8")))
+        # deploy.yml and calendar-course-acceptance.yml name specs outright.
+        self.assertGreaterEqual(len(refs), 5)
+        for ref in sorted(refs):
+            path = f"frontend/{ref}"
+            with self.subTest(path=path):
+                self.assertTrue((ROOT / path).is_file(), "a workflow runs a spec that does not exist")
+                self.assertEqual(classify_scope([path], "")["tier_name"], "T3")
+        # Specs the default ui-smoke config runs, plus the director acceptance config ui-smoke also runs.
+        self.assertIn("frontend/e2e/smoke.spec.js", derived)
+        self.assertIn("frontend/e2e/director-path-acceptance.spec.js", derived)
+        self.assertIn("frontend/playwright.director-acceptance.config.js", derived)
+        # Fixtures a production spec imports are part of it; the loopback-only ones are not.
+        self.assertIn("frontend/e2e/fixtures/dismissOverlays.js", derived)
+        self.assertNotIn("frontend/e2e/fixtures/directorAcceptanceApi.js", derived)
+
+    def test_every_tracked_e2e_file_is_in_exactly_one_of_two_tiers(self):
+        tracked = subprocess.run(["git", "ls-files", "-z", "--", "frontend/e2e", "frontend/playwright*.js"],
+                                 cwd=ROOT, capture_output=True, text=True, check=True)
+        paths = [p for p in tracked.stdout.split("\0") if p]
+        self.assertGreater(len(paths), 60)
+        counts = {0: 0, 3: 0}
+        for path in paths:
+            with self.subTest(path=path):
+                tier = classify_scope([path], "")["machine_minimum_tier"]
+                self.assertIn(tier, counts)
+                counts[tier] += 1
+                self.assertEqual(tier == 3, is_production_e2e_path(path))
+        self.assertGreater(counts[3], 20)
+        self.assertGreater(counts[0], 20)
+
+    def test_derivation_fails_closed_when_it_cannot_read_the_checkout(self):
+        with tempfile.TemporaryDirectory() as empty:
+            self.assertIsNone(production_e2e_paths(Path(empty)))
+            self.assertTrue(is_production_e2e_path("frontend/e2e/subject-settings-clarity.spec.js", Path(empty)))
+
+    def test_derivation_follows_the_config_and_workflows_not_a_name_list(self):
+        import shutil
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            shutil.copytree(ROOT / ".github/workflows", root / ".github/workflows")
+            (root / "frontend/e2e").mkdir(parents=True)
+            shutil.copy(ROOT / "frontend/package.json", root / "frontend/package.json")
+            config = (ROOT / "frontend/playwright.config.js").read_text(encoding="utf-8")
+            (root / "frontend/playwright.config.js").write_text(config, encoding="utf-8")
+            (root / "frontend/playwright.director-acceptance.config.js").write_text(
+                (ROOT / "frontend/playwright.director-acceptance.config.js").read_text(encoding="utf-8"), encoding="utf-8")
+            spec = "frontend/e2e/subject-settings-clarity.spec.js"
+            (root / spec).write_text("// spec\n", encoding="utf-8")
+            self.assertFalse(is_production_e2e_path(spec, root))
+            # Stop ignoring it in the default (production) config and it becomes a production control.
+            varied = root / "frontend/playwright.config.js"
+            varied.write_text(config.replace("/subject-settings-clarity\\.spec\\.js$/,", ""), encoding="utf-8")
+            autonomy_gate._E2E_CACHE.clear()
+            self.assertTrue(is_production_e2e_path(spec, root))
+            # A workflow that names a spec outright makes it production whatever the config says.
+            varied.write_text(config, encoding="utf-8")
+            workflow = root / ".github/workflows/ui-smoke.yml"
+            workflow.write_text(workflow.read_text(encoding="utf-8") + "\n      - run: npx playwright test e2e/subject-settings-clarity.spec.js\n",
+                                encoding="utf-8")
+            autonomy_gate._E2E_CACHE.clear()
+            self.assertTrue(is_production_e2e_path(spec, root))
+        autonomy_gate._E2E_CACHE.clear()
+
+    def test_payment_word_in_pr_only_files_does_not_raise_but_runtime_logic_still_does(self):
+        spec = "frontend/e2e/ui-foundation-course-payment-entry.spec.js"
+        self.assertEqual(classify_scope([spec], "+ payment-status-badge")["tier_name"], "T0")
+        css = "frontend/src/ui.css"
+        css_diff = (f"diff --git a/{css} b/{css}\n@@ -1 +1,3 @@\n"
+                    "+.payment-status-badge--short {\n+  max-width: 4em;\n+}")
+        self.assertEqual(classify_scope([css], css_diff)["tier_name"], "T1")
+        # Not weakened: a runtime hit still takes the whole PR to T3, even next to a PR-only spec.
+        for logic in ("frontend/src/lib/courseMoneyState.js", "backend/app/Services/Foo.php"):
+            with self.subTest(logic=logic):
+                self.assertEqual(
+                    classify_scope([spec, logic], "diff --git a/%s b/%s\n+ const paymentTotal = 1" % (logic, logic))["tier_name"],
+                    "T3",
+                )
 
     def test_missing_declaration_fails_before_merge(self):
         result = validate_declaration(
@@ -492,7 +618,8 @@ class ClassifierSelfProtectionTest(unittest.TestCase):
                                  cwd=ROOT, capture_output=True, text=True, check=True)
         for path in tracked.stdout.splitlines():
             new, old = classify_scope([path], ""), base.classify_scope([path], "")
-            self.assertGreaterEqual(new["machine_minimum_tier"], old["machine_minimum_tier"], path)
+            if not _is_intended_lowering(path, new["machine_minimum_tier"], old["machine_minimum_tier"]):
+                self.assertGreaterEqual(new["machine_minimum_tier"], old["machine_minimum_tier"], path)
             self.assertEqual(classify_activation_scope([path], ""), base.classify_activation_scope([path], ""), path)
 
     def test_policy_document_lists_the_same_path_families_as_the_code(self):
@@ -512,6 +639,8 @@ class ClassifierSelfProtectionTest(unittest.TestCase):
             "T0-docs": sorted(docs),
             "T0-tests": sorted(set(autonomy_gate._NON_DEPLOYABLE_PATTERNS) - docs),
             "unmatched": [f"T{autonomy_gate._UNCLASSIFIED_PATH_TIER}"],
+            "T3-e2e-production": sorted(autonomy_gate._E2E_DERIVED_PATTERNS),
+            "e2e-pr-only-workflow": sorted(autonomy_gate._E2E_PR_ONLY_WORKFLOWS),
         }
         self.assertEqual({family: sorted(paths) for family, paths in documented.items()}, code)
 
@@ -607,12 +736,15 @@ class AgentInstructionAndContentPathTest(unittest.TestCase):
         raised: dict[tuple[int, int], int] = {}
         for path in filter(None, tracked.stdout.split("\0")):
             new, old = classify_scope([path], ""), previous.classify_scope([path], "")
-            self.assertGreaterEqual(new["machine_minimum_tier"], old["machine_minimum_tier"], path)
+            if not _is_intended_lowering(path, new["machine_minimum_tier"], old["machine_minimum_tier"]):
+                self.assertGreaterEqual(new["machine_minimum_tier"], old["machine_minimum_tier"], path)
             self.assertEqual(classify_activation_scope([path], ""), previous.classify_activation_scope([path], ""), path)
             if new["machine_minimum_tier"] != old["machine_minimum_tier"]:
                 key = (old["machine_minimum_tier"], new["machine_minimum_tier"])
                 raised[key] = raised.get(key, 0) + 1
-        self.assertLessEqual(set(raised), {(0, 1), (0, 2), (1, 3)})
+        # (0, 3) is the Playwright config the director acceptance job runs against production (it was T0);
+        # (3, 0) are the intended lowerings above, nothing else.
+        self.assertLessEqual(set(raised), {(0, 1), (0, 2), (1, 3), (0, 3), (3, 0)})
 
 
 class DeclarationHelperPathListTest(unittest.TestCase):

@@ -13,6 +13,7 @@ import json
 import re
 from collections import Counter
 from datetime import date, datetime, timedelta, timezone
+from pathlib import Path
 from typing import Callable, Iterable, Mapping
 
 
@@ -203,44 +204,193 @@ _PRODUCTION_SMOKE_CONTROL_EXACT = {
     "frontend/playwright.config.js",
 }
 
-# Specs ignored by the default production ui-smoke Playwright config and run
-# only through dedicated local fixture configs. All other e2e specs are part
-# of the production smoke command and therefore define release evidence.
-_LOCAL_ONLY_E2E_SPECS = {
-    "frontend/e2e/assessment-clarity.spec.js",
-    "frontend/e2e/ui-foundation-pages.spec.js",
-    "frontend/e2e/ui-foundation-a11y-axe.spec.js",
-    "frontend/e2e/ui-foundation-role-matrix.spec.js",
-    "frontend/e2e/learning-records-polish.spec.js",
-    "frontend/e2e/learning-records-preview.spec.js",
-    "frontend/e2e/release-notes-clarity.spec.js",
-    "frontend/e2e/teacher-daily-workflow.spec.js",
-    "frontend/e2e/teacher-calendar-ux.spec.js",
-    "frontend/e2e/calendar-split-slot-317.spec.js",
-    "frontend/e2e/product-clarity-browser.spec.js",
-    "frontend/e2e/admissions-workflow-clarity.spec.js",
-    "frontend/e2e/admissions-clarity.spec.js",
-    "frontend/e2e/bug-reports-clarity.spec.js",
-    "frontend/e2e/profile-controls-clarity.spec.js",
-    "frontend/e2e/question-bank-clarity.spec.js",
-    "frontend/e2e/attendance-clarity.spec.js",
-    "frontend/e2e/students-list-clarity.spec.js",
-    "frontend/e2e/subject-settings-clarity.spec.js",
-    "frontend/e2e/director-dashboard-shell-clarity.spec.js",
-    "frontend/e2e/subject-units-clarity.spec.js",
-    "frontend/e2e/teacher-eligibility-clarity.spec.js",
-    "frontend/e2e/chat-shell-clarity.spec.js",
-    "frontend/e2e/chat-accessibility.spec.js",
-    "frontend/e2e/tuition-collection-clarity.spec.js",
-    "frontend/e2e/line-integration-clarity.spec.js",
-    "frontend/e2e/branch-management-clarity.spec.js",
-    "frontend/e2e/binding-health-clarity.spec.js",
-    "frontend/e2e/binding-management-clarity.spec.js",
-    "frontend/e2e/nightly-reconcile-clarity.spec.js",
-    "frontend/e2e/director-accounts-clarity.spec.js",
-    "frontend/e2e/parttime-payroll-clarity.spec.js",
-    "frontend/e2e/truefit-fixture-print.spec.js",
-}
+# Which frontend/e2e files really run against production (#5201). Derived, never hand-listed: the
+# workflows that are not PR-only name specs and npm scripts; the scripts name Playwright configs; the
+# configs say which specs they match and ignore; the specs import fixtures. Everything else under
+# frontend/e2e (clarity specs, ui-foundation specs, visual baselines, fixtures only those import) runs
+# in PR CI against a fake-data Vite fixture and is a test like any other. Whatever cannot be derived
+# (no workflows or config on disk, unparsable config, unknown file kind) counts as production.
+_E2E_PR_ONLY_WORKFLOWS = (
+    "ci.yml",
+    "presubmit.yml",
+    "ui-preview.yml",
+)
+_E2E_DERIVED_PATTERNS = ("frontend/e2e/**",)
+_E2E_PREFIX = "frontend/e2e/"
+_E2E_NON_PRODUCTION_KINDS = (
+    "fixtures/ui-foundation/",
+    "__screenshots__/",
+)
+_E2E_REF_RE = re.compile(r"\b(e2e/[\w./-]+?\.(?:spec|test)\.[cm]?js)\b")
+_E2E_CONFIG_ARG_RE = re.compile(r"(?:-c|--config)[ =]+(\S+\.config\.[cm]?js)")
+_E2E_NPM_RUN_RE = re.compile(r"npm run ([\w:.-]+)")
+_JS_REGEX_RE = re.compile(r"/((?:\\.|\[(?:\\.|[^\]\\\n])*\]|[^/\\\n\[])+)/[a-z]*")
+_E2E_IMPORT_RE = re.compile(r"""(?:\bfrom\s*|\bimport\s*\(?\s*|\brequire\s*\(\s*)['"](\.{1,2}/[^'"]+)['"]""")
+_E2E_FIXTURE_SUFFIXES = (".js", ".mjs", ".cjs", ".html", ".vue")
+_E2E_SPEC_SUFFIXES = (".spec.js", ".test.js", ".spec.mjs", ".test.mjs", ".spec.cjs", ".test.cjs")
+_E2E_DEFAULT_MATCH = re.compile(r"(?:test|spec)\.[cm]?[jt]s$")
+
+
+def _e2e_workflow_texts(root: Path) -> list[str] | None:
+    folder = root / ".github" / "workflows"
+    if not folder.is_dir():
+        return None
+    return [
+        item.read_text(encoding="utf-8", errors="replace")
+        for item in sorted(folder.glob("*.yml"))
+        if item.name not in _E2E_PR_ONLY_WORKFLOWS
+    ]
+
+
+def _e2e_config_rules(root: Path, config: str) -> tuple[list[re.Pattern], list[re.Pattern]] | None:
+    """Read (match, ignore) regexes from a Playwright config; None when it cannot be read exactly."""
+
+    file = root / "frontend" / config
+    if not file.is_file():
+        return None
+    text = re.sub(r"(?m)^\s*//.*$|(?<=,)[ \t]*//.*$", "", file.read_text(encoding="utf-8", errors="replace"))
+    ignore: list[re.Pattern] = []
+    block = re.search(r"testIgnore:\s*\[(.*?)\]\s*,\s*\n", text, re.DOTALL)
+    if block is None and re.search(r"testIgnore:", text):
+        return None
+    for body in _JS_REGEX_RE.findall(block.group(1) if block else ""):
+        ignore.append(re.compile(body))
+    match: list[re.Pattern] = [_E2E_DEFAULT_MATCH]
+    found = re.search(r"testMatch:\s*([^\n]+)", text)
+    if found:
+        value = found.group(1).strip().rstrip(",")
+        literal = _JS_REGEX_RE.fullmatch(value)
+        quoted = re.fullmatch(r"""['"]([^'"]+)['"]""", value)
+        if literal:
+            match = [re.compile(literal.group(1))]
+        elif quoted:
+            match = [re.compile(re.escape(quoted.group(1)) + r"$")]
+        else:
+            return None
+    return match, ignore
+
+
+def _e2e_resolve_import(root: Path, origin: Path, spec: str) -> Path | None:
+    base = (origin.parent / spec)
+    for candidate in (base, *(base.with_name(base.name + ext) for ext in (".js", ".mjs", ".cjs")), base / "index.js"):
+        if candidate.is_file():
+            return candidate.resolve()
+    return None
+
+
+def _derive_production_e2e(root: Path):
+    """(paths, rules) for what production workflows run, or None if underivable.
+
+    ``paths`` are the frontend/e2e files and Playwright configs reached today; ``rules`` are the
+    (match, ignore) regexes of every production config, so a spec that is new in a PR is judged by
+    name the same way whichever commit the classifier runs from.
+    """
+
+    texts = _e2e_workflow_texts(root)
+    package = root / "frontend" / "package.json"
+    if texts is None or not package.is_file():
+        return None
+    try:
+        scripts = json.loads(package.read_text(encoding="utf-8")).get("scripts", {})
+    except ValueError:
+        return None
+    explicit: set[str] = set()
+    configs: set[str] = set()
+    for text in texts:
+        explicit.update(f"frontend/{ref}" for ref in _E2E_REF_RE.findall(text))
+        configs.update(arg.removeprefix("./") for arg in _E2E_CONFIG_ARG_RE.findall(text))
+        for name in _E2E_NPM_RUN_RE.findall(text):
+            script = scripts.get(name, "")
+            explicit.update(f"frontend/{ref}" for ref in _E2E_REF_RE.findall(script))
+            if "playwright test" in script:
+                arg = _E2E_CONFIG_ARG_RE.search(script)
+                configs.add(arg.group(1).removeprefix("./") if arg else "playwright.config.js")
+        if re.search(r"playwright test(?![^\n]*(?:-c|--config))", text):
+            configs.add("playwright.config.js")
+    on_disk = sorted(
+        item for item in (root / "frontend" / "e2e").rglob("*")
+        if item.is_file() and item.name.endswith(_E2E_SPEC_SUFFIXES)
+    ) if (root / "frontend" / "e2e").is_dir() else []
+    production: set[str] = set(explicit)
+    rule_sets: list[tuple[list[re.Pattern], list[re.Pattern]]] = []
+    for config in sorted(configs):
+        rules = _e2e_config_rules(root, config)
+        production.add(f"frontend/{config}")
+        if rules is None:
+            return None
+        match, ignore = rules
+        rule_sets.append(rules)
+        for item in on_disk:
+            rel = item.relative_to(root).as_posix()
+            if any(rx.search(rel) for rx in match) and not any(rx.search(rel) for rx in ignore):
+                production.add(rel)
+    # Fixtures and helpers that a production spec imports (transitively) are part of what it asserts.
+    queue = [root / path for path in sorted(production) if path.startswith(_E2E_PREFIX) and (root / path).is_file()]
+    seen = {item.resolve() for item in queue}
+    while queue:
+        origin = queue.pop()
+        for spec in _E2E_IMPORT_RE.findall(origin.read_text(encoding="utf-8", errors="replace")):
+            target = _e2e_resolve_import(root, origin, spec)
+            if target is not None and target not in seen:
+                seen.add(target)
+                try:
+                    relative = target.relative_to((root / "frontend" / "e2e").resolve()).as_posix()
+                except ValueError:
+                    continue  # imports of frontend/src are runtime files, classified on their own
+                queue.append(target)
+                production.add(_E2E_PREFIX + relative)
+    return frozenset(production), tuple(rule_sets)
+
+
+_E2E_ROOT = Path(globals()["__file__"]).resolve().parents[2] if "__file__" in globals() else None
+_E2E_CACHE: dict[Path, tuple | None] = {}
+
+
+def _production_e2e(root: Path | None):
+    root = root or _E2E_ROOT
+    if root is None:
+        return None
+    if root not in _E2E_CACHE:
+        try:
+            _E2E_CACHE[root] = _derive_production_e2e(root)
+        except OSError:
+            _E2E_CACHE[root] = None
+    return _E2E_CACHE[root]
+
+
+def production_e2e_paths(root: Path | None = None) -> frozenset[str] | None:
+    """Derived production e2e set for a checkout (cached); None when it cannot be derived."""
+
+    derived = _production_e2e(root)
+    return None if derived is None else derived[0]
+
+
+def is_production_e2e_path(path: str, root: Path | None = None) -> bool:
+    """Whether a frontend/e2e path (or a production Playwright config) is release evidence for production."""
+
+    derived = _production_e2e(root)
+    if derived is None:
+        return True
+    paths, rules = derived
+    if not path.startswith(_E2E_PREFIX):
+        return path in paths  # a Playwright config at frontend/ root
+    relative = path[len(_E2E_PREFIX):]
+    # Pre-existing carve-outs: fake-data mounts, visual baselines, docs and per-fixture configs.
+    if relative.startswith(_E2E_NON_PRODUCTION_KINDS) or path.endswith(("-playwright.config.js", ".md")):
+        return path in paths and path.endswith("-playwright.config.js")
+    if path in paths:
+        return True
+    if path.endswith(_E2E_SPEC_SUFFIXES):
+        return any(
+            any(rx.search(path) for rx in match) and not any(rx.search(path) for rx in ignore)
+            for match, ignore in rules
+        )
+    if path.endswith(_E2E_FIXTURE_SUFFIXES):
+        # A fixture the derivation could read and no production spec imports is not run in production.
+        # One it could not read (new in this PR, deleted, partial checkout) stays protected.
+        return not ((root or _E2E_ROOT) / path).is_file()
+    return True
+
 
 _T3_MARKERS = (
     "billing",
@@ -1114,10 +1264,8 @@ def classify_scope(
             minimum = max(minimum, 1)
             reasons.append(f"workflow trigger request file: {path}")
         elif path in _PRODUCTION_SMOKE_CONTROL_EXACT or (
-            path.startswith("frontend/e2e/")
-            and path not in _LOCAL_ONLY_E2E_SPECS
-            and not path.startswith("frontend/e2e/fixtures/ui-foundation/")
-            and not path.endswith(("-playwright.config.js", ".md"))
+            (path.startswith(_E2E_PREFIX) or re.fullmatch(r"frontend/(?:e2e/)?[\w.-]*playwright[\w.-]*\.config\.[cm]?js", path))
+            and is_production_e2e_path(path)
         ) or (path == "frontend/package.json" and "test:e2e" in patch):
             minimum = max(minimum, 3)
             reasons.append(f"production smoke control path: {path}")
