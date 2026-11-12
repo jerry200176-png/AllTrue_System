@@ -37,6 +37,7 @@ const BASELINE = {
   discrepancy: {},
   'branch-health': {},
   'subject-settings': {},
+  classroom: {},
 };
 
 for (const [name, allowed] of Object.entries(BASELINE)) for (const vp of VIEWPORTS) {

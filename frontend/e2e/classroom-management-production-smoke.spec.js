@@ -65,9 +65,9 @@ test.describe('UI smoke — production classroom management', () => {
     await dismissOverlays(page);
 
     await expect(page.getByRole('heading', { name: '教室管理', exact: true })).toBeVisible();
-    await expect(page.locator('.classroom-page .card')).toHaveAttribute('aria-busy', 'false', { timeout: 15_000 });
+    await expect(page.locator('.classroom-page .card, [data-testid="classroom-content"]')).toHaveAttribute('aria-busy', 'false', { timeout: 15_000 });
 
-    const classroomState = page.locator('[data-guide="classroom-table"], .empty-text');
+    const classroomState = page.locator('[data-guide="classroom-table"], .empty-text, [data-testid="classroom-empty"]');
     await expect(classroomState).toHaveCount(1, { timeout: 15_000 });
 
     const table = page.locator('[data-guide="classroom-table"]');
@@ -79,8 +79,8 @@ test.describe('UI smoke — production classroom management', () => {
       await expect(firstRow.getByRole('button', { name: /^(?:停用|啟用)教室：.+$/ })).toBeVisible();
       await expect(firstRow.getByRole('button', { name: /^刪除教室：.+$/ })).toBeVisible();
     } else {
-      await expect(page.locator('.empty-text')).toBeVisible();
-      await expect(page.locator('.empty-text').getByRole('button', { name: '新增教室', exact: true })).toBeVisible();
+      await expect(page.locator('.empty-text, [data-testid="classroom-empty"]')).toBeVisible();
+      await expect(page.locator('.empty-text, [data-testid="classroom-empty"]').getByRole('button', { name: '新增教室', exact: true })).toBeVisible();
     }
 
     await expect.poll(() => roomsProbe.pendingCount(), { timeout: 15_000 }).toBe(0);
