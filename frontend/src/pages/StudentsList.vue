@@ -456,7 +456,7 @@
                       <div>
                         <dt>付款</dt>
                         <dd>
-                          <span :class="['student-course-card__payment', `student-course-card__payment--${paymentCardModifier(course)}`]" :title="paymentStatusHelpTitle(course)" :aria-label="paymentStatusButtonLabel(course)">{{ paymentStatusChipText(course) }}</span>
+                          <span :class="['student-course-card__payment', `student-course-card__payment--${paymentCardModifier(course)}`]" :title="paymentStatusHelpTitle(course)"><span aria-hidden="true">{{ paymentStatusChipText(course) }}</span><span class="tw:sr-only">{{ paymentStatusButtonLabel(course) }}</span></span>
                           <span v-if="isTutoringBillingAnomaly(course)" class="payment-anomaly-hint" role="alert">帳務資料需修正</span>
                           <span v-if="course.last_paid_at" class="paid-date-hint">{{ course.last_paid_at }}</span>
                         </dd>

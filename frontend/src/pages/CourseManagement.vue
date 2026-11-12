@@ -369,7 +369,7 @@
                       <span class="contract-field-label tw:text-tpl-caption">繳費</span>
                       <div class="payment-status-and-action" :data-course-id="c.id">
                         <span
-                          :class="['small', 'payment-status-badge', paymentStatusButtonClass(c)]"
+                          :class="['small', 'payment-status-badge', paymentStatusButtonClass(c), { 'payment-status-badge--short': paymentStatusChipText(c) !== paymentStatusButtonLabel(c) }]"
                           role="status"
                           :title="paymentStatusHelpTitle(c)"
                           :aria-label="paymentStatusButtonLabel(c)"
@@ -724,7 +724,7 @@
                   </td>
                   <td>
                     <span
-                      :class="['small', 'payment-status-badge', paymentStatusButtonClass(row.course)]"
+                      :class="['small', 'payment-status-badge', paymentStatusButtonClass(row.course), { 'payment-status-badge--short': paymentStatusChipText(row.course) !== paymentStatusButtonLabel(row.course) }]"
                       role="status"
                       :title="paymentStatusHelpTitle(row.course)"
                       :aria-label="paymentStatusButtonLabel(row.course)"
@@ -8744,6 +8744,8 @@ button.danger {
 .course-workbench .course-row .payment-status-and-action { align-items: start; min-width: 0; }
 /* In-app #532: a long status still wraps inside the 繳費 column instead of running under the row's buttons; the review sentence itself is a short chip (#539). */
 .course-workbench .course-row .payment-status-badge { max-width: 100%; white-space: normal; text-align: left; }
+/* A short chip is one line by construction (#539); the column is wide enough for its few characters. */
+.course-workbench .course-row .payment-status-badge--short { white-space: nowrap; }
 .course-workbench .dates-row { margin-top: .75rem; min-width: 0; }
 .course-workbench .dates-row .detail-panel { margin: 0; padding: 1rem; border-radius: inherit; font-size: inherit; }
 .course-workbench .paused-notice-row { display: block; margin-bottom: .75rem; }

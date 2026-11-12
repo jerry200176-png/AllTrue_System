@@ -71,6 +71,9 @@ describe('#539 payment badge is a short chip with the sentence kept accessible',
     expect([...REVIEW_REQUIRED_SHORT_LABEL].length).toBeLessThanOrEqual(6);
     expect(badge.attributes('aria-label')).toBe(REVIEW_REQUIRED_LABEL);
     expect(badge.attributes('title')).toContain(REVIEW_REQUIRED_LABEL);
+    // One line by construction: the 1280px row column is narrow enough to wrap a 5-character chip otherwise.
+    expect(badge.classes()).toContain('payment-status-badge--short');
+    expect(wrapper.get('.payment-status-and-action[data-course-id="32"] .payment-status-badge').classes()).not.toContain('payment-status-badge--short');
   });
 
   it('other statuses keep their wording', async () => {

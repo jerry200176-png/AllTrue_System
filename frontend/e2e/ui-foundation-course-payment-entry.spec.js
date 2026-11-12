@@ -189,13 +189,21 @@ for (const width of [375, 768, 1280]) {
     const [headerBox, helpBox] = [await header.boundingBox(), await help.boundingBox()];
     const pad = await header.evaluate((el) => { const cs = getComputedStyle(el); return parseFloat(cs.paddingLeft) + parseFloat(cs.paddingRight); });
     expect(Math.abs(helpBox.width - (headerBox.width - pad)), 'help spans the header content width').toBeLessThanOrEqual(2);
+    // A row holding one card is an orphan unless that card spans the whole grid width (the intended 2 + 2 + 1 on phones).
     const rows = await page.locator('[data-testid="course-lens-summary"] > *').evaluateAll((cards) => {
+      const gridWidth = cards[0].parentElement.getBoundingClientRect().width;
       const byTop = new Map();
-      for (const c of cards) { const top = Math.round(c.getBoundingClientRect().top); byTop.set(top, (byTop.get(top) || 0) + 1); }
+      for (const c of cards) {
+        const r = c.getBoundingClientRect();
+        const row = byTop.get(Math.round(r.top)) || { count: 0, full: false };
+        row.count += 1;
+        row.full = r.width >= gridWidth - 2;
+        byTop.set(Math.round(r.top), row);
+      }
       return [...byTop.values()];
     });
     expect(rows.length, 'summary cards rendered').toBeGreaterThan(0);
-    if (rows.length > 1) expect(rows, 'a row with one card is an orphan unless it spans the row').not.toContain(1);
+    expect(rows.filter((row) => row.count === 1 && !row.full), 'single-card rows that do not span the grid').toEqual([]);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1), 'no horizontal page scroll').toBe(true);
   });
 }
