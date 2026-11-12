@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { BATCH_BASE_MESSAGE, BATCH_MAX, batchSerial, guardedSquash, isBatchBase, TRUSTED_AUTHORS, fromPinned, suiteRuns, memberOf, staleReason, batchVerdict, checkStates, decide, marker, memberMessage, neutral, orderQueue, parseMember, planBatch, serialDecision, unresolvedCount } from '../../.github/scripts/land-queue.mjs';
-import { CODEX_LOGIN, REVIEW_CHECK, automaticMerge, carryChecks, carryRepo, trivialRebase, withCarryRepo, classifyScope, decodeEntities, gateMarker, onlyMainMerged, patchId, reviewGate, reviewMarker, sameDiff } from '../../.github/scripts/review-gate.mjs';
+import { CODEX_LOGIN, REVIEW_CHECK, automaticMerge, carryChecks, carryRepo, trivialRebase, withCarryRepo, classifyScope, decodeEntities, gateMarker, onlyMainMerged, patchId, reviewGate, reviewMarker, sameDiff, samePatchFor, verdictText } from '../../.github/scripts/review-gate.mjs';
 import fs from 'node:fs';
 import os from 'node:os';
 import { join } from 'node:path';
@@ -563,7 +563,7 @@ test('review gate: R3 marker carries across update-branch only when samePatch', 
   const sec = (sha, v = 'pass') => owner(gateMarker('security-data-reviewer', sha, v));
   const R3 = (cs, same) => reviewGate(cs, H, OWNER, 'r3', same);
   const seenShas = [];
-  assert.deepEqual(R3([codex(clean()), sec(OLD)], (s) => { seenShas.push(s); return true; }), { ok: true, via: `r3-carried:${OLD.slice(0, 7)}` });
+  assert.deepEqual(R3([codex(clean()), sec(OLD)], (s) => { seenShas.push(s); return true; }), { ok: true, via: `r3-carried:${OLD.slice(0, 7)}`, from: OLD });
   assert.deepEqual(seenShas, [OLD]);
   assert.equal(R3([codex(clean()), sec(OLD)], () => false).ok, false); // patch differs / missing patch / sha not in PR -> samePatch false
   assert.equal(R3([codex(clean()), sec(OLD)]).ok, false); // default dependency fails closed
@@ -609,7 +609,7 @@ test('TRIVIAL_REBASE: only merges from main may sit between old and head', () =>
 test('TRIVIAL_REBASE: Codex state and independent-review marker carry only through samePatch', () => {
   const owner = (body) => ({ user: { login: OWNER }, body });
   const G = (cs, same) => reviewGate(cs, H, OWNER, 'lower', same);
-  assert.deepEqual(G([codex(clean(OLD))], () => true), { ok: true, via: `codex-carried:${OLD.slice(0, 7)}` });
+  assert.deepEqual(G([codex(clean(OLD))], () => true), { ok: true, via: `codex-carried:${OLD.slice(0, 7)}`, from: OLD });
   assert.equal(G([codex(clean(OLD))], () => false).ok, false);
   assert.equal(G([codex(clean(OLD))]).ok, false); // default fails closed
   assert.equal(G([codex(clean(OLD))], () => { throw new Error('api'); }).ok, false);
@@ -810,6 +810,176 @@ test('TRIVIAL_REBASE: an owner fail marker on the old head or any in-between hea
   assert.equal(G([codex(clean(OLD)), owner(gateMarker('qa-lead', MID, 'fail'))]).ok, false); // in-between head
   assert.equal(G([owner(reviewMarker(OLD)), owner(gateMarker('qa-lead', MID, 'fail'))]).ok, false); // marker lane too
   assert.equal(G([{ user: { login: 'someone' }, body: gateMarker('qa-lead', OLD, 'fail') }, codex(clean(OLD))]).ok, true); // non-owner ignored
+});
+
+// --- #5201: the independent-review marker survives a base merge when Codex could not run ---
+// The literal state a usage-limited Codex writes without reviewing anything (#5208: one commit, no PR review).
+const limited = (sha, o = {}, cr = {}) => codex(clean(sha, { status: 'failed', has_any_findings: true, has_unresolved_findings: true, ...cr }), o);
+const markerAt = (sha, created_at = '2026-10-21T06:00:00Z', login = OWNER) => ({ user: { login }, created_at, body: `independent review: pass\n${reviewMarker(sha)}` });
+
+test('marker carry: a Codex could-not-run state on or before the reviewed SHA no longer stops it (#5210)', () => {
+  const ANC = 'c'.repeat(40);
+  for (const scope of ['lower', 'r3']) {
+    const via = scope === 'r3' ? 'r3-carried' : 'independent-review-carried';
+    for (const at of [OLD, ANC]) { // #5208 shape (on the reviewed SHA) and #5210 shape (on an earlier PR commit)
+      const calls = [];
+      const g = reviewGate([limited(at), markerAt(OLD)], H, OWNER, scope, (old, notRun) => { calls.push([old, notRun]); return true; });
+      assert.deepEqual(g, { ok: true, via: `${via}:${OLD.slice(0, 7)}`, from: OLD });
+      assert.deepEqual(calls[0], [OLD, [at]], 'the I/O layer is told which SHAs it must prove are at or before the reviewed SHA');
+    }
+    // The proof is load-bearing: an I/O layer that cannot place the could-not-run SHA at or before the reviewed SHA refuses.
+    assert.equal(reviewGate([limited(ANC), markerAt(OLD)], H, OWNER, scope, (_old, notRun) => notRun === undefined).ok, false);
+    assert.equal(reviewGate([limited(ANC), markerAt(OLD)], H, OWNER, scope, () => { throw new Error('api'); }).ok, false);
+    assert.equal(reviewGate([limited(ANC), markerAt(OLD)], H, OWNER, scope).ok, false); // default dependency fails closed
+  }
+});
+
+test('marker carry: the could-not-run exception is exact; everything else still needs a fresh review', () => {
+  const ANC = 'c'.repeat(40);
+  for (const scope of ['lower', 'r3']) {
+    const G = (cs) => reviewGate(cs, H, OWNER, scope, () => true);
+    assert.equal(G([limited(ANC), markerAt(OLD)]).ok, true); // control
+    // Written before (or at the same second as) the Codex state, or at an unreadable time: the reviewer may not have seen it.
+    assert.equal(G([limited(ANC), markerAt(OLD, '2026-10-21T04:59:59Z')]).ok, false);
+    assert.equal(G([limited(ANC), markerAt(OLD, '2026-10-21T05:00:00Z')]).ok, false);
+    for (const t of [null, '', 'yesterday', '2026-10-21 06:00:00', 1792562400000]) assert.equal(G([limited(ANC), markerAt(OLD, t)]).ok, false, `created_at ${String(t)}`);
+    assert.equal(G([limited(ANC), { user: { login: OWNER }, body: reviewMarker(OLD) }]).ok, false); // no created_at at all
+    assert.equal(G([limited(ANC, { updated_at: '2026-10-21T07:00:00Z' }), markerAt(OLD)]).ok, false); // Codex state rewritten after the marker
+    // Only the literal {failed, true} state: any other flag on a failed record, or any other status, keeps vetoing.
+    for (const flag of [null, 'true', 1]) assert.equal(G([limited(ANC, {}, { has_unresolved_findings: flag }), markerAt(OLD)]).ok, false, `flag ${String(flag)}`);
+    for (const status of ['completed', 'in_progress', 'queued', undefined]) assert.equal(G([limited(ANC, {}, { status }), markerAt(OLD)]).ok, false, `status ${status}`);
+    // One real-findings (or unfinished) record anywhere poisons the set.
+    assert.equal(G([limited(ANC), codex(clean(OLD, { has_unresolved_findings: true }), { updated_at: '2026-10-21T04:00:00Z' }), markerAt(OLD)]).ok, false);
+    assert.equal(G([limited(ANC), codex(clean('d'.repeat(40), { status: 'in_progress' }), { updated_at: '2026-10-21T04:00:00Z' }), markerAt(OLD)]).ok, false);
+    // On the head the flag is copied from the previous state (possibly real findings on the reviewed SHA): still a veto.
+    assert.equal(G([limited(H), markerAt(OLD)]).ok, false);
+    assert.equal(G([limited(ANC), limited(H, { updated_at: '2026-10-21T05:30:00Z' }), markerAt(OLD)]).ok, false);
+    // Several could-not-run records: the marker must be newer than every one of them.
+    assert.equal(G([limited(ANC, { updated_at: '2026-10-21T04:00:00Z' }), limited(OLD), markerAt(OLD)]).ok, true);
+    assert.equal(G([limited(ANC), limited(OLD, { updated_at: '2026-10-21T07:00:00Z' }), markerAt(OLD)]).ok, false);
+    // Marker rules unchanged: owner only, exact pass marker, fail markers veto.
+    assert.equal(G([limited(ANC), markerAt(OLD, undefined, 'someone')]).ok, false);
+    assert.equal(G([limited(ANC), markerAt(OLD), { user: { login: OWNER }, created_at: '2026-10-21T06:01:00Z', body: `<!-- independent-review:v1 sha=${OLD} verdict=fail -->` }]).ok, false);
+    assert.equal(G([limited(ANC), markerAt(OLD), { user: { login: OWNER }, created_at: '2026-10-21T06:01:00Z', body: 'verdict=fail' }]).ok, false);
+    assert.equal(G([limited(ANC), { ...markerAt(OLD), body: `<!-- independent-review:v1 sha=${OLD} verdict=Pass -->` }]).ok, false);
+  }
+});
+
+test('trivialRebase: could-not-run SHAs must be the reviewed SHA or its PR ancestors, with no Codex PR review on it', () => {
+  const P = 'c3'.repeat(20), A = 'a1'.repeat(20), M = 'd4'.repeat(20), X = 'e5'.repeat(20);
+  const c = (sha, ...parents) => ({ sha, parents: parents.map((sha) => ({ sha })) });
+  const run = (notRun, reviews = []) => trivialRebase(7, M, A, {
+    gh: (_api, url, ...rest) => {
+      if (/^\/repos(\/[^/]+){0,2}$/.test(url)) return JSON.stringify({ default_branch: 'main' });
+      if (/\/pulls\/7$/.test(url)) return JSON.stringify({ base: { ref: 'main' } });
+      if (url.includes('/pulls/7/commits')) return JSON.stringify([[P, A, M].map((sha) => ({ sha }))]);
+      if (url.includes('/pulls/7/reviews')) return JSON.stringify([reviews]);
+      if (rest.includes('Accept: application/vnd.github.diff')) return DIFF('new');
+      if (url.includes('/compare/')) return JSON.stringify([{ commits: url.includes(`...${A}?`) ? [c(P, 'main0'), c(A, P)] : [c(P, 'main0'), c(A, P), c(M, A, 'main1')] }]);
+      throw new Error(`unexpected ${url}`);
+    },
+    open: () => ({ dir: fs.mkdtempSync(join(os.tmpdir(), 'tr-')), git: (...a) => ({ 'rev-list': `${M} ${A} main1\n`, 'merge-base': '', 'merge-tree': 'TREE\n', 'rev-parse': 'TREE\n' })[a[0]] }),
+  }, notRun);
+  const codexReview = (commit_id) => ({ user: { login: CODEX_LOGIN }, commit_id });
+  assert.equal(run(undefined), true);
+  assert.equal(run([]), true);
+  assert.equal(run([A]), true); // on the reviewed SHA
+  assert.equal(run([P]), true); // on its ancestor inside the PR
+  assert.equal(run([P, A]), true);
+  assert.equal(run([M]), false); // on the merge added after the review
+  assert.equal(run([A, X]), false); // one SHA that is not in the reviewed history at all
+  assert.equal(run(['main0']), false); // a base-branch commit is not a PR commit
+  for (const bad of [null, 'x', { 0: A }]) assert.equal(run(bad), false, `notRun ${JSON.stringify(bad)}`);
+  assert.equal(run([P], [codexReview(A)]), false); // Codex reviewed the reviewed SHA: its findings are real
+  assert.equal(run([], [codexReview(A)]), true); // unchanged when no could-not-run state is involved
+  assert.equal(run([P], [codexReview(P), { user: { login: 'someone' }, commit_id: A }]), true); // earlier commit / not Codex
+});
+
+test('verdictText: a carried verdict names the reviewed SHA and the head; other verdicts read as before', () => {
+  for (const [via, kind] of [['independent-review-carried', 'independent-review marker'], ['r3-carried', 'R3 review marker'], ['codex-carried', 'Codex review']]) {
+    const t = verdictText(H, { ok: true, via: `${via}:${OLD.slice(0, 7)}`, from: OLD });
+    assert.equal(t.title, `reviewed (${via}:${OLD.slice(0, 7)})`);
+    assert.ok(t.summary.startsWith(`Final-head review present for ${H}.`));
+    assert.ok(t.summary.includes(`${kind} for ${OLD} carried over base merges to ${H}`), t.summary);
+  }
+  assert.deepEqual(verdictText(H, { ok: true, via: 'independent-review' }), { title: 'reviewed (independent-review)', summary: `Final-head review present for ${H}.` });
+  assert.deepEqual(verdictText(H, { ok: true, via: 'codex' }), { title: 'reviewed (codex)', summary: `Final-head review present for ${H}.` });
+  assert.equal(verdictText(H, { ok: true, via: 'independent-review', from: OLD }).summary, `Final-head review present for ${H}.`); // not a carry
+  assert.equal(verdictText(H, { ok: true, via: `r3-carried:${OLD.slice(0, 7)}`, from: 'abc' }).summary, `Final-head review present for ${H}.`); // no full SHA, no claim
+  assert.deepEqual(verdictText(H, { ok: false, why: 'no Codex review on aaaaaaa yet' }), { title: 'waiting for review on this head', summary: `no Codex review on aaaaaaa yet. Merge waits for a completed clean review of ${H}.` });
+});
+
+// Real git objects end to end: a temp repo plays GitHub (commit lists, three-dot diffs) and the carry repo. No network.
+test('marker carry end to end on real git history: only clean merges of the base branch keep the review', () => {
+  const dir = fs.mkdtempSync(join(os.tmpdir(), 'carry-e2e-'));
+  const git = (...a) => execFileSync('git', ['-C', dir, '-c', 'user.email=t@t', '-c', 'user.name=t', '-c', 'commit.gpgsign=false', ...a], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+  const write = (f, txt) => fs.writeFileSync(join(dir, f), txt);
+  const commit = (msg, ...flags) => { git('add', '-A'); git('commit', '-q', ...flags, '-m', msg); return git('rev-parse', 'HEAD').trim(); };
+  const app = (mid) => `one\ntwo\n${mid}\nfour\nfive\n`;
+  try {
+    git('init', '-q', '-b', 'main');
+    write('app.txt', app('three')); write('notes.txt', 'n0\n'); commit('base');
+    git('checkout', '-q', '-b', 'pr'); write('app.txt', app('THREE (pr)')); const R = commit('reviewed change');
+    git('checkout', '-q', '-b', 'other-pr', 'main'); write('other.txt', 'someone else\n'); const OTHER = commit('another PR');
+    git('checkout', '-q', '-b', 'side', 'main'); write('side.txt', 'side\n'); commit('side feature (not on main)');
+    git('checkout', '-q', 'main');
+    write('notes.txt', 'n0\nn1\n'); const M1 = commit('main 1');
+    write('notes.txt', 'n0\nn1\nn2\n'); const M2 = commit('main 2');
+    write('app.txt', app('three (main)')); commit('main 3 touches the reviewed line');
+    git('update-ref', 'refs/remotes/origin/main', 'main');
+    const branch = (name, from = R) => git('checkout', '-q', '-B', name, from);
+    const tip = () => git('rev-parse', 'HEAD').trim();
+    const heads = {};
+    branch('c1'); git('merge', '-q', '--no-edit', M1); heads.oneMerge = tip();
+    git('merge', '-q', '--no-edit', M2); heads.twoMerges = tip();
+    branch('c2'); git('merge', '-q', '--no-edit', M1); write('app.txt', app('THREE (pr) + smuggled')); git('add', '-A'); git('commit', '-q', '--amend', '--no-edit'); heads.evilMerge = tip();
+    branch('c3'); assert.throws(() => git('merge', '-q', '--no-edit', 'main')); write('app.txt', app('THREE (pr)')); heads.conflictResolved = commit('resolve conflict keeping the PR side');
+    branch('c4'); git('merge', '-q', '--no-edit', 'side'); heads.mergeOfFeatureBranch = tip();
+    branch('c5'); write('app.txt', app('THREE (pr) v2')); heads.normalCommit = commit('one more change');
+    branch('c6'); heads.emptyCommit = commit('retrigger', '--allow-empty');
+    branch('c7'); git('merge', '-q', '--no-edit', M1, 'side'); heads.octopus = tip();
+    branch('c8', M1); write('app.txt', app('THREE (pr)')); heads.rebased = commit('reviewed change'); git('merge', '-q', '--no-edit', M2); heads.rebasedThenMerged = tip();
+    for (const [name, parents] of [['oneMerge', 2], ['evilMerge', 2], ['conflictResolved', 2], ['mergeOfFeatureBranch', 2], ['normalCommit', 1], ['emptyCommit', 1], ['octopus', 3], ['rebased', 1]]) {
+      assert.equal(git('rev-list', '--parents', '-n', '1', heads[name]).trim().split(' ').length - 1, parents, `${name} has the intended shape`);
+    }
+    assert.equal(git('rev-parse', `${heads.emptyCommit}^{tree}`), git('rev-parse', `${R}^{tree}`)); // truly empty
+    assert.equal(git('diff', `main...${R}`), git('diff', `main...${heads.rebased}`)); // rebased onto main: same PR diff, but R left the history
+    assert.throws(() => git('merge-base', '--is-ancestor', R, heads.rebasedThenMerged));
+    for (const [name, automatic] of [['oneMerge', true], ['twoMerges', true], ['evilMerge', false], ['conflictResolved', false]]) {
+      assert.equal(automaticMerge(git, heads[name]), automatic, `${name}: tree ${automatic ? 'equals' : 'differs from'} the automatic merge`);
+    }
+
+    const commitsOf = (sha) => git('rev-list', '--reverse', '--parents', `main..${sha}`).trim().split('\n').filter(Boolean).map((l) => { const [s, ...ps] = l.split(' '); return { sha: s, parents: ps.map((p) => ({ sha: p })) }; });
+    const gate = (head, markerSha = R, comments = [markerAt(markerSha)]) => {
+      const gh = (_api, url, ...rest) => {
+        if (/^\/repos(\/[^/]+){0,2}$/.test(url)) return JSON.stringify({ default_branch: 'main' });
+        if (/\/pulls\/7$/.test(url)) return JSON.stringify({ base: { ref: 'main' } });
+        if (url.includes('/pulls/7/commits')) return JSON.stringify([commitsOf(head)]);
+        if (url.includes('/pulls/7/reviews')) return JSON.stringify([[]]);
+        const sha = url.match(/\/compare\/main\.\.\.([0-9a-f]{40})/)?.[1];
+        if (sha && rest.includes('Accept: application/vnd.github.diff')) return git('diff', `main...${sha}`);
+        if (sha) return JSON.stringify([{ commits: commitsOf(sha) }]);
+        throw new Error(`unexpected ${url}`);
+      };
+      const open = () => ({ dir: fs.mkdtempSync(join(os.tmpdir(), 'carry-e2e-tmp-')), git });
+      return reviewGate(comments, head, OWNER, 'r3', samePatchFor(7, head, { gh, open })); // the publisher's own wiring
+    };
+    for (const name of ['oneMerge', 'twoMerges']) {
+      assert.deepEqual(gate(heads[name]), { ok: true, via: `r3-carried:${R.slice(0, 7)}`, from: R }, name);
+    }
+    for (const name of ['evilMerge', 'conflictResolved', 'mergeOfFeatureBranch', 'normalCommit', 'emptyCommit', 'octopus', 'rebased', 'rebasedThenMerged']) {
+      const g = gate(heads[name]);
+      assert.equal(g.ok, false, name);
+      assert.match(g.why, /no Codex review on/, name); // refused for want of a review on this head, not by an error elsewhere
+    }
+    assert.equal(gate(heads.oneMerge, OTHER).ok, false); // a marker naming another PR's commit
+    assert.equal(gate(heads.oneMerge, 'f'.repeat(40)).ok, false); // a marker naming a commit that does not exist
+    assert.equal(gate(R).via, 'independent-review'); // the reviewed head itself: direct, not carried
+    // #5210 replay: Codex could not run on the reviewed SHA, the marker came later, then main was merged in.
+    assert.deepEqual(gate(heads.twoMerges, R, [limited(R), markerAt(R)]), { ok: true, via: `r3-carried:${R.slice(0, 7)}`, from: R });
+    assert.equal(gate(heads.twoMerges, R, [limited(heads.oneMerge), markerAt(R)]).ok, false); // could-not-run state on a commit after the review
+    assert.equal(gate(heads.evilMerge, R, [limited(R), markerAt(R)]).ok, false); // the exception never relaxes the structural proof
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
 test('classifyScope: lower only with a stable head and complete, non-R3 evidence', () => {

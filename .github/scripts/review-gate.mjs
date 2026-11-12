@@ -30,13 +30,13 @@ export const decodeEntities = (s) => s.replace(/&(?:#(\d+)|#x([0-9a-f]+)|(quot|a
 const failOf = (sha) => new RegExp(`<!-- (?:gate:[a-z-]+|independent-review):v1 sha=${sha} verdict=fail -->`);
 // Gerrit copyCondition changekind:TRIVIAL_REBASE. mine = owner comment bodies, oldest first. Newest pass marker
 // (per `pass(body, sha)`) on an earlier head whose samePatch(old) holds, or null. Any fail marker on that sha, or any
-// later owner FAIL, vetoes the candidate; a throwing samePatch means no carry.
+// later owner FAIL, vetoes the candidate; a throwing samePatch means no carry. pass also gets the index into mine.
 function carried(mine, head, pass, samePatch) {
   const seen = new Set();
   for (let i = mine.length - 1; i >= 0; i--) {
     for (const m of mine[i].matchAll(/sha=([0-9a-f]{40}) verdict=pass -->/g)) {
       const old = m[1];
-      if (old === head || seen.has(old) || !pass(mine[i], old)) continue;
+      if (old === head || seen.has(old) || !pass(mine[i], old, i)) continue;
       seen.add(old);
       if (mine.some((b) => failOf(old).test(b)) || mine.slice(i + 1).some((b) => b.includes('verdict=fail'))) continue;
       try { if (samePatch(old)) return old; } catch { /* fail closed */ }
@@ -45,11 +45,20 @@ function carried(mine, head, pass, samePatch) {
   return null;
 }
 
+// Strict UTC ISO timestamp -> ms, or NaN (anything else is unreadable and fails closed at the caller).
+const isoMs = (stamp) => {
+  const at = typeof stamp === 'string' ? Date.parse(stamp) : NaN;
+  return typeof stamp === 'string' && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?Z$/.test(stamp)
+    && Number.isFinite(at) && new Date(at).toISOString().slice(0, 19) === stamp.slice(0, 19) ? at : NaN;
+};
+
 export const gateMarker = (role, sha, verdict = 'pass') => `<!-- gate:${role}:v1 sha=${sha} verdict=${verdict} -->`;
 // comments: issue comments [{user:{login}, body, created_at, updated_at}] or null when unreadable.
 // Returns {ok: true, via} or {ok: false, why}.
 // scope: 'lower' only when scripts/governance/pr_requires_security.py cleared the PR; anything else is treated as R3.
-// samePatch(oldSha) => true only when the PR's own diff at oldSha is byte-identical to head's (I/O layer; fails closed).
+// samePatch(oldSha, notRun) => true only when the PR's own diff at oldSha is byte-identical to head's and every SHA in
+// notRun (Codex could-not-run states, see codexGate) is oldSha or its ancestor (I/O layer; fails closed).
+// A carried verdict also names the reviewed SHA in full: {ok: true, via: '<kind>-carried:<sha7>', from: <sha40>}.
 export function reviewGate(comments, head, owner, scope, samePatch = () => false) {
   const g = codexGate(comments, head, owner, samePatch);
   if (!Array.isArray(comments) || !owner || !SHA40.test(head || '')) return g;
@@ -60,7 +69,7 @@ export function reviewGate(comments, head, owner, scope, samePatch = () => false
   if (!g.ok || scope === 'lower') return g;
   if (mine.some((b) => r3Pass(b, head))) return g;
   const old = carried(mine, head, r3Pass, samePatch);
-  if (old) return { ok: true, via: `r3-carried:${old.slice(0, 7)}` };
+  if (old) return { ok: true, via: `r3-carried:${old.slice(0, 7)}`, from: old };
   return { ok: false, why: `R3 needs a security-data-reviewer marker on ${head.slice(0, 7)}` };
 }
 
@@ -81,12 +90,8 @@ function codexGate(comments, head, owner, samePatch = () => false) {
         || typeof cr.commit_sha !== 'string' || !SHA40.test(cr.commit_sha)) {
       return { ok: false, why: 'Codex review state unreadable' };
     }
-    const stamp = c.updated_at || c.created_at;
-    const at = typeof stamp === 'string' ? Date.parse(stamp) : NaN;
-    if (typeof stamp !== 'string' || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?Z$/.test(stamp)
-        || !Number.isFinite(at) || new Date(at).toISOString().slice(0, 19) !== stamp.slice(0, 19)) {
-      return { ok: false, why: 'Codex review timestamp unreadable' };
-    }
+    const at = isoMs(c.updated_at || c.created_at);
+    if (Number.isNaN(at)) return { ok: false, why: 'Codex review timestamp unreadable' };
     records.push({ cr, at });
   }
   // A late review of another head cannot erase current-head evidence. Validate
@@ -109,8 +114,9 @@ function codexGate(comments, head, owner, samePatch = () => false) {
   if (onHead) return { ok: false, why: `Codex review ${cr.status ?? 'unknown'} on ${short}` };
   // Anything but an exact `false` findings flag on ANY record vetoes (null, missing or non-boolean fail closed), including the head's own `failed` sticky state (a usage-limited Codex rewrites its one
   // comment for the head but keeps the old findings flag).
-  const codexVeto = records.some((r) => r.cr.has_unresolved_findings !== false || (r.cr.commit_sha !== head
+  const vetoes = records.filter((r) => r.cr.has_unresolved_findings !== false || (r.cr.commit_sha !== head
     && !['completed', 'failed'].includes(r.cr.status)));
+  const codexVeto = vetoes.length > 0;
   // TRIVIAL_REBASE: a clean completed Codex state on an earlier head carries when only main was merged in since,
   // unless any Codex record vetoes (this also covers tied or ambiguous records: one of them has a non-false flag).
   // Codex keeps one sticky comment, so findings on an intermediate head can already be overwritten; samePatch
@@ -119,14 +125,27 @@ function codexGate(comments, head, owner, samePatch = () => false) {
   // A reviewer FAIL must not be cleared by an update-branch: any owner fail marker (old head, an in-between head or
   // later) blocks the Codex carry, same as carried() does for markers.
   const failed = comments.some((c) => c?.user?.login?.toLowerCase() === owner.toLowerCase() && (c.body || '').includes('verdict=fail'));
-  try { if (stale && !failed && samePatch(cr.commit_sha)) return { ok: true, via: `codex-carried:${cr.commit_sha.slice(0, 7)}` }; } catch { /* fail closed */ }
+  try { if (stale && !failed && samePatch(cr.commit_sha)) return { ok: true, via: `codex-carried:${cr.commit_sha.slice(0, 7)}`, from: cr.commit_sha }; } catch { /* fail closed */ }
   const lower = owner.toLowerCase();
-  const mine = comments.filter((c) => c?.user?.login?.toLowerCase() === lower).map((c) => c.body || '');
+  const own = comments.filter((c) => c?.user?.login?.toLowerCase() === lower);
+  const mine = own.map((c) => c.body || '');
   if (mine.some((b) => b.includes(reviewMarker(head)))) return { ok: true, via: 'independent-review' };
   // A marker carry takes the old head's whole verdict: any Codex record on another SHA with findings, an unfinished
   // review or an unreadable verdict vetoes it (the marker alone never overrides Codex findings).
-  const old = codexVeto ? null : carried(mine, head, (b, sha) => b.includes(reviewMarker(sha)), samePatch);
-  if (old) return { ok: true, via: `independent-review-carried:${old.slice(0, 7)}` };
+  // One exception (#5210): a usage-limited Codex writes {status:'failed', has_unresolved_findings:true} without
+  // reviewing anything. On the reviewed head that state never vetoed the marker; it must not start to after an
+  // automatic merge of main. So when EVERY vetoing record is that literal could-not-run state on a SHA other than the
+  // head, the carry is still tried, but only for a marker comment created after all of them (the reviewer had them in
+  // view; an unreadable time fails closed), and samePatch must also prove each of those SHAs is the reviewed SHA or
+  // its ancestor with no Codex PR review on the reviewed SHA. A could-not-run state on the head keeps vetoing: its
+  // flag is copied from the previous state, which may be real findings on the reviewed SHA.
+  const notRun = vetoes.every((r) => r.cr.status === 'failed' && r.cr.has_unresolved_findings === true && r.cr.commit_sha !== head);
+  const seenAll = (i) => vetoes.every((r) => isoMs(own[i].created_at) > r.at); // NaN compares false
+  const isMarker = (b, sha) => b.includes(reviewMarker(sha));
+  const old = !codexVeto ? carried(mine, head, isMarker, samePatch)
+    : notRun ? carried(mine, head, (b, sha, i) => isMarker(b, sha) && seenAll(i), (sha) => samePatch(sha, [...new Set(vetoes.map((r) => r.cr.commit_sha))]))
+      : null;
+  if (old) return { ok: true, via: `independent-review-carried:${old.slice(0, 7)}`, from: old };
   if (!cr) return { ok: false, why: `no Codex review on ${short} yet` };
   // `failed` on the head itself leaves onHead false (so it never passes), but it is not "a different commit":
   // compare full SHAs (prefix-safe for a short one) so the message never calls two identical SHAs different.
@@ -220,7 +239,9 @@ export function withCarryRepo(n, base, fn, open = carryRepo) {
 // Gerrit changekind:TRIVIAL_REBASE for PR n: carry old's review to head only if the PR's diff against main is the same
 // (verbatim patch-id) and every commit added since is an automatic merge of main. Reads the API only; any error = false.
 // io = { gh, open } are injectable for tests (default: the gh CLI and carryRepo).
-export function trivialRebase(n, head, old, io = {}) {
+// notRun: SHAs of Codex could-not-run states (codexGate). Each must be old or an ancestor of old among the PR's own
+// commits, and Codex must have left no PR review on old (that would be real findings on the reviewed SHA).
+export function trivialRebase(n, head, old, io = {}, notRun = []) {
   const run = io.gh || gh;
   const get = (path, ...extra) => run('api', `/repos/${REPO}${path}`, ...extra);
   const json = (path, ...extra) => JSON.parse(get(path, ...extra) || 'null');
@@ -234,26 +255,40 @@ export function trivialRebase(n, head, old, io = {}) {
     const reviews = pages(`/pulls/${n}/reviews?per_page=100`).flat();
     const added = prShas.includes(old) && prShas.includes(head) ? carryChecks(oldC, headC, reviews) : null;
     if (!added) return false;
+    if (!Array.isArray(notRun) || !notRun.every((sha) => oldC.some((c) => c.sha === sha))) return false;
+    if (notRun.length && reviews.some((r) => r?.user?.login === CODEX_LOGIN && r.commit_id === old)) return false;
     if (added.length && !withCarryRepo(n, base, (git) => added.every((sha) => automaticMerge(git, sha, `origin/${base}`)), io.open)) return false;
     const diff = (sha) => get(`/compare/${encodeURIComponent(base)}...${sha}`, '-H', 'Accept: application/vnd.github.diff');
     return sameDiff(diff(old), diff(head));
   } catch { return false; }
 }
 
+// The gate's samePatch dependency for PR n at head (one wiring for the publisher and the tests).
+export const samePatchFor = (n, head, io = {}) => (old, notRun) => trivialRebase(n, head, old, io, notRun);
+
 // Reads the PR's comments and evaluates the head; any read failure is unknown (never passes).
 export function readReview(n, head) {
   try {
     const scope = prScope(n, head);
     const comments = JSON.parse(gh('api', `/repos/${REPO}/issues/${n}/comments?per_page=100`, '--paginate', '--slurp')).flat();
-    return reviewGate(comments, head, REPO.split('/')[0], scope, (old) => trivialRebase(n, head, old));
+    return reviewGate(comments, head, REPO.split('/')[0], scope, samePatchFor(n, head));
   } catch (e) { return { ok: false, why: `PR comments unreadable (${e.message.split('\n')[0]})` }; }
+}
+
+// Check-run text for a verdict (pure). A carried verdict says which reviewed SHA it came from.
+export function verdictText(head, g) {
+  const kind = { 'codex-carried': 'Codex review', 'independent-review-carried': 'independent-review marker', 'r3-carried': 'R3 review marker' }[String(g.via).split(':')[0]];
+  const carriedOver = kind && SHA40.test(g.from || '') ? ` The ${kind} for ${g.from} carried over base merges to ${head}: every commit added since is an automatic merge of the base branch and the PR's own diff is unchanged.` : '';
+  return {
+    title: g.ok ? `reviewed (${g.via})` : 'waiting for review on this head',
+    summary: g.ok ? `Final-head review present for ${head}.${carriedOver}` : `${g.why}. Merge waits for a completed clean review of ${head}.`,
+  };
 }
 
 // Publish the verdict as a check run on the head (success or in_progress; never failure, so a pending review
 // does not read as a red check). Skip when the latest run already says the same thing.
 function publish(head, g) {
-  const title = g.ok ? `reviewed (${g.via})` : 'waiting for review on this head';
-  const summary = g.ok ? `Final-head review present for ${head}.` : `${g.why}. Merge waits for a completed clean review of ${head}.`;
+  const { title, summary } = verdictText(head, g);
   const last = api(`commits/${head}/check-runs?check_name=${encodeURIComponent(REVIEW_CHECK)}&filter=latest`).check_runs?.[0];
   const same = last && (g.ok ? last.conclusion === 'success' : last.status !== 'completed') && last.output?.summary === summary;
   if (same) return;
@@ -273,7 +308,7 @@ function main() {
     const pr = api(`pulls/${n}`);
     if (pr.state !== 'open' || pr.base?.ref !== 'main') continue;
     const g = readReview(n, pr.head.sha);
-    console.log(`#${n} ${pr.head.sha}: ${g.ok ? 'reviewed via ' + g.via : 'pending: ' + g.why}`);
+    console.log(`#${n} ${pr.head.sha}: ${g.ok ? 'reviewed via ' + g.via + (g.from ? ` (from ${g.from})` : '') : 'pending: ' + g.why}`);
     if (api(`pulls/${n}`).head?.sha !== pr.head.sha) { console.log(`#${n}: head moved; skipping publish`); continue; }
     publish(pr.head.sha, g);
     if (!g.ok && pr.auto_merge && !required) {
