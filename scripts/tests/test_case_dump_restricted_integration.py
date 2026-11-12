@@ -13,6 +13,17 @@ from scripts.tests.test_dump_ids_only_contract import case_step, case_steps, ENC
 
 CASE = 'inapp_414_amount_source'
 KEY = 'synthetic-encryption-key-123'
+# The only documented digest field in public output: `encrypted_bytes=N sha256=<64 hex>`
+# (production-case-dump.yml). A salted digest can contain a restricted id by chance.
+DIGEST_FIELD = re.compile(r'sha256=([0-9a-f]{64})(?![0-9a-zA-Z])')
+
+
+def assert_id_absent_outside_digests(test, restricted_id, public):
+    """Fail if restricted_id appears anywhere except inside a strict `sha256=<64 lowercase hex>` value."""
+    for m in re.finditer(r'sha256=(\S*)', public):
+        test.assertRegex(m.group(1), r'^[0-9a-f]{64}$', 'sha256 field must be exactly 64 lowercase hex')
+    test.assertNotIn(restricted_id, DIGEST_FIELD.sub('sha256=<digest>', public))
+
 SENTINEL = 'synthetic_private_diagnostic_987654321'
 
 
@@ -100,7 +111,7 @@ class RestrictedCaseIntegration(unittest.TestCase):
             public = checked.stdout + checked.stderr + probe.stdout + probe.stderr + enc.stdout + enc.stderr + cleaned.stdout + cleaned.stderr
             self.assertNotIn(SENTINEL, public)
             if restricted_id:
-                self.assertNotIn(restricted_id, public)
+                assert_id_absent_outside_digests(self, restricted_id, public)
             return probe.returncode, enc.returncode, files, recovered, (runner / 'ssh-called').exists(), enc.stdout
 
     def test_restricted_probe_encryption_round_trip_and_cleanup(self):
@@ -158,6 +169,25 @@ class RestrictedCaseIntegration(unittest.TestCase):
         code, _, _, _, _, _ = self.exercise(bad_case=True)
         self.assertNotEqual(code, 0)
 
+
+
+class DigestAwareAbsenceHelper(unittest.TestCase):
+    D = 'a' * 60
+
+    def test_id_inside_digest_is_accepted(self):
+        assert_id_absent_outside_digests(self, '4064', 'encrypted_bytes=528 sha256=' + self.D + '4064\n')
+        assert_id_absent_outside_digests(self, '4064', 'sha256=4064' + 'b' * 60)
+
+    def test_id_outside_digest_is_rejected(self):
+        digest = 'sha256=' + 'c' * 64
+        for out in ('encrypted_bytes=4064 ' + digest, digest + ' case 4064', 'note 4064 ' + digest):
+            with self.assertRaises(AssertionError):
+                assert_id_absent_outside_digests(self, '4064', out)
+
+    def test_malformed_digest_field_cannot_hide_the_id(self):
+        for out in ('sha256=4064', 'sha256=' + 'A' * 60 + '4064', 'sha256=' + 'a' * 65 + '4064'):
+            with self.assertRaises(AssertionError):
+                assert_id_absent_outside_digests(self, '4064', out)
 
 
 class XinzhuangFeeTransport(unittest.TestCase):
