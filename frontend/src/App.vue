@@ -4819,7 +4819,12 @@ function formatBuildTime(rawIso) {
   }
 
   .main-topbar {
+    flex-wrap: wrap;
     margin-bottom: 6px;
+  }
+
+  .account-menu {
+    margin-left: auto;
   }
 
   .build-stamp-bar {
