@@ -271,7 +271,9 @@ final class CourseContractChainRebalanceStrategy
             }
         }
 
-        $sound = $findings === []; // contracts and mirrors agree: the derived counters below mean something
+        // Contracts and mirrors agree: the derived counters below mean something. Read through codes(): `$add` fills
+        // $findings by reference, which static analysis does not follow.
+        $sound = $this->codes($findings) === [];
 
         // ── Undo only: the list must be the executed moves reversed, and every moved lesson must be as the execute left it. ──
         $restoreRows = [];
