@@ -597,7 +597,13 @@ jobs:
         with:
           ref: ${{ needs.detect-deployable.outputs.runtime_base_sha }}
           path: trusted-policy
-          sparse-checkout: scripts/governance
+          sparse-checkout: |
+            .github/actions
+            .github/scripts
+            .github/workflows
+            frontend/e2e
+            frontend/scripts
+            scripts
 
       - name: Classify activation policy
         id: classify
@@ -1563,7 +1569,13 @@ jobs:
         with:
           ref: ${{ needs.detect-deployable.outputs.runtime_base_sha }}
           path: trusted-policy
-          sparse-checkout: scripts/governance
+          sparse-checkout: |
+            .github/actions
+            .github/scripts
+            .github/workflows
+            frontend/e2e
+            frontend/scripts
+            scripts
 
       - name: Verify production-auto environment and Founder GO evidence
         env:
@@ -1638,14 +1650,26 @@ jobs:
         with:
           ref: ${{ needs.resolve-target.outputs.target_sha }}
           path: gate-target
-          sparse-checkout: scripts/governance
+          sparse-checkout: |
+            .github/actions
+            .github/scripts
+            .github/workflows
+            frontend/e2e
+            frontend/scripts
+            scripts
       - name: Checkout deployed gate policy for Founder GO recheck
         if: ${{ needs.production-auto.result == 'success' || needs.classify-activation.outputs.mode == 'auto' }}
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ needs.detect-deployable.outputs.runtime_base_sha }}
           path: gate-trusted
-          sparse-checkout: scripts/governance
+          sparse-checkout: |
+            .github/actions
+            .github/scripts
+            .github/workflows
+            frontend/e2e
+            frontend/scripts
+            scripts
       - name: Recheck Founder GO evidence before production side effects
         if: ${{ needs.production-auto.result == 'success' && needs.classify-activation.outputs.mode != 'auto-r3' }}
         env:
