@@ -1240,6 +1240,11 @@ final class CourseContractChainRebalanceStrategyTest extends TestCase
     public function test_a_restore_request_needs_its_own_approval_and_undoes_exactly_the_executed_moves(): void
     {
         $x = $this->decided();
+        // Another student of the campus with a contract of the same subject (used below to show the source is bound to the
+        // student). Made before the baseline: `ownership()` covers every row of StudentClass, so a contract added after it
+        // would move the fingerprint although the restore is exact (#5236 CI). The baseline still covers every column.
+        $otherStudent = $this->student();
+        $this->contract($otherStudent);
         $ownership = $this->ownership();
         $service = $this->service();
         $run = $this->viaPop($service, $x['params']);
@@ -1250,8 +1255,6 @@ final class CourseContractChainRebalanceStrategyTest extends TestCase
 
         // The source must be an executed rebalance request of this operation, same campus, student and subject.
         $this->assertSame(['restore_source_not_found'], $this->strategy()->plan(['restore_request_id' => (string) Str::uuid()] + $restore)['errors']);
-        $otherStudent = $this->student();
-        $this->contract($otherStudent);
         $this->assertSame(['restore_source_not_found'], $this->strategy()->plan(['student_id' => $otherStudent] + $restore)['errors']);
         // The list must be the executed moves reversed: nothing else can ride on a restore.
         $this->assertContains('restore_moves_mismatch', $this->strategy()->plan(['moves' => array_reverse($inverse)] + $restore)['errors']);
@@ -1276,6 +1279,62 @@ final class CourseContractChainRebalanceStrategyTest extends TestCase
         $this->assertSame(['owner_changed', 'owner_changed'], array_column($again['restore_rows'], 'state'));
         // A restore run is not itself a restore source.
         $this->assertSame(['restore_source_not_found'], $this->strategy()->plan(['restore_request_id' => $back['id']] + $restore)['errors']);
+    }
+
+    /**
+     * Every row of these contracts and of their lessons, sign-ins, learning records and ledger rows, as arrays, so a failed
+     * comparison names the table, row and column instead of two checksums. ClassSession.updated_at is left out (as in
+     * `ownership()`): the reassigner stamps it on each move, so it says when a lesson last moved, not who owns it.
+     *
+     * @param list<int> $contracts
+     * @return array<string,list<array<string,mixed>>>
+     */
+    private function rowsOf(array $contracts): array
+    {
+        $rows = fn (\Illuminate\Database\Query\Builder $query, string $key): array => $query->orderBy($key)->get()->map(fn (\stdClass $r): array => (array) $r)->all();
+
+        return [
+            'StudentClass' => $rows(DB::table('StudentClass')->whereIn('ID', $contracts), 'ID'),
+            'ClassSession' => array_map(fn (array $r): array => array_diff_key($r, ['updated_at' => 1]),
+                $rows(DB::table('ClassSession')->whereIn('StudentClassID', $contracts), 'id')),
+            'StudentSingIn' => $rows(DB::table('StudentSingIn')->whereIn('StudentClassID', $contracts), 'id'),
+            'LearningRecord' => $rows(DB::table('LearningRecord')->whereIn('StudentClassID', $contracts), 'id'),
+            'session_deduction_ledger' => $rows(DB::table('session_deduction_ledger')->whereIn('student_class_id', $contracts), 'id'),
+        ];
+    }
+
+    public function test_a_restore_request_returns_the_chain_field_by_field_and_touches_nothing_outside_it(): void
+    {
+        // #5236 CI: the restore test took a whole-table fingerprint, then added another student's contract, so the fingerprint
+        // moved although the restore was exact. Here a row outside the chain is added between the execute and the restore on
+        // purpose: the chain must come back column by column (counters, sign-in, learning record, ledger) and the outside
+        // rows must stay as they are.
+        $x = $this->decided();
+        $this->mirrors($x['sessions'][2][8], $x['contracts'][2], $x['student']); // a sign-in and a learning record ride on a moved lesson
+        $before = $this->rowsOf($x['contracts']);
+        $counters = fn (): array => DB::table('StudentClass')->whereIn('ID', $x['contracts'])->orderBy('ID')->get(array_merge(['ID'], self::COUNTERS))
+            ->map(fn (\stdClass $c): array => (array) $c)->all();
+        $storedCounters = $counters();
+        $whole = $this->ownership();
+        $service = $this->service();
+        $run = $this->viaPop($service, $x['params']);
+        $this->assertSame(['succeeded', 'succeeded'], [$run['execute']['result'], $run['verify']['result']]);
+        $this->assertNotSame($before, $this->rowsOf($x['contracts']));
+
+        $other = $this->contract($this->student());
+        $this->taught($other);
+        $outside = $this->rowsOf([(int) $other->ID]);
+        $this->assertSame([1, 1], [count($outside['ClassSession']), count($outside['session_deduction_ledger'])]);
+        $inverse = $run['execute']['restore_moves'];
+        $back = $this->viaPop($service, ['restore_request_id' => $run['id'], 'moves' => $inverse] + $this->params($x['student'], $x['contracts'], $inverse));
+
+        $this->assertSame(['succeeded', 'succeeded', 'restore', 2], [$back['execute']['result'], $back['verify']['result'], $back['execute']['mode'], $back['execute']['moved']]);
+        $this->assertSame($before, $this->rowsOf($x['contracts']), 'every contract, lesson, sign-in, learning record and ledger row of the chain is as before the execute');
+        $this->assertSame($storedCounters, $counters(), 'the recomputed counters equal the stored pre-execute counters');
+        $this->assertSame([8, 8, 9, 8, 1], $this->taughtNow($x['contracts']));
+        $this->assertSame($outside, $this->rowsOf([(int) $other->ID]), 'the restore wrote nothing outside the chain');
+        // A whole-table fingerprint also counts the row added outside the chain: it differs although the restore is exact.
+        $this->assertNotSame($whole, $this->ownership());
     }
 
     public function test_pop_rollback_of_an_executed_request_restores_and_then_blocks_verify(): void
