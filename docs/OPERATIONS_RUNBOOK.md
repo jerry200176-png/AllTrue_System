@@ -1396,18 +1396,19 @@ GitHub #5124／#5162。目錄狀態 `active`。乾跑只讀資料；執行需要
 | 清單格式 | `campus_id_invalid`、`student_id_invalid`、`subject_id_invalid`、`contract_ids_invalid`、`moves_invalid`、`flag_invalid`、`future_reservation_policy_invalid`、`digest_format`、`reason_invalid`、`decision_reference_invalid`、`restore_request_id_format` |
 | 範圍（分校／學生／科目／整條鏈） | `student_campus_mismatch`（在讀任何合約或堂次前就拒絕；`super_admin` 也不例外）、`contract_not_owned_by_student`（不存在或屬於別的學生，同一個代碼）、`contract_subject_mismatch`、`contract_chain_incomplete`、`package_contract_unsupported`、`non_count_contract_unsupported`、`session_not_found_in_campus`（不存在或在別的分校，同一個代碼）、`session_student_mismatch`、`session_subject_mismatch`、`session_not_in_chain`、`chain_too_large` |
 | 清單與現況不符 | `move_from_mismatch`（`from` 不是這堂目前的合約，含前面幾筆搬動後）、`session_drift`（日期、時間或狀態變了）、`session_moved_twice`、`move_noop`、`move_contract_not_in_chain`、`session_status_unsupported`、`digest_mismatch` |
-| 搬完後的結果 | `taught_exceeds_purchased`、`taught_total_not_conserved`、`future_reservations_exceed_remaining`（`report` 時只列出不擋） |
+| 搬完後的結果 | `taught_exceeds_purchased`、`taught_total_not_conserved`、`future_reservations_exceed_remaining`（`report` 時只列出不擋）、`report_policy_requires_no_active_contract`（鏈上有仍在上課的合約，或 `allow_active_contracts: true`，卻用了 `report`；這時只能用 `block`，`report` 只給整條鏈都已結束的情況） |
+| 堂數計數 | `counters_not_derived`（合約上存的已用／剩餘堂數不是重算值，逐份列出合約 ID；被搬動兩端的合約另外檢查分鐘欄位）。執行與還原都會重算被搬動合約的計數，執行前存的值必須就是重算值，還原後的計數才會和執行前一模一樣。**目前沒有通用的計數重算作業**：遇到這個代碼就停下，在 #5162 回報合約 ID，另案處理，不要手動改計數 |
 | 金額與結算 | `contract_terminal_money_closure`、`contract_settlement_locked`、`session_charge_override_present`、`actual_duration_contract_unsupported`、`partial_minutes_unsupported`、`session_duration_differs`、`contract_session_count_invalid` |
 | 改派服務會拒絕的 | `target_slot_taken`、`assessment_locked` |
 | 鏡像資料不一致 | `unbound_usage`（合約上有不屬於任何堂次的簽到、學習紀錄或扣堂帳；搬堂次帶不走，預估堂數會錯）、`mirror_inconsistent`（簽到、學習紀錄、扣堂帳的合約與堂次不同；或合約的扣堂帳、觀察到的使用與已上堂數對不起來；或要搬的堂扣堂淨額不是剛好一筆） |
 | 需 Founder 決定 | `decision_required_active_contract`、`decision_required_order_only` |
-| 還原請求 | `restore_source_not_found`（查無這筆請求、不是本作業、分校／學生／科目不同、沒有成功執行過、或它本身就是還原請求，同一個代碼）、`restore_moves_mismatch`（`moves` 不是原執行清單的反向）、`restore_row_changed`（搬過的堂在執行後變了；`restore_rows` 逐堂列出狀態） |
+| 還原請求 | `restore_source_not_found`（查無這筆請求、不是本作業、分校／學生／科目不同、沒有成功執行過、或它本身就是還原請求，同一個代碼）、`restore_moves_mismatch`（`moves` 不是原執行清單的反向）、`restore_row_changed`（搬過的堂在執行後變了；`restore_rows` 逐堂列出狀態）、`restore_already_applied`（那筆請求已經還原過；依執行紀錄判斷，不看堂次現在在哪裡，回傳是哪一筆請求還原的） |
 
 輸出只有 ID、日期、狀態與數量：每份合約搬動前後的已上與預約堂數、過期仍為 `scheduled` 的堂次（只列出；取消走既有的過期堂次作業）、只調順序的搬動編號、受影響的老師月份數、`digest`，以及「最舊合約先用完」的對照（`advisor`，只供比較，從不執行）。`digest` 綁定整份清單、當天日期與讀到的合約、堂次、鏡像狀態；任何一項變了，帶著舊 `expected_digest` 的乾跑回 `digest_mismatch`。
 
 權限：草稿與乾跑走既有 POP 控制面（主任限自己分校、`super_admin`；老師不行）。核准只有 `super_admin`，而且不能是送件人。
 
-Founder 已決定（#5124，2026-11-12）：多出來的那一堂可以順延進仍在上課的合約（`allow_active_contracts: true`）；不做只調順序、不改堂數的搬動（`allow_order_only_moves` 維持 `false`，清單裡不要放這種搬動）；結束合約上過期仍為 `scheduled` 的堂，另外走既有的過期堂次取消作業（`PastScheduledSessionsCancelStrategy`，要另建那一案的確切清單並經 Founder 核准）處理，本作業只列出。順延後最新合約若「已上＋預約」超過購買堂數，由主任先在系統裡釋出一堂預約，再乾跑；`future_reservation_policy: block` 會擋到釋出為止。本作業不會替任何人取消預約。
+Founder 已決定（#5124，2026-11-12）：多出來的那一堂可以順延進仍在上課的合約（`allow_active_contracts: true`）；不做只調順序、不改堂數的搬動（`allow_order_only_moves` 維持 `false`，清單裡不要放這種搬動）；結束合約上過期仍為 `scheduled` 的堂，另外走既有的過期堂次取消作業（`PastScheduledSessionsCancelStrategy`，要另建那一案的確切清單並經 Founder 核准）處理，本作業只列出。順延後最新合約若「已上＋預約」超過購買堂數，由主任先在系統裡釋出一堂預約，再乾跑；`future_reservation_policy: block` 會擋到釋出為止；順延進仍在上課的合約時 `report` 一律拒絕（`report_policy_requires_no_active_contract`），所以執行後不會有在上課的合約「已上＋預約」超過購買堂數。本作業不會替任何人取消預約。
 
 **執行步驟（每一步都要留下請求 ID）**
 
@@ -1415,8 +1416,8 @@ Founder 已決定（#5124，2026-11-12）：多出來的那一堂可以順延進
 2. 建草稿（`expected_digest` 留空）→ 乾跑。`ok=false` 就照代碼修清單，不要改資料去遷就清單。
 3. 乾跑通過後，把回傳的 `digest` 填進 `expected_digest` 建第二份草稿 → 再乾跑，`state` 必須是 `pinned`。把這份乾跑結果（每份合約前後的已上與預約堂數、搬動清單、`advisor` 對照、`digest`）交給 Founder。
 4. Founder 在 POP 核准那一筆請求。沒有核准、核准過期、或部署版本換了，都不會執行。
-5. Pi 本機 POP 執行。執行時會先鎖住該生、整條鏈的合約與堂次（固定順序），在鎖內重新乾跑一次；與核准時的 `digest` 有任何不同就拒絕（`digest_drift`，後面接著原因代碼），不會寫入。所有搬動在同一個交易內完成，任何一筆失敗全部退回。
-6. 立刻驗證（POP verify）。驗證只讀：每一堂都在目標合約、日期時間狀態沒變、簽到／學習紀錄／扣堂帳都跟著走、每筆搬動都有改派紀錄、每份合約已上堂數不超過購買堂數且與乾跑承諾的 `after` 相同、總已上堂數不變、被搬動兩端合約的堂數計數正確、金額指紋與執行前相同。任一項不成立回 `verification_failed` 並列出代碼。驗證要在執行後馬上做：之後有新點名，堂數自然會和當時的承諾不同。
+5. Pi 本機 POP 執行。執行時會先鎖住該生、整條鏈的合約與堂次（固定順序），在鎖內重新乾跑一次；與核准時的 `digest` 有任何不同就拒絕（`digest_drift`，後面接著原因代碼），不會寫入。所有搬動在同一個交易內完成，任何一筆失敗全部退回。執行中出任何錯（包含等鎖逾時），POP 會先把整個交易退回，再另外寫一筆失敗紀錄（`execution_failed`，不帶快照）：資料沒有任何變動，這筆請求不能當還原來源，修掉原因後送新的請求。
+6. 立刻驗證（POP verify）。驗證只讀：每一堂都在目標合約、日期時間狀態沒變、簽到／學習紀錄／扣堂帳都跟著走、每筆搬動都有改派紀錄、每份合約已上堂數不超過購買堂數且與乾跑承諾的 `after` 相同、總已上堂數不變、被搬動兩端合約的堂數計數正確、金額指紋與執行前相同。任一項不成立回 `verification_failed` 並列出代碼。驗證要在執行後馬上做：之後有新點名，堂數自然會和當時的承諾不同。金額指紋只涵蓋這條鏈的合約與它們的帳單、帳單明細、收款、核帳回報（別的學生、別的科目不算）；執行後這條鏈上有正常收款或帳單異動，之後再手動重驗就會出現 `money_changed`，那代表金額資料已不是執行前那一份，不代表本作業寫了金額。
 7. 在 #5162 留收據：請求 ID、執行前後各合約堂數、`digest`。只寫 ID 與數字。
 
 執行拒絕代碼：`request_id_invalid`、`plan_not_pinned`（乾跑沒過或沒綁 `digest`）、`digest_drift`（現況與核准的乾跑不同；包含學生已不在該分校 `student_campus_mismatch`、Founder 決定旗標不成立、鏈上多了合約等）、`concurrent_change`（鎖定時發現別的交易剛改過這條鏈，重新乾跑再送）、`move_refused`（改派服務拒絕某一筆，回報第幾筆）、`postcondition_failed`（搬完後自我檢查不成立，含 `money_changed`）。以上任何一種都不會留下半套結果。同一筆請求重送只會拿回同一份結果（`already_applied`），不會再搬一次。
@@ -1425,14 +1426,13 @@ Founder 已決定（#5124，2026-11-12）：多出來的那一堂可以順延進
 
 執行紀錄的快照存在 POP 執行紀錄裡（和其他作業相同位置），內容只有 ID、日期、狀態與數量：每一堂搬動前的合約、目標合約、日期／時間／狀態、跟著它的簽到／學習紀錄／扣堂帳筆數，以及每份合約搬動前後的堂數與金額指紋。
 
-還原有兩條路，都是把快照裡的每一堂依相反順序搬回原合約，走同一個改派服務，要嘛全部還原、要嘛完全不動：
+還原只有一條路：新的還原請求。它把快照裡的每一堂依相反順序搬回原合約，走同一個改派服務，要嘛全部還原、要嘛完全不動。**POP rollback 對這個作業不能用**：正式環境唯一的入口是 Pi 本機的 `pop:execute`，它的 rollback 只開放給帳務修復類作業，這個作業會回 `skipped`、什麼都不做；不要為了它去放寬那個條件。
 
-- POP rollback（同一筆請求、同一個核准仍有效時）。
-- 新的還原請求：`restore_request_id` 填原請求 ID，`moves` 填原執行結果裡的 `restore_moves`（就是原清單反向），其餘欄位照填；一樣要草稿 → 乾跑 → 綁 `digest` → Founder 核准 → 執行 → 驗證。還原不需要兩個決定旗標，因為它只是回到原本的狀態。
+- 還原請求：`restore_request_id` 填原請求 ID，`moves` 填原執行結果裡的 `restore_moves`（就是原清單反向），其餘欄位照填；一樣要草稿 → 乾跑 → 綁 `digest` → Founder 核准 → 執行 → 驗證。還原不需要兩個決定旗標，因為它只是回到原本的狀態。
 
-搬過的堂在執行後只要有一堂變了（不在目標合約、日期／時間／狀態改了、簽到／學習紀錄／扣堂帳筆數變了），整筆還原拒絕，並逐堂回報 `restorable`／`owner_changed`／`lesson_changed`／`mirrors_changed`／`not_on_chain`，不會只還原一部分。這時要另擬新的搬動清單處理。還原過的請求不能再還原一次；要重做就送新的請求。
+搬過的堂在執行後只要有一堂變了（不在目標合約、日期／時間／狀態改了、簽到／學習紀錄／扣堂帳筆數變了），整筆還原拒絕，並逐堂回報 `restorable`／`owner_changed`／`lesson_changed`／`mirrors_changed`／`not_on_chain`，不會只還原一部分。這時要另擬新的搬動清單處理。還原過的請求不能再還原一次（`restore_already_applied`；即使之後又有別的請求把同一批堂搬到同樣位置也一樣），要還原後來那一次就引用後來那筆請求；要重做就送新的請求。還原請求執行失敗時同樣全部退回，原請求不會被記成已還原。
 
-還原範圍是那幾堂的合約歸屬（堂次、簽到、學習紀錄、扣堂帳四處）與兩端合約的堂數計數（由同一個服務重算，不是把舊數字寫回去）。其他欄位本作業沒寫過，也就不需要還原。程式回復（revert commit／前一部署 SHA）不是資料還原。
+還原範圍是那幾堂的合約歸屬（堂次、簽到、學習紀錄、扣堂帳四處）與兩端合約的堂數計數（由同一個服務重算，不是把舊數字寫回去；乾跑已要求執行前存的計數就是重算值，所以重算結果等於執行前的值）。其他欄位本作業沒寫過，也就不需要還原。程式回復（revert commit／前一部署 SHA）不是資料還原。
 
 
 #### 月結跨期單堂排課

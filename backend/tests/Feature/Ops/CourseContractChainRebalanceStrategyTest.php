@@ -70,11 +70,20 @@ final class CourseContractChainRebalanceStrategyTest extends TestCase
             'StartDate' => now()->subDays($this->day + 1)->toDateString(), 'TotalHours' => 0, 'ScheduleMode' => 'count', 'SessionCount' => $total, 'RemainingSessions' => 0,
             'UsedSessions' => 0, 'SessionDuration' => 120, 'ClassType' => 'one_on_one', 'Rate' => 500, 'rate_unit' => 'session', 'Charge' => 0, 'Pay' => 0,
             'Paid' => 0, 'Stop' => 0]);
+        $this->derive((int) $course->ID);
         if ($closed) {
             DB::table('StudentClass')->where('ID', $course->ID)->update(['Stop' => 1, 'closed_reason' => 'completed']);
         }
 
         return $course;
+    }
+
+    /** Stored counters as the app keeps them: recomputed from the lessons (the plan refuses a chain whose counters are not). */
+    private function derive(int ...$contractIds): void
+    {
+        foreach ($contractIds as $id) {
+            SessionDeductionService::recomputeCounters($id);
+        }
     }
 
     /** Links the contract to a course package (package contracts are outside this operation). */
@@ -159,6 +168,7 @@ final class CourseContractChainRebalanceStrategyTest extends TestCase
             $this->scheduled($courses[4], $i);
         }
         $ids = array_map(fn (StudentClass $c): int => (int) $c->ID, $courses);
+        $this->derive(...$ids);
         $moves = [
             $this->move($sessions[2][0], $ids[2], $ids[1]),
             $this->move($sessions[1][7], $ids[1], $ids[2]),
@@ -182,6 +192,7 @@ final class CourseContractChainRebalanceStrategyTest extends TestCase
         $aSessions = $this->taughtMany($a, 9);
         $b = $this->contract($student);
         $this->taught($b);
+        $this->derive((int) $a->ID, (int) $b->ID);
         $extra = $aSessions[8];
 
         return ['student' => $student, 'a' => $a, 'b' => $b, 'extra' => $extra,
@@ -282,9 +293,45 @@ final class CourseContractChainRebalanceStrategyTest extends TestCase
         $overflow = [['contract_id' => $x['contracts'][4], 'purchased' => 8, 'taught' => 2, 'reserved' => 7]];
         $this->assertSame($overflow, $plan['reservation_overflows']);
 
+        // #5236 review P2a: `report` would let the execute leave an active contract with more taught + reserved lessons than
+        // it bought. With an active contract on the chain (or the cascade decision given) the policy must be `block`.
         $plan = $this->strategy()->plan($this->params($x['student'], $x['contracts'], $x['moves'], $both + ['future_reservation_policy' => 'report']));
+        $this->assertSame(['report_policy_requires_no_active_contract'], $plan['errors']);
+        $this->assertSame([['code' => 'report_policy_requires_no_active_contract', 'contract_id' => $x['contracts'][3]],
+            ['code' => 'report_policy_requires_no_active_contract', 'contract_id' => $x['contracts'][4]]], $plan['findings']);
+        $this->assertSame($overflow, $plan['reservation_overflows']);
+        // Also without any overflow, and also with the active contracts untouched by the moves (only the swap, moves 1 and 2).
+        $x = $this->workedExample();
+        $this->assertSame(['report_policy_requires_no_active_contract'],
+            $this->strategy()->plan($this->params($x['student'], $x['contracts'], $x['moves'], $both + ['future_reservation_policy' => 'report']))['errors']);
+        $this->assertSame(['report_policy_requires_no_active_contract'], $this->strategy()->plan($this->params($x['student'], $x['contracts'],
+            [$x['moves'][0], $x['moves'][1]], ['allow_order_only_moves' => true, 'future_reservation_policy' => 'report']))['errors']);
+
+        // A chain with no active contract: `report` lists the overflow and passes, `block` refuses it.
+        $p = $this->endedPairWithReservations();
+        $overflow = [['contract_id' => (int) $p['b']->ID, 'purchased' => 8, 'taught' => 2, 'reserved' => 7]];
+        $this->assertSame(['future_reservations_exceed_remaining'], $this->strategy()->plan($p['params'])['errors']);
+        $plan = $this->strategy()->plan(['future_reservation_policy' => 'report'] + $p['params']);
         $this->assertTrue($plan['ok'], json_encode($plan['errors']));
         $this->assertSame($overflow, $plan['reservation_overflows']);
+        // The cascade decision and `report` never go together, even when no contract is active now.
+        $this->assertSame(['report_policy_requires_no_active_contract'],
+            $this->strategy()->plan(['future_reservation_policy' => 'report', 'allow_active_contracts' => true] + $p['params'])['errors']);
+    }
+
+    /**
+     * `pair()` with seven future lessons on the ended target contract: after the move it holds 2 taught + 7 reserved of 8.
+     *
+     * @return array{student: int, a: StudentClass, b: StudentClass, extra: int, params: array<string,mixed>}
+     */
+    private function endedPairWithReservations(): array
+    {
+        $p = $this->pair();
+        for ($i = 1; $i <= 7; $i++) {
+            $this->scheduled($p['b'], $i);
+        }
+
+        return $p;
     }
 
     public function test_a_past_scheduled_lesson_is_reported_as_stale_and_is_not_a_reservation(): void
@@ -416,6 +463,7 @@ final class CourseContractChainRebalanceStrategyTest extends TestCase
         $extra = $this->taughtMany($a, 9)[8];
         $b = $this->contract($student);
         $this->taughtMany($b, 8);
+        $this->derive((int) $a->ID, (int) $b->ID);
 
         $plan = $this->strategy()->plan($this->params($student, [(int) $a->ID, (int) $b->ID], [$this->move($extra, (int) $a->ID, (int) $b->ID)]));
         $this->assertRejected('taught_exceeds_purchased', $plan);
@@ -611,6 +659,7 @@ final class CourseContractChainRebalanceStrategyTest extends TestCase
 
         // State changes between the reviewed plan and the re-plan: another lesson is added to the target contract.
         $this->taught($p['b']);
+        $this->derive((int) $p['b']->ID);
         $pinned = $this->strategy()->plan(['expected_digest' => $first['digest']] + $p['params']);
         $this->assertSame([false, ['digest_mismatch'], 'digest_mismatch'], [$pinned['ok'], $pinned['errors'], $pinned['state']]);
         $this->assertNotSame($first['digest'], $pinned['digest']);
@@ -625,13 +674,13 @@ final class CourseContractChainRebalanceStrategyTest extends TestCase
 
     public function test_plan_only_reads(): void
     {
-        $x = $this->workedExample(7);
+        $x = $this->workedExample();
         $before = $this->checksums();
 
         DB::flushQueryLog();
         DB::enableQueryLog();
         $ok = $this->strategy()->plan($this->params($x['student'], $x['contracts'], $x['moves'],
-            ['allow_active_contracts' => true, 'allow_order_only_moves' => true, 'future_reservation_policy' => 'report']));
+            ['allow_active_contracts' => true, 'allow_order_only_moves' => true]));
         $rejected = $this->strategy()->plan($this->params($x['student'], $x['contracts'], $x['moves']));
         $queries = array_column(DB::getQueryLog(), 'query');
         DB::disableQueryLog();
@@ -999,12 +1048,31 @@ final class CourseContractChainRebalanceStrategyTest extends TestCase
         $this->assertSame(['plan_not_pinned'], $this->strategy()->execute($plan, $this->context())['errors']);
         $this->assertSame($before, $this->checksums());
 
-        // Policy `report`: the moves run, the overflow is recorded, and every reservation is still there, untouched.
-        $reservations = fn (): array => DB::table('ClassSession')->where('StudentClassID', $x['contracts'][4])->where('Status', 'scheduled')->orderBy('id')->get()->all();
+        // #5236 review P2a: with the cascade into an active contract, `report` is refused too, so the execute can never
+        // leave that contract with taught + reserved above what it bought.
+        $report = $this->strategy()->plan(['future_reservation_policy' => 'report'] + $x['params']);
+        $this->assertSame(['report_policy_requires_no_active_contract'], $report['errors']);
+        $this->assertSame(['plan_not_pinned'], $this->strategy()->execute($report, $this->context())['errors']);
+        $this->assertSame($before, $this->checksums());
+        // A plan pinned with `block` and switched to `report` afterwards is planned again under lock and refused.
+        $y = $this->decided();
+        $switched = $this->pinned($y['params']);
+        $switched['manifest']['future_reservation_policy'] = 'report';
+        $unchanged = $this->checksums();
+        $refused = $this->strategy()->execute($switched, $this->context());
+        $this->assertSame([false, 'digest_drift'], [$refused['ok'], $refused['errors'][0]]);
+        $this->assertContains('report_policy_requires_no_active_contract', $refused['errors']);
+        $this->assertSame($unchanged, $this->checksums());
+
+        // Policy `report` on a chain with no active contract: the move runs, the overflow is recorded, and every
+        // reservation is still there, untouched.
+        $p = $this->endedPairWithReservations();
+        $b = (int) $p['b']->ID;
+        $reservations = fn (): array => DB::table('ClassSession')->where('StudentClassID', $b)->where('Status', 'scheduled')->orderBy('id')->get()->all();
         $kept = json_encode($reservations());
-        $result = $this->strategy()->execute($this->pinned(['future_reservation_policy' => 'report'] + $x['params']), $this->context());
+        $result = $this->strategy()->execute($this->pinned(['future_reservation_policy' => 'report'] + $p['params']), $this->context());
         $this->assertTrue($result['ok'], json_encode($result['errors'] ?? null));
-        $this->assertSame([['contract_id' => $x['contracts'][4], 'purchased' => 8, 'taught' => 2, 'reserved' => 7]], $result['snapshot']['reservation_overflows']);
+        $this->assertSame([['contract_id' => $b, 'purchased' => 8, 'taught' => 2, 'reserved' => 7]], $result['snapshot']['reservation_overflows']);
         $this->assertSame([], $result['snapshot']['released_reservations']);
         $this->assertSame($kept, json_encode($reservations()));
     }
@@ -1366,13 +1434,122 @@ final class CourseContractChainRebalanceStrategyTest extends TestCase
         $this->assertSame($ownership, $this->ownership(), 'owners, mirrors and counters are exactly as before the execute');
         $this->assertSame(1, DB::table('security_audit_events')->where('event_type', self::AUDIT . '.restore')->count());
 
-        // Restored once: a second restore request of the same source has nothing left on the targets.
+        // Restored once: the receipt of that restore names its source, so a second restore request of the same source is refused.
         $again = $this->strategy()->plan($restore);
-        $this->assertFalse($again['ok']);
-        $this->assertContains('restore_row_changed', $again['errors']);
-        $this->assertSame(['owner_changed', 'owner_changed'], array_column($again['restore_rows'], 'state'));
+        $this->assertSame([false, ['restore_already_applied'], 'restore'], [$again['ok'], $again['errors'], $again['mode']]);
+        $this->assertSame([['code' => 'restore_already_applied', 'restored_by_request_id' => $back['id']]], $again['findings']);
         // A restore run is not itself a restore source.
         $this->assertSame(['restore_source_not_found'], $this->strategy()->plan(['restore_request_id' => $back['id']] + $restore)['errors']);
+    }
+
+    /**
+     * #5236 review P2b. "Already restored" used to be read from the rows: after request 1, its restore and a second request
+     * moving the same lessons again, the rows are as request 1 left them, and a restore citing request 1 passed.
+     */
+    public function test_a_source_that_was_restored_once_stays_refused_when_the_same_lessons_are_moved_again(): void
+    {
+        $x = $this->decided();
+        $initial = $this->rowsOf($x['contracts']);
+        $service = $this->service();
+        $first = $this->viaPop($service, $x['params']);
+        $inverse = $first['execute']['restore_moves'];
+        $restore = ['restore_request_id' => $first['id'], 'moves' => $inverse] + $this->params($x['student'], $x['contracts'], $inverse);
+        $back = $this->viaPop($service, $restore);
+        $this->assertSame(['succeeded', 'succeeded'], [$back['execute']['result'], $back['verify']['result']]);
+        $second = $this->viaPop($service, $x['params']);
+        $this->assertSame(['succeeded', 'succeeded'], [$second['execute']['result'], $second['verify']['result']]);
+        $this->assertSame([8, 8, 8, 8, 2], $this->taughtNow($x['contracts']));
+        $moved = $this->rowsOf($x['contracts']);
+
+        // Every lesson of request 1 is on its target again, yet request 1 was restored: refused by its record.
+        $again = $this->strategy()->plan($restore);
+        $this->assertSame([false, ['restore_already_applied'], 'restore'], [$again['ok'], $again['errors'], $again['mode']]);
+        $this->assertSame([['code' => 'restore_already_applied', 'restored_by_request_id' => $back['id']]], $again['findings']);
+        $draft = (string) $service->createDraft(self::OPERATION, ['expected_digest' => ''] + $restore, 'chain-exec-' . bin2hex(random_bytes(4)), 'user:1', 'super_admin', [], 1)['id'];
+        $this->assertSame(['restore_already_applied'], $service->runDryRun($draft, 'user:1', 1, 'super_admin', [])['plan']['errors']);
+        $this->assertSame($moved, $this->rowsOf($x['contracts']));
+
+        // The request that did move them is the one to cite.
+        $inverse = $second['execute']['restore_moves'];
+        $undo = $this->viaPop($service, ['restore_request_id' => $second['id'], 'moves' => $inverse] + $this->params($x['student'], $x['contracts'], $inverse));
+        $this->assertSame(['succeeded', 'succeeded'], [$undo['execute']['result'], $undo['verify']['result']]);
+        $this->assertSame($initial, $this->rowsOf($x['contracts']));
+    }
+
+    /**
+     * #5236 review P2c. Execute and restore recompute the counters of the contracts they touch, so the restore is exact only
+     * when the counters stored before the execute are the ones a recompute writes. The plan refuses anything else.
+     */
+    public function test_stored_counters_must_be_the_derived_ones_before_anything_executes(): void
+    {
+        $p = $this->pair();
+        [$a, $b] = [(int) $p['a']->ID, (int) $p['b']->ID];
+        $c = (int) $this->contract($p['student'])->ID; // on the chain, touched by no move
+        $params = ['contract_ids' => [$a, $b, $c]] + $p['params'];
+        $this->assertTrue($this->strategy()->plan($params)['ok']);
+        $counters = fn (int $id): array => (array) DB::table('StudentClass')->where('ID', $id)->first(self::COUNTERS);
+        $this->assertSame([8, 0, 1, 7, 0, 8], array_map('intval', array_merge(array_slice(array_values($counters($a)), 0, 2),
+            array_slice(array_values($counters($b)), 0, 2), array_slice(array_values($counters($c)), 0, 2))));
+
+        // Session counters on every contract of the chain; minute columns on the contracts a move touches.
+        foreach ([[$a, ['UsedSessions' => 7]], [$b, ['RemainingSessions' => 0]], [$c, ['UsedSessions' => 3]], [$b, ['PurchasedMinutes' => null]],
+            [$a, ['RemainingMinutes' => 5]]] as [$id, $change]) {
+            $kept = $counters($id);
+            DB::table('StudentClass')->where('ID', $id)->update($change);
+            $plan = $this->strategy()->plan($params);
+            $this->assertSame(['counters_not_derived'], $plan['errors'], json_encode($change));
+            $this->assertSame([['code' => 'counters_not_derived', 'contract_id' => $id]], $plan['findings'], json_encode($change));
+            DB::table('StudentClass')->where('ID', $id)->update($kept);
+            $this->assertTrue($this->strategy()->plan($params)['ok'], json_encode($change));
+        }
+        // The minute columns of a contract no move touches are not written by execute or restore, so they are not asked for.
+        $kept = $counters($c);
+        DB::table('StudentClass')->where('ID', $c)->update(['PurchasedMinutes' => null]);
+        $this->assertTrue($this->strategy()->plan($params)['ok']);
+        DB::table('StudentClass')->where('ID', $c)->update($kept);
+
+        // A counter that drifts after the dry-run is caught again under the execute's locks; nothing moves.
+        $pinned = $this->pinned($params);
+        DB::table('StudentClass')->where('ID', $a)->update(['UsedSessions' => 7]);
+        $before = $this->checksums();
+        $this->assertSame(['digest_drift', 'counters_not_derived'], $this->strategy()->execute($pinned, $this->context())['errors']);
+        $this->assertSame($before, $this->checksums());
+        DB::table('StudentClass')->where('ID', $a)->update(['UsedSessions' => 8]);
+
+        // Undo is never held back by it: an executed request is still rolled back when a counter drifted afterwards.
+        $context = $this->context();
+        $result = $this->strategy()->execute($pinned, $context);
+        $this->assertTrue($result['ok'], json_encode($result['errors'] ?? null));
+        DB::table('StudentClass')->where('ID', $c)->update(['UsedSessions' => 3]);
+        $this->assertSame([true, 1], array_values(array_intersect_key($this->strategy()->rollback($result['snapshot'], $context), ['ok' => 1, 'restored' => 1])));
+    }
+
+    /**
+     * #5236 review P2e. The money fingerprint covers the chain's own contracts, invoices, items, payments and payment reports
+     * only. A payment taken on the chain after the execute does change it: a later verification then answers
+     * `money_changed`, which says the chain's money rows are not the fingerprinted ones, not that the moves wrote money.
+     */
+    public function test_verify_compares_only_the_money_of_the_chain(): void
+    {
+        $x = $this->decided();
+        $this->invoice($x['contracts'][3], $x['student']);
+        $result = $this->strategy()->execute($this->pinned($x['params']), $this->context());
+        $this->assertTrue($result['ok'], json_encode($result['errors'] ?? null));
+        $plan = $this->strategy()->plan($x['params']);
+
+        // Money of another student, and of this student's contract of another subject, is outside the fingerprint.
+        $other = $this->student();
+        $elsewhere = (int) $this->contract($other)->ID;
+        $this->invoice($elsewhere, $other);
+        $otherSubject = (int) $this->contract($x['student'], 8, true, 77)->ID;
+        $this->invoice($otherSubject, $x['student']);
+        DB::table('StudentClass')->whereIn('ID', [$elsewhere, $otherSubject])->update(['Charge' => 1]);
+        $this->assertSame([true, []], array_values(array_intersect_key($this->strategy()->verify($plan, $result), ['ok' => 1, 'errors' => 1])));
+
+        // A payment on an invoice of the chain after the execute.
+        $invoice = (int) DB::table('Invoice')->where('StudentClassID', $x['contracts'][3])->value('id');
+        DB::table('Payment')->insert(['InvoiceID' => $invoice, 'Amount' => 100, 'Method' => 'cash', 'PaidAt' => now(), 'created_at' => now(), 'updated_at' => now()]);
+        $this->assertSame([false, ['money_changed']], array_values(array_intersect_key($this->strategy()->verify($plan, $result), ['ok' => 1, 'errors' => 1])));
     }
 
     /**
@@ -1444,6 +1621,10 @@ final class CourseContractChainRebalanceStrategyTest extends TestCase
         $this->assertSame(['rolled_back', 2], [$rollback['result'], $rollback['restored']]);
         $this->assertSame($ownership, $this->ownership());
         $this->assertSame('rolled_back', DB::table('pop_operation_requests')->where('id', $run['id'])->value('status'));
+        // The rollback receipt marks the request as undone: a restore request citing it is refused by record.
+        $inverse = $run['execute']['restore_moves'];
+        $cited = $this->strategy()->plan(['restore_request_id' => $run['id'], 'moves' => $inverse] + $this->params($x['student'], $x['contracts'], $inverse));
+        $this->assertSame([['restore_already_applied'], $run['id']], [$cited['errors'], $cited['findings'][0]['restored_by_request_id']]);
 
         $this->expectException(RuntimeException::class);
         $this->expectExceptionMessage('POP verification is blocked after rollback begins.');
