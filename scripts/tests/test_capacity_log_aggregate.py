@@ -6,6 +6,7 @@ from __future__ import annotations
 import gzip
 import io
 import json
+import os
 import tempfile
 import time
 import unittest
@@ -148,8 +149,13 @@ class CapacityLogAggregateTest(unittest.TestCase):
                 '127.0.0.1 - - [20/Sep/2026:00:00:00 +0000] '
                 '"GET /api/v1/students/9 HTTP/1.1" 200 10 "-" "-"\n'
             ).encode()
-            (root / "alltrue_access.log.gz").write_bytes(gzip.compress(access))
+            source = root / "alltrue_access.log.gz"
+            source.write_bytes(gzip.compress(access))
+            # An undated file is selected by mtime; pin it inside the window so the test does not depend on today's date.
+            inside = self.window.start.timestamp() + 3600
+            os.utime(source, (inside, inside))
             selected, _ = enumerate_sources(root, "alltrue_access", self.window)
+            self.assertEqual([path.name for path in selected], ["alltrue_access.log.gz"])
             result = parse_access(selected, self.window, self.budget())
             self.assertEqual(result["request_count"], 1)
             self.assertEqual(result["observed_record_days"], ["2026-09-14"])

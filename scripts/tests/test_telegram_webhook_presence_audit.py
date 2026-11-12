@@ -19,7 +19,9 @@ class TelegramWebhookPresenceAuditTest(unittest.TestCase):
         self.assertIn('PI_USER: ${{ secrets.PI_USER }}', self.workflow)
         self.assertIn('PI_HOST: ${{ secrets.PI_HOST }}', self.workflow)
         self.assertIn("StrictHostKeyChecking=yes", self.workflow)
-        self.assertIn("actions/upload-artifact@v4", self.workflow)
+        # #3474 pinned actions to commit SHAs: still v4, now by SHA, and no floating tag anywhere.
+        self.assertRegex(self.workflow, r"uses: actions/upload-artifact@[0-9a-f]{40} # v4\.")
+        self.assertNotRegex(self.workflow, r"uses: [^\n#]+@v\d")
         self.assertEqual(self.workflow.count("REMOTE"), 2)
 
     def test_reports_only_presence_metadata_for_campus_15(self):

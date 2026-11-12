@@ -14,7 +14,10 @@ HARNESS = r'''<?php
 namespace Illuminate\Database\Eloquent {
 class Collection implements \Countable {
     public function __construct(public array $rows = []) {}
-    public function filter(callable $f): self { return new self(array_values(array_filter($this->rows, $f))); }
+    public function filter(?callable $f = null): self { return new self(array_values(array_filter($this->rows, $f))); }
+    // #4867: the resolver counts the distinct courses on a bill with pluck()->filter()->unique()->count().
+    public function pluck(string $k): self { return new self(array_map(fn ($r) => $r->getAttribute($k), $this->rows)); }
+    public function unique(): self { return new self(array_values(array_unique($this->rows))); }
     public function sum(callable $f): int { return array_sum(array_map($f, $this->rows)); }
     public function contains(callable $f): bool { foreach ($this->rows as $r) if ($f($r)) return true; return false; }
     public function isNotEmpty(): bool { return count($this->rows) > 0; }
@@ -36,7 +39,11 @@ class SyntheticModel {
 }
 class StudentClass extends SyntheticModel {}
 class StudentClassPricingAmendment extends SyntheticModel {}
-class Invoice extends SyntheticModel {}
+class Invoice extends SyntheticModel {
+    // #4650: same rule as App\Models\Invoice::isFullDiscount(); the probe hydrates no zero_amount_reason.
+    public function isFullDiscount(): bool { return (string) $this->getAttribute('zero_amount_reason') === 'full_discount'; }
+    public function freeGiftHolds($course): bool { throw new \RuntimeException('unexpected freeGiftHolds'); }
+}
 class Payment extends SyntheticModel {}
 class InvoiceItem extends SyntheticModel {}
 }

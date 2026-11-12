@@ -112,6 +112,10 @@ def case_steps():
     return yaml.safe_load((WF / CASE_WF).read_text(encoding="utf-8"))["jobs"]["dump"]["steps"]
 
 
+def names_of(steps):
+    return [s.get("name", "") for s in steps]
+
+
 def case_step(prefix):
     return next(s for s in case_steps() if s.get("name", "").startswith(prefix))
 
@@ -232,7 +236,26 @@ class ProductionCaseDumpEncryptedOutputTest(unittest.TestCase):
         uploads = [s for s in steps if "upload-artifact" in s.get("uses", "")]
         self.assertEqual(len(uploads), 1)
         paths = [p.strip() for p in uploads[0]["with"]["path"].splitlines() if p.strip()]
-        self.assertEqual(paths, ["out/production-case.full.tar.gz.enc", "out/production-case.full.tar.gz.enc.sha256"])
+        # #5159 added the fixed private reader sidecar: a CMS envelope and a digest-only summary. Still nothing but
+        # ciphertext and hashes; the exact list stays pinned so any further path fails here.
+        self.assertEqual(paths, ["out/production-case.full.tar.gz.enc", "out/production-case.full.tar.gz.enc.sha256",
+                                 "out/case5124.cms.der", "out/case5124.public.json"])
+        reader = (WF.parents[1] / "scripts/case5124-private-reader.py").read_text(encoding="utf-8")
+        self.assertIn("SIDECAR = 'case5124.cms.der'", reader)
+        self.assertIn("SUMMARY = 'case5124.public.json'", reader)
+        seal = reader.split("\ndef seal(", 1)[1].split("\ndef ", 1)[0]
+        # The sidecar is written only from the CMS-encrypted blob, the summary only from fixed digest fields.
+        self.assertIn("'cms', '-encrypt', '-binary', '-aes-256-gcm'", seal)
+        self.assertEqual(re.findall(r"atomic\(out / (\w+), (.*)", seal), [
+            ("SIDECAR", "blob)"),
+            ("SUMMARY", "encoded({'status': 'sealed', 'recipient_sha256': p['recipient_sha256'],"),
+        ])
+        self.assertIn("'ciphertext_sha256': digest(blob)}))", seal)
+        self.assertIn("blob = file_bytes(cipher, private=True)", seal)
+        sealing = [s for s in steps if "case5124-private-reader.py seal" in s.get("run", "")]
+        self.assertEqual(len(sealing), 1)
+        self.assertEqual(sealing[0]["if"], "success() && inputs.reader_profile == 'case5124'")
+        self.assertLess(names_of(steps).index(sealing[0]["name"]), names_of(steps).index(uploads[0]["name"]))
         names = [s.get("name", "") for s in steps]
         self.assertLess(names.index(ENCRYPT_STEP), names.index(uploads[0]["name"]))
 

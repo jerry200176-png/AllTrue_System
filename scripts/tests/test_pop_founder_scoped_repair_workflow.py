@@ -1,3 +1,5 @@
+import re
+import unittest
 from pathlib import Path
 WORKFLOW = Path(__file__).parents[2] / ".github" / "workflows" / "pop-founder-scoped-repair.yml"
 def test_founder_repair_workflow_is_exactly_scoped_and_protected():
@@ -45,5 +47,22 @@ def test_confirmation_and_sha_are_fail_closed():
     text = WORKFLOW.read_text()
     assert "DRY_RUN_STUDENT_30_MATH_20260902" in text
     assert "APPROVE_STUDENT_30_MATH_20260902" in text
-    assert "d21ed8de1a2a80034aee50d214ac68b7944f3251" in text
+    # #2409 rebound the workflow to this backend SHA; every place that names a backend SHA must name the same one
+    # (the look-behind skips action pins such as `checkout@<sha>`).
+    assert re.findall(r"(?<![0-9a-f@])[0-9a-f]{40}(?![0-9a-f])", text) == ["98aadbbb380712fa389bce9f5a5806cbf14fa0f8"] * 4
+    assert '[[ "$INPUT_SHA" == "$EXPECTED_SHA" ]] || {' in text
     assert "Founder gate passed" in text
+
+
+class PopFounderScopedRepairWorkflowTest(unittest.TestCase):
+    """The checks above were plain functions that no runner collected; unittest discovery runs them through here."""
+
+    def test_founder_repair_workflow_is_exactly_scoped_and_protected(self):
+        test_founder_repair_workflow_is_exactly_scoped_and_protected()
+
+    def test_confirmation_and_sha_are_fail_closed(self):
+        test_confirmation_and_sha_are_fail_closed()
+
+
+if __name__ == "__main__":
+    unittest.main()

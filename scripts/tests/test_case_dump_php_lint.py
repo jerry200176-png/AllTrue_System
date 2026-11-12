@@ -41,7 +41,8 @@ PROBE_PY = re.search(r"python3 - <<'PY' > /tmp/production_case_probe\.php\n(.*?)
 # Cases keyed by a StudentClass ID from the masked CASE_INPUT_STUDENT_CLASS_ID secret (no dispatch ID input accepted).
 SECRET_ID_CASES = {"inapp_414_amount_source"}
 # Cases that refuse any student or course target.
-NO_TARGET_CASES = {"migration_4283_preconditions", "review_4554_4753", "inapp_458_receipt_courses", "settled_pending_paid_scan", "inapp_460_payroll_1031", "inapp_461_464_billing", "inapp_460_payroll_teacher", "inapp_466_count_contract", "inapp_468_teacher_calendar"}
+NO_TARGET_CASES = {"migration_4283_preconditions", "review_4554_4753", "inapp_458_receipt_courses", "settled_pending_paid_scan", "inapp_460_payroll_1031", "inapp_461_464_billing", "inapp_460_payroll_teacher", "inapp_466_count_contract", "inapp_468_teacher_calendar",
+                   "inapp_514_coverage_impact", "inapp_521_swallowed_receipts"}  # added by #5059 and #5106
 
 
 def render_secret_case(case, student_id="", student_class_id="", secret_class_id="1"):
@@ -204,7 +205,13 @@ class InApp414AmountSourceCase(unittest.TestCase):
         self.assertIn("target_student_class_id = secret_class_id", case_py)
         # Never echoed: only the env mapping and the validation read it; no run-name, step summary or artifact name.
         self.assertEqual(re.findall(r"(?:echo|printf|print\(|tee|>>)[^\n]*(?:CASE_INPUT|secret_class_id)", src), [])
-        self.assertNotIn("run-name", WORKFLOW)
+        # #5159 added a run-name; it may show only the two choice inputs, never a secret, env value or free-text input.
+        run_name = WORKFLOW["run-name"]
+        self.assertEqual(set(re.findall(r"\b(?:inputs|secrets|env|vars|github|steps|needs)\.[\w.-]+", run_name)),
+                         {"inputs.reader_profile", "inputs.case_key"})
+        for name in ("reader_profile", "case_key"):
+            self.assertEqual(inputs[name]["type"], "choice")
+        self.assertNotRegex(run_name, r"(?i)CASE_INPUT|student|secret")
         self.assertNotIn("GITHUB_STEP_SUMMARY", src)
         upload = next(s for s in WORKFLOW["jobs"]["dump"]["steps"] if s.get("name", "").startswith("Upload"))
         self.assertNotIn("CASE_INPUT", json.dumps(upload))
@@ -318,6 +325,9 @@ class DB {
     public static function table($s) { return new class {
         public function whereIn($a, $b) { return $this; }
         public function select(...$a) { return $this; }
+        // #4270 gave the filter a locking read for atomic apply; a read-only probe must never take it.
+        public function when($value, callable $callback) { return $value ? ($callback($this) ?? $this) : $this; }
+        public function lockForUpdate() { throw new \RuntimeException('probe_requested_lock'); }
         public function get() { $GLOBALS['read_tx_flags'][]=$GLOBALS['tx_open']; return $GLOBALS['sessions']; }
     }; }
 }}

@@ -2,15 +2,33 @@
 import json
 import os
 from pathlib import Path
+import re
 import subprocess
 import tempfile
 import unittest
 
-from scripts.tests.test_dump_ids_only_contract import case_step, case_steps, ENCRYPT_STEP
+import yaml
+
+from scripts.tests.test_dump_ids_only_contract import case_step, case_steps, ENCRYPT_STEP, CASE_WF, WF
 
 CASE = 'inapp_414_amount_source'
 KEY = 'synthetic-encryption-key-123'
 SENTINEL = 'synthetic_private_diagnostic_987654321'
+
+
+def dispatch_env():
+    """What the probe step receives from dispatch inputs left at their defaults.
+
+    Read from the workflow so a new input (#5159 added the reader profile) cannot leave this harness
+    failing before the SSH stub for an unrelated reason.
+    """
+    inputs = yaml.safe_load((WF / CASE_WF).read_text(encoding='utf-8'))[True]['workflow_dispatch']['inputs']
+    env = {}
+    for name, value in case_step('Run bounded')['env'].items():
+        mapped = re.fullmatch(r'\$\{\{ inputs\.(\w+) \}\}', value)
+        if mapped:
+            env[name] = str(inputs[mapped.group(1)].get('default', ''))
+    return env
 
 
 class RestrictedCaseIntegration(unittest.TestCase):
@@ -48,7 +66,8 @@ class RestrictedCaseIntegration(unittest.TestCase):
                     'new_total': 2,
                 }
             (runner / 'fixture').write_text('{broken ' + SENTINEL if malformed else json.dumps(payload) + '\n')
-            env = {'PATH': str(bindir) + ':' + os.environ['PATH'], 'RUNNER_TEMP': str(runner),
+            env = {**dispatch_env(),
+                   'PATH': str(bindir) + ':' + os.environ['PATH'], 'RUNNER_TEMP': str(runner),
                    'CASE_KEY': case, 'DUMP_ARTIFACT_KEY': key, 'CASE_INPUT_STUDENT_CLASS_ID': restricted_id,
                    'TARGET_STUDENT_ID': '', 'TARGET_STUDENT_CLASS_ID': restricted_id if case == 'xinzhuang_fee_cases' else '', 'EXPECTED_TEACHER_IDS': teachers,
                    'TARGET_SUBJECT_NAME': subject, 'PI_SSH_USER': 'synthetic', 'PI_SSH_HOST': 'invalid.test',
@@ -89,6 +108,14 @@ class RestrictedCaseIntegration(unittest.TestCase):
         self.assertEqual((code, enc, called), (0, 0, True))
         self.assertEqual(files, ['production-case.full.tar.gz.enc', 'production-case.full.tar.gz.enc.sha256'])
         self.assertIn(SENTINEL, recovered)
+
+    def test_default_dispatch_is_the_legacy_reader_and_refusals_come_from_the_probe(self):
+        self.assertEqual(dispatch_env()['READER_PROFILE'], 'legacy')
+        self.assertEqual(dispatch_env()['EXPECTED_BACKEND_SHA'], '')
+        # Every variable the step reads under `set -u` is supplied, so a refusal below is the guard under test.
+        step = case_step('Run bounded')
+        self.assertLessEqual(set(step['env']), set(dispatch_env()) | {
+            'PI_SSH_USER', 'PI_SSH_HOST', 'CASE_KEY', 'CASE_INPUT_STUDENT_CLASS_ID'})
 
     def test_missing_or_short_encryption_key_never_reaches_ssh_or_upload(self):
         for key in ('', 'short'):
@@ -184,6 +211,7 @@ class XinzhuangFeeTransport(unittest.TestCase):
             }
             (runner / 'fixture').write_text(json.dumps(payload) + '\n')
             env = {
+                **dispatch_env(),
                 'PATH': str(bindir) + ':' + os.environ['PATH'],
                 'RUNNER_TEMP': str(runner),
                 'CASE_KEY': 'xinzhuang_fee_cases',
