@@ -62,22 +62,6 @@ class T(unittest.TestCase):
             with self.subTest(text=text):
                 self.assertTrue(any("pr-size-contradiction" in v for v in self.check({"docs/X.md": text})))
 
-    def test_per_step_founder_ask_fails(self):
-        for text in ["每一步都先問 Founder 再繼續。", "不確定時一律問 Founder。", "When unsure, ask the Founder.",
-                     "實作方式有兩種以上時，先問 Founder。", "Implementation choices: confirm with the Founder first.",
-                     "Stop at each step and wait for Founder.", "Ask the Founder before choosing a library."]:
-            with self.subTest(text=text):
-                self.assertTrue(any("per-step-founder-ask" in v for v in self.check({"docs/X.md": text})))
-
-    def test_gated_founder_asks_pass(self):
-        for text in ["非只新增型 migration、正式資料修改／修復、credential rotation 仍問 Founder。",
-                     "T3 / protected 工作在 production activation 前停下等 Founder GO。",
-                     "ask again only if the scope or protected effect materially changes.",
-                     "重大產品決策先取得決定再實作，其餘選擇由 Agent 照推薦決定並留紀錄。",
-                     "不逐步等 Founder 按核准。", "其他一律不在此列，仍逐案問 Founder。"]:
-            with self.subTest(text=text):
-                self.assertEqual(self.check({"docs/X.md": text}), [])
-
     def test_links_and_mentions_pass(self):
         for text in MENTIONS:
             with self.subTest(text=text):

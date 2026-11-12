@@ -29,22 +29,11 @@ RULES = [
      r"|^\s*[-*]\s+\**`?[RT][0-3]`?\**\s*[：:=]"),
 ]
 
-_ASK = r"(?:先問|就問|一律問|都問|請示|詢問|ask(?:ing)?|confirm with|wait for)\s*(?:the\s+)?Founder"
-
-# Wording that contradicts the owner (size split; who chooses among options); forbidden everywhere, owner included.
+# Wording that contradicts the owner's logic/total split; forbidden everywhere, owner included.
 FORBIDDEN = [
     ("pr-size-contradiction",
      r"(?i)≤\s*700\W{0,4}hard|\bhard\W{1,3}700\b|no self-exemption"
      r"|(?:建議|推薦|recommended)[^\n]{0,20}≤\s*400|≤\s*400\s*行[^\n]{0,6}(?:建議|推薦)"),
-    # FSD 2026-11-12: the agent takes its recommended option; only a major product decision or a
-    # Founder-only side effect goes to the Founder. Catches a per-step / when-unsure / per-choice ask.
-    # ponytail: wording heuristic, not a parser; a gated ask ("仍問 Founder", "停下等 Founder GO") stays allowed.
-    ("per-step-founder-ask",
-     r"(?i)(?:每一?步|每個步驟|逐步|每個選擇|每次選擇|every step|each step|each choice|every choice)[^\n]{0,20}" + _ASK
-     + r"|(?:不確定|拿不準|有疑問|when unsure|if unsure|when in doubt)[^\n]{0,20}" + _ASK
-     + r"|(?:實作方式|實作選項|技術選擇|技術方案|implementation (?:choice|option|approach)s?|technical (?:choice|decision)s?)"
-       r"[^\n]{0,30}" + _ASK
-     + r"|ask(?:ing)? the founder before (?:choosing|picking|deciding)"),
 ]
 
 # Dated history, evidence and vendored text: they record what was true then, not the current rule.

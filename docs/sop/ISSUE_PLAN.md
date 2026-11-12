@@ -28,14 +28,14 @@ issue 內文放標記 `<!-- plan:v1 -->`，並依序有下列七個標題。每�
 | 驗收條件 | 每條寫成可變成測試的一句話（輸入、動作、預期）；不可變更清單的每項都有對應條件 |
 | PR 拆分 | 每個 PR 的預估大小（在 presubmit 上限內）、風險等級（`pr_declaration.py` 判定）、審查角色與模型（車道表） |
 | 上線與復原 | 怎麼上線、怎麼驗證、怎麼退回；R3 或動 schema 的寫恢復範圍 |
-| 待 Founder 決定 | 只放重大產品決策（定義只看 [`FOUNDER_STANDING_DECISIONS.md`](../governance/FOUNDER_STANDING_DECISIONS.md#agent-decides-by-default) 2026-11-12（五）第 2 條）；一次問完，每題最多 2 個選項＋推薦。其他選擇由 Agent 決定，記在〈Agent 決定的事〉。沒有就寫「無」 |
+| 待 Founder 決定 | 只放重大產品決策（定義只看 [`FOUNDER_STANDING_DECISIONS.md`](../governance/FOUNDER_STANDING_DECISIONS.md#agent-decides-by-default) 2026-11-12（四）第 2 條）；一次問完，每題最多 2 個選項＋推薦。其他選擇由 Agent 決定，記在〈Agent 決定的事〉。沒有就寫「無」 |
 
 範本：[`.github/ISSUE_TEMPLATE/04_plan.md`](../../.github/ISSUE_TEMPLATE/04_plan.md)。
 
 <a id="agent-decisions"></a>
 ## Agent 決定的事（交接紀錄）
 
-誰決定什麼只看 [`FOUNDER_STANDING_DECISIONS.md`](../governance/FOUNDER_STANDING_DECISIONS.md#agent-decides-by-default) 2026-11-12（五）；這裡只定格式。Agent 自己選了選項時，在 PR 內文加一節〈Agent 決定的事〉（還沒有 PR 就寫 issue 留言），一個決定一行：
+誰決定什麼只看 [`FOUNDER_STANDING_DECISIONS.md`](../governance/FOUNDER_STANDING_DECISIONS.md#agent-decides-by-default) 2026-11-12（四）；這裡只定格式。Agent 自己選了選項時，在 PR 內文加一節〈Agent 決定的事〉（還沒有 PR 就寫 issue 留言），一個決定一行：
 
 `- <決定什麼>｜選項：A／B｜選：A｜理由：…｜改回來：…`
 
