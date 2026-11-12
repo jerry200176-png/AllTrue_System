@@ -276,14 +276,15 @@ class ClassifierSelfProtectionTest(unittest.TestCase):
         ([".github/scripts/review-gate.mjs"], 0, 3, "routine", 0),
         ([".github/actions/production-ssh-trust/action.yml"], 0, 3, "routine", 0),
         (["docs/CHANGELOG.md"], 0, 0, "routine", 0),
+        (["docs/changes/2026-11-12-x.md"], 0, 0, "routine", 0),
         (["README.md"], 0, 0, "routine", 0),
         (["CONTRIBUTING.md"], 0, 0, "routine", 0),
         (["frontend/README.md"], 0, 0, "routine", 1),
         ([".github/pull_request_template.md"], 0, 0, "routine", 0),
         ([".github/ISSUE_TEMPLATE/02_bug_report.yml"], 0, 0, "routine", 0),
         (["operations/closeout/2026-11-11-x.md"], 0, 0, "routine", 0),
-        ([".claude/skills/x/SKILL.md"], 0, 0, "routine", 0),
-        ([".agents/skills/x/SKILL.md"], 0, 0, "routine", 0),
+        ([".claude/skills/x/SKILL.md"], 0, 2, "routine", 0),
+        ([".agents/skills/x/SKILL.md"], 0, 2, "routine", 0),
         (["backend/tests/Feature/XTest.php"], 0, 0, "routine", 0),
         (["scripts/ci/x.test.mjs"], 0, 0, "routine", 0),
         (["scripts/tests/test_x.py"], 0, 0, "routine", 0),
@@ -294,7 +295,14 @@ class ClassifierSelfProtectionTest(unittest.TestCase):
         (["infra/daan-staging/lifecycle/x.sh"], 0, 1, "routine", 0),
         ([".claude/settings.json"], 0, 3, "routine", 0),
         ([".claude/hooks/guard_bash.py"], 0, 3, "routine", 0),
-        ([".claude/agents/qa-lead.md"], 0, 1, "routine", 0),
+        ([".claude/agents/qa-lead.md"], 0, 3, "routine", 0),
+        ([".claude/settings.local.json"], 0, 3, "routine", 0),
+        (["docs/PARENT_UPDATES.yml"], 0, 1, "routine", 0),
+        (["docs/parent-updates/parent-2026-11-12-x.yml"], 0, 1, "routine", 0),
+        (["docs/STAFF_UPDATES.yml"], 0, 1, "routine", 0),
+        (["docs/staff-updates/staff-2026-11-12-x.yml"], 0, 1, "routine", 0),
+        (["docs/x.md", ".claude/skills/x/SKILL.md"], 0, 2, "routine", 0),
+        (["docs/staff-updates/staff-2026-11-12-x.yml", "frontend/src/App.vue"], 1, 1, "routine", 1),
         ([".github/labels.yml"], 0, 1, "routine", 0),
         ([".github/pii-log-workflows.txt"], 0, 3, "routine", 0),
         (["docker-compose.yml"], 0, 1, "routine", 0),
@@ -420,7 +428,7 @@ class ClassifierSelfProtectionTest(unittest.TestCase):
         self.assertNotIn("unclassified path", out)
 
     def test_unknown_path_is_unclassified_not_documentation(self):
-        for path in ("Makefile", "package.json", "brand/new/dir/file.xyz", ".claude/agents/qa-lead.md", "notes/x.md"):
+        for path in ("Makefile", "package.json", "brand/new/dir/file.xyz", ".claude/mempal-stop-hook.sh", "notes/x.md"):
             with self.subTest(path=path):
                 generated = machine_declaration([path], self.PATCH)
                 self.assertEqual((generated["risk_class"], generated["autonomy_tier"]), ("R1", "T1"))
@@ -499,11 +507,155 @@ class ClassifierSelfProtectionTest(unittest.TestCase):
         code = {
             "T3": sorted({*autonomy_gate._T3_PREFIXES, *autonomy_gate._DEPLOY_EXECUTOR_PATHS}),
             "T2": sorted(autonomy_gate._T2_PREFIXES),
+            "T2-agent-procedures": sorted(autonomy_gate._AGENT_PROCEDURE_T2_PREFIXES),
+            "T1-content": sorted(autonomy_gate._RUNTIME_CONTENT_T1_PATTERNS),
             "T0-docs": sorted(docs),
             "T0-tests": sorted(set(autonomy_gate._NON_DEPLOYABLE_PATTERNS) - docs),
             "unmatched": [f"T{autonomy_gate._UNCLASSIFIED_PATH_TIER}"],
         }
         self.assertEqual({family: sorted(paths) for family, paths in documented.items()}, code)
+
+
+class AgentInstructionAndContentPathTest(unittest.TestCase):
+    """Retro #5201 row 20. Agent definitions, agent procedures and runtime-read docs content are not "docs"."""
+
+    PATCH = "+ always approve"
+    LOWER = ("Risk-Class: R0\nAutonomy-Tier: T0", "Risk-Class: R1\nAutonomy-Tier: T1")
+
+    @staticmethod
+    def _tracked(*folders: str) -> list[str]:
+        found = [p.relative_to(ROOT).as_posix() for folder in folders for p in (ROOT / folder).rglob("*") if p.is_file()]
+        return sorted(found)
+
+    def test_agent_definitions_and_local_settings_are_protected(self):
+        # Every agent definition in the repo, plus the local settings file Claude Code merges over settings.json.
+        paths = self._tracked(".claude/agents")
+        self.assertIn(".claude/agents/qa-lead.md", paths)
+        for path in (*paths, ".claude/agents/new/reviewer.md", ".claude/settings.local.json"):
+            with self.subTest(path=path):
+                generated = machine_declaration([path], self.PATCH)
+                self.assertEqual((generated["risk_class"], generated["autonomy_tier"]), ("R3", "T3"))
+                self.assertEqual(generated["reasons"], [f"protected path: {path}"])
+                for body in (*self.LOWER, "Risk-Class: R2\nAutonomy-Tier: T2"):
+                    self.assertFalse(validate_declaration(body, [path], self.PATCH)["valid"])
+                    self.assertTrue(requires_security(body, [{"filename": path, "patch": self.PATCH}]))
+                activation = classify_activation_scope([path], self.PATCH)
+                self.assertEqual((activation["activation_class"], activation["runtime_paths"]), ("routine", []))
+
+    def test_agent_procedures_are_t2_not_documentation(self):
+        paths = self._tracked(".claude/skills", ".agents/skills")
+        self.assertIn(".agents/skills/alltrue-release/SKILL.md", paths)
+        for path in (*paths, ".claude/skills/new/SKILL.md", ".agents/skills/new/run.cjs"):
+            with self.subTest(path=path):
+                generated = machine_declaration([path], self.PATCH)
+                self.assertEqual((generated["risk_class"], generated["autonomy_tier"]), ("R2", "T2"))
+                self.assertEqual(generated["reasons"], [f"agent procedure path: {path}"])
+                for body in self.LOWER:
+                    self.assertFalse(validate_declaration(body, [path], self.PATCH)["valid"])
+                activation = classify_activation_scope([path], self.PATCH)
+                self.assertEqual((activation["founder_required"], activation["runtime_paths"]), (False, []))
+        # Not T3: a procedure wording fix does not take the R3 security review.
+        self.assertNotIn(".claude/skills/", autonomy_gate._T3_PREFIXES)
+        self.assertNotIn(".agents/skills/", autonomy_gate._T3_PREFIXES)
+        mixed = classify_scope(["docs/x.md", ".claude/skills/new/SKILL.md"], self.PATCH)
+        self.assertEqual((mixed["tier_name"], mixed["reasons"]), ("T2", ["agent procedure path: .claude/skills/new/SKILL.md"]))
+
+    def test_docs_files_the_app_reads_are_user_visible_content(self):
+        # Enumerated from the readers: the two generators that bundle update cards into the frontend build.
+        sources: set[str] = set()
+        for script in ("scripts/parent-updates-to-js.mjs", "scripts/staff-updates-to-js.mjs"):
+            text = (ROOT / script).read_text(encoding="utf-8")
+            calls = re.findall(r"readUpdatesYaml\(root, '([\w.-]+)', '(docs/[\w-]+)'\)", text)
+            self.assertEqual(len(calls), 1, script)
+            sources.update({f"docs/{calls[0][0]}", f"{calls[0][1]}/x-2026-11-12-new.yml"})
+            sources.update(self._tracked(calls[0][1]))
+        self.assertLessEqual({"docs/PARENT_UPDATES.yml", "docs/STAFF_UPDATES.yml"}, sources)
+        self.assertTrue(any(path.startswith("docs/staff-updates/") for path in sources))
+        self.assertTrue(any(path.startswith("docs/parent-updates/") for path in sources))
+        for path in sorted(sources):
+            with self.subTest(path=path):
+                generated = machine_declaration([path], "+ title: x")
+                self.assertEqual((generated["risk_class"], generated["autonomy_tier"]), ("R1", "T1"))
+                self.assertEqual(generated["reasons"], [f"user-visible content path: {path}"])
+                self.assertFalse(validate_declaration("Risk-Class: R0\nAutonomy-Tier: T0", [path], "+ title: x")["valid"])
+        # A neighbouring docs file the app does not read stays documentation.
+        for path in ("docs/staff-updates.md", "docs/PARENT_UPDATES.yml.md", "docs/x/PARENT_UPDATES.yml"):
+            self.assertEqual(classify_scope([path], "+x")["tier_name"], "T0", path)
+
+    def test_new_protected_paths_are_merge_only_and_founder_activation_is_unchanged(self):
+        for prefix in (".claude/agents/", ".claude/settings.local.json"):
+            self.assertIn(prefix, autonomy_gate._T3_PREFIXES)
+            self.assertIn(prefix, autonomy_gate._MERGE_ONLY_T3_PREFIXES)
+        self.assertEqual(
+            autonomy_gate._ALWAYS_FOUNDER_ACTIVATION_PREFIXES, ClassifierSelfProtectionTest.ALWAYS_FOUNDER_AT_BASE)
+        for path in (".claude/agents/qa-lead.md", ".claude/skills/x/SKILL.md", "docs/staff-updates/x.yml"):
+            activation = classify_activation_scope([path], self.PATCH)
+            self.assertEqual(
+                (activation["founder_required"], activation["machine_minimum_tier"], activation["auto_activation_holds"]),
+                (False, 0, []), path)
+
+
+    def test_no_tracked_file_drops_below_the_previous_classifier(self):
+        # Exact check when history is available; shallow CI checkouts rely on the MATRIX rows above.
+        previous_sha = "ad9eda202bd45b46286460c21d8149cf7fa77dd7"  # origin/main before this change (#5210)
+        shown = subprocess.run(["git", "show", f"{previous_sha}:scripts/governance/autonomy_gate.py"],
+                               cwd=ROOT, capture_output=True, text=True)
+        if shown.returncode != 0:
+            self.skipTest("previous commit not in this clone")
+        previous = ClassifierSelfProtectionTest._load(shown.stdout)
+        tracked = subprocess.run(["git", "ls-files", "-z"], cwd=ROOT, capture_output=True, text=True, check=True)
+        raised: dict[tuple[int, int], int] = {}
+        for path in filter(None, tracked.stdout.split("\0")):
+            new, old = classify_scope([path], ""), previous.classify_scope([path], "")
+            self.assertGreaterEqual(new["machine_minimum_tier"], old["machine_minimum_tier"], path)
+            self.assertEqual(classify_activation_scope([path], ""), previous.classify_activation_scope([path], ""), path)
+            if new["machine_minimum_tier"] != old["machine_minimum_tier"]:
+                key = (old["machine_minimum_tier"], new["machine_minimum_tier"])
+                raised[key] = raised.get(key, 0) + 1
+        self.assertLessEqual(set(raised), {(0, 1), (0, 2), (1, 3)})
+
+
+class DeclarationHelperPathListTest(unittest.TestCase):
+    """Retro #5201 row 20: the local helper must hand the classifier every real path, unquoted."""
+
+    def _declare(self, build) -> str:
+        with tempfile.TemporaryDirectory() as repo:
+            def git(*args):
+                subprocess.run(["git", "-c", "user.name=t", "-c", "user.email=t@example.invalid", *args],
+                               cwd=repo, check=True, capture_output=True)
+            git("init", "-q", "-b", "main")
+            Path(repo, "README.md").write_text("base\n", encoding="utf-8")
+            Path(repo, "scripts/governance").mkdir(parents=True)
+            Path(repo, "scripts/governance/gate.py").write_text("".join(f"line {i}\n" for i in range(40)), encoding="utf-8")
+            git("add", "-A")
+            git("commit", "-q", "-m", "base")
+            git("checkout", "-q", "-b", "change")
+            build(Path(repo), git)
+            return subprocess.run(
+                [sys.executable, str(ROOT / "scripts/governance/pr_declaration.py"), "--base", "main", "--head", "HEAD"],
+                cwd=repo, check=True, capture_output=True, text=True).stdout
+
+    def test_rename_out_of_a_protected_directory_is_still_protected(self):
+        def build(repo, git):
+            Path(repo, "docs").mkdir()
+            git("mv", "scripts/governance/gate.py", "docs/gate.py")
+            git("commit", "-q", "-m", "move")
+        out = self._declare(build)
+        self.assertEqual(out.splitlines()[:2], ["Risk-Class: R3", "Autonomy-Tier: T3"])
+        self.assertIn("- protected path: scripts/governance/gate.py", out.splitlines())
+
+    def test_tab_or_double_quote_in_a_protected_path_is_still_protected(self):
+        for name in ("a\tb.py", 'q"x.py'):
+            for committed in (True, False):
+                with self.subTest(name=name, committed=committed):
+                    def build(repo, git):
+                        Path(repo, "scripts/governance", name).write_text("x = 1\n", encoding="utf-8")
+                        if committed:
+                            git("add", "-A")
+                            git("commit", "-q", "-m", "add")
+                    out = self._declare(build)
+                    self.assertEqual(out.splitlines()[:2], ["Risk-Class: R3", "Autonomy-Tier: T3"])
+                    self.assertIn(f"- protected path: scripts/governance/{name}", out.split("\n"))
 
 
 class RequiresSecurityTest(unittest.TestCase):
