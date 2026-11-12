@@ -13,6 +13,7 @@ use App\Operations\Inapp\InappRequesterGuard;
 use App\Operations\Inapp\InappStandingPolicy;
 use App\Operations\PopOperationCatalog;
 use App\Operations\PopOperationService;
+use App\Operations\Strategies\InappReportTriageStrategy;
 use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
@@ -100,6 +101,20 @@ final class PopInappAgentClientTest extends TestCase
         $this->withHeader('X-POP-MACHINE-KEY', 'k-ok')->postJson('/api/v1/pop/operations/requests/' . $draft->json('data.id') . '/approvals',
             ['approval_reference' => 'inapp-machine', 'commit_sha' => str_repeat('a', 40)])->assertUnauthorized();
         $this->assertSame(['awaiting_approval', 0], [$this->storedStatus((string) $draft->json('data.id')), DB::table('pop_approval_events')->count()]);
+    }
+
+    public function test_key_drafts_the_triage_operation_on_a_listed_campus_only(): void
+    {
+        $client = $this->client('k-triage');
+        $issue = 'https://github.com/' . config('pop_inapp.github_repo') . '/issues/77';
+        $draft = fn (int $campus, string $rid) => $this->withHeader('X-POP-MACHINE-KEY', 'k-triage')
+            ->postJson('/api/v1/pop/machine/operations/' . InappReportTriageStrategy::OPERATION . '/draft', ['idempotency_key' => 'inapp-' . $rid,
+                'parameters' => ['bug_id' => $this->bug('new', $campus), 'campus_id' => $campus, 'github_issue_url' => $issue, 'public_reply' => '已收到，會安排處理。追蹤：' . $issue,
+                    'request_id' => $rid, 'writeback_proof' => ['captured_at' => now()->toISOString(), 'proof' => str_repeat('0', 64)]]]);
+
+        $draft($this->campus, 'req-triage')->assertCreated()->assertJsonPath('data.actor', 'machine:api-client:' . $client->id);
+        $draft($this->otherCampus, 'req-triage-other')->assertForbidden();
+        $this->assertSame(1, DB::table('pop_operation_requests')->count());
     }
 
     public function test_key_is_refused_for_another_campus_another_operation_or_another_requesters_request(): void
