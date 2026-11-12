@@ -29,9 +29,15 @@ use RuntimeException;
  * or created and no money row is written: the fingerprint of the chain's contracts, invoices, items, payments and payment
  * reports must be the same before and after. The snapshot records the prior owner of every moved lesson.
  *
- * Undo is the inverse moves in reverse order, through the same service, all or nothing: `rollback()` (POP rollback phase of
- * the same request) or a new Founder-approved request with `restore_request_id`. Both refuse, with a per-lesson report, when
- * a moved lesson's owner, date, time, status or mirror rows changed after the execute.
+ * Undo is the inverse moves in reverse order, through the same service, all or nothing. In production the one way to undo
+ * is a new Founder-approved request with `restore_request_id`; `rollback()` implements the POP rollback phase, which the
+ * Pi-local runner does not offer for this operation. Both refuse, with a per-lesson report, when a moved lesson's owner,
+ * date, time, status or mirror rows changed after the execute, and with `restore_already_applied` when the receipts show
+ * the cited request was undone before. Before an execute the stored counters must be the derived ones
+ * (`counters_not_derived`), so the counters an undo recomputes are the ones stored before the execute.
+ *
+ * Failure: POP rolls back every data change of a failed execute, verify or rollback before it writes the failed receipt
+ * (PopOperationService::run, PopPhaseAborted), also when a lock-wait timeout skipped the nested savepoint rollback.
  *
  * Output carries ids, dates, statuses and counts: no names, no amounts.
  */
@@ -91,6 +97,12 @@ final class CourseContractChainRebalanceStrategy
             }
         }
         $restore = $source !== null;
+        // #5236 review P2b: "already restored" is a fact of the records, not of the rows. After request R1, its restore and a
+        // second request that moves the same lessons again, the rows look as R1 left them; a restore citing R1 must still
+        // be refused. The receipt of the restore run (or of R1's rollback phase) commits with its moves and names R1.
+        if ($source !== null && ($by = $this->restoredBy((string) $source['request_id'])) !== null) {
+            return $this->rejected(['restore_already_applied'], [['code' => 'restore_already_applied', 'restored_by_request_id' => $by]], 'rejected', $mode);
+        }
 
         $findings = [];
         $add = function (string $code, array $ids = []) use (&$findings): void {
@@ -258,6 +270,8 @@ final class CourseContractChainRebalanceStrategy
             }
         }
 
+        $sound = $findings === []; // contracts and mirrors agree: the derived counters below mean something
+
         // ── Undo only: the list must be the executed moves reversed, and every moved lesson must be as the execute left it. ──
         $restoreRows = [];
         if ($source !== null) {
@@ -367,6 +381,45 @@ final class CourseContractChainRebalanceStrategy
                 $teacherMonths[(int) $from->TeacherID . '|' . $month] = true;
                 $teacherMonths[(int) $to->TeacherID . '|' . $month] = true;
                 $teacherChanges += (int) $from->TeacherID !== (int) $to->TeacherID ? 1 : 0;
+            }
+        }
+
+        // ── Stored counters must already be the derived ones (#5236 review P2c). Execute and restore recompute the counters
+        // of the contracts they touch; the restore is only exact, column by column, when what was stored before the
+        // execute is what a recompute writes. Session counters are checked on every contract of the chain, the minute
+        // columns on the contracts a move touches (the only ones written). Not asked of an undo, which must stay possible. ──
+        if (!$restore && $sound) {
+            $touched = [];
+            foreach ($applied as $move) {
+                $touched[$move['from']] = $touched[$move['to']] = true;
+            }
+            foreach (StudentClass::query()->whereIn('ID', $chainIds)->orderBy('ID')->get() as $course) {
+                $id = (int) $course->getAttribute('ID');
+                $purchased = (int) $course->getAttribute('SessionCount');
+                $used = min($purchased, $taught[$id]);
+                $left = $purchased - $used;
+                $derived = (int) $course->getAttribute('UsedSessions') === $used && (int) $course->getAttribute('RemainingSessions') === $left;
+                if ($derived && isset($touched[$id])) {
+                    $perLesson = SessionDeductionService::billingStandardMinutes($course);
+                    $derived = $course->getAttribute('PurchasedMinutes') !== null && (int) $course->getAttribute('PurchasedMinutes') === $purchased * $perLesson
+                        && $course->getAttribute('RemainingMinutes') !== null && (int) $course->getAttribute('RemainingMinutes') === $left * $perLesson;
+                }
+                if (!$derived) {
+                    $add('counters_not_derived', ['contract_id' => $id]);
+                }
+            }
+        }
+
+        // ── Reservation policy (#5236 review P2a). `report` only lists a contract left with more taught + reserved lessons
+        // than it bought. That is acceptable on a chain of ended contracts, where nobody books against what is left. With
+        // an active contract on the chain, or the cascade decision given, the policy must be `block`. ──
+        if (!$restore && $manifest['future_reservation_policy'] === 'report') {
+            $activeIds = array_keys(array_filter($chain, fn (\stdClass $c): bool => $this->isActive($c)));
+            foreach ($activeIds as $id) {
+                $add('report_policy_requires_no_active_contract', ['contract_id' => $id]);
+            }
+            if ($activeIds === [] && $manifest['allow_active_contracts']) {
+                $add('report_policy_requires_no_active_contract');
             }
         }
 
@@ -488,6 +541,13 @@ final class CourseContractChainRebalanceStrategy
     /**
      * Read-only post-conditions, from the stored execute result (the plan of an executed request no longer matches).
      * Answers with the per-contract structure the plan promised as "after", counted again from the database.
+     *
+     * `money_changed` compares the fingerprint taken before the first move with the same rows now. It covers this chain only
+     * (its contracts, their invoices, items, payments and payment reports); money of other students or subjects never
+     * affects it. POP verifies right after the execute. A payment, an invoice or a contract edit made on the chain after
+     * the execute changes the fingerprint, so a verification repeated by hand later can answer
+     * `money_changed` for that legitimate reason: it means the chain's money rows are no longer the fingerprinted ones,
+     * not that the moves wrote money. (A restore takes its own fingerprint before its first move, so it is not affected.)
      *
      * @param array<string,mixed> $plan
      * @param array<string,mixed> $result
@@ -788,6 +848,23 @@ final class CourseContractChainRebalanceStrategy
         }
 
         return $snapshot;
+    }
+
+    /**
+     * The request that already undid the execute of `$requestId`, or null: that request's own POP rollback phase, or a
+     * succeeded restore run of this operation whose snapshot names it. Read from the receipts only; they are never rewritten.
+     */
+    private function restoredBy(string $requestId): ?string
+    {
+        if (DB::table('pop_execution_records')->where('operation_id', $requestId)->where('phase', 'rollback')->where('result', 'rolled_back')->exists()) {
+            return $requestId;
+        }
+        $by = DB::table('pop_execution_records')->where('phase', 'execute')->where('result', 'succeeded')->where('operation_id', '!=', $requestId)
+            ->whereIn('operation_id', DB::table('pop_operation_requests')->where('operation_id', self::OPERATION)->select('id'))
+            ->where('snapshot->operation', self::OPERATION)->where('snapshot->mode', 'restore')
+            ->where('snapshot->restore_source_request_id', $requestId)->orderBy('created_at')->value('operation_id');
+
+        return $by !== null ? (string) $by : null;
     }
 
     /** Shape check of a stored snapshot; `$mode` null accepts both kinds. */
