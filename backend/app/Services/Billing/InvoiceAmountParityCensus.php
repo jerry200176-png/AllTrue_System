@@ -44,7 +44,7 @@ final class InvoiceAmountParityCensus
 
     /**
      * @return array{
-     *   scanned:int, truncated:bool, truncated_reason:string|null, unevaluated:int, mismatch_count:int,
+     *   scanned:int, truncated:bool, truncated_reason:string|null, unevaluated:int, mismatch_count:int, bills_with_findings:int,
      *   by_type:array<string,int>, exclusions:array<string,int>, by_campus:array<int,array<string,int>>,
      *   findings:list<array{campus_id:int,invoice_id:int,type:string}>, findings_truncated:bool
      * }
@@ -57,15 +57,18 @@ final class InvoiceAmountParityCensus
         $deadline = microtime(true) + max(0, (int) config('amount_parity.time_limit_seconds'));
 
         $out = [
-            'scanned' => 0, 'truncated' => false, 'truncated_reason' => null, 'unevaluated' => 0, 'mismatch_count' => 0,
+            'scanned' => 0, 'truncated' => false, 'truncated_reason' => null, 'unevaluated' => 0, 'mismatch_count' => 0, 'bills_with_findings' => 0,
             'by_type' => [self::TYPE_HEADER_VS_ITEMS => 0, self::TYPE_HEADER_VS_RESOLVER => 0],
             'exclusions' => array_fill_keys(self::EXCLUSIONS, 0),
             'by_campus' => [], 'findings' => [], 'findings_truncated' => false,
         ];
         $out['exclusions']['voided'] = Invoice::query()->where('Status', 'void')->count();
 
-        $record = function (int $campusId, int $invoiceId, string $type, int $delta) use (&$out, $findingCap): void {
-            $out['mismatch_count']++;
+        $billsWithFindings = [];
+        $record = function (int $campusId, int $invoiceId, string $type, int $delta) use (&$out, &$billsWithFindings, $findingCap): void {
+            $out['mismatch_count']++; // findings; one bill can have both types, see bills_with_findings
+            $billsWithFindings[$invoiceId] = true;
+            $out['bills_with_findings'] = count($billsWithFindings);
             $out['by_type'][$type]++;
             $out['by_campus'][$campusId][$type] = ($out['by_campus'][$campusId][$type] ?? 0) + 1;
             if (count($out['findings']) >= $findingCap) {

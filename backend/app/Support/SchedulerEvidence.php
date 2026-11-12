@@ -438,7 +438,8 @@ final class SchedulerEvidence
                 || !is_int($condition->count ?? null) || $condition->count < 0
                 || !is_string($condition->state ?? null)
                 || !in_array($condition->state, self::BUG_CONDITION_STATES, true)
-                || (property_exists($condition, 'unevaluated') && (!is_int($condition->unevaluated) || $condition->unevaluated < 0))) {
+                || (property_exists($condition, 'unevaluated') && (!is_int($condition->unevaluated) || $condition->unevaluated < 0))
+                || (property_exists($condition, 'census_error') && !in_array($condition->census_error, [0, 1], true))) {
                 return null;
             }
             $seen[$condition->key] = true;
@@ -565,8 +566,9 @@ final class SchedulerEvidence
                     'key' => $condition['key'] ?? 'unknown',
                     'count' => (int) ($condition['count'] ?? 0),
                     'state' => $condition['state'] ?? 'unknown',
-                    // Bills a census condition could not evaluate (count only); absent for COUNT(*) conditions.
-                ] + (is_int($condition['unevaluated'] ?? null) ? ['unevaluated' => $condition['unevaluated']] : []), $decoded['conditions']),
+                    // Census conditions only (absent for COUNT(*) ones): bills not evaluated, and 1 when the census itself failed.
+                ] + (is_int($condition['unevaluated'] ?? null) ? ['unevaluated' => $condition['unevaluated']] : [])
+                    + (is_int($condition['census_error'] ?? null) ? ['census_error' => $condition['census_error']] : []), $decoded['conditions']),
             ];
         }
 

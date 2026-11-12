@@ -306,7 +306,7 @@ class InvoiceAmountParityCensusTest extends TestCase
             $this->assertNotNull($job['observed_result'], 'a failed run lost its diagnostic counts');
             $row = collect($job['observed_result']['conditions'])->firstWhere('key', 'screen_amount_vs_resolver');
             // Counts only in the ledger: no bill ids, no per-campus detail.
-            $this->assertSame(['key' => 'screen_amount_vs_resolver', 'count' => 100, 'state' => 'OPEN', 'unevaluated' => 0], $row);
+            $this->assertSame(['key' => 'screen_amount_vs_resolver', 'count' => 100, 'state' => 'OPEN', 'unevaluated' => 0, 'census_error' => 0], $row);
         } finally {
             @unlink($output);
             @unlink($ledger);
@@ -344,7 +344,7 @@ class InvoiceAmountParityCensusTest extends TestCase
                 SchedulerEvidence::recordCompletion('bugs-verify-reproductions', $status, $date);
                 $job = SchedulerEvidence::summarize($date->toDateString(), $date)['jobs']['bugs-verify-reproductions'];
                 $this->assertSame(
-                    ['key' => 'screen_amount_vs_resolver', 'count' => 0, 'state' => 'INCOMPLETE', 'unevaluated' => 1],
+                    ['key' => 'screen_amount_vs_resolver', 'count' => 0, 'state' => 'INCOMPLETE', 'unevaluated' => 1, 'census_error' => 0],
                     collect($job['observed_result']['conditions'])->firstWhere('key', 'screen_amount_vs_resolver'),
                     $status
                 );
@@ -352,6 +352,65 @@ class InvoiceAmountParityCensusTest extends TestCase
                 @unlink($output);
                 @unlink($ledger);
             }
+        }
+    }
+
+    public function test_a_census_that_throws_leaves_the_other_conditions_and_the_exit_code_as_they_were(): void
+    {
+        $course = $this->countCourse();
+        // One bill with both mismatch types counts as two findings on one bill.
+        $monthly = $this->monthlyCourse();
+        $this->bill($monthly, 6000, [[$monthly, 5000]], ['billing_period' => '2026-07']);
+        $this->bill($course, 1000, [[$course, 1000]]);
+        $ok = $this->census();
+        $this->assertSame([2, 1], [$ok['mismatch_count'], $ok['bills_with_findings']]);
+
+        $others = function (): array {
+            $exit = Artisan::call('bugs:verify-reproductions', ['--json' => true]);
+            $json = json_decode(Artisan::output(), true);
+
+            return [$exit, $json['regressed'], array_values(array_map(
+                static fn (array $c): array => [$c['key'], $c['count'], $c['state']],
+                array_filter($json['conditions'], static fn (array $c): bool => $c['key'] !== 'screen_amount_vs_resolver')
+            ))];
+        };
+        $healthy = $others();
+        $this->assertSame(0, $healthy[0]);
+        $this->assertCount(count(SchedulerEvidence::BUG_CONDITION_CODES) - 1, $healthy[2]);
+
+        // Any failure inside the census, e.g. a database error on its first query.
+        $this->app->bind(InvoiceAmountParityCensus::class, static fn () => throw new \RuntimeException('SYNTHETIC_PRIVATE_TEXT'));
+        $this->assertSame($healthy, $others());
+
+        $raw = Artisan::output();
+        $this->assertStringNotContainsString('SYNTHETIC_PRIVATE_TEXT', $raw);
+        $row = collect(json_decode($raw, true)['conditions'])->firstWhere('key', 'screen_amount_vs_resolver');
+        $this->assertSame([0, 'INCOMPLETE', 1], [$row['count'], $row['state'], $row['census_error']]);
+
+        // A regression elsewhere still fails the run exactly as before, with all conditions in the output.
+        DB::table('ClassSession')->insert([
+            'StudentClassID' => $course, 'SessionDate' => '2020-01-01', 'StartTime' => '10:00', 'EndTime' => '12:00', 'Status' => 'attended',
+        ]);
+        $this->assertSame(1, Artisan::call('bugs:verify-reproductions', ['--json' => true]));
+        $failedRaw = Artisan::output();
+        $this->assertCount(count(SchedulerEvidence::BUG_CONDITION_CODES), json_decode($failedRaw, true)['conditions']);
+
+        $date = CarbonImmutable::parse('2042-06-07 12:00:00', SchedulerEvidence::TIMEZONE);
+        $output = SchedulerEvidence::outputPath('bugs-verify-reproductions', $date);
+        $ledger = SchedulerEvidence::ledgerPath($date);
+        SchedulerEvidence::ensureDirectories();
+        @unlink($ledger);
+        try {
+            file_put_contents($output, $failedRaw);
+            SchedulerEvidence::recordCompletion('bugs-verify-reproductions', 'failed', $date);
+            $job = SchedulerEvidence::summarize($date->toDateString(), $date)['jobs']['bugs-verify-reproductions'];
+            $this->assertSame(
+                ['key' => 'screen_amount_vs_resolver', 'count' => 0, 'state' => 'INCOMPLETE', 'unevaluated' => 0, 'census_error' => 1],
+                collect($job['observed_result']['conditions'])->firstWhere('key', 'screen_amount_vs_resolver')
+            );
+        } finally {
+            @unlink($output);
+            @unlink($ledger);
         }
     }
 }
