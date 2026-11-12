@@ -37,7 +37,7 @@ Critical → 必須修；Minor → 問是否登 `TECH_DEBT.md`。
 
 ## 5. AllTrue-specific rules
 
-- 高風險檔：`SessionDeductionService`、`AlertController::tuition`、`ApprovalSessionSyncService` — 需使用者確認
+- 高風險檔：`SessionDeductionService`、`AlertController::tuition`、`ApprovalSessionSyncService` — 需聚焦回歸測試與獨立審查（`CLAUDE.md` Y11）；要不要問 Founder 只看 `FOUNDER_STANDING_DECISIONS.md`
 - design-hex-guard：前端不可新增 raw hex
 - 模組索引：改扣堂/行事曆/繳費必查對應 §
 

@@ -14,7 +14,7 @@
 |---|---|---|
 | Fire-and-forget | 錯字、footer 日期、單一連結、小型 lint/docs 修正 | 累積到 docs batch；不要單獨開 PR 浪費 Actions |
 | Context-dependent | API 串接、前後端同改、README/Runbook 同步 | 先產 artifact（API contract、diff、測試結果），下游只讀 artifact |
-| Decision-requiring | DB schema、auth、堂數/繳費、CI/CD、備份/還原 | 先進 PLAN/ARCH 或 BUG B1，釐清產品意圖與受保護邊界；可先完成實作、測試與證據包，在受保護的合併、正式啟用或資料操作前取得 Founder 對具體範圍的決定。重大產品方向無明確最佳選項時，先取得決定再實作 |
+| Decision-requiring | DB schema、auth、堂數/繳費、CI/CD、備份/還原 | 先進 PLAN/ARCH 或 BUG B1，釐清產品意圖與受保護邊界；可先完成實作、測試與證據包，在受保護的合併、正式啟用或資料操作前取得 Founder 對具體範圍的決定。重大產品決策先取得決定再實作，其餘選擇由 Agent 照推薦決定並留紀錄（定義只看 `FOUNDER_STANDING_DECISIONS.md` 2026-11-12（五）） |
 
 強制原則：
 - 以 bounded context 切任務，不以 migration/model/controller/frontend/test 這種技術層硬切碎。

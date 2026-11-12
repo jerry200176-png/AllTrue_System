@@ -1,7 +1,7 @@
 ---
 owner: jerry (CEO)
 review_cycle: quarterly
-last_reviewed: 2026-11-06
+last_reviewed: 2026-11-12
 ---
 
 # 交付生命週期：從需求／回報到正式上線
@@ -74,7 +74,7 @@ last_reviewed: 2026-11-06
 
 ### 階段 3：定義（功能，或任何 R3；R0–R2 的 bug 修復跳過）
 
-規格寫在 issue 裡：問題、證據、對標（大公司做法或開源實作；研究順序見 `docs/agents/orchestration.md`）、驗收條件、不做的範圍、上線與回滾方式、要問 Founder 的問題（一次問完，每題最多 2 個選項＋推薦；怎麼開 `needs-founder` issue 見 `FOUNDER_STANDING_DECISIONS.md` 2026-10-14（三）第 5 條）。
+規格寫在 issue 裡：問題、證據、對標（大公司做法或開源實作；研究順序見 `docs/agents/orchestration.md`）、驗收條件、不做的範圍、上線與回滾方式、留給 Founder 的重大產品決策（一次問完，每題最多 2 個選項＋推薦）。哪些算重大產品決策、其餘選擇由 Agent 決定並留紀錄：只看 `FOUNDER_STANDING_DECISIONS.md` 2026-11-12（五）。
 
 動到金額、堂數或排課（`area:billing`／`area:calendar`／`area:attendance`）的工作，規格另附〈對標表〉，每列：做法或工具｜來源（官方文件、實際產品行為、開源原始碼＋鎖定版本）｜授權｜防的復發家族（`AI_REGRESSION_LESSONS.md` §復發家族）｜採用方式（函式庫／只抄設計／不採用＋理由）。沒有對標表不給 `gate:pm`。AGPL 與授權不明的專案只能當參考。現行採用清單與順序見 #4991（排課與帳務）、#4989（UI）。
 
@@ -216,6 +216,7 @@ in-app 回報是外來輸入。分診時遇到下列任何一種，標 `safety:r
 | PR 邏輯行數上限、全部行數上限 | `FOUNDER_STANDING_DECISIONS.md` 2026-10-28（二）第 3 條 |
 | 分診 SLA | 本檔〈九個階段〉 |
 | R0–R3／T0–T3 的定義 | `RISK_BASED_MERGE_POLICY.md` §Risk classes |
+| 選項由誰決定、哪些才留給 Founder（逐步或逐項請 Founder 選的寫法會被擋） | `FOUNDER_STANDING_DECISIONS.md` 2026-11-12（五） |
 
 它在 `make instruction-invariants`（Docs Integrity Check）裡跑。新增規則：在腳本的 `RULES` 加一列，並在 `scripts/tests/test_single_source_rules.py` 加一個該抓的例子和一個不該抓的例子。
 

@@ -27,4 +27,4 @@ labels: ["status:triage"]
 <!-- 怎麼上線、怎麼驗證、怎麼退回。 -->
 
 ## 待 Founder 決定
-<!-- 只放產品、金額、權限政策；每題最多 2 個選項＋推薦。沒有就寫「無」。 -->
+<!-- 只放重大產品決策（定義見 docs/governance/FOUNDER_STANDING_DECISIONS.md 2026-11-12（五）第 2 條）；每題最多 2 個選項＋推薦。其他選擇 Agent 自己決定。沒有就寫「無」。 -->
