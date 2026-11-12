@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { compare, main, parseArgs, save } from '../ci/task-reconcile.mjs';
+import { compare, main, observe, parseArgs, save } from '../ci/task-reconcile.mjs';
 
 const a = 'a'.repeat(40), b = 'b'.repeat(40);
 const observed = () => ({ observed_at: new Date().toISOString(), git: { head: a, changed: [] }, main: a,
@@ -13,6 +13,39 @@ const fixture = () => {
   const directory = path.join(base, '.local/agent-checkpoints'); fs.mkdirSync(directory, { recursive: true });
   return { base, file: path.join(directory, 'inapp.json'), done: () => fs.rmSync(base, { recursive: true, force: true }) };
 };
+
+test('CI advisory uses the latest attempt while retaining raw checks (#5201)', async (t) => {
+  const check = (conclusion, startedAt, status = 'COMPLETED') => ({
+    __typename: 'CheckRun', name: 'Presubmit Checks', status, conclusion, startedAt,
+  });
+  const context = (state, createdAt) => ({ __typename: 'StatusContext', context: 'external', state, createdAt });
+  const old = '2026-11-12T06:00:00Z', fresh = '2026-11-12T07:00:00Z';
+  const cases = [
+    ['cancelled attempt recovered', [check('SUCCESS', fresh), check('CANCELLED', old)], [], []],
+    ['later failure remains visible', [check('FAILURE', fresh), check('SUCCESS', old)], [], ['Presubmit Checks']],
+    ['queued rerun supersedes success', [check('SUCCESS', old), check(null, null, 'QUEUED')], ['Presubmit Checks'], []],
+    ['in-progress rerun supersedes failure', [check('FAILURE', old), check(null, fresh, 'IN_PROGRESS')], ['Presubmit Checks'], []],
+    ['commit status recovered', [context('SUCCESS', fresh), context('ERROR', old)], [], []],
+    ['commit status pending', [context('PENDING', fresh), context('SUCCESS', old)], ['external'], []],
+    ['unrelated failure retained', [check('SUCCESS', fresh), { ...check('FAILURE', old), name: 'Other test' }], [], ['Other test']],
+  ];
+  for (const [name, checks, pending, failed] of cases) await t.test(name, async () => {
+    let query;
+    const runner = async (binary, args) => {
+      if (binary === 'git') return args[0] === 'rev-parse' ? a : '';
+      if (binary === 'curl') return JSON.stringify({ backend_sha: a, frontend_sha: a });
+      assert.equal(binary, 'gh'); query = args.at(-1);
+      return JSON.stringify({ data: { repository: { defaultBranchRef: { target: { oid: a } },
+        p1: { headRefOid: a, state: 'OPEN', statusCheckRollup: { contexts: { pageInfo: { hasNextPage: false }, nodes: checks } } } } } });
+    };
+    const pr = (await observe([1], { runner })).prs[0];
+    assert.deepEqual(pr.pending, pending);
+    assert.deepEqual(pr.failed, failed);
+    assert.equal(pr.checks.length, checks.length, 'raw attempts remain available for diagnosis');
+    assert.match(query, /on CheckRun\{[^}]*startedAt/);
+    assert.match(query, /on StatusContext\{[^}]*createdAt/);
+  });
+});
 
 test('rejects shell text, traversal and invalid PR IDs before observing', () => {
   for (const args of [['--checkpoint', '../public', '--prs', '1'], ['--checkpoint', 'x', '--prs', '1;touch x'],

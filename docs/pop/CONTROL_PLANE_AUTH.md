@@ -36,24 +36,36 @@ production HTTPS endpoint; HTTP 422 proves machine authentication reached the
 submit route before validation without creating a draft. The key remains
 host-local, and the Pi-local scheduler remains the execution boundary.
 
-## Founder Huang repair auth adapter
+## Founder-scoped repair auth adapter (retired 2026-11-12)
 
-`.github/workflows/pop-founder-scoped-repair.yml` is a one-case, protected
-adapter for the approved Huang Yikui math contract repair. It hardcodes the
-student/class/session/invoice scope and the deployed backend SHA, requires the
-typed Founder confirmation plus the `production-activation` environment, and
-uses the existing host-local, draft/dry-run-only POP machine key for the first
-two phases, then selects one short-lived `User.type=S` session on the Pi for
-approval only. Both secrets stay in the Pi shell and are unset; the runner
-receives only IDs, phase results, and PII-free audit and snapshot evidence. The
-workflow never calls an HTTP execute endpoint; the
-existing Pi-local scheduler performs execute and verify. It does not change the
-identity, permission, or approval model and does not create a long-lived token.
+The one-case adapter for student 30 (contracts 2531 and 3379, decision
+reference `issue-2318`) was removed from `.github/workflows/` on 2026-11-12
+(#5201 row 26). The record of that adapter is PR #2362 and PR #2409, and its
+entry under `retired_workflows` in
+`docs/governance/PRODUCTION_WORKFLOW_INVENTORY.json`. The pattern it set is
+still the one every POP case adapter follows: hard-coded scope, typed Founder
+confirmation plus the `production-activation` environment, the host-local
+draft/dry-run-only POP machine key for the first two phases, then one
+short-lived `User.type=S` session read on the Pi for approval only. Both
+secrets stay in the Pi shell and are unset; the runner receives only IDs,
+phase results, and PII-free audit and snapshot evidence. No adapter calls an
+HTTP execute endpoint; the Pi-local scheduler performs execute and verify.
 
-OIDC is not introduced here because the application has no OIDC verifier. A
+OIDC is not introduced because the application has no OIDC verifier. A
 future OIDC identity-model change must be separately designed and Founder
-approved; this adapter deliberately reuses the existing protected SSH path and
+approved; the adapters deliberately reuse the existing protected SSH path and
 short-lived human session without expanding production authority.
+
+## Naming: IDs, never names
+
+Approval references (`founder-go-...`), idempotency keys, decision references
+and `pop-*.yml` file names are built from IDs (student, contract, invoice,
+GitHub issue, in-app report) and operation words, never from a person's name:
+for example `founder-go-issue-<n>-<yyyymmdd>` or `founder-go-inapp-<n>-<yyyymmdd>`.
+The repository is public. `scripts/ci/workflow-id-only-references.mjs`
+(control-plane-lint rule P3) rejects an approval reference or a `pop-*` file
+name with a word outside its structural vocabulary; a new operation word is
+added to that list in a reviewed PR.
 
 ## Reviewed monthly case-owner exception
 

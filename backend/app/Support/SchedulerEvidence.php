@@ -27,6 +27,17 @@ final class SchedulerEvidence
         'skipped_by_policy',
     ];
 
+    private const FAILED_BUG_OUTPUT_MAX_BYTES = 65536;
+    private const BUG_CONDITION_CODES = [
+        'attended_session_without_learning_record', 'leave_session_with_live_learning_record',
+        'stranded_prepaid_course', 'duplicate_session_same_slot', 'cross_sc_duplicate_attended_slot',
+        'remaining_sessions_diverges_from_derived', 'package_over_debit', 'session_debited_twice',
+        'unpaid_charge_vs_rate_count', 'paid_flag_vs_invoice',
+    ];
+    private const BUG_CONDITION_STATES = [
+        'FIXED-OK', 'BASELINE-PENDING', 'REGRESSED', 'WITHIN-BASELINE', 'OPEN-CLEARED', 'OPEN',
+    ];
+
     /** @var array<string,array{command:string,time:string}> */
     private const JOBS = [
         'teacher-signin-close-orphans' => ['command' => 'teacher-signin:close-orphans', 'time' => '00:05'],
@@ -214,6 +225,9 @@ final class SchedulerEvidence
                     $result['run_status'] = 'failed';
                     $counts['failed']++;
                     $executionHealthy = false;
+                    if ($key === 'bugs-verify-reproductions') {
+                        $result['observed_result'] = self::readFailedBugObservation($outputPath);
+                    }
                 } elseif ($ledgerStatus === 'partial') {
                     $result['status'] = 'partial';
                     $result['run_status'] = 'partial';
@@ -385,6 +399,55 @@ final class SchedulerEvidence
         }
 
         return $entries;
+    }
+
+    /**
+     * #5115: diagnostic counts cannot turn a failed ledger outcome into success.
+     * Only this registered job's complete, bounded schema may be read on failure.
+     * Scheduler directories are trusted; this is not a filesystem sandbox.
+     *
+     * @return array<string,mixed>|null
+     */
+    private static function readFailedBugObservation(string $path): ?array
+    {
+        if (is_link($path) || !is_file($path)) {
+            return null;
+        }
+        // Bound the actual read, including if the file grows during observation.
+        // Do not print filesystem/JSON errors or any raw command output.
+        $output = @file_get_contents($path, false, null, 0, self::FAILED_BUG_OUTPUT_MAX_BYTES + 1);
+        if ($output === false || strlen($output) > self::FAILED_BUG_OUTPUT_MAX_BYTES) {
+            return null;
+        }
+        $decoded = json_decode($output, false, 32);
+        if (!($decoded instanceof \stdClass)
+            || !is_int($decoded->regressed ?? null) || $decoded->regressed < 0
+            || $decoded->regressed > count(self::BUG_CONDITION_CODES)
+            || !is_array($decoded->conditions ?? null)
+            || count($decoded->conditions) !== count(self::BUG_CONDITION_CODES)) {
+            return null;
+        }
+        $allowed = array_fill_keys(self::BUG_CONDITION_CODES, true);
+        $seen = [];
+        $regressed = 0;
+        foreach ($decoded->conditions as $condition) {
+            if (!($condition instanceof \stdClass)
+                || !is_string($condition->key ?? null) || !isset($allowed[$condition->key])
+                || isset($seen[$condition->key])
+                || !is_int($condition->count ?? null) || $condition->count < 0
+                || !is_string($condition->state ?? null)
+                || !in_array($condition->state, self::BUG_CONDITION_STATES, true)) {
+                return null;
+            }
+            $seen[$condition->key] = true;
+            $regressed += (int) ($condition->state === 'REGRESSED');
+        }
+        if ($decoded->regressed !== $regressed) {
+            return null;
+        }
+        // Validation precedes the existing projector; labels, errors, IDs and
+        // unknown fields are never included in its three-field condition rows.
+        return self::summarizeOutput('bugs-verify-reproductions', $output);
     }
 
     /** @return array<string,mixed>|null */
