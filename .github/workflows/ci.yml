@@ -99,6 +99,8 @@ jobs:
           node scripts/ci/workflow-secret-echo.test.mjs
           node --test scripts/ci/production-secret-triggers.test.mjs
           node --test scripts/ci/production-ssh-environment.test.mjs
+          # #5201 row 26: approval references and pop-* file names use ids, never a person's name (control-plane-lint P3).
+          node --test scripts/ci/workflow-id-only-references.test.mjs
           node --test scripts/tests/register-synthetic-director.test.mjs
           node --test scripts/tests/task-reconcile.test.mjs
           node --test scripts/tests/land-queue.test.mjs scripts/tests/pr-overlap.test.mjs scripts/tests/land-queue-dispatch-contract.test.mjs

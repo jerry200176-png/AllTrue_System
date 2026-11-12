@@ -10,6 +10,7 @@ import { fileURLToPath } from 'url';
 
 import { checkWorkflow as productionSecretTriggerProblems } from './ci/production-secret-triggers.mjs';
 import { checkJobEnvironments as productionSshEnvironmentProblems } from './ci/production-ssh-environment.mjs';
+import { checkWorkflowFileName as nameBearingFileNameProblem, checkWorkflowText as nameBearingReferenceProblems } from './ci/workflow-id-only-references.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(__dirname, '..');
@@ -323,6 +324,32 @@ function checkProductionSshEnvironment() {
   }
 }
 
+/** P3 (#5201 row 26): approval references and pop-* workflow file names are built from IDs, never from a person's name. */
+function checkWorkflowIdOnlyReferences() {
+  let tracked = [];
+  try {
+    tracked = execSync('git ls-files .github/workflows/*.yml .github/workflows/*.yaml', { cwd: root, encoding: 'utf8' })
+      .split('\n')
+      .filter(Boolean);
+  } catch (err) {
+    add('P3', '.github/workflows', 0, `cannot list tracked workflows (${err.message.split('\n')[0]}); failing closed`);
+    return;
+  }
+  if (tracked.length === 0) {
+    add('P3', '.github/workflows', 0, 'no tracked workflows found; failing closed');
+    return;
+  }
+  const hint = 'use ids (student, contract, invoice, issue, in-app report), never a name; see docs/pop/CONTROL_PLANE_AUTH.md "Naming: IDs, never names"';
+  for (const rel of tracked) {
+    const fileName = nameBearingFileNameProblem(path.basename(rel));
+    // The path is not printed: the file name itself is the finding.
+    if (fileName) add('P3', '.github/workflows/pop-<withheld>', 0, `${fileName}; ${hint}`);
+    for (const p of nameBearingReferenceProblems(read(rel))) {
+      add('P3', fileName ? '.github/workflows/pop-<withheld>' : rel, p.line, `${p.reason}; ${hint}`);
+    }
+  }
+}
+
 function checkIndexGovernanceLogic() {
   if (!exists('docs/INDEX.md')) return;
   const index = read('docs/INDEX.md');
@@ -449,6 +476,7 @@ function main() {
     checkExecutionI1();
     checkProductionSecretTriggers();
     checkProductionSshEnvironment();
+    checkWorkflowIdOnlyReferences();
     checkCodeImportBarrier();
     checkContractChangeGate();
   }

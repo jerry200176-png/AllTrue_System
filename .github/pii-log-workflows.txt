@@ -61,7 +61,6 @@ pop-founder-scoped-repair.yml
 pop-invoice1997-stale-values.yml
 pop-invoice-header-item-repair.yml
 pop-mount-reviewed-financial-once.yml
-pop-muzha-chen-billing-catchup.yml
 pop-package-ledger-net-repair-4455.yml
 pop-duplicate-attended-cancel.yml
 pop-forward-extra-cancel.yml
