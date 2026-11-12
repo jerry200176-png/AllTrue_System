@@ -75,6 +75,15 @@ class SchedulerFailedBugObservationTest extends TestCase
         $this->assertFalse($job['zero_work']);
     }
 
+    public function test_complete_output_at_the_byte_limit_is_still_available(): void
+    {
+        $raw = json_encode(self::payload(), JSON_THROW_ON_ERROR);
+        $job = $this->observe(str_pad($raw, 65536, ' '));
+        $this->assertNotNull($job['observed_result']);
+        $this->assertSame(1, $job['observed_result']['regressed']);
+        $this->assertSame('failed', $job['run_status']);
+    }
+
     #[DataProvider('invalidOutputs')]
     public function test_unavailable_or_unsafe_output_stays_private_and_failed(?string $raw): void
     {
@@ -134,6 +143,22 @@ class SchedulerFailedBugObservationTest extends TestCase
         $variants['oversized'] = [str_repeat(' ', 65536) . json_encode($valid, JSON_THROW_ON_ERROR)];
         $variants['wrong-shape'] = ['{"regressed":1,"conditions":[null]}'];
         $variants['string-regressed'] = [str_replace('"regressed":1', '"regressed":"1"', json_encode($valid, JSON_THROW_ON_ERROR))];
+        foreach (['regressed' => -1, 'too-many-regressed' => 11, 'boolean-regressed' => true, 'overflow-regressed' => PHP_INT_MAX + 1] as $name => $value) {
+            $p = $valid; $p['regressed'] = $value;
+            $variants[$name] = [json_encode($p, JSON_THROW_ON_ERROR)];
+        }
+        foreach (['key', 'count', 'state'] as $field) {
+            $p = $valid; unset($p['conditions'][0][$field]);
+            $variants['missing-' . $field] = [json_encode($p, JSON_THROW_ON_ERROR)];
+        }
+        $p = $valid; $p['conditions'][0]['count'] = PHP_INT_MAX + 1;
+        $variants['overflow-count'] = [json_encode($p, JSON_THROW_ON_ERROR)];
+        $p = $valid; $p['conditions'] = (object) $p['conditions'];
+        $variants['numeric-object-not-list'] = [json_encode($p, JSON_THROW_ON_ERROR)];
+        $p = $valid; $nested = self::PRIVATE_TEXT;
+        for ($i = 0; $i < 40; $i++) $nested = ['nested' => $nested];
+        $p['private'] = $nested;
+        $variants['excessive-depth'] = [json_encode($p, JSON_THROW_ON_ERROR)];
         return $variants;
     }
 
