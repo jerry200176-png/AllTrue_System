@@ -2,7 +2,7 @@
 """Monday one-pager for the founder: plain-Chinese weekly in-app report (IDs only).
 
 Inputs: the redacted bug-sla-weekly snapshot (production, IDs only) and
-`gh issue list --state all --json number,title,body,comments,state,labels`
+`gh issue list --state all --json number,title,body,comments,state,labels,createdAt,author`
 (only used to map in-app IDs to their `area:*` family label).
 The repository is public, so only integers and label names ever reach the output.
 
@@ -22,6 +22,14 @@ FAMILY_ZH = {
     "area:ui": "畫面操作", "area:parent-portal": "家長端", "area:learning-records": "學習紀錄",
     "area:finance": "財務報表", "area:engagement": "互動通知",
 }
+# Root-cause family slugs (#4991 programme item 1); must equal the rootfam:* names in .github/labels.yml.
+ROOTFAM = (
+    "rootfam:screens-disagree", "rootfam:ux-affordance", "rootfam:money", "rootfam:feature-request",
+    "rootfam:write-guard", "rootfam:ownership-identity", "rootfam:no-undo", "rootfam:ux-layout",
+    "rootfam:isolated-defect", "rootfam:noise-ops", "rootfam:permission-scope", "rootfam:performance",
+    "rootfam:automation-side-effect", "rootfam:date-boundary",
+)
+REPEAT_MIN, REPEAT_DAYS, MAX_MONTHS = 3, 30, 8
 SECTIONS = ("new", "resolved", "closed", "reopened")
 
 
@@ -77,6 +85,46 @@ def families(issues, ids, owner):
     return found
 
 
+def family_table(issues, now, owner):
+    """Trusted in-app issues -> counts per rootfam label and Taipei month (counts only, no text)."""
+    recon = _load_reconcile()
+    rows, unlabelled, conflict, window = {}, Counter(), Counter(), Counter()
+    since = now - timedelta(days=REPEAT_DAYS)
+    for issue in trusted_issues(issues, owner):
+        if not recon.inapp_ids(issue) or not issue.get("createdAt"):
+            continue
+        created = datetime.fromisoformat(issue["createdAt"].replace("Z", "+00:00"))
+        month = created.astimezone(TAIPEI).strftime("%Y-%m")
+        fams = sorted({l["name"] for l in issue.get("labels", [])} & set(ROOTFAM))
+        if not fams:
+            unlabelled[month] += 1
+        elif len(fams) > 1:
+            conflict[month] += 1
+        else:
+            rows.setdefault(fams[0], Counter())[month] += 1
+            if since <= created <= now:
+                window[fams[0]] += 1
+    months = sorted({m for c in [*rows.values(), unlabelled, conflict] for m in c})[-MAX_MONTHS:]
+    return {"months": months, "rows": {k: dict(v) for k, v in rows.items()}, "unlabelled": dict(unlabelled),
+            "conflict": dict(conflict), "repeat": sorted(k for k, n in window.items() if n >= REPEAT_MIN)}
+
+
+def render_family_table(table):
+    months = table["months"]
+    head = "| 根因家族 | " + " | ".join(months) + " |" if months else "| 根因家族 |"
+    lines = ["", "根因家族 × 月份（以 GitHub issue 的 rootfam 標籤計算，只列筆數；一個 issue 算一筆）：", "", head,
+             "|" + "---|" * (len(months) + 1)]
+    for name in ROOTFAM:
+        if name in table["rows"]:
+            lines.append(f"| {name} | " + " | ".join(str(table["rows"][name].get(m, 0)) for m in months) + " |")
+    for label, key in (("未標家族", "unlabelled"), ("多個家族標籤（需修正）", "conflict")):
+        lines.append(f"| {label} | " + " | ".join(str(table[key].get(m, 0)) for m in months) + " |")
+    rep = table["repeat"]
+    lines.append("")
+    lines.append(f"重複出現的家族（近 {REPEAT_DAYS} 天 ≥ {REPEAT_MIN} 筆）：{len(rep)} 類" + (f"（{'、'.join(rep)}）" if rep else ""))
+    return lines
+
+
 def fmt(ids):
     return "、".join(f"#{i}" for i in ids) if ids else "無"
 
@@ -86,7 +134,7 @@ def iso_week(now):
     return f"{year}-W{week:02d}"
 
 
-def render(snapshot, issues, now, owner):
+def render(snapshot, issues, now, owner, cap=None):
     data = parse_snapshot(snapshot)
     title = f"in-app 週報 {iso_week(now)}"
     week_ids = sorted(set(data["new"]) | set(data["resolved"]) | set(data["closed"]) | set(data["reopened"]))
@@ -109,6 +157,9 @@ def render(snapshot, issues, now, owner):
         "- 本週最常出現的三類問題：" + ("；".join(f"{FAMILY_ZH.get(k, k)} {n} 筆" for k, n in top) if top else "無"),
         f"- 之前修過、又被回報的（重開）：{len(data['reopened'])} 筆（{fmt(data['reopened'])}）",
         "",
+        *render_family_table(family_table(issues, now, owner)),
+        *([f"注意：issue 清單已達上限 {cap} 筆（truncated at {cap}），上表的過去月份可能不完整。"] if cap and len(issues) >= cap else []),
+        "",
         f"資料產生時間：{snapshot.get('generated_at', '未知')}。來源：bug-sla-weekly-report 工作流程。",
     ]
     return title, "\n".join(lines) + "\n"
@@ -121,11 +172,12 @@ def main():
     ap.add_argument("--out-dir", required=True)
     ap.add_argument("--now", default=None)
     ap.add_argument("--owner", required=True, help="repository owner login (trusted issue author)")
+    ap.add_argument("--cap", type=int, default=None, help="the --limit the issue list was fetched with; report truncation when reached")
     args = ap.parse_args()
     now = datetime.fromisoformat(args.now) if args.now else datetime.now(timezone.utc)
     snapshot = json.loads(Path(args.snapshot).read_text(encoding="utf-8"))
     issues = json.loads(Path(args.issues).read_text(encoding="utf-8"))
-    title, body = render(snapshot, issues, now, args.owner)
+    title, body = render(snapshot, issues, now, args.owner, args.cap)
     out = Path(args.out_dir)
     out.mkdir(parents=True, exist_ok=True)
     (out / "title.txt").write_text(title, encoding="utf-8")

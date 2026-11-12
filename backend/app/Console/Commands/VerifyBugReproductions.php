@@ -3,9 +3,12 @@
 namespace App\Console\Commands;
 
 use App\Models\Invoice;
+use App\Services\Billing\InvoiceAmountParityCensus;
 use App\Support\AttendanceStatus;
+use App\Support\SchedulerEvidence;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 /**
  * Bug-termination gate (#1080).
@@ -20,7 +23,9 @@ use Illuminate\Support\Facades\DB;
  *   - non-enforced conditions are KNOWN-OPEN divergences (owner-gated fixes #1062/#957/#964);
  *     reported with their tracking issue so "production state vs bug state" is measurable nightly.
  *
- * Read-only: only SELECT COUNT(*). Scheduled nightly (Kernel) — feeds #904 recurrence report.
+ * Read-only: only SELECT. Scheduled nightly (Kernel) — feeds #904 recurrence report.
+ * `screen_amount_vs_resolver` (#4991 item 2) is counted by InvoiceAmountParityCensus instead of one COUNT(*); its JSON row
+ * carries `unevaluated`, `census_error` and a `detail` (per campus, per type, named exclusions, truncated flag).
  */
 class VerifyBugReproductions extends Command
 {
@@ -29,7 +34,7 @@ class VerifyBugReproductions extends Command
     protected $description = 'Run every recurring bug reproduction query against production; fail if a FIXED bug regresses (#1080).';
 
     /**
-     * @return list<array{key:string,label:string,issue:string,enforced:bool,sql:string}>
+     * @return list<array{key:string,label:string,issue:string,enforced:bool,sql?:string}>
      */
     private function conditions(): array
     {
@@ -159,7 +164,30 @@ class VerifyBugReproductions extends Command
                                 AND EXISTS (SELECT 1 FROM Invoice i WHERE {$link})
                                 AND NOT EXISTS (SELECT 1 FROM Invoice i WHERE {$link} AND i.TotalAmount > " . Invoice::netPaidSql('i') . ")))",
             ],
+            [
+                // No `sql`: counted by InvoiceAmountParityCensus. Reported first; enforce after 14 nights at 0 (#4991 item 2).
+                'key' => 'screen_amount_vs_resolver',
+                'label' => 'Live bills whose header, line items and the amount the screens show (resolver) do not agree',
+                'issue' => '#4991/#3521', 'enforced' => false,
+            ],
         ];
+    }
+
+    /**
+     * The census must never take the other conditions down with it: any failure (database error included) makes
+     * this one condition INCOMPLETE with `census_error` = 1. Only the exception class goes to the server log.
+     *
+     * @return array<string,mixed>
+     */
+    private function census(): array
+    {
+        try {
+            return ['census_error' => 0] + app(InvoiceAmountParityCensus::class)->run();
+        } catch (\Throwable $e) {
+            Log::warning('amount_parity.census_error', ['error' => $e::class]);
+
+            return ['census_error' => 1, 'mismatch_count' => 0, 'unevaluated' => 0, 'truncated' => false];
+        }
     }
 
     public function handle(): int
@@ -167,8 +195,16 @@ class VerifyBugReproductions extends Command
         $results = [];
         $regressed = 0;
 
-        foreach ($this->conditions() as $cond) {
-            $count = (int) (DB::selectOne($cond['sql'])->c ?? 0);
+        $conditions = $this->conditions();
+        // One list of condition keys (SchedulerEvidence): the failed-run evidence reader accepts exactly this set, so
+        // a condition added here without registering it there must not ship.
+        if (array_column($conditions, 'key') !== SchedulerEvidence::BUG_CONDITION_CODES) {
+            throw new \LogicException('bugs:verify-reproductions conditions differ from SchedulerEvidence::BUG_CONDITION_CODES');
+        }
+
+        foreach ($conditions as $cond) {
+            $detail = isset($cond['sql']) ? null : $this->census();
+            $count = $detail === null ? (int) (DB::selectOne($cond['sql'])->c ?? 0) : $detail['mismatch_count'];
             // Known-baseline allowance (config/reproduction_baselines.php): an enforced condition fails only above it;
             // a listed null means the baseline is not measured yet (reported, never failing).
             $baseline = config('reproduction_baselines.' . $cond['key'], 0);
@@ -185,9 +221,10 @@ class VerifyBugReproductions extends Command
                 'baseline' => $baseline,
                 'state' => $cond['enforced']
                     ? ($count === 0 ? 'FIXED-OK' : ($pending ? 'BASELINE-PENDING' : ($isRegression ? 'REGRESSED' : 'WITHIN-BASELINE')))
-                    : ($count === 0 ? 'OPEN-CLEARED' : 'OPEN'),
+                    // A census cut short by a bound, or with a bill it could not evaluate, proves nothing about those bills.
+                    : ($count > 0 ? 'OPEN' : (($detail['truncated'] ?? false) || ($detail['unevaluated'] ?? 0) > 0 || ($detail['census_error'] ?? 0) > 0 ? 'INCOMPLETE' : 'OPEN-CLEARED')),
                 'label' => $cond['label'],
-            ];
+            ] + ($detail === null ? [] : ['unevaluated' => $detail['unevaluated'], 'census_error' => $detail['census_error'], 'detail' => $detail]);
         }
 
         if ($this->option('json')) {

@@ -416,6 +416,7 @@ const todaySchedules = ref([]);
 const pendingEvaluations = ref([]);
 // 伺服器全量筆數（列表只載入前 100 筆，不能用 length 當總數）
 const pendingEvaluationsTotal = ref(0);
+const pendingEvaluationsComplete = ref(false);
 const operationsTrust = ref(null);
 const lowBalanceStudents = ref([]);
 const tuitionAlertRows = ref([]); // raw /alerts/tuition rows: the home cards classify them with billRows()
@@ -661,7 +662,8 @@ const evalAgeLabel = computed(() => {
   return oldestEvalDays.value === 0 ? `${prefix}是今天` : `${prefix}等 ${oldestEvalDays.value} 天`;
 });
 const heroLoading = computed(() => dashboardLoading.value && !todaySchedules.value.length);
-const evalSpark = computed(() => sevenDayEvalCounts(pendingEvaluations.value, localTodayYmd()));
+const evalSpark = computed(() => pendingEvaluationsComplete.value
+  ? sevenDayEvalCounts(pendingEvaluations.value, localTodayYmd()) : null);
 const kpiCards = computed(() => [
   {
     key: 'owed', label: '要收的錢', value: owed.value.total, unit: '筆', grad: 'tpl-g-green', icon: Wallet,
@@ -1312,6 +1314,10 @@ const loadData = async ({ quiet = false } = {}) => {
       const pendingJson = await pendingRes.json();
       pendingEvaluations.value = pendingJson.data || [];
       pendingEvaluationsTotal.value = Number(pendingJson.total ?? pendingEvaluations.value.length);
+      // OFFSET pagination reports the full total. Without it, a full page may be truncated.
+      pendingEvaluationsComplete.value = pendingJson.total != null
+        ? pendingEvaluations.value.length === pendingEvaluationsTotal.value
+        : pendingEvaluations.value.length < 100;
     }
   } catch (err) {
     console.error('Failed to load pending evaluations:', err);

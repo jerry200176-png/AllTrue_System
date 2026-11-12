@@ -342,3 +342,63 @@
 - name: "platform"
   color: "1d76db"
   description: "Platform engineering"
+
+# --- rootfam: root-cause family of an in-app report (#4991 programme item 1) ---
+# Exactly one per in-app issue, chosen by mechanism not by screen. Definitions: #4991 (comment 6817263700).
+# scripts/inapp-weekly-onepager.py counts these; its test keeps the slug list equal to this block.
+
+- name: "rootfam:screens-disagree"
+  color: "c5def5"
+  description: "V: screens disagree about the same fact (calendar, lists, counters)"
+
+- name: "rootfam:ux-affordance"
+  color: "c5def5"
+  description: "X1: the feature exists but the user cannot find it, read it or tell what to do next"
+
+- name: "rootfam:money"
+  color: "c5def5"
+  description: "M: amount differs between places, paid status has two truths, zero-fee meaning"
+
+- name: "rootfam:feature-request"
+  color: "c5def5"
+  description: "FR: feature request"
+
+- name: "rootfam:write-guard"
+  color: "c5def5"
+  description: "G: save is refused wrongly (false full or conflict) or an illegal state is allowed"
+
+- name: "rootfam:ownership-identity"
+  color: "c5def5"
+  description: "O: which contract owns a lesson, who teaches it, ghosts, recurrence"
+
+- name: "rootfam:no-undo"
+  color: "c5def5"
+  description: "R: a mistake or change of plan cannot be undone"
+
+- name: "rootfam:ux-layout"
+  color: "c5def5"
+  description: "X2: layout and rendering (overflow, mobile, flicker, misalignment)"
+
+- name: "rootfam:isolated-defect"
+  color: "c5def5"
+  description: "S: isolated functional defect"
+
+- name: "rootfam:noise-ops"
+  color: "c5def5"
+  description: "N: noise, tests, operations requests"
+
+- name: "rootfam:permission-scope"
+  color: "c5def5"
+  description: "P: permission and campus scope"
+
+- name: "rootfam:performance"
+  color: "c5def5"
+  description: "PF: performance and availability"
+
+- name: "rootfam:automation-side-effect"
+  color: "c5def5"
+  description: "AU: automation or integration side effect"
+
+- name: "rootfam:date-boundary"
+  color: "c5def5"
+  description: "T: date boundary"
