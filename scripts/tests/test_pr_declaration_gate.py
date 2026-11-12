@@ -22,24 +22,78 @@ from scripts.governance.autonomy_gate import (
 from scripts.governance.pr_requires_security import requires_security
 
 
-# The only tiers this classifier is allowed to lower (retro #5201, Founder 2026-11-12 on token waste). Everything
-# else may only rise. Each entry: (predicate on the path, why it is not release evidence).
-INTENDED_LOWERINGS = (
-    (lambda p: p.startswith("frontend/e2e/__screenshots__/") and p.endswith(".png"),
-     "visual baselines: read only by ci.yml's Docker visual job in PR CI"),
-    (lambda p: p.startswith("frontend/e2e/") and p.endswith(".spec.js"),
-     "specs that every production config ignores or never matches: PR-CI fake-data suites"),
-    (lambda p: p.startswith("frontend/e2e/fixtures/") and p.endswith((".js", ".mjs", ".html", ".vue")),
-     "fixtures that no production spec imports"),
+# The only tiers this classifier is allowed to lower (retro #5201, Founder 2026-11-12 on token waste), frozen
+# as a list generated once and reviewed by hand. It does not call the derivation, so a bug there cannot widen
+# what the no-drop tests accept. Everything else may only rise. A file added after the baseline commit cannot
+# be compared with it; the enumeration and derivation tests cover new files.
+# Visual baselines: only ci.yml's Docker visual job reads them, and no production spec asserts on a baseline.
+_LOWERED_BASELINES = (
+    "frontend/e2e/__screenshots__/attendance-1280.png",
+    "frontend/e2e/__screenshots__/attendance-375.png",
+    "frontend/e2e/__screenshots__/billing-center-1280.png",
+    "frontend/e2e/__screenshots__/billing-center-375.png",
+    "frontend/e2e/__screenshots__/binding-conflicts-1280.png",
+    "frontend/e2e/__screenshots__/binding-conflicts-390.png",
+    "frontend/e2e/__screenshots__/binding-health-1280.png",
+    "frontend/e2e/__screenshots__/binding-health-390.png",
+    "frontend/e2e/__screenshots__/branch-health-1280.png",
+    "frontend/e2e/__screenshots__/branch-health-390.png",
+    "frontend/e2e/__screenshots__/calendar-1280.png",
+    "frontend/e2e/__screenshots__/calendar-375.png",
+    "frontend/e2e/__screenshots__/classroom-1280.png",
+    "frontend/e2e/__screenshots__/classroom-390.png",
+    "frontend/e2e/__screenshots__/course-management-1280.png",
+    "frontend/e2e/__screenshots__/course-management-375.png",
+    "frontend/e2e/__screenshots__/course-manager-billing-1280.png",
+    "frontend/e2e/__screenshots__/course-manager-billing-375.png",
+    "frontend/e2e/__screenshots__/course-manager-list-1280.png",
+    "frontend/e2e/__screenshots__/course-manager-list-375.png",
+    "frontend/e2e/__screenshots__/course-manager-month-1280.png",
+    "frontend/e2e/__screenshots__/course-manager-month-375.png",
+    "frontend/e2e/__screenshots__/course-manager-overview-1280.png",
+    "frontend/e2e/__screenshots__/course-manager-overview-375.png",
+    "frontend/e2e/__screenshots__/course-manager-settings-1280.png",
+    "frontend/e2e/__screenshots__/course-manager-settings-375.png",
+    "frontend/e2e/__screenshots__/director-home-1280.png",
+    "frontend/e2e/__screenshots__/director-home-375.png",
+    "frontend/e2e/__screenshots__/learning-records-1280.png",
+    "frontend/e2e/__screenshots__/learning-records-375.png",
+    "frontend/e2e/__screenshots__/login-1280.png",
+    "frontend/e2e/__screenshots__/login-375.png",
+    "frontend/e2e/__screenshots__/parent-home-390.png",
+    "frontend/e2e/__screenshots__/parent-home-large-390.png",
+    "frontend/e2e/__screenshots__/release-notes-1280.png",
+    "frontend/e2e/__screenshots__/release-notes-390.png",
+    "frontend/e2e/__screenshots__/schedule-discrepancy-1280.png",
+    "frontend/e2e/__screenshots__/schedule-discrepancy-390.png",
+    "frontend/e2e/__screenshots__/students-1280.png",
+    "frontend/e2e/__screenshots__/students-375.png",
+    "frontend/e2e/__screenshots__/subject-settings-1280.png",
+    "frontend/e2e/__screenshots__/subject-settings-390.png",
+    "frontend/e2e/__screenshots__/teacher-home-1280.png",
+    "frontend/e2e/__screenshots__/teacher-home-375.png",
 )
+
+# Specs every production config ignores (fake-data Vite fixture, PR CI only) and the one loopback fixture.
+_LOWERED_OTHER = (
+    "frontend/e2e/binding-conflict-clarity.spec.js",
+    "frontend/e2e/calendar-reschedule-cache-528.spec.js",
+    "frontend/e2e/fixtures/directorAcceptanceApi.js",
+    "frontend/e2e/overlay-layout.spec.js",
+    "frontend/e2e/parent-text-size.spec.js",
+    "frontend/e2e/ui-foundation-course-payment-entry.spec.js",
+    "frontend/e2e/ui-foundation-sidebar-navigation.spec.js",
+)
+INTENDED_LOWERINGS = frozenset((*_LOWERED_BASELINES, *_LOWERED_OTHER))
 
 
 def _is_intended_lowering(path: str, new: int, old: int) -> bool:
-    return (
-        (old, new) == (3, 0)
-        and not is_production_e2e_path(path)
-        and any(matches(path) for matches, _reason in INTENDED_LOWERINGS)
-    )
+    return (old, new) == (3, 0) and path in INTENDED_LOWERINGS
+
+
+def _paths_at(sha: str) -> set[str]:
+    listed = subprocess.run(["git", "ls-tree", "-r", "-z", "--name-only", sha], cwd=ROOT, capture_output=True, text=True)
+    return {p for p in listed.stdout.split("\0") if p}
 
 
 class PrDeclarationGateTest(unittest.TestCase):
@@ -108,7 +162,7 @@ class PrDeclarationGateTest(unittest.TestCase):
             "frontend/e2e/calendar-reschedule-cache-528.spec.js",
             "frontend/e2e/subject-settings-clarity.spec.js",
             "frontend/e2e/__screenshots__/subject-settings-1280.png",
-            "frontend/e2e/fixtures/ui-foundation/apiMocks.js",
+            "frontend/e2e/fixtures/ui-foundation/pilot-mount.js",
             "frontend/e2e/fixtures/directorAcceptanceApi.js",
         ):
             with self.subTest(path=path):
@@ -149,6 +203,13 @@ class PrDeclarationGateTest(unittest.TestCase):
         # Fixtures a production spec imports are part of it; the loopback-only ones are not.
         self.assertIn("frontend/e2e/fixtures/dismissOverlays.js", derived)
         self.assertNotIn("frontend/e2e/fixtures/directorAcceptanceApi.js", derived)
+        # A derived production path wins over the ui-foundation carve-out: ui-smoke runs
+        # ui-foundation-overlay-gallery.spec.js against production and it imports these mocks.
+        self.assertIn("frontend/e2e/fixtures/ui-foundation/apiMocks.js", derived)
+        self.assertEqual(classify_scope(["frontend/e2e/fixtures/ui-foundation/apiMocks.js"], "")["tier_name"], "T3")
+        # Unit tests of production guards keep their tier.
+        for guard in ("readOnlyAppGuard", "classSessionReadResponder", "calendarDrawnCards"):
+            self.assertEqual(classify_scope([f"frontend/e2e/fixtures/{guard}.test.js"], "")["tier_name"], "T3")
 
     def test_every_tracked_e2e_file_is_in_exactly_one_of_two_tiers(self):
         tracked = subprocess.run(["git", "ls-files", "-z", "--", "frontend/e2e", "frontend/playwright*.js"],
@@ -174,7 +235,9 @@ class PrDeclarationGateTest(unittest.TestCase):
         import shutil
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            shutil.copytree(ROOT / ".github/workflows", root / ".github/workflows")
+            for folder in (".github/workflows", ".github/scripts", ".github/actions", "scripts"):
+                if (ROOT / folder).is_dir():  # scripts the workflows call are read too
+                    shutil.copytree(ROOT / folder, root / folder, ignore=shutil.ignore_patterns("__pycache__", "node_modules"))
             (root / "frontend/e2e").mkdir(parents=True)
             shutil.copy(ROOT / "frontend/package.json", root / "frontend/package.json")
             config = (ROOT / "frontend/playwright.config.js").read_text(encoding="utf-8")
@@ -616,9 +679,10 @@ class ClassifierSelfProtectionTest(unittest.TestCase):
                     classify_activation_scope(paths, self.PATCH), base.classify_activation_scope(paths, self.PATCH))
         tracked = subprocess.run(["git", "-c", "core.quotepath=off", "ls-files"],
                                  cwd=ROOT, capture_output=True, text=True, check=True)
+        existing = _paths_at(self.BASE_SHA)
         for path in tracked.stdout.splitlines():
             new, old = classify_scope([path], ""), base.classify_scope([path], "")
-            if not _is_intended_lowering(path, new["machine_minimum_tier"], old["machine_minimum_tier"]):
+            if path in existing and not _is_intended_lowering(path, new["machine_minimum_tier"], old["machine_minimum_tier"]):
                 self.assertGreaterEqual(new["machine_minimum_tier"], old["machine_minimum_tier"], path)
             self.assertEqual(classify_activation_scope([path], ""), base.classify_activation_scope([path], ""), path)
 
@@ -643,6 +707,118 @@ class ClassifierSelfProtectionTest(unittest.TestCase):
             "e2e-pr-only-workflow": sorted(autonomy_gate._E2E_PR_ONLY_WORKFLOWS),
         }
         self.assertEqual({family: sorted(paths) for family, paths in documented.items()}, code)
+
+
+class ProductionE2eFailClosedTest(unittest.TestCase):
+    """Reviewer P1/a-d (#5237): whatever the derivation does not understand exactly counts as production."""
+
+    CONFIG = (
+        "import { defineConfig } from '@playwright/test';\n"
+        "export default defineConfig({\n  testDir: './e2e',\n  testIgnore: [\n    /local\\.spec\\.js$/, // fake data\n  ],\n"
+        "  projects: [{ name: 'chromium' }],\n});\n"
+    )
+    WORKFLOW = "jobs:\n  smoke:\n    steps:\n      - run: npm run test:e2e\n"
+    SPECS = ("prod.spec.js", "local.spec.js")
+
+    def _checkout(self, tmp, *, config=None, workflow=None, extra=None):
+        root = Path(tmp)
+        (root / ".github/workflows").mkdir(parents=True)
+        (root / "frontend/e2e/__screenshots__").mkdir(parents=True)
+        (root / ".github/workflows/ui-smoke.yml").write_text(workflow or self.WORKFLOW, encoding="utf-8")
+        (root / "frontend/package.json").write_text('{"scripts": {"test:e2e": "playwright test"}}', encoding="utf-8")
+        (root / "frontend/playwright.config.js").write_text(config or self.CONFIG, encoding="utf-8")
+        for name in self.SPECS:
+            (root / "frontend/e2e" / name).write_text("// spec\n", encoding="utf-8")
+        (root / "frontend/e2e/__screenshots__/home-390.png").write_bytes(b"png")
+        for rel, text in (extra or {}).items():
+            (root / rel).parent.mkdir(parents=True, exist_ok=True)
+            (root / rel).write_text(text, encoding="utf-8")
+        autonomy_gate._E2E_CACHE.clear()
+        return root
+
+    def tearDown(self):
+        autonomy_gate._E2E_CACHE.clear()
+
+    def _assert_everything_protected(self, root):
+        self.assertIsNone(production_e2e_paths(root))
+        for rel in ("frontend/e2e/local.spec.js", "frontend/e2e/prod.spec.js", "frontend/e2e/__screenshots__/home-390.png",
+                    "frontend/e2e/fixtures/ui-foundation/x.js"):
+            self.assertTrue(is_production_e2e_path(rel, root), rel)
+
+    def test_baseline_fixture_is_understood(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = self._checkout(tmp)
+            self.assertIsNotNone(production_e2e_paths(root))
+            self.assertTrue(is_production_e2e_path("frontend/e2e/prod.spec.js", root))
+            self.assertFalse(is_production_e2e_path("frontend/e2e/local.spec.js", root))
+            self.assertFalse(is_production_e2e_path("frontend/e2e/__screenshots__/home-390.png", root))
+
+    def test_glob_patterns_projects_testdir_and_foreign_imports_fail_closed(self):
+        broken = {
+            "glob testIgnore": self.CONFIG.replace("[\n    /local\\.spec\\.js$/, // fake data\n  ]", "['**/local.spec.js']"),
+            "glob testMatch": self.CONFIG.replace("testDir: './e2e',", "testDir: './e2e',\n  testMatch: '**/*.spec.js',"),
+            "per-project testMatch": self.CONFIG.replace("{ name: 'chromium' }", "{ name: 'chromium', testMatch: /prod\\.spec\\.js$/ }"),
+            "per-project testIgnore": self.CONFIG.replace("{ name: 'chromium' }", "{ name: 'chromium', testIgnore: [] }"),
+            "other testDir": self.CONFIG.replace("./e2e", "./elsewhere"),
+            "no testDir": self.CONFIG.replace("testDir: './e2e',", ""),
+            "env dependent": self.CONFIG.replace("testIgnore: [", "testIgnore: process.env.CI ? [").replace("/local", "/local"),
+            "regex flags": self.CONFIG.replace("/local\\.spec\\.js$/", "/local\\.spec\\.js$/i"),
+            "foreign import": "import base from './base.js';\n" + self.CONFIG,
+            "inherits match": "import base from './other.config.js';\nexport default { ...base, testDir: './e2e' };\n",
+        }
+        for name, config in broken.items():
+            with self.subTest(name), tempfile.TemporaryDirectory() as tmp:
+                root = self._checkout(tmp, config=config, extra={"frontend/other.config.js": self.CONFIG})
+                self._assert_everything_protected(root)
+
+    def test_untranslatable_javascript_regex_fails_closed_instead_of_raising(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = self._checkout(tmp, config=self.CONFIG.replace("/local\\.spec\\.js$/", "/(?<=a+)local\\.spec\\.js$/"))
+            self._assert_everything_protected(root)
+
+    def test_script_indirection_is_followed_one_level(self):
+        extra_config = self.CONFIG.replace("testIgnore: [\n    /local\\.spec\\.js$/, // fake data\n  ],", "testMatch: /local\\.spec\\.js$/,\n  testIgnore: [],")
+        files = {"frontend/playwright.extra.config.js": extra_config}
+        workflow = self.WORKFLOW + "      - run: bash scripts/run-extra-smoke.sh\n"
+        with tempfile.TemporaryDirectory() as tmp:
+            script = "#!/bin/bash\ncd frontend && npx playwright test -c playwright.extra.config.js\n"
+            root = self._checkout(tmp, workflow=workflow, extra={**files, "scripts/run-extra-smoke.sh": script})
+            self.assertTrue(is_production_e2e_path("frontend/e2e/local.spec.js", root))  # run only by the script
+            self.assertIn("frontend/playwright.extra.config.js", production_e2e_paths(root))
+        for name, script in (
+            ("variable config", "npx playwright test -c \"$CFG\"\n"),
+            ("api use without a command", "const { chromium } = require('playwright');\n"),
+        ):
+            with self.subTest(name), tempfile.TemporaryDirectory() as tmp:
+                root = self._checkout(tmp, workflow=workflow, extra={"scripts/run-extra-smoke.sh": script})
+                self._assert_everything_protected(root)
+        with self.subTest("script that is called but missing"), tempfile.TemporaryDirectory() as tmp:
+            self._assert_everything_protected(self._checkout(tmp, workflow=workflow))
+        with self.subTest("script that only installs the browser"), tempfile.TemporaryDirectory() as tmp:
+            root = self._checkout(tmp, workflow=workflow, extra={"scripts/run-extra-smoke.sh": "npx playwright install chromium\n"})
+            self.assertIsNotNone(production_e2e_paths(root))
+            self.assertFalse(is_production_e2e_path("frontend/e2e/local.spec.js", root))
+
+    def test_baselines_are_lowered_only_while_no_production_file_asserts_on_one(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = self._checkout(tmp)
+            self.assertFalse(is_production_e2e_path("frontend/e2e/__screenshots__/home-390.png", root))
+        for assertion in ("await expect(page).toHaveScreenshot('home-390.png');", "expect(x).toMatchSnapshot();"):
+            with self.subTest(assertion), tempfile.TemporaryDirectory() as tmp:
+                root = self._checkout(tmp, extra={"frontend/e2e/prod.spec.js": assertion + "\n"})
+                self.assertTrue(is_production_e2e_path("frontend/e2e/__screenshots__/home-390.png", root))
+        with self.subTest("assertion only in a PR-only spec"), tempfile.TemporaryDirectory() as tmp:
+            root = self._checkout(tmp, extra={"frontend/e2e/local.spec.js": "await expect(page).toHaveScreenshot();\n"})
+            self.assertFalse(is_production_e2e_path("frontend/e2e/__screenshots__/home-390.png", root))
+
+    def test_a_derived_production_path_wins_over_the_ui_foundation_carve_out(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = self._checkout(tmp, extra={
+                "frontend/e2e/prod.spec.js": "import { mocks } from './fixtures/ui-foundation/mocks.js';\n",
+                "frontend/e2e/fixtures/ui-foundation/mocks.js": "export const mocks = 1;\n",
+                "frontend/e2e/fixtures/ui-foundation/other.js": "export const other = 1;\n"})
+            self.assertTrue(is_production_e2e_path("frontend/e2e/fixtures/ui-foundation/mocks.js", root))
+            self.assertFalse(is_production_e2e_path("frontend/e2e/fixtures/ui-foundation/other.js", root))
 
 
 class AgentInstructionAndContentPathTest(unittest.TestCase):
@@ -734,15 +910,17 @@ class AgentInstructionAndContentPathTest(unittest.TestCase):
         previous = ClassifierSelfProtectionTest._load(shown.stdout)
         tracked = subprocess.run(["git", "ls-files", "-z"], cwd=ROOT, capture_output=True, text=True, check=True)
         raised: dict[tuple[int, int], int] = {}
+        existing = _paths_at(previous_sha)
         for path in filter(None, tracked.stdout.split("\0")):
             new, old = classify_scope([path], ""), previous.classify_scope([path], "")
-            if not _is_intended_lowering(path, new["machine_minimum_tier"], old["machine_minimum_tier"]):
+            if path in existing and not _is_intended_lowering(path, new["machine_minimum_tier"], old["machine_minimum_tier"]):
                 self.assertGreaterEqual(new["machine_minimum_tier"], old["machine_minimum_tier"], path)
             self.assertEqual(classify_activation_scope([path], ""), previous.classify_activation_scope([path], ""), path)
             if new["machine_minimum_tier"] != old["machine_minimum_tier"]:
                 key = (old["machine_minimum_tier"], new["machine_minimum_tier"])
                 raised[key] = raised.get(key, 0) + 1
-        # (0, 3) is the Playwright config the director acceptance job runs against production (it was T0);
+        # (0, 3): the Playwright config the director acceptance job runs against production, and the fake-data
+        # mock module that production spec ui-foundation-overlay-gallery imports (both were T0);
         # (3, 0) are the intended lowerings above, nothing else.
         self.assertLessEqual(set(raised), {(0, 1), (0, 2), (1, 3), (0, 3), (3, 0)})
 

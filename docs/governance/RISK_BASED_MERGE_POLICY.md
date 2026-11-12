@@ -149,10 +149,15 @@ e2e-pr-only-workflow ui-preview.yml
   Agent definitions (`.claude/agents/`) and `.claude/settings.local.json` are the same agent control plane.
 - **T3-e2e-production** (lowers tiers, 2026-11-12): under `frontend/e2e/**` only the files that run against
   production are release evidence and stay T3: specs and Playwright configs derived from the workflows that
-  are not `e2e-pr-only-workflow` (the npm scripts they run, the config each script names, that config's
-  match and ignore rules, and the fixtures those specs import), plus anything the derivation cannot read.
-  Every other `frontend/e2e/**` file (fake-data clarity and ui-foundation specs, visual baselines in
-  `__screenshots__/`, fixtures only those import) is an ordinary test file: T0 alone, the same tier as
+  are not `e2e-pr-only-workflow` (and the scripts and actions they call, one level), the npm scripts they run,
+  the config each names, that config's match and ignore rules, and the fixtures those specs import. A derived
+  path stays T3 whatever its folder (so `fixtures/ui-foundation/apiMocks.js`, imported by a production spec,
+  is T3). The derivation fails closed: if it meets a glob pattern, a per-project match rule, a non-default
+  `testDir`, a config import it cannot follow, a regex it cannot translate, a script that runs Playwright
+  without a literal config or spec, or a missing script, every `frontend/e2e/**` file is T3. Unit tests of the
+  production guards (`frontend/e2e/fixtures/*.test.js`) keep their tier. Visual baselines in `__screenshots__/`
+  are lowered only while no production file asserts on a stored baseline. Every other `frontend/e2e/**` file
+  (fake-data clarity and ui-foundation specs, fixtures only those import) is an ordinary test file: T0 alone, the same tier as
   `frontend/src/**/*.test.js`. There is no hand-kept list; a test fails when a production workflow runs a spec
   this rule does not treat as T3. The word "payment" in a diff still raises a change to T3 when it is in
   runtime logic; it never counted in tests, docs, comments or CSS selectors.

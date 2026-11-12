@@ -224,50 +224,11 @@ _E2E_NON_PRODUCTION_KINDS = (
 _E2E_REF_RE = re.compile(r"\b(e2e/[\w./-]+?\.(?:spec|test)\.[cm]?js)\b")
 _E2E_CONFIG_ARG_RE = re.compile(r"(?:-c|--config)[ =]+(\S+\.config\.[cm]?js)")
 _E2E_NPM_RUN_RE = re.compile(r"npm run ([\w:.-]+)")
-_JS_REGEX_RE = re.compile(r"/((?:\\.|\[(?:\\.|[^\]\\\n])*\]|[^/\\\n\[])+)/[a-z]*")
+_JS_REGEX_RE = re.compile(r"/((?:\\.|\[(?:\\.|[^\]\\\n])*\]|[^/\\\n\[])+)/([a-z]*)")
 _E2E_IMPORT_RE = re.compile(r"""(?:\bfrom\s*|\bimport\s*\(?\s*|\brequire\s*\(\s*)['"](\.{1,2}/[^'"]+)['"]""")
 _E2E_FIXTURE_SUFFIXES = (".js", ".mjs", ".cjs", ".html", ".vue")
 _E2E_SPEC_SUFFIXES = (".spec.js", ".test.js", ".spec.mjs", ".test.mjs", ".spec.cjs", ".test.cjs")
 _E2E_DEFAULT_MATCH = re.compile(r"(?:test|spec)\.[cm]?[jt]s$")
-
-
-def _e2e_workflow_texts(root: Path) -> list[str] | None:
-    folder = root / ".github" / "workflows"
-    if not folder.is_dir():
-        return None
-    return [
-        item.read_text(encoding="utf-8", errors="replace")
-        for item in sorted(folder.glob("*.yml"))
-        if item.name not in _E2E_PR_ONLY_WORKFLOWS
-    ]
-
-
-def _e2e_config_rules(root: Path, config: str) -> tuple[list[re.Pattern], list[re.Pattern]] | None:
-    """Read (match, ignore) regexes from a Playwright config; None when it cannot be read exactly."""
-
-    file = root / "frontend" / config
-    if not file.is_file():
-        return None
-    text = re.sub(r"(?m)^\s*//.*$|(?<=,)[ \t]*//.*$", "", file.read_text(encoding="utf-8", errors="replace"))
-    ignore: list[re.Pattern] = []
-    block = re.search(r"testIgnore:\s*\[(.*?)\]\s*,\s*\n", text, re.DOTALL)
-    if block is None and re.search(r"testIgnore:", text):
-        return None
-    for body in _JS_REGEX_RE.findall(block.group(1) if block else ""):
-        ignore.append(re.compile(body))
-    match: list[re.Pattern] = [_E2E_DEFAULT_MATCH]
-    found = re.search(r"testMatch:\s*([^\n]+)", text)
-    if found:
-        value = found.group(1).strip().rstrip(",")
-        literal = _JS_REGEX_RE.fullmatch(value)
-        quoted = re.fullmatch(r"""['"]([^'"]+)['"]""", value)
-        if literal:
-            match = [re.compile(literal.group(1))]
-        elif quoted:
-            match = [re.compile(re.escape(quoted.group(1)) + r"$")]
-        else:
-            return None
-    return match, ignore
 
 
 def _e2e_resolve_import(root: Path, origin: Path, spec: str) -> Path | None:
@@ -278,48 +239,175 @@ def _e2e_resolve_import(root: Path, origin: Path, spec: str) -> Path | None:
     return None
 
 
+class _Underivable(Exception):
+    """The production e2e set cannot be derived exactly; every e2e file then counts as production."""
+
+
+_E2E_SCRIPT_CALL_RE = re.compile(
+    r"(?:\b(?:bash|sh|node|python3?)\s+(?:-[\w-]+\s+)*|(?<![\w/.-])\./)((?:\.github/)?scripts/[\w./-]+\.(?:sh|mjs|cjs|js|py))")
+_E2E_ACTION_USE_RE = re.compile(r"(?m)^\s*(?:-\s*)?uses:\s*\./(\.github/actions/[\w./-]+?)/?\s*$")
+_E2E_RUNS_PLAYWRIGHT_RE = re.compile(r"playwright\s+test|['\"]playwright['\"]|\btest:e2e")
+_E2E_PLAYWRIGHT_CONFIG_ARG_RE = re.compile(r"playwright\s+test[^\n]*?(?:\s-c|\s--config)[ =]+(\S+)")
+_E2E_SCREENSHOT_RE = re.compile(r"toHaveScreenshot|toMatchSnapshot|toMatchAriaSnapshot")
+_E2E_ALLOWED_IMPORTS = frozenset({"@playwright/test", "node:fs", "node:os", "node:path", "node:url", "fs", "os", "path"})
+
+
+def _e2e_read(file: Path) -> str:
+    if not file.is_file():
+        raise _Underivable(f"cannot read {file}")
+    return file.read_text(encoding="utf-8", errors="replace")
+
+
+def _e2e_sources(root: Path) -> list[tuple[str, bool]]:
+    """(text, is_workflow) of every production workflow plus the scripts and actions it calls (one level)."""
+
+    folder = root / ".github" / "workflows"
+    if not folder.is_dir():
+        raise _Underivable("no workflows")
+    sources: list[tuple[str, bool]] = []
+    seen: set[str] = set()
+    for item in sorted(folder.glob("*.yml")):
+        if item.name in _E2E_PR_ONLY_WORKFLOWS:
+            continue
+        text = item.read_text(encoding="utf-8", errors="replace")
+        sources.append((text, True))
+        called = [m.group(1) for m in _E2E_SCRIPT_CALL_RE.finditer(text)]
+        called += [f"{m.group(1)}/action.yml" for m in _E2E_ACTION_USE_RE.finditer(text)]
+        for rel in called:
+            if rel not in seen:
+                seen.add(rel)
+                sources.append((_e2e_read(root / rel), False))
+    return sources
+
+
+def _e2e_parse_regex_list(text: str, start: int) -> list[re.Pattern]:
+    """Parse ``[/re/, /re/]`` or one ``/re/`` at ``start``; any other token is not understood exactly."""
+
+    patterns: list[re.Pattern] = []
+    pos = start
+    bracket = text[pos:pos + 1] == "["
+    if bracket:
+        pos += 1
+    while True:
+        while pos < len(text) and text[pos] in " \t\r\n,":
+            pos += 1
+        if bracket and text[pos:pos + 1] == "]":
+            return patterns
+        found = _JS_REGEX_RE.match(text, pos)
+        if found is None or found.group(2):
+            raise _Underivable("pattern is not a plain regex literal")
+        try:
+            patterns.append(re.compile(found.group(1)))
+        except re.error as exc:
+            raise _Underivable(f"regex not translatable: {exc}") from exc
+        pos = found.end()
+        if not bracket:
+            return patterns
+
+
+def _e2e_config_rules(root: Path, config: str, depth: int = 0) -> tuple[list[re.Pattern], list[re.Pattern]]:
+    """Read (match, ignore) from a Playwright config, or raise _Underivable when it is not understood exactly."""
+
+    file = root / "frontend" / config
+    text = re.sub(r"/\*.*?\*/", "", _e2e_read(file), flags=re.DOTALL)
+    text = re.sub(r"(?m)^\s*//.*$|(?<=[,;{\[])[ \t]*//.*$", "", text)
+    imported = False
+    for module in re.findall(r"""(?:\bfrom\s*|\bimport\s*\(?\s*|\brequire\s*\(\s*)['"]([^'"]+)['"]""", text):
+        if module in _E2E_ALLOWED_IMPORTS:
+            continue
+        if module.startswith("./") and module.endswith(".config.js") and depth == 0:
+            _e2e_config_rules(root, (Path(config).parent / module[2:]).as_posix(), depth + 1)  # parent must be exact too
+            imported = True
+        else:
+            raise _Underivable(f"config imports {module}")
+    projects = text.find("projects:")
+    for key in ("testMatch", "testIgnore", "testDir"):
+        spots = [m.start() for m in re.finditer(rf"\b{key}\b", text)]
+        if len(spots) > 1 or (projects >= 0 and any(spot > projects for spot in spots)):
+            raise _Underivable(f"{key} is set more than once or per project")
+    allowed_dirs = {".", "./"} if Path(config).parent.name == "e2e" else {"./e2e", "e2e", "./e2e/"}
+    test_dir = re.search(r"""\btestDir:\s*['"]([^'"]*)['"]""", text)
+    if test_dir is None and re.search(r"\btestDir\b", text):
+        raise _Underivable("testDir is not a literal")
+    if test_dir is not None and test_dir.group(1) not in allowed_dirs:
+        raise _Underivable("non-default testDir")
+    if test_dir is None and not imported:
+        raise _Underivable("no testDir")
+    ignore: list[re.Pattern] = []
+    match: list[re.Pattern] = [_E2E_DEFAULT_MATCH]
+    has_ignore = re.search(r"\btestIgnore:\s*", text)
+    has_match = re.search(r"\btestMatch:\s*", text)
+    if has_ignore:
+        ignore = _e2e_parse_regex_list(text, has_ignore.end())
+    if has_match:
+        match = _e2e_parse_regex_list(text, has_match.end())
+    if imported and not (has_ignore and has_match):
+        raise _Underivable("config inherits match rules from another config")
+    return match, ignore
+
+
+def _e2e_scan_source(text: str, is_workflow: bool, scripts: dict, explicit: set, configs: set) -> None:
+    if not is_workflow and not _E2E_RUNS_PLAYWRIGHT_RE.search(text):
+        return
+    before = (len(explicit), len(configs))
+    resolved = False
+
+    def check_args(where: str) -> None:
+        for arg in _E2E_PLAYWRIGHT_CONFIG_ARG_RE.findall(where):
+            if "$" in arg or not re.fullmatch(r"\S+\.config\.[cm]?js", arg.strip("\"'")):
+                raise _Underivable("playwright config argument is not a literal path")
+
+    check_args(text)
+    explicit.update(f"frontend/{ref}" for ref in _E2E_REF_RE.findall(text))
+    configs.update(arg.removeprefix("./") for arg in _E2E_CONFIG_ARG_RE.findall(text))
+    for name in _E2E_NPM_RUN_RE.findall(text):
+        script = scripts.get(name, "")
+        explicit.update(f"frontend/{ref}" for ref in _E2E_REF_RE.findall(script))
+        if "playwright test" in script:
+            check_args(script)
+            arg = _E2E_CONFIG_ARG_RE.search(script)
+            configs.add(arg.group(1).removeprefix("./") if arg else "playwright.config.js")
+            resolved = True
+    if re.search(r"playwright test(?![^\n]*(?:-c|--config))", text):
+        configs.add("playwright.config.js")
+        resolved = True
+    if not is_workflow and not resolved and (len(explicit), len(configs)) == before:
+        raise _Underivable("a script runs Playwright without a resolvable config or spec")
+
+
 def _derive_production_e2e(root: Path):
-    """(paths, rules) for what production workflows run, or None if underivable.
+    """(paths, rules, screenshots) for what production workflows run, or None if underivable.
 
     ``paths`` are the frontend/e2e files and Playwright configs reached today; ``rules`` are the
     (match, ignore) regexes of every production config, so a spec that is new in a PR is judged by
-    name the same way whichever commit the classifier runs from.
+    name the same way whichever commit the classifier runs from; ``screenshots`` is true when a
+    production file asserts on a stored baseline (then every baseline is release evidence).
     """
 
-    texts = _e2e_workflow_texts(root)
-    package = root / "frontend" / "package.json"
-    if texts is None or not package.is_file():
-        return None
     try:
-        scripts = json.loads(package.read_text(encoding="utf-8")).get("scripts", {})
-    except ValueError:
+        return _derive_or_raise(root)
+    except (_Underivable, OSError, ValueError, re.error):
         return None
+
+
+def _derive_or_raise(root: Path):
+    scripts = json.loads(_e2e_read(root / "frontend" / "package.json")).get("scripts", {})
     explicit: set[str] = set()
     configs: set[str] = set()
-    for text in texts:
-        explicit.update(f"frontend/{ref}" for ref in _E2E_REF_RE.findall(text))
-        configs.update(arg.removeprefix("./") for arg in _E2E_CONFIG_ARG_RE.findall(text))
-        for name in _E2E_NPM_RUN_RE.findall(text):
-            script = scripts.get(name, "")
-            explicit.update(f"frontend/{ref}" for ref in _E2E_REF_RE.findall(script))
-            if "playwright test" in script:
-                arg = _E2E_CONFIG_ARG_RE.search(script)
-                configs.add(arg.group(1).removeprefix("./") if arg else "playwright.config.js")
-        if re.search(r"playwright test(?![^\n]*(?:-c|--config))", text):
-            configs.add("playwright.config.js")
+    for text, is_workflow in _e2e_sources(root):
+        _e2e_scan_source(text, is_workflow, scripts, explicit, configs)
+    e2e_dir = root / "frontend" / "e2e"
     on_disk = sorted(
-        item for item in (root / "frontend" / "e2e").rglob("*")
+        item for item in e2e_dir.rglob("*")
         if item.is_file() and item.name.endswith(_E2E_SPEC_SUFFIXES)
-    ) if (root / "frontend" / "e2e").is_dir() else []
+    ) if e2e_dir.is_dir() else []
     production: set[str] = set(explicit)
     rule_sets: list[tuple[list[re.Pattern], list[re.Pattern]]] = []
     for config in sorted(configs):
         rules = _e2e_config_rules(root, config)
         production.add(f"frontend/{config}")
-        if rules is None:
-            return None
-        match, ignore = rules
         rule_sets.append(rules)
+        match, ignore = rules
         for item in on_disk:
             rel = item.relative_to(root).as_posix()
             if any(rx.search(rel) for rx in match) and not any(rx.search(rel) for rx in ignore):
@@ -327,19 +415,22 @@ def _derive_production_e2e(root: Path):
     # Fixtures and helpers that a production spec imports (transitively) are part of what it asserts.
     queue = [root / path for path in sorted(production) if path.startswith(_E2E_PREFIX) and (root / path).is_file()]
     seen = {item.resolve() for item in queue}
+    screenshots = False
     while queue:
         origin = queue.pop()
-        for spec in _E2E_IMPORT_RE.findall(origin.read_text(encoding="utf-8", errors="replace")):
+        source = origin.read_text(encoding="utf-8", errors="replace")
+        screenshots = screenshots or bool(_E2E_SCREENSHOT_RE.search(source))
+        for spec in _E2E_IMPORT_RE.findall(source):
             target = _e2e_resolve_import(root, origin, spec)
             if target is not None and target not in seen:
                 seen.add(target)
                 try:
-                    relative = target.relative_to((root / "frontend" / "e2e").resolve()).as_posix()
+                    relative = target.relative_to(e2e_dir.resolve()).as_posix()
                 except ValueError:
                     continue  # imports of frontend/src are runtime files, classified on their own
                 queue.append(target)
                 production.add(_E2E_PREFIX + relative)
-    return frozenset(production), tuple(rule_sets)
+    return frozenset(production), tuple(rule_sets), screenshots
 
 
 _E2E_ROOT = Path(globals()["__file__"]).resolve().parents[2] if "__file__" in globals() else None
@@ -351,10 +442,7 @@ def _production_e2e(root: Path | None):
     if root is None:
         return None
     if root not in _E2E_CACHE:
-        try:
-            _E2E_CACHE[root] = _derive_production_e2e(root)
-        except OSError:
-            _E2E_CACHE[root] = None
+        _E2E_CACHE[root] = _derive_production_e2e(root)
     return _E2E_CACHE[root]
 
 
@@ -371,15 +459,18 @@ def is_production_e2e_path(path: str, root: Path | None = None) -> bool:
     derived = _production_e2e(root)
     if derived is None:
         return True
-    paths, rules = derived
-    if not path.startswith(_E2E_PREFIX):
-        return path in paths  # a Playwright config at frontend/ root
-    relative = path[len(_E2E_PREFIX):]
-    # Pre-existing carve-outs: fake-data mounts, visual baselines, docs and per-fixture configs.
-    if relative.startswith(_E2E_NON_PRODUCTION_KINDS) or path.endswith(("-playwright.config.js", ".md")):
-        return path in paths and path.endswith("-playwright.config.js")
+    paths, rules, screenshots = derived
     if path in paths:
-        return True
+        return True  # what a production workflow reaches always wins over any path-kind carve-out below
+    if not path.startswith(_E2E_PREFIX):
+        return False
+    relative = path[len(_E2E_PREFIX):]
+    if relative.startswith("__screenshots__/"):
+        return screenshots  # baselines have no owner in their name: all lowered, or all kept
+    if relative.startswith("fixtures/ui-foundation/") or path.endswith(("-playwright.config.js", ".md")):
+        return False
+    if relative.startswith("fixtures/") and path.endswith(_E2E_SPEC_SUFFIXES):
+        return True  # unit tests of the production guards (read-only app guard, export guard...) keep their tier
     if path.endswith(_E2E_SPEC_SUFFIXES):
         return any(
             any(rx.search(path) for rx in match) and not any(rx.search(path) for rx in ignore)
