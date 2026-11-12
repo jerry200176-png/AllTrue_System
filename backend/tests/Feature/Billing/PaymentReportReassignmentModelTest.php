@@ -8,6 +8,7 @@ use App\Models\PaymentReport;
 use App\Models\PaymentReportReassignment;
 use App\Models\Student;
 use App\Models\User;
+use Database\Factories\UserFactory;
 use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
@@ -29,7 +30,7 @@ class PaymentReportReassignmentModelTest extends TestCase
     {
         parent::setUp();
         $this->campus = Campus::factory()->create();
-        $this->actor = User::factory()->director()->create();
+        $this->actor = UserFactory::new()->director()->create();
     }
 
     public function test_row_persists_with_integer_and_datetime_casts_and_no_updated_at(): void

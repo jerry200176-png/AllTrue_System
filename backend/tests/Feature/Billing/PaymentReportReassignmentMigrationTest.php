@@ -62,24 +62,35 @@ class PaymentReportReassignmentMigrationTest extends TestCase
         $reportColumns = Schema::getColumnListing('payment_reports');
         $m = require database_path(self::MIGRATION);
 
-        $m->down();
-        $this->assertFalse(Schema::hasTable(self::TABLE));
-        $this->assertSame($others, $this->tableNames());
+        try {
+            $m->down();
+            $droppedOnlyThis = ! Schema::hasTable(self::TABLE) && $this->tableNames() === $others;
+        } finally {
+            // Whatever down() did, leave the shared test schema complete and reopen the
+            // transaction teardown rolls back (DDL committed the one RefreshDatabase opened).
+            if (! Schema::hasTable(self::TABLE)) {
+                $m->up();
+            }
+            if (! DB::connection()->getPdo()->inTransaction()) {
+                DB::connection()->getPdo()->beginTransaction();
+            }
+        }
 
-        $m->up();
+        $this->assertTrue($droppedOnlyThis, 'down() must drop this table and nothing else');
         $this->assertTrue(Schema::hasTable(self::TABLE));
         $this->assertSame(0, DB::table(self::TABLE)->count()); // up() writes no rows
         $this->assertSame($others, array_values(array_diff($this->tableNames(), [self::TABLE])));
         $this->assertSame($reportColumns, Schema::getColumnListing('payment_reports'));
-        DB::connection()->getPdo()->beginTransaction(); // reopen so teardown's rollback has a transaction
+        $this->assertCount(5, Schema::getIndexes(self::TABLE)); // up() restores the keys too
     }
 
     /** @return list<string> */
     private function tableNames(): array
     {
-        $names = array_map(fn ($t) => $t['name'], Schema::getTables());
-        sort($names);
-
-        return $names;
+        // This connection's database only: parallel shards keep other test databases on the same server.
+        return array_map(
+            fn ($row) => $row->name,
+            DB::select('SELECT TABLE_NAME AS name FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() ORDER BY TABLE_NAME')
+        );
     }
 }
