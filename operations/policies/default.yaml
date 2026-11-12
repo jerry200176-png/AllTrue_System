@@ -42,6 +42,21 @@ rules:
       key: global
       max_parallel: 1
 
+  # GitHub #5124: Founder approval for each request; not a standing or automatic policy.
+  - id: founder-explicit-chain-rebalance
+    match:
+      operation_id: course-contract-chain-rebalance
+      risk: critical
+      blast_radius: single_student_subject_contract_chain
+    require_approvals: [super_admin]
+    founder_explicit: true
+    maintenance_window: "Sat 22:00-02:00"
+    auto_rollback_on_failed_verify: false
+    retries: 0
+    concurrency:
+      key: global
+      max_parallel: 1
+
   - id: critical-dual-approval
     match:
       risk: critical

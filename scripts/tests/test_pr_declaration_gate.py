@@ -4,6 +4,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -11,7 +12,8 @@ import types
 
 from scripts.governance import autonomy_gate
 from scripts.governance.autonomy_gate import (
-    _LOCAL_ONLY_E2E_SPECS,
+    is_production_e2e_path,
+    production_e2e_paths,
     classify_activation_scope,
     classify_scope,
     is_control_plane_only_paths,
@@ -19,6 +21,80 @@ from scripts.governance.autonomy_gate import (
     validate_declaration,
 )
 from scripts.governance.pr_requires_security import requires_security
+
+
+# The only tiers this classifier is allowed to lower (retro #5201, Founder 2026-11-12 on token waste), frozen
+# as a list generated once and reviewed by hand. It does not call the derivation, so a bug there cannot widen
+# what the no-drop tests accept. Everything else may only rise. A file added after the baseline commit cannot
+# be compared with it; the enumeration and derivation tests cover new files.
+# Visual baselines: only ci.yml's Docker visual job reads them, and no production spec asserts on a baseline.
+_LOWERED_BASELINES = (
+    "frontend/e2e/__screenshots__/attendance-1280.png",
+    "frontend/e2e/__screenshots__/attendance-375.png",
+    "frontend/e2e/__screenshots__/billing-center-1280.png",
+    "frontend/e2e/__screenshots__/billing-center-375.png",
+    "frontend/e2e/__screenshots__/binding-conflicts-1280.png",
+    "frontend/e2e/__screenshots__/binding-conflicts-390.png",
+    "frontend/e2e/__screenshots__/binding-health-1280.png",
+    "frontend/e2e/__screenshots__/binding-health-390.png",
+    "frontend/e2e/__screenshots__/branch-health-1280.png",
+    "frontend/e2e/__screenshots__/branch-health-390.png",
+    "frontend/e2e/__screenshots__/calendar-1280.png",
+    "frontend/e2e/__screenshots__/calendar-375.png",
+    "frontend/e2e/__screenshots__/classroom-1280.png",
+    "frontend/e2e/__screenshots__/classroom-390.png",
+    "frontend/e2e/__screenshots__/course-management-1280.png",
+    "frontend/e2e/__screenshots__/course-management-375.png",
+    "frontend/e2e/__screenshots__/course-manager-billing-1280.png",
+    "frontend/e2e/__screenshots__/course-manager-billing-375.png",
+    "frontend/e2e/__screenshots__/course-manager-list-1280.png",
+    "frontend/e2e/__screenshots__/course-manager-list-375.png",
+    "frontend/e2e/__screenshots__/course-manager-month-1280.png",
+    "frontend/e2e/__screenshots__/course-manager-month-375.png",
+    "frontend/e2e/__screenshots__/course-manager-overview-1280.png",
+    "frontend/e2e/__screenshots__/course-manager-overview-375.png",
+    "frontend/e2e/__screenshots__/course-manager-settings-1280.png",
+    "frontend/e2e/__screenshots__/course-manager-settings-375.png",
+    "frontend/e2e/__screenshots__/director-home-1280.png",
+    "frontend/e2e/__screenshots__/director-home-375.png",
+    "frontend/e2e/__screenshots__/learning-records-1280.png",
+    "frontend/e2e/__screenshots__/learning-records-375.png",
+    "frontend/e2e/__screenshots__/login-1280.png",
+    "frontend/e2e/__screenshots__/login-375.png",
+    "frontend/e2e/__screenshots__/parent-home-390.png",
+    "frontend/e2e/__screenshots__/parent-home-large-390.png",
+    "frontend/e2e/__screenshots__/release-notes-1280.png",
+    "frontend/e2e/__screenshots__/release-notes-390.png",
+    "frontend/e2e/__screenshots__/schedule-discrepancy-1280.png",
+    "frontend/e2e/__screenshots__/schedule-discrepancy-390.png",
+    "frontend/e2e/__screenshots__/students-1280.png",
+    "frontend/e2e/__screenshots__/students-375.png",
+    "frontend/e2e/__screenshots__/subject-settings-1280.png",
+    "frontend/e2e/__screenshots__/subject-settings-390.png",
+    "frontend/e2e/__screenshots__/teacher-home-1280.png",
+    "frontend/e2e/__screenshots__/teacher-home-375.png",
+)
+
+# Specs every production config ignores (fake-data Vite fixture, PR CI only) and the one loopback fixture.
+_LOWERED_OTHER = (
+    "frontend/e2e/binding-conflict-clarity.spec.js",
+    "frontend/e2e/calendar-reschedule-cache-528.spec.js",
+    "frontend/e2e/fixtures/directorAcceptanceApi.js",
+    "frontend/e2e/overlay-layout.spec.js",
+    "frontend/e2e/parent-text-size.spec.js",
+    "frontend/e2e/ui-foundation-course-payment-entry.spec.js",
+    "frontend/e2e/ui-foundation-sidebar-navigation.spec.js",
+)
+INTENDED_LOWERINGS = frozenset((*_LOWERED_BASELINES, *_LOWERED_OTHER))
+
+
+def _is_intended_lowering(path: str, new: int, old: int) -> bool:
+    return (old, new) == (3, 0) and path in INTENDED_LOWERINGS
+
+
+def _paths_at(sha: str) -> set[str]:
+    listed = subprocess.run(["git", "ls-tree", "-r", "-z", "--name-only", sha], cwd=ROOT, capture_output=True, text=True)
+    return {p for p in listed.stdout.split("\0") if p}
 
 
 class PrDeclarationGateTest(unittest.TestCase):
@@ -78,14 +154,128 @@ class PrDeclarationGateTest(unittest.TestCase):
                 declaration = machine_declaration([path], "+ weaken production smoke evidence")
                 self.assertEqual((declaration["risk_class"], declaration["autonomy_tier"]), ("R3", "T3"))
 
-    def test_local_only_playwright_specs_remain_test_only(self):
-        config = (Path(__file__).resolve().parents[2] / "frontend/playwright.config.js").read_text(encoding="utf-8")
-        for path in _LOCAL_ONLY_E2E_SPECS:
+    def test_pr_ci_only_e2e_files_are_ordinary_test_files(self):
+        # Retro #5201: specs and baselines that only PR CI runs (fake-data Vite fixture) are tests, not release evidence.
+        for path in (
+            "frontend/e2e/ui-foundation-course-payment-entry.spec.js",
+            "frontend/e2e/ui-foundation-sidebar-navigation.spec.js",
+            "frontend/e2e/binding-conflict-clarity.spec.js",
+            "frontend/e2e/calendar-reschedule-cache-528.spec.js",
+            "frontend/e2e/subject-settings-clarity.spec.js",
+            "frontend/e2e/__screenshots__/subject-settings-1280.png",
+            "frontend/e2e/fixtures/ui-foundation/pilot-mount.js",
+            "frontend/e2e/fixtures/directorAcceptanceApi.js",
+        ):
             with self.subTest(path=path):
-                self.assertTrue((Path(__file__).resolve().parents[2] / path).is_file())
-                stem = Path(path).name.removesuffix(".spec.js")
-                self.assertIn(stem, config, f"{stem} must remain ignored by the default production smoke config")
-                self.assertEqual(classify_scope([path], "")["tier_name"], "T0")
+                self.assertFalse(is_production_e2e_path(path))
+                self.assertEqual(classify_scope([path], "+ payment")["tier_name"], "T0")
+        # Same tier as the other frontend test files, alone and next to runtime code.
+        test_file = "frontend/src/components/__tests__/Widget.test.js"
+        for others in ([], ["frontend/src/pages/Page.vue"]):
+            self.assertEqual(
+                classify_scope(["frontend/e2e/subject-settings-clarity.spec.js", *others], "")["machine_minimum_tier"],
+                classify_scope([test_file, *others], "")["machine_minimum_tier"],
+            )
+        # A production spec next to it still takes the whole PR to T3.
+        mixed = classify_scope(["frontend/e2e/subject-settings-clarity.spec.js", "frontend/e2e/smoke.spec.js"], "")
+        self.assertEqual(mixed["tier_name"], "T3")
+        self.assertEqual(mixed["reasons"], ["production smoke control path: frontend/e2e/smoke.spec.js"])
+
+    def test_production_e2e_set_is_derived_from_the_production_workflows(self):
+        derived = production_e2e_paths(ROOT)
+        self.assertIsNotNone(derived)
+        pr_only = set(autonomy_gate._E2E_PR_ONLY_WORKFLOWS)
+        refs: set[str] = set()
+        for workflow in sorted((ROOT / ".github/workflows").glob("*.yml")):
+            if workflow.name in pr_only:
+                continue
+            refs.update(re.findall(r"\be2e/[\w./-]+?\.spec\.js\b", workflow.read_text(encoding="utf-8")))
+        # deploy.yml and calendar-course-acceptance.yml name specs outright.
+        self.assertGreaterEqual(len(refs), 5)
+        for ref in sorted(refs):
+            path = f"frontend/{ref}"
+            with self.subTest(path=path):
+                self.assertTrue((ROOT / path).is_file(), "a workflow runs a spec that does not exist")
+                self.assertEqual(classify_scope([path], "")["tier_name"], "T3")
+        # Specs the default ui-smoke config runs, plus the director acceptance config ui-smoke also runs.
+        self.assertIn("frontend/e2e/smoke.spec.js", derived)
+        self.assertIn("frontend/e2e/director-path-acceptance.spec.js", derived)
+        self.assertIn("frontend/playwright.director-acceptance.config.js", derived)
+        # Fixtures a production spec imports are part of it; the loopback-only ones are not.
+        self.assertIn("frontend/e2e/fixtures/dismissOverlays.js", derived)
+        self.assertNotIn("frontend/e2e/fixtures/directorAcceptanceApi.js", derived)
+        # A derived production path wins over the ui-foundation carve-out: ui-smoke runs
+        # ui-foundation-overlay-gallery.spec.js against production and it imports these mocks.
+        self.assertIn("frontend/e2e/fixtures/ui-foundation/apiMocks.js", derived)
+        self.assertEqual(classify_scope(["frontend/e2e/fixtures/ui-foundation/apiMocks.js"], "")["tier_name"], "T3")
+        # Unit tests of production guards keep their tier.
+        for guard in ("readOnlyAppGuard", "classSessionReadResponder", "calendarDrawnCards"):
+            self.assertEqual(classify_scope([f"frontend/e2e/fixtures/{guard}.test.js"], "")["tier_name"], "T3")
+
+    def test_every_tracked_e2e_file_is_in_exactly_one_of_two_tiers(self):
+        tracked = subprocess.run(["git", "ls-files", "-z", "--", "frontend/e2e", "frontend/playwright*.js"],
+                                 cwd=ROOT, capture_output=True, text=True, check=True)
+        paths = [p for p in tracked.stdout.split("\0") if p]
+        self.assertGreater(len(paths), 60)
+        counts = {0: 0, 3: 0}
+        for path in paths:
+            with self.subTest(path=path):
+                tier = classify_scope([path], "")["machine_minimum_tier"]
+                self.assertIn(tier, counts)
+                counts[tier] += 1
+                self.assertEqual(tier == 3, is_production_e2e_path(path))
+        self.assertGreater(counts[3], 20)
+        self.assertGreater(counts[0], 20)
+
+    def test_derivation_fails_closed_when_it_cannot_read_the_checkout(self):
+        with tempfile.TemporaryDirectory() as empty:
+            self.assertIsNone(production_e2e_paths(Path(empty)))
+            self.assertTrue(is_production_e2e_path("frontend/e2e/subject-settings-clarity.spec.js", Path(empty)))
+
+    def test_derivation_follows_the_config_and_workflows_not_a_name_list(self):
+        import shutil
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            for folder in (".github/workflows", ".github/scripts", ".github/actions", "scripts"):
+                if (ROOT / folder).is_dir():  # scripts the workflows call are read too
+                    shutil.copytree(ROOT / folder, root / folder, ignore=shutil.ignore_patterns("__pycache__", "node_modules"))
+            (root / "frontend/e2e").mkdir(parents=True)
+            shutil.copy(ROOT / "frontend/package.json", root / "frontend/package.json")
+            config = (ROOT / "frontend/playwright.config.js").read_text(encoding="utf-8")
+            (root / "frontend/playwright.config.js").write_text(config, encoding="utf-8")
+            (root / "frontend/playwright.director-acceptance.config.js").write_text(
+                (ROOT / "frontend/playwright.director-acceptance.config.js").read_text(encoding="utf-8"), encoding="utf-8")
+            spec = "frontend/e2e/subject-settings-clarity.spec.js"
+            (root / spec).write_text("// spec\n", encoding="utf-8")
+            self.assertFalse(is_production_e2e_path(spec, root))
+            # Stop ignoring it in the default (production) config and it becomes a production control.
+            varied = root / "frontend/playwright.config.js"
+            varied.write_text(config.replace("/subject-settings-clarity\\.spec\\.js$/,", ""), encoding="utf-8")
+            autonomy_gate._E2E_CACHE.clear()
+            self.assertTrue(is_production_e2e_path(spec, root))
+            # A workflow that names a spec outright makes it production whatever the config says.
+            varied.write_text(config, encoding="utf-8")
+            workflow = root / ".github/workflows/ui-smoke.yml"
+            workflow.write_text(workflow.read_text(encoding="utf-8") + "\n      - run: npx playwright test e2e/subject-settings-clarity.spec.js\n",
+                                encoding="utf-8")
+            autonomy_gate._E2E_CACHE.clear()
+            self.assertTrue(is_production_e2e_path(spec, root))
+        autonomy_gate._E2E_CACHE.clear()
+
+    def test_payment_word_in_pr_only_files_does_not_raise_but_runtime_logic_still_does(self):
+        spec = "frontend/e2e/ui-foundation-course-payment-entry.spec.js"
+        self.assertEqual(classify_scope([spec], "+ payment-status-badge")["tier_name"], "T0")
+        css = "frontend/src/ui.css"
+        css_diff = (f"diff --git a/{css} b/{css}\n@@ -1 +1,3 @@\n"
+                    "+.payment-status-badge--short {\n+  max-width: 4em;\n+}")
+        self.assertEqual(classify_scope([css], css_diff)["tier_name"], "T1")
+        # Not weakened: a runtime hit still takes the whole PR to T3, even next to a PR-only spec.
+        for logic in ("frontend/src/lib/courseMoneyState.js", "backend/app/Services/Foo.php"):
+            with self.subTest(logic=logic):
+                self.assertEqual(
+                    classify_scope([spec, logic], "diff --git a/%s b/%s\n+ const paymentTotal = 1" % (logic, logic))["tier_name"],
+                    "T3",
+                )
 
     def test_missing_declaration_fails_before_merge(self):
         result = validate_declaration(
@@ -490,9 +680,11 @@ class ClassifierSelfProtectionTest(unittest.TestCase):
                     classify_activation_scope(paths, self.PATCH), base.classify_activation_scope(paths, self.PATCH))
         tracked = subprocess.run(["git", "-c", "core.quotepath=off", "ls-files"],
                                  cwd=ROOT, capture_output=True, text=True, check=True)
+        existing = _paths_at(self.BASE_SHA)
         for path in tracked.stdout.splitlines():
             new, old = classify_scope([path], ""), base.classify_scope([path], "")
-            self.assertGreaterEqual(new["machine_minimum_tier"], old["machine_minimum_tier"], path)
+            if (path in existing or not path.startswith("frontend/e2e/")) and not _is_intended_lowering(path, new["machine_minimum_tier"], old["machine_minimum_tier"]):
+                self.assertGreaterEqual(new["machine_minimum_tier"], old["machine_minimum_tier"], path)
             self.assertEqual(classify_activation_scope([path], ""), base.classify_activation_scope([path], ""), path)
 
     def test_policy_document_lists_the_same_path_families_as_the_code(self):
@@ -512,9 +704,258 @@ class ClassifierSelfProtectionTest(unittest.TestCase):
             "T0-docs": sorted(docs),
             "T0-tests": sorted(set(autonomy_gate._NON_DEPLOYABLE_PATTERNS) - docs),
             "unmatched": [f"T{autonomy_gate._UNCLASSIFIED_PATH_TIER}"],
+            "T3-e2e-production": sorted(autonomy_gate._E2E_DERIVED_PATTERNS),
+            "e2e-pr-only-workflow": sorted(autonomy_gate._E2E_PR_ONLY_WORKFLOWS),
         }
         self.assertEqual({family: sorted(paths) for family, paths in documented.items()}, code)
 
+
+class ProductionE2eFailClosedTest(unittest.TestCase):
+    """Reviewer P1/a-d (#5237): whatever the derivation does not understand exactly counts as production."""
+
+    CONFIG = (
+        "import { defineConfig } from '@playwright/test';\n"
+        "export default defineConfig({\n  testDir: './e2e',\n  testIgnore: [\n    /local\\.spec\\.js$/, // fake data\n  ],\n"
+        "  projects: [{ name: 'chromium' }],\n});\n"
+    )
+    WORKFLOW = "jobs:\n  smoke:\n    steps:\n      - run: npm run test:e2e\n"
+    SPECS = ("prod.spec.js", "local.spec.js")
+
+    def _checkout(self, tmp, *, config=None, workflow=None, extra=None):
+        root = Path(tmp)
+        (root / ".github/workflows").mkdir(parents=True)
+        (root / "frontend/e2e/__screenshots__").mkdir(parents=True)
+        (root / ".github/workflows/ui-smoke.yml").write_text(workflow or self.WORKFLOW, encoding="utf-8")
+        (root / "frontend/package.json").write_text('{"scripts": {"test:e2e": "playwright test"}}', encoding="utf-8")
+        (root / "frontend/playwright.config.js").write_text(config or self.CONFIG, encoding="utf-8")
+        for name in self.SPECS:
+            (root / "frontend/e2e" / name).write_text("// spec\n", encoding="utf-8")
+        (root / "frontend/e2e/__screenshots__/home-390.png").write_bytes(b"png")
+        for rel, text in (extra or {}).items():
+            (root / rel).parent.mkdir(parents=True, exist_ok=True)
+            (root / rel).write_text(text, encoding="utf-8")
+        autonomy_gate._E2E_CACHE.clear()
+        return root
+
+    def tearDown(self):
+        autonomy_gate._E2E_CACHE.clear()
+
+    def _assert_everything_protected(self, root):
+        self.assertIsNone(production_e2e_paths(root))
+        for rel in ("frontend/e2e/local.spec.js", "frontend/e2e/prod.spec.js", "frontend/e2e/__screenshots__/home-390.png",
+                    "frontend/e2e/fixtures/ui-foundation/x.js"):
+            self.assertTrue(is_production_e2e_path(rel, root), rel)
+
+    def test_baseline_fixture_is_understood(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = self._checkout(tmp)
+            self.assertIsNotNone(production_e2e_paths(root))
+            self.assertTrue(is_production_e2e_path("frontend/e2e/prod.spec.js", root))
+            self.assertFalse(is_production_e2e_path("frontend/e2e/local.spec.js", root))
+            self.assertFalse(is_production_e2e_path("frontend/e2e/__screenshots__/home-390.png", root))
+
+    def test_glob_patterns_projects_testdir_and_foreign_imports_fail_closed(self):
+        broken = {
+            "glob testIgnore": self.CONFIG.replace("[\n    /local\\.spec\\.js$/, // fake data\n  ]", "['**/local.spec.js']"),
+            "glob testMatch": self.CONFIG.replace("testDir: './e2e',", "testDir: './e2e',\n  testMatch: '**/*.spec.js',"),
+            "per-project testMatch": self.CONFIG.replace("{ name: 'chromium' }", "{ name: 'chromium', testMatch: /prod\\.spec\\.js$/ }"),
+            "per-project testIgnore": self.CONFIG.replace("{ name: 'chromium' }", "{ name: 'chromium', testIgnore: [] }"),
+            "other testDir": self.CONFIG.replace("./e2e", "./elsewhere"),
+            "no testDir": self.CONFIG.replace("testDir: './e2e',", ""),
+            "env dependent": self.CONFIG.replace("testIgnore: [", "testIgnore: process.env.CI ? [").replace("/local", "/local"),
+            "regex flags": self.CONFIG.replace("/local\\.spec\\.js$/", "/local\\.spec\\.js$/i"),
+            "foreign import": "import base from './base.js';\n" + self.CONFIG,
+            "inherits match": "import base from './other.config.js';\nexport default { ...base, testDir: './e2e' };\n",
+        }
+        for name, config in broken.items():
+            with self.subTest(name), tempfile.TemporaryDirectory() as tmp:
+                root = self._checkout(tmp, config=config, extra={"frontend/other.config.js": self.CONFIG})
+                self._assert_everything_protected(root)
+
+    def test_untranslatable_javascript_regex_fails_closed_instead_of_raising(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = self._checkout(tmp, config=self.CONFIG.replace("/local\\.spec\\.js$/", "/(?<=a+)local\\.spec\\.js$/"))
+            self._assert_everything_protected(root)
+
+    def test_script_indirection_is_followed_one_level(self):
+        extra_config = self.CONFIG.replace("testIgnore: [\n    /local\\.spec\\.js$/, // fake data\n  ],", "testMatch: /local\\.spec\\.js$/,\n  testIgnore: [],")
+        files = {"frontend/playwright.extra.config.js": extra_config}
+        workflow = self.WORKFLOW + "      - run: bash scripts/run-extra-smoke.sh\n"
+        with tempfile.TemporaryDirectory() as tmp:
+            script = "#!/bin/bash\ncd frontend && npx playwright test -c playwright.extra.config.js\n"
+            root = self._checkout(tmp, workflow=workflow, extra={**files, "scripts/run-extra-smoke.sh": script})
+            self.assertTrue(is_production_e2e_path("frontend/e2e/local.spec.js", root))  # run only by the script
+            self.assertIn("frontend/playwright.extra.config.js", production_e2e_paths(root))
+        for name, script in (
+            ("variable config", "npx playwright test -c \"$CFG\"\n"),
+            ("api use without a command", "const { chromium } = require('playwright');\n"),
+        ):
+            with self.subTest(name), tempfile.TemporaryDirectory() as tmp:
+                root = self._checkout(tmp, workflow=workflow, extra={"scripts/run-extra-smoke.sh": script})
+                self._assert_everything_protected(root)
+        with self.subTest("script that is called but missing"), tempfile.TemporaryDirectory() as tmp:
+            self._assert_everything_protected(self._checkout(tmp, workflow=workflow))
+        with self.subTest("script that only installs the browser"), tempfile.TemporaryDirectory() as tmp:
+            root = self._checkout(tmp, workflow=workflow, extra={"scripts/run-extra-smoke.sh": "npx playwright install chromium\n"})
+            self.assertIsNotNone(production_e2e_paths(root))
+            self.assertFalse(is_production_e2e_path("frontend/e2e/local.spec.js", root))
+
+    CALL_FORMS = (
+        ("bash ../.github/scripts/x.sh", ".github/scripts/x.sh", "frontend"),
+        (".github/scripts/x.sh", ".github/scripts/x.sh", ""),
+        ("source scripts/x.sh", "scripts/x.sh", ""),
+        (". scripts/x.sh", "scripts/x.sh", ""),
+        ("sh scripts/x.sh", "scripts/x.sh", ""),
+        ("zsh scripts/x.sh", "scripts/x.sh", ""),
+        ("node ../scripts/x.mjs", "scripts/x.mjs", "frontend"),
+        ("bash scripts/x.sh", "frontend/scripts/x.sh", "frontend"),
+        ("bash frontend/scripts/x.sh", "frontend/scripts/x.sh", ""),
+        ('bash "$GITHUB_WORKSPACE/scripts/x.sh"', "scripts/x.sh", ""),
+    )
+
+    def test_every_script_call_form_is_followed_and_an_unreadable_script_fails_closed(self):
+        extra_config = self.CONFIG.replace(
+            "testIgnore: [\n    /local\\.spec\\.js$/, // fake data\n  ],", "testMatch: /local\\.spec\\.js$/,\n  testIgnore: [],")
+        run = "npx playwright test -c playwright.extra.config.js\n"
+        for call, location, workdir in self.CALL_FORMS:
+            step = f"      - working-directory: {workdir}\n        run: {call}\n" if workdir else f"      - run: {call}\n"
+            workflow = self.WORKFLOW + step
+            with self.subTest(call=call, present=True), tempfile.TemporaryDirectory() as tmp:
+                root = self._checkout(tmp, workflow=workflow, extra={
+                    "frontend/playwright.extra.config.js": extra_config, location: run})
+                self.assertTrue(is_production_e2e_path("frontend/e2e/local.spec.js", root))  # only the script runs it
+                self.assertIn("frontend/playwright.extra.config.js", production_e2e_paths(root))
+            with self.subTest(call=call, present=False), tempfile.TemporaryDirectory() as tmp:
+                self._assert_everything_protected(self._checkout(tmp, workflow=workflow))
+
+    def test_a_new_ui_foundation_fixture_is_t0_until_a_production_spec_imports_it(self):
+        fixture = "frontend/e2e/fixtures/ui-foundation/new-mock.js"
+        files = {fixture: "export const m = 1;\n"}
+        with tempfile.TemporaryDirectory() as tmp:
+            root = self._checkout(tmp, extra=files)
+            self.assertFalse(is_production_e2e_path(fixture, root))
+        with tempfile.TemporaryDirectory() as tmp:
+            root = self._checkout(tmp, extra={**files, "frontend/e2e/prod.spec.js": "import { m } from './fixtures/ui-foundation/new-mock.js';\n"})
+            self.assertTrue(is_production_e2e_path(fixture, root))
+
+    def test_the_decision_does_not_depend_on_whether_the_file_exists_in_the_tree_used(self):
+        # Codex on #5237: PR checkout and deployed-policy (trusted) checkout must agree on a file the PR adds.
+        def both(extra_pr, path):
+            with tempfile.TemporaryDirectory() as pr_dir, tempfile.TemporaryDirectory() as trusted_dir:
+                pr = self._checkout(pr_dir, extra=extra_pr)
+                trusted = self._checkout(trusted_dir)  # the deployed revision: lacks the PR's new files
+                return is_production_e2e_path(path, pr), is_production_e2e_path(path, trusted)
+        fixture = "frontend/e2e/fixtures/newLocalFixture.js"
+        with self.subTest("new unused fixture"):
+            self.assertEqual(both({fixture: "export const f = 1;\n"}, fixture), (False, False))
+        with self.subTest("new fixture imported by a production spec: the target tree raises it, so the pair still raises"):
+            verdict = both({fixture: "export const f = 1;\n",
+                            "frontend/e2e/prod.spec.js": "import { f } from './fixtures/newLocalFixture.js';\n"}, fixture)
+            self.assertEqual(verdict, (True, False))
+            self.assertTrue(any(verdict))
+        with self.subTest("new spec a production config matches: protected in both trees"):
+            self.assertEqual(both({"frontend/e2e/new-prod.spec.js": "// spec\n"}, "frontend/e2e/new-prod.spec.js"), (True, True))
+        with self.subTest("new spec the production config ignores: lowered in both trees"):
+            self.assertEqual(both({"frontend/e2e/new-local.spec.js": "// spec\n"}, "frontend/e2e/new-local.spec.js"), (False, False))
+        with self.subTest("baseline of a new spec: same answer in both trees"):
+            png = "frontend/e2e/__screenshots__/new-390.png"
+            self.assertEqual(both({png: "x"}, png), (False, False))
+
+    def test_baselines_are_lowered_only_while_no_production_file_asserts_on_one(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = self._checkout(tmp)
+            self.assertFalse(is_production_e2e_path("frontend/e2e/__screenshots__/home-390.png", root))
+        for assertion in ("await expect(page).toHaveScreenshot('home-390.png');", "expect(x).toMatchSnapshot();"):
+            with self.subTest(assertion), tempfile.TemporaryDirectory() as tmp:
+                root = self._checkout(tmp, extra={"frontend/e2e/prod.spec.js": assertion + "\n"})
+                self.assertTrue(is_production_e2e_path("frontend/e2e/__screenshots__/home-390.png", root))
+        with self.subTest("assertion only in a PR-only spec"), tempfile.TemporaryDirectory() as tmp:
+            root = self._checkout(tmp, extra={"frontend/e2e/local.spec.js": "await expect(page).toHaveScreenshot();\n"})
+            self.assertFalse(is_production_e2e_path("frontend/e2e/__screenshots__/home-390.png", root))
+
+    def test_a_derived_production_path_wins_over_the_ui_foundation_carve_out(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = self._checkout(tmp, extra={
+                "frontend/e2e/prod.spec.js": "import { mocks } from './fixtures/ui-foundation/mocks.js';\n",
+                "frontend/e2e/fixtures/ui-foundation/mocks.js": "export const mocks = 1;\n",
+                "frontend/e2e/fixtures/ui-foundation/other.js": "export const other = 1;\n"})
+            self.assertTrue(is_production_e2e_path("frontend/e2e/fixtures/ui-foundation/mocks.js", root))
+            self.assertFalse(is_production_e2e_path("frontend/e2e/fixtures/ui-foundation/other.js", root))
+
+
+class DeploySparseCheckoutTest(unittest.TestCase):
+    """Codex on #5237: the release train loads the gate from sparse checkouts; it must classify e2e files like a full one."""
+
+    @staticmethod
+    def _cone_tree(dest: Path, entries) -> Path:
+        # git cone mode: everything under an entry, plus the files directly inside each entry's ancestors.
+        ancestors = {"/".join(entry.split("/")[:i]) for entry in entries for i in range(len(entry.split("/")))}
+        tracked = subprocess.run(["git", "ls-files", "-z"], cwd=ROOT, capture_output=True, text=True, check=True)
+        for path in filter(None, tracked.stdout.split("\0")):
+            inside = any(path == e or path.startswith(e + "/") for e in entries)
+            if (inside or path.rpartition("/")[0] in ancestors) and (ROOT / path).is_file():
+                (dest / path).parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(ROOT / path, dest / path)
+        return dest
+
+    @staticmethod
+    def _gate_from(tree: Path):
+        import importlib.util
+        spec = importlib.util.spec_from_file_location("sparse_gate", tree / "scripts/governance/autonomy_gate.py")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        return module
+
+    @staticmethod
+    def _e2e_paths() -> list[str]:
+        listed = subprocess.run(["git", "ls-files", "-z", "--", "frontend/e2e", "frontend/playwright*.js"],
+                                cwd=ROOT, capture_output=True, text=True, check=True)
+        return [p for p in listed.stdout.split("\0") if p]
+
+    def test_scripts_governance_alone_misclassifies_what_a_full_checkout_lowers(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            gate = self._gate_from(self._cone_tree(Path(tmp), ["scripts/governance"]))
+            spec = "frontend/e2e/subject-settings-clarity.spec.js"
+            declared = classify_scope([spec, "frontend/src/pages/Page.vue"], "")["machine_minimum_tier"]  # full tree
+            self.assertEqual(declared, 1)
+            self.assertEqual(gate.classify_scope([spec, "frontend/src/pages/Page.vue"], "")["machine_minimum_tier"], 3)
+
+    def test_the_derivation_inputs_make_a_sparse_checkout_classify_like_a_full_one(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            gate = self._gate_from(self._cone_tree(Path(tmp), ["scripts/governance", *autonomy_gate.E2E_DERIVATION_INPUT_PATHS]))
+            self.assertIsNotNone(gate.production_e2e_paths())
+            paths = self._e2e_paths()
+            self.assertGreater(len(paths), 60)
+            for path in paths:
+                self.assertEqual(
+                    gate.classify_scope([path], "")["machine_minimum_tier"], classify_scope([path], "")["machine_minimum_tier"], path)
+            mixed = ["frontend/e2e/subject-settings-clarity.spec.js", "frontend/src/pages/Page.vue"]
+            self.assertEqual(gate.classify_scope(mixed, "")["machine_minimum_tier"], 1)
+
+    def test_every_trusted_sparse_checkout_of_the_gate_carries_the_derivation_inputs(self):
+        found = 0
+        for workflow in sorted((ROOT / ".github/workflows").glob("*.yml")):
+            lines = workflow.read_text(encoding="utf-8").split("\n")
+            for index, line in enumerate(lines):
+                match = re.match(r"(\s*)sparse-checkout:\s*(\S.*)?$", line)
+                if not match:
+                    continue
+                entries = [match.group(2).strip()] if match.group(2) and match.group(2).strip() != "|" else []
+                for follow in lines[index + 1:]:
+                    if follow.strip() and len(follow) - len(follow.lstrip()) > len(match.group(1)):
+                        entries.append(follow.strip())
+                    else:
+                        break
+                entries = [e for e in entries if not e.startswith("sparse-checkout")]
+                if not {"scripts/governance", "scripts"} & set(entries):
+                    continue  # does not load the gate module
+                found += 1
+                nearby = "\n".join(lines[max(0, index - 8):index + len(entries) + 4])
+                self.assertNotIn("sparse-checkout-cone-mode: false", nearby, f"{workflow.name}:{index + 1} must use cone mode")
+                for needed in autonomy_gate.E2E_DERIVATION_INPUT_PATHS:
+                    covered = any(needed == e or needed.startswith(e + "/") for e in entries)
+                    self.assertTrue(covered, f"{workflow.name}:{index + 1} sparse-checks out scripts/governance without {needed}")
+        self.assertGreaterEqual(found, 4)  # deploy.yml: trusted-policy x2, gate-target, gate-trusted
 
 class AgentInstructionAndContentPathTest(unittest.TestCase):
     """Retro #5201 row 20. Agent definitions, agent procedures and runtime-read docs content are not "docs"."""
@@ -605,14 +1046,19 @@ class AgentInstructionAndContentPathTest(unittest.TestCase):
         previous = ClassifierSelfProtectionTest._load(shown.stdout)
         tracked = subprocess.run(["git", "ls-files", "-z"], cwd=ROOT, capture_output=True, text=True, check=True)
         raised: dict[tuple[int, int], int] = {}
+        existing = _paths_at(previous_sha)
         for path in filter(None, tracked.stdout.split("\0")):
             new, old = classify_scope([path], ""), previous.classify_scope([path], "")
-            self.assertGreaterEqual(new["machine_minimum_tier"], old["machine_minimum_tier"], path)
+            if (path in existing or not path.startswith("frontend/e2e/")) and not _is_intended_lowering(path, new["machine_minimum_tier"], old["machine_minimum_tier"]):
+                self.assertGreaterEqual(new["machine_minimum_tier"], old["machine_minimum_tier"], path)
             self.assertEqual(classify_activation_scope([path], ""), previous.classify_activation_scope([path], ""), path)
             if new["machine_minimum_tier"] != old["machine_minimum_tier"]:
                 key = (old["machine_minimum_tier"], new["machine_minimum_tier"])
                 raised[key] = raised.get(key, 0) + 1
-        self.assertLessEqual(set(raised), {(0, 1), (0, 2), (1, 3)})
+        # (0, 3): the Playwright config the director acceptance job runs against production, and the fake-data
+        # mock module that production spec ui-foundation-overlay-gallery imports (both were T0);
+        # (3, 0) are the intended lowerings above, nothing else.
+        self.assertLessEqual(set(raised), {(0, 1), (0, 2), (1, 3), (0, 3), (3, 0)})
 
 
 class DeclarationHelperPathListTest(unittest.TestCase):

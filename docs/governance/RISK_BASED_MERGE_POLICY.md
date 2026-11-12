@@ -1,6 +1,6 @@
 # Risk-Based Merge Policy
 
-**Version:** 1.10.0
+**Version:** 1.11.0
 **Effective:** 2026-08-29 (Founder T0–T3 autonomy decision; supersedes the prior solo-mode R2/R3 merge wording)
 **Owner:** Founder / CTO Agent  
 **Status:** Canonical  
@@ -135,6 +135,10 @@ T0-tests frontend/**/*.test.tsx
 T0-tests scripts/tests/**
 T0-tests scripts/ci/**
 unmatched T1
+T3-e2e-production frontend/e2e/**
+e2e-pr-only-workflow ci.yml
+e2e-pr-only-workflow presubmit.yml
+e2e-pr-only-workflow ui-preview.yml
 ```
 
 - **T3** is the protected boundary of the table above, plus the control plane that decides it: workflows and
@@ -143,6 +147,23 @@ unmatched T1
   exemptions and purge list, gitleaks config and ignore list) or an agent guard (`.claude/settings.json`
   deny list and hook wiring, `.claude/hooks/`). A relaxed scanner or guard is a security-boundary change.
   Agent definitions (`.claude/agents/`) and `.claude/settings.local.json` are the same agent control plane.
+- **T3-e2e-production** (lowers tiers, 2026-11-12): under `frontend/e2e/**` only the files that run against
+  production are release evidence and stay T3: specs and Playwright configs derived from the workflows that
+  are not `e2e-pr-only-workflow` (and the scripts and actions they call, one level), the npm scripts they run,
+  the config each names, that config's match and ignore rules, and the fixtures those specs import. A derived
+  path stays T3 whatever its folder (so `fixtures/ui-foundation/apiMocks.js`, imported by a production spec,
+  is T3). The derivation fails closed: if it meets a glob pattern, a per-project match rule, a non-default
+  `testDir`, a config import it cannot follow, a regex it cannot translate, a script that runs Playwright
+  without a literal config or spec, or a missing script, every `frontend/e2e/**` file is T3. Unit tests of the
+  production guards (`frontend/e2e/fixtures/*.test.js`) keep their tier. Visual baselines in `__screenshots__/`
+  are lowered only while no production file asserts on a stored baseline. Every other `frontend/e2e/**` file
+  (fake-data clarity and ui-foundation specs, fixtures only those import) is an ordinary test file: T0 alone, the same tier as
+  `frontend/src/**/*.test.js`. There is no hand-kept list; a test fails when a production workflow runs a spec
+  this rule does not treat as T3. The word "payment" in a diff still raises a change to T3 when it is in
+  runtime logic; it never counted in tests, docs, comments or CSS selectors.
+  The release train's sparse checkouts of `scripts/governance` in `deploy.yml` carry the derivation's inputs
+  (`E2E_DERIVATION_INPUT_PATHS` in the classifier; a test pins every such checkout to it), so a declaration made in a
+  full checkout is judged the same there.
 - **T2-agent-procedures** are skills: procedures agents execute, not documentation, whatever else is in the
   change. They are T2 and not T3 so that a procedure wording fix gets the exact-head review without the R3
   security review each time.
