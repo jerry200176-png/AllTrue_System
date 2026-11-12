@@ -42,7 +42,6 @@
   "src/pages/AdmissionInquiriesPage.vue",
   "src/pages/AssessmentPage.vue",
   "src/pages/AttendancePage.vue",
-  "src/pages/BindingHealthDashboard.vue",
   "src/pages/BindingManagementPage.vue",
   "src/pages/BranchManagementPage.vue",
   "src/pages/BugReportsPage.vue",

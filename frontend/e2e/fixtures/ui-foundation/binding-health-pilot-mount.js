@@ -1,6 +1,7 @@
-const [{ createApp, h }, styles, module] = await Promise.all([
+const [{ createApp, h }, styles, , module] = await Promise.all([
   import('vue'),
   import('../../../src/styles.css'),
+  import('../../../src/ui.css'),
   import('../../../src/pages/BindingHealthDashboard.vue'),
 ]);
 

@@ -64,6 +64,7 @@ const pageModules = {
   'release-notes': () => import('../../../src/pages/ReleaseNotesPage.vue'),
   'branch-health': () => import('../../../src/pages/BranchHealthBoard.vue'),
   'binding-conflicts': () => import('../../../src/pages/BindingConflictReviewPage.vue'),
+  'binding-health': () => import('../../../src/pages/BindingHealthDashboard.vue'),
 };
 const loadPage = pageModules[page] || pageModules.inbox;
 const PageComponent = (await loadPage()).default;
@@ -193,6 +194,9 @@ createApp({
       return () => h(PageComponent, { token: 'e2e-branch-health-token' });
     }
     if (page === 'binding-conflicts') {
+      return () => h(PageComponent, { branchId: 1, userRole: role });
+    }
+    if (page === 'binding-health') {
       return () => h(PageComponent, { branchId: 1, userRole: role });
     }
     if (page === 'release-notes') {

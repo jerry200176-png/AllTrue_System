@@ -1,0 +1,14 @@
+updates:
+  - id: staff-2026-11-12-ui-binding-health
+    published_at: "2026-11-12"
+    audiences:
+      - director
+      - super_admin
+    importance: digest
+    title: 綁定健康度頁換新外觀
+    summary: 字更大、按鈕更好按；看到的數字和原本一樣。
+    items:
+      - category: improved
+        text: 「綁定健康度」頁改成大字、大按鈕。全校綁定率的百分比改顯示在圓環旁邊；趨勢圖改成一條線加底色，不再有格線和圓點。
+    source_refs:
+      - "changelog:2026-11-12:ui-binding-health"
