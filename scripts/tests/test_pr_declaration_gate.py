@@ -838,6 +838,29 @@ class ProductionE2eFailClosedTest(unittest.TestCase):
             root = self._checkout(tmp, extra={**files, "frontend/e2e/prod.spec.js": "import { m } from './fixtures/ui-foundation/new-mock.js';\n"})
             self.assertTrue(is_production_e2e_path(fixture, root))
 
+    def test_the_decision_does_not_depend_on_whether_the_file_exists_in_the_tree_used(self):
+        # Codex on #5237: PR checkout and deployed-policy (trusted) checkout must agree on a file the PR adds.
+        def both(extra_pr, path):
+            with tempfile.TemporaryDirectory() as pr_dir, tempfile.TemporaryDirectory() as trusted_dir:
+                pr = self._checkout(pr_dir, extra=extra_pr)
+                trusted = self._checkout(trusted_dir)  # the deployed revision: lacks the PR's new files
+                return is_production_e2e_path(path, pr), is_production_e2e_path(path, trusted)
+        fixture = "frontend/e2e/fixtures/newLocalFixture.js"
+        with self.subTest("new unused fixture"):
+            self.assertEqual(both({fixture: "export const f = 1;\n"}, fixture), (False, False))
+        with self.subTest("new fixture imported by a production spec: the target tree raises it, so the pair still raises"):
+            verdict = both({fixture: "export const f = 1;\n",
+                            "frontend/e2e/prod.spec.js": "import { f } from './fixtures/newLocalFixture.js';\n"}, fixture)
+            self.assertEqual(verdict, (True, False))
+            self.assertTrue(any(verdict))
+        with self.subTest("new spec a production config matches: protected in both trees"):
+            self.assertEqual(both({"frontend/e2e/new-prod.spec.js": "// spec\n"}, "frontend/e2e/new-prod.spec.js"), (True, True))
+        with self.subTest("new spec the production config ignores: lowered in both trees"):
+            self.assertEqual(both({"frontend/e2e/new-local.spec.js": "// spec\n"}, "frontend/e2e/new-local.spec.js"), (False, False))
+        with self.subTest("baseline of a new spec: same answer in both trees"):
+            png = "frontend/e2e/__screenshots__/new-390.png"
+            self.assertEqual(both({png: "x"}, png), (False, False))
+
     def test_baselines_are_lowered_only_while_no_production_file_asserts_on_one(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = self._checkout(tmp)

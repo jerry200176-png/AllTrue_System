@@ -497,9 +497,13 @@ def is_production_e2e_path(path: str, root: Path | None = None) -> bool:
             for match, ignore in rules
         )
     if path.endswith(_E2E_FIXTURE_SUFFIXES):
-        # A fixture the derivation could read and no production spec imports is not run in production.
-        # One it could not read (new in this PR, deleted, partial checkout) stays protected.
-        return not ((root or _E2E_ROOT) / path).is_file()
+        # Decided by this tree's own import graph, never by whether the file exists here (a file-existence test made
+        # the same PR T0 in the PR checkout and T3 in the deployed-policy checkout). A fixture is production iff a
+        # production spec in THIS tree imports it, and that was checked above (`path in paths`). A file this tree
+        # lacks cannot be imported by this tree's specs, so it is not production here. The tree that has both the
+        # file and its importing spec (the target side, which deploy.yml also requires to accept the range) still
+        # raises it to T3, so a new fixture a production spec imports is T3 overall.
+        return False
     return True
 
 
