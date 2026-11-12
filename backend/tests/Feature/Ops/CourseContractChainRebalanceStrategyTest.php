@@ -471,6 +471,33 @@ final class CourseContractChainRebalanceStrategyTest extends TestCase
         $this->assertContains(['code' => 'mirror_inconsistent', 'contract_id' => (int) $p['a']->ID], $plan['findings']);
     }
 
+    /** Codex P2 on #5222 (2nd): usage on a lesson that is not taught counts toward its contract but would not follow the plan's taught count. */
+    public function test_usage_on_a_lesson_that_is_not_taught_is_refused(): void
+    {
+        $pastScheduled = function (array $p): int {
+            return (int) DB::table('ClassSession')->insertGetId(['StudentClassID' => $p['a']->ID, 'SessionDate' => now()->subDays(15)->toDateString(),
+                'StartTime' => '23:00:00', 'EndTime' => '23:59:00', 'Status' => 'scheduled', 'Note' => '', 'created_at' => now(), 'updated_at' => now()]);
+        };
+
+        // A deducted sign-in on a past scheduled lesson: totals still agree before the move (max(1, 9) = 9 = 9).
+        $p = $this->pair();
+        $lesson = $pastScheduled($p);
+        $this->assertTrue($this->strategy()->plan($p['params'])['ok'], 'a past scheduled lesson alone is only stale');
+        DB::table('StudentSingIn')->insert(['StudentClassID' => $p['a']->ID, 'StudentID' => $p['student'], 'TeacherID' => $this->teacherId, 'ClassSessionID' => $lesson,
+            'SignInDT' => now()->subDays(15), 'SignOutDT' => now()->subDays(15), 'CampusID' => $this->campusId, 'GradeID' => 1, 'SubjectID' => self::SUBJECT,
+            'PersonType' => 'student', 'Status' => 'present', 'MDT' => now(), 'SessionDeducted' => 1]);
+        $plan = $this->strategy()->plan($p['params']);
+        $this->assertSame(['mirror_inconsistent'], $plan['errors']);
+        $this->assertSame([['code' => 'mirror_inconsistent', 'session_id' => $lesson]], $plan['findings']);
+
+        // A ledger deduction on a past scheduled lesson, on a lesson that is not moved.
+        $p = $this->pair();
+        $lesson = $pastScheduled($p);
+        DB::table('session_deduction_ledger')->insert(['student_class_id' => $p['a']->ID, 'event_type' => 'deduct', 'source' => 'attendance',
+            'class_session_id' => $lesson, 'created_at' => now(), 'updated_at' => now()]);
+        $this->assertContains(['code' => 'mirror_inconsistent', 'session_id' => $lesson], $this->strategy()->plan($p['params'])['findings']);
+    }
+
     /** Codex P2 on #5222: usage that is bound to no lesson stays behind when lessons move, so the projected counts would be wrong. */
     public function test_usage_bound_to_no_lesson_is_refused(): void
     {

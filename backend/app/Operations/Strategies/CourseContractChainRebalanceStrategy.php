@@ -181,12 +181,15 @@ final class CourseContractChainRebalanceStrategy
         $sessionIds = array_keys($owner);
         $ledgerNet = [];
         $mirrorState = [];
+        $deductedSignIn = [];
         foreach (array_chunk($sessionIds, 500) as $chunk) {
             foreach ([['StudentSingIn', 'ClassSessionID', 'StudentClassID'], ['LearningRecord', 'ClassSessionID', 'StudentClassID'],
                 ['session_deduction_ledger', 'class_session_id', 'student_class_id']] as [$table, $sessionColumn, $ownerColumn]) {
                 $select = [$sessionColumn . ' as sid', $ownerColumn . ' as cid'];
                 if ($table === 'session_deduction_ledger') {
                     $select[] = 'event_type';
+                } elseif ($table === 'StudentSingIn') {
+                    array_push($select, 'SessionDeducted', 'VoidedAt');
                 }
                 foreach (DB::table($table)->whereIn($sessionColumn, $chunk)->orderBy('id')->get($select) as $m) {
                     $sid = (int) $m->sid;
@@ -196,8 +199,20 @@ final class CourseContractChainRebalanceStrategy
                     $mirrorState[$sid][$table] = ($mirrorState[$sid][$table] ?? 0) + 1;
                     if ($table === 'session_deduction_ledger') {
                         $ledgerNet[$sid] = ($ledgerNet[$sid] ?? 0) + ((string) $m->event_type === 'deduct' ? 1 : -1);
+                    } elseif ($table === 'StudentSingIn' && $m->VoidedAt === null && (int) $m->SessionDeducted === 1) {
+                        $deductedSignIn[$sid] = true;
                     }
                 }
+            }
+        }
+        // Usage must sit on taught lessons only, one net deduction each (Codex P2 on #5222): a deduction or a deducted
+        // sign-in on a lesson that is not taught counts toward its contract but is not in the plan's taught count, so the
+        // projection after the moves would be wrong. With this, every usage source equals the taught lessons and follows them.
+        foreach ($sessions as $s) {
+            $sid = (int) $s->id;
+            $isTaught = $this->isTaught($s, $today);
+            if (($ledgerNet[$sid] ?? 0) !== ($isTaught ? 1 : 0) || (!$isTaught && isset($deductedSignIn[$sid]))) {
+                $add('mirror_inconsistent', ['session_id' => $sid]);
             }
         }
 
@@ -257,9 +272,6 @@ final class CourseContractChainRebalanceStrategy
                 $add('session_charge_override_present', $at); // a per-lesson price would move money between contracts
             }
             $isTaught = $this->isTaught($s, $today);
-            if (($ledgerNet[$sid] ?? 0) !== ($isTaught ? 1 : 0)) {
-                $add('mirror_inconsistent', $at); // the move must shift the ledger exactly as it shifts the taught count
-            }
             $from = $chain[$move['from']];
             $to = $chain[$move['to']];
             if ((!$manifest['allow_active_contracts']) && ($this->isActive($from) || $this->isActive($to))) {
