@@ -378,11 +378,21 @@ final class PopOperationService
     {
         $run = fn () => $this->runPhase($requestId, $phase, $token, $commitSha, $actor, $actorId, $actorRole, $context);
         if (!in_array($phase, ['execute', 'verify', 'rollback'], true) || !$this->coCommitsWithRecord((string) $this->request($requestId)->strategy_id)) return $run();
-        return DB::transaction(function () use ($requestId, $phase, $run): array {
-            DB::table('pop_operation_requests')->where('id', $requestId)->lockForUpdate()->first();
-            if ($phase === 'verify' && DB::table('pop_execution_records')->where('operation_id', $requestId)->where('phase', 'rollback')->exists()) throw new RuntimeException('POP verification is blocked after rollback begins.');
-            return $run();
-        }, 3);
+        try {
+            return DB::transaction(function () use ($requestId, $phase, $run): array {
+                DB::table('pop_operation_requests')->where('id', $requestId)->lockForUpdate()->first();
+                if ($phase === 'verify' && DB::table('pop_execution_records')->where('operation_id', $requestId)->where('phase', 'rollback')->exists()) throw new RuntimeException('POP verification is blocked after rollback begins.');
+                return $run();
+            }, 3);
+        } catch (PopPhaseAborted $aborted) {
+            // #5236 P1: the transaction above has been rolled back as a whole, so nothing the strategy wrote is committed
+            // (after a nested lock-wait timeout the earlier statements are still in place and Laravel issues no ROLLBACK
+            // TO SAVEPOINT for it). Only now is the failed receipt written, in a transaction of its own.
+            return DB::transaction(function () use ($requestId, $aborted): array {
+                DB::table('pop_operation_requests')->where('id', $requestId)->lockForUpdate()->first();
+                return ($aborted->recordFailure)();
+            });
+        }
     }
 
     private function runPhase(string $requestId, string $phase, ?string $token = null, ?string $commitSha = null, string $actor = 'pop-runner', ?int $actorId = null, ?string $actorRole = null, ?array $context = null): array
@@ -487,11 +497,27 @@ final class PopOperationService
             return $this->coCommitsWithRecord($strategy)
                 ? DB::transaction($complete, 3) : $complete();
         } catch (Throwable) {
-            return $this->record($request, $entry, $parameters, $phase, [
+            $failed = fn (): array => $this->record($request, $entry, $parameters, $phase, [
                 'ok' => false,
                 'errors' => ['execution_failed'],
             ], $actor, $approval, $commitSha, $this->durationMs($startedAt), 'execution_failed');
+            // #5236 P1: for this strategy a failed phase commits no data change at all: run() rolls its transaction back
+            // and then records the failure. Every other strategy records inside the transaction it already had, as before.
+            if ($this->discardsDataWorkOnFailure((string) $entry['strategy_class'])) throw new PopPhaseAborted($failed);
+
+            return $failed();
         }
+    }
+
+    /**
+     * Strategies for which any failure of execute, verify or rollback must leave zero committed data changes. Laravel treats
+     * "Lock wait timeout exceeded" inside a nested transaction as a concurrency error: it lowers the transaction level and
+     * rethrows without ROLLBACK TO SAVEPOINT, and InnoDB (innodb_rollback_on_timeout=OFF) undoes only the statement that
+     * timed out. Recording `execution_failed` inside the outer transaction would then commit the statements made before it.
+     */
+    private function discardsDataWorkOnFailure(string $strategy): bool
+    {
+        return $strategy === \App\Operations\Strategies\CourseContractChainRebalanceStrategy::class;
     }
 
     /** Strategies whose writes must commit in the same transaction as their POP execution record (no committed repair without its snapshot). */
