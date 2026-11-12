@@ -55,6 +55,10 @@ class SchedulerFailedBugObservationTest extends TestCase
         $this->assertSame(1, $job['observed_result']['regressed']);
         $this->assertCount(10, $job['observed_result']['conditions']);
         $this->assertSame(['key' => self::CODES[0], 'count' => 2, 'state' => 'REGRESSED'], $job['observed_result']['conditions'][0]);
+        $this->assertEqualsCanonicalizing(
+            ['REGRESSED', 'FIXED-OK', 'OPEN', 'OPEN-CLEARED', 'BASELINE-PENDING', 'WITHIN-BASELINE'],
+            array_unique(array_column($job['observed_result']['conditions'], 'state'))
+        );
         foreach ($job['observed_result']['conditions'] as $condition) {
             $this->assertSame(['key', 'count', 'state'], array_keys($condition));
         }
@@ -143,7 +147,7 @@ class SchedulerFailedBugObservationTest extends TestCase
         $variants['oversized'] = [str_repeat(' ', 65536) . json_encode($valid, JSON_THROW_ON_ERROR)];
         $variants['wrong-shape'] = ['{"regressed":1,"conditions":[null]}'];
         $variants['string-regressed'] = [str_replace('"regressed":1', '"regressed":"1"', json_encode($valid, JSON_THROW_ON_ERROR))];
-        foreach (['regressed' => -1, 'too-many-regressed' => 11, 'boolean-regressed' => true, 'overflow-regressed' => PHP_INT_MAX + 1] as $name => $value) {
+        foreach (['negative-regressed' => -1, 'too-many-regressed' => 11, 'boolean-regressed' => true, 'float-regressed' => 1.5, 'overflow-regressed' => PHP_INT_MAX + 1] as $name => $value) {
             $p = $valid; $p['regressed'] = $value;
             $variants[$name] = [json_encode($p, JSON_THROW_ON_ERROR)];
         }
@@ -172,8 +176,10 @@ class SchedulerFailedBugObservationTest extends TestCase
     private static function payload(): array
     {
         return ['regressed' => 1, 'private' => self::PRIVATE_TEXT, 'conditions' => array_map(
-            static fn (string $key, int $i): array => ['key' => $key, 'count' => $i === 0 ? 2 : 0,
-                'state' => $i === 0 ? 'REGRESSED' : 'FIXED-OK', 'label' => self::PRIVATE_TEXT, 'student_id' => self::PRIVATE_TEXT],
+            static fn (string $key, int $i): array => ['key' => $key, 'count' => $i === 0 ? 2 : (in_array($i, [2, 7, 8], true) ? 1 : 0),
+                'state' => match ($i) { 0 => 'REGRESSED', 2 => 'OPEN', 3, 4, 5 => 'OPEN-CLEARED',
+                    7 => 'BASELINE-PENDING', 8 => 'WITHIN-BASELINE', default => 'FIXED-OK' },
+                'label' => self::PRIVATE_TEXT, 'student_id' => self::PRIVATE_TEXT],
             self::CODES, array_keys(self::CODES)
         )];
     }
