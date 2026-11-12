@@ -306,8 +306,12 @@ final class CourseContractChainRebalanceStrategyTest extends TestCase
         $x = $this->workedExample();
         $this->assertSame(['report_policy_requires_no_active_contract'],
             $this->strategy()->plan($this->params($x['student'], $x['contracts'], $x['moves'], $both + ['future_reservation_policy' => 'report']))['errors']);
-        $this->assertSame(['report_policy_requires_no_active_contract'], $this->strategy()->plan($this->params($x['student'], $x['contracts'],
-            [$x['moves'][0], $x['moves'][1]], ['allow_order_only_moves' => true, 'future_reservation_policy' => 'report']))['errors']);
+        // The swap alone leaves the third contract at 9 taught of 8, which is refused under either policy; `report` adds
+        // the policy code although no move touches an active contract.
+        $swap = fn (string $policy): array => $this->strategy()->plan($this->params($x['student'], $x['contracts'],
+            [$x['moves'][0], $x['moves'][1]], ['allow_order_only_moves' => true, 'future_reservation_policy' => $policy]))['errors'];
+        $this->assertSame(['taught_exceeds_purchased'], $swap('block'));
+        $this->assertSame(['report_policy_requires_no_active_contract', 'taught_exceeds_purchased'], $swap('report'));
 
         // A chain with no active contract: `report` lists the overflow and passes, `block` refuses it.
         $p = $this->endedPairWithReservations();
