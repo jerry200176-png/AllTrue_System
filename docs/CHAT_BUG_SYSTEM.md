@@ -74,6 +74,8 @@ last_reviewed: 2026-08-23
 
 ### 3.6 ⛔ AI 處理 in-app bug 回報的 SOP（2026-05-17 起，違反 = 重複問使用者）
 
+> 分診時每個 in-app issue 要貼**剛好一個** `rootfam:*` 根因家族標籤，依機制不是依畫面選；家族定義見 [#4991 的根因家族留言](https://github.com/jerry200176-png/AllTrue_System/issues/4991#issuecomment-6817263700)，標籤清單見 `.github/labels.yml`。週報會用它算「家族 × 月份」表，沒貼的會列在「未標家族」。
+
 > 分診先讀 `client_info.recentApiFailures`（最近 5 筆失敗請求，含 `requestId` 可對 log 的 `request_id`）與 `client_info.buildSha`、`route`，再問使用者。
 > 下列 SQL／附件是**要看的內容**；取得管道走 `bug-queue-dump`／`bug-detail-dump`（各階段 workflow、觸發方式與 cloud 能否自行完成，見 [`sop/DELIVERY_LIFECYCLE.md`](sop/DELIVERY_LIFECYCLE.md) 的 In-app 自動化對照表）。
 

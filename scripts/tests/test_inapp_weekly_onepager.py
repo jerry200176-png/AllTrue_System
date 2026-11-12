@@ -64,6 +64,58 @@ class OnePagerTest(unittest.TestCase):
             with self.assertRaises(SystemExit):
                 op.render(bad, ISSUES, MONDAY, OWNER)
 
+def _issue(num, created, labels=(), inapp=None, author="owner"):
+    return {"number": num, "title": f"[in-app #{inapp or num + 1000}] t", "body": "", "author": {"login": author},
+            "createdAt": created, "labels": [{"name": n} for n in labels], "comments": []}
+
+
+FAM_ISSUES = [
+    _issue(11, "2026-09-03T01:00:00Z", ["rootfam:money"]),
+    _issue(12, "2026-09-20T01:00:00Z", ["rootfam:money", "area:billing"]),
+    _issue(13, "2026-10-02T01:00:00Z", ["rootfam:money"]),
+    _issue(14, "2026-10-05T01:00:00Z", ["rootfam:ux-affordance"]),
+    _issue(15, "2026-10-06T01:00:00Z", []),  # unlabelled
+    _issue(16, "2026-10-07T01:00:00Z", ["rootfam:money", "rootfam:write-guard"]),  # conflict
+    _issue(17, "2026-10-08T01:00:00Z", ["rootfam:bogus"]),  # unknown slug counts as unlabelled
+    _issue(18, "2026-10-09T01:00:00Z", ["rootfam:money"], author="mallory"),  # untrusted: ignored
+    {"number": 19, "title": "no in-app ref", "body": "", "author": {"login": "owner"},
+     "createdAt": "2026-10-09T01:00:00Z", "labels": [{"name": "rootfam:money"}], "comments": []},
+]
+
+
+class FamilyTableTest(unittest.TestCase):
+    def test_counts_by_family_and_month(self):
+        t = op.family_table(FAM_ISSUES, MONDAY, OWNER)
+        self.assertEqual(t["rows"]["rootfam:money"], {"2026-09": 2, "2026-10": 1})
+        self.assertEqual(t["rows"]["rootfam:ux-affordance"], {"2026-10": 1})
+        self.assertEqual(t["unlabelled"], {"2026-10": 2})
+        self.assertEqual(t["conflict"], {"2026-10": 1})
+        self.assertNotIn("rootfam:bogus", t["rows"])
+
+    def test_repeat_family_last_30_days(self):
+        t = op.family_table(FAM_ISSUES, MONDAY, OWNER)
+        # money has #12 and #13 inside the 30-day window (#16 is a conflict, not counted): 2, so not yet a repeat.
+        self.assertEqual(t["repeat"], [])
+        more = FAM_ISSUES + [_issue(20, "2026-10-10T01:00:00Z", ["rootfam:money"]), _issue(21, "2026-10-11T01:00:00Z", ["rootfam:money"])]
+        self.assertEqual(op.family_table(more, MONDAY, OWNER)["repeat"], ["rootfam:money"])
+
+    def test_body_has_table_with_unlabelled_row_and_no_free_text(self):
+        _, body = op.render(SNAP, ISSUES + FAM_ISSUES, MONDAY, OWNER)
+        self.assertIn("根因家族 × 月份", body)
+        self.assertIn("| rootfam:money | 2 | 1 |", body)
+        self.assertIn("| 未標家族 | 0 | 2 |", body)
+        self.assertIn("重複出現的家族（近 30 天 ≥ 3 筆）：0 類", body)
+        self.assertNotIn("mallory", body)
+
+    def test_slugs_match_labels_yml(self):
+        text = (SCRIPTS.parent / ".github" / "labels.yml").read_text(encoding="utf-8")
+        import re
+        self.assertEqual(set(re.findall(r'name: "(rootfam:[a-z0-9-]+)"', text)), set(op.ROOTFAM))
+
+    def test_no_in_app_issues_still_renders_unlabelled_row(self):
+        _, body = op.render(SNAP, [], MONDAY, OWNER)
+        self.assertIn("| 未標家族 |", body)
+
 
 if __name__ == "__main__":
     unittest.main()
