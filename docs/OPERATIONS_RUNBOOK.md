@@ -1399,7 +1399,7 @@ GitHub #5124／#5162。目錄狀態 `planned`：只能建立草稿與乾跑，PO
 | 搬完後的結果 | `taught_exceeds_purchased`、`taught_total_not_conserved`、`future_reservations_exceed_remaining`（`report` 時只列出不擋） |
 | 金額與結算 | `contract_terminal_money_closure`、`contract_settlement_locked`、`session_charge_override_present`、`actual_duration_contract_unsupported`、`partial_minutes_unsupported`、`session_duration_differs`、`contract_session_count_invalid` |
 | 改派服務會拒絕的 | `target_slot_taken`、`assessment_locked` |
-| 鏡像資料不一致 | `mirror_inconsistent`（簽到、學習紀錄、扣堂帳的合約與堂次不同；或合約的扣堂帳、觀察到的使用與已上堂數對不起來；或要搬的堂扣堂淨額不是剛好一筆） |
+| 鏡像資料不一致 | `unbound_usage`（合約上有不屬於任何堂次的簽到、學習紀錄或扣堂帳；搬堂次帶不走，預估堂數會錯）、`mirror_inconsistent`（簽到、學習紀錄、扣堂帳的合約與堂次不同；或合約的扣堂帳、觀察到的使用與已上堂數對不起來；或要搬的堂扣堂淨額不是剛好一筆） |
 | 需 Founder 決定 | `decision_required_active_contract`、`decision_required_order_only` |
 
 輸出只有 ID、日期、狀態與數量：每份合約搬動前後的已上與預約堂數、過期仍為 `scheduled` 的堂次（只列出；取消走既有的過期堂次作業）、只調順序的搬動編號、受影響的老師月份數、`digest`，以及「最舊合約先用完」的對照（`advisor`，只供比較，從不執行）。`digest` 綁定整份清單、當天日期與讀到的合約、堂次、鏡像狀態；任何一項變了，帶著舊 `expected_digest` 的乾跑回 `digest_mismatch`。

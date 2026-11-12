@@ -162,6 +162,22 @@ final class CourseContractChainRebalanceStrategy
                 $add('mirror_inconsistent', ['contract_id' => $id]);
             }
         }
+        // Usage bound to no lesson (a live sign-in, a learning record or a ledger row without a ClassSession) stays on its
+        // contract when lessons move, and the app's used count is the maximum over its sources: the projected counts would
+        // be wrong, so such a chain is refused (Codex P2 on #5222; same rule as ForwardOverdeductReassignStrategy).
+        $unbound = array_merge(
+            DB::table('StudentSingIn as si')->leftJoin('ClassSession as cs', 'cs.id', '=', 'si.ClassSessionID')
+                ->whereIn('si.StudentClassID', $chainIds)->whereNull('si.VoidedAt')->whereNull('cs.id')->distinct()->pluck('si.StudentClassID')->all(),
+            DB::table('LearningRecord')->whereIn('StudentClassID', $chainIds)->whereNull('VoidedAt')
+                ->where(fn ($q) => $q->whereNull('ClassSessionID')->orWhere('ClassSessionID', '<=', 0))->distinct()->pluck('StudentClassID')->all(),
+            DB::table('session_deduction_ledger as l')->leftJoin('ClassSession as cs', 'cs.id', '=', 'l.class_session_id')
+                ->whereIn('l.student_class_id', $chainIds)->whereNull('cs.id')->distinct()->pluck('l.student_class_id')->all(),
+        );
+        $unbound = array_values(array_unique(array_map('intval', $unbound)));
+        sort($unbound);
+        foreach ($unbound as $id) {
+            $add('unbound_usage', ['contract_id' => $id]);
+        }
         $sessionIds = array_keys($owner);
         $ledgerNet = [];
         $mirrorState = [];

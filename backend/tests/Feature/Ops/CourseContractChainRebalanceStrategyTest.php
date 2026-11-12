@@ -471,6 +471,32 @@ final class CourseContractChainRebalanceStrategyTest extends TestCase
         $this->assertContains(['code' => 'mirror_inconsistent', 'contract_id' => (int) $p['a']->ID], $plan['findings']);
     }
 
+    /** Codex P2 on #5222: usage that is bound to no lesson stays behind when lessons move, so the projected counts would be wrong. */
+    public function test_usage_bound_to_no_lesson_is_refused(): void
+    {
+        // An approved learning record with no lesson: totals still agree before the move (9 = 9 = 9).
+        $p = $this->pair();
+        DB::table('LearningRecord')->insert(['StudentClassID' => $p['a']->ID, 'ClassSessionID' => null, 'TeacherID' => $this->teacherId,
+            'Content' => 'reviewed fractions and word problems', 'Subject' => 's', 'SessionDate' => now()->subDays(40)->toDateString(),
+            'StartTime' => '10:00:00', 'EndTime' => '12:00:00', 'Status' => 'approved']);
+        $plan = $this->strategy()->plan($p['params']);
+        $this->assertSame(['unbound_usage'], $plan['errors']);
+        $this->assertSame([['code' => 'unbound_usage', 'contract_id' => (int) $p['a']->ID]], $plan['findings']);
+
+        // A live sign-in with no lesson.
+        $p = $this->pair();
+        DB::table('StudentSingIn')->insert(['StudentClassID' => $p['b']->ID, 'StudentID' => $p['student'], 'TeacherID' => $this->teacherId, 'ClassSessionID' => null,
+            'SignInDT' => now()->subDays(30), 'SignOutDT' => now()->subDays(30), 'CampusID' => $this->campusId, 'GradeID' => 1, 'SubjectID' => self::SUBJECT,
+            'PersonType' => 'student', 'Status' => 'present', 'MDT' => now(), 'SessionDeducted' => 0]);
+        $this->assertRejected('unbound_usage', $this->strategy()->plan($p['params']));
+
+        // A ledger deduction with no lesson.
+        $p = $this->pair();
+        DB::table('session_deduction_ledger')->insert(['student_class_id' => $p['a']->ID, 'event_type' => 'deduct', 'source' => 'attendance',
+            'class_session_id' => null, 'created_at' => now(), 'updated_at' => now()]);
+        $this->assertRejected('unbound_usage', $this->strategy()->plan($p['params']));
+    }
+
     // ── What the reassigner itself would refuse (acceptance 8) ──
 
     public function test_a_taken_target_slot_and_a_locked_assessment_are_refused(): void
