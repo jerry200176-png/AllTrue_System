@@ -3,8 +3,9 @@
 namespace App\Console\Commands;
 
 use App\Models\Invoice;
-use App\Services\Billing\AmountParityCensus;
+use App\Services\Billing\InvoiceAmountParityCensus;
 use App\Support\AttendanceStatus;
+use App\Support\SchedulerEvidence;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
 
@@ -22,7 +23,7 @@ use Illuminate\Support\Facades\DB;
  *     reported with their tracking issue so "production state vs bug state" is measurable nightly.
  *
  * Read-only: only SELECT. Scheduled nightly (Kernel) — feeds #904 recurrence report.
- * `screen_amount_vs_resolver` (#4991 item 2) is counted by AmountParityCensus instead of one COUNT(*); its JSON row
+ * `screen_amount_vs_resolver` (#4991 item 2) is counted by InvoiceAmountParityCensus instead of one COUNT(*); its JSON row
  * carries a `detail` (per campus, per type, named exclusions, truncated flag).
  */
 class VerifyBugReproductions extends Command
@@ -163,7 +164,7 @@ class VerifyBugReproductions extends Command
                                 AND NOT EXISTS (SELECT 1 FROM Invoice i WHERE {$link} AND i.TotalAmount > " . Invoice::netPaidSql('i') . ")))",
             ],
             [
-                // No `sql`: counted by AmountParityCensus. Reported first; enforce after 14 nights at 0 (#4991 item 2).
+                // No `sql`: counted by InvoiceAmountParityCensus. Reported first; enforce after 14 nights at 0 (#4991 item 2).
                 'key' => 'screen_amount_vs_resolver',
                 'label' => 'Live bills whose header, line items and the amount the screens show (resolver) do not agree',
                 'issue' => '#4991/#3521', 'enforced' => false,
@@ -176,8 +177,15 @@ class VerifyBugReproductions extends Command
         $results = [];
         $regressed = 0;
 
-        foreach ($this->conditions() as $cond) {
-            $detail = isset($cond['sql']) ? null : app(AmountParityCensus::class)->run();
+        $conditions = $this->conditions();
+        // One list of condition keys (SchedulerEvidence): the failed-run evidence reader accepts exactly this set, so
+        // a condition added here without registering it there must not ship.
+        if (array_column($conditions, 'key') !== SchedulerEvidence::BUG_CONDITION_CODES) {
+            throw new \LogicException('bugs:verify-reproductions conditions differ from SchedulerEvidence::BUG_CONDITION_CODES');
+        }
+
+        foreach ($conditions as $cond) {
+            $detail = isset($cond['sql']) ? null : app(InvoiceAmountParityCensus::class)->run();
             $count = $detail === null ? (int) (DB::selectOne($cond['sql'])->c ?? 0) : $detail['mismatch_count'];
             // Known-baseline allowance (config/reproduction_baselines.php): an enforced condition fails only above it;
             // a listed null means the baseline is not measured yet (reported, never failing).

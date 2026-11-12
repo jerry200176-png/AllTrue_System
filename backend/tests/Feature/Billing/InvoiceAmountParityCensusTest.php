@@ -6,7 +6,9 @@ use App\Models\Campus;
 use App\Models\ClassSession;
 use App\Models\Student;
 use App\Models\StudentClass;
-use App\Services\Billing\AmountParityCensus;
+use App\Services\Billing\InvoiceAmountParityCensus;
+use App\Support\SchedulerEvidence;
+use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Artisan;
@@ -37,7 +39,7 @@ class AmountParityCensusTest extends TestCase
     /** @return array<string,mixed> */
     private function census(): array
     {
-        return app(AmountParityCensus::class)->run();
+        return app(InvoiceAmountParityCensus::class)->run();
     }
 
     /** @return array<string,mixed> the condition row of the nightly command's JSON */
@@ -260,6 +262,42 @@ class AmountParityCensusTest extends TestCase
         $this->assertSame(2, $row['count']);
         foreach ($row['detail']['findings'] as $finding) {
             $this->assertSame(['campus_id', 'invoice_id', 'type'], array_keys($finding));
+        }
+    }
+
+    public function test_a_failed_nightly_run_keeps_its_observed_counts_with_the_new_condition_present(): void
+    {
+        config(['amount_parity.finding_cap' => 100]);
+        $course = $this->countCourse();
+        foreach (range(1, 100) as $i) {
+            $this->bill($course, 1000, [[$course, 900]]); // a full id list: the output must still fit the reader's limit
+        }
+        $this->assertSame(0, Artisan::call('bugs:verify-reproductions', ['--json' => true]));
+        $raw = Artisan::output();
+        $emitted = json_decode($raw, true, 32, JSON_THROW_ON_ERROR)['conditions'];
+        // One list: every key and state the command emits is one the evidence reader accepts.
+        $this->assertSame(SchedulerEvidence::BUG_CONDITION_CODES, array_column($emitted, 'key'));
+        $this->assertSame([], array_diff(array_column($emitted, 'state'), SchedulerEvidence::BUG_CONDITION_STATES));
+        $this->assertContains('INCOMPLETE', SchedulerEvidence::BUG_CONDITION_STATES);
+
+        $date = CarbonImmutable::parse('2042-06-05 12:00:00', SchedulerEvidence::TIMEZONE);
+        $output = SchedulerEvidence::outputPath('bugs-verify-reproductions', $date);
+        $ledger = SchedulerEvidence::ledgerPath($date);
+        SchedulerEvidence::ensureDirectories();
+        @unlink($ledger);
+        try {
+            file_put_contents($output, $raw);
+            SchedulerEvidence::recordCompletion('bugs-verify-reproductions', 'failed', $date);
+            $job = SchedulerEvidence::summarize($date->toDateString(), $date)['jobs']['bugs-verify-reproductions'];
+
+            $this->assertSame('failed', $job['run_status']);
+            $this->assertNotNull($job['observed_result'], 'a failed run lost its diagnostic counts');
+            $row = collect($job['observed_result']['conditions'])->firstWhere('key', 'screen_amount_vs_resolver');
+            // Counts only in the ledger: no bill ids, no per-campus detail.
+            $this->assertSame(['key' => 'screen_amount_vs_resolver', 'count' => 100, 'state' => 'OPEN'], $row);
+        } finally {
+            @unlink($output);
+            @unlink($ledger);
         }
     }
 }

@@ -21,7 +21,7 @@ use Illuminate\Support\Facades\Log;
  * Read-only: SELECT only, never repairs. Bounded by config/amount_parity.php. A bill that agrees only because a rule
  * says the header is the amount is counted under a named exclusion, never dropped silently.
  */
-final class AmountParityCensus
+final class InvoiceAmountParityCensus
 {
     public const TYPE_HEADER_VS_ITEMS = 'header_vs_items';
     public const TYPE_HEADER_VS_RESOLVER = 'header_vs_resolver';

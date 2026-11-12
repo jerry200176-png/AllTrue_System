@@ -12,12 +12,7 @@ class SchedulerFailedBugObservationTest extends TestCase
 {
     private const JOB = 'bugs-verify-reproductions';
     private const PRIVATE_TEXT = 'SYNTHETIC_PRIVATE_TEXT_MUST_NOT_APPEAR';
-    private const CODES = [
-        'attended_session_without_learning_record', 'leave_session_with_live_learning_record',
-        'stranded_prepaid_course', 'duplicate_session_same_slot', 'cross_sc_duplicate_attended_slot',
-        'remaining_sessions_diverges_from_derived', 'package_over_debit', 'session_debited_twice',
-        'unpaid_charge_vs_rate_count', 'paid_flag_vs_invoice',
-    ];
+    private const CODES = SchedulerEvidence::BUG_CONDITION_CODES; // the one list the command and the reader share
 
     private CarbonImmutable $date;
 
@@ -53,10 +48,10 @@ class SchedulerFailedBugObservationTest extends TestCase
         $this->assertNull($job['processed_count']);
         $this->assertNotNull($job['observed_result']);
         $this->assertSame(1, $job['observed_result']['regressed']);
-        $this->assertCount(10, $job['observed_result']['conditions']);
+        $this->assertCount(count(self::CODES), $job['observed_result']['conditions']);
         $this->assertSame(['key' => self::CODES[0], 'count' => 2, 'state' => 'REGRESSED'], $job['observed_result']['conditions'][0]);
         $this->assertEqualsCanonicalizing(
-            ['REGRESSED', 'FIXED-OK', 'OPEN', 'OPEN-CLEARED', 'BASELINE-PENDING', 'WITHIN-BASELINE'],
+            ['REGRESSED', 'FIXED-OK', 'OPEN', 'OPEN-CLEARED', 'BASELINE-PENDING', 'WITHIN-BASELINE', 'INCOMPLETE'],
             array_unique(array_column($job['observed_result']['conditions'], 'state'))
         );
         foreach ($job['observed_result']['conditions'] as $condition) {
@@ -178,7 +173,7 @@ class SchedulerFailedBugObservationTest extends TestCase
         return ['regressed' => 1, 'private' => self::PRIVATE_TEXT, 'conditions' => array_map(
             static fn (string $key, int $i): array => ['key' => $key, 'count' => $i === 0 ? 2 : (in_array($i, [2, 7, 8], true) ? 1 : 0),
                 'state' => match ($i) { 0 => 'REGRESSED', 2 => 'OPEN', 3, 4, 5 => 'OPEN-CLEARED',
-                    7 => 'BASELINE-PENDING', 8 => 'WITHIN-BASELINE', default => 'FIXED-OK' },
+                    7 => 'BASELINE-PENDING', 8 => 'WITHIN-BASELINE', 10 => 'INCOMPLETE', default => 'FIXED-OK' },
                 'label' => self::PRIVATE_TEXT, 'student_id' => self::PRIVATE_TEXT],
             self::CODES, array_keys(self::CODES)
         )];

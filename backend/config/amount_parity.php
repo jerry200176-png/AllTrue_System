@@ -9,5 +9,7 @@ return [
     'row_cap' => 20000,          // live bills read per run, newest first
     'chunk' => 200,              // bills per chunkById page
     'time_limit_seconds' => 120, // wall clock for the whole census
-    'finding_cap' => 200,        // bill ids listed in the JSON detail (the counts are never capped)
+    // Bill ids listed in the JSON detail (the counts are never capped). Keep the whole command output well under
+    // SchedulerEvidence's 64 KiB failed-run read limit, or a failed night loses its diagnostic counts.
+    'finding_cap' => 100,
 ];

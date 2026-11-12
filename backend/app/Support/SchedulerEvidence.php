@@ -28,14 +28,15 @@ final class SchedulerEvidence
     ];
 
     private const FAILED_BUG_OUTPUT_MAX_BYTES = 65536;
-    private const BUG_CONDITION_CODES = [
+    /** Single list of `bugs:verify-reproductions` condition keys: the command refuses to emit any other set. */
+    public const BUG_CONDITION_CODES = [
         'attended_session_without_learning_record', 'leave_session_with_live_learning_record',
         'stranded_prepaid_course', 'duplicate_session_same_slot', 'cross_sc_duplicate_attended_slot',
         'remaining_sessions_diverges_from_derived', 'package_over_debit', 'session_debited_twice',
-        'unpaid_charge_vs_rate_count', 'paid_flag_vs_invoice',
+        'unpaid_charge_vs_rate_count', 'paid_flag_vs_invoice', 'screen_amount_vs_resolver',
     ];
-    private const BUG_CONDITION_STATES = [
-        'FIXED-OK', 'BASELINE-PENDING', 'REGRESSED', 'WITHIN-BASELINE', 'OPEN-CLEARED', 'OPEN',
+    public const BUG_CONDITION_STATES = [
+        'FIXED-OK', 'BASELINE-PENDING', 'REGRESSED', 'WITHIN-BASELINE', 'OPEN-CLEARED', 'OPEN', 'INCOMPLETE',
     ];
 
     /** @var array<string,array{command:string,time:string}> */
