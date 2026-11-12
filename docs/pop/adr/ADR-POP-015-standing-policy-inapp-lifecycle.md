@@ -4,6 +4,7 @@
 |-------|-------|
 | Status | Accepted (Founder 2026-10-14, #4073) |
 | Lifecycle | active |
+| Implementation | (a) triage: implemented as `inapp-report-triage`, standing policy v3 (#PRNUM, #5117). (b) and (c): implemented earlier (`inapp-report-resolve-after-deploy`, `inapp-report-reporter-timeout`). |
 | Date | 2026-10-14 |
 | Confidence | 75% |
 | Risk | Medium |
