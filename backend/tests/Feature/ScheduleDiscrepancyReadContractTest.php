@@ -33,6 +33,7 @@ class ScheduleDiscrepancyReadContractTest extends TestCase
             'student_name' => '不應出現',
             'created_at' => Carbon::parse('2026-08-30 11:00:00'),
         ]);
+        $this->assertSame('2026-08-30 10:00:00', $newer->fresh()->created_at->format('Y-m-d H:i:s'));
 
         $response = $this->authJson(
             'GET',
@@ -179,7 +180,7 @@ class ScheduleDiscrepancyReadContractTest extends TestCase
 
     private function makeReport(int $reporterId, array $overrides = []): ScheduleDiscrepancy
     {
-        return ScheduleDiscrepancy::create(array_merge([
+        $attributes = array_merge([
             'class_session_id' => null,
             'reporter_id' => $reporterId,
             'branch_id' => 1,
@@ -192,6 +193,14 @@ class ScheduleDiscrepancyReadContractTest extends TestCase
             'status' => 'pending',
             'created_at' => now(),
             'updated_at' => now(),
-        ], $overrides));
+        ], $overrides);
+        $report = new ScheduleDiscrepancy($attributes);
+        // Model fillable intentionally excludes timestamps; make fixture chronology explicit.
+        $report->forceFill([
+            'created_at' => $attributes['created_at'],
+            'updated_at' => $attributes['updated_at'],
+        ])->save();
+
+        return $report;
     }
 }
