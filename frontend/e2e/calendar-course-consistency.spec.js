@@ -1,7 +1,7 @@
 // @ts-check
 import { test, expect } from '@playwright/test';
 import { latestReleaseVersionForRole } from '../src/lib/releaseNotes.js';
-import { coursePaymentBadge, REPORT_STATUS_LABELS, TUITION_STATUS_CONFIG } from '../src/lib/courseMoneyState.js';
+import { coursePaymentBadge, REPORT_STATUS_LABELS, shortPaymentLabel, TUITION_STATUS_CONFIG } from '../src/lib/courseMoneyState.js';
 import { getNavigationGroups, sidebarMoreTrigger } from '../src/lib/navigationRegistry.js';
 import { formatCourseRef, formatCoursePeriod } from '../src/lib/studentBillingRows.js';
 import { dismissOverlays } from './fixtures/dismissOverlays.js';
@@ -893,8 +893,11 @@ test.describe('production acceptance — calendar/course parity', () => {
         expect(course, `course ${id} is in the list 課程查找 loaded`).toBeTruthy();
         await expect(period.locator('.hint'), `course ${id} period`)
           .toHaveText(formatCoursePeriod(course?.first_class_date || course?.StartDate, course?.end_date || course?.EndDate));
-        await expect(row.locator('.payment-status-badge[role="status"]'), `course ${id} payment state`)
-          .toHaveText(coursePaymentBadge(course ?? {}, { monthlyPeriod: true }).label);
+        // The chip shows the short form of a long billing sentence (#5230); the full sentence is its accessible name.
+        const paymentLabel = coursePaymentBadge(course ?? {}, { monthlyPeriod: true }).label;
+        const paymentChip = row.locator('.payment-status-badge[role="status"]');
+        await expect(paymentChip, `course ${id} payment state`).toHaveText(shortPaymentLabel(paymentLabel));
+        await expect(paymentChip, `course ${id} payment state, full sentence`).toHaveAttribute('aria-label', paymentLabel);
         await expect(row.getByRole('button', { name: BILLING_ACTION, exact: true }), `course ${id} offers 在這裡看帳務 once`).toHaveCount(1);
         checkedRows += 1;
       }
