@@ -1,6 +1,6 @@
 # Risk-Based Merge Policy
 
-**Version:** 1.8.2
+**Version:** 1.9.0
 **Effective:** 2026-08-29 (Founder T0–T3 autonomy decision; supersedes the prior solo-mode R2/R3 merge wording)
 **Owner:** Founder / CTO Agent  
 **Status:** Canonical  
@@ -58,6 +58,94 @@ unapproved capability and changes no production, security or money-path gate.
    `scripts/governance/pr_declaration.py`, then put the resulting
    `Risk-Class: R0|R1|R2|R3` and `Autonomy-Tier: T0|T1|T2|T3` in the PR body.
 3. If unsure between R1/R2, choose **R2/T2**. If any protected boundary applies, choose **R3/T3**.
+
+## Machine path families (classifier self-protection, #5201 row 16)
+
+`scripts/governance/autonomy_gate.py` (`classify_scope`) derives the machine minimum tier from the
+changed paths. This block is the only place the path families are written down; a test in
+`scripts/tests/test_pr_declaration_gate.py` loads the lists from the code and fails when the two differ.
+Entries are path prefixes unless they contain `*`. The highest matching family wins; semantic markers
+in the diff can only raise the result.
+
+```classifier-paths
+T3 .github/workflows/
+T3 .github/scripts/
+T3 .github/actions/
+T3 .github/CODEOWNERS
+T3 .github/dependabot.yml
+T3 .github/zizmor.yml
+T3 .github/pii-log-workflows.exempt.txt
+T3 .gitleaks.toml
+T3 .gitleaksignore
+T3 .github/pii-log-workflows.txt
+T3 .claude/hooks/
+T3 .claude/settings.json
+T3 backend/database/migrations/
+T3 backend/app/Console/Commands/Repair
+T3 backend/app/Services/Repair
+T3 backend/app/Services/SessionDeduction
+T3 backend/app/Services/SessionEntitlement
+T3 backend/app/Services/ApprovalSessionSync
+T3 backend/app/Http/Controllers/Alert
+T3 backend/app/Http/Controllers/PaymentReport
+T3 backend/app/Http/Controllers/Billing
+T3 backend/app/Http/Controllers/SwipeRfid
+T3 backend/app/Http/Controllers/StudentIdentity
+T3 backend/app/Http/Controllers/Auth
+T3 backend/app/Http/Middleware/
+T3 backend/routes/api.php
+T3 scripts/governance/
+T3 scripts/ops/
+T3 scripts/production
+T3 governance/
+T3 docs/governance/
+T3 AGENTS.md
+T3 CLAUDE.md
+T3 codex.md
+T3 scripts/post-deploy-verify.py
+T3 scripts/production-deploy/pi-remote-deploy.sh
+T3 scripts/production-deploy/render_pi_remote_deploy.py
+T2 backend/
+T2 composer.json
+T2 composer.lock
+T2 frontend/package.json
+T2 frontend/package-lock.json
+T2 scripts/
+T0-docs docs/**
+T0-docs operations/closeout/**
+T0-docs *.md
+T0-docs **/README.md
+T0-docs .github/pull_request_template.md
+T0-docs .github/ISSUE_TEMPLATE/**
+T0-docs .agents/skills/**
+T0-docs .claude/skills/**
+T0-tests backend/tests/**
+T0-tests frontend/e2e/**
+T0-tests frontend/playwright*.config.js
+T0-tests frontend/**/__tests__/**
+T0-tests frontend/**/*.test.js
+T0-tests frontend/**/*.test.ts
+T0-tests frontend/**/*.test.tsx
+T0-tests scripts/tests/**
+T0-tests scripts/ci/**
+unmatched T1
+```
+
+- **T3** is the protected boundary of the table above, plus the control plane that decides it: workflows and
+  what they execute, the classifier and every other `scripts/governance/` module the review gate, Presubmit
+  or `deploy.yml` loads, and the files that relax a required scanner or guard (zizmor policy, PII-log
+  exemptions and purge list, gitleaks config and ignore list) or an agent guard (`.claude/settings.json`
+  deny list and hook wiring, `.claude/hooks/`). A relaxed scanner or guard is a security-boundary change.
+- **T2** applies only when the change contains at least one deployable file. `frontend/src/` and every other
+  deployable `frontend/` file (build config, public assets, vendored modules) is at least T1.
+- **T0** is only what the two T0 lists name: documentation and evidence (`*.md` means repository root), and
+  tests and CI fixtures when the change contains no deployable file.
+- **Fallback:** a path that matches none of the lists is `unclassified path` and gets the `unmatched` tier.
+  It is never reported as documentation. To keep a new path family at T0, add it to the docs list in the
+  code and here in the same PR (a T3 change, because this file and the classifier are both T3).
+- These families set the merge tier only. Production activation classification
+  (`classify_activation_scope`) is unchanged: control-plane paths that never reach the app host are
+  effective at merge and are not an activation signal.
 
 ## Enforcement (current + target)
 

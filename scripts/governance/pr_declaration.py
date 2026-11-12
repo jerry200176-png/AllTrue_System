@@ -16,7 +16,8 @@ from scripts.governance.autonomy_gate import machine_declaration
 
 
 def _git_output(*args: str) -> str:
-    return subprocess.check_output(["git", *args], text=True)
+    # quotepath off: a non-ASCII docs path must reach the classifier as the path, not as a quoted string.
+    return subprocess.check_output(["git", "-c", "core.quotepath=off", *args], text=True)
 
 
 def _local_patch(base: str, head: str, untracked: list[str]) -> str:
