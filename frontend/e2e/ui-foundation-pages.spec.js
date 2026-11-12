@@ -1337,6 +1337,56 @@ for (const scenario of [
   });
 }
 
+// #5190: exercise the real shell, whose clipped overflow is invisible to document-width checks.
+for (const width of [390, 412]) {
+  for (const appPage of ['director', 'schedule-discrepancy']) {
+    test(`account menu stays inside the real app shell on ${appPage} @${width}`, async ({ page }) => {
+      await page.setViewportSize({ width, height: 915 });
+      await page.route('**/*', (route) => ['127.0.0.1', 'localhost'].includes(new URL(route.request().url()).hostname)
+        ? route.fallback() : route.abort('blockedbyclient'));
+      await page.route('**/api/v1/**', async (route) => {
+        const p = new URL(route.request().url()).pathname;
+        if (route.request().method() !== 'GET') return route.fulfill({ json: { ok: true } });
+        if (p.endsWith('/me')) return route.fulfill({ json: { id: 9001, name: 'E2E Director', role: 'director', campuses: [1], must_change_password: false, capabilities: [] } });
+        if (p.endsWith('/branches') || p.endsWith('/campuses')) return route.fulfill({ json: [{ id: 1, name: '測試分校', code: 'test' }] });
+        if (p.includes('/notifications')) return route.fulfill({ json: { data: [], unread_count: 0 } });
+        if (p.includes('/schedule-discrepancies/summary')) return route.fulfill({ json: { pending: 0, acknowledged: 0, resolved: 0, withdrawn: 0 } });
+        return route.fulfill({ json: { data: [] } });
+      });
+      await page.goto(`/pilot-mount.html?page=app&app_page=${appPage}`);
+      await expect(page.locator('html')).toHaveAttribute('data-pilot-ready', '1');
+      await dismissOverlays(page);
+      await expect(page.locator('.brand-idle-layer')).not.toBeVisible();
+      if (appPage === 'schedule-discrepancy') await expect(page.getByTestId('schedule-discrepancy-page')).toBeVisible();
+      const trigger = page.locator('.account-menu-trigger');
+      await expect(trigger).toBeVisible();
+      const geometry = await trigger.evaluate((el) => {
+        const main = document.querySelector('.main-content');
+        const bounds = el.getBoundingClientRect();
+        const content = main.getBoundingClientRect();
+        return { scrollWidth: main.scrollWidth, clientWidth: main.clientWidth, scrollLeft: main.scrollLeft,
+          left: bounds.left, right: bounds.right, width: bounds.width, height: bounds.height,
+          contentLeft: content.left, contentRight: content.right, viewportWidth: innerWidth };
+      });
+      fs.mkdirSync(outDir, { recursive: true });
+      await page.screenshot({ path: path.join(outDir, `account-shell-${appPage}-${width}.png`) });
+      expect.soft(geometry.scrollWidth, JSON.stringify(geometry)).toBe(geometry.clientWidth);
+      expect.soft(geometry.scrollLeft).toBe(0);
+      expect.soft(geometry.left).toBeGreaterThanOrEqual(geometry.contentLeft);
+      expect.soft(geometry.right).toBeLessThanOrEqual(Math.min(geometry.contentRight, geometry.viewportWidth));
+      expect.soft(geometry.width).toBeGreaterThanOrEqual(44);
+      expect.soft(geometry.height).toBeGreaterThanOrEqual(44);
+      // Native details remains keyboard operable after the layout change.
+      await trigger.focus();
+      await page.keyboard.press('Enter');
+      await expect(page.locator('.account-menu')).toHaveAttribute('open', '');
+      await expect(page.getByRole('button', { name: '個人管理', exact: true })).toBeVisible();
+      await page.keyboard.press('Enter');
+      await expect(page.locator('.account-menu')).not.toHaveAttribute('open', '');
+    });
+  }
+}
+
 // #4989 課表回報管理 inside the REAL app shell (mocked API): 16px gutter, help panel below the title, toast above the phone nav.
 for (const vp of [{ width: 390, height: 844, titleLines: 2 }, { width: 1280, height: 900, titleLines: 1 }]) {
   test(`schedule discrepancy in the app shell @${vp.width}`, async ({ page }) => {
@@ -1359,13 +1409,12 @@ for (const vp of [{ width: 390, height: 844, titleLines: 2 }, { width: 1280, hei
     await expect(root).toBeVisible();
     await expect(root.locator('.dsc-table tbody tr, .dsc-mcard').first()).toBeAttached();
 
-    // Gutter: the first card sits shell 10px + page 6px (16px) inside the shell's content box on phones. Measure in the scroll
-    // container's own coordinates: the shell's account menu overflows `.main-content` (overflow-x: hidden, scrollWidth > clientWidth),
-    // so focus/scroll can leave it at scrollLeft 1 and shift every viewport-relative rect by 1px.
+    // Gutter: the first card sits shell 10px + page 6px (16px) inside the shell's content box on phones.
+    // The shell must fit; do not compensate for the old clipped overflow by adding scrollLeft.
     if (vp.width === 390) {
       const gutter = await root.locator('.dsc-mcard').first().evaluate((el) => {
         const main = document.querySelector('.main-content');
-        return Math.round(el.getBoundingClientRect().left - main.getBoundingClientRect().left + main.scrollLeft);
+        return Math.round(el.getBoundingClientRect().left - main.getBoundingClientRect().left);
       });
       expect(gutter).toBe(16);
     } else {
