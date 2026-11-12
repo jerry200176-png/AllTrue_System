@@ -24,7 +24,7 @@ use Illuminate\Support\Facades\DB;
  *
  * Read-only: only SELECT. Scheduled nightly (Kernel) — feeds #904 recurrence report.
  * `screen_amount_vs_resolver` (#4991 item 2) is counted by InvoiceAmountParityCensus instead of one COUNT(*); its JSON row
- * carries a `detail` (per campus, per type, named exclusions, truncated flag).
+ * carries `unevaluated` and a `detail` (per campus, per type, named exclusions, truncated flag).
  */
 class VerifyBugReproductions extends Command
 {
@@ -203,10 +203,10 @@ class VerifyBugReproductions extends Command
                 'baseline' => $baseline,
                 'state' => $cond['enforced']
                     ? ($count === 0 ? 'FIXED-OK' : ($pending ? 'BASELINE-PENDING' : ($isRegression ? 'REGRESSED' : 'WITHIN-BASELINE')))
-                    // A census cut short by a bound proves nothing about the bills it did not read.
-                    : ($count > 0 ? 'OPEN' : (($detail['truncated'] ?? false) ? 'INCOMPLETE' : 'OPEN-CLEARED')),
+                    // A census cut short by a bound, or with a bill it could not evaluate, proves nothing about those bills.
+                    : ($count > 0 ? 'OPEN' : (($detail['truncated'] ?? false) || ($detail['unevaluated'] ?? 0) > 0 ? 'INCOMPLETE' : 'OPEN-CLEARED')),
                 'label' => $cond['label'],
-            ] + ($detail === null ? [] : ['detail' => $detail]);
+            ] + ($detail === null ? [] : ['unevaluated' => $detail['unevaluated'], 'detail' => $detail]);
         }
 
         if ($this->option('json')) {

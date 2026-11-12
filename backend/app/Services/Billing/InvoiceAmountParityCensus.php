@@ -18,6 +18,7 @@ use Illuminate\Support\Facades\Log;
  *   header_vs_items     the bill has lines and they do not add up to the header
  *   header_vs_resolver  the screens show an amount that is not the stored header
  *
+ * A bill the resolver could not evaluate is `unevaluated`: the run is then incomplete, never "cleared".
  * Read-only: SELECT only, never repairs. Bounded by config/amount_parity.php. A bill that agrees only because a rule
  * says the header is the amount is counted under a named exclusion, never dropped silently.
  */
@@ -35,7 +36,6 @@ final class InvoiceAmountParityCensus
         'no_course_on_header',   // package / sibling bill named only on its lines: the header is the amount
         'multi_course_bill',     // one bill for several courses: one course's lesson price is only its share
         'not_lesson_priced',     // count-mode or cross-month bill: the resolver has no second computation
-        'resolver_error',        // the resolver threw for this bill (reported, never hidden)
     ];
 
     public function __construct(private InvoiceAmountReconciliationService $amounts)
@@ -44,7 +44,7 @@ final class InvoiceAmountParityCensus
 
     /**
      * @return array{
-     *   scanned:int, truncated:bool, truncated_reason:string|null, mismatch_count:int,
+     *   scanned:int, truncated:bool, truncated_reason:string|null, unevaluated:int, mismatch_count:int,
      *   by_type:array<string,int>, exclusions:array<string,int>, by_campus:array<int,array<string,int>>,
      *   findings:list<array{campus_id:int,invoice_id:int,type:string}>, findings_truncated:bool
      * }
@@ -57,7 +57,7 @@ final class InvoiceAmountParityCensus
         $deadline = microtime(true) + max(0, (int) config('amount_parity.time_limit_seconds'));
 
         $out = [
-            'scanned' => 0, 'truncated' => false, 'truncated_reason' => null, 'mismatch_count' => 0,
+            'scanned' => 0, 'truncated' => false, 'truncated_reason' => null, 'unevaluated' => 0, 'mismatch_count' => 0,
             'by_type' => [self::TYPE_HEADER_VS_ITEMS => 0, self::TYPE_HEADER_VS_RESOLVER => 0],
             'exclusions' => array_fill_keys(self::EXCLUSIONS, 0),
             'by_campus' => [], 'findings' => [], 'findings_truncated' => false,
@@ -93,7 +93,7 @@ final class InvoiceAmountParityCensus
                             return false;
                         }
                         $out['scanned']++;
-                        $this->check($invoice, (int) ($campusByStudent[$invoice->StudentID] ?? 0), $out['exclusions'], $record);
+                        $out['unevaluated'] += (int) !$this->check($invoice, (int) ($campusByStudent[$invoice->StudentID] ?? 0), $out['exclusions'], $record);
                     }
                 } finally {
                     $this->amounts->forgetPreloadedSessions();
@@ -110,8 +110,9 @@ final class InvoiceAmountParityCensus
     /**
      * @param array<string,int> $exclusions
      * @param callable(int,int,string,int):void $record
+     * @return bool false when the resolver comparison could not be made for this bill
      */
-    private function check(Invoice $invoice, int $campusId, array &$exclusions, callable $record): void
+    private function check(Invoice $invoice, int $campusId, array &$exclusions, callable $record): bool
     {
         $id = (int) $invoice->getKey();
         $header = (int) $invoice->TotalAmount;
@@ -129,10 +130,9 @@ final class InvoiceAmountParityCensus
         try {
             $verdict = $this->amounts->resolve($invoice);
         } catch (\Throwable $e) {
-            $exclusions['resolver_error']++;
             Log::warning('amount_parity.resolver_error', ['invoice_id' => $id, 'error' => $e::class]);
 
-            return;
+            return false;
         }
 
         if ($verdict['total_amount'] !== $verdict['stored_total_amount']) {
@@ -148,5 +148,7 @@ final class InvoiceAmountParityCensus
         } elseif ($verdict['computed_total_amount'] === null) {
             $exclusions['not_lesson_priced']++;
         }
+
+        return true;
     }
 }

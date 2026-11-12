@@ -6,7 +6,10 @@ use App\Models\Campus;
 use App\Models\ClassSession;
 use App\Models\Student;
 use App\Models\StudentClass;
+use App\Models\Invoice;
 use App\Services\Billing\InvoiceAmountParityCensus;
+use App\Services\InvoiceAmountReconciliationService;
+use App\Services\MonthlyBillingService;
 use App\Support\SchedulerEvidence;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -20,7 +23,7 @@ use Tests\TestCase;
  * lines and the amount the screens show (resolver) must agree; legitimate differences are counted under a named
  * exclusion. The census only reads.
  */
-class AmountParityCensusTest extends TestCase
+class InvoiceAmountParityCensusTest extends TestCase
 {
     use RefreshDatabase;
 
@@ -85,6 +88,15 @@ class AmountParityCensusTest extends TestCase
             ClassSession::create([
                 'StudentClassID' => $course->ID, 'SessionDate' => sprintf('2026-07-%02d', $day),
                 'StartTime' => '18:00', 'EndTime' => '20:00', 'Status' => 'attended', 'Note' => '',
+            ]);
+        }
+        // An attended lesson needs its learning record: the same command enforces that (its SQL uses the database
+        // clock, not Carbon's test clock), and these fixtures must not trip another condition.
+        foreach (DB::table('ClassSession')->where('StudentClassID', $course->ID)->get() as $session) {
+            DB::table('LearningRecord')->insert([
+                'StudentClassID' => $course->ID, 'ClassSessionID' => $session->id, 'TeacherID' => 99, 'Content' => '',
+                'Subject' => 'x', 'SessionDate' => $session->SessionDate, 'StartTime' => '18:00', 'EndTime' => '20:00',
+                'Status' => 'pending',
             ]);
         }
 
@@ -186,8 +198,8 @@ class AmountParityCensusTest extends TestCase
             'no_course_on_header' => 1,
             'multi_course_bill' => 1,
             'not_lesson_priced' => 1, // the header-only count-mode bill
-            'resolver_error' => 0,
         ], $out['exclusions']);
+        $this->assertSame(0, $out['unevaluated']);
         $this->assertSame(5, $out['scanned']); // the void bill is not read
     }
 
@@ -294,10 +306,52 @@ class AmountParityCensusTest extends TestCase
             $this->assertNotNull($job['observed_result'], 'a failed run lost its diagnostic counts');
             $row = collect($job['observed_result']['conditions'])->firstWhere('key', 'screen_amount_vs_resolver');
             // Counts only in the ledger: no bill ids, no per-campus detail.
-            $this->assertSame(['key' => 'screen_amount_vs_resolver', 'count' => 100, 'state' => 'OPEN'], $row);
+            $this->assertSame(['key' => 'screen_amount_vs_resolver', 'count' => 100, 'state' => 'OPEN', 'unevaluated' => 0], $row);
         } finally {
             @unlink($output);
             @unlink($ledger);
+        }
+    }
+
+    public function test_a_bill_the_resolver_cannot_evaluate_makes_the_run_incomplete_and_is_counted_in_the_evidence(): void
+    {
+        $course = $this->countCourse();
+        $this->bill($course, 1000, [[$course, 1000]]); // lines match the header; only the resolver leg is unknown
+        $this->app->instance(InvoiceAmountReconciliationService::class, new class(app(MonthlyBillingService::class)) extends InvoiceAmountReconciliationService {
+            public function resolve(Invoice $invoice, ?StudentClass $course = null): array
+            {
+                throw new \RuntimeException('resolver unavailable');
+            }
+        });
+
+        $this->assertSame(0, Artisan::call('bugs:verify-reproductions', ['--json' => true]));
+        $raw = Artisan::output();
+        $row = collect(json_decode($raw, true)['conditions'])->firstWhere('key', 'screen_amount_vs_resolver');
+        $this->assertSame(0, $row['count']);
+        $this->assertSame('INCOMPLETE', $row['state']); // never "cleared" when a comparison was not made
+        $this->assertSame(1, $row['unevaluated']);
+        $this->assertFalse($row['detail']['truncated']);
+
+        // The scheduler evidence keeps the unevaluated count (counts only) on a successful and on a failed run.
+        $date = CarbonImmutable::parse('2042-06-06 12:00:00', SchedulerEvidence::TIMEZONE);
+        $output = SchedulerEvidence::outputPath('bugs-verify-reproductions', $date);
+        $ledger = SchedulerEvidence::ledgerPath($date);
+        SchedulerEvidence::ensureDirectories();
+        foreach (['success', 'failed'] as $status) {
+            @unlink($ledger);
+            try {
+                file_put_contents($output, $raw);
+                SchedulerEvidence::recordCompletion('bugs-verify-reproductions', $status, $date);
+                $job = SchedulerEvidence::summarize($date->toDateString(), $date)['jobs']['bugs-verify-reproductions'];
+                $this->assertSame(
+                    ['key' => 'screen_amount_vs_resolver', 'count' => 0, 'state' => 'INCOMPLETE', 'unevaluated' => 1],
+                    collect($job['observed_result']['conditions'])->firstWhere('key', 'screen_amount_vs_resolver'),
+                    $status
+                );
+            } finally {
+                @unlink($output);
+                @unlink($ledger);
+            }
         }
     }
 }

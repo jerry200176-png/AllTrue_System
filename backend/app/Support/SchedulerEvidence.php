@@ -437,7 +437,8 @@ final class SchedulerEvidence
                 || isset($seen[$condition->key])
                 || !is_int($condition->count ?? null) || $condition->count < 0
                 || !is_string($condition->state ?? null)
-                || !in_array($condition->state, self::BUG_CONDITION_STATES, true)) {
+                || !in_array($condition->state, self::BUG_CONDITION_STATES, true)
+                || (property_exists($condition, 'unevaluated') && (!is_int($condition->unevaluated) || $condition->unevaluated < 0))) {
                 return null;
             }
             $seen[$condition->key] = true;
@@ -564,7 +565,8 @@ final class SchedulerEvidence
                     'key' => $condition['key'] ?? 'unknown',
                     'count' => (int) ($condition['count'] ?? 0),
                     'state' => $condition['state'] ?? 'unknown',
-                ], $decoded['conditions']),
+                    // Bills a census condition could not evaluate (count only); absent for COUNT(*) conditions.
+                ] + (is_int($condition['unevaluated'] ?? null) ? ['unevaluated' => $condition['unevaluated']] : []), $decoded['conditions']),
             ];
         }
 
