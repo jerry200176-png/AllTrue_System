@@ -209,3 +209,41 @@ test('text output ends with the advisory footer', async () => {
   const r = await run([], env, { api: happy(), requiredChecks: required });
   assert.equal(r.stdout.split('\n').at(-1), ADVISORY);
 });
+
+// --- autoland wait reason (#5201): reuses land-queue decide(), REST cannot read thread resolution ---
+const green = [cr('A', 'success'), cr('B', 'success')];
+const al = (labels = ['autoland'], over = {}) => base({ pr: pr({ labels: labels.map((name) => ({ name })), ...over }) });
+const reviewed = [owner(`<!-- independent-review:v1 sha=${HEAD} verdict=pass -->`)];
+
+test('autoland: no label, or already queued, shows no wait reason', () => {
+  assert.equal(summarizePr(base({ checkRuns: green })).wait, null);
+  const q = summarizePr({ ...al(['autoland', 'queue']), checkRuns: green });
+  assert.equal(q.wait, null);
+  assert.doesNotMatch(formatRow(q), /wait:/);
+});
+
+test('autoland: failing, pending or missing required checks -> wait:checks', () => {
+  assert.equal(summarizePr({ ...al(), checkRuns: [cr('A', 'failure'), cr('B', 'success')] }).wait, 'wait:checks');
+  assert.equal(summarizePr({ ...al(), checkRuns: [cr('A', null, '2026-11-10T01:00:00Z', 'in_progress'), cr('B', 'success')] }).wait, 'wait:checks');
+  assert.equal(summarizePr(al()).wait, 'wait:checks'); // both missing
+});
+
+test('autoland: green checks without a review for this head -> wait:review', () => {
+  assert.equal(summarizePr({ ...al(), checkRuns: green }).wait, 'wait:review');
+});
+
+test('autoland: known unresolved threads -> wait:threads; conflict -> wait:conflict', () => {
+  const conn = { pageInfo: { hasNextPage: false }, nodes: [{ isResolved: false, comments: { totalCount: 1 } }] };
+  assert.equal(summarizePr({ ...al(), checkRuns: green, comments: reviewed, threads: conn }).wait, 'wait:threads');
+  assert.equal(summarizePr({ ...al(['autoland'], { mergeable_state: 'dirty' }), checkRuns: green, comments: reviewed }).wait, 'wait:conflict');
+});
+
+test('autoland: all else green but thread state unreadable via REST -> wait:?', () => {
+  assert.equal(summarizePr({ ...al(), checkRuns: green, comments: reviewed }).wait, 'wait:?');
+});
+
+test('autoland: one line per PR carries the reason', () => {
+  const line = formatRow(summarizePr({ ...al(), checkRuns: green }));
+  assert.equal(line.split('\n').length, 1);
+  assert.match(line, / wait:review /);
+});

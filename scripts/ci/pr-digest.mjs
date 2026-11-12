@@ -7,12 +7,13 @@
 //   Token: GH_TOKEN or GITHUB_TOKEN. Repo: --repo or GITHUB_REPOSITORY.
 //
 // Line: #N sha8 [draft] ms:<mergeable_state> req:ok/total [fail:a,b] [pend:c] [miss:d] [adv:x] rv:<review> mk:<markers>
-//       thr:<n|?> behind:<n> L:<labels>
+//       thr:<n|?> behind:<n> [wait:<reason>] L:<labels>
 //   - req counts REQUIRED checks only (the ruleset list from land-queue's requiredChecks(); newest run per name wins;
 //     success/neutral/skipped = ok; failure/cancelled/timed_out/... = fail; absent from the head = miss).
 //   - rv: review-gate's verdict for the exact head (scope not evaluated, so R3's extra marker is NOT checked);
 //     review/final-head check state is shown as fh:<state>. mk: owner markers naming the exact head only.
 //   - thr: unresolved review threads. REST cannot read resolution state, so this is `?` (unknown), never a guess.
+//   - wait: only for `autoland` PRs not yet labelled `queue`: wait:checks|review|threads|conflict, or wait:? if unknown.
 // Exit: non-zero only on API/auth/usage errors. An API error is printed as ERROR and never rendered as green.
 //
 // Reused (not re-implemented): requiredChecks / checkStates (.github/scripts/land-queue.mjs),
@@ -21,7 +22,7 @@
 // land-queue / review-gate read REPO once at import time (only their `gh` helpers use it), so set it from --repo first.
 const repoArg = process.argv.indexOf('--repo');
 if (repoArg > 0 && process.argv[repoArg + 1]) process.env.REPO = process.argv[repoArg + 1];
-const { checkStates, unresolvedCount, requiredChecks } = await import('../../.github/scripts/land-queue.mjs');
+const { checkStates, unresolvedCount, requiredChecks, decide, neutral } = await import('../../.github/scripts/land-queue.mjs');
 const { REVIEW_CHECK, reviewGate, reviewMarker } = await import('../../.github/scripts/review-gate.mjs');
 
 const WATCH_LABELS = ['queue', 'autoland', 'do-not-touch', 'needs-founder'];
@@ -59,6 +60,21 @@ export const clean = (v, max = 60) => {
 };
 export const ADVISORY = 'advisory digest: land-queue and review/final-head decide; thr:? = thread state not readable via REST; required checks matched by name only';
 
+// Why an `autoland` PR is not in the queue yet, from land-queue's own decide() (no second rule set). BEHIND is the
+// queue's job (neutral()). REST cannot read thread resolution: with threads unknown we assume 0, so a PR that is
+// otherwise mergeable is `wait:?` (threads or a gate decide() cannot see), never a guessed green.
+export function autolandWait(labels, p) {
+  if (!labels.includes('autoland') || labels.includes('queue')) return null;
+  const known = Number.isInteger(p.threads);
+  const d = decide(neutral({ ...p, unresolvedThreads: known ? p.threads : 0 }), p.required);
+  if (d.reason === 'threads') return 'wait:threads';
+  if (d.reason === 'conflict') return 'wait:conflict';
+  if (d.reason === 'checks' || d.reason === 'rerun-once') return 'wait:checks';
+  if (d.reason === 'review-pending') return 'wait:review';
+  if (d.action === 'merge') return 'wait:?';
+  return p.pending || p.missing ? 'wait:checks' : 'wait:?';
+}
+
 // Pure: API payloads in, one digest row out.
 // in: {pr (pulls/N), checkRuns, statuses, comments (null = unreadable), behindBy (null = unknown), threads (GraphQL-shaped conn or null),
 //      required: [names], owner}
@@ -83,6 +99,10 @@ export function summarizePr(i) {
     : { ok: false, why: 'PR comments unreadable' };
   const labels = (i.pr.labels || []).map((l) => l.name).filter((n) => WATCH_LABELS.includes(n));
   const cl = (a) => a.map((x) => clean(x));
+  const allLabels = (i.pr.labels || []).map((l) => l.name);
+  const threads = unresolvedCount(i.threads); // null = unknown
+  const wait = autolandWait(allLabels, { mergeStateStatus: String(i.pr.mergeable_state || '').toUpperCase(), behindBy: 0,
+    rollup, review: rg, sha: head, threads, required: req, pending: pending.length > 0, missing: missing.length > 0 });
   return {
     n: i.pr.number, sha: head.slice(0, 8), draft: !!i.pr.draft, labels,
     mergeable: clean(i.pr.mergeable_state || 'unknown', 20),
@@ -90,7 +110,7 @@ export function summarizePr(i) {
     advisoryFail: cl(advisoryFail), finalHead,
     review: rg.ok ? rg.via : `no(${clean(rg.why, 60)})`,
     markers: markersOn(i.comments, head, i.owner),
-    threads: unresolvedCount(i.threads), // null = unknown
+    threads, wait,
     behind: Number.isInteger(i.behindBy) ? i.behindBy : null,
   };
 }
@@ -109,6 +129,7 @@ export function formatRow(r, verbose = false) {
   p.push(`fh:${r.finalHead}`, `rv:${r.review}`);
   if (r.markers.length) p.push(`mk:${r.markers.join(',')}`);
   p.push(`thr:${r.threads ?? '?'}`, `behind:${r.behind ?? '?'}`);
+  if (r.wait) p.push(r.wait);
   if (r.labels.length) p.push(`L:${r.labels.join(',')}`);
   let line = p.join(' ');
   if (verbose) {
