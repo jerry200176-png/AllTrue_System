@@ -2,16 +2,19 @@
 
 namespace App\Operations\Strategies;
 
+use App\Models\ClassSession;
+use App\Models\SecurityAuditEvent;
 use App\Models\StudentClass;
 use App\Services\Scheduling\ClassSessionContractReassigner;
 use App\Services\Scheduling\DeductionBasis;
 use App\Services\SessionDeductionService;
 use App\Support\LearningRecordMutableOwnership;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 use RuntimeException;
 
 /**
- * GitHub #5124 / #5162 C1, PR 1 of the design (issuecomment-6813739987): the PLAN half of a chain-aware contract repair.
+ * GitHub #5124 / #5162 C1, design issuecomment-6813739987: a chain-aware contract repair (plan, execute, verify, restore).
  *
  * One student's count contracts of one subject form a chain. A reviewed, explicitly ordered list of moves (lesson -> from
  * contract -> to contract) is validated as ONE plan: scope (campus, student, subject, the whole chain), drift (owner, date,
@@ -19,13 +22,29 @@ use RuntimeException;
  * reassigner's own refusals (slot taken, locked assessment) and the two Founder decisions, which default to "no":
  * `allow_active_contracts` and `allow_order_only_moves`. The oldest-first allocation is computed for comparison only.
  *
- * This release only reads. `execute()`, `verify()` and `rollback()` refuse with `strategy_planned_only`; the catalog entry is
- * `lifecycle: planned`, so POP never issues an approval for it. Output carries ids, dates, statuses and counts: no names, no amounts.
+ * `plan()` only reads. `execute()` runs a plan that is pinned to its own digest: it locks the student, the chain and its
+ * lessons in a fixed order, plans again under those locks and refuses on any difference, then makes every move through
+ * ClassSessionContractReassigner (lesson + sign-in + ledger + learning record, counters recomputed, one reassignment row and
+ * one audit event per move) in one transaction; a refusal or failure on any move undoes all of them. No lesson is cancelled
+ * or created and no money row is written: the fingerprint of the chain's contracts, invoices, items, payments and payment
+ * reports must be the same before and after. The snapshot records the prior owner of every moved lesson.
+ *
+ * Undo is the inverse moves in reverse order, through the same service, all or nothing: `rollback()` (POP rollback phase of
+ * the same request) or a new Founder-approved request with `restore_request_id`. Both refuse, with a per-lesson report, when
+ * a moved lesson's owner, date, time, status or mirror rows changed after the execute.
+ *
+ * Output carries ids, dates, statuses and counts: no names, no amounts.
  */
 final class CourseContractChainRebalanceStrategy
 {
     public const OPERATION = 'course-contract-chain-rebalance';
-    public const PLANNED_ONLY = 'strategy_planned_only';
+    private const AUDIT = 'pop.course_contract_chain_rebalance';
+    private const SNAPSHOT_VERSION = 1;
+    /** Rows that follow a lesson: table, lesson column, contract column. */
+    private const MIRRORS = [['StudentSingIn', 'ClassSessionID', 'StudentClassID'], ['LearningRecord', 'ClassSessionID', 'StudentClassID'],
+        ['session_deduction_ledger', 'class_session_id', 'student_class_id']];
+    /** StudentClass columns the reassigner's counter recompute may write; every other contract column must stay as it was. */
+    private const COUNTER_COLUMNS = ['UsedSessions', 'RemainingSessions', 'PurchasedMinutes', 'RemainingMinutes'];
 
     /** Statuses that count as a taught lesson (the set SessionDeductionService counts on ClassSession). */
     private const TAUGHT = ['attended', 'completed', 'late'];
@@ -38,16 +57,40 @@ final class CourseContractChainRebalanceStrategy
     {
         [$manifest, $errors] = $this->manifest($parameters);
         if ($errors !== []) {
-            return $this->rejected($errors, [], 'invalid');
+            return $this->rejected($errors, [], 'invalid', ($parameters['restore_request_id'] ?? '') === '' ? 'rebalance' : 'restore');
         }
-        $want = (string) ($parameters['expected_digest'] ?? '');
+
+        return $this->evaluate($manifest, (string) ($parameters['expected_digest'] ?? ''), null);
+    }
+
+    /**
+     * The whole validation, read-only. `$source` is the snapshot of the execute being undone: given by `rollback()`, or
+     * loaded here for a restore request. Undo is checked like any plan (scope, drift, mirrors, money locks, the reassigner's
+     * refusals) except the rules about the result: it returns the chain to a state that was there before, so the capacity
+     * rules and the two Founder decisions do not apply; instead every moved lesson must be as the execute left it.
+     *
+     * @param array<string,mixed> $manifest
+     * @param array<string,mixed>|null $source
+     * @return array<string,mixed>
+     */
+    private function evaluate(array $manifest, string $want, ?array $source): array
+    {
+        $mode = $source !== null || $manifest['restore_request_id'] !== '' ? 'restore' : 'rebalance';
 
         // Campus isolation first (acceptance 15): a student of another campus is refused before any contract or lesson is read.
         // No role is exempt: a super_admin may ask for any campus, but the manifest's campus must be the student's own.
         $studentCampus = DB::table('Student')->where('id', $manifest['student_id'])->value('CampusID');
         if ($studentCampus === null || (int) $studentCampus !== $manifest['campus_id']) {
-            return $this->rejected(['student_campus_mismatch'], [], 'rejected');
+            return $this->rejected(['student_campus_mismatch'], [], 'rejected', $mode);
         }
+        if ($source === null && $manifest['restore_request_id'] !== '') {
+            $source = $this->sourceSnapshot($manifest['restore_request_id'], $manifest);
+            if ($source === null) {
+                // One code for: unknown request, another operation, another campus / student / subject, not executed, itself a restore.
+                return $this->rejected(['restore_source_not_found'], [], 'rejected', $mode);
+            }
+        }
+        $restore = $source !== null;
 
         $findings = [];
         $add = function (string $code, array $ids = []) use (&$findings): void {
@@ -82,7 +125,7 @@ final class CourseContractChainRebalanceStrategy
             }
         }
         if ($findings !== []) {
-            return $this->rejected($this->codes($findings), $findings, 'rejected');
+            return $this->rejected($this->codes($findings), $findings, 'rejected', $mode);
         }
 
         /** @var array<int,\stdClass> $chain */
@@ -120,7 +163,7 @@ final class CourseContractChainRebalanceStrategy
         $sessions = DB::table('ClassSession')->whereIn('StudentClassID', $chainIds)->orderBy('id')->limit(self::MAX_SESSIONS + 1)
             ->get(['id', 'StudentClassID', 'SubjectID', 'SessionDate', 'StartTime', 'Status', 'session_charge'])->keyBy('id');
         if ($sessions->count() > self::MAX_SESSIONS) {
-            return $this->rejected(['chain_too_large'], [], 'rejected');
+            return $this->rejected(['chain_too_large'], [], 'rejected', $mode);
         }
         $moveIds = array_values(array_unique(array_column($manifest['moves'], 'session_id')));
         $outside = array_values(array_diff($moveIds, $sessions->keys()->map(fn ($id) => (int) $id)->all()));
@@ -183,8 +226,7 @@ final class CourseContractChainRebalanceStrategy
         $mirrorState = [];
         $deductedSignIn = [];
         foreach (array_chunk($sessionIds, 500) as $chunk) {
-            foreach ([['StudentSingIn', 'ClassSessionID', 'StudentClassID'], ['LearningRecord', 'ClassSessionID', 'StudentClassID'],
-                ['session_deduction_ledger', 'class_session_id', 'student_class_id']] as [$table, $sessionColumn, $ownerColumn]) {
+            foreach (self::MIRRORS as [$table, $sessionColumn, $ownerColumn]) {
                 $select = [$sessionColumn . ' as sid', $ownerColumn . ' as cid'];
                 if ($table === 'session_deduction_ledger') {
                     $select[] = 'event_type';
@@ -213,6 +255,33 @@ final class CourseContractChainRebalanceStrategy
             $isTaught = $this->isTaught($s, $today);
             if (($ledgerNet[$sid] ?? 0) !== ($isTaught ? 1 : 0) || (!$isTaught && isset($deductedSignIn[$sid]))) {
                 $add('mirror_inconsistent', ['session_id' => $sid]);
+            }
+        }
+
+        // ── Undo only: the list must be the executed moves reversed, and every moved lesson must be as the execute left it. ──
+        $restoreRows = [];
+        if ($source !== null) {
+            if ($manifest['moves'] !== $this->inverseMoves($source['rows'])) {
+                $add('restore_moves_mismatch');
+            }
+            foreach ($source['rows'] as $r) {
+                $sid = (int) $r['id'];
+                $s = $sessions->get($sid);
+                $state = 'restorable';
+                if (!$s) {
+                    $state = 'not_on_chain'; // deleted, or moved to a contract outside the chain
+                } elseif ($owner[$sid] !== (int) $r['to_class_id']) {
+                    $state = 'owner_changed';
+                } elseif (substr((string) $s->SessionDate, 0, 10) !== $r['date'] || substr((string) $s->StartTime, 0, 5) !== $r['start_time']
+                    || strtolower((string) $s->Status) !== $r['status']) {
+                    $state = 'lesson_changed';
+                } elseif (($mirrorState[$sid] ?? []) != $r['mirrors'] || ($ledgerNet[$sid] ?? 0) !== (int) $r['ledger_net']) {
+                    $state = 'mirrors_changed';
+                }
+                $restoreRows[] = ['session_id' => $sid, 'state' => $state];
+                if ($state !== 'restorable') {
+                    $add('restore_row_changed', ['session_id' => $sid, 'state' => $state]);
+                }
             }
         }
 
@@ -274,7 +343,7 @@ final class CourseContractChainRebalanceStrategy
             $isTaught = $this->isTaught($s, $today);
             $from = $chain[$move['from']];
             $to = $chain[$move['to']];
-            if ((!$manifest['allow_active_contracts']) && ($this->isActive($from) || $this->isActive($to))) {
+            if (!$restore && (!$manifest['allow_active_contracts']) && ($this->isActive($from) || $this->isActive($to))) {
                 $add('decision_required_active_contract', $at);
             }
             if ($status !== 'cancelled') {
@@ -322,10 +391,12 @@ final class CourseContractChainRebalanceStrategy
         foreach ($chain as $id => $c) {
             $purchased = (int) $c->SessionCount;
             if ($after['taught'][$id] > $purchased) {
-                $add('taught_exceeds_purchased', ['contract_id' => $id]);
+                if (!$restore) {
+                    $add('taught_exceeds_purchased', ['contract_id' => $id]);
+                }
             } elseif ($after['taught'][$id] + $after['reserved'][$id] > $purchased) {
                 $overflows[] = ['contract_id' => $id, 'purchased' => $purchased, 'taught' => $after['taught'][$id], 'reserved' => $after['reserved'][$id]];
-                if ($manifest['future_reservation_policy'] === 'block') {
+                if (!$restore && $manifest['future_reservation_policy'] === 'block') {
                     $add('future_reservations_exceed_remaining', ['contract_id' => $id]);
                 }
             }
@@ -336,7 +407,7 @@ final class CourseContractChainRebalanceStrategy
                 'stale_scheduled_session_ids' => $stale[$id] ?? []]; // reported only; the stale-session operation cancels them
         }
         $orderOnly = $this->orderOnlyMoves($applied);
-        if ($orderOnly !== [] && !$manifest['allow_order_only_moves']) {
+        if (!$restore && $orderOnly !== [] && !$manifest['allow_order_only_moves']) {
             foreach ($orderOnly as $number) {
                 $add('decision_required_order_only', ['move' => $number, 'session_id' => $manifest['moves'][$number - 1]['session_id']]);
             }
@@ -358,31 +429,431 @@ final class CourseContractChainRebalanceStrategy
             $codes = ['digest_mismatch'];
         }
 
-        return ['ok' => $codes === [], 'errors' => $codes, 'findings' => $findings, 'state' => $state, 'mode' => 'plan_only',
+        // What execute stores per moved lesson: the prior owner, the lesson as planned, and its mirror rows (count per table, net deduction).
+        $rows = array_map(fn (array $m): array => ['id' => $m['session_id'], 'from_class_id' => $m['from'], 'to_class_id' => $m['to'],
+            'date' => $m['date'], 'start_time' => $m['start_time'], 'status' => $m['status'],
+            'mirrors' => $mirrorState[$m['session_id']] ?? [], 'ledger_net' => $ledgerNet[$m['session_id']] ?? 0], $applied);
+
+        return ['ok' => $codes === [], 'errors' => $codes, 'findings' => $findings, 'state' => $state, 'mode' => $mode,
             'operation' => self::OPERATION, 'campus_id' => $manifest['campus_id'], 'student_id' => $manifest['student_id'],
             'subject_id' => $manifest['subject_id'], 'digest' => $digest, 'contracts' => $contracts, 'moves' => $manifest['moves'],
+            'restore_request_id' => $manifest['restore_request_id'], 'restore_rows' => $restoreRows, 'manifest' => $manifest, 'rows' => $rows,
             'order_only_moves' => $orderOnly, 'reservation_overflows' => $overflows,
             'totals' => ['contracts' => count($chain), 'moves' => count($manifest['moves']), 'taught_before' => array_sum($before['taught']),
                 'taught_after' => array_sum($after['taught']), 'affected_teacher_months' => count($teacherMonths), 'teacher_changes' => $teacherChanges],
             'advisor' => $this->advisor($chain, $sessions->all(), $owner, $now, $today)];
     }
 
-    /** @param array<string,mixed> $plan @param array<string,mixed> $context */
+    /**
+     * Runs a pinned plan, all or nothing. A refusal is returned (`ok=false` and a code), never half-applied; anything
+     * else that goes wrong is thrown after the transaction has undone every move.
+     *
+     * A request that already has a succeeded execute record gets that same result back with `already_applied` and writes
+     * nothing (POP answers a replay from its record before it reaches this method; this is the second line).
+     *
+     * @param array<string,mixed> $plan
+     * @param array<string,mixed> $context `operation_id` = the POP request id (required), `actor`
+     * @return array<string,mixed>
+     */
     public function execute(array $plan, array $context): array
     {
-        throw new RuntimeException(self::PLANNED_ONLY);
+        $requestId = (string) ($context['operation_id'] ?? '');
+        if (!Str::isUuid($requestId)) {
+            return $this->refusal(['request_id_invalid']);
+        }
+        try {
+            return DB::transaction(function () use ($plan, $context, $requestId): array {
+                // A locking read: it sees the latest committed record and does not start this transaction's read view.
+                $prior = DB::table('pop_execution_records')->where('operation_id', $requestId)->where('phase', 'execute')
+                    ->where('result', 'succeeded')->orderByDesc('attempt_no')->lockForUpdate()->first(['payload']);
+                $stored = $prior ? json_decode((string) $prior->payload, true) : null;
+                if (is_array($stored) && $this->validSnapshot($stored['snapshot'] ?? null, null) && $stored['snapshot']['request_id'] === $requestId) {
+                    return ['ok' => true, 'already_applied' => true]
+                        + array_intersect_key($stored, array_flip(['mode', 'request_id', 'digest', 'moved', 'contracts', 'totals', 'restore_moves', 'snapshot']));
+                }
+                $manifest = $plan['manifest'] ?? null;
+                if (($plan['ok'] ?? false) !== true || ($plan['state'] ?? null) !== 'pinned' || !is_array($manifest)
+                    || !is_string($plan['digest'] ?? null) || !preg_match('/^[0-9a-f]{64}$/', $plan['digest'])) {
+                    throw new ChainRebalanceRefused($this->refusal(['plan_not_pinned']));
+                }
+                $suffix = ($manifest['restore_request_id'] ?? '') !== '' ? '.restore' : '';
+
+                return $this->apply($manifest, $plan['digest'], null, $requestId, $suffix, (string) ($context['actor'] ?? ''));
+            }, 3);
+        } catch (ChainRebalanceRefused $refused) {
+            return $refused->result; // the transaction has already undone every move
+        }
     }
 
-    /** @param array<string,mixed> $plan @param array<string,mixed> $result @return array<string,mixed> */
+    /**
+     * Read-only post-conditions, from the stored execute result (the plan of an executed request no longer matches).
+     * Answers with the per-contract structure the plan promised as "after", counted again from the database.
+     *
+     * @param array<string,mixed> $plan
+     * @param array<string,mixed> $result
+     * @return array<string,mixed>
+     */
     public function verify(array $plan, array $result): array
     {
-        return ['ok' => false, 'errors' => [self::PLANNED_ONLY], 'checks' => []];
+        $checks = ['snapshot_present', 'lessons_on_target', 'lessons_unchanged', 'mirrors_follow', 'reassignment_recorded',
+            'taught_within_purchased', 'counts_as_planned', 'taught_total_conserved', 'counters_derived', 'money_untouched'];
+        $snapshot = $result['snapshot'] ?? null;
+        if (($result['ok'] ?? false) !== true) {
+            return ['ok' => false, 'errors' => ['execution_result_missing'], 'checks' => $checks, 'contracts' => []];
+        }
+        if (!$this->validSnapshot($snapshot, null)) {
+            return ['ok' => false, 'errors' => ['snapshot_missing'], 'checks' => $checks, 'contracts' => []];
+        }
+        [$errors, $contracts] = $this->check($snapshot);
+
+        return ['ok' => $errors === [], 'errors' => $errors, 'checks' => $checks, 'mode' => $snapshot['mode'], 'contracts' => $contracts,
+            'totals' => ['moves' => count($snapshot['rows']), 'taught_before' => array_sum(array_map(fn (array $c): int => (int) $c['before']['taught'], $contracts)),
+                'taught_after' => array_sum(array_map(fn (array $c): int => (int) $c['after']['taught'], $contracts))]];
     }
 
-    /** @param array<string,mixed> $snapshot @param array<string,mixed> $context */
+    /**
+     * POP rollback phase of an executed request: moves every lesson of the snapshot back to its prior owner, in reverse
+     * order, all or nothing. Refuses (`ok=false`, `rows` = one state per lesson) when any moved lesson is not as the execute
+     * left it; nothing is restored in that case.
+     *
+     * @param array<string,mixed> $snapshot
+     * @param array<string,mixed> $context
+     * @return array<string,mixed>
+     */
     public function rollback(array $snapshot, array $context): array
     {
-        throw new RuntimeException(self::PLANNED_ONLY);
+        if (!$this->validSnapshot($snapshot, 'rebalance')) {
+            throw new RuntimeException('chain_rebalance_rollback_snapshot_invalid'); // a restore run is undone by a new rebalance request
+        }
+        $requestId = (string) ($context['operation_id'] ?? $snapshot['request_id']);
+        // The chain as it is now (a contract bought after the execute belongs to it), plus the contracts of the snapshot.
+        $chain = DB::table('StudentClass')->where('StudentID', $snapshot['student_id'])->where('SubjectID', $snapshot['subject_id'])
+            ->orderBy('ID')->get(['ID', 'PackageID', 'ScheduleMode'])
+            ->filter(fn (\stdClass $c): bool => (int) $c->PackageID <= 0 && strtolower((string) $c->ScheduleMode) === 'count')
+            ->map(fn (\stdClass $c): int => (int) $c->ID)->all();
+        $contractIds = array_values(array_unique(array_merge(array_map('intval', $snapshot['contract_ids']), $chain)));
+        sort($contractIds);
+        $manifest = ['campus_id' => (int) $snapshot['campus_id'], 'student_id' => (int) $snapshot['student_id'], 'subject_id' => (int) $snapshot['subject_id'],
+            'contract_ids' => $contractIds, 'moves' => $this->inverseMoves($snapshot['rows']), 'allow_active_contracts' => true,
+            'allow_order_only_moves' => true, 'future_reservation_policy' => 'report', 'restore_request_id' => '',
+            'reason' => 'rollback', 'decision_reference' => 'rollback:' . $snapshot['request_id']];
+        try {
+            $result = DB::transaction(fn (): array => $this->apply($manifest, '', $snapshot, $requestId, '.rollback', (string) ($context['actor'] ?? '')), 3);
+        } catch (ChainRebalanceRefused $refused) {
+            return $refused->result + ['restored' => 0]; // nothing was restored
+        }
+
+        return ['ok' => true, 'restored' => $result['moved'], 'rows' => $result['rows'], 'contracts' => $result['contracts'],
+            'restored_snapshot' => $result['snapshot']];
+    }
+
+    /**
+     * The write path shared by execute and rollback; runs inside the caller's transaction. Order: locks (student, contracts
+     * by id, lessons and their mirror rows by id), a fresh evaluation under those locks, the moves in list order, the post-conditions, the audit
+     * event. A refusal is thrown as ChainRebalanceRefused so the transaction undoes whatever was already moved.
+     *
+     * @param array<string,mixed> $manifest
+     * @param array<string,mixed>|null $source snapshot being undone (rollback phase); null for a request
+     * @return array<string,mixed>
+     */
+    private function apply(array $manifest, string $digest, ?array $source, string $requestId, string $suffix, string $actor): array
+    {
+        ClassSession::resetSettlementLockCache();
+        // Campus isolation at write time: the student row is locked and must still belong to the manifest's campus.
+        $campus = DB::table('Student')->where('id', $manifest['student_id'])->lockForUpdate()->value('CampusID');
+        if ($campus === null || (int) $campus !== (int) $manifest['campus_id']) {
+            throw new ChainRebalanceRefused($this->refusal([$digest !== '' ? 'digest_drift' : 'restore_refused', 'student_campus_mismatch']));
+        }
+        if (!$this->lockChain($manifest)) {
+            throw new ChainRebalanceRefused($this->refusal([$digest !== '' ? 'digest_drift' : 'restore_refused', 'concurrent_change']));
+        }
+
+        $fresh = $this->evaluate($manifest, $digest, $source);
+        $pinned = $digest === '' || (($fresh['state'] ?? null) === 'pinned' && hash_equals($digest, (string) ($fresh['digest'] ?? '')));
+        if (($fresh['ok'] ?? false) !== true || !$pinned) {
+            // The first code says what was refused; the plan's own codes (why the state no longer matches) follow.
+            throw new ChainRebalanceRefused($this->refusal(array_values(array_unique(array_merge([$digest !== '' ? 'digest_drift' : 'restore_refused'],
+                array_values(array_diff($fresh['errors'] ?? [], ['digest_mismatch']))))))
+                + ['findings' => $fresh['findings'] ?? [], 'rows' => $fresh['restore_rows'] ?? []]);
+        }
+
+        $mode = $fresh['mode'];
+        $chainIds = array_map(fn (array $c): int => (int) $c['contract_id'], $fresh['contracts']);
+        $reason = 'POP ' . self::OPERATION . ' ' . $requestId . $suffix;
+        $counters = [];
+        foreach (DB::table('StudentClass')->whereIn('ID', $chainIds)->orderBy('ID')->get(['ID', 'UsedSessions', 'RemainingSessions']) as $c) {
+            $counters[(int) $c->ID] = ['used_sessions' => (int) $c->UsedSessions, 'remaining_sessions' => (int) $c->RemainingSessions];
+        }
+        $snapshot = ['version' => self::SNAPSHOT_VERSION, 'operation' => self::OPERATION, 'mode' => $mode, 'request_id' => $requestId,
+            'restore_source_request_id' => $source !== null ? (string) $source['request_id'] : (string) $manifest['restore_request_id'],
+            'digest' => (string) $fresh['digest'], 'reason' => $reason, 'campus_id' => $manifest['campus_id'], 'student_id' => $manifest['student_id'],
+            'subject_id' => $manifest['subject_id'], 'contract_ids' => $chainIds, 'rows' => $fresh['rows'],
+            'contracts' => array_map(fn (array $c): array => ['contract_id' => (int) $c['contract_id'], 'purchased' => (int) $c['purchased'],
+                'before' => $c['before'] + ($counters[(int) $c['contract_id']] ?? []), 'after' => $c['after']], $fresh['contracts']),
+            // Nothing is cancelled here: a reservation beyond what is left is only listed (policy `report`) and stays as it was.
+            'reservation_overflows' => $fresh['reservation_overflows'], 'released_reservations' => [],
+            'money_hash' => $this->moneyHash($chainIds)];
+
+        $reassigner = new ClassSessionContractReassigner();
+        foreach ($fresh['rows'] as $index => $row) {
+            $moved = $reassigner->reassign((int) $row['id'], (int) $row['to_class_id'], $reason, null, false);
+            if (isset($moved['error']) || isset($moved['locked'])) {
+                throw new ChainRebalanceRefused($this->refusal(['move_refused']) + ['failed_move' => ['move' => $index + 1,
+                    'session_id' => (int) $row['id'], 'cause' => isset($moved['locked']) ? 'assessment_locked' : 'reassigner_refused']]);
+            }
+        }
+
+        [$errors, $contracts] = $this->check($snapshot);
+        if ($errors !== []) {
+            throw new ChainRebalanceRefused($this->refusal(array_merge(['postcondition_failed'], $errors)));
+        }
+        $this->audit($suffix, (int) $manifest['campus_id'], $requestId, (string) $fresh['digest'], count($fresh['rows']), (string) $manifest['reason'], $actor);
+
+        return ['ok' => true, 'mode' => $mode, 'request_id' => $requestId, 'digest' => (string) $fresh['digest'], 'moved' => count($fresh['rows']),
+            'contracts' => $contracts, 'totals' => $fresh['totals'], 'rows' => $fresh['restore_rows'],
+            // The exact `moves` list of a restore request for this run (only a rebalance run can be restored).
+            'restore_moves' => $mode === 'rebalance' ? $this->inverseMoves($fresh['rows']) : [],
+            'snapshot' => $snapshot];
+    }
+
+    /**
+     * Row locks in a fixed order: the student's contracts of the chain by id, then their lessons, sign-ins, learning records
+     * and ledger rows by id. A locking read returns the latest committed rows; the plain reads of the evaluation that follows
+     * may come from a read view that began earlier (POP wraps the phase in its own transaction and plans before it calls
+     * execute). So each locked set is compared with what a plain read sees: any difference means another transaction changed
+     * the chain in between, and the caller refuses instead of evaluating rows that are already stale.
+     *
+     * @param array<string,mixed> $manifest
+     */
+    private function lockChain(array $manifest): bool
+    {
+        $contracts = fn () => DB::table('StudentClass')->where('StudentID', $manifest['student_id'])
+            ->where(fn ($q) => $q->whereIn('ID', $manifest['contract_ids'])->orWhere('SubjectID', $manifest['subject_id']))->orderBy('ID');
+        $locked = $contracts()->lockForUpdate()->get();
+        $same = json_encode($locked) === json_encode($contracts()->get());
+        $ids = $locked->pluck('ID')->map(fn ($id): int => (int) $id)->all();
+        foreach ([['ClassSession', 'StudentClassID'], ['StudentSingIn', 'StudentClassID'], ['LearningRecord', 'StudentClassID'],
+            ['session_deduction_ledger', 'student_class_id']] as [$table, $column]) {
+            $rows = fn () => DB::table($table)->whereIn($column, $ids)->orderBy('id');
+            $same = json_encode($rows()->lockForUpdate()->get()) === json_encode($rows()->get()) && $same;
+        }
+
+        return $same;
+    }
+
+    /**
+     * Post-conditions of a snapshot against the database, read-only: every moved lesson is on its target with its date, time
+     * and status as planned; its sign-in, learning record and ledger rows follow it and none was added or removed; each move
+     * has its reassignment row; per contract the taught and reserved counts are the planned "after" (a rebalance never leaves
+     * taught above purchased) and the total taught is conserved; the two contracts of each move carry the derived counters;
+     * and the money fingerprint of the chain is the one taken before the first move.
+     *
+     * @param array<string,mixed> $snapshot
+     * @return array{0: list<string>, 1: list<array<string,mixed>>}
+     */
+    private function check(array $snapshot): array
+    {
+        $errors = [];
+        $touched = [];
+        $sessions = DB::table('ClassSession')->whereIn('id', array_column($snapshot['rows'], 'id'))
+            ->get(['id', 'StudentClassID', 'SessionDate', 'StartTime', 'Status'])->keyBy('id');
+        foreach ($snapshot['rows'] as $r) {
+            $sid = (int) $r['id'];
+            $to = (int) $r['to_class_id'];
+            $touched[(int) $r['from_class_id']] = true;
+            $touched[$to] = true;
+            $s = $sessions->get($sid);
+            if (!$s || (int) $s->StudentClassID !== $to) {
+                $errors[] = "not_moved_{$sid}";
+                continue;
+            }
+            if (substr((string) $s->SessionDate, 0, 10) !== $r['date'] || substr((string) $s->StartTime, 0, 5) !== $r['start_time']
+                || strtolower((string) $s->Status) !== $r['status']) {
+                $errors[] = "lesson_changed_{$sid}";
+            }
+            foreach (self::MIRRORS as [$table, $sessionColumn, $ownerColumn]) {
+                $owners = DB::table($table)->where($sessionColumn, $sid)->pluck($ownerColumn)->map(fn ($id): int => (int) $id)->all();
+                if (count($owners) !== (int) ($r['mirrors'][$table] ?? 0)) {
+                    $errors[] = "mirror_count_changed_{$sid}";
+                }
+                if (array_diff($owners, [$to]) !== []) {
+                    $errors[] = "mirror_owner_differs_{$sid}";
+                }
+            }
+            if (!DB::table('class_session_reassignments')->where('class_session_id', $sid)->where('old_student_class_id', (int) $r['from_class_id'])
+                ->where('new_student_class_id', $to)->where('reason', (string) $snapshot['reason'])->exists()) {
+                $errors[] = "reassignment_missing_{$sid}";
+            }
+        }
+
+        $chainIds = array_map('intval', $snapshot['contract_ids']);
+        $today = now()->toDateString();
+        $taught = array_fill_keys($chainIds, 0);
+        $reserved = array_fill_keys($chainIds, 0);
+        foreach (DB::table('ClassSession')->whereIn('StudentClassID', $chainIds)->get(['StudentClassID', 'SessionDate', 'Status']) as $s) {
+            $taught[(int) $s->StudentClassID] += $this->isTaught($s, $today) ? 1 : 0;
+            $reserved[(int) $s->StudentClassID] += $this->isReserved($s, $today) ? 1 : 0;
+        }
+        $courses = DB::table('StudentClass')->whereIn('ID', $chainIds)->get(['ID', 'SessionCount', 'UsedSessions', 'RemainingSessions'])->keyBy('ID');
+        $diagnostics = SessionDeductionService::batchExpectedUsedSessionDiagnostics($chainIds);
+        $contracts = [];
+        $before = 0;
+        foreach ($snapshot['contracts'] as $c) {
+            $id = (int) $c['contract_id'];
+            $before += (int) $c['before']['taught'];
+            $course = $courses->get($id);
+            if (!$course) {
+                $errors[] = "contract_missing_{$id}";
+                continue;
+            }
+            $purchased = (int) $course->SessionCount;
+            if ($purchased !== (int) $c['purchased']) {
+                $errors[] = "contract_purchased_changed_{$id}";
+            }
+            if ($snapshot['mode'] === 'rebalance' && $taught[$id] > $purchased) {
+                $errors[] = "contract_over_{$id}";
+            }
+            if ($taught[$id] !== (int) $c['after']['taught'] || $reserved[$id] !== (int) $c['after']['reserved']) {
+                $errors[] = "contract_count_differs_{$id}";
+            }
+            $d = $diagnostics[$id] ?? null;
+            if ($d === null || $d['uncapped_used'] !== $taught[$id] || $d['ledger_used'] !== $d['observed_used']) {
+                $errors[] = "mirror_inconsistent_{$id}";
+            }
+            // The stored counters are capped at the bought count; only the contracts a move touched were recomputed.
+            $used = min($purchased, $taught[$id]);
+            if (isset($touched[$id]) && ((int) $course->UsedSessions !== $used || (int) $course->RemainingSessions !== max(0, $purchased - $used))) {
+                $errors[] = "counter_differs_{$id}";
+            }
+            $contracts[] = ['contract_id' => $id, 'purchased' => $purchased,
+                'before' => ['taught' => (int) $c['before']['taught'], 'reserved' => (int) $c['before']['reserved']],
+                'after' => ['taught' => $taught[$id], 'reserved' => $reserved[$id]]];
+        }
+        if (array_sum($taught) !== $before) {
+            $errors[] = 'taught_total_not_conserved';
+        }
+        if (!hash_equals((string) $snapshot['money_hash'], $this->moneyHash($chainIds))) {
+            $errors[] = 'money_changed';
+        }
+
+        return [array_values(array_unique($errors)), $contracts];
+    }
+
+    /**
+     * Fingerprint of everything money-related on the chain: every contract column except the four counters the reassigner
+     * recomputes (so Charge, Pay, Paid, PayDate, SessionCount, dates, Stop and closed_reason are all inside), and every row
+     * of the chain's invoices, invoice items, payments and payment reports. Only a hash leaves this method.
+     *
+     * @param list<int> $contractIds
+     */
+    private function moneyHash(array $contractIds): string
+    {
+        sort($contractIds);
+        $all = fn (\Illuminate\Database\Query\Builder $query): array => $query->orderBy('id')->get()->map(fn (\stdClass $row): array => (array) $row)->all();
+        $contracts = DB::table('StudentClass')->whereIn('ID', $contractIds)->orderBy('ID')->get()
+            ->map(fn (\stdClass $row): array => array_diff_key((array) $row, array_flip(self::COUNTER_COLUMNS)))->all();
+        $invoices = $all(DB::table('Invoice')->whereIn('StudentClassID', $contractIds));
+        $invoiceIds = array_map(fn (array $row): int => (int) $row['id'], $invoices);
+        $items = $all(DB::table('InvoiceItem')->where(fn ($q) => $q->whereIn('InvoiceID', $invoiceIds)->orWhereIn('StudentClassID', $contractIds)));
+        $payments = $all(DB::table('Payment')->whereIn('InvoiceID', $invoiceIds));
+        $reports = $all(DB::table('payment_reports')->whereIn('StudentClassID', $contractIds));
+
+        return hash('sha256', json_encode([$contracts, $invoices, $items, $payments, $reports], JSON_THROW_ON_ERROR));
+    }
+
+    /**
+     * The snapshot of a succeeded execute of this operation (a rebalance, never a restore) for the same campus, student and
+     * subject, or null. Read from the POP records, the way ForwardOverdeductReassignStrategy does.
+     *
+     * @param array<string,mixed> $manifest
+     * @return array<string,mixed>|null
+     */
+    private function sourceSnapshot(string $requestId, array $manifest): ?array
+    {
+        $request = DB::table('pop_operation_requests')->where('id', $requestId)->first(['operation_id', 'parameters']);
+        $parameters = $request ? json_decode((string) $request->parameters, true) : null;
+        if (!$request || (string) $request->operation_id !== self::OPERATION || !is_array($parameters) || ($parameters['restore_request_id'] ?? '') !== '') {
+            return null;
+        }
+        $execute = DB::table('pop_execution_records')->where('operation_id', $requestId)->where('phase', 'execute')
+            ->where('result', 'succeeded')->orderByDesc('attempt_no')->first(['snapshot']);
+        $snapshot = $execute ? json_decode((string) $execute->snapshot, true) : null;
+        if (!$this->validSnapshot($snapshot, 'rebalance') || $snapshot['request_id'] !== $requestId) {
+            return null;
+        }
+        foreach (['campus_id', 'student_id', 'subject_id'] as $key) {
+            if ((int) $snapshot[$key] !== (int) $manifest[$key]) {
+                return null;
+            }
+        }
+
+        return $snapshot;
+    }
+
+    /** Shape check of a stored snapshot; `$mode` null accepts both kinds. */
+    private function validSnapshot(mixed $snapshot, ?string $mode): bool
+    {
+        if (!is_array($snapshot) || ($snapshot['version'] ?? null) !== self::SNAPSHOT_VERSION || ($snapshot['operation'] ?? null) !== self::OPERATION
+            || !in_array($snapshot['mode'] ?? null, $mode === null ? ['rebalance', 'restore'] : [$mode], true)
+            || !is_string($snapshot['request_id'] ?? null) || !is_string($snapshot['reason'] ?? null) || !is_string($snapshot['money_hash'] ?? null)
+            || !is_array($snapshot['rows'] ?? null) || !array_is_list($snapshot['rows']) || $snapshot['rows'] === []
+            || !is_array($snapshot['contracts'] ?? null) || !is_array($snapshot['contract_ids'] ?? null)) {
+            return false;
+        }
+        foreach (['campus_id', 'student_id', 'subject_id'] as $key) {
+            if ($this->id($snapshot[$key] ?? null) === null) {
+                return false;
+            }
+        }
+        foreach ($snapshot['rows'] as $r) {
+            if (!is_array($r) || $this->id($r['id'] ?? null) === null || $this->id($r['from_class_id'] ?? null) === null
+                || $this->id($r['to_class_id'] ?? null) === null || !is_string($r['date'] ?? null) || !is_string($r['start_time'] ?? null)
+                || !is_string($r['status'] ?? null) || !is_array($r['mirrors'] ?? null) || !is_int($r['ledger_net'] ?? null)) {
+                return false;
+            }
+        }
+        foreach ($snapshot['contracts'] as $c) {
+            if (!is_array($c) || $this->id($c['contract_id'] ?? null) === null || !is_int($c['purchased'] ?? null)
+                || !is_int($c['before']['taught'] ?? null) || !is_int($c['before']['reserved'] ?? null)
+                || !is_int($c['after']['taught'] ?? null) || !is_int($c['after']['reserved'] ?? null)) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /**
+     * The undo of executed rows as a manifest move list: reverse order, from and to swapped, same date, time and status.
+     *
+     * @param list<array<string,mixed>> $rows
+     * @return list<array<string,mixed>>
+     */
+    private function inverseMoves(array $rows): array
+    {
+        return array_map(fn (array $r): array => ['session_id' => (int) $r['id'], 'from' => (int) $r['to_class_id'], 'to' => (int) $r['from_class_id'],
+            'date' => (string) $r['date'], 'start_time' => (string) $r['start_time'], 'status' => (string) $r['status']], array_reverse($rows));
+    }
+
+    /**
+     * @param list<string> $errors
+     * @return array<string,mixed>
+     */
+    private function refusal(array $errors): array
+    {
+        return ['ok' => false, 'errors' => $errors, 'moved' => 0, 'operation' => self::OPERATION];
+    }
+
+    /** One event per request (ids, a reason code, the digest and a count); the write fails when the event is not stored. */
+    private function audit(string $suffix, int $campusId, string $requestId, string $digest, int $rows, string $reasonCode, string $actor): void
+    {
+        $correlationId = (string) Str::uuid();
+        SecurityAuditEvent::append(self::AUDIT . $suffix, 'success', ['actor_type' => 'pop-runner', 'actor_id' => $actor !== '' ? $actor : null,
+            'subject_type' => 'pop_operation', 'subject_id' => $requestId, 'campus_id' => $campusId, 'correlation_id' => $correlationId],
+            ['reason_code' => $reasonCode, 'pop_operation_id' => $requestId, 'row_count' => $rows, 'source' => 'digest:' . $digest, 'outcome' => 'success'], true);
+        if (!DB::table('security_audit_events')->where('correlation_id', $correlationId)->exists()) {
+            throw new RuntimeException('chain_rebalance_audit_not_persisted');
+        }
     }
 
     /**
@@ -449,8 +920,10 @@ final class CourseContractChainRebalanceStrategy
         if (!is_string($want) || ($want !== '' && !preg_match('/^[0-9a-f]{64}$/', $want))) {
             $errors[] = 'digest_format';
         }
-        if (($p['restore_request_id'] ?? '') !== '') {
-            $errors[] = 'restore_not_available_plan_only';
+        $restore = $p['restore_request_id'] ?? '';
+        if (!is_string($restore) || ($restore !== '' && !Str::isUuid($restore))) {
+            $errors[] = 'restore_request_id_format';
+            $restore = '';
         }
         $reason = $p['reason'] ?? '';
         if (!is_string($reason) || !preg_match('/^[a-z0-9][a-z0-9_-]{2,63}$/', $reason)) {
@@ -462,7 +935,8 @@ final class CourseContractChainRebalanceStrategy
         }
 
         return [$ids + ['contract_ids' => $contracts, 'moves' => $moves] + $flags
-            + ['future_reservation_policy' => $policy, 'reason' => $reason, 'decision_reference' => $reference], array_values(array_unique($errors))];
+            + ['future_reservation_policy' => $policy, 'restore_request_id' => $restore, 'reason' => $reason, 'decision_reference' => $reference],
+            array_values(array_unique($errors))];
     }
 
     private function id(mixed $value): ?int
@@ -637,8 +1111,8 @@ final class CourseContractChainRebalanceStrategy
      * @param list<array<string,mixed>> $findings
      * @return array<string,mixed>
      */
-    private function rejected(array $errors, array $findings, string $state): array
+    private function rejected(array $errors, array $findings, string $state, string $mode = 'rebalance'): array
     {
-        return ['ok' => false, 'errors' => $errors, 'findings' => $findings, 'state' => $state, 'mode' => 'plan_only', 'operation' => self::OPERATION];
+        return ['ok' => false, 'errors' => $errors, 'findings' => $findings, 'state' => $state, 'mode' => $mode, 'operation' => self::OPERATION];
     }
 }

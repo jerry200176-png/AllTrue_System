@@ -378,11 +378,13 @@ final class PopOperationService
     {
         $run = fn () => $this->runPhase($requestId, $phase, $token, $commitSha, $actor, $actorId, $actorRole, $context);
         if (!in_array($phase, ['execute', 'verify', 'rollback'], true) || !$this->coCommitsWithRecord((string) $this->request($requestId)->strategy_id)) return $run();
-        return DB::transaction(function () use ($requestId, $phase, $run): array {
+        try { return DB::transaction(function () use ($requestId, $phase, $run): array {
             DB::table('pop_operation_requests')->where('id', $requestId)->lockForUpdate()->first();
             if ($phase === 'verify' && DB::table('pop_execution_records')->where('operation_id', $requestId)->where('phase', 'rollback')->exists()) throw new RuntimeException('POP verification is blocked after rollback begins.');
             return $run();
-        }, 3);
+        }, 3); } catch (PopPhaseAborted $aborted) { // #5236 P1: that transaction is rolled back whole; only now is the failed receipt written, in its own transaction
+            return DB::transaction(function () use ($requestId, $aborted): array { DB::table('pop_operation_requests')->where('id', $requestId)->lockForUpdate()->first(); return ($aborted->recordFailure)(); });
+        }
     }
 
     private function runPhase(string $requestId, string $phase, ?string $token = null, ?string $commitSha = null, string $actor = 'pop-runner', ?int $actorId = null, ?string $actorRole = null, ?array $context = null): array
@@ -487,10 +489,13 @@ final class PopOperationService
             return $this->coCommitsWithRecord($strategy)
                 ? DB::transaction($complete, 3) : $complete();
         } catch (Throwable) {
-            return $this->record($request, $entry, $parameters, $phase, [
+            $failed = fn (): array => $this->record($request, $entry, $parameters, $phase, [
                 'ok' => false,
                 'errors' => ['execution_failed'],
             ], $actor, $approval, $commitSha, $this->durationMs($startedAt), 'execution_failed');
+            // #5236 P1: a nested "Lock wait timeout" gets no ROLLBACK TO SAVEPOINT from Laravel, so recording here would commit the moves made before it. This strategy alone leaves run()'s transaction instead.
+            if ((string) $entry['strategy_class'] === \App\Operations\Strategies\CourseContractChainRebalanceStrategy::class) throw new PopPhaseAborted($failed);
+            return $failed();
         }
     }
 
@@ -500,7 +505,8 @@ final class PopOperationService
         if ($this->isRekeyStrategy($strategy)) return false;
 
         return $this->atomicFinancialRepair($strategy)
-            || (is_object($strategy) ? get_class($strategy) : $strategy) === \App\Operations\Strategies\TaughtLessonSignInRepairStrategy::class;
+            || in_array(is_object($strategy) ? get_class($strategy) : $strategy, [\App\Operations\Strategies\TaughtLessonSignInRepairStrategy::class,
+                \App\Operations\Strategies\CourseContractChainRebalanceStrategy::class], true); // #5124: moves and their snapshot commit together
     }
 
     private function isRekeyStrategy(object|string $strategy): bool
@@ -796,6 +802,25 @@ final class PopOperationService
             && ($entry['verification_required'] ?? false) === true
             && $roles === ['super_admin'];
         if ($isFounderScopedRepair) {
+            return $roles;
+        }
+
+        // #5124: one student's contract chain. Founder approval per request (founder-go reference, one super_admin, requester
+        // and approver differ); never a standing or automatic approval. Any other catalog shape fails closed below.
+        if ($policy === 'founder-explicit-chain-rebalance'
+            && ($entry['id'] ?? null) === \App\Operations\Strategies\CourseContractChainRebalanceStrategy::OPERATION
+            && ($entry['strategy_class'] ?? null) === \App\Operations\Strategies\CourseContractChainRebalanceStrategy::class
+            && ($entry['founder_approval_required'] ?? false) === true
+            && ($entry['risk'] ?? null) === 'critical'
+            && ($entry['blast_radius'] ?? null) === 'single_student_subject_contract_chain'
+            && ($entry['reversible'] ?? false) === true
+            && ($entry['snapshot_required'] ?? false) === true
+            && ($entry['transaction_required'] ?? false) === true
+            && ($entry['rollback_supported'] ?? false) === true
+            && ($entry['verification_required'] ?? false) === true
+            && ($entry['approval_required'] ?? false) === true
+            && ($entry['execution_authority'] ?? null) === 'pop-pi-local'
+            && $roles === ['super_admin']) {
             return $roles;
         }
 
