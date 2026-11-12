@@ -243,8 +243,10 @@ class _Underivable(Exception):
     """The production e2e set cannot be derived exactly; every e2e file then counts as production."""
 
 
+# Any path-like token naming a script, whatever runs it (bash/sh/zsh/node/python, source, ". x", bare, ./x), written
+# relative to the repo root, to frontend/ (working-directory) or via ../ or an env prefix.
 _E2E_SCRIPT_CALL_RE = re.compile(
-    r"(?:\b(?:bash|sh|node|python3?)\s+(?:-[\w-]+\s+)*|(?<![\w/.-])\./)((?:\.github/)?scripts/[\w./-]+\.(?:sh|mjs|cjs|js|py))")
+    r"(?<![\w./$-])(?:\$\{?\w+\}?/|(?:\.{1,2}/)*)((?:frontend/)?(?:\.github/)?scripts/[\w./-]+\.(?:sh|mjs|cjs|js|py|ts)(?![\w.-]))")
 _E2E_ACTION_USE_RE = re.compile(r"(?m)^\s*(?:-\s*)?uses:\s*\./(\.github/actions/[\w./-]+?)/?\s*$")
 _E2E_RUNS_PLAYWRIGHT_RE = re.compile(r"playwright\s+test|['\"]playwright['\"]|\btest:e2e")
 _E2E_PLAYWRIGHT_CONFIG_ARG_RE = re.compile(r"playwright\s+test[^\n]*?(?:\s-c|\s--config)[ =]+(\S+)")
@@ -274,9 +276,14 @@ def _e2e_sources(root: Path) -> list[tuple[str, bool]]:
         called = [m.group(1) for m in _E2E_SCRIPT_CALL_RE.finditer(text)]
         called += [f"{m.group(1)}/action.yml" for m in _E2E_ACTION_USE_RE.finditer(text)]
         for rel in called:
-            if rel not in seen:
-                seen.add(rel)
-                sources.append((_e2e_read(root / rel), False))
+            if rel in seen:
+                continue
+            seen.add(rel)
+            # A step may run in the repo root or in frontend/ (working-directory); read whichever exists.
+            found = [root / base / rel for base in ("", "frontend") if (root / base / rel).is_file()]
+            if not found:
+                raise _Underivable(f"workflow calls {rel}, which cannot be read")
+            sources.extend((item.read_text(encoding="utf-8", errors="replace"), False) for item in found)
     return sources
 
 

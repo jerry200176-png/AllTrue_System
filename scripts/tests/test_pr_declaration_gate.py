@@ -682,7 +682,7 @@ class ClassifierSelfProtectionTest(unittest.TestCase):
         existing = _paths_at(self.BASE_SHA)
         for path in tracked.stdout.splitlines():
             new, old = classify_scope([path], ""), base.classify_scope([path], "")
-            if path in existing and not _is_intended_lowering(path, new["machine_minimum_tier"], old["machine_minimum_tier"]):
+            if (path in existing or not path.startswith("frontend/e2e/")) and not _is_intended_lowering(path, new["machine_minimum_tier"], old["machine_minimum_tier"]):
                 self.assertGreaterEqual(new["machine_minimum_tier"], old["machine_minimum_tier"], path)
             self.assertEqual(classify_activation_scope([path], ""), base.classify_activation_scope([path], ""), path)
 
@@ -799,6 +799,44 @@ class ProductionE2eFailClosedTest(unittest.TestCase):
             self.assertIsNotNone(production_e2e_paths(root))
             self.assertFalse(is_production_e2e_path("frontend/e2e/local.spec.js", root))
 
+    CALL_FORMS = (
+        ("bash ../.github/scripts/x.sh", ".github/scripts/x.sh", "frontend"),
+        (".github/scripts/x.sh", ".github/scripts/x.sh", ""),
+        ("source scripts/x.sh", "scripts/x.sh", ""),
+        (". scripts/x.sh", "scripts/x.sh", ""),
+        ("sh scripts/x.sh", "scripts/x.sh", ""),
+        ("zsh scripts/x.sh", "scripts/x.sh", ""),
+        ("node ../scripts/x.mjs", "scripts/x.mjs", "frontend"),
+        ("bash scripts/x.sh", "frontend/scripts/x.sh", "frontend"),
+        ("bash frontend/scripts/x.sh", "frontend/scripts/x.sh", ""),
+        ('bash "$GITHUB_WORKSPACE/scripts/x.sh"', "scripts/x.sh", ""),
+    )
+
+    def test_every_script_call_form_is_followed_and_an_unreadable_script_fails_closed(self):
+        extra_config = self.CONFIG.replace(
+            "testIgnore: [\n    /local\\.spec\\.js$/, // fake data\n  ],", "testMatch: /local\\.spec\\.js$/,\n  testIgnore: [],")
+        run = "npx playwright test -c playwright.extra.config.js\n"
+        for call, location, workdir in self.CALL_FORMS:
+            step = f"      - working-directory: {workdir}\n        run: {call}\n" if workdir else f"      - run: {call}\n"
+            workflow = self.WORKFLOW + step
+            with self.subTest(call=call, present=True), tempfile.TemporaryDirectory() as tmp:
+                root = self._checkout(tmp, workflow=workflow, extra={
+                    "frontend/playwright.extra.config.js": extra_config, location: run})
+                self.assertTrue(is_production_e2e_path("frontend/e2e/local.spec.js", root))  # only the script runs it
+                self.assertIn("frontend/playwright.extra.config.js", production_e2e_paths(root))
+            with self.subTest(call=call, present=False), tempfile.TemporaryDirectory() as tmp:
+                self._assert_everything_protected(self._checkout(tmp, workflow=workflow))
+
+    def test_a_new_ui_foundation_fixture_is_t0_until_a_production_spec_imports_it(self):
+        fixture = "frontend/e2e/fixtures/ui-foundation/new-mock.js"
+        files = {fixture: "export const m = 1;\n"}
+        with tempfile.TemporaryDirectory() as tmp:
+            root = self._checkout(tmp, extra=files)
+            self.assertFalse(is_production_e2e_path(fixture, root))
+        with tempfile.TemporaryDirectory() as tmp:
+            root = self._checkout(tmp, extra={**files, "frontend/e2e/prod.spec.js": "import { m } from './fixtures/ui-foundation/new-mock.js';\n"})
+            self.assertTrue(is_production_e2e_path(fixture, root))
+
     def test_baselines_are_lowered_only_while_no_production_file_asserts_on_one(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = self._checkout(tmp)
@@ -913,7 +951,7 @@ class AgentInstructionAndContentPathTest(unittest.TestCase):
         existing = _paths_at(previous_sha)
         for path in filter(None, tracked.stdout.split("\0")):
             new, old = classify_scope([path], ""), previous.classify_scope([path], "")
-            if path in existing and not _is_intended_lowering(path, new["machine_minimum_tier"], old["machine_minimum_tier"]):
+            if (path in existing or not path.startswith("frontend/e2e/")) and not _is_intended_lowering(path, new["machine_minimum_tier"], old["machine_minimum_tier"]):
                 self.assertGreaterEqual(new["machine_minimum_tier"], old["machine_minimum_tier"], path)
             self.assertEqual(classify_activation_scope([path], ""), previous.classify_activation_scope([path], ""), path)
             if new["machine_minimum_tier"] != old["machine_minimum_tier"]:
