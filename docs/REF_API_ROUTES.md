@@ -827,6 +827,15 @@
 | GET | `api/v1/students/{student}/learning-timeline` | `LearningRecordStudentTimelineController@show` | role+campus |
 | GET | `api/v1/students/{student}/line-bindings` | `StudentController@lineBindings` | role+campus |
 | DELETE | `api/v1/students/{student}/line-bindings/{binding}` | `StudentController@removeLineBinding` | role+campus |
+| GET | `api/v1/students/{student}/study-tasks` | `StudentStudyTaskController@index` | role+campus |
+| POST | `api/v1/students/{student}/study-tasks` | `StudentStudyTaskController@store` | role+campus |
+
+## /api/v1/study-tasks
+
+| Method | URI | Action | Auth |
+|--------|-----|--------|------|
+| PATCH | `api/v1/study-tasks/{task}` | `StudentStudyTaskController@update` | role+campus |
+| DELETE | `api/v1/study-tasks/{task}` | `StudentStudyTaskController@destroy` | role+campus |
 
 ## /api/v1/subjects
 

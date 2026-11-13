@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Controllers\Concerns\ScopesLearningPlanAccess;
 use App\Models\CurriculumTemplate;
 use App\Models\Student;
 use App\Models\StudentClass;
@@ -23,6 +24,8 @@ use Illuminate\Validation\Rule;
  */
 class StudentLearningPlanController extends Controller
 {
+    use ScopesLearningPlanAccess;
+
     private const DATE = ['date_format:Y-m-d'];
 
     public function __construct(private StudentExamPeriodResolver $exams)
@@ -261,27 +264,4 @@ class StudentLearningPlanController extends Controller
         return StudentLearningPlan::query()->where('student_class_id', $courseId)->where('status', '!=', 'archived')->exists();
     }
 
-    private function teacherId(Request $request): ?int
-    {
-        return $request->attributes->get('auth_role') === 'teacher' ? max(0, (int) $request->attributes->get('auth_teacher_id')) : null;
-    }
-
-    /** Director/super_admin: any course in their campus. Teacher: only the courses they own. */
-    private function courseWritable(Request $request, int $courseId): bool
-    {
-        $teacherId = $this->teacherId($request);
-
-        return $teacherId === null || ($teacherId > 0 && StudentClass::query()->where('ID', $courseId)->where('TeacherID', $teacherId)->exists());
-    }
-
-    private function campusAllowed(Request $request, int $campusId): bool
-    {
-        return $campusId > 0 && ($request->attributes->get('auth_role') === 'super_admin'
-            || in_array($campusId, array_map('intval', (array) $request->attributes->get('auth_campus_ids', [])), true));
-    }
-
-    private function forbidden(): JsonResponse
-    {
-        return response()->json(['message' => 'Forbidden'], 403);
-    }
 }
