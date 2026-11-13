@@ -1,0 +1,16 @@
+updates:
+  - id: staff-2026-11-13-ui-tuition-report-template
+    published_at: "2026-11-13"
+    audiences:
+      - director
+      - super_admin
+    importance: digest
+    title: 當月學收頁版面整理
+    summary: 重點數字合成一張卡，表格更好對齊，手機改成清單。
+    items:
+      - category: improved
+        text: 「當月學收」頁最上方的學生、堂數、學收合計、已收與未收合成一張摘要卡，已收下方看得到應收、未收下方看得到差額。
+      - category: improved
+        text: 明細表姓名不再斷行、數字靠右對齊、每位學生只有一個收款狀態；手機上改成清單，姓名、金額與狀態一眼看完，其他資料在第二行。
+    source_refs:
+      - "changelog:2026-11-13:ui-tuition-report-template"

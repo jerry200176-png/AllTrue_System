@@ -55,6 +55,14 @@ describe('components/ui page template', () => {
     w.unmount();
   });
 
+  it('StatItem keeps a real space between the figure and its unit, so "13 人" reads as one phrase', () => {
+    const w = mount({ components: { StatItem }, template: '<dl><StatItem label="學生" :value="13" unit="人" /><StatItem label="學收合計" value="103,350" /></dl>' });
+    const [withUnit, plain] = w.findAll('[data-slot="stat-item"] dd:first-of-type');
+    expect(withUnit.text()).toBe('13 人');
+    expect(plain.text()).toBe('103,350');
+    w.unmount();
+  });
+
   it('omits the parts a page does not use', () => {
     const w = mount({ components: { PageHeader, SectionCard }, template: '<div><PageHeader title="設定" /><SectionCard><p>內容</p></SectionCard></div>' });
     expect(w.find('[data-slot="page-context"]').exists()).toBe(false);

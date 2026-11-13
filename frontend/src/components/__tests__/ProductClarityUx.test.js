@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { control } from '@/components/ui/page';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const discrepancySource = readFileSync(resolve(__dirname, '../../pages/ScheduleDiscrepancyPage.vue'), 'utf8');
@@ -62,7 +63,11 @@ describe('Product clarity UX improvements', () => {
       expect(tuitionReportSource).toContain('class="tr-loading tw:flex tw:flex-col tw:gap-3" role="status" aria-live="polite"');
       expect(tuitionReportSource).toContain('role="status"');
       expect(tuitionReportSource).toContain('aria-label="學收報表分頁"');
-      expect(tuitionReportSource).toContain('tw:h-12');
+      // 48px page controls now come from the shared control set instead of a page-local class string.
+      expect(tuitionReportSource).toContain('const ctrlButton = control.page');
+      expect(tuitionReportSource).toContain('control.pageIcon');
+      expect(control.page).toContain('tw:h-12');
+      expect(control.pageIcon).toContain('tw:size-12');
     });
   });
 });
