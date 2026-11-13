@@ -190,7 +190,7 @@ describe('LessonPlanUnits (#4970 step 5)', () => {
     expect((await w.vm.save(77)).ok).toBe(false);
     expect(calls.filter((c) => c.method === 'PUT')).toHaveLength(0);
     fail = false;
-    authedFetch.mockImplementation(async (url) => json({ data: { ...PAYLOAD, units: [...PAYLOAD.units, unit(8, '幾何')] } }));
+    authedFetch.mockImplementation(async () => json({ data: { ...PAYLOAD, units: [...PAYLOAD.units, unit(8, '幾何')] } }));
     await w.find('button').trigger('click');
     await flushPromises();
     expect(w.findAll('input[type=checkbox]').map((b) => [b.element.checked, b.element.disabled])).toEqual([[false, false], [false, false], [true, false], [true, false]]);
