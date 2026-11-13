@@ -1,0 +1,13 @@
+updates:
+  - id: staff-2026-11-13-payment-backfill-rate-context
+    published_at: "2026-11-13"
+    audiences:
+      - director
+    importance: digest
+    title: 補登收款提示更準確
+    summary: 合約總額為零但仍有單價時，不再直接顯示無須繳費。
+    items:
+      - category: fixed
+        text: 缺少單價資訊時也不直接判定免繳，金額與入帳流程維持原有規則。
+    source_refs:
+      - "changelog:2026-11-13:payment-backfill-rate-context"
