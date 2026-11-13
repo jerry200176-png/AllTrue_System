@@ -171,6 +171,7 @@ import {
   namePastedImage,
   validateBugAttachments,
 } from '../lib/bugReportAttachments';
+import { getPageSnapshot } from '../lib/pageDiagnostics';
 import { fitClientInfo, getBuildSha, getRecentApiFailures, getRecentClicks, getRecentMessages } from '../lib/recentApiFailures';
 
 const props = defineProps({
@@ -566,6 +567,7 @@ async function doSubmit() {
       recentClicks: getRecentClicks(),
       recentMessages: getRecentMessages(),
       buildSha: await getBuildSha(),
+      pageSnapshot: getPageSnapshot(props.currentPageKey),
       // numeric ids only, no names
       route: { page: props.currentPageKey || null, branchId: Number(effectiveBranchId.value) || null },
     });

@@ -1,0 +1,15 @@
+updates:
+  - id: staff-2026-11-13-course-mgmt-unknown-not-history
+    published_at: "2026-11-13"
+    audiences:
+      - director
+      - super_admin
+      - teacher
+    importance: digest
+    title: 課程查找資料不足時不再誤放歷史課程
+    summary: 讀不到完整資料時，課程會留在進行中並標示「分類資料不足」。
+    items:
+      - category: fixed
+        text: 「課程查找」改用備用資料時，無法判斷狀態的課程不再被放進「歷史課程」，會留在進行中並標「分類資料不足」，重新整理即可。
+    source_refs:
+      - "changelog:2026-11-13:course-mgmt-unknown-not-history"
