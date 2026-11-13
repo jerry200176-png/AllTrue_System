@@ -53,6 +53,18 @@ const PAGES = [
     },
   })),
   {
+    // 課程查找, slice 1 (shell + toolbar, #4989): student names in the group headers sit below the new header and toolbar.
+    key: 'course-mgmt',
+    url: '/pilot-mount.html?page=course&mode=normal',
+    names: ['林宥辰', '歐陽子晴', '范姜宜蓁', '司馬文傑', '陳品妤', '曾翊'],
+    rows: ['.student-group-card'],
+    mock: async (page) => {
+      const names = ['林宥辰', '歐陽子晴', '范姜宜蓁', '司馬文傑', '陳品妤', '曾翊'];
+      const data = names.map((n, i) => ({ id: 100 + i, student_id: 9100 + i, student_name: n, teacher_name: ['王老師', '李大華老師', '陳小明老師'][i % 3], subject: 'math', subject_name: SUBJECTS[i % 6], first_class_date: '2026-09-01', status: 'active', ScheduleMode: 'count', payment_type: 'session', sessions_purchased: 8, sessions_used: 3, remaining_sessions: 5, payment_status: ['unpaid', 'paid', 'partial'][i % 3], class_type: 'one_on_one' }));
+      await page.route('**/api/v1/**', (r) => json(r, new URL(r.request().url()).pathname === '/api/v1/student-classes' ? { data, total: data.length, current_page: 1, last_page: 1 } : { data: [] }));
+    },
+  },
+  {
     key: 'teacher-eligibility',
     url: '/teacher-eligibility-pilot-mount.html',
     names: ['王老師', '李大華老師', '陳小明'],

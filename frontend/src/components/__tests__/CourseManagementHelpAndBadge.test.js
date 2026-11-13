@@ -25,7 +25,7 @@ const course = (id, extra = {}) => ({
 let wrapper;
 async function open() {
   wrapper = shallowMount(CourseManagement, { props: { branchId: 15, userRole: 'director' },
-    global: { stubs: { Card: false, Badge: false, Button: false, Primitive: false, ActionMenu: false, TextSizeToggle: false } } });
+    global: { stubs: { Card: false, Badge: false, Button: false, Primitive: false, ActionMenu: false, TextSizeToggle: false, PageHeader: false, StatStrip: false, StatItem: false } } });
   await flushPromises();
   return wrapper.vm.$.setupState;
 }
