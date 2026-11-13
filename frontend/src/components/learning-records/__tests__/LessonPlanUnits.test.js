@@ -183,6 +183,9 @@ describe('LessonPlanUnits (#4970 step 5)', () => {
     expect(w.findAll('input[type=checkbox]').map((b) => b.element.checked)).toEqual([false, false, true]);
     expect(w.vm.draftIds()).toEqual([3, 8]);
     expect(w.emitted('change')).toBeFalsy();
+    // An edit after the failed load starts from the draft's ticks for the units on screen, not from the server's.
+    await w.findAll('input[type=checkbox]')[0].setValue(true);
+    expect([...w.vm.draftIds()].sort()).toEqual([1, 3]);
   });
 
   it('drops a tick whose unit is gone when the full list arrives', async () => {

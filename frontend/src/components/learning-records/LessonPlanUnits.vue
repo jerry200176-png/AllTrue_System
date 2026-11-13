@@ -93,7 +93,10 @@ const hiddenCount = computed(() => Math.max(0, (state.value?.total || 0) - units
 const dirty = computed(() => checked.value.size !== saved.value.size || [...checked.value].some((id) => !saved.value.has(id)));
 
 function toggle(id, on) {
-  const next = new Set(checked.value);
+  // A draft selection that could not be fully applied (the full list failed) still counts for the units on screen.
+  const pending = Array.isArray(props.restoreIds) && !restored;
+  const shown = new Set(units.value.map((u) => u.id));
+  const next = new Set(pending ? props.restoreIds.map(Number).filter((n) => shown.has(n)) : checked.value);
   if (on) next.add(id); else next.delete(id);
   checked.value = next;
   restored = true; // the teacher's own edit now stands for the selection
@@ -141,7 +144,7 @@ defineExpose({ save, dirty, draftIds });
       <ul class="tw:m-0 tw:list-none tw:space-y-2 tw:p-0">
         <li v-for="u in units" :key="u.id" class="tw:rounded-md tw:border tw:border-border">
           <label class="tw:flex tw:min-h-11 tw:items-start tw:gap-3 tw:p-3">
-            <input type="checkbox" class="tw:mt-0.5 tw:size-5 tw:shrink-0" :checked="checked.has(u.id)" :disabled="disabled || saving"
+            <input type="checkbox" class="tw:mt-0.5 tw:size-5 tw:shrink-0" :checked="checked.has(u.id)" :disabled="disabled || saving || loading"
               :aria-label="`${u.title} 這堂上完`" @change="toggle(u.id, $event.target.checked)" />
             <span class="tw:min-w-0 tw:flex-1">
               <span class="tw:flex tw:flex-wrap tw:items-center tw:gap-2">

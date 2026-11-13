@@ -3947,6 +3947,8 @@ const switchToTeacherLogin = async () => {
 
 const planUnitsRef = ref(null);
 const draftPlanUnitIds = ref(null); // ticks restored from a draft (issue 4970 step 5)
+// A draft selection belongs to one lesson: drop it at once when the lesson changes (loadDraft sets the new one after).
+watch(() => form.ClassSessionID, () => { draftPlanUnitIds.value = null; }, { flush: 'sync' });
 const submitForm = async () => {
   if (timeLockMessage.value) {
     alert(timeLockMessage.value);
