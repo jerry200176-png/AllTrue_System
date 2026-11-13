@@ -849,7 +849,7 @@ final class CourseContractChainRebalanceStrategy
             // recorded then, so a move can neither hide nor worsen it. A snapshot without those figures keeps the strict rule.
             $d = $diagnostics[$id] ?? null;
             $consistent = $d !== null && $d['uncapped_used'] === $taught[$id] && $d['ledger_used'] === $d['observed_used'];
-            $asBefore = !isset($touched[$id]) && is_array($c['before']['usage'] ?? null) && $d !== null && $c['before']['usage'] === $this->usage($d);
+            $asBefore = !isset($touched[$id]) && is_array($c['before']['usage'] ?? null) && $d !== null && $this->sameFigures($c['before']['usage'], $this->usage($d));
             if (!$consistent && !$asBefore) {
                 $errors[] = "mirror_inconsistent_{$id}";
             }
@@ -870,6 +870,21 @@ final class CourseContractChainRebalanceStrategy
         }
 
         return [array_values(array_unique($errors)), $contracts];
+    }
+
+    /**
+     * Whether two sets of usage figures are the same, whatever order their keys are in: the recorded set is read back
+     * from a MySQL JSON column, which keeps object keys in its own order.
+     *
+     * @param  array<string, mixed>  $recorded
+     * @param  array<string, int>  $current
+     */
+    private function sameFigures(array $recorded, array $current): bool
+    {
+        ksort($recorded);
+        ksort($current);
+
+        return $recorded === $current;
     }
 
     /**
