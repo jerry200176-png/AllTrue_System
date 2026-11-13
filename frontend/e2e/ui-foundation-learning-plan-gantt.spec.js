@@ -19,6 +19,22 @@ for (const viewport of [{ width: 375, height: 800 }, { width: 1536, height: 784 
       await expect(scroll).toBeVisible();
       await expect(page.getByTestId('gantt-row')).toHaveCount(12);
 
+      // On load the today line is inside the visible track; a wide dialog fits the whole 18-week plan without scrolling.
+      const visible = () => page.evaluate(() => {
+        const box = document.querySelector('[data-testid="gantt-scroll"]').getBoundingClientRect();
+        const left = box.left + document.querySelector('[data-testid="gantt-title"]').parentElement.getBoundingClientRect().width;
+        const line = document.querySelector('[data-testid="today-line"]').getBoundingClientRect().left;
+        const el = document.querySelector('[data-testid="gantt-scroll"]');
+        const bars = [...document.querySelectorAll('[data-testid="gantt-bar"]')].map((b) => b.getBoundingClientRect());
+        return { todayInside: line >= left && line <= box.right, overflowX: el.scrollWidth - el.clientWidth, barsVisible: bars.filter((r) => r.right > left && r.left < box.right).length };
+      });
+      await expect.poll(async () => (await visible()).todayInside).toBe(true);
+      if (viewport.width >= 1280) {
+        const v = await visible();
+        expect(v.overflowX).toBeLessThanOrEqual(1);
+        expect(v.barsVisible).toBe(12);
+      }
+
       // Nothing outside the chart container scrolls sideways (page and profile dialog).
       const overflow = await page.evaluate(() => {
         const dialog = document.querySelector('[role="dialog"]');
@@ -55,7 +71,7 @@ for (const viewport of [{ width: 375, height: 800 }, { width: 1536, height: 784 
         return { sticky: getComputedStyle(cell).position, scrolled: box.scrollLeft, delta: Math.abs(cell.getBoundingClientRect().left - box.getBoundingClientRect().left) };
       });
       expect(pos.sticky).toBe('sticky');
-      expect(pos.scrolled).toBeGreaterThan(0);
+      if (viewport.width < 1280) expect(pos.scrolled).toBeGreaterThan(0);
       expect(pos.delta).toBeLessThanOrEqual(2);
     });
   }

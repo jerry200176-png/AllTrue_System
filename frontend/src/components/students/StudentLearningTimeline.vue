@@ -55,7 +55,7 @@ watch(() => [props.show, props.studentId], () => { if (props.show && props.stude
 
 <template>
   <Dialog :open="show" @update:open="open => { if (!open) emit('close'); }">
-    <DialogContent :show-close-button="false" @close-auto-focus="restoreFocus" class="tw:max-w-[calc(100vw-1rem)] tw:sm:max-w-3xl tw:max-h-[calc(100dvh-1rem)] tw:overflow-y-auto tw:p-4 tw:text-tpl-body tw:tabular-nums">
+    <DialogContent :show-close-button="false" @close-auto-focus="restoreFocus" :class="tab === 'plan' ? 'tw:sm:max-w-6xl' : 'tw:sm:max-w-3xl'" class="tw:max-w-[calc(100vw-1rem)] tw:max-h-[calc(100dvh-1rem)] tw:overflow-y-auto tw:p-4 tw:text-tpl-body tw:tabular-nums">
       <DialogHeader class="tw:flex-row tw:items-start tw:justify-between tw:gap-3">
         <div class="tw:min-w-0 tw:space-y-2"><DialogTitle class="tw:text-tpl-list tw:break-words">{{ studentName }} 學習檔案</DialogTitle>
         <DialogDescription class="tw:text-tpl-caption">依新到舊整理上課進度、出席與成績；這裡只供查閱。</DialogDescription></div>

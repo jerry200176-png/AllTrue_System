@@ -1,6 +1,6 @@
 <script setup>
 // #4970 step 4b: per-student learning-plan Gantt (pure CSS grid). Read-only bars + a list with the controls.
-import { computed, ref, watch } from 'vue';
+import { computed, nextTick, ref, watch } from 'vue';
 import { Check, CircleDashed, Clock, TriangleAlert } from '@lucide/vue';
 import { authedFetch } from '../../lib/authedFetch';
 import { GRADES, SUBJECTS } from '../../lib/constants';
@@ -23,12 +23,12 @@ const props = defineProps({
 
 const FIELD = 'tw:h-11 tw:w-full tw:min-w-0 tw:rounded-md tw:border tw:bg-background tw:px-2 tw:text-sm';
 const TITLE_W = 'var(--gantt-title-w)';
-const COL_W = '2.75rem';
+const COL_W = 'var(--gantt-col-w)';
 const BAR = {
-  done: 'tw:bg-primary/60 tw:border-primary',
-  behind: 'tw:bg-destructive tw:border-destructive tw:border-dashed tw:text-white',
-  in_progress: 'tw:bg-primary tw:border-primary tw:text-white',
-  upcoming: 'tw:bg-muted tw:border-border',
+  done: 'tw:bg-(--ds-success-wash) tw:border-(--ds-success-line) tw:text-(--ds-success-text)',
+  behind: 'tw:bg-destructive/15 tw:border-destructive tw:border-dashed tw:text-destructive',
+  in_progress: 'tw:bg-primary tw:border-primary tw:text-primary-foreground',
+  upcoming: 'tw:bg-background tw:border-border tw:text-muted-foreground',
 };
 const ICON = { done: Check, behind: TriangleAlert, in_progress: Clock, upcoming: CircleDashed };
 
@@ -71,6 +71,20 @@ const chart = (plan) => {
   return { timeline, units, markers: examMarkers(timeline, plan), todayPercent: markerPercent(timeline, today.value) };
 };
 
+// Open the chart with the today line about a third from the left of the visible track (start if today is before the plan, end if after).
+const scrollers = new Map();
+const setScroller = (id, el) => { if (el) scrollers.set(id, el); else scrollers.delete(id); };
+function scrollToToday(plan) {
+  const el = scrollers.get(plan.id);
+  if (!el) return;
+  const title = el.querySelector('[data-testid="gantt-title"]')?.parentElement?.offsetWidth || 0;
+  const track = el.scrollWidth - title;
+  const pct = markerPercent(buildTimeline(plan.plan_start, plan.plan_end), today.value);
+  if (pct === null) { el.scrollLeft = today.value < plan.plan_start ? 0 : el.scrollWidth; return; }
+  el.scrollLeft = Math.max(0, (pct / 100) * track - (el.clientWidth - title) / 3);
+}
+const scrollAllToToday = async () => { await nextTick(); plans.value.forEach(scrollToToday); };
+
 let loadSeq = 0;
 async function load({ keepError = false } = {}) {
   const my = ++loadSeq;
@@ -85,6 +99,7 @@ async function load({ keepError = false } = {}) {
     const list = c.data?.data ?? c.data ?? c;
     courses.value = (Array.isArray(list) ? list : []).filter((x) => x.status !== 'inactive');
     plans.value = p.data || [];
+    scrollAllToToday();
   } catch (e) {
     if (my === loadSeq) loadError.value = e.message || '載入失敗，請稍後再試';
   } finally {
@@ -202,7 +217,11 @@ watch(() => props.studentId, () => { readOnly.value = false; courses.value = [];
             </div>
             <p v-if="!c.units.length" class="tw:text-muted-foreground">這份計畫沒有單元。</p>
             <template v-else>
-              <div class="tw:[--gantt-title-w:9.5rem] tw:sm:[--gantt-title-w:15rem] tw:overflow-x-auto tw:rounded-md tw:border tw:border-border tw:bg-card" role="region" tabindex="0" :aria-label="`${s.label} 學習計畫甘特圖，可左右捲動`" data-testid="gantt-scroll">
+              <div class="tw:flex tw:items-center tw:justify-between tw:gap-2">
+                <p class="tw:text-xs tw:text-muted-foreground">每格一週，數字是該週開始的日期</p>
+                <Button size="sm" variant="outline" class="tw:min-h-11" @click="scrollToToday(s.plan)">回到今天</Button>
+              </div>
+              <div :ref="(el) => setScroller(s.plan.id, el)" class="tw:[--gantt-title-w:7rem] tw:[--gantt-col-w:2rem] tw:[--gantt-row-h:3.5rem] tw:sm:[--gantt-title-w:14rem] tw:sm:[--gantt-col-w:2.25rem] tw:sm:[--gantt-row-h:4.5rem] tw:[scrollbar-width:thin] tw:overflow-x-auto tw:rounded-md tw:border tw:border-border tw:bg-card" role="region" tabindex="0" :aria-label="`${s.label} 學習計畫甘特圖，可左右捲動`" data-testid="gantt-scroll">
                 <div class="tw:relative" :style="{ minWidth: `calc(${TITLE_W} + ${c.timeline.weeks} * ${COL_W})` }">
                   <div class="tw:pointer-events-none tw:absolute tw:inset-y-0 tw:right-0" :style="{ left: TITLE_W }" aria-hidden="true">
                     <span v-if="c.todayPercent !== null" data-testid="today-line" class="tw:absolute tw:inset-y-0 tw:border-l-2 tw:border-primary" :style="{ left: `${c.todayPercent}%` }" />
@@ -214,7 +233,7 @@ watch(() => props.studentId, () => { readOnly.value = false; courses.value = [];
                       <div class="tw:grid" :style="{ gridTemplateColumns: `repeat(${c.timeline.weeks}, minmax(0, 1fr))` }">
                         <span v-for="m in c.timeline.months" :key="m.startColumn" class="tw:truncate tw:border-l tw:border-border tw:px-1 tw:pt-1 tw:text-sm tw:font-medium" :style="{ gridColumn: `${m.startColumn} / span ${m.span}` }">{{ m.label }}</span>
                       </div>
-                      <div class="tw:grid" :style="{ gridTemplateColumns: `repeat(${c.timeline.weeks}, minmax(0, 1fr))` }" title="每格一週，數字是該週開始的日期">
+                      <div class="tw:grid" :style="{ gridTemplateColumns: `repeat(${c.timeline.weeks}, minmax(0, 1fr))` }">
                         <span v-for="w in c.timeline.columns" :key="w.index" class="tw:border-l tw:border-border tw:px-1 tw:tabular-nums tw:text-muted-foreground">{{ Number(w.date.slice(8)) }}</span>
                       </div>
                       <div class="tw:relative tw:h-7">
@@ -223,10 +242,10 @@ watch(() => props.studentId, () => { readOnly.value = false; courses.value = [];
                       </div>
                     </div>
                   </div>
-                  <div v-for="(u, i) in c.units" :key="u.id" class="tw:grid tw:h-[4.5rem] tw:items-center tw:border-b tw:border-border last:tw:border-b-0" :style="{ gridTemplateColumns: `${TITLE_W} 1fr` }" data-testid="gantt-row">
-                    <div class="tw:sticky tw:left-0 tw:z-10 tw:flex tw:h-full tw:min-w-0 tw:flex-col tw:justify-center tw:gap-0.5 tw:border-r tw:border-border tw:bg-card tw:px-2 tw:text-sm">
+                  <div v-for="(u, i) in c.units" :key="u.id" class="tw:grid tw:h-(--gantt-row-h) tw:items-center tw:border-b tw:border-border last:tw:border-b-0" :style="{ gridTemplateColumns: `${TITLE_W} 1fr` }" data-testid="gantt-row">
+                    <div class="tw:sticky tw:left-0 tw:z-10 tw:flex tw:h-full tw:min-w-0 tw:flex-col tw:justify-center tw:gap-0.5 tw:border-r tw:border-border tw:bg-card tw:px-2 tw:text-[0.8125rem] tw:sm:text-sm">
                       <p class="tw:line-clamp-2 tw:break-all tw:leading-tight" data-testid="gantt-title" aria-hidden="true" :title="u.title"><span class="tw:tabular-nums tw:text-muted-foreground">{{ i + 1 }}.</span> {{ u.title }}</p>
-                      <p class="tw:flex tw:items-center tw:gap-1 tw:text-xs" aria-hidden="true">
+                      <p class="tw:flex tw:items-center tw:gap-1 tw:whitespace-nowrap tw:text-xs" aria-hidden="true">
                         <component :is="ICON[unitState(u, today)]" class="tw:size-3 tw:shrink-0" />{{ STATE_LABELS[unitState(u, today)] }}
                         <Badge v-if="u.dates_manual" variant="outline" class="tw:px-1.5 tw:py-0">手動</Badge>
                       </p>
