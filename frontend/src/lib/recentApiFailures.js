@@ -125,6 +125,10 @@ export function fitClientInfo(info, max = CLIENT_INFO_MAX) {
       s = JSON.stringify(o);
     }
   }
+  if (s.length > max && o.pageSnapshot) {
+    o.pageSnapshot = null; // diagnostic extra: shed before the reporter's own text
+    s = JSON.stringify(o);
+  }
   if (s.length > max) {
     o.relatedReference = null;
     s = JSON.stringify(o);

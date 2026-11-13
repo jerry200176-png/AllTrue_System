@@ -314,6 +314,7 @@
                       </div>
                       <div class="subject-line">
                         <span class="tag subject-tag" :class="{ 'subject-tag--paused': c.status === 'inactive' }">{{ getSubjectLabel(c.subject) }}</span><span class="subject-teacher">{{ c.teacher_name || '待指派' }}</span>
+                        <span v-if="classificationUnknown(c)" class="tag tag-settled" title="目前顯示的是備用資料，無法判斷是否為歷史課程，請重新整理">分類資料不足</span>
                         <span v-if="isPackageMember(c)" class="tag tag-package" :title="c.PackageName || '多科方案'">方案</span>
                         <span v-else-if="isClosedReason(effectiveClosedReason(c))" class="tag tag-settled">{{ effectiveClosedReason(c) === 'waived' ? WAIVED_LABEL : closedPaymentState(c) === 'unknown' ? PAYMENT_STATUS_LOADING_LABEL : closedPaymentState(c) === 'pending' ? ENDED_PENDING_LABEL : closedPaymentState(c) === 'review' ? ENDED_REVIEW_LABEL : '已結案' }}</span>
                         <button
@@ -1383,6 +1384,8 @@ import { clearRowCachesForWinningRequest, createListLoadOutcome, fallbackListRow
 import { studentSchoolGradeLabel } from '../lib/studentSchoolGrade.js';
 import { buildContractChronology, contractStartDate } from '../lib/contractChronology.js';
 import { supabase } from '../supabase';
+import { registerPageDiagnostics } from '../lib/pageDiagnostics';
+import { buildCourseListSnapshot } from '../lib/courseListSnapshot';
 import { authedFetch, getAccessToken } from '../lib/authedFetch';
 import { isDirectorRole } from '../lib/roleCapabilities.js';
 import { useTransferSessions } from '../composables/course-management/useTransferSessions';
@@ -1440,7 +1443,7 @@ import MonthlyCorrectionPreviewModal from '../components/course-management/Month
 import { useMonthlyCorrectionPreview } from '../composables/course-management/useMonthlyCorrectionPreview.js';
 import { loadNextMonthlyContract } from '../lib/nextMonthlyContract.js';
 import {
-  REPORT_STATUS_LABELS, closedReason as effectiveClosedReason, isClosedReason, courseHistoryReason, isActiveCourse, isCourseManagementHistory, isLowRemaining, isMonthlyPaymentType, isPackageMember, TUITION_STATUS_CONFIG, ENDED_PENDING_LABEL, ENDED_REVIEW_LABEL, reviewReasonText, WAIVED_LABEL, coursePaymentBadge, shortPaymentLabel, isLegacyPaidFlagOnly, LEGACY_FLAG_ACTION_HELP,
+  REPORT_STATUS_LABELS, closedReason as effectiveClosedReason, classificationUnknown, isClosedReason, courseHistoryReason, isActiveCourse, isCourseManagementHistory, isLowRemaining, isMonthlyPaymentType, isPackageMember, TUITION_STATUS_CONFIG, ENDED_PENDING_LABEL, ENDED_REVIEW_LABEL, reviewReasonText, WAIVED_LABEL, coursePaymentBadge, shortPaymentLabel, isLegacyPaidFlagOnly, LEGACY_FLAG_ACTION_HELP,
   ownRemainingSessions, poolTotalSessions, poolUsedSessions, closedPaymentState, PAYMENT_STATUS_LOADING_LABEL, sharedPackageBillingLead,
 } from '../lib/courseMoneyState.js';
 import { summaryGridStyle } from '../lib/summaryGrid.js';
@@ -4417,6 +4420,7 @@ const formatMoney = (value) => {
 
 // Resolves { ok: true } when this request won, undefined when superseded, and { ok: false, error } when both
 // list sources fail (shows the refresh-failure hint; rows are kept only for the same query, listKey).
+let courseListSource = null; // 'primary' | 'fallback': which source fed courses.value (in-app #540 report snapshot)
 let quietRefreshNext = false; // set by the re-activation refetch: no loading flag, rows stay on screen
 const restoreCancelledUnit = ref(null);
 const canRestoreCancelled = (u) => isDirectorRole(props.userRole) && !!u?.id && isVisibleCancelledSession(u);
@@ -4494,6 +4498,7 @@ const loadCourses = async (page = 1) => {
           total: Number(json?.total ?? arr.length),
           perPage: pagination.value.perPage,
         };
+        courseListSource = 'primary';
         courses.value = result;
         courseListOutcome.succeeded(listKey);
         clearRowCachesForWinningRequest(requestId, courseLoadRequestId, sessionCaches);
@@ -4563,6 +4568,7 @@ const loadCourses = async (page = 1) => {
 
   if (!isCurrentListRequest(requestId, courseLoadRequestId)) return;
   pagination.value = { page: 1, lastPage: 1, total: result.length, perPage: pagination.value.perPage };
+  courseListSource = 'fallback';
   courses.value = result;
   courseListOutcome.succeeded(listKey);
   clearRowCachesForWinningRequest(requestId, courseLoadRequestId, sessionCaches);
@@ -5667,7 +5673,9 @@ function consumeTrustFocus() {
     return true;
   } catch (_) { return false; }
 }
+let unregisterDiagnostics = () => {};
 onMounted(() => {
+  unregisterDiagnostics = registerPageDiagnostics('course-mgmt', () => buildCourseListSnapshot({ source: courseListSource, courses: courses.value }));
   consumeTrustFocus();
   loadCourses(); loadStudents(); loadTeachers(); loadSubjects();
   document.addEventListener('click', closeActionMenu);
@@ -5691,6 +5699,7 @@ onActivated(() => {
   if (!coursesLoading.value) { quietRefreshNext = true; void loadCourses(pagination.value.page); } // stale-while-revalidate, rows stay on screen
 });
 onUnmounted(() => {
+  unregisterDiagnostics();
   monthlySummary.dispose();
   document.removeEventListener('click', closeActionMenu);
   clearTimeout(_quickAddCheckTimer);
