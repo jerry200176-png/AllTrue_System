@@ -302,6 +302,82 @@ class ForwardSessionGenerationTest extends TestCase
         }
     }
 
+    /**
+     * #5243 review: the pool figure is a fixed number of count queries, whatever the number of members and lessons
+     * (no lesson rows loaded), and its one-query "unmarked past" count agrees with the row-by-row rule.
+     */
+    public function test_pool_unplanned_is_a_bounded_number_of_queries_and_matches_the_row_rule(): void
+    {
+        Carbon::setTestNow($this->today);
+        try {
+            [$pkg, $stale, $sibling] = $this->sharedPool(total: 48, consumed: 40, staleRemaining: 0, siblingPlanned: 1);
+            $studentId = (int) DB::table('StudentClass')->where('ID', $stale)->value('StudentID');
+            $members = [$stale, $sibling];
+            for ($i = 0; $i < 4; $i++) { // four more running members, each with past lessons
+                $members[] = $extra = (int) DB::table('StudentClass')->insertGetId([
+                    'StudentID' => $studentId, 'GradeID' => 1, 'SubjectID' => 10 + $i, 'TeacherID' => 1, 'by1' => 1, 'Period' => 4,
+                    'TotalHours' => 0, 'Charge' => 0, 'Pay' => 0, 'Paid' => 1, 'Rate' => 500, 'ClassType' => 'one_on_one',
+                    'StartDate' => '2026-05-01', 'SessionCount' => 48, 'SessionDuration' => 120, 'RemainingSessions' => 48,
+                    'UsedSessions' => 0, 'Stop' => 0, 'ScheduleMode' => 'count', 'PackageID' => $pkg, 'PackageTotalSessions' => 48,
+                ]);
+                foreach (['2026-06-10', '2026-06-17', '2026-06-24'] as $d) {
+                    $this->sess($extra, $d, sprintf('%02d:00:00', 8 + $i), sprintf('%02d:00:00', 9 + $i), 'attended');
+                }
+            }
+            $this->sess($sibling, '2026-07-06', '19:00:00', '21:00:00', 'scheduled');   // unmarked: holds one
+            $this->sess($members[2], '2026-07-01', '08:00:00', '09:00:00', 'scheduled'); // unmarked: holds one
+            $this->sess($members[3], '2026-07-01', '09:00:00', '10:00:00', 'scheduled'); // already deducted: does not
+            DB::table('session_deduction_ledger')->insert([
+                'student_class_id' => $members[3], 'class_session_id' => (int) DB::table('ClassSession')
+                    ->where('StudentClassID', $members[3])->where('SessionDate', '2026-07-01')->value('id'),
+                'event_type' => 'deduct', 'source' => 'attendance', 'created_at' => now(), 'updated_at' => now(),
+            ]);
+            $this->sess($members[4], '2026-07-01', '10:00:00', '11:00:00', 'leave');     // leave: does not
+
+            $rows = \App\Models\ClassSession::query()->whereIn('StudentClassID', $members)
+                ->whereRaw("LOWER(Status) NOT IN ('cancelled','voided')")->get();
+            $byRows = \App\Services\Scheduling\ContractSessionSchedule::partitionExcessScheduledRows($rows, 0)['past_unrecorded']->count();
+            $this->assertSame(2, $byRows);
+
+            $course = \App\Models\StudentClass::query()->findOrFail($stale);
+            DB::flushQueryLog();
+            DB::enableQueryLog();
+            $unplanned = \App\Services\Scheduling\ContractSessionSchedule::sharedPoolUnplanned($course);
+            $queries = DB::getQueryLog();
+            DB::disableQueryLog();
+
+            $this->assertSame(8 - 1 - $byRows, $unplanned, '8 left, 1 planned ahead, 2 unmarked past lessons');
+            $this->assertLessThanOrEqual(8, count($queries), 'package, shared?, members, planned, ledger, unmarked past (6 today): no per-member query');
+            foreach ($queries as $q) {
+                $this->assertDoesNotMatchRegularExpression('/select \* from `ClassSession`/i', $q['query'], 'no lesson rows are loaded');
+            }
+        } finally {
+            DB::disableQueryLog();
+            Carbon::setTestNow();
+        }
+    }
+
+    /** #5243 review: members of used-up pools must not use up --limit ahead of a real candidate with a higher id. */
+    public function test_members_of_used_up_pools_do_not_crowd_out_real_candidates(): void
+    {
+        Carbon::setTestNow($this->today);
+        try {
+            for ($i = 0; $i < 3; $i++) {
+                [, , $sibling] = $this->sharedPool(total: 48, consumed: 48, staleRemaining: 0, siblingPlanned: 0);
+                DB::table('StudentClass')->where('ID', $sibling)->update(['RemainingSessions' => 0, 'UsedSessions' => 48]);
+            }
+            $real = $this->course(remaining: 4);
+            foreach (['2026-06-22', '2026-06-29', '2026-07-06'] as $d) {
+                $this->sess($real, $d, '16:00:00', '18:00:00', 'attended');
+            }
+
+            $this->assertSame(0, Artisan::call('sessions:generate-forward', ['--execute' => true, '--scheduled' => true, '--limit' => 2]));
+            $this->assertSame(4, DB::table('ClassSession')->where('StudentClassID', $real)->where('Note', '系統向前生成 #1062')->count());
+        } finally {
+            Carbon::setTestNow();
+        }
+    }
+
     public function test_scheduled_execute_reaches_a_shared_pool_member_with_a_stale_counter(): void
     {
         Carbon::setTestNow($this->today);
