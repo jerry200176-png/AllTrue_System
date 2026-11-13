@@ -667,7 +667,7 @@
           <div
             v-if="expandedStudentGroups.has(group.key) && studentGroupTab(group.key) === 'billing'"
             :id="studentGroupPanelId(group.key, 'billing')"
-            class="table-wrap group-table-wrap student-billing-wrap"
+            class="table-wrap group-table-wrap student-billing-wrap tw:max-lg:max-h-none!"
             role="tabpanel"
             tabindex="0"
             :aria-labelledby="studentGroupTabId(group.key, 'billing')"
@@ -750,13 +750,13 @@
                     <div v-if="billingStacked" class="tw:flex tw:flex-wrap tw:items-center tw:gap-2">
                       <button
                         v-if="billingPrimaryIsNext(row, group)"
-                        :class="[rowAction.primary, 'tw:min-w-0 tw:flex-1']"
+                        :class="[rowAction.primary, 'tw:min-w-0 tw:flex-1 tw:md:min-w-48 tw:md:flex-none']"
                         type="button"
                         @click="onPaymentNextAction(row.course)"
                       >{{ paymentNextActionLabel(row.course) }}</button>
                       <button
                         v-else
-                        :class="[rowAction.primary, 'btn-invoices tw:min-w-0 tw:flex-1']"
+                        :class="[rowAction.primary, 'btn-invoices tw:min-w-0 tw:flex-1 tw:md:min-w-48 tw:md:flex-none']"
                         type="button"
                         @click="openTuitionLedger(row.course)"
                       >在這裡看帳務</button>
