@@ -131,18 +131,28 @@ describe('LessonPlanUnits (#4970 step 5)', () => {
     expect(w.findAll('input[type=checkbox]').map((b) => b.element.checked)).toEqual([false]);
   });
 
-  it('restores ticks kept in a draft on top of the server state and offers them back to the draft', async () => {
+  it('restores the draft selection as a whole: an added tick comes back and a removed one stays removed', async () => {
     const w = await mountIt({ restoreIds: [2] });
-    expect(w.findAll('input[type=checkbox]').map((b) => b.element.checked)).toEqual([false, true, true]);
+    expect(w.findAll('input[type=checkbox]').map((b) => b.element.checked)).toEqual([false, true, false]);
     expect(w.emitted('change')).toBeTruthy();
-    expect([...w.vm.draftIds()].sort()).toEqual([2, 3]);
+    expect(w.vm.draftIds()).toEqual([2]);
     await w.vm.save(77);
-    expect(calls.find((c) => c.method === 'PUT').body.unit_ids.sort()).toEqual([2, 3]);
+    expect(calls.find((c) => c.method === 'PUT').body.unit_ids).toEqual([2]);
+  });
+
+  it('restores an empty draft selection (every tick removed) and leaves the server state alone when the draft holds none', async () => {
+    const emptied = await mountIt({ restoreIds: [] });
+    expect(emptied.findAll('input[type=checkbox]').map((b) => b.element.checked)).toEqual([false, false, false]);
+    expect(emptied.vm.draftIds()).toEqual([]);
+    const none = await mountIt();
+    expect(none.findAll('input[type=checkbox]').map((b) => b.element.checked)).toEqual([false, false, true]);
+    expect(none.vm.draftIds()).toBeNull();
+    expect(none.emitted('change')).toBeFalsy();
   });
 
   it('drops a draft tick the server no longer offers, so a stale unit is never sent', async () => {
     payload = { ...PAYLOAD, total: 3 };
-    const w = await mountIt({ restoreIds: [2, 99] });
+    const w = await mountIt({ restoreIds: [2, 3, 99] });
     expect(calls.filter((c) => c.method === 'GET')).toHaveLength(1);
     expect([...w.vm.draftIds()].sort()).toEqual([2, 3]);
     await w.vm.save(77);
@@ -151,7 +161,7 @@ describe('LessonPlanUnits (#4970 step 5)', () => {
 
   it('looks once in the full list for a draft tick that the short list does not show', async () => {
     allPayload = { ...PAYLOAD, units: [...PAYLOAD.units, unit(8, '幾何')] };
-    const w = await mountIt({ restoreIds: [8, 99] });
+    const w = await mountIt({ restoreIds: [3, 8, 99] });
     const gets = calls.filter((c) => c.method === 'GET');
     expect(gets).toHaveLength(2);
     expect(gets[1].url).toContain('&all=1');
@@ -169,7 +179,7 @@ describe('LessonPlanUnits (#4970 step 5)', () => {
     await flushPromises();
     // Units 1, 3, 8 are shown; only the server's own tick (3) is left, so nothing is pending.
     expect(w.findAll('input[type=checkbox]').map((b) => b.element.checked)).toEqual([false, true, false]);
-    expect(w.vm.draftIds()).toEqual([]);
+    expect(w.vm.draftIds()).toBeNull();
     await w.vm.save(77);
     expect(calls.filter((c) => c.method === 'PUT')).toHaveLength(0);
   });

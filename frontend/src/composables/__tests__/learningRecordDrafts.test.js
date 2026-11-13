@@ -42,9 +42,13 @@ describe('learning record draft scope', () => {
   });
   it('keeps ticked plan units in the draft, even with no text, and treats old drafts as no ticks (#4970 step 5)', () => {
     const scope = { teacherId: 7, branchId: 1, classSessionId: 101 };
-    expect(saveDraft({ ...scope, form: {}, planUnitIds: [] }).saved).toBe(false);
+    expect(saveDraft({ ...scope, form: {}, planUnitIds: null }).saved).toBe(false);
     expect(saveDraft({ ...scope, form: {}, planUnitIds: [4, '6', 0, 'x'] }).saved).toBe(true);
     expect(loadDraft(scope).draft._planUnitIds).toEqual([4, 6]);
+    // Removing every tick is an edit too, and must be told apart from a draft that keeps no selection.
+    expect(saveDraft({ ...scope, classSessionId: 103, form: {}, planUnitIds: [] }).saved).toBe(true);
+    expect(loadDraft({ ...scope, classSessionId: 103 }).draft._planUnitIds).toEqual([]);
+    clearDraft({ ...scope, classSessionId: 103 });
     expect(listDrafts(7, 1)).toHaveLength(1);
     // The evaluation fields applied to the form are unchanged by the new field.
     const restored = { Comment: 'x' };

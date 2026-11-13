@@ -3863,7 +3863,7 @@ const closeModal = ({ preserveDraft = true } = {}) => {
   showAllCommentPhrases.value = false;
   replyMode.value = false;
   showModal.value = false;
-  draftPlanUnitIds.value = [];
+  draftPlanUnitIds.value = null;
   resetPreviousSummaryState();
   _openedFromScheduleSession.value = 0;
   if (isTeacher.value) refreshDraftList();
@@ -3946,7 +3946,7 @@ const switchToTeacherLogin = async () => {
 };
 
 const planUnitsRef = ref(null);
-const draftPlanUnitIds = ref([]); // ticks restored from a draft (issue 4970 step 5)
+const draftPlanUnitIds = ref(null); // ticks restored from a draft (issue 4970 step 5)
 const submitForm = async () => {
   if (timeLockMessage.value) {
     alert(timeLockMessage.value);
@@ -4475,7 +4475,7 @@ const saveDraft = () => {
     ..._draftKeyParams(),
     form,
     meta: _draftMeta(),
-    planUnitIds: planUnitsRef.value?.draftIds?.() ?? [],
+    planUnitIds: planUnitsRef.value?.draftIds?.() ?? null,
   });
   if (result.saved) {
     const now = new Date();
@@ -4504,7 +4504,7 @@ const loadDraft = () => {
   const { draft } = _loadDraftFromStorage(_draftKeyParams());
   if (!draft) return false;
   applyDraftToForm(draft, form);
-  draftPlanUnitIds.value = Array.isArray(draft._planUnitIds) ? draft._planUnitIds : [];
+  draftPlanUnitIds.value = Array.isArray(draft._planUnitIds) ? draft._planUnitIds : null;
   const savedDate = new Date(draft._savedAt);
   draftStatusText.value = `已載入草稿（${savedDate.getMonth()+1}/${savedDate.getDate()} ${String(savedDate.getHours()).padStart(2,'0')}:${String(savedDate.getMinutes()).padStart(2,'0')} 儲存）`;
   draftSaveError.value = false;

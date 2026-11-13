@@ -11,7 +11,7 @@ import { Skeleton } from '../ui/skeleton';
 const props = defineProps({
   classSessionId: { type: [Number, String], default: 0 },
   disabled: { type: Boolean, default: false },
-  restoreIds: { type: Array, default: () => [] }, // unit ids ticked in an unsaved draft
+  restoreIds: { type: Array, default: null }, // the selection kept in an unsaved draft; null = the draft holds none
 });
 const emit = defineEmits(['change']);
 
@@ -70,20 +70,19 @@ watch(() => props.classSessionId, () => {
   load();
 }, { immediate: true });
 
-/** Ticks kept in an unsaved draft come back on top of what the server holds. */
-// Draft ticks are restored only for units the server still offers for this lesson: a unit finished elsewhere or a
-// replaced plan must not be sent. If some are not in the short list, the full list is loaded once to look for them.
+/** The selection kept in an unsaved draft replaces what the server holds, so a tick the teacher removed stays removed. */
+// Only units the server still offers for this lesson are restored: a unit finished elsewhere or a replaced plan must
+// not be sent. If some are not in the short list, the full list is loaded once to look for them.
 function applyRestore(expanded = false) {
-  if (!state.value || !props.restoreIds.length) return;
+  if (!state.value || !Array.isArray(props.restoreIds)) return;
   const ids = props.restoreIds.map(Number).filter((n) => n > 0);
   const offered = new Set((state.value.units || []).map((u) => u.id));
   const known = ids.filter((id) => offered.has(id));
-  if (known.length) {
-    checked.value = new Set([...checked.value, ...known]);
-    emit('change');
-  }
   const more = (state.value.total || 0) > (state.value.units || []).length;
-  if (!expanded && known.length < ids.length && more) load(true);
+  // Wait for the full list before applying, so a half-restored selection is never written back to the draft.
+  if (!expanded && known.length < ids.length && more) { load(true); return; }
+  checked.value = new Set(known);
+  if (dirty.value) emit('change');
 }
 watch(() => props.restoreIds, () => applyRestore());
 
@@ -118,7 +117,8 @@ async function save(recordId) {
 }
 
 /** Ticks worth keeping in the draft: nothing when they equal what the server already holds. */
-const draftIds = () => (!state.value ? props.restoreIds.map(Number) : dirty.value ? [...checked.value] : []);
+/** The selection to keep in a draft, or null when it equals what the server holds (nothing to keep). */
+const draftIds = () => (!state.value ? props.restoreIds : dirty.value ? [...checked.value] : null);
 
 defineExpose({ save, dirty, draftIds });
 </script>
