@@ -723,14 +723,14 @@
                     >{{ paymentStatusChipText(row.course) }}</StatusBadge>
                   </td>
                   <td :class="[dataTable.cell, 'tw:min-w-[7em] tw:tabular-nums']">
-                    <template v-if="row.reports?.[0]">
+                    <div v-if="row.reports?.[0]" class="tw:block tw:text-tpl-caption tw:text-foreground">
                       <span :class="dataTable.fact">{{ row.reports[0].payment_date || '—' }}</span>
                       · <span :class="dataTable.fact">{{ reportStatusLabel(row.reports[0].status) }}</span>
                       <template v-if="row.reports[0].account_last5"> · <span :class="dataTable.fact">{{ row.reports[0].account_last5 }}</span></template>
-                    </template>
+                    </div>
                     <span v-else :class="dataTable.sub">尚無回報</span>
                   </td>
-                  <td :class="[dataTable.cell, 'tw:min-w-[7em]']">
+                  <td :class="[dataTable.cell, 'tw:min-w-[7em] tw:2xl:min-w-[11em]']">
                     <span v-if="row.reports?.some((r) => r.status === 'confirmed')" :class="dataTable.sub">可開收據</span>
                     <span v-else :class="dataTable.sub">核對入帳後才能開收據</span>
                   </td>

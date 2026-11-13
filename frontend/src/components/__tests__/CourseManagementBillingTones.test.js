@@ -5,6 +5,7 @@ import { readFileSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { dataTable, toneBadge, toneText } from '@/components/ui/page';
+import * as tones from '@/components/ui/page/tones.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const page = readFileSync(resolve(__dirname, '../../pages/CourseManagement.vue'), 'utf8');
@@ -63,5 +64,25 @@ describe('課程查找 帳務資料 table on the page template', () => {
       expect(style, selector).not.toContain(`${selector} {`);
       expect(style, selector).not.toContain(`${selector},`);
     }
+  });
+});
+
+// Shared class sets: a lost space glues two classes into one (`tw:h-14tw:border-0`) and both stop working on every page that uses the set.
+const GLUED = /\S(?=tw:)/;
+const collect = (v, path) => {
+  if (typeof v === 'string') return [[path, v]];
+  if (typeof v === 'function') return [...collect(v(true), `${path}(true)`), ...collect(v(false), `${path}(false)`)];
+  if (Array.isArray(v)) return v.flatMap((x, i) => collect(x, `${path}[${i}]`));
+  if (v && typeof v === 'object') return Object.entries(v).flatMap(([k, x]) => collect(x, `${path}.${k}`));
+  return [];
+};
+describe('tones.js class sets', () => {
+  it('has no two classes glued together in any value', () => {
+    const all = Object.entries(tones).flatMap(([name, v]) => collect(v, name));
+    expect(all.length).toBeGreaterThan(40);
+    for (const [path, value] of all) expect(value, path).not.toMatch(GLUED);
+  });
+  it('the check catches a glued pair', () => {
+    expect('tw:h-14tw:border-0 tw:bg-muted').toMatch(GLUED);
   });
 });
