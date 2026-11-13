@@ -130,7 +130,7 @@ class StudentPlanUnitLessonApiTest extends TestCase
         $titles = array_column($res->json('data.units'), 'title');
 
         $this->assertSame('單元6', $titles[0], 'the unit planned for the lesson week comes first');
-        $this->assertSame(['單元6', '單元5', '單元4', '單元7', '單元3', '單元8', '單元2', '單元9'], $titles);
+        $this->assertSame(['單元6', '單元5', '單元7', '單元4', '單元8', '單元3', '單元9', '單元2'], $titles);
         $this->assertTrue($res->json('data.units.1.behind'), 'planned end before the lesson date and not done = behind');
         $this->assertFalse($res->json('data.units.0.behind'));
 
@@ -286,6 +286,21 @@ class StudentPlanUnitLessonApiTest extends TestCase
         $this->sync($this->teacher, $new, [])->assertOk();
         $this->assertNull($this->units[6]->fresh()->completed_at);
         $this->assertNull($this->units[6]->fresh()->completed_record_id);
+    }
+
+    public function test_sync_returns_only_units_of_the_active_plan(): void
+    {
+        $s = $this->lesson();
+        $lr = $this->record($s);
+        $this->sync($this->teacher, $lr, [6])->assertOk();
+        $this->plan->update(['status' => 'archived']);
+        $student = Student::query()->find($this->plan->student_id);
+        $newPlan = $this->makePlan($student, $this->course);
+        $new = StudentPlanUnit::query()->where('plan_id', $newPlan->id)->orderBy('sort_order')->get();
+
+        $res = $this->as($this->teacher)->putJson("/api/v1/learning-records/{$lr->id}/plan-units", ['unit_ids' => [$new[2]->id]])->assertOk();
+
+        $this->assertSame([$new[2]->id], $res->json('data.unit_ids'), 'the archived plan\'s unit must not leak into the response');
     }
 
     public function test_a_plan_unit_manually_unticked_on_the_gantt_forgets_its_source(): void

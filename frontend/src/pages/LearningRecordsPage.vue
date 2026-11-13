@@ -1253,7 +1253,7 @@
                 <button v-for="p in templatePhrases.Progress" :key="p" class="lr-phrase-btn" type="button" @click="insertPhrase('Progress', p)">{{ p }}</button>
               </div>
             </div>
-            <LessonPlanUnits ref="planUnitsRef" :class-session-id="form.ClassSessionID" :disabled="isReadOnly" />
+            <LessonPlanUnits ref="planUnitsRef" :class-session-id="form.ClassSessionID" :disabled="isReadOnly" :restore-ids="draftPlanUnitIds" @change="saveDraftThrottled" />
             <div class="form-group">
               <label>本次作業範圍</label>
               <textarea v-model="form.NextHomework" rows="2" :disabled="isReadOnly" placeholder="指定本次作業範圍..."></textarea>
@@ -3863,6 +3863,7 @@ const closeModal = ({ preserveDraft = true } = {}) => {
   showAllCommentPhrases.value = false;
   replyMode.value = false;
   showModal.value = false;
+  draftPlanUnitIds.value = [];
   resetPreviousSummaryState();
   _openedFromScheduleSession.value = 0;
   if (isTeacher.value) refreshDraftList();
@@ -3945,6 +3946,7 @@ const switchToTeacherLogin = async () => {
 };
 
 const planUnitsRef = ref(null);
+const draftPlanUnitIds = ref([]); // ticks restored from a draft (issue 4970 step 5)
 const submitForm = async () => {
   if (timeLockMessage.value) {
     alert(timeLockMessage.value);
@@ -4473,6 +4475,7 @@ const saveDraft = () => {
     ..._draftKeyParams(),
     form,
     meta: _draftMeta(),
+    planUnitIds: planUnitsRef.value?.draftIds?.() ?? [],
   });
   if (result.saved) {
     const now = new Date();
@@ -4501,6 +4504,7 @@ const loadDraft = () => {
   const { draft } = _loadDraftFromStorage(_draftKeyParams());
   if (!draft) return false;
   applyDraftToForm(draft, form);
+  draftPlanUnitIds.value = Array.isArray(draft._planUnitIds) ? draft._planUnitIds : [];
   const savedDate = new Date(draft._savedAt);
   draftStatusText.value = `已載入草稿（${savedDate.getMonth()+1}/${savedDate.getDate()} ${String(savedDate.getHours()).padStart(2,'0')}:${String(savedDate.getMinutes()).padStart(2,'0')} 儲存）`;
   draftSaveError.value = false;

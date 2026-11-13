@@ -70,6 +70,7 @@ function parseDraft(raw) {
 function hasContent(draft) {
   if (!draft) return false;
   if (draft._clearedContent === true) return true;
+  if (Array.isArray(draft._planUnitIds) && draft._planUnitIds.length > 0) return true;
   return CONTENT_FIELDS.some(f => {
     const v = draft[f];
     if (v === undefined || v === null || v === '') return false;
@@ -89,7 +90,7 @@ function hasContent(draft) {
  * @param {number|string} opts.branchId - active campus; required for scoped recovery
  * @returns {{ saved: boolean, key: string|null, error: string|null }}
  */
-export function saveDraft({ teacherId, branchId = null, classSessionId, form, meta = {} }) {
+export function saveDraft({ teacherId, branchId = null, classSessionId, form, meta = {}, planUnitIds = [] }) {
   const key = buildKey(teacherId, classSessionId, branchId);
   if (!key) return { saved: false, key: null, error: 'no_key' };
 
@@ -97,6 +98,8 @@ export function saveDraft({ teacherId, branchId = null, classSessionId, form, me
   for (const f of CONTENT_FIELDS) {
     data[f] = form[f] ?? '';
   }
+  // #4970 step 5: ticked plan units are part of the unsaved work; missing in old drafts = no ticks.
+  data._planUnitIds = (Array.isArray(planUnitIds) ? planUnitIds : []).map(Number).filter(positiveId);
   // Clearing an existing record is also an edit that must survive a failed save.
   if (positiveId(form.id) && !hasContent(data)) data._clearedContent = true;
   Object.assign(data, {

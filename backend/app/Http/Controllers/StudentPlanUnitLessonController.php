@@ -51,7 +51,7 @@ class StudentPlanUnitLessonController extends Controller
         $units = $plan->units()->where(fn ($q) => $q->whereNull('completed_at')->orWhere('completed_session_id', $session->id))
             ->orderBy('sort_order')->get();
         $ranked = $units->map(fn (StudentPlanUnit $u) => [$u, $this->distance($u, $lesson)])
-            ->sort(fn ($a, $b) => [$a[1], $a[0]->sort_order] <=> [$b[1], $b[0]->sort_order])->values();
+            ->sort(fn ($a, $b) => [$a[1], $a[0]->sort_order, $a[0]->id] <=> [$b[1], $b[0]->sort_order, $b[0]->id])->values();
         $showAll = $request->boolean('all');
         $shown = $ranked->filter(fn ($r, $i) => $showAll || $i < self::SHOWN || $r[0]->completed_session_id !== null)->values();
 
@@ -125,7 +125,7 @@ class StudentPlanUnitLessonController extends Controller
                 }
             }
 
-            return [null, 200, StudentPlanUnit::query()->where('completed_session_id', $session->id)->pluck('id')->map(fn ($id) => (int) $id)->all()];
+            return [null, 200, StudentPlanUnit::query()->where('plan_id', $plan->id)->where('completed_session_id', $session->id)->pluck('id')->map(fn ($id) => (int) $id)->all()];
         });
         if ($result[0] !== null) {
             return response()->json(['message' => $result[0]], $result[1]);

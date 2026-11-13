@@ -11,7 +11,9 @@ import { Skeleton } from '../ui/skeleton';
 const props = defineProps({
   classSessionId: { type: [Number, String], default: 0 },
   disabled: { type: Boolean, default: false },
+  restoreIds: { type: Array, default: () => [] }, // unit ids ticked in an unsaved draft
 });
+const emit = defineEmits(['change']);
 
 const state = ref(null); // the candidates payload; null = nothing to show (no plan, no right to tick, or not loaded)
 const loading = ref(false);
@@ -40,6 +42,7 @@ async function load(all = false) {
     const serverChecked = new Set((data.units || []).filter((u) => u.checked).map((u) => u.id));
     if (!all || !state.value) { checked.value = new Set(serverChecked); saved.value = new Set(serverChecked); }
     state.value = data.plan && data.can_tick ? data : null;
+    if (!all) applyRestore();
   } catch (e) {
     if (my !== seq) return;
     // A failed 「顯示全部」 keeps the list and the ticks already on screen.
@@ -52,7 +55,23 @@ async function load(all = false) {
   }
 }
 
-watch(() => props.classSessionId, () => load(), { immediate: true });
+// A different lesson must never inherit the previous lesson's list or ticks, not even for the length of one request.
+watch(() => props.classSessionId, () => {
+  seq += 1; // drop any request still in flight for the old lesson
+  state.value = null;
+  checked.value = new Set();
+  saved.value = new Set();
+  loadError.value = '';
+  load();
+}, { immediate: true });
+
+/** Ticks kept in an unsaved draft come back on top of what the server holds. */
+function applyRestore() {
+  if (!state.value || !props.restoreIds.length) return;
+  checked.value = new Set([...checked.value, ...props.restoreIds.map(Number).filter((n) => n > 0)]);
+  emit('change');
+}
+watch(() => props.restoreIds, applyRestore);
 
 const units = computed(() => state.value?.units || []);
 const hiddenCount = computed(() => Math.max(0, (state.value?.total || 0) - units.value.length));
@@ -62,6 +81,7 @@ function toggle(id, on) {
   const next = new Set(checked.value);
   if (on) next.add(id); else next.delete(id);
   checked.value = next;
+  emit('change');
 }
 
 /** Called by the page after the evaluation was saved. Resolves { ok, message }; nothing to send is ok. */
@@ -83,7 +103,10 @@ async function save(recordId) {
   }
 }
 
-defineExpose({ save, dirty });
+/** Ticks worth keeping in the draft: nothing when they equal what the server already holds. */
+const draftIds = () => (!state.value ? props.restoreIds.map(Number) : dirty.value ? [...checked.value] : []);
+
+defineExpose({ save, dirty, draftIds });
 </script>
 
 <template>

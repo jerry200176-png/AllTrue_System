@@ -113,4 +113,27 @@ describe('LessonPlanUnits (#4970 step 5)', () => {
     const { violations } = await axe.run(w.element, { rules: { 'color-contrast': { enabled: false } } });
     expect(violations).toEqual([]);
   });
+
+  it('a different lesson never inherits the old lesson state or ticks, and a late old response is dropped', async () => {
+    let release;
+    const w = await mountIt();
+    await w.findAll('input[type=checkbox]')[0].setValue(true);
+    authedFetch.mockImplementationOnce(() => new Promise((r) => { release = () => r(json({ data: { ...PAYLOAD, units: [unit(9, '新堂單元')] } })); }));
+    await w.setProps({ classSessionId: 32 });
+    expect(w.findAll('input[type=checkbox]')).toHaveLength(0);
+    expect(w.vm.dirty).toBe(false);
+    expect(await w.vm.save(77)).toEqual({ ok: true });
+    expect(calls.filter((c) => c.method === 'PUT')).toHaveLength(0);
+    release(); await flushPromises();
+    expect(w.findAll('input[type=checkbox]').map((b) => b.element.checked)).toEqual([false]);
+  });
+
+  it('restores ticks kept in a draft on top of the server state and offers them back to the draft', async () => {
+    const w = await mountIt({ restoreIds: [2] });
+    expect(w.findAll('input[type=checkbox]').map((b) => b.element.checked)).toEqual([false, true, true]);
+    expect(w.emitted('change')).toBeTruthy();
+    expect([...w.vm.draftIds()].sort()).toEqual([2, 3]);
+    await w.vm.save(77);
+    expect(calls.find((c) => c.method === 'PUT').body.unit_ids.sort()).toEqual([2, 3]);
+  });
 });
