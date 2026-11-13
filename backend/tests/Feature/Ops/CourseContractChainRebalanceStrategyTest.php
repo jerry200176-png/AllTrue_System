@@ -1508,7 +1508,9 @@ final class CourseContractChainRebalanceStrategyTest extends TestCase
 
     /**
      * #5236 review P2c. Execute and restore recompute the counters of the contracts they touch, so the restore is exact only
-     * when the counters stored before the execute are the ones a recompute writes. The plan refuses anything else.
+     * when the counters stored before the execute are the ones a recompute writes. The plan refuses anything else on a
+     * contract a move touches. On a contract no move touches (its counters are never written) the same finding is a
+     * warning that is bound into the digest (#5124 dry-run 2026-11-13, #5242 review).
      */
     public function test_stored_counters_must_be_the_derived_ones_before_anything_executes(): void
     {
@@ -1521,17 +1523,36 @@ final class CourseContractChainRebalanceStrategyTest extends TestCase
         $this->assertSame([8, 0, 1, 7, 0, 8], array_map('intval', array_merge(array_slice(array_values($counters($a)), 0, 2),
             array_slice(array_values($counters($b)), 0, 2), array_slice(array_values($counters($c)), 0, 2))));
 
-        // Session counters on every contract of the chain; minute columns on the contracts a move touches.
-        foreach ([[$a, ['UsedSessions' => 7]], [$b, ['RemainingSessions' => 0]], [$c, ['UsedSessions' => 3]], [$b, ['PurchasedMinutes' => null]],
+        $clean = $this->strategy()->plan($params);
+        $this->assertSame([], $clean['warnings']);
+
+        // Session and minute counters on the contracts a move touches (both ends): refused, never a warning.
+        foreach ([[$a, ['UsedSessions' => 7]], [$b, ['RemainingSessions' => 0]], [$b, ['PurchasedMinutes' => 5]],
             [$a, ['RemainingMinutes' => 5]]] as [$id, $change]) {
             $kept = $counters($id);
             DB::table('StudentClass')->where('ID', $id)->update($change);
             $plan = $this->strategy()->plan($params);
             $this->assertSame(['counters_not_derived'], $plan['errors'], json_encode($change));
             $this->assertSame([['code' => 'counters_not_derived', 'contract_id' => $id]], $plan['findings'], json_encode($change));
+            $this->assertSame([], $plan['warnings'], json_encode($change));
             DB::table('StudentClass')->where('ID', $id)->update($kept);
             $this->assertTrue($this->strategy()->plan($params)['ok'], json_encode($change));
         }
+
+        // The same on the contract no move touches: the plan passes, the finding is a warning, and the digest is another
+        // one (the stored counters are not part of the observed state, so only the warning itself can make it differ).
+        $kept = $counters($c);
+        DB::table('StudentClass')->where('ID', $c)->update(['UsedSessions' => 3]);
+        $plan = $this->strategy()->plan($params);
+        $this->assertSame([true, [], []], [$plan['ok'], $plan['errors'], $plan['findings']]);
+        $this->assertSame([['code' => 'counters_not_derived', 'contract_id' => $c, 'session_id' => null]], $plan['warnings']);
+        $this->assertNotSame($clean['digest'], $plan['digest'], 'a plan with a warning must not share the digest of the plan without it');
+        // An approval of the plan without the warning does not cover the plan with it; nothing moves.
+        $before = $this->checksums();
+        $this->assertSame(['digest_drift'], $this->strategy()->execute(['expected_digest' => $clean['digest'], 'state' => 'pinned'] + $clean, $this->context())['errors']);
+        $this->assertSame($before, $this->checksums());
+        DB::table('StudentClass')->where('ID', $c)->update($kept);
+        $this->assertSame([$clean['digest'], []], [$this->strategy()->plan($params)['digest'], $this->strategy()->plan($params)['warnings']]);
         // The minute columns of a contract no move touches are not written by execute or restore, so they are not asked for.
         $kept = $counters($c);
         DB::table('StudentClass')->where('ID', $c)->update(['PurchasedMinutes' => null]);
@@ -1552,6 +1573,203 @@ final class CourseContractChainRebalanceStrategyTest extends TestCase
         $this->assertTrue($result['ok'], json_encode($result['errors'] ?? null));
         DB::table('StudentClass')->where('ID', $c)->update(['UsedSessions' => 3]);
         $this->assertSame([true, 1], array_values(array_intersect_key($this->strategy()->rollback($result['snapshot'], $context), ['ok' => 1, 'restored' => 1])));
+    }
+
+    /**
+     * #5242 review P2. A contract that was never recomputed since the minute columns were added holds NULL in them; there is
+     * no separate recompute operation, so refusing it left no way forward. On a touched contract NULL is accepted, because
+     * the recompute of the execute writes the derived minutes; any other value that is not the derived one is still refused.
+     */
+    public function test_null_minute_counters_on_a_touched_contract_are_accepted_and_recomputed_by_the_execute(): void
+    {
+        $p = $this->pair();
+        [$a, $b] = [(int) $p['a']->ID, (int) $p['b']->ID];
+        DB::table('StudentClass')->whereIn('ID', [$a, $b])->update(['PurchasedMinutes' => null, 'RemainingMinutes' => null]);
+
+        $plan = $this->strategy()->plan($p['params']);
+        $this->assertSame([true, [], []], [$plan['ok'], $plan['errors'], $plan['warnings']]);
+
+        $result = $this->strategy()->execute($this->pinned($p['params']), $this->context());
+        $this->assertTrue($result['ok'], json_encode($result['errors'] ?? null));
+        foreach ([$a => 8, $b => 2] as $id => $used) {
+            $course = StudentClass::query()->where('ID', $id)->firstOrFail();
+            $perLesson = SessionDeductionService::billingStandardMinutes($course);
+            $this->assertSame([$used, 8 - $used, 8 * $perLesson, (8 - $used) * $perLesson],
+                array_map('intval', [$course->getAttribute('UsedSessions'), $course->getAttribute('RemainingSessions'),
+                    $course->getAttribute('PurchasedMinutes'), $course->getAttribute('RemainingMinutes')]), "contract {$id}");
+            $this->assertNotNull($course->getAttribute('PurchasedMinutes'));
+            $this->assertNotNull($course->getAttribute('RemainingMinutes'));
+        }
+        $this->assertTrue($this->strategy()->verify([], $result)['ok']);
+
+        // A minute value that is neither NULL nor the derived one is still refused.
+        $q = $this->pair();
+        DB::table('StudentClass')->where('ID', $q['b']->ID)->update(['PurchasedMinutes' => null, 'RemainingMinutes' => 5]);
+        $this->assertSame(['counters_not_derived'], $this->strategy()->plan($q['params'])['errors']);
+    }
+
+    // ── Scope of the mirror rule: touched contracts refuse, untouched contracts warn (#5124 dry-run 2026-11-13) ──
+
+    /**
+     * The shape of the refused production dry-run, synthetic ids: five contracts taught 8 / 8 / 9 / 8 / 1, two moves on the
+     * last three, and the first contract (touched by no move) with one taught lesson that has no deduction (taught 8, ledger 7).
+     *
+     * @return array{student: int, contracts: list<int>, moves: list<array<string,mixed>>, sessions: list<list<int>>, params: array<string,mixed>, gap: int, warning: array<string,mixed>}
+     */
+    private function untouchedGap(): array
+    {
+        $x = $this->decided();
+        $x['gap'] = $x['sessions'][0][3];
+        $this->removeDeduction($x['gap']);
+        $x['warning'] = ['code' => 'mirror_inconsistent', 'contract_id' => $x['contracts'][0], 'session_id' => $x['gap']];
+
+        return $x;
+    }
+
+    private function removeDeduction(int $sessionId): void
+    {
+        $this->assertSame(1, DB::table('session_deduction_ledger')->where('class_session_id', $sessionId)->delete());
+    }
+
+    public function test_a_ledger_gap_on_a_contract_no_move_touches_is_a_warning_and_the_plan_passes(): void
+    {
+        $x = $this->untouchedGap();
+        $this->assertSame([8, 7], [$this->taughtNow([$x['contracts'][0]])[0],
+            DB::table('session_deduction_ledger')->where('student_class_id', $x['contracts'][0])->count()]);
+
+        $plan = $this->strategy()->plan($x['params']);
+        $this->assertSame([true, [], []], [$plan['ok'], $plan['errors'], $plan['findings']]);
+        $this->assertSame([$x['warning']], $plan['warnings'], 'one warning, naming the contract and the lesson');
+        $this->assertSame([8, 8, 8, 8, 2], $this->taughtAfter($plan));
+        $this->assertSame([34, 34], [$plan['totals']['taught_before'], $plan['totals']['taught_after']]);
+
+        // The warning is part of what gets pinned and approved.
+        $pinned = $this->pinned($x['params']);
+        $this->assertSame([$x['warning']], $pinned['warnings']);
+    }
+
+    public function test_the_digest_of_a_plan_with_a_warning_differs_from_the_plan_without_it(): void
+    {
+        $x = $this->decided();
+        $clean = $this->strategy()->plan($x['params']);
+        $this->assertSame([true, []], [$clean['ok'], $clean['warnings']]);
+
+        $this->removeDeduction($x['sessions'][0][3]);
+        $warned = $this->strategy()->plan($x['params']);
+        $this->assertTrue($warned['ok']);
+        $this->assertCount(1, $warned['warnings']);
+        $this->assertNotSame($clean['digest'], $warned['digest']);
+        // A plan pinned before the gap appeared is not the plan that would run now.
+        $stale = $this->strategy()->plan(['expected_digest' => $clean['digest']] + $x['params']);
+        $this->assertSame([false, ['digest_mismatch'], 'digest_mismatch'], [$stale['ok'], $stale['errors'], $stale['state']]);
+    }
+
+    public function test_the_same_gap_on_a_touched_contract_or_on_a_moved_lesson_is_still_refused(): void
+    {
+        // On the source of a move (a lesson that is not moved), on the target of a move, and on the moved lesson itself.
+        foreach ([[2, 0], [3, 0], [4, 0], [2, 8], [3, 7]] as [$contract, $lesson]) {
+            $x = $this->decided();
+            $sid = $x['sessions'][$contract][$lesson];
+            $this->removeDeduction($sid);
+            $plan = $this->strategy()->plan($x['params']);
+            $this->assertSame([false, ['mirror_inconsistent'], []], [$plan['ok'], $plan['errors'], $plan['warnings']], "contract {$contract} lesson {$lesson}");
+            $this->assertContains(['code' => 'mirror_inconsistent', 'session_id' => $sid], $plan['findings']);
+            $this->assertContains(['code' => 'mirror_inconsistent', 'contract_id' => $x['contracts'][$contract]], $plan['findings']);
+        }
+
+        // A gap on an untouched contract does not hide one on a touched contract: the plan is refused and both are reported.
+        $x = $this->untouchedGap();
+        $this->removeDeduction($x['sessions'][3][0]);
+        $plan = $this->strategy()->plan($x['params']);
+        $this->assertSame([false, ['mirror_inconsistent']], [$plan['ok'], $plan['errors']]);
+        $this->assertSame([$x['warning']], $plan['warnings']);
+        $this->assertContains(['code' => 'mirror_inconsistent', 'session_id' => $x['sessions'][3][0]], $plan['findings']);
+    }
+
+    public function test_a_mirror_row_between_an_untouched_and_a_touched_contract_is_refused(): void
+    {
+        // The deduction of an untouched contract's lesson points at a contract a move touches: that contract's usage is wrong.
+        $x = $this->decided();
+        $sid = $x['sessions'][0][3];
+        DB::table('session_deduction_ledger')->where('class_session_id', $sid)->update(['student_class_id' => $x['contracts'][3]]);
+        $plan = $this->strategy()->plan($x['params']);
+        $this->assertSame([false, ['mirror_inconsistent']], [$plan['ok'], $plan['errors']]);
+        $this->assertContains(['code' => 'mirror_inconsistent', 'session_id' => $sid], $plan['findings']);
+        $this->assertContains(['code' => 'mirror_inconsistent', 'contract_id' => $x['contracts'][3]], $plan['findings']);
+
+        // Between two untouched contracts: warnings on both, the plan passes.
+        $x = $this->decided();
+        $sid = $x['sessions'][0][3];
+        DB::table('session_deduction_ledger')->where('class_session_id', $sid)->update(['student_class_id' => $x['contracts'][1]]);
+        $plan = $this->strategy()->plan($x['params']);
+        $this->assertSame([true, []], [$plan['ok'], $plan['findings']]);
+        $this->assertEqualsCanonicalizing([['code' => 'mirror_inconsistent', 'contract_id' => $x['contracts'][0], 'session_id' => $sid],
+            ['code' => 'mirror_inconsistent', 'contract_id' => $x['contracts'][1], 'session_id' => null]], $plan['warnings']);
+    }
+
+    public function test_execute_under_the_scoped_rule_moves_only_the_listed_lessons_and_leaves_the_untouched_contract_as_it_was(): void
+    {
+        $x = $this->untouchedGap();
+        $untouched = [$x['contracts'][0], $x['contracts'][1]];
+        $before = $this->rowsOf($untouched);
+        $money = $this->money();
+        $moved = [$x['sessions'][2][8], $x['sessions'][3][7]];
+        $others = array_values(array_diff(array_merge(...$x['sessions']), $moved));
+        $ownersBefore = $this->owners($others);
+
+        $run = $this->viaPop($this->service(), $x['params']);
+        $this->assertSame(['succeeded', 'succeeded'], [$run['execute']['result'], $run['verify']['result']]);
+        $this->assertSame([8, 8, 8, 8, 2], $this->taughtNow($x['contracts']));
+        $this->assertSame([$x['contracts'][3], $x['contracts'][4]], $this->owners($moved));
+        $this->assertSame($ownersBefore, $this->owners($others), 'no lesson outside the list changed its contract');
+        $this->assertSame(2, DB::table('class_session_reassignments')->count());
+        $this->assertSame($before, $this->rowsOf($untouched), 'the untouched contracts, their lessons and their mirror rows are field by field as before');
+        $this->assertSame($money, $this->money());
+        // The gap is still there, exactly as it was, and the receipt names it.
+        $this->assertSame(7, DB::table('session_deduction_ledger')->where('student_class_id', $x['contracts'][0])->count());
+        // The receipt and the snapshot are read back from MySQL JSON columns, which store object keys in their own order.
+        $this->assertEquals([$x['warning']], $run['execute']['warnings']);
+        $this->assertEquals([$x['warning']], $run['execute']['snapshot']['warnings']);
+    }
+
+    /** Threat: a narrower check must not let a move hide or worsen a gap on an untouched contract. */
+    public function test_verify_holds_an_untouched_contract_to_the_gap_it_had_and_the_undo_still_works(): void
+    {
+        $x = $this->untouchedGap();
+        $chain = $this->rowsOf($x['contracts']);
+        $context = $this->context();
+        $result = $this->strategy()->execute($this->pinned($x['params']), $context);
+        $this->assertTrue($result['ok'], json_encode($result['errors'] ?? null));
+        $this->assertSame([$x['warning']], $result['warnings']);
+        $this->assertTrue($this->strategy()->verify([], $result)['ok']);
+
+        // The gap grows after the execute: the untouched contract is no longer as recorded.
+        $second = $x['sessions'][0][4];
+        $row = (array) DB::table('session_deduction_ledger')->where('class_session_id', $second)->first();
+        $this->removeDeduction($second);
+        $verify = $this->strategy()->verify([], $result);
+        $this->assertFalse($verify['ok']);
+        $this->assertContains('mirror_inconsistent_' . $x['contracts'][0], $verify['errors']);
+        DB::table('session_deduction_ledger')->insert($row);
+        $this->assertTrue($this->strategy()->verify([], $result)['ok']);
+
+        // A snapshot without the recorded figures (written before this rule) keeps the strict rule on every contract.
+        $old = $result;
+        foreach ($old['snapshot']['contracts'] as $i => $contract) {
+            unset($old['snapshot']['contracts'][$i]['before']['usage']);
+        }
+        $this->assertContains('mirror_inconsistent_' . $x['contracts'][0], $this->strategy()->verify([], $old)['errors']);
+
+        // The undo is not held back by the gap either, and returns the whole chain field by field.
+        $back = $this->strategy()->rollback($result['snapshot'], $context);
+        $this->assertSame([true, 2], [$back['ok'], $back['restored']]);
+        $this->assertSame($chain, $this->rowsOf($x['contracts']));
+
+        // Once the gap is repaired, the same manifest plans without a warning.
+        DB::table('session_deduction_ledger')->insert(['student_class_id' => $x['contracts'][0], 'event_type' => 'deduct', 'source' => 'attendance',
+            'class_session_id' => $x['gap'], 'created_at' => now(), 'updated_at' => now()]);
+        $plan = $this->strategy()->plan($x['params']);
+        $this->assertSame([true, []], [$plan['ok'], $plan['warnings']]);
     }
 
     /**

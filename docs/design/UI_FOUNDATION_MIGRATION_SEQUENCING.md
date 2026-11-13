@@ -130,7 +130,6 @@ Census (#4989, `node scripts/design/overlay-census.mjs`; `--json` adds line, tri
 | `components/tuition/MonthlyDraftsPanel.vue` | AtDialog(1) | 0 |
 | `components/tuition/RefundDialog.vue` | AtDialog(1) | 0 |
 | `lib/scheduleDisplay.js` | window.confirm(1) | 0 |
-| `pages/AssessmentPage.vue` | AtDialog(2) window.confirm(1) | 0 |
 | `pages/AttendancePage.vue` | raw-teleport(4) window.confirm(2) | 2 |
 | `pages/BindingManagementPage.vue` | AtDialog(1) | 0 |
 | `pages/BranchManagementPage.vue` | hand-rolled(2) | 1 |
