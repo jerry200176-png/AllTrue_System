@@ -91,7 +91,8 @@
           </TableHeader>
           <TableBody>
             <TableRow v-for="teacher in filteredTeachers" :key="teacher.teacher_id">
-              <TableCell :class="bodyCell">
+              <!-- in-app #543 family: the name column keeps the whole name on one line (the table is wider than the card and scrolls). -->
+              <TableCell :class="[bodyCell, 'teacher-name tw:min-w-[7.5em] tw:whitespace-nowrap']">
                 <strong>{{ teacher.teacher_name }}</strong>
                 <small :class="smallText">老師</small>
                 <span :class="['status', statusClass(teacher.overall_status), statusChip, statusTone[statusClass(teacher.overall_status)]]">{{ statusLabel(teacher) }}</span>
@@ -151,7 +152,7 @@
       <div class="mobile-list tw:hidden tw:gap-3 tw:max-[900px]:grid">
         <Card v-for="teacher in filteredTeachers" :key="teacher.teacher_id" class="eligibility-card teacher-card tw:gap-0 tw:p-4 tw:shadow-none">
           <div class="teacher-card-header tw:flex tw:items-start tw:justify-between tw:gap-3">
-            <div><strong>{{ teacher.teacher_name }}</strong><small :class="smallText">老師</small></div>
+            <div class="tw:min-w-0 tw:[word-break:keep-all] tw:[overflow-wrap:break-word]"><strong>{{ teacher.teacher_name }}</strong><small :class="smallText">老師</small></div>
             <span :class="['status', statusClass(teacher.overall_status), statusChip, statusTone[statusClass(teacher.overall_status)]]">{{ statusLabel(teacher) }}</span>
           </div>
           <div :class="componentRow"><span>核薪總科目數</span><span :class="componentValue">{{ formatSubjects(teacher.settlement?.payroll_subject_count) }}</span></div>

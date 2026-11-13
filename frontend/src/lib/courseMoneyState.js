@@ -121,6 +121,19 @@ const CLOSED_REASONS = ['settled', 'settled_pending', 'waived', 'contract_amende
 export const isClosedReason = (reason) => CLOSED_REASONS.includes(reason);
 
 /**
+ * A degraded fallback row (`_noncanonical`) that lacks the inputs the legacy inference needs: no status, or no way to
+ * tell session from monthly (neither payment_type nor a purchased-session count). Server rows are never unknown:
+ * they carry their own `history_reason`. The page keeps such a row in the working section and says it is unclassified.
+ */
+export const classificationUnknown = (course) => {
+  if (!course?._noncanonical) return false;
+  if (!String(course?.status || '').trim()) return true;
+  const hasMode = String(course?.payment_type || '').trim() !== ''
+    || course?.sessions_purchased != null || course?.SessionCount != null;
+  return !hasMode;
+};
+
+/**
  * The one closed-reason verdict. Server `closed_reason` wins; for legacy rows without one an
  * inactive course counts as 'completed' when it is monthly/non-session, or session-mode with the
  * server saying paid (`isCourseSettled === true`, so `_noncanonical` rows never count) and a known
@@ -129,6 +142,9 @@ export const isClosedReason = (reason) => CLOSED_REASONS.includes(reason);
 export const closedReason = (course) => {
   if (course?.closed_reason) return course.closed_reason;
   if (String(course?.status || '').toLowerCase() !== 'inactive') return null;
+  // in-app #540: unknown is not history. A fallback row that cannot tell session mode from monthly must not
+  // fall into the `!isSessionPayment` default below and read as 'completed'.
+  if (classificationUnknown(course)) return null;
   if (!isSessionPayment(course)) return 'completed';
   const remaining = ownRemainingSessions(course);
   return isCourseSettled(course) === true && remaining != null && remaining <= 0 ? 'completed' : null;
