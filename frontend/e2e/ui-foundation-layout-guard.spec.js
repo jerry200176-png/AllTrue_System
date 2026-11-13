@@ -71,6 +71,19 @@ const PAGES = [
     setup: async (page) => {
       await page.getByRole('tab', { name: '讀書計畫' }).click();
       await expect(page.getByTestId('task-8')).toBeVisible();
+      // Five tabs must not widen the profile dialog: the tab strip scrolls inside itself, nothing overflows the dialog or the page.
+      const tabs = await page.evaluate(() => {
+        const dialog = document.querySelector('[role="dialog"]').getBoundingClientRect();
+        const list = document.querySelector('[data-testid="profile-tabs"]');
+        const box = list.getBoundingClientRect();
+        const first = list.querySelector('[role="tab"]').getBoundingClientRect();
+        return { listRight: box.right, dialogRight: dialog.right, listScroll: getComputedStyle(list).overflowX, firstLeft: first.left - box.left, tabH: Math.min(...[...list.querySelectorAll('[role="tab"]')].map((t) => t.getBoundingClientRect().height)), dialogOverflow: document.querySelector('[role="dialog"]').scrollWidth - document.querySelector('[role="dialog"]').clientWidth };
+      });
+      expect(tabs.listRight, 'tab strip wider than the dialog').toBeLessThanOrEqual(tabs.dialogRight + 1);
+      expect(tabs.dialogOverflow, 'the dialog scrolls sideways').toBeLessThanOrEqual(0);
+      expect(tabs.listScroll).toBe('auto');
+      expect(tabs.firstLeft, 'tabs start at the left edge of the strip').toBeLessThanOrEqual(8);
+      expect(tabs.tabH, 'tab targets are at least 44px').toBeGreaterThanOrEqual(44);
       // Phone: one vertical list of seven days; desktop: seven columns side by side.
       const columns = () => page.evaluate(() => new Set([...document.querySelectorAll('[data-testid^="day-"]')].map((d) => Math.round(d.getBoundingClientRect().top))).size === 1);
       await expect.poll(columns, { message: 'seven columns on a wide dialog, one stacked list on a phone' }).toBe(page.viewportSize().width >= 1280);

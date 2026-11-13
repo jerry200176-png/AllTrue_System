@@ -295,6 +295,26 @@ describe('StudentStudyWeek (issue 5269 step 2)', () => {
     expect(w.text()).not.toContain('No query results');
   });
 
+  it('an older list answer does not undo a tick confirmed after that list request started', async () => {
+    let releaseList;
+    const w = await mountIt();
+    // A save on task 2 starts a list refresh that we hold back.
+    routes['PATCH /api/v1/study-tasks/2'] = () => json({ data: tasks[1] });
+    routes['GET /api/v1/students/1/study-tasks'] = () => new Promise((r) => { releaseList = () => r(json({ data: TASKS })); }); // the OLD snapshot: task 1 not done
+    await byId(w, 'title-2').trigger('click');
+    await byId(w, 'f-save').trigger('click'); await flushPromises();
+    expect(releaseList).toBeTypeOf('function');
+    // While it is pending, a tick on task 1 is confirmed by the server.
+    routes['PATCH /api/v1/study-tasks/1'] = () => json({ data: task(1, '2026-11-09', { title: '預習第三章', kind: 'preview', minutes: 30, done_at: '2026-11-13 09:00:00' }) });
+    await byId(w, 'done-1').setValue(true); await flushPromises();
+    expect(byId(w, 'done-1').element.checked).toBe(true);
+    releaseList(); await flushPromises();
+    expect(byId(w, 'done-1').element.checked).toBe(true);
+    calls.length = 0;
+    await byId(w, 'done-1').setValue(false);
+    expect(calls.find((c) => c.method === 'PATCH').body).toEqual({ done: false });
+  });
+
   it('is axe clean', async () => {
     const w = await mountIt();
     await byId(w, 'title-1').trigger('click');

@@ -7,6 +7,9 @@
 //  - A tick is the one optimistic change: it is applied at once, replaced by the server's task when the request succeeds,
 //    and rolled back with a visible message when it fails.
 //  - While a request for a task is in flight, that task's controls are disabled.
+//  - A list response never overwrites a task that has a mutation in flight, or that a mutation response confirmed AFTER that
+//    list request started (an older snapshot must not undo a confirmed tick, edit or delete). Each list request and each
+//    confirmation takes a number from one counter; the list keeps the local version when its confirmation number is newer.
 //  - Changing week (or student) drops every in-flight response that belongs to the old week.
 //  - A 403 on any write means this user may read but not write for this student: the write controls go away and one line says why.
 import { computed, ref, watch } from 'vue';
@@ -63,17 +66,30 @@ const unitTitle = computed(() => Object.fromEntries(plans.value.flatMap((p) => (
 const unitOptions = computed(() => activePlans.value.map((p) => ({ plan: p, units: [...(p.units || [])].sort((a, b) => a.sort_order - b.sort_order) })).filter((g) => g.units.length));
 
 let loadSeq = 0;
+let clock = 0; // one counter for list requests and mutation confirmations
+const confirmedAt = {}; // task id -> { at, gone }: the last mutation the server confirmed for that task
+const markConfirmed = (id, gone = false) => { confirmedAt[id] = { at: ++clock, gone }; };
+/** The list answer, except for tasks whose local state is newer than the request (in flight, or confirmed since it started). */
+function mergeList(list, started) {
+  const local = new Map(tasks.value.map((t) => [t.id, t]));
+  return list.flatMap((t) => {
+    const c = confirmedAt[t.id];
+    if (!pending.value[t.id] && !(c && c.at > started)) return [t];
+    return c?.gone ? [] : [local.get(t.id) ?? t];
+  });
+}
 /** Fetch the shown week. `keep` leaves the current list on screen (a reload after a write) instead of showing the skeleton. */
 async function load({ keep = false } = {}) {
   const my = ++loadSeq;
   const id = props.studentId;
   const start = weekStart.value;
+  const started = ++clock;
   if (!keep) { tasks.value = []; loading.value = true; }
   loadError.value = '';
   try {
     const body = await api(`/students/${id}/study-tasks?from=${start}&to=${addDays(start, 6)}`);
     if (my !== loadSeq) return; // another week (or student) was asked for since: this answer is stale
-    tasks.value = Array.isArray(body.data) ? body.data : [];
+    tasks.value = Array.isArray(body.data) ? mergeList(body.data, started) : [];
   } catch (e) {
     if (my === loadSeq) loadError.value = e.status === 403 ? e.message : '讀書計畫載入失敗，請再試一次';
   } finally {
@@ -113,6 +129,7 @@ async function toggle(task) {
   try {
     const body = await api(`/study-tasks/${task.id}`, { method: 'PATCH', body: JSON.stringify({ done }) });
     if (body.data) patchLocal(task.id, body.data);
+    markConfirmed(task.id);
   } catch (e) {
     patchLocal(task.id, { done_at: before });
     markReadOnly(e);
@@ -143,7 +160,8 @@ async function submit() {
   saving.value = true; formError.value = ''; actionError.value = '';
   if (f.id) setPending(f.id, true);
   try {
-    await api(f.id ? `/study-tasks/${f.id}` : `/students/${props.studentId}/study-tasks`, { method: f.id ? 'PATCH' : 'POST', body: JSON.stringify(body) });
+    const res = await api(f.id ? `/study-tasks/${f.id}` : `/students/${props.studentId}/study-tasks`, { method: f.id ? 'PATCH' : 'POST', body: JSON.stringify(body) });
+    if (f.id) { if (res.data) patchLocal(f.id, res.data); markConfirmed(f.id); }
   } catch (e) {
     markReadOnly(e);
     saving.value = false;
@@ -168,6 +186,7 @@ async function confirmDelete() {
   setPending(task.id, true); actionError.value = ''; notice.value = '';
   try {
     await api(`/study-tasks/${task.id}`, { method: 'DELETE' });
+    markConfirmed(task.id, true);
     notice.value = '已刪除';
     await load({ keep: true });
   } catch (e) {
