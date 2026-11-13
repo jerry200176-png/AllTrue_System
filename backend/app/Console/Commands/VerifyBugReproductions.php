@@ -189,18 +189,18 @@ class VerifyBugReproductions extends Command
                                 AND NOT EXISTS (SELECT 1 FROM Invoice i WHERE {$link} AND i.TotalAmount > " . Invoice::netPaidSql('i') . ")))",
             ],
             [
+                // No `sql`: counted by InvoiceAmountParityCensus. Reported first; enforce after 14 nights at 0 (#4991 item 2).
+                'key' => 'screen_amount_vs_resolver',
+                'label' => 'Live bills whose header, line items and the amount the screens show (resolver) do not agree',
+                'issue' => '#4991/#3521', 'enforced' => false,
+            ],
+            [
                 // Observe-only (never enforced): allowed by Founder decision #5198 option A; ids per campus via sessions:census-before-contract-start.
                 'key' => 'lesson_before_contract_start',
                 'label' => 'Lessons dated before their contract StartDate (allowed; shown as 合約期間外, in-app #536)',
                 'issue' => '#5198', 'enforced' => false,
                 'sql' => "SELECT COUNT(*) AS c FROM ClassSession cs JOIN StudentClass sc ON sc.ID = cs.StudentClassID
                           WHERE " . ContractPeriod::SQL_BEFORE_START . " AND LOWER(COALESCE(cs.Status, '')) NOT IN ('cancelled', 'voided')",
-            ],
-            [
-                // No `sql`: counted by InvoiceAmountParityCensus. Reported first; enforce after 14 nights at 0 (#4991 item 2).
-                'key' => 'screen_amount_vs_resolver',
-                'label' => 'Live bills whose header, line items and the amount the screens show (resolver) do not agree',
-                'issue' => '#4991/#3521', 'enforced' => false,
             ],
         ];
     }
