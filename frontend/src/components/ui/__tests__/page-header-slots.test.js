@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { mount } from '@vue/test-utils';
-import PageHeader from '../PageHeader.vue';
-import CollapsibleGroup from '../CollapsibleGroup.vue';
+import PageHeader from '../page/PageHeader.vue';
+import CollapsibleGroup from '../page/CollapsibleGroup.vue';
 
 // PageHeader slots used by 課程查找 (#4989): `context`, `help` (a direct child of the header) and `actions`.
 describe('PageHeader slots', () => {
