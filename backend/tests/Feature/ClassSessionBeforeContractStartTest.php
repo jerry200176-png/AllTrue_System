@@ -80,6 +80,32 @@ class ClassSessionBeforeContractStartTest extends TestCase
         $this->assertSame([2, false, 'OPEN'], [$row['count'], $row['enforced'], $row['state']]);
     }
 
+    public function test_session_dates_post_flags_materialized_slots_for_count_and_package_courses(): void
+    {
+        $token = $this->token();
+        $student = $this->student(1);
+        $plain = $this->course($student->id, '2026-10-04');
+        $pkgA = $this->course($student->id, '2026-10-04');
+        $pkgB = $this->course($student->id, '2026-10-04');
+        DB::table('StudentClass')->whereIn('ID', [$pkgA->ID, $pkgB->ID])->update(['PackageID' => 9801]);
+        $expected = [];
+        foreach ([$plain, $pkgA] as $c) {
+            $expected[(int) $c->ID] = [$this->makeSession($c->ID, '2026-09-27'), $this->makeSession($c->ID, '2026-10-11')];
+        }
+
+        $res = $this->withHeaders(['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])
+            ->postJson('/api/v1/student-classes/session-dates', [
+                'branch_id' => 1, 'range_start' => '2026-09-01', 'range_end' => '2026-10-31',
+                'courses' => array_map(fn ($c) => ['id' => (int) $c->ID, 'first_class_date' => '2026-10-04', 'sessions_purchased' => 8, 'days_of_week' => [7]], [$plain, $pkgA]),
+            ])->assertOk();
+
+        foreach ($expected as $courseId => [$early, $inPeriod]) {
+            $flags = collect($res->json("{$courseId}.materialized"))->pluck('before_contract_start', 'id');
+            $this->assertTrue($flags[$early], "course {$courseId}: lesson before StartDate");
+            $this->assertFalse($flags[$inPeriod], "course {$courseId}: in-period lesson");
+        }
+    }
+
     private function token(): string
     {
         $user = User::create(['LoginName' => 'dir-bcs-' . uniqid() . '@test.com', 'Name' => '主任測試', 'PSW' => 'secret', 'type' => 'S', 'phone' => '0912345678']);

@@ -19,3 +19,18 @@ describe('beforeContractStart', () => {
     expect(rowOccupiesPurchasedQuota(vm, { exceptionsOccupyQuota: false })).toBe(true);
   });
 });
+
+describe('merging two sources for the same lesson', () => {
+  const vm = (flag) => sessionViewModelFromClassSessionsRow(row({ before_contract_start: flag }));
+
+  it.each([[true, false], [false, true]])('keeps true when one source says %s and the other %s', async (a, b) => {
+    const { mergeSessionViewModels, mergeSessionsByCourse } = await import('./classSessionsApi.js');
+    expect(mergeSessionViewModels([vm(a)], [vm(b)])[0].beforeContractStart).toBe(true);
+    expect(mergeSessionsByCourse({ 2: [vm(a)] }, { 2: [vm(b)] })[2][0].beforeContractStart).toBe(true);
+  });
+
+  it('stays false when neither source says true', async () => {
+    const { mergeSessionViewModels } = await import('./classSessionsApi.js');
+    expect(mergeSessionViewModels([vm(false)], [vm(false)])[0].beforeContractStart).toBe(false);
+  });
+});

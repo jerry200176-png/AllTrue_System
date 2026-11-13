@@ -259,9 +259,17 @@ const MATERIALIZED_STATUS_PRIORITY = new Map([
   'excused', 'leave_adjusted', 'leave', 'cancelled',
 ].map((status, index) => [status, index]));
 
+/**
+ * Two sources describe the same lesson id (class-sessions index, session-dates). A source that does not know the contract
+ * start says false; that must never hide a true from the other source (in-app #536).
+ */
+function keepBeforeContractStart(a, b) {
+  return a?.beforeContractStart === true || b?.beforeContractStart === true;
+}
+
 function canonicalMaterializedSession(first, second) {
   if (first.id && second.id && first.id === second.id) {
-    return { ...first, ...second };
+    return { ...first, ...second, beforeContractStart: keepBeforeContractStart(first, second) };
   }
 
   const firstRank = MATERIALIZED_STATUS_PRIORITY.get(String(first.status || '').toLowerCase()) ?? 99;
@@ -297,7 +305,7 @@ export function mergeSessionViewModels(existing = [], incoming = []) {
       snapshots.push(vm);
       continue;
     }
-    const latest = { ...snapshots[index], ...vm };
+    const latest = { ...snapshots[index], ...vm, beforeContractStart: keepBeforeContractStart(snapshots[index], vm) };
     // Calendar caches also carry legacy aliases; keep them on the same slot.
     snapshots[index] = 'session_date' in latest || 'start_time' in latest || 'end_time' in latest
       ? sessionViewModelWithLegacyFields(latest)
