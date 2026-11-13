@@ -3974,7 +3974,7 @@ const submitForm = async () => {
     if (!isCurrent()) return;
     if (!result.ok) { submitError.value = result.message; return; }
     const savedRecord = result.record;
-    // #4970 step 5: tick the plan units only after the evaluation is saved; a failure keeps the form (and its text) open.
+    // Learning plan (issue 4970, step 5): tick the plan units only after the evaluation is saved; a failure keeps the form (and its text) open.
     const unitSave = await planUnitsRef.value?.save(savedRecord.id);
     if (!isCurrent()) return;
     if (unitSave && !unitSave.ok) {

@@ -82,6 +82,30 @@ describe('LessonPlanUnits (#4970 step 5)', () => {
     expect(w.vm.dirty).toBe(true);
   });
 
+  it('keeps a tick made while the save is in flight, and stays dirty for the next save', async () => {
+    let release;
+    putResponse = () => new Promise((resolve) => { release = () => resolve(json({ data: { unit_ids: [2, 3] } })); });
+    const w = await mountIt();
+    await w.findAll('input[type=checkbox]')[1].setValue(true);
+    const pending = w.vm.save(77);
+    await w.findAll('input[type=checkbox]')[0].setValue(true); // changed while the PUT is running
+    release();
+    expect(await pending).toEqual({ ok: true });
+    expect(w.findAll('input[type=checkbox]')[0].element.checked).toBe(true);
+    expect(w.vm.dirty).toBe(true);
+  });
+
+  it('a failed 顯示全部 keeps the list and the ticks on screen', async () => {
+    const w = await mountIt();
+    await w.findAll('input[type=checkbox]')[1].setValue(true);
+    authedFetch.mockImplementationOnce(async () => json({ message: 'x' }, 500));
+    await w.findAll('button').find((b) => b.text().includes('顯示全部')).trigger('click');
+    await flushPromises();
+    expect(w.findAll('input[type=checkbox]')).toHaveLength(3);
+    expect(w.findAll('input[type=checkbox]')[1].element.checked).toBe(true);
+    expect(w.text()).toContain('完整單元清單暫時載入失敗');
+  });
+
   it('is axe clean', async () => {
     const w = await mountIt();
     const { violations } = await axe.run(w.element, { rules: { 'color-contrast': { enabled: false } } });

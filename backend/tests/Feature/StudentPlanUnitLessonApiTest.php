@@ -88,7 +88,7 @@ class StudentPlanUnitLessonApiTest extends TestCase
         return $plan;
     }
 
-    private function session(?StudentClass $course = null, string $date = '2026-11-09'): ClassSession
+    private function lesson(?StudentClass $course = null, string $date = '2026-11-09'): ClassSession
     {
         return ClassSession::create(['StudentClassID' => ($course ?? $this->course)->ID, 'SessionDate' => $date,
             'StartTime' => '16:00:00', 'EndTime' => '17:00:00', 'Status' => 'attended']);
@@ -120,12 +120,12 @@ class StudentPlanUnitLessonApiTest extends TestCase
     {
         $this->plan->update(['status' => 'archived']);
 
-        $this->candidates($this->teacher, $this->session())->assertOk()->assertJsonPath('data.plan', null)->assertJsonCount(0, 'data.units');
+        $this->candidates($this->teacher, $this->lesson())->assertOk()->assertJsonPath('data.plan', null)->assertJsonCount(0, 'data.units');
     }
 
     public function test_candidates_put_units_around_the_lesson_date_first_and_cap_at_eight(): void
     {
-        $res = $this->candidates($this->teacher, $this->session())->assertOk()
+        $res = $this->candidates($this->teacher, $this->lesson())->assertOk()
             ->assertJsonPath('data.can_tick', true)->assertJsonPath('data.total', 10)->assertJsonCount(8, 'data.units');
         $titles = array_column($res->json('data.units'), 'title');
 
@@ -134,12 +134,12 @@ class StudentPlanUnitLessonApiTest extends TestCase
         $this->assertTrue($res->json('data.units.1.behind'), 'planned end before the lesson date and not done = behind');
         $this->assertFalse($res->json('data.units.0.behind'));
 
-        $this->candidates($this->teacher, $this->session(), '&all=1')->assertJsonCount(10, 'data.units');
+        $this->candidates($this->teacher, $this->lesson(), '&all=1')->assertJsonCount(10, 'data.units');
     }
 
     public function test_tick_sets_lesson_date_actor_source_and_percent_done_follows(): void
     {
-        $s = $this->session();
+        $s = $this->lesson();
         $lr = $this->record($s);
 
         $this->sync($this->teacher, $lr, [5, 6])->assertOk()->assertJsonCount(2, 'data.unit_ids');
@@ -155,7 +155,7 @@ class StudentPlanUnitLessonApiTest extends TestCase
 
     public function test_sync_is_idempotent_and_untick_clears_only_this_lessons_units(): void
     {
-        $s = $this->session();
+        $s = $this->lesson();
         $lr = $this->record($s);
         $this->sync($this->teacher, $lr, [6])->assertOk();
         $first = $this->units[6]->fresh()->completed_at;
@@ -172,10 +172,10 @@ class StudentPlanUnitLessonApiTest extends TestCase
 
     public function test_candidates_keep_units_ticked_from_this_lesson_but_drop_those_done_elsewhere(): void
     {
-        $s1 = $this->session(null, '2026-11-02');
+        $s1 = $this->lesson(null, '2026-11-02');
         $lr1 = $this->record($s1);
         $this->sync($this->teacher, $lr1, [5])->assertOk();
-        $s2 = $this->session();
+        $s2 = $this->lesson();
         $lr2 = $this->record($s2);
         $this->sync($this->teacher, $lr2, [6])->assertOk();
 
@@ -188,9 +188,9 @@ class StudentPlanUnitLessonApiTest extends TestCase
 
     public function test_a_unit_completed_by_another_lesson_is_not_taken_or_cleared(): void
     {
-        $lr1 = $this->record($this->session(null, '2026-11-02'));
+        $lr1 = $this->record($this->lesson(null, '2026-11-02'));
         $this->sync($this->teacher, $lr1, [5])->assertOk();
-        $lr2 = $this->record($this->session());
+        $lr2 = $this->record($this->lesson());
 
         $this->sync($this->teacher, $lr2, [5, 6])->assertOk();
         $this->assertSame($lr1->id, (int) $this->units[5]->fresh()->completed_record_id, 'not stolen');
@@ -206,7 +206,7 @@ class StudentPlanUnitLessonApiTest extends TestCase
         $student = Student::create(['name' => '另一位', 'CampusID' => $this->campus, 'ClassID' => 3, 'enable' => 1, 'MDT' => now(), 'Notify_Token' => '']);
         $otherCourse = $this->makeCourse($student, $this->teacher['id']);
         $other = StudentPlanUnit::query()->where('plan_id', $this->makePlan($student, $otherCourse)->id)->first();
-        $lr = $this->record($this->session());
+        $lr = $this->record($this->lesson());
 
         $this->as($this->teacher)->putJson("/api/v1/learning-records/{$lr->id}/plan-units", ['unit_ids' => [$other->id]])->assertStatus(422);
         $this->assertNull($other->fresh()->completed_at);
@@ -214,20 +214,20 @@ class StudentPlanUnitLessonApiTest extends TestCase
 
     public function test_other_teacher_other_campus_and_substitute_are_refused(): void
     {
-        $lr = $this->record($this->session());
+        $lr = $this->record($this->lesson());
         $stranger = $this->staff('T', $this->campus);
         $this->sync($stranger, $lr, [6])->assertForbidden();
-        $this->candidates($stranger, $this->session())->assertForbidden();
+        $this->candidates($stranger, $this->lesson())->assertForbidden();
 
         $otherCampus = (int) CampusFactory::new()->create()->id;
         $this->sync($this->staff('A', $otherCampus), $lr, [6])->assertForbidden();
-        $this->candidates($this->staff('A', $otherCampus), $this->session())->assertForbidden();
+        $this->candidates($this->staff('A', $otherCampus), $this->lesson())->assertForbidden();
         $this->assertNull($this->units[6]->fresh()->completed_at);
     }
 
     public function test_an_evaluation_the_teacher_can_no_longer_edit_refuses_ticks_but_the_director_may(): void
     {
-        $lr = $this->record($this->session(), 'approved');
+        $lr = $this->record($this->lesson(), 'approved');
 
         $this->sync($this->teacher, $lr, [6])->assertStatus(409);
         $this->assertNull($this->units[6]->fresh()->completed_at);
@@ -237,15 +237,15 @@ class StudentPlanUnitLessonApiTest extends TestCase
 
     public function test_a_future_lesson_and_a_voided_record_are_refused(): void
     {
-        $this->sync($this->teacher, $this->record($this->session(null, '2026-11-20')), [6])->assertStatus(422);
-        $voided = $this->record($this->session());
+        $this->sync($this->teacher, $this->record($this->lesson(null, '2026-11-20')), [6])->assertStatus(422);
+        $voided = $this->record($this->lesson());
         $voided->forceFill(['VoidedAt' => now()])->save();
         $this->sync($this->teacher, $voided, [6])->assertStatus(422);
     }
 
     public function test_a_lesson_later_today_that_has_not_started_is_refused(): void
     {
-        $s = $this->session(null, '2026-11-13'); // frozen now is 10:00, the lesson starts at 16:00
+        $s = $this->lesson(null, '2026-11-13'); // frozen now is 10:00, the lesson starts at 16:00
         $lr = $this->record($s);
 
         $this->sync($this->teacher, $lr, [6])->assertStatus(422);
@@ -254,7 +254,7 @@ class StudentPlanUnitLessonApiTest extends TestCase
 
     public function test_delete_and_refill_keeps_the_lessons_ticks_owned_by_the_session(): void
     {
-        $s = $this->session();
+        $s = $this->lesson();
         $old = $this->record($s);
         $this->sync($this->teacher, $old, [6])->assertOk();
         $old->delete(); // LearningRecordController::destroy hard-deletes
@@ -277,7 +277,7 @@ class StudentPlanUnitLessonApiTest extends TestCase
 
     public function test_untick_after_the_record_was_deleted_and_refilled_clears_the_unit(): void
     {
-        $s = $this->session();
+        $s = $this->lesson();
         $old = $this->record($s);
         $this->sync($this->teacher, $old, [6])->assertOk();
         $old->delete();
@@ -290,7 +290,7 @@ class StudentPlanUnitLessonApiTest extends TestCase
 
     public function test_a_plan_unit_manually_unticked_on_the_gantt_forgets_its_source(): void
     {
-        $lr = $this->record($this->session());
+        $lr = $this->record($this->lesson());
         $this->sync($this->teacher, $lr, [6])->assertOk();
 
         $this->as($this->dir)->patchJson("/api/v1/learning-plans/{$this->plan->id}/units/{$this->units[6]->id}", ['completed' => false])->assertOk();

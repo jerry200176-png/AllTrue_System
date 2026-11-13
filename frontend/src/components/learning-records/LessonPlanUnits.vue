@@ -41,6 +41,8 @@ async function load(all = false) {
     state.value = data.plan && data.can_tick ? data : null;
   } catch (e) {
     if (my !== seq) return;
+    // A failed 「顯示全部」 keeps the list and the ticks already on screen.
+    if (all && state.value) { loadError.value = '完整單元清單暫時載入失敗，請再試一次。'; return; }
     state.value = null;
     // No right to see the plan is not an error for the evaluation; anything else is worth a line.
     loadError.value = e.status === 403 || e.status === 404 ? '' : '單元清單暫時載入失敗，評量本身不受影響。';
@@ -65,9 +67,12 @@ function toggle(id, on) {
 async function save(recordId) {
   if (!state.value || !dirty.value) return { ok: true };
   try {
-    const { data } = await api(`/learning-records/${recordId}/plan-units`, { method: 'PUT', body: JSON.stringify({ unit_ids: [...checked.value] }) });
+    const sent = [...checked.value];
+    const { data } = await api(`/learning-records/${recordId}/plan-units`, { method: 'PUT', body: JSON.stringify({ unit_ids: sent }) });
     saved.value = new Set(data.unit_ids || []);
-    checked.value = new Set(saved.value);
+    // Ticks changed while the request was in flight stay as the user left them (still dirty, sent on the next save).
+    const untouched = checked.value.size === sent.length && sent.every((id) => checked.value.has(id));
+    if (untouched) checked.value = new Set(saved.value);
     return { ok: true };
   } catch (e) {
     return { ok: false, message: e.message || '請稍後再試' };
@@ -81,8 +86,9 @@ defineExpose({ save, dirty });
   <section v-if="loading || state || loadError" class="form-group tw:space-y-2" data-testid="lesson-plan-units" aria-labelledby="lesson-plan-units-title">
     <h4 id="lesson-plan-units-title" class="tw:m-0 tw:text-tpl-body tw:font-semibold">這堂上完的單元</h4>
     <Skeleton v-if="loading && !state" class="tw:h-16 tw:w-full" />
-    <p v-else-if="loadError" class="tw:m-0 tw:text-tpl-caption tw:text-muted-foreground" role="status">{{ loadError }}</p>
+    <p v-else-if="loadError && !state" class="tw:m-0 tw:text-tpl-caption tw:text-muted-foreground" role="status">{{ loadError }}</p>
     <template v-else>
+      <p v-if="loadError" class="tw:m-0 tw:text-tpl-caption tw:text-muted-foreground" role="status">{{ loadError }}</p>
       <p class="tw:m-0 tw:text-tpl-caption tw:text-muted-foreground">依「{{ state.plan.title }}」學習計畫，勾選這堂課實際上完的單元；儲存評量時一併記錄。</p>
       <ul class="tw:m-0 tw:list-none tw:space-y-2 tw:p-0">
         <li v-for="u in units" :key="u.id" class="tw:rounded-md tw:border tw:border-border">
