@@ -215,4 +215,47 @@ describe('教材範本庫 panel', () => {
     expect(methods).toEqual(['PATCH']);
     expect(w.find('[role="alert"]').exists()).toBe(false);
   });
+
+  it('discards a pending detail load when the branch changes', async () => {
+    let release;
+    const gate = new Promise((r) => { release = r; });
+    vi.stubGlobal('fetch', vi.fn(async (input, options = {}) => {
+      const url = String(input);
+      if (!options.method && /templates\/5$/.test(url)) {
+        await gate;
+        return { ok: true, json: async () => ({ data: DETAIL }) };
+      }
+      return { ok: true, json: async () => ({ data: [TEMPLATE] }) };
+    }));
+    const w = mount(Panel, { props: { branchId: 1, isDirector: true } });
+    await flushPromises();
+    await btn(w, '編輯').trigger('click');
+    await w.setProps({ branchId: 2 });
+    release();
+    await flushPromises();
+    expect(w.find('.ctp-editor').exists()).toBe(false);
+  });
+
+  it('disables create, edit, cancel and list actions while saving, and keeps the editor state', async () => {
+    let release;
+    const gate = new Promise((r) => { release = r; });
+    vi.stubGlobal('fetch', vi.fn(async (input, options = {}) => {
+      if (options.method === 'PUT') await gate;
+      const body = options.method === 'POST' ? { data: { id: 9 } } : { data: [TEMPLATE] };
+      return { ok: true, json: async () => body };
+    }));
+    const w = mount(Panel, { props: { branchId: 1, isDirector: true } });
+    await flushPromises();
+    await btn(w, '新增範本').trigger('click');
+    await w.find('input[placeholder^="例如"]').setValue('某範本');
+    await btn(w, '儲存').trigger('click');
+    await flushPromises();
+    for (const label of ['新增範本', '編輯', '封存', '取消']) {
+      expect(btn(w, label).attributes('disabled')).toBeDefined();
+    }
+    release();
+    await flushPromises();
+    expect(w.find('.ctp-editor').exists()).toBe(false);
+    expect(btn(w, '新增範本').attributes('disabled')).toBeUndefined();
+  });
 });

@@ -15,7 +15,7 @@
         <option value="active">使用中</option>
         <option value="archived">已封存</option>
       </select>
-      <Button v-if="isDirector" size="sm" class="tw:ml-auto" @click="startCreate">新增範本</Button>
+      <Button v-if="isDirector" size="sm" class="tw:ml-auto" :disabled="saving" @click="startCreate">新增範本</Button>
     </div>
     <p v-if="error" role="alert" class="tw:text-sm tw:text-destructive">{{ error }}</p>
 
@@ -77,7 +77,7 @@
 
         <p v-if="formError" role="alert" class="tw:text-sm tw:text-destructive">{{ formError }}</p>
         <div class="tw:flex tw:justify-end tw:gap-2">
-          <Button size="sm" variant="ghost" @click="editor = null">{{ isDirector ? '取消' : '關閉' }}</Button>
+          <Button size="sm" variant="ghost" :disabled="saving" @click="editor = null">{{ isDirector ? '取消' : '關閉' }}</Button>
           <Button v-if="isDirector" size="sm" :disabled="saving" @click="save">儲存</Button>
         </div>
       </CardContent>
@@ -102,8 +102,8 @@
         </p>
       </CardHeader>
       <CardContent class="tw:flex tw:justify-end tw:gap-2 tw:px-4">
-        <Button size="sm" variant="outline" @click="openEditor(t)">{{ isDirector ? '編輯' : '查看' }}</Button>
-        <Button v-if="isDirector && t.status !== 'archived'" size="sm" variant="ghost" @click="confirm = { kind: 'archive', template: t, name: t.title }">封存</Button>
+        <Button size="sm" variant="outline" :disabled="saving" @click="openEditor(t)">{{ isDirector ? '編輯' : '查看' }}</Button>
+        <Button v-if="isDirector && t.status !== 'archived'" size="sm" variant="ghost" :disabled="saving" @click="confirm = { kind: 'archive', template: t, name: t.title }">封存</Button>
       </CardContent>
     </Card>
 
@@ -193,6 +193,7 @@ async function load() {
 }
 
 function startCreate() {
+  openSeq += 1;
   formError.value = '';
   editor.value = {
     id: null, title: '', publisher: '', status: 'draft', units: [],
@@ -200,17 +201,20 @@ function startCreate() {
   };
 }
 
+let openSeq = 0; // a newer open, create or branch switch invalidates a pending detail load
 async function openEditor(t) {
+  const my = ++openSeq;
   formError.value = '';
   error.value = '';
   try {
     const { data } = await api(`/curriculum-templates/${t.id}`);
+    if (my !== openSeq) return;
     editor.value = {
       id: data.id, title: data.title, publisher: data.publisher || '', status: data.status,
       subject: data.subject, grade: data.grade, archivedAtOpen: data.status === 'archived', units: (data.units || []).map(newUnit),
     };
   } catch (e) {
-    error.value = e.message || '載入失敗';
+    if (my === openSeq) error.value = e.message || '載入失敗';
   }
 }
 
@@ -260,7 +264,7 @@ async function save() {
       e.id = id; // a retry after a failed units save must not create a second template
       await putUnits();
     }
-    editor.value = null;
+    if (editor.value === e) editor.value = null; // only close the editor that started this save
     await load();
   } catch (err) {
     formError.value = err.message || '儲存失敗';
@@ -295,6 +299,7 @@ async function archive(t) {
 
 onMounted(load);
 watch(() => props.branchId, () => {
+  openSeq += 1;
   editor.value = null;
   load();
 });
