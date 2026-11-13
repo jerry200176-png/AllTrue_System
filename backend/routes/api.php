@@ -73,6 +73,7 @@ use App\Http\Controllers\TeacherEligibilityInputController;
 use App\Http\Controllers\ExamRoundController;
 use App\Http\Controllers\CurriculumTemplateController;
 use App\Http\Controllers\StudentLearningPlanController;
+use App\Http\Controllers\StudentStudyTaskController;
 use App\Http\Controllers\StudentPlanUnitLessonController;
 use App\Http\Controllers\SchoolExamPeriodController;
 use App\Http\Controllers\SchoolMergeController;
@@ -825,6 +826,11 @@ Route::prefix('v1')->group(function () {
         Route::post('students/{student}/learning-plans', [StudentLearningPlanController::class, 'store'])->whereNumber('student');
         Route::patch('learning-plans/{plan}', [StudentLearningPlanController::class, 'update'])->whereNumber('plan');
         Route::patch('learning-plans/{plan}/units/{unit}', [StudentLearningPlanController::class, 'updateUnit'])->whereNumber(['plan', 'unit']);
+        // #5269 step 1: 讀書任務. Same campus / teacher rules as the learning plans (checked in the controller).
+        Route::get('students/{student}/study-tasks', [StudentStudyTaskController::class, 'index'])->whereNumber('student');
+        Route::post('students/{student}/study-tasks', [StudentStudyTaskController::class, 'store'])->whereNumber('student');
+        Route::patch('study-tasks/{task}', [StudentStudyTaskController::class, 'update'])->whereNumber('task');
+        Route::delete('study-tasks/{task}', [StudentStudyTaskController::class, 'destroy'])->whereNumber('task');
         // #4970 step 5: 這堂上完的單元. Candidates for the evaluation form; sync runs after the evaluation was saved.
         Route::get('learning-plan-units/candidates', [StudentPlanUnitLessonController::class, 'candidates']);
         Route::put('learning-records/{learningRecord}/plan-units', [StudentPlanUnitLessonController::class, 'sync'])->whereNumber('learningRecord');
