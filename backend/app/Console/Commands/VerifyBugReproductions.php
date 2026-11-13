@@ -137,6 +137,29 @@ class VerifyBugReproductions extends Command
                                     HAVING SUM(CASE event_type WHEN 'deduct' THEN 1 WHEN 'reverse' THEN -1 ELSE 0 END) > 1) b) AS c",
             ],
             [
+                'key' => 'shared_pool_member_generation_stopped',
+                'label' => 'Running shared-pool members taught in the last 21 days with no upcoming lesson while the pool ledger still has lessons',
+                'issue' => '#5151/#4991', 'enforced' => false,
+                // The pool ledger is the authority for what is left (SharedPackagePlanningService); the member's own counter is not read.
+                // Counts both a generator that stopped early and a sibling course holding every lesson the pool has left.
+                'sql' => "SELECT COUNT(*) AS c FROM StudentClass sc
+                          JOIN course_packages p ON p.id = sc.PackageID
+                          WHERE (sc.Stop = 0 OR sc.Stop IS NULL) AND sc.ScheduleMode = 'count'
+                            AND COALESCE(sc.scheduling_policy, 'auto_recurrence') <> 'manual_occurrence'
+                            AND p.billing_mode = 'count'
+                            AND (SELECT COUNT(*) FROM StudentClass m
+                                 WHERE m.PackageID = p.id AND (m.Stop = 0 OR m.Stop IS NULL)) > 1
+                            AND CAST(p.total_sessions AS SIGNED) + COALESCE((SELECT SUM(l.delta) FROM package_session_ledger l
+                                                                             WHERE l.package_id = p.id), 0) > 0
+                            AND EXISTS (SELECT 1 FROM ClassSession cs
+                                        WHERE cs.StudentClassID = sc.ID
+                                          AND cs.SessionDate >= DATE_SUB(CURDATE(), INTERVAL 21 DAY) AND cs.SessionDate < CURDATE()
+                                          AND LOWER(cs.Status) NOT IN ('cancelled','voided'))
+                            AND NOT EXISTS (SELECT 1 FROM ClassSession cs
+                                            WHERE cs.StudentClassID = sc.ID AND cs.SessionDate >= CURDATE()
+                                              AND LOWER(cs.Status) NOT IN ('cancelled','voided'))",
+            ],
+            [
                 'key' => 'unpaid_charge_vs_rate_count',
                 'label' => 'Unpaid count-mode contracts whose Charge is >5x off Rate x count (4050/4051 class, #4138)',
                 'issue' => '#4659/#4138', 'enforced' => true,
