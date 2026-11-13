@@ -1727,8 +1727,8 @@ final class CourseContractChainRebalanceStrategyTest extends TestCase
         $this->assertSame($money, $this->money());
         // The gap is still there, exactly as it was, and the receipt names it.
         $this->assertSame(7, DB::table('session_deduction_ledger')->where('student_class_id', $x['contracts'][0])->count());
-        $this->assertSame([$x['warning']], $run['execute']['warnings']);
-        // The snapshot is read back from a MySQL JSON column, which stores object keys in its own order.
+        // The receipt and the snapshot are read back from MySQL JSON columns, which store object keys in their own order.
+        $this->assertEquals([$x['warning']], $run['execute']['warnings']);
         $this->assertEquals([$x['warning']], $run['execute']['snapshot']['warnings']);
     }
 
