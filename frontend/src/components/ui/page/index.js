@@ -7,4 +7,4 @@ export { default as StatusBadge } from './StatusBadge.vue';
 export { default as CollapsibleGroup } from './CollapsibleGroup.vue';
 export { default as FilterChip } from './FilterChip.vue';
 export { default as SelectionBar } from './SelectionBar.vue';
-export { control, dataTable, pageShell, pageTabs, surface, toneBadge, toneText } from './tones.js';
+export { contractGrid, control, dataTable, factRow, pageShell, pageTabs, rowAction, surface, toneBadge, toneText } from './tones.js';

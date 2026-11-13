@@ -21,17 +21,47 @@ const SUBJECTS = ['國中數學', '高中英文', '國小自然', '高二物理�
 
 const COURSE_NAMES = ['林宥辰', '歐陽子晴', '范姜宜蓁', '司馬文傑', '陳品妤', '曾翊'];
 const COURSE_MGMT = {
-  // 課程查找, slices 1-2 (#4989): header, toolbar, 課程分布 strip and the student group cards.
+  // 課程查找, slices 1-3 (issue 4989): header, toolbar, 課程分布 strip, the student group cards and the course rows inside them.
   // The left-edge group mixes the header title column, the toolbar card, the strip label and the group cards on purpose:
   // they are different elements, so a gutter that differs between header and list makes it fail (a list of identical cards cannot).
   key: 'course-mgmt',
   url: '/pilot-mount.html?page=course&mode=normal',
   names: COURSE_NAMES,
   allNames: true,
-  rows: ['.course-workbench__intro, .course-header-card, .course-stats-disclosure__label, .student-group-card'],
-  touch: ['.student-group-toggle', '.focus-btn', '.student-group-view-tab'],
+  rows: ['.course-workbench__intro, .course-header-card, .course-stats-disclosure__label, .student-group-card', '.contract-item'],
+  touch: ['.student-group-toggle', '.focus-btn', '.student-group-view-tab', '[data-testid="course-row-primary"]', '.course-row .action-menu-trigger', '.paused-notice__btn', '.tag-usage-review--action'],
+  // Slice 3: the five facts of a course row sit in one line under the column header at desktop (same left edges, same top),
+  // and on a phone no fact or action sticks out of its row.
+  extra: {
+    run: () => {
+      const visible = (el) => { const r = el.getBoundingClientRect(); const cs = getComputedStyle(el); return r.width > 0 && r.height > 0 && cs.display !== 'none' && cs.visibility !== 'hidden'; };
+      const round = (n) => Math.round(n * 10) / 10;
+      const head = [...document.querySelectorAll('.contract-list-head')].find(visible);
+      const headLefts = head ? [...head.children].map((c) => round(c.getBoundingClientRect().left)) : [];
+      const rows = [...document.querySelectorAll('.course-row')].filter(visible).map((row) => {
+        const box = row.getBoundingClientRect();
+        const cells = [...row.children].map((c) => c.getBoundingClientRect());
+        return { lefts: cells.map((c) => round(c.left)), tops: cells.map((c) => round(c.top)), overflow: cells.filter((c) => c.right > box.right + 1 || c.left < box.left - 1).length, count: cells.length };
+      });
+      return { headLefts, rows };
+    },
+    assert: (r, vp) => {
+      expect(r.rows.length, 'course rows must be on screen').toBeGreaterThan(0);
+      for (const row of r.rows) {
+        expect(row.count, 'a row has five cells: subject, next, remaining, payment, actions').toBe(5);
+        expect(row.overflow, 'a cell of a course row sticks out of its row').toBe(0);
+        if (vp.width >= 1024) {
+          expect(r.headLefts.length, 'the column header is shown at desktop').toBe(5);
+          row.lefts.forEach((x, i) => expect(Math.abs(x - r.headLefts[i]), `column ${i} of a row lines up with its header (${row.lefts.join(',')} vs ${r.headLefts.join(',')})`).toBeLessThanOrEqual(1));
+          expect(Math.max(...row.tops) - Math.min(...row.tops), 'the five cells of a desktop row share one top').toBeLessThanOrEqual(1);
+        } else {
+          expect(r.headLefts.length, 'no column header on a phone').toBe(0);
+        }
+      }
+    },
+  },
   mock: async (page) => {
-    const data = COURSE_NAMES.map((n, i) => ({ id: 100 + i, student_id: 9100 + i, student_name: n, teacher_name: ['王老師', '李大華老師', '陳小明老師'][i % 3], subject: 'math', subject_name: SUBJECTS[i % 6], first_class_date: '2026-09-01', status: i === 1 ? 'inactive' : 'active', ScheduleMode: 'count', payment_type: 'session', sessions_purchased: 8, sessions_used: 3, remaining_sessions: 5, payment_status: ['unpaid', 'paid', 'partial'][i % 3], class_type: 'one_on_one' }));
+    const data = COURSE_NAMES.map((n, i) => ({ id: 100 + i, ...(i === 2 ? { usage_balance_status: 'review_required' } : {}), ...(i === 3 ? { PackageID: 5, PackageName: '雙科方案' } : {}), student_id: 9100 + i, student_name: n, teacher_name: ['王老師', '李大華老師', '陳小明老師'][i % 3], subject: 'math', subject_name: SUBJECTS[i % 6], first_class_date: '2026-09-01', status: i === 1 ? 'inactive' : 'active', ScheduleMode: 'count', payment_type: 'session', sessions_purchased: 8, sessions_used: 3, remaining_sessions: 5, payment_status: ['unpaid', 'paid', 'partial'][i % 3], class_type: 'one_on_one' }));
     await page.route('**/api/v1/**', (r) => json(r, new URL(r.request().url()).pathname === '/api/v1/student-classes' ? { data, total: data.length, current_page: 1, last_page: 1 } : { data: [] }));
   },
 };
@@ -166,6 +196,7 @@ for (const entry of PAGES) {
           expect(m.small, '(d) a touch target is smaller than 44px').toEqual([]);
         }
         expect(m.scrollWidth, '(b) the page body scrolls sideways').toBeLessThanOrEqual(m.innerWidth + 1);
+        if (entry.extra) entry.extra.assert(await page.evaluate(entry.extra.run), vp);
         for (const group of m.rowEdges) {
           if (group.lefts.length < 2) continue;
           expect(Math.max(...group.lefts) - Math.min(...group.lefts), `(c) rows of ${group.selector} start at different x: ${group.lefts.join(', ')}`).toBeLessThanOrEqual(1);

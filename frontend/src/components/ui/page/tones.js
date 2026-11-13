@@ -39,6 +39,38 @@ export const control = Object.freeze({
 const head = 'tw:h-11 tw:border-b tw:border-border tw:bg-muted tw:px-3 tw:py-0 tw:text-tpl-caption tw:md:px-4 tw:font-semibold tw:tracking-normal tw:text-tpl-secondary tw:normal-case tw:whitespace-nowrap';
 const cell = 'tw:h-14 tw:border-b tw:border-border tw:px-3 tw:py-2 tw:md:px-4 tw:text-[length:var(--tpl-text-body)] tw:text-foreground';
 
+// Dense label/value facts inside a list row (PAGE_TEMPLATE §5): the label sits above the value, facts wrap between each other,
+// the phone shows two per row. `sub` is the second line under a value.
+export const factRow = Object.freeze({
+  label: 'tw:mb-1 tw:block tw:text-tpl-caption tw:font-medium tw:text-tpl-secondary',
+  value: 'tw:text-tpl-body tw:font-semibold tw:text-foreground',
+  sub: 'tw:mt-0.5 tw:block tw:text-tpl-caption tw:font-normal tw:text-tpl-secondary',
+});
+
+// Native-button row actions (44px pills) for rows whose markup must stay a plain `button`: primary = ink pill, secondary = hairline outline.
+const rowButtonBase = 'tw:inline-flex tw:min-w-11 tw:cursor-pointer tw:items-center tw:justify-center tw:rounded-full tw:border-0 tw:px-4 tw:text-tpl-caption tw:font-semibold tw:outline-none tw:focus-visible:ring-3 tw:focus-visible:ring-ring/50';
+const rowButton = `${rowButtonBase} tw:h-11 tw:shrink-0 tw:whitespace-nowrap`;
+export const rowAction = Object.freeze({
+  primary: `${rowButton} tw:bg-primary tw:text-primary-foreground`,
+  secondary: `${rowButton} tw:bg-card tw:text-foreground tw:shadow-[inset_0_0_0_1px_var(--ds-hairline)] tw:hover:bg-muted`,
+  // A secondary action whose words are a sentence (堂數待對帳 查看對帳明細): at least 44px, wraps instead of pushing the page sideways.
+  secondaryWrap: `${rowButtonBase} tw:max-w-full tw:min-h-11 tw:py-2 tw:text-left tw:whitespace-normal tw:bg-card tw:text-foreground tw:shadow-[inset_0_0_0_1px_var(--ds-hairline)] tw:hover:bg-muted`,
+  // The ⋯ menu trigger (icon-sized).
+  menu: 'tw:size-11 tw:min-h-11 tw:min-w-11 tw:rounded-full tw:border-0 tw:bg-card tw:p-0 tw:text-foreground tw:shadow-[inset_0_0_0_1px_var(--ds-hairline)] tw:hover:bg-muted',
+});
+
+// Course contract rows (課程查找): one grid template shared by the column header and every row so they line up.
+// Phone: 2 columns (facts side by side). 768-1099: 6 columns (name + actions on top, three facts under). 1024+: the 5-column table.
+export const contractGrid = Object.freeze({
+  head: 'tw:hidden tw:lg:grid tw:lg:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)_minmax(0,.55fr)_minmax(0,.6fr)_minmax(0,1.2fr)] tw:items-center tw:gap-x-4 tw:h-11 tw:px-5 tw:bg-muted tw:text-tpl-caption tw:font-semibold tw:text-tpl-secondary',
+  row: 'tw:grid tw:min-w-0 tw:grid-cols-2 tw:items-start tw:gap-x-4 tw:gap-y-3 tw:md:grid-cols-6 tw:lg:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)_minmax(0,.55fr)_minmax(0,.6fr)_minmax(0,1.2fr)]',
+  subject: 'tw:col-span-2 tw:min-w-0 tw:md:col-span-4 tw:lg:col-span-1',
+  fact: 'tw:min-w-0 tw:md:col-span-2 tw:lg:col-span-1',
+  factWide: 'tw:col-span-2 tw:min-w-0 tw:md:col-span-2 tw:lg:col-span-1',
+  actions: 'tw:col-span-2 tw:min-w-0 tw:md:col-span-2 tw:md:col-start-5 tw:md:row-start-1 tw:md:justify-self-end tw:lg:col-auto tw:lg:row-auto tw:lg:justify-self-stretch',
+  label: 'tw:lg:sr-only',
+});
+
 export const dataTable = Object.freeze({
   table: 'tw:text-[length:var(--tpl-text-body)]',
   head,
