@@ -1,5 +1,7 @@
 # Learning assessment question bank research record
 
+**Status: RETIRED 2026-11-13** — 全校區 0 筆題庫；頁面與 API 已移除，資料表保留（見 `docs/TECH_DEBT.md` TD-087）。以下為歷史研究紀錄。
+
 **Date:** 2026-08-21 (Asia/Taipei)
 **Decision:** add a staff-managed, campus-scoped question bank as the next
 bounded context beside the existing assessment/result ledger.

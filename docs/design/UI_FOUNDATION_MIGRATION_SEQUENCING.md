@@ -142,7 +142,6 @@ Census (#4989, `node scripts/design/overlay-census.mjs`; `--json` adds line, tri
 | `pages/LearningRecordsPage.vue` | hand-rolled(4) AtDialog(2) window.confirm(5) prompt(5) | 3 |
 | `pages/NotificationsCenter.vue` | AtRowMenu(2) prompt(1) | 0 |
 | `pages/ParttimePayrollPage.vue` | hand-rolled(4) window.confirm(3) | 3 |
-| `pages/QuestionBankPage.vue` | AtDialog(1) window.confirm(1) | 1 |
 | `pages/ScheduleDiscrepancyPage.vue` | raw-teleport(1) | 0 |
 | `pages/SmartCalendar.vue` | window.confirm(5) | 2 |
 | `pages/StudentsList.vue` | AtRowMenu(1) hand-rolled(4) window.confirm(7) | 5 |

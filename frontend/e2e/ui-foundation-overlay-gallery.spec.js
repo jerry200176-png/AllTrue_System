@@ -15,7 +15,7 @@ const outDir = path.join(
   process.env.UI_FOUNDATION_SHOT_DIR || path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../docs/design/evidence/raw'),
   'overlays',
 );
-const pages = ['director', 'students', 'teachers', 'course', 'calendar', 'attendance', 'tuition', 'admissions', 'classroom', 'branch-management', 'line-integration', 'profile', 'question-bank'];
+const pages = ['director', 'students', 'teachers', 'course', 'calendar', 'attendance', 'tuition', 'admissions', 'classroom', 'branch-management', 'line-integration', 'profile'];
 const widths = [{ w: 1280, h: 900 }, { w: 375, h: 812 }];
 const MAX_CLICKS = 14;
 const OPEN = '[role=dialog], [role=alertdialog], [role=menu], [data-state=open]';

@@ -54,7 +54,6 @@ const pageModules = {
   login: () => import('../../../src/pages/Login.vue'),
   admissions: () => import('../../../src/pages/AdmissionInquiriesPage.vue'),
   profile: () => import('../../../src/pages/ProfileCenterPage.vue'),
-  'question-bank': () => import('../../../src/pages/QuestionBankPage.vue'),
   chat: () => import('../../../src/pages/ChatPage.vue'),
   'line-integration': () => import('../../../src/pages/LineIntegration.vue'),
   'subject-settings': () => import('../../../src/pages/SubjectSettingsPage.vue'),
@@ -174,9 +173,6 @@ createApp({
         token: 'e2e-foundation-token',
         initialTab: mode === 'security' ? 'security' : 'profile',
       });
-    }
-    if (page === 'question-bank') {
-      return () => h(PageComponent, { branchId: 1, userRole: role });
     }
     if (page === 'admissions') {
       const searchParams = new URLSearchParams(window.location.search);

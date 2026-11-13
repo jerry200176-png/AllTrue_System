@@ -55,7 +55,6 @@ export default defineConfig({
     /admissions-clarity\.spec\.js$/,
     /bug-reports-clarity\.spec\.js$/,
     /profile-controls-clarity\.spec\.js$/,
-    /question-bank-clarity\.spec\.js$/,
     /attendance-clarity\.spec\.js$/,
     // Uses the dedicated Vite fixture server in playwright.ui-foundation.config.js.
     /students-list-clarity\.spec\.js$/,
