@@ -60,6 +60,31 @@ class AccountingLedgerPayloadSnapshotTest extends TestCase
         $this->assertTrue(collect($opened['courses'])->firstWhere('id', 9102)['no_payment_obligation']);
     }
 
+    public function test_count_course_projects_the_current_rate_sign_without_a_collection_period_or_bill(): void
+    {
+        $user = User::create(['LoginName' => 'rate-snap@example.com', 'Name' => 'rate-snap', 'PSW' => bcrypt('x'), 'type' => 'D', 'status' => 'active']);
+        UserCampus::create(['UserID' => $user->id, 'CampusID' => 1, 'Admin' => 1, 'Approved' => 1]);
+        AuthToken::create(['user_id' => $user->id, 'token' => 'rate-snap-token', 'expires_at' => now()->addDay()]);
+        $this->seedStudent();
+        $base = (array) DB::table('StudentClass')->where('ID', 9103)->first([
+            'StudentID', 'GradeID', 'SubjectID', 'TeacherID', 'by1', 'Period', 'rate_unit', 'TotalHours', 'Pay', 'ClassType',
+            'SessionCount', 'SessionDuration', 'RemainingSessions', 'UsedSessions', 'settlement_day', 'ScheduleMode', 'StartDate', 'EndDate',
+        ]);
+        DB::table('StudentClass')->insert(['ID' => 9104, 'Charge' => 0, 'Rate' => 625.5, 'Paid' => 1, 'Stop' => 0] + $base);
+
+        foreach ([[625.5, true], [0, false]] as [$rate, $positive]) {
+            DB::table('StudentClass')->where('ID', 9104)->update(['Rate' => $rate]);
+            $json = $this->getJson('/api/v1/accounting/ledger?student_class_id=9104', ['Authorization' => 'Bearer rate-snap-token'])
+                ->assertOk()->json();
+            $course = collect($json['courses'])->firstWhere('id', 9104);
+            $this->assertSame(0, $course['current_contract_charge']);
+            $this->assertSame($positive, $course['current_contract_rate_positive']);
+            $this->assertNull($course['collection_period']);
+            $this->assertFalse($course['no_payment_obligation']);
+            $this->assertSame([], array_values(array_filter($json['invoices'], fn ($invoice) => (int) $invoice['student_class_id'] === 9104)));
+        }
+    }
+
     private function seedStudent(): void
     {
         DB::table('Student')->insert(['id' => 9001, 'name' => 'snap', 'CampusID' => 1, 'ClassID' => 1, 'enable' => 1]);

@@ -14,7 +14,7 @@ const EntryStub = { name: 'PaymentEntryModal', props: ['show', 'row', 'mode', 'p
 const ReceiptStub = { name: 'ReceiptModal', props: ['show', 'reportId', 'laterLabel'], template: '<div v-if="show" data-testid="receipt-stub">{{ reportId }}|{{ laterLabel }}</div>' };
 const SlipStub = { name: 'PaymentSlipModal', props: ['show', 'invoiceId', 'studentClassId'], template: '<div v-if="show" data-testid="slip-stub">{{ invoiceId }}|{{ studentClassId }}</div>' };
 
-function mountLedger({ courses, invoices = [], receipts = [], props = {}, role = 'director', drafts = [] }) {
+function mountLedger({ courses, invoices = [], receipts = [], props = {}, role = 'director', drafts = [], realEntry = false }) {
   localStorage.setItem('alltrue_session', JSON.stringify({ access_token: 't', user: { role } }));
   const payload = { summary: {}, scope: { student_class_id: props.studentClassId ?? 11 }, anomalies: [], courses, invoices, receipts };
   const fetchMock = vi.fn(async (url) => (String(url).startsWith('/api/v1/accounting/ledger')
@@ -25,7 +25,7 @@ function mountLedger({ courses, invoices = [], receipts = [], props = {}, role =
   return mount(AccountingLedgerModal, {
     attachTo: document.body,
     props: { show: true, studentClassId: 11, branchId: 1, ...props },
-    global: { stubs: { Transition: false, PaymentEntryModal: EntryStub, ReceiptModal: ReceiptStub, PaymentSlipModal: SlipStub, ContractCard: false } },
+    global: { stubs: { Transition: false, PaymentEntryModal: realEntry ? false : EntryStub, ReceiptModal: ReceiptStub, PaymentSlipModal: SlipStub, ContractCard: false } },
   });
 }
 
@@ -129,6 +129,19 @@ describe('學生帳務 · 從課程查找直接登記 (in-app #398)', () => {
     expect(w.getComponent(EntryStub).props('mode')).toBe('legacy-backfill');
     expect(w.get('[data-testid="entry-stub"]').text()).toBe('11');
     w.unmount();
+  });
+
+  it.each([[true, false], [false, true], [undefined, false]])('real backfill form preserves the ledger rate flag %s and shows the zero-fee hint=%s (#4990)', async (ratePositive, hint) => {
+    const w = mountLedger({
+      courses: [course(11, { paid: true, charge: 0, current_contract_charge: 0, current_contract_rate_positive: ratePositive })],
+      props: { initialAction: 'legacy-backfill' }, realEntry: true,
+    });
+    try {
+      await flushPromises();
+      expect(w.find('[data-testid="entry-stub"]').exists()).toBe(false);
+      expect(document.body.querySelector('.pe-modal')).not.toBeNull();
+      expect(!!document.body.querySelector('[data-testid="pe-legacy-zero-hint"]')).toBe(hint);
+    } finally { w.unmount(); }
   });
 
   it("initialAction='legacy-backfill' opens the back-fill form straight away for a legacy-paid course (in-app #490)", async () => {
