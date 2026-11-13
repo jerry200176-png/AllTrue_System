@@ -42,7 +42,7 @@ async function load(all = false) {
     const serverChecked = new Set((data.units || []).filter((u) => u.checked).map((u) => u.id));
     if (!all || !state.value) { checked.value = new Set(serverChecked); saved.value = new Set(serverChecked); }
     state.value = data.plan && data.can_tick ? data : null;
-    if (!all) applyRestore();
+    applyRestore(all);
   } catch (e) {
     if (my !== seq) return;
     // A failed 「顯示全部」 keeps the list and the ticks already on screen.
@@ -66,12 +66,21 @@ watch(() => props.classSessionId, () => {
 }, { immediate: true });
 
 /** Ticks kept in an unsaved draft come back on top of what the server holds. */
-function applyRestore() {
+// Draft ticks are restored only for units the server still offers for this lesson: a unit finished elsewhere or a
+// replaced plan must not be sent. If some are not in the short list, the full list is loaded once to look for them.
+function applyRestore(expanded = false) {
   if (!state.value || !props.restoreIds.length) return;
-  checked.value = new Set([...checked.value, ...props.restoreIds.map(Number).filter((n) => n > 0)]);
-  emit('change');
+  const ids = props.restoreIds.map(Number).filter((n) => n > 0);
+  const offered = new Set((state.value.units || []).map((u) => u.id));
+  const known = ids.filter((id) => offered.has(id));
+  if (known.length) {
+    checked.value = new Set([...checked.value, ...known]);
+    emit('change');
+  }
+  const more = (state.value.total || 0) > (state.value.units || []).length;
+  if (!expanded && known.length < ids.length && more) load(true);
 }
-watch(() => props.restoreIds, applyRestore);
+watch(() => props.restoreIds, () => applyRestore());
 
 const units = computed(() => state.value?.units || []);
 const hiddenCount = computed(() => Math.max(0, (state.value?.total || 0) - units.value.length));

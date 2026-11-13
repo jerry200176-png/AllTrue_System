@@ -15,6 +15,7 @@ const PAYLOAD = {
 let calls;
 let payload;
 let putResponse;
+let allPayload;
 
 const mountIt = async (props = {}) => {
   const w = mount(LessonPlanUnits, { props: { classSessionId: 31, ...props }, attachTo: document.body });
@@ -26,11 +27,13 @@ beforeEach(() => {
   calls = [];
   payload = PAYLOAD;
   putResponse = () => json({ data: { unit_ids: [2, 3] } });
+  allPayload = null;
   authedFetch.mockReset();
   authedFetch.mockImplementation(async (url, init = {}) => {
     const method = init.method || 'GET';
     calls.push({ method, url, body: init.body ? JSON.parse(init.body) : null });
-    return method === 'PUT' ? putResponse() : json({ data: payload });
+    if (method === 'PUT') return putResponse();
+    return json({ data: allPayload && url.includes('&all=1') ? allPayload : payload });
   });
 });
 
@@ -135,5 +138,25 @@ describe('LessonPlanUnits (#4970 step 5)', () => {
     expect([...w.vm.draftIds()].sort()).toEqual([2, 3]);
     await w.vm.save(77);
     expect(calls.find((c) => c.method === 'PUT').body.unit_ids.sort()).toEqual([2, 3]);
+  });
+
+  it('drops a draft tick the server no longer offers, so a stale unit is never sent', async () => {
+    payload = { ...PAYLOAD, total: 3 };
+    const w = await mountIt({ restoreIds: [2, 99] });
+    expect(calls.filter((c) => c.method === 'GET')).toHaveLength(1);
+    expect([...w.vm.draftIds()].sort()).toEqual([2, 3]);
+    await w.vm.save(77);
+    expect(calls.find((c) => c.method === 'PUT').body.unit_ids.sort()).toEqual([2, 3]);
+  });
+
+  it('looks once in the full list for a draft tick that the short list does not show', async () => {
+    allPayload = { ...PAYLOAD, units: [...PAYLOAD.units, unit(8, '幾何')] };
+    const w = await mountIt({ restoreIds: [8, 99] });
+    const gets = calls.filter((c) => c.method === 'GET');
+    expect(gets).toHaveLength(2);
+    expect(gets[1].url).toContain('&all=1');
+    expect([...w.vm.draftIds()].sort()).toEqual([3, 8]);
+    await w.vm.save(77);
+    expect(calls.find((c) => c.method === 'PUT').body.unit_ids.sort()).toEqual([3, 8]);
   });
 });
