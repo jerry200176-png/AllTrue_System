@@ -98,11 +98,10 @@
     <details class="course-stats-disclosure">
       <summary class="tw:text-tpl-body">
         <span class="tw:font-semibold">課程分布</span>
-        <span class="course-stats-disclosure__hint tw:text-tpl-caption">{{ courses.length }} 筆課程・依類型查看</span>
+        <span class="course-stats-disclosure__hint tw:text-tpl-caption">課程總覽 {{ courses.length }} 筆・依類型查看</span>
         <span class="material-symbols-outlined" aria-hidden="true">expand_more</span>
       </summary>
       <StatStrip class="stats-strip tw:mt-2" aria-label="本頁課程類型分布">
-        <StatItem label="課程總覽" :value="courses.length" unit="筆" />
         <StatItem label="一對一" :value="coursesByType.one_on_one" unit="筆" />
         <StatItem label="一對二" :value="coursesByType.one_on_two" unit="筆" />
         <StatItem label="一對三" :value="coursesByType.one_on_three" unit="筆" />
