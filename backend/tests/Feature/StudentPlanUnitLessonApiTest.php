@@ -243,6 +243,51 @@ class StudentPlanUnitLessonApiTest extends TestCase
         $this->sync($this->teacher, $voided, [6])->assertStatus(422);
     }
 
+    public function test_a_lesson_later_today_that_has_not_started_is_refused(): void
+    {
+        $s = $this->session(null, '2026-11-13'); // frozen now is 10:00, the lesson starts at 16:00
+        $lr = $this->record($s);
+
+        $this->sync($this->teacher, $lr, [6])->assertStatus(422);
+        $this->assertNull($this->units[6]->fresh()->completed_at);
+    }
+
+    public function test_delete_and_refill_keeps_the_lessons_ticks_owned_by_the_session(): void
+    {
+        $s = $this->session();
+        $old = $this->record($s);
+        $this->sync($this->teacher, $old, [6])->assertOk();
+        $old->delete(); // LearningRecordController::destroy hard-deletes
+        $new = $this->record($s);
+
+        $checked = array_values(array_filter($this->candidates($this->teacher, $s)->json('data.units'), fn ($u) => $u['checked']));
+        $this->assertSame(['單元6'], array_column($checked, 'title'));
+
+        // Ticking again re-points the unit to the current evaluation.
+        $this->sync($this->teacher, $new, [6])->assertOk()->assertJsonPath('data.unit_ids.0', $this->units[6]->id);
+        $this->assertSame($new->id, (int) $this->units[6]->fresh()->completed_record_id);
+
+        // Unticking clears it.
+        $this->sync($this->teacher, $new, [])->assertOk()->assertJsonCount(0, 'data.unit_ids');
+        $u = $this->units[6]->fresh();
+        $this->assertNull($u->completed_at);
+        $this->assertNull($u->completed_session_id);
+        $this->assertNull($u->completed_record_id);
+    }
+
+    public function test_untick_after_the_record_was_deleted_and_refilled_clears_the_unit(): void
+    {
+        $s = $this->session();
+        $old = $this->record($s);
+        $this->sync($this->teacher, $old, [6])->assertOk();
+        $old->delete();
+        $new = $this->record($s);
+
+        $this->sync($this->teacher, $new, [])->assertOk();
+        $this->assertNull($this->units[6]->fresh()->completed_at);
+        $this->assertNull($this->units[6]->fresh()->completed_record_id);
+    }
+
     public function test_a_plan_unit_manually_unticked_on_the_gantt_forgets_its_source(): void
     {
         $lr = $this->record($this->session());

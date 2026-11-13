@@ -99,7 +99,7 @@ defineExpose({ save, dirty });
           </label>
         </li>
       </ul>
-      <Button v-if="hiddenCount > 0" type="button" variant="outline" class="tw:min-h-11" @click="load(true)">顯示全部（還有 {{ hiddenCount }} 個單元）</Button>
+      <Button v-if="hiddenCount > 0" type="button" variant="outline" class="tw:mt-3 tw:min-h-11" :disabled="disabled" @click="load(true)">顯示全部（還有 {{ hiddenCount }} 個單元）</Button>
     </template>
   </section>
 </template>

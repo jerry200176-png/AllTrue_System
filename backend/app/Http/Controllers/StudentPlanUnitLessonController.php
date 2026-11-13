@@ -68,29 +68,24 @@ class StudentPlanUnitLessonController extends Controller
     }
 
     /**
-     * Set exactly which units this evaluation completed. Ticks open units (completed_at = lesson date), clears
-     * only the ones ticked from this same evaluation, ignores units completed elsewhere. Idempotent.
+     * Set exactly which units this lesson completed. Ownership is the SESSION (a record can be deleted and refilled
+     * for the same lesson): ticks open units (completed_at = lesson date), re-points a unit already ticked from this
+     * session to the current record, clears only units ticked from this session, ignores units completed elsewhere.
      */
     public function sync(Request $request, LearningRecord $learningRecord): JsonResponse
     {
         $role = $request->attributes->get('auth_role');
-        $course = StudentClass::query()->where('ID', $learningRecord->StudentClassID)->first();
-        $student = $course ? Student::query()->find($course->StudentID) : null;
-        if ($student === null || !$this->campusAllowed($request, (int) $student->CampusID)) {
-            return $this->forbidden();
-        }
-        if ($role === 'teacher' && !LearningRecordMutableOwnership::isActionableOwner($learningRecord, (int) ($this->teacherId($request) ?? 0))) {
-            return $this->forbidden();
-        }
-        if (!$this->courseWritable($request, (int) $course->ID)) {
-            return $this->forbidden();
-        }
-        $data = $request->validate(['unit_ids' => ['present', 'array', 'max:200'], 'unit_ids.*' => ['integer', 'min:1']]);
-
-        $error = DB::transaction(function () use ($request, $role, $learningRecord, $course, $data) {
-            // Same lock order as LearningRecordController::update (record first), then the course and plan rows.
+        $result = DB::transaction(function () use ($request, $role, $learningRecord) {
+            // Lock and re-read the record first, then check ownership on the locked row (as LearningRecordController::update).
             $lr = LearningRecord::query()->whereKey($learningRecord->getKey())->lockForUpdate()->firstOrFail();
-            StudentClass::query()->where('ID', $course->ID)->lockForUpdate()->first();
+            $course = StudentClass::query()->where('ID', $lr->StudentClassID)->lockForUpdate()->first();
+            $student = $course ? Student::query()->find($course->StudentID) : null;
+            if ($student === null || !$this->campusAllowed($request, (int) $student->CampusID)
+                || ($role === 'teacher' && !LearningRecordMutableOwnership::isActionableOwner($lr, (int) ($this->teacherId($request) ?? 0)))
+                || !$this->courseWritable($request, (int) $course->ID)) {
+                return ['Forbidden', 403];
+            }
+            $data = $request->validate(['unit_ids' => ['present', 'array', 'max:200'], 'unit_ids.*' => ['integer', 'min:1']]);
             // The existing lock rule: a teacher may only touch an evaluation that is still editable for them.
             if (!in_array($role, ['director', 'super_admin', 'admin'], true) && !in_array($lr->Status, ['pending', 'rejected', 'changes_requested'], true)) {
                 return ['已核准的評量不能再更動單元，請聯絡主任', 409];
@@ -99,14 +94,19 @@ class StudentPlanUnitLessonController extends Controller
                 return ['這份評量沒有對應的有效課堂', 422];
             }
             $session = ClassSession::query()->find((int) $lr->ClassSessionID);
-            $date = $session ? substr((string) $session->SessionDate, 0, 10) : '';
-            if ($session === null || $date === '' || $date > now(config('app.timezone', 'Asia/Taipei'))->toDateString()) {
-                return ['課程尚未開始，請於上課時間後再勾選單元', 422];
+            if ($session === null) {
+                return ['這份評量沒有對應的有效課堂', 422];
             }
+            // The same "lesson has started" gate the evaluation save uses.
+            $notStarted = app(LearningRecordController::class)->validateSessionStartedForWrite($session->SessionDate, $session->StartTime);
+            if ($notStarted !== null) {
+                return [(string) ($notStarted->getData(true)['message'] ?? '課程尚未開始'), 422];
+            }
+            $date = substr((string) $session->SessionDate, 0, 10);
             $plan = StudentLearningPlan::query()->where('student_class_id', $course->ID)->where('status', 'active')->lockForUpdate()->first();
             $want = array_values(array_unique(array_map('intval', $data['unit_ids'])));
             if ($plan === null) {
-                return $want === [] ? null : ['這門課沒有使用中的學習計畫', 422];
+                return $want === [] ? [null, 200] : ['這門課沒有使用中的學習計畫', 422];
             }
             $units = $plan->units()->get()->keyBy('id');
             if (array_diff($want, $units->keys()->all()) !== []) {
@@ -114,22 +114,24 @@ class StudentPlanUnitLessonController extends Controller
             }
             foreach ($units as $u) {
                 $ticked = in_array($u->id, $want, true);
+                $fromThisLesson = $u->completed_session_id !== null && (int) $u->completed_session_id === (int) $session->id;
                 if ($ticked && $u->completed_at === null) {
                     $u->update(['completed_at' => $this->day($date), 'completed_by' => $request->attributes->get('auth_user')?->id,
                         'completed_session_id' => $session->id, 'completed_record_id' => $lr->id]);
-                } elseif (!$ticked && $u->completed_record_id !== null && (int) $u->completed_record_id === (int) $lr->id) {
+                } elseif ($ticked && $fromThisLesson && (int) $u->completed_record_id !== (int) $lr->id) {
+                    $u->update(['completed_record_id' => $lr->id]); // the evaluation was deleted and filled again
+                } elseif (!$ticked && $fromThisLesson) {
                     $u->update(['completed_at' => null, 'completed_by' => null, 'completed_session_id' => null, 'completed_record_id' => null]);
                 }
             }
 
-            return null;
+            return [null, 200, StudentPlanUnit::query()->where('completed_session_id', $session->id)->pluck('id')->map(fn ($id) => (int) $id)->all()];
         });
-        if ($error !== null) {
-            return response()->json(['message' => $error[0]], $error[1]);
+        if ($result[0] !== null) {
+            return response()->json(['message' => $result[0]], $result[1]);
         }
-        $done = StudentPlanUnit::query()->where('completed_record_id', $learningRecord->id)->pluck('id')->map(fn ($id) => (int) $id)->all();
 
-        return response()->json(['data' => ['unit_ids' => $done]]);
+        return response()->json(['data' => ['unit_ids' => $result[2] ?? []]]);
     }
 
     private function activePlan(int $courseId): ?StudentLearningPlan
