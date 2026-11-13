@@ -967,6 +967,7 @@ function openEntry(course, mode = 'record') {
   entryRow.value = {
     id: course.id,
     charge: mode === 'legacy-backfill' ? (course.current_contract_charge ?? course.charge) : course.charge,
+    current_contract_rate_positive: course.current_contract_rate_positive,
     student_name: payload.value?.student?.name,
     subject: course.subject,
     invoice_id: oldest?.id,

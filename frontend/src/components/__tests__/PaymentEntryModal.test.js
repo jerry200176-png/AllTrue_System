@@ -186,7 +186,7 @@ describe('PaymentEntryModal — monthly month by month (in-app #432)', () => {
 
 describe('PaymentEntryModal — 補登收款 on a zero-fee course (in-app #511)', () => {
   it('explains the next step up front and on submit, with no hidden-box error and no request', async () => {
-    const w = mount(PaymentEntryModal, { attachTo: document.body, props: { show: false, row: { ...row, charge: 0, payable_status: 'unbilled', payable_amount: null, payable_outstanding: null }, mode: 'legacy-backfill' } });
+    const w = mount(PaymentEntryModal, { attachTo: document.body, props: { show: false, row: { ...row, charge: 0, current_contract_rate_positive: false, payable_status: 'unbilled', payable_amount: null, payable_outstanding: null }, mode: 'legacy-backfill' } });
     await w.setProps({ show: true });
     await nextTick();
     expect(w.find('[data-testid="pe-legacy-zero-hint"]').text()).toContain('無須繳費');
@@ -201,6 +201,21 @@ describe('PaymentEntryModal — 補登收款 on a zero-fee course (in-app #511)'
 });
 
 describe('PaymentEntryModal — 補登 with charge 0 but money owed (in-app #511)', () => {
+  it.each([true, undefined, null, 'false'])('does not claim no obligation when the contract rate flag is %s (#4990)', async (ratePositive) => {
+    const w = mount(PaymentEntryModal, { attachTo: document.body, props: {
+      show: false, mode: 'legacy-backfill', row: {
+        ...row, charge: 0, current_contract_rate_positive: ratePositive,
+        payable_status: 'unbilled', payable_amount: null, payable_outstanding: null,
+      },
+    } });
+    try {
+      await w.setProps({ show: true });
+      await nextTick();
+      expect(w.find('[data-testid="pe-legacy-zero-hint"]').exists()).toBe(false);
+      expect(global.fetch).not.toHaveBeenCalled();
+    } finally { w.unmount(); }
+  });
+
   it('keeps the normal 補登 path when an invoice is still outstanding', async () => {
     global.fetch.mockResolvedValueOnce(ok({ report_id: 3, status: 'confirmed' }));
     const w = mount(PaymentEntryModal, { attachTo: document.body, props: { show: false, row: { ...row, charge: 0, payable_status: 'invoiced', payable_amount: 1500, payable_outstanding: 1500 }, mode: 'legacy-backfill' } });
