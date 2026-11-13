@@ -683,11 +683,11 @@
                   @click="onPaymentNextAction(studentBillingAnchorCourse(group))"
                 >{{ paymentNextActionLabel(studentBillingAnchorCourse(group)) }}</button>
               </div>
-            <table :class="['student-billing-table tw:w-full tw:min-w-[640px] tw:border-collapse', dataTable.table]" aria-label="帳務資料">
-              <caption v-if="hasMixedPackagePaymentStatuses(group.key)" :class="['tw:flex tw:items-start tw:gap-2 tw:border-b tw:border-border tw:bg-[var(--ds-warning-wash)] tw:px-5 tw:py-3 tw:text-left tw:text-tpl-caption tw:text-pretty', toneText.warning]">
+              <div v-if="hasMixedPackagePaymentStatuses(group.key)" :id="`student-billing-note-${group.key}`" role="note" :class="['student-billing-note tw:flex tw:items-start tw:gap-2 tw:border-b tw:border-border tw:bg-[var(--ds-warning-wash)] tw:px-5 tw:py-3 tw:text-left tw:text-tpl-caption tw:text-pretty', toneText.warning]">
                 <span class="material-symbols-outlined tw:text-tpl-body" aria-hidden="true">info</span>
                 <span>共用方案的繳費狀態按科目分開顯示；請以每一列狀態為準。「{{ REPORT_STATUS_LABELS.pending }}」的項目請前往帳務中心確認。</span>
-              </caption>
+              </div>
+            <table :class="['student-billing-table tw:w-full tw:min-w-[640px] tw:border-collapse', dataTable.table]" aria-label="帳務資料" :aria-describedby="hasMixedPackagePaymentStatuses(group.key) ? `student-billing-note-${group.key}` : undefined">
               <thead>
                 <tr>
                   <th scope="col" :class="[dataTable.head, BILLING_HEAD, 'tw:pl-5']">科目</th>
@@ -710,8 +710,8 @@
                     <span v-if="!currentInvoiceForBillingRow(row) && (row.course.Charge ?? row.course.charge) != null" data-testid="billing-amount" :class="dataTable.amountEstimate">估算 ${{ formatMoney(row.course.Charge ?? row.course.charge) }}</span>
                   </td>
                   <td :class="dataTable.cell" data-testid="billing-contract-period">
-                    <div>{{ formatCourseRef(row.course.id) }}</div>
-                    <div :class="[dataTable.sub, 'tw:tabular-nums']">{{ formatCoursePeriod(row.course.first_class_date || row.course.StartDate, row.course.end_date || row.course.EndDate) }}</div>
+                    <div :class="dataTable.fact">{{ formatCourseRef(row.course.id) }}</div>
+                    <div :class="[dataTable.sub, 'tw:tabular-nums']"><span :class="dataTable.fact">{{ formatCoursePeriod(row.course.first_class_date || row.course.StartDate, row.course.end_date || row.course.EndDate) }}</span></div>
                   </td>
                   <td :class="dataTable.cell">
                     <StatusBadge
@@ -722,15 +722,15 @@
                       :aria-label="paymentStatusButtonLabel(row.course)"
                     >{{ paymentStatusChipText(row.course) }}</StatusBadge>
                   </td>
-                  <td :class="[dataTable.cell, 'tw:tabular-nums']">
+                  <td :class="[dataTable.cell, 'tw:min-w-[7em] tw:tabular-nums']">
                     <template v-if="row.reports?.[0]">
-                      {{ row.reports[0].payment_date || '—' }}
-                      · {{ reportStatusLabel(row.reports[0].status) }}
-                      <span v-if="row.reports[0].account_last5"> · {{ row.reports[0].account_last5 }}</span>
+                      <span :class="dataTable.fact">{{ row.reports[0].payment_date || '—' }}</span>
+                      · <span :class="dataTable.fact">{{ reportStatusLabel(row.reports[0].status) }}</span>
+                      <template v-if="row.reports[0].account_last5"> · <span :class="dataTable.fact">{{ row.reports[0].account_last5 }}</span></template>
                     </template>
                     <span v-else :class="dataTable.sub">尚無回報</span>
                   </td>
-                  <td :class="dataTable.cell">
+                  <td :class="[dataTable.cell, 'tw:min-w-[7em]']">
                     <span v-if="row.reports?.some((r) => r.status === 'confirmed')" :class="dataTable.sub">可開收據</span>
                     <span v-else :class="dataTable.sub">核對入帳後才能開收據</span>
                   </td>
