@@ -7,6 +7,15 @@
  */
 
 const TONE_RANK = { danger: 3, warning: 2, info: 1 };
+const USAGE_REVIEW_KIND = 'usage_review';
+
+/**
+ * The row already shows a 堂數待對帳 button when the course needs the review; the chip of that same warning is dropped.
+ * Decided by the warning's kind, never by its words (a summary chip of several warnings has kind `summary` and stays).
+ */
+export const duplicatesUsageReviewButton = (course, warning) => (
+  course?.usage_balance_status === 'review_required' && warning?.kind === USAGE_REVIEW_KIND
+);
 
 export function usageBalanceWarningTitle(course) {
   const diagnostic = course?.usage_balance_diagnostic;
@@ -32,6 +41,7 @@ export function courseRowWarningItems(course, usageBalanceWarningTitle) {
   const items = [];
   if (course?.hasSlotConflict) {
     items.push({
+      kind: 'slot_conflict',
       tone: 'warning',
       label: '⚠ 另一門課仍在同時段',
       title: '這不是重複課堂；這位學生另有一門進行中課程使用同一位老師與相同上課時段，若舊課已結束且不再續課，請在舊課選擇「結束課程（不再續課）」；請假或調課不會關閉舊課。',
@@ -39,6 +49,7 @@ export function courseRowWarningItems(course, usageBalanceWarningTitle) {
   }
   if (course?.schedule_drift) {
     items.push({
+      kind: 'schedule_drift',
       tone: 'warning',
       label: '⚠ 堂次偏移',
       title: course.contract_exception_count > 0
@@ -47,13 +58,14 @@ export function courseRowWarningItems(course, usageBalanceWarningTitle) {
     });
   } else if (course?.contract_exception_count > 0) {
     items.push({
+      kind: 'contract_exception',
       tone: 'info',
       label: '補課例外',
       title: '含 ' + course.contract_exception_count + ' 堂非固定星期的補課／加課，不會被重建覆寫。',
     });
   }
   if (course?.usage_balance_status === 'review_required') {
-    items.push({ tone: 'danger', label: '⚠ 堂數待對帳', title: usageBalanceWarningTitle(course) });
+    items.push({ kind: USAGE_REVIEW_KIND, tone: 'danger', label: '⚠ 堂數待對帳', title: usageBalanceWarningTitle(course) });
   }
   return items;
 }
@@ -68,6 +80,7 @@ export function courseRowWarningSummary(course, usageBalanceWarningTitle) {
   if (items.length === 1) return items;
   const worst = items.reduce((a, b) => (TONE_RANK[b.tone] > TONE_RANK[a.tone] ? b : a));
   return [{
+    kind: 'summary',
     tone: worst.tone,
     label: `⚠ ${items.length} 個提醒`,
     title: items.map((it) => `${it.label.replace(/^⚠ /, '')}：${it.title}`).join('\n'),
