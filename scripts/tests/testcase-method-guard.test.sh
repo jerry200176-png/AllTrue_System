@@ -12,7 +12,7 @@ export ALLTRUE_GUARD_EXTRA_AUTOLOAD="$PWD/$fixtures/stubs.php"
 
 # expect_fail <dir> <extended regex the output must match>
 expect_fail() {
-  if php "$guard" --tests-dir="$fixtures/$1" >"$out" 2>&1; then
+  if timeout 30 php "$guard" --tests-dir="$fixtures/$1" >"$out" 2>&1; then
     echo "FAIL: guard accepted fixture $1" >&2
     cat "$out" >&2
     exit 1
@@ -32,6 +32,9 @@ expect_fail colliding 'CollidingTest.php:[0-9]+ count\(\) collides with PHPUnit\
 expect_fail laravel-trait 'SessionTest.php:[0-9]+ session\(\) collides with .*::session'
 expect_fail grouped-trait 'CountHelper.php:[0-9]+ count\(\) collides with PHPUnit\\Framework\\TestCase::count'
 expect_fail uppercase 'UpperCaseTest.php:[0-9]+ Count\(\) collides with PHPUnit\\Framework\\TestCase::count'
+expect_fail grouped-function-import 'CountTrait.php:[0-9]+ count\(\) collides with PHPUnit\\Framework\\TestCase::count'
+expect_fail ampersand 'AmpersandTest.php:[0-9]+ count\(\) collides with PHPUnit\\Framework\\TestCase::count'
+expect_fail trait-alias 'AliasTest.php:[0-9]+ count\(\) collides with PHPUnit\\Framework\\TestCase::count'
 expect_fail unresolved 'extends unresolvable Missing\\NoSuchBase'
 
 php "$guard" --tests-dir="$fixtures/allowed" >"$out" 2>&1 || {
@@ -39,5 +42,5 @@ php "$guard" --tests-dir="$fixtures/allowed" >"$out" 2>&1 || {
   cat "$out" >&2
   exit 1
 }
-grep -q '1 test classes checked' "$out" || { echo "FAIL: checked count missing" >&2; cat "$out" >&2; exit 1; }
+grep -q '2 test classes checked' "$out" || { echo "FAIL: checked count missing" >&2; cat "$out" >&2; exit 1; }
 echo "testcase-method-guard self-test: ok"

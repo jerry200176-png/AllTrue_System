@@ -109,15 +109,29 @@ function parseFile(string $file): array
                     $prefix = rtrim($full, '\\') . '\\';
                     $j = $next($j);
                     while ($j < $n && $tokens[$j] !== '}') {
-                        $entries[] = $prefix . ltrim($nameAt($j), '\\');
-                        $entryIndex = count($entries) - 1;
+                        $before = $j;
+                        $isFunctionOrConst = is_array($tokens[$j]) && in_array($tokens[$j][0], [T_FUNCTION, T_CONST], true);
+                        if ($isFunctionOrConst) {
+                            $j = $next($j); // `function helper` / `const FLAG`: not a class or trait, never recorded
+                        }
+                        $entry = ltrim($nameAt($j), '\\');
                         if ($j < $n && is_array($tokens[$j]) && $tokens[$j][0] === T_AS) {
                             $j = $next($j);
-                            $entries[$entryIndex] .= ' as ' . $text($tokens[$j]);
+                            $alias = $text($tokens[$j]);
                             $j = $next($j);
+                            $entry .= ' as ' . $alias;
+                        }
+                        if (!$isFunctionOrConst && $entry !== '') {
+                            $entries[] = $prefix . $entry;
                         }
                         if ($j < $n && $tokens[$j] === ',') {
                             $j = $next($j);
+                        }
+                        if ($j === $before) {
+                            // Backstop: an import shape this walker does not understand must fail loudly, not spin.
+                            $line = is_array($tokens[$j]) ? $tokens[$j][2] : 0;
+                            fwrite(STDERR, "cannot parse grouped import at $file:$line (token walker made no progress)\n");
+                            exit(2);
                         }
                     }
                     $j = $next($j); // closing brace
@@ -184,9 +198,29 @@ function parseFile(string $file): array
                     }
                     $j = $next($j);
                 }
+                // Adaptations: `use Helper { helper as protected count; A::run insteadof B; }`. The alias is a
+                // method name on the class (insteadof only picks one, it adds no name).
+                if ($j < $n && $tokens[$j] === '{') {
+                    for ($k = $next($j); $k < $n && $tokens[$k] !== '}'; $k = $next($k)) {
+                        if (is_array($tokens[$k]) && $tokens[$k][0] === T_AS) {
+                            $a = $next($k);
+                            while ($a < $n && is_array($tokens[$a]) && in_array($tokens[$a][0], [T_PUBLIC, T_PROTECTED, T_PRIVATE], true)) {
+                                $a = $next($a);
+                            }
+                            if ($a < $n && is_array($tokens[$a]) && $tokens[$a][0] === T_STRING) {
+                                $classes[$cur]['methods'][] = [$tokens[$a][1], $tokens[$a][2]];
+                            }
+                        }
+                    }
+                }
             } elseif ($id === T_FUNCTION) {
                 $j = $next($i);
-                if ($tokens[$j] === '&') {
+                // PHP 8.1+ tokenizes the `&` of `function &name()` as one of two ampersand tokens, not as '&'.
+                $ampersands = array_filter([
+                    defined('T_AMPERSAND_FOLLOWED_BY_VAR_OR_VARARG') ? T_AMPERSAND_FOLLOWED_BY_VAR_OR_VARARG : null,
+                    defined('T_AMPERSAND_NOT_FOLLOWED_BY_VAR_OR_VARARG') ? T_AMPERSAND_NOT_FOLLOWED_BY_VAR_OR_VARARG : null,
+                ]);
+                if ($tokens[$j] === '&' || (is_array($tokens[$j]) && in_array($tokens[$j][0], $ampersands, true))) {
                     $j = $next($j);
                 }
                 if (is_array($tokens[$j]) && $tokens[$j][0] === T_STRING) {
