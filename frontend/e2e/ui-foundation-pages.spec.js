@@ -1280,7 +1280,7 @@ for (const scenario of [
     await expect(page.locator('html')).toHaveAttribute('data-pilot-ready', '1');
     await dismissOverlays(page);
     await page.evaluate((rootSize) => { document.documentElement.style.fontSize = `${rootSize}px`; }, scenario.root);
-    await expect(page.getByRole('heading', { level: 1, name: '課程查找', exact: true })).toBeVisible();
+    await expect(page.getByRole('heading', { level: 2, name: '課程查找', exact: true })).toBeVisible();
     const status = page.locator('#course-filter-status');
     expect(await status.evaluate((el) => el.closest('details') === null)).toBe(true);
     await status.selectOption('active');

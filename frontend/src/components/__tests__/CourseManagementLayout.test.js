@@ -21,7 +21,7 @@ const course = (id, extra = {}) => ({
 let wrapper;
 async function open() {
   wrapper = shallowMount(CourseManagement, { props: { branchId: 15, userRole: 'director' },
-    global: { stubs: { Card: false, Badge: false, Button: false, Primitive: false, ActionMenu: false, TextSizeToggle: false } } });
+    global: { stubs: { Card: false, Badge: false, Button: false, Primitive: false, ActionMenu: false, TextSizeToggle: false, PageHeader: false, StatStrip: false, StatItem: false } } });
   await flushPromises();
   return wrapper.vm.$.setupState;
 }
@@ -34,7 +34,7 @@ afterEach(() => { wrapper?.unmount(); vi.unstubAllGlobals(); });
 describe('#527 course workbench layout', () => {
   it('uses the shared workbench heading and text-size control with a compact primary search', async () => {
     await open();
-    expect(wrapper.get('h1').text()).toBe('課程查找');
+    expect(wrapper.get('h2').text()).toBe('課程查找');
     expect(wrapper.get('[data-testid="text-size"]').attributes('role')).toBe('radiogroup');
     expect(wrapper.get('#course-filter-student').element.closest('details')).toBeNull();
     expect(wrapper.get('#course-filter-status').element.closest('details')).toBeNull();

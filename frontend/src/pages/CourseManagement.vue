@@ -1,39 +1,40 @@
 <template>
-  <div class="course-page at-page course-workbench tw:text-tpl-body">
-    <header class="tpl-bar course-workbench__header tw:mb-4 tw:flex tw:flex-wrap tw:items-start tw:justify-between tw:gap-4" data-guide="course-mgmt-header">
-      <div class="course-workbench__intro tw:min-w-0 tw:flex-1">
-        <h1 class="tw:text-[length:var(--tpl-text-page)] tw:font-bold tw:leading-tight">課程查找</h1>
-        <p class="course-workbench__description tw:mt-1 tw:text-[length:var(--tpl-text-body)] tw:text-tpl-secondary">管理「課」：查找課程、排課、堂次與續課。</p>
-        <p class="course-workbench__context tw:mt-1 tw:text-[length:var(--tpl-text-caption)] tw:text-tpl-secondary">
-          <span>目前列表 {{ coursesLoading && !groupedCourses.length ? '—' : groupedCourses.length }} 位學生</span>
-          <span v-if="pagination.lastPage > 1"> · 第 {{ pagination.page }} / {{ pagination.lastPage }} 頁</span>
-        </p>
-      </div>
-      <details class="course-workbench__help" data-testid="course-help">
-        <summary class="tw:rounded-full" aria-label="課程使用說明" title="課程使用說明"><Info :size="22" aria-hidden="true" /><span class="course-help-label">先看懂這一頁</span></summary>
-        <p>查找、排課與營運；建立、續報與購買請從學生管理進入。</p>
-        <div class="course-lens-guidance" role="note" data-testid="course-lens-guidance">
-          <span class="material-symbols-outlined course-lens-guidance__icon" aria-hidden="true">near_me</span>
-          <div>
-            <strong>這一頁適合查找與分流</strong>
-            <span>建立、續報、購買與學生資料由「學生管理」負責；本頁保留查找、排課、課程營運與既有課程編輯。</span>
+  <div class="course-page course-workbench" :class="pageShell">
+    <PageHeader class="course-workbench__header" intro-class="course-workbench__intro tw:flex-[1_1_16rem]" data-guide="course-mgmt-header" title="課程查找">
+      <template #context>
+        <span class="course-workbench__description tw:max-md:hidden">管理「課」：查找課程、排課、堂次與續課。</span>
+        <span class="course-workbench__context tw:tabular-nums"><span class="tw:max-md:hidden"> </span><span>目前列表 {{ coursesLoading && !groupedCourses.length ? '—' : groupedCourses.length }} 位學生</span><span v-if="pagination.lastPage > 1"> · 第 {{ pagination.page }} / {{ pagination.lastPage }} 頁</span></span>
+      </template>
+      <template #help>
+        <details class="course-workbench__help" data-testid="course-help">
+          <summary class="tw:rounded-full" aria-label="課程使用說明" title="課程使用說明"><Info :size="22" aria-hidden="true" /><span class="course-help-label">先看懂這一頁</span></summary>
+          <p>查找、排課與營運；建立、續報與購買請從學生管理進入。</p>
+          <div class="course-lens-guidance" role="note" data-testid="course-lens-guidance">
+            <span class="material-symbols-outlined course-lens-guidance__icon" aria-hidden="true">near_me</span>
+            <div>
+              <strong>這一頁適合查找與分流</strong>
+              <span>建立、續報、購買與學生資料由「學生管理」負責；本頁保留查找、排課、課程營運與既有課程編輯。</span>
+            </div>
           </div>
-        </div>
 
-        <div class="course-lens-summary" aria-label="課程管理摘要" data-testid="course-lens-summary" :style="courseLensGridStyle">
-          <Card v-for="metric in courseLensMetrics" :key="metric.key" class="course-lens-metric" :class="`course-lens-metric--${metric.tone}`">
-            <span class="course-lens-metric__label">{{ metric.label }}</span>
-            <strong class="course-lens-metric__value">{{ metric.value }}</strong>
-            <span class="course-lens-metric__hint">{{ metric.hint }}</span>
-          </Card>
-        </div>
-      </details>
-      <div class="course-workbench__tools tw:flex tw:flex-wrap tw:items-center tw:gap-3">
+          <StatStrip class="course-lens-summary tw:mt-3" aria-label="課程管理摘要" data-testid="course-lens-summary" :style="courseLensGridStyle">
+            <StatItem
+              v-for="metric in courseLensMetrics"
+              :key="metric.key"
+              :label="metric.label"
+              :value="metric.value"
+              :sub="metric.hint"
+              :tone="metric.tone"
+              class="course-lens-metric tw:max-lg:last:odd:col-span-2"
+              :class="`course-lens-metric--${metric.tone}`"
+            />
+          </StatStrip>
+        </details>
+      </template>
+      <template #actions>
         <TextSizeToggle />
-        <Button type="button" class="course-lens-add-action tw:h-14 tw:px-5 tw:text-[length:var(--tpl-text-body)]" data-testid="course-header-create" @click="openCreateCourse"><Plus :size="22" aria-hidden="true" />新增課程</Button>
-        <Button type="button" variant="ghost" class="course-lens-nav-action tw:h-14 tw:px-5 tw:text-[length:var(--tpl-text-body)]" @click="emit('navigate', 'students')"><UserSearch :size="22" aria-hidden="true" />前往學生管理</Button>
         <details class="course-tools-menu">
-          <summary class="btn-soft course-tools-menu__summary tw:text-tpl-caption">
+          <summary class="btn-soft course-tools-menu__summary tw:h-12 tw:text-tpl-body">
             <span class="material-symbols-outlined btn-icon" aria-hidden="true">more_horiz</span>
             課務工具
           </summary>
@@ -48,13 +49,13 @@
             </button>
           </div>
         </details>
-      </div>
-    </header>
+        <Button type="button" variant="outline" :class="[control.page, 'course-lens-nav-action', phoneAction]" @click="emit('navigate', 'students')"><UserSearch :size="22" aria-hidden="true" />前往學生管理</Button>
+        <Button type="button" :class="[control.page, 'course-lens-add-action', phoneAction]" data-testid="course-header-create" @click="openCreateCourse"><Plus :size="22" aria-hidden="true" />新增課程</Button>
+      </template>
+    </PageHeader>
 
-    <div class="tpl-card course-header-card tw:rounded-3xl">
-
-      <!-- Filters -->
-      <div class="course-filter-primary" data-guide="course-mgmt-filters">
+    <div class="course-header-card" :class="surface.card" data-guide="course-mgmt-filters">
+      <div class="course-filter-primary">
         <div class="filter-field">
           <label class="tw:text-tpl-caption" for="course-filter-student">搜尋學生</label>
           <input class="tw:rounded-2xl tw:text-tpl-body" id="course-filter-student" v-model="filters.name" type="search" autocomplete="off" placeholder="搜尋學生姓名…" @input="debouncedLoad" />
@@ -73,7 +74,7 @@
         <Button variant="ghost" class="course-filter-clear tw:text-tpl-caption" type="button" data-testid="course-filter-clear" @click="clearCourseFilters">清除篩選</Button>
       </div>
       <details class="course-secondary-filters">
-        <summary class="tw:text-tpl-caption">更多篩選<span class="material-symbols-outlined" aria-hidden="true">tune</span></summary>
+        <summary class="tw:text-tpl-body">更多篩選<span class="material-symbols-outlined" aria-hidden="true">tune</span></summary>
         <div class="course-secondary-filters__fields">
           <div class="filter-field">
             <label class="tw:text-tpl-caption" for="course-filter-type">上課類型</label>
@@ -92,37 +93,26 @@
           </div>
         </div>
       </details>
-
-      <details class="course-stats-disclosure">
-        <summary>
-          <span>課程分布</span>
-          <span class="course-stats-disclosure__hint">{{ courses.length }} 筆課程・依類型查看</span>
-          <span class="material-symbols-outlined" aria-hidden="true">expand_more</span>
-        </summary>
-        <div class="stats-strip" aria-label="本頁課程類型分布">
-          <span class="stats-orb stats-orb-total">
-            <span class="stats-orb-label">課程總覽</span>
-            <span class="stats-orb-num">{{ courses.length }}</span>
-            <span class="stats-orb-caption">筆課程在線</span>
-          </span>
-          <span class="stats-orb"><span class="stats-orb-label">1:1</span><span class="stats-orb-num">{{ coursesByType.one_on_one }}</span><span class="stats-orb-caption">一對一</span></span>
-          <span class="stats-orb"><span class="stats-orb-label">1:2</span><span class="stats-orb-num">{{ coursesByType.one_on_two }}</span><span class="stats-orb-caption">一對二</span></span>
-          <span class="stats-orb"><span class="stats-orb-label">1:3</span><span class="stats-orb-num">{{ coursesByType.one_on_three }}</span><span class="stats-orb-caption">一對三</span></span>
-          <span class="stats-orb"><span class="stats-orb-label">輔導</span><span class="stats-orb-num">{{ coursesByType.tutoring }}</span><span class="stats-orb-caption">輔導</span></span>
-          <span class="stats-orb"><span class="stats-orb-label">試聽</span><span class="stats-orb-num">{{ coursesByType.trial }}</span><span class="stats-orb-caption">試聽</span></span>
-          <template v-if="coursesBySubject.length">
-            <span class="stats-subject-deck">
-              <span class="stats-subject-title">科目</span>
-              <span
-                v-for="s in coursesBySubject"
-                :key="s.subject"
-                class="stats-strip-subject"
-              >{{ s.label }} {{ s.count }}</span>
-            </span>
-          </template>
-        </div>
-      </details>
     </div>
+
+    <details class="course-stats-disclosure">
+      <summary class="tw:text-tpl-body">
+        <span class="tw:font-semibold">課程分布</span>
+        <span class="course-stats-disclosure__hint tw:text-tpl-caption">{{ courses.length }} 筆課程・依類型查看</span>
+        <span class="material-symbols-outlined" aria-hidden="true">expand_more</span>
+      </summary>
+      <StatStrip class="stats-strip tw:mt-2" aria-label="本頁課程類型分布">
+        <StatItem label="一對一" :value="coursesByType.one_on_one" unit="筆" />
+        <StatItem label="一對二" :value="coursesByType.one_on_two" unit="筆" />
+        <StatItem label="一對三" :value="coursesByType.one_on_three" unit="筆" />
+        <StatItem label="輔導" :value="coursesByType.tutoring" unit="筆" />
+        <StatItem label="試聽" :value="coursesByType.trial" unit="筆" class="tw:max-md:col-span-2" />
+      </StatStrip>
+      <p v-if="coursesBySubject.length" class="stats-subject-deck tw:m-0 tw:mt-3 tw:flex tw:flex-wrap tw:items-center tw:gap-2 tw:text-tpl-caption">
+        <span class="stats-subject-title tw:font-semibold tw:text-tpl-secondary">科目</span>
+        <span v-for="s in coursesBySubject" :key="s.subject" class="stats-strip-subject tw:rounded-full tw:bg-secondary tw:px-3 tw:py-1 tw:font-semibold tw:tabular-nums">{{ s.label }} {{ s.count }}</span>
+      </p>
+    </details>
 
     <!-- Post-creation success banner -->
     <transition name="fade">
@@ -1376,6 +1366,9 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import TextSizeToggle from '../components/TextSizeToggle.vue';
+import { PageHeader, StatStrip, StatItem, control, pageShell, surface } from '@/components/ui/page';
+// Phone: the two page buttons share a row and may wrap their words instead of pushing the page sideways (320px at 大).
+const phoneAction = 'tw:max-md:min-w-0 tw:max-md:flex-[1_1_9rem] tw:max-md:h-auto tw:max-md:min-h-12 tw:max-md:whitespace-normal tw:max-md:py-2';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Info, Plus, UserSearch } from 'lucide-vue-next';
 import { isCourseSettled, isPaymentNoticeStatus } from '../lib/paymentStatus.js';
@@ -5728,57 +5721,25 @@ onUnmounted(() => {
 
 <style scoped>
 .course-page {
-  padding-bottom: 24px;
   position: relative;
 }
 /* ----- Page header ----- */
-.course-header-card {
-  position: relative;
-  padding: 22px;
-  border-radius: 16px;
-  border: 1px solid var(--ds-hairline);
-  background: var(--ds-canvas);
-  box-shadow: var(--ds-shadow-1);
-  color: var(--ds-ink);
-}
-.course-context-disclosure,
-.course-stats-disclosure {
-  border: 1px solid var(--ds-hairline);
-  border-radius: var(--ds-radius-lg);
-  background: var(--ds-canvas-soft);
-}
-.course-context-disclosure summary,
+/* ----- Toolbar card (surface comes from the shared card classes) ----- */
 .course-stats-disclosure summary {
-  display: grid;
-  grid-template-columns: auto auto minmax(0, 1fr) auto;
+  display: flex;
   align-items: center;
   gap: 8px;
-  min-height: 34px;
-  padding: 0 12px;
-  color: var(--ds-ink-secondary);
-  font-size: 12px;
-  font-weight: 800;
+  min-height: 44px;
+  padding: 0 4px;
+  color: var(--ds-ink);
   cursor: pointer;
   list-style: none;
 }
-.course-context-disclosure summary::-webkit-details-marker,
 .course-stats-disclosure summary::-webkit-details-marker { display: none; }
-.course-context-disclosure summary > .material-symbols-outlined,
-.course-stats-disclosure summary > .material-symbols-outlined { color: var(--ds-ink-mute); font-size: 18px; }
-.course-context-disclosure summary > .material-symbols-outlined:last-child,
-.course-stats-disclosure summary > .material-symbols-outlined:last-child { transition: transform 160ms ease; }
-.course-context-disclosure[open] summary > .material-symbols-outlined:last-child,
-.course-stats-disclosure[open] summary > .material-symbols-outlined:last-child { transform: rotate(180deg); }
-.course-context-disclosure summary:focus-visible,
-.course-stats-disclosure summary:focus-visible { outline: 3px solid var(--ds-info-wash); outline-offset: 2px; border-radius: 5px; }
-.course-context-disclosure__title { color: var(--ds-ink); }
-.course-context-disclosure__hint,
-.course-stats-disclosure__hint { overflow: hidden; color: var(--ds-ink-mute); font-size: 11px; font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
-.course-context-disclosure__body { display: grid; gap: 14px; padding: 0 12px 12px; }
-.course-context-disclosure .course-lens-guidance { margin-top: 0; }
-.course-context-disclosure .course-lens-summary { margin-top: 0; }
-.course-stats-disclosure { margin-top: 12px; }
-.course-stats-disclosure .stats-strip { margin: 0 12px 12px; }
+.course-stats-disclosure summary > .material-symbols-outlined { color: var(--ds-ink-mute); font-size: 20px; margin-left: auto; transition: transform 160ms ease; }
+.course-stats-disclosure[open] summary > .material-symbols-outlined { transform: rotate(180deg); }
+.course-stats-disclosure summary:focus-visible { outline: 3px solid var(--ds-primary); outline-offset: 2px; border-radius: 12px; }
+.course-stats-disclosure__hint { min-width: 0; overflow: hidden; color: var(--ds-ink-secondary); text-overflow: ellipsis; white-space: nowrap; }
 
 .header-actions {
   position: relative;
@@ -5813,7 +5774,7 @@ onUnmounted(() => {
   border-radius: var(--ds-radius-lg);
   background: var(--ds-primary-wash);
   color: var(--ds-ink-secondary);
-  font-size: 13px;
+  font-size: var(--tpl-text-caption);
   line-height: 1.5;
 }
 
@@ -5828,55 +5789,10 @@ onUnmounted(() => {
   color: var(--ds-ink);
 }
 
-.course-lens-summary {
-  display: grid;
-  /* Column counts come from summaryGridColumns() so no row ends with one orphan card (in-app #538). */
-  grid-template-columns: repeat(var(--summary-cols-wide, 4), minmax(0, 1fr));
-  gap: 10px;
-  margin-top: 16px;
-}
-@media (max-width: 1023px) {
-  .course-lens-summary { grid-template-columns: repeat(var(--summary-cols-mid, 2), minmax(0, 1fr)); }
-}
-@media (max-width: 640px) {
-  .course-lens-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .course-lens-summary > :last-child:nth-child(odd) { grid-column: 1 / -1; }
-}
 
-.course-lens-metric {
-  display: grid;
-  min-width: 0;
-  gap: 4px;
-  padding: 14px 16px;
-  border: 1px solid var(--ds-hairline);
-  border-radius: var(--ds-radius-lg);
-  background: var(--ds-canvas);
-  box-shadow: var(--ds-shadow-1);
-}
 
-.course-lens-metric--success { border-color: color-mix(in srgb, var(--ds-success) 50%, var(--ds-hairline)); }
-.course-lens-metric--warning { border-color: color-mix(in srgb, var(--ds-warning) 50%, var(--ds-hairline)); }
-.course-lens-metric--info { border-color: color-mix(in srgb, var(--ds-primary) 45%, var(--ds-hairline)); }
 
-.course-lens-metric__label {
-  color: var(--ds-ink-mute);
-  font-size: 12px;
-  font-weight: 700;
-}
 
-.course-lens-metric__value {
-  color: var(--ds-ink);
-  font-size: 26px;
-  line-height: 1;
-  font-variant-numeric: tabular-nums;
-}
-
-.course-lens-metric__hint {
-  overflow-wrap: anywhere;
-  color: var(--ds-ink-secondary);
-  font-size: 12px;
-  line-height: 1.35;
-}
 
 .command-kicker {
   margin: 0 0 4px;
@@ -5925,7 +5841,7 @@ onUnmounted(() => {
 .pending-leave-summary {
   display: grid;
   gap: 12px;
-  margin: 14px 0;
+  margin: 0;
   padding: 14px 16px;
   border: 1px solid color-mix(in srgb, var(--ds-primary) 40%, var(--ds-hairline));
   border-radius: 14px;
@@ -6216,81 +6132,7 @@ onUnmounted(() => {
 .fade-enter-active, .fade-leave-active { transition: opacity 0.3s; }
 .fade-enter-from, .fade-leave-to { opacity: 0; }
 
-.stats-strip {
-  position: relative;
-  z-index: 1;
-  display: grid;
-  grid-template-columns: minmax(160px, 1.35fr) repeat(5, minmax(96px, 1fr)) minmax(180px, 1.8fr);
-  gap: 10px;
-  margin-top: 16px;
-  padding: 12px;
-  border-radius: 12px;
-  background: var(--ds-canvas-soft);
-  border: 1px solid var(--ds-hairline);
-  color: var(--ds-ink-mute);
-}
-
-.stats-orb {
-  position: relative;
-  display: grid;
-  gap: 2px;
-  padding: 12px 13px;
-  min-height: 82px;
-  border-radius: 12px;
-  border: 1px solid var(--ds-hairline);
-  background: var(--ds-canvas);
-}
-.stats-orb-total {
-  border-bottom: 3px solid var(--ds-primary);
-}
-.stats-orb-label,
-.stats-subject-title {
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  color: var(--ds-ink-mute);
-}
-.stats-orb-num {
-  font-size: 28px;
-  font-weight: 700;
-  line-height: 1;
-  color: var(--ds-ink);
-  font-variant-numeric: tabular-nums;
-}
-.stats-orb-caption {
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--ds-ink-mute);
-}
-
-.stats-subject-deck {
-  display: flex;
-  flex-wrap: wrap;
-  align-content: center;
-  gap: 7px;
-  padding: 12px;
-  border-radius: 12px;
-  border: 1px solid var(--ds-hairline);
-  background: var(--ds-canvas);
-}
-.stats-subject-title {
-  flex: 0 0 100%;
-}
-.stats-strip-subject {
-  padding: 4px 9px;
-  border-radius: 999px;
-  background: var(--ds-canvas-soft);
-  color: var(--ds-ink-secondary);
-  border: 1px solid var(--ds-hairline);
-  font-size: 11.5px;
-  font-weight: 600;
-}
-
 @media (max-width: 980px) {
-  .course-header-card {
-    padding: 18px;
-  }
   .header-actions {
     align-items: flex-start;
     flex-direction: column;
@@ -6299,20 +6141,13 @@ onUnmounted(() => {
     width: 100%;
     justify-content: flex-start;
   }
-  .stats-strip {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-  .stats-orb-total,
-  .stats-subject-deck {
-    grid-column: 1 / -1;
-  }
 }
 
 /* ----- Table ----- */
 .table-card {
   padding: 0;
   overflow: visible;
-  margin-top: 16px;
+  margin-top: 0;
   border-radius: 12px;
   border: 1px solid var(--ds-hairline);
   background: var(--ds-canvas);
@@ -7616,10 +7451,6 @@ button.danger:disabled {
 }
 
 @media (max-width: 640px) {
-  .course-page {
-    padding: 0 8px 16px;
-  }
-
   .header-actions {
     flex-direction: column;
     align-items: stretch;
@@ -7629,35 +7460,13 @@ button.danger:disabled {
     justify-content: flex-start;
   }
 
-  .course-tools-menu {
-    width: 100%;
-  }
-
-  .course-tools-menu__summary {
-    justify-content: center;
+  .course-tools-menu[open] {
     width: 100%;
   }
 
   .course-tools-menu__panel {
     position: static;
     margin-top: 6px;
-  }
-
-  .course-header-card {
-    padding: 16px;
-  }
-
-
-  .course-lens-summary {
-    gap: 8px;
-  }
-
-  .course-lens-metric {
-    padding: 12px;
-  }
-
-  .course-lens-metric__value {
-    font-size: 22px;
   }
 
   .course-lens-guidance {
@@ -8529,11 +8338,6 @@ button.danger:disabled {
     radial-gradient(circle at 14% 18%, rgba(125, 211, 252, 0.16), transparent 28%),
     radial-gradient(circle at 88% 2%, rgba(245, 158, 11, 0.12), transparent 24%);
 }
-[data-theme="dark"] .course-header-card {
-  border-color: rgba(125, 211, 252, 0.28);
-  background:
-    linear-gradient(120deg, rgba(2, 6, 23, 0.98), rgba(15, 23, 42, 0.96) 50%, rgba(30, 64, 175, 0.72));
-}
 [data-theme="dark"] .table-card {
   border-color: var(--ds-hairline);
   background: linear-gradient(180deg, rgba(15,23,42,0.98), rgba(30,41,59,0.9));
@@ -8706,12 +8510,9 @@ button.danger {
 
 /* Course workbench: reuse template tokens without changing other pages or domain state. */
 .course-workbench { color: var(--ds-ink); font-size: inherit; }
-.course-workbench__header { position: relative; z-index: 1; gap: 1rem; }
-.course-workbench__tools { align-content: start; }
-.course-workbench .course-header-card {
-  padding: 1rem; border: 1px solid var(--ds-hairline); border-radius: inherit;
-  background: var(--ds-canvas); box-shadow: var(--ds-shadow-1); margin-bottom: 1.25rem;
-}
+.course-workbench__header { position: relative; z-index: 1; }
+.course-workbench .course-header-card { display: grid; gap: 12px; padding: 20px; }
+@media (max-width: 767px) { .course-workbench .course-header-card { padding: 16px; } }
 .course-workbench .course-filter-primary,
 .course-workbench .course-secondary-filters__fields {
   display: grid; grid-template-columns: minmax(0, 1fr) minmax(8rem, .45fr); gap: 1rem;
@@ -8723,16 +8524,15 @@ button.danger {
   width: 100%; min-width: 0; min-height: 3rem; box-sizing: border-box; font-size: inherit;
   border-radius: inherit; background: var(--ds-canvas-soft); color: var(--ds-ink);
 }
-.course-active-filters { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; margin-top: .75rem; }
+.course-active-filters { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; }
 .course-active-filters :deep([data-slot="badge"]) { max-width: 100%; white-space: normal; overflow-wrap: anywhere; font-size: inherit; }
 .course-workbench .course-filter-clear { margin: 0; min-height: 2.75rem; padding: .5rem .75rem; font-size: inherit; width: auto; flex: 0 0 auto; }
-.course-secondary-filters { margin-top: .75rem; }
 .course-secondary-filters > summary {
   display: flex; align-items: center; gap: .5rem; min-height: 2.75rem;
   width: fit-content; cursor: pointer; color: var(--ds-ink-secondary); font-size: inherit; font-weight: 600;
 }
 .course-secondary-filters__fields { padding-top: .5rem; }
-.course-workbench .course-stats-disclosure { margin-top: .5rem; border-top: 1px solid var(--ds-hairline); padding-top: .5rem; }
+.course-secondary-filters[open] > summary { margin-bottom: .25rem; }
 .course-workbench .course-list-surface {
   padding: 0; border: 0; border-radius: 0; background: transparent; box-shadow: none;
 }
@@ -8804,7 +8604,6 @@ button.danger {
   .course-workbench .course-row .contract-field-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); margin: 0; }
 }
 @media (max-width: 640px) {
-  .course-workbench__tools { width: 100%; }
   .course-workbench .course-filter-primary,
   .course-workbench .course-secondary-filters__fields { grid-template-columns: minmax(0, 1fr); gap: .75rem; }
   .course-workbench .student-group-header { padding: .75rem; }
@@ -8815,12 +8614,8 @@ button.danger {
   .course-workbench .history-section { padding: .5rem .875rem; }
 }
 
-.course-workbench__intro { display: grid; grid-template-columns: minmax(0, 1fr); align-content: start; }
-.course-workbench__intro > h1 { grid-column: 1; grid-row: 1; }
-.course-workbench__context { grid-column: 1; grid-row: 2; }
-.course-workbench__description { grid-column: 1 / -1; grid-row: 3; }
 /* The help is a header sibling (not inside the intro column), so opened it can take the whole header width. */
-.course-workbench__help { align-self: start; min-width: 0; }
+.course-workbench__help { align-self: center; margin-left: auto; min-width: 0; }
 .course-workbench__help > summary { display: grid; place-items: center; min-height: 2.75rem; min-width: 2.75rem; border-radius: var(--ds-radius-pill); cursor: pointer; }
 .course-help-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
 .course-workbench__help[open] { flex: 0 0 100%; order: 3; }
@@ -8830,15 +8625,12 @@ button.danger {
 .course-workbench .course-row .payment-status-badge,
 .course-workbench .course-row .subject-tag,
 .course-workbench .course-row .status-tag { font-size: inherit; }
-.course-workbench .course-tools-menu__summary { min-height: 2.75rem; font-size: inherit; }
+.course-workbench .course-tools-menu__summary { min-height: 3rem; }
 .course-workbench .pending-leave-summary { padding: .875rem 1rem; border-radius: inherit; }
 .course-workbench .pending-leave-summary__header { margin: 0; }
 .pending-leave-disclosure { margin-top: .5rem; }
 .pending-leave-disclosure > summary { min-height: 2.75rem; display: flex; align-items: center; cursor: pointer; color: var(--ds-ink-secondary); font-size: inherit; font-weight: 600; }
 @media (max-width: 640px) {
-  .course-workbench__description { display: none; }
-  .course-workbench__tools .course-tools-menu { width: auto; }
-  .course-workbench .course-filter-primary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
 .course-workbench .subject-teacher { min-width: 0; overflow-wrap: anywhere; white-space: normal; }
