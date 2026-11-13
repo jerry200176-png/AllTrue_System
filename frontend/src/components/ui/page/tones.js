@@ -85,7 +85,12 @@ export const dataTable = Object.freeze({
   num: `${cell} tw:text-right tw:whitespace-nowrap tw:tabular-nums`,
   // Second line inside a cell (subject, teacher, amount still owed). It may wrap; the name above it may not.
   sub: 'tw:block tw:text-tpl-caption tw:font-normal tw:whitespace-normal tw:text-tpl-secondary',
-  total: 'tw:h-14 tw:border-0 tw:bg-muted tw:px-3 tw:py-2 tw:md:px-4 tw:text-[length:var(--tpl-text-body)] tw:font-bold tw:text-foreground',
+  // A money line under a value (應繳, 估算): tabular, one line, secondary colour. `amountPending` = not billed yet (warning text),
+  // `amountEstimate` = an estimate, lighter weight. Red stays for money that is owed.
+  amount: 'tw:block tw:text-tpl-caption tw:font-semibold tw:tabular-nums tw:whitespace-nowrap tw:text-tpl-secondary',
+  amountPending: 'tw:block tw:text-tpl-caption tw:font-semibold tw:whitespace-nowrap tw:text-[var(--ds-warning-text)]',
+  amountEstimate: 'tw:block tw:text-tpl-caption tw:font-normal tw:tabular-nums tw:whitespace-nowrap tw:text-tpl-secondary',
+  total: 'tw:h-14tw:border-0 tw:bg-muted tw:px-3 tw:py-2 tw:md:px-4 tw:text-[length:var(--tpl-text-body)] tw:font-bold tw:text-foreground',
   phoneHide: 'tw:max-md:hidden',
   phoneOnly: 'tw:md:hidden',
 });

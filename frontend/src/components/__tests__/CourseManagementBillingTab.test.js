@@ -93,7 +93,8 @@ describe('CourseManagement student billing tab', () => {
     expect(source).toContain('v-else-if="showsBillingRowNextAction(row.course)"');
     expect(source).toContain('v-if="isTutoringBillingAnomaly(row.course)"');
     expect(source).toContain('輔導課不應產生付款義務');
-    expect(source).toContain("anomaly: 'tag-billing-anomaly', no_payment: 'tag-no-payment'");
+    // issue 4989 slice 5: the badge classes became template tones (anomaly = danger, no payment needed = neutral).
+    expect(source).toContain("const PAYMENT_TONE = { anomaly: 'danger', owing: 'danger', settled: 'success', free: 'success', no_payment: 'neutral', neutral: 'neutral' };");
   });
 
   it('uses the persisted rate unit for edit round-trip and course lookup pricing', () => {
@@ -105,16 +106,16 @@ describe('CourseManagement student billing tab', () => {
   });
 
   it('shows the contract ref and period column on the course billing table (in-app #396 #404)', () => {
-    expect(source).toContain('<th>合約／期間</th>');
+    expect(source).toMatch(/<th [^>]*>合約／期間<\/th>/);
     expect(source).toContain('data-testid="billing-contract-period"');
     expect(source).toContain('formatCourseRef(row.course.id)');
     expect(source).toContain('formatCoursePeriod(');
-    expect(source).toContain('colspan="6" class="student-billing-state"');
+    expect(source).toMatch(/colspan="6" :class="\['student-billing-state'/);
   });
 
   it('receipt column says a confirmed report can issue a receipt (in-app #395-#404)', () => {
-    expect(source).toContain(`r.status === 'confirmed')" class="hint">可開收據</span>`);
-    expect(source).toContain('<span v-else class="hint">核對入帳後才能開收據</span>');
+    expect(source).toContain(`r.status === 'confirmed')" :class="dataTable.sub">可開收據</span>`);
+    expect(source).toContain('<span v-else :class="dataTable.sub">核對入帳後才能開收據</span>');
     expect(source).not.toContain('確認入帳後可開');
     expect(moneyState).toContain("if (status === 'review_required') return { label: REVIEW_REQUIRED_LABEL, tone, nextAction };");
   });
