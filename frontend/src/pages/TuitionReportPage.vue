@@ -1,118 +1,128 @@
 <template>
-  <div class="tuition-report-page at-page">
-    <AtPageHeader
-      title="當月學收"
-      description="本月已上課堂數 × 費率的估算，不等於已收。"
-      icon="bar_chart"
-      data-guide="tuition-report-header"
-    >
-      <template #actions>
-        <div class="tr-controls">
-        <div class="tr-month-picker">
-          <AtIconButton icon="chevron_left" label="上一月" @click="prevMonth" />
-          <span class="tr-month-label">{{ year }} 年 {{ month }} 月</span>
-          <AtIconButton icon="chevron_right" label="下一月" @click="nextMonth" />
+  <div class="tuition-report-page tw:mx-auto tw:flex tw:max-w-6xl tw:flex-col tw:gap-4 tw:px-[calc(var(--ds-space-4)-10px)] tw:pb-24 tw:text-foreground tw:md:px-0 tw:md:pb-0" data-testid="tuition-report-page">
+    <header class="tw:pb-2" data-guide="tuition-report-header">
+      <div class="tw:flex tw:flex-wrap tw:items-center tw:justify-between tw:gap-x-4 tw:gap-y-3">
+        <h2 class="tw:flex tw:items-center tw:gap-2 tw:text-tpl-page tw:font-bold tw:tracking-tight">
+          <BarChart3 class="tw:size-6 tw:shrink-0 tw:text-tpl-secondary" :stroke-width="2" aria-hidden="true" />
+          當月學收
+        </h2>
+        <div class="tr-controls tw:flex tw:w-full tw:flex-wrap tw:items-center tw:gap-2 tw:md:w-auto">
+          <div class="tr-month-picker tw:flex tw:w-full tw:items-center tw:justify-between tw:gap-1 tw:md:w-auto">
+            <Button variant="outline" size="icon" :class="`${ctrlButton} tw:size-12 tw:px-0`" aria-label="上一月" @click="prevMonth">
+              <ChevronLeft class="tw:size-5" :stroke-width="2" aria-hidden="true" />
+            </Button>
+            <span class="tr-month-label tw:min-w-28 tw:text-center tw:font-semibold tw:whitespace-nowrap tw:tabular-nums">{{ year }} 年 {{ month }} 月</span>
+            <Button variant="outline" size="icon" :class="`${ctrlButton} tw:size-12 tw:px-0`" aria-label="下一月" @click="nextMonth">
+              <ChevronRight class="tw:size-5" :stroke-width="2" aria-hidden="true" />
+            </Button>
+          </div>
+          <Button variant="outline" :class="`${ctrlButton} tw:max-md:flex-1`" :disabled="loading" @click="loadData">
+            <RefreshCw class="tw:size-4" :stroke-width="2" aria-hidden="true" />
+            重新整理
+          </Button>
+          <Button variant="outline" :class="`${ctrlButton} tw:max-md:flex-1`" :disabled="loading || !rows.length" @click="exportCsv">
+            <Download class="tw:size-4" :stroke-width="2" aria-hidden="true" />
+            匯出 CSV
+          </Button>
         </div>
-        <AtButton variant="secondary" shape="rect" icon="refresh" :disabled="loading" @click="loadData">重新整理</AtButton>
-        <AtButton variant="ghost" shape="rect" icon="download" :disabled="loading || !rows.length" @click="exportCsv">匯出 CSV</AtButton>
-        </div>
-      </template>
-    </AtPageHeader>
+      </div>
+      <p class="tw:mt-2 tw:text-tpl-body tw:text-tpl-secondary tw:text-pretty">本月已上課堂數 × 費率的估算，不等於已收。</p>
+    </header>
 
-    <div v-if="loading" class="tr-loading" role="status" aria-live="polite">
-      <span class="material-symbols-outlined spin" aria-hidden="true">progress_activity</span>
-      載入中…
+    <div v-if="loading" class="tr-loading tw:flex tw:flex-col tw:gap-3" role="status" aria-live="polite" data-testid="tuition-report-loading">
+      <span class="tw:sr-only">載入中…</span>
+      <Skeleton v-for="n in 3" :key="n" class="tw:h-14 tw:w-full" />
     </div>
 
-    <div v-else-if="error" class="tr-error" role="alert">
-      <span class="material-symbols-outlined tr-error-icon" aria-hidden="true">error</span>
-      <span class="tr-error-msg">{{ error }}</span>
-      <button type="button" class="tr-retry-btn" @click="loadData">再試一次</button>
-    </div>
+    <Alert v-else-if="error" tone="danger" class="tr-error tw:text-tpl-body">
+      <div class="tw:flex tw:flex-wrap tw:items-center tw:gap-3">
+        <span class="tr-error-msg tw:min-w-0 tw:flex-1 tw:[overflow-wrap:anywhere]">{{ error }}</span>
+        <Button variant="outline" :class="`tr-retry-btn ${ctrlButton} tw:text-foreground`" @click="loadData">再試一次</Button>
+      </div>
+    </Alert>
 
     <template v-else>
-      <div class="tr-stats" v-if="rows.length || unpaidOnly">
-        <span class="tr-stat">
-          學生 <strong>{{ summary.total_students }}</strong> 人
-        </span>
-        <span class="tr-stat">
-          堂數 <strong>{{ summary.total_sessions }}</strong> 堂
-        </span>
-        <span class="tr-stat tr-stat--primary">
-          學收合計 <strong>{{ formatAmount(summary.total_tuition) }}</strong>
-        </span>
-        <span class="tr-stat" :class="collection.allCollected ? 'tr-stat--ok' : 'tr-stat--warn'" data-testid="collection-summary" role="status">
-          {{ collection.text }}
-        </span>
-        <label class="tr-filter">
-          <input type="checkbox" v-model="unpaidOnly" @change="onFilterChange" /> 只看未收
+      <div v-if="rows.length || unpaidOnly" class="tr-stats tw:flex tw:flex-wrap tw:items-center tw:gap-2 tw:text-tpl-body">
+        <span class="tr-stat tw:rounded-lg tw:bg-secondary tw:px-3.5 tw:py-1.5">學生 <strong class="tw:tabular-nums">{{ summary.total_students }}</strong> 人</span>
+        <span class="tr-stat tw:rounded-lg tw:bg-secondary tw:px-3.5 tw:py-1.5">堂數 <strong class="tw:tabular-nums">{{ summary.total_sessions }}</strong> 堂</span>
+        <span class="tr-stat tr-stat--primary tw:rounded-lg tw:bg-secondary tw:px-3.5 tw:py-1.5 tw:font-semibold">學收合計 <strong class="tw:tabular-nums">{{ formatAmount(summary.total_tuition) }}</strong></span>
+        <span
+          class="tr-stat tw:rounded-lg tw:bg-secondary tw:px-3.5 tw:py-1.5 tw:font-semibold"
+          :class="collection.allCollected ? 'tr-stat--ok tw:text-[var(--ds-success)]' : 'tr-stat--warn tw:text-destructive'"
+          data-testid="collection-summary"
+          role="status"
+        >{{ collection.text }}</span>
+        <label class="tr-filter tw:inline-flex tw:min-h-11 tw:items-center tw:gap-2">
+          <Checkbox :model-value="unpaidOnly" class="tw:size-5" @update:model-value="onFilterChange" />
+          只看未收
         </label>
       </div>
 
-      <div v-if="!rows.length && unpaidOnly && collection.allCollected" class="tr-empty" role="status">
-        <span class="material-symbols-outlined" style="font-size:var(--ds-font-size-2xl);color:var(--text-light)">task_alt</span>
-        <p>本月學收已收齊</p>
-      </div>
+      <Card v-if="!rows.length && unpaidOnly && collection.allCollected" class="tr-empty tw:items-center tw:gap-2 tw:py-10 tw:text-center tw:shadow-none" role="status">
+        <CircleCheck class="tw:size-8 tw:text-tpl-secondary" :stroke-width="1.75" aria-hidden="true" />
+        <p class="tw:text-tpl-body tw:text-tpl-secondary">本月學收已收齊</p>
+      </Card>
 
-      <div v-else-if="!rows.length" class="tr-empty" role="status">
-        <span class="material-symbols-outlined" style="font-size:48px;color:var(--text-light)">calendar_month</span>
-        <p>本分校 {{ year }}/{{ month }} 無有效課程紀錄</p>
-      </div>
+      <Card v-else-if="!rows.length" class="tr-empty tw:items-center tw:gap-2 tw:py-10 tw:text-center tw:shadow-none" role="status">
+        <CalendarDays class="tw:size-8 tw:text-tpl-secondary" :stroke-width="1.75" aria-hidden="true" />
+        <p class="tw:px-5 tw:text-tpl-body tw:text-tpl-secondary">本分校 {{ year }}/{{ month }} 無有效課程紀錄</p>
+      </Card>
 
-      <div v-else class="tr-table-wrap">
-        <table class="tr-table">
-          <thead>
-            <tr>
-              <th>學生</th>
-              <th>科目</th>
-              <th class="hide-sm">老師</th>
-              <th class="hide-sm">班型</th>
-              <th class="num">月堂數</th>
-              <th class="num">費率</th>
-              <th class="num">上課應收（估算）</th>
-              <th>收款狀態</th>
-              <th class="hide-sm">繳費日期</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="r in rows" :key="r.student_class_id">
-              <td>{{ r.student_name }}</td>
-              <td>{{ r.subject }}</td>
-              <td class="hide-sm">{{ r.teacher_name }}</td>
-              <td class="hide-sm">
-                <span class="type-tag" :class="r.class_type">{{ classTypeLabel(r.class_type) }}</span>
-              </td>
-              <td class="num">{{ r.monthly_sessions }}</td>
-              <td class="num">{{ formatAmount(r.rate) }}</td>
-              <td class="num"><strong>{{ formatAmount(r.monthly_tuition) }}</strong></td>
-              <td>
-                <span class="pay-tag" :class="`pay-tag--${r.pay_status}`">{{ payStatusLabel(r.pay_status) }}</span>
-                <small v-if="r.pay_status !== 'paid' && r.outstanding_amount > 0" class="pay-owed">差 {{ formatAmount(r.outstanding_amount) }}</small>
-              </td>
-              <td class="hide-sm">
-                <span v-if="r.last_paid_at" class="paid-date">{{ r.last_paid_at }}</span>
-                <span v-else class="text-light">—</span>
-              </td>
-            </tr>
-          </tbody>
-          <tfoot>
-            <tr>
-              <td :colspan="4" class="hide-sm"><strong>合計</strong></td>
-              <td class="show-sm-only"><strong>合計</strong></td>
-              <td class="num"><strong>{{ summary.total_sessions }}</strong></td>
-              <td class="num">—</td>
-              <td class="num"><strong>{{ formatAmount(summary.total_tuition) }}</strong></td>
-              <td></td>
-              <td class="hide-sm"></td>
-            </tr>
+      <Card v-else class="tr-table-wrap tw:gap-0 tw:py-0 tw:shadow-none">
+        <Table class="tr-table tw:text-[length:var(--tpl-text-body)] tw:[&_td]:text-[length:var(--tpl-text-body)]">
+          <TableCaption class="tw:sr-only">{{ year }} 年 {{ month }} 月學收明細</TableCaption>
+          <TableHeader>
+            <TableRow class="tw:hover:bg-transparent">
+              <TableHead scope="col" :class="headCell">學生</TableHead>
+              <TableHead scope="col" :class="headCell">科目</TableHead>
+              <TableHead scope="col" :class="[headCell, hideSm]">老師</TableHead>
+              <TableHead scope="col" :class="[headCell, hideSm]">班型</TableHead>
+              <TableHead scope="col" :class="numHead">月堂數</TableHead>
+              <TableHead scope="col" :class="numHead">費率</TableHead>
+              <TableHead scope="col" :class="numHead">上課應收（估算）</TableHead>
+              <TableHead scope="col" :class="headCell">收款狀態</TableHead>
+              <TableHead scope="col" :class="[headCell, hideSm]">繳費日期</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            <TableRow v-for="r in rows" :key="r.student_class_id">
+              <TableCell class="tw:px-3 tw:py-3 tw:whitespace-normal tw:[overflow-wrap:anywhere]">{{ r.student_name }}</TableCell>
+              <TableCell class="tw:px-3 tw:py-3 tw:whitespace-normal">{{ r.subject }}</TableCell>
+              <TableCell :class="['tw:px-3 tw:py-3 tw:whitespace-normal', hideSm]">{{ r.teacher_name }}</TableCell>
+              <TableCell :class="['tw:px-3 tw:py-3', hideSm]">
+                <span :class="typeChip">{{ classTypeLabel(r.class_type) }}</span>
+              </TableCell>
+              <TableCell class="tw:px-3 tw:py-3 tw:text-right tw:tabular-nums">{{ r.monthly_sessions }}</TableCell>
+              <TableCell class="tw:px-3 tw:py-3 tw:text-right tw:tabular-nums">{{ formatAmount(r.rate) }}</TableCell>
+              <TableCell class="tw:px-3 tw:py-3 tw:text-right tw:tabular-nums"><strong>{{ formatAmount(r.monthly_tuition) }}</strong></TableCell>
+              <TableCell class="tw:px-3 tw:py-3">
+                <span class="pay-tag tw:inline-block tw:rounded-full tw:bg-secondary tw:px-2 tw:py-0.5 tw:text-tpl-caption tw:font-semibold tw:whitespace-nowrap" :class="[`pay-tag--${r.pay_status}`, payTone[r.pay_status]]">{{ payStatusLabel(r.pay_status) }}</span>
+                <small v-if="r.pay_status !== 'paid' && r.outstanding_amount > 0" class="pay-owed tw:block tw:text-tpl-caption tw:text-tpl-secondary">差 {{ formatAmount(r.outstanding_amount) }}</small>
+              </TableCell>
+              <TableCell :class="['tw:px-3 tw:py-3', hideSm]">
+                <span v-if="r.last_paid_at" class="paid-date tw:whitespace-nowrap tw:text-[var(--ds-success)]">{{ r.last_paid_at }}</span>
+                <span v-else class="tw:text-tpl-secondary">—</span>
+              </TableCell>
+            </TableRow>
+          </TableBody>
+          <tfoot class="tw:border-t-2 tw:border-border">
+            <TableRow class="tw:hover:bg-transparent">
+              <TableCell :colspan="4" class="tw:px-3 tw:py-3 tw:max-md:hidden"><strong>合計</strong></TableCell>
+              <TableCell class="tw:px-3 tw:py-3 tw:md:hidden"><strong>合計</strong></TableCell>
+              <TableCell class="tw:px-3 tw:py-3 tw:text-right tw:tabular-nums"><strong>{{ summary.total_sessions }}</strong></TableCell>
+              <TableCell class="tw:px-3 tw:py-3 tw:text-right">—</TableCell>
+              <TableCell class="tw:px-3 tw:py-3 tw:text-right tw:tabular-nums"><strong>{{ formatAmount(summary.total_tuition) }}</strong></TableCell>
+              <TableCell class="tw:px-3 tw:py-3"></TableCell>
+              <TableCell :class="['tw:px-3 tw:py-3', hideSm]"></TableCell>
+            </TableRow>
           </tfoot>
-        </table>
-      </div>
+        </Table>
+      </Card>
 
-      <nav v-if="meta.last_page > 1" class="tr-pagination" aria-label="學收報表分頁">
-        <button type="button" :disabled="meta.current_page <= 1" @click="goPage(meta.current_page - 1)">上一頁</button>
-        <span class="tr-page-info">第 {{ meta.current_page }} / {{ meta.last_page }} 頁（共 {{ meta.total }} 筆）</span>
-        <button type="button" :disabled="meta.current_page >= meta.last_page" @click="goPage(meta.current_page + 1)">下一頁</button>
+      <nav v-if="meta.last_page > 1" class="tr-pagination tw:flex tw:flex-wrap tw:items-center tw:justify-center tw:gap-3" aria-label="學收報表分頁">
+        <Button variant="outline" :class="ctrlButton" :disabled="meta.current_page <= 1" @click="goPage(meta.current_page - 1)">上一頁</Button>
+        <span class="tr-page-info tw:text-tpl-caption tw:text-tpl-secondary">第 {{ meta.current_page }} / {{ meta.last_page }} 頁（共 {{ meta.total }} 筆）</span>
+        <Button variant="outline" :class="ctrlButton" :disabled="meta.current_page >= meta.last_page" @click="goPage(meta.current_page + 1)">下一頁</Button>
       </nav>
     </template>
   </div>
@@ -120,10 +130,14 @@
 
 <script setup>
 import { computed, ref, watch } from 'vue';
+import { BarChart3, CalendarDays, ChevronLeft, ChevronRight, CircleCheck, Download, RefreshCw } from 'lucide-vue-next';
 import { collectionSummary, payStatusLabel } from '../lib/tuitionPayStatus';
-import AtButton from '../components/design-system/AtButton.vue';
-import AtIconButton from '../components/design-system/AtIconButton.vue';
-import AtPageHeader from '../components/design-system/AtPageHeader.vue';
+import { Alert } from '@/components/ui/alert';
+import { Button } from '@/components/ui/button';
+import { Card } from '@/components/ui/card';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Skeleton } from '@/components/ui/skeleton';
+import { Table, TableBody, TableCaption, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 
 const props = defineProps({
   branchId: { type: [Number, String], default: null },
@@ -141,7 +155,19 @@ const error = ref('');
 const currentPage = ref(1);
 const unpaidOnly = ref(false);
 const collection = computed(() => collectionSummary(summary.value));
-function onFilterChange() { currentPage.value = 1; loadData(); }
+function onFilterChange(checked) { unpaidOnly.value = checked === true; currentPage.value = 1; loadData(); }
+
+const ctrlButton = 'tw:h-12 tw:px-4 tw:text-[length:var(--tpl-text-body)] tw:font-semibold tw:shadow-none';
+const headCell = 'tw:px-3 tw:text-tpl-caption';
+const numHead = `${headCell} tw:text-right`;
+const hideSm = 'tw:max-md:hidden';
+const typeChip = 'tw:inline-block tw:rounded-full tw:border tw:border-border tw:bg-secondary tw:px-2 tw:py-0.5 tw:text-tpl-caption tw:font-semibold tw:whitespace-nowrap';
+const payTone = {
+  paid: 'tw:text-[var(--ds-success)]',
+  partial: 'tw:text-[var(--ds-warning)]',
+  review: 'tw:text-[var(--ds-warning)]',
+  unpaid: 'tw:text-destructive',
+};
 
 const CLASS_TYPE_LABELS = {
   one_on_one: '一對一',
@@ -230,206 +256,3 @@ async function exportCsv() {
 watch(() => props.branchId, () => { currentPage.value = 1; loadData(); }, { flush: 'post' });
 loadData();
 </script>
-
-<style scoped>
-.tr-header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 12px;
-  flex-wrap: wrap;
-  margin-bottom: 16px;
-}
-.tr-header h2 { margin: 0; }
-.tr-subtitle { color: var(--text-light); font-size: 13px; margin-top: 4px; }
-.tr-controls {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  flex-wrap: wrap;
-}
-.tr-month-picker {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  background: var(--bg);
-  border-radius: 8px;
-  padding: 2px;
-}
-.tr-month-label {
-  font-size: 14px;
-  font-weight: 600;
-  min-width: 100px;
-  text-align: center;
-  white-space: nowrap;
-}
-
-.tr-loading {
-  text-align: center;
-  padding: 48px 0;
-  color: var(--text-light);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-}
-.spin { animation: rotate 1s linear infinite; }
-@keyframes rotate { to { transform: rotate(360deg); } }
-
-.tr-error {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  background: var(--danger-soft);
-  color: var(--danger);
-  border: 1px solid var(--danger-border);
-  padding: 10px 14px;
-  border-radius: 8px;
-  margin-bottom: 16px;
-  font-size: 14px;
-}
-.tr-error-icon {
-  font-size: 18px;
-  flex-shrink: 0;
-}
-.tr-error-msg {
-  flex: 1;
-}
-.tr-retry-btn {
-  padding: 4px 10px;
-  font-size: 12px;
-  font-weight: 600;
-  background: var(--surface);
-  border: 1px solid var(--danger);
-  color: var(--danger);
-  border-radius: 6px;
-  cursor: pointer;
-  transition: all 0.15s ease;
-}
-.tr-retry-btn:hover {
-  background: var(--danger);
-  color: var(--surface);
-}
-.tr-empty {
-  text-align: center;
-  padding: 48px 0;
-  color: var(--text-light);
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 12px;
-}
-
-.tr-stats {
-  display: flex;
-  gap: 16px;
-  margin-bottom: 16px;
-  flex-wrap: wrap;
-}
-.tr-stat {
-  font-size: 14px;
-  color: var(--text);
-  padding: 6px 14px;
-  background: var(--bg);
-  border-radius: 8px;
-}
-.tr-stat strong { font-variant-numeric: tabular-nums; letter-spacing: -0.01em; }
-.tr-stat--primary { color: var(--ds-primary-text); font-weight: 600; }
-
-.tr-table-wrap { overflow-x: auto; background: var(--card-bg); border-radius: 14px; box-shadow: var(--ds-shadow-1); }
-.tr-table {
-  width: 100%;
-  border-collapse: collapse;
-}
-.tr-table th {
-  text-align: left;
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--text-light);
-  padding: 10px 8px;
-  border-bottom: 2px solid var(--border);
-  white-space: nowrap;
-}
-.tr-table th.num,
-.tr-table td.num { text-align: right; }
-.tr-table td {
-  padding: 10px 8px;
-  border-bottom: 1px solid var(--border);
-  font-size: 14px;
-  vertical-align: middle;
-}
-.tr-table td.num { font-variant-numeric: tabular-nums; }
-.tr-table tfoot td {
-  border-top: 2px solid var(--border);
-  border-bottom: none;
-  padding-top: 12px;
-  font-size: 14px;
-}
-
-/* 班型為分類標籤（非狀態）→ 依設計系統用中性 chip，不用多彩霓虹（§6/§7）。
-   文字本身已區分一對一/一對二…，毋須色彩編碼。對齊 Stripe/Xero 中性分類 chip。 */
-.type-tag {
-  display: inline-block;
-  padding: 2px 8px;
-  border-radius: 999px;
-  font-size: 11px;
-  font-weight: 600;
-  background: var(--ds-canvas-soft);
-  color: var(--ds-ink-mute);
-  border: 1px solid var(--ds-hairline);
-  white-space: nowrap;
-}
-
-.tr-pagination {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 12px;
-  margin-top: 16px;
-}
-.tr-pagination button {
-  padding: 6px 14px;
-  border: 1px solid var(--border);
-  background: var(--card-bg);
-  border-radius: 6px;
-  cursor: pointer;
-  font-size: 13px;
-  font-family: inherit;
-  color: var(--text);
-  transition: var(--transition);
-}
-.tr-pagination button:hover:not(:disabled) { background: var(--bg); }
-.tr-pagination button:disabled { opacity: 0.4; cursor: not-allowed; }
-.tr-page-info { font-size: 13px; color: var(--text-light); }
-
-.paid-date { color: var(--success); font-size: 13px; white-space: nowrap; }
-.text-light { color: var(--text-light); }
-.show-sm-only { display: none; }
-
-@media (max-width: 768px) {
-  .hide-sm { display: none; }
-  .show-sm-only { display: table-cell; }
-  .tr-table tfoot td[colspan="4"] { display: none; }
-  .tr-controls { width: 100%; gap: 8px; }
-  .tr-month-picker { flex: 1 1 100%; justify-content: space-between; }
-  .tr-controls :deep(.at-btn) { flex: 1 1 0; }
-  .tuition-report-page :deep(.at-icon-btn) {
-    width: var(--ds-control-height-touch, 44px);
-    height: var(--ds-control-height-touch, 44px);
-  }
-}
-
-.tuition-report-page button,
-.tuition-report-page :deep(.at-btn),
-.tuition-report-page :deep(.at-icon-btn) {
-  min-height: var(--ds-control-height-touch, 44px) !important;
-}
-.tr-stat--ok { color: var(--ds-success); font-weight: 600; }
-.tr-stat--warn { color: var(--danger); font-weight: 600; }
-.tr-filter { display: inline-flex; align-items: center; gap: 6px; font-size: var(--ds-font-size-base); min-height: var(--ds-control-height-touch, 44px); }
-.pay-tag { display: inline-block; padding: 2px 8px; border-radius: var(--ds-radius-pill); font-size: var(--ds-font-size-sm); font-weight: 600; background: var(--bg); white-space: nowrap; }
-.pay-tag--paid { color: var(--ds-success); }
-.pay-tag--partial, .pay-tag--review { color: var(--ds-warning); }
-.pay-tag--unpaid { color: var(--danger); }
-.pay-owed { display: block; color: var(--text-light); font-size: var(--ds-font-size-xs); }
-</style>

@@ -1,0 +1,14 @@
+updates:
+  - id: staff-2026-11-13-ui-tuition-report
+    published_at: "2026-11-13"
+    audiences:
+      - director
+      - super_admin
+    importance: digest
+    title: 當月學收頁換新外觀
+    summary: 字更大、按鈕更好按；看到的數字和原本一樣。
+    items:
+      - category: improved
+        text: 「當月學收」頁改成大字、大按鈕；載入中改顯示骨架，月份、匯出與「只看未收」的用法不變。
+    source_refs:
+      - "changelog:2026-11-13:ui-tuition-report"

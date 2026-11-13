@@ -70,6 +70,5 @@
   "src/pages/TrueFitPrepPlaceholderPage.vue",
   "src/pages/TrueFitRemediationPage.vue",
   "src/pages/TrueFitWorkspacePage.vue",
-  "src/pages/TuitionCollectionPage.vue",
-  "src/pages/TuitionReportPage.vue"
+  "src/pages/TuitionCollectionPage.vue"
 ]
