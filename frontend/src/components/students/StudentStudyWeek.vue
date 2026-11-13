@@ -11,8 +11,12 @@
 //    list request started (an older snapshot must not undo a confirmed tick, edit or delete). Each list request and each
 //    confirmation takes a number from one counter; the list keeps the local version when its confirmation number is newer.
 //  - Changing week (or student) drops every in-flight response that belongs to the old week.
+//  - 複製上週: one POST for the shown week; the server skips what the week already has (same day, title and kind), so a repeat
+//    click is harmless. The button is disabled while the request runs; the answer is shown as one line and the week is re-fetched.
+//  - 套用到同班: the picker lives only while its dialog is open. The classmate list comes from the server; the ticked students are
+//    the only local state, and a failed request keeps them so the teacher can press again. Duplicates are skipped by the server.
 //  - A 403 on any write means this user may read but not write for this student: the write controls go away and one line says why.
-import { computed, ref, watch } from 'vue';
+import { computed, reactive, ref, watch } from 'vue';
 import { CalendarDays, Plus } from '@lucide/vue';
 import { authedFetch } from '../../lib/authedFetch';
 import { ymdInTaipei } from '../../lib/sessionDates';
@@ -45,6 +49,11 @@ const form = ref(null); // { id|null, title, kind, due_date, minutes, note, plan
 const formError = ref('');
 const saving = ref(false);
 const deleting = ref(null);
+const copying = ref(false);
+// Picker for 套用到同班: null = closed. { task, students, max, selected: [ids], loading, error, submitting }
+const picker = ref(null);
+const lastPicker = ref(null); // what the closing dialog keeps showing while it fades out, so it never flashes empty
+const view = computed(() => picker.value || lastPicker.value);
 
 class ApiError extends Error {
   constructor(message, status) { super(message); this.status = status; }
@@ -198,7 +207,74 @@ async function confirmDelete() {
   } finally { setPending(task.id, false); }
 }
 
+async function copyLastWeek() {
+  if (copying.value || readOnly.value) return;
+  const start = weekStart.value;
+  const id = props.studentId;
+  copying.value = true; actionError.value = ''; notice.value = '';
+  try {
+    const body = await api(`/students/${id}/study-tasks/copy-week`, { method: 'POST', body: JSON.stringify({ week_start: start }) });
+    if (id !== props.studentId || start !== weekStart.value) return; // the user moved on; the new view loads itself
+    const made = Array.isArray(body.data) ? body.data.length : 0;
+    const skipped = Number(body.skipped) || 0;
+    notice.value = made ? `已複製上週的 ${made} 個任務${skipped ? `，另有 ${skipped} 個這週已經有了` : ''}`
+      : skipped ? '上週的任務這週都已經有了，沒有新增' : '上週沒有任務可以複製';
+    await load({ keep: true });
+  } catch (e) {
+    markReadOnly(e);
+    if (id === props.studentId && start === weekStart.value) actionError.value = e.status === 403 ? e.message : `沒有複製成功。${e.message}`;
+  } finally { copying.value = false; }
+}
+
+async function openPicker(task) {
+  if (!task || saving.value) return;
+  form.value = null; formError.value = '';
+  const p = reactive({ task, students: [], max: 30, selected: [], loading: true, error: '', submitting: false });
+  picker.value = p; lastPicker.value = p;
+  try {
+    const body = await api(`/students/${props.studentId}/study-classmates`);
+    if (picker.value !== p) return;
+    p.students = Array.isArray(body.data) ? body.data : [];
+    p.max = Number(body.max_targets) || 30;
+  } catch (e) {
+    if (picker.value !== p) return;
+    markReadOnly(e);
+    p.error = e.status === 403 ? e.message : '同班學生載入失敗，請關掉再試一次';
+  } finally { if (picker.value === p) p.loading = false; }
+}
+const closePicker = () => { if (picker.value?.submitting) return; picker.value = null; };
+const toggleMate = (id) => {
+  const p = picker.value;
+  if (!p || p.submitting) return;
+  p.selected = p.selected.includes(id) ? p.selected.filter((x) => x !== id) : p.selected.length < p.max ? [...p.selected, id] : p.selected;
+};
+const allSelected = computed(() => !!picker.value && picker.value.students.length > 0 && picker.value.selected.length === Math.min(picker.value.students.length, picker.value.max));
+const toggleAll = () => {
+  const p = picker.value;
+  if (!p || p.submitting) return;
+  p.selected = allSelected.value ? [] : p.students.slice(0, p.max).map((s) => s.id);
+};
+async function applyPicked() {
+  const p = picker.value;
+  if (!p || p.submitting || !p.selected.length || readOnly.value) return;
+  p.submitting = true; p.error = '';
+  try {
+    const body = await api(`/study-tasks/${p.task.id}/apply-to-students`, { method: 'POST', body: JSON.stringify({ student_ids: p.selected }) });
+    const r = body.data || {};
+    const parts = [`已套用到 ${r.created ?? 0} 位`];
+    if (r.skipped) parts.push(`${r.skipped} 位本來就有這個任務`);
+    if (r.refused) parts.push(`${r.refused} 位無法套用`);
+    notice.value = parts.join('，');
+    if (picker.value === p) picker.value = null;
+  } catch (e) {
+    markReadOnly(e);
+    p.submitting = false;
+    p.error = e.status === 404 ? '這個任務已不存在' : e.status === 403 ? e.message : `沒有套用成功，已選的學生還在，可以再按一次。${e.message}`;
+  }
+}
+
 watch(() => props.studentId, () => {
+  copying.value = false; picker.value = null; lastPicker.value = null;
   readOnly.value = false; plans.value = []; tasks.value = []; pending.value = {}; form.value = null; deleting.value = null;
   actionError.value = ''; notice.value = ''; today.value = ymdInTaipei(); weekStart.value = weekStartOf(today.value);
   loadPlans(); load();
@@ -214,6 +290,7 @@ watch(weekStart, () => load());
         <span class="tw:min-w-24 tw:text-center tw:font-semibold tw:tabular-nums tw:max-md:order-first tw:max-md:basis-full tw:max-md:text-left" data-testid="week-label" role="status">{{ weekRangeText(weekStart) }}</span>
         <Button variant="outline" :class="control.row" aria-label="下一週" data-testid="week-next" @click="nextWeek">下一週</Button>
         <Button variant="outline" :class="control.row" :disabled="isThisWeek" data-testid="week-today" @click="thisWeek">本週</Button>
+        <Button v-if="!readOnly" variant="outline" :class="control.row" :disabled="copying || loading" :aria-busy="copying || undefined" data-testid="copy-week" @click="copyLastWeek">{{ copying ? '複製中…' : '複製上週' }}</Button>
       </template>
 
       <div v-if="activePlans.length" class="tw:space-y-2 tw:border-t tw:border-border tw:px-5 tw:py-3" data-testid="week-plans">
@@ -307,8 +384,41 @@ watch(weekStart, () => load());
         <Alert v-if="formError" tone="danger" data-testid="form-error">{{ formError }}</Alert>
         <DialogFooter>
           <Button v-if="form?.id" variant="outline" :class="[control.page, 'tw:text-destructive tw:sm:mr-auto']" :disabled="saving || readOnly" data-testid="f-delete" @click="askDelete">刪除</Button>
+          <Button v-if="form?.id" variant="outline" :class="control.page" :disabled="saving || readOnly" data-testid="f-apply" @click="openPicker(tasks.find((t) => t.id === form.id))">套用到同班其他學生</Button>
           <Button variant="outline" :class="control.page" :disabled="saving" @click="closeForm">取消</Button>
           <Button :class="control.page" :disabled="saving || readOnly" data-testid="f-save" @click="submit">儲存</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+
+    <Dialog :open="!!picker" @update:open="(o) => { if (!o) closePicker(); }">
+      <DialogContent class="tw:max-h-[calc(100dvh-1rem)] tw:overflow-y-auto tw:text-tpl-body" data-testid="apply-dialog">
+        <DialogHeader>
+          <DialogTitle class="tw:text-tpl-list">套用到同班其他學生</DialogTitle>
+          <DialogDescription class="tw:text-tpl-caption tw:text-pretty">「{{ view?.task.title }}」（{{ view ? dayLabel(view.task.due_date) : '' }}）會同一天加到勾選的學生，不影響他們原有的任務。</DialogDescription>
+        </DialogHeader>
+        <div v-if="view" class="tw:space-y-2">
+          <Skeleton v-if="view.loading" class="tw:h-24 tw:w-full" />
+          <p v-else-if="!view.students.length && !view.error" class="tw:m-0 tw:py-3 tw:text-tpl-secondary" data-testid="apply-empty">這個班沒有其他學生可以套用。</p>
+          <template v-else-if="view.students.length">
+            <label class="tw:flex tw:min-h-11 tw:cursor-pointer tw:items-center tw:gap-3 tw:text-tpl-body tw:font-semibold">
+              <input type="checkbox" class="tw:size-6 tw:accent-primary" :checked="allSelected" :disabled="view.submitting" data-testid="apply-all" @change="toggleAll" />全選
+            </label>
+            <ul class="tw:m-0 tw:max-h-72 tw:list-none tw:overflow-y-auto tw:border-y tw:border-border tw:p-0">
+              <li v-for="s in view.students" :key="s.id" class="tw:border-b tw:border-border tw:last:border-b-0">
+                <label class="tw:flex tw:min-h-11 tw:cursor-pointer tw:items-center tw:gap-3 tw:text-tpl-body tw:font-normal">
+                  <input type="checkbox" class="tw:size-6 tw:accent-primary" :checked="view.selected.includes(s.id)" :disabled="view.submitting" :data-testid="`mate-${s.id}`" @change="toggleMate(s.id)" />
+                  <span class="tw:min-w-0 tw:break-words">{{ s.name }}</span>
+                </label>
+              </li>
+            </ul>
+            <p v-if="view.students.length > view.max" class="tw:m-0 tw:text-tpl-caption tw:text-tpl-secondary">一次最多 {{ view.max }} 位。</p>
+          </template>
+        </div>
+        <Alert v-if="view?.error" tone="danger" data-testid="apply-error">{{ view.error }}</Alert>
+        <DialogFooter>
+          <Button variant="outline" :class="control.page" :disabled="view?.submitting" @click="closePicker">取消</Button>
+          <Button :class="control.page" :disabled="!view || view.submitting || !view.selected.length || readOnly" :aria-busy="view?.submitting || undefined" data-testid="apply-go" @click="applyPicked">{{ view?.submitting ? '套用中…' : `套用到 ${view?.selected.length || 0} 位` }}</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

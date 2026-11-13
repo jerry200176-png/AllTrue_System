@@ -1,0 +1,16 @@
+updates:
+  - id: staff-2026-11-13-study-week-quick-tools
+    published_at: "2026-11-13"
+    audiences:
+      - director
+      - teacher
+    importance: digest
+    title: 讀書計畫能一鍵複製上週
+    summary: 讀書計畫新增「複製上週」，也能把一個任務加給同班同學。
+    items:
+      - category: added
+        text: 讀書計畫按「複製上週」，把上週的任務帶到這週。
+      - category: added
+        text: 點任務再按「套用到同班其他學生」，一次加給多位同學。
+    source_refs:
+      - "changelog:2026-11-13:study-week-quick-tools"

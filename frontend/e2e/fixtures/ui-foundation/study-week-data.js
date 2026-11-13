@@ -21,6 +21,9 @@ export const PLAN = {
   ],
 };
 
+/** Classmates offered by the 套用到同班 picker (long names on purpose). */
+export const CLASSMATES = [{ id: 21, name: '李大華' }, { id: 22, name: '歐陽子安的雙胞胎弟弟' }, { id: 23, name: '陳小明' }, { id: 24, name: '林佳' }];
+
 /** mode: 'full' | 'empty' | 'error' (week load fails) | 'readonly' (every write answers 403). */
 export async function mockStudyWeekApi(page, mode = 'full') {
   const json = (route, body, status = 200) => route.fulfill({ status, json: body });
@@ -37,6 +40,9 @@ export async function mockStudyWeekApi(page, mode = 'full') {
       const to = url.searchParams.get('to');
       return json(route, { data: rows.filter((r) => r.due_date >= from && r.due_date <= to) });
     }
+    if (url.pathname.endsWith('/study-classmates')) return json(route, { data: CLASSMATES, max_targets: 30 });
+    if (url.pathname.endsWith('/apply-to-students')) return json(route, { data: { results: [], created: 2, skipped: 1, refused: 0 } });
+    if (url.pathname.endsWith('/copy-week')) return json(route, { data: [], skipped: 0 });
     if (url.pathname.includes('/study-tasks')) {
       if (mode === 'readonly') return json(route, { message: 'Forbidden' }, 403);
       const body = route.request().postDataJSON?.() || {};
