@@ -22,6 +22,8 @@ Every implementer agent follows this. The coordinator sends only the task-specif
 - CI stuck or cancelled: rerun the failed jobs through the REST API, or report it.
 
 ## UI changes
+- Load the design skills first (`impeccable`, `make-interfaces-feel-better`, `web-design-guidelines`; `ui-ux-pro-max` for tables and forms) and build the page from [`docs/design/PAGE_TEMPLATE.md`](../design/PAGE_TEMPLATE.md).
+- Attach its evidence to the PR: real-browser screenshots at 1536 and 375 at each 字級, before and after.
 - Pick pages that are in the nav registry and in use. A page with no nav entry or zero production rows is a removal candidate: report it instead of migrating it.
 - Search the production-run specs for every selector, class name and label helper you change, and update them in the same PR: `frontend/e2e/calendar-course-consistency.spec.js`, `frontend/e2e/*production*.spec.js`, `frontend/e2e/fixtures/**`.
 - Do not put native `required` or `min` on a field that shows inline errors.

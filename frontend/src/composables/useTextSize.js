@@ -1,8 +1,9 @@
 import { ref } from 'vue';
 
-// 字級: 標準 (default) or 大. Per person, kept in localStorage; ui.css maps html[data-text-size] to the --tpl-text-* tokens.
+// 字級: 標準 (default), 稍大 or 大. Per person, kept in localStorage; ui.css maps html[data-text-size] to the --tpl-text-* tokens.
 export const TEXT_SIZES = Object.freeze([
   { key: 'standard', label: '標準' },
+  { key: 'medium', label: '稍大' }, // in-app #544: 大 hides too much of a dense page
   { key: 'large', label: '大' },
 ]);
 const STORAGE_KEY = 'alltrue_text_size';

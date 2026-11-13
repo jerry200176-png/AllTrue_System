@@ -19,6 +19,7 @@ for (const width of [390, 1440]) {
       const settings = () => page.getByRole('button', { name: '設定', exact: true });
       const standard = () => page.getByRole('radio', { name: '標準', exact: true });
       const large = () => page.getByRole('radio', { name: '大', exact: true });
+      const medium = () => page.getByRole('radio', { name: '稍大', exact: true });
       const checkHome = async (size) => {
         await page.mouse.move(0, 0); // a settings click may otherwise hover a newly mounted home CTA
         await expect(page.locator('html')).toHaveAttribute('data-text-size', size);
@@ -69,6 +70,9 @@ for (const width of [390, 1440]) {
       await page.keyboard.press('Tab');
       await expect(standard()).toBeFocused();
       await page.keyboard.press('ArrowRight');
+      await expect(medium()).toBeFocused(); // in-app #544: the size between 標準 and 大
+      await expect(page.locator('html')).toHaveAttribute('data-text-size', 'medium');
+      await page.keyboard.press('ArrowRight');
       await expect(large()).toBeFocused();
       await expect(large()).not.toHaveCSS('box-shadow', 'none');
       await expect(large()).toHaveAttribute('aria-checked', 'true');
@@ -81,7 +85,7 @@ for (const width of [390, 1440]) {
       await page.keyboard.press('ArrowLeft'); // wraps backwards
       await expect(large()).toBeFocused();
       await page.keyboard.press('ArrowUp');
-      await expect(standard()).toBeFocused();
+      await expect(medium()).toBeFocused();
       await large().click(); // touch/click path uses the same preference
       await expect(large()).toHaveAttribute('aria-checked', 'true');
       expect(await page.evaluate(() => localStorage.getItem('alltrue_text_size'))).toBe('large');

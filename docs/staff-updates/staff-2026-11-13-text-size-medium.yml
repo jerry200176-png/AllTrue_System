@@ -1,0 +1,15 @@
+updates:
+  - id: staff-2026-11-13-text-size-medium
+    published_at: "2026-11-13"
+    audiences:
+      - director
+      - teacher
+      - super_admin
+    importance: digest
+    title: 字級多了「稍大」
+    summary: 覺得「大」一頁看不到全部、「標準」又太小，可以選中間的「稍大」。
+    items:
+      - category: added
+        text: 右上角帳號選單或「個人管理」的字級，現在有標準、稍大、大三種；這台裝置會記住您的選擇。
+    source_refs:
+      - "changelog:2026-11-13:ui-page-template"

@@ -17,6 +17,8 @@ Every PR touching `frontend/` gets a preview of the whole app (demo logins 主�
 | 7 | Remaining pages, one PR each | planned |
 | P | Parent track #4986 | step 1 #4987; steps 2-6 planned |
 
+Page layout (shell, header, summary strip, cards, list vs table, name cells, required screenshots) is one contract: [`PAGE_TEMPLATE.md`](PAGE_TEMPLATE.md), taken from 今日工作台. A migration that only swaps components without that layout is not done.
+
 The Apple-style look is delivered per page, not by changing global tokens; global `--ds-*` values stay until the last pages migrate. Every migrated page uses `components/ui` plus the `ParentHome.vue` pattern (small label over big value, one dark primary pill). `At*` components are not restyled; they retire as pages move.
 
 ## Constraints that outlive the waves

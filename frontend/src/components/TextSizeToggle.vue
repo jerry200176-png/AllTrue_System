@@ -1,7 +1,7 @@
 <script setup>
 import { useTextSize } from '../composables/useTextSize.js';
 
-// 字級：標準／大. One component for 個人設定 and the account menu (and the director home).
+// 字級：標準／稍大／大. One component for 個人設定 and the account menu (and the director home).
 const { sizes, current, setSize } = useTextSize();
 
 function onKeydown(event, index) {

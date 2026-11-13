@@ -10,28 +10,36 @@ beforeEach(() => { localStorage.clear(); initTextSize(); });
 describe('shared text size control', () => {
   it('moves focus and selection together with wrapping arrow keys and persists clicks', async () => {
     const wrapper = mount(TextSizeToggle, { attachTo: document.body });
-    const [standard, large] = wrapper.findAll('[role="radio"]');
+    const radios = wrapper.findAll('[role="radio"]');
+    const [standard, medium, large] = radios;
     try {
-      expect(standard.attributes('tabindex')).toBe('0');
-      expect(large.attributes('tabindex')).toBe('-1');
+      // in-app #544: 稍大 sits between 標準 and 大.
+      expect(radios.map((r) => r.text())).toEqual(['標準', '稍大', '大']);
+      expect(radios.map((r) => r.attributes('tabindex'))).toEqual(['0', '-1', '-1']);
       for (const key of ['ArrowRight', 'ArrowDown']) {
         await standard.trigger('keydown', { key });
+        expect(document.activeElement).toBe(medium.element);
+        expect(medium.attributes('aria-checked')).toBe('true');
+        await medium.trigger('keydown', { key });
         expect(document.activeElement).toBe(large.element);
-        expect(large.attributes('aria-checked')).toBe('true');
-        await large.trigger('keydown', { key });
+        await large.trigger('keydown', { key }); // wraps
         expect(document.activeElement).toBe(standard.element);
       }
       for (const key of ['ArrowLeft', 'ArrowUp']) {
-        await standard.trigger('keydown', { key });
+        await standard.trigger('keydown', { key }); // wraps backwards
         expect(document.activeElement).toBe(large.element);
         await large.trigger('keydown', { key });
+        expect(document.activeElement).toBe(medium.element);
+        await medium.trigger('keydown', { key });
         expect(document.activeElement).toBe(standard.element);
       }
+      await medium.trigger('click');
+      expect(localStorage.getItem('alltrue_text_size')).toBe('medium');
+      expect(document.documentElement.dataset.textSize).toBe('medium');
+      expect(radios.map((r) => r.attributes('tabindex'))).toEqual(['-1', '0', '-1']);
       await large.trigger('click');
       expect(localStorage.getItem('alltrue_text_size')).toBe('large');
       expect(document.documentElement.dataset.textSize).toBe('large');
-      expect(large.attributes('tabindex')).toBe('0');
-      expect(standard.attributes('tabindex')).toBe('-1');
     } finally { wrapper.unmount(); }
   });
 
