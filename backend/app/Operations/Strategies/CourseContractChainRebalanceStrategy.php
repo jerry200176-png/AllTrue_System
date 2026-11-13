@@ -22,6 +22,12 @@ use RuntimeException;
  * reassigner's own refusals (slot taken, locked assessment) and the two Founder decisions, which default to "no":
  * `allow_active_contracts` and `allow_order_only_moves`. The oldest-first allocation is computed for comparison only.
  *
+ * The mirror rule (`mirror_inconsistent`) and the counter rule (`counters_not_derived`) refuse for the contracts a move
+ * touches (both ends of every move) and for the listed lessons. On a chain contract that no move touches the same finding
+ * is a `warnings` entry (code, contract id, lesson id), bound into the digest and stored with the execute: such a gap was
+ * there before, no move reads or writes it, and it needs its own repair. The post-conditions hold an untouched contract
+ * to the usage figures recorded before the first move, so a run can neither hide nor worsen it.
+ *
  * `plan()` only reads. `execute()` runs a plan that is pinned to its own digest: it locks the student, the chain and its
  * lessons in a fixed order, plans again under those locks and refuses on any difference, then makes every move through
  * ClassSessionContractReassigner (lesson + sign-in + ledger + learning record, counters recomputed, one reassignment row and
@@ -202,11 +208,50 @@ final class CourseContractChainRebalanceStrategy
                 $taught[(int) $s->StudentClassID]++;
             }
         }
+        // ── Scope of the mirror and counter rules (#5124 dry-run 2026-11-13, coordinator decision on the issue). A contract is
+        // "touched" when a listed move names it as `from` or `to`, or when it owns a listed lesson now: those are the only
+        // contracts whose lessons, mirror rows and counters this operation writes. Taken from the whole manifest, before any
+        // move is validated, so a move that is refused later still counts. On a touched contract, and on a listed lesson, a
+        // mirror or counter finding refuses the plan as before. On an untouched contract of the chain the same finding
+        // is returned in `warnings` (code, contract id, lesson id) and bound into the digest: it is a gap that was there
+        // before and that no move reads or writes, to be repaired on its own, and the approver sees it. ──
+        $touched = [];
+        $listedLessons = [];
+        foreach ($manifest['moves'] as $move) {
+            $touched[$move['from']] = $touched[$move['to']] = true;
+            $listedLessons[$move['session_id']] = true;
+            if (isset($owner[$move['session_id']])) {
+                $touched[$owner[$move['session_id']]] = true;
+            }
+        }
+        $warnings = [];
+        $warn = function (string $code, ?int $contractId, ?int $sessionId) use (&$warnings): void {
+            $warnings[$code . '|' . $contractId . '|' . $sessionId] = ['code' => $code, 'contract_id' => $contractId, 'session_id' => $sessionId];
+        };
+        // A finding about one contract: refuses when a move touches it, otherwise a warning.
+        $onContract = function (string $code, int $id) use ($add, $warn, $touched): void {
+            if (isset($touched[$id])) {
+                $add($code, ['contract_id' => $id]);
+            } else {
+                $warn($code, $id, null);
+            }
+        };
+        // A finding about one lesson: refuses when the lesson is listed, or when its contract or the contract one of its
+        // mirror rows points at (`$other`) is touched; otherwise a warning on the lesson's contract.
+        $onLesson = function (string $code, int $sid, ?int $other = null) use ($add, $warn, $touched, $listedLessons, $owner): void {
+            $blocks = isset($listedLessons[$sid]) || isset($touched[$owner[$sid]]) || ($other !== null && isset($touched[$other]));
+            if ($blocks) {
+                $add($code, ['session_id' => $sid]);
+            } else {
+                $warn($code, $owner[$sid], $sid);
+            }
+        };
+
         $diagnostics = SessionDeductionService::batchExpectedUsedSessionDiagnostics($chainIds);
         foreach ($chainIds as $id) {
             $d = $diagnostics[$id] ?? null;
             if ($d === null) {
-                $add('mirror_inconsistent', ['contract_id' => $id]);
+                $onContract('mirror_inconsistent', $id);
                 continue;
             }
             if ($d['has_partial']) {
@@ -215,7 +260,7 @@ final class CourseContractChainRebalanceStrategy
             // The plan counts taught lessons from ClassSession; that is only the app's used count when the ledger and the
             // observed usage (sign-ins, learning records) say the same number and no cancelled lesson still carries usage.
             if ($d['ledger_used'] !== $d['observed_used'] || $d['uncapped_used'] !== $taught[$id] || $d['cancelled_usage_artifacts'] > 0) {
-                $add('mirror_inconsistent', ['contract_id' => $id]);
+                $onContract('mirror_inconsistent', $id);
             }
         }
         // Usage bound to no lesson (a live sign-in, a learning record or a ledger row without a ClassSession) stays on its
@@ -249,7 +294,7 @@ final class CourseContractChainRebalanceStrategy
                 foreach (DB::table($table)->whereIn($sessionColumn, $chunk)->orderBy('id')->get($select) as $m) {
                     $sid = (int) $m->sid;
                     if ((int) $m->cid !== $owner[$sid]) {
-                        $add('mirror_inconsistent', ['session_id' => $sid]);
+                        $onLesson('mirror_inconsistent', $sid, (int) $m->cid);
                     }
                     $mirrorState[$sid][$table] = ($mirrorState[$sid][$table] ?? 0) + 1;
                     if ($table === 'session_deduction_ledger') {
@@ -267,12 +312,12 @@ final class CourseContractChainRebalanceStrategy
             $sid = (int) $s->id;
             $isTaught = $this->isTaught($s, $today);
             if (($ledgerNet[$sid] ?? 0) !== ($isTaught ? 1 : 0) || (!$isTaught && isset($deductedSignIn[$sid]))) {
-                $add('mirror_inconsistent', ['session_id' => $sid]);
+                $onLesson('mirror_inconsistent', $sid);
             }
         }
 
-        // Contracts and mirrors agree: the derived counters below mean something. Read through codes(): `$add` fills
-        // $findings by reference, which static analysis does not follow.
+        // Nothing refuses so far: the touched contracts and their mirrors agree, so the derived counters below mean
+        // something for them. Read through codes(): `$add` fills $findings by reference, which static analysis does not follow.
         $sound = $this->codes($findings) === [];
 
         // ── Undo only: the list must be the executed moves reversed, and every moved lesson must be as the execute left it. ──
@@ -388,14 +433,13 @@ final class CourseContractChainRebalanceStrategy
         }
 
         // ── Stored counters must already be the derived ones (#5236 review P2c). Execute and restore recompute the counters
-        // of the contracts they touch; the restore is only exact, column by column, when what was stored before the
-        // execute is what a recompute writes. Session counters are checked on every contract of the chain, the minute
-        // columns on the contracts a move touches (the only ones written). Not asked of an undo, which must stay possible. ──
+        // of the contracts they touch; the restore is only exact when what was stored before the execute is what a
+        // recompute writes. That is a rule about the touched contracts: they refuse. The counters of an untouched contract
+        // are never written, so there the same finding is a warning (#5242 review). The minute columns are checked on the
+        // touched contracts only, and may also be NULL there: a contract that was never recomputed since the minute columns
+        // were added holds NULL, and the recompute of the execute writes the derived minutes (the undo then leaves the
+        // derived minutes, not NULL). Not asked of an undo, which must stay possible. ──
         if (!$restore && $sound) {
-            $touched = [];
-            foreach ($applied as $move) {
-                $touched[$move['from']] = $touched[$move['to']] = true;
-            }
             foreach (StudentClass::query()->whereIn('ID', $chainIds)->orderBy('ID')->get() as $course) {
                 $id = (int) $course->getAttribute('ID');
                 $purchased = (int) $course->getAttribute('SessionCount');
@@ -404,11 +448,11 @@ final class CourseContractChainRebalanceStrategy
                 $derived = (int) $course->getAttribute('UsedSessions') === $used && (int) $course->getAttribute('RemainingSessions') === $left;
                 if ($derived && isset($touched[$id])) {
                     $perLesson = SessionDeductionService::billingStandardMinutes($course);
-                    $derived = $course->getAttribute('PurchasedMinutes') !== null && (int) $course->getAttribute('PurchasedMinutes') === $purchased * $perLesson
-                        && $course->getAttribute('RemainingMinutes') !== null && (int) $course->getAttribute('RemainingMinutes') === $left * $perLesson;
+                    $derived = ($course->getAttribute('PurchasedMinutes') === null || (int) $course->getAttribute('PurchasedMinutes') === $purchased * $perLesson)
+                        && ($course->getAttribute('RemainingMinutes') === null || (int) $course->getAttribute('RemainingMinutes') === $left * $perLesson);
                 }
                 if (!$derived) {
-                    $add('counters_not_derived', ['contract_id' => $id]);
+                    $onContract('counters_not_derived', $id);
                 }
             }
         }
@@ -478,7 +522,19 @@ final class CourseContractChainRebalanceStrategy
                 $s->session_charge === null ? null : (int) $s->session_charge, $ledgerNet[(int) $s->id] ?? 0,
                 $mirrorState[(int) $s->id] ?? []])->values()->all(),
             'usage' => array_map(fn (int $id): array => [$id, $diagnostics[$id]['ledger_used'] ?? null, $diagnostics[$id]['observed_used'] ?? null], $chainIds)];
-        $digest = hash('sha256', json_encode(['manifest' => $manifest, 'observed' => $observed], JSON_THROW_ON_ERROR));
+        // One warning per gap: a lesson-level warning already names its contract, so the contract-level warning with the same
+        // code is listed only for a contract that has none (it is then the only place that contract is named).
+        $withLesson = [];
+        foreach ($warnings as $w) {
+            if ($w['session_id'] !== null) {
+                $withLesson[$w['code'] . '|' . $w['contract_id']] = true;
+            }
+        }
+        $warnings = array_values(array_filter($warnings, fn (array $w): bool => $w['session_id'] !== null || !isset($withLesson[$w['code'] . '|' . $w['contract_id']])));
+        // The warnings are part of what is approved: a plan with a warning and the same plan without it never share a
+        // digest. (The key is only present when there is a warning, so a plan without one keeps the digest it had.)
+        $digest = hash('sha256', json_encode(['manifest' => $manifest, 'observed' => $observed] + ($warnings !== [] ? ['warnings' => $warnings] : []),
+            JSON_THROW_ON_ERROR));
         $codes = $this->codes($findings);
         $state = $codes !== [] ? 'rejected' : ($want === '' ? 'unpinned' : (hash_equals($digest, $want) ? 'pinned' : 'digest_mismatch'));
         if ($state === 'digest_mismatch') {
@@ -490,7 +546,7 @@ final class CourseContractChainRebalanceStrategy
             'date' => $m['date'], 'start_time' => $m['start_time'], 'status' => $m['status'],
             'mirrors' => $mirrorState[$m['session_id']] ?? [], 'ledger_net' => $ledgerNet[$m['session_id']] ?? 0], $applied);
 
-        return ['ok' => $codes === [], 'errors' => $codes, 'findings' => $findings, 'state' => $state, 'mode' => $mode,
+        return ['ok' => $codes === [], 'errors' => $codes, 'findings' => $findings, 'warnings' => $warnings, 'state' => $state, 'mode' => $mode,
             'operation' => self::OPERATION, 'campus_id' => $manifest['campus_id'], 'student_id' => $manifest['student_id'],
             'subject_id' => $manifest['subject_id'], 'digest' => $digest, 'contracts' => $contracts, 'moves' => $manifest['moves'],
             'restore_request_id' => $manifest['restore_request_id'], 'restore_rows' => $restoreRows, 'manifest' => $manifest, 'rows' => $rows,
@@ -525,7 +581,7 @@ final class CourseContractChainRebalanceStrategy
                 $stored = $prior ? json_decode((string) $prior->payload, true) : null;
                 if (is_array($stored) && $this->validSnapshot($stored['snapshot'] ?? null, null) && $stored['snapshot']['request_id'] === $requestId) {
                     return ['ok' => true, 'already_applied' => true]
-                        + array_intersect_key($stored, array_flip(['mode', 'request_id', 'digest', 'moved', 'contracts', 'totals', 'restore_moves', 'snapshot']));
+                        + array_intersect_key($stored, array_flip(['mode', 'request_id', 'digest', 'moved', 'contracts', 'totals', 'warnings', 'restore_moves', 'snapshot']));
                 }
                 $manifest = $plan['manifest'] ?? null;
                 if (($plan['ok'] ?? false) !== true || ($plan['state'] ?? null) !== 'pinned' || !is_array($manifest)
@@ -647,12 +703,20 @@ final class CourseContractChainRebalanceStrategy
         foreach (DB::table('StudentClass')->whereIn('ID', $chainIds)->orderBy('ID')->get(['ID', 'UsedSessions', 'RemainingSessions']) as $c) {
             $counters[(int) $c->ID] = ['used_sessions' => (int) $c->UsedSessions, 'remaining_sessions' => (int) $c->RemainingSessions];
         }
+        // The usage figures of every contract before the first move: the post-conditions hold an untouched contract to them.
+        $usage = [];
+        foreach (SessionDeductionService::batchExpectedUsedSessionDiagnostics($chainIds) as $id => $d) {
+            $usage[$id] = ['usage' => $this->usage($d)];
+        }
         $snapshot = ['version' => self::SNAPSHOT_VERSION, 'operation' => self::OPERATION, 'mode' => $mode, 'request_id' => $requestId,
             'restore_source_request_id' => $source !== null ? (string) $source['request_id'] : (string) $manifest['restore_request_id'],
             'digest' => (string) $fresh['digest'], 'reason' => $reason, 'campus_id' => $manifest['campus_id'], 'student_id' => $manifest['student_id'],
             'subject_id' => $manifest['subject_id'], 'contract_ids' => $chainIds, 'rows' => $fresh['rows'],
             'contracts' => array_map(fn (array $c): array => ['contract_id' => (int) $c['contract_id'], 'purchased' => (int) $c['purchased'],
-                'before' => $c['before'] + ($counters[(int) $c['contract_id']] ?? []), 'after' => $c['after']], $fresh['contracts']),
+                'before' => $c['before'] + ($counters[(int) $c['contract_id']] ?? []) + ($usage[(int) $c['contract_id']] ?? []), 'after' => $c['after']],
+                $fresh['contracts']),
+            // Findings on contracts no move touches, as approved with the digest (ids and codes); each needs its own repair.
+            'warnings' => $fresh['warnings'],
             // Nothing is cancelled here: a reservation beyond what is left is only listed (policy `report`) and stays as it was.
             'reservation_overflows' => $fresh['reservation_overflows'], 'released_reservations' => [],
             'money_hash' => $this->moneyHash($chainIds)];
@@ -673,7 +737,7 @@ final class CourseContractChainRebalanceStrategy
         $this->audit($suffix, (int) $manifest['campus_id'], $requestId, (string) $fresh['digest'], count($fresh['rows']), (string) $manifest['reason'], $actor);
 
         return ['ok' => true, 'mode' => $mode, 'request_id' => $requestId, 'digest' => (string) $fresh['digest'], 'moved' => count($fresh['rows']),
-            'contracts' => $contracts, 'totals' => $fresh['totals'], 'rows' => $fresh['restore_rows'],
+            'contracts' => $contracts, 'totals' => $fresh['totals'], 'rows' => $fresh['restore_rows'], 'warnings' => $fresh['warnings'],
             // The exact `moves` list of a restore request for this run (only a rebalance run can be restored).
             'restore_moves' => $mode === 'rebalance' ? $this->inverseMoves($fresh['rows']) : [],
             'snapshot' => $snapshot];
@@ -708,7 +772,8 @@ final class CourseContractChainRebalanceStrategy
      * Post-conditions of a snapshot against the database, read-only: every moved lesson is on its target with its date, time
      * and status as planned; its sign-in, learning record and ledger rows follow it and none was added or removed; each move
      * has its reassignment row; per contract the taught and reserved counts are the planned "after" (a rebalance never leaves
-     * taught above purchased) and the total taught is conserved; the two contracts of each move carry the derived counters;
+     * taught above purchased) and the total taught is conserved; the two contracts of each move carry the derived counters
+     * and consistent mirrors (an untouched contract: consistent, or exactly the usage figures recorded before the first move);
      * and the money fingerprint of the chain is the one taken before the first move.
      *
      * @param array<string,mixed> $snapshot
@@ -779,8 +844,13 @@ final class CourseContractChainRebalanceStrategy
             if ($taught[$id] !== (int) $c['after']['taught'] || $reserved[$id] !== (int) $c['after']['reserved']) {
                 $errors[] = "contract_count_differs_{$id}";
             }
+            // A touched contract must be consistent after the moves. An untouched one may carry the gap it had before the
+            // first move (listed as a warning in the plan), but only that one: its usage figures must be exactly the ones
+            // recorded then, so a move can neither hide nor worsen it. A snapshot without those figures keeps the strict rule.
             $d = $diagnostics[$id] ?? null;
-            if ($d === null || $d['uncapped_used'] !== $taught[$id] || $d['ledger_used'] !== $d['observed_used']) {
+            $consistent = $d !== null && $d['uncapped_used'] === $taught[$id] && $d['ledger_used'] === $d['observed_used'];
+            $asBefore = !isset($touched[$id]) && is_array($c['before']['usage'] ?? null) && $d !== null && $c['before']['usage'] === $this->usage($d);
+            if (!$consistent && !$asBefore) {
                 $errors[] = "mirror_inconsistent_{$id}";
             }
             // The stored counters are capped at the bought count; only the contracts a move touched were recomputed.
@@ -800,6 +870,18 @@ final class CourseContractChainRebalanceStrategy
         }
 
         return [array_values(array_unique($errors)), $contracts];
+    }
+
+    /**
+     * The usage figures of one contract that the mirror rule compares (counts only).
+     *
+     * @param array<string,mixed> $diagnostic
+     * @return array<string,int>
+     */
+    private function usage(array $diagnostic): array
+    {
+        return ['ledger_used' => (int) $diagnostic['ledger_used'], 'observed_used' => (int) $diagnostic['observed_used'],
+            'uncapped_used' => (int) $diagnostic['uncapped_used'], 'cancelled_usage_artifacts' => (int) $diagnostic['cancelled_usage_artifacts']];
     }
 
     /**

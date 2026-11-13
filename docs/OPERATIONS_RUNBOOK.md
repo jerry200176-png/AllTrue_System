@@ -1397,12 +1397,22 @@ GitHub #5124／#5162。目錄狀態 `active`。乾跑只讀資料；執行需要
 | 範圍（分校／學生／科目／整條鏈） | `student_campus_mismatch`（在讀任何合約或堂次前就拒絕；`super_admin` 也不例外）、`contract_not_owned_by_student`（不存在或屬於別的學生，同一個代碼）、`contract_subject_mismatch`、`contract_chain_incomplete`、`package_contract_unsupported`、`non_count_contract_unsupported`、`session_not_found_in_campus`（不存在或在別的分校，同一個代碼）、`session_student_mismatch`、`session_subject_mismatch`、`session_not_in_chain`、`chain_too_large` |
 | 清單與現況不符 | `move_from_mismatch`（`from` 不是這堂目前的合約，含前面幾筆搬動後）、`session_drift`（日期、時間或狀態變了）、`session_moved_twice`、`move_noop`、`move_contract_not_in_chain`、`session_status_unsupported`、`digest_mismatch` |
 | 搬完後的結果 | `taught_exceeds_purchased`、`taught_total_not_conserved`、`future_reservations_exceed_remaining`（`report` 時只列出不擋）、`report_policy_requires_no_active_contract`（鏈上有仍在上課的合約，或 `allow_active_contracts: true`，卻用了 `report`；這時只能用 `block`，`report` 只給整條鏈都已結束的情況） |
-| 堂數計數 | `counters_not_derived`（合約上存的已用／剩餘堂數不是重算值，逐份列出合約 ID；被搬動兩端的合約另外檢查分鐘欄位）。執行與還原都會重算被搬動合約的計數，執行前存的值必須就是重算值，還原後的計數才會和執行前一模一樣。**目前沒有通用的計數重算作業**：遇到這個代碼就停下，在 #5162 回報合約 ID，另案處理，不要手動改計數 |
+| 堂數計數 | `counters_not_derived`（**只擋被搬動兩端的合約**：存的已用／剩餘堂數不是重算值，或分鐘欄位既不是空值也不是重算值；逐份列出合約 ID）。執行與還原都會重算被搬動合約的計數，執行前存的值必須就是重算值，還原後的堂數計數才會和執行前一模一樣。分鐘欄位是空值（從沒重算過的舊合約）可以通過：執行時會寫入重算值，還原後留下的是重算值而不是空值。**目前沒有通用的計數重算作業**：遇到這個代碼就停下，在 #5162 回報合約 ID，另案處理，不要手動改計數。沒被搬動的合約有同樣狀況時不擋，改列在 `warnings`（見下方「警示」） |
 | 金額與結算 | `contract_terminal_money_closure`、`contract_settlement_locked`、`session_charge_override_present`、`actual_duration_contract_unsupported`、`partial_minutes_unsupported`、`session_duration_differs`、`contract_session_count_invalid` |
 | 改派服務會拒絕的 | `target_slot_taken`、`assessment_locked` |
-| 鏡像資料不一致 | `unbound_usage`（合約上有不屬於任何堂次的簽到、學習紀錄或扣堂帳；搬堂次帶不走，預估堂數會錯）、`mirror_inconsistent`（簽到、學習紀錄、扣堂帳的合約與堂次不同；或合約的扣堂帳、觀察到的使用與已上堂數對不起來；或要搬的堂扣堂淨額不是剛好一筆） |
+| 鏡像資料不一致 | `unbound_usage`（合約上有不屬於任何堂次的簽到、學習紀錄或扣堂帳；搬堂次帶不走，預估堂數會錯）、`mirror_inconsistent`（簽到、學習紀錄、扣堂帳的合約與堂次不同；或合約的扣堂帳、觀察到的使用與已上堂數對不起來；或某一堂的扣堂淨額不是剛好一筆）。**擋的範圍**：清單裡要搬的堂、被搬動兩端的合約（每筆搬動的 `from` 與 `to`）和它們名下的每一堂；另外，沒被搬動合約的堂，只要有一筆簽到／學習紀錄／扣堂帳指向被搬動的合約，也擋。其餘（整條鏈上沒被任何搬動碰到的合約）不擋，改列在 `warnings` |
 | 需 Founder 決定 | `decision_required_active_contract`、`decision_required_order_only` |
 | 還原請求 | `restore_source_not_found`（查無這筆請求、不是本作業、分校／學生／科目不同、沒有成功執行過、或它本身就是還原請求，同一個代碼）、`restore_moves_mismatch`（`moves` 不是原執行清單的反向）、`restore_row_changed`（搬過的堂在執行後變了；`restore_rows` 逐堂列出狀態）、`restore_already_applied`（那筆請求已經還原過；依執行紀錄判斷，不看堂次現在在哪裡，回傳是哪一筆請求還原的） |
+
+**警示（`warnings`，2026-11-13 起）**
+
+乾跑結果多一個 `warnings` 清單，每筆有 `code`、`contract_id`、`session_id`（沒有對應堂次時是空值）。它列的是「鏈上沒被任何搬動碰到的合約」的 `mirror_inconsistent` 與 `counters_not_derived`：那是原本就存在的落差（例如某份合約已上 8 堂、扣堂帳只有 7 筆），這次搬動不讀也不寫那份合約，所以不擋這次修正。
+
+- 警示不是通過，也不會被這個作業修掉。**每一筆警示都要在 #5162 另開一列修復項目**（寫合約 ID、堂次 ID、代碼），另案處理；不要為了讓警示消失去改清單，也不要手動改扣堂帳或計數。
+- 警示算進 `digest`：有警示和沒警示的乾跑，`digest` 一定不同；核准後警示出現、消失或變了，執行會回 `digest_drift`，要重新乾跑、重新核准。交給 Founder 的乾跑結果要包含 `warnings`。
+- 執行結果與快照都帶同一份 `warnings`。執行後的自我檢查與驗證會確認：有警示的那份合約，扣堂帳與使用數字和執行前第一筆搬動之前記下的完全一樣（沒有變好也沒有變壞）；不一樣就回 `mirror_inconsistent_<合約ID>`，執行當下整筆退回。之後那份合約被另案修好（數字變成一致）不算錯。
+- 被搬動的合約或要搬的堂有同樣的落差，仍然是拒絕（`ok=false`），先把那個落差另案修好再乾跑。
+- 還原（還原請求與 rollback）用同一個範圍：沒被搬動的合約有落差，不會擋還原。
 
 輸出只有 ID、日期、狀態與數量：每份合約搬動前後的已上與預約堂數、過期仍為 `scheduled` 的堂次（只列出；取消走既有的過期堂次作業）、只調順序的搬動編號、受影響的老師月份數、`digest`，以及「最舊合約先用完」的對照（`advisor`，只供比較，從不執行）。`digest` 綁定整份清單、當天日期與讀到的合約、堂次、鏡像狀態；任何一項變了，帶著舊 `expected_digest` 的乾跑回 `digest_mismatch`。
 
@@ -1417,7 +1427,7 @@ Founder 已決定（#5124，2026-11-12）：多出來的那一堂可以順延進
 3. 乾跑通過後，把回傳的 `digest` 填進 `expected_digest` 建第二份草稿 → 再乾跑，`state` 必須是 `pinned`。把這份乾跑結果（每份合約前後的已上與預約堂數、搬動清單、`advisor` 對照、`digest`）交給 Founder。
 4. Founder 在 POP 核准那一筆請求。沒有核准、核准過期、或部署版本換了，都不會執行。
 5. Pi 本機 POP 執行。執行時會先鎖住該生、整條鏈的合約與堂次（固定順序），在鎖內重新乾跑一次；與核准時的 `digest` 有任何不同就拒絕（`digest_drift`，後面接著原因代碼），不會寫入。所有搬動在同一個交易內完成，任何一筆失敗全部退回。執行中出任何錯（包含等鎖逾時與死結），POP 會先把整個交易退回，再另外寫一筆失敗紀錄（`execution_failed`，不帶快照）：資料沒有任何變動，這筆請求不能當還原來源，修掉原因後送新的請求。
-6. 立刻驗證（POP verify）。驗證只讀：每一堂都在目標合約、日期時間狀態沒變、簽到／學習紀錄／扣堂帳都跟著走、每筆搬動都有改派紀錄、每份合約已上堂數不超過購買堂數且與乾跑承諾的 `after` 相同、總已上堂數不變、被搬動兩端合約的堂數計數正確、金額指紋與執行前相同。任一項不成立回 `verification_failed` 並列出代碼。驗證要在執行後馬上做：之後有新點名，堂數自然會和當時的承諾不同。金額指紋只涵蓋這條鏈的合約與它們的帳單、帳單明細、收款、核帳回報（別的學生、別的科目不算）；執行後這條鏈上有正常收款或帳單異動，之後再手動重驗就會出現 `money_changed`，那代表金額資料已不是執行前那一份，不代表本作業寫了金額。
+6. 立刻驗證（POP verify）。驗證只讀：每一堂都在目標合約、日期時間狀態沒變、簽到／學習紀錄／扣堂帳都跟著走、每筆搬動都有改派紀錄、每份合約已上堂數不超過購買堂數且與乾跑承諾的 `after` 相同、總已上堂數不變、被搬動兩端合約的堂數計數正確、被搬動兩端合約的扣堂帳與已上堂數一致（沒被搬動的合約：一致，或與執行前記下的數字完全相同）、金額指紋與執行前相同。任一項不成立回 `verification_failed` 並列出代碼。驗證要在執行後馬上做：之後有新點名，堂數自然會和當時的承諾不同。金額指紋只涵蓋這條鏈的合約與它們的帳單、帳單明細、收款、核帳回報（別的學生、別的科目不算）；執行後這條鏈上有正常收款或帳單異動，之後再手動重驗就會出現 `money_changed`，那代表金額資料已不是執行前那一份，不代表本作業寫了金額。
 7. 在 #5162 留收據：請求 ID、執行前後各合約堂數、`digest`。只寫 ID 與數字。
 
 執行拒絕代碼：`request_id_invalid`、`plan_not_pinned`（乾跑沒過或沒綁 `digest`）、`digest_drift`（現況與核准的乾跑不同；包含學生已不在該分校 `student_campus_mismatch`、Founder 決定旗標不成立、鏈上多了合約等）、`concurrent_change`（鎖定時發現別的交易剛改過這條鏈，重新乾跑再送）、`move_refused`（改派服務拒絕某一筆，回報第幾筆）、`postcondition_failed`（搬完後自我檢查不成立，含 `money_changed`）。以上任何一種都不會留下半套結果。同一筆請求重送只會拿回同一份結果（`already_applied`），不會再搬一次。
