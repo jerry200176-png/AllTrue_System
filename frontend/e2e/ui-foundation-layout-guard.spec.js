@@ -24,7 +24,7 @@ const SUBJECTS = ['國中數學', '高中英文', '國小自然', '高二物理�
 
 const COURSE_NAMES = ['林宥辰', '歐陽子晴', '范姜宜蓁', '司馬文傑', '陳品妤', '曾翊'];
 const COURSE_MGMT = {
-  // 課程查找, slices 1-3 (issue 4989): header, toolbar, 課程分布 strip, the student group cards and the course rows inside them.
+  // 課程查找, slices 1-4 (issue 4989): header, toolbar, 課程分布 strip, the student group cards and the course rows inside them.
   // The left-edge group mixes the header title column, the toolbar card, the strip label and the group cards on purpose:
   // they are different elements, so a gutter that differs between header and list makes it fail (a list of identical cards cannot).
   key: 'course-mgmt',
@@ -55,10 +55,14 @@ const COURSE_MGMT = {
           valueRed: cr > cg + 80 && cb > cg + 20, badgeText: badge?.textContent.trim() || '', badgeRed: br > bg + 80 && bb > bg + 20,
         };
       });
-      return { headLefts, rows };
+      const rgbOf = (el) => getComputedStyle(el).color.match(/\d+(\.\d+)?/g).map(Number);
+      const usageRed = [...document.querySelectorAll('.course-row .tag-usage-review--action')].filter(visible).map((b) => { const [r, g, bl] = rgbOf(b); return r > g + 80 && bl > g + 20; });
+      return { headLefts, rows, usageRed };
     },
     assert: (r, vp) => {
       expect(r.rows.length, 'course rows must be on screen').toBeGreaterThan(0);
+      expect(r.usageRed.length, 'the fixture has a course with a usage review').toBeGreaterThan(0);
+      expect(r.usageRed.every(Boolean), 'the 堂數待對帳 button of a course row is red').toBe(true);
       for (const row of r.rows) {
         expect(row.count, 'a row has five cells: subject, next, remaining, payment, actions').toBe(5);
         expect(row.overflow, 'a cell of a course row sticks out of its row').toBe(0);
@@ -90,6 +94,79 @@ const COURSE_MGMT_HELP_OPEN = {
   rows: ['.course-workbench__intro, .course-workbench__help[open], .course-workbench__help[open] > summary > svg, .course-workbench__help[open] > p'],
   touch: ['.course-workbench__help[open] > summary'],
   setup: async (page) => { await page.locator('[data-testid="course-help"] > summary').click(); await expect(page.locator('.course-workbench__help[open]')).toBeVisible(); },
+};
+
+// 課程查找 slice 4 (issue 4989): the history cards. Five closed courses of one student, one per closed state, one with a usage review.
+// Checks that every card keeps its facts inside the card, that each closed state carries its tone (settled = success, owed = danger,
+// completed / package = neutral) and that only the 堂數待對帳 button is red.
+const HISTORY_CARD_CASES = [
+  { id: 200, reason: 'completed', over: {} },
+  { id: 201, reason: 'settled', over: { class_type: 'one_on_two', usage_balance_status: 'review_required' } },
+  { id: 202, reason: 'waived', over: { PackageID: 5, PackageName: '雙科方案', teacher_name: '李大華老師' } },
+  { id: 203, reason: 'converted_trial', over: { class_type: 'trial', sessions_purchased: 1, sessions_used: 1 } },
+  { id: 204, reason: 'contract_amended', over: { payment_status: 'unpaid', class_type: 'one_on_three' } },
+];
+const COURSE_MGMT_HISTORY = {
+  ...COURSE_MGMT,
+  key: 'course-mgmt (history cards open)',
+  names: ['林宥辰'],
+  allNames: false,
+  rows: ['.history-course-card'],
+  touch: ['.history-section__toggle', '.history-course-card .btn-toggle', '.history-course-card .action-menu-trigger', '.history-course-card .tag-usage-review--action'],
+  setup: async (page) => {
+    await page.getByText('林宥辰', { exact: true }).first().waitFor({ state: 'attached' });
+    for (const toggle of await page.locator('.history-section__toggle').all()) await toggle.click();
+    await expect(page.locator('.history-course-card')).toHaveCount(HISTORY_CARD_CASES.length);
+  },
+  extra: {
+    run: () => {
+      const visible = (el) => { const r = el.getBoundingClientRect(); const cs = getComputedStyle(el); return r.width > 0 && r.height > 0 && cs.display !== 'none' && cs.visibility !== 'hidden'; };
+      const rgb = (el) => getComputedStyle(el).color.match(/\d+(\.\d+)?/g).map(Number);
+      const isRed = ([r, g, b]) => r > g + 80 && b > g + 20;
+      const isGreen = ([r, g, b]) => g > r + 15 && g > b;
+      return [...document.querySelectorAll('.history-course-card')].filter(visible).map((card) => {
+        const box = card.getBoundingClientRect();
+        const inside = [...card.querySelectorAll('*')].filter(visible).filter((el) => { const r = el.getBoundingClientRect(); return r.right > box.right + 1 || r.left < box.left - 1; }).length;
+        const button = card.querySelector('.tag-usage-review--action');
+        return {
+          id: Number(card.getAttribute('data-contract-id')), outside: inside, oldTags: card.querySelectorAll('.tag, .status-tag').length,
+          facts: card.querySelectorAll('.history-course-card__details dt').length,
+          badges: [...card.querySelectorAll('[data-slot="status-badge"]')].map((b) => ({ text: b.textContent.trim(), tone: b.getAttribute('data-tone'), red: isRed(rgb(b)), green: isGreen(rgb(b)) })),
+          button: button ? { red: isRed(rgb(button)), h: Math.round(button.getBoundingClientRect().height) } : null,
+        };
+      });
+    },
+    assert: (cards) => {
+      expect(cards.length, 'every history card is on screen').toBe(HISTORY_CARD_CASES.length);
+      const byId = Object.fromEntries(cards.map((c) => [c.id, c]));
+      for (const c of cards) {
+        expect(c.outside, `a part of history card ${c.id} sticks out of the card`).toBe(0);
+        expect(c.oldTags, `history card ${c.id} still uses the old .tag / .status-tag`).toBe(0);
+        expect(c.facts, `history card ${c.id} shows 開課, 老師, 費用 and 堂數`).toBeGreaterThanOrEqual(4);
+        // red: an owed (未收) badge and the 堂數待對帳 button; every other history badge is not red
+        for (const b of c.badges) expect(b.red, `badge 「${b.text}」 on history card ${c.id} is red only when it says 未收`).toBe(b.text.includes('未收'));
+      }
+      const tone = (id, text) => byId[id].badges.find((b) => b.text.includes(text));
+      expect(tone(201, '已結算')?.tone, 'a settled course is success').toBe('success');
+      expect(tone(201, '已結算')?.green, 'success is green').toBe(true);
+      expect(tone(202, '歷史')?.tone, 'a waived course is success').toBe('success');
+      expect(tone(202, '方案')?.tone, 'the package badge is neutral').toBe('neutral');
+      expect(tone(203, '已轉正式')?.tone, 'a converted trial is success').toBe('success');
+      expect(tone(204, '未收')?.tone, 'ended with money owed (未收) is danger, like 未繳 on an active row').toBe('danger');
+      expect(tone(200, '已完課')?.tone, 'a completed course is neutral').toBe('neutral');
+      expect(tone(200, '已完課')?.green, 'neutral is not green').toBe(false);
+      expect(byId[201].button?.red, 'the 堂數待對帳 button is red').toBe(true);
+      expect(byId[201].button?.h, 'the 堂數待對帳 button is at least 44px tall').toBeGreaterThanOrEqual(44);
+      expect(byId[200].button, 'only the course with a usage review has the button').toBeNull();
+    },
+  },
+  mock: async (page) => {
+    const base = (o) => ({ student_id: 9100, student_name: '林宥辰', teacher_name: '歐陽子晴老師', subject: 'math', ScheduleMode: 'count', payment_type: 'session', sessions_purchased: 8, class_type: 'one_on_one', ...o });
+    const history = HISTORY_CARD_CASES.map(({ id, reason, over }) => base({ id, first_class_date: `2025-0${id - 199}-01`, status: 'inactive', history_reason: reason, closed_reason: reason, is_active_course: false, sessions_used: 8, remaining_sessions: 0, payment_status: 'paid', ...over }));
+    const active = base({ id: 100, first_class_date: '2026-09-01', status: 'active', is_active_course: true, sessions_used: 3, remaining_sessions: 5, payment_status: 'paid' });
+    const data = [active, ...history];
+    await page.route('**/api/v1/**', (r) => json(r, new URL(r.request().url()).pathname === '/api/v1/student-classes' ? { data, total: data.length, current_page: 1, last_page: 1 } : { data: [] }));
+  },
 };
 
 /** PAGES: { key, url, mock(page), names (exact texts that must stay on one line), rows (selector groups whose visible members must share a left edge), setup?(page) } */
@@ -186,6 +263,7 @@ const PAGES = [
   })),
   COURSE_MGMT,
   COURSE_MGMT_HELP_OPEN,
+  COURSE_MGMT_HISTORY,
   {
     key: 'teacher-eligibility',
     url: '/teacher-eligibility-pilot-mount.html',
@@ -247,7 +325,7 @@ function measure({ names, rows, touch = [] }) {
 
 for (const entry of PAGES) {
   for (const size of TEXT_SIZES) {
-    for (const vp of entry.key === 'course-mgmt' ? [...VIEWPORTS, ...TABLET_VIEWPORTS] : VIEWPORTS) {
+    for (const vp of entry.key.startsWith('course-mgmt') ? [...VIEWPORTS, ...TABLET_VIEWPORTS] : VIEWPORTS) {
       test(`layout guard: ${entry.key} @${vp.name} text-size ${size}`, async ({ page }) => {
         await page.setViewportSize({ width: vp.width, height: vp.height });
         await page.addInitScript((s) => {
