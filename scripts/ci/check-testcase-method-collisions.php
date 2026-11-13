@@ -6,10 +6,21 @@
  * (#5201, three times). Runs in seconds, before PHPUnit.
  *
  * Usage: php scripts/ci/check-testcase-method-collisions.php [--tests-dir=DIR]
- * Needs backend/vendor/autoload.php (ALLTRUE_GUARD_AUTOLOAD / ALLTRUE_GUARD_EXTRA_AUTOLOAD override it; self-test only).
- * The method list comes from Reflection on the real parent classes, so it is never hand-maintained.
- * Exit 0 = clean, 1 = collisions, 2 = could not run.
+ * Needs backend/vendor/autoload.php after `composer install`, including nikic/php-parser (a transitive
+ * dependency, e.g. of psy/psysh and phpunit/php-code-coverage), which parses the test files: a hand-written
+ * token walker kept missing namespace, import and trait-adaptation edge cases. Test classes are never loaded
+ * (loading one that redeclares a final method is itself the fatal); only the framework parents are reflected,
+ * so the forbidden method list is never hand-maintained.
+ * ALLTRUE_GUARD_AUTOLOAD / ALLTRUE_GUARD_EXTRA_AUTOLOAD override the autoloaders (self-test only).
+ * Exit 0 = clean, 1 = collisions or unresolved parents, 2 = could not run.
  */
+
+use PhpParser\Node;
+use PhpParser\Node\Stmt;
+use PhpParser\NodeFinder;
+use PhpParser\NodeTraverser;
+use PhpParser\NodeVisitor\NameResolver;
+use PhpParser\ParserFactory;
 
 $root = dirname(__DIR__, 2);
 $testsDir = $root . '/backend/tests';
@@ -26,6 +37,10 @@ if (!is_file($autoload) || !is_dir($testsDir)) {
 require $autoload;
 if (($extra = getenv('ALLTRUE_GUARD_EXTRA_AUTOLOAD')) && is_file($extra)) {
     require $extra; // self-test only: stub framework classes (e.g. a Laravel-like session() trait)
+}
+if (!class_exists(ParserFactory::class)) {
+    fwrite(STDERR, "cannot run: nikic/php-parser is not installed (run composer install in backend/); refusing to pass vacuously\n");
+    exit(2);
 }
 // Tests\ is autoload-dev; make sure it resolves even when the autoloader was dumped without dev classes.
 spl_autoload_register(static function (string $class) use ($root): void {
@@ -47,204 +62,54 @@ const ALLOWED = [
     'createApplication',   // Tests\CreatesApplication: the documented Laravel override point
 ];
 
-/** @return array<string, array{file: string, parent: string, traits: list<string>, methods: list<array{string, int}>}> */
-function parseFile(string $file): array
-{
-    $tokens = token_get_all((string) file_get_contents($file));
-    $ns = '';
-    $uses = [];
-    $classes = [];
-    $depth = 0;
-    $stack = []; // [fqn, depth of its body]
-    $n = count($tokens);
-    $skip = [T_WHITESPACE, T_COMMENT, T_DOC_COMMENT];
-    $text = static fn($t) => is_array($t) ? $t[1] : $t;
-    $next = static function (int $i) use ($tokens, $n, $skip): int {
-        for ($i++; $i < $n; $i++) {
-            if (!is_array($tokens[$i]) || !in_array($tokens[$i][0], $skip, true)) {
-                return $i;
-            }
-        }
-        return $n;
-    };
-    $nameAt = static function (int &$i) use ($tokens, $n, $next): string {
-        $name = '';
-        $nameTokens = [T_STRING, T_NAME_QUALIFIED, T_NAME_FULLY_QUALIFIED, T_NS_SEPARATOR];
-        while ($i < $n && is_array($tokens[$i]) && in_array($tokens[$i][0], $nameTokens, true)) {
-            $name .= $tokens[$i][1];
-            $i = $next($i);
-        }
-        return $name;
-    };
-    $resolve = static function (string $name) use (&$ns, &$uses): string {
-        if ($name === '') {
-            return '';
-        }
-        if ($name[0] === '\\') {
-            return ltrim($name, '\\');
-        }
-        $parts = explode('\\', $name, 2);
-        if (isset($uses[strtolower($parts[0])])) {
-            return $uses[strtolower($parts[0])] . (isset($parts[1]) ? '\\' . $parts[1] : '');
-        }
-        return ($ns !== '' ? $ns . '\\' : '') . $name;
-    };
-    for ($i = 0; $i < $n; $i++) {
-        $t = $tokens[$i];
-        $id = is_array($t) ? $t[0] : null;
-        if ($id === T_NAMESPACE) {
-            $j = $next($i);
-            $ns = $nameAt($j);
-        } elseif ($id === T_USE && $stack === [] && $depth === 0) {
-            $j = $next($i);
-            if (is_array($tokens[$j]) && in_array($tokens[$j][0], [T_FUNCTION, T_CONST], true)) {
-                continue;
-            }
-            // Plain, comma-separated, aliased and grouped imports: `use A\B, C as D, E\{F, G as H};`
-            while ($j < $n) {
-                $full = ltrim($nameAt($j), '\\');
-                $group = $j < $n && $tokens[$j] === '{';
-                $entries = [];
-                if ($group) {
-                    $prefix = rtrim($full, '\\') . '\\';
-                    $j = $next($j);
-                    while ($j < $n && $tokens[$j] !== '}') {
-                        $before = $j;
-                        $isFunctionOrConst = is_array($tokens[$j]) && in_array($tokens[$j][0], [T_FUNCTION, T_CONST], true);
-                        if ($isFunctionOrConst) {
-                            $j = $next($j); // `function helper` / `const FLAG`: not a class or trait, never recorded
-                        }
-                        $entry = ltrim($nameAt($j), '\\');
-                        if ($j < $n && is_array($tokens[$j]) && $tokens[$j][0] === T_AS) {
-                            $j = $next($j);
-                            $alias = $text($tokens[$j]);
-                            $j = $next($j);
-                            $entry .= ' as ' . $alias;
-                        }
-                        if (!$isFunctionOrConst && $entry !== '') {
-                            $entries[] = $prefix . $entry;
-                        }
-                        if ($j < $n && $tokens[$j] === ',') {
-                            $j = $next($j);
-                        }
-                        if ($j === $before) {
-                            // Backstop: an import shape this walker does not understand must fail loudly, not spin.
-                            $line = is_array($tokens[$j]) ? $tokens[$j][2] : 0;
-                            fwrite(STDERR, "cannot parse grouped import at $file:$line (token walker made no progress)\n");
-                            exit(2);
-                        }
-                    }
-                    $j = $next($j); // closing brace
-                } else {
-                    $entries[] = $full;
-                    if ($j < $n && is_array($tokens[$j]) && $tokens[$j][0] === T_AS) {
-                        $j = $next($j);
-                        $entries[0] .= ' as ' . $text($tokens[$j]);
-                        $j = $next($j);
-                    }
-                }
-                foreach ($entries as $entry) {
-                    [$target, $alias] = array_pad(explode(' as ', $entry, 2), 2, null);
-                    if ($target === '') {
-                        continue;
-                    }
-                    $segments = explode('\\', $target);
-                    $uses[strtolower($alias ?? end($segments))] = $target;
-                }
-                if ($j < $n && $tokens[$j] === ',') {
-                    $j = $next($j);
-                    continue;
-                }
-                break;
-            }
-        } elseif (($id === T_CLASS || $id === T_TRAIT) && $stack === []) {
-            $p = $i - 1;
-            while ($p >= 0 && is_array($tokens[$p]) && in_array($tokens[$p][0], $skip, true)) {
-                $p--;
-            }
-            if ($p >= 0 && is_array($tokens[$p]) && in_array($tokens[$p][0], [T_DOUBLE_COLON, T_NEW], true)) {
-                continue;
-            }
-            $j = $next($i);
-            $fqn = ($ns !== '' ? $ns . '\\' : '') . $text($tokens[$j]);
-            $parent = '';
-            $j = $next($j);
-            while ($j < $n && $tokens[$j] !== '{') {
-                if (is_array($tokens[$j]) && $tokens[$j][0] === T_EXTENDS) {
-                    $j = $next($j);
-                    $parent = $resolve($nameAt($j));
-                    continue;
-                }
-                $j = $next($j);
-            }
-            $classes[$fqn] = ['file' => $file, 'parent' => $parent, 'traits' => [], 'methods' => []];
-            $stack[] = [$fqn, $depth + 1];
-            $i = $j - 1; // the next iteration sees the opening brace
-        } elseif ($t === '{' || $id === T_CURLY_OPEN || $id === T_DOLLAR_OPEN_CURLY_BRACES) {
-            $depth++;
-        } elseif ($t === '}') {
-            if ($stack !== [] && end($stack)[1] === $depth) {
-                array_pop($stack);
-            }
-            $depth--;
-        } elseif ($stack !== [] && $depth === end($stack)[1]) {
-            $cur = end($stack)[0];
-            if ($id === T_USE) {
-                $j = $next($i);
-                while ($j < $n) {
-                    $classes[$cur]['traits'][] = $resolve($nameAt($j));
-                    if ($tokens[$j] !== ',') {
-                        break;
-                    }
-                    $j = $next($j);
-                }
-                // Adaptations: `use Helper { helper as protected count; A::run insteadof B; }`. The alias is a
-                // method name on the class (insteadof only picks one, it adds no name).
-                if ($j < $n && $tokens[$j] === '{') {
-                    for ($k = $next($j); $k < $n && $tokens[$k] !== '}'; $k = $next($k)) {
-                        if (is_array($tokens[$k]) && $tokens[$k][0] === T_AS) {
-                            $a = $next($k);
-                            while ($a < $n && is_array($tokens[$a]) && in_array($tokens[$a][0], [T_PUBLIC, T_PROTECTED, T_PRIVATE], true)) {
-                                $a = $next($a);
-                            }
-                            if ($a < $n && is_array($tokens[$a]) && $tokens[$a][0] === T_STRING) {
-                                $classes[$cur]['methods'][] = [$tokens[$a][1], $tokens[$a][2]];
-                            }
-                        }
-                    }
-                }
-            } elseif ($id === T_FUNCTION) {
-                $j = $next($i);
-                // PHP 8.1+ tokenizes the `&` of `function &name()` as one of two ampersand tokens, not as '&'.
-                $ampersands = array_filter([
-                    defined('T_AMPERSAND_FOLLOWED_BY_VAR_OR_VARARG') ? T_AMPERSAND_FOLLOWED_BY_VAR_OR_VARARG : null,
-                    defined('T_AMPERSAND_NOT_FOLLOWED_BY_VAR_OR_VARARG') ? T_AMPERSAND_NOT_FOLLOWED_BY_VAR_OR_VARARG : null,
-                ]);
-                if ($tokens[$j] === '&' || (is_array($tokens[$j]) && in_array($tokens[$j][0], $ampersands, true))) {
-                    $j = $next($j);
-                }
-                if (is_array($tokens[$j]) && $tokens[$j][0] === T_STRING) {
-                    $classes[$cur]['methods'][] = [$tokens[$j][1], $tokens[$j][2]];
-                }
-            }
-        }
-    }
-    return $classes;
-}
+$parser = (new ParserFactory())->createForHostVersion();
+$finder = new NodeFinder();
 
+/** Class and trait declarations by lower-cased FQN (PHP class names are case-insensitive). */
 $classes = [];
 $files = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($testsDir, FilesystemIterator::SKIP_DOTS));
 foreach ($files as $f) {
-    if ($f->isFile() && $f->getExtension() === 'php') {
-        $classes += parseFile($f->getPathname());
+    if (!$f->isFile() || $f->getExtension() !== 'php') {
+        continue;
+    }
+    $file = $f->getPathname();
+    try {
+        $ast = $parser->parse((string) file_get_contents($file));
+        $ast = (new NodeTraverser(new NameResolver()))->traverse($ast ?? []);
+    } catch (PhpParser\Error $e) {
+        fwrite(STDERR, "cannot parse $file: {$e->getMessage()}\n");
+        exit(2);
+    }
+    foreach ($finder->find($ast, static fn(Node $n) => ($n instanceof Stmt\Class_ || $n instanceof Stmt\Trait_) && $n->namespacedName !== null) as $decl) {
+        $entry = ['name' => $decl->namespacedName->toString(), 'file' => $file, 'parent' => '', 'traits' => [], 'methods' => []];
+        if ($decl instanceof Stmt\Class_ && $decl->extends !== null) {
+            $entry['parent'] = $decl->extends->toString();
+        }
+        foreach ($decl->stmts as $stmt) {
+            if ($stmt instanceof Stmt\ClassMethod) {
+                $entry['methods'][] = [$stmt->name->toString(), $stmt->getStartLine()];
+            } elseif ($stmt instanceof Stmt\TraitUse) {
+                foreach ($stmt->traits as $trait) {
+                    $entry['traits'][] = $trait->toString();
+                }
+                foreach ($stmt->adaptations as $adaptation) {
+                    // `helper as protected count`: the alias is a method name on this class; insteadof adds none.
+                    if ($adaptation instanceof Stmt\TraitUseAdaptation\Alias && $adaptation->newName !== null) {
+                        $entry['methods'][] = [$adaptation->newName->toString(), $adaptation->getStartLine()];
+                    }
+                }
+            }
+        }
+        $classes[strtolower($entry['name'])] ??= $entry;
     }
 }
 
 $allowed = array_map('strtolower', ALLOWED);
 $frameworkMethods = [];
 $frameworkOf = static function (string $fqn) use (&$frameworkMethods): ?array {
-    if (!array_key_exists($fqn, $frameworkMethods)) {
-        $frameworkMethods[$fqn] = null;
+    $key = strtolower($fqn);
+    if (!array_key_exists($key, $frameworkMethods)) {
+        $frameworkMethods[$key] = null;
         if (class_exists($fqn) && is_a($fqn, 'PHPUnit\Framework\TestCase', true)) {
             $m = [];
             foreach ((new ReflectionClass($fqn))->getMethods() as $method) {
@@ -252,20 +117,20 @@ $frameworkOf = static function (string $fqn) use (&$frameworkMethods): ?array {
                     $m[strtolower($method->getName())] = $method->getDeclaringClass()->getName() . '::' . $method->getName();
                 }
             }
-            $frameworkMethods[$fqn] = $m;
+            $frameworkMethods[$key] = $m;
         }
     }
-    return $frameworkMethods[$fqn];
+    return $frameworkMethods[$key];
 };
 $relative = static fn(string $f): string => ltrim(str_replace($root, '', $f), '/');
-$ownMethods = static function (string $fqn, int $guard = 0) use (&$ownMethods, $classes): array {
+$ownMethods = static function (string $key, int $guard = 0) use (&$ownMethods, $classes): array {
     $out = [];
-    foreach ($classes[$fqn]['methods'] ?? [] as $m) {
-        $out[] = [$m[0], $m[1], $classes[$fqn]['file']];
+    foreach ($classes[$key]['methods'] ?? [] as [$name, $line]) {
+        $out[] = [$name, $line, $classes[$key]['file']];
     }
-    foreach ($classes[$fqn]['traits'] ?? [] as $t) {
-        if (isset($classes[$t]) && $guard < 20) {
-            array_push($out, ...$ownMethods($t, $guard + 1));
+    foreach ($classes[$key]['traits'] ?? [] as $trait) {
+        if (isset($classes[strtolower($trait)]) && $guard < 20) {
+            array_push($out, ...$ownMethods(strtolower($trait), $guard + 1));
         }
     }
     return $out;
@@ -274,26 +139,26 @@ $ownMethods = static function (string $fqn, int $guard = 0) use (&$ownMethods, $
 $problems = [];
 $unresolved = [];
 $checked = 0;
-foreach ($classes as $fqn => $c) {
+foreach ($classes as $key => $c) {
     $terminal = $c['parent'];
     $guard = 0;
-    while (isset($classes[$terminal]) && $guard++ < 50) {
-        $terminal = $classes[$terminal]['parent'];
+    while (isset($classes[strtolower($terminal)]) && $guard++ < 50) {
+        $terminal = $classes[strtolower($terminal)]['parent'];
     }
     $framework = $terminal !== '' ? $frameworkOf($terminal) : null;
     if ($framework === null) {
         // A parent that cannot be loaded would be skipped silently (fail open); a loadable non-TestCase parent
         // (exception, Mockery class) or no parent at all (worker script, plain helper, shared trait) is fine.
         if ($terminal !== '' && !class_exists($terminal)) {
-            $unresolved[] = sprintf('%s:%s extends unresolvable %s', $relative($c['file']), $fqn, $terminal);
+            $unresolved[] = sprintf('%s:%s extends unresolvable %s', $relative($c['file']), $c['name'], $terminal);
         }
         continue;
     }
     $checked++;
-    foreach ($ownMethods($fqn) as [$name, $line, $file]) {
-        $key = strtolower($name);
-        if (isset($framework[$key]) && !in_array($key, $allowed, true)) {
-            $problems[] = sprintf('%s:%d %s() collides with %s', $relative($file), $line, $name, $framework[$key]);
+    foreach ($ownMethods($key) as [$name, $line, $file]) {
+        $lower = strtolower($name);
+        if (isset($framework[$lower]) && !in_array($lower, $allowed, true)) {
+            $problems[] = sprintf('%s:%d %s() collides with %s', $relative($file), $line, $name, $framework[$lower]);
         }
     }
 }

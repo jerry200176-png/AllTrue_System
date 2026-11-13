@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Self-test for scripts/ci/check-testcase-method-collisions.php (#5201).
-# Needs backend/vendor (composer install) so the guard can reflect on the real PHPUnit TestCase.
+# Needs backend/vendor (composer install): the guard reflects on the real PHPUnit TestCase and parses with nikic/php-parser.
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 
@@ -35,6 +35,7 @@ expect_fail uppercase 'UpperCaseTest.php:[0-9]+ Count\(\) collides with PHPUnit\
 expect_fail grouped-function-import 'CountTrait.php:[0-9]+ count\(\) collides with PHPUnit\\Framework\\TestCase::count'
 expect_fail ampersand 'AmpersandTest.php:[0-9]+ count\(\) collides with PHPUnit\\Framework\\TestCase::count'
 expect_fail trait-alias 'AliasTest.php:[0-9]+ count\(\) collides with PHPUnit\\Framework\\TestCase::count'
+expect_fail mixed-case-trait 'MixedCaseTest.php:[0-9]+ count\(\) collides with PHPUnit\\Framework\\TestCase::count'
 expect_fail unresolved 'extends unresolvable Missing\\NoSuchBase'
 
 php "$guard" --tests-dir="$fixtures/allowed" >"$out" 2>&1 || {
@@ -42,5 +43,5 @@ php "$guard" --tests-dir="$fixtures/allowed" >"$out" 2>&1 || {
   cat "$out" >&2
   exit 1
 }
-grep -q '2 test classes checked' "$out" || { echo "FAIL: checked count missing" >&2; cat "$out" >&2; exit 1; }
+grep -q '3 test classes checked' "$out" || { echo "FAIL: checked count missing" >&2; cat "$out" >&2; exit 1; }
 echo "testcase-method-guard self-test: ok"
