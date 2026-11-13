@@ -875,3 +875,17 @@
 | 建議做法 | 另開 issue：先移除家長端與學習歷程對這些模型的讀取，再由 Founder 對確切範圍批准後，以非加法 migration 丟棄資料表（drop table 屬 F1，Agent 不自行執行）。 |
 | 清償成本估計 | 低（讀取端移除）＋ Founder 批准的 drop migration |
 | 不做的代價 | 少量死程式與空表；日後若有人重新寫入需重新確認欄位語意。 |
+
+### TD-087：題庫（question bank）資料表與遷移留在原地，已無任何讀取者與寫入者（P3）
+
+| 欄位 | 內容 |
+|---|---|
+| 狀態 | Open |
+| 優先級 | P3 |
+| 發現日期 | 2026-11-13 |
+| 發現來源 | Founder 決定 2026-11-13「未使用的功能移除、不遷移」（issue #4991）；正式環境唯讀量測 14 個校區皆 0 筆題庫 |
+| 影響模組 | `question_banks`、`question_bank_items`、`question_bank_audit_logs` 資料表；`2026_08_21_120000_create_question_bank_tables`、`2026_08_21_140000_add_provenance_to_question_bank_items` 遷移 |
+| 描述 | 題庫編輯頁、API 路由、`QuestionBankController`、三個 Eloquent 模型與測試已移除（0 使用量）。上述資料表沒有任何讀取者或寫入者，皆為空表，無害。`assessment_*` 作答相關表的欄位若引用題庫項目亦隨 TD-086 處理。 |
+| 建議做法 | 與 TD-086 合併由 Founder 對確切範圍批准後，以非加法 migration 丟棄資料表（drop table 屬 F1，Agent 不自行執行）。 |
+| 清償成本估計 | 低（Founder 批准的 drop migration） |
+| 不做的代價 | 少量空表與已不用的遷移檔。 |
