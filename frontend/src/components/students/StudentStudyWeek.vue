@@ -297,7 +297,7 @@ watch(weekStart, () => load());
 </script>
 
 <template>
-  <section class="tw:@container tw:space-y-3 tw:text-tpl-body" aria-label="本週讀書計畫" :aria-busy="loading || undefined" data-testid="study-week">
+  <section class="tw:@container tw:flex tw:flex-col tw:gap-3 tw:text-tpl-body" aria-label="本週讀書計畫" :aria-busy="loading || undefined" data-testid="study-week">
     <StudyProgressStrip :tasks="tasks" :tasks-loading="loading" :tasks-error="!!loadError" :plans="plans" :plans-loading="plansLoading" :plans-error="planError"
       :attendance-items="timelineItems" :capped-sources="cappedSources" :today="today" />
     <SectionCard title="讀書計畫" :count="tasks.length ? `${doneCount}/${tasks.length}` : null">
