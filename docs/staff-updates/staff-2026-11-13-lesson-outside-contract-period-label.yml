@@ -9,6 +9,6 @@ updates:
     summary: 日期早於合約開始日的課，現在會直接標示。
     items:
       - category: improved
-        text: 課程管理的上課日期旁，若這堂課的日期早於合約開始日（例如改派過來的舊堂次），會顯示「合約期間外」。合約開始日、堂數與扣堂都不會變。
+        text: 日期早於合約開始日的課會標示「合約期間外」，開始日與堂數不變。
     source_refs:
       - "changelog:2026-11-13:lesson-outside-contract-period-label"

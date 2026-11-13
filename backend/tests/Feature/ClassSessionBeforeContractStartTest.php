@@ -39,8 +39,8 @@ class ClassSessionBeforeContractStartTest extends TestCase
         $student = $this->student(1);
         $old = $this->course($student->id, '2026-08-30');
         $new = $this->course($student->id, '2026-10-04');
-        $early = $this->session($old->ID, '2026-09-27');
-        $inPeriod = $this->session($new->ID, '2026-10-11');
+        $early = $this->makeSession($old->ID, '2026-09-27');
+        $inPeriod = $this->makeSession($new->ID, '2026-10-11');
         $flagBefore = (int) DB::table('ClassSession')->where('id', $early)->value('IsContractException');
 
         $this->postJson("/api/v1/class-sessions/{$early}/reassign-contract", ['new_student_class_id' => $new->ID, 'reason' => '改到正確合約'], ['Authorization' => "Bearer {$token}"])->assertOk();
@@ -61,10 +61,10 @@ class ClassSessionBeforeContractStartTest extends TestCase
         $b = $this->student(2);
         $ca = $this->course($a->id, '2026-10-04');
         $cb = $this->course($b->id, '2026-10-04');
-        $s1 = $this->session($ca->ID, '2026-09-27');
-        $this->session($ca->ID, '2026-09-20', 'cancelled');
-        $this->session($ca->ID, '2026-10-04');
-        $s2 = $this->session($cb->ID, '2026-10-03');
+        $s1 = $this->makeSession($ca->ID, '2026-09-27');
+        $this->makeSession($ca->ID, '2026-09-20', 'cancelled');
+        $this->makeSession($ca->ID, '2026-10-04');
+        $s2 = $this->makeSession($cb->ID, '2026-10-03');
         $before = DB::table('ClassSession')->get()->toJson();
 
         $r = app(LessonBeforeContractStartCensus::class)->run();
@@ -105,7 +105,7 @@ class ClassSessionBeforeContractStartTest extends TestCase
         ]);
     }
 
-    private function session(int $courseId, string $date, string $status = 'scheduled'): int
+    private function makeSession(int $courseId, string $date, string $status = 'scheduled'): int
     {
         // Y2: 23:00 keeps a same-day row from reading as already ended.
         return DB::table('ClassSession')->insertGetId([
