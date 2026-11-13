@@ -61,7 +61,7 @@ class ForwardSessionGenerator
         if ($remaining <= 0) {
             return ['student_class_id' => $studentClassId, 'status' => 'skip', 'reason' => $poolUnplanned === null
                 ? 'not an active count-mode course with remaining sessions'
-                : 'shared pool has no unplanned lessons left (renew, or release lessons a sibling course planned)', 'slots' => []];
+                : 'shared pool has no unplanned lessons left (renew, mark the past lessons still open, or release lessons a sibling course planned)', 'slots' => []];
         }
 
         // Already has an upcoming session → not stranded.
@@ -77,9 +77,12 @@ class ForwardSessionGenerator
         // A past lesson not yet marked still holds one of the remaining sessions (it can be marked
         // late or moved). Ignoring it added a 9th lesson to an 8-lesson course (#4515, course 2739).
         // Rows already deducted or on leave are excluded by the shared rule (counted elsewhere).
-        $active = ClassSession::query()->where('StudentClassID', $studentClassId)
-            ->whereRaw("LOWER(Status) NOT IN ('cancelled','voided')")->get();
-        $remaining -= ContractSessionSchedule::partitionExcessScheduledRows($active, 0)['past_unrecorded']->count();
+        // A shared pool already counted these for every member (sharedPoolUnplanned), so they are not taken off twice.
+        if ($poolUnplanned === null) {
+            $active = ClassSession::query()->where('StudentClassID', $studentClassId)
+                ->whereRaw("LOWER(Status) NOT IN ('cancelled','voided')")->get();
+            $remaining -= ContractSessionSchedule::partitionExcessScheduledRows($active, 0)['past_unrecorded']->count();
+        }
         if ($remaining <= 0) {
             return ['student_class_id' => $studentClassId, 'status' => 'skip', 'reason' => 'remaining sessions already held by unmarked past sessions', 'slots' => []];
         }

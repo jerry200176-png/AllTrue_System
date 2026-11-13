@@ -815,7 +815,10 @@ class ContractSessionSchedule
         }
     }
 
-    /** Shared count package member: how many more lessons its pool may auto-plan. Null for anything else. */
+    /**
+     * Shared count package member: how many more lessons its pool may auto-plan (ledger remaining, minus lessons planned
+     * from today on, minus past lessons not yet marked, over all running members). Null for anything else.
+     */
     public static function sharedPoolUnplanned(StudentClass $studentClass): ?int
     {
         $packageId = (int) ($studentClass->PackageID ?? 0);
@@ -825,9 +828,17 @@ class ContractSessionSchedule
             return null;
         }
         $p = $planning->summarize($package);
+        // A past lesson of ANY running member that nobody marked yet still holds a pool lesson: it can be marked late, and
+        // the pool is debited then (#4515 for one course; #5243 review for siblings). Same rule as the single-course path
+        // (partitionExcessScheduledRows: rows already deducted or on leave do not count).
+        $memberIds = StudentClass::query()->where('PackageID', $packageId)
+            ->where(static fn ($q) => $q->where('Stop', 0)->orWhereNull('Stop'))->pluck('ID');
+        $active = ClassSession::query()->whereIn('StudentClassID', $memberIds)
+            ->whereRaw("LOWER(Status) NOT IN ('cancelled','voided')")->get();
+        $pastUnrecorded = self::partitionExcessScheduledRows($active, 0)['past_unrecorded']->count();
 
-        // ponytail: a group slot a sibling already planned still costs 1 here (under-fills, never over-fills); fillSharedPool is exact.
-        return max(0, $p['remaining_sessions'] - $p['future_planned_sessions']);
+        // ponytail: a group slot a sibling already planned (or left unmarked) still costs 1 here (under-fills, never over-fills); fillSharedPool is exact.
+        return max(0, $p['remaining_sessions'] - $p['future_planned_sessions'] - $pastUnrecorded);
     }
 
     /**
