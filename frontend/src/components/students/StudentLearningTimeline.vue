@@ -10,7 +10,7 @@ import { Badge } from '../ui/badge';
 import { Button } from '../ui/button';
 import StudentLearningPlanGantt from './StudentLearningPlanGantt.vue';
 import StudentStudyWeek from './StudentStudyWeek.vue';
-const props = defineProps({ show: Boolean, studentId: { type: [Number, String], default: null }, studentName: { type: String, default: '' }, branchId: { type: [Number, String], default: null }, studentGrade: { type: String, default: '' } });
+const props = defineProps({ show: Boolean, studentId: { type: [Number, String], default: null }, studentName: { type: String, default: '' }, branchId: { type: [Number, String], default: null }, studentGrade: { type: String, default: '' }, userRole: { type: String, default: '' } });
 const emit = defineEmits(['close']);
 const items = ref([]), subject = ref(''), from = ref(''), until = ref(''), tab = ref('overview');
 const loading = ref(false), error = ref(''), schoolError = ref(false), schoolLoading = ref(false), nextExam = ref(null);
@@ -88,7 +88,7 @@ watch(() => [props.show, props.studentId], () => { if (props.show && props.stude
             </CardContent></Card>
           </TabsContent>
           <TabsContent value="plan"><StudentLearningPlanGantt :student-id="studentId" :branch-id="branchId" :student-grade="studentGrade" /></TabsContent>
-          <TabsContent value="study"><StudentStudyWeek :student-id="studentId" :timeline-items="items" :capped-sources="coverage.capped_sources || []" /></TabsContent>
+          <TabsContent value="study"><StudentStudyWeek :student-id="studentId" :timeline-items="items" :capped-sources="coverage.capped_sources || []" :teacher-scope="userRole === 'teacher'" /></TabsContent>
           <TabsContent value="history">
             <p v-if="!history.length">尚無符合篩選的上課紀錄。</p>
             <ul v-else class="tw:space-y-3 tw:list-none tw:p-0">

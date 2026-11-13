@@ -352,7 +352,7 @@ const PAGES = [
         const read = (k) => {
           const el = q(k); const dd = el.querySelector('dd'); const bar = document.querySelector(`[data-testid="progress-${k}-bar"]`);
           return { text: dd.textContent.replace(/\s+/g, ''), oneLine: box(dd).height < parseFloat(getComputedStyle(dd).lineHeight) * 1.6, clipped: el.scrollWidth > el.clientWidth + 1,
-            fill: bar ? Math.round((box(bar).width / box(bar.parentElement).width) * 100) : null, painted: bar ? [getComputedStyle(bar).backgroundColor, getComputedStyle(bar.parentElement).backgroundColor].every((c) => c !== 'rgba(0, 0, 0, 0)') : null, top: Math.round(box(el).top), left: Math.round(box(el).left), width: Math.round(box(el).width) };
+            fill: bar ? Math.round(((box(bar.querySelector('[data-slot="progress-indicator"]')).right - box(bar).left) / box(bar).width) * 100) : null, painted: bar ? [getComputedStyle(bar.querySelector('[data-slot="progress-indicator"]')).backgroundColor, getComputedStyle(bar).backgroundColor].every((c) => c !== 'rgba(0, 0, 0, 0)') : null, top: Math.round(box(el).top), left: Math.round(box(el).left), width: Math.round(box(el).width) };
         };
         const strip = box(document.querySelector('[data-testid="study-progress"]'));
         return { plan: read('plan'), week: read('week'), attendance: read('attendance'), stripLeft: strip.left, stripRight: strip.right, dialogRight: box(document.querySelector('[role="dialog"]')).right, stripTop: strip.top, gridTop: box(document.querySelector('[data-testid="week-plans"]')).top };

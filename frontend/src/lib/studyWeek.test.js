@@ -29,6 +29,17 @@ describe('progress strip measures (issue 5269 step 3)', () => {
     expect(attendanceThisMonth([sign('2026-10-02', '到班'), ...items], '2026-11-13', ['attendance']).status).toBe('ok'); // older rows exist, the month is complete
     expect(attendanceThisMonth(items, '2026-11-13', ['exam_score']).status).toBe('ok');
   });
+  it('attendance: each capped source is judged on its own oldest row', () => {
+    const evalRow = (date) => ({ type: 'evaluation', id: Math.random(), date, attendance: '到班' });
+    // Sign-ins reach back to October (their cap cannot hide November), but evaluations are capped and their oldest row is in November.
+    const items = [sign('2026-10-01', '到班'), sign('2026-11-02', '到班'), evalRow('2026-11-03'), evalRow('2026-11-09')];
+    expect(attendanceThisMonth(items, '2026-11-13', ['evaluation']).status).toBe('partial');
+    expect(attendanceThisMonth(items, '2026-11-13', ['attendance']).status).toBe('ok');
+    // The other way round: evaluations reach October, the capped sign-ins start in November.
+    const other = [evalRow('2026-10-01'), sign('2026-11-02', '到班'), sign('2026-11-09', '缺席')];
+    expect(attendanceThisMonth(other, '2026-11-13', ['attendance']).status).toBe('partial');
+    expect(attendanceThisMonth(other, '2026-11-13', ['evaluation']).status).toBe('ok');
+  });
 });
 
 describe('studyWeek date math (Monday start, date-only strings)', () => {

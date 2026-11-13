@@ -5,6 +5,7 @@
 // the number is the text. Colour follows PAGE_TEMPLATE §6: warning only when units are behind, success when the week is all done.
 import { computed } from 'vue';
 import { StatItem, StatStrip } from '../ui/page';
+import { Progress } from '../ui/progress';
 import { Skeleton } from '../ui/skeleton';
 import { attendanceThisMonth, planProgress, weekTaskProgress } from '../../lib/studyWeek';
 
@@ -18,6 +19,7 @@ const props = defineProps({
   attendanceItems: { type: Array, default: null }, // the learning timeline's items; null = not available
   cappedSources: { type: Array, default: () => [] },
   today: { type: String, required: true },
+  teacherScope: { type: Boolean, default: false }, // a teacher's timeline holds only the lessons that teacher may see
 });
 
 const DASH = '—';
@@ -47,10 +49,17 @@ const attendanceFigure = computed(() => {
   if (a.status === 'unavailable') return { reason: '出席資料還沒載入' };
   if (a.status === 'partial') return { reason: '本月紀錄太多，無法完整計算' };
   if (a.status === 'none') return { reason: '這個月還沒有點名紀錄' };
-  return { value: `${a.percent}%`, percent: a.percent, sub: `到 ${a.came} 堂，共 ${a.total} 堂`, tone: 'neutral' };
+  return { value: `${a.percent}%`, percent: a.percent, sub: `到 ${a.came} 堂，共 ${a.total} 堂${props.teacherScope ? '・我的課' : ''}`, tone: 'neutral' };
 });
 
-const FILL = { neutral: 'tw:bg-foreground', warning: 'tw:bg-[var(--ds-warning-text)]', success: 'tw:bg-[var(--ds-success-text)]' };
+// The shared Progress meter (8px, reka-ui): `class` re-colours the track, `indicatorClass` the fill. Only transform is transitioned.
+const TRACK = 'tw:bg-[color:var(--ds-hairline)]';
+const FILL = {
+  neutral: 'tw:bg-foreground',
+  warning: 'tw:bg-[color:var(--ds-warning-text)]',
+  success: 'tw:bg-[color:var(--ds-success-text)]',
+};
+const INDICATOR = 'tw:rounded-full tw:transition-transform tw:duration-300 tw:ease-out tw:motion-reduce:transition-none';
 const items = computed(() => [
   { key: 'plan', label: '計畫進度', fig: planFigure.value, wide: true },
   { key: 'week', label: '這週任務', fig: weekFigure.value },
@@ -69,9 +78,7 @@ const items = computed(() => [
         <Skeleton v-if="it.fig.loading" class="tw:mt-1 tw:h-2 tw:w-full tw:rounded-full" />
         <template v-else>
           <span class="tw:block tw:text-pretty" :data-testid="`progress-${it.key}-sub`">{{ it.fig.reason || it.fig.sub }}</span>
-          <span v-if="it.fig.percent !== undefined" aria-hidden="true" class="tw:mt-2 tw:block tw:h-2 tw:w-full tw:overflow-hidden tw:rounded-full tw:bg-[var(--ds-hairline)]">
-            <span class="tw:block tw:h-full tw:rounded-full tw:transition-[width] tw:duration-300 tw:ease-out tw:motion-reduce:transition-none" :class="FILL[it.fig.tone]" :style="{ width: `${it.fig.percent}%` }" :data-testid="`progress-${it.key}-bar`" />
-          </span>
+          <Progress v-if="it.fig.percent !== undefined" :model-value="it.fig.percent" aria-hidden="true" :class="['tw:mt-2', TRACK]" :indicator-class="[INDICATOR, FILL[it.fig.tone]]" :data-testid="`progress-${it.key}-bar`" />
         </template>
       </template>
     </StatItem>

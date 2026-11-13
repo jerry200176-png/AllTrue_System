@@ -9,7 +9,7 @@ const props = defineProps({ class: { type: [Boolean, null, String, Object, Array
 <template>
   <dl
     data-slot="stat-strip"
-    :class="cn(surface.card, 'tw:m-0 tw:grid tw:grid-cols-2 tw:gap-px tw:overflow-hidden tw:bg-[var(--tpl-line)] tw:lg:auto-cols-fr tw:lg:grid-flow-col tw:lg:grid-cols-none', props.class)"
+    :class="cn(surface.card, 'tw:m-0 tw:grid tw:grid-cols-2 tw:gap-px tw:overflow-hidden tw:bg-[var(--ds-hairline)] tw:lg:auto-cols-fr tw:lg:grid-flow-col tw:lg:grid-cols-none', props.class)"
   >
     <slot />
   </dl>

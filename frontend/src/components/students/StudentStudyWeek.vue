@@ -37,6 +37,7 @@ const props = defineProps({
   studentId: { type: [Number, String], required: true },
   timelineItems: { type: Array, default: null },
   cappedSources: { type: Array, default: () => [] },
+  teacherScope: { type: Boolean, default: false },
 });
 
 const FIELD = 'tw:h-11 tw:w-full tw:min-w-0 tw:rounded-md tw:border tw:border-input tw:bg-background tw:px-3 tw:text-tpl-body tw:outline-none tw:focus-visible:ring-3 tw:focus-visible:ring-ring/50';
@@ -299,7 +300,7 @@ watch(weekStart, () => load());
 <template>
   <section class="tw:@container tw:flex tw:flex-col tw:gap-3 tw:text-tpl-body" aria-label="本週讀書計畫" :aria-busy="loading || undefined" data-testid="study-week">
     <StudyProgressStrip :tasks="tasks" :tasks-loading="loading" :tasks-error="!!loadError" :plans="plans" :plans-loading="plansLoading" :plans-error="planError"
-      :attendance-items="timelineItems" :capped-sources="cappedSources" :today="today" />
+      :attendance-items="timelineItems" :capped-sources="cappedSources" :today="today" :teacher-scope="teacherScope" />
     <SectionCard title="讀書計畫" :count="tasks.length ? `${doneCount}/${tasks.length}` : null">
       <template #actions>
         <Button variant="outline" :class="control.row" aria-label="上一週" data-testid="week-prev" @click="prevWeek">上一週</Button>

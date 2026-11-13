@@ -448,8 +448,11 @@ describe('StudentStudyWeek (issue 5269 step 2)', () => {
       expect(sub(w, 'week')).toBe('還剩 2 項');
       expect(fig(w, 'attendance').text()).toContain('67%'); // 2 of 3 sign-ins this month; October is not counted
       expect(sub(w, 'attendance')).toBe('到 2 堂，共 3 堂');
-      expect(byId(w, 'progress-week-bar').element.style.width).toBe('33%');
-      expect(byId(w, 'progress-week-bar').element.parentElement.getAttribute('aria-hidden')).toBe('true'); // the bar is decoration, the number is the text
+      const bar = byId(w, 'progress-week-bar'); // the shared Progress meter
+      expect(bar.attributes('data-slot')).toBe('progress');
+      expect(bar.attributes('aria-valuenow')).toBe('33');
+      expect(bar.find('[data-slot="progress-indicator"]').element.style.transform).toContain('translateX(-67%)');
+      expect(bar.attributes('aria-hidden')).toBe('true'); // the bar is decoration, the number is the text
       expect(fig(w, 'plan').find('dd').classes().join(' ')).not.toContain('danger');
     });
 
@@ -499,6 +502,45 @@ describe('StudentStudyWeek (issue 5269 step 2)', () => {
       release(); await flushPromises();
       expect(fig(w, 'week').attributes('aria-busy')).toBeUndefined();
       expect(fig(w, 'week').text()).toContain('1/3');
+    });
+
+    it('a teacher sees that the attendance figure is their own lessons only', async () => {
+      const w = await mountIt({ timelineItems: TIMELINE, teacherScope: true });
+      expect(sub(w, 'attendance')).toBe('到 2 堂，共 3 堂・我的課');
+      w.unmount();
+      expect(sub(await mountIt({ timelineItems: TIMELINE }), 'attendance')).toBe('到 2 堂，共 3 堂');
+    });
+
+    it('a tick that fails is rolled back in the tasks figure too', async () => {
+      let release;
+      routes['PATCH /api/v1/study-tasks/1'] = () => new Promise((r) => { release = () => r(json({ message: 'boom' }, 500)); });
+      const w = await mountIt({ timelineItems: TIMELINE });
+      expect(fig(w, 'week').text()).toContain('1/3');
+      await byId(w, 'done-1').setValue(true); // optimistic: the figure moves at once
+      expect(fig(w, 'week').text()).toContain('2/3');
+      release(); await flushPromises();
+      expect(byId(w, 'action-error').text()).toContain('已還原');
+      expect(fig(w, 'week').text()).toContain('1/3'); // and back
+      expect(byId(w, 'progress-week-bar').attributes('aria-valuenow')).toBe('33');
+    });
+
+    it('deleting a task updates the tasks figure (and an emptied week shows 「—」)', async () => {
+      const w = await mountIt({ timelineItems: TIMELINE });
+      await byId(w, 'title-1').trigger('click');
+      await byId(w, 'f-delete').trigger('click'); await flushPromises();
+      tasks = TASKS.filter((x) => x.id !== 1);
+      document.querySelector('[data-testid="confirm-dialog-confirm"]').click(); await flushPromises();
+      expect(fig(w, 'week').text()).toContain('1/2'); // task 3 is done, task 2 is not
+      await byId(w, 'title-2').trigger('click');
+      await byId(w, 'f-delete').trigger('click'); await flushPromises();
+      tasks = tasks.filter((x) => x.id !== 2);
+      document.querySelector('[data-testid="confirm-dialog-confirm"]').click(); await flushPromises();
+      await byId(w, 'title-3').trigger('click');
+      await byId(w, 'f-delete').trigger('click'); await flushPromises();
+      tasks = [];
+      document.querySelector('[data-testid="confirm-dialog-confirm"]').click(); await flushPromises();
+      expect(fig(w, 'week').find('dd').text()).toBe('—');
+      expect(sub(w, 'week')).toBe('這週還沒有安排任務');
     });
 
     it('changing week re-reads the tasks measure; ticking a task moves it at once', async () => {

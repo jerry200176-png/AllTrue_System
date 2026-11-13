@@ -15,9 +15,15 @@ const props = defineProps({
     required: false,
     skipCheck: true,
   },
+  // Extra classes for the filled part (colour, transition). Default unchanged: the fill is `bg-primary`.
+  indicatorClass: {
+    type: [Boolean, null, String, Object, Array],
+    required: false,
+    skipCheck: true,
+  },
 });
 
-const delegatedProps = reactiveOmit(props, "class");
+const delegatedProps = reactiveOmit(props, "class", "indicatorClass");
 </script>
 
 <template>
@@ -33,7 +39,7 @@ const delegatedProps = reactiveOmit(props, "class");
   >
     <ProgressIndicator
       data-slot="progress-indicator"
-      class="tw:bg-primary tw:h-full tw:w-full tw:flex-1 tw:transition-all"
+      :class="cn('tw:bg-primary tw:h-full tw:w-full tw:flex-1 tw:transition-all', props.indicatorClass)"
       :style="`transform: translateX(-${100 - ((props.modelValue ?? 0) / (props.max || 100)) * 100}%);`"
     />
   </ProgressRoot>

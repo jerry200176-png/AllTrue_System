@@ -74,8 +74,9 @@ export function attendanceThisMonth(items, today, cappedSources = []) {
   const monthStart = `${today.slice(0, 7)}-01`;
   const counted = CAME.concat(MISSED);
   const mine = items.filter((i) => counted.includes(i.attendance) && i.session_status !== 'cancelled' && i.date >= monthStart && i.date <= today);
-  const oldest = items.filter((i) => i.type === 'attendance' || i.type === 'evaluation').reduce((min, i) => (i.date < min ? i.date : min), '9999-12-31');
-  if (cappedSources.some((s) => s === 'attendance' || s === 'evaluation') && oldest >= monthStart) return { status: 'partial' };
+  // Each capped source keeps only its newest rows: it may have cut into the month only if its OLDEST kept row is already inside the month.
+  const oldestOf = (type) => items.filter((i) => i.type === type).reduce((min, i) => (i.date < min ? i.date : min), '9999-12-31');
+  if (['evaluation', 'attendance'].some((type) => cappedSources.includes(type) && oldestOf(type) >= monthStart)) return { status: 'partial' };
   if (!mine.length) return { status: 'none' };
   const came = mine.filter((i) => CAME.includes(i.attendance)).length;
   return { status: 'ok', came, total: mine.length, percent: Math.round((came * 100) / mine.length) };
