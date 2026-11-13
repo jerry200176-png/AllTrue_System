@@ -1450,6 +1450,7 @@ Intake consolidation regression (2026-10-17): the oldest trusted SourceRef issue
 | Git / PR 工作流 | §R58（禁止 assume-unchanged 藏檔）、`scripts/git-index-audit.sh`、Epic #535 Phase 0、**§R87 追加教訓 2（squash-merge 後繼續在同一 designated branch 開下一個 commit 前，一律先 `git fetch + checkout -B <branch> origin/main` 重啟，勿等 `mergeable_state: dirty` 才修）** |
 | Migration / schema drift | §R63（未合併分支的 migration 禁上 production；drift 修復＝port 回 main＋drift 測試） |
 | 前端 UI 參考 star repo / RFC 落地 | **§R88（「參考 star 的 repo」＝真的 `git clone` 讀原始碼，`RFC_PLATFORM_OPTIMIZATION_FROM_STARS_2026.md` 的一行摘要只是索引不是替代品；落差要能具體引用來源檔案/規則）** |
+| 前端 UI 遷移（樣板頁／換元件） | 遷移 PR 必須用真實瀏覽器、真實中文資料（2–4 字姓名、長科目名、20 列、可選與不可選的列混合）在桌面與手機寬度、且每一個字級設定（標準／大）看過；只看程式碼或 CI 綠不夠（in-app #541／#542／#543：`overflow-wrap:anywhere` 與 grid 欄寬讓姓名欄縮成一個字寬）。新樣板頁把一個固定資料加進 `frontend/e2e/ui-foundation-layout-guard.spec.js` 的 `PAGES`（必跑 ui-foundation job）。姓名一律不逐字折行（`whitespace-nowrap` 或 `word-break:keep-all`＋最小寬度）、表格欄寬穩定、勾選欄固定保留 |
 | 部署 pipeline | §R62（deploy 必須 fetch fail-fast + reset 到 CI `head_sha` 並校驗 HEAD；禁止 `reset --hard origin/main` 靠 stale tracking ref 靜默出貨舊版；Pi repo config 出現 `http.sslbackend=schannel` = 已被 Windows 工具污染，先 unset）、§R67（SSH script 關鍵步驟失敗必須標紅；migration 失敗不得吞成綠燈）、§R68（排程任務上線必須驗證 schedule:run driver 存在；證據=執行 log 而非 schedule:list）、**§R87（`copy-to-backend.cjs` 是獨立白名單；新增 `frontend/public/` 子目錄必須同步加進 `PUBLIC_DIRS`，且驗證需實際跑複製腳本＋正式站 curl，不能只看 `vite build`／dev-server 截圖）**、**§R106（具名 DB principal 輪替時 username/password 必須同源，禁止 production `.env` 密碼配寫死帳號）** |
 
 ---

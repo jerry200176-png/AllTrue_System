@@ -1,3 +1,6 @@
+const { initTextSize } = await import('../../../src/composables/useTextSize.js');
+initTextSize(); // reads alltrue_text_size, like src/main.js
+
 const [{ createApp, h }, styles, uiStyles, module] = await Promise.all([
   import('vue'),
   import('../../../src/styles.css'),
