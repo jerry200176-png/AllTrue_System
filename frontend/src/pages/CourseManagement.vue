@@ -102,11 +102,12 @@
         <span class="material-symbols-outlined" aria-hidden="true">expand_more</span>
       </summary>
       <StatStrip class="stats-strip tw:mt-2" aria-label="本頁課程類型分布">
+        <StatItem label="課程總覽" :value="courses.length" unit="筆" />
         <StatItem label="一對一" :value="coursesByType.one_on_one" unit="筆" />
         <StatItem label="一對二" :value="coursesByType.one_on_two" unit="筆" />
         <StatItem label="一對三" :value="coursesByType.one_on_three" unit="筆" />
         <StatItem label="輔導" :value="coursesByType.tutoring" unit="筆" />
-        <StatItem label="試聽" :value="coursesByType.trial" unit="筆" class="tw:max-md:col-span-2" />
+        <StatItem label="試聽" :value="coursesByType.trial" unit="筆" />
       </StatStrip>
       <p v-if="coursesBySubject.length" class="stats-subject-deck tw:m-0 tw:mt-3 tw:flex tw:flex-wrap tw:items-center tw:gap-2 tw:text-tpl-caption">
         <span class="stats-subject-title tw:font-semibold tw:text-tpl-secondary">科目</span>
