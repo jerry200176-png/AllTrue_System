@@ -94,12 +94,12 @@ async function load({ keepError = false } = {}) {
   loadError.value = '';
   if (!keepError) actionError.value = '';
   try {
-    const [c, p] = await Promise.all([api(`/student-classes?student_id=${id}&per_page=100`), api(`/students/${id}/learning-plans`)]);
+    const [c, p] = await Promise.all([api(`/student-classes?student_id=${id}&status=active&per_page=100`), api(`/students/${id}/learning-plans`)]);
     if (my !== loadSeq) return;
     const list = c.data?.data ?? c.data ?? c;
     courses.value = (Array.isArray(list) ? list : []).filter((x) => x.status !== 'inactive');
     plans.value = p.data || [];
-    scrollAllToToday();
+    if (!keepError) scrollAllToToday(); // not after a write: keep where the user scrolled
   } catch (e) {
     if (my === loadSeq) loadError.value = e.message || '載入失敗，請稍後再試';
   } finally {
