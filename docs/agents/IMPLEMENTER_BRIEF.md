@@ -16,6 +16,7 @@ Every implementer agent follows this. The coordinator sends only the task-specif
 - Tests first (RED, then GREEN). Never lower a test, assertion, allowlist or baseline.
 - If PHPUnit or Vitest could not run locally, write "not run locally" in the report. Do not imply it passed.
 - A renamed test file must rename its class too.
+- Test gotchas: `[...] + $overrides` keeps the LEFT keys (put overrides first); after `Carbon::setTestNow()` jumps, extend the test login's `expires_at`.
 - Arrays read back from a MySQL JSON column have reordered keys: compare them with `assertEquals`, not `assertSame`.
 - Before deleting a model, table or helper, grep every reader (controllers, parent portal, timelines). If something else reads it, stop and report.
 - No empty commits, no force-push. Merge `main` into the branch; do not rebase.
@@ -27,6 +28,11 @@ Every implementer agent follows this. The coordinator sends only the task-specif
 - Do not put native `required` or `min` on a field that shows inline errors.
 - A confirm handler must return early when its dialog is already closed.
 
+## Before you open the PR (run these; CI fails on each)
+- `python3 scripts/check-recent-work-revert.py --base origin/main --head HEAD`: add a `Rewrites: #N — reason` body line for every PR it lists.
+- `node scripts/check-release-notes-coverage.mjs --base origin/main --head HEAD`; frontend also `node scripts/design-style-ratchet.mjs` (`npm run build` does not run it) and the full `npx vitest run`, not a subset.
+- Name scratch files after your branch; re-fetch the PR body after creating it. Commit and push early: a container restart loses unpushed work.
+
 ## PR hygiene
 - Use the headings in `.github/pull_request_template.md`.
 - Paste the declaration block from `python3 scripts/governance/pr_declaration.py --base origin/main --head HEAD`.
@@ -36,6 +42,8 @@ Every implementer agent follows this. The coordinator sends only the task-specif
 - Record choices you made yourself under "Agent 決定的事" ([`ISSUE_PLAN.md`](../sop/ISSUE_PLAN.md); rule: `FOUNDER_STANDING_DECISIONS.md` 2026-11-12 (四)).
 
 ## Review cap
+- One fix round per PR. The coordinator applies fixes of about ten lines itself and has a small model confirm the delta; later P2s become follow-up issues.
+- A blocked permission (classifier, ruleset) is tried once, then handed to the Founder.
 - P0/P1 and any regression this PR introduces are always fixed before merge. Other P2 handling: only as written in `FOUNDER_STANDING_DECISIONS.md` 2026-10-12 item 4 and [`MERGE_SOP.md`](../sop/MERGE_SOP.md); do not restate it here.
 - A change that LOWERS a risk tier, or touches money or data repair, keeps full review on every head.
 
