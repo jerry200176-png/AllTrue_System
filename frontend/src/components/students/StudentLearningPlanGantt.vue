@@ -163,7 +163,7 @@ async function confirmArchive() {
 }
 const closeEdit = () => { editingUnit.value = null; editingRange.value = null; actionError.value = ''; };
 
-watch(() => props.studentId, () => { readOnly.value = false; load(); }, { immediate: true });
+watch(() => props.studentId, () => { readOnly.value = false; courses.value = []; plans.value = []; load(); }, { immediate: true });
 </script>
 
 <template>
