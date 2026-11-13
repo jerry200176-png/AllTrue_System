@@ -21,6 +21,15 @@ export const PLAN = {
   ],
 };
 
+/** Sign-ins of the month of TODAY (and one from last month that must not count): 3 of 4 came this month. */
+export const TIMELINE_ITEMS = [
+  { type: 'attendance', id: 901, date: '2026-11-02', subject: '數學', attendance: '到班' },
+  { type: 'attendance', id: 902, date: '2026-11-05', subject: '數學', attendance: '遲到' },
+  { type: 'attendance', id: 903, date: '2026-11-09', subject: '數學', attendance: '到班' },
+  { type: 'attendance', id: 904, date: '2026-11-11', subject: '數學', attendance: '缺席' },
+  { type: 'attendance', id: 905, date: '2026-10-28', subject: '數學', attendance: '缺席' },
+];
+
 /** Classmates offered by the 套用到同班 picker (long names on purpose). */
 export const CLASSMATES = [{ id: 21, name: '李大華' }, { id: 22, name: '歐陽子安的雙胞胎弟弟' }, { id: 23, name: '陳小明' }, { id: 24, name: '林佳' }];
 
@@ -31,7 +40,7 @@ export async function mockStudyWeekApi(page, mode = 'full') {
   await page.route('**/api/v1/**', async (route) => {
     const url = new URL(route.request().url());
     const method = route.request().method();
-    if (url.pathname.endsWith('/learning-timeline')) return json(route, { items: [], coverage: { limit_per_source: 300, capped_sources: [] } });
+    if (url.pathname.endsWith('/learning-timeline')) return json(route, { items: mode === 'empty' ? [] : TIMELINE_ITEMS, coverage: { limit_per_source: 300, capped_sources: [] } });
     if (url.pathname.endsWith('/exam-periods')) return json(route, { data: [] });
     if (url.pathname.endsWith('/learning-plans')) return json(route, { data: [PLAN] });
     if (url.pathname.endsWith('/study-tasks') && method === 'GET') {

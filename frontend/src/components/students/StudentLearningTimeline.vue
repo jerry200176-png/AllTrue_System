@@ -88,7 +88,7 @@ watch(() => [props.show, props.studentId], () => { if (props.show && props.stude
             </CardContent></Card>
           </TabsContent>
           <TabsContent value="plan"><StudentLearningPlanGantt :student-id="studentId" :branch-id="branchId" :student-grade="studentGrade" /></TabsContent>
-          <TabsContent value="study"><StudentStudyWeek :student-id="studentId" /></TabsContent>
+          <TabsContent value="study"><StudentStudyWeek :student-id="studentId" :timeline-items="items" :capped-sources="coverage.capped_sources || []" /></TabsContent>
           <TabsContent value="history">
             <p v-if="!history.length">尚無符合篩選的上課紀錄。</p>
             <ul v-else class="tw:space-y-3 tw:list-none tw:p-0">
