@@ -1,0 +1,18 @@
+updates:
+  - id: staff-2026-11-13-student-learning-plan-gantt
+    published_at: "2026-11-13"
+    audiences:
+      - director
+      - teacher
+    importance: digest
+    title: 學生學習計畫甘特圖
+    summary: 學生管理的「學習檔案」新增「學習計畫」，用甘特圖看每位學生每門課的進度。
+    items:
+      - category: added
+        text: 可替學生的課套用教材範本，單元依段考日期自動排日期。
+      - category: added
+        text: 甘特圖標出今天與下一次段考，落後的單元會直接標示。
+      - category: added
+        text: 可勾選完成、調整日期、封存計畫；老師只能改自己授課的課。
+    source_refs:
+      - "changelog:2026-11-13:student-learning-plan-gantt"
