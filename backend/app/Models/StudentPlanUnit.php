@@ -18,6 +18,8 @@ use Illuminate\Database\Eloquent\Model;
  * @property bool $dates_manual
  * @property \Illuminate\Support\Carbon|null $completed_at
  * @property int|null $completed_by
+ * @property int|null $completed_session_id ClassSession the unit was ticked on (#4970 step 5)
+ * @property int|null $completed_record_id LearningRecord (evaluation) it was ticked on
  */
 class StudentPlanUnit extends Model
 {
@@ -27,7 +29,7 @@ class StudentPlanUnit extends Model
 
     protected $fillable = [
         'plan_id', 'sort_order', 'title', 'note', 'exam_sequence', 'planned_start', 'planned_end',
-        'dates_manual', 'completed_at', 'completed_by',
+        'dates_manual', 'completed_at', 'completed_by', 'completed_session_id', 'completed_record_id',
     ];
 
     protected $casts = [
