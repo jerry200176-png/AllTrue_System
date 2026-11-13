@@ -40,7 +40,7 @@ const COURSE_MGMT_HELP_OPEN = {
   ...COURSE_MGMT,
   key: 'course-mgmt (help panel open)',
   allNames: false,
-  rows: ['.course-workbench__intro, .course-workbench__help[open]'],
+  rows: ['.course-workbench__intro, .course-workbench__help[open], .course-workbench__help[open] > summary > svg, .course-workbench__help[open] > p'],
   touch: ['.course-workbench__help[open] > summary'],
   setup: async (page) => { await page.locator('[data-testid="course-help"] > summary').click(); await expect(page.locator('.course-workbench__help[open]')).toBeVisible(); },
 };

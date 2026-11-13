@@ -188,7 +188,6 @@
           v-for="group in visibleGroups"
           :key="group.key"
           class="student-group-card tw:min-w-0 tw:overflow-visible"
-          :class="{ 'student-group-has-paused': groupHasPausedCourse(group) }"
         >
           <CollapsibleGroup
             toggle-class="student-group-toggle"
@@ -204,7 +203,7 @@
             </template>
             <template #meta>
               <span class="tw:whitespace-nowrap">{{ activeCourses(group).length }} 筆進行中</span>
-              <span v-if="historyCourses(group).length" class="student-group-history-count tw:whitespace-nowrap">・{{ historyCourses(group).length }} 筆歷史</span>
+              <span v-if="historyCourses(group).length" class="student-group-history-count tw:whitespace-nowrap"><span aria-hidden="true">・</span>{{ historyCourses(group).length }} 筆歷史</span>
             </template>
             <template #actions>
               <div class="student-group-header-actions">
@@ -8436,7 +8435,7 @@ button.danger {
 .course-workbench__help > summary { display: grid; place-items: center; min-height: 2.75rem; min-width: 2.75rem; border-radius: var(--ds-radius-pill); cursor: pointer; }
 .course-help-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
 .course-workbench__help[open] { flex: 0 0 100%; order: 3; margin-left: 0; }
-.course-workbench__help[open] > summary { display: inline-flex; gap: .5rem; width: auto; margin: 0 0 .5rem; padding-inline: 0 1rem; font-weight: 600; }
+.course-workbench__help[open] > summary { display: inline-flex; justify-content: flex-start; align-items: center; gap: .5rem; width: auto; min-width: 0; margin: 0 0 .5rem; padding-inline: 0 1rem; font-weight: 600; }
 .course-workbench__help[open] > summary .course-help-label { position: static; width: auto; height: auto; overflow: visible; clip-path: none; }
 .course-workbench .course-row .payment-status-badge,
 .course-workbench .course-row .subject-tag,
