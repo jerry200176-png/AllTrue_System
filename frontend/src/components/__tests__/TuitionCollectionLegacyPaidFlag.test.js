@@ -30,7 +30,7 @@ describe('legacy paid flag without a payment record (#4114)', () => {
 
     // F-5: the queue table is gone; the student list and the drawer's card actions carry these rules.
     await w.find('[data-testid="bill-search"]').setValue('生'); // a name search looks through every status, 已收 included
-    const badge = (id) => w.find(`[data-testid="bill-row-c${id}"]`).findAll('.at-badge').map((b) => b.text());
+    const badge = (id) => w.find(`[data-testid="bill-row-c${id}"]`).findAll('[data-slot="status-badge"]').map((b) => b.text());
     expect(badge(1)).toEqual(['查無收款']);
     expect(badge(2)).toEqual(['已收']);
     expect(w.find('[data-testid="bill-sum-owed"]').text()).toContain('NT$ 0');

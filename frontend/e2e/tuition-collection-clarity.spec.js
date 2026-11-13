@@ -144,12 +144,25 @@ async function installMock(page) {
   }));
 }
 async function expectNoOverflowAndReachableControls(page) {
-  const controls = await page.locator('button, input:not([type="checkbox"]), select, textarea').evaluateAll((nodes) => nodes.filter((node) => {
-    const rect = node.getBoundingClientRect();
-    const style = getComputedStyle(node);
-    return rect.width > 0 && rect.height > 0 && style.visibility !== 'hidden';
-  }).map((node) => ({ height: node.getBoundingClientRect().height })));
-  if (!process.env.TUITION_COLLECTION_BASELINE) expect(controls.filter((control) => control.height < 44)).toEqual([]);
+  // Every control is 44px, with two narrow, explicit exceptions that are asserted below instead:
+  //  - a role=checkbox button is a 20px box whose real hit area (its ::after) must be at least 44px;
+  //  - the name and subject links INSIDE a bill row (the whole row is the target there, so each bill row must be at least 44px tall).
+  // A student without a bill (bill-student-*) is not in a bill row and is measured like any other control.
+  const measured = await page.locator('button, input:not([type="checkbox"]), select, textarea').evaluateAll((nodes) => {
+    const visible = (node) => { const rect = node.getBoundingClientRect(); return rect.width > 0 && rect.height > 0 && getComputedStyle(node).visibility !== 'hidden'; };
+    const inBillRow = (node) => Boolean(node.closest('tr[data-testid^="bill-row-"]'));
+    const shown = nodes.filter(visible);
+    const checkboxes = shown.filter((n) => n.getAttribute('role') === 'checkbox').map((n) => { const after = getComputedStyle(n, '::after'); return { w: parseFloat(after.width), h: parseFloat(after.height) }; });
+    const rowLinks = shown.filter((n) => inBillRow(n) && n.matches('.bl__name, .bl__open'));
+    const rows = [...document.querySelectorAll('tr[data-testid^="bill-row-"]')].filter(visible).map((n) => n.getBoundingClientRect().height);
+    const controls = shown.filter((n) => n.getAttribute('role') !== 'checkbox' && !rowLinks.includes(n)).map((n) => ({ height: n.getBoundingClientRect().height, label: n.getAttribute('data-testid') || n.textContent.slice(0, 12) }));
+    return { controls, checkboxes, rows };
+  });
+  if (!process.env.TUITION_COLLECTION_BASELINE) {
+    expect(measured.controls.filter((control) => control.height < 44)).toEqual([]);
+    expect(measured.checkboxes.filter((box) => !(box.w >= 44 && box.h >= 44)), 'checkbox hit area').toEqual([]);
+    expect(measured.rows.filter((height) => height < 44), 'bill row height').toEqual([]);
+  }
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 2)).toBe(true);
 }
 test.describe('Tuition Collection clarity browser verification', () => {
@@ -199,7 +212,7 @@ test.describe('Tuition Collection clarity browser verification', () => {
     const row = page.locator('[data-testid^="bill-row-"]').first();
     await expect(row).toBeVisible();
     await expect(row.locator('.bl__num')).toBeVisible();
-    await expect(row.locator('.bl__due')).toBeVisible();
+    await expect(row.locator('.bl__due:visible')).toBeVisible(); // the due column hides on a phone, the same words sit under 未收
   });
 
   test('In-App480: 已結清課程 sits only on the bill list, never above 收款紀錄 / 代收代付', async ({ page }) => {

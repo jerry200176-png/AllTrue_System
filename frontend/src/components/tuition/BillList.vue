@@ -1,126 +1,191 @@
 <template>
-  <section :class="['bl', { 'has-checks': anyCheck }]" aria-label="帳單清單">
-    <AtInlineAlert v-if="error && !rows.length" tone="danger" title="帳務資料載入失敗" data-testid="bill-error">
-      {{ error }}。載入失敗，金額先不顯示。
-      <template #action>
-        <AtButton variant="secondary" size="sm" shape="rect" :loading="loading" data-testid="bill-retry" @click="$emit('retry')">重試</AtButton>
-      </template>
-    </AtInlineAlert>
-    <div v-else-if="pending" class="bl__loading" data-testid="bill-loading" role="status" aria-label="載入帳務資料中">
-      <AtSkeleton :rows="6" height="28px" />
-    </div>
-    <template v-else>
-      <AtInlineAlert v-if="error" tone="warning" title="帳務資料更新失敗" data-testid="bill-stale">
-        {{ error }}。下面是上次載入的資料，可能不是最新的。
-        <template #action>
-          <AtButton variant="secondary" size="sm" shape="rect" :loading="loading" data-testid="bill-stale-retry" @click="$emit('retry')">重試</AtButton>
-        </template>
-      </AtInlineAlert>
-      <div class="bl__summary" role="group" aria-label="數字條" data-testid="bill-summary">
-        <button type="button" :class="{ 'is-on': filter === 'owing' }" data-testid="bill-sum-owed" @click="setFilter('owing')">到今天未收 <strong>{{ money(totalOwed) }}</strong></button>
-        <button type="button" :class="{ 'is-on': filter === 'overdue' }" data-testid="bill-sum-overdue" @click="setFilter('overdue')">逾期 <strong>{{ overdueCount }}</strong> 筆</button>
-        <button type="button" :class="{ 'is-on': filter === 'confirm' }" data-testid="bill-sum-confirm" @click="setFilter('confirm')">待確認入帳 <strong>{{ counts.confirm }}</strong> 筆</button>
+  <section class="bl tw:flex tw:flex-col tw:gap-4" aria-label="帳單清單">
+    <Alert v-if="error && !rows.length" tone="danger" title="帳務資料載入失敗" class="tw:text-tpl-body" data-testid="bill-error">
+      <div class="tw:flex tw:flex-wrap tw:items-center tw:gap-3">
+        <span class="tw:min-w-0 tw:flex-1 tw:text-tpl-body">{{ error }}。載入失敗，金額先不顯示。</span>
+        <Button variant="outline" :class="control.row" :disabled="loading" data-testid="bill-retry" @click="$emit('retry')">重試</Button>
       </div>
-      <div class="bl__tools">
-        <input v-model="query" type="search" placeholder="搜尋學生" aria-label="搜尋學生" data-testid="bill-search" />
-        <div class="bl__chips" role="group" aria-label="篩選" data-guide="tuition-chips">
-          <button
+    </Alert>
+    <SectionCard v-else-if="pending" data-testid="bill-loading" role="status" aria-label="載入帳務資料中">
+      <div class="tw:flex tw:flex-col tw:gap-3 tw:p-5">
+        <Skeleton v-for="n in 6" :key="n" class="tw:h-14 tw:w-full" />
+      </div>
+    </SectionCard>
+    <template v-else>
+      <Alert v-if="error" tone="warning" title="帳務資料更新失敗" class="tw:text-tpl-body" data-testid="bill-stale">
+        <div class="tw:flex tw:flex-wrap tw:items-center tw:gap-3">
+          <span class="tw:min-w-0 tw:flex-1 tw:text-tpl-body">{{ error }}。下面是上次載入的資料，可能不是最新的。</span>
+          <Button variant="outline" :class="control.row" :disabled="loading" data-testid="bill-stale-retry" @click="$emit('retry')">重試</Button>
+        </div>
+      </Alert>
+
+      <StatStrip data-testid="bill-summary">
+        <StatItem label="到今天未收" :value="money(totalOwed)" :tone="totalOwed > 0 ? 'danger' : 'neutral'" class="tw:max-lg:col-span-2">
+          <button type="button" :class="[sumButton, { 'is-on': filter === 'owing' }]" :aria-pressed="filter === 'owing'" data-testid="bill-sum-owed" @click="setFilter('owing')"><span class="tw:sr-only">到今天未收 {{ money(totalOwed) }}</span></button>
+        </StatItem>
+        <StatItem label="逾期" :value="overdueCount" unit="筆">
+          <button type="button" :class="[sumButton, { 'is-on': filter === 'overdue' }]" :aria-pressed="filter === 'overdue'" data-testid="bill-sum-overdue" @click="setFilter('overdue')"><span class="tw:sr-only">逾期 {{ overdueCount }} 筆</span></button>
+        </StatItem>
+        <StatItem label="待確認入帳" :value="counts.confirm" unit="筆">
+          <button type="button" :class="[sumButton, { 'is-on': filter === 'confirm' }]" :aria-pressed="filter === 'confirm'" data-testid="bill-sum-confirm" @click="setFilter('confirm')"><span class="tw:sr-only">待確認入帳 {{ counts.confirm }} 筆</span></button>
+        </StatItem>
+      </StatStrip>
+
+      <div class="tw:flex tw:flex-wrap tw:items-center tw:gap-2">
+        <div class="tw:relative tw:w-full tw:md:max-lg:w-auto tw:md:max-lg:flex-1 tw:lg:w-72">
+          <Search class="tw:pointer-events-none tw:absolute tw:top-1/2 tw:left-4 tw:size-5 tw:-translate-y-1/2 tw:text-tpl-secondary" :stroke-width="2" aria-hidden="true" />
+          <Input v-model="query" type="search" placeholder="搜尋學生" aria-label="搜尋學生" class="tw:h-12 tw:rounded-full tw:bg-card tw:pl-11 tw:text-[length:var(--tpl-text-body)] tw:shadow-none" data-testid="bill-search" />
+        </div>
+        <div role="group" aria-label="篩選" class="tw:-mx-4 tw:flex tw:max-w-[100vw] tw:min-w-0 tw:flex-1 tw:items-center tw:gap-2 tw:px-4 tw:md:max-lg:order-3 tw:max-lg:basis-full tw:max-md:overflow-x-auto tw:md:mx-0 tw:md:flex-wrap tw:md:px-0" data-guide="tuition-chips">
+          <FilterChip
             v-for="c in CHIPS"
             :key="c.key"
-            type="button"
             :class="['bl__chip', { 'is-on': activeFilter === c.key }]"
-            :aria-pressed="activeFilter === c.key"
+            :active="activeFilter === c.key"
+            :count="counts[c.key]"
             :data-testid="`bill-filter-${c.key}`"
             @click="setFilter(c.key)"
-          >{{ c.label }} {{ counts[c.key] }}</button>
-          <ActionMenu :groups="moreGroups" label="更多篩選" trigger-text="更多" trigger-class="bl__more" @select="setFilter" />
-          <label class="bl__sort">排序
-            <select v-model="sortKey" data-testid="bill-sort">
-              <option v-for="(o, key) in SORTS" :key="key" :value="key">{{ o.label }}</option>
-            </select>
-          </label>
-          <span v-if="MORE.some((m) => m.key === activeFilter)" class="bl__chip is-on" data-testid="bill-filter-current">{{ filterLabel }} {{ activeFilter === 'all' ? rows.length : counts[activeFilter] }}</span>
+          >{{ c.label }}</FilterChip>
+          <ActionMenu :groups="moreGroups" label="更多篩選" trigger-text="更多" :trigger-class="moreTrigger" @select="setFilter" />
+          <FilterChip
+            v-if="MORE.some((m) => m.key === activeFilter)"
+            class="bl__chip is-on"
+            active
+            :count="activeFilter === 'all' ? rows.length : counts[activeFilter]"
+            data-testid="bill-filter-current"
+          >{{ filterLabel }}</FilterChip>
         </div>
-      </div>
-      <div v-if="anyCheck || rows.length" class="bl__bulk" role="toolbar" aria-label="清單操作" data-testid="bill-bulk">
-        <label v-if="anyCheck" class="bl__bulk-all">
-          <input type="checkbox" :checked="allPicked" :indeterminate.prop="picked.length > 0 && !allPicked" data-testid="bill-select-all" @change="pickAll($event.target.checked)" />
-          全選
+        <label class="tw:inline-flex tw:items-center tw:gap-1 tw:text-tpl-caption tw:whitespace-nowrap tw:text-tpl-secondary tw:ml-auto tw:md:max-lg:order-2">排序
+          <select v-model="sortKey" class="tw:h-11 tw:cursor-pointer tw:rounded-full tw:border-0 tw:bg-transparent tw:py-0 tw:pr-2 tw:pl-1 tw:text-[length:var(--tpl-text-caption)] tw:font-semibold tw:text-foreground tw:outline-none tw:focus-visible:ring-3 tw:focus-visible:ring-ring/50" data-testid="bill-sort">
+            <option v-for="(o, key) in SORTS" :key="key" :value="key">{{ o.label }}</option>
+          </select>
         </label>
-        <template v-if="picked.length">
-          <AtButton size="sm" shape="rect" data-testid="bill-batch" @click="$emit('batch', pickedMode, picked.map((b) => b.class_id))">{{ pickedMode === 'confirm' ? '確認入帳' : '登記' }} {{ picked.length }} 筆</AtButton>
-          <AtButton variant="secondary" size="sm" shape="rect" data-testid="bill-clear-picked" @click="clearSelection">取消選取</AtButton>
-          <span class="bl__total" data-testid="bill-picked-total">已選 {{ picked.length }} 筆<template v-if="pickedOwed > 0">，到今天未收合計 <strong>{{ money(pickedOwed) }}</strong></template></span>
-        </template>
-        <span v-if="visible.length" class="bl__total bl__total--shown" data-testid="bill-visible-total">目前顯示 {{ visible.length }} 筆<template v-if="visibleOwed > 0">，到今天未收合計 <strong>{{ money(visibleOwed) }}</strong></template></span>
-        <AtButton class="bl__csv" variant="secondary" size="sm" shape="rect" :disabled="exportDisabled || !visible.length" data-testid="bill-export" @click="$emit('export', exportPayload())">匯出 Excel</AtButton>
       </div>
-      <AtEmpty v-if="!visible.length && !noRowStudents.length" icon="search_off" :title="query.trim() ? '找不到符合的帳單' : `目前沒有「${chipLabel}」的帳單`" :description="query.trim() ? `找不到符合「${query.trim()}」的學生。請調整搜尋。` : '可以切換上方的狀態看其他帳單。'" data-testid="bill-empty" data-guide="tuition-rows" />
-      <template v-else>
-        <ul v-if="noRowStudents.length" class="bl__list" data-testid="bill-no-rows">
-          <li v-for="st in noRowStudents" :key="st.id" class="bl__plain">
-            <div class="bl__plainrow">
-              <button type="button" class="bl__name" :title="st.name" :data-testid="`bill-student-${st.id}`" @click="$emit('student', { student_id: st.id, class_id: null })">{{ st.name }}</button>
-              <span class="bl__subject">沒有待收款項</span>
-            </div>
-          </li>
-        </ul>
-        <div v-if="visible.length" class="bl__head" aria-hidden="true">
-          <div class="bl__cols"><span>學生・科目</span><span>期間／剩幾堂</span><span>狀態</span><span>到期／逾期</span><span class="bl__num">未收</span></div>
+
+      <SectionCard>
+        <SelectionBar v-if="picked.length" :announce="`已選 ${picked.length} 筆`" data-testid="bill-bulk">
+          <span data-testid="bill-picked-total">已選 {{ picked.length }} 筆<template v-if="pickedOwed > 0"><span class="tw:font-normal tw:text-tpl-secondary">，到今天未收合計 <strong class="tw:font-semibold tw:whitespace-nowrap tw:text-foreground tw:tabular-nums">{{ money(pickedOwed) }}</strong></span></template></span>
+          <template #actions>
+            <Button variant="ghost" :class="control.row" data-testid="bill-clear-picked" @click="clearSelection">取消選取</Button>
+            <Button :class="control.row" data-testid="bill-batch" @click="$emit('batch', pickedMode, picked.map((b) => b.class_id))">{{ pickedMode === 'confirm' ? '確認入帳' : '登記' }} {{ picked.length }} 筆</Button>
+          </template>
+        </SelectionBar>
+
+        <div v-if="!visible.length && !noRowStudents.length" class="tw:flex tw:flex-col tw:items-center tw:gap-2 tw:px-5 tw:py-12 tw:text-center" data-testid="bill-empty" data-guide="tuition-rows">
+          <SearchX class="tw:size-8 tw:text-tpl-secondary" :stroke-width="1.75" aria-hidden="true" />
+          <p class="tw:m-0 tw:text-tpl-body tw:font-semibold tw:text-pretty">{{ query.trim() ? '找不到符合的帳單' : `目前沒有「${chipLabel}」的帳單` }}</p>
+          <p class="tw:m-0 tw:text-tpl-caption tw:text-tpl-secondary tw:text-pretty">{{ query.trim() ? `找不到符合「${query.trim()}」的學生。請調整搜尋。` : '可以切換上方的狀態看其他帳單。' }}</p>
         </div>
-        <ul v-if="visible.length" class="bl__list" data-guide="tuition-rows">
-          <li v-for="b in visible" :key="b.key" :data-testid="`bill-row-${b.key}`" :data-kind="b.kind">
-            <input
-              v-if="selectable(b)"
-              type="checkbox"
-              class="bl__check"
-              :checked="selected.has(b.key)"
-              :disabled="Boolean(pickedKind) && pickedKind !== b.kind"
-              :title="pickedKind && pickedKind !== b.kind ? '一次只能選同一種' : undefined"
-              :aria-label="`選取 ${b.student_name} ${b.subject}`"
-              :data-testid="`bill-pick-${b.key}`"
-              @change="pick(b.key, $event.target.checked)"
-            />
-            <span v-else-if="anyCheck" class="bl__nocheck" :title="noPickReason(b)" :data-testid="`bill-nopick-${b.key}`"><span aria-hidden="true">–</span><span class="bl__sr">{{ noPickReason(b) }}</span></span>
-            <div class="bl__row" @click="$emit('quick', b)">
-              <span class="bl__who">
-                <button type="button" class="bl__name" :data-testid="`bill-name-${b.key}`" :data-student="b.student_id" @click.stop="$emit('student', b)">{{ b.student_name }}</button>
-                <button type="button" class="bl__subject bl__open" :data-testid="`bill-open-${b.key}`" :aria-label="`看這筆帳單：${b.student_name} ${b.subject}`" @click.stop="$emit('quick', b)">{{ b.subject || '帳單' }}</button>
-              </span>
-              <span class="bl__period">{{ b.period }}</span>
-              <span class="bl__status"><AtBadge :tone="TONES[b.kind]" :label="b.label" :title="b.help || undefined" /></span>
-              <span :class="['bl__due', { due: b.overdue_days > 0 }]">{{ dueText(b) }}</span>
-              <span :class="['bl__num', { due: b.owed > 0 }]">{{ b.owed > 0 ? money(b.owed) : '—' }}<small v-if="b.owed_later > 0 && !(b.review_amount > 0)" class="bl__review" :data-testid="`bill-later-${b.key}`">之後還會到期 {{ money(b.owed_later) }}</small><small v-if="b.review_amount > 0" class="bl__review" :data-testid="`bill-review-${b.key}`">需核對金額 {{ money(b.review_amount) }}</small></span>
-              <span v-if="b.hint" class="bl__hint">{{ b.hint }}</span>
-              <span v-for="w in b.warnings" :key="w" class="bl__warn" role="note" :data-testid="`bill-warn-${b.key}`">{{ w }}</span>
-            </div>
-            <div class="bl__actions">
-              <AtButton
-                v-if="primaryOf(b)"
-                size="sm"
-                shape="rect"
-                :variant="b.kind === 'confirm' ? 'primary' : 'secondary'"
-                :data-testid="`bill-action-${b.key}`"
-                :aria-label="`${primaryOf(b).label}：${b.student_name} ${b.subject}`"
-                @click="$emit('action', b, primaryOf(b).action)"
-              >{{ primaryOf(b).label }}</AtButton>
-              <ActionMenu :groups="menuGroups(b)" :label="`更多操作：${b.student_name} ${b.subject}`" trigger-class="bl__menu" @select="(id) => $emit('menu', b, id)" />
-            </div>
-          </li>
-        </ul>
-      </template>
+        <Table v-else :class="[t.table, 'tw:max-md:block']">
+          <TableCaption class="tw:sr-only">帳單清單</TableCaption>
+          <TableHeader v-if="visible.length" class="tw:max-md:block">
+            <TableRow :class="['bl__cols tw:hover:bg-transparent tw:max-md:items-center tw:max-md:bg-muted tw:max-md:border-border', phoneGrid]">
+              <TableHead v-if="anyCheck" scope="col" :class="[t.head, checkCol, 'tw:max-md:col-start-1']">
+                <Checkbox
+                  :model-value="allPicked ? true : picked.length > 0 ? 'indeterminate' : false"
+                  :class="checkBox"
+                  aria-label="全選"
+                  data-testid="bill-select-all"
+                  @update:model-value="(v) => pickAll(v === true)"
+                />
+              </TableHead>
+              <TableHead scope="col" :class="[t.head, 'tw:max-md:col-start-2', !anyCheck && 'tw:pl-4 tw:md:pl-5']">學生・科目</TableHead>
+              <TableHead scope="col" :class="[t.head, 'tw:max-lg:hidden bl__period']">期間／剩幾堂</TableHead>
+              <TableHead scope="col" :class="[t.head, t.phoneHide]">狀態</TableHead>
+              <TableHead scope="col" :class="[t.head, 'tw:max-lg:hidden']">到期／逾期</TableHead>
+              <TableHead scope="col" :class="[t.numHead, 'bl__num tw:max-md:col-start-3']">未收</TableHead>
+              <TableHead scope="col" :class="[t.head, 'tw:w-12 tw:pr-4 tw:pl-0 tw:max-md:hidden tw:md:w-auto tw:md:pr-5']"><span class="tw:sr-only">操作</span></TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody v-if="noRowStudents.length" class="tw:max-md:block" data-testid="bill-no-rows">
+            <TableRow v-for="st in noRowStudents" :key="st.id" class="bl__plainrow tw:hover:bg-muted/60 tw:max-md:flex tw:max-md:items-center">
+              <TableCell v-if="anyCheck" :class="[t.cell, checkCol, pc]" />
+              <TableCell :class="[t.name, pc, !anyCheck && 'tw:pl-4 tw:md:pl-5']">
+                <button type="button" :class="plainNameButton" :title="st.name" :data-testid="`bill-student-${st.id}`" @click="$emit('student', { student_id: st.id, class_id: null })">{{ st.name }}</button>
+              </TableCell>
+              <TableCell :class="[t.cell, pc, 'tw:text-tpl-secondary']" colspan="5">沒有待收款項</TableCell>
+            </TableRow>
+          </TableBody>
+          <TableBody v-if="visible.length" class="tw:max-md:block" data-guide="tuition-rows">
+            <TableRow
+              v-for="b in visible"
+              :key="b.key"
+              :data-testid="`bill-row-${b.key}`"
+              :data-kind="b.kind"
+              :data-state="selected.has(b.key) ? 'selected' : undefined"
+              :class="['bl__row tw:cursor-pointer', phoneGrid, selected.has(b.key) ? 'tw:bg-[color-mix(in_srgb,var(--ds-primary-wash)_55%,transparent)] tw:hover:bg-[var(--ds-primary-wash)]' : 'tw:hover:bg-muted/60']"
+              @click="rowTap(b)"
+            >
+              <TableCell v-if="anyCheck" :class="[t.cell, checkCol, pc, 'tw:max-md:col-start-1 tw:max-md:row-span-2 tw:max-md:row-start-1 tw:max-md:self-start tw:max-md:pt-4']" @click.stop>
+                <Checkbox
+                  v-if="selectable(b)"
+                  :model-value="selected.has(b.key)"
+                  :disabled="Boolean(pickedKind) && pickedKind !== b.kind"
+                  :title="pickedKind && pickedKind !== b.kind ? '一次只能選同一種' : undefined"
+                  :class="['bl__check', checkBox]"
+                  :aria-label="`選取 ${b.student_name} ${b.subject}`"
+                  :data-testid="`bill-pick-${b.key}`"
+                  @update:model-value="(v) => pick(b.key, v === true)"
+                />
+                <span v-else class="bl__nocheck tw:relative tw:inline-block tw:w-5 tw:cursor-help tw:text-center tw:leading-none tw:text-tpl-secondary" :title="noPickReason(b)" :data-testid="`bill-nopick-${b.key}`"><span aria-hidden="true">–</span><span class="tw:sr-only">{{ noPickReason(b) }}</span></span>
+              </TableCell>
+              <TableCell :class="[t.name, 'tw:h-16', pc, 'tw:max-md:col-start-2 tw:max-md:row-start-1', !anyCheck && 'tw:pl-4 tw:md:pl-5']">
+                <button type="button" :class="nameButton" :data-testid="`bill-name-${b.key}`" :data-student="b.student_id" @click.stop="$emit('student', b)">{{ b.student_name }}</button>
+                <span :class="t.sub">
+                  <button type="button" :class="openButton" :data-testid="`bill-open-${b.key}`" :aria-label="`看這筆帳單：${b.student_name} ${b.subject}`" @click.stop="$emit('quick', b)">{{ b.subject || '帳單' }}</button>{{ ' ' }}<span class="bl__period-sub tw:inline-block tw:whitespace-nowrap tw:lg:hidden">{{ periodText(b.period) }}</span>
+                </span>
+                <span v-if="b.hint" :class="[t.sub, 'bl__hint']">{{ b.hint }}</span>
+                <span v-for="w in b.warnings" :key="w" :class="[t.sub, 'bl__warn tw:max-w-sm tw:text-[var(--ds-warning-text)]']" role="note" :data-testid="`bill-warn-${b.key}`">{{ w }}</span>
+              </TableCell>
+              <TableCell :class="[t.cell, 'bl__period tw:max-lg:hidden tw:whitespace-nowrap tw:tabular-nums']">{{ periodText(b.period) }}</TableCell>
+              <TableCell :class="[t.cell, pc, 'tw:max-md:col-start-2 tw:max-md:row-start-2 tw:max-md:pt-0 tw:max-md:pb-3']"><StatusBadge :tone="TONES[b.kind]" :title="b.help || undefined">{{ b.label }}</StatusBadge></TableCell>
+              <TableCell :class="[t.cell, 'bl__due tw:max-lg:hidden tw:whitespace-nowrap tw:tabular-nums', b.overdue_days > 0 ? 'due tw:font-semibold tw:text-[var(--ds-danger-text)]' : 'tw:text-tpl-secondary']">{{ dueText(b) }}</TableCell>
+              <TableCell :class="[t.num, 'bl__num tw:font-semibold', pc, 'tw:max-md:col-start-3 tw:max-md:row-start-1 tw:max-md:px-1', { due: b.owed > 0 }]">
+                <template v-if="b.owed > 0">{{ money(b.owed) }}</template>
+                <template v-else-if="!(b.owed_later > 0 || b.review_amount > 0)">—</template>
+                <span v-if="b.owed_later > 0 && !(b.review_amount > 0)" :class="[t.sub, 'bl__review']" :data-testid="`bill-later-${b.key}`">之後還會到期 <span class="tw:whitespace-nowrap">{{ money(b.owed_later) }}</span></span>
+                <span v-if="b.review_amount > 0" :class="[t.sub, 'bl__review']" :data-testid="`bill-review-${b.key}`">需核對金額 <span class="tw:whitespace-nowrap">{{ money(b.review_amount) }}</span></span>
+                <span v-if="dueText(b) !== '—'" :class="[t.sub, 'tw:lg:hidden bl__due tw:font-normal', b.overdue_days > 0 ? 'tw:text-[var(--ds-danger-text)]' : '']">{{ dueText(b) }}</span>
+              </TableCell>
+              <TableCell :class="[t.cell, pc, 'tw:pr-4 tw:pl-0 tw:md:pr-5', phoneButton(b) ? 'tw:max-md:col-span-2 tw:max-md:col-start-3 tw:max-md:row-start-2 tw:max-md:justify-self-end tw:max-md:pt-0 tw:max-md:pb-3' : 'tw:max-md:col-start-4 tw:max-md:row-span-2 tw:max-md:row-start-1 tw:max-md:self-center']">
+                <ChevronRight v-if="!phoneButton(b)" :class="['tw:ml-auto tw:size-5 tw:text-tpl-secondary', t.phoneOnly]" :stroke-width="2" aria-hidden="true" />
+                <!-- A row whose main action the quick view cannot do keeps its own button on a phone (and its ⋯ menu). -->
+                <span :class="['bl__actions tw:flex tw:items-center tw:justify-end tw:gap-1', phoneButton(b) ? '' : t.phoneHide]" @click.stop>
+                  <Button
+                    v-if="primaryOf(b)"
+                    :variant="b.kind === 'confirm' ? 'default' : 'outline'"
+                    :class="[control.row, 'tw:min-w-24 tw:max-md:min-w-0 tw:max-md:px-3']"
+                    :data-testid="`bill-action-${b.key}`"
+                    :aria-label="`${primaryOf(b).label}：${b.student_name} ${b.subject}`"
+                    @click="$emit('action', b, primaryOf(b).action)"
+                  >{{ primaryOf(b).label }}</Button>
+                  <ActionMenu :groups="menuGroups(b)" :label="`更多操作：${b.student_name} ${b.subject}`" :trigger-class="rowMenu" @select="(id) => $emit('menu', b, id)" />
+                </span>
+              </TableCell>
+            </TableRow>
+          </TableBody>
+        </Table>
+        <template v-if="anyCheck || rows.length" #footer>
+          <span v-if="visible.length" data-testid="bill-visible-total">目前顯示 {{ visible.length }} 筆<template v-if="visibleOwed > 0">，到今天未收合計 <strong class="tw:text-foreground tw:tabular-nums">{{ money(visibleOwed) }}</strong></template></span>
+          <Button variant="outline" :class="[control.row, 'tw:ml-auto']" :disabled="exportDisabled || !visible.length" data-testid="bill-export" @click="$emit('export', exportPayload())">匯出 Excel</Button>
+        </template>
+      </SectionCard>
     </template>
   </section>
 </template>
 
 <script setup>
 import { computed, ref, watch } from 'vue';
+import { useMediaQuery } from '@vueuse/core';
+import { ChevronRight, Search, SearchX } from '@lucide/vue';
 import ActionMenu from '../ActionMenu.vue';
-import AtBadge from '../design-system/AtBadge.vue';
-import AtButton from '../design-system/AtButton.vue';
-import AtEmpty from '../design-system/AtEmpty.vue';
-import AtInlineAlert from '../design-system/AtInlineAlert.vue';
-import AtSkeleton from '../design-system/AtSkeleton.vue';
+import { Alert } from '@/components/ui/alert';
+import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Input } from '@/components/ui/input';
+import { Skeleton } from '@/components/ui/skeleton';
+import { Table, TableBody, TableCaption, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { FilterChip, SectionCard, SelectionBar, StatItem, StatStrip, StatusBadge, control, dataTable as t } from '@/components/ui/page';
 import { billCounts, billDueText as dueText, billMenuGroups, billRows, TODO_KINDS } from '../../lib/billRows.js';
 import { slipAvailability } from '../../lib/billingDocState.js';
 
@@ -140,7 +205,25 @@ const props = defineProps({
   canDocs: { type: Boolean, default: false },
   exportDisabled: { type: Boolean, default: false },
 });
-defineEmits(['student', 'quick', 'action', 'menu', 'batch', 'export', 'retry']);
+const emit = defineEmits(['student', 'quick', 'action', 'menu', 'batch', 'export', 'retry']);
+
+// Class sets for the pieces the shared page parts do not cover (tokens and tw: utilities only).
+const checkCol = 'tw:w-12 tw:pr-0 tw:pl-4 tw:md:pl-5';
+// 20px box; the pseudo-element grows the hit area to 48px without moving the row.
+const checkBox = "tw:relative tw:size-5 tw:after:absolute tw:after:-inset-3.5 tw:after:content-['']";
+const nameBase = 'tw:max-w-full tw:cursor-pointer tw:rounded-sm tw:border-0 tw:bg-transparent tw:p-0 tw:text-left tw:text-[length:inherit] tw:font-semibold tw:text-foreground tw:whitespace-nowrap tw:outline-none tw:hover:underline tw:focus-visible:ring-3 tw:focus-visible:ring-ring/50';
+// In a bill row the whole row is the target, so on a phone the name / subject links do not take the tap (keyboard still reaches them).
+const nameButton = `bl__name tw:block tw:min-h-0 ${nameBase} tw:max-md:pointer-events-none`;
+// A student without a bill has no row tap: the name itself is the 44px target on every screen.
+const plainNameButton = `bl__name tw:inline-flex tw:min-h-11 tw:items-center ${nameBase}`;
+const openButton = 'bl__open tw:min-h-0 tw:cursor-pointer tw:rounded-sm tw:border-0 tw:bg-transparent tw:p-0 tw:text-left tw:text-[length:inherit] tw:font-normal tw:text-tpl-secondary tw:outline-none tw:hover:underline tw:focus-visible:ring-3 tw:focus-visible:ring-ring/50 tw:max-md:pointer-events-none';
+// Phone (<768): each bill is a small grid (check | name + status | amount | chevron) instead of table columns.
+const phoneGrid = 'tw:max-md:grid tw:max-md:grid-cols-[3rem_minmax(0,1fr)_8rem_2.25rem]';
+const pc = 'tw:max-md:h-auto tw:max-md:border-b-0';
+const moreTrigger = 'tw:inline-flex tw:h-11 tw:shrink-0 tw:items-center tw:rounded-full tw:border-0 tw:bg-card tw:px-4 tw:text-[length:var(--tpl-text-caption)] tw:font-semibold tw:text-tpl-secondary tw:shadow-[inset_0_0_0_1px_var(--ds-hairline)] tw:hover:bg-card tw:hover:text-foreground';
+const rowMenu = 'bl__menu tw:size-11 tw:rounded-full tw:border-0 tw:bg-transparent tw:p-0 tw:text-[length:var(--tpl-text-body)] tw:text-tpl-secondary tw:hover:bg-muted';
+// The strip figure is also the filter button: it covers the whole figure, the pressed one gets the wash.
+const sumButton = 'tw:absolute tw:inset-0 tw:min-h-0 tw:cursor-pointer tw:border-0 tw:bg-transparent tw:outline-none tw:transition-colors tw:hover:bg-muted/40 tw:focus-visible:ring-3 tw:focus-visible:ring-inset tw:focus-visible:ring-ring/50 tw:aria-pressed:bg-[color-mix(in_srgb,var(--ds-primary-wash)_60%,transparent)]';
 
 const CHIPS = [
   { key: 'todo', label: '要處理' }, { key: 'confirm', label: '待確認入帳' }, { key: 'owing', label: '未繳' },
@@ -158,6 +241,15 @@ function primaryOf(b) {
   if (b.src.schedule_mode === 'date') return { label: '開帳單', action: 'issue' };
   return slipOf(b).ok ? { label: '繳費單', action: 'slip' } : { label: '看帳務', action: 'open' };
 }
+// What the quick view (the row tap) can do for a bill: 確認入帳 and 登記收款 on a contract. Anything else (開帳單, 繳費單, 看帳務, 核對,
+// and 登記收款 on a package row) is only reachable from the row's own button, so on a phone that row keeps the button and the tap does the same.
+const phone = useMediaQuery('(max-width: 767px)');
+const quickCovers = (b) => { const p = primaryOf(b); return !p || p.action === 'confirm' || (p.action === 'record' && b.class_id != null); };
+const phoneButton = (b) => Boolean(primaryOf(b)) && !quickCovers(b);
+function rowTap(b) {
+  if (phone.value && phoneButton(b)) emit('action', b, primaryOf(b).action);
+  else emit('quick', b);
+}
 const slipOf = (b) => slipAvailability({ ...b.src, id: b.class_id }, props.canDocs);
 const SORTS = {
   // D8: owed now first, then what falls due later, then name (the explicit order the label promises).
@@ -167,7 +259,8 @@ const SORTS = {
   remaining: { label: '剩餘堂數（少到多）', cmp: (a, b) => (a.sort_remaining ?? Infinity) - (b.sort_remaining ?? Infinity) || b.owed - a.owed },
   name: { label: '姓名', cmp: (a, b) => a.student_name.localeCompare(b.student_name, 'zh-Hant') },
 };
-const TONES = { confirm: 'warning', owing: 'danger', issue: 'neutral', review: 'info', paid: 'success', waived: 'neutral' };
+// Badge tone for a row kind (PAGE_TEMPLATE §6: 待確認／需核對 = warning, 未收 = danger, 已收 = success, the rest neutral).
+const TONES = { confirm: 'warning', owing: 'danger', issue: 'neutral', review: 'warning', paid: 'success', waived: 'neutral' };
 const FILTERS = [...CHIPS, ...MORE, { key: 'overdue', label: '逾期' }].map((f) => f.key);
 const moreGroups = [{ id: 'more', label: '', items: MORE.map((m) => ({ id: m.key, label: m.label })) }];
 
@@ -207,6 +300,11 @@ const noRowStudents = computed(() => {
   return props.students.filter((st) => !have.has(Number(st.id)) && String(st.name || '').includes(q));
 });
 
+// Display only: a course period inside one year reads 11/01–11/30 (the year stays when the range crosses years).
+const periodText = (p) => {
+  const m = /^(\d{4})-(\d{2})-(\d{2}) ~ (\d{4})-(\d{2})-(\d{2})$/.exec(String(p || ''));
+  return m && m[1] === m[4] ? `${m[2]}/${m[3]}–${m[5]}/${m[6]}` : p;
+};
 const money = (v) => 'NT$ ' + Number(v || 0).toLocaleString('zh-TW');
 // in-app #520 / #5099: the same number each row's 未收 cell shows (b.owed), summed over the rows on screen and over the ticked rows.
 // No amount when it is 0 (those rows show 「—」), so a 待確認入帳 view never reads as 「NT$ 0」.
@@ -256,71 +354,3 @@ function neighbor(studentId, dir) {
 const owingQueue = () => visible.value.filter((b) => b.kind === 'owing' && b.class_id != null).map((b) => Number(b.class_id));
 defineExpose({ neighbor, clearSelection, owingQueue });
 </script>
-
-<style scoped>
-.bl{display:grid;gap:10px}
-.bl__summary{display:flex;flex-wrap:wrap;gap:8px}
-.bl__summary button{border:1px solid var(--ds-border);background:var(--ds-canvas);border-radius:var(--ds-radius-lg);padding:8px 14px;font:inherit;font-size:var(--ds-font-size-base);cursor:pointer;min-height:44px}
-.bl__summary button.is-on{border-color:var(--ds-primary,var(--ds-ink-mute));background:var(--ds-primary-wash,var(--ds-canvas-soft))}
-.bl__summary strong{font-size:var(--ds-font-size-xl);margin:0 2px}
-.bl__tools{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
-.bl__tools input{flex:1 1 180px;min-height:36px;padding:6px 10px;font:inherit}
-.bl__chips{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
-.bl__chip{border:1px solid var(--ds-border);background:var(--ds-canvas);border-radius:var(--ds-radius-pill);padding:4px 12px;font-size:var(--ds-font-size-md);cursor:pointer;min-height:32px}
-.bl__chip.is-on{background:var(--ds-primary-wash,var(--ds-canvas-soft));border-color:var(--ds-primary,var(--ds-ink-mute));font-weight:700}
-.bl__bulk{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
-.bl__bulk-all{display:flex;white-space:nowrap;align-items:center;gap:6px;font-size:var(--ds-font-size-sm);min-height:32px}
-.bl__csv{margin-left:auto}
-.bl__total{font-size:var(--ds-font-size-md);color:var(--ds-ink-mute);font-variant-numeric:tabular-nums;min-width:0}
-.bl__total strong{color:var(--ds-ink)}
-.bl__total--shown{margin-left:auto}
-.bl__total--shown+.bl__csv{margin-left:0}
-.bl__list{list-style:none;margin:0;padding:0;display:grid;gap:6px}
-.bl{--bl-check:0px}
-.bl.has-checks{--bl-check:32px}
-.bl__head,.bl__list>li{display:grid;grid-template-columns:var(--bl-check) minmax(0,1fr) 9.5em;align-items:center;column-gap:4px}
-.bl__cols,.bl__row{grid-column:2;display:grid;grid-template-columns:minmax(9em,1.4fr) minmax(8em,1.2fr) 8em 7em 7em;gap:4px 12px;align-items:center}
-.bl__cols{padding:0 13px;color:var(--ds-ink-mute)}
-.bl__cols>span{font-size:var(--ds-font-size-sm)}
-.bl__row{border:1px solid var(--ds-border);border-radius:var(--ds-radius-lg);background:var(--ds-surface,var(--ds-canvas));padding:8px 12px;min-height:52px}
-.bl__check{grid-column:1;width:20px;height:20px;margin:0}
-/* Rows without a checkbox keep the reserved column (a muted dash with a reason), so rows line up (in-app #542). */
-.bl__nocheck{grid-column:1;grid-row:1;width:20px;text-align:center;color:var(--ds-ink-mute);cursor:help;line-height:1}
-.bl__sr{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
-.bl__who{display:grid;min-width:0}
-.bl__row{cursor:pointer}
-.bl__open{background:none;border:0;padding:0;font:inherit;text-align:left;cursor:pointer;min-height:28px}
-/* in-app #541: a CJK name never splits per character (keep-all) and only breaks as a last resort when the whole name is wider than its cell. */
-.bl__name{background:none;border:0;padding:0;font:inherit;font-weight:700;text-align:left;cursor:pointer;color:inherit;word-break:keep-all;overflow-wrap:break-word;max-width:100%;min-width:0;text-decoration:underline;text-decoration-color:var(--ds-border);min-height:28px}
-.bl__subject,.bl__hint{font-size:var(--ds-font-size-sm);color:var(--ds-ink-mute)}
-.bl__hint,.bl__warn{grid-column:1/-1}
-.bl__warn{font-size:var(--ds-font-size-md);color:var(--ds-warning-text,var(--ds-ink-mute))}
-.bl__review{display:block;font-size:var(--ds-font-size-sm);color:var(--ds-ink-mute)}
-.bl__sort{display:flex;white-space:nowrap;align-items:center;gap:6px;font-size:var(--ds-font-size-md);color:var(--ds-ink-mute)}
-.bl__sort select{min-height:36px;font:inherit;padding:4px 8px}
-.bl__list>li.bl__plain{align-items:center}
-.bl__plainrow{grid-column:2;display:flex;gap:12px;align-items:center;padding:6px 12px;min-width:0}
-.bl__plainrow .bl__name{flex:0 1 auto;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.bl__plainrow .bl__subject{flex:1 1 0;min-width:0}
-.bl__num{text-align:right;font-variant-numeric:tabular-nums}
-.bl__due{font-size:var(--ds-font-size-md);font-variant-numeric:tabular-nums}
-.bl__num.due,.bl__due.due{color:var(--ds-danger);font-weight:700}
-.bl__actions{grid-column:3;display:flex;gap:4px;align-items:center;justify-content:flex-end}
-@media (max-width:760px){
-  .bl.has-checks{--bl-check:36px}
-  .bl__check{width:24px;height:24px}
-  .bl__head{display:none}
-  .bl__chips{flex-wrap:nowrap;overflow-x:auto;max-width:100%;padding-bottom:2px}
-  .bl__chip{flex:0 0 auto;min-height:44px}
-  .bl__tools input{min-height:44px}
-  .bl__list>li{grid-template-columns:var(--bl-check) minmax(0,1fr)}
-  .bl__name,.bl__open{min-height:44px}
-  .bl :deep(.am__trigger){min-height:44px;min-width:44px}
-  .bl__row{grid-template-columns:1fr auto;grid-template-areas:"who status" "hint hint";gap:2px 12px}
-  /* phone: name + status on the first line, 到期／逾期 and 未收 on the second (the old list kept both) */
-  .bl__period{display:none}
-  .bl__sort select{min-height:44px}
-  .bl__total--shown{margin-left:0}
-  .bl__actions{grid-column:2;justify-content:flex-start;padding:4px 0}
-}
-</style>

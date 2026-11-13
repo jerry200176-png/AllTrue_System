@@ -1,45 +1,29 @@
 <template>
-  <div ref="pageEl" class="tc-page at-page">
-    <AtPageHeader
-      title="帳務中心"
-      :description="`處理未繳、${REPORT_STATUS_LABELS.pending}與確認入帳。`"
-      icon="payments"
-      data-guide="tuition-header"
-    >
+  <div ref="pageEl" :class="['tc-page', pageShell]">
+    <PageHeader title="帳務中心" :context="`處理未繳、${REPORT_STATUS_LABELS.pending}與確認入帳。`" data-guide="tuition-header">
       <template #actions>
-        <AtButton variant="secondary" shape="rect" icon="help" :disabled="loading" @click="startGuide">操作導覽</AtButton>
-        <AtButton variant="secondary" shape="rect" icon="bar_chart" @click="$emit('navigate', 'tuition-report')">當月學收（查各月是否收齊）</AtButton>
-        <AtButton
-          variant="secondary"
-          shape="rect"
-          icon="refresh"
-          :loading="activeTabLoading"
-          @click="refreshActiveTab()"
-        >
-          重新整理
-        </AtButton>
+        <Button variant="outline" :class="[control.page, 'tw:max-md:flex-1']" :disabled="loading" @click="startGuide"><CircleHelp class="tw:size-4" :stroke-width="2" aria-hidden="true" />操作導覽</Button>
+        <Button variant="outline" :class="[control.page, 'tw:max-md:flex-1']" title="當月學收（查各月是否收齊）" @click="$emit('navigate', 'tuition-report')"><BarChart3 class="tw:size-4" :stroke-width="2" aria-hidden="true" />當月學收</Button>
+        <Button variant="outline" size="icon" :class="control.pageIcon" aria-label="重新整理" :aria-busy="activeTabLoading ? 'true' : undefined" :disabled="activeTabLoading" @click="refreshActiveTab()"><RefreshCw :class="['tw:size-5', { 'tw:animate-spin': activeTabLoading }]" :stroke-width="2" aria-hidden="true" /></Button>
       </template>
-    </AtPageHeader>
+    </PageHeader>
 
-    <div class="acct-tabs at-tabs" role="tablist" aria-label="帳務中心分頁" data-guide="tuition-tabs">
+    <div :class="pageTabs.list" role="tablist" aria-label="帳務中心分頁" data-guide="tuition-tabs">
       <button
         v-for="tab in visibleAccountingTabs"
         :key="tab.key"
         type="button"
-        class="acct-tab at-tab"
-        :class="{ active: activeAccountingTab === tab.key }"
+        :class="pageTabs.tab(activeAccountingTab === tab.key)"
         role="tab"
         :id="`tuition-accounting-tab-${tab.key}`"
         :aria-controls="`tuition-accounting-panel-${tab.key}`"
         :aria-selected="activeAccountingTab === tab.key"
         @click="activeAccountingTab = tab.key"
-      >
-        <span class="material-symbols-outlined" aria-hidden="true" style="font-size:18px">{{ tab.icon }}</span>
-        {{ tab.label }}
-      </button>
+      >{{ tab.label }}</button>
     </div>
 
-    <div class="tc-page__body">
+    <!-- 帳單 sits straight on the page (strip, toolbar, one card); the other tabs keep their old white panel until their own PRs. -->
+    <div :class="activeAccountingTab === 'students' ? 'tw:contents' : 'tc-page__body'">
     <div v-if="tuitionFocusMessage" class="tc-focus-context" role="status">
       <span class="material-symbols-outlined" aria-hidden="true">my_location</span>
       <span>{{ tuitionFocusMessage }}</span>
@@ -82,8 +66,8 @@
       />
     </section>
     <!-- 已結清課程 keeps its own list (the bill list has no stopped, fully paid contracts); entry is this quiet link. -->
-    <nav v-if="activeAccountingTab === 'students'" class="tc-reminders tc-reminders--below" aria-label="其他清單" data-testid="tc-reminders">
-      <button v-for="v in REMINDER_VIEWS" :key="v.key" type="button" class="tc-reminder" :data-testid="`tc-reminder-${v.key}`" @click="activeAccountingTab = v.key">{{ v.label }}</button>
+    <nav v-if="activeAccountingTab === 'students'" class="tc-reminders tc-reminders--below tw:m-0 tw:flex tw:flex-wrap tw:gap-2" aria-label="其他清單" data-testid="tc-reminders">
+      <FilterChip v-for="v in REMINDER_VIEWS" :key="v.key" :toggle="false" :data-testid="`tc-reminder-${v.key}`" @click="activeAccountingTab = v.key">{{ v.label }}</FilterChip>
     </nav>
 
     <!-- 月結 (Square "Recurring series"): the bills still to issue this month, and the monthly bills to check. -->
@@ -729,7 +713,9 @@ import { askConfirm } from '../composables/useConfirmDialog';
 import ConfirmDialogHost from '../components/course-management/ConfirmDialogHost.vue';
 import AtEmpty from '../components/design-system/AtEmpty.vue';
 import AtInlineAlert from '../components/design-system/AtInlineAlert.vue';
-import AtPageHeader from '../components/design-system/AtPageHeader.vue';
+import { BarChart3, CircleHelp, RefreshCw } from '@lucide/vue';
+import { Button } from '@/components/ui/button';
+import { FilterChip, PageHeader, control, pageShell, pageTabs } from '@/components/ui/page';
 import AtSkeleton from '../components/design-system/AtSkeleton.vue';
 import { adoptionErrorType, trackWorkflowEvent } from '../lib/adoptionTelemetry.js';
 import {
@@ -912,7 +898,6 @@ const canVoid = computed(() => {
   return isDirectorRole(role);
 });
 const visibleAccountingTabs = computed(() => ACCOUNTING_TABS.filter((t) => !t.directorOnly || canVoid.value));
-
 function formatTodayYmd() {
   const d = new Date();
   const m = String(d.getMonth() + 1).padStart(2, '0');
@@ -3222,7 +3207,6 @@ loadCampusStudents();
   .acct-filter-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 @media (max-width: 640px) {
-  .acct-tabs { white-space: nowrap; }
   .acct-filter-grid { grid-template-columns: 1fr; }
   .acct-filter-actions { justify-content: stretch; }
   .acct-filter-actions .tc-btn { flex: 1; justify-content: center; }

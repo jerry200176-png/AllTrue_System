@@ -1,0 +1,16 @@
+updates:
+  - id: staff-2026-11-13-ui-tuition-collect-bills
+    published_at: "2026-11-13"
+    audiences:
+      - director
+      - super_admin
+    importance: digest
+    title: 帳務中心「帳單」換新外觀
+    summary: 版面更整齊、字更大；金額和收款流程不變。
+    items:
+      - category: improved
+        text: 「帳單」改成一張表，勾選後上方顯示合計。
+      - category: improved
+        text: 手機上一列一筆，點整列看帳單；需另外處理的列仍有按鈕。
+    source_refs:
+      - "changelog:2026-11-13:ui-tuition-collect-bills"

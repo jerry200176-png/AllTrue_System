@@ -1,11 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { readFileSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { mount } from '@vue/test-utils';
 import BillList from '../tuition/BillList.vue';
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
 const row = (o) => ({ id: 1, student_id: 1, student_name: '學生甲', subject: '數學', schedule_mode: 'count', remaining_sessions: 4, payment_status: 'unpaid', payable_status: 'invoiced', payable_outstanding: 1000, ...o });
 const ROWS = [
   row({ id: 1, payment_status: 'pending_report', latest_payment_report_id: 9 }),
@@ -49,9 +45,9 @@ describe('BillList', () => {
 
   it('only lets rows of one kind be picked, and batches that kind', async () => {
     const w = mountList();
-    await w.get('[data-testid="bill-pick-c2"]').setValue(true);
+    await w.get('[data-testid="bill-pick-c2"]').trigger('click');
     expect(w.get('[data-testid="bill-pick-c1"]').attributes('disabled')).toBeDefined();
-    await w.get('[data-testid="bill-pick-c6"]').setValue(true);
+    await w.get('[data-testid="bill-pick-c6"]').trigger('click');
     expect(w.get('[data-testid="bill-batch"]').text()).toBe('登記 2 筆');
     await w.get('[data-testid="bill-batch"]').trigger('click');
     expect(w.emitted('batch')[0]).toEqual(['report', [2, 6]]);
@@ -124,7 +120,7 @@ describe('BillList', () => {
 
   it('clears picks when the chip changes and names the chip in the empty state', async () => {
     const w = mountList();
-    await w.get('[data-testid="bill-pick-c2"]').setValue(true);
+    await w.get('[data-testid="bill-pick-c2"]').trigger('click');
     expect(w.find('[data-testid="bill-batch"]').exists()).toBe(true);
     await w.get('[data-testid="bill-filter-owing"]').trigger('click');
     expect(w.find('[data-testid="bill-batch"]').exists()).toBe(false);
@@ -132,10 +128,19 @@ describe('BillList', () => {
     expect(empty.get('[data-testid="bill-empty"]').text()).toContain('要處理');
   });
 
-  it('keeps 未收 and 逾期 visible on a phone (only the period column is hidden)', () => {
-    const css = readFileSync(resolve(__dirname, '../tuition/BillList.vue'), 'utf8').match(/@media \(max-width:760px\)\{[\s\S]*$/)[0];
-    expect(css).not.toMatch(/\.bl__(due|num)[^{]*\{[^}]*display:none/);
-    expect(css).toMatch(/\.bl__period\{display:none\}/);
+  it('keeps 未收 and 逾期 visible on a phone (only the period and status columns are hidden, 逾期 is repeated under 未收)', () => {
+    const w = mountList({ alertRows: [row({ id: 2, student_id: 2, student_name: '學生乙', payable_outstanding: 500, open_periods: [{ outstanding: 500, due_date: '2026-11-01' }] })], batchModes: {} });
+    const tr = w.get('[data-testid="bill-row-c2"]');
+    const hiddenOnPhone = (el) => el.classes().includes('tw:max-md:hidden');
+    const num = tr.get('td.bl__num');
+    expect(hiddenOnPhone(num)).toBe(false);
+    expect(tr.get('td.bl__period').classes()).toContain('tw:max-lg:hidden');
+    // the due column hides on a phone; the same words sit under the amount (shown on a phone, hidden from md up)
+    expect(tr.get('td.bl__due').classes()).toContain('tw:max-lg:hidden');
+    const phoneDue = num.get('.bl__due');
+    expect(hiddenOnPhone(phoneDue)).toBe(false); // hidden only from lg up
+    expect(phoneDue.classes()).toContain('tw:lg:hidden');
+    expect(phoneDue.text()).toBe('逾期 4 天');
   });
 
   it('keeps cached rows and shows a stale-data error with 重試 above them', async () => {
@@ -150,18 +155,18 @@ describe('BillList', () => {
     const w = mountList();
     const bar = () => (w.find('[data-testid="bill-batch"]').exists() ? w.get('[data-testid="bill-batch"]').text() : '');
     await w.get('[data-testid="bill-filter-confirm"]').trigger('click');
-    await w.get('[data-testid="bill-pick-c1"]').setValue(true);
+    await w.get('[data-testid="bill-pick-c1"]').trigger('click');
     expect(bar()).toBe('確認入帳 1 筆');
     await w.get('[data-testid="bill-filter-owing"]').trigger('click');
     expect(bar()).toBe('');
-    await w.get('[data-testid="bill-pick-c2"]').setValue(true);
+    await w.get('[data-testid="bill-pick-c2"]').trigger('click');
     await w.get('[data-testid="bill-filter-todo"]').trigger('click');
     expect(bar()).toBe('');
-    await w.get('[data-testid="bill-pick-c1"]').setValue(true);
+    await w.get('[data-testid="bill-pick-c1"]').trigger('click');
     await w.get('[data-testid="bill-sum-owed"]').trigger('click'); // summary strip
     await w.get('[data-testid="bill-search"]').setValue('學生');  // search
     expect(bar()).toBe('');
-    await w.get('[data-testid="bill-pick-c2"]').setValue(true);
+    await w.get('[data-testid="bill-pick-c2"]').trigger('click');
     expect(bar()).toBe('登記 1 筆');
   });
 
@@ -172,7 +177,7 @@ describe('BillList', () => {
     ] });
     expect(w.get('[data-testid="bill-later-c30"]').text()).toBe('之後還會到期 NT$ 700');
     expect(w.get('[data-testid="bill-later-c31"]').text()).toBe('之後還會到期 NT$ 300');
-    expect(w.get('[data-testid="bill-row-c30"]').text()).toContain('—');
+    expect(w.get('[data-testid="bill-row-c30"] td.bl__num').text().startsWith('之後還會到期 NT$ 700')).toBe(true); // no lone 「—」 above the later amount
   });
 
   it('a 需核對 row shows its amount once, as 需核對金額, not also as 之後還會到期 (D2)', () => {
@@ -199,7 +204,7 @@ describe('BillList', () => {
     const w = mountList();
     await w.get('[data-testid="bill-open-c2"]').trigger('click');
     expect(w.emitted('quick')[0][0].class_id).toBe(2);
-    await w.get('[data-testid="bill-row-c2"] .bl__row').trigger('click');
+    await w.get('[data-testid="bill-row-c2"]').trigger('click');
     expect(w.emitted('quick')).toHaveLength(2);
     await w.get('[data-testid="bill-name-c2"]').trigger('click');
     expect(w.emitted('student')).toHaveLength(1);
@@ -259,9 +264,9 @@ describe('BillList', () => {
     it('the ticked total follows ticking, 全選 and 取消選取', async () => {
       const w = mountTotals();
       expect(ticked(w)).toBe('');
-      await w.get('[data-testid="bill-pick-c2"]').setValue(true);
+      await w.get('[data-testid="bill-pick-c2"]').trigger('click');
       expect(ticked(w)).toBe('已選 1 筆，到今天未收合計 NT$ 1,000');
-      await w.get('[data-testid="bill-select-all"]').setValue(true);
+      await w.get('[data-testid="bill-select-all"]').trigger('click');
       expect(ticked(w)).toBe('已選 2 筆，到今天未收合計 NT$ 3,500');
       expect(w.get('[data-testid="bill-batch"]').text()).toBe('登記 2 筆');
       expect(shown(w)).toBe('目前顯示 3 筆，到今天未收合計 NT$ 3,500');
@@ -271,7 +276,7 @@ describe('BillList', () => {
 
     it('ticked 待確認入帳 rows show a count only (their rows show no 未收 amount)', async () => {
       const w = mountTotals();
-      await w.get('[data-testid="bill-pick-c1"]').setValue(true);
+      await w.get('[data-testid="bill-pick-c1"]').trigger('click');
       expect(ticked(w)).toBe('已選 1 筆');
     });
 

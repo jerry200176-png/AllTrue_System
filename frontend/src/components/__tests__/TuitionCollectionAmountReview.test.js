@@ -30,7 +30,7 @@ async function mountPage(alertRows = [CONFIRMED, REVIEW]) {
 }
 
 // F-5: the queue table is gone; the same rules are read off the student list.
-const badges = (w, id) => w.find(`[data-testid="bill-row-c${id}"]`).findAll('.at-badge').map((b) => b.text());
+const badges = (w, id) => w.find(`[data-testid="bill-row-c${id}"]`).findAll('[data-slot="status-badge"]').map((b) => b.text());
 
 describe('金額待確認 rows in the student list (Founder D2)', () => {
   it('marks the row 需核對 and keeps its amount out of the 未繳 total', async () => {
