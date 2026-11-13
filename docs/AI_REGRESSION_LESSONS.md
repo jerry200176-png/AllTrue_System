@@ -1891,3 +1891,11 @@ Intake consolidation regression (2026-10-17): the oldest trusted SourceRef issue
 - **強制規則**：投影前先保留 stored counters，回傳 canonical 顯示值時仍須以 stored-versus-canonical 判定 `review_required`；營運收入風險不得把 canonical 已耗盡的整堂課列為 stranded，但資料品質警示必須保留。部分分鐘餘額仍是權威，不得套用整堂排除。
 - **安全邊界**：GET、摘要與診斷只能讀取和標示，不得自動更改課程、出席、扣堂或付款資料；跨校摘要必須維持 campus scope，批次診斷不可退化成逐課 N+1。
 - **測試必補**：同一筆 stored 餘額漂移要同時證明 Critical 消失、對帳警示仍在、API 顯示 canonical 餘額並回傳 stored 診斷，而且資料庫原值不變；另以部分分鐘案例證明不會被錯誤排除。
+
+### R139. `IsContractException` 是「不在每週固定時段」，不是「在合約期間外」；期間外一律讀取時推導（in-app #536，2026-11-13）
+
+- **現象**：一堂已上的課被單堂改派到開始日較晚的合約，課程管理顯示的開課日晚於這堂課，使用者以為資料錯。
+- **根因層級**：歸屬（誰擁有這堂課）家族。改派服務允許此事（Founder 決定 #5198 選項 A：不擋、不動開始日），但沒有任何畫面說明；排查時差點把期間外塞進 `IsContractException`，而該旗標的定義是 `ContractScheduleMatcher::matchesContract`（星期／開始時間／時長是否對得上合約固定時段），而且前端 `rowOccupiesPurchasedQuota` 會用它決定是否佔額度。
+- **強制規則**：不可重用或改寫 `IsContractException` 表示期間外。「堂次日期早於合約 `StartDate`」只在讀取時由 `App\Support\ContractPeriod` 推導（API 欄位 `before_contract_start`，畫面標籤「合約期間外」），不儲存、不影響額度與扣堂。規則只定義在這一處，SQL 與 PHP 共用。
+- **另記（未在此修）**：改派服務用 query update 搬堂次，不會觸發 `ClassSessionObserver::syncContractExceptionFlag`；改派後每週時段旗標可能與目標合約的時段不一致。凡以 query update 繞過 observer 的服務，必須自己重算 observer 推導的狀態。
+- **測試**：`ClassSessionBeforeContractStartTest`（改派成功、開始日不動、`IsContractException` 不變、API 推導旗標）。

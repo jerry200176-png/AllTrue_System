@@ -17,6 +17,7 @@ use App\Models\StudentSignIn;
 use App\Models\SessionDeductionLedger;
 use App\Models\UserCampus;
 use App\Models\CoursePackage;
+use App\Support\ContractPeriod;
 use App\Support\LearningRecordMutableOwnership;
 use App\Support\SessionStatus;
 use App\Support\Utf8mb3SearchSanitizer;
@@ -726,6 +727,7 @@ class StudentClassController extends Controller
                         'StudentID',
                         'PackageID',
                         'scheduling_policy',
+                        'StartDate',
                         'Stop',
                         'week',
                         'time',
@@ -770,6 +772,7 @@ class StudentClassController extends Controller
                             'StudentID',
                             'PackageID',
                             'scheduling_policy',
+                            'StartDate',
                             'week',
                             'time',
                             'week1',
@@ -1301,6 +1304,12 @@ class StudentClassController extends Controller
         string $rangeEnd
     ): array {
         $materialized = $reader->collectMaterializedFromRows($sessionRows, $classId, $rangeStart, $rangeEnd);
+        // Same derived flag as the class-sessions index (in-app #536): the chip merge would otherwise overwrite it with false.
+        $contractStart = $class?->StartDate;
+        $materialized = array_map(
+            fn (array $slot): array => $slot + ['before_contract_start' => ContractPeriod::lessonBeforeStart($slot['session_date'] ?? null, $contractStart)],
+            $materialized
+        );
         // Paused course: 未恢復前不排新課 -> no virtual 預排 dates (real rows above stay).
         if ((int) ($class->Stop ?? 0) === 1) {
             $effectiveDateList = [];

@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Support\ContractPeriod;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -104,6 +105,7 @@ class ClassSessionIndexReadService
                 'sc.Stop as course_stop',
                 'sc.SessionCount as course_session_count',
                 'sc.Rate as sc_rate',
+                'sc.StartDate as sc_start_date',
                 'sc.SessionDuration as sc_session_duration',
                 'sc.rate_unit as sc_rate_unit',
                 DB::raw("{$subTeacherSql} as substitute_teacher_id"),
@@ -266,6 +268,8 @@ class ClassSessionIndexReadService
         $row->end_time = $row->EndTime ? substr((string) $row->EndTime, 0, 5) : null;
         $row->status = (string) ($row->effective_status ?? $row->Status ?? '');
         $row->is_contract_exception = (bool) ($row->IsContractException ?? false);
+        // Derived, not stored, and not the weekly-pattern flag above: App\Support\ContractPeriod (in-app #536).
+        $row->before_contract_start = ContractPeriod::lessonBeforeStart($row->SessionDate, $row->sc_start_date ?? null);
         $row->learning_record_id = $row->learning_record_id !== null ? (int) $row->learning_record_id : null;
         $row->learning_record_status = $row->learning_record_status ?? 'missing';
         $row->learning_record_body_filled = $row->learning_record_id !== null && trim((string) ($row->learning_record_progress ?? '')) !== '';
@@ -310,6 +314,7 @@ class ClassSessionIndexReadService
             $row->attendance_history,
             $row->Note,
             $row->sc_rate,
+            $row->sc_start_date,
             $row->sc_session_duration,
             $row->sc_rate_unit
         );

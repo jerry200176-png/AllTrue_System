@@ -511,6 +511,7 @@ export function useCourseSessionsDisplay({
       `時段：${row.startTime}-${row.endTime}`,
     ];
     if (isContractException(row) && stateLabel !== '例外堂') lines.push('類型：例外堂');
+    if (row?.beforeContractStart) lines.push('合約期間外：這堂課的日期早於合約開始日，已歸到這份合約');
     const attendanceTime = formatAttendanceTooltipTime(row?.attendanceSignInAt);
     if (attendanceTime) lines.push(`點名時間：${attendanceTime}`);
     const source = describeSessionAttendanceSource(row);

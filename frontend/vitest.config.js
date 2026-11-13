@@ -16,6 +16,7 @@ export default defineConfig({
       'src/composables/**/__tests__/**/*.test.js',
       'src/lib/tokenContrast.test.js',
       'src/lib/courseListSnapshot.test.js',
+      'src/lib/classSessionsApi.beforeContractStart.test.js',
       'src/lib/directorHomeCards.test.js',
       'src/lib/billRows.test.js',
       'src/lib/billingDocState.test.js',
