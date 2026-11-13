@@ -12,7 +12,7 @@ const source = readFileSync(resolve(__dirname, '../../pages/CourseManagement.vue
 // issue 4989 slice 5: the row buttons moved from `small ghost` / `small primary` to the template's rowAction class sets.
 const ledgerButtonAt = source.indexOf(`:class="[rowAction.secondary, 'btn-invoices']"`);
 const billingRowActions = source.slice(
-  source.lastIndexOf(`<td :class="[dataTable.cell, 'tw:pr-5']">`, ledgerButtonAt),
+  source.lastIndexOf(`<td :class="[dataTable.cell, dataTable.stackCell, dataTable.stackWide, 'tw:pr-5']">`, ledgerButtonAt),
   source.indexOf('</td>', ledgerButtonAt),
 );
 
@@ -29,6 +29,11 @@ describe('課程帳務列 · 不重複顯示「在這裡看帳務」 (#3982)', (
     expect(source).toContain(
       "const showsBillingRowNextAction = (course) => shouldShowPaymentAction(course) && paymentNextActionLabel(course) !== '在這裡看帳務';",
     );
+  });
+
+  it('the stacked (under 1024px) row decides its primary action with the same predicate and moves the rest into the 更多 menu', () => {
+    expect(source).toContain('const billingPrimaryIsNext = (row, group) => !billingPackageLead(row, group) && showsBillingRowNextAction(row.course);');
+    expect(source).toMatch(/const billingMenuGroups = [\s\S]*?id: 'payment-slip'[\s\S]*?if \(billingPrimaryIsNext\(row, group\)\) items\.push\(\{ id: 'ledger'/);
   });
 
   it('still falls back to 在這裡看帳務 for paid rows (the case the guard exists for)', () => {
