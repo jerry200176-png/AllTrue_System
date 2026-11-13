@@ -47,6 +47,15 @@ failures=0
 pass() { echo "✅ $1"; }
 fail() { echo "❌ $1"; failures=$((failures + 1)); }
 warn() { echo "⚠️  $1"; }
+# Two abbreviated commit ids name the same commit when one is a prefix of the other (at least 7 hex chars).
+# `git rev-parse --short` grows the abbreviation as the repository grows (8 -> 9 chars), so exact string
+# equality between ids written by different tools is wrong; it failed a real deploy on 2026-11-13.
+same_commit() {
+  local a="${1,,}" b="${2,,}"
+  [[ "$a" =~ ^[0-9a-f]{7,40}$ && "$b" =~ ^[0-9a-f]{7,40}$ ]] || return 1
+  [[ "$a" == "$b"* || "$b" == "$a"* ]]
+}
+[[ "${SMOKE_SOURCE_ONLY:-}" == "1" ]] && return 0 2>/dev/null
 
 echo "== Post-merge smoke =="
 echo "Base: $API_BASE"
@@ -68,7 +77,7 @@ PY
 )"
 if [[ -z "$ver_hash" ]]; then
   fail "version.json missing or invalid"
-elif [[ -n "$EXPECTED_HASH" && "$ver_hash" != "$EXPECTED_HASH" ]]; then
+elif [[ -n "$EXPECTED_HASH" ]] && ! same_commit "$ver_hash" "$EXPECTED_HASH"; then
   if [[ "${SMOKE_STRICT_VERSION:-}" == "1" ]]; then
     fail "version.json hash=$ver_hash (expected $EXPECTED_HASH after frontend deploy)"
   else
@@ -118,10 +127,10 @@ if [[ "${SMOKE_ON_PI:-}" == "1" ]] || ssh -o BatchMode=yes -o ConnectTimeout=8 "
   pi_commit="$(pi_sh "cd ${PI_BACKEND} && git rev-parse --short=8 HEAD" 2>/dev/null || echo '')"
   if [[ -n "$pi_commit" ]]; then
     pass "Pi git HEAD=$pi_commit"
-    if [[ -n "$ver_hash" && "$ver_hash" != "$pi_commit" ]]; then
+    if [[ -n "$ver_hash" ]] && ! same_commit "$ver_hash" "$pi_commit"; then
       warn "version.json hash=$ver_hash ≠ Pi git HEAD=$pi_commit (expected when backend-only deploy skipped frontend rebuild)"
     fi
-    if [[ -n "$manifest_backend_sha" && "${manifest_backend_sha:0:8}" != "${pi_commit:0:8}" ]]; then
+    if [[ -n "$manifest_backend_sha" ]] && ! same_commit "$manifest_backend_sha" "$pi_commit"; then
       fail "deployment.json backend_sha=$manifest_backend_sha ≠ Pi git HEAD=$pi_commit"
     fi
   else
