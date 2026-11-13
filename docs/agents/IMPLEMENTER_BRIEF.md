@@ -28,6 +28,10 @@ Every implementer agent follows this. The coordinator sends only the task-specif
 ## UI changes
 - Load the design skills first (`impeccable`, `make-interfaces-feel-better`, `web-design-guidelines`; `ui-ux-pro-max` for tables and forms) and build the page from [`docs/design/PAGE_TEMPLATE.md`](../design/PAGE_TEMPLATE.md).
 - Attach its evidence to the PR: real-browser screenshots at 1536 and 375 at each 字級, before and after.
+- Name in the PR body which design skills you loaded and one thing each changed. The final reviewer of a UI PR loads them too and reads the before/after pairs; a lost colour meaning (e.g. a red warning turned ink) is P1.
+- If you change a shared component, class set or helper (`components/ui/page/*`, `tones.js`, `cn()`), add before/after screenshots of every page that uses it, not only the page you are migrating.
+- Map colour meaning when you restyle: list old class → new tone in the PR body; red stays only for debt and low counts.
+- Adding a tab, step or button changes keyboard order: search the e2e specs for arrow-key and Tab walks over that area and update them in the same PR.
 - Pick pages that are in the nav registry and in use. A page with no nav entry or zero production rows is a removal candidate: report it instead of migrating it.
 - Search the production-run specs for every selector, class name and label helper you change, and update them in the same PR: `frontend/e2e/calendar-course-consistency.spec.js`, `frontend/e2e/*production*.spec.js`, `frontend/e2e/fixtures/**`.
 - Do not put native `required` or `min` on a field that shows inline errors.
