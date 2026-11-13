@@ -41,6 +41,11 @@ async function load(all = false) {
     if (my !== seq) return;
     const serverChecked = new Set((data.units || []).filter((u) => u.checked).map((u) => u.id));
     if (!all || !state.value) { checked.value = new Set(serverChecked); saved.value = new Set(serverChecked); }
+    else {
+      // The full list replaces the short one: a tick whose unit is no longer offered must not be sent.
+      const offered = new Set((data.units || []).map((u) => u.id));
+      checked.value = new Set([...checked.value].filter((id) => offered.has(id)));
+    }
     state.value = data.plan && data.can_tick ? data : null;
     applyRestore(all);
   } catch (e) {

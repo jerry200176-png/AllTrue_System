@@ -159,4 +159,13 @@ describe('LessonPlanUnits (#4970 step 5)', () => {
     await w.vm.save(77);
     expect(calls.find((c) => c.method === 'PUT').body.unit_ids.sort()).toEqual([3, 8]);
   });
+
+  it('drops a tick whose unit is gone when the full list arrives', async () => {
+    const w = await mountIt();
+    await w.findAll('input[type=checkbox]')[1].setValue(true);
+    allPayload = { ...PAYLOAD, units: [unit(1, '整數'), unit(3, '代數', { checked: true }), unit(8, '幾何')] };
+    await w.find('button').trigger('click');
+    await flushPromises();
+    expect([...w.vm.draftIds()].sort()).toEqual([3]);
+  });
 });
