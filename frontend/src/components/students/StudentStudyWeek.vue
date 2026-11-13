@@ -147,7 +147,9 @@ function openEdit(task) {
   formError.value = '';
   form.value = { id: task.id, title: task.title, kind: task.kind, due_date: task.due_date, minutes: task.minutes ?? '', note: task.note ?? '', plan_unit_id: task.plan_unit_id ?? '' };
 }
-const closeForm = () => { form.value = null; formError.value = ''; };
+// The form cannot be dismissed while it is saving (Esc, the close button or Cancel), and a finished save closes only
+// the form it was submitted from, so a slow save never discards a form the user opened afterwards.
+const closeForm = () => { if (saving.value) return; form.value = null; formError.value = ''; };
 
 async function submit() {
   const f = form.value;
@@ -166,12 +168,12 @@ async function submit() {
     markReadOnly(e);
     saving.value = false;
     if (f.id) setPending(f.id, false);
-    if (e.status === 404 && f.id) { form.value = null; await handleGone(); return; }
+    if (e.status === 404 && f.id) { if (form.value === f) form.value = null; await handleGone(); return; }
     formError.value = e.message; // the dialog stays open with everything the user typed
     return;
   }
   const moved = f.id && !days.value.includes(body.due_date);
-  form.value = null;
+  if (form.value === f) form.value = null;
   notice.value = moved ? `已移到 ${dayLabel(body.due_date)}，不在這一週` : f.id ? '已儲存' : '已新增';
   try { await load({ keep: true }); } finally { saving.value = false; if (f.id) setPending(f.id, false); }
 }

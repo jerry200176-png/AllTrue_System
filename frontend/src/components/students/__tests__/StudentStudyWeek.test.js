@@ -148,6 +148,20 @@ describe('StudentStudyWeek (issue 5269 step 2)', () => {
     expect(byId(w, 'day-2026-11-12').text()).toContain('背單字');
   });
 
+  it('a slow save cannot be dismissed by Esc or the close button, so its result never lands on another form', async () => {
+    let release;
+    routes['POST /api/v1/students/1/study-tasks'] = () => new Promise((r) => { release = () => r(json({ data: task(7, '2026-11-12', { title: '背單字' }) })); });
+    const w = await mountIt();
+    await byId(w, 'add-2026-11-12').trigger('click');
+    await byId(w, 'f-title').setValue('背單字');
+    await byId(w, 'f-save').trigger('click');
+    await w.findComponent({ name: 'Dialog' }).vm.$emit('update:open', false);
+    await w.vm.$nextTick();
+    expect(byId(w, 'f-title').exists()).toBe(true); // still saving: the dialog stays
+    release(); await flushPromises();
+    expect(byId(w, 'f-title').exists()).toBe(false);
+  });
+
   it('validates the form without calling the API', async () => {
     const w = await mountIt();
     await byId(w, 'add-2026-11-12').trigger('click');
