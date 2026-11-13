@@ -8,7 +8,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
 import { Badge } from '../ui/badge';
 import { Button } from '../ui/button';
-const props = defineProps({ show: Boolean, studentId: { type: [Number, String], default: null }, studentName: { type: String, default: '' } });
+import StudentLearningPlanGantt from './StudentLearningPlanGantt.vue';
+const props = defineProps({ show: Boolean, studentId: { type: [Number, String], default: null }, studentName: { type: String, default: '' }, branchId: { type: [Number, String], default: null }, studentGrade: { type: String, default: '' } });
 const emit = defineEmits(['close']);
 const items = ref([]), subject = ref(''), from = ref(''), until = ref(''), tab = ref('overview');
 const loading = ref(false), error = ref(''), schoolError = ref(false), schoolLoading = ref(false), nextExam = ref(null);
@@ -72,7 +73,7 @@ watch(() => [props.show, props.studentId], () => { if (props.show && props.stude
         </div>
         <p v-if="coverage.capped_sources?.length" role="status" class="tw:text-muted-foreground">各來源最多顯示最近 {{ coverage.limit_per_source }} 筆，較早紀錄未包含在本頁。</p>
         <Tabs v-model="tab" activation-mode="manual" class="tw:min-w-0">
-          <TabsList class="tw:w-full tw:h-auto tw:min-h-12"><TabsTrigger value="overview" class="tw:text-tpl-body tw:min-h-11">總覽</TabsTrigger><TabsTrigger value="history" class="tw:text-tpl-body tw:min-h-11">上課紀錄</TabsTrigger><TabsTrigger value="scores" class="tw:text-tpl-body tw:min-h-11">成績</TabsTrigger></TabsList>
+          <TabsList class="tw:w-full tw:h-auto tw:min-h-12"><TabsTrigger value="overview" class="tw:text-tpl-body tw:min-h-11">總覽</TabsTrigger><TabsTrigger value="plan" class="tw:text-tpl-body tw:min-h-11">學習計畫</TabsTrigger><TabsTrigger value="history" class="tw:text-tpl-body tw:min-h-11">上課紀錄</TabsTrigger><TabsTrigger value="scores" class="tw:text-tpl-body tw:min-h-11">成績</TabsTrigger></TabsList>
           <TabsContent value="overview" class="tw:space-y-3">
             <Card><CardHeader><CardTitle class="tw:text-tpl-list">最近上課進度</CardTitle></CardHeader><CardContent class="tw:space-y-2 tw:break-words">
               <template v-if="latest"><p>{{ latest.date }} · {{ latest.subject }}</p><p v-if="latest.progress" class="tw:whitespace-pre-wrap">{{ latest.progress }}</p><p v-if="latest.content" class="tw:whitespace-pre-wrap">{{ latest.content }}</p></template>
@@ -85,6 +86,7 @@ watch(() => [props.show, props.studentId], () => { if (props.show && props.stude
               <p v-else>目前沒有符合學校、年級與本學期的後續校考日期。</p>
             </CardContent></Card>
           </TabsContent>
+          <TabsContent value="plan"><StudentLearningPlanGantt :student-id="studentId" :branch-id="branchId" :student-grade="studentGrade" /></TabsContent>
           <TabsContent value="history">
             <p v-if="!history.length">尚無符合篩選的上課紀錄。</p>
             <ul v-else class="tw:space-y-3 tw:list-none tw:p-0">
