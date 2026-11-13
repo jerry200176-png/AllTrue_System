@@ -354,6 +354,30 @@ class ReceiptReassignPreviewTest extends TestCase
         $this->assertSame(10000, $j['from']['balance_after']);
     }
 
+    public function test_over_collected_source_bill_keeps_its_surplus_after_the_move(): void
+    {
+        $f = $this->fixture();
+        $this->payment($f['wrongInvoice'], 1000); // total 8000, net 9000, receipt 8000
+        $j = $this->preview($this->token('S', 1), $f)->assertOk()->json();
+        $this->assertSame(0, $j['from']['balance_before']);
+        $this->assertSame(7000, $j['from']['balance_after']); // net 1000 left on an 8000 bill, not 8000
+    }
+
+    public function test_pending_report_on_another_member_of_a_count_package_blocks_the_move_and_the_offer(): void
+    {
+        $f = $this->fixture();
+        $pkg = CoursePackage::create(['student_id' => $f['right']->id, 'campus_id' => 1, 'name' => 'P', 'billing_mode' => 'count', 'total_sessions' => 8, 'remaining_sessions' => 8,
+            'used_sessions' => 0, 'rate' => 1000, 'rate_unit' => 'session', 'class_type' => 'one_on_one', 'paid' => false, 'stop' => false, 'enabled' => true]);
+        $target = $this->bill($f['right'], 8000, 'unpaid', 0, ['PackageID' => $pkg->id]);
+        $other = $this->bill($f['right'], 8000, 'unpaid', 0, ['PackageID' => $pkg->id]); // non-header member
+        $tok = $this->token('S', 1);
+        $this->previewTo($tok, $f['report'], $target['invoice'])->assertOk();
+        $this->pendingReport($f['right'], $other['course'], $other['invoice']);
+        $this->previewTo($tok, $f['report'], $target['invoice'])->assertStatus(422)->assertJsonPath('code', 'reassign_pending_report');
+        $ids = array_column($this->getJson("/api/v1/payment-reports/{$f['report']->id}/reassign-targets?student_id={$f['right']->id}", $this->h($tok))->json('targets'), 'invoice_id');
+        $this->assertNotContains((int) $target['invoice']->id, $ids);
+    }
+
     public function test_state_hash_changes_when_the_source_side_changes(): void
     {
         $f = $this->fixture();

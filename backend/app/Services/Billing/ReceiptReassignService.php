@@ -4,6 +4,7 @@ namespace App\Services\Billing;
 
 use App\Helpers\FeatureFlag;
 use App\Models\Invoice;
+use App\Models\PaymentReport;
 use App\Models\StudentClass;
 use App\Services\InvoiceAmountReconciliationService;
 use Carbon\Carbon;
@@ -128,7 +129,8 @@ final class ReceiptReassignService
                 'course_id' => (int) $from['course']->ID,
                 'invoice_id' => (int) $from['invoice']->id,
                 'balance_before' => $fromBefore,
-                'balance_after' => $fromBefore + $amount,
+                // Money left on the bill after this receipt is taken off, against the resolver's own total (an over-collected bill keeps its surplus).
+                'balance_after' => max(0, (int) $from['money']['total_amount'] - ((int) $from['money']['net_applied'] - $amount)),
             ],
             'to' => [
                 'student_id' => (int) $toInvoice->StudentID,
@@ -179,7 +181,6 @@ final class ReceiptReassignService
             ->whereRaw("COALESCE(Invoice.Status, '') <> 'void'")
             ->whereRaw("COALESCE(StudentClass.closed_reason, '') <> 'refunded'")
             ->whereRaw("NOT EXISTS (SELECT 1 FROM Payment PM WHERE PM.InvoiceID = Invoice.id AND PM.Method IN ($moved))")
-            ->whereRaw("NOT EXISTS (SELECT 1 FROM payment_reports PR WHERE PR.StudentClassID = Invoice.StudentClassID AND PR.status = 'pending')")
             ->orderByDesc('Invoice.id')
             ->limit(200)
             ->pluck('Invoice.id')->all();
@@ -192,6 +193,9 @@ final class ReceiptReassignService
                 $inv = DB::table('Invoice')->where('id', $invoiceId)->first();
                 if ($this->packagePaidHold((int) $inv->id, (string) $inv->Status, (int) $inv->StudentClassID)) {
                     continue;
+                }
+                if ($this->hasPendingReport((int) $inv->StudentClassID, $reportId)) {
+                    continue; // package-aware, same scope as the preview refusal
                 }
                 $money = $this->resolve((int) $inv->id);
                 if ((int) $money['outstanding_amount'] < $amount) {
@@ -341,7 +345,7 @@ final class ReceiptReassignService
 
     private function hasPendingReport(int $courseId, int $exceptReportId): bool
     {
-        return DB::table('payment_reports')->where('StudentClassID', $courseId)->where('status', 'pending')->where('id', '!=', $exceptReportId)->exists();
+        return DB::table('payment_reports')->whereIn('StudentClassID', PaymentReport::pendingScopeCourseIds($courseId))->where('status', 'pending')->where('id', '!=', $exceptReportId)->exists();
     }
 
     private function ageDays(object $report): ?int

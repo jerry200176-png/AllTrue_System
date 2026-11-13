@@ -804,7 +804,7 @@ class PaymentReportController extends Controller
             // Monthly ('date') package members are recorded per member against their own period subtotal, so they keep
             // the per-course pending check (#3892 review); only count-mode packages share one obligation.
             $existingPending = $this->isSharedPackageObligation($package, $lockedCourse)
-                ? PaymentReport::query()->whereIn('StudentClassID', StudentClass::query()->where('PackageID', $package->getKey())->pluck('ID')->all())
+                ? PaymentReport::query()->whereIn('StudentClassID', PaymentReport::pendingScopeCourseIds((int) $lockedCourse->getKey()))
                     ->where('status', 'pending')->first()
                 : PaymentReport::where('StudentClassID', $sc->ID)->where('status', 'pending')->lockForUpdate()->first();
             if ($existingPending) {
