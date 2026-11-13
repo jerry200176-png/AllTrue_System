@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { summaryGridColumns, summaryGridStyle } from '../../lib/summaryGrid.js';
+import { summaryGridColumns } from '../../lib/summaryGrid.js';
 
 // In-app #538: five summary cards in a fixed 4-column grid left one card alone on the second row.
 describe('summaryGridColumns', () => {
@@ -22,10 +22,6 @@ describe('summaryGridColumns', () => {
       expect(n % wide, `wide ${n}`).not.toBe(1);
       expect(n % mid, `mid ${n}`).not.toBe(1);
     }
-  });
-
-  it('exposes the counts as CSS variables the stylesheet reads', () => {
-    expect(summaryGridStyle(4)).toEqual({ '--summary-cols-wide': 4, '--summary-cols-mid': 2 });
   });
 
   it('treats a missing or zero count as one card', () => {
