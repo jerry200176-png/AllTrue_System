@@ -50,6 +50,9 @@
           <p class="tw:max-w-prose tw:px-5 tw:text-tpl-body tw:text-tpl-secondary">先建立一份基準檢測，再發布後登錄學生結果。</p>
         </div>
         <template v-else>
+          <Alert v-if="closeError" tone="danger" :title="`無法關閉檢測：${closeError.title}`" class="tw:text-tpl-body" data-testid="assessment-close-error">
+            <p class="tw:text-[length:var(--tpl-text-body)] tw:[overflow-wrap:anywhere]">{{ closeError.message }}</p>
+          </Alert>
           <div class="assessment-desktop-table tw:overflow-x-auto tw:rounded-xl tw:border tw:max-[641px]:hidden">
             <Table class="tw:text-[length:var(--tpl-text-body)] tw:[&_td]:text-[length:var(--tpl-text-body)] tw:[&_th]:text-[length:var(--tpl-text-caption)]">
               <TableCaption class="tw:sr-only">檢測清單</TableCaption>
@@ -423,6 +426,7 @@ const refreshButton = ref(null);
 const closeTarget = ref(null);
 const closeOpen = ref(false);
 const closing = ref(false);
+const closeError = ref(null);
 const selectedAssessment = ref(null);
 const detailOpen = ref(false);
 const results = ref([]);
@@ -499,7 +503,7 @@ function statusLabel(status) { return { draft: '草稿', published: '已發布',
 function remediationStatusLabel(status) { return { open: '待處理', in_progress: '進行中', completed: '已完成', cancelled: '已取消' }[status] || status; }
 async function loadAll() {
   if (!props.branchId) return;
-  loading.value = true; error.value = '';
+  loading.value = true; error.value = ''; closeError.value = null;
   try {
     const [list, stats, optionRows] = await Promise.all([
       api(`/assessments?campus_id=${encodeURIComponent(props.branchId)}&per_page=100`),
@@ -544,7 +548,7 @@ async function createAssessment() {
   } catch (e) { formError.value = e.message; } finally { saving.value = false; }
 }
 async function publish(assessment) { try { await api(`/assessments/${assessment.id}/publish`, { method: 'POST' }); await loadAll(); } catch (e) { error.value = e.message; } }
-function askClose(assessment) { closeTarget.value = assessment; closeOpen.value = true; }
+function askClose(assessment) { closeTarget.value = assessment; closeError.value = null; closeOpen.value = true; }
 // The 關閉檢測 button emits both a close request and `confirm` in the same click (order is the library's),
 // so the close is decided one tick later: while the request runs the dialog stays open.
 async function onCloseOpenChange(open) {
@@ -557,7 +561,7 @@ async function confirmClose() {
   if (closing.value || !closeOpen.value || !closeTarget.value) return;
   closing.value = true;
   const assessment = closeTarget.value;
-  try { await api(`/assessments/${assessment.id}/close`, { method: 'POST' }); closeOpen.value = false; await loadAll(); } catch (e) { closeOpen.value = false; error.value = e.message; } finally { closing.value = false; }
+  try { await api(`/assessments/${assessment.id}/close`, { method: 'POST' }); closeOpen.value = false; await loadAll(); } catch (e) { closeOpen.value = false; closeError.value = { title: assessment.title, message: e.message }; } finally { closing.value = false; }
 }
 function onDetailOpenChange(open) { detailOpen.value = open; }
 async function openAssessment(assessment) {

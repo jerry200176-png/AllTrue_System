@@ -245,6 +245,21 @@ describe('AssessmentPage on the template', () => {
     expect(confirmSpy).not.toHaveBeenCalled();
   });
 
+  it('a refused 關閉 keeps the list and says which assessment could not be closed', async () => {
+    const w = await mountPage({}, (path, method) => (method === 'POST' ? json({ message: '測試無法關閉' }, false) : null));
+    await w.findAll('button').filter((b) => b.text() === '關閉')[0].trigger('click');
+    await tick();
+    q('[data-testid="confirm-dialog-confirm"]').click();
+    await tick();
+    expect(q('[role=alertdialog]')).toBeNull();
+    const alert = w.find('[data-testid="assessment-close-error"]');
+    expect(alert.attributes('role')).toBe('alert');
+    expect(alert.find('[data-slot="alert-title"]').text()).toBe('無法關閉檢測：測試已發布檢測');
+    expect(alert.text()).toContain('測試無法關閉');
+    expect(w.findAll('.assessment-desktop-table tbody tr')).toHaveLength(2);
+    expect(w.text()).not.toContain('無法載入檢測');
+  });
+
   it('create dialog: labelled fields with the existing wording, first field focused, payload and campus unchanged, one request', async () => {
     const w = await mountPage();
     await w.find('[data-guide="assessment-header"] button').trigger('click');
