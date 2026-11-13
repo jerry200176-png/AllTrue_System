@@ -65,7 +65,7 @@ watch(() => [props.show, props.studentId], () => { if (props.show && props.stude
       <p v-if="loading" role="status">載入中…</p>
       <div v-else-if="error" role="alert"><p>{{ error }}</p><Button variant="outline" class="tw:min-h-11 tw:text-tpl-body" @click="load">重新載入</Button></div>
       <template v-else>
-        <div class="tw:grid tw:gap-3 tw:sm:grid-cols-3">
+        <div v-if="tab !== 'study'" class="tw:grid tw:gap-3 tw:sm:grid-cols-3">
           <label class="tw:grid tw:gap-1">科目
             <select v-model="subject" aria-label="科目" data-testid="timeline-subject" class="profile-filter"><option value="">全部</option><option v-for="s in subjects" :key="s" :value="s">{{ s }}</option></select>
           </label>

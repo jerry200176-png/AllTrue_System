@@ -99,6 +99,9 @@ const thisWeek = () => { today.value = ymdInTaipei(); goTo(weekStartOf(today.val
 const setPending = (id, on) => { const next = { ...pending.value }; if (on) next[id] = true; else delete next[id]; pending.value = next; };
 const patchLocal = (id, patch) => { tasks.value = tasks.value.map((t) => (t.id === id ? { ...t, ...patch } : t)); };
 const markReadOnly = (e) => { if (e.status === 403) readOnly.value = true; };
+const GONE_LINE = '這個任務已不存在，已重新整理';
+/** A 404 on a write: the task was removed elsewhere. Say so and show the server's list again. */
+async function handleGone() { actionError.value = GONE_LINE; await load({ keep: true }); }
 
 async function toggle(task) {
   if (pending.value[task.id] || readOnly.value) return;
@@ -113,7 +116,8 @@ async function toggle(task) {
   } catch (e) {
     patchLocal(task.id, { done_at: before });
     markReadOnly(e);
-    actionError.value = e.status === 403 ? e.message : `「${task.title}」沒有儲存成功，已還原。${e.message}`;
+    if (e.status === 404) await handleGone();
+    else actionError.value = e.status === 403 ? e.message : `「${task.title}」沒有儲存成功，已還原。${e.message}`;
   } finally { setPending(task.id, false); }
 }
 
@@ -142,9 +146,10 @@ async function submit() {
     await api(f.id ? `/study-tasks/${f.id}` : `/students/${props.studentId}/study-tasks`, { method: f.id ? 'PATCH' : 'POST', body: JSON.stringify(body) });
   } catch (e) {
     markReadOnly(e);
-    formError.value = e.message; // the dialog stays open with everything the user typed
     saving.value = false;
     if (f.id) setPending(f.id, false);
+    if (e.status === 404 && f.id) { form.value = null; await handleGone(); return; }
+    formError.value = e.message; // the dialog stays open with everything the user typed
     return;
   }
   const moved = f.id && !days.value.includes(body.due_date);
@@ -167,7 +172,8 @@ async function confirmDelete() {
     await load({ keep: true });
   } catch (e) {
     markReadOnly(e);
-    actionError.value = e.status === 403 ? e.message : `「${task.title}」沒有刪除成功。${e.message}`;
+    if (e.status === 404) await handleGone();
+    else actionError.value = e.status === 403 ? e.message : `「${task.title}」沒有刪除成功。${e.message}`;
   } finally { setPending(task.id, false); }
 }
 
@@ -181,7 +187,7 @@ watch(weekStart, () => load());
 
 <template>
   <section class="tw:@container tw:space-y-3 tw:text-tpl-body" aria-label="本週讀書計畫" :aria-busy="loading || undefined" data-testid="study-week">
-    <SectionCard title="本週讀書計畫" :count="tasks.length ? `${doneCount}/${tasks.length}` : null">
+    <SectionCard title="讀書計畫" :count="tasks.length ? `${doneCount}/${tasks.length}` : null">
       <template #actions>
         <Button variant="outline" :class="control.row" aria-label="上一週" data-testid="week-prev" @click="prevWeek">上一週</Button>
         <span class="tw:min-w-24 tw:text-center tw:font-semibold tw:tabular-nums tw:max-md:order-first tw:max-md:basis-full tw:max-md:text-left" data-testid="week-label" role="status">{{ weekRangeText(weekStart) }}</span>
@@ -218,7 +224,7 @@ watch(weekStart, () => load());
         <Button v-if="!readOnly" :class="control.page" data-testid="empty-add" @click="openAddFirst"><Plus aria-hidden="true" />新增任務</Button>
       </div>
 
-      <div v-else class="tw:grid tw:grid-cols-1 tw:border-t tw:border-border tw:@4xl:grid-cols-7" data-testid="week-grid">
+      <div v-else-if="!loadError" class="tw:grid tw:grid-cols-1 tw:border-t tw:border-border tw:@4xl:grid-cols-7" data-testid="week-grid">
         <div v-for="d in days" :key="d" :data-testid="`day-${d}`" :aria-current="d === today ? 'date' : undefined"
           class="tw:min-w-0 tw:border-b tw:border-border tw:px-5 tw:py-2 tw:last:border-b-0 tw:@4xl:min-h-48 tw:@4xl:border-b-0 tw:@4xl:border-l tw:@4xl:px-2 tw:@4xl:first:border-l-0"
           :class="d === today ? 'tw:bg-[var(--ds-primary-wash)]' : ''">
@@ -241,7 +247,7 @@ watch(weekStart, () => load());
                 @click="!readOnly && openEdit(t)">
                 <span class="tw:block tw:font-semibold tw:break-words tw:text-pretty" :class="[t.done_at ? 'tw:line-through tw:text-tpl-secondary' : '', readOnly ? '' : 'tw:group-hover:underline']">{{ t.title }}</span>
                 <span class="tw:mt-1 tw:flex tw:flex-wrap tw:items-center tw:gap-x-2 tw:gap-y-1 tw:text-tpl-caption tw:font-normal tw:text-tpl-secondary">
-                  <StatusBadge>{{ KIND_LABELS[t.kind] || KIND_LABELS.other }}</StatusBadge>
+                  <span class="tw:font-semibold">{{ KIND_LABELS[t.kind] || KIND_LABELS.other }}</span>
                   <span v-if="t.minutes" class="tw:tabular-nums tw:whitespace-nowrap">{{ t.minutes }} 分鐘</span>
                   <span v-if="t.plan_unit_id && unitTitle[t.plan_unit_id]" class="tw:break-words">{{ unitTitle[t.plan_unit_id] }}</span>
                 </span>

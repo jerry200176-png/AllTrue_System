@@ -265,6 +265,36 @@ describe('StudentStudyWeek (issue 5269 step 2)', () => {
     expect(byId(w, 'notice').text()).toBe('已刪除');
   });
 
+  it('a load error shows no empty days', async () => {
+    routes['GET /api/v1/students/1/study-tasks'] = () => json({ message: 'boom' }, 500);
+    const w = await mountIt();
+    expect(byId(w, 'week-grid').exists()).toBe(false);
+    expect(w.text()).not.toContain('沒有安排');
+  });
+
+  it('404 on a tick, an edit and a delete says the task is gone and reloads the week', async () => {
+    const gone = '這個任務已不存在，已重新整理';
+    routes['PATCH /api/v1/study-tasks/1'] = () => json({ message: 'No query results for model' }, 404);
+    routes['DELETE /api/v1/study-tasks/2'] = () => json({ message: 'No query results for model' }, 404);
+    const w = await mountIt();
+    let reads = calls.filter((c) => c.method === 'GET' && c.url.includes('study-tasks')).length;
+    await byId(w, 'done-1').setValue(true); await flushPromises();
+    expect(byId(w, 'action-error').text()).toBe(gone);
+    expect(byId(w, 'done-1').element.checked).toBe(false);
+    expect(calls.filter((c) => c.method === 'GET' && c.url.includes('study-tasks')).length).toBe(reads + 1);
+    reads += 1;
+    await byId(w, 'title-1').trigger('click');
+    await byId(w, 'f-save').trigger('click'); await flushPromises();
+    expect(byId(w, 'action-error').text()).toBe(gone);
+    expect(byId(w, 'f-title').exists()).toBe(false);
+    expect(calls.filter((c) => c.method === 'GET' && c.url.includes('study-tasks')).length).toBe(reads + 1);
+    await byId(w, 'title-2').trigger('click');
+    await byId(w, 'f-delete').trigger('click'); await flushPromises();
+    document.querySelector('[data-testid="confirm-dialog-confirm"]').click(); await flushPromises();
+    expect(byId(w, 'action-error').text()).toBe(gone);
+    expect(w.text()).not.toContain('No query results');
+  });
+
   it('is axe clean', async () => {
     const w = await mountIt();
     await byId(w, 'title-1').trigger('click');

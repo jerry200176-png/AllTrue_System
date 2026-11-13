@@ -1,6 +1,7 @@
 // issue 5269 step 2: date and grouping helpers for the teacher's weekly study plan.
 // Dates are date-only 'YYYY-MM-DD' strings; day math reuses learningPlanGantt (UTC day numbers, no local-time parsing).
-import { addDays, dayNumber, formatMd } from './learningPlanGantt';
+import { addDays, formatMd } from './learningPlanGantt';
+import { getWeekRange } from './calendarPrint.js';
 
 const WEEKDAYS = ['一', '二', '三', '四', '五', '六', '日'];
 
@@ -14,11 +15,10 @@ export const KIND_OPTIONS = Object.freeze([
 ]);
 export const KIND_LABELS = Object.freeze(Object.fromEntries(KIND_OPTIONS.map((k) => [k.value, k.label])));
 
-/** Day number 1970-01-01 was a Thursday, so (n + 3) % 7 is 0 on Monday. */
-const weekdayIndex = (ymd) => (((dayNumber(ymd) + 3) % 7) + 7) % 7;
-
-export const weekStartOf = (ymd) => addDays(ymd, -weekdayIndex(ymd));
+// Monday to Sunday of any day: calendarPrint's getWeekRange (UTC parse of a date-only string), not a second implementation.
+export const weekStartOf = (ymd) => getWeekRange(ymd).start;
 export const weekDays = (start) => Array.from({ length: 7 }, (_, i) => addDays(start, i));
+const weekdayIndex = (ymd) => weekDays(weekStartOf(ymd)).indexOf(ymd);
 export const dayLabel = (ymd) => `週${WEEKDAYS[weekdayIndex(ymd)]} ${formatMd(ymd)}`;
 export const weekRangeText = (start) => `${formatMd(start)} – ${formatMd(addDays(start, 6))}`;
 
