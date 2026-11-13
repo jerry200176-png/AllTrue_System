@@ -4,6 +4,7 @@ namespace App\Console\Commands;
 
 use App\Models\Invoice;
 use App\Services\Billing\InvoiceAmountParityCensus;
+use App\Support\AppClockSql;
 use App\Support\AttendanceStatus;
 use App\Support\ContractPeriod;
 use App\Support\SchedulerEvidence;
@@ -54,7 +55,7 @@ class VerifyBugReproductions extends Command
                 'sql' => "SELECT COUNT(*) AS c FROM ClassSession cs
                           JOIN StudentClass sc ON sc.ID = cs.StudentClassID
                           WHERE LOWER(cs.Status) IN ({$fillableStatuses})
-                            AND CONCAT(cs.SessionDate, ' ', COALESCE(cs.StartTime, '00:00:00')) <= NOW()
+                            AND CONCAT(cs.SessionDate, ' ', COALESCE(cs.StartTime, '00:00:00')) <= CAST(:app_now AS DATETIME)
                             AND NOT EXISTS (SELECT 1 FROM LearningRecord lr
                                             WHERE lr.ClassSessionID = cs.id AND lr.VoidedAt IS NULL)",
             ],
@@ -77,7 +78,7 @@ class VerifyBugReproductions extends Command
                           WHERE (sc.Stop = 0 OR sc.Stop IS NULL) AND sc.ScheduleMode = 'count'
                             AND sc.RemainingSessions > 0
                             AND NOT EXISTS (SELECT 1 FROM ClassSession cs
-                                            WHERE cs.StudentClassID = sc.ID AND cs.SessionDate >= CURDATE()
+                                            WHERE cs.StudentClassID = sc.ID AND cs.SessionDate >= CAST(:app_today AS DATE)
                                               AND LOWER(cs.Status) NOT IN ('cancelled','voided'))",
             ],
             [
@@ -154,10 +155,10 @@ class VerifyBugReproductions extends Command
                                                                              WHERE l.package_id = p.id), 0) > 0
                             AND EXISTS (SELECT 1 FROM ClassSession cs
                                         WHERE cs.StudentClassID = sc.ID
-                                          AND cs.SessionDate >= DATE_SUB(CURDATE(), INTERVAL 21 DAY) AND cs.SessionDate < CURDATE()
+                                          AND cs.SessionDate >= DATE_SUB(CAST(:app_today AS DATE), INTERVAL 21 DAY) AND cs.SessionDate < CAST(:app_today AS DATE)
                                           AND LOWER(cs.Status) NOT IN ('cancelled','voided'))
                             AND NOT EXISTS (SELECT 1 FROM ClassSession cs
-                                            WHERE cs.StudentClassID = sc.ID AND cs.SessionDate >= CURDATE()
+                                            WHERE cs.StudentClassID = sc.ID AND cs.SessionDate >= CAST(:app_today AS DATE)
                                               AND LOWER(cs.Status) NOT IN ('cancelled','voided'))",
             ],
             [
@@ -236,7 +237,7 @@ class VerifyBugReproductions extends Command
 
         foreach ($conditions as $cond) {
             $detail = isset($cond['sql']) ? null : $this->census();
-            $count = $detail === null ? (int) (DB::selectOne($cond['sql'])->c ?? 0) : $detail['mismatch_count'];
+            $count = $detail === null ? (int) (DB::selectOne(...AppClockSql::bind($cond['sql']))->c ?? 0) : $detail['mismatch_count'];
             // Known-baseline allowance (config/reproduction_baselines.php): an enforced condition fails only above it;
             // a listed null means the baseline is not measured yet (reported, never failing).
             $baseline = config('reproduction_baselines.' . $cond['key'], 0);

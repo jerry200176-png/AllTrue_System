@@ -45,3 +45,6 @@ Claude Code on the web／其他雲端 session 不承接本機 WSL2 的環境；�
 
 ### G-013：`IsContractException` 是「不在每週固定時段」，不是「在合約期間外」
 `ClassSession.IsContractException` 由 `ContractScheduleMatcher` 以星期／時間／時長推導，且 `rowOccupiesPurchasedQuota` 會用它；堂次日期早於合約開始日請讀 `App\Support\ContractPeriod`（API `before_contract_start`，讀取時推導），不要重用該旗標（R139、#5198）。
+
+### G-014：SQL 的 `CURDATE()`／`NOW()` 是資料庫時區，不是台北時間
+日期條件的「今天／現在」用 `App\Support\AppClockSql` 的 `:app_today`／`:app_now` 綁定值；CI 的 MySQL 是 UTC，台北 00:00–08:00 會差一天（`AI_REGRESSION_LESSONS` R140）。

@@ -23,7 +23,7 @@ const contract = (id, date, reason = null, extra = {}) => ({
 const order = () => wrapper.findAll('.course-row, .history-course-card').map((row) => Number(row.text().match(/測試老師(\d+)/)?.[1]));
 async function open(courses, role = 'director') {
   fixture.courses = courses;
-  wrapper = shallowMount(CourseManagement, { props: { branchId: 15, userRole: role } });
+  wrapper = shallowMount(CourseManagement, { props: { branchId: 15, userRole: role }, global: { stubs: { PageHeader: false } } });
   await flushPromises();
 }
 const expandHistory = async () => {
