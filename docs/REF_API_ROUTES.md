@@ -257,6 +257,17 @@
 | POST | `api/v1/course-packages/{id}/rebuild-ledger` | `CoursePackageController@rebuildLedger` | role+campus |
 | POST | `api/v1/course-packages/{id}/recompute` | `CoursePackageController@recompute` | role+campus |
 
+## /api/v1/curriculum-templates
+
+| Method | URI | Action | Auth |
+|--------|-----|--------|------|
+| GET | `api/v1/curriculum-templates` | `CurriculumTemplateController@index` | role+campus |
+| POST | `api/v1/curriculum-templates` | `CurriculumTemplateController@store` | role+campus |
+| GET | `api/v1/curriculum-templates/{template}` | `CurriculumTemplateController@show` | role+campus |
+| PATCH | `api/v1/curriculum-templates/{template}` | `CurriculumTemplateController@update` | role+campus |
+| POST | `api/v1/curriculum-templates/{template}/archive` | `CurriculumTemplateController@archive` | role+campus |
+| PUT | `api/v1/curriculum-templates/{template}/units` | `CurriculumTemplateController@replaceUnits` | role+campus |
+
 ## /api/v1/director
 
 | Method | URI | Action | Auth |

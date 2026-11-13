@@ -1,0 +1,5 @@
+## 2026-11-13 — feat(exams): 教材範本庫 (#4970 step 2)
+<!-- release-notes: staff_update=staff-2026-11-13-curriculum-template-library -->
+- New tables `curriculum_templates` and `curriculum_template_units` (additive, no unique/foreign keys). 段考成績 gets a 教材範本庫 tab: directors create a template per subject and grade (title, publisher, optional term, draft/active/archived), edit its ordered units and tag each unit with the 段考 it leads to (段考一/二/期末, or none). Teachers read only. Archive replaces delete; the default list hides archived. Nothing applies a template to a student yet (step 4).
+- New `GET/POST curriculum-templates`, `GET/PATCH curriculum-templates/{id}`, `PUT curriculum-templates/{id}/units` (replace all units, one transaction), `POST curriculum-templates/{id}/archive`. All campus-scoped, same authorization as `exam-periods`.
+- Step 4 note: unit ids change on every save (replace = delete + insert). Applying a template must copy unit content (title, note, exam_sequence, order) into the student plan and treat any source unit id as informational only. Unit replacement is refused while a template is archived; PATCH `status` restores it.

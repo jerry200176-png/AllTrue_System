@@ -16,6 +16,7 @@
       <TabsList>
         <TabsTrigger value="rounds">段考場次</TabsTrigger>
         <TabsTrigger value="periods">各校段考日期</TabsTrigger>
+        <TabsTrigger value="curriculum">教材範本庫</TabsTrigger>
       </TabsList>
       <TabsContent value="rounds">
       <AtSkeleton v-if="loading" rows="4" />
@@ -60,6 +61,9 @@
       </TabsContent>
       <TabsContent value="periods">
         <SchoolExamPeriodsPanel :branch-id="branchId" :is-director="isDirector" />
+      </TabsContent>
+      <TabsContent value="curriculum">
+        <CurriculumTemplatesPanel :branch-id="branchId" :is-director="isDirector" />
       </TabsContent>
     </Tabs>
 
@@ -211,6 +215,7 @@ import ActionMenu from '../components/ActionMenu.vue';
 import { GRADES } from '../lib/constants';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
 import SchoolExamPeriodsPanel from '../components/SchoolExamPeriodsPanel.vue';
+import CurriculumTemplatesPanel from '../components/CurriculumTemplatesPanel.vue';
 import { supabase } from '../supabase';
 import ExamScoreCell from '../components/exams/ExamScoreCell.vue';
 import { describeScore, examErrorMessage, historyActionLabel, loadScoreHistory, saveScores } from '../lib/examScoresApi';

@@ -1,0 +1,14 @@
+updates:
+  - id: staff-2026-11-13-curriculum-template-library
+    published_at: "2026-11-13"
+    audiences:
+      - director
+      - teacher
+    importance: digest
+    title: 教材範本庫
+    summary: 段考成績頁新增「教材範本庫」，先把各科各年級的單元順序存起來。
+    items:
+      - category: added
+        text: 主任可建立教材範本，排好單元順序並標出每個單元對應哪一次段考，老師可查看。
+    source_refs:
+      - "changelog:2026-11-13:curriculum-template-library"
