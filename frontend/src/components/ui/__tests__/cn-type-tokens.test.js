@@ -16,6 +16,10 @@ describe('template type tokens survive a colour class', () => {
     expect(cn('tw:text-tpl-caption', 'tw:text-tpl-body')).toBe('tw:text-tpl-body');
   });
 
+  it('a later built-in size replaces the template token (fails without the extended merge config)', () => {
+    expect(cn('tw:text-tpl-caption', 'tw:text-sm')).toBe('tw:text-sm');
+  });
+
   it.each(['success', 'warning', 'danger', 'neutral'])('StatusBadge %s keeps its caption size and its tone colour', (tone) => {
     const w = mount(StatusBadge, { props: { tone }, slots: { default: '含暫停課程' } });
     expect(w.classes()).toContain('tw:text-tpl-caption');
