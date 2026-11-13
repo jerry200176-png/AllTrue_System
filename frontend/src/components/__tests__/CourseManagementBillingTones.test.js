@@ -86,3 +86,13 @@ describe('tones.js class sets', () => {
     expect('tw:h-14tw:border-0 tw:bg-muted').toMatch(GLUED);
   });
 });
+
+describe('dataTable cells in dark mode', () => {
+  it('cells and the totals row override the global `tr:hover td` fill with an important, token-based background', () => {
+    expect(dataTable.cell).toContain('tw:bg-transparent!');
+    expect(dataTable.name).toContain('tw:bg-transparent!');
+    expect(dataTable.num).toContain('tw:bg-transparent!');
+    expect(dataTable.total).toContain('tw:bg-muted!');
+    expect(dataTable.cell).not.toMatch(/#[0-9a-f]{3,8}/i);
+  });
+});

@@ -267,6 +267,43 @@ const COURSE_MGMT_BILLING = {
   },
 };
 
+// Dark mode, hovered row (Codex finding on issue 4989 slice 5): styles.css has a global `tr:hover td` background rule; the shared dataTable cell classes must
+// override it, or light text lands on near-white. Asserts the text/background contrast of every cell of the hovered row is at least 4.5 (WCAG AA).
+const COURSE_MGMT_BILLING_DARK = {
+  ...COURSE_MGMT_BILLING,
+  key: 'course-mgmt (billing table, dark, row hovered)',
+  setup: async (page) => {
+    await page.evaluate(() => document.documentElement.setAttribute('data-theme', 'dark'));
+    await page.getByRole('tab', { name: '帳務資料', exact: true }).first().click();
+    await expect(page.locator('.student-billing-table tbody tr')).toHaveCount(BILLING_CASES.length);
+    await page.locator('.student-billing-table tbody tr').nth(1).hover();
+  },
+  extra: {
+    run: () => {
+      const probe = document.createElement('canvas').getContext('2d', { willReadFrequently: true });
+      const rgba = (css) => { probe.clearRect(0, 0, 1, 1); probe.fillStyle = '#000'; probe.fillStyle = css; probe.fillRect(0, 0, 1, 1); const [r, g, b, a] = probe.getImageData(0, 0, 1, 1).data; return [r, g, b, a / 255]; };
+      const over = (top, under) => [0, 1, 2].map((i) => top[i] * top[3] + under[i] * (1 - top[3])).concat([1]);
+      const lum = ([r, g, b]) => { const f = (c) => { const v = c / 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; }; return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b); };
+      const backdrop = (el) => { const chain = []; for (let n = el; n; n = n.parentElement) chain.push(rgba(getComputedStyle(n).backgroundColor)); return chain.reduceRight((acc, c) => over(c, acc), [255, 255, 255, 1]); };
+      const tr = [...document.querySelectorAll('.student-billing-table tbody tr')][1];
+      return {
+        dark: document.documentElement.getAttribute('data-theme') === 'dark', hovered: tr.matches(':hover'),
+        cells: [...tr.querySelectorAll('td')].map((td) => {
+          const bg = backdrop(td); const fg = over(rgba(getComputedStyle(td).color), bg);
+          const [l1, l2] = [lum(fg), lum(bg)].sort((a, b) => b - a);
+          return { text: td.textContent.trim().slice(0, 12), ratio: Math.round(((l1 + 0.05) / (l2 + 0.05)) * 100) / 100 };
+        }),
+      };
+    },
+    assert: (r) => {
+      expect(r.dark, 'the page is in dark mode').toBe(true);
+      expect(r.hovered, 'the second billing row is hovered').toBe(true);
+      expect(r.cells.length).toBe(6);
+      for (const c of r.cells) expect(c.ratio, `text 「${c.text}」 on the hovered dark row is at least 4.5:1 (got ${c.ratio})`).toBeGreaterThanOrEqual(4.5);
+    },
+  },
+};
+
 /** PAGES: { key, url, mock(page), names (exact texts that must stay on one line), rows (selector groups whose visible members must share a left edge), setup?(page) } */
 const PAGES = [
   {
@@ -341,6 +378,7 @@ const PAGES = [
   COURSE_MGMT_HELP_OPEN,
   COURSE_MGMT_HISTORY,
   COURSE_MGMT_BILLING,
+  COURSE_MGMT_BILLING_DARK,
   {
     key: 'teacher-eligibility',
     url: '/teacher-eligibility-pilot-mount.html',
