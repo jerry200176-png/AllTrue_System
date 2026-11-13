@@ -9,9 +9,10 @@ import { fileURLToPath } from 'node:url';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const source = readFileSync(resolve(__dirname, '../../pages/CourseManagement.vue'), 'utf8');
 
-const ledgerButtonAt = source.indexOf('class="small ghost btn-invoices"');
+// issue 4989 slice 5: the row buttons moved from `small ghost` / `small primary` to the template's rowAction class sets.
+const ledgerButtonAt = source.indexOf(`:class="[rowAction.secondary, 'btn-invoices']"`);
 const billingRowActions = source.slice(
-  source.lastIndexOf('<td class="cell-actions">', ledgerButtonAt),
+  source.lastIndexOf(`<td :class="[dataTable.cell, 'tw:pr-5']">`, ledgerButtonAt),
   source.indexOf('</td>', ledgerButtonAt),
 );
 
@@ -22,7 +23,7 @@ describe('課程帳務列 · 不重複顯示「在這裡看帳務」 (#3982)', (
   });
 
   it('hides the main action when its label equals the ledger button', () => {
-    const mainAction = billingRowActions.match(/<button v-(?:else-)?if="([^"]+)" class="small primary"[^>]*>\{\{ paymentNextActionLabel\(row\.course\) \}\}<\/button>/);
+    const mainAction = billingRowActions.match(/<button v-(?:else-)?if="([^"]+)" :class="rowAction\.primary"[^>]*>\{\{ paymentNextActionLabel\(row\.course\) \}\}<\/button>/);
     expect(mainAction).not.toBeNull();
     expect(mainAction[1]).toBe('showsBillingRowNextAction(row.course)');
     expect(source).toContain(

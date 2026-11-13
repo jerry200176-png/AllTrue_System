@@ -663,92 +663,91 @@
             tabindex="0"
             :aria-labelledby="studentGroupTabId(group.key, 'billing')"
           >
-            <div v-if="studentBillingState[group.key]?.loading" class="student-billing-state">載入帳務中…</div>
-            <div v-else-if="studentBillingState[group.key]?.error" class="student-billing-state student-billing-error" role="alert">
+            <div v-if="studentBillingState[group.key]?.loading" :class="['student-billing-state', BILLING_STATE, 'tw:text-tpl-secondary']">載入帳務中…</div>
+            <div v-else-if="studentBillingState[group.key]?.error" :class="['student-billing-state student-billing-error', BILLING_STATE, toneText.danger]" role="alert">
               {{ studentBillingState[group.key].error }}
             </div>
             <div v-else class="student-billing-content">
-              <div v-if="studentBillingState[group.key]?.ledgerSummary" class="student-ledger-summary" role="status">
-                <div>
-                  <strong>學生歷史帳務</strong>
-                  <span v-if="Number(studentBillingState[group.key].ledgerSummary.outstanding_total || 0) > 0">
-                    尚有未繳 ${{ formatMoney(studentBillingState[group.key].ledgerSummary.outstanding_total) }}；各期帳務仍保留在原期間。
+              <div v-if="studentBillingState[group.key]?.ledgerSummary" class="tw:flex tw:flex-wrap tw:items-center tw:justify-between tw:gap-x-4 tw:gap-y-3 tw:border-b tw:border-border tw:px-5 tw:py-3 tw:text-tpl-body tw:text-tpl-secondary" role="status">
+                <div class="tw:grid tw:min-w-0 tw:gap-0.5">
+                  <strong class="tw:text-tpl-body tw:font-semibold tw:text-foreground">學生歷史帳務</strong>
+                  <span v-if="Number(studentBillingState[group.key].ledgerSummary.outstanding_total || 0) > 0" class="tw:text-pretty">
+                    <span :class="[toneText.danger, 'tw:font-semibold tw:tabular-nums']">尚有未繳 ${{ formatMoney(studentBillingState[group.key].ledgerSummary.outstanding_total) }}</span>；各期帳務仍保留在原期間。
                   </span>
-                  <span v-else>目前沒有未繳帳務；各期帳務仍保留在原期間。</span>
+                  <span v-else class="tw:text-pretty">目前沒有未繳帳務；各期帳務仍保留在原期間。</span>
                 </div>
                 <button
                   v-if="shouldShowPaymentAction(studentBillingAnchorCourse(group))"
                   type="button"
-                  class="small primary"
+                  :class="rowAction.primary"
                   @click="onPaymentNextAction(studentBillingAnchorCourse(group))"
                 >{{ paymentNextActionLabel(studentBillingAnchorCourse(group)) }}</button>
               </div>
-            <table class="course-table student-billing-table" aria-label="帳務資料">
-              <caption v-if="hasMixedPackagePaymentStatuses(group.key)" class="student-billing-note">
-                <span class="material-symbols-outlined" aria-hidden="true">info</span>
+              <div v-if="hasMixedPackagePaymentStatuses(group.key)" :id="`student-billing-note-${group.key}`" role="note" :class="['student-billing-note tw:flex tw:items-start tw:gap-2 tw:border-b tw:border-border tw:bg-[var(--ds-warning-wash)] tw:px-5 tw:py-3 tw:text-left tw:text-tpl-caption tw:text-pretty', toneText.warning]">
+                <span class="material-symbols-outlined tw:text-tpl-body" aria-hidden="true">info</span>
                 <span>共用方案的繳費狀態按科目分開顯示；請以每一列狀態為準。「{{ REPORT_STATUS_LABELS.pending }}」的項目請前往帳務中心確認。</span>
-              </caption>
+              </div>
+            <table :class="['student-billing-table tw:w-full tw:min-w-[640px] tw:border-collapse', dataTable.table]" aria-label="帳務資料" :aria-describedby="hasMixedPackagePaymentStatuses(group.key) ? `student-billing-note-${group.key}` : undefined">
               <thead>
                 <tr>
-                  <th>科目</th>
-                  <th>合約／期間</th>
-                  <th>繳費</th>
-                  <th>最近回報</th>
-                  <th>收據</th>
-                  <th class="col-actions">操作</th>
+                  <th scope="col" :class="[dataTable.head, BILLING_HEAD, 'tw:pl-5']">科目</th>
+                  <th scope="col" :class="[dataTable.head, BILLING_HEAD]">合約／期間</th>
+                  <th scope="col" :class="[dataTable.head, BILLING_HEAD]">繳費</th>
+                  <th scope="col" :class="[dataTable.head, BILLING_HEAD]">最近回報</th>
+                  <th scope="col" :class="[dataTable.head, BILLING_HEAD]">收據</th>
+                  <th scope="col" :class="[dataTable.head, BILLING_HEAD, 'tw:pr-5']"><span class="tw:sr-only">操作</span></th>
                 </tr>
               </thead>
               <tbody>
                 <tr v-if="!(studentBillingState[group.key]?.rows || []).length">
-                  <td colspan="6" class="student-billing-state">此學生目前沒有課程可對帳</td>
+                  <td colspan="6" :class="['student-billing-state', BILLING_STATE, 'tw:text-tpl-secondary']">此學生目前沒有課程可對帳</td>
                 </tr>
-                <tr v-for="row in (studentBillingState[group.key]?.rows || [])" :key="row.course.id">
-                  <td>
-                    <div class="subject-line">
-                      <span class="tag subject-tag">{{ getSubjectLabel(row.course.subject) }}</span>
-                    </div>
-                    <div v-if="currentInvoiceForBillingRow(row)" class="price-line">應繳 ${{ formatMoney(currentInvoiceForBillingRow(row).total_amount ?? 0) }}</div>
-                    <div v-else class="price-line price-line--pending">應繳：待開單</div>
-                    <div v-if="!currentInvoiceForBillingRow(row) && (row.course.Charge ?? row.course.charge) != null" class="price-line price-line--estimate">估算 ${{ formatMoney(row.course.Charge ?? row.course.charge) }}</div>
+                <tr v-for="row in (studentBillingState[group.key]?.rows || [])" :key="row.course.id" class="tw:hover:bg-muted/60">
+                  <td :class="[dataTable.cell, 'tw:min-w-[8em] tw:pl-5']">
+                    <span class="tw:block tw:font-semibold">{{ getSubjectLabel(row.course.subject) }}</span>
+                    <span v-if="currentInvoiceForBillingRow(row)" data-testid="billing-amount" :class="dataTable.amount">應繳 ${{ formatMoney(currentInvoiceForBillingRow(row).total_amount ?? 0) }}</span>
+                    <span v-else data-testid="billing-amount" :class="dataTable.amountPending">應繳：待開單</span>
+                    <span v-if="!currentInvoiceForBillingRow(row) && (row.course.Charge ?? row.course.charge) != null" data-testid="billing-amount" :class="dataTable.amountEstimate">估算 ${{ formatMoney(row.course.Charge ?? row.course.charge) }}</span>
                   </td>
-                  <td data-testid="billing-contract-period">
-                    <div>{{ formatCourseRef(row.course.id) }}</div>
-                    <div class="hint">{{ formatCoursePeriod(row.course.first_class_date || row.course.StartDate, row.course.end_date || row.course.EndDate) }}</div>
+                  <td :class="dataTable.cell" data-testid="billing-contract-period">
+                    <div :class="dataTable.fact">{{ formatCourseRef(row.course.id) }}</div>
+                    <div :class="[dataTable.sub, 'tw:tabular-nums']"><span :class="dataTable.fact">{{ formatCoursePeriod(row.course.first_class_date || row.course.StartDate, row.course.end_date || row.course.EndDate) }}</span></div>
                   </td>
-                  <td>
-                    <span
-                      :class="['small', 'payment-status-badge', paymentStatusButtonClass(row.course), { 'payment-status-badge--short': paymentStatusChipText(row.course) !== paymentStatusButtonLabel(row.course) }]"
+                  <td :class="dataTable.cell">
+                    <StatusBadge
+                      :tone="paymentStatusTone(row.course)"
+                      :class="['payment-status-badge', { 'payment-status-badge--short': paymentStatusChipText(row.course) !== paymentStatusButtonLabel(row.course) }, 'tw:max-w-full tw:cursor-default', paymentStatusChipText(row.course).length <= PAYMENT_CHIP_NOWRAP_MAX ? 'tw:whitespace-nowrap' : 'tw:whitespace-normal tw:text-left']"
                       role="status"
                       :title="paymentStatusHelpTitle(row.course)"
                       :aria-label="paymentStatusButtonLabel(row.course)"
-                    >{{ paymentStatusChipText(row.course) }}</span>
+                    >{{ paymentStatusChipText(row.course) }}</StatusBadge>
                   </td>
-                  <td>
-                    <template v-if="row.reports?.[0]">
-                      {{ row.reports[0].payment_date || '—' }}
-                      · {{ reportStatusLabel(row.reports[0].status) }}
-                      <span v-if="row.reports[0].account_last5"> · {{ row.reports[0].account_last5 }}</span>
-                    </template>
-                    <span v-else class="hint">尚無回報</span>
+                  <td :class="[dataTable.cell, 'tw:min-w-[7em] tw:tabular-nums']">
+                    <div v-if="row.reports?.[0]" class="tw:block tw:text-tpl-caption tw:text-foreground">
+                      <span :class="dataTable.fact">{{ row.reports[0].payment_date || '—' }}</span>
+                      · <span :class="dataTable.fact">{{ reportStatusLabel(row.reports[0].status) }}</span>
+                      <template v-if="row.reports[0].account_last5"> · <span :class="dataTable.fact">{{ row.reports[0].account_last5 }}</span></template>
+                    </div>
+                    <span v-else :class="dataTable.sub">尚無回報</span>
                   </td>
-                  <td>
-                    <span v-if="row.reports?.some((r) => r.status === 'confirmed')" class="hint">可開收據</span>
-                    <span v-else class="hint">核對入帳後才能開收據</span>
+                  <td :class="[dataTable.cell, 'tw:min-w-[7em] tw:2xl:min-w-[11em]']">
+                    <span v-if="row.reports?.some((r) => r.status === 'confirmed')" :class="dataTable.sub">可開收據</span>
+                    <span v-else :class="dataTable.sub">核對入帳後才能開收據</span>
                   </td>
-                  <td class="cell-actions">
-                    <div class="action-btns-row">
+                  <td :class="[dataTable.cell, 'tw:pr-5']">
+                    <div class="tw:flex tw:flex-wrap tw:items-center tw:gap-2">
                       <button
                         v-if="isPaymentNoticeAvailable(row.course) && !billingPackageLead(row, group)"
-                        class="small ghost btn-payment-slip"
+                        :class="[rowAction.secondary, 'btn-payment-slip']"
                         data-testid="billing-payment-slip-action"
                         type="button"
                         title="產生繳費單"
                         @click="openPaymentSlip(row.course)"
                       >繳費單</button>
-                      <button class="small ghost btn-invoices" type="button" title="在這裡打開學生帳務" @click="openTuitionLedger(row.course)">在這裡看帳務</button>
-                      <span v-if="billingPackageLead(row, group)" class="hint" data-testid="billing-package-follower">共用方案是一筆款項，請在「{{ getSubjectLabel(billingPackageLead(row, group).subject) }}」那列處理繳費單與繳費回報</span>
-                      <button v-else-if="showsBillingRowNextAction(row.course)" class="small primary" type="button" @click="onPaymentNextAction(row.course)">{{ paymentNextActionLabel(row.course) }}</button>
-                      <span v-if="isTutoringBillingAnomaly(row.course)" class="payment-anomaly-hint" role="alert">帳務資料需修正，請由主任檢查帳務中心。</span>
+                      <button :class="[rowAction.secondary, 'btn-invoices']" type="button" title="在這裡打開學生帳務" @click="openTuitionLedger(row.course)">在這裡看帳務</button>
+                      <span v-if="billingPackageLead(row, group)" :class="[dataTable.sub, 'tw:max-w-[22rem]']" data-testid="billing-package-follower">共用方案是一筆款項，請在「{{ getSubjectLabel(billingPackageLead(row, group).subject) }}」那列處理繳費單與繳費回報</span>
+                      <button v-else-if="showsBillingRowNextAction(row.course)" :class="rowAction.primary" type="button" @click="onPaymentNextAction(row.course)">{{ paymentNextActionLabel(row.course) }}</button>
+                      <span v-if="isTutoringBillingAnomaly(row.course)" :class="['tw:text-tpl-caption tw:font-semibold', toneText.danger]" role="alert">帳務資料需修正，請由主任檢查帳務中心。</span>
                     </div>
                   </td>
                 </tr>
@@ -1368,7 +1367,7 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import TextSizeToggle from '../components/TextSizeToggle.vue';
-import { PageHeader, StatStrip, StatItem, SectionCard, StatusBadge, CollapsibleGroup, contractGrid, control, factRow, pageShell, pageTabs, rowAction, surface, toneText } from '@/components/ui/page';
+import { PageHeader, StatStrip, StatItem, SectionCard, StatusBadge, CollapsibleGroup, contractGrid, control, dataTable, factRow, pageShell, pageTabs, rowAction, surface, toneText } from '@/components/ui/page';
 // Phone: the two page buttons share a row and may wrap their words instead of pushing the page sideways (320px at 大).
 const phoneAction = 'tw:max-md:min-w-0 tw:max-md:flex-[1_1_9rem] tw:max-md:h-auto tw:max-md:min-h-12 tw:max-md:whitespace-normal tw:max-md:py-2';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -4368,9 +4367,7 @@ const courseLensMetrics = computed(() => {
 });
 
 // #4150: label/tone/next action come from the shared coursePaymentBadge; only the CSS class and button text are local.
-const BADGE_CLASS = { anomaly: 'tag-billing-anomaly', no_payment: 'tag-no-payment', settled: 'tag-paid', free: 'tag-paid', owing: 'tag-unpaid' };
 const paymentBadge = (course) => coursePaymentBadge(course, { monthlyPeriod: true });
-const paymentStatusButtonClass = (course) => (isPartialPayment(course) ? 'tag-pending-report' : (BADGE_CLASS[paymentBadge(course).tone] || 'tag-pending-report'));
 // Template tones (PAGE_TEMPLATE §6) for the contract rows: owed / anomaly = danger, paid = success, needs a look = warning, the rest neutral.
 const PAYMENT_TONE = { anomaly: 'danger', owing: 'danger', settled: 'success', free: 'success', no_payment: 'neutral', neutral: 'neutral' };
 const isPartialPayment = (course) => isPartialCoursePayment(course, { monthlyPeriod: true });
@@ -4378,6 +4375,9 @@ const isPartialPayment = (course) => isPartialCoursePayment(course, { monthlyPer
 const paymentStatusTone = (course) => (isPartialPayment(course) ? 'warning' : (PAYMENT_TONE[paymentBadge(course).tone] || 'warning'));
 // A payment chip of at most this many characters stays on one line; a longer one wraps inside the cell.
 const PAYMENT_CHIP_NOWRAP_MAX = 8;
+// 帳務資料 table: the header stays at the top of the scrolling panel; loading / empty / error lines share one padding.
+const BILLING_HEAD = 'tw:sticky tw:top-0 tw:z-[1]';
+const BILLING_STATE = 'tw:px-5 tw:py-4 tw:text-tpl-body';
 // The facts of a history card (開課, 老師, 費用, 堂數, 繳費): two per row on a phone, as many as fit from 768 up.
 const HISTORY_FACT_GRID = 'tw:grid tw:grid-cols-2 tw:gap-x-4 tw:gap-y-3 tw:m-0 tw:md:grid-cols-[repeat(auto-fit,minmax(10.5rem,1fr))]';
 // 堂數: low = danger, but a paused course's low count is muted, not red (it is not being used).
@@ -6265,79 +6265,13 @@ onUnmounted(() => {
 }
 .focus-mode-banner button:hover { background: var(--ds-primary-wash); }
 
-.student-billing-state {
-  padding: 16px 12px;
-  color: var(--ds-ink-secondary);
-  font-size: 13px;
-}
-.student-billing-error { color: var(--ds-danger); }
-.student-billing-table { min-width: 640px; }
-.student-billing-note {
-  display: flex;
-  align-items: flex-start;
-  gap: 8px;
-  padding: 10px 12px;
-  border-bottom: 1px solid var(--border);
-  color: var(--ds-ink-secondary);
-  background: color-mix(in srgb, var(--ds-warning) 10%, transparent);
-  font-size: 13px;
-  line-height: 1.5;
-  text-align: left;
-}
-.student-billing-note .material-symbols-outlined { flex: 0 0 auto; color: var(--ds-warning); font-size: 18px; }
-
 .group-table-wrap {
   border-top: 1px solid var(--border);
   max-height: 56vh;
 }
 
-.course-table {
-  width: 100%;
-  min-width: 540px;
-  border-collapse: separate;
-  border-spacing: 0 4px;
-  font-size: 13px;
-  padding: 0 8px 8px;
-  font-variant-numeric: tabular-nums;
-}
-
-.course-table thead {
-  position: sticky;
-  top: 0;
-  z-index: 2;
-  background: var(--ds-canvas-soft);
-  border-bottom: none;
-}
-@media (min-width: 641px) {
-  .course-table thead {
-    background: var(--ds-canvas-soft);
-    backdrop-filter: blur(6px);
-  }
-}
-
-.course-table th {
-  padding: 8px 8px 4px;
-  text-align: left;
-  font-weight: 700;
-  color: var(--ds-ink-secondary);
-  white-space: nowrap;
-}
-
-.course-table td {
-  padding: 8px;
-  border-top: 1px solid var(--ds-hairline);
-  border-bottom: 1px solid var(--ds-hairline);
-  background: var(--ds-canvas);
-  vertical-align: middle;
-  word-break: keep-all;
-  line-height: 1.35;
-}
 
 .detail-summary { display: grid; gap: 4px; margin-bottom: 8px; }
-/* #4659 step 5 (picture 2): on a phone the row is 科目・老師 + 繳費 + the button + ⋯ (in-app 396 keeps 繳費 visible). */
-@media (max-width: 720px) {
-  .course-table--simple .col-sm-hide { display: none; }
-}
 
 .subject-line {
   display: flex;
@@ -6350,14 +6284,6 @@ onUnmounted(() => {
    class-type tags above it, so nothing signalled which line was primary.
    Demoted so the tags read first, price second (Cal.com text-emphasis vs
    text-subtle pattern). */
-.price-line {
-  margin-top: 4px;
-  font-size: 13px;
-  color: var(--ds-ink-mute);
-  font-weight: 600;
-}
-.price-line--pending { color: var(--ds-warning); }
-.price-line--estimate { color: var(--ds-ink-mute); font-size: 12px; font-weight: 500; }
 
 .memo-line {
   margin-top: 4px;
@@ -6393,18 +6319,6 @@ onUnmounted(() => {
   border-radius: 8px;
 }
 
-.subject-tag {
-  display: inline-block;
-  padding: 4px 10px;
-  border-radius: 20px;
-  font-size: 13px;
-  font-weight: 800;
-  background: var(--ds-primary-wash);
-  color: var(--ds-primary-text);
-  border: 1px solid rgba(245, 124, 0, 0.18);
-  box-shadow: inset 0 1px 0 rgba(255,255,255,0.78);
-}
-
 .cell-fee {
   font-weight: 600;
   color: var(--text);
@@ -6431,7 +6345,6 @@ onUnmounted(() => {
    that stacked inline after the schedule text. */
 
 
-.col-actions,
 .cell-actions {
   white-space: nowrap;
   min-width: 128px;
@@ -6564,12 +6477,6 @@ button.danger:disabled {
   border-top: 1px solid #e2e8f0;
 }
 
-.payment-status-badge:not([data-slot="status-badge"]) {
-  cursor: default !important;
-  border-radius: 999px !important;
-  font-weight: 900 !important;
-  box-shadow: inset 0 1px 0 rgba(255,255,255,0.72);
-}
 .payment-status-and-action {
   display: grid;
   justify-items: start;
@@ -6584,21 +6491,6 @@ button.danger:disabled {
   font-size: 12px;
   font-weight: 700;
 }
-.student-ledger-summary {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  margin-bottom: 12px;
-  padding: 12px 14px;
-  border: 1px solid var(--ds-hairline);
-  border-radius: 10px;
-  background: var(--ds-canvas-soft);
-  color: var(--ds-ink-secondary);
-  font-size: 13px;
-}
-.student-ledger-summary > div { display: grid; gap: 3px; }
-.student-ledger-summary strong { color: var(--ds-ink); }
 
 .btn-toggle {
   white-space: nowrap;
@@ -7102,7 +6994,6 @@ button.danger:disabled {
   .legacy-grid {
     grid-template-columns: 1fr;
   }
-  .col-actions,
   .cell-actions {
     min-width: 90px;
   }
@@ -7572,64 +7463,8 @@ button.danger:disabled {
   color: var(--ds-ink-faint);
 }
 
-.tag-paid {
-  background: var(--ds-success-wash);
-  color: var(--ds-success);
-  border: 1px solid var(--ds-success-line);
-  border-radius: 6px;
-  font-size: 12px;
-  font-weight: 600;
-  cursor: pointer;
-  padding: 3px 10px;
-}
-.tag-unpaid {
-  background: var(--ds-danger-wash);
-  color: var(--ds-danger-text);
-  border: 1px solid var(--ds-danger);
-  border-radius: 6px;
-  font-size: 12px;
-  font-weight: 600;
-  cursor: pointer;
-  padding: 3px 10px;
-}
-.tag-pending-report {
-  background: var(--ds-warning-wash);
-  color: var(--ds-warning);
-  border: 1px solid var(--ds-warning);
-  border-radius: 6px;
-  font-size: 12px;
-  font-weight: 600;
-  cursor: pointer;
-  padding: 3px 10px;
-}
 .tag-unknown-classification { cursor: help; }
-.tag-no-payment {
-  background: var(--ds-success-wash);
-  color: var(--ds-success);
-  border: 1px solid var(--ds-success);
-  border-radius: 6px;
-  font-size: 12px;
-  font-weight: 600;
-  padding: 3px 10px;
-}
-.tag-billing-anomaly {
-  background: var(--ds-danger-wash);
-  color: var(--ds-danger);
-  border: 1px solid var(--ds-danger);
-  border-radius: 6px;
-  font-size: 12px;
-  font-weight: 600;
-  padding: 3px 10px;
-}
 .paid-date-hint { font-size: 11px; color: var(--ds-success); margin-top: 2px; white-space: nowrap; }
-.btn-invoices {
-  border-color: var(--ds-hairline) !important;
-  color: var(--ds-ink-secondary) !important;
-  background: var(--ds-canvas) !important;
-}
-.btn-invoices:hover {
-  background: var(--ds-canvas-soft) !important;
-}
 .tag-armed {
   background: var(--ds-danger-wash);
   color: var(--ds-danger);
@@ -7800,17 +7635,10 @@ button.danger:disabled {
     #0f172a;
   box-shadow: 0 18px 44px rgba(0, 0, 0, 0.32);
 }
-[data-theme="dark"] .course-table td {
-  background: rgba(15, 23, 42, 0.86);
-  border-color: var(--ds-hairline);
-}
 
 [data-theme="dark"] .detail-item {
   background: rgba(15, 23, 42, 0.72);
   border-color: var(--ds-hairline);
-}
-[data-theme="dark"] .price-line {
-  color: var(--ds-ink);
 }
 [data-theme="dark"] .detail-panel,
 [data-theme="dark"] .dates-panel {
@@ -7846,11 +7674,6 @@ button.danger:disabled {
 [data-theme="dark"] .empty-active-courses__text,
 [data-theme="dark"] .empty-active-courses__hint {
   color: var(--ds-ink-faint);
-}
-[data-theme="dark"] .btn-invoices {
-  background: #172554 !important;
-  color: #93c5fd !important;
-  border-color: #1d4ed8 !important;
 }
 .cm-settings-footer {
   position: sticky;

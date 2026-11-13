@@ -15,7 +15,7 @@ import { DAY_LABELS, TODAY, mockStudyWeekApi } from './fixtures/ui-foundation/st
 
 const TEXT_SIZES = ['standard', 'medium', 'large']; // useTextSize.js TEXT_SIZES (標準, 稍大, 大)
 const VIEWPORTS = [{ name: 'desktop-1536', width: 1536, height: 784 }, { name: 'phone-375', width: 375, height: 800 }];
-// Tablet widths, run for the 課程查找 entry only (the course rows change layout at 768 and 1024).
+// Tablet widths, run for the 課程查找 entries only (the course rows change layout at 768 and 1024).
 const TABLET_VIEWPORTS = [{ name: 'tablet-768', width: 768, height: 1024 }, { name: 'laptop-1024', width: 1024, height: 768 }, { name: 'laptop-1099', width: 1099, height: 768 }];
 const json = (route, body) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
 
@@ -143,8 +143,9 @@ const COURSE_MGMT_HISTORY = {
         expect(c.outside, `a part of history card ${c.id} sticks out of the card`).toBe(0);
         expect(c.oldTags, `history card ${c.id} still uses the old .tag / .status-tag`).toBe(0);
         expect(c.facts, `history card ${c.id} shows 開課, 老師, 費用 and 堂數`).toBeGreaterThanOrEqual(4);
-        // red: an owed (未收) badge and the 堂數待對帳 button; every other history badge is not red
-        for (const b of c.badges) expect(b.red, `badge 「${b.text}」 on history card ${c.id} is red only when it says 未收`).toBe(b.text.includes('未收'));
+        // red: a badge whose tone is danger (an owed 未收 course) and the 堂數待對帳 button; every other history badge is not red.
+        // Keyed on the tone, not on the badge's words, so rewording a label cannot flip a colour check.
+        for (const b of c.badges) expect(b.red, `badge 「${b.text}」 (tone ${b.tone}) on history card ${c.id} is red exactly when its tone is danger`).toBe(b.tone === 'danger');
       }
       const tone = (id, text) => byId[id].badges.find((b) => b.text.includes(text));
       expect(tone(201, '已結算')?.tone, 'a settled course is success').toBe('success');
@@ -166,6 +167,140 @@ const COURSE_MGMT_HISTORY = {
     const active = base({ id: 100, first_class_date: '2026-09-01', status: 'active', is_active_course: true, sessions_used: 3, remaining_sessions: 5, payment_status: 'paid' });
     const data = [active, ...history];
     await page.route('**/api/v1/**', (r) => json(r, new URL(r.request().url()).pathname === '/api/v1/student-classes' ? { data, total: data.length, current_page: 1, last_page: 1 } : { data: [] }));
+  },
+};
+
+// 課程查找 slice 5 (issue 4989): the 帳務資料 tab. Money screen: every status keeps its tone (owed / anomaly = danger, partial / needs a look = warning,
+// paid = success, nothing to pay = neutral), red appears only on debt, and every amount line is tabular and on one line.
+const BILLING_CASES = [
+  { id: 100, status: 'unpaid', invoice: { status: 'unpaid', total_amount: 4800 }, reports: [] },
+  { id: 101, status: 'partial', invoice: { status: 'partial', total_amount: 6400 }, reports: [{ status: 'pending', payment_date: '2026-11-03', account_last5: '12345' }] },
+  { id: 102, status: 'paid', invoice: { status: 'paid', total_amount: 3200 }, reports: [{ status: 'confirmed', payment_date: '2026-10-28' }] },
+  { id: 103, status: 'pending_report', invoice: null, reports: [{ status: 'pending', payment_date: '2026-11-10' }], charge: 5600 },
+  { id: 104, status: 'unpaid', invoice: null, reports: [], over: { class_type: 'tutoring', tutoring_billing_anomaly: true } },
+];
+const COURSE_MGMT_BILLING = {
+  ...COURSE_MGMT,
+  key: 'course-mgmt (billing table)',
+  names: ['林宥辰'],
+  allNames: false,
+  // the column header and every row start at the table's left edge
+  rows: ['.student-billing-table th:first-child, .student-billing-table td:first-child'],
+  touch: ['.student-billing-table tbody button', '.student-billing-wrap [role="status"] button'],
+  setup: async (page) => {
+    await page.getByRole('tab', { name: '帳務資料', exact: true }).first().click();
+    await expect(page.locator('.student-billing-table tbody tr')).toHaveCount(BILLING_CASES.length);
+  },
+  extra: {
+    run: () => {
+      const visible = (el) => { const r = el.getBoundingClientRect(); const cs = getComputedStyle(el); return r.width > 0 && r.height > 0 && cs.display !== 'none' && cs.visibility !== 'hidden'; };
+      const rgb = (el) => getComputedStyle(el).color.match(/\d+(\.\d+)?/g).map(Number);
+      const isRed = ([r, g, b]) => r > g + 80 && b > g + 20;
+      const isGreen = ([r, g, b]) => g > r + 15 && g > b;
+      const wrap = document.querySelector('.student-billing-wrap');
+      const table = document.querySelector('.student-billing-table');
+      const lineH = (el) => parseFloat(getComputedStyle(el).lineHeight) || parseFloat(getComputedStyle(el).fontSize) * 1.4;
+      const summary = [...wrap.querySelectorAll('[role="status"]')].find((el) => el.textContent.includes('學生歷史帳務'));
+      const owed = summary ? [...summary.querySelectorAll('span')].filter((el) => el.textContent.includes('尚有未繳')).pop() : null; // the innermost span that holds the words
+      return {
+        wrapScroll: wrap.scrollWidth - wrap.clientWidth, wrapOverflowX: getComputedStyle(wrap).overflowX,
+        oldClasses: wrap.querySelectorAll('.tag, .subject-tag, .course-table, .price-line, .hint').length,
+        headers: [...table.querySelectorAll('thead th')].map((th) => ({ text: th.textContent.trim(), h: Math.round(th.getBoundingClientRect().height), upper: getComputedStyle(th).textTransform })),
+        owedRed: owed ? isRed(rgb(owed)) : null, owedText: owed?.textContent.trim() || '',
+        rows: [...table.querySelectorAll('tbody tr')].filter(visible).map((tr) => {
+          const badge = tr.querySelector('[data-slot="status-badge"]');
+          const box = tr.getBoundingClientRect();
+          return {
+            ref: tr.querySelector('[data-testid="billing-contract-period"]')?.textContent.trim() || '',
+            badge: badge ? { text: badge.textContent.trim(), tone: badge.getAttribute('data-tone'), red: isRed(rgb(badge)), green: isGreen(rgb(badge)) } : null,
+            amounts: [...tr.querySelectorAll('[data-testid="billing-amount"]')].map((a) => ({ text: a.textContent.trim(), tabular: getComputedStyle(a).fontVariantNumeric.includes('tabular-nums'), oneLine: a.getBoundingClientRect().height <= lineH(a) * 1.6, red: isRed(rgb(a)) })),
+            buttons: [...tr.querySelectorAll('button')].filter(visible).map((b) => ({ h: Math.round(b.getBoundingClientRect().height), red: isRed(rgb(b)) })),
+            outside: [...tr.querySelectorAll('td > *')].filter(visible).filter((el) => el.getBoundingClientRect().right > table.getBoundingClientRect().right + 1).length,
+            height: Math.round(box.height),
+          };
+        }),
+      };
+    },
+    assert: (r, vp) => {
+      expect(r.rows.length, 'every billing row is on screen').toBe(BILLING_CASES.length);
+      expect(r.oldClasses, 'the 帳務資料 table no longer uses the old .tag / .subject-tag / .course-table / .price-line / .hint classes').toBe(0);
+      expect(r.wrapOverflowX, 'the billing panel scrolls inside itself, never the page').toBe('auto');
+      expect(r.headers.map((h) => h.text), 'the six column headers keep their words').toEqual(['科目', '合約／期間', '繳費', '最近回報', '收據', '操作']);
+      for (const h of r.headers) {
+        expect(h.h, `header 「${h.text}」 is 44px tall`).toBeGreaterThanOrEqual(44);
+        expect(h.upper, `header 「${h.text}」 is not upper-cased`).toBe('none');
+      }
+      // colour meaning: red only for debt (owed 未繳, 帳務資料需修正, 尚有未繳 in the summary), warning for a part payment or a report to check, green for paid
+      const tones = Object.fromEntries(r.rows.map((row) => [row.badge?.text, row.badge]));
+      expect(tones['未繳']?.tone, '未繳 is danger').toBe('danger');
+      expect(tones['繳了一部分']?.tone, '部分 is warning').toBe('warning');
+      expect(tones['已收']?.tone, '已收 is success').toBe('success');
+      expect(tones['已收']?.green, '已收 is green').toBe(true);
+      expect(tones['帳務資料需修正']?.tone, 'a tutoring anomaly is danger').toBe('danger');
+      expect(Object.values(tones).some((b) => b && b.tone === 'warning' && !['繳了一部分'].includes(b.text)), '待確認入帳 is a warning tone').toBe(true);
+      for (const row of r.rows) {
+        expect(row.badge, 'every row has exactly one status badge').not.toBeNull();
+        expect(row.badge.red, `badge 「${row.badge.text}」 (tone ${row.badge.tone}) is red exactly when its tone is danger`).toBe(row.badge.tone === 'danger');
+        expect(row.outside, `a cell of row ${row.ref} sticks out of the table`).toBe(0);
+        for (const b of row.buttons) { expect(b.h, 'row buttons are at least 44px').toBeGreaterThanOrEqual(44); expect(b.red, 'a row button is never red').toBe(false); }
+        expect(row.amounts.length, `row ${row.ref} shows an amount line (應繳 / 待開單 / 估算)`).toBeGreaterThan(0);
+        for (const a of row.amounts) {
+          expect(a.tabular, `amount 「${a.text}」 uses tabular numbers`).toBe(true);
+          expect(a.oneLine, `amount 「${a.text}」 stays on one line`).toBe(true);
+          expect(a.red, `amount 「${a.text}」 is not red (it is a figure, not a debt state)`).toBe(false);
+        }
+      }
+      expect(r.owedText, 'the summary names the owed total').toContain('尚有未繳');
+      expect(r.owedRed, 'the owed total in the summary is red').toBe(true);
+      if (vp.width >= 1024) expect(r.wrapScroll, 'no inner sideways scroll at desktop width').toBeLessThanOrEqual(1);
+    },
+  },
+  mock: async (page) => {
+    const base = (o) => ({ student_id: 9100, student_name: '林宥辰', teacher_name: '歐陽子晴老師', ScheduleMode: 'count', payment_type: 'session', sessions_purchased: 8, sessions_used: 3, remaining_sessions: 5, class_type: 'one_on_one', first_class_date: '2026-09-01', status: 'active', is_active_course: true, ...o });
+    const subjects = ['math', 'english', 'physics', 'chemistry', 'science'];
+    const data = BILLING_CASES.map((c, i) => base({ id: c.id, subject: subjects[i], payment_status: c.status, ...(c.charge ? { Charge: c.charge } : {}), ...(c.over || {}) }));
+    const byId = Object.fromEntries(BILLING_CASES.map((c) => [c.id, c]));
+    await page.route('**/api/v1/**', (r) => json(r, new URL(r.request().url()).pathname === '/api/v1/student-classes' ? { data, total: data.length, current_page: 1, last_page: 1 } : { data: [] }));
+    await page.route('**/api/v1/student-classes/*/invoices', (r) => { const c = byId[r.request().url().match(/student-classes\/(\d+)/)[1]]; return json(r, { invoices: c?.invoice ? [{ id: c.id, ...c.invoice }] : [] }); });
+    await page.route('**/api/v1/payment-reports**', (r) => { const c = byId[new URL(r.request().url()).searchParams.get('student_class_id')]; return json(r, { data: c?.reports || [] }); });
+    await page.route('**/api/v1/accounting/ledger**', (r) => json(r, { summary: { outstanding_total: 11200 } }));
+  },
+};
+
+// Dark mode, hovered row (Codex finding on issue 4989 slice 5): styles.css has a global `tr:hover td` background rule; the shared dataTable cell classes must
+// override it, or light text lands on near-white. Asserts the text/background contrast of every cell of the hovered row is at least 4.5 (WCAG AA).
+const COURSE_MGMT_BILLING_DARK = {
+  ...COURSE_MGMT_BILLING,
+  key: 'course-mgmt (billing table, dark, row hovered)',
+  setup: async (page) => {
+    await page.evaluate(() => document.documentElement.setAttribute('data-theme', 'dark'));
+    await page.getByRole('tab', { name: '帳務資料', exact: true }).first().click();
+    await expect(page.locator('.student-billing-table tbody tr')).toHaveCount(BILLING_CASES.length);
+    await page.locator('.student-billing-table tbody tr').nth(1).hover();
+  },
+  extra: {
+    run: () => {
+      const probe = document.createElement('canvas').getContext('2d', { willReadFrequently: true });
+      const rgba = (css) => { probe.clearRect(0, 0, 1, 1); probe.fillStyle = '#000'; probe.fillStyle = css; probe.fillRect(0, 0, 1, 1); const [r, g, b, a] = probe.getImageData(0, 0, 1, 1).data; return [r, g, b, a / 255]; };
+      const over = (top, under) => [0, 1, 2].map((i) => top[i] * top[3] + under[i] * (1 - top[3])).concat([1]);
+      const lum = ([r, g, b]) => { const f = (c) => { const v = c / 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; }; return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b); };
+      const backdrop = (el) => { const chain = []; for (let n = el; n; n = n.parentElement) chain.push(rgba(getComputedStyle(n).backgroundColor)); return chain.reduceRight((acc, c) => over(c, acc), [255, 255, 255, 1]); };
+      const tr = [...document.querySelectorAll('.student-billing-table tbody tr')][1];
+      return {
+        dark: document.documentElement.getAttribute('data-theme') === 'dark', hovered: tr.matches(':hover'),
+        cells: [...tr.querySelectorAll('td')].map((td) => {
+          const bg = backdrop(td); const fg = over(rgba(getComputedStyle(td).color), bg);
+          const [l1, l2] = [lum(fg), lum(bg)].sort((a, b) => b - a);
+          return { text: td.textContent.trim().slice(0, 12), ratio: Math.round(((l1 + 0.05) / (l2 + 0.05)) * 100) / 100 };
+        }),
+      };
+    },
+    assert: (r) => {
+      expect(r.dark, 'the page is in dark mode').toBe(true);
+      expect(r.hovered, 'the second billing row is hovered').toBe(true);
+      expect(r.cells.length).toBe(6);
+      for (const c of r.cells) expect(c.ratio, `text 「${c.text}」 on the hovered dark row is at least 4.5:1 (got ${c.ratio})`).toBeGreaterThanOrEqual(4.5);
+    },
   },
 };
 
@@ -242,6 +377,8 @@ const PAGES = [
   COURSE_MGMT,
   COURSE_MGMT_HELP_OPEN,
   COURSE_MGMT_HISTORY,
+  COURSE_MGMT_BILLING,
+  COURSE_MGMT_BILLING_DARK,
   {
     key: 'teacher-eligibility',
     url: '/teacher-eligibility-pilot-mount.html',

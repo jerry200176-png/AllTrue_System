@@ -37,7 +37,9 @@ export const control = Object.freeze({
 
 // The global `th` / `td` rules in styles.css (uppercase, 12px, grey fill) are overridden here on purpose.
 const head = 'tw:h-11 tw:border-b tw:border-border tw:bg-muted tw:px-3 tw:py-0 tw:text-tpl-caption tw:md:px-4 tw:font-semibold tw:tracking-normal tw:text-tpl-secondary tw:normal-case tw:whitespace-nowrap';
-const cell = 'tw:h-14 tw:border-b tw:border-border tw:px-3 tw:py-2 tw:md:px-4 tw:text-[length:var(--tpl-text-body)] tw:text-foreground';
+// `tw:bg-transparent!` / `tw:bg-muted!` (important): the global `tr:hover td` background rule in styles.css would otherwise paint a near-white fill under light text in dark mode;
+// the row's own `hover:bg-*` shows through instead.
+const cell = 'tw:h-14 tw:bg-transparent! tw:border-b tw:border-border tw:px-3 tw:py-2 tw:md:px-4 tw:text-[length:var(--tpl-text-body)] tw:text-foreground';
 
 // Dense label/value facts inside a list row (PAGE_TEMPLATE §5): the label sits above the value, facts wrap between each other,
 // the phone shows two per row. `sub` is the second line under a value.
@@ -85,7 +87,14 @@ export const dataTable = Object.freeze({
   num: `${cell} tw:text-right tw:whitespace-nowrap tw:tabular-nums`,
   // Second line inside a cell (subject, teacher, amount still owed). It may wrap; the name above it may not.
   sub: 'tw:block tw:text-tpl-caption tw:font-normal tw:whitespace-normal tw:text-tpl-secondary',
-  total: 'tw:h-14 tw:border-0 tw:bg-muted tw:px-3 tw:py-2 tw:md:px-4 tw:text-[length:var(--tpl-text-body)] tw:font-bold tw:text-foreground',
+  // One fact that must not break inside (a date range, a contract ref, a status in a run of facts): wrap between facts, never within one.
+  fact: 'tw:inline-block tw:whitespace-nowrap',
+  // A money line under a value (應繳, 估算): tabular, one line, secondary colour. `amountPending` = not billed yet (warning text),
+  // `amountEstimate` = an estimate, lighter weight. Red stays for money that is owed.
+  amount: 'tw:block tw:text-tpl-caption tw:font-semibold tw:tabular-nums tw:whitespace-nowrap tw:text-tpl-secondary',
+  amountPending: 'tw:block tw:text-tpl-caption tw:font-semibold tw:tabular-nums tw:whitespace-nowrap tw:text-[var(--ds-warning-text)]',
+  amountEstimate: 'tw:block tw:text-tpl-caption tw:font-normal tw:tabular-nums tw:whitespace-nowrap tw:text-tpl-secondary',
+  total: 'tw:h-14 tw:border-0 tw:bg-muted! tw:px-3 tw:py-2 tw:md:px-4 tw:text-[length:var(--tpl-text-body)] tw:font-bold tw:text-foreground',
   phoneHide: 'tw:max-md:hidden',
   phoneOnly: 'tw:md:hidden',
 });
