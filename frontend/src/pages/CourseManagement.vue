@@ -515,7 +515,7 @@
                               :title="projectedChipTitle(c, u)"
                               @click="openSessionEdit(c, (u.date || '').slice(0,10), u.id, u)"
                             >
-                              <template v-if="getSessionNumber(c, (u.date || '').slice(0,10), u.id)"><span class="chip-seq">第{{ getSessionNumber(c, (u.date || '').slice(0,10), u.id) }}堂</span></template><span class="chip-date">{{ formatSessionChipDate(u) }}</span><template v-if="u.isProjected"><span class="chip-state chip-state--projected">預排</span></template><template v-else-if="getSessionStateLabel(c, (u.date || '').slice(0,10), u.id)"><span class="chip-state">{{ getSessionStateLabel(c, (u.date || '').slice(0,10), u.id) }}</span></template><template v-if="u.isContractException"><span class="chip-state">例外</span></template><template v-if="showSessionNotes && isUserNote(u.note)"><span class="chip-note-text">{{ u.note }}</span></template>
+                              <template v-if="getSessionNumber(c, (u.date || '').slice(0,10), u.id)"><span class="chip-seq">第{{ getSessionNumber(c, (u.date || '').slice(0,10), u.id) }}堂</span></template><span class="chip-date">{{ formatSessionChipDate(u) }}</span><template v-if="u.isProjected"><span class="chip-state chip-state--projected">預排</span></template><template v-else-if="getSessionStateLabel(c, (u.date || '').slice(0,10), u.id)"><span class="chip-state">{{ getSessionStateLabel(c, (u.date || '').slice(0,10), u.id) }}</span></template><template v-if="u.isContractException"><span class="chip-state">例外</span></template><template v-if="u.beforeContractStart"><span class="chip-state chip-state--outside" title="這堂課的日期早於合約開始日，已歸到這份合約">合約期間外</span></template><template v-if="showSessionNotes && isUserNote(u.note)"><span class="chip-note-text">{{ u.note }}</span></template>
                             </button>
                           </div>
                           <div v-if="showCancelledSessions.has(c.id) && movedOrCancelledUnits(c).length > 0" class="dates-chip-grid cancelled-sessions-grid" style="margin-top:8px">
@@ -651,7 +651,7 @@
                             :class="['date-chip', getSessionStateClass(hc, (u.date || '').slice(0,10), u.id)]"
                             :title="getSessionTooltip(hc, (u.date || '').slice(0,10), u.id)"
                           >
-                            <template v-if="getSessionNumber(hc, (u.date || '').slice(0,10), u.id)"><span class="chip-seq">第{{ getSessionNumber(hc, (u.date || '').slice(0,10), u.id) }}堂</span></template><span class="chip-date">{{ formatSessionChipDate(u) }}</span><template v-if="getSessionStateLabel(hc, (u.date || '').slice(0,10), u.id)"><span class="chip-state">{{ getSessionStateLabel(hc, (u.date || '').slice(0,10), u.id) }}</span></template>
+                            <template v-if="getSessionNumber(hc, (u.date || '').slice(0,10), u.id)"><span class="chip-seq">第{{ getSessionNumber(hc, (u.date || '').slice(0,10), u.id) }}堂</span></template><span class="chip-date">{{ formatSessionChipDate(u) }}</span><template v-if="getSessionStateLabel(hc, (u.date || '').slice(0,10), u.id)"><span class="chip-state">{{ getSessionStateLabel(hc, (u.date || '').slice(0,10), u.id) }}</span></template><template v-if="u.beforeContractStart"><span class="chip-state chip-state--outside" title="這堂課的日期早於合約開始日，已歸到這份合約">合約期間外</span></template>
                           </span>
                         </div>
                         <span v-else class="hint">無排課資料</span>
@@ -7857,6 +7857,16 @@ button.danger:disabled {
 .date-chip-clickable {
   cursor: pointer;
 }
+/* Phone width: the chip row sits in a ~185px panel; let a chip (and its 合約期間外 badge) wrap instead of running off the card. */
+@media (max-width: 480px) {
+  .dates-chip-grid .date-chip {
+    flex-shrink: 1;
+    flex-wrap: wrap;
+    white-space: normal;
+    max-width: 100%;
+    border-radius: var(--ds-radius-lg);
+  }
+}
 /* Projected chips: dashed affordance + "預排" label (not the same as materialized). */
 .date-chip.date-chip--projected {
   opacity: 0.85;
@@ -7866,6 +7876,11 @@ button.danger:disabled {
 }
 .date-chip.date-chip--projected .chip-date {
   color: var(--ds-ink-mute);
+}
+.chip-state.chip-state--outside {
+  color: var(--ds-ink-secondary);
+  background: var(--ds-canvas-soft);
+  white-space: nowrap;
 }
 .chip-state--projected {
   color: var(--ds-ink-secondary) !important;

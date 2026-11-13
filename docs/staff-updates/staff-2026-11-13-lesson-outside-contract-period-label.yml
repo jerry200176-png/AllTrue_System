@@ -1,0 +1,14 @@
+updates:
+  - id: staff-2026-11-13-lesson-outside-contract-period-label
+    published_at: "2026-11-13"
+    audiences:
+      - director
+      - super_admin
+    importance: digest
+    title: 課程管理新增「合約期間外」標籤
+    summary: 日期早於合約開始日的課，現在會直接標示。
+    items:
+      - category: improved
+        text: 日期早於合約開始日的課會標示「合約期間外」，開始日與堂數不變。
+    source_refs:
+      - "changelog:2026-11-13:lesson-outside-contract-period-label"

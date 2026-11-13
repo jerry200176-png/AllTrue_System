@@ -1,4 +1,4 @@
-# AllTrue gotchas (G-001 ~ G-012)
+# AllTrue gotchas (G-001 ~ G-013)
 
 > Moved verbatim from `CLAUDE.md` on 2026-10-31 so every session does not load ~10 KB of detail up front.
 > `CLAUDE.md` keeps a one-line index; references like `CLAUDE.md §G-007` resolve through it to this page.
@@ -42,3 +42,6 @@ Claude Code on the web／其他雲端 session 不承接本機 WSL2 的環境；�
 **批次 guard 的生效邊界（#4386 已安裝）**：以下控制已隨 #4386 合併至 main；preview（`.github/scripts/inapp-writeback-rows.py`）驗證每一筆，公開 summary 僅列案件／issue／狀態等 metadata 與每筆回覆長度（≤600 字元）、精確 UTF-8 SHA-256，不印回覆全文；寫入 job 才使用 main-only `production-ssh`。兩個 workflow 共用 `inapp-production-writeback` concurrency（`cancel-in-progress: false`、`queue: max`）。這些是已接受實作的控制，不是本文件自行新增的執行權限；未具真實案件、授權或必要證據時，仍不得執行，也不能把 guard 合併當成回寫成功。Phase C 舊 SSH allowlist 已退役；現行機制與限制只查上述 SOP，不能當 Phase A／follow-up 的無 SSH 替代路徑。
 **即時唯讀（2026-10-13 起；cloud 環境的具名例外見 `FOUNDER_STANDING_DECISIONS.md` 2026-10-14（三）補充第 3 條）**：若環境有 `ALLTRUE_TRIAGE_TOKEN`（超級管理員在「個人資料 → 安全性 → AI 分診唯讀金鑰」建立，預設 90 天到期），可直接 HTTPS 讀 `GET /api/v1/triage/bug-reports`（列表／單筆含留言／附件），不必走 dump。這把金鑰只能讀，其他 API 一律 403；回寫的操作者限制見上述 SOP；唯讀 token 不提供寫回能力。**repo 是公開的：絕不可把回報內容（姓名、電話、描述、留言、截圖）貼到 GitHub issue／PR／commit**，只寫 ID 與自己的技術判斷。
 完整程序見 [`docs/sop/DELIVERY_LIFECYCLE.md`](../sop/DELIVERY_LIFECYCLE.md)。
+
+### G-013：`IsContractException` 是「不在每週固定時段」，不是「在合約期間外」
+`ClassSession.IsContractException` 由 `ContractScheduleMatcher` 以星期／時間／時長推導，且 `rowOccupiesPurchasedQuota` 會用它；堂次日期早於合約開始日請讀 `App\Support\ContractPeriod`（API `before_contract_start`，讀取時推導），不要重用該旗標（R139、#5198）。
