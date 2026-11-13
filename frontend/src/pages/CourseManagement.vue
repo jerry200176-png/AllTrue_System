@@ -705,9 +705,9 @@
                 <tr v-for="row in (studentBillingState[group.key]?.rows || [])" :key="row.course.id" class="tw:hover:bg-muted/60">
                   <td :class="[dataTable.cell, 'tw:min-w-[8em] tw:pl-5']">
                     <span class="tw:block tw:font-semibold">{{ getSubjectLabel(row.course.subject) }}</span>
-                    <span v-if="currentInvoiceForBillingRow(row)" :class="dataTable.amount">應繳 ${{ formatMoney(currentInvoiceForBillingRow(row).total_amount ?? 0) }}</span>
-                    <span v-else :class="dataTable.amountPending">應繳：待開單</span>
-                    <span v-if="!currentInvoiceForBillingRow(row) && (row.course.Charge ?? row.course.charge) != null" :class="dataTable.amountEstimate">估算 ${{ formatMoney(row.course.Charge ?? row.course.charge) }}</span>
+                    <span v-if="currentInvoiceForBillingRow(row)" data-testid="billing-amount" :class="dataTable.amount">應繳 ${{ formatMoney(currentInvoiceForBillingRow(row).total_amount ?? 0) }}</span>
+                    <span v-else data-testid="billing-amount" :class="dataTable.amountPending">應繳：待開單</span>
+                    <span v-if="!currentInvoiceForBillingRow(row) && (row.course.Charge ?? row.course.charge) != null" data-testid="billing-amount" :class="dataTable.amountEstimate">估算 ${{ formatMoney(row.course.Charge ?? row.course.charge) }}</span>
                   </td>
                   <td :class="dataTable.cell" data-testid="billing-contract-period">
                     <div>{{ formatCourseRef(row.course.id) }}</div>
