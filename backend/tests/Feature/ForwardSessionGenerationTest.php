@@ -260,6 +260,48 @@ class ForwardSessionGenerationTest extends TestCase
         }
     }
 
+    /**
+     * #5243 review: a sibling's past lesson nobody marked yet still holds a pool lesson (it can be marked late). With 2
+     * left and 2 such rows on the sibling, the zero-counter member must not get 2 new lessons.
+     */
+    public function test_shared_pool_member_counts_a_siblings_unmarked_past_lessons_against_the_pool(): void
+    {
+        Carbon::setTestNow($this->today);
+        try {
+            [, $stale, $sibling] = $this->sharedPool(total: 48, consumed: 46, staleRemaining: 0, siblingPlanned: 0);
+            $this->sess($sibling, '2026-06-29', '19:00:00', '21:00:00', 'scheduled');
+            $this->sess($sibling, '2026-07-06', '19:00:00', '21:00:00', 'scheduled');
+
+            $plan = $this->gen->planCourse($stale, 4, $this->today);
+            $this->assertSame('skip', $plan['status']);
+            $this->assertStringContainsString('shared pool', $plan['reason']);
+
+            // One of them marked on leave frees its lesson: exactly one new lesson, the member's own rows not counted twice.
+            DB::table('ClassSession')->where('StudentClassID', $sibling)->where('SessionDate', '2026-07-06')->update(['Status' => 'leave']);
+            $this->assertCount(1, $this->gen->planCourse($stale, 4, $this->today)['slots']);
+        } finally {
+            Carbon::setTestNow();
+        }
+    }
+
+    /** A package with one running member is not a shared pool: its own counter and only its own unmarked rows decide, as before. */
+    public function test_lone_package_member_keeps_its_own_counter_and_ignores_a_stopped_siblings_rows(): void
+    {
+        Carbon::setTestNow($this->today);
+        try {
+            [, $lone, $sibling] = $this->sharedPool(total: 48, consumed: 48, staleRemaining: 3, siblingPlanned: 0);
+            DB::table('StudentClass')->where('ID', $sibling)->update(['Stop' => 1]);
+            $this->sess($sibling, '2026-06-29', '19:00:00', '21:00:00', 'scheduled');
+            $this->sess($sibling, '2026-07-06', '19:00:00', '21:00:00', 'scheduled');
+            $this->assertCount(3, $this->gen->planCourse($lone, 4, $this->today)['slots']);
+
+            $this->sess($lone, '2026-07-09', '20:00:00', '22:00:00', 'scheduled'); // its own unmarked past lesson holds one
+            $this->assertCount(2, $this->gen->planCourse($lone, 4, $this->today)['slots']);
+        } finally {
+            Carbon::setTestNow();
+        }
+    }
+
     public function test_scheduled_execute_reaches_a_shared_pool_member_with_a_stale_counter(): void
     {
         Carbon::setTestNow($this->today);
