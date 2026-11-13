@@ -9,6 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
 import { Badge } from '../ui/badge';
 import { Button } from '../ui/button';
 import StudentLearningPlanGantt from './StudentLearningPlanGantt.vue';
+import StudentStudyWeek from './StudentStudyWeek.vue';
 const props = defineProps({ show: Boolean, studentId: { type: [Number, String], default: null }, studentName: { type: String, default: '' }, branchId: { type: [Number, String], default: null }, studentGrade: { type: String, default: '' } });
 const emit = defineEmits(['close']);
 const items = ref([]), subject = ref(''), from = ref(''), until = ref(''), tab = ref('overview');
@@ -55,16 +56,16 @@ watch(() => [props.show, props.studentId], () => { if (props.show && props.stude
 
 <template>
   <Dialog :open="show" @update:open="open => { if (!open) emit('close'); }">
-    <DialogContent :show-close-button="false" @close-auto-focus="restoreFocus" :class="tab === 'plan' ? 'tw:sm:max-w-6xl' : 'tw:sm:max-w-3xl'" class="tw:max-w-[calc(100vw-1rem)] tw:max-h-[calc(100dvh-1rem)] tw:overflow-y-auto tw:p-4 tw:text-tpl-body tw:tabular-nums">
+    <DialogContent :show-close-button="false" @close-auto-focus="restoreFocus" :class="tab === 'plan' || tab === 'study' ? 'tw:sm:max-w-6xl' : 'tw:sm:max-w-3xl'" class="tw:max-w-[calc(100vw-1rem)] tw:max-h-[calc(100dvh-1rem)] tw:overflow-y-auto tw:p-4 tw:text-tpl-body tw:tabular-nums">
       <DialogHeader class="tw:flex-row tw:items-start tw:justify-between tw:gap-3">
         <div class="tw:min-w-0 tw:space-y-2"><DialogTitle class="tw:text-tpl-list tw:break-words">{{ studentName }} 學習檔案</DialogTitle>
-        <DialogDescription class="tw:text-tpl-caption">依新到舊整理上課進度、出席與成績；這裡只供查閱。</DialogDescription></div>
+        <DialogDescription class="tw:text-tpl-caption">依新到舊整理上課進度、出席與成績，並可安排每週讀書計畫。</DialogDescription></div>
         <Button variant="outline" aria-label="關閉學習檔案" class="tw:min-h-11 tw:shrink-0 tw:text-tpl-body" @click="emit('close')">關閉</Button>
       </DialogHeader>
       <p v-if="loading" role="status">載入中…</p>
       <div v-else-if="error" role="alert"><p>{{ error }}</p><Button variant="outline" class="tw:min-h-11 tw:text-tpl-body" @click="load">重新載入</Button></div>
       <template v-else>
-        <div class="tw:grid tw:gap-3 tw:sm:grid-cols-3">
+        <div v-if="tab !== 'study'" class="tw:grid tw:gap-3 tw:sm:grid-cols-3">
           <label class="tw:grid tw:gap-1">科目
             <select v-model="subject" aria-label="科目" data-testid="timeline-subject" class="profile-filter"><option value="">全部</option><option v-for="s in subjects" :key="s" :value="s">{{ s }}</option></select>
           </label>
@@ -73,7 +74,7 @@ watch(() => [props.show, props.studentId], () => { if (props.show && props.stude
         </div>
         <p v-if="coverage.capped_sources?.length" role="status" class="tw:text-muted-foreground">各來源最多顯示最近 {{ coverage.limit_per_source }} 筆，較早紀錄未包含在本頁。</p>
         <Tabs v-model="tab" activation-mode="manual" class="tw:min-w-0">
-          <TabsList class="tw:w-full tw:h-auto tw:min-h-12"><TabsTrigger value="overview" class="tw:text-tpl-body tw:min-h-11">總覽</TabsTrigger><TabsTrigger value="plan" class="tw:text-tpl-body tw:min-h-11">學習計畫</TabsTrigger><TabsTrigger value="history" class="tw:text-tpl-body tw:min-h-11">上課紀錄</TabsTrigger><TabsTrigger value="scores" class="tw:text-tpl-body tw:min-h-11">成績</TabsTrigger></TabsList>
+          <TabsList class="tw:h-auto tw:min-h-12 tw:w-full tw:min-w-0 tw:max-w-full tw:justify-start tw:overflow-x-auto" data-testid="profile-tabs"><TabsTrigger value="overview" class="tw:text-tpl-body tw:min-h-11">總覽</TabsTrigger><TabsTrigger value="plan" class="tw:text-tpl-body tw:min-h-11">學習計畫</TabsTrigger><TabsTrigger value="study" class="tw:text-tpl-body tw:min-h-11">讀書計畫</TabsTrigger><TabsTrigger value="history" class="tw:text-tpl-body tw:min-h-11">上課紀錄</TabsTrigger><TabsTrigger value="scores" class="tw:text-tpl-body tw:min-h-11">成績</TabsTrigger></TabsList>
           <TabsContent value="overview" class="tw:space-y-3">
             <Card><CardHeader><CardTitle class="tw:text-tpl-list">最近上課進度</CardTitle></CardHeader><CardContent class="tw:space-y-2 tw:break-words">
               <template v-if="latest"><p>{{ latest.date }} · {{ latest.subject }}</p><p v-if="latest.progress" class="tw:whitespace-pre-wrap">{{ latest.progress }}</p><p v-if="latest.content" class="tw:whitespace-pre-wrap">{{ latest.content }}</p></template>
@@ -87,6 +88,7 @@ watch(() => [props.show, props.studentId], () => { if (props.show && props.stude
             </CardContent></Card>
           </TabsContent>
           <TabsContent value="plan"><StudentLearningPlanGantt :student-id="studentId" :branch-id="branchId" :student-grade="studentGrade" /></TabsContent>
+          <TabsContent value="study"><StudentStudyWeek :student-id="studentId" /></TabsContent>
           <TabsContent value="history">
             <p v-if="!history.length">尚無符合篩選的上課紀錄。</p>
             <ul v-else class="tw:space-y-3 tw:list-none tw:p-0">

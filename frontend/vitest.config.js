@@ -35,6 +35,7 @@ export default defineConfig({
       'src/lib/studentCourseSessionDisplay.test.js',
       'src/lib/studentSchoolGrade.test.js',
       'src/lib/learningPlanGantt.test.js',
+      'src/lib/studyWeek.test.js',
       'e2e/fixtures/readOnlyAppGuard.test.js',
       'e2e/fixtures/classSessionReadResponder.test.js',
       'e2e/fixtures/calendarDrawnCards.test.js',
