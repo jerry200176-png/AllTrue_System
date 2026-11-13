@@ -80,8 +80,8 @@
           <TableBody>
             <TableRow v-for="r in rows" :key="r.student_class_id" class="tw:hover:bg-muted/60">
               <!-- in-app #543: a name stays on one line (PAGE_TEMPLATE name-cell rule 1); the subject and teacher repeat under it on phone. -->
-              <TableCell :class="[t.name, 'student-name tw:pl-5']" :title="r.student_name">
-                {{ r.student_name }}
+              <TableCell :class="[t.name, 'tw:pl-5']">
+                <span class="student-name" :title="r.student_name">{{ r.student_name }}</span>
                 <span :class="[t.sub, t.phoneOnly]">{{ r.subject }}・<span class="tw:inline-block tw:whitespace-nowrap">{{ r.teacher_name }}</span></span>
               </TableCell>
               <TableCell :class="[t.cell, t.phoneHide, 'tw:min-w-[8em] tw:whitespace-normal']">{{ r.subject }}</TableCell>
