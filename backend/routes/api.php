@@ -72,6 +72,7 @@ use App\Http\Controllers\TeacherEligibilityController;
 use App\Http\Controllers\TeacherEligibilityInputController;
 use App\Http\Controllers\AssessmentController;
 use App\Http\Controllers\ExamRoundController;
+use App\Http\Controllers\CurriculumTemplateController;
 use App\Http\Controllers\SchoolExamPeriodController;
 use App\Http\Controllers\SchoolMergeController;
 use App\Http\Controllers\QuestionBankController;
@@ -843,6 +844,8 @@ Route::prefix('v1')->group(function () {
         Route::get('exam-periods/schools', [SchoolExamPeriodController::class, 'schools']);
         Route::get('school-names', [SchoolMergeController::class, 'names']);
         Route::get('exam-periods', [SchoolExamPeriodController::class, 'index']);
+        Route::get('curriculum-templates', [CurriculumTemplateController::class, 'index']);
+        Route::get('curriculum-templates/{template}', [CurriculumTemplateController::class, 'show'])->whereNumber('template');
         Route::get('students/{student}/exam-periods', [SchoolExamPeriodController::class, 'forStudent'])->whereNumber('student');
     });
 
@@ -879,6 +882,10 @@ Route::prefix('v1')->group(function () {
         Route::post('exam-periods', [SchoolExamPeriodController::class, 'store']);
         Route::patch('exam-periods/{period}', [SchoolExamPeriodController::class, 'update'])->whereNumber('period');
         Route::delete('exam-periods/{period}', [SchoolExamPeriodController::class, 'destroy'])->whereNumber('period');
+        Route::post('curriculum-templates', [CurriculumTemplateController::class, 'store']);
+        Route::patch('curriculum-templates/{template}', [CurriculumTemplateController::class, 'update'])->whereNumber('template');
+        Route::put('curriculum-templates/{template}/units', [CurriculumTemplateController::class, 'replaceUnits'])->whereNumber('template');
+        Route::post('curriculum-templates/{template}/archive', [CurriculumTemplateController::class, 'archive'])->whereNumber('template');
         Route::post('exam-rounds/{examRound}/publish', [ExamRoundController::class, 'publish'])->whereNumber('examRound');
         Route::post('exam-rounds/{examRound}/close', [ExamRoundController::class, 'close'])->whereNumber('examRound');
         Route::get('exam-rounds/{examRound}/progress', [ExamRoundController::class, 'progress'])->whereNumber('examRound');
