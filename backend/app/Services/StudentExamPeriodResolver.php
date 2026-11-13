@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\SchoolExamPeriod;
 use App\Models\Student;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 
 /**
@@ -29,6 +30,28 @@ class StudentExamPeriodResolver
             ->values();
 
         return ['rows' => $rows, 'academic_year' => $year, 'semester' => $semester];
+    }
+
+    /**
+     * Periods of this student's school and grade whose start lies in [from, to], whatever term they belong to,
+     * in date order. A learning plan uses this so an old plan finds the same exams next term and a plan that
+     * crosses two terms sees both terms' exams.
+     *
+     * @return Collection<int, SchoolExamPeriod>
+     */
+    public function forRange(Student $student, Carbon $from, Carbon $to): Collection
+    {
+        $key = $this->grouper->key((string) $student->SchoolName);
+        if ($key === '') {
+            return collect();
+        }
+
+        return SchoolExamPeriod::query()->where('campus_id', $student->CampusID)
+            ->whereBetween('start_date', [$from->toDateString(), $to->toDateString()])
+            ->orderBy('start_date')->orderBy('seq')->get()
+            ->filter(fn ($p) => $this->grouper->key($p->school_name) === $key
+                && ($p->grade_ids === null || in_array((int) $student->ClassID, array_map('intval', $p->grade_ids), true)))
+            ->values();
     }
 
     /** ROC year + semester: Aug–Jan = 1st, Feb–Jul = 2nd. */

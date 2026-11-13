@@ -72,13 +72,44 @@ class LearningPlanSchedulerTest extends TestCase
         $this->assertSame([0 => '2026-09-01..2026-09-03', 2 => '2026-09-04..2026-09-05'], $this->ranges($out));
     }
 
-    public function test_exams_on_or_beyond_the_plan_range_are_ignored(): void
+    public function test_exams_outside_the_plan_range_are_ignored(): void
     {
-        $exams = [$this->exam(1, '2026-09-01'), $this->exam(2, '2026-09-30'), $this->exam(3, '2026-10-05')];
+        $exams = [$this->exam(1, '2026-08-31'), $this->exam(3, '2026-10-01')];
 
         $out = LearningPlanScheduler::schedule([['exam_sequence' => 1], ['exam_sequence' => 3]], '2026-09-01', '2026-09-30', $exams);
 
         $this->assertSame([0 => '2026-09-01..2026-09-15', 1 => '2026-09-16..2026-09-30'], $this->ranges($out));
+    }
+
+    public function test_exam_on_plan_start_is_a_boundary_and_its_unit_shares_the_first_day(): void
+    {
+        $units = [['exam_sequence' => 1], ['exam_sequence' => 2]];
+
+        $out = LearningPlanScheduler::schedule($units, '2026-09-01', '2026-09-10', [$this->exam(1, '2026-09-01')]);
+
+        $this->assertSame([0 => '2026-09-01..2026-09-01', 1 => '2026-09-01..2026-09-10'], $this->ranges($out));
+    }
+
+    public function test_exam_on_plan_end_ends_its_unit_the_day_before(): void
+    {
+        $units = [['exam_sequence' => 1], ['exam_sequence' => 2]];
+
+        $out = LearningPlanScheduler::schedule($units, '2026-09-01', '2026-09-10', [$this->exam(1, '2026-09-10')]);
+
+        $this->assertSame([0 => '2026-09-01..2026-09-09', 1 => '2026-09-10..2026-09-10'], $this->ranges($out));
+    }
+
+    public function test_repeated_sequences_across_terms_use_the_next_unused_exam_in_date_order(): void
+    {
+        $units = [['exam_sequence' => 1], ['exam_sequence' => 2], ['exam_sequence' => 1], []];
+        $exams = [$this->exam(1, '2027-03-20'), $this->exam(1, '2026-10-20'), $this->exam(2, '2026-12-01')];
+
+        $out = LearningPlanScheduler::schedule($units, '2026-09-01', '2027-04-30', $exams);
+
+        $this->assertSame([
+            0 => '2026-09-01..2026-10-19', 1 => '2026-10-20..2026-11-30',
+            2 => '2026-12-01..2027-01-24', 3 => '2027-01-25..2027-03-19',
+        ], $this->ranges($out));
     }
 
     public function test_leap_day_counts_as_a_day(): void

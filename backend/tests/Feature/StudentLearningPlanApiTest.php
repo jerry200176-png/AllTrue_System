@@ -60,7 +60,7 @@ class StudentLearningPlanApiTest extends TestCase
     private function course(Student $student, int $teacherId): StudentClass
     {
         return StudentClass::create([
-            'StudentID' => $student->id, 'TeacherID' => $teacherId, 'GradeID' => 1, 'SubjectID' => 1, 'by1' => $student->CampusID,
+            'StudentID' => $student->id, 'TeacherID' => $teacherId, 'GradeID' => 1, 'SubjectID' => 1, 'by1' => 1, // by1 is the class-type code, not a campus,
             'StartDate' => '2026-08-01', 'TotalHours' => 20, 'Charge' => 1000, 'Pay' => 0, 'Paid' => 0, 'Rate' => 1000,
             'MDate' => now(), 'Stop' => 0, 'ScheduleMode' => 'count', 'SessionCount' => 10, 'RemainingSessions' => 10,
             'UsedSessions' => 0, 'SessionDuration' => 60, 'ClassType' => 'one_on_one',
@@ -146,7 +146,7 @@ class StudentLearningPlanApiTest extends TestCase
         // A and B ended before today (2026-11-13) and are not done.
         $this->assertSame(0, $plan['percent_done']);
         $this->assertSame(2, $plan['units_behind']);
-        $this->assertSame(['sequence' => 2, 'label' => '第2次段考', 'start_date' => '2026-12-01', 'days_left' => 18], $plan['next_exam']);
+        $this->assertSame(['sequence' => 2, 'label' => '第2次段考', 'start_date' => '2026-12-01', 'academic_year' => 115, 'semester' => 1, 'days_left' => 18], $plan['next_exam']);
 
         $a = $plan['units'][0]['id'];
         $res = $this->as($dir)->patchJson("/api/v1/learning-plans/{$plan['id']}/units/$a", ['completed' => true])->assertOk();
@@ -305,5 +305,125 @@ class StudentLearningPlanApiTest extends TestCase
         // A teacher with no course for this student sees nothing.
         $stranger = $this->staff('T', $campus);
         $this->as($stranger)->getJson("/api/v1/students/{$student->id}/learning-plans")->assertForbidden();
+    }
+
+    public function test_works_for_a_campus_whose_id_is_not_the_class_type_code(): void
+    {
+        CampusFactory::new()->create(); // burn id 1 so the real campus id differs from by1 = 1
+        $campus = (int) CampusFactory::new()->create()->id;
+        $this->assertNotSame(1, $campus);
+        $student = $this->student($campus);
+        $course = $this->course($student, $this->staff('T', $campus)['id']);
+
+        $this->create($this->staff('A', $campus), $student, $course, $this->template($campus))->assertCreated();
+    }
+
+    public function test_stopped_course_is_refused(): void
+    {
+        $campus = (int) CampusFactory::new()->create()->id;
+        $student = $this->student($campus);
+        $course = $this->course($student, $this->staff('T', $campus)['id']);
+        \Illuminate\Support\Facades\DB::table('StudentClass')->where('ID', $course->ID)->update(['Stop' => 1]);
+
+        $this->create($this->staff('A', $campus), $student, $course, $this->template($campus))->assertStatus(422);
+        $this->assertDatabaseCount('student_learning_plans', 0);
+    }
+
+    public function test_archived_plan_accepts_only_a_status_change(): void
+    {
+        $campus = (int) CampusFactory::new()->create()->id;
+        $dir = $this->staff('A', $campus);
+        $student = $this->student($campus);
+        $course = $this->course($student, $this->staff('T', $campus)['id']);
+        $id = $this->create($dir, $student, $course, $this->template($campus))->json('data.id');
+        $this->as($dir)->patchJson("/api/v1/learning-plans/$id", ['status' => 'archived'])->assertOk();
+
+        $this->as($dir)->patchJson("/api/v1/learning-plans/$id", ['title' => 'x'])->assertStatus(422);
+        $this->as($dir)->patchJson("/api/v1/learning-plans/$id", ['status' => 'active', 'plan_end' => '2027-03-01'])->assertStatus(422);
+        $this->as($dir)->patchJson("/api/v1/learning-plans/$id", ['status' => 'active'])->assertOk();
+    }
+
+    public function test_shrinking_the_range_is_refused_while_a_manual_unit_would_fall_outside(): void
+    {
+        $campus = (int) CampusFactory::new()->create()->id;
+        $dir = $this->staff('A', $campus);
+        $student = $this->student($campus);
+        $course = $this->course($student, $this->staff('T', $campus)['id']);
+        $plan = $this->create($dir, $student, $course, $this->template($campus))->json('data');
+        $d = $plan['units'][3]['id'];
+        $this->as($dir)->patchJson("/api/v1/learning-plans/{$plan['id']}/units/$d", ['planned_start' => '2026-12-20', 'planned_end' => '2027-01-02'])->assertOk();
+
+        $this->as($dir)->patchJson("/api/v1/learning-plans/{$plan['id']}", ['plan_end' => '2026-12-31'])
+            ->assertStatus(422)->assertJsonPath('message', '有 1 個手動排好日期的單元會落在新的計畫期間外，請先調整這些單元的日期');
+        $this->assertDatabaseHas('student_learning_plans', ['id' => $plan['id'], 'plan_end' => '2027-01-05']);
+        $this->as($dir)->patchJson("/api/v1/learning-plans/{$plan['id']}/units/$d", ['dates_manual' => false])->assertOk();
+        $this->as($dir)->patchJson("/api/v1/learning-plans/{$plan['id']}", ['plan_end' => '2026-12-31'])->assertOk();
+    }
+
+    public function test_recalculating_next_term_finds_the_same_exams(): void
+    {
+        $campus = (int) CampusFactory::new()->create()->id;
+        $dir = $this->staff('A', $campus);
+        $student = $this->student($campus);
+        $course = $this->course($student, $this->staff('T', $campus)['id']);
+        $this->exams($campus);
+        $plan = $this->create($dir, $student, $course, $this->template($campus))->json('data');
+
+        Carbon::setTestNow('2027-03-01 10:00:00'); // a different term (115 / 2)
+        $res = $this->as($dir)->postJson("/api/v1/learning-plans/{$plan['id']}/recalculate")->assertOk();
+
+        $this->assertSame($this->ranges($plan['units']), $this->ranges($res->json('data.units')));
+    }
+
+    public function test_a_plan_crossing_two_terms_sees_both_terms_exams(): void
+    {
+        $campus = (int) CampusFactory::new()->create()->id;
+        $dir = $this->staff('A', $campus);
+        $student = $this->student($campus);
+        $course = $this->course($student, $this->staff('T', $campus)['id']);
+        foreach ([[1, 1, '2026-10-20'], [1, 3, '2027-01-04'], [2, 1, '2027-03-20']] as [$sem, $seq, $date]) {
+            SchoolExamPeriod::create(['campus_id' => $campus, 'school_name' => '甲測試國中', 'academic_year' => 115, 'semester' => $sem,
+                'seq' => $seq, 'label' => "{$sem}-{$seq}", 'start_date' => $date, 'end_date' => $date, 'grade_ids' => null, 'grade_key' => 'all']);
+        }
+        $tpl = CurriculumTemplate::create(['campus_id' => $campus, 'subject' => 'Math', 'grade' => 'J1', 'title' => '跨學期', 'status' => 'active']);
+        foreach ([['X', 1], ['Y', 3], ['Z', 1]] as $i => [$title, $seq]) {
+            CurriculumTemplateUnit::create(['template_id' => $tpl->id, 'sort_order' => $i + 1, 'title' => $title, 'exam_sequence' => $seq]);
+        }
+
+        $res = $this->create($dir, $student, $course, $tpl, ['plan_end' => '2027-04-30'])->assertCreated();
+
+        // Z is tagged 1 again, so it takes the second term's exam 1, not the first term's.
+        $this->assertSame(['X 2026-09-01..2026-10-19', 'Y 2026-10-20..2027-01-03', 'Z 2027-01-04..2027-03-19'], $this->ranges($res->json('data.units')));
+        $this->assertSame(['start_date' => '2027-01-04', 'academic_year' => 115, 'semester' => 1],
+            array_intersect_key($res->json('data.next_exam'), array_flip(['start_date', 'academic_year', 'semester'])));
+    }
+
+    public function test_super_admin_can_manage_plans_and_actor_ids_are_recorded(): void
+    {
+        $campus = (int) CampusFactory::new()->create()->id;
+        $other = (int) CampusFactory::new()->create()->id;
+        $admin = $this->staff('S', $other);
+        $student = $this->student($campus);
+        $course = $this->course($student, $this->staff('T', $campus)['id']);
+
+        $plan = $this->create($admin, $student, $course, $this->template($campus))->assertCreated()
+            ->assertJsonPath('data.created_by', $admin['id'])->json('data');
+        $unit = $plan['units'][0]['id'];
+        $this->as($admin)->patchJson("/api/v1/learning-plans/{$plan['id']}/units/$unit", ['completed' => true])
+            ->assertOk()->assertJsonPath('data.units.0.completed_by', $admin['id']);
+        $this->as($admin)->getJson("/api/v1/students/{$student->id}/learning-plans")->assertOk()->assertJsonCount(1, 'data');
+    }
+
+    public function test_date_format_is_strict(): void
+    {
+        $campus = (int) CampusFactory::new()->create()->id;
+        $dir = $this->staff('A', $campus);
+        $student = $this->student($campus);
+        $course = $this->course($student, $this->staff('T', $campus)['id']);
+        $tpl = $this->template($campus);
+
+        $this->create($dir, $student, $course, $tpl, ['plan_start' => '2026/09/01'])->assertStatus(422);
+        $this->create($dir, $student, $course, $tpl, ['plan_start' => '2026-09-01 10:00:00'])->assertStatus(422);
+        $this->create($dir, $student, $course, $tpl, ['plan_start' => '2026-02-30'])->assertStatus(422);
     }
 }

@@ -16,13 +16,17 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 
 /**
- * 學生學習計畫 API (#4970 step 4a). Reads and writes: director, super_admin, and a teacher for courses visible to
- * them (StudentClass::visibleToTeacher, same rule as the student-classes list). Campus-scoped; archive, never delete.
- * Units are copied from a template; dates come from LearningPlanScheduler and the student's school exam periods.
+ * 學生學習計畫 API (#4970 step 4a). Campus-scoped; archive, never delete. Units are copied from a template;
+ * dates come from LearningPlanScheduler and the exam periods inside the plan range (any term).
+ * Reads: director, super_admin, and a teacher for courses visible to them (StudentClass::visibleToTeacher).
+ * Writes: director, super_admin, and a teacher only for courses they own (StudentClass.TeacherID), not as a
+ * substitute or makeup teacher.
  */
 class StudentLearningPlanController extends Controller
 {
     private const DEFAULT_WEEKS = 18;
+
+    private const DATE = ['date_format:Y-m-d'];
 
     public function __construct(private StudentExamPeriodResolver $exams)
     {
@@ -47,10 +51,9 @@ class StudentLearningPlanController extends Controller
         } else {
             $q->whereIn('status', ['draft', 'active']);
         }
-        $examRows = $this->examRows($student);
 
         return response()->json(['data' => $q->with('units')->orderByDesc('id')->get()
-            ->map(fn ($p) => $this->present($p, $examRows))->all()]);
+            ->map(fn ($p) => $this->present($p, $student))->all()]);
     }
 
     public function store(Request $request, Student $student): JsonResponse
@@ -61,16 +64,16 @@ class StudentLearningPlanController extends Controller
         $data = $request->validate([
             'student_class_id' => ['required', 'integer', 'min:1'],
             'template_id' => ['required', 'integer', 'min:1'],
-            'plan_start' => ['required', 'date'],
-            'plan_end' => ['nullable', 'date', 'after_or_equal:plan_start'],
+            'plan_start' => ['required', ...self::DATE],
+            'plan_end' => ['nullable', ...self::DATE, 'after_or_equal:plan_start'],
             'title' => ['nullable', 'string', 'max:120'],
         ]);
-        $course = StudentClass::query()->where('ID', $data['student_class_id'])
-            ->where('StudentID', $student->id)->where('by1', $student->CampusID)->first();
+        // The student's own course; the student's campus was checked above (by1 is a class-type code, not a campus).
+        $course = StudentClass::query()->where('ID', $data['student_class_id'])->where('StudentID', $student->id)->first();
         if ($course === null) {
             return response()->json(['message' => '找不到這位學生的這門課'], 422);
         }
-        if (!$this->courseAllowed($request, (int) $course->ID)) {
+        if (!$this->courseWritable($request, (int) $course->ID)) {
             return $this->forbidden();
         }
         $template = CurriculumTemplate::query()->whereKey($data['template_id'])
@@ -78,39 +81,44 @@ class StudentLearningPlanController extends Controller
         if ($template === null) {
             return response()->json(['message' => '找不到可用的教材範本（需為使用中）'], 422);
         }
-        $start = substr((string) $data['plan_start'], 0, 10);
-        $end = isset($data['plan_end']) ? substr((string) $data['plan_end'], 0, 10)
-            : Carbon::parse($start)->addWeeks(self::DEFAULT_WEEKS)->toDateString();
+        $start = $this->day((string) $data['plan_start']);
+        $end = isset($data['plan_end']) ? $this->day((string) $data['plan_end']) : $start->copy()->addWeeks(self::DEFAULT_WEEKS);
         $title = trim((string) ($data['title'] ?? '')) ?: $template->title;
 
         $plan = null;
-        DB::transaction(function () use ($request, $student, $course, $template, $start, $end, $title, &$plan) {
-            // Lock the course row so two requests for the same course cannot both pass the duplicate check.
-            StudentClass::query()->where('ID', $course->ID)->lockForUpdate()->first();
-            if ($this->hasOpenPlan((int) $course->ID)) {
+        $error = null;
+        DB::transaction(function () use ($request, $student, $course, $template, $start, $end, $title, &$plan, &$error) {
+            // Same lock as restoring an archived plan: the course row, so two requests cannot both pass the check.
+            $locked = StudentClass::query()->where('ID', $course->ID)->lockForUpdate()->first();
+            if ($locked === null || (int) $locked->Stop !== 0) {
+                $error = '這門課已停課，不能建立學習計畫';
+            } elseif ($this->hasOpenPlan((int) $course->ID)) {
+                $error = '這門課已經有學習計畫';
+            }
+            if ($error !== null) {
                 return;
             }
             $plan = StudentLearningPlan::create([
                 'campus_id' => (int) $student->CampusID, 'student_id' => $student->id, 'student_class_id' => (int) $course->ID,
                 'source_template_id' => $template->id, 'title' => $title, 'status' => 'active',
-                'plan_start' => $start, 'plan_end' => $end, 'created_by' => $this->actorId($request),
+                'plan_start' => $start->toDateString(), 'plan_end' => $end->toDateString(), 'created_by' => $this->actorId($request),
             ]);
             $units = $template->units()->get();
             $dates = LearningPlanScheduler::schedule($units->map(fn ($u) => ['exam_sequence' => $u->exam_sequence])->all(),
-                $start, $end, $this->examRows($student));
+                $start->toDateString(), $end->toDateString(), $this->examRows($student, $start, $end));
             foreach ($units->values() as $i => $u) {
                 StudentPlanUnit::create([
                     'plan_id' => $plan->id, 'sort_order' => $i + 1, 'title' => $u->title, 'note' => $u->note,
                     'exam_sequence' => $u->exam_sequence,
-                    'planned_start' => $dates[$i]['start'] ?? $start, 'planned_end' => $dates[$i]['end'] ?? $end,
+                    'planned_start' => $dates[$i]['start'] ?? $start->toDateString(), 'planned_end' => $dates[$i]['end'] ?? $end->toDateString(),
                 ]);
             }
         });
         if ($plan === null) {
-            return response()->json(['message' => '這門課已經有學習計畫'], 422);
+            return response()->json(['message' => $error], 422);
         }
 
-        return response()->json(['data' => $this->present($plan->load('units'), $this->examRows($student))], 201);
+        return response()->json(['data' => $this->present($plan->load('units'), $student)], 201);
     }
 
     public function update(Request $request, StudentLearningPlan $plan): JsonResponse
@@ -121,16 +129,26 @@ class StudentLearningPlanController extends Controller
         $data = $request->validate([
             'title' => ['sometimes', 'string', 'min:1', 'max:120'],
             'status' => ['sometimes', Rule::in(StudentLearningPlan::STATUSES)],
-            'plan_start' => ['sometimes', 'date'],
-            'plan_end' => ['sometimes', 'date'],
+            'plan_start' => ['sometimes', ...self::DATE],
+            'plan_end' => ['sometimes', ...self::DATE],
         ]);
 
         $error = null;
         DB::transaction(function () use ($plan, $data, &$error) {
+            // Course row first (same lock as create), then the plan.
+            StudentClass::query()->where('ID', $plan->student_class_id)->lockForUpdate()->first();
             $locked = StudentLearningPlan::query()->whereKey($plan->id)->lockForUpdate()->first();
-            $start = substr((string) ($data['plan_start'] ?? $locked->plan_start->toDateString()), 0, 10);
-            $end = substr((string) ($data['plan_end'] ?? $locked->plan_end->toDateString()), 0, 10);
-            if (strcmp($start, $end) > 0) {
+            if ($locked === null) {
+                return;
+            }
+            if ($locked->status === 'archived' && array_diff(array_keys($data), ['status']) !== []) {
+                $error = '已封存的計畫只能改回使用中，其他欄位請先還原再修改';
+
+                return;
+            }
+            $start = $this->day((string) ($data['plan_start'] ?? $locked->plan_start->toDateString()));
+            $end = $this->day((string) ($data['plan_end'] ?? $locked->plan_end->toDateString()));
+            if ($start->gt($end)) {
                 $error = '計畫結束日不能早於開始日';
 
                 return;
@@ -141,9 +159,19 @@ class StudentLearningPlanController extends Controller
 
                 return;
             }
-            $datesChanged = $start !== $locked->plan_start->toDateString() || $end !== $locked->plan_end->toDateString();
-            $locked->update(array_filter(['title' => isset($data['title']) ? trim($data['title']) : null,
-                'status' => $data['status'] ?? null], fn ($v) => $v !== null) + ['plan_start' => $start, 'plan_end' => $end]);
+            $datesChanged = !$start->equalTo($locked->plan_start) || !$end->equalTo($locked->plan_end);
+            if ($datesChanged) {
+                $outside = $locked->units()->get()->filter(fn ($u) => $u->dates_manual
+                    && ($u->planned_start->lt($start) || $u->planned_end->gt($end)))->count();
+                if ($outside > 0) {
+                    $error = "有 {$outside} 個手動排好日期的單元會落在新的計畫期間外，請先調整這些單元的日期";
+
+                    return;
+                }
+            }
+            $locked->update(array_filter([
+                'title' => isset($data['title']) ? trim($data['title']) : null, 'status' => $data['status'] ?? null,
+            ], fn ($v) => $v !== null) + ['plan_start' => $start->toDateString(), 'plan_end' => $end->toDateString()]);
             if ($datesChanged) {
                 $this->applySchedule($locked);
             }
@@ -166,8 +194,8 @@ class StudentLearningPlanController extends Controller
         $data = $request->validate([
             'title' => ['sometimes', 'string', 'min:1', 'max:120'],
             'note' => ['sometimes', 'nullable', 'string', 'max:255'],
-            'planned_start' => ['sometimes', 'date'],
-            'planned_end' => ['sometimes', 'date'],
+            'planned_start' => ['sometimes', ...self::DATE],
+            'planned_end' => ['sometimes', ...self::DATE],
             'completed' => ['sometimes', 'boolean'],
             'dates_manual' => ['sometimes', 'boolean'],
         ]);
@@ -179,12 +207,15 @@ class StudentLearningPlanController extends Controller
         $error = null;
         DB::transaction(function () use ($request, $plan, $unit, $data, $hasDates, &$error) {
             $locked = StudentLearningPlan::query()->whereKey($plan->id)->lockForUpdate()->first();
+            $u = StudentPlanUnit::query()->whereKey($unit->id)->where('plan_id', $plan->id)->first();
+            if ($locked === null || $u === null) {
+                return;
+            }
             if ($locked->status === 'archived') {
                 $error = '已封存的計畫不能再修改單元';
 
                 return;
             }
-            $u = StudentPlanUnit::query()->whereKey($unit->id)->first();
             $changes = [];
             if (isset($data['title'])) {
                 $changes['title'] = trim($data['title']);
@@ -194,23 +225,21 @@ class StudentLearningPlanController extends Controller
                 $changes['note'] = $note === '' ? null : $note;
             }
             if ($hasDates) {
-                $from = substr((string) ($data['planned_start'] ?? $u->planned_start->toDateString()), 0, 10);
-                $to = substr((string) ($data['planned_end'] ?? $u->planned_end->toDateString()), 0, 10);
-                if (strcmp($from, $to) > 0 || strcmp($from, $locked->plan_start->toDateString()) < 0
-                    || strcmp($to, $locked->plan_end->toDateString()) > 0) {
+                $from = $this->day((string) ($data['planned_start'] ?? $u->planned_start->toDateString()));
+                $to = $this->day((string) ($data['planned_end'] ?? $u->planned_end->toDateString()));
+                if ($from->gt($to) || $from->lt($locked->plan_start) || $to->gt($locked->plan_end)) {
                     $error = '單元日期要在計畫期間內，且開始日不能晚於結束日';
 
                     return;
                 }
-                $changes += ['planned_start' => $from, 'planned_end' => $to, 'dates_manual' => true];
+                $changes += ['planned_start' => $from->toDateString(), 'planned_end' => $to->toDateString(), 'dates_manual' => true];
             } elseif (array_key_exists('dates_manual', $data)) {
                 $changes['dates_manual'] = (bool) $data['dates_manual'];
             }
             if (array_key_exists('completed', $data)) {
-                $done = (bool) $data['completed'];
-                if ($done && $u->completed_at === null) {
+                if ($data['completed'] && $u->completed_at === null) {
                     $changes += ['completed_at' => now(), 'completed_by' => $this->actorId($request)];
-                } elseif (!$done) {
+                } elseif (!$data['completed']) {
                     $changes += ['completed_at' => null, 'completed_by' => null];
                 }
             }
@@ -234,6 +263,9 @@ class StudentLearningPlanController extends Controller
         $archived = false;
         DB::transaction(function () use ($plan, &$archived) {
             $locked = StudentLearningPlan::query()->whereKey($plan->id)->lockForUpdate()->first();
+            if ($locked === null) {
+                return;
+            }
             if ($locked->status === 'archived') {
                 $archived = true;
 
@@ -248,7 +280,7 @@ class StudentLearningPlanController extends Controller
         return $this->respond($plan->fresh());
     }
 
-    /** Re-date every non-manual unit from the plan range and the student's school exam periods. */
+    /** Re-date every non-manual unit from the plan range and the exam periods inside it. */
     private function applySchedule(StudentLearningPlan $plan): void
     {
         $units = $plan->units()->get()->values();
@@ -256,7 +288,7 @@ class StudentLearningPlanController extends Controller
         $dates = LearningPlanScheduler::schedule(
             $units->map(fn ($u) => ['exam_sequence' => $u->exam_sequence, 'dates_manual' => $u->dates_manual])->all(),
             $plan->plan_start->toDateString(), $plan->plan_end->toDateString(),
-            $student ? $this->examRows($student) : [],
+            $student ? $this->examRows($student, $plan->plan_start, $plan->plan_end) : [],
         );
         foreach ($units as $i => $u) {
             if (isset($dates[$i])) {
@@ -265,37 +297,43 @@ class StudentLearningPlanController extends Controller
         }
     }
 
-    private function respond(StudentLearningPlan $plan): JsonResponse
+    private function respond(?StudentLearningPlan $plan): JsonResponse
     {
+        abort_if($plan === null, 404);
         $student = Student::query()->find($plan->student_id);
 
-        return response()->json(['data' => $this->present($plan->load('units'), $student ? $this->examRows($student) : [])]);
+        return response()->json(['data' => $this->present($plan->load('units'), $student)]);
     }
 
     /** Stored fields plus derived (never stored) percent_done, units_behind and next_exam. */
-    private function present(StudentLearningPlan $plan, array $examRows): array
+    private function present(StudentLearningPlan $plan, ?Student $student): array
     {
-        $today = now()->toDateString();
+        $today = now()->startOfDay();
         $units = $plan->units;
         $total = $units->count();
         $done = $units->filter(fn ($u) => $u->completed_at !== null)->count();
-        $next = collect($examRows)->first(fn ($e) => strcmp($e['start_date'], $today) >= 0);
+        $next = collect($student ? $this->examRows($student, $plan->plan_start, $plan->plan_end) : [])
+            ->first(fn ($e) => $this->day($e['start_date'])->gte($today));
 
         return $plan->toArray() + [
             'percent_done' => $total === 0 ? 0 : (int) round($done * 100 / $total),
-            'units_behind' => $units->filter(fn ($u) => $u->completed_at === null && $u->planned_end->toDateString() < $today)->count(),
-            'next_exam' => $next === null ? null : $next + [
-                'days_left' => intdiv((int) strtotime($next['start_date'] . ' UTC') - (int) strtotime($today . ' UTC'), 86400),
-            ],
+            'units_behind' => $units->filter(fn ($u) => $u->completed_at === null && $u->planned_end->lt($today))->count(),
+            'next_exam' => $next === null ? null : $next + ['days_left' => (int) $today->diffInDays($this->day($next['start_date']))],
         ];
     }
 
-    /** @return list<array{sequence: int, label: string, start_date: string}> sorted by start date */
-    private function examRows(Student $student): array
+    /** @return list<array{sequence: int, label: string, start_date: string, academic_year: int, semester: int}> in date order */
+    private function examRows(Student $student, Carbon $from, Carbon $to): array
     {
-        return $this->exams->forStudent($student)['rows']->map(fn ($p) => [
+        return $this->exams->forRange($student, $from, $to)->map(fn ($p) => [
             'sequence' => (int) $p->seq, 'label' => (string) $p->label, 'start_date' => $p->start_date->toDateString(),
-        ])->sortBy('start_date')->values()->all();
+            'academic_year' => (int) $p->academic_year, 'semester' => (int) $p->semester,
+        ])->all();
+    }
+
+    private function day(string $date): Carbon
+    {
+        return Carbon::createFromFormat('Y-m-d', $date)->startOfDay();
     }
 
     private function hasOpenPlan(int $courseId): bool
@@ -305,7 +343,7 @@ class StudentLearningPlanController extends Controller
 
     private function planDenied(Request $request, StudentLearningPlan $plan): ?JsonResponse
     {
-        if (!$this->campusAllowed($request, (int) $plan->campus_id) || !$this->courseAllowed($request, (int) $plan->student_class_id)) {
+        if (!$this->campusAllowed($request, (int) $plan->campus_id) || !$this->courseWritable($request, (int) $plan->student_class_id)) {
             return $this->forbidden();
         }
 
@@ -321,16 +359,16 @@ class StudentLearningPlanController extends Controller
         return max(0, (int) $request->attributes->get('auth_teacher_id'));
     }
 
-    /** Director/super_admin: any course in their campus. Teacher: only courses visible to them. */
-    private function courseAllowed(Request $request, int $courseId): bool
+    /** Director/super_admin: any course in their campus. Teacher: only the courses they own. */
+    private function courseWritable(Request $request, int $courseId): bool
     {
         $teacherId = $this->teacherId($request);
 
         return $teacherId === null || ($teacherId > 0
-            && StudentClass::query()->where('ID', $courseId)->visibleToTeacher($teacherId)->exists());
+            && StudentClass::query()->where('ID', $courseId)->where('TeacherID', $teacherId)->exists());
     }
 
-    /** @return list<int> */
+    /** @return list<int> courses a teacher may read (visible to them, incl. substitute/makeup). */
     private function visibleCourseIds(Request $request, Student $student): array
     {
         $teacherId = (int) $this->teacherId($request);
@@ -339,9 +377,11 @@ class StudentLearningPlanController extends Controller
             ->visibleToTeacher($teacherId)->pluck('ID')->map(fn ($id) => (int) $id)->all();
     }
 
-    private function actorId(Request $request): int
+    private function actorId(Request $request): ?int
     {
-        return (int) ($request->attributes->get('auth_user')->id ?? 0);
+        $id = (int) ($request->attributes->get('auth_user')?->id ?? 0);
+
+        return $id > 0 ? $id : null;
     }
 
     private function campusAllowed(Request $request, int $campusId): bool

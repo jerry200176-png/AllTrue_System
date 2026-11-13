@@ -34,6 +34,7 @@ class StudentLearningPlan extends Model
 
     protected $casts = ['plan_start' => 'date:Y-m-d', 'plan_end' => 'date:Y-m-d'];
 
+    /** @return HasMany<StudentPlanUnit, $this> */
     public function units(): HasMany
     {
         return $this->hasMany(StudentPlanUnit::class, 'plan_id')->orderBy('sort_order')->orderBy('id');

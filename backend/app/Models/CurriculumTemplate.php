@@ -31,6 +31,7 @@ class CurriculumTemplate extends Model
         'campus_id', 'subject', 'grade', 'publisher', 'academic_year', 'semester', 'title', 'status', 'created_by',
     ];
 
+    /** @return HasMany<CurriculumTemplateUnit, $this> */
     public function units(): HasMany
     {
         return $this->hasMany(CurriculumTemplateUnit::class, 'template_id')->orderBy('sort_order')->orderBy('id');
