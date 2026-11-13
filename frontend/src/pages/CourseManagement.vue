@@ -262,7 +262,7 @@
             <template v-if="segment.kind === 'working'">
             <div class="course-contract-list" role="list" aria-label="課程合約">
               <div :class="['contract-list-head', contractGrid.head]" aria-hidden="true">
-                <span>科目・老師</span><span>下一堂</span><span>堂數</span><span>繳費</span><span>操作</span>
+                <span>科目・老師</span><span>下一堂</span><span>堂數</span><span>繳費</span><span class="tw:sr-only">操作</span>
               </div>
               <div class="contract-list-items" role="presentation">
                 <template v-if="activeCourses(group).length === 0">
@@ -322,7 +322,7 @@
                            time string, competing with it for attention. Collapse to one summary
                            chip on its own line; the full list is still in its tooltip. -->
                       <template v-for="w in rowWarningSummary(group, c)" :key="w.label">
-                        <div class="course-row-badges">
+                        <div v-if="!duplicatesUsageReviewButton(c, w)" class="course-row-badges">
                           <StatusBadge :tone="w.tone === 'info' ? 'neutral' : w.tone" :class="['row-badge', 'row-badge--' + w.tone, 'tw:whitespace-normal tw:text-left']" :title="w.title">{{ w.label }}</StatusBadge>
                         </div>
                       </template>
@@ -349,9 +349,9 @@
                         </template>
                       </div>
                     </div>
-                    <div data-col="remaining" :class="['cell-remaining', contractGrid.fact, factRow.value, { 'low': isSessionMode(c) && isLowRemaining(Number(displayRemainingSessions(c) ?? 0)) }, isSessionMode(c) && isLowRemaining(Number(displayRemainingSessions(c) ?? 0)) ? toneText.danger : '']">
+                    <div data-col="remaining" :class="['cell-remaining', contractGrid.fact, { 'low': isSessionMode(c) && isLowRemaining(Number(displayRemainingSessions(c) ?? 0)) }]">
                       <span class="contract-field-label tw:mb-1 tw:block tw:text-tpl-caption tw:font-medium tw:text-tpl-secondary tw:lg:sr-only">堂數</span>
-                      <span class="tw:tabular-nums">{{ courseLessonCountLabel({ isSession: isSessionMode(c), remaining: displayRemainingSessions(c), completed: getCompletedSessionCount(c) }) }}</span><span v-if="isSessionMode(c) && isPackageMember(c)" class="tag-package-hint tw:ml-1 tw:text-tpl-caption tw:font-normal tw:text-tpl-secondary">（方案共用）</span>
+                      <span :class="['remaining-value tw:text-tpl-body tw:font-semibold tw:tabular-nums', remainingValueTone(c)]">{{ courseLessonCountLabel({ isSession: isSessionMode(c), remaining: displayRemainingSessions(c), completed: getCompletedSessionCount(c) }) }}</span><span v-if="isSessionMode(c) && isPackageMember(c)" class="tag-package-hint tw:ml-1 tw:text-tpl-caption tw:font-normal tw:whitespace-nowrap tw:text-tpl-secondary">（方案共用）</span>
                       <small v-if="isSessionMode(c)" :class="['contract-count-source', factRow.sub, 'tw:tabular-nums']"><template v-if="isPackageMember(c)">方案共用 {{ getPackageTotalSessions(c) }} 堂</template><template v-else>購買 {{ getPurchasedSessions(c) }} 堂</template></small>
                     </div>
                     <div data-col="payment" :class="contractGrid.factWide">
@@ -359,7 +359,7 @@
                       <div class="payment-status-and-action" :data-course-id="c.id">
                         <StatusBadge
                           :tone="paymentStatusTone(c)"
-                          :class="['payment-status-badge', { 'payment-status-badge--short': paymentStatusChipText(c) !== paymentStatusButtonLabel(c) }, 'tw:max-w-full tw:cursor-default', paymentStatusChipText(c) !== paymentStatusButtonLabel(c) ? '' : 'tw:whitespace-normal tw:text-left']"
+                          :class="['payment-status-badge', { 'payment-status-badge--short': paymentStatusChipText(c) !== paymentStatusButtonLabel(c) }, 'tw:max-w-full tw:cursor-default', paymentStatusChipText(c).length <= 8 ? 'tw:whitespace-nowrap' : 'tw:whitespace-normal tw:text-left']"
                           role="status"
                           :title="paymentStatusHelpTitle(c)"
                           :aria-label="paymentStatusButtonLabel(c)"
@@ -4369,10 +4369,19 @@ const courseLensMetrics = computed(() => {
 // #4150: label/tone/next action come from the shared coursePaymentBadge; only the CSS class and button text are local.
 const BADGE_CLASS = { anomaly: 'tag-billing-anomaly', no_payment: 'tag-no-payment', settled: 'tag-paid', free: 'tag-paid', owing: 'tag-unpaid' };
 const paymentBadge = (course) => coursePaymentBadge(course, { monthlyPeriod: true });
-const paymentStatusButtonClass = (course) => BADGE_CLASS[paymentBadge(course).tone] || 'tag-pending-report';
+const paymentStatusButtonClass = (course) => (isPartialPayment(course) ? 'tag-pending-report' : (BADGE_CLASS[paymentBadge(course).tone] || 'tag-pending-report'));
 // Template tones (PAGE_TEMPLATE §6) for the contract rows: owed / anomaly = danger, paid = success, needs a look = warning, the rest neutral.
 const PAYMENT_TONE = { anomaly: 'danger', owing: 'danger', settled: 'success', free: 'success', no_payment: 'neutral', neutral: 'neutral' };
-const paymentStatusTone = (course) => PAYMENT_TONE[paymentBadge(course).tone] || 'warning';
+const isPartialPayment = (course) => { const b = paymentBadge(course); return b.tone === 'owing' && (b.label === TUITION_STATUS_CONFIG.partial?.label || String(b.label).includes('部分')); };
+// 部分 is warning (PAGE_TEMPLATE §6), 未繳 is danger; both come from the existing badge, the partial case is read off its label.
+const paymentStatusTone = (course) => (isPartialPayment(course) ? 'warning' : (PAYMENT_TONE[paymentBadge(course).tone] || 'warning'));
+// 堂數: low = danger, but a paused course's low count is muted, not red (it is not being used).
+const remainingValueTone = (course) => {
+  if (!(isSessionMode(course) && isLowRemaining(Number(displayRemainingSessions(course) ?? 0)))) return 'tw:text-foreground';
+  return courseRowClass(course)['course-paused'] ? 'tw:text-tpl-secondary' : toneText.danger;
+};
+// The 堂數待對帳 button already says it; the same words as a chip next to it are dropped.
+const duplicatesUsageReviewButton = (course, warning) => course.usage_balance_status === 'review_required' && String(warning.label).includes('堂數待對帳');
 const currentInvoiceForBillingRow = (row) => {
   const invoices = Array.isArray(row?.invoices) ? row.invoices.filter((invoice) => invoice?.status !== 'void') : [];
   return invoices.find((invoice) => ['unpaid', 'partial'].includes(invoice?.status)) || invoices[0] || null;
@@ -5763,9 +5772,6 @@ onUnmounted(() => {
   flex-wrap: wrap;
 }
 
-
-
-
 .course-lens-guidance {
   display: flex;
   align-items: flex-start;
@@ -5790,11 +5796,6 @@ onUnmounted(() => {
   margin-right: 6px;
   color: var(--ds-ink);
 }
-
-
-
-
-
 
 .command-kicker {
   margin: 0 0 4px;
@@ -6238,13 +6239,6 @@ onUnmounted(() => {
 .pagination-btn:disabled { opacity: 0.4; cursor: default; }
 .pagination-current { font-weight: 600; color: var(--ds-ink); }
 
-
-
-
-
-
-
-
 .focus-mode-banner {
   display: flex;
   align-items: center;
@@ -6267,8 +6261,6 @@ onUnmounted(() => {
   cursor: pointer;
 }
 .focus-mode-banner button:hover { background: var(--ds-primary-wash); }
-
-
 
 .history-section__toggle:focus-visible {
   outline: 3px solid color-mix(in srgb, var(--ds-primary) 28%, transparent);
@@ -6294,7 +6286,6 @@ onUnmounted(() => {
   text-align: left;
 }
 .student-billing-note .material-symbols-outlined { flex: 0 0 auto; color: var(--ds-warning); font-size: 18px; }
-
 
 .group-table-wrap {
   border-top: 1px solid var(--border);
@@ -6342,17 +6333,6 @@ onUnmounted(() => {
   word-break: keep-all;
   line-height: 1.35;
 }
-
-
-
-
-
-
-
-
-
-
-
 
 .detail-summary { display: grid; gap: 4px; margin-bottom: 8px; }
 /* #4659 step 5 (picture 2): on a phone the row is 科目・老師 + 繳費 + the button + ⋯ (in-app 396 keeps 繳費 visible). */
@@ -6405,25 +6385,7 @@ onUnmounted(() => {
   font-weight: 800;
 }
 
-
-
-
-
-
-
-
 /* ── Enterprise-style paused notice row ─────────────────────────── */
-
-
-
-
-
-
-
-
-
-
-
 
 .dates-row-paused .dates-panel {
   margin-top: 2px;
@@ -6431,8 +6393,6 @@ onUnmounted(() => {
   background: var(--ds-primary-wash);
   border-radius: 8px;
 }
-
-
 
 .subject-tag {
   display: inline-block;
@@ -6456,8 +6416,6 @@ onUnmounted(() => {
   color: var(--ds-primary-text);
 }
 
-
-
 .schedule-slot-lines {
   display: flex;
   flex-direction: column;
@@ -6469,16 +6427,9 @@ onUnmounted(() => {
   line-height: 1.35;
 }
 
-
-
-
 /* #2007 phase 2: one badge line, one tone-coded chip — replaces the old
    schedule-drift-badge/contract-exception-badge/usage-balance-warning trio
    that stacked inline after the schedule text. */
-
-
-
-
 
 .tag-usage-review {
   color: var(--ds-danger);
@@ -6500,10 +6451,6 @@ onUnmounted(() => {
   text-decoration: underline;
   text-underline-offset: 2px;
 }
-
-
-
-
 
 .col-actions,
 .cell-actions {
@@ -6866,7 +6813,6 @@ button.danger:disabled {
 .package-conversion-modal { max-width: 520px; }
 .package-conversion-summary { display: grid; gap: 4px; margin: 0 0 14px; padding: 12px; border-radius: 10px; background: var(--ds-info-wash); color: var(--ds-ink); font-size: 13px; }
 .package-conversion-summary span { color: var(--ds-ink-mute); }
-
 
 .editability-action-panel {
   display: grid;
@@ -7551,7 +7497,6 @@ button.danger:disabled {
   color: var(--ds-ink-secondary);
 }
 
-
 .course-paused .action-btns-compact .small.ghost,
 .course-paused .action-btns-compact .small.danger {
   opacity: 0.72;
@@ -7824,9 +7769,9 @@ button.danger:disabled {
   padding: 3px 10px;
 }
 .tag-unpaid {
-  background: var(--ds-warning-wash);
-  color: var(--ds-warning);
-  border: 1px solid var(--ds-warning-line);
+  background: var(--ds-danger-wash);
+  color: var(--ds-danger-text);
+  border: 1px solid var(--ds-danger);
   border-radius: 6px;
   font-size: 12px;
   font-weight: 600;
@@ -8228,34 +8173,14 @@ button.danger {
 }
 .course-workbench .grouped-course-list .group-table-wrap:not(.student-billing-wrap) { max-height: none; overflow: visible; border-top: 0; }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 .course-workbench .history-course-card__actions > button,
 .course-workbench .history-course-card__actions .action-menu-trigger {
   min-height: 2.75rem; max-width: 100%; padding: .5rem .875rem; border-radius: var(--ds-radius-pill);
   font-size: inherit; white-space: normal; overflow-wrap: anywhere;
 }
 
-
-
-
-
-
 .course-workbench .dates-row { margin-top: .75rem; min-width: 0; }
 .course-workbench .dates-row .detail-panel { margin: 0; padding: 1rem; border-radius: inherit; font-size: inherit; }
-
 
 .course-workbench .history-section { margin: 0; border-top: 1px solid var(--ds-hairline); padding: .5rem 1rem; }
 .course-workbench .history-section__toggle { min-height: 2.75rem; font-size: inherit; border-radius: inherit; }
@@ -8288,8 +8213,6 @@ button.danger {
 .pending-leave-disclosure > summary { min-height: 2.75rem; display: flex; align-items: center; cursor: pointer; color: var(--ds-ink-secondary); font-size: inherit; font-weight: 600; }
 @media (max-width: 640px) {
 }
-
-
 
 .course-workbench .history-course-card__detail-label { color: var(--ds-ink-secondary); }
 </style>

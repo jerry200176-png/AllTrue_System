@@ -14,6 +14,8 @@ import { test, expect } from '@playwright/test';
 
 const TEXT_SIZES = ['standard', 'medium', 'large']; // useTextSize.js TEXT_SIZES (標準, 稍大, 大)
 const VIEWPORTS = [{ name: 'desktop-1536', width: 1536, height: 784 }, { name: 'phone-375', width: 375, height: 800 }];
+// Tablet widths, run for the 課程查找 entry only (the course rows change layout at 768 and 1024).
+const TABLET_VIEWPORTS = [{ name: 'tablet-768', width: 768, height: 1024 }, { name: 'laptop-1024', width: 1024, height: 768 }, { name: 'laptop-1099', width: 1099, height: 768 }];
 const json = (route, body) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
 
 const NAMES = ['林宥辰', '陳品妤', '王子謙', '張育豪', '李欣怡', '黃柏諺', '吳佳穎', '蔡承翰', '劉宇軒', '楊雅婷', '許家瑋', '鄭淑芬', '謝宗翰', '郭怡君', '洪瑞', '曾翊', '周小明', '蕭婉如', '賴冠廷', '歐陽子安'];
@@ -41,7 +43,16 @@ const COURSE_MGMT = {
       const rows = [...document.querySelectorAll('.course-row')].filter(visible).map((row) => {
         const box = row.getBoundingClientRect();
         const cells = [...row.children].map((c) => c.getBoundingClientRect());
-        return { lefts: cells.map((c) => round(c.left)), tops: cells.map((c) => round(c.top)), overflow: cells.filter((c) => c.right > box.right + 1 || c.left < box.left - 1).length, count: cells.length };
+        const value = row.querySelector('[data-col="remaining"] .remaining-value');
+        const [cr, cg, cb] = (value ? getComputedStyle(value).color : 'rgb(0, 0, 0)').match(/\d+(\.\d+)?/g).map(Number);
+        const badge = row.querySelector('.payment-status-badge');
+        const [br, bg, bb] = (badge ? getComputedStyle(badge).color : 'rgb(0, 0, 0)').match(/\d+(\.\d+)?/g).map(Number);
+        return {
+          lefts: cells.map((c) => round(c.left)), tops: cells.map((c) => round(c.top)),
+          overflow: cells.filter((c) => c.right > box.right + 1 || c.left < box.left - 1).length, count: cells.length,
+          low: row.querySelector('[data-col="remaining"]')?.classList.contains('low') || false, paused: row.classList.contains('course-paused'),
+          valueRed: cr > cg + 80 && cb > cg + 20, badgeText: badge?.textContent.trim() || '', badgeRed: br > bg + 80 && bb > bg + 20,
+        };
       });
       return { headLefts, rows };
     },
@@ -50,9 +61,14 @@ const COURSE_MGMT = {
       for (const row of r.rows) {
         expect(row.count, 'a row has five cells: subject, next, remaining, payment, actions').toBe(5);
         expect(row.overflow, 'a cell of a course row sticks out of its row').toBe(0);
+        // a low 堂數 is red, but a paused course's low count is not; owed (未繳) is red, partial (繳了一部分) is not
+        if (row.low) expect(row.valueRed, `a low 堂數 is red unless the course is paused (paused: ${row.paused})`).toBe(!row.paused);
+        else expect(row.valueRed, 'a normal 堂數 stays ink').toBe(false);
+        if (row.badgeText === '未繳') expect(row.badgeRed, '未繳 is red').toBe(true);
+        if (row.badgeText.includes('一部分')) expect(row.badgeRed, '部分 is a warning tone, not red').toBe(false);
         if (vp.width >= 1024) {
           expect(r.headLefts.length, 'the column header is shown at desktop').toBe(5);
-          row.lefts.forEach((x, i) => expect(Math.abs(x - r.headLefts[i]), `column ${i} of a row lines up with its header (${row.lefts.join(',')} vs ${r.headLefts.join(',')})`).toBeLessThanOrEqual(1));
+          row.lefts.slice(0, 4).forEach((x, i) => expect(Math.abs(x - r.headLefts[i]), `column ${i} of a row lines up with its header (${row.lefts.join(',')} vs ${r.headLefts.join(',')})`).toBeLessThanOrEqual(1));
           expect(Math.max(...row.tops) - Math.min(...row.tops), 'the five cells of a desktop row share one top').toBeLessThanOrEqual(1);
         } else {
           expect(r.headLefts.length, 'no column header on a phone').toBe(0);
@@ -61,7 +77,7 @@ const COURSE_MGMT = {
     },
   },
   mock: async (page) => {
-    const data = COURSE_NAMES.map((n, i) => ({ id: 100 + i, ...(i === 2 ? { usage_balance_status: 'review_required' } : {}), ...(i === 3 ? { PackageID: 5, PackageName: '雙科方案' } : {}), student_id: 9100 + i, student_name: n, teacher_name: ['王老師', '李大華老師', '陳小明老師'][i % 3], subject: 'math', subject_name: SUBJECTS[i % 6], first_class_date: '2026-09-01', status: i === 1 ? 'inactive' : 'active', ScheduleMode: 'count', payment_type: 'session', sessions_purchased: 8, sessions_used: 3, remaining_sessions: 5, payment_status: ['unpaid', 'paid', 'partial'][i % 3], class_type: 'one_on_one' }));
+    const data = COURSE_NAMES.map((n, i) => ({ id: 100 + i, ...(i === 2 ? { usage_balance_status: 'review_required' } : {}), ...(i === 3 ? { PackageID: 5, PackageName: '雙科方案' } : {}), student_id: 9100 + i, student_name: n, teacher_name: ['王老師', '李大華老師', '陳小明老師'][i % 3], subject: 'math', subject_name: SUBJECTS[i % 6], first_class_date: '2026-09-01', status: i === 1 ? 'inactive' : 'active', ScheduleMode: 'count', payment_type: 'session', sessions_purchased: 8, sessions_used: 3, remaining_sessions: i === 1 || i === 2 ? 1 : 5, payment_status: ['unpaid', 'paid', 'partial'][i % 3], class_type: 'one_on_one' }));
     await page.route('**/api/v1/**', (r) => json(r, new URL(r.request().url()).pathname === '/api/v1/student-classes' ? { data, total: data.length, current_page: 1, last_page: 1 } : { data: [] }));
   },
 };
@@ -172,7 +188,7 @@ function measure({ names, rows, touch = [] }) {
 
 for (const entry of PAGES) {
   for (const size of TEXT_SIZES) {
-    for (const vp of VIEWPORTS) {
+    for (const vp of entry.key === 'course-mgmt' ? [...VIEWPORTS, ...TABLET_VIEWPORTS] : VIEWPORTS) {
       test(`layout guard: ${entry.key} @${vp.name} text-size ${size}`, async ({ page }) => {
         await page.setViewportSize({ width: vp.width, height: vp.height });
         await page.addInitScript((s) => {

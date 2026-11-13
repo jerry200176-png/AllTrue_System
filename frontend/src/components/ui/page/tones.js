@@ -60,10 +60,10 @@ export const rowAction = Object.freeze({
 });
 
 // Course contract rows (課程查找): one grid template shared by the column header and every row so they line up.
-// Phone: 2 columns (facts side by side). 768-1099: 6 columns (name + actions on top, three facts under). 1024+: the 5-column table.
+// Phone: 2 columns (facts side by side). 768-1023: 6 columns (name + actions on top, three facts under). 1024+: the 5-column table.
 export const contractGrid = Object.freeze({
-  head: 'tw:hidden tw:lg:grid tw:lg:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)_minmax(0,.55fr)_minmax(0,.6fr)_minmax(0,1.2fr)] tw:items-center tw:gap-x-4 tw:h-11 tw:px-5 tw:bg-muted tw:text-tpl-caption tw:font-semibold tw:text-tpl-secondary',
-  row: 'tw:grid tw:min-w-0 tw:grid-cols-2 tw:items-start tw:gap-x-4 tw:gap-y-3 tw:md:grid-cols-6 tw:lg:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)_minmax(0,.55fr)_minmax(0,.6fr)_minmax(0,1.2fr)]',
+  head: 'tw:hidden tw:lg:grid tw:lg:grid-cols-[minmax(0,1.4fr)_minmax(0,.9fr)_minmax(6.5rem,.7fr)_minmax(9.5rem,.8fr)_minmax(14rem,1.2fr)] tw:items-center tw:gap-x-4 tw:h-11 tw:px-5 tw:bg-muted tw:text-tpl-caption tw:font-semibold tw:text-tpl-secondary',
+  row: 'tw:grid tw:min-w-0 tw:grid-cols-2 tw:items-start tw:gap-x-4 tw:gap-y-3 tw:md:grid-cols-6 tw:lg:grid-cols-[minmax(0,1.4fr)_minmax(0,.9fr)_minmax(6.5rem,.7fr)_minmax(9.5rem,.8fr)_minmax(14rem,1.2fr)]',
   subject: 'tw:col-span-2 tw:min-w-0 tw:md:col-span-4 tw:lg:col-span-1',
   fact: 'tw:min-w-0 tw:md:col-span-2 tw:lg:col-span-1',
   factWide: 'tw:col-span-2 tw:min-w-0 tw:md:col-span-2 tw:lg:col-span-1',
