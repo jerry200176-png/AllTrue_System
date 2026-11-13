@@ -7,7 +7,8 @@ import { test, expect } from '@playwright/test';
  * For every page x viewport x font size it asserts:
  *   (a) a name never renders taller than 1.6 x its line height (no per-character wrapping);
  *   (b) the page body has no horizontal overflow;
- *   (c) sibling rows start at the same x (within 1px), whether or not a row shows a checkbox.
+ *   (c) sibling rows start at the same x (within 1px), whether or not a row shows a checkbox;
+ *   (d) optional `touch` selectors: every visible match is at least 44 x 44 and the selectors match something.
  * It runs in the required ui-foundation job (see playwright.ui-foundation.config.js), not the visual-regression job.
  */
 
@@ -17,6 +18,32 @@ const json = (route, body) => route.fulfill({ status: 200, contentType: 'applica
 
 const NAMES = ['林宥辰', '陳品妤', '王子謙', '張育豪', '李欣怡', '黃柏諺', '吳佳穎', '蔡承翰', '劉宇軒', '楊雅婷', '許家瑋', '鄭淑芬', '謝宗翰', '郭怡君', '洪瑞', '曾翊', '周小明', '蕭婉如', '賴冠廷', '歐陽子安'];
 const SUBJECTS = ['國中數學', '高中英文', '國小自然', '高二物理（先修班）', '國中理化與生物綜合複習衝刺班', '一對一作文'];
+
+const COURSE_NAMES = ['林宥辰', '歐陽子晴', '范姜宜蓁', '司馬文傑', '陳品妤', '曾翊'];
+const COURSE_MGMT = {
+  // 課程查找, slices 1-2 (#4989): header, toolbar, 課程分布 strip and the student group cards.
+  // The left-edge group mixes the header title column, the toolbar card, the strip label and the group cards on purpose:
+  // they are different elements, so a gutter that differs between header and list makes it fail (a list of identical cards cannot).
+  key: 'course-mgmt',
+  url: '/pilot-mount.html?page=course&mode=normal',
+  names: COURSE_NAMES,
+  allNames: true,
+  rows: ['.course-workbench__intro, .course-header-card, .course-stats-disclosure__label, .student-group-card'],
+  touch: ['.student-group-toggle', '.focus-btn', '.student-group-view-tab'],
+  mock: async (page) => {
+    const data = COURSE_NAMES.map((n, i) => ({ id: 100 + i, student_id: 9100 + i, student_name: n, teacher_name: ['王老師', '李大華老師', '陳小明老師'][i % 3], subject: 'math', subject_name: SUBJECTS[i % 6], first_class_date: '2026-09-01', status: i === 1 ? 'inactive' : 'active', ScheduleMode: 'count', payment_type: 'session', sessions_purchased: 8, sessions_used: 3, remaining_sessions: 5, payment_status: ['unpaid', 'paid', 'partial'][i % 3], class_type: 'one_on_one' }));
+    await page.route('**/api/v1/**', (r) => json(r, new URL(r.request().url()).pathname === '/api/v1/student-classes' ? { data, total: data.length, current_page: 1, last_page: 1 } : { data: [] }));
+  },
+};
+// The opened help panel (#4989 slice 1 follow-up): it takes its own full row, starts on the title's left edge and does not push the page sideways.
+const COURSE_MGMT_HELP_OPEN = {
+  ...COURSE_MGMT,
+  key: 'course-mgmt (help panel open)',
+  allNames: false,
+  rows: ['.course-workbench__intro, .course-workbench__help[open], .course-workbench__help[open] > summary > svg, .course-workbench__help[open] > p'],
+  touch: ['.course-workbench__help[open] > summary'],
+  setup: async (page) => { await page.locator('[data-testid="course-help"] > summary').click(); await expect(page.locator('.course-workbench__help[open]')).toBeVisible(); },
+};
 
 /** PAGES: { key, url, mock(page), names (exact texts that must stay on one line), rows (selector groups whose visible members must share a left edge), setup?(page) } */
 const PAGES = [
@@ -52,18 +79,8 @@ const PAGES = [
       }
     },
   })),
-  {
-    // 課程查找, slice 1 (shell + toolbar, #4989): student names in the group headers sit below the new header and toolbar.
-    key: 'course-mgmt',
-    url: '/pilot-mount.html?page=course&mode=normal',
-    names: ['林宥辰', '歐陽子晴', '范姜宜蓁', '司馬文傑', '陳品妤', '曾翊'],
-    rows: ['.student-group-card'],
-    mock: async (page) => {
-      const names = ['林宥辰', '歐陽子晴', '范姜宜蓁', '司馬文傑', '陳品妤', '曾翊'];
-      const data = names.map((n, i) => ({ id: 100 + i, student_id: 9100 + i, student_name: n, teacher_name: ['王老師', '李大華老師', '陳小明老師'][i % 3], subject: 'math', subject_name: SUBJECTS[i % 6], first_class_date: '2026-09-01', status: 'active', ScheduleMode: 'count', payment_type: 'session', sessions_purchased: 8, sessions_used: 3, remaining_sessions: 5, payment_status: ['unpaid', 'paid', 'partial'][i % 3], class_type: 'one_on_one' }));
-      await page.route('**/api/v1/**', (r) => json(r, new URL(r.request().url()).pathname === '/api/v1/student-classes' ? { data, total: data.length, current_page: 1, last_page: 1 } : { data: [] }));
-    },
-  },
+  COURSE_MGMT,
+  COURSE_MGMT_HELP_OPEN,
   {
     key: 'teacher-eligibility',
     url: '/teacher-eligibility-pilot-mount.html',
@@ -100,7 +117,7 @@ const PAGES = [
 ];
 
 /** Runs in the browser: wrapped names, left edges per row group, page overflow. */
-function measure({ names, rows }) {
+function measure({ names, rows, touch = [] }) {
   const visible = (el) => { const r = el.getBoundingClientRect(); const cs = getComputedStyle(el); return r.width > 0 && r.height > 0 && cs.visibility !== 'hidden' && cs.display !== 'none'; };
   const wanted = new Set(names);
   const found = new Set();
@@ -118,7 +135,9 @@ function measure({ names, rows }) {
     if (box.height > lineHeight * 1.6) wrapped.push({ text, height: Math.round(box.height), lineHeight: Math.round(lineHeight) });
   }
   const rowEdges = rows.map((selector) => ({ selector, lefts: [...document.querySelectorAll(selector)].filter(visible).map((el) => Math.round(el.getBoundingClientRect().left * 10) / 10) }));
-  return { found: [...found], wrapped, rowEdges, scrollWidth: document.documentElement.scrollWidth, innerWidth: window.innerWidth };
+  const small = touch.flatMap((selector) => [...document.querySelectorAll(selector)].filter(visible).map((el) => { const r = el.getBoundingClientRect(); return { selector, w: Math.round(r.width), h: Math.round(r.height) }; }).filter((t) => t.h < 44 || t.w < 44));
+  const touchCount = touch.reduce((n, selector) => n + [...document.querySelectorAll(selector)].filter(visible).length, 0);
+  return { found: [...found], wrapped, rowEdges, small, touchCount, scrollWidth: document.documentElement.scrollWidth, innerWidth: window.innerWidth };
 }
 
 for (const entry of PAGES) {
@@ -137,10 +156,15 @@ for (const entry of PAGES) {
         if (entry.setup) await entry.setup(page);
         await page.getByText(entry.names[0], { exact: true }).first().waitFor({ state: 'attached' });
         await page.waitForLoadState('networkidle');
-        const m = await page.evaluate(measure, { names: entry.names, rows: entry.rows });
+        const m = await page.evaluate(measure, { names: entry.names, rows: entry.rows, touch: entry.touch || [] });
 
         expect(m.found.length, 'the fixture names must be on screen, otherwise this guard checks nothing').toBeGreaterThan(0);
+        if (entry.allNames) expect([...m.found].sort(), 'every fixture name must be on screen').toEqual([...entry.names].sort());
         expect(m.wrapped, '(a) a name wraps inside its cell').toEqual([]);
+        if (entry.touch) {
+          expect(m.touchCount, 'the touch-target selectors must match something, otherwise (d) checks nothing').toBeGreaterThan(0);
+          expect(m.small, '(d) a touch target is smaller than 44px').toEqual([]);
+        }
         expect(m.scrollWidth, '(b) the page body scrolls sideways').toBeLessThanOrEqual(m.innerWidth + 1);
         for (const group of m.rowEdges) {
           if (group.lefts.length < 2) continue;

@@ -17,7 +17,7 @@
             </div>
           </div>
 
-          <StatStrip class="course-lens-summary tw:mt-3" aria-label="課程管理摘要" data-testid="course-lens-summary" :style="courseLensGridStyle">
+          <StatStrip class="course-lens-summary tw:mt-3" aria-label="課程管理摘要" data-testid="course-lens-summary">
             <StatItem
               v-for="metric in courseLensMetrics"
               :key="metric.key"
@@ -97,7 +97,7 @@
 
     <details class="course-stats-disclosure">
       <summary class="tw:text-tpl-body">
-        <span class="tw:font-semibold">課程分布</span>
+        <span class="course-stats-disclosure__label tw:font-semibold">課程分布</span>
         <span class="course-stats-disclosure__hint tw:text-tpl-caption">課程總覽 {{ courses.length }} 筆・依類型查看</span>
         <span class="material-symbols-outlined" aria-hidden="true">expand_more</span>
       </summary>
@@ -184,45 +184,43 @@
           <button @click="focusedStudentKey = null">✕ 取消專注</button>
           <span v-if="hasActiveCourseFilters" class="focus-mode-filters tw:text-tpl-caption">篩選仍套用：{{ activeCourseFilterLabels.join('、') }}</span>
         </div>
-        <section
+        <SectionCard
           v-for="group in visibleGroups"
           :key="group.key"
-          class="student-group-card tpl-card tw:rounded-3xl"
-          :class="{ 'student-group-has-paused': groupHasPausedCourse(group) }"
+          class="student-group-card tw:min-w-0 tw:overflow-visible"
         >
-          <div class="student-group-header tw:rounded-t-3xl">
-            <button
-              type="button"
-              class="student-group-toggle tw:text-tpl-list"
-              :id="studentGroupToggleId(group.key)"
-              :aria-expanded="expandedStudentGroups.has(group.key)"
-              :aria-controls="studentGroupPanelId(group.key, studentGroupTab(group.key))"
-              @click="toggleStudentGroup(group.key)"
-            >
-              <span class="student-group-left">
-                <span class="expand-indicator" aria-hidden="true">{{ expandedStudentGroups.has(group.key) ? '▼' : '▶' }}</span>
-                <span class="cell-student">{{ group.student_name }}</span>
-                <span v-if="group.school_grade" class="student-group-school-grade" data-testid="student-school-grade">{{ group.school_grade }}</span>
-                <span v-if="groupHasPausedCourse(group)" class="student-group-paused-badge">含暫停課程</span>
-              </span>
-              <span class="student-group-meta">
-                <span>{{ activeCourses(group).length }} 筆進行中</span>
-                <span v-if="historyCourses(group).length" class="student-group-history-count">{{ historyCourses(group).length }} 筆歷史</span>
-              </span>
-            </button>
-            <div class="student-group-header-actions">
-              <button
-                type="button"
-                class="focus-btn"
-                :class="{ active: focusedStudentKey === group.key }"
-                @click="focusStudent(group, $event)"
-                :aria-label="focusedStudentKey === group.key ? `取消專注 ${group.student_name}` : `專注 ${group.student_name}`"
-                :title="focusedStudentKey === group.key ? '取消專注' : '專注此學生'"
-              >⊙</button>
-            </div>
-          </div>
+          <CollapsibleGroup
+            toggle-class="student-group-toggle"
+            :toggle-id="studentGroupToggleId(group.key)"
+            :expanded="expandedStudentGroups.has(group.key)"
+            :controls="studentGroupPanelId(group.key, studentGroupTab(group.key))"
+            @toggle="toggleStudentGroup(group.key)"
+          >
+            <template #title>
+              <span class="cell-student tw:whitespace-nowrap">{{ group.student_name }}</span>
+              <span v-if="group.school_grade" class="student-group-school-grade tw:text-tpl-caption tw:font-normal tw:whitespace-nowrap tw:text-tpl-secondary" data-testid="student-school-grade">{{ group.school_grade }}</span>
+              <StatusBadge v-if="groupHasPausedCourse(group)" tone="warning" class="student-group-paused-badge">含暫停課程</StatusBadge>
+            </template>
+            <template #meta>
+              <span class="tw:whitespace-nowrap">{{ activeCourses(group).length }} 筆進行中</span>
+              <span v-if="historyCourses(group).length" class="student-group-history-count tw:whitespace-nowrap"><span aria-hidden="true">・</span>{{ historyCourses(group).length }} 筆歷史</span>
+            </template>
+            <template #actions>
+              <div class="student-group-header-actions">
+                <Button
+                  type="button"
+                  size="icon"
+                  :variant="focusedStudentKey === group.key ? 'default' : 'outline'"
+                  class="focus-btn tw:size-11 tw:px-0 tw:shadow-none"
+                  @click="focusStudent(group, $event)"
+                  :aria-label="focusedStudentKey === group.key ? `取消專注 ${group.student_name}` : `專注 ${group.student_name}`"
+                  :title="focusedStudentKey === group.key ? '取消專注' : '專注此學生'"
+                ><Focus :size="20" aria-hidden="true" /></Button>
+              </div>
+            </template>
+          </CollapsibleGroup>
           <div
-            class="student-group-view-tabs tw:rounded-2xl"
+            :class="[pageTabs.list, 'student-group-view-tabs tw:px-4']"
             role="tablist"
             aria-label="學生課程與帳務"
             data-testid="student-group-view-tabs"
@@ -231,8 +229,7 @@
           >
             <button
               type="button"
-              class="student-group-view-tab tw:rounded-xl"
-              :class="{ active: studentGroupTab(group.key) === 'courses' }"
+              :class="[pageTabs.tab(studentGroupTab(group.key) === 'courses'), 'student-group-view-tab', { active: studentGroupTab(group.key) === 'courses' }]"
               role="tab"
               :id="studentGroupTabId(group.key, 'courses')"
               data-testid="student-tab-courses"
@@ -243,8 +240,7 @@
             >課程資料</button>
             <button
               type="button"
-              class="student-group-view-tab tw:rounded-xl"
-              :class="{ active: studentGroupTab(group.key) === 'billing' }"
+              :class="[pageTabs.tab(studentGroupTab(group.key) === 'billing'), 'student-group-view-tab', { active: studentGroupTab(group.key) === 'billing' }]"
               role="tab"
               :id="studentGroupTabId(group.key, 'billing')"
               data-testid="student-tab-billing"
@@ -754,7 +750,7 @@
             </table>
             </div>
           </div>
-        </section>
+        </SectionCard>
       </div>
       <div v-else class="empty-state">
         <span class="material-symbols-outlined empty-icon" aria-hidden="true">menu_book</span>
@@ -1366,11 +1362,11 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import TextSizeToggle from '../components/TextSizeToggle.vue';
-import { PageHeader, StatStrip, StatItem, control, pageShell, surface } from '@/components/ui/page';
+import { PageHeader, StatStrip, StatItem, SectionCard, StatusBadge, CollapsibleGroup, control, pageShell, pageTabs, surface } from '@/components/ui/page';
 // Phone: the two page buttons share a row and may wrap their words instead of pushing the page sideways (320px at 大).
 const phoneAction = 'tw:max-md:min-w-0 tw:max-md:flex-[1_1_9rem] tw:max-md:h-auto tw:max-md:min-h-12 tw:max-md:whitespace-normal tw:max-md:py-2';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Info, Plus, UserSearch } from 'lucide-vue-next';
+import { Focus, Info, Plus, UserSearch } from 'lucide-vue-next';
 import { isCourseSettled, isPaymentNoticeStatus } from '../lib/paymentStatus.js';
 import { formatCourseRef, formatCoursePeriod } from '../lib/studentBillingRows.js';
 import { clearRowCachesForWinningRequest, createListLoadOutcome, fallbackListRows, isCurrentListRequest } from '../lib/listRefreshState.js';
@@ -1439,7 +1435,6 @@ import {
   REPORT_STATUS_LABELS, closedReason as effectiveClosedReason, classificationUnknown, isClosedReason, courseHistoryReason, isActiveCourse, isCourseManagementHistory, isLowRemaining, isMonthlyPaymentType, isPackageMember, TUITION_STATUS_CONFIG, ENDED_PENDING_LABEL, ENDED_REVIEW_LABEL, reviewReasonText, WAIVED_LABEL, coursePaymentBadge, shortPaymentLabel, isLegacyPaidFlagOnly, LEGACY_FLAG_ACTION_HELP,
   ownRemainingSessions, poolTotalSessions, poolUsedSessions, closedPaymentState, PAYMENT_STATUS_LOADING_LABEL, sharedPackageBillingLead,
 } from '../lib/courseMoneyState.js';
-import { summaryGridStyle } from '../lib/summaryGrid.js';
 import { nextManualSessionDate } from '../lib/manualSessionDate.js';
 import {
   buildBillingCorrectionBlockedState,
@@ -4368,7 +4363,6 @@ const courseLensMetrics = computed(() => {
 
 // #4150: label/tone/next action come from the shared coursePaymentBadge; only the CSS class and button text are local.
 const BADGE_CLASS = { anomaly: 'tag-billing-anomaly', no_payment: 'tag-no-payment', settled: 'tag-paid', free: 'tag-paid', owing: 'tag-unpaid' };
-const courseLensGridStyle = computed(() => summaryGridStyle(courseLensMetrics.value.length));
 const paymentBadge = (course) => coursePaymentBadge(course, { monthlyPeriod: true });
 const paymentStatusButtonClass = (course) => BADGE_CLASS[paymentBadge(course).tone] || 'tag-pending-report';
 const currentInvoiceForBillingRow = (row) => {
@@ -5730,7 +5724,7 @@ onUnmounted(() => {
   align-items: center;
   gap: 8px;
   min-height: 44px;
-  padding: 0 4px;
+  padding: 0;
   color: var(--ds-ink);
   cursor: pointer;
   list-style: none;
@@ -6236,111 +6230,13 @@ onUnmounted(() => {
 .pagination-btn:disabled { opacity: 0.4; cursor: default; }
 .pagination-current { font-weight: 600; color: var(--ds-ink); }
 
-.student-group-card {
-  position: relative;
-  border: 1px solid var(--ds-hairline);
-  border-radius: 12px;
-  overflow: visible;
-  background: var(--ds-canvas);
-  box-shadow: var(--ds-shadow-1);
-  transition: border-color 0.18s ease;
-}
-.student-group-card:hover {
-  border-color: var(--ds-hairline-input);
-}
 
-.student-group-header {
-  width: 100%;
-  border: none;
-  background: var(--ds-canvas-soft);
-  padding: 16px 18px 13px;
-  border-radius: 12px 12px 0 0;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  flex-wrap: wrap;
-  gap: 10px;
-}
 
-.student-group-header:hover {
-  background: var(--ds-canvas-soft);
-}
-.student-group-toggle {
-  min-width: 0;
-  flex: 1 1 auto;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  padding: 0;
-  border: 0;
-  background: transparent;
-  color: inherit;
-  font: inherit;
-  text-align: left;
-  cursor: pointer;
-}
-.student-group-toggle:focus-visible {
-  outline: 3px solid color-mix(in srgb, var(--ds-primary) 28%, transparent);
-  outline-offset: 4px;
-}
 
-.student-group-left {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
-}
 
-.expand-indicator {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 26px;
-  height: 26px;
-  border-radius: 999px;
-  color: var(--ds-ink);
-  background: var(--ds-canvas-soft);
-  border: 1px solid var(--ds-hairline);
-  font-size: 12px;
-  text-align: center;
-}
 
-.student-group-meta {
-  font-size: 13px;
-  color: var(--ds-ink-mute);
-  font-weight: 600;
-  white-space: nowrap;
-  padding: 5px 10px;
-  border-radius: 999px;
-  background: var(--ds-canvas-soft);
-  border: 1px solid var(--ds-hairline);
-}
 
-.student-group-header-actions {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  margin-left: auto;
-  flex-shrink: 0;
-}
 
-.focus-btn {
-  margin-left: 0;
-  padding: 3px 9px;
-  border: 1px solid var(--ds-hairline);
-  border-radius: 999px;
-  background: var(--ds-canvas);
-  color: var(--ds-ink-mute);
-  font-size: 13px;
-  cursor: pointer;
-  flex-shrink: 0;
-}
-.focus-btn:hover, .focus-btn.active {
-  background: var(--ds-primary-wash);
-  border-color: var(--ds-primary);
-  color: var(--ds-primary-text);
-}
 .focus-mode-banner {
   display: flex;
   align-items: center;
@@ -6363,52 +6259,12 @@ onUnmounted(() => {
   cursor: pointer;
 }
 .focus-mode-banner button:hover { background: var(--ds-primary-wash); }
-.student-group-has-paused {
-  box-shadow: inset 0 0 0 1px var(--ds-warning);
-  border-radius: 10px;
-}
-
-.student-group-paused-badge {
-  margin-left: 8px;
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 0.02em;
-  color: var(--ds-warning);
-  background: var(--ds-warning-wash);
-  border: 1px solid var(--ds-warning);
-  border-radius: 999px;
-  padding: 2px 10px;
-  vertical-align: middle;
-}
 
 
-.student-group-view-tabs {
-  display: flex;
-  width: 100%;
-  gap: 0;
-  padding: 0 10px;
-  background: var(--ds-canvas);
-  border-top: 1px solid var(--ds-hairline);
-}
-.student-group-view-tab {
-  flex: 1;
-  border: none;
-  background: transparent;
-  color: var(--ds-ink);
-  font-size: 15px;
-  font-weight: 700;
-  padding: 11px 12px;
-  cursor: pointer;
-}
-.student-group-view-tab:focus-visible,
+
 .history-section__toggle:focus-visible {
   outline: 3px solid color-mix(in srgb, var(--ds-primary) 28%, transparent);
   outline-offset: -3px;
-}
-.student-group-view-tab.active {
-  color: var(--ds-ink);
-  background: var(--ds-primary-wash);
-  box-shadow: inset 0 -3px 0 var(--ds-primary);
 }
 .student-billing-state {
   padding: 16px 12px;
@@ -6661,18 +6517,7 @@ onUnmounted(() => {
   border-radius: 8px;
 }
 
-.cell-student {
-  font-size: 16px;
-  font-weight: 900;
-  color: var(--text);
-  letter-spacing: 0.02em;
-}
 
-.student-group-school-grade {
-  font-size: 13px;
-  font-weight: 500;
-  color: var(--ds-ink-mute);
-}
 
 .subject-tag {
   display: inline-block;
@@ -7969,16 +7814,6 @@ button.danger:disabled {
 }
 
 /* ── Student group header: history count ── */
-.student-group-history-count {
-  margin-left: 6px;
-  font-size: 12px;
-  color: var(--ds-ink-faint);
-  font-weight: 400;
-}
-.student-group-history-count::before {
-  content: '·';
-  margin-right: 6px;
-}
 
 /* ── History section ── */
 .history-section {
@@ -8342,16 +8177,12 @@ button.danger:disabled {
   border-color: var(--ds-hairline);
   background: linear-gradient(180deg, rgba(15,23,42,0.98), rgba(30,41,59,0.9));
 }
-[data-theme="dark"] .student-group-card,
 [data-theme="dark"] .course-skeleton-group {
   border-color: var(--ds-hairline);
   background:
     radial-gradient(circle at top right, rgba(255,167,38,0.11), transparent 30%),
     #0f172a;
   box-shadow: 0 18px 44px rgba(0, 0, 0, 0.32);
-}
-[data-theme="dark"] .student-group-header {
-  background: linear-gradient(180deg, rgba(30,41,59,0.96), rgba(15,23,42,0.92));
 }
 [data-theme="dark"] .course-table td {
   background: rgba(15, 23, 42, 0.86);
@@ -8361,7 +8192,6 @@ button.danger:disabled {
   background: linear-gradient(90deg, rgba(14, 165, 233, 0.12), rgba(15, 23, 42, 0.92));
   border-color: rgba(56, 189, 248, 0.24);
 }
-[data-theme="dark"] .student-group-meta,
 [data-theme="dark"] .detail-item {
   background: rgba(15, 23, 42, 0.72);
   border-color: var(--ds-hairline);
@@ -8536,17 +8366,6 @@ button.danger {
 .course-workbench .course-list-surface {
   padding: 0; border: 0; border-radius: 0; background: transparent; box-shadow: none;
 }
-.course-workbench .student-group-card {
-  border: 1px solid var(--ds-hairline); border-radius: inherit; background: var(--ds-canvas);
-  box-shadow: var(--ds-shadow-1); overflow: visible; min-width: 0;
-}
-.course-workbench .student-group-header { border-radius: inherit; padding: .75rem 1rem; background: transparent; }
-.course-workbench .student-group-toggle { min-height: 2.75rem; min-width: 0; font-size: inherit; }
-.course-workbench .student-group-name { overflow-wrap: anywhere; white-space: normal; }
-.course-workbench .student-group-header-actions { flex-shrink: 0; }
-.course-workbench .student-group-view-tabs { width: auto; margin: 0 1rem 1rem; padding: .25rem; border: 0; border-radius: inherit; background: var(--ds-canvas-soft); gap: .25rem; }
-.course-workbench .student-group-view-tab { min-width: 0; white-space: normal; overflow-wrap: anywhere; min-height: 2.75rem; border: 0; border-radius: inherit; font-size: inherit; }
-.course-workbench .student-group-view-tab.active { color: var(--ds-ink); background: var(--ds-canvas); box-shadow: var(--ds-shadow-1); border: 0; }
 .course-workbench .grouped-course-list .group-table-wrap:not(.student-billing-wrap) { max-height: none; overflow: visible; border-top: 0; }
 .course-contract-list { min-width: 0; }
 .contract-list-head { display: none; }
@@ -8606,9 +8425,6 @@ button.danger {
 @media (max-width: 640px) {
   .course-workbench .course-filter-primary,
   .course-workbench .course-secondary-filters__fields { grid-template-columns: minmax(0, 1fr); gap: .75rem; }
-  .course-workbench .student-group-header { padding: .75rem; }
-  .course-workbench .student-group-view-tabs { margin: 0 .75rem .75rem; }
-  .course-workbench .student-group-view-tab { padding: .5rem; }
   .contract-item { padding: .875rem; }
   .course-workbench .course-row { gap: .875rem; }
   .course-workbench .history-section { padding: .5rem .875rem; }
@@ -8618,10 +8434,9 @@ button.danger {
 .course-workbench__help { align-self: center; margin-left: auto; min-width: 0; }
 .course-workbench__help > summary { display: grid; place-items: center; min-height: 2.75rem; min-width: 2.75rem; border-radius: var(--ds-radius-pill); cursor: pointer; }
 .course-help-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
-.course-workbench__help[open] { flex: 0 0 100%; order: 3; }
-.course-workbench__help[open] > summary { width: 2.75rem; margin-left: auto; }
-.course-workbench .focus-btn { min-width: 2.75rem; min-height: 2.75rem; }
-.course-workbench .student-group-counts { font-size: inherit; }
+.course-workbench__help[open] { flex: 0 0 100%; order: 3; margin-left: 0; }
+.course-workbench__help[open] > summary { display: inline-flex; justify-content: flex-start; align-items: center; gap: .5rem; width: auto; min-width: 0; margin: 0 0 .5rem; padding-inline: 0 1rem; font-weight: 600; }
+.course-workbench__help[open] > summary .course-help-label { position: static; width: auto; height: auto; overflow: visible; clip-path: none; }
 .course-workbench .course-row .payment-status-badge,
 .course-workbench .course-row .subject-tag,
 .course-workbench .course-row .status-tag { font-size: inherit; }

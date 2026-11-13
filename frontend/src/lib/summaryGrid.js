@@ -9,9 +9,3 @@ export function summaryGridColumns(count) {
     mid: n <= 3 ? n : Math.ceil(n / 2),
   };
 }
-
-/** Inline CSS variables read by `.course-lens-summary` (and any grid using `--summary-cols-*`). */
-export function summaryGridStyle(count) {
-  const { wide, mid } = summaryGridColumns(count);
-  return { '--summary-cols-wide': wide, '--summary-cols-mid': mid };
-}

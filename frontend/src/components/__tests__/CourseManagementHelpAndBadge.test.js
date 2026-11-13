@@ -25,7 +25,7 @@ const course = (id, extra = {}) => ({
 let wrapper;
 async function open() {
   wrapper = shallowMount(CourseManagement, { props: { branchId: 15, userRole: 'director' },
-    global: { stubs: { Card: false, Badge: false, Button: false, Primitive: false, ActionMenu: false, TextSizeToggle: false, PageHeader: false, StatStrip: false, StatItem: false } } });
+    global: { stubs: { Card: false, Badge: false, Button: false, Primitive: false, ActionMenu: false, TextSizeToggle: false, PageHeader: false, StatStrip: false, StatItem: false, SectionCard: false, CollapsibleGroup: false, StatusBadge: false } } });
   await flushPromises();
   return wrapper.vm.$.setupState;
 }
@@ -50,15 +50,15 @@ describe('#538 page help spans the header', () => {
     expect(src).not.toMatch(/\.course-workbench__help\[open\]\s*\{[^}]*grid-column/);
   });
 
-  it('the summary grid takes its column counts from summaryGridColumns, not a fixed 4', async () => {
+  it('the summary strip is the shared StatStrip: one card per metric, columns from the strip classes (no unused inline column variables)', async () => {
     const s = await open();
     const grid = wrapper.get('[data-testid="course-lens-summary"]');
+    expect(grid.attributes('data-slot')).toBe('stat-strip');
     const cards = grid.findAll('.course-lens-metric');
     expect(cards.length).toBe(s.courseLensMetrics.length);
-    const style = grid.element.style;
-    expect(Number(style.getPropertyValue('--summary-cols-wide'))).toBe(cards.length); // 5 cards: one row on desktop
-    expect(Number(style.getPropertyValue('--summary-cols-mid'))).toBe(Math.ceil(cards.length / 2));
+    expect(grid.attributes('style') || '').not.toContain('--summary-cols');
     const src = fs.readFileSync(path.resolve(__dirname, '../../pages/CourseManagement.vue'), 'utf8');
+    expect(src).not.toContain('--summary-cols');
     expect(src).not.toMatch(/\.course-lens-summary\s*\{[^}]*repeat\(4,/);
   });
 });

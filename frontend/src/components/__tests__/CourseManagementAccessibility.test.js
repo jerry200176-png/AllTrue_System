@@ -5,13 +5,21 @@ import { fileURLToPath } from 'node:url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const source = readFileSync(resolve(__dirname, '../../pages/CourseManagement.vue'), 'utf8');
+const groupSource = readFileSync(resolve(__dirname, '../ui/page/CollapsibleGroup.vue'), 'utf8');
 
 describe('CourseManagement disclosure accessibility', () => {
   it('uses native buttons for student group disclosure and the sibling focus action', () => {
-    expect(source).toMatch(/<button\b[^>]*class="student-group-toggle(?:\s[^"]*)?"/);
-    expect(source).toContain(':aria-expanded="expandedStudentGroups.has(group.key)"');
-    expect(source).toContain(':aria-controls="studentGroupPanelId(group.key, studentGroupTab(group.key))"');
-    expect(source).toContain('class="focus-btn"');
+    // The toggle is the shared CollapsibleGroup's native button; the page feeds it the state and keeps the old class hook.
+    expect(source).toMatch(/<CollapsibleGroup\b[^>]*toggle-class="student-group-toggle"/);
+    expect(source).toContain(':expanded="expandedStudentGroups.has(group.key)"');
+    expect(source).toContain(':controls="studentGroupPanelId(group.key, studentGroupTab(group.key))"');
+    expect(groupSource).toMatch(/<button\b[^>]*type="button"/);
+    expect(groupSource).toContain(':aria-expanded="props.expanded"');
+    expect(groupSource).toContain(':aria-controls="props.controls"');
+    expect(groupSource).toContain(':id="props.toggleId"');
+    // The focus action is a sibling of the toggle (actions slot), never inside it.
+    expect(groupSource).toMatch(/<\/button>\s*<div v-if="\$slots.actions"/);
+    expect(source).toMatch(/<Button\b[^>]*class="focus-btn\b/);
     expect(source).toContain(':aria-label="focusedStudentKey === group.key');
     expect(source).not.toContain('class="student-group-header"\n            role="button"');
   });

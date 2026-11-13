@@ -20,7 +20,7 @@ beforeEach(() => {
 });
 afterEach(() => { wrapper?.unmount(); vi.unstubAllGlobals(); });
 async function openMonthly() {
-  wrapper = shallowMount(CourseManagement, { props: { branchId: 7, userRole: 'director' } });
+  wrapper = shallowMount(CourseManagement, { props: { branchId: 7, userRole: 'director' }, global: { stubs: { SectionCard: false, CollapsibleGroup: false, StatusBadge: false } } });
   await flushPromises();
   const state = wrapper.vm.$.setupState;
   state.courses = [{ id: 700001, student_id: 700001, student_name: '測試學生', status: 'active', subject: 'math', ScheduleMode: 'date', payment_type: 'monthly', SessionCount: 4, sessions_purchased: 4, sessions_used: 2, remaining_sessions: 0 }];
@@ -72,7 +72,7 @@ describe('monthly attendance on the real course page', () => {
       }
       return { ok: true, status: 200, json: async () => ({}) };
     });
-    wrapper = shallowMount(CourseManagement, { props: { branchId: 7, userRole: 'director' } });
+    wrapper = shallowMount(CourseManagement, { props: { branchId: 7, userRole: 'director' }, global: { stubs: { SectionCard: false, CollapsibleGroup: false, StatusBadge: false } } });
     await flushPromises();
     await wrapper.get('.history-section__toggle').trigger('click');
     await wrapper.get('.history-course-card .btn-toggle').trigger('click');
@@ -130,7 +130,7 @@ describe('monthly attendance on the real course page', () => {
   });
   it.each([{ countId: 1, packageId: 2 }, { countId: 2, packageId: 1 }])(
     'keeps count and shared-package summaries on their existing paths (count=$countId, package=$packageId)', async ({ countId, packageId }) => {
-    wrapper = shallowMount(CourseManagement, { props: { branchId: 7, userRole: 'director' } });
+    wrapper = shallowMount(CourseManagement, { props: { branchId: 7, userRole: 'director' }, global: { stubs: { SectionCard: false, CollapsibleGroup: false, StatusBadge: false } } });
     await flushPromises();
     const state = wrapper.vm.$.setupState;
     const countContract = { id: countId, student_id: 7, student_name: '測試學生', status: 'active', subject: 'math', payment_type: 'session', ScheduleMode: 'count', SessionCount: 8, sessions_purchased: 8, remaining_sessions: 6 };
