@@ -120,61 +120,6 @@
 | POST | `api/v1/api-clients` | `ApiClientController@store` | role+campus |
 | POST | `api/v1/api-clients/{apiClient}/revoke` | `ApiClientController@revoke` | role+campus |
 
-## /api/v1/assessment-attempts
-
-| Method | URI | Action | Auth |
-|--------|-----|--------|------|
-| GET | `api/v1/assessment-attempts/{assessmentAttempt}` | `AssessmentController@showAttempt` | role+campus |
-| PATCH | `api/v1/assessment-attempts/{assessmentAttempt}/answers` | `AssessmentController@saveAttemptAnswers` | role+campus |
-| POST | `api/v1/assessment-attempts/{assessmentAttempt}/review` | `AssessmentController@reviewAttempt` | role+campus |
-| POST | `api/v1/assessment-attempts/{assessmentAttempt}/submit` | `AssessmentController@submitAttempt` | role+campus |
-
-## /api/v1/assessment-options
-
-| Method | URI | Action | Auth |
-|--------|-----|--------|------|
-| GET | `api/v1/assessment-options/classes` | `AssessmentController@classOptions` | role+campus |
-
-## /api/v1/assessment-remediation-actions
-
-| Method | URI | Action | Auth |
-|--------|-----|--------|------|
-| PATCH | `api/v1/assessment-remediation-actions/{remediationAction}` | `AssessmentController@updateRemediationAction` | role+campus |
-
-## /api/v1/assessment-reports
-
-| Method | URI | Action | Auth |
-|--------|-----|--------|------|
-| GET | `api/v1/assessment-reports/summary` | `AssessmentController@summary` | role+campus |
-
-## /api/v1/assessment-results
-
-| Method | URI | Action | Auth |
-|--------|-----|--------|------|
-| PATCH | `api/v1/assessment-results/{assessmentResult}` | `AssessmentController@updateResult` | role+campus |
-| GET | `api/v1/assessment-results/{assessmentResult}/remediation-actions` | `AssessmentController@remediationActions` | role+campus |
-| POST | `api/v1/assessment-results/{assessmentResult}/remediation-actions` | `AssessmentController@storeRemediationAction` | role+campus |
-| POST | `api/v1/assessment-results/{assessmentResult}/review` | `AssessmentController@reviewResult` | role+campus |
-| POST | `api/v1/assessment-results/{assessmentResult}/void` | `AssessmentController@voidResult` | role+campus |
-
-## /api/v1/assessments
-
-| Method | URI | Action | Auth |
-|--------|-----|--------|------|
-| GET | `api/v1/assessments` | `AssessmentController@index` | role+campus |
-| POST | `api/v1/assessments` | `AssessmentController@store` | role+campus |
-| GET | `api/v1/assessments/{assessment}` | `AssessmentController@show` | role+campus |
-| PATCH | `api/v1/assessments/{assessment}` | `AssessmentController@update` | role+campus |
-| GET | `api/v1/assessments/{assessment}/attempts` | `AssessmentController@attempts` | role+campus |
-| POST | `api/v1/assessments/{assessment}/attempts` | `AssessmentController@storeAttempt` | role+campus |
-| POST | `api/v1/assessments/{assessment}/close` | `AssessmentController@close` | role+campus |
-| POST | `api/v1/assessments/{assessment}/publish` | `AssessmentController@publish` | role+campus |
-| GET | `api/v1/assessments/{assessment}/questions` | `AssessmentController@questions` | role+campus |
-| POST | `api/v1/assessments/{assessment}/questions` | `AssessmentController@configureQuestions` | role+campus |
-| GET | `api/v1/assessments/{assessment}/results` | `AssessmentController@results` | role+campus |
-| POST | `api/v1/assessments/{assessment}/results` | `AssessmentController@storeResult` | role+campus |
-| GET | `api/v1/assessments/{assessment}/students` | `AssessmentController@students` | role+campus |
-
 ## /api/v1/attendance
 
 | Method | URI | Action | Auth |

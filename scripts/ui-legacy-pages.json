@@ -40,7 +40,6 @@
   "src/components/tuition/PaymentAllocation.vue",
   "src/components/tuition/RefundDialog.vue",
   "src/pages/AdmissionInquiriesPage.vue",
-  "src/pages/AssessmentPage.vue",
   "src/pages/AttendancePage.vue",
   "src/pages/BindingManagementPage.vue",
   "src/pages/BranchManagementPage.vue",
