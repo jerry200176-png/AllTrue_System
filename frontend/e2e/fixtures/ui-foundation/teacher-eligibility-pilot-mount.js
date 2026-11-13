@@ -1,10 +1,15 @@
-const [{ createApp, h }, styles, module] = await Promise.all([
+const { initTextSize } = await import('../../../src/composables/useTextSize.js');
+initTextSize(); // reads alltrue_text_size, like src/main.js
+
+const [{ createApp, h }, styles, uiStyles, module] = await Promise.all([
   import('vue'),
   import('../../../src/styles.css'),
+  import('../../../src/ui.css'),
   import('../../../src/pages/TeacherEligibilityPage.vue'),
 ]);
 
 void styles;
+void uiStyles;
 const PageComponent = module.default;
 const teacher = {
   teacher_id: 701,

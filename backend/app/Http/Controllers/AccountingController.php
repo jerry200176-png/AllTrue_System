@@ -826,6 +826,7 @@ class AccountingController extends Controller
                 'charge' => (int) ($class->Charge ?? 0),
                 // #4115 (Founder Q2 = A): display-only, compared with an issued bill; never rewrites a bill.
                 'current_contract_charge' => $class->currentContractCharge(),
+                'current_contract_rate_positive' => (float) ($class->Rate ?? 0) > 0,
                 'paid' => $markedPaid || $zeroSettled(false), // #4597 package-only mark; #3991 free/gift, #4018 full-discount: current term
                 // #4150: display context so the panel never reads a waiver or a valid free/gift term as a missing payment.
                 'free_gift_settled' => $freeGiftSettled,

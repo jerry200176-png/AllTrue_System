@@ -59,8 +59,10 @@
       <template v-else>
         <ul v-if="noRowStudents.length" class="bl__list" data-testid="bill-no-rows">
           <li v-for="st in noRowStudents" :key="st.id" class="bl__plain">
-            <button type="button" class="bl__name" :data-testid="`bill-student-${st.id}`" @click="$emit('student', { student_id: st.id, class_id: null })">{{ st.name }}</button>
-            <span class="bl__subject">沒有待收款項</span>
+            <div class="bl__plainrow">
+              <button type="button" class="bl__name" :title="st.name" :data-testid="`bill-student-${st.id}`" @click="$emit('student', { student_id: st.id, class_id: null })">{{ st.name }}</button>
+              <span class="bl__subject">沒有待收款項</span>
+            </div>
           </li>
         </ul>
         <div v-if="visible.length" class="bl__head" aria-hidden="true">
@@ -79,6 +81,7 @@
               :data-testid="`bill-pick-${b.key}`"
               @change="pick(b.key, $event.target.checked)"
             />
+            <span v-else-if="anyCheck" class="bl__nocheck" :title="noPickReason(b)" :data-testid="`bill-nopick-${b.key}`"><span aria-hidden="true">–</span><span class="bl__sr">{{ noPickReason(b) }}</span></span>
             <div class="bl__row" @click="$emit('quick', b)">
               <span class="bl__who">
                 <button type="button" class="bl__name" :data-testid="`bill-name-${b.key}`" :data-student="b.student_id" @click.stop="$emit('student', b)">{{ b.student_name }}</button>
@@ -222,6 +225,10 @@ const menuGroups = (b) => billMenuGroups(b, props);
 // Batch: only rows of the same kind can be picked together, and only contracts the page's batch preview accepts.
 const selected = ref(new Set());
 const selectable = (b) => (b.kind === 'confirm' || b.kind === 'owing') && b.class_id != null && Boolean(props.batchModes[b.class_id]);
+// Why a row has no checkbox while others do (the column stays reserved so every row lines up).
+const noPickReason = (b) => (b.kind === 'confirm' || b.kind === 'owing'
+  ? '這一筆目前不能批次處理（缺少帳單或金額）'
+  : '這個狀態不能批次處理，請用右邊的按鈕');
 const selectableRows = computed(() => visible.value.filter(selectable));
 const anyCheck = computed(() => selectableRows.value.length > 0);
 // Derived from every selected row (not just the visible ones), and cleared on any view change, so the bar never mixes kinds.
@@ -277,17 +284,24 @@ defineExpose({ neighbor, clearSelection, owingQueue });
 .bl__cols>span{font-size:var(--ds-font-size-sm)}
 .bl__row{border:1px solid var(--ds-border);border-radius:var(--ds-radius-lg);background:var(--ds-surface,var(--ds-canvas));padding:8px 12px;min-height:52px}
 .bl__check{grid-column:1;width:20px;height:20px;margin:0}
-.bl__who{display:grid}
+/* Rows without a checkbox keep the reserved column (a muted dash with a reason), so rows line up (in-app #542). */
+.bl__nocheck{grid-column:1;grid-row:1;width:20px;text-align:center;color:var(--ds-ink-mute);cursor:help;line-height:1}
+.bl__sr{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
+.bl__who{display:grid;min-width:0}
 .bl__row{cursor:pointer}
 .bl__open{background:none;border:0;padding:0;font:inherit;text-align:left;cursor:pointer;min-height:28px}
-.bl__name{background:none;border:0;padding:0;font:inherit;font-weight:700;text-align:left;cursor:pointer;color:inherit;text-decoration:underline;text-decoration-color:var(--ds-border);min-height:28px}
+/* in-app #541: a CJK name never splits per character (keep-all) and only breaks as a last resort when the whole name is wider than its cell. */
+.bl__name{background:none;border:0;padding:0;font:inherit;font-weight:700;text-align:left;cursor:pointer;color:inherit;word-break:keep-all;overflow-wrap:break-word;max-width:100%;min-width:0;text-decoration:underline;text-decoration-color:var(--ds-border);min-height:28px}
 .bl__subject,.bl__hint{font-size:var(--ds-font-size-sm);color:var(--ds-ink-mute)}
 .bl__hint,.bl__warn{grid-column:1/-1}
 .bl__warn{font-size:var(--ds-font-size-md);color:var(--ds-warning-text,var(--ds-ink-mute))}
 .bl__review{display:block;font-size:var(--ds-font-size-sm);color:var(--ds-ink-mute)}
 .bl__sort{display:flex;white-space:nowrap;align-items:center;gap:6px;font-size:var(--ds-font-size-md);color:var(--ds-ink-mute)}
 .bl__sort select{min-height:36px;font:inherit;padding:4px 8px}
-.bl__plain{grid-column:2;display:flex;gap:12px;align-items:center;padding:6px 12px}
+.bl__list>li.bl__plain{align-items:center}
+.bl__plainrow{grid-column:2;display:flex;gap:12px;align-items:center;padding:6px 12px;min-width:0}
+.bl__plainrow .bl__name{flex:0 1 auto;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.bl__plainrow .bl__subject{flex:1 1 0;min-width:0}
 .bl__num{text-align:right;font-variant-numeric:tabular-nums}
 .bl__due{font-size:var(--ds-font-size-md);font-variant-numeric:tabular-nums}
 .bl__num.due,.bl__due.due{color:var(--ds-danger);font-weight:700}

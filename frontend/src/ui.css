@@ -33,6 +33,7 @@
 @source "./pages/BindingConflictReviewPage.vue";
 @source "./pages/BindingHealthDashboard.vue";
 @source "./pages/TuitionReportPage.vue";
+@source "./pages/TeacherEligibilityPage.vue";
 
 /* Light theme only. Dark comes later: add a `.dark { ... }` block remapping these to dark --ds-* tokens. */
 :root {

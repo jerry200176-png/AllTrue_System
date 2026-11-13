@@ -69,7 +69,7 @@
       </Card>
 
       <Card v-else class="tr-table-wrap tw:gap-0 tw:py-0 tw:shadow-none">
-        <Table class="tr-table tw:text-[length:var(--tpl-text-body)] tw:[&_td]:text-[length:var(--tpl-text-body)]">
+        <Table class="tr-table tw:min-w-[36rem] tw:text-[length:var(--tpl-text-body)] tw:[&_td]:text-[length:var(--tpl-text-body)]">
           <TableCaption class="tw:sr-only">{{ year }} 年 {{ month }} 月學收明細</TableCaption>
           <TableHeader>
             <TableRow class="tw:hover:bg-transparent">
@@ -86,9 +86,10 @@
           </TableHeader>
           <TableBody>
             <TableRow v-for="r in rows" :key="r.student_class_id">
-              <TableCell class="tw:px-3 tw:py-3 tw:whitespace-normal tw:[overflow-wrap:anywhere]">{{ r.student_name }}</TableCell>
-              <TableCell class="tw:px-3 tw:py-3 tw:whitespace-normal">{{ r.subject }}</TableCell>
-              <TableCell :class="['tw:px-3 tw:py-3 tw:whitespace-normal', hideSm]">{{ r.teacher_name }}</TableCell>
+              <!-- in-app #543: a name stays on one line. `overflow-wrap:anywhere` made the column's min-content one character, so the table crushed it. -->
+              <TableCell class="student-name tw:max-w-[11em] tw:min-w-[4.5em] tw:truncate tw:px-3 tw:py-3 tw:whitespace-nowrap" :title="r.student_name">{{ r.student_name }}</TableCell>
+              <TableCell class="tw:min-w-[7em] tw:px-3 tw:py-3 tw:whitespace-normal tw:[word-break:keep-all] tw:[overflow-wrap:break-word]">{{ r.subject }}</TableCell>
+              <TableCell :class="['tw:min-w-[5em] tw:px-3 tw:py-3 tw:whitespace-nowrap', hideSm]">{{ r.teacher_name }}</TableCell>
               <TableCell :class="['tw:px-3 tw:py-3', hideSm]">
                 <span :class="typeChip">{{ classTypeLabel(r.class_type) }}</span>
               </TableCell>

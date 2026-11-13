@@ -1,0 +1,18 @@
+updates:
+  - id: staff-2026-11-13-inapp-541-543-name-wrap
+    published_at: "2026-11-13"
+    audiences:
+      - director
+      - super_admin
+    importance: digest
+    title: 收費與學收報表的姓名排版修正
+    summary: 姓名不再一個字一行，清單的勾選欄位對齊。
+    items:
+      - category: fixed
+        text: 「收費」頁搜尋學生時，沒有待收款項的學生姓名不再被擠成一個字一行，也跟其他列對齊。
+      - category: improved
+        text: 帳單清單裡不能批次處理的列，會在勾選欄顯示「–」並說明原因，整排列對齊。
+      - category: fixed
+        text: 「當月學收」與「正職薪資要件」的姓名不再折成兩行；欄位太窄時表格可在卡片內左右捲動。
+    source_refs:
+      - "changelog:2026-11-13:inapp-541-543-name-wrap"
