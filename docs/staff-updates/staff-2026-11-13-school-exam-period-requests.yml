@@ -1,0 +1,13 @@
+updates:
+  - id: staff-2026-11-13-school-exam-period-requests
+    published_at: "2026-11-13"
+    audiences:
+      - director
+    importance: digest
+    title: 段考日期儲存更穩定
+    summary: 儲存與清除避免重複送出，切換分校或學期後維持正確日期。
+    items:
+      - category: fixed
+        text: 日期處理完成前暫停該列操作，其他段考日期仍可編輯。
+    source_refs:
+      - "changelog:2026-11-13:school-exam-period-requests"
