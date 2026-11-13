@@ -70,7 +70,6 @@ use App\Http\Controllers\GitHubIssueController;
 use App\Http\Controllers\StudentIdentityController;
 use App\Http\Controllers\TeacherEligibilityController;
 use App\Http\Controllers\TeacherEligibilityInputController;
-use App\Http\Controllers\AssessmentController;
 use App\Http\Controllers\ExamRoundController;
 use App\Http\Controllers\SchoolExamPeriodController;
 use App\Http\Controllers\SchoolMergeController;
@@ -824,17 +823,6 @@ Route::prefix('v1')->group(function () {
     });
 
     Route::middleware(['role:director,teacher,super_admin', 'require_campus', 'require_password_change'])->group(function () {
-        // Learning assessment MVP: separate diagnostic results from LearningRecord/attendance.
-        Route::get('assessment-options/classes', [AssessmentController::class, 'classOptions']);
-        Route::get('assessments', [AssessmentController::class, 'index']);
-        Route::get('assessments/{assessment}', [AssessmentController::class, 'show'])->whereNumber('assessment');
-        Route::get('assessments/{assessment}/students', [AssessmentController::class, 'students'])->whereNumber('assessment');
-        Route::get('assessments/{assessment}/questions', [AssessmentController::class, 'questions'])->whereNumber('assessment');
-        Route::get('assessments/{assessment}/attempts', [AssessmentController::class, 'attempts'])->whereNumber('assessment');
-        Route::get('assessment-attempts/{assessmentAttempt}', [AssessmentController::class, 'showAttempt'])->whereNumber('assessmentAttempt');
-        Route::get('assessments/{assessment}/results', [AssessmentController::class, 'results'])->whereNumber('assessment');
-        Route::get('assessment-results/{assessmentResult}/remediation-actions', [AssessmentController::class, 'remediationActions'])->whereNumber('assessmentResult');
-        Route::get('assessment-reports/summary', [AssessmentController::class, 'summary']);
 
         Route::get('exam-rounds', [ExamRoundController::class, 'index']);
         Route::get('exam-rounds/{examRound}', [ExamRoundController::class, 'show'])->whereNumber('examRound');
@@ -847,26 +835,11 @@ Route::prefix('v1')->group(function () {
     });
 
     Route::middleware(['role:director,teacher', 'require_campus', 'require_password_change'])->group(function () {
-        Route::post('assessments', [AssessmentController::class, 'store']);
-        Route::patch('assessments/{assessment}', [AssessmentController::class, 'update'])->whereNumber('assessment');
-        Route::post('assessments/{assessment}/publish', [AssessmentController::class, 'publish'])->whereNumber('assessment');
-        Route::post('assessments/{assessment}/questions', [AssessmentController::class, 'configureQuestions'])->whereNumber('assessment');
-        Route::post('assessments/{assessment}/results', [AssessmentController::class, 'storeResult'])->whereNumber('assessment');
-        Route::post('assessments/{assessment}/attempts', [AssessmentController::class, 'storeAttempt'])->whereNumber('assessment');
-        Route::patch('assessment-attempts/{assessmentAttempt}/answers', [AssessmentController::class, 'saveAttemptAnswers'])->whereNumber('assessmentAttempt');
-        Route::post('assessment-attempts/{assessmentAttempt}/submit', [AssessmentController::class, 'submitAttempt'])->whereNumber('assessmentAttempt');
-        Route::patch('assessment-results/{assessmentResult}', [AssessmentController::class, 'updateResult'])->whereNumber('assessmentResult');
-        Route::post('assessment-results/{assessmentResult}/remediation-actions', [AssessmentController::class, 'storeRemediationAction'])->whereNumber('assessmentResult');
-        Route::patch('assessment-remediation-actions/{remediationAction}', [AssessmentController::class, 'updateRemediationAction'])->whereNumber('remediationAction');
 
         Route::post('exam-rounds/{examRound}/scores', [ExamRoundController::class, 'upsertScores'])->whereNumber('examRound');
     });
 
     Route::middleware(['role:director,super_admin', 'require_campus', 'require_password_change'])->group(function () {
-        Route::post('assessments/{assessment}/close', [AssessmentController::class, 'close'])->whereNumber('assessment');
-        Route::post('assessment-results/{assessmentResult}/review', [AssessmentController::class, 'reviewResult'])->whereNumber('assessmentResult');
-        Route::post('assessment-results/{assessmentResult}/void', [AssessmentController::class, 'voidResult'])->whereNumber('assessmentResult');
-        Route::post('assessment-attempts/{assessmentAttempt}/review', [AssessmentController::class, 'reviewAttempt'])->whereNumber('assessmentAttempt');
 
         Route::post('exam-rounds', [ExamRoundController::class, 'store']);
         Route::patch('exam-rounds/{examRound}', [ExamRoundController::class, 'update'])->whereNumber('examRound');

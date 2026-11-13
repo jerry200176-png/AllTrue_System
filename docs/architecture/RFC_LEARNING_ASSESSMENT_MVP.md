@@ -1,5 +1,7 @@
 # RFC: Learning Assessment MVP
 
+**Status: RETIRED 2026-11-13** — 全校區 0 使用量（0 筆檢測／結果／補強）；編輯 UI 與 API 已移除，僅保留資料表與模型供家長端／學習歷程讀取，見 `docs/TECH_DEBT.md` TD-086。以下為歷史設計紀錄。
+
 **Status:** Proposed for Slice 1 implementation
 **Date:** 2026-08-20
 **Risk class:** R2

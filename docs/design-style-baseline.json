@@ -97,7 +97,6 @@
     "frontend/src/composables/course-management/useRescheduleAndMakeup.js": {"native_dialog":6},
     "frontend/src/composables/course-management/useSessionEditFlow.js": {"native_dialog":23},
     "frontend/src/pages/AdmissionInquiriesPage.vue": {"font_size":27,"border_radius":6,"box_shadow":1},
-    "frontend/src/pages/AssessmentPage.vue": {"font_size":5,"border_radius":6,"native_dialog":1},
     "frontend/src/pages/AttendancePage.vue": {"font_size":90,"border_radius":38,"box_shadow":4,"emoji":5,"native_dialog":6},
     "frontend/src/pages/BindingConflictReviewPage.vue": {"border_radius":1},
     "frontend/src/pages/BindingHealthDashboard.vue": {"font_size":1,"border_radius":1},

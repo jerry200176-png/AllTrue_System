@@ -37,7 +37,6 @@ export default defineConfig({
     // Built fake-data preview on 5189; advisory ui-preview job runs its dedicated config.
     /parent-text-size\.spec\.js$/,
     // Executed by the required foundation suite against the dedicated Vue fixture server.
-    /assessment-clarity\.spec\.js$/,
     /ui-foundation-pages\.spec\.js$/,
     /ui-foundation-a11y-axe\.spec\.js$/,
     /ui-foundation-role-matrix\.spec\.js$/,
