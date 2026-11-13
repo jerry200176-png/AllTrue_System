@@ -18,6 +18,9 @@ final class PopOperationService
     private const ACTOR_PATTERN = '/^[A-Za-z0-9:_-]{1,128}$/';
     private const REFERENCE_PATTERN = '/^[A-Za-z0-9_.:#\/-]{3,128}$/';
 
+    /** The failed-receipt writer of the phase run() is in, for the one strategy whose failures leave run()'s transaction first. */
+    private ?\Closure $phaseFailure = null;
+
     public function __construct(private readonly PopOperationCatalog $catalog, private readonly ?string $eligibilityPath = null, private readonly ?string $deploymentManifestPath = null, private readonly ?string $financialCaseAuthorizationPath = null)
     {
     }
@@ -378,12 +381,24 @@ final class PopOperationService
     {
         $run = fn () => $this->runPhase($requestId, $phase, $token, $commitSha, $actor, $actorId, $actorRole, $context);
         if (!in_array($phase, ['execute', 'verify', 'rollback'], true) || !$this->coCommitsWithRecord((string) $this->request($requestId)->strategy_id)) return $run();
+        $this->phaseFailure = null;
+        $level = DB::transactionLevel();
         try { return DB::transaction(function () use ($requestId, $phase, $run): array {
             DB::table('pop_operation_requests')->where('id', $requestId)->lockForUpdate()->first();
             if ($phase === 'verify' && DB::table('pop_execution_records')->where('operation_id', $requestId)->where('phase', 'rollback')->exists()) throw new RuntimeException('POP verification is blocked after rollback begins.');
-            return $run();
-        }, 3); } catch (PopPhaseAborted $aborted) { // #5236 P1: that transaction is rolled back whole; only now is the failed receipt written, in its own transaction
-            return DB::transaction(function () use ($requestId, $aborted): array { DB::table('pop_operation_requests')->where('id', $requestId)->lockForUpdate()->first(); return ($aborted->recordFailure)(); });
+            $result = $run();
+            $this->phaseFailure = null; // the phase returned: a failure of the commit itself is not answered with a failed receipt
+
+            return $result;
+        }, 3); } catch (Throwable $escaped) {
+            // #5236 P1: that transaction is rolled back whole; only now is the failed receipt written, in its own transaction.
+            // #5236 review P2: after a true deadlock MySQL has dropped the transaction with its savepoints, so a nested ROLLBACK TO
+            // SAVEPOINT throws in place of PopPhaseAborted and leaves Laravel's transaction level raised. Whatever escapes once the
+            // phase began ends the same way; a refusal thrown before the phase began (no writer set) is passed on unchanged.
+            $record = $escaped instanceof PopPhaseAborted ? $escaped->recordFailure : $this->phaseFailure;
+            if ($record === null) throw $escaped;
+            if (DB::transactionLevel() > $level) DB::rollBack($level);
+            return DB::transaction(function () use ($requestId, $record): array { DB::table('pop_operation_requests')->where('id', $requestId)->lockForUpdate()->first(); return $record(); });
         }
     }
 
@@ -456,6 +471,12 @@ final class PopOperationService
             ], $actor, $approval, $commitSha, $this->durationMs($startedAt), 'precondition_failed');
         }
 
+        $failed = fn (): array => $this->record($request, $entry, $parameters, $phase, [
+            'ok' => false,
+            'errors' => ['execution_failed'],
+        ], $actor, $approval, $commitSha, $this->durationMs($startedAt), 'execution_failed');
+        // #5236 P1: a nested "Lock wait timeout" gets no ROLLBACK TO SAVEPOINT from Laravel, so recording inside run()'s transaction would commit the moves made before it. This strategy alone leaves that transaction first; run() then writes the receipt.
+        $this->phaseFailure = (string) $entry['strategy_class'] === \App\Operations\Strategies\CourseContractChainRebalanceStrategy::class ? $failed : null;
         try {
             if ($phase === 'execute') {
                 $strategy = app((string) $entry['strategy_class']);
@@ -489,12 +510,7 @@ final class PopOperationService
             return $this->coCommitsWithRecord($strategy)
                 ? DB::transaction($complete, 3) : $complete();
         } catch (Throwable) {
-            $failed = fn (): array => $this->record($request, $entry, $parameters, $phase, [
-                'ok' => false,
-                'errors' => ['execution_failed'],
-            ], $actor, $approval, $commitSha, $this->durationMs($startedAt), 'execution_failed');
-            // #5236 P1: a nested "Lock wait timeout" gets no ROLLBACK TO SAVEPOINT from Laravel, so recording here would commit the moves made before it. This strategy alone leaves run()'s transaction instead.
-            if ((string) $entry['strategy_class'] === \App\Operations\Strategies\CourseContractChainRebalanceStrategy::class) throw new PopPhaseAborted($failed);
+            if ($this->phaseFailure !== null) throw new PopPhaseAborted($failed);
             return $failed();
         }
     }
