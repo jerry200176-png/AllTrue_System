@@ -82,17 +82,19 @@ describe('LessonPlanUnits (#4970 step 5)', () => {
     expect(w.vm.dirty).toBe(true);
   });
 
-  it('keeps a tick made while the save is in flight, and stays dirty for the next save', async () => {
+  it('locks the checkboxes while the save is in flight and unlocks them after', async () => {
     let release;
     putResponse = () => new Promise((resolve) => { release = () => resolve(json({ data: { unit_ids: [2, 3] } })); });
     const w = await mountIt();
     await w.findAll('input[type=checkbox]')[1].setValue(true);
     const pending = w.vm.save(77);
-    await w.findAll('input[type=checkbox]')[0].setValue(true); // changed while the PUT is running
+    await flushPromises();
+    expect(w.findAll('input[type=checkbox]').every((c) => c.element.disabled)).toBe(true);
     release();
     expect(await pending).toEqual({ ok: true });
-    expect(w.findAll('input[type=checkbox]')[0].element.checked).toBe(true);
-    expect(w.vm.dirty).toBe(true);
+    await flushPromises();
+    expect(w.findAll('input[type=checkbox]').some((c) => c.element.disabled)).toBe(false);
+    expect(w.vm.dirty).toBe(false);
   });
 
   it('a failed 顯示全部 keeps the list and the ticks on screen', async () => {

@@ -16,6 +16,7 @@ const props = defineProps({
 const state = ref(null); // the candidates payload; null = nothing to show (no plan, no right to tick, or not loaded)
 const loading = ref(false);
 const loadError = ref('');
+const saving = ref(false); // ticks are locked while a save is in flight, so nothing can be lost when the form closes
 const checked = ref(new Set());
 const saved = ref(new Set()); // what the server already holds for this lesson
 let seq = 0;
@@ -66,6 +67,7 @@ function toggle(id, on) {
 /** Called by the page after the evaluation was saved. Resolves { ok, message }; nothing to send is ok. */
 async function save(recordId) {
   if (!state.value || !dirty.value) return { ok: true };
+  saving.value = true;
   try {
     const sent = [...checked.value];
     const { data } = await api(`/learning-records/${recordId}/plan-units`, { method: 'PUT', body: JSON.stringify({ unit_ids: sent }) });
@@ -76,6 +78,8 @@ async function save(recordId) {
     return { ok: true };
   } catch (e) {
     return { ok: false, message: e.message || '請稍後再試' };
+  } finally {
+    saving.value = false;
   }
 }
 
@@ -93,7 +97,7 @@ defineExpose({ save, dirty });
       <ul class="tw:m-0 tw:list-none tw:space-y-2 tw:p-0">
         <li v-for="u in units" :key="u.id" class="tw:rounded-md tw:border tw:border-border">
           <label class="tw:flex tw:min-h-11 tw:items-start tw:gap-3 tw:p-3">
-            <input type="checkbox" class="tw:mt-0.5 tw:size-5 tw:shrink-0" :checked="checked.has(u.id)" :disabled="disabled"
+            <input type="checkbox" class="tw:mt-0.5 tw:size-5 tw:shrink-0" :checked="checked.has(u.id)" :disabled="disabled || saving"
               :aria-label="`${u.title} 這堂上完`" @change="toggle(u.id, $event.target.checked)" />
             <span class="tw:min-w-0 tw:flex-1">
               <span class="tw:flex tw:flex-wrap tw:items-center tw:gap-2">
