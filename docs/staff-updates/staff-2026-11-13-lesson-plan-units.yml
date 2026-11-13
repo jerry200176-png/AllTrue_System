@@ -1,0 +1,16 @@
+updates:
+  - id: staff-2026-11-13-lesson-plan-units
+    published_at: "2026-11-13"
+    audiences:
+      - director
+      - teacher
+    importance: digest
+    title: 評量表可勾選上完的單元
+    summary: 填評量時順手勾選這堂上完的單元，學習計畫甘特圖自動更新。
+    items:
+      - category: added
+        text: 學生有學習計畫時，評量表多一區「這堂上完的單元」，勾選後儲存即記錄。
+      - category: improved
+        text: 甘特圖的單元會註明「於幾月幾日的課完成」，不必另外再勾一次。
+    source_refs:
+      - "changelog:2026-11-13:lesson-plan-units"

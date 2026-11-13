@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Controllers\Concerns\ScopesLearningPlanAccess;
 use App\Models\CurriculumTemplate;
 use App\Models\Student;
 use App\Models\StudentClass;
@@ -23,6 +24,8 @@ use Illuminate\Validation\Rule;
  */
 class StudentLearningPlanController extends Controller
 {
+    use ScopesLearningPlanAccess;
+
     private const DATE = ['date_format:Y-m-d'];
 
     public function __construct(private StudentExamPeriodResolver $exams)
@@ -173,7 +176,7 @@ class StudentLearningPlanController extends Controller
                 $changes += ['planned_start' => $from->toDateString(), 'planned_end' => $to->toDateString(), 'dates_manual' => true];
             }
             if (isset($data['completed'])) {
-                $changes += !$data['completed'] ? ['completed_at' => null, 'completed_by' => null]
+                $changes += !$data['completed'] ? ['completed_at' => null, 'completed_by' => null, 'completed_session_id' => null, 'completed_record_id' => null]
                     : ($u->completed_at === null ? ['completed_at' => now(), 'completed_by' => $request->attributes->get('auth_user')?->id] : []);
             }
             $u->update($changes);
@@ -259,29 +262,5 @@ class StudentLearningPlanController extends Controller
     private function hasOpenPlan(int $courseId): bool
     {
         return StudentLearningPlan::query()->where('student_class_id', $courseId)->where('status', '!=', 'archived')->exists();
-    }
-
-    private function teacherId(Request $request): ?int
-    {
-        return $request->attributes->get('auth_role') === 'teacher' ? max(0, (int) $request->attributes->get('auth_teacher_id')) : null;
-    }
-
-    /** Director/super_admin: any course in their campus. Teacher: only the courses they own. */
-    private function courseWritable(Request $request, int $courseId): bool
-    {
-        $teacherId = $this->teacherId($request);
-
-        return $teacherId === null || ($teacherId > 0 && StudentClass::query()->where('ID', $courseId)->where('TeacherID', $teacherId)->exists());
-    }
-
-    private function campusAllowed(Request $request, int $campusId): bool
-    {
-        return $campusId > 0 && ($request->attributes->get('auth_role') === 'super_admin'
-            || in_array($campusId, array_map('intval', (array) $request->attributes->get('auth_campus_ids', [])), true));
-    }
-
-    private function forbidden(): JsonResponse
-    {
-        return response()->json(['message' => 'Forbidden'], 403);
     }
 }
