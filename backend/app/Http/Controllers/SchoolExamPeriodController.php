@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\SchoolExamPeriod;
 use App\Models\Student;
 use App\Services\SchoolNameGrouper;
+use App\Services\StudentExamPeriodResolver;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -116,26 +117,9 @@ class SchoolExamPeriodController extends Controller
         if (!$this->campusAllowed($request, (int) $student->CampusID)) {
             return $this->forbidden();
         }
-        [$year, $semester] = $this->currentTerm();
-        $key = $this->grouper->key((string) $student->SchoolName);
-        $rows = $key === '' ? collect() : SchoolExamPeriod::query()
-            ->where('campus_id', $student->CampusID)->where('academic_year', $year)->where('semester', $semester)
-            ->orderBy('seq')->get()
-            ->filter(fn ($p) => $this->grouper->key($p->school_name) === $key
-                && ($p->grade_ids === null || in_array((int) $student->ClassID, array_map('intval', $p->grade_ids), true)))
-            ->values();
+        $found = (new StudentExamPeriodResolver($this->grouper))->forStudent($student);
 
-        return response()->json(['data' => $rows, 'academic_year' => $year, 'semester' => $semester]);
-    }
-
-    /** ROC year + semester: Aug–Jan = 1st, Feb–Jul = 2nd. */
-    public function currentTerm(): array
-    {
-        $now = now();
-        $m = (int) $now->format('n');
-        $y = (int) $now->format('Y') - 1911;
-
-        return $m >= 8 ? [$y, 1] : ($m === 1 ? [$y - 1, 1] : [$y - 1, 2]);
+        return response()->json(['data' => $found['rows'], 'academic_year' => $found['academic_year'], 'semester' => $found['semester']]);
     }
 
     private function validated(Request $request, bool $full): array
