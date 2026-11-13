@@ -186,7 +186,8 @@ describe('LessonPlanUnits (#4970 step 5)', () => {
     // Ticks are locked with a retry hint; retrying restores the whole draft selection, hidden unit included.
     expect(w.findAll('input[type=checkbox]').every((b) => b.element.disabled)).toBe(true);
     expect(w.text()).toContain('草稿裡的勾選還沒還原');
-    expect(await w.vm.save(77)).toEqual({ ok: true });
+    // A save now must not claim success (the page would clear the draft); it retries the list and reports the failure.
+    expect((await w.vm.save(77)).ok).toBe(false);
     expect(calls.filter((c) => c.method === 'PUT')).toHaveLength(0);
     fail = false;
     authedFetch.mockImplementation(async (url) => json({ data: { ...PAYLOAD, units: [...PAYLOAD.units, unit(8, '幾何')] } }));
@@ -194,6 +195,39 @@ describe('LessonPlanUnits (#4970 step 5)', () => {
     await flushPromises();
     expect(w.findAll('input[type=checkbox]').map((b) => [b.element.checked, b.element.disabled])).toEqual([[false, false], [false, false], [true, false], [true, false]]);
     expect([...w.vm.draftIds()].sort()).toEqual([3, 8]);
+  });
+
+  it('applies a draft selection once: 顯示全部 afterwards keeps the ticks made since', async () => {
+    allPayload = { ...PAYLOAD, units: [...PAYLOAD.units, unit(8, '幾何')] };
+    const w = await mountIt({ restoreIds: [2] });
+    await w.findAll('input[type=checkbox]')[0].setValue(true);
+    await w.find('button').trigger('click');
+    await flushPromises();
+    expect([...w.vm.draftIds()].sort()).toEqual([1, 2]);
+  });
+
+  it('does not report success while a draft selection is unrestored: it retries the list, then saves or fails', async () => {
+    let fail = true;
+    authedFetch.mockImplementation(async (url, init = {}) => {
+      const method = init.method || 'GET';
+      calls.push({ method, url, body: init.body ? JSON.parse(init.body) : null });
+      if (method === 'PUT') return json({ data: { unit_ids: [2] } });
+      return fail ? json({ message: 'boom' }, 500) : json({ data: { ...PAYLOAD, total: 3 } });
+    });
+    const w = await mountIt({ restoreIds: [2] });
+    const failed = await w.vm.save(77);
+    expect(failed.ok).toBe(false);
+    expect(calls.filter((c) => c.method === 'PUT')).toHaveLength(0);
+    expect(w.vm.draftIds()).toEqual([2]);
+    fail = false;
+    expect(await w.vm.save(77)).toEqual({ ok: true });
+    expect(calls.find((c) => c.method === 'PUT').body.unit_ids).toEqual([2]);
+  });
+
+  it('a draft selection with no plan to tick does not block the save', async () => {
+    payload = { plan: null, can_tick: false, units: [], total: 0 };
+    const w = await mountIt({ restoreIds: [2] });
+    expect(await w.vm.save(77)).toEqual({ ok: true });
   });
 
   it('drops a tick whose unit is gone when the full list arrives', async () => {

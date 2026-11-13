@@ -30,7 +30,13 @@ async function api(path, options = {}) {
   return body;
 }
 
-async function load(all = false) {
+let inflight = Promise.resolve(); // the latest list request, so a save can wait for it
+function load(all = false) {
+  inflight = doLoad(all);
+  return inflight;
+}
+
+async function doLoad(all = false) {
   const my = ++seq;
   const id = Number(props.classSessionId) || 0;
   if (id <= 0) { state.value = null; return; }
@@ -47,6 +53,7 @@ async function load(all = false) {
       checked.value = new Set([...checked.value].filter((id) => offered.has(id)));
     }
     state.value = data.plan && data.can_tick ? data : null;
+    if (!state.value) restored.value = true; // no plan, or no right to tick: a draft selection has nothing to go to
     applyRestore(all);
   } catch (e) {
     if (my !== seq) return;
@@ -55,6 +62,7 @@ async function load(all = false) {
     state.value = null;
     // No right to see the plan is not an error for the evaluation; anything else is worth a line.
     loadError.value = e.status === 403 || e.status === 404 ? '' : '單元清單暫時載入失敗，評量本身不受影響。';
+    if (e.status === 403 || e.status === 404) restored.value = true;
   } finally {
     if (my === seq) loading.value = false;
   }
@@ -77,7 +85,8 @@ const restored = ref(false); // false while a draft selection is given but not y
 // Ticks stay locked until then, so an edit can never silently replace draft ticks that are not on screen yet.
 const restorePending = computed(() => Array.isArray(props.restoreIds) && !restored.value);
 function applyRestore(expanded = false) {
-  if (!state.value || !Array.isArray(props.restoreIds)) return;
+  // Applied once per draft: a later 「顯示全部」 must not put the draft back over the teacher's newer ticks.
+  if (!state.value || !Array.isArray(props.restoreIds) || restored.value) return;
   const ids = props.restoreIds.map(Number).filter((n) => n > 0);
   const offered = new Set((state.value.units || []).map((u) => u.id));
   const known = ids.filter((id) => offered.has(id));
@@ -104,6 +113,13 @@ function toggle(id, on) {
 
 /** Called by the page after the evaluation was saved. Resolves { ok, message }; nothing to send is ok. */
 async function save(recordId) {
+  // A draft selection that is not on the form yet must not be reported as saved: the page would clear the draft.
+  if (restorePending.value) {
+    await inflight;
+    if (restorePending.value && !loading.value) await load();
+    await inflight;
+    if (restorePending.value) return { ok: false, message: '草稿裡勾選的單元還沒還原，請再儲存一次。' };
+  }
   if (!state.value || !dirty.value) return { ok: true };
   saving.value = true;
   try {
