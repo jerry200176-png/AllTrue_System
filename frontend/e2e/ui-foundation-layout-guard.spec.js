@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { DAY_LABELS, TODAY, mockStudyWeekApi } from './fixtures/ui-foundation/study-week-data.js';
+import { CLASSMATES, DAY_LABELS, TODAY, mockStudyWeekApi } from './fixtures/ui-foundation/study-week-data.js';
 
 /**
  * Layout guard for pages migrated to the ui components (in-app #541 / #542 / #543, #4989).
@@ -324,7 +324,7 @@ const PAGES = [
     names: [...DAY_LABELS, '歐陽子安 學習檔案'],
     allNames: false,
     rows: ['[data-testid="week-plans"], [data-testid="week-grid"]', '[data-testid="week-plans"] > div'],
-    touch: ['[data-testid^="add-"]', '[data-testid="week-prev"]', '[data-testid="week-next"]', '[data-testid="week-today"]', '[data-testid^="done-"] ~ *, label:has([data-testid^="done-"])', 'button[data-testid^="title-"]'],
+    touch: ['[data-testid^="add-"]', '[data-testid="week-prev"]', '[data-testid="week-next"]', '[data-testid="week-today"]', '[data-testid="copy-week"]', '[data-testid^="done-"] ~ *, label:has([data-testid^="done-"])', 'button[data-testid^="title-"]'],
     mock: async (page) => { await page.clock.setFixedTime(TODAY); await mockStudyWeekApi(page, 'full'); },
     setup: async (page) => {
       await page.getByRole('tab', { name: '讀書計畫' }).click();
@@ -350,6 +350,28 @@ const PAGES = [
         const starts = await page.evaluate(() => ['task-1', 'task-2', 'task-4', 'task-5', 'task-6', 'task-8'].map((id) => Math.round(document.querySelector(`[data-testid="${id}"]`).getBoundingClientRect().top)));
         expect(new Set(starts).size, `first tasks start at ${starts.join(', ')}`).toBe(1);
       }
+    },
+  },
+  {
+    // issue 5269 step 3: the 套用到同班其他學生 picker (opened from a task's edit dialog). Names never wrap, the
+    // checkbox rows share a left edge, and every checkbox row and button is at least 44px.
+    key: 'student-study-week-apply',
+    url: '/study-week-pilot-mount.html',
+    names: CLASSMATES.map((c) => c.name),
+    allNames: true,
+    rows: ['[data-testid="apply-dialog"] li label'],
+    touch: ['[data-testid="apply-dialog"] li label', '[data-testid="apply-dialog"] label:has([data-testid="apply-all"])', '[data-testid="apply-go"]'],
+    mock: async (page) => { await page.clock.setFixedTime(TODAY); await mockStudyWeekApi(page, 'full'); },
+    setup: async (page) => {
+      await page.getByRole('tab', { name: '讀書計畫' }).click();
+      await expect(page.getByTestId('task-8')).toBeVisible();
+      await page.getByTestId('title-8').click();
+      await page.getByTestId('f-apply').click();
+      await expect(page.getByTestId('mate-21')).toBeVisible();
+      await page.getByTestId('mate-22').check();
+      const box = await page.getByTestId('apply-dialog').boundingBox();
+      expect(box.x + box.width, 'the picker is wider than the screen').toBeLessThanOrEqual(page.viewportSize().width + 1);
+      expect(box.x, 'the picker starts off screen').toBeGreaterThanOrEqual(-1);
     },
   },
   ...[false, true].map((search) => ({

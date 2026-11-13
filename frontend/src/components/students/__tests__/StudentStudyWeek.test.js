@@ -6,6 +6,7 @@ vi.mock('../../../lib/authedFetch', () => ({ authedFetch: vi.fn() }));
 vi.mock('../../../lib/sessionDates', () => ({ ymdInTaipei: () => '2026-11-13' }));
 import { authedFetch } from '../../../lib/authedFetch';
 import StudentStudyWeek from '../StudentStudyWeek.vue';
+import { Dialog } from '../../ui/dialog';
 
 const json = (body, status = 200) => ({ ok: status < 400, status, json: async () => body });
 const task = (id, due_date, extra = {}) => ({ id, student_id: 1, plan_unit_id: null, title: `任務${id}`, kind: 'homework', due_date, minutes: null, note: null, done_at: null, ...extra });
@@ -327,6 +328,109 @@ describe('StudentStudyWeek (issue 5269 step 2)', () => {
     calls.length = 0;
     await byId(w, 'done-1').setValue(false);
     expect(calls.find((c) => c.method === 'PATCH').body).toEqual({ done: false });
+  });
+
+  describe('speed tools (issue 5269 step 3)', () => {
+    const MATES = [{ id: 7, name: '同學甲' }, { id: 8, name: '同學乙' }];
+    beforeEach(() => { routes['GET /api/v1/students/1/study-classmates'] = () => json({ data: MATES, max_targets: 30 }); });
+    const openPicker = async (w) => { await byId(w, 'title-1').trigger('click'); await byId(w, 'f-apply').trigger('click'); await flushPromises(); };
+
+    it('copies last week for the shown week, says how many, and reloads the list', async () => {
+      routes['POST /api/v1/students/1/study-tasks/copy-week'] = () => json({ data: [task(9, '2026-11-09'), task(10, '2026-11-10')], skipped: 1 });
+      const w = await mountIt();
+      calls.length = 0;
+      await byId(w, 'copy-week').trigger('click'); await flushPromises();
+      expect(calls[0]).toMatchObject({ method: 'POST', url: '/api/v1/students/1/study-tasks/copy-week', body: { week_start: '2026-11-09' } });
+      expect(byId(w, 'notice').text()).toBe('已複製上週的 2 個任務，另有 1 個這週已經有了');
+      expect(calls.some((c) => c.method === 'GET' && c.url.includes('study-tasks'))).toBe(true);
+      expect(byId(w, 'copy-week').attributes('disabled')).toBeUndefined();
+    });
+
+    it('sends the shown week after paging, ignores a second click while running, and explains an all-duplicate answer', async () => {
+      let release;
+      routes['POST /api/v1/students/1/study-tasks/copy-week'] = () => new Promise((r) => { release = () => r(json({ data: [], skipped: 3 })); });
+      const w = await mountIt();
+      await byId(w, 'week-next').trigger('click'); await flushPromises();
+      calls.length = 0;
+      await byId(w, 'copy-week').trigger('click');
+      expect(byId(w, 'copy-week').attributes('disabled')).toBeDefined();
+      await byId(w, 'copy-week').trigger('click');
+      expect(calls.filter((c) => c.method === 'POST')).toHaveLength(1);
+      expect(calls[0].body).toEqual({ week_start: '2026-11-16' });
+      release(); await flushPromises();
+      expect(byId(w, 'notice').text()).toBe('上週的任務這週都已經有了，沒有新增');
+    });
+
+    it('shows an error and keeps the week when copying fails; a refusal turns the page read-only', async () => {
+      routes['POST /api/v1/students/1/study-tasks/copy-week'] = () => json({ message: '伺服器忙線' }, 500);
+      const w = await mountIt();
+      await byId(w, 'copy-week').trigger('click'); await flushPromises();
+      expect(byId(w, 'action-error').text()).toContain('沒有複製成功');
+      expect(byId(w, 'day-2026-11-09').text()).toContain('預習第三章');
+      routes['POST /api/v1/students/1/study-tasks/copy-week'] = () => json({}, 403);
+      await byId(w, 'copy-week').trigger('click'); await flushPromises();
+      expect(byId(w, 'read-only-note').exists()).toBe(true);
+      expect(byId(w, 'copy-week').exists()).toBe(false);
+    });
+
+    it('applies one task to the ticked classmates and reports created, skipped and refused counts', async () => {
+      routes['POST /api/v1/study-tasks/1/apply-to-students'] = () => json({ data: { results: [], created: 1, skipped: 1, refused: 0 } });
+      const w = await mountIt();
+      await openPicker(w);
+      expect(calls.some((c) => c.url === '/api/v1/students/1/study-classmates')).toBe(true);
+      expect(byId(w, 'apply-go').attributes('disabled')).toBeDefined(); // nothing ticked yet
+      await byId(w, 'mate-7').setValue(true); await byId(w, 'mate-8').setValue(true);
+      expect(byId(w, 'apply-go').text()).toBe('套用到 2 位');
+      calls.length = 0;
+      await byId(w, 'apply-go').trigger('click'); await flushPromises();
+      expect(calls[0]).toMatchObject({ method: 'POST', url: '/api/v1/study-tasks/1/apply-to-students', body: { student_ids: [7, 8] } });
+      expect(byId(w, 'notice').text()).toBe('已套用到 1 位，1 位本來就有這個任務');
+      expect(w.findAllComponents(Dialog).map((d) => d.props('open'))).toEqual([false, false]); // the picker closed
+    });
+
+    it('keeps the ticked students and shows the error when applying fails, so one more click retries', async () => {
+      routes['POST /api/v1/study-tasks/1/apply-to-students'] = () => json({ message: '連線失敗' }, 500);
+      const w = await mountIt();
+      await openPicker(w);
+      await byId(w, 'mate-8').setValue(true);
+      await byId(w, 'apply-go').trigger('click'); await flushPromises();
+      expect(byId(w, 'apply-error').text()).toContain('沒有套用成功');
+      expect(byId(w, 'mate-8').element.checked).toBe(true);
+      expect(byId(w, 'mate-7').element.checked).toBe(false);
+      routes['POST /api/v1/study-tasks/1/apply-to-students'] = () => json({ data: { results: [], created: 1, skipped: 0, refused: 0 } });
+      await byId(w, 'apply-go').trigger('click'); await flushPromises();
+      expect(byId(w, 'notice').text()).toBe('已套用到 1 位');
+    });
+
+    it('blocks 套用 while the edit form has unsaved changes, with a hint, and allows it again when they are undone', async () => {
+      const w = await mountIt();
+      await byId(w, 'title-1').trigger('click');
+      expect(byId(w, 'f-apply').attributes('disabled')).toBeUndefined();
+      expect(byId(w, 'apply-hint').exists()).toBe(false);
+      await byId(w, 'f-title').setValue('改過的名稱');
+      expect(byId(w, 'f-apply').attributes('disabled')).toBeDefined();
+      expect(byId(w, 'apply-hint').text()).toContain('先按「儲存」');
+      calls.length = 0;
+      await byId(w, 'f-apply').trigger('click'); await flushPromises();
+      expect(calls.some((c) => c.url.includes('study-classmates'))).toBe(false);
+      expect(byId(w, 'f-title').element.value).toBe('改過的名稱'); // nothing was discarded
+      await byId(w, 'f-title').setValue('預習第三章');
+      expect(byId(w, 'f-apply').attributes('disabled')).toBeUndefined();
+    });
+
+    it('select-all ticks every classmate, and an empty class explains itself', async () => {
+      const w = await mountIt();
+      await openPicker(w);
+      await byId(w, 'apply-all').setValue(true);
+      expect(byId(w, 'apply-go').text()).toBe('套用到 2 位');
+      await byId(w, 'apply-all').setValue(false);
+      expect(byId(w, 'apply-go').text()).toBe('套用到 0 位');
+      w.unmount();
+      routes['GET /api/v1/students/1/study-classmates'] = () => json({ data: [], max_targets: 30 });
+      const w2 = await mountIt();
+      await openPicker(w2);
+      expect(byId(w2, 'apply-empty').text()).toContain('沒有其他學生');
+    });
   });
 
   it('is axe clean', async () => {
