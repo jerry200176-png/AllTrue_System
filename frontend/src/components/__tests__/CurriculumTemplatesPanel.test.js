@@ -10,7 +10,7 @@ afterEach(() => {
   vi.unstubAllGlobals();
   document.body.innerHTML = '';
 });
-const dialogBtn = (text) => [...document.querySelectorAll('[role="dialog"] button, .at-dialog button')].find((b) => b.textContent.trim() === text);
+const dialogBtn = () => document.querySelector('[data-testid="confirm-dialog-confirm"]');
 
 const TEMPLATE = { id: 5, title: '七上數學範本', subject: 'Math', grade: 'J1', publisher: '測試出版社', status: 'active', units_count: 2 };
 const DETAIL = {
@@ -124,7 +124,7 @@ describe('教材範本庫 panel', () => {
     await btn(w, '封存').trigger('click');
     await flushPromises();
     expect(f.mock.calls.some(([, o]) => o?.method === 'POST')).toBe(false);
-    dialogBtn('確定').click();
+    dialogBtn().click();
     await flushPromises();
     expect(f.mock.calls.some(([u, o]) => o?.method === 'POST' && String(u).endsWith('/curriculum-templates/5/archive'))).toBe(true);
     w.unmount();
@@ -139,7 +139,7 @@ describe('教材範本庫 panel', () => {
     await w.find('button[aria-label="移除單元 1"]').trigger('click');
     await flushPromises();
     expect(w.findAll('input[placeholder="單元名稱"]')).toHaveLength(2);
-    dialogBtn('確定').click();
+    dialogBtn().click();
     await flushPromises();
     expect(w.findAll('input[placeholder="單元名稱"]')).toHaveLength(1);
     w.unmount();

@@ -82,7 +82,9 @@
       </CardContent>
     </Card>
 
-    <AtSkeleton v-if="loading" :rows="3" />
+    <div v-if="loading" class="tw:space-y-2" aria-busy="true">
+      <Skeleton v-for="n in 3" :key="n" class="tw:h-16 tw:w-full" />
+    </div>
     <p v-else-if="!error && !templates.length" class="tw:text-sm tw:text-muted-foreground">
       還沒有教材範本。{{ isDirector ? '按「新增範本」建立第一份。' : '' }}
     </p>
@@ -104,14 +106,17 @@
       </CardContent>
     </Card>
 
-    <AtDialog :open="!!confirm" :title="confirm?.kind === 'archive' ? '封存範本' : '移除單元'" title-id="ctp-confirm-title" initial-focus="[data-cancel]" @close="confirm = null">
-      <p v-if="confirm?.kind === 'archive'">封存「{{ confirm.name }}」後，預設清單不再顯示，可以在「已封存」找回。確定封存嗎？</p>
-      <p v-else>確定移除「{{ confirm?.name }}」嗎？要按「儲存」才會真的生效。</p>
-      <template #actions>
-        <AtButton shape="rect" variant="ghost" data-cancel @click="confirm = null">取消</AtButton>
-        <AtButton shape="rect" variant="primary" @click="runConfirm">確定</AtButton>
-      </template>
-    </AtDialog>
+    <ConfirmDialog
+      :open="!!confirm"
+      :title="confirm?.kind === 'archive' ? '封存這份範本？' : '移除這個單元？'"
+      :description="confirm?.kind === 'archive'
+        ? `封存「${confirm.name}」後，預設清單不再顯示，可以在「已封存」找回。`
+        : `「${confirm?.name}」要按「儲存」才會真的移除。`"
+      :confirm-label="confirm?.kind === 'archive' ? '封存' : '移除'"
+      destructive
+      @update:open="closeConfirm"
+      @confirm="runConfirm"
+    />
   </div>
 </template>
 
@@ -121,9 +126,8 @@ import { Badge } from './ui/badge';
 import { Button } from './ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { GRADES, SUBJECTS } from '../lib/constants';
-import AtButton from './design-system/AtButton.vue';
-import AtDialog from './design-system/AtDialog.vue';
-import AtSkeleton from './design-system/AtSkeleton.vue';
+import ConfirmDialog from './app-overlay/ConfirmDialog.vue';
+import { Skeleton } from './ui/skeleton';
 import { authedFetch } from '../lib/authedFetch';
 
 const props = defineProps({
@@ -253,6 +257,11 @@ async function save() {
   } finally {
     saving.value = false;
   }
+}
+
+// The Action button closes the dialog and fires confirm in one click; clear after the click so runConfirm still sees it.
+function closeConfirm(open) {
+  if (!open) queueMicrotask(() => { confirm.value = null; });
 }
 
 function runConfirm() {
