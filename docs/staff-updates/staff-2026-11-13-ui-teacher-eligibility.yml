@@ -1,0 +1,14 @@
+updates:
+  - id: staff-2026-11-13-ui-teacher-eligibility
+    published_at: "2026-11-13"
+    audiences:
+      - director
+      - super_admin
+    importance: digest
+    title: 正職薪資要件頁換新外觀
+    summary: 字更大、按鈕更好按；看到的數字和原本一樣。
+    items:
+      - category: improved
+        text: 「正職薪資要件」頁改成大字、大按鈕；載入中改顯示骨架，結算、匯出、鎖定與倍率的用法不變。
+    source_refs:
+      - "changelog:2026-11-13:ui-teacher-eligibility"
