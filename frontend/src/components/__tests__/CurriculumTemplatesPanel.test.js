@@ -176,4 +176,43 @@ describe('教材範本庫 panel', () => {
     expect(w.find('[role="alert"]').text()).toContain('沒有');
     expect(w.text()).not.toContain('Forbidden');
   });
+
+  it('archiving from the editor saves units first, then the status, without error', async () => {
+    const f = stub();
+    const w = mount(Panel, { props: { branchId: 1, isDirector: true } });
+    await flushPromises();
+    await btn(w, '編輯').trigger('click');
+    await flushPromises();
+    await w.findAll('select').find((s) => s.text().includes('已封存') && s.element.value === 'active').setValue('archived');
+    await btn(w, '儲存').trigger('click');
+    await flushPromises();
+    const order = f.mock.calls.map(([, o]) => o?.method).filter((m) => m === 'PUT' || m === 'PATCH');
+    expect(order).toEqual(['PUT', 'PATCH']);
+    expect(w.find('[role="alert"]').exists()).toBe(false);
+    expect(w.find('.ctp-editor').exists()).toBe(false);
+  });
+
+  it('renaming an archived template sends PATCH only and locks the unit editor', async () => {
+    const archived = { ...DETAIL, status: 'archived' };
+    const f = vi.fn(async (input, options = {}) => {
+      const url = String(input);
+      const body = /templates\/5$/.test(url) && !options.method ? { data: archived } : { data: [{ ...TEMPLATE, status: 'archived' }] };
+      return { ok: true, json: async () => body };
+    });
+    vi.stubGlobal('fetch', f);
+    const w = mount(Panel, { props: { branchId: 1, isDirector: true } });
+    await flushPromises();
+    await w.find('select[aria-label="狀態"]').setValue('archived');
+    await flushPromises();
+    await btn(w, '編輯').trigger('click');
+    await flushPromises();
+    expect(w.find('input[placeholder="單元名稱"]').attributes('disabled')).toBeDefined();
+    expect(w.text()).toContain('已封存的範本不能改單元');
+    await w.find('input[placeholder^="例如"]').setValue('改名後');
+    await btn(w, '儲存').trigger('click');
+    await flushPromises();
+    const methods = f.mock.calls.map(([, o]) => o?.method).filter(Boolean);
+    expect(methods).toEqual(['PATCH']);
+    expect(w.find('[role="alert"]').exists()).toBe(false);
+  });
 });
