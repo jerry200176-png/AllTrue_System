@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\Campus;
 use App\Models\Student;
 use App\Support\SchedulerEvidence;
+use Carbon\Carbon;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Artisan;
@@ -131,9 +132,34 @@ class VerifyBugReproductionsTest extends TestCase
         ]);
     }
 
-    /** in-app #530 / #4991: a shared-pool member whose weekly lessons stopped while the pool still has lessons. */
-    public function test_shared_pool_member_generation_stopped_counts_only_starved_running_members(): void
+    protected function tearDown(): void
     {
+        Carbon::setTestNow();
+        parent::tearDown();
+    }
+
+    /**
+     * "Today"/"now" in the conditions come from the app clock (Asia/Taipei), not MySQL CURDATE()/NOW() (DB session
+     * timezone, UTC in CI). 00:30 Taipei is 16:30 UTC the day before: the window where the two calendars disagree.
+     *
+     * @return array<string,array{0:string}>
+     */
+    public static function taipeiInstants(): array
+    {
+        return [
+            'just after Taipei midnight (UTC is still the day before)' => ['2026-11-14 00:30:00'],
+            'Taipei noon (UTC same day)' => ['2026-11-14 12:00:00'],
+        ];
+    }
+
+    /**
+     * in-app #530 / #4991: a shared-pool member whose weekly lessons stopped while the pool still has lessons.
+     *
+     * @dataProvider taipeiInstants
+     */
+    public function test_shared_pool_member_generation_stopped_counts_only_starved_running_members(string $taipeiNow = '2026-11-14 00:30:00'): void
+    {
+        Carbon::setTestNow(Carbon::parse($taipeiNow, 'Asia/Taipei'));
         $key = 'shared_pool_member_generation_stopped';
         $pkg = $this->package(); // 10 bought, count mode
         $starved = $this->course(['PackageID' => $pkg]);
@@ -163,6 +189,39 @@ class VerifyBugReproductionsTest extends TestCase
         DB::table('StudentClass')->where('ID', $starved)->update(['scheduling_policy' => 'auto_recurrence']);
         DB::table('StudentClass')->where('ID', $sibling)->update(['Stop' => 1]);
         $this->assertSame(0, $this->condition($key)['count']);
+    }
+
+    /** @dataProvider taipeiInstants */
+    public function test_stranded_prepaid_course_uses_the_app_calendar_day(string $taipeiNow): void
+    {
+        Carbon::setTestNow(Carbon::parse($taipeiNow, 'Asia/Taipei'));
+        $key = 'stranded_prepaid_course';
+        $stranded = $this->course(['RemainingSessions' => 3]);
+        $this->classSession($stranded, 'attended', now()->subDay()->toDateString()); // yesterday (Taipei): not upcoming
+        $running = $this->course(['RemainingSessions' => 3]);
+        $this->classSession($running, 'scheduled', now()->toDateString()); // today (Taipei): still upcoming
+
+        $this->assertSame(1, $this->condition($key)['count']);
+    }
+
+    /** @dataProvider taipeiInstants */
+    public function test_attended_session_without_learning_record_uses_the_app_clock_for_started(string $taipeiNow): void
+    {
+        Carbon::setTestNow(Carbon::parse($taipeiNow, 'Asia/Taipei'));
+        $key = 'attended_session_without_learning_record';
+        $before = $this->condition($key)['count'];
+        $today = now()->toDateString();
+        $started = $this->course();
+        $notYet = $this->course();
+        // 00:10 has started at both instants; 23:00 has not started at either.
+        DB::table('ClassSession')->insert([
+            'StudentClassID' => $started, 'SessionDate' => $today, 'StartTime' => '00:10', 'EndTime' => '00:20', 'Status' => 'attended',
+        ]);
+        DB::table('ClassSession')->insert([
+            'StudentClassID' => $notYet, 'SessionDate' => $today, 'StartTime' => '23:00', 'EndTime' => '23:30', 'Status' => 'attended',
+        ]);
+
+        $this->assertSame($before + 1, $this->condition($key)['count']);
     }
 
     public function test_package_over_debit_flags_used_beyond_taught_and_not_a_balanced_ledger(): void
