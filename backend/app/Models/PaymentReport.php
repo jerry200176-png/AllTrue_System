@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\DB;
 
 /**
  * @property int $id
@@ -112,6 +113,23 @@ class PaymentReport extends Model
     public function voidedByUser()
     {
         return $this->belongsTo(User::class, 'voided_by', 'id');
+    }
+
+    /**
+     * The courses whose pending reports count against recording on this course (#3753): a count-mode member of a
+     * shared CoursePackage is one obligation, so every member counts; a monthly ('date') member or a plain course counts alone.
+     *
+     * @return list<int>
+     */
+    public static function pendingScopeCourseIds(int $courseId): array
+    {
+        $course = DB::table('StudentClass')->where('ID', $courseId)->first(['PackageID', 'ScheduleMode']);
+        $packageId = (int) ($course->PackageID ?? 0);
+        if ($packageId > 0 && strtolower((string) ($course->ScheduleMode ?? 'count')) !== 'date' && DB::table('course_packages')->where('id', $packageId)->exists()) {
+            return DB::table('StudentClass')->where('PackageID', $packageId)->pluck('ID')->map(fn ($id) => (int) $id)->all();
+        }
+
+        return [$courseId];
     }
 
     public function isPending(): bool

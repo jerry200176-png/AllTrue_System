@@ -16,4 +16,8 @@ return [
     // stored snapshots of earlier discounted terms are untouched.
     'transaction_discounts_enabled' => false,
     'receipt_correction_reissue_enabled' => false, // Separate protected activation; never environment-driven.
+    // #5113 (in-app #522): what a director may move to another bill alone. Env-driven; 0 = off (HQ only).
+    // Founder 2026-11-13: about one ordinary monthly bill in amount, about one month in age; numbers live in env, not code.
+    'receipt_reassign_director_max_amount' => (int) env('BILLING_RECEIPT_REASSIGN_DIRECTOR_MAX_AMOUNT', 0),
+    'receipt_reassign_director_max_age_days' => (int) env('BILLING_RECEIPT_REASSIGN_DIRECTOR_MAX_AGE_DAYS', 0),
 ];
