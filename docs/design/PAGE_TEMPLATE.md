@@ -12,7 +12,7 @@ Shared parts live in `frontend/src/components/ui/page/` (`PageShell`, `PageHeade
 | Gutter | desktop: the app shell's 34px; phone: exactly 16px (shell 10px + 6px) | `PageShell`; `App.vue` `.main-content` |
 | Gap between blocks | 16px | `PageShell` `tw:gap-4` |
 | Bottom room | 96px on phone (tab bar + feedback button), 40px desktop | `PageShell` |
-| Landmarks | the app shell owns `main`; a page adds none | sequencing §7 |
+| Landmarks | the app shell owns `main`; a page adds none | sequencing, Definition of done item 7 |
 
 ## 2. Page header (`PageHeader`)
 
@@ -96,8 +96,10 @@ Shared parts live in `frontend/src/components/ui/page/` (`PageShell`, `PageHeade
 
 ## 9. Evidence every UI PR attaches
 
+This section is the one evidence rule for UI PRs; `UI_FOUNDATION_MIGRATION_SEQUENCING.md` points here.
+
 1. Real-browser screenshots (Playwright, mocked API, realistic names including a 4-character one) at 1536×784 and 375×800, at 標準, 稍大 and 大, before and after, listed in the PR description as file paths or CI artifacts.
-2. The layout-integrity spec passes for the page: names on one line, no horizontal body overflow, row leading edges aligned.
+2. The page has an entry in `frontend/e2e/ui-foundation-layout-guard.spec.js` (`PAGES`) and it passes: names on one line, no horizontal body overflow, row leading edges aligned. It runs in the required ui-foundation job.
 3. Vitest + axe for the page; the `ui-preview` link for the reviewer.
 
 ## 10. References (what we took from where)
