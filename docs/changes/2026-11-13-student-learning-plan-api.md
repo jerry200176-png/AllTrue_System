@@ -1,0 +1,20 @@
+## 2026-11-13 — feat(exams): 學生學習計畫 API (#4970 step 4a)
+<!-- release-notes: silent_ship=silent-2026-11-13-student-learning-plan-api -->
+<!-- silent-reason: 只新增後端資料表與 API，畫面（甘特圖）在下一個 PR 才上線，教職員目前看不到差異 -->
+- New tables `student_learning_plans` and `student_plan_units` (additive, no unique/foreign keys). One non-archived plan per (student, course) is enforced in code under a row lock on the course (`StudentClass` row), the same lock for create and for restoring an archived plan.
+- New `GET/POST students/{student}/learning-plans`, `PATCH learning-plans/{plan}`, `PATCH learning-plans/{plan}/units/{unit}`. POST copies an active same-campus template's units (content copy) and dates them with `LearningPlanScheduler` (default plan end = start + 18 weeks). A stopped course (`Stop` = 1) is refused.
+- Exams are the school's exam periods whose start lies inside the plan range, of any term (`StudentExamPeriodResolver::forRange`): recalculating an old plan later finds the same exams, and a plan crossing two terms sees both. Units walk the exams in date order with a cursor that never moves back: a unit takes the exam with its sequence in the cursor's term; a sequence that drops (a term break in the template) moves to the next term. PATCH the plan (any date key) or a unit (`dates_manual:false`) to re-date; there is no separate recalculate route.
+- Access: directors and super admins read and write any plan in their campus; a teacher reads courses visible to them (`StudentClass::visibleToTeacher`, includes substitute/makeup) but writes only courses they own (`StudentClass.TeacherID`). Responses add derived `percent_done`, `units_behind`, `next_exam` (with academic year and semester).
+- `created_by` / `completed_by` are null when there is no actor. Dates must be `YYYY-MM-DD`. An archived plan accepts only a `status` change.
+- Shrinking the plan range is refused while a manual-date unit would fall outside it (the message says how many units).
+- Refactor: the school exam period lookup for a student moved from `SchoolExamPeriodController::forStudent` into `StudentExamPeriodResolver`; that endpoint's behaviour is unchanged.
+
+### Gantt UI must show (next PR)
+- Units with `dates_manual` are skipped by the even split, so a manual unit may overlap automatic units or other manual units. The chart must draw overlaps as overlaps (stacked or side by side), never hide or shift them, and mark manual bars.
+- Units tagged to an exam that sits on the plan's first day share that day; with no room before an exam, several units can share one day. Do not assume `planned_end` is unique per unit or strictly increasing.
+- A unit past its `planned_end` and not completed is behind (`units_behind`); `next_exam.days_left` is counted from today.
+
+### Known limitations
+- A course whose `EndDate` has passed (but `Stop` = 0) is not refused.
+- `StudentClass` has a single `TeacherID`; there is no co-teacher write path.
+- `next_exam` only looks at exams inside the plan range.

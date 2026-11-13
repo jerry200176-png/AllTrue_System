@@ -474,6 +474,13 @@
 | GET | `api/v1/invoices/{invoice}/slip-data` | `BillingController@slipData` | role+campus |
 | POST | `api/v1/invoices/{invoice}/void` | `BillingController@voidInvoice` | role+campus |
 
+## /api/v1/learning-plans
+
+| Method | URI | Action | Auth |
+|--------|-----|--------|------|
+| PATCH | `api/v1/learning-plans/{plan}` | `StudentLearningPlanController@update` | role+campus |
+| PATCH | `api/v1/learning-plans/{plan}/units/{unit}` | `StudentLearningPlanController@updateUnit` | role+campus |
+
 ## /api/v1/learning-record-feedbacks
 
 | Method | URI | Action | Auth |
@@ -813,6 +820,8 @@
 | POST | `api/v1/students/{student}/guardians` | `StudentGuardianController@store` | role+campus |
 | PUT | `api/v1/students/{student}/guardians/{studentGuardian}` | `StudentGuardianController@update` | role+campus |
 | DELETE | `api/v1/students/{student}/guardians/{studentGuardian}` | `StudentGuardianController@destroy` | role+campus |
+| GET | `api/v1/students/{student}/learning-plans` | `StudentLearningPlanController@index` | role+campus |
+| POST | `api/v1/students/{student}/learning-plans` | `StudentLearningPlanController@store` | role+campus |
 | GET | `api/v1/students/{student}/learning-timeline` | `LearningRecordStudentTimelineController@show` | role+campus |
 | GET | `api/v1/students/{student}/line-bindings` | `StudentController@lineBindings` | role+campus |
 | DELETE | `api/v1/students/{student}/line-bindings/{binding}` | `StudentController@removeLineBinding` | role+campus |
