@@ -19,11 +19,11 @@
       <CardContent class="tw:space-y-2 tw:px-4">
         <div v-for="slot in slots" :key="slot.seq" class="sep-row tw:grid tw:grid-cols-[4.5rem_1fr_1fr] tw:items-center tw:gap-2">
           <span class="tw:text-sm">{{ slot.short }}</span>
-          <input v-model="draft(s, slot.seq).start_date" type="date" :disabled="!isDirector" :aria-label="`${s.school_name} ${slot.short} 開始`" class="tw:h-9 tw:min-w-0 tw:rounded-md tw:border tw:bg-background tw:px-2 tw:text-sm" />
-          <input v-model="draft(s, slot.seq).end_date" type="date" :disabled="!isDirector" :aria-label="`${s.school_name} ${slot.short} 結束`" class="tw:h-9 tw:min-w-0 tw:rounded-md tw:border tw:bg-background tw:px-2 tw:text-sm" />
+          <input v-model="draft(s, slot.seq).start_date" type="date" :disabled="!isDirector || busy(s, slot.seq)" :aria-label="`${s.school_name} ${slot.short} 開始`" class="tw:h-9 tw:min-w-0 tw:rounded-md tw:border tw:bg-background tw:px-2 tw:text-sm" />
+          <input v-model="draft(s, slot.seq).end_date" type="date" :disabled="!isDirector || busy(s, slot.seq)" :aria-label="`${s.school_name} ${slot.short} 結束`" class="tw:h-9 tw:min-w-0 tw:rounded-md tw:border tw:bg-background tw:px-2 tw:text-sm" />
           <div v-if="isDirector" class="tw:col-span-3 tw:flex tw:justify-end tw:gap-2">
-            <Button size="sm" :disabled="!dirty(s, slot.seq)" @click="save(s, slot)">儲存</Button>
-            <Button v-if="draft(s, slot.seq).id" size="sm" variant="ghost" @click="remove(s, slot)">清除</Button>
+            <Button size="sm" :disabled="busy(s, slot.seq) || !dirty(s, slot.seq)" @click="save(s, slot)">儲存</Button>
+            <Button v-if="draft(s, slot.seq).id" size="sm" variant="ghost" :disabled="busy(s, slot.seq)" @click="remove(s, slot)">清除</Button>
           </div>
         </div>
       </CardContent>
@@ -65,7 +65,10 @@ const error = ref('');
 const schools = ref([]);
 const saved = reactive({});
 const drafts = reactive({});
+const pending = reactive({});
 const k = (s, seq) => `${s.key}|${seq}`;
+const mutationKey = (s, seq) => JSON.stringify([String(props.branchId), term.value, s.key, seq]);
+const busy = (s, seq) => !!pending[mutationKey(s, seq)];
 
 function draft(s, seq) {
   return (drafts[k(s, seq)] ||= { id: null, start_date: '', end_date: '' });
@@ -121,7 +124,22 @@ async function load() {
   }
 }
 
+let mutationSeq = 0;
+function beginMutation(s, slot) {
+  const key = mutationKey(s, slot.seq);
+  if (pending[key]) return null;
+  const id = ++mutationSeq;
+  const generation = loadSeq;
+  pending[key] = id;
+  return {
+    current: () => generation === loadSeq && key === mutationKey(s, slot.seq) && pending[key] === id,
+    finish: () => { if (pending[key] === id) delete pending[key]; },
+  };
+}
+
 async function save(s, slot) {
+  const request = beginMutation(s, slot);
+  if (!request) return;
   const d = draft(s, slot.seq);
   error.value = '';
   try {
@@ -135,22 +153,30 @@ async function save(s, slot) {
           academic_year: termObj.value.year, semester: termObj.value.semester, seq: slot.seq,
         }),
       });
+    if (!request.current()) return;
     d.id = res.data.id;
     saved[k(s, slot.seq)] = { start_date: body.start_date, end_date: body.end_date };
   } catch (e) {
-    error.value = e.message || '儲存失敗';
+    if (request.current()) error.value = e.message || '儲存失敗';
+  } finally {
+    request.finish();
   }
 }
 
 async function remove(s, slot) {
+  const request = beginMutation(s, slot);
+  if (!request) return;
   const d = draft(s, slot.seq);
   error.value = '';
   try {
     await api(`/exam-periods/${d.id}`, { method: 'DELETE' });
+    if (!request.current()) return;
     Object.assign(d, { id: null, start_date: '', end_date: '' });
     delete saved[k(s, slot.seq)];
   } catch (e) {
-    error.value = e.message || '清除失敗';
+    if (request.current()) error.value = e.message || '清除失敗';
+  } finally {
+    request.finish();
   }
 }
 
