@@ -26,7 +26,7 @@ describe('student learning profile (#4970 step3a)', () => {
   it('shows real progress and school dates, then filters class history', async () => {
     const w = profile(); await flushPromises();
     expect(w.text()).toContain('學習檔案'); expect(w.text()).toContain('完成第二單元'); expect(w.text()).toContain('第二次段考');
-    expect(w.text()).not.toContain('學習計畫'); await activate(w, '上課紀錄');
+    expect(w.findAll('[role="tab"]').map(x => x.text())).toContain('學習計畫'); await activate(w, '上課紀錄');
     expect(w.findAll('[data-testid="timeline-row"]').map(r => r.text().slice(0, 10))).toEqual(['2026-10-15', '2026-10-01']);
     expect(w.text()).toContain('分數應用題'); await w.get('[aria-label="結束日期"]').setValue('2026-10-02');
     expect(w.findAll('[data-testid="timeline-row"]')).toHaveLength(1);

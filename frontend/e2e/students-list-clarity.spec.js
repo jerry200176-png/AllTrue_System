@@ -359,6 +359,8 @@ test.describe('4970 student learning profile', () => {
       await page.keyboard.press('Tab');
       await expect(profile.getByRole('button', { name: '關閉學習檔案' })).toBeFocused();
       await overview.focus(); await expect(overview).toBeFocused(); await page.keyboard.press('ArrowRight');
+      await expect(profile.getByRole('tab', { name: '學習計畫', exact: true })).toBeFocused();
+      await page.keyboard.press('ArrowRight');
       await expect(profile.getByRole('tab', { name: '上課紀錄', exact: true })).toBeFocused();
       await page.keyboard.press('Enter');
       await expect(profile.getByRole('tab', { name: '上課紀錄', exact: true })).toHaveAttribute('aria-selected', 'true');

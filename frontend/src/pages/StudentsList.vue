@@ -962,6 +962,8 @@
       :show="!!timelineStudent"
       :student-id="timelineStudent?.id"
       :student-name="timelineStudent?.name || ''"
+      :branch-id="branchId"
+      :student-grade="timelineStudent?.grade || ''"
       @close="timelineStudent = null"
     />
 
