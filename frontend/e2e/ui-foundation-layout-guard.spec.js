@@ -323,7 +323,7 @@ const PAGES = [
     url: '/study-week-pilot-mount.html',
     names: [...DAY_LABELS, '歐陽子安 學習檔案'],
     allNames: false,
-    rows: ['[data-testid="week-plans"], [data-testid="week-grid"]', '[data-testid="week-plans"] > div'],
+    rows: ['[data-testid="study-progress"], [data-testid="week-plans"], [data-testid="week-grid"]', '[data-testid="week-plans"] > div'],
     touch: ['[data-testid^="add-"]', '[data-testid="week-prev"]', '[data-testid="week-next"]', '[data-testid="week-today"]', '[data-testid="copy-week"]', '[data-testid^="done-"] ~ *, label:has([data-testid^="done-"])', 'button[data-testid^="title-"]'],
     mock: async (page) => { await page.clock.setFixedTime(TODAY); await mockStudyWeekApi(page, 'full'); },
     setup: async (page) => {
@@ -342,6 +342,35 @@ const PAGES = [
       expect(tabs.listScroll).toBe('auto');
       expect(tabs.firstLeft, 'tabs start at the left edge of the strip').toBeLessThanOrEqual(8);
       expect(tabs.tabH, 'tab targets are at least 44px').toBeGreaterThanOrEqual(44);
+      // Progress strip (step 3): three figures with the numbers of the fixture, each value on one line, nothing clipped, the strip
+      // inside the dialog; the decorative bar's fill is the same share of its track as the number says; desktop = one row, phone = plan on top, two below.
+      await expect(page.getByTestId('week-plans')).toBeVisible();
+      await expect(page.getByTestId('progress-plan')).toContainText('33%');
+      const strip = await page.evaluate(() => {
+        const q = (k) => document.querySelector(`[data-testid="progress-${k}"]`);
+        const box = (el) => el.getBoundingClientRect();
+        const read = (k) => {
+          const el = q(k); const dd = el.querySelector('dd'); const bar = document.querySelector(`[data-testid="progress-${k}-bar"]`);
+          return { text: dd.textContent.replace(/\s+/g, ''), oneLine: box(dd).height < parseFloat(getComputedStyle(dd).lineHeight) * 1.6, clipped: el.scrollWidth > el.clientWidth + 1,
+            fill: bar ? Math.round(((box(bar.querySelector('[data-slot="progress-indicator"]')).right - box(bar).left) / box(bar).width) * 100) : null, painted: bar ? [getComputedStyle(bar.querySelector('[data-slot="progress-indicator"]')).backgroundColor, getComputedStyle(bar).backgroundColor].every((c) => c !== 'rgba(0, 0, 0, 0)') : null, top: Math.round(box(el).top), left: Math.round(box(el).left), width: Math.round(box(el).width) };
+        };
+        const strip = box(document.querySelector('[data-testid="study-progress"]'));
+        return { plan: read('plan'), week: read('week'), attendance: read('attendance'), stripLeft: strip.left, stripRight: strip.right, dialogRight: box(document.querySelector('[role="dialog"]')).right, stripTop: strip.top, gridTop: box(document.querySelector('[data-testid="week-plans"]')).top };
+      });
+      expect(strip.plan.text, 'plan progress = the API percent_done').toBe('33%');
+      expect(strip.week.text, 'week tasks = done / total of the shown week').toBe('2/8項');
+      expect(strip.attendance.text, 'attendance = this month only (3 of 4)').toBe('75%');
+      expect([strip.plan.fill, strip.week.fill, strip.attendance.fill], 'bar fill equals the number').toEqual([33, 25, 75]);
+      for (const k of ['plan', 'week', 'attendance']) expect(strip[k].painted, `${k} bar and track have a colour (the component must be in the ui.css @source list)`).toBe(true);
+      for (const k of ['plan', 'week', 'attendance']) { expect(strip[k].oneLine, `${k} value wraps`).toBe(true); expect(strip[k].clipped, `${k} figure is clipped`).toBe(false); }
+      expect(strip.stripRight, 'the strip is wider than the dialog').toBeLessThanOrEqual(strip.dialogRight + 1);
+      expect(strip.stripTop, 'the strip sits above the plan lines').toBeLessThan(strip.gridTop);
+      const sameRow = new Set([strip.plan.top, strip.week.top, strip.attendance.top]).size === 1;
+      expect(sameRow, 'three figures in one row on desktop, plan on its own row on a phone').toBe(page.viewportSize().width >= 1024);
+      if (page.viewportSize().width < 768) {
+        expect(strip.week.top, 'phone: the two small figures share a row').toBe(strip.attendance.top);
+        expect(strip.plan.width, 'phone: plan figure spans the strip').toBeGreaterThan(strip.week.width + strip.attendance.width - 2);
+      }
       // Phone: one vertical list of seven days; desktop: seven columns side by side.
       const columns = () => page.evaluate(() => new Set([...document.querySelectorAll('[data-testid^="day-"]')].map((d) => Math.round(d.getBoundingClientRect().top))).size === 1);
       await expect.poll(columns, { message: 'seven columns on a wide dialog, one stacked list on a phone' }).toBe(page.viewportSize().width >= 1280);

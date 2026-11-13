@@ -1,0 +1,18 @@
+updates:
+  - id: staff-2026-11-14-study-week-progress-strip
+    published_at: "2026-11-14"
+    audiences:
+      - director
+      - teacher
+    importance: digest
+    title: 讀書計畫頂端有進度總覽了
+    summary: 一打開讀書計畫，就能看到計畫進度、這週任務和本月出席。
+    items:
+      - category: added
+        text: 讀書計畫頂端新增計畫進度、這週任務、本月出席三格。
+      - category: added
+        text: 打勾或換週，這週任務的數字會立刻跟著變。
+      - category: improved
+        text: 沒有資料的項目顯示「—」和原因，不再顯示 0%。
+    source_refs:
+      - "changelog:2026-11-14:study-week-progress-strip"

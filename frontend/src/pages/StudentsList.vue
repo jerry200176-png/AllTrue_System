@@ -964,6 +964,7 @@
       :student-name="timelineStudent?.name || ''"
       :branch-id="branchId"
       :student-grade="timelineStudent?.grade || ''"
+      :user-role="userRole"
       @close="timelineStudent = null"
     />
 
@@ -1076,6 +1077,7 @@ const props = defineProps({
   initialStudentId: [String, Number],
   initialCourseId: [String, Number],
   initialStudentIntent: String,
+  userRole: { type: String, default: '' },
 });
 const emit = defineEmits(['navigate', 'clear-initial-student']);
 

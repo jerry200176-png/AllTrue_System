@@ -15,6 +15,8 @@
 //    click is harmless. The button is disabled while the request runs; the answer is shown as one line and the week is re-fetched.
 //  - 套用到同班: the picker lives only while its dialog is open. The classmate list comes from the server; the ticked students are
 //    the only local state, and a failed request keeps them so the teacher can press again. Duplicates are skipped by the server.
+//  - The progress strip (step 3) derives from the same state: the shown week's `tasks` (so an optimistic tick moves it at once and a rollback
+//    moves it back), the loaded `plans`, and the timeline the parent loaded. It owns no state and fetches nothing.
 //  - A 403 on any write means this user may read but not write for this student: the write controls go away and one line says why.
 import { computed, reactive, ref, watch } from 'vue';
 import { CalendarDays, Plus } from '@lucide/vue';
@@ -22,6 +24,7 @@ import { authedFetch } from '../../lib/authedFetch';
 import { ymdInTaipei } from '../../lib/sessionDates';
 import { addDays, dateRangeText, summaryText } from '../../lib/learningPlanGantt';
 import { KIND_LABELS, KIND_OPTIONS, dayLabel, groupByDay, unitsInWeek, weekDays, weekRangeText, weekStartOf } from '../../lib/studyWeek';
+import StudyProgressStrip from './StudyProgressStrip.vue';
 import ConfirmDialog from '../app-overlay/ConfirmDialog.vue';
 import { SectionCard, StatusBadge, control } from '../ui/page';
 import { Alert } from '../ui/alert';
@@ -29,7 +32,13 @@ import { Button } from '../ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '../ui/dialog';
 import { Skeleton } from '../ui/skeleton';
 
-const props = defineProps({ studentId: { type: [Number, String], required: true } });
+// `timelineItems` / `cappedSources`: the learning timeline the profile dialog already loaded (the attendance figure reads it; nothing is fetched here).
+const props = defineProps({
+  studentId: { type: [Number, String], required: true },
+  timelineItems: { type: Array, default: null },
+  cappedSources: { type: Array, default: () => [] },
+  teacherScope: { type: Boolean, default: false },
+});
 
 const FIELD = 'tw:h-11 tw:w-full tw:min-w-0 tw:rounded-md tw:border tw:border-input tw:bg-background tw:px-3 tw:text-tpl-body tw:outline-none tw:focus-visible:ring-3 tw:focus-visible:ring-ring/50';
 const READ_ONLY_LINE = '你不是這位學生的授課老師，只能查看讀書計畫；要安排請由授課老師或主任操作。';
@@ -41,6 +50,7 @@ const plans = ref([]);
 const loading = ref(true);
 const loadError = ref('');
 const planError = ref(false);
+const plansLoading = ref(true);
 const actionError = ref('');
 const notice = ref('');
 const readOnly = ref(false);
@@ -112,11 +122,12 @@ async function load({ keep = false } = {}) {
 let planSeq = 0;
 async function loadPlans() {
   const my = ++planSeq;
-  planError.value = false;
+  planError.value = false; plansLoading.value = true;
   try {
     const body = await api(`/students/${props.studentId}/learning-plans`);
     if (my === planSeq) plans.value = Array.isArray(body.data) ? body.data : [];
   } catch { if (my === planSeq) planError.value = true; }
+  finally { if (my === planSeq) plansLoading.value = false; }
 }
 
 const goTo = (start) => { weekStart.value = start; notice.value = ''; actionError.value = ''; };
@@ -287,7 +298,9 @@ watch(weekStart, () => load());
 </script>
 
 <template>
-  <section class="tw:@container tw:space-y-3 tw:text-tpl-body" aria-label="本週讀書計畫" :aria-busy="loading || undefined" data-testid="study-week">
+  <section class="tw:@container tw:flex tw:flex-col tw:gap-3 tw:text-tpl-body" aria-label="本週讀書計畫" :aria-busy="loading || undefined" data-testid="study-week">
+    <StudyProgressStrip :tasks="tasks" :tasks-loading="loading" :tasks-error="!!loadError" :plans="plans" :plans-loading="plansLoading" :plans-error="planError"
+      :attendance-items="timelineItems" :capped-sources="cappedSources" :today="today" :teacher-scope="teacherScope" />
     <SectionCard title="讀書計畫" :count="tasks.length ? `${doneCount}/${tasks.length}` : null">
       <template #actions>
         <Button variant="outline" :class="control.row" aria-label="上一週" data-testid="week-prev" @click="prevWeek">上一週</Button>
@@ -300,7 +313,7 @@ watch(weekStart, () => load());
       <div v-if="activePlans.length" class="tw:space-y-2 tw:border-t tw:border-border tw:px-5 tw:py-3" data-testid="week-plans">
         <div v-for="p in activePlans" :key="p.id" class="tw:space-y-0.5">
           <p class="tw:m-0 tw:font-semibold tw:break-words">{{ p.title }}</p>
-          <p class="tw:m-0 tw:text-tpl-caption tw:text-tpl-secondary tw:text-pretty tw:tabular-nums">{{ summaryText(p).percent }}・{{ summaryText(p).behind }}・{{ summaryText(p).exam }}</p>
+          <p class="tw:m-0 tw:text-tpl-caption tw:text-tpl-secondary tw:text-pretty tw:tabular-nums">{{ summaryText(p).exam }}</p>
         </div>
         <p v-if="weekUnits.length" class="tw:m-0 tw:text-tpl-caption tw:text-pretty" data-testid="week-units">
           <span class="tw:font-semibold">這週的單元：</span>{{ weekUnits.map((u) => `${u.title}（${dateRangeText(u)}）`).join('、') }}
