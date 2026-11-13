@@ -183,9 +183,17 @@ describe('LessonPlanUnits (#4970 step 5)', () => {
     expect(w.findAll('input[type=checkbox]').map((b) => b.element.checked)).toEqual([false, false, true]);
     expect(w.vm.draftIds()).toEqual([3, 8]);
     expect(w.emitted('change')).toBeFalsy();
-    // An edit after the failed load starts from the draft's ticks for the units on screen, not from the server's.
-    await w.findAll('input[type=checkbox]')[0].setValue(true);
-    expect([...w.vm.draftIds()].sort()).toEqual([1, 3]);
+    // Ticks are locked with a retry hint; retrying restores the whole draft selection, hidden unit included.
+    expect(w.findAll('input[type=checkbox]').every((b) => b.element.disabled)).toBe(true);
+    expect(w.text()).toContain('草稿裡的勾選還沒還原');
+    expect(await w.vm.save(77)).toEqual({ ok: true });
+    expect(calls.filter((c) => c.method === 'PUT')).toHaveLength(0);
+    fail = false;
+    authedFetch.mockImplementation(async (url) => json({ data: { ...PAYLOAD, units: [...PAYLOAD.units, unit(8, '幾何')] } }));
+    await w.find('button').trigger('click');
+    await flushPromises();
+    expect(w.findAll('input[type=checkbox]').map((b) => [b.element.checked, b.element.disabled])).toEqual([[false, false], [false, false], [true, false], [true, false]]);
+    expect([...w.vm.draftIds()].sort()).toEqual([3, 8]);
   });
 
   it('drops a tick whose unit is gone when the full list arrives', async () => {

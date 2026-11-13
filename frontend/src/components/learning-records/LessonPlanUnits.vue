@@ -51,7 +51,7 @@ async function load(all = false) {
   } catch (e) {
     if (my !== seq) return;
     // A failed 「顯示全部」 keeps the list and the ticks already on screen.
-    if (all && state.value) { loadError.value = '完整單元清單暫時載入失敗，請再試一次。'; return; }
+    if (all && state.value) { loadError.value = restorePending.value ? '草稿裡的勾選還沒還原：完整單元清單載入失敗，請按「顯示全部」再試一次。' : '完整單元清單暫時載入失敗，請再試一次。'; return; }
     state.value = null;
     // No right to see the plan is not an error for the evaluation; anything else is worth a line.
     loadError.value = e.status === 403 || e.status === 404 ? '' : '單元清單暫時載入失敗，評量本身不受影響。';
@@ -73,7 +73,9 @@ watch(() => props.classSessionId, () => {
 /** The selection kept in an unsaved draft replaces what the server holds, so a tick the teacher removed stays removed. */
 // Only units the server still offers for this lesson are restored: a unit finished elsewhere or a replaced plan must
 // not be sent. If some are not in the short list, the full list is loaded once to look for them.
-let restored = false; // false while a draft selection is given but not yet applied to the ticks
+const restored = ref(false); // false while a draft selection is given but not yet applied to the ticks
+// Ticks stay locked until then, so an edit can never silently replace draft ticks that are not on screen yet.
+const restorePending = computed(() => Array.isArray(props.restoreIds) && !restored.value);
 function applyRestore(expanded = false) {
   if (!state.value || !Array.isArray(props.restoreIds)) return;
   const ids = props.restoreIds.map(Number).filter((n) => n > 0);
@@ -83,23 +85,20 @@ function applyRestore(expanded = false) {
   // Wait for the full list before applying, so a half-restored selection is never written back to the draft.
   if (!expanded && known.length < ids.length && more) { load(true); return; }
   checked.value = new Set(known);
-  restored = true;
+  restored.value = true;
   if (dirty.value) emit('change');
 }
-watch(() => props.restoreIds, () => { restored = false; applyRestore(); });
+watch(() => props.restoreIds, () => { restored.value = false; applyRestore(); });
 
 const units = computed(() => state.value?.units || []);
 const hiddenCount = computed(() => Math.max(0, (state.value?.total || 0) - units.value.length));
 const dirty = computed(() => checked.value.size !== saved.value.size || [...checked.value].some((id) => !saved.value.has(id)));
 
 function toggle(id, on) {
-  // A draft selection that could not be fully applied (the full list failed) still counts for the units on screen.
-  const pending = Array.isArray(props.restoreIds) && !restored;
-  const shown = new Set(units.value.map((u) => u.id));
-  const next = new Set(pending ? props.restoreIds.map(Number).filter((n) => shown.has(n)) : checked.value);
+  if (restorePending.value) return;
+  const next = new Set(checked.value);
   if (on) next.add(id); else next.delete(id);
   checked.value = next;
-  restored = true; // the teacher's own edit now stands for the selection
   emit('change');
 }
 
@@ -126,7 +125,7 @@ async function save(recordId) {
 /** The selection to keep in a draft, or null when it equals what the server holds (nothing to keep). */
 // Until a draft selection has been applied (list still loading, or the full list failed), the draft keeps it as it is.
 const draftIds = () => {
-  if (!state.value || (Array.isArray(props.restoreIds) && !restored)) return props.restoreIds;
+  if (!state.value || restorePending.value) return props.restoreIds;
   return dirty.value ? [...checked.value] : null;
 };
 
@@ -144,7 +143,7 @@ defineExpose({ save, dirty, draftIds });
       <ul class="tw:m-0 tw:list-none tw:space-y-2 tw:p-0">
         <li v-for="u in units" :key="u.id" class="tw:rounded-md tw:border tw:border-border">
           <label class="tw:flex tw:min-h-11 tw:items-start tw:gap-3 tw:p-3">
-            <input type="checkbox" class="tw:mt-0.5 tw:size-5 tw:shrink-0" :checked="checked.has(u.id)" :disabled="disabled || saving || loading"
+            <input type="checkbox" class="tw:mt-0.5 tw:size-5 tw:shrink-0" :checked="checked.has(u.id)" :disabled="disabled || saving || loading || restorePending"
               :aria-label="`${u.title} 這堂上完`" @change="toggle(u.id, $event.target.checked)" />
             <span class="tw:min-w-0 tw:flex-1">
               <span class="tw:flex tw:flex-wrap tw:items-center tw:gap-2">
