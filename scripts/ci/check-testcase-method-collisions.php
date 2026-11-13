@@ -6,7 +6,7 @@
  * (#5201, three times). Runs in seconds, before PHPUnit.
  *
  * Usage: php scripts/ci/check-testcase-method-collisions.php [--tests-dir=DIR]
- * Needs backend/vendor/autoload.php (override with ALLTRUE_GUARD_AUTOLOAD, used by the self-test only).
+ * Needs backend/vendor/autoload.php (ALLTRUE_GUARD_AUTOLOAD / ALLTRUE_GUARD_EXTRA_AUTOLOAD override it; self-test only).
  * The method list comes from Reflection on the real parent classes, so it is never hand-maintained.
  * Exit 0 = clean, 1 = collisions, 2 = could not run.
  */
@@ -24,6 +24,9 @@ if (!is_file($autoload) || !is_dir($testsDir)) {
     exit(2);
 }
 require $autoload;
+if (($extra = getenv('ALLTRUE_GUARD_EXTRA_AUTOLOAD')) && is_file($extra)) {
+    require $extra; // self-test only: stub framework classes (e.g. a Laravel-like session() trait)
+}
 // Tests\ is autoload-dev; make sure it resolves even when the autoloader was dumped without dev classes.
 spl_autoload_register(static function (string $class) use ($root): void {
     if (str_starts_with($class, 'Tests\\')) {
@@ -97,15 +100,48 @@ function parseFile(string $file): array
             if (is_array($tokens[$j]) && in_array($tokens[$j][0], [T_FUNCTION, T_CONST], true)) {
                 continue;
             }
-            $full = ltrim($nameAt($j), '\\');
-            $segments = explode('\\', $full);
-            $alias = end($segments);
-            if ($j < $n && is_array($tokens[$j]) && $tokens[$j][0] === T_AS) {
-                $j = $next($j);
-                $alias = $text($tokens[$j]);
-            }
-            if ($full !== '') {
-                $uses[strtolower($alias)] = $full;
+            // Plain, comma-separated, aliased and grouped imports: `use A\B, C as D, E\{F, G as H};`
+            while ($j < $n) {
+                $full = ltrim($nameAt($j), '\\');
+                $group = $j < $n && $tokens[$j] === '{';
+                $entries = [];
+                if ($group) {
+                    $prefix = rtrim($full, '\\') . '\\';
+                    $j = $next($j);
+                    while ($j < $n && $tokens[$j] !== '}') {
+                        $entries[] = $prefix . ltrim($nameAt($j), '\\');
+                        $entryIndex = count($entries) - 1;
+                        if ($j < $n && is_array($tokens[$j]) && $tokens[$j][0] === T_AS) {
+                            $j = $next($j);
+                            $entries[$entryIndex] .= ' as ' . $text($tokens[$j]);
+                            $j = $next($j);
+                        }
+                        if ($j < $n && $tokens[$j] === ',') {
+                            $j = $next($j);
+                        }
+                    }
+                    $j = $next($j); // closing brace
+                } else {
+                    $entries[] = $full;
+                    if ($j < $n && is_array($tokens[$j]) && $tokens[$j][0] === T_AS) {
+                        $j = $next($j);
+                        $entries[0] .= ' as ' . $text($tokens[$j]);
+                        $j = $next($j);
+                    }
+                }
+                foreach ($entries as $entry) {
+                    [$target, $alias] = array_pad(explode(' as ', $entry, 2), 2, null);
+                    if ($target === '') {
+                        continue;
+                    }
+                    $segments = explode('\\', $target);
+                    $uses[strtolower($alias ?? end($segments))] = $target;
+                }
+                if ($j < $n && $tokens[$j] === ',') {
+                    $j = $next($j);
+                    continue;
+                }
+                break;
             }
         } elseif (($id === T_CLASS || $id === T_TRAIT) && $stack === []) {
             $p = $i - 1;
@@ -202,6 +238,8 @@ $ownMethods = static function (string $fqn, int $guard = 0) use (&$ownMethods, $
 };
 
 $problems = [];
+$unresolved = [];
+$checked = 0;
 foreach ($classes as $fqn => $c) {
     $terminal = $c['parent'];
     $guard = 0;
@@ -210,8 +248,14 @@ foreach ($classes as $fqn => $c) {
     }
     $framework = $terminal !== '' ? $frameworkOf($terminal) : null;
     if ($framework === null) {
-        continue; // not a PHPUnit test class (worker script, plain helper, shared trait)
+        // A parent that cannot be loaded would be skipped silently (fail open); a loadable non-TestCase parent
+        // (exception, Mockery class) or no parent at all (worker script, plain helper, shared trait) is fine.
+        if ($terminal !== '' && !class_exists($terminal)) {
+            $unresolved[] = sprintf('%s:%s extends unresolvable %s', $relative($c['file']), $fqn, $terminal);
+        }
+        continue;
     }
+    $checked++;
     foreach ($ownMethods($fqn) as [$name, $line, $file]) {
         $key = strtolower($name);
         if (isset($framework[$key]) && !in_array($key, $allowed, true)) {
@@ -221,9 +265,20 @@ foreach ($classes as $fqn => $c) {
 }
 $problems = array_values(array_unique($problems));
 sort($problems);
+sort($unresolved);
+if ($unresolved || $checked === 0) {
+    fwrite(STDERR, implode("\n", $unresolved) . ($unresolved ? "\n" : ''));
+    fwrite(STDERR, $checked === 0
+        ? "no PHPUnit test class was checked under $testsDir: the guard would pass vacuously\n"
+        : "parent classes above could not be loaded, so their test methods were not checked\n");
+    if ($problems) {
+        fwrite(STDERR, implode("\n", $problems) . "\n");
+    }
+    exit(1);
+}
 if ($problems) {
     fwrite(STDERR, implode("\n", $problems) . "\n");
     fwrite(STDERR, "\nA test method named like a framework TestCase method kills the whole PHPUnit shard with a fatal error. Rename it (e.g. loginSession()). Allowed overrides: " . implode(', ', ALLOWED) . ".\n");
     exit(1);
 }
-echo 'ok: no test method collides with a framework TestCase method (' . count($classes) . " classes/traits scanned)\n";
+echo 'ok: no test method collides with a framework TestCase method (' . $checked . ' test classes checked, ' . count($classes) . " classes/traits scanned)\n";
