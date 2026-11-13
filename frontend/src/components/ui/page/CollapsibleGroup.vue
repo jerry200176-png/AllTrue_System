@@ -17,7 +17,7 @@ const emit = defineEmits(['toggle']);
 
 <template>
   <div data-slot="collapsible-group" :class="cn('tw:min-w-0', props.class)">
-    <div class="tw:flex tw:items-center tw:gap-3 tw:px-4 tw:md:px-5">
+    <div class="tw:flex tw:items-center tw:gap-3 tw:px-4">
       <button
         type="button"
         data-slot="collapsible-group-toggle"
@@ -28,7 +28,7 @@ const emit = defineEmits(['toggle']);
         @click="emit('toggle')"
       >
         <ChevronRight :size="22" aria-hidden="true" :class="['tw:shrink-0 tw:text-tpl-secondary tw:transition-transform tw:motion-reduce:transition-none', props.expanded ? 'tw:rotate-90' : '']" />
-        <span class="tw:inline-flex tw:min-w-0 tw:flex-wrap tw:items-center tw:gap-x-2 tw:gap-y-1"><slot name="title" /></span>
+        <span class="tw:inline-flex tw:min-w-0 tw:flex-wrap tw:items-center tw:gap-x-2 tw:gap-y-1 tw:text-tpl-list tw:font-bold"><slot name="title" /></span>
         <span v-if="$slots.meta" class="tw:text-tpl-caption tw:font-semibold tw:text-tpl-secondary tw:max-md:basis-full tw:max-md:pl-[30px] tw:md:ml-auto"><slot name="meta" /></span>
       </button>
       <div v-if="$slots.actions" class="tw:shrink-0"><slot name="actions" /></div>

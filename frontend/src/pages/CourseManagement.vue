@@ -97,7 +97,7 @@
 
     <details class="course-stats-disclosure">
       <summary class="tw:text-tpl-body">
-        <span class="tw:font-semibold">課程分布</span>
+        <span class="course-stats-disclosure__label tw:font-semibold">課程分布</span>
         <span class="course-stats-disclosure__hint tw:text-tpl-caption">課程總覽 {{ courses.length }} 筆・依類型查看</span>
         <span class="material-symbols-outlined" aria-hidden="true">expand_more</span>
       </summary>
@@ -221,7 +221,7 @@
             </template>
           </CollapsibleGroup>
           <div
-            :class="[pageTabs.list, 'student-group-view-tabs tw:px-4 tw:md:px-5']"
+            :class="[pageTabs.list, 'student-group-view-tabs tw:px-4']"
             role="tablist"
             aria-label="學生課程與帳務"
             data-testid="student-group-view-tabs"
@@ -8436,7 +8436,7 @@ button.danger {
 .course-workbench__help > summary { display: grid; place-items: center; min-height: 2.75rem; min-width: 2.75rem; border-radius: var(--ds-radius-pill); cursor: pointer; }
 .course-help-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
 .course-workbench__help[open] { flex: 0 0 100%; order: 3; margin-left: 0; }
-.course-workbench__help[open] > summary { display: inline-flex; gap: .5rem; width: auto; margin: 0 0 .5rem; padding-inline: .75rem 1rem; font-weight: 600; }
+.course-workbench__help[open] > summary { display: inline-flex; gap: .5rem; width: auto; margin: 0 0 .5rem; padding-inline: 0 1rem; font-weight: 600; }
 .course-workbench__help[open] > summary .course-help-label { position: static; width: auto; height: auto; overflow: visible; clip-path: none; }
 .course-workbench .course-row .payment-status-badge,
 .course-workbench .course-row .subject-tag,
