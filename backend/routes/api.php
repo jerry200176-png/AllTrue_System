@@ -73,6 +73,7 @@ use App\Http\Controllers\TeacherEligibilityInputController;
 use App\Http\Controllers\ExamRoundController;
 use App\Http\Controllers\CurriculumTemplateController;
 use App\Http\Controllers\StudentLearningPlanController;
+use App\Http\Controllers\StudentStudyTaskBulkController;
 use App\Http\Controllers\StudentStudyTaskController;
 use App\Http\Controllers\StudentPlanUnitLessonController;
 use App\Http\Controllers\SchoolExamPeriodController;
@@ -831,6 +832,10 @@ Route::prefix('v1')->group(function () {
         Route::post('students/{student}/study-tasks', [StudentStudyTaskController::class, 'store'])->whereNumber('student');
         Route::patch('study-tasks/{task}', [StudentStudyTaskController::class, 'update'])->whereNumber('task');
         Route::delete('study-tasks/{task}', [StudentStudyTaskController::class, 'destroy'])->whereNumber('task');
+        // #5269 step 3: 複製上週 / 套用到同班其他學生 (same write rule, checked in the controller).
+        Route::get('students/{student}/study-classmates', [StudentStudyTaskBulkController::class, 'classmates'])->whereNumber('student');
+        Route::post('students/{student}/study-tasks/copy-week', [StudentStudyTaskBulkController::class, 'copyWeek'])->whereNumber('student');
+        Route::post('study-tasks/{task}/apply-to-students', [StudentStudyTaskBulkController::class, 'applyToClassmates'])->whereNumber('task');
         // #4970 step 5: 這堂上完的單元. Candidates for the evaluation form; sync runs after the evaluation was saved.
         Route::get('learning-plan-units/candidates', [StudentPlanUnitLessonController::class, 'candidates']);
         Route::put('learning-records/{learningRecord}/plan-units', [StudentPlanUnitLessonController::class, 'sync'])->whereNumber('learningRecord');
