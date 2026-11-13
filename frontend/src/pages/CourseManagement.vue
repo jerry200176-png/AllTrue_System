@@ -574,9 +574,9 @@
                     <StatusBadge v-if="isPackageMember(hc)" tone="neutral" :title="hc.PackageName || '多科方案'">方案</StatusBadge>
                     <StatusBadge v-if="effectiveClosedReason(hc) === 'converted_trial'" tone="success">已轉正式</StatusBadge>
                     <StatusBadge v-else-if="effectiveClosedReason(hc) === 'waived'" tone="success">歷史 · {{ WAIVED_LABEL }}</StatusBadge>
-                    <StatusBadge v-else-if="closedPaymentState(hc) === 'pending'" tone="warning">{{ ENDED_PENDING_LABEL }}</StatusBadge>
+                    <StatusBadge v-else-if="closedPaymentState(hc) === 'pending'" tone="danger">{{ ENDED_PENDING_LABEL }}</StatusBadge>
                     <StatusBadge v-else-if="closedPaymentState(hc) === 'review'" tone="warning" :title="reviewReasonText(hc) || undefined">{{ ENDED_REVIEW_LABEL }}</StatusBadge>
-                    <StatusBadge v-else-if="closedPaymentState(hc) === 'unknown'" tone="warning">{{ PAYMENT_STATUS_LOADING_LABEL }}</StatusBadge>
+                    <StatusBadge v-else-if="closedPaymentState(hc) === 'unknown'" tone="neutral">{{ PAYMENT_STATUS_LOADING_LABEL }}</StatusBadge>
                     <StatusBadge v-else-if="closedPaymentState(hc) === 'settled' || effectiveClosedReason(hc) === 'settled' || effectiveClosedReason(hc) === 'contract_amended'" tone="success">已結算</StatusBadge>
                     <StatusBadge v-else tone="neutral">已完課</StatusBadge>
                     <button
@@ -592,7 +592,7 @@
                     <div><dt :class="factRow.label">開課</dt><dd :class="[factRow.value, 'tw:m-0 tw:tabular-nums']">{{ contractStartDate(hc) || '未填' }}</dd></div>
                     <div><dt :class="factRow.label">老師</dt><dd :class="[factRow.value, 'tw:m-0']">{{ hc.teacher_name || '—' }}</dd></div>
                     <div class="tw:col-span-2 tw:md:col-span-1"><dt :class="factRow.label">費用</dt><dd :class="[factRow.value, 'tw:m-0 tw:tabular-nums']">${{ totalPrice(hc) }}（{{ getRateUnitDisplayLabel(hc) }} ${{ sessionPrice(hc) }}）</dd></div>
-                    <div class="tw:col-span-2 tw:md:col-span-1"><dt :class="factRow.label">堂數</dt><dd :class="[factRow.value, 'tw:m-0 tw:tabular-nums']"><template v-if="isPackageMember(hc)"><span class="tw:inline-block tw:whitespace-nowrap">已上 {{ getCompletedSessionCount(hc) }} 堂</span>｜<span class="tw:inline-block tw:whitespace-nowrap">方案共用 {{ getPackageTotalSessions(hc) }} 堂</span></template><template v-else>已上 {{ getCompletedSessionCount(hc) }}<template v-if="isSessionMode(hc)"> / 購買 {{ getPurchasedSessions(hc) }}</template> 堂</template></dd></div>
+                    <div class="tw:col-span-2 tw:md:col-span-1"><dt :class="factRow.label">堂數</dt><dd :class="[factRow.value, 'tw:m-0 tw:tabular-nums']"><template v-if="isPackageMember(hc)"><span class="tw:block">已上 {{ getCompletedSessionCount(hc) }} 堂</span><span class="tw:block">方案共用 {{ getPackageTotalSessions(hc) }} 堂</span></template><template v-else>已上 {{ getCompletedSessionCount(hc) }}<template v-if="isSessionMode(hc)"> / 購買 {{ getPurchasedSessions(hc) }}</template> 堂</template></dd></div>
                     <div v-if="hc.last_paid_at"><dt :class="factRow.label">繳費</dt><dd :class="[factRow.value, 'tw:m-0 tw:tabular-nums']">{{ hc.last_paid_at }}</dd></div>
                   </dl>
                   <div class="history-course-card__actions tw:mt-3 tw:flex tw:flex-wrap tw:items-center tw:gap-2">
@@ -602,7 +602,7 @@
                     <div class="action-menu-wrapper">
                       <button
                         :ref="(el) => setActionMenuTrigger(hc.id, el)"
-                        :class="['action-menu-trigger', rowAction.secondary, 'tw:bg-none']"
+                        :class="['action-menu-trigger', rowAction.secondary]"
                         @click.stop="toggleActionMenu(hc.id)"
                         @keydown="handleActionMenuKeydown(hc.id, $event)"
                         title="其他歷史課程操作"
@@ -6458,19 +6458,6 @@ onUnmounted(() => {
   align-items: flex-end;
 }
 
-.action-menu-trigger {
-  font-size: 13px !important;
-  font-weight: 900 !important;
-  letter-spacing: 0;
-  padding: 6px 12px !important;
-  border-radius: 999px;
-  border: 1px solid rgba(15, 23, 42, 0.12) !important;
-  background: linear-gradient(135deg, #0f172a, #1e293b);
-  color: #e0f2fe !important;
-  cursor: pointer;
-  line-height: 1.2;
-  box-shadow: 0 10px 22px rgba(15,23,42,0.18);
-}
 
 .action-dropdown {
   position: static;

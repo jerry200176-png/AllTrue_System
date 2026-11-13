@@ -148,7 +148,7 @@ describe('#4150 both pages use the shared badge helper', () => {
     const source = pageSource('CourseManagement');
     expect(source).not.toContain("'contract_amended' && isCourseSettled(");
     expect(source.match(/closedPaymentState\((c|hc)\) === 'unknown'/g)).toHaveLength(3);
-    expect(source).toContain(`v-else-if="closedPaymentState(hc) === 'unknown'" tone="warning">{{ PAYMENT_STATUS_LOADING_LABEL }}</StatusBadge>`);
+    expect(source).toContain(`v-else-if="closedPaymentState(hc) === 'unknown'" tone="neutral">{{ PAYMENT_STATUS_LOADING_LABEL }}</StatusBadge>`);
   });
   it('StudentsList attention uses the shared notice statuses', () => {
     const source = pageSource('StudentsList');

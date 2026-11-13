@@ -87,7 +87,7 @@ describe('history cards use the shared template parts', () => {
   });
   it('maps each closed state to its tone', () => {
     expect(card).toContain(`effectiveClosedReason(hc) === 'converted_trial'" tone="success"`);
-    expect(card).toContain(`closedPaymentState(hc) === 'pending'" tone="warning"`);
+    expect(card).toContain(`closedPaymentState(hc) === 'pending'" tone="danger"`);
     expect(card).toContain('<StatusBadge v-else tone="neutral">已完課</StatusBadge>');
   });
   it('names the chip-wrap threshold', () => {

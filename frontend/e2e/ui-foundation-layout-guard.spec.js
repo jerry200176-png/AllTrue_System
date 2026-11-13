@@ -97,7 +97,7 @@ const COURSE_MGMT_HELP_OPEN = {
 };
 
 // 課程查找 slice 4 (issue 4989): the history cards. Five closed courses of one student, one per closed state, one with a usage review.
-// Checks that every card keeps its facts inside the card, that each closed state carries its tone (settled = success, owed = warning,
+// Checks that every card keeps its facts inside the card, that each closed state carries its tone (settled = success, owed = danger,
 // completed / package = neutral) and that only the 堂數待對帳 button is red.
 const HISTORY_CARD_CASES = [
   { id: 200, reason: 'completed', over: {} },
@@ -143,7 +143,8 @@ const COURSE_MGMT_HISTORY = {
         expect(c.outside, `a part of history card ${c.id} sticks out of the card`).toBe(0);
         expect(c.oldTags, `history card ${c.id} still uses the old .tag / .status-tag`).toBe(0);
         expect(c.facts, `history card ${c.id} shows 開課, 老師, 費用 and 堂數`).toBeGreaterThanOrEqual(4);
-        expect(c.badges.some((b) => b.red), `no badge on history card ${c.id} is red (red is only the 堂數待對帳 button)`).toBe(false);
+        // red: an owed (未收) badge and the 堂數待對帳 button; every other history badge is not red
+        for (const b of c.badges) expect(b.red, `badge 「${b.text}」 on history card ${c.id} is red only when it says 未收`).toBe(b.text.includes('未收'));
       }
       const tone = (id, text) => byId[id].badges.find((b) => b.text.includes(text));
       expect(tone(201, '已結算')?.tone, 'a settled course is success').toBe('success');
@@ -151,7 +152,7 @@ const COURSE_MGMT_HISTORY = {
       expect(tone(202, '歷史')?.tone, 'a waived course is success').toBe('success');
       expect(tone(202, '方案')?.tone, 'the package badge is neutral').toBe('neutral');
       expect(tone(203, '已轉正式')?.tone, 'a converted trial is success').toBe('success');
-      expect(tone(204, '未收')?.tone, 'ended with money owed is a warning, not danger').toBe('warning');
+      expect(tone(204, '未收')?.tone, 'ended with money owed (未收) is danger, like 未繳 on an active row').toBe('danger');
       expect(tone(200, '已完課')?.tone, 'a completed course is neutral').toBe('neutral');
       expect(tone(200, '已完課')?.green, 'neutral is not green').toBe(false);
       expect(byId[201].button?.red, 'the 堂數待對帳 button is red').toBe(true);
