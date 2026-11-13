@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Http\Controllers\StudentStudyTaskController;
 use App\Models\AuthToken;
 use App\Models\Student;
 use App\Models\StudentClass;
@@ -13,6 +14,7 @@ use App\Models\UserCampus;
 use Database\Factories\CampusFactory;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
 /** 學生讀書任務 API (#5269 step 1). Fake data only; "today" is frozen at 2026-11-13. */
@@ -251,6 +253,108 @@ class StudentStudyTaskApiTest extends TestCase
 
         $this->as($director)->patchJson('/api/v1/study-tasks/999999', ['done' => true])->assertNotFound();
         $this->as($director)->deleteJson('/api/v1/study-tasks/999999')->assertNotFound();
+    }
+
+    public function test_substitute_teacher_can_read_but_not_write(): void
+    {
+        [$campus, , , $student] = $this->world();
+        $task = $this->task($student);
+        $sub = $this->staff('T', $campus);
+        $course = StudentClass::query()->where('StudentID', $student->id)->first();
+        // A scheduled makeup lesson makes the course visible to the substitute (StudentClass::visibleToTeacher) without ownership.
+        DB::table('schedules')->insert([
+            'student_id' => $student->id, 'teacher_id' => $sub['id'], 'day_of_week' => 1, 'start_time' => '16:00', 'end_time' => '17:00',
+            'branch_id' => $campus, 'status' => 'scheduled', 'student_course_id' => $course->ID, 'original_schedule_id' => 1,
+        ]);
+
+        $this->as($sub)->getJson("/api/v1/students/{$student->id}/study-tasks")->assertOk()->assertJsonCount(1, 'data');
+        $this->as($sub)->postJson("/api/v1/students/{$student->id}/study-tasks", ['title' => 'x', 'due_date' => '2026-11-20'])->assertForbidden();
+        $this->as($sub)->patchJson("/api/v1/study-tasks/{$task->id}", ['title' => 'y'])->assertForbidden();
+        $this->as($sub)->deleteJson("/api/v1/study-tasks/{$task->id}")->assertForbidden();
+        $this->assertSame(1, StudentStudyTask::query()->count());
+        $this->assertSame('第五單元習題', $task->fresh()->title);
+    }
+
+    public function test_plan_unit_in_another_campus_is_refused_and_nothing_is_written(): void
+    {
+        [$campus, $director, , $student] = $this->world();
+        $otherCampus = (int) CampusFactory::new()->create()->id;
+        $foreign = $this->student($otherCampus);
+        $theirs = $this->unit($foreign, $otherCampus, $this->course($foreign, $this->staff('T', $otherCampus)['id'])->ID);
+        // Same student id but a plan stored under another campus must not count either.
+        $mine = $this->student($campus);
+        $crossCampus = $this->unit($mine, $otherCampus, $this->course($mine, $this->staff('T', $campus)['id'])->ID);
+
+        foreach ([$theirs->id, $crossCampus->id] as $unitId) {
+            $this->as($director)->postJson("/api/v1/students/{$mine->id}/study-tasks", ['title' => 'x', 'due_date' => '2026-11-20', 'plan_unit_id' => $unitId])
+                ->assertStatus(422);
+        }
+        $this->assertSame(0, StudentStudyTask::query()->count());
+        $task = $this->task($mine);
+        $this->as($director)->patchJson("/api/v1/study-tasks/{$task->id}", ['plan_unit_id' => $theirs->id])->assertStatus(422);
+        $this->assertNull($task->fresh()->plan_unit_id);
+    }
+
+    public function test_client_sent_ownership_and_done_fields_are_ignored(): void
+    {
+        [$campus, $director, , $student] = $this->world();
+        $other = $this->student((int) CampusFactory::new()->create()->id);
+
+        $id = $this->as($director)->postJson("/api/v1/students/{$student->id}/study-tasks", [
+            'title' => 'x', 'due_date' => '2026-11-20', 'campus_id' => $other->CampusID, 'student_id' => $other->id,
+            'created_by' => 999999, 'done_at' => '2026-01-01 00:00:00', 'done_by' => 999999,
+        ])->assertCreated()->json('data.id');
+
+        $row = StudentStudyTask::query()->findOrFail($id);
+        $this->assertSame($campus, (int) $row->campus_id);
+        $this->assertSame((int) $student->id, (int) $row->student_id);
+        $this->assertSame($director['id'], (int) $row->created_by);
+        $this->assertNull($row->done_at);
+        $this->assertNull($row->done_by);
+
+        $this->as($director)->patchJson("/api/v1/study-tasks/{$id}", [
+            'title' => 'z', 'campus_id' => $other->CampusID, 'student_id' => $other->id, 'created_by' => 999999,
+            'done_at' => '2026-01-01 00:00:00', 'done_by' => 999999,
+        ])->assertOk();
+
+        $row = $row->fresh();
+        $this->assertSame('z', $row->title);
+        $this->assertSame($campus, (int) $row->campus_id);
+        $this->assertSame((int) $student->id, (int) $row->student_id);
+        $this->assertSame($director['id'], (int) $row->created_by);
+        $this->assertNull($row->done_at);
+        $this->assertNull($row->done_by);
+    }
+
+    public function test_list_is_capped_at_the_controllers_max_rows(): void
+    {
+        [, $director, , $student] = $this->world();
+        $cap = (new \ReflectionClassConstant(StudentStudyTaskController::class, 'MAX_ROWS'))->getValue();
+        $now = now()->toDateTimeString();
+        $rows = [];
+        for ($i = 0; $i < $cap + 3; $i++) {
+            $rows[] = ['campus_id' => $student->CampusID, 'student_id' => $student->id, 'title' => 't' . $i, 'kind' => 'other',
+                'due_date' => '2026-11-18', 'created_at' => $now, 'updated_at' => $now];
+        }
+        foreach (array_chunk($rows, 200) as $chunk) {
+            DB::table('student_study_tasks')->insert($chunk);
+        }
+
+        $res = $this->as($director)->getJson("/api/v1/students/{$student->id}/study-tasks?from=2026-11-16&to=2026-11-22")->assertOk();
+        $this->assertCount($cap, $res->json('data'));
+    }
+
+    public function test_super_admin_can_read_and_write(): void
+    {
+        [, , , $student] = $this->world();
+        $admin = $this->staff('S', (int) CampusFactory::new()->create()->id);
+
+        $id = $this->as($admin)->postJson("/api/v1/students/{$student->id}/study-tasks", ['title' => 'x', 'due_date' => '2026-11-20'])
+            ->assertCreated()->assertJsonPath('data.created_by', $admin['id'])->json('data.id');
+        $this->as($admin)->getJson("/api/v1/students/{$student->id}/study-tasks")->assertOk()->assertJsonCount(1, 'data');
+        $this->as($admin)->patchJson("/api/v1/study-tasks/{$id}", ['done' => true])->assertOk();
+        $this->as($admin)->deleteJson("/api/v1/study-tasks/{$id}")->assertOk();
+        $this->assertSame(0, StudentStudyTask::query()->count());
     }
 
     public function test_anonymous_callers_are_refused(): void
