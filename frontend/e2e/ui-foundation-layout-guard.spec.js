@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { DAY_LABELS, TODAY, mockStudyWeekApi } from './fixtures/ui-foundation/study-week-data.js';
 
 /**
  * Layout guard for pages migrated to the ui components (in-app #541 / #542 / #543, #4989).
@@ -55,6 +56,29 @@ const PAGES = [
     mock: async (page) => {
       const data = NAMES.map((n, i) => ({ student_class_id: i + 1, student_name: n, subject: SUBJECTS[i % 6], teacher_name: ['王老師', '李大華老師', '陳老師'][i % 3], class_type: 'one_on_one', monthly_sessions: 8, rate: 600, monthly_tuition: 4800, pay_status: ['paid', 'partial', 'unpaid', 'review'][i % 4], outstanding_amount: 1200, last_paid_at: '2026-11-03' }));
       await page.route('**/api/v1/finance/branch-monthly-tuition**', (r) => json(r, { data, summary: { total_students: 20, total_sessions: 160, total_tuition: 96000, total_due: 96000, total_collected: 50000, total_outstanding: 46000, unpaid_students: 9 }, meta: { current_page: 1, last_page: 1, per_page: 50, total: 20 } }));
+    },
+  },
+  {
+    // issue 5269 step 2: the teacher's week view (a tab of the student profile). Day labels are the "names" (never wrap);
+    // the plan lines and the day grid share the card's left edge; every control a finger meets is at least 44px.
+    key: 'student-study-week',
+    url: '/study-week-pilot-mount.html',
+    names: [...DAY_LABELS, '歐陽子安 學習檔案'],
+    allNames: false,
+    rows: ['[data-testid="week-plans"], [data-testid="week-grid"]', '[data-testid="week-plans"] > div'],
+    touch: ['[data-testid^="add-"]', '[data-testid="week-prev"]', '[data-testid="week-next"]', '[data-testid="week-today"]', '[data-testid^="done-"] ~ *, label:has([data-testid^="done-"])', 'button[data-testid^="title-"]'],
+    mock: async (page) => { await page.clock.setFixedTime(TODAY); await mockStudyWeekApi(page, 'full'); },
+    setup: async (page) => {
+      await page.getByRole('tab', { name: '讀書計畫' }).click();
+      await expect(page.getByTestId('task-8')).toBeVisible();
+      // Phone: one vertical list of seven days; desktop: seven columns side by side.
+      const columns = () => page.evaluate(() => new Set([...document.querySelectorAll('[data-testid^="day-"]')].map((d) => Math.round(d.getBoundingClientRect().top))).size === 1);
+      await expect.poll(columns, { message: 'seven columns on a wide dialog, one stacked list on a phone' }).toBe(page.viewportSize().width >= 1280);
+      // The first task of every column starts at the same height, so the 今天 mark must not push one column down.
+      if (page.viewportSize().width >= 1280) {
+        const starts = await page.evaluate(() => ['task-1', 'task-2', 'task-4', 'task-5', 'task-6', 'task-8'].map((id) => Math.round(document.querySelector(`[data-testid="${id}"]`).getBoundingClientRect().top)));
+        expect(new Set(starts).size, `first tasks start at ${starts.join(', ')}`).toBe(1);
+      }
     },
   },
   ...[false, true].map((search) => ({

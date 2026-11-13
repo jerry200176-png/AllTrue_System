@@ -184,7 +184,7 @@ watch(weekStart, () => load());
     <SectionCard title="本週讀書計畫" :count="tasks.length ? `${doneCount}/${tasks.length}` : null">
       <template #actions>
         <Button variant="outline" :class="control.row" aria-label="上一週" data-testid="week-prev" @click="prevWeek">上一週</Button>
-        <span class="tw:min-w-24 tw:text-center tw:font-semibold tw:tabular-nums" data-testid="week-label" role="status">{{ weekRangeText(weekStart) }}</span>
+        <span class="tw:min-w-24 tw:text-center tw:font-semibold tw:tabular-nums tw:max-md:order-first tw:max-md:basis-full tw:max-md:text-left" data-testid="week-label" role="status">{{ weekRangeText(weekStart) }}</span>
         <Button variant="outline" :class="control.row" aria-label="下一週" data-testid="week-next" @click="nextWeek">下一週</Button>
         <Button variant="outline" :class="control.row" :disabled="isThisWeek" data-testid="week-today" @click="thisWeek">本週</Button>
       </template>
@@ -201,7 +201,7 @@ watch(weekStart, () => load());
       </div>
       <p v-else-if="planError" class="tw:m-0 tw:border-t tw:border-border tw:px-5 tw:py-3 tw:text-tpl-caption tw:text-tpl-secondary" role="status">學習計畫暫時載入不了，單元與段考倒數先不顯示；仍可安排任務。</p>
 
-      <div class="tw:space-y-3 tw:border-t tw:border-border tw:px-5 tw:py-3">
+      <div v-if="loadError || actionError || readOnly || notice || (!readOnly && tasks.length)" class="tw:space-y-3 tw:border-t tw:border-border tw:px-5 tw:py-3">
         <Alert v-if="loadError" tone="danger" data-testid="load-error">
           <span>{{ loadError }}</span>
           <Button variant="outline" :class="[control.row, 'tw:ml-3']" @click="load({ keep: true })">再試一次</Button>
@@ -225,27 +225,28 @@ watch(weekStart, () => load());
           <div class="tw:flex tw:items-center tw:justify-between tw:gap-1">
             <div class="tw:flex tw:min-w-0 tw:flex-wrap tw:items-center tw:gap-x-2">
               <h4 class="tw:m-0 tw:text-tpl-body tw:font-bold tw:whitespace-nowrap tw:tabular-nums">{{ dayLabel(d) }}</h4>
-              <StatusBadge v-if="d === today">今天</StatusBadge>
+              <StatusBadge v-if="d === today" class="tw:@4xl:hidden">今天</StatusBadge>
             </div>
             <Button v-if="!readOnly" variant="ghost" class="tw:size-11 tw:px-0 tw:shadow-none" :aria-label="`新增 ${dayLabel(d)} 的任務`" :data-testid="`add-${d}`" @click="openAdd(d)"><Plus class="tw:size-5" aria-hidden="true" /></Button>
           </div>
+          <div class="tw:hidden tw:@4xl:block tw:@4xl:h-7"><StatusBadge v-if="d === today">今天</StatusBadge></div>
           <Skeleton v-if="loading" class="tw:mt-1 tw:h-16 tw:w-full" />
           <ul v-else-if="byDay[d].length" class="tw:m-0 tw:list-none tw:p-0">
-            <li v-for="t in byDay[d]" :key="t.id" :data-testid="`task-${t.id}`" class="tw:flex tw:items-start tw:gap-1 tw:border-t tw:border-border tw:first:border-t-0">
+            <li v-for="t in byDay[d]" :key="t.id" :data-testid="`task-${t.id}`" class="tw:group tw:flex tw:items-start tw:gap-1 tw:border-t tw:border-border tw:first:border-t-0">
               <label class="tw:flex tw:size-11 tw:shrink-0 tw:cursor-pointer tw:items-center tw:justify-center">
                 <input type="checkbox" class="tw:size-6 tw:accent-primary" :checked="!!t.done_at" :disabled="readOnly || !!pending[t.id]" :aria-label="`${t.title} 已完成`" :data-testid="`done-${t.id}`" @change="toggle(t)" />
               </label>
-              <div class="tw:min-w-0 tw:flex-1 tw:py-2">
-                <component :is="readOnly ? 'p' : 'button'" :type="readOnly ? undefined : 'button'" :disabled="readOnly ? undefined : !!pending[t.id]" :data-testid="`title-${t.id}`"
-                  class="tw:m-0 tw:block tw:w-full tw:border-0 tw:bg-transparent tw:p-0 tw:text-left tw:text-tpl-body tw:font-semibold tw:break-words tw:text-pretty tw:text-foreground tw:outline-none tw:enabled:cursor-pointer tw:enabled:hover:underline tw:focus-visible:ring-3 tw:focus-visible:ring-ring/50"
-                  :class="t.done_at ? 'tw:line-through tw:text-tpl-secondary' : ''" @click="!readOnly && openEdit(t)">{{ t.title }}</component>
-                <div class="tw:mt-1 tw:flex tw:flex-wrap tw:items-center tw:gap-x-2 tw:gap-y-1 tw:text-tpl-caption tw:text-tpl-secondary">
+              <component :is="readOnly ? 'div' : 'button'" :type="readOnly ? undefined : 'button'" :disabled="readOnly ? undefined : !!pending[t.id]" :aria-label="readOnly ? undefined : `修改：${t.title}`" :data-testid="`title-${t.id}`"
+                class="tw:block tw:min-h-11 tw:min-w-0 tw:flex-1 tw:border-0 tw:bg-transparent tw:px-0 tw:py-2 tw:text-left tw:text-tpl-body tw:text-foreground tw:outline-none tw:enabled:cursor-pointer tw:focus-visible:ring-3 tw:focus-visible:ring-ring/50"
+                @click="!readOnly && openEdit(t)">
+                <span class="tw:block tw:font-semibold tw:break-words tw:text-pretty" :class="[t.done_at ? 'tw:line-through tw:text-tpl-secondary' : '', readOnly ? '' : 'tw:group-hover:underline']">{{ t.title }}</span>
+                <span class="tw:mt-1 tw:flex tw:flex-wrap tw:items-center tw:gap-x-2 tw:gap-y-1 tw:text-tpl-caption tw:font-normal tw:text-tpl-secondary">
                   <StatusBadge>{{ KIND_LABELS[t.kind] || KIND_LABELS.other }}</StatusBadge>
                   <span v-if="t.minutes" class="tw:tabular-nums tw:whitespace-nowrap">{{ t.minutes }} 分鐘</span>
                   <span v-if="t.plan_unit_id && unitTitle[t.plan_unit_id]" class="tw:break-words">{{ unitTitle[t.plan_unit_id] }}</span>
-                </div>
-                <p v-if="t.note" class="tw:mt-1 tw:mb-0 tw:text-tpl-caption tw:text-tpl-secondary tw:text-pretty tw:break-words">{{ t.note }}</p>
-              </div>
+                </span>
+                <span v-if="t.note" class="tw:mt-1 tw:block tw:text-tpl-caption tw:font-normal tw:text-tpl-secondary tw:text-pretty tw:break-words">{{ t.note }}</span>
+              </component>
             </li>
           </ul>
           <p v-else class="tw:m-0 tw:py-2 tw:text-tpl-caption tw:text-tpl-secondary">沒有安排</p>

@@ -23,6 +23,7 @@
 @source "./components/CourseEditForm.vue";
 @source "./components/students/StudentLearningTimeline.vue";
 @source "./components/students/StudentLearningPlanGantt.vue";
+@source "./components/students/StudentStudyWeek.vue";
 @source "./components/release-notes";
 @source "./pages/ReleaseNotesPage.vue";
 @source "./components/schedule-discrepancy";

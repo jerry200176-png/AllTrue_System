@@ -183,7 +183,7 @@ describe('StudentStudyWeek (issue 5269 step 2)', () => {
     await button(w, '取消').trigger('click');
     expect(byId(w, 'read-only-note').exists()).toBe(true);
     expect(byId(w, 'add-2026-11-12').exists()).toBe(false);
-    expect(byId(w, 'title-1').element.tagName).toBe('P'); // a name, not a button
+    expect(byId(w, 'title-1').element.tagName).toBe('DIV'); // a name, not a button
     expect(byId(w, 'done-1').element.disabled).toBe(true);
   });
 
