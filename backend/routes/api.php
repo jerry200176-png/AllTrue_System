@@ -823,7 +823,6 @@ Route::prefix('v1')->group(function () {
     });
 
     Route::middleware(['role:director,teacher,super_admin', 'require_campus', 'require_password_change'])->group(function () {
-
         Route::get('exam-rounds', [ExamRoundController::class, 'index']);
         Route::get('exam-rounds/{examRound}', [ExamRoundController::class, 'show'])->whereNumber('examRound');
         Route::get('exam-rounds/{examRound}/students', [ExamRoundController::class, 'students'])->whereNumber('examRound');
@@ -835,12 +834,10 @@ Route::prefix('v1')->group(function () {
     });
 
     Route::middleware(['role:director,teacher', 'require_campus', 'require_password_change'])->group(function () {
-
         Route::post('exam-rounds/{examRound}/scores', [ExamRoundController::class, 'upsertScores'])->whereNumber('examRound');
     });
 
     Route::middleware(['role:director,super_admin', 'require_campus', 'require_password_change'])->group(function () {
-
         Route::post('exam-rounds', [ExamRoundController::class, 'store']);
         Route::patch('exam-rounds/{examRound}', [ExamRoundController::class, 'update'])->whereNumber('examRound');
         Route::delete('exam-rounds/{examRound}', [ExamRoundController::class, 'destroy'])->whereNumber('examRound');

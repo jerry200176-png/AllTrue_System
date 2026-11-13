@@ -871,7 +871,7 @@
 | 發現日期 | 2026-11-13 |
 | 發現來源 | Founder 決定 2026-11-13「學習檢測頁沒什麼人用就移除」；正式環境唯讀量測所有校區 0 筆檢測、0 筆結果、0 筆補強 |
 | 影響模組 | `Assessment`、`AssessmentResult`、`AssessmentRemediationAction` 模型；`assessment*` 資料表；`ParentPortalController::buildParentAssessmentProgress`；`LearningRecordStudentTimelineController` |
-| 描述 | learning-assessment authoring UI/API removed (0 usage); models and tables kept because parent portal and student timeline read them; nothing writes them now. 資料表皆為空，無害。 |
+| 描述 | learning-assessment authoring UI/API removed (0 usage); models and tables kept because parent portal and student timeline read them; nothing writes them now. 已完全沒有讀取者與寫入者的資料表：`assessment_attempts`、`assessment_answers`、`assessment_question_snapshots`、`assessment_audit_logs`（仍被讀取的是 `assessments`、`assessment_results`、`assessment_remediation_actions`）。資料表皆為空，無害。 |
 | 建議做法 | 另開 issue：先移除家長端與學習歷程對這些模型的讀取，再由 Founder 對確切範圍批准後，以非加法 migration 丟棄資料表（drop table 屬 F1，Agent 不自行執行）。 |
 | 清償成本估計 | 低（讀取端移除）＋ Founder 批准的 drop migration |
 | 不做的代價 | 少量死程式與空表；日後若有人重新寫入需重新確認欄位語意。 |
