@@ -15,7 +15,7 @@ describe('CourseManagement lens UX', () => {
   });
 
   it('keeps the usage reconciliation warning visible in history cards', () => {
-    const historySection = source.slice(source.indexOf('class="history-section"'));
+    const historySection = source.slice(source.indexOf('v-else class="history-section'));
     expect(historySection).toContain("hc.usage_balance_status === 'review_required'");
     expect(historySection).toContain('usageBalanceWarningTitle(hc)');
     expect(historySection).toContain('堂數待對帳');
@@ -24,14 +24,14 @@ describe('CourseManagement lens UX', () => {
   });
 
   it('provides a read-only next step from active-course reconciliation warnings', () => {
-    const activeSection = source.slice(0, source.indexOf('class="history-section"'));
+    const activeSection = source.slice(0, source.indexOf('v-else class="history-section'));
     expect(activeSection).toContain('@click.stop="openLedgerForCourse(c)"');
     expect(activeSection).toContain('tag-usage-review--action');
     expect(activeSection).toContain('點擊查看對帳明細');
   });
 
   it('uses the shared warning helper for active and history cards', () => {
-    expect(source).toContain("import { courseRowWarningSummary, usageBalanceWarningTitle } from '../lib/courseRowWarnings'");
+    expect(source).toContain("import { courseRowWarningSummary, duplicatesUsageReviewButton, usageBalanceWarningTitle } from '../lib/courseRowWarnings'");
     expect(source).toContain('usageBalanceWarningTitle(c)');
     expect(source).toContain('usageBalanceWarningTitle(hc)');
   });

@@ -376,6 +376,19 @@ export const coursePaymentBadge = (course, { monthlyPeriod = false } = {}) => {
 };
 
 /**
+ * 部分繳費 as a status, not as words: true when the badge is an owing one and the status it shows is `partial`
+ * (the monthly period's status when the period label is shown, else the course's own). Pages use it to give a part-paid
+ * course the warning tone instead of the owing (danger) one, so a wording change in the labels cannot change a colour.
+ */
+export const isPartialCoursePayment = (course, { monthlyPeriod = false } = {}) => {
+  if (coursePaymentBadge(course, { monthlyPeriod }).tone !== 'owing') return false;
+  const status = String(course?.payment_status).toLowerCase();
+  const summary = course?.monthly_payment;
+  const periodShown = monthlyPeriod && status !== 'free' && summary && !summary.review_required;
+  return (periodShown ? summary.payment_status : status) === 'partial';
+};
+
+/**
  * in-app #442: members of one count-mode shared package are ONE payment obligation (PaymentReportController: one report
  * covers every member; the ledger gives the package a single lead card). Returns the member course whose billing row
  * carries 繳費單 / 登記繳費回報, or null when `course` is not in such a package. Lead = member holding a pending report, else the one with the open bill,

@@ -306,7 +306,7 @@
                         <button
                           v-if="c.usage_balance_status === 'review_required'"
                           type="button"
-                          :class="[rowAction.secondaryWrap, 'tag-usage-review tag-usage-review--action tw:text-[var(--ds-danger-text)]']"
+                          :class="[rowAction.dangerWrap, 'tag-usage-review tag-usage-review--action']"
                           :title="`${usageBalanceWarningTitle(c)} 點擊查看對帳明細。`"
                           aria-label="堂數待對帳"
                           @click.stop="openLedgerForCourse(c)"
@@ -359,7 +359,7 @@
                       <div class="payment-status-and-action" :data-course-id="c.id">
                         <StatusBadge
                           :tone="paymentStatusTone(c)"
-                          :class="['payment-status-badge', { 'payment-status-badge--short': paymentStatusChipText(c) !== paymentStatusButtonLabel(c) }, 'tw:max-w-full tw:cursor-default', paymentStatusChipText(c).length <= 8 ? 'tw:whitespace-nowrap' : 'tw:whitespace-normal tw:text-left']"
+                          :class="['payment-status-badge', { 'payment-status-badge--short': paymentStatusChipText(c) !== paymentStatusButtonLabel(c) }, 'tw:max-w-full tw:cursor-default', paymentStatusChipText(c).length <= PAYMENT_CHIP_NOWRAP_MAX ? 'tw:whitespace-nowrap' : 'tw:whitespace-normal tw:text-left']"
                           role="status"
                           :title="paymentStatusHelpTitle(c)"
                           :aria-label="paymentStatusButtonLabel(c)"
@@ -548,60 +548,61 @@
             </div>
             </template>
             <!-- History courses collapsible section -->
-            <div v-else class="history-section">
-              <button
-                type="button"
-                class="history-section__toggle tw:rounded-xl"
-                :aria-expanded="expandedHistoryGroups.has(historySegmentKey(group.key, segment.key))"
-                :aria-controls="historyGroupPanelId(group.key, segment.key)"
-                @click="toggleHistoryGroup(historySegmentKey(group.key, segment.key))"
-              >
-                <span class="material-symbols-outlined history-section__icon" aria-hidden="true">inventory_2</span>
-                <span class="history-section__label">歷史課程</span>
-                <span class="history-section__count">{{ segment.courses.length }} 筆</span>
-                <span class="history-section__chevron">{{ expandedHistoryGroups.has(historySegmentKey(group.key, segment.key)) ? '▲' : '▼' }}</span>
-              </button>
+            <div v-else class="history-section tw:border-0 tw:border-t tw:border-solid tw:border-border">
+              <div class="tw:px-4 tw:md:px-5">
+                <button
+                  type="button"
+                  class="history-section__toggle tw:flex tw:min-h-14 tw:w-full tw:cursor-pointer tw:items-center tw:gap-2 tw:rounded-2xl tw:border-0 tw:bg-transparent tw:p-0 tw:text-left tw:text-tpl-body tw:font-semibold tw:text-foreground tw:outline-none tw:focus-visible:ring-3 tw:focus-visible:ring-ring/50"
+                  :aria-expanded="expandedHistoryGroups.has(historySegmentKey(group.key, segment.key))"
+                  :aria-controls="historyGroupPanelId(group.key, segment.key)"
+                  @click="toggleHistoryGroup(historySegmentKey(group.key, segment.key))"
+                >
+                  <ChevronRight :size="22" aria-hidden="true" :class="['tw:shrink-0 tw:text-tpl-secondary tw:transition-transform tw:motion-reduce:transition-none', expandedHistoryGroups.has(historySegmentKey(group.key, segment.key)) ? 'tw:rotate-90' : '']" />
+                  <span class="history-section__label">歷史課程</span>
+                  <span class="history-section__count tw:text-tpl-caption tw:font-semibold tw:tabular-nums tw:text-tpl-secondary">{{ segment.courses.length }} 筆</span>
+                </button>
+              </div>
               <div
                 v-if="expandedHistoryGroups.has(historySegmentKey(group.key, segment.key))"
                 :id="historyGroupPanelId(group.key, segment.key)"
                 class="history-section__body" role="list"
               >
-                <div v-for="hc in segment.courses" :key="hc.id" class="history-course-card tw:rounded-2xl" role="listitem" :data-contract-id="hc.id">
-                  <div class="history-course-card__header">
-                    <span class="tag subject-tag history-course-card__subject">{{ getSubjectLabel(hc.subject) }}</span>
-                    <span class="status-tag" :class="hc.class_type">{{ classTypeLabel(hc.class_type) }}</span>
-                    <span v-if="isPackageMember(hc)" class="tag tag-package" :title="hc.PackageName || '多科方案'">方案</span>
-                    <span v-if="effectiveClosedReason(hc) === 'converted_trial'" class="tag tag-history tag-history--settled">已轉正式</span>
-                    <span v-else-if="effectiveClosedReason(hc) === 'waived'" class="tag tag-history tag-history--settled">歷史 · {{ WAIVED_LABEL }}</span>
-                    <span v-else-if="closedPaymentState(hc) === 'pending'" class="tag tag-history tag-history--pending">{{ ENDED_PENDING_LABEL }}</span>
-                    <span v-else-if="closedPaymentState(hc) === 'review'" class="tag tag-history tag-history--pending" :title="reviewReasonText(hc) || undefined">{{ ENDED_REVIEW_LABEL }}</span>
-                    <span v-else-if="closedPaymentState(hc) === 'unknown'" class="tag tag-history tag-history--pending">{{ PAYMENT_STATUS_LOADING_LABEL }}</span>
-                    <span v-else-if="closedPaymentState(hc) === 'settled' || effectiveClosedReason(hc) === 'settled' || effectiveClosedReason(hc) === 'contract_amended'" class="tag tag-history tag-history--settled">已結算</span>
-                    <span v-else class="tag tag-history tag-history--completed">已完課</span>
+                <div v-for="hc in segment.courses" :key="hc.id" class="history-course-card tw:min-w-0 tw:border-0 tw:border-t tw:border-solid tw:border-border tw:px-4 tw:py-4 tw:md:px-5" role="listitem" :data-contract-id="hc.id">
+                  <div class="history-course-card__header tw:mb-3 tw:flex tw:flex-wrap tw:items-center tw:gap-x-2 tw:gap-y-1.5">
+                    <span :class="['history-course-card__subject', factRow.value]">{{ getSubjectLabel(hc.subject) }}</span>
+                    <span class="history-course-card__class-type tw:text-tpl-caption tw:whitespace-nowrap tw:text-tpl-secondary">{{ classTypeLabel(hc.class_type) }}</span>
+                    <StatusBadge v-if="isPackageMember(hc)" tone="neutral" :title="hc.PackageName || '多科方案'">方案</StatusBadge>
+                    <StatusBadge v-if="effectiveClosedReason(hc) === 'converted_trial'" tone="success">已轉正式</StatusBadge>
+                    <StatusBadge v-else-if="effectiveClosedReason(hc) === 'waived'" tone="success">歷史 · {{ WAIVED_LABEL }}</StatusBadge>
+                    <StatusBadge v-else-if="closedPaymentState(hc) === 'pending'" tone="danger">{{ ENDED_PENDING_LABEL }}</StatusBadge>
+                    <StatusBadge v-else-if="closedPaymentState(hc) === 'review'" tone="warning" :title="reviewReasonText(hc) || undefined">{{ ENDED_REVIEW_LABEL }}</StatusBadge>
+                    <StatusBadge v-else-if="closedPaymentState(hc) === 'unknown'" tone="neutral">{{ PAYMENT_STATUS_LOADING_LABEL }}</StatusBadge>
+                    <StatusBadge v-else-if="closedPaymentState(hc) === 'settled' || effectiveClosedReason(hc) === 'settled' || effectiveClosedReason(hc) === 'contract_amended'" tone="success">已結算</StatusBadge>
+                    <StatusBadge v-else tone="neutral">已完課</StatusBadge>
                     <button
                       v-if="hc.usage_balance_status === 'review_required'"
                       type="button"
-                      class="tag tag-usage-review tag-usage-review--action"
+                      :class="[rowAction.dangerWrap, 'tag-usage-review tag-usage-review--action']"
                       :title="`${usageBalanceWarningTitle(hc)} 點擊查看對帳明細。`"
                       aria-label="堂數待對帳"
                       @click.stop="openLedgerForCourse(hc)"
-                    >⚠ 堂數待對帳 <span class="tag-usage-review__action">查看對帳明細</span></button>
+                    >⚠ 堂數待對帳 <span class="tag-usage-review__action tw:ml-1 tw:underline tw:underline-offset-2">查看對帳明細</span></button>
                   </div>
-                  <div class="history-course-card__details">
-                    <span class="history-course-card__detail"><span class="history-course-card__detail-label">開課</span> {{ contractStartDate(hc) || '未填' }}</span>
-                    <span class="history-course-card__detail"><span class="history-course-card__detail-label">老師</span> {{ hc.teacher_name || '—' }}</span>
-                    <span class="history-course-card__detail"><span class="history-course-card__detail-label">費用</span> ${{ totalPrice(hc) }}（{{ getRateUnitDisplayLabel(hc) }} ${{ sessionPrice(hc) }}）</span>
-                    <span class="history-course-card__detail"><span class="history-course-card__detail-label">堂數</span> <template v-if="isPackageMember(hc)">已上 {{ getCompletedSessionCount(hc) }} 堂｜方案共用 {{ getPackageTotalSessions(hc) }} 堂</template><template v-else>已上 {{ getCompletedSessionCount(hc) }}<template v-if="isSessionMode(hc)"> / 購買 {{ getPurchasedSessions(hc) }}</template> 堂</template></span>
-                    <span class="history-course-card__detail" v-if="hc.last_paid_at"><span class="history-course-card__detail-label">繳費</span> {{ hc.last_paid_at }}</span>
-                  </div>
-                  <div class="history-course-card__actions">
-                    <button class="small ghost btn-toggle" @click="toggleDates(hc)">
+                  <dl :class="['history-course-card__details', HISTORY_FACT_GRID]">
+                    <div><dt :class="factRow.label">開課</dt><dd :class="[factRow.value, 'tw:m-0 tw:tabular-nums']">{{ contractStartDate(hc) || '未填' }}</dd></div>
+                    <div><dt :class="factRow.label">老師</dt><dd :class="[factRow.value, 'tw:m-0']">{{ hc.teacher_name || '—' }}</dd></div>
+                    <div class="tw:col-span-2 tw:md:col-span-1"><dt :class="factRow.label">費用</dt><dd :class="[factRow.value, 'tw:m-0 tw:tabular-nums']">${{ totalPrice(hc) }}（{{ getRateUnitDisplayLabel(hc) }} ${{ sessionPrice(hc) }}）</dd></div>
+                    <div class="tw:col-span-2 tw:md:col-span-1"><dt :class="factRow.label">堂數</dt><dd :class="[factRow.value, 'tw:m-0 tw:tabular-nums']"><template v-if="isPackageMember(hc)"><span class="tw:block">已上 {{ getCompletedSessionCount(hc) }} 堂</span><span class="tw:block">方案共用 {{ getPackageTotalSessions(hc) }} 堂</span></template><template v-else>已上 {{ getCompletedSessionCount(hc) }}<template v-if="isSessionMode(hc)"> / 購買 {{ getPurchasedSessions(hc) }}</template> 堂</template></dd></div>
+                    <div v-if="hc.last_paid_at"><dt :class="factRow.label">繳費</dt><dd :class="[factRow.value, 'tw:m-0 tw:tabular-nums']">{{ hc.last_paid_at }}</dd></div>
+                  </dl>
+                  <div class="history-course-card__actions tw:mt-3 tw:flex tw:flex-wrap tw:items-center tw:gap-2">
+                    <button type="button" :class="[rowAction.secondary, 'btn-toggle']" :aria-expanded="expandedDates.has(hc.id)" @click="toggleDates(hc)">
                       {{ expandedDates.has(hc.id) ? '收起詳情' : '查看詳情' }}
                     </button>
                     <div class="action-menu-wrapper">
                       <button
                         :ref="(el) => setActionMenuTrigger(hc.id, el)"
-                        class="small ghost action-menu-trigger"
+                        :class="['action-menu-trigger', rowAction.secondary]"
                         @click.stop="toggleActionMenu(hc.id)"
                         @keydown="handleActionMenuKeydown(hc.id, $event)"
                         title="其他歷史課程操作"
@@ -628,7 +629,7 @@
                       </div>
                     </div>
                   </div>
-                  <div v-if="expandedDates.has(hc.id)" class="history-course-card__dates">
+                  <div v-if="expandedDates.has(hc.id)" class="history-course-card__dates tw:mt-3 tw:border-0 tw:border-t tw:border-solid tw:border-border tw:pt-3">
                     <div class="detail-panel tw:rounded-2xl">
                       <div class="dates-panel">
                         <div class="dates-panel-heading">
@@ -1371,7 +1372,7 @@ import { PageHeader, StatStrip, StatItem, SectionCard, StatusBadge, CollapsibleG
 // Phone: the two page buttons share a row and may wrap their words instead of pushing the page sideways (320px at 大).
 const phoneAction = 'tw:max-md:min-w-0 tw:max-md:flex-[1_1_9rem] tw:max-md:h-auto tw:max-md:min-h-12 tw:max-md:whitespace-normal tw:max-md:py-2';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Focus, Info, Plus, UserSearch } from 'lucide-vue-next';
+import { ChevronRight, Focus, Info, Plus, UserSearch } from 'lucide-vue-next';
 import { isCourseSettled, isPaymentNoticeStatus } from '../lib/paymentStatus.js';
 import { formatCourseRef, formatCoursePeriod } from '../lib/studentBillingRows.js';
 import { clearRowCachesForWinningRequest, createListLoadOutcome, fallbackListRows, isCurrentListRequest } from '../lib/listRefreshState.js';
@@ -1397,7 +1398,7 @@ import {
 import { canSubmitMonthlyRenewal } from '../lib/monthlyRenewalPreview';
 import { useMonthlyRenewal } from '../composables/course-management/useMonthlyRenewal';
 import { coursesWithSlotConflicts } from '../lib/slotOccupancy';
-import { courseRowWarningSummary, usageBalanceWarningTitle } from '../lib/courseRowWarnings';
+import { courseRowWarningSummary, duplicatesUsageReviewButton, usageBalanceWarningTitle } from '../lib/courseRowWarnings';
 import {
   formatRenewSuccessMessage,
   formatDuplicatePurchaseHint,
@@ -1437,7 +1438,7 @@ import MonthlyCorrectionPreviewModal from '../components/course-management/Month
 import { useMonthlyCorrectionPreview } from '../composables/course-management/useMonthlyCorrectionPreview.js';
 import { loadNextMonthlyContract } from '../lib/nextMonthlyContract.js';
 import {
-  REPORT_STATUS_LABELS, closedReason as effectiveClosedReason, classificationUnknown, isClosedReason, courseHistoryReason, isActiveCourse, isCourseManagementHistory, isLowRemaining, isMonthlyPaymentType, isPackageMember, TUITION_STATUS_CONFIG, ENDED_PENDING_LABEL, ENDED_REVIEW_LABEL, reviewReasonText, WAIVED_LABEL, coursePaymentBadge, shortPaymentLabel, isLegacyPaidFlagOnly, LEGACY_FLAG_ACTION_HELP,
+  REPORT_STATUS_LABELS, closedReason as effectiveClosedReason, classificationUnknown, isClosedReason, courseHistoryReason, isActiveCourse, isCourseManagementHistory, isLowRemaining, isMonthlyPaymentType, isPackageMember, TUITION_STATUS_CONFIG, ENDED_PENDING_LABEL, ENDED_REVIEW_LABEL, reviewReasonText, WAIVED_LABEL, coursePaymentBadge, isPartialCoursePayment, shortPaymentLabel, isLegacyPaidFlagOnly, LEGACY_FLAG_ACTION_HELP,
   ownRemainingSessions, poolTotalSessions, poolUsedSessions, closedPaymentState, PAYMENT_STATUS_LOADING_LABEL, sharedPackageBillingLead,
 } from '../lib/courseMoneyState.js';
 import { nextManualSessionDate } from '../lib/manualSessionDate.js';
@@ -4372,16 +4373,18 @@ const paymentBadge = (course) => coursePaymentBadge(course, { monthlyPeriod: tru
 const paymentStatusButtonClass = (course) => (isPartialPayment(course) ? 'tag-pending-report' : (BADGE_CLASS[paymentBadge(course).tone] || 'tag-pending-report'));
 // Template tones (PAGE_TEMPLATE §6) for the contract rows: owed / anomaly = danger, paid = success, needs a look = warning, the rest neutral.
 const PAYMENT_TONE = { anomaly: 'danger', owing: 'danger', settled: 'success', free: 'success', no_payment: 'neutral', neutral: 'neutral' };
-const isPartialPayment = (course) => { const b = paymentBadge(course); return b.tone === 'owing' && (b.label === TUITION_STATUS_CONFIG.partial?.label || String(b.label).includes('部分')); };
-// 部分 is warning (PAGE_TEMPLATE §6), 未繳 is danger; both come from the existing badge, the partial case is read off its label.
+const isPartialPayment = (course) => isPartialCoursePayment(course, { monthlyPeriod: true });
+// 部分 is warning (PAGE_TEMPLATE §6), 未繳 is danger; the partial case is read off the payment status, never off the label's words.
 const paymentStatusTone = (course) => (isPartialPayment(course) ? 'warning' : (PAYMENT_TONE[paymentBadge(course).tone] || 'warning'));
+// A payment chip of at most this many characters stays on one line; a longer one wraps inside the cell.
+const PAYMENT_CHIP_NOWRAP_MAX = 8;
+// The facts of a history card (開課, 老師, 費用, 堂數, 繳費): two per row on a phone, as many as fit from 768 up.
+const HISTORY_FACT_GRID = 'tw:grid tw:grid-cols-2 tw:gap-x-4 tw:gap-y-3 tw:m-0 tw:md:grid-cols-[repeat(auto-fit,minmax(10.5rem,1fr))]';
 // 堂數: low = danger, but a paused course's low count is muted, not red (it is not being used).
 const remainingValueTone = (course) => {
   if (!(isSessionMode(course) && isLowRemaining(Number(displayRemainingSessions(course) ?? 0)))) return 'tw:text-foreground';
   return courseRowClass(course)['course-paused'] ? 'tw:text-tpl-secondary' : toneText.danger;
 };
-// The 堂數待對帳 button already says it; the same words as a chip next to it are dropped.
-const duplicatesUsageReviewButton = (course, warning) => course.usage_balance_status === 'review_required' && String(warning.label).includes('堂數待對帳');
 const currentInvoiceForBillingRow = (row) => {
   const invoices = Array.isArray(row?.invoices) ? row.invoices.filter((invoice) => invoice?.status !== 'void') : [];
   return invoices.find((invoice) => ['unpaid', 'partial'].includes(invoice?.status)) || invoices[0] || null;
@@ -6262,10 +6265,6 @@ onUnmounted(() => {
 }
 .focus-mode-banner button:hover { background: var(--ds-primary-wash); }
 
-.history-section__toggle:focus-visible {
-  outline: 3px solid color-mix(in srgb, var(--ds-primary) 28%, transparent);
-  outline-offset: -3px;
-}
 .student-billing-state {
   padding: 16px 12px;
   color: var(--ds-ink-secondary);
@@ -6431,26 +6430,6 @@ onUnmounted(() => {
    schedule-drift-badge/contract-exception-badge/usage-balance-warning trio
    that stacked inline after the schedule text. */
 
-.tag-usage-review {
-  color: var(--ds-danger);
-  background: var(--ds-danger-wash);
-  border: 1px solid var(--ds-danger);
-  font-weight: 800;
-}
-.tag-usage-review--action {
-  cursor: pointer;
-  font: inherit;
-  text-align: left;
-}
-.tag-usage-review--action:hover,
-.tag-usage-review--action:focus-visible {
-  background: color-mix(in srgb, var(--ds-danger-wash) 82%, var(--ds-danger));
-}
-.tag-usage-review__action {
-  margin-left: 4px;
-  text-decoration: underline;
-  text-underline-offset: 2px;
-}
 
 .col-actions,
 .cell-actions {
@@ -6479,19 +6458,6 @@ onUnmounted(() => {
   align-items: flex-end;
 }
 
-.action-menu-trigger {
-  font-size: 13px !important;
-  font-weight: 900 !important;
-  letter-spacing: 0;
-  padding: 6px 12px !important;
-  border-radius: 999px;
-  border: 1px solid rgba(15, 23, 42, 0.12) !important;
-  background: linear-gradient(135deg, #0f172a, #1e293b);
-  color: #e0f2fe !important;
-  cursor: pointer;
-  line-height: 1.2;
-  box-shadow: 0 10px 22px rgba(15,23,42,0.18);
-}
 
 .action-dropdown {
   position: static;
@@ -6999,15 +6965,6 @@ button.danger:disabled {
 }
 .small.danger:hover { background: var(--ds-danger-wash); color: var(--ds-danger); }
 
-.status-tag {
-  border: 1px solid transparent;
-  box-shadow: inset 0 1px 0 rgba(255,255,255,0.75);
-}
-.status-tag.one_on_one { background: linear-gradient(135deg, #FFF3E0, #FFEDD5); color: #C2410C; border-color: #FDBA74; }
-.status-tag.one_on_two { background: linear-gradient(135deg, #FFF8E1, #FEF3C7); color: #B45309; border-color: #FCD34D; }
-.status-tag.one_on_three { background: linear-gradient(135deg, #FBE9E7, #FFE4E6); color: #BE123C; border-color: #FDA4AF; }
-.status-tag.tutoring { background: linear-gradient(135deg, #E8F5E9, #DCFCE7); color: #15803D; border-color: #86EFAC; }
-.status-tag.trial { background: linear-gradient(135deg, #E8EAF6, #E0E7FF); color: #4338CA; border-color: #A5B4FC; }
 
 .legacy-box {
   background: var(--ds-primary-wash);
@@ -7576,13 +7533,6 @@ button.danger:disabled {
   background: var(--ds-primary);
 }
 
-.tag-package {
-  background: #ede9fe;
-  color: #6d28d9;
-  border: 1px solid #c4b5fd;
-  font-size: 0.65rem;
-  cursor: help;
-}
 .tag-package-hint {
   font-size: 0.7em;
   color: #6d28d9;
@@ -7622,142 +7572,6 @@ button.danger:disabled {
   color: var(--ds-ink-faint);
 }
 
-/* ── Student group header: history count ── */
-
-/* ── History section ── */
-.history-section {
-  border-top: 1px solid rgba(226, 232, 240, 0.75);
-  background:
-    radial-gradient(circle at top right, rgba(14,165,233,0.1), transparent 34%),
-    #fafbfc;
-}
-.history-section__toggle {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  width: 100%;
-  padding: 10px 14px;
-  border: none;
-  background: transparent;
-  font-family: inherit;
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--ds-ink-mute);
-  cursor: pointer;
-  transition: background 0.15s;
-}
-.history-section__toggle:hover {
-  background: rgba(241, 245, 249, 0.88);
-}
-.history-section__icon {
-  font-size: 18px;
-  color: var(--ds-ink-faint);
-}
-.history-section__count {
-  font-weight: 400;
-  font-size: 12px;
-  color: var(--ds-ink-faint);
-}
-.history-section__chevron {
-  margin-left: auto;
-  font-size: 11px;
-  color: var(--ds-ink-faint);
-}
-.history-section__body {
-  padding: 4px 14px 14px;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-/* ── History course card ── */
-.history-course-card {
-  background:
-    linear-gradient(135deg, rgba(15,23,42,0.035), transparent 34%),
-    linear-gradient(180deg, rgba(255,255,255,0.98), rgba(248,250,252,0.94));
-  border: 1px solid rgba(226, 232, 240, 0.9);
-  border-radius: 16px;
-  padding: 12px 14px;
-  transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
-  position: relative;
-}
-.history-course-card:hover {
-  border-color: rgba(148, 163, 184, 0.55);
-  box-shadow: var(--ds-shadow-2);
-  transform: translateY(-1px);
-}
-.history-course-card__header {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px;
-  margin-bottom: 8px;
-}
-.history-course-card__subject {
-  background: var(--ds-surface-2) !important;
-  color: var(--ds-ink-mute) !important;
-  border: 1px solid var(--ds-hairline) !important;
-}
-.tag-history {
-  border-radius: 999px;
-  font-size: 11px;
-  padding: 3px 9px;
-  font-weight: 900;
-  letter-spacing: 0.02em;
-}
-.tag-history--settled {
-  background: var(--ds-success-wash);
-  color: var(--ds-success);
-  border: 1px solid var(--ds-success-line);
-}
-.tag-history--pending {
-  background: var(--ds-warning-wash);
-  color: var(--ds-warning);
-  border: 1px solid var(--ds-warning);
-}
-.tag-history--completed {
-  background: #eff6ff;
-  color: #1d4ed8;
-  border: 1px solid #93c5fd;
-}
-.history-course-card__details {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px 16px;
-  font-size: 13px;
-  color: var(--ds-ink-mute);
-}
-.history-course-card__detail-label {
-  font-weight: 600;
-  color: var(--ds-ink-faint);
-  margin-right: 4px;
-  font-size: 12px;
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
-}
-.history-course-card__actions {
-  display: flex;
-  gap: 8px;
-  margin-top: 10px;
-  align-items: center;
-}
-.history-course-card__dates {
-  margin-top: 10px;
-  border-top: 1px solid var(--ds-hairline);
-  padding-top: 10px;
-}
-@media (max-width: 640px) {
-  .history-section__body {
-    padding: 4px 8px 12px;
-  }
-  .history-course-card {
-    padding: 10px 12px;
-  }
-  .history-course-card__details {
-    flex-direction: column;
-    gap: 2px;
-  }
-}
 .tag-paid {
   background: var(--ds-success-wash);
   color: var(--ds-success);
@@ -7970,13 +7784,6 @@ button.danger:disabled {
   color: var(--ds-on-brand) !important;
 }
 
-/* ── Dark mode: history section ── */
-[data-theme="dark"] .history-section {
-  border-top-color: var(--ds-hairline);
-  background:
-    radial-gradient(circle at top right, rgba(255,167,38,0.10), transparent 34%),
-    #0f172a;
-}
 [data-theme="dark"] .course-page::before {
   background:
     radial-gradient(circle at 14% 18%, rgba(125, 211, 252, 0.16), transparent 28%),
@@ -8032,49 +7839,6 @@ button.danger:disabled {
 [data-theme="dark"] .course-skeleton-row {
   background: linear-gradient(90deg, #334155 25%, #475569 37%, #334155 63%);
   background-size: 400% 100%;
-}
-[data-theme="dark"] .history-section__toggle {
-  color: var(--ds-ink-mute);
-}
-[data-theme="dark"] .history-section__toggle:hover {
-  background: var(--ds-canvas);
-}
-[data-theme="dark"] .history-course-card {
-  background: var(--ds-canvas);
-  border-color: var(--ds-hairline);
-  border-left-color: var(--ds-hairline-input);
-}
-[data-theme="dark"] .history-course-card:hover {
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
-}
-[data-theme="dark"] .history-course-card__subject {
-  background: #334155 !important;
-  color: var(--ds-ink) !important;
-  border-color: var(--ds-hairline-input) !important;
-}
-[data-theme="dark"] .tag-history--settled {
-  background: var(--ds-success-wash);
-  color: #4ade80;
-  border-color: var(--ds-success-line);
-}
-[data-theme="dark"] .tag-history--pending {
-  background: var(--ds-warning-wash);
-  color: var(--ds-warning);
-  border-color: var(--ds-warning);
-}
-[data-theme="dark"] .tag-history--completed {
-  background: #172554;
-  color: #60a5fa;
-  border-color: #1e40af;
-}
-[data-theme="dark"] .history-course-card__details {
-  color: var(--ds-ink-mute);
-}
-[data-theme="dark"] .history-course-card__detail-label {
-  color: var(--ds-ink-faint);
-}
-[data-theme="dark"] .history-course-card__dates {
-  border-top-color: var(--ds-hairline);
 }
 [data-theme="dark"] .empty-active-courses__icon {
   color: #475569;
@@ -8173,21 +7937,10 @@ button.danger {
 }
 .course-workbench .grouped-course-list .group-table-wrap:not(.student-billing-wrap) { max-height: none; overflow: visible; border-top: 0; }
 
-.course-workbench .history-course-card__actions > button,
-.course-workbench .history-course-card__actions .action-menu-trigger {
-  min-height: 2.75rem; max-width: 100%; padding: .5rem .875rem; border-radius: var(--ds-radius-pill);
-  font-size: inherit; white-space: normal; overflow-wrap: anywhere;
-}
 
 .course-workbench .dates-row { margin-top: .75rem; min-width: 0; }
 .course-workbench .dates-row .detail-panel { margin: 0; padding: 1rem; border-radius: inherit; font-size: inherit; }
 
-.course-workbench .history-section { margin: 0; border-top: 1px solid var(--ds-hairline); padding: .5rem 1rem; }
-.course-workbench .history-section__toggle { min-height: 2.75rem; font-size: inherit; border-radius: inherit; }
-.course-workbench .history-section__body { padding: .5rem 0; display: grid; gap: .75rem; }
-.course-workbench .history-course-card { min-width: 0; padding: 1rem; background: var(--ds-canvas-soft); border: 1px solid var(--ds-hairline); border-radius: inherit; color: var(--ds-ink); }
-.course-workbench .history-course-card__details { gap: .5rem 1rem; font-size: inherit; color: var(--ds-ink-secondary); }
-.course-workbench .history-course-card__actions { flex-wrap: wrap; gap: .5rem; }
 .course-workbench .focus-mode-banner { flex-wrap: wrap; }
 .focus-mode-filters { flex-basis: 100%; font-size: inherit; color: var(--ds-ink-secondary); }
 .course-workbench button:focus-visible,
@@ -8195,7 +7948,6 @@ button.danger {
 @media (max-width: 640px) {
   .course-workbench .course-filter-primary,
   .course-workbench .course-secondary-filters__fields { grid-template-columns: minmax(0, 1fr); gap: .75rem; }
-  .course-workbench .history-section { padding: .5rem .875rem; }
 }
 
 /* The help is a header sibling (not inside the intro column), so opened it can take the whole header width. */
@@ -8214,5 +7966,4 @@ button.danger {
 @media (max-width: 640px) {
 }
 
-.course-workbench .history-course-card__detail-label { color: var(--ds-ink-secondary); }
 </style>
