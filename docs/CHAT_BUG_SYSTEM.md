@@ -174,6 +174,8 @@ This metadata only preserves GitHub tracking ownership. It does not resolve the 
 | C3 | in-app `closed` 由回報者 `reporter-verify` 或逾時流程完成；若「仍存在」→ 回到 B1，重開或新開 GitHub issue |
 | C4 | `docs/CHANGELOG.md` 一行（有 deployable 修復時） |
 
+**進度回覆（機器操作）**：`inapp-report-progress-reply` 與分診、上線後回寫同屬 POP 機器操作，只用範本代碼貼固定白話回覆（已收到／已找到原因處理中／已更新請確認），不收自由文字、不改狀態；範本與規則見 [DELIVERY_LIFECYCLE 自動化對照表](sop/DELIVERY_LIFECYCLE.md#in-app-自動化對照表)。
+
 **上線留言範本（公開）**：#___ 已於 YYYY-MM-DD 上線（PR #___）。請您更新頁面後按「確認已修好」；若仍有問題請按「問題仍存在」並簡述，我們會再追。
 
 **API 強制（#3750）**：從 Bug 回報頁／`POST /api/v1/bugs/{id}/status` 標記 `resolved` 時，**最新一則公開留言**必須同時含「確認已修好」與「問題仍存在」，否則回 422 `missing_both_outcomes_reply`；選「已解決」時留言框會預填範本。字串來源：`BugReportService::RESOLVE_REPLY_REQUIRED_PHRASES`。

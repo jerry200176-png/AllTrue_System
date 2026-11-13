@@ -623,6 +623,29 @@ operations:
     tags: [repair, session, scheduling, td076]
     notes: R-2. Dry-run first (expected_digest empty) returns an ids-only digest-pinned manifest; execute needs that exact digest. Taught past occurrences whose evidence teachers disagree are quarantined, never pinned. Inverse removes exactly the created pins. Pi-local POP only.
 
+  inapp-report-progress-reply:
+    lifecycle: active
+    domain: support
+    business_owner: director-support
+    technical_owner: platform-support
+    approver_roles: [super_admin]
+    approval_policy: founder-standing-inapp-lifecycle
+    founder_approval_required: false
+    runbook: docs/pop/adr/ADR-POP-015-standing-policy-inapp-lifecycle.md
+    alert_group: LINE:ops-support
+    escalation_policy: support-escalation
+    capabilities: [plan, dry_run, verify, audit]
+    risk: medium
+    reversible: false
+    transaction_required: true
+    verification_required: true
+    approval_required: true
+    execution_authority: pop-pi-local
+    blast_radius: one_canned_public_reply_on_one_report
+    strategy_class: App\Operations\Strategies\InappReportProgressReplyStrategy
+    parameter_keys: [bug_report_id, campus_id, request_id, template]
+    notes: Founder decision 2026-11-13 (#4991). Posts one fixed-template public progress reply (received, in_progress, deployed_please_confirm) on one report; the template is chosen by key and no caller text is accepted. Changes no status or assignee. Refused when the report is missing, closed, outside the campus, flagged by the safety screen, already has that template, already has 3 progress replies, or deployed_please_confirm on a report that is not resolved or triaged. Replies are recognised by their exact text, so no schema change. Not reversible, like triage. Pi-local POP only.
+
   inapp-report-reporter-timeout:
     lifecycle: active
     domain: support
