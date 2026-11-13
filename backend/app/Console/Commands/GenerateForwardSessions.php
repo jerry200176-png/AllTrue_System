@@ -86,7 +86,19 @@ class GenerateForwardSessions extends Command
             ->where(function ($q) {
                 $q->whereNull('sc.scheduling_policy')->orWhere('sc.scheduling_policy', '!=', 'manual_occurrence');
             })
-            ->where('sc.RemainingSessions', '>', 0)
+            // A shared-package member's own counter is not what its pool has left (in-app #530): a recently taught member
+            // is a candidate whatever its counter says, and planCourse() reads the pool.
+            ->where(function ($w) {
+                $w->where('sc.RemainingSessions', '>', 0)
+                    ->orWhere(function ($member) {
+                        $member->where('sc.PackageID', '>', 0)->whereExists(function ($e) {
+                            $e->select(DB::raw(1))->from('ClassSession as recent')
+                                ->whereColumn('recent.StudentClassID', 'sc.ID')
+                                ->whereRaw('recent.SessionDate >= ?', [Carbon::today()->subWeeks(3)->toDateString()])
+                                ->whereRaw("LOWER(recent.Status) NOT IN ('cancelled','voided')");
+                        });
+                    });
+            })
             ->whereNotExists(function ($e) {
                 $e->select(DB::raw(1))->from('ClassSession as cs')
                     ->whereColumn('cs.StudentClassID', 'sc.ID')

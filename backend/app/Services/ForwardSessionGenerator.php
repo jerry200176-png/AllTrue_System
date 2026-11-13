@@ -23,7 +23,8 @@ use Illuminate\Support\Facades\Log;
  *     business decision (resume/refund), never auto-generated (see #1152).
  *   - Cadence must be CONFIRMED (>=2 of the last sessions share weekday+time) or the
  *     course is SKIPPED and flagged — never guess a slot.
- *   - Generation is capped at min(RemainingSessions, horizonWeeks).
+ *   - Generation is capped at min(remaining, horizonWeeks); remaining is the course's RemainingSessions, or for a
+ *     shared count pool member the pool's unplanned remainder (ContractSessionSchedule::sharedPoolUnplanned).
  *   - Idempotent: upsertSlot no-ops on an existing slot; the #957 unique index is the
  *     backstop. Planning is 100% read-only.
  */
@@ -44,13 +45,23 @@ class ForwardSessionGenerator
         if (!$sc) {
             return ['student_class_id' => $studentClassId, 'status' => 'skip', 'reason' => 'course not found', 'slots' => []];
         }
-        $remaining = (int) ($sc->RemainingSessions ?? 0);
         if ((int) ($sc->Stop ?? 0) === 1
             || strtolower((string) $sc->ScheduleMode) !== 'count'
             || strtolower((string) ($sc->scheduling_policy ?? 'auto_recurrence')) === 'manual_occurrence'
-            || $remaining <= 0
         ) {
             return ['student_class_id' => $studentClassId, 'status' => 'skip', 'reason' => 'not an active count-mode course with remaining sessions', 'slots' => []];
+        }
+        $course = StudentClass::query()->find($studentClassId);
+        $course = $course instanceof StudentClass ? $course : null;
+        // A shared count pool member draws on the pool, so what is left is the pool's unplanned remainder (the rule every
+        // other auto-fill uses), not the member's own counter: that one reads 0 for a member that taught lessons before
+        // it joined, and more than the pool has for its sibling (in-app #530).
+        $poolUnplanned = $course ? ContractSessionSchedule::sharedPoolUnplanned($course) : null;
+        $remaining = $poolUnplanned ?? (int) ($sc->RemainingSessions ?? 0);
+        if ($remaining <= 0) {
+            return ['student_class_id' => $studentClassId, 'status' => 'skip', 'reason' => $poolUnplanned === null
+                ? 'not an active count-mode course with remaining sessions'
+                : 'shared pool has no unplanned lessons left (renew, or release lessons a sibling course planned)', 'slots' => []];
         }
 
         // Already has an upcoming session → not stranded.
@@ -109,8 +120,6 @@ class ForwardSessionGenerator
         $dow = (int) $dow;
 
         // Generate forward weekly dates from the day after the anchor (last session or today, whichever later).
-        $course = StudentClass::query()->find($studentClassId);
-        $course = $course instanceof StudentClass ? $course : null;
         // in-app #450: the course's CURRENT slot wins over the history tally, so a time edit made in 課程設定
         // is not undone by rows generated at the old time (history still holds more old-time rows).
         $isoDow = $dow === 0 ? 7 : $dow;

@@ -1,0 +1,15 @@
+updates:
+  - id: staff-2026-11-13-shared-pool-member-forward-generation
+    published_at: "2026-11-13"
+    audiences:
+      - director
+    importance: digest
+    title: 共用方案的課會依方案剩餘堂數自動排課
+    summary: 共用方案裡的每門課，自動排課改看方案還剩多少堂，不再因單一門課的數字歸零而停排。
+    items:
+      - category: fixed
+        text: 同一位學生多門課共用一個堂數方案時，方案還有沒排出去的堂數，每門課都會照固定時段繼續自動排課。
+      - category: improved
+        text: 方案的堂數已經排滿時，系統不會再替其中一門課多排；要繼續排課請續課，或先取消另一門課較後面的預排。
+    source_refs:
+      - "changelog:2026-11-13:shared-pool-member-forward-generation"

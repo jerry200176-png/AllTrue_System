@@ -816,7 +816,7 @@ class ContractSessionSchedule
     }
 
     /** Shared count package member: how many more lessons its pool may auto-plan. Null for anything else. */
-    private static function sharedPoolUnplanned(StudentClass $studentClass): ?int
+    public static function sharedPoolUnplanned(StudentClass $studentClass): ?int
     {
         $packageId = (int) ($studentClass->PackageID ?? 0);
         $package = $packageId > 0 ? CoursePackage::find($packageId) : null;
