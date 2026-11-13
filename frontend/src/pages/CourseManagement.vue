@@ -261,8 +261,8 @@
             <template v-for="segment in chronologicalCourseSegments(group)" :key="segment.key">
             <template v-if="segment.kind === 'working'">
             <div class="course-contract-list" role="list" aria-label="課程合約">
-              <div class="contract-list-head tw:text-tpl-caption" aria-hidden="true">
-                <span>科目・老師</span><span>下一堂</span><span>堂數</span><span>繳費</span><span>操作</span>
+              <div :class="['contract-list-head', contractGrid.head]" aria-hidden="true">
+                <span>科目・老師</span><span>下一堂</span><span>堂數</span><span>繳費</span><span class="tw:sr-only">操作</span>
               </div>
               <div class="contract-list-items" role="presentation">
                 <template v-if="activeCourses(group).length === 0">
@@ -277,99 +277,103 @@
                   </div>
                 </template>
                 <template v-for="c in segment.courses" :key="c.id">
-                  <article class="contract-item" role="listitem">
+                  <article class="contract-item tw:min-w-0 tw:border-0 tw:border-t tw:border-solid tw:border-border tw:px-4 tw:py-4 tw:md:px-5" role="listitem">
                   <!-- Full-width status strip for paused courses (enterprise-style notice row) -->
-                  <div v-if="c.status === 'inactive' && !effectiveClosedReason(c)" class="paused-notice-row" role="status">
-                    <div class="paused-notice-td tw:rounded-2xl">
-                      <div class="paused-notice">
-                        <span class="paused-notice__dot" aria-hidden="true"></span>
-                        <span class="paused-notice__label">課程暫停中</span>
+                  <div v-if="c.status === 'inactive' && !effectiveClosedReason(c)" class="paused-notice-row tw:mb-3" role="status">
+                    <div class="paused-notice-td">
+                      <div class="paused-notice tw:flex tw:flex-wrap tw:items-center tw:gap-x-2 tw:gap-y-1 tw:rounded-2xl tw:bg-[var(--ds-warning-wash)] tw:px-4 tw:py-2 tw:text-tpl-caption tw:text-[var(--ds-warning-text)]">
+                        <span class="paused-notice__dot tw:size-1.5 tw:shrink-0 tw:rounded-full tw:bg-current" aria-hidden="true"></span>
+                        <span class="paused-notice__label tw:font-semibold tw:whitespace-nowrap">課程暫停中</span>
                         <span class="paused-notice__sep" aria-hidden="true">·</span>
-                        <span class="paused-notice__desc">未恢復前不排新課、不計入待辦</span>
-                        <button v-if="c.closed_reason !== 'waived'" class="paused-notice__btn" type="button" @click.stop="requestCoursePause(c)">▶ 恢復課程</button>
+                        <span class="paused-notice__desc tw:min-w-[12rem] tw:flex-1 tw:text-pretty">未恢復前不排新課、不計入待辦</span>
+                        <button v-if="c.closed_reason !== 'waived'" :class="[rowAction.secondary, 'paused-notice__btn']" type="button" @click.stop="requestCoursePause(c)">▶ 恢復課程</button>
                       </div>
                     </div>
                   </div>
-                  <div :class="['course-row', courseRowClass(c)]" :data-contract-id="c.id">
-                    <div class="td-subject" data-col="subject">
-                      <span class="contract-field-label tw:text-tpl-caption">科目・老師</span>
-                      <div v-if="isClosedReason(effectiveClosedReason(c))" class="settled-course-callout" role="status">
+                  <div :class="['course-row', courseRowClass(c), contractGrid.row]" :data-contract-id="c.id">
+                    <div :class="['td-subject', contractGrid.subject]" data-col="subject">
+                      <span class="contract-field-label tw:sr-only">科目・老師</span>
+                      <div v-if="isClosedReason(effectiveClosedReason(c))" class="settled-course-callout tw:mb-2 tw:flex tw:flex-wrap tw:items-baseline tw:gap-x-2 tw:gap-y-0.5 tw:rounded-2xl tw:bg-[var(--ds-success-wash)] tw:px-3 tw:py-2 tw:text-tpl-caption tw:text-[var(--ds-success-text)]" role="status">
                         <span class="settled-course-callout__icon" aria-hidden="true">✅</span>
-                        <span class="settled-course-callout__main">{{ effectiveClosedReason(c) === 'contract_amended' ? '合約已提前結束' : '已結案' }}</span>
-                        <span class="settled-course-callout__sub">{{ effectiveClosedReason(c) === 'converted_trial' ? '已轉正式，試聽紀錄保留' : (closedPaymentState(c) === 'unknown' ? PAYMENT_STATUS_LOADING_LABEL : closedPaymentState(c) === 'pending' ? `尚未完成繳費，請到帳務中心「${TUITION_STATUS_CONFIG.pending_reconciliation.label}」確認` : closedPaymentState(c) === 'review' ? (reviewReasonText(c) ? `需核對：${reviewReasonText(c)}` : '帳單月份或金額需核對，請到帳務中心確認') : (effectiveClosedReason(c) === 'waived' ? `欠款：${WAIVED_LABEL}` : effectiveClosedReason(c) === 'settled' ? '手動結案，無需續報' : (effectiveClosedReason(c) === 'contract_amended' ? '堂數已調整結束' : '堂數已用完'))) }}</span>
+                        <span class="settled-course-callout__main tw:font-semibold">{{ effectiveClosedReason(c) === 'contract_amended' ? '合約已提前結束' : '已結案' }}</span>
+                        <span class="settled-course-callout__sub tw:min-w-0 tw:text-pretty">{{ effectiveClosedReason(c) === 'converted_trial' ? '已轉正式，試聽紀錄保留' : (closedPaymentState(c) === 'unknown' ? PAYMENT_STATUS_LOADING_LABEL : closedPaymentState(c) === 'pending' ? `尚未完成繳費，請到帳務中心「${TUITION_STATUS_CONFIG.pending_reconciliation.label}」確認` : closedPaymentState(c) === 'review' ? (reviewReasonText(c) ? `需核對：${reviewReasonText(c)}` : '帳單月份或金額需核對，請到帳務中心確認') : (effectiveClosedReason(c) === 'waived' ? `欠款：${WAIVED_LABEL}` : effectiveClosedReason(c) === 'settled' ? '手動結案，無需續報' : (effectiveClosedReason(c) === 'contract_amended' ? '堂數已調整結束' : '堂數已用完'))) }}</span>
                       </div>
-                      <div class="subject-line">
-                        <span class="tag subject-tag" :class="{ 'subject-tag--paused': c.status === 'inactive' }">{{ getSubjectLabel(c.subject) }}</span><span class="subject-teacher">{{ c.teacher_name || '待指派' }}</span>
-                        <span v-if="classificationUnknown(c)" class="tag tag-pending-report tag-unknown-classification" :title="UNKNOWN_CLASSIFICATION_HINT">分類資料不足</span>
-                        <span v-if="isPackageMember(c)" class="tag tag-package" :title="c.PackageName || '多科方案'">方案</span>
-                        <span v-else-if="isClosedReason(effectiveClosedReason(c))" class="tag tag-settled">{{ effectiveClosedReason(c) === 'waived' ? WAIVED_LABEL : closedPaymentState(c) === 'unknown' ? PAYMENT_STATUS_LOADING_LABEL : closedPaymentState(c) === 'pending' ? ENDED_PENDING_LABEL : closedPaymentState(c) === 'review' ? ENDED_REVIEW_LABEL : '已結案' }}</span>
+                      <div class="subject-line tw:flex tw:flex-wrap tw:items-center tw:gap-x-2 tw:gap-y-1.5">
+                        <span :class="['subject-name', factRow.value, 'tw:text-tpl-body', { 'tw:text-tpl-secondary': c.status === 'inactive' }]">{{ getSubjectLabel(c.subject) }}</span><span class="subject-teacher tw:text-tpl-body tw:font-normal tw:whitespace-nowrap tw:text-tpl-secondary">{{ c.teacher_name || '待指派' }}</span>
+                        <StatusBadge v-if="classificationUnknown(c)" tone="warning" :title="UNKNOWN_CLASSIFICATION_HINT">分類資料不足</StatusBadge>
+                        <StatusBadge v-if="isPackageMember(c)" tone="neutral" :title="c.PackageName || '多科方案'">方案</StatusBadge>
+                        <StatusBadge v-else-if="isClosedReason(effectiveClosedReason(c))" tone="success">{{ effectiveClosedReason(c) === 'waived' ? WAIVED_LABEL : closedPaymentState(c) === 'unknown' ? PAYMENT_STATUS_LOADING_LABEL : closedPaymentState(c) === 'pending' ? ENDED_PENDING_LABEL : closedPaymentState(c) === 'review' ? ENDED_REVIEW_LABEL : '已結案' }}</StatusBadge>
                         <button
                           v-if="c.usage_balance_status === 'review_required'"
                           type="button"
-                          class="tag tag-usage-review tag-usage-review--action"
+                          :class="[rowAction.secondaryWrap, 'tag-usage-review tag-usage-review--action tw:text-[var(--ds-danger-text)]']"
                           :title="`${usageBalanceWarningTitle(c)} 點擊查看對帳明細。`"
                           aria-label="堂數待對帳"
                           @click.stop="openLedgerForCourse(c)"
-                        >⚠ 堂數待對帳 <span class="tag-usage-review__action">查看對帳明細</span></button>
+                        >⚠ 堂數待對帳 <span class="tag-usage-review__action tw:ml-1 tw:underline tw:underline-offset-2">查看對帳明細</span></button>
                       </div>
-                      <small class="class-type-line tw:text-tpl-caption"><span class="status-tag" :class="c.class_type">{{ classTypeLabel(c.class_type) }}</span></small>
-                      <small class="class-type-line tw:text-tpl-caption">開課 {{ contractStartDate(c) || '未填' }}</small>
+                      <div class="tw:mt-1 tw:flex tw:flex-wrap tw:gap-x-3 tw:text-tpl-caption tw:text-tpl-secondary">
+                        <small class="class-type-line tw:inline-block tw:whitespace-nowrap">{{ classTypeLabel(c.class_type) }}</small>
+                        <small class="class-type-line tw:inline-block tw:whitespace-nowrap">開課 {{ contractStartDate(c) || '未填' }}</small>
+                      </div>
                       <!-- Warnings stay in the always-visible first cell so the phone layout never hides them. -->
-                      <div class="row-warnings" data-testid="row-warnings">
+                      <div class="row-warnings tw:mt-2 tw:flex tw:flex-wrap tw:items-center tw:gap-x-2 tw:gap-y-1.5 tw:empty:hidden" data-testid="row-warnings">
                       <!-- #2007 phase 2: up to 3 warning badges used to stack inline after the
                            time string, competing with it for attention. Collapse to one summary
                            chip on its own line; the full list is still in its tooltip. -->
                       <template v-for="w in rowWarningSummary(group, c)" :key="w.label">
-                        <div class="course-row-badges">
-                          <span class="row-badge" :class="'row-badge--' + w.tone" :title="w.title">{{ w.label }}</span>
+                        <div v-if="!duplicatesUsageReviewButton(c, w)" class="course-row-badges">
+                          <StatusBadge :tone="w.tone === 'info' ? 'neutral' : w.tone" :class="['row-badge', 'row-badge--' + w.tone, 'tw:whitespace-normal tw:text-left']" :title="w.title">{{ w.label }}</StatusBadge>
                         </div>
                       </template>
-                      <span v-if="isTutoringBillingAnomaly(c)" class="payment-anomaly-hint" role="alert">帳務資料需修正，請由主任檢查帳務中心。</span>
-                      <div v-if="c.payment_status === 'paid' && c.latest_payment_report_id" class="field-hint">
+                      <span v-if="isTutoringBillingAnomaly(c)" :class="['payment-anomaly-hint', 'tw:text-tpl-caption tw:font-semibold', toneText.danger]" role="alert">帳務資料需修正，請由主任檢查帳務中心。</span>
+                      <div v-if="c.payment_status === 'paid' && c.latest_payment_report_id" class="field-hint tw:flex tw:flex-wrap tw:items-center tw:gap-x-2 tw:gap-y-1 tw:text-tpl-caption tw:text-tpl-secondary">
                         已繳清；另有回報待核對。
-                        <button type="button" class="small ghost" @click="openLedgerForCourse(c)">查看待核對回報</button>
+                        <button type="button" :class="rowAction.secondary" @click="openLedgerForCourse(c)">查看待核對回報</button>
                       </div>
                       </div>
                     </div>
-                    <div class="cell-schedule" data-col="next">
-                      <span class="contract-field-label tw:text-tpl-caption">下一堂</span>
-                      <div class="upcoming-session-preview" aria-label="下一堂">
-                        <span v-if="coursesLoading" class="hint">載入中…</span>
+                    <div :class="['cell-schedule', contractGrid.fact]" data-col="next">
+                      <span class="contract-field-label tw:mb-1 tw:block tw:text-tpl-caption tw:font-medium tw:text-tpl-secondary tw:lg:sr-only">下一堂</span>
+                      <div class="upcoming-session-preview tw:flex tw:flex-wrap tw:items-baseline tw:gap-x-2 tw:gap-y-1 tw:text-tpl-body tw:tabular-nums" aria-label="下一堂">
+                        <span v-if="coursesLoading" class="tw:text-tpl-caption tw:text-tpl-secondary">載入中…</span>
                         <template v-else-if="sessionDataLoadFailed">
-                          <span class="session-load-error-hint">暫時無法載入。</span>
-                          <button type="button" class="small ghost upcoming-session-preview__retry" :aria-label="`重新載入${getSubjectLabel(c.subject)}上課日期`" @click.stop="retryLoadCourseSessions(c)">重新載入</button>
+                          <span class="session-load-error-hint tw:text-tpl-caption tw:text-[var(--ds-danger-text)]">暫時無法載入。</span>
+                          <button type="button" :class="[rowAction.secondary, 'upcoming-session-preview__retry']" :aria-label="`重新載入${getSubjectLabel(c.subject)}上課日期`" @click.stop="retryLoadCourseSessions(c)">重新載入</button>
                         </template>
                         <template v-else>
-                          <span v-for="unit in upcomingSessionPreview(c, { todayYmd, limit: 1 }).visible" :key="sessionRowKey(unit)" class="upcoming-session-preview__item">
-                            {{ formatSessionChipDate(unit) }}<span v-if="unit.isProjected" class="upcoming-session-preview__projected"> 預排</span>
+                          <span v-for="unit in upcomingSessionPreview(c, { todayYmd, limit: 1 }).visible" :key="sessionRowKey(unit)" class="upcoming-session-preview__item tw:font-semibold">
+                            {{ formatSessionChipDate(unit) }}<span v-if="unit.isProjected" class="upcoming-session-preview__projected tw:text-tpl-caption tw:font-normal tw:text-tpl-secondary"> 預排</span>
                           </span>
-                          <span v-if="upcomingSessionPreview(c, { todayYmd, limit: 1 }).total === 0" class="hint">{{ formatDayTimeSlotLines(c).length ? '暫無下一堂' : '未排定' }}</span>
+                          <span v-if="upcomingSessionPreview(c, { todayYmd, limit: 1 }).total === 0" class="tw:text-tpl-secondary">{{ formatDayTimeSlotLines(c).length ? '暫無下一堂' : '未排定' }}</span>
                         </template>
                       </div>
                     </div>
-                    <div data-col="remaining" :class="{ 'cell-remaining': true, 'low': isSessionMode(c) && isLowRemaining(Number(displayRemainingSessions(c) ?? 0)) }">
-                      <span class="contract-field-label tw:text-tpl-caption">堂數</span>
-                      {{ courseLessonCountLabel({ isSession: isSessionMode(c), remaining: displayRemainingSessions(c), completed: getCompletedSessionCount(c) }) }}<span v-if="isSessionMode(c) && isPackageMember(c)" class="tag-package-hint">（方案共用）</span>
-                      <small v-if="isSessionMode(c)" class="contract-count-source tw:text-tpl-caption"><template v-if="isPackageMember(c)">方案共用 {{ getPackageTotalSessions(c) }} 堂</template><template v-else>購買 {{ getPurchasedSessions(c) }} 堂</template></small>
+                    <div data-col="remaining" :class="['cell-remaining', contractGrid.fact, { 'low': isSessionMode(c) && isLowRemaining(Number(displayRemainingSessions(c) ?? 0)) }]">
+                      <span class="contract-field-label tw:mb-1 tw:block tw:text-tpl-caption tw:font-medium tw:text-tpl-secondary tw:lg:sr-only">堂數</span>
+                      <span :class="['remaining-value tw:text-tpl-body tw:font-semibold tw:tabular-nums', remainingValueTone(c)]">{{ courseLessonCountLabel({ isSession: isSessionMode(c), remaining: displayRemainingSessions(c), completed: getCompletedSessionCount(c) }) }}</span><span v-if="isSessionMode(c) && isPackageMember(c)" class="tag-package-hint tw:ml-1 tw:text-tpl-caption tw:font-normal tw:whitespace-nowrap tw:text-tpl-secondary">（方案共用）</span>
+                      <small v-if="isSessionMode(c)" :class="['contract-count-source', factRow.sub, 'tw:tabular-nums']"><template v-if="isPackageMember(c)">方案共用 {{ getPackageTotalSessions(c) }} 堂</template><template v-else>購買 {{ getPurchasedSessions(c) }} 堂</template></small>
                     </div>
-                    <div data-col="payment">
-                      <span class="contract-field-label tw:text-tpl-caption">繳費</span>
+                    <div data-col="payment" :class="contractGrid.factWide">
+                      <span class="contract-field-label tw:mb-1 tw:block tw:text-tpl-caption tw:font-medium tw:text-tpl-secondary tw:lg:sr-only">繳費</span>
                       <div class="payment-status-and-action" :data-course-id="c.id">
-                        <span
-                          :class="['small', 'payment-status-badge', paymentStatusButtonClass(c), { 'payment-status-badge--short': paymentStatusChipText(c) !== paymentStatusButtonLabel(c) }]"
+                        <StatusBadge
+                          :tone="paymentStatusTone(c)"
+                          :class="['payment-status-badge', { 'payment-status-badge--short': paymentStatusChipText(c) !== paymentStatusButtonLabel(c) }, 'tw:max-w-full tw:cursor-default', paymentStatusChipText(c).length <= 8 ? 'tw:whitespace-nowrap' : 'tw:whitespace-normal tw:text-left']"
                           role="status"
                           :title="paymentStatusHelpTitle(c)"
                           :aria-label="paymentStatusButtonLabel(c)"
-                        >{{ paymentStatusChipText(c) }}</span>
+                        >{{ paymentStatusChipText(c) }}</StatusBadge>
                       </div>
                     </div>
+                    <div :class="contractGrid.actions">
                     <div class="cell-actions">
                       <!-- Same primary + ⋯ with the course manager on (production): the payment entry stays on the row (in-app #396). -->
                       <template v-for="m in [simpleRowModel(c)]" :key="c.id">
-                      <div class="action-btns-row action-btns-row--model" data-testid="course-row-actions">
+                      <div class="action-btns-row action-btns-row--model tw:flex tw:flex-wrap tw:items-center tw:gap-2" data-testid="course-row-actions">
                         <button
                           type="button"
-                          class="small primary course-primary-action"
+                          :class="[rowAction.primary, 'course-primary-action tw:max-md:flex-1']"
                           data-testid="course-row-primary"
                           :data-action="m.primary.id"
                           @click="runRowAction(c, m.primary.id)"
@@ -377,18 +381,19 @@
                         <button
                           v-if="courseManagerEnabled"
                           type="button"
-                          class="small course-manager-open"
+                          :class="[rowAction.secondary, 'course-manager-open']"
                           data-testid="course-manager-open"
                           @click="openCourseManager(c)"
                         >管理課程</button>
                         <ActionMenu
                           :groups="m.groups"
                           :label="`${getSubjectLabel(c.subject)} 的更多課程操作`"
-                          trigger-class="action-menu-trigger"
+                          :trigger-class="`action-menu-trigger ${rowAction.menu}`"
                           @select="(id) => runRowAction(c, id)"
                         />
                       </div>
                       </template>
+                    </div>
                     </div>
                   </div>
                   <div v-if="!courseManagerEnabled && expandedDates.has(c.id)" :class="['dates-row', { 'dates-row-paused': c.status === 'inactive' }]">
@@ -1362,7 +1367,7 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import TextSizeToggle from '../components/TextSizeToggle.vue';
-import { PageHeader, StatStrip, StatItem, SectionCard, StatusBadge, CollapsibleGroup, control, pageShell, pageTabs, surface } from '@/components/ui/page';
+import { PageHeader, StatStrip, StatItem, SectionCard, StatusBadge, CollapsibleGroup, contractGrid, control, factRow, pageShell, pageTabs, rowAction, surface, toneText } from '@/components/ui/page';
 // Phone: the two page buttons share a row and may wrap their words instead of pushing the page sideways (320px at 大).
 const phoneAction = 'tw:max-md:min-w-0 tw:max-md:flex-[1_1_9rem] tw:max-md:h-auto tw:max-md:min-h-12 tw:max-md:whitespace-normal tw:max-md:py-2';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -4364,7 +4369,19 @@ const courseLensMetrics = computed(() => {
 // #4150: label/tone/next action come from the shared coursePaymentBadge; only the CSS class and button text are local.
 const BADGE_CLASS = { anomaly: 'tag-billing-anomaly', no_payment: 'tag-no-payment', settled: 'tag-paid', free: 'tag-paid', owing: 'tag-unpaid' };
 const paymentBadge = (course) => coursePaymentBadge(course, { monthlyPeriod: true });
-const paymentStatusButtonClass = (course) => BADGE_CLASS[paymentBadge(course).tone] || 'tag-pending-report';
+const paymentStatusButtonClass = (course) => (isPartialPayment(course) ? 'tag-pending-report' : (BADGE_CLASS[paymentBadge(course).tone] || 'tag-pending-report'));
+// Template tones (PAGE_TEMPLATE §6) for the contract rows: owed / anomaly = danger, paid = success, needs a look = warning, the rest neutral.
+const PAYMENT_TONE = { anomaly: 'danger', owing: 'danger', settled: 'success', free: 'success', no_payment: 'neutral', neutral: 'neutral' };
+const isPartialPayment = (course) => { const b = paymentBadge(course); return b.tone === 'owing' && (b.label === TUITION_STATUS_CONFIG.partial?.label || String(b.label).includes('部分')); };
+// 部分 is warning (PAGE_TEMPLATE §6), 未繳 is danger; both come from the existing badge, the partial case is read off its label.
+const paymentStatusTone = (course) => (isPartialPayment(course) ? 'warning' : (PAYMENT_TONE[paymentBadge(course).tone] || 'warning'));
+// 堂數: low = danger, but a paused course's low count is muted, not red (it is not being used).
+const remainingValueTone = (course) => {
+  if (!(isSessionMode(course) && isLowRemaining(Number(displayRemainingSessions(course) ?? 0)))) return 'tw:text-foreground';
+  return courseRowClass(course)['course-paused'] ? 'tw:text-tpl-secondary' : toneText.danger;
+};
+// The 堂數待對帳 button already says it; the same words as a chip next to it are dropped.
+const duplicatesUsageReviewButton = (course, warning) => course.usage_balance_status === 'review_required' && String(warning.label).includes('堂數待對帳');
 const currentInvoiceForBillingRow = (row) => {
   const invoices = Array.isArray(row?.invoices) ? row.invoices.filter((invoice) => invoice?.status !== 'void') : [];
   return invoices.find((invoice) => ['unpaid', 'partial'].includes(invoice?.status)) || invoices[0] || null;
@@ -5755,9 +5772,6 @@ onUnmounted(() => {
   flex-wrap: wrap;
 }
 
-
-
-
 .course-lens-guidance {
   display: flex;
   align-items: flex-start;
@@ -5782,11 +5796,6 @@ onUnmounted(() => {
   margin-right: 6px;
   color: var(--ds-ink);
 }
-
-
-
-
-
 
 .command-kicker {
   margin: 0 0 4px;
@@ -6230,13 +6239,6 @@ onUnmounted(() => {
 .pagination-btn:disabled { opacity: 0.4; cursor: default; }
 .pagination-current { font-weight: 600; color: var(--ds-ink); }
 
-
-
-
-
-
-
-
 .focus-mode-banner {
   display: flex;
   align-items: center;
@@ -6259,8 +6261,6 @@ onUnmounted(() => {
   cursor: pointer;
 }
 .focus-mode-banner button:hover { background: var(--ds-primary-wash); }
-
-
 
 .history-section__toggle:focus-visible {
   outline: 3px solid color-mix(in srgb, var(--ds-primary) 28%, transparent);
@@ -6286,7 +6286,6 @@ onUnmounted(() => {
   text-align: left;
 }
 .student-billing-note .material-symbols-outlined { flex: 0 0 auto; color: var(--ds-warning); font-size: 18px; }
-
 
 .group-table-wrap {
   border-top: 1px solid var(--border);
@@ -6334,35 +6333,7 @@ onUnmounted(() => {
   word-break: keep-all;
   line-height: 1.35;
 }
-.course-table .course-row td:first-child {
-  border-left: 1px solid var(--ds-hairline);
-  border-radius: 10px 0 0 10px;
-  box-shadow: inset 3px 0 0 var(--ds-primary);
-}
-.course-table .course-row td:last-child {
-  border-right: 1px solid rgba(226, 232, 240, 0.82);
-  border-radius: 0 10px 10px 0;
-}
 
-.course-row:hover {
-  background: transparent;
-}
-.course-row:hover td {
-  border-color: rgba(14, 165, 233, 0.28);
-  background: linear-gradient(90deg, rgba(240,249,255,0.98), rgba(255,255,255,0.96));
-  box-shadow: var(--ds-shadow-2);
-}
-
-.course-row.course-paused:hover td {
-  background: linear-gradient(180deg, rgba(255, 247, 237, 0.98) 0%, rgba(245, 245, 244, 0.92) 100%);
-}
-
-.td-subject {
-  min-width: 140px;
-}
-.subject-teacher { font-weight: 600; margin-right: 6px; }
-.class-type-line { display: block; margin-top: 2px; font-size: 12px; color: var(--ds-ink-secondary); }
-.row-warnings { display: grid; gap: 2px; margin-top: 4px; }
 .detail-summary { display: grid; gap: 4px; margin-bottom: 8px; }
 /* #4659 step 5 (picture 2): on a phone the row is 科目・老師 + 繳費 + the button + ⋯ (in-app 396 keeps 繳費 visible). */
 @media (max-width: 720px) {
@@ -6414,101 +6385,7 @@ onUnmounted(() => {
   font-weight: 800;
 }
 
-
-.settled-course-callout {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 5px;
-  padding: 5px 10px;
-  margin-bottom: 6px;
-  border-radius: 7px;
-  background: var(--ds-success-wash);
-  border: 1px solid var(--ds-success-line);
-  box-shadow: 0 1px 2px rgba(22, 101, 52, 0.08);
-}
-.settled-course-callout__icon { font-size: 13px; line-height: 1; }
-.settled-course-callout__main {
-  font-size: 13px;
-  font-weight: 800;
-  color: var(--ds-success);
-  letter-spacing: 0.03em;
-}
-.settled-course-callout__sub {
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--ds-success);
-}
-.tag-settled {
-  background: var(--ds-success-wash);
-  color: var(--ds-success);
-  border: 1px solid var(--ds-success-line);
-  display: inline-block;
-  padding: 2px 8px;
-  border-radius: 10px;
-  font-size: 11px;
-  font-weight: 600;
-}
-
 /* ── Enterprise-style paused notice row ─────────────────────────── */
-.paused-notice-row td {
-  padding: 0;
-  background: var(--ds-primary-wash);
-  border-top: 1px solid var(--ds-warning-line);
-  border-bottom: none;
-}
-.paused-notice-td {
-  padding: 0 !important;
-}
-.paused-notice {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 5px 14px 5px 12px;
-  font-size: 12px;
-}
-.paused-notice__dot {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: var(--ds-brand-amber);
-  flex-shrink: 0;
-}
-.paused-notice__label {
-  font-weight: 700;
-  color: var(--ds-warning);
-  white-space: nowrap;
-}
-.paused-notice__sep {
-  color: var(--ds-warning);
-  font-size: 10px;
-}
-.paused-notice__desc {
-  color: var(--ds-warning);
-  flex: 1;
-}
-.paused-notice__btn {
-  background: none;
-  border: 1px solid #93c5fd;
-  color: #1d4ed8;
-  border-radius: 6px;
-  padding: 3px 10px;
-  font-size: 11px;
-  font-weight: 600;
-  cursor: pointer;
-  white-space: nowrap;
-  transition: background 0.12s, border-color 0.12s;
-}
-.paused-notice__btn:hover {
-  background: #eff6ff;
-  border-color: #60a5fa;
-}
-
-.subject-tag--paused {
-  background: var(--ds-surface-2) !important;
-  color: var(--ds-ink-mute) !important;
-  border: 1px solid var(--ds-hairline) !important;
-}
 
 .dates-row-paused .dates-panel {
   margin-top: 2px;
@@ -6516,8 +6393,6 @@ onUnmounted(() => {
   background: var(--ds-primary-wash);
   border-radius: 8px;
 }
-
-
 
 .subject-tag {
   display: inline-block;
@@ -6541,13 +6416,6 @@ onUnmounted(() => {
   color: var(--ds-primary-text);
 }
 
-.cell-schedule {
-  font-size: 13px;
-  color: var(--text);
-  word-break: keep-all;
-  min-width: 100px;
-}
-
 .schedule-slot-lines {
   display: flex;
   flex-direction: column;
@@ -6558,54 +6426,11 @@ onUnmounted(() => {
 .schedule-slot-line {
   line-height: 1.35;
 }
-.upcoming-session-preview {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 3px 6px;
-  margin-top: 5px;
-  font-size: 11px;
-  line-height: 1.35;
-  font-variant-numeric: tabular-nums;
-}
-.upcoming-session-preview__item {
-  color: var(--ds-ink);
-}
-.upcoming-session-preview__projected {
-  color: var(--ds-ink-mute);
-}
-.upcoming-session-preview__retry {
-  padding: 1px 5px;
-  font-size: 11px;
-}
+
 /* #2007 phase 2: one badge line, one tone-coded chip — replaces the old
    schedule-drift-badge/contract-exception-badge/usage-balance-warning trio
    that stacked inline after the schedule text. */
-.course-row-badges {
-  margin-top: 3px;
-}
-.row-badge {
-  display: inline-block;
-  font-size: 11px;
-  font-weight: 600;
-  border-radius: 4px;
-  padding: 1px 6px;
-}
-.row-badge--warning {
-  color: var(--ds-warning);
-  background: var(--ds-warning-wash);
-  border: 1px solid var(--ds-warning-line);
-}
-.row-badge--info {
-  color: #1d4ed8;
-  background: #dbeafe;
-  border: 1px solid #93c5fd;
-}
-.row-badge--danger {
-  color: var(--ds-danger);
-  background: var(--ds-danger-wash);
-  border: 1px solid var(--ds-hairline);
-}
+
 .tag-usage-review {
   color: var(--ds-danger);
   background: var(--ds-danger-wash);
@@ -6625,18 +6450,6 @@ onUnmounted(() => {
   margin-left: 4px;
   text-decoration: underline;
   text-underline-offset: 2px;
-}
-
-.cell-remaining {
-  white-space: nowrap;
-  font-weight: 950;
-  font-size: 15px;
-  color: var(--ds-ink);
-}
-
-.cell-remaining.low {
-  color: var(--danger);
-  text-shadow: 0 0 18px rgba(220, 38, 38, 0.18);
 }
 
 .col-actions,
@@ -6785,7 +6598,7 @@ button.danger:disabled {
   border-top: 1px solid #e2e8f0;
 }
 
-.payment-status-badge {
+.payment-status-badge:not([data-slot="status-badge"]) {
   cursor: default !important;
   border-radius: 999px !important;
   font-weight: 900 !important;
@@ -6795,8 +6608,9 @@ button.danger:disabled {
   display: grid;
   justify-items: start;
   gap: 6px;
-  min-width: max-content;
+  min-width: 0;
 }
+.course-contract-list { min-width: 0; }
 .payment-anomaly-hint {
   display: inline-block;
   margin-left: 6px;
@@ -6999,7 +6813,6 @@ button.danger:disabled {
 .package-conversion-modal { max-width: 520px; }
 .package-conversion-summary { display: grid; gap: 4px; margin: 0 0 14px; padding: 12px; border-radius: 10px; background: var(--ds-info-wash); color: var(--ds-ink); font-size: 13px; }
 .package-conversion-summary span { color: var(--ds-ink-mute); }
-
 
 .editability-action-panel {
   display: grid;
@@ -7684,10 +7497,6 @@ button.danger:disabled {
   color: var(--ds-ink-secondary);
 }
 
-.course-paused .cell-remaining.low {
-  color: var(--ds-ink-mute);
-}
-
 .course-paused .action-btns-compact .small.ghost,
 .course-paused .action-btns-compact .small.danger {
   opacity: 0.72;
@@ -7960,9 +7769,9 @@ button.danger:disabled {
   padding: 3px 10px;
 }
 .tag-unpaid {
-  background: var(--ds-warning-wash);
-  color: var(--ds-warning);
-  border: 1px solid var(--ds-warning-line);
+  background: var(--ds-danger-wash);
+  color: var(--ds-danger-text);
+  border: 1px solid var(--ds-danger);
   border-radius: 6px;
   font-size: 12px;
   font-weight: 600;
@@ -8188,15 +7997,11 @@ button.danger:disabled {
   background: rgba(15, 23, 42, 0.86);
   border-color: var(--ds-hairline);
 }
-[data-theme="dark"] .course-row:hover td {
-  background: linear-gradient(90deg, rgba(14, 165, 233, 0.12), rgba(15, 23, 42, 0.92));
-  border-color: rgba(56, 189, 248, 0.24);
-}
+
 [data-theme="dark"] .detail-item {
   background: rgba(15, 23, 42, 0.72);
   border-color: var(--ds-hairline);
 }
-[data-theme="dark"] .cell-remaining,
 [data-theme="dark"] .price-line {
   color: var(--ds-ink);
 }
@@ -8367,45 +8172,16 @@ button.danger {
   padding: 0; border: 0; border-radius: 0; background: transparent; box-shadow: none;
 }
 .course-workbench .grouped-course-list .group-table-wrap:not(.student-billing-wrap) { max-height: none; overflow: visible; border-top: 0; }
-.course-contract-list { min-width: 0; }
-.contract-list-head { display: none; }
-.contract-item { padding: 1rem; border-top: 1px solid var(--ds-hairline); min-width: 0; }
-.course-workbench .course-row {
-  display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));
-  grid-template-areas: "subject subject" "next remaining" "payment payment" "actions actions";
-  align-items: start; gap: 1rem; width: auto; min-width: 0;
-}
-.course-workbench .course-row > [data-col],
-.course-workbench .course-row > .cell-actions { min-width: 0; border: 0; padding: 0; background: transparent; font-size: inherit; white-space: normal; overflow-wrap: anywhere; }
-.course-workbench .course-row > [data-col="subject"] { grid-area: subject; }
-.course-workbench .course-row > [data-col="next"] { grid-area: next; display: block; }
-.course-workbench .course-row > [data-col="remaining"] { grid-area: remaining; display: block; }
-.course-workbench .course-row > [data-col="payment"] { grid-area: payment; }
-.course-workbench .course-row > .cell-actions { grid-area: actions; }
-.contract-field-label { display: block; color: var(--ds-ink-secondary); font-size: inherit; margin-bottom: .375rem; font-weight: 500; }
-.course-workbench .course-row .td-subject > .contract-field-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
-.course-workbench .course-row .class-type-line { font-size: inherit; margin-top: .375rem; }
-.course-workbench .course-row .upcoming-session-preview { font-size: inherit; }
-.course-workbench .course-row .action-btns-row { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; }
-.course-workbench .course-row button,
+
 .course-workbench .history-course-card__actions > button,
 .course-workbench .history-course-card__actions .action-menu-trigger {
   min-height: 2.75rem; max-width: 100%; padding: .5rem .875rem; border-radius: var(--ds-radius-pill);
   font-size: inherit; white-space: normal; overflow-wrap: anywhere;
 }
-.course-workbench .course-row :deep(.am__trigger) { min-width: 2.75rem; min-height: 2.75rem; font-size: inherit; }
-.course-workbench .course-row .row-warnings { max-width: 100%; }
-.course-workbench .course-row .tag-usage-review,
-.course-workbench .course-row .warning-summary-btn { max-width: 100%; white-space: normal; text-align: left; }
-.course-workbench .course-row .payment-status-and-action { align-items: start; min-width: 0; }
-/* In-app #532: a long status still wraps inside the 繳費 column instead of running under the row's buttons; the review sentence itself is a short chip (#539). */
-.course-workbench .course-row .payment-status-badge { max-width: 100%; white-space: normal; text-align: left; }
-/* A short chip is one line by construction (#539); the column is wide enough for its few characters. */
-.course-workbench .course-row .payment-status-badge--short { white-space: nowrap; }
+
 .course-workbench .dates-row { margin-top: .75rem; min-width: 0; }
 .course-workbench .dates-row .detail-panel { margin: 0; padding: 1rem; border-radius: inherit; font-size: inherit; }
-.course-workbench .paused-notice-row { display: block; margin-bottom: .75rem; }
-.course-workbench .paused-notice-td { padding: .75rem; border-radius: inherit; }
+
 .course-workbench .history-section { margin: 0; border-top: 1px solid var(--ds-hairline); padding: .5rem 1rem; }
 .course-workbench .history-section__toggle { min-height: 2.75rem; font-size: inherit; border-radius: inherit; }
 .course-workbench .history-section__body { padding: .5rem 0; display: grid; gap: .75rem; }
@@ -8416,17 +8192,9 @@ button.danger {
 .focus-mode-filters { flex-basis: 100%; font-size: inherit; color: var(--ds-ink-secondary); }
 .course-workbench button:focus-visible,
 .course-workbench summary:focus-visible { outline: 3px solid var(--ds-primary); outline-offset: 3px; }
-@media (min-width: 1100px) {
-  .contract-list-head,
-  .course-workbench .course-row { grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr) minmax(0, .55fr) minmax(0, .6fr) minmax(0, 1.2fr); grid-template-areas: "subject next remaining payment actions"; }
-  .contract-list-head { display: grid; gap: 1rem; padding: .5rem 1rem; color: var(--ds-ink-secondary); font-size: inherit; }
-  .course-workbench .course-row .contract-field-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); margin: 0; }
-}
 @media (max-width: 640px) {
   .course-workbench .course-filter-primary,
   .course-workbench .course-secondary-filters__fields { grid-template-columns: minmax(0, 1fr); gap: .75rem; }
-  .contract-item { padding: .875rem; }
-  .course-workbench .course-row { gap: .875rem; }
   .course-workbench .history-section { padding: .5rem .875rem; }
 }
 
@@ -8437,9 +8205,7 @@ button.danger {
 .course-workbench__help[open] { flex: 0 0 100%; order: 3; margin-left: 0; }
 .course-workbench__help[open] > summary { display: inline-flex; justify-content: flex-start; align-items: center; gap: .5rem; width: auto; min-width: 0; margin: 0 0 .5rem; padding-inline: 0 1rem; font-weight: 600; }
 .course-workbench__help[open] > summary .course-help-label { position: static; width: auto; height: auto; overflow: visible; clip-path: none; }
-.course-workbench .course-row .payment-status-badge,
-.course-workbench .course-row .subject-tag,
-.course-workbench .course-row .status-tag { font-size: inherit; }
+
 .course-workbench .course-tools-menu__summary { min-height: 3rem; }
 .course-workbench .pending-leave-summary { padding: .875rem 1rem; border-radius: inherit; }
 .course-workbench .pending-leave-summary__header { margin: 0; }
@@ -8448,7 +8214,5 @@ button.danger {
 @media (max-width: 640px) {
 }
 
-.course-workbench .subject-teacher { min-width: 0; overflow-wrap: anywhere; white-space: normal; }
-.contract-count-source { display: block; margin-top: .375rem; color: var(--ds-ink-secondary); font-size: inherit; font-weight: 400; }
 .course-workbench .history-course-card__detail-label { color: var(--ds-ink-secondary); }
 </style>
