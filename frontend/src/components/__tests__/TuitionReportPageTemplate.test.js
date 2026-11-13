@@ -92,6 +92,45 @@ describe('TuitionReportPage on the template', () => {
     expect(wrapper.find('.tr-empty[role="status"]').text()).toContain('無有效課程紀錄');
   });
 
+  it('is built from the shared page parts: one h2, one strip, one card with the count, a badge and 差 only where money is owed', async () => {
+    expect(source).toMatch(/from '@\/components\/ui\/page'/);
+    await mountPage();
+    expect(wrapper.find('[data-slot="page-shell"]').exists()).toBe(true);
+    expect(wrapper.find('[data-slot="page-context"]').text()).toBe('本月已上課堂數 × 費率的估算，不等於已收。');
+    expect(wrapper.findAll('[data-slot="stat-strip"]')).toHaveLength(1);
+    expect(wrapper.findAll('[data-slot="stat-strip"] dt').map((n) => n.text())).toEqual(['學生', '堂數', '學收合計', '已收', '未收']);
+    expect(wrapper.get('.tr-stats').text()).toContain('應收 10,800');
+    expect(wrapper.get('.tr-stats').text()).toContain('差 4,800');
+    expect(wrapper.get('[data-slot="section-card"] h3').text()).toBe('學收明細（2）');
+    const [unpaidRow, paidRow] = wrapper.findAll('.tr-table tbody tr');
+    expect(unpaidRow.find('[data-slot="status-badge"][data-tone="danger"]').text()).toBe('未收');
+    expect(unpaidRow.find('.pay-owed').text()).toBe('差 4,800');
+    expect(paidRow.find('[data-slot="status-badge"][data-tone="success"]').text()).toBe('已收');
+    expect(paidRow.find('.pay-owed').exists()).toBe(false);
+    expect(paidRow.find('.paid-date').text()).toBe('2026-11-02');
+    expect(wrapper.get('[data-testid="collection-summary"]').text()).toBe('已收 6,000 / 應收 10,800，未收 1 人');
+    expect(wrapper.find('.tr-pagination').exists()).toBe(false);
+  });
+
+  it('shows the pager in the card footer only when there is more than one page', async () => {
+    fetchMock.mockImplementation(async () => json(payload({ meta: { current_page: 1, last_page: 3, per_page: 50, total: 120 } })));
+    await mountPage();
+    expect(wrapper.get('[data-slot="section-card"] footer .tr-pagination').text()).toContain('第 1 / 3 頁（共 120 筆）');
+    await wrapper.findAll('.tr-pagination button')[1].trigger('click');
+    await flushPromises();
+    expect(urls().at(-1)).toContain('page=2');
+  });
+
+  it('keeps the filter reachable when 只看未收 returns nothing, and says everything is collected', async () => {
+    await mountPage();
+    fetchMock.mockImplementation(async () => json(payload({ data: [], summary: { total_students: 2, total_sessions: 8, total_tuition: 10800, total_due: 10800, total_collected: 10800, total_outstanding: 0, unpaid_students: 0 } })));
+    await wrapper.get('.tr-filter button[role="checkbox"]').trigger('click');
+    await flushPromises();
+    expect(wrapper.find('.tr-filter').exists()).toBe(true);
+    expect(wrapper.get('.tr-empty').text()).toContain('本月學收已收齊');
+    expect(wrapper.get('.tr-stats').text()).toContain('本月學收已收齊');
+  });
+
   it('has no axe violations (colour contrast is checked in the browser spec)', async () => {
     await mountPage();
     const res = await axe.run(wrapper.element, { rules: { 'color-contrast': { enabled: false } } });

@@ -11,7 +11,7 @@ import { test, expect } from '@playwright/test';
  * It runs in the required ui-foundation job (see playwright.ui-foundation.config.js), not the visual-regression job.
  */
 
-const TEXT_SIZES = ['standard', 'large']; // useTextSize.js TEXT_SIZES
+const TEXT_SIZES = ['standard', 'medium', 'large']; // useTextSize.js TEXT_SIZES (標準, 稍大, 大)
 const VIEWPORTS = [{ name: 'desktop-1536', width: 1536, height: 784 }, { name: 'phone-375', width: 375, height: 800 }];
 const json = (route, body) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
 
