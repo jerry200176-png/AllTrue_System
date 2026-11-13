@@ -487,8 +487,9 @@ class ReceiptReassignPreviewTest extends TestCase
             'StartDate' => now(), 'TotalHours' => 20, 'Charge' => $total, 'Paid' => $paid > 0 ? 1 : 0, 'MDate' => now(), 'Stop' => 0,
             'ScheduleMode' => 'count', 'SessionCount' => 8, 'SessionDuration' => 120, 'RemainingSessions' => 5, 'ClassType' => 'one_on_one', 'UsedSessions' => 0,
         ]);
-        $invoice = Invoice::create(['StudentID' => $student->id, 'StudentClassID' => $course->ID, 'IssueDate' => '2026-11-01',
-            'TotalAmount' => $total, 'PaidAmount' => $paid, 'Status' => $status === 'void' ? 'void' : ($paid >= $total && $paid > 0 ? 'paid' : 'unpaid')] + $invoiceOverrides);
+        // Overrides go on the left: array union keeps the left-hand keys.
+        $invoice = Invoice::create($invoiceOverrides + ['StudentID' => $student->id, 'StudentClassID' => $course->ID, 'IssueDate' => '2026-11-01',
+            'TotalAmount' => $total, 'PaidAmount' => $paid, 'Status' => $status === 'void' ? 'void' : ($paid >= $total && $paid > 0 ? 'paid' : 'unpaid')]);
         $payment = $paid > 0 ? Payment::create(['InvoiceID' => $invoice->id, 'Amount' => $paid, 'PaidAt' => '2026-11-10', 'Method' => 'transfer']) : null;
 
         return ['course' => $course, 'invoice' => $invoice, 'payment' => $payment];
