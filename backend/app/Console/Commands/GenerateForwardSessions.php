@@ -91,7 +91,12 @@ class GenerateForwardSessions extends Command
             ->where(function ($w) {
                 $w->where('sc.RemainingSessions', '>', 0)
                     ->orWhere(function ($member) {
-                        $member->where('sc.PackageID', '>', 0)->whereExists(function ($e) {
+                        // Only while the pool ledger still has lessons: a used-up pool's members would otherwise be
+                        // candidates every night and use up --limit ahead of real candidates.
+                        $member->where('sc.PackageID', '>', 0)->whereRaw(
+                            '(SELECT CAST(p.total_sessions AS SIGNED) + COALESCE((SELECT SUM(l.delta) FROM package_session_ledger l'
+                            . ' WHERE l.package_id = p.id), 0) FROM course_packages p WHERE p.id = sc.PackageID) > 0'
+                        )->whereExists(function ($e) {
                             $e->select(DB::raw(1))->from('ClassSession as recent')
                                 ->whereColumn('recent.StudentClassID', 'sc.ID')
                                 ->whereRaw('recent.SessionDate >= ?', [Carbon::today()->subWeeks(3)->toDateString()])

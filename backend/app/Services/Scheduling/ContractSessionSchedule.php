@@ -831,14 +831,36 @@ class ContractSessionSchedule
         // A past lesson of ANY running member that nobody marked yet still holds a pool lesson: it can be marked late, and
         // the pool is debited then (#4515 for one course; #5243 review for siblings). Same rule as the single-course path
         // (partitionExcessScheduledRows: rows already deducted or on leave do not count).
-        $memberIds = StudentClass::query()->where('PackageID', $packageId)
-            ->where(static fn ($q) => $q->where('Stop', 0)->orWhereNull('Stop'))->pluck('ID');
-        $active = ClassSession::query()->whereIn('StudentClassID', $memberIds)
-            ->whereRaw("LOWER(Status) NOT IN ('cancelled','voided')")->get();
-        $pastUnrecorded = self::partitionExcessScheduledRows($active, 0)['past_unrecorded']->count();
+        $pastUnrecorded = self::countPoolPastUnrecorded($packageId);
 
         // ponytail: a group slot a sibling already planned (or left unmarked) still costs 1 here (under-fills, never over-fills); fillSharedPool is exact.
         return max(0, $p['remaining_sessions'] - $p['future_planned_sessions'] - $pastUnrecorded);
+    }
+
+    /**
+     * Past lessons of a package's running members that nobody marked yet, as ONE count query (no rows loaded): the
+     * `past_unrecorded` set of partitionExcessScheduledRows($rows, 0) over those members. Keep the two in step; the
+     * parity test (ForwardSessionGenerationTest) fails when they differ.
+     */
+    public static function countPoolPastUnrecorded(int $packageId): int
+    {
+        return (int) DB::table('ClassSession as cs')
+            ->join('StudentClass as sc', 'sc.ID', '=', 'cs.StudentClassID')
+            ->where('sc.PackageID', $packageId)
+            ->where(static fn ($q) => $q->where('sc.Stop', 0)->orWhereNull('sc.Stop'))
+            ->whereRaw("LOWER(cs.Status) = 'scheduled'")
+            ->whereRaw('cs.SessionDate < ?', [Carbon::today()->toDateString()])
+            ->whereNotExists(static function ($q): void {
+                $q->select(DB::raw(1))->from('StudentSingIn as si')
+                    ->whereColumn('si.ClassSessionID', 'cs.id')->whereNull('si.VoidedAt')
+                    ->where(static fn ($w) => $w->where('si.SessionDeducted', 1)->orWhereIn(
+                        DB::raw('LOWER(si.Status)'),
+                        [SessionStatus::LEAVE, SessionStatus::EXCUSED, SessionStatus::LEAVE_REQUESTED]
+                    ));
+            })
+            ->whereRaw("COALESCE((SELECT SUM(CASE WHEN l.event_type = 'deduct' THEN 1 ELSE -1 END)
+                                  FROM session_deduction_ledger l WHERE l.class_session_id = cs.id), 0) <= 0")
+            ->count();
     }
 
     /**
