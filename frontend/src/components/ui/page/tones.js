@@ -19,6 +19,15 @@ export const surface = Object.freeze({
   card: 'tw:rounded-3xl tw:border tw:border-solid tw:border-[var(--tpl-line)] tw:bg-[var(--tpl-glass-bg)] tw:shadow-tpl-card tw:backdrop-blur-[18px]',
 });
 
+// PageShell's classes as a string, for a page whose root element must stay a plain element (tests mount it shallow, KeepAlive needs one root).
+export const pageShell = 'tw:mx-auto tw:flex tw:w-full tw:max-w-7xl tw:flex-col tw:gap-4 tw:px-[calc(var(--ds-space-4)-10px)] tw:pb-24 tw:text-tpl-body tw:text-foreground tw:md:px-0 tw:md:pb-10';
+
+// Tabs under the page header (PAGE_TEMPLATE §2): a hairline underline row; the selected tab has the ink underline.
+export const pageTabs = Object.freeze({
+  list: 'tw:flex tw:gap-6 tw:overflow-x-auto tw:border-b tw:border-border',
+  tab: (active) => ['tw:-mb-px tw:inline-flex tw:h-12 tw:shrink-0 tw:cursor-pointer tw:items-center tw:border-0 tw:border-b-2 tw:bg-transparent tw:px-1 tw:text-tpl-body tw:font-semibold tw:whitespace-nowrap tw:outline-none tw:focus-visible:ring-3 tw:focus-visible:ring-ring/50', active ? 'tw:border-foreground tw:text-foreground' : 'tw:border-transparent tw:text-tpl-secondary tw:hover:text-foreground'],
+});
+
 // Control sizes on top of ui/button: page-level actions are 48px, in-row actions 44px (both >= the 44px touch floor).
 export const control = Object.freeze({
   page: 'tw:h-12 tw:px-4 tw:text-[length:var(--tpl-text-body)] tw:font-semibold tw:shadow-none',

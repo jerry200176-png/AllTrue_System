@@ -15,11 +15,13 @@ const props = defineProps({
 </script>
 
 <template>
-  <div data-slot="stat-item" :class="cn('tw:flex tw:min-w-0 tw:flex-col tw:gap-0.5 tw:bg-card tw:px-4 tw:py-3 tw:md:px-5 tw:md:py-4', props.class)">
+  <div data-slot="stat-item" :class="cn('tw:relative tw:flex tw:min-w-0 tw:flex-col tw:gap-0.5 tw:bg-card tw:px-4 tw:py-3 tw:md:px-5 tw:md:py-4', props.class)">
     <dt class="tw:text-tpl-caption tw:font-semibold tw:text-tpl-secondary">{{ props.label }}</dt>
     <dd class="tw:m-0 tw:text-tpl-unit tw:font-bold tw:tracking-tight tw:whitespace-nowrap tw:tabular-nums tw:md:text-tpl-page" :class="toneText[props.tone] || 'tw:text-foreground'">
       {{ props.value }}<span v-if="props.unit" class="tw:ml-1 tw:text-tpl-body tw:font-semibold tw:tracking-normal">{{ props.unit }}</span>
     </dd>
     <dd v-if="props.sub || $slots.sub" class="tw:m-0 tw:text-tpl-caption tw:text-tpl-secondary"><slot name="sub">{{ props.sub }}</slot></dd>
+    <!-- Optional overlay: a button that covers the whole figure (a figure that also filters the list). -->
+    <dd v-if="$slots.default" class="tw:contents"><slot /></dd>
   </div>
 </template>

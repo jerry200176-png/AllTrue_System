@@ -144,7 +144,9 @@ async function installMock(page) {
   }));
 }
 async function expectNoOverflowAndReachableControls(page) {
-  const controls = await page.locator('button, input:not([type="checkbox"]), select, textarea').evaluateAll((nodes) => nodes.filter((node) => {
+  // A checkbox (native or the role=checkbox button) is 20px with a 48px hit area; the student name and subject in a bill row are inline text links
+  // (pointer-inert on a phone, where the whole row opens the bill), so they are not 44px boxes either.
+  const controls = await page.locator('button:not([role="checkbox"]):not(.bl__name):not(.bl__open), input:not([type="checkbox"]), select, textarea').evaluateAll((nodes) => nodes.filter((node) => {
     const rect = node.getBoundingClientRect();
     const style = getComputedStyle(node);
     return rect.width > 0 && rect.height > 0 && style.visibility !== 'hidden';
@@ -199,7 +201,7 @@ test.describe('Tuition Collection clarity browser verification', () => {
     const row = page.locator('[data-testid^="bill-row-"]').first();
     await expect(row).toBeVisible();
     await expect(row.locator('.bl__num')).toBeVisible();
-    await expect(row.locator('.bl__due')).toBeVisible();
+    await expect(row.locator('.bl__due:visible')).toBeVisible(); // the due column hides on a phone, the same words sit under 未收
   });
 
   test('In-App480: 已結清課程 sits only on the bill list, never above 收款紀錄 / 代收代付', async ({ page }) => {
