@@ -1253,6 +1253,7 @@
                 <button v-for="p in templatePhrases.Progress" :key="p" class="lr-phrase-btn" type="button" @click="insertPhrase('Progress', p)">{{ p }}</button>
               </div>
             </div>
+            <LessonPlanUnits ref="planUnitsRef" :class-session-id="form.ClassSessionID" :disabled="isReadOnly" />
             <div class="form-group">
               <label>本次作業範圍</label>
               <textarea v-model="form.NextHomework" rows="2" :disabled="isReadOnly" placeholder="指定本次作業範圍..."></textarea>
@@ -1541,6 +1542,7 @@ import AtPageHeader from '../components/design-system/AtPageHeader.vue';
 import AtTabs from '../components/design-system/AtTabs.vue';
 import FeedbackInlinePreview from '../components/learning-records/FeedbackInlinePreview.vue';
 import LearningRecordPreview from '../components/learning-records/LearningRecordPreview.vue';
+import LessonPlanUnits from '../components/learning-records/LessonPlanUnits.vue';
 import { trackAdoptionEvent } from '../lib/adoptionTelemetry';
 import { formatParentFeedbackTime } from '../lib/parentFeedbackFormat';
 import {
@@ -3942,6 +3944,7 @@ const switchToTeacherLogin = async () => {
   window.location.reload();
 };
 
+const planUnitsRef = ref(null);
 const submitForm = async () => {
   if (timeLockMessage.value) {
     alert(timeLockMessage.value);
@@ -3971,6 +3974,16 @@ const submitForm = async () => {
     if (!isCurrent()) return;
     if (!result.ok) { submitError.value = result.message; return; }
     const savedRecord = result.record;
+    // #4970 step 5: tick the plan units only after the evaluation is saved; a failure keeps the form (and its text) open.
+    const unitSave = await planUnitsRef.value?.save(savedRecord.id);
+    if (!isCurrent()) return;
+    if (unitSave && !unitSave.ok) {
+      form.id = savedRecord.id;
+      isEditing.value = true;
+      saveDraft();
+      submitError.value = `評量已儲存，但「這堂上完的單元」沒有記錄成功：${unitSave.message}。內容已保留，請再按一次送出。`;
+      return;
+    }
     if (JSON.stringify(form) !== JSON.stringify(submissionSnapshot)) {
       form.id = savedRecord.id;
       isEditing.value = true;

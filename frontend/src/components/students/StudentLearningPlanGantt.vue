@@ -6,7 +6,7 @@ import { authedFetch } from '../../lib/authedFetch';
 import { GRADES, SUBJECTS } from '../../lib/constants';
 import { ymdInTaipei } from '../../lib/sessionDates';
 import {
-  STATE_LABELS, barSpan, buildTimeline, dateRangeText, examMarkers, markerPercent, summaryText, unitAriaText, unitState,
+  STATE_LABELS, barSpan, buildTimeline, dateRangeText, examMarkers, lessonDoneText, markerPercent, summaryText, unitAriaText, unitState,
 } from '../../lib/learningPlanGantt';
 import ConfirmDialog from '../app-overlay/ConfirmDialog.vue';
 import { Badge } from '../ui/badge';
@@ -271,7 +271,7 @@ watch(() => props.studentId, () => { readOnly.value = false; courses.value = [];
                   </div>
                   <p class="tw:flex tw:items-center tw:gap-1 tw:text-sm">
                     <component :is="ICON[unitState(u, today)]" class="tw:size-4" aria-hidden="true" />
-                    <span>{{ dateRangeText(u) }}・{{ STATE_LABELS[unitState(u, today)] }}</span>
+                    <span>{{ dateRangeText(u) }}・{{ STATE_LABELS[unitState(u, today)] }}<template v-if="lessonDoneText(u)">・{{ lessonDoneText(u) }}</template></span>
                   </p>
                   <fieldset v-if="!readOnly" :disabled="saving" class="tw:m-0 tw:flex tw:flex-wrap tw:items-center tw:gap-3 tw:border-0 tw:p-0">
                     <label class="tw:flex tw:min-h-11 tw:items-center tw:gap-2 tw:leading-none">
