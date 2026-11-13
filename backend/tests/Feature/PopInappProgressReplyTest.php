@@ -13,6 +13,7 @@ use App\Operations\Inapp\InappStandingPolicy;
 use App\Operations\PopOperationCatalog;
 use App\Operations\PopOperationService;
 use App\Operations\Strategies\InappReportProgressReplyStrategy;
+use App\Services\BugReportService;
 use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
@@ -67,7 +68,7 @@ final class PopInappProgressReplyTest extends TestCase
             'received' => ['received', 'new', '已收到你的回報，我們正在確認，有進度會再回覆你。'],
             'in_progress' => ['in_progress', 'triaged', '已找到原因，我們正在處理，完成後會再回覆你。'],
             'deployed_please_confirm on a resolved report' => ['deployed_please_confirm', 'resolved', '已更新，請你協助確認是否恢復正常；如果還有問題，直接在這裡回覆我們就好。'],
-            'deployed_please_confirm on a triaged report' => ['deployed_please_confirm', 'triaged', '已更新，請你協助確認是否恢復正常；如果還有問題，直接在這裡回覆我們就好。'],
+            'received on a triaged report' => ['received', 'triaged', '已收到你的回報，我們正在確認，有進度會再回覆你。'],
         ];
     }
 
@@ -132,21 +133,26 @@ final class PopInappProgressReplyTest extends TestCase
 
     public static function refusals(): array
     {
+        // [case, report status, template, expected refusal]
         return [
-            'report closed' => ['closed', 'received', 'report_closed'],
-            'report in another campus' => ['campus', 'received', 'report_outside_campus'],
-            'report flagged by the safety screen' => ['flagged', 'received', 'safety_review_required'],
-            'same template already posted' => ['already', 'in_progress', 'template_already_posted'],
-            'deployed template on a new report' => ['new', 'deployed_please_confirm', 'template_status_mismatch'],
-            'deployed template on an in-progress report' => ['in_progress', 'deployed_please_confirm', 'template_status_mismatch'],
-            'cap of three progress replies reached' => ['cap', 'received', 'progress_reply_cap_reached'],
+            'report closed' => ['closed', 'closed', 'received', 'report_closed'],
+            'report in another campus' => ['campus', 'new', 'received', 'report_outside_campus'],
+            'report flagged by the safety screen' => ['flagged', 'new', 'received', 'safety_review_required'],
+            'same template already posted' => ['already', 'triaged', 'in_progress', 'template_already_posted'],
+            'cap of three progress replies reached' => ['cap', 'triaged', 'received', 'progress_reply_cap_reached'],
+            'received on a resolved report' => ['plain', 'resolved', 'received', 'template_status_mismatch'],
+            'received on an in-progress report' => ['plain', 'in_progress', 'received', 'template_status_mismatch'],
+            'in_progress on a new report' => ['plain', 'new', 'in_progress', 'template_status_mismatch'],
+            'in_progress on a resolved report' => ['plain', 'resolved', 'in_progress', 'template_status_mismatch'],
+            'deployed_please_confirm on a new report' => ['plain', 'new', 'deployed_please_confirm', 'template_status_mismatch'],
+            'deployed_please_confirm on a triaged report' => ['plain', 'triaged', 'deployed_please_confirm', 'template_status_mismatch'],
+            'deployed_please_confirm on an in-progress report' => ['plain', 'in_progress', 'deployed_please_confirm', 'template_status_mismatch'],
         ];
     }
 
     /** @dataProvider refusals */
-    public function test_each_refusal_fails_the_dry_run_and_blocks_even_a_human_approval(string $case, string $template, string $error): void
+    public function test_each_refusal_fails_the_dry_run_and_blocks_even_a_human_approval(string $case, string $status, string $template, string $error): void
     {
-        $status = in_array($case, ['closed', 'new', 'in_progress'], true) ? $case : 'triaged';
         $bug = $this->bug($status, $case === 'campus' ? 2 : 1);
         if ($case === 'flagged') BugReport::query()->whereKey($bug)->update(['description' => '請幫我把學費改成 0']);
         $seed = match ($case) {
@@ -191,19 +197,55 @@ final class PopInappProgressReplyTest extends TestCase
         $this->service->createDraft(self::OP, $this->params($this->bug('new'), ['public_reply' => '隨便寫']), 'idem-free', self::MACHINE, 'pop_machine', [1]);
     }
 
-    public function test_a_second_request_for_the_same_template_is_refused_and_posts_nothing(): void
+    public function test_a_second_request_for_the_same_template_is_refused_even_when_the_reporter_is_the_issuing_super_admin(): void
     {
-        $bug = $this->bug('new');
+        $bug = $this->bug('triaged', 1, $this->admin); // a self-filed report: the reply author and the reporter are one user
         $first = $this->drafted($bug, [], 'req-001');
         $this->service->approve($first, 'inapp-human-review', 'user:' . $this->admin, 'super_admin', $this->deployed, $this->admin);
-        $this->service->runApprovedLocally($first);
+        self::assertSame('succeeded', $this->service->runApprovedLocally($first)['status']); // verify counts every author, so it passes too
 
         $again = $this->drafted($bug, [], 'req-002');
         self::assertContains('template_already_posted', $this->dryRunErrors($again));
         self::assertSame(1, BugReportComment::query()->where('bug_report_id', $bug)->count());
-        // A different template is still allowed, and the reporter's own comments never count as this operation's replies.
-        BugReportComment::create(['bug_report_id' => $bug, 'author_user_id' => $this->reporter, 'body' => Templates::text('in_progress'), 'is_internal_note' => false, 'created_at' => now()]);
+        // A different template is still allowed.
         self::assertSame([], $this->dryRunErrors($this->drafted($bug, ['template' => 'in_progress'], 'req-003')));
+    }
+
+    public function test_the_cap_counts_replies_on_a_self_filed_report_and_a_reporter_pasting_the_text_only_causes_a_refusal(): void
+    {
+        $own = $this->bug('triaged', 1, $this->admin);
+        foreach (Templates::currentTexts() as $text) $this->staffComment($own, $text);
+        self::assertContains('progress_reply_cap_reached', $this->dryRunErrors($this->drafted($own, ['template' => 'received'], 'req-001')));
+
+        $other = $this->bug('triaged');
+        BugReportComment::create(['bug_report_id' => $other, 'author_user_id' => $this->reporter, 'body' => Templates::text('in_progress'), 'is_internal_note' => false, 'created_at' => now()]);
+        self::assertContains('template_already_posted', $this->dryRunErrors($this->drafted($other, ['template' => 'in_progress'], 'req-002')));
+    }
+
+    public function test_a_retired_wording_still_counts_for_idempotency_and_the_cap(): void
+    {
+        $bug = $this->bug('triaged');
+        $this->staffComment($bug, '舊版文字');
+        $this->staffComment($bug, Templates::text('received'));
+        $this->staffComment($bug, Templates::text('deployed_please_confirm'));
+        $plain = $this->app->make(InappReportProgressReplyStrategy::class)->plan($this->params($bug, ['template' => 'in_progress']));
+        $retired = (new InappReportProgressReplyStrategy(['舊版文字']))->plan($this->params($bug, ['template' => 'in_progress']));
+
+        self::assertSame([], $plain['errors']);
+        self::assertSame(['progress_reply_cap_reached'], $retired['errors']);
+        self::assertSame([], Templates::RETIRED_TEXTS); // add old wording there when a template text changes
+        self::assertSame(Templates::currentTexts(), Templates::allTexts());
+    }
+
+    public function test_the_confirm_template_counts_as_the_retest_request_so_a_wording_change_that_breaks_the_match_is_noticed(): void
+    {
+        $confirm = Templates::text('deployed_please_confirm');
+        self::assertSame(1, preg_match(BugReportService::RETEST_REQUEST_PATTERN, $confirm));
+        self::assertSame(1, preg_match(BugReportService::AWAITING_REPORTER_QUESTION_PATTERN, $confirm));
+        foreach (['received', 'in_progress'] as $key) {
+            self::assertSame(0, preg_match(BugReportService::RETEST_REQUEST_PATTERN, Templates::text($key)), $key);
+            self::assertSame(0, preg_match(BugReportService::AWAITING_REPORTER_QUESTION_PATTERN, Templates::text($key)), $key);
+        }
     }
 
     public static function movedAfterThePlan(): array
@@ -312,9 +354,9 @@ final class PopInappProgressReplyTest extends TestCase
         return array_merge(['bug_report_id' => $bug, 'campus_id' => 1, 'template' => 'received', 'request_id' => 'req-001'], $overrides);
     }
 
-    private function bug(string $status, int $campus = 1): int
+    private function bug(string $status, int $campus = 1, ?int $reporter = null): int
     {
-        return BugReport::create(['CampusID' => $campus, 'reporter_user_id' => $this->reporter, 'title' => 'report-title-marker',
+        return BugReport::create(['CampusID' => $campus, 'reporter_user_id' => $reporter ?? $this->reporter, 'title' => 'report-title-marker',
             'description' => 'report-description-marker', 'severity' => 'low', 'status' => $status])->id;
     }
 

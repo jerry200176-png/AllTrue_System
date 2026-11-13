@@ -5,4 +5,4 @@ id: founder-standing-inapp-lifecycle
 version: 4
 lifecycle: active
 decision_reference: FSD-2026-10-14-II:#4069:#4073
-operations: [inapp-report-progress-reply,inapp-report-reporter-timeout, inapp-report-resolve-after-deploy, inapp-report-triage]
+operations: [inapp-report-progress-reply, inapp-report-reporter-timeout, inapp-report-resolve-after-deploy, inapp-report-triage]

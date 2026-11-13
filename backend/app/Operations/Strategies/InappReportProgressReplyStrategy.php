@@ -14,13 +14,20 @@ use RuntimeException;
 /**
  * Founder decision 2026-11-13 (#4991), ADR-POP-015 family: post one canned public progress reply on a report. Input is the report
  * and a template key; no text of any kind comes from the caller. It adds a comment and changes nothing else (not status, not
- * assignee). Replies of this operation are recognised by their exact canned text on a non-reporter public comment: no marker
- * column, no migration. Every check is a hard plan error and is rechecked under the row lock in execute().
+ * assignee). Replies of this operation are recognised by their exact canned text on any public comment (the author is not
+ * filtered: the issuing super admin is often the reporter too, and verify() counts the same way): no marker column, no migration.
+ * Every check is a hard plan error and is rechecked under the row lock in execute().
+ *
+ * Side effect to know: `deployed_please_confirm` matches BugReportService::RETEST_REQUEST_PATTERN and AWAITING_REPORTER_QUESTION_PATTERN,
+ * so on a resolved report (the only status it may be posted on) it also counts as the retest request for the scheduled auto-close.
  */
 final class InappReportProgressReplyStrategy
 {
     public const OPERATION = 'inapp-report-progress-reply';
     public const MAX_PER_REPORT = 3;
+
+    /** @param list<string> $retiredTexts old wording that still counts for idempotency and the cap */
+    public function __construct(private readonly array $retiredTexts = Templates::RETIRED_TEXTS) {}
 
     public function plan(array $p): array
     {
@@ -90,9 +97,9 @@ final class InappReportProgressReplyStrategy
         $template = (string) $p['template'];
         if ((int) $bug->getAttribute('CampusID') !== $p['campus_id']) $errors[] = 'report_outside_campus';
         if ($status === 'closed') $errors[] = 'report_closed';
-        if (isset(Templates::REQUIRED_STATUS[$template]) && !in_array($status, Templates::REQUIRED_STATUS[$template], true)) $errors[] = 'template_status_mismatch';
+        if (!in_array($status, Templates::REQUIRED_STATUS[$template], true)) $errors[] = 'template_status_mismatch';
         $posted = BugReportComment::query()->where('bug_report_id', $bug->getKey())->where('is_internal_note', false)
-            ->where('author_user_id', '!=', $bug->getAttribute('reporter_user_id'))->whereIn('body', Templates::allTexts())->pluck('body')->all();
+            ->whereIn('body', [...Templates::currentTexts(), ...$this->retiredTexts])->pluck('body')->all();
         if (count($posted) >= self::MAX_PER_REPORT) $errors[] = 'progress_reply_cap_reached';
         if (in_array(Templates::text($template), $posted, true)) $errors[] = 'template_already_posted';
         // Same rule as triage: automation does not write to a report the safety screen flags; a person handles it in the app.

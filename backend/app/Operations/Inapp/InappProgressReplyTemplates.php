@@ -13,8 +13,15 @@ final class InappProgressReplyTemplates
     public const IN_PROGRESS = 'in_progress';
     public const DEPLOYED_PLEASE_CONFIRM = 'deployed_please_confirm';
 
-    /** Report statuses a template is limited to; a template not listed here only refuses `closed` reports. */
-    public const REQUIRED_STATUS = [self::DEPLOYED_PLEASE_CONFIRM => ['resolved', 'triaged']];
+    /** Report statuses each template may be posted on (coordinator decision 2026-11-13); every other status, closed included, is refused. */
+    public const REQUIRED_STATUS = [
+        self::RECEIVED => ['new', 'triaged'],
+        self::IN_PROGRESS => ['triaged'],
+        self::DEPLOYED_PLEASE_CONFIRM => ['resolved'],
+    ];
+
+    /** Move old wording here when a template text changes, so earlier replies still count for idempotency and the cap. */
+    public const RETIRED_TEXTS = [];
 
     private const TEXT = [
         self::RECEIVED => '已收到你的回報，我們正在確認，有進度會再回覆你。',
@@ -38,9 +45,15 @@ final class InappProgressReplyTemplates
         return self::TEXT[$key];
     }
 
-    /** @return list<string> every canned text, used to recognise this operation's earlier replies */
-    public static function allTexts(): array
+    /** @return list<string> the current canned texts */
+    public static function currentTexts(): array
     {
         return array_values(self::TEXT);
+    }
+
+    /** @return list<string> current and retired texts: every wording this operation has ever posted */
+    public static function allTexts(): array
+    {
+        return [...self::currentTexts(), ...self::RETIRED_TEXTS];
     }
 }
