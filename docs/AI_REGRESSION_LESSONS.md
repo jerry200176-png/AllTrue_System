@@ -1899,3 +1899,11 @@ Intake consolidation regression (2026-10-17): the oldest trusted SourceRef issue
 - **強制規則**：不可重用或改寫 `IsContractException` 表示期間外。「堂次日期早於合約 `StartDate`」只在讀取時由 `App\Support\ContractPeriod` 推導（API 欄位 `before_contract_start`，畫面標籤「合約期間外」），不儲存、不影響額度與扣堂。規則只定義在這一處，SQL 與 PHP 共用。
 - **另記（未在此修）**：改派服務用 query update 搬堂次，不會觸發 `ClassSessionObserver::syncContractExceptionFlag`；改派後每週時段旗標可能與目標合約的時段不一致。凡以 query update 繞過 observer 的服務，必須自己重算 observer 推導的狀態。
 - **測試**：`ClassSessionBeforeContractStartTest`（改派成功、開始日不動、`IsContractException` 不變、API 推導旗標）。
+
+### R140. SQL 裡的「今天／現在」必須是 app 時鐘的綁定值；`CURDATE()`／`NOW()` 跟資料庫 session 時區（夜間檢查 16:00–24:00 UTC 差一天，2026-11-13）
+
+- **現象**：`VerifyBugReproductionsTest::test_shared_pool_member_generation_stopped…` 在 UTC 16:00–24:00 之間（台北 00:00–08:00）跑 CI 時隨機失敗（0 !== 1），與 PR 內容無關。
+- **根因層級**：時間來源。堂次日期（`ClassSession.SessionDate`）與 app 都用 Asia/Taipei，但 `bugs:verify-reproductions` 的 SQL 用 `CURDATE()`／`NOW()`，那是資料庫 session 時區（CI 的 MySQL 是 UTC）。兩個日曆差一天時，「昨天的課」被算成「今天」；夜間排程剛好就在這個時段跑。
+- **強制規則**：唯讀檢查／盤點的 SQL 以 `App\Support\AppClockSql::bind()` 的 `:app_today`／`:app_now` 取值（同一個瞬間、app 時區、綁定參數），不寫 `CURDATE()`／`NOW()`／`CURRENT_DATE`。`AppClockSqlTest` 會掃 `app/Console/Commands` 與 `app/Support`。
+- **另記（未在此修，交易性程式）**：`GenerateForwardSessions.php:110`、`BusinessDigestService.php`（多處）、`AttendanceController.php:200`、`TeacherAttendanceController.php:241`；後兩者是 DB 時鐘寫入／比較，需先確認再改。
+- **測試**：凍結在台北 00:30（= UTC 前一天 16:30）與 12:00，同一組資料算出相同筆數。
