@@ -620,6 +620,8 @@
 | POST | `api/v1/payment-reports/director-record-batch` | `PaymentReportController@directorRecordBatch` | role+campus |
 | POST | `api/v1/payment-reports/legacy-flag-clear` | `PaymentReportController@clearLegacyFlag` | role+campus |
 | PUT | `api/v1/payment-reports/{id}/confirm` | `PaymentReportController@confirm` | role+campus |
+| POST | `api/v1/payment-reports/{id}/reassign` | `ReceiptReassignController@reassign` | role+campus |
+| GET | `api/v1/payment-reports/{id}/reassign-targets` | `ReceiptReassignController@targets` | role+campus |
 | GET | `api/v1/payment-reports/{id}/receipt` | `PaymentReportController@receipt` | role+campus |
 | PUT | `api/v1/payment-reports/{id}/reject` | `PaymentReportController@reject` | role+campus |
 | PUT | `api/v1/payment-reports/{id}/void` | `PaymentReportController@void` | role+campus |
