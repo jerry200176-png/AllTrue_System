@@ -157,8 +157,9 @@ const form = reactive({
 const submitting = ref(false);
 const submitError = ref('');
 const isZeroCharge = computed(() => Number(props.row?.charge ?? 0) === 0);
-// Zero charge is not zero obligation: a zero Charge with a positive Rate still owes what the bill / collection period shows.
+// Zero charge or missing rate metadata alone cannot establish that a contract has no payment obligation.
 const legacyNoObligation = computed(() => legacyBackfill.value && isZeroCharge.value
+  && props.row?.current_contract_rate_positive === false
   && Number(props.row?.payable_outstanding ?? props.row?.payable_amount ?? props.row?.estimated_amount ?? 0) <= 0);
 
 watch(() => props.show, (val) => {
