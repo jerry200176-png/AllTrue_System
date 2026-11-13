@@ -3,7 +3,7 @@
 Every implementer agent follows this. The coordinator sends only the task-specific delta (issue link, branch name, size budget, no-go areas). Rules live elsewhere; this file points to them. If the delta and this file disagree, the issue plan wins and you say so in your report.
 
 ## Start
-- `git fetch origin main`, then branch from `origin/main`. Never work on `main`.
+- `git fetch origin main`, then branch from `origin/main`. Never work on `main`. Branch prefix: `fix/`, `feat/`, `chore/` or `docs/` only (others fail the branch check).
 - Read the required list in [`AGENTS.md`](../../AGENTS.md) and the issue plan ([`docs/sop/ISSUE_PLAN.md`](../sop/ISSUE_PLAN.md)). Read nothing else until you need it.
 
 ## Token rules
@@ -16,10 +16,13 @@ Every implementer agent follows this. The coordinator sends only the task-specif
 - Tests first (RED, then GREEN). Never lower a test, assertion, allowlist or baseline.
 - If PHPUnit or Vitest could not run locally, write "not run locally" in the report. Do not imply it passed.
 - A renamed test file must rename its class too.
+- Arrays read back from a MySQL JSON column have reordered keys: compare them with `assertEquals`, not `assertSame`.
+- Before deleting a model, table or helper, grep every reader (controllers, parent portal, timelines). If something else reads it, stop and report.
 - No empty commits, no force-push. Merge `main` into the branch; do not rebase.
 - CI stuck or cancelled: rerun the failed jobs through the REST API, or report it.
 
 ## UI changes
+- Pick pages that are in the nav registry and in use. A page with no nav entry or zero production rows is a removal candidate: report it instead of migrating it.
 - Search the production-run specs for every selector, class name and label helper you change, and update them in the same PR: `frontend/e2e/calendar-course-consistency.spec.js`, `frontend/e2e/*production*.spec.js`, `frontend/e2e/fixtures/**`.
 - Do not put native `required` or `min` on a field that shows inline errors.
 - A confirm handler must return early when its dialog is already closed.
