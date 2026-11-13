@@ -30,7 +30,7 @@ describe('authoritative mutation ownership (slice 3: course-mgmt + calendar + bi
 
   it('keeps an already-completed course eligible for the existing renewal entry, not a new mutation path', () => {
     const courseMgmt = read('pages/CourseManagement.vue');
-    const historyStart = courseMgmt.indexOf('class="history-course-card__actions"');
+    const historyStart = courseMgmt.indexOf('history-course-card__actions');
     const historyEnd = courseMgmt.indexOf('<div v-if="expandedDates.has(hc.id)"', historyStart);
     const historyActions = courseMgmt.slice(historyStart, historyEnd);
     expect(historyActions).toContain("courseHistoryReason(hc) === 'completed'");

@@ -57,7 +57,10 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 1280, height: 900 
       .toEqual([50, 40, 30, 20, 10]);
     for (const [index, row] of (await rows.all()).entries()) {
       const date = ['2025-01-01', '2026-04-01', '2026-03-01', '2026-02-01', '2026-01-01'][index];
-      await expect(row.getByText(`開課 ${date}`, { exact: true })).toBeVisible();
+      // A course row shows 「開課 date」 as one line; a history card shows the label (dt) over the date (dd).
+      const isHistory = await row.evaluate((node) => node.classList.contains('history-course-card'));
+      if (isHistory) await expect(row.locator('dt', { hasText: '開課' }).locator('xpath=following-sibling::dd')).toHaveText(date);
+      else await expect(row.getByText(`開課 ${date}`, { exact: true })).toBeVisible();
     }
     const positions = await rows.evaluateAll((nodes) => nodes.map((node) => node.getBoundingClientRect().top));
     expect(positions).toEqual([...positions].sort((a, b) => a - b));
