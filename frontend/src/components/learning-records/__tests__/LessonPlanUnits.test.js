@@ -170,6 +170,21 @@ describe('LessonPlanUnits (#4970 step 5)', () => {
     expect(calls.find((c) => c.method === 'PUT').body.unit_ids.sort()).toEqual([3, 8]);
   });
 
+  it('keeps the draft selection untouched while the full list is still needed, and when that load fails', async () => {
+    let fail = true;
+    authedFetch.mockImplementation(async (url) => {
+      calls.push({ method: 'GET', url, body: null });
+      if (url.includes('&all=1') && fail) return json({ message: 'boom' }, 500);
+      return json({ data: PAYLOAD });
+    });
+    const w = await mountIt({ restoreIds: [3, 8] });
+    expect(calls).toHaveLength(2);
+    // Not applied: the ticks show the server state, but the draft must still be offered its own selection.
+    expect(w.findAll('input[type=checkbox]').map((b) => b.element.checked)).toEqual([false, false, true]);
+    expect(w.vm.draftIds()).toEqual([3, 8]);
+    expect(w.emitted('change')).toBeFalsy();
+  });
+
   it('drops a tick whose unit is gone when the full list arrives', async () => {
     const w = await mountIt();
     await w.findAll('input[type=checkbox]')[1].setValue(true);
