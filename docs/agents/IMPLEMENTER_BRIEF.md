@@ -17,7 +17,7 @@ Every implementer agent follows this. The coordinator sends only the task-specif
 - If PHPUnit or Vitest could not run locally, write "not run locally" in the report. Do not imply it passed.
 - A renamed test file must rename its class too.
 - Test gotchas: `[...] + $overrides` keeps the LEFT keys (put overrides first); after `Carbon::setTestNow()` jumps, extend the test login's `expires_at`.
-- Never name a PHP test helper `session()` (or any other `TestCase` method name): it shadows the framework method and the whole PHPUnit shard dies with a fatal error.
+- A CI guard rejects test methods named like framework `TestCase` methods (`session()`, `count()`; they kill the whole PHPUnit shard): [`scripts/ci/check-testcase-method-collisions.php`](../../scripts/ci/check-testcase-method-collisions.php).
 - SQL `CURDATE()`/`NOW()` follow the database clock (UTC in CI), not the app's Asia/Taipei: pass the app's date into the query as a bound value instead.
 - A push must depend on the test result: `npx vitest run … && git push`, never a pipeline whose last command is `grep`.
 - Arrays read back from a MySQL JSON column have reordered keys: compare them with `assertEquals`, not `assertSame`.

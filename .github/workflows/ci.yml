@@ -331,6 +331,14 @@ jobs:
         working-directory: backend
         run: composer install --no-interaction --prefer-dist --optimize-autoloader
 
+      # #5201: a test helper named like a TestCase method (session(), count()) kills a whole shard with a fatal and no
+      # per-test result. Fail in seconds, before PHPUnit, and prove the guard itself still catches one.
+      - name: Guard test methods named like framework TestCase methods
+        if: matrix.shard == 1
+        run: |
+          php scripts/ci/check-testcase-method-collisions.php
+          bash scripts/tests/testcase-method-guard.test.sh
+
       - name: Verify generated API route reference
         if: matrix.shard == 1
         run: bash scripts/generate-ref-api-routes.sh --check
