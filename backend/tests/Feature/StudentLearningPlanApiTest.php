@@ -365,6 +365,7 @@ class StudentLearningPlanApiTest extends TestCase
         $plan = $this->create($dir, $student, $course, $this->template($campus))->json('data');
 
         Carbon::setTestNow('2027-03-01 10:00:00'); // a different term (115 / 2)
+        AuthToken::where('token', $dir['token'])->update(['expires_at' => now()->addDay()]); // the login must outlive the jump
         $res = $this->as($dir)->patchJson("/api/v1/learning-plans/{$plan['id']}", ['plan_start' => '2026-09-01'])->assertOk();
 
         $this->assertSame($this->ranges($plan['units']), $this->ranges($res->json('data.units')));
