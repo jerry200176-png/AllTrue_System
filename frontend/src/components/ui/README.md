@@ -13,6 +13,7 @@ Add a component: `npx shadcn-vue@latest add <name>`, then pin any new dependency
 ## Overlay and data parts (K1b, #4989)
 Direction (Founder 2026-11-07, 高級簡約): hairline borders, soft `bg-foreground/30` overlay, motion 200 ms or less, none under `prefers-reduced-motion`.
 
+- `page/`: the page template parts (`PageShell`, `PageHeader`, `StatStrip` + `StatItem`, `SectionCard`, `StatusBadge`, class sets `dataTable` / `control`); rules in `docs/design/PAGE_TEMPLATE.md`.
 - `select/`: Reka Select (trigger, content, item, group, label, separator, scroll buttons); keyboard and typeahead from Reka.
 - `table/`: styled plain `table`, `thead`, `tbody`, `tr`, `th`, `td`, `caption` only; no `@tanstack/vue-table`.
 - `dropdown-menu/`: Reka menu with items, groups, labels, separators and shortcuts (sub-menus, radio and checkbox items are added when a page needs them).

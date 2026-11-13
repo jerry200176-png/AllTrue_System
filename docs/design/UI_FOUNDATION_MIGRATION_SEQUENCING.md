@@ -2,7 +2,7 @@
 
 Companion to [`ALLTRUE_UI_FOUNDATION.md`](ALLTRUE_UI_FOUNDATION.md) (look and rules) and [`UI_AUDIT_2026-07-26.md`](UI_AUDIT_2026-07-26.md). Decision: #4659 (shadcn-vue template, Apple-style look). This is the single order; the older At*-pilot wave tables are retired.
 
-Every PR touching `frontend/` gets a preview of the whole app (demo logins 主任/老師/家長, fake data) from the `ui-preview` workflow's sticky PR comment; review there instead of screenshots.
+Every PR touching `frontend/` gets a preview of the whole app (demo logins 主任/老師/家長, fake data) from the `ui-preview` workflow's sticky PR comment; review there in addition to the screenshots that [`PAGE_TEMPLATE.md`](PAGE_TEMPLATE.md) §9 requires (the one evidence rule).
 
 ## Order
 
@@ -17,6 +17,8 @@ Every PR touching `frontend/` gets a preview of the whole app (demo logins 主�
 | 7 | Remaining pages, one PR each | planned |
 | P | Parent track #4986 | step 1 #4987; steps 2-6 planned |
 
+Page layout (shell, header, summary strip, cards, list vs table, name cells, required screenshots) is one contract: [`PAGE_TEMPLATE.md`](PAGE_TEMPLATE.md), taken from 今日工作台. A migration that only swaps components without that layout is not done.
+
 The Apple-style look is delivered per page, not by changing global tokens; global `--ds-*` values stay until the last pages migrate. Every migrated page uses `components/ui` plus the `ParentHome.vue` pattern (small label over big value, one dark primary pill). `At*` components are not restyled; they retire as pages move.
 
 ## Constraints that outlive the waves
@@ -30,7 +32,7 @@ The Apple-style look is delivered per page, not by changing global tokens; globa
 
 1. Uses `components/ui` + foundation tokens (no new literals, no unused primitives).
 2. Unit/a11y coverage for new controls.
-3. Real Vue Playwright evidence at 390 / 768 / 1440 (mocked API), plus `toHaveScreenshot` baselines at 1280 and 390 (`npm run test:visual:update`, reviewer looks at the PNG diff).
+3. Evidence as in [`PAGE_TEMPLATE.md`](PAGE_TEMPLATE.md) §9 (screenshots at 1536 and 375 at each 字級, layout guard entry), plus `toHaveScreenshot` baselines at 1280 and 390 (`npm run test:visual:update`, reviewer looks at the PNG diff).
 4. Fixtures stay out of `public/` / `dist_build`.
 5. No API / DB / permission / billing logic changes.
 6. No unintended horizontal overflow at 390/412/768/1280/1440; primary CTA visible at the two mobile widths; for the director home, a production read-only smoke walk after deploy.

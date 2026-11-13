@@ -37,7 +37,7 @@
 
 /* Light theme only. Dark comes later: add a `.dark { ... }` block remapping these to dark --ds-* tokens. */
 :root {
-  /* Text size (字級): 標準 is the default (body 17, titles 28); 大 is body 19, titles 34 (html[data-text-size="large"] below).
+  /* Text size (字級): 標準 is the default (body 17, titles 28); 稍大 is body 18, titles 31; 大 is body 19, titles 34 (html[data-text-size] below).
      rem-based; useTextSize sets the attribute. Template pages read these tokens only, never per-component sizes. */
   --tpl-text-caption: 0.9375rem;
   --tpl-text-body: 1.0625rem;
@@ -92,6 +92,17 @@
   --ui-radius: 0.875rem;
   /* hero card: warm peach -> cream, from the brand palette */
   --ui-hero-gradient: linear-gradient(135deg, color-mix(in srgb, var(--ds-primary-soft) 38%, var(--ds-canvas)) 0%, var(--ds-primary-wash) 100%);
+}
+
+/* 稍大 (in-app #544): halfway between 標準 and 大. Body 18, titles 31, numbers 48 / 72. */
+:root[data-text-size="medium"] {
+  --tpl-text-caption: 1rem;
+  --tpl-text-body: 1.125rem;
+  --tpl-text-list: 1.3125rem;
+  --tpl-text-unit: 1.4375rem;
+  --tpl-text-page: 1.9375rem;
+  --tpl-text-num-sm: 3rem;
+  --tpl-text-num: 4.5rem;
 }
 
 /* 大: older eyes first (Founder). Body 19, titles 34, numbers 52 / 80. */

@@ -20,7 +20,7 @@
             </p>
             </div>
           </div>
-          <div class="tw:flex tw:items-center tw:gap-2">
+          <div class="tw:flex tw:max-w-full tw:min-w-0 tw:flex-wrap tw:items-center tw:gap-2">
             <span v-if="engagementVisible && initialEngagement" class="dash-engagement-chip" data-guide="director-engagement-rank">
               <EngagementRankStrip :engagement="initialEngagement" :reduced-motion="engagementReducedMotion" />
             </span>
