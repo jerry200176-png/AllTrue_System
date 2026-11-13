@@ -108,7 +108,7 @@ class StudentStudyTaskBulkApiTest extends TestCase
         return $this->as($who)->postJson("/api/v1/study-tasks/{$t->id}/apply-to-students", ['student_ids' => $ids]);
     }
 
-    private function count(Student $s): int
+    private function taskCount(Student $s): int
     {
         return StudentStudyTask::query()->where('student_id', $s->id)->count();
     }
@@ -135,7 +135,7 @@ class StudentStudyTaskBulkApiTest extends TestCase
             [$first['title'], $first['kind'], $first['minutes'], $first['note'], $first['plan_unit_id'], $first['done_at'], $first['done_by'], $first['created_by']]);
         $this->assertSame('單字', $res->json('data.1.title'));
         $this->assertNotNull($a->fresh()->done_at, 'the source task is not touched');
-        $this->assertSame(6, $this->count($student));
+        $this->assertSame(6, $this->taskCount($student));
     }
 
     public function test_copy_week_twice_does_not_duplicate(): void
@@ -148,7 +148,7 @@ class StudentStudyTaskBulkApiTest extends TestCase
         $this->copy($teacher, $student)->assertOk()->assertJsonCount(2, 'data')->assertJsonPath('skipped', 1);
         $this->copy($teacher, $student)->assertOk()->assertJsonCount(0, 'data')->assertJsonPath('skipped', 3);
 
-        $this->assertSame(5, $this->count($student));
+        $this->assertSame(5, $this->taskCount($student));
     }
 
     public function test_copy_week_skips_only_a_day_with_the_same_title_and_kind(): void
@@ -173,7 +173,7 @@ class StudentStudyTaskBulkApiTest extends TestCase
             StudentStudyTask::create(['campus_id' => $student->CampusID, 'student_id' => $student->id, 'title' => "t{$i}", 'kind' => 'other', 'due_date' => '2026-11-10']);
         }
         $this->copy($teacher, $student)->assertStatus(422);
-        $this->assertSame($cap + 1, $this->count($student));
+        $this->assertSame($cap + 1, $this->taskCount($student));
     }
 
     public function test_copy_week_is_refused_for_everyone_who_may_not_write_for_the_student(): void
@@ -187,7 +187,7 @@ class StudentStudyTaskBulkApiTest extends TestCase
         foreach ([$otherTeacher, $foreignTeacher, $foreignDirector] as $who) {
             $this->copy($who, $student)->assertForbidden();
         }
-        $this->assertSame(1, $this->count($student));
+        $this->assertSame(1, $this->taskCount($student));
     }
 
     public function test_copy_week_works_for_director_and_super_admin(): void
@@ -222,7 +222,7 @@ class StudentStudyTaskBulkApiTest extends TestCase
         $this->apply($teacher, $task, [$mate->id, $mate->id])->assertOk()->assertJsonPath('data.created', 0)
             ->assertJsonPath('data.skipped', 1)->assertJsonCount(1, 'data.results');
 
-        $this->assertSame(1, $this->count($mate));
+        $this->assertSame(1, $this->taskCount($mate));
     }
 
     public function test_apply_refuses_non_classmates_other_campus_and_unknown_ids_without_blocking_the_rest(): void
@@ -241,7 +241,7 @@ class StudentStudyTaskBulkApiTest extends TestCase
         $this->assertSame(1, $res->json('data.created'));
         $this->assertSame(4, $res->json('data.refused'));
         foreach ([$stranger, $otherTeacherMate, $foreign] as $s) {
-            $this->assertSame(0, $this->count($s));
+            $this->assertSame(0, $this->taskCount($s));
         }
     }
 
@@ -254,7 +254,7 @@ class StudentStudyTaskBulkApiTest extends TestCase
         StudentClass::query()->where('ID', $course->ID)->update(['Stop' => 1]);
 
         $this->apply($teacher, $task, [$stopped->id])->assertOk()->assertJsonPath('data.refused', 1);
-        $this->assertSame(0, $this->count($stopped));
+        $this->assertSame(0, $this->taskCount($stopped));
     }
 
     public function test_apply_is_refused_for_callers_who_may_not_write_for_the_source_student(): void
@@ -268,7 +268,7 @@ class StudentStudyTaskBulkApiTest extends TestCase
         foreach ([$otherTeacher, $foreignTeacher, $foreignDirector] as $who) {
             $this->apply($who, $task, [$mate->id])->assertForbidden();
         }
-        $this->assertSame(0, $this->count($mate));
+        $this->assertSame(0, $this->taskCount($mate));
     }
 
     public function test_apply_ignores_the_source_student_and_duplicate_ids(): void
@@ -279,8 +279,8 @@ class StudentStudyTaskBulkApiTest extends TestCase
         $res = $this->apply($teacher, $task, [$student->id, $mate->id, $mate->id])->assertOk();
 
         $this->assertSame(['refused', 'created'], array_column($res->json('data.results'), 'status'));
-        $this->assertSame(1, $this->count($student)); // only the source task itself
-        $this->assertSame(1, $this->count($mate));
+        $this->assertSame(1, $this->taskCount($student)); // only the source task itself
+        $this->assertSame(1, $this->taskCount($mate));
     }
 
     public function test_a_teacher_only_gets_classmates_through_courses_they_own_but_a_director_sees_all(): void
@@ -295,7 +295,7 @@ class StudentStudyTaskBulkApiTest extends TestCase
 
         $this->as($teacher)->getJson("/api/v1/students/{$student->id}/study-classmates")->assertOk()->assertJsonCount(1, 'data')->assertJsonPath('data.0.id', $mate->id); // not $shared
         $this->apply($teacher, $task, [$shared->id])->assertOk()->assertJsonPath('data.refused', 1);
-        $this->assertSame(0, $this->count($shared));
+        $this->assertSame(0, $this->taskCount($shared));
         $this->as($director)->getJson("/api/v1/students/{$student->id}/study-classmates")->assertOk()->assertJsonCount(2, 'data');
         $this->apply($director, $task, [$shared->id])->assertOk()->assertJsonPath('data.created', 1);
     }
@@ -314,7 +314,7 @@ class StudentStudyTaskBulkApiTest extends TestCase
         $this->as($sub)->getJson("/api/v1/students/{$student->id}/study-classmates")->assertForbidden();
         $this->copy($sub, $student)->assertForbidden();
         $this->apply($sub, $task, [$mate->id])->assertForbidden();
-        $this->assertSame(0, $this->count($mate));
+        $this->assertSame(0, $this->taskCount($mate));
     }
 
     public function test_apply_is_refused_for_a_classmate_in_another_campus_even_with_a_shared_course(): void
@@ -325,7 +325,7 @@ class StudentStudyTaskBulkApiTest extends TestCase
         $this->course($foreign, $teacher['id']);
 
         $this->apply($teacher, $task, [$foreign->id])->assertOk()->assertJsonPath('data.refused', 1);
-        $this->assertSame(0, $this->count($foreign));
+        $this->assertSame(0, $this->taskCount($foreign));
     }
 
     public function test_apply_works_for_director_and_super_admin(): void
