@@ -23,7 +23,8 @@
       <CardHeader class="tw:px-4">
         <CardTitle class="tw:text-base">{{ editor.id ? (isDirector ? '編輯範本' : '範本內容') : '新增範本' }}</CardTitle>
       </CardHeader>
-      <CardContent class="tw:space-y-3 tw:px-4">
+      <CardContent class="tw:px-4">
+      <fieldset :disabled="saving" class="tw:m-0 tw:min-w-0 tw:space-y-3 tw:border-0 tw:p-0">
         <div class="tw:grid tw:grid-cols-1 tw:gap-2 tw:sm:grid-cols-2">
           <label class="tw:flex tw:flex-col tw:gap-1 tw:text-sm">範本名稱
             <input v-model.trim="editor.title" maxlength="120" :disabled="!isDirector" :class="FIELD" placeholder="例如：七年級上學期數學" />
@@ -77,9 +78,10 @@
 
         <p v-if="formError" role="alert" class="tw:text-sm tw:text-destructive">{{ formError }}</p>
         <div class="tw:flex tw:justify-end tw:gap-2">
-          <Button size="sm" variant="ghost" :disabled="saving" @click="editor = null">{{ isDirector ? '取消' : '關閉' }}</Button>
+          <Button size="sm" variant="ghost" :disabled="saving" @click="closeEditor">{{ isDirector ? '取消' : '關閉' }}</Button>
           <Button v-if="isDirector" size="sm" :disabled="saving" @click="save">儲存</Button>
         </div>
+      </fieldset>
       </CardContent>
     </Card>
 
@@ -192,6 +194,11 @@ async function load() {
   }
 }
 
+function closeEditor() {
+  openSeq += 1; // a pending detail load must not reopen the editor
+  editor.value = null;
+}
+
 function startCreate() {
   openSeq += 1;
   formError.value = '';
@@ -301,6 +308,7 @@ onMounted(load);
 watch(() => props.branchId, () => {
   openSeq += 1;
   editor.value = null;
+  templates.value = []; // old-campus cards must never stay clickable; load() shows the skeleton
   load();
 });
 </script>

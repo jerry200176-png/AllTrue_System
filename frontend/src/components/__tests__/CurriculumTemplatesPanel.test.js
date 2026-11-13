@@ -258,4 +258,66 @@ describe('教材範本庫 panel', () => {
     expect(w.find('.ctp-editor').exists()).toBe(false);
     expect(btn(w, '新增範本').attributes('disabled')).toBeUndefined();
   });
+
+  it('clears old-campus cards at once on branch switch and ignores a late old response', async () => {
+    const resolvers = [];
+    vi.stubGlobal('fetch', vi.fn(() => {
+      if (resolvers.length === 0) {
+        resolvers.push(null);
+        return Promise.resolve({ ok: true, json: async () => ({ data: [TEMPLATE] }) });
+      }
+      return new Promise((resolve) => resolvers.push(resolve));
+    }));
+    const w = mount(Panel, { props: { branchId: 1, isDirector: true } });
+    await flushPromises();
+    expect(w.text()).toContain('七上數學範本');
+    await w.setProps({ branchId: 2 });
+    await flushPromises();
+    expect(w.text()).not.toContain('七上數學範本');
+    expect(w.find('[aria-busy="true"]').exists()).toBe(true);
+    resolvers[1]({ ok: true, json: async () => ({ data: [{ ...TEMPLATE, id: 7, title: '乙校範本' }] }) });
+    await flushPromises();
+    expect(w.text()).toContain('乙校範本');
+    expect(w.text()).not.toContain('七上數學範本');
+  });
+
+  it('disables every editor control while saving', async () => {
+    let release;
+    const gate = new Promise((r) => { release = r; });
+    vi.stubGlobal('fetch', vi.fn(async (input, options = {}) => {
+      if (options.method === 'PUT') await gate;
+      return { ok: true, json: async () => (options.method === 'POST' ? { data: { id: 9 } } : { data: [TEMPLATE] }) };
+    }));
+    const w = mount(Panel, { props: { branchId: 1, isDirector: true } });
+    await flushPromises();
+    await btn(w, '新增範本').trigger('click');
+    await w.find('input[placeholder^="例如"]').setValue('某範本');
+    await btn(w, '加單元').trigger('click');
+    await w.find('input[placeholder="單元名稱"]').setValue('甲');
+    await btn(w, '儲存').trigger('click');
+    await flushPromises();
+    expect(w.find('.ctp-editor fieldset').attributes('disabled')).toBeDefined();
+    release();
+    await flushPromises();
+  });
+
+  it('cancel invalidates a pending detail load', async () => {
+    let release;
+    const gate = new Promise((r) => { release = r; });
+    vi.stubGlobal('fetch', vi.fn(async (input, options = {}) => {
+      if (!options.method && /templates\/5$/.test(String(input))) {
+        await gate;
+        return { ok: true, json: async () => ({ data: DETAIL }) };
+      }
+      return { ok: true, json: async () => ({ data: [TEMPLATE] }) };
+    }));
+    const w = mount(Panel, { props: { branchId: 1, isDirector: true } });
+    await flushPromises();
+    await btn(w, '新增範本').trigger('click');
+    await btn(w, '編輯').trigger('click');
+    await btn(w, '取消').trigger('click');
+    release();
+    await flushPromises();
+    expect(w.find('.ctp-editor').exists()).toBe(false);
+  });
 });
