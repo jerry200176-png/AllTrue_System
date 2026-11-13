@@ -163,9 +163,14 @@ describe('LessonPlanUnits (#4970 step 5)', () => {
   it('drops a tick whose unit is gone when the full list arrives', async () => {
     const w = await mountIt();
     await w.findAll('input[type=checkbox]')[1].setValue(true);
+    expect([...w.vm.draftIds()].sort()).toEqual([2, 3]);
     allPayload = { ...PAYLOAD, units: [unit(1, '整數'), unit(3, '代數', { checked: true }), unit(8, '幾何')] };
     await w.find('button').trigger('click');
     await flushPromises();
-    expect([...w.vm.draftIds()].sort()).toEqual([3]);
+    // Units 1, 3, 8 are shown; only the server's own tick (3) is left, so nothing is pending.
+    expect(w.findAll('input[type=checkbox]').map((b) => b.element.checked)).toEqual([false, true, false]);
+    expect(w.vm.draftIds()).toEqual([]);
+    await w.vm.save(77);
+    expect(calls.filter((c) => c.method === 'PUT')).toHaveLength(0);
   });
 });
