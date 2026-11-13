@@ -7,9 +7,10 @@ localStorage.setItem('alltrue_session', JSON.stringify({
   user: { id: 9001, role, name: 'E2E Assessment User', must_change_password: false },
 }));
 
-const [{ createApp, h }, styles, module] = await Promise.all([
+const [{ createApp, h }, styles, , module] = await Promise.all([
   import('vue'),
   import('../../../src/styles.css'),
+  import('../../../src/ui.css'),
   import('../../../src/pages/AssessmentPage.vue'),
 ]);
 

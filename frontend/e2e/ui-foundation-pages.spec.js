@@ -1115,6 +1115,28 @@ test.describe('Visual regression @visual', () => {
     });
   }
 
+  // #4989: 學習檢測 at 1280 and 390 with two fixed fake assessments (one draft, one published), as a director.
+  for (const vp of [{ name: '1280', width: 1280, height: 900 }, { name: '390', width: 390, height: 844 }]) {
+    test(`assessment @${vp.name}`, async ({ page }) => {
+      const rows = [
+        { id: 101, title: '測試基準檢測', assessment_type: 'baseline', student_name: null, scheduled_for: null, status: 'draft', result_count: 0, max_score: 100 },
+        { id: 102, title: '測試階段檢測', assessment_type: 'checkpoint', student_name: '測試學生甲', scheduled_for: '2026-09-08', status: 'published', result_count: 3, max_score: 100 },
+      ];
+      const summary = { assessment_count: 2, result_count: 3, average_percent: 82, reviewed_count: 1, remediation_open_count: 2, remediation_overdue_count: 0 };
+      await page.setViewportSize({ width: vp.width, height: vp.height });
+      await page.route('**/api/v1/**', (route) => {
+        const p = new URL(route.request().url()).pathname;
+        return route.fulfill({ contentType: 'application/json', body: JSON.stringify({ data: p === '/api/v1/assessments' ? rows : p === '/api/v1/assessment-reports/summary' ? summary : [] }) });
+      });
+      await page.goto('/pilot-mount.html?page=assessment');
+      await expect(page.locator('html')).toHaveAttribute('data-pilot-ready', '1', { timeout: 15_000 });
+      await expect(page.locator(vp.width <= 640 ? '.assessment-mobile-card' : '.assessment-desktop-table tbody tr')).toHaveCount(2);
+      await page.mouse.move(0, 0);
+      await page.waitForLoadState('networkidle');
+      await expect(page).toHaveScreenshot(`assessment-${vp.name}.png`, { fullPage: true });
+    });
+  }
+
   // #4989: 課表回報管理 at 1280 and 390 with three fixed fake reports; the first one is opened on the 處理說明 form.
   for (const vp of [{ name: '1280', width: 1280, height: 900 }, { name: '390', width: 390, height: 844 }]) {
     test(`schedule-discrepancy @${vp.name}`, async ({ page }) => {

@@ -1,0 +1,17 @@
+updates:
+  - id: staff-2026-11-13-ui-assessment-page
+    published_at: "2026-11-13"
+    audiences:
+      - director
+      - super_admin
+      - teacher
+    importance: digest
+    title: 學習檢測頁換新外觀
+    summary: 字更大、按鈕更好按；建立、發布、關閉檢測和登錄結果的步驟和原本一樣。
+    items:
+      - category: improved
+        text: 「學習檢測」頁改成大字、大按鈕，手機上每份檢測一張卡片；檢測名稱沒填時，欄位下方會直接說明原因。
+      - category: improved
+        text: 「關閉」檢測改在頁面內確認；查看結果、補強追蹤、數位作答和登錄結果改在右側面板（手機為全螢幕）。
+    source_refs:
+      - "changelog:2026-11-13:ui-assessment-page"

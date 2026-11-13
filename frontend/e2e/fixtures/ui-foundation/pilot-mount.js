@@ -65,6 +65,7 @@ const pageModules = {
   'branch-health': () => import('../../../src/pages/BranchHealthBoard.vue'),
   'binding-conflicts': () => import('../../../src/pages/BindingConflictReviewPage.vue'),
   'binding-health': () => import('../../../src/pages/BindingHealthDashboard.vue'),
+  assessment: () => import('../../../src/pages/AssessmentPage.vue'),
 };
 const loadPage = pageModules[page] || pageModules.inbox;
 const PageComponent = (await loadPage()).default;
@@ -194,6 +195,9 @@ createApp({
       return () => h(PageComponent, { token: 'e2e-branch-health-token' });
     }
     if (page === 'binding-conflicts') {
+      return () => h(PageComponent, { branchId: 1, userRole: role });
+    }
+    if (page === 'assessment') {
       return () => h(PageComponent, { branchId: 1, userRole: role });
     }
     if (page === 'binding-health') {
