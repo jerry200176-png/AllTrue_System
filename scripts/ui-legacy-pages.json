@@ -31,7 +31,6 @@
   "src/components/course-management/TransferSessionsModal.vue",
   "src/components/learning-records/LearningRecordExportModal.vue",
   "src/components/students/StudentLearningTimeline.vue",
-  "src/components/tuition/BillList.vue",
   "src/components/tuition/BillQuickView.vue",
   "src/components/tuition/ContractCard.vue",
   "src/components/tuition/FeeLedgerPanel.vue",

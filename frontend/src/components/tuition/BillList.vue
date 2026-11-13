@@ -32,11 +32,11 @@
       </StatStrip>
 
       <div class="tw:flex tw:flex-wrap tw:items-center tw:gap-2">
-        <div class="tw:relative tw:w-full tw:lg:w-72">
+        <div class="tw:relative tw:w-full tw:md:max-lg:w-auto tw:md:max-lg:flex-1 tw:lg:w-72">
           <Search class="tw:pointer-events-none tw:absolute tw:top-1/2 tw:left-4 tw:size-5 tw:-translate-y-1/2 tw:text-tpl-secondary" :stroke-width="2" aria-hidden="true" />
           <Input v-model="query" type="search" placeholder="搜尋學生" aria-label="搜尋學生" class="tw:h-12 tw:rounded-full tw:bg-card tw:pl-11 tw:text-[length:var(--tpl-text-body)] tw:shadow-none" data-testid="bill-search" />
         </div>
-        <div role="group" aria-label="篩選" class="tw:-mx-4 tw:flex tw:max-w-[100vw] tw:min-w-0 tw:flex-1 tw:items-center tw:gap-2 tw:px-4 tw:max-lg:basis-full tw:max-md:overflow-x-auto tw:md:mx-0 tw:md:flex-wrap tw:md:px-0" data-guide="tuition-chips">
+        <div role="group" aria-label="篩選" class="tw:-mx-4 tw:flex tw:max-w-[100vw] tw:min-w-0 tw:flex-1 tw:items-center tw:gap-2 tw:px-4 tw:md:max-lg:order-3 tw:max-lg:basis-full tw:max-md:overflow-x-auto tw:md:mx-0 tw:md:flex-wrap tw:md:px-0" data-guide="tuition-chips">
           <FilterChip
             v-for="c in CHIPS"
             :key="c.key"
@@ -55,7 +55,7 @@
             data-testid="bill-filter-current"
           >{{ filterLabel }}</FilterChip>
         </div>
-        <label class="tw:inline-flex tw:items-center tw:gap-1 tw:text-tpl-caption tw:whitespace-nowrap tw:text-tpl-secondary tw:ml-auto">排序
+        <label class="tw:inline-flex tw:items-center tw:gap-1 tw:text-tpl-caption tw:whitespace-nowrap tw:text-tpl-secondary tw:ml-auto tw:md:max-lg:order-2">排序
           <select v-model="sortKey" class="tw:h-11 tw:cursor-pointer tw:rounded-full tw:border-0 tw:bg-transparent tw:py-0 tw:pr-2 tw:pl-1 tw:text-[length:var(--tpl-text-caption)] tw:font-semibold tw:text-foreground tw:outline-none tw:focus-visible:ring-3 tw:focus-visible:ring-ring/50" data-testid="bill-sort">
             <option v-for="(o, key) in SORTS" :key="key" :value="key">{{ o.label }}</option>
           </select>
@@ -142,8 +142,8 @@
               <TableCell :class="[t.cell, 'bl__due tw:max-lg:hidden tw:whitespace-nowrap tw:tabular-nums', b.overdue_days > 0 ? 'due tw:font-semibold tw:text-[var(--ds-danger-text)]' : 'tw:text-tpl-secondary']">{{ dueText(b) }}</TableCell>
               <TableCell :class="[t.num, 'bl__num tw:font-semibold tw:max-md:pl-0', { due: b.owed > 0 }]">
                 {{ b.owed > 0 ? money(b.owed) : '—' }}
-                <span v-if="b.owed_later > 0 && !(b.review_amount > 0)" :class="[t.sub, 'bl__review']" :data-testid="`bill-later-${b.key}`">之後還會到期 {{ money(b.owed_later) }}</span>
-                <span v-if="b.review_amount > 0" :class="[t.sub, 'bl__review']" :data-testid="`bill-review-${b.key}`">需核對金額 {{ money(b.review_amount) }}</span>
+                <span v-if="b.owed_later > 0 && !(b.review_amount > 0)" :class="[t.sub, 'bl__review']" :data-testid="`bill-later-${b.key}`">之後還會到期 <span class="tw:whitespace-nowrap">{{ money(b.owed_later) }}</span></span>
+                <span v-if="b.review_amount > 0" :class="[t.sub, 'bl__review']" :data-testid="`bill-review-${b.key}`">需核對金額 <span class="tw:whitespace-nowrap">{{ money(b.review_amount) }}</span></span>
                 <span :class="[t.sub, 'tw:lg:hidden bl__due tw:font-normal', b.overdue_days > 0 ? 'tw:text-[var(--ds-danger-text)]' : '']">{{ dueText(b) !== '—' ? dueText(b) : b.label }}</span>
               </TableCell>
               <TableCell :class="[t.cell, 'tw:pr-4 tw:pl-0 tw:md:pr-5']">
@@ -208,8 +208,8 @@ defineEmits(['student', 'quick', 'action', 'menu', 'batch', 'export', 'retry']);
 const checkCol = 'tw:w-12 tw:pr-0 tw:pl-4 tw:md:pl-5';
 // 20px box; the pseudo-element grows the hit area to 48px without moving the row.
 const checkBox = "tw:relative tw:size-5 tw:after:absolute tw:after:-inset-3.5 tw:after:content-['']";
-const nameButton = 'tw:block tw:max-w-full tw:min-h-0 tw:cursor-pointer tw:rounded-sm tw:border-0 tw:bg-transparent tw:p-0 tw:text-left tw:text-[length:inherit] tw:font-semibold tw:text-foreground tw:whitespace-nowrap tw:outline-none tw:hover:underline tw:focus-visible:ring-3 tw:focus-visible:ring-ring/50 tw:max-md:pointer-events-none';
-const openButton = 'tw:min-h-0 tw:cursor-pointer tw:rounded-sm tw:border-0 tw:bg-transparent tw:p-0 tw:text-left tw:text-[length:inherit] tw:font-normal tw:text-tpl-secondary tw:outline-none tw:hover:underline tw:focus-visible:ring-3 tw:focus-visible:ring-ring/50 tw:max-md:pointer-events-none';
+const nameButton = 'bl__name tw:block tw:max-w-full tw:min-h-0 tw:cursor-pointer tw:rounded-sm tw:border-0 tw:bg-transparent tw:p-0 tw:text-left tw:text-[length:inherit] tw:font-semibold tw:text-foreground tw:whitespace-nowrap tw:outline-none tw:hover:underline tw:focus-visible:ring-3 tw:focus-visible:ring-ring/50 tw:max-md:pointer-events-none';
+const openButton = 'bl__open tw:min-h-0 tw:cursor-pointer tw:rounded-sm tw:border-0 tw:bg-transparent tw:p-0 tw:text-left tw:text-[length:inherit] tw:font-normal tw:text-tpl-secondary tw:outline-none tw:hover:underline tw:focus-visible:ring-3 tw:focus-visible:ring-ring/50 tw:max-md:pointer-events-none';
 const moreTrigger = 'tw:inline-flex tw:h-11 tw:shrink-0 tw:items-center tw:rounded-full tw:border-0 tw:bg-card tw:px-4 tw:text-[length:var(--tpl-text-caption)] tw:font-semibold tw:text-tpl-secondary tw:shadow-[inset_0_0_0_1px_var(--ds-hairline)] tw:hover:bg-card tw:hover:text-foreground';
 const rowMenu = 'bl__menu tw:size-11 tw:rounded-full tw:border-0 tw:bg-transparent tw:p-0 tw:text-[length:var(--tpl-text-body)] tw:text-tpl-secondary tw:hover:bg-muted';
 // The strip figure is also the filter button: it covers the whole figure, the pressed one gets the wash.

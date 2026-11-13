@@ -7,13 +7,15 @@ localStorage.setItem('app_branch', '1');
 const params = new URLSearchParams(window.location.search);
 const initialTab = params.get('tab') || '';
 
-const [{ createApp, h }, styles, { default: TuitionCollectionPage }] = await Promise.all([
+const [{ createApp, h }, styles, uiStyles, { default: TuitionCollectionPage }] = await Promise.all([
   import('vue'),
   import('../../../src/styles.css'),
+  import('../../../src/ui.css'), // the page is on the page template (tw: utilities)
   import('../../../src/pages/TuitionCollectionPage.vue'),
 ]);
 
 void styles;
+void uiStyles;
 
 createApp({
   name: 'TuitionCollectionPilotMount',

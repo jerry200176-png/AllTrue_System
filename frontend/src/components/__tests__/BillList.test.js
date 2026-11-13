@@ -1,11 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { readFileSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { mount } from '@vue/test-utils';
 import BillList from '../tuition/BillList.vue';
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
 const row = (o) => ({ id: 1, student_id: 1, student_name: '學生甲', subject: '數學', schedule_mode: 'count', remaining_sessions: 4, payment_status: 'unpaid', payable_status: 'invoiced', payable_outstanding: 1000, ...o });
 const ROWS = [
   row({ id: 1, payment_status: 'pending_report', latest_payment_report_id: 9 }),
