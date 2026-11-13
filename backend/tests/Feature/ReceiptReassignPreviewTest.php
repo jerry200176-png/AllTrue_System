@@ -3,6 +3,8 @@
 namespace Tests\Feature;
 
 use App\Models\AuthToken;
+use App\Models\ClassSession;
+use App\Models\CoursePackage;
 use App\Models\Invoice;
 use App\Models\Payment;
 use App\Models\PaymentReport;
@@ -287,6 +289,176 @@ class ReceiptReassignPreviewTest extends TestCase
         $this->getJson("/api/v1/payment-reports/{$f['report']->id}/reassign-targets?student_id=abc", $this->h($this->token('A', 1)))->assertStatus(422)->assertJsonPath('code', 'reassign_bad_student');
     }
 
+    // ── money proof on the source side (review P1-1) ────────────────────
+
+    public function test_receipt_without_payment_id_is_accepted_when_its_payment_row_points_back_to_it(): void
+    {
+        $f = $this->fixture();
+        DB::table('Payment')->where('id', $f['report']->payment_id)->update(['payment_report_id' => $f['report']->id]);
+        $f['report']->update(['payment_id' => null]);
+        $this->preview($this->token('S', 1), $f)->assertOk()->assertJsonPath('amount', self::AMOUNT);
+    }
+
+    public function test_receipt_whose_money_is_not_on_the_bill_is_refused_not_applied(): void
+    {
+        $tok = $this->token('S', 1);
+        $arrange = [
+            'no payment_id and an unlinked payment' => fn (array $f) => $f['report']->update(['payment_id' => null]),
+            'bill has no payments' => function (array $f) {
+                DB::table('Payment')->where('InvoiceID', $f['wrongInvoice']->id)->delete();
+                $f['report']->update(['payment_id' => null]);
+            },
+            'payment amount differs from the report' => fn (array $f) => $f['report']->update(['reported_amount' => self::AMOUNT - 1000]),
+            'bill net is below the receipt' => fn (array $f) => DB::table('Payment')->insert(['InvoiceID' => $f['wrongInvoice']->id, 'Amount' => -3000, 'PaidAt' => '2026-11-11', 'Method' => 'transfer_out']),
+        ];
+        foreach ($arrange as $label => $fn) {
+            $f = $this->fixture();
+            $fn($f);
+            $before = $this->snapshot();
+            $res = $this->preview($tok, $f);
+            $this->assertContains($res->json('code'), ['reassign_source_not_applied', 'reassign_refund_or_transfer_exists', 'reassign_legacy_reversal_unreconciled'], $label);
+            $this->assertSame($before, $this->snapshot(), $label);
+        }
+        $f = $this->fixture();
+        $f['report']->update(['payment_id' => null]);
+        $this->preview($tok, $f)->assertStatus(409)->assertJsonPath('code', 'reassign_source_not_applied');
+    }
+
+    public function test_negative_reported_amount_is_refused_instead_of_made_positive(): void
+    {
+        $f = $this->fixture();
+        $f['report']->update(['reported_amount' => -self::AMOUNT]);
+        $this->preview($this->token('S', 1), $f)->assertStatus(422)->assertJsonPath('code', 'reassign_amount_invalid');
+    }
+
+    public function test_two_receipts_on_one_bill_each_use_their_own_payment(): void
+    {
+        $f = $this->fixture();
+        $pay2 = $this->payment($f['wrongInvoice'], 500);
+        $report2 = PaymentReport::create([
+            'StudentID' => $f['wrong']->id, 'StudentClassID' => $f['wrongCourse']->ID, 'InvoiceID' => $f['wrongInvoice']->id, 'reported_by_name' => 'x',
+            'payment_date' => '2026-11-10', 'payment_method' => 'cash', 'reported_amount' => 500, 'status' => 'confirmed', 'confirmed_by' => 1,
+            'confirmed_at' => Carbon::now(), 'payment_id' => $pay2->id, 'report_token_hash' => hash('sha256', uniqid('q', true)), 'token_expires_at' => Carbon::now()->addDay(),
+        ]);
+        $tok = $this->token('S', 1);
+        $this->preview($tok, $f)->assertOk()->assertJsonPath('amount', self::AMOUNT);
+        $this->previewTo($tok, $report2, $f['rightInvoice'])->assertOk()->assertJsonPath('amount', 500);
+    }
+
+    public function test_source_bill_with_a_larger_total_shows_its_real_balance(): void
+    {
+        $f = $this->fixture();
+        $f['wrongInvoice']->update(['TotalAmount' => 10000]);
+        $j = $this->preview($this->token('S', 1), $f)->assertOk()->json();
+        $this->assertSame(2000, $j['from']['balance_before']);
+        $this->assertSame(10000, $j['from']['balance_after']);
+    }
+
+    public function test_state_hash_changes_when_the_source_side_changes(): void
+    {
+        $f = $this->fixture();
+        $tok = $this->token('S', 1);
+        $h1 = $this->preview($tok, $f)->json('state_hash');
+        $this->payment($f['wrongInvoice'], 300);
+        $this->assertNotSame($h1, $this->preview($tok, $f)->json('state_hash'));
+    }
+
+    public function test_from_student_is_the_owner_of_the_bill_the_money_sits_on(): void
+    {
+        $f = $this->fixture();
+        $f['report']->update(['StudentID' => $f['right']->id]); // receipt filed under another student of the same campus
+        $this->preview($this->token('S', 1), $f)->assertOk()->assertJsonPath('from.student_id', $f['wrong']->id);
+    }
+
+    // ── canonical payable of the target (review P1-2) ───────────────────
+
+    public function test_monthly_target_repriced_by_held_sessions_is_judged_on_the_resolver_amount(): void
+    {
+        $f = $this->fixture();
+        $month = $this->bill($f['right'], 8000, 'unpaid', 0, ['ScheduleMode' => 'date', 'StartDate' => '2026-11-01'], ['billing_period' => '2026-11', 'IssueDate' => '2026-11-01']);
+        ClassSession::create(['StudentClassID' => $month['course']->ID, 'SessionDate' => '2026-11-05', 'StartTime' => '18:00', 'EndTime' => '20:00', 'Status' => 'cancelled', 'Note' => '']);
+        $tok = $this->token('S', 1);
+        // Stored 8000 would fit; every session of the period is held, so the bill is worth 0.
+        $this->previewTo($tok, $f['report'], $month['invoice'])->assertStatus(422)->assertJsonPath('code', 'reassign_target_overpay');
+        $ids = array_column($this->getJson("/api/v1/payment-reports/{$f['report']->id}/reassign-targets?student_id={$f['right']->id}", $this->h($tok))->assertOk()->json('targets'), 'invoice_id');
+        $this->assertNotContains((int) $month['invoice']->id, $ids);
+        $this->assertContains((int) $f['rightInvoice']->id, $ids);
+    }
+
+    public function test_target_of_a_paid_package_is_refused_and_not_offered(): void
+    {
+        $f = $this->fixture();
+        $pkg = CoursePackage::create(['student_id' => $f['right']->id, 'campus_id' => 1, 'name' => 'P', 'billing_mode' => 'count', 'total_sessions' => 8, 'remaining_sessions' => 8,
+            'used_sessions' => 0, 'rate' => 1000, 'rate_unit' => 'session', 'class_type' => 'one_on_one', 'paid' => true, 'stop' => false, 'enabled' => true, 'paid_at' => '2026-11-01']);
+        $held = $this->bill($f['right'], 20000, 'unpaid', 0, ['PackageID' => $pkg->id], ['Status' => 'paid']);
+        $tok = $this->token('S', 1);
+        $this->previewTo($tok, $f['report'], $held['invoice'])->assertStatus(422)->assertJsonPath('code', 'reassign_target_package_paid');
+        $ids = array_column($this->getJson("/api/v1/payment-reports/{$f['report']->id}/reassign-targets?student_id={$f['right']->id}", $this->h($tok))->json('targets'), 'invoice_id');
+        $this->assertNotContains((int) $held['invoice']->id, $ids);
+    }
+
+    // ── wording, age, other refusals ────────────────────────────────────
+
+    public function test_hq_messages_name_the_actual_cause(): void
+    {
+        $f = $this->fixture();
+        $tok = $this->token('A', 1);
+        $msgs = [];
+        $msgs['off'] = $this->preview($tok, $f)->assertJsonPath('hq_reason', 'off')->json('message');
+        config(['billing.receipt_reassign_director_max_amount' => self::AMOUNT - 1, 'billing.receipt_reassign_director_max_age_days' => 30]);
+        $msgs['amount'] = $this->preview($tok, $f)->assertJsonPath('hq_reason', 'amount')->json('message');
+        config(['billing.receipt_reassign_director_max_amount' => self::AMOUNT]);
+        $f['report']->update(['confirmed_at' => Carbon::today()->subDays(31)]);
+        $msgs['age'] = $this->preview($tok, $f)->assertJsonPath('hq_reason', 'age')->json('message');
+        $this->assertCount(3, array_unique($msgs));
+    }
+
+    public function test_unknown_report_age_is_null_and_goes_to_hq(): void
+    {
+        $f = $this->fixture();
+        DB::table('payment_reports')->where('id', $f['report']->id)->update(['confirmed_at' => null, 'created_at' => null]);
+        $this->preview($this->token('S', 1), $f)->assertOk()->assertJsonPath('report_age_days', null)->assertJsonPath('needs_role', 'super_admin');
+        config(['billing.receipt_reassign_director_max_amount' => self::AMOUNT, 'billing.receipt_reassign_director_max_age_days' => 30]);
+        $this->preview($this->token('A', 1), $f)->assertStatus(422)->assertJsonPath('hq_reason', 'age');
+    }
+
+    public function test_overpay_on_an_over_collected_bill_never_prints_a_negative_remaining(): void
+    {
+        $f = $this->fixture();
+        $this->payment($f['rightInvoice'], self::AMOUNT + 500);
+        $res = $this->preview($this->token('S', 1), $f)->assertStatus(422)->assertJsonPath('code', 'reassign_target_overpay')->assertJsonPath('remaining', 0);
+        $this->assertStringNotContainsString('-', $res->json('message'));
+    }
+
+    public function test_target_owner_mismatch_report_404_and_source_bill_in_another_campus(): void
+    {
+        $f = $this->fixture();
+        $tok = $this->token('S', 1);
+        DB::table('StudentClass')->where('ID', $f['rightCourse']->ID)->update(['StudentID' => $f['wrong']->id]);
+        $this->preview($tok, $f)->assertStatus(422)->assertJsonPath('code', 'reassign_target_other_owner');
+        $this->postJson('/api/v1/payment-reports/999999/reassign', ['target_invoice_id' => $f['rightInvoice']->id, 'preview' => true], $this->h($tok))
+            ->assertStatus(404)->assertJsonPath('code', 'reassign_report_not_found');
+        $g = $this->fixture();
+        DB::table('Invoice')->where('id', $g['wrongInvoice']->id)->update(['StudentID' => $this->student(2)->id]);
+        $this->preview($this->token('A', 1), $g)->assertStatus(403);
+        $this->preview($tok, $g)->assertStatus(422)->assertJsonPath('code', 'reassign_cross_campus');
+    }
+
+    public function test_targets_never_offer_a_bill_the_preview_would_refuse(): void
+    {
+        $f = $this->fixture();
+        $moved = $this->bill($f['right'], 8000);
+        $this->payment($moved['invoice'], 10, 'refund');
+        $pend = $this->bill($f['right'], 8000);
+        $this->pendingReport($f['right'], $pend['course'], $pend['invoice']);
+        $tok = $this->token('S', 1);
+        $ids = array_column($this->getJson("/api/v1/payment-reports/{$f['report']->id}/reassign-targets?student_id={$f['right']->id}", $this->h($tok))->json('targets'), 'invoice_id');
+        $this->assertSame([(int) $f['rightInvoice']->id], $ids);
+        foreach ([$moved, $pend] as $b) {
+            $this->previewTo($tok, $f['report'], $b['invoice'])->assertStatus(422);
+        }
+    }
+
     // ── helpers ─────────────────────────────────────────────────────────
 
     /** @return array<string, mixed> receipt confirmed on the wrong student's paid bill; the right student has an open bill */
@@ -308,15 +480,15 @@ class ReceiptReassignPreviewTest extends TestCase
     }
 
     /** @return array{course:StudentClass, invoice:Invoice, payment:?Payment} */
-    private function bill(Student $student, int $total, string $status = 'unpaid', int $paid = 0): array
+    private function bill(Student $student, int $total, string $status = 'unpaid', int $paid = 0, array $courseOverrides = [], array $invoiceOverrides = []): array
     {
-        $course = StudentClass::create([
+        $course = StudentClass::create($courseOverrides + [
             'StudentID' => $student->id, 'GradeID' => 1, 'SubjectID' => 1, 'TeacherID' => 99, 'by1' => 1, 'Period' => 4,
             'StartDate' => now(), 'TotalHours' => 20, 'Charge' => $total, 'Paid' => $paid > 0 ? 1 : 0, 'MDate' => now(), 'Stop' => 0,
             'ScheduleMode' => 'count', 'SessionCount' => 8, 'SessionDuration' => 120, 'RemainingSessions' => 5, 'ClassType' => 'one_on_one', 'UsedSessions' => 0,
         ]);
         $invoice = Invoice::create(['StudentID' => $student->id, 'StudentClassID' => $course->ID, 'IssueDate' => '2026-11-01',
-            'TotalAmount' => $total, 'PaidAmount' => $paid, 'Status' => $status === 'void' ? 'void' : ($paid >= $total && $paid > 0 ? 'paid' : 'unpaid')]);
+            'TotalAmount' => $total, 'PaidAmount' => $paid, 'Status' => $status === 'void' ? 'void' : ($paid >= $total && $paid > 0 ? 'paid' : 'unpaid')] + $invoiceOverrides);
         $payment = $paid > 0 ? Payment::create(['InvoiceID' => $invoice->id, 'Amount' => $paid, 'PaidAt' => '2026-11-10', 'Method' => 'transfer']) : null;
 
         return ['course' => $course, 'invoice' => $invoice, 'payment' => $payment];

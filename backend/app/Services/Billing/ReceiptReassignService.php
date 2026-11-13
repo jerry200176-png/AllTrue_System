@@ -4,6 +4,8 @@ namespace App\Services\Billing;
 
 use App\Helpers\FeatureFlag;
 use App\Models\Invoice;
+use App\Models\StudentClass;
+use App\Services\InvoiceAmountReconciliationService;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 
@@ -16,7 +18,8 @@ use Illuminate\Support\Facades\DB;
  *
  * Rules (each refusal has a code and a plain zh-TW message that names the blocker):
  *  - same campus only; the caller must own the campus of the receipt and of the target bill (checked before any state);
- *  - the amount and every balance come from the Payment rows ({@see Invoice::netPaidSql()}), never summed by hand;
+ *  - the amount is the receipt's own Payment row on the source bill; every balance is the canonical payable from
+ *    {@see InvoiceAmountReconciliationService::resolve()} (read-only), never summed by hand;
  *  - a director may act alone only within `billing.receipt_reassign_director_max_amount` and
  *    `billing.receipt_reassign_director_max_age_days` (both env-driven, 0 = off for directors); above that the
  *    receipt goes to super_admin (HQ) unchanged;
@@ -28,6 +31,10 @@ final class ReceiptReassignService
 
     /** Payment methods that mean a refund or contract transfer already touched the bill's money. */
     private const MONEY_MOVED_METHODS = ['transfer_out', 'transfer_in', 'refund'];
+
+    public function __construct(private InvoiceAmountReconciliationService $amounts)
+    {
+    }
 
     /**
      * @param list<int>|null $campusIds caller's campuses; null = super_admin (all campuses, still same-campus moves only)
@@ -78,23 +85,34 @@ final class ReceiptReassignService
             return $this->refuse('reassign_pending_report', '其中一門課還有待核對的收款回報，請先處理完再移動收據。');
         }
 
-        $toNet = $this->netPaid((int) $toInvoice->id);
-        $toBefore = (int) $toInvoice->TotalAmount - $toNet;
+        if ($this->packagePaidHold((int) $toInvoice->id, (string) $toInvoice->Status, (int) $toInvoice->StudentClassID)) {
+            return $this->refuse('reassign_target_package_paid', '這張帳單屬於已繳清的共用課程包，不能把收款移過去，請聯絡總部對帳。');
+        }
+
+        // The canonical payable (same resolver as confirm and every billing surface), not TotalAmount minus payments.
+        $toMoney = $this->resolve((int) $toInvoice->id);
+        $toBefore = (int) $toMoney['outstanding_amount'];
         if ($amount > $toBefore) {
-            return $this->refuse('reassign_target_overpay', "這張帳單只剩 {$toBefore} 元未繳，收據金額 {$amount} 元放不下。", 422, ['remaining' => max(0, $toBefore)]);
+            $msg = (int) $toMoney['total_amount'] <= 0 ? '這張帳單依實際上課堂數算出來是 0 元，放不下這筆收款。'
+                : ($toBefore <= 0 ? '這張帳單已經全部繳清，放不下這筆收款。' : "這張帳單只剩 {$toBefore} 元未繳，收據金額 {$amount} 元放不下。");
+
+            return $this->refuse('reassign_target_overpay', $msg, 422, ['remaining' => max(0, $toBefore)]);
         }
 
         $ageDays = $this->ageDays($report);
-        $needsRole = $this->needsRole($amount, $ageDays);
-        if ($needsRole === 'super_admin' && !$isSuperAdmin) {
-            $why = $amount > $this->directorMaxAmount()
-                ? '這筆金額超過主任可自行處理的上限，請聯絡總部處理。'
-                : '這張收據已超過可自行更正的期限，請聯絡總部處理。';
+        $hq = $this->hqReason($amount, $ageDays);
+        $needsRole = $hq === null ? 'director' : 'super_admin';
+        if ($hq !== null && !$isSuperAdmin) {
+            $why = [
+                'off' => '目前還沒有開放主任自行移動收據，請聯絡總部處理。',
+                'amount' => '這筆金額超過主任可自行處理的上限，請聯絡總部處理。',
+                'age' => $ageDays === null ? '無法確認這張收據的日期，請聯絡總部處理。' : '這張收據已超過可自行更正的期限，請聯絡總部處理。',
+            ][$hq];
 
-            return $this->refuse('reassign_needs_super_admin', $why, 422, ['needs_role' => 'super_admin']);
+            return $this->refuse('reassign_needs_super_admin', $why, 422, ['needs_role' => 'super_admin', 'hq_reason' => $hq]);
         }
 
-        $fromBefore = (int) $from['invoice']->TotalAmount - $from['net'];
+        $fromBefore = (int) $from['money']['outstanding_amount'];
         $warnings = ['source_bill_becomes_unpaid'];
         if ((int) ($from['course']->PackageID ?? 0) > 0 || (int) ($toCourse->PackageID ?? 0) > 0) {
             $warnings[] = 'shared_package';
@@ -106,7 +124,7 @@ final class ReceiptReassignService
             'needs_role' => $needsRole,
             'report_age_days' => $ageDays,
             'from' => [
-                'student_id' => (int) $report->StudentID,
+                'student_id' => (int) $from['invoice']->StudentID,
                 'course_id' => (int) $from['course']->ID,
                 'invoice_id' => (int) $from['invoice']->id,
                 'balance_before' => $fromBefore,
@@ -122,8 +140,8 @@ final class ReceiptReassignService
             'warnings' => $warnings,
             'state_hash' => hash('sha256', json_encode([
                 (int) $report->id, (string) $report->status, $amount, (int) $from['invoice']->id, (int) ($report->payment_id ?? 0),
-                $from['net'], (string) $from['invoice']->Status, (int) $from['invoice']->TotalAmount,
-                (int) $toInvoice->id, $toNet, (string) $toInvoice->Status, (int) $toInvoice->TotalAmount,
+                $from['net'], (string) $from['invoice']->Status, (int) $from['money']['total_amount'], $fromBefore,
+                (int) $toInvoice->id, (int) $toMoney['net_applied'], (string) $toInvoice->Status, (int) $toMoney['total_amount'], $toBefore,
             ], JSON_THROW_ON_ERROR)),
         ]];
     }
@@ -151,44 +169,72 @@ final class ReceiptReassignService
         }
 
         $amount = $ctx['amount'];
-        $net = Invoice::netPaidSql('Invoice');
-        $rows = DB::table('Invoice')
+        $moved = "'" . implode("','", self::MONEY_MOVED_METHODS) . "'";
+        // Loose SQL shortlist (same exclusions as preview); the resolver below decides what each bill can really take.
+        $candidates = DB::table('Invoice')
             ->join('StudentClass', 'StudentClass.ID', '=', 'Invoice.StudentClassID')
             ->where('Invoice.StudentID', $studentId)
             ->whereColumn('StudentClass.StudentID', 'Invoice.StudentID')
             ->where('Invoice.id', '!=', (int) $ctx['from']['invoice']->id)
             ->whereRaw("COALESCE(Invoice.Status, '') <> 'void'")
             ->whereRaw("COALESCE(StudentClass.closed_reason, '') <> 'refunded'")
-            ->whereRaw("Invoice.TotalAmount - $net >= ?", [$amount])
-            ->selectRaw("Invoice.id, Invoice.StudentClassID, Invoice.billing_period, Invoice.TotalAmount, Invoice.Status, Invoice.TotalAmount - $net AS remaining")
+            ->whereRaw("NOT EXISTS (SELECT 1 FROM Payment PM WHERE PM.InvoiceID = Invoice.id AND PM.Method IN ($moved))")
+            ->whereRaw("NOT EXISTS (SELECT 1 FROM payment_reports PR WHERE PR.StudentClassID = Invoice.StudentClassID AND PR.status = 'pending')")
             ->orderByDesc('Invoice.id')
-            ->limit(50)
-            ->get();
+            ->limit(200)
+            ->pluck('Invoice.id')->all();
 
-        return ['status' => 200, 'body' => [
-            'amount' => $amount,
-            'student_id' => $studentId,
-            'targets' => $rows->map(fn ($r) => [
-                'invoice_id' => (int) $r->id,
-                'course_id' => (int) $r->StudentClassID,
-                'billing_period' => $r->billing_period,
-                'total' => (int) $r->TotalAmount,
-                'remaining' => (int) $r->remaining,
-                'status' => $r->Status,
-            ])->values()->all(),
-        ]];
+        $targets = [];
+        $courseIds = DB::table('Invoice')->whereIn('id', $candidates)->pluck('StudentClassID')->unique()->map(fn ($v) => (int) $v)->values()->all();
+        $this->amounts->preloadSessions($courseIds);
+        try {
+            foreach ($candidates as $invoiceId) {
+                $inv = DB::table('Invoice')->where('id', $invoiceId)->first();
+                if ($this->packagePaidHold((int) $inv->id, (string) $inv->Status, (int) $inv->StudentClassID)) {
+                    continue;
+                }
+                $money = $this->resolve((int) $inv->id);
+                if ((int) $money['outstanding_amount'] < $amount) {
+                    continue;
+                }
+                $targets[] = [
+                    'invoice_id' => (int) $inv->id,
+                    'course_id' => (int) $inv->StudentClassID,
+                    'billing_period' => $inv->billing_period,
+                    'total' => (int) $money['total_amount'],
+                    'remaining' => (int) $money['outstanding_amount'],
+                    'status' => $inv->Status,
+                ];
+                if (count($targets) >= 50) {
+                    break;
+                }
+            }
+        } finally {
+            $this->amounts->forgetPreloadedSessions();
+        }
+
+        return ['status' => 200, 'body' => ['amount' => $amount, 'student_id' => $studentId, 'targets' => $targets]];
     }
 
     /** 'director' when a director may do it alone, else 'super_admin'. Limits are read from config on every call. */
-    public function needsRole(int $amount, int $ageDays): string
+    public function needsRole(int $amount, ?int $ageDays): string
+    {
+        return $this->hqReason($amount, $ageDays) === null ? 'director' : 'super_admin';
+    }
+
+    /** Why a director may not act alone: 'off' (a limit is 0), 'amount' (over), 'age' (too old or unknown); null = may. */
+    public function hqReason(int $amount, ?int $ageDays): ?string
     {
         $maxAmount = $this->directorMaxAmount();
         $maxAge = (int) config('billing.receipt_reassign_director_max_age_days', 0);
-        if ($maxAmount <= 0 || $maxAge <= 0 || $amount > $maxAmount || $ageDays > $maxAge) {
-            return 'super_admin';
+        if ($maxAmount <= 0 || $maxAge <= 0) {
+            return 'off';
+        }
+        if ($amount > $maxAmount) {
+            return 'amount';
         }
 
-        return 'director';
+        return $ageDays === null || $ageDays > $maxAge ? 'age' : null;
     }
 
     private function directorMaxAmount(): int
@@ -218,8 +264,11 @@ final class ReceiptReassignService
         if ((string) $report->status !== 'confirmed') {
             return ['refusal' => $this->refuse('reassign_not_confirmed', '只有已確認的收據可以移到別張帳單。')];
         }
-        $amount = (int) abs((float) $report->reported_amount);
-        if ($amount <= 0) {
+        $reported = (float) $report->reported_amount;
+        if ($reported < 0) {
+            return ['refusal' => $this->refuse('reassign_amount_invalid', '這張收據的金額是負數，這裡不能移動。請聯絡總部對帳。')];
+        }
+        if ($reported <= 0) {
             return ['refusal' => $this->refuse('reassign_amount_zero', '這張收據金額為 0，沒有可以移動的款項。')];
         }
 
@@ -247,12 +296,37 @@ final class ReceiptReassignService
             return ['refusal' => $this->refuse('reassign_legacy_reversal_unreconciled', '這張帳單有舊的沖銷紀錄還沒對帳，請先找系統管理員處理。', 409)];
         }
 
+        // The receipt's own money must be on this bill: one positive, non-void Payment of this report (as ContractMoneyState does).
+        $receipts = $payments->filter(fn ($p) => (int) $p->Amount > 0 && (string) $p->Method !== 'void'
+            && ((int) ($p->payment_report_id ?? 0) === $reportId || (int) $p->id === (int) ($report->payment_id ?? 0)));
+        $net = $this->netPaid((int) $invoice->id);
+        $amount = $receipts->count() === 1 ? (int) $receipts->first()->Amount : 0;
+        if ($amount <= 0 || (float) $amount !== $reported || $net < $amount) {
+            return ['refusal' => $this->refuse('reassign_source_not_applied', '這張收據的款項不在它綁定的帳單上（找不到對應的收款，或金額對不上），這裡不能移動。請聯絡總部對帳。', 409)];
+        }
+
         return [
             'report' => $report,
             'campus_id' => $campusId,
             'amount' => $amount,
-            'from' => ['invoice' => $invoice, 'course' => $course, 'net' => $this->netPaid((int) $invoice->id)],
+            'from' => ['invoice' => $invoice, 'course' => $course, 'net' => $net, 'money' => $this->resolve((int) $invoice->id)],
         ];
+    }
+
+    /** @return array<string, mixed> the canonical amounts (plain read; the resolver writes nothing) */
+    private function resolve(int $invoiceId): array
+    {
+        $invoice = Invoice::query()->whereKey($invoiceId)->first();
+        $invoice->loadMissing(['payments', 'items']);
+
+        return $this->amounts->resolve($invoice, StudentClass::query()->where('ID', (int) $invoice->StudentClassID)->first());
+    }
+
+    /** As PaymentReportController::packagePaidHold: a stored-paid bill of a paid shared package stays settled. */
+    private function packagePaidHold(int $invoiceId, string $status, int $courseId): bool
+    {
+        return $status === 'paid' && DB::table('StudentClass')->join('course_packages', 'course_packages.id', '=', 'StudentClass.PackageID')
+            ->where('StudentClass.ID', $courseId)->where('course_packages.paid', true)->exists();
     }
 
     private function netPaid(int $invoiceId): int
@@ -270,11 +344,11 @@ final class ReceiptReassignService
         return DB::table('payment_reports')->where('StudentClassID', $courseId)->where('status', 'pending')->where('id', '!=', $exceptReportId)->exists();
     }
 
-    private function ageDays(object $report): int
+    private function ageDays(object $report): ?int
     {
         $at = $report->confirmed_at ?? $report->created_at ?? null;
         if (!$at) {
-            return PHP_INT_MAX; // unknown age is never "recent": needs HQ
+            return null; // unknown age is never "recent": needs HQ
         }
 
         return (int) max(0, Carbon::parse($at)->startOfDay()->diffInDays(Carbon::today(), false));
