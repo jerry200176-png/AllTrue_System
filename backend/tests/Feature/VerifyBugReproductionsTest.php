@@ -131,6 +131,40 @@ class VerifyBugReproductionsTest extends TestCase
         ]);
     }
 
+    /** in-app #530 / #4991: a shared-pool member whose weekly lessons stopped while the pool still has lessons. */
+    public function test_shared_pool_member_generation_stopped_counts_only_starved_running_members(): void
+    {
+        $key = 'shared_pool_member_generation_stopped';
+        $pkg = $this->package(); // 10 bought, count mode
+        $starved = $this->course(['PackageID' => $pkg]);
+        $sibling = $this->course(['PackageID' => $pkg]);
+        $yesterday = now()->subDay()->toDateString();
+        $this->packageDebit($pkg, $starved, $this->classSession($starved, 'attended', $yesterday), 'attendance');
+        $this->classSession($sibling, 'attended', $yesterday);
+        $this->classSession($sibling, 'scheduled', now()->addDays(3)->toDateString());
+
+        $row = $this->condition($key);
+        $this->assertSame(1, $row['count'], 'only the member with no upcoming lesson is counted');
+        $this->assertFalse($row['enforced']);
+        $this->assertSame('OPEN', $row['state']);
+
+        // An upcoming lesson clears it; a cancelled one does not count as upcoming.
+        $upcoming = $this->classSession($starved, 'scheduled', now()->addDays(2)->toDateString());
+        $this->assertSame(0, $this->condition($key)['count']);
+        DB::table('ClassSession')->where('id', $upcoming)->update(['Status' => 'cancelled']);
+        $this->assertSame(1, $this->condition($key)['count']);
+
+        // Expected stops are not counted: a pool with nothing left (renewal), a hand-booked member, a lone member.
+        DB::table('course_packages')->where('id', $pkg)->update(['total_sessions' => 1]);
+        $this->assertSame(0, $this->condition($key)['count']);
+        DB::table('course_packages')->where('id', $pkg)->update(['total_sessions' => 10]);
+        DB::table('StudentClass')->where('ID', $starved)->update(['scheduling_policy' => 'manual_occurrence']);
+        $this->assertSame(0, $this->condition($key)['count']);
+        DB::table('StudentClass')->where('ID', $starved)->update(['scheduling_policy' => 'auto_recurrence']);
+        DB::table('StudentClass')->where('ID', $sibling)->update(['Stop' => 1]);
+        $this->assertSame(0, $this->condition($key)['count']);
+    }
+
     public function test_package_over_debit_flags_used_beyond_taught_and_not_a_balanced_ledger(): void
     {
         $pkg = $this->package();
