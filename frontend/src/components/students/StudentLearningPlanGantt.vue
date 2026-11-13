@@ -22,12 +22,12 @@ const props = defineProps({
 });
 
 const FIELD = 'tw:h-11 tw:w-full tw:min-w-0 tw:rounded-md tw:border tw:bg-background tw:px-2 tw:text-sm';
-const TITLE_W = '9.5rem';
+const TITLE_W = 'var(--gantt-title-w)';
 const COL_W = '2.75rem';
 const BAR = {
   done: 'tw:bg-primary/60 tw:border-primary',
-  behind: 'tw:bg-destructive/80 tw:border-destructive tw:border-dashed',
-  in_progress: 'tw:bg-primary tw:border-primary',
+  behind: 'tw:bg-destructive tw:border-destructive tw:border-dashed tw:text-white',
+  in_progress: 'tw:bg-primary tw:border-primary tw:text-white',
   upcoming: 'tw:bg-muted tw:border-border',
 };
 const ICON = { done: Check, behind: TriangleAlert, in_progress: Clock, upcoming: CircleDashed };
@@ -202,41 +202,41 @@ watch(() => props.studentId, () => { readOnly.value = false; courses.value = [];
             </div>
             <p v-if="!c.units.length" class="tw:text-muted-foreground">這份計畫沒有單元。</p>
             <template v-else>
-              <div class="tw:overflow-x-auto tw:rounded-md tw:border" role="region" tabindex="0" :aria-label="`${s.label} 學習計畫甘特圖，可左右捲動`" data-testid="gantt-scroll">
+              <div class="tw:[--gantt-title-w:9.5rem] tw:sm:[--gantt-title-w:15rem] tw:overflow-x-auto tw:rounded-md tw:border tw:border-border tw:bg-card" role="region" tabindex="0" :aria-label="`${s.label} 學習計畫甘特圖，可左右捲動`" data-testid="gantt-scroll">
                 <div class="tw:relative" :style="{ minWidth: `calc(${TITLE_W} + ${c.timeline.weeks} * ${COL_W})` }">
                   <div class="tw:pointer-events-none tw:absolute tw:inset-y-0 tw:right-0" :style="{ left: TITLE_W }" aria-hidden="true">
                     <span v-if="c.todayPercent !== null" data-testid="today-line" class="tw:absolute tw:inset-y-0 tw:border-l-2 tw:border-primary" :style="{ left: `${c.todayPercent}%` }" />
                     <span v-for="m in c.markers" :key="m.date" data-testid="exam-marker" class="tw:absolute tw:inset-y-0 tw:border-l-2 tw:border-dashed tw:border-destructive" :style="{ left: `${m.percent}%` }" />
                   </div>
-                  <div class="tw:grid tw:border-b tw:text-xs" :style="{ gridTemplateColumns: `${TITLE_W} 1fr` }">
-                    <div class="tw:sticky tw:left-0 tw:z-10 tw:bg-background tw:p-2 tw:font-medium">單元</div>
+                  <div class="tw:grid tw:border-b tw:border-border tw:text-xs" :style="{ gridTemplateColumns: `${TITLE_W} 1fr` }">
+                    <div class="tw:sticky tw:left-0 tw:z-10 tw:flex tw:items-end tw:bg-card tw:p-2 tw:font-medium">單元</div>
                     <div>
                       <div class="tw:grid" :style="{ gridTemplateColumns: `repeat(${c.timeline.weeks}, minmax(0, 1fr))` }">
-                        <span v-for="m in c.timeline.months" :key="m.startColumn" class="tw:truncate tw:border-l tw:px-1 tw:font-medium" :style="{ gridColumn: `${m.startColumn} / span ${m.span}` }">{{ m.label }}</span>
+                        <span v-for="m in c.timeline.months" :key="m.startColumn" class="tw:truncate tw:border-l tw:border-border tw:px-1 tw:pt-1 tw:text-sm tw:font-medium" :style="{ gridColumn: `${m.startColumn} / span ${m.span}` }">{{ m.label }}</span>
                       </div>
-                      <div class="tw:grid" :style="{ gridTemplateColumns: `repeat(${c.timeline.weeks}, minmax(0, 1fr))` }">
-                        <span v-for="w in c.timeline.columns" :key="w.index" class="tw:truncate tw:border-l tw:px-1 tw:text-muted-foreground">{{ w.label }}</span>
+                      <div class="tw:grid" :style="{ gridTemplateColumns: `repeat(${c.timeline.weeks}, minmax(0, 1fr))` }" title="每格一週，數字是該週開始的日期">
+                        <span v-for="w in c.timeline.columns" :key="w.index" class="tw:border-l tw:border-border tw:px-1 tw:tabular-nums tw:text-muted-foreground">{{ Number(w.date.slice(8)) }}</span>
                       </div>
-                      <div class="tw:relative tw:h-5">
-                        <span v-if="c.todayPercent !== null" class="tw:absolute tw:top-0 tw:-translate-x-1/2 tw:whitespace-nowrap tw:font-medium tw:text-primary" :style="{ left: `${c.todayPercent}%` }">今天</span>
-                        <span v-for="m in c.markers" :key="m.date" class="tw:absolute tw:top-0 tw:-translate-x-1/2 tw:whitespace-nowrap tw:font-medium tw:text-destructive" :style="{ left: `${m.percent}%` }">{{ m.label }}</span>
+                      <div class="tw:relative tw:h-7">
+                        <span v-if="c.todayPercent !== null" class="tw:absolute tw:top-1 tw:z-[1] tw:-translate-x-1/2 tw:whitespace-nowrap tw:rounded-full tw:bg-primary tw:px-2 tw:py-0.5 tw:font-medium tw:text-primary-foreground" :style="{ left: `${c.todayPercent}%` }">今天</span>
+                        <span v-for="m in c.markers" :key="m.date" class="tw:absolute tw:top-1 tw:z-[1] tw:-translate-x-1/2 tw:whitespace-nowrap tw:rounded-full tw:bg-destructive tw:px-2 tw:py-0.5 tw:font-medium tw:text-white" :style="{ left: `${m.percent}%` }">{{ m.label }}</span>
                       </div>
                     </div>
                   </div>
-                  <div v-for="(u, i) in c.units" :key="u.id" class="tw:grid tw:items-center tw:border-b last:tw:border-b-0" :style="{ gridTemplateColumns: `${TITLE_W} 1fr` }" data-testid="gantt-row">
-                    <div class="tw:sticky tw:left-0 tw:z-10 tw:min-w-0 tw:bg-background tw:p-2 tw:text-sm">
-                      <p class="tw:truncate" aria-hidden="true" :title="u.title"><span class="tw:text-muted-foreground">{{ i + 1 }}.</span> {{ u.title }}</p>
+                  <div v-for="(u, i) in c.units" :key="u.id" class="tw:grid tw:h-[4.5rem] tw:items-center tw:border-b tw:border-border last:tw:border-b-0" :style="{ gridTemplateColumns: `${TITLE_W} 1fr` }" data-testid="gantt-row">
+                    <div class="tw:sticky tw:left-0 tw:z-10 tw:flex tw:h-full tw:min-w-0 tw:flex-col tw:justify-center tw:gap-0.5 tw:border-r tw:border-border tw:bg-card tw:px-2 tw:text-sm">
+                      <p class="tw:line-clamp-2 tw:break-all tw:leading-tight" data-testid="gantt-title" aria-hidden="true" :title="u.title"><span class="tw:tabular-nums tw:text-muted-foreground">{{ i + 1 }}.</span> {{ u.title }}</p>
                       <p class="tw:flex tw:items-center tw:gap-1 tw:text-xs" aria-hidden="true">
-                        <component :is="ICON[unitState(u, today)]" class="tw:size-3" />{{ STATE_LABELS[unitState(u, today)] }}
-                        <Badge v-if="u.dates_manual" variant="outline">手動</Badge>
+                        <component :is="ICON[unitState(u, today)]" class="tw:size-3 tw:shrink-0" />{{ STATE_LABELS[unitState(u, today)] }}
+                        <Badge v-if="u.dates_manual" variant="outline" class="tw:px-1.5 tw:py-0">手動</Badge>
                       </p>
                       <span class="tw:sr-only">{{ unitAriaText(u, i, today) }}</span>
                     </div>
-                    <div class="tw:grid tw:py-1" aria-hidden="true" :style="{ gridTemplateColumns: `repeat(${c.timeline.weeks}, minmax(0, 1fr))` }">
-                      <span class="tw:flex tw:h-6 tw:items-center tw:gap-1 tw:overflow-hidden tw:rounded-md tw:border tw:px-1 tw:text-xs"
+                    <div class="tw:grid tw:h-full tw:items-center" aria-hidden="true" :style="{ gridTemplateColumns: `repeat(${c.timeline.weeks}, minmax(0, 1fr))`, backgroundImage: `repeating-linear-gradient(to right, var(--ds-border) 0 1px, transparent 1px calc(100% / ${c.timeline.weeks}))` }">
+                      <span class="tw:flex tw:h-7 tw:items-center tw:gap-1 tw:overflow-hidden tw:rounded-md tw:border tw:px-1.5 tw:text-xs tw:tabular-nums"
                         :class="BAR[unitState(u, today)]" :data-state="unitState(u, today)" data-testid="gantt-bar"
                         :style="{ gridColumn: `${barSpan(c.timeline, u).colStart} / ${barSpan(c.timeline, u).colEnd}` }"
-                        :title="`${u.title} ${dateRangeText(u)}`"><component :is="ICON[unitState(u, today)]" class="tw:size-3 tw:shrink-0" /><span class="tw:truncate">{{ dateRangeText(u) }}</span></span>
+                        :title="`${u.title} ${dateRangeText(u)}`"><component :is="ICON[unitState(u, today)]" class="tw:size-3.5 tw:shrink-0" /><span v-if="barSpan(c.timeline, u).colEnd - barSpan(c.timeline, u).colStart >= 3" class="tw:truncate">{{ dateRangeText(u) }}</span></span>
                     </div>
                   </div>
                 </div>
@@ -245,7 +245,7 @@ watch(() => props.studentId, () => { readOnly.value = false; courses.value = [];
               <p v-else class="tw:text-xs tw:text-muted-foreground">圖上只標示下一次段考。</p>
 
               <ul class="tw:m-0 tw:list-none tw:space-y-2 tw:p-0" :aria-label="`${s.label} 單元清單`" data-testid="unit-list">
-                <li v-for="(u, i) in c.units" :key="u.id" class="tw:space-y-2 tw:rounded-md tw:border tw:p-3" data-testid="unit-item">
+                <li v-for="(u, i) in c.units" :key="u.id" class="tw:space-y-2 tw:rounded-md tw:border tw:border-border tw:p-3" data-testid="unit-item">
                   <div class="tw:flex tw:flex-wrap tw:items-center tw:gap-2 tw:break-words">
                     <strong>{{ i + 1 }}. {{ u.title }}</strong>
                     <Badge v-if="u.dates_manual" variant="outline">手動</Badge>
@@ -255,7 +255,7 @@ watch(() => props.studentId, () => { readOnly.value = false; courses.value = [];
                     <span>{{ dateRangeText(u) }}・{{ STATE_LABELS[unitState(u, today)] }}</span>
                   </p>
                   <fieldset v-if="!readOnly" :disabled="saving" class="tw:m-0 tw:flex tw:flex-wrap tw:items-center tw:gap-3 tw:border-0 tw:p-0">
-                    <label class="tw:flex tw:min-h-11 tw:items-center tw:gap-2">
+                    <label class="tw:flex tw:min-h-11 tw:items-center tw:gap-2 tw:leading-none">
                       <input type="checkbox" class="tw:size-5" :checked="!!u.completed_at" :aria-label="`第 ${i + 1} 單元 ${u.title} 已完成`" @change="toggle(s.plan, u, $event)" />
                       已完成
                     </label>
