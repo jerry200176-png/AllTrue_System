@@ -18,7 +18,7 @@ Every implementer agent follows this. The coordinator sends only the task-specif
 - A renamed test file must rename its class too.
 - Test gotchas: `[...] + $overrides` keeps the LEFT keys (put overrides first); after `Carbon::setTestNow()` jumps, extend the test login's `expires_at`.
 - Never name a PHP test helper `session()` (or any other `TestCase` method name): it shadows the framework method and the whole PHPUnit shard dies with a fatal error.
-- SQL `CURDATE()`/`NOW()` follow the database clock (UTC in CI), not the app's Asia/Taipei: bind the app's date instead (`App\Support\AppClockSql`).
+- SQL `CURDATE()`/`NOW()` follow the database clock (UTC in CI), not the app's Asia/Taipei: pass the app's date into the query as a bound value instead.
 - A push must depend on the test result: `npx vitest run … && git push`, never a pipeline whose last command is `grep`.
 - Arrays read back from a MySQL JSON column have reordered keys: compare them with `assertEquals`, not `assertSame`.
 - Before deleting a model, table or helper, grep every reader (controllers, parent portal, timelines). If something else reads it, stop and report.
@@ -47,8 +47,8 @@ Every implementer agent follows this. The coordinator sends only the task-specif
 - Record choices you made yourself under "Agent 決定的事" ([`ISSUE_PLAN.md`](../sop/ISSUE_PLAN.md); rule: `FOUNDER_STANDING_DECISIONS.md` 2026-11-12 (四)).
 
 ## Review cap
-- One fix round per PR. The coordinator applies fixes of about ten lines itself and has a small model confirm the delta; later reviewer-agent P2s become follow-up issues.
-- Codex findings are different: the merge gate (`.github/scripts/review-gate.mjs`) blocks while Codex reports unresolved findings on the head, so a valid Codex finding is fixed in the PR (reply, resolve the thread, new head). A reply alone does not unblock it.
+- One fix round per PR. The coordinator applies fixes of about ten lines itself and has a small model confirm the delta; later P2s become follow-up issues.
+- The merge gate (`.github/scripts/review-gate.mjs`) blocks while Codex reports unresolved findings on the head. A valid Codex finding is therefore fixed in the PR (reply, resolve the thread, new head). A later P2 that is deferred under the rule below still needs its reply with the follow-up issue link and a resolved thread; if the gate keeps blocking after that, record it on issue 5201 and report it. Never work around the gate.
 - State that lives in two places (server value + unsaved draft, short list + full list) needs its rule written before coding: which side wins, what an empty value means, what happens when the second load fails. PR 5273 took six rounds because this was decided one finding at a time.
 - A blocked permission (classifier, ruleset) is tried once, then handed to the Founder.
 - P0/P1 and any regression this PR introduces are always fixed before merge. Other P2 handling: only as written in `FOUNDER_STANDING_DECISIONS.md` 2026-10-12 item 4 and [`MERGE_SOP.md`](../sop/MERGE_SOP.md); do not restate it here.
