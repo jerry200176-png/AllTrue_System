@@ -25,6 +25,8 @@ class CurriculumTemplate extends Model
 
     protected $table = 'curriculum_templates';
 
+    protected $attributes = ['status' => 'draft'];
+
     protected $fillable = [
         'campus_id', 'subject', 'grade', 'publisher', 'academic_year', 'semester', 'title', 'status', 'created_by',
     ];

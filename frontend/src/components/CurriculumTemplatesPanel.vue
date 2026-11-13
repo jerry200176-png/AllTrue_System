@@ -24,7 +24,7 @@
         <CardTitle class="tw:text-base">{{ editor.id ? (isDirector ? '編輯範本' : '範本內容') : '新增範本' }}</CardTitle>
       </CardHeader>
       <CardContent class="tw:space-y-3 tw:px-4">
-        <div class="tw:grid tw:grid-cols-1 tw:gap-2 sm:tw:grid-cols-2">
+        <div class="tw:grid tw:grid-cols-1 tw:gap-2 tw:sm:grid-cols-2">
           <label class="ctp-field">範本名稱
             <input v-model.trim="editor.title" maxlength="120" :disabled="!isDirector" class="ctp-input" placeholder="例如：七年級上學期數學" />
           </label>
@@ -57,6 +57,8 @@
             <span class="tw:text-sm tw:text-muted-foreground">{{ i + 1 }}</span>
             <input v-model.trim="u.title" maxlength="120" :disabled="!isDirector" :aria-label="`單元 ${i + 1} 名稱`" class="ctp-input" placeholder="單元名稱" />
             <span />
+            <input v-model.trim="u.note" maxlength="255" :disabled="!isDirector" :aria-label="`單元 ${i + 1} 備註`" class="ctp-input" placeholder="備註（選填）" />
+            <span />
             <div class="tw:flex tw:flex-wrap tw:items-center tw:gap-2">
               <select v-model="u.exam_sequence" :disabled="!isDirector" :aria-label="`單元 ${i + 1} 對應段考`" class="ctp-select">
                 <option :value="null">不對應段考</option>
@@ -65,7 +67,7 @@
               <template v-if="isDirector">
                 <Button size="sm" variant="outline" :disabled="i === 0" :aria-label="`單元 ${i + 1} 上移`" @click="move(i, -1)">上移</Button>
                 <Button size="sm" variant="outline" :disabled="i === editor.units.length - 1" :aria-label="`單元 ${i + 1} 下移`" @click="move(i, 1)">下移</Button>
-                <Button size="sm" variant="ghost" :aria-label="`移除單元 ${i + 1}`" @click="editor.units.splice(i, 1)">移除</Button>
+                <Button size="sm" variant="ghost" :aria-label="`移除單元 ${i + 1}`" @click="confirm = { kind: 'unit', index: i, name: u.title || `單元 ${i + 1}` }">移除</Button>
               </template>
             </div>
           </div>
@@ -80,9 +82,7 @@
       </CardContent>
     </Card>
 
-    <div v-if="loading" class="tw:space-y-2" aria-busy="true">
-      <div v-for="n in 2" :key="n" class="tw:h-16 tw:animate-pulse tw:rounded-md tw:bg-muted" />
-    </div>
+    <AtSkeleton v-if="loading" :rows="3" />
     <p v-else-if="!error && !templates.length" class="tw:text-sm tw:text-muted-foreground">
       還沒有教材範本。{{ isDirector ? '按「新增範本」建立第一份。' : '' }}
     </p>
@@ -100,9 +100,18 @@
       </CardHeader>
       <CardContent class="tw:flex tw:justify-end tw:gap-2 tw:px-4">
         <Button size="sm" variant="outline" @click="openEditor(t)">{{ isDirector ? '編輯' : '查看' }}</Button>
-        <Button v-if="isDirector && t.status !== 'archived'" size="sm" variant="ghost" @click="archive(t)">封存</Button>
+        <Button v-if="isDirector && t.status !== 'archived'" size="sm" variant="ghost" @click="confirm = { kind: 'archive', template: t, name: t.title }">封存</Button>
       </CardContent>
     </Card>
+
+    <AtDialog :open="!!confirm" :title="confirm?.kind === 'archive' ? '封存範本' : '移除單元'" title-id="ctp-confirm-title" initial-focus="[data-cancel]" @close="confirm = null">
+      <p v-if="confirm?.kind === 'archive'">封存「{{ confirm.name }}」後，預設清單不再顯示，可以在「已封存」找回。確定封存嗎？</p>
+      <p v-else>確定移除「{{ confirm?.name }}」嗎？要按「儲存」才會真的生效。</p>
+      <template #actions>
+        <AtButton shape="rect" variant="ghost" data-cancel @click="confirm = null">取消</AtButton>
+        <AtButton shape="rect" variant="primary" @click="runConfirm">確定</AtButton>
+      </template>
+    </AtDialog>
   </div>
 </template>
 
@@ -112,7 +121,10 @@ import { Badge } from './ui/badge';
 import { Button } from './ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { GRADES, SUBJECTS } from '../lib/constants';
-import { supabase } from '../supabase';
+import AtButton from './design-system/AtButton.vue';
+import AtDialog from './design-system/AtDialog.vue';
+import AtSkeleton from './design-system/AtSkeleton.vue';
+import { authedFetch } from '../lib/authedFetch';
 
 const props = defineProps({
   branchId: { type: [Number, String], required: true },
@@ -135,18 +147,19 @@ const templates = ref([]);
 const editor = ref(null);
 const formError = ref('');
 const saving = ref(false);
+const confirm = ref(null);
 let uid = 0;
 const newUnit = (u = {}) => ({ uid: ++uid, title: u.title || '', exam_sequence: u.exam_sequence ?? null, note: u.note || '' });
 
 async function api(path, options = {}) {
-  const { data: { session } } = await supabase.auth.getSession();
-  const token = session?.access_token;
-  const res = await fetch(`/api/v1${path}`, {
+  const res = await authedFetch(`/api/v1${path}`, {
     ...options,
-    headers: { Accept: 'application/json', 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+    headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
   });
   const body = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(body.message || `HTTP ${res.status}`);
+  if (!res.ok) {
+    throw new Error(res.status === 403 ? '你沒有這間分校範本庫的權限' : body.message || `HTTP ${res.status}`);
+  }
   return body;
 }
 
@@ -240,6 +253,14 @@ async function save() {
   } finally {
     saving.value = false;
   }
+}
+
+function runConfirm() {
+  const c = confirm.value;
+  confirm.value = null;
+  if (!c) return; // already closed
+  if (c.kind === 'unit') editor.value?.units.splice(c.index, 1);
+  else archive(c.template);
 }
 
 async function archive(t) {

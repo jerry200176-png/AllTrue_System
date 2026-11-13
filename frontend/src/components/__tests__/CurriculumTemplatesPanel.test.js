@@ -6,7 +6,11 @@ vi.mock('../../supabase', () => ({
 }));
 import Panel from '../CurriculumTemplatesPanel.vue';
 
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => {
+  vi.unstubAllGlobals();
+  document.body.innerHTML = '';
+});
+const dialogBtn = (text) => [...document.querySelectorAll('[role="dialog"] button, .at-dialog button')].find((b) => b.textContent.trim() === text);
 
 const TEMPLATE = { id: 5, title: '七上數學範本', subject: 'Math', grade: 'J1', publisher: '測試出版社', status: 'active', units_count: 2 };
 const DETAIL = {
@@ -111,5 +115,65 @@ describe('教材範本庫 panel', () => {
     const w = mount(Panel, { props: { branchId: 1, isDirector: true } });
     await flushPromises();
     expect(w.find('[role="alert"]').text()).toContain('伺服器忙碌');
+  });
+
+  it('archives only after the confirm dialog', async () => {
+    const f = stub();
+    const w = mount(Panel, { props: { branchId: 1, isDirector: true }, attachTo: document.body });
+    await flushPromises();
+    await btn(w, '封存').trigger('click');
+    await flushPromises();
+    expect(f.mock.calls.some(([, o]) => o?.method === 'POST')).toBe(false);
+    dialogBtn('確定').click();
+    await flushPromises();
+    expect(f.mock.calls.some(([u, o]) => o?.method === 'POST' && String(u).endsWith('/curriculum-templates/5/archive'))).toBe(true);
+    w.unmount();
+  });
+
+  it('removes a unit only after confirm', async () => {
+    stub();
+    const w = mount(Panel, { props: { branchId: 1, isDirector: true }, attachTo: document.body });
+    await flushPromises();
+    await btn(w, '編輯').trigger('click');
+    await flushPromises();
+    await w.find('button[aria-label="移除單元 1"]').trigger('click');
+    await flushPromises();
+    expect(w.findAll('input[placeholder="單元名稱"]')).toHaveLength(2);
+    dialogBtn('確定').click();
+    await flushPromises();
+    expect(w.findAll('input[placeholder="單元名稱"]')).toHaveLength(1);
+    w.unmount();
+  });
+
+  it('keeps the new template id when the units PUT fails, so a retry does not create a second one', async () => {
+    const calls = [];
+    vi.stubGlobal('fetch', vi.fn(async (input, options = {}) => {
+      const method = options.method || 'GET';
+      calls.push(method);
+      if (method === 'PUT' && calls.filter((m) => m === 'PUT').length === 1) {
+        return { ok: false, status: 422, json: async () => ({ message: '單元有誤' }) };
+      }
+      return { ok: true, json: async () => (method === 'POST' ? { data: { id: 9 } } : { data: [] }) };
+    }));
+    const w = mount(Panel, { props: { branchId: 1, isDirector: true } });
+    await flushPromises();
+    await btn(w, '新增範本').trigger('click');
+    await w.find('input[placeholder^="例如"]').setValue('某範本');
+    await btn(w, '儲存').trigger('click');
+    await flushPromises();
+    expect(w.text()).toContain('單元有誤');
+    await btn(w, '儲存').trigger('click');
+    await flushPromises();
+    expect(calls.filter((m) => m === 'POST')).toHaveLength(1);
+    expect(calls.filter((m) => m === 'PATCH')).toHaveLength(1);
+    expect(w.find('.ctp-editor').exists()).toBe(false);
+  });
+
+  it('shows a plain message on 403', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: false, status: 403, json: async () => ({ message: 'Forbidden' }) })));
+    const w = mount(Panel, { props: { branchId: 1, isDirector: true } });
+    await flushPromises();
+    expect(w.find('[role="alert"]').text()).toContain('沒有');
+    expect(w.text()).not.toContain('Forbidden');
   });
 });

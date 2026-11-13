@@ -46,6 +46,7 @@ class CurriculumTemplateApiTest extends TestCase
         $dir = $this->staff('A', $a);
         $teacher = $this->staff('T', $a);
         $otherDir = $this->staff('A', $b);
+        $otherTeacher = $this->staff('T', $b);
 
         $id = $this->as($dir)->postJson('/api/v1/curriculum-templates', $this->payload($a))
             ->assertCreated()->assertJsonPath('data.status', 'draft')->json('data.id');
@@ -57,6 +58,8 @@ class CurriculumTemplateApiTest extends TestCase
         $this->as($teacher)->getJson("/api/v1/curriculum-templates?campus_id=$a")->assertOk()->assertJsonCount(1, 'data');
         $this->as($teacher)->getJson("/api/v1/curriculum-templates/$id")->assertOk();
 
+        $this->as($otherTeacher)->getJson("/api/v1/curriculum-templates?campus_id=$a")->assertForbidden();
+        $this->as($otherTeacher)->getJson("/api/v1/curriculum-templates/$id")->assertForbidden();
         $this->as($otherDir)->getJson("/api/v1/curriculum-templates?campus_id=$a")->assertForbidden();
         $this->as($otherDir)->getJson("/api/v1/curriculum-templates/$id")->assertForbidden();
         $this->as($otherDir)->postJson('/api/v1/curriculum-templates', $this->payload($a))->assertForbidden();
@@ -79,6 +82,8 @@ class CurriculumTemplateApiTest extends TestCase
         $this->as($dir)->postJson('/api/v1/curriculum-templates', $this->payload($a, ['grade' => 'Z9']))->assertStatus(422);
         $this->as($dir)->postJson('/api/v1/curriculum-templates', $this->payload($a, ['semester' => 3]))->assertStatus(422);
         $this->as($dir)->postJson('/api/v1/curriculum-templates', $this->payload($a, ['status' => 'bogus']))->assertStatus(422);
+        $this->as($dir)->postJson('/api/v1/curriculum-templates', $this->payload($a, ['status' => 'archived']))->assertStatus(422);
+        $this->as($dir)->getJson("/api/v1/curriculum-templates?campus_id=$a&status=bogus")->assertStatus(422);
 
         $id = $this->as($dir)->postJson('/api/v1/curriculum-templates', $this->payload($a))->json('data.id');
         $url = "/api/v1/curriculum-templates/$id/units";
@@ -89,7 +94,7 @@ class CurriculumTemplateApiTest extends TestCase
         $this->as($dir)->putJson($url, [])->assertStatus(422);
     }
 
-    public function test_replace_units_orders_by_array_and_is_atomic(): void
+    public function test_replace_units_orders_by_array_and_invalid_list_leaves_old_units(): void
     {
         $a = (int) CampusFactory::new()->create()->id;
         $dir = $this->staff('A', $a);
@@ -130,5 +135,22 @@ class CurriculumTemplateApiTest extends TestCase
         $this->as($dir)->getJson("/api/v1/curriculum-templates?campus_id=$a&subject=English")->assertJsonCount(1, 'data');
         $this->as($dir)->getJson("/api/v1/curriculum-templates?campus_id=$a&grade=H1")->assertJsonCount(0, 'data');
         $this->assertDatabaseHas('curriculum_template_units', ['template_id' => $id]);
+    }
+
+    public function test_archived_template_refuses_unit_replacement_until_restored(): void
+    {
+        $a = (int) CampusFactory::new()->create()->id;
+        $dir = $this->staff('A', $a);
+        $id = $this->as($dir)->postJson('/api/v1/curriculum-templates', $this->payload($a))->json('data.id');
+        $url = "/api/v1/curriculum-templates/$id/units";
+        $this->as($dir)->putJson($url, ['units' => [['title' => '第一章']]])->assertOk();
+        $this->as($dir)->postJson("/api/v1/curriculum-templates/$id/archive")->assertOk();
+
+        $this->as($dir)->putJson($url, ['units' => [['title' => '改']]])->assertStatus(422);
+        $this->assertDatabaseHas('curriculum_template_units', ['template_id' => $id, 'title' => '第一章']);
+
+        $this->as($dir)->patchJson("/api/v1/curriculum-templates/$id", ['status' => 'active'])
+            ->assertOk()->assertJsonPath('data.status', 'active');
+        $this->as($dir)->putJson($url, ['units' => [['title' => '改']]])->assertOk();
     }
 }

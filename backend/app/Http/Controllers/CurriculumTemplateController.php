@@ -23,6 +23,7 @@ class CurriculumTemplateController extends Controller
         $q = CurriculumTemplate::query()->where('campus_id', $campusId)->withCount('units');
         // Archived templates only show when asked for explicitly.
         if ($request->filled('status')) {
+            $request->validate(['status' => [Rule::in(CurriculumTemplate::STATUSES)]]);
             $q->where('status', (string) $request->input('status'));
         } else {
             $q->whereIn('status', ['draft', 'active']);
@@ -87,7 +88,15 @@ class CurriculumTemplateController extends Controller
             }
         }
 
-        DB::transaction(function () use ($template, $units) {
+        $blocked = false;
+        DB::transaction(function () use ($template, $units, &$blocked) {
+            // Lock the template row so concurrent saves serialize and archive state is read fresh.
+            $locked = CurriculumTemplate::query()->whereKey($template->id)->lockForUpdate()->first();
+            if ($locked === null || $locked->status === 'archived') {
+                $blocked = true;
+
+                return;
+            }
             CurriculumTemplateUnit::query()->where('template_id', $template->id)->delete();
             foreach (array_values($units) as $i => $u) {
                 $note = trim((string) ($u['note'] ?? ''));
@@ -101,6 +110,10 @@ class CurriculumTemplateController extends Controller
             }
             $template->touch();
         });
+
+        if ($blocked) {
+            return response()->json(['message' => '已封存的範本不能再改單元，請先改回草稿或使用中'], 422);
+        }
 
         return response()->json(['data' => $template->fresh()->load('units')]);
     }
@@ -127,7 +140,8 @@ class CurriculumTemplateController extends Controller
             'academic_year' => ['nullable', 'integer', 'between:100,200'],
             'semester' => ['nullable', Rule::in([1, 2])],
             'title' => [$req, 'string', 'min:1', 'max:120'],
-            'status' => ['sometimes', Rule::in(CurriculumTemplate::STATUSES)],
+            // A new template starts as draft/active; archiving goes through archive() (update may restore).
+            'status' => ['sometimes', Rule::in($full ? ['draft', 'active'] : CurriculumTemplate::STATUSES)],
         ]);
     }
 
