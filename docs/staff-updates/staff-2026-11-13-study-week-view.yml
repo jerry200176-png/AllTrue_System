@@ -1,0 +1,16 @@
+updates:
+  - id: staff-2026-11-13-study-week-view
+    published_at: "2026-11-13"
+    audiences:
+      - director
+      - teacher
+    importance: major
+    title: 幫學生安排本週讀書
+    summary: 學生學習檔案新增「讀書計畫」，一週一頁安排功課。
+    items:
+      - category: added
+        text: 學生學習檔案多了「讀書計畫」，可新增、修改、改日期或刪除每天的任務。
+      - category: added
+        text: 任務完成了就勾起來；也能看到這週的單元和下一次段考倒數。
+    source_refs:
+      - "changelog:2026-11-13:study-week-view"
