@@ -592,7 +592,6 @@
       />
       <LearningRecordsPage v-if="!isPasswordChangeLocked && (!isDirector || directorBranchReady) && active === 'learning'" :branch-id="currentBranch" :user-role="role" :user-id="session.user.id" :target-record-id="learningTargetRecordId" :target-session="learningTargetSession" :target-student-name="learningTargetStudentName" :feedback-focus-token="learningFeedbackFocusToken" @feedback-read="onFeedbackQueueChanged" @clear-target-student="learningTargetStudentName = ''" />
       <ExamGradesPage v-if="!isPasswordChangeLocked && (!isDirector || directorBranchReady) && (isDirector || isTeacher) && active === 'exam-grades'" :branch-id="currentBranch" :user-role="role" :focus-round-id="examFocusRoundId" />
-      <QuestionBankPage v-if="!isPasswordChangeLocked && (!isDirector || directorBranchReady) && (isDirector || isTeacher) && active === 'question-banks'" :branch-id="currentBranch" :user-role="role" />
       <ProfileCenterPage
         v-if="(isTeacher || isDirector) && active === 'profile'"
         :token="session?.access_token ?? ''"
@@ -897,7 +896,6 @@ const TrueFitApp = asyncPage(() => import('./pages/TrueFitApp.vue'));
 const StudentsList          = asyncPage(() => import('./pages/StudentsList.vue'));
 const LearningRecordsPage   = asyncPage(() => import('./pages/LearningRecordsPage.vue'));
 const ExamGradesPage        = asyncPage(() => import('./pages/ExamGradesPage.vue'));
-const QuestionBankPage      = asyncPage(() => import('./pages/QuestionBankPage.vue'));
 const SmartCalendar         = asyncPage(() => import('./pages/SmartCalendar.vue'));
 const DirectorDashboard     = asyncPage(() => import('./pages/DirectorDashboard.vue'));
 const LineIntegration       = asyncPage(() => import('./pages/LineIntegration.vue'));
@@ -1064,7 +1062,7 @@ const directorBranchScopedPages = new Set([
   'director', 'notifications', 'calendar', 'students', 'tuition-collect', 'tuition-report',
   'parttime-payroll', 'teacher-eligibility', 'teachers', 'course-mgmt', 'admission-inquiries',
   'classroom', 'subject-settings', 'subject-units', 'attendance', 'learning',
-  'exam-grades', 'question-banks', 'line-integration', 'binding-management', 'binding-conflicts',
+  'exam-grades', 'line-integration', 'binding-management', 'binding-conflicts',
   'binding-health', 'chat', 'bugs', 'schedule-discrepancy', 'duplicate-review',
 ]);
 let authRevision = 0;

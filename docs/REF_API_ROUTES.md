@@ -650,27 +650,6 @@
 | POST | `api/v1/profiles/{id}/campus-links/{campusId}/reject` | `ProfileController@rejectCampusLink` | role+campus |
 | POST | `api/v1/profiles/{id}/reset-password` | `ProfileController@resetPassword` | role+campus |
 
-## /api/v1/question-bank-items
-
-| Method | URI | Action | Auth |
-|--------|-----|--------|------|
-| PATCH | `api/v1/question-bank-items/{questionBankItem}` | `QuestionBankController@updateItem` | role+campus |
-| POST | `api/v1/question-bank-items/{questionBankItem}/approve` | `QuestionBankController@approve` | role+campus |
-| POST | `api/v1/question-bank-items/{questionBankItem}/retire` | `QuestionBankController@retire` | role+campus |
-| POST | `api/v1/question-bank-items/{questionBankItem}/submit-review` | `QuestionBankController@submitReview` | role+campus |
-| GET | `api/v1/question-bank-items/{questionBankItem}/versions` | `QuestionBankController@versions` | role+campus |
-
-## /api/v1/question-banks
-
-| Method | URI | Action | Auth |
-|--------|-----|--------|------|
-| GET | `api/v1/question-banks` | `QuestionBankController@index` | role+campus |
-| POST | `api/v1/question-banks` | `QuestionBankController@store` | role+campus |
-| GET | `api/v1/question-banks/{questionBank}` | `QuestionBankController@show` | role+campus |
-| GET | `api/v1/question-banks/{questionBank}/items` | `QuestionBankController@items` | role+campus |
-| POST | `api/v1/question-banks/{questionBank}/items` | `QuestionBankController@storeItem` | role+campus |
-| POST | `api/v1/question-banks/{questionBank}/items/import` | `QuestionBankController@importItems` | role+campus |
-
 ## /api/v1/recent-unknown-rfids
 
 | Method | URI | Action | Auth |
