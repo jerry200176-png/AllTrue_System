@@ -5,6 +5,7 @@ namespace App\Console\Commands;
 use App\Models\Invoice;
 use App\Services\Billing\InvoiceAmountParityCensus;
 use App\Support\AttendanceStatus;
+use App\Support\ContractPeriod;
 use App\Support\SchedulerEvidence;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
@@ -186,6 +187,14 @@ class VerifyBugReproductions extends Command
                             OR (COALESCE(sc.Paid, 0) = 0
                                 AND EXISTS (SELECT 1 FROM Invoice i WHERE {$link})
                                 AND NOT EXISTS (SELECT 1 FROM Invoice i WHERE {$link} AND i.TotalAmount > " . Invoice::netPaidSql('i') . ")))",
+            ],
+            [
+                // Observe-only (never enforced): allowed by Founder decision #5198 option A; ids per campus via sessions:census-before-contract-start.
+                'key' => 'lesson_before_contract_start',
+                'label' => 'Lessons dated before their contract StartDate (allowed; shown as 合約期間外, in-app #536)',
+                'issue' => '#5198', 'enforced' => false,
+                'sql' => "SELECT COUNT(*) AS c FROM ClassSession cs JOIN StudentClass sc ON sc.ID = cs.StudentClassID
+                          WHERE " . ContractPeriod::SQL_BEFORE_START . " AND LOWER(COALESCE(cs.Status, '')) NOT IN ('cancelled', 'voided')",
             ],
             [
                 // No `sql`: counted by InvoiceAmountParityCensus. Reported first; enforce after 14 nights at 0 (#4991 item 2).

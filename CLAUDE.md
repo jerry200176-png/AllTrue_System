@@ -113,8 +113,9 @@ Palace：`~/.mempalace/palace`（local-first，cloud session 沒有，跳過即�
 | [G-010](docs/agents/GOTCHAS.md) | 行事曆來源真相 = 已物化的 `ClassSession`；「某天課很少」未必是 bug |
 | [G-011](docs/agents/GOTCHAS.md) | 「一堂 = 幾分鐘」是**每門課自己的**設定，沒有全公司統一值；契約在第一次扣堂後鎖死 |
 | [G-012](docs/agents/GOTCHAS.md) | 雲端／遠端 session（無 SSH、無 DB 連線）撈／回寫 in-app bug 資料——唯讀依既有來源，回寫先核對操作者禁令 |
+| [G-013](docs/agents/GOTCHAS.md) | `IsContractException` = 不在每週固定時段，不是合約期間外；期間外讀 `ContractPeriod`（`before_contract_start`），不要重用旗標 |
 
-完整 Gotchas G-001 ~ G-012：見 `docs/agents/GOTCHAS.md`。
+完整 Gotchas G-001 ~ G-013：見 `docs/agents/GOTCHAS.md`。
 
 ---
 

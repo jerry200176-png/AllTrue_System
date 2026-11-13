@@ -14,6 +14,7 @@
  * @property {number} [teacherId]
  * @property {number} [branchId]
  * @property {boolean} [isContractException]
+ * @property {boolean} [beforeContractStart]
  * @property {number|null} [substituteTeacherId]
  * @property {number|null} [learningRecordId]
  * @property {string} [learningRecordStatus]
@@ -73,6 +74,8 @@ export function createSessionViewModel(input) {
     teacherId: input.teacherId != null ? Number(input.teacherId) : undefined,
     branchId: input.branchId != null ? Number(input.branchId) : undefined,
     isContractException: input.isContractException,
+    // Derived on the server (dated before the contract StartDate); display only, never a quota rule. Not isContractException.
+    beforeContractStart: input.beforeContractStart === true,
     substituteTeacherId: input.substituteTeacherId ?? undefined,
     substituteNotice: input.substituteNotice === true,
     contractTeacherId: input.contractTeacherId ?? undefined,
@@ -142,6 +145,7 @@ export function sessionViewModelFromClassSessionsRow(raw) {
     teacherId: Number(raw?.teacher_id || raw?.TeacherID || 0) || undefined,
     branchId: Number(raw?.branch_id || raw?.CampusID || 0) || undefined,
     isContractException: !!(raw?.is_contract_exception ?? raw?.IsContractException ?? false),
+    beforeContractStart: raw?.before_contract_start === true,
     substituteTeacherId: raw?.substitute_teacher_id != null ? Number(raw.substitute_teacher_id) : null,
     // #3780 P1: a real substitute (active notice), not merely "teacher differs from the contract" (history pins do too).
     substituteNotice: raw?.substitute_notice === true,

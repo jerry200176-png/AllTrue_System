@@ -34,7 +34,7 @@ final class SchedulerEvidence
         'stranded_prepaid_course', 'duplicate_session_same_slot', 'cross_sc_duplicate_attended_slot',
         'remaining_sessions_diverges_from_derived', 'package_over_debit', 'session_debited_twice',
         'shared_pool_member_generation_stopped',
-        'unpaid_charge_vs_rate_count', 'paid_flag_vs_invoice', 'screen_amount_vs_resolver',
+        'unpaid_charge_vs_rate_count', 'paid_flag_vs_invoice', 'lesson_before_contract_start', 'screen_amount_vs_resolver',
     ];
     public const BUG_CONDITION_STATES = [
         'FIXED-OK', 'BASELINE-PENDING', 'REGRESSED', 'WITHIN-BASELINE', 'OPEN-CLEARED', 'OPEN', 'INCOMPLETE',
