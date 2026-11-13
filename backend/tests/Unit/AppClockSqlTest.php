@@ -61,7 +61,9 @@ class AppClockSqlTest extends TestCase
                 if (in_array($rel, $allow, true) || $rel === 'Support/AppClockSql.php') {
                     continue;
                 }
-                if (preg_match('/\b(CURDATE|CURTIME|NOW|CURRENT_DATE|CURRENT_TIMESTAMP)\s*\(|\bCURRENT_(DATE|TIMESTAMP)\b/i', (string) file_get_contents($file->getPathname()))) {
+                // SQL `NOW()` is matched in upper case only: PHP's own now() / Carbon::now() is the app clock and is fine.
+                $src = (string) file_get_contents($file->getPathname());
+                if (preg_match('/\bNOW\s*\(/', $src) || preg_match('/\b(CURDATE|CURTIME)\s*\(|\bCURRENT_(DATE|TIME|TIMESTAMP)\b/i', $src)) {
                     $hits[] = $rel;
                 }
             }
