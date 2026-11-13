@@ -306,7 +306,7 @@
                         <button
                           v-if="c.usage_balance_status === 'review_required'"
                           type="button"
-                          :class="[rowAction.secondaryWrap, 'tag-usage-review tag-usage-review--action tw:text-[var(--ds-danger-text)]']"
+                          :class="[rowAction.dangerWrap, 'tag-usage-review tag-usage-review--action']"
                           :title="`${usageBalanceWarningTitle(c)} 點擊查看對帳明細。`"
                           aria-label="堂數待對帳"
                           @click.stop="openLedgerForCourse(c)"
@@ -582,7 +582,7 @@
                     <button
                       v-if="hc.usage_balance_status === 'review_required'"
                       type="button"
-                      :class="[rowAction.secondaryWrap, 'tag-usage-review tag-usage-review--action tw:text-[var(--ds-danger-text)]']"
+                      :class="[rowAction.dangerWrap, 'tag-usage-review tag-usage-review--action']"
                       :title="`${usageBalanceWarningTitle(hc)} 點擊查看對帳明細。`"
                       aria-label="堂數待對帳"
                       @click.stop="openLedgerForCourse(hc)"
@@ -592,7 +592,7 @@
                     <div><dt :class="factRow.label">開課</dt><dd :class="[factRow.value, 'tw:m-0 tw:tabular-nums']">{{ contractStartDate(hc) || '未填' }}</dd></div>
                     <div><dt :class="factRow.label">老師</dt><dd :class="[factRow.value, 'tw:m-0']">{{ hc.teacher_name || '—' }}</dd></div>
                     <div class="tw:col-span-2 tw:md:col-span-1"><dt :class="factRow.label">費用</dt><dd :class="[factRow.value, 'tw:m-0 tw:tabular-nums']">${{ totalPrice(hc) }}（{{ getRateUnitDisplayLabel(hc) }} ${{ sessionPrice(hc) }}）</dd></div>
-                    <div class="tw:col-span-2 tw:md:col-span-1"><dt :class="factRow.label">堂數</dt><dd :class="[factRow.value, 'tw:m-0 tw:tabular-nums']"><template v-if="isPackageMember(hc)">已上 {{ getCompletedSessionCount(hc) }} 堂｜方案共用 {{ getPackageTotalSessions(hc) }} 堂</template><template v-else>已上 {{ getCompletedSessionCount(hc) }}<template v-if="isSessionMode(hc)"> / 購買 {{ getPurchasedSessions(hc) }}</template> 堂</template></dd></div>
+                    <div class="tw:col-span-2 tw:md:col-span-1"><dt :class="factRow.label">堂數</dt><dd :class="[factRow.value, 'tw:m-0 tw:tabular-nums']"><template v-if="isPackageMember(hc)"><span class="tw:inline-block tw:whitespace-nowrap">已上 {{ getCompletedSessionCount(hc) }} 堂</span>｜<span class="tw:inline-block tw:whitespace-nowrap">方案共用 {{ getPackageTotalSessions(hc) }} 堂</span></template><template v-else>已上 {{ getCompletedSessionCount(hc) }}<template v-if="isSessionMode(hc)"> / 購買 {{ getPurchasedSessions(hc) }}</template> 堂</template></dd></div>
                     <div v-if="hc.last_paid_at"><dt :class="factRow.label">繳費</dt><dd :class="[factRow.value, 'tw:m-0 tw:tabular-nums']">{{ hc.last_paid_at }}</dd></div>
                   </dl>
                   <div class="history-course-card__actions tw:mt-3 tw:flex tw:flex-wrap tw:items-center tw:gap-2">

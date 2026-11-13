@@ -50,11 +50,15 @@ export const factRow = Object.freeze({
 // Native-button row actions (44px pills) for rows whose markup must stay a plain `button`: primary = ink pill, secondary = hairline outline.
 const rowButtonBase = 'tw:inline-flex tw:min-w-11 tw:cursor-pointer tw:items-center tw:justify-center tw:rounded-full tw:border-0 tw:px-4 tw:text-tpl-caption tw:font-semibold tw:outline-none tw:focus-visible:ring-3 tw:focus-visible:ring-ring/50';
 const rowButton = `${rowButtonBase} tw:h-11 tw:shrink-0 tw:whitespace-nowrap`;
+const rowWrapBase = `${rowButtonBase} tw:max-w-full tw:min-h-11 tw:py-2 tw:text-left tw:whitespace-normal tw:bg-card tw:shadow-[inset_0_0_0_1px_var(--ds-hairline)] tw:hover:bg-muted`;
 export const rowAction = Object.freeze({
   primary: `${rowButton} tw:bg-primary tw:text-primary-foreground`,
   secondary: `${rowButton} tw:bg-card tw:text-foreground tw:shadow-[inset_0_0_0_1px_var(--ds-hairline)] tw:hover:bg-muted`,
   // A secondary action whose words are a sentence (堂數待對帳 查看對帳明細): at least 44px, wraps instead of pushing the page sideways.
-  secondaryWrap: `${rowButtonBase} tw:max-w-full tw:min-h-11 tw:py-2 tw:text-left tw:whitespace-normal tw:bg-card tw:text-foreground tw:shadow-[inset_0_0_0_1px_var(--ds-hairline)] tw:hover:bg-muted`,
+  secondaryWrap: `${rowWrapBase} tw:text-foreground`,
+  // The same wrapped button in the danger text colour (堂數待對帳). Two text colours in one class list do not merge (the later rule in the
+  // stylesheet wins), so the colour is the only difference between the two sets.
+  dangerWrap: `${rowWrapBase} tw:text-[var(--ds-danger-text)]`,
   // The ⋯ menu trigger (icon-sized).
   menu: 'tw:size-11 tw:min-h-11 tw:min-w-11 tw:rounded-full tw:border-0 tw:bg-card tw:p-0 tw:text-foreground tw:shadow-[inset_0_0_0_1px_var(--ds-hairline)] tw:hover:bg-muted',
 });
