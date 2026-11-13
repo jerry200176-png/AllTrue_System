@@ -2395,7 +2395,7 @@ class LearningRecordController extends Controller
         return $query->orderBy('id', 'desc')->first();
     }
 
-    private function validateSessionStartedForWrite($sessionDate, $startTime): ?\Illuminate\Http\JsonResponse
+    public function validateSessionStartedForWrite($sessionDate, $startTime): ?\Illuminate\Http\JsonResponse
     {
         $date = $this->normalizeDateValue($sessionDate);
         $time = $this->normalizeProjectionTime($startTime);

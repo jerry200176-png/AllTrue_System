@@ -176,7 +176,7 @@ class StudentLearningPlanController extends Controller
                 $changes += ['planned_start' => $from->toDateString(), 'planned_end' => $to->toDateString(), 'dates_manual' => true];
             }
             if (isset($data['completed'])) {
-                $changes += !$data['completed'] ? ['completed_at' => null, 'completed_by' => null]
+                $changes += !$data['completed'] ? ['completed_at' => null, 'completed_by' => null, 'completed_session_id' => null, 'completed_record_id' => null]
                     : ($u->completed_at === null ? ['completed_at' => now(), 'completed_by' => $request->attributes->get('auth_user')?->id] : []);
             }
             $u->update($changes);
@@ -263,5 +263,4 @@ class StudentLearningPlanController extends Controller
     {
         return StudentLearningPlan::query()->where('student_class_id', $courseId)->where('status', '!=', 'archived')->exists();
     }
-
 }

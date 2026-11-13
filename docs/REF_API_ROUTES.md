@@ -474,6 +474,12 @@
 | GET | `api/v1/invoices/{invoice}/slip-data` | `BillingController@slipData` | role+campus |
 | POST | `api/v1/invoices/{invoice}/void` | `BillingController@voidInvoice` | role+campus |
 
+## /api/v1/learning-plan-units
+
+| Method | URI | Action | Auth |
+|--------|-----|--------|------|
+| GET | `api/v1/learning-plan-units/candidates` | `StudentPlanUnitLessonController@candidates` | role+campus |
+
 ## /api/v1/learning-plans
 
 | Method | URI | Action | Auth |
@@ -517,6 +523,7 @@
 | DELETE | `api/v1/learning-records/{learningRecord}` | `LearningRecordController@destroy` | role+campus |
 | POST | `api/v1/learning-records/{learningRecord}/approve` | `LearningRecordController@approve` | role+campus |
 | GET | `api/v1/learning-records/{learningRecord}/author-snapshots` | `LearningRecordAuthorSnapshotController@index` | role+campus |
+| PUT | `api/v1/learning-records/{learningRecord}/plan-units` | `StudentPlanUnitLessonController@sync` | role+campus |
 | POST | `api/v1/learning-records/{learningRecord}/reject` | `LearningRecordController@reject` | role+campus |
 | POST | `api/v1/learning-records/{learningRecord}/request-changes` | `LearningRecordController@requestChanges` | role+campus |
 | POST | `api/v1/learning-records/{learningRecord}/rollback-approval` | `LearningRecordController@rollbackApproval` | role+campus |

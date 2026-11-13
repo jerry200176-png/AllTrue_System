@@ -75,6 +75,12 @@ export function dateRangeText(unit) {
   return `${formatMd(unit.planned_start)}–${formatMd(unit.planned_end)}`;
 }
 
+/** 「於 11/09 的課完成」 when the unit was ticked from a lesson evaluation (#4970 step 5); '' otherwise. */
+export function lessonDoneText(unit) {
+  const md = unit?.completed_session_id ? formatMd(unit.completed_on) : '';
+  return md ? `於 ${md} 的課完成` : '';
+}
+
 /** Screen-reader sentence: 第 3 單元 xx：12/01–12/14，落後 */
 export function unitAriaText(unit, index, today) {
   return `第 ${index + 1} 單元 ${unit.title}：${dateRangeText(unit)}，${STATE_LABELS[unitState(unit, today)]}${unit.dates_manual ? '，手動排程' : ''}`;

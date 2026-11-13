@@ -7,11 +7,7 @@ use App\Models\StudentClass;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
-/**
- * Campus and teacher scoping shared by the learning-plan and study-task APIs (#4970, #5269).
- * Reads: director, super_admin, a teacher for courses visible to them (StudentClass::visibleToTeacher).
- * Writes: director, super_admin, a teacher only for courses they own (TeacherID).
- */
+/** Campus and course scope shared by the learning-plan controllers (#4970): reads see visible courses, writes only owned ones. */
 trait ScopesLearningPlanAccess
 {
     private function teacherId(Request $request): ?int

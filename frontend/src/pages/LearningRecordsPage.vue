@@ -1253,6 +1253,7 @@
                 <button v-for="p in templatePhrases.Progress" :key="p" class="lr-phrase-btn" type="button" @click="insertPhrase('Progress', p)">{{ p }}</button>
               </div>
             </div>
+            <LessonPlanUnits ref="planUnitsRef" :class-session-id="form.ClassSessionID" :disabled="isReadOnly" :restore-ids="draftPlanUnitIds" @change="saveDraftThrottled" />
             <div class="form-group">
               <label>本次作業範圍</label>
               <textarea v-model="form.NextHomework" rows="2" :disabled="isReadOnly" placeholder="指定本次作業範圍..."></textarea>
@@ -1541,6 +1542,7 @@ import AtPageHeader from '../components/design-system/AtPageHeader.vue';
 import AtTabs from '../components/design-system/AtTabs.vue';
 import FeedbackInlinePreview from '../components/learning-records/FeedbackInlinePreview.vue';
 import LearningRecordPreview from '../components/learning-records/LearningRecordPreview.vue';
+import LessonPlanUnits from '../components/learning-records/LessonPlanUnits.vue';
 import { trackAdoptionEvent } from '../lib/adoptionTelemetry';
 import { formatParentFeedbackTime } from '../lib/parentFeedbackFormat';
 import {
@@ -3861,6 +3863,7 @@ const closeModal = ({ preserveDraft = true } = {}) => {
   showAllCommentPhrases.value = false;
   replyMode.value = false;
   showModal.value = false;
+  draftPlanUnitIds.value = null;
   resetPreviousSummaryState();
   _openedFromScheduleSession.value = 0;
   if (isTeacher.value) refreshDraftList();
@@ -3942,6 +3945,10 @@ const switchToTeacherLogin = async () => {
   window.location.reload();
 };
 
+const planUnitsRef = ref(null);
+const draftPlanUnitIds = ref(null); // ticks restored from a draft (issue 4970 step 5)
+// A draft selection belongs to one lesson: drop it at once when the lesson changes (loadDraft sets the new one after).
+watch(() => form.ClassSessionID, () => { draftPlanUnitIds.value = null; }, { flush: 'sync' });
 const submitForm = async () => {
   if (timeLockMessage.value) {
     alert(timeLockMessage.value);
@@ -3971,6 +3978,16 @@ const submitForm = async () => {
     if (!isCurrent()) return;
     if (!result.ok) { submitError.value = result.message; return; }
     const savedRecord = result.record;
+    // Learning plan (issue 4970, step 5): tick the plan units only after the evaluation is saved; a failure keeps the form (and its text) open.
+    const unitSave = await planUnitsRef.value?.save(savedRecord.id);
+    if (!isCurrent()) return;
+    if (unitSave && !unitSave.ok) {
+      form.id = savedRecord.id;
+      isEditing.value = true;
+      saveDraft();
+      submitError.value = `評量已儲存，但「這堂上完的單元」沒有記錄成功：${unitSave.message}。內容已保留，請再按一次送出。`;
+      return;
+    }
     if (JSON.stringify(form) !== JSON.stringify(submissionSnapshot)) {
       form.id = savedRecord.id;
       isEditing.value = true;
@@ -4460,6 +4477,7 @@ const saveDraft = () => {
     ..._draftKeyParams(),
     form,
     meta: _draftMeta(),
+    planUnitIds: planUnitsRef.value?.draftIds?.() ?? null,
   });
   if (result.saved) {
     const now = new Date();
@@ -4488,6 +4506,7 @@ const loadDraft = () => {
   const { draft } = _loadDraftFromStorage(_draftKeyParams());
   if (!draft) return false;
   applyDraftToForm(draft, form);
+  draftPlanUnitIds.value = Array.isArray(draft._planUnitIds) ? draft._planUnitIds : null;
   const savedDate = new Date(draft._savedAt);
   draftStatusText.value = `已載入草稿（${savedDate.getMonth()+1}/${savedDate.getDate()} ${String(savedDate.getHours()).padStart(2,'0')}:${String(savedDate.getMinutes()).padStart(2,'0')} 儲存）`;
   draftSaveError.value = false;

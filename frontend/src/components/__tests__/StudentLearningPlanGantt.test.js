@@ -78,6 +78,14 @@ describe('student learning plan Gantt (#4970 step 4b)', () => {
     expect(w.findAll('[data-testid="unit-item"]')).toHaveLength(4);
   });
 
+  it('says which lesson finished a unit only when it was ticked from a lesson evaluation', async () => {
+    plans = [{ ...PLAN, units: PLAN.units.map((u) => (u.id === 1 ? { ...u, completed_on: '2026-11-09', completed_session_id: 31 } : u.id === 2 ? { ...u, completed_at: '2026-11-10 08:00:00', completed_on: '2026-11-10' } : u)) }];
+    const w = mountGantt(); await flushPromises();
+    const items = w.findAll('[data-testid="unit-item"]').map((i) => i.text());
+    expect(items[0]).toContain('於 11/09 的課完成');
+    expect(items[1]).not.toContain('的課完成');
+  });
+
   it('draws overlapping manual and automatic units on their own rows', async () => {
     plans = [{ ...PLAN, units: [unit(1, 'A', '2026-11-01', '2026-11-20'), unit(2, 'B', '2026-11-05', '2026-11-25', { dates_manual: true })] }];
     const w = mountGantt(); await flushPromises();

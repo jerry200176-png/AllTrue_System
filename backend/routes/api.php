@@ -74,6 +74,7 @@ use App\Http\Controllers\ExamRoundController;
 use App\Http\Controllers\CurriculumTemplateController;
 use App\Http\Controllers\StudentLearningPlanController;
 use App\Http\Controllers\StudentStudyTaskController;
+use App\Http\Controllers\StudentPlanUnitLessonController;
 use App\Http\Controllers\SchoolExamPeriodController;
 use App\Http\Controllers\SchoolMergeController;
 use App\Http\Controllers\PopOperationController;
@@ -830,6 +831,9 @@ Route::prefix('v1')->group(function () {
         Route::post('students/{student}/study-tasks', [StudentStudyTaskController::class, 'store'])->whereNumber('student');
         Route::patch('study-tasks/{task}', [StudentStudyTaskController::class, 'update'])->whereNumber('task');
         Route::delete('study-tasks/{task}', [StudentStudyTaskController::class, 'destroy'])->whereNumber('task');
+        // #4970 step 5: 這堂上完的單元. Candidates for the evaluation form; sync runs after the evaluation was saved.
+        Route::get('learning-plan-units/candidates', [StudentPlanUnitLessonController::class, 'candidates']);
+        Route::put('learning-records/{learningRecord}/plan-units', [StudentPlanUnitLessonController::class, 'sync'])->whereNumber('learningRecord');
     });
 
     Route::middleware(['role:director,teacher', 'require_campus', 'require_password_change'])->group(function () {
