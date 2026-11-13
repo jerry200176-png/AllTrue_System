@@ -1,4 +1,4 @@
-import { beforeAll, describe, expect, it } from 'vitest';
+import { afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { mount } from '@vue/test-utils';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -79,6 +79,95 @@ describe('帳單 list on the page template', () => {
     await w.get('[data-testid="bill-pick-c1"]').trigger('click');
     const res = await axe.run(w.element, { rules: { 'color-contrast': { enabled: false } } });
     expect(res.violations.map((v) => v.id)).toEqual([]);
+    w.unmount();
+  });
+});
+
+const setPhone = (on) => {
+  window.matchMedia = (q) => ({ matches: on, media: q, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {} });
+};
+afterEach(() => { delete window.matchMedia; });
+
+describe('what a tap on a row does (same handlers as the old buttons)', () => {
+  const rows = () => [
+    row(1), // owing contract: quick view can record
+    row(2, { payment_status: 'pending_report', paid_amount: 4200, outstanding: 0, payable_outstanding: 0, latest_payment_report_id: 9 }), // confirm
+    row(3, { payment_status: 'renew_needed', payable_outstanding: 0, outstanding: 0 }), // issue
+    row(4, { payment_status: 'amount_review', amount_pending_confirmation: true, pending_confirmation_amount: 800, open_periods: [{ outstanding: 800, due_date: '2026-12-01' }] }), // review
+    row(5, { id: null, package_id: 7 }), // owing package: no contract, the quick view cannot record
+  ];
+  const mountAll = () => mountList({ alertRows: rows(), batchModes: {} });
+  const tap = async (w, key) => { await w.get(`[data-testid="bill-row-${key}"]`).trigger('click'); };
+  const clickButton = async (w, key) => { await w.get(`[data-testid="bill-action-${key}"]`).trigger('click'); };
+
+  it('a phone tap does what the row button does where the quick view cannot (開帳單 / 繳費單 / 看帳務, 核對, package 登記)', async () => {
+    setPhone(true);
+    const w = mountAll();
+    for (const key of ['c3', 'c4', 'p7']) {
+      await clickButton(w, key);
+      const viaButton = w.emitted('action').at(-1);
+      const before = w.emitted('action').length;
+      await tap(w, key);
+      expect(w.emitted('action').length, key).toBe(before + 1);
+      expect(w.emitted('action').at(-1).slice(1), key).toEqual(viaButton.slice(1));
+      expect(w.emitted('action').at(-1)[0].key).toBe(key);
+    }
+    expect(w.emitted('action').at(-1)[1]).toBe('record'); // the package row: 登記收款
+    expect(w.emitted('quick')).toBeUndefined();
+    // the button and its ⋯ menu stay visible on those rows; a covered row shows a chevron instead
+    const shown = (key) => !w.get(`[data-testid="bill-row-${key}"] .bl__actions`).classes().includes('tw:max-md:hidden');
+    expect([shown('c3'), shown('c4'), shown('p7'), shown('c1'), shown('c2')]).toEqual([true, true, true, false, false]);
+    w.unmount();
+  });
+
+  it('a phone tap opens the quick view where it can 登記收款 or 確認入帳', async () => {
+    setPhone(true);
+    const w = mountAll();
+    await tap(w, 'c1');
+    await tap(w, 'c2');
+    expect(w.emitted('quick').map(([b]) => b.key)).toEqual(['c1', 'c2']);
+    expect(w.emitted('action')).toBeUndefined();
+    w.unmount();
+  });
+
+  it('on a desktop every row tap still opens the quick view', async () => {
+    setPhone(false);
+    const w = mountAll();
+    for (const key of ['c1', 'c3', 'c4', 'p7']) await tap(w, key);
+    expect(w.emitted('quick').map(([b]) => b.key)).toEqual(['c1', 'c3', 'c4', 'p7']);
+    expect(w.emitted('action')).toBeUndefined();
+    w.unmount();
+  });
+
+  it('a student without a bill can be opened by touch: the name is a real 44px target', async () => {
+    setPhone(true);
+    const w = mountList({ students: [{ id: 99, name: '歐陽子晴' }] });
+    await w.get('[data-testid="bill-search"]').setValue('歐陽子晴');
+    const btn = w.get('[data-testid="bill-student-99"]');
+    expect(btn.classes()).not.toContain('tw:max-md:pointer-events-none');
+    expect(btn.classes()).toContain('tw:min-h-11');
+    await btn.trigger('click');
+    expect(w.emitted('student')[0][0]).toMatchObject({ student_id: 99, class_id: null });
+    w.unmount();
+  });
+
+  it('one status badge per row, on every screen, with the status words', () => {
+    const w = mountAll();
+    expect(w.get('[data-testid="bill-row-c1"] [data-slot="status-badge"]').text()).toBe('未繳');
+    expect(w.findAll('[data-testid="bill-row-c1"] [data-slot="status-badge"]')).toHaveLength(1);
+    expect(w.get('[data-testid="bill-row-c1"] td.bl__num').text()).not.toContain('未繳'); // no second copy of the status word
+    w.unmount();
+  });
+
+  it('全選 reports the mixed state when only some rows are picked, and the bar announces the count', async () => {
+    const w = mountList({ alertRows: [row(1), row(6, { student_id: 6 })], batchModes: { 1: 'report', 6: 'report' } });
+    await w.get('[data-testid="bill-pick-c1"]').trigger('click');
+    expect(w.get('[data-testid="bill-select-all"]').attributes('aria-checked')).toBe('mixed');
+    const live = w.get('[data-slot="selection-bar"] [aria-live="polite"]');
+    expect(live.text()).toBe('已選 1 筆');
+    await w.get('[data-testid="bill-select-all"]').trigger('click');
+    expect(w.get('[data-testid="bill-select-all"]').attributes('aria-checked')).toBe('true');
+    expect(w.get('[data-slot="selection-bar"] [aria-live="polite"]').text()).toBe('已選 2 筆');
     w.unmount();
   });
 });

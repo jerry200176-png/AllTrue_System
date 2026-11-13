@@ -63,7 +63,7 @@
       </div>
 
       <SectionCard>
-        <SelectionBar v-if="picked.length" data-testid="bill-bulk">
+        <SelectionBar v-if="picked.length" :announce="`已選 ${picked.length} 筆`" data-testid="bill-bulk">
           <span data-testid="bill-picked-total">已選 {{ picked.length }} 筆<template v-if="pickedOwed > 0"><span class="tw:font-normal tw:text-tpl-secondary">，到今天未收合計 <strong class="tw:font-semibold tw:whitespace-nowrap tw:text-foreground tw:tabular-nums">{{ money(pickedOwed) }}</strong></span></template></span>
           <template #actions>
             <Button variant="ghost" :class="control.row" data-testid="bill-clear-picked" @click="clearSelection">取消選取</Button>
@@ -76,11 +76,11 @@
           <p class="tw:m-0 tw:text-tpl-body tw:font-semibold tw:text-pretty">{{ query.trim() ? '找不到符合的帳單' : `目前沒有「${chipLabel}」的帳單` }}</p>
           <p class="tw:m-0 tw:text-tpl-caption tw:text-tpl-secondary tw:text-pretty">{{ query.trim() ? `找不到符合「${query.trim()}」的學生。請調整搜尋。` : '可以切換上方的狀態看其他帳單。' }}</p>
         </div>
-        <Table v-else :class="t.table">
+        <Table v-else :class="[t.table, 'tw:max-md:block']">
           <TableCaption class="tw:sr-only">帳單清單</TableCaption>
-          <TableHeader v-if="visible.length">
-            <TableRow class="bl__cols tw:hover:bg-transparent">
-              <TableHead v-if="anyCheck" scope="col" :class="[t.head, checkCol]">
+          <TableHeader v-if="visible.length" class="tw:max-md:block">
+            <TableRow :class="['bl__cols tw:hover:bg-transparent tw:max-md:items-center tw:max-md:bg-muted tw:max-md:border-border', phoneGrid]">
+              <TableHead v-if="anyCheck" scope="col" :class="[t.head, checkCol, 'tw:max-md:col-start-1']">
                 <Checkbox
                   :model-value="allPicked ? true : picked.length > 0 ? 'indeterminate' : false"
                   :class="checkBox"
@@ -89,34 +89,34 @@
                   @update:model-value="(v) => pickAll(v === true)"
                 />
               </TableHead>
-              <TableHead scope="col" :class="[t.head, !anyCheck && 'tw:pl-4 tw:md:pl-5']">學生・科目</TableHead>
+              <TableHead scope="col" :class="[t.head, 'tw:max-md:col-start-2', !anyCheck && 'tw:pl-4 tw:md:pl-5']">學生・科目</TableHead>
               <TableHead scope="col" :class="[t.head, 'tw:max-lg:hidden bl__period']">期間／剩幾堂</TableHead>
               <TableHead scope="col" :class="[t.head, t.phoneHide]">狀態</TableHead>
               <TableHead scope="col" :class="[t.head, 'tw:max-lg:hidden']">到期／逾期</TableHead>
-              <TableHead scope="col" :class="[t.numHead, 'bl__num']">未收</TableHead>
-              <TableHead scope="col" :class="[t.head, 'tw:w-12 tw:pr-4 tw:pl-0 tw:md:w-auto tw:md:pr-5']"><span class="tw:sr-only">操作</span></TableHead>
+              <TableHead scope="col" :class="[t.numHead, 'bl__num tw:max-md:col-start-3']">未收</TableHead>
+              <TableHead scope="col" :class="[t.head, 'tw:w-12 tw:pr-4 tw:pl-0 tw:max-md:hidden tw:md:w-auto tw:md:pr-5']"><span class="tw:sr-only">操作</span></TableHead>
             </TableRow>
           </TableHeader>
-          <TableBody v-if="noRowStudents.length" data-testid="bill-no-rows">
-            <TableRow v-for="st in noRowStudents" :key="st.id" class="bl__plainrow tw:hover:bg-muted/60">
-              <TableCell v-if="anyCheck" :class="[t.cell, checkCol]" />
-              <TableCell :class="[t.name, !anyCheck && 'tw:pl-4 tw:md:pl-5']">
-                <button type="button" :class="nameButton" :title="st.name" :data-testid="`bill-student-${st.id}`" @click="$emit('student', { student_id: st.id, class_id: null })">{{ st.name }}</button>
+          <TableBody v-if="noRowStudents.length" class="tw:max-md:block" data-testid="bill-no-rows">
+            <TableRow v-for="st in noRowStudents" :key="st.id" class="bl__plainrow tw:hover:bg-muted/60 tw:max-md:flex tw:max-md:items-center">
+              <TableCell v-if="anyCheck" :class="[t.cell, checkCol, pc]" />
+              <TableCell :class="[t.name, pc, !anyCheck && 'tw:pl-4 tw:md:pl-5']">
+                <button type="button" :class="plainNameButton" :title="st.name" :data-testid="`bill-student-${st.id}`" @click="$emit('student', { student_id: st.id, class_id: null })">{{ st.name }}</button>
               </TableCell>
-              <TableCell :class="[t.cell, 'tw:text-tpl-secondary']" colspan="5">沒有待收款項</TableCell>
+              <TableCell :class="[t.cell, pc, 'tw:text-tpl-secondary']" colspan="5">沒有待收款項</TableCell>
             </TableRow>
           </TableBody>
-          <TableBody v-if="visible.length" data-guide="tuition-rows">
+          <TableBody v-if="visible.length" class="tw:max-md:block" data-guide="tuition-rows">
             <TableRow
               v-for="b in visible"
               :key="b.key"
               :data-testid="`bill-row-${b.key}`"
               :data-kind="b.kind"
               :data-state="selected.has(b.key) ? 'selected' : undefined"
-              :class="['bl__row tw:cursor-pointer', selected.has(b.key) ? 'tw:bg-[color-mix(in_srgb,var(--ds-primary-wash)_55%,transparent)] tw:hover:bg-[var(--ds-primary-wash)]' : 'tw:hover:bg-muted/60']"
-              @click="$emit('quick', b)"
+              :class="['bl__row tw:cursor-pointer', phoneGrid, selected.has(b.key) ? 'tw:bg-[color-mix(in_srgb,var(--ds-primary-wash)_55%,transparent)] tw:hover:bg-[var(--ds-primary-wash)]' : 'tw:hover:bg-muted/60']"
+              @click="rowTap(b)"
             >
-              <TableCell v-if="anyCheck" :class="[t.cell, checkCol]" @click.stop>
+              <TableCell v-if="anyCheck" :class="[t.cell, checkCol, pc, 'tw:max-md:col-start-1 tw:max-md:row-span-2 tw:max-md:row-start-1 tw:max-md:self-start tw:max-md:pt-4']" @click.stop>
                 <Checkbox
                   v-if="selectable(b)"
                   :model-value="selected.has(b.key)"
@@ -129,30 +129,32 @@
                 />
                 <span v-else class="bl__nocheck tw:relative tw:inline-block tw:w-5 tw:cursor-help tw:text-center tw:leading-none tw:text-tpl-secondary" :title="noPickReason(b)" :data-testid="`bill-nopick-${b.key}`"><span aria-hidden="true">–</span><span class="tw:sr-only">{{ noPickReason(b) }}</span></span>
               </TableCell>
-              <TableCell :class="[t.name, 'tw:h-16', !anyCheck && 'tw:pl-4 tw:md:pl-5']">
+              <TableCell :class="[t.name, 'tw:h-16', pc, 'tw:max-md:col-start-2 tw:max-md:row-start-1', !anyCheck && 'tw:pl-4 tw:md:pl-5']">
                 <button type="button" :class="nameButton" :data-testid="`bill-name-${b.key}`" :data-student="b.student_id" @click.stop="$emit('student', b)">{{ b.student_name }}</button>
                 <span :class="t.sub">
-                  <button type="button" :class="openButton" :data-testid="`bill-open-${b.key}`" :aria-label="`看這筆帳單：${b.student_name} ${b.subject}`" @click.stop="$emit('quick', b)">{{ b.subject || '帳單' }}</button><span :class="['tw:lg:hidden', 'bl__period-sub tw:inline-block tw:whitespace-nowrap']">・{{ periodText(b.period) }}</span>
+                  <button type="button" :class="openButton" :data-testid="`bill-open-${b.key}`" :aria-label="`看這筆帳單：${b.student_name} ${b.subject}`" @click.stop="$emit('quick', b)">{{ b.subject || '帳單' }}</button>{{ ' ' }}<span class="bl__period-sub tw:inline-block tw:whitespace-nowrap tw:lg:hidden">{{ periodText(b.period) }}</span>
                 </span>
                 <span v-if="b.hint" :class="[t.sub, 'bl__hint']">{{ b.hint }}</span>
                 <span v-for="w in b.warnings" :key="w" :class="[t.sub, 'bl__warn tw:max-w-sm tw:text-[var(--ds-warning-text)]']" role="note" :data-testid="`bill-warn-${b.key}`">{{ w }}</span>
               </TableCell>
               <TableCell :class="[t.cell, 'bl__period tw:max-lg:hidden tw:whitespace-nowrap tw:tabular-nums']">{{ periodText(b.period) }}</TableCell>
-              <TableCell :class="[t.cell, t.phoneHide]"><StatusBadge :tone="TONES[b.kind]" :title="b.help || undefined">{{ b.label }}</StatusBadge></TableCell>
+              <TableCell :class="[t.cell, pc, 'tw:max-md:col-start-2 tw:max-md:row-start-2 tw:max-md:pt-0 tw:max-md:pb-3']"><StatusBadge :tone="TONES[b.kind]" :title="b.help || undefined">{{ b.label }}</StatusBadge></TableCell>
               <TableCell :class="[t.cell, 'bl__due tw:max-lg:hidden tw:whitespace-nowrap tw:tabular-nums', b.overdue_days > 0 ? 'due tw:font-semibold tw:text-[var(--ds-danger-text)]' : 'tw:text-tpl-secondary']">{{ dueText(b) }}</TableCell>
-              <TableCell :class="[t.num, 'bl__num tw:font-semibold tw:max-md:pl-0', { due: b.owed > 0 }]">
-                {{ b.owed > 0 ? money(b.owed) : '—' }}
+              <TableCell :class="[t.num, 'bl__num tw:font-semibold', pc, 'tw:max-md:col-start-3 tw:max-md:row-start-1 tw:max-md:px-1', { due: b.owed > 0 }]">
+                <template v-if="b.owed > 0">{{ money(b.owed) }}</template>
+                <template v-else-if="!(b.owed_later > 0 || b.review_amount > 0)">—</template>
                 <span v-if="b.owed_later > 0 && !(b.review_amount > 0)" :class="[t.sub, 'bl__review']" :data-testid="`bill-later-${b.key}`">之後還會到期 <span class="tw:whitespace-nowrap">{{ money(b.owed_later) }}</span></span>
                 <span v-if="b.review_amount > 0" :class="[t.sub, 'bl__review']" :data-testid="`bill-review-${b.key}`">需核對金額 <span class="tw:whitespace-nowrap">{{ money(b.review_amount) }}</span></span>
-                <span :class="[t.sub, 'tw:lg:hidden bl__due tw:font-normal', b.overdue_days > 0 ? 'tw:text-[var(--ds-danger-text)]' : '']">{{ dueText(b) !== '—' ? dueText(b) : b.label }}</span>
+                <span v-if="dueText(b) !== '—'" :class="[t.sub, 'tw:lg:hidden bl__due tw:font-normal', b.overdue_days > 0 ? 'tw:text-[var(--ds-danger-text)]' : '']">{{ dueText(b) }}</span>
               </TableCell>
-              <TableCell :class="[t.cell, 'tw:pr-4 tw:pl-0 tw:md:pr-5']">
-                <ChevronRight :class="['tw:ml-auto tw:size-5 tw:text-tpl-secondary', t.phoneOnly]" :stroke-width="2" aria-hidden="true" />
-                <span :class="['bl__actions tw:flex tw:items-center tw:justify-end tw:gap-1', t.phoneHide]" @click.stop>
+              <TableCell :class="[t.cell, pc, 'tw:pr-4 tw:pl-0 tw:md:pr-5', phoneButton(b) ? 'tw:max-md:col-span-2 tw:max-md:col-start-3 tw:max-md:row-start-2 tw:max-md:justify-self-end tw:max-md:pt-0 tw:max-md:pb-3' : 'tw:max-md:col-start-4 tw:max-md:row-span-2 tw:max-md:row-start-1 tw:max-md:self-center']">
+                <ChevronRight v-if="!phoneButton(b)" :class="['tw:ml-auto tw:size-5 tw:text-tpl-secondary', t.phoneOnly]" :stroke-width="2" aria-hidden="true" />
+                <!-- A row whose main action the quick view cannot do keeps its own button on a phone (and its ⋯ menu). -->
+                <span :class="['bl__actions tw:flex tw:items-center tw:justify-end tw:gap-1', phoneButton(b) ? '' : t.phoneHide]" @click.stop>
                   <Button
                     v-if="primaryOf(b)"
                     :variant="b.kind === 'confirm' ? 'default' : 'outline'"
-                    :class="[control.row, 'tw:min-w-24']"
+                    :class="[control.row, 'tw:min-w-24 tw:max-md:min-w-0 tw:max-md:px-3']"
                     :data-testid="`bill-action-${b.key}`"
                     :aria-label="`${primaryOf(b).label}：${b.student_name} ${b.subject}`"
                     @click="$emit('action', b, primaryOf(b).action)"
@@ -174,6 +176,7 @@
 
 <script setup>
 import { computed, ref, watch } from 'vue';
+import { useMediaQuery } from '@vueuse/core';
 import { ChevronRight, Search, SearchX } from '@lucide/vue';
 import ActionMenu from '../ActionMenu.vue';
 import { Alert } from '@/components/ui/alert';
@@ -202,14 +205,21 @@ const props = defineProps({
   canDocs: { type: Boolean, default: false },
   exportDisabled: { type: Boolean, default: false },
 });
-defineEmits(['student', 'quick', 'action', 'menu', 'batch', 'export', 'retry']);
+const emit = defineEmits(['student', 'quick', 'action', 'menu', 'batch', 'export', 'retry']);
 
 // Class sets for the pieces the shared page parts do not cover (tokens and tw: utilities only).
 const checkCol = 'tw:w-12 tw:pr-0 tw:pl-4 tw:md:pl-5';
 // 20px box; the pseudo-element grows the hit area to 48px without moving the row.
 const checkBox = "tw:relative tw:size-5 tw:after:absolute tw:after:-inset-3.5 tw:after:content-['']";
-const nameButton = 'bl__name tw:block tw:max-w-full tw:min-h-0 tw:cursor-pointer tw:rounded-sm tw:border-0 tw:bg-transparent tw:p-0 tw:text-left tw:text-[length:inherit] tw:font-semibold tw:text-foreground tw:whitespace-nowrap tw:outline-none tw:hover:underline tw:focus-visible:ring-3 tw:focus-visible:ring-ring/50 tw:max-md:pointer-events-none';
+const nameBase = 'tw:max-w-full tw:cursor-pointer tw:rounded-sm tw:border-0 tw:bg-transparent tw:p-0 tw:text-left tw:text-[length:inherit] tw:font-semibold tw:text-foreground tw:whitespace-nowrap tw:outline-none tw:hover:underline tw:focus-visible:ring-3 tw:focus-visible:ring-ring/50';
+// In a bill row the whole row is the target, so on a phone the name / subject links do not take the tap (keyboard still reaches them).
+const nameButton = `bl__name tw:block tw:min-h-0 ${nameBase} tw:max-md:pointer-events-none`;
+// A student without a bill has no row tap: the name itself is the 44px target on every screen.
+const plainNameButton = `bl__name tw:inline-flex tw:min-h-11 tw:items-center ${nameBase}`;
 const openButton = 'bl__open tw:min-h-0 tw:cursor-pointer tw:rounded-sm tw:border-0 tw:bg-transparent tw:p-0 tw:text-left tw:text-[length:inherit] tw:font-normal tw:text-tpl-secondary tw:outline-none tw:hover:underline tw:focus-visible:ring-3 tw:focus-visible:ring-ring/50 tw:max-md:pointer-events-none';
+// Phone (<768): each bill is a small grid (check | name + status | amount | chevron) instead of table columns.
+const phoneGrid = 'tw:max-md:grid tw:max-md:grid-cols-[3rem_minmax(0,1fr)_8rem_2.25rem]';
+const pc = 'tw:max-md:h-auto tw:max-md:border-b-0';
 const moreTrigger = 'tw:inline-flex tw:h-11 tw:shrink-0 tw:items-center tw:rounded-full tw:border-0 tw:bg-card tw:px-4 tw:text-[length:var(--tpl-text-caption)] tw:font-semibold tw:text-tpl-secondary tw:shadow-[inset_0_0_0_1px_var(--ds-hairline)] tw:hover:bg-card tw:hover:text-foreground';
 const rowMenu = 'bl__menu tw:size-11 tw:rounded-full tw:border-0 tw:bg-transparent tw:p-0 tw:text-[length:var(--tpl-text-body)] tw:text-tpl-secondary tw:hover:bg-muted';
 // The strip figure is also the filter button: it covers the whole figure, the pressed one gets the wash.
@@ -230,6 +240,15 @@ function primaryOf(b) {
   if (b.class_id == null) return { label: '看帳務', action: 'open' };
   if (b.src.schedule_mode === 'date') return { label: '開帳單', action: 'issue' };
   return slipOf(b).ok ? { label: '繳費單', action: 'slip' } : { label: '看帳務', action: 'open' };
+}
+// What the quick view (the row tap) can do for a bill: 確認入帳 and 登記收款 on a contract. Anything else (開帳單, 繳費單, 看帳務, 核對,
+// and 登記收款 on a package row) is only reachable from the row's own button, so on a phone that row keeps the button and the tap does the same.
+const phone = useMediaQuery('(max-width: 767px)');
+const quickCovers = (b) => { const p = primaryOf(b); return !p || p.action === 'confirm' || (p.action === 'record' && b.class_id != null); };
+const phoneButton = (b) => Boolean(primaryOf(b)) && !quickCovers(b);
+function rowTap(b) {
+  if (phone.value && phoneButton(b)) emit('action', b, primaryOf(b).action);
+  else emit('quick', b);
 }
 const slipOf = (b) => slipAvailability({ ...b.src, id: b.class_id }, props.canDocs);
 const SORTS = {

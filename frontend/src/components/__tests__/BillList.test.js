@@ -129,18 +129,18 @@ describe('BillList', () => {
   });
 
   it('keeps 未收 and 逾期 visible on a phone (only the period and status columns are hidden, 逾期 is repeated under 未收)', () => {
-    const w = mountList();
-    const row = w.get('[data-testid="bill-row-c2"]');
+    const w = mountList({ alertRows: [row({ id: 2, student_id: 2, student_name: '學生乙', payable_outstanding: 500, open_periods: [{ outstanding: 500, due_date: '2026-11-01' }] })], batchModes: {} });
+    const tr = w.get('[data-testid="bill-row-c2"]');
     const hiddenOnPhone = (el) => el.classes().includes('tw:max-md:hidden');
-    const num = row.get('td.bl__num');
+    const num = tr.get('td.bl__num');
     expect(hiddenOnPhone(num)).toBe(false);
-    expect(row.get('td.bl__period').classes()).toContain('tw:max-lg:hidden');
+    expect(tr.get('td.bl__period').classes()).toContain('tw:max-lg:hidden');
     // the due column hides on a phone; the same words sit under the amount (shown on a phone, hidden from md up)
-    expect(row.get('td.bl__due').classes()).toContain('tw:max-lg:hidden');
+    expect(tr.get('td.bl__due').classes()).toContain('tw:max-lg:hidden');
     const phoneDue = num.get('.bl__due');
     expect(hiddenOnPhone(phoneDue)).toBe(false); // hidden only from lg up
     expect(phoneDue.classes()).toContain('tw:lg:hidden');
-    expect(phoneDue.text()).not.toBe('');
+    expect(phoneDue.text()).toBe('逾期 4 天');
   });
 
   it('keeps cached rows and shows a stale-data error with 重試 above them', async () => {
@@ -177,7 +177,7 @@ describe('BillList', () => {
     ] });
     expect(w.get('[data-testid="bill-later-c30"]').text()).toBe('之後還會到期 NT$ 700');
     expect(w.get('[data-testid="bill-later-c31"]').text()).toBe('之後還會到期 NT$ 300');
-    expect(w.get('[data-testid="bill-row-c30"]').text()).toContain('—');
+    expect(w.get('[data-testid="bill-row-c30"] td.bl__num').text().startsWith('之後還會到期 NT$ 700')).toBe(true); // no lone 「—」 above the later amount
   });
 
   it('a 需核對 row shows its amount once, as 需核對金額, not also as 之後還會到期 (D2)', () => {

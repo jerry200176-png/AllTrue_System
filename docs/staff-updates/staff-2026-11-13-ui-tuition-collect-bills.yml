@@ -6,9 +6,11 @@ updates:
       - super_admin
     importance: digest
     title: 帳務中心「帳單」換新外觀
-    summary: 版面更整齊、字更大；收款與確認入帳的做法和金額都和原本一樣。
+    summary: 版面更整齊、字更大；金額和收款流程不變。
     items:
       - category: improved
-        text: 「帳務中心」的「帳單」頁改成一張表：勾選、學生、狀態、到期、未收金額排成一欄一欄，勾選幾筆後上方會顯示合計。手機上改成一列一筆，點整列看帳單。
+        text: 「帳單」改成一張表，勾選後上方顯示合計。
+      - category: improved
+        text: 手機上一列一筆，點整列看帳單；需另外處理的列仍有按鈕。
     source_refs:
       - "changelog:2026-11-13:ui-tuition-collect-bills"
