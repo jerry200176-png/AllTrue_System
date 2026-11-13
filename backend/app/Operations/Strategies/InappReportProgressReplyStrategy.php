@@ -2,6 +2,7 @@
 
 namespace App\Operations\Strategies;
 
+use App\Console\Commands\BugAutoIntakeCommand;
 use App\Models\BugReport;
 use App\Models\BugReportComment;
 use App\Operations\Inapp\InappProgressReplyTemplates as Templates;
@@ -10,6 +11,7 @@ use App\Services\BugReportService;
 use App\Services\BugSafetyScreen;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
+use Throwable;
 
 /**
  * Founder decision 2026-11-13 (#4991), ADR-POP-015 family: post one canned public progress reply on a report. Input is the report
@@ -20,6 +22,8 @@ use RuntimeException;
  *
  * Side effect to know: `deployed_please_confirm` matches BugReportService::RETEST_REQUEST_PATTERN and AWAITING_REPORTER_QUESTION_PATTERN,
  * so on a resolved report (the only status it may be posted on) it also counts as the retest request for the scheduled auto-close.
+ * That holds because a reply attributed to the reporter is refused (`reply_would_be_reporters_own`), as is any template while the
+ * reporter's message is the latest public comment (`reporter_reply_pending`).
  */
 final class InappReportProgressReplyStrategy
 {
@@ -29,7 +33,7 @@ final class InappReportProgressReplyStrategy
     /** @param list<string> $retiredTexts old wording that still counts for idempotency and the cap */
     public function __construct(private readonly array $retiredTexts = Templates::RETIRED_TEXTS) {}
 
-    public function plan(array $p): array
+    public function plan(array $p, array $context = []): array
     {
         $errors = [];
         foreach (['bug_report_id', 'campus_id'] as $key) if (!is_int($p[$key] ?? null) || $p[$key] <= 0) $errors[] = $key . '_invalid';
@@ -40,7 +44,7 @@ final class InappReportProgressReplyStrategy
         $bug = BugReport::query()->whereKey($p['bug_report_id'])->first();
         if (!$bug) return $this->result(['report_missing'], $p);
 
-        return $this->result($this->blockers($bug, $p), $p, (string) $bug->getRawOriginal('status'));
+        return $this->result($this->blockers($bug, $p, $this->plannedAuthor($context)), $p, (string) $bug->getRawOriginal('status'));
     }
 
     public function execute(array $plan, array $context): array
@@ -57,7 +61,7 @@ final class InappReportProgressReplyStrategy
                 $bug = BugReport::query()->whereKey($bugId)->lockForUpdate()->first();
                 InappStandingPolicy::assertKillSwitchesOpen((string) $context['operation_id']);
                 if (!$bug) throw new RuntimeException('inapp_progress_report_missing');
-                $errors = $this->blockers($bug, $p);
+                $errors = $this->blockers($bug, $p, $actor);
                 if ($errors !== []) throw new RuntimeException('inapp_progress_' . $errors[0]);
                 $status = (string) $bug->getRawOriginal('status');
                 $commentId = BugReportService::addComment($bugId, $actor, Templates::text($p['template']), false)->id;
@@ -89,10 +93,31 @@ final class InappReportProgressReplyStrategy
         return ['ok' => false, 'errors' => ['not_reversible']]; // same contract as inapp-report-triage: a posted public reply is not unsent
     }
 
+    /** The user the reply would be attributed to, when the request already shows it; null before approval (execute() rechecks). */
+    private function plannedAuthor(array $context): ?int
+    {
+        $id = $context['operation_id'] ?? null;
+        if (!is_string($id)) return null;
+        try {
+            return InappStandingPolicy::attributionUserId(DB::table('pop_operation_requests')->where('id', $id)->first());
+        } catch (Throwable) {
+            return null;
+        }
+    }
+
     /** @return list<string> named refusal reasons; [] = may post */
-    private function blockers(BugReport $bug, array $p): array
+    private function blockers(BugReport $bug, array $p, ?int $author = null): array
     {
         $errors = [];
+        $reporter = (int) $bug->getAttribute('reporter_user_id');
+        // A canned reply authored by the reporter would read as a reporter reply to the close and timeout logic.
+        if ($author !== null && $author === $reporter) $errors[] = 'reply_would_be_reporters_own';
+        // A human must answer the reporter's latest message; a canned line must not stand in for it.
+        $lastAuthor = BugReportComment::query()->where('bug_report_id', $bug->getKey())->where('is_internal_note', false)->orderByDesc('id')->value('author_user_id');
+        if ($lastAuthor !== null && (int) $lastAuthor === $reporter) $errors[] = 'reporter_reply_pending';
+        // The hourly intake already said "we got it": the reporter never gets a second acknowledgement.
+        if (($p['template'] ?? null) === Templates::RECEIVED && BugReportComment::query()->where('bug_report_id', $bug->getKey())->where('is_internal_note', false)
+            ->whereIn('body', [BugAutoIntakeCommand::ACK_TEXT, BugAutoIntakeCommand::SAFETY_ACK_TEXT])->exists()) $errors[] = 'already_acknowledged';
         $status = (string) $bug->getRawOriginal('status');
         $template = (string) $p['template'];
         if ((int) $bug->getAttribute('CampusID') !== $p['campus_id']) $errors[] = 'report_outside_campus';

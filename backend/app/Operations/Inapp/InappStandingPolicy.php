@@ -98,7 +98,7 @@ final class InappStandingPolicy
         if (!$this->capAvailable($request)) $reasons[] = 'daily_cap_exceeded';
         if ($reasons !== []) return $reasons;
         try {
-            $plan = app(self::OPERATIONS[$entry['id']])->plan($params);
+            $plan = app(self::OPERATIONS[$entry['id']])->plan($params, ['operation_id' => (string) $request->id]);
         } catch (Throwable) {
             return ['plan_failed'];
         }

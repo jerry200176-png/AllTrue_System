@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Console\Commands\BugAutoIntakeCommand;
 use App\Models\BugReport;
 use App\Models\BugReportComment;
 use App\Models\BugReportStatusLog;
@@ -197,12 +198,12 @@ final class PopInappProgressReplyTest extends TestCase
         $this->service->createDraft(self::OP, $this->params($this->bug('new'), ['public_reply' => '隨便寫']), 'idem-free', self::MACHINE, 'pop_machine', [1]);
     }
 
-    public function test_a_second_request_for_the_same_template_is_refused_even_when_the_reporter_is_the_issuing_super_admin(): void
+    public function test_a_second_request_for_the_same_template_is_refused_and_posts_nothing(): void
     {
-        $bug = $this->bug('triaged', 1, $this->admin); // a self-filed report: the reply author and the reporter are one user
+        $bug = $this->bug('triaged');
         $first = $this->drafted($bug, [], 'req-001');
         $this->service->approve($first, 'inapp-human-review', 'user:' . $this->admin, 'super_admin', $this->deployed, $this->admin);
-        self::assertSame('succeeded', $this->service->runApprovedLocally($first)['status']); // verify counts every author, so it passes too
+        self::assertSame('succeeded', $this->service->runApprovedLocally($first)['status']);
 
         $again = $this->drafted($bug, [], 'req-002');
         self::assertContains('template_already_posted', $this->dryRunErrors($again));
@@ -211,15 +212,65 @@ final class PopInappProgressReplyTest extends TestCase
         self::assertSame([], $this->dryRunErrors($this->drafted($bug, ['template' => 'in_progress'], 'req-003')));
     }
 
-    public function test_the_cap_counts_replies_on_a_self_filed_report_and_a_reporter_pasting_the_text_only_causes_a_refusal(): void
+    public function test_idempotency_and_the_cap_count_seeded_comments_whoever_wrote_them(): void
     {
         $own = $this->bug('triaged', 1, $this->admin);
         foreach (Templates::currentTexts() as $text) $this->staffComment($own, $text);
-        self::assertContains('progress_reply_cap_reached', $this->dryRunErrors($this->drafted($own, ['template' => 'received'], 'req-001')));
+        $plan = $this->app->make(InappReportProgressReplyStrategy::class)->plan($this->params($own));
+        self::assertContains('progress_reply_cap_reached', $plan['errors']);
+        self::assertContains('template_already_posted', $plan['errors']);
 
         $other = $this->bug('triaged');
         BugReportComment::create(['bug_report_id' => $other, 'author_user_id' => $this->reporter, 'body' => Templates::text('in_progress'), 'is_internal_note' => false, 'created_at' => now()]);
-        self::assertContains('template_already_posted', $this->dryRunErrors($this->drafted($other, ['template' => 'in_progress'], 'req-002')));
+        self::assertContains('template_already_posted', $this->app->make(InappReportProgressReplyStrategy::class)->plan($this->params($other, ['template' => 'in_progress']))['errors']);
+    }
+
+    public function test_a_reply_that_would_be_attributed_to_the_reporter_is_refused_at_the_dry_run_and_under_the_lock(): void
+    {
+        $bug = $this->bug('triaged', 1, $this->admin); // the issuing super admin filed the report
+        $id = $this->drafted($bug, [], 'req-001', $this->inappAgent());
+        self::assertContains('reply_would_be_reporters_own', $this->dryRunErrors($id));
+        self::assertSame('failed', $this->requestStatus($id));
+
+        $human = $this->drafted($bug, [], 'req-002'); // a machine requester: attribution is only known once a super admin approves
+        $this->service->approve($human, 'inapp-human-review', 'user:' . $this->admin, 'super_admin', $this->deployed, $this->admin);
+        $strategy = $this->app->make(InappReportProgressReplyStrategy::class);
+        $plan = ['ok' => true, 'status' => 'triaged'];
+        self::assertSame(['inapp_progress_reply_would_be_reporters_own'], $strategy->execute($plan, ['operation_id' => $human])['errors']);
+        $this->assertNothingWritten($bug);
+    }
+
+    public function test_a_reporter_message_that_is_the_latest_public_comment_blocks_every_template_until_a_human_answers(): void
+    {
+        $bug = $this->bug('triaged');
+        $this->staffComment($bug, '請問是哪一天？');
+        BugReportComment::create(['bug_report_id' => $bug, 'author_user_id' => $this->reporter, 'body' => '昨天', 'is_internal_note' => false, 'created_at' => now()]);
+        $strategy = $this->app->make(InappReportProgressReplyStrategy::class);
+        self::assertContains('reporter_reply_pending', $strategy->plan($this->params($bug, ['template' => 'in_progress']))['errors']);
+
+        BugReportComment::create(['bug_report_id' => $bug, 'author_user_id' => $this->admin, 'body' => '好的，我們看一下。', 'is_internal_note' => false, 'created_at' => now()]);
+        self::assertNotContains('reporter_reply_pending', $strategy->plan($this->params($bug, ['template' => 'in_progress']))['errors']);
+        // An internal note after the reporter's message does not count as an answer.
+        $other = $this->bug('triaged');
+        BugReportComment::create(['bug_report_id' => $other, 'author_user_id' => $this->reporter, 'body' => '昨天', 'is_internal_note' => false, 'created_at' => now()]);
+        BugReportComment::create(['bug_report_id' => $other, 'author_user_id' => $this->admin, 'body' => '內部備註', 'is_internal_note' => true, 'created_at' => now()]);
+        self::assertContains('reporter_reply_pending', $strategy->plan($this->params($other))['errors']);
+    }
+
+    public static function acknowledgements(): array
+    {
+        return ['intake acknowledgement' => [BugAutoIntakeCommand::ACK_TEXT], 'safety acknowledgement' => [BugAutoIntakeCommand::SAFETY_ACK_TEXT]];
+    }
+
+    /** @dataProvider acknowledgements */
+    public function test_received_is_refused_once_the_intake_acknowledgement_is_there_but_other_templates_are_not(string $ack): void
+    {
+        $bug = $this->bug('triaged');
+        $this->staffComment($bug, $ack);
+        $strategy = $this->app->make(InappReportProgressReplyStrategy::class);
+
+        self::assertContains('already_acknowledged', $strategy->plan($this->params($bug))['errors']);
+        self::assertSame([], $strategy->plan($this->params($bug, ['template' => 'in_progress']))['errors']);
     }
 
     public function test_a_retired_wording_still_counts_for_idempotency_and_the_cap(): void
