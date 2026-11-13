@@ -93,7 +93,7 @@ test.describe('Teacher eligibility clarity browser verification', () => {
     await installMock(page);
     await page.setViewportSize({ width: 390, height: 844 });
     await page.goto('/teacher-eligibility-pilot-mount.html?mode=loading');
-    await expect(page.getByTestId('at-skeleton')).toBeVisible();
+    await expect(page.getByTestId('eligibility-loading')).toBeVisible();
     await page.goto('/teacher-eligibility-pilot-mount.html?mode=empty');
     await expect(page.getByText('查詢期間沒有符合條件的正職老師', { exact: true })).toBeVisible();
     await page.goto('/teacher-eligibility-pilot-mount.html?mode=error');

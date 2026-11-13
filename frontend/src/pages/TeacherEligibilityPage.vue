@@ -1,199 +1,224 @@
 <template>
-  <div class="eligibility-page">
-    <AtPageHeader
-      title="正職薪資要件"
-      description="依結算月份檢視本薪、獎金與待人工確認項目。"
-      icon="payments"
-      data-guide="eligibility-header"
-    >
-      <template #meta>
-        <span class="privilege-chip">高權限存取區</span>
+  <div class="eligibility-page tw:mx-auto tw:flex tw:max-w-[1800px] tw:flex-col tw:gap-4 tw:px-1 tw:pb-24 tw:text-foreground tw:md:px-0 tw:md:pb-0" data-testid="teacher-eligibility-page">
+    <header class="tw:pb-2" data-guide="eligibility-header">
+      <div class="tw:flex tw:flex-wrap tw:items-center tw:justify-between tw:gap-x-4 tw:gap-y-3">
+        <h2 class="tw:flex tw:items-center tw:gap-2 tw:text-tpl-page tw:font-bold tw:tracking-tight">
+          <Banknote class="tw:size-6 tw:shrink-0 tw:text-tpl-secondary" :stroke-width="2" aria-hidden="true" />
+          正職薪資要件
+        </h2>
+        <div class="header-actions tw:flex tw:w-full tw:flex-wrap tw:items-center tw:gap-2 tw:md:w-auto">
+          <Button variant="default" :class="[ctrlButton, 'tw:max-md:flex-1']" :disabled="loading || isLocked" @click="loadData">
+            <RefreshCw class="tw:size-4" :stroke-width="2" aria-hidden="true" />
+            {{ isLocked ? '已鎖定' : '重新結算' }}
+          </Button>
+          <Button variant="outline" :class="[ctrlButton, 'tw:max-md:flex-1']" :disabled="loading || !props.branchId" @click="exportCsv">
+            <Download class="tw:size-4" :stroke-width="2" aria-hidden="true" />
+            匯出 Excel
+          </Button>
+          <Button v-if="!isLocked" variant="outline" :class="[ctrlButton, 'tw:max-md:flex-1']" :disabled="loading || !props.branchId || reviewCount > 0" @click="lockMonth">
+            <Lock class="tw:size-4" :stroke-width="2" aria-hidden="true" />
+            鎖定本月
+          </Button>
+          <Button v-else-if="isHq" variant="outline" :class="[ctrlButton, 'tw:max-md:flex-1']" :disabled="loading" @click="reopenMonth">
+            <LockOpen class="tw:size-4" :stroke-width="2" aria-hidden="true" />
+            重開結算
+          </Button>
+        </div>
+      </div>
+      <p class="tw:mt-2 tw:text-tpl-body tw:text-tpl-secondary tw:text-pretty">依結算月份檢視本薪、獎金與待人工確認項目。</p>
+      <p class="tw:mt-2 tw:flex tw:flex-wrap tw:items-center tw:gap-x-3 tw:gap-y-1 tw:text-tpl-caption tw:text-tpl-secondary">
+        <span class="privilege-chip tw:rounded-full tw:bg-[var(--ds-warning-wash)] tw:px-2.5 tw:py-1 tw:font-semibold tw:text-[var(--ds-warning)]">高權限存取區</span>
         <span>制度 {{ policyVersion }} · {{ lockLabel }}</span>
-      </template>
-      <template #actions>
-        <AtButton shape="rect" variant="primary" icon="refresh" :loading="loading" :disabled="isLocked" @click="loadData">{{ isLocked ? '已鎖定' : '重新結算' }}</AtButton>
-        <AtButton shape="rect" variant="ghost" icon="download" :disabled="loading || !props.branchId" @click="exportCsv">匯出 Excel</AtButton>
-        <AtButton v-if="!isLocked" shape="rect" variant="secondary" icon="lock" :disabled="loading || !props.branchId || reviewCount > 0" @click="lockMonth">鎖定本月</AtButton>
-        <AtButton v-else-if="isHq" shape="rect" variant="secondary" icon="lock_open" :disabled="loading" @click="reopenMonth">重開結算</AtButton>
-      </template>
-    </AtPageHeader>
+      </p>
+    </header>
 
-    <div class="eligibility-card filters">
-      <label>結算月份
-        <input v-model="settlementMonth" type="month" @change="period = 'month'; loadData()" />
-      </label>
-      <label>查詢層級
-        <select v-model="period" @change="loadData">
-          <option value="week">本週</option>
-          <option value="month">結算月</option>
-          <option value="year">本年度</option>
-        </select>
-      </label>
-      <label class="search-label">搜尋老師
-        <input v-model.trim="search" placeholder="姓名" />
-      </label>
-      <span class="policy-chip">本月分校總科目數 {{ formatSubjects(branchSubjectTotal) }} 科｜制度 {{ policyVersion }}｜{{ lockLabel }}</span>
+    <Card class="eligibility-card filters tw:gap-0 tw:p-4 tw:shadow-none">
+      <div class="tw:flex tw:flex-wrap tw:items-end tw:gap-4">
+        <label :class="fieldLabel">結算月份
+          <Input v-model="settlementMonth" type="month" :class="[fieldControl, 'tw:min-w-40']" @change="period = 'month'; loadData()" />
+        </label>
+        <label :class="fieldLabel">查詢層級
+          <select v-model="period" :class="[fieldControl, selectControl, 'tw:min-w-40']" @change="loadData">
+            <option value="week">本週</option>
+            <option value="month">結算月</option>
+            <option value="year">本年度</option>
+          </select>
+        </label>
+        <label :class="[fieldLabel, 'search-label']">搜尋老師
+          <Input v-model.trim="search" placeholder="姓名" :class="[fieldControl, 'tw:min-w-56']" />
+        </label>
+        <span class="policy-chip tw:rounded-lg tw:bg-secondary tw:px-3 tw:py-2 tw:text-tpl-caption tw:text-tpl-secondary tw:md:ml-auto">本月分校總科目數 {{ formatSubjects(branchSubjectTotal) }} 科｜制度 {{ policyVersion }}｜{{ lockLabel }}</span>
+      </div>
+    </Card>
+
+    <div v-if="loading" class="tw:flex tw:flex-col tw:gap-3" role="status" aria-live="polite" data-testid="eligibility-loading">
+      <span class="tw:sr-only">載入中…</span>
+      <Skeleton v-for="n in 5" :key="n" class="tw:h-14 tw:w-full" />
     </div>
-
-    <AtSkeleton v-if="loading" :rows="5" />
-    <AtInlineAlert v-else-if="error" tone="danger" title="無法載入正職薪資要件">
-      <p>{{ error }}</p>
-      <template #action><AtButton type="button" shape="rect" size="md" variant="ghost" @click="loadData">重試</AtButton></template>
-    </AtInlineAlert>
+    <Alert v-else-if="error" tone="danger" title="無法載入正職薪資要件" class="tw:text-tpl-body">
+      <div class="tw:flex tw:flex-wrap tw:items-center tw:gap-3">
+        <p class="tw:min-w-0 tw:flex-1 tw:[overflow-wrap:anywhere]">{{ error }}</p>
+        <Button type="button" variant="outline" :class="[ctrlButton, 'tw:text-foreground']" @click="loadData">重試</Button>
+      </div>
+    </Alert>
     <template v-else>
-      <div class="summary-grid">
-        <div class="summary-card"><span>老師總數</span><strong>{{ filteredTeachers.length }}</strong></div>
-        <div class="summary-card success"><span>符合獎金項目</span><strong>{{ qualifyingCount }}</strong></div>
-        <div class="summary-card warning"><span>待人工確認</span><strong>{{ reviewCount }}</strong></div>
-        <div class="summary-card danger"><span>有扣除案件</span><strong>{{ deductionCount }}</strong></div>
+      <div class="summary-grid tw:grid tw:grid-cols-2 tw:gap-3 tw:min-[901px]:grid-cols-4">
+        <Card :class="summaryCard"><span :class="summaryLabel">老師總數</span><strong :class="summaryValue">{{ filteredTeachers.length }}</strong></Card>
+        <Card :class="summaryCard"><span :class="summaryLabel">符合獎金項目</span><strong :class="[summaryValue, 'tw:text-[var(--ds-success)]']">{{ qualifyingCount }}</strong></Card>
+        <Card :class="summaryCard"><span :class="summaryLabel">待人工確認</span><strong :class="[summaryValue, 'tw:text-[var(--ds-warning)]']">{{ reviewCount }}</strong></Card>
+        <Card :class="summaryCard"><span :class="summaryLabel">有扣除案件</span><strong :class="[summaryValue, 'tw:text-destructive']">{{ deductionCount }}</strong></Card>
       </div>
 
       <template v-if="filteredTeachers.length">
-      <div class="eligibility-card table-wrap desktop-table">
-        <table>
-          <thead>
-            <tr>
-              <th>老師姓名</th>
-              <th>正課科目數</th>
-              <th>輔導＋試聽科目數</th>
-              <th>核薪總科目數</th>
-              <th>一對三總計</th>
-              <th>科目數獎金</th>
-              <th>一對三獎金</th>
-              <th>教師倍率</th>
-              <th>倍率後獎金</th>
-              <th>加扣款</th>
-              <th>總發放金額</th>
-              <th>每週課段</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="teacher in filteredTeachers" :key="teacher.teacher_id">
-              <td>
+      <Card class="eligibility-card table-wrap desktop-table tw:gap-0 tw:py-0 tw:shadow-none tw:max-[900px]:hidden">
+        <Table class="tw:min-w-[1280px] tw:text-[length:var(--tpl-text-body)] tw:[&_td]:text-[length:var(--tpl-text-body)]">
+          <TableCaption class="tw:sr-only">{{ settlementMonth }} 正職老師薪資要件</TableCaption>
+          <TableHeader>
+            <TableRow class="tw:hover:bg-transparent">
+              <TableHead scope="col" :class="headCell">老師姓名</TableHead>
+              <TableHead scope="col" :class="headCell">正課科目數</TableHead>
+              <TableHead scope="col" :class="headCell">輔導＋試聽科目數</TableHead>
+              <TableHead scope="col" :class="headCell">核薪總科目數</TableHead>
+              <TableHead scope="col" :class="headCell">一對三總計</TableHead>
+              <TableHead scope="col" :class="headCell">科目數獎金</TableHead>
+              <TableHead scope="col" :class="headCell">一對三獎金</TableHead>
+              <TableHead scope="col" :class="headCell">教師倍率</TableHead>
+              <TableHead scope="col" :class="headCell">倍率後獎金</TableHead>
+              <TableHead scope="col" :class="headCell">加扣款</TableHead>
+              <TableHead scope="col" :class="headCell">總發放金額</TableHead>
+              <TableHead scope="col" :class="headCell">每週課段</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            <TableRow v-for="teacher in filteredTeachers" :key="teacher.teacher_id">
+              <TableCell :class="bodyCell">
                 <strong>{{ teacher.teacher_name }}</strong>
-                <small>老師</small>
-                <span :class="['status', statusClass(teacher.overall_status)]">{{ statusLabel(teacher) }}</span>
-              </td>
-              <td>{{ formatSubjects(teacher.settlement?.regular_subject_count) }}</td>
-              <td>{{ formatSubjects(teacher.settlement?.tutoring_trial_subject_count) }}</td>
-              <td>{{ formatSubjects(teacher.settlement?.payroll_subject_count) }}</td>
-              <td>{{ formatSubjects(teacher.settlement?.one_to_three_count) }}</td>
-              <td>{{ formatMoney(teacher.settlement?.subject_count_bonus) }}</td>
-              <td>{{ formatMoney(teacher.settlement?.one_to_three_bonus) }}</td>
-              <td class="multiplier-cell">
+                <small :class="smallText">老師</small>
+                <span :class="['status', statusClass(teacher.overall_status), statusChip, statusTone[statusClass(teacher.overall_status)]]">{{ statusLabel(teacher) }}</span>
+              </TableCell>
+              <TableCell :class="bodyCell">{{ formatSubjects(teacher.settlement?.regular_subject_count) }}</TableCell>
+              <TableCell :class="bodyCell">{{ formatSubjects(teacher.settlement?.tutoring_trial_subject_count) }}</TableCell>
+              <TableCell :class="bodyCell">{{ formatSubjects(teacher.settlement?.payroll_subject_count) }}</TableCell>
+              <TableCell :class="bodyCell">{{ formatSubjects(teacher.settlement?.one_to_three_count) }}</TableCell>
+              <TableCell :class="[bodyCell, 'tw:tabular-nums']">{{ formatMoney(teacher.settlement?.subject_count_bonus) }}</TableCell>
+              <TableCell :class="[bodyCell, 'tw:tabular-nums']">{{ formatMoney(teacher.settlement?.one_to_three_bonus) }}</TableCell>
+              <TableCell :class="[bodyCell, 'multiplier-cell tw:min-w-[150px]']">
                 <template v-if="editingMultiplierId === teacher.teacher_id">
-                  <input v-model.number="multiplierDraft" type="number" min="0" max="300" step="0.01" class="multiplier-input" aria-label="手動教師倍率" />
-                  <button class="btn-outline small" :disabled="savingMultiplier" @click="saveMultiplier(teacher)">存</button>
-                  <button class="btn-outline small" @click="editingMultiplierId = null">取消</button>
+                  <Input v-model.number="multiplierDraft" type="number" min="0" max="300" step="0.01" :class="multiplierInput" aria-label="手動教師倍率" />
+                  <Button variant="outline" :class="smallButton" :disabled="savingMultiplier" @click="saveMultiplier(teacher)">存</Button>
+                  <Button variant="outline" :class="smallButton" @click="editingMultiplierId = null">取消</Button>
                 </template>
                 <template v-else>
                   <strong>{{ formatPct(teacher.settlement?.multiplier_pct) }}</strong>
-                  <small v-if="teacher.settlement?.manual_multiplier_pct != null">手動總倍率</small>
-                  <small v-if="teacher.pending_salary?.manual_multiplier_pct != null">待核准 {{ formatPct(teacher.pending_salary.manual_multiplier_pct) }}</small>
-                  <small v-for="part in visibleMultiplierParts(teacher)" :key="part.key">{{ part.label }} {{ formatPct(part.pct) }}</small>
-                  <button v-if="!isLocked" class="btn-outline small" @click="startEditMultiplier(teacher)">改</button>
-                  <button v-if="isHq && teacher.pending_salary?.manual_multiplier_pct != null && !isLocked" class="btn-outline small" :disabled="savingMultiplier" @click="approveMultiplier(teacher)">核准倍率</button>
+                  <small v-if="teacher.settlement?.manual_multiplier_pct != null" :class="smallText">手動總倍率</small>
+                  <small v-if="teacher.pending_salary?.manual_multiplier_pct != null" :class="smallText">待核准 {{ formatPct(teacher.pending_salary.manual_multiplier_pct) }}</small>
+                  <small v-for="part in visibleMultiplierParts(teacher)" :key="part.key" :class="smallText">{{ part.label }} {{ formatPct(part.pct) }}</small>
+                  <Button v-if="!isLocked" variant="outline" :class="smallButton" @click="startEditMultiplier(teacher)">改</Button>
+                  <Button v-if="isHq && teacher.pending_salary?.manual_multiplier_pct != null && !isLocked" variant="outline" :class="smallButton" :disabled="savingMultiplier" @click="approveMultiplier(teacher)">核准倍率</Button>
                 </template>
-              </td>
-              <td>
-                <strong>{{ formatMoney(teacher.settlement?.weighted_bonus_amount) }}</strong>
-                <small>{{ weightedBonusFormula(teacher.settlement) }}</small>
-              </td>
-              <td>
+              </TableCell>
+              <TableCell :class="bodyCell">
+                <strong class="tw:tabular-nums">{{ formatMoney(teacher.settlement?.weighted_bonus_amount) }}</strong>
+                <small :class="smallText">{{ weightedBonusFormula(teacher.settlement) }}</small>
+              </TableCell>
+              <TableCell :class="bodyCell">
                 <span
                   v-for="item in teacher.settlement?.adjustments || []"
                   :key="item.label"
-                  :class="['adj-chip', Number(item.amount) >= 0 ? 'pos' : 'neg']"
+                  :class="['adj-chip', adjChip, Number(item.amount) >= 0 ? 'pos tw:bg-[var(--ds-success-wash)] tw:text-[var(--ds-success)]' : 'neg tw:bg-[var(--ds-danger-wash)] tw:text-destructive']"
                 >{{ item.label }} {{ Number(item.amount) >= 0 ? '+' : '' }}{{ Math.round(Number(item.amount)) }}</span>
-                <small v-if="!(teacher.settlement?.adjustments || []).length">—</small>
-              </td>
-              <td class="total-cell">
-                <strong>{{ formatMoney(teacher.settlement?.total_payout) }}</strong>
-                <small v-if="isDraft(teacher)">試算，未可發放</small>
-              </td>
-              <td class="weekly-segment-cell">
+                <small v-if="!(teacher.settlement?.adjustments || []).length" :class="smallText">—</small>
+              </TableCell>
+              <TableCell :class="[bodyCell, 'total-cell']">
+                <strong class="tw:tabular-nums tw:text-[var(--ds-primary-text)]">{{ formatMoney(teacher.settlement?.total_payout) }}</strong>
+                <small v-if="isDraft(teacher)" :class="smallText">試算，未可發放</small>
+              </TableCell>
+              <TableCell :class="[bodyCell, 'weekly-segment-cell tw:min-w-[300px]']">
                 <strong>{{ weeklySegmentsLabel(teacher) }}</strong>
-                <small>{{ weeklyQualificationLabel(teacher) }}</small>
-                <details v-if="weeklyCourseSessions(teacher).length" class="weekly-trace">
-                  <summary>查看構成課程</summary>
-                  <div v-for="session in weeklyCourseSessions(teacher)" :key="session.class_session_id" class="course-trace-row">
+                <small :class="smallText">{{ weeklyQualificationLabel(teacher) }}</small>
+                <details v-if="weeklyCourseSessions(teacher).length" class="weekly-trace tw:mt-2 tw:border-t tw:border-border tw:pt-1.5">
+                  <summary class="tw:cursor-pointer tw:text-tpl-caption tw:text-[var(--ds-primary-text)]">查看構成課程</summary>
+                  <div v-for="session in weeklyCourseSessions(teacher)" :key="session.class_session_id" :class="traceRow">
                     <span>{{ session.session_date }} {{ session.start_time }}–{{ session.end_time }}</span>
                     <span>{{ sessionTypeLabel(session) }} {{ formatSegments(session.segments) }}段</span>
                   </div>
                 </details>
-              </td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-      <div class="mobile-list">
-        <article v-for="teacher in filteredTeachers" :key="teacher.teacher_id" class="eligibility-card teacher-card">
-          <div class="teacher-card-header">
-            <div><strong>{{ teacher.teacher_name }}</strong><small>老師</small></div>
-            <span :class="['status', statusClass(teacher.overall_status)]">{{ statusLabel(teacher) }}</span>
+              </TableCell>
+            </TableRow>
+          </TableBody>
+        </Table>
+      </Card>
+      <div class="mobile-list tw:hidden tw:gap-3 tw:max-[900px]:grid">
+        <Card v-for="teacher in filteredTeachers" :key="teacher.teacher_id" class="eligibility-card teacher-card tw:gap-0 tw:p-4 tw:shadow-none">
+          <div class="teacher-card-header tw:flex tw:items-start tw:justify-between tw:gap-3">
+            <div><strong>{{ teacher.teacher_name }}</strong><small :class="smallText">老師</small></div>
+            <span :class="['status', statusClass(teacher.overall_status), statusChip, statusTone[statusClass(teacher.overall_status)]]">{{ statusLabel(teacher) }}</span>
           </div>
-          <div class="component-row"><span>核薪總科目數</span><span class="component-value">{{ formatSubjects(teacher.settlement?.payroll_subject_count) }}</span></div>
-          <div class="component-row"><span>科目數獎金</span><span class="component-value">{{ formatMoney(teacher.settlement?.subject_count_bonus) }}</span></div>
-          <div class="component-row"><span>一對三獎金</span><span class="component-value">{{ formatMoney(teacher.settlement?.one_to_three_bonus) }}</span></div>
-          <div class="component-row"><span>教師倍率</span><span class="component-value">
+          <div :class="componentRow"><span>核薪總科目數</span><span :class="componentValue">{{ formatSubjects(teacher.settlement?.payroll_subject_count) }}</span></div>
+          <div :class="componentRow"><span>科目數獎金</span><span :class="[componentValue, 'tw:tabular-nums']">{{ formatMoney(teacher.settlement?.subject_count_bonus) }}</span></div>
+          <div :class="componentRow"><span>一對三獎金</span><span :class="[componentValue, 'tw:tabular-nums']">{{ formatMoney(teacher.settlement?.one_to_three_bonus) }}</span></div>
+          <div :class="componentRow"><span>教師倍率</span><span :class="componentValue">
             <template v-if="editingMultiplierId === teacher.teacher_id">
-              <input v-model.number="multiplierDraft" type="number" min="0" max="300" step="0.01" class="multiplier-input" aria-label="手動教師倍率" />
-              <button class="btn-outline small" :disabled="savingMultiplier" @click="saveMultiplier(teacher)">存</button>
-              <button class="btn-outline small" @click="editingMultiplierId = null">取消</button>
+              <Input v-model.number="multiplierDraft" type="number" min="0" max="300" step="0.01" :class="multiplierInput" aria-label="手動教師倍率" />
+              <Button variant="outline" :class="smallButton" :disabled="savingMultiplier" @click="saveMultiplier(teacher)">存</Button>
+              <Button variant="outline" :class="smallButton" @click="editingMultiplierId = null">取消</Button>
             </template>
             <template v-else>
               {{ formatPct(teacher.settlement?.multiplier_pct) }}
-              <small v-if="teacher.pending_salary?.manual_multiplier_pct != null">待核准 {{ formatPct(teacher.pending_salary.manual_multiplier_pct) }}</small>
-              <button v-if="!isLocked" class="btn-outline small" @click="startEditMultiplier(teacher)">改</button>
-              <button v-if="isHq && teacher.pending_salary?.manual_multiplier_pct != null && !isLocked" class="btn-outline small" :disabled="savingMultiplier" @click="approveMultiplier(teacher)">核准倍率</button>
+              <small v-if="teacher.pending_salary?.manual_multiplier_pct != null" :class="smallText">待核准 {{ formatPct(teacher.pending_salary.manual_multiplier_pct) }}</small>
+              <Button v-if="!isLocked" variant="outline" :class="smallButton" @click="startEditMultiplier(teacher)">改</Button>
+              <Button v-if="isHq && teacher.pending_salary?.manual_multiplier_pct != null && !isLocked" variant="outline" :class="smallButton" :disabled="savingMultiplier" @click="approveMultiplier(teacher)">核准倍率</Button>
             </template>
           </span></div>
-          <div class="component-row"><span>倍率後獎金</span><span class="component-value">{{ formatMoney(teacher.settlement?.weighted_bonus_amount) }}</span></div>
-          <div class="component-row total-cell"><span>總發放金額</span><strong>{{ formatMoney(teacher.settlement?.total_payout) }}</strong></div>
-          <div class="component-row weekly-segment-row">
+          <div :class="componentRow"><span>倍率後獎金</span><span :class="[componentValue, 'tw:tabular-nums']">{{ formatMoney(teacher.settlement?.weighted_bonus_amount) }}</span></div>
+          <div :class="[componentRow, 'total-cell']"><span>總發放金額</span><strong class="tw:tabular-nums tw:text-[var(--ds-primary-text)]">{{ formatMoney(teacher.settlement?.total_payout) }}</strong></div>
+          <div :class="[componentRow, 'weekly-segment-row']">
             <span>每週課段</span>
-            <span class="component-value">
+            <span :class="componentValue">
               <strong>{{ weeklySegmentsLabel(teacher) }}</strong>
-              <small>{{ weeklyQualificationLabel(teacher) }}</small>
+              <small :class="smallText">{{ weeklyQualificationLabel(teacher) }}</small>
             </span>
           </div>
-          <details v-if="weeklyCourseSessions(teacher).length" class="weekly-trace mobile-weekly-trace">
-            <summary>查看構成課程</summary>
-            <div v-for="session in weeklyCourseSessions(teacher)" :key="session.class_session_id" class="course-trace-row">
+          <details v-if="weeklyCourseSessions(teacher).length" class="weekly-trace mobile-weekly-trace tw:mt-2 tw:mb-3 tw:border-t tw:border-border tw:pt-1.5">
+            <summary class="tw:cursor-pointer tw:text-tpl-caption tw:text-[var(--ds-primary-text)]">查看構成課程</summary>
+            <div v-for="session in weeklyCourseSessions(teacher)" :key="session.class_session_id" :class="traceRow">
               <span>{{ session.session_date }} {{ session.start_time }}–{{ session.end_time }}</span>
               <span>{{ sessionTypeLabel(session) }} {{ formatSegments(session.segments) }}段</span>
             </div>
           </details>
-          <p class="mobile-reason">{{ reasonText(teacher) }}</p>
-        </article>
+          <p class="mobile-reason tw:mt-3 tw:text-tpl-caption tw:leading-relaxed tw:text-tpl-secondary">{{ reasonText(teacher) }}</p>
+        </Card>
       </div>
       </template>
-      <AtEmpty
-        v-else
-        icon="person_off"
-        title="查詢期間沒有符合條件的正職老師"
-        description="請調整結算月份、查詢層級或老師搜尋條件後再試。"
-      />
-      <TeacherEligibilityInputPanel
-        :branch-id="props.branchId"
-        :teachers="filteredTeachers"
-        :start="periodWindow.start"
-        :end="periodWindow.end"
-        :user-role="props.userRole"
-        @changed="loadData"
-      />
-      <p class="footnote">資料不足時仍會列出試算金額並標「待人工確認／試算」，不能鎖定發放。全勤／勞健保尚未列入自動計算。</p>
+      <Card v-else class="tw:items-center tw:gap-2 tw:py-10 tw:text-center tw:shadow-none" role="status">
+        <UserX class="tw:size-8 tw:text-tpl-secondary" :stroke-width="1.75" aria-hidden="true" />
+        <p class="tw:px-5 tw:text-tpl-list tw:font-semibold">查詢期間沒有符合條件的正職老師</p>
+        <p class="tw:px-5 tw:text-tpl-body tw:text-tpl-secondary">請調整結算月份、查詢層級或老師搜尋條件後再試。</p>
+      </Card>
+      <div class="tw:[&_.eligibility-input-panel_button]:min-h-11 tw:[&_.eligibility-input-panel_select]:min-h-11 tw:[&_.eligibility-input-panel_input]:min-h-11 tw:[&_.eligibility-input-panel_textarea]:min-h-11">
+        <TeacherEligibilityInputPanel
+          :branch-id="props.branchId"
+          :teachers="filteredTeachers"
+          :start="periodWindow.start"
+          :end="periodWindow.end"
+          :user-role="props.userRole"
+          @changed="loadData"
+        />
+      </div>
+      <p class="footnote tw:px-1 tw:text-tpl-caption tw:text-tpl-secondary">資料不足時仍會列出試算金額並標「待人工確認／試算」，不能鎖定發放。全勤／勞健保尚未列入自動計算。</p>
     </template>
   </div>
 </template>
 
 <script setup>
 import { computed, onMounted, ref, watch } from 'vue';
-import AtButton from '../components/design-system/AtButton.vue';
-import AtEmpty from '../components/design-system/AtEmpty.vue';
-import AtInlineAlert from '../components/design-system/AtInlineAlert.vue';
-import AtPageHeader from '../components/design-system/AtPageHeader.vue';
-import AtSkeleton from '../components/design-system/AtSkeleton.vue';
+import { Banknote, Download, Lock, LockOpen, RefreshCw, UserX } from 'lucide-vue-next';
+import { Alert } from '@/components/ui/alert';
+import { Button } from '@/components/ui/button';
+import { Card } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import { Skeleton } from '@/components/ui/skeleton';
+import { Table, TableBody, TableCaption, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { fetchTeacherEligibility, saveTeacherMultiplierProfile, approveTeacherSalaryProfile, lockFulltimePayroll, reopenFulltimePayroll, exportFulltimePayrollCsv } from '../lib/teacherEligibilityApi.js';
 import TeacherEligibilityInputPanel from '../components/TeacherEligibilityInputPanel.vue';
 import {
@@ -204,6 +229,30 @@ import {
   weightedBonusFormula,
 } from '../lib/teacherEligibilityDisplay.js';
 import { humanizeApiErrorMessage } from '../lib/humanizeApiErrorMessage.js';
+
+const ctrlButton = 'tw:h-12 tw:px-4 tw:text-[length:var(--tpl-text-body)] tw:font-semibold tw:shadow-none';
+const smallButton = 'tw:mr-1 tw:mt-1 tw:h-11 tw:px-3 tw:text-tpl-caption tw:font-semibold tw:shadow-none';
+const fieldLabel = 'tw:flex tw:flex-col tw:gap-1.5 tw:text-tpl-caption tw:text-tpl-secondary';
+const fieldControl = 'tw:h-12 tw:rounded-lg tw:border-border tw:bg-card tw:px-3 tw:text-[length:var(--tpl-text-body)] tw:text-foreground tw:shadow-none';
+const selectControl = 'tw:border tw:outline-none tw:focus-visible:ring-3 tw:focus-visible:ring-ring/50';
+const multiplierInput = 'tw:mr-1 tw:h-11 tw:w-24 tw:px-2 tw:text-[length:var(--tpl-text-body)] tw:shadow-none';
+const summaryCard = 'tw:gap-1.5 tw:p-4 tw:shadow-none';
+const summaryLabel = 'tw:text-tpl-caption tw:text-tpl-secondary';
+const summaryValue = 'tw:block tw:text-3xl tw:tabular-nums';
+const headCell = 'tw:h-auto tw:bg-secondary tw:px-3 tw:py-3 tw:text-tpl-caption tw:text-tpl-secondary';
+const bodyCell = 'tw:px-3 tw:py-3 tw:align-top tw:whitespace-normal';
+const smallText = 'tw:mt-1 tw:block tw:text-tpl-caption tw:text-tpl-secondary';
+const statusChip = 'tw:mt-1.5 tw:inline-flex tw:rounded-full tw:px-2 tw:py-1 tw:text-tpl-caption tw:whitespace-nowrap';
+const adjChip = 'tw:mr-1.5 tw:mb-1.5 tw:inline-flex tw:rounded-full tw:px-2 tw:py-0.5 tw:text-tpl-caption';
+const statusTone = {
+  pass: 'tw:bg-[var(--ds-success-wash)] tw:text-[var(--ds-success)]',
+  fail: 'tw:bg-[var(--ds-danger-wash)] tw:text-destructive',
+  review: 'tw:bg-[var(--ds-warning-wash)] tw:text-[var(--ds-warning)]',
+  unknown: 'tw:bg-secondary tw:text-tpl-secondary',
+};
+const traceRow = 'course-trace-row tw:flex tw:justify-between tw:gap-3 tw:py-1.5 tw:text-tpl-caption tw:text-tpl-secondary';
+const componentRow = 'tw:flex tw:justify-between tw:gap-3 tw:border-b tw:border-border tw:py-2.5 tw:text-[length:var(--tpl-text-body)]';
+const componentValue = 'component-value tw:flex tw:flex-col tw:items-end tw:gap-1';
 
 const props = defineProps({
   branchId: { type: [Number, String], default: null },
@@ -395,46 +444,3 @@ function reasonText(teacher) {
 watch(() => props.branchId, loadData);
 onMounted(loadData);
 </script>
-
-<style scoped>
-.eligibility-page { padding: 24px; max-width: 1800px; margin: 0 auto; }
-.eligibility-page :deep(.at-btn),
-.eligibility-page button,
-.eligibility-page select,
-.eligibility-page input,
-.eligibility-page :deep(.eligibility-input-panel button),
-.eligibility-page :deep(.eligibility-input-panel select),
-.eligibility-page :deep(.eligibility-input-panel input),
-.eligibility-page :deep(.eligibility-input-panel textarea) { min-height: 44px; }
-.page-header { display:flex; justify-content:space-between; align-items:center; gap:16px; margin-bottom:18px; }
-.page-header-left { display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
-.page-icon { width:44px; height:44px; border-radius:12px; display:grid; place-items:center; background:var(--ds-primary-wash); color:var(--ds-primary-text); }
-.title-group h2 { margin:0; }.title-sub { margin:4px 0 0; color:var(--ds-ink-mute); }
-.privilege-chip { padding:4px 10px; border-radius:999px; background:var(--ds-warning-wash); color:var(--ds-warning); font-size:12px; }
-.header-actions { display:flex; gap:8px; flex-wrap:wrap; }
-.btn-primary { display:inline-flex; align-items:center; gap:6px; border:0; background:var(--ds-primary); color:var(--ds-on-primary); border-radius:8px; padding:9px 14px; cursor:pointer; }
-.btn-outline { display:inline-flex; align-items:center; gap:6px; border:1px solid var(--border); background:var(--ds-canvas); color:inherit; border-radius:8px; padding:9px 14px; cursor:pointer; }
-.btn-outline.small { padding:4px 8px; font-size:12px; }
-.eligibility-card { background:var(--ds-canvas); border:1px solid var(--border); border-radius:14px; padding:16px; box-shadow:var(--ds-shadow-1); }
-.filters { display:flex; align-items:end; gap:16px; flex-wrap:wrap; margin-bottom:18px; }
-.filters label { display:flex; flex-direction:column; gap:6px; font-size:13px; color:var(--ds-ink-mute); }
-.filters select,.filters input { min-width:150px; padding:9px 10px; border:1px solid var(--border); border-radius:8px; background:var(--ds-canvas); color:inherit; }
-.search-label input { min-width:220px; }.policy-chip { margin-left:auto; padding:8px 12px; color:var(--ds-ink-mute); background:var(--ds-canvas-soft); border-radius:8px; font-size:13px; }
-.summary-grid { display:grid; grid-template-columns:repeat(4, minmax(0,1fr)); gap:12px; margin-bottom:18px; }
-.summary-card { padding:16px; background:var(--ds-canvas); border:1px solid var(--border); border-radius:12px; }.summary-card span { color:var(--ds-ink-mute); font-size:13px; }.summary-card strong { display:block; font-size:28px; margin-top:6px; }.summary-card.success strong { color:var(--ds-success); }.summary-card.warning strong { color:var(--ds-warning); }.summary-card.danger strong { color:var(--ds-danger); }
-.table-wrap { overflow:auto; }.table-wrap table { width:100%; border-collapse:collapse; min-width:1280px; }.table-wrap th,.table-wrap td { padding:12px 10px; border-bottom:1px solid var(--border); text-align:left; vertical-align:top; }.table-wrap th { color:var(--ds-ink-mute); font-size:13px; background:var(--ds-canvas-soft); white-space:nowrap; }.table-wrap td small { display:block; margin-top:4px; color:var(--ds-ink-mute); font-size:12px; }.status { display:inline-flex; margin-top:6px; padding:4px 8px; border-radius:999px; font-size:12px; white-space:nowrap; }.status.pass { background:var(--ds-success-wash); color:var(--ds-success); }.status.fail { background:var(--ds-danger-wash); color:var(--ds-danger); }.status.review { background:var(--ds-warning-wash); color:var(--ds-warning); }.status.unknown { background:var(--ds-canvas-soft); color:var(--ds-ink-mute); }.empty,.loading { text-align:center; color:var(--ds-ink-mute); padding:36px; }.error { color:var(--ds-danger); display:flex; align-items:center; gap:12px; }.footnote { color:var(--ds-ink-mute); font-size:13px; margin:12px 4px; }.mobile-list { display:none; }
-.multiplier-cell { min-width:150px; white-space:nowrap; }
-.weekly-segment-cell { min-width: 300px; }
-.weekly-trace { margin-top: 8px; border-top: 1px solid var(--border); padding-top: 6px; }
-.weekly-trace summary { cursor: pointer; color: var(--ds-primary-text); font-size: 12px; }
-.course-trace-row { display:flex; justify-content:space-between; gap:12px; padding:5px 0; font-size:12px; color:var(--ds-ink-mute); }
-.mobile-weekly-trace { margin: 8px 0 12px; }
-.multiplier-input { width:84px; padding:6px 8px; border:1px solid var(--border); border-radius:6px; background:var(--ds-canvas); color:inherit; margin-right:4px; }
-.money-pos { color:var(--ds-success); font-variant-numeric:tabular-nums; }
-.total-cell strong { font-variant-numeric:tabular-nums; color:var(--ds-primary-text); }
-.adj-chip { display:inline-flex; margin:0 6px 6px 0; padding:3px 8px; border-radius:999px; font-size:12px; }
-.adj-chip.pos { background:var(--ds-success-wash); color:var(--ds-success); }
-.adj-chip.neg { background:var(--ds-danger-wash); color:var(--ds-danger); }
-.teacher-card-header { display:flex; justify-content:space-between; align-items:flex-start; gap:12px; }.teacher-card-header small { display:block; margin-top:4px; color:var(--ds-ink-mute); font-size:12px; }.component-row { display:flex; justify-content:space-between; gap:12px; padding:10px 0; border-bottom:1px solid var(--border); }.component-value { display:flex; flex-direction:column; align-items:flex-end; gap:4px; }.component-value small { color:var(--ds-ink-mute); font-size:12px; }.mobile-reason { margin:12px 0 0; color:var(--ds-ink-mute); font-size:13px; line-height:1.6; }
-@media (max-width: 900px) { .eligibility-page { padding:16px; }.summary-grid { grid-template-columns:repeat(2, minmax(0,1fr)); }.policy-chip { margin-left:0; }.desktop-table { display:none; }.mobile-list { display:grid; gap:12px; } }
-</style>

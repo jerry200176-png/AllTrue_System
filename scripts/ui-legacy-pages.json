@@ -58,7 +58,6 @@
   "src/pages/SmartCalendar.vue",
   "src/pages/StudentsList.vue",
   "src/pages/SubjectUnitsTimelinePage.vue",
-  "src/pages/TeacherEligibilityPage.vue",
   "src/pages/TeacherHomePage.vue",
   "src/pages/TeachersList.vue",
   "src/pages/TrueFitApp.vue",

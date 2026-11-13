@@ -1,10 +1,12 @@
-const [{ createApp, h }, styles, module] = await Promise.all([
+const [{ createApp, h }, styles, uiStyles, module] = await Promise.all([
   import('vue'),
   import('../../../src/styles.css'),
+  import('../../../src/ui.css'),
   import('../../../src/pages/TeacherEligibilityPage.vue'),
 ]);
 
 void styles;
+void uiStyles;
 const PageComponent = module.default;
 const teacher = {
   teacher_id: 701,
