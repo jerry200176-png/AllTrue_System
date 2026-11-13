@@ -110,7 +110,7 @@ export function getBuildSha() {
 
 export const CLIENT_INFO_MAX = 3800;
 
-/** JSON.stringify(info) that always parses and fits: shed clicks, messages, failures oldest-first, then relatedReference. */
+/** JSON.stringify(info) that always parses and fits: shed pageSnapshot, then clicks, messages, failures oldest-first, then relatedReference. */
 export function fitClientInfo(info, max = CLIENT_INFO_MAX) {
   const o = {
     ...info,
@@ -119,15 +119,15 @@ export function fitClientInfo(info, max = CLIENT_INFO_MAX) {
     recentMessages: [...(info.recentMessages || [])],
   };
   let s = JSON.stringify(o);
+  if (s.length > max && o.pageSnapshot) {
+    o.pageSnapshot = null; // page diagnostic extra: shed first, before clicks, messages, failures and the reporter's own text
+    s = JSON.stringify(o);
+  }
   for (const key of ['recentClicks', 'recentMessages', 'recentApiFailures']) {
     while (s.length > max && o[key].length) {
       o[key].shift();
       s = JSON.stringify(o);
     }
-  }
-  if (s.length > max && o.pageSnapshot) {
-    o.pageSnapshot = null; // diagnostic extra: shed before the reporter's own text
-    s = JSON.stringify(o);
   }
   if (s.length > max) {
     o.relatedReference = null;

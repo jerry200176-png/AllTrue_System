@@ -314,7 +314,7 @@
                       </div>
                       <div class="subject-line">
                         <span class="tag subject-tag" :class="{ 'subject-tag--paused': c.status === 'inactive' }">{{ getSubjectLabel(c.subject) }}</span><span class="subject-teacher">{{ c.teacher_name || '待指派' }}</span>
-                        <span v-if="classificationUnknown(c)" class="tag tag-settled" title="目前顯示的是備用資料，無法判斷是否為歷史課程，請重新整理">分類資料不足</span>
+                        <span v-if="classificationUnknown(c)" class="tag tag-pending-report tag-unknown-classification" :title="UNKNOWN_CLASSIFICATION_HINT">分類資料不足</span>
                         <span v-if="isPackageMember(c)" class="tag tag-package" :title="c.PackageName || '多科方案'">方案</span>
                         <span v-else-if="isClosedReason(effectiveClosedReason(c))" class="tag tag-settled">{{ effectiveClosedReason(c) === 'waived' ? WAIVED_LABEL : closedPaymentState(c) === 'unknown' ? PAYMENT_STATUS_LOADING_LABEL : closedPaymentState(c) === 'pending' ? ENDED_PENDING_LABEL : closedPaymentState(c) === 'review' ? ENDED_REVIEW_LABEL : '已結案' }}</span>
                         <button
@@ -2928,8 +2928,12 @@ const localTodayYmd = () => {
   return `${y}-${m}-${day}`;
 };
 
+// Shown on the tag and as the reason a row of unknown status offers no close / 補課 action.
+const UNKNOWN_CLASSIFICATION_HINT = '目前顯示的是備用資料，無法判斷課程狀態，請重新整理後再操作';
+
 function canCloseCourse(c) {
-  return c.status !== 'inactive'
+  return !classificationUnknown(c)
+    && c.status !== 'inactive'
     && !isPackageMember(c)
     && (isSessionMode(c) || isMonthlyMode(c))
     && c.closed_reason !== 'settled_pending';
@@ -4024,6 +4028,7 @@ watch(() => showLeaveModal.value, (open) => {
 });
 
 function canQuickAddSession(c) {
+  if (classificationUnknown(c)) return false;
   if (!isSessionMode(c)) return false;
   if (c.status === 'inactive') return false;
   if (effectiveClosedReason(c)) return false;
@@ -4031,6 +4036,7 @@ function canQuickAddSession(c) {
 }
 
 function quickAddDisabledReason(c) {
+  if (classificationUnknown(c)) return UNKNOWN_CLASSIFICATION_HINT;
   if (!isSessionMode(c)) return '僅堂數制課程可補課';
   if (effectiveClosedReason(c) === 'settled') return '已結算課程無法補課';
   if (effectiveClosedReason(c) === 'completed') return '已完課課程無法補課';
@@ -4420,6 +4426,7 @@ const formatMoney = (value) => {
 
 // Resolves { ok: true } when this request won, undefined when superseded, and { ok: false, error } when both
 // list sources fail (shows the refresh-failure hint; rows are kept only for the same query, listKey).
+let courseListBranchId = null; // campus whose rows courses.value holds
 let courseListSource = null; // 'primary' | 'fallback': which source fed courses.value (in-app #540 report snapshot)
 let quietRefreshNext = false; // set by the re-activation refetch: no loading flag, rows stay on screen
 const restoreCancelledUnit = ref(null);
@@ -4499,6 +4506,7 @@ const loadCourses = async (page = 1) => {
           perPage: pagination.value.perPage,
         };
         courseListSource = 'primary';
+        courseListBranchId = props.branchId;
         courses.value = result;
         courseListOutcome.succeeded(listKey);
         clearRowCachesForWinningRequest(requestId, courseLoadRequestId, sessionCaches);
@@ -4569,6 +4577,7 @@ const loadCourses = async (page = 1) => {
   if (!isCurrentListRequest(requestId, courseLoadRequestId)) return;
   pagination.value = { page: 1, lastPage: 1, total: result.length, perPage: pagination.value.perPage };
   courseListSource = 'fallback';
+  courseListBranchId = props.branchId;
   courses.value = result;
   courseListOutcome.succeeded(listKey);
   clearRowCachesForWinningRequest(requestId, courseLoadRequestId, sessionCaches);
@@ -5554,7 +5563,7 @@ const submitBackfill = async () => {
   loadCourses();
 };
 
-watch(() => props.branchId, () => { loadCourses(); loadStudents(); loadTeachers(); });
+watch(() => props.branchId, () => { courseListBranchId = null; loadCourses(); loadStudents(); loadTeachers(); });
 watch(
   () => [props.initialTeacherId, teachers.value],
   () => {
@@ -5675,8 +5684,11 @@ function consumeTrustFocus() {
 }
 let unregisterDiagnostics = () => {};
 onMounted(() => {
-  unregisterDiagnostics = registerPageDiagnostics('course-mgmt', () => buildCourseListSnapshot({ source: courseListSource, courses: courses.value }));
   consumeTrustFocus();
+  // Rows of another campus are never reported: a switch empties the snapshot until its own list has loaded (in-app #540).
+  unregisterDiagnostics = registerPageDiagnostics('course-mgmt', () => (courseListBranchId === props.branchId
+    ? buildCourseListSnapshot({ source: courseListSource, courses: courses.value })
+    : buildCourseListSnapshot({ source: null, courses: [] })));
   loadCourses(); loadStudents(); loadTeachers(); loadSubjects();
   document.addEventListener('click', closeActionMenu);
 });
@@ -8308,6 +8320,7 @@ button.danger:disabled {
   cursor: pointer;
   padding: 3px 10px;
 }
+.tag-unknown-classification { cursor: help; }
 .tag-no-payment {
   background: var(--ds-success-wash);
   color: var(--ds-success);

@@ -2,7 +2,7 @@
 // The bug-report form asks the provider for the current page key only, best-effort: a throwing or oversized
 // provider never blocks or breaks a report.
 const providers = new Map();
-export const SNAPSHOT_MAX_CHARS = 1800;
+export const SNAPSHOT_MAX_CHARS = 2600;
 
 export function registerPageDiagnostics(pageKey, provider) {
   if (pageKey && typeof provider === 'function') providers.set(pageKey, provider);

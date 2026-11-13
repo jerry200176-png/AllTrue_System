@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { buildCourseListSnapshot, COURSE_SNAPSHOT_ROW_KEYS, COURSE_SNAPSHOT_HISTORY_LIMIT } from './courseListSnapshot.js';
 import { classificationUnknown, isCourseManagementHistory } from './courseMoneyState.js';
-import { registerPageDiagnostics, getPageSnapshot } from './pageDiagnostics.js';
+import { registerPageDiagnostics, getPageSnapshot, SNAPSHOT_MAX_CHARS } from './pageDiagnostics.js';
 import { fitClientInfo, CLIENT_INFO_MAX } from './recentApiFailures.js';
 
 // in-app #540: unknown is not history.
@@ -35,8 +35,8 @@ describe('course-mgmt report snapshot', () => {
 
   it('contains only the agreed keys, capped at 20 history rows', () => {
     const snap = buildCourseListSnapshot({ source: 'fallback', courses: [live, ...rows] });
-    expect(Object.keys(snap).sort()).toEqual(['history', 'historyRows', 'listSource', 'working']);
-    expect(snap).toMatchObject({ listSource: 'fallback', working: 1, history: 25 });
+    expect(Object.keys(snap).sort()).toEqual(['history', 'historyRows', 'listSource', 'truncated', 'unknown', 'working']);
+    expect(snap).toMatchObject({ listSource: 'fallback', working: 1, unknown: 0, history: 25, truncated: true });
     expect(snap.historyRows).toHaveLength(COURSE_SNAPSHOT_HISTORY_LIMIT);
     for (const r of snap.historyRows) expect(Object.keys(r).sort()).toEqual([...COURSE_SNAPSHOT_ROW_KEYS].sort());
     const text = JSON.stringify(snap);
@@ -53,9 +53,41 @@ describe('course-mgmt report snapshot', () => {
     expect(snap.historyRows[0].noncanonical).toBe(true);
   });
 
-  it('fits the snapshot with 20 rows inside the client_info limit', () => {
-    const snap = buildCourseListSnapshot({ source: 'primary', courses: rows });
+  it('counts working rows classified unknown', () => {
+    const unknownRow = { id: 7, status: 'inactive', _noncanonical: true };
+    const snap = buildCourseListSnapshot({ source: 'fallback', courses: [live, unknownRow] });
+    expect(snap).toMatchObject({ working: 2, unknown: 1, history: 0 });
+  });
+
+  it('20 worst-case rows are trimmed from the end, never nulled; counts and source stay', () => {
+    const worst = Array.from({ length: 20 }, (_, i) => ({
+      id: 900000000 + i, closed_reason: 'a'.repeat(32), status: 'b'.repeat(32), payment_type: 'c'.repeat(32),
+      remaining_sessions: 123456789, _noncanonical: true,
+    }));
+    const snap = buildCourseListSnapshot({ source: 'fallback', courses: worst });
+    expect(JSON.stringify(snap).length).toBeLessThanOrEqual(SNAPSHOT_MAX_CHARS);
+    expect(snap.truncated).toBe(true);
+    expect(snap.historyRows.length).toBeGreaterThan(0);
+    expect(snap.historyRows.length).toBeLessThan(20);
+    expect(snap).toMatchObject({ listSource: 'fallback', history: 20, working: 0 });
     expect(fitClientInfo({ pageSnapshot: snap, recentClicks: [] }).length).toBeLessThanOrEqual(CLIENT_INFO_MAX);
+    registerPageDiagnostics('t-worst', () => snap);
+    expect(getPageSnapshot('t-worst')).toEqual(snap);
+  });
+
+  it('fitClientInfo sheds pageSnapshot before clicks, messages, failures and relatedReference', () => {
+    const snap = buildCourseListSnapshot({ source: 'primary', courses: rows });
+    const clicks = Array.from({ length: 3 }, (_, i) => ({ label: `click ${i}` }));
+    const base = { pageSnapshot: snap, recentClicks: clicks, recentMessages: [{ text: 'm' }], recentApiFailures: [{ url: '/x' }], relatedReference: 'ref' };
+    const roomy = JSON.parse(fitClientInfo(base));
+    expect(roomy.pageSnapshot).toEqual(snap);
+    const tight = JSON.stringify({ ...base, pageSnapshot: null }).length + 5;
+    const out = JSON.parse(fitClientInfo(base, tight));
+    expect(out.pageSnapshot).toBeNull();
+    expect(out.recentClicks).toHaveLength(3);
+    expect(out.recentMessages).toHaveLength(1);
+    expect(out.recentApiFailures).toHaveLength(1);
+    expect(out.relatedReference).toBe('ref');
   });
 
   it('is best-effort: a missing, throwing or oversized provider yields null', () => {
