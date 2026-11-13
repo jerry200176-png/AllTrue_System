@@ -7,6 +7,7 @@ use App\Models\User;
 use App\Operations\PopLockName;
 use App\Operations\PopOperationCatalog;
 use App\Operations\PopOperationService;
+use App\Operations\Strategies\InappReportProgressReplyStrategy;
 use App\Operations\Strategies\InappReportReporterTimeoutStrategy;
 use App\Operations\Strategies\InappReportResolveAfterDeployStrategy;
 use App\Operations\Strategies\InappReportTriageStrategy;
@@ -22,6 +23,7 @@ final class InappStandingPolicy
     public const ID = 'founder-standing-inapp-lifecycle';
     public const FILE = 'inapp-lifecycle.yaml';
     public const OPERATIONS = [
+        InappReportProgressReplyStrategy::OPERATION => InappReportProgressReplyStrategy::class,
         InappReportReporterTimeoutStrategy::OPERATION => InappReportReporterTimeoutStrategy::class,
         InappReportResolveAfterDeployStrategy::OPERATION => InappReportResolveAfterDeployStrategy::class,
         InappReportTriageStrategy::OPERATION => InappReportTriageStrategy::class,

@@ -107,7 +107,7 @@ final class PopInappReportTriageTest extends TestCase
 
         self::assertSame([$id], $this->policy->approvePending($this->service)['approved']);
         self::assertSame($this->policy->approverRef(), DB::table('pop_approval_events')->where('operation_id', $id)->value('approver'));
-        self::assertStringEndsWith('@3', $this->policy->approverRef());
+        self::assertStringEndsWith('@4', $this->policy->approverRef());
         self::assertSame('succeeded', $this->service->runApprovedLocally($id)['status']);
         self::assertSame('triaged', BugReport::query()->whereKey($bug)->value('status'));
         $replies = BugReportComment::query()->where('bug_report_id', $bug)->orderBy('id')->get();
