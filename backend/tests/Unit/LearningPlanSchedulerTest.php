@@ -13,9 +13,18 @@ class LearningPlanSchedulerTest extends TestCase
         return array_map(fn ($r) => $r['start'] . '..' . $r['end'], $out);
     }
 
-    private function exam(int $seq, string $start): array
+    private function exam(int $seq, string $start, int $semester = 0): array
     {
-        return ['sequence' => $seq, 'start_date' => $start];
+        return ['sequence' => $seq, 'start_date' => $start, 'academic_year' => 115, 'semester' => $semester];
+    }
+
+    /** Segments in order and never going back in time. */
+    private function assertInOrder(array $out): void
+    {
+        $starts = array_column($out, 'start');
+        $sorted = $starts;
+        sort($sorted);
+        $this->assertSame($sorted, $starts);
     }
 
     public function test_no_exams_is_one_even_segment_with_remainder_to_earlier_units(): void
@@ -99,17 +108,58 @@ class LearningPlanSchedulerTest extends TestCase
         $this->assertSame([0 => '2026-09-01..2026-09-09', 1 => '2026-09-10..2026-09-10'], $this->ranges($out));
     }
 
-    public function test_repeated_sequences_across_terms_use_the_next_unused_exam_in_date_order(): void
+    public function test_one_term_template_with_exams_of_other_terms_stays_before_the_first_exam(): void
     {
-        $units = [['exam_sequence' => 1], ['exam_sequence' => 2], ['exam_sequence' => 1], []];
-        $exams = [$this->exam(1, '2027-03-20'), $this->exam(1, '2026-10-20'), $this->exam(2, '2026-12-01')];
+        $units = [['exam_sequence' => 1], ['exam_sequence' => 1], ['exam_sequence' => 2], ['exam_sequence' => 3]];
+        $exams = [$this->exam(3, '2027-01-15', 1), $this->exam(1, '2027-03-25', 2)];
 
-        $out = LearningPlanScheduler::schedule($units, '2026-09-01', '2027-04-30', $exams);
+        $out = LearningPlanScheduler::schedule($units, '2026-12-05', '2027-04-10', $exams);
 
         $this->assertSame([
-            0 => '2026-09-01..2026-10-19', 1 => '2026-10-20..2026-11-30',
-            2 => '2026-12-01..2027-01-24', 3 => '2027-01-25..2027-03-19',
+            0 => '2026-12-05..2026-12-15', 1 => '2026-12-16..2026-12-25', 2 => '2026-12-26..2027-01-04', 3 => '2027-01-05..2027-01-14',
         ], $this->ranges($out));
+        $this->assertInOrder($out);
+    }
+
+    public function test_two_term_template_with_the_first_exam_already_past(): void
+    {
+        $units = array_map(fn ($k) => ['exam_sequence' => $k], [1, 2, 3, 1, 2, 3]);
+        $exams = [$this->exam(2, '2026-12-01', 1), $this->exam(3, '2027-01-04', 1), $this->exam(1, '2027-03-20', 2),
+            $this->exam(2, '2027-04-25', 2), $this->exam(3, '2027-06-10', 2)];
+
+        $out = LearningPlanScheduler::schedule($units, '2026-11-01', '2027-06-30', $exams);
+
+        $this->assertSame([
+            0 => '2026-11-01..2026-11-15', 1 => '2026-11-16..2026-11-30', 2 => '2026-12-01..2027-01-03',
+            3 => '2027-01-04..2027-03-19', 4 => '2027-03-20..2027-04-24', 5 => '2027-04-25..2027-06-09',
+        ], $this->ranges($out));
+        $this->assertInOrder($out);
+    }
+
+    public function test_two_term_template_over_two_full_terms_uses_six_segments_in_order(): void
+    {
+        $units = array_map(fn ($k) => ['exam_sequence' => $k], [1, 2, 3, 1, 2, 3]);
+        $exams = [$this->exam(1, '2026-10-20', 1), $this->exam(2, '2026-12-01', 1), $this->exam(3, '2027-01-04', 1),
+            $this->exam(1, '2027-03-20', 2), $this->exam(2, '2027-04-25', 2), $this->exam(3, '2027-06-10', 2)];
+
+        $out = LearningPlanScheduler::schedule($units, '2026-09-01', '2027-06-30', $exams);
+
+        $this->assertSame([
+            0 => '2026-09-01..2026-10-19', 1 => '2026-10-20..2026-11-30', 2 => '2026-12-01..2027-01-03',
+            3 => '2027-01-04..2027-03-19', 4 => '2027-03-20..2027-04-24', 5 => '2027-04-25..2027-06-09',
+        ], $this->ranges($out));
+        $this->assertInOrder($out);
+    }
+
+    public function test_one_term_plan_starting_after_exam_one(): void
+    {
+        $units = [['exam_sequence' => 1], ['exam_sequence' => 2], ['exam_sequence' => 3]];
+        $exams = [$this->exam(1, '2026-10-20', 1), $this->exam(2, '2026-12-01', 1), $this->exam(3, '2027-01-04', 1)];
+
+        $out = LearningPlanScheduler::schedule($units, '2026-11-01', '2027-02-01', $exams);
+
+        $this->assertSame([0 => '2026-11-01..2026-11-15', 1 => '2026-11-16..2026-11-30', 2 => '2026-12-01..2027-01-03'], $this->ranges($out));
+        $this->assertInOrder($out);
     }
 
     public function test_leap_day_counts_as_a_day(): void

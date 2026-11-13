@@ -479,7 +479,6 @@
 | Method | URI | Action | Auth |
 |--------|-----|--------|------|
 | PATCH | `api/v1/learning-plans/{plan}` | `StudentLearningPlanController@update` | role+campus |
-| POST | `api/v1/learning-plans/{plan}/recalculate` | `StudentLearningPlanController@recalculate` | role+campus |
 | PATCH | `api/v1/learning-plans/{plan}/units/{unit}` | `StudentLearningPlanController@updateUnit` | role+campus |
 
 ## /api/v1/learning-record-feedbacks

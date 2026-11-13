@@ -835,12 +835,11 @@ Route::prefix('v1')->group(function () {
         Route::get('curriculum-templates', [CurriculumTemplateController::class, 'index']);
         Route::get('curriculum-templates/{template}', [CurriculumTemplateController::class, 'show'])->whereNumber('template');
         Route::get('students/{student}/exam-periods', [SchoolExamPeriodController::class, 'forStudent'])->whereNumber('student');
-        // #4970 step 4a: 學習計畫. Teachers read/write only courses visible to them (checked in the controller).
+        // #4970 step 4a: 學習計畫. Teachers read visible courses, write only their own (checked in the controller).
         Route::get('students/{student}/learning-plans', [StudentLearningPlanController::class, 'index'])->whereNumber('student');
         Route::post('students/{student}/learning-plans', [StudentLearningPlanController::class, 'store'])->whereNumber('student');
         Route::patch('learning-plans/{plan}', [StudentLearningPlanController::class, 'update'])->whereNumber('plan');
         Route::patch('learning-plans/{plan}/units/{unit}', [StudentLearningPlanController::class, 'updateUnit'])->whereNumber(['plan', 'unit']);
-        Route::post('learning-plans/{plan}/recalculate', [StudentLearningPlanController::class, 'recalculate'])->whereNumber('plan');
     });
 
     Route::middleware(['role:director,teacher', 'require_campus', 'require_password_change'])->group(function () {

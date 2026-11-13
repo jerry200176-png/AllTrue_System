@@ -211,8 +211,7 @@ class StudentLearningPlanApiTest extends TestCase
 
         $this->as($dir)->patchJson("/api/v1/learning-plans/{$plan['id']}/units/$c", ['planned_start' => '2026-11-02', 'planned_end' => '2026-11-10'])
             ->assertOk()->assertJsonPath('data.units.2.dates_manual', true);
-        $this->as($dir)->patchJson("/api/v1/learning-plans/{$plan['id']}", ['plan_end' => '2027-02-01'])->assertOk();
-        $res = $this->as($dir)->postJson("/api/v1/learning-plans/{$plan['id']}/recalculate")->assertOk();
+        $res = $this->as($dir)->patchJson("/api/v1/learning-plans/{$plan['id']}", ['plan_end' => '2027-02-01'])->assertOk();
 
         $this->assertSame('C 2026-11-02..2026-11-10', $this->ranges($res->json('data.units'))[2]);
         $this->assertSame('2027-02-01', $res->json('data.plan_end'));
@@ -250,7 +249,6 @@ class StudentLearningPlanApiTest extends TestCase
 
         $this->as($dir)->patchJson("/api/v1/learning-plans/{$plan['id']}", ['status' => 'archived'])->assertOk();
         $this->as($dir)->patchJson($url, ['title' => 'x'])->assertStatus(422);
-        $this->as($dir)->postJson("/api/v1/learning-plans/{$plan['id']}/recalculate")->assertStatus(422);
     }
 
     public function test_campus_isolation_on_every_route(): void
@@ -270,7 +268,6 @@ class StudentLearningPlanApiTest extends TestCase
                 'student_class_id' => $course->ID, 'template_id' => $tpl->id, 'plan_start' => '2026-09-01'])->assertForbidden();
             $this->as($outsider)->patchJson("/api/v1/learning-plans/{$plan['id']}", ['title' => 'x'])->assertForbidden();
             $this->as($outsider)->patchJson("/api/v1/learning-plans/{$plan['id']}/units/$unit", ['completed' => true])->assertForbidden();
-            $this->as($outsider)->postJson("/api/v1/learning-plans/{$plan['id']}/recalculate")->assertForbidden();
         }
         $this->assertDatabaseHas('student_learning_plans', ['id' => $plan['id'], 'title' => '七上數學']);
         $this->assertDatabaseHas('student_plan_units', ['id' => $unit, 'completed_at' => null]);
@@ -296,11 +293,9 @@ class StudentLearningPlanApiTest extends TestCase
             ->assertJsonCount(1, 'data')->assertJsonPath('data.0.id', $myPlan['id']);
         $this->as($mine)->patchJson("/api/v1/learning-plans/{$myPlan['id']}", ['title' => '我的計畫'])->assertOk();
         $this->as($mine)->patchJson("/api/v1/learning-plans/{$myPlan['id']}/units/{$myPlan['units'][0]['id']}", ['completed' => true])->assertOk();
-        $this->as($mine)->postJson("/api/v1/learning-plans/{$myPlan['id']}/recalculate")->assertOk();
 
         $this->as($mine)->patchJson("/api/v1/learning-plans/{$theirPlan['id']}", ['title' => 'x'])->assertForbidden();
         $this->as($mine)->patchJson("/api/v1/learning-plans/{$theirPlan['id']}/units/{$theirPlan['units'][0]['id']}", ['completed' => true])->assertForbidden();
-        $this->as($mine)->postJson("/api/v1/learning-plans/{$theirPlan['id']}/recalculate")->assertForbidden();
 
         // A teacher with no course for this student sees nothing.
         $stranger = $this->staff('T', $campus);
@@ -370,7 +365,7 @@ class StudentLearningPlanApiTest extends TestCase
         $plan = $this->create($dir, $student, $course, $this->template($campus))->json('data');
 
         Carbon::setTestNow('2027-03-01 10:00:00'); // a different term (115 / 2)
-        $res = $this->as($dir)->postJson("/api/v1/learning-plans/{$plan['id']}/recalculate")->assertOk();
+        $res = $this->as($dir)->patchJson("/api/v1/learning-plans/{$plan['id']}", ['plan_start' => '2026-09-01'])->assertOk();
 
         $this->assertSame($this->ranges($plan['units']), $this->ranges($res->json('data.units')));
     }
@@ -425,5 +420,24 @@ class StudentLearningPlanApiTest extends TestCase
         $this->create($dir, $student, $course, $tpl, ['plan_start' => '2026/09/01'])->assertStatus(422);
         $this->create($dir, $student, $course, $tpl, ['plan_start' => '2026-09-01 10:00:00'])->assertStatus(422);
         $this->create($dir, $student, $course, $tpl, ['plan_start' => '2026-02-30'])->assertStatus(422);
+    }
+
+    public function test_substitute_teacher_can_read_but_not_write(): void
+    {
+        $campus = (int) CampusFactory::new()->create()->id;
+        $dir = $this->staff('A', $campus);
+        $sub = $this->staff('T', $campus);
+        $student = $this->student($campus);
+        $course = $this->course($student, $this->staff('T', $campus)['id']);
+        $plan = $this->create($dir, $student, $course, $this->template($campus))->json('data');
+        // A scheduled makeup lesson makes the course visible to the substitute (StudentClass::visibleToTeacher).
+        \Illuminate\Support\Facades\DB::table('schedules')->insert([
+            'student_id' => $student->id, 'teacher_id' => $sub['id'], 'day_of_week' => 1, 'start_time' => '16:00', 'end_time' => '17:00',
+            'branch_id' => $campus, 'status' => 'scheduled', 'student_course_id' => $course->ID, 'original_schedule_id' => 1,
+        ]);
+
+        $this->as($sub)->getJson("/api/v1/students/{$student->id}/learning-plans")->assertOk()->assertJsonCount(1, 'data');
+        $this->as($sub)->patchJson("/api/v1/learning-plans/{$plan['id']}", ['title' => 'x'])->assertForbidden();
+        $this->as($sub)->patchJson("/api/v1/learning-plans/{$plan['id']}/units/{$plan['units'][0]['id']}", ['completed' => true])->assertForbidden();
     }
 }
