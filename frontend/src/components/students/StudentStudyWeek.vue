@@ -47,6 +47,9 @@ const readOnly = ref(false);
 const pending = ref({}); // task id -> true while a request for that task is in flight
 const form = ref(null); // { id|null, title, kind, due_date, minutes, note, plan_unit_id }; null = dialog closed
 const formError = ref('');
+const formKey = (f) => JSON.stringify([f.title, f.kind, f.due_date, String(f.minutes ?? ''), f.note, String(f.plan_unit_id ?? '')]);
+const formOrig = ref(''); // formKey of the task as opened; the picker applies the SAVED task, so unsaved edits block it
+const formDirty = computed(() => !!form.value?.id && formKey(form.value) !== formOrig.value);
 const saving = ref(false);
 const deleting = ref(null);
 const copying = ref(false);
@@ -155,6 +158,7 @@ const openAddFirst = () => openAdd(isThisWeek.value ? today.value : weekStart.va
 function openEdit(task) {
   formError.value = '';
   form.value = { id: task.id, title: task.title, kind: task.kind, due_date: task.due_date, minutes: task.minutes ?? '', note: task.note ?? '', plan_unit_id: task.plan_unit_id ?? '' };
+  formOrig.value = formKey(form.value);
 }
 // The form cannot be dismissed while it is saving (Esc, the close button or Cancel), and a finished save closes only
 // the form it was submitted from, so a slow save never discards a form the user opened afterwards.
@@ -227,7 +231,7 @@ async function copyLastWeek() {
 }
 
 async function openPicker(task) {
-  if (!task || saving.value) return;
+  if (!task || saving.value || formDirty.value) return;
   form.value = null; formError.value = '';
   const p = reactive({ task, students: [], max: 30, selected: [], loading: true, error: '', submitting: false });
   picker.value = p; lastPicker.value = p;
@@ -381,10 +385,11 @@ watch(weekStart, () => load());
           </label>
           <label class="tw:flex tw:flex-col tw:gap-1">備註（選填）<textarea v-model="form.note" maxlength="255" rows="2" :class="[FIELD, 'tw:h-auto tw:py-2']" data-testid="f-note"></textarea></label>
         </fieldset>
+        <p v-if="formDirty" class="tw:m-0 tw:text-tpl-caption tw:text-tpl-secondary" role="status" data-testid="apply-hint">要套用到同班，請先按「儲存」；套用的是已儲存的內容。</p>
         <Alert v-if="formError" tone="danger" data-testid="form-error">{{ formError }}</Alert>
         <DialogFooter>
           <Button v-if="form?.id" variant="outline" :class="[control.page, 'tw:text-destructive tw:sm:mr-auto']" :disabled="saving || readOnly" data-testid="f-delete" @click="askDelete">刪除</Button>
-          <Button v-if="form?.id" variant="outline" :class="control.page" :disabled="saving || readOnly" data-testid="f-apply" @click="openPicker(tasks.find((t) => t.id === form.id))">套用到同班其他學生</Button>
+          <Button v-if="form?.id" variant="outline" :class="control.page" :disabled="saving || readOnly || formDirty" data-testid="f-apply" @click="openPicker(tasks.find((t) => t.id === form.id))">套用到同班其他學生</Button>
           <Button variant="outline" :class="control.page" :disabled="saving" @click="closeForm">取消</Button>
           <Button :class="control.page" :disabled="saving || readOnly" data-testid="f-save" @click="submit">儲存</Button>
         </DialogFooter>

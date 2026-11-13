@@ -27,7 +27,7 @@ use Illuminate\Support\Facades\DB;
  *  - The check and the insert run in one transaction after locking the target student row(s), so two clicks at once cannot both insert.
  *
  * APPLY TO CLASSMATES
- *  - Candidates = other enabled students of the same campus with an active course (Stop = 0) of the same teacher, subject and
+ *  - Candidates (teacher caller: only through courses the caller owns) = other enabled students of the same campus with an active course (Stop = 0) of the same teacher, subject and
  *    grade as an active course of the source student, and only those the caller may write for (`studentWritable`).
  *  - Each target gets one result: created | skipped (duplicate rule) | refused (not a classmate, not found, other campus, or the
  *    caller may not write for them; the three are not told apart so ids of other campuses are not probed).
@@ -47,7 +47,7 @@ class StudentStudyTaskBulkController extends Controller
         if (!$this->studentWritable($request, $student)) {
             return $this->forbidden();
         }
-        $rows = Student::query()->whereIn('id', $this->classmateIds($student))->orderBy('name')->orderBy('id')->get(['id', 'name', 'CampusID']);
+        $rows = Student::query()->whereIn('id', $this->classmateIds($request, $student))->orderBy('name')->orderBy('id')->get(['id', 'name', 'CampusID']);
         $data = $rows->filter(fn (Student $s) => $this->studentWritable($request, $s))
             ->map(fn (Student $s) => ['id' => (int) $s->id, 'name' => (string) $s->name])->values()->all();
 
@@ -100,12 +100,13 @@ class StudentStudyTaskBulkController extends Controller
         abort_unless($this->studentWritable($request, $source), 403, 'Forbidden');
         $data = $request->validate(['student_ids' => ['required', 'array', 'min:1', 'max:' . self::MAX_TARGETS], 'student_ids.*' => ['integer', 'min:1']]);
         $ids = array_values(array_unique(array_map('intval', $data['student_ids'])));
-        $mates = array_flip($this->classmateIds($source));
+        $mates = array_flip($this->classmateIds($request, $source));
         $results = [];
         $by = $request->attributes->get('auth_user')?->id;
 
         DB::transaction(function () use ($ids, $mates, $request, $task, $by, &$results) {
-            $targets = Student::query()->whereIn('id', $ids)->orderBy('id')->lockForUpdate()->get()->keyBy('id');
+            // Only rows of the task's own campus are read and locked; other ids fall through to `refused` below.
+            $targets = Student::query()->whereIn('id', $ids)->where('CampusID', $task->campus_id)->orderBy('id')->lockForUpdate()->get()->keyBy('id');
             $day = $task->due_date->toDateString();
             $taken = $this->takenKeys((int) $task->campus_id, $ids, [$day]);
             foreach ($ids as $id) {
@@ -169,13 +170,17 @@ class StudentStudyTaskBulkController extends Controller
     }
 
     /**
-     * Other enabled students of the same campus sharing an active (teacher, subject, grade) course with this student.
+     * Other enabled students of the same campus sharing an active (teacher, subject, grade) course with this student
+     * (for a teacher caller: sharing one of the caller's own courses).
      *
      * @return list<int>
      */
-    private function classmateIds(Student $student): array
+    private function classmateIds(Request $request, Student $student): array
     {
-        $own = StudentClass::query()->where('StudentID', $student->id)->where('Stop', 0)->get(['TeacherID', 'SubjectID', 'GradeID']);
+        $teacherId = $this->teacherId($request);
+        // A teacher's classmates come only from courses THEY own; director and super_admin see every active course of the student.
+        $own = StudentClass::query()->where('StudentID', $student->id)->where('Stop', 0)
+            ->when($teacherId !== null, fn ($q) => $q->where('TeacherID', $teacherId))->get(['TeacherID', 'SubjectID', 'GradeID']);
         if ($own->isEmpty()) {
             return [];
         }

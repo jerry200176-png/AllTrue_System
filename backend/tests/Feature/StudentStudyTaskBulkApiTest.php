@@ -14,6 +14,7 @@ use App\Models\UserCampus;
 use Database\Factories\CampusFactory;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
 /** 讀書任務快速工具: 複製上週、套用到同班 (#5269 step 3). Fake data only; "today" is frozen at 2026-11-13. */
@@ -58,10 +59,10 @@ class StudentStudyTaskBulkApiTest extends TestCase
             'enable' => 1, 'MDT' => now(), 'Notify_Token' => '']);
     }
 
-    private function course(Student $student, int $teacherId): StudentClass
+    private function course(Student $student, int $teacherId, int $subject = 1): StudentClass
     {
         return StudentClass::create([
-            'StudentID' => $student->id, 'TeacherID' => $teacherId, 'GradeID' => 1, 'SubjectID' => 1, 'by1' => 1, // by1 is the class-type code, not a campus
+            'StudentID' => $student->id, 'TeacherID' => $teacherId, 'GradeID' => 1, 'SubjectID' => $subject, 'by1' => 1, // by1 is the class-type code, not a campus
             'StartDate' => '2026-08-01', 'TotalHours' => 20, 'Charge' => 1000, 'Pay' => 0, 'Paid' => 0, 'Rate' => 1000,
             'MDate' => now(), 'Stop' => 0, 'ScheduleMode' => 'count', 'SessionCount' => 10, 'RemainingSessions' => 10,
             'UsedSessions' => 0, 'SessionDuration' => 60, 'ClassType' => 'one_on_one',
@@ -268,6 +269,63 @@ class StudentStudyTaskBulkApiTest extends TestCase
             $this->apply($who, $task, [$mate->id])->assertForbidden();
         }
         $this->assertSame(0, $this->count($mate));
+    }
+
+    public function test_apply_ignores_the_source_student_and_duplicate_ids(): void
+    {
+        [, , $teacher, $student, $mate] = $this->world();
+        $task = $this->task($student);
+
+        $res = $this->apply($teacher, $task, [$student->id, $mate->id, $mate->id])->assertOk();
+
+        $this->assertSame(['refused', 'created'], array_column($res->json('data.results'), 'status'));
+        $this->assertSame(1, $this->count($student)); // only the source task itself
+        $this->assertSame(1, $this->count($mate));
+    }
+
+    public function test_a_teacher_only_gets_classmates_through_courses_they_own_but_a_director_sees_all(): void
+    {
+        [$campus, $director, $teacher, $student, $mate] = $this->world();
+        $other = $this->staff('T', $campus);
+        $this->course($student, $other['id'], 2); // the source student also studies subject 2 with another teacher
+        $shared = $this->student($campus);
+        $this->course($shared, $other['id'], 2);   // shares only the other teacher's course ...
+        $this->course($shared, $teacher['id'], 9); // ... and has an unrelated course with this teacher, so they may write for them
+        $task = $this->task($student);
+
+        $this->as($teacher)->getJson("/api/v1/students/{$student->id}/study-classmates")->assertOk()->assertJsonCount(1, 'data')->assertJsonPath('data.0.id', $mate->id); // not $shared
+        $this->apply($teacher, $task, [$shared->id])->assertOk()->assertJsonPath('data.refused', 1);
+        $this->assertSame(0, $this->count($shared));
+        $this->as($director)->getJson("/api/v1/students/{$student->id}/study-classmates")->assertOk()->assertJsonCount(2, 'data');
+        $this->apply($director, $task, [$shared->id])->assertOk()->assertJsonPath('data.created', 1);
+    }
+
+    public function test_a_substitute_teacher_who_can_see_but_not_own_the_student_is_refused_everywhere(): void
+    {
+        [$campus, , , $student, $mate] = $this->world();
+        $task = $this->task($student);
+        $sub = $this->staff('T', $campus);
+        $course = StudentClass::query()->where('StudentID', $student->id)->first();
+        DB::table('schedules')->insert([
+            'student_id' => $student->id, 'teacher_id' => $sub['id'], 'day_of_week' => 1, 'start_time' => '16:00', 'end_time' => '17:00',
+            'branch_id' => $campus, 'status' => 'scheduled', 'student_course_id' => $course->ID, 'original_schedule_id' => 1,
+        ]);
+
+        $this->as($sub)->getJson("/api/v1/students/{$student->id}/study-classmates")->assertForbidden();
+        $this->copy($sub, $student)->assertForbidden();
+        $this->apply($sub, $task, [$mate->id])->assertForbidden();
+        $this->assertSame(0, $this->count($mate));
+    }
+
+    public function test_apply_is_refused_for_a_classmate_in_another_campus_even_with_a_shared_course(): void
+    {
+        [, , $teacher, $student] = $this->world();
+        $task = $this->task($student);
+        $foreign = $this->student((int) CampusFactory::new()->create()->id);
+        $this->course($foreign, $teacher['id']);
+
+        $this->apply($teacher, $task, [$foreign->id])->assertOk()->assertJsonPath('data.refused', 1);
+        $this->assertSame(0, $this->count($foreign));
     }
 
     public function test_apply_works_for_director_and_super_admin(): void

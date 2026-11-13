@@ -402,6 +402,22 @@ describe('StudentStudyWeek (issue 5269 step 2)', () => {
       expect(byId(w, 'notice').text()).toBe('已套用到 1 位');
     });
 
+    it('blocks 套用 while the edit form has unsaved changes, with a hint, and allows it again when they are undone', async () => {
+      const w = await mountIt();
+      await byId(w, 'title-1').trigger('click');
+      expect(byId(w, 'f-apply').attributes('disabled')).toBeUndefined();
+      expect(byId(w, 'apply-hint').exists()).toBe(false);
+      await byId(w, 'f-title').setValue('改過的名稱');
+      expect(byId(w, 'f-apply').attributes('disabled')).toBeDefined();
+      expect(byId(w, 'apply-hint').text()).toContain('先按「儲存」');
+      calls.length = 0;
+      await byId(w, 'f-apply').trigger('click'); await flushPromises();
+      expect(calls.some((c) => c.url.includes('study-classmates'))).toBe(false);
+      expect(byId(w, 'f-title').element.value).toBe('改過的名稱'); // nothing was discarded
+      await byId(w, 'f-title').setValue('預習第三章');
+      expect(byId(w, 'f-apply').attributes('disabled')).toBeUndefined();
+    });
+
     it('select-all ticks every classmate, and an empty class explains itself', async () => {
       const w = await mountIt();
       await openPicker(w);
