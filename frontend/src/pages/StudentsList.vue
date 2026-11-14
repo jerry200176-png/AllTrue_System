@@ -87,7 +87,7 @@
       <table data-guide="students-table" :class="[dataTable.table, dataTable.stackTable, 'tw:w-full tw:border-collapse']" aria-label="學生清單">
         <thead :class="dataTable.stackBody">
           <tr :class="[rowGrid, 'tw:max-lg:bg-muted']">
-            <th scope="col" :class="[dataTable.head, col.select, 'tw:max-lg:col-start-1 tw:max-lg:h-11']">
+            <th scope="col" :class="[dataTable.head, col.select, 'tw:max-lg:col-start-1 tw:max-lg:h-11 tw:max-lg:self-center']">
               <Checkbox
                 :model-value="allVisibleSelected ? true : hasSelectedStudents ? 'indeterminate' : false"
                 :class="checkBox"
@@ -97,7 +97,7 @@
               />
             </th>
             <th scope="col" :class="[dataTable.head, 'tw:w-8 tw:px-0 tw:max-lg:sr-only']"><span class="tw:sr-only">展開課程</span></th>
-            <th scope="col" :class="[dataTable.head, 'tw:max-lg:col-start-2 tw:max-lg:col-span-3 tw:max-lg:h-11 tw:max-lg:px-0']">姓名</th>
+            <th scope="col" :class="[dataTable.head, 'tw:max-lg:col-start-2 tw:max-lg:col-span-3 tw:max-lg:h-11 tw:max-lg:self-center tw:max-lg:px-0']">姓名</th>
             <th scope="col" :class="[dataTable.head, 'tw:max-lg:sr-only']">年級</th>
             <th scope="col" :class="[dataTable.head, 'tw:max-lg:sr-only']">學校</th>
             <th scope="col" :class="[dataTable.head, 'tw:max-lg:sr-only tw:lg:@max-5xl:hidden']">家長</th>
