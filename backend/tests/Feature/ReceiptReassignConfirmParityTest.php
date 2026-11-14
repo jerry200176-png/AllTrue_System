@@ -119,6 +119,77 @@ class ReceiptReassignConfirmParityTest extends TestCase
         $this->assertSame($viaConfirmOutcome, $this->outcome($viaMove));
     }
 
+    /**
+     * The source side follows void()'s rules (Payment's reversal predicates, the bill-status rules, CollectionTarget::unsettle):
+     * [shape, void()'s refusal code (false = it reverses), the move's code, the source bill afterwards (pinned)].
+     *
+     * @return array<string, array{0: string, 1: string|false, 2: string|null, 3: array<string, mixed>}>
+     */
+    public static function sourceCases(): array
+    {
+        return [
+            'legacy unlinked reversal on the bill: both refuse' => ['legacy', 'legacy_reversal_unreconciled', 'reassign_legacy_reversal_unreconciled', []],
+            'status: the receipt was all the bill held, so it is unpaid' => ['alone', false, null, ['bill_status' => 'unpaid', 'bill_paid' => 0, 'course_paid' => 0]],
+            'status: another receipt stays on the bill, so it is partial' => ['shared', false, null, ['bill_status' => 'partial', 'bill_paid' => self::AMOUNT, 'course_paid' => 0]],
+        ];
+    }
+
+    /**
+     * @dataProvider sourceCases
+     * @param array<string, mixed> $after
+     */
+    public function test_void_and_the_move_leave_the_source_bill_the_same(string $case, string|false $voidCode, ?string $moveCode, array $after): void
+    {
+        $tok = $this->token('S', 1);
+        [$viaVoid, $voided] = $this->source($case);
+        $res = $this->putJson("/api/v1/payment-reports/{$voided->id}/void", ['void_reason' => '收錯帳單'], $this->h($tok));
+
+        [$viaMove, $moved] = $this->source($case);
+        $target = $this->bill($this->student(1), self::AMOUNT);
+        $before = $this->snapshot();
+        $plan = $this->previewTo($tok, $moved, $target['invoice']);
+        $move = $plan->status() === 200
+            ? $this->postJson("/api/v1/payment-reports/{$moved->id}/reassign", ['target_invoice_id' => $target['invoice']->id, 'state_hash' => $plan->json('state_hash'), 'reason' => '選錯學生'], $this->h($tok))
+            : $plan;
+
+        if ($voidCode !== false) {
+            $this->assertSame($voidCode, $res->json('code'), $res->getContent());
+            $this->assertSame($moveCode, $move->json('code'), $move->getContent());
+            $this->assertSame($res->status(), $move->status());
+            $this->assertSame($before, $this->snapshot(), 'a refused move writes nothing');
+
+            return;
+        }
+        $this->assertSame(200, $res->status(), $res->getContent());
+        $this->assertSame(201, $move->status(), $move->getContent());
+        $voidOutcome = $this->outcome(['invoice' => $viaVoid['invoice'], 'course' => $viaVoid['course'], 'package' => null]);
+        $this->assertSame($after, array_intersect_key($voidOutcome, $after), 'pinned outcome');
+        $this->assertSame($voidOutcome, $this->outcome(['invoice' => $viaMove['invoice'], 'course' => $viaMove['course'], 'package' => null]));
+    }
+
+    /** @return array{0: array{course:StudentClass, invoice:Invoice, payment:?\App\Models\Payment}, 1: PaymentReport} a confirmed receipt on its own paid bill */
+    private function source(string $case): array
+    {
+        $student = $this->student(1);
+        $total = $case === 'shared' ? 2 * self::AMOUNT : self::AMOUNT;
+        $bill = $this->bill($student, $total, 'paid', self::AMOUNT);
+        if ($case === 'shared') { // a second, unrelated receipt's money on the same bill
+            $this->payment($bill['invoice'], self::AMOUNT);
+            $bill['invoice']->update(['PaidAmount' => $total, 'Status' => 'paid']);
+        }
+        if ($case === 'legacy') {
+            \App\Models\Payment::create(['InvoiceID' => $bill['invoice']->id, 'Amount' => -50, 'PaidAt' => '2026-11-01', 'Method' => 'void']);
+        }
+        $receipt = PaymentReport::create([
+            'StudentID' => $student->id, 'StudentClassID' => $bill['course']->ID, 'InvoiceID' => $bill['invoice']->id, 'reported_by_name' => 'x',
+            'payment_date' => '2026-11-10', 'payment_method' => 'transfer', 'reported_amount' => self::AMOUNT, 'status' => 'confirmed',
+            'confirmed_by' => 1, 'confirmed_at' => Carbon::now(), 'payment_id' => $bill['payment']->id,
+            'report_token_hash' => hash('sha256', uniqid('s', true)), 'token_expires_at' => Carbon::now()->addDay(),
+        ]);
+
+        return [$bill, $receipt];
+    }
+
     /** @return array{course:StudentClass, invoice:Invoice, package:?CoursePackage} a fresh target of the given shape, own student */
     private function shape(string $case): array
     {

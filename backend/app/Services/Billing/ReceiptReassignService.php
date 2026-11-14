@@ -498,17 +498,16 @@ final class ReceiptReassignService
             return ['refusal' => $this->refuse('reassign_source_other_owner', '這張收據所在的帳單指向別位學生的課程，這裡不能移動。請聯絡總部對帳。')];
         }
         $payments = DB::table('Payment')->where('InvoiceID', $invoice->id)->get();
-        $isReversal = fn ($p) => (int) $p->Amount < 0 || (string) $p->Method === 'void';
-        if ($payments->contains(fn ($p) => $isReversal($p) && (int) $p->payment_report_id === $reportId)) {
+        // void()'s own row predicates (Payment): already reversed, and a legacy unlinked reversal nobody can match.
+        if ($payments->contains(fn ($p) => Payment::reversesReport($p, $reportId))) {
             return ['refusal' => $this->refuse('reassign_source_not_applied', '這張收據的款項已經沖回，沒有可以移動的款項。', 409)];
         }
-        if ($payments->contains(fn ($p) => $isReversal($p) && $p->payment_report_id === null && !in_array((string) $p->Method, self::MONEY_MOVED_METHODS, true))) {
+        if ($payments->contains(fn ($p) => Payment::isUnlinkedLegacyReversal($p))) {
             return ['refusal' => $this->refuse('reassign_legacy_reversal_unreconciled', '這張帳單有舊的沖銷紀錄還沒對帳，請先找系統管理員處理。', 409)];
         }
 
-        // The receipt's own money must be on this bill: one positive, non-void Payment of this report (as ContractMoneyState does).
-        $receipts = $payments->filter(fn ($p) => (int) $p->Amount > 0 && (string) $p->Method !== 'void'
-            && ((int) ($p->payment_report_id ?? 0) === $reportId || (int) $p->id === (int) ($report->payment_id ?? 0)));
+        // The receipt's own money must be on this bill: exactly one money row of this receipt (ContractMoneyState's predicate).
+        $receipts = $payments->filter(fn ($p) => Payment::isReceiptOf($p, $reportId, isset($report->payment_id) ? (int) $report->payment_id : null));
         // A stale payment_id may point at another receipt's money: only an unlinked (legacy) payment may be claimed by the pointer.
         if ($receipts->contains(fn ($p) => $p->payment_report_id !== null && (int) $p->payment_report_id !== $reportId)) {
             return ['refusal' => $this->refuse('reassign_source_payment_other_report', '這張收據指到的收款屬於另一張收據，這裡不能移動。請聯絡總部對帳。', 409)];
@@ -678,7 +677,7 @@ final class ReceiptReassignService
         $invoice->loadMissing('items');
         $money = $this->amounts->resolve($invoice, StudentClass::query()->where('ID', (int) $invoice->StudentClassID)->first());
         $net = (int) $money['net_applied'];
-        $status = (string) $invoice->Status === 'void' ? 'void' : ($net <= 0 ? 'unpaid' : ((int) $money['outstanding_amount'] <= 0 ? 'paid' : 'partial'));
+        $status = (string) $invoice->Status === 'void' ? 'void' : Invoice::statusFromProjection($money); // confirm()'s rule, shared
         $invoice->update(['PaidAmount' => $net, 'Status' => $status]
             + ($reconciledBy !== null ? ['reconciled_at' => Carbon::now(), 'reconciled_by' => $reconciledBy] : []));
     }
