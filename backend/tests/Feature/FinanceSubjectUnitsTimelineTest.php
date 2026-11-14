@@ -302,6 +302,31 @@ class FinanceSubjectUnitsTimelineTest extends TestCase
         $this->assertEqualsWithDelta($settlement['payroll_subject_count'], $timeline->json('totals.final_payroll_subject_count'), 0.0001);
     }
 
+    /** Founder 2026-11-15: three 一對三 students in the same 2 hours are one lesson for the 一對三獎金. */
+    public function test_one_to_three_count_follows_clock_time_not_head_count(): void
+    {
+        $campus = Campus::factory()->create(['name' => '一對三同時段分校']);
+        $director = $this->createUser('director-o3-slot@example.com', 'A', [$campus->id]);
+        $teacher = $this->createUser('teacher-o3-slot@example.com', 'T', [$campus->id]);
+
+        // Three students, each their own 一對三 course, all 16:00-18:00 on the same day.
+        foreach (range(1, 3) as $ignored) {
+            $this->sessionWithApprovedRecord($this->course($campus->id, $teacher['user_id'], 'one_on_three', 1), $teacher['user_id'], '2026-08-12');
+        }
+        // A fourth student on another day is a second lesson.
+        $this->sessionWithApprovedRecord($this->course($campus->id, $teacher['user_id'], 'one_on_three', 1), $teacher['user_id'], '2026-08-13');
+
+        $settlement = $this->withHeaders($this->authHeaders($director['token']))
+            ->getJson('/api/v1/finance/teacher-eligibility?period=month&start=2026-08-01&end=2026-08-31&branch_id=' . $campus->id)
+            ->assertOk()
+            ->json('teachers.0.settlement');
+
+        // 科目數 stays per student (4 x 2h x 0.5); the 一對三 count is 2 lessons, so the bonus is 200, not 400.
+        $this->assertEqualsWithDelta(4.0, $settlement['regular_subject_count'], 0.0001);
+        $this->assertEqualsWithDelta(2.0, $settlement['one_to_three_count'], 0.0001);
+        $this->assertEqualsWithDelta(200, $settlement['one_to_three_bonus'], 0.0001);
+    }
+
     public function test_locked_branch_total_also_sums_raw_subject_counts_before_dividing(): void
     {
         $runId = FulltimePayrollLockStore::lock(1, '2026-08', [
