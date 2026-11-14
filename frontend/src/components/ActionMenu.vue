@@ -83,25 +83,6 @@ function place() {
     ...(below < 280 && r.top > below ? { bottom: `${window.innerHeight - r.top + 4}px` } : { top: `${r.bottom + 4}px` }),
   };
 }
-// The real menu height is only known once it is rendered: pick the side with room for it (above when the space below is too short and the space above is larger)
-// and cap the height to that room, so a long menu at a tablet size stays inside the viewport and scrolls itself instead of running past the edge.
-function fit() {
-  const r = trigger.value?.getBoundingClientRect();
-  const el = menu.value;
-  if (!r || !el || sheet.value) return;
-  const gap = 4;
-  const margin = 8;
-  const need = el.scrollHeight + 2; // + the 1px border on each side
-  const below = window.innerHeight - r.bottom - gap - margin;
-  const above = r.top - gap - margin;
-  const up = need > below && above > below;
-  const room = Math.max(120, up ? above : below);
-  pos.value = {
-    right: `${Math.max(8, window.innerWidth - r.right)}px`,
-    ...(up ? { bottom: `${window.innerHeight - r.top + gap}px` } : { top: `${r.bottom + gap}px` }),
-    maxHeight: `${Math.min(room, window.innerHeight * 0.7)}px`,
-  };
-}
 const sheet = ref(false);
 let mq = null;
 const syncSheet = () => { sheet.value = Boolean(mq?.matches); };
@@ -113,7 +94,6 @@ async function openAt(index) {
   place();
   open.value = true;
   await nextTick();
-  fit();
   const list = items();
   // preventScroll: focusing a fixed-position item must not scroll the page, or the scroll listener below closes the menu at once.
   list[index < 0 ? list.length - 1 : index]?.focus({ preventScroll: true });

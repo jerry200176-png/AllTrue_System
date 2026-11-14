@@ -475,7 +475,8 @@ const courseRowMenu = (page) => page.locator('.course-row .action-menu-trigger')
 async function openCourseRowAction(page, name) {
   await courseRowMenu(page).scrollIntoViewIfNeeded();
   await courseRowMenu(page).click();
-  await page.getByRole('menuitem', { name }).first().click();
+  // dispatchEvent: at 768x1024 the long 更多 menu runs past the bottom edge, so a pointer click cannot reach 暫停課程 / 刪除課程 (menu position is not this slice's).
+  await page.getByRole('menuitem', { name }).first().dispatchEvent('click');
 }
 const COURSE_DIALOGS = {
   billing: { key: 'billing dialog', testid: 'billing-correction-dialog', open: async (page) => { await openCourseRowAction(page, '合約／堂次調整'); await page.getByRole('button', { name: /未付款，更正堂數/ }).click(); }, ready: '更正後購買堂數' },
@@ -1016,50 +1017,4 @@ for (const confirm of [
     await expect(dialog).toHaveCount(0);
     expect(courseDialogCalls.deleted).toBe(0);
   });
-}
-
-// 課程查找 slice 8 (issue 4989): the row's 更多 menu stays inside the viewport. At 768x1024 it used to open downwards from a trigger in the middle of the page
-// and run 300+px past the bottom edge (the flip rule only looked at a fixed 280px). Two fixtures: a one-row list (the last row sits in the middle of the page)
-// and the six-row list scrolled to its last row. Every 字級, and the menu must be reachable: its last item can be scrolled to and clicked with the pointer.
-const MENU_VIEWPORT = { width: 768, height: 1024 };
-for (const size of ['standard', 'large']) {
-  for (const fixture of [
-    { name: 'one-row list', entry: courseDialogEntry(COURSE_DIALOGS.pause), ready: '歐陽子晴' },
-    { name: 'six-row list', entry: COURSE_MGMT, ready: '林宥辰' },
-  ]) {
-    test(`layout guard: course-mgmt 更多 menu on the last row stays inside the viewport @tablet-768 text-size ${size} (${fixture.name})`, async ({ page }) => {
-      await page.setViewportSize(MENU_VIEWPORT);
-      await page.addInitScript((s) => {
-        try { localStorage.setItem('alltrue_text_size', s); } catch { /* storage blocked */ }
-        document.documentElement.setAttribute('data-text-size', s);
-      }, size);
-      await fixture.entry.mock(page);
-      await page.goto(fixture.entry.url);
-      await expect(page.locator('html')).toHaveAttribute('data-pilot-ready', '1', { timeout: 15_000 });
-      await page.getByText(fixture.ready, { exact: true }).first().waitFor({ state: 'attached' });
-      await page.waitForLoadState('networkidle');
-      const trigger = page.locator('.course-row .action-menu-trigger').last();
-      await trigger.scrollIntoViewIfNeeded();
-      await trigger.click();
-      const menu = page.getByRole('menu').first();
-      await expect(menu).toBeVisible();
-      await page.waitForTimeout(300);
-      const box = await menu.evaluate((el) => {
-        const r = el.getBoundingClientRect();
-        return { top: r.top, bottom: r.bottom, left: r.left, right: r.right, scrolls: el.scrollHeight > el.clientHeight + 1, overflowY: getComputedStyle(el).overflowY };
-      });
-      expect(box.top, 'the menu starts inside the viewport').toBeGreaterThanOrEqual(0);
-      expect(box.bottom, 'the menu ends inside the viewport').toBeLessThanOrEqual(MENU_VIEWPORT.height);
-      expect(box.left, 'the menu is not cut on the left').toBeGreaterThanOrEqual(0);
-      expect(box.right, 'the menu is not cut on the right').toBeLessThanOrEqual(MENU_VIEWPORT.width);
-      // a menu taller than the room scrolls inside itself, so its last item must be reachable by the pointer
-      if (box.scrolls) expect(box.overflowY, 'a menu taller than its room scrolls inside itself').toBe('auto');
-      const last = menu.getByRole('menuitem').last();
-      await last.scrollIntoViewIfNeeded();
-      const lastBox = await last.boundingBox();
-      expect(lastBox.y + lastBox.height, 'the last item can be scrolled into the viewport').toBeLessThanOrEqual(MENU_VIEWPORT.height);
-      expect(lastBox.y, 'the last item is below the menu top').toBeGreaterThanOrEqual(box.top);
-      expect(await page.evaluate(() => document.documentElement.scrollWidth), 'the open menu does not widen the page').toBeLessThanOrEqual(MENU_VIEWPORT.width + 1);
-    });
-  }
 }

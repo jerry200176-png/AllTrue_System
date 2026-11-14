@@ -59,36 +59,13 @@ describe('編輯課程 close guard (Esc and 取消)', () => {
     const src = readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), '../../../pages/CourseManagement.vue'), 'utf8');
     expect(src).toContain('if (!v) requestCloseEditDialog();');
     expect(src).toContain('@click="requestCloseEditDialog">取消</Button>');
-    expect(src).toContain('ignoreComposingEscape');
-    // no private copy of the check is left in the page
     expect(src).not.toContain('e.isComposing');
+    for (const id of ['course-edit-dialog', 'billing-correction-dialog', 'package-conversion-dialog', 'pause-confirm-dialog']) expect(src.slice(src.indexOf(`data-testid="${id}"`)).slice(0, 400), id).toContain('@escape-key-down="ignoreComposingEscape"');
     expect(src).toContain('useEditDialogCloseGuard');
   });
-});
 
-describe('Esc during IME composition', () => {
-  const press = (init) => ({ ...init, preventDefault: vi.fn() });
-
-  it('keeps the dialog open while a composition is running (isComposing or keyCode 229)', () => {
-    for (const init of [{ isComposing: true, keyCode: 27 }, { isComposing: false, keyCode: 229 }]) {
-      const e = press(init);
-      ignoreComposingEscape(e);
-      expect(e.preventDefault).toHaveBeenCalledTimes(1);
-    }
-  });
-
-  it('a plain Esc is left alone so the dialog still closes', () => {
-    const e = press({ isComposing: false, keyCode: 27 });
-    ignoreComposingEscape(e);
-    expect(e.preventDefault).not.toHaveBeenCalled();
-  });
-
-  it('every dialog with a text field (edit, billing correction, package, pause) uses the shared handler on its DialogContent', () => {
-    const src = readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), '../../../pages/CourseManagement.vue'), 'utf8');
-    for (const testid of ['course-edit-dialog', 'billing-correction-dialog', 'package-conversion-dialog', 'pause-confirm-dialog']) {
-      const at = src.indexOf(`data-testid="${testid}"`);
-      expect(at, `${testid} exists`).toBeGreaterThan(-1);
-      expect(src.slice(at, at + 400), `${testid} ignores the composing Esc`).toContain('@escape-key-down="ignoreComposingEscape"');
-    }
+  it('Esc is cancelled during IME composition only', () => {
+    const press = (init) => { const e = { ...init, preventDefault: vi.fn() }; ignoreComposingEscape(e); return e.preventDefault.mock.calls.length; };
+    expect([press({ isComposing: true, keyCode: 27 }), press({ isComposing: false, keyCode: 229 }), press({ isComposing: false, keyCode: 27 })]).toEqual([1, 1, 0]);
   });
 });

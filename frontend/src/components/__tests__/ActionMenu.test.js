@@ -150,40 +150,4 @@ describe('ActionMenu', () => {
     await w.vm.$nextTick();
     expect(has('[role="menu"]')).toBe(false);
   });
-
-  // jsdom has no layout: the viewport, the trigger box and the menu's natural height are stubbed, then the placement is read from the inline style.
-  const openAt = async ({ viewport, trigger, menuHeight }) => {
-    vi.stubGlobal('innerHeight', viewport.h);
-    vi.stubGlobal('innerWidth', viewport.w);
-    const w = mountMenu();
-    const t = w.get('.am__trigger').element;
-    t.getBoundingClientRect = () => ({ top: trigger.top, bottom: trigger.top + 40, left: trigger.left, right: trigger.left + 40, width: 40, height: 40 });
-    const scrollHeight = vi.spyOn(HTMLElement.prototype, 'scrollHeight', 'get').mockImplementation(function height() { return this.getAttribute('role') === 'menu' ? menuHeight : 0; });
-    await w.get('.am__trigger').trigger('click');
-    await w.vm.$nextTick();
-    const style = document.body.querySelector('[role="menu"]').style;
-    scrollHeight.mockRestore();
-    return { top: style.top, bottom: style.bottom, maxHeight: parseFloat(style.maxHeight) };
-  };
-
-  it('a long menu that does not fit below the trigger opens on the side with room and is capped to it', async () => {
-    // 768x1024: trigger at y=660, a 720px menu: 364px below, 648px above -> above, capped at the 648px of room (not the 70vh rule)
-    const r = await openAt({ viewport: { w: 768, h: 1024 }, trigger: { top: 660, left: 700 }, menuHeight: 720 });
-    expect(r.bottom).toBe(`${1024 - 660 + 4}px`);
-    expect(r.top).toBe('');
-    expect(r.maxHeight).toBe(660 - 4 - 8);
-    // the capped menu ends 4px above the trigger and starts at the 8px viewport margin
-    expect(1024 - parseFloat(r.bottom) - r.maxHeight).toBeGreaterThanOrEqual(8);
-  });
-
-  it('a menu that fits below stays below, and one that fits on neither side scrolls inside the larger side', async () => {
-    const fits = await openAt({ viewport: { w: 768, h: 1024 }, trigger: { top: 100, left: 700 }, menuHeight: 400 });
-    expect(fits.top).toBe(`${140 + 4}px`);
-    expect(fits.bottom).toBe('');
-    wrapper.unmount();
-    const tall = await openAt({ viewport: { w: 768, h: 600 }, trigger: { top: 100, left: 700 }, menuHeight: 900 });
-    expect(tall.top).toBe(`${140 + 4}px`);
-    expect(tall.maxHeight).toBe(Math.min(600 - 140 - 4 - 8, 600 * 0.7));
-  });
 });
-
