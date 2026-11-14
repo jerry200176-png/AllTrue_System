@@ -1,0 +1,18 @@
+updates:
+  - id: staff-2026-11-15-subject-credit-ui
+    published_at: "2026-11-15"
+    audiences:
+      - director
+      - super_admin
+    importance: digest
+    title: 已付費堂數可跨科轉用
+    summary: 同學生、同單價與堂長的另一科可先試算再轉用，舊欠款與原收據保留。
+    items:
+      - category: added
+        text: 在課程帳務選單開啟跨科轉用，先核對可轉堂數與金額；新批次需另外排課。
+      - category: added
+        text: 轉用紀錄可從原科或新批次查看，未使用、未排課且無後續異動時可申請還原。
+      - category: improved
+        text: 送出後若斷線，先重試確認結果，不要另建一筆；重新整理前請先確認。
+    source_refs:
+      - "changelog:2026-11-15:subject-credit-ui"

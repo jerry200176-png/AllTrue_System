@@ -622,6 +622,7 @@
                         <p class="action-section-label">課程與帳務</p>
                         <button class="action-dropdown-item" role="menuitem" @click="navigateToStudentCourse(hc); closeActionMenu()"><span class="material-symbols-outlined action-icon" aria-hidden="true">edit</span> 編輯</button>
                         <button class="action-dropdown-item" role="menuitem" title="在這裡打開學生帳務" @click="openTuitionLedger(hc); closeActionMenu()"><span class="material-symbols-outlined action-icon" aria-hidden="true">receipt_long</span> 在這裡看帳務</button>
+                        <button v-if="canSubjectCredit(hc)" class="action-dropdown-item" role="menuitem" @click="openSubjectCredit(hc); closeActionMenu()">跨科轉用與紀錄</button>
                         <button
                           v-if="courseHistoryReason(hc) === 'completed'"
                           class="action-dropdown-item action-dropdown-renew"
@@ -1126,6 +1127,7 @@
       @close="showCourseTransfer = false; courseTransferPrefill = null"
       @done="onCourseTransferDone"
     />
+    <SubjectCreditTransferModal :show="!!subjectCreditCourse" :course="subjectCreditCourse || {}" @close="subjectCreditCourse = null" @changed="loadCourses()" />
     <SiblingTransferModal
       :show="!!siblingTransferCourse"
       :course-id="siblingTransferCourse?.id"
@@ -1541,6 +1543,7 @@ import RenewMonthlyModal from '../components/course-management/RenewMonthlyModal
 import TransferSessionsModal from '../components/course-management/TransferSessionsModal.vue';
 import CourseTransferModal from '../components/course-management/CourseTransferModal.vue';
 import SiblingTransferModal from '../components/course-management/SiblingTransferModal.vue';
+import SubjectCreditTransferModal from '../components/course-management/SubjectCreditTransferModal.vue';
 import { transferPrefillFromBlockedEdit } from '../lib/courseTransferPrefill.js';
 import CourseSaveErrorAlert from '../components/course-management/CourseSaveErrorAlert.vue';
 import ContractAdjustmentChoiceModal from '../components/course-management/ContractAdjustmentChoiceModal.vue';
@@ -2360,6 +2363,10 @@ const onCourseTransferDone = async () => {
 // In-app #412: 轉給手足. The backend (SiblingContractTransferService) is the authority; this only hides the item
 // where it can never apply (not a director, not a plain open session contract, not paid).
 const siblingTransferCourse = ref(null);
+// History must remain reachable even when a transfer has exhausted/closed the original course.
+const subjectCreditCourse = ref(null);
+const canSubjectCredit = c => ['director', 'super_admin'].includes(props.userRole) && isSessionMode(c);
+const openSubjectCredit = c => { subjectCreditCourse.value = c; };
 const canSiblingTransfer = (c) => ['director', 'super_admin'].includes(props.userRole)
   && isSessionMode(c) && !isPackageMember(c) && c.status !== 'inactive' && !effectiveClosedReason(c)
   && c.payment_status === 'paid';
@@ -2930,6 +2937,7 @@ function onCourseManagerAction({ name, payload } = {}) {
     reschedule: () => runRowAction(c, 'reschedule'), substitute: () => runRowAction(c, 'substitute'),
     transfer: () => runRowAction(c, 'transfer'), 'contract-revert': () => openContractRevertModal(c),
     'sibling-transfer': () => openSiblingTransfer(c),
+    'subject-credit': () => openSubjectCredit(c),
     'learning-log': () => emit('navigate', { target: 'learning', studentName: c.student_name || '' }),
   };
   map[name]?.();
@@ -5799,11 +5807,11 @@ const { rowModel: rowModelFor, runRowAction, moveLesson, pickLesson } = useCours
   getLessonPicker: () => lessonPicker.value,
   effectiveClosedReason, planningStatusVisible, planningStatusFor, isSessionMode, isMonthlyMode, isManualOccurrenceCourse,
   canQuickAddSession, quickAddDisabledReason, canCloseCourse, purchaseActionIsRenew, purchaseActionLabel, isPackageMember,
-  isPaymentNoticeAvailable, canSiblingTransfer, featureSubstituteV2,
+  isPaymentNoticeAvailable, canSiblingTransfer, canSubjectCredit, featureSubstituteV2,
   isDetailsOpen: (c) => expandedDates.value.has(c.id),
   isSessionEditOpen: () => showSessionEditModal.value,
   requestDelete: (c) => { confirmDeleteTarget.value = c; },
-  openCourseTransfer: (c) => openCourseTransfer(c), openSiblingTransfer,
+  openCourseTransfer: (c) => openCourseTransfer(c), openSiblingTransfer, openSubjectCredit,
   openSessionEditFromAction, startSessionReschedule, startSubstitute, openSubstituteV2FromEdit,
   editCourse, toggleDatesAndMakeups, requestCoursePause, closeCourseInPlace, openManualSessionModal, openMonthlySessionModal,
   openQuickAddSessionModal, duplicateCourseForTeacher, openCommercialPurchaseEntry, openContractAdjustmentModal,
