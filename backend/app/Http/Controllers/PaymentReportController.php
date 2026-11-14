@@ -1844,23 +1844,12 @@ class PaymentReportController extends Controller
             }
             // #4597: money taken back from a count package's bill reopens the package (its mark and every owner member's).
             $package = $invoice && !$alreadyReversed && (string) $invoice->Status !== 'paid' ? $this->lockPackageForCourse($sc) : null;
-            if ($this->isSharedPackageObligation($package, $sc) && (int) $package->student_id === (int) $sc->StudentID) {
-                $this->dropLegacyPaidMarks($sc, $package);
-            }
-
-            $scPaid = 0;
             // F7 S7: recompute from the resolver; no invoice or no longer paid (partial or unpaid) clears the flag.
             // A reversed void bill (#436) clears it too unless a live bill backs the settlement: with no live bill the
             // resolver would read the stale flag itself as paid.
             // $sc already required above (missing/mismatched course returns void_invoice_mismatch).
-            $ledgerBacked = $invoice && !$autoVoided && (!$alreadyReversed || Invoice::query()->where('StudentClassID', $sc->ID)
-                ->where(fn ($q) => $q->whereNull('Status')->orWhere('Status', '!=', 'void'))->exists());
-            if ($ledgerBacked && $this->courseResolvedPaid($sc)) {
-                $scPaid = (int) $sc->Paid;
-            } else {
-                $reopen = $sc->getAttribute('closed_reason') === 'settled' ? ['closed_reason' => 'settled_pending'] : [];
-                $sc->update(['Paid' => 0, 'PayDate' => null] + $reopen);
-            }
+            $ledgerBacked = $invoice && !$autoVoided && (!$alreadyReversed || Invoice::courseHasLiveBill((int) $sc->ID));
+            $scPaid = CollectionTarget::unsettle($sc, $package, $ledgerBacked); // shared with the receipt move (#5113)
 
             $report->update([
                 'status'      => 'voided',

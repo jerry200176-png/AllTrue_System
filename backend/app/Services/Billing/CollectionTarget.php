@@ -134,6 +134,27 @@ final class CollectionTarget
             ->whereIn('StudentClass.ID', $courseIds)->where('course_packages.paid', true)->pluck('StudentClass.ID')->map(fn ($v) => (int) $v)->all();
     }
 
+    /**
+     * void()'s rule for what taking money back unsettles: a count package whose bill is no longer paid reopens (its mark and
+     * every owner member's, #4597); the course keeps Paid only while a live bill backs it and the resolver still says paid
+     * (F7 S7, #436, G-009). $package is the course's locked package when the bill is no longer paid, else null.
+     *
+     * @return int the course's Paid flag afterwards
+     */
+    public static function unsettle(StudentClass $sc, ?CoursePackage $package, bool $ledgerBacked): int
+    {
+        if ($package !== null && strtolower((string) ($sc->getAttribute('ScheduleMode') ?? 'count')) !== 'date' && (int) $package->student_id === (int) $sc->StudentID) {
+            PackagePaidMarks::drop($sc, $package);
+        }
+        if ($ledgerBacked && self::resolvedPaid($sc)) {
+            return (int) $sc->Paid;
+        }
+        $reopen = $sc->getAttribute('closed_reason') === 'settled' ? ['closed_reason' => 'settled_pending'] : [];
+        $sc->update(['Paid' => 0, 'PayDate' => null] + $reopen);
+
+        return 0;
+    }
+
     /** RFC §R4: round(rate × total_sessions) for a per-session count package; null when it cannot be determined. */
     public static function packagePrice(CoursePackage $package): ?int
     {

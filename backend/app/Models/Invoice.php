@@ -150,6 +150,16 @@ class Invoice extends Model
     }
 
     /**
+     * Whether a course still has a live (non-void) bill to back its settlement. When money comes off a void bill and none is
+     * left, the payable resolver would read the stale Paid flag itself as paid, so callers clear the flag instead (void(), #436;
+     * the receipt move, #5113).
+     */
+    public static function courseHasLiveBill(int $courseId): bool
+    {
+        return self::query()->where('StudentClassID', $courseId)->where(fn ($q) => $q->whereNull('Status')->orWhere('Status', '!=', 'void'))->exists();
+    }
+
+    /**
      * SQL: this invoice's net applied Payment rows (positive non-void minus every reversal), the same rule as
      * InvoiceAmountReconciliationService. For SQL pre-filters only; the resolver still decides the real amount.
      */
