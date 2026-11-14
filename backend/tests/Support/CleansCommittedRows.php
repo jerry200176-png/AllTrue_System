@@ -13,8 +13,11 @@ use Illuminate\Support\Facades\DB;
  * setUp: record the highest auto-increment primary key of every table. tearDown (always runs): delete the rows above
  * it, with foreign key checks off so table order does not matter. A table that no longer exists is skipped.
  *
- * Limit: it removes rows the test INSERTED with a generated id. A row inserted with an explicit id below the table's
- * maximum, or a pre-existing row the test updated, is not covered: restore those in the test itself.
+ * Known gaps (the test must clean these itself):
+ *  - tables with a UUID, string or composite primary key (only single auto-increment keys are tracked);
+ *  - a row inserted with an explicit id at or below the table's maximum at setUp;
+ *  - a pre-existing row the test updated or deleted (changes are not reverted);
+ *  - DDL the test ran (indexes, columns), and files, caches or other connections' session state.
  *
  * Laravel runs `setUp<TraitName>` of every used trait during setUp, after RefreshDatabase.
  */

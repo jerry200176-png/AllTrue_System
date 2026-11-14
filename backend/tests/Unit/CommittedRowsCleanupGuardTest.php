@@ -21,7 +21,10 @@ class CommittedRowsCleanupGuardTest extends TestCase
                 continue;
             }
             $code = (string) file_get_contents($file->getPathname());
-            if (preg_match('/\$connectionsToTransact\s*=\s*\[\s*\]/', $code) !== 1) {
+            // Property form (`$connectionsToTransact = []`) and method form (`function connectionsToTransact() { return []; }`).
+            $commits = preg_match('/\$connectionsToTransact\s*=\s*\[\s*\]/', $code) === 1
+                || preg_match('/function\s+connectionsToTransact\s*\(/', $code) === 1;
+            if (!$commits) {
                 continue;
             }
             $found++;
