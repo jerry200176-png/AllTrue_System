@@ -967,8 +967,31 @@ test('layout guard: course-mgmt (chip dialog) Esc, outside click, return focus a
   await expect(overlay).toBeVisible();
   const date = overlay.locator('input[type="date"]').first();
   expect(await topmost(date), 'the form field is the topmost element').toBe(true);
-  await date.focus();
+  // no manual focus(): the chip dialog's close must not hand focus back to the chip behind the form
   await expect(date).toBeFocused();
+  expect(await focusIn(overlay), 'focus is inside the 補課 form').toBe(true);
+});
+
+// Initial focus of the two form dialogs: desktop lands on the first field with the caret at the end; a touch device must not get the keyboard,
+// so focus sits on the dialog itself (still inside, for screen readers).
+for (const form of [COURSE_DIALOGS.billing, COURSE_DIALOGS.package]) {
+  test(`layout guard: course-mgmt (${form.key}) initial focus on desktop is the first field`, async ({ page }) => {
+    await openCourseDialog(page, form, { width: 1536, height: 784 });
+    const state = await page.evaluate(() => ({ tag: document.activeElement?.tagName, caretAtEnd: document.activeElement.selectionStart === document.activeElement.value?.length || document.activeElement.selectionStart === null }));
+    expect(state.tag).toBe('INPUT');
+    expect(state.caretAtEnd, 'the pre-filled text is not selected').toBe(true);
+  });
+}
+test.describe('touch device', () => {
+  test.use({ hasTouch: true, isMobile: true });
+  for (const form of [COURSE_DIALOGS.billing, COURSE_DIALOGS.package]) {
+    test(`layout guard: course-mgmt (${form.key}) initial focus on a touch device is the dialog, not a field`, async ({ page }) => {
+      const dialog = await openCourseDialog(page, form);
+      expect(await page.evaluate(() => matchMedia('(pointer: coarse)').matches), 'the context emulates a coarse pointer').toBe(true);
+      await expect(dialog).toBeFocused();
+      expect(await page.evaluate(() => ['INPUT', 'SELECT', 'TEXTAREA'].includes(document.activeElement?.tagName))).toBe(false);
+    });
+  }
 });
 
 // 暫停課程 and 刪除課程: Esc, 取消 and an outside click close them and focus returns to the row's 更多 button; the buttons act once.

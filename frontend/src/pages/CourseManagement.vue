@@ -1327,7 +1327,7 @@
 
     <!-- 預排日期／暫停中 chip question (shared Dialog; issue 4989 slice 7b). Esc and an outside click close it, like the old overlay. -->
     <Dialog :open="!!chipActionDialog" @update:open="(v) => { if (!v) closeChipActionDialog(); }">
-      <DialogContent :show-close-button="false" class="tw:sm:max-w-sm" data-testid="chip-action-dialog">
+      <DialogContent :show-close-button="false" class="tw:sm:max-w-sm" data-testid="chip-action-dialog" @close-auto-focus="(e) => focusOpenLegacyForm(e, showQuickAddSessionModal)">
         <DialogHeader class="tw:text-left">
           <DialogTitle class="tw:text-tpl-list tw:font-bold tw:text-balance">{{ chipActionDialog?.title }}</DialogTitle>
           <DialogDescription class="tw:text-tpl-body tw:text-tpl-secondary tw:text-pretty">{{ chipActionDialog?.message }}</DialogDescription>
@@ -1514,6 +1514,7 @@ import RestoreCancelledSessionDialog from '../components/course-management/Resto
 import { isVisibleCancelledSession } from '../lib/sessionOccurrenceFilter.js';
 import { askConfirm } from '../composables/useConfirmDialog';
 import { useEditDialogCloseGuard } from '../composables/course-management/useEditDialogCloseGuard';
+import { focusFirstDialogField, focusOpenLegacyForm } from '../composables/course-management/dialogFocus';
 import LessonPickerSelect from '../components/course-management/LessonPickerSelect.vue';
 import CourseEditForm from '../components/CourseEditForm.vue';
 import { Alert } from '@/components/ui/alert';
@@ -2841,15 +2842,6 @@ function closeCourseManager() {
 }
 // The one 放棄未儲存的變更？ question every form dialog on this page asks (編輯課程, 更正未收款堂數, 轉成多科共用).
 const askDiscardChanges = (message) => askConfirm({ title: '放棄未儲存的變更？', message, confirmLabel: '放棄變更', danger: true });
-// A form dialog opens with its first field focused and the caret at the end (a plain focus() would select the pre-filled text, and one keystroke would replace it).
-function focusFirstDialogField(event) {
-  const root = event.target?.closest?.('[data-slot="dialog-content"]') ?? event.target;
-  const field = root?.querySelector?.('input:not([type="checkbox"]), select, textarea');
-  if (!field) return;
-  event.preventDefault();
-  field.focus();
-  try { const end = String(field.value ?? '').length; field.setSelectionRange(end, end); } catch (_) { /* number and select fields have no caret */ }
-}
 // A dialog opened from a row's 更多 menu hands focus back to that menu button when it closes (the menu item that opened it is gone by then).
 function returnFocusToCourseRow(event, course) {
   const id = course?.id ?? course?.ID;
