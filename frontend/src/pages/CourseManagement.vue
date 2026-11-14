@@ -1032,6 +1032,7 @@
         data-testid="billing-correction-dialog"
         @interact-outside="(e) => e.preventDefault()"
         @escape-key-down="(e) => { if (e.isComposing || e.keyCode === 229) e.preventDefault(); }"
+        @open-auto-focus="focusFirstDialogField"
         @close-auto-focus="(e) => returnFocusToCourseRow(e, billingCorrectionCourse)"
       >
         <DialogHeader :class="sheetDialog.header">
@@ -1200,6 +1201,7 @@
         data-testid="package-conversion-dialog"
         @interact-outside="(e) => e.preventDefault()"
         @escape-key-down="(e) => { if (e.isComposing || e.keyCode === 229) e.preventDefault(); }"
+        @open-auto-focus="focusFirstDialogField"
         @close-auto-focus="(e) => returnFocusToCourseRow(e, packageConversionCourse)"
       >
         <DialogHeader :class="sheetDialog.header">
@@ -1381,7 +1383,7 @@
         </DialogHeader>
   <template v-if="pauseConfirmTarget">
           <p class="tw:m-0 tw:text-tpl-body tw:text-tpl-secondary">{{ pauseConfirmTarget.student_name || '學生' }} — {{ getSubjectLabel(pauseConfirmTarget.subject) }}</p>
-          <div class="tw:grid tw:gap-2 tw:rounded-2xl tw:bg-muted tw:p-4">
+          <div class="tw:grid tw:gap-2 tw:rounded-2xl tw:border tw:border-border tw:bg-muted tw:p-4">
             <p class="tw:m-0 tw:text-tpl-body tw:font-semibold">{{ pauseConfirmIsResume ? '恢復後的影響' : '暫停後的影響' }}</p>
             <ul class="tw:m-0 tw:grid tw:list-disc tw:gap-1 tw:pl-5 tw:text-tpl-caption tw:text-tpl-secondary">
               <li v-for="item in pauseConfirmImpacts" :key="item">{{ item }}</li>
@@ -2839,6 +2841,15 @@ function closeCourseManager() {
 }
 // The one 放棄未儲存的變更？ question every form dialog on this page asks (編輯課程, 更正未收款堂數, 轉成多科共用).
 const askDiscardChanges = (message) => askConfirm({ title: '放棄未儲存的變更？', message, confirmLabel: '放棄變更', danger: true });
+// A form dialog opens with its first field focused and the caret at the end (a plain focus() would select the pre-filled text, and one keystroke would replace it).
+function focusFirstDialogField(event) {
+  const root = event.target?.closest?.('[data-slot="dialog-content"]') ?? event.target;
+  const field = root?.querySelector?.('input:not([type="checkbox"]), select, textarea');
+  if (!field) return;
+  event.preventDefault();
+  field.focus();
+  try { const end = String(field.value ?? '').length; field.setSelectionRange(end, end); } catch (_) { /* number and select fields have no caret */ }
+}
 // A dialog opened from a row's 更多 menu hands focus back to that menu button when it closes (the menu item that opened it is gone by then).
 function returnFocusToCourseRow(event, course) {
   const id = course?.id ?? course?.ID;
