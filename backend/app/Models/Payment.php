@@ -44,7 +44,15 @@ class Payment extends Model
      */
     public static function isUnlinkedLegacyReversal(object $p): bool
     {
-        return self::isReversal($p) && $p->payment_report_id === null && !in_array((string) $p->Method, ['transfer_out', 'refund'], true);
+        return self::isReversal($p) && $p->payment_report_id === null && !self::isCreditMovement($p)
+            && !in_array((string) $p->Method, ['transfer_out', 'refund'], true);
+    }
+
+    /** Internal non-cash movement only; a bank transfer is cash, and an invalid sign is not silently trusted. */
+    public static function isCreditMovement(object $p): bool
+    {
+        return ((int) $p->Amount > 0 && in_array((string) $p->Method, ['transfer_in', 'transfer_reversal_in'], true))
+            || ((int) $p->Amount < 0 && in_array((string) $p->Method, ['transfer_out', 'transfer_reversal_out'], true));
     }
 
     /** A receipt's own money row: positive, not void, linked by payment_report_id or (older receipts) by the report's payment_id. */

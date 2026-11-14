@@ -1778,6 +1778,17 @@ class PaymentReportController extends Controller
             $invoice = null;
             $alreadyReversed = false;
             $autoVoided = false;
+            if ($invoiceId === null) {
+                // Legacy receipt headers can omit InvoiceID while their cash still backs this course.
+                // Do not guess a linkage or let flag-only cancellation bypass an outstanding credit move.
+                $headers = Invoice::where('StudentClassID', $sc->ID)->where('StudentID', $reportStudentId)->orderBy('id')->lockForUpdate()->get(['id']);
+                foreach ($headers as $header) {
+                    $rows = Payment::where('InvoiceID', $header->id)->orderBy('id')->lockForUpdate()->get();
+                    if ((int) $rows->filter(fn ($p) => Payment::isCreditMovement($p))->sum('Amount') < 0) {
+                        return $this->voidTransferredCreditRefusal();
+                    }
+                }
+            }
             // Strict non-null: InvoiceID=0 must not take the legacy null path (truthy check would).
             if ($invoiceId !== null) {
                 $invoice = Invoice::query()->whereKey($invoiceId)->lockForUpdate()->first();
@@ -1787,11 +1798,12 @@ class PaymentReportController extends Controller
                     return $this->voidMismatchRefusal($invoice ? 'invoice_other_owner' : 'invoice_not_found', $report);
                 }
                 $payments = $invoice->payments()->lockForUpdate()->get();
+                // Current locked rows, as Invoice::netPaidSql; never a pre-wait snapshot.
+                $net = $payments->sum(fn ($p) => (int) $p->Amount > 0 && (string) $p->Method !== 'void' ? (int) $p->Amount : -abs((int) $p->Amount));
                 if ((string) $invoice->Status === 'void') {
                     // In-app #436: 更正並作廢 voided the bill and reversed all of its money but left this receipt
                     // confirmed. Undo the receipt alone; a second reversal would take the money back twice.
                     // A void bill that still holds money stays refused (Invoice::netPaidSql rule).
-                    $net = $payments->sum(fn ($p) => (int) $p->Amount > 0 && (string) $p->Method !== 'void' ? (int) $p->Amount : -abs((int) $p->Amount));
                     if ($net > 0) {
                         return $this->voidMismatchRefusal('invoice_void_holds_money', $report);
                     }
@@ -1810,6 +1822,10 @@ class PaymentReportController extends Controller
                             'code' => 'legacy_reversal_unreconciled',
                         ], 409);
                     }
+                }
+                $transferNet = (int) $payments->filter(fn ($p) => Payment::isCreditMovement($p))->sum('Amount');
+                if (!$alreadyReversed && $transferNet < 0 && $originalAmount > $net) {
+                    return $this->voidTransferredCreditRefusal();
                 }
             }
 
@@ -1864,6 +1880,11 @@ class PaymentReportController extends Controller
                 'student_class_paid' => $scPaid,
             ]);
         });
+    }
+
+    private function voidTransferredCreditRefusal()
+    {
+        return response()->json(['message' => '這筆收款的部分額度已轉用，請先還原轉用後再撤銷原收款。', 'code' => 'void_transferred_credit'], 409);
     }
 
     private function isStandaloneCountCourse(StudentClass $sc): bool

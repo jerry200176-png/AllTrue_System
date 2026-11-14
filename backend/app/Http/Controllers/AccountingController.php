@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\BillingNote;
 use App\Models\ClassSession;
 use App\Models\Invoice;
+use App\Models\Payment;
 use App\Models\PaymentReport;
 use App\Models\SecurityAuditEvent;
 use App\Models\Student;
@@ -556,9 +557,13 @@ class AccountingController extends Controller
             // A receipt cancelled by a later reversal row (撤銷: Method 'void' / negative Amount, same report) is no
             // longer money on this invoice. Allocating it anyway showed an already-reversed receipt as 多收.
             $reversedReceiptIds = [];
+            $transfers = $payments->filter(fn ($p) => Payment::isCreditMovement($p))->keyBy('id');
             $receiptRows = $payments->filter(fn ($p) => (int) ($p->Amount ?? 0) > 0 && (string) ($p->Method ?? '') !== 'void'
+                && !$transfers->has((int) $p->id)
                 && !isset($restatedPaymentIds[(int) $p->id]))->sortBy('id')->values();
-            $reversalRows = $payments->filter(fn ($p) => ((int) ($p->Amount ?? 0) < 0 || (string) ($p->Method ?? '') === 'void') && !((string) ($p->Method ?? '') === 'refund' && (int) ($p->Amount ?? 0) < 0))->sortBy('id');
+            $reversalRows = $payments->filter(fn ($p) => ((int) ($p->Amount ?? 0) < 0 || (string) ($p->Method ?? '') === 'void')
+                && !$transfers->has((int) $p->id)
+                && !((string) ($p->Method ?? '') === 'refund' && (int) ($p->Amount ?? 0) < 0))->sortBy('id');
             foreach ($reversalRows as $reversal) {
                 $reportId = (int) ($reversal->payment_report_id ?? 0);
                 $amount = abs((int) ($reversal->Amount ?? 0));
@@ -584,20 +589,31 @@ class AccountingController extends Controller
             }
 
             // A refund cut the total by the same money it returned (退費), so the receipts still apply in full.
-            $remainingInvoiceAmount = $totalAmount + (int) $payments->filter(fn ($p) => (string) ($p->Method ?? '') === 'refund' && (int) $p->Amount < 0)->sum(fn ($p) => -(int) $p->Amount);
-            $paymentRows = $payments->map(function ($payment) use ($restatedPaymentIds, $reversedReceiptIds, $reportsByPaymentId, $reportsById, $invoice, &$invoiceAnomalies, &$remainingInvoiceAmount) {
+            $receiptCapacity = $totalAmount + (int) $payments->filter(fn ($p) => (string) ($p->Method ?? '') === 'refund' && (int) $p->Amount < 0)->sum(fn ($p) => -(int) $p->Amount);
+            $transferNet = (int) $transfers->sum('Amount');
+            $remainingTransferCredit = min($receiptCapacity, max(0, $transferNet));
+            // Like a refund, outgoing credit remains accounted for by the original unchanged receipt.
+            $remainingInvoiceAmount = max(0, $receiptCapacity + max(0, -$transferNet) - $remainingTransferCredit);
+            $paymentRows = $payments->map(function ($payment) use ($restatedPaymentIds, $reversedReceiptIds, $reportsByPaymentId, $reportsById, $invoice, $transfers, &$remainingTransferCredit, &$invoiceAnomalies, &$remainingInvoiceAmount) {
                 $report = $reportsByPaymentId->get((int) $payment->id)
                     ?? ($payment->payment_report_id ? $reportsById->get((int) $payment->payment_report_id) : null);
                 $isRestatement = isset($restatedPaymentIds[(int) $payment->id]);
+                $isTransfer = !$isRestatement && $transfers->has((int) $payment->id);
                 // Recorded zero-value history uses the existing 已更正 chip, never an applied cash receipt.
-                $isVoid = $isRestatement || (int) ($payment->Amount ?? 0) < 0 || (string) ($payment->Method ?? '') === 'void';
+                $isVoid = $isRestatement || (!$isTransfer && ((int) ($payment->Amount ?? 0) < 0 || (string) ($payment->Method ?? '') === 'void'));
                 $amount = (int) ($payment->Amount ?? 0);
                 $appliedToInvoice = 0;
                 $unappliedAmount = 0;
                 $isReversed = isset($reversedReceiptIds[(int) $payment->id]);
                 $applicationStatus = (string) ($payment->Method ?? '') === 'refund' && (int) $payment->Amount < 0 ? 'refunded' : ($isVoid || $isReversed ? 'voided' : 'applied');
 
-                if (!$isVoid && !$isReversed && $amount > 0) {
+                if ($isTransfer) {
+                    $applicationStatus = 'transferred';
+                    if ($amount > 0) {
+                        $appliedToInvoice = min($amount, $remainingTransferCredit);
+                        $remainingTransferCredit -= $appliedToInvoice;
+                    }
+                } elseif (!$isVoid && !$isReversed && $amount > 0) {
                     $appliedToInvoice = min($amount, max(0, $remainingInvoiceAmount));
                     $remainingInvoiceAmount -= $appliedToInvoice;
                     $unappliedAmount = max(0, $amount - $appliedToInvoice);
@@ -609,7 +625,7 @@ class AccountingController extends Controller
                 }
 
                 // 轉課 transfer_in is a ledger carry-over, not a receipted cash payment.
-                if (!$isVoid && !$report && (string) ($payment->Method ?? '') !== 'transfer_in') {
+                if (!$isVoid && !$report && !$isTransfer) {
                     $invoiceAnomalies[] = $this->ledgerAnomaly(
                         'payment_without_receipt',
                         'warning',
@@ -677,6 +693,7 @@ class AccountingController extends Controller
                 'amount_discrepancy' => $projection['amount_discrepancy'],
                 'period_sessions' => $projection['period_sessions'],
                 'paid_amount' => $paidAmount,
+                'transferred_amount' => max(0, -$transferNet),
                 'calculated_applied_amount' => $appliedAmount,
                 'voided_amount' => $voidedAmount,
                 'overpaid_amount' => $overpaidAmount,

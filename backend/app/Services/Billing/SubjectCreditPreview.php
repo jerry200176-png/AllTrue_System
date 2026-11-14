@@ -2,8 +2,9 @@
 
 namespace App\Services\Billing;
 
-use App\Models\{ClassSession, Invoice, InvoiceItem, Payment, PaymentReport, Student, StudentClass};
+use App\Models\{ClassSession, Invoice, InvoiceItem, Payment, PaymentReport, Student, StudentClass, SubjectCreditTransfer};
 use App\Services\SessionDeductionService;
+use App\Services\SubstituteScheduleService;
 use App\Services\Scheduling\ContractSessionSchedule;
 use App\Support\SessionStatus;
 use Brick\Math\BigRational;
@@ -17,7 +18,7 @@ use Illuminate\Support\Facades\DB;
  */
 final class SubjectCreditPreview
 {
-    public function __construct(private ContractMoneyVerdict $verdict)
+    public function __construct(private ContractMoneyVerdict $verdict, private SubjectCreditFunding $funding)
     {
     }
 
@@ -81,11 +82,21 @@ final class SubjectCreditPreview
             $q->where('StudentClassID', $source->ID)->orWhere('InvoiceID', $invoice->getKey());
         })->orderBy('id')->lockForUpdate()->get();
         $sessions = ClassSession::query()->where('StudentClassID', $source->ID)->orderBy('id')->lockForUpdate()->get();
+        $bookings = SubjectCreditState::lockBookings((int) $source->ID);
+        $projected = $sessions->filter(fn ($s) => !in_array(strtolower((string) $s->Status), SessionStatus::futureReservationExclusionStatuses(), true))
+            ->mapWithKeys(fn ($s) => [SubstituteScheduleService::occurrenceKey((int) $source->ID, (string) $s->SessionDate, $s->StartTime) => true]);
+        foreach ($bookings as $booking) {
+            if ($booking->schedule_date !== null && (!$projected->has(SubstituteScheduleService::occurrenceKey((int) $source->ID, $booking->schedule_date, $booking->start_time))
+                || (int) $booking->student_id !== (int) $student->id || (int) $booking->branch_id !== (int) $student->CampusID)) {
+                $this->refuse('subject_credit_projection_pending', '來源已有尚未完成堂次同步的排課，請先完成排課同步再轉用。');
+            }
+        }
 
+        $known = $this->funding->knownPayments($source, $invoice, $payments, (int) $student->CampusID);
         $paid = (int) $payments->sum('Amount');
         $money = $this->verdict->forCourse($source);
-        if ($payments->isEmpty() || $payments->contains(fn ($p) => (int) $p->Amount <= 0
-                || in_array(strtolower((string) $p->Method), ['void', 'refund', 'transfer_in', 'transfer_out'], true))
+        if ($payments->isEmpty() || $payments->contains(fn ($p) => !isset($known[(int) $p->id]) && ((int) $p->Amount <= 0
+                || in_array(strtolower((string) $p->Method), ['void', 'refund', 'transfer_in', 'transfer_out', 'transfer_reversal_in', 'transfer_reversal_out'], true)))
             || $reports->contains(fn ($r) => $r->status === 'pending')
             || $items->count() !== 1 || (int) $items->first()->StudentClassID !== (int) $source->ID
             || (int) $items->first()->Amount !== $paid
@@ -148,11 +159,12 @@ final class SubjectCreditPreview
             'source' => $source->getAttributes(), 'target' => $target->getAttributes(),
             'request' => ['target_course_id' => (int) $input['target_course_id'], 'sessions' => (int) $input['sessions']],
             'invoice' => $invoice->getAttributes(), 'items' => $items->toArray(), 'payments' => $payments->toArray(),
-            'reports' => $reports->toArray(), 'sessions' => $sessions->toArray(), 'usage' => $usage,
+            'reports' => $reports->toArray(), 'sessions' => $sessions->toArray(), 'bookings' => $bookings->toArray(), 'usage' => $usage,
         ];
 
         return ['invoice' => $invoice, 'response' => [
-            'preview' => true, 'execution_available' => false,
+            'preview' => true, 'execution_available' => SubjectCreditTransfer::storageReady()
+                && (int) $source->RemainingSessions === $remaining && (int) $source->UsedSessions === $used,
             'state_hash' => hash('sha256', json_encode($state, JSON_THROW_ON_ERROR)),
             'plan' => [
                 'source_course_id' => (int) $source->ID, 'destination_template_course_id' => (int) $target->ID,

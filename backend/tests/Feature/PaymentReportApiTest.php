@@ -2028,7 +2028,7 @@ class PaymentReportApiTest extends TestCase
             ->assertStatus(409)->assertJsonFragment(['code' => 'legacy_reversal_unreconciled']);
     }
 
-    public function test_inapp_521_transfer_out_row_is_not_a_legacy_void_and_the_receipt_voids_normally(): void
+    public function test_inapp_521_transfer_out_is_not_a_legacy_void_but_cannot_fund_an_entire_receipt_reversal(): void
     {
         $h = ['Authorization' => 'Bearer ' . $this->createDirectorToken([1]), 'Accept' => 'application/json'];
         $student = $this->createStudent(1);
@@ -2038,9 +2038,13 @@ class PaymentReportApiTest extends TestCase
         Payment::create(['InvoiceID' => $invoice->id, 'Amount' => -3000, 'PaidAt' => '2026-06-27', 'Method' => 'transfer_out']);
         $report = $this->confirmedReportOn($student, $sc, $invoice, $a, 8000, 'r521-out');
 
-        $this->withHeaders($h)->putJson("/api/v1/payment-reports/{$report->id}/void", ['void_reason' => 'x'])->assertOk();
+        // #535: transfer_out remains non-cash, but cancelling 8000 against the retained 5000 would remove carried credit twice.
+        $this->withHeaders($h)->putJson("/api/v1/payment-reports/{$report->id}/void", ['void_reason' => 'x'])
+            ->assertStatus(409)->assertJsonPath('code', 'void_transferred_credit');
 
-        $this->assertSame(1, Payment::where('InvoiceID', $invoice->id)->where('payment_report_id', $report->id)->where('Amount', -8000)->count());
+        $this->assertSame(0, Payment::where('InvoiceID', $invoice->id)->where('payment_report_id', $report->id)->where('Amount', -8000)->count());
+        $this->assertSame('confirmed', $report->fresh()->status);
+        $this->assertSame(5000, (int) Payment::where('InvoiceID', $invoice->id)->sum('Amount'));
     }
 
     public function test_inapp_521_void_is_idempotent_when_a_reversal_is_already_linked_to_the_report(): void

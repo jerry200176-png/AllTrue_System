@@ -54,7 +54,7 @@ trait SubjectCreditFixtures
     protected function businessSnapshot(): array
     {
         $snapshot = [];
-        foreach (['StudentClass', 'ClassSession', 'Invoice', 'InvoiceItem', 'Payment', 'payment_reports', 'LearningRecord', 'StudentSingIn', 'session_deduction_ledger'] as $table) {
+        foreach (['StudentClass', 'ClassSession', 'schedules', 'Invoice', 'InvoiceItem', 'Payment', 'payment_reports', 'LearningRecord', 'StudentSingIn', 'session_deduction_ledger'] as $table) {
             $snapshot[$table] = DB::table($table)->orderBy('id')->get()->toJson();
         }
 
