@@ -10,6 +10,7 @@ use App\Models\UserCampus;
 use Database\Factories\CampusFactory;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\TestCase;
 
 /** 學校整理 merge + undo (#517). Fake school names only. */
@@ -147,6 +148,48 @@ class SchoolMergeApiTest extends TestCase
         $s->update(['SchoolName' => '丁測國中']);
         $this->as($dir)->postJson("/api/v1/school-merge/$id/undo", ['campus_id' => $a])->assertOk()->assertJsonPath('data.students_restored', 0);
         $this->assertSame('丁測國中', $s->fresh()->SchoolName);
+    }
+
+    /** #5104: a case/accent-only edit is still a later manual edit. */
+    #[DataProvider('manualSchoolSpellingEdits')]
+    public function test_undo_preserves_exact_manual_school_spelling(string $edited, bool $editStudent): void
+    {
+        $a = (int) CampusFactory::new()->create()->id;
+        $dir = $this->staff('A', $a);
+        $canonical = 'École中學';
+        $student = $this->student($a, '甲測國中');
+        $control = $this->student($a, '乙測國中');
+        $period = $this->period($a, '甲測國中', 1);
+        $periodControl = $this->period($a, '乙測國中', 2);
+        $id = $this->as($dir)->postJson('/api/v1/school-merge', [
+            'campus_id' => $a, 'canonical' => $canonical, 'variants' => ['甲測國中', '乙測國中'],
+        ])->assertCreated()->assertJsonPath('data.students_updated', 2)
+            ->assertJsonPath('data.periods_renamed', 2)->json('data.request_id');
+
+        if ($editStudent) {
+            $student->update(['SchoolName' => $edited]);
+        } else {
+            $period->update(['school_name' => $edited]);
+        }
+        $this->as($dir)->postJson("/api/v1/school-merge/$id/undo", ['campus_id' => $a])
+            ->assertOk()->assertJsonPath('data.students_restored', $editStudent ? 1 : 2)
+            ->assertJsonPath('data.periods_restored', $editStudent ? 2 : 1);
+
+        // Exact PHP strings: a collation-insensitive database assertion would miss this bug.
+        $this->assertSame($editStudent ? $edited : '甲測國中', $student->fresh()->SchoolName);
+        $this->assertSame($editStudent ? '甲測國中' : $edited, $period->fresh()->school_name);
+        $this->assertSame('乙測國中', $control->fresh()->SchoolName);
+        $this->assertSame('乙測國中', $periodControl->fresh()->school_name);
+    }
+
+    public static function manualSchoolSpellingEdits(): array
+    {
+        return [
+            'student case-only' => ['école中學', true],
+            'student accent-only' => ['Ecole中學', true],
+            'period case-only' => ['école中學', false],
+            'period accent-only' => ['Ecole中學', false],
+        ];
     }
 
     public function test_merge_and_undo_never_touch_another_campus(): void
