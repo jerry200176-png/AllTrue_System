@@ -44,8 +44,7 @@ describe('課程查找 帳務資料 table on the page template', () => {
 
   it('red is only used for owed money in this table: the summary total, the anomaly line and the error line', () => {
     const reds = billing.match(/toneText\.danger/g) || [];
-    // summary total, error line, and the anomaly line once in the desktop actions and once in the stacked (under 1024px) actions
-    expect(reds.length).toBe(4);
+    expect(reds.length).toBe(3);
     expect(billing).toMatch(/toneText\.danger, 'tw:font-semibold tw:tabular-nums'\]">尚有未繳/);
     expect(toneText.danger).toContain('--ds-danger-text');
     expect(toneBadge.danger).toContain('--ds-danger-wash');

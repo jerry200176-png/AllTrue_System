@@ -143,7 +143,7 @@
           <span v-else-if="pendingLeaveWorkflows.length" class="tw:text-tpl-caption tw:text-tpl-secondary tw:text-pretty">先確認案件摘要，再進入主任收件匣完成決策。</span>
           <span v-else class="tw:text-tpl-caption tw:text-tpl-secondary">目前沒有待處理的家長請假。</span>
         </div>
-        <button v-if="pendingLeaveWorkflows.length" :class="[rowAction.secondary, 'pending-leave-summary__cta pending-leave-summary__cta--all tw:max-md:w-full']" type="button" @click="emit('navigate', { target: 'director', section: 'exception-workflows' })">查看全部請假<span aria-hidden="true">→</span></button>
+        <button v-if="pendingLeaveWorkflows.length" :class="[rowAction.secondary, 'pending-leave-summary__cta pending-leave-summary__cta--all tw:gap-1 tw:max-md:w-full']" type="button" @click="emit('navigate', { target: 'director', section: 'exception-workflows' })">查看全部請假<span aria-hidden="true">→</span></button>
       </div>
       <div v-if="pendingLeaveLoading" class="tw:grid tw:gap-3 tw:px-5 tw:pb-4" aria-hidden="true">
         <Skeleton v-for="idx in 2" :key="idx" class="pending-leave-case--skeleton tw:h-18 tw:w-full tw:rounded-xl tw:motion-reduce:animate-none" />
@@ -164,7 +164,7 @@
               <p class="tw:m-0 tw:mt-1 tw:text-tpl-caption tw:text-tpl-secondary tw:text-pretty">{{ pendingLeaveSessionLabel(workflow) }}</p>
               <p class="tw:m-0 tw:text-tpl-caption tw:text-tpl-secondary tw:text-pretty">原因：<span v-if="workflow.payload?.is_late" :class="['tw:mr-1 tw:font-bold', toneText.warning]">【臨時請假】</span>{{ workflow.payload?.reason || '家長未提供原因' }}</p>
             </div>
-            <button :class="[rowAction.primary, 'pending-leave-case__cta tw:max-md:w-full']" type="button" :aria-label="`處理這筆請假：${workflow.student?.name || '未命名學生'}`" @click="openPendingLeaveWorkflow(workflow)">處理這筆請假<span aria-hidden="true">→</span></button>
+            <button :class="[rowAction.primary, 'pending-leave-case__cta tw:gap-1 tw:max-md:w-full']" type="button" :aria-label="`處理這筆請假：${workflow.student?.name || '未命名學生'}`" @click="openPendingLeaveWorkflow(workflow)">處理這筆請假<span aria-hidden="true">→</span></button>
           </article>
           <div v-if="pendingLeaveWorkflows.length > pendingLeavePreview.length" class="tw:border-t tw:border-border tw:px-5 tw:py-2">
             <button :class="[rowAction.secondary, 'pending-leave-summary__more']" type="button" @click="emit('navigate', { target: 'director', section: 'exception-workflows' })">還有 {{ pendingLeaveWorkflows.length - pendingLeavePreview.length }} 筆，查看全部</button>
@@ -747,16 +747,28 @@
                     <span v-else :class="dataTable.sub">核對入帳後才能開收據</span>
                   </td>
                   <td :class="[dataTable.cell, dataTable.stackCell, dataTable.stackWide, 'tw:pr-5']">
-                    <div v-if="billingStacked" class="tw:flex tw:flex-wrap tw:items-center tw:gap-2">
+                    <div class="tw:flex tw:flex-wrap tw:items-center tw:gap-2">
+                      <button
+                        v-if="isPaymentNoticeAvailable(row.course) && !billingPackageLead(row, group)"
+                        :class="[rowAction.secondary, 'btn-payment-slip', 'tw:max-lg:hidden']"
+                        data-testid="billing-payment-slip-action"
+                        type="button"
+                        title="產生繳費單"
+                        @click="openPaymentSlip(row.course)"
+                      >繳費單</button>
+                      <button :class="[rowAction.secondary, 'btn-invoices', 'tw:max-lg:hidden']" type="button" title="在這裡打開學生帳務" @click="openTuitionLedger(row.course)">在這裡看帳務</button>
+                      <span v-if="billingPackageLead(row, group)" :class="[dataTable.sub, 'tw:max-w-[22rem] tw:max-lg:order-last tw:max-lg:max-w-none tw:max-lg:basis-full']" data-testid="billing-package-follower">共用方案是一筆款項，請在「{{ getSubjectLabel(billingPackageLead(row, group).subject) }}」那列處理繳費單與繳費回報</span>
+                      <button v-else-if="showsBillingRowNextAction(row.course)" :class="[rowAction.primary, 'tw:max-lg:hidden']" type="button" @click="onPaymentNextAction(row.course)">{{ paymentNextActionLabel(row.course) }}</button>
+                      <!-- Under 1024px (PAGE_TEMPLATE §5 rule 9): one primary action, the rest in the 更多 menu. Same breakpoint as the stacked row (CSS only). -->
                       <button
                         v-if="billingPrimaryIsNext(row, group)"
-                        :class="[rowAction.primary, 'tw:min-w-0 tw:flex-1 tw:md:min-w-48 tw:md:flex-none']"
+                        :class="[rowAction.primary, 'billing-stacked-primary tw:lg:hidden tw:min-w-0 tw:flex-1 tw:md:min-w-48 tw:md:flex-none']"
                         type="button"
                         @click="onPaymentNextAction(row.course)"
                       >{{ paymentNextActionLabel(row.course) }}</button>
                       <button
                         v-else
-                        :class="[rowAction.primary, 'btn-invoices tw:min-w-0 tw:flex-1 tw:md:min-w-48 tw:md:flex-none']"
+                        :class="[rowAction.primary, 'btn-invoices billing-stacked-primary tw:lg:hidden tw:min-w-0 tw:flex-1 tw:md:min-w-48 tw:md:flex-none']"
                         type="button"
                         @click="openTuitionLedger(row.course)"
                       >在這裡看帳務</button>
@@ -764,25 +776,10 @@
                         v-if="billingMenuGroups(row, group).length"
                         :groups="billingMenuGroups(row, group)"
                         :label="`${getSubjectLabel(row.course.subject)} 的更多帳務操作`"
-                        :trigger-class="`action-menu-trigger ${rowAction.menu}`"
+                        :trigger-class="`action-menu-trigger tw:lg:hidden ${rowAction.menu}`"
                         @select="(id) => runBillingMenu(id, row)"
                       />
-                      <span v-if="billingPackageLead(row, group)" :class="[dataTable.sub, 'tw:basis-full']" data-testid="billing-package-follower">共用方案是一筆款項，請在「{{ getSubjectLabel(billingPackageLead(row, group).subject) }}」那列處理繳費單與繳費回報</span>
-                      <span v-if="isTutoringBillingAnomaly(row.course)" :class="['tw:basis-full tw:text-tpl-caption tw:font-semibold', toneText.danger]" role="alert">帳務資料需修正，請由主任檢查帳務中心。</span>
-                    </div>
-                    <div v-else class="tw:flex tw:flex-wrap tw:items-center tw:gap-2">
-                      <button
-                        v-if="isPaymentNoticeAvailable(row.course) && !billingPackageLead(row, group)"
-                        :class="[rowAction.secondary, 'btn-payment-slip']"
-                        data-testid="billing-payment-slip-action"
-                        type="button"
-                        title="產生繳費單"
-                        @click="openPaymentSlip(row.course)"
-                      >繳費單</button>
-                      <button :class="[rowAction.secondary, 'btn-invoices']" type="button" title="在這裡打開學生帳務" @click="openTuitionLedger(row.course)">在這裡看帳務</button>
-                      <span v-if="billingPackageLead(row, group)" :class="[dataTable.sub, 'tw:max-w-[22rem]']" data-testid="billing-package-follower">共用方案是一筆款項，請在「{{ getSubjectLabel(billingPackageLead(row, group).subject) }}」那列處理繳費單與繳費回報</span>
-                      <button v-else-if="showsBillingRowNextAction(row.course)" :class="rowAction.primary" type="button" @click="onPaymentNextAction(row.course)">{{ paymentNextActionLabel(row.course) }}</button>
-                      <span v-if="isTutoringBillingAnomaly(row.course)" :class="['tw:text-tpl-caption tw:font-semibold', toneText.danger]" role="alert">帳務資料需修正，請由主任檢查帳務中心。</span>
+                      <span v-if="isTutoringBillingAnomaly(row.course)" :class="['tw:text-tpl-caption tw:font-semibold tw:max-lg:basis-full', toneText.danger]" role="alert">帳務資料需修正，請由主任檢查帳務中心。</span>
                     </div>
                   </td>
                 </tr>
@@ -4416,16 +4413,7 @@ const PAYMENT_CHIP_NOWRAP_MAX = 8;
 // 帳務資料 table: the header stays at the top of the scrolling panel; loading / empty / error lines share one padding.
 const BILLING_HEAD = 'tw:sticky tw:top-0 tw:z-[1]';
 const BILLING_STATE = 'tw:px-5 tw:py-4 tw:text-tpl-body';
-// Under 1024px the table is a list of stacked cards: one primary action stays visible, the rest sit in the 更多 menu.
-const billingStacked = ref(false);
-let billingStackedQuery = null;
-const syncBillingStacked = () => { billingStacked.value = Boolean(billingStackedQuery?.matches); };
-onMounted(() => {
-  billingStackedQuery = window.matchMedia?.('(max-width: 1023px)') || null;
-  syncBillingStacked();
-  billingStackedQuery?.addEventListener?.('change', syncBillingStacked);
-});
-onUnmounted(() => billingStackedQuery?.removeEventListener?.('change', syncBillingStacked));
+// Under 1024px the table is a list of stacked cards (CSS `max-lg`, see dataTable.stack*): one primary action stays visible, the rest sit in the 更多 menu.
 const billingPrimaryIsNext = (row, group) => !billingPackageLead(row, group) && showsBillingRowNextAction(row.course);
 const billingMenuGroups = (row, group) => {
   const items = [];

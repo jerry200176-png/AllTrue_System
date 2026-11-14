@@ -10,7 +10,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const source = readFileSync(resolve(__dirname, '../../pages/CourseManagement.vue'), 'utf8');
 
 // issue 4989 slice 5: the row buttons moved from `small ghost` / `small primary` to the template's rowAction class sets.
-const ledgerButtonAt = source.indexOf(`:class="[rowAction.secondary, 'btn-invoices']"`);
+const ledgerButtonAt = source.indexOf(`:class="[rowAction.secondary, 'btn-invoices', 'tw:max-lg:hidden']"`);
 const billingRowActions = source.slice(
   source.lastIndexOf(`<td :class="[dataTable.cell, dataTable.stackCell, dataTable.stackWide, 'tw:pr-5']">`, ledgerButtonAt),
   source.indexOf('</td>', ledgerButtonAt),
@@ -23,7 +23,7 @@ describe('課程帳務列 · 不重複顯示「在這裡看帳務」 (#3982)', (
   });
 
   it('hides the main action when its label equals the ledger button', () => {
-    const mainAction = billingRowActions.match(/<button v-(?:else-)?if="([^"]+)" :class="rowAction\.primary"[^>]*>\{\{ paymentNextActionLabel\(row\.course\) \}\}<\/button>/);
+    const mainAction = billingRowActions.match(/<button v-(?:else-)?if="([^"]+)" :class="\[rowAction\.primary, 'tw:max-lg:hidden'\]"[^>]*>\{\{ paymentNextActionLabel\(row\.course\) \}\}<\/button>/);
     expect(mainAction).not.toBeNull();
     expect(mainAction[1]).toBe('showsBillingRowNextAction(row.course)');
     expect(source).toContain(
@@ -34,6 +34,13 @@ describe('課程帳務列 · 不重複顯示「在這裡看帳務」 (#3982)', (
   it('the stacked (under 1024px) row decides its primary action with the same predicate and moves the rest into the 更多 menu', () => {
     expect(source).toContain('const billingPrimaryIsNext = (row, group) => !billingPackageLead(row, group) && showsBillingRowNextAction(row.course);');
     expect(source).toMatch(/const billingMenuGroups = [\s\S]*?id: 'payment-slip'[\s\S]*?if \(billingPrimaryIsNext\(row, group\)\) items\.push\(\{ id: 'ledger'/);
+  });
+
+  it('the desktop and the stacked action blocks switch by CSS at the one breakpoint, with no second JS media query', () => {
+    expect(source).toContain("'billing-stacked-primary tw:lg:hidden");
+    expect(source).toContain('action-menu-trigger tw:lg:hidden');
+    expect(source).not.toMatch(/matchMedia\('\(max-width: 1023px\)'\)/);
+    expect(source).not.toContain('billingStacked');
   });
 
   it('still falls back to 在這裡看帳務 for paid rows (the case the guard exists for)', () => {

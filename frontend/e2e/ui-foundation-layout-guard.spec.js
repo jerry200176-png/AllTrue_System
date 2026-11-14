@@ -191,6 +191,14 @@ const COURSE_MGMT_BILLING = {
   setup: async (page) => {
     await page.getByRole('tab', { name: '帳務資料', exact: true }).first().click();
     await expect(page.locator('.student-billing-table tbody tr')).toHaveCount(BILLING_CASES.length);
+    if (page.viewportSize().width < 1024) {
+      // The owed row (100) keeps both secondary actions in its 更多 menu while the primary action stays visible.
+      await page.locator('.student-billing-table tbody tr').first().locator('.action-menu-trigger:visible').click();
+      await expect(page.getByRole('menuitem', { name: '繳費單' })).toBeVisible();
+      await expect(page.getByRole('menuitem', { name: '在這裡看帳務' })).toBeVisible();
+      await page.keyboard.press('Escape');
+      await expect(page.getByRole('menuitem')).toHaveCount(0);
+    }
   },
   extra: {
     run: () => {

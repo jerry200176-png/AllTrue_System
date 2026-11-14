@@ -1236,16 +1236,15 @@ for (const width of [375, 1280]) {
       const rows = billing.locator('tbody tr');
       for (let i = 0; i < await rows.count(); i += 1) {
         const row = rows.nth(i);
-        const primary = row.locator('button:not(.action-menu-trigger)').first();
-        await expect(primary, `row ${i} shows one primary action`).toBeVisible();
-        expect(await row.locator('button:not(.action-menu-trigger)').count(), `row ${i} shows exactly one visible action button`).toBe(1);
+        await expect(row.locator('button:not(.action-menu-trigger):visible'), `row ${i} shows exactly one visible action button`).toHaveCount(1);
       }
-      const first = rows.first();
-      const direct = first.locator('.btn-invoices');
+      await page.screenshot({ path: path.join(outDir, `course-workbench-billing-${width}.png`) });
+      // Every bill in this fixture is paid, so the ledger is the one visible primary action. The owed row's 更多 menu is asserted in the layout guard.
+      const direct = rows.first().locator('.btn-invoices:visible');
       if (await direct.count()) {
         await direct.click();
       } else {
-        await first.locator('.action-menu-trigger').click();
+        await rows.first().locator('.action-menu-trigger:visible').click();
         await page.getByRole('menuitem', { name: '在這裡看帳務' }).click();
       }
     } else {
