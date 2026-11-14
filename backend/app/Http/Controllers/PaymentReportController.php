@@ -18,6 +18,7 @@ use App\Services\Billing\InvoiceIssuer;
 use App\Services\Billing\FirstBillAutoVoid;
 use App\Services\Billing\MonthlyBillFreeze;
 use App\Services\Billing\PackagePaidMarks;
+use App\Services\Billing\CollectionTarget;
 use App\Services\Billing\ContractMoneyState;
 use App\Services\MonthlyBillingService;
 use App\Services\PaymentReportTokenService;
@@ -384,15 +385,10 @@ class PaymentReportController extends Controller
             $note = $confirmationNote !== ''
                 ? $confirmationNote
                 : trim((string) ($report->note ?? ''));
-            if ($refusal = ContractMoneyState::waivedRefusal($sc, '此合約已確認不收，不能再確認回報')) {
+            // Waived / refunded / tutoring / zero-fee, then a month another course's bill already carries (Codex P1 on #4867):
+            // one rule set, shared with the receipt move (#5113).
+            if ($refusal = CollectionTarget::gate($sc, empty($report->InvoiceID) ? null : (int) $report->InvoiceID, $report->payment_date)) {
                 return $refusal;
-            }
-            if ($sc && ($blockedTutoringPayment = $this->tutoringPaymentBlocked($sc))) {
-                return $blockedTutoringPayment;
-            }
-            // A month another course's bill already carries is refused at the ledger write too (public report path, Codex P1 on #4867).
-            if ($sc && ($shared = $this->sharedBillRefusal($sc, ['invoice_id' => $report->InvoiceID, 'payment_date' => $report->payment_date]))) {
-                return $shared;
             }
             // #4132 Codex P1: recheck package membership on confirm (convert already blocks payment_reports).
             $isCorrectionReport = DB::table('invoice_corrections')
@@ -548,7 +544,7 @@ class PaymentReportController extends Controller
             // Recompute from Payment rows (now including this one), never stored PaidAmount + new (#3864 hotfix P1-b).
             $after = $this->invoiceProjection($invoice, $sc);
             $newPaid = (int) $after['net_applied'];
-            $status = (int) $after['outstanding_amount'] <= 0 ? 'paid' : ($newPaid > 0 ? 'partial' : 'unpaid');
+            $status = Invoice::statusFromProjection($after);
             $invoice->update([
                 'PaidAmount'     => $newPaid,
                 'Status'         => $status,
@@ -556,22 +552,8 @@ class PaymentReportController extends Controller
                 'reconciled_by'  => $userId,
             ]);
 
-            // F7 S7: only the resolver (all non-void invoices) may settle the course; a partial leaves Paid=0.
-            if ($sc && !$sc->Paid && $this->courseResolvedPaid($sc)) {
-                $sc->update([
-                    'Paid' => 1,
-                    'PayDate' => Carbon::today()->toDateString(),
-                    'closed_reason' => $sc->getAttribute('closed_reason') === 'settled_pending'
-                        ? 'settled'
-                        : $sc->getAttribute('closed_reason'),
-                ]);
-            }
-            // A count package is one shared obligation; a monthly ('date') member settles only itself (#3892 D4, in-app #478).
-            if ($package && $status === 'paid' && !$enteredOnlyPackageBill && $sc->getAttribute('ScheduleMode') !== 'date') {
-                $paidAt = Carbon::make($report->payment_date)?->toDateString()
-                    ?? Carbon::today()->toDateString();
-                $this->markPackagePaid($package, $paidAt);
-            }
+            // Course Paid and the shared package mark: one rule set, shared with the receipt move (#5113).
+            CollectionTarget::settle($sc, $package, $status, $enteredOnlyPackageBill, $report->payment_date);
 
             $report->update([
                 'status'       => 'confirmed',
@@ -994,7 +976,7 @@ class PaymentReportController extends Controller
     }
 
     /**
-     * The course plus its same-student package siblings, ascending: markPackagePaid() flags them all, so they share one
+     * The course plus its same-student package siblings, ascending: PackagePaidMarks::mark() flags them all, so they share one
      * legacy mark. $lock = a locking recheck on the already locked course.
      *
      * @return int[]
@@ -1366,14 +1348,6 @@ class PaymentReportController extends Controller
         return $hasPaidInvoice && $this->monthlyBilling->unbilledPeriodFor($sc) !== null;
     }
 
-    private function courseResolvedPaid(StudentClass $sc): bool
-    {
-        $id = (int) $sc->ID;
-        $status = app(BillingPayableResolver::class)->courseStatusesByStudentClassIds([$id])[$id]['status'] ?? null;
-
-        return $status === 'paid';
-    }
-
     /**
      * Plain routing lookup — call only outside DB::transaction.
      * A non-locking SELECT inside the write txn would establish the REPEATABLE-READ
@@ -1544,15 +1518,7 @@ class PaymentReportController extends Controller
     /** RFC §R4: round(rate × total_sessions) for a per-session count package; null when it cannot be determined. */
     private function packagePrice(CoursePackage $package): ?int
     {
-        $rate = (float) ($package->rate ?? 0);
-        $total = (int) ($package->total_sessions ?? 0);
-
-        return ($package->rate_unit ?? null) === 'session' && $rate > 0 && $total > 0 ? (int) round($rate * $total) : null;
-    }
-
-    private function markPackagePaid(CoursePackage $package, string $paidAt): void
-    {
-        PackagePaidMarks::mark($package, $paidAt);
+        return CollectionTarget::packagePrice($package);
     }
 
     /**
@@ -1569,8 +1535,7 @@ class PaymentReportController extends Controller
     /** As Invoice::mayOweSql (#3891): a PAID package member's stored-paid bill stays settled (待核對); an unpaid package holds nothing. */
     private function packagePaidHold(Invoice $invoice): bool
     {
-        return (string) $invoice->Status === 'paid' && StudentClass::query()->join('course_packages', 'course_packages.id', '=', 'StudentClass.PackageID')
-            ->where('StudentClass.ID', $invoice->StudentClassID)->where('course_packages.paid', true)->exists();
+        return CollectionTarget::packagePaidHold((int) $invoice->StudentClassID, (string) $invoice->Status);
     }
 
     /**
@@ -1638,27 +1603,7 @@ class PaymentReportController extends Controller
      */
     private function sharedBillRefusal(StudentClass $course, array $data): ?JsonResponse
     {
-        if ($course->getAttribute('ScheduleMode') !== 'date') {
-            return null;
-        }
-        $id = (int) $course->getKey();
-        $own = empty($data['invoice_id']) ? null : Invoice::where('id', (int) $data['invoice_id'])->where('StudentClassID', $id)->value('billing_period');
-        $period = preg_match('/^\d{4}-\d{2}$/', (string) $own) ? (string) $own : $this->monthlyBilling->collectionPeriodFor($course, $data['payment_date'] ?? null);
-        $from = Carbon::createFromFormat('!Y-m', $period)->startOfMonth()->toDateString();
-        $to = Carbon::createFromFormat('!Y-m', $period)->endOfMonth()->toDateString();
-
-        $shared = Invoice::query()->notVoided()->where('StudentClassID', '!=', $id)
-            ->whereHas('items', fn ($q) => $q->where('StudentClassID', $id))->orderBy('id')->get()
-            ->first(function (Invoice $invoice) use ($id, $period, $from, $to) {
-                [$start, $end] = $this->monthlyBilling->serviceRangeForCourse($invoice, $id);
-
-                return $start !== null ? $start <= $to && $end >= $from : (string) $invoice->billing_period === $period;
-            });
-
-        return $shared === null ? null : response()->json([
-            'message' => sprintf('這個月的課已經在另一門課的帳單上（帳單 #%d），請從那門課的帳單收款，不能再收一次。沒有新增任何收款。', $shared->id),
-            'code' => 'period_on_shared_bill', 'invoice_id' => (int) $shared->id,
-        ], 422);
+        return CollectionTarget::sharedBillRefusal($course, empty($data['invoice_id']) ? null : (int) $data['invoice_id'], $data['payment_date'] ?? null);
     }
 
     /**
@@ -1854,13 +1799,11 @@ class PaymentReportController extends Controller
                 } else {
                     // In-app #521: every reversal points at the entry it reverses (payment_report_id), so the check is exact.
                     // Both reads are of the locked rows above. A reversal already linked to this report: skip (idempotent).
-                    $isReversal = fn ($p) => (int) $p->Amount < 0 || (string) $p->Method === 'void';
                     $reportId = (int) $report->getKey();
-                    $alreadyReversed = $payments->contains(fn ($p) => $isReversal($p) && (int) $p->payment_report_id === $reportId);
+                    $alreadyReversed = $payments->contains(fn ($p) => Payment::reversesReport($p, $reportId));
                     // A legacy unlinked void row (negative or void, no report, not a transfer_out/refund) cannot be matched to its
                     // receipt: a second reversal might cancel another receipt's money. Refuse until the repair links it.
-                    $legacyUnlinked = $payments->contains(fn ($p) => $isReversal($p) && $p->payment_report_id === null
-                        && !in_array((string) $p->Method, ['transfer_out', 'refund'], true));
+                    $legacyUnlinked = $payments->contains(fn ($p) => Payment::isUnlinkedLegacyReversal($p));
                     if (!$alreadyReversed && $legacyUnlinked) {
                         return response()->json([
                             'message' => '這張帳單有舊的沖銷紀錄還沒對帳，請先找系統管理員處理',
@@ -1881,7 +1824,7 @@ class PaymentReportController extends Controller
                 ]);
 
                 $newPaid = max(0, (int) $invoice->PaidAmount - $originalAmount);
-                $invoiceStatus = $newPaid <= 0 ? 'unpaid' : ($newPaid < (int) $invoice->TotalAmount ? 'partial' : 'paid');
+                $invoiceStatus = Invoice::statusAfterReversal($newPaid, (int) $invoice->TotalAmount);
                 $invoice->update([
                     'PaidAmount' => $newPaid,
                     'Status'     => $invoiceStatus,
@@ -1891,23 +1834,12 @@ class PaymentReportController extends Controller
             }
             // #4597: money taken back from a count package's bill reopens the package (its mark and every owner member's).
             $package = $invoice && !$alreadyReversed && (string) $invoice->Status !== 'paid' ? $this->lockPackageForCourse($sc) : null;
-            if ($this->isSharedPackageObligation($package, $sc) && (int) $package->student_id === (int) $sc->StudentID) {
-                $this->dropLegacyPaidMarks($sc, $package);
-            }
-
-            $scPaid = 0;
             // F7 S7: recompute from the resolver; no invoice or no longer paid (partial or unpaid) clears the flag.
             // A reversed void bill (#436) clears it too unless a live bill backs the settlement: with no live bill the
             // resolver would read the stale flag itself as paid.
             // $sc already required above (missing/mismatched course returns void_invoice_mismatch).
-            $ledgerBacked = $invoice && !$autoVoided && (!$alreadyReversed || Invoice::query()->where('StudentClassID', $sc->ID)
-                ->where(fn ($q) => $q->whereNull('Status')->orWhere('Status', '!=', 'void'))->exists());
-            if ($ledgerBacked && $this->courseResolvedPaid($sc)) {
-                $scPaid = (int) $sc->Paid;
-            } else {
-                $reopen = $sc->getAttribute('closed_reason') === 'settled' ? ['closed_reason' => 'settled_pending'] : [];
-                $sc->update(['Paid' => 0, 'PayDate' => null] + $reopen);
-            }
+            $ledgerBacked = $invoice && !$autoVoided && (!$alreadyReversed || Invoice::courseHasLiveBill((int) $sc->ID));
+            $scPaid = CollectionTarget::unsettle($sc, $package, $ledgerBacked); // shared with the receipt move (#5113)
 
             $report->update([
                 'status'      => 'voided',
@@ -2237,34 +2169,6 @@ class PaymentReportController extends Controller
 
     private function tutoringPaymentBlocked($course, bool $explicitFreeGift = false)
     {
-        if (!$course instanceof StudentClass) {
-            return null;
-        }
-
-        if (strtolower(trim((string) ($course->ClassType ?? ''))) === 'tutoring') {
-            return response()->json([
-                'message' => '輔導課無須繳費，不能建立付款回報、收款或付款義務。請先檢查課程帳務資料。',
-                'code' => 'tutoring_no_payment_obligation',
-            ], 422);
-        }
-        // #3203: any course the resolver calls `free` (e.g. a 0-total trial) has no payment obligation either.
-        // Only 0-charge courses can be free; paid courses skip this and keep the later fail-closed guards.
-        if ((int) ($course->Charge ?? 0) > 0 || $explicitFreeGift) {
-            return null;
-        }
-        $id = (int) $course->getKey();
-        try {
-            $free = (app(BillingPayableResolver::class)->courseStatusesByStudentClassIds([$id])[$id]['status'] ?? null) === 'free';
-        } catch (\Throwable $e) {
-            $free = false; // the duplicate-payment guard below fails closed on its own
-        }
-        if ($free) {
-            return response()->json([
-                'message' => '這門課金額為 0，無須繳費，不能建立付款回報、收款或付款義務。',
-                'code' => 'zero_fee_no_payment_obligation',
-            ], 422);
-        }
-
-        return null;
+        return CollectionTarget::tutoringRefusal($course, $explicitFreeGift);
     }
 }

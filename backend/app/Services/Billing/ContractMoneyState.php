@@ -2,6 +2,7 @@
 
 namespace App\Services\Billing;
 
+use App\Models\Payment;
 use App\Models\StudentClass;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
@@ -187,8 +188,7 @@ final class ContractMoneyState
                 return true;
             }
             // Older receipts can be linked only by report.payment_id; current receipts also carry payment_report_id.
-            $receipts = $payments->filter(fn ($p) => (int) $p->Amount > 0 && (string) $p->Method !== 'void'
-                && ((int) ($p->payment_report_id ?? 0) === (int) $reportId || (int) $p->id === (int) ($report->payment_id ?? 0)));
+            $receipts = $payments->filter(fn ($p) => Payment::isReceiptOf($p, (int) $reportId, isset($report->payment_id) ? (int) $report->payment_id : null));
             if ($receipts->count() !== 1) {
                 return true;
             }
