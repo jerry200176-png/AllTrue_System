@@ -1,3 +1,6 @@
+import { readFileSync } from 'node:fs';
+import { resolve, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { flushPromises, shallowMount } from '@vue/test-utils';
 
@@ -126,7 +129,7 @@ describe('student table rows', () => {
     const wrapper = await mountRows();
     try {
       const row = rowOf(wrapper, 2001);
-      const buttons = row.findAll('button').filter((b) => !['student-select', 'am__trigger'].some((k) => b.attributes('data-testid') === k || b.classes().includes(k)));
+      const buttons = row.findAll('button').filter((b) => !['student-select', 'student-row-toggle', 'am__trigger'].some((k) => b.attributes('data-testid') === k || b.classes().includes(k)));
       expect(buttons.map((b) => b.attributes('data-testid'))).toEqual(['student-course-disclosure']);
       const open = row.find('[data-testid="student-course-disclosure"]');
       expect(open.text()).toBe('課程/購課');
@@ -175,5 +178,62 @@ describe('student table rows', () => {
     } finally {
       wrapper.unmount();
     }
+  });
+
+  it('runs the 編輯 and 學習檔案 handlers from the menu', async () => {
+    const wrapper = await mountRows();
+    try {
+      const menu = () => rowOf(wrapper, 2001).findComponent(ActionMenu);
+      expect(wrapper.find('#student-modal-title').exists()).toBe(false);
+      menu().vm.$emit('select', 'edit');
+      await flushPromises();
+      expect(wrapper.find('#student-modal-title').text()).toBe('編輯學生');
+      expect(wrapper.find('.modal-overlay input').element.value).toBe('合成學生');
+      const timeline = () => wrapper.findComponent({ name: 'StudentLearningTimeline' });
+      expect(timeline().props('show')).toBe(false);
+      menu().vm.$emit('select', 'timeline');
+      await flushPromises();
+      expect(timeline().props('show')).toBe(true);
+      expect(timeline().props('studentName')).toBe('合成學生');
+    } finally {
+      wrapper.unmount();
+    }
+  });
+
+  it('gives the phone expand control a name and aria-expanded that follow the row', async () => {
+    const wrapper = await mountRows();
+    try {
+      const toggle = () => rowOf(wrapper, 2001).find('[data-testid="student-row-toggle"]');
+      expect(toggle().element.tagName).toBe('BUTTON');
+      expect(toggle().attributes('aria-label')).toBe('展開課程：合成學生');
+      expect(toggle().attributes('aria-expanded')).toBe('false');
+      expect(toggle().attributes('aria-controls')).toBe('student-course-detail-2001');
+      await toggle().trigger('click');
+      await flushPromises();
+      expect(toggle().attributes('aria-label')).toBe('收合課程：合成學生');
+      expect(toggle().attributes('aria-expanded')).toBe('true');
+    } finally {
+      wrapper.unmount();
+    }
+  });
+
+  it('uses the shared stackRow / stackCell sets and a visible focus style on the row', () => {
+    const source = readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), '../../pages/StudentsList.vue'), 'utf8');
+    expect(source).toContain(':class="[dataTable.stackRow, gridCols,');
+    expect(source).toContain('dataTable.stackCell');
+    expect(source).not.toMatch(/const (rowGrid|cell0) =/);
+    const row = source.slice(source.indexOf('data-testid="student-row"') - 40, source.indexOf('data-testid="student-row"') + 600);
+    expect(row).toContain('tw:focus-visible:outline-2');
+    expect(row).toContain('tw:focus-visible:outline-ring');
+  });
+
+  it('paints the check and minus icons above the drawn checkbox box', () => {
+    // The 20px box is a ::before (absolute); the shared CheckboxIndicator is not positioned, so without these two classes
+    // the primary-filled box covers the icon and checked / mixed look the same as a solid square.
+    const source = readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), '../../pages/StudentsList.vue'), 'utf8');
+    const checkBox = source.match(/const checkBox = "([^"]*)"/)[1];
+    expect(checkBox).toContain('tw:before:absolute');
+    expect(checkBox).toContain('tw:[&>[data-slot=checkbox-indicator]]:relative');
+    expect(checkBox).toContain('tw:[&>[data-slot=checkbox-indicator]]:z-10');
   });
 });

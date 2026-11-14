@@ -86,7 +86,7 @@
         </div>
       <table data-guide="students-table" :class="[dataTable.table, dataTable.stackTable, 'tw:w-full tw:border-collapse']" aria-label="學生清單">
         <thead :class="dataTable.stackBody">
-          <tr :class="[rowGrid, 'tw:max-lg:bg-muted']">
+          <tr :class="['tw:max-lg:grid tw:max-lg:bg-muted tw:md:max-lg:px-4', gridCols]">
             <th scope="col" :class="[dataTable.head, col.select, 'tw:max-lg:col-start-1 tw:max-lg:h-11 tw:max-lg:self-center']">
               <Checkbox
                 :model-value="allVisibleSelected ? true : hasSelectedStudents ? 'indeterminate' : false"
@@ -110,7 +110,7 @@
           <!-- Student Row -->
           <tr
             data-testid="student-row"
-            :class="[rowGrid, 'tw:cursor-pointer tw:max-lg:border-b tw:max-lg:border-border tw:max-lg:py-2 tw:max-lg:pr-3', isStudentSelected(student) ? 'tw:bg-[color-mix(in_srgb,var(--ds-primary-wash)_55%,transparent)] tw:hover:bg-[var(--ds-primary-wash)]' : expandedId === student.id ? 'tw:bg-muted' : 'tw:hover:bg-muted/60']"
+            :class="[dataTable.stackRow, gridCols, 'tw:cursor-pointer tw:outline-none tw:focus-visible:outline-2 tw:focus-visible:-outline-offset-2 tw:focus-visible:outline-solid tw:focus-visible:outline-ring', isStudentSelected(student) ? 'tw:bg-[color-mix(in_srgb,var(--ds-primary-wash)_55%,transparent)] tw:hover:bg-[var(--ds-primary-wash)]' : expandedId === student.id ? 'tw:bg-muted' : 'tw:hover:bg-muted/60']"
             :data-student-id="student.id"
             :data-status="student.status || 'active'"
             tabindex="0"
@@ -120,7 +120,7 @@
             @keydown.enter.prevent="toggleExpand(student, $event)"
             @keydown.space.prevent="toggleExpand(student, $event)"
           >
-            <td :class="[dataTable.cell, col.select, cell0, 'tw:max-lg:col-start-1 tw:max-lg:row-span-2 tw:max-lg:row-start-1 tw:max-lg:pt-0!']" @click.stop @keydown.stop>
+            <td :class="[dataTable.cell, col.select, dataTable.stackCell, 'tw:max-lg:col-start-1 tw:max-lg:row-span-2 tw:max-lg:row-start-1 tw:max-lg:pt-0!']" @click.stop @keydown.stop>
               <Checkbox
                 :model-value="isStudentSelected(student)"
                 :disabled="!getLaravelStudentId(student)"
@@ -130,10 +130,21 @@
                 @update:model-value="(v) => toggleStudentSelection(student, v === true)"
               />
             </td>
-            <td :class="[dataTable.cell, 'tw:w-8 tw:px-0 tw:text-center', cell0, 'tw:max-md:col-start-4 tw:max-md:row-start-1 tw:max-md:pt-3 tw:md:max-lg:hidden']" aria-hidden="true">
-              <ChevronDown :class="['tw:mx-auto tw:size-5 tw:text-tpl-secondary tw:transition-transform', { 'tw:rotate-180': expandedId === student.id }]" :stroke-width="2" />
+            <td :class="[dataTable.cell, 'tw:w-8 tw:px-0 tw:text-center', dataTable.stackCell, 'tw:max-md:col-start-4 tw:max-md:row-start-1 tw:md:max-lg:hidden!']" @keydown.stop>
+              <!-- Phone: the row's expand control is a real button (name + aria-expanded); the row tap still does the toggling. From 1024 the 課程/購課 button is the control and the arrow is only a cue. -->
+              <button
+                type="button"
+                data-testid="student-row-toggle"
+                class="tw:inline-flex tw:size-11 tw:cursor-pointer tw:items-center tw:justify-center tw:rounded-full tw:border-0 tw:bg-transparent tw:p-0 tw:text-tpl-secondary tw:outline-none tw:focus-visible:ring-3 tw:focus-visible:ring-ring/50 tw:lg:hidden"
+                :aria-expanded="expandedId === student.id"
+                :aria-controls="`student-course-detail-${student.id}`"
+                :aria-label="`${expandedId === student.id ? '收合' : '展開'}課程：${student.name}`"
+              >
+                <ChevronDown :class="['tw:size-5 tw:transition-transform', { 'tw:rotate-180': expandedId === student.id }]" :stroke-width="2" aria-hidden="true" />
+              </button>
+              <ChevronDown :class="['tw:mx-auto tw:size-5 tw:text-tpl-secondary tw:transition-transform tw:max-lg:hidden', { 'tw:rotate-180': expandedId === student.id }]" :stroke-width="2" aria-hidden="true" />
             </td>
-            <td :class="[dataTable.name, cell0, 'tw:max-lg:whitespace-normal tw:max-lg:col-start-2 tw:max-lg:row-start-1 tw:max-md:pt-1.5 tw:md:max-lg:col-span-3']">
+            <td :class="[dataTable.name, dataTable.stackCell, 'tw:max-lg:whitespace-normal tw:max-lg:col-start-2 tw:max-lg:row-start-1 tw:max-md:pt-1.5 tw:md:max-lg:col-span-3']">
               <div class="tw:flex tw:flex-wrap tw:items-center tw:gap-x-2 tw:gap-y-1" data-testid="student-name-cell">
                 <span class="tw:whitespace-nowrap">{{ student.name }}</span>
                 <span v-if="student.notes" class="tw:inline-flex tw:cursor-help tw:text-tpl-secondary" role="img" :aria-label="`備註：${student.notes}`" :title="student.notes"><StickyNote class="tw:size-4" :stroke-width="2" /></span>
@@ -141,22 +152,22 @@
               </div>
               <span :class="[dataTable.sub, dataTable.phoneOnly]">{{ [getGradeLabel(student.grade), student.school].filter(Boolean).join('・') || '—' }}</span>
             </td>
-            <td :class="[dataTable.cell, cell0, 'tw:lg:min-w-32 tw:max-md:hidden tw:md:max-lg:col-start-2 tw:md:max-lg:row-start-2']">
+            <td :class="[dataTable.cell, dataTable.stackCell, 'tw:lg:min-w-32 tw:max-md:hidden! tw:md:max-lg:col-start-2 tw:md:max-lg:row-start-2']">
               <span :class="dataTable.stackLabel">年級</span>{{ getGradeLabel(student.grade) || '—' }}
             </td>
-            <td :class="[dataTable.cell, cell0, 'tw:lg:min-w-28 tw:max-md:hidden tw:md:max-lg:col-start-3 tw:md:max-lg:row-start-2']">
+            <td :class="[dataTable.cell, dataTable.stackCell, 'tw:lg:min-w-28 tw:max-md:hidden! tw:md:max-lg:col-start-3 tw:md:max-lg:row-start-2']">
               <span :class="dataTable.stackLabel">學校</span>{{ student.school || '—' }}
             </td>
-            <td :class="[dataTable.cell, cell0, 'tw:whitespace-nowrap tw:lg:@max-5xl:hidden tw:max-md:hidden tw:md:max-lg:col-start-4 tw:md:max-lg:row-start-2']">
+            <td :class="[dataTable.cell, dataTable.stackCell, 'tw:whitespace-nowrap tw:lg:@max-5xl:hidden tw:max-md:hidden! tw:md:max-lg:col-start-4 tw:md:max-lg:row-start-2']">
               <span :class="dataTable.stackLabel">家長</span>{{ student.parent_name || '—' }}
             </td>
-            <td :class="[dataTable.cell, cell0, 'tw:max-md:hidden tw:md:max-lg:col-start-5 tw:md:max-lg:row-start-2']" @click.stop>
+            <td :class="[dataTable.cell, dataTable.stackCell, 'tw:max-md:hidden! tw:md:max-lg:col-start-5 tw:md:max-lg:row-start-2']" @click.stop>
               <span :class="dataTable.stackLabel">RFID</span>
               <span v-if="student.rfid" class="tw:whitespace-nowrap tw:tabular-nums">{{ student.rfid }}</span>
               <span v-else class="tw:whitespace-nowrap tw:text-tpl-secondary">未綁定</span>
               <span v-if="student.line_bound" :class="dataTable.sub">LINE</span>
             </td>
-            <td :class="[dataTable.cell, cell0, 'tw:max-md:col-span-3 tw:max-md:col-start-2 tw:max-md:row-start-2 tw:md:max-lg:col-span-4 tw:md:max-lg:col-start-2 tw:md:max-lg:row-start-3']">
+            <td :class="[dataTable.cell, dataTable.stackCell, 'tw:max-md:col-span-3 tw:max-md:col-start-2 tw:max-md:row-start-2 tw:md:max-lg:col-span-4 tw:md:max-lg:col-start-2 tw:md:max-lg:row-start-3']">
               <div v-if="getStudentCourses(student.id).length > 0" class="tw:flex tw:flex-wrap tw:gap-1.5">
                 <span
                   v-for="course in getStudentRowChipCourses(student.id)"
@@ -178,7 +189,7 @@
               </div>
               <span v-else class="tw:text-tpl-caption tw:text-tpl-secondary">尚未設定</span>
             </td>
-            <td :class="[dataTable.cell, cell0, 'tw:py-1 tw:pr-4 tw:pl-0 tw:md:pr-5 tw:max-lg:row-start-1 tw:max-lg:justify-self-end tw:md:max-lg:col-start-5 tw:max-md:col-start-3']" @click.stop @keydown.stop>
+            <td :class="[dataTable.cell, dataTable.stackCell, 'tw:py-1 tw:pr-4 tw:pl-0 tw:md:pr-5 tw:max-lg:row-start-1 tw:max-lg:justify-self-end tw:md:max-lg:col-start-5 tw:max-md:col-start-3']" @click.stop @keydown.stop>
               <div class="tw:flex tw:items-center tw:justify-end tw:gap-1">
                 <button
                   type="button"
@@ -1097,11 +1108,10 @@ const studentsLoading = ref(true);
 // Header actions wrap on a phone (four of them, 字級 大 at 320) instead of pushing the page sideways.
 const phoneAction = 'tw:max-md:min-w-0 tw:max-md:flex-[1_1_9rem] tw:max-md:h-auto tw:max-md:min-h-12 tw:max-md:whitespace-normal tw:max-md:py-2';
 // Student table rows (PAGE_TEMPLATE §5). Under 1024px a row is a small grid (check | name | actions, as in BillList) and the header row shrinks to a select-all bar.
-const rowGrid = 'tw:max-lg:grid tw:max-md:grid-cols-[3rem_minmax(0,1fr)_2.75rem_2rem] tw:md:max-lg:grid-cols-[3rem_repeat(4,minmax(0,1fr))] tw:md:max-lg:gap-x-4 tw:max-lg:items-start';
+const gridCols = 'tw:max-md:grid-cols-[3rem_minmax(0,1fr)_2.75rem_2.75rem]! tw:max-md:gap-x-0! tw:max-md:px-0! tw:max-md:py-2! tw:max-md:gap-y-1! tw:md:max-lg:grid-cols-[3rem_repeat(4,minmax(0,1fr))]!';
 const col = { select: 'tw:w-12 tw:px-0 tw:text-center' };
-const cell0 = 'tw:max-lg:h-auto tw:max-lg:min-w-0 tw:max-lg:border-0 tw:max-lg:px-0 tw:max-lg:py-0';
 // The checkbox button is 44px (touch floor); the visible 20px box is drawn by ::before so it keeps the shared Checkbox look in every state.
-const checkBox = "tw:relative tw:size-11 tw:rounded-lg tw:border-0 tw:bg-transparent tw:shadow-none tw:data-[state=checked]:border-transparent tw:data-[state=checked]:bg-transparent tw:data-[state=indeterminate]:border-transparent tw:data-[state=indeterminate]:bg-transparent tw:before:absolute tw:before:top-1/2 tw:before:left-1/2 tw:before:size-5 tw:before:-translate-x-1/2 tw:before:-translate-y-1/2 tw:before:rounded-[4px] tw:before:border tw:before:border-input tw:before:bg-card tw:before:content-[''] tw:data-[state=checked]:before:border-primary tw:data-[state=checked]:before:bg-primary tw:data-[state=indeterminate]:before:border-primary tw:data-[state=indeterminate]:before:bg-primary";
+const checkBox = "tw:relative tw:size-11 tw:rounded-lg tw:border-0 tw:bg-transparent tw:shadow-none tw:data-[state=checked]:border-transparent tw:data-[state=checked]:bg-transparent tw:data-[state=indeterminate]:border-transparent tw:data-[state=indeterminate]:bg-transparent tw:before:absolute tw:before:top-1/2 tw:before:left-1/2 tw:before:size-5 tw:before:-translate-x-1/2 tw:before:-translate-y-1/2 tw:before:rounded-[4px] tw:before:border tw:before:border-input tw:before:bg-card tw:before:content-[''] tw:data-[state=checked]:before:border-primary tw:data-[state=checked]:before:bg-primary tw:data-[state=indeterminate]:before:border-primary tw:data-[state=indeterminate]:before:bg-primary tw:[&>[data-slot=checkbox-indicator]]:relative tw:[&>[data-slot=checkbox-indicator]]:z-10";
 const chipBase = 'tw:inline-flex tw:items-center tw:gap-1 tw:rounded-full tw:px-2.5 tw:py-0.5 tw:text-tpl-caption tw:whitespace-nowrap';
 // 刪除學生 is last and danger (error prevention); the menu only picks, the existing handlers run.
 const studentMenuGroups = [{ id: 'student', label: '', items: [{ id: 'edit', label: '編輯' }, { id: 'timeline', label: '學習檔案' }, { id: 'delete', label: '刪除學生', danger: true }] }];
