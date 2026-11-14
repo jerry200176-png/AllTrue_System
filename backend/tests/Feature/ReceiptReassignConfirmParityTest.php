@@ -106,12 +106,14 @@ class ReceiptReassignConfirmParityTest extends TestCase
         $course = ['PackageID' => $package?->id] + match ($case) {
             'tutoring' => ['ClassType' => 'tutoring'],
             'free' => ['Charge' => 0],
-            'waived' => ['closed_reason' => 'waived'],
             'date_member' => ['ScheduleMode' => 'date', 'StartDate' => '2026-11-01', 'EndDate' => '2026-11-30'],
             default => [],
         };
         $total = match ($case) { 'partial' => self::AMOUNT + 1000, 'free' => 0, default => self::AMOUNT };
         $bill = $this->bill($student, $total, 'unpaid', 0, $course, $case === 'date_member' ? ['billing_period' => '2026-11'] : []);
+        if ($case === 'waived') {
+            $bill['course']->update(['closed_reason' => 'waived']); // a waived contract takes no new bill either, so it is waived after billing
+        }
 
         return ['course' => $bill['course'], 'invoice' => $bill['invoice'], 'package' => $package];
     }
