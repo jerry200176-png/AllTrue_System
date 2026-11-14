@@ -10,7 +10,6 @@ use App\Models\PaymentReport;
 use App\Models\PaymentReportReassignment;
 use App\Models\SecurityAuditEvent;
 use App\Models\StudentClass;
-use App\Services\BillingPayableResolver;
 use App\Services\InvoiceAmountReconciliationService;
 use App\Support\DeadlockRetry;
 use Carbon\Carbon;
@@ -684,26 +683,13 @@ final class ReceiptReassignService
             + ($reconciledBy !== null ? ['reconciled_at' => Carbon::now(), 'reconciled_by' => $reconciledBy] : []));
     }
 
-    /** As void(): money taken back reopens a count package (its mark and every owner member's); Paid only from the resolver (G-009). */
+    /** void()'s unsettle rule (CollectionTarget::unsettle), with void()'s inputs: package when the bill is no longer paid, live-ledger backing. */
     private function settleSourceCourse(int $courseId, string $billStatus, bool $billAutoVoided): void
     {
         $course = StudentClass::query()->where('ID', $courseId)->firstOrFail();
         $package = $billStatus !== 'paid' && (int) ($course->PackageID ?? 0) > 0 ? CoursePackage::query()->whereKey((int) $course->PackageID)->first() : null;
-        if ($package && strtolower((string) $course->getAttribute('ScheduleMode')) !== 'date' && (int) $package->student_id === (int) $course->StudentID) {
-            PackagePaidMarks::drop($course, $package);
-        }
-        // As void(): the resolver may settle the course only while a live bill backs it. With the bill auto-voided, or money taken
-        // off an already-void bill and no live bill left, it would read the stale flag itself as paid, so the flag goes.
-        $ledgerBacked = !$billAutoVoided && ($billStatus !== 'void' || Invoice::courseHasLiveBill($courseId));
-        if (!$ledgerBacked || !$this->resolvedPaid($courseId)) {
-            $course->refresh();
-            $course->update(['Paid' => 0, 'PayDate' => null] + ($course->closed_reason === 'settled' ? ['closed_reason' => 'settled_pending'] : []));
-        }
-    }
-
-    private function resolvedPaid(int $courseId): bool
-    {
-        return (app(BillingPayableResolver::class)->courseStatusesByStudentClassIds([$courseId])[$courseId]['status'] ?? null) === 'paid';
+        // As void(): an auto-voided bill, or money off an already-void bill with no live bill left, backs no settlement.
+        CollectionTarget::unsettle($course, $package, !$billAutoVoided && ($billStatus !== 'void' || Invoice::courseHasLiveBill($courseId)));
     }
 
     /**

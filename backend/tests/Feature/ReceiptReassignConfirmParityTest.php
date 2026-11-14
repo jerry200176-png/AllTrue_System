@@ -43,23 +43,35 @@ class ReceiptReassignConfirmParityTest extends TestCase
         parent::tearDown();
     }
 
-    /** @return array<string, array{0: string}> one case per gate refusal and per settle outcome of CollectionTarget */
+    /**
+     * One case per CollectionTarget rule, each with its pinned expectation, so two paths wrong the same way cannot pass:
+     * [shape, confirm()'s refusal code (false = it takes the money; null = refused without a code), the move's code
+     * (reassign_target_not_collectable carries confirm()'s code as `reason`), the outcome of an accepted case (pinned fields)].
+     *
+     * @return array<string, array{0: string, 1: string|null|false, 2: string|null, 3: array<string, mixed>}>
+     */
     public static function cases(): array
     {
+        $paid = ['bill_status' => 'paid', 'bill_paid' => self::AMOUNT];
+
         return [
-            'gate: tutoring course' => ['tutoring'],
-            'gate: zero-fee course' => ['free'],
-            'gate: waived contract' => ['waived'],
-            'gate: month already on another course\'s shared bill' => ['shared_month'],
-            'settle: whole bill paid settles the course' => ['plain'],
-            'settle: part of the bill leaves the course open' => ['partial'],
-            'settle: paid count-package bill marks the package' => ['package'],
-            'settle: monthly package member settles only itself' => ['date_member'],
+            'gate: tutoring course' => ['tutoring', 'tutoring_no_payment_obligation', 'reassign_target_not_collectable', []],
+            'gate: zero-fee course' => ['free', 'zero_fee_no_payment_obligation', 'reassign_target_not_collectable', []],
+            'gate: waived contract' => ['waived', null, 'reassign_target_not_collectable', []],
+            'gate: month already on another course\'s shared bill' => ['shared_month', 'period_on_shared_bill', 'reassign_target_not_collectable', []],
+            'hold: stored-paid bill of a paid package takes no money' => ['package_hold', 'course_already_paid', 'reassign_target_package_paid', []],
+            'hold: an unpaid package holds nothing; its paid bill marks it' => ['package', false, null, $paid + ['course_paid' => 1, 'package_paid' => true]],
+            'settle: whole bill paid settles the course' => ['plain', false, null, $paid + ['course_paid' => 1, 'package_paid' => null]],
+            'settle: part of the bill leaves the course open' => ['partial', false, null, ['bill_status' => 'partial', 'bill_paid' => self::AMOUNT, 'course_paid' => 0]],
+            'settle: monthly package member settles only itself' => ['date_member', false, null, $paid + ['package_paid' => false]],
         ];
     }
 
-    /** @dataProvider cases */
-    public function test_confirm_and_the_move_give_the_same_outcome_for_the_same_target(string $case): void
+    /**
+     * @dataProvider cases
+     * @param array<string, mixed> $accepted
+     */
+    public function test_confirm_and_the_move_give_the_same_outcome_for_the_same_target(string $case, string|null|false $confirmCode, ?string $moveCode, array $accepted): void
     {
         $tok = $this->token('S', 1);
 
@@ -85,26 +97,36 @@ class ReceiptReassignConfirmParityTest extends TestCase
             ? $this->postJson("/api/v1/payment-reports/{$receipt->id}/reassign", ['target_invoice_id' => $viaMove['invoice']->id, 'state_hash' => $plan->json('state_hash'), 'reason' => '選錯學生'], $this->h($tok))
             : $plan;
 
-        if ($confirmed->status() !== 200) {
+        if ($confirmCode !== false) {
+            // Pinned: the exact refusal each path gives, then that the two agree.
             $this->assertSame(422, $confirmed->status(), $confirmed->getContent());
+            $this->assertSame($confirmCode, $confirmed->json('code'), $confirmed->getContent());
             $this->assertSame(422, $moved->status(), "confirm refused ({$confirmed->getContent()}) but the move answered {$moved->getContent()}");
-            $this->assertSame('reassign_target_not_collectable', $moved->json('code'));
-            $this->assertSame($confirmed->json('code'), $moved->json('reason'));
-            $sameWords = fn (?string $m) => preg_replace('/\d+/', '#', (string) $m); // a message may name each side's own bill id
-            $this->assertSame($sameWords($confirmed->json('message')), $sameWords($moved->json('message')));
+            $this->assertSame($moveCode, $moved->json('code'), $moved->getContent());
+            if ($moveCode === 'reassign_target_not_collectable') { // the shared gate: confirm()'s own code and words
+                $this->assertSame($confirmed->json('code'), $moved->json('reason'));
+                $sameWords = fn (?string $m) => preg_replace('/\d+/', '#', (string) $m); // a message may name each side's own bill id
+                $this->assertSame($sameWords($confirmed->json('message')), $sameWords($moved->json('message')));
+            }
             $this->assertSame($before, $this->snapshot(), 'a refused move writes nothing');
 
             return;
         }
+        $this->assertSame(200, $confirmed->status(), $confirmed->getContent());
         $this->assertSame(201, $moved->status(), "confirm took the money but the move answered {$moved->getContent()}");
-        $this->assertSame($this->outcome($viaConfirm), $this->outcome($viaMove));
+        $viaConfirmOutcome = $this->outcome($viaConfirm);
+        $this->assertSame($accepted, array_intersect_key($viaConfirmOutcome, $accepted), 'pinned outcome');
+        $this->assertSame($viaConfirmOutcome, $this->outcome($viaMove));
     }
 
     /** @return array{course:StudentClass, invoice:Invoice, package:?CoursePackage} a fresh target of the given shape, own student */
     private function shape(string $case): array
     {
         $student = $this->student(1);
-        $package = in_array($case, ['package', 'date_member'], true) ? $this->package($student) : null;
+        $package = in_array($case, ['package', 'package_hold', 'date_member'], true) ? $this->package($student) : null;
+        if ($case === 'package_hold') {
+            $package->forceFill(['paid' => true, 'paid_at' => '2026-11-01'])->save();
+        }
         $course = ['PackageID' => $package?->id] + match ($case) {
             'tutoring' => ['ClassType' => 'tutoring'],
             'free' => ['Charge' => 0],
@@ -112,7 +134,12 @@ class ReceiptReassignConfirmParityTest extends TestCase
             default => [],
         };
         $total = match ($case) { 'partial' => self::AMOUNT + 1000, 'free' => 0, default => self::AMOUNT };
-        $bill = $this->bill($student, $total, 'unpaid', 0, $course, in_array($case, ['date_member', 'shared_month'], true) ? ['billing_period' => '2026-11'] : []);
+        $invoiceOverrides = match ($case) {
+            'date_member', 'shared_month' => ['billing_period' => '2026-11'],
+            'package_hold' => ['Status' => 'paid'], // stored paid, no money on it: the hold, not the Payment rows, decides
+            default => [],
+        };
+        $bill = $this->bill($student, $total, 'unpaid', 0, $course, $invoiceOverrides);
         if ($case === 'shared_month') { // another course's live November bill already carries this course's lessons
             $carrier = $this->bill($student, self::AMOUNT, 'unpaid', 0, [], ['billing_period' => '2026-11']);
             $carrier['invoice']->items()->create(['StudentClassID' => $bill['course']->ID, 'Description' => 'shared', 'Amount' => self::AMOUNT]);
