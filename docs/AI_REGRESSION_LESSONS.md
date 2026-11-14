@@ -1890,6 +1890,7 @@ Intake consolidation regression (2026-10-17): the oldest trusted SourceRef issue
 - **根因層級**：同一個唯讀請求混用了持久化計數器與 canonical 出席／扣堂投影，且沒有在投影前保留兩者，造成營運決策與課程卡呈現雙重真相。
 - **強制規則**：投影前先保留 stored counters，回傳 canonical 顯示值時仍須以 stored-versus-canonical 判定 `review_required`；營運收入風險不得把 canonical 已耗盡的整堂課列為 stranded，但資料品質警示必須保留。部分分鐘餘額仍是權威，不得套用整堂排除。
 - **安全邊界**：GET、摘要與診斷只能讀取和標示，不得自動更改課程、出席、扣堂或付款資料；跨校摘要必須維持 campus scope，批次診斷不可退化成逐課 N+1。
+- **未來堂次邊界（2026-11-15，#5197）**：canonical 已用堂數排除未來日期的出席／扣堂證據。若提前標記為 attended／late／completed，不得又從保留排課排除而釋出額度；唯讀轉用預覽須拒絕此不一致狀態，並保留已發生課程的正常扣堂。三種狀態都要有回歸，不修改權威的日期截止規則來配合預覽。
 - **測試必補**：同一筆 stored 餘額漂移要同時證明 Critical 消失、對帳警示仍在、API 顯示 canonical 餘額並回傳 stored 診斷，而且資料庫原值不變；另以部分分鐘案例證明不會被錯誤排除。
 
 ### R139. `IsContractException` 是「不在每週固定時段」，不是「在合約期間外」；期間外一律讀取時推導（in-app #536，2026-11-13）

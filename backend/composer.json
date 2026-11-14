@@ -2,14 +2,15 @@
   "name": "laravel/laravel",
   "type": "project",
   "require": {
+    "php": "^8.2",
+    "brick/math": "0.14.8",
     "guzzlehttp/guzzle": "^7.12.1",
     "laravel/framework": "^12.68",
     "laravel/sanctum": "^4.0",
     "laravel/tinker": "^2.10.1",
     "maatwebsite/excel": "^3.1",
     "pusher/pusher-php-server": "^7.0",
-    "sentry/sentry-laravel": "^4.25",
-    "php": "^8.2"
+    "sentry/sentry-laravel": "^4.25"
   },
   "require-dev": {
     "brianium/paratest": "^7",

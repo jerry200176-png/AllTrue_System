@@ -798,6 +798,7 @@
 | POST | `api/v1/student-classes/{studentClass}/sibling-transfer` | `SiblingContractTransferController@store` | role+campus |
 | POST | `api/v1/student-classes/{studentClass}/split-contract` | `StudentClassController@splitContract` | role+campus |
 | POST | `api/v1/student-classes/{studentClass}/split-contract/preview` | `StudentClassController@splitContractPreview` | role+campus |
+| POST | `api/v1/student-classes/{studentClass}/subject-credit-transfer/preview` | `SubjectCreditTransferController@preview` | role+campus |
 | POST | `api/v1/student-classes/{studentClass}/transfer-sessions` | `StudentClassController@transferSessions` | role+campus |
 
 ## /api/v1/student-identities
