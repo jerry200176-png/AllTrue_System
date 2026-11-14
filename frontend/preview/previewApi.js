@@ -25,6 +25,13 @@ const PARENT_PREVIEW = {
   upcoming_sessions: [{ id: 6201, SessionDate: '2026-11-12', StartTime: '16:00', EndTime: '17:00', Status: 'scheduled', Subject: '數學' }],
   attendance_history: [{ id: 5001, date: '2026-11-05', time: '16:00–17:00', subject: '數學', teacher_name: '測試老師', Status: 'present', status_label: '出席' }],
 };
+const PARENT_STUDY_TASKS = [
+  { id: 1, title: '預習第五單元（分數的乘法）', kind: 'preview', due_date: '2026-11-09', minutes: 30, done_at: '2026-11-09' },
+  { id: 2, title: '數學習作第 12 到 14 頁', kind: 'homework', due_date: '2026-11-11', minutes: 45, done_at: '2026-11-11' },
+  { id: 3, title: '訂正上次小考的錯題並請家人簽名', kind: 'correction', due_date: '2026-11-13', minutes: null, done_at: null },
+  { id: 4, title: '複習第四單元', kind: 'review', due_date: '2026-11-13', minutes: 20, done_at: null },
+  { id: 5, title: '英文單字第 3 回', kind: 'other', due_date: '2026-11-15', minutes: 15, done_at: null },
+];
 const cache = new Map();
 async function handlerFor(mode, page) {
   const key = `${mode}:${page}`;
@@ -49,6 +56,10 @@ export async function previewResponse(url, req) {
   if (p === '/me') return ok({ ...ROLES[role], campuses: [1, 2], must_change_password: false, capabilities: [], email: 'demo@example.invalid' });
   if (p === '/campuses' || p === '/branches') return ok(CAMPUSES);
   if (p.startsWith('/parent/dashboard')) return ok(PARENT_PREVIEW);
+  if (p === '/parent/study-tasks') {
+    const ws = url.searchParams.get('week_start') || '2026-11-09';
+    return ok({ week_start: ws, week_end: ws, data: ws === '2026-11-09' ? PARENT_STUDY_TASKS : [] });
+  }
   // Same endpoint serves different pages: pick the page-specific shared mock from ?app_page=.
   const page = PAGE_BY_APP_PAGE[new URLSearchParams(location.search).get('app_page') || ''] || '';
   const handler = await handlerFor(page ? 'normal' : 'dashboard', page);

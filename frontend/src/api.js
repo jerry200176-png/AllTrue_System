@@ -77,6 +77,15 @@ export async function parentRequestLeave(token, sessionId, { reason = '' } = {})
   return data;
 }
 
+// 家長端：孩子某一週（週一到週日）的讀書任務，唯讀。weekStart 省略 = 本週。
+export async function getParentStudyTasks(token, weekStart) {
+  const q = weekStart ? `?week_start=${encodeURIComponent(weekStart)}` : '';
+  const res = await fetch(`${API_BASE}/parent/study-tasks${q}`, {
+    headers: { Accept: 'application/json', Authorization: `Bearer ${token}` },
+  });
+  return readParentResponse(res, '無法讀取讀書任務');
+}
+
 export async function getParentNotificationPreferences(token) {
   const res = await fetch(`${API_BASE}/parent/notification-preferences`, {
     headers: { Accept: 'application/json', Authorization: `Bearer ${token}` },
