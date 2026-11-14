@@ -15,6 +15,9 @@ use App\Support\DeadlockRetry;
 use App\Services\Billing\BillingPeriodInvoiceExists;
 use App\Services\Billing\InvoiceCorrectionLink;
 use App\Services\Billing\InvoiceIssuer;
+use App\Services\Billing\FirstBillAutoVoid;
+use App\Services\Billing\MonthlyBillFreeze;
+use App\Services\Billing\PackagePaidMarks;
 use App\Services\Billing\ContractMoneyState;
 use App\Services\MonthlyBillingService;
 use App\Services\PaymentReportTokenService;
@@ -530,37 +533,7 @@ class PaymentReportController extends Controller
             }
 
             if ($sc && $sc->ScheduleMode === 'date') {
-                $billingPeriod = preg_match('/^\d{4}-\d{2}$/', (string) $invoice->billing_period)
-                    ? (string) $invoice->billing_period
-                    : $this->monthlyBilling->defaultPeriodFor($sc, $report->payment_date);
-                $billing = $this->monthlyBilling->summarizePeriod($sc, $billingPeriod);
-
-                if (
-                    (string) ($invoice->Status ?? 'unpaid') === 'unpaid'
-                    && (int) ($monthlyProjection['net_applied'] ?? 0) === 0
-                    && (!$monthlyProjection || $monthlyProjection['computed_total_amount'] !== null)
-                    && $billing['source'] === 'billable_sessions'
-                    && (!$monthlyProjection || $monthlyProjection['repriceable'])
-                ) {
-                    $invoice->TotalAmount = (int) $billing['charge'];
-                }
-
-                // A fixed (non-repriceable) bill keeps its own evidence: never snapshot today's sessions onto it (#3888 review).
-                if (empty($invoice->billing_snapshot) && (!$monthlyProjection || $monthlyProjection['repriceable'])) {
-                    $invoice->billing_period = $billingPeriod;
-                    $invoice->billing_snapshot = [
-                        'version' => 1,
-                        'source' => 'monthly_billable_sessions',
-                        'billing_period' => $billingPeriod,
-                        'period_start' => $billing['period_start'],
-                        'period_end' => $billing['period_end'],
-                        'period_sessions' => (int) $billing['period_sessions'],
-                        'charge' => (int) $billing['charge'],
-                        'sessions' => $this->monthlyBilling
-                            ->billableSessionDetailsForPeriod($sc, $billingPeriod),
-                    ];
-                    $invoice->save();
-                }
+                app(MonthlyBillFreeze::class)->priceBeforeFirstPayment($invoice, $sc, $monthlyProjection, $report->payment_date);
             }
 
             $payment = Payment::create([
@@ -1028,12 +1001,7 @@ class PaymentReportController extends Controller
      */
     private function legacyFlagCourseIds(StudentClass $course, bool $lock = false): array
     {
-        if (!$course->isPartOfPackage()) {
-            return [(int) $course->getKey()];
-        }
-
-        return StudentClass::query()->where('PackageID', $course->PackageID)->where('StudentID', $course->StudentID)->orderBy('ID')
-            ->when($lock, fn ($q) => $q->lockForUpdate())->pluck('ID')->map(fn ($id) => (int) $id)->all();
+        return PackagePaidMarks::courseIds($course, $lock);
     }
 
     /**
@@ -1071,14 +1039,7 @@ class PaymentReportController extends Controller
     /** The legacy mark off (void()/撤銷收款 semantics): the course and, for a package, its paid mark and every member's. @return int courses changed */
     private function dropLegacyPaidMarks(StudentClass $course, ?CoursePackage $package): int
     {
-        $members = StudentClass::query()->whereIn('ID', $this->legacyFlagCourseIds($course))->get();
-        foreach ($members as $member) {
-            $member->update(['Paid' => 0, 'Pay' => 0, 'PayDate' => null]
-                + ($member->getAttribute('closed_reason') === 'settled' ? ['closed_reason' => 'settled_pending'] : []));
-        }
-        $package?->refresh()->forceFill(['paid' => false, 'paid_at' => null])->save();
-
-        return $members->count();
+        return PackagePaidMarks::drop($course, $package);
     }
 
     /** @param array<string, int|string> $metadata no free text: a reason is stored only as its hash */
@@ -1591,15 +1552,7 @@ class PaymentReportController extends Controller
 
     private function markPackagePaid(CoursePackage $package, string $paidAt): void
     {
-        $package->paid = true;
-        $package->paid_at = $paidAt;
-        $package->save();
-
-        // Only the package owner's own courses: a stale PackageID on another student's course is not this payment's to mark.
-        StudentClass::where('PackageID', $package->id)->where('StudentID', $package->student_id)->update([
-            'Paid' => 1,
-            'PayDate' => $paidAt,
-        ]);
+        PackagePaidMarks::mark($package, $paidAt);
     }
 
     /**
@@ -2028,38 +1981,8 @@ class PaymentReportController extends Controller
      */
     private function voidAutoIssuedFirstBill(Invoice $invoice, PaymentReport $report, $paymentsBeforeReversal, StudentClass $sc, mixed $userId): bool
     {
-        $snapshot = is_array($invoice->billing_snapshot) ? $invoice->billing_snapshot : [];
-        $original = $paymentsBeforeReversal->first();
-        $isLoneReceipt = $paymentsBeforeReversal->count() === 1
-            && (int) $original->getKey() === (int) $report->getAttribute('payment_id')
-            && (int) $original->Amount > 0 && (string) $original->Method !== 'void';
-        if (($snapshot['source'] ?? null) !== self::FIRST_BILL_SOURCE
-            || (int) ($snapshot['payment_report_id'] ?? 0) !== (int) $report->getKey()
-            || (int) $invoice->StudentClassID !== (int) $sc->getKey()
-            || (int) $invoice->TotalAmount !== (int) ($snapshot['contract_charge'] ?? -1)
-            || (int) ($snapshot['contract_charge'] ?? 0) <= 0
-            || !$isLoneReceipt
-            || (string) $invoice->Status === 'void'
-            || $invoice->items()->exists()
-            // A pending report bound to this bill would hit void_invoice_cannot_confirm once it is void: leave the bill open for it.
-            || PaymentReport::query()->where('InvoiceID', (int) $invoice->getKey())->where('status', 'pending')
-                ->where('id', '!=', (int) $report->getKey())->exists()
-            || DB::table('invoice_corrections')->where(fn ($q) => $q->where('original_invoice_id', (int) $invoice->getKey())
-                ->orWhere('replacement_invoice_id', (int) $invoice->getKey()))->exists()) {
-            return false;
-        }
-        $audit = sprintf('[void: 唯一收款撤銷，系統自動作廢; user_id=%s; at=%s]', $userId ?? 'system', now()->format('Y-m-d H:i:s'));
-        $note = trim((string) ($invoice->Note ?? ''));
-        $invoice->Status = 'void';
-        // VARCHAR(255): the audit tag and the invoice-number tag always survive; only the free text is cut (as BillingController::voidInvoice).
-        $keep = preg_match('/\[' . \App\Services\Billing\InvoiceNumber::TAG . ':\d{4}-\d{2}\]/', $note, $kept) ? $kept[0] : '';
-        $free = trim(str_replace($keep, '', $note));
-        $free = trim(mb_substr($free, 0, max(0, 253 - mb_strlen($audit) - mb_strlen($keep))));
-        $invoice->Note = implode(' ', array_filter([$free, $keep, $audit], fn ($p) => $p !== ''));
-        $invoice->save();
-        Log::info('[FirstBillAutoVoid]', ['invoice_id' => $invoice->getKey(), 'report_id' => $report->getKey(), 'student_class_id' => $sc->getKey(), 'user_id' => $userId]);
-
-        return true;
+        return FirstBillAutoVoid::apply($invoice, (int) $report->getKey(), $report->getAttribute('payment_id') === null ? null : (int) $report->getAttribute('payment_id'),
+            collect($paymentsBeforeReversal), (int) $sc->getKey(), $userId);
     }
 
     /**
