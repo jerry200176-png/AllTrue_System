@@ -1,63 +1,46 @@
 <template>
-  <div class="students-page at-ops-page at-page">
-      <AtPageHeader
-        title="學生管理"
-        description="管理「人」：學生資料、家長與聯絡方式。"
-        icon="groups"
-        data-guide="students-header"
-      >
-        <template #meta>
-          <span>本分校 <strong>{{ studentsLoaded ? branchStudentTotal : '—' }}</strong> 人</span>
-          <span>目前列表 {{ studentsLoaded ? displayStudents.length : '—' }} 人</span>
-        </template>
-        <template #actions>
-          <AtButton shape="rect" variant="secondary" icon="upload_file" aria-label="匯入名單（學生）" @click="openImportDialog">匯入名單</AtButton>
-          <AtButton shape="rect" variant="ghost" icon="download" aria-label="下載範例（學生名單匯入）" @click="downloadImportTemplate">下載範例</AtButton>
-          <input
-            ref="importInput"
-            class="student-import-input"
-            type="file"
-            accept=".csv,.xlsx"
-            tabindex="-1"
-            aria-hidden="true"
-            @change="importStudents"
-          />
-          <AtButton shape="rect" variant="primary" icon="add" @click="openAddStudent">新增學生</AtButton>
-          <AtButton shape="rect" variant="secondary" icon="merge" @click="openIdentityModal">跨分校身份</AtButton>
-        </template>
-      </AtPageHeader>
+  <div class="students-page" :class="pageShell">
+    <PageHeader title="學生管理" data-guide="students-header">
+      <template #context>
+        <span class="tw:max-md:hidden">管理「人」：學生資料、家長與聯絡方式。</span>
+        <span class="tw:tabular-nums tw:md:ml-2">本分校 {{ studentsLoaded ? branchStudentTotal : '—' }} 人・目前列表 {{ studentsLoaded ? displayStudents.length : '—' }} 人</span>
+      </template>
+      <template #actions>
+        <Button type="button" variant="outline" :class="[control.page, phoneAction]" aria-label="匯入名單（學生）" @click="openImportDialog"><FileUp :size="22" aria-hidden="true" />匯入名單</Button>
+        <Button type="button" variant="outline" :class="[control.page, phoneAction]" aria-label="下載範例（學生名單匯入）" @click="downloadImportTemplate"><Download :size="22" aria-hidden="true" />下載範例</Button>
+        <Button type="button" variant="outline" :class="[control.page, phoneAction]" @click="openIdentityModal"><Merge :size="22" aria-hidden="true" />跨分校身份</Button>
+        <input
+          ref="importInput"
+          class="tw:sr-only"
+          type="file"
+          accept=".csv,.xlsx"
+          tabindex="-1"
+          aria-hidden="true"
+          @change="importStudents"
+        />
+        <Button type="button" :class="[control.page, phoneAction]" @click="openAddStudent"><Plus :size="22" aria-hidden="true" />新增學生</Button>
+      </template>
+    </PageHeader>
 
-    <div class="students-shell">
-      <!-- Bulk Action Toolbar (appears when students selected) -->
-      <div v-if="hasSelectedStudents" class="bulk-toolbar">
-        <span class="bulk-count">
-          <span class="material-symbols-outlined" style="font-size:18px;">check_circle</span>
-          已選 {{ selectedStudentCount }} 位
-        </span>
-        <div class="bulk-btns">
-          <AtButton shape="rect" size="sm" variant="ghost" @click="clearSelectedStudents">清除勾選</AtButton>
-          <AtButton shape="rect" size="sm" variant="danger" icon="delete" @click="deleteSelectedStudents">批量刪除</AtButton>
-        </div>
-      </div>
-
-      <AtFilterBar label="學生篩選" data-guide="students-filters">
-        <div class="filter-search">
-          <label for="students-name-filter">搜尋姓名或就讀學校</label>
-          <div class="search-input-wrap">
-            <span class="material-symbols-outlined search-icon" aria-hidden="true">search</span>
-            <input id="students-name-filter" v-model="filters.search" placeholder="輸入姓名或學校…" @input="debouncedLoad" />
+    <div class="tw:flex tw:flex-col tw:gap-4">
+      <div class="tw:flex tw:flex-wrap tw:items-end tw:gap-x-3 tw:gap-y-3" role="search" aria-label="學生篩選" data-guide="students-filters">
+        <div class="tw:min-w-0 tw:flex-[2_1_16rem]">
+          <label class="tw:mb-1 tw:text-tpl-caption tw:font-medium tw:text-tpl-secondary" for="students-name-filter">搜尋姓名或就讀學校</label>
+          <div class="tw:relative">
+            <Search class="tw:pointer-events-none tw:absolute tw:top-1/2 tw:left-3.5 tw:size-5 tw:-translate-y-1/2 tw:text-tpl-secondary" aria-hidden="true" />
+            <input id="students-name-filter" v-model="filters.search" class="tw:h-12 tw:rounded-2xl tw:pl-11 tw:text-tpl-body" placeholder="輸入姓名或學校…" @input="debouncedLoad" />
           </div>
         </div>
-        <div>
-          <label for="students-grade-filter">年級</label>
-          <select id="students-grade-filter" v-model="filters.grade" @change="loadStudents">
+        <div class="tw:min-w-0 tw:flex-[1_1_9rem]">
+          <label class="tw:mb-1 tw:text-tpl-caption tw:font-medium tw:text-tpl-secondary" for="students-grade-filter">年級</label>
+          <select id="students-grade-filter" v-model="filters.grade" class="tw:h-12 tw:rounded-2xl tw:text-tpl-body" @change="loadStudents">
             <option value="">全部</option>
             <option v-for="g in GRADES" :key="g.value" :value="g.value">{{ g.label }}</option>
           </select>
         </div>
-        <div>
-          <label for="students-status-filter">狀態</label>
-          <select id="students-status-filter" v-model="filters.status" @change="loadStudents">
+        <div class="tw:min-w-0 tw:flex-[1_1_9rem]">
+          <label class="tw:mb-1 tw:text-tpl-caption tw:font-medium tw:text-tpl-secondary" for="students-status-filter">狀態</label>
+          <select id="students-status-filter" v-model="filters.status" class="tw:h-12 tw:rounded-2xl tw:text-tpl-body" @change="loadStudents">
             <option value="active">在學中</option>
             <option value="">全部</option>
             <option value="graduated">已畢業</option>
@@ -65,19 +48,22 @@
             <option value="transferred">已轉校</option>
           </select>
         </div>
-        <div class="filter-toggles">
-          <AtButton shape="rect" size="sm" variant="ghost" icon="school" @click="openGradePromotion">年級升級</AtButton>
-          <AtButton shape="rect" size="sm" variant="ghost" icon="merge" @click="showSchoolMerge = true">學校整理</AtButton>
-          <AtButton
-            shape="rect"
-            size="sm"
-            :variant="showHistoricalCourses ? 'primary' : 'ghost'"
-            @click="toggleHistoricalCourses"
-          >
-            {{ showHistoricalCourses ? '隱藏已結業/歷史課程' : '顯示已結業/歷史課程' }}
-          </AtButton>
+        <div class="tw:flex tw:flex-wrap tw:items-center tw:gap-2">
+          <Button type="button" variant="outline" :class="control.page" @click="openGradePromotion"><GraduationCap :size="22" aria-hidden="true" />年級升級</Button>
+          <Button type="button" variant="outline" :class="control.page" @click="showSchoolMerge = true"><Merge :size="22" aria-hidden="true" />學校整理</Button>
+          <FilterChip :active="showHistoricalCourses" @click="toggleHistoricalCourses">顯示已結業/歷史課程</FilterChip>
         </div>
-      </AtFilterBar>
+      </div>
+
+      <div :class="[surface.card, 'tw:overflow-hidden']" data-testid="students-list-card">
+      <!-- Bulk Action Toolbar (appears when students selected) -->
+      <SelectionBar v-if="hasSelectedStudents" :announce="`已選 ${selectedStudentCount} 位`" data-testid="students-bulk-bar">
+        已選 {{ selectedStudentCount }} 位
+        <template #actions>
+          <Button type="button" variant="ghost" :class="control.row" @click="clearSelectedStudents">清除勾選</Button>
+          <Button type="button" variant="destructive" :class="control.row" @click="deleteSelectedStudents"><Trash2 :size="20" aria-hidden="true" />批量刪除</Button>
+        </template>
+      </SelectionBar>
 
       <!-- Student Table -->
       <div v-if="studentsLoading && !studentsLoaded" class="students-list-state students-list-state--loading" role="status" aria-live="polite">
@@ -598,6 +584,7 @@
           <AtButton shape="rect" variant="primary" icon="add" @click="openAddStudent">新增學生</AtButton>
         </template>
       </AtEmpty>
+      </div>
     </div>
 
     <!-- Add/Edit Student Modal -->
@@ -1060,8 +1047,9 @@ import {
   buildManualSessionNav,
   buildBindingManagementNav,
 } from '../lib/authoritativeMutationRoutes.js';
-import AtPageHeader from '../components/design-system/AtPageHeader.vue';
-import AtFilterBar from '../components/design-system/AtFilterBar.vue';
+import { Button } from '../components/ui/button';
+import { FilterChip, PageHeader, SelectionBar, control, pageShell, surface } from '../components/ui/page';
+import { Download, FileUp, GraduationCap, Merge, Plus, Search, Trash2 } from 'lucide-vue-next';
 import AtButton from '../components/design-system/AtButton.vue';
 import AtIconButton from '../components/design-system/AtIconButton.vue';
 import AtRowMenu from '../components/design-system/AtRowMenu.vue';
@@ -1115,6 +1103,8 @@ const goToBindingManagement = (student) => {
 const subjectOptions = ref([...SUBJECTS]);
 const students = ref([]);
 const studentsLoading = ref(true);
+// Header actions wrap on a phone (four of them, 字級 大 at 320) instead of pushing the page sideways.
+const phoneAction = 'tw:max-md:min-w-0 tw:max-md:flex-[1_1_9rem] tw:max-md:h-auto tw:max-md:min-h-12 tw:max-md:whitespace-normal tw:max-md:py-2';
 const studentsLoaded = ref(false);
 const studentsLoadError = ref('');
 let studentsRequestSequence = 0;
@@ -3730,17 +3720,6 @@ table th { font-size: 12.5px; }
 }
 
 /* ═══ Ops page shell ═══ */
-.students-page.at-ops-page {
-  display: flex;
-  flex-direction: column;
-  gap: var(--ds-space-3, 12px);
-}
-.students-shell {
-  background: var(--ds-surface-1, var(--ds-canvas));
-  border: 1px solid var(--ds-hairline);
-  border-radius: var(--ds-radius-lg, 8px);
-  padding: var(--ds-space-4, 16px);
-}
 .button-outline {
   border: 1px solid var(--ds-hairline);
   padding: 0 12px;
@@ -3755,17 +3734,6 @@ table th { font-size: 12.5px; }
   align-items: center;
   gap: 4px;
   transition: background-color var(--ds-motion-fast, 120ms) var(--ds-ease-standard, ease);
-}
-.student-import-input {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  padding: 0;
-  margin: -1px;
-  overflow: hidden;
-  clip: rect(0, 0, 0, 0);
-  white-space: nowrap;
-  border: 0;
 }
 .button-outline:hover {
   background: var(--ds-canvas-soft);
@@ -3782,61 +3750,8 @@ table th { font-size: 12.5px; }
 }
 
 /* ═══ Bulk Action Toolbar ═══ */
-.bulk-toolbar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 10px 16px;
-  margin-bottom: 12px;
-  background: var(--ds-primary-wash);
-  border: 1px solid var(--ds-hairline-input);
-  border-radius: 8px;
-  animation: slideDown 0.2s ease;
-}
-@keyframes slideDown {
-  from { opacity: 0; transform: translateY(-8px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-.bulk-count {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--ds-primary-text);
-  font-variant-numeric: tabular-nums;
-}
-.bulk-btns {
-  display: flex;
-  gap: 6px;
-}
 
 /* ═══ Filter Bar ═══ */
-.filter-bar {
-  margin-bottom: 20px;
-  background: var(--ds-canvas-soft);
-  padding: 16px;
-  border-radius: 10px;
-  border: 1px solid var(--ds-hairline);
-}
-.filter-search { position: relative; }
-.search-input-wrap { position: relative; }
-.search-icon {
-  position: absolute;
-  left: 10px;
-  top: 50%;
-  transform: translateY(-50%);
-  font-size: 20px;
-  color: var(--ds-ink-mute);
-  pointer-events: none;
-}
-.search-input-wrap input { padding-left: 36px; }
-.filter-toggles {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  align-items: flex-end;
-}
 
 /* ═══ Student Row ═══ */
 .student-select-head,
@@ -3944,8 +3859,6 @@ table th { font-size: 12.5px; }
   color: var(--ds-danger);
 }
 .table-scroll-wrap {
-  border: 1px solid var(--ds-hairline);
-  border-radius: var(--ds-radius-md, 6px);
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
 }
@@ -4962,34 +4875,6 @@ table th { font-size: 12.5px; }
   }
   .student-course-card__actions-body button {
     flex: 1 1 calc(50% - 8px);
-  }
-  .header-actions {
-    flex-direction: column;
-    gap: 10px;
-  }
-  .header-buttons {
-    flex-wrap: wrap;
-    width: 100%;
-  }
-  .header-buttons > * {
-    flex: 1;
-    justify-content: center;
-    min-width: 0;
-    text-align: center;
-  }
-  .filter-bar {
-    padding: 12px;
-  }
-  .filter-toggles {
-    flex-wrap: wrap;
-  }
-  .bulk-toolbar {
-    flex-direction: column;
-    gap: 8px;
-    align-items: stretch;
-  }
-  .bulk-btns {
-    justify-content: flex-end;
   }
 
   /* Icon-only action buttons on mobile */
