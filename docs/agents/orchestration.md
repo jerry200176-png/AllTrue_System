@@ -46,3 +46,16 @@
 - 所有外部 agent 規則都必須服從 `CLAUDE.md` 紅線、P0 gate、分校隔離、CI/deploy SOP。
 - 禁止一鍵匯入大量外部 rule 檔；新增或改 rule 必須走 T0 docs-only PR。
 - 若外部流程與 AllTrue P0 安全規則衝突，永遠以 AllTrue 規則為準。
+
+## Coordinator checklist (from the 2026-11-14 retro, issue 5201)
+
+| Step | Rule | Why |
+|---|---|---|
+| Before labelling `autoland` | Read review threads with the GitHub MCP `get_review_comments` (the plain REST comments list does not show whether a thread is resolved; GraphQL is blocked in cloud sessions). Reply to and resolve stale threads first. | `autoland` waits silently on an unresolved thread; three PRs sat for 30+ minutes on 2026-11-13/14. |
+| After a container restart | Re-create every waiter that was running (the restart notice lists them); keep running waiters in the task list. | A restart dropped the waiter for PR 5290. |
+| After each PR batch | Prune agent worktrees that are clean and whose HEAD is on the remote: `bash scripts/dev/prune-agent-worktrees.sh`. | 78 worktrees filled the disk to 100% and broke a checkout. |
+| Reviewer hits a usage limit | Restart the review on another model at once; do not wait for the reset. | Two reviews stalled for hours on 2026-11-13. |
+| A release train starts waiting | Tell the Founder in one message with the run link immediately; queue later merges for the next train. | The 2026-11-13 train waited five hours before anyone mentioned it. |
+| Machine resolve of an in-app report | `deploy_run_id` is the run whose SHA is in production now (`deployment.json`), not the run that first shipped the fix. | The resolve for 530 was refused with `deploy_run_not_in_production`. |
+| A Dependabot PR | Follow `MERGE_SOP.md` § Dependabot PRs (added by PR 5296). | The land queue skips bot PRs. |
+
