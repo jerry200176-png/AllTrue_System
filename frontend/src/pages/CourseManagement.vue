@@ -864,73 +864,85 @@
       </template>
     </CourseManager>
 
-    <!-- Edit Course Modal -->
-    <div v-if="showEditModal && !courseManagerOpen" class="modal-overlay">
-      <div class="modal course-modal">
-        <h3 class="modal-title">編輯課程</h3>
-        <Alert v-if="editabilityLoading" tone="info" title="正在檢查課程狀態" style="margin: 0 0 14px;">
-          <p>正在確認付款、扣堂與對帳狀態；一般欄位仍可編輯。</p>
-        </Alert>
-        <Alert v-if="editabilityError" tone="warning" title="無法完成預檢" style="margin: 0 0 14px;">
-          <p>{{ editabilityError }} 儲存時仍會由後端再次檢查。</p>
-        </Alert>
-        <CourseSaveErrorAlert :error="editSaveError" :can-open="canOpenEditabilityAction" @action="openEditabilityAction" />
-        <section v-if="editability?.reasons?.length" class="editability-action-panel" data-testid="course-editability-panel" aria-label="課程編輯分流">
-          <div class="editability-action-panel__intro">
-            <strong>這門課有資料不能用一般編輯改寫</strong>
-            <span>一般欄位可以繼續修改；要處理受保護資料，請從對應流程進入。</span>
-          </div>
-          <div v-for="reason in editability.reasons" :key="reason.code" class="editability-action-row">
-            <div class="editability-action-row__copy">
-              <strong>{{ reason.message }}</strong>
-              <span v-if="editabilityAffectedFields.length" class="editability-action-row__fields">
-                受保護欄位：{{ editabilityAffectedFields.join('、') }}
-              </span>
-              <span v-if="editabilityActionDescription(reason.next_step)" class="editability-action-row__description">
-                {{ editabilityActionDescription(reason.next_step) }}
-              </span>
+    <!-- Edit Course dialog (shared Dialog; issue 4989 slice 7a). Overlay click never closes it (unsaved form); 取消 / Esc do. -->
+    <Dialog :open="showEditModal && !courseManagerOpen" @update:open="(v) => { if (!v) showEditModal = false; }">
+      <DialogContent
+        :show-close-button="false"
+        class="tw:max-h-[min(90dvh,56rem)] tw:grid-rows-[auto_minmax(0,1fr)_auto] tw:gap-0 tw:p-0 tw:sm:max-w-2xl tw:max-sm:top-auto tw:max-sm:bottom-0 tw:max-sm:max-h-[94dvh] tw:max-sm:max-w-none tw:max-sm:translate-y-0 tw:max-sm:rounded-b-none tw:max-sm:rounded-t-3xl tw:rounded-3xl"
+        data-testid="course-edit-dialog"
+        @interact-outside="(e) => e.preventDefault()"
+      >
+        <DialogHeader class="tw:px-5 tw:pt-5 tw:pb-3 tw:text-left">
+          <DialogTitle class="tw:text-tpl-list tw:font-bold tw:text-balance">編輯課程</DialogTitle>
+          <DialogDescription class="tw:sr-only">修改課程的老師、時間與付款方式後按儲存</DialogDescription>
+        </DialogHeader>
+        <div class="tw:min-h-0 tw:overflow-y-auto tw:px-5 tw:pb-4 tw:text-tpl-body">
+          <Alert v-if="editabilityLoading" tone="info" title="正在檢查課程狀態" style="margin: 0 0 14px;">
+            <p>正在確認付款、扣堂與對帳狀態；一般欄位仍可編輯。</p>
+          </Alert>
+          <Alert v-if="editabilityError" tone="warning" title="無法完成預檢" style="margin: 0 0 14px;">
+            <p>{{ editabilityError }} 儲存時仍會由後端再次檢查。</p>
+          </Alert>
+          <CourseSaveErrorAlert :error="editSaveError" :can-open="canOpenEditabilityAction" @action="openEditabilityAction" />
+          <section v-if="editability?.reasons?.length" class="editability-action-panel" data-testid="course-editability-panel" aria-label="課程編輯分流">
+            <div class="editability-action-panel__intro">
+              <strong>這門課有資料不能用一般編輯改寫</strong>
+              <span>一般欄位可以繼續修改；要處理受保護資料，請從對應流程進入。</span>
             </div>
-            <button
-              v-if="canOpenEditabilityAction(reason.next_step)"
-              type="button"
-              class="ghost small editability-action-row__button"
-              @click="openEditabilityAction(reason.next_step)"
-            >{{ editabilityActionLabel(reason.next_step) }} <span aria-hidden="true">→</span></button>
+            <div v-for="reason in editability.reasons" :key="reason.code" class="editability-action-row tw:max-sm:flex-col tw:max-sm:items-stretch">
+              <div class="editability-action-row__copy">
+                <strong>{{ reason.message }}</strong>
+                <span v-if="editabilityAffectedFields.length" class="editability-action-row__fields">
+                  受保護欄位：{{ editabilityAffectedFields.join('、') }}
+                </span>
+                <span v-if="editabilityActionDescription(reason.next_step)" class="editability-action-row__description">
+                  {{ editabilityActionDescription(reason.next_step) }}
+                </span>
+              </div>
+              <Button
+                v-if="canOpenEditabilityAction(reason.next_step)"
+                type="button"
+                variant="outline"
+                :class="cn(control.row, 'editability-action-row__button tw:text-foreground tw:max-sm:w-full')"
+                @click="openEditabilityAction(reason.next_step)"
+              >{{ editabilityActionLabel(reason.next_step) }} <span aria-hidden="true">→</span></Button>
+            </div>
+          </section>
+          <div class="form-section">
+            <CourseEditForm
+              ref="editFormRef"
+              v-model="editForm"
+              :branch-id="props.branchId"
+              :teachers="editTeacherOptions"
+              :rooms="rooms"
+              :subjects="subjectOptions"
+              :day-options="DAY_OPTIONS"
+              :time-options="TIME_OPTIONS_30"
+              :settlement-day-options="settlementDayOptions"
+              :show-remaining="true"
+              :package-info="editPackageInfo"
+              :context-title="editContextTitle"
+              :editability="editability"
+              :payment-state-unavailable="editabilityLoading || !!editabilityError"
+              @open-billing="openEditabilityAction('void_payment')"
+            />
           </div>
-        </section>
-        <div class="form-section">
-          <CourseEditForm
-            ref="editFormRef"
-            v-model="editForm"
-            :branch-id="props.branchId"
-            :teachers="editTeacherOptions"
-            :rooms="rooms"
-            :subjects="subjectOptions"
-            :day-options="DAY_OPTIONS"
-            :time-options="TIME_OPTIONS_30"
-            :settlement-day-options="settlementDayOptions"
-            :show-remaining="true"
-            :package-info="editPackageInfo"
-            :context-title="editContextTitle"
-            :editability="editability"
-            :payment-state-unavailable="editabilityLoading || !!editabilityError"
-            @open-billing="openEditabilityAction('void_payment')"
-          />
+          <div
+            v-if="editForm.payment_type === 'session' && editingCourseFromLaravel"
+            class="quick-add-session-link tw:mt-3 tw:text-right"
+          >
+            <Button type="button" variant="ghost" :class="control.row" @click="openQuickAddSessionFromEditModal">＋ 補課 / 補登（總堂數不變）</Button>
+          </div>
         </div>
-        <div
-          v-if="editForm.payment_type === 'session' && editingCourseFromLaravel"
-          class="quick-add-session-link"
-          style="margin: 12px 0 4px; text-align: right;"
-        >
-          <button type="button" class="ghost small" @click="openQuickAddSessionFromEditModal">＋ 補課 / 補登（總堂數不變）</button>
+        <div class="tw:border-t tw:border-border tw:px-5 tw:py-3">
+          <p v-if="editFormRef?.hasErrors" class="tw:mb-2 tw:text-tpl-caption tw:text-tpl-secondary" role="status">請先修正表單標示的必填欄位，再儲存課程設定。</p>
+          <DialogFooter class="tw:max-sm:flex-row">
+            <Button type="button" variant="secondary" :class="cn(control.page, 'tw:max-sm:flex-1')" @click="showEditModal = false">取消</Button>
+            <Button type="button" :class="cn(control.page, 'tw:max-sm:flex-1')" :disabled="editFormRef?.hasErrors || editabilityLoading" @click="submitEdit">儲存</Button>
+          </DialogFooter>
         </div>
-        <div class="actions">
-          <button class="ghost" @click="showEditModal = false">取消</button>
-          <button class="primary" :disabled="editFormRef?.hasErrors || editabilityLoading" @click="submitEdit">儲存</button>
-        </div>
-        <p v-if="editFormRef?.hasErrors" class="form-hint" role="status">請先修正表單標示的必填欄位，再儲存課程設定。</p>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
 
     <!-- Read-only single-course → shared-package safety preview -->
     <PackageConversionPreviewModal
@@ -1368,6 +1380,7 @@ import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import TextSizeToggle from '../components/TextSizeToggle.vue';
 import { PageHeader, StatStrip, StatItem, SectionCard, StatusBadge, CollapsibleGroup, contractGrid, control, dataTable, factRow, pageShell, pageTabs, rowAction, surface, toneText } from '@/components/ui/page';
+import { cn } from '@/lib/utils';
 // Phone: the two page buttons share a row and may wrap their words instead of pushing the page sideways (320px at 大).
 const phoneAction = 'tw:max-md:min-w-0 tw:max-md:flex-[1_1_9rem] tw:max-md:h-auto tw:max-md:min-h-12 tw:max-md:whitespace-normal tw:max-md:py-2';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';

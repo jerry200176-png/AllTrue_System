@@ -304,6 +304,57 @@ const COURSE_MGMT_BILLING_DARK = {
   },
 };
 
+// 課程查找 slice 7a (issue 4989): the 編輯課程 dialog (shared Dialog). Opened from the row's 更多 menu with the protected-data panel showing.
+// Asserts: the dialog sits inside the viewport at every width and 字級, nothing inside it sticks out sideways, focus is inside it,
+// the 取消 / 儲存 buttons and the panel's action are at least 44px, and the footer stays on screen while the body scrolls.
+const COURSE_MGMT_EDIT_DIALOG = {
+  ...COURSE_MGMT,
+  key: 'course-mgmt (edit dialog)',
+  names: ['編輯課程'],
+  allNames: false,
+  rows: [],
+  touch: ['[data-testid="course-edit-dialog"] > div:last-of-type button', '[data-testid="course-edit-dialog"] .editability-action-row__button'],
+  mock: async (page) => {
+    const data = [{ id: 100, data_source: 'laravel', branch_name: '大安校', room_name: 'A 教室', student_id: 9100, student_name: '歐陽子晴', teacher_id: 1, teacher_name: '王老師', subject: 'math', subject_name: '國中數學', first_class_date: '2026-09-01', status: 'active', ScheduleMode: 'count', payment_type: 'session', sessions_purchased: 8, sessions_used: 3, remaining_sessions: 5, payment_status: 'paid', class_type: 'one_on_one', rate_per_30min: 500, start_time: '16:00', days_of_week: [2], duration_hours: 2 }];
+    const editability = { reasons: [{ code: 'paid', message: '已有付款紀錄，繳費相關欄位不能直接改', next_step: 'void_payment' }], locked_fields: ['sessions_purchased'] };
+    await page.route('**/api/v1/**', (r) => { const p = new URL(r.request().url()).pathname; return json(r, p === '/api/v1/student-classes' ? { data, total: 1, current_page: 1, last_page: 1 } : p.endsWith('/editability') ? editability : { data: [] }); });
+  },
+  setup: async (page) => {
+    await page.getByText('歐陽子晴', { exact: true }).first().waitFor({ state: 'attached' });
+    await page.waitForLoadState('networkidle');
+    const trigger = page.locator('.course-row .action-menu-trigger').first();
+    await trigger.scrollIntoViewIfNeeded();
+    await trigger.click();
+    await page.getByRole('menuitem', { name: '編輯' }).first().click();
+    await expect(page.locator('[data-testid="course-edit-dialog"]')).toBeVisible();
+    await expect(page.locator('[data-testid="course-editability-panel"]')).toBeVisible();
+    await page.waitForTimeout(400); // open animation
+  },
+  extra: {
+    run: () => {
+      const dialog = document.querySelector('[data-testid="course-edit-dialog"]');
+      const box = dialog.getBoundingClientRect();
+      const body = dialog.querySelector('.tw\\:overflow-y-auto');
+      const footer = [...dialog.querySelectorAll('button')].find((b) => b.textContent.trim() === '儲存').getBoundingClientRect();
+      const sticks = [...dialog.querySelectorAll('*')].filter((el) => { const r = el.getBoundingClientRect(); return r.width > 0 && (r.right > box.right + 1 || r.left < box.left - 1) && getComputedStyle(el).position !== 'absolute'; }).map((el) => `${el.tagName}.${String(el.className).slice(0, 40)}`);
+      return {
+        inView: box.left >= 0 && box.right <= window.innerWidth && box.top >= 0 && box.bottom <= window.innerHeight + 1,
+        focusInside: dialog.contains(document.activeElement), sticks,
+        bodyOverflowX: body.scrollWidth - body.clientWidth, footerOnScreen: footer.bottom <= window.innerHeight && footer.top >= box.top,
+        modal: dialog.getAttribute('role') === 'dialog' && !!dialog.getAttribute('aria-labelledby'),
+      };
+    },
+    assert: (r) => {
+      expect(r.inView, 'the dialog sits inside the viewport').toBe(true);
+      expect(r.focusInside, 'focus is inside the dialog').toBe(true);
+      expect(r.sticks, 'nothing inside the dialog sticks out sideways').toEqual([]);
+      expect(r.bodyOverflowX, 'the dialog body does not scroll sideways').toBeLessThanOrEqual(1);
+      expect(r.footerOnScreen, '取消 / 儲存 stay on screen').toBe(true);
+      expect(r.modal, 'role=dialog with an accessible name').toBe(true);
+    },
+  },
+};
+
 /** PAGES: { key, url, mock(page), names (exact texts that must stay on one line), rows (selector groups whose visible members must share a left edge), setup?(page) } */
 const PAGES = [
   {
@@ -430,6 +481,7 @@ const PAGES = [
   COURSE_MGMT_HISTORY,
   COURSE_MGMT_BILLING,
   COURSE_MGMT_BILLING_DARK,
+  COURSE_MGMT_EDIT_DIALOG,
   {
     key: 'teacher-eligibility',
     url: '/teacher-eligibility-pilot-mount.html',
@@ -524,3 +576,28 @@ for (const entry of PAGES) {
     }
   }
 }
+
+// 課程查找 slice 7a: keyboard behaviour of the 編輯課程 dialog. Tab stays inside, an outside click does not close it (unsaved form),
+// Esc and 取消 do, and focus goes back to the row's 更多 button.
+test('layout guard: course-mgmt (edit dialog) focus trap, outside click, Esc and return focus', async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 800 });
+  await COURSE_MGMT_EDIT_DIALOG.mock(page);
+  await page.goto(COURSE_MGMT_EDIT_DIALOG.url);
+  await expect(page.locator('html')).toHaveAttribute('data-pilot-ready', '1', { timeout: 15_000 });
+  await COURSE_MGMT_EDIT_DIALOG.setup(page);
+  const dialog = page.locator('[data-testid="course-edit-dialog"]');
+  for (let i = 0; i < 40; i += 1) {
+    await page.keyboard.press('Tab');
+    expect(await page.evaluate(() => document.querySelector('[data-testid="course-edit-dialog"]').contains(document.activeElement)), `Tab ${i + 1} stays inside the dialog`).toBe(true);
+  }
+  await page.mouse.click(180, 8); // the dimmed page above the sheet
+  await expect(dialog).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(dialog).toHaveCount(0);
+  await expect(page.locator('.course-row .action-menu-trigger').first()).toBeFocused();
+  await page.locator('.course-row .action-menu-trigger').first().click();
+  await page.getByRole('menuitem', { name: '編輯' }).first().click();
+  await expect(dialog).toBeVisible();
+  await page.getByRole('button', { name: '取消', exact: true }).click();
+  await expect(dialog).toHaveCount(0);
+});
