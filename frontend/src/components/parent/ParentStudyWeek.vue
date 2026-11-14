@@ -1,5 +1,5 @@
 <script setup>
-// issue 5269 step 4: the family's read-only "這週的讀書任務" in the parent portal. No write control exists here.
+// issue 5269 step 4: the family's read-only "讀書任務" in the parent portal. No write control exists here.
 //
 // STATE RULE: the server list is the only truth; nothing is kept as a draft. Each week change (and 再試一次) fetches that week;
 // an answer that belongs to an older week, or to an older token (the parent switched child), is dropped. A failed fetch keeps the
@@ -7,7 +7,7 @@
 // The progress line is the week's own done / total, derived from the same list; no plan or attendance figure is shown
 // here because the parent portal has no such data for the family today.
 import { computed, ref, watch } from 'vue';
-import { CalendarDays, Check } from '@lucide/vue';
+import { CalendarDays } from '@lucide/vue';
 import { getParentStudyTasks } from '../../api';
 import { ymdInTaipei } from '../../lib/sessionDates';
 import { addDays, formatMd } from '../../lib/learningPlanGantt';
@@ -56,7 +56,7 @@ const progress = computed(() => weekTaskProgress(tasks.value));
 const progressText = computed(() => {
   const p = progress.value;
   if (p.status !== 'ok') return '';
-  return p.done === p.total ? `這週的 ${p.total} 項任務都完成了` : `已完成 ${p.done} 項，共 ${p.total} 項`;
+  return p.done === p.total ? `這一週的 ${p.total} 項任務都完成了` : `已完成 ${p.done} 項，共 ${p.total} 項`;
 });
 const minutesText = (m) => (m ? `約 ${m} 分鐘` : '');
 const doneText = (t) => `已完成（${formatMd(t.done_at)}）`;
@@ -74,7 +74,7 @@ load();
 <template>
   <Card class="tw:gap-3 tw:py-5 tw:shadow-none" data-testid="parent-study-week" :aria-busy="loading || undefined">
     <CardHeader class="tw:gap-1 tw:px-5">
-      <CardTitle class="tw:m-0 tw:text-tpl-list tw:font-bold">這週的讀書任務</CardTitle>
+      <CardTitle class="tw:m-0 tw:text-tpl-list tw:font-bold">讀書任務</CardTitle>
       <p class="tw:m-0 tw:text-tpl-caption tw:text-tpl-secondary tw:tabular-nums" role="status" data-testid="week-label">{{ weekRangeText(weekStart) }}</p>
     </CardHeader>
     <CardContent class="tw:flex tw:flex-col tw:gap-3 tw:px-5">
@@ -97,7 +97,7 @@ load();
 
       <div v-else-if="!tasks.length" class="tw:flex tw:flex-col tw:items-center tw:gap-2 tw:py-6 tw:text-center" data-testid="study-empty">
         <CalendarDays class="tw:size-8 tw:text-tpl-secondary" aria-hidden="true" />
-        <p class="tw:m-0 tw:text-tpl-body tw:font-semibold tw:text-pretty">這週老師還沒有安排讀書任務</p>
+        <p class="tw:m-0 tw:text-tpl-body tw:font-semibold tw:text-pretty">這一週老師還沒有安排讀書任務</p>
       </div>
 
       <template v-else>
@@ -118,7 +118,7 @@ load();
                 <p class="tw:m-0 tw:flex tw:flex-wrap tw:items-center tw:gap-x-2 tw:gap-y-1 tw:text-tpl-caption tw:text-tpl-secondary">
                   <span class="tw:whitespace-nowrap">{{ KIND_LABELS[t.kind] || KIND_LABELS.other }}</span>
                   <span v-if="minutesText(t.minutes)" class="tw:whitespace-nowrap">{{ minutesText(t.minutes) }}</span>
-                  <StatusBadge v-if="t.done_at" tone="success" data-testid="task-done"><Check class="tw:size-3.5" aria-hidden="true" />{{ doneText(t) }}</StatusBadge>
+                  <StatusBadge v-if="t.done_at" tone="success" data-testid="task-done">{{ doneText(t) }}</StatusBadge>
                   <span v-else class="tw:whitespace-nowrap" data-testid="task-open">還沒完成</span>
                 </p>
               </li>

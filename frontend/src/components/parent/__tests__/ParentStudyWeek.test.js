@@ -61,7 +61,7 @@ describe('ParentStudyWeek (issue 5269 step 4)', () => {
     expect(byId(w, 'study-progress').text()).toContain('已完成 1 項，共 3 項');
     getParentStudyTasks.mockResolvedValue({ data: [row(1, '2026-11-09', { done_at: '2026-11-09' })] });
     const all = await mountIt();
-    expect(byId(all, 'study-progress').text()).toContain('這週的 1 項任務都完成了');
+    expect(byId(all, 'study-progress').text()).toContain('這一週的 1 項任務都完成了');
   });
 
   it('has no write control: only week navigation buttons exist, and no input', async () => {
@@ -73,7 +73,7 @@ describe('ParentStudyWeek (issue 5269 step 4)', () => {
   it('empty week: one friendly sentence, no progress, no error', async () => {
     getParentStudyTasks.mockResolvedValue({ data: [] });
     const w = await mountIt();
-    expect(byId(w, 'study-empty').text()).toBe('這週老師還沒有安排讀書任務');
+    expect(byId(w, 'study-empty').text()).toBe('這一週老師還沒有安排讀書任務');
     expect(byId(w, 'study-progress').exists()).toBe(false);
     expect(byId(w, 'study-error').exists()).toBe(false);
   });

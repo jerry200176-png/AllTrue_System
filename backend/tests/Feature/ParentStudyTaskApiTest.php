@@ -3,6 +3,9 @@
 namespace Tests\Feature;
 
 use App\Models\AuthToken;
+use App\Models\Guardian;
+use App\Models\StudentGuardian;
+use App\Services\ParentBinding\GuardianSyncService;
 use App\Models\ParentSession;
 use App\Models\Student;
 use App\Models\StudentStudyTask;
@@ -96,12 +99,12 @@ class ParentStudyTaskApiTest extends TestCase
         $teacher = User::create(['LoginName' => 'ts' . random_int(1, 99999) . '@example.com', 'Name' => 'Staff', 'PSW' => 'secret',
             'type' => 'T', 'phone' => (string) random_int(900000000, 999999999), 'MustChangePassword' => false]);
         $this->makeTask($child, ['title' => '訂正考卷', 'kind' => 'correction', 'minutes' => 15, 'note' => '內部提醒：家長不要看',
-            'created_by' => $teacher->id, 'done_by' => $teacher->id, 'done_at' => '2026-11-12 18:30:00']);
-        $this->makeTask($child, ['title' => '未完成', 'due_date' => '2026-11-19']);
+            'created_by' => $teacher->id, 'done_by' => $teacher->id, 'done_at' => '2026-11-12 18:30:00', 'due_date' => '2026-11-12']);
+        $this->makeTask($child, ['title' => '未完成', 'due_date' => '2026-11-13']);
 
         $data = $this->asParent($this->guardianToken($child))->getJson(self::URL . '?week_start=2026-11-09')->assertOk()->json('data');
 
-        $this->assertCount(2, $data);
+        $this->assertCount(2, $data); // never let the key assertions below run over an empty list
         foreach ($data as $row) {
             $this->assertSame(['done_at', 'due_date', 'id', 'kind', 'minutes', 'title'], collect(array_keys($row))->sort()->values()->all());
         }
@@ -201,5 +204,38 @@ class ParentStudyTaskApiTest extends TestCase
 
         $this->asParent($token)->getJson(self::URL . '?week_start=11/09')->assertStatus(422);
         $this->asParent($token)->getJson(self::URL . '?week_start=2026-13-45')->assertStatus(422);
+    }
+
+    public function test_a_week_returns_at_most_100_tasks(): void
+    {
+        $campus = (int) CampusFactory::new()->create()->id;
+        $child = $this->makeStudent($campus);
+        for ($i = 0; $i < 105; $i++) {
+            $this->makeTask($child, ['title' => "任務{$i}", 'due_date' => '2026-11-18']);
+        }
+
+        $res = $this->asParent($this->guardianToken($child))->getJson(self::URL . '?week_start=2026-11-16')->assertOk();
+        $this->assertCount(100, $res->json('data'));
+    }
+
+    public function test_a_session_whose_guardian_link_was_revoked_is_refused(): void
+    {
+        config(['perfflags.multi_guardian_enabled' => true]);
+        $campus = (int) CampusFactory::new()->create()->id;
+        $child = $this->makeStudent($campus);
+        $this->makeTask($child);
+        $line = 'U' . bin2hex(random_bytes(16));
+        $guardian = Guardian::create(['display_name' => '爸', 'line_user_id' => $line]);
+        $link = StudentGuardian::create([
+            'student_id' => $child->id, 'guardian_id' => $guardian->id, 'campus_id' => $campus,
+            'role' => StudentGuardian::ROLE_FATHER, 'is_primary' => true, 'status' => StudentGuardian::STATUS_ACTIVE,
+            'notify_learning_feedback' => true, 'notify_tuition' => true, 'source' => StudentGuardian::SOURCE_STAFF,
+        ]);
+        $raw = Str::random(48);
+        ParentSession::create(['StudentID' => $child->id, 'line_user_id' => $line, 'TokenHash' => hash('sha256', $raw), 'ExpiresAt' => now()->addDays(30)]);
+
+        $this->asParent($raw)->getJson(self::URL . '?week_start=2026-11-16')->assertOk()->assertJsonCount(1, 'data');
+        app(GuardianSyncService::class)->revoke($link->fresh(['guardian']));
+        $this->asParent($raw)->getJson(self::URL . '?week_start=2026-11-16')->assertStatus(401);
     }
 }
