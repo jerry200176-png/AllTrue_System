@@ -401,7 +401,7 @@ const COURSE_MGMT_EDIT_DIALOG = {
   names: ['編輯課程'],
   allNames: false,
   rows: [],
-  touch: ['[data-testid="course-edit-dialog"] > div:last-of-type button', '[data-testid="course-edit-dialog"] .editability-action-row__button'],
+  touch: ['[data-testid="course-edit-dialog"] > div:last-of-type button', '[data-testid="course-edit-dialog"] .editability-action-row__button', '[data-testid="course-edit-dialog"] .quick-add-session-link button'],
   mock: async (page) => {
     const data = [{ id: 100, data_source: 'laravel', branch_name: '大安校', room_name: 'A 教室', student_id: 9100, student_name: '歐陽子晴', teacher_id: 1, teacher_name: '王老師', subject: 'math', subject_name: '國中數學', first_class_date: '2026-09-01', status: 'active', ScheduleMode: 'count', payment_type: 'session', sessions_purchased: 8, sessions_used: 3, remaining_sessions: 5, payment_status: 'paid', class_type: 'one_on_one', rate_per_30min: 500, start_time: '16:00', days_of_week: [2], duration_hours: 2 }];
     const editability = { reasons: [{ code: 'paid', message: '已有付款紀錄，繳費相關欄位不能直接改', next_step: 'void_payment' }], locked_fields: ['sessions_purchased'] };
@@ -681,8 +681,28 @@ test('layout guard: course-mgmt (edit dialog) focus trap, outside click, Esc and
   }
   await page.mouse.click(180, 8); // the dimmed page above the sheet
   await expect(dialog).toBeVisible();
+  // unsaved edit: Esc asks first, answering 取消 keeps the dialog and the typed text; 取消 (the button) asks the same question
+  const memo = dialog.locator('textarea').first();
+  await memo.fill('先寫一句備註');
+  await page.keyboard.press('Escape');
+  const ask = page.getByRole('alertdialog');
+  await expect(ask).toContainText('放棄未儲存的變更？');
+  await ask.getByRole('button', { name: '取消', exact: true }).click();
+  await expect(ask).toHaveCount(0);
+  await expect(dialog).toBeVisible();
+  await expect(memo).toHaveValue('先寫一句備註');
+  await dialog.getByRole('button', { name: '取消', exact: true }).click();
+  await expect(page.getByRole('alertdialog')).toContainText('放棄未儲存的變更？');
+  await page.getByRole('alertdialog').getByRole('button', { name: '放棄變更' }).click(); // discard: closes
+  await expect(dialog).toHaveCount(0);
+  await expect(page.locator('.course-row .action-menu-trigger').first()).toBeFocused();
+  // untouched form: Esc closes at once, no question
+  await page.locator('.course-row .action-menu-trigger').first().click();
+  await page.getByRole('menuitem', { name: '編輯' }).first().click();
+  await expect(dialog).toBeVisible();
   await page.keyboard.press('Escape');
   await expect(dialog).toHaveCount(0);
+  await expect(page.getByRole('alertdialog')).toHaveCount(0);
   await expect(page.locator('.course-row .action-menu-trigger').first()).toBeFocused();
   await page.locator('.course-row .action-menu-trigger').first().click();
   await page.getByRole('menuitem', { name: '編輯' }).first().click();

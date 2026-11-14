@@ -899,12 +899,13 @@
     </CourseManager>
 
     <!-- Edit Course dialog (shared Dialog; issue 4989 slice 7a). Overlay click never closes it (unsaved form); 取消 / Esc do. -->
-    <Dialog :open="showEditModal && !courseManagerOpen" @update:open="(v) => { if (!v) showEditModal = false; }">
+    <Dialog :open="showEditModal && !courseManagerOpen" @update:open="(v) => { if (!v) requestCloseEditDialog(); }">
       <DialogContent
         :show-close-button="false"
         class="tw:max-h-[min(90dvh,56rem)] tw:grid-rows-[auto_minmax(0,1fr)_auto] tw:gap-0 tw:p-0 tw:sm:max-w-2xl tw:max-sm:top-auto tw:max-sm:bottom-0 tw:max-sm:max-h-[94dvh] tw:max-sm:max-w-none tw:max-sm:translate-y-0 tw:max-sm:rounded-b-none tw:max-sm:rounded-t-3xl tw:rounded-3xl"
         data-testid="course-edit-dialog"
         @interact-outside="(e) => e.preventDefault()"
+        @escape-key-down="(e) => { if (e.isComposing || e.keyCode === 229) e.preventDefault(); }"
       >
         <DialogHeader class="tw:px-5 tw:pt-5 tw:pb-3 tw:text-left">
           <DialogTitle class="tw:text-tpl-list tw:font-bold tw:text-balance">編輯課程</DialogTitle>
@@ -968,10 +969,10 @@
             <Button type="button" variant="ghost" :class="control.row" @click="openQuickAddSessionFromEditModal">＋ 補課 / 補登（總堂數不變）</Button>
           </div>
         </div>
-        <div class="tw:border-t tw:border-border tw:px-5 tw:py-3">
+        <div class="tw:border-t tw:border-border tw:px-5 tw:pt-3 tw:pb-[max(0.75rem,env(safe-area-inset-bottom))]">
           <p v-if="editFormRef?.hasErrors" class="tw:mb-2 tw:text-tpl-caption tw:text-tpl-secondary" role="status">請先修正表單標示的必填欄位，再儲存課程設定。</p>
           <DialogFooter class="tw:max-sm:flex-row">
-            <Button type="button" variant="secondary" :class="cn(control.page, 'tw:max-sm:flex-1')" @click="showEditModal = false">取消</Button>
+            <Button type="button" variant="secondary" :class="cn(control.page, 'tw:max-sm:flex-1')" @click="requestCloseEditDialog">取消</Button>
             <Button type="button" :class="cn(control.page, 'tw:max-sm:flex-1')" :disabled="editFormRef?.hasErrors || editabilityLoading" @click="submitEdit">儲存</Button>
           </DialogFooter>
         </div>
@@ -1472,6 +1473,7 @@ import ConfirmDialogHost from '../components/course-management/ConfirmDialogHost
 import RestoreCancelledSessionDialog from '../components/course-management/RestoreCancelledSessionDialog.vue';
 import { isVisibleCancelledSession } from '../lib/sessionOccurrenceFilter.js';
 import { askConfirm } from '../composables/useConfirmDialog';
+import { useEditDialogCloseGuard } from '../composables/course-management/useEditDialogCloseGuard';
 import LessonPickerSelect from '../components/course-management/LessonPickerSelect.vue';
 import CourseEditForm from '../components/CourseEditForm.vue';
 import { Alert } from '@/components/ui/alert';
@@ -2788,6 +2790,13 @@ function closeCourseManager() {
   courseManagerTab.value = 'overview';
   showEditModal.value = false;
 }
+// 編輯課程視窗: Esc and 取消 share this guard; unsaved edits ask first (same wording as leaveCourseManagerSettings).
+const { requestClose: requestCloseEditDialog } = useEditDialogCloseGuard({
+  isOpen: () => showEditModal.value,
+  isDirty: () => !!editFormSnapshot.value && JSON.stringify(editForm.value) !== editFormSnapshot.value,
+  ask: () => askConfirm({ title: '放棄未儲存的變更？', message: '課程設定有修改還沒儲存。', confirmLabel: '放棄變更', danger: true }),
+  close: () => { showEditModal.value = false; },
+});
 async function leaveCourseManagerSettings() {
   const dirty = editFormSnapshot.value && JSON.stringify(editForm.value) !== editFormSnapshot.value;
   if (dirty && !await askConfirm({ title: '放棄未儲存的變更？', message: '課程設定有修改還沒儲存。', confirmLabel: '放棄變更', danger: true })) return;
