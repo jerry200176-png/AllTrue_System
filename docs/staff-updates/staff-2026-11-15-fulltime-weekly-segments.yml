@@ -11,8 +11,6 @@ updates:
       - category: fixed
         text: 每週段數改成排課的時數除以二；同一時段有兩門課只算一段，輔導與試聽也照時數算。
       - category: fixed
-        text: 一對三獎金改成同一時段只算一堂；同時段三位一對三學生不再算三次。
-      - category: fixed
         text: 十六段課獎金改成當月每一週都排滿才發，有一週沒滿就沒有；跨月的週算在週一那個月。
     source_refs:
       - "changelog:2026-11-15:fulltime-weekly-segments-schedule"

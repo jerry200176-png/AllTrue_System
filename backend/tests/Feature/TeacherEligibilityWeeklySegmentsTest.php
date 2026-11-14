@@ -44,23 +44,19 @@ class TeacherEligibilityWeeklySegmentsTest extends TestCase
             'VoidReason' => 'fixture',
         ]);
 
-        // Schedule for the week of 2026-08-03 (weekdays stay at 4h or less so the weekday rate is 0):
-        // Mon 4h (student leave still counts) + Tue 4h + Wed 1h + Thu 1h 試聽 + 2h 輔導 + Sat 10h + Sun 10h = 32h = 16 段.
-        // The second Saturday row is the other half of a 一對二 pair in the same hours: no extra 段.
-        $this->schedule($teacher->id, '2026-08-03', '14:00', '18:00', ['status' => 'leave']);
-        $this->schedule($teacher->id, '2026-08-04', '14:00', '18:00');
-        $this->schedule($teacher->id, '2026-08-05', '16:00', '17:00');
-        $this->schedule($teacher->id, '2026-08-06', '10:00', '11:00', ['class_type' => 'trial']);
-        $tutoringId = $this->schedule($teacher->id, '2026-08-06', '13:00', '15:00', ['class_type' => 'tutoring', 'type' => 'tutoring']);
-        $this->schedule($teacher->id, '2026-08-08', '08:00', '18:00', ['class_type' => 'one_on_two']);
-        $this->schedule($teacher->id, '2026-08-08', '08:00', '10:00', ['class_type' => 'one_on_two']);
-        $this->schedule($teacher->id, '2026-08-09', '08:00', '18:00');
-        // None of these count: cancelled, replaced, moved away, admin time, another teacher's lesson.
-        $this->schedule($teacher->id, '2026-08-07', '08:00', '18:00', ['status' => 'cancelled']);
-        $this->schedule($teacher->id, '2026-08-07', '08:00', '18:00', ['status' => \App\Models\Schedule::STATUS_SUPERSEDED]);
-        $this->schedule($teacher->id, '2026-08-09', '19:00', '21:00', ['status' => 'rescheduled']);
-        $this->schedule($teacher->id, '2026-08-07', '08:00', '18:00', ['type' => 'admin']);
-        $this->schedule($director['user_id'], '2026-08-07', '08:00', '18:00');
+        // 段 come from the calendar: the sessions above (whatever their attendance) plus live schedule rows.
+        // Mon 08:00-11:10 (eight overlapping lessons, 190 min) + Tue 240 + Wed 240 + Thu 08:00-10:40 (five
+        // overlapping 試聽, 160) + Fri 輔導 120 and 16:00-20:00 (a student's leave and a voided sign-in still count;
+        // the cancelled lesson does not, 240) + Sat 600 + Sun 130 = 1920 min = 16 段.
+        $this->schedule($teacher->id, '2026-08-08', '08:00', '18:00');
+        $this->schedule($teacher->id, '2026-08-08', '08:00', '10:00'); // the other half of a 一對二 pair: no extra 段
+        $sundayId = $this->schedule($teacher->id, '2026-08-09', '08:00', '10:10');
+        // None of these count: cancelled, moved away, replaced, admin time, another teacher's lesson.
+        foreach (['cancelled', 'rescheduled', \App\Models\Schedule::STATUS_SUPERSEDED] as $status) {
+            $this->schedule($teacher->id, '2026-08-09', '12:00', '18:00', ['status' => $status]);
+        }
+        $this->schedule($teacher->id, '2026-08-09', '12:00', '18:00', ['type' => 'admin']);
+        $this->schedule($director['user_id'], '2026-08-09', '12:00', '18:00');
 
         DB::table('fulltime_salary_profiles')->insert([
             'teacher_id' => $teacher->id,
@@ -82,7 +78,8 @@ class TeacherEligibilityWeeklySegmentsTest extends TestCase
         $response->assertJsonPath('teachers.0.components.weekly_16_segments.metrics.total_segments', 16);
         $response->assertJsonPath('teachers.0.components.weekly_16_segments.metrics.meets_16_segments', true);
         $response->assertJsonPath('teachers.0.components.weekly_16_segments.metrics.weeks.0.metrics.daily_hours', [
-            '2026-08-03' => 4, '2026-08-04' => 4, '2026-08-05' => 1, '2026-08-06' => 3, '2026-08-08' => 10, '2026-08-09' => 10,
+            '2026-08-03' => 3.17, '2026-08-04' => 4, '2026-08-05' => 4, '2026-08-06' => 2.67,
+            '2026-08-07' => 6, '2026-08-08' => 10, '2026-08-09' => 2.17,
         ]);
         // 33000 base + 1500 cash + 4000 (the only week in view is full) + 200 一對三獎金.
         $response->assertJsonPath('teachers.0.settlement.calculated_payout', 38700);
@@ -100,11 +97,11 @@ class TeacherEligibilityWeeklySegmentsTest extends TestCase
         $monthResponse->assertJsonPath('teachers.0.components.weekly_16_segments.metrics.qualifying_weeks', 1);
         $monthResponse->assertJsonPath('teachers.0.components.weekly_16_segments.amount', 0);
 
-        // Control: without the 2h 輔導 the week is 15 段 and the bonus goes.
-        DB::table('schedules')->where('id', $tutoringId)->update(['status' => 'cancelled']);
+        // Control: without Sunday's lesson the week is under 16 段 and the bonus goes.
+        DB::table('schedules')->where('id', $sundayId)->update(['status' => 'cancelled']);
         $short = $this->withHeaders($this->auth($director['token']))
             ->getJson('/api/v1/finance/teacher-eligibility?period=week&start=2026-08-03&end=2026-08-09&branch_id=1')->assertOk();
-        $short->assertJsonPath('teachers.0.components.weekly_16_segments.metrics.total_segments', 15);
+        $short->assertJsonPath('teachers.0.components.weekly_16_segments.metrics.total_segments', 14.92);
         $short->assertJsonPath('teachers.0.components.weekly_16_segments.status', 'not_qualifies');
         $short->assertJsonPath('teachers.0.settlement.calculated_payout', 34700);
     }
@@ -114,12 +111,13 @@ class TeacherEligibilityWeeklySegmentsTest extends TestCase
     {
         $director = $this->createDirector();
         $teacher = $this->createTeacher();
-        // Week of 2026-07-27: 4h x 5 weekdays + 6h on Sat 08-01 and Sun 08-02 = 32h = 16 段.
+        // Week of 2026-07-27: 4h x 5 weekdays + 6h on Sat 08-01 and Sun 08-02 = 32h = 16 段, all ordinary
+        // ClassSession bookings with no schedules row.
         foreach (['2026-07-27', '2026-07-28', '2026-07-29', '2026-07-30', '2026-07-31'] as $date) {
-            $this->schedule($teacher->id, $date, '14:00', '18:00');
+            $this->createAttendedSession($teacher->id, 'one_on_one', $date, '14:00', 240);
         }
-        $this->schedule($teacher->id, '2026-08-01', '09:00', '15:00');
-        $this->schedule($teacher->id, '2026-08-02', '09:00', '15:00');
+        $this->createAttendedSession($teacher->id, 'one_on_one', '2026-08-01', '09:00', 360);
+        $this->createAttendedSession($teacher->id, 'one_on_one', '2026-08-02', '09:00', 360);
 
         $weekly = fn (string $start, string $end) => $this->withHeaders($this->auth($director['token']))
             ->getJson("/api/v1/finance/teacher-eligibility?period=month&start={$start}&end={$end}&branch_id=1")
@@ -140,7 +138,7 @@ class TeacherEligibilityWeeklySegmentsTest extends TestCase
         // Fill the other three July weeks (4 days x 8h = 16 段 each): now every week is full.
         foreach (['2026-07-06', '2026-07-13', '2026-07-20'] as $monday) {
             foreach (range(0, 3) as $offset) {
-                $this->schedule($teacher->id, date('Y-m-d', strtotime("{$monday} +{$offset} days")), '14:00', '22:00');
+                $this->createAttendedSession($teacher->id, 'one_on_one', date('Y-m-d', strtotime("{$monday} +{$offset} days")), '14:00', 480);
             }
         }
         $full = $weekly('2026-07-01', '2026-07-31');

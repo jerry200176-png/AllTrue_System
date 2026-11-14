@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Services\SubjectUnitsTimelineService;
+use App\Services\TeacherClassCalendar;
 use App\Services\TeacherEligibilityPolicy;
 use App\Support\AttendanceStatus;
 use App\Support\FulltimePayrollLockStore;
@@ -102,11 +103,13 @@ class TeacherEligibilityController extends Controller
             ->whereBetween('schedule_date', [$effectiveStart->toDateString(), $period['end']->toDateString()])
             ->whereNotIn('status', ['cancelled', 'leave', 'leave_requested', \App\Models\Schedule::STATUS_SUPERSEDED])
             ->get();
+        // 每週16段 reads the teacher calendar (ClassSession + live schedule exceptions, all campuses), out to the
+        // last week's Sunday so a week that crosses the month end is whole.
         $weeks = $this->splitIntoWeeks($effectiveStart, $period['end']);
-        $plannedEnd = $weeks === [] ? $period['end'] : $period['end']->copy()->max(end($weeks)[1]);
+        $lessonsByTeacher = $weeks === [] ? [] : TeacherClassCalendar::load($weeks[0][0]->toDateString(), end($weeks)[1]->toDateString(), null, $teacherIds, true);
         $plannedSchedules = DB::table('schedules')
             ->whereIn('teacher_id', $teacherIds)
-            ->whereBetween('schedule_date', [$effectiveStart->toDateString(), $plannedEnd->toDateString()])
+            ->whereBetween('schedule_date', [$effectiveStart->toDateString(), $period['end']->toDateString()])
             ->whereNotIn('status', ['cancelled', \App\Models\Schedule::STATUS_SUPERSEDED])
             ->get();
 
@@ -244,7 +247,7 @@ class TeacherEligibilityController extends Controller
         $salaryByTeacher = $this->salaryProfilesByTeacher($teacherIds, null, $period['end']->toDateString());
         $manualMultiplierByTeacher = $this->manualMultiplierByTeacher($teacherIds, null, $period['end']->toDateString());
 
-        $rows = $teachers->map(function ($teacher) use ($period, $effectiveStart, $weeks, $scheduleByTeacher, $plannedByTeacher, $attendanceByTeacher, $eventByTeacher, $achievementByTeacher, $deductionByTeacher, $allowanceByTeacher, $cashByTeacher, $cashSourceAvailable, $allowanceSourceAvailable, $pendingSalaryByTeacher, $sessionCalendarAvailable, $subjectUnitsByTeacher, $salaryByTeacher, $manualMultiplierByTeacher) {
+        $rows = $teachers->map(function ($teacher) use ($period, $effectiveStart, $weeks, $lessonsByTeacher, $scheduleByTeacher, $plannedByTeacher, $attendanceByTeacher, $eventByTeacher, $achievementByTeacher, $deductionByTeacher, $allowanceByTeacher, $cashByTeacher, $cashSourceAvailable, $allowanceSourceAvailable, $pendingSalaryByTeacher, $sessionCalendarAvailable, $subjectUnitsByTeacher, $salaryByTeacher, $manualMultiplierByTeacher) {
             $teacherId = (int) $teacher->id;
             $teacherSchedules = $scheduleByTeacher->get($teacherId, collect());
             $teacherPlanned = $plannedByTeacher->get($teacherId, collect());
@@ -252,7 +255,7 @@ class TeacherEligibilityController extends Controller
             $teacherEvents = $eventByTeacher->get((string) $teacherId, collect())->concat($eventByTeacher->get('*', collect()));
             $weeklyRows = [];
             foreach ($weeks as [$weekStart, $weekEnd]) {
-                $weeklyRows[] = $this->evaluateWeek($weekStart, $weekEnd, $teacherPlanned);
+                $weeklyRows[] = $this->evaluateWeek($weekStart, $weekEnd, $lessonsByTeacher[$teacherId] ?? []);
             }
 
             $weeklyStatus = $this->aggregateWeeklyStatus($weeklyRows);
@@ -494,31 +497,32 @@ class TeacherEligibilityController extends Controller
     }
 
     /**
-     * 每週16段 follows the schedule (HQ 115.07: 「未排滿16段課」), not attendance. One 段 is 2 hours of
-     * the teacher's clock time: lessons that overlap (two 一對二 courses in the same 2 hours) count once.
-     * 正課, 輔導 and 試聽 all count. A student's leave still counts; a cancelled, moved or replaced row does not,
-     * and a substituted lesson belongs to the substitute (schedules.teacher_id).
-     * ponytail: a teacher's own leave that is recorded only as status=leave on the row still counts here,
-     * because the row cannot tell it from a student's leave; split the status if that case turns out to matter.
+     * 每週16段 follows the calendar (HQ 115.07: 「未排滿16段課」), not attendance. One 段 is 2 hours of the
+     * teacher's clock time: lessons that overlap (two 一對二 courses in the same 2 hours) count once.
+     * What counts as a lesson is TeacherClassCalendar's payroll view: 正課, 輔導 and 試聽; a student's leave
+     * still counts; cancelled or moved lessons and admin time do not; a substituted lesson is the substitute's.
+     * ponytail: a teacher's own leave recorded only as a leave status on the lesson still counts, because that
+     * status cannot be told from a student's leave; split the status if that case turns out to matter.
+     *
+     * @param  array<string, list<array{start:string,end:string}>>  $lessonsByDate
      */
-    private function evaluateWeek(Carbon $start, Carbon $end, $planned): array
+    private function evaluateWeek(Carbon $start, Carbon $end, array $lessonsByDate): array
     {
-        $dailyHours = $planned
-            ->filter(fn ($row) => (string) $row->schedule_date >= $start->toDateString()
-                && (string) $row->schedule_date <= $end->toDateString()
-                && (string) ($row->status ?? '') !== 'rescheduled'
-                && !in_array(strtolower((string) ($row->type ?? '')), ['admin', 'unavailable'], true)
-                && strtolower((string) ($row->class_type ?? '')) !== 'admin')
-            ->groupBy(fn ($row) => (string) $row->schedule_date)
-            ->map(fn ($rows) => round($this->scheduledCoverageHoursForDate($rows, fn () => true), 2))
-            ->sortKeys();
-        $segments = round($dailyHours->sum() / 2, 2);
+        $dailyMinutes = [];
+        foreach ($lessonsByDate as $date => $lessons) {
+            if ($date < $start->toDateString() || $date > $end->toDateString()) continue;
+            // A lesson with no end time keeps the established two-hour default.
+            $rows = array_map(fn ($lesson) => (object) ['start_time' => $lesson['start'], 'end_time' => $lesson['end'] !== '' ? $lesson['end'] : date('H:i', strtotime($lesson['start'] . ' +2 hours'))], $lessons);
+            $dailyMinutes[$date] = (int) round(60 * $this->scheduledCoverageHoursForDate($rows, fn () => true));
+        }
+        ksort($dailyMinutes);
+        $segments = round(array_sum($dailyMinutes) / 120, 2);
 
         $policy = $this->policy->weekly16(['segments' => $segments]);
         $policy['metrics'] = [
             'week_start' => $start->toDateString(),
             'week_end' => $end->toDateString(),
-            'daily_hours' => $dailyHours->all(),
+            'daily_hours' => array_map(fn ($minutes) => round($minutes / 60, 2), $dailyMinutes),
             'total_segments' => $segments,
             'meets_16_segments' => $policy['status'] === TeacherEligibilityPolicy::QUALIFIES,
         ];

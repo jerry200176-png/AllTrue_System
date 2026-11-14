@@ -65,29 +65,19 @@ class TeacherEligibilityStudentAttendanceTest extends TestCase
     /** Founder 2026-11-15: 段 follow clock time; lessons in the same 2 hours are one 段. */
     public function test_weekly_segments_merge_overlapping_lessons_and_count_every_class_type_by_hours(): void
     {
-        $row = fn (string $date, string $start, string $end, array $extra = []) => (object) ([
-            'schedule_date' => $date, 'start_time' => $start, 'end_time' => $end,
-            'status' => 'scheduled', 'type' => 'normal', 'class_type' => 'one_on_one',
-        ] + $extra);
-        $rows = collect([
-            // Two 一對二 courses in the same two hours: one 段, not two.
-            $row('2026-08-03', '16:00:00', '18:00:00', ['class_type' => 'one_on_two']),
-            $row('2026-08-03', '16:00:00', '18:00:00', ['class_type' => 'one_on_two']),
-            // Partly overlapping lessons cover 18:00-21:00 = 3h.
-            $row('2026-08-03', '18:00:00', '20:00:00'),
-            $row('2026-08-03', '19:00:00', '21:00:00'),
-            // 1h 試聽 = 0.5 段, 2h 輔導 = 1 段.
-            $row('2026-08-04', '10:00:00', '11:00:00', ['class_type' => 'trial']),
-            $row('2026-08-04', '13:00:00', '15:00:00', ['class_type' => 'tutoring', 'type' => 'tutoring']),
-            // A student's leave still counts.
-            $row('2026-08-05', '16:00:00', '18:00:00', ['status' => 'leave']),
-            // Moved lessons, admin time and other weeks do not.
-            $row('2026-08-05', '08:00:00', '10:00:00', ['status' => 'rescheduled']),
-            $row('2026-08-06', '08:00:00', '12:00:00', ['type' => 'admin']),
-            $row('2026-08-10', '08:00:00', '12:00:00'),
-        ]);
+        $lesson = fn (string $start, string $end) => ['start' => $start, 'end' => $end];
+        $lessons = [
+            // Two 一對二 courses in the same two hours are one 段; partly overlapping lessons cover 18:00-21:00.
+            '2026-08-03' => [$lesson('16:00', '18:00'), $lesson('16:00', '18:00'), $lesson('18:00', '20:00'), $lesson('19:00', '21:00')],
+            // 1h 試聽 = 0.5 段, 2h 輔導 = 1 段: every kind of lesson counts by its hours.
+            '2026-08-04' => [$lesson('10:00', '11:00'), $lesson('13:00', '15:00')],
+            // No end time: the two-hour default.
+            '2026-08-05' => [$lesson('16:00', '')],
+            // Another week.
+            '2026-08-10' => [$lesson('08:00', '12:00')],
+        ];
 
-        $week = $this->invoke('evaluateWeek', Carbon::parse('2026-08-03'), Carbon::parse('2026-08-09')->endOfDay(), $rows);
+        $week = $this->invoke('evaluateWeek', Carbon::parse('2026-08-03'), Carbon::parse('2026-08-09')->endOfDay(), $lessons);
 
         self::assertSame(['2026-08-03' => 5.0, '2026-08-04' => 3.0, '2026-08-05' => 2.0], $week['metrics']['daily_hours']);
         self::assertSame(5.0, $week['metrics']['total_segments']);
