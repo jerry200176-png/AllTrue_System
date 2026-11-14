@@ -300,6 +300,9 @@ completeness flag/reason tokens, byte lengths and the encrypted file's sha256. T
 `production-case-<case_key>` holds only `production-case.full.tar.gz.enc` plus its `.sha256`; check the hash
 (`sha256sum -c`) and decrypt it with the same command.
 
+Case `paid_flag_vs_invoice_rows` (#5187) lists the contracts the nightly `paid_flag_vs_invoice` check counts. Deploy the PR first, then dispatch it and decrypt as above.
+Read `count` (the nightly number), `rows_listed`, `truncated` (rows capped at 200; `count` > `rows_listed` means a counted contract is not listed), `side_a` (paid flag, a bill owes) and `side_b` (unpaid flag, every bill covered); each row has IDs, enums and booleans only.
+
 The default `reader_profile=legacy` keeps that contract. The separately protected
 `case5124` CMS sidecar has a proposed fixed public certificate/policy in its
 preparation candidate; presence is not main trust, registration or activation.
