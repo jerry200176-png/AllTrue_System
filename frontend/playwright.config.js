@@ -43,6 +43,7 @@ export default defineConfig({
     /ui-foundation-sidebar-navigation\.spec\.js$/,
     /ui-foundation-course-payment-entry\.spec\.js$/,
     /ui-foundation-learning-plan-gantt\.spec\.js$/,
+    /subject-credit-transfer\.spec\.js$/, // Required foundation suite mounts its dedicated fixture, not the app smoke server.
     /learning-records-polish\.spec\.js$/,
     /learning-records-preview\.spec\.js$/,
     /release-notes-clarity\.spec\.js$/,
