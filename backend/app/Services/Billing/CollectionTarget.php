@@ -3,8 +3,10 @@
 namespace App\Services\Billing;
 
 use App\Models\CoursePackage;
+use App\Models\Invoice;
 use App\Models\StudentClass;
 use App\Services\BillingPayableResolver;
+use App\Services\MonthlyBillingService;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 
@@ -17,12 +19,41 @@ use Illuminate\Http\JsonResponse;
 final class CollectionTarget
 {
     /**
-     * confirm()'s course gate: a waived or refunded contract, a tutoring course or a zero-fee course takes no money.
-     * Null = the course may take money; otherwise the exact refusal confirm() answers.
+     * confirm()'s course gate, in confirm()'s order: a waived or refunded contract, a tutoring or zero-fee course, and a month
+     * another course's live bill already carries take no money. Null = the money may land; otherwise the exact refusal
+     * confirm() answers. $invoiceId is the bill the money would land on (null = none named yet).
      */
-    public static function gate(?StudentClass $sc): ?JsonResponse
+    public static function gate(?StudentClass $sc, ?int $invoiceId = null, mixed $paymentDate = null): ?JsonResponse
     {
-        return ContractMoneyState::waivedRefusal($sc, '此合約已確認不收，不能再確認回報') ?? ($sc ? self::tutoringRefusal($sc) : null);
+        return ContractMoneyState::waivedRefusal($sc, '此合約已確認不收，不能再確認回報')
+            ?? ($sc ? (self::tutoringRefusal($sc) ?? self::sharedBillRefusal($sc, $invoiceId, $paymentDate)) : null);
+    }
+
+    /** A monthly month already on another course's live (shared) bill is collected there, never again on this course (#4867). */
+    public static function sharedBillRefusal(StudentClass $course, ?int $invoiceId, mixed $paymentDate): ?JsonResponse
+    {
+        if ($course->getAttribute('ScheduleMode') !== 'date') {
+            return null;
+        }
+        $monthlyBilling = app(MonthlyBillingService::class);
+        $id = (int) $course->getKey();
+        $own = $invoiceId === null ? null : Invoice::where('id', $invoiceId)->where('StudentClassID', $id)->value('billing_period');
+        $period = preg_match('/^\d{4}-\d{2}$/', (string) $own) ? (string) $own : $monthlyBilling->collectionPeriodFor($course, $paymentDate);
+        $from = Carbon::createFromFormat('!Y-m', $period)->startOfMonth()->toDateString();
+        $to = Carbon::createFromFormat('!Y-m', $period)->endOfMonth()->toDateString();
+
+        $shared = Invoice::query()->notVoided()->where('StudentClassID', '!=', $id)
+            ->whereHas('items', fn ($q) => $q->where('StudentClassID', $id))->orderBy('id')->get()
+            ->first(function (Invoice $invoice) use ($id, $period, $from, $to, $monthlyBilling) {
+                [$start, $end] = $monthlyBilling->serviceRangeForCourse($invoice, $id);
+
+                return $start !== null ? $start <= $to && $end >= $from : (string) $invoice->billing_period === $period;
+            });
+
+        return $shared === null ? null : response()->json([
+            'message' => sprintf('這個月的課已經在另一門課的帳單上（帳單 #%d），請從那門課的帳單收款，不能再收一次。沒有新增任何收款。', $shared->id),
+            'code' => 'period_on_shared_bill', 'invoice_id' => (int) $shared->id,
+        ], 422);
     }
 
     /** A tutoring course, or one the resolver calls `free` (#3203), has no payment obligation; fail open on a resolver error. */

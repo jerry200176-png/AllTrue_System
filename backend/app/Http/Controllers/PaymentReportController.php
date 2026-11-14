@@ -385,12 +385,10 @@ class PaymentReportController extends Controller
             $note = $confirmationNote !== ''
                 ? $confirmationNote
                 : trim((string) ($report->note ?? ''));
-            if ($refusal = CollectionTarget::gate($sc)) {
-                return $refusal; // waived / refunded / tutoring / zero-fee: shared with the receipt move (#5113)
-            }
-            // A month another course's bill already carries is refused at the ledger write too (public report path, Codex P1 on #4867).
-            if ($sc && ($shared = $this->sharedBillRefusal($sc, ['invoice_id' => $report->InvoiceID, 'payment_date' => $report->payment_date]))) {
-                return $shared;
+            // Waived / refunded / tutoring / zero-fee, then a month another course's bill already carries (Codex P1 on #4867):
+            // one rule set, shared with the receipt move (#5113).
+            if ($refusal = CollectionTarget::gate($sc, empty($report->InvoiceID) ? null : (int) $report->InvoiceID, $report->payment_date)) {
+                return $refusal;
             }
             // #4132 Codex P1: recheck package membership on confirm (convert already blocks payment_reports).
             $isCorrectionReport = DB::table('invoice_corrections')
@@ -1614,27 +1612,7 @@ class PaymentReportController extends Controller
      */
     private function sharedBillRefusal(StudentClass $course, array $data): ?JsonResponse
     {
-        if ($course->getAttribute('ScheduleMode') !== 'date') {
-            return null;
-        }
-        $id = (int) $course->getKey();
-        $own = empty($data['invoice_id']) ? null : Invoice::where('id', (int) $data['invoice_id'])->where('StudentClassID', $id)->value('billing_period');
-        $period = preg_match('/^\d{4}-\d{2}$/', (string) $own) ? (string) $own : $this->monthlyBilling->collectionPeriodFor($course, $data['payment_date'] ?? null);
-        $from = Carbon::createFromFormat('!Y-m', $period)->startOfMonth()->toDateString();
-        $to = Carbon::createFromFormat('!Y-m', $period)->endOfMonth()->toDateString();
-
-        $shared = Invoice::query()->notVoided()->where('StudentClassID', '!=', $id)
-            ->whereHas('items', fn ($q) => $q->where('StudentClassID', $id))->orderBy('id')->get()
-            ->first(function (Invoice $invoice) use ($id, $period, $from, $to) {
-                [$start, $end] = $this->monthlyBilling->serviceRangeForCourse($invoice, $id);
-
-                return $start !== null ? $start <= $to && $end >= $from : (string) $invoice->billing_period === $period;
-            });
-
-        return $shared === null ? null : response()->json([
-            'message' => sprintf('這個月的課已經在另一門課的帳單上（帳單 #%d），請從那門課的帳單收款，不能再收一次。沒有新增任何收款。', $shared->id),
-            'code' => 'period_on_shared_bill', 'invoice_id' => (int) $shared->id,
-        ], 422);
+        return CollectionTarget::sharedBillRefusal($course, empty($data['invoice_id']) ? null : (int) $data['invoice_id'], $data['payment_date'] ?? null);
     }
 
     /**
