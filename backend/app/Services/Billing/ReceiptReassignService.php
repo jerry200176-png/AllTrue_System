@@ -231,7 +231,7 @@ final class ReceiptReassignService
             return $this->refuse('reassign_pending_report', '其中一門課還有待核對的收款回報，請先處理完再移動收據。');
         }
 
-        if ($this->packagePaidHold((int) $toInvoice->id, (string) $toInvoice->Status, (int) $toInvoice->StudentClassID)) {
+        if (CollectionTarget::packagePaidHold((int) $toInvoice->StudentClassID, (string) $toInvoice->Status)) { // confirm()'s hold, shared
             return $this->refuse('reassign_target_package_paid', '這張帳單屬於已繳清的共用課程包，不能把收款移過去，請聯絡總部對帳。');
         }
         // Paying the target can mark its package paid: a PackageID pointing at another student's or campus's package is not ours to mark.
@@ -370,9 +370,8 @@ final class ReceiptReassignService
         $invoices = Invoice::query()->with(['payments', 'items'])->whereIn('id', $candidates)->orderByDesc('id')->get();
         $courseIds = $invoices->pluck('StudentClassID')->map(fn ($v) => (int) $v)->unique()->values()->all();
         $courses = StudentClass::query()->with('pricingAmendments')->whereIn('ID', $courseIds)->get()->keyBy(fn (StudentClass $c) => (int) $c->ID);
-        // As packagePaidHold(): a stored-paid bill of a paid shared package stays settled.
-        $paidPackageCourses = DB::table('StudentClass')->join('course_packages', 'course_packages.id', '=', 'StudentClass.PackageID')
-            ->whereIn('StudentClass.ID', $courseIds)->where('course_packages.paid', true)->pluck('StudentClass.ID')->map(fn ($v) => (int) $v)->all();
+        // confirm()'s package-paid hold (CollectionTarget), batched: a stored-paid bill of a paid shared package stays settled.
+        $paidPackageCourses = CollectionTarget::paidPackageCourseIds($courseIds);
         // As hasPendingReport(): package-aware, same scope as the preview refusal.
         $scopes = PaymentReport::pendingScopeCourseIdsFor($courseIds);
         $pendingCourses = $courseIds === [] ? [] : DB::table('payment_reports')->whereIn('StudentClassID', array_merge([], ...array_values($scopes)))
@@ -390,7 +389,7 @@ final class ReceiptReassignService
         try {
             foreach ($invoices as $inv) {
                 $courseId = (int) $inv->StudentClassID;
-                if ((string) $inv->Status === 'paid' && in_array($courseId, $paidPackageCourses, true)) {
+                if (CollectionTarget::packagePaidHold($courseId, (string) $inv->Status, $paidPackageCourses)) {
                     continue;
                 }
                 if (array_intersect($scopes[$courseId] ?? [$courseId], $pendingCourses) !== [] || in_array((int) $inv->id, $pendingInvoices, true)) {
@@ -742,13 +741,6 @@ final class ReceiptReassignService
             'amount' => (int) $link->amount, 'from_student_id' => (int) $link->from_student_id, 'to_student_id' => (int) $link->to_student_id,
             'from' => $side((int) $link->from_invoice_id), 'to' => $side((int) $link->to_invoice_id),
         ];
-    }
-
-    /** As PaymentReportController::packagePaidHold: a stored-paid bill of a paid shared package stays settled. */
-    private function packagePaidHold(int $invoiceId, string $status, int $courseId): bool
-    {
-        return $status === 'paid' && DB::table('StudentClass')->join('course_packages', 'course_packages.id', '=', 'StudentClass.PackageID')
-            ->where('StudentClass.ID', $courseId)->where('course_packages.paid', true)->exists();
     }
 
     private function netPaid(int $invoiceId): int

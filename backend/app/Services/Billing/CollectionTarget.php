@@ -156,10 +156,13 @@ final class CollectionTarget
     /**
      * As Invoice::mayOweSql (#3891): a stored-paid bill of a PAID shared package stays settled (待核對) and takes no more money;
      * an unpaid package holds nothing.
+     *
+     * @param list<int>|null $paidPackageCourseIds
      */
-    public static function packagePaidHold(int $courseId, string $billStatus): bool
+    public static function packagePaidHold(int $courseId, string $billStatus, ?array $paidPackageCourseIds = null): bool
     {
-        return $billStatus === 'paid' && self::paidPackageCourseIds([$courseId]) !== [];
+        // $paidPackageCourseIds: a batch caller's paidPackageCourseIds() result for many courses (null = look this one up).
+        return $billStatus === 'paid' && in_array($courseId, $paidPackageCourseIds ?? self::paidPackageCourseIds([$courseId]), true);
     }
 
     /**
