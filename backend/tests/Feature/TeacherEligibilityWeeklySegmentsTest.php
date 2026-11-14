@@ -18,7 +18,7 @@ class TeacherEligibilityWeeklySegmentsTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_director_sees_attendance_backed_weekly_segments_and_traceable_courses(): void
+    public function test_director_sees_calendar_backed_weekly_segments(): void
     {
         $director = $this->createDirector();
         $teacher = $this->createTeacher();
@@ -29,7 +29,7 @@ class TeacherEligibilityWeeklySegmentsTest extends TestCase
         foreach (['08:00', '08:10', '08:20', '08:30', '08:40', '08:50', '09:00', '09:10'] as $start) {
             $this->createAttendedSession($teacher->id, 'one_on_one', '2026-08-03', $start, 120, 'completed', 'present', $otherCampus->id);
         }
-        $this->createAttendedSession($teacher->id, 'one_on_two', '2026-08-04', '10:00', 240);
+        $tuesday = $this->createAttendedSession($teacher->id, 'one_on_two', '2026-08-04', '10:00', 240);
         $this->createAttendedSession($teacher->id, 'one_on_three', '2026-08-05', '10:00', 240);
         foreach (['08:00', '08:10', '08:20', '08:30', '08:40'] as $start) {
             $this->createAttendedSession($teacher->id, 'trial', '2026-08-06', $start, 120, 'trial', 'trial');
@@ -57,6 +57,8 @@ class TeacherEligibilityWeeklySegmentsTest extends TestCase
         }
         $this->schedule($teacher->id, '2026-08-09', '12:00', '18:00', ['type' => 'admin']);
         $this->schedule($director['user_id'], '2026-08-09', '12:00', '18:00');
+        // A leftover row from a second same-day move: the live lesson is at 10:00, so 16:00 is stale.
+        $this->schedule($teacher->id, '2026-08-04', '16:00', '18:00', ['student_course_id' => $tuesday->StudentClassID]);
 
         DB::table('fulltime_salary_profiles')->insert([
             'teacher_id' => $teacher->id,
