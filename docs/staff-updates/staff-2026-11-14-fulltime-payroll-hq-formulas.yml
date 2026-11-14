@@ -5,18 +5,14 @@ updates:
       - director
       - super_admin
     importance: major
-    title: 正職薪資要件：獎金算法照總部公告校正
-    summary: 科目數獎金、一對三獎金、20 科加成改成照總部 115.07 公告計算，金額會跟之前不同；其餘項目還在校正，鎖定前請人工核對。
+    title: 正職獎金算法照總部公告校正
+    summary: 科目數獎金、一對三獎金、二十科加成改照總部公告計算，金額會變。
     items:
       - category: fixed
-        text: 科目數獎金改成先把核薪總科目數無條件捨去到整數再查表（例如 16.9 科算 16 科），不再取兩列中間的金額。
+        text: 科目數獎金改成科目數無條件捨去後查表；一對三獎金改成一對三總計乘以一百元。
       - category: fixed
-        text: 一對三獎金改成「一對三總計 × 100 元」。
-      - category: fixed
-        text: 「20 科以上 +5%」只看正課科目數，不含輔導與試聽。
-      - category: fixed
-        text: 科目數改成跟「科目數統計」頁同一份數字；一對三的課也算在正課科目數裡。
+        text: 二十科以上的加成只看正課，不含輔導與試聽；科目數與「科目數統計」頁一致，跨分校加總。
       - category: action_required
-        text: 每週 16 段、假日／平日倍率、新進老師保底還沒照公告更新，頁面上方有提示；鎖定本月前請先人工核對這幾項。
+        text: 每週十六段、假日與平日倍率、新進保底尚未更新，鎖定本月前請先人工核對。
     source_refs:
       - "changelog:2026-11-14:fulltime-payroll-hq-formulas"
