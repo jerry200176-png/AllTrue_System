@@ -96,7 +96,7 @@
                 @update:model-value="(v) => toggleSelectAllStudents(v === true)"
               />
             </th>
-            <th scope="col" :class="[dataTable.head, 'tw:w-10 tw:px-0 tw:max-lg:sr-only']"><span class="tw:sr-only">展開課程</span></th>
+            <th scope="col" :class="[dataTable.head, 'tw:w-8 tw:px-0 tw:max-lg:sr-only']"><span class="tw:sr-only">展開課程</span></th>
             <th scope="col" :class="[dataTable.head, 'tw:max-lg:col-start-2 tw:max-lg:col-span-3 tw:max-lg:h-11 tw:max-lg:px-0']">姓名</th>
             <th scope="col" :class="[dataTable.head, 'tw:max-lg:sr-only']">年級</th>
             <th scope="col" :class="[dataTable.head, 'tw:max-lg:sr-only']">學校</th>
@@ -130,7 +130,7 @@
                 @update:model-value="(v) => toggleStudentSelection(student, v === true)"
               />
             </td>
-            <td :class="[dataTable.cell, 'tw:w-10 tw:px-0 tw:text-center', cell0, 'tw:max-md:col-start-4 tw:max-md:row-start-1 tw:max-md:pt-3 tw:md:max-lg:hidden']" aria-hidden="true">
+            <td :class="[dataTable.cell, 'tw:w-8 tw:px-0 tw:text-center', cell0, 'tw:max-md:col-start-4 tw:max-md:row-start-1 tw:max-md:pt-3 tw:md:max-lg:hidden']" aria-hidden="true">
               <ChevronDown :class="['tw:mx-auto tw:size-5 tw:text-tpl-secondary tw:transition-transform', { 'tw:rotate-180': expandedId === student.id }]" :stroke-width="2" />
             </td>
             <td :class="[dataTable.name, cell0, 'tw:max-lg:whitespace-normal tw:max-lg:col-start-2 tw:max-lg:row-start-1 tw:max-md:pt-1.5 tw:md:max-lg:col-span-3']">
@@ -141,10 +141,10 @@
               </div>
               <span :class="[dataTable.sub, dataTable.phoneOnly]">{{ [getGradeLabel(student.grade), student.school].filter(Boolean).join('・') || '—' }}</span>
             </td>
-            <td :class="[dataTable.cell, cell0, 'tw:max-md:hidden tw:md:max-lg:col-start-2 tw:md:max-lg:row-start-2']">
+            <td :class="[dataTable.cell, cell0, 'tw:lg:min-w-32 tw:max-md:hidden tw:md:max-lg:col-start-2 tw:md:max-lg:row-start-2']">
               <span :class="dataTable.stackLabel">年級</span>{{ getGradeLabel(student.grade) || '—' }}
             </td>
-            <td :class="[dataTable.cell, cell0, 'tw:max-md:hidden tw:md:max-lg:col-start-3 tw:md:max-lg:row-start-2']">
+            <td :class="[dataTable.cell, cell0, 'tw:lg:min-w-28 tw:max-md:hidden tw:md:max-lg:col-start-3 tw:md:max-lg:row-start-2']">
               <span :class="dataTable.stackLabel">學校</span>{{ student.school || '—' }}
             </td>
             <td :class="[dataTable.cell, cell0, 'tw:whitespace-nowrap tw:max-md:hidden tw:md:max-lg:col-start-4 tw:md:max-lg:row-start-2']">
@@ -1098,7 +1098,7 @@ const studentsLoading = ref(true);
 const phoneAction = 'tw:max-md:min-w-0 tw:max-md:flex-[1_1_9rem] tw:max-md:h-auto tw:max-md:min-h-12 tw:max-md:whitespace-normal tw:max-md:py-2';
 // Student table rows (PAGE_TEMPLATE §5). Under 1024px a row is a small grid (check | name | actions, as in BillList) and the header row shrinks to a select-all bar.
 const rowGrid = 'tw:max-lg:grid tw:max-md:grid-cols-[3rem_minmax(0,1fr)_2.75rem_2rem] tw:md:max-lg:grid-cols-[3rem_repeat(4,minmax(0,1fr))] tw:md:max-lg:gap-x-4 tw:max-lg:items-start';
-const col = { select: 'tw:w-14 tw:px-0 tw:text-center' };
+const col = { select: 'tw:w-12 tw:px-0 tw:text-center' };
 const cell0 = 'tw:max-lg:h-auto tw:max-lg:min-w-0 tw:max-lg:border-0 tw:max-lg:px-0 tw:max-lg:py-0';
 // The checkbox button is 44px (touch floor); the visible 20px box is drawn by ::before so it keeps the shared Checkbox look in every state.
 const checkBox = "tw:relative tw:size-11 tw:rounded-lg tw:border-0 tw:bg-transparent tw:shadow-none tw:data-[state=checked]:border-transparent tw:data-[state=checked]:bg-transparent tw:data-[state=indeterminate]:border-transparent tw:data-[state=indeterminate]:bg-transparent tw:before:absolute tw:before:top-1/2 tw:before:left-1/2 tw:before:size-5 tw:before:-translate-x-1/2 tw:before:-translate-y-1/2 tw:before:rounded-[4px] tw:before:border tw:before:border-input tw:before:bg-card tw:before:content-[''] tw:data-[state=checked]:before:border-primary tw:data-[state=checked]:before:bg-primary tw:data-[state=indeterminate]:before:border-primary tw:data-[state=indeterminate]:before:bg-primary";
