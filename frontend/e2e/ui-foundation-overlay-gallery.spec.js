@@ -7,6 +7,9 @@
  */
 import { test } from '@playwright/test';
 import { installApiMocks } from './fixtures/ui-foundation/apiMocks.js';
+
+// Fixture-only (pilot-mount.html on the fake-data server): UI Smoke (SMOKE_BASE_URL set) must skip it.
+test.skip(Boolean(process.env.SMOKE_BASE_URL), 'Fixture-only gallery runs in the UI-foundation jobs.');
 import path from 'node:path';
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
