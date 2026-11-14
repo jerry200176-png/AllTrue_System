@@ -24,6 +24,22 @@ class RenewalSnapshotRaceTest extends TestCase
 
     protected function connectionsToTransact() { return []; }
 
+    /** UserCampus has no auto-increment key, so CleansCommittedRows cannot see its rows: delete the ones of the users this test commits. */
+    protected function tearDown(): void
+    {
+        try {
+            $this->deleteOwnUserCampusRows();
+        } finally {
+            parent::tearDown();
+        }
+    }
+
+    private function deleteOwnUserCampusRows(): void
+    {
+        $userIds = DB::table('User')->whereIn('LoginName', ['rr-dir@example.com', 'rr-t@example.com'])->pluck('id')->all();
+        DB::table('UserCampus')->whereIn('UserID', $userIds)->delete();
+    }
+
     /** Barrier: right before the transaction's first student FOR UPDATE, connection A commits $concurrent; then the forced renewal runs. */
     private function race(callable $concurrent, string $renewDate, string $kind, int $weekday = 3): array
     {
