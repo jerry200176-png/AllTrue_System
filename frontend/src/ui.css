@@ -7,6 +7,8 @@
  *   beat layered utilities; important utilities win over them.
  * - `source(none)` + @source: only classes used under components/ui are generated, so legacy class names
  *   (.flex, .border ...) are not hijacked. Widen @source when a page migrates to the template.
+ * - Every file that uses a `tw:` class must be listed here: an unlisted file gets no utilities and renders unstyled with no error.
+ *   components/ui/__tests__/ui-css-source-coverage.test.js fails when one is missing.
  * - Variables are namespaced `--ui-*` because styles.css already owns --primary/--accent/--border/--bg (legacy meaning).
  * - Colors: every shadcn variable below references a --ds-* token in styles.css. Never copy hex here.
  */
@@ -38,6 +40,16 @@
 @source "./pages/TuitionCollectionPage.vue";
 @source "./components/tuition/BillList.vue";
 @source "./pages/TeacherEligibilityPage.vue";
+@source "./components/CurriculumTemplatesPanel.vue";
+@source "./components/ParentTelegramBind.vue";
+@source "./components/SchoolExamPeriodsPanel.vue";
+@source "./components/SchoolMergePanel.vue";
+@source "./components/learning-records/LessonPlanUnits.vue";
+@source "./components/motion/NumberTicker.vue";
+@source "./components/motion/TextReveal.vue";
+@source "./pages/ExamGradesPage.vue";
+@source "./pages/ParentPortal.vue";
+@source "./pages/StudentsList.vue";
 
 /* Light theme only. Dark comes later: add a `.dark { ... }` block remapping these to dark --ds-* tokens. */
 :root {
