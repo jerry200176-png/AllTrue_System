@@ -1543,8 +1543,7 @@ class PaymentReportController extends Controller
     /** As Invoice::mayOweSql (#3891): a PAID package member's stored-paid bill stays settled (待核對); an unpaid package holds nothing. */
     private function packagePaidHold(Invoice $invoice): bool
     {
-        return (string) $invoice->Status === 'paid' && StudentClass::query()->join('course_packages', 'course_packages.id', '=', 'StudentClass.PackageID')
-            ->where('StudentClass.ID', $invoice->StudentClassID)->where('course_packages.paid', true)->exists();
+        return CollectionTarget::packagePaidHold((int) $invoice->StudentClassID, (string) $invoice->Status);
     }
 
     /**

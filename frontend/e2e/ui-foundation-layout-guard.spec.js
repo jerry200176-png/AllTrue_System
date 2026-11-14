@@ -1,6 +1,10 @@
 import { test, expect } from '@playwright/test';
 import { CLASSMATES, DAY_LABELS, TODAY, mockStudyWeekApi } from './fixtures/ui-foundation/study-week-data.js';
 
+// Fixture-only: mounts pilot-mount.html on the fake-data Vite server, which the live site lacks.
+// UI Smoke (SMOKE_BASE_URL set) must skip it; the UI-foundation jobs run it.
+test.skip(Boolean(process.env.SMOKE_BASE_URL), 'Fixture-only guard runs in the UI-foundation jobs.');
+
 /**
  * Layout guard for pages migrated to the ui components (in-app #541 / #542 / #543, #4989).
  * Real browser, realistic CJK data, desktop + phone, every 字級 setting. A page is guarded by adding ONE entry to PAGES.
