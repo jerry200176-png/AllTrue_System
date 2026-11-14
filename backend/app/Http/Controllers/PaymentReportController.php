@@ -544,7 +544,7 @@ class PaymentReportController extends Controller
             // Recompute from Payment rows (now including this one), never stored PaidAmount + new (#3864 hotfix P1-b).
             $after = $this->invoiceProjection($invoice, $sc);
             $newPaid = (int) $after['net_applied'];
-            $status = (int) $after['outstanding_amount'] <= 0 ? 'paid' : ($newPaid > 0 ? 'partial' : 'unpaid');
+            $status = Invoice::statusFromProjection($after);
             $invoice->update([
                 'PaidAmount'     => $newPaid,
                 'Status'         => $status,
@@ -1799,13 +1799,11 @@ class PaymentReportController extends Controller
                 } else {
                     // In-app #521: every reversal points at the entry it reverses (payment_report_id), so the check is exact.
                     // Both reads are of the locked rows above. A reversal already linked to this report: skip (idempotent).
-                    $isReversal = fn ($p) => (int) $p->Amount < 0 || (string) $p->Method === 'void';
                     $reportId = (int) $report->getKey();
-                    $alreadyReversed = $payments->contains(fn ($p) => $isReversal($p) && (int) $p->payment_report_id === $reportId);
+                    $alreadyReversed = $payments->contains(fn ($p) => Payment::reversesReport($p, $reportId));
                     // A legacy unlinked void row (negative or void, no report, not a transfer_out/refund) cannot be matched to its
                     // receipt: a second reversal might cancel another receipt's money. Refuse until the repair links it.
-                    $legacyUnlinked = $payments->contains(fn ($p) => $isReversal($p) && $p->payment_report_id === null
-                        && !in_array((string) $p->Method, ['transfer_out', 'refund'], true));
+                    $legacyUnlinked = $payments->contains(fn ($p) => Payment::isUnlinkedLegacyReversal($p));
                     if (!$alreadyReversed && $legacyUnlinked) {
                         return response()->json([
                             'message' => '這張帳單有舊的沖銷紀錄還沒對帳，請先找系統管理員處理',
@@ -1826,7 +1824,7 @@ class PaymentReportController extends Controller
                 ]);
 
                 $newPaid = max(0, (int) $invoice->PaidAmount - $originalAmount);
-                $invoiceStatus = $newPaid <= 0 ? 'unpaid' : ($newPaid < (int) $invoice->TotalAmount ? 'partial' : 'paid');
+                $invoiceStatus = Invoice::statusAfterReversal($newPaid, (int) $invoice->TotalAmount);
                 $invoice->update([
                     'PaidAmount' => $newPaid,
                     'Status'     => $invoiceStatus,
