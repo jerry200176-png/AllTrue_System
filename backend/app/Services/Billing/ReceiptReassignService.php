@@ -275,6 +275,8 @@ final class ReceiptReassignService
                 (int) $toInvoice->id, (int) $toMoney['net_applied'], (string) $toInvoice->Status, (int) $toMoney['total_amount'], $toBefore,
                 (int) $from['invoice']->StudentID, (int) $from['course']->ID, (string) ($from['course']->closed_reason ?? ''),
                 (int) $toInvoice->StudentID, (int) $toCourse->ID, (string) ($toCourse->closed_reason ?? ''),
+                // The projected results too: a session change after the preview can move a repriced balance with no stored field changing.
+                (int) $fromAfter['total_amount'], (int) $fromAfter['outstanding_amount'], (int) $toAfter['total_amount'], (int) $toAfter['outstanding_amount'],
             ], JSON_THROW_ON_ERROR)),
         ], 'ctx' => [
             'report' => $report, 'campus_id' => $ctx['campus_id'], 'amount' => $amount, 'from' => $from,
@@ -421,6 +423,10 @@ final class ReceiptReassignService
         }
         if ($invoiceCampus !== $campusId) {
             return ['refusal' => $this->refuse('reassign_cross_campus', '這張收據和它所在的帳單不在同一分校，請聯絡總部對帳。')];
+        }
+        if ((int) $course->StudentID !== (int) $invoice->StudentID) {
+            // The move rewrites this course's Paid state (and its package's): a bill pointing at another student's course is not ours to touch.
+            return ['refusal' => $this->refuse('reassign_source_other_owner', '這張收據所在的帳單指向別位學生的課程，這裡不能移動。請聯絡總部對帳。')];
         }
         $payments = DB::table('Payment')->where('InvoiceID', $invoice->id)->get();
         $isReversal = fn ($p) => (int) $p->Amount < 0 || (string) $p->Method === 'void';

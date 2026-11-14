@@ -215,6 +215,35 @@ class ReceiptReassignApplyTest extends TestCase
         }
     }
 
+    public function test_a_session_change_after_the_preview_that_moves_the_repriced_source_balance_makes_the_hash_stale(): void
+    {
+        $src = $this->bill($this->student(1), self::AMOUNT, 'paid', self::AMOUNT, $this->monthly(), ['billing_period' => '2026-11']);
+        $this->sessions($src['course'], ['2026-11-03', '2026-11-05', '2026-11-07']);
+        $report = $this->confirmedReport($src);
+        $right = $this->bill($this->student(1), self::AMOUNT);
+        $tok = $this->token('S', 1);
+        $old = $this->previewTo($tok, $report, $right['invoice'])->assertJsonPath('from.balance_after', 6000)->json('state_hash');
+        $this->sessions($src['course'], ['2026-11-09']); // no stored field changes; only the projected source balance does
+        $this->previewTo($tok, $report, $right['invoice'])->assertJsonPath('from.balance_after', self::AMOUNT);
+        $before = $this->snapshot();
+        $this->apply($tok, $report, $right['invoice'], $old)->assertStatus(409)->assertJsonPath('code', 'reassign_state_changed');
+        $this->assertSame($before, $this->snapshot());
+    }
+
+    public function test_source_bill_pointing_at_another_students_course_is_refused_and_that_course_is_untouched(): void
+    {
+        $f = $this->fixture();
+        $foreign = $this->bill($this->student(2), self::AMOUNT, 'paid', self::AMOUNT); // another student, another campus
+        $f['wrongInvoice']->update(['StudentClassID' => $foreign['course']->ID]);
+        $tok = $this->token('S', 1);
+        $before = $this->snapshot();
+        $this->preview($tok, $f)->assertStatus(422)->assertJsonPath('code', 'reassign_source_other_owner');
+        $this->apply($tok, $f['report'], $f['rightInvoice'], ReceiptReassignService::STATE_HASH_VERSION . ':' . str_repeat('0', 64))
+            ->assertStatus(422)->assertJsonPath('code', 'reassign_source_other_owner');
+        $this->assertSame($before, $this->snapshot());
+        $this->assertSame(1, (int) $foreign['course']->fresh()->Paid);
+    }
+
     public function test_hash_without_the_version_prefix_is_refused(): void
     {
         $f = $this->fixture();
