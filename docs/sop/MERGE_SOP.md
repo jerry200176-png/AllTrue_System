@@ -46,7 +46,7 @@ Add `autoland` when you open the PR. `autoland.yml` adds `queue` once the same g
 
 ## Dependabot PRs
 
-`autoland` and the land queue skip bot-authored PRs (`untrusted author`), so a Dependabot PR never merges by itself. Founder decision 2026-11-14 (coordinating chat): for a **patch or minor** update the agent merges it directly with a normal squash merge (`gh pr merge --squash`, never `--admin`) once all of these hold:
+`autoland` skips bot-authored PRs (`untrusted author` in `.github/scripts/autoland.mjs`; the land queue only runs such PRs serially), so a Dependabot PR never gets queued by itself. Founder decision 2026-11-14 (coordinating chat): for a **patch or minor** update the agent merges it directly with a normal squash merge (`gh pr merge --squash`, never `--admin`) once all of these hold:
 - the PR body has the risk declaration (`python3 scripts/governance/pr_declaration.py`), added by the agent if the bot omitted it;
 - every required check is green on the head, including the full PHPUnit / Vitest run;
 - an independent reviewer has read the upstream release notes for each changed package, checked the lock diff touches only those packages, and checked the app's use of any changed behaviour (e.g. queued closures for a serialization library); its marker is on the head;
