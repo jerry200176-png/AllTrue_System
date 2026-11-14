@@ -604,6 +604,7 @@
 | GET | `api/v1/parent/payment-message/{studentId}` | `ParentPortalController@paymentMessage` | role+campus |
 | GET | `api/v1/parent/resolve-liff` | `ParentPortalController@resolveLiff` | public |
 | POST | `api/v1/parent/sessions/{sessionId}/leave` | `ParentPortalController@requestLeave` | public |
+| GET | `api/v1/parent/study-tasks` | `ParentStudyTaskController@week` | public |
 | POST | `api/v1/parent/switch-student` | `ParentPortalController@switchStudent` | public |
 | GET | `api/v1/parent/system-trust-summary` | `SystemTrustController@parentSummary` | public |
 | POST | `api/v1/parent/telegram-bind-code` | `TelegramBindCodeController@issue` | public |
