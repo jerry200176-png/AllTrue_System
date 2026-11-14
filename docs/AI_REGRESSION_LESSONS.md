@@ -1913,7 +1913,7 @@ Intake consolidation regression (2026-10-17): the oldest trusted SourceRef issue
 - **現象**：清理 agent worktree 的腳本第一版把整個 `backend/storage/` 當快取，會刪掉 `storage/app/` 下的修復快照與公開檔案；快取樣式沒有目錄邊界時，`frontend/node_modules-notes.txt` 這類檔名也會被當成快取；使用者設定 `status.showUntrackedFiles=no` 時，未追蹤檔案不會出現在 `git status`。
 - **根因層級**：刪除型工具把「忽略清單」當成「可丟棄清單」，並信任使用者環境的 git 設定。
 - **強制規則**：只排除明確列出的可重生快取（`storage/framework/{cache,sessions,views,testing}`、`storage/logs`、依賴與建置產物），每個樣式以 `/` 結尾或整名比對；`git status` 一律明確帶 `--untracked-files=all`；`status` 失敗就保留 worktree。
-- **測試**：`scripts/tests/prune-agent-worktrees.test.sh`（暫存 repo；未追蹤檔、`storage/app/repair-snapshots`、`storage/app/public`、`node_modules-notes.txt` 都保留，只有快取的 worktree 才會被移除）。協調者流程見 [`docs/agents/orchestration.md`](agents/orchestration.md)。
+- **測試**：`scripts/tests/test_prune_agent_worktrees.py`（暫存 repo；未追蹤檔、`storage/app/repair-snapshots`、`storage/app/public`、`node_modules-notes.txt` 都保留，只有快取的 worktree 才會被移除）。協調者流程見 [`docs/agents/orchestration.md`](agents/orchestration.md)。
 
 ### R161. 實作者 agent 的常設規則只放一份：`IMPLEMENTER_BRIEF.md`（retro #5201，2026-11-14）
 
