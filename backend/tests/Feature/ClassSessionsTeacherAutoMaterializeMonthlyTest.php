@@ -115,10 +115,11 @@ class ClassSessionsTeacherAutoMaterializeMonthlyTest extends TestCase
             $count2 = $this->materializeQueryCountForClasses(2);
             $count8 = $this->materializeQueryCountForClasses(8);
 
-            // 只有「每堂一筆 insert + upsertSlot FOR UPDATE」應隨課數成長；存在性檢查已批次化。
-            // Phase B 投影讀取為每課程固定 overhead；課數 +6 → 增量應遠小於 N+1 的 6*(2 selects + 1 insert)=18。
+            // Per created lesson: insert + slot locking read + fresh course authority read (#535).
+            // The last read prevents a stale monthly preload bypassing a concurrent count-credit close.
+            // Existing/exception scans stay batched; permit only these 3 necessary operations per added lesson.
             $this->assertLessThanOrEqual(
-                14,
+                20, // 6 * 3 + 2 fixed tolerance, not a return to per-slot existence scans.
                 $count8 - $count2,
                 "query 數隨課數線性成長（疑似 N+1）：2 課={$count2}, 8 課={$count8}"
             );

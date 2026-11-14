@@ -178,6 +178,15 @@ class ClassSession extends Model
             return;
         }
 
+        $status = strtolower((string) $this->getAttribute('Status'));
+        $usedStatuses = ['completed', 'attended', 'late'];
+        $sameUsedUnit = $this->exists && in_array($status, $usedStatuses, true)
+            && in_array(strtolower((string) $this->getRawOriginal('Status')), $usedStatuses, true)
+            && !$this->isDirty(['StudentClassID', 'SessionDate', 'StartTime', 'EndTime']);
+        if (!in_array($status, \App\Support\SessionStatus::futureReservationExclusionStatuses(), true) && !$sameUsedUnit) {
+            SubjectCreditTransfer::assertBookingAllowed($courseId);
+        }
+
         if ($this->preloadedCourseSettlementLocked !== null) {
             if ($this->preloadedCourseSettlementLocked) {
                 throw ValidationException::withMessages([

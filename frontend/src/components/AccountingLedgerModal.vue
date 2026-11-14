@@ -169,6 +169,7 @@
                         <small v-if="rateNoteFor(inv)" class="ledger-rate-hint" :data-testid="`ledger-rate-hint-${inv.id}`">開單時金額 {{ formatCurrency(rateNoteFor(inv).issued) }} ／ 目前課程金額 {{ formatCurrency(rateNoteFor(inv).current) }}（金額不同可能是約定調整，不代表帳單有誤）</small>
                         <small v-if="inv.amount_discrepancy" class="ledger-rate-hint" :data-testid="`ledger-amount-discrepancy-${inv.id}`">帳單 {{ formatCurrency(inv.stored_total_amount) }}，照這個月上的 {{ inv.period_sessions }} 堂算是 {{ formatCurrency(inv.computed_total_amount) }}</small>
                         <small v-if="(inv.overpaid_amount || 0) > 0" class="ledger-overpay-hint">多收 {{ formatCurrency(inv.overpaid_amount) }}</small>
+                        <small v-if="(inv.transferred_amount || 0) > 0" class="ledger-rate-hint">已轉出 {{ formatCurrency(inv.transferred_amount) }}；原收據保留</small>
                       </td>
                       <td data-label="應繳日">{{ fmtDate(inv.due_date) }}</td>
                       <td class="num" data-label="應收">{{ formatCurrency(inv.total_amount) }}</td>
@@ -1217,10 +1218,11 @@ const labelMap = (map, key) => map[key] || key || '—';
 const formatCurrency = (value) => 'NT$ ' + Number(value || 0).toLocaleString('zh-TW');
 const signedCurrency = (value) => `${Number(value || 0) > 0 ? '+' : Number(value || 0) < 0 ? '-' : ''}${formatCurrency(Math.abs(Number(value || 0)))}`;
 const formatPeriod = (period) => !period ? '—' : (String(period).split('-').length === 2 ? String(period).replace('-', '/') : period);
-const paymentMethodLabel = (method) => labelMap({ cash: '現金', transfer: '匯款', void: '更正收款' }, method);
+const paymentMethodLabel = (method) => labelMap({ cash: '現金', transfer: '匯款', void: '更正收款',
+  transfer_out: '額度轉出', transfer_in: '額度轉入', transfer_reversal_out: '還原轉出', transfer_reversal_in: '還原轉入' }, method);
 const invoiceStatusLabel = (status) => labelMap(INVOICE_STATUS_LABELS, status);
 const reportStatusLabel = (status) => labelMap(REPORT_STATUS_LABELS, status);
-const applicationStatusLabel = (status) => labelMap({ applied: '已收', partially_applied: '已收超額', overpayment_pending_review: '多收', voided: '已撤銷', refunded: '已退費' }, status);
+const applicationStatusLabel = (status) => labelMap({ applied: '已收', partially_applied: '已收超額', overpayment_pending_review: '多收', voided: '已撤銷', refunded: '已退費', transferred: '額度異動' }, status);
 const invoiceStatusClass = (status) => labelMap({
   paid: 'chip--success',
   unpaid: 'chip--danger',
@@ -1234,6 +1236,7 @@ const reportStatusClass = (status) => labelMap({
   rejected: 'chip--muted',
 }, status);
 const applicationStatusClass = (status) => labelMap({
+  transferred: 'chip--muted',
   applied: 'chip--success',
   partially_applied: 'chip--warning',
   overpayment_pending_review: 'chip--danger',

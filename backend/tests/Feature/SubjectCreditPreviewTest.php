@@ -31,7 +31,7 @@ class SubjectCreditPreviewTest extends TestCase
         [$token, $source, $target] = $this->fixture();
         $before = $this->businessSnapshot();
         $this->preview($token, $source, $target)->assertOk()
-            ->assertJsonPath('preview', true)->assertJsonPath('execution_available', false)
+            ->assertJsonPath('preview', true)->assertJsonPath('execution_available', true)
             ->assertJsonPath('plan.remaining_sessions', 6)->assertJsonPath('plan.reserved_sessions', 0)
             ->assertJsonPath('plan.available_sessions', 6)->assertJsonPath('plan.moved_sessions', 2)
             ->assertJsonPath('plan.amount', 3000)->assertJsonPath('plan.source_keeps_amount', 9000)
@@ -177,7 +177,7 @@ class SubjectCreditPreviewTest extends TestCase
         $this->preview($this->token((int) Campus::factory()->create()->id), $source, $target)->assertStatus(403);
         $this->preview($this->token(null), $source, $target)->assertStatus(403);
         $this->preview($token, $source, $target)->assertOk();
-        $this->withToken($token)->postJson("/api/v1/student-classes/{$source->ID}/subject-credit-transfer", ['target_course_id' => $target->ID, 'sessions' => 2])->assertNotFound();
+        $this->withToken($token)->postJson("/api/v1/student-classes/{$source->ID}/subject-credit-transfer", ['target_course_id' => $target->ID, 'sessions' => 2])->assertStatus(422);
     }
 
     private function preview(string $token, StudentClass $source, StudentClass $target, mixed $sessions = 2)

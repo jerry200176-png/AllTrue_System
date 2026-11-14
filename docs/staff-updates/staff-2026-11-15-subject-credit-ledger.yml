@@ -1,0 +1,16 @@
+updates:
+  - id: staff-2026-11-15-subject-credit-ledger
+    published_at: "2026-11-15"
+    audiences:
+      - director
+      - super_admin
+    importance: digest
+    title: 轉用額度與原收款分開呈現
+    summary: 帳務會分開顯示額度轉用與現金收款，原收據保留，舊欠款不會被抵銷。
+    items:
+      - category: improved
+        text: 內部額度轉出不再當成收款撤銷或多收；原收據仍可核對。
+      - category: fixed
+        text: 已轉用的資金不能直接撤銷原收款；需要先核對並還原轉用。
+    source_refs:
+      - "changelog:2026-11-15:subject-credit-api"
