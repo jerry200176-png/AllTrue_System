@@ -15,6 +15,8 @@ use App\Support\DeadlockRetry;
 use App\Services\Billing\BillingPeriodInvoiceExists;
 use App\Services\Billing\InvoiceCorrectionLink;
 use App\Services\Billing\InvoiceIssuer;
+use App\Services\Billing\MonthlyBillFreeze;
+use App\Services\Billing\PackagePaidMarks;
 use App\Services\Billing\ContractMoneyState;
 use App\Services\MonthlyBillingService;
 use App\Services\PaymentReportTokenService;
@@ -530,37 +532,7 @@ class PaymentReportController extends Controller
             }
 
             if ($sc && $sc->ScheduleMode === 'date') {
-                $billingPeriod = preg_match('/^\d{4}-\d{2}$/', (string) $invoice->billing_period)
-                    ? (string) $invoice->billing_period
-                    : $this->monthlyBilling->defaultPeriodFor($sc, $report->payment_date);
-                $billing = $this->monthlyBilling->summarizePeriod($sc, $billingPeriod);
-
-                if (
-                    (string) ($invoice->Status ?? 'unpaid') === 'unpaid'
-                    && (int) ($monthlyProjection['net_applied'] ?? 0) === 0
-                    && (!$monthlyProjection || $monthlyProjection['computed_total_amount'] !== null)
-                    && $billing['source'] === 'billable_sessions'
-                    && (!$monthlyProjection || $monthlyProjection['repriceable'])
-                ) {
-                    $invoice->TotalAmount = (int) $billing['charge'];
-                }
-
-                // A fixed (non-repriceable) bill keeps its own evidence: never snapshot today's sessions onto it (#3888 review).
-                if (empty($invoice->billing_snapshot) && (!$monthlyProjection || $monthlyProjection['repriceable'])) {
-                    $invoice->billing_period = $billingPeriod;
-                    $invoice->billing_snapshot = [
-                        'version' => 1,
-                        'source' => 'monthly_billable_sessions',
-                        'billing_period' => $billingPeriod,
-                        'period_start' => $billing['period_start'],
-                        'period_end' => $billing['period_end'],
-                        'period_sessions' => (int) $billing['period_sessions'],
-                        'charge' => (int) $billing['charge'],
-                        'sessions' => $this->monthlyBilling
-                            ->billableSessionDetailsForPeriod($sc, $billingPeriod),
-                    ];
-                    $invoice->save();
-                }
+                app(MonthlyBillFreeze::class)->priceBeforeFirstPayment($invoice, $sc, $monthlyProjection, $report->payment_date);
             }
 
             $payment = Payment::create([
@@ -1028,12 +1000,7 @@ class PaymentReportController extends Controller
      */
     private function legacyFlagCourseIds(StudentClass $course, bool $lock = false): array
     {
-        if (!$course->isPartOfPackage()) {
-            return [(int) $course->getKey()];
-        }
-
-        return StudentClass::query()->where('PackageID', $course->PackageID)->where('StudentID', $course->StudentID)->orderBy('ID')
-            ->when($lock, fn ($q) => $q->lockForUpdate())->pluck('ID')->map(fn ($id) => (int) $id)->all();
+        return PackagePaidMarks::courseIds($course, $lock);
     }
 
     /**
@@ -1071,14 +1038,7 @@ class PaymentReportController extends Controller
     /** The legacy mark off (void()/撤銷收款 semantics): the course and, for a package, its paid mark and every member's. @return int courses changed */
     private function dropLegacyPaidMarks(StudentClass $course, ?CoursePackage $package): int
     {
-        $members = StudentClass::query()->whereIn('ID', $this->legacyFlagCourseIds($course))->get();
-        foreach ($members as $member) {
-            $member->update(['Paid' => 0, 'Pay' => 0, 'PayDate' => null]
-                + ($member->getAttribute('closed_reason') === 'settled' ? ['closed_reason' => 'settled_pending'] : []));
-        }
-        $package?->refresh()->forceFill(['paid' => false, 'paid_at' => null])->save();
-
-        return $members->count();
+        return PackagePaidMarks::drop($course, $package);
     }
 
     /** @param array<string, int|string> $metadata no free text: a reason is stored only as its hash */
@@ -1591,15 +1551,7 @@ class PaymentReportController extends Controller
 
     private function markPackagePaid(CoursePackage $package, string $paidAt): void
     {
-        $package->paid = true;
-        $package->paid_at = $paidAt;
-        $package->save();
-
-        // Only the package owner's own courses: a stale PackageID on another student's course is not this payment's to mark.
-        StudentClass::where('PackageID', $package->id)->where('StudentID', $package->student_id)->update([
-            'Paid' => 1,
-            'PayDate' => $paidAt,
-        ]);
+        PackagePaidMarks::mark($package, $paidAt);
     }
 
     /**
