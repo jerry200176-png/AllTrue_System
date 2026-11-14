@@ -34,6 +34,7 @@ Every implementer agent follows this. The coordinator sends only the task-specif
 - Adding a tab, step or button changes keyboard order: search the e2e specs for arrow-key and Tab walks over that area and update them in the same PR.
 - Pick pages that are in the nav registry and in use. A page with no nav entry or zero production rows is a removal candidate: report it instead of migrating it.
 - Search the production-run specs for every selector, class name and label helper you change, and update them in the same PR: `frontend/e2e/calendar-course-consistency.spec.js`, `frontend/e2e/*production*.spec.js`, `frontend/e2e/fixtures/**`.
+- Production-run specs select by `data-testid` or role, never by a new CSS class (a restyle deletes classes; acceptance run 43555468636 broke on `.hint`). When you restyle markup a spec reads, give it a `data-testid` and point the spec at it. `scripts/ci/check-production-spec-selectors.mjs` (job `Vite core (build, Vitest, gates)`) has two checks: a ratchet that fails when the count of class selectors in production-run specs grows (lower `scripts/ci/production-spec-class-selectors.baseline.json` with `--update-baseline` when you remove some), and an existence check that fails when a class or test id is gone from all of `frontend/src`. Neither proves a selector still matches on the right page.
 - Do not put native `required` or `min` on a field that shows inline errors.
 - A confirm handler must return early when its dialog is already closed.
 

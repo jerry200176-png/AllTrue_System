@@ -1,0 +1,16 @@
+{
+  "total": 163,
+  "specs": {
+    "frontend/e2e/calendar-course-consistency.spec.js": 67,
+    "frontend/e2e/calendar-print-production.spec.js": 13,
+    "frontend/e2e/classroom-management-production-smoke.spec.js": 7,
+    "frontend/e2e/feedback-launcher-production.spec.js": 6,
+    "frontend/e2e/fixtures/coursePaymentEntry.js": 9,
+    "frontend/e2e/fixtures/dismissOverlays.js": 16,
+    "frontend/e2e/fixtures/openPageFromSidebarSearch.js": 6,
+    "frontend/e2e/parent-portal-production.spec.js": 7,
+    "frontend/e2e/payment-display-production.spec.js": 13,
+    "frontend/e2e/school-directory-production.spec.js": 1,
+    "frontend/e2e/tutoring-free-production.spec.js": 18
+  }
+}
