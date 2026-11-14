@@ -123,32 +123,13 @@ class PaymentReport extends Model
      */
     public static function pendingScopeCourseIds(int $courseId): array
     {
-        return self::pendingScopeCourseIdsFor([$courseId])[$courseId];
-    }
-
-    /**
-     * {@see pendingScopeCourseIds()} for many courses in three queries (#5113: the receipt-move target list).
-     *
-     * @param list<int> $courseIds
-     * @return array<int, list<int>> course id => its scope (a course that does not exist counts alone)
-     */
-    public static function pendingScopeCourseIdsFor(array $courseIds): array
-    {
-        $courseIds = array_values(array_unique(array_map('intval', $courseIds)));
-        $courses = $courseIds === [] ? collect() : DB::table('StudentClass')->whereIn('ID', $courseIds)->get(['ID', 'PackageID', 'ScheduleMode'])->keyBy(fn ($c) => (int) $c->ID);
-        $shared = $courses->filter(fn ($c) => (int) ($c->PackageID ?? 0) > 0 && strtolower((string) ($c->ScheduleMode ?? 'count')) !== 'date')
-            ->map(fn ($c) => (int) $c->PackageID);
-        $live = $shared->isEmpty() ? collect() : DB::table('course_packages')->whereIn('id', $shared->unique()->values()->all())->pluck('id')->map(fn ($id) => (int) $id);
-        $members = $live->isEmpty() ? collect() : DB::table('StudentClass')->whereIn('PackageID', $live->all())->get(['ID', 'PackageID'])
-            ->groupBy(fn ($c) => (int) $c->PackageID)->map(fn ($rows) => $rows->pluck('ID')->map(fn ($id) => (int) $id)->all());
-
-        $out = [];
-        foreach ($courseIds as $id) {
-            $packageId = $shared->get($id);
-            $out[$id] = $packageId !== null && $members->has($packageId) ? $members->get($packageId) : [$id];
+        $course = DB::table('StudentClass')->where('ID', $courseId)->first(['PackageID', 'ScheduleMode']);
+        $packageId = (int) ($course->PackageID ?? 0);
+        if ($packageId > 0 && strtolower((string) ($course->ScheduleMode ?? 'count')) !== 'date' && DB::table('course_packages')->where('id', $packageId)->exists()) {
+            return DB::table('StudentClass')->where('PackageID', $packageId)->pluck('ID')->map(fn ($id) => (int) $id)->all();
         }
 
-        return $out;
+        return [$courseId];
     }
 
     public function isPending(): bool

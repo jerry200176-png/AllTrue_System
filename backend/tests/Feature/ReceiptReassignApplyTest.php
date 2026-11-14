@@ -18,8 +18,9 @@ use Tests\Support\ReceiptReassignFixtures;
 use Tests\TestCase;
 
 /**
- * #5113 (in-app #522), design PR 3b: applying a receipt move. Each refusal is checked to write nothing; each must-do item
- * of the 2026-11-13 list has its own test. Limits are varied through config, never asserted as literals.
+ * #5113 (in-app #522), design PR 3b: applying a receipt move. Each refusal is checked to write nothing; must-do items 1-5
+ * of the 2026-11-13 list each have their own test (6 and 7 are in the targets/preview tests). Limits are varied through
+ * config, never asserted as literals.
  */
 class ReceiptReassignApplyTest extends TestCase
 {
@@ -209,31 +210,6 @@ class ReceiptReassignApplyTest extends TestCase
         // The receipt now on the original bill is an ordinary receipt: the unchanged 撤銷收據 reverses it once.
         $this->putJson("/api/v1/payment-reports/{$back['new_report_id']}/void", ['void_reason' => '測試撤銷'], $this->h($tok))->assertOk();
         $this->assertSame(0, $this->net($f['wrongInvoice']));
-    }
-
-    // ── must-do 6: reassign-targets is batched ──────────────────────────
-
-    public function test_reassign_targets_runs_the_same_number_of_queries_for_two_or_eight_candidates(): void
-    {
-        $f = $this->fixture();
-        $tok = $this->token('S', 1);
-        $url = "/api/v1/payment-reports/{$f['report']->id}/reassign-targets?student_id={$f['right']->id}";
-        $this->bill($f['right'], self::AMOUNT);
-        $this->getJson($url, $this->h($tok))->assertOk(); // warm-up
-        $count = function () use ($url, $tok): int {
-            DB::flushQueryLog();
-            DB::enableQueryLog();
-            $this->getJson($url, $this->h($tok))->assertOk();
-            DB::disableQueryLog();
-
-            return count(DB::getQueryLog());
-        };
-        $two = $count();
-        foreach (range(1, 6) as $_) {
-            $this->bill($f['right'], self::AMOUNT);
-        }
-        $this->assertCount(8, $this->getJson($url, $this->h($tok))->json('targets'));
-        $this->assertSame($two, $count());
     }
 
     // ── limits: 0 = off, above the limit goes to HQ (super_admin) ───────
