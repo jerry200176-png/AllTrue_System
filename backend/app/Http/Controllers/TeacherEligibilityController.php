@@ -102,9 +102,11 @@ class TeacherEligibilityController extends Controller
             ->whereBetween('schedule_date', [$effectiveStart->toDateString(), $period['end']->toDateString()])
             ->whereNotIn('status', ['cancelled', 'leave', 'leave_requested', \App\Models\Schedule::STATUS_SUPERSEDED])
             ->get();
+        $weeks = $this->splitIntoWeeks($effectiveStart, $period['end']);
+        $plannedEnd = $weeks === [] ? $period['end'] : $period['end']->copy()->max(end($weeks)[1]);
         $plannedSchedules = DB::table('schedules')
             ->whereIn('teacher_id', $teacherIds)
-            ->whereBetween('schedule_date', [$effectiveStart->toDateString(), $period['end']->toDateString()])
+            ->whereBetween('schedule_date', [$effectiveStart->toDateString(), $plannedEnd->toDateString()])
             ->whereNotIn('status', ['cancelled', \App\Models\Schedule::STATUS_SUPERSEDED])
             ->get();
 
@@ -243,15 +245,15 @@ class TeacherEligibilityController extends Controller
         $salaryByTeacher = $this->salaryProfilesByTeacher($teacherIds, null, $period['end']->toDateString());
         $manualMultiplierByTeacher = $this->manualMultiplierByTeacher($teacherIds, null, $period['end']->toDateString());
 
-        $rows = $teachers->map(function ($teacher) use ($period, $effectiveStart, $scheduleByTeacher, $plannedByTeacher, $attendanceByTeacher, $eventByTeacher, $achievementByTeacher, $deductionByTeacher, $allowanceByTeacher, $cashByTeacher, $cashSourceAvailable, $allowanceSourceAvailable, $pendingSalaryByTeacher, $eventsAvailable, $attendanceSourceAvailable, $sessionCalendarAvailable, $subjectUnitsByTeacher, $salaryByTeacher, $manualMultiplierByTeacher) {
+        $rows = $teachers->map(function ($teacher) use ($period, $effectiveStart, $weeks, $scheduleByTeacher, $plannedByTeacher, $attendanceByTeacher, $eventByTeacher, $achievementByTeacher, $deductionByTeacher, $allowanceByTeacher, $cashByTeacher, $cashSourceAvailable, $allowanceSourceAvailable, $pendingSalaryByTeacher, $eventsAvailable, $attendanceSourceAvailable, $sessionCalendarAvailable, $subjectUnitsByTeacher, $salaryByTeacher, $manualMultiplierByTeacher) {
             $teacherId = (int) $teacher->id;
             $teacherSchedules = $scheduleByTeacher->get($teacherId, collect());
             $teacherPlanned = $plannedByTeacher->get($teacherId, collect());
             $teacherAttendance = $attendanceByTeacher->get($teacherId, collect());
             $teacherEvents = $eventByTeacher->get((string) $teacherId, collect())->concat($eventByTeacher->get('*', collect()));
             $weeklyRows = [];
-            foreach ($this->splitIntoWeeks($effectiveStart, $period['end']) as [$weekStart, $weekEnd]) {
-                $weeklyRows[] = $this->evaluateWeek($weekStart, $weekEnd, $teacherSchedules, $teacherAttendance, $teacherEvents, $eventsAvailable, $attendanceSourceAvailable);
+            foreach ($weeks as [$weekStart, $weekEnd]) {
+                $weeklyRows[] = $this->evaluateWeek($weekStart, $weekEnd, $teacherPlanned);
             }
 
             $weeklyStatus = $this->aggregateWeeklyStatus($weeklyRows);
@@ -265,12 +267,7 @@ class TeacherEligibilityController extends Controller
             $result = $this->policy->evaluate([
                 'period_start' => $effectiveStart->toDateString(),
                 'period_end' => $period['end']->toDateString(),
-                'weekly' => [
-                    'segments' => 0,
-                    'work_hours' => 0,
-                    'segment_rule' => true,
-                    'exception' => ['official_event' => false, 'leave_eligible' => false],
-                ],
+                'weekly' => ['segments' => 0], // replaced below by the per-week result
                 'holiday_days' => $holidayDays,
                 'weekday_hours' => $weekdayHours,
                 'achievements' => $achievementByTeacher->get($teacherId, collect())->map(fn ($row) => (array) $row)->all(),
@@ -330,7 +327,7 @@ class TeacherEligibilityController extends Controller
                 'overall_status' => $result['overall_status'],
                 'components' => $result['components'],
                 'weekly' => $weeklyRows,
-                'work_hours_source' => 'student_attendance',
+                'work_hours_source' => 'schedule',
                 'missing_fields' => $result['missing_fields'],
                 'review_required' => $result['overall_status'] === TeacherEligibilityPolicy::REVIEW || $settlement['review_required'],
                 'pending_salary' => $pendingSalaryByTeacher[$teacherId] ?? null,
@@ -497,118 +494,59 @@ class TeacherEligibilityController extends Controller
         }
     }
 
-    private function evaluateWeek(Carbon $start, Carbon $end, $schedules, $attendanceSessions, $events, bool $eventsAvailable, bool $attendanceSourceAvailable): array
+    /**
+     * 每週16段 follows the schedule (HQ 115.07: 「未排滿16段課」), not attendance. One 段 is 2 hours of
+     * the teacher's clock time: lessons that overlap (two 一對二 courses in the same 2 hours) count once.
+     * 正課, 輔導 and 試聽 all count. A student's leave still counts; a cancelled, moved or replaced row does not,
+     * and a substituted lesson belongs to the substitute (schedules.teacher_id).
+     * ponytail: a teacher's own leave that is recorded only as status=leave on the row still counts here,
+     * because the row cannot tell it from a student's leave; split the status if that case turns out to matter.
+     */
+    private function evaluateWeek(Carbon $start, Carbon $end, $planned): array
     {
-        $weekSchedules = $schedules->filter(fn ($row) => $row->schedule_date >= $start->toDateString() && $row->schedule_date <= $end->toDateString());
-        $weekAttendance = $attendanceSessions->filter(fn ($row) => substr((string) $row->session_date, 0, 10) >= $start->toDateString() && substr((string) $row->session_date, 0, 10) <= $end->toDateString());
-        // The 16-segment rule uses valid attended ClassSession rows, not
-        // schedules or LearningRecords. Shared classes are already unique.
-        $regularAttendance = $weekAttendance->filter(fn ($row) => $this->isEligibleTeachingAttendance($row));
-        $trialAttendance = $weekAttendance->filter(fn ($row) => strtolower((string) ($row->class_type ?? '')) === 'trial');
-        $tutoringAttendance = $weekAttendance->filter(fn ($row) => strtolower((string) ($row->class_type ?? '')) === 'tutoring');
-        $durationUnknown = $regularAttendance->contains(fn ($row) => $this->classSessionDurationHours($row) === null);
-        $regularSegments = $attendanceSourceAvailable
-            ? ($durationUnknown ? null : round($regularAttendance->sum(fn ($row) => $this->classSessionDurationHours($row)) / 2, 2))
-            : null;
-        $trialSegments = $attendanceSourceAvailable ? (float) $trialAttendance->count() : null;
-        $segments = ($regularSegments === null || $trialSegments === null)
-            ? null
-            : round($regularSegments + $trialSegments, 2);
-        $workHours = $attendanceSourceAvailable
-            ? ($durationUnknown ? null : round($regularAttendance->sum(fn ($row) => $this->classSessionDurationHours($row)), 2))
-            : null;
-        $weekEvents = $events->filter(fn ($event) => $event->event_date >= $start->toDateString() && $event->event_date <= $end->toDateString());
-        $official = $eventsAvailable && $weekEvents->contains(
-            fn ($event) => in_array($event->event_type, ['official_closure', 'holiday'], true)
-        );
-        $leaveEvents = $weekEvents->filter(fn ($event) => $event->event_type === 'leave');
-        $leaveEligible = $official ? false : $this->resolveLeaveEligibility($leaveEvents);
-        $saturdayLeaveBlocked = false;
-        $hasSaturdayLeave = $leaveEvents->contains(fn ($event) => Carbon::parse((string) $event->event_date)->dayOfWeekIso === 6);
-        if ($hasSaturdayLeave) {
-            $sundayHasRegularClass = $weekSchedules->contains(fn ($row) => Carbon::parse($row->schedule_date)->dayOfWeekIso === 7 && $this->isRegularAssignable($row));
-            $saturdayLeaveBlocked = !$sundayHasRegularClass && $leaveEligible === false;
-        }
+        $dailyHours = $planned
+            ->filter(fn ($row) => (string) $row->schedule_date >= $start->toDateString()
+                && (string) $row->schedule_date <= $end->toDateString()
+                && (string) ($row->status ?? '') !== 'rescheduled'
+                && !in_array(strtolower((string) ($row->type ?? '')), ['admin', 'unavailable'], true)
+                && strtolower((string) ($row->class_type ?? '')) !== 'admin')
+            ->groupBy(fn ($row) => (string) $row->schedule_date)
+            ->map(fn ($rows) => round($this->scheduledCoverageHoursForDate($rows, fn () => true), 2))
+            ->sortKeys();
+        $segments = round($dailyHours->sum() / 2, 2);
 
-        $policy = $this->policy->weekly16([
-            'segments' => $segments,
-            'work_hours' => $workHours,
-            'segment_rule' => true,
-            'exception' => $eventsAvailable ? [
-                'official_event' => $official,
-                'leave_eligible' => $leaveEligible,
-                'saturday_leave_blocked' => $saturdayLeaveBlocked,
-            ] : null,
-        ]);
-        $policy['metrics']['week_start'] = $start->toDateString();
-        $policy['metrics']['week_end'] = $end->toDateString();
-        $policy['metrics']['work_hours_source'] = 'student_attendance';
-        $policy['metrics']['attendance_sessions'] = $weekAttendance->count();
-        $policy['metrics']['regular_segments'] = $regularSegments;
-        $policy['metrics']['trial_segments'] = $trialSegments;
-        $policy['metrics']['tutoring_sessions'] = $tutoringAttendance->count();
-        $policy['metrics']['total_segments'] = $segments;
-        $policy['metrics']['meets_16_segments'] = $segments !== null
-            ? $segments >= (float) config('teacher_salary.weekly_segment_threshold', 16)
-            : null;
-        $policy['metrics']['course_sessions'] = $weekAttendance->map(fn ($row) => [
-            'class_session_id' => (int) $row->class_session_id,
-            'session_date' => substr((string) $row->session_date, 0, 10),
-            'start_time' => (string) $row->start_time,
-            'end_time' => (string) $row->end_time,
-            'class_type' => strtolower((string) ($row->class_type ?? 'one_on_one')),
-            'attendance_status' => (string) $row->attendance_status,
-            'segment_type' => strtolower((string) ($row->class_type ?? '')) === 'trial'
-                ? 'trial_fixed'
-                : (strtolower((string) ($row->class_type ?? '')) === 'tutoring' ? 'tutoring_excluded' : 'regular_duration'),
-            'segments' => strtolower((string) ($row->class_type ?? '')) === 'trial'
-                ? 1.0
-                : (strtolower((string) ($row->class_type ?? '')) === 'tutoring' ? 0.0 : (($hours = $this->classSessionDurationHours($row)) === null ? null : round($hours / 2, 2))),
-        ])->values()->all();
+        $policy = $this->policy->weekly16(['segments' => $segments]);
+        $policy['metrics'] = [
+            'week_start' => $start->toDateString(),
+            'week_end' => $end->toDateString(),
+            'daily_hours' => $dailyHours->all(),
+            'total_segments' => $segments,
+            'meets_16_segments' => $policy['status'] === TeacherEligibilityPolicy::QUALIFIES,
+        ];
         return $policy;
     }
 
     private function aggregateWeeklyStatus(array $weeklyRows): array
     {
-        $hasReview = collect($weeklyRows)->contains(fn ($row) => $row['status'] === TeacherEligibilityPolicy::REVIEW);
-        $allPass = $weeklyRows !== [] && collect($weeklyRows)->every(fn ($row) => $row['status'] === TeacherEligibilityPolicy::QUALIFIES);
-        $amount = 0;
-        $months = [];
-        $courseSessions = [];
-        $regularSegments = 0.0;
-        $trialSegments = 0.0;
-        $tutoringSessions = 0;
-        foreach ($weeklyRows as $row) {
-            $regularSegments += (float) ($row['metrics']['regular_segments'] ?? 0);
-            $trialSegments += (float) ($row['metrics']['trial_segments'] ?? 0);
-            $tutoringSessions += (int) ($row['metrics']['tutoring_sessions'] ?? 0);
-            $courseSessions = array_merge($courseSessions, $row['metrics']['course_sessions'] ?? []);
-            if ($row['status'] !== TeacherEligibilityPolicy::QUALIFIES) continue;
-            $month = substr((string) ($row['metrics']['week_start'] ?? ''), 0, 7);
-            $months[$month] = ($months[$month] ?? 0) + 1;
-        }
-        foreach ($months as $count) {
-            $amount += min($count, (int) config('teacher_salary.monthly_week_cap', 4)) * (int) config('teacher_salary.weekly_segment_bonus', 1000);
-        }
+        $qualifying = collect($weeklyRows)->where('status', TeacherEligibilityPolicy::QUALIFIES);
+        $allPass = $weeklyRows !== [] && $qualifying->count() === count($weeklyRows);
+        // Each qualifying week pays the weekly bonus, capped per month; a week belongs to its Monday's month.
+        $amount = $qualifying->countBy(fn ($row) => substr((string) $row['metrics']['week_start'], 0, 7))
+            ->sum(fn ($count) => min($count, (int) config('teacher_salary.monthly_week_cap', 4)) * (int) config('teacher_salary.weekly_segment_bonus', 1000));
+
         return [
-            'status' => $hasReview ? TeacherEligibilityPolicy::REVIEW : ($allPass ? TeacherEligibilityPolicy::QUALIFIES : TeacherEligibilityPolicy::NOT_QUALIFIES),
-            'reason' => $hasReview ? '至少一週待人工確認。' : ($allPass ? '查詢期間每週均符合。' : '查詢期間有未達標週。'),
+            'status' => $allPass ? TeacherEligibilityPolicy::QUALIFIES : TeacherEligibilityPolicy::NOT_QUALIFIES,
+            'reason' => $weeklyRows === [] ? '查詢期間沒有從週一開始的完整週。' : ($allPass ? '查詢期間每週均排滿16段。' : '查詢期間有未排滿16段的週。'),
             'metrics' => [
                 'weeks' => $weeklyRows,
-                'qualifying_weeks' => collect($weeklyRows)->where('status', TeacherEligibilityPolicy::QUALIFIES)->count(),
+                'qualifying_weeks' => $qualifying->count(),
                 'week_count' => count($weeklyRows),
-                'regular_segments' => round($regularSegments, 2),
-                'trial_segments' => round($trialSegments, 2),
-                'total_segments' => round($regularSegments + $trialSegments, 2),
-                'tutoring_sessions' => $tutoringSessions,
-                'course_sessions' => $courseSessions,
-                'meets_16_segments' => count($weeklyRows) === 1
-                    ? collect($weeklyRows)->every(fn ($row) => ($row['metrics']['meets_16_segments'] ?? null) === true)
-                    : null,
+                'total_segments' => round(collect($weeklyRows)->sum(fn ($row) => (float) $row['metrics']['total_segments']), 2),
+                'meets_16_segments' => count($weeklyRows) === 1 ? $allPass : null,
             ],
             'amount' => $amount,
             'rate' => 0,
-            'missing_fields' => collect($weeklyRows)->flatMap(fn ($row) => $row['missing_fields'] ?? [])->unique()->values()->all(),
+            'missing_fields' => [],
         ];
     }
 
@@ -697,26 +635,6 @@ class TeacherEligibilityController extends Controller
             'leave', 'leave_adjusted', 'leave_requested', 'excused',
             'cancelled', 'canceled', 'voided', 'suspended', 'holiday',
         ], true);
-    }
-
-    private function resolveLeaveEligibility($leaveEvents): ?bool
-    {
-        if ($leaveEvents->isEmpty()) {
-            return false;
-        }
-
-        $unknown = $leaveEvents->contains(function ($event) {
-            return $event->makeup_completed === null
-                && ($event->holiday_leave_hours === null || $event->hours === null);
-        });
-        if ($unknown) {
-            return null;
-        }
-
-        return $leaveEvents->contains(function ($event) {
-            return (bool) ($event->makeup_completed ?? false)
-                || ((float) ($event->holiday_leave_hours ?? 0) >= (float) ($event->hours ?? 0));
-        });
     }
 
     private function existingLeaveEvents(array $teacherIds, ?array $branchFilter, Carbon $start, Carbon $end)
@@ -992,21 +910,6 @@ class TeacherEligibilityController extends Controller
         }
     }
 
-    private function classSessionDurationHours($row): ?float
-    {
-        try {
-            $start = Carbon::parse((string) ($row->start_time ?? ''));
-            $end = Carbon::parse((string) ($row->end_time ?? ''));
-            if ($end->lte($start)) {
-                return null;
-            }
-
-            return round((int) $start->diffInMinutes($end, true) / 60, 2);
-        } catch (\Throwable) {
-            return null;
-        }
-    }
-
     private function studentAttendanceDurationHours($row): float
     {
         if (!empty($row->student_sign_in_at) && !empty($row->student_sign_out_at)) {
@@ -1054,21 +957,19 @@ class TeacherEligibilityController extends Controller
             && !in_array($classType, ['admin'], true);
     }
 
-    private function isEligibleTeachingAttendance($row): bool
-    {
-        $classType = strtolower((string) ($row->class_type ?? ''));
-        return !in_array($classType, ['trial', 'tutoring'], true)
-            && in_array(strtolower((string) ($row->attendance_status ?? '')), $this->payableStudentAttendanceStatuses(), true);
-    }
-
+    /**
+     * Whole Monday-to-Sunday weeks whose Monday falls in the period. A week that crosses a month end
+     * is judged once, in its Monday's month, and is never cut in two.
+     *
+     * @return list<array{0: Carbon, 1: Carbon}>
+     */
     private function splitIntoWeeks(Carbon $start, Carbon $end): array
     {
         $weeks = [];
         $cursor = $start->copy()->startOfWeek(Carbon::MONDAY);
+        if ($cursor->lt($start->copy()->startOfDay())) $cursor->addWeek();
         while ($cursor->lte($end)) {
-            $weekStart = $cursor->copy()->max($start->copy());
-            $weekEnd = $cursor->copy()->endOfWeek(Carbon::SUNDAY)->min($end->copy());
-            $weeks[] = [$weekStart->startOfDay(), $weekEnd->endOfDay()];
+            $weeks[] = [$cursor->copy()->startOfDay(), $cursor->copy()->endOfWeek(Carbon::SUNDAY)];
             $cursor->addWeek();
         }
         return $weeks;

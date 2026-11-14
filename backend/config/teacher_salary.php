@@ -4,7 +4,6 @@ return [
     'effective_from' => '2026-07-01',
     'policy_version' => '115.07',
     'weekly_segment_threshold' => 16.0,
-    'weekly_work_hours_threshold' => 40.0,
     'weekly_segment_bonus' => 1000,
     'monthly_week_cap' => 4,
     'holiday_required_hours' => 16.0,

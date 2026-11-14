@@ -15,66 +15,29 @@ class TeacherEligibilityPolicyTest extends TestCase
         $this->policy = new TeacherEligibilityPolicy(require __DIR__ . '/../../config/teacher_salary.php');
     }
 
-    public function test_weekly_sixteen_segments_and_forty_hours_qualifies(): void
+    public function test_weekly_sixteen_scheduled_segments_qualifies(): void
     {
-        $result = $this->policy->weekly16([
-            'segments' => 16,
-            'work_hours' => 40,
-            'exception' => ['official_event' => false, 'leave_eligible' => false],
-        ]);
+        $result = $this->policy->weekly16(['segments' => 16]);
 
         $this->assertSame(TeacherEligibilityPolicy::QUALIFIES, $result['status']);
         $this->assertSame(1000, $result['amount']);
+        $this->assertSame(16.0, $result['metrics']['weekly_segments']);
     }
 
-    public function test_weekly_below_either_threshold_does_not_qualify(): void
+    public function test_weekly_below_sixteen_segments_does_not_qualify(): void
     {
-        $result = $this->policy->weekly16([
-            'segments' => 15.5,
-            'work_hours' => 40,
-            'exception' => ['official_event' => false, 'leave_eligible' => false],
-        ]);
+        $result = $this->policy->weekly16(['segments' => 15.75]);
 
         $this->assertSame(TeacherEligibilityPolicy::NOT_QUALIFIES, $result['status']);
         $this->assertSame(0, $result['amount']);
     }
 
-    public function test_weekly_segment_rule_qualifies_without_the_legacy_forty_hour_gate(): void
+    public function test_weekly_reviews_only_when_segment_total_is_unknown(): void
     {
-        $result = $this->policy->weekly16([
-            'segments' => 16,
-            'work_hours' => 20,
-            'segment_rule' => true,
-            'exception' => null,
-        ]);
-
-        $this->assertSame(TeacherEligibilityPolicy::QUALIFIES, $result['status']);
-        $this->assertSame(1000, $result['amount']);
-        $this->assertSame(20.0, $result['metrics']['work_hours']);
-    }
-
-    public function test_weekly_segment_rule_reviews_only_when_segment_total_is_unknown(): void
-    {
-        $result = $this->policy->weekly16([
-            'segments' => null,
-            'work_hours' => null,
-            'segment_rule' => true,
-        ]);
+        $result = $this->policy->weekly16(null);
 
         $this->assertSame(TeacherEligibilityPolicy::REVIEW, $result['status']);
         $this->assertSame(['weekly_segments'], $result['missing_fields']);
-    }
-
-    public function test_official_closure_can_preserve_weekly_bonus_without_signin_hours(): void
-    {
-        $result = $this->policy->weekly16([
-            'segments' => 0,
-            'work_hours' => null,
-            'exception' => ['official_event' => true, 'leave_eligible' => false],
-        ]);
-
-        $this->assertSame(TeacherEligibilityPolicy::QUALIFIES, $result['status']);
-        $this->assertSame(1000, $result['amount']);
     }
 
     public function test_holiday_leave_can_offset_short_regular_hours_to_keep_ten_percent(): void
@@ -211,22 +174,6 @@ class TeacherEligibilityPolicyTest extends TestCase
 
         $this->assertSame(TeacherEligibilityPolicy::REVIEW, $missingYear['status']);
         $this->assertSame(TeacherEligibilityPolicy::REVIEW, $wrongPeriod['status']);
-    }
-
-    public function test_saturday_leave_without_sunday_makeup_blocks_weekly_bonus(): void
-    {
-        $result = $this->policy->weekly16([
-            'segments' => 16,
-            'work_hours' => 40,
-            'exception' => [
-                'official_event' => false,
-                'leave_eligible' => false,
-                'saturday_leave_blocked' => true,
-            ],
-        ]);
-
-        $this->assertSame(TeacherEligibilityPolicy::NOT_QUALIFIES, $result['status']);
-        $this->assertSame(0, $result['amount']);
     }
 
     public function test_deductions_require_both_approvals_and_accumulate(): void

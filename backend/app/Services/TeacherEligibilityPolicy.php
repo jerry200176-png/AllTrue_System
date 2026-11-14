@@ -65,85 +65,24 @@ class TeacherEligibilityPolicy
         ];
     }
 
+    /** A week qualifies when its scheduled 段 (clock hours / 2, overlaps counted once) reach the threshold. */
     public function weekly16(?array $weekly): array
     {
-        if ($weekly === null) {
-            return $this->review(['weekly_segments', 'work_hours', 'weekly_exception_context'], '缺少每週課段、工時或例外資料。');
-        }
-
         $segments = $weekly['segments'] ?? null;
-        $workHours = $weekly['work_hours'] ?? null;
-
-        // The weekly-16 vertical slice is intentionally independent from
-        // the older 40-hour/exception payroll gates. Its only qualification
-        // input is the attendance-backed segment total.
-        if (!empty($weekly['segment_rule'])) {
-            if ($segments === null) {
-                return $this->review(['weekly_segments'], '缺少有效出勤課程的每週段數。');
-            }
-
-            $threshold = (float) $this->setting('weekly_segment_threshold', 16);
-            $qualified = (float) $segments >= $threshold;
-
-            return $this->result(
-                $qualified ? self::QUALIFIES : self::NOT_QUALIFIES,
-                $qualified ? '每週有效課程段數達到16段。' : '每週有效課程段數未達16段。',
-                [
-                    'weekly_segments' => round((float) $segments, 2),
-                    'work_hours' => $workHours === null ? null : round((float) $workHours, 2),
-                    'segment_threshold' => $threshold,
-                ],
-                $qualified ? $this->setting('weekly_segment_bonus', 1000) : 0,
-                0
-            );
+        if ($segments === null) {
+            return $this->review(['weekly_segments'], '缺少每週排課段數。');
         }
 
-        $exception = $weekly['exception'] ?? null;
-        $exceptionIncomplete = $exception !== null && (
-            (array_key_exists('official_event', $exception) && $exception['official_event'] === null)
-            || (array_key_exists('leave_eligible', $exception) && $exception['leave_eligible'] === null)
+        $threshold = (float) $this->setting('weekly_segment_threshold', 16);
+        $qualified = (float) $segments >= $threshold;
+
+        return $this->result(
+            $qualified ? self::QUALIFIES : self::NOT_QUALIFIES,
+            $qualified ? '每週排課段數達到16段。' : '每週排課段數未達16段。',
+            ['weekly_segments' => round((float) $segments, 2), 'segment_threshold' => $threshold],
+            $qualified ? $this->setting('weekly_segment_bonus', 1000) : 0,
+            0
         );
-        if ($exceptionIncomplete) {
-            return $this->review(['weekly_exception_context'], '請假或官方活動例外資料尚未完整。');
-        }
-        if ($exception !== null && !empty($exception['saturday_leave_blocked'])) {
-            return $this->result(self::NOT_QUALIFIES, '週六請假且週日無補課或可抵扣假日假。');
-        }
-        if (($segments === null || $workHours === null) && $exception !== null && (!empty($exception['official_event']) || !empty($exception['leave_eligible']))) {
-            return $this->result(self::QUALIFIES, !empty($exception['official_event']) ? '官方活動或統一公休例外。' : '請假抵扣或補課符合例外規則。', [
-                'weekly_segments' => $segments === null ? null : round((float) $segments, 2),
-                'work_hours' => $workHours === null ? null : round((float) $workHours, 2),
-            ], $this->setting('weekly_segment_bonus', 1000), 0);
-        }
-        if ($segments === null || $workHours === null) {
-            return $this->review(array_filter([
-                $segments === null ? 'weekly_segments' : null,
-                $workHours === null ? 'work_hours' : null,
-            ]), '缺少每週課段或實際工時。');
-        }
-
-        $thresholdPass = (float) $segments >= (float) $this->setting('weekly_segment_threshold', 16)
-            && (float) $workHours >= (float) $this->setting('weekly_work_hours_threshold', 40);
-        if ($thresholdPass) {
-            return $this->result(self::QUALIFIES, '達到每週16段課及40小時工時。', [
-                'weekly_segments' => round((float) $segments, 2),
-                'work_hours' => round((float) $workHours, 2),
-            ], $this->setting('weekly_segment_bonus', 1000), 0);
-        }
-        if ($exception === null) {
-            return $this->review(['weekly_exception_context'], '未達一般門檻，且缺少官方活動／公休／請假例外資料。');
-        }
-        if (!empty($exception['official_event']) || !empty($exception['leave_eligible'])) {
-            return $this->result(self::QUALIFIES, !empty($exception['official_event']) ? '官方活動或統一公休例外。' : '請假抵扣或補課符合例外規則。', [
-                'weekly_segments' => round((float) $segments, 2),
-                'work_hours' => round((float) $workHours, 2),
-            ], $this->setting('weekly_segment_bonus', 1000), 0);
-        }
-
-        return $this->result(self::NOT_QUALIFIES, '未達每週16段課及40小時工時，且不符合例外規則。', [
-            'weekly_segments' => round((float) $segments, 2),
-            'work_hours' => round((float) $workHours, 2),
-        ], 0, 0);
     }
 
     public function holiday16(?array $holidayDays): array

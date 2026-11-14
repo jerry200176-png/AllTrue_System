@@ -18,15 +18,14 @@ class TeacherEligibilityWeeklySegmentsTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_director_sees_attendance_backed_weekly_segments_and_traceable_courses(): void
+    public function test_director_sees_schedule_backed_weekly_segments(): void
     {
         $director = $this->createDirector();
         $teacher = $this->createTeacher();
         $otherCampus = Campus::factory()->create();
         UserCampus::create(['CampusID' => $otherCampus->id, 'UserID' => $teacher->id, 'Admin' => 0, 'Approved' => 1]);
 
-        // 8 x 2h regular = 8 segments; 1v2 and 1v3 x 4h = 4 segments;
-        // 5 attended trials = 5 fixed segments; total = 17. Tutoring is 0.
+        // Attended sessions feed the subject counts and the payout; 段 come from the schedule below.
         foreach (['08:00', '08:10', '08:20', '08:30', '08:40', '08:50', '09:00', '09:10'] as $start) {
             $this->createAttendedSession($teacher->id, 'one_on_one', '2026-08-03', $start, 120, 'completed', 'present', $otherCampus->id);
         }
@@ -45,6 +44,24 @@ class TeacherEligibilityWeeklySegmentsTest extends TestCase
             'VoidReason' => 'fixture',
         ]);
 
+        // Schedule for the week of 2026-08-03 (weekdays stay at 4h or less so the weekday rate is 0):
+        // Mon 4h (student leave still counts) + Tue 4h + Wed 1h + Thu 1h 試聽 + 2h 輔導 + Sat 10h + Sun 10h = 32h = 16 段.
+        // The second Saturday row is the other half of a 一對二 pair in the same hours: no extra 段.
+        $this->schedule($teacher->id, '2026-08-03', '14:00', '18:00', ['status' => 'leave']);
+        $this->schedule($teacher->id, '2026-08-04', '14:00', '18:00');
+        $this->schedule($teacher->id, '2026-08-05', '16:00', '17:00');
+        $this->schedule($teacher->id, '2026-08-06', '10:00', '11:00', ['class_type' => 'trial']);
+        $tutoringId = $this->schedule($teacher->id, '2026-08-06', '13:00', '15:00', ['class_type' => 'tutoring', 'type' => 'tutoring']);
+        $this->schedule($teacher->id, '2026-08-08', '08:00', '18:00', ['class_type' => 'one_on_two']);
+        $this->schedule($teacher->id, '2026-08-08', '08:00', '10:00', ['class_type' => 'one_on_two']);
+        $this->schedule($teacher->id, '2026-08-09', '08:00', '18:00');
+        // None of these count: cancelled, replaced, moved away, admin time, another teacher's lesson.
+        $this->schedule($teacher->id, '2026-08-07', '08:00', '18:00', ['status' => 'cancelled']);
+        $this->schedule($teacher->id, '2026-08-07', '08:00', '18:00', ['status' => \App\Models\Schedule::STATUS_SUPERSEDED]);
+        $this->schedule($teacher->id, '2026-08-09', '19:00', '21:00', ['status' => 'rescheduled']);
+        $this->schedule($teacher->id, '2026-08-07', '08:00', '18:00', ['type' => 'admin']);
+        $this->schedule($director['user_id'], '2026-08-07', '08:00', '18:00');
+
         DB::table('fulltime_salary_profiles')->insert([
             'teacher_id' => $teacher->id,
             'branch_id' => $otherCampus->id,
@@ -62,10 +79,11 @@ class TeacherEligibilityWeeklySegmentsTest extends TestCase
         $response->assertOk();
         $response->assertJsonPath('teachers.0.teacher_id', $teacher->id);
         $response->assertJsonPath('teachers.0.components.weekly_16_segments.status', 'qualifies');
-        $response->assertJsonPath('teachers.0.components.weekly_16_segments.metrics.regular_segments', 12);
-        $response->assertJsonPath('teachers.0.components.weekly_16_segments.metrics.trial_segments', 5);
-        $response->assertJsonPath('teachers.0.components.weekly_16_segments.metrics.total_segments', 17);
+        $response->assertJsonPath('teachers.0.components.weekly_16_segments.metrics.total_segments', 16);
         $response->assertJsonPath('teachers.0.components.weekly_16_segments.metrics.meets_16_segments', true);
+        $response->assertJsonPath('teachers.0.components.weekly_16_segments.metrics.weeks.0.metrics.daily_hours', [
+            '2026-08-03' => 4, '2026-08-04' => 4, '2026-08-05' => 1, '2026-08-06' => 3, '2026-08-08' => 10, '2026-08-09' => 10,
+        ]);
         // one-to-three subject counts are now kept raw; the Founder-approved
         // /8 divisor applies only after the complete applicable total is built.
         $response->assertJsonPath('teachers.0.settlement.calculated_payout', 35700);
@@ -73,21 +91,52 @@ class TeacherEligibilityWeeklySegmentsTest extends TestCase
         $response->assertJsonPath('teachers.0.components.cash_adjustments.amount', 1500);
         $response->assertJsonPath('teachers.0.settlement.adjustments.1.label', '完整結算路徑測試');
 
-        $sessions = $response->json('teachers.0.components.weekly_16_segments.metrics.course_sessions');
-        $this->assertCount(16, $sessions);
-        $this->assertSame(12, collect($sessions)->where('segment_type', 'regular_duration')->sum('segments'));
-        $this->assertSame(5, collect($sessions)->where('segment_type', 'trial_fixed')->count());
-        $this->assertSame(1, collect($sessions)->where('segment_type', 'tutoring_excluded')->count());
-        $this->assertFalse($response->json('teachers.0.components.weekly_16_segments.metrics.course_sessions.0.class_session_id') === null);
-
         $monthResponse = $this->withHeaders($this->auth($director['token']))
             ->getJson('/api/v1/finance/teacher-eligibility?period=month&start=2026-08-01&end=2026-08-31&branch_id=1');
         $monthResponse->assertOk();
         $monthResponse->assertJsonPath('teachers.0.settlement.calculated_payout', 35700);
         $monthResponse->assertJsonPath('teachers.0.settlement.calculation_status', 'calculated');
-        $monthResponse->assertJsonPath('teachers.0.components.weekly_16_segments.metrics.total_segments', 17);
-        $this->assertTrue(collect($monthResponse->json('teachers.0.components.weekly_16_segments.metrics.weeks'))
-            ->contains(fn ($week) => ($week['metrics']['meets_16_segments'] ?? false) === true));
+        // August 2026 has five Mondays; only the first week is full.
+        $monthResponse->assertJsonPath('teachers.0.components.weekly_16_segments.metrics.week_count', 5);
+        $monthResponse->assertJsonPath('teachers.0.components.weekly_16_segments.metrics.qualifying_weeks', 1);
+        $monthResponse->assertJsonPath('teachers.0.components.weekly_16_segments.amount', 1000);
+
+        // Control: without the 2h 輔導 the week is 15 段 and the weekly bonus goes.
+        DB::table('schedules')->where('id', $tutoringId)->update(['status' => 'cancelled']);
+        $short = $this->withHeaders($this->auth($director['token']))
+            ->getJson('/api/v1/finance/teacher-eligibility?period=week&start=2026-08-03&end=2026-08-09&branch_id=1')->assertOk();
+        $short->assertJsonPath('teachers.0.components.weekly_16_segments.metrics.total_segments', 15);
+        $short->assertJsonPath('teachers.0.components.weekly_16_segments.status', 'not_qualifies');
+        $short->assertJsonPath('teachers.0.settlement.calculated_payout', 34700);
+    }
+
+    /** A week that crosses a month end is judged whole, once, in its Monday's month. */
+    public function test_week_crossing_the_month_end_belongs_to_its_mondays_month(): void
+    {
+        $director = $this->createDirector();
+        $teacher = $this->createTeacher();
+        // Week of 2026-07-27: 4h x 5 weekdays + 6h on Sat 08-01 and Sun 08-02 = 32h = 16 段.
+        foreach (['2026-07-27', '2026-07-28', '2026-07-29', '2026-07-30', '2026-07-31'] as $date) {
+            $this->schedule($teacher->id, $date, '14:00', '18:00');
+        }
+        $this->schedule($teacher->id, '2026-08-01', '09:00', '15:00');
+        $this->schedule($teacher->id, '2026-08-02', '09:00', '15:00');
+
+        $weekly = fn (string $start, string $end) => $this->withHeaders($this->auth($director['token']))
+            ->getJson("/api/v1/finance/teacher-eligibility?period=month&start={$start}&end={$end}&branch_id=1")
+            ->assertOk()->json('teachers.0.components.weekly_16_segments');
+
+        $july = $weekly('2026-07-01', '2026-07-31');
+        $this->assertSame(4, $july['metrics']['week_count']);
+        $this->assertSame(1, $july['metrics']['qualifying_weeks']);
+        $this->assertSame(1000, $july['amount']);
+        $this->assertSame('2026-07-27', $july['metrics']['weeks'][3]['metrics']['week_start']);
+        $this->assertEquals(16, $july['metrics']['weeks'][3]['metrics']['total_segments']);
+
+        $august = $weekly('2026-08-01', '2026-08-31');
+        $this->assertSame(0, $august['metrics']['qualifying_weeks']);
+        $this->assertSame(0, $august['amount']);
+        $this->assertSame('2026-08-03', $august['metrics']['weeks'][0]['metrics']['week_start']);
     }
 
     public function test_same_teacher_payroll_subject_count_is_global_when_switching_campus(): void
@@ -122,9 +171,10 @@ class TeacherEligibilityWeeklySegmentsTest extends TestCase
     {
         $director = $this->createDirector();
         $teacher = $this->createTeacher();
-        $rate = fn () => collect($this->withHeaders($this->auth($director['token']))
+        $settlement = fn () => $this->withHeaders($this->auth($director['token']))
             ->getJson('/api/v1/finance/teacher-eligibility?period=month&start=2026-08-01&end=2026-08-31&branch_id=1')
-            ->assertOk()->json('teachers.0.settlement.multiplier_parts'))->firstWhere('key', 'subject_count_threshold')['pct'];
+            ->assertOk()->json('teachers.0.settlement');
+        $rate = fn (array $row) => collect($row['multiplier_parts'])->firstWhere('key', 'subject_count_threshold')['pct'];
 
         // 10 x 10h one-on-one = 150 raw = 18.75 正課; 3 x 10h tutoring = 15 raw lifts 核薪總 to 20.625.
         foreach (range(10, 19) as $day) {
@@ -133,11 +183,14 @@ class TeacherEligibilityWeeklySegmentsTest extends TestCase
         foreach ([21, 22, 23] as $day) {
             $this->createAttendedSession($teacher->id, 'tutoring', "2026-08-{$day}", '08:00', 600, 'tutoring_attend', 'tutoring');
         }
-        $this->assertEqualsWithDelta(0, $rate(), 0.0001);
+        $before = $settlement();
+        $this->assertEqualsWithDelta(150, $before['regular_subject_count'], 0.0001);
+        $this->assertEqualsWithDelta(20.625, $before['payroll_subject_count'], 0.0001);
+        $this->assertEqualsWithDelta(0, $rate($before), 0.0001);
 
         // One more 10h one-on-one: 正課 = 165 raw = 20.625.
         $this->createAttendedSession($teacher->id, 'one_on_one', '2026-08-20', '08:00', 600);
-        $this->assertEqualsWithDelta(5, $rate(), 0.0001);
+        $this->assertEqualsWithDelta(5, $rate($settlement()), 0.0001);
     }
 
     private function createDirector(): array
@@ -199,6 +252,15 @@ class TeacherEligibilityWeeklySegmentsTest extends TestCase
             'SignOutDT' => $date . ' ' . $end . ':00',
         ]);
         return $session;
+    }
+
+    private function schedule(int $teacherId, string $date, string $start, string $end, array $extra = []): int
+    {
+        return (int) DB::table('schedules')->insertGetId($extra + [
+            'student_id' => 1, 'day_of_week' => (int) date('N', strtotime($date)), 'type' => 'normal', 'deduction' => 1,
+            'branch_id' => 1, 'schedule_date' => $date, 'teacher_id' => $teacherId, 'status' => 'scheduled',
+            'start_time' => $start . ':00', 'end_time' => $end . ':00', 'created_at' => now(), 'updated_at' => now(),
+        ]);
     }
 
     private function auth(string $token): array

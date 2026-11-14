@@ -216,9 +216,17 @@ final class SubjectUnitsTimelineService
             $teacherId = (int) $entry['teacher_id'];
             $teacherRawTotals[$teacherId] = ($teacherRawTotals[$teacherId] ?? 0.0)
                 + (float) $entry['payroll_subject_count'];
-            foreach (['regular', 'tutoring_trial', 'one_to_three'] as $part) {
+            foreach (['regular', 'tutoring_trial'] as $part) {
                 $teacherParts[$teacherId][$part] = ($teacherParts[$teacherId][$part] ?? 0.0) + (float) $entry[$part . '_weighted'];
             }
+            foreach ($entry['one_to_three_slots'] as $slot) {
+                $teacherParts[$teacherId]['slots'][$entry['date']][] = $slot;
+            }
+        }
+        // 一對三總計 follows the teacher's clock time, not the head count: three students in the same
+        // 2 hours are one 一對三 lesson (1.0), so the per-lesson bonus is paid once for it.
+        foreach ($teacherParts as $teacherId => $parts) {
+            $teacherParts[$teacherId]['one_to_three'] = 0.5 * array_sum(array_map(fn (array $slots) => $this->coveredHours($slots), $parts['slots'] ?? []));
         }
         $campusRawTotal = (float) $publicTotals['payroll_subject_count'];
         $teacherContributions = collect($teacherRawTotals)
@@ -283,7 +291,7 @@ final class SubjectUnitsTimelineService
                 'teacher_id' => (int) $row->teacher_id, 'date' => $date,
                 'campus_id' => (int) $row->campus_id, 'subject_id' => $subjectId,
                 'regular_hours' => 0.0, 'tutoring_trial_hours' => 0.0,
-                'regular_weighted' => 0.0, 'tutoring_trial_weighted' => 0.0, 'one_to_three_weighted' => 0.0,
+                'regular_weighted' => 0.0, 'tutoring_trial_weighted' => 0.0, 'one_to_three_slots' => [],
                 'session_count' => 0, 'regular_session_count' => 0, 'tutoring_trial_session_count' => 0,
                 'lessons' => [],
             ];
@@ -291,9 +299,10 @@ final class SubjectUnitsTimelineService
         $hours = $this->hours($row);
         $entries[$key][$category . '_hours'] += $hours;
         $entries[$key][$category . '_weighted'] += $hours * $weight;
-        // Full-time payroll's 一對三總計: the one-on-three part of the regular count above, not an extra count.
+        // Internal, for the full-time payroll's 一對三總計: when each one-on-three lesson ran, in minutes of the day.
         if ($category === 'regular' && strtolower((string) $row->class_type) === 'one_on_three') {
-            $entries[$key]['one_to_three_weighted'] += $hours * $weight;
+            $from = preg_match('/^(\d{1,2}):(\d{2})/', (string) $row->start_time, $clock) ? ((int) $clock[1] * 60) + (int) $clock[2] : null;
+            $entries[$key]['one_to_three_slots'][] = [$from, (int) round($hours * 60)];
         }
         $entries[$key]['session_count']++;
         // Display only (in-app #387/#389): which lesson adds how much, so a count can be checked line by line.
@@ -329,6 +338,31 @@ final class SubjectUnitsTimelineService
             // Keep the established two-hour fallback for legacy rows.
         }
         return 2.0;
+    }
+
+    /**
+     * Clock hours covered by lessons, counting overlapping time once.
+     *
+     * @param  list<array{0: int|null, 1: int}>  $slots  [start minute of the day or null, length in minutes]
+     */
+    private function coveredHours(array $slots): float
+    {
+        // A lesson with no readable start time cannot be placed on the clock, so it counts in full.
+        $minutes = array_sum(array_map(fn (array $slot) => $slot[0] === null ? $slot[1] : 0, $slots));
+        $timed = array_values(array_filter($slots, fn (array $slot) => $slot[0] !== null));
+        usort($timed, fn (array $a, array $b) => $a[0] <=> $b[0]);
+        $coveredTo = null;
+        foreach ($timed as [$from, $length]) {
+            $to = $from + $length;
+            if ($coveredTo === null || $from > $coveredTo) {
+                $minutes += $length;
+                $coveredTo = $to;
+            } elseif ($to > $coveredTo) {
+                $minutes += $to - $coveredTo;
+                $coveredTo = $to;
+            }
+        }
+        return $minutes / 60;
     }
 
     private function regularWeight(?string $classType): float
@@ -394,7 +428,7 @@ final class SubjectUnitsTimelineService
         }
         $entry['regular_weighted'] = round($entry['regular_weighted'], 4);
         $entry['tutoring_trial_weighted'] = round($entry['tutoring_trial_weighted'], 4);
-        $entry['one_to_three_weighted'] = round($entry['one_to_three_weighted'], 4);
+        unset($entry['one_to_three_slots']);
         $entry['regular_subject_count'] = round($entry['regular_subject_count'], 4);
         $entry['tutoring_trial_subject_count'] = round($entry['tutoring_trial_subject_count'], 4);
         $entry['payroll_subject_count'] = round($entry['payroll_subject_count'], 4);

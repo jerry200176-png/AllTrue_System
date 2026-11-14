@@ -32,10 +32,10 @@
       </p>
     </header>
 
-    <!-- P0 2026-11-14: remove once weekly segments, holiday/weekday rates and the new-hire guarantee follow the HQ 115.07 announcement. -->
+    <!-- P0 2026-11-14: remove once holiday/weekday rates and the new-hire guarantee follow the HQ 115.07 announcement. -->
     <!-- A standing notice, not an interruption: info tone keeps role=status; the warning colours are set by hand. -->
     <Alert tone="info" title="本頁正依總部 115.07 公告校正中" class="tw:border-[var(--ds-warning)] tw:bg-[var(--ds-warning-wash)] tw:text-tpl-body" data-testid="eligibility-calibration-notice">
-      科目數獎金、一對三獎金、正課 20 科倍率已照公告更新。每週 16 段、假日／平日倍率、新進保底尚未更新，鎖定前請人工核對。
+      科目數獎金、一對三獎金、正課 20 科倍率、每週 16 段已照公告更新。假日／平日倍率、新進保底尚未更新，鎖定前請人工核對。
     </Alert>
 
     <Card class="eligibility-card filters tw:gap-0 tw:p-4 tw:shadow-none">
@@ -143,11 +143,11 @@
               <TableCell :class="[bodyCell, 'weekly-segment-cell tw:min-w-[300px]']">
                 <strong>{{ weeklySegmentsLabel(teacher) }}</strong>
                 <small :class="smallText">{{ weeklyQualificationLabel(teacher) }}</small>
-                <details v-if="weeklyCourseSessions(teacher).length" class="weekly-trace tw:mt-2 tw:border-t tw:border-border tw:pt-1.5">
-                  <summary class="tw:cursor-pointer tw:text-tpl-caption tw:text-[var(--ds-primary-text)]">查看構成課程</summary>
-                  <div v-for="session in weeklyCourseSessions(teacher)" :key="session.class_session_id" :class="traceRow">
-                    <span>{{ session.session_date }} {{ session.start_time }}–{{ session.end_time }}</span>
-                    <span>{{ sessionTypeLabel(session) }} {{ formatSegments(session.segments) }}段</span>
+                <details v-if="weeklyWeeks(teacher).length" class="weekly-trace tw:mt-2 tw:border-t tw:border-border tw:pt-1.5">
+                  <summary class="tw:cursor-pointer tw:text-tpl-caption tw:text-[var(--ds-primary-text)]">查看每週段數</summary>
+                  <div v-for="week in weeklyWeeks(teacher)" :key="week.week_start" :class="traceRow">
+                    <span>{{ week.week_start }}～{{ week.week_end }}</span>
+                    <span>{{ formatSegments(week.total_segments) }} 段・{{ week.meets_16_segments ? '達標' : '未達' }}</span>
                   </div>
                 </details>
               </TableCell>
@@ -186,11 +186,11 @@
               <small :class="smallText">{{ weeklyQualificationLabel(teacher) }}</small>
             </span>
           </div>
-          <details v-if="weeklyCourseSessions(teacher).length" class="weekly-trace mobile-weekly-trace tw:mt-2 tw:mb-3 tw:border-t tw:border-border tw:pt-1.5">
-            <summary class="tw:cursor-pointer tw:text-tpl-caption tw:text-[var(--ds-primary-text)]">查看構成課程</summary>
-            <div v-for="session in weeklyCourseSessions(teacher)" :key="session.class_session_id" :class="traceRow">
-              <span>{{ session.session_date }} {{ session.start_time }}–{{ session.end_time }}</span>
-              <span>{{ sessionTypeLabel(session) }} {{ formatSegments(session.segments) }}段</span>
+          <details v-if="weeklyWeeks(teacher).length" class="weekly-trace mobile-weekly-trace tw:mt-2 tw:mb-3 tw:border-t tw:border-border tw:pt-1.5">
+            <summary class="tw:cursor-pointer tw:text-tpl-caption tw:text-[var(--ds-primary-text)]">查看每週段數</summary>
+            <div v-for="week in weeklyWeeks(teacher)" :key="week.week_start" :class="traceRow">
+              <span>{{ week.week_start }}～{{ week.week_end }}</span>
+              <span>{{ formatSegments(week.total_segments) }} 段・{{ week.meets_16_segments ? '達標' : '未達' }}</span>
             </div>
           </details>
           <p class="mobile-reason tw:mt-3 tw:text-tpl-caption tw:leading-relaxed tw:text-tpl-secondary">{{ reasonText(teacher) }}</p>
@@ -316,7 +316,7 @@ function formatSegments(value) {
 
 function weeklySegmentsLabel(teacher) {
   const metrics = weeklyMetrics(teacher);
-  return `正課 ${formatSegments(metrics.regular_segments)}｜試聽 ${formatSegments(metrics.trial_segments)}｜總計 ${formatSegments(metrics.total_segments)}`;
+  return `排課 ${formatSegments(metrics.total_segments)} 段`;
 }
 
 function weeklyQualificationLabel(teacher) {
@@ -327,14 +327,8 @@ function weeklyQualificationLabel(teacher) {
   return teacher.components?.weekly_16_segments?.status === 'review' ? '待確認段數' : '未判定';
 }
 
-function weeklyCourseSessions(teacher) {
-  return weeklyMetrics(teacher).course_sessions || [];
-}
-
-function sessionTypeLabel(session) {
-  if (session.segment_type === 'trial_fixed') return '試聽';
-  if (session.segment_type === 'tutoring_excluded') return '輔導（不計）';
-  return '正課';
+function weeklyWeeks(teacher) {
+  return (weeklyMetrics(teacher).weeks || []).map((week) => week.metrics || {}).filter((week) => week.week_start);
 }
 
 function isDraft(teacher) {
@@ -437,8 +431,8 @@ function statusLabel(teacher) {
 function statusClass(status) { return { qualifies: 'pass', not_qualifies: 'fail', review: 'review' }[status] || 'unknown'; }
 function reasonText(teacher) {
   const reasons = [];
-  if (teacher.work_hours_source === 'student_attendance') {
-    reasons.push('工時來源：學生到班／點名（不採教師刷卡）');
+  if (teacher.work_hours_source === 'schedule') {
+    reasons.push('每週段數來源：排課（同一時段重疊的課只算一次）');
   }
   for (const item of componentOptions) {
     const component = teacher.components?.[item.key];

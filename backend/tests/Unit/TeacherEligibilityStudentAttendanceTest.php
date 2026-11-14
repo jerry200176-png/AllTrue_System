@@ -18,7 +18,6 @@ class TeacherEligibilityStudentAttendanceTest extends TestCase
             'student_sign_in_at' => '2026-09-01 16:00:00',
             'student_sign_out_at' => '2026-09-01 18:00:45',
         ];
-        self::assertSame(2.0, $this->invoke('classSessionDurationHours', $row));
         self::assertSame(2.0, $this->invoke('studentAttendanceDurationHours', $row));
         self::assertSame(2.0, $this->invoke('durationHours', $row));
         $row->student_sign_out_at = null;
@@ -35,7 +34,7 @@ class TeacherEligibilityStudentAttendanceTest extends TestCase
         );
     }
 
-    public function test_present_student_attendance_is_teaching_time_and_uses_actual_student_window(): void
+    public function test_present_student_attendance_uses_actual_student_window(): void
     {
         $row = (object) [
             'class_type' => 'one_on_one',
@@ -46,7 +45,6 @@ class TeacherEligibilityStudentAttendanceTest extends TestCase
             'student_sign_out_at' => '2026-08-10 18:00:00',
         ];
 
-        self::assertTrue($this->invoke('isEligibleTeachingAttendance', $row));
         self::assertSame(1.83, $this->invoke('studentAttendanceDurationHours', $row));
     }
 
@@ -64,19 +62,55 @@ class TeacherEligibilityStudentAttendanceTest extends TestCase
         self::assertSame(2.0, $this->invoke('studentAttendanceDurationHours', $row));
     }
 
-    public function test_trial_tutoring_and_absent_student_rows_do_not_count(): void
+    /** Founder 2026-11-15: 段 follow clock time; lessons in the same 2 hours are one 段. */
+    public function test_weekly_segments_merge_overlapping_lessons_and_count_every_class_type_by_hours(): void
     {
-        $base = [
-            'attendance_status' => 'present',
-            'start_time' => '16:00:00',
-            'end_time' => '18:00:00',
-            'student_sign_in_at' => null,
-            'student_sign_out_at' => null,
-        ];
+        $row = fn (string $date, string $start, string $end, array $extra = []) => (object) ([
+            'schedule_date' => $date, 'start_time' => $start, 'end_time' => $end,
+            'status' => 'scheduled', 'type' => 'normal', 'class_type' => 'one_on_one',
+        ] + $extra);
+        $rows = collect([
+            // Two 一對二 courses in the same two hours: one 段, not two.
+            $row('2026-08-03', '16:00:00', '18:00:00', ['class_type' => 'one_on_two']),
+            $row('2026-08-03', '16:00:00', '18:00:00', ['class_type' => 'one_on_two']),
+            // Partly overlapping lessons cover 18:00-21:00 = 3h.
+            $row('2026-08-03', '18:00:00', '20:00:00'),
+            $row('2026-08-03', '19:00:00', '21:00:00'),
+            // 1h 試聽 = 0.5 段, 2h 輔導 = 1 段.
+            $row('2026-08-04', '10:00:00', '11:00:00', ['class_type' => 'trial']),
+            $row('2026-08-04', '13:00:00', '15:00:00', ['class_type' => 'tutoring', 'type' => 'tutoring']),
+            // A student's leave still counts.
+            $row('2026-08-05', '16:00:00', '18:00:00', ['status' => 'leave']),
+            // Moved lessons, admin time and other weeks do not.
+            $row('2026-08-05', '08:00:00', '10:00:00', ['status' => 'rescheduled']),
+            $row('2026-08-06', '08:00:00', '12:00:00', ['type' => 'admin']),
+            $row('2026-08-10', '08:00:00', '12:00:00'),
+        ]);
 
-        self::assertFalse($this->invoke('isEligibleTeachingAttendance', (object) [...$base, 'class_type' => 'trial']));
-        self::assertFalse($this->invoke('isEligibleTeachingAttendance', (object) [...$base, 'class_type' => 'tutoring']));
-        self::assertFalse($this->invoke('isEligibleTeachingAttendance', (object) [...$base, 'class_type' => 'one_on_one', 'attendance_status' => 'absent']));
+        $week = $this->invoke('evaluateWeek', Carbon::parse('2026-08-03'), Carbon::parse('2026-08-09')->endOfDay(), $rows);
+
+        self::assertSame(['2026-08-03' => 5.0, '2026-08-04' => 3.0, '2026-08-05' => 2.0], $week['metrics']['daily_hours']);
+        self::assertSame(5.0, $week['metrics']['total_segments']);
+        self::assertFalse($week['metrics']['meets_16_segments']);
+        self::assertSame(TeacherEligibilityPolicy::NOT_QUALIFIES, $week['status']);
+    }
+
+    public function test_weeks_are_whole_monday_to_sunday_and_belong_to_their_mondays_month(): void
+    {
+        $weeks = fn (string $start, string $end) => array_map(
+            fn ($week) => [$week[0]->toDateString(), $week[1]->toDateString()],
+            $this->invoke('splitIntoWeeks', Carbon::parse($start), Carbon::parse($end)->endOfDay())
+        );
+
+        // July 2026 starts on a Wednesday: the week of 06-29 is June's; the week of 07-27 runs into August.
+        self::assertSame([
+            ['2026-07-06', '2026-07-12'], ['2026-07-13', '2026-07-19'],
+            ['2026-07-20', '2026-07-26'], ['2026-07-27', '2026-08-02'],
+        ], $weeks('2026-07-01', '2026-07-31'));
+        // August does not get the 07-27 week again.
+        self::assertSame('2026-08-03', $weeks('2026-08-01', '2026-08-31')[0][0]);
+        self::assertCount(5, $weeks('2026-08-01', '2026-08-31'));
+        self::assertSame([['2026-08-03', '2026-08-09']], $weeks('2026-08-03', '2026-08-09'));
     }
 
     public function test_weekday_afternoon_merges_overlapping_schedule_windows_before_low_consumption(): void
