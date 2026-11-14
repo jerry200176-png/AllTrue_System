@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { useEditDialogCloseGuard } from '../useEditDialogCloseGuard.js';
+import { ignoreComposingEscape, useEditDialogCloseGuard } from '../useEditDialogCloseGuard.js';
 
 const make = ({ dirty, answer = true, open = true }) => {
   const state = { open, form: { memo: 'a' } };
@@ -59,7 +59,13 @@ describe('編輯課程 close guard (Esc and 取消)', () => {
     const src = readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), '../../../pages/CourseManagement.vue'), 'utf8');
     expect(src).toContain('if (!v) requestCloseEditDialog();');
     expect(src).toContain('@click="requestCloseEditDialog">取消</Button>');
-    expect(src).toContain('e.isComposing');
+    expect(src).not.toContain('e.isComposing');
+    for (const id of ['course-edit-dialog', 'billing-correction-dialog', 'package-conversion-dialog', 'pause-confirm-dialog']) expect(src.slice(src.indexOf(`data-testid="${id}"`)).slice(0, 400), id).toContain('@escape-key-down="ignoreComposingEscape"');
     expect(src).toContain('useEditDialogCloseGuard');
+  });
+
+  it('Esc is cancelled during IME composition only', () => {
+    const press = (init) => { const e = { ...init, preventDefault: vi.fn() }; ignoreComposingEscape(e); return e.preventDefault.mock.calls.length; };
+    expect([press({ isComposing: true, keyCode: 27 }), press({ isComposing: false, keyCode: 229 }), press({ isComposing: false, keyCode: 27 })]).toEqual([1, 1, 0]);
   });
 });
