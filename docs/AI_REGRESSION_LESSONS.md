@@ -1907,3 +1907,15 @@ Intake consolidation regression (2026-10-17): the oldest trusted SourceRef issue
 - **強制規則**：唯讀檢查／盤點的 SQL 以 `App\Support\AppClockSql::bind()` 的 `:app_today`／`:app_now` 取值（同一個瞬間、app 時區、綁定參數），不寫 `CURDATE()`／`NOW()`／`CURRENT_DATE`。`AppClockSqlTest` 會掃 `app/Console/Commands` 與 `app/Support`。
 - **另記（未在此修，交易性程式）**：`GenerateForwardSessions.php:110`、`BusinessDigestService.php`（多處）、`AttendanceController.php:200`、`TeacherAttendanceController.php:241`；後兩者是 DB 時鐘寫入／比較，需先確認再改。
 - **測試**：凍結在台北 00:30（= UTC 前一天 16:30）與 12:00，同一組資料算出相同筆數。
+
+### R160. 清理腳本只能刪「可重新產生」的東西，且要用明確的白名單與目錄邊界（`prune-agent-worktrees.sh`，retro #5201，2026-11-14）
+
+- **現象**：清理 agent worktree 的腳本第一版把整個 `backend/storage/` 當快取，會刪掉 `storage/app/` 下的修復快照與公開檔案；快取樣式沒有目錄邊界時，`frontend/node_modules-notes.txt` 這類檔名也會被當成快取；使用者設定 `status.showUntrackedFiles=no` 時，未追蹤檔案不會出現在 `git status`。
+- **根因層級**：刪除型工具把「忽略清單」當成「可丟棄清單」，並信任使用者環境的 git 設定。
+- **強制規則**：只排除明確列出的可重生快取（`storage/framework/{cache,sessions,views,testing}`、`storage/logs`、依賴與建置產物），每個樣式以 `/` 結尾或整名比對；`git status` 一律明確帶 `--untracked-files=all`；`status` 失敗就保留 worktree。
+- **測試**：`scripts/tests/test_prune_agent_worktrees.py`（暫存 repo；未追蹤檔、`storage/app/repair-snapshots`、`storage/app/public`、`node_modules-notes.txt` 都保留，只有快取的 worktree 才會被移除）。協調者流程見 [`docs/agents/orchestration.md`](agents/orchestration.md)。
+
+### R161. 實作者 agent 的常設規則只放一份：`IMPLEMENTER_BRIEF.md`（retro #5201，2026-11-14）
+
+- **現象**：同一天有三個測試在空清單上通過、共用元件改動漏列使用者、對話框搬進共用 Dialog 後層級／焦點錯誤；每次都靠協調者臨時在任務說明裡重複交代。
+- **強制規則**：實作者的通用做法（起手、測試、UI 證據、共用元件使用者清單、巢狀對話框檢查）只寫在 [`docs/agents/IMPLEMENTER_BRIEF.md`](agents/IMPLEMENTER_BRIEF.md)，協調者的檢查表在 [`docs/agents/orchestration.md`](agents/orchestration.md)；本檔不重複條文。新的實作者踩坑，先補那兩份檔，再在這裡記一條指向它們的紀錄。
