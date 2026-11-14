@@ -125,6 +125,7 @@ async function openAt(index) {
   open.value = true;
   await nextTick();
   fit();
+  await nextTick(); // let the capped max-height reach the DOM before focusItem() measures clientHeight
   const list = items();
   // preventScroll: focusing a fixed-position item must not scroll the page, or the scroll listener below closes the menu at once.
   focusItem(list[index < 0 ? list.length - 1 : index]);

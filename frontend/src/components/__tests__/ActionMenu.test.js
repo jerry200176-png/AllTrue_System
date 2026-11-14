@@ -219,4 +219,23 @@ describe('ActionMenu', () => {
     await $('[role="menu"]').trigger('keydown', { key: 'Home' });
     expect(menu.scrollTop).toBe(0);
   });
+
+  it('opening with ↑ straight onto the last item of a capped menu leaves that item scrolled into view', async () => {
+    // 600px viewport, trigger at y=300, 400px menu: capped to the 288px above it, so the last item is only visible once scrolled
+    stubLayout({ vh: 600, triggerTop: 300, natural: 400 });
+    vi.spyOn(HTMLElement.prototype, 'offsetTop', 'get').mockImplementation(function t() { return this.getAttribute('role') === 'menuitem' ? [...this.parentElement.querySelectorAll('[role="menuitem"]')].indexOf(this) * 80 : 0; });
+    vi.spyOn(HTMLElement.prototype, 'offsetHeight', 'get').mockImplementation(function h() {
+      if (this.getAttribute('role') === 'menuitem') return 80;
+      return this.getAttribute('role') === 'menu' ? Math.min(400, parseFloat(this.style.maxHeight) || 420) : 40;
+    });
+    const w = mountMenu();
+    await w.get('.am__trigger').trigger('keydown', { key: 'ArrowUp' });
+    await new Promise((r) => setTimeout(r, 0));
+    const menu = document.body.querySelector('[role="menu"]');
+    expect(menu.style.maxHeight).toBe('288px');
+    expect(focusedAction()).toBe('delete');
+    const last = document.activeElement;
+    expect(last.offsetTop + last.offsetHeight).toBeLessThanOrEqual(menu.scrollTop + menu.clientHeight);
+    expect(menu.scrollTop).toBe(4 * 80 + 80 - menu.clientHeight);
+  });
 });
