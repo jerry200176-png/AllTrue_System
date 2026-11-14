@@ -1,9 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, writeFileSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { extractSelectors, findStale, specFiles, readSrc } from './check-production-spec-selectors.mjs';
+import { extractSelectors, findStale, specFiles, readSrc, classCounts, ratchetProblems, BASELINE_PATH } from './check-production-spec-selectors.mjs';
 
 const spec = (body) => {
   const f = join(mkdtempSync(join(tmpdir(), 'sel-')), 'x.spec.js');
@@ -39,4 +39,26 @@ test('template test ids in src cover a spec that selects one of them', () => {
 
 test('the real production-run specs only select things that exist in frontend/src', () => {
   assert.deepEqual(findStale(specFiles(), readSrc()), []);
+});
+
+test('allowlist covers class selectors only, not test ids of the same name', () => {
+  const f = spec("p.locator('.legacy'); p.getByTestId('legacy');");
+  const problems = findStale([f], '', new Set(['legacy']));
+  assert.equal(problems.length, 1);
+  assert.ok(problems[0].includes('data-testid "legacy"'));
+});
+
+test('ratchet counts every class part and fails only when the count grows', () => {
+  const f = spec("p.locator('.a .b'); p.locator('td.c'); p.getByTestId('x');");
+  const cur = classCounts([f], '/nowhere');
+  assert.equal(cur.total, 3);
+  assert.deepEqual(ratchetProblems(cur, { total: 3, specs: { [f]: 3 } }), []);
+  assert.deepEqual(ratchetProblems(cur, { total: 9, specs: { [f]: 9 } }), []);
+  assert.equal(ratchetProblems(cur, { total: 2, specs: { [f]: 2 } }).length, 2);
+  assert.equal(ratchetProblems(cur, { total: 3, specs: {} }).length, 1);
+});
+
+test('the committed baseline is not lower than the real count and is read from the file', () => {
+  const baseline = JSON.parse(readFileSync(BASELINE_PATH, 'utf8'));
+  assert.deepEqual(ratchetProblems(classCounts(specFiles()), baseline), []);
 });
