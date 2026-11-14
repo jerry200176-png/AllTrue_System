@@ -113,6 +113,27 @@ final class CollectionTarget
         }
     }
 
+    /**
+     * As Invoice::mayOweSql (#3891): a stored-paid bill of a PAID shared package stays settled (待核對) and takes no more money;
+     * an unpaid package holds nothing.
+     */
+    public static function packagePaidHold(int $courseId, string $billStatus): bool
+    {
+        return $billStatus === 'paid' && self::paidPackageCourseIds([$courseId]) !== [];
+    }
+
+    /**
+     * The courses (of $courseIds) whose shared package is marked paid: the lookup behind {@see packagePaidHold()}, one query for many.
+     *
+     * @param list<int> $courseIds
+     * @return list<int>
+     */
+    public static function paidPackageCourseIds(array $courseIds): array
+    {
+        return $courseIds === [] ? [] : StudentClass::query()->join('course_packages', 'course_packages.id', '=', 'StudentClass.PackageID')
+            ->whereIn('StudentClass.ID', $courseIds)->where('course_packages.paid', true)->pluck('StudentClass.ID')->map(fn ($v) => (int) $v)->all();
+    }
+
     /** RFC §R4: round(rate × total_sessions) for a per-session count package; null when it cannot be determined. */
     public static function packagePrice(CoursePackage $package): ?int
     {
