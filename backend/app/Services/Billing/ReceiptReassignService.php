@@ -233,6 +233,11 @@ final class ReceiptReassignService
             (int) $toCourse->StudentID, (int) $ctx['campus_id'])) {
             return $this->refuse('reassign_target_package_mismatch', '這張帳單的課程指向的共用方案不屬於同一位學生或分校，請聯絡總部對帳。');
         }
+        // Taking the money back can clear the source package's paid mark: it must be the same student's, in this campus, too.
+        if ((int) ($from['course']->PackageID ?? 0) > 0 && self::packageMismatch(DB::table('course_packages')->where('id', (int) $from['course']->PackageID)->first(['student_id', 'campus_id']),
+            (int) $from['course']->StudentID, (int) $ctx['campus_id'])) {
+            return $this->refuse('reassign_source_package_mismatch', '這張收據所在課程指向的共用方案不屬於同一位學生或分校，請聯絡總部對帳。');
+        }
 
         // The canonical payable (same resolver as confirm and every billing surface), not TotalAmount minus payments.
         [$toModel, $toMoney] = $this->money((int) $toInvoice->id, $toCourse);
@@ -267,6 +272,9 @@ final class ReceiptReassignService
         if ($sourceVoided) {
             $fromAfter['outstanding_amount'] = 0;
         }
+        // Package identity and membership of both sides: joining or leaving a package changes which courses the move marks.
+        $packageIds = self::packageIdsOf([$from['course'], $toCourse]);
+        $packageMembers = $packageIds === [] ? [] : DB::table('StudentClass')->whereIn('PackageID', $packageIds)->orderBy('ID')->pluck('ID')->map(fn ($v) => (int) $v)->all();
         $fromBefore = (int) $from['money']['outstanding_amount'];
         $warnings = [$sourceVoided ? 'source_bill_voided' : 'source_bill_becomes_unpaid'];
         if ((int) ($from['course']->PackageID ?? 0) > 0 || (int) ($toCourse->PackageID ?? 0) > 0) {
@@ -302,6 +310,7 @@ final class ReceiptReassignService
                 (int) $toInvoice->StudentID, (int) $toCourse->ID, (string) ($toCourse->closed_reason ?? ''),
                 // The projected results too: a session change after the preview can move a repriced balance with no stored field changing.
                 (int) $fromAfter['total_amount'], (int) $fromAfter['outstanding_amount'], (int) $toAfter['total_amount'], (int) $toAfter['outstanding_amount'], $sourceVoided,
+                (int) ($from['course']->PackageID ?? 0), (int) ($toCourse->PackageID ?? 0), $packageMembers,
             ], JSON_THROW_ON_ERROR)),
         ], 'ctx' => [
             'report' => $report, 'campus_id' => $ctx['campus_id'], 'amount' => $amount, 'from' => $from,

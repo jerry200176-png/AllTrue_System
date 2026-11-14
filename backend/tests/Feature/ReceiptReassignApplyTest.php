@@ -230,6 +230,34 @@ class ReceiptReassignApplyTest extends TestCase
         $this->assertSame([(int) $ok['invoice']->id], $ids); // the preview would refuse the other one with reassign_target_package_mismatch
     }
 
+    public function test_source_course_pointing_at_its_students_package_in_another_campus_is_refused_and_the_mark_is_kept(): void
+    {
+        config(['billing.receipt_reassign_director_max_amount' => self::AMOUNT, 'billing.receipt_reassign_director_max_age_days' => 30]);
+        $f = $this->fixture();
+        $pkg = $this->package($f['wrong']);
+        $pkg->forceFill(['campus_id' => 2, 'paid' => true, 'paid_at' => '2026-11-01'])->save(); // same student, recorded under another campus
+        $f['wrongCourse']->update(['PackageID' => $pkg->id]);
+        $dir = $this->token('A', 1);
+        $before = $this->snapshot();
+        $this->preview($dir, $f)->assertStatus(422)->assertJsonPath('code', 'reassign_source_package_mismatch');
+        $this->apply($dir, $f['report'], $f['rightInvoice'], ReceiptReassignService::STATE_HASH_VERSION . ':' . str_repeat('0', 64))
+            ->assertStatus(422)->assertJsonPath('code', 'reassign_source_package_mismatch');
+        $this->assertSame($before, $this->snapshot());
+        $this->assertTrue((bool) $pkg->fresh()->paid);
+    }
+
+    public function test_target_course_joining_a_package_after_the_preview_makes_the_hash_stale(): void
+    {
+        $f = $this->fixture();
+        $tok = $this->token('S', 1);
+        $old = $this->preview($tok, $f)->assertOk()->json('state_hash');
+        $f['rightCourse']->update(['PackageID' => $this->package($f['right'])->id]); // its own student's package, same campus: allowed, but a different plan
+        $this->assertNotSame($old, $this->preview($tok, $f)->assertOk()->json('state_hash'));
+        $before = $this->snapshot();
+        $this->apply($tok, $f['report'], $f['rightInvoice'], $old)->assertStatus(409)->assertJsonPath('code', 'reassign_state_changed');
+        $this->assertSame($before, $this->snapshot());
+    }
+
     // ── must-do 3: pending reports across a shared package ──────────────
 
     public function test_pending_report_on_any_member_of_either_package_blocks_the_apply_and_writes_nothing(): void
