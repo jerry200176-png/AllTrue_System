@@ -15,7 +15,7 @@ const mountMenu = () => { wrapper = mount(ActionMenu, { props: { groups, label: 
 const $ = (sel) => new DOMWrapper(document.body.querySelector(sel));
 const has = (sel) => document.body.querySelector(sel) !== null;
 const focusedAction = () => document.activeElement?.getAttribute('data-action');
-afterEach(() => { wrapper?.unmount(); vi.unstubAllGlobals(); });
+afterEach(() => { wrapper?.unmount(); vi.unstubAllGlobals(); vi.restoreAllMocks(); });
 
 describe('ActionMenu', () => {
   it('is a labelled menu button that opens on the first enabled item', async () => {
@@ -149,5 +149,74 @@ describe('ActionMenu', () => {
     window.dispatchEvent(new Event('scroll'));
     await w.vm.$nextTick();
     expect(has('[role="menu"]')).toBe(false);
+  });
+
+  // jsdom has no layout: the viewport, the trigger box and the menu's box are stubbed, the menu's rect follows its inline top / bottom / max-height like a browser would.
+  const stubLayout = ({ vh, triggerTop, natural, border = 2 }) => {
+    vi.stubGlobal('innerHeight', vh);
+    vi.stubGlobal('innerWidth', 768);
+    const isMenu = (el) => el.getAttribute?.('role') === 'menu';
+    vi.spyOn(HTMLElement.prototype, 'scrollHeight', 'get').mockImplementation(function h() { return isMenu(this) ? natural - border : 0; });
+    vi.spyOn(HTMLElement.prototype, 'offsetHeight', 'get').mockImplementation(function h() { return isMenu(this) ? Math.min(natural, parseFloat(this.style.maxHeight) || vh * 0.7) : 40; });
+    vi.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockImplementation(function h() { return isMenu(this) ? Math.min(natural, parseFloat(this.style.maxHeight) || vh * 0.7) - border : 40; });
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function rect() {
+      if (!isMenu(this)) return this.classList.contains('am__trigger') ? { top: triggerTop, bottom: triggerTop + 40, left: 700, right: 740, width: 40, height: 40 } : { top: 0, bottom: 0, left: 0, right: 0, width: 0, height: 0 };
+      const height = Math.min(natural, parseFloat(this.style.maxHeight) || vh * 0.7);
+      const top = this.style.bottom ? vh - parseFloat(this.style.bottom) - height : parseFloat(this.style.top);
+      return { top, bottom: top + height, left: 500, right: 720, width: 220, height };
+    });
+  };
+  const openMenu = async (layout) => {
+    stubLayout(layout);
+    const w = mountMenu();
+    await w.get('.am__trigger').trigger('click');
+    await w.vm.$nextTick();
+    const style = document.body.querySelector('[role="menu"]').style;
+    return { top: style.top, bottom: style.bottom, maxHeight: style.maxHeight };
+  };
+
+  it('a menu that fits where it was placed is left alone, including a short one that opens above near the bottom', async () => {
+    const below = await openMenu({ vh: 1024, triggerTop: 100, natural: 400 });
+    expect(below).toEqual({ top: '144px', bottom: '', maxHeight: '' });
+    wrapper.unmount();
+    vi.restoreAllMocks();
+    const above = await openMenu({ vh: 1024, triggerTop: 800, natural: 200 });
+    expect(above).toEqual({ top: '', bottom: `${1024 - 800 + 4}px`, maxHeight: '' });
+  });
+
+  it('a long menu that runs past the viewport goes to the side with room, capped to it (real border read, 8px margin)', async () => {
+    // 768x1024, trigger at y=660, 722px menu: placed below it would end at y=1400; above there is 660 - 4 - 8 = 648px
+    const r = await openMenu({ vh: 1024, triggerTop: 660, natural: 722, border: 2 });
+    expect(r.top).toBe('');
+    expect(r.bottom).toBe(`${1024 - 660 + 4}px`);
+    expect(r.maxHeight).toBe(`${660 - 4 - 8}px`);
+    wrapper.unmount();
+    vi.restoreAllMocks();
+    // a 420px-capped menu placed above a trigger at y=300 would start at y=-124: it is capped to the 288px above instead
+    const high = await openMenu({ vh: 600, triggerTop: 300, natural: 900 });
+    expect(high.bottom).toBe(`${600 - 300 + 4}px`);
+    expect(high.maxHeight).toBe(`${300 - 4 - 8}px`);
+  });
+
+  it('uses the room it has even when that is under 120px', async () => {
+    const r = await openMenu({ vh: 200, triggerTop: 60, natural: 900 });
+    expect(r.top).toBe('104px');
+    expect(r.maxHeight).toBe(`${200 - 100 - 4 - 8}px`);
+  });
+
+  it('keyboard focus scrolls the capped menu so the focused item is visible', async () => {
+    stubLayout({ vh: 300, triggerTop: 120, natural: 900 });
+    vi.spyOn(HTMLElement.prototype, 'offsetTop', 'get').mockImplementation(function t() { return this.getAttribute('role') === 'menuitem' ? [...this.parentElement.querySelectorAll('[role="menuitem"]')].indexOf(this) * 40 : 0; });
+    const w = mountMenu();
+    await w.get('.am__trigger').trigger('click');
+    await w.vm.$nextTick();
+    const menu = document.body.querySelector('[role="menu"]');
+    const box = menu.clientHeight; // 128 - 2
+    expect(menu.scrollTop).toBe(0);
+    await $('[role="menu"]').trigger('keydown', { key: 'End' });
+    expect(focusedAction()).toBe('delete');
+    expect(menu.scrollTop).toBe(4 * 40 + 40 - box); // the last item's bottom edge is the menu's bottom edge
+    await $('[role="menu"]').trigger('keydown', { key: 'Home' });
+    expect(menu.scrollTop).toBe(0);
   });
 });
