@@ -22,11 +22,14 @@ export function useSubjectCreditTransfer(props, changed) {
   let historyRequest = 0;
   const base = () => `/api/v1/student-classes/${id(props.course)}/subject-credit-transfer`;
   const locked = computed(() => busy.value || !!pending.value);
+  const studentName = computed(() => String(props.course?.student_name || '').trim());
+  const identityReady = computed(() => Number.isSafeInteger(id(props.course)) && id(props.course) > 0
+    && Number.isSafeInteger(studentId(props.course)) && studentId(props.course) > 0 && !!studentName.value);
   const candidates = computed(() => courses.value.filter(c => id(c) !== id(props.course)
     && studentId(c) === studentId(props.course) && subject(c) && subject(c) !== subject(props.course)));
   const valid = computed(() => !!form.target && Number.isInteger(form.sessions) && form.sessions > 0
     && form.sessions <= 10000 && !!form.reason.trim() && form.reason.length <= 100);
-  const canConfirm = computed(() => valid.value && !!quote.value?.execution_available && historyReady.value && !locked.value);
+  const canConfirm = computed(() => identityReady.value && valid.value && !!quote.value?.execution_available && historyReady.value && !locked.value);
   const label = courseId => {
     const c = courses.value.find(c => id(c) === Number(courseId)) || (id(props.course) === Number(courseId) ? props.course : null);
     return c ? creditCourseLabel(c) : '歷史合約（課程資料未載入）';
@@ -104,9 +107,9 @@ export function useSubjectCreditTransfer(props, changed) {
   }
   const confirm = () => canConfirm.value && send({ type: 'apply', path: base(), quote: quote.value, form: { ...form },
     body: { target_course_id: Number(form.target), sessions: form.sessions, reason: form.reason.trim(), state_hash: quote.value.state_hash, idempotency_key: newKey() } });
-  function askReverse(record) { if (!locked.value) { reversing.value = record; reverseReason.value = ''; error.value = ''; notice.value = ''; } }
-  const confirmReverse = () => reversing.value && reverseReason.value.trim() && reverseReason.value.length <= 100 && !locked.value
+  function askReverse(record) { if (identityReady.value && !locked.value) { reversing.value = record; reverseReason.value = ''; error.value = ''; notice.value = ''; } }
+  const confirmReverse = () => identityReady.value && reversing.value && reverseReason.value.trim() && reverseReason.value.length <= 100 && !locked.value
     && send({ type: 'reverse', record: reversing.value, path: `/api/v1/student-classes/${reversing.value.source_course_id}/subject-credit-transfer/${reversing.value.id}/reverse`, body: { reason: reverseReason.value.trim() } });
-  return { form, quote, error, notice, busy, loading, locked, candidates, history, historyError, page, lastPage,
-    reversing, reverseReason, pending, valid, canConfirm, label, loadHistory, preview, confirm, askReverse, confirmReverse, retry: () => pending.value && send(pending.value) };
+  return { form, quote, error, notice, busy, loading, locked, studentName, identityReady, candidates, history, historyError, page, lastPage,
+    reversing, reverseReason, pending, valid, canConfirm, label, loadHistory, preview, confirm, askReverse, confirmReverse, retry: () => identityReady.value && pending.value && send(pending.value) };
 }

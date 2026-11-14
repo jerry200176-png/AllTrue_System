@@ -8,5 +8,5 @@ initTextSize();
 createApp({ setup() {
   const show = ref(false);
   return () => h('main', [h('button', { onClick: () => { show.value = true; } }, '跨科轉用與紀錄'),
-    h(Modal, { show: show.value, course: { id: 10, student_id: 1, subject: 'math', subject_name: '數學' }, onClose: () => { show.value = false; } })]);
+    h(Modal, { show: show.value, course: { id: 10, student_id: 1, student_name: '隔離測試學生', subject: 'math', subject_name: '數學' }, onClose: () => { show.value = false; } })]);
 } }).mount('#app');

@@ -32,6 +32,7 @@ for (const width of [375, 768, 1536]) for (const size of ['standard', 'large']) 
     const errors = []; page.on('pageerror', e => errors.push(e.message));
     await page.setViewportSize({ width, height: 900 }); await open(page, size);
     await expect(page.getByTestId('credit-preview')).toContainText('保留排課 1 堂');
+    await expect(page.getByTestId('credit-preview')).toContainText('隔離測試學生');
     await expect(page.getByTestId('credit-preview')).toContainText('12,000 元，這次不變更');
     const layout = await page.getByRole('dialog').evaluate(el => ({
       overflow: el.scrollWidth - el.clientWidth, pageOverflow: document.documentElement.scrollWidth - innerWidth,

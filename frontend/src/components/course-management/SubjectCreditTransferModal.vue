@@ -2,6 +2,7 @@
   <div v-if="show" class="modal-overlay" @click.self="close">
     <div ref="panel" class="modal credit-dialog" role="dialog" aria-modal="true" aria-labelledby="credit-title" tabindex="-1" @keydown="keydown">
       <h3 id="credit-title">跨科轉用與紀錄</h3>
+      <p data-testid="credit-student"><strong>學生：{{ studentName || '學生資料未完整載入，請關閉後重開' }}</strong></p>
       <p class="muted">{{ course.subject_name || '這科' }}的已付費剩餘堂數，轉到同一學生、同校區、同單價與堂長的另一科新批次。舊欠款不會抵銷，已上課與原收據保留。</p>
       <label for="credit-target">轉到哪一科（沿用該合約教師）</label>
       <select id="credit-target" v-model="form.target" :disabled="locked">
@@ -14,6 +15,7 @@
       <label for="credit-reason">轉用原因（必填）</label>
       <textarea id="credit-reason" v-model="form.reason" rows="2" maxlength="100" :disabled="locked" />
       <section v-if="quote" class="summary" data-testid="credit-preview" aria-label="本次轉用試算">
+        <p>學生：{{ studentName || '學生資料未完整載入' }}</p>
         <p>已購 {{ quote.plan.purchased_sessions }} 堂，已用 {{ quote.plan.used_sessions }} 堂；保留排課 {{ quote.plan.reserved_sessions }} 堂，可轉 {{ quote.plan.available_sessions }} 堂。</p>
         <p>每堂 {{ quote.plan.lesson_minutes }} 分鐘，原約定單價 {{ quote.plan.unit_price }} 元。</p>
         <p><strong>這次轉 {{ quote.plan.moved_sessions }} 堂／{{ money(quote.plan.amount) }} 元</strong> → {{ creditCourseLabel(candidates.find(c => Number(c.id ?? c.ID) === Number(form.target))) }}</p>
@@ -25,7 +27,7 @@
       <div class="actions">
         <button class="ghost" :disabled="locked || !valid || loading" @click="preview">試算轉用</button>
         <button v-if="!pending" class="primary" :disabled="!canConfirm" @click="confirm">確認跨科轉用</button>
-        <button v-else class="primary" :disabled="busy" @click="retry">重試確認結果</button>
+        <button v-else class="primary" :disabled="busy || !identityReady" @click="retry">重試確認結果</button>
       </div>
       <section class="history" aria-labelledby="credit-history-title" :aria-busy="loading">
         <h4 id="credit-history-title">跨科轉用紀錄</h4>
@@ -39,7 +41,7 @@
             <p><strong>{{ r.moved_sessions }} 堂／{{ money(r.amount) }} 元 · {{ r.reversed ? '已還原' : '已轉用' }}</strong></p>
             <p class="muted">{{ r.created_at }} {{ r.reason }}</p>
             <p v-if="r.reversed" class="muted">{{ r.reversed_at }} 還原原因：{{ r.reverse_reason }}</p>
-            <button v-else class="ghost" :disabled="locked" @click="askReverse(r)">還原這筆轉用</button>
+            <button v-else class="ghost" :disabled="locked || !identityReady" @click="askReverse(r)">還原這筆轉用</button>
           </li>
         </ol>
         <div v-if="lastPage > 1" class="actions" aria-label="轉用紀錄分頁">
@@ -48,12 +50,12 @@
           <button class="ghost" :disabled="page >= lastPage || locked" @click="loadHistory(page + 1)">下一頁</button>
         </div>
         <div v-if="reversing" class="summary" role="group" aria-label="還原確認">
-          <p>確認還原 {{ reversing.moved_sessions }} 堂／{{ money(reversing.amount) }} 元？款項會回到原來源科；轉用歷史保留。</p>
+          <p>確認還原{{ studentName }}的 {{ reversing.moved_sessions }} 堂／{{ money(reversing.amount) }} 元？款項會回到原來源科；轉用歷史保留。</p>
           <label for="credit-reverse-reason">還原原因（必填）</label>
           <textarea id="credit-reverse-reason" v-model="reverseReason" rows="2" maxlength="100" :disabled="locked" />
           <div class="actions">
             <button class="ghost" :disabled="locked" @click="reversing = null">保留轉用</button>
-            <button class="primary" :disabled="locked || !reverseReason.trim()" @click="confirmReverse">確認還原</button>
+            <button class="primary" :disabled="locked || !identityReady || !reverseReason.trim()" @click="confirmReverse">確認還原</button>
           </div>
         </div>
       </section>
@@ -67,7 +69,7 @@ import { trapTab } from '../../lib/focusTrap.js';
 import { creditCourseLabel, useSubjectCreditTransfer } from '../../composables/course-management/useSubjectCreditTransfer.js';
 const props = defineProps({ show: Boolean, course: { type: Object, default: () => ({}) } });
 const emit = defineEmits(['close', 'changed']);
-const { form, quote, error, notice, busy, loading, locked, candidates, history, historyError, page, lastPage,
+const { form, quote, error, notice, busy, loading, locked, studentName, identityReady, candidates, history, historyError, page, lastPage,
   reversing, reverseReason, pending, valid, canConfirm, label, loadHistory, preview, confirm, askReverse, confirmReverse, retry } = useSubjectCreditTransfer(props, () => emit('changed'));
 const panel = ref(null);
 let opener;

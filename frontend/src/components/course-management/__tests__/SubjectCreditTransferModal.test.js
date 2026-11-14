@@ -4,8 +4,8 @@ const fetcher = vi.fn();
 vi.mock('../../../lib/authedFetch', () => ({ authedFetch: (...a) => fetcher(...a) }));
 import Modal from '../SubjectCreditTransferModal.vue';
 
-const course = { id: 10, student_id: 1, subject: 'math', subject_name: '數學' };
-const target = { id: 20, student_id: 1, subject: 'english', subject_name: '英文', teacher_name: '英文教師' };
+const course = { id: 10, student_id: 1, student_name: '測試學生', subject: 'math', subject_name: '數學' };
+const target = { id: 20, student_id: 1, student_name: '測試學生', subject: 'english', subject_name: '英文', teacher_name: '英文教師' };
 const transfer = { id: 7, source_course_id: 10, target_course_id: 30, moved_sessions: 2, amount: 3000, reason: '跨科使用', reversed: false };
 const plan = { preview: true, execution_available: true, state_hash: 'a'.repeat(64), plan: { purchased_sessions: 8, used_sessions: 2, reserved_sessions: 1, available_sessions: 5, moved_sessions: 2, unit_price: '1500', lesson_minutes: 120, amount: 3000, destination_existing_outstanding: 12000 } };
 const response = (json, status = 200) => ({ ok: status < 300, status, json: async () => json });
@@ -32,6 +32,20 @@ beforeEach(() => {
 afterEach(() => { wrappers.splice(0).forEach(w => w.unmount()); document.body.innerHTML = ''; });
 
 describe('in-app #535 subject-credit workflow', () => {
+  it('shows distinct student identity for otherwise identical contracts and blocks unnamed confirmation', async () => {
+    for (const name of ['學生甲', '學生乙']) {
+      const w = await open({ ...course, student_name: name }); await fill(w); await preview(w);
+      expect(w.get('[data-testid="credit-student"]').text()).toContain(name);
+      expect(w.get('[data-testid="credit-preview"]').text()).toContain(name);
+      expect(button(w, '確認跨科轉用').attributes('disabled')).toBeUndefined();
+      await w.setProps({ show: false });
+    }
+    records = [transfer];
+    const unnamed = await open({ ...course, student_name: '  ' }); await fill(unnamed); await preview(unnamed);
+    expect(button(unnamed, '確認跨科轉用').attributes('disabled')).toBeDefined();
+    expect(button(unnamed, '還原這筆轉用').attributes('disabled')).toBeDefined();
+    expect(unnamed.text()).toContain('學生資料未完整載入');
+  });
   it('loads all bounded same-student pages and names the actual destination teacher', async () => {
     const w = await open();
     expect(fetcher.mock.calls.filter(([u]) => u.includes('?student_id=1'))).toHaveLength(2);
@@ -66,6 +80,7 @@ describe('in-app #535 subject-credit workflow', () => {
   });
   it('asks separately to reverse from the new batch and respects later-activity refusal', async () => {
     records = [transfer]; const w = await open({ ...target, id: 30 }); await button(w, '還原這筆轉用').trigger('click');
+    expect(w.get('[aria-label="還原確認"]').text()).toContain('測試學生');
     expect(bodies()).toHaveLength(0); await w.get('#credit-reverse-reason').setValue('排課前改回');
     writes.push(response({ message: '新批次已有排課，不能還原。' }, 409));
     await button(w, '確認還原').trigger('click'); await flushPromises();
