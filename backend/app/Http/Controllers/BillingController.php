@@ -278,9 +278,7 @@ class BillingController extends Controller
 
             $after = $this->lockedInvoiceProjection($invoice, $multiCourse);
             $invoice->PaidAmount = (int) $after['net_applied'];
-            $invoice->Status = (int) $after['outstanding_amount'] <= 0
-                ? 'paid'
-                : ((int) $after['net_applied'] > 0 ? 'partial' : 'unpaid');
+            $invoice->Status = Invoice::statusFromProjection($after);
 
             $invoice->save();
 
