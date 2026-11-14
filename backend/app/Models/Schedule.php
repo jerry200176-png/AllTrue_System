@@ -40,7 +40,9 @@ class Schedule extends Model
             }
         };
         static::saving(function (Schedule $row): void {
-            $active = $row->status === 'scheduled' || ($row->type === 'extra' && $row->status === 'rescheduled');
+            $status = strtolower(trim((string) $row->status));
+            $type = strtolower(trim((string) $row->type));
+            $active = $status === 'scheduled' || ($type === 'extra' && $status === 'rescheduled');
             if ($active && (!$row->exists || $row->isDirty(['student_course_id', 'schedule_date', 'start_time', 'end_time', 'status', 'type']))) {
                 SubjectCreditTransfer::assertBookingAllowed((int) $row->student_course_id);
             }

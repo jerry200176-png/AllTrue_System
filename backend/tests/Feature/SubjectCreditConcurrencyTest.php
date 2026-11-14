@@ -147,11 +147,13 @@ class SubjectCreditConcurrencyTest extends TestCase
         }
         $before = $this->businessSnapshot();
         $campus = (int) Student::find($source->StudentID)->CampusID;
-        $this->withToken($token)->postJson('/api/v1/schedules', ['student_id' => $source->StudentID, 'student_course_id' => $course->ID,
-            'teacher_id' => $course->TeacherID, 'branch_id' => $campus, 'subject' => 'isolated', 'day_of_week' => 3,
-            'schedule_date' => '2026-10-14', 'start_time' => '18:00', 'end_time' => '20:00',
-            'duration_hours' => 2, 'status' => 'scheduled', 'type' => 'normal'])->assertStatus(422)->assertJsonPath('code', 'subject_credit_closed_course');
-        $this->assertSame($before, $this->businessSnapshot());
+        foreach (['scheduled', 'SCHEDULED'] as $status) {
+            $this->withToken($token)->postJson('/api/v1/schedules', ['student_id' => $source->StudentID, 'student_course_id' => $course->ID,
+                'teacher_id' => $course->TeacherID, 'branch_id' => $campus, 'subject' => 'isolated', 'day_of_week' => 3,
+                'schedule_date' => '2026-10-14', 'start_time' => '18:00', 'end_time' => '20:00',
+                'duration_hours' => 2, 'status' => $status, 'type' => 'normal'])->assertStatus(422)->assertJsonPath('code', 'subject_credit_closed_course');
+            $this->assertSame($before, $this->businessSnapshot(), 'Rejected booking must not leave a committed Schedule, including uppercase legacy inputs.');
+        }
         // The materializer can receive a previously loaded active contract. It must recheck committed credit.
         try {
             app(\App\Services\ClassSessionMaterializationService::class)->upsertSlot(['StudentClassID' => $course->ID,
