@@ -21,3 +21,5 @@ export function useEditDialogCloseGuard({ isOpen, isDirty, ask, close }) {
   }
   return { requestClose };
 }
+// Esc that ends IME composition (isComposing, or keyCode 229) must not close a dialog that has a text field.
+export const ignoreComposingEscape = (e) => { if (e.isComposing || e.keyCode === 229) e.preventDefault(); };

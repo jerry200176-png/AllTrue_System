@@ -19,6 +19,7 @@ use Tests\TestCase;
 /** #4192: real committed cancellation versus a stale swipe candidate, CI MySQL only. */
 class SwipeCancellationConcurrencyTest extends TestCase
 {
+    use \Tests\Support\CleansCommittedRows;
     use RefreshDatabase;
 
     // Like NotificationSyncConcurrencyTest: both connections must see committed fixtures.

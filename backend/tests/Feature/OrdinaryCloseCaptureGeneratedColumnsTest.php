@@ -11,6 +11,7 @@ use Tests\TestCase;
 
 class OrdinaryCloseCaptureGeneratedColumnsTest extends TestCase
 {
+    use \Tests\Support\CleansCommittedRows;
     use RefreshDatabase;
 
     /** Generated-column DDL is not allowed inside RefreshDatabase's transaction. */

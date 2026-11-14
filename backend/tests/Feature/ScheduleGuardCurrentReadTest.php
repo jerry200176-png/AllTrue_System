@@ -10,6 +10,7 @@ use Tests\TestCase;
 
 class ScheduleGuardCurrentReadTest extends TestCase
 {
+    use \Tests\Support\CleansCommittedRows;
     use RefreshDatabase;
     use \Tests\Support\PaymentReportRaceWorker;
 

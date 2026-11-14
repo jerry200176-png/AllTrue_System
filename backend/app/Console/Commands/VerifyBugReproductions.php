@@ -4,6 +4,7 @@ namespace App\Console\Commands;
 
 use App\Models\Invoice;
 use App\Services\Billing\InvoiceAmountParityCensus;
+use App\Services\Billing\PaidFlagInvoiceMismatch;
 use App\Support\AppClockSql;
 use App\Support\AttendanceStatus;
 use App\Support\ContractPeriod;
@@ -44,9 +45,6 @@ class VerifyBugReproductions extends Command
             static fn (string $status): string => "'" . addslashes($status) . "'",
             AttendanceStatus::requiresLogSessionStatuses()
         ));
-        // A live positive bill naming the course on its header or on a line.
-        $link = "COALESCE(i.Status, '') <> 'void' AND i.TotalAmount > 0 AND (i.StudentClassID = sc.ID"
-            . " OR EXISTS (SELECT 1 FROM InvoiceItem ii WHERE ii.InvoiceID = i.id AND ii.StudentClassID = sc.ID AND ii.Amount > 0))";
         return [
             [
                 'key' => 'attended_session_without_learning_record',
@@ -182,12 +180,9 @@ class VerifyBugReproductions extends Command
                 'issue' => '#4659/G-009', 'enforced' => true,
                 // Payment rows are the truth: Invoice::netPaidSql(). A bill names the course on its header or on a line
                 // (InvoiceItem.StudentClassID). Package members are skipped (their package owns the paid flag).
-                'sql' => "SELECT COUNT(*) AS c FROM StudentClass sc
-                          WHERE (sc.Stop = 0 OR sc.Stop IS NULL) AND sc.PackageID IS NULL AND (
-                            (sc.Paid = 1 AND EXISTS (SELECT 1 FROM Invoice i WHERE {$link} AND i.TotalAmount > " . Invoice::netPaidSql('i') . "))
-                            OR (COALESCE(sc.Paid, 0) = 0
-                                AND EXISTS (SELECT 1 FROM Invoice i WHERE {$link})
-                                AND NOT EXISTS (SELECT 1 FROM Invoice i WHERE {$link} AND i.TotalAmount > " . Invoice::netPaidSql('i') . ")))",
+                // The predicate lives in PaidFlagInvoiceMismatch; the read-only row dump (production-case-dump case
+                // `paid_flag_vs_invoice_rows`, encrypted artifact, IDs and booleans only) names the rows this counts (#5187).
+                'sql' => 'SELECT COUNT(*) AS c FROM StudentClass sc WHERE ' . PaidFlagInvoiceMismatch::whereSql(),
             ],
             [
                 // No `sql`: counted by InvoiceAmountParityCensus. Reported first; enforce after 14 nights at 0 (#4991 item 2).

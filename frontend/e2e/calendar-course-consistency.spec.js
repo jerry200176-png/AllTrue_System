@@ -891,7 +891,7 @@ test.describe('production acceptance — calendar/course parity', () => {
         expect(ref).toBe(formatCourseRef(id));
         const course = courses().find((candidate) => Number(candidate?.id ?? candidate?.ID) === id);
         expect(course, `course ${id} is in the list 課程查找 loaded`).toBeTruthy();
-        await expect(period.locator('.hint'), `course ${id} period`)
+        await expect(period.getByTestId('billing-contract-period-range'), `course ${id} period`)
           .toHaveText(formatCoursePeriod(course?.first_class_date || course?.StartDate, course?.end_date || course?.EndDate));
         // The chip shows the short form of a long billing sentence (#5230); the full sentence is its accessible name.
         const paymentLabel = coursePaymentBadge(course ?? {}, { monthlyPeriod: true }).label;

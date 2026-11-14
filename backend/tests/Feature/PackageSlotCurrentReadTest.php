@@ -21,6 +21,7 @@ use Tests\TestCase;
  */
 class PackageSlotCurrentReadTest extends TestCase
 {
+    use \Tests\Support\CleansCommittedRows;
     use RefreshDatabase;
 
     protected array $connectionsToTransact = [];

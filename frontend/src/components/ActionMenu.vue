@@ -83,6 +83,36 @@ function place() {
     ...(below < 280 && r.top > below ? { bottom: `${window.innerHeight - r.top + 4}px` } : { top: `${r.bottom + 4}px` }),
   };
 }
+// The real menu height is only known once it is rendered. A menu that fits where `place()` put it is left alone; one that runs past the viewport
+// edge goes to the side with more room (above when it does not fit below) and is capped to that room, so it scrolls inside itself instead of running off screen.
+function fit() {
+  const r = trigger.value?.getBoundingClientRect();
+  const el = menu.value;
+  if (!r || !el || sheet.value) return;
+  const m = el.getBoundingClientRect();
+  if (m.top >= 0 && m.bottom <= window.innerHeight) return;
+  const gap = 4;
+  const margin = 8;
+  const need = el.scrollHeight + (el.offsetHeight - el.clientHeight); // content + the real border (and padding stays inside scrollHeight)
+  const below = window.innerHeight - r.bottom - gap - margin;
+  const above = r.top - gap - margin;
+  const up = need > below && above > below;
+  const room = up ? above : below;
+  pos.value = {
+    right: `${Math.max(8, window.innerWidth - r.right)}px`,
+    ...(up ? { bottom: `${window.innerHeight - r.top + gap}px` } : { top: `${r.bottom + gap}px` }),
+    maxHeight: `${Math.max(0, Math.min(need, room, window.innerHeight * 0.7))}px`,
+  };
+}
+// Focus an item without scrolling the page, and scroll the (possibly capped) menu itself so the item is visible.
+function focusItem(el) {
+  if (!el) return;
+  el.focus({ preventScroll: true });
+  const box = menu.value;
+  if (!box) return;
+  if (el.offsetTop < box.scrollTop) box.scrollTop = el.offsetTop;
+  else if (el.offsetTop + el.offsetHeight > box.scrollTop + box.clientHeight) box.scrollTop = el.offsetTop + el.offsetHeight - box.clientHeight;
+}
 const sheet = ref(false);
 let mq = null;
 const syncSheet = () => { sheet.value = Boolean(mq?.matches); };
@@ -94,9 +124,11 @@ async function openAt(index) {
   place();
   open.value = true;
   await nextTick();
+  fit();
+  await nextTick(); // let the capped max-height reach the DOM before focusItem() measures clientHeight
   const list = items();
   // preventScroll: focusing a fixed-position item must not scroll the page, or the scroll listener below closes the menu at once.
-  list[index < 0 ? list.length - 1 : index]?.focus({ preventScroll: true });
+  focusItem(list[index < 0 ? list.length - 1 : index]);
 }
 function close(returnFocus = false) {
   if (!open.value) return;
@@ -112,20 +144,20 @@ function pick(item) {
 function move(step) {
   const list = items();
   const i = list.indexOf(document.activeElement);
-  list[(i + step + list.length) % list.length]?.focus({ preventScroll: true });
+  focusItem(list[(i + step + list.length) % list.length]);
 }
 function onKey(e) {
   const list = items();
   if (e.key === 'ArrowDown') { e.preventDefault(); move(1); }
   else if (e.key === 'ArrowUp') { e.preventDefault(); move(-1); }
-  else if (e.key === 'Home') { e.preventDefault(); list[0]?.focus({ preventScroll: true }); }
-  else if (e.key === 'End') { e.preventDefault(); list[list.length - 1]?.focus({ preventScroll: true }); }
+  else if (e.key === 'Home') { e.preventDefault(); focusItem(list[0]); }
+  else if (e.key === 'End') { e.preventDefault(); focusItem(list[list.length - 1]); }
   else if (e.key === 'Escape') { e.preventDefault(); close(true); }
   else if (e.key === 'Tab') close(false);
   else if (e.key.length === 1 && /\S/.test(e.key)) {
     const i = list.indexOf(document.activeElement);
     const next = [...list.slice(i + 1), ...list.slice(0, i + 1)].find((el) => el.textContent.trim().startsWith(e.key));
-    next?.focus();
+    focusItem(next);
   }
 }
 function onOutside(e) {

@@ -11,6 +11,7 @@ use Tests\TestCase;
 
 class ClassSessionD1UniqueIndexTest extends TestCase
 {
+    use \Tests\Support\CleansCommittedRows;
     use RefreshDatabase, WithClassSessionIndexFlag;
 
     /** DDL in test (DROP/ADD INDEX) cannot run inside RefreshDatabase transaction wrapper. */
