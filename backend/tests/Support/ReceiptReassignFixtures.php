@@ -3,6 +3,7 @@
 namespace Tests\Support;
 
 use App\Models\AuthToken;
+use App\Models\CoursePackage;
 use App\Models\Invoice;
 use App\Models\Payment;
 use App\Models\PaymentReport;
@@ -99,6 +100,30 @@ trait ReceiptReassignFixtures
         AuthToken::create(['user_id' => $user->id, 'token' => $raw, 'expires_at' => now()->addDay()]);
 
         return $raw;
+    }
+
+    /** POST the move itself (no preview) with a state_hash. */
+    private function apply(string $token, PaymentReport $report, Invoice $target, string $hash, string $reason = '選錯學生')
+    {
+        return $this->postJson("/api/v1/payment-reports/{$report->id}/reassign", ['target_invoice_id' => $target->id, 'state_hash' => $hash, 'reason' => $reason], $this->h($token));
+    }
+
+    /** @param array{course:StudentClass, invoice:Invoice, payment:?Payment} $bill a confirmed receipt for the bill's own payment */
+    private function confirmedReport(array $bill): PaymentReport
+    {
+        return PaymentReport::create([
+            'StudentID' => $bill['invoice']->StudentID, 'StudentClassID' => $bill['course']->ID, 'InvoiceID' => $bill['invoice']->id, 'reported_by_name' => 'x',
+            'payment_date' => '2026-11-10', 'payment_method' => 'transfer', 'reported_amount' => (int) $bill['payment']->Amount, 'status' => 'confirmed',
+            'confirmed_by' => 1, 'confirmed_at' => Carbon::now(), 'payment_id' => $bill['payment']->id,
+            'report_token_hash' => hash('sha256', uniqid('r', true)), 'token_expires_at' => Carbon::now()->addDay(),
+        ]);
+    }
+
+    /** An unpaid per-session count package (8 × 1000) of $owner in campus 1. */
+    private function package(Student $owner): CoursePackage
+    {
+        return CoursePackage::create(['student_id' => $owner->id, 'campus_id' => 1, 'name' => 'P', 'billing_mode' => 'count', 'total_sessions' => 8, 'remaining_sessions' => 8,
+            'used_sessions' => 0, 'rate' => 1000, 'rate_unit' => 'session', 'class_type' => 'one_on_one', 'paid' => false, 'stop' => false, 'enabled' => true]);
     }
 
     /** @return array<string, mixed> every table this feature could ever write to */
