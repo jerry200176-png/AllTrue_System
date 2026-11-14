@@ -1222,15 +1222,40 @@ for (const width of [375, 1280]) {
     const group = page.locator('.student-group-card').first();
     await group.getByRole('tab', { name: '帳務資料', exact: true }).click();
     const billing = group.locator('.student-billing-wrap');
-    await expect(billing.locator('tbody .btn-invoices').first()).toBeAttached();
     expect(await billing.evaluate((el) => getComputedStyle(el).overflowX)).toBe('auto');
-    if (width === 375) expect(await billing.evaluate((el) => el.scrollWidth > el.clientWidth)).toBe(true);
-    await billing.evaluate((el) => { el.scrollLeft = el.scrollWidth; });
-    const ledger = billing.locator('tbody .btn-invoices').first();
-    await ledger.scrollIntoViewIfNeeded();
-    await expect(ledger).toBeInViewport();
-    await page.screenshot({ path: path.join(outDir, `course-workbench-billing-${width}.png`) });
-    await ledger.click();
+    if (width === 375) {
+      // Slice 6 of issue 4989 (approved change: it replaces the old assertion that the 375 table scrolls sideways, a known UX defect):
+      // under 1024px each bill is a stacked card, nothing scrolls sideways, and every row action sits inside the viewport.
+      await expect(billing.locator('tbody tr').first()).toBeVisible();
+      expect(await billing.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
+      const outside = await billing.evaluate((el, vw) => [...el.querySelectorAll('tbody button')].filter((b) => {
+        const r = b.getBoundingClientRect();
+        return r.width > 0 && (r.left < 0 || r.right > vw);
+      }).length, width);
+      expect(outside, 'every billing row action is inside the viewport without scrolling').toBe(0);
+      const rows = billing.locator('tbody tr');
+      for (let i = 0; i < await rows.count(); i += 1) {
+        const row = rows.nth(i);
+        await expect(row.locator('button:not(.action-menu-trigger):visible'), `row ${i} shows exactly one visible action button`).toHaveCount(1);
+      }
+      await page.screenshot({ path: path.join(outDir, `course-workbench-billing-${width}.png`) });
+      // Every bill in this fixture is paid, so the ledger is the one visible primary action. The owed row's 更多 menu is asserted in the layout guard.
+      const direct = rows.first().locator('.btn-invoices:visible');
+      if (await direct.count()) {
+        await direct.click();
+      } else {
+        await rows.first().locator('.action-menu-trigger:visible').click();
+        await page.getByRole('menuitem', { name: '在這裡看帳務' }).click();
+      }
+    } else {
+      await expect(billing.locator('tbody .btn-invoices').first()).toBeAttached();
+      await billing.evaluate((el) => { el.scrollLeft = el.scrollWidth; });
+      const ledger = billing.locator('tbody .btn-invoices').first();
+      await ledger.scrollIntoViewIfNeeded();
+      await expect(ledger).toBeInViewport();
+      await page.screenshot({ path: path.join(outDir, `course-workbench-billing-${width}.png`) });
+      await ledger.click();
+    }
     await expect(page.getByText('學生帳務', { exact: true }).first()).toBeVisible();
   });
 }

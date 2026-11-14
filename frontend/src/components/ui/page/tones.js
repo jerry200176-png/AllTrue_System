@@ -95,6 +95,17 @@ export const dataTable = Object.freeze({
   amountPending: 'tw:block tw:text-tpl-caption tw:font-semibold tw:tabular-nums tw:whitespace-nowrap tw:text-[var(--ds-warning-text)]',
   amountEstimate: 'tw:block tw:text-tpl-caption tw:font-normal tw:tabular-nums tw:whitespace-nowrap tw:text-tpl-secondary',
   total: 'tw:h-14 tw:border-0 tw:bg-muted! tw:px-3 tw:py-2 tw:md:px-4 tw:text-[length:var(--tpl-text-body)] tw:font-bold tw:text-foreground',
+  // Under 1024px a table row becomes a stacked card (PAGE_TEMPLATE §5 rule 9): the header stays for screen readers, each `tr` is a two-column grid
+  // (a cell that should sit beside the first one adds `stackBeside`, a wide one `stackWide`), and nothing scrolls sideways.
+  stackTable: 'tw:max-lg:block tw:max-lg:min-w-0',
+  stackHead: 'tw:max-lg:sr-only',
+  stackBody: 'tw:max-lg:block',
+  stackRow: 'tw:max-lg:grid tw:max-lg:grid-cols-2 tw:max-lg:items-start tw:max-lg:gap-x-4 tw:max-lg:gap-y-3 tw:max-lg:border-b tw:max-lg:border-border tw:max-lg:px-4 tw:max-lg:py-4',
+  stackCell: 'tw:max-lg:block tw:max-lg:h-auto tw:max-lg:min-w-0 tw:max-lg:border-0 tw:max-lg:px-0 tw:max-lg:py-0 tw:max-lg:pl-0 tw:max-lg:pr-0',
+  stackBeside: 'tw:max-lg:col-start-2 tw:max-lg:row-start-1 tw:max-lg:justify-self-end',
+  stackWide: 'tw:max-lg:col-span-2',
+  // The small label above a stacked value; only shown while stacked (the header carries it at desktop).
+  stackLabel: 'tw:mb-1 tw:block tw:text-tpl-caption tw:font-medium tw:text-tpl-secondary tw:lg:hidden',
   phoneHide: 'tw:max-md:hidden',
   phoneOnly: 'tw:md:hidden',
 });
