@@ -289,6 +289,31 @@ class ReceiptReassignPreviewTest extends TestCase
         $this->getJson("/api/v1/payment-reports/{$f['report']->id}/reassign-targets?student_id=abc", $this->h($this->token('A', 1)))->assertStatus(422)->assertJsonPath('code', 'reassign_bad_student');
     }
 
+    public function test_targets_run_the_same_number_of_queries_for_two_or_eight_candidates(): void
+    {
+        $f = $this->fixture();
+        $tok = $this->token('S', 1);
+        $url = "/api/v1/payment-reports/{$f['report']->id}/reassign-targets?student_id={$f['right']->id}";
+        $pkg = CoursePackage::create(['student_id' => $f['right']->id, 'campus_id' => 1, 'name' => 'P', 'billing_mode' => 'count', 'total_sessions' => 8, 'remaining_sessions' => 8,
+            'used_sessions' => 0, 'rate' => 1000, 'rate_unit' => 'session', 'class_type' => 'one_on_one', 'paid' => false, 'stop' => false, 'enabled' => true]);
+        $this->bill($f['right'], self::AMOUNT, 'unpaid', 0, ['PackageID' => $pkg->id]); // the package lookups run too
+        $this->getJson($url, $this->h($tok))->assertOk(); // warm-up
+        $count = function () use ($url, $tok): int {
+            DB::flushQueryLog();
+            DB::enableQueryLog();
+            $this->getJson($url, $this->h($tok))->assertOk();
+            DB::disableQueryLog();
+
+            return count(DB::getQueryLog());
+        };
+        $two = $count();
+        foreach (range(1, 6) as $i) {
+            $this->bill($f['right'], self::AMOUNT, 'unpaid', 0, $i % 2 ? ['PackageID' => $pkg->id] : []);
+        }
+        $this->assertCount(8, $this->getJson($url, $this->h($tok))->json('targets'));
+        $this->assertSame($two, $count());
+    }
+
     // ── money proof on the source side (review P1-1) ────────────────────
 
     public function test_receipt_without_payment_id_is_accepted_when_its_payment_row_points_back_to_it(): void
@@ -316,7 +341,9 @@ class ReceiptReassignPreviewTest extends TestCase
             $fn($f);
             $before = $this->snapshot();
             $res = $this->preview($tok, $f);
-            $this->assertContains($res->json('code'), ['reassign_source_not_applied', 'reassign_refund_or_transfer_exists', 'reassign_legacy_reversal_unreconciled'], $label);
+            // #5113 must-do 7: one exact answer per shape (the source proof runs before any target or transfer check).
+            $this->assertSame(409, $res->status(), $label);
+            $this->assertSame('reassign_source_not_applied', $res->json('code'), $label);
             $this->assertSame($before, $this->snapshot(), $label);
         }
         $f = $this->fixture();
