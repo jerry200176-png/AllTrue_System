@@ -2,21 +2,16 @@
 
 namespace Tests\Feature;
 
-use App\Models\AuthToken;
 use App\Models\ClassSession;
 use App\Models\CoursePackage;
-use App\Models\Invoice;
 use App\Models\Payment;
 use App\Models\PaymentReport;
 use App\Models\PaymentReportReassignment;
-use App\Models\Student;
-use App\Models\StudentClass;
-use App\Models\User;
-use App\Models\UserCampus;
 use App\Services\Billing\ReceiptReassignService;
 use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Tests\Support\ReceiptReassignFixtures;
 use Tests\TestCase;
 
 /**
@@ -26,6 +21,7 @@ use Tests\TestCase;
 class ReceiptReassignPreviewTest extends TestCase
 {
     use RefreshDatabase;
+    use ReceiptReassignFixtures;
 
     private const AMOUNT = 8000;
 
@@ -56,7 +52,7 @@ class ReceiptReassignPreviewTest extends TestCase
             ->assertJsonPath('to.invoice_id', $f['rightInvoice']->id)->assertJsonPath('to.student_id', $f['right']->id)
             ->assertJsonPath('to.balance_before', self::AMOUNT)->assertJsonPath('to.balance_after', 0);
         $this->assertContains('source_bill_becomes_unpaid', $res->json('warnings'));
-        $this->assertSame(64, strlen((string) $res->json('state_hash')));
+        $this->assertMatchesRegularExpression('/^' . ReceiptReassignService::STATE_HASH_VERSION . ':[0-9a-f]{64}$/', (string) $res->json('state_hash'));
         $this->assertSame($before, $this->snapshot());
         $this->assertSame(0, PaymentReportReassignment::count());
     }
@@ -79,13 +75,13 @@ class ReceiptReassignPreviewTest extends TestCase
         $this->assertNotSame($h1, $h2);
     }
 
-    public function test_apply_request_is_refused_in_this_slice_and_writes_nothing(): void
+    public function test_apply_without_the_previews_state_hash_is_refused_and_writes_nothing(): void
     {
         $f = $this->fixture();
         $before = $this->snapshot();
         $this->postJson("/api/v1/payment-reports/{$f['report']->id}/reassign",
             ['target_invoice_id' => $f['rightInvoice']->id, 'reason' => '選錯學生'], $this->h($this->token('S', 1)))
-            ->assertStatus(422)->assertJsonPath('code', 'reassign_apply_unavailable');
+            ->assertStatus(422)->assertJsonPath('code', 'reassign_state_hash_required');
         $this->assertSame($before, $this->snapshot());
     }
 
@@ -289,7 +285,7 @@ class ReceiptReassignPreviewTest extends TestCase
         $this->getJson("/api/v1/payment-reports/{$f['report']->id}/reassign-targets?student_id=abc", $this->h($this->token('A', 1)))->assertStatus(422)->assertJsonPath('code', 'reassign_bad_student');
     }
 
-    public function test_targets_run_the_same_number_of_queries_for_two_or_eight_candidates(): void
+    public function test_targets_run_the_same_number_of_queries_for_three_or_nine_candidates_monthly_included(): void
     {
         $f = $this->fixture();
         $tok = $this->token('S', 1);
@@ -297,6 +293,9 @@ class ReceiptReassignPreviewTest extends TestCase
         $pkg = CoursePackage::create(['student_id' => $f['right']->id, 'campus_id' => 1, 'name' => 'P', 'billing_mode' => 'count', 'total_sessions' => 8, 'remaining_sessions' => 8,
             'used_sessions' => 0, 'rate' => 1000, 'rate_unit' => 'session', 'class_type' => 'one_on_one', 'paid' => false, 'stop' => false, 'enabled' => true]);
         $this->bill($f['right'], self::AMOUNT, 'unpaid', 0, ['PackageID' => $pkg->id]); // the package lookups run too
+        $monthly = fn () => $this->bill($f['right'], self::AMOUNT, 'unpaid', 0, ['ScheduleMode' => 'date', 'StartDate' => '2026-11-01', 'EndDate' => '2026-11-30'],
+            ['billing_period' => '2026-11']); // the monthly branch: sessions and the shared-month gate run too
+        $monthly();
         $this->getJson($url, $this->h($tok))->assertOk(); // warm-up
         $count = function () use ($url, $tok): int {
             DB::flushQueryLog();
@@ -306,12 +305,12 @@ class ReceiptReassignPreviewTest extends TestCase
 
             return count(DB::getQueryLog());
         };
-        $two = $count();
+        $three = $count();
         foreach (range(1, 6) as $i) {
-            $this->bill($f['right'], self::AMOUNT, 'unpaid', 0, $i % 2 ? ['PackageID' => $pkg->id] : []);
+            $i % 2 ? $this->bill($f['right'], self::AMOUNT, 'unpaid', 0, ['PackageID' => $pkg->id]) : $monthly();
         }
-        $this->assertCount(8, $this->getJson($url, $this->h($tok))->json('targets'));
-        $this->assertSame($two, $count());
+        $this->assertCount(9, $this->getJson($url, $this->h($tok))->json('targets'));
+        $this->assertSame($three, $count());
     }
 
     // ── money proof on the source side (review P1-1) ────────────────────
@@ -508,103 +507,5 @@ class ReceiptReassignPreviewTest extends TestCase
         foreach ([$moved, $pend] as $b) {
             $this->previewTo($tok, $f['report'], $b['invoice'])->assertStatus(422);
         }
-    }
-
-    // ── helpers ─────────────────────────────────────────────────────────
-
-    /** @return array<string, mixed> receipt confirmed on the wrong student's paid bill; the right student has an open bill */
-    private function fixture(): array
-    {
-        $wrong = $this->student(1);
-        $right = $this->student(1);
-        $w = $this->bill($wrong, self::AMOUNT, 'paid', self::AMOUNT);
-        $r = $this->bill($right, self::AMOUNT);
-        $report = PaymentReport::create([
-            'StudentID' => $wrong->id, 'StudentClassID' => $w['course']->ID, 'InvoiceID' => $w['invoice']->id, 'reported_by_name' => $wrong->name,
-            'payment_date' => '2026-11-10', 'payment_method' => 'transfer', 'reported_amount' => self::AMOUNT, 'status' => 'confirmed',
-            'confirmed_by' => 1, 'confirmed_at' => Carbon::now(), 'payment_id' => $w['payment']->id,
-            'report_token_hash' => hash('sha256', uniqid('r', true)), 'token_expires_at' => Carbon::now()->addDay(),
-        ]);
-
-        return ['wrong' => $wrong, 'right' => $right, 'wrongCourse' => $w['course'], 'rightCourse' => $r['course'],
-            'wrongInvoice' => $w['invoice'], 'rightInvoice' => $r['invoice'], 'report' => $report];
-    }
-
-    /** @return array{course:StudentClass, invoice:Invoice, payment:?Payment} */
-    private function bill(Student $student, int $total, string $status = 'unpaid', int $paid = 0, array $courseOverrides = [], array $invoiceOverrides = []): array
-    {
-        $course = StudentClass::create($courseOverrides + [
-            'StudentID' => $student->id, 'GradeID' => 1, 'SubjectID' => 1, 'TeacherID' => 99, 'by1' => 1, 'Period' => 4,
-            'StartDate' => now(), 'TotalHours' => 20, 'Charge' => $total, 'Paid' => $paid > 0 ? 1 : 0, 'MDate' => now(), 'Stop' => 0,
-            'ScheduleMode' => 'count', 'SessionCount' => 8, 'SessionDuration' => 120, 'RemainingSessions' => 5, 'ClassType' => 'one_on_one', 'UsedSessions' => 0,
-        ]);
-        // Overrides go on the left: array union keeps the left-hand keys.
-        $invoice = Invoice::create($invoiceOverrides + ['StudentID' => $student->id, 'StudentClassID' => $course->ID, 'IssueDate' => '2026-11-01',
-            'TotalAmount' => $total, 'PaidAmount' => $paid, 'Status' => $status === 'void' ? 'void' : ($paid >= $total && $paid > 0 ? 'paid' : 'unpaid')]);
-        $payment = $paid > 0 ? Payment::create(['InvoiceID' => $invoice->id, 'Amount' => $paid, 'PaidAt' => '2026-11-10', 'Method' => 'transfer']) : null;
-
-        return ['course' => $course, 'invoice' => $invoice, 'payment' => $payment];
-    }
-
-    private function payment(Invoice $invoice, int $amount, string $method = 'transfer'): Payment
-    {
-        return Payment::create(['InvoiceID' => $invoice->id, 'Amount' => $amount, 'PaidAt' => '2026-11-11', 'Method' => $method]);
-    }
-
-    private function pendingReport(Student $student, StudentClass $course, Invoice $invoice): PaymentReport
-    {
-        return PaymentReport::create([
-            'StudentID' => $student->id, 'StudentClassID' => $course->ID, 'InvoiceID' => $invoice->id, 'reported_by_name' => $student->name,
-            'payment_date' => Carbon::today(), 'payment_method' => 'cash', 'reported_amount' => 100, 'status' => 'pending',
-            'report_token_hash' => hash('sha256', uniqid('p', true)), 'token_expires_at' => Carbon::now()->addDay(),
-        ]);
-    }
-
-    private function student(int $campusId): Student
-    {
-        return Student::create(['name' => '測試學生' . uniqid(), 'CampusID' => $campusId, 'ClassID' => 1, 'enable' => 1, 'Phone' => '0912345678', 'MDT' => now(), 'Notify_Token' => '']);
-    }
-
-    /** @param array<string, mixed> $f */
-    private function preview(string $token, array $f)
-    {
-        return $this->previewTo($token, $f['report'], $f['rightInvoice']);
-    }
-
-    private function previewTo(string $token, PaymentReport $report, Invoice $target)
-    {
-        return $this->postJson("/api/v1/payment-reports/{$report->id}/reassign", ['target_invoice_id' => $target->id, 'preview' => true, 'reason' => '選錯學生'], $this->h($token));
-    }
-
-    /** @return array<string, string> */
-    private function h(string $token): array
-    {
-        return ['Authorization' => 'Bearer ' . $token, 'Accept' => 'application/json'];
-    }
-
-    /** A = director (Admin=1), T = teacher, S = super_admin. @param int|list<int> $campus */
-    private function token(string $type, int|array $campus): string
-    {
-        $user = User::create(['LoginName' => 'rra-' . strtolower($type) . '-' . uniqid() . '@test.com', 'Name' => '收據移動測試帳號', 'PSW' => 'secret', 'type' => $type, 'phone' => '0912345678']);
-        foreach ((array) $campus as $cid) {
-            UserCampus::create(['CampusID' => $cid, 'UserID' => $user->id, 'Admin' => $type === 'A' ? 1 : 0, 'Approved' => 1]);
-        }
-        $raw = bin2hex(random_bytes(16));
-        AuthToken::create(['user_id' => $user->id, 'token' => $raw, 'expires_at' => now()->addDay()]);
-
-        return $raw;
-    }
-
-    /** @return array<string, mixed> every table this feature could ever write to */
-    private function snapshot(): array
-    {
-        return [
-            'payments' => DB::table('Payment')->orderBy('id')->get()->map(fn ($r) => (array) $r)->all(),
-            'reports' => DB::table('payment_reports')->orderBy('id')->get()->map(fn ($r) => (array) $r)->all(),
-            'invoices' => DB::table('Invoice')->orderBy('id')->get()->map(fn ($r) => (array) $r)->all(),
-            'courses' => DB::table('StudentClass')->orderBy('ID')->get()->map(fn ($r) => (array) $r)->all(),
-            'links' => DB::table('payment_report_reassignments')->count(),
-            'audit' => DB::table('security_audit_events')->count(),
-        ];
     }
 }

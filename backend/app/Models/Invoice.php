@@ -150,6 +150,33 @@ class Invoice extends Model
     }
 
     /**
+     * A bill's status from its resolver projection (Payment rows are the truth, #3864): settled when nothing is outstanding,
+     * partial while some money is applied, else unpaid. Shared by confirm(), BillingController and the receipt move (#5113).
+     *
+     * @param array<string, mixed> $projection InvoiceAmountReconciliationService::resolve()
+     */
+    public static function statusFromProjection(array $projection): string
+    {
+        return (int) $projection['outstanding_amount'] <= 0 ? 'paid' : ((int) $projection['net_applied'] > 0 ? 'partial' : 'unpaid');
+    }
+
+    /** void()'s status after a reversal, from the stored paid amount left and the stored total. */
+    public static function statusAfterReversal(int $paidLeft, int $totalAmount): string
+    {
+        return $paidLeft <= 0 ? 'unpaid' : ($paidLeft < $totalAmount ? 'partial' : 'paid');
+    }
+
+    /**
+     * Whether a course still has a live (non-void) bill to back its settlement. When money comes off a void bill and none is
+     * left, the payable resolver would read the stale Paid flag itself as paid, so callers clear the flag instead (void(), #436;
+     * the receipt move, #5113).
+     */
+    public static function courseHasLiveBill(int $courseId): bool
+    {
+        return self::query()->where('StudentClassID', $courseId)->where(fn ($q) => $q->whereNull('Status')->orWhere('Status', '!=', 'void'))->exists();
+    }
+
+    /**
      * SQL: this invoice's net applied Payment rows (positive non-void minus every reversal), the same rule as
      * InvoiceAmountReconciliationService. For SQL pre-filters only; the resolver still decides the real amount.
      */

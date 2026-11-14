@@ -6,9 +6,9 @@ use App\Services\Billing\ReceiptReassignService;
 use Illuminate\Http\Request;
 
 /**
- * #5113 (in-app #522), design PR 3a: read-only "move a receipt to the correct bill".
+ * #5113 (in-app #522): "move a receipt to the correct bill".
  *   GET  payment-reports/{id}/reassign-targets?student_id=
- *   POST payment-reports/{id}/reassign   (preview only; applying is PR 3b)
+ *   POST payment-reports/{id}/reassign   preview: true = read-only plan; otherwise apply (needs the preview's state_hash and a reason)
  * Route middleware limits both to director / super_admin; the service checks the campus before any state.
  */
 final class ReceiptReassignController extends Controller
@@ -34,13 +34,17 @@ final class ReceiptReassignController extends Controller
             'target_invoice_id' => ['required', 'integer', 'min:1'],
             'reason' => ['nullable', 'string'],
             'preview' => ['nullable', 'boolean'],
+            'state_hash' => ['nullable', 'string', 'max:80'],
         ]);
-        $result = $this->service->preview($id, (int) $data['target_invoice_id'], $this->campusIds($request),
-            $request->attributes->get('auth_role') === 'super_admin', $data['reason'] ?? null);
-        // PR 3a is read-only: a request to apply gets the same checks, then a named "not available yet".
-        if ($result['status'] === 200 && !$request->boolean('preview')) {
-            return response()->json(['message' => '移到正確帳單的功能還沒開放送出，目前只能先預覽。', 'code' => 'reassign_apply_unavailable'], 422);
+        $superAdmin = $request->attributes->get('auth_role') === 'super_admin';
+        $actorId = (int) ($request->attributes->get('auth_user_id') ?? $request->attributes->get('auth_user')?->id); // bearer auth sets only auth_user
+        if (!$request->boolean('preview') && $actorId <= 0) {
+            return response()->json(['message' => 'Forbidden'], 403); // a move always names who made it
         }
+        $result = $request->boolean('preview')
+            ? $this->service->preview($id, (int) $data['target_invoice_id'], $this->campusIds($request), $superAdmin, $data['reason'] ?? null)
+            : $this->service->apply($id, (int) $data['target_invoice_id'], $this->campusIds($request), $superAdmin, $data['reason'] ?? null,
+                $data['state_hash'] ?? null, $actorId);
 
         return response()->json($result['body'], $result['status']);
     }

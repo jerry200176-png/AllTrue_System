@@ -561,7 +561,7 @@ Route::prefix('v1')->group(function () {
         Route::put('payment-reports/{id}/reject', [PaymentReportController::class, 'reject']);
         Route::put('payment-reports/{id}/void', [PaymentReportController::class, 'void']);
         Route::get('payment-reports/{id}/receipt', [PaymentReportController::class, 'receipt']);
-        // #5113 (in-app #522) PR 3a: read-only preview of moving a confirmed receipt to the correct bill (apply = PR 3b).
+        // #5113 (in-app #522): move a confirmed receipt to the correct bill (preview: true = read-only plan; otherwise apply).
         Route::get('payment-reports/{id}/reassign-targets', [\App\Http\Controllers\ReceiptReassignController::class, 'targets'])->whereNumber('id');
         Route::post('payment-reports/{id}/reassign', [\App\Http\Controllers\ReceiptReassignController::class, 'reassign'])->whereNumber('id');
 
