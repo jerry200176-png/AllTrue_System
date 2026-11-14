@@ -1348,14 +1348,6 @@ class PaymentReportController extends Controller
         return $hasPaidInvoice && $this->monthlyBilling->unbilledPeriodFor($sc) !== null;
     }
 
-    private function courseResolvedPaid(StudentClass $sc): bool
-    {
-        $id = (int) $sc->ID;
-        $status = app(BillingPayableResolver::class)->courseStatusesByStudentClassIds([$id])[$id]['status'] ?? null;
-
-        return $status === 'paid';
-    }
-
     /**
      * Plain routing lookup — call only outside DB::transaction.
      * A non-locking SELECT inside the write txn would establish the REPEATABLE-READ
