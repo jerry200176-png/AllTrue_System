@@ -51,7 +51,7 @@ describe('課程查找 帳務資料 table on the page template', () => {
   });
 
   it('keeps the hooks the specs and the money rules use', () => {
-    for (const hook of ['student-billing-table', 'student-billing-state', 'student-billing-wrap', 'btn-invoices', 'payment-status-badge', 'data-testid="billing-contract-period"', 'data-testid="billing-payment-slip-action"', 'data-testid="billing-package-follower"']) {
+    for (const hook of ['student-billing-table', 'student-billing-state', 'student-billing-wrap', 'btn-invoices', 'payment-status-badge', 'data-testid="billing-contract-period"', 'data-testid="billing-contract-period-range"', 'data-testid="billing-payment-slip-action"', 'data-testid="billing-package-follower"']) {
       expect(page, hook).toContain(hook);
     }
     expect(billing).toContain('colspan="6"');
