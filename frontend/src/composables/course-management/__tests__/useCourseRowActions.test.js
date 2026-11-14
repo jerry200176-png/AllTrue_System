@@ -22,6 +22,14 @@ const course = { id: 7, status: 'active' };
 const ids = (m) => m.groups.flatMap((g) => g.items.map((i) => i.id));
 
 describe('useCourseRowActions', () => {
+  it('keeps #535 cross-subject entry available in both row layouts, including a closed contract', () => {
+    const d = bag({ canSubjectCredit: () => true, openSubjectCredit: vi.fn() });
+    const actions = useCourseRowActions(d);
+    for (const simple of [true, false]) expect(ids(actions.rowModel({ ...course, status: 'inactive' }, { simple }))).toContain('subject-credit');
+    actions.runRowAction(course, 'subject-credit');
+    expect(d.openSubjectCredit).toHaveBeenCalledWith(course);
+    expect(ids(useCourseRowActions(bag()).rowModel(course))).not.toContain('subject-credit');
+  });
   it('轉給手足 follows the page capability and opens the dialog for that course (#412)', () => {
     const d = bag({ canSiblingTransfer: () => true });
     const { rowModel, runRowAction } = useCourseRowActions(d);

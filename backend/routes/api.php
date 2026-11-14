@@ -629,6 +629,7 @@ Route::prefix('v1')->group(function () {
         Route::post('student-classes/{studentClass}/monthly-accounting-correction/preview', [\App\Http\Controllers\MonthlyContractCorrectionController::class, 'accountingPreview']);
         Route::post('student-classes/{studentClass}/split-contract', [StudentClassController::class, 'splitContract']);
         Route::post('student-classes/{studentClass}/sibling-transfer', [\App\Http\Controllers\SiblingContractTransferController::class, 'store']);
+        Route::get('student-classes/{studentClass}/subject-credit-transfer', [\App\Http\Controllers\SubjectCreditTransferController::class, 'index'])->middleware('throttle:60,1');
         Route::post('student-classes/{studentClass}/subject-credit-transfer/preview', [\App\Http\Controllers\SubjectCreditTransferController::class, 'preview'])->middleware('throttle:20,1');
         Route::post('student-classes/{studentClass}/subject-credit-transfer', [\App\Http\Controllers\SubjectCreditTransferController::class, 'apply'])->middleware('throttle:10,1');
         Route::post('student-classes/{studentClass}/subject-credit-transfer/{transferId}/reverse', [\App\Http\Controllers\SubjectCreditTransferController::class, 'reverse'])->whereNumber('transferId')->middleware('throttle:10,1');
