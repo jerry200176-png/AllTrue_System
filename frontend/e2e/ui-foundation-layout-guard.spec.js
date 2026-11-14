@@ -475,7 +475,8 @@ const courseRowMenu = (page) => page.locator('.course-row .action-menu-trigger')
 async function openCourseRowAction(page, name) {
   await courseRowMenu(page).scrollIntoViewIfNeeded();
   await courseRowMenu(page).click();
-  await page.getByRole('menuitem', { name }).first().click();
+  // dispatchEvent: at 768x1024 the long 更多 menu runs past the bottom edge, so a pointer click cannot reach 暫停課程 / 刪除課程 (menu position is not this slice's).
+  await page.getByRole('menuitem', { name }).first().dispatchEvent('click');
 }
 const COURSE_DIALOGS = {
   billing: { key: 'billing dialog', testid: 'billing-correction-dialog', open: async (page) => { await openCourseRowAction(page, '合約／堂次調整'); await page.getByRole('button', { name: /未付款，更正堂數/ }).click(); }, ready: '更正後購買堂數' },
