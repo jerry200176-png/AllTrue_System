@@ -905,7 +905,7 @@
         :class="cn(sheetDialog.content, 'tw:sm:max-w-2xl')"
         data-testid="course-edit-dialog"
         @interact-outside="(e) => e.preventDefault()"
-        @escape-key-down="(e) => { if (e.isComposing || e.keyCode === 229) e.preventDefault(); }"
+        @escape-key-down="ignoreComposingEscape"
       >
         <DialogHeader :class="sheetDialog.header">
           <DialogTitle class="tw:text-tpl-list tw:font-bold tw:text-balance">編輯課程</DialogTitle>
@@ -1031,7 +1031,7 @@
         :class="cn(sheetDialog.content, 'tw:sm:max-w-lg billing-correction-modal')"
         data-testid="billing-correction-dialog"
         @interact-outside="(e) => e.preventDefault()"
-        @escape-key-down="(e) => { if (e.isComposing || e.keyCode === 229) e.preventDefault(); }"
+        @escape-key-down="ignoreComposingEscape"
         @open-auto-focus="focusFirstDialogField"
         @close-auto-focus="(e) => returnFocusToCourseRow(e, billingCorrectionCourse)"
       >
@@ -1200,7 +1200,7 @@
         :class="cn(sheetDialog.content, 'tw:sm:max-w-lg')"
         data-testid="package-conversion-dialog"
         @interact-outside="(e) => e.preventDefault()"
-        @escape-key-down="(e) => { if (e.isComposing || e.keyCode === 229) e.preventDefault(); }"
+        @escape-key-down="ignoreComposingEscape"
         @open-auto-focus="focusFirstDialogField"
         @close-auto-focus="(e) => returnFocusToCourseRow(e, packageConversionCourse)"
       >
@@ -1376,7 +1376,7 @@
     <RestoreCancelledSessionDialog :unit="restoreCancelledUnit" @close="restoreCancelledUnit = null" @restored="onCancelledRestored" />
 
     <Dialog :open="!!pauseConfirmTarget" @update:open="(v) => { if (!v && !pauseConfirmSubmitting) pauseConfirmTarget = null; }">
-      <DialogContent :show-close-button="false" class="tw:sm:max-w-sm" data-testid="pause-confirm-dialog" @interact-outside="(e) => pauseConfirmSubmitting && e.preventDefault()" @open-auto-focus="(e) => { e.preventDefault(); pauseCancelBtn?.$el?.focus(); }">
+      <DialogContent :show-close-button="false" class="tw:sm:max-w-sm" data-testid="pause-confirm-dialog" @escape-key-down="ignoreComposingEscape" @interact-outside="(e) => pauseConfirmSubmitting && e.preventDefault()" @open-auto-focus="(e) => { e.preventDefault(); pauseCancelBtn?.$el?.focus(); }">
         <DialogHeader class="tw:text-left">
           <DialogTitle id="pause-confirm-title" class="tw:text-tpl-list tw:font-bold tw:text-balance">{{ pauseConfirmIsResume ? '恢復課程？' : '暫停課程？' }}</DialogTitle>
           <DialogDescription class="tw:sr-only">確認後會立即更新課程狀態</DialogDescription>
@@ -1513,7 +1513,7 @@ import ConfirmDialogHost from '../components/course-management/ConfirmDialogHost
 import RestoreCancelledSessionDialog from '../components/course-management/RestoreCancelledSessionDialog.vue';
 import { isVisibleCancelledSession } from '../lib/sessionOccurrenceFilter.js';
 import { askConfirm } from '../composables/useConfirmDialog';
-import { useEditDialogCloseGuard } from '../composables/course-management/useEditDialogCloseGuard';
+import { ignoreComposingEscape, useEditDialogCloseGuard } from '../composables/course-management/useEditDialogCloseGuard';
 import { focusFirstDialogField, focusOpenLegacyForm } from '../composables/course-management/dialogFocus';
 import LessonPickerSelect from '../components/course-management/LessonPickerSelect.vue';
 import CourseEditForm from '../components/CourseEditForm.vue';
@@ -5873,8 +5873,6 @@ onUnmounted(() => {
 .course-page {
   position: relative;
 }
-/* ----- Page header ----- */
-/* ----- Toolbar card (surface comes from the shared card classes) ----- */
 .course-stats-disclosure summary {
   display: flex;
   align-items: center;
@@ -5890,26 +5888,6 @@ onUnmounted(() => {
 .course-stats-disclosure[open] summary > .material-symbols-outlined { transform: rotate(180deg); }
 .course-stats-disclosure summary:focus-visible { outline: 3px solid var(--ds-primary); outline-offset: 2px; border-radius: 12px; }
 .course-stats-disclosure__hint { min-width: 0; overflow: hidden; color: var(--ds-ink-secondary); text-overflow: ellipsis; white-space: nowrap; }
-
-.header-actions {
-  position: relative;
-  z-index: 1;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 16px;
-}
-
-.page-title-block {
-  min-width: 0;
-}
-
-.course-lens-kicker {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-}
 
 .course-lens-guidance {
   display: flex;
@@ -5934,58 +5912,6 @@ onUnmounted(() => {
 .course-lens-guidance strong {
   margin-right: 6px;
   color: var(--ds-ink);
-}
-
-.command-kicker {
-  margin: 0 0 4px;
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  color: var(--ds-ink-mute);
-}
-
-.page-title {
-  font-size: clamp(1.5rem, 3vw, 2rem);
-  font-weight: 700;
-  color: var(--ds-ink);
-  margin-bottom: 6px;
-  letter-spacing: -0.01em;
-  line-height: 1.15;
-}
-
-.ref-hint {
-  color: var(--ds-ink-mute);
-  font-size: 14px;
-  margin-top: 8px;
-  font-weight: 500;
-}
-
-.meta-pills {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-top: 10px;
-}
-
-.meta-pill {
-  display: inline-flex;
-  align-items: center;
-  padding: 4px 10px;
-  border-radius: 999px;
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--ds-ink-secondary);
-  background: var(--ds-canvas-soft);
-  border: 1px solid var(--ds-hairline);
-}
-
-.header-buttons {
-  display: flex;
-  gap: 8px;
-  flex-shrink: 0;
-  flex-wrap: wrap;
-  justify-content: flex-end;
 }
 
 .course-tools-menu {
@@ -6059,44 +5985,11 @@ onUnmounted(() => {
   background: var(--ds-canvas-soft);
 }
 
-.btn-accent {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  background: var(--ds-primary);
-  color: var(--ds-on-primary);
-  border: none;
-  padding: 10px 18px;
-  border-radius: 999px;
-  font-weight: 600;
-  font-size: 14px;
-  cursor: pointer;
-  transition: var(--transition);
-}
-
-.btn-accent:hover {
-  background: var(--ds-primary-deep);
-}
-
 .btn-icon {
   font-size: 1em;
 }
 
 /* ----- Filters (Epic D denser ops) ----- */
-.filter-bar {
-  margin-top: 12px;
-  padding: 10px 12px;
-  border: 1px solid var(--ds-hairline);
-  border-radius: 10px;
-  background: var(--ds-canvas-soft);
-  position: relative;
-  z-index: 1;
-}
-
-.filter-bar.grid {
-  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-  gap: 8px 10px;
-}
 
 .filter-field label {
   font-size: 11px;
@@ -6145,20 +6038,8 @@ onUnmounted(() => {
   outline-offset: 2px;
 }
 
-/* ----- Compact stats strip ----- */
 .fade-enter-active, .fade-leave-active { transition: opacity 0.3s; }
 .fade-enter-from, .fade-leave-to { opacity: 0; }
-
-@media (max-width: 980px) {
-  .header-actions {
-    align-items: flex-start;
-    flex-direction: column;
-  }
-  .header-buttons {
-    width: 100%;
-    justify-content: flex-start;
-  }
-}
 
 /* ----- Table ----- */
 .table-card {
@@ -6276,16 +6157,6 @@ onUnmounted(() => {
   border-radius: 8px;
 }
 
-.cell-fee {
-  font-weight: 600;
-  color: var(--text);
-}
-
-.cell-total {
-  font-weight: 700;
-  color: var(--ds-primary-text);
-}
-
 .schedule-slot-lines {
   display: flex;
   flex-direction: column;
@@ -6371,14 +6242,6 @@ onUnmounted(() => {
   font-weight: 600;
 }
 
-.action-dropdown-close {
-  color: #92400e;
-  font-weight: 500;
-}
-.action-dropdown-close:hover {
-  background: #fef3c7;
-}
-
 .action-dropdown-danger {
   color: #dc2626;
 }
@@ -6458,131 +6321,13 @@ button.danger:disabled {
   font-weight: 800;
 }
 
-.btn-add-session {
-  white-space: nowrap;
-  border-radius: 999px;
-  border: 1px solid rgba(245, 124, 0, 0.36);
-  background: var(--ds-primary-wash);
-  color: var(--ds-primary-text);
-  font-weight: 900;
-  font-size: 13px;
-  padding: 5px 12px;
-  cursor: pointer;
-  transition: all 0.15s ease;
-}
-.btn-add-session:hover:not(:disabled) {
-  background: var(--ds-primary-soft);
-  border-color: var(--ds-primary);
-  transform: translateY(-1px);
-  box-shadow: 0 10px 24px rgba(245, 124, 0, 0.18); color: var(--ds-on-brand);
-}
-.btn-add-session:disabled,
-.btn-add-session.disabled {
-  opacity: 0.45;
-  cursor: not-allowed;
-  background: var(--ds-surface-2);
-  border-color: var(--ds-hairline);
-  color: var(--ds-ink-faint);
-  transform: none;
-  box-shadow: none;
-}
-
-.action-dropdown-add-session-mobile {
-  display: none;
-  color: #1d4ed8;
-  font-weight: 600;
-}
-
-.action-dropdown-item--disabled {
-  opacity: 0.45;
-  cursor: not-allowed;
-  color: #94a3b8 !important;
-}
-
-@media (max-width: 640px) {
-  .btn-add-session {
-    display: none;
-  }
-  .action-dropdown-add-session-mobile {
-    display: block;
-  }
-}
-
 /* ----- Empty state ----- */
 
 .empty-icon { font-size: 2.5rem; color: var(--ds-ink-secondary); }
 
 
 
-/* ----- Subject Modal ----- */
-.subject-modal {
-  width: 100%;
-  max-width: 420px;
-}
-.subject-modal .modal-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 16px;
-}
-.subject-modal .modal-header h3 { margin: 0; font-size: 1.1rem; }
-.subject-modal .modal-body { display: flex; flex-direction: column; gap: 12px; }
-.subject-add-row {
-  display: flex;
-  gap: 8px;
-}
-.subject-add-row .input-field {
-  flex: 1;
-  padding: 6px 10px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  font-size: 14px;
-}
-.subject-list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  max-height: 300px;
-  overflow-y: auto;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-}
-.subject-item {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 8px 12px;
-  border-bottom: 1px solid var(--border);
-  font-size: 14px;
-}
-.subject-item:last-child { border-bottom: none; }
-.btn-danger-soft {
-  background: none;
-  border: none;
-  color: var(--ds-danger);
-  cursor: pointer;
-  font-size: 13px;
-  padding: 2px 6px;
-  border-radius: 4px;
-}
-.btn-danger-soft:hover { background: var(--ds-danger-wash); }
-.btn-close {
-  background: none;
-  border: none;
-  font-size: 16px;
-  cursor: pointer;
-  color: var(--text-light);
-  padding: 2px 6px;
-}
-.error-text { color: var(--ds-danger); font-size: 13px; margin: 0; }
 
-/* ----- Modals ----- */
-.course-modal {
-  width: 100%;
-  max-width: 560px;
-  max-height: 90vh;
-  overflow-y: auto;
-}
 
 .editability-action-panel {
   display: grid;
@@ -6632,20 +6377,6 @@ button.danger:disabled {
   white-space: nowrap;
 }
 
-.modal-title {
-  font-size: 1.15rem;
-  font-weight: 700;
-  color: var(--text);
-  margin-bottom: 8px;
-}
-
-.modal-desc {
-  color: var(--text-light);
-  font-size: 13px;
-  margin-bottom: 20px;
-  line-height: 1.6;
-}
-
 .billing-correction-affected-sessions {
   margin: 10px 0 0;
   padding-left: 20px;
@@ -6658,103 +6389,9 @@ button.danger:disabled {
   margin-top: 12px;
 }
 
-.premium-danger-modal,
-.pause-confirm-modal {
-  position: relative;
-  overflow: hidden;
-  border: 1px solid rgba(125, 211, 252, 0.24);
-  box-shadow: 0 30px 86px rgba(15, 23, 42, 0.34), inset 0 1px 0 rgba(255,255,255,0.12);
-  background:
-    radial-gradient(circle at top right, rgba(14,165,233,0.18), transparent 34%),
-    linear-gradient(135deg, rgba(15,23,42,0.96), rgba(30,41,59,0.94));
-  color: #e2e8f0;
-}
-.premium-danger-modal {
-  width: min(440px, calc(100vw - 32px));
-}
-.premium-danger-modal::before,
-.pause-confirm-modal::before {
-  content: '';
-  position: absolute;
-  inset: 0 0 auto;
-  height: 2px;
-  background: linear-gradient(90deg, #38bdf8, #6366f1, #f59e0b);
-}
-.premium-danger-modal::before {
-  background: linear-gradient(90deg, #fb7185, #ef4444, #f97316);
-}
-.premium-danger-header {
-  display: flex;
-  gap: 14px;
-  align-items: flex-start;
-  margin-bottom: 14px;
-}
-.premium-danger-icon {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 42px;
-  height: 42px;
-  border-radius: 16px;
-  color: #fecaca;
-  background: linear-gradient(135deg, rgba(127,29,29,0.92), rgba(15,23,42,0.88));
-  border: 1px solid rgba(248,113,113,0.42);
-  box-shadow: 0 14px 34px rgba(220,38,38,0.24);
-  font-weight: 900;
-}
-.premium-danger-kicker {
-  margin: 0 0 2px;
-  color: #dc2626;
-  font-size: 11px;
-  font-weight: 800;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-}
-.premium-danger-body {
-  margin: 12px 0 20px;
-  padding: 12px 14px;
-  border: 1px solid rgba(248,113,113,0.28);
-  border-radius: 14px;
-  background: linear-gradient(135deg, rgba(127,29,29,0.2), rgba(15,23,42,0.44));
-  font-size: 14px;
-  line-height: 1.6;
-}
-
 .form-section {
   margin-bottom: 20px;
 }
-
-.form-section-title {
-  font-size: 12px;
-  font-weight: 700;
-  color: var(--text-light);
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  margin-bottom: 12px;
-  padding-bottom: 6px;
-  border-bottom: 1px solid var(--border);
-}
-
-.form-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 16px;
-  margin-bottom: 16px;
-}
-
-.form-textarea {
-  width: 100%;
-  padding: 8px 12px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  resize: vertical;
-  font-size: 14px;
-  font-family: inherit;
-}
-
-.text-red { color: var(--danger) !important; }
-.text-secondary { color: var(--text-light); font-size: 0.9rem; }
-.computed-end-time { margin: 0; font-weight: 600; font-size: 1rem; }
 
 .small.danger {
   background: var(--ds-danger-wash);
@@ -6763,115 +6400,7 @@ button.danger:disabled {
 }
 .small.danger:hover { background: var(--ds-danger-wash); color: var(--ds-danger); }
 
-
-.legacy-box {
-  background: var(--ds-primary-wash);
-  border: 1px solid var(--ds-warning-line);
-  border-radius: 10px;
-  padding: 16px;
-  margin-top: 16px;
-}
-
-.legacy-box h4 {
-  font-size: 13px;
-  font-weight: 700;
-  margin-bottom: 12px;
-  color: var(--ds-warning);
-}
-.backfill-import-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 10px;
-  flex-wrap: wrap;
-}
-
-.legacy-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr 1fr;
-  gap: 16px;
-}
-
-.remaining-display {
-  font-size: 28px;
-  font-weight: 800;
-  color: var(--ds-primary-text);
-  padding: 6px 0;
-  text-align: center;
-}
-
-.preview-dates-box {
-  margin-top: 14px;
-  padding: 12px;
-  background: var(--ds-success-wash);
-  border: 1px solid var(--ds-success-line);
-  border-radius: 8px;
-}
-.preview-dates-box h4 { font-size: 13px; margin-bottom: 6px; color: var(--ds-success); }
-.backfill-calendar-box {
-  margin-top: 12px;
-  border: 1px solid #ffd180;
-  background: var(--ds-primary-wash);
-  border-radius: 10px;
-  padding: 10px;
-}
-.backfill-calendar-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 8px;
-}
-.backfill-calendar-weekdays,
-.backfill-calendar-grid {
-  display: grid;
-  grid-template-columns: repeat(7, 1fr);
-  gap: 6px;
-}
-.backfill-calendar-weekdays {
-  font-size: 12px;
-  color: var(--text-light);
-  text-align: center;
-  margin-bottom: 6px;
-}
-.calendar-day {
-  border: 1px solid #ffe0b2;
-  border-radius: 8px;
-  background: var(--ds-canvas);
-  min-height: 34px;
-  font-size: 12px;
-  color: var(--text);
-  cursor: pointer;
-}
-.calendar-day.muted {
-  opacity: 0.55;
-}
-.calendar-day.selected {
-  background: var(--ds-success-wash);
-  border-color: var(--ds-success-line);
-  color: var(--ds-success);
-  font-weight: 700;
-}
-.calendar-day.disabled {
-  background: var(--ds-surface-2);
-  color: var(--ds-ink-faint);
-  border-color: var(--ds-hairline);
-  cursor: not-allowed;
-}
-.backfill-calendar-actions {
-  margin-top: 8px;
-  display: flex;
-  justify-content: flex-end;
-}
-
 @media (max-width: 640px) {
-  .header-actions {
-    flex-direction: column;
-    align-items: stretch;
-  }
-
-  .header-buttons {
-    justify-content: flex-start;
-  }
 
   .course-tools-menu[open] {
     width: 100%;
@@ -6890,56 +6419,12 @@ button.danger:disabled {
   .course-filter-clear {
     width: 100%;
   }
-
-  .summary-row {
-    grid-template-columns: repeat(2, 1fr);
-  }
-  .form-grid {
-    grid-template-columns: 1fr;
-  }
-  .legacy-grid {
-    grid-template-columns: 1fr;
-  }
   .cell-actions {
     min-width: 90px;
   }
   .detail-meta {
     gap: 4px 12px;
   }
-}
-.preview-dates-box .hint-small { font-size: 12px; margin-top: 6px; color: var(--ds-success); }
-.preview-dates-list {
-  font-size: 13px;
-  color: var(--text);
-  word-break: break-all;
-  margin-top: 6px;
-}
-
-.day-chips {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-  padding: 6px 0;
-}
-.day-chip {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 36px;
-  height: 36px;
-  border-radius: 50%;
-  border: 2px solid var(--border);
-  cursor: pointer;
-  font-weight: 700;
-  font-size: 14px;
-  color: var(--text-light);
-  transition: var(--transition);
-  user-select: none;
-}
-.day-chip.selected {
-  background: var(--primary);
-  color: var(--ds-on-primary);
-  border-color: var(--primary);
 }
 
 .detail-panel {
@@ -7155,44 +6640,6 @@ button.danger:disabled {
   transform: translateY(-1px);
   box-shadow: var(--ds-shadow-1);
 }
-/* Session Edit Modal */
-.session-edit-modal .session-edit-info {
-  background: var(--ds-canvas-soft); border-radius: 10px; padding: 12px 16px; margin-bottom: 16px; display: flex; flex-direction: column; gap: 6px;
-}
-.session-edit-modal .se-row { display: flex; align-items: center; gap: 8px; font-size: 0.93em; }
-.session-edit-modal .se-label { font-weight: 600; color: var(--ds-ink-mute); min-width: 70px; }
-.se-status-badge { display: inline-block; padding: 2px 10px; border-radius: 999px; font-size: 0.85em; font-weight: 600; }
-.se-st-scheduled { background: #e0f2fe; color: #0369a1; }
-.se-st-attended, .se-st-late { background: var(--ds-success-wash); color: var(--ds-success); }
-.se-st-absent { background: var(--ds-danger-wash); color: var(--ds-danger); }
-.se-st-excused, .se-st-leave { background: var(--ds-warning-wash); color: var(--ds-warning); }
-.se-st-leave_adjusted { background: var(--ds-warning-wash); color: var(--ds-warning); }
-.se-st-cancelled { background: var(--ds-surface-2); color: var(--ds-ink-mute); }
-.se-section-title { font-size: 0.95em; font-weight: 600; color: var(--ds-ink-secondary); margin: 0 0 10px; }
-.se-action-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 8px; }
-.se-action-grid-compact { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-.se-secondary-action { margin-top: 10px; }
-.se-secondary-action label { display: block; font-size: 0.85em; color: var(--ds-ink-mute); margin-bottom: 6px; }
-.se-secondary-row { display: flex; gap: 8px; align-items: center; }
-.se-secondary-row select { flex: 1; }
-.se-action-btn {
-  padding: 8px 12px; border-radius: 8px; border: 1px solid var(--ds-hairline); background: var(--ds-canvas);
-  font-size: 0.88em; font-weight: 500; cursor: pointer; text-align: center;
-  transition: all 0.15s ease;
-}
-.se-action-btn:hover { transform: translateY(-1px); box-shadow: var(--ds-shadow-1); }
-.se-btn-attended { border-color: var(--ds-success-line); color: var(--ds-success); } .se-btn-attended:hover { background: var(--ds-success-wash); }
-.se-btn-late { border-color: var(--ds-warning-line); color: var(--ds-warning); } .se-btn-late:hover { background: var(--ds-warning-wash); }
-.se-btn-absent { border-color: var(--ds-danger-line); color: var(--ds-danger); } .se-btn-absent:hover { background: var(--ds-danger-wash); }
-.se-btn-excused { border-color: var(--ds-warning-line); color: var(--ds-warning); } .se-btn-excused:hover { background: var(--ds-warning-wash); }
-.se-btn-leave { border-color: var(--ds-warning-line); color: var(--ds-warning); } .se-btn-leave:hover { background: var(--ds-warning-wash); }
-.se-btn-retro-leave { border-color: #fb923c; color: var(--ds-warning); } .se-btn-retro-leave:hover { background: var(--ds-warning-wash); }
-.se-btn-scheduled { border-color: #93c5fd; color: #1d4ed8; } .se-btn-scheduled:hover { background: #dbeafe; }
-.se-btn-cancelled { border-color: var(--ds-hairline); color: var(--ds-ink-mute); } .se-btn-cancelled:hover { background: var(--ds-surface-2); }
-.se-btn-reschedule { border-color: #a78bfa; color: #6d28d9; } .se-btn-reschedule:hover { background: #ede9fe; }
-.se-loading { text-align: center; color: var(--ds-ink-mute); padding: 8px 0; font-size: 0.9em; }
-.session-edit-reschedule .se-reschedule-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-.session-edit-reschedule .se-reschedule-grid .form-group:last-child { grid-column: 1 / -1; }
 .date-chip.completed {
   background: var(--ds-success-wash);
   border-color: var(--ds-success-line);
@@ -7251,58 +6698,6 @@ button.danger:disabled {
   color: var(--ds-ink-secondary);
 }
 
-.course-paused .action-btns-compact .small.ghost,
-.course-paused .action-btns-compact .small.danger {
-  opacity: 0.72;
-}
-
-.course-paused .action-btns-compact .small.primary {
-  opacity: 1;
-  box-shadow: 0 0 0 1px rgba(217, 119, 6, 0.35);
-}
-
-.tag-paused {
-  background: var(--ds-warning-wash);
-  color: var(--ds-warning);
-  border: 1px solid var(--ds-warning-line);
-  border-radius: 6px;
-  font-size: 11px;
-  padding: 2px 7px;
-  font-weight: 600;
-}
-
-.pause-confirm-modal {
-  max-width: 480px;
-}
-
-.pause-confirm-header {
-  display: flex;
-  gap: 12px;
-  align-items: flex-start;
-  margin-bottom: 14px;
-}
-
-.pause-confirm-icon {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 40px;
-  height: 40px;
-  border-radius: 14px;
-  background: linear-gradient(135deg, rgba(120,53,15,0.78), rgba(15,23,42,0.86));
-  color: #fef3c7;
-  border: 1px solid rgba(251,191,36,0.38);
-  font-weight: 800;
-  flex: 0 0 auto;
-  box-shadow: 0 10px 26px rgba(180,83,9,0.16);
-}
-
-.pause-confirm-icon.resume {
-  background: linear-gradient(135deg, rgba(30,64,175,0.78), rgba(15,23,42,0.86));
-  color: #bfdbfe;
-  border-color: rgba(96,165,250,0.42);
-}
-
 .btn-resume-primary {
   background: var(--ds-primary);
 }
@@ -7345,143 +6740,8 @@ button.danger:disabled {
   font-size: 12px;
   color: var(--ds-ink-faint);
 }
-
-.tag-unknown-classification { cursor: help; }
 .paid-date-hint { font-size: 11px; color: var(--ds-success); margin-top: 2px; white-space: nowrap; }
-.tag-armed {
-  background: var(--ds-danger-wash);
-  color: var(--ds-danger);
-  border: 1px solid var(--ds-danger-line);
-  border-radius: 6px;
-  font-size: 12px;
-  font-weight: 700;
-  cursor: pointer;
-  padding: 3px 10px;
-}
 
-/* ----- Makeup Slots ----- */
-.btn-makeup-query {
-  width: 100%;
-  padding: 8px 12px !important;
-  font-size: 13px !important;
-  font-weight: 600;
-  border: 1px dashed var(--primary) !important;
-  color: var(--ds-primary-text) !important;
-  border-radius: 8px;
-  transition: var(--transition);
-}
-.btn-makeup-query:hover:not(:disabled) {
-  background: var(--primary-bg) !important;
-}
-.btn-makeup-query:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-.makeup-range-bar {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin-bottom: 14px;
-}
-.makeup-range-bar label {
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--text-light);
-  white-space: nowrap;
-}
-.makeup-range-bar select {
-  padding: 6px 10px;
-  border-radius: 6px;
-  font-size: 13px;
-  flex: 1;
-}
-.makeup-status {
-  text-align: center;
-  padding: 28px 16px;
-  color: var(--text-light);
-  font-size: 14px;
-}
-.makeup-slots-list {
-  max-height: 380px;
-  overflow-y: auto;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  margin-bottom: 16px;
-}
-.makeup-date-group + .makeup-date-group {
-  border-top: 1px solid var(--border);
-}
-.makeup-date-header {
-  padding: 8px 12px;
-  font-size: 13px;
-  font-weight: 700;
-  background: var(--primary-bg);
-  color: var(--text);
-  position: sticky;
-  top: 0;
-  z-index: 1;
-}
-.makeup-slot-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 6px 12px;
-  border-top: 1px solid var(--ds-hairline);
-  font-size: 13px;
-}
-.makeup-slot-row:first-child {
-  border-top: none;
-}
-.makeup-slot-row:hover {
-  background: var(--ds-canvas-soft);
-}
-.slot-info {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
-  flex: 1;
-}
-.slot-time {
-  color: var(--text);
-  font-weight: 500;
-}
-.slot-capacity {
-  font-size: 12px;
-  font-weight: 600;
-  padding: 1px 8px;
-  border-radius: 10px;
-}
-.slot-capacity.cap-free {
-  background: var(--ds-success-wash);
-  color: var(--ds-success);
-}
-.slot-capacity.cap-partial {
-  background: var(--ds-warning-wash);
-  color: var(--ds-warning);
-}
-.slot-students {
-  font-size: 11px;
-  color: var(--text-light);
-  flex-basis: 100%;
-}
-.slot-has-students {
-  background: var(--ds-primary-wash);
-}
-.btn-renew-warn {
-  background: var(--ds-brand-orange) !important;
-  color: var(--ds-on-primary) !important;
-  border: 1px solid var(--ds-primary-deep) !important;
-  font-weight: 600;
-  border-radius: 6px;
-  padding: 4px 10px;
-  font-size: 12px;
-  cursor: pointer;
-}
-.btn-renew-warn:hover {
-  background: var(--ds-primary-deep) !important;
-}
 .action-dropdown-renew {
   color: var(--ds-primary-text) !important;
   font-weight: 600 !important;
@@ -7497,9 +6757,6 @@ button.danger:disabled {
 }
 [data-theme="dark"] .date-chip.over-quota .chip-state {
   color: var(--ds-canvas-soft);
-}
-[data-theme="dark"] .btn-renew-warn {
-  color: var(--ds-on-brand) !important;
 }
 
 [data-theme="dark"] .course-page::before {
@@ -7527,12 +6784,6 @@ button.danger:disabled {
 [data-theme="dark"] .empty-active-courses__inner {
   border-color: var(--ds-hairline);
   background: linear-gradient(180deg, rgba(15,23,42,0.98), rgba(30,41,59,0.9));
-}
-[data-theme="dark"] .modal-title {
-  color: var(--ds-ink);
-}
-[data-theme="dark"] .modal-desc {
-  color: var(--ds-ink-secondary);
 }
 [data-theme="dark"] .empty-active-courses__icon {
   color: #475569;
@@ -7589,12 +6840,6 @@ button.danger {
   cursor: pointer;
 }
 
-/* ── Disabled button UX: cursor + tooltip affordance ── */
-.btn-add-session.disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-  position: relative;
-}
 
 /* Course workbench: reuse template tokens without changing other pages or domain state. */
 .course-workbench { color: var(--ds-ink); font-size: inherit; }
@@ -7648,7 +6893,5 @@ button.danger {
 .course-workbench__help[open] > summary .course-help-label { position: static; width: auto; height: auto; overflow: visible; clip-path: none; }
 
 .course-workbench .course-tools-menu__summary { min-height: 3rem; }
-@media (max-width: 640px) {
-}
 
 </style>

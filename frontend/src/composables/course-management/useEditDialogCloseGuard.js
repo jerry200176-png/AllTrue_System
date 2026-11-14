@@ -21,3 +21,12 @@ export function useEditDialogCloseGuard({ isOpen, isDirty, ask, close }) {
   }
   return { requestClose };
 }
+
+/**
+ * `@escape-key-down` handler for every course dialog with a text field: the Esc that ends an IME composition
+ * (isComposing, or keyCode 229 on older browsers) must not close the dialog and drop what was typed.
+ * @param {{ isComposing?: boolean, keyCode?: number, preventDefault: () => void }} event
+ */
+export function ignoreComposingEscape(event) {
+  if (event.isComposing || event.keyCode === 229) event.preventDefault();
+}
