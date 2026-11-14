@@ -50,7 +50,6 @@
 @source "./components/motion/TextReveal.vue";
 @source "./pages/ExamGradesPage.vue";
 @source "./pages/ParentPortal.vue";
-@source "./pages/StudentsList.vue";
 
 /* Light theme only. Dark comes later: add a `.dark { ... }` block remapping these to dark --ds-* tokens. */
 :root {
