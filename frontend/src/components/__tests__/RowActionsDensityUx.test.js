@@ -19,8 +19,10 @@ describe('row actions density', () => {
     expect(notifications).toContain('<AtRowMenu');
     expect(notifications).toContain('!title.includes(payload.student_name)');
   });
-  it('students: delete lives in the row menu and RFID never wraps', () => {
-    expect(students).toMatch(/<AtRowMenu>[\s\S]*deleteStudent\(student\)/);
-    expect(students).toMatch(/\.rfid-unbound \{\s*white-space: nowrap/);
+  it('students: delete lives last in the row menu, as danger, and RFID never wraps', () => {
+    expect(students).toMatch(/studentMenuGroups = \[\{[^\]]*\{ id: 'delete', label: '刪除學生', danger: true \}\] \}\];/);
+    expect(students).toMatch(/id === 'delete'\) deleteStudent\(student\)/);
+    expect(students).toContain('<ActionMenu :groups="studentMenuGroups"');
+    expect(students).toContain('class="tw:whitespace-nowrap tw:text-tpl-secondary">未綁定');
   });
 });

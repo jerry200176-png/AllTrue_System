@@ -542,8 +542,8 @@ const PAGES = [
     url: '/pilot-mount.html?page=students&mode=normal',
     names: NAMES,
     allNames: true,
-    rows: ['tr.student-row td:nth-child(3)'],
-    touch: ['[data-slot="page-actions"] button', '[data-guide="students-filters"] button', '[data-slot="filter-chip"]'],
+    rows: ['[data-testid="student-row"] td:nth-child(3)'],
+    touch: ['[data-slot="page-actions"] button', '[data-guide="students-filters"] button', '[data-slot="filter-chip"]', '[data-testid="student-course-disclosure"]', '[data-testid="student-row"] .am__trigger', '[data-testid="student-select"]', '[data-testid="student-select-all"]', '[data-testid="student-row-toggle"]'],
     mock: async (page) => {
       await installApiMocks(page, 'normal', 'students');
       const data = NAMES.map((name, i) => ({ id: 3000 + i, name, grade: ['J1', 'J2', 'J3', 'E5'][i % 4], school: ['測試國中', '測試國民中學附設高級中等學校'][i % 2], parent_name: '測試家長', rfid: i % 3 ? `TEST${2000 + i}` : null, status: 'active', notes: '', line_bound: false }));
@@ -780,6 +780,43 @@ for (const entry of PAGES) {
       });
     }
   }
+}
+
+// 學生管理 slice 2: the drawn checkbox box (::before, absolute) must sit UNDER the check / minus icon. The shared CheckboxIndicator has
+// pointer-events:none, so elementFromPoint cannot see it; the paint order is read from the styles instead: the indicator has to be positioned with a
+// z-index above the box (a static indicator paints below an absolute ::before and a checked or mixed box reads as a solid square).
+for (const vp of VIEWPORTS) {
+  test(`layout guard: students checkbox icon is above the box @${vp.name}`, async ({ page }) => {
+    const entry = PAGES.find((p) => p.key === 'students');
+    await page.setViewportSize({ width: vp.width, height: vp.height });
+    await entry.mock(page);
+    await page.goto(entry.url);
+    await expect(page.locator('html')).toHaveAttribute('data-pilot-ready', '1', { timeout: 15_000 });
+    await page.getByText(entry.names[0], { exact: true }).first().waitFor({ state: 'attached' });
+    const paint = (testid) => page.evaluate((id) => {
+      const box = document.querySelector(`[data-testid="${id}"]`);
+      const icon = box.querySelector('[data-slot="checkbox-indicator"]');
+      if (!icon) return { state: box.getAttribute('data-state'), hasIcon: false };
+      const ics = getComputedStyle(icon);
+      const bs = getComputedStyle(box, '::before');
+      const z = (v) => (v === 'auto' ? 0 : Number(v));
+      return { state: box.getAttribute('data-state'), hasIcon: true, iconPosition: ics.position, iconZ: z(ics.zIndex), boxPosition: bs.position, boxZ: z(bs.zIndex), hasSvg: Boolean(icon.querySelector('svg')) };
+    }, testid);
+    const above = (m, what) => {
+      expect(m.hasIcon, `${what}: the indicator renders`).toBe(true);
+      expect(m.hasSvg, `${what}: the indicator holds an icon`).toBe(true);
+      expect(m.boxPosition, `${what}: the drawn box is absolutely positioned`).toBe('absolute');
+      expect(m.iconPosition, `${what}: the icon is positioned, so z-index applies`).not.toBe('static');
+      expect(m.iconZ, `${what}: the icon z-index is above the box (${m.iconZ} vs ${m.boxZ})`).toBeGreaterThan(m.boxZ);
+    };
+    await page.locator('[data-testid="student-select"]').first().click();
+    const checked = await paint('student-select');
+    expect(checked.state, 'row box is checked').toBe('checked');
+    above(checked, 'checked row');
+    const mixed = await paint('student-select-all');
+    expect(mixed.state, 'select-all is mixed').toBe('indeterminate');
+    above(mixed, 'mixed select-all');
+  });
 }
 
 // 課程查找 slice 7a: keyboard behaviour of the 編輯課程 dialog. Tab stays inside, an outside click does not close it (unsaved form),

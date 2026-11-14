@@ -37,7 +37,7 @@ it('In-App #367: shows shared balance once at package level, never on member car
   const wrapper = shallowMount(StudentsList, { props: { branchId: 1 } });
   try {
     await flushPromises();
-    await wrapper.find('.student-row').trigger('click');
+    await wrapper.find('[data-testid="student-row"]').trigger('click');
     await flushPromises();
     const cards = wrapper.findAll('.student-course-card');
     expect(cards).toHaveLength(3);
@@ -79,7 +79,7 @@ it('In-App #419: a pool whose ledger used more than its total says how many sess
   const wrapper = shallowMount(StudentsList, { props: { branchId: 1 } });
   try {
     await flushPromises();
-    await wrapper.find('.student-row').trigger('click');
+    await wrapper.find('[data-testid="student-row"]').trigger('click');
     await flushPromises();
     const pool = wrapper.find('.student-package-summary');
     expect(pool.find('[data-testid="package-used"]').text()).toBe('17');
@@ -105,7 +105,7 @@ it('In-App #419 review: a monthly package (total 0) with ledger rows never shows
   const wrapper = shallowMount(StudentsList, { props: { branchId: 1 } });
   try {
     await flushPromises();
-    await wrapper.find('.student-row').trigger('click');
+    await wrapper.find('[data-testid="student-row"]').trigger('click');
     await flushPromises();
     const pool = wrapper.find('.student-package-summary');
     expect(pool.exists()).toBe(true);

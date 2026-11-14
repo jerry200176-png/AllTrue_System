@@ -43,7 +43,7 @@ describe('StudentsList complete paginated loading (#4490)', () => {
     }));
     wrapper = mountStudents();
     await flushPromises();
-    const rows = wrapper.findAll('.student-row');
+    const rows = wrapper.findAll('[data-testid="student-row"]');
     expect(rows).toHaveLength(count);
     if (count) expect(rows.at(-1).text()).toContain(`學生${count}`);
     expect(calls).toHaveLength(Math.max(1, Math.ceil(count / 500)));
@@ -68,7 +68,7 @@ describe('StudentsList complete paginated loading (#4490)', () => {
     wrapper = mountStudents();
     await flushPromises();
     expect(wrapper.find('.students-list-state--error').text()).toContain('學生清單暫時無法載入');
-    expect(wrapper.findAll('.student-row')).toHaveLength(0);
+    expect(wrapper.findAll('[data-testid="student-row"]')).toHaveLength(0);
     expect(from).not.toHaveBeenCalledWith('students');
   });
 
@@ -84,7 +84,7 @@ describe('StudentsList complete paginated loading (#4490)', () => {
     await flushPromises();
     expect(fallback.eq).toHaveBeenCalledWith('per_page', 500);
     expect(wrapper.find('.students-list-state--error').exists()).toBe(true);
-    expect(wrapper.findAll('.student-row')).toHaveLength(0);
+    expect(wrapper.findAll('[data-testid="student-row"]')).toHaveLength(0);
   });
 
   it('retains school search and grade filters on every page after changing filters', async () => {
@@ -111,7 +111,7 @@ describe('StudentsList complete paginated loading (#4490)', () => {
     await flushPromises();
     filteredCalls = calls.filter(url => url.searchParams.get('class_id') === '7');
     expect(filteredCalls.map(url => url.searchParams.get('page'))).toEqual(['1', '2', '1', '2']);
-    expect(wrapper.findAll('.student-row')).toHaveLength(501);
+    expect(wrapper.findAll('[data-testid="student-row"]')).toHaveLength(501);
     for (const url of filteredCalls) {
       expect(url.searchParams.get('search')).toBe('光華');
       expect(url.searchParams.get('branch_id')).toBe('11');
@@ -134,11 +134,11 @@ describe('StudentsList complete paginated loading (#4490)', () => {
     expect(finishOldPage).toBeTypeOf('function');
     await wrapper.setProps({ branchId: 12 });
     await flushPromises();
-    expect(wrapper.findAll('.student-row')).toHaveLength(1);
-    expect(wrapper.find('.student-row').text()).toContain('新分校學生');
+    expect(wrapper.findAll('[data-testid="student-row"]')).toHaveLength(1);
+    expect(wrapper.find('[data-testid="student-row"]').text()).toContain('新分校學生');
     finishOldPage(response({ data: students(1, 500), total: 501, last_page: 2 }));
     await flushPromises();
-    expect(wrapper.findAll('.student-row')).toHaveLength(1);
-    expect(wrapper.find('.student-row').text()).toContain('新分校學生');
+    expect(wrapper.findAll('[data-testid="student-row"]')).toHaveLength(1);
+    expect(wrapper.find('[data-testid="student-row"]').text()).toContain('新分校學生');
   });
 });

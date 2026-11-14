@@ -41,8 +41,8 @@ test.describe('one existing entry for renewal (#429)', () => {
         });
         await page.setViewportSize({ width, height: 900 });
         await page.goto('/pilot-mount.html?page=students');
-        await page.locator('tr.student-row').first().focus();
-        await page.locator('tr.student-row').first().press('Enter');
+        await page.locator('[data-testid="student-row"]').first().focus();
+        await page.locator('[data-testid="student-row"]').first().press('Enter');
         await page.getByRole('button', { name: /新增課程/ }).click();
         const prompt = page.getByRole('dialog', { name: '此學生已有進行中的課程', exact: true });
         await expect(prompt).toBeVisible();
@@ -118,7 +118,7 @@ test.describe('529 course deletion result feedback', () => {
       return json({ data: [], total: 0, last_page: 1 });
     });
     await page.goto('/pilot-mount.html?page=students');
-    await page.locator('.student-name-cell').click();
+    await page.locator('[data-testid="student-name-cell"]').click();
     const card = page.locator('.student-course-card');
     await expect(card).toHaveCount(1);
     await card.locator('summary').click();
@@ -262,10 +262,10 @@ test.describe('In-App #367 shared-pool ownership', () => {
       });
       await page.setViewportSize({ width, height: 900 });
       await page.goto('/pilot-mount.html?page=students');
-      await page.locator('.student-name-cell').click();
+      await page.locator('[data-testid="student-name-cell"]').click();
       const cards = page.locator('.student-course-card');
       await expect(cards).toHaveCount(2);
-      await expect(page.locator('.subject-pill strong')).toHaveText(['共用方案', '共用方案']);
+      await expect(page.locator('[data-testid="student-subject-chip"] strong')).toHaveText(['共用方案', '共用方案']);
       const pool = page.locator('.student-package-summary');
       await expect(pool).toHaveCount(1);
       const poolBounds = await pool.boundingBox();
@@ -333,8 +333,16 @@ test.describe('4970 student learning profile', () => {
         return json({ data: [], total: 0, last_page: 1 });
       });
       await page.goto('/pilot-mount.html?page=students');
-      const entry = page.getByRole('button', { name: '學習檔案', exact: true });
-      await entry.focus(); await page.keyboard.press('Enter');
+      // 學習檔案 now lives in the row's ⋯ menu: Enter opens it on 編輯, ArrowDown moves to 學習檔案, Enter picks it.
+      const menuButton = page.getByRole('button', { name: /^更多操作：/ }).first();
+      const openProfile = async () => {
+        await page.keyboard.press('Enter');
+        await expect(page.getByRole('menuitem', { name: '編輯' })).toBeFocused();
+        await page.keyboard.press('ArrowDown');
+        await expect(page.getByRole('menuitem', { name: '學習檔案' })).toBeFocused();
+        await page.keyboard.press('Enter');
+      };
+      await menuButton.focus(); await openProfile();
       const profile = page.getByRole('dialog', { name: /學習檔案/ });
       await expect(profile).toContainText('載入失敗，請稍後再試');
       const retry = profile.getByRole('button', { name: '重新載入', exact: true });
@@ -378,12 +386,12 @@ test.describe('4970 student learning profile', () => {
       await expect(profile).not.toContainText('缺考');
       expect(await profile.evaluate(el => el.scrollWidth <= el.clientWidth + 1)).toBe(true);
       await page.screenshot({ path: info.outputPath(`profile-${width}.png`), fullPage: true, animations: 'disabled' });
-      await page.keyboard.press('Escape'); await expect(profile).toHaveCount(0); await expect(entry).toBeFocused();
-      schoolUnavailable = true; await page.keyboard.press('Enter');
+      await page.keyboard.press('Escape'); await expect(profile).toHaveCount(0); await expect(menuButton).toBeFocused();
+      schoolUnavailable = true; await openProfile();
       await expect(profile).toContainText('校考日期暫時無法載入'); await expect(profile).toContainText('完成第二單元');
       await profile.getByRole('tab', { name: '上課紀錄', exact: true }).focus(); await page.keyboard.press('Enter');
       await expect(profile).toContainText('分數應用題與訂正');
-      await page.keyboard.press('Escape'); await expect(profile).toHaveCount(0); await expect(entry).toBeFocused();
+      await page.keyboard.press('Escape'); await expect(profile).toHaveCount(0); await expect(menuButton).toBeFocused();
       expect(primaryReads).toBe(3); expect(schoolReads).toBe(2);
       expect(writes).toEqual([]); expect(errors).toEqual([]);
       console.log(JSON.stringify({ student_profile: '4970', width, large_text: true, keyboard: true, primary_reads: primaryReads, school_reads: schoolReads, writes: writes.length }));

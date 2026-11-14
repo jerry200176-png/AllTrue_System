@@ -368,7 +368,7 @@ test.describe('UI foundation — real Vue page evidence', () => {
 
       const tableWrap = page.locator('.table-scroll-wrap');
       const initialScrollLeft = await tableWrap.evaluate((el) => el.scrollLeft);
-      const studentRow = page.locator('tr.student-row').first();
+      const studentRow = page.locator('[data-testid="student-row"]').first();
       await expect(studentRow).toHaveAttribute('tabindex', '0');
       await expect(studentRow).toHaveAttribute('aria-expanded', 'false');
       await expect(studentRow).toHaveAttribute('aria-controls', /student-course-detail-/);
@@ -425,7 +425,7 @@ test.describe('UI foundation — real Vue page evidence', () => {
   test('student active and history dates distinguish load failure from real empty data', async ({ page, context }) => {
     const openStudentWorkspace = async (targetPage, mode) => {
       await openPilot(targetPage, { pageName: 'students', mode, viewport: { width: 1440, height: 900 } });
-      await targetPage.locator('tr.student-row').first().press('Enter');
+      await targetPage.locator('[data-testid="student-row"]').first().press('Enter');
       const workspace = targetPage.getByTestId('student-course-workspace');
       await expect(workspace).toBeVisible();
       await targetPage.locator('.sl-history-toggle').click();

@@ -173,7 +173,7 @@ describe('#4150 StudentsList renders a free-gift course without 未繳', () => {
     }));
     const wrapper = shallowMount(StudentsList, { props: { branchId: 1 } });
     await flushPromises();
-    await wrapper.find('.student-row').trigger('click');
+    await wrapper.find('[data-testid="student-row"]').trigger('click');
     await flushPromises();
     return wrapper;
   }

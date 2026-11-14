@@ -60,7 +60,7 @@ for (const width of [390, 1440]) {
     const state = await install(page, { before });
     await page.goto(`${baseURL}/?app_page=students`);
     await dismissOverlays(page);
-    const row = page.locator('tr.student-row').first();
+    const row = page.locator('[data-testid="student-row"]').first();
     await row.focus();
     await row.press('Enter');
     const workspace = page.getByTestId('student-course-workspace');
@@ -104,8 +104,8 @@ test('共用方案輔導課不會誤走方案加購', async ({ page }) => {
   const state = await install(page, { packageCourse: true });
   await page.goto(`${baseURL}/?app_page=students`);
   await dismissOverlays(page);
-  await page.locator('tr.student-row').first().focus();
-  await page.locator('tr.student-row').first().press('Enter');
+  await page.locator('[data-testid="student-row"]').first().focus();
+  await page.locator('[data-testid="student-row"]').first().press('Enter');
   await page.getByTestId('student-course-workspace').locator('.student-course-card__actions > summary').click();
   await page.getByTestId('student-course-workspace').getByRole('button', { name: '延續輔導課（不收費）', exact: true }).click();
   await expect.poll(() => state.dialogs.length).toBe(1);

@@ -34,7 +34,7 @@ async function withCourse(overrides, assertions) {
   const wrapper = shallowMount(StudentsList, { props: { branchId: 1 } });
   try {
     await flushPromises();
-    await wrapper.find('.student-row').trigger('click');
+    await wrapper.find('[data-testid="student-row"]').trigger('click');
     await flushPromises();
     expect(wrapper.findAll('.student-course-card')).toHaveLength(1);
     await assertions(wrapper);

@@ -77,41 +77,42 @@
         <span>{{ studentsLoadError }}</span>
         <AtButton shape="rect" variant="secondary" class="students-list-state__action" @click="loadStudents">重試</AtButton>
       </div>
-      <div v-else-if="displayStudents.length" class="table-scroll-wrap" :aria-busy="studentsLoading ? 'true' : 'false'">
+      <div v-else-if="displayStudents.length" class="table-scroll-wrap tw:@container tw:lg:overflow-x-auto" :aria-busy="studentsLoading ? 'true' : 'false'">
         <div v-if="studentsLoading || studentsLoadError" class="students-refresh-state" :class="{ 'students-refresh-state--error': studentsLoadError }" role="status" aria-live="polite">
           <span class="material-symbols-outlined" aria-hidden="true">{{ studentsLoadError ? 'cloud_off' : 'sync' }}</span>
           <span v-if="studentsLoadError">更新失敗，仍顯示上次成功載入的學生資料。</span>
           <span v-else>正在更新學生清單…</span>
           <AtButton shape="rect" variant="secondary" class="students-refresh-state__action" @click="loadStudents">重試</AtButton>
         </div>
-      <table data-guide="students-table">
-        <thead>
-          <tr>
-            <th class="student-select-head">
-              <input
-                class="student-select-checkbox"
-                type="checkbox"
-                :checked="allVisibleSelected"
-                :indeterminate.prop="hasSelectedStudents && !allVisibleSelected"
-                @change="toggleSelectAllStudents($event.target.checked)"
+      <table data-guide="students-table" :class="[dataTable.table, dataTable.stackTable, 'tw:w-full tw:border-collapse']" aria-label="學生清單">
+        <thead :class="dataTable.stackBody">
+          <tr :class="['tw:max-lg:grid tw:max-lg:bg-muted tw:md:max-lg:px-4', gridCols]">
+            <th scope="col" :class="[dataTable.head, col.select, 'tw:max-lg:col-start-1 tw:max-lg:h-11 tw:max-lg:self-center']">
+              <Checkbox
+                :model-value="allVisibleSelected ? true : hasSelectedStudents ? 'indeterminate' : false"
+                :class="checkBox"
+                aria-label="全選學生"
+                data-testid="student-select-all"
+                @update:model-value="(v) => toggleSelectAllStudents(v === true)"
               />
             </th>
-            <th style="width: 30px;"></th>
-            <th>姓名</th>
-            <th>年級</th>
-            <th>學校</th>
-            <th>家長</th>
-            <th>RFID</th>
-            <th>補習科目 / 堂數</th>
-            <th>操作</th>
+            <th scope="col" :class="[dataTable.head, 'tw:w-8 tw:px-0 tw:max-lg:sr-only']"><span class="tw:sr-only">展開課程</span></th>
+            <th scope="col" :class="[dataTable.head, 'tw:max-lg:col-start-2 tw:max-lg:col-span-3 tw:max-lg:h-11 tw:max-lg:self-center tw:max-lg:px-0']">姓名</th>
+            <th scope="col" :class="[dataTable.head, 'tw:max-lg:sr-only']">年級</th>
+            <th scope="col" :class="[dataTable.head, 'tw:max-lg:sr-only']">學校</th>
+            <th scope="col" :class="[dataTable.head, 'tw:max-lg:sr-only tw:lg:@max-5xl:hidden']">家長</th>
+            <th scope="col" :class="[dataTable.head, 'tw:max-lg:sr-only']">RFID</th>
+            <th scope="col" :class="[dataTable.head, 'tw:max-lg:sr-only']">補習科目 / 堂數</th>
+            <th scope="col" :class="[dataTable.head, 'tw:max-lg:sr-only']"><span class="tw:sr-only">操作</span></th>
           </tr>
         </thead>
-        <tbody v-for="student in displayStudents" :key="student.id">
+        <tbody v-for="student in displayStudents" :key="student.id" :class="dataTable.stackBody">
           <!-- Student Row -->
           <tr
-            class="student-row"
-            :class="[{ expanded: expandedId === student.id }, 'status-' + (student.status || 'active')]"
+            data-testid="student-row"
+            :class="[dataTable.stackRow, gridCols, 'tw:cursor-pointer tw:outline-none tw:focus-visible:outline-2 tw:focus-visible:-outline-offset-2 tw:focus-visible:outline-solid tw:focus-visible:outline-ring', isStudentSelected(student) ? 'tw:bg-[color-mix(in_srgb,var(--ds-primary-wash)_55%,transparent)] tw:hover:bg-[var(--ds-primary-wash)]' : expandedId === student.id ? 'tw:bg-muted' : 'tw:hover:bg-muted/60']"
             :data-student-id="student.id"
+            :data-status="student.status || 'active'"
             tabindex="0"
             :aria-expanded="expandedId === student.id"
             :aria-controls="`student-course-detail-${student.id}`"
@@ -119,92 +120,93 @@
             @keydown.enter.prevent="toggleExpand(student, $event)"
             @keydown.space.prevent="toggleExpand(student, $event)"
           >
-            <td class="student-select-cell" @click.stop @keydown.stop>
-              <input
-                class="student-select-checkbox"
-                type="checkbox"
+            <td :class="[dataTable.cell, col.select, dataTable.stackCell, 'tw:max-lg:col-start-1 tw:max-lg:row-span-2 tw:max-lg:row-start-1 tw:max-lg:pt-0!']" @click.stop @keydown.stop>
+              <Checkbox
+                :model-value="isStudentSelected(student)"
                 :disabled="!getLaravelStudentId(student)"
-                :checked="isStudentSelected(student)"
-                @change="toggleStudentSelection(student, $event.target.checked)"
+                :class="checkBox"
+                :aria-label="`選取 ${student.name}`"
+                data-testid="student-select"
+                @update:model-value="(v) => toggleStudentSelection(student, v === true)"
               />
             </td>
-            <td class="expand-icon" :title="expandedId === student.id ? '收合課程與購課明細' : '點擊展開課程與購課明細'">
-              <span class="material-symbols-outlined expand-chevron" :class="{ rotated: expandedId === student.id }">expand_more</span>
+            <td :class="[dataTable.cell, 'tw:w-8 tw:px-0 tw:text-center', dataTable.stackCell, 'tw:max-md:col-start-4 tw:max-md:row-start-1 tw:md:max-lg:hidden!']" @keydown.stop>
+              <!-- Phone: the row's expand control is a real button (name + aria-expanded); the row tap still does the toggling. From 1024 the 課程/購課 button is the control and the arrow is only a cue. -->
+              <button
+                type="button"
+                data-testid="student-row-toggle"
+                class="tw:inline-flex tw:size-11 tw:cursor-pointer tw:items-center tw:justify-center tw:rounded-full tw:border-0 tw:bg-transparent tw:p-0 tw:text-tpl-secondary tw:outline-none tw:focus-visible:ring-3 tw:focus-visible:ring-ring/50 tw:lg:hidden"
+                :aria-expanded="expandedId === student.id"
+                :aria-controls="`student-course-detail-${student.id}`"
+                :aria-label="`${expandedId === student.id ? '收合' : '展開'}課程：${student.name}`"
+              >
+                <ChevronDown :class="['tw:size-5 tw:transition-transform', { 'tw:rotate-180': expandedId === student.id }]" :stroke-width="2" aria-hidden="true" />
+              </button>
+              <ChevronDown :class="['tw:mx-auto tw:size-5 tw:text-tpl-secondary tw:transition-transform tw:max-lg:hidden', { 'tw:rotate-180': expandedId === student.id }]" :stroke-width="2" aria-hidden="true" />
             </td>
-            <td>
-              <div class="student-name-cell">
-                <div class="student-avatar-mini" :class="student.status || 'active'">{{ (student.name || '?')[0] }}</div>
-                <div>
-                  <strong>{{ student.name }}</strong>
-                  <span v-if="student.notes" class="note-icon" :title="student.notes">
-                    <span class="material-symbols-outlined" style="font-size:14px;">sticky_note_2</span>
-                  </span>
-                  <span v-if="student.status && student.status !== 'active'" :class="['student-status-badge', student.status]">
-                    {{ studentStatusLabel(student.status) }}
-                  </span>
-                </div>
+            <td :class="[dataTable.name, dataTable.stackCell, 'tw:max-lg:whitespace-normal tw:max-lg:col-start-2 tw:max-lg:row-start-1 tw:max-md:pt-1.5 tw:md:max-lg:col-span-3']">
+              <div class="tw:flex tw:flex-wrap tw:items-center tw:gap-x-2 tw:gap-y-1" data-testid="student-name-cell">
+                <span class="tw:whitespace-nowrap">{{ student.name }}</span>
+                <span v-if="student.notes" class="tw:inline-flex tw:cursor-help tw:text-tpl-secondary" role="img" :aria-label="`備註：${student.notes}`" :title="student.notes"><StickyNote class="tw:size-4" :stroke-width="2" /></span>
+                <StatusBadge v-if="student.status && student.status !== 'active'" :tone="student.status === 'paused' ? 'warning' : 'neutral'" data-testid="student-status-badge">{{ studentStatusLabel(student.status) }}</StatusBadge>
               </div>
+              <span :class="[dataTable.sub, dataTable.phoneOnly]">{{ [getGradeLabel(student.grade), student.school].filter(Boolean).join('・') || '—' }}</span>
             </td>
-            <td>{{ getGradeLabel(student.grade) }}</td>
-            <td>{{ student.school || '—' }}</td>
-            <td>{{ student.parent_name || '—' }}</td>
-            <td @click.stop>
-              <div class="student-binding-badges">
-                <span v-if="student.rfid" class="rfid-tag">
-                  <span class="material-symbols-outlined" style="font-size:14px;vertical-align:middle;">contactless</span>
-                  {{ student.rfid }}
-                </span>
-                <span v-else class="rfid-unbound">
-                  <span class="material-symbols-outlined rfid-unbound-icon">contactless</span>
-                  未綁定
-                </span>
-                <span v-if="student.line_bound" class="line-bound-badge">LINE</span>
-              </div>
+            <td :class="[dataTable.cell, dataTable.stackCell, 'tw:lg:min-w-32 tw:max-md:hidden! tw:md:max-lg:col-start-2 tw:md:max-lg:row-start-2']">
+              <span :class="dataTable.stackLabel">年級</span>{{ getGradeLabel(student.grade) || '—' }}
             </td>
-            <td>
-              <div class="subject-tags" v-if="getStudentCourses(student.id).length > 0">
+            <td :class="[dataTable.cell, dataTable.stackCell, 'tw:lg:min-w-28 tw:max-md:hidden! tw:md:max-lg:col-start-3 tw:md:max-lg:row-start-2']">
+              <span :class="dataTable.stackLabel">學校</span>{{ student.school || '—' }}
+            </td>
+            <td :class="[dataTable.cell, dataTable.stackCell, 'tw:whitespace-nowrap tw:lg:@max-5xl:hidden tw:max-md:hidden! tw:md:max-lg:col-start-4 tw:md:max-lg:row-start-2']">
+              <span :class="dataTable.stackLabel">家長</span>{{ student.parent_name || '—' }}
+            </td>
+            <td :class="[dataTable.cell, dataTable.stackCell, 'tw:max-md:hidden! tw:md:max-lg:col-start-5 tw:md:max-lg:row-start-2']" @click.stop>
+              <span :class="dataTable.stackLabel">RFID</span>
+              <span v-if="student.rfid" class="tw:whitespace-nowrap tw:tabular-nums">{{ student.rfid }}</span>
+              <span v-else class="tw:whitespace-nowrap tw:text-tpl-secondary">未綁定</span>
+              <span v-if="student.line_bound" :class="dataTable.sub">LINE</span>
+            </td>
+            <td :class="[dataTable.cell, dataTable.stackCell, 'tw:max-md:col-span-3 tw:max-md:col-start-2 tw:max-md:row-start-2 tw:md:max-lg:col-span-4 tw:md:max-lg:col-start-2 tw:md:max-lg:row-start-3']">
+              <div v-if="getStudentCourses(student.id).length > 0" class="tw:flex tw:flex-wrap tw:gap-1.5">
                 <span
                   v-for="course in getStudentRowChipCourses(student.id)"
                   :key="course.id"
-                  :class="['subject-pill', { low: isSessionPaymentLow(course) }]"
+                  data-testid="student-subject-chip"
+                  :data-tone="isSessionPaymentLow(course) ? 'danger' : 'neutral'"
+                  :class="[chipBase, isSessionPaymentLow(course) ? toneBadge.danger : toneBadge.neutral]"
                 >
                   {{ getStudentCourseSubjectDisplayLabel(course).split('(')[0].trim() }}
-                  <strong>{{ courseBadgeSessionLabel(course) }}</strong>
+                  <strong class="tw:font-bold tw:tabular-nums">{{ courseBadgeSessionLabel(course) }}</strong>
+                  <span v-if="isSessionPaymentLow(course)" class="tw:sr-only">（即將用完）</span>
                 </span>
                 <span
                   v-if="getStudentRowHistoryCount(student.id) > 0"
-                  class="subject-pill subject-pill--history"
+                  :class="[chipBase, 'tw:text-tpl-secondary tw:shadow-[inset_0_0_0_1px_var(--ds-hairline)]']"
                   data-testid="history-chip"
                   title="已結算或已完課的歷史合約，展開後在課程安排查看"
                 >+{{ getStudentRowHistoryCount(student.id) }} 歷史</span>
               </div>
-              <span class="hint" v-else>尚未設定</span>
+              <span v-else class="tw:text-tpl-caption tw:text-tpl-secondary">尚未設定</span>
             </td>
-            <td @click.stop @keydown.stop class="action-cell">
-              <div class="action-cell-buttons">
+            <td :class="[dataTable.cell, dataTable.stackCell, 'tw:py-1 tw:pr-4 tw:pl-0 tw:md:pr-5 tw:max-lg:row-start-1 tw:max-lg:justify-self-end tw:md:max-lg:col-start-5 tw:max-md:col-start-3']" @click.stop @keydown.stop>
+              <div class="tw:flex tw:items-center tw:justify-end tw:gap-1">
                 <button
                   type="button"
-                  class="btn-course-disclosure"
-                  :class="{ 'is-active': expandedId === student.id }"
+                  data-testid="student-course-disclosure"
+                  :class="[rowAction.secondary, 'tw:aria-expanded:bg-muted tw:max-md:hidden']"
                   :aria-expanded="expandedId === student.id"
                   :title="expandedId === student.id ? '收合課程與續課明細' : '展開課程、排課與購課詳情'"
                   @click="toggleExpand(student, $event)"
-                >
-                  <span class="material-symbols-outlined" style="font-size:15px;" aria-hidden="true">menu_book</span>
-                  <span>{{ expandedId === student.id ? '收合' : '課程/購課' }}</span>
-                </button>
-                <AtIconButton icon="edit" label="編輯" @click="editStudent(student)" />
-                <AtIconButton icon="timeline" label="學習檔案" @click="timelineStudent = student" />
-                <AtRowMenu>
-                  <AtButton shape="rect" size="sm" variant="danger" icon="delete" @click="deleteStudent(student)">刪除學生</AtButton>
-                </AtRowMenu>
+                >{{ expandedId === student.id ? '收合' : '課程/購課' }}</button>
+                <ActionMenu :groups="studentMenuGroups" :label="`更多操作：${student.name}`" :trigger-class="rowAction.menu" @select="(id) => runStudentMenu(id, student)" />
               </div>
             </td>
           </tr>
 
           <!-- Expanded Course Detail -->
-          <tr v-if="expandedId === student.id" :id="`student-course-detail-${student.id}`" class="course-detail-row">
-            <td colspan="10">
+          <tr v-if="expandedId === student.id" :id="`student-course-detail-${student.id}`" class="course-detail-row tw:max-lg:block">
+            <td colspan="10" class="tw:max-lg:block">
               <div class="course-panel">
                 <div class="course-panel-header">
                   <h4>
@@ -1048,11 +1050,11 @@ import {
   buildBindingManagementNav,
 } from '../lib/authoritativeMutationRoutes.js';
 import { Button } from '../components/ui/button';
-import { FilterChip, PageHeader, SelectionBar, control, pageShell, surface } from '../components/ui/page';
-import { Download, FileUp, GraduationCap, Merge, Plus, Search, Trash2 } from 'lucide-vue-next';
+import { FilterChip, PageHeader, SelectionBar, StatusBadge, control, dataTable, pageShell, rowAction, surface, toneBadge } from '../components/ui/page';
+import { Checkbox } from '../components/ui/checkbox';
+import ActionMenu from '../components/ActionMenu.vue';
+import { ChevronDown, Download, FileUp, GraduationCap, Merge, Plus, Search, StickyNote, Trash2 } from 'lucide-vue-next';
 import AtButton from '../components/design-system/AtButton.vue';
-import AtIconButton from '../components/design-system/AtIconButton.vue';
-import AtRowMenu from '../components/design-system/AtRowMenu.vue';
 import AtEmpty from '../components/design-system/AtEmpty.vue';
 import SchoolNameInput from '../components/SchoolNameInput.vue';
 import SchoolMergePanel from '../components/SchoolMergePanel.vue';
@@ -1105,6 +1107,19 @@ const students = ref([]);
 const studentsLoading = ref(true);
 // Header actions wrap on a phone (four of them, 字級 大 at 320) instead of pushing the page sideways.
 const phoneAction = 'tw:max-md:min-w-0 tw:max-md:flex-[1_1_9rem] tw:max-md:h-auto tw:max-md:min-h-12 tw:max-md:whitespace-normal tw:max-md:py-2';
+// Student table rows (PAGE_TEMPLATE §5). Under 1024px a row is a small grid (check | name | actions, as in BillList) and the header row shrinks to a select-all bar.
+const gridCols = 'tw:max-md:grid-cols-[3rem_minmax(0,1fr)_2.75rem_2.75rem]! tw:max-md:gap-x-0! tw:max-md:px-0! tw:max-md:py-2! tw:max-md:gap-y-1! tw:md:max-lg:grid-cols-[3rem_repeat(4,minmax(0,1fr))]!';
+const col = { select: 'tw:w-12 tw:px-0 tw:text-center' };
+// The checkbox button is 44px (touch floor); the visible 20px box is drawn by ::before so it keeps the shared Checkbox look in every state.
+const checkBox = "tw:relative tw:size-11 tw:rounded-lg tw:border-0 tw:bg-transparent tw:shadow-none tw:data-[state=checked]:border-transparent tw:data-[state=checked]:bg-transparent tw:data-[state=indeterminate]:border-transparent tw:data-[state=indeterminate]:bg-transparent tw:before:absolute tw:before:top-1/2 tw:before:left-1/2 tw:before:size-5 tw:before:-translate-x-1/2 tw:before:-translate-y-1/2 tw:before:rounded-[4px] tw:before:border tw:before:border-input tw:before:bg-card tw:before:content-[''] tw:data-[state=checked]:before:border-primary tw:data-[state=checked]:before:bg-primary tw:data-[state=indeterminate]:before:border-primary tw:data-[state=indeterminate]:before:bg-primary tw:[&>[data-slot=checkbox-indicator]]:relative tw:[&>[data-slot=checkbox-indicator]]:z-10";
+const chipBase = 'tw:inline-flex tw:items-center tw:gap-1 tw:rounded-full tw:px-2.5 tw:py-0.5 tw:text-tpl-caption tw:whitespace-nowrap';
+// 刪除學生 is last and danger (error prevention); the menu only picks, the existing handlers run.
+const studentMenuGroups = [{ id: 'student', label: '', items: [{ id: 'edit', label: '編輯' }, { id: 'timeline', label: '學習檔案' }, { id: 'delete', label: '刪除學生', danger: true }] }];
+const runStudentMenu = (id, student) => {
+  if (id === 'edit') editStudent(student);
+  else if (id === 'timeline') timelineStudent.value = student;
+  else if (id === 'delete') deleteStudent(student);
+};
 const studentsLoaded = ref(false);
 const studentsLoadError = ref('');
 let studentsRequestSequence = 0;
@@ -3753,115 +3768,11 @@ table th { font-size: 12.5px; }
 
 /* ═══ Filter Bar ═══ */
 
-/* ═══ Student Row ═══ */
-.student-select-head,
-.student-select-cell {
-  width: 44px;
-  text-align: center;
-}
-.student-select-checkbox {
-  width: 16px;
-  height: 16px;
-  cursor: pointer;
-  accent-color: var(--ds-primary);
-}
-.student-row {
-  cursor: pointer;
-  transition: background 0.2s ease;
-}
-.student-row:hover td {
-  background: var(--ds-primary-wash) !important;
-}
-.student-row.expanded td {
-  background: var(--ds-primary-wash);
-  border-bottom-color: var(--ds-primary);
-}
-
-/* Row status is carried by .student-status-badge (text), not a left stripe. */
-
-/* Expand icon */
-.expand-icon {
-  text-align: center;
-  width: 30px;
-}
-.expand-chevron {
-  font-size: 20px;
-  color: var(--ds-ink-mute);
-  transition: transform 0.2s ease;
-  display: inline-block;
-}
-.expand-chevron.rotated {
-  transform: rotate(180deg);
-}
-
-/* Student name cell with avatar */
-.student-name-cell {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  white-space: nowrap;
-}
-.student-name-cell strong {
-  font-size: 15px;
-  white-space: nowrap;
-}
-.student-avatar-mini {
-  width: 32px;
-  height: 32px;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 14px;
-  font-weight: 700;
-  color: var(--ds-on-primary);
-  flex-shrink: 0;
-  background: var(--ds-success);
-}
-/* graduated/transferred 屬多態語意色（無對應 ds token），維持 raw 待 token 擴充。
-   移除原裝飾性 linear-gradient → 改用實色，與 RULE_DESIGN_SYSTEM §7 一致。 */
-.student-avatar-mini.graduated { background: #1565c0; }
-.student-avatar-mini.paused { background: var(--ds-warning); }
-.student-avatar-mini.transferred { background: #7b1fa2; }
 
 .text-red {
   color: var(--danger) !important;
 }
 
-/* Subject pills */
-.subject-tags {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
-}
-.subject-pill {
-  display: inline-flex;
-  align-items: center;
-  gap: 3px;
-  padding: 2px 7px;
-  border-radius: var(--ds-radius-sm, 4px);
-  font-size: 12px;
-  background: var(--ds-success-wash);
-  color: var(--ds-success);
-  white-space: nowrap;
-  border: 1px solid transparent;
-}
-.subject-pill strong {
-  font-weight: 700;
-  font-variant-numeric: tabular-nums;
-}
-.subject-pill--history {
-  background: var(--ds-surface-sunken);
-  color: var(--ds-ink-mute);
-}
-.subject-pill.low {
-  background: var(--ds-danger-wash);
-  color: var(--ds-danger);
-}
-.table-scroll-wrap {
-  overflow-x: auto;
-  -webkit-overflow-scrolling: touch;
-}
 .students-list-state,
 .students-refresh-state {
   display: flex;
@@ -3904,103 +3815,10 @@ table th { font-size: 12.5px; }
 .students-refresh-state__action:hover { background: var(--ds-primary-wash); }
 .students-list-state__action:focus-visible,
 .students-refresh-state__action:focus-visible { outline: 3px solid var(--ds-info-wash); outline-offset: 2px; }
-.table-scroll-wrap th {
-  font-size: 12px;
-  color: var(--ds-text-tertiary, var(--ds-ink-mute));
-  background: var(--ds-surface-0, var(--ds-canvas-soft));
-}
-.table-scroll-wrap td {
-  font-size: 13.5px;
-  padding-top: 8px;
-  padding-bottom: 8px;
-}
-.student-status-badge {
-  border-radius: var(--ds-radius-sm, 4px) !important;
-}
 
-.note-icon {
-  margin-left: 4px;
-  cursor: help;
-  color: var(--ds-warning);
-}
 
-.student-status-badge {
-  display: inline-block;
-  padding: 2px 7px;
-  border-radius: 8px;
-  font-size: 11px;
-  margin-left: 6px;
-  font-weight: 600;
-}
 /* paused 對應 ds-warning；graduated 藍、transferred 紫無 ds token，維持 raw。 */
-.student-status-badge.graduated { background: #E3F2FD; color: #1565C0; }
-.student-status-badge.paused { background: var(--ds-warning-wash); color: var(--ds-warning); }
-.student-status-badge.transferred { background: #F3E5F5; color: #6A1B9A; }
 
-/* RFID */
-.student-binding-badges {
-  display: inline-flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-.rfid-tag {
-  white-space: nowrap;
-  font-size: 12px;
-  font-family: monospace;
-  color: var(--ds-primary-text);
-  display: inline-flex;
-  align-items: center;
-  gap: 3px;
-}
-.rfid-unbound {
-  white-space: nowrap;
-  font-size: 12px;
-  color: var(--ds-ink-mute);
-  display: inline-flex;
-  align-items: center;
-  gap: 3px;
-}
-.rfid-unbound-icon {
-  font-size: 14px;
-  vertical-align: middle;
-  color: var(--ds-ink-mute);
-}
-
-/* Action buttons */
-.action-cell {
-  white-space: nowrap;
-  vertical-align: middle;
-}
-.action-cell-buttons {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-}
-.btn-course-disclosure {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 4px 8px;
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--ds-primary-text);
-  background: var(--ds-primary-wash, rgba(232, 121, 36, 0.08));
-  border: 1px solid var(--ds-primary-wash, rgba(232, 121, 36, 0.25));
-  border-radius: 6px;
-  cursor: pointer;
-  transition: all 0.15s ease;
-  line-height: 1.2;
-  min-height: var(--ds-control-height-touch, 44px);
-}
-.btn-course-disclosure:hover {
-  background: var(--ds-primary, var(--primary));
-  color: var(--ds-canvas);
-}
-.btn-course-disclosure.is-active {
-  background: var(--ds-primary, var(--primary));
-  color: var(--ds-canvas);
-}
 .students-page .at-btn,
 .students-page .at-icon-btn {
   min-height: var(--ds-control-height-touch, 44px);
@@ -4800,22 +4618,6 @@ table th { font-size: 12.5px; }
   font-variant-numeric: tabular-nums;
 }
 
-/* ═══ Table Scroll ═══ */
-.table-scroll-wrap {
-  overflow-x: auto;
-  -webkit-overflow-scrolling: touch;
-}
-.table-scroll-wrap > table {
-  min-width: 820px;
-}
-
-/* Prevent wrapping in key columns */
-.student-row td:nth-child(4),
-.student-row td:nth-child(5),
-.student-row td:nth-child(6) {
-  white-space: nowrap;
-}
-
 /* ═══ Mobile Responsive ═══ */
 @media (max-width: 768px) {
   .course-panel {
@@ -4875,11 +4677,6 @@ table th { font-size: 12.5px; }
   }
   .student-course-card__actions-body button {
     flex: 1 1 calc(50% - 8px);
-  }
-
-  /* Icon-only action buttons on mobile */
-  .action-cell button span:not(.material-symbols-outlined) {
-    display: none;
   }
 }
 
@@ -5077,21 +4874,6 @@ table th { font-size: 12.5px; }
     flex-direction: column;
     gap: 2px;
   }
-}
-
-/* LINE bound badge in student list.
-   #06C755 為 LINE 官方品牌色（third-party brand），不可替換為 ds token。 */
-.line-bound-badge {
-  display: inline-flex;
-  align-items: center;
-  background: #06C755;
-  color: var(--ds-on-primary);
-  font-size: 10px;
-  font-weight: 700;
-  padding: 1px 6px;
-  border-radius: 10px;
-  letter-spacing: 0.3px;
-  vertical-align: middle;
 }
 
 /* LINE bindings section */

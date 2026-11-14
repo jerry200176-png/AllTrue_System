@@ -288,10 +288,10 @@ test.describe('production acceptance — tutoring free/non-receivable', () => {
     console.log('tutoring acceptance: student management opened');
     selectedStudentId = Number(field(scopedCourses.find((course) => field(course, 'StudentID', 'student_id')), 'StudentID', 'student_id'));
     expect(Number.isInteger(selectedStudentId) && selectedStudentId > 0, 'production course data must provide a numeric student key').toBe(true);
-    const row = page.locator(`tr.student-row[data-student-id="${selectedStudentId}"]`);
+    const row = page.locator(`[data-testid="student-row"][data-student-id="${selectedStudentId}"]`);
     await expect(row).toBeVisible({ timeout: 20_000 });
     console.log('tutoring acceptance: branch student visible');
-    const disclosure = row.locator('.btn-course-disclosure');
+    const disclosure = row.locator('[data-testid="student-course-disclosure"]');
     await expect(disclosure).toBeVisible({ timeout: 10_000 });
     await disclosure.click({ timeout: 10_000 });
     console.log('tutoring acceptance: course details expanded');
