@@ -70,6 +70,17 @@ class SubjectCreditPreviewTest extends TestCase
         $this->preview($token, $source, $target, 5)->assertStatus(422);
     }
 
+    public function test_future_attended_like_rows_cannot_be_counted_as_transferable_unused_credit(): void
+    {
+        foreach (['attended', 'late', 'completed'] as $status) {
+            [$token, $source, $target] = $this->fixture(used: 0);
+            $this->appendClassSession($source, '2026-10-14', $status);
+            $before = $this->businessSnapshot();
+            $this->preview($token, $source, $target, 8)->assertStatus(422)->assertJsonPath('code', 'subject_credit_future_usage');
+            $this->assertSame($before, $this->businessSnapshot());
+        }
+    }
+
     public function test_counter_drift_is_reported_and_never_repaired_or_spent(): void
     {
         [$token, $source, $target] = $this->fixture();

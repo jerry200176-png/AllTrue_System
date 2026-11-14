@@ -92,9 +92,16 @@ final class SubjectCreditPreview
             $remaining = $purchased - $used;
             $reserved = 0;
             foreach ($sessions as $session) {
-                if (in_array(strtolower((string) $session->Status), array_merge(
-                    SessionStatus::futureReservationExclusionStatuses(), ['completed', 'attended', 'late']
-                ), true)) {
+                $status = strtolower((string) $session->Status);
+                if (in_array($status, ['completed', 'attended', 'late'], true)) {
+                    // Canonical usage excludes future-linked evidence. It must not disappear from both
+                    // usage and reservations when an early status update marked the future lesson taught.
+                    if (!$session->SessionDate || Carbon::parse($session->SessionDate)->toDateString() > Carbon::today()->toDateString()) {
+                        $this->refuse('subject_credit_future_usage', '來源合約有未來日期卻已標記上課的堂次，請先核對，避免重複轉用。');
+                    }
+                    continue;
+                }
+                if (in_array($status, SessionStatus::futureReservationExclusionStatuses(), true)) {
                     continue;
                 }
                 if (!$session->SessionDate || !$session->EndTime) {

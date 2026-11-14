@@ -40,6 +40,8 @@ password-change、terminal 拒絕；super_admin 可跨其管理校區讀取，�
   `SessionStatus::futureReservationExclusionStatuses()` 排除已取消／准假，
   待核准請假、暫停等仍保留，
   可轉用 = 購買 − canonical 已用 − 保留排課；不取消、搬動或重生堂次。
+- canonical 使用量截至今天，提前標記已上課的未來堂次須先拒絕核對，不能同時
+  從使用量和保留排課排除。已發生的 completed／attended／late 正常扣堂不變。
 - 單價可精確對帳的小數不任意捨入；本次轉用金額必須可用既有整數帳款表示。
 - 先鎖學生，再依 ID 鎖兩份合約、來源發票／項目／付款／回報／堂次，然後才讀
   canonical 投影。所有 preview transaction 都 rollback；一般 auth 的既有
