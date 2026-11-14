@@ -16,6 +16,7 @@ use Tests\TestCase;
  */
 class ClassSessionD1ActiveOnlyIndexTest extends TestCase
 {
+    use \Tests\Support\CleansCommittedRows;
     use RefreshDatabase, WithClassSessionIndexFlag;
 
     /** DDL cannot run inside RefreshDatabase transaction wrapper. */

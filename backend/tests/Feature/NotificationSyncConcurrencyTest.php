@@ -15,6 +15,7 @@ use Tests\TestCase;
 
 class NotificationSyncConcurrencyTest extends TestCase
 {
+    use \Tests\Support\CleansCommittedRows;
     use RefreshDatabase;
 
     /** @var array<int, string|null> */

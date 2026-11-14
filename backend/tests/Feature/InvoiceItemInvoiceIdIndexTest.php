@@ -9,6 +9,7 @@ use Tests\TestCase;
 /** #3741 — InvoiceItem.InvoiceID must be indexed; migration is idempotent and reversible. */
 class InvoiceItemInvoiceIdIndexTest extends TestCase
 {
+    use \Tests\Support\CleansCommittedRows;
     use RefreshDatabase;
 
     /** DDL in test (DROP/ADD INDEX) cannot run inside RefreshDatabase transaction wrapper. */

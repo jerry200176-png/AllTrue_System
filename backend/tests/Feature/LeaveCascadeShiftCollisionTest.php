@@ -29,6 +29,7 @@ use Tests\TestCase;
  */
 class LeaveCascadeShiftCollisionTest extends TestCase
 {
+    use \Tests\Support\CleansCommittedRows;
     use RefreshDatabase, WithClassSessionIndexFlag;
 
     /** DDL cannot run inside the RefreshDatabase transaction wrapper. */

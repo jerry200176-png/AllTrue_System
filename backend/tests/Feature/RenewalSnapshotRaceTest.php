@@ -20,35 +20,24 @@ use Tests\TestCase;
 class RenewalSnapshotRaceTest extends TestCase
 {
     use RefreshDatabase;
+    use \Tests\Support\CleansCommittedRows;
 
     protected function connectionsToTransact() { return []; }
 
-    private array $baseline = [];
-
-    protected function setUp(): void
-    {
-        parent::setUp();
-        $this->baseline = $this->rowCounts();
-    }
-
-    /** @return array<string,int> */
-    private function rowCounts(): array
-    {
-        $tables = DB::select('select table_name as t from information_schema.tables where table_schema = database() and table_type = "BASE TABLE"');
-        return collect($tables)->mapWithKeys(fn ($r) => [$r->t => (int) DB::table($r->t)->count()])->all();
-    }
-
+    /** UserCampus has no auto-increment key, so CleansCommittedRows cannot see its rows: delete the ones of the users this test commits. */
     protected function tearDown(): void
     {
-        DB::statement('SET FOREIGN_KEY_CHECKS=0');
-        foreach ($this->rowCounts() as $t => $n) {
-            if ($n > ($this->baseline[$t] ?? 0)) {
-                $col = DB::selectOne('select column_name as c from information_schema.columns where table_schema = database() and table_name = ? order by ordinal_position limit 1', [$t])->c;
-                DB::table($t)->orderByDesc($col)->limit($n - ($this->baseline[$t] ?? 0))->delete();
-            }
+        try {
+            $this->deleteOwnUserCampusRows();
+        } finally {
+            parent::tearDown();
         }
-        DB::statement('SET FOREIGN_KEY_CHECKS=1');
-        parent::tearDown();
+    }
+
+    private function deleteOwnUserCampusRows(): void
+    {
+        $userIds = DB::table('User')->whereIn('LoginName', ['rr-dir@example.com', 'rr-t@example.com'])->pluck('id')->all();
+        DB::table('UserCampus')->whereIn('UserID', $userIds)->delete();
     }
 
     /** Barrier: right before the transaction's first student FOR UPDATE, connection A commits $concurrent; then the forced renewal runs. */

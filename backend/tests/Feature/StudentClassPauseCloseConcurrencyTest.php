@@ -17,6 +17,7 @@ use Tests\TestCase;
 /** #4188: a close committed on another connection while a plain pause is in flight, CI MySQL only. */
 class StudentClassPauseCloseConcurrencyTest extends TestCase
 {
+    use \Tests\Support\CleansCommittedRows;
     use RefreshDatabase;
 
     // Like SwipeCancellationConcurrencyTest: both connections must see committed fixtures.
