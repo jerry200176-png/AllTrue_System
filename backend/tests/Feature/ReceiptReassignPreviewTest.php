@@ -52,7 +52,7 @@ class ReceiptReassignPreviewTest extends TestCase
             ->assertJsonPath('to.invoice_id', $f['rightInvoice']->id)->assertJsonPath('to.student_id', $f['right']->id)
             ->assertJsonPath('to.balance_before', self::AMOUNT)->assertJsonPath('to.balance_after', 0);
         $this->assertContains('source_bill_becomes_unpaid', $res->json('warnings'));
-        $this->assertSame(64, strlen((string) $res->json('state_hash')));
+        $this->assertMatchesRegularExpression('/^' . ReceiptReassignService::STATE_HASH_VERSION . ':[0-9a-f]{64}$/', (string) $res->json('state_hash'));
         $this->assertSame($before, $this->snapshot());
         $this->assertSame(0, PaymentReportReassignment::count());
     }
@@ -75,13 +75,13 @@ class ReceiptReassignPreviewTest extends TestCase
         $this->assertNotSame($h1, $h2);
     }
 
-    public function test_apply_request_is_refused_in_this_slice_and_writes_nothing(): void
+    public function test_apply_without_the_previews_state_hash_is_refused_and_writes_nothing(): void
     {
         $f = $this->fixture();
         $before = $this->snapshot();
         $this->postJson("/api/v1/payment-reports/{$f['report']->id}/reassign",
             ['target_invoice_id' => $f['rightInvoice']->id, 'reason' => '選錯學生'], $this->h($this->token('S', 1)))
-            ->assertStatus(422)->assertJsonPath('code', 'reassign_apply_unavailable');
+            ->assertStatus(422)->assertJsonPath('code', 'reassign_state_hash_required');
         $this->assertSame($before, $this->snapshot());
     }
 
@@ -285,7 +285,7 @@ class ReceiptReassignPreviewTest extends TestCase
         $this->getJson("/api/v1/payment-reports/{$f['report']->id}/reassign-targets?student_id=abc", $this->h($this->token('A', 1)))->assertStatus(422)->assertJsonPath('code', 'reassign_bad_student');
     }
 
-    public function test_targets_run_the_same_number_of_queries_for_two_or_eight_candidates(): void
+    public function test_targets_run_the_same_number_of_queries_for_three_or_nine_candidates_monthly_included(): void
     {
         $f = $this->fixture();
         $tok = $this->token('S', 1);
@@ -293,6 +293,9 @@ class ReceiptReassignPreviewTest extends TestCase
         $pkg = CoursePackage::create(['student_id' => $f['right']->id, 'campus_id' => 1, 'name' => 'P', 'billing_mode' => 'count', 'total_sessions' => 8, 'remaining_sessions' => 8,
             'used_sessions' => 0, 'rate' => 1000, 'rate_unit' => 'session', 'class_type' => 'one_on_one', 'paid' => false, 'stop' => false, 'enabled' => true]);
         $this->bill($f['right'], self::AMOUNT, 'unpaid', 0, ['PackageID' => $pkg->id]); // the package lookups run too
+        $monthly = fn () => $this->bill($f['right'], self::AMOUNT, 'unpaid', 0, ['ScheduleMode' => 'date', 'StartDate' => '2026-11-01', 'EndDate' => '2026-11-30'],
+            ['billing_period' => '2026-11']); // the monthly branch: sessions and the shared-month gate run too
+        $monthly();
         $this->getJson($url, $this->h($tok))->assertOk(); // warm-up
         $count = function () use ($url, $tok): int {
             DB::flushQueryLog();
@@ -302,12 +305,12 @@ class ReceiptReassignPreviewTest extends TestCase
 
             return count(DB::getQueryLog());
         };
-        $two = $count();
+        $three = $count();
         foreach (range(1, 6) as $i) {
-            $this->bill($f['right'], self::AMOUNT, 'unpaid', 0, $i % 2 ? ['PackageID' => $pkg->id] : []);
+            $i % 2 ? $this->bill($f['right'], self::AMOUNT, 'unpaid', 0, ['PackageID' => $pkg->id]) : $monthly();
         }
-        $this->assertCount(8, $this->getJson($url, $this->h($tok))->json('targets'));
-        $this->assertSame($two, $count());
+        $this->assertCount(9, $this->getJson($url, $this->h($tok))->json('targets'));
+        $this->assertSame($three, $count());
     }
 
     // ── money proof on the source side (review P1-1) ────────────────────
