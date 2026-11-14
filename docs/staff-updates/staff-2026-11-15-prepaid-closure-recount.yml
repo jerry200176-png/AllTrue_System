@@ -4,9 +4,9 @@ updates:
     audiences:
       - director
       - super_admin
-    importance: minor
+    importance: digest
     title: 結案合約不會因重算堂數重新啟用
-    summary: 零堂數的已結案課程重新核對堂數時，會保留原結案狀態；已退費課程也不會因此出現禁止變更的錯誤。
+    summary: 零堂數合約重算後維持結案，已退費課程也不會因此出現禁止變更的錯誤。
     items:
       - category: fixed
         text: 已退費或已結案的零堂數課程，重算後會保留結案狀態。
