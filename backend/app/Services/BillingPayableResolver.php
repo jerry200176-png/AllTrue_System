@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\Invoice;
+use App\Models\Payment;
 use App\Models\StudentClass;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
@@ -498,6 +499,7 @@ class BillingPayableResolver
      */
     private function latestUnreversedReceiptDate(Collection $payments): ?string
     {
+        $payments = $payments->reject(fn ($p) => Payment::isCreditMovement($p)); // Carry-over/compensation never changes the cash-receipt date.
         $isReversal = fn ($p) => (int) ($p->Amount ?? 0) < 0 || (string) ($p->Method ?? '') === 'void';
         $receipts = $payments->filter(fn ($p) => !$isReversal($p) && (int) ($p->Amount ?? 0) > 0)
             ->map(fn ($p) => ['left' => (int) $p->Amount, 'paid_at' => (string) ($p->PaidAt ?? ''), 'id' => (int) $p->id,

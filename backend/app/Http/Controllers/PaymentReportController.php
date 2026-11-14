@@ -10,6 +10,7 @@ use App\Models\CoursePackage;
 use App\Models\Student;
 use App\Models\StudentClass;
 use App\Models\Subject;
+use App\Models\SubjectCreditTransfer;
 use App\Support\AccountingCourseClarity;
 use App\Support\DeadlockRetry;
 use App\Services\Billing\BillingPeriodInvoiceExists;
@@ -2000,6 +2001,10 @@ class PaymentReportController extends Controller
         }
 
         $sc = $report->studentClass;
+        if ($sc && ($originalQuantity = SubjectCreditTransfer::originalReceiptQuantity($report, $sc)) !== null) {
+            $sc = clone $sc; // Receipt rendering only: never rewrite the current contract or the issued money rows.
+            $sc->SessionCount = $originalQuantity;
+        }
         $subjectName = $sc?->displaySubjectName() ?? ($sc?->subjectRecord?->Subject_Name ?? '課程');
 
         $periodStart = null;

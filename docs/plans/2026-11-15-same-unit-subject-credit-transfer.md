@@ -101,16 +101,21 @@ MySQL RR 的 correlated tenant 子查詢可能在等待 Student 鎖前建立舊 
 以 current Student mutex 與 Campus 原生 tenant filter 的 shared locking read
 保留相同校區限制，避免普通讀取先於關鍵鎖；TEST 校區包含 super_admin 都仍拒絕。
 並行回歸涵蓋部分收據撤銷先贏後的逆轉，不能用舊 snapshot 恢復付款數值。
+財務快照本身也必須使用 current locking reads，而不是普通 fresh()/get()；
+逆轉先鎖三個合約，再檢查來源／新批次所有 header/item-linked 帳單，有額外帳單即拒絕。
 物化多一次必要的 fresh course PK read；monthly 測試預算只新增這項權威成本，
 保留既有批次掃描及不重複物化斷言，不能將新增功能成本混稱為 Token 節省。
 
 收據撤銷保留原來可用的剩餘資金內操作；若會抽走已轉出的資金則 409。
 缺 InvoiceID 的舊收據在來源仍有未還原轉出時先拒絕，不猜付款歸屬。
 Ledger 將內部額度流與現金收款、沖銷分開，原收據不因此誤顯多收。
+原已確認收據／原 cash linkage 的購買堂數取自首筆永久快照，列印不隨來源減堂；
+純額度轉出入及補償不是新收款，不改 last-payment date。快照包含必要收據識別及狀態。
 
 本批未提供新操作入口；下一批在本批合併後接續介面與整體驗收。
 原回報校區 9 不在本機 director 15/16 的財務唯讀範圍，目前僅有回報／附件，
 實際單價、預約占用量及可轉用額仍 UNKNOWN，不宣稱已直接解決真實案例。
+Founder 續示：先完成功能，真實案例稍後驗收；此未擴大校區資料讀取或轉用授權。
 無 Agent production 舊資料移轉，既有 POP／部署與 Founder 閘門照舊。
 
 ## 首批驗證

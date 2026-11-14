@@ -54,4 +54,18 @@ class SubjectCreditTransfer extends Model
             abort(response()->json(['message' => '這份合約的轉用額度已耗盡或已還原，不能再新增或變更堂次。', 'code' => 'subject_credit_closed_course'], 422));
         }
     }
+
+    /** Original issued quantity proven by this workflow's first cash/confirmed-receipt snapshot. */
+    public static function originalReceiptQuantity(PaymentReport $report, StudentClass $course): ?int
+    {
+        if ($course->ScheduleMode !== 'count' || !Schema::hasTable('contract_subject_credit_transfers')) return null;
+        $first = self::where('source_student_class_id', $course->ID)->orderBy('id')->first(['source_before']);
+        if (!$first) return null;
+        $before = $first->source_before;
+        $knownReport = collect($before['reports'] ?? [])->contains(fn ($r) => (int) $r['id'] === (int) $report->id && $r['status'] === 'confirmed');
+        $knownCash = collect($before['payments'])->contains(fn ($p) => (int) $p['Amount'] > 0
+            && (((int) $report->payment_id > 0 && (int) $p['id'] === (int) $report->payment_id)
+                || ((int) ($p['payment_report_id'] ?? 0) > 0 && (int) $p['payment_report_id'] === (int) $report->id)));
+        return $knownReport || $knownCash ? (int) $before['course']['SessionCount'] : null;
+    }
 }

@@ -2,7 +2,7 @@
 
 namespace App\Services\Billing;
 
-use App\Models\{Invoice, InvoiceItem, Payment, StudentClass};
+use App\Models\{Invoice, InvoiceItem, Payment, PaymentReport, StudentClass};
 use App\Services\SessionDeductionService;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\DB;
@@ -18,11 +18,13 @@ final class SubjectCreditState
     {
         $id = (int) $course->getKey();
         $data = [
-            'course' => $course->fresh()->only(self::COURSE_FIELDS),
-            'invoice' => $invoice->fresh()->only(['id', 'StudentID', 'StudentClassID', 'TotalAmount', 'PaidAmount', 'Status']),
-            'items' => InvoiceItem::where('InvoiceID', $invoice->getKey())->orderBy('id')->get(['id', 'StudentClassID', 'Amount'])->toArray(),
-            'payments' => Payment::where('InvoiceID', $invoice->getKey())->orderBy('id')->get(['id', 'InvoiceID', 'Amount', 'Method', 'PaidAt', 'payment_report_id'])->toArray(),
-            'sessions_digest' => self::digest(DB::table('ClassSession')->where('StudentClassID', $id)->orderBy('id')->get(['id', 'SessionDate', 'StartTime', 'EndTime', 'Status'])->map(fn ($s) => (array) $s)->all()),
+            // Ordinary fresh()/get() can retain an old MySQL RR view after a lock wait. Evidence is current read only.
+            'course' => StudentClass::whereKey($id)->lockForUpdate()->firstOrFail()->only(self::COURSE_FIELDS),
+            'invoice' => Invoice::whereKey($invoice->getKey())->lockForUpdate()->firstOrFail()->only(['id', 'StudentID', 'StudentClassID', 'TotalAmount', 'PaidAmount', 'Status']),
+            'items' => InvoiceItem::where('InvoiceID', $invoice->getKey())->orderBy('id')->lockForUpdate()->get(['id', 'StudentClassID', 'Amount'])->toArray(),
+            'payments' => Payment::where('InvoiceID', $invoice->getKey())->orderBy('id')->lockForUpdate()->get(['id', 'InvoiceID', 'Amount', 'Method', 'PaidAt', 'payment_report_id'])->toArray(),
+            'reports' => PaymentReport::where('StudentClassID', $id)->orderBy('id')->lockForUpdate()->get(['id', 'status', 'InvoiceID', 'payment_id', 'reported_amount'])->toArray(),
+            'sessions_digest' => self::digest(DB::table('ClassSession')->where('StudentClassID', $id)->orderBy('id')->lockForUpdate()->get(['id', 'SessionDate', 'StartTime', 'EndTime', 'Status'])->map(fn ($s) => (array) $s)->all()),
             'usage' => SessionDeductionService::batchExpectedUsedSessionDiagnostics([$id])[$id] ?? null,
         ];
 

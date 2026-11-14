@@ -131,8 +131,10 @@ class SubjectCreditTransferTest extends TestCase
 
     public function test_unused_source_can_be_fully_moved_without_deleting_original_contract_or_payment(): void
     {
-        [$token, $source, $template] = $this->fixture(used: 0);
+        [$token, $source, $template, $invoice] = $this->fixture(used: 0);
+        $report = $this->receipt($source, $invoice);
         $this->send($token, $source, $this->payload($token, $source, $template, 8))->assertCreated();
+        $this->withToken($token)->getJson("/api/v1/payment-reports/{$report->id}/receipt")->assertOk()->assertJsonPath('session_count', 8);
         // A later canonical recount must preserve the explicit financial close; it must not reactivate zero credit.
         \App\Services\SessionDeductionService::recomputeCounters((int) $source->ID);
         $source->refresh();
@@ -166,7 +168,9 @@ class SubjectCreditTransferTest extends TestCase
         [$token, $source, $template] = $this->fixture();
         $r = $this->send($token, $source, $this->payload($token, $source, $template))->assertCreated();
         $url = "/api/v1/student-classes/{$source->ID}/subject-credit-transfer/{$r->json('transfer.id')}/reverse";
+        Carbon::setTestNow(Carbon::parse('2026-10-01 10:00:00', 'Asia/Taipei'));
         $this->withToken($token)->postJson($url, ['reason' => 'isolated reversal'])->assertOk();
+        $this->assertSame('2026-09-01', app(\App\Services\BillingPayableResolver::class)->lastPaidAtByStudentClassIds([(int) $source->ID])[(int) $source->ID]);
         $after = $this->businessSnapshot();
         $this->withToken($token)->postJson($url, ['reason' => 'isolated reversal'])->assertOk()->assertJsonPath('replayed', true);
         $this->assertSame($after, $this->businessSnapshot());
@@ -179,11 +183,21 @@ class SubjectCreditTransferTest extends TestCase
         $this->withToken($token2)->postJson("/api/v1/student-classes/{$source2->ID}/subject-credit-transfer/{$r2->json('transfer.id')}/reverse", ['reason' => 'must refuse'])->assertStatus(409);
     }
 
-    public function test_original_receipt_cannot_remove_the_funds_already_carried_to_another_subject(): void
+    #[\PHPUnit\Framework\Attributes\DataProvider('invoiceLinks')]
+    public function test_original_receipt_cannot_remove_the_funds_already_carried_to_another_subject(bool $unlinked): void
     {
         [$token, $source, $template, $invoice] = $this->fixture();
         $report = $this->receipt($source, $invoice);
+        if ($unlinked) {
+            $report->forceFill(['payment_id' => null])->save();
+            Payment::where('InvoiceID', $invoice->id)->update(['payment_report_id' => null]);
+        }
+        $printed = $this->withToken($token)->getJson("/api/v1/payment-reports/{$report->id}/receipt")->assertOk()->json();
         $this->send($token, $source, $this->payload($token, $source, $template))->assertCreated();
+        $afterPrint = $this->withToken($token)->getJson("/api/v1/payment-reports/{$report->id}/receipt")->assertOk()->json();
+        foreach (['receipt_no', 'amount', 'payment_date', 'session_count', 'subject', 'class_type', 'schedule_mode', 'session_dates'] as $field) {
+            $this->assertSame($printed[$field], $afterPrint[$field], 'Issued receipt field stays original: '.$field);
+        }
         $before = $this->businessSnapshot();
         $this->withToken($token)->putJson("/api/v1/payment-reports/{$report->id}/void", ['void_reason' => 'isolated original receipt correction'])
             ->assertStatus(409)->assertJsonPath('code', 'void_transferred_credit');
@@ -352,6 +366,24 @@ class SubjectCreditTransferTest extends TestCase
         $this->assertSame('cancelled', $booking->fresh()->status);
         $this->assertSame(12000, (int) Payment::sum('Amount'));
     }
+
+    #[\PHPUnit\Framework\Attributes\DataProvider('invoiceLinks')]
+    public function test_reversal_refuses_any_later_paid_invoice_linked_by_header_or_item(bool $itemOnly): void
+    {
+        [$token, $source, $template] = $this->fixture();
+        $r = $this->send($token, $source, $this->payload($token, $source, $template))->assertCreated();
+        $targetId = (int) $r->json('transfer.target_course_id');
+        $extra = $this->withToken($token)->postJson('/api/v1/invoices', ['StudentID' => $source->StudentID,
+            'StudentClassID' => $itemOnly ? $template->ID : $targetId, 'IssueDate' => '2026-10-01', 'TotalAmount' => 500,
+            'Items' => [['Description' => 'isolated later bill', 'Amount' => 500, 'StudentClassID' => $targetId]]])->assertCreated();
+        $this->withToken($token)->postJson('/api/v1/invoices/'.$extra->json('id').'/payments', ['Amount' => 500, 'PaidAt' => '2026-09-30', 'Method' => 'cash'])->assertOk();
+        $before = $this->businessSnapshot();
+        $this->withToken($token)->postJson("/api/v1/student-classes/{$source->ID}/subject-credit-transfer/{$r->json('transfer.id')}/reverse",
+            ['reason' => 'must retain later paid funds'])->assertStatus(409)->assertJsonPath('code', 'subject_credit_reverse_changed');
+        $this->assertSame($before, $this->businessSnapshot());
+    }
+
+    public static function invoiceLinks(): array { return [[false], [true]]; }
 
     private function receipt(StudentClass $source, Invoice $invoice): PaymentReport
     {

@@ -35,7 +35,7 @@ final class SubjectCreditPreview
     }
 
     /** @return array{student:Student,source:StudentClass,target:StudentClass} */
-    public function lockScope(StudentClass $routeCourse, array $input, ?array $campusIds): array
+    public function lockScope(StudentClass $routeCourse, array $input, ?array $campusIds, array $extraCourseIds = []): array
     {
         if (DB::transactionLevel() < 1) {
             throw new \LogicException('Subject credit requires a transaction.');
@@ -47,15 +47,16 @@ final class SubjectCreditPreview
         if (!$student || ($campusIds !== null && !in_array((int) $student->CampusID, $campusIds, true))) {
             abort(403);
         }
-        if (!Campus::query()->whereKey($student->CampusID)->sharedLock()->first(['id'])) {
-            abort(403); // Includes the operational TEST-campus exclusion, even for super_admin.
-        }
+        $ids = array_unique([(int) $routeCourse->getKey(), (int) $input['target_course_id'], ...$extraCourseIds]);
         $courses = StudentClass::query()->where('StudentID', $student->id)
-            ->whereIn('ID', [(int) $routeCourse->getKey(), (int) $input['target_course_id']])
+            ->whereIn('ID', $ids)
             ->orderBy('ID')->lockForUpdate()->get()->keyBy('ID');
+        if (!Campus::query()->whereKey($student->CampusID)->sharedLock()->first(['id'])) {
+            abort(403); // Tenant/schema reads follow ALL course mutexes, including a reversal's new batch.
+        }
         $source = $courses->get((int) $routeCourse->getKey());
         $target = $courses->get((int) $input['target_course_id']);
-        if (!$source || !$target || $courses->count() !== 2 || (int) $source->SubjectID === (int) $target->SubjectID) {
+        if (!$source || !$target || $courses->count() !== count($ids) || (int) $source->SubjectID === (int) $target->SubjectID) {
             $this->refuse('subject_credit_bad_target', '請選擇同一學生、同分校的另一科合約。');
         }
         return ['student' => $student, 'source' => $source, 'target' => $target];

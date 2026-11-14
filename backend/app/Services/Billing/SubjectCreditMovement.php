@@ -122,7 +122,7 @@ final class SubjectCreditMovement
         $this->assertSchema();
         $route = SubjectCreditTransfer::whereKey($id)->where('source_student_class_id', $course->ID)->firstOrFail();
         return DB::transaction(function () use ($course, $route, $id, $reason, $actorId, $campusIds) {
-            $scope = $this->preview->lockScope($course, ['target_course_id' => (int) $route->template_student_class_id], $campusIds);
+            $scope = $this->preview->lockScope($course, ['target_course_id' => (int) $route->template_student_class_id], $campusIds, [(int) $route->target_student_class_id]);
             $this->assertSchema();
             ['student' => $student, 'source' => $source] = $scope;
             $target = StudentClass::where('ID', $route->target_student_class_id)->where('StudentID', $student->id)->lockForUpdate()->firstOrFail();
@@ -136,10 +136,13 @@ final class SubjectCreditMovement
                 }
                 return ['replayed' => true, 'transfer' => $this->describe($record)];
             }
-            $invoices = Invoice::whereIn('id', [$record->source_invoice_id, $record->target_invoice_id])->orderBy('id')->lockForUpdate()->get()->keyBy('id');
+            $courseIds = [(int) $source->ID, (int) $target->ID];
+            $invoices = Invoice::where(fn ($q) => $q->whereIn('StudentClassID', $courseIds)
+                ->orWhereHas('items', fn ($items) => $items->whereIn('StudentClassID', $courseIds)))
+                ->orderBy('id')->lockForUpdate()->get()->keyBy('id');
             $from = $invoices->get((int) $record->source_invoice_id);
             $to = $invoices->get((int) $record->target_invoice_id);
-            if (!$from || !$to || (int) $from->StudentClassID !== (int) $source->ID || (int) $to->StudentClassID !== (int) $target->ID) {
+            if ($invoices->count() !== 2 || !$from || !$to || (int) $from->StudentClassID !== (int) $source->ID || (int) $to->StudentClassID !== (int) $target->ID) {
                 $this->refuse('subject_credit_reverse_changed', '轉用的帳單連結已變動，請聯絡總部核對。');
             }
             Payment::whereIn('InvoiceID', $invoices->keys())->orderBy('id')->lockForUpdate()->get();

@@ -13,7 +13,9 @@ alltrue_install_sql_pause($data['pause'] ?? null, 'isolated subject-credit barri
 // Reproduce that timing deterministically on MariaDB as well, without changing transaction isolation.
 $primeSnapshot = !empty($data['snapshot_invoice_id']);
 Illuminate\Support\Facades\DB::connection()->beforeExecuting(static function ($sql) use (&$primeSnapshot, $data): void {
-    if ($primeSnapshot && str_contains(strtolower($sql), 'operational_campus') && str_contains(strtolower($sql), 'for update')) {
+    $locking = str_contains(strtolower($sql), 'for update') || str_contains(strtolower($sql), 'lock in share mode');
+    $tenantRead = str_contains(strtolower($sql), 'operational_campus') || str_contains(strtolower($sql), 'from `campus`');
+    if ($primeSnapshot && $tenantRead && $locking) {
         $primeSnapshot = false;
         Illuminate\Support\Facades\DB::table('Invoice')->where('id', $data['snapshot_invoice_id'])->value('TotalAmount');
     }
