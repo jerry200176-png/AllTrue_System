@@ -15,6 +15,7 @@ use App\Support\DeadlockRetry;
 use App\Services\Billing\BillingPeriodInvoiceExists;
 use App\Services\Billing\InvoiceCorrectionLink;
 use App\Services\Billing\InvoiceIssuer;
+use App\Services\Billing\FirstBillAutoVoid;
 use App\Services\Billing\MonthlyBillFreeze;
 use App\Services\Billing\PackagePaidMarks;
 use App\Services\Billing\ContractMoneyState;
@@ -1980,38 +1981,8 @@ class PaymentReportController extends Controller
      */
     private function voidAutoIssuedFirstBill(Invoice $invoice, PaymentReport $report, $paymentsBeforeReversal, StudentClass $sc, mixed $userId): bool
     {
-        $snapshot = is_array($invoice->billing_snapshot) ? $invoice->billing_snapshot : [];
-        $original = $paymentsBeforeReversal->first();
-        $isLoneReceipt = $paymentsBeforeReversal->count() === 1
-            && (int) $original->getKey() === (int) $report->getAttribute('payment_id')
-            && (int) $original->Amount > 0 && (string) $original->Method !== 'void';
-        if (($snapshot['source'] ?? null) !== self::FIRST_BILL_SOURCE
-            || (int) ($snapshot['payment_report_id'] ?? 0) !== (int) $report->getKey()
-            || (int) $invoice->StudentClassID !== (int) $sc->getKey()
-            || (int) $invoice->TotalAmount !== (int) ($snapshot['contract_charge'] ?? -1)
-            || (int) ($snapshot['contract_charge'] ?? 0) <= 0
-            || !$isLoneReceipt
-            || (string) $invoice->Status === 'void'
-            || $invoice->items()->exists()
-            // A pending report bound to this bill would hit void_invoice_cannot_confirm once it is void: leave the bill open for it.
-            || PaymentReport::query()->where('InvoiceID', (int) $invoice->getKey())->where('status', 'pending')
-                ->where('id', '!=', (int) $report->getKey())->exists()
-            || DB::table('invoice_corrections')->where(fn ($q) => $q->where('original_invoice_id', (int) $invoice->getKey())
-                ->orWhere('replacement_invoice_id', (int) $invoice->getKey()))->exists()) {
-            return false;
-        }
-        $audit = sprintf('[void: 唯一收款撤銷，系統自動作廢; user_id=%s; at=%s]', $userId ?? 'system', now()->format('Y-m-d H:i:s'));
-        $note = trim((string) ($invoice->Note ?? ''));
-        $invoice->Status = 'void';
-        // VARCHAR(255): the audit tag and the invoice-number tag always survive; only the free text is cut (as BillingController::voidInvoice).
-        $keep = preg_match('/\[' . \App\Services\Billing\InvoiceNumber::TAG . ':\d{4}-\d{2}\]/', $note, $kept) ? $kept[0] : '';
-        $free = trim(str_replace($keep, '', $note));
-        $free = trim(mb_substr($free, 0, max(0, 253 - mb_strlen($audit) - mb_strlen($keep))));
-        $invoice->Note = implode(' ', array_filter([$free, $keep, $audit], fn ($p) => $p !== ''));
-        $invoice->save();
-        Log::info('[FirstBillAutoVoid]', ['invoice_id' => $invoice->getKey(), 'report_id' => $report->getKey(), 'student_class_id' => $sc->getKey(), 'user_id' => $userId]);
-
-        return true;
+        return FirstBillAutoVoid::apply($invoice, (int) $report->getKey(), $report->getAttribute('payment_id') === null ? null : (int) $report->getAttribute('payment_id'),
+            collect($paymentsBeforeReversal), (int) $sc->getKey(), $userId);
     }
 
     /**

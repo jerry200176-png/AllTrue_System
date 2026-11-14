@@ -12,6 +12,7 @@ use App\Models\SecurityAuditEvent;
 use App\Models\StudentClass;
 use App\Services\BillingPayableResolver;
 use App\Services\InvoiceAmountReconciliationService;
+use App\Support\DeadlockRetry;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -104,13 +105,12 @@ final class ReceiptReassignService
         }
 
         return DB::transaction(function () use ($route, $reportId, $targetInvoiceId, $campusIds, $isSuperAdmin, $reason, $stateHash, $actorId) {
-            // Lock order of confirm()/void(): courses (ascending), the report, packages, then bills and their payments.
+            // Lock order of confirm()/void(): courses (ascending), the report, packages, then bills and their payments. The courses
+            // include every member of either side's package, because the package marks rewrite them (PackagePaidMarks).
             // Every read before the plan is a locking read, so the snapshot of the plan's plain reads starts after the waits.
-            $courseIds = array_values(array_unique([$route['from_course'], $route['to_course']]));
-            sort($courseIds);
-            $courses = StudentClass::query()->whereIn('ID', $courseIds)->orderBy('ID')->lockForUpdate()->get(['ID', 'PackageID']);
+            $courses = StudentClass::query()->whereIn('ID', $route['courses'])->orderBy('ID')->lockForUpdate()->get(['ID', 'PackageID']);
             $report = PaymentReport::query()->whereKey($reportId)->lockForUpdate()->first();
-            $packageIds = $courses->pluck('PackageID')->map(fn ($v) => (int) $v)->filter()->unique()->sort()->values()->all();
+            $packageIds = $route['packages'];
             if ($packageIds !== []) {
                 CoursePackage::query()->whereIn('id', $packageIds)->orderBy('id')->lockForUpdate()->get(['id']);
             }
@@ -134,6 +134,10 @@ final class ReceiptReassignService
                     ? ['status' => 200, 'body' => ['replayed' => true] + $this->describe($prior)]
                     : $this->refuse('reassign_state_changed', '這張收據已經移到別張帳單了，請重新整理後再確認。', 409);
             }
+            // A package joined or left between the routing read and the locks: the locked sibling set is not the one to write.
+            if (self::packageIdsOf($courses->whereIn('ID', [$route['from_course'], $route['to_course']])) !== $packageIds) {
+                return $this->refuse('reassign_state_changed', '畫面上的帳單資料已經變動，請重新預覽確認後再送出。', 409);
+            }
             if (!is_string($stateHash) || $stateHash === '') {
                 return $this->refuse('reassign_state_hash_required', '請先預覽一次，確認兩張帳單的金額後再送出。');
             }
@@ -152,7 +156,22 @@ final class ReceiptReassignService
             }
 
             return $this->write($ctx, trim($reason), $key, $actorId);
-        });
+        }, DeadlockRetry::ATTEMPTS); // a deadlock victim re-runs whole: locks, replay check and plan again, so a re-run never moves twice
+    }
+
+    /** @param iterable<object> $courses @return list<int> their package ids, ascending */
+    private static function packageIdsOf(iterable $courses): array
+    {
+        $ids = [];
+        foreach ($courses as $c) {
+            if ((int) ($c->PackageID ?? 0) > 0) {
+                $ids[] = (int) $c->PackageID;
+            }
+        }
+        $ids = array_values(array_unique($ids));
+        sort($ids);
+
+        return $ids;
     }
 
     /**
@@ -202,7 +221,7 @@ final class ReceiptReassignService
         if ($this->moneyMoved((int) $toInvoice->id) || $this->moneyMoved((int) $from['invoice']->id)) {
             return $this->refuse('reassign_refund_or_transfer_exists', '其中一張帳單有退費或轉課紀錄，收據不能移動，請聯絡總部對帳。');
         }
-        if ($this->hasPendingReport((int) $toCourse->ID, $reportId) || $this->hasPendingReport((int) $from['course']->ID, $reportId)) {
+        if ($this->hasPendingReport((int) $toCourse->ID, $reportId, (int) $toInvoice->id) || $this->hasPendingReport((int) $from['course']->ID, $reportId, (int) $from['invoice']->id)) {
             return $this->refuse('reassign_pending_report', '其中一門課還有待核對的收款回報，請先處理完再移動收據。');
         }
 
@@ -210,8 +229,8 @@ final class ReceiptReassignService
             return $this->refuse('reassign_target_package_paid', '這張帳單屬於已繳清的共用課程包，不能把收款移過去，請聯絡總部對帳。');
         }
         // Paying the target can mark its package paid: a PackageID pointing at another student's or campus's package is not ours to mark.
-        if ((int) ($toCourse->PackageID ?? 0) > 0 && !DB::table('course_packages')->where('id', (int) $toCourse->PackageID)
-            ->where('student_id', (int) $toCourse->StudentID)->where('campus_id', $ctx['campus_id'])->exists()) {
+        if ((int) ($toCourse->PackageID ?? 0) > 0 && self::packageMismatch(DB::table('course_packages')->where('id', (int) $toCourse->PackageID)->first(['student_id', 'campus_id']),
+            (int) $toCourse->StudentID, (int) $ctx['campus_id'])) {
             return $this->refuse('reassign_target_package_mismatch', '這張帳單的課程指向的共用方案不屬於同一位學生或分校，請聯絡總部對帳。');
         }
 
@@ -242,8 +261,14 @@ final class ReceiptReassignService
         // keeps its surplus, a monthly source back at net 0 is repriced, a repriced monthly target is priced as apply saves it.
         $fromAfter = $this->projectAfter($from['model'], $from['course'], $from['money'], -$amount, false);
         $toAfter = $this->projectAfter($toModel, $toCourse, $toMoney, $amount, true);
+        // The bill this receipt's confirmation auto-issued is voided with it, exactly as apply does (FirstBillAutoVoid).
+        $sourceVoided = FirstBillAutoVoid::applies($from['model'], (int) $report->id, $report->payment_id ? (int) $report->payment_id : null,
+            $from['model']->payments, (int) $from['course']->ID);
+        if ($sourceVoided) {
+            $fromAfter['outstanding_amount'] = 0;
+        }
         $fromBefore = (int) $from['money']['outstanding_amount'];
-        $warnings = ['source_bill_becomes_unpaid'];
+        $warnings = [$sourceVoided ? 'source_bill_voided' : 'source_bill_becomes_unpaid'];
         if ((int) ($from['course']->PackageID ?? 0) > 0 || (int) ($toCourse->PackageID ?? 0) > 0) {
             $warnings[] = 'shared_package';
         }
@@ -276,7 +301,7 @@ final class ReceiptReassignService
                 (int) $from['invoice']->StudentID, (int) $from['course']->ID, (string) ($from['course']->closed_reason ?? ''),
                 (int) $toInvoice->StudentID, (int) $toCourse->ID, (string) ($toCourse->closed_reason ?? ''),
                 // The projected results too: a session change after the preview can move a repriced balance with no stored field changing.
-                (int) $fromAfter['total_amount'], (int) $fromAfter['outstanding_amount'], (int) $toAfter['total_amount'], (int) $toAfter['outstanding_amount'],
+                (int) $fromAfter['total_amount'], (int) $fromAfter['outstanding_amount'], (int) $toAfter['total_amount'], (int) $toAfter['outstanding_amount'], $sourceVoided,
             ], JSON_THROW_ON_ERROR)),
         ], 'ctx' => [
             'report' => $report, 'campus_id' => $ctx['campus_id'], 'amount' => $amount, 'from' => $from,
@@ -332,6 +357,11 @@ final class ReceiptReassignService
         $scopes = PaymentReport::pendingScopeCourseIdsFor($courseIds);
         $pendingCourses = $courseIds === [] ? [] : DB::table('payment_reports')->whereIn('StudentClassID', array_merge([], ...array_values($scopes)))
             ->where('status', 'pending')->where('id', '!=', $reportId)->pluck('StudentClassID')->map(fn ($v) => (int) $v)->unique()->all();
+        // As hasPendingReport(): a pending report bound to the bill itself by InvoiceID.
+        $pendingInvoices = DB::table('payment_reports')->whereIn('InvoiceID', $invoices->pluck('id')->all())->where('status', 'pending')
+            ->where('id', '!=', $reportId)->pluck('InvoiceID')->map(fn ($v) => (int) $v)->unique()->all();
+        // As the preview's reassign_target_package_mismatch: never offer a bill whose course points at someone else's package.
+        $packages = DB::table('course_packages')->whereIn('id', self::packageIdsOf($courses))->get(['id', 'student_id', 'campus_id'])->keyBy(fn ($p) => (int) $p->id);
 
         $targets = [];
         $this->amounts->preloadSessions($courseIds);
@@ -341,7 +371,12 @@ final class ReceiptReassignService
                 if ((string) $inv->Status === 'paid' && in_array($courseId, $paidPackageCourses, true)) {
                     continue;
                 }
-                if (array_intersect($scopes[$courseId] ?? [$courseId], $pendingCourses) !== []) {
+                if (array_intersect($scopes[$courseId] ?? [$courseId], $pendingCourses) !== [] || in_array((int) $inv->id, $pendingInvoices, true)) {
+                    continue;
+                }
+                $course = $courses->get($courseId);
+                if ($course && (int) ($course->PackageID ?? 0) > 0
+                    && self::packageMismatch($packages->get((int) $course->PackageID), (int) $course->StudentID, (int) $ctx['campus_id'])) {
                     continue;
                 }
                 $money = $this->amounts->resolve($inv, $courses->get($courseId));
@@ -504,7 +539,7 @@ final class ReceiptReassignService
      * Routing read before the transaction: the bill the money sits on, its course, and the target's course. Null when any
      * is missing (the plan then answers with its own refusal).
      *
-     * @return array{from_invoice:int, from_course:int, to_course:int}|null
+     * @return array{from_invoice:int, from_course:int, to_course:int, courses:list<int>, packages:list<int>}|null
      */
     private function route(int $reportId, int $targetInvoiceId): ?array
     {
@@ -516,9 +551,16 @@ final class ReceiptReassignService
         $fromInvoice = $fromInvoice ?: (int) ($report->InvoiceID ?? 0);
         $fromCourse = (int) DB::table('Invoice')->where('id', $fromInvoice)->value('StudentClassID');
         $toCourse = (int) DB::table('Invoice')->where('id', $targetInvoiceId)->value('StudentClassID');
+        if ($fromInvoice <= 0 || $fromCourse <= 0 || $toCourse <= 0) {
+            return null;
+        }
+        $packages = self::packageIdsOf(DB::table('StudentClass')->whereIn('ID', [$fromCourse, $toCourse])->get(['PackageID']));
+        $courses = array_merge([$fromCourse, $toCourse], $packages === [] ? []
+            : DB::table('StudentClass')->whereIn('PackageID', $packages)->pluck('ID')->map(fn ($v) => (int) $v)->all());
+        $courses = array_values(array_unique($courses));
+        sort($courses);
 
-        return $fromInvoice > 0 && $fromCourse > 0 && $toCourse > 0
-            ? ['from_invoice' => $fromInvoice, 'from_course' => $fromCourse, 'to_course' => $toCourse] : null;
+        return ['from_invoice' => $fromInvoice, 'from_course' => $fromCourse, 'to_course' => $toCourse, 'courses' => $courses, 'packages' => $packages];
     }
 
     /** Scoped to the source receipt and the exact plan: the same preview sent twice is one move. */
@@ -564,10 +606,14 @@ final class ReceiptReassignService
         $tag = self::paymentTag((int) $link->id);
 
         // Unapply: a reversal linked to the old receipt and to this move (must-do 5), so a move back is never read as "already reversed".
+        $paymentsBefore = $fromInvoice->payments;
         Payment::create(['InvoiceID' => (int) $fromInvoice->id, 'Amount' => -$amount, 'PaidAt' => Carbon::today()->toDateString(),
             'Method' => 'void', 'Note' => "{$tag} 更正移轉：{$reason}", 'payment_report_id' => (int) $old->id]);
         $this->settleBill($fromInvoice, null);
-        $this->settleSourceCourse($fromCourseId, (string) $fromInvoice->Status);
+        // As void() (#531 / #5160): the bill this receipt's own confirmation auto-issued goes with its only receipt.
+        $autoVoided = FirstBillAutoVoid::apply($fromInvoice, (int) $old->id, $old->payment_id === null ? null : (int) $old->payment_id,
+            $paymentsBefore, $fromCourseId, $actorId);
+        $this->settleSourceCourse($fromCourseId, (string) $fromInvoice->Status, $autoVoided);
 
         // Reapply: a repriced monthly target is saved at the total the plan used, as confirm() does (must-do 2), then the money lands.
         $toCourse = StudentClass::query()->where('ID', $toCourseId)->firstOrFail();
@@ -608,14 +654,15 @@ final class ReceiptReassignService
     }
 
     /** As void(): money taken back reopens a count package (its mark and every owner member's); Paid only from the resolver (G-009). */
-    private function settleSourceCourse(int $courseId, string $billStatus): void
+    private function settleSourceCourse(int $courseId, string $billStatus, bool $billAutoVoided): void
     {
         $course = StudentClass::query()->where('ID', $courseId)->firstOrFail();
         $package = $billStatus !== 'paid' && (int) ($course->PackageID ?? 0) > 0 ? CoursePackage::query()->whereKey((int) $course->PackageID)->first() : null;
         if ($package && strtolower((string) $course->getAttribute('ScheduleMode')) !== 'date' && (int) $package->student_id === (int) $course->StudentID) {
             PackagePaidMarks::drop($course, $package);
         }
-        if (!$this->resolvedPaid($courseId)) {
+        // As void(): with its bill auto-voided the resolver could read the stale flag itself as paid, so the flag goes.
+        if ($billAutoVoided || !$this->resolvedPaid($courseId)) {
             $course->refresh();
             $course->update(['Paid' => 0, 'PayDate' => null] + ($course->closed_reason === 'settled' ? ['closed_reason' => 'settled_pending'] : []));
         }
@@ -664,8 +711,11 @@ final class ReceiptReassignService
     /** @return array<string, mixed> the stored move (identical for the first answer and every replay) */
     private function describe(PaymentReportReassignment $link): array
     {
-        $side = fn (int $invoiceId): array => ['invoice_id' => $invoiceId, 'balance_after' => (int) $this->resolve($invoiceId)['outstanding_amount'],
-            'status' => (string) DB::table('Invoice')->where('id', $invoiceId)->value('Status')];
+        $side = function (int $invoiceId): array {
+            $status = (string) DB::table('Invoice')->where('id', $invoiceId)->value('Status');
+
+            return ['invoice_id' => $invoiceId, 'balance_after' => $status === 'void' ? 0 : (int) $this->resolve($invoiceId)['outstanding_amount'], 'status' => $status];
+        };
 
         return [
             'reassignment_id' => (int) $link->id, 'old_report_id' => (int) $link->from_report_id, 'new_report_id' => (int) $link->to_report_id,
@@ -691,9 +741,17 @@ final class ReceiptReassignService
         return DB::table('Payment')->where('InvoiceID', $invoiceId)->whereIn('Method', self::MONEY_MOVED_METHODS)->exists();
     }
 
-    private function hasPendingReport(int $courseId, int $exceptReportId): bool
+    /** A pending report on the course (package-aware) or bound to the bill itself by InvoiceID, whatever course it names. */
+    private function hasPendingReport(int $courseId, int $exceptReportId, int $invoiceId): bool
     {
-        return DB::table('payment_reports')->whereIn('StudentClassID', PaymentReport::pendingScopeCourseIds($courseId))->where('status', 'pending')->where('id', '!=', $exceptReportId)->exists();
+        return DB::table('payment_reports')->where(fn ($q) => $q->whereIn('StudentClassID', PaymentReport::pendingScopeCourseIds($courseId))->orWhere('InvoiceID', $invoiceId))
+            ->where('status', 'pending')->where('id', '!=', $exceptReportId)->exists();
+    }
+
+    /** The target's package must be its own student's in this campus: paying the bill can mark that package paid. */
+    private static function packageMismatch(?object $package, int $studentId, int $campusId): bool
+    {
+        return !$package || (int) $package->student_id !== $studentId || (int) $package->campus_id !== $campusId;
     }
 
     /** Age of the money, not of the latest receipt: a moved receipt keeps the age of the one it replaced (no reset past the limit). */

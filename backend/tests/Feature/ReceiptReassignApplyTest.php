@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Http\Controllers\PaymentReportController;
 use App\Models\AuthToken;
 use App\Models\CoursePackage;
 use App\Models\Invoice;
@@ -164,6 +165,69 @@ class ReceiptReassignApplyTest extends TestCase
             ->assertStatus(422)->assertJsonPath('code', 'reassign_target_package_mismatch');
         $this->assertSame($before, $this->snapshot());
         $this->assertFalse((bool) $foreign->fresh()->paid);
+    }
+
+    // ── R3 review P2s on df30a41 ────────────────────────────────────────
+
+    public function test_every_member_of_either_package_is_locked_with_the_courses_before_the_move(): void
+    {
+        $f = $this->fixture();
+        $pkg = $this->package($f['wrong']);
+        $f['wrongCourse']->update(['PackageID' => $pkg->id]);
+        $sibling = $this->bill($f['wrong'], self::AMOUNT, 'unpaid', 0, ['PackageID' => $pkg->id]); // PackagePaidMarks::drop rewrites it
+        $tok = $this->token('S', 1);
+        $hash = $this->preview($tok, $f)->assertOk()->json('state_hash');
+        $locked = null;
+        DB::listen(function ($q) use (&$locked) {
+            if ($locked === null && stripos($q->sql, 'for update') !== false && stripos($q->sql, '`StudentClass`') !== false) {
+                $locked = array_map('intval', $q->bindings);
+            }
+        });
+        $this->apply($tok, $f['report'], $f['rightInvoice'], $hash)->assertStatus(201);
+        $this->assertContains((int) $sibling['course']->ID, (array) $locked, 'the first course lock must already hold the package sibling');
+        $this->assertSame(array_values(array_unique($locked)), $locked);
+        $sorted = $locked;
+        sort($sorted);
+        $this->assertSame($sorted, $locked, 'ascending, the order every other writer uses');
+    }
+
+    public function test_bill_auto_issued_by_the_moved_receipts_confirmation_is_voided_with_it_as_void_does(): void
+    {
+        $f = $this->fixture();
+        $f['wrongInvoice']->update(['billing_snapshot' => ['version' => 1, 'source' => PaymentReportController::FIRST_BILL_SOURCE,
+            'payment_report_id' => $f['report']->id, 'contract_charge' => self::AMOUNT]]);
+        $tok = $this->token('S', 1);
+        $plan = $this->preview($tok, $f)->assertOk()->assertJsonPath('from.balance_after', 0)->json();
+        $this->assertContains('source_bill_voided', $plan['warnings']);
+        $this->apply($tok, $f['report'], $f['rightInvoice'], $plan['state_hash'])->assertStatus(201)
+            ->assertJsonPath('from.status', 'void')->assertJsonPath('from.balance_after', 0);
+        $this->assertSame('void', $f['wrongInvoice']->fresh()->Status);
+        $this->assertSame(0, (int) $f['wrongCourse']->fresh()->Paid);
+        $this->assertSame(['paid', self::AMOUNT], [$f['rightInvoice']->fresh()->Status, $this->net($f['rightInvoice'])]);
+    }
+
+    public function test_pending_report_bound_to_the_target_bill_only_by_invoice_id_blocks_the_move_and_the_offer(): void
+    {
+        $f = $this->fixture();
+        $tok = $this->token('S', 1);
+        $hash = $this->preview($tok, $f)->assertOk()->json('state_hash');
+        $elsewhere = $this->bill($this->student(1), self::AMOUNT); // the report names another course, but this bill
+        $this->pendingReport($f['right'], $elsewhere['course'], $f['rightInvoice']);
+        $before = $this->snapshot();
+        $this->apply($tok, $f['report'], $f['rightInvoice'], $hash)->assertStatus(422)->assertJsonPath('code', 'reassign_pending_report');
+        $this->assertSame($before, $this->snapshot());
+        $ids = array_column($this->getJson("/api/v1/payment-reports/{$f['report']->id}/reassign-targets?student_id={$f['right']->id}", $this->h($tok))->assertOk()->json('targets'), 'invoice_id');
+        $this->assertNotContains((int) $f['rightInvoice']->id, $ids);
+    }
+
+    public function test_targets_never_offer_a_bill_whose_course_points_at_another_students_package(): void
+    {
+        $f = $this->fixture();
+        $f['rightCourse']->update(['PackageID' => $this->package($this->student(2))->id]);
+        $ok = $this->bill($f['right'], self::AMOUNT);
+        $ids = array_column($this->getJson("/api/v1/payment-reports/{$f['report']->id}/reassign-targets?student_id={$f['right']->id}", $this->h($this->token('S', 1)))
+            ->assertOk()->json('targets'), 'invoice_id');
+        $this->assertSame([(int) $ok['invoice']->id], $ids); // the preview would refuse the other one with reassign_target_package_mismatch
     }
 
     // ── must-do 3: pending reports across a shared package ──────────────

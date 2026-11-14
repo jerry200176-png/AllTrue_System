@@ -6,6 +6,7 @@ use App\Models\Payment;
 use App\Models\PaymentReportReassignment;
 use App\Services\Billing\ReceiptReassignService;
 use Carbon\Carbon;
+use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Tests\Support\CleansCommittedRows;
@@ -88,6 +89,32 @@ class ReceiptReassignApplyRaceTest extends TestCase
         $this->assertSame($payments + 1, DB::table('Payment')->count()); // only the concurrent payment
         $this->assertSame(0, PaymentReportReassignment::query()->count());
         $this->assertSame('confirmed', $f['report']->fresh()->status);
+    }
+
+    public function test_a_deadlock_victim_is_run_again_and_moves_the_money_once(): void
+    {
+        $f = $this->fixture();
+        $tok = $this->token('S', 1);
+        $hash = (string) $this->preview($tok, $f)->assertOk()->json('state_hash');
+        $payments = DB::table('Payment')->count();
+        $deadlocks = 0;
+        // InnoDB rolls the victim's whole transaction back; the first attempt dies on its first write.
+        DB::connection()->beforeExecuting(function (string $sql) use (&$deadlocks) {
+            if ($deadlocks === 0 && str_starts_with(strtolower($sql), 'insert into `payment_reports`')) {
+                $deadlocks++;
+                $pdo = new \PDOException('SQLSTATE[40001]: Serialization failure: 1213 Deadlock found when trying to get lock; try restarting transaction');
+                $pdo->errorInfo = ['40001', 1213, 'Deadlock found when trying to get lock; try restarting transaction'];
+                throw new QueryException('mysql', $sql, [], $pdo);
+            }
+        });
+
+        $res = $this->postJson("/api/v1/payment-reports/{$f['report']->id}/reassign",
+            ['target_invoice_id' => $f['rightInvoice']->id, 'state_hash' => $hash, 'reason' => '選錯學生'], $this->h($tok));
+
+        $this->assertSame(1, $deadlocks);
+        $this->assertSame(201, $res->status(), $res->getContent()); // without DeadlockRetry the director gets a 500
+        $this->assertSame(1, PaymentReportReassignment::query()->where('from_report_id', $f['report']->id)->count());
+        $this->assertSame($payments + 2, DB::table('Payment')->count());
     }
 
     /** Runs $concurrent on connection A (as the default connection, so services use it) right before the request's first course lock. */
