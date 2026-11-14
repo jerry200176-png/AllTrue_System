@@ -133,11 +133,13 @@ class ParentStudyTaskApiTest extends TestCase
         $campus = (int) CampusFactory::new()->create()->id;
         $child = $this->makeStudent($campus);
         $stranger = $this->makeStudent($campus);
+        $this->makeTask($child, ['title' => '自己的']);
         $this->makeTask($stranger, ['title' => '別家的']);
 
+        // The child's own task proves the list is not empty for another reason; the stranger's task must not appear.
         $res = $this->asParent($this->guardianToken($child))
             ->getJson(self::URL . "?week_start=2026-11-16&student_id={$stranger->id}")->assertOk();
-        $this->assertSame([], $res->json('data'));
+        $this->assertSame(['自己的'], array_column($res->json('data'), 'title'));
     }
 
     public function test_parent_of_another_campus_sees_only_that_campuss_child(): void
