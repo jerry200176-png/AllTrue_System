@@ -48,9 +48,12 @@ export function specFiles(root = ROOT) {
 }
 
 // Calls whose first string argument is a CSS selector.
-const SELECTOR_CALL = /(?:\.locator|\.\$\$?|\.waitForSelector|\.querySelector(?:All)?|\.closest|\.matches|readySelector\s*:|selector\s*:)\s*\(?\s*(['"`])((?:\\.|(?!\1)[^\\])*)\1/g;
+const SELECTOR_CALL = /(?:\.locator|\.\$\$?(?:eval)?|\.waitForSelector|\.querySelector(?:All)?|\.closest|\.matches|readySelector\s*:|selector\s*:)\s*\(?\s*(['"`])((?:\\.|(?!\1)[^\\])*)\1/g;
 const TESTID_CALL = /getByTestId\(\s*(['"`])((?:\\.|(?!\1)[^\\])*)\1/g;
 const TESTID_ATTR = /\[data-testid([\^$*~|]?=)\s*["']?([^"'\]]+)["']?\s*\]/g;
+
+// `[class...=...]` in any operator form; `[class]` alone (presence) is not a class selector.
+const CLASS_ATTR = /\[\s*class\s*[~|^$*]?\s*=[^\]]*\]/gi;
 
 const cut = (s) => s.split('${')[0];
 
@@ -60,6 +63,10 @@ export function extractSelectors(source) {
   const testids = []; // { id, exact }
   for (const m of source.matchAll(SELECTOR_CALL)) {
     const sel = m[2];
+    // XPath strings: each `@class` test (contains(@class...), @class="x") counts as one class selector.
+    if (/^\s*(?:xpath=|\/\/|\.\/|\.\.\/|\(\/\/)/.test(sel)) { classCount += (sel.match(/@class\b/g) || []).length; continue; }
+    // Attribute selectors on class ([class*=x], [class~=x], [class^=x], [class$=x], [class|=x], [class="x"], any quoting/case flag) are class selectors too.
+    classCount += (sel.match(CLASS_ATTR) || []).length;
     for (const t of sel.matchAll(TESTID_ATTR)) testids.push({ id: cut(t[2]), exact: t[1] === '=' && !t[2].includes('${') });
     const rest = sel.replace(TESTID_ATTR, '').replace(/\[[^\]]*\]/g, '').replace(/\$\{[^}]*\}/g, ' ');
     for (const c of rest.matchAll(/\.([A-Za-z_][\w-]*)/g)) { classes.add(c[1]); classCount += 1; }

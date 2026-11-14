@@ -62,3 +62,16 @@ test('the committed baseline is not lower than the real count and is read from t
   const baseline = JSON.parse(readFileSync(BASELINE_PATH, 'utf8'));
   assert.deepEqual(ratchetProblems(classCounts(specFiles()), baseline), []);
 });
+
+test('ratchet counts class attribute selectors, xpath @class and $eval selectors', () => {
+  const n = (body) => classCounts([spec(body)], '/nowhere').total;
+  for (const sel of ['[class*=foo]', '[class~=foo]', '[class^=foo]', '[class$=foo]', '[class|=foo]', '[class="foo"]', '[ class *= "foo" i ]', '[CLASS=foo]']) {
+    assert.equal(n("p.locator(\x27div" + sel.replace(/"/g, "\\\"") + "\x27);"), 1, sel);
+  }
+  assert.equal(n("p.locator('[class*=a][class*=b]');"), 2);
+  assert.equal(n("p.locator('[class]');"), 0);
+  assert.equal(n("p.locator('xpath=//div[contains(@class, \"foo\")]');"), 1);
+  assert.equal(n("p.locator('xpath=ancestor::*[@class=\"foo\"]');"), 1);
+  assert.equal(n("await p.$eval('.foo', e => e); await p.$$eval('div.bar', e => e);"), 2);
+  assert.equal(n("await p.$eval('[class*=foo]', e => e);"), 1);
+});
