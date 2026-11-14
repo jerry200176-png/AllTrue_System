@@ -209,6 +209,11 @@ final class ReceiptReassignService
         if ($this->packagePaidHold((int) $toInvoice->id, (string) $toInvoice->Status, (int) $toInvoice->StudentClassID)) {
             return $this->refuse('reassign_target_package_paid', '這張帳單屬於已繳清的共用課程包，不能把收款移過去，請聯絡總部對帳。');
         }
+        // Paying the target can mark its package paid: a PackageID pointing at another student's or campus's package is not ours to mark.
+        if ((int) ($toCourse->PackageID ?? 0) > 0 && !DB::table('course_packages')->where('id', (int) $toCourse->PackageID)
+            ->where('student_id', (int) $toCourse->StudentID)->where('campus_id', $ctx['campus_id'])->exists()) {
+            return $this->refuse('reassign_target_package_mismatch', '這張帳單的課程指向的共用方案不屬於同一位學生或分校，請聯絡總部對帳。');
+        }
 
         // The canonical payable (same resolver as confirm and every billing surface), not TotalAmount minus payments.
         [$toModel, $toMoney] = $this->money((int) $toInvoice->id, $toCourse);
@@ -528,7 +533,7 @@ final class ReceiptReassignService
             'StudentID' => (int) $toInvoice->StudentID, 'StudentClassID' => $toCourseId, 'InvoiceID' => (int) $toInvoice->id,
             'billing_period' => preg_match('/^\d{4}-\d{2}$/', (string) $toInvoice->billing_period) ? $toInvoice->billing_period : null,
             'reported_by_name' => (string) $old->reported_by_name, 'payment_date' => $old->payment_date, 'payment_method' => $old->payment_method,
-            'reported_amount' => $amount, 'account_last5' => $old->account_last5, 'note' => $old->note,
+            'reported_amount' => $amount, 'account_last5' => $old->account_last5, 'note' => $old->displayNote() ?: null, // the receipt keeps the note it showed; the Payment note carries the move tag
             'status' => 'confirmed', 'confirmed_by' => $actorId, 'confirmed_at' => Carbon::now(),
             'report_token_hash' => hash('sha256', 'receipt-reassign|' . $key), 'token_expires_at' => Carbon::now(),
         ]);
@@ -550,7 +555,7 @@ final class ReceiptReassignService
         // Reapply: a repriced monthly target is saved at the total the plan used, as confirm() does (must-do 2), then the money lands.
         $toCourse = StudentClass::query()->where('ID', $toCourseId)->firstOrFail();
         if ((string) $toCourse->ScheduleMode === 'date') {
-            app(MonthlyBillFreeze::class)->priceBeforeFirstPayment($toInvoice, $toCourse, $ctx['to']['money'], $old->payment_date);
+            app(MonthlyBillFreeze::class)->priceBeforeFirstPayment($toInvoice, $toCourse, $ctx['to']['money'], $old->payment_date, $ctx['to']['money']['billing_period']);
             $toInvoice->save();
         }
         $payment = Payment::create(['InvoiceID' => (int) $toInvoice->id, 'Amount' => $amount, 'PaidAt' => $old->payment_date,
@@ -608,7 +613,7 @@ final class ReceiptReassignService
                 'closed_reason' => $course->closed_reason === 'settled_pending' ? 'settled' : $course->closed_reason]);
         }
         $package = (int) ($course->PackageID ?? 0) > 0 ? CoursePackage::query()->whereKey((int) $course->PackageID)->first() : null;
-        if ($package && $billStatus === 'paid' && (string) $course->ScheduleMode !== 'date') {
+        if ($package && $billStatus === 'paid' && (string) $course->ScheduleMode !== 'date' && (int) $package->student_id === (int) $course->StudentID) {
             PackagePaidMarks::mark($package, Carbon::make($paymentDate)?->toDateString() ?? Carbon::today()->toDateString());
         }
     }

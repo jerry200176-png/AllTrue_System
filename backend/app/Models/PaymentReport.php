@@ -100,7 +100,7 @@ class PaymentReport extends Model
     {
         $paymentNote = $this->getAttribute('payment_id') ? $this->getRelationValue('payment')?->getAttribute('Note') : null;
         // System markers (confirm() audit fallback, legacy backfill) are metadata, never a display note.
-        foreach (['繳費回報核帳確認 (report #', '[系統補建]', '[舊系統補建]'] as $marker) {
+        foreach (['繳費回報核帳確認 (report #', '[系統補建]', '[舊系統補建]', '[receipt_reassign:'] as $marker) {
             if (is_string($paymentNote) && str_starts_with($paymentNote, $marker)) {
                 $paymentNote = null;
             }

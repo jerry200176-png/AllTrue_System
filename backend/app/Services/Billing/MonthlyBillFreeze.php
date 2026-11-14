@@ -22,12 +22,13 @@ final class MonthlyBillFreeze
      * the period snapshot (saved here). Call only for a date-mode course, under the bill's lock.
      *
      * @param array<string, mixed>|null $projection the bill's resolver projection before this payment; null = a bill just issued
+     * @param string|null $period the month the caller already priced the bill by (the resolver's), used when the bill names none
      */
-    public function priceBeforeFirstPayment(Invoice $invoice, StudentClass $sc, ?array $projection, mixed $paymentDate): void
+    public function priceBeforeFirstPayment(Invoice $invoice, StudentClass $sc, ?array $projection, mixed $paymentDate, ?string $period = null): void
     {
         $billingPeriod = preg_match('/^\d{4}-\d{2}$/', (string) $invoice->billing_period)
             ? (string) $invoice->billing_period
-            : $this->monthlyBilling->defaultPeriodFor($sc, $paymentDate);
+            : (preg_match('/^\d{4}-\d{2}$/', (string) $period) ? (string) $period : $this->monthlyBilling->defaultPeriodFor($sc, $paymentDate));
         $billing = $this->monthlyBilling->summarizePeriod($sc, $billingPeriod);
 
         if (

@@ -128,6 +128,44 @@ class ReceiptReassignApplyTest extends TestCase
         $this->assertSame('monthly_billable_sessions', $saved->billing_snapshot['source'] ?? null);
     }
 
+    public function test_monthly_target_without_a_period_is_frozen_at_the_month_the_preview_priced(): void
+    {
+        $f = $this->fixture();
+        // No billing_period: the resolver prices the bill by its IssueDate month (October), not the receipt's payment month (November).
+        $target = $this->bill($f['right'], 9000, 'unpaid', 0, ['EndDate' => '2026-11-30', 'StartDate' => '2026-10-01'] + $this->monthly(),
+            ['billing_period' => null, 'IssueDate' => '2026-10-01']);
+        $this->sessions($target['course'], ['2026-10-05', '2026-10-12', '2026-10-19', '2026-10-26', '2026-11-03', '2026-11-05']); // Oct 8000, Nov 4000
+        $tok = $this->token('S', 1);
+
+        $plan = $this->previewTo($tok, $f['report'], $target['invoice'])->assertOk()->assertJsonPath('to.balance_before', self::AMOUNT)->json();
+        $this->apply($tok, $f['report'], $target['invoice'], $plan['state_hash'])->assertStatus(201)->assertJsonPath('to.balance_after', 0);
+        $saved = $target['invoice']->fresh();
+        $this->assertSame([self::AMOUNT, '2026-10', 'paid'], [(int) $saved->TotalAmount, $saved->billing_period, $saved->Status]);
+    }
+
+    public function test_new_receipt_keeps_the_note_the_old_receipt_showed(): void
+    {
+        $f = $this->fixture();
+        DB::table('Payment')->where('id', $f['report']->payment_id)->update(['Note' => '家長分兩次轉帳']);
+        $tok = $this->token('S', 1);
+        $new = $this->apply($tok, $f['report'], $f['rightInvoice'], $this->preview($tok, $f)->json('state_hash'))->assertStatus(201)->json('new_report_id');
+        $this->assertSame('家長分兩次轉帳', PaymentReport::query()->findOrFail($new)->displayNote()); // not the internal move tag
+    }
+
+    public function test_target_course_pointing_at_another_students_package_is_refused_and_that_package_is_untouched(): void
+    {
+        $f = $this->fixture();
+        $foreign = $this->package($this->student(2)); // another student, another campus
+        $f['rightCourse']->update(['PackageID' => $foreign->id]);
+        $tok = $this->token('S', 1);
+        $before = $this->snapshot();
+        $this->preview($tok, $f)->assertStatus(422)->assertJsonPath('code', 'reassign_target_package_mismatch');
+        $this->apply($tok, $f['report'], $f['rightInvoice'], ReceiptReassignService::STATE_HASH_VERSION . ':' . str_repeat('0', 64))
+            ->assertStatus(422)->assertJsonPath('code', 'reassign_target_package_mismatch');
+        $this->assertSame($before, $this->snapshot());
+        $this->assertFalse((bool) $foreign->fresh()->paid);
+    }
+
     // ── must-do 3: pending reports across a shared package ──────────────
 
     public function test_pending_report_on_any_member_of_either_package_blocks_the_apply_and_writes_nothing(): void
