@@ -44,6 +44,16 @@ Seen on 2026-11-07: 18 R3 FAIL rounds, most of them "a guard mutant survives / a
 
 Add `autoland` when you open the PR. `autoland.yml` adds `queue` once the same gates land-queue uses are green (required checks, Codex on the head, all threads replied to and resolved, the R3 marker when the tier needs it), and adds it again after land-queue drops a PR for unresolved threads or failed checks once they are fixed. It never merges, approves or touches environments. R3 still waits for the independent review marker: `autoland` queues only when the gate says it is reviewed.
 
+## Dependabot PRs
+
+`autoland` skips bot-authored PRs (`untrusted author` in `.github/scripts/autoland.mjs`; the land queue only runs such PRs serially), so a Dependabot PR never gets queued by itself. Founder decision 2026-11-14 (coordinating chat): for a **patch or minor** update the agent merges it directly with a normal squash merge (`gh pr merge --squash`, never `--admin`) once all of these hold:
+- the PR body has the risk declaration (`python3 scripts/governance/pr_declaration.py`), added by the agent if the bot omitted it;
+- every required check is green on the head, including the full PHPUnit / Vitest run;
+- an independent reviewer has read the upstream release notes for each changed package, checked the lock diff touches only those packages, and checked the app's use of any changed behaviour (e.g. queued closures for a serialization library); its marker is on the head;
+- no review thread is open.
+
+A **major** version, a change outside lock files, or anything the reviewer flags stays with the Founder.
+
 ## Continue an approved task
 
 Apply [approval continuity](../governance/RISK_BASED_MERGE_POLICY.md#approval-continuity-within-the-authorized-task): after explicit Founder GO, execute the approved scope without asking again at every merge/deploy/verification step. Recheck exact-head evidence and the approved boundary; request a new decision only for a material scope change or a genuinely missing authorization. Existing platform gates remain mandatory.
