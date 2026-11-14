@@ -20,12 +20,14 @@ class PruneAgentWorktrees(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         cls.tmp = Path(tempfile.mkdtemp())
+        cls.addClassCleanup(shutil.rmtree, cls.tmp, ignore_errors=True)  # registered first: runs even if setup fails
         home = cls.tmp / "home"
         home.mkdir()
         cls.env = {**os.environ, "HOME": str(home), "GIT_CONFIG_GLOBAL": "/dev/null",
                    "GIT_CONFIG_SYSTEM": "/dev/null", "GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@example.com",
                    "GIT_COMMITTER_NAME": "t", "GIT_COMMITTER_EMAIL": "t@example.com"}
-        cls.env.pop("GH_TOKEN", None)
+        for var in ("GH_TOKEN", "GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_COMMON_DIR"):
+            cls.env.pop(var, None)  # an exported value must not point git at a real repo
         cls.repo = cls.tmp / "repo"
         cls.git(cls.tmp, "init", "-q", "--bare", "origin.git")
         cls.git(cls.tmp, "init", "-q", "-b", "main", "repo")
@@ -68,10 +70,6 @@ class PruneAgentWorktrees(unittest.TestCase):
         out = subprocess.run(["bash", str(SCRIPT), "--dry-run"], cwd=cls.repo, env=cls.env,
                              capture_output=True, text=True, check=True).stdout
         cls.removable = {l.split()[-1] for l in out.splitlines() if l.startswith("would remove ")}
-
-    @classmethod
-    def tearDownClass(cls) -> None:
-        shutil.rmtree(cls.tmp, ignore_errors=True)
 
     @classmethod
     def git(cls, cwd: Path, *args: str) -> str:
