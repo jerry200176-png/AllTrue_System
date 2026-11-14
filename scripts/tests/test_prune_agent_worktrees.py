@@ -32,6 +32,8 @@ class PruneAgentWorktrees(unittest.TestCase):
         cls.git(cls.repo, "remote", "add", "origin", str(cls.tmp / "origin.git"))
         (cls.repo / ".gitignore").write_text("node_modules/\nfrontend/node_modules/\nbackend/storage/\n")
         (cls.repo / "a.txt").write_text("x\n")
+        (cls.repo / "scripts").mkdir()  # the script under test calls the repo's own index audit
+        shutil.copy(ROOT / "scripts/git-index-audit.sh", cls.repo / "scripts/git-index-audit.sh")
         cls.git(cls.repo, "add", "-A")
         cls.git(cls.repo, "commit", "-qm", "init")
         cls.git(cls.repo, "push", "-q", "origin", "main")
@@ -41,6 +43,8 @@ class PruneAgentWorktrees(unittest.TestCase):
             "repair-snapshot": ["backend/storage/app/repair-snapshots/snap.json"],
             "notes-file": ["frontend/node_modules-notes.txt"],
             "storage-public": ["backend/storage/app/public/f.png"],
+            "assume-unchanged": [],
+            "skip-worktree": [],
         }
         for name, files in cases.items():
             cls.git(cls.repo, "worktree", "add", "-q", "--detach", f".claude/worktrees/{name}", "main")
@@ -50,6 +54,14 @@ class PruneAgentWorktrees(unittest.TestCase):
                 (w / rel).write_text("y\n")
             gd = Path(cls.git(w, "rev-parse", "--absolute-git-dir").strip())
             for f in ("logs/HEAD", "index"):  # old enough to pass the 2-hour recency guard
+                os.utime(gd / f, (1, 1))
+        # Edits to tracked files that the index flags hide from `git status`.
+        for name, flag in (("assume-unchanged", "--assume-unchanged"), ("skip-worktree", "--skip-worktree")):
+            w = cls.repo / ".claude/worktrees" / name
+            cls.git(w, "update-index", flag, "a.txt")
+            (w / "a.txt").write_text("edited\n")
+            gd = Path(cls.git(w, "rev-parse", "--absolute-git-dir").strip())
+            for f in ("logs/HEAD", "index"):
                 os.utime(gd / f, (1, 1))
         # A user config that hides untracked files from `git status`, as a developer might have globally.
         cls.git(cls.repo, "config", "status.showUntrackedFiles", "no")
@@ -79,6 +91,12 @@ class PruneAgentWorktrees(unittest.TestCase):
 
     def test_node_modules_lookalike_file_is_kept(self) -> None:
         self.assertNotIn("notes-file", self.removable)
+
+    def test_assume_unchanged_edit_is_kept(self) -> None:
+        self.assertNotIn("assume-unchanged", self.removable)
+
+    def test_skip_worktree_edit_is_kept(self) -> None:
+        self.assertNotIn("skip-worktree", self.removable)
 
 
 if __name__ == "__main__":

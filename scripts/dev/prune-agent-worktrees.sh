@@ -28,6 +28,9 @@ for w in "$root"/.claude/worktrees/*/; do
   if ! st="$(git --no-optional-locks -C "$w" status --porcelain --ignored --untracked-files=all 2>/dev/null)"; then kept+=("$name(status-failed)"); continue; fi
   dirty="$(printf '%s\n' "$st" | grep -v '^$' | grep -Ev "$cache_re" || true)"
   if [ -n "$dirty" ]; then kept+=("$name(changes)"); continue; fi
+  # assume-unchanged / skip-worktree files hide edits from `git status`. Reuse the audit script's detection;
+  # it also exits non-zero when `git ls-files` fails, which keeps the worktree (fail safe).
+  if ! (cd "$w" && bash "$root/scripts/git-index-audit.sh" --all >/dev/null 2>&1); then kept+=("$name(hidden-index-flags)"); continue; fi
   # Recent use: a commit/checkout (logs/HEAD) or an index write by the agent. Status above uses
   # --no-optional-locks, so this script itself never refreshes the index.
   gd="$(git -C "$w" rev-parse --absolute-git-dir)"
