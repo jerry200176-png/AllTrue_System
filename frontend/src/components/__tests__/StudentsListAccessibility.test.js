@@ -82,13 +82,15 @@ describe('StudentsList header actions (mounted)', () => {
   it('lists the actions in order, with the file input among them, and the import button opens the picker', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, json: async () => ({ data: [], total: 0 }) })));
     const stubs = {
-      PageHeader: { template: '<header><slot name="actions" /></header>' },
+      PageHeader: { template: '<header><p data-slot="page-context"><slot name="context" /></p><slot name="actions" /></header>' },
       Button: { template: '<button type="button"><slot /></button>' },
     };
     const wrapper = shallowMount(StudentsList, { props: { branchId: 1 }, global: { stubs } });
     await flushPromises();
     const header = wrapper.find('header');
-    const labels = [...header.element.children].map((el) => (el.tagName === 'INPUT' ? 'file-input' : el.textContent.trim()));
+    // The count line keeps the space after 本分校 (the old page read 「本分校 4 人」).
+    expect(header.find('[data-slot="page-context"]').text()).toContain('本分校 0 人・目前列表 0 人');
+    const labels = [...header.element.children].filter((el) => el.tagName !== 'P').map((el) => (el.tagName === 'INPUT' ? 'file-input' : el.textContent.trim()));
     expect(labels).toEqual(['匯入名單', '下載範例', '跨分校身份', 'file-input', '新增學生']);
     const input = header.find('input[type="file"]');
     expect(input.attributes('aria-hidden')).toBe('true');
@@ -97,5 +99,10 @@ describe('StudentsList header actions (mounted)', () => {
     await header.find('[aria-label="匯入名單（學生）"]').trigger('click');
     expect(input.element.click).toHaveBeenCalledTimes(1);
     wrapper.unmount();
+  });
+
+  it('generates the page-only utility classes: ui.css lists StudentsList.vue as a Tailwind source', () => {
+    const css = readFileSync(resolve(__dirname, '../../ui.css'), 'utf8');
+    expect(css).toContain('@source "./pages/StudentsList.vue";');
   });
 });

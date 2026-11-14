@@ -3,7 +3,7 @@
     <PageHeader title="學生管理" data-guide="students-header">
       <template #context>
         <span class="tw:max-md:hidden">管理「人」：學生資料、家長與聯絡方式。</span>
-        <span class="tw:tabular-nums tw:md:ml-2">本分校{{ studentsLoaded ? branchStudentTotal : '—' }} 人・目前列表 {{ studentsLoaded ? displayStudents.length : '—' }} 人</span>
+        <span class="tw:tabular-nums tw:md:ml-2">本分校 {{ studentsLoaded ? branchStudentTotal : '—' }} 人・目前列表 {{ studentsLoaded ? displayStudents.length : '—' }} 人</span>
       </template>
       <template #actions>
         <Button type="button" variant="outline" :class="[control.page, phoneAction]" aria-label="匯入名單（學生）" @click="openImportDialog"><FileUp :size="22" aria-hidden="true" />匯入名單</Button>
