@@ -3,6 +3,19 @@
 > 本 repo 對 Founder 常設決定的**唯一**定義。`AGENTS.md`、`CLAUDE.md` 只放指向本檔的連結，不得另寫摘要或複本。
 > 艦隊層權威表：portfolio-ops `governance/AUTONOMY_POLICY.md`（portfolio-ops#134）。兩者不一致時開 PR 修正本檔；**較嚴格的規則優先**：艦隊層只能放寬本檔未另加限制之處，不得削弱本 repo 較嚴格的本地規則或安全規則（例如聚焦回歸測試、權威紀錄核對、產品 P0／紅線）。
 
+<a id="paid-means-confirmed"></a>
+## 2026-11-14（五）（課程「已繳」= 已確認入帳；#5187）
+
+### Founder 原話（逐字，2026-11-14 協調對話）
+
+「先照你推薦處理」：回覆協調 session 的提問「帳單全部付清、但付款還在核對中（已回報、未確認入帳）的課程，算不算已繳？」，推薦為「還不算」。
+
+### 決定
+
+1. 課程繳費狀態只看**已確認入帳**：付款回報在核對中（`pending`）時，`StudentClass.Paid` 維持 0，催繳照常；確認入帳（confirm）後才變已繳。與 [`RFC_REPORTED_PAID_ACCOUNTING_SPLIT.md`](../architecture/RFC_REPORTED_PAID_ACCOUNTING_SPLIT.md) 一致，不是新規則。
+2. 畫面可以顯示「已回報、待對帳」，但不得當成已繳（家長入口、催繳名單、月結提醒同此）。
+3. #5187 的 `paid_flag_vs_invoice` 差異：以本條為準判斷哪一邊錯；修正程式統一一個 Paid 同步點。正式資料修正仍是 Founder 才能做的副作用（rulebook F2），走執行包＋POP 核准。
+
 <a id="agent-decides-by-default"></a>
 ## 2026-11-12（四）（選項由 Agent 照推薦決定；只有重大產品決策才問；#5015、#5201）
 
