@@ -174,22 +174,32 @@ const COURSE_MGMT_HISTORY = {
 // paid = success, nothing to pay = neutral), red appears only on debt, and every amount line is tabular and on one line.
 const BILLING_CASES = [
   { id: 100, status: 'unpaid', invoice: { status: 'unpaid', total_amount: 4800 }, reports: [] },
-  { id: 101, status: 'partial', invoice: { status: 'partial', total_amount: 6400 }, reports: [{ status: 'pending', payment_date: '2026-11-03', account_last5: '12345' }] },
+  // a bill with both a start and an end date: the period `2026-09-01 ~ 2026-12-31` must not run into its neighbour (Codex finding on PR 5290)
+  { id: 101, status: 'partial', invoice: { status: 'partial', total_amount: 6400 }, reports: [{ status: 'pending', payment_date: '2026-11-03', account_last5: '12345' }], over: { end_date: '2026-12-31' } },
   { id: 102, status: 'paid', invoice: { status: 'paid', total_amount: 3200 }, reports: [{ status: 'confirmed', payment_date: '2026-10-28' }] },
   { id: 103, status: 'pending_report', invoice: null, reports: [{ status: 'pending', payment_date: '2026-11-10' }], charge: 5600 },
   { id: 104, status: 'unpaid', invoice: null, reports: [], over: { class_type: 'tutoring', tutoring_billing_anomaly: true } },
 ];
+let BILLING_PAGED = false;
 const COURSE_MGMT_BILLING = {
   ...COURSE_MGMT,
   key: 'course-mgmt (billing table)',
   names: ['林宥辰'],
   allNames: false,
-  // the column header and every row start at the table's left edge
-  rows: ['.student-billing-table th:first-child, .student-billing-table td:first-child'],
+  // every row starts at the table's left edge; the column header joins them from 1024px (under it the header is screen-reader only, see extra)
+  rows: ['.student-billing-table td:first-child'],
   touch: ['.student-billing-table tbody button', '.student-billing-wrap [role="status"] button'],
   setup: async (page) => {
     await page.getByRole('tab', { name: '帳務資料', exact: true }).first().click();
     await expect(page.locator('.student-billing-table tbody tr')).toHaveCount(BILLING_CASES.length);
+    if (page.viewportSize().width < 1024) {
+      // The owed row (100) keeps both secondary actions in its 更多 menu while the primary action stays visible.
+      await page.locator('.student-billing-table tbody tr').first().locator('.action-menu-trigger:visible').click();
+      await expect(page.getByRole('menuitem', { name: '繳費單' })).toBeVisible();
+      await expect(page.getByRole('menuitem', { name: '在這裡看帳務' })).toBeVisible();
+      await page.keyboard.press('Escape');
+      await expect(page.getByRole('menuitem')).toHaveCount(0);
+    }
   },
   extra: {
     run: () => {
@@ -203,6 +213,8 @@ const COURSE_MGMT_BILLING = {
       const summary = [...wrap.querySelectorAll('[role="status"]')].find((el) => el.textContent.includes('學生歷史帳務'));
       const owed = summary ? [...summary.querySelectorAll('span')].filter((el) => el.textContent.includes('尚有未繳')).pop() : null; // the innermost span that holds the words
       return {
+        headLeft: Math.round(table.querySelector('thead th:first-child').getBoundingClientRect().left * 10) / 10,
+        rowLeft: Math.round(table.querySelector('tbody td:first-child').getBoundingClientRect().left * 10) / 10,
         wrapScroll: wrap.scrollWidth - wrap.clientWidth, wrapOverflowX: getComputedStyle(wrap).overflowX,
         oldClasses: wrap.querySelectorAll('.tag, .subject-tag, .course-table, .price-line, .hint').length,
         headers: [...table.querySelectorAll('thead th')].map((th) => ({ text: th.textContent.trim(), h: Math.round(th.getBoundingClientRect().height), upper: getComputedStyle(th).textTransform })),
@@ -217,6 +229,15 @@ const COURSE_MGMT_BILLING = {
             buttons: [...tr.querySelectorAll('button')].filter(visible).map((b) => ({ h: Math.round(b.getBoundingClientRect().height), red: isRed(rgb(b)) })),
             outside: [...tr.querySelectorAll('td > *')].filter(visible).filter((el) => el.getBoundingClientRect().right > table.getBoundingClientRect().right + 1).length,
             height: Math.round(box.height),
+            display: getComputedStyle(tr).display,
+            // no cell's content runs past its own box, and no two cells of the row overlap
+            cellOverflow: [...tr.children].filter((td) => td.scrollWidth > td.clientWidth + 1).length,
+            cellOverlap: [...tr.children].filter(visible).reduce((n, a, i, all) => n + all.slice(i + 1).filter((b) => { const x = a.getBoundingClientRect(); const y = b.getBoundingClientRect(); return Math.min(x.right, y.right) - Math.max(x.left, y.left) > 1 && Math.min(x.bottom, y.bottom) - Math.max(x.top, y.top) > 1; }).length, 0),
+            // slice 6: under 1024px one primary action is visible and the rest sit in the 更多 menu
+            primaries: [...tr.querySelectorAll('td:last-child button')].filter(visible).filter((b) => !b.classList.contains('action-menu-trigger')).length,
+            menus: [...tr.querySelectorAll('td:last-child .action-menu-trigger')].filter(visible).length,
+            ledgerDirect: [...tr.querySelectorAll('.btn-invoices')].filter(visible).length,
+            beyondViewport: [...tr.querySelectorAll('button')].filter(visible).filter((b) => { const x = b.getBoundingClientRect(); return x.left < 0 || x.right > innerWidth + 1; }).length,
           };
         }),
       };
@@ -227,8 +248,22 @@ const COURSE_MGMT_BILLING = {
       expect(r.wrapOverflowX, 'the billing panel scrolls inside itself, never the page').toBe('auto');
       expect(r.headers.map((h) => h.text), 'the six column headers keep their words').toEqual(['科目', '合約／期間', '繳費', '最近回報', '收據', '操作']);
       for (const h of r.headers) {
-        expect(h.h, `header 「${h.text}」 is 44px tall`).toBeGreaterThanOrEqual(44);
+        if (vp.width >= 1024) expect(h.h, `header 「${h.text}」 is 44px tall`).toBeGreaterThanOrEqual(44);
         expect(h.upper, `header 「${h.text}」 is not upper-cased`).toBe('none');
+      }
+      if (vp.width >= 1024) expect(Math.abs(r.headLeft - r.rowLeft), `header starts at x ${r.headLeft}, rows at ${r.rowLeft}`).toBeLessThanOrEqual(1);
+      for (const row of r.rows) {
+        expect(row.beyondViewport, `a button of row ${row.ref} is outside the viewport`).toBe(0);
+        expect(row.cellOverflow, `a cell of row ${row.ref} holds content wider than itself (it would run into its neighbour)`).toBe(0);
+        expect(row.cellOverlap, `two cells of row ${row.ref} overlap`).toBe(0);
+        if (vp.width < 1024) {
+          // PAGE_TEMPLATE §5 rule 9 (slice 6 of issue 4989): a stacked card per bill, one primary action, the rest in the 更多 menu
+          expect(row.display, `row ${row.ref} is a stacked card under 1024px`).toBe('grid');
+          expect(row.primaries, `row ${row.ref} shows exactly one primary action`).toBe(1);
+          expect(row.menus + row.ledgerDirect, `row ${row.ref} keeps the ledger reachable (button or menu)`).toBeGreaterThanOrEqual(1);
+        } else {
+          expect(row.display, `row ${row.ref} stays a table row from 1024px`).toBe('table-row');
+        }
       }
       // colour meaning: red only for debt (owed 未繳, 帳務資料需修正, 尚有未繳 in the summary), warning for a part payment or a report to check, green for paid
       const tones = Object.fromEntries(r.rows.map((row) => [row.badge?.text, row.badge]));
@@ -252,7 +287,7 @@ const COURSE_MGMT_BILLING = {
       }
       expect(r.owedText, 'the summary names the owed total').toContain('尚有未繳');
       expect(r.owedRed, 'the owed total in the summary is red').toBe(true);
-      if (vp.width >= 1024) expect(r.wrapScroll, 'no inner sideways scroll at desktop width').toBeLessThanOrEqual(1);
+      expect(r.wrapScroll, 'no inner sideways scroll at any width (stacked cards under 1024px)').toBeLessThanOrEqual(1);
     },
   },
   mock: async (page) => {
@@ -260,10 +295,63 @@ const COURSE_MGMT_BILLING = {
     const subjects = ['math', 'english', 'physics', 'chemistry', 'science'];
     const data = BILLING_CASES.map((c, i) => base({ id: c.id, subject: subjects[i], payment_status: c.status, ...(c.charge ? { Charge: c.charge } : {}), ...(c.over || {}) }));
     const byId = Object.fromEntries(BILLING_CASES.map((c) => [c.id, c]));
-    await page.route('**/api/v1/**', (r) => json(r, new URL(r.request().url()).pathname === '/api/v1/student-classes' ? { data, total: data.length, current_page: 1, last_page: 1 } : { data: [] }));
+    const paged = BILLING_PAGED; // the page-states entry asks for a second page and two open parent leave cases
+    BILLING_PAGED = false;
+    const cases = paged ? [{ id: 1, status: 'open', student: { name: '林宥辰' }, payload: { reason: '身體不適', is_late: true } }, { id: 2, status: 'open', student: { name: '歐陽子安' }, payload: { reason: '家裡有事' } }] : [];
+    await page.route('**/api/v1/**', (r) => {
+      const pathname = new URL(r.request().url()).pathname;
+      if (pathname === '/api/v1/student-classes') return json(r, { data, total: paged ? 60 : data.length, current_page: 1, last_page: paged ? 2 : 1, per_page: 30 });
+      return json(r, { data: pathname === '/api/v1/exception-workflows' ? cases : [] });
+    });
     await page.route('**/api/v1/student-classes/*/invoices', (r) => { const c = byId[r.request().url().match(/student-classes\/(\d+)/)[1]]; return json(r, { invoices: c?.invoice ? [{ id: c.id, ...c.invoice }] : [] }); });
     await page.route('**/api/v1/payment-reports**', (r) => { const c = byId[new URL(r.request().url()).searchParams.get('student_class_id')]; return json(r, { data: c?.reports || [] }); });
     await page.route('**/api/v1/accounting/ledger**', (r) => json(r, { summary: { outstanding_total: 11200 } }));
+  },
+};
+
+// 課程查找 slice 6 (issue 4989): the page states on the shared parts: parent-leave card (title, one badge per late case, 44px actions, no card in card),
+// the pager (one line, 44px buttons, disabled previous button on page 1) and the count line.
+const COURSE_MGMT_STATES = {
+  ...COURSE_MGMT_BILLING,
+  key: 'course-mgmt (page states)',
+  names: ['林宥辰', '1 / 2'],
+  allNames: false,
+  rows: ['.pending-leave-summary, .student-group-card'],
+  touch: ['.pagination-btn', '.pending-leave-case__cta', '.pending-leave-summary__cta'],
+  setup: async (page) => {
+    await page.locator('.pending-leave-disclosure > summary').click();
+    await expect(page.getByTestId('pending-leave-case')).toHaveCount(2);
+  },
+  mock: async (page) => { BILLING_PAGED = true; await COURSE_MGMT_BILLING.mock(page); },
+  extra: {
+    run: () => {
+      const isRed = ([r, g, b]) => r > g + 80 && b > g + 20;
+      const rgb = (el) => getComputedStyle(el).color.match(/\d+(\.\d+)?/g).map(Number);
+      const summary = document.querySelector('.pending-leave-summary');
+      const bar = document.querySelector('.pagination-bar');
+      const prev = bar?.querySelector('.pagination-btn');
+      return {
+        summaryTag: summary?.tagName, title: summary?.querySelector('h3')?.textContent.trim(),
+        nestedCards: summary?.querySelectorAll('[data-slot="section-card"]').length,
+        lateBadges: [...summary.querySelectorAll('[data-slot="status-badge"]')].map((b) => ({ text: b.textContent.trim(), tone: b.getAttribute('data-tone'), red: isRed(rgb(b)) })),
+        ctas: [...summary.querySelectorAll('.pending-leave-case__cta')].map((b) => ({ h: Math.round(b.getBoundingClientRect().height), red: isRed(rgb(b)) })),
+        pager: bar ? { info: bar.querySelector('.pagination-info').textContent.trim(), prevDisabled: prev.disabled, scroll: document.documentElement.scrollWidth - innerWidth } : null,
+        oldClasses: document.querySelectorAll('.pending-leave-summary__header, .pending-leave-case-list, .btn-soft.pagination-btn').length,
+      };
+    },
+    assert: (r) => {
+      expect(r.summaryTag, 'the parent-leave card is a shared SectionCard').toBe('SECTION');
+      expect(r.title, 'the card title keeps its words').toBe('家長請假待處理');
+      expect(r.nestedCards, 'no card inside the card').toBe(0);
+      const late = r.lateBadges.find((b) => b.text === '臨時請假');
+      expect(late?.tone, 'a late leave is a warning, not red').toBe('warning');
+      for (const b of r.lateBadges) expect(b.red, `badge 「${b.text}」 is red only when its tone is danger`).toBe(b.tone === 'danger');
+      for (const c of r.ctas) { expect(c.h, 'the case action is at least 44px').toBeGreaterThanOrEqual(44); expect(c.red, 'a case action is never red').toBe(false); }
+      expect(r.pager?.info, 'the pager keeps its words').toContain('共 60 筆');
+      expect(r.pager?.prevDisabled, 'previous is disabled on page 1').toBe(true);
+      expect(r.pager?.scroll, 'the pager does not widen the page').toBeLessThanOrEqual(1);
+      expect(r.oldClasses, 'the old parent-leave / pager classes are gone').toBe(0);
+    },
   },
 };
 
@@ -482,6 +570,7 @@ const PAGES = [
   COURSE_MGMT_BILLING,
   COURSE_MGMT_BILLING_DARK,
   COURSE_MGMT_EDIT_DIALOG,
+  COURSE_MGMT_STATES,
   {
     key: 'teacher-eligibility',
     url: '/teacher-eligibility-pilot-mount.html',
