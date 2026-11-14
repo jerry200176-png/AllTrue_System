@@ -258,6 +258,32 @@ class ReceiptReassignApplyTest extends TestCase
         $this->assertSame($before, $this->snapshot());
     }
 
+    public function test_course_of_an_already_void_source_bill_with_no_live_bill_left_is_not_left_paid(): void
+    {
+        $f = $this->fixture();
+        $f['wrongInvoice']->update(['Status' => 'void']); // voided while it still holds this receipt's money; the course has no other bill
+        $tok = $this->token('S', 1);
+        $this->apply($tok, $f['report'], $f['rightInvoice'], $this->preview($tok, $f)->assertOk()->json('state_hash'))->assertStatus(201);
+        $this->assertSame('void', $f['wrongInvoice']->fresh()->Status);
+        $this->assertSame(0, (int) $f['wrongCourse']->fresh()->Paid); // the resolver alone would read the stale flag as paid
+    }
+
+    public function test_stale_payment_pointer_to_another_receipts_payment_is_refused_and_that_receipt_is_untouched(): void
+    {
+        $f = $this->fixture();
+        $other = $this->bill($this->student(1), self::AMOUNT, 'paid', self::AMOUNT);
+        $b = $this->confirmedReport($other);
+        DB::table('Payment')->where('id', $other['payment']->id)->update(['payment_report_id' => $b->id]);
+        $f['report']->update(['payment_id' => $other['payment']->id]); // receipt A now points at receipt B's money
+        $tok = $this->token('S', 1);
+        $before = $this->snapshot();
+        $this->preview($tok, $f)->assertStatus(409)->assertJsonPath('code', 'reassign_source_payment_other_report');
+        $this->apply($tok, $f['report'], $f['rightInvoice'], ReceiptReassignService::STATE_HASH_VERSION . ':' . str_repeat('0', 64))
+            ->assertStatus(409)->assertJsonPath('code', 'reassign_source_payment_other_report');
+        $this->assertSame($before, $this->snapshot()); // B's payment and both bills unchanged
+        $this->assertSame(['confirmed', 'paid'], [$b->fresh()->status, $other['invoice']->fresh()->Status]);
+    }
+
     // ── must-do 3: pending reports across a shared package ──────────────
 
     public function test_pending_report_on_any_member_of_either_package_blocks_the_apply_and_writes_nothing(): void

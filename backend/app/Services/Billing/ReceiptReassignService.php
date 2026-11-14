@@ -495,6 +495,10 @@ final class ReceiptReassignService
         // The receipt's own money must be on this bill: one positive, non-void Payment of this report (as ContractMoneyState does).
         $receipts = $payments->filter(fn ($p) => (int) $p->Amount > 0 && (string) $p->Method !== 'void'
             && ((int) ($p->payment_report_id ?? 0) === $reportId || (int) $p->id === (int) ($report->payment_id ?? 0)));
+        // A stale payment_id may point at another receipt's money: only an unlinked (legacy) payment may be claimed by the pointer.
+        if ($receipts->contains(fn ($p) => $p->payment_report_id !== null && (int) $p->payment_report_id !== $reportId)) {
+            return ['refusal' => $this->refuse('reassign_source_payment_other_report', '這張收據指到的收款屬於另一張收據，這裡不能移動。請聯絡總部對帳。', 409)];
+        }
         $net = $this->netPaid((int) $invoice->id);
         $amount = $receipts->count() === 1 ? (int) $receipts->first()->Amount : 0;
         if ($amount <= 0 || (float) $amount !== $reported || $net < $amount) {
@@ -670,8 +674,10 @@ final class ReceiptReassignService
         if ($package && strtolower((string) $course->getAttribute('ScheduleMode')) !== 'date' && (int) $package->student_id === (int) $course->StudentID) {
             PackagePaidMarks::drop($course, $package);
         }
-        // As void(): with its bill auto-voided the resolver could read the stale flag itself as paid, so the flag goes.
-        if ($billAutoVoided || !$this->resolvedPaid($courseId)) {
+        // As void(): the resolver may settle the course only while a live bill backs it. With the bill auto-voided, or money taken
+        // off an already-void bill and no live bill left, it would read the stale flag itself as paid, so the flag goes.
+        $ledgerBacked = !$billAutoVoided && ($billStatus !== 'void' || Invoice::courseHasLiveBill($courseId));
+        if (!$ledgerBacked || !$this->resolvedPaid($courseId)) {
             $course->refresh();
             $course->update(['Paid' => 0, 'PayDate' => null] + ($course->closed_reason === 'settled' ? ['closed_reason' => 'settled_pending'] : []));
         }
