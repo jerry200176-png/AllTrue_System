@@ -218,6 +218,12 @@ final class ReceiptReassignService
         if ((string) ($toCourse->closed_reason ?? '') === 'refunded' || (string) ($from['course']->closed_reason ?? '') === 'refunded') {
             return $this->refuse('reassign_course_refunded', '這門課有退費紀錄，收據不能移動，請聯絡總部對帳。');
         }
+        // confirm()'s own course gate (CollectionTarget), not a copy: a course confirm() would refuse money for refuses the move too.
+        if ($closed = CollectionTarget::gate($toCourse)) {
+            $why = (array) $closed->getData(true);
+
+            return $this->refuse('reassign_target_not_collectable', (string) ($why['message'] ?? ''), 422, ['reason' => $why['code'] ?? null]);
+        }
         if ($this->moneyMoved((int) $toInvoice->id) || $this->moneyMoved((int) $from['invoice']->id)) {
             return $this->refuse('reassign_refund_or_transfer_exists', '其中一張帳單有退費或轉課紀錄，收據不能移動，請聯絡總部對帳。');
         }
@@ -232,6 +238,11 @@ final class ReceiptReassignService
         if ((int) ($toCourse->PackageID ?? 0) > 0 && self::packageMismatch(DB::table('course_packages')->where('id', (int) $toCourse->PackageID)->first(['student_id', 'campus_id']),
             (int) $toCourse->StudentID, (int) $ctx['campus_id'])) {
             return $this->refuse('reassign_target_package_mismatch', '這張帳單的課程指向的共用方案不屬於同一位學生或分校，請聯絡總部對帳。');
+        }
+        // Move-only, stricter than confirm(): with no package price nobody can tell whether moving money here settles the package.
+        if ((int) ($toCourse->PackageID ?? 0) > 0 && strtolower((string) $toCourse->getAttribute('ScheduleMode')) !== 'date'
+            && ($toPackage = CoursePackage::query()->whereKey((int) $toCourse->PackageID)->first()) && CollectionTarget::packagePrice($toPackage) === null) {
+            return $this->refuse('reassign_target_package_unpriced', '這張帳單屬於沒有固定總價的共用方案，無法確認移過去後算不算繳清，請聯絡總部處理。');
         }
         // Taking the money back can clear the source package's paid mark: it must be the same student's, in this campus, too.
         if ((int) ($from['course']->PackageID ?? 0) > 0 && self::packageMismatch(DB::table('course_packages')->where('id', (int) $from['course']->PackageID)->first(['student_id', 'campus_id']),
@@ -384,6 +395,9 @@ final class ReceiptReassignService
                     continue;
                 }
                 $course = $courses->get($courseId);
+                if ($course && CollectionTarget::gate($course) !== null) {
+                    continue; // as the preview's reassign_target_not_collectable
+                }
                 if ($course && (int) ($course->PackageID ?? 0) > 0
                     && self::packageMismatch($packages->get((int) $course->PackageID), (int) $course->StudentID, (int) $ctx['campus_id'])) {
                     continue;
@@ -638,7 +652,10 @@ final class ReceiptReassignService
             'Method' => $old->payment_method === 'transfer' ? 'transfer' : 'cash', 'Note' => "{$tag} 更正移轉自收據 #{$old->id}",
             'payment_report_id' => (int) $new->id]);
         $this->settleBill($toInvoice, $actorId);
-        $this->settleTargetCourse($toCourseId, (string) $toInvoice->Status, $old->payment_date);
+        // confirm()'s settle rules (CollectionTarget): course Paid from the resolver, the package mark as confirm sets it on an existing bill.
+        $toCourse->refresh();
+        $toPackage = (int) ($toCourse->PackageID ?? 0) > 0 ? CoursePackage::query()->whereKey((int) $toCourse->PackageID)->first() : null;
+        CollectionTarget::settle($toCourse, $toPackage, (string) $toInvoice->Status, false, $old->payment_date);
 
         $new->update(['payment_id' => (int) $payment->id]);
         $old->update(['status' => 'voided', 'voided_by' => $actorId, 'voided_at' => Carbon::now(),
@@ -680,20 +697,6 @@ final class ReceiptReassignService
         if (!$ledgerBacked || !$this->resolvedPaid($courseId)) {
             $course->refresh();
             $course->update(['Paid' => 0, 'PayDate' => null] + ($course->closed_reason === 'settled' ? ['closed_reason' => 'settled_pending'] : []));
-        }
-    }
-
-    /** As confirm(): only the resolver settles the course; a paid count-package bill marks the package. */
-    private function settleTargetCourse(int $courseId, string $billStatus, mixed $paymentDate): void
-    {
-        $course = StudentClass::query()->where('ID', $courseId)->firstOrFail();
-        if (!(int) $course->Paid && $this->resolvedPaid($courseId)) {
-            $course->update(['Paid' => 1, 'PayDate' => Carbon::today()->toDateString(),
-                'closed_reason' => $course->closed_reason === 'settled_pending' ? 'settled' : $course->closed_reason]);
-        }
-        $package = (int) ($course->PackageID ?? 0) > 0 ? CoursePackage::query()->whereKey((int) $course->PackageID)->first() : null;
-        if ($package && $billStatus === 'paid' && (string) $course->ScheduleMode !== 'date' && (int) $package->student_id === (int) $course->StudentID) {
-            PackagePaidMarks::mark($package, Carbon::make($paymentDate)?->toDateString() ?? Carbon::today()->toDateString());
         }
     }
 

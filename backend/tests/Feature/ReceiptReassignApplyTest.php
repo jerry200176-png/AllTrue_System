@@ -284,6 +284,21 @@ class ReceiptReassignApplyTest extends TestCase
         $this->assertSame(['confirmed', 'paid'], [$b->fresh()->status, $other['invoice']->fresh()->Status]);
     }
 
+    public function test_target_bill_of_a_package_without_a_price_goes_to_hq_and_nothing_is_marked(): void
+    {
+        $f = $this->fixture();
+        $pkg = $this->package($f['right']);
+        $pkg->forceFill(['rate_unit' => 'hour'])->save(); // no per-session price: CollectionTarget::packagePrice() is null
+        $f['rightCourse']->update(['PackageID' => $pkg->id]);
+        $tok = $this->token('S', 1);
+        $before = $this->snapshot();
+        $this->preview($tok, $f)->assertStatus(422)->assertJsonPath('code', 'reassign_target_package_unpriced');
+        $this->apply($tok, $f['report'], $f['rightInvoice'], ReceiptReassignService::STATE_HASH_VERSION . ':' . str_repeat('0', 64))
+            ->assertStatus(422)->assertJsonPath('code', 'reassign_target_package_unpriced');
+        $this->assertSame($before, $this->snapshot());
+        $this->assertFalse((bool) $pkg->fresh()->paid);
+    }
+
     // ── must-do 3: pending reports across a shared package ──────────────
 
     public function test_pending_report_on_any_member_of_either_package_blocks_the_apply_and_writes_nothing(): void
