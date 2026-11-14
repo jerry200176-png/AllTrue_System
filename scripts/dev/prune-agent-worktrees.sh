@@ -16,7 +16,7 @@ root="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")"
 cd "$root"
 [ "$dry" = 1 ] || git fetch -q --prune origin || true
 repo="$(git remote get-url origin | sed -E 's#(\.git)?$##; s#.*github\.com[:/]##')"
-cache_re='^!! (frontend/node_modules/|node_modules/|backend/vendor/|frontend/dist/|frontend/dist_build/|backend/storage/|frontend/test-results/|frontend/playwright-report/|frontend/\.vite_cache[^/]*/|frontend/src/lib/[A-Za-z]+\.generated\.js$|docs/design/evidence/raw/|.*__pycache__/|.*\.pyc$)'
+cache_re='^!! (frontend/node_modules/|node_modules/|backend/vendor/|frontend/dist/|frontend/dist_build/|backend/storage/|frontend/test-results/|frontend/playwright-report/|frontend/\.vite_cache[^/]*/|frontend/src/lib/[A-Za-z]+\.generated\.js$|.*__pycache__/|.*\.pyc$)'
 removed=0; kept=()
 shopt -s nullglob
 for w in "$root"/.claude/worktrees/*/; do
