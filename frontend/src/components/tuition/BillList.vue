@@ -231,13 +231,16 @@ const CHIPS = [
 ];
 const MORE = [{ key: 'paid', label: '已收' }, { key: 'waived', label: '不收了' }, { key: 'all', label: '全部' }];
 const PRIMARY = { confirm: ['確認入帳', 'confirm'], owing: ['登記收款', 'record'], review: ['核對', 'open'] };
-// Every primary opens something that works today: 開帳單 only for monthly bills (drafts); a count-mode contract gets its 繳費單
-// when one can be issued, else its billing in the drawer (a paid renewal has no bill to issue).
+// Every primary opens an existing workflow: a paid count renewal goes to that contract's purchase form;
+// monthly drafts keep 開帳單, and unbilled count contracts keep their 繳費單 / billing drawer.
 function primaryOf(b) {
   if (PRIMARY[b.kind]) return { label: PRIMARY[b.kind][0], action: PRIMARY[b.kind][1] };
   if (b.kind !== 'issue') return null;
   // #4919: a package row has no contract to issue against (class_id null), so it only opens the billing.
   if (b.class_id == null) return { label: '看帳務', action: 'open' };
+  if (props.canDocs && b.src.schedule_mode === 'count' && b.src.payment_status === 'renew_needed'
+    && !b.package_id && Number.isSafeInteger(Number(b.class_id)) && Number(b.class_id) > 0
+    && Number.isSafeInteger(b.student_id) && b.student_id > 0) return { label: '續課', action: 'renew' };
   if (b.src.schedule_mode === 'date') return { label: '開帳單', action: 'issue' };
   return slipOf(b).ok ? { label: '繳費單', action: 'slip' } : { label: '看帳務', action: 'open' };
 }

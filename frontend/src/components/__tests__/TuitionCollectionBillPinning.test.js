@@ -47,6 +47,32 @@ describe('帳單 rows open the clicked contract', () => {
   const PENDING = [row({ id: 12, subject: '國文', payment_status: 'pending_report', latest_payment_report_id: 90 })];
   const LEDGER = { courses: [{ id: 12 }], invoices: [], receipts: [{ report_id: 90, student_class_id: 12, status: 'pending', amount: 1000, payment_date: '2026-11-03', payment_method: 'cash' }] };
 
+  it('in-app534: renewal goes to the clicked contract through the existing commercial handoff, without a write', async () => {
+    const w = await pageWith([
+      row({ id: 30, student_id: 7, subject: '數學', payment_status: 'renew_needed', payable_outstanding: 0 }),
+      row({ id: 31, student_id: 8, subject: '英文', payment_status: 'renew_needed', payable_outstanding: 0 }),
+    ]);
+    const callsBefore = global.fetch.mock.calls.length;
+    await w.get('[data-testid="bill-action-c31"]').trigger('click');
+    expect(w.emitted('navigate')).toEqual([[{ target: 'students', studentId: 8, courseId: 31, intent: 'purchase' }]]);
+    expect(w.findComponent({ name: 'AccountingLedgerModal' }).props('show')).toBe(false);
+    expect(global.fetch.mock.calls.length).toBe(callsBefore);
+    w.unmount();
+  });
+
+  it('in-app534: an unauthorized role cannot force a renewal navigation event', async () => {
+    localStorage.setItem('alltrue_session', JSON.stringify({ access_token: 'test-token', user: { role: 'teacher' } }));
+    const w = await pageWith([row({ id: 31, student_id: 8, payment_status: 'renew_needed', payable_outstanding: 0 })]);
+    try {
+      expect(w.get('[data-testid="bill-action-c31"]').text()).toBe('看帳務');
+      w.findComponent({ name: 'BillList' }).vm.$emit('action', { class_id: 31, student_id: 8, src: { id: 31, student_id: 8 } }, 'renew');
+      expect(w.emitted('navigate')).toBeUndefined();
+    } finally {
+      w.unmount();
+      localStorage.setItem('alltrue_session', JSON.stringify({ access_token: 'test-token', user: { role: 'director' } }));
+    }
+  });
+
   it('確認入帳 on a row opens the quick view of that contract (not the student drawer)', async () => {
     const w = await pageWith(PENDING, LEDGER);
     await w.get('[data-testid="bill-action-c12"]').trigger('click');

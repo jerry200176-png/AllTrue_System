@@ -702,6 +702,7 @@ import AccountingLedgerModal from '../components/AccountingLedgerModal.vue';
 import BillList from '../components/tuition/BillList.vue';
 import BillQuickView from '../components/tuition/BillQuickView.vue';
 import { billMenuGroups, billRows } from '../lib/billRows.js';
+import { buildStudentsCommercialNav } from '../lib/authoritativeMutationRoutes.js';
 import PaymentSlipModal from '../components/PaymentSlipModal.vue';
 import RefundDialog from '../components/tuition/RefundDialog.vue';
 import { slipAvailability } from '../lib/billingDocState.js';
@@ -1068,7 +1069,11 @@ function onSaveNext() {
   showToast('已經是最後一筆未繳了');
 }
 function onBillAction(b, action) {
-  if (action === 'confirm') onBillQuick(b);
+  if (action === 'renew') {
+    if (!canWaive.value) return;
+    const target = buildStudentsCommercialNav({ id: b.class_id, student_id: b.student_id }, { intent: 'purchase' });
+    if (target.studentId && target.courseId) emit('navigate', target);
+  } else if (action === 'confirm') onBillQuick(b);
   else if (action === 'record') openBillSheet(b);
   else if (action === 'slip') openBillSlip(b);
   else openBillLedger(b, BILL_LEDGER_ACTION[action]);
