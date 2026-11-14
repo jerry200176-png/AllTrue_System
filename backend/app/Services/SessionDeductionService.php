@@ -622,7 +622,11 @@ class SessionDeductionService
             } else {
                 $sc->UsedSessions      = $usedByAttendance;
                 $sc->RemainingSessions  = 0;
-                $sc->setAttribute('Stop', 0);
+                // Zero-count prepaid credit can be explicitly closed by a complete refund/transfer.
+                // Recounting does not authorize reopening. Preserve date-mode and unmarked legacy behavior.
+                if ((string) $sc->ScheduleMode !== 'count' || (string) ($sc->closed_reason ?? '') === '') {
+                    $sc->setAttribute('Stop', 0);
+                }
                 $sc->RemainingMinutes  = 0;
                 $sc->PurchasedMinutes  = null;
             }
