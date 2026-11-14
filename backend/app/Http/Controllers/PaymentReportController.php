@@ -18,6 +18,7 @@ use App\Services\Billing\InvoiceIssuer;
 use App\Services\Billing\FirstBillAutoVoid;
 use App\Services\Billing\MonthlyBillFreeze;
 use App\Services\Billing\PackagePaidMarks;
+use App\Services\Billing\CollectionTarget;
 use App\Services\Billing\ContractMoneyState;
 use App\Services\MonthlyBillingService;
 use App\Services\PaymentReportTokenService;
@@ -384,11 +385,8 @@ class PaymentReportController extends Controller
             $note = $confirmationNote !== ''
                 ? $confirmationNote
                 : trim((string) ($report->note ?? ''));
-            if ($refusal = ContractMoneyState::waivedRefusal($sc, '此合約已確認不收，不能再確認回報')) {
-                return $refusal;
-            }
-            if ($sc && ($blockedTutoringPayment = $this->tutoringPaymentBlocked($sc))) {
-                return $blockedTutoringPayment;
+            if ($refusal = CollectionTarget::gate($sc)) {
+                return $refusal; // waived / refunded / tutoring / zero-fee: shared with the receipt move (#5113)
             }
             // A month another course's bill already carries is refused at the ledger write too (public report path, Codex P1 on #4867).
             if ($sc && ($shared = $this->sharedBillRefusal($sc, ['invoice_id' => $report->InvoiceID, 'payment_date' => $report->payment_date]))) {
@@ -556,22 +554,8 @@ class PaymentReportController extends Controller
                 'reconciled_by'  => $userId,
             ]);
 
-            // F7 S7: only the resolver (all non-void invoices) may settle the course; a partial leaves Paid=0.
-            if ($sc && !$sc->Paid && $this->courseResolvedPaid($sc)) {
-                $sc->update([
-                    'Paid' => 1,
-                    'PayDate' => Carbon::today()->toDateString(),
-                    'closed_reason' => $sc->getAttribute('closed_reason') === 'settled_pending'
-                        ? 'settled'
-                        : $sc->getAttribute('closed_reason'),
-                ]);
-            }
-            // A count package is one shared obligation; a monthly ('date') member settles only itself (#3892 D4, in-app #478).
-            if ($package && $status === 'paid' && !$enteredOnlyPackageBill && $sc->getAttribute('ScheduleMode') !== 'date') {
-                $paidAt = Carbon::make($report->payment_date)?->toDateString()
-                    ?? Carbon::today()->toDateString();
-                $this->markPackagePaid($package, $paidAt);
-            }
+            // Course Paid and the shared package mark: one rule set, shared with the receipt move (#5113).
+            CollectionTarget::settle($sc, $package, $status, $enteredOnlyPackageBill, $report->payment_date);
 
             $report->update([
                 'status'       => 'confirmed',
@@ -994,7 +978,7 @@ class PaymentReportController extends Controller
     }
 
     /**
-     * The course plus its same-student package siblings, ascending: markPackagePaid() flags them all, so they share one
+     * The course plus its same-student package siblings, ascending: PackagePaidMarks::mark() flags them all, so they share one
      * legacy mark. $lock = a locking recheck on the already locked course.
      *
      * @return int[]
@@ -1544,15 +1528,7 @@ class PaymentReportController extends Controller
     /** RFC §R4: round(rate × total_sessions) for a per-session count package; null when it cannot be determined. */
     private function packagePrice(CoursePackage $package): ?int
     {
-        $rate = (float) ($package->rate ?? 0);
-        $total = (int) ($package->total_sessions ?? 0);
-
-        return ($package->rate_unit ?? null) === 'session' && $rate > 0 && $total > 0 ? (int) round($rate * $total) : null;
-    }
-
-    private function markPackagePaid(CoursePackage $package, string $paidAt): void
-    {
-        PackagePaidMarks::mark($package, $paidAt);
+        return CollectionTarget::packagePrice($package);
     }
 
     /**
@@ -2237,34 +2213,6 @@ class PaymentReportController extends Controller
 
     private function tutoringPaymentBlocked($course, bool $explicitFreeGift = false)
     {
-        if (!$course instanceof StudentClass) {
-            return null;
-        }
-
-        if (strtolower(trim((string) ($course->ClassType ?? ''))) === 'tutoring') {
-            return response()->json([
-                'message' => '輔導課無須繳費，不能建立付款回報、收款或付款義務。請先檢查課程帳務資料。',
-                'code' => 'tutoring_no_payment_obligation',
-            ], 422);
-        }
-        // #3203: any course the resolver calls `free` (e.g. a 0-total trial) has no payment obligation either.
-        // Only 0-charge courses can be free; paid courses skip this and keep the later fail-closed guards.
-        if ((int) ($course->Charge ?? 0) > 0 || $explicitFreeGift) {
-            return null;
-        }
-        $id = (int) $course->getKey();
-        try {
-            $free = (app(BillingPayableResolver::class)->courseStatusesByStudentClassIds([$id])[$id]['status'] ?? null) === 'free';
-        } catch (\Throwable $e) {
-            $free = false; // the duplicate-payment guard below fails closed on its own
-        }
-        if ($free) {
-            return response()->json([
-                'message' => '這門課金額為 0，無須繳費，不能建立付款回報、收款或付款義務。',
-                'code' => 'zero_fee_no_payment_obligation',
-            ], 422);
-        }
-
-        return null;
+        return CollectionTarget::tutoringRefusal($course, $explicitFreeGift);
     }
 }
