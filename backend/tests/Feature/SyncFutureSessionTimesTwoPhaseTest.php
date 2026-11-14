@@ -44,9 +44,15 @@ class SyncFutureSessionTimesTwoPhaseTest extends TestCase
 
     protected function tearDown(): void
     {
-        Carbon::setTestNow();
-        $this->removeOwnedRows();
-        parent::tearDown();
+        try {
+            Carbon::setTestNow();
+            $this->removeOwnedRows();
+            // Wiring check on every test: tearDown itself must leave no committed row behind.
+            $this->assertSame(0, DB::table('Student')->where('name', 'Sync1384')->count(), 'tearDown left committed rows');
+            $this->assertSame(0, DB::table('StudentClass')->where('StudentID', '>=', self::STUDENT_ID)->where('StudentID', '<', self::STUDENT_ID + 100)->count(), 'tearDown left committed courses');
+        } finally {
+            parent::tearDown();
+        }
     }
 
     /**
@@ -57,6 +63,9 @@ class SyncFutureSessionTimesTwoPhaseTest extends TestCase
     private function removeOwnedRows(): void
     {
         $courseIds = DB::table('StudentClass')->whereIn('StudentID', $this->ownedStudentIds)->pluck('ID')->all();
+        $sessionIds = DB::table('ClassSession')->whereIn('StudentClassID', $courseIds)->pluck('id')->all();
+        // ClassSessionObserver writes schedule_audit_logs on created/updated.
+        DB::table('schedule_audit_logs')->whereIn('session_id', $sessionIds)->delete();
         DB::table('LearningRecord')->whereIn('StudentClassID', $courseIds)->delete();
         DB::table('ClassSession')->whereIn('StudentClassID', $courseIds)->delete();
         DB::table('StudentClass')->whereIn('ID', $courseIds)->delete();
@@ -76,12 +85,14 @@ class SyncFutureSessionTimesTwoPhaseTest extends TestCase
             'Content' => 'leak probe', 'SessionDate' => '2026-07-24', 'StartTime' => '16:00:00', 'EndTime' => '18:00:00', 'Status' => 'pending',
         ]);
         $this->assertSame(1, DB::table('StudentClass')->where('ID', $courseId)->count());
+        $this->assertGreaterThan(0, DB::table('schedule_audit_logs')->where('session_id', $session->id)->count());
 
         $this->removeOwnedRows();
 
         $this->assertSame(0, DB::table('StudentClass')->where('ID', $courseId)->count());
         $this->assertSame(0, DB::table('ClassSession')->where('StudentClassID', $courseId)->count());
         $this->assertSame(0, DB::table('LearningRecord')->where('StudentClassID', $courseId)->count());
+        $this->assertSame(0, DB::table('schedule_audit_logs')->where('session_id', $session->id)->count());
         $this->assertSame(0, DB::table('Student')->where('name', 'Sync1384')->count());
     }
 
