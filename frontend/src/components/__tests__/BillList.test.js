@@ -71,7 +71,7 @@ describe('BillList', () => {
     expect(items('c3')).toHaveLength(1);
   });
 
-  it('gives every primary a working target: 開帳單 only for monthly, 繳費單 or 看帳務 for count renewals', () => {
+  it('gives every primary a working target: monthly 開帳單, unbilled 繳費單, count 續課', () => {
     const w = mountList({
       canDocs: true,
       alertRows: [
@@ -84,8 +84,39 @@ describe('BillList', () => {
     const act = (k) => { const el = w.get(`[data-testid="bill-action-${k}"]`); el.trigger('click'); return [el.text(), w.emitted('action').at(-1)[1]]; };
     expect(act('c20')).toEqual(['開帳單', 'issue']);
     expect(act('c21')).toEqual(['繳費單', 'slip']);
-    expect(act('c22')).toEqual(['看帳務', 'open']);
+    expect(act('c22')).toEqual(['續課', 'renew']);
     expect(act('c23')).toEqual(['核對', 'open']);
+  });
+
+  it('in-app534: renewal keeps the exact clicked student and contract', async () => {
+    const w = mountList({ canDocs: true, alertRows: [
+      row({ id: 30, student_id: 7, payment_status: 'renew_needed', payable_outstanding: 0 }),
+      row({ id: 31, student_id: 8, payment_status: 'renew_needed', payable_outstanding: 0 }),
+    ] });
+    const button = w.get('[data-testid="bill-action-c31"]');
+    expect(button.text()).toBe('續課');
+    await button.trigger('click');
+    const [selected, action] = w.emitted('action')[0];
+    expect([selected.class_id, selected.student_id, action]).toEqual([31, 8, 'renew']);
+    w.unmount();
+  });
+
+  it.each([
+    ['read-only role', { canDocs: false }, {}],
+    ['missing student', {}, { student_id: null }],
+    ['invalid student', {}, { student_id: -2 }],
+    ['invalid course', {}, { id: 0 }],
+    ['package without course', {}, { id: null, package_id: 5 }],
+    ['shared package member', {}, { package_id: 5 }],
+    ['monthly', {}, { schedule_mode: 'date', payment_status: 'monthly_due_soon' }],
+    ['outstanding payment', {}, { payable_outstanding: 1000 }],
+    ['pending report', {}, { latest_payment_report_id: 19 }],
+  ])('in-app534: %s retains its existing billing action', (_name, props, over) => {
+    const w = mountList({ canDocs: true, ...props, alertRows: [
+      row({ id: 32, payment_status: 'renew_needed', payable_outstanding: 0, ...over }),
+    ] });
+    expect(w.find('[data-testid^="bill-action-"]').text()).not.toBe('續課');
+    w.unmount();
   });
 
   it('shows warnings in warning tone and the 需核對金額 amount', () => {
