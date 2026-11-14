@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { CLASSMATES, DAY_LABELS, TODAY, mockStudyWeekApi } from './fixtures/ui-foundation/study-week-data.js';
+import { installApiMocks } from './fixtures/ui-foundation/apiMocks.js';
 
 /**
  * Layout guard for pages migrated to the ui components (in-app #541 / #542 / #543, #4989).
@@ -530,6 +531,31 @@ const COURSE_MGMT_DIALOG_ENTRIES = Object.values(COURSE_DIALOGS).map(courseDialo
 
 /** PAGES: { key, url, mock(page), names (exact texts that must stay on one line), rows (selector groups whose visible members must share a left edge), setup?(page) } */
 const PAGES = [
+  {
+    // 學生管理, slice 1 (issue 4989): header with four actions, the filter toolbar and the student list card. The header actions are the
+    // phone risk (four buttons, 字級 大): none may stick out of the viewport, and the order is 匯入名單, 下載範例, 跨分校身份, then the primary.
+    key: 'students',
+    url: '/pilot-mount.html?page=students&mode=normal',
+    names: NAMES,
+    allNames: true,
+    rows: ['tr.student-row td:nth-child(3)'],
+    touch: ['[data-slot="page-actions"] button', '[data-guide="students-filters"] button', '[data-slot="filter-chip"]'],
+    mock: async (page) => {
+      await installApiMocks(page, 'normal', 'students');
+      const data = NAMES.map((name, i) => ({ id: 3000 + i, name, grade: ['J1', 'J2', 'J3', 'E5'][i % 4], school: ['測試國中', '測試國民中學附設高級中等學校'][i % 2], parent_name: '測試家長', rfid: i % 3 ? `TEST${2000 + i}` : null, status: 'active', notes: '', line_bound: false }));
+      await page.route('**/api/v1/students?**', (r) => json(r, { data, total: data.length }));
+    },
+    extra: {
+      run: () => [...document.querySelectorAll('[data-slot="page-actions"] button')].map((b) => { const r = b.getBoundingClientRect(); return { text: b.textContent.trim(), left: r.left, right: r.right, width: window.innerWidth }; }),
+      assert: (buttons) => {
+        expect(buttons.map((b) => b.text), 'header actions and their order').toEqual(['匯入名單', '下載範例', '跨分校身份', '新增學生']);
+        for (const b of buttons) {
+          expect(b.left, `${b.text} starts inside the viewport`).toBeGreaterThanOrEqual(0);
+          expect(b.right, `${b.text} ends inside the viewport`).toBeLessThanOrEqual(b.width + 1);
+        }
+      },
+    },
+  },
   {
     key: 'tuition-report',
     url: '/pilot-mount.html?page=tuition-report',
