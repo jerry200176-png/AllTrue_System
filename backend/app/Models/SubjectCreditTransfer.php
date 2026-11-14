@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\DB;
 
 /**
  * Durable #535 operation trace; Invoice/Payment remain the money authority.
@@ -37,5 +38,20 @@ class SubjectCreditTransfer extends Model
             && Schema::hasColumns('contract_subject_credit_transfers', (new self())->getFillable())
             && Schema::hasColumns('StudentClass', ['SessionCount', 'SessionDuration', 'Rate', 'Charge', 'UsedSessions',
                 'RemainingSessions', 'scheduling_policy', 'deduction_basis', 'standard_lesson_minutes', 'closed_reason']);
+    }
+
+    public static function assertBookingAllowed(int $courseId): void
+    {
+        // Fresh locking read: neither a preloaded course nor a request's earlier snapshot can grant spent credit.
+        $course = $courseId > 0 ? DB::table('StudentClass')->where('ID', $courseId)->lockForUpdate()
+            ->first(['ScheduleMode', 'SessionCount', 'UsedSessions']) : null;
+        if (!$course || $course->ScheduleMode !== 'count' || (int) $course->SessionCount > (int) $course->UsedSessions
+            || !Schema::hasTable('contract_subject_credit_transfers')) return;
+        $operation = self::where(function ($q) use ($courseId) {
+            $q->where('source_student_class_id', $courseId)->orWhere('target_student_class_id', $courseId);
+        })->lockForUpdate()->first(['id']);
+        if ($operation) {
+            abort(response()->json(['message' => '這份合約的轉用額度已耗盡或已還原，不能再新增或變更堂次。', 'code' => 'subject_credit_closed_course'], 422));
+        }
     }
 }

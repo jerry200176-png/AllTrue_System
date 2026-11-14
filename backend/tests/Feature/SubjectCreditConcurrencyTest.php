@@ -43,14 +43,14 @@ class SubjectCreditConcurrencyTest extends TestCase
     #[\PHPUnit\Framework\Attributes\DataProvider('keys')]
     public function test_competing_transfers_have_one_atomic_winner(bool $sameKey): void
     {
-        [$token, $source, $template] = $this->fixture();
+        [$token, $source, $template, $invoice] = $this->fixture();
         $input = ['target_course_id' => $template->ID, 'sessions' => 2];
         $preview = $this->withToken($token)->postJson("/api/v1/student-classes/{$source->ID}/subject-credit-transfer/preview", $input)->assertOk();
         $input += ['reason' => 'isolated contender', 'idempotency_key' => 'isolated-same-key', 'state_hash' => $preview->json('state_hash')];
         $pause = $this->racePause('from `studentclass`');
-        $one = $this->spawn($token, $source, $input, $pause);
+        $one = $this->spawn($token, $source, $input, $pause, ['snapshot_invoice_id' => $invoice->id]);
         $this->raceAwait($pause['ready']);
-        $two = $this->spawn($token, $source, array_replace($input, ['idempotency_key' => $sameKey ? 'isolated-same-key' : 'isolated-new-key']));
+        $two = $this->spawn($token, $source, array_replace($input, ['idempotency_key' => $sameKey ? 'isolated-same-key' : 'isolated-new-key']), null, ['snapshot_invoice_id' => $invoice->id]);
         $this->awaitBlocked($two, 'student');
         touch($pause['release']);
         $a = $this->raceFinish($one); $b = $this->raceFinish($two);
@@ -130,6 +130,102 @@ class SubjectCreditConcurrencyTest extends TestCase
             $this->assertSame(1, DB::table('ClassSession')->where('StudentClassID', $course->ID)->whereDate('SessionDate', '2026-10-14')->count());
             $this->assertSame($reverse ? 6 : 8, (int) $source->fresh()->SessionCount);
         }
+    }
+
+    #[\PHPUnit\Framework\Attributes\DataProvider('keys')]
+    public function test_exhausted_source_and_reversed_target_cannot_accept_later_bookings(bool $reverse): void
+    {
+        [$token, $source, $template] = $this->fixture(used: 0);
+        $input = ['target_course_id' => $template->ID, 'sessions' => 8];
+        $preview = $this->withToken($token)->postJson("/api/v1/student-classes/{$source->ID}/subject-credit-transfer/preview", $input)->assertOk();
+        $input += ['reason' => 'isolated exhausted credit', 'idempotency_key' => 'isolated-closed-key', 'state_hash' => $preview->json('state_hash')];
+        $r = $this->withToken($token)->postJson("/api/v1/student-classes/{$source->ID}/subject-credit-transfer", $input)->assertCreated();
+        $course = $source;
+        if ($reverse) {
+            $course = StudentClass::findOrFail($r->json('transfer.target_course_id'));
+            $this->withToken($token)->postJson("/api/v1/student-classes/{$source->ID}/subject-credit-transfer/{$r->json('transfer.id')}/reverse", ['reason' => 'isolated restore'])->assertOk();
+        }
+        $before = $this->businessSnapshot();
+        $campus = (int) Student::find($source->StudentID)->CampusID;
+        $this->withToken($token)->postJson('/api/v1/schedules', ['student_id' => $source->StudentID, 'student_course_id' => $course->ID,
+            'teacher_id' => $course->TeacherID, 'branch_id' => $campus, 'subject' => 'isolated', 'day_of_week' => 3,
+            'schedule_date' => '2026-10-14', 'start_time' => '18:00', 'end_time' => '20:00',
+            'duration_hours' => 2, 'status' => 'scheduled', 'type' => 'normal'])->assertStatus(422)->assertJsonPath('code', 'subject_credit_closed_course');
+        $this->assertSame($before, $this->businessSnapshot());
+        // The materializer can receive a previously loaded active contract. It must recheck committed credit.
+        try {
+            app(\App\Services\ClassSessionMaterializationService::class)->upsertSlot(['StudentClassID' => $course->ID,
+                'SessionDate' => '2026-10-14', 'StartTime' => '18:00', 'EndTime' => '20:00', 'Status' => 'scheduled', '_student_class' => $course]);
+            $this->fail('Stale preloaded course must not bypass exhausted credit.');
+        } catch (\Illuminate\Http\Exceptions\HttpResponseException $e) {
+            $this->assertSame(422, $e->getResponse()->getStatusCode());
+            $this->assertSame('subject_credit_closed_course', $e->getResponse()->getData(true)['code']);
+        }
+        $this->assertSame($before, $this->businessSnapshot());
+    }
+
+    public function test_partial_receipt_void_winner_cannot_be_overwritten_by_a_stale_reversal_snapshot(): void
+    {
+        [$token, $source, $template, $invoice] = $this->fixture();
+        $cash = Payment::where('InvoiceID', $invoice->id)->first();
+        $cash->forceFill(['Amount' => 6000])->save();
+        Payment::create(['InvoiceID' => $invoice->id, 'Amount' => 6000, 'PaidAt' => '2026-09-01', 'Method' => 'cash']);
+        $report = PaymentReport::create(['StudentID' => $source->StudentID, 'StudentClassID' => $source->ID, 'InvoiceID' => $invoice->id,
+            'reported_by_name' => 'isolated payer', 'payment_date' => '2026-09-01', 'payment_method' => 'cash',
+            'reported_amount' => 6000, 'status' => 'confirmed', 'confirmed_at' => now(), 'payment_id' => $cash->id,
+            'report_token_hash' => hash('sha256', 'isolated partial receipt'), 'token_expires_at' => now()->addDay()]);
+        $cash->forceFill(['payment_report_id' => $report->id])->save();
+        $input = ['target_course_id' => $template->ID, 'sessions' => 2];
+        $preview = $this->withToken($token)->postJson("/api/v1/student-classes/{$source->ID}/subject-credit-transfer/preview", $input)->assertOk();
+        $input += ['reason' => 'isolated partial receipt race', 'idempotency_key' => 'isolated-reverse-race', 'state_hash' => $preview->json('state_hash')];
+        $r = $this->withToken($token)->postJson("/api/v1/student-classes/{$source->ID}/subject-credit-transfer", $input)->assertCreated();
+        $pause = $this->racePause('from `studentclass`');
+        $one = $this->spawn($token, $source, ['void_reason' => 'isolated partial void'], $pause, ['op' => 'void', 'report_id' => $report->id]);
+        $this->raceAwait($pause['ready']);
+        $two = $this->spawn($token, $source, ['reason' => 'must not restore stale money'], null,
+            ['op' => 'reverse', 'transfer_id' => $r->json('transfer.id'), 'snapshot_invoice_id' => $invoice->id]);
+        $this->awaitBlocked($two, 'studentclass');
+        touch($pause['release']);
+        $a = $this->raceFinish($one); $b = $this->raceFinish($two);
+        $this->assertSame(200, $a['status'], json_encode($a));
+        $this->assertSame(409, $b['status'], json_encode($b));
+        $this->assertSame('subject_credit_reverse_changed', $b['body']['code'] ?? null);
+        $this->assertNull(DB::table('contract_subject_credit_transfers')->value('reversed_at'));
+        $this->assertSame(3000, (int) $invoice->fresh()->PaidAmount);
+        $this->assertSame(6000, (int) Payment::sum('Amount'));
+        $this->assertSame(0, Payment::where('Method', 'transfer_reversal_in')->count());
+    }
+
+    #[\PHPUnit\Framework\Attributes\DataProvider('keys')]
+    public function test_booking_waiting_on_the_student_mutex_rechecks_credit_after_transfer_or_reverse_wins(bool $reverse): void
+    {
+        [$token, $source, $template, $invoice] = $this->fixture(used: 0);
+        $input = ['target_course_id' => $template->ID, 'sessions' => 8];
+        $preview = $this->withToken($token)->postJson("/api/v1/student-classes/{$source->ID}/subject-credit-transfer/preview", $input)->assertOk();
+        $input += ['reason' => 'isolated booking race', 'idempotency_key' => 'isolated-booking-race', 'state_hash' => $preview->json('state_hash')];
+        $course = $source; $first = [];
+        if ($reverse) {
+            $r = $this->withToken($token)->postJson("/api/v1/student-classes/{$source->ID}/subject-credit-transfer", $input)->assertCreated();
+            $course = StudentClass::findOrFail($r->json('transfer.target_course_id'));
+            $first = ['op' => 'reverse', 'transfer_id' => $r->json('transfer.id'), 'input' => ['reason' => 'isolated restore']];
+        }
+        $pause = $this->racePause('from `studentclass`');
+        $one = $this->spawn($token, $source, $input, $pause, $first);
+        $this->raceAwait($pause['ready']);
+        $campus = (int) Student::find($source->StudentID)->CampusID;
+        $booking = ['student_id' => $source->StudentID, 'student_course_id' => $course->ID, 'teacher_id' => $course->TeacherID,
+            'branch_id' => $campus, 'day_of_week' => 3, 'schedule_date' => '2026-10-14', 'start_time' => '18:00', 'end_time' => '20:00',
+            'duration_hours' => 2, 'status' => 'scheduled', 'type' => 'normal'];
+        $two = $this->spawn($token, $source, $booking, null, ['op' => 'schedule', 'snapshot_invoice_id' => $invoice->id]);
+        $this->awaitBlocked($two, 'student');
+        touch($pause['release']);
+        $a = $this->raceFinish($one); $b = $this->raceFinish($two);
+        $this->assertSame($reverse ? 200 : 201, $a['status'], json_encode($a));
+        $this->assertSame(422, $b['status'], json_encode($b));
+        $this->assertSame('subject_credit_closed_course', $b['body']['code'] ?? null);
+        $this->assertSame(0, DB::table('schedules')->count());
+        $this->assertSame(0, DB::table('ClassSession')->count());
+        $this->assertSame(12000, (int) Payment::sum('Amount'));
     }
 
     private function spawn(string $token, StudentClass $source, array $input, ?array $pause = null, array $overrides = []): array

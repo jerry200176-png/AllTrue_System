@@ -319,6 +319,40 @@ class SubjectCreditTransferTest extends TestCase
         $this->assertSame($after, $this->businessSnapshot());
     }
 
+    public function test_operational_test_campus_is_still_hidden_when_the_mutex_uses_an_explicit_campus_read(): void
+    {
+        [$token, $source, $template] = $this->fixture();
+        $input = $this->payload($token, $source, $template);
+        $campus = (int) \App\Models\Student::find($source->StudentID)->CampusID;
+        DB::table('Campus')->where('id', $campus)->update(['is_test' => 1]);
+        $before = $this->businessSnapshot();
+        $this->withToken($token)->postJson("/api/v1/student-classes/{$source->ID}/subject-credit-transfer/preview", $input)->assertStatus(403);
+        $this->send($token, $source, $input)->assertStatus(403);
+        try {
+            app(\App\Services\Billing\SubjectCreditPreview::class)->run($source, $input, null); // Same unrestricted campus scope as super_admin.
+            $this->fail('Super-admin campus exception must not expose the operational test campus.');
+        } catch (\Symfony\Component\HttpKernel\Exception\HttpException $e) { $this->assertSame(403, $e->getStatusCode()); }
+        $this->assertSame($before, $this->businessSnapshot());
+    }
+
+    public function test_exhausted_credit_does_not_freeze_cancellation_or_same_unit_attendance_correction(): void
+    {
+        [$token, $source, $template] = $this->fixture();
+        $this->send($token, $source, $this->payload($token, $source, $template, 6))->assertCreated();
+        $session = \App\Models\ClassSession::where('StudentClassID', $source->ID)->orderBy('id')->first();
+        DB::transaction(fn () => $session->forceFill(['Status' => 'late'])->save());
+        $this->assertSame('late', $session->fresh()->Status);
+        DB::transaction(fn () => $session->forceFill(['Status' => 'cancelled'])->save());
+        $this->assertSame('cancelled', $session->fresh()->Status);
+        $id = DB::table('schedules')->insertGetId(['student_id' => $source->StudentID, 'student_course_id' => $source->ID,
+            'branch_id' => \App\Models\Student::find($source->StudentID)->CampusID, 'day_of_week' => 2,
+            'schedule_date' => '2026-09-01', 'start_time' => '08:00', 'end_time' => '09:00', 'status' => 'scheduled', 'type' => 'normal']);
+        $booking = \App\Models\Schedule::findOrFail($id);
+        DB::transaction(fn () => $booking->forceFill(['status' => 'cancelled'])->save());
+        $this->assertSame('cancelled', $booking->fresh()->status);
+        $this->assertSame(12000, (int) Payment::sum('Amount'));
+    }
+
     private function receipt(StudentClass $source, Invoice $invoice): PaymentReport
     {
         $cash = Payment::where('InvoiceID', $invoice->id)->orderBy('id')->first();

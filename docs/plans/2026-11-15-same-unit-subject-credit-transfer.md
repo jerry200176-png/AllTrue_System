@@ -92,6 +92,18 @@ changed key parameters 或 stale preview 拒絕。原因與 actor、前後快照
 來源有未投影預約即拒絕；新 B 有活著的排課（含週期範本）即不得逆轉。
 已投影的同時段不重複扣保留額度，取消／准假沿用既有規則。
 
+對稱方向也要核對：轉用先耗盡來源，或還原先歸零新 B 時，等待中的排課取得
+mutex 後仍須重讀剩餘契約。共用的 scoped authority guard 同時保護 schedules
+及 ClassSession 物化（含 stale preload），只對本流程已稽核且額度耗盡的合約
+生效，不改其他 completed/cancelled 的語意；取消與同堂出勤狀態更正仍沿用原規則。
+
+MySQL RR 的 correlated tenant 子查詢可能在等待 Student 鎖前建立舊 read view。
+以 current Student mutex 與 Campus 原生 tenant filter 的 shared locking read
+保留相同校區限制，避免普通讀取先於關鍵鎖；TEST 校區包含 super_admin 都仍拒絕。
+並行回歸涵蓋部分收據撤銷先贏後的逆轉，不能用舊 snapshot 恢復付款數值。
+物化多一次必要的 fresh course PK read；monthly 測試預算只新增這項權威成本，
+保留既有批次掃描及不重複物化斷言，不能將新增功能成本混稱為 Token 節省。
+
 收據撤銷保留原來可用的剩餘資金內操作；若會抽走已轉出的資金則 409。
 缺 InvoiceID 的舊收據在來源仍有未還原轉出時先拒絕，不猜付款歸屬。
 Ledger 將內部額度流與現金收款、沖銷分開，原收據不因此誤顯多收。

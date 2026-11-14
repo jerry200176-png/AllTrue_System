@@ -39,6 +39,12 @@ class Schedule extends Model
                 abort(422, $closure === 'refunded' ? StudentClass::REFUNDED_MESSAGE : '此合約已確認不收，課表不能再變更。');
             }
         };
+        static::saving(function (Schedule $row): void {
+            $active = $row->status === 'scheduled' || ($row->type === 'extra' && $row->status === 'rescheduled');
+            if ($active && (!$row->exists || $row->isDirty(['student_course_id', 'schedule_date', 'start_time', 'end_time', 'status', 'type']))) {
+                SubjectCreditTransfer::assertBookingAllowed((int) $row->student_course_id);
+            }
+        });
         static::saving($guard);
         static::deleting($guard);
     }

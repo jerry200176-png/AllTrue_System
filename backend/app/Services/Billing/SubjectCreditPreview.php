@@ -2,7 +2,8 @@
 
 namespace App\Services\Billing;
 
-use App\Models\{ClassSession, Invoice, InvoiceItem, Payment, PaymentReport, Student, StudentClass, SubjectCreditTransfer};
+use App\Models\{Campus, ClassSession, Invoice, InvoiceItem, Payment, PaymentReport, Student, StudentClass, SubjectCreditTransfer};
+use App\Models\Scopes\OperationalTenantScope;
 use App\Services\SessionDeductionService;
 use App\Services\SubstituteScheduleService;
 use App\Services\Scheduling\ContractSessionSchedule;
@@ -39,9 +40,15 @@ final class SubjectCreditPreview
         if (DB::transactionLevel() < 1) {
             throw new \LogicException('Subject credit requires a transaction.');
         }
-        $student = Student::query()->whereKey($routeCourse->StudentID)->lockForUpdate()->first();
+        // The Student tenant scope contains a non-locking Campus subquery: on MySQL it can open
+        // an old RR read view before waiting for this mutex. Enforce that SAME native filter with
+        // a locking Campus read instead; no ordinary business read precedes the course locks.
+        $student = Student::withoutGlobalScope(OperationalTenantScope::class)->whereKey($routeCourse->StudentID)->lockForUpdate()->first();
         if (!$student || ($campusIds !== null && !in_array((int) $student->CampusID, $campusIds, true))) {
             abort(403);
+        }
+        if (!Campus::query()->whereKey($student->CampusID)->sharedLock()->first(['id'])) {
+            abort(403); // Includes the operational TEST-campus exclusion, even for super_admin.
         }
         $courses = StudentClass::query()->where('StudentID', $student->id)
             ->whereIn('ID', [(int) $routeCourse->getKey(), (int) $input['target_course_id']])
