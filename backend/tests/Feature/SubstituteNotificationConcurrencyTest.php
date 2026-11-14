@@ -11,6 +11,7 @@ use Tests\TestCase;
 
 class SubstituteNotificationConcurrencyTest extends TestCase
 {
+    use \Tests\Support\CleansCommittedRows;
     use RefreshDatabase;
 
     /** @var array<int, string|null> */

@@ -25,6 +25,7 @@ use Tests\TestCase;
  */
 class BillingCorrectionInvoiceRaceTest extends TestCase
 {
+    use \Tests\Support\CleansCommittedRows;
     use RefreshDatabase;
 
     /** @var array<int, string> */
