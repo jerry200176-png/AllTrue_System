@@ -1,5 +1,46 @@
 import { describe, expect, it } from 'vitest';
-import { KIND_OPTIONS, dayLabel, groupByDay, unitsInWeek, weekDays, weekRangeText, weekStartOf } from './studyWeek';
+import { KIND_OPTIONS, attendanceThisMonth, dayLabel, groupByDay, planProgress, unitsInWeek, weekDays, weekRangeText, weekStartOf, weekTaskProgress } from './studyWeek';
+
+const sign = (date, attendance, extra = {}) => ({ type: 'attendance', id: Math.random(), date, attendance, ...extra });
+
+describe('progress strip measures (issue 5269 step 3)', () => {
+  it('week tasks: done / total, and no figure at all for an empty week', () => {
+    expect(weekTaskProgress([])).toEqual({ status: 'none' });
+    expect(weekTaskProgress([{ done_at: 'x' }, { done_at: null }, { done_at: null }])).toEqual({ status: 'ok', done: 1, total: 3, percent: 33 });
+  });
+  it('plan: the API value as is for one plan, unit-weighted for several, and nothing for a plan without units', () => {
+    const plan = (percent_done, n, extra = {}) => ({ status: 'active', percent_done, units_behind: 0, units: Array.from({ length: n }, (_, i) => ({ id: i })), ...extra });
+    expect(planProgress([])).toEqual({ status: 'none' });
+    expect(planProgress([plan(0, 0)])).toEqual({ status: 'no-units' }); // the API says 0 for no units: not real data
+    expect(planProgress([plan(0, 0, { status: 'done' })])).toEqual({ status: 'none' });
+    expect(planProgress([plan(40, 5, { units_behind: 2 })])).toEqual({ status: 'ok', percent: 40, behind: 2, plans: 1 });
+    expect(planProgress([plan(100, 1), plan(20, 4, { units_behind: 1 }), plan(0, 0)])).toEqual({ status: 'ok', percent: 36, behind: 1, plans: 2 });
+  });
+  it('attendance: this month only, 到班/遲到/補課 came, 缺席/請假 missed, the rest ignored', () => {
+    const items = [sign('2026-11-02', '到班'), sign('2026-11-05', '遲到'), sign('2026-11-09', '請假'), sign('2026-11-10', '缺席'), sign('2026-11-11', '試聽有到'),
+      sign('2026-11-12', '到班', { session_status: 'cancelled' }), sign('2026-10-30', '缺席'), sign('2026-11-20', '缺席')];
+    expect(attendanceThisMonth(items, '2026-11-13')).toEqual({ status: 'ok', came: 2, total: 4, percent: 50 });
+    expect(attendanceThisMonth([sign('2026-10-30', '到班')], '2026-11-13')).toEqual({ status: 'none' });
+    expect(attendanceThisMonth(null, '2026-11-13')).toEqual({ status: 'unavailable' });
+  });
+  it('attendance: refuses to guess when a capped source may have cut into the month', () => {
+    const items = [sign('2026-11-02', '到班')];
+    expect(attendanceThisMonth(items, '2026-11-13', ['attendance']).status).toBe('partial');
+    expect(attendanceThisMonth([sign('2026-10-02', '到班'), ...items], '2026-11-13', ['attendance']).status).toBe('ok'); // older rows exist, the month is complete
+    expect(attendanceThisMonth(items, '2026-11-13', ['exam_score']).status).toBe('ok');
+  });
+  it('attendance: each capped source is judged on its own oldest row', () => {
+    const evalRow = (date) => ({ type: 'evaluation', id: Math.random(), date, attendance: '到班' });
+    // Sign-ins reach back to October (their cap cannot hide November), but evaluations are capped and their oldest row is in November.
+    const items = [sign('2026-10-01', '到班'), sign('2026-11-02', '到班'), evalRow('2026-11-03'), evalRow('2026-11-09')];
+    expect(attendanceThisMonth(items, '2026-11-13', ['evaluation']).status).toBe('partial');
+    expect(attendanceThisMonth(items, '2026-11-13', ['attendance']).status).toBe('ok');
+    // The other way round: evaluations reach October, the capped sign-ins start in November.
+    const other = [evalRow('2026-10-01'), sign('2026-11-02', '到班'), sign('2026-11-09', '缺席')];
+    expect(attendanceThisMonth(other, '2026-11-13', ['attendance']).status).toBe('partial');
+    expect(attendanceThisMonth(other, '2026-11-13', ['evaluation']).status).toBe('ok');
+  });
+});
 
 describe('studyWeek date math (Monday start, date-only strings)', () => {
   it('finds the Monday of any day, including Sunday and a year boundary', () => {

@@ -116,67 +116,76 @@
 
     <!-- Post-creation success banner -->
     <transition name="fade">
-      <div v-if="creationSuccessBanner" class="creation-success-banner" role="status">
-        <span class="material-symbols-outlined creation-success-banner__icon">check_circle</span>
-        <span>{{ creationSuccessBanner }}</span>
-        <button class="creation-success-banner__close" @click="creationSuccessBanner = null" aria-label="關閉">✕</button>
-      </div>
+      <Alert v-if="creationSuccessBanner" tone="success" class="creation-success-banner">
+        <div class="tw:flex tw:items-center tw:gap-3 tw:text-tpl-body">
+          <span class="material-symbols-outlined tw:shrink-0" aria-hidden="true">check_circle</span>
+          <span class="tw:min-w-0 tw:flex-1 tw:text-pretty">{{ creationSuccessBanner }}</span>
+          <Button type="button" variant="ghost" size="icon" class="tw:size-11 tw:shrink-0 tw:shadow-none" aria-label="關閉" @click="creationSuccessBanner = null"><span class="material-symbols-outlined" aria-hidden="true">close</span></Button>
+        </div>
+      </Alert>
     </transition>
 
-    <div v-if="closedCourseNotice" class="creation-success-banner" role="status" data-testid="closed-course-hidden-notice">
-      <span class="material-symbols-outlined creation-success-banner__icon" aria-hidden="true">info</span>
-      <span>{{ closedCourseNotice.message }}</span>
-      <button v-if="closedCourseNotice.canShowAll" class="btn-soft" type="button" data-testid="closed-course-show-all" @click="showClosedCourseUnderAllStatuses">切到「全部」</button>
-      <button class="creation-success-banner__close" type="button" @click="closedCourseNotice = null" aria-label="關閉"><span class="material-symbols-outlined" aria-hidden="true">close</span></button>
-    </div>
+    <Alert v-if="closedCourseNotice" tone="info" data-testid="closed-course-hidden-notice">
+      <div class="tw:flex tw:flex-wrap tw:items-center tw:gap-x-3 tw:gap-y-2 tw:text-tpl-body">
+        <span class="material-symbols-outlined tw:shrink-0" aria-hidden="true">info</span>
+        <span class="tw:min-w-0 tw:flex-1 tw:basis-52 tw:text-pretty">{{ closedCourseNotice.message }}</span>
+        <button v-if="closedCourseNotice.canShowAll" :class="rowAction.secondary" type="button" data-testid="closed-course-show-all" @click="showClosedCourseUnderAllStatuses">切到「全部」</button>
+        <Button type="button" variant="ghost" size="icon" class="tw:size-11 tw:shrink-0 tw:shadow-none" aria-label="關閉" @click="closedCourseNotice = null"><span class="material-symbols-outlined" aria-hidden="true">close</span></Button>
+      </div>
+    </Alert>
 
-    <section v-if="pendingLeaveLoaded || pendingLeaveLoading || pendingLeaveError" class="pending-leave-summary tw:rounded-3xl" aria-live="polite">
-      <div class="pending-leave-summary__header">
-        <div class="pending-leave-summary__icon material-symbols-outlined" aria-hidden="true">inbox</div>
-        <div class="pending-leave-summary__body">
-          <strong>家長請假待處理</strong>
-          <span v-if="pendingLeaveLoading">正在同步待辦案件…</span>
-          <span v-else-if="pendingLeaveError" class="pending-leave-summary__error" role="alert">{{ pendingLeaveError }}</span>
-          <span v-else-if="pendingLeaveWorkflows.length">先確認案件摘要，再進入主任收件匣完成決策。</span>
-          <span v-else>目前沒有待處理的家長請假。</span>
+    <SectionCard v-if="pendingLeaveLoaded || pendingLeaveLoading || pendingLeaveError" class="pending-leave-summary" aria-live="polite">
+      <div class="tw:flex tw:flex-wrap tw:items-center tw:gap-x-4 tw:gap-y-3 tw:px-5 tw:py-4">
+        <div class="tw:grid tw:min-w-0 tw:flex-1 tw:basis-60 tw:gap-0.5">
+          <h3 class="tw:m-0 tw:text-tpl-list tw:font-bold tw:text-foreground">家長請假待處理</h3>
+          <span v-if="pendingLeaveLoading" class="tw:text-tpl-caption tw:text-tpl-secondary">正在同步待辦案件…</span>
+          <span v-else-if="pendingLeaveError" :class="['pending-leave-summary__error tw:text-tpl-caption tw:font-semibold', toneText.danger]" role="alert">{{ pendingLeaveError }}</span>
+          <span v-else-if="pendingLeaveWorkflows.length" class="tw:text-tpl-caption tw:text-tpl-secondary tw:text-pretty">先確認案件摘要，再進入主任收件匣完成決策。</span>
+          <span v-else class="tw:text-tpl-caption tw:text-tpl-secondary">目前沒有待處理的家長請假。</span>
         </div>
-        <button v-if="pendingLeaveWorkflows.length" class="pending-leave-summary__cta pending-leave-summary__cta--all" type="button" @click="emit('navigate', { target: 'director', section: 'exception-workflows' })">查看全部請假<span aria-hidden="true">→</span></button>
+        <button v-if="pendingLeaveWorkflows.length" :class="[rowAction.secondary, 'pending-leave-summary__cta pending-leave-summary__cta--all tw:gap-1 tw:max-md:w-full']" type="button" @click="emit('navigate', { target: 'director', section: 'exception-workflows' })">查看全部請假<span aria-hidden="true">→</span></button>
       </div>
-      <div v-if="pendingLeaveLoading" class="pending-leave-case-list" aria-hidden="true">
-        <div v-for="idx in 2" :key="idx" class="pending-leave-case pending-leave-case--skeleton"></div>
+      <div v-if="pendingLeaveLoading" class="tw:grid tw:gap-3 tw:px-5 tw:pb-4" aria-hidden="true">
+        <Skeleton v-for="idx in 2" :key="idx" class="pending-leave-case--skeleton tw:h-18 tw:w-full tw:rounded-xl tw:motion-reduce:animate-none" />
       </div>
-      <div v-else-if="pendingLeaveError" class="pending-leave-summary__error-actions">
-        <button class="pending-leave-summary__cta" type="button" @click="loadCourses(pagination.page)">再試一次</button>
+      <div v-else-if="pendingLeaveError" class="tw:px-5 tw:pb-4">
+        <button :class="[rowAction.secondary, 'pending-leave-summary__cta']" type="button" @click="loadCourses(pagination.page)">再試一次</button>
       </div>
-      <details v-else-if="pendingLeaveWorkflows.length" class="pending-leave-disclosure">
-        <summary class="tw:text-tpl-caption">查看案件摘要</summary>
-        <div class="pending-leave-case-list">
-        <article v-for="workflow in pendingLeavePreview" :key="workflow.id" class="pending-leave-case" data-testid="pending-leave-case">
-          <div class="pending-leave-case__content">
-            <div class="pending-leave-case__title-row">
-              <strong>{{ workflow.student?.name || '未命名學生' }}</strong>
-              <span v-if="workflow.payload?.is_late" class="pending-leave-case__status" style="background:var(--ds-warning-wash);color:var(--ds-warning);border-color:var(--ds-warning);">臨時請假</span>
-              <span class="pending-leave-case__status">{{ pendingLeaveStatusLabel(workflow.status) }}</span>
+      <details v-else-if="pendingLeaveWorkflows.length" class="pending-leave-disclosure tw:border-t tw:border-border">
+        <summary class="tw:flex tw:min-h-11 tw:cursor-pointer tw:items-center tw:px-5 tw:text-tpl-caption tw:font-semibold">查看案件摘要</summary>
+        <div>
+          <article v-for="workflow in pendingLeavePreview" :key="workflow.id" class="pending-leave-case tw:flex tw:min-h-18 tw:flex-wrap tw:items-center tw:justify-between tw:gap-x-4 tw:gap-y-3 tw:border-t tw:border-border tw:px-5 tw:py-3" data-testid="pending-leave-case">
+            <div class="tw:min-w-0 tw:flex-1 tw:basis-60">
+              <div class="tw:flex tw:flex-wrap tw:items-center tw:gap-2">
+                <strong class="tw:text-tpl-body tw:font-semibold tw:whitespace-nowrap">{{ workflow.student?.name || '未命名學生' }}</strong>
+                <StatusBadge v-if="workflow.payload?.is_late" tone="warning">臨時請假</StatusBadge>
+                <StatusBadge tone="neutral">{{ pendingLeaveStatusLabel(workflow.status) }}</StatusBadge>
+              </div>
+              <p class="tw:m-0 tw:mt-1 tw:text-tpl-caption tw:text-tpl-secondary tw:text-pretty">{{ pendingLeaveSessionLabel(workflow) }}</p>
+              <p class="tw:m-0 tw:text-tpl-caption tw:text-tpl-secondary tw:text-pretty">原因：<span v-if="workflow.payload?.is_late" :class="['tw:mr-1 tw:font-bold', toneText.warning]">【臨時請假】</span>{{ workflow.payload?.reason || '家長未提供原因' }}</p>
             </div>
-            <p>{{ pendingLeaveSessionLabel(workflow) }}</p>
-            <p class="pending-leave-case__reason">原因：<span v-if="workflow.payload?.is_late" style="color:var(--ds-warning);font-weight:700;margin-right:4px;">【臨時請假】</span>{{ workflow.payload?.reason || '家長未提供原因' }}</p>
+            <button :class="[rowAction.primary, 'pending-leave-case__cta tw:gap-1 tw:max-md:w-full']" type="button" :aria-label="`處理這筆請假：${workflow.student?.name || '未命名學生'}`" @click="openPendingLeaveWorkflow(workflow)">處理這筆請假<span aria-hidden="true">→</span></button>
+          </article>
+          <div v-if="pendingLeaveWorkflows.length > pendingLeavePreview.length" class="tw:border-t tw:border-border tw:px-5 tw:py-2">
+            <button :class="[rowAction.secondary, 'pending-leave-summary__more']" type="button" @click="emit('navigate', { target: 'director', section: 'exception-workflows' })">還有 {{ pendingLeaveWorkflows.length - pendingLeavePreview.length }} 筆，查看全部</button>
           </div>
-          <button class="pending-leave-case__cta" type="button" :aria-label="`處理這筆請假：${workflow.student?.name || '未命名學生'}`" @click="openPendingLeaveWorkflow(workflow)">處理這筆請假<span aria-hidden="true">→</span></button>
-        </article>
-        <button v-if="pendingLeaveWorkflows.length > pendingLeavePreview.length" class="pending-leave-summary__more" type="button" @click="emit('navigate', { target: 'director', section: 'exception-workflows' })">還有 {{ pendingLeaveWorkflows.length - pendingLeavePreview.length }} 筆，查看全部</button>
         </div>
       </details>
-    </section>
+    </SectionCard>
 
     <!-- Course Table -->
     <div ref="courseTableCard" class="table-card course-list-surface" data-guide="course-mgmt-table" tabindex="-1">
-      <Alert v-if="listRefreshFailed" tone="danger" title="課程列表載入失敗" data-testid="course-list-refresh-failed" style="margin: 0 0 14px;"><p>畫面可能不是最新資料，請稍後重新整理頁面。</p></Alert>
-      <div v-if="coursesLoading && !groupedCourses.length" class="course-list-skeleton" role="status" aria-label="課程資料載入中">
-        <div v-for="idx in 3" :key="idx" class="course-skeleton-group">
-          <div class="course-skeleton-header"></div>
-          <div class="course-skeleton-row"></div>
-          <div class="course-skeleton-row short"></div>
-        </div>
+      <Alert v-if="listRefreshFailed" tone="danger" title="課程列表載入失敗" data-testid="course-list-refresh-failed" class="tw:mb-4"><p>畫面可能不是最新資料，請稍後重新整理頁面。</p></Alert>
+      <div v-if="coursesLoading && !groupedCourses.length" class="course-list-skeleton tw:grid tw:gap-4" role="status" aria-label="課程資料載入中">
+        <SectionCard v-for="idx in 3" :key="idx" class="course-skeleton-group">
+          <div class="tw:flex tw:items-center tw:gap-3 tw:px-5 tw:py-4">
+            <Skeleton class="tw:h-6 tw:w-1/3 tw:rounded-full tw:motion-reduce:animate-none" />
+          </div>
+          <div class="tw:grid tw:gap-px tw:border-t tw:border-border">
+            <Skeleton class="tw:mx-5 tw:my-3 tw:h-18 tw:rounded-xl tw:motion-reduce:animate-none" />
+            <Skeleton v-if="idx < 3" class="tw:mx-5 tw:mb-3 tw:h-18 tw:w-3/5 tw:rounded-xl tw:motion-reduce:animate-none" />
+          </div>
+        </SectionCard>
       </div>
       <div v-else-if="groupedCourses.length" class="grouped-course-list" :class="{ 'focus-fullscreen-mode': focusedStudentKey }">
         <div v-if="focusedStudentKey" class="focus-mode-banner">
@@ -658,7 +667,7 @@
           <div
             v-if="expandedStudentGroups.has(group.key) && studentGroupTab(group.key) === 'billing'"
             :id="studentGroupPanelId(group.key, 'billing')"
-            class="table-wrap group-table-wrap student-billing-wrap"
+            class="table-wrap group-table-wrap student-billing-wrap tw:max-lg:max-h-none!"
             role="tabpanel"
             tabindex="0"
             :aria-labelledby="studentGroupTabId(group.key, 'billing')"
@@ -687,8 +696,8 @@
                 <span class="material-symbols-outlined tw:text-tpl-body" aria-hidden="true">info</span>
                 <span>共用方案的繳費狀態按科目分開顯示；請以每一列狀態為準。「{{ REPORT_STATUS_LABELS.pending }}」的項目請前往帳務中心確認。</span>
               </div>
-            <table :class="['student-billing-table tw:w-full tw:min-w-[640px] tw:border-collapse', dataTable.table]" aria-label="帳務資料" :aria-describedby="hasMixedPackagePaymentStatuses(group.key) ? `student-billing-note-${group.key}` : undefined">
-              <thead>
+            <table :class="['student-billing-table tw:w-full tw:lg:min-w-[640px] tw:border-collapse', dataTable.table, dataTable.stackTable]" aria-label="帳務資料" :aria-describedby="hasMixedPackagePaymentStatuses(group.key) ? `student-billing-note-${group.key}` : undefined">
+              <thead :class="dataTable.stackHead">
                 <tr>
                   <th scope="col" :class="[dataTable.head, BILLING_HEAD, 'tw:pl-5']">科目</th>
                   <th scope="col" :class="[dataTable.head, BILLING_HEAD]">合約／期間</th>
@@ -698,22 +707,23 @@
                   <th scope="col" :class="[dataTable.head, BILLING_HEAD, 'tw:pr-5']"><span class="tw:sr-only">操作</span></th>
                 </tr>
               </thead>
-              <tbody>
-                <tr v-if="!(studentBillingState[group.key]?.rows || []).length">
-                  <td colspan="6" :class="['student-billing-state', BILLING_STATE, 'tw:text-tpl-secondary']">此學生目前沒有課程可對帳</td>
+              <tbody :class="dataTable.stackBody">
+                <tr v-if="!(studentBillingState[group.key]?.rows || []).length" :class="dataTable.stackRow">
+                  <td colspan="6" :class="['student-billing-state', BILLING_STATE, 'tw:text-tpl-secondary', dataTable.stackWide]">此學生目前沒有課程可對帳</td>
                 </tr>
-                <tr v-for="row in (studentBillingState[group.key]?.rows || [])" :key="row.course.id" class="tw:hover:bg-muted/60">
-                  <td :class="[dataTable.cell, 'tw:min-w-[8em] tw:pl-5']">
+                <tr v-for="row in (studentBillingState[group.key]?.rows || [])" :key="row.course.id"             :class="['tw:hover:bg-muted/60', dataTable.stackRow]">
+                  <td :class="[dataTable.cell, dataTable.stackCell, 'tw:min-w-[8em] tw:pl-5']">
                     <span class="tw:block tw:font-semibold">{{ getSubjectLabel(row.course.subject) }}</span>
                     <span v-if="currentInvoiceForBillingRow(row)" data-testid="billing-amount" :class="dataTable.amount">應繳 ${{ formatMoney(currentInvoiceForBillingRow(row).total_amount ?? 0) }}</span>
                     <span v-else data-testid="billing-amount" :class="dataTable.amountPending">應繳：待開單</span>
                     <span v-if="!currentInvoiceForBillingRow(row) && (row.course.Charge ?? row.course.charge) != null" data-testid="billing-amount" :class="dataTable.amountEstimate">估算 ${{ formatMoney(row.course.Charge ?? row.course.charge) }}</span>
                   </td>
-                  <td :class="dataTable.cell" data-testid="billing-contract-period">
+                  <td :class="[dataTable.cell, dataTable.stackCell, dataTable.stackWide]" data-testid="billing-contract-period">
+                    <span :class="dataTable.stackLabel">合約／期間</span>
                     <div :class="dataTable.fact">{{ formatCourseRef(row.course.id) }}</div>
-                    <div :class="[dataTable.sub, 'tw:tabular-nums']"><span :class="dataTable.fact">{{ formatCoursePeriod(row.course.first_class_date || row.course.StartDate, row.course.end_date || row.course.EndDate) }}</span></div>
+                    <div :class="[dataTable.sub, 'tw:tabular-nums']"><template v-for="(part, pi) in billingPeriodParts(row.course)" :key="pi"><template v-if="pi"> ~ </template><span :class="dataTable.fact">{{ part }}</span></template></div>
                   </td>
-                  <td :class="dataTable.cell">
+                  <td :class="[dataTable.cell, dataTable.stackCell, dataTable.stackBeside]">
                     <StatusBadge
                       :tone="paymentStatusTone(row.course)"
                       :class="['payment-status-badge', { 'payment-status-badge--short': paymentStatusChipText(row.course) !== paymentStatusButtonLabel(row.course) }, 'tw:max-w-full tw:cursor-default', paymentStatusChipText(row.course).length <= PAYMENT_CHIP_NOWRAP_MAX ? 'tw:whitespace-nowrap' : 'tw:whitespace-normal tw:text-left']"
@@ -722,7 +732,8 @@
                       :aria-label="paymentStatusButtonLabel(row.course)"
                     >{{ paymentStatusChipText(row.course) }}</StatusBadge>
                   </td>
-                  <td :class="[dataTable.cell, 'tw:min-w-[7em] tw:tabular-nums']">
+                  <td :class="[dataTable.cell, dataTable.stackCell, 'tw:min-w-[7em] tw:tabular-nums']">
+                    <span :class="dataTable.stackLabel">最近回報</span>
                     <div v-if="row.reports?.[0]" class="tw:block tw:text-tpl-caption tw:text-foreground">
                       <span :class="dataTable.fact">{{ row.reports[0].payment_date || '—' }}</span>
                       · <span :class="dataTable.fact">{{ reportStatusLabel(row.reports[0].status) }}</span>
@@ -730,24 +741,45 @@
                     </div>
                     <span v-else :class="dataTable.sub">尚無回報</span>
                   </td>
-                  <td :class="[dataTable.cell, 'tw:min-w-[7em] tw:2xl:min-w-[11em]']">
+                  <td :class="[dataTable.cell, dataTable.stackCell, 'tw:min-w-[7em] tw:2xl:min-w-[11em]']">
+                    <span :class="dataTable.stackLabel">收據</span>
                     <span v-if="row.reports?.some((r) => r.status === 'confirmed')" :class="dataTable.sub">可開收據</span>
                     <span v-else :class="dataTable.sub">核對入帳後才能開收據</span>
                   </td>
-                  <td :class="[dataTable.cell, 'tw:pr-5']">
+                  <td :class="[dataTable.cell, dataTable.stackCell, dataTable.stackWide, 'tw:pr-5']">
                     <div class="tw:flex tw:flex-wrap tw:items-center tw:gap-2">
                       <button
                         v-if="isPaymentNoticeAvailable(row.course) && !billingPackageLead(row, group)"
-                        :class="[rowAction.secondary, 'btn-payment-slip']"
+                        :class="[rowAction.secondary, 'btn-payment-slip', 'tw:max-lg:hidden']"
                         data-testid="billing-payment-slip-action"
                         type="button"
                         title="產生繳費單"
                         @click="openPaymentSlip(row.course)"
                       >繳費單</button>
-                      <button :class="[rowAction.secondary, 'btn-invoices']" type="button" title="在這裡打開學生帳務" @click="openTuitionLedger(row.course)">在這裡看帳務</button>
-                      <span v-if="billingPackageLead(row, group)" :class="[dataTable.sub, 'tw:max-w-[22rem]']" data-testid="billing-package-follower">共用方案是一筆款項，請在「{{ getSubjectLabel(billingPackageLead(row, group).subject) }}」那列處理繳費單與繳費回報</span>
-                      <button v-else-if="showsBillingRowNextAction(row.course)" :class="rowAction.primary" type="button" @click="onPaymentNextAction(row.course)">{{ paymentNextActionLabel(row.course) }}</button>
-                      <span v-if="isTutoringBillingAnomaly(row.course)" :class="['tw:text-tpl-caption tw:font-semibold', toneText.danger]" role="alert">帳務資料需修正，請由主任檢查帳務中心。</span>
+                      <button :class="[rowAction.secondary, 'btn-invoices', 'tw:max-lg:hidden']" type="button" title="在這裡打開學生帳務" @click="openTuitionLedger(row.course)">在這裡看帳務</button>
+                      <span v-if="billingPackageLead(row, group)" :class="[dataTable.sub, 'tw:max-w-[22rem] tw:max-lg:order-last tw:max-lg:max-w-none tw:max-lg:basis-full']" data-testid="billing-package-follower">共用方案是一筆款項，請在「{{ getSubjectLabel(billingPackageLead(row, group).subject) }}」那列處理繳費單與繳費回報</span>
+                      <button v-else-if="showsBillingRowNextAction(row.course)" :class="[rowAction.primary, 'tw:max-lg:hidden']" type="button" @click="onPaymentNextAction(row.course)">{{ paymentNextActionLabel(row.course) }}</button>
+                      <!-- Under 1024px (PAGE_TEMPLATE §5 rule 9): one primary action, the rest in the 更多 menu. Same breakpoint as the stacked row (CSS only). -->
+                      <button
+                        v-if="billingPrimaryIsNext(row, group)"
+                        :class="[rowAction.primary, 'billing-stacked-primary tw:lg:hidden tw:min-w-0 tw:flex-1 tw:md:min-w-48 tw:md:flex-none']"
+                        type="button"
+                        @click="onPaymentNextAction(row.course)"
+                      >{{ paymentNextActionLabel(row.course) }}</button>
+                      <button
+                        v-else
+                        :class="[rowAction.primary, 'btn-invoices billing-stacked-primary tw:lg:hidden tw:min-w-0 tw:flex-1 tw:md:min-w-48 tw:md:flex-none']"
+                        type="button"
+                        @click="openTuitionLedger(row.course)"
+                      >在這裡看帳務</button>
+                      <ActionMenu
+                        v-if="billingMenuGroups(row, group).length"
+                        :groups="billingMenuGroups(row, group)"
+                        :label="`${getSubjectLabel(row.course.subject)} 的更多帳務操作`"
+                        :trigger-class="`action-menu-trigger tw:lg:hidden ${rowAction.menu}`"
+                        @select="(id) => runBillingMenu(id, row)"
+                      />
+                      <span v-if="isTutoringBillingAnomaly(row.course)" :class="['tw:text-tpl-caption tw:font-semibold tw:max-lg:basis-full', toneText.danger]" role="alert">帳務資料需修正，請由主任檢查帳務中心。</span>
                     </div>
                   </td>
                 </tr>
@@ -757,24 +789,26 @@
           </div>
         </SectionCard>
       </div>
-      <div v-else class="empty-state">
-        <span class="material-symbols-outlined empty-icon" aria-hidden="true">menu_book</span>
-        <p class="empty-title">目前尚無課程資料</p>
-        <p class="empty-desc">請在「學生管理」為學生建立課程。</p>
-        <button type="button" class="btn-accent" data-testid="empty-state-goto-students" @click="emit('navigate', 'students')">
-          <span class="material-symbols-outlined btn-icon" aria-hidden="true">groups</span> 前往學生管理
-        </button>
-      </div>
-      <div v-if="pagination.lastPage > 1" class="pagination-bar">
-        <span class="pagination-info">第 {{ (pagination.page - 1) * pagination.perPage + 1 }}–{{ Math.min(pagination.page * pagination.perPage, pagination.total) }} 筆，共 {{ pagination.total }} 筆</span>
-        <div class="pagination-controls">
-          <button class="btn-soft pagination-btn" :disabled="pagination.page <= 1" @click="goToPage(pagination.page - 1)">‹ 上一頁</button>
-          <span class="pagination-current">{{ pagination.page }} / {{ pagination.lastPage }}</span>
-          <button class="btn-soft pagination-btn" :disabled="pagination.page >= pagination.lastPage" @click="goToPage(pagination.page + 1)">下一頁 ›</button>
+      <SectionCard v-else class="course-empty">
+        <div class="tw:flex tw:flex-col tw:items-center tw:gap-3 tw:px-5 tw:py-12 tw:text-center">
+          <span class="material-symbols-outlined empty-icon" aria-hidden="true">menu_book</span>
+          <p class="empty-title tw:m-0 tw:text-tpl-list tw:font-bold tw:text-balance">目前尚無課程資料</p>
+          <p class="empty-desc tw:m-0 tw:text-tpl-body tw:text-tpl-secondary tw:text-pretty">請在「學生管理」為學生建立課程。</p>
+          <Button type="button" :class="control.page" data-testid="empty-state-goto-students" @click="emit('navigate', 'students')">
+            <span class="material-symbols-outlined" aria-hidden="true">groups</span> 前往學生管理
+          </Button>
+        </div>
+      </SectionCard>
+      <div v-if="pagination.lastPage > 1" class="pagination-bar tw:flex tw:flex-wrap tw:items-center tw:justify-between tw:gap-x-4 tw:gap-y-2 tw:px-1 tw:pt-4 tw:text-tpl-caption tw:text-tpl-secondary">
+        <span class="pagination-info tw:tabular-nums tw:text-pretty">第 {{ (pagination.page - 1) * pagination.perPage + 1 }}–{{ Math.min(pagination.page * pagination.perPage, pagination.total) }} 筆，共 {{ pagination.total }} 筆</span>
+        <div class="pagination-controls tw:flex tw:items-center tw:gap-2">
+          <button :class="[rowAction.secondary, 'pagination-btn tw:disabled:cursor-default tw:disabled:opacity-40']" :disabled="pagination.page <= 1" @click="goToPage(pagination.page - 1)">‹ 上一頁</button>
+          <span class="pagination-current tw:min-w-14 tw:text-center tw:font-semibold tw:tabular-nums tw:whitespace-nowrap tw:text-foreground">{{ pagination.page }} / {{ pagination.lastPage }}</span>
+          <button :class="[rowAction.secondary, 'pagination-btn tw:disabled:cursor-default tw:disabled:opacity-40']" :disabled="pagination.page >= pagination.lastPage" @click="goToPage(pagination.page + 1)">下一頁 ›</button>
         </div>
       </div>
-      <div v-else-if="pagination.total > 0" class="pagination-bar">
-        <span class="pagination-info">共 {{ pagination.total }} 筆課程</span>
+      <div v-else-if="pagination.total > 0" class="pagination-bar tw:px-1 tw:pt-4 tw:text-tpl-caption tw:text-tpl-secondary">
+        <span class="pagination-info tw:tabular-nums">共 {{ pagination.total }} 筆課程</span>
       </div>
     </div>
 
@@ -864,73 +898,86 @@
       </template>
     </CourseManager>
 
-    <!-- Edit Course Modal -->
-    <div v-if="showEditModal && !courseManagerOpen" class="modal-overlay">
-      <div class="modal course-modal">
-        <h3 class="modal-title">編輯課程</h3>
-        <Alert v-if="editabilityLoading" tone="info" title="正在檢查課程狀態" style="margin: 0 0 14px;">
-          <p>正在確認付款、扣堂與對帳狀態；一般欄位仍可編輯。</p>
-        </Alert>
-        <Alert v-if="editabilityError" tone="warning" title="無法完成預檢" style="margin: 0 0 14px;">
-          <p>{{ editabilityError }} 儲存時仍會由後端再次檢查。</p>
-        </Alert>
-        <CourseSaveErrorAlert :error="editSaveError" :can-open="canOpenEditabilityAction" @action="openEditabilityAction" />
-        <section v-if="editability?.reasons?.length" class="editability-action-panel" data-testid="course-editability-panel" aria-label="課程編輯分流">
-          <div class="editability-action-panel__intro">
-            <strong>這門課有資料不能用一般編輯改寫</strong>
-            <span>一般欄位可以繼續修改；要處理受保護資料，請從對應流程進入。</span>
-          </div>
-          <div v-for="reason in editability.reasons" :key="reason.code" class="editability-action-row">
-            <div class="editability-action-row__copy">
-              <strong>{{ reason.message }}</strong>
-              <span v-if="editabilityAffectedFields.length" class="editability-action-row__fields">
-                受保護欄位：{{ editabilityAffectedFields.join('、') }}
-              </span>
-              <span v-if="editabilityActionDescription(reason.next_step)" class="editability-action-row__description">
-                {{ editabilityActionDescription(reason.next_step) }}
-              </span>
+    <!-- Edit Course dialog (shared Dialog; issue 4989 slice 7a). Overlay click never closes it (unsaved form); 取消 / Esc do. -->
+    <Dialog :open="showEditModal && !courseManagerOpen && !showQuickAddSessionModal && !showCourseTransfer" @update:open="(v) => { if (!v) requestCloseEditDialog(); }">
+      <DialogContent
+        :show-close-button="false"
+        class="tw:max-h-[min(90dvh,56rem)] tw:grid-rows-[auto_minmax(0,1fr)_auto] tw:gap-0 tw:p-0 tw:sm:max-w-2xl tw:max-sm:top-auto tw:max-sm:bottom-0 tw:max-sm:max-h-[94dvh] tw:max-sm:max-w-none tw:max-sm:translate-y-0 tw:max-sm:rounded-b-none tw:max-sm:rounded-t-3xl tw:rounded-3xl"
+        data-testid="course-edit-dialog"
+        @interact-outside="(e) => e.preventDefault()"
+        @escape-key-down="(e) => { if (e.isComposing || e.keyCode === 229) e.preventDefault(); }"
+      >
+        <DialogHeader class="tw:px-5 tw:pt-5 tw:pb-3 tw:text-left">
+          <DialogTitle class="tw:text-tpl-list tw:font-bold tw:text-balance">編輯課程</DialogTitle>
+          <DialogDescription class="tw:sr-only">修改課程的老師、時間與付款方式後按儲存</DialogDescription>
+        </DialogHeader>
+        <div class="tw:min-h-0 tw:overflow-y-auto tw:px-5 tw:pb-4 tw:text-tpl-body">
+          <Alert v-if="editabilityLoading" tone="info" title="正在檢查課程狀態" style="margin: 0 0 14px;">
+            <p>正在確認付款、扣堂與對帳狀態；一般欄位仍可編輯。</p>
+          </Alert>
+          <Alert v-if="editabilityError" tone="warning" title="無法完成預檢" style="margin: 0 0 14px;">
+            <p>{{ editabilityError }} 儲存時仍會由後端再次檢查。</p>
+          </Alert>
+          <CourseSaveErrorAlert :error="editSaveError" :can-open="canOpenEditabilityAction" @action="openEditabilityAction" />
+          <section v-if="editability?.reasons?.length" class="editability-action-panel" data-testid="course-editability-panel" aria-label="課程編輯分流">
+            <div class="editability-action-panel__intro">
+              <strong>這門課有資料不能用一般編輯改寫</strong>
+              <span>一般欄位可以繼續修改；要處理受保護資料，請從對應流程進入。</span>
             </div>
-            <button
-              v-if="canOpenEditabilityAction(reason.next_step)"
-              type="button"
-              class="ghost small editability-action-row__button"
-              @click="openEditabilityAction(reason.next_step)"
-            >{{ editabilityActionLabel(reason.next_step) }} <span aria-hidden="true">→</span></button>
+            <div v-for="reason in editability.reasons" :key="reason.code" class="editability-action-row tw:max-sm:flex-col tw:max-sm:items-stretch">
+              <div class="editability-action-row__copy">
+                <strong>{{ reason.message }}</strong>
+                <span v-if="editabilityAffectedFields.length" class="editability-action-row__fields">
+                  受保護欄位：{{ editabilityAffectedFields.join('、') }}
+                </span>
+                <span v-if="editabilityActionDescription(reason.next_step)" class="editability-action-row__description">
+                  {{ editabilityActionDescription(reason.next_step) }}
+                </span>
+              </div>
+              <Button
+                v-if="canOpenEditabilityAction(reason.next_step)"
+                type="button"
+                variant="outline"
+                :class="cn(control.row, 'editability-action-row__button tw:text-foreground tw:max-sm:w-full')"
+                @click="openEditabilityAction(reason.next_step)"
+              >{{ editabilityActionLabel(reason.next_step) }} <span aria-hidden="true">→</span></Button>
+            </div>
+          </section>
+          <div class="form-section">
+            <CourseEditForm
+              ref="editFormRef"
+              v-model="editForm"
+              :branch-id="props.branchId"
+              :teachers="editTeacherOptions"
+              :rooms="rooms"
+              :subjects="subjectOptions"
+              :day-options="DAY_OPTIONS"
+              :time-options="TIME_OPTIONS_30"
+              :settlement-day-options="settlementDayOptions"
+              :show-remaining="true"
+              :package-info="editPackageInfo"
+              :context-title="editContextTitle"
+              :editability="editability"
+              :payment-state-unavailable="editabilityLoading || !!editabilityError"
+              @open-billing="openEditabilityAction('void_payment')"
+            />
           </div>
-        </section>
-        <div class="form-section">
-          <CourseEditForm
-            ref="editFormRef"
-            v-model="editForm"
-            :branch-id="props.branchId"
-            :teachers="editTeacherOptions"
-            :rooms="rooms"
-            :subjects="subjectOptions"
-            :day-options="DAY_OPTIONS"
-            :time-options="TIME_OPTIONS_30"
-            :settlement-day-options="settlementDayOptions"
-            :show-remaining="true"
-            :package-info="editPackageInfo"
-            :context-title="editContextTitle"
-            :editability="editability"
-            :payment-state-unavailable="editabilityLoading || !!editabilityError"
-            @open-billing="openEditabilityAction('void_payment')"
-          />
+          <div
+            v-if="editForm.payment_type === 'session' && editingCourseFromLaravel"
+            class="quick-add-session-link tw:mt-3 tw:text-right"
+          >
+            <Button type="button" variant="ghost" :class="control.row" @click="openQuickAddSessionFromEditModal">＋ 補課 / 補登（總堂數不變）</Button>
+          </div>
         </div>
-        <div
-          v-if="editForm.payment_type === 'session' && editingCourseFromLaravel"
-          class="quick-add-session-link"
-          style="margin: 12px 0 4px; text-align: right;"
-        >
-          <button type="button" class="ghost small" @click="openQuickAddSessionFromEditModal">＋ 補課 / 補登（總堂數不變）</button>
+        <div class="tw:border-t tw:border-border tw:px-5 tw:pt-3 tw:pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+          <p v-if="editFormRef?.hasErrors" class="tw:mb-2 tw:text-tpl-caption tw:text-tpl-secondary" role="status">請先修正表單標示的必填欄位，再儲存課程設定。</p>
+          <DialogFooter class="tw:max-sm:flex-row">
+            <Button type="button" variant="secondary" :class="cn(control.page, 'tw:max-sm:flex-1')" @click="requestCloseEditDialog">取消</Button>
+            <Button type="button" :class="cn(control.page, 'tw:max-sm:flex-1')" :disabled="editFormRef?.hasErrors || editabilityLoading" @click="submitEdit">儲存</Button>
+          </DialogFooter>
         </div>
-        <div class="actions">
-          <button class="ghost" @click="showEditModal = false">取消</button>
-          <button class="primary" :disabled="editFormRef?.hasErrors || editabilityLoading" @click="submitEdit">儲存</button>
-        </div>
-        <p v-if="editFormRef?.hasErrors" class="form-hint" role="status">請先修正表單標示的必填欄位，再儲存課程設定。</p>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
 
     <!-- Read-only single-course → shared-package safety preview -->
     <PackageConversionPreviewModal
@@ -1368,6 +1415,7 @@ import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import TextSizeToggle from '../components/TextSizeToggle.vue';
 import { PageHeader, StatStrip, StatItem, SectionCard, StatusBadge, CollapsibleGroup, contractGrid, control, dataTable, factRow, pageShell, pageTabs, rowAction, surface, toneText } from '@/components/ui/page';
+import { cn } from '@/lib/utils';
 // Phone: the two page buttons share a row and may wrap their words instead of pushing the page sideways (320px at 大).
 const phoneAction = 'tw:max-md:min-w-0 tw:max-md:flex-[1_1_9rem] tw:max-md:h-auto tw:max-md:min-h-12 tw:max-md:whitespace-normal tw:max-md:py-2';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -1425,9 +1473,11 @@ import ConfirmDialogHost from '../components/course-management/ConfirmDialogHost
 import RestoreCancelledSessionDialog from '../components/course-management/RestoreCancelledSessionDialog.vue';
 import { isVisibleCancelledSession } from '../lib/sessionOccurrenceFilter.js';
 import { askConfirm } from '../composables/useConfirmDialog';
+import { useEditDialogCloseGuard } from '../composables/course-management/useEditDialogCloseGuard';
 import LessonPickerSelect from '../components/course-management/LessonPickerSelect.vue';
 import CourseEditForm from '../components/CourseEditForm.vue';
 import { Alert } from '@/components/ui/alert';
+import { Skeleton } from '@/components/ui/skeleton';
 import PackageConversionPreviewModal from '../components/course-management/PackageConversionPreviewModal.vue';
 import UniversalClassScheduler from '../components/UniversalClassScheduler.vue';
 import EnrollmentConflictDecisionModal from '../components/EnrollmentConflictDecisionModal.vue';
@@ -2740,6 +2790,13 @@ function closeCourseManager() {
   courseManagerTab.value = 'overview';
   showEditModal.value = false;
 }
+// 編輯課程視窗: Esc and 取消 share this guard; unsaved edits ask first (same wording as leaveCourseManagerSettings).
+const { requestClose: requestCloseEditDialog } = useEditDialogCloseGuard({
+  isOpen: () => showEditModal.value,
+  isDirty: () => !!editFormSnapshot.value && JSON.stringify(editForm.value) !== editFormSnapshot.value,
+  ask: () => askConfirm({ title: '放棄未儲存的變更？', message: '課程設定有修改還沒儲存。', confirmLabel: '放棄變更', danger: true }),
+  close: () => { showEditModal.value = false; },
+});
 async function leaveCourseManagerSettings() {
   const dirty = editFormSnapshot.value && JSON.stringify(editForm.value) !== editFormSnapshot.value;
   if (dirty && !await askConfirm({ title: '放棄未儲存的變更？', message: '課程設定有修改還沒儲存。', confirmLabel: '放棄變更', danger: true })) return;
@@ -4378,6 +4435,17 @@ const PAYMENT_CHIP_NOWRAP_MAX = 8;
 // 帳務資料 table: the header stays at the top of the scrolling panel; loading / empty / error lines share one padding.
 const BILLING_HEAD = 'tw:sticky tw:top-0 tw:z-[1]';
 const BILLING_STATE = 'tw:px-5 tw:py-4 tw:text-tpl-body';
+// Under 1024px the table is a list of stacked cards (CSS `max-lg`, see dataTable.stack*): one primary action stays visible, the rest sit in the 更多 menu.
+// The period `start ~ end` breaks between its two dates, never inside one (each date is one non-breaking fact).
+const billingPeriodParts = (course) => String(formatCoursePeriod(course.first_class_date || course.StartDate, course.end_date || course.EndDate)).split(' ~ ');
+const billingPrimaryIsNext = (row, group) => !billingPackageLead(row, group) && showsBillingRowNextAction(row.course);
+const billingMenuGroups = (row, group) => {
+  const items = [];
+  if (isPaymentNoticeAvailable(row.course) && !billingPackageLead(row, group)) items.push({ id: 'payment-slip', label: '繳費單' });
+  if (billingPrimaryIsNext(row, group)) items.push({ id: 'ledger', label: '在這裡看帳務' });
+  return items.length ? [{ id: 'billing', items }] : [];
+};
+const runBillingMenu = (id, row) => (id === 'payment-slip' ? openPaymentSlip(row.course) : openTuitionLedger(row.course));
 // The facts of a history card (開課, 老師, 費用, 堂數, 繳費): two per row on a phone, as many as fit from 768 up.
 const HISTORY_FACT_GRID = 'tw:grid tw:grid-cols-2 tw:gap-x-4 tw:gap-y-3 tw:m-0 tw:md:grid-cols-[repeat(auto-fit,minmax(10.5rem,1fr))]';
 // 堂數: low = danger, but a paused course's low count is muted, not red (it is not being used).
@@ -5844,102 +5912,6 @@ onUnmounted(() => {
   border: 1px solid var(--ds-hairline);
 }
 
-.pending-leave-summary {
-  display: grid;
-  gap: 12px;
-  margin: 0;
-  padding: 14px 16px;
-  border: 1px solid color-mix(in srgb, var(--ds-primary) 40%, var(--ds-hairline));
-  border-radius: 14px;
-  background: var(--ds-canvas);
-  box-shadow: var(--ds-shadow-1);
-}
-.pending-leave-summary__header {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-.pending-leave-summary__icon {
-  display: grid;
-  place-items: center;
-  width: 36px;
-  height: 36px;
-  flex: 0 0 36px;
-  border-radius: 10px;
-  background: var(--ds-canvas);
-  color: var(--ds-primary-text);
-}
-.pending-leave-summary__body {
-  display: grid;
-  gap: 3px;
-  min-width: 0;
-  flex: 1;
-}
-.pending-leave-summary__body strong { color: var(--ds-ink); }
-.pending-leave-summary__body span { color: var(--ds-ink-secondary); font-size: 13px; line-height: 1.4; }
-.pending-leave-summary__error { color: var(--ds-danger) !important; }
-.pending-leave-summary__cta {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  flex: 0 0 auto;
-  min-height: 40px;
-  padding: 9px 14px;
-  border: 1px solid var(--ds-primary);
-  border-radius: 10px;
-  background: var(--ds-primary);
-  color: var(--ds-on-primary);
-  font-weight: 700;
-  cursor: pointer;
-  transition: var(--transition);
-}
-.pending-leave-summary__cta:hover { background: var(--ds-primary-deep); border-color: var(--ds-primary-deep); }
-.pending-leave-summary__cta--all { margin-left: auto; }
-.pending-leave-case-list { display: grid; gap: 8px; }
-.pending-leave-case {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  min-width: 0;
-  padding: 12px 14px;
-  border: 1px solid var(--ds-hairline);
-  border-radius: 10px;
-  background: var(--ds-canvas-soft);
-}
-.pending-leave-case__content { min-width: 0; flex: 1; }
-.pending-leave-case__title-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-.pending-leave-case__title-row strong { color: var(--ds-ink); }
-.pending-leave-case__status { color: var(--ds-primary-text); font-size: 12px; font-weight: 700; }
-.pending-leave-case p { margin: 4px 0 0; color: var(--ds-ink-secondary); font-size: 13px; line-height: 1.4; overflow-wrap: anywhere; }
-.pending-leave-case__reason { color: var(--ds-ink-mute) !important; }
-.pending-leave-case__cta {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  flex: 0 0 auto;
-  gap: 6px;
-  min-height: 40px;
-  padding: 8px 12px;
-  border: 1px solid var(--ds-primary);
-  border-radius: 9px;
-  background: var(--ds-primary);
-  color: var(--ds-on-primary);
-  font-weight: 700;
-  cursor: pointer;
-}
-.pending-leave-case__cta:hover { background: var(--ds-primary-deep); }
-.pending-leave-summary__more { justify-self: start; border: 0; padding: 2px 0; background: transparent; color: var(--ds-primary-text); font-weight: 700; cursor: pointer; }
-.pending-leave-summary__error-actions { display: flex; }
-.pending-leave-case--skeleton { height: 66px; background: linear-gradient(90deg, var(--ds-canvas-soft) 25%, var(--ds-canvas) 50%, var(--ds-canvas-soft) 75%); background-size: 200% 100%; animation: pending-leave-shimmer 1.2s infinite; }
-@keyframes pending-leave-shimmer { to { background-position: -200% 0; } }
-@media (max-width: 700px) {
-  .pending-leave-summary__header { align-items: flex-start; flex-wrap: wrap; }
-  .pending-leave-summary__cta--all { width: 100%; margin-left: 0; }
-  .pending-leave-case { align-items: stretch; flex-direction: column; gap: 10px; }
-  .pending-leave-case__cta { width: 100%; }
-}
-
 .header-buttons {
   display: flex;
   gap: 8px;
@@ -6106,35 +6078,6 @@ onUnmounted(() => {
 }
 
 /* ----- Compact stats strip ----- */
-.creation-success-banner {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 12px 16px;
-  margin-bottom: 12px;
-  background: var(--ds-success-wash);
-  border: 1px solid var(--ds-success);
-  border-radius: 8px;
-  color: var(--ds-success);
-  font-size: 0.95rem;
-  font-weight: 500;
-}
-.creation-success-banner__icon {
-  font-size: 1.2rem;
-  color: var(--ds-success);
-  flex-shrink: 0;
-}
-.creation-success-banner__close {
-  margin-left: auto;
-  background: none;
-  border: none;
-  cursor: pointer;
-  color: var(--ds-success);
-  font-size: 1rem;
-  opacity: 0.7;
-  padding: 0 4px;
-}
-.creation-success-banner__close:hover { opacity: 1; }
 .fade-enter-active, .fade-leave-active { transition: opacity 0.3s; }
 .fade-enter-from, .fade-leave-to { opacity: 0; }
 
@@ -6171,43 +6114,6 @@ onUnmounted(() => {
   flex-direction: column;
   gap: 14px;
 }
-.course-list-skeleton {
-  display: grid;
-  gap: 14px;
-}
-.course-skeleton-group {
-  position: relative;
-  overflow: hidden;
-  padding: 14px;
-  border: 1px solid var(--ds-hairline);
-  border-radius: 12px;
-  background: var(--ds-canvas);
-  box-shadow: var(--ds-shadow-1);
-}
-.course-skeleton-header,
-.course-skeleton-row {
-  height: 16px;
-  border-radius: 999px;
-  background: linear-gradient(90deg, var(--ds-canvas-soft) 25%, var(--ds-hairline) 37%, var(--ds-canvas-soft) 63%);
-  background-size: 400% 100%;
-  animation: course-loading 1.4s ease infinite;
-}
-.course-skeleton-header {
-  width: 34%;
-  height: 18px;
-  margin-bottom: 14px;
-}
-.course-skeleton-row {
-  width: 86%;
-  margin-top: 10px;
-}
-.course-skeleton-row.short {
-  width: 58%;
-}
-@keyframes course-loading {
-  0% { background-position: 100% 50%; }
-  100% { background-position: 0 50%; }
-}
 .grouped-course-list.focus-fullscreen-mode {
   position: fixed;
   inset: 0;
@@ -6224,23 +6130,6 @@ onUnmounted(() => {
   max-height: none;
   overflow-y: visible;
 }
-.pagination-bar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 12px 16px;
-  border-top: 1px solid var(--ds-hairline);
-  font-size: 0.9rem;
-  color: var(--ds-ink-mute);
-}
-.pagination-controls {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-.pagination-btn { min-width: 80px; }
-.pagination-btn:disabled { opacity: 0.4; cursor: default; }
-.pagination-current { font-weight: 600; color: var(--ds-ink); }
 
 .focus-mode-banner {
   display: flex;
@@ -6552,52 +6441,10 @@ button.danger:disabled {
 }
 
 /* ----- Empty state ----- */
-.empty-state {
-  position: relative;
-  overflow: hidden;
-  padding: 64px 24px;
-  text-align: center;
-  border: 1px solid rgba(14, 165, 233, 0.22);
-  border-radius: 24px;
-  background:
-    radial-gradient(circle at top, rgba(14,165,233,0.16), transparent 36%),
-    linear-gradient(135deg, rgba(15,23,42,0.05), transparent 38%),
-    linear-gradient(180deg, rgba(255,255,255,0.98), rgba(248,250,252,0.95));
-  box-shadow: 0 22px 58px rgba(15,23,42,0.08), inset 0 1px 0 rgba(255,255,255,0.82);
-}
 
-.empty-icon {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 72px;
-  height: 72px;
-  position: relative;
-  border-radius: 26px;
-  font-size: 2.5rem;
-  margin-bottom: 12px;
-  background: linear-gradient(135deg, #0f172a, #1e293b);
-  border: 1px solid rgba(125, 211, 252, 0.32);
-  box-shadow: 0 18px 42px rgba(15,23,42,0.22), 0 0 30px rgba(14,165,233,0.14);
-  color: #e0f2fe;
-}
+.empty-icon { font-size: 2.5rem; color: var(--ds-ink-secondary); }
 
-.empty-title {
-  position: relative;
-  font-size: 1.2rem;
-  font-weight: 900;
-  color: var(--text);
-  margin-bottom: 8px;
-}
 
-.empty-desc {
-  position: relative;
-  font-size: 14px;
-  color: var(--text-light);
-  max-width: 360px;
-  margin: 0 auto;
-  line-height: 1.6;
-}
 
 /* ----- Subject Modal ----- */
 .subject-modal {
@@ -7628,13 +7475,6 @@ button.danger:disabled {
   border-color: var(--ds-hairline);
   background: linear-gradient(180deg, rgba(15,23,42,0.98), rgba(30,41,59,0.9));
 }
-[data-theme="dark"] .course-skeleton-group {
-  border-color: var(--ds-hairline);
-  background:
-    radial-gradient(circle at top right, rgba(255,167,38,0.11), transparent 30%),
-    #0f172a;
-  box-shadow: 0 18px 44px rgba(0, 0, 0, 0.32);
-}
 
 [data-theme="dark"] .detail-item {
   background: rgba(15, 23, 42, 0.72);
@@ -7648,25 +7488,15 @@ button.danger:disabled {
 [data-theme="dark"] .empty-active-courses {
   background: rgba(15, 23, 42, 0.88);
 }
-[data-theme="dark"] .empty-state,
 [data-theme="dark"] .empty-active-courses__inner {
   border-color: var(--ds-hairline);
   background: linear-gradient(180deg, rgba(15,23,42,0.98), rgba(30,41,59,0.9));
-}
-[data-theme="dark"] .empty-icon {
-  background: linear-gradient(135deg, #020617, #0f172a);
-  border-color: rgba(125, 211, 252, 0.26);
 }
 [data-theme="dark"] .modal-title {
   color: var(--ds-ink);
 }
 [data-theme="dark"] .modal-desc {
   color: var(--ds-ink-secondary);
-}
-[data-theme="dark"] .course-skeleton-header,
-[data-theme="dark"] .course-skeleton-row {
-  background: linear-gradient(90deg, #334155 25%, #475569 37%, #334155 63%);
-  background-size: 400% 100%;
 }
 [data-theme="dark"] .empty-active-courses__icon {
   color: #475569;
@@ -7782,10 +7612,6 @@ button.danger {
 .course-workbench__help[open] > summary .course-help-label { position: static; width: auto; height: auto; overflow: visible; clip-path: none; }
 
 .course-workbench .course-tools-menu__summary { min-height: 3rem; }
-.course-workbench .pending-leave-summary { padding: .875rem 1rem; border-radius: inherit; }
-.course-workbench .pending-leave-summary__header { margin: 0; }
-.pending-leave-disclosure { margin-top: .5rem; }
-.pending-leave-disclosure > summary { min-height: 2.75rem; display: flex; align-items: center; cursor: pointer; color: var(--ds-ink-secondary); font-size: inherit; font-weight: 600; }
 @media (max-width: 640px) {
 }
 

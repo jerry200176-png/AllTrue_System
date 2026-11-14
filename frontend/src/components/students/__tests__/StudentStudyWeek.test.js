@@ -72,8 +72,8 @@ describe('StudentStudyWeek (issue 5269 step 2)', () => {
   it('shows the plan progress, next exam countdown and this week\'s units above the strip', async () => {
     const w = await mountIt();
     const plans = byId(w, 'week-plans').text();
-    expect(plans).toContain('完成 25%');
     expect(plans).toContain('距離第二次段考還有 18 天');
+    expect(plans).not.toContain('完成 25%'); // the percentage moved to the progress strip
     expect(byId(w, 'week-units').text()).toContain('分數（11/09–11/20）');
     expect(byId(w, 'week-units').text()).not.toContain('整數');
   });
@@ -433,8 +433,132 @@ describe('StudentStudyWeek (issue 5269 step 2)', () => {
     });
   });
 
+  describe('progress strip (step 3)', () => {
+    const sign = (id, date, attendance) => ({ type: 'attendance', id, date, attendance });
+    const TIMELINE = [sign(1, '2026-11-03', '到班'), sign(2, '2026-11-06', '遲到'), sign(3, '2026-11-10', '缺席'), sign(4, '2026-10-20', '缺席')];
+    const fig = (w, key) => byId(w, `progress-${key}`);
+    const sub = (w, key) => byId(w, `progress-${key}-sub`).text();
+
+    it('shows each measure from its own source', async () => {
+      const w = await mountIt({ timelineItems: TIMELINE });
+      expect(fig(w, 'plan').text()).toContain('25%'); // the plan API's percent_done
+      expect(sub(w, 'plan')).toBe('落後 1 個單元');
+      expect(fig(w, 'plan').find('dd').classes().join(' ')).toContain('warning'); // behind = warning, never red
+      expect(fig(w, 'week').text()).toContain('1/3'); // done / total of the shown week
+      expect(sub(w, 'week')).toBe('還剩 2 項');
+      expect(fig(w, 'attendance').text()).toContain('67%'); // 2 of 3 sign-ins this month; October is not counted
+      expect(sub(w, 'attendance')).toBe('到 2 堂，共 3 堂');
+      const bar = byId(w, 'progress-week-bar'); // the shared Progress meter
+      expect(bar.attributes('data-slot')).toBe('progress');
+      expect(bar.attributes('aria-valuenow')).toBe('33');
+      expect(bar.find('[data-slot="progress-indicator"]').element.style.transform).toContain('translateX(-67%)');
+      expect(bar.attributes('aria-hidden')).toBe('true'); // the bar is decoration, the number is the text
+      expect(fig(w, 'plan').find('dd').classes().join(' ')).not.toContain('danger');
+    });
+
+    it('a plan with nothing behind is neutral; a finished week turns success', async () => {
+      routes['GET /api/v1/students/1/learning-plans'] = () => json({ data: [{ ...PLAN, units_behind: 0 }] });
+      tasks = [task(1, '2026-11-09', { done_at: 'x' })];
+      const w = await mountIt({ timelineItems: TIMELINE });
+      expect(sub(w, 'plan')).toBe('沒有落後的單元');
+      expect(fig(w, 'plan').find('dd').classes().join(' ')).not.toContain('warning');
+      expect(sub(w, 'week')).toBe('全部完成');
+      expect(fig(w, 'week').find('dd').classes().join(' ')).toContain('success');
+    });
+
+    it('shows 「—」 and the reason for every missing source, never 0%', async () => {
+      routes['GET /api/v1/students/1/learning-plans'] = () => json({ data: [] });
+      tasks = [];
+      const w = await mountIt(); // no timeline either
+      for (const key of ['plan', 'week', 'attendance']) expect(fig(w, key).find('dd').text()).toBe('—');
+      expect(sub(w, 'plan')).toBe('還沒有學習計畫');
+      expect(sub(w, 'week')).toBe('這週還沒有安排任務');
+      expect(sub(w, 'attendance')).toBe('出席資料還沒載入');
+      expect(byId(w, 'progress-plan-bar').exists()).toBe(false);
+      expect(byId(w, 'study-progress').text()).not.toContain('0%');
+    });
+
+    it('explains a plan without units, a failed plan load, a failed week load, no sign-ins and a cut-off month', async () => {
+      routes['GET /api/v1/students/1/learning-plans'] = () => json({ data: [{ ...PLAN, units: [], percent_done: 0 }] });
+      routes['GET /api/v1/students/1/study-tasks'] = () => json({ message: 'boom' }, 500);
+      let w = await mountIt({ timelineItems: [sign(9, '2026-10-01', '到班')] });
+      expect(sub(w, 'plan')).toBe('學習計畫還沒排單元');
+      expect(sub(w, 'week')).toBe('這週的任務載入失敗');
+      expect(sub(w, 'attendance')).toBe('這個月還沒有點名紀錄');
+      w.unmount();
+      routes['GET /api/v1/students/1/learning-plans'] = () => json({ message: 'x' }, 500);
+      w = await mountIt({ timelineItems: [sign(9, '2026-11-02', '到班')], cappedSources: ['attendance'] });
+      expect(sub(w, 'plan')).toBe('學習計畫暫時載入不了');
+      expect(sub(w, 'attendance')).toBe('本月紀錄太多，無法完整計算');
+    });
+
+    it('loading: figures show a placeholder and busy state, then the numbers', async () => {
+      let release;
+      routes['GET /api/v1/students/1/study-tasks'] = () => new Promise((r) => { release = () => r(json({ data: tasks })); });
+      const w = await mountIt({ timelineItems: TIMELINE });
+      expect(fig(w, 'week').attributes('aria-busy')).toBe('true');
+      expect(fig(w, 'week').find('[data-slot="skeleton"]').exists()).toBe(true);
+      expect(fig(w, 'plan').attributes('aria-busy')).toBeUndefined(); // the plan already answered
+      release(); await flushPromises();
+      expect(fig(w, 'week').attributes('aria-busy')).toBeUndefined();
+      expect(fig(w, 'week').text()).toContain('1/3');
+    });
+
+    it('a teacher sees that the attendance figure is their own lessons only', async () => {
+      const w = await mountIt({ timelineItems: TIMELINE, teacherScope: true });
+      expect(sub(w, 'attendance')).toBe('到 2 堂，共 3 堂・我的課');
+      w.unmount();
+      expect(sub(await mountIt({ timelineItems: TIMELINE }), 'attendance')).toBe('到 2 堂，共 3 堂');
+    });
+
+    it('a tick that fails is rolled back in the tasks figure too', async () => {
+      let release;
+      routes['PATCH /api/v1/study-tasks/1'] = () => new Promise((r) => { release = () => r(json({ message: 'boom' }, 500)); });
+      const w = await mountIt({ timelineItems: TIMELINE });
+      expect(fig(w, 'week').text()).toContain('1/3');
+      await byId(w, 'done-1').setValue(true); // optimistic: the figure moves at once
+      expect(fig(w, 'week').text()).toContain('2/3');
+      release(); await flushPromises();
+      expect(byId(w, 'action-error').text()).toContain('已還原');
+      expect(fig(w, 'week').text()).toContain('1/3'); // and back
+      expect(byId(w, 'progress-week-bar').attributes('aria-valuenow')).toBe('33');
+    });
+
+    it('deleting a task updates the tasks figure (and an emptied week shows 「—」)', async () => {
+      const w = await mountIt({ timelineItems: TIMELINE });
+      await byId(w, 'title-1').trigger('click');
+      await byId(w, 'f-delete').trigger('click'); await flushPromises();
+      tasks = TASKS.filter((x) => x.id !== 1);
+      document.querySelector('[data-testid="confirm-dialog-confirm"]').click(); await flushPromises();
+      expect(fig(w, 'week').text()).toContain('1/2'); // task 3 is done, task 2 is not
+      await byId(w, 'title-2').trigger('click');
+      await byId(w, 'f-delete').trigger('click'); await flushPromises();
+      tasks = tasks.filter((x) => x.id !== 2);
+      document.querySelector('[data-testid="confirm-dialog-confirm"]').click(); await flushPromises();
+      await byId(w, 'title-3').trigger('click');
+      await byId(w, 'f-delete').trigger('click'); await flushPromises();
+      tasks = [];
+      document.querySelector('[data-testid="confirm-dialog-confirm"]').click(); await flushPromises();
+      expect(fig(w, 'week').find('dd').text()).toBe('—');
+      expect(sub(w, 'week')).toBe('這週還沒有安排任務');
+    });
+
+    it('changing week re-reads the tasks measure; ticking a task moves it at once', async () => {
+      routes['GET /api/v1/students/1/study-tasks'] = (url) => json({ data: url.includes('from=2026-11-16') ? [task(7, '2026-11-17', { done_at: 'x' }), task(8, '2026-11-18', { done_at: 'x' })] : tasks });
+      routes['PATCH /api/v1/study-tasks/1'] = () => json({ data: { ...tasks[0], done_at: '2026-11-13 09:00:00' } });
+      const w = await mountIt({ timelineItems: TIMELINE });
+      expect(fig(w, 'week').text()).toContain('1/3');
+      await byId(w, 'done-1').setValue(true); await flushPromises();
+      expect(fig(w, 'week').text()).toContain('2/3');
+      await byId(w, 'week-next').trigger('click'); await flushPromises();
+      expect(fig(w, 'week').text()).toContain('2/2');
+      expect(sub(w, 'week')).toBe('全部完成');
+      expect(fig(w, 'attendance').text()).toContain('67%'); // the month figure does not depend on the shown week
+    });
+  });
+
   it('is axe clean', async () => {
-    const w = await mountIt();
+    const w = await mountIt({ timelineItems: [{ type: 'attendance', id: 1, date: '2026-11-03', attendance: '到班' }] });
     await byId(w, 'title-1').trigger('click');
     const { violations } = await axe.run(w.element, { rules: { 'color-contrast': { enabled: false } } });
     expect(violations.map((v) => `${v.id}: ${v.nodes.map((n) => n.html).join(' | ')}`)).toEqual([]);

@@ -174,22 +174,32 @@ const COURSE_MGMT_HISTORY = {
 // paid = success, nothing to pay = neutral), red appears only on debt, and every amount line is tabular and on one line.
 const BILLING_CASES = [
   { id: 100, status: 'unpaid', invoice: { status: 'unpaid', total_amount: 4800 }, reports: [] },
-  { id: 101, status: 'partial', invoice: { status: 'partial', total_amount: 6400 }, reports: [{ status: 'pending', payment_date: '2026-11-03', account_last5: '12345' }] },
+  // a bill with both a start and an end date: the period `2026-09-01 ~ 2026-12-31` must not run into its neighbour (Codex finding on PR 5290)
+  { id: 101, status: 'partial', invoice: { status: 'partial', total_amount: 6400 }, reports: [{ status: 'pending', payment_date: '2026-11-03', account_last5: '12345' }], over: { end_date: '2026-12-31' } },
   { id: 102, status: 'paid', invoice: { status: 'paid', total_amount: 3200 }, reports: [{ status: 'confirmed', payment_date: '2026-10-28' }] },
   { id: 103, status: 'pending_report', invoice: null, reports: [{ status: 'pending', payment_date: '2026-11-10' }], charge: 5600 },
   { id: 104, status: 'unpaid', invoice: null, reports: [], over: { class_type: 'tutoring', tutoring_billing_anomaly: true } },
 ];
+let BILLING_PAGED = false;
 const COURSE_MGMT_BILLING = {
   ...COURSE_MGMT,
   key: 'course-mgmt (billing table)',
   names: ['林宥辰'],
   allNames: false,
-  // the column header and every row start at the table's left edge
-  rows: ['.student-billing-table th:first-child, .student-billing-table td:first-child'],
+  // every row starts at the table's left edge; the column header joins them from 1024px (under it the header is screen-reader only, see extra)
+  rows: ['.student-billing-table td:first-child'],
   touch: ['.student-billing-table tbody button', '.student-billing-wrap [role="status"] button'],
   setup: async (page) => {
     await page.getByRole('tab', { name: '帳務資料', exact: true }).first().click();
     await expect(page.locator('.student-billing-table tbody tr')).toHaveCount(BILLING_CASES.length);
+    if (page.viewportSize().width < 1024) {
+      // The owed row (100) keeps both secondary actions in its 更多 menu while the primary action stays visible.
+      await page.locator('.student-billing-table tbody tr').first().locator('.action-menu-trigger:visible').click();
+      await expect(page.getByRole('menuitem', { name: '繳費單' })).toBeVisible();
+      await expect(page.getByRole('menuitem', { name: '在這裡看帳務' })).toBeVisible();
+      await page.keyboard.press('Escape');
+      await expect(page.getByRole('menuitem')).toHaveCount(0);
+    }
   },
   extra: {
     run: () => {
@@ -203,6 +213,8 @@ const COURSE_MGMT_BILLING = {
       const summary = [...wrap.querySelectorAll('[role="status"]')].find((el) => el.textContent.includes('學生歷史帳務'));
       const owed = summary ? [...summary.querySelectorAll('span')].filter((el) => el.textContent.includes('尚有未繳')).pop() : null; // the innermost span that holds the words
       return {
+        headLeft: Math.round(table.querySelector('thead th:first-child').getBoundingClientRect().left * 10) / 10,
+        rowLeft: Math.round(table.querySelector('tbody td:first-child').getBoundingClientRect().left * 10) / 10,
         wrapScroll: wrap.scrollWidth - wrap.clientWidth, wrapOverflowX: getComputedStyle(wrap).overflowX,
         oldClasses: wrap.querySelectorAll('.tag, .subject-tag, .course-table, .price-line, .hint').length,
         headers: [...table.querySelectorAll('thead th')].map((th) => ({ text: th.textContent.trim(), h: Math.round(th.getBoundingClientRect().height), upper: getComputedStyle(th).textTransform })),
@@ -217,6 +229,15 @@ const COURSE_MGMT_BILLING = {
             buttons: [...tr.querySelectorAll('button')].filter(visible).map((b) => ({ h: Math.round(b.getBoundingClientRect().height), red: isRed(rgb(b)) })),
             outside: [...tr.querySelectorAll('td > *')].filter(visible).filter((el) => el.getBoundingClientRect().right > table.getBoundingClientRect().right + 1).length,
             height: Math.round(box.height),
+            display: getComputedStyle(tr).display,
+            // no cell's content runs past its own box, and no two cells of the row overlap
+            cellOverflow: [...tr.children].filter((td) => td.scrollWidth > td.clientWidth + 1).length,
+            cellOverlap: [...tr.children].filter(visible).reduce((n, a, i, all) => n + all.slice(i + 1).filter((b) => { const x = a.getBoundingClientRect(); const y = b.getBoundingClientRect(); return Math.min(x.right, y.right) - Math.max(x.left, y.left) > 1 && Math.min(x.bottom, y.bottom) - Math.max(x.top, y.top) > 1; }).length, 0),
+            // slice 6: under 1024px one primary action is visible and the rest sit in the 更多 menu
+            primaries: [...tr.querySelectorAll('td:last-child button')].filter(visible).filter((b) => !b.classList.contains('action-menu-trigger')).length,
+            menus: [...tr.querySelectorAll('td:last-child .action-menu-trigger')].filter(visible).length,
+            ledgerDirect: [...tr.querySelectorAll('.btn-invoices')].filter(visible).length,
+            beyondViewport: [...tr.querySelectorAll('button')].filter(visible).filter((b) => { const x = b.getBoundingClientRect(); return x.left < 0 || x.right > innerWidth + 1; }).length,
           };
         }),
       };
@@ -227,8 +248,22 @@ const COURSE_MGMT_BILLING = {
       expect(r.wrapOverflowX, 'the billing panel scrolls inside itself, never the page').toBe('auto');
       expect(r.headers.map((h) => h.text), 'the six column headers keep their words').toEqual(['科目', '合約／期間', '繳費', '最近回報', '收據', '操作']);
       for (const h of r.headers) {
-        expect(h.h, `header 「${h.text}」 is 44px tall`).toBeGreaterThanOrEqual(44);
+        if (vp.width >= 1024) expect(h.h, `header 「${h.text}」 is 44px tall`).toBeGreaterThanOrEqual(44);
         expect(h.upper, `header 「${h.text}」 is not upper-cased`).toBe('none');
+      }
+      if (vp.width >= 1024) expect(Math.abs(r.headLeft - r.rowLeft), `header starts at x ${r.headLeft}, rows at ${r.rowLeft}`).toBeLessThanOrEqual(1);
+      for (const row of r.rows) {
+        expect(row.beyondViewport, `a button of row ${row.ref} is outside the viewport`).toBe(0);
+        expect(row.cellOverflow, `a cell of row ${row.ref} holds content wider than itself (it would run into its neighbour)`).toBe(0);
+        expect(row.cellOverlap, `two cells of row ${row.ref} overlap`).toBe(0);
+        if (vp.width < 1024) {
+          // PAGE_TEMPLATE §5 rule 9 (slice 6 of issue 4989): a stacked card per bill, one primary action, the rest in the 更多 menu
+          expect(row.display, `row ${row.ref} is a stacked card under 1024px`).toBe('grid');
+          expect(row.primaries, `row ${row.ref} shows exactly one primary action`).toBe(1);
+          expect(row.menus + row.ledgerDirect, `row ${row.ref} keeps the ledger reachable (button or menu)`).toBeGreaterThanOrEqual(1);
+        } else {
+          expect(row.display, `row ${row.ref} stays a table row from 1024px`).toBe('table-row');
+        }
       }
       // colour meaning: red only for debt (owed 未繳, 帳務資料需修正, 尚有未繳 in the summary), warning for a part payment or a report to check, green for paid
       const tones = Object.fromEntries(r.rows.map((row) => [row.badge?.text, row.badge]));
@@ -252,7 +287,7 @@ const COURSE_MGMT_BILLING = {
       }
       expect(r.owedText, 'the summary names the owed total').toContain('尚有未繳');
       expect(r.owedRed, 'the owed total in the summary is red').toBe(true);
-      if (vp.width >= 1024) expect(r.wrapScroll, 'no inner sideways scroll at desktop width').toBeLessThanOrEqual(1);
+      expect(r.wrapScroll, 'no inner sideways scroll at any width (stacked cards under 1024px)').toBeLessThanOrEqual(1);
     },
   },
   mock: async (page) => {
@@ -260,10 +295,63 @@ const COURSE_MGMT_BILLING = {
     const subjects = ['math', 'english', 'physics', 'chemistry', 'science'];
     const data = BILLING_CASES.map((c, i) => base({ id: c.id, subject: subjects[i], payment_status: c.status, ...(c.charge ? { Charge: c.charge } : {}), ...(c.over || {}) }));
     const byId = Object.fromEntries(BILLING_CASES.map((c) => [c.id, c]));
-    await page.route('**/api/v1/**', (r) => json(r, new URL(r.request().url()).pathname === '/api/v1/student-classes' ? { data, total: data.length, current_page: 1, last_page: 1 } : { data: [] }));
+    const paged = BILLING_PAGED; // the page-states entry asks for a second page and two open parent leave cases
+    BILLING_PAGED = false;
+    const cases = paged ? [{ id: 1, status: 'open', student: { name: '林宥辰' }, payload: { reason: '身體不適', is_late: true } }, { id: 2, status: 'open', student: { name: '歐陽子安' }, payload: { reason: '家裡有事' } }] : [];
+    await page.route('**/api/v1/**', (r) => {
+      const pathname = new URL(r.request().url()).pathname;
+      if (pathname === '/api/v1/student-classes') return json(r, { data, total: paged ? 60 : data.length, current_page: 1, last_page: paged ? 2 : 1, per_page: 30 });
+      return json(r, { data: pathname === '/api/v1/exception-workflows' ? cases : [] });
+    });
     await page.route('**/api/v1/student-classes/*/invoices', (r) => { const c = byId[r.request().url().match(/student-classes\/(\d+)/)[1]]; return json(r, { invoices: c?.invoice ? [{ id: c.id, ...c.invoice }] : [] }); });
     await page.route('**/api/v1/payment-reports**', (r) => { const c = byId[new URL(r.request().url()).searchParams.get('student_class_id')]; return json(r, { data: c?.reports || [] }); });
     await page.route('**/api/v1/accounting/ledger**', (r) => json(r, { summary: { outstanding_total: 11200 } }));
+  },
+};
+
+// 課程查找 slice 6 (issue 4989): the page states on the shared parts: parent-leave card (title, one badge per late case, 44px actions, no card in card),
+// the pager (one line, 44px buttons, disabled previous button on page 1) and the count line.
+const COURSE_MGMT_STATES = {
+  ...COURSE_MGMT_BILLING,
+  key: 'course-mgmt (page states)',
+  names: ['林宥辰', '1 / 2'],
+  allNames: false,
+  rows: ['.pending-leave-summary, .student-group-card'],
+  touch: ['.pagination-btn', '.pending-leave-case__cta', '.pending-leave-summary__cta'],
+  setup: async (page) => {
+    await page.locator('.pending-leave-disclosure > summary').click();
+    await expect(page.getByTestId('pending-leave-case')).toHaveCount(2);
+  },
+  mock: async (page) => { BILLING_PAGED = true; await COURSE_MGMT_BILLING.mock(page); },
+  extra: {
+    run: () => {
+      const isRed = ([r, g, b]) => r > g + 80 && b > g + 20;
+      const rgb = (el) => getComputedStyle(el).color.match(/\d+(\.\d+)?/g).map(Number);
+      const summary = document.querySelector('.pending-leave-summary');
+      const bar = document.querySelector('.pagination-bar');
+      const prev = bar?.querySelector('.pagination-btn');
+      return {
+        summaryTag: summary?.tagName, title: summary?.querySelector('h3')?.textContent.trim(),
+        nestedCards: summary?.querySelectorAll('[data-slot="section-card"]').length,
+        lateBadges: [...summary.querySelectorAll('[data-slot="status-badge"]')].map((b) => ({ text: b.textContent.trim(), tone: b.getAttribute('data-tone'), red: isRed(rgb(b)) })),
+        ctas: [...summary.querySelectorAll('.pending-leave-case__cta')].map((b) => ({ h: Math.round(b.getBoundingClientRect().height), red: isRed(rgb(b)) })),
+        pager: bar ? { info: bar.querySelector('.pagination-info').textContent.trim(), prevDisabled: prev.disabled, scroll: document.documentElement.scrollWidth - innerWidth } : null,
+        oldClasses: document.querySelectorAll('.pending-leave-summary__header, .pending-leave-case-list, .btn-soft.pagination-btn').length,
+      };
+    },
+    assert: (r) => {
+      expect(r.summaryTag, 'the parent-leave card is a shared SectionCard').toBe('SECTION');
+      expect(r.title, 'the card title keeps its words').toBe('家長請假待處理');
+      expect(r.nestedCards, 'no card inside the card').toBe(0);
+      const late = r.lateBadges.find((b) => b.text === '臨時請假');
+      expect(late?.tone, 'a late leave is a warning, not red').toBe('warning');
+      for (const b of r.lateBadges) expect(b.red, `badge 「${b.text}」 is red only when its tone is danger`).toBe(b.tone === 'danger');
+      for (const c of r.ctas) { expect(c.h, 'the case action is at least 44px').toBeGreaterThanOrEqual(44); expect(c.red, 'a case action is never red').toBe(false); }
+      expect(r.pager?.info, 'the pager keeps its words').toContain('共 60 筆');
+      expect(r.pager?.prevDisabled, 'previous is disabled on page 1').toBe(true);
+      expect(r.pager?.scroll, 'the pager does not widen the page').toBeLessThanOrEqual(1);
+      expect(r.oldClasses, 'the old parent-leave / pager classes are gone').toBe(0);
+    },
   },
 };
 
@@ -304,6 +392,57 @@ const COURSE_MGMT_BILLING_DARK = {
   },
 };
 
+// 課程查找 slice 7a (issue 4989): the 編輯課程 dialog (shared Dialog). Opened from the row's 更多 menu with the protected-data panel showing.
+// Asserts: the dialog sits inside the viewport at every width and 字級, nothing inside it sticks out sideways, focus is inside it,
+// the 取消 / 儲存 buttons and the panel's action are at least 44px, and the footer stays on screen while the body scrolls.
+const COURSE_MGMT_EDIT_DIALOG = {
+  ...COURSE_MGMT,
+  key: 'course-mgmt (edit dialog)',
+  names: ['編輯課程'],
+  allNames: false,
+  rows: [],
+  touch: ['[data-testid="course-edit-dialog"] > div:last-of-type button', '[data-testid="course-edit-dialog"] .editability-action-row__button', '[data-testid="course-edit-dialog"] .quick-add-session-link button'],
+  mock: async (page) => {
+    const data = [{ id: 100, data_source: 'laravel', branch_name: '大安校', room_name: 'A 教室', student_id: 9100, student_name: '歐陽子晴', teacher_id: 1, teacher_name: '王老師', subject: 'math', subject_name: '國中數學', first_class_date: '2026-09-01', status: 'active', ScheduleMode: 'count', payment_type: 'session', sessions_purchased: 8, sessions_used: 3, remaining_sessions: 5, payment_status: 'paid', class_type: 'one_on_one', rate_per_30min: 500, start_time: '16:00', days_of_week: [2], duration_hours: 2 }];
+    const editability = { reasons: [{ code: 'paid', message: '已有付款紀錄，繳費相關欄位不能直接改', next_step: 'void_payment' }], locked_fields: ['sessions_purchased'] };
+    await page.route('**/api/v1/**', (r) => { const p = new URL(r.request().url()).pathname; return json(r, p === '/api/v1/student-classes' ? { data, total: 1, current_page: 1, last_page: 1 } : p.endsWith('/editability') ? editability : { data: [] }); });
+  },
+  setup: async (page) => {
+    await page.getByText('歐陽子晴', { exact: true }).first().waitFor({ state: 'attached' });
+    await page.waitForLoadState('networkidle');
+    const trigger = page.locator('.course-row .action-menu-trigger').first();
+    await trigger.scrollIntoViewIfNeeded();
+    await trigger.click();
+    await page.getByRole('menuitem', { name: '編輯' }).first().click();
+    await expect(page.locator('[data-testid="course-edit-dialog"]')).toBeVisible();
+    await expect(page.locator('[data-testid="course-editability-panel"]')).toBeVisible();
+    await page.waitForTimeout(400); // open animation
+  },
+  extra: {
+    run: () => {
+      const dialog = document.querySelector('[data-testid="course-edit-dialog"]');
+      const box = dialog.getBoundingClientRect();
+      const body = dialog.querySelector('.tw\\:overflow-y-auto');
+      const footer = [...dialog.querySelectorAll('button')].find((b) => b.textContent.trim() === '儲存').getBoundingClientRect();
+      const sticks = [...dialog.querySelectorAll('*')].filter((el) => { const r = el.getBoundingClientRect(); return r.width > 0 && (r.right > box.right + 1 || r.left < box.left - 1) && getComputedStyle(el).position !== 'absolute'; }).map((el) => `${el.tagName}.${String(el.className).slice(0, 40)}`);
+      return {
+        inView: box.left >= 0 && box.right <= window.innerWidth && box.top >= 0 && box.bottom <= window.innerHeight + 1,
+        focusInside: dialog.contains(document.activeElement), sticks,
+        bodyOverflowX: body.scrollWidth - body.clientWidth, footerOnScreen: footer.bottom <= window.innerHeight && footer.top >= box.top,
+        modal: dialog.getAttribute('role') === 'dialog' && !!dialog.getAttribute('aria-labelledby'),
+      };
+    },
+    assert: (r) => {
+      expect(r.inView, 'the dialog sits inside the viewport').toBe(true);
+      expect(r.focusInside, 'focus is inside the dialog').toBe(true);
+      expect(r.sticks, 'nothing inside the dialog sticks out sideways').toEqual([]);
+      expect(r.bodyOverflowX, 'the dialog body does not scroll sideways').toBeLessThanOrEqual(1);
+      expect(r.footerOnScreen, '取消 / 儲存 stay on screen').toBe(true);
+      expect(r.modal, 'role=dialog with an accessible name').toBe(true);
+    },
+  },
+};
+
 /** PAGES: { key, url, mock(page), names (exact texts that must stay on one line), rows (selector groups whose visible members must share a left edge), setup?(page) } */
 const PAGES = [
   {
@@ -323,7 +462,7 @@ const PAGES = [
     url: '/study-week-pilot-mount.html',
     names: [...DAY_LABELS, '歐陽子安 學習檔案'],
     allNames: false,
-    rows: ['[data-testid="week-plans"], [data-testid="week-grid"]', '[data-testid="week-plans"] > div'],
+    rows: ['[data-testid="study-progress"], [data-testid="week-plans"], [data-testid="week-grid"]', '[data-testid="week-plans"] > div'],
     touch: ['[data-testid^="add-"]', '[data-testid="week-prev"]', '[data-testid="week-next"]', '[data-testid="week-today"]', '[data-testid="copy-week"]', '[data-testid^="done-"] ~ *, label:has([data-testid^="done-"])', 'button[data-testid^="title-"]'],
     mock: async (page) => { await page.clock.setFixedTime(TODAY); await mockStudyWeekApi(page, 'full'); },
     setup: async (page) => {
@@ -342,6 +481,35 @@ const PAGES = [
       expect(tabs.listScroll).toBe('auto');
       expect(tabs.firstLeft, 'tabs start at the left edge of the strip').toBeLessThanOrEqual(8);
       expect(tabs.tabH, 'tab targets are at least 44px').toBeGreaterThanOrEqual(44);
+      // Progress strip (step 3): three figures with the numbers of the fixture, each value on one line, nothing clipped, the strip
+      // inside the dialog; the decorative bar's fill is the same share of its track as the number says; desktop = one row, phone = plan on top, two below.
+      await expect(page.getByTestId('week-plans')).toBeVisible();
+      await expect(page.getByTestId('progress-plan')).toContainText('33%');
+      const strip = await page.evaluate(() => {
+        const q = (k) => document.querySelector(`[data-testid="progress-${k}"]`);
+        const box = (el) => el.getBoundingClientRect();
+        const read = (k) => {
+          const el = q(k); const dd = el.querySelector('dd'); const bar = document.querySelector(`[data-testid="progress-${k}-bar"]`);
+          return { text: dd.textContent.replace(/\s+/g, ''), oneLine: box(dd).height < parseFloat(getComputedStyle(dd).lineHeight) * 1.6, clipped: el.scrollWidth > el.clientWidth + 1,
+            fill: bar ? Math.round(((box(bar.querySelector('[data-slot="progress-indicator"]')).right - box(bar).left) / box(bar).width) * 100) : null, painted: bar ? [getComputedStyle(bar.querySelector('[data-slot="progress-indicator"]')).backgroundColor, getComputedStyle(bar).backgroundColor].every((c) => c !== 'rgba(0, 0, 0, 0)') : null, top: Math.round(box(el).top), left: Math.round(box(el).left), width: Math.round(box(el).width) };
+        };
+        const strip = box(document.querySelector('[data-testid="study-progress"]'));
+        return { plan: read('plan'), week: read('week'), attendance: read('attendance'), stripLeft: strip.left, stripRight: strip.right, dialogRight: box(document.querySelector('[role="dialog"]')).right, stripTop: strip.top, gridTop: box(document.querySelector('[data-testid="week-plans"]')).top };
+      });
+      expect(strip.plan.text, 'plan progress = the API percent_done').toBe('33%');
+      expect(strip.week.text, 'week tasks = done / total of the shown week').toBe('2/8項');
+      expect(strip.attendance.text, 'attendance = this month only (3 of 4)').toBe('75%');
+      expect([strip.plan.fill, strip.week.fill, strip.attendance.fill], 'bar fill equals the number').toEqual([33, 25, 75]);
+      for (const k of ['plan', 'week', 'attendance']) expect(strip[k].painted, `${k} bar and track have a colour (the component must be in the ui.css @source list)`).toBe(true);
+      for (const k of ['plan', 'week', 'attendance']) { expect(strip[k].oneLine, `${k} value wraps`).toBe(true); expect(strip[k].clipped, `${k} figure is clipped`).toBe(false); }
+      expect(strip.stripRight, 'the strip is wider than the dialog').toBeLessThanOrEqual(strip.dialogRight + 1);
+      expect(strip.stripTop, 'the strip sits above the plan lines').toBeLessThan(strip.gridTop);
+      const sameRow = new Set([strip.plan.top, strip.week.top, strip.attendance.top]).size === 1;
+      expect(sameRow, 'three figures in one row on desktop, plan on its own row on a phone').toBe(page.viewportSize().width >= 1024);
+      if (page.viewportSize().width < 768) {
+        expect(strip.week.top, 'phone: the two small figures share a row').toBe(strip.attendance.top);
+        expect(strip.plan.width, 'phone: plan figure spans the strip').toBeGreaterThan(strip.week.width + strip.attendance.width - 2);
+      }
       // Phone: one vertical list of seven days; desktop: seven columns side by side.
       const columns = () => page.evaluate(() => new Set([...document.querySelectorAll('[data-testid^="day-"]')].map((d) => Math.round(d.getBoundingClientRect().top))).size === 1);
       await expect.poll(columns, { message: 'seven columns on a wide dialog, one stacked list on a phone' }).toBe(page.viewportSize().width >= 1280);
@@ -401,6 +569,8 @@ const PAGES = [
   COURSE_MGMT_HISTORY,
   COURSE_MGMT_BILLING,
   COURSE_MGMT_BILLING_DARK,
+  COURSE_MGMT_EDIT_DIALOG,
+  COURSE_MGMT_STATES,
   {
     key: 'teacher-eligibility',
     url: '/teacher-eligibility-pilot-mount.html',
@@ -494,4 +664,86 @@ for (const entry of PAGES) {
       });
     }
   }
+}
+
+// 課程查找 slice 7a: keyboard behaviour of the 編輯課程 dialog. Tab stays inside, an outside click does not close it (unsaved form),
+// Esc and 取消 do, and focus goes back to the row's 更多 button.
+test('layout guard: course-mgmt (edit dialog) focus trap, outside click, Esc and return focus', async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 800 });
+  await COURSE_MGMT_EDIT_DIALOG.mock(page);
+  await page.goto(COURSE_MGMT_EDIT_DIALOG.url);
+  await expect(page.locator('html')).toHaveAttribute('data-pilot-ready', '1', { timeout: 15_000 });
+  await COURSE_MGMT_EDIT_DIALOG.setup(page);
+  const dialog = page.locator('[data-testid="course-edit-dialog"]');
+  for (let i = 0; i < 40; i += 1) {
+    await page.keyboard.press('Tab');
+    expect(await page.evaluate(() => document.querySelector('[data-testid="course-edit-dialog"]').contains(document.activeElement)), `Tab ${i + 1} stays inside the dialog`).toBe(true);
+  }
+  await page.mouse.click(180, 8); // the dimmed page above the sheet
+  await expect(dialog).toBeVisible();
+  // unsaved edit: Esc asks first, answering 取消 keeps the dialog and the typed text; 取消 (the button) asks the same question
+  const memo = dialog.locator('textarea').first();
+  await memo.fill('先寫一句備註');
+  await page.keyboard.press('Escape');
+  const ask = page.getByRole('alertdialog');
+  await expect(ask).toContainText('放棄未儲存的變更？');
+  await ask.getByRole('button', { name: '取消', exact: true }).click();
+  await expect(ask).toHaveCount(0);
+  await expect(dialog).toBeVisible();
+  await expect(memo).toHaveValue('先寫一句備註');
+  await dialog.getByRole('button', { name: '取消', exact: true }).click();
+  await expect(page.getByRole('alertdialog')).toContainText('放棄未儲存的變更？');
+  await page.getByRole('alertdialog').getByRole('button', { name: '放棄變更' }).click(); // discard: closes
+  await expect(dialog).toHaveCount(0);
+  await expect(page.locator('.course-row .action-menu-trigger').first()).toBeFocused();
+  // untouched form: Esc closes at once, no question
+  await page.locator('.course-row .action-menu-trigger').first().click();
+  await page.getByRole('menuitem', { name: '編輯' }).first().click();
+  await expect(dialog).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(dialog).toHaveCount(0);
+  await expect(page.getByRole('alertdialog')).toHaveCount(0);
+  await expect(page.locator('.course-row .action-menu-trigger').first()).toBeFocused();
+  await page.locator('.course-row .action-menu-trigger').first().click();
+  await page.getByRole('menuitem', { name: '編輯' }).first().click();
+  await expect(dialog).toBeVisible();
+  await page.getByRole('button', { name: '取消', exact: true }).click();
+  await expect(dialog).toHaveCount(0);
+});
+
+// 課程查找 slice 7a (Codex review): the 補課 form and the 轉課 form are legacy overlays. While one is open the editor steps aside
+// (it would otherwise sit above it and trap focus); when the form closes the editor is back with the same unsaved text.
+for (const child of [
+  { name: '補課 form', open: (dialog) => dialog.getByRole('button', { name: /補課 \/ 補登/ }).click(), title: '補課／補登（總堂數不變）', field: 'input[type="date"]', close: (page) => page.locator('.modal-overlay .actions').getByRole('button', { name: '取消', exact: true }).click() },
+  { name: '轉課 form', open: (dialog) => dialog.getByRole('button', { name: /轉課/ }).first().click(), title: '轉課（改科目／老師／時段）', field: '#ct-start', close: (page) => page.locator('.modal-overlay').getByRole('button', { name: '取消', exact: true }).click() },
+]) {
+  test(`layout guard: course-mgmt (edit dialog) ${child.name} opens on top and the editor comes back`, async ({ page }) => {
+    await page.setViewportSize({ width: 375, height: 800 });
+    await COURSE_MGMT_EDIT_DIALOG.mock(page);
+    const editability = { reasons: [{ code: 'x', message: '這門課的科目、老師或時段要用轉課處理', next_step: 'course_transfer' }], locked_fields: [] };
+    await page.route('**/api/v1/student-classes/*/editability', (r) => json(r, editability));
+    await page.goto(COURSE_MGMT_EDIT_DIALOG.url);
+    await expect(page.locator('html')).toHaveAttribute('data-pilot-ready', '1', { timeout: 15_000 });
+    await page.getByText('歐陽子晴', { exact: true }).first().waitFor({ state: 'attached' });
+    await page.waitForLoadState('networkidle');
+    await page.locator('.course-row .action-menu-trigger').first().click();
+    await page.getByRole('menuitem', { name: '編輯' }).first().click();
+    const dialog = page.locator('[data-testid="course-edit-dialog"]');
+    await expect(dialog).toBeVisible();
+    await dialog.locator('textarea').first().fill('先寫一句備註');
+    await child.open(dialog);
+    const overlay = page.locator('.modal-overlay').filter({ hasText: child.title });
+    await expect(overlay).toBeVisible();
+    await expect(dialog).toHaveCount(0); // the editor stepped aside
+    const field = overlay.locator(child.field).first();
+    const onTop = await field.evaluate((el) => { const r = el.getBoundingClientRect(); const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2); return hit === el || el.contains(hit); });
+    expect(onTop, 'the form field is the topmost element, not covered by the editor').toBe(true);
+    await field.focus();
+    await expect(field).toBeFocused();
+    if (child.field === 'input[type="date"]') { await field.fill('2026-12-01'); await expect(field).toHaveValue('2026-12-01'); }
+    await child.close(page);
+    await expect(overlay).toHaveCount(0);
+    await expect(dialog).toBeVisible();
+    await expect(dialog.locator('textarea').first()).toHaveValue('先寫一句備註');
+  });
 }
