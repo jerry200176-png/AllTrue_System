@@ -85,14 +85,14 @@ class SchoolMergeService
             foreach ($payload['s'] ?? [] as $old => $ids) {
                 // Only rows still carrying the canonical name: later manual edits win.
                 $students += Student::query()->where('CampusID', $campusId)->whereIn('id', $ids)
-                    ->where('SchoolName', $canonical)->update(['SchoolName' => (string) $old]);
+                    ->whereRaw('BINARY SchoolName = ?', [$canonical])->update(['SchoolName' => (string) $old]);
             }
             $periods = 0;
             foreach ($payload['p'] ?? [] as $old => $ids) {
                 foreach (SchoolExamPeriod::query()->where('campus_id', $campusId)->whereIn('id', $ids)
-                    ->where('school_name', $canonical)->lockForUpdate()->get() as $period) {
+                    ->whereRaw('BINARY school_name = ?', [$canonical])->lockForUpdate()->get() as $period) {
                     if (!$this->conflicts($period, (string) $old)) {
-                        $periods += SchoolExamPeriod::query()->whereKey($period->id)->where('school_name', $canonical)
+                        $periods += SchoolExamPeriod::query()->whereKey($period->id)->whereRaw('BINARY school_name = ?', [$canonical])
                             ->update(['school_name' => (string) $old]);
                     }
                 }
