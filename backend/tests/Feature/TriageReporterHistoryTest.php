@@ -6,6 +6,7 @@ use App\Models\BugReport;
 use App\Models\BugReportAttachment;
 use App\Models\BugReportComment;
 use App\Models\User;
+use Database\Factories\CampusFactory;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -54,6 +55,79 @@ final class TriageReporterHistoryTest extends TestCase
         $this->assertSame([$own->id], array_column($filtered->json('data'), 'id'));
         $unfiltered = $this->getJson('/api/v1/triage/bug-reports?status=triaged', $headers)->assertOk();
         $this->assertSame([$own->id, $other->id], array_column($unfiltered->json('data'), 'id'));
+    }
+
+    // #5118: each HTTP page observes live membership; an empty page is not an atomic snapshot.
+    public function test_live_cursor_needs_a_fresh_scan_to_find_an_older_reopened_report(): void
+    {
+        $headers = $this->headers();
+        $reporter = $this->user('T');
+        $campus = (int) CampusFactory::new()->create()->id;
+        $older = $this->bug($reporter, 'closed', $campus);
+        $newer = $this->bug($reporter, 'new', $campus);
+        $url = '/api/v1/triage/bug-reports?status=new,triaged,in_progress,resolved&limit=1';
+        $page = $this->getJson($url, $headers)->assertOk();
+        $this->assertSame([$newer->id], array_column($page->json('data'), 'id'));
+        $page->assertJsonPath('next_since_id', $newer->id);
+
+        $older->update(['status' => 'triaged']); // A writer reopens an excluded row between reader requests.
+        $this->getJson($url . '&since_id=' . $newer->id, $headers)->assertOk()
+            ->assertJsonCount(0, 'data')->assertJsonPath('next_since_id', null);
+        $fresh = $this->getJson($url . '&since_id=0', $headers)->assertOk();
+        $this->assertSame([$older->id], array_column($fresh->json('data'), 'id'));
+        $fresh->assertJsonPath('data.0.status', 'triaged')->assertJsonPath('next_since_id', $older->id);
+        $this->getJson($url . '&since_id=' . $older->id, $headers)->assertOk()
+            ->assertJsonPath('data.0.id', $newer->id);
+    }
+
+    public function test_live_cursor_excludes_a_later_report_that_leaves_the_filter(): void
+    {
+        $headers = $this->headers();
+        $reporter = $this->user('T');
+        $campus = (int) CampusFactory::new()->create()->id;
+        $first = $this->bug($reporter, 'new', $campus);
+        $later = $this->bug($reporter, 'new', $campus);
+        $url = '/api/v1/triage/bug-reports?status=new,triaged&limit=1';
+        $this->getJson($url, $headers)->assertOk()->assertJsonPath('data.0.id', $first->id);
+
+        $later->update(['status' => 'closed']);
+        $this->getJson($url . '&since_id=' . $first->id, $headers)->assertOk()
+            ->assertJsonCount(0, 'data')->assertJsonPath('next_since_id', null);
+        $this->getJson('/api/v1/triage/bug-reports?status=closed', $headers)->assertOk()
+            ->assertJsonPath('data.0.id', $later->id)->assertJsonPath('data.0.status', 'closed');
+    }
+
+    public function test_combined_status_cursor_keeps_a_later_report_moving_within_the_filter(): void
+    {
+        $headers = $this->headers();
+        $reporter = $this->user('T');
+        $campus = (int) CampusFactory::new()->create()->id;
+        $first = $this->bug($reporter, 'new', $campus);
+        $later = $this->bug($reporter, 'triaged', $campus);
+        $url = '/api/v1/triage/bug-reports?status=new,triaged,in_progress,resolved&limit=1';
+        $this->getJson($url, $headers)->assertOk()->assertJsonPath('data.0.id', $first->id);
+
+        $later->update(['status' => 'in_progress']);
+        $page = $this->getJson($url . '&since_id=' . $first->id, $headers)->assertOk()
+            ->assertJsonPath('data.0.status', 'in_progress')->assertJsonPath('next_since_id', $later->id);
+        $this->assertSame([$later->id], array_column($page->json('data'), 'id'));
+    }
+
+    public function test_live_cursor_can_include_a_report_inserted_after_the_first_page(): void
+    {
+        $headers = $this->headers();
+        $reporter = $this->user('T');
+        $campus = (int) CampusFactory::new()->create()->id;
+        $first = $this->bug($reporter, 'new', $campus);
+        $url = '/api/v1/triage/bug-reports?status=new&limit=1';
+        $this->getJson($url, $headers)->assertOk()->assertJsonPath('data.0.id', $first->id);
+
+        $inserted = $this->bug($reporter, 'new', $campus);
+        $page = $this->getJson($url . '&since_id=' . $first->id, $headers)->assertOk();
+        $this->assertSame([$inserted->id], array_column($page->json('data'), 'id'));
+        $page->assertJsonPath('next_since_id', $inserted->id);
+        $this->getJson($url . '&since_id=' . $inserted->id, $headers)->assertOk()
+            ->assertJsonCount(0, 'data')->assertJsonPath('next_since_id', null);
     }
 
     /** @dataProvider invalidReporterIds */
