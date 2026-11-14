@@ -518,11 +518,6 @@ class ReceiptReassignApplyTest extends TestCase
 
     // ── helpers ─────────────────────────────────────────────────────────
 
-    private function apply(string $token, PaymentReport $report, Invoice $target, string $hash, string $reason = '選錯學生')
-    {
-        return $this->postJson("/api/v1/payment-reports/{$report->id}/reassign", ['target_invoice_id' => $target->id, 'state_hash' => $hash, 'reason' => $reason], $this->h($token));
-    }
-
     private function net(Invoice $invoice): int
     {
         return (int) DB::table('Invoice')->where('id', $invoice->id)->selectRaw(Invoice::netPaidSql('Invoice') . ' AS n')->value('n');
@@ -549,22 +544,5 @@ class ReceiptReassignApplyTest extends TestCase
             DB::table('ClassSession')->insert(['StudentClassID' => $course->ID, 'SessionDate' => $d, 'StartTime' => '18:00:00', 'EndTime' => '20:00:00',
                 'Status' => 'completed', 'created_at' => now(), 'updated_at' => now()]);
         }
-    }
-
-    /** @param array{course:StudentClass, invoice:Invoice, payment:?Payment} $bill */
-    private function confirmedReport(array $bill): PaymentReport
-    {
-        return PaymentReport::create([
-            'StudentID' => $bill['invoice']->StudentID, 'StudentClassID' => $bill['course']->ID, 'InvoiceID' => $bill['invoice']->id, 'reported_by_name' => 'x',
-            'payment_date' => '2026-11-10', 'payment_method' => 'transfer', 'reported_amount' => (int) $bill['payment']->Amount, 'status' => 'confirmed',
-            'confirmed_by' => 1, 'confirmed_at' => Carbon::now(), 'payment_id' => $bill['payment']->id,
-            'report_token_hash' => hash('sha256', uniqid('r', true)), 'token_expires_at' => Carbon::now()->addDay(),
-        ]);
-    }
-
-    private function package(\App\Models\Student $owner): CoursePackage
-    {
-        return CoursePackage::create(['student_id' => $owner->id, 'campus_id' => 1, 'name' => 'P', 'billing_mode' => 'count', 'total_sessions' => 8, 'remaining_sessions' => 8,
-            'used_sessions' => 0, 'rate' => 1000, 'rate_unit' => 'session', 'class_type' => 'one_on_one', 'paid' => false, 'stop' => false, 'enabled' => true]);
     }
 }

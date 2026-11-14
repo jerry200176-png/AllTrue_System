@@ -84,13 +84,7 @@ class ReceiptReassignConfirmParityTest extends TestCase
         $confirmed = $this->putJson("/api/v1/payment-reports/{$pending->id}/confirm", [], $this->h($tok));
 
         $viaMove = $this->shape($case);
-        $source = $this->bill($this->student(1), self::AMOUNT, 'paid', self::AMOUNT);
-        $receipt = PaymentReport::create([
-            'StudentID' => $source['invoice']->StudentID, 'StudentClassID' => $source['course']->ID, 'InvoiceID' => $source['invoice']->id,
-            'reported_by_name' => 'x', 'payment_date' => '2026-11-10', 'payment_method' => 'transfer', 'reported_amount' => self::AMOUNT,
-            'status' => 'confirmed', 'confirmed_by' => 1, 'confirmed_at' => Carbon::now(), 'payment_id' => $source['payment']->id,
-            'report_token_hash' => hash('sha256', uniqid('m', true)), 'token_expires_at' => Carbon::now()->addDay(),
-        ]);
+        $receipt = $this->confirmedReport($this->bill($this->student(1), self::AMOUNT, 'paid', self::AMOUNT));
         $before = $this->snapshot();
         $plan = $this->previewTo($tok, $receipt, $viaMove['invoice']);
         $moved = $plan->status() === 200
@@ -180,14 +174,7 @@ class ReceiptReassignConfirmParityTest extends TestCase
         if ($case === 'legacy') {
             \App\Models\Payment::create(['InvoiceID' => $bill['invoice']->id, 'Amount' => -50, 'PaidAt' => '2026-11-01', 'Method' => 'void']);
         }
-        $receipt = PaymentReport::create([
-            'StudentID' => $student->id, 'StudentClassID' => $bill['course']->ID, 'InvoiceID' => $bill['invoice']->id, 'reported_by_name' => 'x',
-            'payment_date' => '2026-11-10', 'payment_method' => 'transfer', 'reported_amount' => self::AMOUNT, 'status' => 'confirmed',
-            'confirmed_by' => 1, 'confirmed_at' => Carbon::now(), 'payment_id' => $bill['payment']->id,
-            'report_token_hash' => hash('sha256', uniqid('s', true)), 'token_expires_at' => Carbon::now()->addDay(),
-        ]);
-
-        return [$bill, $receipt];
+        return [$bill, $this->confirmedReport($bill)];
     }
 
     /** @return array{course:StudentClass, invoice:Invoice, package:?CoursePackage} a fresh target of the given shape, own student */
@@ -230,11 +217,5 @@ class ReceiptReassignConfirmParityTest extends TestCase
 
         return ['bill_status' => $invoice->Status, 'bill_paid' => (int) $invoice->PaidAmount, 'course_paid' => (int) $course->Paid,
             'closed_reason' => $course->closed_reason, 'package_paid' => $shape['package'] ? (bool) $shape['package']->fresh()->paid : null];
-    }
-
-    private function package(Student $owner): CoursePackage
-    {
-        return CoursePackage::create(['student_id' => $owner->id, 'campus_id' => 1, 'name' => 'P', 'billing_mode' => 'count', 'total_sessions' => 8, 'remaining_sessions' => 8,
-            'used_sessions' => 0, 'rate' => 1000, 'rate_unit' => 'session', 'class_type' => 'one_on_one', 'paid' => false, 'stop' => false, 'enabled' => true]);
     }
 }
