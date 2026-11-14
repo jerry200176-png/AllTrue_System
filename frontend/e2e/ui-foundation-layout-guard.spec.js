@@ -174,7 +174,8 @@ const COURSE_MGMT_HISTORY = {
 // paid = success, nothing to pay = neutral), red appears only on debt, and every amount line is tabular and on one line.
 const BILLING_CASES = [
   { id: 100, status: 'unpaid', invoice: { status: 'unpaid', total_amount: 4800 }, reports: [] },
-  { id: 101, status: 'partial', invoice: { status: 'partial', total_amount: 6400 }, reports: [{ status: 'pending', payment_date: '2026-11-03', account_last5: '12345' }] },
+  // a bill with both a start and an end date: the period `2026-09-01 ~ 2026-12-31` must not run into its neighbour (Codex finding on PR 5290)
+  { id: 101, status: 'partial', invoice: { status: 'partial', total_amount: 6400 }, reports: [{ status: 'pending', payment_date: '2026-11-03', account_last5: '12345' }], over: { end_date: '2026-12-31' } },
   { id: 102, status: 'paid', invoice: { status: 'paid', total_amount: 3200 }, reports: [{ status: 'confirmed', payment_date: '2026-10-28' }] },
   { id: 103, status: 'pending_report', invoice: null, reports: [{ status: 'pending', payment_date: '2026-11-10' }], charge: 5600 },
   { id: 104, status: 'unpaid', invoice: null, reports: [], over: { class_type: 'tutoring', tutoring_billing_anomaly: true } },
@@ -229,6 +230,9 @@ const COURSE_MGMT_BILLING = {
             outside: [...tr.querySelectorAll('td > *')].filter(visible).filter((el) => el.getBoundingClientRect().right > table.getBoundingClientRect().right + 1).length,
             height: Math.round(box.height),
             display: getComputedStyle(tr).display,
+            // no cell's content runs past its own box, and no two cells of the row overlap
+            cellOverflow: [...tr.children].filter((td) => td.scrollWidth > td.clientWidth + 1).length,
+            cellOverlap: [...tr.children].filter(visible).reduce((n, a, i, all) => n + all.slice(i + 1).filter((b) => { const x = a.getBoundingClientRect(); const y = b.getBoundingClientRect(); return Math.min(x.right, y.right) - Math.max(x.left, y.left) > 1 && Math.min(x.bottom, y.bottom) - Math.max(x.top, y.top) > 1; }).length, 0),
             // slice 6: under 1024px one primary action is visible and the rest sit in the 更多 menu
             primaries: [...tr.querySelectorAll('td:last-child button')].filter(visible).filter((b) => !b.classList.contains('action-menu-trigger')).length,
             menus: [...tr.querySelectorAll('td:last-child .action-menu-trigger')].filter(visible).length,
@@ -250,6 +254,8 @@ const COURSE_MGMT_BILLING = {
       if (vp.width >= 1024) expect(Math.abs(r.headLeft - r.rowLeft), `header starts at x ${r.headLeft}, rows at ${r.rowLeft}`).toBeLessThanOrEqual(1);
       for (const row of r.rows) {
         expect(row.beyondViewport, `a button of row ${row.ref} is outside the viewport`).toBe(0);
+        expect(row.cellOverflow, `a cell of row ${row.ref} holds content wider than itself (it would run into its neighbour)`).toBe(0);
+        expect(row.cellOverlap, `two cells of row ${row.ref} overlap`).toBe(0);
         if (vp.width < 1024) {
           // PAGE_TEMPLATE §5 rule 9 (slice 6 of issue 4989): a stacked card per bill, one primary action, the rest in the 更多 menu
           expect(row.display, `row ${row.ref} is a stacked card under 1024px`).toBe('grid');

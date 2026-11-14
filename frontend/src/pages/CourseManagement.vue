@@ -718,10 +718,10 @@
                     <span v-else data-testid="billing-amount" :class="dataTable.amountPending">應繳：待開單</span>
                     <span v-if="!currentInvoiceForBillingRow(row) && (row.course.Charge ?? row.course.charge) != null" data-testid="billing-amount" :class="dataTable.amountEstimate">估算 ${{ formatMoney(row.course.Charge ?? row.course.charge) }}</span>
                   </td>
-                  <td :class="[dataTable.cell, dataTable.stackCell]" data-testid="billing-contract-period">
+                  <td :class="[dataTable.cell, dataTable.stackCell, dataTable.stackWide]" data-testid="billing-contract-period">
                     <span :class="dataTable.stackLabel">合約／期間</span>
                     <div :class="dataTable.fact">{{ formatCourseRef(row.course.id) }}</div>
-                    <div :class="[dataTable.sub, 'tw:tabular-nums']"><span :class="dataTable.fact">{{ formatCoursePeriod(row.course.first_class_date || row.course.StartDate, row.course.end_date || row.course.EndDate) }}</span></div>
+                    <div :class="[dataTable.sub, 'tw:tabular-nums']"><template v-for="(part, pi) in billingPeriodParts(row.course)" :key="pi"><template v-if="pi"> ~ </template><span :class="dataTable.fact">{{ part }}</span></template></div>
                   </td>
                   <td :class="[dataTable.cell, dataTable.stackCell, dataTable.stackBeside]">
                     <StatusBadge
@@ -741,7 +741,7 @@
                     </div>
                     <span v-else :class="dataTable.sub">尚無回報</span>
                   </td>
-                  <td :class="[dataTable.cell, dataTable.stackCell, dataTable.stackWide, 'tw:min-w-[7em] tw:2xl:min-w-[11em]']">
+                  <td :class="[dataTable.cell, dataTable.stackCell, 'tw:min-w-[7em] tw:2xl:min-w-[11em]']">
                     <span :class="dataTable.stackLabel">收據</span>
                     <span v-if="row.reports?.some((r) => r.status === 'confirmed')" :class="dataTable.sub">可開收據</span>
                     <span v-else :class="dataTable.sub">核對入帳後才能開收據</span>
@@ -4414,6 +4414,8 @@ const PAYMENT_CHIP_NOWRAP_MAX = 8;
 const BILLING_HEAD = 'tw:sticky tw:top-0 tw:z-[1]';
 const BILLING_STATE = 'tw:px-5 tw:py-4 tw:text-tpl-body';
 // Under 1024px the table is a list of stacked cards (CSS `max-lg`, see dataTable.stack*): one primary action stays visible, the rest sit in the 更多 menu.
+// The period `start ~ end` breaks between its two dates, never inside one (each date is one non-breaking fact).
+const billingPeriodParts = (course) => String(formatCoursePeriod(course.first_class_date || course.StartDate, course.end_date || course.EndDate)).split(' ~ ');
 const billingPrimaryIsNext = (row, group) => !billingPackageLead(row, group) && showsBillingRowNextAction(row.course);
 const billingMenuGroups = (row, group) => {
   const items = [];
