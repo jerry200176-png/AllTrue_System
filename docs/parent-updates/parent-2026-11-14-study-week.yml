@@ -1,0 +1,8 @@
+updates:
+  - id: parent-2026-11-14-study-week
+    published_at: "2026-11-14"
+    expires_at: "2026-12-14"
+    kind: improvement
+    title: 可以看孩子這週的讀書任務
+    summary: 在「學習」分頁最上方，可以看老師替孩子安排的這週讀書任務，以及完成了幾項。
+    details: 只能查看，不需要操作。任務依日期排列，可以切換上一週或下一週；老師還沒安排時會寫「這一週老師還沒有安排讀書任務」。

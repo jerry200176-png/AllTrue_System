@@ -170,6 +170,9 @@
           </div>
         </div>
 
+        <!-- 這週的讀書任務（唯讀，#5269）：換孩子會換 token，元件跟著重載 -->
+        <ParentStudyWeek :key="token" :token="token" class="tw:mb-3" />
+
         <!-- Reviewed assessment progress — parent-safe projection -->
         <div class="pp-card pp-assessment-progress-card" v-if="parentAssessmentProgress.length">
           <div class="pp-section-header">
@@ -876,6 +879,7 @@ import { getParentDashboard, parentLogin, parentLoginLine, parentSwitchStudent, 
 import { trackParentPortalEvent } from '../lib/adoptionTelemetry';
 import { notesForRole } from '../lib/releaseNotes';
 import ParentHome from '../components/parent/ParentHome.vue';
+import ParentStudyWeek from '../components/parent/ParentStudyWeek.vue';
 import TextSizeToggle from '../components/TextSizeToggle.vue';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
 import { SlidingIndicator } from '../components/motion';
