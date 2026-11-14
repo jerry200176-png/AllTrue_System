@@ -30,7 +30,6 @@ Every implementer agent follows this. The coordinator sends only the task-specif
 - Load the design skills first (`impeccable`, `make-interfaces-feel-better`, `web-design-guidelines`; `ui-ux-pro-max` for tables and forms) and build the page from [`docs/design/PAGE_TEMPLATE.md`](../design/PAGE_TEMPLATE.md).
 - Attach its evidence to the PR: real-browser screenshots at 1536 and 375 at each 字級, before and after.
 - Name in the PR body which design skills you loaded and one thing each changed. The final reviewer of a UI PR loads them too and reads the before/after pairs; a lost colour meaning (e.g. a red warning turned ink) is P1.
-- If you change a shared component, class set or helper (`components/ui/page/*`, `tones.js`, `cn()`), add before/after screenshots of every page that uses it, not only the page you are migrating.
 - Map colour meaning when you restyle: list old class → new tone in the PR body; red stays only for debt and low counts.
 - Adding a tab, step or button changes keyboard order: search the e2e specs for arrow-key and Tab walks over that area and update them in the same PR.
 - Pick pages that are in the nav registry and in use. A page with no nav entry or zero production rows is a removal candidate: report it instead of migrating it.
@@ -44,7 +43,7 @@ Every implementer agent follows this. The coordinator sends only the task-specif
 ## Before you open the PR (run these; CI fails on each)
 - `python3 scripts/check-recent-work-revert.py --base origin/main --head HEAD`: add a `Rewrites: #N — reason` body line for every PR it lists.
 - `node scripts/check-release-notes-coverage.mjs --base origin/main --head HEAD`; frontend also `node scripts/design-style-ratchet.mjs` (`npm run build` does not run it) and the full `npx vitest run`, not a subset.
-- Keep the PR at or under 700 logic lines (presubmit fails above it; deletion-only exemption needs ≤30 added lines). Split before opening, not after review.
+- Check the PR size limit (only defined in `docs/governance/FOUNDER_STANDING_DECISIONS.md` 2026-10-28（二）item 3; presubmit CHECK 2 enforces it) before opening; split before opening, not after review.
 - Before you report: stop every background process you started (dev servers, Playwright, poll loops). Leftover servers caused repeated reports and port clashes.
 - Reviewers and read-only checks: work in a worktree under your scratchpad; never check out a branch in the main checkout.
 - Name scratch files after your branch; re-fetch the PR body after creating it. Commit and push early: a container restart loses unpushed work.
