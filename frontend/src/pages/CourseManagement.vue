@@ -721,7 +721,7 @@
                   <td :class="[dataTable.cell, dataTable.stackCell, dataTable.stackWide]" data-testid="billing-contract-period">
                     <span :class="dataTable.stackLabel">合約／期間</span>
                     <div :class="dataTable.fact">{{ formatCourseRef(row.course.id) }}</div>
-                    <div :class="[dataTable.sub, 'tw:tabular-nums']"><template v-for="(part, pi) in billingPeriodParts(row.course)" :key="pi"><template v-if="pi"> ~ </template><span :class="dataTable.fact">{{ part }}</span></template></div>
+                    <div data-testid="billing-contract-period-range" :class="[dataTable.sub, 'tw:tabular-nums']"><template v-for="(part, pi) in billingPeriodParts(row.course)" :key="pi"><template v-if="pi"> ~ </template><span :class="dataTable.fact">{{ part }}</span></template></div>
                   </td>
                   <td :class="[dataTable.cell, dataTable.stackCell, dataTable.stackBeside]">
                     <StatusBadge
