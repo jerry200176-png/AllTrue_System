@@ -382,6 +382,8 @@ final class ReceiptReassignService
             ->where('id', '!=', $reportId)->pluck('InvoiceID')->map(fn ($v) => (int) $v)->unique()->all();
         // As the preview's reassign_target_package_mismatch: never offer a bill whose course points at someone else's package.
         $packages = DB::table('course_packages')->whereIn('id', self::packageIdsOf($courses))->get(['id', 'student_id', 'campus_id'])->keyBy(fn ($p) => (int) $p->id);
+        // As the preview's gate: confirm()'s shared-month refusal, for every candidate in one query.
+        $sharedMonth = CollectionTarget::sharedBillRefusedIds($invoices, $courses, $ctx['report']->payment_date);
 
         $targets = [];
         $this->amounts->preloadSessions($courseIds);
@@ -395,7 +397,7 @@ final class ReceiptReassignService
                     continue;
                 }
                 $course = $courses->get($courseId);
-                if ($course && CollectionTarget::gate($course, (int) $inv->id, $ctx['report']->payment_date) !== null) {
+                if ($course && (CollectionTarget::courseGate($course) !== null || in_array((int) $inv->id, $sharedMonth, true))) {
                     continue; // as the preview's reassign_target_not_collectable
                 }
                 if ($course && (int) ($course->PackageID ?? 0) > 0

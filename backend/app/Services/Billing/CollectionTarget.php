@@ -9,6 +9,7 @@ use App\Services\BillingPayableResolver;
 use App\Services\MonthlyBillingService;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Support\Collection;
 
 /**
  * One home for the rules of money landing on a course, so every path that records a payment applies the same ones
@@ -25,8 +26,13 @@ final class CollectionTarget
      */
     public static function gate(?StudentClass $sc, ?int $invoiceId = null, mixed $paymentDate = null): ?JsonResponse
     {
-        return ContractMoneyState::waivedRefusal($sc, '此合約已確認不收，不能再確認回報')
-            ?? ($sc ? (self::tutoringRefusal($sc) ?? self::sharedBillRefusal($sc, $invoiceId, $paymentDate)) : null);
+        return self::courseGate($sc) ?? ($sc ? self::sharedBillRefusal($sc, $invoiceId, $paymentDate) : null);
+    }
+
+    /** The course half of {@see gate()} (waived / refunded, then tutoring / zero-fee), for callers that batch the shared-month half. */
+    public static function courseGate(?StudentClass $sc): ?JsonResponse
+    {
+        return ContractMoneyState::waivedRefusal($sc, '此合約已確認不收，不能再確認回報') ?? ($sc ? self::tutoringRefusal($sc) : null);
     }
 
     /** A monthly month already on another course's live (shared) bill is collected there, never again on this course (#4867). */
@@ -35,25 +41,59 @@ final class CollectionTarget
         if ($course->getAttribute('ScheduleMode') !== 'date') {
             return null;
         }
-        $monthlyBilling = app(MonthlyBillingService::class);
         $id = (int) $course->getKey();
         $own = $invoiceId === null ? null : Invoice::where('id', $invoiceId)->where('StudentClassID', $id)->value('billing_period');
-        $period = preg_match('/^\d{4}-\d{2}$/', (string) $own) ? (string) $own : $monthlyBilling->collectionPeriodFor($course, $paymentDate);
-        $from = Carbon::createFromFormat('!Y-m', $period)->startOfMonth()->toDateString();
-        $to = Carbon::createFromFormat('!Y-m', $period)->endOfMonth()->toDateString();
-
-        $shared = Invoice::query()->notVoided()->where('StudentClassID', '!=', $id)
-            ->whereHas('items', fn ($q) => $q->where('StudentClassID', $id))->orderBy('id')->get()
-            ->first(function (Invoice $invoice) use ($id, $period, $from, $to, $monthlyBilling) {
-                [$start, $end] = $monthlyBilling->serviceRangeForCourse($invoice, $id);
-
-                return $start !== null ? $start <= $to && $end >= $from : (string) $invoice->billing_period === $period;
-            });
+        $carriers = Invoice::query()->notVoided()->where('StudentClassID', '!=', $id)
+            ->whereHas('items', fn ($q) => $q->where('StudentClassID', $id))->orderBy('id')->get();
+        $shared = self::carrierOf($course, $own, $paymentDate, $carriers);
 
         return $shared === null ? null : response()->json([
             'message' => sprintf('這個月的課已經在另一門課的帳單上（帳單 #%d），請從那門課的帳單收款，不能再收一次。沒有新增任何收款。', $shared->id),
             'code' => 'period_on_shared_bill', 'invoice_id' => (int) $shared->id,
         ], 422);
+    }
+
+    /**
+     * {@see sharedBillRefusal()} for many bills at once, one query for every carrier (the receipt-move picker, #5113).
+     *
+     * @param iterable<Invoice> $invoices each bill's own course is $courses[StudentClassID]
+     * @param Collection<int, StudentClass> $courses
+     * @return list<int> ids of the bills whose month another course's live bill already carries
+     */
+    public static function sharedBillRefusedIds(iterable $invoices, Collection $courses, mixed $paymentDate): array
+    {
+        $dated = collect($invoices)->filter(fn (Invoice $i) => $courses->get((int) $i->StudentClassID)?->getAttribute('ScheduleMode') === 'date');
+        if ($dated->isEmpty()) {
+            return [];
+        }
+        $ids = $dated->pluck('StudentClassID')->map(fn ($v) => (int) $v)->unique()->values()->all();
+        $carriers = Invoice::query()->notVoided()->with('items')->whereHas('items', fn ($q) => $q->whereIn('StudentClassID', $ids))->orderBy('id')->get();
+        $refused = [];
+        foreach ($dated as $invoice) {
+            $id = (int) $invoice->StudentClassID;
+            $mine = $carriers->filter(fn (Invoice $c) => (int) $c->StudentClassID !== $id && $c->items->contains(fn ($item) => (int) $item->StudentClassID === $id));
+            if (self::carrierOf($courses->get($id), $invoice->billing_period, $paymentDate, $mine) !== null) {
+                $refused[] = (int) $invoice->id;
+            }
+        }
+
+        return $refused;
+    }
+
+    /** @param Collection<int, Invoice> $carriers live bills of other courses with an item of $course, ascending id */
+    private static function carrierOf(StudentClass $course, ?string $ownPeriod, mixed $paymentDate, Collection $carriers): ?Invoice
+    {
+        $monthlyBilling = app(MonthlyBillingService::class);
+        $id = (int) $course->getKey();
+        $period = preg_match('/^\d{4}-\d{2}$/', (string) $ownPeriod) ? (string) $ownPeriod : $monthlyBilling->collectionPeriodFor($course, $paymentDate);
+        $from = Carbon::createFromFormat('!Y-m', $period)->startOfMonth()->toDateString();
+        $to = Carbon::createFromFormat('!Y-m', $period)->endOfMonth()->toDateString();
+
+        return $carriers->first(function (Invoice $invoice) use ($id, $period, $from, $to, $monthlyBilling) {
+            [$start, $end] = $monthlyBilling->serviceRangeForCourse($invoice, $id);
+
+            return $start !== null ? $start <= $to && $end >= $from : (string) $invoice->billing_period === $period;
+        });
     }
 
     /** A tutoring course, or one the resolver calls `free` (#3203), has no payment obligation; fail open on a resolver error. */

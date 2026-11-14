@@ -285,7 +285,7 @@ class ReceiptReassignPreviewTest extends TestCase
         $this->getJson("/api/v1/payment-reports/{$f['report']->id}/reassign-targets?student_id=abc", $this->h($this->token('A', 1)))->assertStatus(422)->assertJsonPath('code', 'reassign_bad_student');
     }
 
-    public function test_targets_run_the_same_number_of_queries_for_two_or_eight_candidates(): void
+    public function test_targets_run_the_same_number_of_queries_for_three_or_nine_candidates_monthly_included(): void
     {
         $f = $this->fixture();
         $tok = $this->token('S', 1);
@@ -293,6 +293,9 @@ class ReceiptReassignPreviewTest extends TestCase
         $pkg = CoursePackage::create(['student_id' => $f['right']->id, 'campus_id' => 1, 'name' => 'P', 'billing_mode' => 'count', 'total_sessions' => 8, 'remaining_sessions' => 8,
             'used_sessions' => 0, 'rate' => 1000, 'rate_unit' => 'session', 'class_type' => 'one_on_one', 'paid' => false, 'stop' => false, 'enabled' => true]);
         $this->bill($f['right'], self::AMOUNT, 'unpaid', 0, ['PackageID' => $pkg->id]); // the package lookups run too
+        $monthly = fn () => $this->bill($f['right'], self::AMOUNT, 'unpaid', 0, ['ScheduleMode' => 'date', 'StartDate' => '2026-11-01', 'EndDate' => '2026-11-30'],
+            ['billing_period' => '2026-11']); // the monthly branch: sessions and the shared-month gate run too
+        $monthly();
         $this->getJson($url, $this->h($tok))->assertOk(); // warm-up
         $count = function () use ($url, $tok): int {
             DB::flushQueryLog();
@@ -302,12 +305,12 @@ class ReceiptReassignPreviewTest extends TestCase
 
             return count(DB::getQueryLog());
         };
-        $two = $count();
+        $three = $count();
         foreach (range(1, 6) as $i) {
-            $this->bill($f['right'], self::AMOUNT, 'unpaid', 0, $i % 2 ? ['PackageID' => $pkg->id] : []);
+            $i % 2 ? $this->bill($f['right'], self::AMOUNT, 'unpaid', 0, ['PackageID' => $pkg->id]) : $monthly();
         }
-        $this->assertCount(8, $this->getJson($url, $this->h($tok))->json('targets'));
-        $this->assertSame($two, $count());
+        $this->assertCount(9, $this->getJson($url, $this->h($tok))->json('targets'));
+        $this->assertSame($three, $count());
     }
 
     // ── money proof on the source side (review P1-1) ────────────────────
