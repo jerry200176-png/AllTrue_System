@@ -185,25 +185,36 @@ final class ReceiptReassignService
             ->limit(200)
             ->pluck('Invoice.id')->all();
 
+        // #5113 must-do 6: every per-bill read below is one query per kind for all candidates, never one per candidate.
+        $invoices = Invoice::query()->with(['payments', 'items'])->whereIn('id', $candidates)->orderByDesc('id')->get();
+        $courseIds = $invoices->pluck('StudentClassID')->map(fn ($v) => (int) $v)->unique()->values()->all();
+        $courses = StudentClass::query()->with('pricingAmendments')->whereIn('ID', $courseIds)->get()->keyBy(fn (StudentClass $c) => (int) $c->ID);
+        // As packagePaidHold(): a stored-paid bill of a paid shared package stays settled.
+        $paidPackageCourses = DB::table('StudentClass')->join('course_packages', 'course_packages.id', '=', 'StudentClass.PackageID')
+            ->whereIn('StudentClass.ID', $courseIds)->where('course_packages.paid', true)->pluck('StudentClass.ID')->map(fn ($v) => (int) $v)->all();
+        // As hasPendingReport(): package-aware, same scope as the preview refusal.
+        $scopes = PaymentReport::pendingScopeCourseIdsFor($courseIds);
+        $pendingCourses = $courseIds === [] ? [] : DB::table('payment_reports')->whereIn('StudentClassID', array_merge([], ...array_values($scopes)))
+            ->where('status', 'pending')->where('id', '!=', $reportId)->pluck('StudentClassID')->map(fn ($v) => (int) $v)->unique()->all();
+
         $targets = [];
-        $courseIds = DB::table('Invoice')->whereIn('id', $candidates)->pluck('StudentClassID')->unique()->map(fn ($v) => (int) $v)->values()->all();
         $this->amounts->preloadSessions($courseIds);
         try {
-            foreach ($candidates as $invoiceId) {
-                $inv = DB::table('Invoice')->where('id', $invoiceId)->first();
-                if ($this->packagePaidHold((int) $inv->id, (string) $inv->Status, (int) $inv->StudentClassID)) {
+            foreach ($invoices as $inv) {
+                $courseId = (int) $inv->StudentClassID;
+                if ((string) $inv->Status === 'paid' && in_array($courseId, $paidPackageCourses, true)) {
                     continue;
                 }
-                if ($this->hasPendingReport((int) $inv->StudentClassID, $reportId)) {
-                    continue; // package-aware, same scope as the preview refusal
+                if (array_intersect($scopes[$courseId] ?? [$courseId], $pendingCourses) !== []) {
+                    continue;
                 }
-                $money = $this->resolve((int) $inv->id);
+                $money = $this->amounts->resolve($inv, $courses->get($courseId));
                 if ((int) $money['outstanding_amount'] < $amount) {
                     continue;
                 }
                 $targets[] = [
                     'invoice_id' => (int) $inv->id,
-                    'course_id' => (int) $inv->StudentClassID,
+                    'course_id' => $courseId,
                     'billing_period' => $inv->billing_period,
                     'total' => (int) $money['total_amount'],
                     'remaining' => (int) $money['outstanding_amount'],
