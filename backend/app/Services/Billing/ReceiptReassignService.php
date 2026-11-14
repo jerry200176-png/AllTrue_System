@@ -219,7 +219,7 @@ final class ReceiptReassignService
             return $this->refuse('reassign_course_refunded', '這門課有退費紀錄，收據不能移動，請聯絡總部對帳。');
         }
         // confirm()'s own course gate (CollectionTarget), not a copy: a course confirm() would refuse money for refuses the move too.
-        if ($closed = CollectionTarget::gate($toCourse)) {
+        if ($closed = CollectionTarget::gate($toCourse, (int) $toInvoice->id, $report->payment_date)) {
             $why = (array) $closed->getData(true);
 
             return $this->refuse('reassign_target_not_collectable', (string) ($why['message'] ?? ''), 422, ['reason' => $why['code'] ?? null]);
@@ -395,7 +395,7 @@ final class ReceiptReassignService
                     continue;
                 }
                 $course = $courses->get($courseId);
-                if ($course && CollectionTarget::gate($course) !== null) {
+                if ($course && CollectionTarget::gate($course, (int) $inv->id, $ctx['report']->payment_date) !== null) {
                     continue; // as the preview's reassign_target_not_collectable
                 }
                 if ($course && (int) ($course->PackageID ?? 0) > 0

@@ -50,6 +50,7 @@ class ReceiptReassignConfirmParityTest extends TestCase
             'gate: tutoring course' => ['tutoring'],
             'gate: zero-fee course' => ['free'],
             'gate: waived contract' => ['waived'],
+            'gate: month already on another course\'s shared bill' => ['shared_month'],
             'settle: whole bill paid settles the course' => ['plain'],
             'settle: part of the bill leaves the course open' => ['partial'],
             'settle: paid count-package bill marks the package' => ['package'],
@@ -89,7 +90,8 @@ class ReceiptReassignConfirmParityTest extends TestCase
             $this->assertSame(422, $moved->status(), "confirm refused ({$confirmed->getContent()}) but the move answered {$moved->getContent()}");
             $this->assertSame('reassign_target_not_collectable', $moved->json('code'));
             $this->assertSame($confirmed->json('code'), $moved->json('reason'));
-            $this->assertSame($confirmed->json('message'), $moved->json('message'));
+            $sameWords = fn (?string $m) => preg_replace('/\d+/', '#', (string) $m); // a message may name each side's own bill id
+            $this->assertSame($sameWords($confirmed->json('message')), $sameWords($moved->json('message')));
             $this->assertSame($before, $this->snapshot(), 'a refused move writes nothing');
 
             return;
@@ -106,11 +108,15 @@ class ReceiptReassignConfirmParityTest extends TestCase
         $course = ['PackageID' => $package?->id] + match ($case) {
             'tutoring' => ['ClassType' => 'tutoring'],
             'free' => ['Charge' => 0],
-            'date_member' => ['ScheduleMode' => 'date', 'StartDate' => '2026-11-01', 'EndDate' => '2026-11-30'],
+            'date_member', 'shared_month' => ['ScheduleMode' => 'date', 'StartDate' => '2026-11-01', 'EndDate' => '2026-11-30'],
             default => [],
         };
         $total = match ($case) { 'partial' => self::AMOUNT + 1000, 'free' => 0, default => self::AMOUNT };
-        $bill = $this->bill($student, $total, 'unpaid', 0, $course, $case === 'date_member' ? ['billing_period' => '2026-11'] : []);
+        $bill = $this->bill($student, $total, 'unpaid', 0, $course, in_array($case, ['date_member', 'shared_month'], true) ? ['billing_period' => '2026-11'] : []);
+        if ($case === 'shared_month') { // another course's live November bill already carries this course's lessons
+            $carrier = $this->bill($student, self::AMOUNT, 'unpaid', 0, [], ['billing_period' => '2026-11']);
+            $carrier['invoice']->items()->create(['StudentClassID' => $bill['course']->ID, 'Description' => 'shared', 'Amount' => self::AMOUNT]);
+        }
         if ($case === 'waived') {
             $bill['course']->update(['closed_reason' => 'waived']); // a waived contract takes no new bill either, so it is waived after billing
         }
