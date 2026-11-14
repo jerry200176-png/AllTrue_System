@@ -34,7 +34,7 @@ class TeacherEligibilityStudentAttendanceTest extends TestCase
         );
     }
 
-    public function test_present_student_attendance_uses_actual_student_window(): void
+    public function test_present_student_attendance_is_teaching_time_and_uses_actual_student_window(): void
     {
         $row = (object) [
             'class_type' => 'one_on_one',

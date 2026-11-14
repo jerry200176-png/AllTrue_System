@@ -18,7 +18,7 @@ class TeacherEligibilityWeeklySegmentsTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_director_sees_schedule_backed_weekly_segments(): void
+    public function test_director_sees_attendance_backed_weekly_segments_and_traceable_courses(): void
     {
         $director = $this->createDirector();
         $teacher = $this->createTeacher();

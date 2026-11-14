@@ -33,7 +33,7 @@ const response = {
       adjustments: [{ label: '行政加給', amount: 500 }],
       multiplier_parts: [{ key: 'base', label: '基本', pct: 100 }],
     },
-    components: { weekly_16_segments: { status: 'qualifies', metrics: { total_segments: 20, meets_16_segments: true, week_count: 1, qualifying_weeks: 1, weeks: [{ metrics: { week_start: '2026-08-03', week_end: '2026-08-09', total_segments: 20, meets_16_segments: true } }] } }, subject_count_bonus: { status: 'qualifies', amount: 1200 } },
+    components: { weekly_16_segments: { status: 'qualifies', metrics: { regular_segments: 18, trial_segments: 2, total_segments: 20, meets_16_segments: true, course_sessions: [] } }, subject_count_bonus: { status: 'qualifies', amount: 1200 } },
   }],
   period: { start: '2026-09-01', end: '2026-09-30' },
   policy_version: '115.07',
