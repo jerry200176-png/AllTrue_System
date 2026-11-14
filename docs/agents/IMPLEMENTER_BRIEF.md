@@ -20,6 +20,7 @@ Every implementer agent follows this. The coordinator sends only the task-specif
 - A CI guard rejects test methods named like framework `TestCase` methods (`session()`, `count()`; they kill the whole PHPUnit shard): [`scripts/ci/check-testcase-method-collisions.php`](../../scripts/ci/check-testcase-method-collisions.php).
 - SQL `CURDATE()`/`NOW()` follow the database clock (UTC in CI), not the app's Asia/Taipei: pass the app's date into the query as a bound value instead.
 - A push must depend on the test result: `npx vitest run … && git push`, never a pipeline whose last command is `grep`.
+- A test that asserts on a list asserts its size first (`assertCount(2, …)`, `toHaveLength`). Three tests on 2026-11-14 passed on an empty list: fixture dates outside the requested week, an isolation test with no own-row, a fixture that never set up the access it tested. Derive fixture dates and the request window from one constant.
 - Arrays read back from a MySQL JSON column have reordered keys: compare them with `assertEquals`, not `assertSame`.
 - Before deleting a model, table or helper, grep every reader (controllers, parent portal, timelines). If something else reads it, stop and report.
 - No empty commits, no force-push. Merge `main` into the branch; do not rebase.
@@ -29,11 +30,13 @@ Every implementer agent follows this. The coordinator sends only the task-specif
 - Load the design skills first (`impeccable`, `make-interfaces-feel-better`, `web-design-guidelines`; `ui-ux-pro-max` for tables and forms) and build the page from [`docs/design/PAGE_TEMPLATE.md`](../design/PAGE_TEMPLATE.md).
 - Attach its evidence to the PR: real-browser screenshots at 1536 and 375 at each 字級, before and after.
 - Name in the PR body which design skills you loaded and one thing each changed. The final reviewer of a UI PR loads them too and reads the before/after pairs; a lost colour meaning (e.g. a red warning turned ink) is P1.
-- If you change a shared component, class set or helper (`components/ui/page/*`, `tones.js`, `cn()`), add before/after screenshots of every page that uses it, not only the page you are migrating.
 - Map colour meaning when you restyle: list old class → new tone in the PR body; red stays only for debt and low counts.
 - Adding a tab, step or button changes keyboard order: search the e2e specs for arrow-key and Tab walks over that area and update them in the same PR.
 - Pick pages that are in the nav registry and in use. A page with no nav entry or zero production rows is a removal candidate: report it instead of migrating it.
 - Search the production-run specs for every selector, class name and label helper you change, and update them in the same PR: `frontend/e2e/calendar-course-consistency.spec.js`, `frontend/e2e/*production*.spec.js`, `frontend/e2e/fixtures/**`.
+- Evidence must show the case the change is for: a before shot where the defect is visible and an after shot where it is gone. Identical before/after pairs prove nothing (PR 5295: the menu shots showed a list where the menu already fitted).
+- Changing a shared component, class set or helper: list every user (`grep -rn "import .*<Name>"`) in the PR body with before/after shots of each. Missed three times on 2026-11-13/14 (`cn()`, a glued `dataTable` class, `ActionMenu`).
+- Moving a dialog onto the shared Dialog: list every action inside it that opens another modal, confirm, menu or toast, and check which one is on top and holds focus (shared Dialog `--ds-z-modal` 12001 with a focus trap; legacy `.modal-overlay` 12000). Step the parent dialog aside while the child is open; never raise z-index. One Playwright case per action. Two review passes missed this in PR 5292.
 - Production-run specs select by `data-testid` or role, never by a new CSS class (a restyle deletes classes; acceptance run 43555468636 broke on `.hint`). When you restyle markup a spec reads, give it a `data-testid` and point the spec at it. `scripts/ci/check-production-spec-selectors.mjs` (job `Vite core (build, Vitest, gates)`) has two checks: a ratchet that fails when the count of class selectors in production-run specs grows (lower `scripts/ci/production-spec-class-selectors.baseline.json` with `--update-baseline` when you remove some), and an existence check that fails when a class or test id is gone from all of `frontend/src`. Neither proves a selector still matches on the right page.
 - Do not put native `required` or `min` on a field that shows inline errors.
 - A confirm handler must return early when its dialog is already closed.
@@ -41,6 +44,9 @@ Every implementer agent follows this. The coordinator sends only the task-specif
 ## Before you open the PR (run these; CI fails on each)
 - `python3 scripts/check-recent-work-revert.py --base origin/main --head HEAD`: add a `Rewrites: #N — reason` body line for every PR it lists.
 - `node scripts/check-release-notes-coverage.mjs --base origin/main --head HEAD`; frontend also `node scripts/design-style-ratchet.mjs` (`npm run build` does not run it) and the full `npx vitest run`, not a subset.
+- Check the PR size limit (only defined in `docs/governance/FOUNDER_STANDING_DECISIONS.md` 2026-10-28（二）item 3; presubmit CHECK 2 enforces it) before opening; split before opening, not after review.
+- Before you report: stop every background process you started (dev servers, Playwright, poll loops). Leftover servers caused repeated reports and port clashes.
+- Reviewers and read-only checks: work in a worktree under your scratchpad; never check out a branch in the main checkout.
 - Name scratch files after your branch; re-fetch the PR body after creating it. Commit and push early: a container restart loses unpushed work.
 
 ## PR hygiene
