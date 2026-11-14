@@ -80,7 +80,7 @@ class TeacherEligibilityPolicy
             $qualified ? self::QUALIFIES : self::NOT_QUALIFIES,
             $qualified ? '每週排課段數達到16段。' : '每週排課段數未達16段。',
             ['weekly_segments' => round((float) $segments, 2), 'segment_threshold' => $threshold],
-            $qualified ? $this->setting('weekly_segment_bonus', 1000) : 0,
+            0, // the 16段課獎金 is decided per month, from all of its weeks
             0
         );
     }

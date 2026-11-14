@@ -237,7 +237,6 @@ class TeacherEligibilityController extends Controller
         $cashSourceAvailable = Schema::hasTable('teacher_payroll_cash_adjustments');
         $allowanceSourceAvailable = Schema::hasTable('teacher_payroll_admin_allowances');
         $pendingSalaryByTeacher = $this->pendingSalaryByTeacher($teacherIds, null);
-        $eventsAvailable = $sessionCalendarAvailable || $events->isNotEmpty();
         // Payroll subject counts are company/teacher scoped. The selected
         // campus only controls which teachers are listed; it must never
         // partition a teacher's cross-campus subject inputs.
@@ -245,7 +244,7 @@ class TeacherEligibilityController extends Controller
         $salaryByTeacher = $this->salaryProfilesByTeacher($teacherIds, null, $period['end']->toDateString());
         $manualMultiplierByTeacher = $this->manualMultiplierByTeacher($teacherIds, null, $period['end']->toDateString());
 
-        $rows = $teachers->map(function ($teacher) use ($period, $effectiveStart, $weeks, $scheduleByTeacher, $plannedByTeacher, $attendanceByTeacher, $eventByTeacher, $achievementByTeacher, $deductionByTeacher, $allowanceByTeacher, $cashByTeacher, $cashSourceAvailable, $allowanceSourceAvailable, $pendingSalaryByTeacher, $eventsAvailable, $attendanceSourceAvailable, $sessionCalendarAvailable, $subjectUnitsByTeacher, $salaryByTeacher, $manualMultiplierByTeacher) {
+        $rows = $teachers->map(function ($teacher) use ($period, $effectiveStart, $weeks, $scheduleByTeacher, $plannedByTeacher, $attendanceByTeacher, $eventByTeacher, $achievementByTeacher, $deductionByTeacher, $allowanceByTeacher, $cashByTeacher, $cashSourceAvailable, $allowanceSourceAvailable, $pendingSalaryByTeacher, $sessionCalendarAvailable, $subjectUnitsByTeacher, $salaryByTeacher, $manualMultiplierByTeacher) {
             $teacherId = (int) $teacher->id;
             $teacherSchedules = $scheduleByTeacher->get($teacherId, collect());
             $teacherPlanned = $plannedByTeacher->get($teacherId, collect());
@@ -530,9 +529,12 @@ class TeacherEligibilityController extends Controller
     {
         $qualifying = collect($weeklyRows)->where('status', TeacherEligibilityPolicy::QUALIFIES);
         $allPass = $weeklyRows !== [] && $qualifying->count() === count($weeklyRows);
-        // Each qualifying week pays the weekly bonus, capped per month; a week belongs to its Monday's month.
-        $amount = $qualifying->countBy(fn ($row) => substr((string) $row['metrics']['week_start'], 0, 7))
-            ->sum(fn ($count) => min($count, (int) config('teacher_salary.monthly_week_cap', 4)) * (int) config('teacher_salary.weekly_segment_bonus', 1000));
+        // HQ 115.07 + Founder 2026-11-15: the 16段課獎金 is monthly and needs every week of the month full;
+        // one short week removes it. A week belongs to its Monday's month.
+        $amount = (int) config('teacher_salary.weekly_segment_month_bonus', 4000) * collect($weeklyRows)
+            ->groupBy(fn ($row) => substr((string) $row['metrics']['week_start'], 0, 7))
+            ->filter(fn ($month) => $month->every(fn ($row) => $row['status'] === TeacherEligibilityPolicy::QUALIFIES))
+            ->count();
 
         return [
             'status' => $allPass ? TeacherEligibilityPolicy::QUALIFIES : TeacherEligibilityPolicy::NOT_QUALIFIES,

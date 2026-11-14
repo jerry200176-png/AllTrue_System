@@ -84,9 +84,8 @@ class TeacherEligibilityWeeklySegmentsTest extends TestCase
         $response->assertJsonPath('teachers.0.components.weekly_16_segments.metrics.weeks.0.metrics.daily_hours', [
             '2026-08-03' => 4, '2026-08-04' => 4, '2026-08-05' => 1, '2026-08-06' => 3, '2026-08-08' => 10, '2026-08-09' => 10,
         ]);
-        // one-to-three subject counts are now kept raw; the Founder-approved
-        // /8 divisor applies only after the complete applicable total is built.
-        $response->assertJsonPath('teachers.0.settlement.calculated_payout', 35700);
+        // 33000 base + 1500 cash + 4000 (the only week in view is full) + 200 一對三獎金.
+        $response->assertJsonPath('teachers.0.settlement.calculated_payout', 38700);
         $response->assertJsonPath('teachers.0.settlement.calculation_status', 'calculated');
         $response->assertJsonPath('teachers.0.components.cash_adjustments.amount', 1500);
         $response->assertJsonPath('teachers.0.settlement.adjustments.1.label', '完整結算路徑測試');
@@ -94,14 +93,14 @@ class TeacherEligibilityWeeklySegmentsTest extends TestCase
         $monthResponse = $this->withHeaders($this->auth($director['token']))
             ->getJson('/api/v1/finance/teacher-eligibility?period=month&start=2026-08-01&end=2026-08-31&branch_id=1');
         $monthResponse->assertOk();
-        $monthResponse->assertJsonPath('teachers.0.settlement.calculated_payout', 35700);
+        // The month has four more weeks and none of them is full: no 16段課獎金.
+        $monthResponse->assertJsonPath('teachers.0.settlement.calculated_payout', 34700);
         $monthResponse->assertJsonPath('teachers.0.settlement.calculation_status', 'calculated');
-        // August 2026 has five Mondays; only the first week is full.
         $monthResponse->assertJsonPath('teachers.0.components.weekly_16_segments.metrics.week_count', 5);
         $monthResponse->assertJsonPath('teachers.0.components.weekly_16_segments.metrics.qualifying_weeks', 1);
-        $monthResponse->assertJsonPath('teachers.0.components.weekly_16_segments.amount', 1000);
+        $monthResponse->assertJsonPath('teachers.0.components.weekly_16_segments.amount', 0);
 
-        // Control: without the 2h 輔導 the week is 15 段 and the weekly bonus goes.
+        // Control: without the 2h 輔導 the week is 15 段 and the bonus goes.
         DB::table('schedules')->where('id', $tutoringId)->update(['status' => 'cancelled']);
         $short = $this->withHeaders($this->auth($director['token']))
             ->getJson('/api/v1/finance/teacher-eligibility?period=week&start=2026-08-03&end=2026-08-09&branch_id=1')->assertOk();
@@ -110,8 +109,8 @@ class TeacherEligibilityWeeklySegmentsTest extends TestCase
         $short->assertJsonPath('teachers.0.settlement.calculated_payout', 34700);
     }
 
-    /** A week that crosses a month end is judged whole, once, in its Monday's month. */
-    public function test_week_crossing_the_month_end_belongs_to_its_mondays_month(): void
+    /** A week crossing a month end is judged whole in its Monday's month; the 4,000 needs every week full. */
+    public function test_month_bonus_needs_every_week_full_and_cross_month_week_belongs_to_its_monday(): void
     {
         $director = $this->createDirector();
         $teacher = $this->createTeacher();
@@ -129,7 +128,7 @@ class TeacherEligibilityWeeklySegmentsTest extends TestCase
         $july = $weekly('2026-07-01', '2026-07-31');
         $this->assertSame(4, $july['metrics']['week_count']);
         $this->assertSame(1, $july['metrics']['qualifying_weeks']);
-        $this->assertSame(1000, $july['amount']);
+        $this->assertSame(0, $july['amount'], 'one full week out of four pays nothing');
         $this->assertSame('2026-07-27', $july['metrics']['weeks'][3]['metrics']['week_start']);
         $this->assertEquals(16, $july['metrics']['weeks'][3]['metrics']['total_segments']);
 
@@ -137,6 +136,16 @@ class TeacherEligibilityWeeklySegmentsTest extends TestCase
         $this->assertSame(0, $august['metrics']['qualifying_weeks']);
         $this->assertSame(0, $august['amount']);
         $this->assertSame('2026-08-03', $august['metrics']['weeks'][0]['metrics']['week_start']);
+
+        // Fill the other three July weeks (4 days x 8h = 16 段 each): now every week is full.
+        foreach (['2026-07-06', '2026-07-13', '2026-07-20'] as $monday) {
+            foreach (range(0, 3) as $offset) {
+                $this->schedule($teacher->id, date('Y-m-d', strtotime("{$monday} +{$offset} days")), '14:00', '22:00');
+            }
+        }
+        $full = $weekly('2026-07-01', '2026-07-31');
+        $this->assertSame(4, $full['metrics']['qualifying_weeks']);
+        $this->assertSame(4000, $full['amount']);
     }
 
     public function test_same_teacher_payroll_subject_count_is_global_when_switching_campus(): void

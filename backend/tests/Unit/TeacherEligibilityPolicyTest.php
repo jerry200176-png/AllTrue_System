@@ -20,7 +20,6 @@ class TeacherEligibilityPolicyTest extends TestCase
         $result = $this->policy->weekly16(['segments' => 16]);
 
         $this->assertSame(TeacherEligibilityPolicy::QUALIFIES, $result['status']);
-        $this->assertSame(1000, $result['amount']);
         $this->assertSame(16.0, $result['metrics']['weekly_segments']);
     }
 
