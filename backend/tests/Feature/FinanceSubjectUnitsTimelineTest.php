@@ -286,10 +286,20 @@ class FinanceSubjectUnitsTimelineTest extends TestCase
             ->assertOk()
             ->json('teachers.0.settlement');
 
-        $this->assertEqualsWithDelta(1.5, $settlement['regular_subject_count'], 0.0001);
+        // Same numbers as the 科目數統計 page: 一對三 lessons (2.0) are part of 正課 (1.5 + 2.0).
+        $this->assertEqualsWithDelta(3.5, $settlement['regular_subject_count'], 0.0001);
         $this->assertEqualsWithDelta(1.0, $settlement['tutoring_trial_subject_count'], 0.0001);
-        $this->assertEqualsWithDelta(0.3125, $settlement['payroll_subject_count'], 0.0001);
+        $this->assertEqualsWithDelta(0.5625, $settlement['payroll_subject_count'], 0.0001);
         $this->assertEqualsWithDelta(2.0, $settlement['one_to_three_count'], 0.0001);
+        // 一對三獎金 = 一對三總計 x 100; 核薪總科目數 under 10 has no 科目數獎金.
+        $this->assertEqualsWithDelta(200, $settlement['one_to_three_bonus'], 0.0001);
+        $this->assertEqualsWithDelta(0, $settlement['subject_count_bonus'], 0.0001);
+
+        $timeline = $this->withHeaders($this->authHeaders($director['token']))
+            ->getJson('/api/v1/finance/subject-units/timeline?start=2026-08-01&end=2026-08-31&branch_id=' . $campus->id)
+            ->assertOk();
+        $this->assertEqualsWithDelta($settlement['regular_subject_count'], $timeline->json('totals.regular_subject_count'), 0.0001);
+        $this->assertEqualsWithDelta($settlement['payroll_subject_count'], $timeline->json('totals.final_payroll_subject_count'), 0.0001);
     }
 
     public function test_locked_branch_total_also_sums_raw_subject_counts_before_dividing(): void

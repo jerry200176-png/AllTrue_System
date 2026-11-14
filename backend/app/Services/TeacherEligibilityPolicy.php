@@ -443,6 +443,14 @@ class TeacherEligibilityPolicy
         );
     }
 
+    /**
+     * HQ 115.07 rule, matched against the HQ settlement sheet:
+     * - 科目數獎金 = attachment row of floor(核薪總科目數); no interpolation.
+     * - 一對三獎金 = 一對三總計 x a flat unit bonus. The attachment's
+     *   "一對三獎金(預估)" column is only an estimate and is not used.
+     * - "20科(含)以上 +5%" counts 正課 only (不含輔導), carried in
+     *   metrics.subject_count_rate for the settlement composer.
+     */
     public function subjectCountBonus(?float $subjectCount, ?float $oneToThreeCount = null, array $units = []): array
     {
         if ($subjectCount === null) {
@@ -453,24 +461,10 @@ class TeacherEligibilityPolicy
         }
 
         $payrollCount = round($subjectCount, 4);
-        $oneToThree = round($oneToThreeCount ?? $subjectCount, 4);
-        if ($payrollCount < 1 && $oneToThree < 1) {
-            return $this->result(self::QUALIFIES, '查詢期間沒有科目數獎金。', [
-                'subject_count' => 0,
-                'one_to_three_count' => 0,
-                'regular_subject_count' => $units['regular'] ?? 0,
-                'tutoring_trial_subject_count' => $units['tutoring_trial'] ?? 0,
-                'subject_count_bonus' => 0,
-                'one_to_three_bonus' => 0,
-            ], 0, 0);
-        }
-
+        $oneToThree = round(max(0.0, (float) ($oneToThreeCount ?? 0)), 4);
+        $row = (int) floor($payrollCount);
         $table = $this->setting('subject_count_table', []);
-        $subjectBonus = $this->interpolateTableValue($table, max(0, $payrollCount), 0);
-        $oneToThreeBonus = $this->interpolateTableValue($table, max(0, $oneToThree), 1);
-        $illustrativeMultiplier = $this->interpolateTableValue($table, max($payrollCount, $oneToThree), 2);
-        $illustrativeAmount = $this->interpolateTableValue($table, max($payrollCount, $oneToThree), 3);
-        if ($subjectBonus === null || $oneToThreeBonus === null || $illustrativeMultiplier === null) {
+        if ($row >= 1 && !isset($table[$row])) {
             return $this->review(
                 ['subject_count_table'],
                 '科目數超出附件表格1～50範圍。',
@@ -478,43 +472,32 @@ class TeacherEligibilityPolicy
             );
         }
 
+        $subjectBonus = $row >= 1 ? (float) $table[$row][0] : 0.0;
+        $oneToThreeBonus = round($oneToThree * (float) $this->setting('one_to_three_unit_bonus', 100), 2);
+        $regularTotal = isset($units['regular_total']) ? (float) $units['regular_total'] : null;
+        $thresholdRate = $regularTotal !== null && $regularTotal >= (float) $this->setting('subject_count_rate_threshold', 20)
+            ? (float) $this->setting('subject_count_rate_bonus', 5)
+            : 0.0;
+
         return $this->result(
             self::QUALIFIES,
-            '依115.07科目數及一對三獎金表計算。',
+            $subjectBonus + $oneToThreeBonus > 0
+                ? '依115.07科目數獎金表（科目數無條件捨去）及一對三每次獎金計算。'
+                : '查詢期間沒有科目數獎金。',
             [
                 'subject_count' => $payrollCount,
                 'one_to_three_count' => $oneToThree,
                 'regular_subject_count' => $units['regular'] ?? null,
                 'tutoring_trial_subject_count' => $units['tutoring_trial'] ?? null,
-                'subject_count_bonus' => $this->number(round($subjectBonus, 2)),
-                'one_to_three_bonus' => $this->number(round($oneToThreeBonus, 2)),
-                'multiplier' => $this->number(round($illustrativeMultiplier, 2)),
+                'regular_total' => $regularTotal,
+                'subject_count_bonus' => $this->number($subjectBonus),
+                'one_to_three_bonus' => $this->number($oneToThreeBonus),
+                'subject_count_rate' => $this->number($thresholdRate),
             ],
-            $illustrativeAmount === null ? 0 : $this->number(round($illustrativeAmount, 2)),
-            $this->number(round($illustrativeMultiplier - 100, 2))
+            // Pre-multiplier amount. The multiplier is applied once, by the composer.
+            $this->number($subjectBonus + $oneToThreeBonus),
+            0
         );
-    }
-
-    private function interpolateTableValue(array $table, float $count, int $column): ?float
-    {
-        if ($count < 1) {
-            return 0.0;
-        }
-        if ($count > 50) {
-            return null;
-        }
-        $floor = (int) floor($count);
-        $ceil = (int) ceil($count);
-        $low = $table[$floor] ?? null;
-        $high = $table[$ceil] ?? null;
-        if ($low === null || $high === null) {
-            return null;
-        }
-        if ($floor === $ceil) {
-            return (float) $low[$column];
-        }
-        $fraction = $count - $floor;
-        return (float) $low[$column] + ((float) $high[$column] - (float) $low[$column]) * $fraction;
     }
 
     private function result(string $status, string $reason, array $metrics = [], $amount = 0, $rate = 0): array

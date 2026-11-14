@@ -21,7 +21,6 @@ class TeacherEligibilityStudentAttendanceTest extends TestCase
         self::assertSame(2.0, $this->invoke('classSessionDurationHours', $row));
         self::assertSame(2.0, $this->invoke('studentAttendanceDurationHours', $row));
         self::assertSame(2.0, $this->invoke('durationHours', $row));
-        self::assertSame(2.0, $this->invoke('subjectRecordHours', $row));
         $row->student_sign_out_at = null;
         self::assertSame(2.0, $this->invoke('studentAttendanceDurationHours', $row));
     }

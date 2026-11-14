@@ -211,19 +211,27 @@ final class SubjectUnitsTimelineService
         );
 
         $teacherRawTotals = [];
+        $teacherParts = [];
         foreach ($normalised as $entry) {
             $teacherId = (int) $entry['teacher_id'];
             $teacherRawTotals[$teacherId] = ($teacherRawTotals[$teacherId] ?? 0.0)
                 + (float) $entry['payroll_subject_count'];
+            foreach (['regular', 'tutoring_trial', 'one_to_three'] as $part) {
+                $teacherParts[$teacherId][$part] = ($teacherParts[$teacherId][$part] ?? 0.0) + (float) $entry[$part . '_weighted'];
+            }
         }
         $campusRawTotal = (float) $publicTotals['payroll_subject_count'];
         $teacherContributions = collect($teacherRawTotals)
-            ->map(function (float $rawTotal, int $teacherId) use ($teacherNames, $campusRawTotal): array {
+            ->map(function (float $rawTotal, int $teacherId) use ($teacherNames, $campusRawTotal, $teacherParts): array {
                 $rawTotal = round($rawTotal, 4);
                 return [
                     'teacher_id' => $teacherId,
                     'teacher_name' => $teacherNames[$teacherId] ?? '未知老師',
                     'raw_subject_count' => $rawTotal,
+                    // Raw parts of raw_subject_count, read by the full-time payroll settlement.
+                    'regular_subject_count' => round($teacherParts[$teacherId]['regular'], 4),
+                    'tutoring_trial_subject_count' => round($teacherParts[$teacherId]['tutoring_trial'], 4),
+                    'one_to_three_count' => round($teacherParts[$teacherId]['one_to_three'], 4),
                     'payroll_subject_count' => round($rawTotal / 8, 4),
                     'campus_proportion_pct' => $campusRawTotal > 0
                         ? round(($rawTotal / $campusRawTotal) * 100, 4)
@@ -275,7 +283,7 @@ final class SubjectUnitsTimelineService
                 'teacher_id' => (int) $row->teacher_id, 'date' => $date,
                 'campus_id' => (int) $row->campus_id, 'subject_id' => $subjectId,
                 'regular_hours' => 0.0, 'tutoring_trial_hours' => 0.0,
-                'regular_weighted' => 0.0, 'tutoring_trial_weighted' => 0.0,
+                'regular_weighted' => 0.0, 'tutoring_trial_weighted' => 0.0, 'one_to_three_weighted' => 0.0,
                 'session_count' => 0, 'regular_session_count' => 0, 'tutoring_trial_session_count' => 0,
                 'lessons' => [],
             ];
@@ -283,6 +291,10 @@ final class SubjectUnitsTimelineService
         $hours = $this->hours($row);
         $entries[$key][$category . '_hours'] += $hours;
         $entries[$key][$category . '_weighted'] += $hours * $weight;
+        // Full-time payroll's 一對三總計: the one-on-three part of the regular count above, not an extra count.
+        if ($category === 'regular' && strtolower((string) $row->class_type) === 'one_on_three') {
+            $entries[$key]['one_to_three_weighted'] += $hours * $weight;
+        }
         $entries[$key]['session_count']++;
         // Display only (in-app #387/#389): which lesson adds how much, so a count can be checked line by line.
         $entries[$key]['lessons'][] = [
@@ -382,6 +394,7 @@ final class SubjectUnitsTimelineService
         }
         $entry['regular_weighted'] = round($entry['regular_weighted'], 4);
         $entry['tutoring_trial_weighted'] = round($entry['tutoring_trial_weighted'], 4);
+        $entry['one_to_three_weighted'] = round($entry['one_to_three_weighted'], 4);
         $entry['regular_subject_count'] = round($entry['regular_subject_count'], 4);
         $entry['tutoring_trial_subject_count'] = round($entry['tutoring_trial_subject_count'], 4);
         $entry['payroll_subject_count'] = round($entry['payroll_subject_count'], 4);

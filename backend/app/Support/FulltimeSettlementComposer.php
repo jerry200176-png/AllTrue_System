@@ -6,19 +6,13 @@ namespace App\Support;
  * Combines TeacherEligibilityPolicy::evaluate()'s per-component output (rates
  * and amounts) with base salary into one 總發放金額.
  *
- * Deliberately does NOT use subject_count_bonus's own `amount`/`rate` fields:
- * those are pinned by test_subject_count_uses_exact_attachment_row_and_rejects_out_of_range
- * to the announcement's illustrative example row (which bakes in an assumed
- * +10%/+15% from holiday+subject-count combined), not a given teacher's real
- * multiplier stack. The raw per-tier amounts live in
- * components.subject_count_bonus.metrics.subject_count_bonus /
- * .one_to_three_bonus and are multiplier-composed here instead.
+ * The raw (pre-multiplier) tier amounts and the 正課20科 rate come from
+ * components.subject_count_bonus.metrics (see TeacherEligibilityPolicy::
+ * subjectCountBonus, the single place that holds those rules); the multiplier
+ * is applied to them once, here.
  */
 final class FulltimeSettlementComposer
 {
-    private const SUBJECT_COUNT_THRESHOLD = 20;
-    private const SUBJECT_COUNT_MULTIPLIER_BONUS_PCT = 5.0;
-
     public static function compose(array $components, ?float $baseSalary, ?array $subjectUnits = null, ?float $manualMultiplierPct = null): array
     {
         $subjectUnits ??= [];
@@ -26,9 +20,7 @@ final class FulltimeSettlementComposer
         $rawSubjectBonus = (float) ($subjectMetrics['subject_count_bonus'] ?? 0);
         $rawOneToThreeBonus = (float) ($subjectMetrics['one_to_three_bonus'] ?? 0);
         $subjectCount = $subjectUnits['payroll_total'] ?? $subjectMetrics['subject_count'] ?? null;
-        $subjectCountRate = ($subjectCount !== null && (float) $subjectCount >= self::SUBJECT_COUNT_THRESHOLD)
-            ? self::SUBJECT_COUNT_MULTIPLIER_BONUS_PCT
-            : 0.0;
+        $subjectCountRate = (float) ($subjectMetrics['subject_count_rate'] ?? 0);
 
         $rateComponents = [
             'holiday_16_hours' => '假日16小時倍率',

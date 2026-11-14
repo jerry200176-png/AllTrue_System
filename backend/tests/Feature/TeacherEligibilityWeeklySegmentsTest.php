@@ -117,6 +117,29 @@ class TeacherEligibilityWeeklySegmentsTest extends TestCase
         }
     }
 
+    /** End to end: the "20科 +5%" reaches the settlement from 正課 alone, never from 輔導／試聽. */
+    public function test_twenty_subject_rate_follows_regular_subjects_only(): void
+    {
+        $director = $this->createDirector();
+        $teacher = $this->createTeacher();
+        $rate = fn () => collect($this->withHeaders($this->auth($director['token']))
+            ->getJson('/api/v1/finance/teacher-eligibility?period=month&start=2026-08-01&end=2026-08-31&branch_id=1')
+            ->assertOk()->json('teachers.0.settlement.multiplier_parts'))->firstWhere('key', 'subject_count_threshold')['pct'];
+
+        // 10 x 10h one-on-one = 150 raw = 18.75 正課; 3 x 10h tutoring = 15 raw lifts 核薪總 to 20.625.
+        foreach (range(10, 19) as $day) {
+            $this->createAttendedSession($teacher->id, 'one_on_one', "2026-08-{$day}", '08:00', 600);
+        }
+        foreach ([21, 22, 23] as $day) {
+            $this->createAttendedSession($teacher->id, 'tutoring', "2026-08-{$day}", '08:00', 600, 'tutoring_attend', 'tutoring');
+        }
+        $this->assertEqualsWithDelta(0, $rate(), 0.0001);
+
+        // One more 10h one-on-one: 正課 = 165 raw = 20.625.
+        $this->createAttendedSession($teacher->id, 'one_on_one', '2026-08-20', '08:00', 600);
+        $this->assertEqualsWithDelta(5, $rate(), 0.0001);
+    }
+
     private function createDirector(): array
     {
         $user = User::create([
