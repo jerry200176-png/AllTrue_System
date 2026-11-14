@@ -17,7 +17,7 @@ export function focusFirstDialogField(event, media = (q) => window.matchMedia(q)
   if (!field) return;
   event.preventDefault();
   field.focus();
-  try { const end = String(field.value ?? '').length; field.setSelectionRange(end, end); } catch (_) { /* number and select fields have no caret */ }
+  try { const end = String(field.value ?? '').length; field.setSelectionRange(end, end); } catch { /* number and select fields have no caret */ }
 }
 
 /** After the chip question closes into the 補課／補登 form, focus goes into that form instead of back to the chip behind it. */
