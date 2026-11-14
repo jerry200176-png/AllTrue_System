@@ -74,7 +74,7 @@ describe('StudentsList loading and recovery states', () => {
     await flushPromises();
 
     expect(wrapper.find('.students-list-state--loading').exists()).toBe(false);
-    expect(wrapper.find('.student-row').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="student-row"]').exists()).toBe(true);
     wrapper.unmount();
   });
 
@@ -103,7 +103,7 @@ describe('StudentsList loading and recovery states', () => {
     await flushPromises();
 
     expect(studentListAttempt).toBe(2);
-    expect(wrapper.find('.student-row').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="student-row"]').exists()).toBe(true);
     expect(wrapper.find('.students-list-state--error').exists()).toBe(false);
     wrapper.unmount();
   });

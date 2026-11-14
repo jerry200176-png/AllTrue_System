@@ -21,7 +21,7 @@ describe('teacher precheck without hidden course disclosure', () => {
     const wrapper = shallowMount(StudentsList, { props: { branchId: 1 }, global: { renderStubDefaultSlot: true, stubs: { ConfirmDialogHost: false, ConfirmDialog: false, AlertDialog: false, AlertDialogContent: false, AlertDialogHeader: false, AlertDialogTitle: false, AlertDialogDescription: false, AlertDialogFooter: false, AlertDialogCancel: false, AlertDialogAction: false, DialogHeader: false, DialogFooter: false, CourseIntentChooser: false, AtDialog: false, teleport: true } } });
     try {
       await flushPromises();
-      await wrapper.find('.student-row').trigger('click');
+      await wrapper.find('[data-testid="student-row"]').trigger('click');
       await flushPromises();
       await wrapper.findAll('button').find(b => b.text().includes('新增課程')).trigger('click');
       await flushPromises();

@@ -542,8 +542,8 @@ const PAGES = [
     url: '/pilot-mount.html?page=students&mode=normal',
     names: NAMES,
     allNames: true,
-    rows: ['tr.student-row td:nth-child(3)'],
-    touch: ['[data-slot="page-actions"] button', '[data-guide="students-filters"] button', '[data-slot="filter-chip"]'],
+    rows: ['[data-testid="student-row"] td:nth-child(3)'],
+    touch: ['[data-slot="page-actions"] button', '[data-guide="students-filters"] button', '[data-slot="filter-chip"]', '[data-testid="student-course-disclosure"]', '[data-testid="student-row"] .am__trigger', '[data-testid="student-select"]', '[data-testid="student-select-all"]'],
     mock: async (page) => {
       await installApiMocks(page, 'normal', 'students');
       const data = NAMES.map((name, i) => ({ id: 3000 + i, name, grade: ['J1', 'J2', 'J3', 'E5'][i % 4], school: ['測試國中', '測試國民中學附設高級中等學校'][i % 2], parent_name: '測試家長', rfid: i % 3 ? `TEST${2000 + i}` : null, status: 'active', notes: '', line_bound: false }));

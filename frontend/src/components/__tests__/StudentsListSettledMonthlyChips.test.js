@@ -32,10 +32,10 @@ it('In-App #345: a settled monthly course with Stop=0 is labelled history, never
   const wrapper = shallowMount(StudentsList, { props: { branchId: 1 } });
   try {
     await flushPromises();
-    await wrapper.find('.student-row').trigger('click');
+    await wrapper.find('[data-testid="student-row"]').trigger('click');
     await flushPromises();
     // in-app #448: the row lists active contracts only; history folds into one 「+N 歷史」 chip.
-    const chips = wrapper.findAll('.student-row .subject-pill').map((c) => c.text());
+    const chips = wrapper.findAll('[data-testid="student-row"] [data-testid="student-subject-chip"], [data-testid="student-row"] [data-testid="history-chip"]').map((c) => c.text());
     expect(chips).toHaveLength(2);
     expect(chips[0]).toContain('數學');
     expect(chips.join('')).not.toContain('生物');

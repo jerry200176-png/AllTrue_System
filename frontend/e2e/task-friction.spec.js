@@ -189,7 +189,7 @@ test('director task friction baseline (read-only)', async ({ page }) => {
     await page.locator('#students-name-filter').fill(SEARCH_CHAR); // typing is not counted as a click
     if (!(await searched)) return { reached: false, note: 'search request never fired' };
     await page.locator('.students-list-state--loading, .students-refresh-state').first().waitFor({ state: 'hidden', timeout: 10_000 }).catch(() => {});
-    const first = page.locator('tr.student-row').first();
+    const first = page.locator('[data-testid="student-row"]').first();
     if (!(await shows(first))) return { reached: false, note: 'search returned no row (typed 1 char)' };
     await click(first);
     const reached = await page.locator('[id^="student-course-detail-"]').first().isVisible(SHORT).catch(() => false);

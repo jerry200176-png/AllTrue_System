@@ -36,7 +36,7 @@ describe('StudentsList row disclosure accessibility', () => {
   });
 
   it('makes the student row keyboard-operable with an explicit detail relationship', () => {
-    expect(source).toContain('class="student-row"');
+    expect(source).toContain('data-testid="student-row"');
     expect(source).toContain('tabindex="0"');
     expect(source).toContain(':aria-expanded="expandedId === student.id"');
     expect(source).toContain(':aria-controls="`student-course-detail-${student.id}`"');
@@ -46,8 +46,9 @@ describe('StudentsList row disclosure accessibility', () => {
   });
 
   it('keeps row-level keyboard handling away from selection and destructive actions', () => {
-    expect(source).toContain('class="student-select-cell" @click.stop @keydown.stop');
-    expect(source).toContain('@click.stop @keydown.stop class="action-cell"');
+    // the checkbox cell and the actions cell both stop click and keydown before they reach the row's expand handler
+    expect(source).toMatch(/<td :class="\[dataTable\.cell, col\.select, [^"]*"[^>]*@click\.stop @keydown\.stop>\s*<Checkbox/);
+    expect(source).toMatch(/<td :class="[^>]*@click\.stop @keydown\.stop>\s*<div class="tw:flex tw:items-center tw:justify-end tw:gap-1">\s*<button/);
   });
 
   it('keeps every native management action explicit as a non-submit control', () => {
@@ -56,7 +57,7 @@ describe('StudentsList row disclosure accessibility', () => {
   });
 
   it('provides an explicit course and enrollment disclosure button in each row', () => {
-    expect(source).toContain('class="btn-course-disclosure"');
+    expect(source).toContain('data-testid="student-course-disclosure"');
     expect(source).toContain('課程/購課');
     expect(source).toContain('收合課程與續課明細');
   });

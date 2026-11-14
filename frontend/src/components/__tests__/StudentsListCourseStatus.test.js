@@ -8,6 +8,9 @@ import StudentsList from '../../pages/StudentsList.vue';
 
 afterEach(() => vi.unstubAllGlobals());
 
+// Every chip in a row: a subject chip or the muted 「+N 歷史」 chip.
+const CHIPS = '[data-testid="student-subject-chip"], [data-testid="history-chip"]';
+
 const ordinary = {
   id: 7001, subject: 'Math', subject_name: '數學', status: 'active',
   payment_type: 'session', payment_status: 'unpaid', class_type: 'one_on_one',
@@ -27,7 +30,7 @@ async function withCourses(courses, assertions) {
   const wrapper = shallowMount(StudentsList, { props: { branchId: 1 }, global: { renderStubDefaultSlot: true } });
   try {
     await flushPromises();
-    await wrapper.find('.student-row').trigger('click');
+    await wrapper.find('[data-testid="student-row"]').trigger('click');
     await flushPromises();
     await assertions(wrapper);
     expect(fetchMock.mock.calls.every(([, options]) => !options?.method || options.method === 'GET')).toBe(true);
@@ -44,12 +47,12 @@ describe('In-App #353: existing course history stays distinct from current balan
   ])('labels an existing %s row without hiding its recorded balance or reconciliation task', async (closed_reason, label) => {
     await withCourses([{ ...ordinary, closed_reason, history_reason: closed_reason }], async (wrapper) => {
       if (closed_reason === 'settled_pending') {
-        expect(wrapper.find('.subject-pill').exists()).toBe(false);
+        expect(wrapper.find(CHIPS).exists()).toBe(false);
         wrapper.findComponent({ name: 'FilterChip' }).vm.$emit('click');
         await flushPromises();
       }
       // in-app #448: history is one muted 「+N 歷史」 chip, never a per-contract chip.
-      expect(wrapper.findAll('.subject-pill')).toHaveLength(1);
+      expect(wrapper.findAll(CHIPS)).toHaveLength(1);
       expect(wrapper.find('[data-testid="history-chip"]').text()).toBe('+1 歷史');
       expect(wrapper.findAll('.student-course-card')).toHaveLength(0);
       await wrapper.find('.sl-history-toggle').trigger('click');
@@ -77,7 +80,7 @@ describe('In-App #353: existing course history stays distinct from current balan
       { ...ordinary, id: 7002, subject: 'English', PackageID: 9001, package_total_sessions: 8, package_remaining_sessions: 6 },
       { ...ordinary, id: 7003, subject: 'Science', payment_type: 'monthly', monthly_sessions: 4 },
     ], (wrapper) => {
-      const pills = wrapper.findAll('.subject-pill');
+      const pills = wrapper.findAll(CHIPS);
       expect(pills).toHaveLength(3);
       expect(pills.map(p => p.find('strong').text())).toEqual(['0堂', '共用方案', '每月4堂']);
       expect(pills.every(p => !p.text().includes('歷史'))).toBe(true);
