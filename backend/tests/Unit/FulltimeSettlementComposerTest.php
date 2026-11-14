@@ -8,14 +8,10 @@ use PHPUnit\Framework\TestCase;
 class FulltimeSettlementComposerTest extends TestCase
 {
     /**
-     * Regression guard: subject_count_bonus.amount/rate are pinned by
-     * TeacherEligibilityPolicyTest to the announcement's illustrative example
-     * row (rate=15 for count=20, baking in an assumed +10% from holiday).
-     * The composer must NOT sum that rate into the real multiplier on top of
-     * the teacher's actual holiday_16_hours.rate, or the +10% gets counted
-     * twice.
+     * The composer applies the multiplier itself: the subject component's own
+     * amount/rate must not be added on top of the tier amounts in its metrics.
      */
-    public function test_does_not_double_count_subject_count_bonus_illustrative_rate(): void
+    public function test_does_not_double_count_subject_count_bonus_component_amount(): void
     {
         $components = [
             'weekly_16_segments' => ['status' => 'qualifies', 'amount' => 4000, 'rate' => 0],
@@ -24,16 +20,16 @@ class FulltimeSettlementComposerTest extends TestCase
             'special_performance' => ['status' => 'qualifies', 'amount' => 0, 'rate' => 0],
             'deductions' => ['status' => 'qualifies', 'amount' => 0, 'rate' => 0],
             'subject_count_bonus' => [
-                'status' => 'qualifies', 'amount' => 16790, 'rate' => 15, // illustrative row for count=20
-                'metrics' => ['subject_count' => 20, 'subject_count_bonus' => 10000, 'one_to_three_bonus' => 4600, 'multiplier' => 115],
+                'status' => 'qualifies', 'amount' => 14600, 'rate' => 15,
+                'metrics' => ['subject_count' => 20, 'subject_count_bonus' => 10000, 'one_to_three_bonus' => 4600, 'subject_count_rate' => 5],
             ],
         ];
 
         $result = FulltimeSettlementComposer::compose($components, 33000.0);
 
-        // multiplier = 100 + 0 (holiday, actually not_qualifies) + 0 + 0 + 0 + 5 (subject_count >= 20) = 105
+        // multiplier = 100 + 0 (holiday, actually not_qualifies) + 0 + 0 + 0 + 5 (正課 >= 20) = 105
         $this->assertSame(105.0, $result['multiplier_pct']);
-        // weighted = (10000 + 4600) * 1.05 = 15330, NOT 16790 (the illustrative 115% row)
+        // weighted = (10000 + 4600) * 1.05 = 15330
         $this->assertSame(15330.0, $result['weighted_bonus_amount']);
         $this->assertSame(4000.0, $result['weekly_segment_bonus_amount']);
         $this->assertSame(33000.0 + 4000 + 15330, $result['total_payout']);
@@ -49,7 +45,7 @@ class FulltimeSettlementComposerTest extends TestCase
             'deductions' => ['status' => 'qualifies', 'amount' => 0, 'rate' => -10],
             'subject_count_bonus' => [
                 'status' => 'qualifies', 'amount' => 0, 'rate' => 0,
-                'metrics' => ['subject_count' => 25, 'subject_count_bonus' => 17500, 'one_to_three_bonus' => 6600],
+                'metrics' => ['subject_count' => 25, 'subject_count_bonus' => 17500, 'one_to_three_bonus' => 6600, 'subject_count_rate' => 5],
             ],
         ];
 
@@ -60,18 +56,42 @@ class FulltimeSettlementComposerTest extends TestCase
         $this->assertSame(round((17500 + 6600) * 1.13, 2), $result['weighted_bonus_amount']);
     }
 
-    public function test_subject_count_below_threshold_gets_no_extra_multiplier(): void
+    /** 核薪總科目數 alone never adds the +5%: only the policy's 正課 rate does. */
+    public function test_payroll_total_over_twenty_without_the_regular_rate_gets_no_extra_multiplier(): void
     {
         $components = [
             'subject_count_bonus' => [
                 'status' => 'qualifies', 'amount' => 0, 'rate' => 0,
-                'metrics' => ['subject_count' => 19, 'subject_count_bonus' => 9000, 'one_to_three_bonus' => 4200],
+                'metrics' => ['subject_count' => 20.2813, 'subject_count_bonus' => 10000, 'one_to_three_bonus' => 3050, 'subject_count_rate' => 0],
             ],
         ];
 
-        $result = FulltimeSettlementComposer::compose($components, 0.0);
+        $result = FulltimeSettlementComposer::compose($components, 0.0, ['payroll_total' => 20.2813]);
 
         $this->assertSame(100.0, $result['multiplier_pct']);
+    }
+
+    /** HQ settlement sheet rows: floor((科目數獎金 + 一對三獎金) x 倍率). */
+    public function test_hq_sheet_rows_weighted_bonus(): void
+    {
+        $compose = fn (int $subject, int $oneToThree, int $twentyRate, float $holiday, float $weekday, float $admin, float $special) => FulltimeSettlementComposer::compose([
+            'holiday_16_hours' => ['status' => 'qualifies', 'amount' => 0, 'rate' => $holiday],
+            'weekday_afternoon' => ['status' => 'qualifies', 'amount' => 0, 'rate' => $weekday],
+            'special_performance' => ['status' => 'qualifies', 'amount' => 0, 'rate' => $special],
+            'admin_allowance' => ['status' => 'qualifies', 'amount' => 0, 'rate' => $admin],
+            'subject_count_bonus' => [
+                'status' => 'qualifies', 'amount' => $subject + $oneToThree, 'rate' => 0,
+                'metrics' => ['subject_count' => 1, 'subject_count_bonus' => $subject, 'one_to_three_bonus' => $oneToThree, 'subject_count_rate' => $twentyRate],
+            ],
+        ], 0.0);
+
+        $first = $compose(6000, 2450, 0, 10, 1.5, 0, 0);
+        $this->assertSame(111.5, $first['multiplier_pct']);
+        $this->assertSame(9421.0, $first['weighted_bonus_amount']);
+
+        $second = $compose(16000, 4250, 5, 10, 2.25, 8, 5);
+        $this->assertSame(130.25, $second['multiplier_pct']);
+        $this->assertSame(26375.0, $second['weighted_bonus_amount']);
     }
 
     public function test_screenshot_row_formula_without_unspecified_cash_adjustments(): void

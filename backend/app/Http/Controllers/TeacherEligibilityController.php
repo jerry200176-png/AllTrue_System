@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Services\SubjectUnitsTimelineService;
 use App\Services\TeacherEligibilityPolicy;
 use App\Support\AttendanceStatus;
 use App\Support\FulltimePayrollLockStore;
@@ -763,63 +764,29 @@ class TeacherEligibilityController extends Controller
             });
     }
 
+    /**
+     * Subject units come from the read model behind the 科目數統計 page, so the payroll count is
+     * the number that page shows for the teacher (all campuses). 一對三 lessons are part of 正課.
+     */
     private function globalSubjectUnitsByTeacher(array $teacherIds, Carbon $start, Carbon $end): array
     {
-        $hasLearningRecords = Schema::hasTable('LearningRecord');
-        $hasAttendance = Schema::hasTable('ClassSession') && Schema::hasTable('StudentClass') && Schema::hasTable('StudentSingIn');
-        if (!$hasLearningRecords && !$hasAttendance) return collect($teacherIds)->mapWithKeys(fn ($id) => [(int) $id => null])->all();
+        // ponytail: builds every teacher's entries company-wide; give the service a teacher filter if this page gets slow.
+        $contributions = collect(app(SubjectUnitsTimelineService::class)->build($start, $end, [])['teacher_contributions'])
+            ->keyBy('teacher_id');
 
-        $buckets = collect($teacherIds)->mapWithKeys(fn ($id) => [(int) $id => ['regular' => 0.0, 'tutoring_trial' => 0.0, 'one_to_three' => 0.0]])->all();
-        $logged = [];
-        $unknown = [];
-        $add = function ($row, float $weight, string $bucket) use (&$buckets, &$unknown): void {
-            $id = (int) $row->teacher_id;
-            if (!isset($buckets[$id])) return;
-            $hours = $this->subjectRecordHours($row);
-            if ($hours === null) { $unknown[$id] = true; return; }
-            $buckets[$id][$bucket] += $hours * $weight;
-        };
-
-        if ($hasLearningRecords) {
-            $query = DB::table('LearningRecord as lr')->join('StudentClass as sc', 'sc.ID', '=', 'lr.StudentClassID')->join('Student as s', 's.id', '=', 'sc.StudentID')
-                ->whereIn('lr.TeacherID', $teacherIds)->where('lr.Status', 'approved')->whereNull('lr.VoidedAt')
-                ->whereBetween('lr.SessionDate', [$start->toDateString(), $end->toDateString()])
-                ->select(['lr.TeacherID as teacher_id', 'lr.ClassSessionID as class_session_id', 'lr.StartTime as start_time', 'lr.EndTime as end_time', 'lr.SessionDate as session_date', 'sc.ClassType as class_type', 'sc.SessionDuration as session_duration', 'sc.week1', 'sc.week2', 'sc.week3', 'sc.week4', 'sc.week5', 'sc.week6', 'sc.duration1', 'sc.duration2', 'sc.duration3', 'sc.duration4', 'sc.duration5', 'sc.duration6']);
-            if (Schema::hasColumn('LearningRecord', 'ExcludeFromSubjectCount')) $query->where(fn ($builder) => $builder->whereNull('lr.ExcludeFromSubjectCount')->orWhere('lr.ExcludeFromSubjectCount', 0));
-            foreach ($query->get() as $row) {
-                $type = strtolower((string) ($row->class_type ?? 'one_on_one'));
-                if (in_array($type, ['trial', 'tutoring'], true)) continue;
-                if ($row->class_session_id !== null) $logged[] = (int) $row->class_session_id;
-                $add($row, $type === 'one_on_two' ? 0.75 : ($type === 'one_on_three' ? 0.5 : 1.5), $type === 'one_on_three' ? 'one_to_three' : 'regular');
-            }
-        }
-
-        if ($hasAttendance) {
-            $base = fn () => DB::table('ClassSession as cs')->join('StudentClass as sc', 'sc.ID', '=', 'cs.StudentClassID')->join('StudentSingIn as si', 'si.ClassSessionID', '=', 'cs.id')->join('Student as s', 's.id', '=', 'sc.StudentID')
-                ->whereIn('sc.TeacherID', $teacherIds)->whereBetween('cs.SessionDate', [$start->toDateString(), $end->toDateString()])->whereNull('si.VoidedAt')->whereIn('si.Status', $this->weeklyAttendanceStatuses())->whereNotIn('cs.Status', ['cancelled', 'voided', 'leave', 'leave_adjusted', 'leave_requested', 'excused']);
-            $regular = $base()->whereNotIn('sc.ClassType', ['trial', 'tutoring'])->when($logged !== [], fn ($builder) => $builder->whereNotIn('cs.id', array_values(array_unique($logged))))->select(['sc.TeacherID as teacher_id', 'cs.id as class_session_id', 'cs.StartTime as start_time', 'cs.EndTime as end_time', 'cs.SessionDate as session_date', 'sc.ClassType as class_type', 'sc.SessionDuration as session_duration', 'sc.week1', 'sc.week2', 'sc.week3', 'sc.week4', 'sc.week5', 'sc.week6', 'sc.duration1', 'sc.duration2', 'sc.duration3', 'sc.duration4', 'sc.duration5', 'sc.duration6']);
-            foreach ($regular->get()->unique('class_session_id') as $row) { $type = strtolower((string) ($row->class_type ?? 'one_on_one')); $add($row, $type === 'one_on_two' ? 0.75 : ($type === 'one_on_three' ? 0.5 : 1.5), $type === 'one_on_three' ? 'one_to_three' : 'regular'); }
-            foreach (['tutoring', 'trial'] as $type) {
-                $query = $base()->where('sc.ClassType', $type)->select(['sc.TeacherID as teacher_id', 'cs.id as class_session_id', 'cs.StartTime as start_time', 'cs.EndTime as end_time', 'cs.SessionDate as session_date', 'sc.SessionDuration as session_duration', 'sc.week1', 'sc.week2', 'sc.week3', 'sc.week4', 'sc.week5', 'sc.week6', 'sc.duration1', 'sc.duration2', 'sc.duration3', 'sc.duration4', 'sc.duration5', 'sc.duration6']);
-                foreach ($query->get()->unique('class_session_id') as $row) $add($row, 0.5, 'tutoring_trial');
-            }
-        }
-
-        return collect($buckets)->mapWithKeys(function ($parts, $teacherId) use ($unknown) {
-            if (isset($unknown[$teacherId])) return [$teacherId => null];
-            $regular = round($parts['regular'], 4);
-            $tutoringTrial = round($parts['tutoring_trial'], 4);
-            // Keep every subject-count bucket raw. The /8 divisor belongs only
-            // to the complete monthly payroll total below; applying it here
-            // makes the standalone one-to-three input disagree with the
-            // founder-approved final-aggregation rule.
-            $oneToThree = round($parts['one_to_three'], 4);
-            $payrollRawTotal = $parts['regular'] + $parts['tutoring_trial'];
-            return [$teacherId => [
+        return collect($teacherIds)->mapWithKeys(function ($teacherId) use ($contributions) {
+            $row = $contributions->get((int) $teacherId, []);
+            $regular = (float) ($row['regular_subject_count'] ?? 0);
+            $tutoringTrial = (float) ($row['tutoring_trial_subject_count'] ?? 0);
+            // Buckets stay raw; the /8 divisor applies once, to the complete monthly total.
+            $payrollRawTotal = (float) ($row['raw_subject_count'] ?? 0);
+            return [(int) $teacherId => [
                 'regular' => $regular,
                 'tutoring_trial' => $tutoringTrial,
-                'one_to_three' => $oneToThree,
+                'one_to_three' => (float) ($row['one_to_three_count'] ?? 0),
                 'payroll_total' => round($payrollRawTotal / 8, 4),
+                // 正課 only (不含輔導／試聽), same /8 scale: the "20科 +5%" rule reads this.
+                'regular_total' => round($regular / 8, 4),
                 'payroll_raw_total' => $payrollRawTotal,
             ]];
         })->all();
@@ -883,44 +850,6 @@ class TeacherEligibilityController extends Controller
                 'effective_from' => (string) $rows->last()->effective_from,
             ])
             ->all();
-    }
-
-    private function subjectRecordHours($row): ?float
-    {
-        $weekday = null;
-        if (!empty($row->session_date)) {
-            try {
-                $weekday = Carbon::parse($row->session_date)->isoWeekday();
-            } catch (\Throwable) {
-                $weekday = null;
-            }
-        }
-
-        if ($weekday !== null) {
-            $weekField = 'week' . $weekday;
-            $durationField = 'duration' . $weekday;
-            if ((int) ($row->{$weekField} ?? 0) === $weekday && (int) ($row->{$durationField} ?? 0) >= 30) {
-                return (int) $row->{$durationField} / 60;
-            }
-        }
-
-        if ((int) ($row->session_duration ?? 0) >= 30) {
-            return (int) $row->session_duration / 60;
-        }
-
-        if (!empty($row->start_time) && !empty($row->end_time)) {
-            try {
-                $start = Carbon::parse((string) $row->start_time);
-                $end = Carbon::parse((string) $row->end_time);
-                if ($end->gt($start)) {
-                    return (int) $start->diffInMinutes($end, true) / 60;
-                }
-            } catch (\Throwable) {
-                // Fall through to the same documented default as FinanceController.
-            }
-        }
-
-        return null;
     }
 
     private function weekdayHours($schedules, Carbon $start, Carbon $end): array

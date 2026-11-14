@@ -258,11 +258,51 @@ class TeacherEligibilityPolicyTest extends TestCase
     public function test_subject_count_uses_exact_attachment_row_and_rejects_out_of_range(): void
     {
         $row = $this->policy->subjectCountBonus(20);
+        $lastRow = $this->policy->subjectCountBonus(50.9);
         $outOfRange = $this->policy->subjectCountBonus(51);
 
-        $this->assertSame(16790, $row['amount']);
-        $this->assertSame(115, $row['metrics']['multiplier']);
+        $this->assertSame(10000, $row['metrics']['subject_count_bonus']);
+        // No 一對三 count given means no 一對三獎金; the attachment's estimate column is not a rule.
+        $this->assertSame(0, $row['metrics']['one_to_three_bonus']);
+        $this->assertSame(10000, $row['amount']);
+        $this->assertSame(0, $row['rate']);
+        $this->assertSame(55000, $lastRow['metrics']['subject_count_bonus']);
         $this->assertSame(TeacherEligibilityPolicy::REVIEW, $outOfRange['status']);
+    }
+
+    /**
+     * Rows read off the HQ settlement sheet (numbers only):
+     * [核薪總科目數, 一對三總計, 正課科目數, 科目數獎金, 一對三獎金, 正課20科倍率].
+     */
+    public function test_hq_sheet_rows_floor_the_subject_count_and_pay_one_to_three_per_unit(): void
+    {
+        $rows = [
+            [16.9063, 24.5, 15.2813, 6000, 2450, 0],
+            [15.9688, 22.25, 15.0, 5500, 2225, 0],
+            [19.5625, 30.25, 17.0938, 9000, 3025, 0],
+            [9.1875, 13.5, 8.5625, 0, 1350, 0],
+            [1.625, 2.5, 1.5, 0, 250, 0],
+            // 核薪總 is over 20 but 正課 alone is not: no +5%.
+            [20.2813, 30.5, 18.0313, 10000, 3050, 0],
+            [24.1875, 42.5, 20.3438, 16000, 4250, 5],
+        ];
+
+        foreach ($rows as [$payrollTotal, $oneToThree, $regularTotal, $subjectBonus, $oneToThreeBonus, $rate]) {
+            $result = $this->policy->subjectCountBonus($payrollTotal, $oneToThree, ['regular_total' => $regularTotal]);
+
+            $this->assertSame(TeacherEligibilityPolicy::QUALIFIES, $result['status']);
+            $this->assertSame($subjectBonus, $result['metrics']['subject_count_bonus'], "科目數獎金 for {$payrollTotal}");
+            $this->assertSame($oneToThreeBonus, $result['metrics']['one_to_three_bonus'], "一對三獎金 for {$oneToThree}");
+            $this->assertSame($rate, $result['metrics']['subject_count_rate'], "正課20科倍率 for {$regularTotal}");
+            $this->assertSame($subjectBonus + $oneToThreeBonus, $result['amount']);
+        }
+    }
+
+    public function test_twenty_subject_rate_needs_the_regular_count(): void
+    {
+        $this->assertSame(0, $this->policy->subjectCountBonus(25)['metrics']['subject_count_rate']);
+        $this->assertSame(5, $this->policy->subjectCountBonus(25, 0, ['regular_total' => 20])['metrics']['subject_count_rate']);
+        $this->assertSame(0, $this->policy->subjectCountBonus(25, 0, ['regular_total' => 19.9999])['metrics']['subject_count_rate']);
     }
 
     public function test_missing_subject_count_is_review_instead_of_zero_bonus(): void
@@ -274,7 +314,7 @@ class TeacherEligibilityPolicyTest extends TestCase
         $this->assertSame(0, $result['amount']);
     }
 
-    public function test_fractional_subject_count_interpolates_adjacent_table_rows(): void
+    public function test_fractional_subject_count_below_ten_has_no_subject_bonus(): void
     {
         $result = $this->policy->subjectCountBonus(5.625, 4.5);
 

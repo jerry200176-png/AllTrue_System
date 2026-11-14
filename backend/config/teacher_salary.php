@@ -17,6 +17,13 @@ return [
     'student_achievement_max_months' => 3,
     'deduction_rate' => -10.0,
     'admin_allowance_rate_cap' => 10.0,
+    // 一對三獎金 = 一對三總計 x this amount.
+    'one_to_three_unit_bonus' => 100,
+    // 正課科目數 (不含輔導) at or above the threshold adds this % to the teacher multiplier.
+    'subject_count_rate_threshold' => 20.0,
+    'subject_count_rate_bonus' => 5.0,
+    // Columns: [科目數獎金, 一對三獎金(預估), 科目數倍率, 加權後獎金]. Only column 0 is a rule,
+    // looked up by floor(核薪總科目數); the rest are the announcement's illustration.
     'subject_count_table' => [
         1 => [0, 100, 110, 110], 2 => [0, 200, 110, 220], 3 => [0, 300, 110, 330],
         4 => [0, 400, 110, 440], 5 => [0, 500, 110, 550], 6 => [0, 600, 110, 660],
