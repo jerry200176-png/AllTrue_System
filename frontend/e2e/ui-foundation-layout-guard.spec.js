@@ -443,6 +443,92 @@ const COURSE_MGMT_EDIT_DIALOG = {
   },
 };
 
+// 課程查找 slice 7b (issue 4989): 更正未收款堂數, 轉成多科共用, the 預排日期 chip question, 暫停課程 and 刪除課程 (all shared Dialog).
+// One entry each, same checks as the 編輯課程 dialog: inside the viewport at every width and 字級, nothing sticks out sideways, focus is inside,
+// every button and field is at least 44px, the footer stays on screen, role=dialog with a name.
+const COURSE_DIALOG_ROW = { id: 100, data_source: 'laravel', branch_name: '大安校', room_name: 'A 教室', student_id: 9100, student_name: '歐陽子晴', teacher_id: 1, teacher_name: '王老師', subject: 'math', subject_name: '國中數學', first_class_date: '2026-11-01', status: 'active', ScheduleMode: 'count', payment_type: 'session', sessions_purchased: 8, sessions_used: 0, remaining_sessions: 8, payment_status: 'unpaid', class_type: 'one_on_one', rate_per_30min: 500, start_time: '16:00', end_time: '18:00', days_of_week: [2], duration_hours: 2 };
+const courseDialogCalls = { convert: [], deleted: 0, correction: [] };
+async function mockCourseDialogs(page) {
+  courseDialogCalls.convert = []; courseDialogCalls.deleted = 0; courseDialogCalls.correction = [];
+  page.on('dialog', (d) => d.accept()); // the page still ends 轉成多科共用 with a native notice
+  await page.route('**/api/v1/**', (r) => {
+    const p = new URL(r.request().url()).pathname;
+    const method = r.request().method();
+    if (method === 'POST' && p.endsWith('/billing-correction')) {
+      const body = r.request().postDataJSON();
+      courseDialogCalls.correction.push(body);
+      return json(r, body.preview
+        ? { requires_confirmation: true, confirmation_token: 'a'.repeat(64), old_session_count: 8, new_session_count: 3, old_charge: 4000, new_charge: 1500, affected_scheduled_sessions: [{ session_id: 1, session_date: '2026-11-24', start_time: '16:00', end_time: '18:00' }] }
+        : { new_session_count: 3, new_charge: 1500 });
+    }
+    if (method === 'POST' && p.endsWith('/convert-to-package')) { courseDialogCalls.convert.push(r.request().postDataJSON()); return json(r, { message: '已轉成多科共用方案', next_step: '' }); }
+    if (method === 'POST' && p.endsWith('/session-dates')) return json(r, { 100: { materialized: [], projected: ['2026-11-24', '2026-12-01', '2026-12-08'].map((d) => ({ session_date: d, start_time: '16:00', end_time: '18:00', student_class_id: 100, kind: 'projected' })) } });
+    if (method === 'DELETE' && p === '/api/v1/student-classes/100') { courseDialogCalls.deleted += 1; return json(r, { ok: true }); }
+    if (p.endsWith('/package-conversion-preview')) return json(r, { can_convert: true, student_class: { remaining_sessions: 8 }, next_step: '確認後由受控流程轉換。', blocking_reasons: [] });
+    if (p === '/api/v1/student-classes') return json(r, { data: [COURSE_DIALOG_ROW], total: 1, current_page: 1, last_page: 1 });
+    if (p.endsWith('/editability')) return json(r, { reasons: [], locked_fields: [] });
+    if (p.endsWith('/teachers')) return json(r, { data: [{ id: 1, username: '王老師', branch_id: 1, branch_ids: [1], status: 'active' }, { id: 2, username: '林老師', branch_id: 1, branch_ids: [1], status: 'active' }] });
+    return json(r, { data: [] });
+  });
+}
+const courseRowMenu = (page) => page.locator('.course-row .action-menu-trigger').first();
+async function openCourseRowAction(page, name) {
+  await courseRowMenu(page).scrollIntoViewIfNeeded();
+  await courseRowMenu(page).click();
+  // dispatchEvent: at 768x1024 the long 更多 menu runs past the bottom edge, so a pointer click cannot reach 暫停課程 / 刪除課程 (menu position is not this slice's).
+  await page.getByRole('menuitem', { name }).first().dispatchEvent('click');
+}
+const COURSE_DIALOGS = {
+  billing: { key: 'billing dialog', testid: 'billing-correction-dialog', open: async (page) => { await openCourseRowAction(page, '合約／堂次調整'); await page.getByRole('button', { name: /未付款，更正堂數/ }).click(); }, ready: '更正後購買堂數' },
+  package: { key: 'package dialog', testid: 'package-conversion-dialog', open: async (page) => { await openCourseRowAction(page, '轉多科方案預檢'); await page.getByRole('button', { name: '繼續轉成多科共用方案' }).click(); }, ready: '方案名稱' },
+  chip: { key: 'chip dialog', testid: 'chip-action-dialog', open: async (page) => { await openCourseRowAction(page, '詳情'); const chip = page.locator('.date-chip--projected').first(); await chip.scrollIntoViewIfNeeded(); await chip.click(); }, ready: '這是預排日期，尚未建立正式堂次', small: true },
+  pause: { key: 'pause dialog', testid: 'pause-confirm-dialog', open: (page) => openCourseRowAction(page, '暫停課程'), ready: '暫停後的影響', small: true },
+  del: { key: 'delete dialog', testid: 'delete-course-dialog', open: (page) => openCourseRowAction(page, '刪除課程'), ready: '刪除後無法復原，所有堂次紀錄將一併移除，未繳帳單會一併作廢。', small: true },
+};
+const courseDialogEntry = (d) => ({
+  ...COURSE_MGMT,
+  key: `course-mgmt (${d.key})`,
+  names: ['歐陽子晴'],
+  allNames: false,
+  rows: [],
+  touch: [`[data-testid="${d.testid}"] button`, `[data-testid="${d.testid}"] input:not([type="checkbox"])`, `[data-testid="${d.testid}"] select`, `[data-testid="${d.testid}"] textarea`, `[data-testid="${d.testid}"] label:has(input[type="checkbox"])`],
+  mock: mockCourseDialogs,
+  setup: async (page) => {
+    await page.getByText('歐陽子晴', { exact: true }).first().waitFor({ state: 'attached' });
+    await page.waitForLoadState('networkidle');
+    await d.open(page);
+    await expect(page.locator(`[data-testid="${d.testid}"]`)).toBeVisible();
+    await expect(page.getByText(d.ready, { exact: true }).first()).toBeVisible();
+    await page.waitForTimeout(400); // open animation
+  },
+  extra: {
+    arg: d.testid,
+    run: (testid) => {
+      const dialog = document.querySelector(`[data-testid="${testid}"]`);
+      const box = dialog.getBoundingClientRect();
+      const buttons = [...dialog.querySelectorAll('button')].map((b) => b.getBoundingClientRect());
+      const sticks = [...dialog.querySelectorAll('*')].filter((el) => { const r = el.getBoundingClientRect(); return r.width > 0 && (r.right > box.right + 1 || r.left < box.left - 1) && getComputedStyle(el).position !== 'absolute'; }).map((el) => `${el.tagName}.${String(el.className).slice(0, 40)}`);
+      const scroller = [...dialog.querySelectorAll('*')].find((el) => getComputedStyle(el).overflowY === 'auto');
+      return {
+        inView: box.left >= 0 && box.right <= window.innerWidth && box.top >= 0 && box.bottom <= window.innerHeight + 1,
+        focusInside: dialog.contains(document.activeElement), sticks,
+        bodyOverflowX: scroller ? scroller.scrollWidth - scroller.clientWidth : 0,
+        footerOnScreen: buttons.length > 0 && buttons.every((r) => r.bottom <= window.innerHeight && r.top >= box.top),
+        modal: dialog.getAttribute('role') === 'dialog' && !!dialog.getAttribute('aria-labelledby') && !!dialog.getAttribute('aria-describedby'),
+      };
+    },
+    assert: (r) => {
+      expect(r.inView, 'the dialog sits inside the viewport').toBe(true);
+      expect(r.focusInside, 'focus is inside the dialog').toBe(true);
+      expect(r.sticks, 'nothing inside the dialog sticks out sideways').toEqual([]);
+      expect(r.bodyOverflowX, 'the dialog body does not scroll sideways').toBeLessThanOrEqual(1);
+      expect(r.footerOnScreen, 'the buttons stay on screen').toBe(true);
+      expect(r.modal, 'role=dialog with a name and a description').toBe(true);
+    },
+  },
+});
+const COURSE_MGMT_DIALOG_ENTRIES = Object.values(COURSE_DIALOGS).map(courseDialogEntry);
+
 /** PAGES: { key, url, mock(page), names (exact texts that must stay on one line), rows (selector groups whose visible members must share a left edge), setup?(page) } */
 const PAGES = [
   {
@@ -570,6 +656,7 @@ const PAGES = [
   COURSE_MGMT_BILLING,
   COURSE_MGMT_BILLING_DARK,
   COURSE_MGMT_EDIT_DIALOG,
+  ...COURSE_MGMT_DIALOG_ENTRIES,
   COURSE_MGMT_STATES,
   {
     key: 'teacher-eligibility',
@@ -656,7 +743,7 @@ for (const entry of PAGES) {
           expect(m.small, '(d) a touch target is smaller than 44px').toEqual([]);
         }
         expect(m.scrollWidth, '(b) the page body scrolls sideways').toBeLessThanOrEqual(m.innerWidth + 1);
-        if (entry.extra) entry.extra.assert(await page.evaluate(entry.extra.run), vp);
+        if (entry.extra) entry.extra.assert(await page.evaluate(entry.extra.run, entry.extra.arg), vp);
         for (const group of m.rowEdges) {
           if (group.lefts.length < 2) continue;
           expect(Math.max(...group.lefts) - Math.min(...group.lefts), `(c) rows of ${group.selector} start at different x: ${group.lefts.join(', ')}`).toBeLessThanOrEqual(1);
@@ -745,5 +832,189 @@ for (const child of [
     await expect(overlay).toHaveCount(0);
     await expect(dialog).toBeVisible();
     await expect(dialog.locator('textarea').first()).toHaveValue('先寫一句備註');
+  });
+}
+
+// 課程查找 slice 7b: keyboard behaviour and child-modal order of the five dialogs above.
+// Each action that opens something on top (a question, a toast, a legacy form) is checked for who is topmost and who holds focus.
+const topmost = (locator) => locator.evaluate((el) => { const r = el.getBoundingClientRect(); const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2); return hit === el || el.contains(hit); });
+const focusIn = (locator) => locator.evaluate((el) => el.contains(document.activeElement));
+async function openCourseDialog(page, d, { width = 375, height = 800 } = {}) {
+  await page.setViewportSize({ width, height });
+  await mockCourseDialogs(page);
+  await page.goto('/pilot-mount.html?page=course&mode=normal');
+  await expect(page.locator('html')).toHaveAttribute('data-pilot-ready', '1', { timeout: 15_000 });
+  await page.getByText('歐陽子晴', { exact: true }).first().waitFor({ state: 'attached' });
+  await page.waitForLoadState('networkidle');
+  await d.open(page);
+  const dialog = page.locator(`[data-testid="${d.testid}"]`);
+  await expect(dialog).toBeVisible();
+  await page.waitForTimeout(400);
+  return dialog;
+}
+const tabStaysInside = async (page, testid, n = 40) => {
+  for (let i = 0; i < n; i += 1) {
+    await page.keyboard.press('Tab');
+    expect(await page.evaluate((id) => document.querySelector(`[data-testid="${id}"]`).contains(document.activeElement), testid), `Tab ${i + 1} stays inside the dialog`).toBe(true);
+  }
+};
+
+// The two form dialogs: Tab trap, outside click, Esc / 取消 ask first when a field changed (and keep the typed text when the answer is no),
+// the question is the topmost layer and holds focus, an untouched form closes at once, focus returns to the row's 更多 button.
+for (const form of [
+  { d: COURSE_DIALOGS.billing, field: (dialog) => dialog.getByLabel('更正原因'), text: '主任確認本期只收三堂' },
+  { d: COURSE_DIALOGS.package, field: (dialog) => dialog.getByLabel('方案名稱'), text: '歐陽子晴英數共用方案' },
+]) {
+  test(`layout guard: course-mgmt (${form.d.key}) focus trap, outside click, dirty Esc and 取消, return focus`, async ({ page }) => {
+    const dialog = await openCourseDialog(page, form.d);
+    await tabStaysInside(page, form.d.testid);
+    await page.mouse.click(180, 8); // the dimmed page above the sheet
+    await expect(dialog).toBeVisible();
+    const field = form.field(dialog);
+    await field.fill(form.text);
+    await page.keyboard.press('Escape');
+    const ask = page.getByRole('alertdialog');
+    await expect(ask).toContainText('放棄未儲存的變更？');
+    expect(await topmost(ask.getByRole('button', { name: '取消', exact: true })), 'the question is above the dialog').toBe(true);
+    expect(await focusIn(ask), 'the question holds focus').toBe(true);
+    await ask.getByRole('button', { name: '取消', exact: true }).click();
+    await expect(ask).toHaveCount(0);
+    await expect(dialog).toBeVisible();
+    await expect(field).toHaveValue(form.text);
+    await dialog.getByRole('button', { name: '取消', exact: true }).click();
+    await expect(page.getByRole('alertdialog')).toContainText('放棄未儲存的變更？');
+    await page.getByRole('alertdialog').getByRole('button', { name: '放棄變更' }).click();
+    await expect(dialog).toHaveCount(0);
+    await expect(courseRowMenu(page)).toBeFocused();
+    // untouched: Esc closes at once, no question
+    await form.d.open(page);
+    await expect(dialog).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(dialog).toHaveCount(0);
+    await expect(page.getByRole('alertdialog')).toHaveCount(0);
+    await expect(courseRowMenu(page)).toBeFocused();
+  });
+}
+
+// 更正未收款堂數: 預覽更正內容 with an empty reason shows the toast; it must sit above the dialog and the dialog keeps its text.
+// With a reason the preview call goes out with exactly the typed numbers, and the dialog switches to 確認並取消超額預排.
+test('layout guard: course-mgmt (billing dialog) toast sits above, preview then confirm send the typed numbers', async ({ page }) => {
+  const dialog = await openCourseDialog(page, COURSE_DIALOGS.billing);
+  await dialog.getByLabel('更正後購買堂數').fill('3');
+  await dialog.getByLabel('更正後總費用').fill('1500');
+  await dialog.getByRole('button', { name: '預覽更正內容' }).click();
+  const toast = page.getByText('請填寫有效堂數、金額與更正原因。');
+  await expect(toast).toBeVisible();
+  const z = await toast.evaluate((el) => { for (let n = el; n; n = n.parentElement) { const cs = getComputedStyle(n); if (cs.position === 'fixed' && cs.zIndex !== 'auto') return Number(cs.zIndex); } return 0; });
+  const dialogZ = await dialog.evaluate((el) => Number(getComputedStyle(el).zIndex));
+  expect(z, 'the toast is stacked above the dialog').toBeGreaterThan(dialogZ);
+  await expect(dialog).toBeVisible();
+  expect(courseDialogCalls.correction).toEqual([]);
+  await dialog.getByLabel('更正原因').fill('主任確認本期只收三堂');
+  await dialog.getByRole('button', { name: '預覽更正內容' }).click();
+  await expect(dialog.getByText('請確認本次更正', { exact: true })).toBeVisible();
+  expect(courseDialogCalls.correction).toEqual([{ new_session_count: 3, new_charge: 1500, reason: '主任確認本期只收三堂', preview: true }]);
+  await dialog.getByRole('button', { name: '確認並取消超額預排' }).click();
+  await expect(dialog).toHaveCount(0);
+  expect(courseDialogCalls.correction[1]).toEqual({ new_session_count: 3, new_charge: 1500, reason: '主任確認本期只收三堂', confirmation_token: 'a'.repeat(64) });
+});
+
+// 轉成多科共用: 確認建立共用方案 asks 建立共用方案？ above the dialog. Declining returns to the same filled form; accepting sends the typed values once.
+test('layout guard: course-mgmt (package dialog) the 建立共用方案？ question is on top and holds focus', async ({ page }) => {
+  const dialog = await openCourseDialog(page, COURSE_DIALOGS.package);
+  await dialog.getByLabel('方案名稱').fill('歐陽子晴英數共用方案');
+  await dialog.getByLabel('加入第二科目').selectOption({ index: 1 });
+  await dialog.getByLabel('第二科目老師').selectOption({ label: '林老師' });
+  await dialog.getByRole('button', { name: '確認建立共用方案' }).click();
+  const ask = page.getByRole('alertdialog');
+  await expect(ask).toContainText('建立共用方案？');
+  expect(await topmost(ask.getByRole('button', { name: '取消', exact: true })), 'the question is above the dialog').toBe(true);
+  expect(await focusIn(ask), 'the question holds focus').toBe(true);
+  for (let i = 0; i < 6; i += 1) {
+    await page.keyboard.press('Tab');
+    expect(await focusIn(ask), `Tab ${i + 1} stays inside the question`).toBe(true);
+  }
+  await page.keyboard.press('Escape');
+  await expect(ask).toHaveCount(0);
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByLabel('方案名稱')).toHaveValue('歐陽子晴英數共用方案');
+  expect(courseDialogCalls.convert).toEqual([]);
+  await dialog.getByRole('button', { name: '確認建立共用方案' }).click();
+  await page.getByRole('alertdialog').getByRole('button', { name: '建立共用方案' }).click();
+  await expect(dialog).toHaveCount(0);
+  expect(courseDialogCalls.convert).toEqual([{ name: '歐陽子晴英數共用方案', additional_subject: { subject_name: expect.any(String), teacher_id: 2 } }]);
+});
+
+// 預排日期 chip question: Esc and an outside click close it, focus goes back to the chip; 補排此堂 closes it and the legacy 補課／補登 form is on top.
+test('layout guard: course-mgmt (chip dialog) Esc, outside click, return focus and the 補排此堂 form on top', async ({ page }) => {
+  const dialog = await openCourseDialog(page, COURSE_DIALOGS.chip);
+  await tabStaysInside(page, COURSE_DIALOGS.chip.testid, 8);
+  await page.keyboard.press('Escape');
+  await expect(dialog).toHaveCount(0);
+  await expect(page.locator('.date-chip--projected').first()).toBeFocused();
+  await page.locator('.date-chip--projected').first().click();
+  await expect(dialog).toBeVisible();
+  await page.mouse.click(180, 8);
+  await expect(dialog).toHaveCount(0);
+  await page.locator('.date-chip--projected').first().click();
+  await dialog.getByRole('button', { name: '返回' }).click();
+  await expect(dialog).toHaveCount(0);
+  await expect(page.locator('.date-chip--projected').first()).toBeFocused();
+  await page.locator('.date-chip--projected').first().click();
+  await dialog.getByRole('button', { name: '補排此堂' }).click();
+  await expect(dialog).toHaveCount(0);
+  const overlay = page.locator('.modal-overlay').filter({ hasText: '補課／補登（總堂數不變）' });
+  await expect(overlay).toBeVisible();
+  const date = overlay.locator('input[type="date"]').first();
+  expect(await topmost(date), 'the form field is the topmost element').toBe(true);
+  // no manual focus(): the chip dialog's close must not hand focus back to the chip behind the form
+  await expect(date).toBeFocused();
+  expect(await focusIn(overlay), 'focus is inside the 補課 form').toBe(true);
+});
+
+// Initial focus of the two form dialogs: desktop lands on the first field with the caret at the end; a touch device must not get the keyboard,
+// so focus sits on the dialog itself (still inside, for screen readers).
+for (const form of [COURSE_DIALOGS.billing, COURSE_DIALOGS.package]) {
+  test(`layout guard: course-mgmt (${form.key}) initial focus on desktop is the first field`, async ({ page }) => {
+    await openCourseDialog(page, form, { width: 1536, height: 784 });
+    const state = await page.evaluate(() => ({ tag: document.activeElement?.tagName, caretAtEnd: document.activeElement.selectionStart === document.activeElement.value?.length || document.activeElement.selectionStart === null }));
+    expect(state.tag).toBe('INPUT');
+    expect(state.caretAtEnd, 'the pre-filled text is not selected').toBe(true);
+  });
+}
+test.describe('touch device', () => {
+  test.use({ hasTouch: true, isMobile: true });
+  for (const form of [COURSE_DIALOGS.billing, COURSE_DIALOGS.package]) {
+    test(`layout guard: course-mgmt (${form.key}) initial focus on a touch device is the dialog, not a field`, async ({ page }) => {
+      const dialog = await openCourseDialog(page, form);
+      expect(await page.evaluate(() => matchMedia('(pointer: coarse)').matches), 'the context emulates a coarse pointer').toBe(true);
+      await expect(dialog).toBeFocused();
+      expect(await page.evaluate(() => ['INPUT', 'SELECT', 'TEXTAREA'].includes(document.activeElement?.tagName))).toBe(false);
+    });
+  }
+});
+
+// 暫停課程 and 刪除課程: Esc, 取消 and an outside click close them and focus returns to the row's 更多 button; the buttons act once.
+for (const confirm of [
+  { d: COURSE_DIALOGS.pause, ok: '暫停課程' },
+  { d: COURSE_DIALOGS.del, ok: '刪除課程' },
+]) {
+  test(`layout guard: course-mgmt (${confirm.d.key}) Esc, 取消, outside click and return focus`, async ({ page }) => {
+    const dialog = await openCourseDialog(page, confirm.d);
+    await expect(dialog.getByRole('button', { name: '取消', exact: true })).toBeFocused();
+    await tabStaysInside(page, confirm.d.testid, 10);
+    await page.keyboard.press('Escape');
+    await expect(dialog).toHaveCount(0);
+    await expect(courseRowMenu(page)).toBeFocused();
+    await confirm.d.open(page);
+    await expect(dialog).toBeVisible();
+    await dialog.getByRole('button', { name: '取消', exact: true }).click();
+    await expect(dialog).toHaveCount(0);
+    await expect(courseRowMenu(page)).toBeFocused();
+    await confirm.d.open(page);
+    await expect(dialog).toBeVisible();
+    await page.mouse.click(180, 8);
+    await expect(dialog).toHaveCount(0);
+    expect(courseDialogCalls.deleted).toBe(0);
   });
 }

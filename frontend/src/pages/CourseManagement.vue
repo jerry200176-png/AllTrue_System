@@ -902,16 +902,16 @@
     <Dialog :open="showEditModal && !courseManagerOpen && !showQuickAddSessionModal && !showCourseTransfer" @update:open="(v) => { if (!v) requestCloseEditDialog(); }">
       <DialogContent
         :show-close-button="false"
-        class="tw:max-h-[min(90dvh,56rem)] tw:grid-rows-[auto_minmax(0,1fr)_auto] tw:gap-0 tw:p-0 tw:sm:max-w-2xl tw:max-sm:top-auto tw:max-sm:bottom-0 tw:max-sm:max-h-[94dvh] tw:max-sm:max-w-none tw:max-sm:translate-y-0 tw:max-sm:rounded-b-none tw:max-sm:rounded-t-3xl tw:rounded-3xl"
+        :class="cn(sheetDialog.content, 'tw:sm:max-w-2xl')"
         data-testid="course-edit-dialog"
         @interact-outside="(e) => e.preventDefault()"
         @escape-key-down="(e) => { if (e.isComposing || e.keyCode === 229) e.preventDefault(); }"
       >
-        <DialogHeader class="tw:px-5 tw:pt-5 tw:pb-3 tw:text-left">
+        <DialogHeader :class="sheetDialog.header">
           <DialogTitle class="tw:text-tpl-list tw:font-bold tw:text-balance">編輯課程</DialogTitle>
           <DialogDescription class="tw:sr-only">修改課程的老師、時間與付款方式後按儲存</DialogDescription>
         </DialogHeader>
-        <div class="tw:min-h-0 tw:overflow-y-auto tw:px-5 tw:pb-4 tw:text-tpl-body">
+        <div :class="sheetDialog.body">
           <Alert v-if="editabilityLoading" tone="info" title="正在檢查課程狀態" style="margin: 0 0 14px;">
             <p>正在確認付款、扣堂與對帳狀態；一般欄位仍可編輯。</p>
           </Alert>
@@ -969,7 +969,7 @@
             <Button type="button" variant="ghost" :class="control.row" @click="openQuickAddSessionFromEditModal">＋ 補課 / 補登（總堂數不變）</Button>
           </div>
         </div>
-        <div class="tw:border-t tw:border-border tw:px-5 tw:pt-3 tw:pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+        <div :class="sheetDialog.footer">
           <p v-if="editFormRef?.hasErrors" class="tw:mb-2 tw:text-tpl-caption tw:text-tpl-secondary" role="status">請先修正表單標示的必填欄位，再儲存課程設定。</p>
           <DialogFooter class="tw:max-sm:flex-row">
             <Button type="button" variant="secondary" :class="cn(control.page, 'tw:max-sm:flex-1')" @click="requestCloseEditDialog">取消</Button>
@@ -1024,62 +1024,75 @@
       @submit="submitContractAmendment"
     />
 
-    <!-- Unpaid post-deduction billing correction -->
-    <div v-if="showBillingCorrectionModal" class="modal-overlay" @click.self="!billingCorrectionSubmitting && (showBillingCorrectionModal = false)">
-      <div class="modal course-modal billing-correction-modal">
-        <h3 class="modal-title">更正未收款堂數</h3>
-        <p class="modal-desc">
-          {{ billingCorrectionCourse?.student_name || '此學生' }}／{{ billingCorrectionCourse?.subject_name || billingCorrectionCourse?.subject || '課程' }}
-        </p>
-        <div class="billing-correction-warning">
-          僅適用於尚未收款的按堂課程。先檢視新舊堂數、金額及受影響未來堂次，再確認送出；已上課紀錄不會被刪除。
+    <!-- Unpaid post-deduction billing correction (shared Dialog; issue 4989 slice 7b). Outside click never closes it; Esc / 取消 ask first when a field changed. -->
+    <Dialog :open="showBillingCorrectionModal" @update:open="(v) => { if (!v) requestCloseBillingCorrection(); }">
+      <DialogContent
+        :show-close-button="false"
+        :class="cn(sheetDialog.content, 'tw:sm:max-w-lg billing-correction-modal')"
+        data-testid="billing-correction-dialog"
+        @interact-outside="(e) => e.preventDefault()"
+        @escape-key-down="(e) => { if (e.isComposing || e.keyCode === 229) e.preventDefault(); }"
+        @open-auto-focus="focusFirstDialogField"
+        @close-auto-focus="(e) => returnFocusToCourseRow(e, billingCorrectionCourse)"
+      >
+        <DialogHeader :class="sheetDialog.header">
+          <DialogTitle class="tw:text-tpl-list tw:font-bold tw:text-balance">更正未收款堂數</DialogTitle>
+          <DialogDescription class="tw:text-tpl-caption tw:text-tpl-secondary">
+            {{ billingCorrectionCourse?.student_name || '此學生' }}／{{ billingCorrectionCourse?.subject_name || billingCorrectionCourse?.subject || '課程' }}
+          </DialogDescription>
+        </DialogHeader>
+        <div :class="cn(sheetDialog.body, 'tw:grid tw:content-start tw:gap-4')">
+          <p class="billing-correction-warning tw:m-0 tw:text-tpl-body tw:text-pretty">
+            僅適用於尚未收款的按堂課程。先檢視新舊堂數、金額及受影響未來堂次，再確認送出；已上課紀錄不會被刪除。
+          </p>
+          <Alert v-if="billingCorrectionPreview" tone="warning" title="請確認本次更正">
+            <p class="tw:m-0">堂數：{{ billingCorrectionPreview.old_session_count }} → {{ billingCorrectionPreview.new_session_count }}；費用：${{ Number(billingCorrectionPreview.old_charge).toLocaleString() }} → ${{ Number(billingCorrectionPreview.new_charge).toLocaleString() }}。</p>
+            <p v-if="billingCorrectionPreview.affected_scheduled_sessions?.length" class="tw:mt-1.5 tw:mb-0">確認後會取消下列超額的未來預排；系統不會補回舊堂數。</p>
+            <ul v-if="billingCorrectionPreview.affected_scheduled_sessions?.length" class="billing-correction-affected-sessions" aria-label="確認後將取消的未來堂次">
+              <li v-for="session in billingCorrectionPreview.affected_scheduled_sessions" :key="session.session_id">
+                <time class="tw:tabular-nums" :datetime="`${session.session_date}T${session.start_time}`">{{ formatBillingCorrectionSessionLabel({ sessionDate: session.session_date, startTime: session.start_time, endTime: session.end_time }) }}</time>
+              </li>
+            </ul>
+          </Alert>
+          <Alert v-if="billingCorrectionBlocked" tone="danger" title="還不能更正">
+            <p class="tw:m-0">{{ billingCorrectionBlocked.message }}</p>
+            <p v-if="billingCorrectionBlocked.hint" class="tw:mt-1.5 tw:mb-0">{{ billingCorrectionBlocked.hint }}</p>
+            <ul
+              v-if="billingCorrectionBlocked.affectedSessions.length"
+              class="billing-correction-affected-sessions"
+              :aria-label="billingCorrectionBlocked.sessionListLabel"
+            >
+              <li v-for="session in billingCorrectionBlocked.affectedSessions" :key="session.sessionId">
+                <time class="tw:tabular-nums" :datetime="`${session.sessionDate}T${session.startTime}`">{{ formatBillingCorrectionSessionLabel(session) }}</time>
+              </li>
+            </ul>
+            <Button
+              v-if="billingCorrectionBlocked.canOpenCalendar"
+              type="button"
+              variant="outline"
+              :class="cn(control.row, 'billing-correction-calendar-action tw:mt-3')"
+              @click="openBillingCorrectionCalendar"
+            >前往行事曆處理</Button>
+          </Alert>
+          <label :class="dialogField.label">更正後購買堂數
+            <input v-model.number="billingCorrectionForm.new_session_count" type="number" min="1" step="1" :class="cn(dialogField.control, 'tw:tabular-nums')" />
+          </label>
+          <label :class="dialogField.label">更正後總費用
+            <input v-model.number="billingCorrectionForm.new_charge" type="number" min="0" step="1" :class="cn(dialogField.control, 'tw:tabular-nums')" />
+          </label>
+          <p class="tw:m-0 tw:text-tpl-caption tw:text-tpl-secondary tw:tabular-nums">依目前單堂費用試算：${{ billingCorrectionExpectedCharge.toLocaleString() }}</p>
+          <label :class="dialogField.label">更正原因
+            <textarea v-model="billingCorrectionForm.reason" :class="cn(dialogField.control, dialogField.textarea)" rows="3" maxlength="255" placeholder="例如：主任確認本期理化實際收 7 堂"></textarea>
+          </label>
         </div>
-        <Alert v-if="billingCorrectionPreview" tone="warning" title="請確認本次更正" style="margin-bottom: 12px;">
-          <p style="margin: 0;">堂數：{{ billingCorrectionPreview.old_session_count }} → {{ billingCorrectionPreview.new_session_count }}；費用：${{ Number(billingCorrectionPreview.old_charge).toLocaleString() }} → ${{ Number(billingCorrectionPreview.new_charge).toLocaleString() }}。</p>
-          <p v-if="billingCorrectionPreview.affected_scheduled_sessions?.length" style="margin: 6px 0 0;">確認後會取消下列超額的未來預排；系統不會補回舊堂數。</p>
-          <ul v-if="billingCorrectionPreview.affected_scheduled_sessions?.length" class="billing-correction-affected-sessions" aria-label="確認後將取消的未來堂次">
-            <li v-for="session in billingCorrectionPreview.affected_scheduled_sessions" :key="session.session_id">
-              <time :datetime="`${session.session_date}T${session.start_time}`">{{ formatBillingCorrectionSessionLabel({ sessionDate: session.session_date, startTime: session.start_time, endTime: session.end_time }) }}</time>
-            </li>
-          </ul>
-        </Alert>
-        <Alert v-if="billingCorrectionBlocked" tone="danger" title="還不能更正" style="margin-bottom: 12px;">
-          <p style="margin: 0;">{{ billingCorrectionBlocked.message }}</p>
-          <p v-if="billingCorrectionBlocked.hint" style="margin: 6px 0 0;">{{ billingCorrectionBlocked.hint }}</p>
-          <ul
-            v-if="billingCorrectionBlocked.affectedSessions.length"
-            class="billing-correction-affected-sessions"
-            :aria-label="billingCorrectionBlocked.sessionListLabel"
-          >
-            <li v-for="session in billingCorrectionBlocked.affectedSessions" :key="session.sessionId">
-              <time :datetime="`${session.sessionDate}T${session.startTime}`">{{ formatBillingCorrectionSessionLabel(session) }}</time>
-            </li>
-          </ul>
-          <button
-            v-if="billingCorrectionBlocked.canOpenCalendar"
-            type="button"
-            class="ghost billing-correction-calendar-action"
-            @click="openBillingCorrectionCalendar"
-          >
-            前往行事曆處理
-          </button>
-        </Alert>
-        <label class="form-label">更正後購買堂數
-          <input v-model.number="billingCorrectionForm.new_session_count" type="number" min="1" step="1" class="form-input" />
-        </label>
-        <label class="form-label">更正後總費用
-          <input v-model.number="billingCorrectionForm.new_charge" type="number" min="0" step="1" class="form-input" />
-        </label>
-        <p class="form-hint">依目前單堂費用試算：${{ billingCorrectionExpectedCharge.toLocaleString() }}</p>
-        <label class="form-label">更正原因
-          <textarea v-model="billingCorrectionForm.reason" class="form-input" rows="3" maxlength="255" placeholder="例如：主任確認本期理化實際收 7 堂"></textarea>
-        </label>
-        <div class="actions">
-          <button class="ghost" :disabled="billingCorrectionSubmitting" @click="showBillingCorrectionModal = false">取消</button>
-          <button class="primary" :disabled="billingCorrectionSubmitting" @click="submitBillingCorrection">{{ billingCorrectionSubmitting ? '處理中…' : (billingCorrectionPreview ? '確認並取消超額預排' : '預覽更正內容') }}</button>
+        <div :class="sheetDialog.footer">
+          <DialogFooter class="tw:max-sm:flex-row">
+            <Button type="button" variant="secondary" :class="cn(control.page, 'tw:max-sm:flex-none')" :disabled="billingCorrectionSubmitting" @click="requestCloseBillingCorrection">取消</Button>
+            <Button type="button" :class="cn(control.page, 'tw:max-sm:flex-1')" :disabled="billingCorrectionSubmitting" @click="submitBillingCorrection">{{ billingCorrectionSubmitting ? '處理中…' : (billingCorrectionPreview ? '確認並取消超額預排' : '預覽更正內容') }}</Button>
+          </DialogFooter>
         </div>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
 
     <PurchaseSessionsModal
       :show="showPurchaseModal"
@@ -1180,37 +1193,52 @@
       @open-course="openConflictBlockerCourse"
     />
 
-    <div v-if="showPackageConversionModal" class="modal-overlay" @click.self="!packageConversionSubmitting && (showPackageConversionModal = false)">
-      <div class="modal course-modal package-conversion-modal" role="dialog" aria-modal="true" aria-labelledby="package-conversion-title">
-        <h3 id="package-conversion-title" class="modal-title">轉成多科共用</h3>
-        <p class="modal-desc">原合約、已上課與帳務紀錄會保留；只有未使用堂數會放入共用池，不會重新收費。</p>
-        <div class="package-conversion-summary">
-          <strong>{{ packageConversionCourse?.student_name || '學生' }}／{{ packageConversionCourse?.subject_name || packageConversionCourse?.subject || '目前科目' }}</strong>
-          <span>總堂數 {{ getPurchasedSessions(packageConversionCourse) }} 堂</span>
-          <span>已上 {{ getUsedSessions(packageConversionCourse) }} 堂</span>
-          <span>可共用 {{ Math.max(0, getPurchasedSessions(packageConversionCourse) - getUsedSessions(packageConversionCourse)) }} 堂</span>
+    <!-- 轉成多科共用 (shared Dialog; issue 4989 slice 7b). Same close rules as 更正未收款堂數. The 建立共用方案？ question opens above it and takes focus. -->
+    <Dialog :open="showPackageConversionModal" @update:open="(v) => { if (!v) requestClosePackageConversion(); }">
+      <DialogContent
+        :show-close-button="false"
+        :class="cn(sheetDialog.content, 'tw:sm:max-w-lg')"
+        data-testid="package-conversion-dialog"
+        @interact-outside="(e) => e.preventDefault()"
+        @escape-key-down="(e) => { if (e.isComposing || e.keyCode === 229) e.preventDefault(); }"
+        @open-auto-focus="focusFirstDialogField"
+        @close-auto-focus="(e) => returnFocusToCourseRow(e, packageConversionCourse)"
+      >
+        <DialogHeader :class="sheetDialog.header">
+          <DialogTitle class="tw:text-tpl-list tw:font-bold tw:text-balance">轉成多科共用</DialogTitle>
+          <DialogDescription class="tw:text-tpl-caption tw:text-tpl-secondary tw:text-pretty">原合約、已上課與帳務紀錄會保留；只有未使用堂數會放入共用池，不會重新收費。</DialogDescription>
+        </DialogHeader>
+        <div :class="cn(sheetDialog.body, 'tw:grid tw:content-start tw:gap-4')">
+          <div class="tw:grid tw:gap-1 tw:rounded-2xl tw:bg-[var(--ds-info-wash)] tw:p-4 tw:text-tpl-caption tw:text-foreground">
+            <strong>{{ packageConversionCourse?.student_name || '學生' }}／{{ packageConversionCourse?.subject_name || packageConversionCourse?.subject || '目前科目' }}</strong>
+            <span class="tw:text-tpl-secondary tw:tabular-nums">總堂數 {{ getPurchasedSessions(packageConversionCourse) }} 堂</span>
+            <span class="tw:text-tpl-secondary tw:tabular-nums">已上 {{ getUsedSessions(packageConversionCourse) }} 堂</span>
+            <span class="tw:text-tpl-secondary tw:tabular-nums">可共用 {{ Math.max(0, getPurchasedSessions(packageConversionCourse) - getUsedSessions(packageConversionCourse)) }} 堂</span>
+          </div>
+          <label :class="dialogField.label">方案名稱
+            <input v-model="packageConversionForm.name" type="text" maxlength="128" placeholder="例如：學生多科共用方案" :class="dialogField.control" />
+          </label>
+          <label :class="dialogField.label">加入第二科目
+            <select v-model="packageConversionForm.subject_name" :class="dialogField.control">
+              <option value="">請選擇科目</option>
+              <option v-for="subject in packageConversionSubjects" :key="String(subject.id ?? subject.value)" :value="subject.label || subject.value">{{ subject.label || subject.value }}</option>
+            </select>
+          </label>
+          <label :class="dialogField.label">第二科目老師
+            <select v-model="packageConversionForm.teacher_id" :class="dialogField.control">
+              <option value="">請選擇老師</option>
+              <option v-for="teacher in teachers" :key="teacher.id" :value="String(teacher.id)">{{ teacher.username || teacher.name || teacher.Name || `老師 #${teacher.id}` }}</option>
+            </select>
+          </label>
         </div>
-        <label class="form-group">方案名稱
-          <input v-model="packageConversionForm.name" type="text" maxlength="128" placeholder="例如：學生多科共用方案" />
-        </label>
-        <label class="form-group">加入第二科目
-          <select v-model="packageConversionForm.subject_name">
-            <option value="">請選擇科目</option>
-            <option v-for="subject in packageConversionSubjects" :key="String(subject.id ?? subject.value)" :value="subject.label || subject.value">{{ subject.label || subject.value }}</option>
-          </select>
-        </label>
-        <label class="form-group">第二科目老師
-          <select v-model="packageConversionForm.teacher_id">
-            <option value="">請選擇老師</option>
-            <option v-for="teacher in teachers" :key="teacher.id" :value="String(teacher.id)">{{ teacher.username || teacher.name || teacher.Name || `老師 #${teacher.id}` }}</option>
-          </select>
-        </label>
-        <div class="actions">
-          <button class="ghost" :disabled="packageConversionSubmitting" @click="showPackageConversionModal = false">取消</button>
-          <button class="primary" :disabled="packageConversionSubmitting" @click="submitPackageConversion">{{ packageConversionSubmitting ? '建立中…' : '確認建立共用方案' }}</button>
+        <div :class="sheetDialog.footer">
+          <DialogFooter class="tw:max-sm:flex-row">
+            <Button type="button" variant="secondary" :class="cn(control.page, 'tw:max-sm:flex-none')" :disabled="packageConversionSubmitting" @click="requestClosePackageConversion">取消</Button>
+            <Button type="button" :class="cn(control.page, 'tw:max-sm:flex-1')" :disabled="packageConversionSubmitting" @click="submitPackageConversion">{{ packageConversionSubmitting ? '建立中…' : '確認建立共用方案' }}</Button>
+          </DialogFooter>
         </div>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
 
     <LeaveModal
       :show="showLeaveModal"
@@ -1297,23 +1325,22 @@
       @do-edit-note-time="doEditNoteTime"
     />
 
-    <div
-      v-if="chipActionDialog"
-      class="modal-overlay" role="dialog" aria-modal="true"
-      @click.self="closeChipActionDialog" @keydown.esc.prevent="closeChipActionDialog"
-    >
-      <div class="modal course-modal" style="max-width: 420px;">
-        <h3 class="modal-title">{{ chipActionDialog.title }}</h3>
-        <p class="modal-desc">{{ chipActionDialog.message }}</p>
-        <p v-if="chipActionDialog.meta" class="modal-hint">{{ chipActionDialog.meta }}</p>
-        <div class="actions">
-          <button v-if="chipActionDialog.secondaryLabel !== ''" type="button" class="ghost" @click="closeChipActionDialog">{{ chipActionDialog.secondaryLabel || '關閉' }}</button>
-          <button type="button" class="primary" :disabled="chipActionDialog.busy" @click="confirmChipActionDialog">
-            {{ chipActionDialog.busy ? '載入中…' : (chipActionDialog.primaryLabel || '確定') }}
-          </button>
-        </div>
-      </div>
-    </div>
+    <!-- 預排日期／暫停中 chip question (shared Dialog; issue 4989 slice 7b). Esc and an outside click close it, like the old overlay. -->
+    <Dialog :open="!!chipActionDialog" @update:open="(v) => { if (!v) closeChipActionDialog(); }">
+      <DialogContent :show-close-button="false" class="tw:sm:max-w-sm" data-testid="chip-action-dialog" @close-auto-focus="(e) => focusOpenLegacyForm(e, showQuickAddSessionModal)">
+        <DialogHeader class="tw:text-left">
+          <DialogTitle class="tw:text-tpl-list tw:font-bold tw:text-balance">{{ chipActionDialog?.title }}</DialogTitle>
+          <DialogDescription class="tw:text-tpl-body tw:text-tpl-secondary tw:text-pretty">{{ chipActionDialog?.message }}</DialogDescription>
+        </DialogHeader>
+        <p v-if="chipActionDialog?.meta" class="tw:m-0 tw:text-tpl-body tw:font-semibold tw:tabular-nums">{{ chipActionDialog.meta }}</p>
+        <DialogFooter class="tw:max-sm:flex-row">
+          <Button v-if="chipActionDialog?.secondaryLabel !== ''" type="button" variant="secondary" :class="cn(control.page, 'tw:max-sm:flex-none')" @click="closeChipActionDialog">{{ chipActionDialog?.secondaryLabel || '關閉' }}</Button>
+          <Button type="button" :class="cn(control.page, 'tw:max-sm:flex-1')" :disabled="chipActionDialog?.busy" @click="confirmChipActionDialog">
+            {{ chipActionDialog?.busy ? '載入中…' : (chipActionDialog?.primaryLabel || '確定') }}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
 
     <!-- PRD 9c058f19：卡片式代課選擇器 + ToastWithUndo（與 SmartCalendar 共用元件） -->
     <SubstituteTeacherPickerModal
@@ -1349,31 +1376,31 @@
     <RestoreCancelledSessionDialog :unit="restoreCancelledUnit" @close="restoreCancelledUnit = null" @restored="onCancelledRestored" />
 
     <Dialog :open="!!pauseConfirmTarget" @update:open="(v) => { if (!v && !pauseConfirmSubmitting) pauseConfirmTarget = null; }">
-      <DialogContent class="tw:sm:max-w-sm" @interact-outside="(e) => pauseConfirmSubmitting && e.preventDefault()" @open-auto-focus="(e) => { e.preventDefault(); pauseCancelBtn?.$el?.focus(); }">
-        <DialogHeader>
-          <DialogTitle id="pause-confirm-title">{{ pauseConfirmIsResume ? '恢復課程？' : '暫停課程？' }}</DialogTitle>
+      <DialogContent :show-close-button="false" class="tw:sm:max-w-sm" data-testid="pause-confirm-dialog" @interact-outside="(e) => pauseConfirmSubmitting && e.preventDefault()" @open-auto-focus="(e) => { e.preventDefault(); pauseCancelBtn?.$el?.focus(); }">
+        <DialogHeader class="tw:text-left">
+          <DialogTitle id="pause-confirm-title" class="tw:text-tpl-list tw:font-bold tw:text-balance">{{ pauseConfirmIsResume ? '恢復課程？' : '暫停課程？' }}</DialogTitle>
           <DialogDescription class="tw:sr-only">確認後會立即更新課程狀態</DialogDescription>
         </DialogHeader>
   <template v-if="pauseConfirmTarget">
-          <p class="modal-desc">{{ pauseConfirmTarget.student_name || '學生' }} — {{ getSubjectLabel(pauseConfirmTarget.subject) }}</p>
-          <div class="pause-impact-card">
-            <p class="pause-impact-title">{{ pauseConfirmIsResume ? '恢復後的影響' : '暫停後的影響' }}</p>
-            <ul>
+          <p class="tw:m-0 tw:text-tpl-body tw:text-tpl-secondary">{{ pauseConfirmTarget.student_name || '學生' }} — {{ getSubjectLabel(pauseConfirmTarget.subject) }}</p>
+          <div class="tw:grid tw:gap-2 tw:rounded-2xl tw:border tw:border-border tw:bg-muted tw:p-4">
+            <p class="tw:m-0 tw:text-tpl-body tw:font-semibold">{{ pauseConfirmIsResume ? '恢復後的影響' : '暫停後的影響' }}</p>
+            <ul class="tw:m-0 tw:grid tw:list-disc tw:gap-1 tw:pl-5 tw:text-tpl-caption tw:text-tpl-secondary">
               <li v-for="item in pauseConfirmImpacts" :key="item">{{ item }}</li>
             </ul>
-            <label v-if="!pauseConfirmIsResume" style="display:flex;align-items:flex-start;gap:8px;margin-top:12px;font-size:13px;cursor:pointer">
-              <input v-model="pauseCancelRemaining" type="checkbox" style="margin-top:2px" />
+            <label v-if="!pauseConfirmIsResume" class="tw:mt-2 tw:flex tw:min-h-11 tw:cursor-pointer tw:items-start tw:gap-3 tw:text-tpl-caption tw:text-foreground">
+              <input v-model="pauseCancelRemaining" type="checkbox" class="tw:mt-0.5 tw:size-5 tw:shrink-0" />
               <span>取消剩餘未上排課（建議勾選；不勾選則只暫停課程、堂次仍留在行事曆）</span>
             </label>
-            <label v-if="pauseConfirmIsResume && userRole === 'super_admin'" style="display:block;margin-top:12px;font-size:13px">
+            <label v-if="pauseConfirmIsResume && userRole === 'super_admin'" :class="cn(dialogField.label, 'tw:mt-2 tw:text-tpl-caption')">
               如果是誤結案，寫下原因才能恢復（會留紀錄）
-              <textarea v-model="pauseReopenReason" rows="2" maxlength="500" placeholder="例如：主任誤按結束課程" style="display:block;width:100%;margin-top:4px"></textarea>
+              <textarea v-model="pauseReopenReason" rows="2" maxlength="500" placeholder="例如：主任誤按結束課程" :class="cn(dialogField.control, dialogField.textarea)"></textarea>
             </label>
           </div>
         </template>
         <DialogFooter>
-          <Button ref="pauseCancelBtn" type="button" variant="secondary" class="tw:h-14 tw:px-5 tw:text-[length:var(--tpl-text-body)]" :disabled="pauseConfirmSubmitting" @click="pauseConfirmTarget = null">取消</Button>
-          <Button type="button" class="tw:h-14 tw:px-5 tw:text-[length:var(--tpl-text-body)]" :disabled="pauseConfirmSubmitting" :class="{ 'btn-resume-primary': pauseConfirmIsResume }" @click="confirmCoursePause">
+          <Button ref="pauseCancelBtn" type="button" variant="secondary" :class="control.page" :disabled="pauseConfirmSubmitting" @click="pauseConfirmTarget = null">取消</Button>
+          <Button type="button" :class="cn(control.page, { 'btn-resume-primary': pauseConfirmIsResume })" :disabled="pauseConfirmSubmitting" @click="confirmCoursePause">
             {{ pauseConfirmSubmitting ? '處理中…' : (pauseConfirmIsResume ? '恢復課程' : '暫停課程') }}
           </Button>
         </DialogFooter>
@@ -1382,20 +1409,20 @@
 
     <!-- Delete Confirm Modal (FR-013) -->
     <Dialog :open="!!confirmDeleteTarget" @update:open="(v) => { if (!v && !deleteCourseSubmitting) confirmDeleteTarget = null; }">
-      <DialogContent class="tw:sm:max-w-sm" @interact-outside="(e) => deleteCourseSubmitting && e.preventDefault()" @open-auto-focus="(e) => { e.preventDefault(); deleteCancelBtn?.$el?.focus(); }">
-        <DialogHeader>
-          <DialogTitle id="delete-course-title">{{ `刪除${confirmDeleteTarget ? (confirmDeleteTarget.subject_name || getSubjectLabel(confirmDeleteTarget.subject)) : ''}？` }}</DialogTitle>
+      <DialogContent :show-close-button="false" class="tw:sm:max-w-sm" data-testid="delete-course-dialog" @interact-outside="(e) => deleteCourseSubmitting && e.preventDefault()" @open-auto-focus="(e) => { e.preventDefault(); deleteCancelBtn?.$el?.focus(); }">
+        <DialogHeader class="tw:text-left">
+          <DialogTitle id="delete-course-title" class="tw:text-tpl-list tw:font-bold tw:text-balance">{{ `刪除${confirmDeleteTarget ? (confirmDeleteTarget.subject_name || getSubjectLabel(confirmDeleteTarget.subject)) : ''}？` }}</DialogTitle>
           <DialogDescription class="tw:sr-only">刪除後無法復原</DialogDescription>
         </DialogHeader>
   <template v-if="confirmDeleteTarget">
-          <p class="modal-desc">
+          <p class="tw:m-0 tw:text-tpl-body tw:text-tpl-secondary">
             {{ confirmDeleteTarget.subject_name || confirmDeleteTarget.subject }}<template v-if="confirmDeleteTarget.student_name"> — {{ confirmDeleteTarget.student_name }}</template>
           </p>
-          <p class="premium-danger-warning">刪除後無法復原，所有堂次紀錄將一併移除，未繳帳單會一併作廢。</p>
+          <p class="tw:m-0 tw:text-tpl-body tw:font-semibold tw:text-[var(--ds-danger-text)]">刪除後無法復原，所有堂次紀錄將一併移除，未繳帳單會一併作廢。</p>
         </template>
         <DialogFooter>
-          <Button ref="deleteCancelBtn" type="button" variant="secondary" class="tw:h-14 tw:px-5 tw:text-[length:var(--tpl-text-body)]" :disabled="deleteCourseSubmitting" @click="confirmDeleteTarget = null">取消</Button>
-          <Button type="button" variant="destructive" class="tw:h-14 tw:px-5 tw:text-[length:var(--tpl-text-body)]" :disabled="deleteCourseSubmitting" @click="executeDeleteCourse">
+          <Button ref="deleteCancelBtn" type="button" variant="secondary" :class="control.page" :disabled="deleteCourseSubmitting" @click="confirmDeleteTarget = null">取消</Button>
+          <Button type="button" variant="destructive" :class="control.page" :disabled="deleteCourseSubmitting" @click="executeDeleteCourse">
             {{ deleteCourseSubmitting ? '刪除中…' : '刪除課程' }}
           </Button>
         </DialogFooter>
@@ -1419,6 +1446,19 @@ import { cn } from '@/lib/utils';
 // Phone: the two page buttons share a row and may wrap their words instead of pushing the page sideways (320px at 大).
 const phoneAction = 'tw:max-md:min-w-0 tw:max-md:flex-[1_1_9rem] tw:max-md:h-auto tw:max-md:min-h-12 tw:max-md:whitespace-normal tw:max-md:py-2';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+// Form dialogs (編輯課程, 更正未收款堂數, 轉成多科共用): a centred card from 640px up, a bottom sheet on a phone with the footer above the safe area.
+const sheetDialog = {
+  content: 'tw:max-h-[min(90dvh,56rem)] tw:grid-rows-[auto_minmax(0,1fr)_auto] tw:gap-0 tw:p-0 tw:max-sm:top-auto tw:max-sm:bottom-0 tw:max-sm:max-h-[94dvh] tw:max-sm:max-w-none tw:max-sm:translate-y-0 tw:max-sm:rounded-b-none tw:max-sm:rounded-t-3xl tw:rounded-3xl',
+  header: 'tw:px-5 tw:pt-5 tw:pb-3 tw:text-left',
+  body: 'tw:min-h-0 tw:overflow-y-auto tw:px-5 tw:pb-4 tw:text-tpl-body',
+  footer: 'tw:border-t tw:border-border tw:px-5 tw:pt-3 tw:pb-[max(0.75rem,env(safe-area-inset-bottom))]',
+};
+// Native fields inside those dialogs keep their elements (v-model.number, select options); only the look comes from here.
+const dialogField = {
+  label: 'tw:block tw:text-tpl-body tw:font-semibold tw:text-foreground',
+  control: 'tw:mt-1.5 tw:block tw:h-12 tw:w-full tw:rounded-xl tw:border tw:border-input tw:bg-background tw:px-3 tw:text-[length:var(--tpl-text-body)] tw:font-normal tw:text-foreground tw:outline-none tw:focus-visible:border-ring tw:focus-visible:ring-3 tw:focus-visible:ring-ring/50',
+  textarea: 'tw:h-auto tw:py-2',
+};
 import { ChevronRight, Focus, Info, Plus, UserSearch } from 'lucide-vue-next';
 import { isCourseSettled, isPaymentNoticeStatus } from '../lib/paymentStatus.js';
 import { formatCourseRef, formatCoursePeriod } from '../lib/studentBillingRows.js';
@@ -1474,6 +1514,7 @@ import RestoreCancelledSessionDialog from '../components/course-management/Resto
 import { isVisibleCancelledSession } from '../lib/sessionOccurrenceFilter.js';
 import { askConfirm } from '../composables/useConfirmDialog';
 import { useEditDialogCloseGuard } from '../composables/course-management/useEditDialogCloseGuard';
+import { focusFirstDialogField, focusOpenLegacyForm } from '../composables/course-management/dialogFocus';
 import LessonPickerSelect from '../components/course-management/LessonPickerSelect.vue';
 import CourseEditForm from '../components/CourseEditForm.vue';
 import { Alert } from '@/components/ui/alert';
@@ -2551,8 +2592,17 @@ function openBillingCorrectionModal(course) {
   };
   billingCorrectionBlocked.value = null;
   billingCorrectionPreview.value = null;
+  billingCorrectionSnapshot = JSON.stringify(billingCorrectionForm.value);
   showBillingCorrectionModal.value = true;
 }
+// Esc and 取消 ask first when a field changed since the dialog opened; an outside click does not close it. Nothing closes while it submits.
+let billingCorrectionSnapshot = '';
+const { requestClose: requestCloseBillingCorrection } = useEditDialogCloseGuard({
+  isOpen: () => showBillingCorrectionModal.value && !billingCorrectionSubmitting.value,
+  isDirty: () => JSON.stringify(billingCorrectionForm.value) !== billingCorrectionSnapshot,
+  ask: () => askDiscardChanges('更正的內容有修改，還沒送出。'),
+  close: () => { showBillingCorrectionModal.value = false; },
+});
 
 function openBillingCorrectionCalendar() {
   const course = billingCorrectionCourse.value;
@@ -2790,16 +2840,26 @@ function closeCourseManager() {
   courseManagerTab.value = 'overview';
   showEditModal.value = false;
 }
+// The one 放棄未儲存的變更？ question every form dialog on this page asks (編輯課程, 更正未收款堂數, 轉成多科共用).
+const askDiscardChanges = (message) => askConfirm({ title: '放棄未儲存的變更？', message, confirmLabel: '放棄變更', danger: true });
+// A dialog opened from a row's 更多 menu hands focus back to that menu button when it closes (the menu item that opened it is gone by then).
+function returnFocusToCourseRow(event, course) {
+  const id = course?.id ?? course?.ID;
+  const trigger = id != null ? document.querySelector(`[data-contract-id="${id}"] .action-menu-trigger`) : null;
+  if (!trigger) return;
+  event.preventDefault();
+  trigger.focus();
+}
 // 編輯課程視窗: Esc and 取消 share this guard; unsaved edits ask first (same wording as leaveCourseManagerSettings).
 const { requestClose: requestCloseEditDialog } = useEditDialogCloseGuard({
   isOpen: () => showEditModal.value,
   isDirty: () => !!editFormSnapshot.value && JSON.stringify(editForm.value) !== editFormSnapshot.value,
-  ask: () => askConfirm({ title: '放棄未儲存的變更？', message: '課程設定有修改還沒儲存。', confirmLabel: '放棄變更', danger: true }),
+  ask: () => askDiscardChanges('課程設定有修改還沒儲存。'),
   close: () => { showEditModal.value = false; },
 });
 async function leaveCourseManagerSettings() {
   const dirty = editFormSnapshot.value && JSON.stringify(editForm.value) !== editFormSnapshot.value;
-  if (dirty && !await askConfirm({ title: '放棄未儲存的變更？', message: '課程設定有修改還沒儲存。', confirmLabel: '放棄變更', danger: true })) return;
+  if (dirty && !await askDiscardChanges('課程設定有修改還沒儲存。')) return;
   if (dirty && editFormSnapshot.value) {
     try {
       editForm.value = JSON.parse(editFormSnapshot.value);
@@ -3576,8 +3636,16 @@ function openPackageConversion(course) {
     teacher_id: '',
   };
   packageConversionSubmitting.value = false;
+  packageConversionSnapshot = JSON.stringify(packageConversionForm.value);
   showPackageConversionModal.value = true;
 }
+let packageConversionSnapshot = '';
+const { requestClose: requestClosePackageConversion } = useEditDialogCloseGuard({
+  isOpen: () => showPackageConversionModal.value && !packageConversionSubmitting.value,
+  isDirty: () => JSON.stringify(packageConversionForm.value) !== packageConversionSnapshot,
+  ask: () => askDiscardChanges('共用方案的內容有修改，還沒建立。'),
+  close: () => { showPackageConversionModal.value = false; },
+});
 
 async function submitPackageConversion() {
   const course = packageConversionCourse.value;
@@ -6515,9 +6583,6 @@ button.danger:disabled {
   max-height: 90vh;
   overflow-y: auto;
 }
-.package-conversion-modal { max-width: 520px; }
-.package-conversion-summary { display: grid; gap: 4px; margin: 0 0 14px; padding: 12px; border-radius: 10px; background: var(--ds-info-wash); color: var(--ds-ink); font-size: 13px; }
-.package-conversion-summary span { color: var(--ds-ink-mute); }
 
 .editability-action-panel {
   display: grid;
@@ -6653,12 +6718,6 @@ button.danger:disabled {
   background: linear-gradient(135deg, rgba(127,29,29,0.2), rgba(15,23,42,0.44));
   font-size: 14px;
   line-height: 1.6;
-}
-.premium-danger-warning {
-  margin: 0;
-  color: #fca5a5;
-  font-size: 13px;
-  font-weight: 700;
 }
 
 .form-section {
@@ -7242,29 +7301,6 @@ button.danger:disabled {
   background: linear-gradient(135deg, rgba(30,64,175,0.78), rgba(15,23,42,0.86));
   color: #bfdbfe;
   border-color: rgba(96,165,250,0.42);
-}
-
-.pause-impact-card {
-  background: rgba(15, 23, 42, 0.44);
-  border: 1px solid rgba(148, 163, 184, 0.24);
-  border-radius: 14px;
-  padding: 12px 14px;
-  margin: 12px 0 18px;
-}
-
-.pause-impact-title {
-  margin: 0 0 8px;
-  color: #e0f2fe;
-  font-weight: 800;
-  font-size: 13px;
-}
-
-.pause-impact-card ul {
-  margin: 0;
-  padding-left: 18px;
-  color: #cbd5e1;
-  line-height: 1.7;
-  font-size: 13px;
 }
 
 .btn-resume-primary {
