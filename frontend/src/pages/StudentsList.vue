@@ -77,7 +77,7 @@
         <span>{{ studentsLoadError }}</span>
         <AtButton shape="rect" variant="secondary" class="students-list-state__action" @click="loadStudents">重試</AtButton>
       </div>
-      <div v-else-if="displayStudents.length" class="table-scroll-wrap tw:lg:overflow-x-auto" :aria-busy="studentsLoading ? 'true' : 'false'">
+      <div v-else-if="displayStudents.length" class="table-scroll-wrap tw:@container tw:lg:overflow-x-auto" :aria-busy="studentsLoading ? 'true' : 'false'">
         <div v-if="studentsLoading || studentsLoadError" class="students-refresh-state" :class="{ 'students-refresh-state--error': studentsLoadError }" role="status" aria-live="polite">
           <span class="material-symbols-outlined" aria-hidden="true">{{ studentsLoadError ? 'cloud_off' : 'sync' }}</span>
           <span v-if="studentsLoadError">更新失敗，仍顯示上次成功載入的學生資料。</span>
@@ -100,7 +100,7 @@
             <th scope="col" :class="[dataTable.head, 'tw:max-lg:col-start-2 tw:max-lg:col-span-3 tw:max-lg:h-11 tw:max-lg:px-0']">姓名</th>
             <th scope="col" :class="[dataTable.head, 'tw:max-lg:sr-only']">年級</th>
             <th scope="col" :class="[dataTable.head, 'tw:max-lg:sr-only']">學校</th>
-            <th scope="col" :class="[dataTable.head, 'tw:max-lg:sr-only']">家長</th>
+            <th scope="col" :class="[dataTable.head, 'tw:max-lg:sr-only tw:lg:@max-5xl:hidden']">家長</th>
             <th scope="col" :class="[dataTable.head, 'tw:max-lg:sr-only']">RFID</th>
             <th scope="col" :class="[dataTable.head, 'tw:max-lg:sr-only']">補習科目 / 堂數</th>
             <th scope="col" :class="[dataTable.head, 'tw:max-lg:sr-only']"><span class="tw:sr-only">操作</span></th>
@@ -147,7 +147,7 @@
             <td :class="[dataTable.cell, cell0, 'tw:lg:min-w-28 tw:max-md:hidden tw:md:max-lg:col-start-3 tw:md:max-lg:row-start-2']">
               <span :class="dataTable.stackLabel">學校</span>{{ student.school || '—' }}
             </td>
-            <td :class="[dataTable.cell, cell0, 'tw:whitespace-nowrap tw:max-md:hidden tw:md:max-lg:col-start-4 tw:md:max-lg:row-start-2']">
+            <td :class="[dataTable.cell, cell0, 'tw:whitespace-nowrap tw:lg:@max-5xl:hidden tw:max-md:hidden tw:md:max-lg:col-start-4 tw:md:max-lg:row-start-2']">
               <span :class="dataTable.stackLabel">家長</span>{{ student.parent_name || '—' }}
             </td>
             <td :class="[dataTable.cell, cell0, 'tw:max-md:hidden tw:md:max-lg:col-start-5 tw:md:max-lg:row-start-2']" @click.stop>
