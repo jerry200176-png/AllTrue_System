@@ -899,7 +899,7 @@
     </CourseManager>
 
     <!-- Edit Course dialog (shared Dialog; issue 4989 slice 7a). Overlay click never closes it (unsaved form); 取消 / Esc do. -->
-    <Dialog :open="showEditModal && !courseManagerOpen" @update:open="(v) => { if (!v) requestCloseEditDialog(); }">
+    <Dialog :open="showEditModal && !courseManagerOpen && !showQuickAddSessionModal && !showCourseTransfer" @update:open="(v) => { if (!v) requestCloseEditDialog(); }">
       <DialogContent
         :show-close-button="false"
         class="tw:max-h-[min(90dvh,56rem)] tw:grid-rows-[auto_minmax(0,1fr)_auto] tw:gap-0 tw:p-0 tw:sm:max-w-2xl tw:max-sm:top-auto tw:max-sm:bottom-0 tw:max-sm:max-h-[94dvh] tw:max-sm:max-w-none tw:max-sm:translate-y-0 tw:max-sm:rounded-b-none tw:max-sm:rounded-t-3xl tw:rounded-3xl"

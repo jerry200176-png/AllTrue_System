@@ -710,3 +710,40 @@ test('layout guard: course-mgmt (edit dialog) focus trap, outside click, Esc and
   await page.getByRole('button', { name: '取消', exact: true }).click();
   await expect(dialog).toHaveCount(0);
 });
+
+// 課程查找 slice 7a (Codex review): the 補課 form and the 轉課 form are legacy overlays. While one is open the editor steps aside
+// (it would otherwise sit above it and trap focus); when the form closes the editor is back with the same unsaved text.
+for (const child of [
+  { name: '補課 form', open: (dialog) => dialog.getByRole('button', { name: /補課 \/ 補登/ }).click(), title: '補課／補登（總堂數不變）', field: 'input[type="date"]', close: (page) => page.locator('.modal-overlay .actions').getByRole('button', { name: '取消', exact: true }).click() },
+  { name: '轉課 form', open: (dialog) => dialog.getByRole('button', { name: /轉課/ }).first().click(), title: '轉課（改科目／老師／時段）', field: '#ct-start', close: (page) => page.locator('.modal-overlay').getByRole('button', { name: '取消', exact: true }).click() },
+]) {
+  test(`layout guard: course-mgmt (edit dialog) ${child.name} opens on top and the editor comes back`, async ({ page }) => {
+    await page.setViewportSize({ width: 375, height: 800 });
+    await COURSE_MGMT_EDIT_DIALOG.mock(page);
+    const editability = { reasons: [{ code: 'x', message: '這門課的科目、老師或時段要用轉課處理', next_step: 'course_transfer' }], locked_fields: [] };
+    await page.route('**/api/v1/student-classes/*/editability', (r) => json(r, editability));
+    await page.goto(COURSE_MGMT_EDIT_DIALOG.url);
+    await expect(page.locator('html')).toHaveAttribute('data-pilot-ready', '1', { timeout: 15_000 });
+    await page.getByText('歐陽子晴', { exact: true }).first().waitFor({ state: 'attached' });
+    await page.waitForLoadState('networkidle');
+    await page.locator('.course-row .action-menu-trigger').first().click();
+    await page.getByRole('menuitem', { name: '編輯' }).first().click();
+    const dialog = page.locator('[data-testid="course-edit-dialog"]');
+    await expect(dialog).toBeVisible();
+    await dialog.locator('textarea').first().fill('先寫一句備註');
+    await child.open(dialog);
+    const overlay = page.locator('.modal-overlay').filter({ hasText: child.title });
+    await expect(overlay).toBeVisible();
+    await expect(dialog).toHaveCount(0); // the editor stepped aside
+    const field = overlay.locator(child.field).first();
+    const onTop = await field.evaluate((el) => { const r = el.getBoundingClientRect(); const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2); return hit === el || el.contains(hit); });
+    expect(onTop, 'the form field is the topmost element, not covered by the editor').toBe(true);
+    await field.focus();
+    await expect(field).toBeFocused();
+    if (child.field === 'input[type="date"]') { await field.fill('2026-12-01'); await expect(field).toHaveValue('2026-12-01'); }
+    await child.close(page);
+    await expect(overlay).toHaveCount(0);
+    await expect(dialog).toBeVisible();
+    await expect(dialog.locator('textarea').first()).toHaveValue('先寫一句備註');
+  });
+}
