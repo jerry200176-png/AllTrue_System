@@ -47,6 +47,7 @@ class PruneAgentWorktrees(unittest.TestCase):
             "storage-public": ["backend/storage/app/public/f.png"],
             "assume-unchanged": [],
             "skip-worktree": [],
+            "both-flags": [],
         }
         for name, files in cases.items():
             cls.git(cls.repo, "worktree", "add", "-q", "--detach", f".claude/worktrees/{name}", "main")
@@ -65,6 +66,13 @@ class PruneAgentWorktrees(unittest.TestCase):
             gd = Path(cls.git(w, "rev-parse", "--absolute-git-dir").strip())
             for f in ("logs/HEAD", "index"):
                 os.utime(gd / f, (1, 1))
+        # Both flags on one file make `git ls-files -v` print a lowercase `s`, not `h` or `S`.
+        w = cls.repo / ".claude/worktrees/both-flags"
+        cls.git(w, "update-index", "--assume-unchanged", "--skip-worktree", "a.txt")
+        (w / "a.txt").write_text("edited\n")
+        gd = Path(cls.git(w, "rev-parse", "--absolute-git-dir").strip())
+        for f in ("logs/HEAD", "index"):
+            os.utime(gd / f, (1, 1))
         # A user config that hides untracked files from `git status`, as a developer might have globally.
         cls.git(cls.repo, "config", "status.showUntrackedFiles", "no")
         out = subprocess.run(["bash", str(SCRIPT), "--dry-run"], cwd=cls.repo, env=cls.env,
@@ -95,6 +103,35 @@ class PruneAgentWorktrees(unittest.TestCase):
 
     def test_skip_worktree_edit_is_kept(self) -> None:
         self.assertNotIn("skip-worktree", self.removable)
+
+    def test_file_with_both_index_flags_is_kept(self) -> None:
+        self.assertNotIn("both-flags", self.removable)
+
+    def test_index_audit_flags_every_hiding_tag(self) -> None:
+        audit = ROOT / "scripts/git-index-audit.sh"
+        for flags in (["--assume-unchanged"], ["--skip-worktree"], ["--assume-unchanged", "--skip-worktree"]):
+            with self.subTest(flags=flags):
+                w = self.tmp / ("audit-" + "".join(f[2] for f in flags))
+                self.git(self.repo, "worktree", "add", "-q", "--detach", str(w), "main")
+                self.git(w, "update-index", *flags, "a.txt")
+                for scope in ("--all",):
+                    r = subprocess.run(["bash", str(audit), scope], cwd=w, env=self.env, capture_output=True, text=True)
+                    self.assertEqual(r.returncode, 1, r.stdout)
+        clean = subprocess.run(["bash", str(audit), "--all"], cwd=self.repo / "scripts", env=self.env,
+                               capture_output=True, text=True)
+        self.assertEqual(clean.returncode, 0, clean.stdout)
+
+    def test_index_audit_flags_lowercase_s_printed_by_newer_git(self) -> None:
+        # Newer git prints `s` when both flags are set; older git (like some CI images) prints `h`. Fake it.
+        fake = self.tmp / "fakebin"
+        fake.mkdir(exist_ok=True)
+        (fake / "git").write_text('#!/bin/sh\nprintf "s a.txt\\nH b.txt\\n"\n')
+        (fake / "git").chmod(0o755)
+        env = {**self.env, "PATH": f"{fake}:{self.env['PATH']}"}
+        r = subprocess.run(["bash", str(ROOT / "scripts/git-index-audit.sh"), "--all"], cwd=self.repo, env=env,
+                           capture_output=True, text=True)
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertIn("s a.txt", r.stdout)
 
 
 if __name__ == "__main__":
