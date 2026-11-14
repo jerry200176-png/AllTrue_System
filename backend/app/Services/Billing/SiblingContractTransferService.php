@@ -41,6 +41,7 @@ final class SiblingContractTransferService
         private ContractMoneyVerdict $verdict,
         private ContractSessionSchedule $schedule,
         private ContractRenewal $renewal,
+        private PaidContractCreditMovement $movement,
     ) {
     }
 
@@ -268,26 +269,9 @@ final class SiblingContractTransferService
         ]);
         $newId = (int) $new->getKey();
 
-        $invoice->setAttribute('TotalAmount', $kept);
-        $invoice->setAttribute('PaidAmount', $kept);
-        $invoice->save();
-        InvoiceItem::query()->where('InvoiceID', $invoice->getKey())->where('StudentClassID', $srcId)->update(['Amount' => $kept]);
-        $out = Payment::query()->create([
-            'InvoiceID' => $invoice->getKey(), 'Amount' => -$amount, 'PaidAt' => $paidAt, 'Method' => 'transfer_out',
-            'Note' => "手足轉讓：轉出 {$amount} 元（{$moving} 堂）至合約#{$newId}",
-        ]);
-        $newInvoice = Invoice::query()->create([
-            'StudentID' => (int) $target->id, 'StudentClassID' => $newId, 'IssueDate' => $today, 'DueDate' => $today,
-            'TotalAmount' => $amount, 'PaidAmount' => $amount, 'ScheduleModeAtIssue' => 'count', 'Status' => 'paid',
-            'Note' => "手足轉讓轉入：自合約#{$srcId}",
-        ]);
-        InvoiceItem::query()->create([
-            'InvoiceID' => $newInvoice->getKey(), 'StudentClassID' => $newId, 'Description' => "手足轉讓轉入：{$moving} 堂", 'Amount' => $amount,
-        ]);
-        $in2 = Payment::query()->create([
-            'InvoiceID' => $newInvoice->getKey(), 'Amount' => $amount, 'PaidAt' => $paidAt, 'Method' => 'transfer_in',
-            'Note' => "手足轉讓轉入 {$amount} 元，來源合約#{$srcId} 帳單#{$invoice->getKey()} 付款#{$out->getKey()}",
-        ]);
+        $money = $this->movement->move($invoice, $source, $new, $moving, $amount, $paidAt, '手足轉讓');
+        $out = $money['out'];
+        $in2 = $money['in'];
 
         if ((int) ($source->Pay ?? 0) === (int) $plan['paid_amount']) {
             $source->setAttribute('Pay', $kept);
