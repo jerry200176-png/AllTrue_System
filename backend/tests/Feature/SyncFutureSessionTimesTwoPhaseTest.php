@@ -32,6 +32,9 @@ class SyncFutureSessionTimesTwoPhaseTest extends TestCase
 
     private static int $studentSerial = 0;
 
+    /** @var list<int> Students this test inserted outside any transaction (connectionsToTransact is empty), so it must delete them itself. */
+    private array $ownedStudentIds = [];
+
     protected function setUp(): void
     {
         parent::setUp();
@@ -42,7 +45,44 @@ class SyncFutureSessionTimesTwoPhaseTest extends TestCase
     protected function tearDown(): void
     {
         Carbon::setTestNow();
+        $this->removeOwnedRows();
         parent::tearDown();
+    }
+
+    /**
+     * Nightly random-order run (#5154): without a wrapping transaction these rows outlive the test and
+     * count as unpaid, week/time-committed courses in every later test (PrepaidHorizonPhase0ReportTest,
+     * OutboundRemindersResolverTest). Delete exactly what this test inserted.
+     */
+    private function removeOwnedRows(): void
+    {
+        $courseIds = DB::table('StudentClass')->whereIn('StudentID', $this->ownedStudentIds)->pluck('ID')->all();
+        DB::table('LearningRecord')->whereIn('StudentClassID', $courseIds)->delete();
+        DB::table('ClassSession')->whereIn('StudentClassID', $courseIds)->delete();
+        DB::table('StudentClass')->whereIn('ID', $courseIds)->delete();
+        DB::table('Student')->whereIn('id', $this->ownedStudentIds)->delete();
+        $this->ownedStudentIds = [];
+    }
+
+    public function test_cleanup_removes_every_row_the_test_committed(): void
+    {
+        $courseId = $this->seedCourse();
+        $session = ClassSession::create([
+            'StudentClassID' => $courseId, 'SessionDate' => '2026-07-24',
+            'StartTime' => '16:00:00', 'EndTime' => '18:00:00', 'Status' => 'scheduled',
+        ]);
+        LearningRecord::create([
+            'StudentClassID' => $courseId, 'ClassSessionID' => $session->id, 'TeacherID' => 99, 'Subject' => 'Math',
+            'Content' => 'leak probe', 'SessionDate' => '2026-07-24', 'StartTime' => '16:00:00', 'EndTime' => '18:00:00', 'Status' => 'pending',
+        ]);
+        $this->assertSame(1, DB::table('StudentClass')->where('ID', $courseId)->count());
+
+        $this->removeOwnedRows();
+
+        $this->assertSame(0, DB::table('StudentClass')->where('ID', $courseId)->count());
+        $this->assertSame(0, DB::table('ClassSession')->where('StudentClassID', $courseId)->count());
+        $this->assertSame(0, DB::table('LearningRecord')->where('StudentClassID', $courseId)->count());
+        $this->assertSame(0, DB::table('Student')->where('name', 'Sync1384')->count());
     }
 
     public function test_same_day_time_shift_does_not_1062(): void
@@ -140,6 +180,7 @@ class SyncFutureSessionTimesTwoPhaseTest extends TestCase
     {
         $studentId = self::STUDENT_ID + self::$studentSerial++;
         if (!DB::table('Student')->where('id', $studentId)->exists()) {
+            $this->ownedStudentIds[] = $studentId;
             DB::table('Student')->insert([
                 'id' => $studentId,
                 'name' => 'Sync1384',
