@@ -20,6 +20,7 @@ Every implementer agent follows this. The coordinator sends only the task-specif
 - A CI guard rejects test methods named like framework `TestCase` methods (`session()`, `count()`; they kill the whole PHPUnit shard): [`scripts/ci/check-testcase-method-collisions.php`](../../scripts/ci/check-testcase-method-collisions.php).
 - SQL `CURDATE()`/`NOW()` follow the database clock (UTC in CI), not the app's Asia/Taipei: pass the app's date into the query as a bound value instead.
 - A push must depend on the test result: `npx vitest run … && git push`, never a pipeline whose last command is `grep`.
+- A test that asserts on a list asserts its size first (`assertCount(2, …)`, `toHaveLength`). Three tests on 2026-11-14 passed on an empty list: fixture dates outside the requested week, an isolation test with no own-row, a fixture that never set up the access it tested. Derive fixture dates and the request window from one constant.
 - Arrays read back from a MySQL JSON column have reordered keys: compare them with `assertEquals`, not `assertSame`.
 - Before deleting a model, table or helper, grep every reader (controllers, parent portal, timelines). If something else reads it, stop and report.
 - No empty commits, no force-push. Merge `main` into the branch; do not rebase.
@@ -34,12 +35,18 @@ Every implementer agent follows this. The coordinator sends only the task-specif
 - Adding a tab, step or button changes keyboard order: search the e2e specs for arrow-key and Tab walks over that area and update them in the same PR.
 - Pick pages that are in the nav registry and in use. A page with no nav entry or zero production rows is a removal candidate: report it instead of migrating it.
 - Search the production-run specs for every selector, class name and label helper you change, and update them in the same PR: `frontend/e2e/calendar-course-consistency.spec.js`, `frontend/e2e/*production*.spec.js`, `frontend/e2e/fixtures/**`.
+- Evidence must show the case the change is for: a before shot where the defect is visible and an after shot where it is gone. Identical before/after pairs prove nothing (PR 5295: the menu shots showed a list where the menu already fitted).
+- Changing a shared component, class set or helper: list every user (`grep -rn "import .*<Name>"`) in the PR body with before/after shots of each. Missed three times on 2026-11-13/14 (`cn()`, a glued `dataTable` class, `ActionMenu`).
+- Moving a dialog onto the shared Dialog: list every action inside it that opens another modal, confirm, menu or toast, and check which one is on top and holds focus (shared Dialog `--ds-z-modal` 12001 with a focus trap; legacy `.modal-overlay` 12000). Step the parent dialog aside while the child is open; never raise z-index. One Playwright case per action. Two review passes missed this in PR 5292.
 - Do not put native `required` or `min` on a field that shows inline errors.
 - A confirm handler must return early when its dialog is already closed.
 
 ## Before you open the PR (run these; CI fails on each)
 - `python3 scripts/check-recent-work-revert.py --base origin/main --head HEAD`: add a `Rewrites: #N — reason` body line for every PR it lists.
 - `node scripts/check-release-notes-coverage.mjs --base origin/main --head HEAD`; frontend also `node scripts/design-style-ratchet.mjs` (`npm run build` does not run it) and the full `npx vitest run`, not a subset.
+- Keep the PR at or under 700 logic lines (presubmit fails above it; deletion-only exemption needs ≤30 added lines). Split before opening, not after review.
+- Before you report: stop every background process you started (dev servers, Playwright, poll loops). Leftover servers caused repeated reports and port clashes.
+- Reviewers and read-only checks: work in a worktree under your scratchpad; never check out a branch in the main checkout.
 - Name scratch files after your branch; re-fetch the PR body after creating it. Commit and push early: a container restart loses unpushed work.
 
 ## PR hygiene
