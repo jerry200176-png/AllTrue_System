@@ -129,6 +129,14 @@ class PaidFlagInvoiceMismatchTest extends TestCase
         [$stopped] = $this->seedCourse(['Paid' => 1, 'Stop' => 1]);
         $this->seedBill($stopped, 1000, 0);
 
+        [$member] = $this->seedCourse(['Paid' => 1]); // package members are skipped: their package owns the flag
+        $this->seedBill($member, 1000, 0);
+        $pkg = DB::table('course_packages')->insertGetId([
+            'student_id' => 1, 'campus_id' => 1, 'name' => 'p', 'total_sessions' => 10, 'class_type' => 'one_on_one',
+            'billing_mode' => 'count', 'created_at' => now(), 'updated_at' => now(),
+        ]);
+        DB::table('StudentClass')->where('ID', $member)->update(['PackageID' => $pkg]);
+
         $rows = (new PaidFlagInvoiceMismatch())->rows();
 
         $this->assertSame([$dateMode], array_column($rows, 'student_class_id'));
@@ -153,10 +161,30 @@ class PaidFlagInvoiceMismatchTest extends TestCase
         ];
         foreach ($rows as $row) {
             $this->assertEqualsCanonicalizing($allowed, array_keys($row));
+            foreach ($row['invoice_links'] as $link) {
+                $this->assertEqualsCanonicalizing(['invoice_id', 'link', 'covered'], array_keys($link));
+            }
         }
         $json = json_encode($rows, JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
         foreach ([self::SECRET_NAME, '987654', '123457'] as $forbidden) {
             $this->assertStringNotContainsString($forbidden, $json);
         }
+    }
+
+    public function test_missing_student_row_is_still_listed_and_rows_are_capped(): void
+    {
+        [$orphan] = $this->seedCourse(['Paid' => 1]);
+        $this->seedBill($orphan, 1000, 0);
+        DB::table('StudentClass')->where('ID', $orphan)->update(['StudentID' => 999999]);
+        [$second] = $this->seedCourse(['Paid' => 1]);
+        $this->seedBill($second, 1000, 0);
+
+        $dump = new PaidFlagInvoiceMismatch();
+        $this->assertSame(2, $dump->count());
+        $rows = $dump->rows();
+        $this->assertCount(2, $rows);
+        $this->assertContains($orphan, array_column($rows, 'student_class_id'));
+        $this->assertNull(array_column($rows, null, 'student_class_id')[$orphan]['campus_id']);
+        $this->assertCount(1, $dump->rows(1));
     }
 }

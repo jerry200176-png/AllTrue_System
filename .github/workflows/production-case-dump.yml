@@ -1571,8 +1571,19 @@ jobs:
             // Read-only (#5187): the contracts the nightly invariant `paid_flag_vs_invoice` counts, with the facts that separate
             // its causes (shared bill, under review, recount can reopen). Same predicate as the nightly count. IDs, enums and
             // booleans only; no names, no amounts. No writes.
-            $rows = app(\App\Services\Billing\PaidFlagInvoiceMismatch::class)->rows();
-            $out['count'] = count($rows);
+            // One READ ONLY transaction, rolled back (a write would fail with SQLSTATE 25006). `count` is the nightly count;
+            // `rows` is capped (200), `truncated` says so; `count` > `rows_listed` means a counted contract is not listed.
+            $db::select('SET TRANSACTION READ ONLY', [], false);
+            $db::beginTransaction();
+            try {{
+              $mismatch = app(\App\Services\Billing\PaidFlagInvoiceMismatch::class);
+              $out['count'] = $mismatch->count();
+              $rows = $mismatch->rows();
+            }} finally {{
+              $db::rollBack();
+            }}
+            $out['rows_listed'] = count($rows);
+            $out['truncated'] = $out['count'] > count($rows);
             $out['side_a'] = count(array_filter($rows, fn ($r) => $r['side'] === \App\Services\Billing\PaidFlagInvoiceMismatch::SIDE_A));
             $out['side_b'] = count($rows) - $out['side_a'];
             $out['rows'] = $rows;

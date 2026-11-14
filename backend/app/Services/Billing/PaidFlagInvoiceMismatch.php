@@ -20,6 +20,7 @@ final class PaidFlagInvoiceMismatch
 {
     public const SIDE_A = 'A_paid_flag_but_owed';
     public const SIDE_B = 'B_unpaid_flag_but_covered';
+    public const ROW_LIMIT = 200;
 
     /** A live positive bill naming the course on its header or on a line (`i` = Invoice, `sc` = StudentClass). */
     public static function linkSql(): string
@@ -54,24 +55,31 @@ final class PaidFlagInvoiceMismatch
         return '(sc.Stop = 0 OR sc.Stop IS NULL) AND sc.PackageID IS NULL AND (' . self::sideASql() . ' OR ' . self::sideBSql() . ')';
     }
 
+    /** The nightly count itself (no Student join), shown next to the rows so a gap between them is visible. */
+    public function count(): int
+    {
+        return (int) (DB::selectOne('SELECT COUNT(*) AS c FROM StudentClass sc WHERE ' . self::whereSql())->c ?? 0);
+    }
+
     /**
-     * One row per counted contract, ordered by campus then ID. Every row carries its campus_id (Student.CampusID).
+     * One row per counted contract (at most $limit), ordered by campus then ID. Every row carries its campus_id (Student.CampusID; null if the student row is missing).
      *
      * @return list<array<string,mixed>>
      */
-    public function rows(): array
+    public function rows(int $limit = self::ROW_LIMIT): array
     {
         $found = DB::select(
             'SELECT sc.ID AS student_class_id, st.CampusID AS campus_id, sc.Paid AS paid, sc.Stop AS stop,'
             . ' sc.ScheduleMode AS schedule_mode, sc.SessionCount AS session_count,'
             . " (sc.closed_reason IS NOT NULL AND sc.closed_reason <> '') AS closed_reason_set,"
             . ' (' . self::sideASql() . ') AS is_side_a'
-            . ' FROM StudentClass sc JOIN Student st ON st.id = sc.StudentID'
-            . ' WHERE ' . self::whereSql() . ' ORDER BY st.CampusID, sc.ID'
+            . ' FROM StudentClass sc LEFT JOIN Student st ON st.id = sc.StudentID'
+            . ' WHERE ' . self::whereSql() . ' ORDER BY st.CampusID, sc.ID LIMIT ' . ($limit + 1)
         );
         if ($found === []) {
             return [];
         }
+        $found = array_slice($found, 0, $limit); // callers compare count() with the rows to see truncation
 
         $ids = array_map(static fn ($r) => (int) $r->student_class_id, $found);
         $bills = []; // student_class_id => list of {invoice_id, link, covered}
@@ -125,7 +133,7 @@ final class PaidFlagInvoiceMismatch
             $status = (string) ($verdicts[$id]['status'] ?? '');
             $out[] = [
                 'student_class_id' => $id,
-                'campus_id' => (int) $r->campus_id,
+                'campus_id' => $r->campus_id === null ? null : (int) $r->campus_id,
                 'side' => (int) $r->is_side_a === 1 ? self::SIDE_A : self::SIDE_B,
                 'paid_flag' => (int) $r->paid,
                 'fully_paid' => $mine !== [] && !in_array(false, array_column($mine, 'covered'), true),
