@@ -145,6 +145,12 @@ describe('TeacherEligibilityPage on the template', () => {
     expect(wrapper.find('.desktop-table').text()).not.toContain('舊分校的老師');
   });
 
+  it('names the teachers another campus settles this month', async () => {
+    fetchMock.mockImplementation(async () => json(payload({ settled_elsewhere: [{ teacher_id: 703, teacher_name: '測試老師丙', campus_id: 9, campus_name: '測試分校' }] })));
+    await mountPage();
+    expect(wrapper.find('[data-testid="eligibility-settled-elsewhere"]').text()).toContain('測試老師丙（測試分校）');
+  });
+
   it('a draft month is not compared', async () => {
     await mountPage();
     expect(eligibilityReads().some((u) => u.includes('compare=1'))).toBe(false);

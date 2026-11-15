@@ -108,6 +108,20 @@ class TeacherEligibilityController extends Controller
         // all campuses), out to the last week's Sunday so a week that crosses the month end is whole.
         $weeks = $this->splitIntoWeeks($effectiveStart, $period['end']);
         $lessonsByTeacher = $weeks === [] ? [] : TeacherClassCalendar::load($weeks[0][0]->toDateString(), end($weeks)[1]->toDateString(), null, $teacherIds, true);
+        // The totals are company-wide, so a teacher who belongs to several campuses would be paid the same bonus once
+        // per campus. One campus settles the teacher; the others only name where.
+        $settledElsewhere = [];
+        if ($lockBranchId !== null) {
+            $campusNames = [];
+            foreach ($this->settlementCampusByTeacher($teacherIds, $lessonsByTeacher, $lockMonth) as $teacherId => $campusId) {
+                if ($campusId === $lockBranchId) continue;
+                $campusNames[$campusId] ??= (string) (DB::table('Campus')->where('id', $campusId)->value('name') ?? $campusId);
+                $settledElsewhere[] = ['teacher_id' => $teacherId, 'teacher_name' => (string) ($teachers->firstWhere('id', $teacherId)->Name ?? ''), 'campus_id' => $campusId, 'campus_name' => $campusNames[$campusId]];
+            }
+            $moved = array_column($settledElsewhere, 'teacher_id');
+            $teachers = $teachers->reject(fn ($teacher) => in_array((int) $teacher->id, $moved, true))->values();
+            $teacherIds = array_values(array_diff($teacherIds, $moved));
+        }
         $achievements = Schema::hasTable('teacher_payroll_achievements')
             ? DB::table('teacher_payroll_achievements')
                 ->whereIn('teacher_id', $teacherIds)
@@ -275,6 +289,7 @@ class TeacherEligibilityController extends Controller
             'components' => ['weekly_16_segments', 'holiday_16_hours', 'weekday_afternoon', 'special_performance', 'deductions', 'admin_allowance', 'cash_adjustments', 'subject_count_bonus', 'new_hire_guarantee'],
             'teachers' => $rows,
             'total_teachers' => count($rows),
+            'settled_elsewhere' => $settledElsewhere,
             // Divide only after the complete eligible monthly raw total is
             // summed, so teacher-level rounding cannot affect the branch total.
             'branch_subject_total' => round(collect($subjectUnitsByTeacher)->sum(fn ($units) => (float) ($units['payroll_raw_total'] ?? 0)) / 8, 4),
@@ -310,6 +325,50 @@ class TeacherEligibilityController extends Controller
         $locked['recalculated_only_teacher_ids'] = array_values(array_diff(array_keys($live), array_column($locked['teachers'], 'teacher_id')));
 
         return $locked;
+    }
+
+    /**
+     * The one campus that settles each teacher who belongs to more than one (teachers of a single campus are left out).
+     * A campus that has already locked the month with the teacher in it keeps the teacher, whatever the lessons say
+     * now. Otherwise it is the campus, among those the teacher belongs to, with the most lesson time in the weeks in
+     * view; a tie or no lessons goes to the lowest campus id, so every campus reaches the same answer.
+     *
+     * @param  array<int, array<string, list<array{start:string,end:string,campus_id:int}>>>  $lessonsByTeacher
+     * @return array<int, int> teacher id => campus id
+     */
+    private function settlementCampusByTeacher(array $teacherIds, array $lessonsByTeacher, string $month): array
+    {
+        $memberOf = [];
+        foreach (DB::table('UserCampus')->whereIn('UserID', $teacherIds)->orderBy('CampusID')->get(['UserID', 'CampusID']) as $row) {
+            $memberOf[(int) $row->UserID][(int) $row->CampusID] = 0;
+        }
+        $lockedIn = FulltimePayrollLockStore::tablesReady()
+            ? DB::table('fulltime_payroll_run_teachers as t')
+                ->join('fulltime_payroll_runs as r', 'r.id', '=', 't.run_id')
+                ->where('r.month', $month)->where('r.status', 'locked')->whereIn('t.teacher_id', $teacherIds)
+                ->orderBy('r.id')->pluck('r.branch_id', 't.teacher_id')->all()
+            : [];
+
+        $campusOf = [];
+        foreach ($memberOf as $teacherId => $minutes) {
+            if (count($minutes) < 2) continue;
+            if (isset($lockedIn[$teacherId])) {
+                $campusOf[$teacherId] = (int) $lockedIn[$teacherId];
+                continue;
+            }
+            foreach ($lessonsByTeacher[$teacherId] ?? [] as $lessons) {
+                foreach ($lessons as $lesson) {
+                    if (!isset($minutes[$lesson['campus_id']])) continue;
+                    $start = strtotime($lesson['start']);
+                    $end = $lesson['end'] !== '' ? strtotime($lesson['end']) : $start + 7200;
+                    $minutes[$lesson['campus_id']] += max(0, $end - $start) / 60;
+                }
+            }
+            // Campuses are in id order and only a strictly larger total takes over: ties stay with the lowest id.
+            $campusOf[$teacherId] = (int) array_keys($minutes, max($minutes))[0];
+        }
+
+        return $campusOf;
     }
 
     private function finalizePolicyResult(array $components): array

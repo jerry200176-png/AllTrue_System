@@ -170,6 +170,41 @@ class TeacherEligibilityWeeklySegmentsTest extends TestCase
         $this->assertSame(4000, $full['amount']);
     }
 
+    /** The totals are company-wide, so a teacher who belongs to two campuses is settled in one of them only. */
+    public function test_teacher_in_two_campuses_is_settled_in_one(): void
+    {
+        $director = $this->createDirector();
+        $teacher = $this->createTeacher();
+        $other = Campus::factory()->create();
+        UserCampus::create(['CampusID' => $other->id, 'UserID' => $teacher->id, 'Admin' => 0, 'Approved' => 1]);
+        UserCampus::create(['CampusID' => $other->id, 'UserID' => $director['user_id'], 'Admin' => 1, 'Approved' => 1]);
+        $this->createAttendedSession($teacher->id, 'one_on_one', '2026-08-03', '10:00', 120);
+        $this->createAttendedSession($teacher->id, 'one_on_one', '2026-08-04', '10:00', 240, 'completed', 'present', $other->id);
+        $view = fn (int $campusId) => $this->withHeaders($this->auth($director['token']))
+            ->getJson("/api/v1/finance/teacher-eligibility?period=month&start=2026-08-01&end=2026-08-31&branch_id={$campusId}")
+            ->assertOk()->json();
+
+        // More lesson time in the other campus: it settles the teacher, this one only says where.
+        $here = $view(1);
+        $this->assertSame([], $here['teachers']);
+        $this->assertSame([$teacher->id, $other->id], [$here['settled_elsewhere'][0]['teacher_id'], $here['settled_elsewhere'][0]['campus_id']]);
+        $there = $view($other->id);
+        $this->assertSame([$teacher->id], array_column($there['teachers'], 'teacher_id'));
+        $this->assertSame([], $there['settled_elsewhere']);
+
+        // Once that campus has locked the month with the teacher in it, later lessons elsewhere do not move the teacher.
+        $this->withHeaders($this->auth($director['token']))
+            ->postJson('/api/v1/finance/teacher-eligibility/lock', ['month' => '2026-08', 'branch_id' => $other->id])->assertOk();
+        $this->createAttendedSession($teacher->id, 'one_on_one', '2026-08-05', '10:00', 480);
+        $after = $view(1);
+        $this->assertSame([], $after['teachers']);
+        $this->assertSame($other->id, $after['settled_elsewhere'][0]['campus_id']);
+
+        // Without the lock the same lessons would bring the teacher here: the rule follows the lesson time.
+        DB::table('fulltime_payroll_runs')->update(['status' => 'reopened']);
+        $this->assertSame([$teacher->id], array_column($view(1)['teachers'], 'teacher_id'));
+    }
+
     /** 假日16小時倍率: every judged week needs 16 scheduled hours across Saturday and Sunday. */
     public function test_holiday_rate_follows_weekend_hours_on_the_calendar(): void
     {
