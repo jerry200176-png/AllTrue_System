@@ -286,7 +286,7 @@
                       >
                         <button
                           type="button"
-                          class="student-course-picker__button tw:grid tw:min-h-11 tw:w-full tw:grid-cols-[minmax(0,1fr)_auto] tw:items-center tw:gap-x-3 tw:gap-y-1 tw:border-0 tw:border-l-4 tw:border-solid tw:px-3 tw:py-3 tw:text-left tw:text-foreground tw:focus-visible:outline-2 tw:focus-visible:-outline-offset-2 tw:focus-visible:outline-solid tw:focus-visible:outline-ring"
+                          class="student-course-picker__button tw:grid tw:min-h-11 tw:w-full tw:grid-cols-[minmax(0,1fr)_auto] tw:items-center tw:gap-x-3 tw:gap-y-1 tw:border-0 tw:border-l tw:border-solid tw:px-3 tw:py-3 tw:text-left tw:text-foreground tw:focus-visible:outline-2 tw:focus-visible:-outline-offset-2 tw:focus-visible:outline-solid tw:focus-visible:outline-ring"
                           :class="getFocusedStudentCourse(student.id)?.id === course.id ? 'tw:border-l-primary tw:bg-[var(--ds-primary-wash)]' : isCourseNeedsAttention(course) ? 'tw:border-l-[var(--ds-warning)] tw:bg-transparent tw:hover:bg-muted' : 'tw:border-l-transparent tw:bg-transparent tw:hover:bg-muted'"
                           :aria-pressed="getFocusedStudentCourse(student.id)?.id === course.id"
                           @click.stop="selectStudentCourse(student.id, course.id, $event)"
