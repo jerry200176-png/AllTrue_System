@@ -199,9 +199,12 @@ class TeacherEligibilityWeeklySegmentsTest extends TestCase
             ->getJson('/api/v1/finance/teacher-eligibility?period=week&start=2026-08-03&end=2026-08-09&branch_id=1')
             ->assertOk()->json('teachers.0');
 
-        // No sign-in under the teacher yet: the first lesson is the first one ahead in their own course.
+        // No sign-in under the teacher yet: the first lesson is the first one in their own course. A course taken
+        // over does not bring the former teacher's lessons along (they are signed in under that teacher).
         $ahead = $this->createAttendedSession($teacher->id, 'one_on_one', '2026-08-10', '10:00', 120, 'scheduled');
         DB::table('StudentSingIn')->where('ClassSessionID', $ahead->id)->update(['VoidedAt' => now(), 'VoidReason' => 'fixture']);
+        $inherited = $this->createAttendedSession($teacher->id, 'one_on_one', '2026-04-13', '10:00', 120);
+        DB::table('StudentSingIn')->where('ClassSessionID', $inherited->id)->update(['TeacherID' => $director['user_id']]);
         $this->assertSame('2026-08-10', $row()['components']['new_hire_guarantee']['metrics']['first_lesson_date']);
 
         // A lesson signed in under them while covering someone else's course dates the first lesson.
@@ -218,20 +221,20 @@ class TeacherEligibilityWeeklySegmentsTest extends TestCase
         $this->assertTrue($new['settlement']['new_hire_guarantee_applied']);
         $this->assertEquals(2000, $new['settlement']['weighted_bonus_amount']);
 
-        // Taking over a course does not bring the former teacher's lessons along: still new.
-        $inherited = $this->createAttendedSession($teacher->id, 'one_on_one', '2026-04-13', '10:00', 120);
-        DB::table('StudentSingIn')->where('ClassSessionID', $inherited->id)->update(['TeacherID' => $director['user_id']]);
-        $this->assertSame('2026-08-01', $row()['components']['new_hire_guarantee']['metrics']['first_lesson_date']);
-        $this->assertEquals(2000, $row()['components']['new_hire_guarantee']['amount']);
-
-        // A lesson this teacher did teach months earlier (signed in under them): no longer new.
-        $earlier = $this->createAttendedSession($director['user_id'], 'one_on_one', '2026-04-06', '10:00', 120);
-        DB::table('StudentSingIn')->where('ClassSessionID', $earlier->id)->update(['TeacherID' => $teacher->id]);
+        // An older lesson in their own course with no sign-in at all is not proof of anything, and missing records
+        // must never make a teacher look newer: it dates the first lesson back (month 6, no guarantee).
+        $unsigned = $this->createAttendedSession($teacher->id, 'one_on_one', '2026-03-02', '10:00', 120);
+        DB::table('StudentSingIn')->where('ClassSessionID', $unsigned->id)->update(['VoidedAt' => now(), 'VoidReason' => 'fixture']);
         $old = $row();
-        $this->assertSame('2026-04-06', $old['components']['new_hire_guarantee']['metrics']['first_lesson_date']);
-        $this->assertSame(5, $old['components']['new_hire_guarantee']['metrics']['guarantee_month']);
+        $this->assertSame('2026-03-02', $old['components']['new_hire_guarantee']['metrics']['first_lesson_date']);
+        $this->assertSame(6, $old['components']['new_hire_guarantee']['metrics']['guarantee_month']);
         $this->assertEquals(0, $old['components']['new_hire_guarantee']['amount']);
         $this->assertFalse($old['settlement']['new_hire_guarantee_applied']);
+
+        // A lesson signed in under them months earlier, in a course that belongs to someone else, counts as well.
+        $earlier = $this->createAttendedSession($director['user_id'], 'one_on_one', '2026-02-02', '10:00', 120);
+        DB::table('StudentSingIn')->where('ClassSessionID', $earlier->id)->update(['TeacherID' => $teacher->id]);
+        $this->assertSame('2026-02-02', $row()['components']['new_hire_guarantee']['metrics']['first_lesson_date']);
     }
 
     /** A student's leave on a substituted lesson keeps the substitute's hours in the payroll view only. */

@@ -191,14 +191,6 @@ class TeacherEligibilityPolicy
         return $this->result(self::QUALIFIES, "到職第{$month}個月且每週排滿16段，倍率後獎金有保底。", $metrics, (float) $this->setting('new_hire_guarantee_amount', 2000));
     }
 
-    /** The first day of the earliest month in which a first lesson still makes a teacher "new" for the month of $periodStart. */
-    public function newHireWindowStart(string $periodStart): string
-    {
-        $months = max(1, (int) $this->setting('new_hire_guarantee_months', 3));
-
-        return Carbon::parse($periodStart)->startOfMonth()->subMonths($months - 1)->toDateString();
-    }
-
     /** HH:MM; weekday lesson time before it counts toward the 平日下午 rate. */
     public function weekdayCutoff(): string
     {
