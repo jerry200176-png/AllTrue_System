@@ -147,7 +147,7 @@
                   <summary class="tw:cursor-pointer tw:text-tpl-caption tw:text-[var(--ds-primary-text)]">查看每週段數</summary>
                   <div v-for="week in weeklyWeeks(teacher)" :key="week.week_start" :class="traceRow">
                     <span>{{ week.week_start }}～{{ week.week_end }}</span>
-                    <span>{{ formatSegments(week.total_segments) }} 段・{{ week.meets_16_segments ? '達標' : '未達' }}</span>
+                    <span>{{ formatSegments(week.total_segments) }} 段・{{ week.closure_dates?.length ? '停課週不列入' : (week.meets_16_segments ? '達標' : '未達') }}</span>
                   </div>
                 </details>
               </TableCell>
@@ -190,7 +190,7 @@
             <summary class="tw:cursor-pointer tw:text-tpl-caption tw:text-[var(--ds-primary-text)]">查看每週段數</summary>
             <div v-for="week in weeklyWeeks(teacher)" :key="week.week_start" :class="traceRow">
               <span>{{ week.week_start }}～{{ week.week_end }}</span>
-              <span>{{ formatSegments(week.total_segments) }} 段・{{ week.meets_16_segments ? '達標' : '未達' }}</span>
+              <span>{{ formatSegments(week.total_segments) }} 段・{{ week.closure_dates?.length ? '停課週不列入' : (week.meets_16_segments ? '達標' : '未達') }}</span>
             </div>
           </details>
           <p class="mobile-reason tw:mt-3 tw:text-tpl-caption tw:leading-relaxed tw:text-tpl-secondary">{{ reasonText(teacher) }}</p>

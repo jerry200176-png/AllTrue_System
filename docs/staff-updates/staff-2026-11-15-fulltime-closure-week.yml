@@ -1,0 +1,16 @@
+updates:
+  - id: staff-2026-11-15-fulltime-closure-week
+    published_at: "2026-11-15"
+    audiences:
+      - director
+      - super_admin
+    importance: major
+    title: 停課週不列入段數判定
+    summary: 有全校停課日的那一週不看段數，直接算達標，不影響當月獎金。
+    items:
+      - category: fixed
+        text: 某一週有全校停課日時，那一週不判定段數；每週明細會標示「停課週不列入」。
+      - category: improved
+        text: 停課日由系統判斷，當天全公司的課都停了才算，不需要人工補登。
+    source_refs:
+      - "changelog:2026-11-15:fulltime-closure-week-not-judged"
