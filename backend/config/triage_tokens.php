@@ -14,6 +14,7 @@ return [
         'triage.bug-reports.index', 'triage.bug-reports.show', 'triage.bug-reports.attachment',
         'triage.student-classes.billing-snapshot',
         'triage.fulltime-payroll.report',
+        'triage.db.tables', 'triage.db.rows',
     ],
     'list_max_limit' => 100,
     // #4100 kill switch, default OFF (待 Founder 核准): while false the billing snapshot answers 404 even for a live link.
@@ -22,4 +23,7 @@ return [
     // Switch: with the env set to false the route answers 404. Production caches config, so that takes effect at the
     // next deploy; the immediate stop is revoking the token (個人資料 → 安全性).
     'fulltime_payroll_enabled' => (bool) env('TRIAGE_FULLTIME_PAYROLL_ENABLED', true),
+    // Rows of the business tables, numbers / dates / status codes only; names, phones, notes and credentials never leave
+    // and sign-in tables are unreachable (Founder GO 2026-11-16, so on by default). Same switch behaviour as above.
+    'db_read_enabled' => (bool) env('TRIAGE_DB_READ_ENABLED', true),
 ];

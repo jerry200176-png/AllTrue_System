@@ -955,6 +955,8 @@
 | GET | `api/v1/triage/bug-reports` | `TriageBugReportController@index` | auth |
 | GET | `api/v1/triage/bug-reports/{id}` | `TriageBugReportController@show` | auth |
 | GET | `api/v1/triage/bug-reports/{id}/attachments/{attachmentId}` | `TriageBugReportController@attachment` | auth |
+| GET | `api/v1/triage/db` | `TriageDbReadController@tables` | auth |
+| GET | `api/v1/triage/db/{table}` | `TriageDbReadController@rows` | auth |
 | GET | `api/v1/triage/fulltime-payroll` | `TriageFulltimePayrollController@show` | auth |
 | GET | `api/v1/triage/student-classes/{id}/billing-snapshot` | `TriageBillingSnapshotController@show` | auth |
 

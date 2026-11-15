@@ -505,6 +505,18 @@ next deploy on (production caches config). Use it to check payroll numbers again
 real data instead of asking someone to read the page out. The public-repo rule is unchanged: nothing read this
 way goes into an issue, PR or commit except ids and your own technical conclusion.
 
+### Business-table rows with the same token (numbers, dates and status codes only)
+
+Founder GO 2026-11-16. `GET /api/v1/triage/db` lists the reachable tables; `GET /api/v1/triage/db/{table}` returns
+rows (`eq[col]=`, `gte[col]=`, `lte[col]=`, `in[col]=a,b`, `order=col`, `dir=asc|desc`, `limit` ≤ 200, `offset`).
+What leaves is fail-closed: number and date/time columns, plus text columns that are an enum or a listed code
+column and whose value is a short ASCII code. Names, phones, notes, memos and credentials never leave, such columns
+cannot be filtered or sorted on, and tables about signing in, tokens or account bindings answer 404. SELECT only,
+audited per request, 60 calls a minute. To stop it at once, revoke the token; `TRIAGE_DB_READ_ENABLED=false`
+answers 404 from the next deploy on. Use it to look at a contract, bill, payment or lesson by its number instead of
+asking for a screenshot. Changing data is not part of this: every production data change still goes through a
+governed operation (dry run, Founder approval, audit, restore id). The public-repo rule is unchanged.
+
 ## Deployment evidence gate (merge ≠ production)
 
 For a code fix, keep the merge, deployment, and runtime evidence tied to one

@@ -1046,6 +1046,12 @@ Route::prefix('v1')->group(function () {
         // Each call recomputes a whole campus-month, so it has its own, much lower limit than the group's (own
         // prefix: without one it would share the group's counter and count every call twice).
         Route::get('fulltime-payroll', [TriageFulltimePayrollController::class, 'show'])->middleware('throttle:20,1,triage-payroll')->name('triage.fulltime-payroll.report');
+        // Founder GO 2026-11-16: rows of the business tables, numbers / dates / status codes only (no names, phones, notes or
+        // credentials; sign-in tables unreachable); triage_tokens.db_read_enabled. Own, lower rate limit.
+        Route::middleware('throttle:60,1,triage-db')->group(function () {
+            Route::get('db', [\App\Http\Controllers\TriageDbReadController::class, 'tables'])->name('triage.db.tables');
+            Route::get('db/{table}', [\App\Http\Controllers\TriageDbReadController::class, 'rows'])->where('table', '[A-Za-z0-9_]+')->name('triage.db.rows');
+        });
     });
     Route::middleware(['super_admin', 'require_password_change'])->group(function () {
         Route::get('admin/triage-tokens', [TriageTokenController::class, 'index']);
