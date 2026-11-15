@@ -129,6 +129,63 @@ final class PopInappAgentClientTest extends TestCase
         $this->assertSame(1, DB::table('pop_operation_requests')->count());
     }
 
+    public static function foreignDraftRequesters(): array
+    {
+        return [
+            'inapp client versus machine' => [InappAgentClients::PURPOSE, 'machine'],
+            'inapp client versus human' => [InappAgentClients::PURPOSE, 'human'],
+            'control-plane client versus machine' => ['pop_control_plane', 'machine'],
+            'control-plane client versus human' => ['pop_control_plane', 'human'],
+        ];
+    }
+
+    #[\PHPUnit\Framework\Attributes\DataProvider('foreignDraftRequesters')]
+    public function test_machine_draft_idempotency_never_returns_another_requesters_row(string $purpose, string $owner): void
+    {
+        $this->client('k-replay', ['Purpose' => $purpose, 'CampusID' => $this->campus]);
+        $bugIds = [$this->bug('resolved')];
+        $rid = 'foreign-replay';
+        if ($owner === 'human') {
+            $draft = $this->service()->createDraft(self::OP, $this->params($this->campus, $bugIds, $rid),
+                'inapp-' . $rid, 'user:' . $this->admin->id, 'super_admin');
+        } else {
+            $this->client('k-owner');
+            $draft = $this->machineDraft('k-owner', $this->campus, $bugIds, $rid)->assertCreated()->json('data');
+        }
+        $before = (array) DB::table('pop_operation_requests')->where('id', $draft['id'])->first();
+
+        $this->machineDraft('k-replay', $this->campus, $bugIds, $rid)->assertStatus(409)->assertJsonMissingPath('data');
+
+        $this->assertSame($before, (array) DB::table('pop_operation_requests')->where('id', $draft['id'])->first());
+        $this->assertSame(1, DB::table('pop_operation_requests')->count());
+        $this->assertSame(0, DB::table('pop_approval_events')->count());
+        $this->assertSame(0, DB::table('pop_execution_records')->count());
+        $this->assertSame(0, BugReportComment::query()->count());
+    }
+
+    public static function machineClientPurposes(): array
+    {
+        return ['inapp' => [InappAgentClients::PURPOSE], 'control-plane' => ['pop_control_plane']];
+    }
+
+    #[\PHPUnit\Framework\Attributes\DataProvider('machineClientPurposes')]
+    public function test_machine_draft_idempotency_replays_its_own_request_without_extra_effects(string $purpose): void
+    {
+        $client = $this->client('k-same', ['Purpose' => $purpose, 'CampusID' => $this->campus]);
+        $bugIds = [$this->bug('resolved')];
+        $draft = $this->machineDraft('k-same', $this->campus, $bugIds)->assertCreated()->json('data');
+        $before = (array) DB::table('pop_operation_requests')->where('id', $draft['id'])->first();
+
+        $this->machineDraft('k-same', $this->campus, $bugIds)->assertCreated()
+            ->assertJsonPath('data.id', $draft['id'])->assertJsonPath('data.actor', 'machine:api-client:' . $client->id);
+
+        $this->assertSame($before, (array) DB::table('pop_operation_requests')->where('id', $draft['id'])->first());
+        $this->assertSame(1, DB::table('pop_operation_requests')->count());
+        $this->assertSame(0, DB::table('pop_approval_events')->count());
+        $this->assertSame(0, DB::table('pop_execution_records')->count());
+        $this->assertSame(0, BugReportComment::query()->count());
+    }
+
     public static function deniedStates(): array
     {
         return [

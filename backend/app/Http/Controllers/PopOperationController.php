@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Operations\PopOperationService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
 use RuntimeException;
 
 /** Control-plane request/approval API; it deliberately has no execute endpoint. */
@@ -70,6 +71,11 @@ final class PopOperationController extends Controller
                 (int) $request->attributes->get('api_client_id'),
                 $validated['context'] ?? null
             );
+            // A global idempotency key can match a human's or another machine's draft.
+            if ((string) ($draft['actor'] ?? '') !== (string) $request->attributes->get('auth_actor')) {
+                Log::warning('POP machine draft requester mismatch', ['api_client_id' => (int) $request->attributes->get('api_client_id'), 'operation_id' => $operationId]);
+                throw new RuntimeException('POP idempotency key is already bound to another requester.');
+            }
         } catch (RuntimeException $e) {
             return response()->json(['message' => 'POP draft rejected', 'reason_code' => $e->getMessage()], $this->errorStatus($e));
         }
