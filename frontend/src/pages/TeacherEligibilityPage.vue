@@ -37,6 +37,9 @@
     <Alert tone="info" title="本頁已照總部 115.07 公告計算" class="tw:border-[var(--ds-warning)] tw:bg-[var(--ds-warning-wash)] tw:text-tpl-body" data-testid="eligibility-calibration-notice">
       獎金、倍率、每週 16 段與新進保底都已照公告更新。2026-11-15 以前鎖定的月份仍是舊算法的數字；打開那個月份，會在獎金合計下面顯示照現在算法重算的金額與差額。
     </Alert>
+    <p v-if="settledElsewhere.length" class="tw:mt-2 tw:text-tpl-body tw:text-tpl-secondary tw:text-pretty" data-testid="eligibility-settled-elsewhere">
+      也在別的分校任教、這個月由該分校結算的老師（不重複列在這裡）：{{ settledElsewhere.map((row) => `${row.teacher_name}（${row.campus_name}）`).join('、') }}
+    </p>
     <p v-if="isLocked && recalculationNote" class="tw:mt-2 tw:text-tpl-body tw:text-tpl-secondary tw:text-pretty" data-testid="eligibility-recalculation-note">{{ recalculationNote }}</p>
 
     <Card class="eligibility-card filters tw:gap-0 tw:p-4 tw:shadow-none">
@@ -185,7 +188,7 @@
       <div class="tw:[&_.eligibility-input-panel_button]:min-h-11 tw:[&_.eligibility-input-panel_select]:min-h-11 tw:[&_.eligibility-input-panel_input]:min-h-11 tw:[&_.eligibility-input-panel_textarea]:min-h-11">
         <TeacherEligibilityInputPanel
           :branch-id="props.branchId"
-          :teachers="filteredTeachers"
+          :teachers="inputRoster(filteredTeachers, settledElsewhere)"
           :start="periodWindow.start"
           :end="periodWindow.end"
           :user-role="props.userRole"
@@ -210,6 +213,7 @@ import { fetchTeacherEligibility, lockFulltimePayroll, reopenFulltimePayroll, ex
 import TeacherEligibilityInputPanel from '../components/TeacherEligibilityInputPanel.vue';
 import {
   formatMoney,
+  inputRoster,
   formatPct,
   formatSubjects,
   formatSubjectUnits,
@@ -257,6 +261,7 @@ const periodWindow = ref({ start: '', end: '' });
 const policyVersion = ref('115.07');
 const branchSubjectTotal = ref(0);
 const lockState = ref({ status: 'draft' });
+const settledElsewhere = ref([]);
 const componentOptions = [
   { key: 'weekly_16_segments', label: '每週16段' },
   { key: 'holiday_16_hours', label: '假日16小時' },
@@ -366,6 +371,7 @@ async function loadData() {
     policyVersion.value = data.policy_version || policyVersion.value;
     branchSubjectTotal.value = Number(data.branch_subject_total ?? 0);
     lockState.value = data.lock || { status: 'draft' };
+    settledElsewhere.value = data.settled_elsewhere || [];
     if (data.lock?.status === 'locked') loadRecalculation(thisLoad, range);
   } catch (e) { if (thisLoad === loadNumber) error.value = humanizeApiErrorMessage(e?.message, '載入失敗'); }
   finally { if (thisLoad === loadNumber) loading.value = false; }

@@ -657,6 +657,13 @@ class TeacherEligibilityInputController extends Controller
                 abort(422, '此月份已鎖定正職結算，不能再改。');
             }
         }
+        // One campus settles a teacher for the month. Once that campus has locked the month with the teacher in it,
+        // a record entered through any other campus would never be paid, so it is refused as well.
+        if (\App\Support\FulltimePayrollLockStore::tablesReady() && DB::table('fulltime_payroll_run_teachers as t')
+            ->join('fulltime_payroll_runs as r', 'r.id', '=', 't.run_id')
+            ->where('r.month', $month)->where('r.status', 'locked')->where('t.teacher_id', $teacherId)->exists()) {
+            abort(422, '這位老師這個月已經在結算他的分校鎖定，不能再改。');
+        }
     }
 
     private function validatedEvent(Request $request): array|\Illuminate\Http\JsonResponse
