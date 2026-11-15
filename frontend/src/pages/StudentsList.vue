@@ -221,10 +221,10 @@
             <td colspan="10" class="tw:max-lg:block">
               <div class="course-panel tw:box-border tw:min-w-0 tw:space-y-3 tw:px-4 tw:py-5 tw:md:px-6 tw:max-md:max-w-[calc(100vw-2rem)]">
                 <div class="course-panel-header tw:flex tw:flex-wrap tw:items-center tw:justify-between tw:gap-3">
-                  <h4 class="tw:m-0 tw:flex tw:min-w-0 tw:items-center tw:gap-2 tw:text-tpl-list tw:font-semibold tw:text-foreground">
+                  <h3 class="tw:m-0 tw:flex tw:min-w-0 tw:items-center tw:gap-2 tw:text-tpl-list tw:font-semibold tw:text-foreground">
                     <BookOpen class="tw:size-5 tw:shrink-0" aria-hidden="true" />
                     {{ student.name }} 的課程安排
-                  </h4>
+                  </h3>
                   <div class="course-panel-header__actions tw:flex tw:flex-wrap tw:gap-2" data-testid="course-panel-actions">
                     <Button v-if="getRenewableMonthlyCourses(student.id).length" type="button" variant="outline" :class="[control.row, 'tw:text-foreground']" data-testid="batch-monthly-renew" @click="openBatchRenew(student)">
                       <RefreshCw class="tw:size-5" aria-hidden="true" />
@@ -236,7 +236,7 @@
                     </Button>
                   </div>
                 </div>
-                <div class="student-note-line tw:flex tw:items-start tw:gap-1 tw:text-tpl-caption tw:text-tpl-secondary">
+                <div class="student-note-line tw:flex tw:items-start tw:gap-1 tw:text-tpl-body tw:text-tpl-secondary">
                   <span class="tw:shrink-0 tw:font-semibold">學生備註：</span>
                   <span class="tw:min-w-0 tw:whitespace-pre-wrap tw:wrap-anywhere">{{ student.notes || '無' }}</span>
                 </div>
@@ -253,15 +253,15 @@
                   <section class="student-course-overview tw:min-w-0" aria-labelledby="student-course-overview-title">
                     <div class="tw:flex tw:flex-wrap tw:items-start tw:justify-between tw:gap-2">
                       <div>
-                        <h5 id="student-course-overview-title" class="tw:m-0 tw:text-tpl-list tw:font-semibold tw:text-foreground">課程總覽</h5>
+                        <h4 id="student-course-overview-title" class="tw:m-0 tw:text-tpl-list tw:font-semibold tw:text-foreground">課程總覽</h4>
                         <p class="tw:m-0 tw:text-tpl-caption tw:text-tpl-secondary">先看需要處理的課程</p>
                       </div>
                       <span class="tw:text-tpl-caption tw:text-tpl-secondary">快速定位合約，逐筆核對日期</span>
                     </div>
-                    <StatStrip class="tw:mt-3 tw:grid-cols-3 tw:rounded-none tw:border-x-0 tw:shadow-none" aria-label="課程摘要">
+                    <StatStrip class="tw:mt-3 tw:rounded-none tw:border-x-0 tw:shadow-none" aria-label="課程摘要">
                       <StatItem label="進行中" :value="getActiveStudentCourses(student.id).length" data-testid="course-overview-metric" data-metric="active" />
                       <StatItem label="需要處理" :value="getStudentCourseAttentionCount(student.id)" :tone="getStudentCourseAttentionCount(student.id) > 0 ? 'warning' : 'neutral'" data-testid="course-overview-metric" data-metric="attention" />
-                      <StatItem label="歷史" :value="getStudentHistoryCourseCount(student.id)" data-testid="course-overview-metric" data-metric="history" />
+                      <StatItem label="歷史" :value="getStudentHistoryCourseCount(student.id)" class="tw:max-lg:col-span-2" data-testid="course-overview-metric" data-metric="history" />
                     </StatStrip>
                     <section v-for="pool in sharedPackageSummaries(getActiveStudentCourses(student.id))" :key="`pool-${pool.id}`" class="student-package-summary tw:mt-3 tw:border-b tw:border-border tw:pb-3" :aria-label="`${pool.name}共用堂數`">
                       <div class="tw:flex tw:flex-wrap tw:items-baseline tw:justify-between tw:gap-2"><strong :class="factRow.value">{{ pool.name }}</strong><span :class="factRow.sub">成員課程共用同一堂數池</span></div>
@@ -305,7 +305,7 @@
                   <section class="student-course-detail" aria-labelledby="student-course-detail-title">
                     <div class="student-course-detail__heading">
                       <div>
-                        <h5 id="student-course-detail-title" class="tw:m-0 tw:text-tpl-list tw:font-semibold tw:text-foreground">目前課程工作區</h5>
+                        <h4 id="student-course-detail-title" class="tw:m-0 tw:text-tpl-list tw:font-semibold tw:text-foreground">目前課程工作區</h4>
                         <p class="tw:m-0 tw:text-tpl-caption tw:text-tpl-secondary">逐筆核對合約與上課日期</p>
                       </div>
                       <div class="student-course-detail__tools">
