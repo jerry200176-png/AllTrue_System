@@ -47,7 +47,8 @@ function hintOf(kind, r) {
 function warningsOf(r) {
   const who = r.subject ? `${r.subject}：` : '';
   const out = [];
-  if (r.newer_course_overlap) out.push(`${who}${formatNewerCourseOverlapWarning(r).primary}`);
+  const overlap = formatNewerCourseOverlapWarning(r);
+  if (overlap.show) out.push(`${who}${overlap.primary}`);
   if (r.invoice_amount_discrepancy) out.push(`${who}依實際 ${r.invoice_period_sessions} 堂計算（原始帳單 ${money(r.invoice_stored_amount)}；實際計算 ${money(r.invoice_computed_amount)}）`);
   return out;
 }

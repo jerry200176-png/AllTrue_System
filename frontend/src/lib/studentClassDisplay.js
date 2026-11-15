@@ -184,6 +184,11 @@ export function formatNewerCourseOverlapWarning(row) {
   if (!row?.newer_course_overlap) {
     return { show: false, primary: '', shortBadge: '' };
   }
+  // in-app #554: a 堂數制 course with no lesson left cannot run into the next term, whatever end date is still
+  // registered on it (the registered date is not pulled back when a course finishes early).
+  if (row.schedule_mode !== 'date' && row.remaining_sessions != null && Number(row.remaining_sessions) <= 0) {
+    return { show: false, primary: '', shortBadge: '' };
+  }
   const endDate = formatStudentClassOpenDate(row?.current_course_end_date);
   const startDate = formatStudentClassOpenDate(row?.newer_course_start_date);
   const dates = endDate && startDate ? `（本期順延至 ${endDate}，新期開課 ${startDate}）` : '';

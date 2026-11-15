@@ -140,6 +140,12 @@ assert.equal(overlapShown.show, true);
 assert.ok(overlapShown.primary.includes('重疊'));
 assert.ok(overlapShown.primary.includes('順延至 8/8'));
 assert.ok(overlapShown.primary.includes('開課 8/5'));
+// in-app #554: a 堂數制 course with no lesson left has nothing that can overlap the next term; one with lessons
+// left, and a monthly course (no lesson count), still warn.
+const finished = { newer_course_overlap: true, current_course_end_date: '2026-11-04', newer_course_start_date: '2026-09-30', schedule_mode: 'count' };
+assert.equal(formatNewerCourseOverlapWarning({ ...finished, remaining_sessions: 0 }).show, false);
+assert.equal(formatNewerCourseOverlapWarning({ ...finished, remaining_sessions: 2 }).show, true);
+assert.equal(formatNewerCourseOverlapWarning({ ...finished, schedule_mode: 'date', remaining_sessions: 0 }).show, true);
 assert.equal(overlapShown.shortBadge, '期間重疊');
 assert.equal(primaryLeaksInternalId(overlapShown.primary), false);
 
