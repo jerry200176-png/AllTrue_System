@@ -16,7 +16,7 @@ use Illuminate\Support\Facades\Log;
 final class FirstBillAutoVoid
 {
     /**
-     * True when, and only when, $invoice is the bill that receipt $reportId's confirmation auto-issued at the contract Charge and
+     * True when $invoice is an unmarked NT$0 bill emptied by this reversal (see below), or when, and only when, it is the bill that receipt $reportId's confirmation auto-issued at the contract Charge and
      * that receipt was its only money row: marker names this report, total still the stamped Charge, no items, no correction
      * link, no other pending report bound to it, and the payments before the reversal are exactly the one original receipt.
      *
@@ -30,12 +30,23 @@ final class FirstBillAutoVoid
             && (int) $original->getKey() === (int) $reportPaymentId
             && (int) $original->Amount > 0 && (string) $original->Method !== 'void';
 
-        return ($snapshot['source'] ?? null) === PaymentReportController::FIRST_BILL_SOURCE
+        $firstBill = ($snapshot['source'] ?? null) === PaymentReportController::FIRST_BILL_SOURCE
             && (int) ($snapshot['payment_report_id'] ?? 0) === $reportId
-            && (int) $invoice->StudentClassID === $courseId
             && (int) $invoice->TotalAmount === (int) ($snapshot['contract_charge'] ?? -1)
             && (int) ($snapshot['contract_charge'] ?? 0) > 0
-            && $isLoneReceipt
+            && $isLoneReceipt;
+        // Founder 2026-11-16 (course 1907, 80 such bills): an old 「0 元」 登記 left a NT$0 bill marked paid with no free/gift
+        // mark. It is not payment evidence (#3991), and once its NT$0 receipt is taken back nothing is left on it, so it
+        // goes with the receipt and the course returns to 未繳. Only when every row on it is NT$0 and no other confirmed
+        // receipt points at it.
+        $emptiedZeroBill = (int) $invoice->TotalAmount === 0
+            && $invoice->zero_amount_reason === null
+            && $paymentsBeforeReversal->isNotEmpty()
+            && $paymentsBeforeReversal->every(fn ($p) => (int) $p->Amount === 0)
+            && !PaymentReport::query()->where('InvoiceID', (int) $invoice->getKey())->where('status', 'confirmed')->where('id', '!=', $reportId)->exists();
+
+        return ($firstBill || $emptiedZeroBill)
+            && (int) $invoice->StudentClassID === $courseId
             && (string) $invoice->Status !== 'void'
             && !$invoice->items()->exists()
             // A pending report bound to this bill would hit void_invoice_cannot_confirm once it is void: leave the bill open for it.

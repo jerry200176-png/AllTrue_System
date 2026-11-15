@@ -369,7 +369,12 @@ class BillingController extends Controller
             $netApplied = $this->invoiceNetAppliedAmount((int) $invoice->id);
 
             $freeGiftOnly = $invoice->zero_amount_reason !== null && (int) $invoice->TotalAmount === 0 && !$invoice->payments()->exists(); // #3991: wrong-period mark is correctable
-            if ((in_array($status, ['paid', 'partial'], true) && !$freeGiftOnly) || (int) ($invoice->PaidAmount ?? 0) > 0 || $netApplied > 0) {
+            // Founder 2026-11-16: an unmarked NT$0 bill marked paid, with no money on it and no confirmed receipt left, is an
+            // old 「0 元」 登記, not a settlement: voidable like an unpaid bill (a confirmed receipt is undone first, which
+            // takes the bill with it).
+            $emptyZeroBill = $invoice->zero_amount_reason === null && (int) $invoice->TotalAmount === 0
+                && !PaymentReport::query()->where('InvoiceID', (int) $invoice->id)->where('status', 'confirmed')->exists();
+            if ((in_array($status, ['paid', 'partial'], true) && !$freeGiftOnly && !$emptyZeroBill) || (int) ($invoice->PaidAmount ?? 0) > 0 || $netApplied > 0) {
                 return response()->json([
                     'message' => '此帳單已有收款紀錄，請先走收款撤銷/沖銷流程，不可直接作廢帳單。',
                 ], 422);

@@ -72,7 +72,7 @@
                   :disabled="busyReportId === x.report_id"
                   @click="voidReport(x.report_id)"
                 >{{ x.action_label || '撤銷收款' }}</button>
-                <template v-if="!x.can_void && !x.report_id">
+                <template v-if="!x.can_void && !x.report_id && !x.self_service">
                   <span class="ledger-muted" data-testid="ledger-exception-drift">{{ x.drift_line }}</span>
                   <button class="ledger-action" type="button" data-testid="ledger-exception-report" @click="reportToAdmin(x)">回報給系統管理員</button>
                 </template>
@@ -728,6 +728,29 @@ const ledgerExceptions = computed(() => {
         anomaly: { code: 'overpayment_pending_review', invoice_id: inv.id, student_class_id: inv.student_class_id },
         severity: 1,
       });
+    });
+  });
+  // Founder 2026-11-16 (80 such bills): an old 「0 元」 登記 left a NT$0 bill marked paid. It is not payment, and its
+  // receipt sits out of sight with the 0 元 rows, so the way out is offered here: undo the receipt (the bill goes with
+  // it), then record the real amount. A bill with no receipt left is voided from the bill list below.
+  (payload.value?.invoices || []).forEach((inv) => {
+    if (inv.status !== 'paid' || Number(inv.total_amount) !== 0 || inv.zero_amount_reason) return;
+    const receipt = (inv.reports || []).find((r) => r.status === 'confirmed');
+    if (receipt && rows.some((row) => Number(row.report_id) === Number(receipt.report_id))) return;
+    rows.push({
+      key: `z-${inv.id}`,
+      codes: ['zero_amount_bill'],
+      title: '這張帳單是 0 元，卻標成已繳',
+      message: '收款被登記成 0 元，系統不算有收到錢。',
+      detail: formatAccountingLedgerInvoiceLabel(inv),
+      action_label: '撤銷 0 元收款',
+      hint: receipt
+        ? '其實有收到錢：按「撤銷 0 元收款」，這張 0 元帳單會一起作廢，再照實際金額登記收款。'
+        : '到下面「帳單」把這張 0 元帳單按「作廢」，再照實際金額登記收款。',
+      report_id: receipt ? receipt.report_id : null,
+      can_void: !!receipt,
+      self_service: true, // the fix is a button on this screen, not a report to an administrator
+      severity: 1,
     });
   });
   rows.forEach((row) => {
