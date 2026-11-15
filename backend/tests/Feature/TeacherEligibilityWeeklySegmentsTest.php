@@ -212,6 +212,12 @@ class TeacherEligibilityWeeklySegmentsTest extends TestCase
         // Once the other campus has locked the month with the teacher in it, the teacher stays there.
         $lock($other->id);
         $this->assertSame(1, DB::table('fulltime_payroll_run_teachers')->where('teacher_id', $teacher->id)->count());
+        // ...and a record entered for that month through another campus would never be paid, so it is refused.
+        DB::table('fulltime_payroll_runs')->where('branch_id', 1)->update(['status' => 'reopened']);
+        $this->withHeaders($this->auth($director['token']))->postJson('/api/v1/finance/teacher-eligibility/cash-adjustments', [
+            'teacher_id' => $teacher->id, 'branch_id' => 1, 'amount' => 300, 'reason' => '結算分校鎖定後補登', 'starts_on' => '2026-08-01',
+        ])->assertStatus(422);
+        $this->assertSame(0, DB::table('teacher_payroll_cash_adjustments')->where('reason', '結算分校鎖定後補登')->count());
 
         // With nothing locked the rule follows the lesson time: now this campus has more.
         DB::table('fulltime_payroll_runs')->update(['status' => 'reopened']);
