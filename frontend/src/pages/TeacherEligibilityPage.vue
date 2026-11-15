@@ -108,8 +108,8 @@
             <section>
               <h3 class="tw:text-tpl-body tw:font-semibold">怎麼算出來的</h3>
               <div :class="mathRow"><span>科目數獎金<small :class="smallText">核薪總科目數 {{ formatSubjects(teacher.settlement?.payroll_subject_count) }} 科（正課 {{ formatSubjectUnits(teacher.settlement?.regular_subject_count) }}＋輔導試聽 {{ formatSubjectUnits(teacher.settlement?.tutoring_trial_subject_count) }}）</small></span><span :class="mathValue">{{ formatMoney(teacher.settlement?.subject_count_bonus) }}</span></div>
-              <div :class="mathRow"><span>一對三獎金<small :class="smallText">一對三總計 {{ formatSubjects(teacher.settlement?.one_to_three_count) }} × 100</small></span><span :class="mathValue">{{ formatMoney(teacher.settlement?.one_to_three_bonus) }}</span></div>
-              <div :class="[mathRow, 'multiplier-cell']"><span>× 教師倍率<small :class="smallText">{{ multiplierBreakdown(teacher.settlement) }}</small><small v-if="multiplierPendingNote(teacher.settlement)" :class="smallText">{{ multiplierPendingNote(teacher.settlement) }}</small></span><span :class="mathValue">{{ multiplierValue(teacher.settlement) }}</span></div>
+              <div :class="mathRow"><span>一對三獎金<small :class="smallText">{{ oneToThreeFormula(teacher.settlement) }}</small></span><span :class="mathValue">{{ formatMoney(teacher.settlement?.one_to_three_bonus) }}</span></div>
+              <div :class="[mathRow, 'multiplier-cell']"><span>乘上教師倍率<small :class="smallText">{{ multiplierBreakdown(teacher.settlement) }}</small><small v-if="multiplierPendingNote(teacher.settlement)" :class="smallText">{{ multiplierPendingNote(teacher.settlement) }}</small></span><span :class="mathValue">{{ multiplierValue(teacher.settlement) }}</span></div>
               <div :class="mathRow"><span>倍率後獎金<small :class="smallText">{{ weightedBonusFormula(teacher.settlement) }}</small></span><span :class="mathValue">{{ formatMoney(teacher.settlement?.weighted_bonus_amount) }}</span></div>
               <div :class="[mathRow, 'weekly-segment-cell']"><span>每週 16 段獎金<small :class="smallText">{{ weeklyQualificationLabel(teacher) }}</small></span><span :class="mathValue">{{ formatMoney(teacher.settlement?.weekly_segment_bonus_amount ?? 0) }}</span></div>
               <div v-for="item in cashAdjustments(teacher.settlement)" :key="item.label" :class="mathRow"><span>{{ item.label }}</span><span :class="mathValue">{{ Number(item.amount) >= 0 ? '+' : '−' }}{{ formatMoney(Math.abs(Number(item.amount))) }}</span></div>
@@ -173,6 +173,7 @@ import {
   hasNoLessons,
   monthWindow,
   multiplierBreakdown,
+  oneToThreeFormula,
   multiplierPendingNote,
   multiplierValue,
   recalculationSummary,

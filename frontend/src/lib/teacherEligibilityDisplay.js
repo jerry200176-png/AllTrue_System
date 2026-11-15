@@ -142,6 +142,11 @@ export function multiplierBreakdown(settlement) {
     .map((part, index) => `${part.label} ${index > 0 && Number(part.pct) > 0 ? '+' : ''}${Number(part.pct)}%`).join('、');
 }
 
+/** How the 一對三獎金 comes about: 「一對三總計 3 × 100」. */
+export function oneToThreeFormula(settlement) {
+  return `一對三總計 ${formatSubjects(settlement?.one_to_three_count)} × 100`;
+}
+
 /** The 教師倍率 as a figure; 「—」 while a part of it still awaits confirmation (the settlement sends null then). */
 export function multiplierValue(settlement) {
   return settlement?.multiplier_pct == null ? '—' : `${Number(settlement.multiplier_pct)}%`;

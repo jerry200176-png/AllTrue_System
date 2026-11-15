@@ -13,6 +13,7 @@ import {
   cashAdjustments,
   multiplierPendingNote,
   multiplierValue,
+  oneToThreeFormula,
   hasNoLessons,
   multiplierBreakdown,
   teacherSummaryLine,
@@ -102,6 +103,7 @@ assert.equal(teacherSummaryLine({ settlement: { payroll_subject_count: 3 }, comp
 assert.equal(teacherSummaryLine({}), '科目數 — 科');
 assert.equal(multiplierBreakdown({ multiplier_parts: [{ label: '基本', pct: 100 }, { label: '假日', pct: 0 }, { label: '平日下午', pct: 2.94 }, { label: '扣除', pct: -10 }] }), '基本 100%、平日下午 +2.94%、扣除 -10%');
 assert.equal(multiplierBreakdown(undefined), '');
+assert.equal(oneToThreeFormula({ one_to_three_count: 24.5 }), '一對三總計 24.5 × 100');
 // An unconfirmed multiplier stays unknown; the trial rate is said beside it, not shown as the figure.
 assert.equal(multiplierValue({ multiplier_pct: 105 }), '105%');
 assert.equal(multiplierValue({ multiplier_pct: null, known_multiplier_pct: 103 }), '—');
