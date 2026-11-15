@@ -59,6 +59,27 @@ describe('ContractCard collapsed line', () => {
     expect(menuItem('record')).not.toBeNull();
   });
 
+  it('in-app #552: a 堂數制 title shows when the lessons really run, a monthly one keeps its contract dates', async () => {
+    const lessons = (mode, extra = {}) => ({ ...SESSIONS, subject: '化學', schedule_mode: mode, ...extra, sessions: [
+      { class_session_id: 1, date: '2026-08-13', start_time: '17:00', status: 'attended', payment: 'paid' },
+      { class_session_id: 2, date: '2026-09-03', start_time: '17:00', status: 'leave', payment: 'paid' },
+      { class_session_id: 3, date: '2026-10-06', start_time: '17:00', status: 'attended', payment: 'paid' },
+    ] });
+    const course = { id: 9, subject: '化學', paid: true, start_date: '2026-08-23', end_date: '2026-10-20' };
+    authedFetch.mockResolvedValue(respond(lessons('count')));
+    const w = await card({ course });
+    expect(w.get('[data-testid="contract-toggle"]').text()).toContain('化學・2026/08/13–2026/10/06');
+    wrapper.unmount();
+    // Lessons still off the calendar: the registered end stays, since the real last day is not known yet.
+    authedFetch.mockResolvedValue(respond(lessons('count', { unscheduled_count: 2 })));
+    const u = await card({ course });
+    expect(u.get('[data-testid="contract-toggle"]').text()).toContain('化學・2026/08/13–2026/10/20');
+    wrapper.unmount();
+    authedFetch.mockResolvedValue(respond(lessons('date')));
+    const m = await card({ course: { ...course, schedule_mode: 'date' } });
+    expect(m.get('[data-testid="contract-toggle"]').text()).toContain('化學・2026/08/23–2026/10/20');
+  });
+
   it('keeps warnings on the collapsed card', async () => {
     const w = await card({ course: { id: 9, subject: '數學', paid: false, start_date: '2026-10-10', end_date: '2026-10-31', lessons_outside_contract: ['2026-09-29'] } });
     expect(w.get('[data-testid="contract-outside"]').text()).toContain('需核對：9/29');
