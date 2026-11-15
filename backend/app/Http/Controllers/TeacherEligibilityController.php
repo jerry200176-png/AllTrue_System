@@ -204,13 +204,10 @@ class TeacherEligibilityController extends Controller
                 ]);
             }
         }
-        // Founder 2026-11-15: a week with a company-wide closure day is not judged; it counts as full. Closure days are
-        // the approved company holiday events plus the days whose lessons were all called off, out to the last week's Sunday.
-        $closureDates = $weeks === [] ? [] : array_values(array_unique(array_merge(
-            $events->filter(fn ($event) => in_array($event->event_type, ['holiday', 'official_closure'], true) && !$event->teacher_id)
-                ->map(fn ($event) => substr((string) $event->event_date, 0, 10))->all(),
-            $this->campusClosedDates(null, $weeks[0][0], end($weeks)[1]),
-        )));
+        // Founder 2026-11-15: a week with a company-wide closure day is not judged; it counts as full. Only days the
+        // system infers (every lesson in the company called off) count: a hand-entered holiday event can be created and
+        // approved by one director, so it must not be able to waive a week. Out to the last week's Sunday.
+        $closureDates = $weeks === [] ? [] : $this->campusClosedDates(null, $weeks[0][0], end($weeks)[1]);
 
         $scheduleByTeacher = $schedules->groupBy('teacher_id');
         $plannedByTeacher = $plannedSchedules->groupBy('teacher_id');
@@ -638,7 +635,8 @@ class TeacherEligibilityController extends Controller
             ->get(['cs.SessionDate as event_date', 'cs.Status as status']);
 
         // ponytail: "every lesson that day was called off" is the only closure signal the product has; the floor keeps a
-        // quiet day with a couple of student leaves from passing as one. A missed closure is entered as a holiday event.
+        // quiet day with a couple of student leaves from passing as one. A closure whose lessons were never created is
+        // missed; if that happens, add an HQ-only closure calendar instead of trusting director-entered events.
         return $this->campusClosedDatesFromSessionRows($rows->map(fn ($row) => [
             'date' => substr((string) $row->event_date, 0, 10),
             'status' => $row->status,

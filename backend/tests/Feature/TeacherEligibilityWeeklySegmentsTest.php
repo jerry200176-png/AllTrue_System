@@ -128,11 +128,16 @@ class TeacherEligibilityWeeklySegmentsTest extends TestCase
         $this->assertSame(0, $august['amount']);
         $this->assertSame('2026-08-03', $august['metrics']['weeks'][0]['metrics']['week_start']);
 
-        // A company-wide closure day takes its week out of the judgement: that week counts as full.
-        DB::table('teacher_payroll_events')->insert(['teacher_id' => null, 'branch_id' => 1, 'event_date' => '2026-08-12', 'event_type' => 'holiday', 'status' => 'approved', 'created_at' => now(), 'updated_at' => now()]);
+        // A hand-entered holiday event must not waive a week (one director can create and approve it)...
+        DB::table('teacher_payroll_events')->insert(['teacher_id' => null, 'branch_id' => 1, 'event_date' => '2026-08-19', 'event_type' => 'holiday', 'status' => 'approved', 'created_at' => now(), 'updated_at' => now()]);
+        // ...but a day on which every lesson in the company was called off does: that week counts as full.
+        foreach (range(1, 10) as $n) {
+            $this->createAttendedSession($teacher->id, 'one_on_one', '2026-08-12', '10:00', 120, 'cancelled', 'present');
+        }
         $closed = $weekly('2026-08-01', '2026-08-31');
         $this->assertSame(1, $closed['metrics']['qualifying_weeks']);
         $this->assertSame(['2026-08-12'], $closed['metrics']['weeks'][1]['metrics']['closure_dates']);
+        $this->assertSame([], $closed['metrics']['weeks'][2]['metrics']['closure_dates']);
 
         // Fill the other three July weeks (4 days x 8h = 16 段 each): now every week is full.
         foreach (['2026-07-06', '2026-07-13', '2026-07-20'] as $monday) {
