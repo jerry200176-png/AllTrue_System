@@ -1043,8 +1043,9 @@ Route::prefix('v1')->group(function () {
         Route::get('student-classes/{id}/billing-snapshot', [TriageBillingSnapshotController::class, 'show'])
             ->whereNumber('id')->name('triage.student-classes.billing-snapshot');
         // Founder GO 2026-11-15: the 正職薪資要件 report of ONE campus and month, IDs and numbers only; triage_tokens.fulltime_payroll_enabled.
-        // Each call recomputes a whole campus-month, so it has its own, much lower limit than the group's.
-        Route::get('fulltime-payroll', [TriageFulltimePayrollController::class, 'show'])->middleware('throttle:20,1')->name('triage.fulltime-payroll.report');
+        // Each call recomputes a whole campus-month, so it has its own, much lower limit than the group's (own
+        // prefix: without one it would share the group's counter and count every call twice).
+        Route::get('fulltime-payroll', [TriageFulltimePayrollController::class, 'show'])->middleware('throttle:20,1,triage-payroll')->name('triage.fulltime-payroll.report');
     });
     Route::middleware(['super_admin', 'require_password_change'])->group(function () {
         Route::get('admin/triage-tokens', [TriageTokenController::class, 'index']);
