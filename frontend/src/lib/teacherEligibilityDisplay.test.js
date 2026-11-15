@@ -10,6 +10,13 @@ import {
   formatDifference,
   inputRoster,
   attentionItems,
+  cashAdjustments,
+  multiplierPendingNote,
+  multiplierValue,
+  oneToThreeFormula,
+  hasNoLessons,
+  multiplierBreakdown,
+  teacherSummaryLine,
   recalculationSummary,
   weekExplanation,
   recalculationText,
@@ -87,6 +94,42 @@ assert.deepEqual(attentionItems([
   { key: '2-review', teacherName: '乙', label: '待人工確認', reason: '有項目還沒確認，請看下方的資料補登與審核。' },
   { key: '3-cash_adjustments', teacherName: '丙', label: '現金加扣款', reason: '資料尚待確認。' },
 ]);
+// One line per teacher: what the amount rests on, then the first open item.
+const weekly = (metrics) => ({ weekly_16_segments: { metrics } });
+assert.equal(teacherSummaryLine({ settlement: { payroll_subject_count: 18.9375 }, components: weekly({ week_count: 4, qualifying_weeks: 1 }) }), '科目數 18.9375 科・4 週裡有 3 週沒滿 16 段');
+assert.equal(teacherSummaryLine({ settlement: { payroll_subject_count: 20, new_hire_guarantee_applied: true }, components: weekly({ week_count: 4, qualifying_weeks: 4 }) }), '科目數 20 科・每週都滿 16 段・新進保底');
+assert.equal(teacherSummaryLine({ settlement: { payroll_subject_count: 3 }, components: weekly({ week_count: 5, qualifying_weeks: 1, unfinished_weeks: 2 }), pending_items: [{ label: '現金加扣款' }] }),
+  '科目數 3 科・還有 2 週沒結束・現金加扣款還沒處理完');
+assert.equal(teacherSummaryLine({}), '科目數 — 科');
+assert.equal(multiplierBreakdown({ multiplier_parts: [{ label: '基本', pct: 100 }, { label: '假日', pct: 0 }, { label: '平日下午', pct: 2.94 }, { label: '扣除', pct: -10 }] }), '基本 100%、平日下午 +2.94%、扣除 -10%');
+assert.equal(multiplierBreakdown(undefined), '');
+assert.equal(oneToThreeFormula({ one_to_three_count: 24.5, one_to_three_bonus: 2450 }), '一對三總計 24.5 × 100');
+// A month locked under the earlier table: the stored amount is not count × 100, so the line does not claim it is.
+assert.equal(oneToThreeFormula({ one_to_three_count: 20, one_to_three_bonus: 4600 }), '一對三總計 20（金額是鎖定當時的算法）');
+// An unconfirmed multiplier stays unknown; the trial rate is said beside it, not shown as the figure.
+assert.equal(multiplierValue({ multiplier_pct: 105 }), '105%');
+assert.equal(multiplierValue({ multiplier_pct: null, known_multiplier_pct: 103 }), '—');
+assert.equal(multiplierPendingNote({ multiplier_pct: null, known_multiplier_pct: 103 }), '還有項目沒確認，先用 103% 試算');
+assert.equal(multiplierPendingNote({ multiplier_pct: 105, known_multiplier_pct: 105 }), '');
+// The 16 段課 bonus has its own line, so it is not repeated among the 加扣款 lines.
+assert.deepEqual(cashAdjustments({ weekly_segment_bonus_amount: 4000, adjustments: [{ label: '16段課', amount: 4000 }, { label: '代班補貼', amount: 1500 }] }), [{ label: '代班補貼', amount: 1500 }]);
+// A cash adjustment that happens to carry the same name is a real line and stays; so does everything when no bonus was paid.
+assert.deepEqual(cashAdjustments({ weekly_segment_bonus_amount: 4000, adjustments: [{ label: '16段課', amount: 4000 }, { label: '16段課', amount: 4000 }, { label: '16段課', amount: 300 }] }),
+  [{ label: '16段課', amount: 4000 }, { label: '16段課', amount: 300 }]);
+assert.deepEqual(cashAdjustments({ weekly_segment_bonus_amount: 0, adjustments: [{ label: '16段課', amount: 300 }] }), [{ label: '16段課', amount: 300 }]);
+assert.deepEqual(cashAdjustments(undefined), []);
+assert.equal(hasNoLessons({ settlement: { total_payout: 0 }, components: weekly({ total_segments: 0 }) }), true);
+assert.equal(hasNoLessons({ settlement: { total_payout: 0 }, components: weekly({ total_segments: 3 }) }), false);
+assert.equal(hasNoLessons({ settlement: { total_payout: 500 }, components: weekly({ total_segments: 0 }) }), false);
+assert.equal(hasNoLessons({ review_required: true, settlement: { total_payout: 0 } }), false);
+// Lessons only in the days before the first Monday: no week, no payout, but 科目數 says the teacher did teach.
+assert.equal(hasNoLessons({ settlement: { total_payout: 0, payroll_subject_count: 0.5 }, components: weekly({ total_segments: 0 }) }), false);
+// In a locked month a teacher whose result differs today, or cannot be compared, is not folded away.
+const idleRow = { settlement: { total_payout: 0 }, components: weekly({ total_segments: 0 }) };
+assert.equal(hasNoLessons({ ...idleRow, recalculated: { calculation_status: 'calculated', difference: 0 } }), true);
+assert.equal(hasNoLessons({ ...idleRow, recalculated: { calculation_status: 'calculated', difference: 4000 } }), false);
+assert.equal(hasNoLessons({ ...idleRow, recalculated: { calculation_status: 'review', difference: 0 } }), false);
+assert.equal(hasNoLessons({ ...idleRow, recalculated: null }), false);
 assert.deepEqual(monthWindow('2026-08'), { start: '2026-08-01', end: '2026-08-31' });
 // 正課 150 raw + 輔導試聽 12 raw = 核薪總 20.25: the three columns add up once shown on the same scale.
 assert.equal(formatSubjectUnits(150), '18.75');

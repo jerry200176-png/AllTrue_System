@@ -136,6 +136,74 @@ export function formatSubjectUnits(value) {
   return formatSubjects(value == null || value === '' ? value : Number(value) / 8);
 }
 
+/** The parts of the 教師倍率 in words: 「基本 100%、平日下午 +2.94%」; parts worth 0 are left out. */
+export function multiplierBreakdown(settlement) {
+  return (settlement?.multiplier_parts || []).filter((part) => Number(part.pct) !== 0)
+    .map((part, index) => `${part.label} ${index > 0 && Number(part.pct) > 0 ? '+' : ''}${Number(part.pct)}%`).join('、');
+}
+
+/**
+ * How the 一對三獎金 comes about: 「一對三總計 3 × 100」. A month locked under the earlier rules keeps its old
+ * amount, which was not count × 100; there the line only states the count and that the amount is the locked one.
+ */
+export function oneToThreeFormula(settlement) {
+  const count = Number(settlement?.one_to_three_count || 0);
+  const flat = Math.round(count * 100) === Math.round(Number(settlement?.one_to_three_bonus || 0));
+  return `一對三總計 ${formatSubjects(settlement?.one_to_three_count)}${flat ? ' × 100' : '（金額是鎖定當時的算法）'}`;
+}
+
+/** The 教師倍率 as a figure; 「—」 while a part of it still awaits confirmation (the settlement sends null then). */
+export function multiplierValue(settlement) {
+  return settlement?.multiplier_pct == null ? '—' : `${Number(settlement.multiplier_pct)}%`;
+}
+
+/** Said next to an unconfirmed 教師倍率: the trial rate the draft amount was worked out with. */
+export function multiplierPendingNote(settlement) {
+  if (settlement?.multiplier_pct != null || settlement?.known_multiplier_pct == null) return '';
+  return `還有項目沒確認，先用 ${Number(settlement.known_multiplier_pct)}% 試算`;
+}
+
+/**
+ * The 加扣款 lines. The settlement puts the 16 段課 bonus first among them and the page gives that bonus its own
+ * line, so that one entry is left out: the first with the bonus's label and amount. A cash adjustment someone
+ * happened to name the same stays.
+ */
+export function cashAdjustments(settlement) {
+  const items = settlement?.adjustments || [];
+  const bonus = Number(settlement?.weekly_segment_bonus_amount || 0);
+  const generated = bonus ? items.findIndex((item) => item.label === '16段課' && Number(item.amount) === bonus) : -1;
+  return generated < 0 ? items : items.filter((_, index) => index !== generated);
+}
+
+/** Nothing on the calendar and nothing to pay or settle: the teacher needs no look this month. */
+export function hasNoLessons(teacher) {
+  // A locked month compared with today's rules: a teacher whose result differs, or cannot be told, stays in view.
+  if (teacher && 'recalculated' in teacher) {
+    const again = teacher.recalculated;
+    if (!again || again.calculation_status !== 'calculated' || Number(again.difference || 0) !== 0) return false;
+  }
+  // Lessons before the month's first Monday belong to no week of this month but still count as 科目數.
+  const settlement = teacher?.settlement || {};
+  if ([settlement.payroll_subject_count, settlement.regular_subject_count, settlement.tutoring_trial_subject_count, settlement.one_to_three_count].some((n) => Number(n || 0) > 0)) return false;
+  const segments = Number(teacher?.components?.weekly_16_segments?.metrics?.total_segments || 0);
+  return segments === 0 && Number(teacher?.settlement?.total_payout || 0) === 0 && !teacher?.review_required && !teacher?.settlement?.payout_is_draft;
+}
+
+/** One line under a teacher's name: what the amount rests on, and the first thing still open. */
+export function teacherSummaryLine(teacher) {
+  const parts = [`科目數 ${formatSubjects(teacher?.settlement?.payroll_subject_count)} 科`];
+  const metrics = teacher?.components?.weekly_16_segments?.metrics || {};
+  const weeks = Number(metrics.week_count || 0);
+  const full = Number(metrics.qualifying_weeks || 0);
+  if (weeks && Number(metrics.unfinished_weeks || 0)) parts.push(`還有 ${metrics.unfinished_weeks} 週沒結束`);
+  else if (weeks && full >= weeks) parts.push('每週都滿 16 段');
+  else if (weeks) parts.push(`${weeks} 週裡有 ${weeks - full} 週沒滿 16 段`);
+  if (teacher?.settlement?.new_hire_guarantee_applied) parts.push('新進保底');
+  const pending = (teacher?.pending_items?.length ? teacher.pending_items : teacher?.settlement?.pending_items) || [];
+  if (pending.length) parts.push(`${pending[0].label}還沒處理完`);
+  return parts.join('・');
+}
+
 export function formatPct(value) {
   if (value == null || value === '') return '—';
   const n = Number(value);
