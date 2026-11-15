@@ -81,6 +81,24 @@ export function inputRoster(teachers, settledElsewhere) {
   return [...(teachers || []), ...(settledElsewhere || []).map((row) => ({ teacher_id: row.teacher_id, teacher_name: row.teacher_name }))];
 }
 
+/**
+ * The rows of the 需要你處理 list: one per item that still blocks a teacher's settlement, or one general row for a
+ * teacher marked for review with no item named.
+ */
+export function attentionItems(teachers) {
+  const rows = [];
+  for (const teacher of teachers || []) {
+    const items = teacher.pending_items?.length ? teacher.pending_items : (teacher.settlement?.pending_items || []);
+    for (const item of items) {
+      rows.push({ key: `${teacher.teacher_id}-${item.code}`, teacherName: teacher.teacher_name, label: item.label, reason: item.reason || '資料尚待確認。' });
+    }
+    if (!items.length && teacher.review_required) {
+      rows.push({ key: `${teacher.teacher_id}-review`, teacherName: teacher.teacher_name, label: '待人工確認', reason: '有項目還沒確認，請看下方的資料補登與審核。' });
+    }
+  }
+  return rows;
+}
+
 /** What to write under a locked total once the comparison has been asked for; '' before that. */
 export function recalculationText(teacher) {
   if (!teacher || !('recalculated' in teacher)) return '';
