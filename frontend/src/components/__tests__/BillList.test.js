@@ -149,6 +149,34 @@ describe('BillList', () => {
     expect(w.emitted('student')[0][0]).toMatchObject({ student_id: 99, class_id: null });
   });
 
+  it('in-app #549 omits only a paused student without a bill from name-search fallback', async () => {
+    const w = mountList({ alertRows: [], students: [
+      { id: 99, name: '學生暫停', status: 'paused' },
+      { id: 100, name: '學生在學', status: 'active' },
+      { id: 101, name: '學生舊資料' },
+    ] });
+    await w.get('[data-testid="bill-search"]').setValue('學生');
+    expect(w.find('[data-testid="bill-student-99"]').exists()).toBe(false);
+    expect(w.find('[data-testid="bill-student-100"]').exists()).toBe(true);
+    expect(w.find('[data-testid="bill-student-101"]').exists()).toBe(true);
+    await w.setProps({ students: [{ id: 99, name: '學生暫停', status: 'active' }] });
+    expect(w.find('[data-testid="bill-student-99"]').exists()).toBe(true);
+  });
+
+  it.each([
+    { payment_status: 'unpaid' },
+    { payment_status: 'unpaid', payable_amount: 1000, payable_outstanding: 500 },
+    { payment_status: 'pending_report', latest_payment_report_id: 9 },
+    { payment_status: 'amount_review', amount_pending_confirmation: true },
+    { payment_status: 'renew_needed', payable_outstanding: 0 },
+    { payment_status: 'paid', payable_outstanding: 0 },
+  ])('in-app #549 preserves a paused student actual bill row: %j', async (state) => {
+    const w = mountList({ alertRows: [row(state)], students: [{ id: 1, name: '學生甲', status: 'paused' }] });
+    await w.get('[data-testid="bill-search"]').setValue('學生甲');
+    expect(w.find('[data-testid="bill-row-c1"]').exists()).toBe(true);
+    expect(w.find('[data-testid="bill-student-1"]').exists()).toBe(false);
+  });
+
   it('clears picks when the chip changes and names the chip in the empty state', async () => {
     const w = mountList();
     await w.get('[data-testid="bill-pick-c2"]').trigger('click');

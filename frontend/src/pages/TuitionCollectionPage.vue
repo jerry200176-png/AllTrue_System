@@ -769,7 +769,7 @@ async function loadCampusStudents() {
     const resp = await authedFetch(`/api/v1/students?${params}`, { headers: { Accept: 'application/json' } });
     const json = await resp.json().catch(() => ({}));
     const list = Array.isArray(json) ? json : (json.data || []);
-    if (seq === campusStudentsSeq) campusStudents.value = list.filter((st) => st && st.id && st.enable !== 0).map((st) => ({ id: st.id, name: st.name || st.Name || '' }));
+    if (seq === campusStudentsSeq) campusStudents.value = list.filter((st) => st && st.id && st.enable !== 0).map((st) => ({ id: st.id, name: st.name || st.Name || '', status: st.status }));
   } catch {
     if (seq === campusStudentsSeq) campusStudents.value = [];
   }
@@ -1266,6 +1266,7 @@ function refreshActiveTab() {
   } else if (activeAccountingTab.value === 'fees') {
     feeLedger.value?.reload();
   } else if (activeAccountingTab.value === 'students') {
+    loadCampusStudents();
     loadAlerts();
   } else if (activeAccountingTab.value === 'settled') {
     loadSettledCourses();
@@ -1868,7 +1869,7 @@ async function openSessionDetail(row) {
 
 // ═══ Watchers ═══
 watch(() => props.branchId, () => {
-  loadCampusStudents();
+  if (activeAccountingTab.value !== 'students') loadCampusStudents();
   refreshActiveTab();
 }, { flush: 'post' });
 
@@ -1920,7 +1921,10 @@ watch(activeAccountingTab, (tab) => {
 // Kept alive by App.vue: on coming back, refresh the student list in the background (no spinner, rows stay).
 let activatedOnce = false;
 onActivated(() => {
-  if (activatedOnce && activeAccountingTab.value === 'students') loadAlerts({ quiet: true });
+  if (activatedOnce && activeAccountingTab.value === 'students') {
+    loadCampusStudents();
+    loadAlerts({ quiet: true });
+  }
   activatedOnce = true;
 });
 
