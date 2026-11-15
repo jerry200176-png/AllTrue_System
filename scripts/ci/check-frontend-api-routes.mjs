@@ -2,7 +2,7 @@
 /**
  * Pattern D (architecture report, 2026-07-28): low-cost contract check between
  * frontend API calls and backend routes. Diffs every `/api/v1/...` path
- * literal referenced in frontend source against `php artisan route:list`
+ * literal referenced in frontend source against `php artisan route:list --json`
  * output, so a frontend-ships-ahead-of-backend gap (TD-067 / R79 — #1197's
  * BatchInvoiceModal/OverdueBucketsPanel calling routes that never made it
  * into main) gets a signal before a director clicks it in production.
@@ -41,27 +41,30 @@ function normalizeSegment(seg) {
 function getBackendRoutePatterns() {
     let output;
     try {
-        output = execSync('php artisan route:list', {
+        output = execSync('php artisan route:list --json', {
             cwd: BACKEND_DIR,
             encoding: 'utf8',
             maxBuffer: 20 * 1024 * 1024,
         });
     } catch (err) {
-        console.log(`⚠️  frontend-api-routes: could not run "php artisan route:list" (${err.message}); skipping check.`);
+        const status = err.status ?? (err.signal ? `signal ${err.signal}` : 'unknown');
+        console.log(`⚠️  frontend-api-routes: inventory unavailable (php exit ${status}: ${err.message}); comparison not performed.`);
         return null;
     }
 
-    const patterns = [];
-    for (const line of output.split('\n')) {
-        // Laravel 8 text table: | METHOD | URI | Name |
-        const m = line.match(/\|\s*([\w|]+)\s*\|\s*(\S+)\s*\|/);
-        if (!m) continue;
-        const uri = m[2];
-        if (!uri.startsWith('api/')) continue;
-        const segments = uri.split('/').filter((s) => s.length > 0).map(normalizeSegment);
-        patterns.push(segments);
+    try {
+        const routes = JSON.parse(output);
+        if (!Array.isArray(routes) || routes.some((route) => typeof route?.uri !== 'string')) {
+            throw new Error('expected a complete array of route objects with URI strings');
+        }
+        const patterns = routes.filter((route) => route.uri.startsWith('api/'))
+            .map((route) => route.uri.split('/').filter(Boolean).map(normalizeSegment));
+        if (patterns.length === 0) throw new Error('inventory contains no API routes');
+        return patterns;
+    } catch (err) {
+        console.log(`⚠️  frontend-api-routes: invalid JSON inventory (${err.message}); comparison not performed. Run "php artisan route:list --json" for raw output.`);
+        return null;
     }
-    return patterns;
 }
 
 function collectFrontendFiles(dir) {
