@@ -637,7 +637,7 @@ class TeacherEligibilityInputController extends Controller
         $profile = \App\Models\FulltimeSalaryProfile::create([
             'teacher_id' => $data['teacher_id'],
             'branch_id' => $branchId,
-            'base_salary' => $baseProfile?->base_salary ?? 0, // not read any more; carried over so a revert still finds it
+            'base_salary' => $baseProfile->base_salary ?? 0, // not read any more; carried over so a revert still finds it
             'manual_multiplier_pct' => $data['manual_multiplier_pct'],
             'effective_from' => $data['effective_from'],
             'status' => $isHq ? 'approved' : 'pending',
