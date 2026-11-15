@@ -60,7 +60,18 @@ final class TriageDbReadTest extends TestCase
                 $this->assertStringNotContainsString($forbidden, $body);
             }
         }
-        $this->assertGreaterThanOrEqual(1, DB::table('security_audit_events')->where('event_type', 'triage_token.read')->where('outcome', 'success')->count());
+        // The audit row says which table was read.
+        $this->assertTrue(DB::table('security_audit_events')->where('event_type', 'triage_token.read')->where('outcome', 'success')
+            ->pluck('metadata')->contains(fn ($meta) => (json_decode((string) $meta, true)['source'] ?? null) === 'StudentClass'));
+        // Sign-in counters and anything named like a pin, phone or birthday never show up as a column.
+        foreach ($people[1]->json('columns') as $column) {
+            $this->assertDoesNotMatchRegularExpression('/pin|phone|psw|birth|token/i', $column);
+        }
+        // A whole number of nine digits or more may be a phone or identity number in an old column: withheld, and not searchable.
+        DB::table('StudentClass')->where('ID', $course->ID)->update(['Charge' => 912345678]);
+        $this->assertNull($this->getJson("/api/v1/triage/db/StudentClass?eq[ID]={$course->ID}", $this->bearer())->assertOk()->json('rows.0.Charge'));
+        $this->getJson('/api/v1/triage/db/StudentClass?gte[Charge]=912345678', $this->bearer())->assertStatus(422);
+        $this->getJson('/api/v1/triage/db/StudentClass?in[Charge]=1,912345678', $this->bearer())->assertStatus(422);
     }
 
     public function test_withheld_columns_cannot_be_filtered_or_sorted_and_sign_in_tables_are_unreachable(): void

@@ -9,9 +9,11 @@ use Illuminate\Support\Facades\Schema;
 /**
  * Founder GO 2026-11-16: a read-only triage token can read rows of the business tables, so an agent can check a
  * contract, bill or lesson by its number without a browser session, a screenshot or database access.
- * Fail-closed on what leaves: number and date/time columns, plus text columns that are an enum or a known code column
- * and whose value is a short ASCII code. Names, phones, notes, credentials and any other text never leave, and such
- * columns cannot be filtered or sorted on either; a code column takes only an exact match against a code. Tables that hold logins, tokens or bindings are not reachable.
+ * What leaves: number and date/time columns, plus text columns that are an enum or a known code column and whose value
+ * is a short ASCII code. Text is fail-closed: names, notes and any other text column never leave and cannot be filtered or
+ * sorted on; a code column takes only an exact match against a code. Numbers are guarded by column name (phone, pin,
+ * birthday, account ...) and by size: a whole number of nine digits or more is withheld and cannot be filtered on.
+ * Tables that hold logins, tokens or bindings are not reachable.
  * SELECT only. Switch: triage_tokens.db_read_enabled.
  */
 class TriageDbReadController extends Controller
@@ -20,7 +22,10 @@ class TriageDbReadController extends Controller
     private const DENIED_TABLES = '/token|password|secret|credential|apiclient|api_client|parentsession|^sessions$|binding|rfid|system_settings|login_activit|^cache|^jobs$|job_batches|failed_jobs|^migrations$/';
 
     /** Column names that identify a person or unlock something, whatever their type. */
-    private const DENIED_COLUMNS = '/pass|psw|token|secret|hash|salt|otp|birth|phone|mobile|(^|_)tel|mail|address|rfid|card|account|bank|national|idno|id_number|notify|line_/i';
+    private const DENIED_COLUMNS = '/pass|psw|token|secret|hash|salt|otp|pin|birth|dob|phone|mobile|tel|fax|mail|address|zip|rfid|card|account(?!ing)|bank|national|idno|id_number|notify|line_/i';
+
+    /** A whole number this long is not an id, a count or an amount here; it may be a phone or an identity number in an old column. */
+    private const LONG_NUMBER = '/\A-?\d{9,}\z/';
 
     /** Text columns that hold a code, not something a person typed. An enum column is always one. */
     private const CODE_COLUMNS = ['status', 'method', 'schedulemode', 'schedulemodeatissue', 'rate_unit', 'classtype', 'class_type',
@@ -38,10 +43,7 @@ class TriageDbReadController extends Controller
             return response()->json(['message' => 'Not found'], 404);
         }
 
-        return response()->json(['tables' => array_values(array_filter(
-            array_map(fn (array $t): string => (string) $t['name'], Schema::getTables()),
-            fn (string $name): bool => $this->tableAllowed($name),
-        ))]);
+        return response()->json(['tables' => array_values(array_filter($this->tableNames(), fn (string $name): bool => $this->tableAllowed($name)))]);
     }
 
     public function rows(Request $request, string $table)
@@ -50,13 +52,13 @@ class TriageDbReadController extends Controller
             return response()->json(['message' => 'Not found'], 404);
         }
         // The name must be one the database itself lists: nothing the caller typed is used as an identifier.
-        $table = collect(Schema::getTables())->pluck('name')->first(fn ($name) => (string) $name === $table);
+        $table = collect($this->tableNames())->first(fn (string $name) => $name === $table);
         if ($table === null || !$this->tableAllowed((string) $table)) {
             return response()->json(['message' => 'Not found'], 404);
         }
         $data = $request->validate([
             'limit' => ['nullable', 'integer', 'min:1', 'max:200'],
-            'offset' => ['nullable', 'integer', 'min:0', 'max:100000'],
+            'offset' => ['nullable', 'integer', 'min:0', 'max:10000'],
             'order' => ['nullable', 'string', 'max:64'],
             'dir' => ['nullable', 'in:asc,desc'],
             'eq' => ['nullable', 'array', 'max:6'], 'gte' => ['nullable', 'array', 'max:6'], 'lte' => ['nullable', 'array', 'max:6'],
@@ -92,9 +94,11 @@ class TriageDbReadController extends Controller
         // The database compares text by its collation (case, accents, trailing spaces), so a code can "equal" typed text
         // there. Rows are kept only when the stored value is byte-for-byte one of the codes asked for.
         $exact = [];
+        // A withheld long number cannot be searched for either: no filter value of that size is accepted.
+        $isLong = fn (mixed $value): bool => is_scalar($value) && preg_match(self::LONG_NUMBER, trim((string) $value)) === 1;
         foreach (self::OPERATORS as $key => $operator) {
             foreach ((array) ($data[$key] ?? []) as $column => $value) {
-                $allowed = in_array((string) $column, $numeric, true)
+                $allowed = (in_array((string) $column, $numeric, true) && !$isLong($value))
                     || ($key === 'eq' && in_array((string) $column, $codes, true) && $isCode($value));
                 if (!$allowed || !is_scalar($value)) {
                     return $refuse((string) $column);
@@ -107,7 +111,7 @@ class TriageDbReadController extends Controller
         }
         foreach ((array) ($data['in'] ?? []) as $column => $values) {
             $list = is_string($values) ? array_slice(explode(',', $values), 0, 200) : null;
-            $allowed = $list !== null && (in_array((string) $column, $numeric, true)
+            $allowed = $list !== null && ((in_array((string) $column, $numeric, true) && !collect($list)->contains($isLong))
                 || (in_array((string) $column, $codes, true) && collect($list)->every($isCode)));
             if (!$allowed) {
                 return $refuse((string) $column);
@@ -137,8 +141,13 @@ class TriageDbReadController extends Controller
 
                 return true;
             })->values()
-            ->map(function (object $row) use ($codes): array {
+            ->map(function (object $row) use ($codes, $numeric): array {
                 $out = (array) $row;
+                foreach ($numeric as $name) {
+                    if (is_scalar($out[$name]) && preg_match(self::LONG_NUMBER, (string) $out[$name]) === 1) {
+                        $out[$name] = null;
+                    }
+                }
                 foreach ($codes as $name) {
                     // A code column can still hold typed text in old rows: anything that is not a short ASCII code is withheld.
                     if (is_string($out[$name]) && preg_match(self::CODE_VALUE, $out[$name]) !== 1) {
@@ -151,6 +160,16 @@ class TriageDbReadController extends Controller
 
         return response()->json(['table' => $table, 'columns' => $readable, 'withheld_columns' => count($columns) - count($readable),
             'count' => $rows->count(), 'rows' => $rows->all()]);
+    }
+
+    /** @return list<string> tables of this application's own database only */
+    private function tableNames(): array
+    {
+        $own = DB::connection()->getDatabaseName();
+
+        return collect(Schema::getTables())
+            ->filter(fn (array $t): bool => !isset($t['schema']) || $t['schema'] === $own)
+            ->map(fn (array $t): string => (string) $t['name'])->values()->all();
     }
 
     private function tableAllowed(string $table): bool
