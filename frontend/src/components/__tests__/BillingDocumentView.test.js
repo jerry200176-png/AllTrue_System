@@ -18,6 +18,47 @@ describe('paymentSlipView', () => {
     })),
   };
 
+  // #548 real shape after an external schedule change: 4 attended, 4 planned,
+  // one non-quota leave record. Nine records are not nine purchased lessons.
+  const withLeaveRecord = {
+    ...overplanned,
+    sessions: overplanned.sessions.slice(0, 9).map((s, i) => i === 8 ? { ...s, status: 'leave_adjusted' } : s),
+  };
+
+  it('#548 labels count-mode history as records without changing dates or money', () => {
+    const original = structuredClone(withLeaveRecord);
+    const doc = paymentSlipView(withLeaveRecord);
+    const w = mount(BillingDocument, { props: { doc } });
+    expect(w.get('.slip-section-title').text()).toContain('共 9 筆');
+    expect(w.get('.slip-section-title').text()).toContain('已上 4 堂');
+    expect(w.findAll('.slip-session-list li')).toHaveLength(9);
+    expect(doc.sessions).toEqual(original.sessions);
+    expect(doc.amount).toBe(8000);
+    expect(doc.planning_notice).toBeNull();
+    expect(withLeaveRecord).toEqual(original);
+  });
+
+  it('#548 names the final leave record 補請假 instead of a reschedule', () => {
+    const w = mount(BillingDocument, { props: { doc: paymentSlipView(withLeaveRecord) } });
+    expect(w.findAll('.slip-status').at(-1).text()).toBe('補請假');
+  });
+
+  it('#548 keeps the export row limit and describes unprinted records consistently', () => {
+    const doc = paymentSlipView({ ...withLeaveRecord, sessions: Array.from({ length: 41 }, (_, i) => ({ ...withLeaveRecord.sessions[i % 9], class_session_id: i + 1 })) });
+    const w = mount(BillingDocument, { props: { doc } });
+    expect(w.findAll('.slip-session-list li')).toHaveLength(40);
+    expect(w.get('.slip-more').text()).toBe('另有 1 筆未列出（共 41 筆）');
+    expect(doc.sessions).toHaveLength(41);
+  });
+
+  it.each([
+    { ...withLeaveRecord, schedule_mode: 'date', period_sessions: 4 },
+    { invoice_id: 22, student_name: '合成學生', remaining: 8000, sessions: withLeaveRecord.sessions },
+  ])('#548 preserves the legacy invoice and monthly count wording', raw => {
+    const w = mount(BillingDocument, { props: { doc: paymentSlipView(raw) } });
+    expect(w.get('.slip-section-title').text()).toContain('共 9 堂');
+  });
+
   it('explains overplanning on the exported document and preserves all dates and the estimate', () => {
     const doc = paymentSlipView(overplanned);
     const w = mount(BillingDocument, { props: { doc } });
@@ -92,7 +133,7 @@ describe('paymentSlipView', () => {
     const sessions = Array.from({ length: 500 }, (_, i) => ({ date: '2026-09-01', status: 'scheduled', class_session_id: i + 1 }));
     const w = mount(BillingDocument, { props: { doc: paymentSlipView({ student_class_id: 1, schedule_mode: 'count', sessions }) } });
     expect(w.findAll('.slip-session-list li')).toHaveLength(40);
-    expect(w.find('.slip-more').text()).toBe('另有 460 堂未列出（共 500 堂）');
+    expect(w.find('.slip-more').text()).toBe('另有 460 筆未列出（共 500 筆）');
   });
 });
 
