@@ -3,9 +3,11 @@
 namespace Tests\Feature\Billing;
 
 use App\Models\AuthToken;
+use App\Models\ClassSession;
 use App\Models\User;
 use App\Models\UserCampus;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
 /** ADMIN-OPS billing: the 繳費單 (alerts/tuition-slip) is offered while ContractMoneyVerdict says the contract owes, refused once it is settled or free. */
@@ -31,6 +33,31 @@ class TuitionSlipFollowsVerdictTest extends TestCase
         $res = $this->slip($course->ID)->assertOk();
         $this->assertSame(10000, (int) $res->json('payable_amount'));
         $this->assertSame('invoiced', $res->json('payable_status'));
+    }
+
+    /** In-app #548: expose the planning boundary; never trim or mutate excess bookings on a read. */
+    public function test_count_slip_exposes_quota_without_changing_sessions_or_money(): void
+    {
+        $course = $this->course([], ['SessionCount' => 8, 'RemainingSessions' => 4, 'UsedSessions' => 4]);
+        foreach (range(1, 12) as $i) {
+            ClassSession::create([
+                'StudentClassID' => $course->ID, 'SessionDate' => sprintf('2026-08-%02d', $i),
+                'StartTime' => '23:00', 'EndTime' => '23:30', 'Status' => $i <= 4 ? 'attended' : 'scheduled',
+            ]);
+        }
+        $before = DB::table('ClassSession')->where('StudentClassID', $course->ID)->orderBy('id')->get()->toJson();
+        $moneyBefore = $course->fresh()->getAttributes();
+
+        $this->slip($course->ID)->assertOk()
+            ->assertJsonPath('sessions_purchased', 8)
+            ->assertJsonPath('deduction_basis', 'fixed_session')
+            ->assertJsonPath('scheduling_policy', 'auto_recurrence')
+            ->assertJsonPath('package_id', null)
+            ->assertJsonCount(12, 'sessions')
+            ->assertJsonPath('estimated_amount', 10000);
+
+        $this->assertSame($before, DB::table('ClassSession')->where('StudentClassID', $course->ID)->orderBy('id')->get()->toJson());
+        $this->assertSame($moneyBefore, $course->fresh()->getAttributes());
     }
 
     public function test_payment_rows_that_settle_an_unflagged_contract_refuse_the_slip(): void

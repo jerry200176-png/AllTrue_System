@@ -1,0 +1,16 @@
+updates:
+  - id: staff-2026-11-15-slip-planning-warning
+    published_at: "2026-11-15"
+    audiences:
+      - director
+      - super_admin
+    importance: digest
+    title: 繳費單加註超排提醒
+    summary: 繳費通知會提示堂數制排課超出購買堂數，日期與金額維持原樣。
+    items:
+      - category: improved
+        text: 預覽或匯出繳費通知前，先看超排提醒，再到課程管理核對日期。
+      - category: fixed
+        text: 手機預覽可從左側閱讀，並橫向查看其餘內容；下載圖片維持原尺寸。
+    source_refs:
+      - "changelog:2026-11-15:slip-planning-warning"

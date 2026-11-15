@@ -235,8 +235,13 @@ async function copyToClipboard() {
   border-radius: 12px;
   padding: 16px;
   display: flex;
-  justify-content: center;
+  justify-content: flex-start;
   overflow-x: auto;
+}
+.slip-preview-wrap :deep(.slip) {
+  /* Auto margins center a fitting document, but become zero on overflow.
+     justify-content:center made the left half unreachable on phones (#548). */
+  margin-inline: auto;
 }
 .slip-actions {
   display: flex;

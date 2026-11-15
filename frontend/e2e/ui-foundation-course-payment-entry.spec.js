@@ -1,5 +1,6 @@
 // @ts-check
 import { test, expect } from '@playwright/test';
+
 import { LEGACY_FLAG_UNVERIFIED_HELP, REPORT_STATUS_LABELS, REVIEW_REQUIRED_LABEL, REVIEW_REQUIRED_SHORT_LABEL, TUITION_STATUS_CONFIG } from '../src/lib/courseMoneyState.js';
 import { dismissOverlays } from './fixtures/dismissOverlays.js';
 import { expectCoursePaymentEntryOpensLedgerInPlace, recordCourseLists } from './fixtures/coursePaymentEntry.js';
@@ -205,5 +206,43 @@ for (const width of [375, 768, 1280]) {
     expect(rows.length, 'summary cards rendered').toBeGreaterThan(0);
     expect(rows.filter((row) => row.count === 1 && !row.full), 'single-card rows that do not span the grid').toEqual([]);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1), 'no horizontal page scroll').toBe(true);
+  });
+}
+
+// In-app #548: the printed warning and all dates remain reachable on a phone.
+for (const width of [375, 1280]) {
+  test(`繳費通知超排提示與左側日期可讀 at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 900 });
+    await page.route('**/*', (route) => ['127.0.0.1', 'localhost'].includes(new URL(route.request().url()).hostname)
+      ? route.continue() : route.abort());
+    await page.route('**/api/v1/**', (route) => {
+      expect(route.request().method()).toBe('GET');
+      expect(new URL(route.request().url()).pathname).toBe('/api/v1/alerts/tuition-slip/9');
+      return route.fulfill({ json: {
+        student_class_id: 9, student_name: '隔離測試學生', subject: '英文', schedule_mode: 'count',
+        sessions_purchased: 8, remaining_sessions: 4, estimated_amount: 8000,
+        deduction_basis: 'fixed_session', scheduling_policy: 'auto_recurrence', package_id: null,
+        sessions: Array.from({ length: 12 }, (_, i) => ({ class_session_id: i + 1,
+          date: `2026-11-${String(i + 1).padStart(2, '0')}`, status: i < 4 ? 'attended' : 'scheduled',
+          start_time: '13:00', end_time: '15:00' })),
+      } });
+    });
+    await page.goto('/payment-slip-pilot-mount.html');
+    await page.getByRole('button', { name: '預覽繳費通知' }).click();
+    await expect(page.getByTestId('slip-planning-notice')).toContainText('已超出購買堂數 4 堂');
+    await expect(page.locator('.slip-session-list li')).toHaveCount(12);
+    const wrap = page.locator('.slip-preview-wrap');
+    const left = await wrap.evaluate(el => el.getBoundingClientRect().left);
+    const paper = await page.locator('article.slip').boundingBox();
+    expect(paper.x).toBeGreaterThanOrEqual(left);
+    if (width === 375) {
+      expect(await wrap.evaluate(el => el.scrollWidth > el.clientWidth)).toBe(true);
+      await wrap.evaluate(el => { el.scrollLeft = el.scrollWidth; });
+      const after = await page.locator('article.slip').boundingBox();
+      expect(after.x).toBeLessThan(paper.x);
+    }
+    await page.getByTestId('slip-modal-panel').focus();
+    await page.keyboard.press('Escape');
+    await expect(page.getByRole('dialog')).toHaveCount(0);
   });
 }
