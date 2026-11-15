@@ -375,7 +375,7 @@ class TeacherEligibilityPolicy
         }
         return $this->result(
             self::QUALIFIES,
-            $amount != 0.0 ? '已核准現金加扣款，獨立加進總發放金額。' : '查詢期間沒有已核准現金加扣款。',
+            $amount != 0.0 ? '已核准現金加扣款，獨立加進獎金合計。' : '查詢期間沒有已核准現金加扣款。',
             ['items' => $items],
             round($amount, 2),
             0

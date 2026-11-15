@@ -4,7 +4,8 @@ namespace App\Support;
 
 /**
  * Combines TeacherEligibilityPolicy::evaluate()'s per-component output (rates
- * and amounts) with base salary into one 總發放金額.
+ * and amounts) into one bonus total. Base salary is not part of this page
+ * (Founder 2026-11-15): it settles bonuses only.
  *
  * The raw (pre-multiplier) tier amounts and the 正課20科 rate come from
  * components.subject_count_bonus.metrics (see TeacherEligibilityPolicy::
@@ -13,7 +14,7 @@ namespace App\Support;
  */
 final class FulltimeSettlementComposer
 {
-    public static function compose(array $components, ?float $baseSalary, ?array $subjectUnits = null, ?float $manualMultiplierPct = null): array
+    public static function compose(array $components, ?array $subjectUnits = null, ?float $manualMultiplierPct = null): array
     {
         $subjectUnits ??= [];
         $subjectMetrics = $components['subject_count_bonus']['metrics'] ?? [];
@@ -68,10 +69,6 @@ final class FulltimeSettlementComposer
         $cashAmount = $cashKnown ? (float) ($cashComponent['amount'] ?? 0) : 0.0;
         if (!$cashKnown) $pendingItems[] = self::pendingItem('cash_adjustments', '現金加扣款', $cashComponent);
 
-        if ($baseSalary === null) {
-            $pendingItems[] = ['code' => 'base_salary', 'label' => '固定底薪', 'missing_fields' => ['base_salary'], 'impact' => 'unknown', 'blocking' => true];
-        }
-
         $adjustments = [];
         if ($weeklyBonus != 0.0) {
             $adjustments[] = ['label' => '16段課', 'amount' => $weeklyBonus];
@@ -81,14 +78,13 @@ final class FulltimeSettlementComposer
             foreach (is_array($cashItems) && $cashItems !== [] ? $cashItems : [['label' => '現金加扣款', 'amount' => $cashAmount]] as $item) if ((float) ($item['amount'] ?? 0) != 0.0) $adjustments[] = ['label' => (string) ($item['label'] ?? '現金加扣款'), 'amount' => (float) $item['amount']];
         }
 
-        $coreBlocked = $baseSalary === null || !$subjectKnown;
+        $coreBlocked = !$subjectKnown;
         $calculatedPayout = $coreBlocked
             ? null
-            : round((float) $baseSalary + $weeklyBonus + $weightedBonus + $cashAmount, 2);
+            : round($weeklyBonus + $weightedBonus + $cashAmount, 2);
         $reviewRequired = $pendingItems !== [] || collect($components)->contains(fn ($c) => ($c['status'] ?? null) === 'review');
 
         return [
-            'base_salary' => $baseSalary,
             'multiplier_pct' => $multiplierComplete ? round($multiplierPct, 2) : null,
             'known_multiplier_pct' => round($multiplierPct, 2),
             'multiplier_complete' => $multiplierComplete,

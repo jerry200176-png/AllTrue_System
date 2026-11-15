@@ -60,15 +60,6 @@ class TeacherEligibilityWeeklySegmentsTest extends TestCase
         // A leftover row from a second same-day move: the live lesson is at 10:00, so 16:00 is stale.
         $this->schedule($teacher->id, '2026-08-04', '16:00', '18:00', ['student_course_id' => $tuesday->StudentClassID]);
 
-        DB::table('fulltime_salary_profiles')->insert([
-            'teacher_id' => $teacher->id,
-            'branch_id' => $otherCampus->id,
-            'base_salary' => 33000,
-            'status' => 'approved',
-            'effective_from' => '2026-08-01',
-            'created_at' => now(),
-            'updated_at' => now(),
-        ]);
         DB::table('teacher_payroll_cash_adjustments')->insert(['teacher_id' => $teacher->id, 'branch_id' => $otherCampus->id, 'amount' => 1500, 'reason' => '完整結算路徑測試', 'status' => 'approved', 'starts_on' => '2026-08-01', 'ends_on' => '2026-08-31', 'created_at' => now(), 'updated_at' => now()]);
 
         $response = $this->withHeaders($this->auth($director['token']))
@@ -83,8 +74,8 @@ class TeacherEligibilityWeeklySegmentsTest extends TestCase
             '2026-08-03' => 3.17, '2026-08-04' => 4, '2026-08-05' => 4, '2026-08-06' => 2.67,
             '2026-08-07' => 6, '2026-08-08' => 10, '2026-08-09' => 2.17,
         ]);
-        // 33000 base + 1500 cash + 4000 (the only week in view is full) + 200 一對三獎金.
-        $response->assertJsonPath('teachers.0.settlement.calculated_payout', 38700);
+        // Bonus total, no base salary: 1500 cash + 4000 (the only week in view is full) + 200 一對三獎金.
+        $response->assertJsonPath('teachers.0.settlement.calculated_payout', 5700);
         $response->assertJsonPath('teachers.0.settlement.calculation_status', 'calculated');
         $response->assertJsonPath('teachers.0.components.cash_adjustments.amount', 1500);
         $response->assertJsonPath('teachers.0.settlement.adjustments.1.label', '完整結算路徑測試');
@@ -93,7 +84,7 @@ class TeacherEligibilityWeeklySegmentsTest extends TestCase
             ->getJson('/api/v1/finance/teacher-eligibility?period=month&start=2026-08-01&end=2026-08-31&branch_id=1');
         $monthResponse->assertOk();
         // The month has four more weeks and none of them is full: no 16段課獎金.
-        $monthResponse->assertJsonPath('teachers.0.settlement.calculated_payout', 34700);
+        $monthResponse->assertJsonPath('teachers.0.settlement.calculated_payout', 1700);
         $monthResponse->assertJsonPath('teachers.0.settlement.calculation_status', 'calculated');
         $monthResponse->assertJsonPath('teachers.0.components.weekly_16_segments.metrics.week_count', 5);
         $monthResponse->assertJsonPath('teachers.0.components.weekly_16_segments.metrics.qualifying_weeks', 1);
@@ -105,7 +96,7 @@ class TeacherEligibilityWeeklySegmentsTest extends TestCase
             ->getJson('/api/v1/finance/teacher-eligibility?period=week&start=2026-08-03&end=2026-08-09&branch_id=1')->assertOk();
         $short->assertJsonPath('teachers.0.components.weekly_16_segments.metrics.total_segments', 14.92);
         $short->assertJsonPath('teachers.0.components.weekly_16_segments.status', 'not_qualifies');
-        $short->assertJsonPath('teachers.0.settlement.calculated_payout', 34700);
+        $short->assertJsonPath('teachers.0.settlement.calculated_payout', 1700);
     }
 
     /** A week crossing a month end is judged whole in its Monday's month; the 4,000 needs every week full. */

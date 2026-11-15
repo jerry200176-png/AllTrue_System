@@ -5,6 +5,7 @@ import {
   eventSubtitle,
   formatMoney,
   formatSubjects,
+  formatSubjectUnits,
   weightedBonusFormula,
   monthWindow,
 } from './teacherEligibilityDisplay.js';
@@ -25,5 +26,9 @@ assert.equal(weightedBonusFormula({
   weighted_bonus_amount: 515.25,
 }), '($0 + $450) × 114.5% = $515');
 assert.deepEqual(monthWindow('2026-08'), { start: '2026-08-01', end: '2026-08-31' });
+// 正課 150 raw + 輔導試聽 12 raw = 核薪總 20.25: the three columns add up once shown on the same scale.
+assert.equal(formatSubjectUnits(150), '18.75');
+assert.equal(formatSubjectUnits(12), '1.5');
+assert.equal(formatSubjectUnits(null), '—');
 
 console.log('teacher eligibility display tests passed');

@@ -31,6 +31,11 @@ export function formatSubjects(value) {
   return Number(value).toLocaleString('zh-TW', { maximumFractionDigits: 4 });
 }
 
+/** 正課／輔導試聽 arrive as raw units; ÷8 puts them on the 核薪總科目數 scale so the three columns add up. */
+export function formatSubjectUnits(value) {
+  return formatSubjects(value == null || value === '' ? value : Number(value) / 8);
+}
+
 export function formatPct(value) {
   if (value == null || value === '') return '—';
   const n = Number(value);

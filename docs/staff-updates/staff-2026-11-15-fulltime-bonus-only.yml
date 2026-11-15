@@ -1,0 +1,16 @@
+updates:
+  - id: staff-2026-11-15-fulltime-bonus-only
+    published_at: "2026-11-15"
+    audiences:
+      - director
+      - super_admin
+    importance: major
+    title: 正職薪資頁只算獎金
+    summary: 正職薪資頁拿掉底薪，合計改成獎金合計，不用再填底薪。
+    items:
+      - category: improved
+        text: 合計欄改名「獎金合計」，只含十六段課獎金、倍率後獎金與現金加扣款，匯出檔也沒有底薪欄。
+      - category: fixed
+        text: 正課、輔導試聽兩欄改成跟核薪總科目數同一個單位，三欄加起來對得上。
+    source_refs:
+      - "changelog:2026-11-15:fulltime-bonus-only-no-base-salary"

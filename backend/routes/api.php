@@ -488,8 +488,7 @@ Route::prefix('v1')->group(function () {
         Route::post('finance/periods/close', [\App\Http\Controllers\AccountingPeriodController::class, 'close']);
         Route::post('finance/periods/reopen', [\App\Http\Controllers\AccountingPeriodController::class, 'reopen']);
 
-        // ── Full-time teacher base salary (正職結算底薪), feeds finance/teacher-eligibility's total_payout ──
-        Route::post('finance/teacher-eligibility/salary-profiles', [TeacherEligibilityInputController::class, 'storeSalaryProfile'])->middleware('require_pin');
+        // ── Full-time settlement: manual multiplier profile (base salary is no longer part of this page) ──
         Route::post('finance/teacher-eligibility/salary-profiles/multiplier', [TeacherEligibilityInputController::class, 'storeMultiplierProfile'])->middleware('require_pin');
         Route::post('finance/teacher-eligibility/salary-profiles/{id}/approve', [TeacherEligibilityInputController::class, 'approveSalaryProfile'])->whereNumber('id')->middleware('require_pin');
         Route::post('finance/teacher-eligibility/lock', [TeacherEligibilityController::class, 'lock'])->middleware('require_pin');

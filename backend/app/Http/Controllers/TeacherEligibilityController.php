@@ -244,10 +244,9 @@ class TeacherEligibilityController extends Controller
         // campus only controls which teachers are listed; it must never
         // partition a teacher's cross-campus subject inputs.
         $subjectUnitsByTeacher = $this->globalSubjectUnitsByTeacher($teacherIds, $effectiveStart, $period['end']);
-        $salaryByTeacher = $this->salaryProfilesByTeacher($teacherIds, null, $period['end']->toDateString());
         $manualMultiplierByTeacher = $this->manualMultiplierByTeacher($teacherIds, null, $period['end']->toDateString());
 
-        $rows = $teachers->map(function ($teacher) use ($period, $effectiveStart, $weeks, $lessonsByTeacher, $scheduleByTeacher, $plannedByTeacher, $attendanceByTeacher, $eventByTeacher, $achievementByTeacher, $deductionByTeacher, $allowanceByTeacher, $cashByTeacher, $cashSourceAvailable, $allowanceSourceAvailable, $pendingSalaryByTeacher, $sessionCalendarAvailable, $subjectUnitsByTeacher, $salaryByTeacher, $manualMultiplierByTeacher) {
+        $rows = $teachers->map(function ($teacher) use ($period, $effectiveStart, $weeks, $lessonsByTeacher, $scheduleByTeacher, $plannedByTeacher, $attendanceByTeacher, $eventByTeacher, $achievementByTeacher, $deductionByTeacher, $allowanceByTeacher, $cashByTeacher, $cashSourceAvailable, $allowanceSourceAvailable, $pendingSalaryByTeacher, $sessionCalendarAvailable, $subjectUnitsByTeacher, $manualMultiplierByTeacher) {
             $teacherId = (int) $teacher->id;
             $teacherSchedules = $scheduleByTeacher->get($teacherId, collect());
             $teacherPlanned = $plannedByTeacher->get($teacherId, collect());
@@ -316,7 +315,6 @@ class TeacherEligibilityController extends Controller
             $result = $this->finalizePolicyResult($result['components']);
             $settlement = FulltimeSettlementComposer::compose(
                 $result['components'],
-                $salaryByTeacher[$teacherId] ?? null,
                 is_array($subjectUnits) ? $subjectUnits : null,
                 $manualMultiplierByTeacher[$teacherId] ?? null
             );
@@ -459,16 +457,15 @@ class TeacherEligibilityController extends Controller
         return response()->streamDownload(function () use ($payload) {
             $out = fopen('php://output', 'w');
             fprintf($out, chr(0xEF) . chr(0xBB) . chr(0xBF));
-            fputcsv($out, ['老師姓名', '固定底薪', '正課科目數', '輔導試聽科目數', '核薪總科目數', '一對三總計', '科目數獎金', '一對三獎金', '教師倍率', '倍率後獎金', '加扣款', '總發放金額', '狀態']);
+            fputcsv($out, ['老師姓名', '正課科目數', '輔導試聽科目數', '核薪總科目數', '一對三總計', '科目數獎金', '一對三獎金', '教師倍率', '倍率後獎金', '加扣款', '獎金合計', '狀態']);
             foreach ($payload['teachers'] ?? [] as $teacher) {
                 $s = $teacher['settlement'] ?? [];
                 $adj = collect($s['adjustments'] ?? [])->map(fn ($row) => ($row['label'] ?? '') . ':' . ($row['amount'] ?? 0))->implode(';');
                 $draft = !empty($teacher['review_required']) || !empty($s['payout_is_draft']);
                 fputcsv($out, [
                     $teacher['teacher_name'] ?? '',
-                    $s['base_salary'] ?? 0,
-                    $s['regular_subject_count'] ?? '',
-                    $s['tutoring_trial_subject_count'] ?? '',
+                    isset($s['regular_subject_count']) ? round($s['regular_subject_count'] / 8, 4) : '',
+                    isset($s['tutoring_trial_subject_count']) ? round($s['tutoring_trial_subject_count'] / 8, 4) : '',
                     $s['payroll_subject_count'] ?? '',
                     $s['one_to_three_count'] ?? '',
                     $s['subject_count_bonus'] ?? 0,
@@ -716,24 +713,6 @@ class TeacherEligibilityController extends Controller
         })->all();
     }
 
-    private function salaryProfilesByTeacher(array $teacherIds, ?array $branchFilter, string $onDate): array
-    {
-        if (!Schema::hasTable('fulltime_salary_profiles') || $teacherIds === []) {
-            return [];
-        }
-
-        return DB::table('fulltime_salary_profiles')
-            ->whereIn('teacher_id', $teacherIds)
-            ->where('status', 'approved') // TD-078: unapproved writes must never feed payroll
-            ->where('effective_from', '<=', $onDate)
-            ->orderBy('effective_from')
-            ->orderBy('id')
-            ->get(['teacher_id', 'base_salary', 'effective_from', 'id'])
-            ->groupBy('teacher_id')
-            ->map(fn ($rows) => (float) $rows->last()->base_salary)
-            ->all();
-    }
-
     private function manualMultiplierByTeacher(array $teacherIds, ?array $branchFilter, string $onDate): array
     {
         if (!Schema::hasTable('fulltime_salary_profiles') || !Schema::hasColumn('fulltime_salary_profiles', 'manual_multiplier_pct') || $teacherIds === []) {
@@ -753,7 +732,7 @@ class TeacherEligibilityController extends Controller
     }
 
     /**
-     * @return array<int, array{id:int,branch_id:int|null,base_salary:float,manual_multiplier_pct:float|null,effective_from:string}>
+     * @return array<int, array{id:int,branch_id:int|null,manual_multiplier_pct:float|null,effective_from:string}>
      */
     private function pendingSalaryByTeacher(array $teacherIds, ?array $branchFilter): array
     {
@@ -765,12 +744,11 @@ class TeacherEligibilityController extends Controller
             ->whereIn('teacher_id', $teacherIds)
             ->where('status', 'pending')
             ->orderBy('id')
-            ->get(['id', 'teacher_id', 'branch_id', 'base_salary', 'manual_multiplier_pct', 'effective_from'])
+            ->get(['id', 'teacher_id', 'branch_id', 'manual_multiplier_pct', 'effective_from'])
             ->groupBy('teacher_id')
             ->map(fn ($rows) => [
                 'id' => (int) $rows->last()->id,
                 'branch_id' => $rows->last()->branch_id === null ? null : (int) $rows->last()->branch_id,
-                'base_salary' => (float) $rows->last()->base_salary,
                 'manual_multiplier_pct' => $rows->last()->manual_multiplier_pct === null ? null : (float) $rows->last()->manual_multiplier_pct,
                 'effective_from' => (string) $rows->last()->effective_from,
             ])

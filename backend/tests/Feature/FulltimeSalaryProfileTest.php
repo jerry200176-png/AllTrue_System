@@ -14,9 +14,9 @@ use Tests\TestCase;
 
 /**
  * Regression coverage for two Cursor Bugbot findings on PR #1773:
- * - storeSalaryProfile() 500s for super_admin without branch_id because
+ * - the profile write 500s for super_admin without branch_id because
  *   fulltime_salary_profiles.branch_id was NOT NULL (fixed: now nullable).
- * - salaryProfilesByTeacher() picked an arbitrary row among same-day
+ * - the approved-profile lookup picked an arbitrary row among same-day
  *   effective_from ties because it only sorted by effective_from
  *   (fixed: secondary orderBy('id') so the latest insert wins).
  */
@@ -35,36 +35,11 @@ class FulltimeSalaryProfileTest extends TestCase
         $method = new ReflectionMethod($controller, 'pendingSalaryByTeacher');
         $result = $method->invoke($controller, [$teacherId], [1]);
         $this->assertSame(1, $result[$teacherId]['branch_id']);
-        $this->assertSame(0.0, $result[$teacherId]['base_salary']);
+        $this->assertArrayNotHasKey('base_salary', $result[$teacherId]);
         DB::table('fulltime_salary_profiles')->where('id', $id)->update(['branch_id' => null]);
         $result = $method->invoke($controller, [$teacherId], null);
         $this->assertArrayHasKey('branch_id', $result[$teacherId]);
         $this->assertNull($result[$teacherId]['branch_id']);
-    }
-
-    public function test_explicit_zero_correction_preserves_old_profile_and_only_changes_payroll_after_hq_approval(): void
-    {
-        $director = $this->createDirector(1, 'isolated-545-director@test.com');
-        $hq = $this->createSuperAdmin('isolated-545-hq@test.com');
-        $teacherId = $this->createTeacher(1, 'isolated-545-teacher@test.com');
-        $oldId = DB::table('fulltime_salary_profiles')->insertGetId([
-            'teacher_id' => $teacherId, 'branch_id' => 1, 'base_salary' => 33000,
-            'effective_from' => '2026-10-01', 'status' => 'approved', 'created_at' => now(), 'updated_at' => now(),
-        ]);
-        $old = (array) DB::table('fulltime_salary_profiles')->find($oldId);
-        $r = $this->withToken($director['token'])->postJson('/api/v1/finance/teacher-eligibility/salary-profiles', [
-            'teacher_id' => $teacherId, 'branch_id' => 1, 'base_salary' => 0, 'effective_from' => '2026-11-01',
-        ])->assertCreated()->assertJsonPath('status', 'pending');
-        $controller = new TeacherEligibilityController(new TeacherEligibilityPolicy(require __DIR__ . '/../../config/teacher_salary.php'));
-        $method = new ReflectionMethod($controller, 'salaryProfilesByTeacher');
-        $this->assertSame(33000.0, $method->invoke($controller, [$teacherId], [1], '2026-11-30')[$teacherId]);
-        $this->withToken($hq['token'])->postJson('/api/v1/finance/teacher-eligibility/salary-profiles/'.$r->json('id').'/approve')
-            ->assertOk()->assertJsonPath('status', 'approved');
-        $this->assertSame(0.0, $method->invoke($controller, [$teacherId], [1], '2026-11-30')[$teacherId]);
-        // Existing reader is per teacher: branch_id records intake context, not isolated base-pay calculation.
-        $this->assertSame(0.0, $method->invoke($controller, [$teacherId], [2], '2026-11-30')[$teacherId]);
-        $this->assertSame($old, (array) DB::table('fulltime_salary_profiles')->find($oldId));
-        $this->assertDatabaseCount('fulltime_salary_profiles', 2);
     }
 
     public function test_super_admin_can_set_salary_profile_without_branch_id(): void
@@ -75,9 +50,9 @@ class FulltimeSalaryProfileTest extends TestCase
         $response = $this->withHeaders([
             'Authorization' => "Bearer {$admin['token']}",
             'Accept' => 'application/json',
-        ])->postJson('/api/v1/finance/teacher-eligibility/salary-profiles', [
+        ])->postJson('/api/v1/finance/teacher-eligibility/salary-profiles/multiplier', [
             'teacher_id' => $teacherId,
-            'base_salary' => 33000,
+            'manual_multiplier_pct' => 107,
             'effective_from' => '2026-07-01',
         ]);
 
@@ -85,7 +60,7 @@ class FulltimeSalaryProfileTest extends TestCase
         $this->assertDatabaseHas('fulltime_salary_profiles', [
             'teacher_id' => $teacherId,
             'branch_id' => null,
-            'base_salary' => '33000.00',
+            'manual_multiplier_pct' => '107.00',
         ]);
     }
 
@@ -94,18 +69,18 @@ class FulltimeSalaryProfileTest extends TestCase
         $teacherId = $this->createTeacher(1, 'fs-teacher-2@test.com');
 
         DB::table('fulltime_salary_profiles')->insert([
-            ['teacher_id' => $teacherId, 'branch_id' => null, 'base_salary' => 30000, 'effective_from' => '2026-08-01', 'status' => 'approved', 'created_at' => now(), 'updated_at' => now()],
-            ['teacher_id' => $teacherId, 'branch_id' => null, 'base_salary' => 35000, 'effective_from' => '2026-08-01', 'status' => 'approved', 'created_at' => now(), 'updated_at' => now()],
+            ['teacher_id' => $teacherId, 'branch_id' => null, 'base_salary' => 0, 'manual_multiplier_pct' => 105, 'effective_from' => '2026-08-01', 'status' => 'approved', 'created_at' => now(), 'updated_at' => now()],
+            ['teacher_id' => $teacherId, 'branch_id' => null, 'base_salary' => 0, 'manual_multiplier_pct' => 107, 'effective_from' => '2026-08-01', 'status' => 'approved', 'created_at' => now(), 'updated_at' => now()],
         ]);
 
         $controller = new TeacherEligibilityController(
             new TeacherEligibilityPolicy(require __DIR__ . '/../../config/teacher_salary.php')
         );
-        $reflection = new ReflectionMethod($controller, 'salaryProfilesByTeacher');
+        $reflection = new ReflectionMethod($controller, 'manualMultiplierByTeacher');
         $reflection->setAccessible(true);
         $result = $reflection->invoke($controller, [$teacherId], null, '2026-08-31');
 
-        $this->assertSame(35000.0, $result[$teacherId], 'same-day correction must win over the first-inserted row, not an arbitrary DB row order');
+        $this->assertSame(107.0, $result[$teacherId], 'same-day correction must win over the first-inserted row, not an arbitrary DB row order');
     }
 
     // TD-078: director writes stay pending and never feed payroll until HQ approves.
@@ -117,28 +92,28 @@ class FulltimeSalaryProfileTest extends TestCase
         $response = $this->withHeaders([
             'Authorization' => "Bearer {$director['token']}",
             'Accept' => 'application/json',
-        ])->postJson('/api/v1/finance/teacher-eligibility/salary-profiles', [
+        ])->postJson('/api/v1/finance/teacher-eligibility/salary-profiles/multiplier', [
             'teacher_id' => $teacherId,
             'branch_id' => 1,
-            'base_salary' => 40000,
+            'manual_multiplier_pct' => 108,
             'effective_from' => '2026-08-01',
         ]);
 
         $response->assertCreated();
         $this->assertDatabaseHas('fulltime_salary_profiles', [
             'teacher_id' => $teacherId,
-            'base_salary' => '40000.00',
+            'manual_multiplier_pct' => '108.00',
             'status' => 'pending',
         ]);
 
         $controller = new TeacherEligibilityController(
             new TeacherEligibilityPolicy(require __DIR__ . '/../../config/teacher_salary.php')
         );
-        $reflection = new ReflectionMethod($controller, 'salaryProfilesByTeacher');
+        $reflection = new ReflectionMethod($controller, 'manualMultiplierByTeacher');
         $reflection->setAccessible(true);
         $result = $reflection->invoke($controller, [$teacherId], null, '2026-08-31');
 
-        $this->assertArrayNotHasKey($teacherId, $result, '未核准的底薪不可計入發放總額');
+        $this->assertArrayNotHasKey($teacherId, $result, '未核准的倍率不可計入結算');
     }
 
     public function test_super_admin_salary_write_is_approved_immediately(): void
@@ -149,15 +124,15 @@ class FulltimeSalaryProfileTest extends TestCase
         $this->withHeaders([
             'Authorization' => "Bearer {$admin['token']}",
             'Accept' => 'application/json',
-        ])->postJson('/api/v1/finance/teacher-eligibility/salary-profiles', [
+        ])->postJson('/api/v1/finance/teacher-eligibility/salary-profiles/multiplier', [
             'teacher_id' => $teacherId,
-            'base_salary' => 41000,
+            'manual_multiplier_pct' => 109,
             'effective_from' => '2026-08-01',
         ])->assertCreated();
 
         $this->assertDatabaseHas('fulltime_salary_profiles', [
             'teacher_id' => $teacherId,
-            'base_salary' => '41000.00',
+            'manual_multiplier_pct' => '109.00',
             'status' => 'approved',
             'approved_by' => $admin['user_id'],
         ]);
@@ -165,22 +140,16 @@ class FulltimeSalaryProfileTest extends TestCase
         $controller = new TeacherEligibilityController(
             new TeacherEligibilityPolicy(require __DIR__ . '/../../config/teacher_salary.php')
         );
-        $reflection = new ReflectionMethod($controller, 'salaryProfilesByTeacher');
+        $reflection = new ReflectionMethod($controller, 'manualMultiplierByTeacher');
         $reflection->setAccessible(true);
         $result = $reflection->invoke($controller, [$teacherId], null, '2026-08-31');
-        $this->assertSame(41000.0, $result[$teacherId]);
+        $this->assertSame(109.0, $result[$teacherId]);
     }
 
-    public function test_super_admin_can_save_manual_multiplier_using_existing_salary_source(): void
+    public function test_manual_multiplier_needs_no_base_salary_profile(): void
     {
         $admin = $this->createSuperAdmin('fs-multiplier-super@test.com');
         $teacherId = $this->createTeacher(1, 'fs-multiplier-teacher@test.com');
-
-        DB::table('fulltime_salary_profiles')->insert([
-            'teacher_id' => $teacherId, 'branch_id' => 1, 'base_salary' => 33000,
-            'effective_from' => '2026-08-01', 'status' => 'approved',
-            'created_at' => now(), 'updated_at' => now(),
-        ]);
 
         $response = $this->withHeaders([
             'Authorization' => "Bearer {$admin['token']}",
@@ -195,7 +164,7 @@ class FulltimeSalaryProfileTest extends TestCase
         $response->assertCreated();
         $this->assertDatabaseHas('fulltime_salary_profiles', [
             'teacher_id' => $teacherId,
-            'base_salary' => '33000.00',
+            'base_salary' => '0.00',
             'manual_multiplier_pct' => '107.00',
             'status' => 'approved',
         ]);
@@ -229,7 +198,7 @@ class FulltimeSalaryProfileTest extends TestCase
         $teacherId = $this->createTeacher(1, 'fs-td078-teacher3@test.com');
 
         $profileId = DB::table('fulltime_salary_profiles')->insertGetId([
-            'teacher_id' => $teacherId, 'branch_id' => 1, 'base_salary' => 38000,
+            'teacher_id' => $teacherId, 'branch_id' => 1, 'base_salary' => 0, 'manual_multiplier_pct' => 110,
             'effective_from' => '2026-08-01', 'status' => 'pending',
             'created_at' => now(), 'updated_at' => now(),
         ]);
@@ -254,11 +223,11 @@ class FulltimeSalaryProfileTest extends TestCase
         $controller = new TeacherEligibilityController(
             new TeacherEligibilityPolicy(require __DIR__ . '/../../config/teacher_salary.php')
         );
-        $reflection = new ReflectionMethod($controller, 'salaryProfilesByTeacher');
+        $reflection = new ReflectionMethod($controller, 'manualMultiplierByTeacher');
         $reflection->setAccessible(true);
         $result = $reflection->invoke($controller, [$teacherId], null, '2026-08-31');
 
-        $this->assertSame(38000.0, $result[$teacherId] ?? null, '核准後的底薪必須計入發放總額');
+        $this->assertSame(110.0, $result[$teacherId] ?? null, '核准後的倍率必須計入結算');
     }
 
     private function createDirector(int $campusId, string $email): array

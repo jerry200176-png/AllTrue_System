@@ -25,14 +25,14 @@ class FulltimeSettlementComposerTest extends TestCase
             ],
         ];
 
-        $result = FulltimeSettlementComposer::compose($components, 33000.0);
+        $result = FulltimeSettlementComposer::compose($components);
 
         // multiplier = 100 + 0 (holiday, actually not_qualifies) + 0 + 0 + 0 + 5 (正課 >= 20) = 105
         $this->assertSame(105.0, $result['multiplier_pct']);
         // weighted = (10000 + 4600) * 1.05 = 15330
         $this->assertSame(15330.0, $result['weighted_bonus_amount']);
         $this->assertSame(4000.0, $result['weekly_segment_bonus_amount']);
-        $this->assertSame(33000.0 + 4000 + 15330, $result['total_payout']);
+        $this->assertSame(4000.0 + 15330, $result['total_payout']);
     }
 
     public function test_sums_all_five_rate_components_plus_subject_count_threshold(): void
@@ -49,7 +49,7 @@ class FulltimeSettlementComposerTest extends TestCase
             ],
         ];
 
-        $result = FulltimeSettlementComposer::compose($components, 30000.0);
+        $result = FulltimeSettlementComposer::compose($components);
 
         // 100 + 10 + 3 + 5 - 10 + 5 (>=20) = 113
         $this->assertSame(113.0, $result['multiplier_pct']);
@@ -66,7 +66,7 @@ class FulltimeSettlementComposerTest extends TestCase
             ],
         ];
 
-        $result = FulltimeSettlementComposer::compose($components, 0.0, ['payroll_total' => 20.2813]);
+        $result = FulltimeSettlementComposer::compose($components, ['payroll_total' => 20.2813]);
 
         $this->assertSame(100.0, $result['multiplier_pct']);
     }
@@ -83,7 +83,7 @@ class FulltimeSettlementComposerTest extends TestCase
                 'status' => 'qualifies', 'amount' => $subject + $oneToThree, 'rate' => 0,
                 'metrics' => ['subject_count' => 1, 'subject_count_bonus' => $subject, 'one_to_three_bonus' => $oneToThree, 'subject_count_rate' => $twentyRate],
             ],
-        ], 0.0);
+        ]);
 
         $first = $compose(6000, 2450, 0, 10, 1.5, 0, 0);
         $this->assertSame(111.5, $first['multiplier_pct']);
@@ -115,7 +115,7 @@ class FulltimeSettlementComposerTest extends TestCase
             ],
         ];
 
-        $result = FulltimeSettlementComposer::compose($components, 30000.0, [
+        $result = FulltimeSettlementComposer::compose($components, [
             'regular' => 5.25,
             'tutoring_trial' => 0.375,
             'one_to_three' => 4.5,
@@ -124,19 +124,20 @@ class FulltimeSettlementComposerTest extends TestCase
 
         $this->assertSame(114.5, $result['multiplier_pct']);
         $this->assertSame(515.0, $result['weighted_bonus_amount']);
-        $this->assertSame(34515.0, $result['total_payout']);
+        $this->assertSame(4515.0, $result['total_payout']);
         $this->assertSame(0.0, $result['subject_count_bonus']);
         $this->assertSame(450.0, $result['one_to_three_bonus']);
         $this->assertSame([['label' => '16段課', 'amount' => 4000.0]], $result['adjustments']);
     }
 
-    public function test_missing_base_salary_defaults_to_zero_not_error(): void
+    /** The page settles bonuses only: no base salary in the total, and none needed to calculate. */
+    public function test_total_has_no_base_salary_and_does_not_wait_for_one(): void
     {
-        $result = FulltimeSettlementComposer::compose([], null);
+        $result = FulltimeSettlementComposer::compose([]);
 
-        $this->assertNull($result['base_salary']);
-        $this->assertNull($result['total_payout']);
-        $this->assertSame('blocked', $result['calculation_status']);
+        $this->assertArrayNotHasKey('base_salary', $result);
+        $this->assertSame(0.0, $result['total_payout']);
+        $this->assertSame('calculated', $result['calculation_status']);
     }
 
     public function test_review_required_when_any_component_is_review(): void
@@ -145,7 +146,7 @@ class FulltimeSettlementComposerTest extends TestCase
             'holiday_16_hours' => ['status' => 'review', 'amount' => 0, 'rate' => 0],
         ];
 
-        $result = FulltimeSettlementComposer::compose($components, 30000.0);
+        $result = FulltimeSettlementComposer::compose($components);
 
         $this->assertTrue($result['review_required']);
         $this->assertTrue($result['payout_is_draft']);
@@ -159,7 +160,7 @@ class FulltimeSettlementComposerTest extends TestCase
                 'status' => 'qualifies', 'amount' => 0, 'rate' => 0,
                 'metrics' => ['subject_count' => 10, 'subject_count_bonus' => 0, 'one_to_three_bonus' => 0],
             ],
-        ], 0.0);
+        ]);
 
         $this->assertSame(108.0, $result['multiplier_pct']);
         $part = null;
@@ -181,11 +182,11 @@ class FulltimeSettlementComposerTest extends TestCase
                 'metrics' => ['subject_count' => 10, 'subject_count_bonus' => 3000, 'one_to_three_bonus' => 1],
             ],
             'holiday_16_hours' => ['status' => 'review', 'amount' => 0, 'rate' => null],
-        ], 33000.0, ['payroll_total' => 10], 107.0);
+        ], ['payroll_total' => 10], 107.0);
 
         $this->assertSame(107.0, $result['multiplier_pct']);
         $this->assertSame(3211.0, $result['weighted_bonus_amount']);
-        $this->assertSame(36211.0, $result['total_payout']);
+        $this->assertSame(3211.0, $result['total_payout']);
         $this->assertTrue($result['multiplier_complete']);
         $this->assertSame('manual_teacher_multiplier', $result['multiplier_parts'][0]['key']);
     }
