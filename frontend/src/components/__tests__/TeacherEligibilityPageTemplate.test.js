@@ -17,7 +17,7 @@ const teacher = (over = {}) => ({
   review_required: false,
   settlement: {
     regular_subject_count: 4, tutoring_trial_subject_count: 2, payroll_subject_count: 6, one_to_three_count: 3,
-    subject_count_bonus: 1200, one_to_three_bonus: 800, multiplier_pct: 105, weighted_bonus_amount: 2100,
+    subject_count_bonus: 1200, one_to_three_bonus: 300, multiplier_pct: 105, weighted_bonus_amount: 2100,
     total_payout: 36000, payout_is_draft: false, adjustments: [{ label: '行政加給', amount: 500 }],
     multiplier_parts: [{ key: 'base', label: '基本', pct: 100 }],
   },
@@ -200,7 +200,7 @@ describe('TeacherEligibilityPage on the template', () => {
 
   it('folds away teachers with no lesson and nothing to pay', async () => {
     const idle = teacher({ teacher_id: 704, teacher_name: '測試老師丁' });
-    idle.settlement = { ...idle.settlement, total_payout: 0 };
+    idle.settlement = { ...idle.settlement, total_payout: 0, payroll_subject_count: 0, regular_subject_count: 0, tutoring_trial_subject_count: 0, one_to_three_count: 0 };
     idle.components = { weekly_16_segments: { status: 'not_qualifies', metrics: { total_segments: 0, week_count: 4, qualifying_weeks: 0, weeks: [] } } };
     fetchMock.mockImplementation(async () => json(payload({ teachers: [teacher(), idle] })));
     await mountPage();

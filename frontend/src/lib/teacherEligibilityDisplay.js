@@ -142,9 +142,14 @@ export function multiplierBreakdown(settlement) {
     .map((part, index) => `${part.label} ${index > 0 && Number(part.pct) > 0 ? '+' : ''}${Number(part.pct)}%`).join('、');
 }
 
-/** How the 一對三獎金 comes about: 「一對三總計 3 × 100」. */
+/**
+ * How the 一對三獎金 comes about: 「一對三總計 3 × 100」. A month locked under the earlier rules keeps its old
+ * amount, which was not count × 100; there the line only states the count and that the amount is the locked one.
+ */
 export function oneToThreeFormula(settlement) {
-  return `一對三總計 ${formatSubjects(settlement?.one_to_three_count)} × 100`;
+  const count = Number(settlement?.one_to_three_count || 0);
+  const flat = Math.round(count * 100) === Math.round(Number(settlement?.one_to_three_bonus || 0));
+  return `一對三總計 ${formatSubjects(settlement?.one_to_three_count)}${flat ? ' × 100' : '（金額是鎖定當時的算法）'}`;
 }
 
 /** The 教師倍率 as a figure; 「—」 while a part of it still awaits confirmation (the settlement sends null then). */
@@ -177,6 +182,9 @@ export function hasNoLessons(teacher) {
     const again = teacher.recalculated;
     if (!again || again.calculation_status !== 'calculated' || Number(again.difference || 0) !== 0) return false;
   }
+  // Lessons before the month's first Monday belong to no week of this month but still count as 科目數.
+  const settlement = teacher?.settlement || {};
+  if ([settlement.payroll_subject_count, settlement.regular_subject_count, settlement.tutoring_trial_subject_count, settlement.one_to_three_count].some((n) => Number(n || 0) > 0)) return false;
   const segments = Number(teacher?.components?.weekly_16_segments?.metrics?.total_segments || 0);
   return segments === 0 && Number(teacher?.settlement?.total_payout || 0) === 0 && !teacher?.review_required && !teacher?.settlement?.payout_is_draft;
 }
