@@ -119,6 +119,13 @@ class TeacherEligibilityController extends Controller
                 $settledElsewhere[] = ['teacher_id' => $teacherId, 'teacher_name' => (string) ($teachers->firstWhere('id', $teacherId)->Name ?? ''), 'campus_id' => $campusId, 'campus_name' => $campusNames[$campusId]];
             }
             $moved = array_column($settledElsewhere, 'teacher_id');
+            // Records this campus entered for those teachers and has not finished approving: once this campus locks
+            // the month they can no longer be approved, and the settling campus stays blocked by them.
+            $unfinished = $this->unfinishedInputsByTeacher($moved, $lockBranchId, $effectiveStart, $period['end']);
+            foreach ($settledElsewhere as &$row) {
+                $row['pending_inputs'] = $unfinished[$row['teacher_id']] ?? 0;
+            }
+            unset($row);
             $teachers = $teachers->reject(fn ($teacher) => in_array((int) $teacher->id, $moved, true))->values();
             $teacherIds = array_values(array_diff($teacherIds, $moved));
         }
@@ -353,12 +360,17 @@ class TeacherEligibilityController extends Controller
                 ->where('r.month', $month)->where('r.status', 'locked')->whereIn('t.teacher_id', $teacherIds)
                 ->orderBy('r.id')->pluck('r.branch_id', 't.teacher_id')->map(fn ($id) => (int) $id)->all();
         }
-        // Approved links decide. A teacher with none approved still has to land in exactly one campus (the list shows
-        // a teacher wherever any link exists), so all of that teacher's links are used instead.
+        // Approved links decide (a legacy link with no approval value counts as approved, as everywhere else). A
+        // teacher with none approved still has to land in exactly one campus (the list shows a teacher wherever any
+        // link exists), so all of that teacher's links are used instead. A switched-off campus cannot be opened to
+        // lock or export, so it is never a candidate.
         $links = ['approved' => [], 'any' => []];
-        foreach (DB::table('UserCampus')->whereIn('UserID', $teacherIds)->orderBy('CampusID')->get(['UserID', 'CampusID', 'Approved']) as $row) {
+        $linkRows = DB::table('UserCampus')->whereIn('UserID', $teacherIds)
+            ->when(Schema::hasColumn('Campus', 'active'), fn ($query) => $query->whereIn('CampusID', DB::table('Campus')->where('active', true)->select('id')))
+            ->orderBy('CampusID')->get(['UserID', 'CampusID', 'Approved']);
+        foreach ($linkRows as $row) {
             $links['any'][(int) $row->UserID][(int) $row->CampusID] = 0;
-            if ($row->Approved) $links['approved'][(int) $row->UserID][(int) $row->CampusID] = 0;
+            if (\App\Models\UserCampus::isApproved($row->Approved)) $links['approved'][(int) $row->UserID][(int) $row->CampusID] = 0;
         }
         $memberOf = $links['approved'] + $links['any'];
 
@@ -382,6 +394,32 @@ class TeacherEligibilityController extends Controller
         }
 
         return $campusOf;
+    }
+
+    /**
+     * How many records a campus entered for each of these teachers are still waiting (not approved, verified or
+     * withdrawn) in the period.
+     *
+     * @return array<int, int> teacher id => count
+     */
+    private function unfinishedInputsByTeacher(array $teacherIds, int $branchId, Carbon $start, Carbon $end): array
+    {
+        $counts = [];
+        if ($teacherIds === []) {
+            return $counts;
+        }
+        foreach (['teacher_payroll_achievements', 'teacher_payroll_deductions', 'teacher_payroll_admin_allowances', 'teacher_payroll_cash_adjustments'] as $table) {
+            if (!Schema::hasTable($table)) continue;
+            $rows = DB::table($table)->whereIn('teacher_id', $teacherIds)->where('branch_id', $branchId)->where('status', 'pending')
+                ->where(fn ($query) => $query->whereNull('ends_on')->orWhereDate('ends_on', '>=', $start->toDateString()))
+                ->where(fn ($query) => $query->whereNull('starts_on')->orWhereDate('starts_on', '<=', $end->toDateString()))
+                ->groupBy('teacher_id')->selectRaw('teacher_id, COUNT(*) as n')->pluck('n', 'teacher_id');
+            foreach ($rows as $teacherId => $n) {
+                $counts[(int) $teacherId] = ($counts[(int) $teacherId] ?? 0) + (int) $n;
+            }
+        }
+
+        return $counts;
     }
 
     private function finalizePolicyResult(array $components): array
@@ -425,6 +463,9 @@ class TeacherEligibilityController extends Controller
         $payload = $this->index($request)->getData(true);
         if (($payload['lock']['status'] ?? '') === 'locked') {
             return response()->json(['message' => '本月結算已鎖定。'], 422);
+        }
+        if (array_sum(array_column($payload['settled_elsewhere'] ?? [], 'pending_inputs')) > 0) {
+            return response()->json(['message' => '這個分校替由其他分校結算的老師補登的資料還沒核准完，請先核准或撤回再鎖定。'], 422);
         }
         $userId = (int) ($request->attributes->get('auth_user_id') ?? 0);
         if ($userId === 0) {

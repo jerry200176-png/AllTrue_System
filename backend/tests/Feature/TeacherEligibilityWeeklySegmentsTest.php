@@ -197,8 +197,14 @@ class TeacherEligibilityWeeklySegmentsTest extends TestCase
 
         // This campus locks the month without the teacher. Lessons added here afterwards cannot bring the teacher
         // back into a month that is already locked: the other campus still settles the teacher.
-        $lock = fn (int $campusId) => $this->withHeaders($this->auth($director['token']))
-            ->postJson('/api/v1/finance/teacher-eligibility/lock', ['month' => '2026-08', 'branch_id' => $campusId])->assertOk();
+        $tryLock = fn (int $campusId) => $this->withHeaders($this->auth($director['token']))
+            ->postJson('/api/v1/finance/teacher-eligibility/lock', ['month' => '2026-08', 'branch_id' => $campusId]);
+        $lock = fn (int $campusId) => $tryLock($campusId)->assertOk();
+        // A record this campus entered for the teacher and has not finished approving would be stranded by its lock.
+        $cashId = DB::table('teacher_payroll_cash_adjustments')->insertGetId(['teacher_id' => $teacher->id, 'branch_id' => 1, 'amount' => 500, 'reason' => 'r', 'status' => 'pending', 'starts_on' => '2026-08-01', 'ends_on' => '2026-08-31', 'created_at' => now(), 'updated_at' => now()]);
+        $this->assertSame(1, $view(1)['settled_elsewhere'][0]['pending_inputs']);
+        $tryLock(1)->assertStatus(422);
+        DB::table('teacher_payroll_cash_adjustments')->where('id', $cashId)->update(['status' => 'withdrawn']);
         $lock(1);
         $this->createAttendedSession($teacher->id, 'one_on_one', '2026-08-05', '10:00', 480);
         $this->assertSame([$teacher->id], array_column($view($other->id)['teachers'], 'teacher_id'));
@@ -236,6 +242,25 @@ class TeacherEligibilityWeeklySegmentsTest extends TestCase
         DB::table('UserCampus')->where('UserID', $teacher->id)->update(['Approved' => 0]);
         $this->assertSame([], $view(1)['teachers']);
         $this->assertSame([$teacher->id], array_column($view($other->id)['teachers'], 'teacher_id'));
+
+        // Both links approved and more lessons here: this campus settles the teacher...
+        DB::table('UserCampus')->where('UserID', $teacher->id)->update(['Approved' => 1]);
+        $this->createAttendedSession($teacher->id, 'one_on_one', '2026-08-06', '10:00', 480);
+        $this->assertSame([$teacher->id], array_column($view(1)['teachers'], 'teacher_id'));
+
+        // ...unless it has been switched off: such a campus cannot be opened to lock or export, so it settles nobody.
+        if (\Illuminate\Support\Facades\Schema::hasColumn('Campus', 'active')) {
+            DB::table('Campus')->where('id', 1)->update(['active' => false]);
+            $this->assertSame([$teacher->id], array_column($view($other->id)['teachers'], 'teacher_id'));
+        }
+    }
+
+    /** A legacy campus link with no approval value counts as approved, as everywhere else in the product. */
+    public function test_legacy_campus_link_without_an_approval_value_is_approved(): void
+    {
+        $this->assertTrue(UserCampus::isApproved(null));
+        $this->assertTrue(UserCampus::isApproved(1));
+        $this->assertFalse(UserCampus::isApproved(0));
     }
 
     /** 假日16小時倍率: every judged week needs 16 scheduled hours across Saturday and Sunday. */
