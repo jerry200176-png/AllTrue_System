@@ -18,6 +18,7 @@
  * FIT-12 invariants    every DI-n has a present, resolvable automated enforcement
  * FIT-13 L3            required SOP docs present
  * FIT-16 #4659 step 3  fee math (Rate × count) in controllers ratchet (one fee source)
+ * FIT-17 TD-076        files touching the `schedules` exception table directly ratchet (one timetable reader)
  */
 import fs from 'node:fs';
 import path from 'node:path';
@@ -148,6 +149,20 @@ let svcGraph = { svcFiles: [], edges: new Map(), ctxRule: null };
     if (m > 0) { n += m; hits.push(path.basename(f, '.php')); }
   }
   ratchet('FIT-16', `fee math in controllers (${hits.join(', ') || 'none'}); use StudentClassPricingService / ContractMoneyVerdict`, n, 'feeMathInControllers');
+}
+
+// FIT-17 (TD-076 / G-010): `schedules` holds exception rows only; a teacher's timetable is ClassSession plus the
+// live exceptions. New code reads it through TeacherClassCalendar (or the occurrence resolver), never the table.
+// Counted per file so edits inside an existing reader do not move the number.
+{
+  // Query-builder calls (plain or aliased `'schedules as s'`, either quote), raw SQL, and Schedule:: static calls.
+  const re = /(?:table|[jJ]oin\w*|from)\(\s*['"]schedules(?:\s+as\s+\w+)?['"]|\b(?:FROM|JOIN)\s+`?schedules`?\b|\bSchedule::[a-z]\w*\(/;
+  const hit = ["DB::table('schedules')", "DB::table('schedules as s')", '->leftJoin("schedules as sch", ', "->from('schedules')", 'FROM `schedules` ss', 'JOIN schedules s', 'Schedule::where('];
+  const miss = ['Schedule::STATUS_SUPERSEDED', "DB::table('schedule_locks')", 'rows from schedules (idempotent)'];
+  for (const form of hit) if (!re.test(form)) failures.push(`FIT-17 self-check: pattern must match ${form}`);
+  for (const form of miss) if (re.test(form)) failures.push(`FIT-17 self-check: pattern must not match ${form}`);
+  const n = appPhp.filter((f) => re.test(read(f))).length;
+  ratchet('FIT-17', 'files touching the schedules table directly; read lessons through TeacherClassCalendar', n, 'scheduleTableReaderFiles');
 }
 
 // FIT-10 context map completeness + forbidden edges (DEP-1)

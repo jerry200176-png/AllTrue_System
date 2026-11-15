@@ -754,6 +754,8 @@
 | 清償成本估計 | 大（資料模型遷移 + 所有讀寫路徑改寫 + 回填腳本，估需完整 RFC/PRD 規劃後才能估工） |
 | 不做的代價 | 每次「改期的改期」場景出現新的變化（同時間重新提交、跨日期改期、未來可能的批次改期等），下游都要再補一次 dedupe patch——已經發生兩次，且 Cal.com 的先例顯示這個模式在其他成熟產品也會反覆冒出同類 bug，不是修一次就永久免疫 |
 
+**守門（2026-11-15）**：直接碰 `schedules` 表的後端檔案數由架構檢查 FIT-17 鎖住（`scripts/arch-fitness-baseline.json` 的 `scheduleTableReaderFiles`，只能降）。新功能要老師課表一律走 `TeacherClassCalendar`；這只擋新增，不清償本項。
+
 **相鄰前端邊界（2026-11-09，in-app #528／#5145）**：同實體 ID 改位置的快取合併修正不清償本項資料模型債，也不處理 `loadCourses` 的舊 HTTP 晚回。request owner/window/per-ID freshness 仍延後，須另有 focused RED 才評估；跨週載入有合法並行結果，不能用全域 latest-request 直接丟棄。此邊界未實作、未新增資料操作或授權。
 
 ## Open
