@@ -30,6 +30,7 @@
             {{ actionError }} 下方是已重新讀取的最新帳務，確認後再操作。
             <button type="button" data-testid="ledger-action-reload" @click="loadLedger()">重新整理</button>
           </div>
+          <div v-if="reasonError" class="ledger-state ledger-error" role="alert" data-testid="ledger-reason-error">{{ reasonError }}</div>
           <PaymentAllocation
             v-if="allocating"
             :student-name="payload.student?.name || '學生'"
@@ -481,6 +482,8 @@ const loading = ref(false);
 const error = ref('');
 // #4551: a failed action (void report/invoice) is not a failed load: keep the ledger on screen, reread it, show the reason.
 const actionError = ref('');
+// A reason that is empty or too short used to do nothing at all, with no message (it read as 「按了沒反應」).
+const reasonError = ref('');
 const payload = ref(null);
 const busyReportId = ref(null);
 // in-app #522: receipts the server already refused to void (it said why); the card stops offering the same dead-end click.
@@ -1198,7 +1201,9 @@ function getAuthRole() {
 async function voidReport(reportId) {
   if (!reportId || !isDirectorRole(getAuthRole())) return;
   const reason = window.prompt('撤銷這筆收款（帳單金額不變）。請寫原因：');
-  if (!reason || !reason.trim()) return;
+  reasonError.value = '';
+  if (reason == null) return; // cancelled
+  if (!reason.trim()) { reasonError.value = '沒有寫原因，這次沒有撤銷。請再按一次「撤銷」並寫下原因。'; return; }
   busyReportId.value = reportId;
   try {
     const res = await voidReportAction(reportId, reason.trim());
@@ -1226,8 +1231,10 @@ async function voidInvoice(invoice, mode) {
   if (!invoice?.id || !canManageInvoices()) return;
   const isException = mode === 'exception';
   const actionLabel = isException ? '更正並作廢' : '作廢';
-  const reason = window.prompt(`請輸入${actionLabel}原因（會保留稽核紀錄）`);
-  if (!reason || reason.trim().length < 3) return;
+  const reason = window.prompt(`請輸入${actionLabel}原因（至少 2 個字，會保留稽核紀錄）`);
+  reasonError.value = '';
+  if (reason == null) return; // cancelled
+  if (reason.trim().length < 2) { reasonError.value = `原因至少要寫 2 個字，這次沒有${actionLabel}。請再按一次「${actionLabel}」。`; return; }
 
   busyInvoiceId.value = invoice.id;
   try {

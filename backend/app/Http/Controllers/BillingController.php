@@ -352,7 +352,7 @@ class BillingController extends Controller
         $this->assertInvoiceStudentCampusAllowed($request, (int) $invoice->student->CampusID);
 
         $data = $request->validate([
-            'reason' => 'required|string|min:3|max:255',
+            'reason' => 'required|string|min:2|max:255', // two characters: 「重複」「開錯」 are whole reasons in Chinese
         ]);
 
         return DB::transaction(function () use ($request, $invoice, $data) {
@@ -427,7 +427,7 @@ class BillingController extends Controller
         $this->assertInvoiceStudentCampusAllowed($request, (int) $invoice->student->CampusID);
 
         $data = $request->validate([
-            'reason' => 'required|string|min:3|max:255',
+            'reason' => 'required|string|min:2|max:255', // two characters: 「重複」「開錯」 are whole reasons in Chinese
         ]);
 
         return DB::transaction(function () use ($request, $invoice, $data) {
