@@ -167,12 +167,19 @@ class StudentClassController extends Controller
 
         if ($request->filled('name')) {
             $nameTerm = Utf8mb3SearchSanitizer::forLike((string) $request->input('name'));
+            $courseNumber = StudentClass::idFromSearch((string) $request->input('name'));
             if ($nameTerm === '') {
                 // utf8mb3 Student.name cannot match 4-byte-only terms (emoji).
                 $query->whereRaw('1 = 0');
             } else {
-                $query->whereHas('student', function ($sub) use ($nameTerm) {
-                    $sub->where('name', 'like', '%' . $nameTerm . '%');
+                // One group, so the campus and role scoping around it still applies to a course-number match.
+                $query->where(function ($match) use ($nameTerm, $courseNumber) {
+                    $match->whereHas('student', function ($sub) use ($nameTerm) {
+                        $sub->where('name', 'like', '%' . $nameTerm . '%');
+                    });
+                    if ($courseNumber !== null) {
+                        $match->orWhere(fn ($byNumber) => $byNumber->whereKey($courseNumber));
+                    }
                 });
             }
         }

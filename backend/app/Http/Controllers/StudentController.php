@@ -44,9 +44,14 @@ class StudentController extends Controller
         }
 
         $pattern = '%' . $sanitized . '%';
-        $query->where(function ($group) use ($pattern) {
+        $courseNumber = \App\Models\StudentClass::idFromSearch($term);
+        $query->where(function ($group) use ($pattern, $courseNumber) {
             $group->where('name', 'like', $pattern)
                 ->orWhere('SchoolName', 'like', $pattern);
+            if ($courseNumber !== null) {
+                // A course number finds the student who owns that contract (same group, so campus scoping still applies).
+                $group->orWhereHas('classes', fn ($course) => $course->whereKey($courseNumber));
+            }
         });
     }
 

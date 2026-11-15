@@ -131,6 +131,28 @@ class StudentClassResponseContractTest extends TestCase
             ->assertJsonPath('data', []);
     }
 
+    /** Founder 2026-11-16: the course number staff see on every screen (「課程 004635」) works in the search boxes. */
+    public function test_a_course_number_in_the_search_box_finds_the_contract_and_its_student_inside_the_campus(): void
+    {
+        [$token] = $this->makeUserToken(1, 'number-search-director@test.com', 'A');
+        [, $teacher] = $this->makeUserToken(1, 'number-search-teacher@test.com', 'T');
+        $mine = $this->makeCourse($teacher, 1, ['student_name' => '編號學生']);
+        $this->makeCourse($teacher, 1, ['student_name' => '另一位']);
+        $foreign = $this->makeCourse($teacher, 2, ['student_name' => '他校學生']);
+
+        foreach ([(string) $mine->ID, str_pad((string) $mine->ID, 6, '0', STR_PAD_LEFT), '#' . $mine->ID, '課程 ' . str_pad((string) $mine->ID, 6, '0', STR_PAD_LEFT)] as $typed) {
+            $this->authJson('GET', '/api/v1/student-classes?per_page=10&name=' . urlencode($typed), $token)
+                ->assertOk()->assertJsonPath('total', 1)->assertJsonPath('data.0.ID', $mine->ID);
+            $this->authJson('GET', '/api/v1/students?branch_id=1&search=' . urlencode($typed), $token)
+                ->assertOk()->assertJsonPath('data.0.id', $mine->StudentID)->assertJsonCount(1, 'data');
+        }
+        // The name search is unchanged, and a course number of another campus finds nothing.
+        $this->authJson('GET', '/api/v1/student-classes?per_page=10&name=' . urlencode('編號'), $token)->assertOk()->assertJsonPath('total', 1);
+        $this->authJson('GET', '/api/v1/student-classes?per_page=10&name=' . $foreign->ID, $token)->assertOk()->assertJsonPath('total', 0);
+        $this->authJson('GET', '/api/v1/students?branch_id=1&search=' . $foreign->ID, $token)->assertOk()->assertJsonCount(0, 'data');
+        $this->assertSame([4635, 4635, null, null], [StudentClass::idFromSearch('004635'), StudentClass::idFromSearch(' 課程 4635 '), StudentClass::idFromSearch('4635a'), StudentClass::idFromSearch('王小明')]);
+    }
+
     /** #4991 step 4a: the list carries the price in force today and the held-lessons amount the bill is priced with. */
     public function test_index_carries_the_unit_price_in_force_and_the_held_lessons_amount(): void
     {

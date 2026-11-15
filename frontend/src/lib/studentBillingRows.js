@@ -55,6 +55,15 @@ export function formatCourseRef(id) {
   return Number.isInteger(n) && n > 0 ? `課程 ${String(n).padStart(6, '0')}` : '課程';
 }
 
+/**
+ * The course number typed in a search box: `4635`, `004635`, `#4635` or `課程 004635`. Null when the text is not one.
+ * Mirrors StudentClass::idFromSearch on the server.
+ */
+export function courseNumberFromSearch(text) {
+  const m = /^\s*(?:課程)?\s*#?\s*0*([1-9]\d{0,7})\s*$/.exec(String(text ?? ''));
+  return m ? Number(m[1]) : null;
+}
+
 /** "2026-09-01 ~ 2026-12-31"; a missing end shows as an em dash (same as the queue table). */
 export const formatCoursePeriod = (start, end) => (start || end ? `${start ? String(start).slice(0, 10) : '—'} ~ ${end ? String(end).slice(0, 10) : '—'}` : '—');
 

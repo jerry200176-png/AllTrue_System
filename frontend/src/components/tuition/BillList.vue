@@ -34,7 +34,7 @@
       <div class="tw:flex tw:flex-wrap tw:items-center tw:gap-2">
         <div class="tw:relative tw:w-full tw:md:max-lg:w-auto tw:md:max-lg:flex-1 tw:lg:w-72">
           <Search class="tw:pointer-events-none tw:absolute tw:top-1/2 tw:left-4 tw:size-5 tw:-translate-y-1/2 tw:text-tpl-secondary" :stroke-width="2" aria-hidden="true" />
-          <Input v-model="query" type="search" placeholder="搜尋學生" aria-label="搜尋學生" class="tw:h-12 tw:rounded-full tw:bg-card tw:pl-11 tw:text-[length:var(--tpl-text-body)] tw:shadow-none" data-testid="bill-search" />
+          <Input v-model="query" type="search" placeholder="搜尋學生或課程編號" aria-label="搜尋學生" class="tw:h-12 tw:rounded-full tw:bg-card tw:pl-11 tw:text-[length:var(--tpl-text-body)] tw:shadow-none" data-testid="bill-search" />
         </div>
         <Button v-if="canDocs" :variant="receiptSearchOpen ? 'default' : 'outline'" :class="[control.row, !receiptSearchOpen && 'tw:text-foreground']" :aria-pressed="receiptSearchOpen" data-testid="bill-find-receipts" @click="receiptSearchOpen = !receiptSearchOpen">{{ receiptSearchOpen ? '回待收清單' : '查收款與收據' }}</Button>
         <div v-show="!receiptSearchOpen" role="group" aria-label="篩選" class="tw:-mx-4 tw:flex tw:max-w-[100vw] tw:min-w-0 tw:flex-1 tw:items-center tw:gap-2 tw:px-4 tw:md:max-lg:order-3 tw:max-lg:basis-full tw:max-md:overflow-x-auto tw:md:mx-0 tw:md:flex-wrap tw:md:px-0" data-guide="tuition-chips">
@@ -204,6 +204,7 @@ import { Table, TableBody, TableCaption, TableCell, TableHead, TableHeader, Tabl
 import { FilterChip, SectionCard, SelectionBar, StatItem, StatStrip, StatusBadge, control, dataTable as t } from '@/components/ui/page';
 import { billCounts, billDueText as dueText, billMenuGroups, billRows, TODO_KINDS } from '../../lib/billRows.js';
 import { slipAvailability } from '../../lib/billingDocState.js';
+import { courseNumberFromSearch } from '../../lib/studentBillingRows.js';
 
 const props = defineProps({
   alertRows: { type: Array, default: () => [] },
@@ -311,9 +312,13 @@ const TESTS = {
 const sortKey = ref(filter.value === 'issue' ? 'remaining' : 'amount');
 watch(filter, (f) => { sortKey.value = f === 'issue' ? 'remaining' : 'amount'; });
 watch([activeFilter, query], () => clearSelection());
+// 「課程 004635」 typed in the search box finds that contract's row (a shared package row answers for each member).
+const searchedCourse = computed(() => courseNumberFromSearch(query.value));
+const matchesCourseNumber = (b) => searchedCourse.value !== null
+  && (Number(b.class_id) === searchedCourse.value || (b.src?.member_class_ids || []).map(Number).includes(searchedCourse.value));
 const visible = computed(() => {
   const list = rows.value.filter((b) => (TESTS[activeFilter.value] || ((x) => x.kind === activeFilter.value))(b)
-    && (!query.value.trim() || b.student_name.includes(query.value.trim())));
+    && (!query.value.trim() || b.student_name.includes(query.value.trim()) || matchesCourseNumber(b)));
   const cmp = SORTS[sortKey.value].cmp;
   return cmp ? [...list].sort(cmp) : list;
 });

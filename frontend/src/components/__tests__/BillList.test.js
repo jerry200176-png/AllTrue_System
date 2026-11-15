@@ -65,6 +65,18 @@ describe('BillList', () => {
     expect(w.find('[data-testid="bill-row-c5"]').exists()).toBe(true);
   });
 
+  it('a course number in the search box finds that contract, whatever its status', async () => {
+    const w = mountList();
+    for (const typed of ['5', '000005', '課程 000005', '#5']) {
+      await w.get('[data-testid="bill-search"]').setValue(typed);
+      expect(w.find('[data-testid="bill-row-c5"]').exists()).toBe(true);
+      expect(w.find('[data-testid="bill-row-c2"]').exists()).toBe(false);
+    }
+    // Not a course number: the usual name search.
+    await w.get('[data-testid="bill-search"]').setValue('5a');
+    expect(w.find('[data-testid="bill-row-c5"]').exists()).toBe(false);
+  });
+
   it('only lets rows of one kind be picked, and batches that kind', async () => {
     const w = mountList();
     await w.get('[data-testid="bill-pick-c2"]').trigger('click');

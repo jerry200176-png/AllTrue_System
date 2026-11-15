@@ -58,7 +58,7 @@
       <div class="course-filter-primary">
         <div class="filter-field">
           <label class="tw:text-tpl-caption" for="course-filter-student">搜尋學生</label>
-          <input class="tw:rounded-2xl tw:text-tpl-body" id="course-filter-student" v-model="filters.name" type="search" autocomplete="off" placeholder="搜尋學生姓名…" @input="debouncedLoad" />
+          <input class="tw:rounded-2xl tw:text-tpl-body" id="course-filter-student" v-model="filters.name" type="search" autocomplete="off" placeholder="學生姓名或課程編號…" @input="debouncedLoad" />
         </div>
         <div class="filter-field">
           <label class="tw:text-tpl-caption" for="course-filter-status">課程狀態</label>
@@ -1463,7 +1463,7 @@ const dialogField = {
 };
 import { ChevronRight, Focus, Info, Plus, UserSearch } from 'lucide-vue-next';
 import { isCourseSettled, isPaymentNoticeStatus } from '../lib/paymentStatus.js';
-import { formatCourseRef, formatCoursePeriod } from '../lib/studentBillingRows.js';
+import { formatCourseRef, formatCoursePeriod, courseNumberFromSearch } from '../lib/studentBillingRows.js';
 import { clearRowCachesForWinningRequest, createListLoadOutcome, fallbackListRows, isCurrentListRequest } from '../lib/listRefreshState.js';
 import { studentSchoolGradeLabel } from '../lib/studentSchoolGrade.js';
 import { buildContractChronology, contractStartDate } from '../lib/contractChronology.js';
@@ -4721,7 +4721,8 @@ const loadCourses = async (page = 1) => {
   }
   if (filters.value.name) {
     const q = filters.value.name.toLowerCase();
-    result = result.filter(c => c.student_name.toLowerCase().includes(q));
+    const courseNumber = courseNumberFromSearch(filters.value.name); // 「課程 004635」 typed in the search box
+    result = result.filter(c => c.student_name.toLowerCase().includes(q) || (courseNumber !== null && Number(c.id) === courseNumber));
   }
   if (filters.value.teacher_name?.trim()) {
     const q = filters.value.teacher_name.trim().toLowerCase();
