@@ -71,7 +71,7 @@ class TeacherClassCalendar
             ->filter(fn ($r) => ! $teacherIds || in_array((int) $r->teacher_id, $teacherIds, true))
             ->groupBy(fn ($r) => substr((string) $r->schedule_date, 0, 10));
         foreach ($byDate as $date => $rows) {
-            foreach ($filter->rejectStale($rows, $date) as $row) {
+            foreach ($filter->rejectStale($rows, $date, false, $forPayroll ? ['leave'] : []) as $row) {
                 self::push($out, $row->teacher_id, $date, $row->start_time, $row->end_time, $row->branch_id);
             }
         }

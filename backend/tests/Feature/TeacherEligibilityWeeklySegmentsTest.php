@@ -148,6 +148,19 @@ class TeacherEligibilityWeeklySegmentsTest extends TestCase
         $this->assertSame(4000, $full['amount']);
     }
 
+    /** A student's leave on a substituted lesson keeps the substitute's hours in the payroll view only. */
+    public function test_substitute_keeps_the_lesson_when_the_student_takes_leave(): void
+    {
+        $substituteId = $this->createDirector()['user_id'];
+        $session = $this->createAttendedSession($this->createTeacher()->id, 'one_on_one', '2026-08-03', '10:00', 120, 'leave', 'leave');
+        $this->schedule($substituteId, '2026-08-03', '10:00', '12:00', ['student_course_id' => $session->StudentClassID, 'original_schedule_id' => 1]);
+
+        $payroll = \App\Services\TeacherClassCalendar::load('2026-08-03', '2026-08-03', null, null, true);
+        $this->assertSame([$substituteId], array_keys($payroll));
+        $this->assertSame('12:00', $payroll[$substituteId]['2026-08-03'][0]['end']);
+        $this->assertSame([], \App\Services\TeacherClassCalendar::load('2026-08-03', '2026-08-03', null));
+    }
+
     public function test_same_teacher_payroll_subject_count_is_global_when_switching_campus(): void
     {
         $director = $this->createDirector();
