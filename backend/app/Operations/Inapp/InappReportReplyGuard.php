@@ -2,6 +2,8 @@
 
 namespace App\Operations\Inapp;
 
+use App\Models\BugReport;
+use App\Models\BugReportComment;
 use App\Services\BugReportService;
 
 /**
@@ -15,6 +17,25 @@ final class InappReportReplyGuard
     private const SEP = '[\s.\p{Pd}]*'; // any Unicode dash, not only '-'
     private const DOT = '\s*(?:\.|\[\.\]|\(\.\)|\{\.\}|\[dot\]|\(dot\)|\s+dot\s+)\s*';
     private const LABEL = '[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?';
+
+    public static function loggedReceipt(string $issueUrl): string
+    {
+        return '已收進產品清單 ' . $issueUrl . '。上線時會在這裡通知你；想補充直接回覆就會重開。';
+    }
+
+    /** Only for the newly authorized logged branches; caller holds the row lock at execute. */
+    public static function loggedReportViolations(BugReport $bug, ?int $author): array
+    {
+        $errors = [];
+        $reporter = (int) $bug->getAttribute('reporter_user_id');
+        if ($author === null) $errors[] = 'reply_author_unverified';
+        elseif ($author === $reporter) $errors[] = 'reply_would_be_reporters_own';
+        $lastAuthor = BugReportComment::query()->where('bug_report_id', $bug->getKey())->where('is_internal_note', false)
+            ->orderByDesc('id')->value('author_user_id');
+        if ($lastAuthor !== null && (int) $lastAuthor === $reporter) $errors[] = 'reporter_reply_pending';
+
+        return $errors;
+    }
 
     /** @return list<string> rule names the reply breaks; [] passes */
     public static function violations(string $reply, string $issueUrl, bool $resolve): array

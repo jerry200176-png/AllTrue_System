@@ -5,6 +5,7 @@ namespace App\Operations;
 use App\Models\SecurityAuditEvent;
 use App\Operations\Deployment\DeploymentManifest;
 use App\Operations\Inapp\InappStandingPolicy;
+use App\Operations\Strategies\InappReportTriageStrategy;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -40,6 +41,11 @@ final class PopOperationService
         $this->assertActor($actor);
         if ($this->isReviewedFinancialCase($entry) && ($actorId === null || $actor !== 'user:'.$actorId || $actorRole === 'pop_machine')) throw new RuntimeException('Reviewed financial repair requires an authenticated human requester.');
         $this->assertIdempotencyKey($idempotencyKey);
+        // Preserve the original six-key bug request at this new-input seam only.
+        // Never default an explicit null or repair/re-hash an existing DB request.
+        if ($operationId === InappReportTriageStrategy::OPERATION && !array_key_exists('disposition', $parameters)) {
+            $parameters['disposition'] = InappReportTriageStrategy::DISPOSITION;
+        }
         $normalized = self::canonicalParameters($parameters);
         $this->assertParameterContract($entry, $normalized);
         $this->assertCampusScope($normalized, $actorRole, $actorCampusIds);

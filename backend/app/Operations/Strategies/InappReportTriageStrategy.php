@@ -14,25 +14,28 @@ use Illuminate\Support\Facades\DB;
 use RuntimeException;
 
 /**
- * ADR-POP-015 (a): move one `new` report the agent classified as an engineering-required bug to `triaged`, linked to its
+ * ADR-POP-015 (a): move one `new` engineering-required bug to `triaged`, linked to its
  * GitHub issue, with one public receipt reply. Every check is a hard plan error, so a super_admin fallback approval cannot
  * skip one either. execute() rechecks report and review proof under the row lock, then makes the same two service calls as
  * the Phase A workflow (changeStatus with the `bug` disposition, addComment) in one transaction. The reply is the caller's
- * text only: nothing from the report is ever copied into it.
+ * text only: nothing from the report is ever copied into it. Founder 2026-11-15 additionally permits the two logged kinds:
+ * those use the existing closeAsLogged service and a fixed receipt, never a shipping claim or a bug-resolution claim.
  */
 final class InappReportTriageStrategy
 {
     public const OPERATION = 'inapp-report-triage';
-    /** Suggestions, UX friction, duplicates and not-planned items keep the human close_as_logged path (ADR-POP-015 §1). */
+    /** Legacy callers keep bug triage; only the two newly approved kinds may be logged. */
     public const DISPOSITION = 'bug';
     private const FROM = 'new';
 
     public function __construct(private readonly InappReportResolveEvidence $evidence) {}
 
-    public function plan(array $p): array
+    public function plan(array $p, array $context = []): array
     {
         $repo = preg_quote((string) config('pop_inapp.github_repo'), '/');
         $errors = [];
+        $kind = $this->disposition($p);
+        if ($kind === null) $errors[] = 'disposition_invalid';
         foreach (['bug_id', 'campus_id'] as $key) if (!is_int($p[$key] ?? null) || $p[$key] <= 0) $errors[] = $key . '_invalid';
         if (!is_string($p['request_id'] ?? null) || preg_match('/^[a-z0-9][a-z0-9-]{2,63}$/', $p['request_id']) !== 1) $errors[] = 'request_id_invalid';
         $url = $p['github_issue_url'] ?? null;
@@ -52,6 +55,12 @@ final class InappReportTriageStrategy
         if ((int) $bug->getAttribute('CampusID') !== $p['campus_id']) $errors[] = 'report_outside_campus';
         // A report that is already triaged (or further) is refused, never re-answered: one receipt reply per report.
         if ($status !== self::FROM) $errors[] = 'status_not_new';
+        if ($kind !== self::DISPOSITION) {
+            if ($p['public_reply'] !== InappReportReplyGuard::loggedReceipt($url)) $errors[] = 'logged_receipt_mismatch';
+            array_push($errors, ...InappReportReplyGuard::loggedReportViolations($bug, InappStandingPolicy::plannedAttributionUserId($context)));
+        } elseif (in_array(BugReportService::latestDispositionWithKind($bugId)['kind'] ?? null, InappStandingPolicy::LOGGED_DISPOSITIONS, true)) {
+            $errors[] = 'logged_report_requires_review';
+        }
         // Automation never writes to a report the safety screen flags (its text or the reporter's own comments); a person handles it
         // in the app. A comment that arrives after this plan makes the write-back proof stale, which execute() re-checks under the lock.
         $own = BugReportComment::query()->where('bug_report_id', $bugId)->where('author_user_id', $bug->getAttribute('reporter_user_id'))->pluck('body')->all();
@@ -74,15 +83,31 @@ final class InappReportTriageStrategy
         $request = DB::table('pop_operation_requests')->where('id', (string) $context['operation_id'])->first();
         $p = json_decode((string) $request?->parameters, true, 512, JSON_THROW_ON_ERROR);
         $bugId = (int) $p['bug_id'];
+        $kind = $this->disposition($p);
+        $commentId = null;
         try {
+            if ($kind === null || $kind !== ($plan['disposition'] ?? null)) throw new RuntimeException('inapp_triage_disposition_changed');
             $actor = InappStandingPolicy::attributionUserId($request);
-            DB::transaction(function () use ($p, $bugId, $actor, $context): void {
+            DB::transaction(function () use ($p, $kind, $bugId, $actor, $context, &$commentId): void {
                 $bug = BugReport::query()->whereKey($bugId)->lockForUpdate()->first();
                 InappStandingPolicy::assertKillSwitchesOpen((string) $context['operation_id']);
                 if (!$bug || (int) $bug->getAttribute('CampusID') !== (int) $p['campus_id']) throw new RuntimeException('inapp_triage_report_outside_campus');
                 if ((string) $bug->getRawOriginal('status') !== self::FROM) throw new RuntimeException('inapp_triage_status_changed');
                 if (!BugReportWritebackEvidence::verify($bug, (string) $p['writeback_proof']['captured_at'], (string) $p['writeback_proof']['proof'])) {
                     throw new RuntimeException('inapp_triage_writeback_proof_stale');
+                }
+                if ($kind !== self::DISPOSITION) {
+                    $errors = InappReportReplyGuard::loggedReportViolations($bug, $actor);
+                    if ($p['public_reply'] !== InappReportReplyGuard::loggedReceipt($p['github_issue_url'])) $errors[] = 'logged_receipt_mismatch';
+                    if ($errors !== []) throw new RuntimeException('inapp_triage_' . $errors[0]);
+                    $result = BugReportService::closeAsLogged($bugId, $actor, $kind, $p['github_issue_url'], $p['public_reply']);
+                    if ($result['ok'] !== true || ($result['action'] ?? null) !== 'closed') throw new RuntimeException('inapp_triage_logged_close_rejected');
+                    $commentId = BugReportComment::query()->where('bug_report_id', $bugId)->where('is_internal_note', false)->max('id');
+
+                    return;
+                }
+                if (in_array(BugReportService::latestDispositionWithKind($bugId)['kind'] ?? null, InappStandingPolicy::LOGGED_DISPOSITIONS, true)) {
+                    throw new RuntimeException('inapp_triage_logged_report_requires_review');
                 }
                 $result = BugReportService::changeStatus($bugId, $actor, 'triaged', 'pop ' . self::OPERATION . ' ' . $context['operation_id'], [
                     'disposition' => self::DISPOSITION,
@@ -91,7 +116,7 @@ final class InappReportTriageStrategy
                 if ($result['ok'] !== true) {
                     throw new RuntimeException('inapp_triage_rejected_' . preg_replace('/[^a-z_]/', '', (string) ($result['code'] ?? 'unknown')));
                 }
-                BugReportService::addComment($bugId, $actor, (string) $p['public_reply'], false);
+                $commentId = BugReportService::addComment($bugId, $actor, (string) $p['public_reply'], false)->id;
             });
         } catch (RuntimeException $e) { // nothing was written: the transaction rolled back
             $code = $e->getMessage();
@@ -99,20 +124,24 @@ final class InappReportTriageStrategy
             return ['ok' => false, 'errors' => [str_starts_with($code, 'inapp_') ? $code : 'inapp_triage_failed'], 'bug_id' => $bugId];
         }
 
-        return ['ok' => true, 'bug_id' => $bugId, 'from_status' => self::FROM, 'status' => 'triaged', 'github_issue' => $plan['github_issue'] ?? null];
+        return ['ok' => true, 'bug_id' => $bugId, 'from_status' => self::FROM, 'status' => $plan['target_status'],
+            'disposition' => $kind, 'comment_id' => (int) $commentId, 'author_id' => $actor, 'github_issue' => $plan['github_issue'] ?? null];
     }
 
     public function verify(array $plan, array $result): array
     {
         $bugId = (int) ($result['bug_id'] ?? 0);
         $linked = BugReportService::latestDispositionWithKind($bugId);
-        $triaged = ($result['ok'] ?? false) === true
-            && BugReport::query()->whereKey($bugId)->value('status') === 'triaged'
-            && ($linked['kind'] ?? null) === self::DISPOSITION
+        $reply = BugReportComment::query()->whereKey((int) ($result['comment_id'] ?? 0))->where('bug_report_id', $bugId)
+            ->where('is_internal_note', false)->where('author_user_id', (int) ($result['author_id'] ?? 0))->first();
+        $triaged = ($result['ok'] ?? false) === true && in_array($plan['target_status'] ?? null, ['triaged', 'closed'], true)
+            && BugReport::query()->whereKey($bugId)->value('status') === $plan['target_status']
+            && ($linked['kind'] ?? null) === ($plan['disposition'] ?? null)
+            && $reply !== null && hash('sha256', (string) $reply->body) === ($plan['reply_sha256'] ?? null)
             && is_int($result['github_issue'] ?? null)
             && str_ends_with((string) ($linked['github_issue_url'] ?? ''), '/issues/' . $result['github_issue']);
 
-        return ['ok' => $triaged, 'errors' => $triaged ? [] : ['not_triaged'], 'checks' => ['triaged', 'issue_linked']];
+        return ['ok' => $triaged, 'errors' => $triaged ? [] : ['writeback_not_verified'], 'checks' => ['target_status', 'issue_linked', 'public_reply']];
     }
 
     public function rollback(array $snapshot, array $context): array
@@ -126,12 +155,22 @@ final class InappReportTriageStrategy
         $errors = array_values(array_unique($errors));
         $reply = $p['public_reply'] ?? null;
         $url = $p['github_issue_url'] ?? null;
+        $kind = $this->disposition($p);
+        $target = $kind === null ? null : ($kind === self::DISPOSITION ? 'triaged' : 'closed');
 
         return ['ok' => $errors === [], 'errors' => $errors, 'bug_id' => is_int($p['bug_id'] ?? null) ? $p['bug_id'] : null,
-            'from_status' => $status, 'policy_blockers' => [],
+            'from_status' => $status, 'disposition' => $kind, 'target_status' => $target,
+            'reply_sha256' => is_string($reply) ? hash('sha256', $reply) : null, 'policy_blockers' => [],
             'github_issue' => is_string($url) && preg_match('/\/issues\/([1-9][0-9]{0,9})$/', $url, $m) === 1 ? (int) $m[1] : null,
-            'digest' => hash('sha256', json_encode([self::OPERATION, $p['bug_id'] ?? null, $p['campus_id'] ?? null, $status, $url,
+            'digest' => hash('sha256', json_encode([self::OPERATION, $p['bug_id'] ?? null, $p['campus_id'] ?? null, $status, $kind, $target, $url,
                 is_string($reply) ? hash('sha256', $reply) : null, is_array($p['writeback_proof'] ?? null) ? ($p['writeback_proof']['captured_at'] ?? null) : null,
                 $errors], JSON_THROW_ON_ERROR))];
+    }
+
+    private function disposition(array $p): ?string
+    {
+        $kind = array_key_exists('disposition', $p) ? $p['disposition'] : self::DISPOSITION;
+
+        return is_string($kind) && in_array($kind, [self::DISPOSITION, ...InappStandingPolicy::LOGGED_DISPOSITIONS], true) ? $kind : null;
     }
 }

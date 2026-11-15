@@ -22,6 +22,8 @@ final class InappStandingPolicy
 {
     public const ID = 'founder-standing-inapp-lifecycle';
     public const FILE = 'inapp-lifecycle.yaml';
+    // Founder 2026-11-15: only these non-bug kinds may use the machine lifecycle.
+    public const LOGGED_DISPOSITIONS = ['suggestion', 'ux_friction'];
     public const OPERATIONS = [
         InappReportProgressReplyStrategy::OPERATION => InappReportProgressReplyStrategy::class,
         InappReportReporterTimeoutStrategy::OPERATION => InappReportReporterTimeoutStrategy::class,
@@ -134,6 +136,18 @@ final class InappStandingPolicy
         if (!$id || !User::query()->whereKey($id)->where('type', 'S')->exists()) throw new \RuntimeException('inapp_attribution_unresolved');
 
         return $id;
+    }
+
+    /** Unknown attribution must not let a logged reply stand in for the reporter. */
+    public static function plannedAttributionUserId(array $context): ?int
+    {
+        $id = $context['operation_id'] ?? null;
+        if (!is_string($id)) return null;
+        try {
+            return self::attributionUserId(DB::table('pop_operation_requests')->where('id', $id)->first());
+        } catch (Throwable) {
+            return null;
+        }
     }
 
     public static function policyApprovers(string $popRequestId): \Illuminate\Support\Collection

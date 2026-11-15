@@ -27,7 +27,7 @@ The same decision requires #3943/#3955 to drop the GitHub-runner→SSH write pat
 1. **Three catalog operations** (`operations/catalog.yaml`), domain `support`, with `execution_authority: pop-pi-local`, `transaction_required: true` and `verification_required: true`. Every operation carries `campus_id`, which must equal each target report's `CampusID` and belong to the requester's campus scope. That scope is checked by the existing `PopOperationService::assertCampusScope()`; an empty or missing scope denies everything.
    - `inapp-report-triage`: params `campus_id`, `bug_id`, `github_issue_url`, `public_reply`, `writeback_proof`, `request_id`.
      - Only for reports the agent classifies as an engineering-required bug.
-     - Suggestions, UX friction, duplicates and not-planned items (`BugReportService::NON_ENGINEERING_DISPOSITIONS`) are out of scope. They keep the human `close_as_logged` path, because closing them is not in the Founder allowlist.
+     - Through policy v4, suggestions and UX friction kept the human `close_as_logged` path. The Founder-authorized v5 extension below adds only `suggestion` and `ux_friction`; duplicates, not-planned and other dispositions remain outside the machine allowlist. Logged suggestions retain the canonical engineering-required classification: logging is not delivery.
    - `inapp-report-resolve-after-deploy`: params `campus_id`, `bug_id`, `github_issue_url`, `public_reply`, `fix_commit_sha`, `deploy_run_id`, `smoke_result_ref`, `writeback_proof`, `request_id`.
      - `smoke_result_ref` is a bounded string (≤200 chars, a repository URL or `run:<id>` form).
      - It is part of the immutable parameter digest, so dry-run, approval, execution and the execution record all see the same value.
@@ -120,3 +120,16 @@ The same decision requires #3943/#3955 to drop the GitHub-runner→SSH write pat
 5. The Founder flips the env flag to on.
 
 **What this ADR does not grant:** data repair, migration, credentials beyond the one scoped client, new read access, or any other operation.
+
+
+## v5 — limited suggestion and UX lifecycle (2026-11-15)
+
+Authority: [Founder standing decision](../../governance/FOUNDER_STANDING_DECISIONS.md#inapp-suggestion-writeback). Catalog16/policy5 retain the same four operation IDs, requester purpose, campus scope, daily caps, kill switches and Pi-local executor. No new credential, API route, schema, scheduler or approval framework.
+
+- `inapp-report-triage`: `disposition` is strictly `bug`, `suggestion` or `ux_friction`. Only new legacy six-key input is normalized to explicit `bug` before the existing exact-key/hash/idempotency checks; explicit null or other kinds are refused. Persisted old requests are never defaulted or re-hashed. Bug receipt/triage stays unchanged. The two logged kinds call `closeAsLogged` only from `new` and accept exactly: `已收進產品清單 <issue URL>。上線時會在這裡通知你；想補充直接回覆就會重開。` This receipt cannot claim a deployment. Logging preserves the canonical engineering-required flag and does not mean shipped.
+- `inapp-report-resolve-after-deploy`: a bug still resolves through the existing statuses and both retest outcomes. A currently closed-as-logged suggestion/UX for that same issue instead uses `notifyLoggedSuggestionShipped`, retaining closed status. Exact actual deploy job/current manifest/fix ancestry and issue linkage/postdeploy smoke/health/fresh read proof remain hard requirements. The plan binds the latest close ID and kind; every `logged_ship:<closeId>:` record blocks a second notice, even with another revision.
+- Only the new logged branches reject unresolved attribution, attribution to the reporter and an unanswered latest reporter message. Safety/campus/proof/kill-switch checks and close-cycle state are rechecked under lock. Reopened suggestions cannot fall through to bug resolution. Unsupported kinds remain hard errors even with human fallback approval; the existing human services themselves are not broadened or restricted.
+- Execution and public comment/evidence commit atomically. POP re-plans before verify; an already posted notice correctly makes the fresh plan ineligible. The logged verifier therefore checks the immutable execution receipt against actual close cycle, public comment and append-only production evidence, rather than taking empty deployment fields from a refused repeat plan.
+- Catalog16 and policy5 deliberately invalidate old pins; stale drafts/approvals require a new reviewed request, not an automatic retry or resign. Code rollback does not unsend public comments, remove append-only evidence or undo report status changes. Existing native activation and rollback gates still apply.
+
+Suggestions merely logged remain tracked in their GitHub product issue; only deployment-backed notification marks shipped. Neither path fills `reporter-verify`.

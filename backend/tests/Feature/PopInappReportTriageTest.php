@@ -107,7 +107,7 @@ final class PopInappReportTriageTest extends TestCase
 
         self::assertSame([$id], $this->policy->approvePending($this->service)['approved']);
         self::assertSame($this->policy->approverRef(), DB::table('pop_approval_events')->where('operation_id', $id)->value('approver'));
-        self::assertStringEndsWith('@4', $this->policy->approverRef());
+        self::assertStringEndsWith('@5', $this->policy->approverRef());
         self::assertSame('succeeded', $this->service->runApprovedLocally($id)['status']);
         self::assertSame('triaged', BugReport::query()->whereKey($bug)->value('status'));
         $replies = BugReportComment::query()->where('bug_report_id', $bug)->orderBy('id')->get();
@@ -119,6 +119,137 @@ final class PopInappReportTriageTest extends TestCase
     public static function untrustedRequesters(): array
     {
         return ['control-plane machine client' => ['machine'], 'human flow caller' => ['human'], 'in-app agent scoped to another campus' => ['other_campus']];
+    }
+
+    public static function approvedLoggedKinds(): array
+    {
+        return ['suggestion' => ['suggestion'], 'UX friction' => ['ux_friction']];
+    }
+
+    /** @dataProvider approvedLoggedKinds */
+    public function test_founder_approved_suggestion_receipt_logs_once_without_claiming_a_bug_fix(string $kind): void
+    {
+        $actor = $this->inappAgent();
+        $bug = $this->bug();
+        $reply = '已收進產品清單 ' . $this->issueUrl() . '。上線時會在這裡通知你；想補充直接回覆就會重開。';
+        $id = $this->drafted($bug, $this->params($bug, ['disposition' => $kind, 'public_reply' => $reply]), 'logged-001', $actor);
+
+        self::assertSame([$id], $this->policy->approvePending($this->service)['approved']);
+        self::assertSame('succeeded', $this->service->runApprovedLocally($id)['status']);
+        self::assertSame('closed', BugReport::query()->whereKey($bug)->value('status'));
+        $linked = BugReportService::loggedCloseDisposition($bug);
+        // Logged means tracked, not delivered: keep the canonical engineering-required classification.
+        self::assertSame([$kind, true, $this->issueUrl()], [$linked['kind'], $linked['engineering_required'], $linked['github_issue_url']]);
+        $log = BugReportStatusLog::query()->where('bug_report_id', $bug)->sole();
+        self::assertSame(['new', 'closed'], [$log->from_status, $log->to_status]);
+        self::assertSame([$reply], BugReportComment::query()->where('bug_report_id', $bug)->pluck('body')->all());
+
+        $again = $this->drafted($bug, $this->params($bug, ['disposition' => $kind, 'public_reply' => $reply, 'request_id' => 'logged-002']), 'logged-002', $actor);
+        self::assertContains('status_not_new', $this->dryRunErrors($again));
+        self::assertSame(1, BugReportComment::query()->where('bug_report_id', $bug)->count());
+    }
+
+    public static function unapprovedDispositions(): array
+    {
+        return ['duplicate' => ['duplicate'], 'not planned' => ['not_planned'], 'already solved' => ['already_solved'],
+            'unknown' => ['anything'], 'null' => [null], 'boolean' => [false], 'array' => [[]], 'empty' => ['']];
+    }
+
+    public function test_logged_receipt_cannot_claim_shipping_without_production_evidence(): void
+    {
+        $bug = $this->bug();
+        $plan = app(InappReportTriageStrategy::class)->plan($this->params($bug, ['disposition' => 'ux_friction',
+            'public_reply' => '已修好並上線，請重新整理。追蹤：' . $this->issueUrl()]));
+        self::assertFalse($plan['ok']);
+        self::assertContains('logged_receipt_mismatch', $plan['errors']);
+        $this->assertNothingWritten($bug);
+    }
+
+    public function test_legacy_six_key_bug_input_and_explicit_bug_replay_the_same_persisted_intent_but_a_new_kind_does_not(): void
+    {
+        $bug = $this->bug();
+        $actor = $this->inappAgent();
+        $p = $this->params($bug);
+        $first = $this->service->createDraft(self::OP, $p, 'legacy-intent-001', $actor, 'pop_machine', [1]);
+        $same = $this->service->createDraft(self::OP, [...$p, 'disposition' => 'bug'], 'legacy-intent-001', $actor, 'pop_machine', [1]);
+        self::assertSame($first['id'], $same['id']);
+        self::assertSame('bug', json_decode((string) $this->request($first['id'])->parameters, true)['disposition']);
+        self::assertSame(1, DB::table('pop_operation_requests')->count());
+        $this->expectException(RuntimeException::class);
+        $this->service->createDraft(self::OP, [...$p, 'disposition' => 'suggestion'], 'legacy-intent-001', $actor, 'pop_machine', [1]);
+    }
+
+    public function test_explicit_null_disposition_is_never_defaulted_by_the_new_input_compatibility_seam(): void
+    {
+        $bug = $this->bug();
+        $id = $this->drafted($bug, $this->params($bug, ['disposition' => null]));
+        self::assertNull(json_decode((string) $this->request($id)->parameters, true)['disposition']);
+        self::assertContains('disposition_invalid', $this->dryRunErrors($id));
+        $this->assertNothingWritten($bug);
+    }
+
+    public function test_a_logged_receipt_cannot_be_attributed_to_its_own_reporter(): void
+    {
+        $bug = $this->bug();
+        BugReport::query()->whereKey($bug)->update(['reporter_user_id' => $this->admin]);
+        $p = $this->params($bug, ['disposition' => 'ux_friction', 'public_reply' => '已收進產品清單 ' . $this->issueUrl() . '。上線時會在這裡通知你；想補充直接回覆就會重開。']);
+        $id = $this->drafted($bug, $p, 'own-001', $this->inappAgent());
+        self::assertContains('reply_would_be_reporters_own', $this->dryRunErrors($id));
+        $this->assertNothingWritten($bug);
+    }
+
+    public function test_a_reporters_unanswered_comment_blocks_a_logged_receipt_even_with_a_fresh_read_proof(): void
+    {
+        $bug = $this->bug();
+        BugReportComment::create(['bug_report_id' => $bug, 'author_user_id' => $this->reporter, 'body' => '補充問題', 'is_internal_note' => false, 'created_at' => now()]);
+        $id = $this->drafted($bug, $this->params($bug, ['disposition' => 'suggestion', 'public_reply' => '已收進產品清單 ' . $this->issueUrl() . '。上線時會在這裡通知你；想補充直接回覆就會重開。']), 'reply-001', $this->inappAgent());
+        self::assertContains('reporter_reply_pending', $this->dryRunErrors($id));
+        $this->assertNothingWritten($bug, 1);
+    }
+
+    public function test_previous_catalog_drafts_and_approvals_are_not_repaired_or_executed_by_the_new_default(): void
+    {
+        $actor = $this->inappAgent();
+        $bug = $this->bug();
+        $id = $this->drafted($bug, null, 'old-catalog-001', $actor);
+        self::assertSame([$id], $this->policy->approvePending($this->service)['approved']);
+        $row = $this->request($id);
+        $oldParameters = json_decode((string) $row->parameters, true);
+        unset($oldParameters['disposition']);
+        $oldJson = json_encode(PopOperationService::canonicalParameters($oldParameters), JSON_THROW_ON_ERROR);
+        DB::table('pop_operation_requests')->where('id', $id)->update(['catalog_version' => 15, 'parameters' => $oldJson, 'parameters_hash' => hash('sha256', $oldJson)]);
+        $before = $this->request($id);
+        try {
+            $this->service->runApprovedLocally($id);
+            self::fail('old catalog approval must fail closed, not gain a default or execute');
+        } catch (RuntimeException) {}
+        self::assertSame((string) $before->parameters, (string) $this->request($id)->parameters);
+        self::assertSame((string) $before->parameters_hash, (string) $this->request($id)->parameters_hash);
+        $this->assertNothingWritten($bug);
+    }
+
+    public function test_receipt_rechecks_actual_human_fallback_attribution_under_the_row_lock(): void
+    {
+        User::query()->whereKey($this->reporter)->update(['type' => 'S']);
+        $bug = $this->bug();
+        $p = $this->params($bug, ['disposition' => 'suggestion', 'public_reply' => '已收進產品清單 ' . $this->issueUrl() . '。上線時會在這裡通知你；想補充直接回覆就會重開。']);
+        $id = $this->drafted($bug, $p, 'fallback-own-001', $this->inappAgent());
+        $strategy = app(InappReportTriageStrategy::class);
+        $plan = $strategy->plan($p, ['operation_id' => $id]);
+        self::assertTrue($plan['ok']); // requester issuer is not the reporter
+        $this->service->approve($id, 'human-fallback', 'user:' . $this->reporter, 'super_admin', $this->deployed, $this->reporter);
+        self::assertSame(['inapp_triage_reply_would_be_reporters_own'], $strategy->execute($plan, ['operation_id' => $id])['errors']);
+        $this->assertNothingWritten($bug);
+    }
+
+    /** @dataProvider unapprovedDispositions */
+    public function test_unapproved_or_malformed_disposition_is_a_hard_plan_error($kind): void
+    {
+        $bug = $this->bug();
+        $plan = app(InappReportTriageStrategy::class)->plan($this->params($bug, ['disposition' => $kind]));
+        self::assertFalse($plan['ok']);
+        self::assertContains('disposition_invalid', $plan['errors']);
+        $this->assertNothingWritten($bug);
     }
 
     /** @dataProvider untrustedRequesters */
