@@ -1,0 +1,16 @@
+updates:
+  - id: staff-2026-11-16-one-amount-unit-price
+    published_at: "2026-11-16"
+    audiences:
+      - director
+      - super_admin
+    importance: digest
+    title: 清單單價跟帳單一致
+    summary: 學生管理、課程管理的單價改顯示現在生效的單價，跟帳單和繳費單同一個來源。
+    items:
+      - category: fixed
+        text: 調過價的課，學生管理與課程管理顯示的單價不再跟帳單不同。
+      - category: improved
+        text: 按小時計價的課會標示每小時；月結課程的已上堂費用改用系統加總的金額。
+    source_refs:
+      - "changelog:2026-11-16:one-amount-course-lists-unit-price"

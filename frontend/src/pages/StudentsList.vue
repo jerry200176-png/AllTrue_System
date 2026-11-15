@@ -444,7 +444,7 @@
                       </div>
                       <div>
                         <dt>費用</dt>
-                        <dd class="student-course-card__money">${{ sessionFeeDisplay(course) }}／堂 · {{ course.duration_hours }} 小時</dd>
+                        <dd class="student-course-card__money">{{ unitPriceDisplay(course) }} · {{ course.duration_hours }} 小時</dd>
                       </div>
                       <div>
                         <dt>付款</dt>
@@ -516,7 +516,7 @@
                       </div>
                       <div class="sl-history-card__details">
                         <span><span class="sl-history-card__label">老師</span>{{ hc.teacher_name || '—' }}</span>
-                        <span><span class="sl-history-card__label">費用</span>${{ sessionFeeDisplay(hc) }}/堂</span>
+                        <span><span class="sl-history-card__label">費用</span>{{ unitPriceDisplay(hc) }}</span>
                         <span v-if="hc.payment_type === 'session'"><span class="sl-history-card__label">堂數</span>{{ hc.used_sessions || 0 }} / {{ hc.sessions_purchased || 0 }}</span>
                         <span v-if="hc.last_paid_at"><span class="sl-history-card__label">繳費</span>{{ hc.last_paid_at }}</span>
                       </div>
@@ -996,7 +996,7 @@ import { fetchSubjectOptions } from '../lib/subjectsApi';
 import { useMonthlyRenewal, RENEW_NEED_PREVIEW_ALERT } from '../composables/course-management/useMonthlyRenewal';
 import {
   estimateMonthlyRenewalCharge,
-  getPerSessionFee,
+  courseUnitPrice,
 } from '../lib/coursePricing';
 import { formatDuplicatePurchaseHint, formatRenewSuccessMessage } from '../lib/studentClassDisplay.js';
 import {
@@ -1330,7 +1330,11 @@ const paymentStatusHelpTitle = (course) => {
 // --- Helpers ---
 const getGradeLabel = (val) => GRADES.find(g => g.value === val)?.label || val;
 const getSubjectLabel = (val) => getSubjectText(val);
-const sessionFeeDisplay = (c) => isTutoringCourse(c) ? 0 : getPerSessionFee(c);
+// #4991 step 4a: the same unit price (and unit) the bill is priced with, from the server.
+const unitPriceDisplay = (c) => {
+  const { price, unit } = courseUnitPrice(c);
+  return `$${isTutoringCourse(c) ? 0 : price}${unit === 'hour' ? '／小時' : '／堂'}`;
+};
 const classTypeLabel = (type) => {
   const map = { one_on_one: '一對一', one_on_two: '一對二', one_on_three: '一對三', tutoring: '輔導', trial: '試聽' };
   return map[type] || type;
@@ -2068,6 +2072,8 @@ const loadStudentCourses = async (studentId) => {
           payment_status: c.payment_status ?? null,
           monthly_payment: c.monthly_payment ?? null,
           rate_per_30min: c.rate_per_30min,
+          current_unit_price: c.current_unit_price ?? null,
+          current_unit_price_unit: c.current_unit_price_unit ?? null,
           duration_hours: c.duration_hours,
           payment_type: c.payment_type,
           end_date: c.end_date || (c.EndDate ? String(c.EndDate).slice(0, 10) : ''),
@@ -2158,6 +2164,8 @@ const loadAllStudentCourses = async () => {
             payment_status: c.payment_status ?? null,
             monthly_payment: c.monthly_payment ?? null,
             rate_per_30min: c.rate_per_30min,
+            current_unit_price: c.current_unit_price ?? null,
+            current_unit_price_unit: c.current_unit_price_unit ?? null,
             duration_hours: c.duration_hours,
             payment_type: c.payment_type,
             end_date: c.end_date || (c.EndDate ? String(c.EndDate).slice(0, 10) : ''),

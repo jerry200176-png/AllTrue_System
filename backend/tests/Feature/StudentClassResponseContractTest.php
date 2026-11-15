@@ -4,13 +4,16 @@ namespace Tests\Feature;
 
 use App\Models\AuthToken;
 use App\Models\Campus;
+use App\Models\ClassSession;
 use App\Models\Room;
 use App\Models\PaymentReport;
 use App\Models\Student;
 use App\Models\StudentClass;
 use App\Models\User;
 use App\Models\UserCampus;
+use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
 class StudentClassResponseContractTest extends TestCase
@@ -126,6 +129,38 @@ class StudentClassResponseContractTest extends TestCase
         $foreignScope->assertOk()
             ->assertJsonPath('total', 0)
             ->assertJsonPath('data', []);
+    }
+
+    /** #4991 step 4a: the list carries the price in force today and the held-lessons amount the bill is priced with. */
+    public function test_index_carries_the_unit_price_in_force_and_the_held_lessons_amount(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-08-20 10:00:00', 'Asia/Taipei'));
+        [$token] = $this->makeUserToken(1, 'unit-price-director@test.com', 'A');
+        [, $teacher] = $this->makeUserToken(1, 'unit-price-teacher@test.com', 'T');
+        $monthly = $this->makeCourse($teacher, 1, ['ScheduleMode' => 'date', 'Rate' => 2500, 'rate_unit' => 'session', 'EndDate' => '2026-09-30']);
+        // September has only a lesson to come: its 0 is a real amount, not an unknown one.
+        foreach ([['2026-08-04', 'attended'], ['2026-08-11', 'attended'], ['2026-08-18', 'leave'], ['2026-09-01', 'scheduled']] as [$date, $status]) {
+            ClassSession::create(['StudentClassID' => $monthly->ID, 'SessionDate' => $date, 'StartTime' => '13:00', 'EndTime' => '15:00', 'Status' => $status]);
+        }
+        $row = fn () => $this->authJson('GET', '/api/v1/student-classes?schedule_mode=date&per_page=10', $token)->assertOk()->json('data.0');
+
+        $before = $row();
+        $this->assertSame(2500, $before['current_unit_price']);
+        $this->assertSame('session', $before['current_unit_price_unit']);
+        $this->assertSame(5000, $before['held_lessons_amount']);
+
+        // A price change from 08/10: the course Rate is untouched, the list follows the price in force, and the first
+        // lesson keeps the price of its own date.
+        DB::table('student_class_pricing_amendments')->insert(['student_class_id' => $monthly->ID, 'effective_from' => '2026-08-10',
+            'rate' => 2200, 'rate_unit' => 'session', 'source_reference' => 'test-unit-price', 'reason' => 'test', 'created_at' => now()]);
+        $after = $row();
+        $this->assertSame(2200, $after['current_unit_price']);
+        $this->assertEquals(2500, $after['rate_per_30min']);
+        $this->assertSame(4700, $after['held_lessons_amount']);
+        // The amendment rows themselves (reason, source reference) are not part of the list response.
+        $this->assertArrayNotHasKey('pricing_amendments', $after);
+        $this->assertArrayNotHasKey('pricingAmendments', $after);
+        Carbon::setTestNow();
     }
 
     public function test_monthly_review_filter_keeps_pagination_and_director_campus_boundary(): void
