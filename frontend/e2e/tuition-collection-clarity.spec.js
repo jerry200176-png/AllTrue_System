@@ -1,6 +1,85 @@
 import { test, expect } from '@playwright/test';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import AxeBuilder from '@axe-core/playwright';
+
+// #4148: real page -> scoped ledger -> existing receipt modal, synthetic data only.
+for (const width of [375, 1280]) for (const [size, theme] of [['standard', 'light'], ['large', 'light'], ['standard', 'dark']]) {
+  test(`4148 linked and historic receipt lookup ${size}/${theme} @${width}`, async ({ page }, info) => {
+    const errors = []; const writes = []; const receiptIds = []; const ledgerQueries = []; const coverage = [];
+    page.on('pageerror', e => errors.push(e.message));
+    page.on('request', r => {
+      const u = new URL(r.url());
+      if (u.pathname.startsWith('/api/v1/') && r.method() !== 'GET') writes.push(u.pathname);
+      if (/^\/api\/v1\/invoices\/.*\/slip-data$/.test(u.pathname)) coverage.push(u.pathname);
+    });
+    await page.setViewportSize({ width, height: 900 });
+    await page.emulateMedia({ colorScheme: theme, reducedMotion: 'reduce' });
+    await page.addInitScript(({ size, theme }) => {
+      localStorage.setItem('alltrue_text_size', size);
+      const apply = () => { document.documentElement.dataset.textSize = size; document.documentElement.classList.toggle('dark', theme === 'dark'); document.documentElement.dataset.theme = theme; };
+      document.addEventListener('DOMContentLoaded', apply, { once: true });
+    }, { size, theme });
+    await page.route('**/*', r => ['127.0.0.1', 'localhost'].includes(new URL(r.request().url()).hostname) ? r.fallback() : r.abort());
+    await page.route('**/api/v1/**', r => {
+      return r.fulfill({ json: { data: [] } });
+    });
+    await installMock(page);
+    await page.route('**/api/v1/students**', r => r.fulfill({ json: [{ id: 5, name: '合成學生', status: 'active', enable: 1 }, { id: 99, name: '合成暫停學生', status: 'paused', enable: 1 }] }));
+    await page.route('**/api/v1/alerts/tuition**', r => r.fulfill({ json: [{ id: 42, student_id: 5, student_name: '合成學生', subject: '合成數學', schedule_mode: 'count', payment_status: 'unpaid', payable_status: 'invoiced', payable_outstanding: 1000, remaining_sessions: 4 }] }));
+    await page.route('**/api/v1/accounting/ledger?**', r => {
+      const q = new URL(r.request().url()).searchParams; ledgerQueries.push(Object.fromEntries(q));
+      const historic = q.get('student_id') === '99';
+      return r.fulfill({ json: { student: { id: historic ? 99 : 5, name: historic ? '合成暫停學生' : '合成學生' }, scope: { student_class_id: historic ? null : 42 }, summary: {}, courses: [], anomalies: [], invoices: historic ? [] : [{ id: 501, invoice_no: '合成帳單501', subject_name: '合成數學', first_session_date: '2026-11-01', billing_period: '2026-11', student_class_id: 42, status: 'partial', total_amount: 2000, calculated_applied_amount: 1000, outstanding_amount: 1000, payments: [71, 72].map((id, i) => ({ id, report_id: 801 + i, report_status: 'confirmed', receipt_no: `合成收據${801 + i}`, amount: 500, applied_amount: 500, application_status: 'applied', method: 'cash', paid_at: '2026-11-01' })) }], receipts: historic ? [{ report_id: 900, invoice_id: null, amount: 200, status: 'confirmed', payment_method: 'cash' }] : [801, 802].map(report_id => ({ report_id, invoice_id: 501, student_class_id: 42, amount: 500, status: 'confirmed', payment_method: 'cash', subject: '合成數學' })) } });
+    });
+    await page.route('**/api/v1/payment-reports/*/receipt', r => {
+      const id = Number(new URL(r.request().url()).pathname.split('/').at(-2)); receiptIds.push(id);
+      return r.fulfill({ json: { receipt_no: `合成收據${id}`, amount: 500, payment_date: '2026-11-01', payment_method: 'cash', status: 'confirmed', student_name: '合成學生', subject: '合成數學' } });
+    });
+    await page.goto('/tuition-collection-pilot-mount.html');
+    await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
+    await page.getByTestId('bill-search').fill('合成學生');
+    await page.getByTestId('bill-documents-c42').focus();
+    await page.keyboard.press('Enter');
+    const ledger = page.getByRole('dialog', { name: '合成學生的帳務', exact: true });
+    const linked = page.getByTestId('ledger-invoice-payments-501');
+    await expect(linked.getByRole('button', { name: /查看收據/ })).toHaveCount(2);
+    await page.getByTestId('ledger-payment-receipt-72').focus(); await page.keyboard.press('Enter');
+    const receipt = page.getByTestId('receipt-modal-panel');
+    await expect(receipt).toContainText('合成收據802');
+    await receipt.locator('button[title="關閉"]').click();
+    await expect(page.getByTestId('ledger-payment-receipt-72')).toBeFocused();
+    await page.getByTestId('ledger-invoice-501').hover();
+    const scan = await new AxeBuilder({ page }).include('#ledger-sec-invoices').analyze();
+    expect(scan.violations.filter(v => ['serious', 'critical'].includes(v.impact))).toEqual([]);
+    const linkedShot = info.outputPath(`linked-${width}-${size}-${theme}.png`);
+    await ledger.screenshot({ path: linkedShot });
+    await info.attach(`linked-${width}-${size}-${theme}`, { path: linkedShot, contentType: 'image/png' });
+    await ledger.getByRole('button', { name: '關閉學生帳務', exact: true }).click();
+    await expect(page.getByTestId('bill-search')).toHaveValue('合成學生');
+    await expect(page.getByTestId('bill-documents-c42')).toBeFocused();
+    await page.getByTestId('bill-search').fill('合成暫停學生');
+    await expect(page.getByTestId('bill-student-99')).toHaveCount(0);
+    await page.getByTestId('bill-find-receipts').click();
+    await page.getByTestId('bill-document-student-99').click();
+    const historic = page.getByRole('dialog', { name: '合成暫停學生的帳務', exact: true });
+    await page.getByTestId('ledger-receipt-view-900').click();
+    await expect(receipt).toContainText('合成收據900');
+    await receipt.locator('button[title="關閉"]').click();
+    await historic.getByRole('button', { name: '關閉學生帳務', exact: true }).click();
+    await expect(page.getByTestId('bill-search')).toHaveValue('合成暫停學生');
+    await expect(page.getByTestId('bill-document-student-99')).toBeFocused();
+    const searchScan = await new AxeBuilder({ page }).include('[data-testid="bill-receipt-search"]').analyze();
+    expect(searchScan.violations.filter(v => ['serious', 'critical'].includes(v.impact))).toEqual([]);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth)).toBe(false);
+    const historicShot = info.outputPath(`historic-${width}-${size}-${theme}.png`);
+    await page.getByTestId('bill-receipt-search').screenshot({ path: historicShot });
+    await info.attach(`historic-${width}-${size}-${theme}`, { path: historicShot, contentType: 'image/png' });
+    expect(ledgerQueries).toEqual([{ student_class_id: '42', branch_id: '1' }, { student_id: '99', branch_id: '1' }]);
+    expect(receiptIds).toEqual([802, 900]);
+    expect(coverage).toEqual([]); expect(writes).toEqual([]); expect(errors).toEqual([]);
+  });
+}
 
 for (const width of [375, 1280]) {
   test(`In-App549: paused empty lookup disappears after refresh, real bills remain @${width}`, async ({ page }, info) => {

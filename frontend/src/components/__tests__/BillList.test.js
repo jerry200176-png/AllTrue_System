@@ -14,6 +14,28 @@ const ROWS = [
 const mountList = (props = {}) => mount(BillList, { props: { alertRows: ROWS, today: '2026-11-05', batchModes: { 1: 'confirm', 2: 'report', 6: 'report' }, ...props }, global: { stubs: { teleport: true } } });
 
 describe('BillList', () => {
+  it('#4148 finds paused history only through explicit receipt lookup, preserving the collection list', async () => {
+    const w = mountList({ students: [{ id: 99, name: '學生暫停', status: 'paused' }], canDocs: true });
+    await w.get('[data-testid="bill-search"]').setValue('學生暫停');
+    expect(w.find('[data-testid="bill-student-99"]').exists()).toBe(false);
+    await w.get('[data-testid="bill-find-receipts"]').trigger('click');
+    await w.get('[data-testid="bill-document-student-99"]').trigger('click');
+    expect(w.emitted('documents')[0]).toEqual([{ student_id: 99, class_id: null }]);
+    expect(w.emitted('action')).toBeUndefined();
+    await w.get('[data-testid="bill-find-receipts"]').trigger('click');
+    expect(w.get('[data-testid="bill-search"]').element.value).toBe('學生暫停');
+    expect(w.find('[data-testid="bill-student-99"]').exists()).toBe(false);
+    w.unmount();
+  });
+
+  it('#4148 opens documents for the clicked contract, retaining the list filter and student', async () => {
+    const w = mountList({ canDocs: true });
+    await w.get('[data-testid="bill-documents-c2"]').trigger('click');
+    expect(w.emitted('documents')[0][0]).toMatchObject({ class_id: 2, student_id: 2 });
+    expect(w.get('[data-testid="bill-filter-todo"]').attributes('aria-pressed')).toBe('true');
+    w.unmount();
+  });
+
   it('匯出 Excel emits exactly the filter, search and rows on screen', async () => {
     const w = mountList();
     await w.get('[data-testid="bill-search"]').setValue('乙');
