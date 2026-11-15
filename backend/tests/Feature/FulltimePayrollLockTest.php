@@ -129,6 +129,14 @@ class FulltimePayrollLockTest extends TestCase
         $this->assertEquals(-5700, $compared['teachers'][0]['recalculated']['difference']);
         $this->assertSame([$laterTeacher], $compared['recalculated_only_teacher_ids']);
         $this->assertSame(1, \Illuminate\Support\Facades\DB::table('fulltime_payroll_run_teachers')->count());
+
+        // An item added after the lock and still to confirm makes today's result a subtotal: no difference is stated.
+        \Illuminate\Support\Facades\DB::table('teacher_payroll_achievements')->insert([
+            'teacher_id' => $lockedTeacher, 'branch_id' => 1, 'outcome_key' => 'k', 'status' => 'pending', 'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $partial = $this->withHeaders($headers)->getJson($url . '&compare=1')->assertOk()->json('teachers.0.recalculated');
+        $this->assertNotSame('calculated', $partial['calculation_status']);
+        $this->assertNull($partial['difference']);
     }
 
     private function createDirector(int $campusId, string $email): array

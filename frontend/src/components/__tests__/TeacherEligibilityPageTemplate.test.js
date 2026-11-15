@@ -129,6 +129,22 @@ describe('TeacherEligibilityPage on the template', () => {
     expect(wrapper.find('.desktop-table').text()).toContain('36,000');
   });
 
+  it('a slow answer for a campus the user has left does not replace what is on screen', async () => {
+    const answers = [];
+    fetchMock.mockImplementation((url) => new Promise((release) => { answers.push({ url: String(url), release }); }));
+    await mountPage();
+    await wrapper.setProps({ branchId: 4 }); // the page reloads for the new campus while the first read is still out
+    await flushPromises();
+    const reads = answers.filter((a) => a.url.includes('/teacher-eligibility?'));
+    expect(reads).toHaveLength(2);
+    reads[1].release(json(payload({ teachers: [teacher({ teacher_name: '新分校的老師' })] })));
+    await flushPromises();
+    reads[0].release(json(payload({ teachers: [teacher({ teacher_name: '舊分校的老師' })] })));
+    await flushPromises();
+    expect(wrapper.find('.desktop-table').text()).toContain('新分校的老師');
+    expect(wrapper.find('.desktop-table').text()).not.toContain('舊分校的老師');
+  });
+
   it('a draft month is not compared', async () => {
     await mountPage();
     expect(eligibilityReads().some((u) => u.includes('compare=1'))).toBe(false);

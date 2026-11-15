@@ -129,7 +129,7 @@
               <TableCell :class="[bodyCell, 'total-cell']">
                 <strong class="tw:tabular-nums tw:text-[var(--ds-primary-text)]">{{ formatMoney(teacher.settlement?.total_payout) }}</strong>
                 <small v-if="isDraft(teacher)" :class="smallText">試算，未可發放</small>
-                <small v-if="teacher.recalculated" :class="smallText">現在的算法 {{ formatMoney(teacher.recalculated.calculated_payout) }}（{{ formatDifference(teacher.recalculated.difference) }}）</small>
+                <small v-if="recalculationText(teacher)" :class="smallText">{{ recalculationText(teacher) }}</small>
               </TableCell>
               <TableCell :class="[bodyCell, 'weekly-segment-cell tw:min-w-[300px]']">
                 <strong>{{ weeklySegmentsLabel(teacher) }}</strong>
@@ -158,7 +158,7 @@
           <div :class="componentRow"><span>教師倍率</span><span :class="componentValue">{{ formatPct(teacher.settlement?.multiplier_pct) }}</span></div>
           <div :class="componentRow"><span>倍率後獎金</span><span :class="[componentValue, 'tw:tabular-nums']">{{ formatMoney(teacher.settlement?.weighted_bonus_amount) }}</span></div>
           <div :class="[componentRow, 'total-cell']"><span>獎金合計</span><strong class="tw:tabular-nums tw:text-[var(--ds-primary-text)]">{{ formatMoney(teacher.settlement?.total_payout) }}</strong></div>
-          <div v-if="teacher.recalculated" :class="componentRow"><span>現在的算法</span><span :class="[componentValue, 'tw:tabular-nums']">{{ formatMoney(teacher.recalculated.calculated_payout) }}（{{ formatDifference(teacher.recalculated.difference) }}）</span></div>
+          <div v-if="recalculationText(teacher)" :class="componentRow"><span>和鎖定時比較</span><span :class="[componentValue, 'tw:tabular-nums']">{{ recalculationText(teacher) }}</span></div>
           <div :class="[componentRow, 'weekly-segment-row']">
             <span>每週課段</span>
             <span :class="componentValue">
@@ -209,13 +209,13 @@ import { Table, TableBody, TableCaption, TableCell, TableHead, TableHeader, Tabl
 import { fetchTeacherEligibility, lockFulltimePayroll, reopenFulltimePayroll, exportFulltimePayrollCsv } from '../lib/teacherEligibilityApi.js';
 import TeacherEligibilityInputPanel from '../components/TeacherEligibilityInputPanel.vue';
 import {
-  formatDifference,
   formatMoney,
   formatPct,
   formatSubjects,
   formatSubjectUnits,
   monthWindow,
   recalculationSummary,
+  recalculationText,
   weightedBonusFormula,
 } from '../lib/teacherEligibilityDisplay.js';
 import { humanizeApiErrorMessage } from '../lib/humanizeApiErrorMessage.js';
@@ -345,7 +345,12 @@ async function reopenMonth() {
   }
 }
 
+// Every read carries the number of the load it belongs to; only the newest load may put anything on screen, so a slow
+// answer for a month or campus the user has already left is dropped.
+let loadNumber = 0;
+
 async function loadData() {
+  const thisLoad = ++loadNumber;
   loading.value = true; error.value = '';
   try {
     const range = period.value === 'month' ? monthWindow(settlementMonth.value) : {};
@@ -355,25 +360,23 @@ async function loadData() {
       start: range.start,
       end: range.end,
     });
+    if (thisLoad !== loadNumber) return;
     teachers.value = data.teachers || [];
     periodWindow.value = { start: data.period?.start || range.start || '', end: data.period?.end || range.end || '' };
     policyVersion.value = data.policy_version || policyVersion.value;
     branchSubjectTotal.value = Number(data.branch_subject_total ?? 0);
     lockState.value = data.lock || { status: 'draft' };
-    if (data.lock?.status === 'locked') loadRecalculation(range);
-  } catch (e) { error.value = humanizeApiErrorMessage(e?.message, '載入失敗'); }
-  finally { loading.value = false; }
+    if (data.lock?.status === 'locked') loadRecalculation(thisLoad, range);
+  } catch (e) { if (thisLoad === loadNumber) error.value = humanizeApiErrorMessage(e?.message, '載入失敗'); }
+  finally { if (thisLoad === loadNumber) loading.value = false; }
 }
 
 // A locked month keeps its numbers; this adds what today's rules give, next to each one. It is extra information:
 // the page is already usable, and a failure here leaves the locked figures as they are.
-async function loadRecalculation(range) {
-  const month = settlementMonth.value;
-  const branchId = props.branchId;
+async function loadRecalculation(thisLoad, range) {
   try {
-    const data = await fetchTeacherEligibility({ period: 'month', branchId, start: range.start, end: range.end, compare: true });
-    // Only if the page still shows the same locked month of the same campus.
-    if (month === settlementMonth.value && branchId === props.branchId && isLocked.value && data.lock?.status === 'locked') teachers.value = data.teachers || teachers.value;
+    const data = await fetchTeacherEligibility({ period: 'month', branchId: props.branchId, start: range.start, end: range.end, compare: true });
+    if (thisLoad === loadNumber && data.lock?.status === 'locked') teachers.value = data.teachers || teachers.value;
   } catch { /* the locked figures stay on screen */ }
 }
 

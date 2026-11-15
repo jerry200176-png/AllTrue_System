@@ -287,8 +287,8 @@ class TeacherEligibilityController extends Controller
     }
 
     /**
-     * Puts today's result next to each locked row: the payout now, whether it is final, and now minus locked.
-     * A teacher who is in only one of the two lists has no difference; those computed now but absent from the
+     * Puts today's result next to each locked row: the payout now, whether it is final, and now minus locked
+     * (only when today's result is final). A teacher who is in only one of the two lists has no difference; those computed now but absent from the
      * snapshot are listed by id.
      */
     private function withRecalculation(array $locked, array $liveRows): array
@@ -300,7 +300,9 @@ class TeacherEligibilityController extends Controller
             $teacher['recalculated'] = $now === null ? null : [
                 'calculated_payout' => $now['calculated_payout'],
                 'calculation_status' => $now['calculation_status'],
-                'difference' => $now['calculated_payout'] !== null && $before !== null ? round((float) $now['calculated_payout'] - (float) $before, 2) : null,
+                // A difference is stated only for a finished result: with items still to confirm the payout is a subtotal.
+                'difference' => $now['calculation_status'] === 'calculated' && $now['calculated_payout'] !== null && $before !== null
+                    ? round((float) $now['calculated_payout'] - (float) $before, 2) : null,
             ];
 
             return $teacher;

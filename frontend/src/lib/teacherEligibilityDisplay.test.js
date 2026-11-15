@@ -9,6 +9,7 @@ import {
   weightedBonusFormula,
   formatDifference,
   recalculationSummary,
+  recalculationText,
   monthWindow,
 } from './teacherEligibilityDisplay.js';
 
@@ -39,10 +40,19 @@ assert.equal(formatDifference(1200), '多 $1,200');
 assert.equal(formatDifference(-300), '少 $300');
 assert.equal(formatDifference(0), '相同');
 assert.equal(formatDifference(null), '無法比較');
-assert.equal(recalculationSummary([{ recalculated: { difference: 1200 } }, { recalculated: { difference: -300 } }, { recalculated: { difference: 0 } }, { recalculated: null }]),
+assert.equal(recalculationSummary([{ recalculated: { difference: 1200 } }, { recalculated: { difference: -300 } }, { recalculated: { difference: 0 } }]),
   '照現在的算法重算，2 位老師金額不同，合計多 $900。鎖定的數字沒有變。');
-assert.equal(recalculationSummary([{ recalculated: { difference: 0 } }]), '照現在的算法重算，每位老師的金額都和鎖定時相同。');
+// A teacher who could not be compared is counted, never passed over: no "everyone is the same" on a partial comparison.
+assert.equal(recalculationSummary([{ recalculated: { difference: 0 } }, { recalculated: null }, { recalculated: { difference: null } }]),
+  '照現在的算法重算，比較得到的 1 位老師金額都和鎖定時相同。另有 2 位無法比較（已不在這個分校，或現在還有待確認項目）。');
+assert.equal(recalculationSummary([{ recalculated: { difference: 500 } }, { recalculated: null }]),
+  '照現在的算法重算，1 位老師金額不同，合計多 $500。另有 1 位無法比較（已不在這個分校，或現在還有待確認項目）。鎖定的數字沒有變。');
+assert.equal(recalculationSummary([{ recalculated: null }]), '照現在的算法重算：另有 1 位無法比較（已不在這個分校，或現在還有待確認項目）。');
 assert.equal(recalculationSummary([{}]), '');
+assert.equal(recalculationText({ recalculated: { calculated_payout: 36500, difference: 500 } }), '現在的算法 $36,500（多 $500）');
+assert.equal(recalculationText({ recalculated: { calculated_payout: 1200, difference: null } }), '現在的算法：還有待確認項目，暫不比較');
+assert.equal(recalculationText({ recalculated: null }), '現在的算法：無法比較（已不在這個分校）');
+assert.equal(recalculationText({}), '');
 assert.deepEqual(monthWindow('2026-08'), { start: '2026-08-01', end: '2026-08-31' });
 // 正課 150 raw + 輔導試聽 12 raw = 核薪總 20.25: the three columns add up once shown on the same scale.
 assert.equal(formatSubjectUnits(150), '18.75');
