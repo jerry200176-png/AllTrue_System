@@ -3,7 +3,6 @@
 namespace Tests\Feature;
 
 use App\Models\ClassSession;
-use App\Models\SecurityAuditEvent;
 use App\Models\Student;
 use App\Models\StudentClass;
 use App\Models\StudentSignIn;
@@ -58,7 +57,7 @@ final class TriageFulltimePayrollTest extends TestCase
         foreach (['Amy', 'teacher_name', 'label', 'reason', '報表', '老師'] as $forbidden) {
             $this->assertStringNotContainsString($forbidden, $body);
         }
-        $this->assertSame(1, SecurityAuditEvent::query()->where('event_type', 'triage_token.read')->where('outcome', 'success')->count());
+        $this->assertSame(1, DB::table('security_audit_events')->where('event_type', 'triage_token.read')->where('outcome', 'success')->count());
     }
 
     public function test_needs_a_triage_token_a_campus_and_a_month_and_takes_no_writes(): void
