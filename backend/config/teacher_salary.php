@@ -10,6 +10,8 @@ return [
     'closure_min_sessions' => 10,
     'holiday_required_hours' => 16.0,
     'holiday_multiplier_pass' => 10.0,
+    // 平日下午倍率: each 段 scheduled before the cutoff on Mon-Fri adds this %, capped per week.
+    'weekday_cutoff' => '18:00',
     'weekday_extra_rate_per_segment' => 1.0,
     'weekday_rate_cap' => 5.0,
     'employee_of_year_start_year' => 2027,

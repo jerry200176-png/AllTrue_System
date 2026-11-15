@@ -98,12 +98,7 @@ class TeacherEligibilityController extends Controller
         }
 
         $teacherIds = $teachers->pluck('id')->map(fn ($id) => (int) $id)->all();
-        $schedules = DB::table('schedules')
-            ->whereIn('teacher_id', $teacherIds)
-            ->whereBetween('schedule_date', [$effectiveStart->toDateString(), $period['end']->toDateString()])
-            ->whereNotIn('status', ['cancelled', 'leave', 'leave_requested', \App\Models\Schedule::STATUS_SUPERSEDED])
-            ->get();
-        // 每週16段 reads the teacher calendar (ClassSession + live schedule exceptions, all campuses), out to the
+        // 每週16段 and the 平日下午 rate read the teacher calendar (ClassSession + live schedule exceptions, all campuses), out to the
         // last week's Sunday so a week that crosses the month end is whole.
         $weeks = $this->splitIntoWeeks($effectiveStart, $period['end']);
         $lessonsByTeacher = $weeks === [] ? [] : TeacherClassCalendar::load($weeks[0][0]->toDateString(), end($weeks)[1]->toDateString(), null, $teacherIds, true);
@@ -209,7 +204,6 @@ class TeacherEligibilityController extends Controller
         // approved by one director, so it must not be able to waive a week. Out to the last week's Sunday.
         $closureDates = $weeks === [] ? [] : $this->campusClosedDates(null, $weeks[0][0], end($weeks)[1]);
 
-        $scheduleByTeacher = $schedules->groupBy('teacher_id');
         $plannedByTeacher = $plannedSchedules->groupBy('teacher_id');
         $attendanceByTeacher = $attendanceSessions->groupBy('teacher_id');
         $eventByTeacher = $events->groupBy(fn ($event) => $event->teacher_id ? (string) $event->teacher_id : '*');
@@ -250,9 +244,8 @@ class TeacherEligibilityController extends Controller
         $subjectUnitsByTeacher = $this->globalSubjectUnitsByTeacher($teacherIds, $effectiveStart, $period['end']);
         $manualMultiplierByTeacher = $this->manualMultiplierByTeacher($teacherIds, null, $period['end']->toDateString());
 
-        $rows = $teachers->map(function ($teacher) use ($period, $effectiveStart, $weeks, $closureDates, $lessonsByTeacher, $scheduleByTeacher, $plannedByTeacher, $attendanceByTeacher, $eventByTeacher, $achievementByTeacher, $deductionByTeacher, $allowanceByTeacher, $cashByTeacher, $cashSourceAvailable, $allowanceSourceAvailable, $pendingSalaryByTeacher, $sessionCalendarAvailable, $subjectUnitsByTeacher, $manualMultiplierByTeacher) {
+        $rows = $teachers->map(function ($teacher) use ($period, $effectiveStart, $weeks, $closureDates, $lessonsByTeacher, $plannedByTeacher, $attendanceByTeacher, $eventByTeacher, $achievementByTeacher, $deductionByTeacher, $allowanceByTeacher, $cashByTeacher, $cashSourceAvailable, $allowanceSourceAvailable, $pendingSalaryByTeacher, $sessionCalendarAvailable, $subjectUnitsByTeacher, $manualMultiplierByTeacher) {
             $teacherId = (int) $teacher->id;
-            $teacherSchedules = $scheduleByTeacher->get($teacherId, collect());
             $teacherPlanned = $plannedByTeacher->get($teacherId, collect());
             $teacherAttendance = $attendanceByTeacher->get($teacherId, collect());
             $teacherEvents = $eventByTeacher->get((string) $teacherId, collect())->concat($eventByTeacher->get('*', collect()));
@@ -265,7 +258,6 @@ class TeacherEligibilityController extends Controller
             $holidayCalendarAvailable = $sessionCalendarAvailable
                 || $teacherEvents->contains(fn ($event) => $event->event_type === 'holiday');
             $holidayDays = $this->holidayDays($teacherAttendance, $teacherPlanned, $teacherEvents, $effectiveStart, $period['end'], $holidayCalendarAvailable);
-            $weekdayHours = $this->weekdayHours($teacherSchedules, $effectiveStart, $period['end']);
             $subjectUnits = $subjectUnitsByTeacher[$teacherId] ?? null;
             $subjectCount = is_array($subjectUnits) ? ($subjectUnits['payroll_total'] ?? null) : null;
 
@@ -274,7 +266,11 @@ class TeacherEligibilityController extends Controller
                 'period_end' => $period['end']->toDateString(),
                 'weekly' => ['segments' => 0], // replaced below by the per-week result
                 'holiday_days' => $holidayDays,
-                'weekday_hours' => $weekdayHours,
+                // A closure week is not judged (Founder 2026-11-15), so it stays out of the average.
+                'weekday_early_segments' => array_values(array_map(
+                    fn ($week) => $week['metrics']['weekday_early_segments'],
+                    array_filter($weeklyRows, fn ($week) => $week['metrics']['closure_dates'] === [])
+                )),
                 'achievements' => $achievementByTeacher->get($teacherId, collect())->map(fn ($row) => (array) $row)->all(),
                 'deductions' => $deductionByTeacher->get($teacherId, collect())->map(fn ($row) => [
                     'deduction_key' => $row->deduction_key,
@@ -510,11 +506,21 @@ class TeacherEligibilityController extends Controller
     private function evaluateWeek(Carbon $start, Carbon $end, array $lessonsByDate, array $closureDates = []): array
     {
         $dailyMinutes = [];
+        // 平日下午倍率 (HQ 115.07: 週一至週五 18:00 前可接 5 段課): the same lessons, only the part before the cutoff.
+        $cutoff = (string) config('teacher_salary.weekday_cutoff', '18:00');
+        $earlyMinutes = 0;
         foreach ($lessonsByDate as $date => $lessons) {
             if ($date < $start->toDateString() || $date > $end->toDateString()) continue;
             // A lesson with no end time keeps the established two-hour default.
             $rows = array_map(fn ($lesson) => (object) ['start_time' => $lesson['start'], 'end_time' => $lesson['end'] !== '' ? $lesson['end'] : date('H:i', strtotime($lesson['start'] . ' +2 hours'))], $lessons);
             $dailyMinutes[$date] = (int) round(60 * $this->scheduledCoverageHoursForDate($rows, fn () => true));
+            if (Carbon::parse($date)->dayOfWeekIso <= 5) {
+                $early = array_map(
+                    fn ($row) => (object) ['start_time' => $row->start_time, 'end_time' => min($row->end_time, $cutoff)],
+                    array_filter($rows, fn ($row) => $row->start_time < $cutoff && $row->end_time > $row->start_time)
+                );
+                $earlyMinutes += (int) round(60 * $this->scheduledCoverageHoursForDate($early, fn () => true));
+            }
         }
         ksort($dailyMinutes);
         $segments = round(array_sum($dailyMinutes) / 120, 2);
@@ -531,6 +537,7 @@ class TeacherEligibilityController extends Controller
             'week_end' => $end->toDateString(),
             'daily_hours' => array_map(fn ($minutes) => round($minutes / 60, 2), $dailyMinutes),
             'total_segments' => $segments,
+            'weekday_early_segments' => round($earlyMinutes / 120, 2),
             'meets_16_segments' => $policy['status'] === TeacherEligibilityPolicy::QUALIFIES,
         ];
         return $policy;
@@ -769,60 +776,6 @@ class TeacherEligibilityController extends Controller
                 'effective_from' => (string) $rows->last()->effective_from,
             ])
             ->all();
-    }
-
-    private function weekdayHours($schedules, Carbon $start, Carbon $end): array
-    {
-        $intervalsByDate = [];
-        $fallbackHoursByDate = [];
-        foreach ($schedules as $row) {
-            if (!$this->isRecurringSchedule($row)) continue;
-            $date = (string) $row->schedule_date;
-            if (!$date || $date < $start->toDateString() || $date > $end->toDateString()) continue;
-            $day = Carbon::parse($date)->dayOfWeekIso;
-            if ($day >= 6) continue;
-
-            $startMinutes = $this->clockMinutes($row->start_time ?? null);
-            $endMinutes = $this->clockMinutes($row->end_time ?? null);
-            if ($startMinutes !== null && $endMinutes !== null && $endMinutes > $startMinutes) {
-                $intervalsByDate[$date][] = [$startMinutes, $endMinutes];
-                continue;
-            }
-
-            // Preserve the previous duration fallback when a legacy schedule
-            // row has no parseable clock window; it remains reviewable data,
-            // but must not make valid overlapping windows double-count.
-            $fallbackHoursByDate[$date] = ($fallbackHoursByDate[$date] ?? 0) + $this->durationHours($row);
-        }
-
-        $hours = [];
-        foreach (array_unique(array_merge(array_keys($intervalsByDate), array_keys($fallbackHoursByDate))) as $date) {
-            $coverageMinutes = 0;
-            $mergedEnd = null;
-            $mergedStart = null;
-            $intervals = $intervalsByDate[$date] ?? [];
-            usort($intervals, fn ($left, $right) => $left[0] <=> $right[0] ?: $left[1] <=> $right[1]);
-            foreach ($intervals as [$intervalStart, $intervalEnd]) {
-                if ($mergedStart === null) {
-                    $mergedStart = $intervalStart;
-                    $mergedEnd = $intervalEnd;
-                    continue;
-                }
-                if ($intervalStart <= $mergedEnd) {
-                    $mergedEnd = max($mergedEnd, $intervalEnd);
-                    continue;
-                }
-                $coverageMinutes += $mergedEnd - $mergedStart;
-                $mergedStart = $intervalStart;
-                $mergedEnd = $intervalEnd;
-            }
-            if ($mergedStart !== null) {
-                $coverageMinutes += $mergedEnd - $mergedStart;
-            }
-            $hours[$date] = round(($coverageMinutes / 60) + ($fallbackHoursByDate[$date] ?? 0), 2);
-        }
-
-        return array_map(fn ($value) => round($value, 2), $hours);
     }
 
     private function clockMinutes($value): ?int

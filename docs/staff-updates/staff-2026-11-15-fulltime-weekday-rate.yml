@@ -1,0 +1,18 @@
+updates:
+  - id: staff-2026-11-15-fulltime-weekday-rate
+    published_at: "2026-11-15"
+    audiences:
+      - director
+      - super_admin
+    importance: major
+    title: 平日下午倍率改自動算
+    summary: 平日下午倍率改看老師行事曆，下午六點前排的課自動換算，不必人工補。
+    items:
+      - category: improved
+        text: 週一到週五下午六點前排的課，每一段加百分之一，每週最多百分之五，再取各週平均。
+      - category: fixed
+        text: 以前只認另外建立的排課列，一般課表上的課算不到；現在和每週段數看同一份課表。
+      - category: improved
+        text: 有全校停課日的那一週不列入平均。
+    source_refs:
+      - "changelog:2026-11-15:fulltime-weekday-rate-auto"

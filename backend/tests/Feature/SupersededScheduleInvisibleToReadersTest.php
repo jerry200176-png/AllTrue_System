@@ -214,17 +214,17 @@ class SupersededScheduleInvisibleToReadersTest extends TestCase
         $token = bin2hex(random_bytes(16));
         AuthToken::create(['user_id' => $dir->id, 'token' => $token, 'expires_at' => now()->addDay()]);
 
-        // 2026-08-03 is a Monday; only id 201 (10:00-12:00) may count toward weekday hours.
+        // 2026-08-03 is a Monday; only id 201 (10:00-12:00) may count toward the 平日下午 rate (1 段 = 1%).
         $this->seedEarlyRowAndLaterLiveRow('2026-08-03', Schedule::STATUS_SUPERSEDED);
         $hours = fn () => $this->withHeaders(['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])
             ->getJson('/api/v1/finance/teacher-eligibility?period=week&start=2026-08-03&end=2026-08-09&branch_id=1')
             ->assertOk()
-            ->json('teachers.0.components.weekday_afternoon.metrics.daily_coverage_hours.2026-08-03');
+            ->json('teachers.0.components.weekday_afternoon.rate');
 
-        $this->assertEquals(2.0, $hours());
+        $this->assertEquals(1.0, $hours());
 
         DB::table('schedules')->where('id', 200)->update(['status' => 'scheduled']);
-        $this->assertEquals(4.0, $hours(), 'control: scheduled 08:00-10:00 row is counted');
+        $this->assertEquals(2.0, $hours(), 'control: scheduled 08:00-10:00 row is counted');
     }
 
     public function test_busy_slots_latest_status_ignores_superseded_after_leave_marker(): void

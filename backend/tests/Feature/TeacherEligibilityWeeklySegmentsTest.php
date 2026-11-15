@@ -74,8 +74,12 @@ class TeacherEligibilityWeeklySegmentsTest extends TestCase
             '2026-08-03' => 3.17, '2026-08-04' => 4, '2026-08-05' => 4, '2026-08-06' => 2.67,
             '2026-08-07' => 6, '2026-08-08' => 10, '2026-08-09' => 2.17,
         ]);
-        // Bonus total, no base salary: 1500 cash + 4000 (the only week in view is full) + 200 一對三獎金.
-        $response->assertJsonPath('teachers.0.settlement.calculated_payout', 5700);
+        // 平日下午倍率: Mon 190 + Tue 240 + Wed 240 + Thu 160 + Fri 240 minutes before 18:00 (Friday's 18:00 lesson
+        // is past the cutoff) = 8.92 段, capped at 5%.
+        $response->assertJsonPath('teachers.0.weekly.0.metrics.weekday_early_segments', 8.92);
+        $response->assertJsonPath('teachers.0.components.weekday_afternoon.rate', 5);
+        // Bonus total, no base salary: 1500 cash + 4000 (the only week in view is full) + 200 一對三獎金 x 105%.
+        $response->assertJsonPath('teachers.0.settlement.calculated_payout', 5710);
         $response->assertJsonPath('teachers.0.settlement.calculation_status', 'calculated');
         $response->assertJsonPath('teachers.0.components.cash_adjustments.amount', 1500);
         $response->assertJsonPath('teachers.0.settlement.adjustments.1.label', '完整結算路徑測試');
@@ -83,8 +87,10 @@ class TeacherEligibilityWeeklySegmentsTest extends TestCase
         $monthResponse = $this->withHeaders($this->auth($director['token']))
             ->getJson('/api/v1/finance/teacher-eligibility?period=month&start=2026-08-01&end=2026-08-31&branch_id=1');
         $monthResponse->assertOk();
-        // The month has four more weeks and none of them is full: no 16段課獎金.
-        $monthResponse->assertJsonPath('teachers.0.settlement.calculated_payout', 1700);
+        // The month has four more weeks and none of them is full: no 16段課獎金. They have no lessons before 18:00
+        // either, so the 平日下午 rate averages to (5 + 0 + 0 + 0 + 0) / 5 = 1%: 1500 + 200 x 101%.
+        $monthResponse->assertJsonPath('teachers.0.components.weekday_afternoon.rate', 1);
+        $monthResponse->assertJsonPath('teachers.0.settlement.calculated_payout', 1702);
         $monthResponse->assertJsonPath('teachers.0.settlement.calculation_status', 'calculated');
         $monthResponse->assertJsonPath('teachers.0.components.weekly_16_segments.metrics.week_count', 5);
         $monthResponse->assertJsonPath('teachers.0.components.weekly_16_segments.metrics.qualifying_weeks', 1);
@@ -96,7 +102,7 @@ class TeacherEligibilityWeeklySegmentsTest extends TestCase
             ->getJson('/api/v1/finance/teacher-eligibility?period=week&start=2026-08-03&end=2026-08-09&branch_id=1')->assertOk();
         $short->assertJsonPath('teachers.0.components.weekly_16_segments.metrics.total_segments', 14.92);
         $short->assertJsonPath('teachers.0.components.weekly_16_segments.status', 'not_qualifies');
-        $short->assertJsonPath('teachers.0.settlement.calculated_payout', 1700);
+        $short->assertJsonPath('teachers.0.settlement.calculated_payout', 1710);
     }
 
     /** A week crossing a month end is judged whole in its Monday's month; the 4,000 needs every week full. */
