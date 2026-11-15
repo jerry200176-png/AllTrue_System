@@ -1,0 +1,13 @@
+updates:
+  - id: staff-2026-11-16-course-history-one-section
+    published_at: "2026-11-16"
+    audiences:
+      - director
+    importance: digest
+    title: 歷史課程集中查看
+    summary: 同一學生的歷史課程集中在一個區域，不再分成多組。
+    items:
+      - category: fixed
+        text: 歷史區會顯示總筆數與需留意筆數；展開後仍可查看對帳明細及原有操作，各區的新合約仍排在前面。
+    source_refs:
+      - "changelog:2026-11-16:course-history-one-section"
