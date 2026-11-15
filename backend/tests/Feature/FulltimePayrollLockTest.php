@@ -65,7 +65,11 @@ class FulltimePayrollLockTest extends TestCase
     public function test_cannot_lock_when_any_teacher_is_still_review(): void
     {
         $director = $this->createDirector(1, 'ft-review-dir@test.com');
-        $this->createTeacher(1, 'ft-review-teacher@test.com');
+        $teacherId = $this->createTeacher(1, 'ft-review-teacher@test.com');
+        // An achievement still waiting for verification leaves the teacher in review (base salary no longer does).
+        \Illuminate\Support\Facades\DB::table('teacher_payroll_achievements')->insert([
+            'teacher_id' => $teacherId, 'branch_id' => 1, 'outcome_key' => 'k', 'status' => 'pending', 'created_at' => now(), 'updated_at' => now(),
+        ]);
         $headers = ['Authorization' => "Bearer {$director['token']}", 'Accept' => 'application/json'];
 
         $report = $this->withHeaders($headers)->getJson('/api/v1/finance/teacher-eligibility?period=month&start=2026-08-01&end=2026-08-31&branch_id=1');
