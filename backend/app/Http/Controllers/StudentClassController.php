@@ -73,7 +73,7 @@ class StudentClassController extends Controller
 
     public function index(Request $request)
     {
-        $query = StudentClass::query()->with(['student', 'room.campus']);
+        $query = StudentClass::query()->with(['student', 'room.campus', 'pricingAmendments']); // pricingAmendments: one query per page for current_unit_price
         $role = $request->attributes->get('auth_role');
         $campusIds = $role === 'super_admin' ? [] : $request->attributes->get('auth_campus_ids', []);
 
@@ -210,6 +210,8 @@ class StudentClassController extends Controller
             static fn (array $diagnostic): int => (int) $diagnostic['observed_used'],
             $usageDiagnosticsByClass
         );
+        $pricingToday = app(\App\Services\StudentClassPricingService::class);
+        $todayTaipei = now('Asia/Taipei')->toDateString();
         $paidAtMap = ContractMoneyState::lastPaidAtByStudentClassIds($classIds);
         $invoiceAggMap = ContractMoneyState::invoiceAggregateByStudentClassIds($classIds);
         $monthlyPayments = app(\App\Services\MonthlyPeriodPaymentService::class)->batch(collect($classes->items()));
@@ -341,7 +343,7 @@ class StudentClassController extends Controller
             }
         }
 
-        $classes->getCollection()->transform(function ($class) use ($monthlyPayments, $courseNames, $subjectNames, $teacherNames, $userStatuses, $observedUsedByClass, $usageDiagnosticsByClass, $sessionSlotsByClassId, $contractExceptionCountByClassId, $paidAtMap, $invoiceAggMap, $pendingReportByClassId, $latestPaymentSummaryByClassId, $packageMap, $packagePlanningMap, $role, $courseStatuses, $paymentEvidence, $arCandidates) {
+        $classes->getCollection()->transform(function ($class) use ($pricingToday, $todayTaipei, $monthlyPayments, $courseNames, $subjectNames, $teacherNames, $userStatuses, $observedUsedByClass, $usageDiagnosticsByClass, $sessionSlotsByClassId, $contractExceptionCountByClassId, $paidAtMap, $invoiceAggMap, $pendingReportByClassId, $latestPaymentSummaryByClassId, $packageMap, $packagePlanningMap, $role, $courseStatuses, $paymentEvidence, $arCandidates) {
             $class->setAttribute('subject_name', $courseNames[$class->SubjectID]
                 ?? $subjectNames[$class->SubjectID]
                 ?? null);
@@ -394,6 +396,11 @@ class StudentClassController extends Controller
             $class->setAttribute('class_type', $class->ClassType ?? 'one_on_one');
             $isTutoringCourse = $class->getAttribute('class_type') === 'tutoring';
             $class->setAttribute('rate_per_30min', $class->Rate ?? 0);
+            // #4991 step 4a: the price in force today, from the resolver every bill is priced with (pricing amendments
+            // included), so the course lists show the same unit price as the bill and the slip. Display only.
+            $priceToday = $pricingToday->forDate($class, $todayTaipei);
+            $class->setAttribute('current_unit_price', $priceToday['rate']);
+            $class->setAttribute('current_unit_price_unit', $priceToday['rate_unit']);
             $class->setAttribute('total_hours', (int) ($class->TotalHours ?? 0));
             $class->setAttribute('duration_hours', $class->SessionDuration ? round($class->SessionDuration / 60, 1) : 2);
             // 固定排課多日（如 一四）：從 week + week1..week6 彙總成 days_of_week（寫入時第一日在 week，其餘在 week1..week6）
@@ -642,6 +649,10 @@ class StudentClassController extends Controller
                     $monthlyPayment = ['review_required' => false, 'review_checked' => true, 'payment_status' => 'paid'] + $monthlyPayment;
                 }
                 $class->setAttribute('monthly_payment', $monthlyPayment);
+                // #4991 step 4a: lessons held x the price in force on each lesson's date, summed by the server (the same
+                // per-lesson figures the monthly bill uses); null when a held lesson has no price. Display only.
+                $heldCharges = collect($monthlyPayment['session_review'] ?? [])->pluck('estimated_charge');
+                $class->setAttribute('held_lessons_amount', $heldCharges->contains(null) ? null : (int) $heldCharges->sum());
                 // A report is an administrative claim, not a payment for all periods.
                 // #4150: a free/gift verdict from the resolver outranks the period summary (its NT$0 period reads paid/review).
                 if ($resolved !== 'free' && !($pendingReportId !== null && count($monthlyPayment['periods']) === 1

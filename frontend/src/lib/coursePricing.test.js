@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import {
+  courseUnitPrice,
   estimateCreateCharge,
   getCourseTotalFee,
   getRateUnitDisplayLabel,
@@ -89,3 +90,25 @@ assert.equal(getCourseTotalFee({ ...hourlyCourse, charge: 10000 }), 10000, 'hour
 assert.equal(getCourseTotalFee({ ...sessionCourse, charge: 'not-a-number' }), 6000, 'malformed optional charge keeps rate fallback');
 assert.equal(getCourseTotalFee({ ...sessionCourse, charge: '' }), 6000, 'empty optional charge keeps rate fallback');
 console.error('coursePricing.test: OK');
+
+// #4991 step 4a: a course list shows the server's price in force (the one bills use), not its own reading of Rate.
+assert.deepEqual(
+  courseUnitPrice({ rate_per_30min: 2500, rate_unit: 'session', current_unit_price: 2200, current_unit_price_unit: 'session' }),
+  { price: 2200, unit: 'session' },
+  'a price change in force wins over the course rate',
+);
+assert.deepEqual(
+  courseUnitPrice({ rate_per_30min: 800, rate_unit: 'session', current_unit_price: 900, current_unit_price_unit: 'hour' }),
+  { price: 900, unit: 'hour' },
+  'the unit comes with the price',
+);
+assert.deepEqual(
+  courseUnitPrice({ rate_per_30min: 1500, rate_unit: 'hour' }),
+  { price: 1500, unit: 'hour' },
+  'an older payload falls back to the course rate and unit',
+);
+assert.deepEqual(
+  courseUnitPrice({ rate_per_30min: 1500, rate_unit: 'session', current_unit_price: 0, current_unit_price_unit: 'session' }),
+  { price: 1500, unit: 'session' },
+  'no server price is not a price of zero',
+);

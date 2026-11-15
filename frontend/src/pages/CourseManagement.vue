@@ -1480,7 +1480,7 @@ import { lockScroll, unlockScroll } from '../lib/useScrollLock';
 import { SUBJECTS, getSubjectLabel as getSubjectText } from '../lib/constants';
 import { fetchSubjectOptions } from '../lib/subjectsApi';
 import { fetchClassSessions, normalizeClassSessionsPayload, sessionViewModelPatchFromApi } from '../lib/classSessionsApi';
-import { getPerSessionFee, getCourseTotalFee, getRateUnitDisplayLabel } from '../lib/coursePricing';
+import { getPerSessionFee, getCourseTotalFee, courseUnitPrice } from '../lib/coursePricing';
 import {
   estimateMonthlyRenewalCharge,
 } from '../lib/coursePricing';
@@ -4290,11 +4290,14 @@ const formatDayTimeSlotLines = (course) => {
 const formatDayTimeSlots = (course) => formatDayTimeSlotLines(course).join('、');
 
 // 與學生管理共用單一費用邏輯（Single Source of Truth）
-const sessionPrice = (c) => getPerSessionFee(c);
+// #4991 step 4a: unit price and unit from the server's price in force (the one bills use), not the browser's own reading of Rate.
+const sessionPrice = (c) => courseUnitPrice(c).price;
+const getRateUnitDisplayLabel = (c) => (courseUnitPrice(c).unit === 'hour' ? '每小時' : '每堂');
 const totalPrice = (c) => getCourseTotalFee(c);
 // 月結制：已上堂費用 = 實際已上堂數 × 每堂費用（月結無預購堂數，用 completed count）
 const isMonthlyMode = isMonthlyPaymentType;
-const monthlyAttendedFee = (c) => Math.round(getPerSessionFee(c) * getCompletedSessionCount(c));
+// The server's sum of lessons held x the price on each lesson's date; an older payload falls back to the local estimate.
+const monthlyAttendedFee = (c) => c?.held_lessons_amount ?? Math.round(getPerSessionFee(c) * getCompletedSessionCount(c));
 
 // 備註開關（預設關閉，截圖給家長時保持乾淨）
 const showSessionNotes = ref(localStorage.getItem('cm_show_notes') === '1');

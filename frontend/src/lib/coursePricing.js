@@ -82,6 +82,18 @@ export const getRateLabel = (course) => {
   return getRateUnit(course) === 'hour' ? '每小時費用' : '單堂費用';
 };
 
+/**
+ * #4991 step 4a: the unit price a course list shows. The server's price in force today (pricing amendments included,
+ * the resolver every bill is priced with) when the payload carries it; an older payload falls back to the course rate.
+ */
+export const courseUnitPrice = (course) => {
+  const server = toNumber(course?.current_unit_price);
+  if (server != null && server > 0) {
+    return { price: Math.round(server), unit: course.current_unit_price_unit === 'hour' ? 'hour' : 'session' };
+  }
+  return { price: getPerSessionFee(course), unit: getRateUnit(course) };
+};
+
 export const getRateUnitDisplayLabel = (course) => (
   getRateUnit(course) === 'hour' ? '每小時' : '每堂'
 );
