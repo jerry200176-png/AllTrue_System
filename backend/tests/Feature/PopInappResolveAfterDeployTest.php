@@ -203,6 +203,30 @@ final class PopInappResolveAfterDeployTest extends TestCase
     }
 
     /** @dataProvider unauthorizedLoggedKinds */
+    public function test_explicit_non_bug_classification_requires_staff_review_in_a_bug_state(string $kind): void
+    {
+        $bug = $this->bug('triaged');
+        self::assertTrue(BugReportService::restateDisposition($bug, $this->admin, ['disposition' => $kind, 'github_issue_url' => $this->issueUrl()])['ok']);
+        $plan = app(InappReportResolveAfterDeployStrategy::class)->plan($this->params($bug));
+        self::assertFalse($plan['ok']);
+        self::assertContains('non_bug_requires_review', $plan['errors']);
+        self::assertSame('triaged', BugReport::query()->whereKey($bug)->value('status'));
+        self::assertSame(0, BugReportComment::query()->where('bug_report_id', $bug)->count());
+        self::assertSame(0, BugReportEvidence::query()->where('bug_report_id', $bug)->count());
+    }
+
+    public function test_explicit_bug_classification_preserves_the_existing_resolution_path(): void
+    {
+        $bug = $this->bug('triaged');
+        self::assertTrue(BugReportService::restateDisposition($bug, $this->admin, ['disposition' => 'bug', 'github_issue_url' => $this->issueUrl()])['ok']);
+        $this->allowRequester();
+        $id = $this->drafted($bug);
+        self::assertSame([$id], $this->policy->approvePending($this->service)['approved']);
+        self::assertSame('succeeded', $this->service->runApprovedLocally($id)['status']);
+        self::assertSame('resolved', BugReport::query()->whereKey($bug)->value('status'));
+    }
+
+    /** @dataProvider unauthorizedLoggedKinds */
     public function test_human_logged_kinds_outside_the_new_allowlist_cannot_ship_through_the_machine_operation(string $kind): void
     {
         $bug = $this->bug('new');
@@ -224,7 +248,7 @@ final class PopInappResolveAfterDeployTest extends TestCase
         self::assertSame('triaged', BugReport::query()->whereKey($bug)->value('status'));
         $this->allowRequester();
         $id = $this->drafted($bug); // even the valid bug retest wording must not reclassify the UX item
-        self::assertContains('logged_report_not_closed', $this->dryRunErrors($id));
+        self::assertContains('non_bug_requires_review', $this->dryRunErrors($id));
         self::assertSame(0, BugReportEvidence::query()->where('bug_report_id', $bug)->count());
         self::assertSame(2, BugReportComment::query()->where('bug_report_id', $bug)->count());
     }

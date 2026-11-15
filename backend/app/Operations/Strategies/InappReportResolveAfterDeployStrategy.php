@@ -57,8 +57,8 @@ final class InappReportResolveAfterDeployStrategy
         if (!in_array($status, self::FROM, true) && $logged === null) $errors[] = 'status_not_resolvable';
         if ($logged !== null) {
             array_push($errors, ...$this->loggedBlockers($bug, $logged, InappStandingPolicy::plannedAttributionUserId($context)));
-        } elseif (in_array(BugReportService::latestDispositionWithKind($bugId)['kind'] ?? null, InappStandingPolicy::LOGGED_DISPOSITIONS, true)) {
-            $errors[] = 'logged_report_not_closed';
+        } elseif (!in_array(BugReportService::latestDispositionWithKind($bugId)['kind'] ?? null, [null, 'bug'], true)) {
+            $errors[] = 'non_bug_requires_review';
         }
         array_push($errors, ...InappReportReplyGuard::violations($p['public_reply'], $url, $logged === null));
         // Automation never resolves a report the safety screen flags (its text or the reporter's own comments); a person handles it
@@ -117,8 +117,8 @@ final class InappReportResolveAfterDeployStrategy
 
                     return $from;
                 }
-                if (in_array(BugReportService::latestDispositionWithKind($bugId)['kind'] ?? null, InappStandingPolicy::LOGGED_DISPOSITIONS, true)) {
-                    throw new RuntimeException('inapp_resolve_logged_report_not_closed');
+                if (!in_array(BugReportService::latestDispositionWithKind($bugId)['kind'] ?? null, [null, 'bug'], true)) {
+                    throw new RuntimeException('inapp_resolve_non_bug_requires_review');
                 }
                 $note = 'pop ' . self::OPERATION . ' ' . $context['operation_id'];
                 if ($from === 'triaged') $this->step(BugReportService::changeStatus($bugId, $actor, 'in_progress', $note));

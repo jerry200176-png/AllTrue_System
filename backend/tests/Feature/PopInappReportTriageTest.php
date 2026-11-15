@@ -242,6 +242,36 @@ final class PopInappReportTriageTest extends TestCase
         $this->assertNothingWritten($bug);
     }
 
+    public static function existingNonBugKinds(): array
+    {
+        return ['duplicate' => ['duplicate'], 'not planned' => ['not_planned']];
+    }
+
+    /** @dataProvider existingNonBugKinds */
+    public function test_bug_receipt_respects_an_existing_staff_non_bug_classification(string $kind): void
+    {
+        $bug = $this->bug();
+        self::assertTrue(BugReportService::restateDisposition($bug, $this->admin, ['disposition' => $kind, 'github_issue_url' => $this->issueUrl()])['ok']);
+        $plan = app(InappReportTriageStrategy::class)->plan($this->params($bug));
+        self::assertFalse($plan['ok']);
+        self::assertContains('classification_change_requires_review', $plan['errors']);
+        self::assertSame('new', BugReport::query()->whereKey($bug)->value('status'));
+        self::assertSame(0, BugReportComment::query()->where('bug_report_id', $bug)->count());
+    }
+
+    /** @dataProvider approvedLoggedKinds */
+    public function test_logged_receipt_also_respects_a_different_existing_staff_classification(string $kind): void
+    {
+        $bug = $this->bug();
+        self::assertTrue(BugReportService::restateDisposition($bug, $this->admin, ['disposition' => 'not_planned', 'github_issue_url' => $this->issueUrl()])['ok']);
+        $plan = app(InappReportTriageStrategy::class)->plan($this->params($bug, ['disposition' => $kind,
+            'public_reply' => '已收進產品清單 ' . $this->issueUrl() . '。上線時會在這裡通知你；想補充直接回覆就會重開。']));
+        self::assertFalse($plan['ok']);
+        self::assertContains('classification_change_requires_review', $plan['errors']);
+        self::assertSame('new', BugReport::query()->whereKey($bug)->value('status'));
+        self::assertSame(0, BugReportComment::query()->where('bug_report_id', $bug)->count());
+    }
+
     /** @dataProvider unapprovedDispositions */
     public function test_unapproved_or_malformed_disposition_is_a_hard_plan_error($kind): void
     {

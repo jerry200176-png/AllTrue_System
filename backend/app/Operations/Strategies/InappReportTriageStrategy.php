@@ -55,11 +55,11 @@ final class InappReportTriageStrategy
         if ((int) $bug->getAttribute('CampusID') !== $p['campus_id']) $errors[] = 'report_outside_campus';
         // A report that is already triaged (or further) is refused, never re-answered: one receipt reply per report.
         if ($status !== self::FROM) $errors[] = 'status_not_new';
+        $priorKind = BugReportService::latestDispositionWithKind($bugId)['kind'] ?? null;
+        if ($priorKind !== null && $priorKind !== $kind) $errors[] = 'classification_change_requires_review';
         if ($kind !== self::DISPOSITION) {
             if ($p['public_reply'] !== InappReportReplyGuard::loggedReceipt($url)) $errors[] = 'logged_receipt_mismatch';
             array_push($errors, ...InappReportReplyGuard::loggedReportViolations($bug, InappStandingPolicy::plannedAttributionUserId($context)));
-        } elseif (in_array(BugReportService::latestDispositionWithKind($bugId)['kind'] ?? null, InappStandingPolicy::LOGGED_DISPOSITIONS, true)) {
-            $errors[] = 'logged_report_requires_review';
         }
         // Automation never writes to a report the safety screen flags (its text or the reporter's own comments); a person handles it
         // in the app. A comment that arrives after this plan makes the write-back proof stale, which execute() re-checks under the lock.
@@ -96,6 +96,8 @@ final class InappReportTriageStrategy
                 if (!BugReportWritebackEvidence::verify($bug, (string) $p['writeback_proof']['captured_at'], (string) $p['writeback_proof']['proof'])) {
                     throw new RuntimeException('inapp_triage_writeback_proof_stale');
                 }
+                $priorKind = BugReportService::latestDispositionWithKind($bugId)['kind'] ?? null;
+                if ($priorKind !== null && $priorKind !== $kind) throw new RuntimeException('inapp_triage_classification_change_requires_review');
                 if ($kind !== self::DISPOSITION) {
                     $errors = InappReportReplyGuard::loggedReportViolations($bug, $actor);
                     if ($p['public_reply'] !== InappReportReplyGuard::loggedReceipt($p['github_issue_url'])) $errors[] = 'logged_receipt_mismatch';
@@ -105,9 +107,6 @@ final class InappReportTriageStrategy
                     $commentId = BugReportComment::query()->where('bug_report_id', $bugId)->where('is_internal_note', false)->max('id');
 
                     return;
-                }
-                if (in_array(BugReportService::latestDispositionWithKind($bugId)['kind'] ?? null, InappStandingPolicy::LOGGED_DISPOSITIONS, true)) {
-                    throw new RuntimeException('inapp_triage_logged_report_requires_review');
                 }
                 $result = BugReportService::changeStatus($bugId, $actor, 'triaged', 'pop ' . self::OPERATION . ' ' . $context['operation_id'], [
                     'disposition' => self::DISPOSITION,
