@@ -53,10 +53,12 @@ export function weekExplanation(week) {
   else if (week?.finished === false) verdict = '還沒結束，先不判定';
   else if (week?.meets_16_segments) verdict = '達標';
 
+  // The seven dates of the week, by calendar arithmetic on the Y-m-d string itself (no clock, no time zone).
   const days = [];
-  const start = new Date(`${week?.week_start}T00:00:00Z`);
-  for (let i = 0; i < 7 && !Number.isNaN(start.getTime()); i += 1) {
-    const date = new Date(start.getTime() + i * 86400000).toISOString().slice(0, 10);
+  const [year, month, day] = String(week?.week_start || '').split('-').map(Number);
+  for (let i = 0; i < 7 && year && month && day; i += 1) {
+    const at = new Date(Date.UTC(year, month - 1, day + i));
+    const date = `${at.getUTCFullYear()}-${String(at.getUTCMonth() + 1).padStart(2, '0')}-${String(at.getUTCDate()).padStart(2, '0')}`;
     days.push(`${WEEKDAY_NAMES[i]} ${plainNumber(week?.daily_hours?.[date] ?? 0)}`);
   }
   const left = [];

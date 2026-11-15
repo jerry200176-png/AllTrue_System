@@ -198,7 +198,8 @@ class TeacherEligibilityController extends Controller
                 'weekly' => ['segments' => 0], // replaced below by the per-week result
                 // A closure week is not judged (Founder 2026-11-15): it stays out of both rates.
                 'holiday_weekend_hours' => array_column($judgedWeeks, 'weekend_hours'),
-                'holiday_waived_weeks' => count($weeklyRows) - count($judgedWeeks),
+                // Only closure weeks are waived; a week still running is simply not judged yet.
+                'holiday_waived_weeks' => count(array_filter($weeklyRows, fn ($week) => $week['metrics']['closure_dates'] !== [])),
                 'weekday_early_segments' => array_column($judgedWeeks, 'weekday_early_segments'),
                 'achievements' => $achievementByTeacher->get($teacherId, collect())->map(fn ($row) => (array) $row)->all(),
                 'deductions' => $deductionByTeacher->get($teacherId, collect())->map(fn ($row) => [

@@ -178,6 +178,26 @@ class TeacherEligibilityWeeklySegmentsTest extends TestCase
         $this->assertSame(4000, $full['amount']);
     }
 
+    /** A week still running is shown but not judged, and it is not a waived week either. */
+    public function test_weeks_still_running_are_not_judged_and_do_not_count_as_waived(): void
+    {
+        $this->travelTo(\Carbon\Carbon::parse('2026-08-05 12:00:00', 'Asia/Taipei'));
+        $director = $this->createDirector();
+        $teacher = $this->createTeacher();
+        $this->createAttendedSession($teacher->id, 'one_on_one', '2026-08-03', '10:00', 120);
+
+        $row = $this->withHeaders($this->auth($director['token']))
+            ->getJson('/api/v1/finance/teacher-eligibility?period=month&start=2026-08-01&end=2026-08-31&branch_id=1')
+            ->assertOk()->json('teachers.0');
+
+        $this->assertFalse($row['weekly'][0]['metrics']['finished']);
+        $this->assertSame(5, $row['components']['weekly_16_segments']['metrics']['unfinished_weeks']);
+        $this->assertSame('還有 5 週沒結束，結束後才判定。', $row['components']['weekly_16_segments']['reason']);
+        // No finished week and no closure: nothing to judge the 假日 rate on, so it is 0, not the full 10%.
+        $this->assertEquals(0, $row['components']['holiday_16_hours']['rate']);
+        $this->assertEquals(0, $row['components']['holiday_16_hours']['metrics']['waived_weeks']);
+    }
+
     /** 假日16小時倍率: every judged week needs 16 scheduled hours across Saturday and Sunday. */
     public function test_holiday_rate_follows_weekend_hours_on_the_calendar(): void
     {
