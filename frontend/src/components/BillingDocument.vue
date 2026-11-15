@@ -272,7 +272,6 @@ const hiddenCount = computed(() => Math.max(0, props.doc.sessions.length - MAX_S
 .slip-planning-notice {
   color: var(--slip-warn);
   background: var(--slip-warn-wash);
-  border-inline-start: 3px solid currentColor;
   padding: 10px 12px;
   font-size: var(--ds-font-size-sm);
   line-height: 1.6;
