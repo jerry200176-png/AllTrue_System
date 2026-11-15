@@ -89,6 +89,9 @@ class TriageDbReadController extends Controller
         // ordering (either would let the text be found one comparison at a time), and an exact match only against a value
         // that is itself a short ASCII code: a row holding typed text can never be singled out.
         $isCode = fn (mixed $value): bool => is_string($value) && preg_match(self::CODE_VALUE, $value) === 1;
+        // The database compares text by its collation (case, accents, trailing spaces), so a code can "equal" typed text
+        // there. Rows are kept only when the stored value is byte-for-byte one of the codes asked for.
+        $exact = [];
         foreach (self::OPERATORS as $key => $operator) {
             foreach ((array) ($data[$key] ?? []) as $column => $value) {
                 $allowed = in_array((string) $column, $numeric, true)
@@ -97,6 +100,9 @@ class TriageDbReadController extends Controller
                     return $refuse((string) $column);
                 }
                 $query->where((string) $column, $operator, $value);
+                if (in_array((string) $column, $codes, true)) {
+                    $exact[(string) $column][] = [(string) $value];
+                }
             }
         }
         foreach ((array) ($data['in'] ?? []) as $column => $values) {
@@ -107,6 +113,9 @@ class TriageDbReadController extends Controller
                 return $refuse((string) $column);
             }
             $query->whereIn((string) $column, $list);
+            if (in_array((string) $column, $codes, true)) {
+                $exact[(string) $column][] = $list;
+            }
         }
         $order = $data['order'] ?? collect($numeric)->first(fn (string $name) => strtolower($name) === 'id');
         if ($order !== null) {
@@ -117,6 +126,17 @@ class TriageDbReadController extends Controller
         }
         // ponytail: no statement timeout; the page size, the offset cap and the route's own rate limit bound the cost.
         $rows = $query->offset((int) ($data['offset'] ?? 0))->limit((int) ($data['limit'] ?? 50))->get()
+            ->filter(function (object $row) use ($exact): bool {
+                foreach ($exact as $name => $lists) {
+                    foreach ($lists as $list) {
+                        if (!in_array($row->{$name}, $list, true)) {
+                            return false;
+                        }
+                    }
+                }
+
+                return true;
+            })->values()
             ->map(function (object $row) use ($codes): array {
                 $out = (array) $row;
                 foreach ($codes as $name) {
