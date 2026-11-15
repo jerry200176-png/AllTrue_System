@@ -9,6 +9,7 @@ import {
   weightedBonusFormula,
   formatDifference,
   inputRoster,
+  attentionItems,
   recalculationSummary,
   weekExplanation,
   recalculationText,
@@ -76,6 +77,16 @@ assert.equal(weekExplanation({ week_start: '2026-10-05', total_segments: 3, near
 assert.deepEqual(inputRoster([{ teacher_id: 1, teacher_name: '甲' }], [{ teacher_id: 2, teacher_name: '乙', campus_id: 9, campus_name: '別的分校' }]).map((t) => [t.teacher_id, t.teacher_name]),
   [[1, '甲'], [2, '乙']]);
 assert.deepEqual(inputRoster(undefined, undefined), []);
+assert.deepEqual(attentionItems([
+  { teacher_id: 1, teacher_name: '甲', pending_items: [{ code: 'holiday_16_hours', label: '假日16小時倍率', reason: '倍率調整尚未完成主任確認及總部核准。' }] },
+  { teacher_id: 2, teacher_name: '乙', review_required: true },
+  { teacher_id: 3, teacher_name: '丙', settlement: { pending_items: [{ code: 'cash_adjustments', label: '現金加扣款' }] } },
+  { teacher_id: 4, teacher_name: '丁' },
+]), [
+  { key: '1-holiday_16_hours', teacherName: '甲', label: '假日16小時倍率', reason: '倍率調整尚未完成主任確認及總部核准。' },
+  { key: '2-review', teacherName: '乙', label: '待人工確認', reason: '有項目還沒確認，請看下方的資料補登與審核。' },
+  { key: '3-cash_adjustments', teacherName: '丙', label: '現金加扣款', reason: '資料尚待確認。' },
+]);
 assert.deepEqual(monthWindow('2026-08'), { start: '2026-08-01', end: '2026-08-31' });
 // 正課 150 raw + 輔導試聽 12 raw = 核薪總 20.25: the three columns add up once shown on the same scale.
 assert.equal(formatSubjectUnits(150), '18.75');

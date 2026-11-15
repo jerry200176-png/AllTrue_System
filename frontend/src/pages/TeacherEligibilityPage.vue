@@ -45,14 +45,7 @@
     <Card class="eligibility-card filters tw:gap-0 tw:p-4 tw:shadow-none">
       <div class="tw:flex tw:flex-wrap tw:items-end tw:gap-4">
         <label :class="fieldLabel">結算月份
-          <Input v-model="settlementMonth" type="month" :class="[fieldControl, 'tw:min-w-40']" @change="period = 'month'; loadData()" />
-        </label>
-        <label :class="fieldLabel">查詢層級
-          <select v-model="period" :class="[fieldControl, selectControl, 'tw:min-w-40']" @change="loadData">
-            <option value="week">本週</option>
-            <option value="month">結算月</option>
-            <option value="year">本年度</option>
-          </select>
+          <Input v-model="settlementMonth" type="month" :class="[fieldControl, 'tw:min-w-40']" @change="loadData" />
         </label>
         <label :class="[fieldLabel, 'search-label']">搜尋老師
           <Input v-model.trim="search" placeholder="姓名" :class="[fieldControl, 'tw:min-w-56']" />
@@ -72,9 +65,21 @@
       </div>
     </Alert>
     <template v-else>
+      <!-- What blocks this month's lock comes first; everything the system could work out by itself is not listed. -->
+      <Card v-if="attention.length" class="eligibility-card tw:gap-0 tw:border-[var(--ds-warning)] tw:p-4 tw:shadow-none" data-testid="eligibility-attention">
+        <h3 class="tw:text-tpl-list tw:font-semibold">需要你處理（{{ attention.length }}）</h3>
+        <p class="tw:mt-1 tw:text-tpl-caption tw:text-tpl-secondary">這些處理完，這個月才能鎖定。其他的系統都算好了。</p>
+        <ul class="tw:mt-2 tw:flex tw:flex-col tw:divide-y tw:divide-border">
+          <li v-for="item in attention" :key="item.key" class="tw:flex tw:flex-wrap tw:items-center tw:gap-x-3 tw:gap-y-1 tw:py-2.5">
+            <strong class="tw:whitespace-nowrap">{{ item.teacherName }}</strong>
+            <span class="tw:min-w-0 tw:flex-1 tw:basis-48 tw:text-[length:var(--tpl-text-body)] tw:text-pretty">{{ item.label }}：{{ item.reason }}</span>
+            <Button type="button" variant="outline" :class="[ctrlButton, 'tw:h-11']" @click="search = item.teacherName">只看這位</Button>
+          </li>
+        </ul>
+      </Card>
       <div class="summary-grid tw:grid tw:grid-cols-2 tw:gap-3 tw:min-[901px]:grid-cols-4">
         <Card :class="summaryCard"><span :class="summaryLabel">老師總數</span><strong :class="summaryValue">{{ filteredTeachers.length }}</strong></Card>
-        <Card :class="summaryCard"><span :class="summaryLabel">符合獎金項目</span><strong :class="[summaryValue, 'tw:text-[var(--ds-success)]']">{{ qualifyingCount }}</strong></Card>
+        <Card :class="summaryCard"><span :class="summaryLabel">獎金合計總額</span><strong :class="[summaryValue, 'tw:text-[var(--ds-success)]']">{{ formatMoney(payoutTotal) }}</strong></Card>
         <Card :class="summaryCard"><span :class="summaryLabel">待人工確認</span><strong :class="[summaryValue, 'tw:text-[var(--ds-warning)]']">{{ reviewCount }}</strong></Card>
         <Card :class="summaryCard"><span :class="summaryLabel">有扣除案件</span><strong :class="[summaryValue, 'tw:text-destructive']">{{ deductionCount }}</strong></Card>
       </div>
@@ -183,7 +188,7 @@
       <Card v-else class="tw:items-center tw:gap-2 tw:py-10 tw:text-center tw:shadow-none" role="status">
         <UserX class="tw:size-8 tw:text-tpl-secondary" :stroke-width="1.75" aria-hidden="true" />
         <p class="tw:px-5 tw:text-tpl-list tw:font-semibold">查詢期間沒有符合條件的正職老師</p>
-        <p class="tw:px-5 tw:text-tpl-body tw:text-tpl-secondary">請調整結算月份、查詢層級或老師搜尋條件後再試。</p>
+        <p class="tw:px-5 tw:text-tpl-body tw:text-tpl-secondary">請調整結算月份或老師搜尋條件後再試。</p>
       </Card>
       <div class="tw:[&_.eligibility-input-panel_button]:min-h-11 tw:[&_.eligibility-input-panel_select]:min-h-11 tw:[&_.eligibility-input-panel_input]:min-h-11 tw:[&_.eligibility-input-panel_textarea]:min-h-11">
         <TeacherEligibilityInputPanel
@@ -212,6 +217,7 @@ import { Table, TableBody, TableCaption, TableCell, TableHead, TableHeader, Tabl
 import { fetchTeacherEligibility, lockFulltimePayroll, reopenFulltimePayroll, exportFulltimePayrollCsv } from '../lib/teacherEligibilityApi.js';
 import TeacherEligibilityInputPanel from '../components/TeacherEligibilityInputPanel.vue';
 import {
+  attentionItems,
   formatMoney,
   inputRoster,
   formatPct,
@@ -228,7 +234,6 @@ import { humanizeApiErrorMessage } from '../lib/humanizeApiErrorMessage.js';
 const ctrlButton = 'tw:h-12 tw:px-4 tw:text-[length:var(--tpl-text-body)] tw:font-semibold tw:shadow-none';
 const fieldLabel = 'tw:flex tw:flex-col tw:gap-1.5 tw:text-tpl-caption tw:text-tpl-secondary';
 const fieldControl = 'tw:h-12 tw:rounded-lg tw:border-border tw:bg-card tw:px-3 tw:text-[length:var(--tpl-text-body)] tw:text-foreground tw:shadow-none';
-const selectControl = 'tw:border tw:outline-none tw:focus-visible:ring-3 tw:focus-visible:ring-ring/50';
 const summaryCard = 'tw:gap-1.5 tw:p-4 tw:shadow-none';
 const summaryLabel = 'tw:text-tpl-caption tw:text-tpl-secondary';
 const summaryValue = 'tw:block tw:text-3xl tw:tabular-nums';
@@ -251,7 +256,6 @@ const props = defineProps({
   branchId: { type: [Number, String], default: null },
   userRole: { type: String, default: '' },
 });
-const period = ref('month');
 const now = new Date();
 const settlementMonth = ref(`${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`);
 const search = ref('');
@@ -280,10 +284,9 @@ const lockLabel = computed(() => (isLocked.value ? '已鎖定結算單' : '草�
 const filteredTeachers = computed(() => teachers.value.filter(teacher => !search.value || teacher.teacher_name.includes(search.value)));
 const recalculationNote = computed(() => recalculationSummary(teachers.value));
 const reviewCount = computed(() => filteredTeachers.value.filter(t => t.review_required).length);
-const qualifyingCount = computed(() => filteredTeachers.value.filter((teacher) => componentOptions.some((item) => {
-  const component = teacher.components?.[item.key];
-  return component?.status === 'qualifies' && (Number(component.rate) > 0 || Number(component.amount) > 0);
-})).length);
+const attention = computed(() => attentionItems(teachers.value));
+// Draft rows are left out: a total that mixes final and trial amounts would look more certain than it is.
+const payoutTotal = computed(() => filteredTeachers.value.reduce((sum, teacher) => sum + (isDraft(teacher) ? 0 : Number(teacher.settlement?.total_payout || 0)), 0));
 const deductionCount = computed(() => filteredTeachers.value.filter(t => Number(t.components?.deductions?.rate || 0) < 0).length);
 
 function visibleMultiplierParts(teacher) {
@@ -362,9 +365,9 @@ async function loadData() {
   const thisLoad = ++loadNumber;
   loading.value = true; error.value = '';
   try {
-    const range = period.value === 'month' ? monthWindow(settlementMonth.value) : {};
+    const range = monthWindow(settlementMonth.value);
     const data = await fetchTeacherEligibility({
-      period: period.value,
+      period: 'month',
       branchId: props.branchId,
       start: range.start,
       end: range.end,

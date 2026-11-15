@@ -1,0 +1,18 @@
+updates:
+  - id: staff-2026-11-15-fulltime-page-attention
+    published_at: "2026-11-15"
+    audiences:
+      - director
+      - super_admin
+    importance: major
+    title: 正職薪資先看待處理
+    summary: 正職薪資要件頁最上面會列出需要你處理的項目，處理完就能鎖定。
+    items:
+      - category: added
+        text: 清單寫出哪位老師、哪一項、為什麼；按「只看這位」表格只留那位老師。
+      - category: improved
+        text: 這頁固定看一個結算月，不用再切換本週或本年度。
+      - category: improved
+        text: 上方摘要改成顯示這個月的獎金合計總額。
+    source_refs:
+      - "changelog:2026-11-15:fulltime-page-attention"

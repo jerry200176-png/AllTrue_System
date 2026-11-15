@@ -145,6 +145,30 @@ describe('TeacherEligibilityPage on the template', () => {
     expect(wrapper.find('.desktop-table').text()).not.toContain('舊分校的老師');
   });
 
+  it('lists what needs handling first, and narrows the table to one teacher on request', async () => {
+    fetchMock.mockImplementation(async () => json(payload({ teachers: [
+      teacher(),
+      teacher({ teacher_id: 702, teacher_name: '測試老師乙', overall_status: 'review', review_required: true,
+        pending_items: [{ code: 'holiday_16_hours', label: '假日16小時倍率', reason: '倍率調整尚未完成主任確認及總部核准。' }] }),
+    ] })));
+    await mountPage();
+    const attention = wrapper.find('[data-testid="eligibility-attention"]');
+    expect(attention.text()).toContain('需要你處理（1）');
+    expect(attention.text()).toContain('測試老師乙');
+    expect(attention.text()).toContain('假日16小時倍率：倍率調整尚未完成主任確認及總部核准。');
+    expect(wrapper.find('select').exists()).toBe(false); // the page is always one settlement month
+    await attention.find('button').trigger('click');
+    expect(wrapper.findAll('.desktop-table tbody tr')).toHaveLength(1);
+    expect(wrapper.find('.desktop-table').text()).toContain('測試老師乙');
+  });
+
+  it('shows no list when nothing needs handling', async () => {
+    fetchMock.mockImplementation(async () => json(payload({ teachers: [teacher()] })));
+    await mountPage();
+    expect(wrapper.find('[data-testid="eligibility-attention"]').exists()).toBe(false);
+    expect(wrapper.find('.summary-grid').text()).toContain('$36,000');
+  });
+
   it('names the teachers another campus settles this month', async () => {
     fetchMock.mockImplementation(async () => json(payload({ settled_elsewhere: [{ teacher_id: 703, teacher_name: '測試老師丙', campus_id: 9, campus_name: '測試分校' }] })));
     await mountPage();
