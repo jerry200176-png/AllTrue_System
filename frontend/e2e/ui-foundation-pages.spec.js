@@ -1340,7 +1340,8 @@ for (const scenario of [
     await expect(page.locator('.course-row')).toHaveCount(2);
     await page.locator('.history-section__toggle').click();
     const cards = page.locator('.course-row, .history-course-card');
-    expect(await cards.evaluateAll((rows) => rows.map((row) => Number(row.getAttribute('data-contract-id'))))).toEqual([50, 40, 30]);
+    // #559: pending reconciliation stays working, before the single history collection.
+    expect(await cards.evaluateAll((rows) => rows.map((row) => Number(row.getAttribute('data-contract-id'))))).toEqual([50, 30, 40]);
     const primaryRow = page.locator('.course-row').filter({ has: page.locator('[data-course-id="50"]') });
     for (const field of await primaryRow.locator('[data-col], .cell-actions').all()) {
       await field.scrollIntoViewIfNeeded();
