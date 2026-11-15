@@ -1,0 +1,14 @@
+updates:
+  - id: staff-2026-11-15-student-course-overview
+    published_at: "2026-11-15"
+    audiences:
+      - director
+      - super_admin
+    importance: digest
+    title: 學生課程摘要看得更清楚
+    summary: 展開學生後，可先看課程數與共用堂數，再切換要處理的課程。
+    items:
+      - category: fixed
+        text: 課程摘要、學生備註與切換列會隨字級設定放大，並改善手機及深色模式的閱讀。
+    source_refs:
+      - "changelog:2026-11-15-student-course-overview"

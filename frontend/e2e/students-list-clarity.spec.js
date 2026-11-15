@@ -331,16 +331,24 @@ test.describe('Students List width acceptance', () => {
 });
 
 test.describe('In-App #367 shared-pool ownership', () => {
-  for (const width of [390, 1440]) {
-    test(`shows a pool once and no balance on member cards @${width}`, async ({ page }) => {
+  for (const { width, overused = false } of [{ width: 390 }, { width: 1440 }, { width: 390, overused: true }]) {
+    test(`shows a pool once and no balance on member cards @${width}${overused ? ' overused dark' : ''}`, async ({ page }, testInfo) => {
       const requests = [];
       const courses = ['English', 'Science'].map((subject, index) => ({
         id: 7001 + index, student_id: 2001, subject, subject_name: index ? '自然' : '英文',
         payment_type: 'session', status: 'active', class_type: 'one_on_three',
-        payment_status: 'unpaid', PackageID: 9000, package_total_sessions: 25,
-        package_remaining_sessions: 25, package_used_sessions: 0,
+        payment_status: 'unpaid', PackageID: 9000, package_total_sessions: overused ? 16 : 25,
+        package_remaining_sessions: overused ? 0 : 25, package_used_sessions: overused ? 17 : 0,
         sessions_purchased: 99, remaining_sessions: 99,
       }));
+      if (overused) await page.addInitScript(() => {
+        const apply = () => {
+          document.documentElement.classList.add('dark');
+          document.documentElement.setAttribute('data-theme', 'dark');
+        };
+        if (document.documentElement) apply();
+        else document.addEventListener('DOMContentLoaded', apply, { once: true });
+      });
       const sessions = courses.flatMap((course) => Array.from({ length: 25 }, (_, i) => ({
         id: course.id * 100 + i, student_class_id: course.id, student_id: 2001,
         session_date: `2026-10-${String(i + 1).padStart(2, '0')}`,
@@ -358,6 +366,10 @@ test.describe('In-App #367 shared-pool ownership', () => {
       });
       await page.setViewportSize({ width, height: 900 });
       await page.goto('/pilot-mount.html?page=students');
+      if (overused) {
+        await expect(page.locator('html')).toHaveClass(/dark/);
+        await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
+      }
       await page.locator('[data-testid="student-name-cell"]').click();
       const cards = page.locator('.student-course-card');
       await expect(cards).toHaveCount(2);
@@ -367,9 +379,15 @@ test.describe('In-App #367 shared-pool ownership', () => {
       const poolBounds = await pool.boundingBox();
       expect(poolBounds.x).toBeGreaterThanOrEqual(0);
       expect(poolBounds.x + poolBounds.width).toBeLessThanOrEqual(width);
-      await expect(pool.getByTestId('package-remaining')).toHaveText('25');
-      await expect(pool.getByTestId('package-total')).toHaveText('25');
-      await expect(pool.getByTestId('package-used')).toHaveText('0');
+      await expect(pool.getByTestId('package-remaining')).toHaveText(overused ? '0' : '25');
+      await expect(pool.getByTestId('package-total')).toHaveText(overused ? '16' : '25');
+      await expect(pool.getByTestId('package-used')).toHaveText(overused ? '17' : '0');
+      if (overused) {
+        await expect(pool.getByTestId('package-overused')).toContainText('已使用超出方案 1 堂');
+        const scan = await new AxeBuilder({ page }).include('.student-package-summary').withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa']).analyze();
+        expect(scan.violations.filter(v => ['serious', 'critical'].includes(v.impact))).toEqual([]);
+        await pool.screenshot({ path: testInfo.outputPath('overused-dark.png') });
+      } else await expect(pool.getByTestId('package-overused')).toHaveCount(0);
       for (const card of await cards.all()) {
         await expect(card.locator('.student-course-card__progress')).toHaveCount(0);
         await expect(card.getByRole('progressbar')).toHaveCount(0);
@@ -386,7 +404,7 @@ test.describe('In-App #367 shared-pool ownership', () => {
       }
       expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
       expect(requests.every((request) => request.method === 'GET')).toBe(true);
-      await page.screenshot({ path: `/tmp/inapp367-shared-pool-${width}.png`, fullPage: true });
+      await page.screenshot({ path: `/tmp/inapp367-shared-pool-${width}${overused ? '-overused-dark' : ''}.png`, fullPage: true });
     });
   }
 });
