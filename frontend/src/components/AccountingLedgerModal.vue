@@ -431,7 +431,7 @@ function paymentHasReceipt(p) {
 }
 function paymentReceiptReason(p) {
   if (p.is_void || p.report_status === 'voided') return '已撤銷，不提供有效收據';
-  if (p.report_status === 'pending') return '待核對入帳，尚無收據';
+  if (p.report_status === 'pending') return `${REPORT_STATUS_LABELS.pending}，尚無收據`;
   if (p.report_status === 'rejected') return '回報已退回，不提供收據';
   return '這筆收款未連結收據';
 }

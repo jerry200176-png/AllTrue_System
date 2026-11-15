@@ -44,7 +44,7 @@ describe('#4148 bill-linked receipt lookup', () => {
     const { wrapper: w } = await open();
     try {
       const text = w.get('[data-testid="ledger-invoice-payments-502"]').text();
-      expect(text).toContain('待核對入帳，尚無收據');
+      expect(text).toContain('待確認入帳，尚無收據');
       expect(text).toContain('已撤銷，不提供有效收據');
       expect(text).toContain('未連結收據');
     } finally { w.unmount(); }
