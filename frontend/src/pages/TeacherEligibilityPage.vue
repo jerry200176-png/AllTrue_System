@@ -110,19 +110,8 @@
               <TableCell :class="[bodyCell, 'tw:tabular-nums']">{{ formatMoney(teacher.settlement?.subject_count_bonus) }}</TableCell>
               <TableCell :class="[bodyCell, 'tw:tabular-nums']">{{ formatMoney(teacher.settlement?.one_to_three_bonus) }}</TableCell>
               <TableCell :class="[bodyCell, 'multiplier-cell tw:min-w-[150px]']">
-                <template v-if="editingMultiplierId === teacher.teacher_id">
-                  <Input v-model.number="multiplierDraft" type="number" min="0" max="300" step="0.01" :class="multiplierInput" aria-label="手動教師倍率" />
-                  <Button variant="outline" :class="smallButton" :disabled="savingMultiplier" @click="saveMultiplier(teacher)">存</Button>
-                  <Button variant="outline" :class="smallButton" @click="editingMultiplierId = null">取消</Button>
-                </template>
-                <template v-else>
-                  <strong>{{ formatPct(teacher.settlement?.multiplier_pct) }}</strong>
-                  <small v-if="teacher.settlement?.manual_multiplier_pct != null" :class="smallText">手動總倍率</small>
-                  <small v-if="teacher.pending_salary?.manual_multiplier_pct != null" :class="smallText">待核准 {{ formatPct(teacher.pending_salary.manual_multiplier_pct) }}</small>
-                  <small v-for="part in visibleMultiplierParts(teacher)" :key="part.key" :class="smallText">{{ part.label }} {{ formatPct(part.pct) }}</small>
-                  <Button v-if="!isLocked" variant="outline" :class="smallButton" @click="startEditMultiplier(teacher)">改</Button>
-                  <Button v-if="isHq && teacher.pending_salary?.manual_multiplier_pct != null && !isLocked" variant="outline" :class="smallButton" :disabled="savingMultiplier" @click="approveMultiplier(teacher)">核准倍率</Button>
-                </template>
+                <strong>{{ formatPct(teacher.settlement?.multiplier_pct) }}</strong>
+                <small v-for="part in visibleMultiplierParts(teacher)" :key="part.key" :class="smallText">{{ part.label }} {{ formatPct(part.pct) }}</small>
               </TableCell>
               <TableCell :class="bodyCell">
                 <strong class="tw:tabular-nums">{{ formatMoney(teacher.settlement?.weighted_bonus_amount) }}</strong>
@@ -164,19 +153,7 @@
           <div :class="componentRow"><span>核薪總科目數</span><span :class="componentValue">{{ formatSubjects(teacher.settlement?.payroll_subject_count) }}</span></div>
           <div :class="componentRow"><span>科目數獎金</span><span :class="[componentValue, 'tw:tabular-nums']">{{ formatMoney(teacher.settlement?.subject_count_bonus) }}</span></div>
           <div :class="componentRow"><span>一對三獎金</span><span :class="[componentValue, 'tw:tabular-nums']">{{ formatMoney(teacher.settlement?.one_to_three_bonus) }}</span></div>
-          <div :class="componentRow"><span>教師倍率</span><span :class="componentValue">
-            <template v-if="editingMultiplierId === teacher.teacher_id">
-              <Input v-model.number="multiplierDraft" type="number" min="0" max="300" step="0.01" :class="multiplierInput" aria-label="手動教師倍率" />
-              <Button variant="outline" :class="smallButton" :disabled="savingMultiplier" @click="saveMultiplier(teacher)">存</Button>
-              <Button variant="outline" :class="smallButton" @click="editingMultiplierId = null">取消</Button>
-            </template>
-            <template v-else>
-              {{ formatPct(teacher.settlement?.multiplier_pct) }}
-              <small v-if="teacher.pending_salary?.manual_multiplier_pct != null" :class="smallText">待核准 {{ formatPct(teacher.pending_salary.manual_multiplier_pct) }}</small>
-              <Button v-if="!isLocked" variant="outline" :class="smallButton" @click="startEditMultiplier(teacher)">改</Button>
-              <Button v-if="isHq && teacher.pending_salary?.manual_multiplier_pct != null && !isLocked" variant="outline" :class="smallButton" :disabled="savingMultiplier" @click="approveMultiplier(teacher)">核准倍率</Button>
-            </template>
-          </span></div>
+          <div :class="componentRow"><span>教師倍率</span><span :class="componentValue">{{ formatPct(teacher.settlement?.multiplier_pct) }}</span></div>
           <div :class="componentRow"><span>倍率後獎金</span><span :class="[componentValue, 'tw:tabular-nums']">{{ formatMoney(teacher.settlement?.weighted_bonus_amount) }}</span></div>
           <div :class="[componentRow, 'total-cell']"><span>獎金合計</span><strong class="tw:tabular-nums tw:text-[var(--ds-primary-text)]">{{ formatMoney(teacher.settlement?.total_payout) }}</strong></div>
           <div :class="[componentRow, 'weekly-segment-row']">
@@ -226,7 +203,7 @@ import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Table, TableBody, TableCaption, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { fetchTeacherEligibility, saveTeacherMultiplierProfile, approveTeacherSalaryProfile, lockFulltimePayroll, reopenFulltimePayroll, exportFulltimePayrollCsv } from '../lib/teacherEligibilityApi.js';
+import { fetchTeacherEligibility, lockFulltimePayroll, reopenFulltimePayroll, exportFulltimePayrollCsv } from '../lib/teacherEligibilityApi.js';
 import TeacherEligibilityInputPanel from '../components/TeacherEligibilityInputPanel.vue';
 import {
   formatMoney,
@@ -239,11 +216,9 @@ import {
 import { humanizeApiErrorMessage } from '../lib/humanizeApiErrorMessage.js';
 
 const ctrlButton = 'tw:h-12 tw:px-4 tw:text-[length:var(--tpl-text-body)] tw:font-semibold tw:shadow-none';
-const smallButton = 'tw:mr-1 tw:mt-1 tw:h-11 tw:px-3 tw:text-tpl-caption tw:font-semibold tw:shadow-none';
 const fieldLabel = 'tw:flex tw:flex-col tw:gap-1.5 tw:text-tpl-caption tw:text-tpl-secondary';
 const fieldControl = 'tw:h-12 tw:rounded-lg tw:border-border tw:bg-card tw:px-3 tw:text-[length:var(--tpl-text-body)] tw:text-foreground tw:shadow-none';
 const selectControl = 'tw:border tw:outline-none tw:focus-visible:ring-3 tw:focus-visible:ring-ring/50';
-const multiplierInput = 'tw:mr-1 tw:h-11 tw:w-24 tw:px-2 tw:text-[length:var(--tpl-text-body)] tw:shadow-none';
 const summaryCard = 'tw:gap-1.5 tw:p-4 tw:shadow-none';
 const summaryLabel = 'tw:text-tpl-caption tw:text-tpl-secondary';
 const summaryValue = 'tw:block tw:text-3xl tw:tabular-nums';
@@ -277,9 +252,6 @@ const periodWindow = ref({ start: '', end: '' });
 const policyVersion = ref('115.07');
 const branchSubjectTotal = ref(0);
 const lockState = ref({ status: 'draft' });
-const editingMultiplierId = ref(null);
-const multiplierDraft = ref(100);
-const savingMultiplier = ref(false);
 const componentOptions = [
   { key: 'weekly_16_segments', label: '每週16段' },
   { key: 'holiday_16_hours', label: '假日16小時' },
@@ -364,45 +336,6 @@ async function reopenMonth() {
     await loadData();
   } catch (e) {
     error.value = humanizeApiErrorMessage(e?.message, '重開失敗');
-  }
-}
-
-function startEditMultiplier(teacher) {
-  editingMultiplierId.value = teacher.teacher_id;
-  multiplierDraft.value = Number(teacher.settlement?.manual_multiplier_pct ?? teacher.settlement?.multiplier_pct ?? 100);
-}
-
-async function saveMultiplier(teacher) {
-  savingMultiplier.value = true;
-  try {
-    const saved = await saveTeacherMultiplierProfile({
-      teacher_id: teacher.teacher_id,
-      branch_id: props.branchId || null,
-      manual_multiplier_pct: multiplierDraft.value,
-      effective_from: periodWindow.value.start || `${settlementMonth.value}-01`,
-    });
-    editingMultiplierId.value = null;
-    await loadData();
-    if (saved?.status === 'pending') {
-      error.value = '教師倍率已送出，待總部核准後才會改結算金額。';
-    }
-  } catch (e) {
-    error.value = humanizeApiErrorMessage(e?.message, '教師倍率儲存失敗');
-  } finally {
-    savingMultiplier.value = false;
-  }
-}
-
-async function approveMultiplier(teacher) {
-  if (!teacher.pending_salary?.id) return;
-  savingMultiplier.value = true;
-  try {
-    await approveTeacherSalaryProfile(teacher.pending_salary.id);
-    await loadData();
-  } catch (e) {
-    error.value = humanizeApiErrorMessage(e?.message, '教師倍率核准失敗');
-  } finally {
-    savingMultiplier.value = false;
   }
 }
 

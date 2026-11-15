@@ -162,14 +162,12 @@ class TeacherEligibilityController extends Controller
         $cashByTeacher = $cashRows->groupBy('teacher_id');
         $cashSourceAvailable = Schema::hasTable('teacher_payroll_cash_adjustments');
         $allowanceSourceAvailable = Schema::hasTable('teacher_payroll_admin_allowances');
-        $pendingSalaryByTeacher = $this->pendingSalaryByTeacher($teacherIds, null);
         // Payroll subject counts are company/teacher scoped. The selected
         // campus only controls which teachers are listed; it must never
         // partition a teacher's cross-campus subject inputs.
         $subjectUnitsByTeacher = $this->globalSubjectUnitsByTeacher($teacherIds, $effectiveStart, $period['end']);
-        $manualMultiplierByTeacher = $this->manualMultiplierByTeacher($teacherIds, null, $period['end']->toDateString());
 
-        $rows = $teachers->map(function ($teacher) use ($period, $effectiveStart, $weeks, $closureDates, $lessonsByTeacher, $achievementByTeacher, $deductionByTeacher, $allowanceByTeacher, $cashByTeacher, $cashSourceAvailable, $allowanceSourceAvailable, $pendingSalaryByTeacher, $subjectUnitsByTeacher, $manualMultiplierByTeacher) {
+        $rows = $teachers->map(function ($teacher) use ($period, $effectiveStart, $weeks, $closureDates, $lessonsByTeacher, $achievementByTeacher, $deductionByTeacher, $allowanceByTeacher, $cashByTeacher, $cashSourceAvailable, $allowanceSourceAvailable, $subjectUnitsByTeacher) {
             $teacherId = (int) $teacher->id;
             $weeklyRows = [];
             foreach ($weeks as [$weekStart, $weekEnd]) {
@@ -233,10 +231,8 @@ class TeacherEligibilityController extends Controller
             $result = $this->finalizePolicyResult($result['components']);
             $settlement = FulltimeSettlementComposer::compose(
                 $result['components'],
-                is_array($subjectUnits) ? $subjectUnits : null,
-                $manualMultiplierByTeacher[$teacherId] ?? null
+                is_array($subjectUnits) ? $subjectUnits : null
             );
-            $settlement['manual_multiplier_pct'] = $manualMultiplierByTeacher[$teacherId] ?? null;
 
             return [
                 'teacher_id' => $teacherId,
@@ -248,7 +244,6 @@ class TeacherEligibilityController extends Controller
                 'work_hours_source' => 'schedule',
                 'missing_fields' => $result['missing_fields'],
                 'review_required' => $result['overall_status'] === TeacherEligibilityPolicy::REVIEW || $settlement['review_required'],
-                'pending_salary' => $pendingSalaryByTeacher[$teacherId] ?? null,
                 'calculation_status' => $settlement['calculation_status'],
                 'calculated_payout' => $settlement['calculated_payout'],
                 'pending_items' => $settlement['pending_items'],
@@ -581,48 +576,6 @@ class TeacherEligibilityController extends Controller
                 'payroll_raw_total' => $payrollRawTotal,
             ]];
         })->all();
-    }
-
-    private function manualMultiplierByTeacher(array $teacherIds, ?array $branchFilter, string $onDate): array
-    {
-        if (!Schema::hasTable('fulltime_salary_profiles') || !Schema::hasColumn('fulltime_salary_profiles', 'manual_multiplier_pct') || $teacherIds === []) {
-            return [];
-        }
-
-        return DB::table('fulltime_salary_profiles')
-            ->whereIn('teacher_id', $teacherIds)
-            ->where('status', 'approved')
-            ->whereNotNull('manual_multiplier_pct')
-            ->where('effective_from', '<=', $onDate)
-            ->orderBy('effective_from')->orderBy('id')
-            ->get(['teacher_id', 'manual_multiplier_pct'])
-            ->groupBy('teacher_id')
-            ->map(fn ($rows) => (float) $rows->last()->manual_multiplier_pct)
-            ->all();
-    }
-
-    /**
-     * @return array<int, array{id:int,branch_id:int|null,manual_multiplier_pct:float|null,effective_from:string}>
-     */
-    private function pendingSalaryByTeacher(array $teacherIds, ?array $branchFilter): array
-    {
-        if (!Schema::hasTable('fulltime_salary_profiles') || $teacherIds === []) {
-            return [];
-        }
-
-        return DB::table('fulltime_salary_profiles')
-            ->whereIn('teacher_id', $teacherIds)
-            ->where('status', 'pending')
-            ->orderBy('id')
-            ->get(['id', 'teacher_id', 'branch_id', 'manual_multiplier_pct', 'effective_from'])
-            ->groupBy('teacher_id')
-            ->map(fn ($rows) => [
-                'id' => (int) $rows->last()->id,
-                'branch_id' => $rows->last()->branch_id === null ? null : (int) $rows->last()->branch_id,
-                'manual_multiplier_pct' => $rows->last()->manual_multiplier_pct === null ? null : (float) $rows->last()->manual_multiplier_pct,
-                'effective_from' => (string) $rows->last()->effective_from,
-            ])
-            ->all();
     }
 
     private function clockMinutes($value): ?int

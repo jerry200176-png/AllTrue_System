@@ -14,7 +14,7 @@ namespace App\Support;
  */
 final class FulltimeSettlementComposer
 {
-    public static function compose(array $components, ?array $subjectUnits = null, ?float $manualMultiplierPct = null): array
+    public static function compose(array $components, ?array $subjectUnits = null): array
     {
         $subjectUnits ??= [];
         $subjectMetrics = $components['subject_count_bonus']['metrics'] ?? [];
@@ -36,7 +36,7 @@ final class FulltimeSettlementComposer
         $multiplierComplete = true;
         foreach ($rateComponents as $key => $label) {
             $component = $components[$key] ?? null;
-            if ($manualMultiplierPct === null && $component !== null && $component['status'] === 'review') {
+            if ($component !== null && $component['status'] === 'review') {
                 $multiplierComplete = false;
                 $pendingItems[] = self::pendingItem($key, $label, $component);
                 continue;
@@ -47,12 +47,6 @@ final class FulltimeSettlementComposer
         }
         if ($subjectCount !== null) $multiplierPct += $subjectCountRate;
         $multiplierParts[] = ['key' => 'subject_count_threshold', 'label' => '科目數20科倍率', 'pct' => $subjectCountRate];
-        if ($manualMultiplierPct !== null) {
-            $multiplierPct = $manualMultiplierPct;
-            $multiplierComplete = true;
-            $multiplierParts = [['key' => 'manual_teacher_multiplier', 'label' => '手動教師總倍率', 'pct' => $manualMultiplierPct]];
-        }
-
         // Backer floors the weighted bonus at the parity boundary.
         $weightedBonus = floor(round(($rawSubjectBonus + $rawOneToThreeBonus) * ($multiplierPct / 100.0), 8));
         $weeklyComponent = $components['weekly_16_segments'] ?? null;

@@ -118,13 +118,10 @@ describe('TeacherEligibilityPage on the template', () => {
     expect(labels()).toContain('重開結算');
   });
 
-  it('multiplier edit opens a named input and cancel closes it', async () => {
+  it('the teacher multiplier is read-only: no hand-entered total', async () => {
     await mountPage();
-    const edit = wrapper.findAll('.desktop-table .multiplier-cell button').find((b) => b.text() === '改');
-    await edit.trigger('click');
-    expect(wrapper.find('.desktop-table input[aria-label="手動教師倍率"]').exists()).toBe(true);
-    await wrapper.findAll('.desktop-table .multiplier-cell button').find((b) => b.text() === '取消').trigger('click');
-    expect(wrapper.find('.desktop-table input[aria-label="手動教師倍率"]').exists()).toBe(false);
+    expect(wrapper.find('.desktop-table .multiplier-cell').text()).toContain('%');
+    expect(wrapper.findAll('.desktop-table .multiplier-cell button')).toHaveLength(0);
   });
 
   it('has no axe violations (colour contrast is checked in the browser spec)', async () => {

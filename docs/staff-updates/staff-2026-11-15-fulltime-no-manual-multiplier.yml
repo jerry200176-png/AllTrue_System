@@ -1,0 +1,18 @@
+updates:
+  - id: staff-2026-11-15-fulltime-no-manual-multiplier
+    published_at: "2026-11-15"
+    audiences:
+      - director
+      - super_admin
+    importance: major
+    title: 教師倍率不再手動輸入
+    summary: 教師倍率改由各項自動加總，不能再手動輸入總倍率；已鎖定的月份不變。
+    items:
+      - category: action_required
+        text: 以前手動填的總倍率，在還沒鎖定的月份不再套用，鎖定前請看一下金額。
+      - category: improved
+        text: 要調整假日或平日下午倍率，請用行政加給表單裡的倍率調整，會留下原因。
+      - category: fixed
+        text: 手動總倍率不會再一直帶到之後每個月。
+    source_refs:
+      - "changelog:2026-11-15:fulltime-remove-manual-multiplier"
