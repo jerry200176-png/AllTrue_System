@@ -142,6 +142,22 @@ export function multiplierBreakdown(settlement) {
     .map((part, index) => `${part.label} ${index > 0 && Number(part.pct) > 0 ? '+' : ''}${Number(part.pct)}%`).join('、');
 }
 
+/** The 教師倍率 as a figure; 「—」 while a part of it still awaits confirmation (the settlement sends null then). */
+export function multiplierValue(settlement) {
+  return settlement?.multiplier_pct == null ? '—' : `${Number(settlement.multiplier_pct)}%`;
+}
+
+/** Said next to an unconfirmed 教師倍率: the trial rate the draft amount was worked out with. */
+export function multiplierPendingNote(settlement) {
+  if (settlement?.multiplier_pct != null || settlement?.known_multiplier_pct == null) return '';
+  return `還有項目沒確認，先用 ${Number(settlement.known_multiplier_pct)}% 試算`;
+}
+
+/** The 加扣款 lines. The settlement lists the 16 段課 bonus among them; the page gives that bonus its own line. */
+export function cashAdjustments(settlement) {
+  return (settlement?.adjustments || []).filter((item) => item.label !== '16段課');
+}
+
 /** Nothing on the calendar and nothing to pay or settle: the teacher needs no look this month. */
 export function hasNoLessons(teacher) {
   const segments = Number(teacher?.components?.weekly_16_segments?.metrics?.total_segments || 0);

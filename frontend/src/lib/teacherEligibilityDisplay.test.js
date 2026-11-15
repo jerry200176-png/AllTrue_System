@@ -10,6 +10,9 @@ import {
   formatDifference,
   inputRoster,
   attentionItems,
+  cashAdjustments,
+  multiplierPendingNote,
+  multiplierValue,
   hasNoLessons,
   multiplierBreakdown,
   teacherSummaryLine,
@@ -99,6 +102,14 @@ assert.equal(teacherSummaryLine({ settlement: { payroll_subject_count: 3 }, comp
 assert.equal(teacherSummaryLine({}), '科目數 — 科');
 assert.equal(multiplierBreakdown({ multiplier_parts: [{ label: '基本', pct: 100 }, { label: '假日', pct: 0 }, { label: '平日下午', pct: 2.94 }, { label: '扣除', pct: -10 }] }), '基本 100%、平日下午 +2.94%、扣除 -10%');
 assert.equal(multiplierBreakdown(undefined), '');
+// An unconfirmed multiplier stays unknown; the trial rate is said beside it, not shown as the figure.
+assert.equal(multiplierValue({ multiplier_pct: 105 }), '105%');
+assert.equal(multiplierValue({ multiplier_pct: null, known_multiplier_pct: 103 }), '—');
+assert.equal(multiplierPendingNote({ multiplier_pct: null, known_multiplier_pct: 103 }), '還有項目沒確認，先用 103% 試算');
+assert.equal(multiplierPendingNote({ multiplier_pct: 105, known_multiplier_pct: 105 }), '');
+// The 16 段課 bonus has its own line, so it is not repeated among the 加扣款 lines.
+assert.deepEqual(cashAdjustments({ adjustments: [{ label: '16段課', amount: 4000 }, { label: '代班補貼', amount: 1500 }] }), [{ label: '代班補貼', amount: 1500 }]);
+assert.deepEqual(cashAdjustments(undefined), []);
 assert.equal(hasNoLessons({ settlement: { total_payout: 0 }, components: weekly({ total_segments: 0 }) }), true);
 assert.equal(hasNoLessons({ settlement: { total_payout: 0 }, components: weekly({ total_segments: 3 }) }), false);
 assert.equal(hasNoLessons({ settlement: { total_payout: 500 }, components: weekly({ total_segments: 0 }) }), false);

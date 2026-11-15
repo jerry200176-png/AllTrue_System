@@ -183,6 +183,21 @@ describe('TeacherEligibilityPage on the template', () => {
     expect(wrapper.find('.summary-grid').text()).toContain('$36,000');
   });
 
+  it('the breakdown adds up: the 16 段課 bonus appears once, and an unconfirmed multiplier stays unknown', async () => {
+    const paid = teacher();
+    paid.settlement = { ...paid.settlement, weekly_segment_bonus_amount: 4000, adjustments: [{ label: '16段課', amount: 4000 }, { label: '代班補貼', amount: 500 }] };
+    const pending = teacher({ teacher_id: 702, teacher_name: '測試老師乙', review_required: true });
+    pending.settlement = { ...pending.settlement, multiplier_pct: null, known_multiplier_pct: 103 };
+    fetchMock.mockImplementation(async () => json(payload({ teachers: [paid, pending] })));
+    await mountPage();
+    const [first, second] = wrapper.findAll('.teacher-card');
+    expect(first.text().match(/\$4,000/g)).toHaveLength(1);
+    expect(first.text()).not.toContain('16段課');
+    expect(first.text()).toContain('代班補貼+$500');
+    expect(second.find('.multiplier-cell').text()).toContain('—');
+    expect(second.find('.multiplier-cell').text()).toContain('還有項目沒確認，先用 103% 試算');
+  });
+
   it('folds away teachers with no lesson and nothing to pay', async () => {
     const idle = teacher({ teacher_id: 704, teacher_name: '測試老師丁' });
     idle.settlement = { ...idle.settlement, total_payout: 0 };
