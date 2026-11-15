@@ -55,6 +55,7 @@ final class AuthenticateTriageToken
         $attachmentId = $request->route('attachmentId');
         $queryBugId = $request->query('bug_report_id');
         $billingSubject = $isBilling ? ['subject_type' => 'student_class'] : []; // later key wins: the path id is a contract
+        $dbTable = $request->route('table'); // triage/db/{table}: which table was read (a table name, never a row id or a value)
         SecurityAuditEvent::append('triage_token.read', $outcome, [
             'actor_type' => 'triage_token',
             'actor_id' => $tokenId,
@@ -65,6 +66,7 @@ final class AuthenticateTriageToken
             'attachment_ref' => SecurityAuditEvent::ref('bug_report_attachment', is_numeric($attachmentId) ? (int) $attachmentId : null),
             'bug_report_ref' => $isBilling && is_numeric($queryBugId) ? SecurityAuditEvent::ref('bug_report', (int) $queryBugId) : null,
             'route' => $route instanceof Route ? (string) $route->getName() : '',
+            ...(is_string($dbTable) && preg_match('/\A[A-Za-z0-9_]{1,64}\z/', $dbTable) === 1 ? ['source' => $dbTable] : []),
             'method' => $request->method(),
             'client_ip_ref' => SecurityAuditEvent::ref('ip', $request->ip()),
             'http_status' => $status,
