@@ -953,6 +953,11 @@ class AlertController extends Controller
             'campus_name'      => $campus->name ?? '',
             'subject'          => $subject,
             'schedule_mode'    => $mode,
+            // Planning metadata only: never cap dates or change payable amounts on a slip read (#548).
+            'sessions_purchased' => (int) ($sc->SessionCount ?? 0),
+            'package_id' => $sc->PackageID,
+            'scheduling_policy' => (string) ($sc->scheduling_policy ?? 'auto_recurrence'),
+            'deduction_basis' => $sc->deduction_basis,
             'remaining_sessions' => $remaining,
             'period_sessions' => $billing['period_sessions'],
             'billing_period_start' => $billing['period_start'],

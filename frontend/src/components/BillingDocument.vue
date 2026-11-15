@@ -63,6 +63,9 @@
       <p class="slip-pass-note">代收款由補習班代為收取轉付，不屬於學費</p>
     </section>
 
+    <p v-if="doc.planning_notice" class="slip-planning-notice" data-testid="slip-planning-notice" role="note">
+      {{ doc.planning_notice }}
+    </p>
     <section v-if="doc.sessions.length" class="slip-sessions">
       <div class="slip-section-title">
         {{ doc.session_title || '本期上課日期' }}
@@ -266,6 +269,13 @@ const hiddenCount = computed(() => Math.max(0, props.doc.sessions.length - MAX_S
 }
 .slip-chip--done { color: var(--slip-done); background: var(--slip-done-wash); border-color: transparent; }
 .slip-session-list { list-style: none; margin: 0; padding: 0; }
+.slip-planning-notice {
+  color: var(--slip-warn);
+  background: var(--slip-warn-wash);
+  padding: 10px 12px;
+  font-size: var(--ds-font-size-sm);
+  line-height: 1.6;
+}
 .slip-session-list li {
   display: flex;
   align-items: center;

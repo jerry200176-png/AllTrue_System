@@ -6,6 +6,54 @@ import BillingDocument from '../BillingDocument.vue';
 import { paymentSlipView, formatSessionDate, statusTone, isDone, STATUS_ZH } from '../../lib/billingDocumentView.js';
 
 describe('paymentSlipView', () => {
+  // In-app #548: transferred history and future bookings can exceed the
+  // purchased quota. Explain that mismatch without hiding dates or billing it.
+  const overplanned = {
+    student_class_id: 9, student_name: '測試', subject: '英文', schedule_mode: 'count',
+    sessions_purchased: 8, remaining_sessions: 4, deduction_basis: 'fixed_session',
+    scheduling_policy: 'auto_recurrence', package_id: null, estimated_amount: 8000,
+    sessions: Array.from({ length: 12 }, (_, i) => ({
+      class_session_id: i + 1, date: `2026-11-${String(i + 1).padStart(2, '0')}`,
+      status: i < 4 ? 'attended' : 'scheduled', start_time: '13:00', end_time: '15:00',
+    })),
+  };
+
+  it('explains overplanning on the exported document and preserves all dates and the estimate', () => {
+    const doc = paymentSlipView(overplanned);
+    const w = mount(BillingDocument, { props: { doc } });
+    const notice = w.get('[data-testid="slip-planning-notice"]');
+    expect(notice.text()).toContain('已超出購買堂數 4 堂');
+    expect(notice.text()).toContain('購買 8 堂');
+    expect(notice.text()).toContain('明細有 12 堂會占用額度');
+    expect(doc.sessions).toEqual(overplanned.sessions);
+    expect(doc.amount).toBe(8000);
+    expect(w.findAll('.slip-session-list li')).toHaveLength(12);
+  });
+
+  it('does not count leave or cancellation as extra purchased lessons', () => {
+    const doc = paymentSlipView({ ...overplanned, sessions: overplanned.sessions.map((s, i) =>
+      i >= 8 ? { ...s, status: ['leave', 'excused', 'leave_adjusted', 'cancelled'][i - 8] } : s) });
+    expect(mount(BillingDocument, { props: { doc } }).find('[data-testid="slip-planning-notice"]').exists()).toBe(false);
+    expect(doc.sessions).toHaveLength(12);
+  });
+
+  it('keeps the canonical outstanding amount when an owing invoice exists beside the course', () => {
+    const doc = paymentSlipView({ ...overplanned, payable_status: 'invoiced', payable_amount: 8000, payable_outstanding: 3000 });
+    expect(doc.planning_notice).toContain('已超出購買堂數 4 堂');
+    expect(doc.amount).toBe(3000);
+    expect(doc.amount_label).toBe('尚欠金額');
+    expect(doc.sessions).toEqual(overplanned.sessions);
+  });
+
+  it.each([
+    { schedule_mode: 'date' }, { package_id: 7 },
+    { scheduling_policy: 'manual_occurrence' }, { deduction_basis: 'actual_duration' },
+    { sessions_purchased: undefined }, { invoice_id: 12, items: [] },
+  ])('does not infer a per-course fixed-session warning for %j', (overrides) => {
+    const doc = paymentSlipView({ ...overplanned, ...overrides });
+    expect(mount(BillingDocument, { props: { doc } }).find('[data-testid="slip-planning-notice"]').exists()).toBe(false);
+  });
+
   it('invoice slip: partial balance, service period and filename', () => {
     const v = paymentSlipView({
       invoice_id: 1623, student_name: '測試', status: 'partial', remaining: 3600, total_amount: 6600, paid_amount: 3000,

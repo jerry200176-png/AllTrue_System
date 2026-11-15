@@ -1,5 +1,20 @@
 // View models for BillingDocument.vue (payment slip + receipt) and the small
 // formatters it shares. Pure functions: no DOM, no fetch.
+import { buildSessionPlanningStatus } from './sessionPlanningStatus.js';
+import { rowOccupiesPurchasedQuota } from './sessionOccurrenceFilter.js';
+
+function paymentSlipPlanningNotice(raw) {
+  // Clock-duration entitlement cannot be compared to a number of date rows.
+  if (raw.deduction_basis === 'actual_duration') return null;
+  const sessions = raw.sessions || [];
+  const planning = buildSessionPlanningStatus({
+    course: raw,
+    effectiveCount: sessions.filter(row => rowOccupiesPurchasedQuota(row)).length,
+    hasAnySessionRows: sessions.length > 0,
+  });
+  if (planning?.code !== 'over_quota') return null;
+  return `${planning.title}。購買 ${planning.counts.purchased} 堂，明細有 ${planning.counts.courseScheduled} 堂會占用額度；請先核對課程安排。`;
+}
 
 export function formatAmount(n) {
   return 'NT$ ' + Number(n || 0).toLocaleString('zh-TW');
@@ -140,6 +155,7 @@ export function paymentSlipView(raw) {
     note: raw.note,
     // Count-mode payloads list the whole course, not one billing period.
     session_title: raw.schedule_mode === 'date' ? '本期上課日期' : '課程明細',
+    planning_notice: paymentSlipPlanningNotice(raw),
     sessions: raw.sessions || [],
     footer_note: SLIP_FOOTER,
     generated_on: generatedOn,
