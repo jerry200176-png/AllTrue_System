@@ -1,5 +1,101 @@
 // @ts-check
 import { test, expect } from '@playwright/test';
+import AxeBuilder from '@axe-core/playwright';
+
+// #544 / #4989 slice 3: exercise recovery and retained rows, not only an empty-page scan.
+for (const width of [375, 1536]) for (const [size, pixels, theme] of [
+  ['standard', 17, 'light'], ['medium', 18, 'light'], ['large', 19, 'light'], ['standard', 17, 'dark'],
+]) {
+  test(`544 student-list states recover at ${size}/${theme} @${width}`, async ({ page }, info) => {
+    const errors = [];
+    const writes = [];
+    page.on('pageerror', error => errors.push(error.message));
+    await page.setViewportSize({ width, height: width === 1536 ? 784 : 800 });
+    await page.emulateMedia({ colorScheme: theme, reducedMotion: 'reduce' });
+    await page.addInitScript(({ size, theme }) => {
+      localStorage.setItem('alltrue_text_size', size);
+      const apply = () => {
+        document.documentElement.classList.toggle('dark', theme === 'dark');
+        document.documentElement.setAttribute('data-theme', theme);
+      };
+      if (document.documentElement) apply();
+      else document.addEventListener('DOMContentLoaded', apply, { once: true });
+    }, { size, theme });
+    let mode = 'hold';
+    let release;
+    let gate = new Promise(resolve => { release = resolve; });
+    const rows = [
+      { id: 2000, name: '合成學生甲', grade: 'J1', status: 'active' },
+      { id: 2001, name: '合成甲乙', grade: 'J1', status: 'active' },
+    ];
+    await page.route('**/*', async route => {
+      const request = route.request();
+      const url = new URL(request.url());
+      if (url.origin !== new URL(info.project.use.baseURL).origin) return route.abort();
+      if (!url.pathname.startsWith('/api/')) return route.continue();
+      if (request.method() !== 'GET') { writes.push(request.method()); return route.abort(); }
+      if (url.pathname !== '/api/v1/students') return route.fulfill({ json: { data: [], total: 0 } });
+      if (url.searchParams.get('per_page') === '1') return route.fulfill({ json: { data: [], total: 2 } });
+      if (mode === 'hold') await gate;
+      if (mode === 'fail') return route.fulfill({ status: 503, json: { message: 'Synthetic unavailable' } });
+      return route.fulfill({ json: { data: mode === 'empty' ? [] : rows, total: mode === 'empty' ? 0 : 2, last_page: 1 } });
+    });
+    const card = page.getByTestId('students-list-card');
+    const capture = async state => {
+      await info.attach(`student-states-${width}-${size}-${theme}-${state}`, { body: await card.screenshot({ animations: 'disabled' }), contentType: 'image/png' });
+      expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
+      if (size === 'standard') {
+        const { violations } = await new AxeBuilder({ page }).include('[data-testid="students-list-card"]').withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa']).analyze();
+        expect(violations.filter(v => ['serious', 'critical'].includes(v.impact)).map(v => ({ rule: v.id, targets: v.nodes.map(n => n.target) }))).toEqual([]);
+      }
+    };
+    await page.goto('/pilot-mount.html?page=students', { waitUntil: 'domcontentloaded' });
+    const loading = page.locator('.students-list-state--loading');
+    await expect(loading).toHaveAttribute('role', 'status');
+    await expect(loading).toHaveAttribute('aria-busy', 'true');
+    await expect(loading.getByText('正在載入學生清單…', { exact: true })).toHaveCSS('font-size', `${pixels}px`);
+    expect(await loading.locator('[data-slot="skeleton"]').count()).toBeGreaterThan(0);
+    await expect(loading.locator('[data-slot="skeleton"]').first()).toHaveCSS('animation-name', 'none');
+    await expect(page.getByTestId('student-row')).toHaveCount(0);
+    await capture('loading');
+    mode = 'fail'; release();
+    const error = page.locator('.students-list-state--error');
+    await expect(error).toHaveAttribute('role', 'alert');
+    await expect(error).toContainText('學生清單暫時無法載入');
+    await expect(error.getByText('請檢查網路連線後再試。', { exact: true })).toHaveCSS('font-size', `${pixels}px`);
+    await capture('error');
+    mode = 'rows';
+    const retry = error.getByRole('button', { name: '重試', exact: true });
+    expect((await retry.boundingBox()).height).toBeGreaterThanOrEqual(44);
+    await retry.focus(); await retry.press('Enter');
+    await expect(page.getByTestId('student-row')).toHaveCount(2);
+    mode = 'hold'; gate = new Promise(resolve => { release = resolve; });
+    await page.locator('#students-name-filter').fill('合成');
+    const refresh = page.locator('.students-refresh-state');
+    await expect(refresh).toContainText('正在更新學生清單…');
+    await expect(refresh).toHaveAttribute('role', 'status');
+    await expect(page.getByTestId('student-row')).toHaveCount(2);
+    mode = 'fail'; release();
+    await expect(refresh).toContainText('更新失敗，仍顯示上次成功載入的學生資料。');
+    await expect(refresh).toHaveAttribute('aria-live', 'polite');
+    await expect(page.getByTestId('student-row')).toHaveCount(2);
+    await capture('stale-error');
+    mode = 'rows'; await refresh.getByRole('button', { name: '重試', exact: true }).click();
+    await expect(refresh).toHaveCount(0);
+    mode = 'empty'; await page.goto('/pilot-mount.html?page=students');
+    await expect(card).toContainText('目前沒有進行中的學生/課程');
+    await capture('empty');
+    await page.locator('#students-name-filter').fill('不存在');
+    await expect(card).toContainText('找不到符合條件的學生');
+    const clear = card.getByRole('button', { name: '清除篩選', exact: true });
+    expect((await clear.boundingBox()).height).toBeGreaterThanOrEqual(44);
+    await clear.focus(); await clear.press('Enter');
+    await expect(page.locator('#students-name-filter')).toHaveValue('');
+    await expect(card).toContainText('目前沒有進行中的學生/課程');
+    expect(errors).toEqual([]);
+    expect(writes).toEqual([]);
+  });
+}
 
 // #4331: use the existing enrollment prompt once, then open the existing renewal.
 test.describe('one existing entry for renewal (#429)', () => {

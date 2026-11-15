@@ -1,0 +1,14 @@
+updates:
+  - id: staff-2026-11-15-student-list-states
+    published_at: "2026-11-15"
+    audiences:
+      - director
+      - super_admin
+    importance: digest
+    title: 學生名單載入與重試更清楚
+    summary: 載入、網路失敗與空白清單的文字會跟著字級調整，操作方式維持原樣。
+    items:
+      - category: improved
+        text: 更新失敗時，仍可查看上次載入的名單，並按「重試」重新載入。
+    source_refs:
+      - "changelog:2026-11-15:student-list-states"

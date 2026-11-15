@@ -66,24 +66,36 @@
       </SelectionBar>
 
       <!-- Student Table -->
-      <div v-if="studentsLoading && !studentsLoaded" class="students-list-state students-list-state--loading" role="status" aria-live="polite">
-        <span class="material-symbols-outlined" aria-hidden="true">progress_activity</span>
-        <strong>正在載入學生清單…</strong>
-        <span>資料準備好後會顯示本分校學生。</span>
-      </div>
-      <div v-else-if="!displayStudents.length && studentsLoadError" class="students-list-state students-list-state--error" role="alert">
-        <span class="material-symbols-outlined" aria-hidden="true">cloud_off</span>
-        <strong>學生清單暫時無法載入</strong>
-        <span>{{ studentsLoadError }}</span>
-        <AtButton shape="rect" variant="secondary" class="students-list-state__action" @click="loadStudents">重試</AtButton>
-      </div>
-      <div v-else-if="displayStudents.length" class="table-scroll-wrap tw:@container tw:lg:overflow-x-auto" :aria-busy="studentsLoading ? 'true' : 'false'">
-        <div v-if="studentsLoading || studentsLoadError" class="students-refresh-state" :class="{ 'students-refresh-state--error': studentsLoadError }" role="status" aria-live="polite">
-          <span class="material-symbols-outlined" aria-hidden="true">{{ studentsLoadError ? 'cloud_off' : 'sync' }}</span>
-          <span v-if="studentsLoadError">更新失敗，仍顯示上次成功載入的學生資料。</span>
-          <span v-else>正在更新學生清單…</span>
-          <AtButton shape="rect" variant="secondary" class="students-refresh-state__action" @click="loadStudents">重試</AtButton>
+      <div v-if="studentsLoading && !studentsLoaded" class="students-list-state students-list-state--loading" role="status" aria-live="polite" aria-busy="true">
+        <div class="tw:flex tw:flex-col tw:gap-1 tw:px-4 tw:py-4">
+          <strong class="tw:text-tpl-body tw:font-semibold">正在載入學生清單…</strong>
+          <span :class="dataTable.sub">資料準備好後會顯示本分校學生。</span>
         </div>
+        <div aria-hidden="true">
+          <div v-for="n in 3" :key="n" class="tw:grid tw:min-h-[6em] tw:grid-cols-[1fr_auto] tw:items-center tw:gap-4 tw:border-t tw:border-border tw:px-4 tw:py-4 tw:md:max-lg:min-h-[11.5em] tw:lg:min-h-[4em] tw:lg:grid-cols-[2fr_1fr_1fr]">
+            <div class="tw:flex tw:flex-col tw:gap-2">
+              <Skeleton class="tw:h-5 tw:w-32 tw:motion-reduce:animate-none" />
+              <Skeleton class="tw:h-4 tw:w-20 tw:motion-reduce:animate-none" />
+            </div>
+            <Skeleton class="tw:hidden tw:h-4 tw:w-24 tw:motion-reduce:animate-none tw:lg:block" />
+            <Skeleton class="tw:h-11 tw:w-11 tw:justify-self-end tw:rounded-full tw:motion-reduce:animate-none" />
+          </div>
+        </div>
+      </div>
+      <Alert v-else-if="!displayStudents.length && studentsLoadError" tone="danger" title="學生清單暫時無法載入" class="students-list-state students-list-state--error tw:rounded-none tw:border-0 tw:p-5">
+        <div class="tw:flex tw:flex-col tw:items-start tw:gap-3 tw:text-tpl-body">
+          <span>{{ studentsLoadError }}</span>
+          <Button type="button" variant="outline" :class="[control.row, 'students-list-state__action tw:text-foreground tw:transition-colors tw:motion-reduce:transition-none']" @click="loadStudents">重試</Button>
+        </div>
+      </Alert>
+      <div v-else-if="displayStudents.length" class="table-scroll-wrap tw:@container tw:lg:overflow-x-auto" :aria-busy="studentsLoading ? 'true' : 'false'">
+        <Alert v-if="studentsLoading || studentsLoadError" :tone="studentsLoadError ? 'danger' : 'info'" class="students-refresh-state tw:rounded-none tw:border-x-0 tw:border-t-0" :class="{ 'students-refresh-state--error': studentsLoadError }" role="status" aria-live="polite">
+          <div class="tw:flex tw:flex-wrap tw:items-center tw:gap-3 tw:text-tpl-body">
+            <span v-if="studentsLoadError" class="tw:min-w-0 tw:flex-1">更新失敗，仍顯示上次成功載入的學生資料。</span>
+            <span v-else class="tw:min-w-0 tw:flex-1">正在更新學生清單…</span>
+            <Button type="button" variant="outline" :class="[control.row, 'students-refresh-state__action tw:shrink-0 tw:text-foreground tw:transition-colors tw:motion-reduce:transition-none']" @click="loadStudents">重試</Button>
+          </div>
+        </Alert>
       <table data-guide="students-table" :class="[dataTable.table, dataTable.stackTable, 'tw:w-full tw:border-collapse']" aria-label="學生清單">
         <thead :class="dataTable.stackBody">
           <tr :class="['tw:max-lg:grid tw:max-lg:bg-muted tw:md:max-lg:px-4', gridCols]">
@@ -560,32 +572,23 @@
         </tbody>
       </table>
       </div>
-      <AtEmpty
-        v-else-if="!hasStudentBranch"
-        icon="domain"
-        title="請先選擇分校"
-        description="選擇分校後，這裡會顯示該分校的學生資料。"
-      />
-      <AtEmpty
-        v-else-if="hasStudentFilters"
-        icon="search_off"
-        title="找不到符合條件的學生"
-        description="請調整搜尋或篩選條件，或清除篩選查看全部在學學生。"
-      >
-        <template #action>
-          <AtButton shape="rect" variant="ghost" @click="clearStudentFilters">清除篩選</AtButton>
-        </template>
-      </AtEmpty>
-      <AtEmpty
-        v-else
-        icon="school"
-        :title="showHistoricalCourses ? '目前無學生資料' : '目前沒有進行中的學生/課程'"
-        :description="showHistoricalCourses ? '請點擊「新增學生」或匯入 CSV。' : '可切換「顯示已結業/歷史課程」查看歷史資料。'"
-      >
-        <template #action>
-          <AtButton shape="rect" variant="primary" icon="add" @click="openAddStudent">新增學生</AtButton>
-        </template>
-      </AtEmpty>
+      <div v-else-if="!hasStudentBranch" class="tw:flex tw:flex-col tw:items-center tw:gap-3 tw:px-5 tw:py-8 tw:text-center">
+        <Building2 :size="24" class="tw:text-tpl-secondary" aria-hidden="true" />
+        <h3 class="tw:text-tpl-body tw:font-semibold">請先選擇分校</h3>
+        <p :class="dataTable.sub">選擇分校後，這裡會顯示該分校的學生資料。</p>
+      </div>
+      <div v-else-if="hasStudentFilters" class="tw:flex tw:flex-col tw:items-center tw:gap-3 tw:px-5 tw:py-8 tw:text-center">
+        <SearchX :size="24" class="tw:text-tpl-secondary" aria-hidden="true" />
+        <h3 class="tw:text-tpl-body tw:font-semibold">找不到符合條件的學生</h3>
+        <p :class="dataTable.sub">請調整搜尋或篩選條件，或清除篩選查看全部在學學生。</p>
+        <Button type="button" variant="ghost" :class="[control.row, 'tw:text-foreground tw:transition-colors tw:motion-reduce:transition-none']" @click="clearStudentFilters">清除篩選</Button>
+      </div>
+      <div v-else class="tw:flex tw:flex-col tw:items-center tw:gap-3 tw:px-5 tw:py-8 tw:text-center">
+        <GraduationCap :size="24" class="tw:text-tpl-secondary" aria-hidden="true" />
+        <h3 class="tw:text-tpl-body tw:font-semibold">{{ showHistoricalCourses ? '目前無學生資料' : '目前沒有進行中的學生/課程' }}</h3>
+        <p :class="dataTable.sub">{{ showHistoricalCourses ? '請點擊「新增學生」或匯入 CSV。' : '可切換「顯示已結業/歷史課程」查看歷史資料。' }}</p>
+        <Button type="button" variant="outline" :class="[control.row, 'tw:text-foreground tw:transition-colors tw:motion-reduce:transition-none']" @click="openAddStudent"><Plus :size="20" aria-hidden="true" />新增學生</Button>
+      </div>
       </div>
     </div>
 
@@ -1053,9 +1056,9 @@ import { Button } from '../components/ui/button';
 import { FilterChip, PageHeader, SelectionBar, StatusBadge, control, dataTable, pageShell, rowAction, surface, toneBadge } from '../components/ui/page';
 import { Checkbox } from '../components/ui/checkbox';
 import ActionMenu from '../components/ActionMenu.vue';
-import { ChevronDown, Download, FileUp, GraduationCap, Merge, Plus, Search, StickyNote, Trash2 } from 'lucide-vue-next';
-import AtButton from '../components/design-system/AtButton.vue';
-import AtEmpty from '../components/design-system/AtEmpty.vue';
+import { Building2, ChevronDown, Download, FileUp, GraduationCap, Merge, Plus, Search, SearchX, StickyNote, Trash2 } from 'lucide-vue-next';
+import { Alert } from '../components/ui/alert';
+import { Skeleton } from '../components/ui/skeleton';
 import SchoolNameInput from '../components/SchoolNameInput.vue';
 import SchoolMergePanel from '../components/SchoolMergePanel.vue';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '../components/ui/dialog';
@@ -3777,50 +3780,6 @@ table th { font-size: 12.5px; }
   color: var(--danger) !important;
 }
 
-.students-list-state,
-.students-refresh-state {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  color: var(--ds-ink-mute);
-  font-size: 13px;
-}
-.students-list-state {
-  flex-direction: column;
-  align-items: flex-start;
-  padding: 24px 16px;
-  border: 1px dashed var(--ds-hairline);
-  border-radius: var(--ds-radius-md, 6px);
-  background: var(--ds-surface-0, var(--ds-canvas-soft));
-}
-.students-list-state strong { color: var(--ds-ink); font-size: 14px; }
-.students-list-state .material-symbols-outlined { color: var(--ds-primary-text); }
-.students-list-state--error .material-symbols-outlined,
-.students-refresh-state--error .material-symbols-outlined { color: var(--ds-danger); }
-.students-list-state__action,
-.students-refresh-state__action {
-  border: 1px solid var(--ds-cta);
-  border-radius: 6px;
-  background: transparent;
-  color: var(--ds-cta);
-  font: inherit;
-  font-weight: 700;
-  cursor: pointer;
-}
-.students-list-state__action { margin-top: 4px; padding: 7px 12px; }
-.students-refresh-state {
-  min-height: 36px;
-  padding: 6px 12px;
-  border-bottom: 1px solid var(--ds-hairline);
-  background: var(--ds-canvas-soft);
-}
-.students-refresh-state__action { margin-left: auto; padding: 4px 9px; font-size: 12px; }
-.students-list-state__action:hover,
-.students-refresh-state__action:hover { background: var(--ds-primary-wash); }
-.students-list-state__action:focus-visible,
-.students-refresh-state__action:focus-visible { outline: 3px solid var(--ds-info-wash); outline-offset: 2px; }
-
-
 /* paused 對應 ds-warning；graduated 藍、transferred 紫無 ds token，維持 raw。 */
 
 .students-page .at-btn,
@@ -3829,10 +3788,6 @@ table th { font-size: 12.5px; }
 }
 .students-page .at-icon-btn {
   min-width: var(--ds-control-height-touch, 44px);
-}
-.students-page .students-list-state__action,
-.students-page .students-refresh-state__action {
-  min-height: var(--ds-control-height-touch, 44px);
 }
 .icon-btn {
   display: inline-flex !important;
