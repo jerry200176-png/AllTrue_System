@@ -611,8 +611,11 @@ class BillingController extends Controller
                 'stored_amount' => (int) $item->Amount,
                 'period_start' => $itemPeriodStart,
                 'period_end'   => $itemPeriodEnd,
-                // 單價 (Founder 2026-11-16): the billed course's rate, for display beside the amount.
-                ...($itemCourse instanceof StudentClass ? $itemCourse->slipUnitPrice() : ['unit_price' => null, 'unit_price_unit' => 'session']),
+                // 單價 (Founder 2026-11-16), display only: the price of the course this line bills, over the line's dates.
+                // A line with no course of its own on a bill of several lines gets none.
+                ...(($lineCourse = $item->getRelationValue('studentClass') ?? ($invoice->items->count() === 1 ? $invoice->getRelationValue('studentClass') : null)) instanceof StudentClass
+                    ? app(\App\Services\StudentClassPricingService::class)->slipUnitPrice($lineCourse, $itemPeriodStart ? (string) $itemPeriodStart : null, $itemPeriodEnd ? (string) $itemPeriodEnd : null)
+                    : ['unit_price' => null, 'unit_price_unit' => 'session']),
             ];
         });
 

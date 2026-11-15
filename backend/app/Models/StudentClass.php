@@ -356,21 +356,6 @@ class StudentClass extends Model
     }
 
     /**
-     * 單價 as printed on a payment slip (Founder 2026-11-16): display only, no amount is derived from it. A shared
-     * package is priced by the package, not by whichever member course was opened; null when no rate is set.
-     *
-     * @return array{unit_price: float|null, unit_price_unit: string}
-     */
-    public function slipUnitPrice(): array
-    {
-        $package = $this->isPartOfPackage() ? CoursePackage::query()->find($this->PackageID) : null;
-        $rate = (float) ($package instanceof CoursePackage ? $package->getAttribute('rate') : ($this->isPartOfPackage() ? 0 : $this->Rate));
-        $unit = (string) ($package instanceof CoursePackage ? $package->getAttribute('rate_unit') : $this->rate_unit);
-
-        return ['unit_price' => $rate > 0 ? $rate : null, 'unit_price_unit' => $unit === 'hour' ? 'hour' : 'session'];
-    }
-
-    /**
      * Non-financial effective-paid predicate for display, alerts, dunning, and notifications.
      *
      * A course is effectively paid if:

@@ -55,6 +55,13 @@ describe('paymentSlipView', () => {
     ]));
     expect(text).toContain('1. ');
     expect(text).toContain('13:00');
+    expect(text).not.toContain('英文 已到課'); // one subject: not repeated on every date
+
+    const two = slipPlainText(paymentSlipView({ ...overplanned, sessions: [
+      { ...overplanned.sessions[0], subject: '英文' }, { ...overplanned.sessions[1], subject: '數學' },
+    ] }));
+    expect(two).toMatch(/1\. .*英文/);
+    expect(two).toMatch(/2\. .*數學/);
   });
 
   it('#548 labels count-mode history as records without changing dates or money', () => {

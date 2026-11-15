@@ -35,6 +35,16 @@ class StudentClassPricingAmendmentTest extends TestCase
         $this->assertSame(2, $summary['period_sessions']);
         $this->assertSame(4950, $summary['charge']);
         $this->assertSame(2200, (int) DB::table('StudentClass')->where('ID', $course->ID)->value('Rate'));
+
+        // 單價 on a payment slip follows the price in force over the slip's dates, not the untouched course Rate.
+        $pricing = app(\App\Services\StudentClassPricingService::class);
+        $this->assertSame(['unit_price' => 2750, 'unit_price_unit' => 'session'], $pricing->slipUnitPrice($course, '2026-08-05', '2026-08-31'));
+        $this->assertSame(['unit_price' => 2200, 'unit_price_unit' => 'session'], $pricing->slipUnitPrice($course, '2026-07-01', '2026-07-31'));
+        // A slip whose dates span the change has no single price to print.
+        $this->assertNull($pricing->slipUnitPrice($course, '2026-08-01', '2026-08-31')['unit_price']);
+        // No price set at all: no 單價.
+        DB::table('StudentClass')->where('ID', $course->ID)->update(['Rate' => 0]);
+        $this->assertNull(app(\App\Services\StudentClassPricingService::class)->slipUnitPrice($course->fresh(), '2026-07-01', '2026-07-31')['unit_price']);
     }
 
     public function test_voided_amendment_falls_back_to_legacy_rate(): void

@@ -908,9 +908,15 @@ class AlertController extends Controller
             ];
         $charge = (int) $billing['charge'];
         // A multi-course bill is asked for at its stored total, not this course's own lessons (same as the queue and confirm).
-        if ($payableInvoice && $payableInvoice->items()->distinct()->count('StudentClassID') > 1) {
+        $multiCourseBill = $payableInvoice && $payableInvoice->items()->distinct()->count('StudentClassID') > 1;
+        if ($multiCourseBill) {
             $charge = (int) $payable['payable_amount'];
         }
+        // 單價 (Founder 2026-11-16), display only: this course's price over the slip's dates. A bill for several courses
+        // is asked for at one total, so one course's price beside it would mislead.
+        $unitPrice = $multiCourseBill
+            ? ['unit_price' => null, 'unit_price_unit' => 'session']
+            : app(\App\Services\StudentClassPricingService::class)->slipUnitPrice($sc, $billing['period_start'], $billing['period_end']);
 
         $dueDate = null;
         $daysUntilSettlement = null;
@@ -955,7 +961,7 @@ class AlertController extends Controller
             'schedule_mode'    => $mode,
             // Planning metadata only: never cap dates or change payable amounts on a slip read (#548).
             'sessions_purchased' => (int) ($sc->SessionCount ?? 0),
-            ...$sc->slipUnitPrice(),
+            ...$unitPrice,
             'package_id' => $sc->PackageID,
             'scheduling_policy' => (string) ($sc->scheduling_policy ?? 'auto_recurrence'),
             'deduction_basis' => $sc->deduction_basis,

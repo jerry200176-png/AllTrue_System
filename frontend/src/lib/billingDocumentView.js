@@ -96,7 +96,9 @@ export function slipPlainText(doc) {
   if (doc.planning_notice) lines.push(doc.planning_notice);
   if (doc.sessions?.length) {
     lines.push(`${doc.session_title || '本期上課日期'}（共 ${doc.sessions.length} ${doc.session_count_unit || '堂'}）`);
-    doc.sessions.forEach((s, i) => lines.push(`${i + 1}. ${formatSessionDate(s.date)} ${formatTime(s)} ${STATUS_ZH[s.status] || s.status || '排定'}`));
+    // Same rule as the image: a slip for several subjects names the subject on each date.
+    const manySubjects = new Set(doc.sessions.map((s) => s.subject).filter(Boolean)).size > 1;
+    doc.sessions.forEach((s, i) => lines.push([`${i + 1}.`, formatSessionDate(s.date), formatTime(s), manySubjects ? s.subject : '', STATUS_ZH[s.status] || s.status || '排定'].filter(Boolean).join(' ')));
   }
   if (doc.note) lines.push(`備註：${doc.note}`);
   if (doc.footer_note) lines.push(doc.footer_note);
