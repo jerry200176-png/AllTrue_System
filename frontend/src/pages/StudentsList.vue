@@ -1,6 +1,6 @@
 <template>
   <div class="students-page" :class="pageShell">
-    <PageHeader title="學生管理" data-guide="students-header">
+    <PageHeader title="學生管理" data-guide="students-header" class="tw:rounded-3xl tw:p-4 tw:bg-[linear-gradient(160deg,color-mix(in_srgb,var(--ds-brand-sun)_14%,var(--ds-canvas)),var(--ds-canvas)_55%)]">
       <template #context>
         <span class="tw:max-md:hidden">管理「人」：學生資料、家長與聯絡方式。</span>
         <span class="tw:tabular-nums tw:md:ml-2">本分校 {{ studentsLoaded ? branchStudentTotal : '—' }} 人・目前列表 {{ studentsLoaded ? displayStudents.length : '—' }} 人</span>
@@ -172,8 +172,8 @@
                   v-for="course in getStudentRowChipCourses(student.id)"
                   :key="course.id"
                   data-testid="student-subject-chip"
-                  :data-tone="isSessionPaymentLow(course) ? 'danger' : 'neutral'"
-                  :class="[chipBase, isSessionPaymentLow(course) ? toneBadge.danger : toneBadge.neutral]"
+                  :data-tone="isSessionPaymentLow(course) ? 'danger' : 'info'"
+                  :class="[chipBase, isSessionPaymentLow(course) ? toneBadge.danger : 'tw:bg-[var(--ds-info-wash)] tw:text-[var(--ds-info)]']"
                 >
                   {{ getStudentCourseSubjectDisplayLabel(course).split('(')[0].trim() }}
                   <strong class="tw:font-bold tw:tabular-nums">{{ courseBadgeSessionLabel(course) }}</strong>

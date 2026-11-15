@@ -46,7 +46,7 @@ async function mountRows() {
 const rowOf = (wrapper, id) => wrapper.find(`[data-testid="student-row"][data-student-id="${id}"]`);
 
 describe('student table rows', () => {
-  it('shows a low 堂數 in danger and a healthy one neutral, by the data tone and the danger text colour', async () => {
+  it('shows a low 堂數 in danger and ordinary course information in the information tone', async () => {
     const wrapper = await mountRows();
     try {
       const low = rowOf(wrapper, 2002).find('[data-testid="student-subject-chip"]');
@@ -56,7 +56,7 @@ describe('student table rows', () => {
       expect(low.text()).toContain('數學');
       // not colour alone: a reader of the row is also told the course is nearly used up
       expect(low.text()).toContain('即將用完');
-      expect(fine.attributes('data-tone')).toBe('neutral');
+      expect(fine.attributes('data-tone')).toBe('info');
       expect(fine.classes().join(' ')).not.toContain('--ds-danger-text');
       expect(fine.text()).not.toContain('即將用完');
     } finally {
