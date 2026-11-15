@@ -829,7 +829,7 @@ class TeacherEligibilityController extends Controller
     }
 
     /**
-     * @return array<int, array{id:int,base_salary:float,manual_multiplier_pct:float|null,effective_from:string}>
+     * @return array<int, array{id:int,branch_id:int|null,base_salary:float,manual_multiplier_pct:float|null,effective_from:string}>
      */
     private function pendingSalaryByTeacher(array $teacherIds, ?array $branchFilter): array
     {
@@ -841,10 +841,11 @@ class TeacherEligibilityController extends Controller
             ->whereIn('teacher_id', $teacherIds)
             ->where('status', 'pending')
             ->orderBy('id')
-            ->get(['id', 'teacher_id', 'base_salary', 'manual_multiplier_pct', 'effective_from'])
+            ->get(['id', 'teacher_id', 'branch_id', 'base_salary', 'manual_multiplier_pct', 'effective_from'])
             ->groupBy('teacher_id')
             ->map(fn ($rows) => [
                 'id' => (int) $rows->last()->id,
+                'branch_id' => $rows->last()->branch_id === null ? null : (int) $rows->last()->branch_id,
                 'base_salary' => (float) $rows->last()->base_salary,
                 'manual_multiplier_pct' => $rows->last()->manual_multiplier_pct === null ? null : (float) $rows->last()->manual_multiplier_pct,
                 'effective_from' => (string) $rows->last()->effective_from,

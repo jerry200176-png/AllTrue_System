@@ -1,0 +1,18 @@
+updates:
+  - id: staff-2026-11-15-existing-salary-profile-entry
+    published_at: "2026-11-15"
+    audiences:
+      - director
+      - super_admin
+    importance: digest
+    title: 既有本薪可查看與更正
+    summary: 選老師後可更正共用本薪，核對生效日再送審；各校區試算會使用同份設定。
+    items:
+      - category: fixed
+        text: 補回既有本薪管理入口，明確填0可停用舊金額，原設定紀錄保留。
+      - category: improved
+        text: 主任送出仍待總部核准；PIN、鎖月與校區限制持續保護薪資設定。
+      - category: improved
+        text: 送出成功會保留提示；結果尚未確認時，請先核對本薪與待核准資料。
+    source_refs:
+      - "changelog:2026-11-15:existing-salary-profile-entry"
