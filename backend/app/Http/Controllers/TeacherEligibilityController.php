@@ -204,6 +204,13 @@ class TeacherEligibilityController extends Controller
                 ]);
             }
         }
+        // Founder 2026-11-15: a week with a company-wide closure day is not judged; it counts as full. Closure days are
+        // the approved company holiday events plus the days whose lessons were all called off, out to the last week's Sunday.
+        $closureDates = $weeks === [] ? [] : array_values(array_unique(array_merge(
+            $events->filter(fn ($event) => in_array($event->event_type, ['holiday', 'official_closure'], true) && !$event->teacher_id)
+                ->map(fn ($event) => substr((string) $event->event_date, 0, 10))->all(),
+            $this->campusClosedDates(null, $weeks[0][0], end($weeks)[1]),
+        )));
 
         $scheduleByTeacher = $schedules->groupBy('teacher_id');
         $plannedByTeacher = $plannedSchedules->groupBy('teacher_id');
@@ -246,7 +253,7 @@ class TeacherEligibilityController extends Controller
         $subjectUnitsByTeacher = $this->globalSubjectUnitsByTeacher($teacherIds, $effectiveStart, $period['end']);
         $manualMultiplierByTeacher = $this->manualMultiplierByTeacher($teacherIds, null, $period['end']->toDateString());
 
-        $rows = $teachers->map(function ($teacher) use ($period, $effectiveStart, $weeks, $lessonsByTeacher, $scheduleByTeacher, $plannedByTeacher, $attendanceByTeacher, $eventByTeacher, $achievementByTeacher, $deductionByTeacher, $allowanceByTeacher, $cashByTeacher, $cashSourceAvailable, $allowanceSourceAvailable, $pendingSalaryByTeacher, $sessionCalendarAvailable, $subjectUnitsByTeacher, $manualMultiplierByTeacher) {
+        $rows = $teachers->map(function ($teacher) use ($period, $effectiveStart, $weeks, $closureDates, $lessonsByTeacher, $scheduleByTeacher, $plannedByTeacher, $attendanceByTeacher, $eventByTeacher, $achievementByTeacher, $deductionByTeacher, $allowanceByTeacher, $cashByTeacher, $cashSourceAvailable, $allowanceSourceAvailable, $pendingSalaryByTeacher, $sessionCalendarAvailable, $subjectUnitsByTeacher, $manualMultiplierByTeacher) {
             $teacherId = (int) $teacher->id;
             $teacherSchedules = $scheduleByTeacher->get($teacherId, collect());
             $teacherPlanned = $plannedByTeacher->get($teacherId, collect());
@@ -254,7 +261,7 @@ class TeacherEligibilityController extends Controller
             $teacherEvents = $eventByTeacher->get((string) $teacherId, collect())->concat($eventByTeacher->get('*', collect()));
             $weeklyRows = [];
             foreach ($weeks as [$weekStart, $weekEnd]) {
-                $weeklyRows[] = $this->evaluateWeek($weekStart, $weekEnd, $lessonsByTeacher[$teacherId] ?? []);
+                $weeklyRows[] = $this->evaluateWeek($weekStart, $weekEnd, $lessonsByTeacher[$teacherId] ?? [], $closureDates);
             }
 
             $weeklyStatus = $this->aggregateWeeklyStatus($weeklyRows);
@@ -503,7 +510,7 @@ class TeacherEligibilityController extends Controller
      *
      * @param  array<string, list<array{start:string,end:string}>>  $lessonsByDate
      */
-    private function evaluateWeek(Carbon $start, Carbon $end, array $lessonsByDate): array
+    private function evaluateWeek(Carbon $start, Carbon $end, array $lessonsByDate, array $closureDates = []): array
     {
         $dailyMinutes = [];
         foreach ($lessonsByDate as $date => $lessons) {
@@ -516,7 +523,13 @@ class TeacherEligibilityController extends Controller
         $segments = round(array_sum($dailyMinutes) / 120, 2);
 
         $policy = $this->policy->weekly16(['segments' => $segments]);
+        $closed = array_values(array_filter($closureDates, fn ($date) => $date >= $start->toDateString() && $date <= $end->toDateString()));
+        if ($closed !== []) {
+            $policy['status'] = TeacherEligibilityPolicy::QUALIFIES;
+            $policy['reason'] = '本週有全校停課日，不列入判定。';
+        }
         $policy['metrics'] = [
+            'closure_dates' => $closed,
             'week_start' => $start->toDateString(),
             'week_end' => $end->toDateString(),
             'daily_hours' => array_map(fn ($minutes) => round($minutes / 60, 2), $dailyMinutes),
@@ -587,7 +600,7 @@ class TeacherEligibilityController extends Controller
      * @param  array<int, array{date?:string, status?:string}>  $rows
      * @return list<string>
      */
-    private function campusClosedDatesFromSessionRows(array $rows): array
+    private function campusClosedDatesFromSessionRows(array $rows, int $minSessions = 1): array
     {
         $counts = [];
         foreach ($rows as $row) {
@@ -603,7 +616,7 @@ class TeacherEligibilityController extends Controller
         }
         $dates = [];
         foreach ($counts as $date => $count) {
-            if ($count['open'] === 0) {
+            if ($count['open'] === 0 && $count['total'] >= $minSessions) {
                 $dates[] = $date;
             }
         }
@@ -624,10 +637,12 @@ class TeacherEligibilityController extends Controller
             ->whereBetween('cs.SessionDate', [$start->toDateString(), $end->toDateString()])
             ->get(['cs.SessionDate as event_date', 'cs.Status as status']);
 
+        // ponytail: "every lesson that day was called off" is the only closure signal the product has; the floor keeps a
+        // quiet day with a couple of student leaves from passing as one. A missed closure is entered as a holiday event.
         return $this->campusClosedDatesFromSessionRows($rows->map(fn ($row) => [
             'date' => substr((string) $row->event_date, 0, 10),
             'status' => $row->status,
-        ])->all());
+        ])->all(), (int) config('teacher_salary.closure_min_sessions', 10));
     }
 
     private function isOpenTeachingSessionStatus(?string $status): bool

@@ -128,6 +128,12 @@ class TeacherEligibilityWeeklySegmentsTest extends TestCase
         $this->assertSame(0, $august['amount']);
         $this->assertSame('2026-08-03', $august['metrics']['weeks'][0]['metrics']['week_start']);
 
+        // A company-wide closure day takes its week out of the judgement: that week counts as full.
+        DB::table('teacher_payroll_events')->insert(['teacher_id' => null, 'branch_id' => 1, 'event_date' => '2026-08-12', 'event_type' => 'holiday', 'status' => 'approved', 'created_at' => now(), 'updated_at' => now()]);
+        $closed = $weekly('2026-08-01', '2026-08-31');
+        $this->assertSame(1, $closed['metrics']['qualifying_weeks']);
+        $this->assertSame(['2026-08-12'], $closed['metrics']['weeks'][1]['metrics']['closure_dates']);
+
         // Fill the other three July weeks (4 days x 8h = 16 段 each): now every week is full.
         foreach (['2026-07-06', '2026-07-13', '2026-07-20'] as $monday) {
             foreach (range(0, 3) as $offset) {

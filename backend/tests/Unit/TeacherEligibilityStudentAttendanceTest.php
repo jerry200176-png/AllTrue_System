@@ -83,6 +83,12 @@ class TeacherEligibilityStudentAttendanceTest extends TestCase
         self::assertSame(5.0, $week['metrics']['total_segments']);
         self::assertFalse($week['metrics']['meets_16_segments']);
         self::assertSame(TeacherEligibilityPolicy::NOT_QUALIFIES, $week['status']);
+
+        // A company-wide closure day inside the week: the week is not judged and counts as full.
+        $closed = $this->invoke('evaluateWeek', Carbon::parse('2026-08-03'), Carbon::parse('2026-08-09')->endOfDay(), $lessons, ['2026-08-08', '2026-08-15']);
+        self::assertSame(TeacherEligibilityPolicy::QUALIFIES, $closed['status']);
+        self::assertSame(['2026-08-08'], $closed['metrics']['closure_dates']);
+        self::assertSame(5.0, $closed['metrics']['total_segments']);
     }
 
     public function test_weeks_are_whole_monday_to_sunday_and_belong_to_their_mondays_month(): void
@@ -193,6 +199,10 @@ class TeacherEligibilityStudentAttendanceTest extends TestCase
             ['date' => '2026-08-30', 'status' => 'leave'],
             ['date' => '2026-08-30', 'status' => 'scheduled'],
         ]));
+        // Two called-off lessons on a quiet day are not a company-wide closure once a floor applies.
+        self::assertSame([], $this->invoke('campusClosedDatesFromSessionRows', [
+            ['date' => '2026-08-31', 'status' => 'leave'], ['date' => '2026-08-31', 'status' => 'leave_adjusted'],
+        ], 10));
     }
 
     public function test_holiday_hours_still_count_when_recurring_plan_was_marked_leave(): void

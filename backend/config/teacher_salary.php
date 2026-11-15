@@ -6,6 +6,8 @@ return [
     'weekly_segment_threshold' => 16.0,
     // 16段課獎金: paid for a month only when every one of its weeks reaches the threshold.
     'weekly_segment_month_bonus' => 4000,
+    // A day counts as a company-wide closure only when at least this many lessons existed and none stayed open.
+    'closure_min_sessions' => 10,
     'holiday_required_hours' => 16.0,
     'holiday_multiplier_pass' => 10.0,
     'weekday_extra_rate_per_segment' => 1.0,
