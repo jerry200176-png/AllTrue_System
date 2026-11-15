@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { flushPromises, shallowMount } from '@vue/test-utils';
-import AtEmpty from '../design-system/AtEmpty.vue';
+import { Alert } from '../ui/alert';
 
 const { getSession, from } = vi.hoisted(() => ({ getSession: vi.fn(), from: vi.fn() }));
 vi.mock('../../supabase', () => ({ supabase: { auth: { getSession }, from } }));
@@ -15,8 +15,8 @@ const query = (data) => {
   return result;
 };
 const mountStudents = () => shallowMount(StudentsList, { props: { branchId: 11 }, global: { stubs: {
-  AtEmpty, AtFilterBar: { template: '<div><slot /></div>' },
-} } });
+  Alert, AtFilterBar: { template: '<div><slot /></div>' },
+}, renderStubDefaultSlot: true } });
 
 describe('StudentsList complete paginated loading (#4490)', () => {
   let wrapper;

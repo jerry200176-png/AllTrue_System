@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { flushPromises, shallowMount } from '@vue/test-utils';
 import { nextTick } from 'vue';
-import AtEmpty from '../design-system/AtEmpty.vue';
+import { Alert } from '../ui/alert';
 
 const { getSession, from } = vi.hoisted(() => ({
   getSession: vi.fn(),
@@ -37,9 +37,9 @@ const makeSupabaseQuery = (result = { data: [], error: null }) => {
   return query;
 };
 
-const mountStudents = () => shallowMount(StudentsList, {
-  props: { branchId: 1 },
-  global: { stubs: { AtEmpty } },
+const mountStudents = (props = { branchId: 1 }) => shallowMount(StudentsList, {
+  props,
+  global: { stubs: { Alert }, renderStubDefaultSlot: true },
 });
 
 describe('StudentsList loading and recovery states', () => {
@@ -51,6 +51,16 @@ describe('StudentsList loading and recovery states', () => {
   afterEach(() => {
     vi.restoreAllMocks();
     delete globalThis.fetch;
+  });
+
+  it('asks for a campus without requesting or misrepresenting an empty student list', async () => {
+    globalThis.fetch = vi.fn(() => Promise.resolve(response({ data: [] })));
+    const wrapper = mountStudents({ branchId: 0 });
+    await flushPromises();
+    expect(wrapper.text()).toContain('請先選擇分校');
+    expect(wrapper.text()).not.toContain('目前沒有進行中的學生/課程');
+    expect(globalThis.fetch.mock.calls.filter(([url]) => String(url).includes('/students?'))).toHaveLength(0);
+    wrapper.unmount();
   });
 
   it('shows a loading state before the first student response and then renders the list', async () => {
