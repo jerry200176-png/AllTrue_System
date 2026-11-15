@@ -712,7 +712,7 @@ class TeacherEligibilityController extends Controller
     {
         $qualifying = collect($weeklyRows)->where('status', TeacherEligibilityPolicy::QUALIFIES);
         $allPass = $weeklyRows !== [] && $qualifying->count() === count($weeklyRows);
-        $unfinished = collect($weeklyRows)->filter(fn ($row) => !($row['metrics']['finished'] ?? true) && $row['status'] !== TeacherEligibilityPolicy::QUALIFIES)->count();
+        $unfinished = collect($weeklyRows)->filter(fn ($row) => !($row['metrics']['finished'] ?? true))->count();
         // HQ 115.07 + Founder 2026-11-15: the 16段課獎金 is monthly and needs every week of the month full;
         // one short week removes it. A week belongs to its Monday's month.
         $amount = (int) config('teacher_salary.weekly_segment_month_bonus', 4000) * collect($weeklyRows)

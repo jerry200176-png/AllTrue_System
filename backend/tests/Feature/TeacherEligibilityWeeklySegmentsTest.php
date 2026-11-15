@@ -192,6 +192,16 @@ class TeacherEligibilityWeeklySegmentsTest extends TestCase
 
         $this->assertFalse($row['weekly'][0]['metrics']['finished']);
         $this->assertSame(5, $row['components']['weekly_16_segments']['metrics']['unfinished_weeks']);
+
+        // A running week that is already fully scheduled is still a week that has not finished.
+        foreach (range(0, 3) as $offset) {
+            $this->createAttendedSession($teacher->id, 'one_on_one', date('Y-m-d', strtotime("2026-08-10 +{$offset} days")), '14:00', 480);
+        }
+        $row = $this->withHeaders($this->auth($director['token']))
+            ->getJson('/api/v1/finance/teacher-eligibility?period=month&start=2026-08-01&end=2026-08-31&branch_id=1')
+            ->assertOk()->json('teachers.0');
+        $this->assertTrue($row['weekly'][1]['metrics']['meets_16_segments']);
+        $this->assertSame(5, $row['components']['weekly_16_segments']['metrics']['unfinished_weeks']);
         $this->assertSame('還有 5 週沒結束，結束後才判定。', $row['components']['weekly_16_segments']['reason']);
         // No finished week and no closure: nothing to judge the 假日 rate on, so it is 0, not the full 10%.
         $this->assertEquals(0, $row['components']['holiday_16_hours']['rate']);
