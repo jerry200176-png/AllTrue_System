@@ -36,12 +36,6 @@ export function formatSubjectUnits(value) {
   return formatSubjects(value == null || value === '' ? value : Number(value) / 8);
 }
 
-/** Bonus total. A month locked before base salary left this page still carries it in the snapshot: take it out. */
-export function bonusTotal(settlement) {
-  const total = settlement?.total_payout;
-  return total == null ? total : Number(total) - Number(settlement.base_salary ?? 0);
-}
-
 export function formatPct(value) {
   if (value == null || value === '') return '—';
   const n = Number(value);

@@ -624,11 +624,20 @@ class TeacherEligibilityInputController extends Controller
         $this->assertTeacherScope($request, $data['teacher_id'], $branchId);
         $this->rejectIfSalaryMonthLocked($data['teacher_id'], $branchId, $data['effective_from']);
 
+        $baseProfile = \App\Models\FulltimeSalaryProfile::query()
+            ->where('teacher_id', $data['teacher_id'])
+            ->where('status', 'approved')
+            ->where('effective_from', '<=', $data['effective_from'])
+            ->when($branchId !== null, fn ($query) => $query->where(function ($nested) use ($branchId) {
+                $nested->whereNull('branch_id')->orWhere('branch_id', $branchId);
+            }))
+            ->orderByDesc('effective_from')->orderByDesc('id')->first();
+
         $isHq = $request->attributes->get('auth_role') === 'super_admin';
         $profile = \App\Models\FulltimeSalaryProfile::create([
             'teacher_id' => $data['teacher_id'],
             'branch_id' => $branchId,
-            'base_salary' => 0, // the NOT NULL column stays; this page no longer holds base salary
+            'base_salary' => $baseProfile?->base_salary ?? 0, // not read any more; carried over so a revert still finds it
             'manual_multiplier_pct' => $data['manual_multiplier_pct'],
             'effective_from' => $data['effective_from'],
             'status' => $isHq ? 'approved' : 'pending',

@@ -473,7 +473,7 @@ class TeacherEligibilityController extends Controller
                     $s['multiplier_pct'] ?? 100,
                     $s['weighted_bonus_amount'] ?? 0,
                     $adj,
-                    ($s['total_payout'] ?? 0) - ($s['base_salary'] ?? 0), // a snapshot locked earlier may still carry base salary
+                    $s['total_payout'] ?? 0,
                     $draft ? '試算' : (($payload['lock']['status'] ?? '') === 'locked' ? '已鎖定' : '草稿'),
                 ]);
             }

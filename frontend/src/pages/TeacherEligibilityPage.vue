@@ -137,7 +137,7 @@
                 <small v-if="!(teacher.settlement?.adjustments || []).length" :class="smallText">—</small>
               </TableCell>
               <TableCell :class="[bodyCell, 'total-cell']">
-                <strong class="tw:tabular-nums tw:text-[var(--ds-primary-text)]">{{ formatMoney(bonusTotal(teacher.settlement)) }}</strong>
+                <strong class="tw:tabular-nums tw:text-[var(--ds-primary-text)]">{{ formatMoney(teacher.settlement?.total_payout) }}</strong>
                 <small v-if="isDraft(teacher)" :class="smallText">試算，未可發放</small>
               </TableCell>
               <TableCell :class="[bodyCell, 'weekly-segment-cell tw:min-w-[300px]']">
@@ -178,7 +178,7 @@
             </template>
           </span></div>
           <div :class="componentRow"><span>倍率後獎金</span><span :class="[componentValue, 'tw:tabular-nums']">{{ formatMoney(teacher.settlement?.weighted_bonus_amount) }}</span></div>
-          <div :class="[componentRow, 'total-cell']"><span>獎金合計</span><strong class="tw:tabular-nums tw:text-[var(--ds-primary-text)]">{{ formatMoney(bonusTotal(teacher.settlement)) }}</strong></div>
+          <div :class="[componentRow, 'total-cell']"><span>獎金合計</span><strong class="tw:tabular-nums tw:text-[var(--ds-primary-text)]">{{ formatMoney(teacher.settlement?.total_payout) }}</strong></div>
           <div :class="[componentRow, 'weekly-segment-row']">
             <span>每週課段</span>
             <span :class="componentValue">
@@ -233,7 +233,6 @@ import {
   formatPct,
   formatSubjects,
   formatSubjectUnits,
-  bonusTotal,
   monthWindow,
   weightedBonusFormula,
 } from '../lib/teacherEligibilityDisplay.js';

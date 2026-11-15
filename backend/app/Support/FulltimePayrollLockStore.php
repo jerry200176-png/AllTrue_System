@@ -42,7 +42,7 @@ final class FulltimePayrollLockStore
             ->get()
             ->map(function ($row) {
                 $payload = json_decode((string) $row->payload, true);
-                return is_array($payload) ? $payload : [];
+                return is_array($payload) ? self::withoutBaseSalary($payload) : [];
             })
             ->filter()
             ->values()
@@ -52,6 +52,22 @@ final class FulltimePayrollLockStore
     /**
      * @param list<array> $teachers
      */
+    /** A month locked while base salary was still in the total reads back as the bonus total, like every other month. */
+    private static function withoutBaseSalary(array $teacher): array
+    {
+        if (!array_key_exists('base_salary', $teacher['settlement'] ?? [])) {
+            return $teacher;
+        }
+        $base = (float) $teacher['settlement']['base_salary'];
+        unset($teacher['settlement']['base_salary']);
+        foreach (['total_payout', 'calculated_payout'] as $key) {
+            if (isset($teacher['settlement'][$key])) $teacher['settlement'][$key] = round($teacher['settlement'][$key] - $base, 2);
+        }
+        if (isset($teacher['calculated_payout'])) $teacher['calculated_payout'] = round($teacher['calculated_payout'] - $base, 2);
+
+        return $teacher;
+    }
+
     public static function lock(int $branchId, string $month, array $teachers, int $userId, string $policyVersion): int
     {
         $reviewing = collect($teachers)->first(fn ($row) => !empty($row['review_required']));

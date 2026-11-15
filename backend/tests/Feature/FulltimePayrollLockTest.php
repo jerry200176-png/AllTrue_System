@@ -82,6 +82,25 @@ class FulltimePayrollLockTest extends TestCase
         ])->assertStatus(422);
     }
 
+    /** A month locked while base salary was in the total reads back as the bonus total, on screen and in the export. */
+    public function test_snapshot_locked_with_base_salary_reads_back_as_bonus_total(): void
+    {
+        $director = $this->createDirector(1, 'ft-old-snapshot-dir@test.com');
+        $headers = ['Authorization' => "Bearer {$director['token']}", 'Accept' => 'application/json'];
+        \App\Support\FulltimePayrollLockStore::lock(1, '2026-08', [[
+            'teacher_id' => 1, 'teacher_name' => 'T', 'calculated_payout' => 38700,
+            'settlement' => ['base_salary' => 33000, 'total_payout' => 38700, 'calculated_payout' => 38700, 'regular_subject_count' => 150],
+        ]], $director['user_id'], 'old');
+
+        $this->withHeaders($headers)->getJson('/api/v1/finance/teacher-eligibility?period=month&start=2026-08-01&end=2026-08-31&branch_id=1')
+            ->assertOk()->assertJsonPath('teachers.0.settlement.total_payout', 5700)
+            ->assertJsonPath('teachers.0.calculated_payout', 5700)->assertJsonMissingPath('teachers.0.settlement.base_salary');
+        $csv = $this->withHeaders($headers)->get('/api/v1/finance/teacher-eligibility/export?month=2026-08&branch_id=1')->assertOk()->streamedContent();
+        $this->assertStringNotContainsString('底薪', $csv);
+        $this->assertStringContainsString('T,18.75,', $csv); // 正課 150 raw is exported on the 核薪總科目數 scale
+        $this->assertStringContainsString(',5700,已鎖定', $csv);
+    }
+
     private function createDirector(int $campusId, string $email): array
     {
         $user = User::create([

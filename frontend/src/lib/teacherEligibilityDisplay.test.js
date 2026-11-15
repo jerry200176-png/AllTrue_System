@@ -6,7 +6,6 @@ import {
   formatMoney,
   formatSubjects,
   formatSubjectUnits,
-  bonusTotal,
   weightedBonusFormula,
   monthWindow,
 } from './teacherEligibilityDisplay.js';
@@ -31,9 +30,5 @@ assert.deepEqual(monthWindow('2026-08'), { start: '2026-08-01', end: '2026-08-31
 assert.equal(formatSubjectUnits(150), '18.75');
 assert.equal(formatSubjectUnits(12), '1.5');
 assert.equal(formatSubjectUnits(null), '—');
-// The total is bonuses only; a month locked earlier still carries base salary in its snapshot.
-assert.equal(bonusTotal({ total_payout: 5700 }), 5700);
-assert.equal(bonusTotal({ total_payout: 38700, base_salary: 33000 }), 5700);
-assert.equal(bonusTotal({ total_payout: null, base_salary: null }), null);
 
 console.log('teacher eligibility display tests passed');
