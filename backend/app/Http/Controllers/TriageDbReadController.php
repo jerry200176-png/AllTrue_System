@@ -11,7 +11,7 @@ use Illuminate\Support\Facades\Schema;
  * contract, bill or lesson by its number without a browser session, a screenshot or database access.
  * Fail-closed on what leaves: number and date/time columns, plus text columns that are an enum or a known code column
  * and whose value is a short ASCII code. Names, phones, notes, credentials and any other text never leave, and such
- * columns cannot be filtered or sorted on either. Tables that hold logins, tokens or bindings are not reachable.
+ * columns cannot be filtered or sorted on either; a code column takes only an exact match against a code. Tables that hold logins, tokens or bindings are not reachable.
  * SELECT only. Switch: triage_tokens.db_read_enabled.
  */
 class TriageDbReadController extends Controller
@@ -28,6 +28,9 @@ class TriageDbReadController extends Controller
         'outcome', 'event_type', 'operation', 'action', 'reason_code', 'zero_reason', 'page_key', 'disposition', 'period', 'month'];
 
     private const OPERATORS = ['eq' => '=', 'gte' => '>=', 'lte' => '<='];
+
+    /** What a code looks like: short and plain ASCII. Anything else in a code column is typed text and is withheld. */
+    private const CODE_VALUE = '/\A[A-Za-z0-9_.:\-]{0,40}\z/';
 
     public function tables()
     {
@@ -82,23 +85,32 @@ class TriageDbReadController extends Controller
 
         $query = DB::table($table)->select($readable);
         $refuse = fn (string $column) => response()->json(['message' => "Column not readable: {$column}"], 422);
+        // A code column may hold typed text in old rows, which is withheld on the way out. So it takes no range filter and no
+        // ordering (either would let the text be found one comparison at a time), and an exact match only against a value
+        // that is itself a short ASCII code: a row holding typed text can never be singled out.
+        $isCode = fn (mixed $value): bool => is_string($value) && preg_match(self::CODE_VALUE, $value) === 1;
         foreach (self::OPERATORS as $key => $operator) {
             foreach ((array) ($data[$key] ?? []) as $column => $value) {
-                if (!in_array((string) $column, $readable, true) || !is_scalar($value)) {
+                $allowed = in_array((string) $column, $numeric, true)
+                    || ($key === 'eq' && in_array((string) $column, $codes, true) && $isCode($value));
+                if (!$allowed || !is_scalar($value)) {
                     return $refuse((string) $column);
                 }
                 $query->where((string) $column, $operator, $value);
             }
         }
         foreach ((array) ($data['in'] ?? []) as $column => $values) {
-            if (!in_array((string) $column, $readable, true) || !is_string($values)) {
+            $list = is_string($values) ? array_slice(explode(',', $values), 0, 200) : null;
+            $allowed = $list !== null && (in_array((string) $column, $numeric, true)
+                || (in_array((string) $column, $codes, true) && collect($list)->every($isCode)));
+            if (!$allowed) {
                 return $refuse((string) $column);
             }
-            $query->whereIn((string) $column, array_slice(explode(',', $values), 0, 200));
+            $query->whereIn((string) $column, $list);
         }
-        $order = $data['order'] ?? collect($readable)->first(fn (string $name) => strtolower($name) === 'id');
+        $order = $data['order'] ?? collect($numeric)->first(fn (string $name) => strtolower($name) === 'id');
         if ($order !== null) {
-            if (!in_array($order, $readable, true)) {
+            if (!in_array($order, $numeric, true)) {
                 return $refuse((string) $order);
             }
             $query->orderBy($order, $data['dir'] ?? 'asc');
@@ -109,7 +121,7 @@ class TriageDbReadController extends Controller
                 $out = (array) $row;
                 foreach ($codes as $name) {
                     // A code column can still hold typed text in old rows: anything that is not a short ASCII code is withheld.
-                    if (is_string($out[$name]) && preg_match('/\A[A-Za-z0-9_.:\-]{0,40}\z/', $out[$name]) !== 1) {
+                    if (is_string($out[$name]) && preg_match(self::CODE_VALUE, $out[$name]) !== 1) {
                         $out[$name] = null;
                     }
                 }

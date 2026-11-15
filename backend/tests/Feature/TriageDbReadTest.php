@@ -71,6 +71,13 @@ final class TriageDbReadTest extends TestCase
         $this->getJson('/api/v1/triage/db/User?order=phone', $this->bearer())->assertStatus(422);
         $this->getJson('/api/v1/triage/db/User?in[LoginName]=a,b', $this->bearer())->assertStatus(422);
         $this->getJson('/api/v1/triage/db/Student?limit=201', $this->bearer())->assertStatus(422);
+        // A code column: exact match against a code only. A range, an ordering or a typed-text value could find withheld text.
+        $this->getJson('/api/v1/triage/db/ClassSession?eq[Status]=leave', $this->bearer())->assertOk();
+        $this->getJson('/api/v1/triage/db/ClassSession?in[Status]=leave,attended', $this->bearer())->assertOk();
+        $this->getJson('/api/v1/triage/db/ClassSession?gte[Status]=a', $this->bearer())->assertStatus(422);
+        $this->getJson('/api/v1/triage/db/ClassSession?order=Status', $this->bearer())->assertStatus(422);
+        $this->getJson('/api/v1/triage/db/ClassSession?eq[Status]=' . urlencode('請假 補課'), $this->bearer())->assertStatus(422);
+        $this->getJson('/api/v1/triage/db/ClassSession?in[Status]=leave,' . urlencode('typed text'), $this->bearer())->assertStatus(422);
 
         foreach (['auth_tokens', 'personal_access_tokens', 'password_reset_requests', 'ApiClient', 'ParentSession', 'student_line_bindings', 'no_such_table'] as $table) {
             $this->getJson("/api/v1/triage/db/{$table}", $this->bearer())->assertNotFound();
