@@ -51,7 +51,8 @@ class TriageFulltimePayrollController extends Controller
         if (is_array($value)) {
             $out = [];
             foreach ($value as $key => $item) {
-                if (is_string($key) && in_array($key, self::TEXT_KEYS, true)) {
+                // A key is an id, a date or a field name; anything else (text used as a key) goes too.
+                if (is_string($key) && (in_array($key, self::TEXT_KEYS, true) || preg_match('/\A[A-Za-z0-9_.:\-]*\z/', $key) !== 1)) {
                     continue;
                 }
                 if (is_string($item) && preg_match('/\A[A-Za-z0-9_.:\-]*\z/', $item) !== 1) {

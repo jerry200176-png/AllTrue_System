@@ -33,7 +33,7 @@ final class TriageFulltimePayrollTest extends TestCase
 
     public function test_report_is_the_pages_numbers_without_names_or_free_text(): void
     {
-        $teacher = User::create(['LoginName' => 'payroll-triage-teacher@test.com', 'Name' => 'Amy Chen', 'PSW' => 'secret', 'type' => 'T', 'phone' => '0922000901', 'MustChangePassword' => false, 'employment_type' => 'full_time']);
+        $teacher = User::create(['LoginName' => 'payroll-triage-teacher@test.com', 'Name' => 'Amy', 'PSW' => 'secret', 'type' => 'T', 'phone' => '0922000901', 'MustChangePassword' => false, 'employment_type' => 'full_time']);
         UserCampus::create(['CampusID' => 1, 'UserID' => $teacher->id, 'Admin' => 0, 'Approved' => 1]);
         $student = Student::create(['name' => '報表學生', 'CampusID' => 1, 'ClassID' => 1, 'enable' => 1, 'MDT' => now(), 'Notify_Token' => '']);
         $course = StudentClass::create([
@@ -52,7 +52,8 @@ final class TriageFulltimePayrollTest extends TestCase
         $response->assertJsonPath('teachers.0.weekly.0.metrics.daily_hours', ['2026-08-05' => 4]);
         $response->assertJsonPath('teachers.0.components.cash_adjustments.amount', 1500);
         $response->assertJsonPath('lock.status', 'draft');
-        // No name and no typed text anywhere, whatever script it is written in.
+        // No name and no typed text anywhere, whatever script it is written in. The teacher's name is one plain
+        // word on purpose: only the drop-by-key rule can remove it.
         $body = (string) json_encode($response->json(), JSON_UNESCAPED_UNICODE);
         foreach (['Amy', 'teacher_name', 'label', 'reason', '報表', '老師'] as $forbidden) {
             $this->assertStringNotContainsString($forbidden, $body);

@@ -499,8 +499,9 @@ Founder GO 2026-11-15. `GET /api/v1/triage/fulltime-payroll?month=YYYY-MM&branch
 for a locked month) returns the 正職薪資要件 page's own computation for ONE campus and ONE month: per teacher
 the weekly 段 (hours per day, lessons left out, closure and near-closure days), the rates, the bonus items and the
 total. Every name and every typed text is removed; what remains is ids, numbers, dates and status codes. It is
-read-only, audited per request like the other triage routes, and switched off with
-`TRIAGE_FULLTIME_PAYROLL_ENABLED=false` (the route then answers 404). Use it to check payroll numbers against
+read-only, audited per request like the other triage routes, and limited to 20 calls a minute. To stop it at once,
+revoke the token (個人資料 → 安全性); `TRIAGE_FULLTIME_PAYROLL_ENABLED=false` makes the route answer 404 from the
+next deploy on (production caches config). Use it to check payroll numbers against
 real data instead of asking someone to read the page out. The public-repo rule is unchanged: nothing read this
 way goes into an issue, PR or commit except ids and your own technical conclusion.
 

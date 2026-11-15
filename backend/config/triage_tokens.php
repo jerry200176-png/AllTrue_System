@@ -19,6 +19,7 @@ return [
     // #4100 kill switch, default OFF (待 Founder 核准): while false the billing snapshot answers 404 even for a live link.
     'billing_snapshot_enabled' => (bool) env('TRIAGE_BILLING_SNAPSHOT_ENABLED', false),
     // 正職薪資要件 report of one campus and month, IDs and numbers only (Founder GO 2026-11-15, so on by default).
-    // Kill switch: set the env to false and the route answers 404.
+    // Switch: with the env set to false the route answers 404. Production caches config, so that takes effect at the
+    // next deploy; the immediate stop is revoking the token (個人資料 → 安全性).
     'fulltime_payroll_enabled' => (bool) env('TRIAGE_FULLTIME_PAYROLL_ENABLED', true),
 ];
