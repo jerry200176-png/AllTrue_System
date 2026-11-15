@@ -1,0 +1,16 @@
+updates:
+  - id: staff-2026-11-15-fulltime-lock-guards
+    published_at: "2026-11-15"
+    audiences:
+      - director
+      - super_admin
+    importance: major
+    title: 正職結算多兩道防呆
+    summary: 還沒到的月份不能鎖定；主任確認和總部核准必須是不同的人。
+    items:
+      - category: fixed
+        text: 只能鎖定制度生效那個月起到這個月的結算，還沒到的月份不能鎖。
+      - category: action_required
+        text: 扣除、行政加給、倍率調整、現金加扣款：按確認的人不能再按核准，要另一位。
+    source_refs:
+      - "changelog:2026-11-15:fulltime-lock-guards"

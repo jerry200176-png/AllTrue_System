@@ -337,6 +337,12 @@ class TeacherEligibilityController extends Controller
         ]);
         $branchId = (int) $data['branch_id'];
         $this->assertWritableBranch($request, $branchId);
+        // Only a month the 115.07 rules cover and that has begun: an earlier month has nothing to settle, and locking a
+        // future month would freeze numbers that do not exist yet.
+        $firstMonth = substr((string) config('teacher_salary.effective_from'), 0, 7);
+        if ($data['month'] < $firstMonth || $data['month'] > Carbon::now('Asia/Taipei')->format('Y-m')) {
+            return response()->json(['message' => "只能鎖定 {$firstMonth} 起到這個月的結算。"], 422);
+        }
         $end = Carbon::parse($data['month'] . '-01', 'Asia/Taipei')->endOfMonth()->toDateString();
         $request->merge([
             'period' => 'month',
