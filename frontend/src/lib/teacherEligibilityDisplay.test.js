@@ -66,6 +66,8 @@ assert.equal(weekExplanation({ week_start: '2026-10-05', total_segments: 18, mee
 assert.equal(weekExplanation({ week_start: '2026-10-05', total_segments: 3, meets_16_segments: true, closure_dates: ['2026-10-10'] }).verdict, '3 段・停課週不列入');
 assert.equal(weekExplanation({ week_start: '2026-11-30', total_segments: 2, meets_16_segments: false, finished: false }).verdict, '2 段・還沒結束，先不判定');
 assert.equal(weekExplanation({ week_start: '2026-10-05', total_segments: 3 }).detail, '每天排課時數：一 0、二 0、三 0、四 0、五 0、六 0、日 0');
+assert.equal(weekExplanation({ week_start: '2026-10-05', total_segments: 3, near_closures: [{ date: '2026-10-10', total: 120, open: 2 }] }).detail,
+  '每天排課時數：一 0、二 0、三 0、四 0、五 0、六 0、日 0。10/10 全公司 120 堂課有 118 堂停課，還有 2 堂照常上課，所以這一週沒有當成停課週');
 assert.deepEqual(monthWindow('2026-08'), { start: '2026-08-01', end: '2026-08-31' });
 // 正課 150 raw + 輔導試聽 12 raw = 核薪總 20.25: the three columns add up once shown on the same scale.
 assert.equal(formatSubjectUnits(150), '18.75');

@@ -62,9 +62,11 @@ export function weekExplanation(week) {
   const left = [];
   if (Number(week?.uncounted?.cancelled) > 0) left.push(`${week.uncounted.cancelled} 堂取消`);
   if (Number(week?.uncounted?.moved) > 0) left.push(`${week.uncounted.moved} 堂改期（算在改到的那一天）`);
+  // A day most of the company was off, but not everyone: say so, since such a week is not waived.
+  const near = (week?.near_closures || []).map((day) => `${day.date.slice(5).replace('-', '/')} 全公司 ${day.total} 堂課有 ${day.total - day.open} 堂停課，還有 ${day.open} 堂照常上課，所以這一週沒有當成停課週`);
   return {
     verdict: `${plainNumber(total)} 段・${verdict}`,
-    detail: `每天排課時數：${days.join('、')}${left.length ? `。另有 ${left.join('、')}，不算在內` : ''}`,
+    detail: `每天排課時數：${days.join('、')}${left.length ? `。另有 ${left.join('、')}，不算在內` : ''}${near.length ? `。${near.join('；')}` : ''}`,
   };
 }
 

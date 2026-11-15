@@ -154,12 +154,17 @@ class TeacherEligibilityWeeklySegmentsTest extends TestCase
         $closed = $weekly('2026-08-01', '2026-08-31');
         $this->assertSame(1, $closed['metrics']['qualifying_weeks']);
         $this->assertSame(['2026-08-12'], $closed['metrics']['weeks'][1]['metrics']['closure_dates']);
+        $this->assertSame([], $closed['metrics']['weeks'][1]['metrics']['near_closures']);
         $this->assertSame([], $closed['metrics']['weeks'][2]['metrics']['closure_dates']);
         // A lesson that still runs that day (a makeup that lives only in `schedules`) means the day was not a closure.
         $makeupId = $this->schedule($teacher->id, '2026-08-12', '13:00', '15:00');
         $open = $weekly('2026-08-01', '2026-08-31');
         $this->assertSame(0, $open['metrics']['qualifying_weeks']);
         $this->assertSame([], $open['metrics']['weeks'][1]['metrics']['closure_dates']);
+        // One lesson that still runs among the called-off ones: not a closure, and the week says why it was not waived.
+        $ran = $this->createAttendedSession($teacher->id, 'one_on_one', '2026-08-12', '16:00', 120);
+        $this->assertSame([['date' => '2026-08-12', 'total' => 11, 'open' => 1]], $weekly('2026-08-01', '2026-08-31')['metrics']['weeks'][1]['metrics']['near_closures']);
+        DB::table('ClassSession')->where('id', $ran->id)->delete();
         DB::table('schedules')->where('id', $makeupId)->delete();
 
         // Fill the other three July weeks (4 days x 8h = 16 段 each): now every week is full.

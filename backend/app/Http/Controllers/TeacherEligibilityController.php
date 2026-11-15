@@ -139,6 +139,7 @@ class TeacherEligibilityController extends Controller
         // approved by one director, so it must not be able to waive a week. Out to the last week's Sunday.
         $closureDates = $weeks === [] ? [] : $this->campusClosedDates(null, $weeks[0][0], end($weeks)[1]);
         $uncountedByTeacher = $weeks === [] ? [] : $this->uncountedLessonsByTeacher($teacherIds, $weeks[0][0]->toDateString(), end($weeks)[1]->toDateString());
+        $nearClosures = $weeks === [] ? [] : $this->nearClosureDays($weeks[0][0], end($weeks)[1]);
         $today = Carbon::now('Asia/Taipei')->toDateString();
 
         $achievementByTeacher = $achievements->groupBy('teacher_id');
@@ -178,11 +179,11 @@ class TeacherEligibilityController extends Controller
 
         $firstLessonByTeacher = $this->firstLessonDateByTeacher($teacherIds);
 
-        $rows = $teachers->map(function ($teacher) use ($period, $effectiveStart, $weeks, $closureDates, $uncountedByTeacher, $today, $lessonsByTeacher, $achievementByTeacher, $deductionByTeacher, $allowanceByTeacher, $cashByTeacher, $cashSourceAvailable, $allowanceSourceAvailable, $subjectUnitsByTeacher, $firstLessonByTeacher) {
+        $rows = $teachers->map(function ($teacher) use ($period, $effectiveStart, $weeks, $closureDates, $uncountedByTeacher, $nearClosures, $today, $lessonsByTeacher, $achievementByTeacher, $deductionByTeacher, $allowanceByTeacher, $cashByTeacher, $cashSourceAvailable, $allowanceSourceAvailable, $subjectUnitsByTeacher, $firstLessonByTeacher) {
             $teacherId = (int) $teacher->id;
             $weeklyRows = [];
             foreach ($weeks as [$weekStart, $weekEnd]) {
-                $weeklyRows[] = $this->evaluateWeek($weekStart, $weekEnd, $lessonsByTeacher[$teacherId] ?? [], $closureDates, $uncountedByTeacher[$teacherId] ?? [], $today);
+                $weeklyRows[] = $this->evaluateWeek($weekStart, $weekEnd, $lessonsByTeacher[$teacherId] ?? [], $closureDates, $uncountedByTeacher[$teacherId] ?? [], $today, $nearClosures);
             }
 
             $weeklyStatus = $this->aggregateWeeklyStatus($weeklyRows);
@@ -475,7 +476,7 @@ class TeacherEligibilityController extends Controller
      *
      * @param  array<string, list<array{start:string,end:string}>>  $lessonsByDate
      */
-    private function evaluateWeek(Carbon $start, Carbon $end, array $lessonsByDate, array $closureDates = [], array $uncountedByDate = [], ?string $today = null): array
+    private function evaluateWeek(Carbon $start, Carbon $end, array $lessonsByDate, array $closureDates = [], array $uncountedByDate = [], ?string $today = null, array $nearClosures = []): array
     {
         $dailyMinutes = [];
         // 平日下午倍率 (HQ 115.07: 週一至週五 18:00 前可接 5 段課): the same lessons, only the part before the cutoff.
@@ -525,6 +526,9 @@ class TeacherEligibilityController extends Controller
             'finished' => $finished,
             'segment_threshold' => $policy['metrics']['segment_threshold'] ?? 16,
             'uncounted' => $uncounted,
+            // Days that look like a closure but are not treated as one (a few lessons still ran), so a week that was
+            // not waived can be seen for what it is.
+            'near_closures' => array_values(array_filter($nearClosures, fn ($day) => $day['date'] >= $start->toDateString() && $day['date'] <= $end->toDateString())),
             'week_start' => $start->toDateString(),
             'week_end' => $end->toDateString(),
             'daily_hours' => array_map(fn ($minutes) => round($minutes / 60, 2), $dailyMinutes),
@@ -563,6 +567,31 @@ class TeacherEligibilityController extends Controller
         }
 
         return $out;
+    }
+
+    /**
+     * Days on which most of the company's lessons were called off but not all of them, so the closure rule (every
+     * lesson called off) does not apply. Only for explaining a week; nothing is decided from it.
+     * ponytail: reads the period's lessons a second time (the closure rule reads them too); share one read if this page gets slow.
+     *
+     * @return list<array{date:string, total:int, open:int}>
+     */
+    private function nearClosureDays(Carbon $start, Carbon $end): array
+    {
+        if (!Schema::hasTable('ClassSession')) {
+            return [];
+        }
+        $totals = [];
+        foreach (DB::table('ClassSession')->whereBetween('SessionDate', [$start->toDateString(), $end->toDateString()])->get(['SessionDate', 'Status']) as $row) {
+            $date = substr((string) $row->SessionDate, 0, 10);
+            $totals[$date] ??= ['date' => $date, 'total' => 0, 'open' => 0];
+            $totals[$date]['total']++;
+            if ($this->isOpenTeachingSessionStatus($row->Status)) $totals[$date]['open']++;
+        }
+        $minimum = (int) config('teacher_salary.closure_min_sessions', 10);
+        ksort($totals);
+
+        return array_values(array_filter($totals, fn ($day) => $day['total'] >= $minimum && $day['open'] > 0 && $day['open'] * 5 <= $day['total']));
     }
 
     private function aggregateWeeklyStatus(array $weeklyRows): array
