@@ -612,37 +612,6 @@ class TeacherEligibilityInputController extends Controller
         return response()->json(['id' => $id, 'status' => 'approved']);
     }
 
-    /**
-     * POST /api/v1/finance/teacher-eligibility/salary-profiles
-     * 正職老師底薪(可隨時間調整，effective_from 之後的月份結算會採用最新一筆）。
-     */
-    public function storeSalaryProfile(Request $request)
-    {
-        $data = $request->validate([
-            'teacher_id' => ['required', 'integer', 'min:1'],
-            'branch_id' => ['nullable', 'integer', 'min:1'],
-            'base_salary' => ['required', 'numeric', 'min:0', 'max:99999999.99'],
-            'effective_from' => ['required', 'date'],
-        ]);
-        $branchId = $this->resolveWriteBranch($request, $data['branch_id'] ?? null);
-        $this->assertTeacherScope($request, $data['teacher_id'], $branchId);
-        $this->rejectIfSalaryMonthLocked($data['teacher_id'], $branchId, $data['effective_from']);
-
-        $isHq = $request->attributes->get('auth_role') === 'super_admin';
-        $profile = \App\Models\FulltimeSalaryProfile::create([
-            'teacher_id' => $data['teacher_id'],
-            'branch_id' => $branchId,
-            'base_salary' => $data['base_salary'],
-            'effective_from' => $data['effective_from'],
-            'status' => $isHq ? 'approved' : 'pending',
-            'created_by' => $this->actorId($request),
-            'approved_by' => $isHq ? $this->actorId($request) : null,
-            'approved_at' => $isHq ? now() : null,
-        ]);
-
-        return response()->json($profile, 201);
-    }
-
     public function storeMultiplierProfile(Request $request)
     {
         $data = $request->validate([
@@ -655,23 +624,11 @@ class TeacherEligibilityInputController extends Controller
         $this->assertTeacherScope($request, $data['teacher_id'], $branchId);
         $this->rejectIfSalaryMonthLocked($data['teacher_id'], $branchId, $data['effective_from']);
 
-        $baseProfile = \App\Models\FulltimeSalaryProfile::query()
-            ->where('teacher_id', $data['teacher_id'])
-            ->where('status', 'approved')
-            ->where('effective_from', '<=', $data['effective_from'])
-            ->when($branchId !== null, fn ($query) => $query->where(function ($nested) use ($branchId) {
-                $nested->whereNull('branch_id')->orWhere('branch_id', $branchId);
-            }))
-            ->orderByDesc('effective_from')->orderByDesc('id')->first();
-        if (!$baseProfile) {
-            return response()->json(['message' => '尚無可用的已核准底薪來源，不能單獨建立教師倍率。'], 422);
-        }
-
         $isHq = $request->attributes->get('auth_role') === 'super_admin';
         $profile = \App\Models\FulltimeSalaryProfile::create([
             'teacher_id' => $data['teacher_id'],
             'branch_id' => $branchId,
-            'base_salary' => $baseProfile->base_salary,
+            'base_salary' => 0, // the NOT NULL column stays; this page no longer holds base salary
             'manual_multiplier_pct' => $data['manual_multiplier_pct'],
             'effective_from' => $data['effective_from'],
             'status' => $isHq ? 'approved' : 'pending',
@@ -685,7 +642,7 @@ class TeacherEligibilityInputController extends Controller
 
     /**
      * POST /api/v1/finance/teacher-eligibility/salary-profiles/{id}/approve
-     * TD-078: second-person approval before a base-salary write can feed payroll.
+     * TD-078: second-person approval before a manual multiplier write can feed payroll.
      * super_admin only — the director who wrote it cannot also approve it.
      */
     public function approveSalaryProfile(Request $request, int $id)
@@ -701,7 +658,7 @@ class TeacherEligibilityInputController extends Controller
             return $blocked;
         }
         if ($profile->status === 'approved') {
-            return response()->json(['message' => '此底薪已核准，無需重複核准。'], 422);
+            return response()->json(['message' => '此筆已核准，無需重複核准。'], 422);
         }
         $this->rejectIfSalaryMonthLocked((int) $profile->teacher_id, $profile->branch_id !== null ? (int) $profile->branch_id : null, (string) $profile->effective_from);
         $profile->update([
@@ -721,7 +678,7 @@ class TeacherEligibilityInputController extends Controller
             : DB::table('UserCampus')->where('UserID', $teacherId)->pluck('CampusID')->map(fn ($id) => (int) $id)->all();
         foreach ($campusIds as $campusId) {
             if (\App\Support\FulltimePayrollLockStore::monthIsLocked((int) $campusId, $month)) {
-                abort(422, '此月份已鎖定正職結算，不能再改底薪生效日。');
+                abort(422, '此月份已鎖定正職結算，不能再改。');
             }
         }
     }

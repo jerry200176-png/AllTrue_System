@@ -4,7 +4,7 @@
       <div>
         <div class="eyebrow"><span class="material-symbols-outlined">fact_check</span>資料補登與審核</div>
         <h3>把系統無法自動得知的薪資要件補進來</h3>
-        <p>全校放假與請假以課程管理為準，不必再登一次。這裡補登成果、績優、扣除與加扣款；既有本薪可在下方更正，各項沿用原核准與退回規則。</p>
+        <p>全校放假與請假以課程管理為準，不必再登一次。這裡補登成果、績優、扣除與加扣款，各項沿用原核准與退回規則。</p>
       </div>
       <button class="btn-outline small" type="button" :disabled="loading" @click="loadInputs">
         <span class="material-symbols-outlined">sync</span>更新待辦
@@ -16,7 +16,7 @@
       <span class="workflow-arrow">→</span>
       <span class="workflow-step"><b>2</b>主任確認</span>
       <span class="workflow-arrow">→</span>
-      <span class="workflow-step"><b>3</b>總部核准（扣除／行政加給／現金加扣款／底薪）</span>
+      <span class="workflow-step"><b>3</b>總部核准（扣除／行政加給／現金加扣款）</span>
     </div>
 
     <div class="input-panel-grid">
@@ -197,7 +197,7 @@
           <label>原因
             <textarea v-model.trim="cashForm.reason" rows="3" required placeholder="獨立現金加扣款原因，不進倍率"></textarea>
           </label>
-          <p class="form-warning"><span class="material-symbols-outlined">security</span>已鎖定月份不能新增。主任確認、總部核准後才加進總發放金額。</p>
+          <p class="form-warning"><span class="material-symbols-outlined">security</span>已鎖定月份不能新增。主任確認、總部核准後才加進獎金合計。</p>
         </template>
 
         <div v-if="formError" class="form-error" role="alert">{{ formError }}</div>
@@ -246,14 +246,12 @@
         </div>
       </div>
     </div>
-    <TeacherSalaryProfilePanel :teachers="teachers" :branch-id="branchId" :start="start" :user-role="userRole" @changed="$emit('changed')" />
     <p v-if="message" class="panel-message" role="status">{{ message }}</p>
   </section>
 </template>
 
 <script setup>
 import { ymdInTaipei } from '@/lib/sessionDates.js';
-import TeacherSalaryProfilePanel from './TeacherSalaryProfilePanel.vue';
 import { computed, onMounted, reactive, ref, watch } from 'vue';
 import {
   approveTeacherEligibilityAdminAllowance,

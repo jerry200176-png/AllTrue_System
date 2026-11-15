@@ -62,9 +62,9 @@ class FulltimeCashAdjustmentTest extends TestCase
         $result = FulltimeSettlementComposer::compose([
             'weekly_16_segments' => ['status' => 'qualifies', 'amount' => 0, 'rate' => 0],
             'cash_adjustments' => ['status' => 'qualifies', 'amount' => 1500, 'rate' => 0],
-        ], 33000.0);
+        ]);
         $this->assertSame(1500.0, $result['adjustments'][0]['amount']);
-        $this->assertSame(34500.0, $result['total_payout']);
+        $this->assertSame(1500.0, $result['total_payout']);
     }
 
     private function auth(string $token): array

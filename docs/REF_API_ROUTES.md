@@ -431,7 +431,6 @@
 | GET | `api/v1/finance/teacher-eligibility/inputs` | `TeacherEligibilityInputController@index` | role+campus+pin |
 | POST | `api/v1/finance/teacher-eligibility/lock` | `TeacherEligibilityController@lock` | role+campus+pin |
 | POST | `api/v1/finance/teacher-eligibility/reopen` | `TeacherEligibilityController@reopen` | role+campus+pin |
-| POST | `api/v1/finance/teacher-eligibility/salary-profiles` | `TeacherEligibilityInputController@storeSalaryProfile` | role+campus+pin |
 | POST | `api/v1/finance/teacher-eligibility/salary-profiles/multiplier` | `TeacherEligibilityInputController@storeMultiplierProfile` | role+campus+pin |
 | POST | `api/v1/finance/teacher-eligibility/salary-profiles/{id}/approve` | `TeacherEligibilityInputController@approveSalaryProfile` | role+campus+pin |
 | GET | `api/v1/finance/teacher-payroll` | `FinanceController@teacherPayroll` | role+campus+pin |

@@ -138,10 +138,6 @@ export function approveTeacherSalaryProfile(id) {
   return request(`/finance/teacher-eligibility/salary-profiles/${id}/approve`, { method: 'POST' });
 }
 
-export function saveTeacherSalaryProfile(payload) {
-  return request('/finance/teacher-eligibility/salary-profiles', { method: 'POST', body: JSON.stringify(payload) });
-}
-
 export function saveTeacherMultiplierProfile(payload) {
   return request('/finance/teacher-eligibility/salary-profiles/multiplier', { method: 'POST', body: JSON.stringify(payload) });
 }

@@ -29,7 +29,7 @@ const EXACT = {
   'Only headquarters can approve deductions': '僅總部可核准扣款',
   'Only headquarters can approve admin allowances': '僅總部可核准行政加給',
   'Only headquarters can approve cash adjustments': '僅總部可核准現金加扣款',
-  'Only headquarters can approve salary profiles': '僅總部可核准底薪',
+  'Only headquarters can approve salary profiles': '僅總部可核准',
   'leave event requires hours': '請假請填時數',
   'ends_on must be on or after starts_on': '結束日不可早於開始日',
   'student is outside the selected branch': '學生不屬於所選分校',

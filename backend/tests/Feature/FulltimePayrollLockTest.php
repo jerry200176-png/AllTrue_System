@@ -27,10 +27,10 @@ class FulltimePayrollLockTest extends TestCase
             ->assertJsonPath('lock.status', 'locked');
 
         $teacherId = $this->createTeacher(1, 'ft-lock-teacher@test.com');
-        $this->withHeaders($headers)->postJson('/api/v1/finance/teacher-eligibility/salary-profiles', [
+        $this->withHeaders($headers)->postJson('/api/v1/finance/teacher-eligibility/salary-profiles/multiplier', [
             'teacher_id' => $teacherId,
             'branch_id' => 1,
-            'base_salary' => 33000,
+            'manual_multiplier_pct' => 107,
             'effective_from' => '2026-08-01',
         ])->assertStatus(422);
     }

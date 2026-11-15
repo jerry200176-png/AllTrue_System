@@ -25,7 +25,7 @@
           </Button>
         </div>
       </div>
-      <p class="tw:mt-2 tw:text-tpl-body tw:text-tpl-secondary tw:text-pretty">依結算月份檢視本薪、獎金與待人工確認項目。</p>
+      <p class="tw:mt-2 tw:text-tpl-body tw:text-tpl-secondary tw:text-pretty">依結算月份檢視獎金與待人工確認項目（不含本薪）。</p>
       <p class="tw:mt-2 tw:flex tw:flex-wrap tw:items-center tw:gap-x-3 tw:gap-y-1 tw:text-tpl-caption tw:text-tpl-secondary">
         <span class="privilege-chip tw:rounded-full tw:bg-[var(--ds-warning-wash)] tw:px-2.5 tw:py-1 tw:font-semibold tw:text-[var(--ds-warning)]">高權限存取區</span>
         <span>制度 {{ policyVersion }} · {{ lockLabel }}</span>
@@ -91,7 +91,7 @@
               <TableHead scope="col" :class="headCell">教師倍率</TableHead>
               <TableHead scope="col" :class="headCell">倍率後獎金</TableHead>
               <TableHead scope="col" :class="headCell">加扣款</TableHead>
-              <TableHead scope="col" :class="headCell">總發放金額</TableHead>
+              <TableHead scope="col" :class="headCell">獎金合計</TableHead>
               <TableHead scope="col" :class="headCell">每週課段</TableHead>
             </TableRow>
           </TableHeader>
@@ -103,8 +103,8 @@
                 <small :class="smallText">老師</small>
                 <span :class="['status', statusClass(teacher.overall_status), statusChip, statusTone[statusClass(teacher.overall_status)]]">{{ statusLabel(teacher) }}</span>
               </TableCell>
-              <TableCell :class="bodyCell">{{ formatSubjects(teacher.settlement?.regular_subject_count) }}</TableCell>
-              <TableCell :class="bodyCell">{{ formatSubjects(teacher.settlement?.tutoring_trial_subject_count) }}</TableCell>
+              <TableCell :class="bodyCell">{{ formatSubjectUnits(teacher.settlement?.regular_subject_count) }}</TableCell>
+              <TableCell :class="bodyCell">{{ formatSubjectUnits(teacher.settlement?.tutoring_trial_subject_count) }}</TableCell>
               <TableCell :class="bodyCell">{{ formatSubjects(teacher.settlement?.payroll_subject_count) }}</TableCell>
               <TableCell :class="bodyCell">{{ formatSubjects(teacher.settlement?.one_to_three_count) }}</TableCell>
               <TableCell :class="[bodyCell, 'tw:tabular-nums']">{{ formatMoney(teacher.settlement?.subject_count_bonus) }}</TableCell>
@@ -137,7 +137,7 @@
                 <small v-if="!(teacher.settlement?.adjustments || []).length" :class="smallText">—</small>
               </TableCell>
               <TableCell :class="[bodyCell, 'total-cell']">
-                <strong class="tw:tabular-nums tw:text-[var(--ds-primary-text)]">{{ formatMoney(teacher.settlement?.total_payout) }}</strong>
+                <strong class="tw:tabular-nums tw:text-[var(--ds-primary-text)]">{{ formatMoney(bonusTotal(teacher.settlement)) }}</strong>
                 <small v-if="isDraft(teacher)" :class="smallText">試算，未可發放</small>
               </TableCell>
               <TableCell :class="[bodyCell, 'weekly-segment-cell tw:min-w-[300px]']">
@@ -178,7 +178,7 @@
             </template>
           </span></div>
           <div :class="componentRow"><span>倍率後獎金</span><span :class="[componentValue, 'tw:tabular-nums']">{{ formatMoney(teacher.settlement?.weighted_bonus_amount) }}</span></div>
-          <div :class="[componentRow, 'total-cell']"><span>總發放金額</span><strong class="tw:tabular-nums tw:text-[var(--ds-primary-text)]">{{ formatMoney(teacher.settlement?.total_payout) }}</strong></div>
+          <div :class="[componentRow, 'total-cell']"><span>獎金合計</span><strong class="tw:tabular-nums tw:text-[var(--ds-primary-text)]">{{ formatMoney(bonusTotal(teacher.settlement)) }}</strong></div>
           <div :class="[componentRow, 'weekly-segment-row']">
             <span>每週課段</span>
             <span :class="componentValue">
@@ -232,6 +232,8 @@ import {
   formatMoney,
   formatPct,
   formatSubjects,
+  formatSubjectUnits,
+  bonusTotal,
   monthWindow,
   weightedBonusFormula,
 } from '../lib/teacherEligibilityDisplay.js';
