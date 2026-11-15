@@ -112,3 +112,8 @@ assert.deepEqual(
   { price: 1500, unit: 'session' },
   'no server price is not a price of zero',
 );
+assert.equal(
+  getRateUnitDisplayLabel({ rate_per_30min: 800, rate_unit: 'session', current_unit_price: 900, current_unit_price_unit: 'hour' }),
+  '每小時',
+  'the unit label follows the price in force',
+);

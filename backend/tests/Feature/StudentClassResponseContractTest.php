@@ -138,7 +138,8 @@ class StudentClassResponseContractTest extends TestCase
         [$token] = $this->makeUserToken(1, 'unit-price-director@test.com', 'A');
         [, $teacher] = $this->makeUserToken(1, 'unit-price-teacher@test.com', 'T');
         $monthly = $this->makeCourse($teacher, 1, ['ScheduleMode' => 'date', 'Rate' => 2500, 'rate_unit' => 'session', 'EndDate' => '2026-09-30']);
-        foreach ([['2026-08-04', 'attended'], ['2026-08-11', 'attended'], ['2026-08-18', 'leave']] as [$date, $status]) {
+        // September has only a lesson to come: its 0 is a real amount, not an unknown one.
+        foreach ([['2026-08-04', 'attended'], ['2026-08-11', 'attended'], ['2026-08-18', 'leave'], ['2026-09-01', 'scheduled']] as [$date, $status]) {
             ClassSession::create(['StudentClassID' => $monthly->ID, 'SessionDate' => $date, 'StartTime' => '13:00', 'EndTime' => '15:00', 'Status' => $status]);
         }
         $row = fn () => $this->authJson('GET', '/api/v1/student-classes?schedule_mode=date&per_page=10', $token)->assertOk()->json('data.0');

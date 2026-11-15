@@ -95,7 +95,7 @@ export const courseUnitPrice = (course) => {
 };
 
 export const getRateUnitDisplayLabel = (course) => (
-  getRateUnit(course) === 'hour' ? '每小時' : '每堂'
+  courseUnitPrice(course).unit === 'hour' ? '每小時' : '每堂'
 );
 
 const getCourseTotalHours = (course, purchased) => {

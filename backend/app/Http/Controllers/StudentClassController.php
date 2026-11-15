@@ -653,7 +653,8 @@ class StudentClassController extends Controller
                 // #4991 step 4a: lessons held x the price in force on each lesson's date, summed by the server (the same
                 // per-lesson figures the monthly bill uses); null when a held lesson has no price. Display only.
                 $heldCharges = collect($monthlyPayment['session_review'] ?? [])->pluck('estimated_charge');
-                $class->setAttribute('held_lessons_amount', $heldCharges->contains(null) ? null : (int) $heldCharges->sum());
+                // Strict: a month with only lessons to come has a real 0, which a loose contains(null) would read as unknown.
+                $class->setAttribute('held_lessons_amount', $heldCharges->contains(fn ($charge) => $charge === null) ? null : (int) $heldCharges->sum());
                 // A report is an administrative claim, not a payment for all periods.
                 // #4150: a free/gift verdict from the resolver outranks the period summary (its NT$0 period reads paid/review).
                 if ($resolved !== 'free' && !($pendingReportId !== null && count($monthlyPayment['periods']) === 1
