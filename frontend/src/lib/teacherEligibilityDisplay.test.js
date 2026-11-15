@@ -108,12 +108,22 @@ assert.equal(multiplierValue({ multiplier_pct: null, known_multiplier_pct: 103 }
 assert.equal(multiplierPendingNote({ multiplier_pct: null, known_multiplier_pct: 103 }), '還有項目沒確認，先用 103% 試算');
 assert.equal(multiplierPendingNote({ multiplier_pct: 105, known_multiplier_pct: 105 }), '');
 // The 16 段課 bonus has its own line, so it is not repeated among the 加扣款 lines.
-assert.deepEqual(cashAdjustments({ adjustments: [{ label: '16段課', amount: 4000 }, { label: '代班補貼', amount: 1500 }] }), [{ label: '代班補貼', amount: 1500 }]);
+assert.deepEqual(cashAdjustments({ weekly_segment_bonus_amount: 4000, adjustments: [{ label: '16段課', amount: 4000 }, { label: '代班補貼', amount: 1500 }] }), [{ label: '代班補貼', amount: 1500 }]);
+// A cash adjustment that happens to carry the same name is a real line and stays; so does everything when no bonus was paid.
+assert.deepEqual(cashAdjustments({ weekly_segment_bonus_amount: 4000, adjustments: [{ label: '16段課', amount: 4000 }, { label: '16段課', amount: 4000 }, { label: '16段課', amount: 300 }] }),
+  [{ label: '16段課', amount: 4000 }, { label: '16段課', amount: 300 }]);
+assert.deepEqual(cashAdjustments({ weekly_segment_bonus_amount: 0, adjustments: [{ label: '16段課', amount: 300 }] }), [{ label: '16段課', amount: 300 }]);
 assert.deepEqual(cashAdjustments(undefined), []);
 assert.equal(hasNoLessons({ settlement: { total_payout: 0 }, components: weekly({ total_segments: 0 }) }), true);
 assert.equal(hasNoLessons({ settlement: { total_payout: 0 }, components: weekly({ total_segments: 3 }) }), false);
 assert.equal(hasNoLessons({ settlement: { total_payout: 500 }, components: weekly({ total_segments: 0 }) }), false);
 assert.equal(hasNoLessons({ review_required: true, settlement: { total_payout: 0 } }), false);
+// In a locked month a teacher whose result differs today, or cannot be compared, is not folded away.
+const idleRow = { settlement: { total_payout: 0 }, components: weekly({ total_segments: 0 }) };
+assert.equal(hasNoLessons({ ...idleRow, recalculated: { calculation_status: 'calculated', difference: 0 } }), true);
+assert.equal(hasNoLessons({ ...idleRow, recalculated: { calculation_status: 'calculated', difference: 4000 } }), false);
+assert.equal(hasNoLessons({ ...idleRow, recalculated: { calculation_status: 'review', difference: 0 } }), false);
+assert.equal(hasNoLessons({ ...idleRow, recalculated: null }), false);
 assert.deepEqual(monthWindow('2026-08'), { start: '2026-08-01', end: '2026-08-31' });
 // 正課 150 raw + 輔導試聽 12 raw = 核薪總 20.25: the three columns add up once shown on the same scale.
 assert.equal(formatSubjectUnits(150), '18.75');

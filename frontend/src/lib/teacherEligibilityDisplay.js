@@ -153,13 +153,25 @@ export function multiplierPendingNote(settlement) {
   return `還有項目沒確認，先用 ${Number(settlement.known_multiplier_pct)}% 試算`;
 }
 
-/** The 加扣款 lines. The settlement lists the 16 段課 bonus among them; the page gives that bonus its own line. */
+/**
+ * The 加扣款 lines. The settlement puts the 16 段課 bonus first among them and the page gives that bonus its own
+ * line, so that one entry is left out: the first with the bonus's label and amount. A cash adjustment someone
+ * happened to name the same stays.
+ */
 export function cashAdjustments(settlement) {
-  return (settlement?.adjustments || []).filter((item) => item.label !== '16段課');
+  const items = settlement?.adjustments || [];
+  const bonus = Number(settlement?.weekly_segment_bonus_amount || 0);
+  const generated = bonus ? items.findIndex((item) => item.label === '16段課' && Number(item.amount) === bonus) : -1;
+  return generated < 0 ? items : items.filter((_, index) => index !== generated);
 }
 
 /** Nothing on the calendar and nothing to pay or settle: the teacher needs no look this month. */
 export function hasNoLessons(teacher) {
+  // A locked month compared with today's rules: a teacher whose result differs, or cannot be told, stays in view.
+  if (teacher && 'recalculated' in teacher) {
+    const again = teacher.recalculated;
+    if (!again || again.calculation_status !== 'calculated' || Number(again.difference || 0) !== 0) return false;
+  }
   const segments = Number(teacher?.components?.weekly_16_segments?.metrics?.total_segments || 0);
   return segments === 0 && Number(teacher?.settlement?.total_payout || 0) === 0 && !teacher?.review_required && !teacher?.settlement?.payout_is_draft;
 }
