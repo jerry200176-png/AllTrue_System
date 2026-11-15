@@ -13,6 +13,8 @@ const buttonLabel = (button) => {
   element.querySelectorAll('[aria-hidden="true"]').forEach((icon) => icon.remove());
   return element.textContent.trim();
 };
+const attentionMetric = wrapper => wrapper.findAllComponents({ name: 'StatItem' })
+  .find(item => item.props('label') === '需要處理');
 
 const course = {
   id: 7001, subject: 'Math', subject_name: '數學', class_type: 'tutoring',
@@ -31,7 +33,7 @@ async function withCourse(overrides, assertions) {
     return { ok: true, json: async () => body };
   });
   vi.stubGlobal('fetch', fetchMock);
-  const wrapper = shallowMount(StudentsList, { props: { branchId: 1 } });
+  const wrapper = shallowMount(StudentsList, { props: { branchId: 1 }, global: { stubs: { StatStrip: false, StatItem: false } } });
   try {
     await flushPromises();
     await wrapper.find('[data-testid="student-row"]').trigger('click');
@@ -52,7 +54,8 @@ describe('In-App #351: tutoring next steps preserve the no-charge and anomaly co
       expect(card.find('.student-course-card__next-step').text()).toContain('課程資料已齊全');
       expect(card.find('.student-course-card__next-step').text()).not.toContain('付款');
       expect(wrapper.find('.student-course-picker__status').text()).toBe('進行中');
-      expect(wrapper.find('.student-course-overview__metric--attention').exists()).toBe(false);
+      expect(attentionMetric(wrapper).get('dd').text()).toBe('0');
+      expect(attentionMetric(wrapper).props('tone')).toBe('neutral');
     });
   });
 
@@ -60,7 +63,8 @@ describe('In-App #351: tutoring next steps preserve the no-charge and anomaly co
     await withCourse({ payment_status, tutoring_billing_anomaly: true }, async (wrapper) => {
       expect(wrapper.find('.student-course-card [role="alert"]').text()).toContain('帳務資料需修正');
       expect(wrapper.find('.student-course-picker__status').text()).toBe('帳務資料需修正');
-      expect(wrapper.find('.student-course-overview__metric--attention strong').text()).toBe('1');
+      expect(attentionMetric(wrapper).get('dd').text()).toBe('1');
+      expect(attentionMetric(wrapper).props('tone')).toBe('warning');
       expect(wrapper.find('.student-course-card__next-step').text()).toContain('輔導課無須繳費');
       expect(wrapper.find('.student-course-card__next-step').text()).not.toContain('先確認付款狀態');
       const action = wrapper.find('.student-course-card__primary');
@@ -75,7 +79,8 @@ describe('In-App #351: tutoring next steps preserve the no-charge and anomaly co
     await withCourse({ class_type: 'one_on_one' }, (wrapper) => {
       expect(wrapper.find('.student-course-card__next-step').text()).toContain('先確認付款狀態');
       expect(wrapper.find('.student-course-picker__status').text()).toBe('付款待確認');
-      expect(wrapper.find('.student-course-overview__metric--attention strong').text()).toBe('1');
+      expect(attentionMetric(wrapper).get('dd').text()).toBe('1');
+      expect(attentionMetric(wrapper).props('tone')).toBe('warning');
     });
   });
 
@@ -83,7 +88,8 @@ describe('In-App #351: tutoring next steps preserve the no-charge and anomaly co
     await withCourse({ remaining_sessions: 1 }, (wrapper) => {
       expect(buttonLabel(wrapper.find('.student-course-card__primary'))).toBe('延續輔導課');
       expect(wrapper.find('.student-course-picker__status').text()).toBe('需要續報');
-      expect(wrapper.find('.student-course-overview__metric--attention strong').text()).toBe('1');
+      expect(attentionMetric(wrapper).get('dd').text()).toBe('1');
+      expect(attentionMetric(wrapper).props('tone')).toBe('warning');
     });
   });
 });

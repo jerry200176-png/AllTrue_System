@@ -42,6 +42,11 @@
             <span class="material-symbols-outlined">content_copy</span>
             {{ copying ? '已複製' : '複製到剪貼簿' }}
           </button>
+          <!-- in-app #553: the same content as text, for pasting into a message. -->
+          <button class="ghost" data-testid="slip-copy-text" @click="copyText">
+            <span class="material-symbols-outlined">notes</span>
+            {{ { done: '已複製文字', failed: '複製失敗，請再試一次' }[textCopy] || '複製文字' }}
+          </button>
         </div>
       </template>
     </div>
@@ -51,7 +56,7 @@
 <script setup>
 import { ref, computed, watch, nextTick } from 'vue';
 import BillingDocument from './BillingDocument.vue';
-import { paymentSlipView } from '../lib/billingDocumentView.js';
+import { paymentSlipView, slipPlainText } from '../lib/billingDocumentView.js';
 import { trapTab } from '../lib/focusTrap';
 import { trackedFetch } from '../lib/loadingBar';
 
@@ -70,6 +75,7 @@ const raw = ref(null);
 const doc = computed(() => (raw.value ? paymentSlipView(raw.value) : null));
 const docRef = ref(null);
 const copying = ref(false);
+const textCopy = ref('');
 const exporting = ref(false);
 
 function getToken() {
@@ -175,6 +181,16 @@ async function downloadPng() {
   } finally {
     exporting.value = false;
   }
+}
+
+async function copyText() {
+  try {
+    await navigator.clipboard.writeText(slipPlainText(doc.value));
+    textCopy.value = 'done';
+  } catch {
+    textCopy.value = 'failed';
+  }
+  setTimeout(() => { textCopy.value = ''; }, 2000);
 }
 
 async function copyToClipboard() {

@@ -379,14 +379,15 @@ test.describe('UI foundation — real Vue page evidence', () => {
       await expect(workspace).toBeVisible({ timeout: 10_000 });
       await expect.poll(() => tableWrap.evaluate((el) => el.scrollLeft)).toBeLessThan(initialScrollLeft + 8);
       await expect(workspace.getByText('先看需要處理的課程')).toBeVisible();
-      await expect(workspace.getByRole('heading', { name: '逐筆核對合約與上課日期' })).toBeVisible();
+      await expect(workspace.getByRole('heading', { name: '目前課程工作區', exact: true })).toBeVisible();
+      await expect(workspace.getByText('逐筆核對合約與上課日期', { exact: true })).toBeVisible();
       await expect.poll(() => sessionRequests.length).toBe(1);
       expect(new URL(sessionRequests[0].url()).searchParams.get('student_class_ids')).toBe('5001,5002,5003');
-      await expect(workspace.locator('.student-course-overview__metric')).toHaveCount(3);
-      await expect(workspace.locator('.student-course-overview__metric:nth-child(3) strong')).toHaveText('1');
+      await expect(workspace.getByTestId('course-overview-metric')).toHaveCount(3);
+      await expect(workspace.getByTestId('course-overview-metric').filter({ hasText: '歷史' }).locator('dd')).toHaveText('1');
 
-      const english = workspace.locator('.student-course-picker__item[data-course-id="5002"]');
-      const math = workspace.locator('.student-course-picker__item[data-course-id="5001"]');
+      const english = workspace.locator('[data-testid="course-picker-item"][data-course-id="5002"]');
+      const math = workspace.locator('[data-testid="course-picker-item"][data-course-id="5001"]');
       await expect(english.locator('button')).toHaveAttribute('aria-pressed', 'true');
       await expect(math.locator('button')).toHaveAttribute('aria-pressed', 'false');
       await expect(workspace.locator('article.student-course-card[data-course-id="5002"]')).toBeVisible();

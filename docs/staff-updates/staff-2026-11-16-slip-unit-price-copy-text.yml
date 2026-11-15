@@ -1,0 +1,16 @@
+updates:
+  - id: staff-2026-11-16-slip-unit-price-copy-text
+    published_at: "2026-11-16"
+    audiences:
+      - director
+      - super_admin
+    importance: digest
+    title: 繳費單多單價與複製文字
+    summary: 繳費單的項目多一欄單價；下方多一顆複製文字，可直接貼到訊息。
+    items:
+      - category: added
+        text: 繳費單項目表多「單價」欄，顯示這門課每堂或每小時的價格。
+      - category: added
+        text: 繳費單下方多「複製文字」按鈕，內容和圖片上的一樣。
+    source_refs:
+      - "changelog:2026-11-16:slip-unit-price-copy-text"

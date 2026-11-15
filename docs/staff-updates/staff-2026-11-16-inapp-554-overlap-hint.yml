@@ -1,0 +1,14 @@
+updates:
+  - id: staff-2026-11-16-inapp-554-overlap-hint
+    published_at: "2026-11-16"
+    audiences:
+      - director
+      - super_admin
+    importance: digest
+    title: 上完的課不再提示重疊
+    summary: 學費收款清單裡，已經剩零堂的堂數制課程不再顯示「本期順延與下一期重疊」。
+    items:
+      - category: fixed
+        text: 課已經上完卻還提示「順延至某天、跟下一期重疊」的情況修正了；還有堂數的課照舊提醒。
+    source_refs:
+      - "changelog:2026-11-16:inapp-554-overlap-hint-finished-course"

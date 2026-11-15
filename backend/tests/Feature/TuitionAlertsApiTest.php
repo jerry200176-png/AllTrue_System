@@ -82,6 +82,14 @@ class TuitionAlertsApiTest extends TestCase
         $res->assertOk();
         $ids = collect($res->json())->pluck('id')->map(fn ($id) => (int) $id)->all();
         $this->assertContains((int) $course->ID, $ids);
+
+        // in-app #554: the row carries the exact minute balance beside the rounded lesson count, so the list can tell
+        // "nothing left" from "part of a lesson left" (both read as 0 lessons).
+        \Illuminate\Support\Facades\DB::table('StudentClass')->where('ID', $course->ID)->update(['RemainingMinutes' => 30]);
+        $row = collect($this->withHeaders(['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])
+            ->getJson('/api/v1/alerts/tuition?branch_id=1')->assertOk()->json())->firstWhere('id', $course->ID);
+        $this->assertSame(0, $row['remaining_sessions']);
+        $this->assertSame(30, $row['remaining_minutes']);
     }
 
     public function test_monthly_unpaid_excluded_when_five_or_more_days_before_due(): void
@@ -1282,8 +1290,17 @@ class TuitionAlertsApiTest extends TestCase
             'PackageID' => $pkg->id, 'PackageTotalSessions' => 8, 'PackageName' => $pkg->name,
         ]);
 
-        $this->withHeaders(['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])
+        $slip = $this->withHeaders(['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])
             ->getJson("/api/v1/alerts/tuition-slip/{$anchor->ID}")->assertOk()->assertJsonPath('charge', 8000);
+        // 單價 on the slip follows what the amount is built from: this course's own rate (1000 a lesson).
+        $this->assertEquals(1000, $slip->json('unit_price'));
+        $this->assertSame('session', $slip->json('unit_price_unit'));
+
+        // The unit rides along: a course priced by the hour says so.
+        $hourly = $this->createCountModeClass($student->id, ['Rate' => 900, 'rate_unit' => 'hour', 'TotalHours' => 8, 'SessionCount' => 4, 'Charge' => 7200, 'Paid' => 0, 'RemainingSessions' => 4]);
+        $own = $this->withHeaders(['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])->getJson("/api/v1/alerts/tuition-slip/{$hourly->ID}")->assertOk();
+        $this->assertEquals(900, $own->json('unit_price'));
+        $this->assertSame('hour', $own->json('unit_price_unit'));
     }
 
     // ── #4123 / in-app #407 (#4114): 最近繳費 and 已收 come from valid Payment rows ──────────────

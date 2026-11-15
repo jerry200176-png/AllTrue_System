@@ -205,9 +205,18 @@ const fullyCollected = computed(() => isMonthly.value && state.value === 'ready'
   && props.outstanding <= 0 && !sessions.value.some((s) => billable(s) && s.payment === 'no_invoice'));
 
 const dateOnly = (d) => (d ? String(d).slice(0, 10).replaceAll('-', '/') : '');
+// in-app #552: a 堂數制 contract's registered dates are a plan (lessons can be carried in from before, or run on
+// after); once its lessons are known the title says when they really run, so it agrees with the list under it.
+// A monthly contract is billed by its dates and keeps them.
 const title = computed(() => {
   const c = data.value || props.course;
-  const range = [dateOnly(c.start_date), dateOnly(c.end_date)].filter(Boolean).join('–');
+  const start = c.start_date ?? props.course.start_date;
+  const end = c.end_date ?? props.course.end_date;
+  const lessonDates = isMonthly.value ? [] : sessions.value.filter(billable).map((s) => String(s.date || '').slice(0, 10)).filter(Boolean).sort();
+  const last = lessonDates[lessonDates.length - 1];
+  // Lessons still to be put on the calendar: the last real day is not known yet, so the registered end stays if later.
+  const to = !last ? end : (unscheduled.value && end && String(end).slice(0, 10) > last ? end : last);
+  const range = [dateOnly(lessonDates[0] || start), dateOnly(to)].filter(Boolean).join('–');
   return range ? `${c.subject || '課程'}・${range}` : (c.subject || '課程');
 });
 // Founder 2026-10-15 (Q9=A, #3982): same 「課程 000123」 reference the tables show (plan D11 note).

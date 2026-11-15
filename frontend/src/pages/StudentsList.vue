@@ -219,26 +219,26 @@
           <!-- Expanded Course Detail -->
           <tr v-if="expandedId === student.id" :id="`student-course-detail-${student.id}`" class="course-detail-row tw:max-lg:block">
             <td colspan="10" class="tw:max-lg:block">
-              <div class="course-panel">
-                <div class="course-panel-header">
-                  <h4>
-                    <span class="material-symbols-outlined" style="font-size:18px;vertical-align:middle;">menu_book</span>
+              <div class="course-panel tw:box-border tw:min-w-0 tw:space-y-3 tw:px-4 tw:py-5 tw:md:px-6 tw:max-md:max-w-[calc(100vw-2rem)]">
+                <div class="course-panel-header tw:flex tw:flex-wrap tw:items-center tw:justify-between tw:gap-3">
+                  <h3 class="tw:m-0 tw:flex tw:min-w-0 tw:items-center tw:gap-2 tw:text-tpl-list tw:font-semibold tw:text-foreground">
+                    <BookOpen class="tw:size-5 tw:shrink-0" aria-hidden="true" />
                     {{ student.name }} 的課程安排
-                  </h4>
-                  <div class="course-panel-header__actions">
-                    <button v-if="getRenewableMonthlyCourses(student.id).length" type="button" class="small ghost" data-testid="batch-monthly-renew" @click="openBatchRenew(student)">
-                      <span class="material-symbols-outlined btn-icon">autorenew</span>
+                  </h3>
+                  <div class="course-panel-header__actions tw:flex tw:flex-wrap tw:gap-2" data-testid="course-panel-actions">
+                    <Button v-if="getRenewableMonthlyCourses(student.id).length" type="button" variant="outline" :class="[control.row, 'tw:text-foreground']" data-testid="batch-monthly-renew" @click="openBatchRenew(student)">
+                      <RefreshCw class="tw:size-5" aria-hidden="true" />
                       月結續報下月（{{ getRenewableMonthlyCourses(student.id).length }} 科）
-                    </button>
-                    <button type="button" class="primary small" @click="openAddCourse(student)">
-                      <span class="material-symbols-outlined btn-icon">add</span>
+                    </Button>
+                    <Button type="button" :class="[control.row, 'tw:text-primary-foreground']" @click="openAddCourse(student)">
+                      <Plus class="tw:size-5" aria-hidden="true" />
                       新增課程
-                    </button>
+                    </Button>
                   </div>
                 </div>
-                <div class="student-note-line">
-                  <span class="student-note-label">學生備註：</span>
-                  <span>{{ student.notes || '無' }}</span>
+                <div class="student-note-line tw:flex tw:items-start tw:gap-1 tw:text-tpl-body tw:text-tpl-secondary">
+                  <span class="tw:shrink-0 tw:font-semibold">學生備註：</span>
+                  <span class="tw:min-w-0 tw:whitespace-pre-wrap tw:wrap-anywhere">{{ student.notes || '無' }}</span>
                 </div>
 
                 <div v-if="getStudentCourses(student.id).length === 0" class="empty-text">
@@ -250,58 +250,51 @@
                      exposing one course's full detail. Existing course and payment handlers
                      remain on the focused card and are not changed. -->
                 <div v-if="getActiveStudentCourses(student.id).length > 0" class="student-course-workspace" data-testid="student-course-workspace">
-                  <section class="student-course-overview" aria-labelledby="student-course-overview-title">
-                    <div class="student-course-overview__header">
+                  <section class="student-course-overview tw:min-w-0" aria-labelledby="student-course-overview-title">
+                    <div class="tw:flex tw:flex-wrap tw:items-start tw:justify-between tw:gap-2">
                       <div>
-                        <span class="student-course-overview__eyebrow">課程總覽</span>
-                        <h5 id="student-course-overview-title">先看需要處理的課程</h5>
+                        <h4 id="student-course-overview-title" class="tw:m-0 tw:text-tpl-list tw:font-semibold tw:text-foreground">課程總覽</h4>
+                        <p class="tw:m-0 tw:text-tpl-caption tw:text-tpl-secondary">先看需要處理的課程</p>
                       </div>
-                      <span class="student-course-overview__hint">快速定位合約，逐筆核對日期</span>
+                      <span class="tw:text-tpl-caption tw:text-tpl-secondary">快速定位合約，逐筆核對日期</span>
                     </div>
-                    <div class="student-course-overview__metrics" role="list" aria-label="課程摘要">
-                      <div role="listitem" class="student-course-overview__metric">
-                        <strong>{{ getActiveStudentCourses(student.id).length }}</strong>
-                        <span>進行中</span>
-                      </div>
-                      <div role="listitem" class="student-course-overview__metric" :class="{ 'student-course-overview__metric--attention': getStudentCourseAttentionCount(student.id) > 0 }">
-                        <strong>{{ getStudentCourseAttentionCount(student.id) }}</strong>
-                        <span>需要處理</span>
-                      </div>
-                      <div role="listitem" class="student-course-overview__metric">
-                        <strong>{{ getStudentHistoryCourseCount(student.id) }}</strong>
-                        <span>歷史</span>
-                      </div>
-                    </div>
-                    <section v-for="pool in sharedPackageSummaries(getActiveStudentCourses(student.id))" :key="`pool-${pool.id}`" class="student-package-summary" :aria-label="`${pool.name}共用堂數`">
-                      <div class="student-course-overview__header"><strong>{{ pool.name }}</strong><span class="student-course-overview__hint">成員課程共用同一堂數池</span></div>
-                      <dl class="student-course-card__meta">
-                        <div><dt>方案總堂數</dt><dd data-testid="package-total">{{ pool.total ?? '待確認' }}</dd></div>
-                        <div><dt>方案已使用</dt><dd data-testid="package-used">{{ pool.used ?? '待確認' }}</dd></div>
-                        <div><dt>方案剩餘堂數</dt><dd data-testid="package-remaining">{{ pool.remaining ?? '待確認' }}</dd></div>
+                    <StatStrip class="tw:mt-3 tw:rounded-none tw:border-x-0 tw:shadow-none" aria-label="課程摘要">
+                      <StatItem label="進行中" :value="getActiveStudentCourses(student.id).length" data-testid="course-overview-metric" data-metric="active" />
+                      <StatItem label="需要處理" :value="getStudentCourseAttentionCount(student.id)" :tone="getStudentCourseAttentionCount(student.id) > 0 ? 'warning' : 'neutral'" data-testid="course-overview-metric" data-metric="attention" />
+                      <StatItem label="歷史" :value="getStudentHistoryCourseCount(student.id)" class="tw:max-lg:col-span-2" data-testid="course-overview-metric" data-metric="history" />
+                    </StatStrip>
+                    <section v-for="pool in sharedPackageSummaries(getActiveStudentCourses(student.id))" :key="`pool-${pool.id}`" class="student-package-summary tw:mt-3 tw:border-b tw:border-border tw:pb-3" :aria-label="`${pool.name}共用堂數`">
+                      <div class="tw:flex tw:flex-wrap tw:items-baseline tw:justify-between tw:gap-2"><strong :class="factRow.value">{{ pool.name }}</strong><span :class="factRow.sub">成員課程共用同一堂數池</span></div>
+                      <dl class="tw:mb-0 tw:mt-3 tw:grid tw:grid-cols-1 tw:gap-2 tw:sm:grid-cols-3 tw:sm:gap-3">
+                        <div class="tw:flex tw:flex-wrap tw:items-baseline tw:justify-between tw:gap-x-4 tw:sm:block"><dt :class="factRow.label">方案總堂數</dt><dd :class="[factRow.value, 'tw:m-0 tw:tabular-nums']" data-testid="package-total">{{ pool.total ?? '待確認' }}</dd></div>
+                        <div class="tw:flex tw:flex-wrap tw:items-baseline tw:justify-between tw:gap-x-4 tw:sm:block"><dt :class="factRow.label">方案已使用</dt><dd :class="[factRow.value, 'tw:m-0 tw:tabular-nums']" data-testid="package-used">{{ pool.used ?? '待確認' }}</dd></div>
+                        <div class="tw:flex tw:flex-wrap tw:items-baseline tw:justify-between tw:gap-x-4 tw:sm:block"><dt :class="factRow.label">方案剩餘堂數</dt><dd :class="[factRow.value, 'tw:m-0 tw:tabular-nums']" data-testid="package-remaining">{{ pool.remaining ?? '待確認' }}</dd></div>
                       </dl>
-                      <p v-if="poolOverusedSessions(pool) > 0" class="student-package-summary__overused" data-testid="package-overused">
+                      <p v-if="poolOverusedSessions(pool) > 0" class="tw:m-0 tw:mt-2 tw:rounded-xl tw:border tw:border-solid tw:border-[var(--ds-warning-border)] tw:bg-[var(--ds-warning-wash)] tw:px-3 tw:py-2 tw:text-tpl-body tw:text-[var(--ds-warning-text)]" data-testid="package-overused">
                         已使用超出方案 {{ poolOverusedSessions(pool) }} 堂。請核對點名與扣堂紀錄；確實超上請安排續約。
                       </p>
                     </section>
-                    <div class="student-course-picker" role="list" aria-label="進行中的課程">
+                    <div class="student-course-picker tw:mt-3 tw:divide-y tw:divide-border tw:border-y tw:border-border" role="list" aria-label="進行中的課程">
                       <div
                         v-for="course in getActiveStudentCourses(student.id)"
                         :key="`picker-${course.id}`"
-                        class="student-course-picker__item"
+                        class="student-course-picker__item tw:min-w-0"
                         :class="{ 'student-course-picker__item--selected': getFocusedStudentCourse(student.id)?.id === course.id, 'student-course-picker__item--attention': isCourseNeedsAttention(course) }"
                         :data-course-id="course.id"
+                        data-testid="course-picker-item"
                         role="listitem"
                       >
                         <button
                           type="button"
-                          class="student-course-picker__button"
+                          class="student-course-picker__button tw:grid tw:min-h-11 tw:w-full tw:grid-cols-[minmax(0,1fr)_auto] tw:items-center tw:gap-x-3 tw:gap-y-1 tw:border-0 tw:border-l tw:border-solid tw:px-3 tw:py-3 tw:text-left tw:text-foreground tw:focus-visible:outline-2 tw:focus-visible:-outline-offset-2 tw:focus-visible:outline-solid tw:focus-visible:outline-ring"
+                          :class="getFocusedStudentCourse(student.id)?.id === course.id ? 'tw:border-l-primary tw:bg-[var(--ds-primary-wash)]' : isCourseNeedsAttention(course) ? 'tw:border-l-[var(--ds-warning)] tw:bg-transparent tw:hover:bg-muted' : 'tw:border-l-transparent tw:bg-transparent tw:hover:bg-muted'"
                           :aria-pressed="getFocusedStudentCourse(student.id)?.id === course.id"
                           @click.stop="selectStudentCourse(student.id, course.id, $event)"
                         >
-                          <span class="student-course-picker__subject">{{ getStudentCourseSubjectDisplayLabel(course) }}</span>
-                          <span class="student-course-picker__status">{{ getCourseAttentionLabel(course) }}</span>
-                          <span class="student-course-picker__detail">{{ getCourseProgressSummary(course) }}</span>
-                          <span class="student-course-picker__chevron material-symbols-outlined" aria-hidden="true">chevron_right</span>
+                          <span :class="['student-course-picker__subject', factRow.value, 'tw:min-w-0 tw:wrap-anywhere']">{{ getStudentCourseSubjectDisplayLabel(course) }}</span>
+                          <span class="student-course-picker__status tw:col-start-1 tw:text-tpl-caption tw:font-semibold" :class="isCourseNeedsAttention(course) ? toneText.warning : 'tw:text-tpl-secondary'">{{ getCourseAttentionLabel(course) }}</span>
+                          <span :class="['student-course-picker__detail', factRow.sub, 'tw:col-start-1 tw:tabular-nums']">{{ getCourseProgressSummary(course) }}</span>
+                          <ChevronRight class="tw:col-start-2 tw:row-span-3 tw:row-start-1 tw:size-5 tw:text-tpl-secondary" aria-hidden="true" />
                         </button>
                       </div>
                     </div>
@@ -312,8 +305,8 @@
                   <section class="student-course-detail" aria-labelledby="student-course-detail-title">
                     <div class="student-course-detail__heading">
                       <div>
-                        <span class="student-course-detail__eyebrow">目前課程工作區</span>
-                        <h5 id="student-course-detail-title">逐筆核對合約與上課日期</h5>
+                        <h4 id="student-course-detail-title" class="tw:m-0 tw:text-tpl-list tw:font-semibold tw:text-foreground">目前課程工作區</h4>
+                        <p class="tw:m-0 tw:text-tpl-caption tw:text-tpl-secondary">逐筆核對合約與上課日期</p>
                       </div>
                       <div class="student-course-detail__tools">
                         <span class="student-course-detail__hint">每筆合約獨立列示，堂次不混合</span>
@@ -1053,10 +1046,10 @@ import {
   buildBindingManagementNav,
 } from '../lib/authoritativeMutationRoutes.js';
 import { Button } from '../components/ui/button';
-import { FilterChip, PageHeader, SelectionBar, StatusBadge, control, dataTable, pageShell, rowAction, surface, toneBadge } from '../components/ui/page';
+import { FilterChip, PageHeader, SelectionBar, StatItem, StatStrip, StatusBadge, control, dataTable, factRow, pageShell, rowAction, surface, toneBadge, toneText } from '../components/ui/page';
 import { Checkbox } from '../components/ui/checkbox';
 import ActionMenu from '../components/ActionMenu.vue';
-import { Building2, ChevronDown, Download, FileUp, GraduationCap, Merge, Plus, Search, SearchX, StickyNote, Trash2 } from 'lucide-vue-next';
+import { BookOpen, Building2, ChevronDown, ChevronRight, Download, FileUp, GraduationCap, Merge, Plus, RefreshCw, Search, SearchX, StickyNote, Trash2 } from 'lucide-vue-next';
 import { Alert } from '../components/ui/alert';
 import { Skeleton } from '../components/ui/skeleton';
 import SchoolNameInput from '../components/SchoolNameInput.vue';
@@ -3856,34 +3849,6 @@ table th { font-size: 12.5px; }
   padding: 0 !important;
   background: var(--ds-canvas-soft) !important;
 }
-.course-panel {
-  padding: 20px 24px;
-  margin: 0;
-}
-.course-panel-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 16px;
-}
-.course-panel-header__actions { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
-.course-panel-header h4 {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 16px;
-  font-weight: 700;
-  color: var(--ds-primary-text);
-  margin: 0;
-}
-.student-note-line {
-  margin-bottom: 12px;
-  font-size: 13px;
-  color: var(--ds-ink-mute);
-}
-.student-note-label {
-  font-weight: 700;
-}
 .student-latest-payment-note {
   display: flex;
   align-items: flex-start;
@@ -3909,144 +3874,6 @@ table th { font-size: 12.5px; }
   display: grid;
   gap: 12px;
 }
-.student-course-overview {
-  background: var(--ds-canvas-soft);
-  border: 1px solid var(--ds-hairline);
-  border-radius: 12px;
-  padding: 16px;
-}
-.student-course-overview__header {
-  align-items: flex-start;
-  display: flex;
-  gap: 16px;
-  justify-content: space-between;
-}
-.student-course-overview__eyebrow {
-  color: var(--ds-primary-text);
-  display: block;
-  font-size: 11px;
-  font-weight: 800;
-  letter-spacing: 0.04em;
-  margin-bottom: 2px;
-}
-.student-course-overview h5 {
-  color: var(--ds-ink);
-  font-size: 16px;
-  line-height: 1.4;
-  margin: 0;
-}
-.student-course-overview__hint {
-  color: var(--ds-ink-mute);
-  font-size: 12px;
-  line-height: 1.5;
-  text-align: right;
-}
-.student-package-summary__overused {
-  background: var(--ds-warning-wash);
-  border: 1px solid var(--ds-warning-border);
-  border-radius: var(--ds-radius-lg);
-  color: var(--ds-warning-ink);
-  font-size: var(--ds-font-size-md);
-  line-height: 1.5;
-  margin: 8px 0 0;
-  padding: 8px 10px;
-}
-.student-course-overview__metrics {
-  border-bottom: 1px solid var(--ds-hairline);
-  display: grid;
-  gap: 8px;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  margin-top: 14px;
-  padding-bottom: 14px;
-}
-.student-course-overview__metric {
-  align-items: baseline;
-  color: var(--ds-ink-mute);
-  display: flex;
-  gap: 6px;
-  min-width: 0;
-}
-.student-course-overview__metric strong {
-  color: var(--ds-ink);
-  font-size: 20px;
-  font-variant-numeric: tabular-nums;
-  line-height: 1.2;
-}
-.student-course-overview__metric span {
-  font-size: 12px;
-  white-space: nowrap;
-}
-.student-course-overview__metric--attention strong,
-.student-course-overview__metric--attention span {
-  color: var(--ds-warning);
-}
-.student-course-picker {
-  display: grid;
-  gap: 8px;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  margin-top: 12px;
-}
-.student-course-picker__item {
-  min-width: 0;
-}
-.student-course-picker__button {
-  align-items: center;
-  background: var(--ds-canvas);
-  border: 1px solid var(--ds-hairline);
-  border-radius: 8px;
-  color: var(--ds-ink);
-  cursor: pointer;
-  display: grid;
-  gap: 3px 8px;
-  grid-template-columns: minmax(0, 1fr) auto;
-  min-height: 68px;
-  padding: 10px 12px;
-  text-align: left;
-  transition: border-color var(--ds-motion-fast, 120ms) var(--ds-ease-standard, ease), background-color var(--ds-motion-fast, 120ms) var(--ds-ease-standard, ease), box-shadow var(--ds-motion-fast, 120ms) var(--ds-ease-standard, ease);
-  width: 100%;
-}
-.student-course-picker__button:hover {
-  background: var(--ds-canvas);
-  border-color: var(--ds-primary);
-}
-.student-course-picker__button:focus-visible {
-  outline: none;
-  box-shadow: 0 0 0 3px var(--ds-focus-ring);
-}
-.student-course-picker__item--selected .student-course-picker__button {
-  background: var(--ds-primary-wash);
-  border-color: var(--ds-primary);
-  box-shadow: inset 3px 0 0 var(--ds-primary);
-}
-.student-course-picker__item--attention:not(.student-course-picker__item--selected) .student-course-picker__button {
-  border-color: var(--ds-warning);
-}
-.student-course-picker__subject {
-  font-size: 13px;
-  font-weight: 800;
-  min-width: 0;
-  overflow-wrap: anywhere;
-}
-.student-course-picker__status {
-  color: var(--ds-ink-mute);
-  font-size: 11px;
-  font-weight: 700;
-  white-space: nowrap;
-}
-.student-course-picker__item--attention .student-course-picker__status {
-  color: var(--ds-warning);
-}
-.student-course-picker__detail {
-  color: var(--ds-ink-secondary);
-  font-size: 12px;
-  font-variant-numeric: tabular-nums;
-  grid-column: 1;
-}
-.student-course-picker__chevron {
-  color: var(--ds-ink-mute);
-  grid-column: 2;
-  grid-row: 1 / span 2;
-}
 .student-course-detail {
   display: grid;
   gap: 10px;
@@ -4057,20 +3884,6 @@ table th { font-size: 12.5px; }
   gap: 16px;
   justify-content: space-between;
   padding: 2px 2px 0;
-}
-.student-course-detail__eyebrow {
-  color: var(--ds-primary-text);
-  display: block;
-  font-size: 11px;
-  font-weight: 800;
-  letter-spacing: 0.04em;
-  margin-bottom: 2px;
-}
-.student-course-detail__heading h5 {
-  color: var(--ds-ink);
-  font-size: 15px;
-  line-height: 1.4;
-  margin: 0;
 }
 .student-course-detail__hint {
   color: var(--ds-ink-mute);
@@ -4579,23 +4392,6 @@ table th { font-size: 12.5px; }
 
 /* ═══ Mobile Responsive ═══ */
 @media (max-width: 768px) {
-  .course-panel {
-    box-sizing: border-box;
-    padding: 16px;
-    max-width: calc(100vw - 32px);
-    width: calc(100vw - 32px);
-  }
-  .student-course-overview {
-    padding: 14px;
-  }
-  .student-course-overview__header {
-    display: block;
-  }
-  .student-course-overview__hint {
-    display: block;
-    margin-top: 4px;
-    text-align: left;
-  }
   .student-course-detail__heading {
     align-items: flex-start;
     display: block;
@@ -4611,18 +4407,6 @@ table th { font-size: 12.5px; }
   }
   .student-course-detail__bulk-toggle {
     margin-top: 8px;
-  }
-  .student-course-overview__metrics {
-    gap: 4px;
-  }
-  .student-course-overview__metric {
-    align-items: flex-start;
-    display: flex;
-    flex-direction: column;
-    gap: 1px;
-  }
-  .student-course-picker {
-    grid-template-columns: minmax(0, 1fr);
   }
   .student-course-card__header {
     display: block;
