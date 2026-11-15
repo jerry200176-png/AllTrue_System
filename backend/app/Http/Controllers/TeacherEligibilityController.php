@@ -900,6 +900,14 @@ class TeacherEligibilityController extends Controller
                 $intervals[] = [$startMinutes, $endMinutes];
                 continue;
             }
+            // An end time that is not after the start (a typing slip such as 20:00-00:00) is no end time: the lesson
+            // gets the two-hour default, as an interval so it still merges with the day's other lessons. Taking the
+            // gap between the two clock times instead counted such a lesson as up to 22 hours (seen in 2026-10).
+            // ponytail: the default is two hours for every course; use the course's own lesson length if it matters.
+            if ($startMinutes !== null) {
+                $intervals[] = [$startMinutes, min($startMinutes + 120, 1440)];
+                continue;
+            }
 
             $fallbackHours += $this->durationHours($row);
         }

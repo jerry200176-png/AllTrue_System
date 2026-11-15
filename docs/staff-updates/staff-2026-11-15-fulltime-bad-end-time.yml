@@ -1,0 +1,16 @@
+updates:
+  - id: staff-2026-11-15-fulltime-bad-end-time
+    published_at: "2026-11-15"
+    audiences:
+      - director
+      - super_admin
+    importance: digest
+    title: 填錯下課時間不再多算
+    summary: 下課時間早於上課時間的課，正職每週段數改照兩小時算，不再算成十幾二十小時。
+    items:
+      - category: fixed
+        text: 下課時間填錯的課以前會被算成很長的時數，讓每週段數虛增；現在照兩小時算。
+      - category: action_required
+        text: 排課時請確認下課時間晚於上課時間；看到某天時數異常多，請檢查那天的課。
+    source_refs:
+      - "changelog:2026-11-15:fulltime-bad-end-time"
