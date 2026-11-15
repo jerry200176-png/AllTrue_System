@@ -61,7 +61,7 @@ final class FulltimeSettlementComposer
         // 新進保底: when it applies the weighted bonus is at least the guarantee. Only once that bonus is itself final.
         $weightedBeforeGuarantee = $weightedBonus;
         $guarantee = (float) ($components['new_hire_guarantee']['amount'] ?? 0);
-        $guaranteeApplied = $subjectKnown && $multiplierComplete && $guarantee > $weightedBonus;
+        $guaranteeApplied = $guarantee > 0 && $subjectKnown && $multiplierComplete && $guarantee > $weightedBonus;
         if ($guaranteeApplied) $weightedBonus = $guarantee;
 
         $cashComponent = $components['cash_adjustments'] ?? null;

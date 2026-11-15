@@ -200,5 +200,14 @@ class FulltimeSettlementComposerTest extends TestCase
         $none = FulltimeSettlementComposer::compose(['subject_count_bonus' => ['status' => 'qualifies', 'amount' => 0, 'rate' => 0, 'metrics' => ['subject_count' => 10, 'subject_count_bonus' => 1000, 'one_to_three_bonus' => 0]]], ['payroll_total' => 10]);
         $this->assertFalse($none['new_hire_guarantee_applied']);
         $this->assertSame(1000.0, $none['weighted_bonus_amount']);
+
+        // No guarantee means no floor at all: approved deductions can still take the weighted bonus below zero.
+        $deducted = FulltimeSettlementComposer::compose([
+            'subject_count_bonus' => ['status' => 'qualifies', 'amount' => 0, 'rate' => 0, 'metrics' => ['subject_count' => 10, 'subject_count_bonus' => 3000, 'one_to_three_bonus' => 0]],
+            'deductions' => ['status' => 'not_qualifies', 'amount' => 0, 'rate' => -110],
+            'new_hire_guarantee' => ['status' => 'not_qualifies', 'amount' => 0, 'rate' => 0],
+        ], ['payroll_total' => 10]);
+        $this->assertFalse($deducted['new_hire_guarantee_applied']);
+        $this->assertSame(-300.0, $deducted['weighted_bonus_amount']);
     }
 }

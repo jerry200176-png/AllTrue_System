@@ -195,15 +195,21 @@ class TeacherEligibilityWeeklySegmentsTest extends TestCase
     {
         $director = $this->createDirector();
         $teacher = $this->createTeacher();
-        foreach (range(0, 3) as $offset) {
-            $this->createAttendedSession($teacher->id, 'one_on_one', date('Y-m-d', strtotime("2026-08-03 +{$offset} days")), '14:00', 480);
-        }
         $row = fn () => $this->withHeaders($this->auth($director['token']))
             ->getJson('/api/v1/finance/teacher-eligibility?period=week&start=2026-08-03&end=2026-08-09&branch_id=1')
             ->assertOk()->json('teachers.0');
 
+        // A teacher with no course of their own yet, only a lesson signed in under them (covering for someone):
+        // that lesson already dates the first lesson.
+        $covered = $this->createAttendedSession($director['user_id'], 'one_on_one', '2026-08-01', '10:00', 120);
+        DB::table('StudentSingIn')->where('ClassSessionID', $covered->id)->update(['TeacherID' => $teacher->id]);
+        $this->assertSame('2026-08-01', $row()['components']['new_hire_guarantee']['metrics']['first_lesson_date']);
+
+        foreach (range(0, 3) as $offset) {
+            $this->createAttendedSession($teacher->id, 'one_on_one', date('Y-m-d', strtotime("2026-08-03 +{$offset} days")), '14:00', 480);
+        }
         $new = $row();
-        $this->assertSame('2026-08-03', $new['components']['new_hire_guarantee']['metrics']['first_lesson_date']);
+        $this->assertSame('2026-08-01', $new['components']['new_hire_guarantee']['metrics']['first_lesson_date']);
         $this->assertEquals(2000, $new['components']['new_hire_guarantee']['amount']);
         $this->assertTrue($new['settlement']['new_hire_guarantee_applied']);
         $this->assertEquals(2000, $new['settlement']['weighted_bonus_amount']);

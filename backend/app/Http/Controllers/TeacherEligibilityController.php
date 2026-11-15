@@ -590,7 +590,7 @@ class TeacherEligibilityController extends Controller
      * subject counts: the campus filter only decides which teachers are listed. The earlier of two signals is used so
      * the date can only err early (a shorter guarantee, never a longer one): the first lesson of a course that is
      * theirs now, and the first lesson signed in under them (covers courses later handed to someone else).
-     * The second lookup has no index to lean on, so it runs only for teachers the first one still calls new.
+     * The second lookup has no index to lean on, so it skips teachers the first one already proves are not new.
      *
      * @return array<int, string> teacher id => Y-m-d
      */
@@ -613,7 +613,7 @@ class TeacherEligibilityController extends Controller
             ->whereNotIn('cs.Status', ['cancelled', 'voided'])
             ->groupBy('sc.TeacherID')
             ->selectRaw('sc.TeacherID as teacher_id, MIN(cs.SessionDate) as first_date')->get());
-        $stillNew = array_keys(array_filter($dates, fn ($date) => $date >= $newSince));
+        $stillNew = array_values(array_filter($teacherIds, fn ($id) => !isset($dates[(int) $id]) || $dates[(int) $id] >= $newSince));
         if ($stillNew !== [] && Schema::hasTable('StudentSingIn')) {
             $keep(DB::table('StudentSingIn as si')
                 ->join('ClassSession as cs', 'cs.id', '=', 'si.ClassSessionID')
