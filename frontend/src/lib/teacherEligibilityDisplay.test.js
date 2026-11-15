@@ -9,6 +9,7 @@ import {
   weightedBonusFormula,
   formatDifference,
   recalculationSummary,
+  weekExplanation,
   recalculationText,
   monthWindow,
 } from './teacherEligibilityDisplay.js';
@@ -53,6 +54,18 @@ assert.equal(recalculationText({ recalculated: { calculated_payout: 36500, diffe
 assert.equal(recalculationText({ recalculated: { calculated_payout: 1200, difference: null } }), '現在的算法：還有待確認項目，暫不比較');
 assert.equal(recalculationText({ recalculated: null }), '現在的算法：無法比較（已不在這個分校）');
 assert.equal(recalculationText({}), '');
+// A short week says how far short it is, what each day held and what was left out.
+assert.deepEqual(weekExplanation({
+  week_start: '2026-10-05', week_end: '2026-10-11', total_segments: 12.5, segment_threshold: 16, meets_16_segments: false, finished: true,
+  closure_dates: [], daily_hours: { '2026-10-05': 4, '2026-10-06': 5.5, '2026-10-11': 15.5 }, uncounted: { cancelled: 3, moved: 2 },
+}), {
+  verdict: '12.5 段・未達（差 3.5 段）',
+  detail: '每天排課時數：一 4、二 5.5、三 0、四 0、五 0、六 0、日 15.5。另有 3 堂取消、2 堂改期（算在改到的那一天），不算在內',
+});
+assert.equal(weekExplanation({ week_start: '2026-10-05', total_segments: 18, meets_16_segments: true, finished: true }).verdict, '18 段・達標');
+assert.equal(weekExplanation({ week_start: '2026-10-05', total_segments: 3, meets_16_segments: true, closure_dates: ['2026-10-10'] }).verdict, '3 段・停課週不列入');
+assert.equal(weekExplanation({ week_start: '2026-11-30', total_segments: 2, meets_16_segments: false, finished: false }).verdict, '2 段・還沒結束，先不判定');
+assert.equal(weekExplanation({ week_start: '2026-10-05', total_segments: 3 }).detail, '每天排課時數：一 0、二 0、三 0、四 0、五 0、六 0、日 0');
 assert.deepEqual(monthWindow('2026-08'), { start: '2026-08-01', end: '2026-08-31' });
 // 正課 150 raw + 輔導試聽 12 raw = 核薪總 20.25: the three columns add up once shown on the same scale.
 assert.equal(formatSubjectUnits(150), '18.75');

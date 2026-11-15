@@ -35,17 +35,21 @@ class FulltimePayrollLockTest extends TestCase
         $this->assertDatabaseMissing('teacher_payroll_admin_allowances', ['teacher_id' => $teacherId]);
     }
 
-    /** Only a month the 115.07 rules cover and that has begun can be locked. */
-    public function test_cannot_lock_a_month_before_the_rules_or_in_the_future(): void
+    /** Only a month the 115.07 rules cover, and only once its last week (which can run into the next month) is over. */
+    public function test_cannot_lock_a_month_before_the_rules_or_before_its_last_week_ends(): void
     {
+        $this->travelTo(\Carbon\Carbon::parse('2026-11-15 12:00:00', 'Asia/Taipei'));
         $director = $this->createDirector(1, 'ft-lock-range-dir@test.com');
         $headers = ['Authorization' => "Bearer {$director['token']}", 'Accept' => 'application/json'];
         $lock = fn (string $month) => $this->withHeaders($headers)->postJson('/api/v1/finance/teacher-eligibility/lock', ['month' => $month, 'branch_id' => 1]);
 
         $lock('2026-06')->assertStatus(422);
-        $lock(now('Asia/Taipei')->addMonth()->format('Y-m'))->assertStatus(422);
+        $lock('2026-12')->assertStatus(422);
+        // November's last week is 11-30 to 12-06: until it is over its 段 are not final.
+        $this->assertStringContainsString('2026-12-06', (string) $lock('2026-11')->assertStatus(422)->json('message'));
         $this->assertSame(0, \Illuminate\Support\Facades\DB::table('fulltime_payroll_runs')->count());
-        $lock(now('Asia/Taipei')->format('Y-m'))->assertOk();
+        // October's last week ended on 11-01.
+        $lock('2026-10')->assertOk();
     }
 
     public function test_only_super_admin_can_reopen(): void

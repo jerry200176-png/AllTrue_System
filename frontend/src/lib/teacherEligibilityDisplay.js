@@ -34,6 +34,40 @@ export function formatDifference(value) {
   return `${n > 0 ? '多' : '少'} ${formatMoney(Math.abs(n))}`;
 }
 
+const WEEKDAY_NAMES = ['一', '二', '三', '四', '五', '六', '日'];
+
+/** Whole numbers stay whole, anything else keeps up to two decimals. */
+function plainNumber(value) {
+  return Number(value).toLocaleString('zh-TW', { maximumFractionDigits: 2 });
+}
+
+/**
+ * One week of the 每週16段 check, in words a director can act on: the verdict with how far short it is, then what
+ * each day held and how many lessons were left out, so a short week explains itself.
+ */
+export function weekExplanation(week) {
+  const total = Number(week?.total_segments ?? 0);
+  const threshold = Number(week?.segment_threshold ?? 16);
+  let verdict = `未達（差 ${plainNumber(Math.max(0, threshold - total))} 段）`;
+  if (week?.closure_dates?.length) verdict = '停課週不列入';
+  else if (week?.finished === false) verdict = '還沒結束，先不判定';
+  else if (week?.meets_16_segments) verdict = '達標';
+
+  const days = [];
+  const start = new Date(`${week?.week_start}T00:00:00Z`);
+  for (let i = 0; i < 7 && !Number.isNaN(start.getTime()); i += 1) {
+    const date = new Date(start.getTime() + i * 86400000).toISOString().slice(0, 10);
+    days.push(`${WEEKDAY_NAMES[i]} ${plainNumber(week?.daily_hours?.[date] ?? 0)}`);
+  }
+  const left = [];
+  if (Number(week?.uncounted?.cancelled) > 0) left.push(`${week.uncounted.cancelled} 堂取消`);
+  if (Number(week?.uncounted?.moved) > 0) left.push(`${week.uncounted.moved} 堂改期（算在改到的那一天）`);
+  return {
+    verdict: `${plainNumber(total)} 段・${verdict}`,
+    detail: `每天排課時數：${days.join('、')}${left.length ? `。另有 ${left.join('、')}，不算在內` : ''}`,
+  };
+}
+
 /** What to write under a locked total once the comparison has been asked for; '' before that. */
 export function recalculationText(teacher) {
   if (!teacher || !('recalculated' in teacher)) return '';

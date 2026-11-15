@@ -74,6 +74,9 @@ class TeacherEligibilityWeeklySegmentsTest extends TestCase
             '2026-08-03' => 3.17, '2026-08-04' => 4, '2026-08-05' => 4, '2026-08-06' => 2.67,
             '2026-08-07' => 6, '2026-08-08' => 10, '2026-08-09' => 2.17,
         ]);
+        // The week explains itself: it is over, and one lesson was called off (Friday 14:00) and not counted.
+        $response->assertJsonPath('teachers.0.weekly.0.metrics.finished', true);
+        $response->assertJsonPath('teachers.0.weekly.0.metrics.uncounted', ['cancelled' => 1, 'moved' => 0]);
         // 平日下午倍率: Mon 190 + Tue 240 + Wed 240 + Thu 160 + Fri 240 minutes before 18:00 (Friday's 18:00 lesson
         // is past the cutoff) = 8.92 段, capped at 5%.
         $response->assertJsonPath('teachers.0.weekly.0.metrics.weekday_early_segments', 8.92);

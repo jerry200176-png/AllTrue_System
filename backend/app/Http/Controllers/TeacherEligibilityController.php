@@ -138,6 +138,8 @@ class TeacherEligibilityController extends Controller
         // system infers (every lesson in the company called off) count: a hand-entered holiday event can be created and
         // approved by one director, so it must not be able to waive a week. Out to the last week's Sunday.
         $closureDates = $weeks === [] ? [] : $this->campusClosedDates(null, $weeks[0][0], end($weeks)[1]);
+        $uncountedByTeacher = $weeks === [] ? [] : $this->uncountedLessonsByTeacher($teacherIds, $weeks[0][0]->toDateString(), end($weeks)[1]->toDateString());
+        $today = Carbon::now('Asia/Taipei')->toDateString();
 
         $achievementByTeacher = $achievements->groupBy('teacher_id');
         $deductionByTeacher = $deductions->groupBy('teacher_id');
@@ -176,15 +178,16 @@ class TeacherEligibilityController extends Controller
 
         $firstLessonByTeacher = $this->firstLessonDateByTeacher($teacherIds);
 
-        $rows = $teachers->map(function ($teacher) use ($period, $effectiveStart, $weeks, $closureDates, $lessonsByTeacher, $achievementByTeacher, $deductionByTeacher, $allowanceByTeacher, $cashByTeacher, $cashSourceAvailable, $allowanceSourceAvailable, $subjectUnitsByTeacher, $firstLessonByTeacher) {
+        $rows = $teachers->map(function ($teacher) use ($period, $effectiveStart, $weeks, $closureDates, $uncountedByTeacher, $today, $lessonsByTeacher, $achievementByTeacher, $deductionByTeacher, $allowanceByTeacher, $cashByTeacher, $cashSourceAvailable, $allowanceSourceAvailable, $subjectUnitsByTeacher, $firstLessonByTeacher) {
             $teacherId = (int) $teacher->id;
             $weeklyRows = [];
             foreach ($weeks as [$weekStart, $weekEnd]) {
-                $weeklyRows[] = $this->evaluateWeek($weekStart, $weekEnd, $lessonsByTeacher[$teacherId] ?? [], $closureDates);
+                $weeklyRows[] = $this->evaluateWeek($weekStart, $weekEnd, $lessonsByTeacher[$teacherId] ?? [], $closureDates, $uncountedByTeacher[$teacherId] ?? [], $today);
             }
 
             $weeklyStatus = $this->aggregateWeeklyStatus($weeklyRows);
-            $judgedWeeks = array_column(array_filter($weeklyRows, fn ($week) => $week['metrics']['closure_dates'] === []), 'metrics');
+            // Closure weeks are waived and weeks still running are not judged yet: neither feeds the two rates.
+            $judgedWeeks = array_column(array_filter($weeklyRows, fn ($week) => $week['metrics']['closure_dates'] === [] && $week['metrics']['finished']), 'metrics');
             $subjectUnits = $subjectUnitsByTeacher[$teacherId] ?? null;
             $subjectCount = is_array($subjectUnits) ? ($subjectUnits['payroll_total'] ?? null) : null;
 
@@ -343,6 +346,13 @@ class TeacherEligibilityController extends Controller
         if ($data['month'] < $firstMonth || $data['month'] > Carbon::now('Asia/Taipei')->format('Y-m')) {
             return response()->json(['message' => "只能鎖定 {$firstMonth} 起到這個月的結算。"], 422);
         }
+        // A week belongs to its Monday's month, so the month's last week can run into the next month. Until that
+        // week is over its 段 are not final, and locking earlier would freeze a week as short.
+        $monthStart = Carbon::parse($data['month'] . '-01', 'Asia/Taipei')->startOfDay();
+        $monthWeeks = $this->splitIntoWeeks($monthStart, $monthStart->copy()->endOfMonth());
+        if ($monthWeeks !== [] && end($monthWeeks)[1]->toDateString() >= Carbon::now('Asia/Taipei')->toDateString()) {
+            return response()->json(['message' => '這個月最後一週到 ' . end($monthWeeks)[1]->toDateString() . ' 才結束，結束後才能鎖定。'], 422);
+        }
         $end = Carbon::parse($data['month'] . '-01', 'Asia/Taipei')->endOfMonth()->toDateString();
         $request->merge([
             'period' => 'month',
@@ -465,7 +475,7 @@ class TeacherEligibilityController extends Controller
      *
      * @param  array<string, list<array{start:string,end:string}>>  $lessonsByDate
      */
-    private function evaluateWeek(Carbon $start, Carbon $end, array $lessonsByDate, array $closureDates = []): array
+    private function evaluateWeek(Carbon $start, Carbon $end, array $lessonsByDate, array $closureDates = [], array $uncountedByDate = [], ?string $today = null): array
     {
         $dailyMinutes = [];
         // 平日下午倍率 (HQ 115.07: 週一至週五 18:00 前可接 5 段課): the same lessons, only the part before the cutoff.
@@ -496,8 +506,25 @@ class TeacherEligibilityController extends Controller
             $policy['status'] = TeacherEligibilityPolicy::QUALIFIES;
             $policy['reason'] = '本週有全校停課日，不列入判定。';
         }
+        // A week still running is shown but not judged yet: its lessons can still change, and for the month's last
+        // week the following month's lessons may not exist in the system yet.
+        $finished = $today === null || $end->toDateString() < $today;
+        if (!$finished && $closed === []) {
+            $policy['reason'] = '這一週還沒結束，結束後才判定。';
+        }
+        // What the calendar leaves out, so a short week can be explained: lessons called off, and lessons moved to
+        // another time (those count where they moved to).
+        $uncounted = ['cancelled' => 0, 'moved' => 0];
+        foreach ($uncountedByDate as $date => $counts) {
+            if ($date < $start->toDateString() || $date > $end->toDateString()) continue;
+            $uncounted['cancelled'] += (int) ($counts['cancelled'] ?? 0);
+            $uncounted['moved'] += (int) ($counts['moved'] ?? 0);
+        }
         $policy['metrics'] = [
             'closure_dates' => $closed,
+            'finished' => $finished,
+            'segment_threshold' => $policy['metrics']['segment_threshold'] ?? 16,
+            'uncounted' => $uncounted,
             'week_start' => $start->toDateString(),
             'week_end' => $end->toDateString(),
             'daily_hours' => array_map(fn ($minutes) => round($minutes / 60, 2), $dailyMinutes),
@@ -509,10 +536,40 @@ class TeacherEligibilityController extends Controller
         return $policy;
     }
 
+    /**
+     * Lessons of a teacher's own courses that the payroll calendar leaves out, per date: called off (cancelled or
+     * voided) and moved (a student's leave with a makeup arranged; that one counts where it moved to). Only used to
+     * explain a short week; the statuses are the ones TeacherClassCalendar excludes for payroll.
+     *
+     * @return array<int, array<string, array{cancelled:int, moved:int}>> teacher id => Y-m-d => counts
+     */
+    private function uncountedLessonsByTeacher(array $teacherIds, string $from, string $to): array
+    {
+        if ($teacherIds === [] || !Schema::hasTable('ClassSession') || !Schema::hasTable('StudentClass')) {
+            return [];
+        }
+        $out = [];
+        $rows = DB::table('ClassSession as cs')
+            ->join('StudentClass as sc', 'sc.ID', '=', 'cs.StudentClassID')
+            ->whereIn('sc.TeacherID', $teacherIds)
+            ->whereBetween('cs.SessionDate', [$from, $to])
+            ->whereIn('cs.Status', ['cancelled', 'voided', 'leave_adjusted'])
+            ->get(['sc.TeacherID as teacher_id', 'cs.SessionDate as session_date', 'cs.Status as status']);
+        foreach ($rows as $row) {
+            $date = substr((string) $row->session_date, 0, 10);
+            $kind = $row->status === 'leave_adjusted' ? 'moved' : 'cancelled';
+            $out[(int) $row->teacher_id][$date] ??= ['cancelled' => 0, 'moved' => 0];
+            $out[(int) $row->teacher_id][$date][$kind]++;
+        }
+
+        return $out;
+    }
+
     private function aggregateWeeklyStatus(array $weeklyRows): array
     {
         $qualifying = collect($weeklyRows)->where('status', TeacherEligibilityPolicy::QUALIFIES);
         $allPass = $weeklyRows !== [] && $qualifying->count() === count($weeklyRows);
+        $unfinished = collect($weeklyRows)->filter(fn ($row) => !($row['metrics']['finished'] ?? true) && $row['status'] !== TeacherEligibilityPolicy::QUALIFIES)->count();
         // HQ 115.07 + Founder 2026-11-15: the 16段課獎金 is monthly and needs every week of the month full;
         // one short week removes it. A week belongs to its Monday's month.
         $amount = (int) config('teacher_salary.weekly_segment_month_bonus', 4000) * collect($weeklyRows)
@@ -522,11 +579,12 @@ class TeacherEligibilityController extends Controller
 
         return [
             'status' => $allPass ? TeacherEligibilityPolicy::QUALIFIES : TeacherEligibilityPolicy::NOT_QUALIFIES,
-            'reason' => $weeklyRows === [] ? '查詢期間沒有從週一開始的完整週。' : ($allPass ? '查詢期間每週均排滿16段。' : '查詢期間有未排滿16段的週。'),
+            'reason' => $weeklyRows === [] ? '查詢期間沒有從週一開始的完整週。' : ($allPass ? '查詢期間每週均排滿16段。' : ($unfinished > 0 ? "還有 {$unfinished} 週沒結束，結束後才判定。" : '查詢期間有未排滿16段的週。')),
             'metrics' => [
                 'weeks' => $weeklyRows,
                 'qualifying_weeks' => $qualifying->count(),
                 'week_count' => count($weeklyRows),
+                'unfinished_weeks' => $unfinished,
                 'total_segments' => round(collect($weeklyRows)->sum(fn ($row) => (float) $row['metrics']['total_segments']), 2),
                 'meets_16_segments' => count($weeklyRows) === 1 ? $allPass : null,
             ],
