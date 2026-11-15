@@ -87,6 +87,18 @@ class TeacherEligibilityPolicyTest extends TestCase
         $this->assertSame(5.0, $pass['rate']);
     }
 
+    /** HQ 115.07 特殊表現: 其他值得特別表揚事項，每項 +5%（三個月為限）。 */
+    public function test_other_commendation_adds_five_percent_per_item_for_at_most_three_months(): void
+    {
+        $item = fn (string $from, string $to) => ['outcome_key' => 'other_commendation', 'status' => 'verified', 'evidence' => '表揚事由', 'starts_on' => $from, 'ends_on' => $to];
+
+        $two = $this->policy->specialPerformance([$item('2026-08-01', '2026-10-31'), $item('2026-07-01', '2026-08-31')], '2026-08-01', '2026-08-31');
+        $this->assertSame(10.0, $two['rate']);
+        // Outside its dates it adds nothing; longer than three months it waits for correction instead of paying.
+        $this->assertSame(0.0, $this->policy->specialPerformance([$item('2026-08-01', '2026-10-31')], '2026-11-01', '2026-11-30')['rate']);
+        $this->assertSame(TeacherEligibilityPolicy::REVIEW, $this->policy->specialPerformance([$item('2026-08-01', '2026-11-30')], '2026-08-01', '2026-08-31')['status']);
+    }
+
     public function test_achievement_without_active_period_is_review(): void
     {
         $result = $this->policy->specialPerformance([
