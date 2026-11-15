@@ -36,7 +36,7 @@ class TriageDbReadController extends Controller
     /** Text columns that hold a code, not something a person typed. An enum column is always one. */
     private const CODE_COLUMNS = ['status', 'method', 'schedulemode', 'schedulemodeatissue', 'rate_unit', 'classtype', 'class_type',
         'closed_reason', 'billing_period', 'type', 'kind', 'source', 'state', 'role_key', 'deduction_basis', 'payment_type',
-        'outcome', 'event_type', 'operation', 'action', 'reason_code', 'zero_reason', 'page_key', 'disposition', 'period', 'month'];
+        'outcome', 'event_type', 'operation', 'action', 'reason_code', 'zero_amount_reason', 'page_key', 'disposition', 'period', 'month'];
 
     private const OPERATORS = ['eq' => '=', 'gte' => '>=', 'lte' => '<='];
 
@@ -47,7 +47,17 @@ class TriageDbReadController extends Controller
     private const CODE_VALUE = '/\A([a-z][a-z0-9_.:\-]{0,39}|[A-Z]{1,3}|\d{4}-\d{2})?\z/';
 
     /** Code-named columns that the application lets a person type into; never returned. */
-    private const TYPED_COLUMNS = ['course_packages' => ['closed_reason']];
+    private const TYPED_COLUMNS = [
+        'course_packages' => ['closed_reason'],
+        'schedules' => ['status', 'type', 'class_type'],
+        'bug_reports' => ['page_key'],
+    ];
+
+    /** A column a person can type into but whose codes are needed: only these values are returned or matched. */
+    private const KNOWN_VALUES = [
+        'Payment' => ['Method' => ['cash', 'transfer', 'bank_transfer', 'card', 'line_pay', 'other', 'void', 'refund',
+            'transfer_out', 'transfer_in', 'transfer_reversal_out', 'transfer_reversal_in']],
+    ];
 
     public function tables()
     {
@@ -104,7 +114,9 @@ class TriageDbReadController extends Controller
         // A code column may hold typed text in old rows, which is withheld on the way out. So it takes no range filter and no
         // ordering (either would let the text be found one comparison at a time), and an exact match only against a value
         // that is itself a short ASCII code: a row holding typed text can never be singled out.
-        $isCode = fn (mixed $value): bool => is_string($value) && preg_match(self::CODE_VALUE, $value) === 1;
+        $known = self::KNOWN_VALUES[$table] ?? [];
+        $isCodeOf = fn (string $column, mixed $value): bool => is_string($value) && preg_match(self::CODE_VALUE, $value) === 1
+            && (!isset($known[$column]) || $value === '' || in_array($value, $known[$column], true));
         // The database compares text by its collation (case, accents, trailing spaces), so a code can "equal" typed text
         // there. Rows are kept only when the stored value is byte-for-byte one of the codes asked for.
         $exact = [];
@@ -113,7 +125,7 @@ class TriageDbReadController extends Controller
         foreach (self::OPERATORS as $key => $operator) {
             foreach ((array) ($data[$key] ?? []) as $column => $value) {
                 $allowed = (in_array((string) $column, $numeric, true) && $isPlain($value))
-                    || ($key === 'eq' && in_array((string) $column, $codes, true) && $isCode($value));
+                    || ($key === 'eq' && in_array((string) $column, $codes, true) && $isCodeOf((string) $column, $value));
                 if (!$allowed || !is_scalar($value)) {
                     return $refuse((string) $column);
                 }
@@ -126,7 +138,7 @@ class TriageDbReadController extends Controller
         foreach ((array) ($data['in'] ?? []) as $column => $values) {
             $list = is_string($values) ? array_slice(explode(',', $values), 0, 200) : null;
             $allowed = $list !== null && ((in_array((string) $column, $numeric, true) && collect($list)->every($isPlain))
-                || (in_array((string) $column, $codes, true) && collect($list)->every($isCode)));
+                || (in_array((string) $column, $codes, true) && collect($list)->every(fn ($value) => $isCodeOf((string) $column, $value))));
             if (!$allowed) {
                 return $refuse((string) $column);
             }
@@ -157,7 +169,7 @@ class TriageDbReadController extends Controller
 
                 return true;
             })->values()
-            ->map(function (object $row) use ($codes, $numeric): array {
+            ->map(function (object $row) use ($codes, $numeric, $isCodeOf): array {
                 $out = (array) $row;
                 foreach ($numeric as $name) {
                     if (is_numeric($out[$name]) && abs((float) $out[$name]) >= self::LONG_NUMBER) {
@@ -166,7 +178,7 @@ class TriageDbReadController extends Controller
                 }
                 foreach ($codes as $name) {
                     // A code column can still hold typed text in old rows: anything that is not a short ASCII code is withheld.
-                    if (is_string($out[$name]) && preg_match(self::CODE_VALUE, $out[$name]) !== 1) {
+                    if (is_string($out[$name]) && !$isCodeOf($name, $out[$name])) {
                         $out[$name] = null;
                     }
                 }

@@ -101,6 +101,9 @@ final class TriageDbReadTest extends TestCase
         // A column the application lets a person type into is not offered at all, whatever its name.
         $this->assertNotContains('closed_reason', $this->getJson('/api/v1/triage/db/course_packages', $this->bearer())->assertOk()->json('columns'));
         $this->getJson('/api/v1/triage/db/course_packages?eq[closed_reason]=settled', $this->bearer())->assertStatus(422);
+        // A payment method can be typed, so only the known methods count: a lowercase word that is not one is typed text.
+        $this->getJson('/api/v1/triage/db/Payment?in[Method]=cash,void', $this->bearer())->assertOk();
+        $this->getJson('/api/v1/triage/db/Payment?eq[Method]=amy', $this->bearer())->assertStatus(422);
 
         foreach (['auth_tokens', 'personal_access_tokens', 'password_reset_requests', 'ApiClient', 'ParentSession', 'student_line_bindings', 'no_such_table'] as $table) {
             $this->getJson("/api/v1/triage/db/{$table}", $this->bearer())->assertNotFound();

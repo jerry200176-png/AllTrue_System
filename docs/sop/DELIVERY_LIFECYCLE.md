@@ -512,8 +512,8 @@ rows (`eq[col]=`, `gte[col]=`, `lte[col]=`, `in[col]=a,b`, `order=col`, `dir=asc
 What leaves: number and date/time columns, plus text columns that are an enum or a listed code column and whose
 value has the shape of a code (a lowercase word, one to three capitals, or YYYY-MM). Text is fail-closed: names, notes, memos and every other text column never leave and
 cannot be filtered or sorted on; a code column takes only an exact match against a code. Known limit: a single
-lowercase word typed into a code-named column would still read as a code (columns known to take typed text are
-excluded by name). Numbers are guarded by
+lowercase word typed into a code-named column would still read as a code; the columns known to take typed text
+are either left out (`TYPED_COLUMNS`) or limited to a list of known values (`KNOWN_VALUES`, e.g. payment method). Numbers are guarded by
 column name (phone, pin, birthday, account …) and by size (a whole number of nine digits or more is withheld and
 cannot be filtered on), so salary figures, scores and other plain numbers ARE readable by id. Tables about signing
 in, tokens or account bindings answer 404. SELECT only, audited per request with the table name, 60 calls a minute. To stop it at once, revoke the token; `TRIAGE_DB_READ_ENABLED=false`
