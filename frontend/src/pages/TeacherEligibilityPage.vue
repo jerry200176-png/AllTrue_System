@@ -141,7 +141,7 @@
                   <summary class="tw:cursor-pointer tw:text-tpl-caption tw:text-[var(--ds-primary-text)]">查看每週段數</summary>
                   <div v-for="week in weeklyWeeks(teacher)" :key="week.week_start" :class="traceRow">
                     <span>{{ week.week_start }}～{{ week.week_end }}</span>
-                    <span>{{ formatSegments(week.total_segments) }} 段・{{ week.closure_dates?.length ? '停課週不列入' : (week.meets_16_segments ? '達標' : '未達') }}</span>
+                    <span class="tw:text-right">{{ weekExplanation(week).verdict }}<small :class="smallText">{{ weekExplanation(week).detail }}</small></span>
                   </div>
                 </details>
               </TableCell>
@@ -173,7 +173,7 @@
             <summary class="tw:cursor-pointer tw:text-tpl-caption tw:text-[var(--ds-primary-text)]">查看每週段數</summary>
             <div v-for="week in weeklyWeeks(teacher)" :key="week.week_start" :class="traceRow">
               <span>{{ week.week_start }}～{{ week.week_end }}</span>
-              <span>{{ formatSegments(week.total_segments) }} 段・{{ week.closure_dates?.length ? '停課週不列入' : (week.meets_16_segments ? '達標' : '未達') }}</span>
+              <span class="tw:text-right">{{ weekExplanation(week).verdict }}<small :class="smallText">{{ weekExplanation(week).detail }}</small></span>
             </div>
           </details>
           <p class="mobile-reason tw:mt-3 tw:text-tpl-caption tw:leading-relaxed tw:text-tpl-secondary">{{ reasonText(teacher) }}</p>
@@ -220,6 +220,7 @@ import {
   monthWindow,
   recalculationSummary,
   recalculationText,
+  weekExplanation,
   weightedBonusFormula,
 } from '../lib/teacherEligibilityDisplay.js';
 import { humanizeApiErrorMessage } from '../lib/humanizeApiErrorMessage.js';
@@ -305,8 +306,11 @@ function weeklySegmentsLabel(teacher) {
 
 function weeklyQualificationLabel(teacher) {
   const metrics = weeklyMetrics(teacher);
+  // A single week in view that is still running has no verdict yet, whatever its schedule says so far.
+  if (metrics.week_count === 1 && metrics.unfinished_weeks) return '這一週還沒結束，先不判定';
   if (metrics.meets_16_segments === true) return '已達 16 段';
   if (metrics.meets_16_segments === false) return '未達 16 段';
+  if (metrics.week_count && metrics.unfinished_weeks) return `${metrics.qualifying_weeks || 0}/${metrics.week_count} 週達標，${metrics.unfinished_weeks} 週還沒結束`;
   if (metrics.week_count) return `${metrics.qualifying_weeks || 0}/${metrics.week_count} 週達標`;
   return teacher.components?.weekly_16_segments?.status === 'review' ? '待確認段數' : '未判定';
 }

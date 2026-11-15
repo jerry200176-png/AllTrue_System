@@ -1,0 +1,18 @@
+updates:
+  - id: staff-2026-11-15-fulltime-weekly-explain
+    published_at: "2026-11-15"
+    audiences:
+      - director
+      - super_admin
+    importance: major
+    title: 每週段數看得出原因
+    summary: 正職每週段數會寫出每天排課幾小時、差幾段、哪些課沒算，未達標一看就知道原因。
+    items:
+      - category: improved
+        text: 點「查看每週段數」，每一週會列出週一到週日的排課時數，以及取消或改期沒算的堂數。
+      - category: fixed
+        text: 還沒結束的那一週先不判定，不會再讓這個月整個顯示沒達標。
+      - category: action_required
+        text: 每個月要等最後一週結束（可能跨到下個月初）才能鎖定結算。
+    source_refs:
+      - "changelog:2026-11-15:fulltime-weekly-explain"

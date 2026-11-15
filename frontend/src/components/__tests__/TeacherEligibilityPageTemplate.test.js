@@ -157,6 +157,15 @@ describe('TeacherEligibilityPage on the template', () => {
     expect(wrapper.find('[data-testid="eligibility-recalculation-note"]').exists()).toBe(false);
   });
 
+  it('a single running week has no verdict yet', async () => {
+    const running = teacher();
+    running.components.weekly_16_segments.metrics = { ...running.components.weekly_16_segments.metrics, week_count: 1, unfinished_weeks: 1, meets_16_segments: false };
+    fetchMock.mockImplementation(async () => json(payload({ teachers: [running] })));
+    await mountPage();
+    expect(wrapper.find('.desktop-table .weekly-segment-cell').text()).toContain('這一週還沒結束，先不判定');
+    expect(wrapper.find('.desktop-table .weekly-segment-cell').text()).not.toContain('未達 16 段');
+  });
+
   it('the teacher multiplier is read-only: no hand-entered total', async () => {
     await mountPage();
     expect(wrapper.find('.desktop-table .multiplier-cell').text()).toContain('%');

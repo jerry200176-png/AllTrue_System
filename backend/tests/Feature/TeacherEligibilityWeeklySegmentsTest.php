@@ -74,6 +74,9 @@ class TeacherEligibilityWeeklySegmentsTest extends TestCase
             '2026-08-03' => 3.17, '2026-08-04' => 4, '2026-08-05' => 4, '2026-08-06' => 2.67,
             '2026-08-07' => 6, '2026-08-08' => 10, '2026-08-09' => 2.17,
         ]);
+        // The week explains itself: it is over, and one lesson was called off (Friday 14:00) and not counted.
+        $response->assertJsonPath('teachers.0.weekly.0.metrics.finished', true);
+        $response->assertJsonPath('teachers.0.weekly.0.metrics.uncounted', ['cancelled' => 1, 'moved' => 0]);
         // 平日下午倍率: Mon 190 + Tue 240 + Wed 240 + Thu 160 + Fri 240 minutes before 18:00 (Friday's 18:00 lesson
         // is past the cutoff) = 8.92 段, capped at 5%.
         $response->assertJsonPath('teachers.0.weekly.0.metrics.weekday_early_segments', 8.92);
@@ -151,12 +154,17 @@ class TeacherEligibilityWeeklySegmentsTest extends TestCase
         $closed = $weekly('2026-08-01', '2026-08-31');
         $this->assertSame(1, $closed['metrics']['qualifying_weeks']);
         $this->assertSame(['2026-08-12'], $closed['metrics']['weeks'][1]['metrics']['closure_dates']);
+        $this->assertSame([], $closed['metrics']['weeks'][1]['metrics']['near_closures']);
         $this->assertSame([], $closed['metrics']['weeks'][2]['metrics']['closure_dates']);
         // A lesson that still runs that day (a makeup that lives only in `schedules`) means the day was not a closure.
         $makeupId = $this->schedule($teacher->id, '2026-08-12', '13:00', '15:00');
         $open = $weekly('2026-08-01', '2026-08-31');
         $this->assertSame(0, $open['metrics']['qualifying_weeks']);
         $this->assertSame([], $open['metrics']['weeks'][1]['metrics']['closure_dates']);
+        // One lesson that still runs among the called-off ones: not a closure, and the week says why it was not waived.
+        $ran = $this->createAttendedSession($teacher->id, 'one_on_one', '2026-08-12', '16:00', 120);
+        $this->assertSame([['date' => '2026-08-12', 'total' => 11, 'open' => 1]], $weekly('2026-08-01', '2026-08-31')['metrics']['weeks'][1]['metrics']['near_closures']);
+        DB::table('ClassSession')->where('id', $ran->id)->delete();
         DB::table('schedules')->where('id', $makeupId)->delete();
 
         // Fill the other three July weeks (4 days x 8h = 16 段 each): now every week is full.
@@ -168,6 +176,36 @@ class TeacherEligibilityWeeklySegmentsTest extends TestCase
         $full = $weekly('2026-07-01', '2026-07-31');
         $this->assertSame(4, $full['metrics']['qualifying_weeks']);
         $this->assertSame(4000, $full['amount']);
+    }
+
+    /** A week still running is shown but not judged, and it is not a waived week either. */
+    public function test_weeks_still_running_are_not_judged_and_do_not_count_as_waived(): void
+    {
+        $this->travelTo(\Carbon\Carbon::parse('2026-08-05 12:00:00', 'Asia/Taipei'));
+        $director = $this->createDirector();
+        $teacher = $this->createTeacher();
+        $this->createAttendedSession($teacher->id, 'one_on_one', '2026-08-03', '10:00', 120);
+
+        $row = $this->withHeaders($this->auth($director['token']))
+            ->getJson('/api/v1/finance/teacher-eligibility?period=month&start=2026-08-01&end=2026-08-31&branch_id=1')
+            ->assertOk()->json('teachers.0');
+
+        $this->assertFalse($row['weekly'][0]['metrics']['finished']);
+        $this->assertSame(5, $row['components']['weekly_16_segments']['metrics']['unfinished_weeks']);
+
+        // A running week that is already fully scheduled is still a week that has not finished.
+        foreach (range(0, 3) as $offset) {
+            $this->createAttendedSession($teacher->id, 'one_on_one', date('Y-m-d', strtotime("2026-08-10 +{$offset} days")), '14:00', 480);
+        }
+        $row = $this->withHeaders($this->auth($director['token']))
+            ->getJson('/api/v1/finance/teacher-eligibility?period=month&start=2026-08-01&end=2026-08-31&branch_id=1')
+            ->assertOk()->json('teachers.0');
+        $this->assertTrue($row['weekly'][1]['metrics']['meets_16_segments']);
+        $this->assertSame(5, $row['components']['weekly_16_segments']['metrics']['unfinished_weeks']);
+        $this->assertSame('還有 5 週沒結束，結束後才判定。', $row['components']['weekly_16_segments']['reason']);
+        // No finished week and no closure: nothing to judge the 假日 rate on, so it is 0, not the full 10%.
+        $this->assertEquals(0, $row['components']['holiday_16_hours']['rate']);
+        $this->assertEquals(0, $row['components']['holiday_16_hours']['metrics']['waived_weeks']);
     }
 
     /** The totals are company-wide, so a teacher who belongs to two campuses is settled in one of them only. */

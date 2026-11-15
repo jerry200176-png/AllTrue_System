@@ -10,6 +10,7 @@ import {
   formatDifference,
   inputRoster,
   recalculationSummary,
+  weekExplanation,
   recalculationText,
   monthWindow,
 } from './teacherEligibilityDisplay.js';
@@ -54,6 +55,24 @@ assert.equal(recalculationText({ recalculated: { calculated_payout: 36500, diffe
 assert.equal(recalculationText({ recalculated: { calculated_payout: 1200, difference: null } }), '現在的算法：還有待確認項目，暫不比較');
 assert.equal(recalculationText({ recalculated: null }), '現在的算法：無法比較（已不在這個分校）');
 assert.equal(recalculationText({}), '');
+// A short week says how far short it is, what each day held and what was left out.
+assert.deepEqual(weekExplanation({
+  week_start: '2026-10-05', week_end: '2026-10-11', total_segments: 12.5, segment_threshold: 16, meets_16_segments: false, finished: true,
+  closure_dates: [], daily_hours: { '2026-10-05': 4, '2026-10-06': 5.5, '2026-10-11': 15.5 }, uncounted: { cancelled: 3, moved: 2 },
+}), {
+  verdict: '12.5 段・未達（差 3.5 段）',
+  detail: '每天排課時數：一 4、二 5.5、三 0、四 0、五 0、六 0、日 15.5。另有 3 堂取消、2 堂改期（算在改到的那一天），不算在內',
+});
+assert.equal(weekExplanation({ week_start: '2026-10-05', total_segments: 18, meets_16_segments: true, finished: true }).verdict, '18 段・達標');
+assert.equal(weekExplanation({ week_start: '2026-10-05', total_segments: 3, meets_16_segments: true, closure_dates: ['2026-10-10'] }).verdict, '3 段・停課週不列入');
+assert.equal(weekExplanation({ week_start: '2026-11-30', total_segments: 2, meets_16_segments: false, finished: false }).verdict, '2 段・還沒結束，先不判定');
+assert.equal(weekExplanation({ week_start: '2026-10-05', total_segments: 3 }).detail, '每天排課時數：一 0、二 0、三 0、四 0、五 0、六 0、日 0');
+assert.equal(weekExplanation({ week_start: '2026-10-05', total_segments: 3, closure_dates: ['2026-10-10'], near_closures: [{ date: '2026-10-09', total: 120, open: 2 }] }).detail,
+  '每天排課時數：一 0、二 0、三 0、四 0、五 0、六 0、日 0');
+// A week that crosses a month end still finds its days.
+assert.equal(weekExplanation({ week_start: '2026-11-30', daily_hours: { '2026-11-30': 2, '2026-12-06': 8 } }).detail, '每天排課時數：一 2、二 0、三 0、四 0、五 0、六 0、日 8');
+assert.equal(weekExplanation({ week_start: '2026-10-05', total_segments: 3, near_closures: [{ date: '2026-10-10', total: 120, open: 2 }] }).detail,
+  '每天排課時數：一 0、二 0、三 0、四 0、五 0、六 0、日 0。10/10 全公司 120 堂課有 118 堂停課，還有 2 堂照常上課，所以這一週沒有當成停課週');
 assert.deepEqual(inputRoster([{ teacher_id: 1, teacher_name: '甲' }], [{ teacher_id: 2, teacher_name: '乙', campus_id: 9, campus_name: '別的分校' }]).map((t) => [t.teacher_id, t.teacher_name]),
   [[1, '甲'], [2, '乙']]);
 assert.deepEqual(inputRoster(undefined, undefined), []);

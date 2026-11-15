@@ -49,6 +49,25 @@ class TeacherEligibilityStudentAttendanceTest extends TestCase
         self::assertSame(5.0, $closed['metrics']['total_segments']);
     }
 
+    /** A week still running is shown but not judged yet, and a short week carries what the calendar left out. */
+    public function test_week_reports_whether_it_is_over_and_which_lessons_were_left_out(): void
+    {
+        $lessons = ['2026-08-03' => [['start' => '10:00', 'end' => '12:00']]];
+        $uncounted = ['2026-08-04' => ['cancelled' => 2, 'moved' => 1], '2026-08-06' => ['cancelled' => 1, 'moved' => 0], '2026-08-12' => ['cancelled' => 9, 'moved' => 9]];
+        $week = fn (?string $today) => $this->invoke('evaluateWeek', Carbon::parse('2026-08-03'), Carbon::parse('2026-08-09')->endOfDay(), $lessons, [], $uncounted, $today);
+
+        $running = $week('2026-08-09');
+        self::assertFalse($running['metrics']['finished']);
+        self::assertSame('這一週還沒結束，結束後才判定。', $running['reason']);
+        self::assertSame(TeacherEligibilityPolicy::NOT_QUALIFIES, $running['status']);
+
+        $over = $week('2026-08-10');
+        self::assertTrue($over['metrics']['finished']);
+        self::assertSame(['cancelled' => 3, 'moved' => 1], $over['metrics']['uncounted']);
+        self::assertSame(16.0, $over['metrics']['segment_threshold']);
+        self::assertTrue($week(null)['metrics']['finished']);
+    }
+
     public function test_weeks_are_whole_monday_to_sunday_and_belong_to_their_mondays_month(): void
     {
         $weeks = fn (string $start, string $end) => array_map(
