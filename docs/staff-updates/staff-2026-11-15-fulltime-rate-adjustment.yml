@@ -1,0 +1,18 @@
+updates:
+  - id: staff-2026-11-15-fulltime-rate-adjustment
+    published_at: "2026-11-15"
+    audiences:
+      - director
+      - super_admin
+    importance: major
+    title: 假日與平日倍率可調整
+    summary: 系統算的假日或平日下午倍率不合實況時，主任可在範圍內調整，總部核准後生效。
+    items:
+      - category: added
+        text: 在行政加給表單選「假日倍率調整」或「平日下午倍率調整」，填原因與起訖日。
+      - category: action_required
+        text: 調整要主任確認、總部核准才生效；還沒核准時那位老師不能鎖定。
+      - category: improved
+        text: 主任確認後只有總部可以退回，退回就恢復系統算的值。
+    source_refs:
+      - "changelog:2026-11-15:fulltime-rate-adjustment"

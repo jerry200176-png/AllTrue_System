@@ -420,6 +420,11 @@ class TeacherEligibilityInputController extends Controller
         if ($record->director_confirmed_at || in_array($record->status ?? '', ['approved', 'withdrawn'], true)) {
             return response()->json(['message' => '已進入審核的行政加給不能修改。'], 422);
         }
+        // An edit can change a rate adjustment's value or turn it into another kind of row; on yourself that is the
+        // same as withdrawing it, so the same guard applies (judged on the row as stored, not on the new input).
+        if (isset(\App\Services\TeacherEligibilityPolicy::RATE_ADJUSTMENT_KEYS[$record->role_key ?? '']) && ($blocked = $this->rejectSelfApproval($request, $record->teacher_id ?? null))) {
+            return $blocked;
+        }
         $data = $this->validatedAllowance($request);
         if ($data instanceof \Illuminate\Http\JsonResponse) {
             return $data;
@@ -450,8 +455,24 @@ class TeacherEligibilityInputController extends Controller
         if (!$record) {
             return response()->json(['message' => 'Not found'], 404);
         }
+        $isRateAdjustment = isset(\App\Services\TeacherEligibilityPolicy::RATE_ADJUSTMENT_KEYS[$record->role_key ?? '']);
+        // A rate adjustment can lower the rate, so removing one against yourself is self-approval at every stage.
+        if ($isRateAdjustment && ($blocked = $this->rejectSelfApproval($request, $record->teacher_id ?? null))) {
+            return $blocked;
+        }
         if ($record->director_confirmed_at || ($record->status ?? '') === 'approved') {
-            return response()->json(['message' => '已進入審核的行政加給不能撤回。'], 422);
+            if (!$isRateAdjustment) {
+                return response()->json(['message' => '已進入審核的行政加給不能撤回。'], 422);
+            }
+            // A rate adjustment must stay removable after confirmation: until headquarters approves it the teacher
+            // cannot be settled, and removing an approved one puts the system's rate back. That is headquarters'
+            // call (the party that approves), and never in a locked month.
+            if ($request->attributes->get('auth_role') !== 'super_admin') {
+                return response()->json(['message' => '已確認的倍率調整只有總部可以退回。'], 403);
+            }
+            if (!empty($record->starts_on)) {
+                $this->rejectIfSalaryMonthLocked((int) $record->teacher_id, $record->branch_id !== null ? (int) $record->branch_id : null, (string) $record->starts_on);
+            }
         }
         DB::table('teacher_payroll_admin_allowances')->where('id', $id)->update([
             'status' => 'withdrawn',
@@ -495,6 +516,10 @@ class TeacherEligibilityInputController extends Controller
         }
         if ($blocked = $this->rejectSelfApproval($request, $record->teacher_id ?? null)) {
             return $blocked;
+        }
+        // A withdrawn row keeps its confirmation time for the record; it must never come back through approval.
+        if (($record->status ?? '') === 'withdrawn') {
+            return response()->json(['message' => '已撤回的資料不能核准。'], 422);
         }
         if (!$record->director_confirmed_at) {
             return response()->json(['message' => 'Director confirmation is required first'], 422);
@@ -789,7 +814,7 @@ class TeacherEligibilityInputController extends Controller
         $data = $request->validate([
             'teacher_id' => ['required', 'integer', 'min:1'],
             'branch_id' => ['nullable', 'integer', 'min:1'],
-            'role_key' => ['required', 'in:admin_assist,head_tutor,deputy_director'],
+            'role_key' => ['required', 'in:admin_assist,head_tutor,deputy_director,' . implode(',', array_keys(\App\Services\TeacherEligibilityPolicy::RATE_ADJUSTMENT_KEYS))],
             'rate' => ['required', 'numeric', 'min:0', 'max:10'],
             'reason' => ['nullable', 'string', 'max:10000'],
             'starts_on' => ['nullable', 'date'],
@@ -797,6 +822,12 @@ class TeacherEligibilityInputController extends Controller
         ]);
         if (($data['starts_on'] ?? null) !== null && ($data['ends_on'] ?? null) !== null && $data['ends_on'] < $data['starts_on']) {
             return response()->json(['message' => 'ends_on must be on or after starts_on'], 422);
+        }
+        // A rate adjustment says what one period really looked like: it needs a reason, both dates (an open end
+        // would keep replacing the system's rate in every later month) and a value inside the announced range.
+        $cap = app(\App\Services\TeacherEligibilityPolicy::class)->rateAdjustmentCap($data['role_key']);
+        if ($cap !== null && (trim((string) ($data['reason'] ?? '')) === '' || empty($data['starts_on']) || empty($data['ends_on']) || (float) $data['rate'] > $cap)) {
+            return response()->json(['message' => "倍率調整要填原因、生效日與失效日，倍率不能超過 {$cap}%。"], 422);
         }
 
         return $data;
