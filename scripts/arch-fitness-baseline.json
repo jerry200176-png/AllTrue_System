@@ -10,6 +10,7 @@
   "moneyWritesOutsideBilling": 3,
   "readPathWritesInQueryMethods": 0,
   "feeMathInControllers": 4,
+  "scheduleTableReaderFiles": 43,
   "requireOwnerFrontmatter": [
     "docs/CONSTITUTION.md",
     "docs/RULE_ARCHITECTURE_GOVERNANCE.md",
