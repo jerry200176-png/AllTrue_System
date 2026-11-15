@@ -156,6 +156,9 @@ class StudentClassResponseContractTest extends TestCase
         $this->assertSame(2200, $after['current_unit_price']);
         $this->assertEquals(2500, $after['rate_per_30min']);
         $this->assertSame(4700, $after['held_lessons_amount']);
+        // The amendment rows themselves (reason, source reference) are not part of the list response.
+        $this->assertArrayNotHasKey('pricing_amendments', $after);
+        $this->assertArrayNotHasKey('pricingAmendments', $after);
         Carbon::setTestNow();
     }
 

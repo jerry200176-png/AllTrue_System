@@ -73,7 +73,7 @@ class StudentClassController extends Controller
 
     public function index(Request $request)
     {
-        $query = StudentClass::query()->with(['student', 'room.campus', 'pricingAmendments']); // pricingAmendments: one query per page for current_unit_price
+        $query = StudentClass::query()->with(['student', 'room.campus', 'pricingAmendments']); // pricingAmendments: one query per page for current_unit_price; unset before the response
         $role = $request->attributes->get('auth_role');
         $campusIds = $role === 'super_admin' ? [] : $request->attributes->get('auth_campus_ids', []);
 
@@ -399,6 +399,7 @@ class StudentClassController extends Controller
             // #4991 step 4a: the price in force today, from the resolver every bill is priced with (pricing amendments
             // included), so the course lists show the same unit price as the bill and the slip. Display only.
             $priceToday = $pricingToday->forDate($class, $todayTaipei);
+            $class->unsetRelation('pricingAmendments'); // loaded only to price the row: the amendment rows never go into the response
             $class->setAttribute('current_unit_price', $priceToday['rate']);
             $class->setAttribute('current_unit_price_unit', $priceToday['rate_unit']);
             $class->setAttribute('total_hours', (int) ($class->TotalHours ?? 0));
