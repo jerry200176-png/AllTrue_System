@@ -1,0 +1,14 @@
+updates:
+  - id: staff-2026-11-16-inapp-552-contract-title
+    published_at: "2026-11-16"
+    audiences:
+      - director
+      - super_admin
+    importance: digest
+    title: 合約標題顯示實際上課日
+    summary: 學生帳務的堂數制合約，標題改成第一堂到最後一堂的日期，跟下面的上課明細一致。
+    items:
+      - category: fixed
+        text: 堂數制合約的標題不再顯示登記的起訖日，改顯示實際上課的第一天到最後一天。
+    source_refs:
+      - "changelog:2026-11-16:inapp-552-contract-title-lesson-dates"
