@@ -912,11 +912,14 @@ class AlertController extends Controller
         if ($multiCourseBill) {
             $charge = (int) $payable['payable_amount'];
         }
-        // 單價 (Founder 2026-11-16), display only: this course's price over the slip's dates. A bill for several courses
-        // is asked for at one total, so one course's price beside it would mislead.
+        // 單價 (Founder 2026-11-16), display only: this course's price over the dates the slip covers. A bill covers its
+        // own service range (which can cross a month end), the same range the lesson list below uses; with no bill it
+        // is the billing period. A bill for several courses is asked for at one total, so one course's price beside
+        // it would mislead.
+        [$priceFrom, $priceTo] = $openInvoice ? $this->monthlyBilling->serviceRangeForCourse($openInvoice, $studentClassId) : [null, null];
         $unitPrice = $multiCourseBill
             ? ['unit_price' => null, 'unit_price_unit' => 'session']
-            : app(\App\Services\StudentClassPricingService::class)->slipUnitPrice($sc, $billing['period_start'], $billing['period_end']);
+            : app(\App\Services\StudentClassPricingService::class)->slipUnitPrice($sc, $priceFrom ?? $billing['period_start'], $priceTo ?? $billing['period_end']);
 
         $dueDate = null;
         $daysUntilSettlement = null;

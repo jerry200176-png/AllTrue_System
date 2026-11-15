@@ -494,6 +494,19 @@ class MonthlyBillingSlipTest extends TestCase
             ->assertOk()
             ->assertJsonPath('total_amount', 6600)
             ->assertJsonPath('sessions.*.date', ['2026-08-30', '2026-09-07', '2026-09-14']);
+
+        // 單價 looks at the bill's own service range (8/30–9/28), not the calendar month. One price throughout: that price.
+        $headers = ['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'];
+        $rate = (int) $course->Rate;
+        $this->assertGreaterThan(0, $rate);
+        $this->assertEquals($rate, $this->withHeaders($headers)->getJson("/api/v1/alerts/tuition-slip/{$course->ID}")->assertOk()->json('unit_price'));
+        // A price change on 9/1 falls inside the range: there is no single price, on either slip.
+        \Illuminate\Support\Facades\DB::table('student_class_pricing_amendments')->insert([
+            'student_class_id' => $course->ID, 'effective_from' => '2026-09-01', 'rate' => $rate + 300, 'rate_unit' => 'session',
+            'source_reference' => 'test-cross-month-price', 'reason' => 'test', 'created_at' => now(),
+        ]);
+        $this->assertNull($this->withHeaders($headers)->getJson("/api/v1/alerts/tuition-slip/{$course->ID}")->assertOk()->json('unit_price'));
+        $this->assertNull($this->withHeaders($headers)->getJson("/api/v1/invoices/{$invoice->id}/slip-data")->assertOk()->json('items.0.unit_price'));
     }
 
     public function test_tuition_slip_with_two_owing_periods_uses_the_payable_period(): void

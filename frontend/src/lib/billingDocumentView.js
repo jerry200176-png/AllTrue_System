@@ -82,6 +82,7 @@ export function unitPriceLabel(price, unit) {
 /** The slip as plain text (in-app #553): what the image says, for pasting into a message. */
 export function slipPlainText(doc) {
   const lines = [`${formatBrandTitle(doc.campus_name)}　${doc.title}`];
+  if (doc.ref_label) lines.push(doc.ref_label); // which bill or course this is, as in the image's header
   for (const m of doc.meta || []) lines.push(`${m.label}：${m.value}`);
   for (const item of doc.items || []) {
     lines.push([item.description, item.period && item.period !== '—' ? item.period : '', item.unit_price ? `單價 ${item.unit_price}` : '', item.amount].filter(Boolean).join('　'));

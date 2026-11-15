@@ -62,6 +62,10 @@ describe('paymentSlipView', () => {
     ] }));
     expect(two).toMatch(/1\. .*英文/);
     expect(two).toMatch(/2\. .*數學/);
+
+    // A bill's slip keeps its number, so two bills that look alike can be told apart in a message.
+    const billed = slipPlainText(paymentSlipView({ invoice_id: 7, student_name: '測試', remaining: 3000, total_amount: 3000, items: [] }));
+    expect(billed.split('\n')).toContain('帳單編號 #7');
   });
 
   it('#548 labels count-mode history as records without changing dates or money', () => {
