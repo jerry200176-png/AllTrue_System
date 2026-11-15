@@ -109,41 +109,20 @@ class TeacherEligibilityStudentAttendanceTest extends TestCase
         self::assertSame([['2026-08-03', '2026-08-09']], $weeks('2026-08-03', '2026-08-09'));
     }
 
-    public function test_weekday_afternoon_merges_overlapping_schedule_windows_before_low_consumption(): void
+    /** 平日下午倍率 counts only Monday-to-Friday clock time before 18:00. */
+    public function test_weekday_early_segments_stop_at_the_cutoff_and_skip_weekends(): void
     {
-        $rows = collect([
-            ['start_time' => '14:00:00', 'end_time' => '16:00:00'],
-            ['start_time' => '16:00:00', 'end_time' => '18:00:00'],
-            ['start_time' => '17:00:00', 'end_time' => '19:00:00'],
-            ['start_time' => '19:00:00', 'end_time' => '21:00:00'],
-            ['start_time' => '20:00:00', 'end_time' => '22:00:00'],
-        ])->map(fn ($row) => (object) array_merge($row, [
-            'schedule_date' => '2026-08-10',
-            'class_type' => 'one_on_one',
-            'type' => 'normal',
-        ]));
+        $lesson = fn (string $start, string $end) => ['start' => $start, 'end' => $end];
+        $week = $this->invoke('evaluateWeek', Carbon::parse('2026-08-03'), Carbon::parse('2026-08-09')->endOfDay(), [
+            // 14:00-19:00 with an overlap: four hours before the cutoff.
+            '2026-08-03' => [$lesson('14:00', '16:00'), $lesson('15:00', '17:00'), $lesson('17:00', '19:00')],
+            '2026-08-04' => [$lesson('18:00', '20:00')], // after the cutoff
+            '2026-08-05' => [$lesson('17:00', '')], // no end time: two-hour default, one hour before the cutoff
+            '2026-08-08' => [$lesson('10:00', '12:00')], // Saturday
+        ]);
 
-        self::assertSame(
-            ['2026-08-10' => 8.0],
-            $this->invoke('weekdayHours', $rows, Carbon::parse('2026-08-01'), Carbon::parse('2026-08-31'))
-        );
-    }
-
-    public function test_weekday_afternoon_excludes_makeup_schedule_from_recurring_hours(): void
-    {
-        $rows = collect([
-            ['start_time' => '14:00:00', 'end_time' => '16:00:00', 'type' => 'normal'],
-            ['start_time' => '16:00:00', 'end_time' => '18:00:00', 'type' => 'extra'],
-            ['start_time' => '18:00:00', 'end_time' => '20:00:00', 'type' => 'normal'],
-        ])->map(fn ($row) => (object) array_merge($row, [
-            'schedule_date' => '2026-08-10',
-            'class_type' => 'one_on_one',
-        ]));
-
-        self::assertSame(
-            ['2026-08-10' => 4.0],
-            $this->invoke('weekdayHours', $rows, Carbon::parse('2026-08-01'), Carbon::parse('2026-08-31'))
-        );
+        self::assertSame(2.5, $week['metrics']['weekday_early_segments']);
+        self::assertSame(5.5, $week['metrics']['total_segments']);
     }
 
     public function test_holiday_baseline_uses_recurring_schedule_not_leave_hours_as_worked_time(): void

@@ -35,7 +35,7 @@ class TeacherEligibilityPolicy
         $components = [
             'weekly_16_segments' => $this->weekly16($input['weekly'] ?? null),
             'holiday_16_hours' => $this->holiday16($input['holiday_days'] ?? null),
-            'weekday_afternoon' => $this->weekdayAfternoon($input['weekday_hours'] ?? []),
+            'weekday_afternoon' => $this->weekdayAfternoon($input['weekday_early_segments'] ?? []),
             'special_performance' => $this->specialPerformance($input['achievements'] ?? [], $input['period_start'] ?? null, $input['period_end'] ?? null),
             'deductions' => $this->deductions($input['deductions'] ?? [], $input['period_start'] ?? null, $input['period_end'] ?? null),
             'admin_allowance' => $this->adminAllowance($input['admin_allowances'] ?? [], $input['period_start'] ?? null, $input['period_end'] ?? null),
@@ -151,36 +151,32 @@ class TeacherEligibilityPolicy
         );
     }
 
-    public function weekdayAfternoon(array $weekdayHours): array
+    /**
+     * HQ 115.07: 週一至週五 18:00 前可接 5 段課 → +0%～+5%. Each 段 scheduled before 18:00 on a weekday is 1%,
+     * capped per week, then averaged over the judged weeks (the HQ sheet shows values such as 1.5 and 2.25).
+     *
+     * @param  list<int|float>  $weeklyEarlySegments  one value per judged week
+     */
+    public function weekdayAfternoon(array $weeklyEarlySegments): array
     {
-        $missing = [];
-        $extraSegments = 0.0;
-        foreach ($weekdayHours as $date => $hours) {
-            if ($hours === null) {
-                $missing[] = "weekday_hours.{$date}";
-                continue;
-            }
-            $extraSegments += max(0, ((float) $hours - 4) / 2);
-        }
-        if ($missing !== []) {
-            return $this->review($missing, '缺少平日課程時數。');
-        }
+        $cap = (float) $this->setting('weekday_rate_cap', 5);
+        $perSegment = (float) $this->setting('weekday_extra_rate_per_segment', 1);
+        $weeklyRates = array_map(fn ($segments) => min($cap, (float) $segments * $perSegment), $weeklyEarlySegments);
+        $rate = $weeklyRates === [] ? 0.0 : round(array_sum($weeklyRates) / count($weeklyRates), 2);
 
-        $rate = min(
-            (float) $this->setting('weekday_rate_cap', 5),
-            $extraSegments * (float) $this->setting('weekday_extra_rate_per_segment', 1)
-        );
         return $this->result(
             self::QUALIFIES,
-            $rate > 0 ? '平日每日4小時低消後有可計算課段。' : '平日未超過每日4小時低消。',
-            [
-                'extra_segments' => round($extraSegments, 2),
-                'rate_cap' => 5,
-                'daily_coverage_hours' => array_map(fn ($hours) => round((float) $hours, 2), $weekdayHours),
-            ],
+            $rate > 0 ? '平日18:00前有排課，依每週段數平均。' : '平日18:00前沒有排課。',
+            ['weekly_early_segments' => array_map(fn ($segments) => round((float) $segments, 2), $weeklyEarlySegments), 'rate_cap' => $cap],
             0,
-            round($rate, 2)
+            $rate
         );
+    }
+
+    /** HH:MM; weekday lesson time before it counts toward the 平日下午 rate. */
+    public function weekdayCutoff(): string
+    {
+        return (string) $this->setting('weekday_cutoff', '18:00');
     }
 
     public function specialPerformance(array $achievements, ?string $periodStart, ?string $periodEnd): array

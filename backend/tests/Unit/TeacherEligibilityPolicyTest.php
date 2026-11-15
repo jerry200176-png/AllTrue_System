@@ -66,26 +66,15 @@ class TeacherEligibilityPolicyTest extends TestCase
         $this->assertContains('holiday_days.0.regular_scheduled_hours', $result['missing_fields']);
     }
 
-    public function test_weekday_after_four_hour_low_consumption_is_capped_at_five_percent(): void
+    /** HQ 115.07: 週一至週五 18:00 前可接 5 段課 → 0–5%. The HQ sheet shows averaged values such as 1.5 and 2.25. */
+    public function test_weekday_rate_is_one_percent_per_early_segment_capped_per_week_then_averaged(): void
     {
-        $result = $this->policy->weekdayAfternoon([
-            '2026-08-03' => 4,
-            '2026-08-04' => 5,
-            '2026-08-05' => 5.5,
-            '2026-08-06' => 6,
-            '2026-08-07' => 20,
-        ]);
-
-        $this->assertSame(5.0, $result['rate']);
-    }
-
-    public function test_weekday_afternoon_examples_keep_half_quarter_and_full_segment_values(): void
-    {
-        foreach ([[4.0, 0.0], [5.0, 0.5], [5.5, 0.75], [6.0, 1.0]] as [$hours, $expectedSegments]) {
-            $result = $this->policy->weekdayAfternoon(['2026-08-03' => $hours]);
-            $this->assertSame($expectedSegments, $result['metrics']['extra_segments']);
-            $this->assertSame($expectedSegments, $result['rate']);
-        }
+        $this->assertSame(1.5, $this->policy->weekdayAfternoon([1, 2, 1, 2])['rate']);
+        $this->assertSame(2.25, $this->policy->weekdayAfternoon([2, 3, 2, 2])['rate']);
+        $this->assertSame(5.0, $this->policy->weekdayAfternoon([9, 5, 6, 12])['rate']);
+        // A week above five 段 is capped before the average: (5 + 2) / 2, not (9 + 2) / 2.
+        $this->assertSame(3.5, $this->policy->weekdayAfternoon([9, 2])['rate']);
+        $this->assertSame(0.0, $this->policy->weekdayAfternoon([])['rate']);
     }
 
     public function test_unverified_achievement_is_review_and_verified_achievement_adds_five_percent(): void
