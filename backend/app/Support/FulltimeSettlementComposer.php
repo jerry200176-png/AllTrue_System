@@ -58,6 +58,12 @@ final class FulltimeSettlementComposer
         $subjectKnown = $subjectComponent === null || ($subjectComponent['status'] !== 'review' && $subjectCount !== null);
         if (!$subjectKnown) $pendingItems[] = self::pendingItem('subject_count_bonus', '正課／輔導試聽／一對三科目數', $subjectComponent, true);
 
+        // 新進保底: when it applies the weighted bonus is at least the guarantee. Only once that bonus is itself final.
+        $weightedBeforeGuarantee = $weightedBonus;
+        $guarantee = (float) ($components['new_hire_guarantee']['amount'] ?? 0);
+        $guaranteeApplied = $guarantee > 0 && $subjectKnown && $multiplierComplete && $guarantee > $weightedBonus;
+        if ($guaranteeApplied) $weightedBonus = $guarantee;
+
         $cashComponent = $components['cash_adjustments'] ?? null;
         $cashKnown = $cashComponent === null || $cashComponent['status'] !== 'review';
         $cashAmount = $cashKnown ? (float) ($cashComponent['amount'] ?? 0) : 0.0;
@@ -83,6 +89,8 @@ final class FulltimeSettlementComposer
             'known_multiplier_pct' => round($multiplierPct, 2),
             'multiplier_complete' => $multiplierComplete,
             'weighted_bonus_amount' => $weightedBonus,
+            'weighted_bonus_before_guarantee' => $weightedBeforeGuarantee,
+            'new_hire_guarantee_applied' => $guaranteeApplied,
             'weighted_bonus_complete' => $subjectKnown && $multiplierComplete,
             'weekly_segment_bonus_amount' => $weeklyKnown ? $weeklyBonus : null,
             'weekly_bonus_complete' => $weeklyKnown,

@@ -56,7 +56,7 @@ class TeacherEligibilityController extends Controller
                 'policy_version' => $lockedRun->policy_version ?: config('teacher_salary.policy_version'),
                 'effective_from' => config('teacher_salary.effective_from'),
                 'period' => ['type' => $period['type'], 'start' => $effectiveStart->toDateString(), 'end' => $period['end']->toDateString()],
-                'components' => ['weekly_16_segments', 'holiday_16_hours', 'weekday_afternoon', 'special_performance', 'deductions', 'admin_allowance', 'cash_adjustments', 'subject_count_bonus'],
+                'components' => ['weekly_16_segments', 'holiday_16_hours', 'weekday_afternoon', 'special_performance', 'deductions', 'admin_allowance', 'cash_adjustments', 'subject_count_bonus', 'new_hire_guarantee'],
                 'teachers' => $rows,
                 'total_teachers' => count($rows),
                 'branch_subject_total' => (float) $lockedRun->branch_subject_total,
@@ -167,7 +167,9 @@ class TeacherEligibilityController extends Controller
         // partition a teacher's cross-campus subject inputs.
         $subjectUnitsByTeacher = $this->globalSubjectUnitsByTeacher($teacherIds, $effectiveStart, $period['end']);
 
-        $rows = $teachers->map(function ($teacher) use ($period, $effectiveStart, $weeks, $closureDates, $lessonsByTeacher, $achievementByTeacher, $deductionByTeacher, $allowanceByTeacher, $cashByTeacher, $cashSourceAvailable, $allowanceSourceAvailable, $subjectUnitsByTeacher) {
+        $firstLessonByTeacher = $this->firstLessonDateByTeacher($teacherIds);
+
+        $rows = $teachers->map(function ($teacher) use ($period, $effectiveStart, $weeks, $closureDates, $lessonsByTeacher, $achievementByTeacher, $deductionByTeacher, $allowanceByTeacher, $cashByTeacher, $cashSourceAvailable, $allowanceSourceAvailable, $subjectUnitsByTeacher, $firstLessonByTeacher) {
             $teacherId = (int) $teacher->id;
             $weeklyRows = [];
             foreach ($weeks as [$weekStart, $weekEnd]) {
@@ -228,6 +230,11 @@ class TeacherEligibilityController extends Controller
                 ];
             }
             $result['components']['weekly_16_segments'] = $weeklyStatus;
+            $result['components']['new_hire_guarantee'] = $this->policy->newHireGuarantee(
+                $firstLessonByTeacher[$teacherId] ?? null,
+                $effectiveStart->toDateString(),
+                $weeklyStatus['status'] === TeacherEligibilityPolicy::QUALIFIES
+            );
             $result = $this->finalizePolicyResult($result['components']);
             $settlement = FulltimeSettlementComposer::compose(
                 $result['components'],
@@ -255,7 +262,7 @@ class TeacherEligibilityController extends Controller
             'policy_version' => config('teacher_salary.policy_version'),
             'effective_from' => config('teacher_salary.effective_from'),
             'period' => ['type' => $period['type'], 'start' => $effectiveStart->toDateString(), 'end' => $period['end']->toDateString()],
-            'components' => ['weekly_16_segments', 'holiday_16_hours', 'weekday_afternoon', 'special_performance', 'deductions', 'admin_allowance', 'cash_adjustments', 'subject_count_bonus'],
+            'components' => ['weekly_16_segments', 'holiday_16_hours', 'weekday_afternoon', 'special_performance', 'deductions', 'admin_allowance', 'cash_adjustments', 'subject_count_bonus', 'new_hire_guarantee'],
             'teachers' => $rows,
             'total_teachers' => count($rows),
             // Divide only after the complete eligible monthly raw total is
@@ -576,6 +583,52 @@ class TeacherEligibilityController extends Controller
                 'payroll_raw_total' => $payrollRawTotal,
             ]];
         })->all();
+    }
+
+    /**
+     * 新進保底 counts from the teacher's first lesson (Founder 2026-11-15: no hire-date field). Company-wide, like the
+     * subject counts: the campus filter only decides which teachers are listed.
+     * The date is the earlier of two: the first lesson signed in under the teacher (who taught is the sign-in, the
+     * same evidence the calendar keeps history with, so a covered lesson counts), and the first lesson of a course
+     * that is theirs now, leaving out lessons signed in under someone else (a course taken over does not bring the
+     * former teacher's lessons along). Taking the earlier one keeps it fail-closed: missing sign-ins can only make a
+     * teacher look less new, never more.
+     * ponytail: one pass over the sign-in table per load; add an index on its teacher column if this page gets slow.
+     *
+     * @return array<int, string> teacher id => Y-m-d
+     */
+    private function firstLessonDateByTeacher(array $teacherIds): array
+    {
+        if ($teacherIds === [] || !Schema::hasTable('ClassSession') || !Schema::hasTable('StudentClass') || !Schema::hasTable('StudentSingIn')) {
+            return [];
+        }
+        $taught = DB::table('StudentSingIn as si')
+            ->join('ClassSession as cs', 'cs.id', '=', 'si.ClassSessionID')
+            ->whereIn('si.TeacherID', $teacherIds)
+            ->whereNull('si.VoidedAt')
+            ->groupBy('si.TeacherID')
+            ->selectRaw('si.TeacherID as teacher_id, MIN(cs.SessionDate) as first_date')
+            ->pluck('first_date', 'teacher_id');
+        $own = DB::table('ClassSession as cs')
+            ->join('StudentClass as sc', 'sc.ID', '=', 'cs.StudentClassID')
+            ->whereIn('sc.TeacherID', $teacherIds)
+            ->whereNotIn('cs.Status', ['cancelled', 'voided'])
+            ->whereNotExists(fn ($other) => $other->select(DB::raw(1))->from('StudentSingIn as other')
+                ->whereColumn('other.ClassSessionID', 'cs.id')->whereNull('other.VoidedAt')
+                ->where('other.TeacherID', '>', 0)->whereColumn('other.TeacherID', '!=', 'sc.TeacherID'))
+            ->groupBy('sc.TeacherID')
+            ->selectRaw('sc.TeacherID as teacher_id, MIN(cs.SessionDate) as first_date')
+            ->pluck('first_date', 'teacher_id');
+
+        $dates = [];
+        foreach ([$taught, $own] as $found) {
+            foreach ($found as $teacherId => $date) {
+                $date = substr((string) $date, 0, 10);
+                if ($date !== '' && (!isset($dates[$teacherId]) || $date < $dates[$teacherId])) $dates[$teacherId] = $date;
+            }
+        }
+
+        return $dates;
     }
 
     private function clockMinutes($value): ?int

@@ -167,6 +167,30 @@ class TeacherEligibilityPolicy
         return $settingKey === null ? null : (float) $this->setting($settingKey, 0);
     }
 
+    /**
+     * HQ 115.07: 新進教師前三個月保底獎金 2000 元；任一週未滿 16 段歸零. The hire date is the teacher's first lesson
+     * (Founder 2026-11-15) and its month is month 1. `amount` is the floor for the weighted bonus, 0 when it does not apply.
+     * ponytail: the month is taken from the period start; a period longer than a month is judged as its first month.
+     */
+    public function newHireGuarantee(?string $firstLessonDate, ?string $periodStart, bool $everyWeekFull): array
+    {
+        $months = (int) $this->setting('new_hire_guarantee_months', 3);
+        $metrics = ['first_lesson_date' => $firstLessonDate, 'guarantee_months' => $months];
+        if ($firstLessonDate === null || $periodStart === null) {
+            return $this->result(self::NOT_QUALIFIES, '找不到第一堂課日期，不適用新進保底。', $metrics);
+        }
+        $month = (int) round(Carbon::parse($firstLessonDate)->startOfMonth()->diffInMonths(Carbon::parse($periodStart)->startOfMonth(), false)) + 1;
+        $metrics['guarantee_month'] = $month;
+        if ($month < 1 || $month > $months) {
+            return $this->result(self::NOT_QUALIFIES, '不在到職前三個月內，不適用新進保底。', $metrics);
+        }
+        if (!$everyWeekFull) {
+            return $this->result(self::NOT_QUALIFIES, '有一週未排滿16段，這個月沒有新進保底。', $metrics);
+        }
+
+        return $this->result(self::QUALIFIES, "到職第{$month}個月且每週排滿16段，倍率後獎金有保底。", $metrics, (float) $this->setting('new_hire_guarantee_amount', 2000));
+    }
+
     /** HH:MM; weekday lesson time before it counts toward the 平日下午 rate. */
     public function weekdayCutoff(): string
     {

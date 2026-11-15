@@ -1,0 +1,16 @@
+updates:
+  - id: staff-2026-11-15-slip-record-clarity
+    published_at: "2026-11-15"
+    audiences:
+      - director
+      - super_admin
+    importance: digest
+    title: 繳費通知明細改以筆數顯示
+    summary: 堂數制通知的明細包含上課與請假紀錄，總數改用筆數，已上課仍顯示堂數。
+    items:
+      - category: improved
+        text: 核對課程明細時，可區分總紀錄筆數與已上堂數；日期與金額維持原樣。
+      - category: fixed
+        text: 補請假紀錄顯示為補請假，不再誤標為調課。
+    source_refs:
+      - "changelog:2026-11-15:slip-record-clarity"

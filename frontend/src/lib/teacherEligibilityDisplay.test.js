@@ -25,6 +25,14 @@ assert.equal(weightedBonusFormula({
   multiplier_pct: 114.5,
   weighted_bonus_amount: 515.25,
 }), '($0 + $450) × 114.5% = $515');
+assert.equal(weightedBonusFormula({
+  subject_count_bonus: 0,
+  one_to_three_bonus: 200,
+  multiplier_pct: 105,
+  weighted_bonus_amount: 2000,
+  weighted_bonus_before_guarantee: 210,
+  new_hire_guarantee_applied: true,
+}), '($0 + $200) × 105% = $210，新進保底 $2,000');
 assert.deepEqual(monthWindow('2026-08'), { start: '2026-08-01', end: '2026-08-31' });
 // 正課 150 raw + 輔導試聽 12 raw = 核薪總 20.25: the three columns add up once shown on the same scale.
 assert.equal(formatSubjectUnits(150), '18.75');
