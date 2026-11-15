@@ -282,6 +282,7 @@ class AccountingPendingQueueTest extends TestCase
         }
         foreach ($json['items'] as $item) {
             $this->assertNull($item['amount']);
+            $this->assertNull($item['unit_price']); // the 單價 is withheld with the amounts
         }
         $this->assertArrayHasKey('sessions', $json); // 涵蓋上課日 still comes from this payload
         $this->assertIsArray($json['sessions']);

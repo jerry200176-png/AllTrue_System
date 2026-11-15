@@ -62,6 +62,24 @@ class StudentClassPricingService
         ];
     }
 
+    /**
+     * 單價 printed on a payment slip (Founder 2026-11-16), display only: the course's price in force over the slip's
+     * service dates, from the same resolver the monthly bill is priced with. Null when no price is set, or when the
+     * price at the start and at the end of those dates differ: no single figure would be true for the whole slip.
+     * ponytail: compares the two ends only; a change that starts and is undone inside one period is not noticed.
+     *
+     * @return array{unit_price: int|null, unit_price_unit: string}
+     */
+    public function slipUnitPrice(Model $course, ?string $from = null, ?string $to = null): array
+    {
+        $from = $from ? substr($from, 0, 10) : now('Asia/Taipei')->toDateString();
+        $first = $this->forDate($course, $from);
+        $last = $this->forDate($course, $to ? substr($to, 0, 10) : $from);
+        $single = $first['rate'] > 0 && $first['rate'] === $last['rate'] && $first['rate_unit'] === $last['rate_unit'];
+
+        return ['unit_price' => $single ? $first['rate'] : null, 'unit_price_unit' => $first['rate_unit']];
+    }
+
     private function normalizeRateUnit(string $rateUnit): string
     {
         return in_array(strtolower(trim($rateUnit)), ['session', 'hour'], true)

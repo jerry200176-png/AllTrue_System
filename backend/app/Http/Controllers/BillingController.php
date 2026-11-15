@@ -611,13 +611,18 @@ class BillingController extends Controller
                 'stored_amount' => (int) $item->Amount,
                 'period_start' => $itemPeriodStart,
                 'period_end'   => $itemPeriodEnd,
+                // 單價 (Founder 2026-11-16), display only: the price of the course this line bills, over the line's dates.
+                // A line with no course of its own on a bill of several lines gets none.
+                ...(($lineCourse = $item->getRelationValue('studentClass') ?? ($invoice->items->count() === 1 ? $invoice->getRelationValue('studentClass') : null)) instanceof StudentClass
+                    ? app(\App\Services\StudentClassPricingService::class)->slipUnitPrice($lineCourse, $itemPeriodStart ? (string) $itemPeriodStart : null, $itemPeriodEnd ? (string) $itemPeriodEnd : null)
+                    : ['unit_price' => null, 'unit_price_unit' => 'session']),
             ];
         });
 
         $sessions = $this->monthlyBilling->invoiceCoveredSessions($invoice, $projection);
         $amountPending = $courseAmountPending && $remaining > 0; // a paid bill on the same course keeps its amounts
         if ($amountPending) {
-            $items = $items->map(fn (array $item) => array_merge($item, ['amount' => null, 'stored_amount' => null]));
+            $items = $items->map(fn (array $item) => array_merge($item, ['amount' => null, 'stored_amount' => null, 'unit_price' => null]));
         }
 
         $authUser = $request->attributes->get('auth_user');

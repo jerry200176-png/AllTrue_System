@@ -74,6 +74,38 @@ function passThroughView(raw) {
   };
 }
 
+/** 單價 as printed on a slip: 「NT$ 900／堂」; '' when the course has no rate of its own. */
+export function unitPriceLabel(price, unit) {
+  return Number(price) > 0 ? `${formatAmount(price)}／${unit === 'hour' ? '小時' : '堂'}` : '';
+}
+
+/** The slip as plain text (in-app #553): what the image says, for pasting into a message. */
+export function slipPlainText(doc) {
+  const lines = [`${formatBrandTitle(doc.campus_name)}　${doc.title}`];
+  if (doc.ref_label) lines.push(doc.ref_label); // which bill or course this is, as in the image's header
+  for (const m of doc.meta || []) lines.push(`${m.label}：${m.value}`);
+  for (const item of doc.items || []) {
+    lines.push([item.description, item.period && item.period !== '—' ? item.period : '', item.unit_price ? `單價 ${item.unit_price}` : '', item.amount].filter(Boolean).join('　'));
+  }
+  if (doc.amount != null) lines.push(`${doc.amount_label}：${formatAmount(doc.amount)}`);
+  if (doc.sub_amounts) lines.push(doc.sub_amounts);
+  if (doc.due) lines.push(`${doc.due.label}：${doc.due.value}${doc.due.hint ? `（${doc.due.hint}）` : ''}`);
+  if (doc.pass_through) {
+    lines.push('代收款（非學費）');
+    for (const row of doc.pass_through.rows) lines.push(`${row.title}　${row.amount}　${row.state}`);
+  }
+  if (doc.planning_notice) lines.push(doc.planning_notice);
+  if (doc.sessions?.length) {
+    lines.push(`${doc.session_title || '本期上課日期'}（共 ${doc.sessions.length} ${doc.session_count_unit || '堂'}）`);
+    // Same rule as the image: a slip for several subjects names the subject on each date.
+    const manySubjects = new Set(doc.sessions.map((s) => s.subject).filter(Boolean)).size > 1;
+    doc.sessions.forEach((s, i) => lines.push([`${i + 1}.`, formatSessionDate(s.date), formatTime(s), manySubjects ? s.subject : '', STATUS_ZH[s.status] || s.status || '排定'].filter(Boolean).join(' ')));
+  }
+  if (doc.note) lines.push(`備註：${doc.note}`);
+  if (doc.footer_note) lines.push(doc.footer_note);
+  return lines.join('\n');
+}
+
 /** Payment slip (invoice slip-data or tuition-slip payload) → BillingDocument view model. */
 export function paymentSlipView(raw) {
   // Per slip, not per page load: a tab left open overnight must not print yesterday.
@@ -84,6 +116,7 @@ export function paymentSlipView(raw) {
       period: i.period_start && i.period_end
         ? `${formatDate(i.period_start)} – ${formatDate(i.period_end)}`
         : '—',
+      unit_price: unitPriceLabel(i.unit_price, i.unit_price_unit),
       amount: formatAmount(i.amount),
     }));
     return {
@@ -127,6 +160,7 @@ export function paymentSlipView(raw) {
           ? `本期預計 ${raw.sessions.length} 堂`
           : `本期 ${raw.period_sessions} 堂`)
       : (raw.remaining_sessions != null ? `剩餘 ${raw.remaining_sessions} 堂` : '—'),
+    unit_price: unitPriceLabel(raw.unit_price, raw.unit_price_unit),
     amount: displayedAmount ? formatAmount(displayedAmount) : '—',
   }];
 
