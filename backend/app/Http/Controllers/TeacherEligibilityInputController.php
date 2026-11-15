@@ -450,18 +450,20 @@ class TeacherEligibilityInputController extends Controller
         if (!$record) {
             return response()->json(['message' => 'Not found'], 404);
         }
+        $isRateAdjustment = isset(\App\Services\TeacherEligibilityPolicy::RATE_ADJUSTMENT_KEYS[$record->role_key ?? '']);
+        // A rate adjustment can lower the rate, so removing one against yourself is self-approval at every stage.
+        if ($isRateAdjustment && ($blocked = $this->rejectSelfApproval($request, $record->teacher_id ?? null))) {
+            return $blocked;
+        }
         if ($record->director_confirmed_at || ($record->status ?? '') === 'approved') {
-            if (!isset(\App\Services\TeacherEligibilityPolicy::RATE_ADJUSTMENT_KEYS[$record->role_key ?? ''])) {
+            if (!$isRateAdjustment) {
                 return response()->json(['message' => '已進入審核的行政加給不能撤回。'], 422);
             }
             // A rate adjustment must stay removable after confirmation: until headquarters approves it the teacher
             // cannot be settled, and removing an approved one puts the system's rate back. That is headquarters'
-            // call (the party that approves), never the teacher's own, and never in a locked month.
+            // call (the party that approves), and never in a locked month.
             if ($request->attributes->get('auth_role') !== 'super_admin') {
                 return response()->json(['message' => '已確認的倍率調整只有總部可以退回。'], 403);
-            }
-            if ($blocked = $this->rejectSelfApproval($request, $record->teacher_id ?? null)) {
-                return $blocked;
             }
             if (!empty($record->starts_on)) {
                 $this->rejectIfSalaryMonthLocked((int) $record->teacher_id, $record->branch_id !== null ? (int) $record->branch_id : null, (string) $record->starts_on);
@@ -509,6 +511,10 @@ class TeacherEligibilityInputController extends Controller
         }
         if ($blocked = $this->rejectSelfApproval($request, $record->teacher_id ?? null)) {
             return $blocked;
+        }
+        // A withdrawn row keeps its confirmation time for the record; it must never come back through approval.
+        if (($record->status ?? '') === 'withdrawn') {
+            return response()->json(['message' => '已撤回的資料不能核准。'], 422);
         }
         if (!$record->director_confirmed_at) {
             return response()->json(['message' => 'Director confirmation is required first'], 422);

@@ -6,6 +6,7 @@ use App\Models\AuthToken;
 use App\Models\User;
 use App\Models\UserCampus;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
 class FulltimeAdminAllowanceTest extends TestCase
@@ -97,6 +98,17 @@ class FulltimeAdminAllowanceTest extends TestCase
         $this->withHeaders($this->auth($director['token']))->postJson("/api/v1/finance/teacher-eligibility/admin-allowances/{$confirmedId}/confirm")->assertOk();
         $withdraw($director, $confirmedId)->assertStatus(403);
         $withdraw($hq, $confirmedId)->assertOk();
+        // Withdrawn is final: the kept confirmation time must not let it be approved back into payroll.
+        $this->withHeaders($this->auth($hq['token']))->postJson("/api/v1/finance/teacher-eligibility/admin-allowances/{$confirmedId}/approve")->assertStatus(422);
+        $this->assertDatabaseHas('teacher_payroll_admin_allowances', ['id' => $confirmedId, 'status' => 'withdrawn']);
+
+        // Nobody removes an adjustment on themselves, even before it is confirmed (it may be lowering their rate).
+        $ownId = DB::table('teacher_payroll_admin_allowances')->insertGetId([
+            'teacher_id' => $director['user_id'], 'branch_id' => 1, 'role_key' => 'holiday_16h', 'rate' => 0, 'reason' => 'r',
+            'status' => 'pending', 'starts_on' => '2026-08-01', 'ends_on' => '2026-08-31', 'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $withdraw($director, $ownId)->assertStatus(422)->assertJsonPath('code', 'self_approval_forbidden');
+        $this->assertDatabaseHas('teacher_payroll_admin_allowances', ['id' => $ownId, 'status' => 'pending']);
 
         // An ordinary admin allowance keeps its rule: no withdrawal once confirmed.
         $roleId = (int) $post(['role_key' => 'head_tutor', 'ends_on' => null])->assertCreated()->json('id');
