@@ -136,6 +136,33 @@ export function formatSubjectUnits(value) {
   return formatSubjects(value == null || value === '' ? value : Number(value) / 8);
 }
 
+/** The parts of the 教師倍率 in words: 「基本 100%、平日下午 +2.94%」; parts worth 0 are left out. */
+export function multiplierBreakdown(settlement) {
+  return (settlement?.multiplier_parts || []).filter((part) => Number(part.pct) !== 0)
+    .map((part, index) => `${part.label} ${index > 0 && Number(part.pct) > 0 ? '+' : ''}${Number(part.pct)}%`).join('、');
+}
+
+/** Nothing on the calendar and nothing to pay or settle: the teacher needs no look this month. */
+export function hasNoLessons(teacher) {
+  const segments = Number(teacher?.components?.weekly_16_segments?.metrics?.total_segments || 0);
+  return segments === 0 && Number(teacher?.settlement?.total_payout || 0) === 0 && !teacher?.review_required && !teacher?.settlement?.payout_is_draft;
+}
+
+/** One line under a teacher's name: what the amount rests on, and the first thing still open. */
+export function teacherSummaryLine(teacher) {
+  const parts = [`科目數 ${formatSubjects(teacher?.settlement?.payroll_subject_count)} 科`];
+  const metrics = teacher?.components?.weekly_16_segments?.metrics || {};
+  const weeks = Number(metrics.week_count || 0);
+  const full = Number(metrics.qualifying_weeks || 0);
+  if (weeks && Number(metrics.unfinished_weeks || 0)) parts.push(`還有 ${metrics.unfinished_weeks} 週沒結束`);
+  else if (weeks && full >= weeks) parts.push('每週都滿 16 段');
+  else if (weeks) parts.push(`${weeks} 週裡有 ${weeks - full} 週沒滿 16 段`);
+  if (teacher?.settlement?.new_hire_guarantee_applied) parts.push('新進保底');
+  const pending = (teacher?.pending_items?.length ? teacher.pending_items : teacher?.settlement?.pending_items) || [];
+  if (pending.length) parts.push(`${pending[0].label}還沒處理完`);
+  return parts.join('・');
+}
+
 export function formatPct(value) {
   if (value == null || value === '') return '—';
   const n = Number(value);

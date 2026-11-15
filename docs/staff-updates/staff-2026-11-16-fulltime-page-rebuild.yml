@@ -1,0 +1,18 @@
+updates:
+  - id: staff-2026-11-16-fulltime-page-rebuild
+    published_at: "2026-11-16"
+    audiences:
+      - director
+      - super_admin
+    importance: major
+    title: 正職薪資頁重做
+    summary: 每位老師一行，點開就看到獎金怎麼算出來的；沒有課的老師收在最下面。
+    items:
+      - category: improved
+        text: 大表格拿掉了；每位老師一行，寫一句話說明、可發放或要處理、獎金合計。
+      - category: added
+        text: 點一位老師會展開算式：科目數獎金、一對三獎金、教師倍率、每週段數，一行一行列出。
+      - category: improved
+        text: 這個月沒有課的老師收在清單最下面，手機和電腦看到的是同一個畫面。
+    source_refs:
+      - "changelog:2026-11-16:fulltime-page-rebuild"

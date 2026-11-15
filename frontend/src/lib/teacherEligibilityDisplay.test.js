@@ -10,6 +10,9 @@ import {
   formatDifference,
   inputRoster,
   attentionItems,
+  hasNoLessons,
+  multiplierBreakdown,
+  teacherSummaryLine,
   recalculationSummary,
   weekExplanation,
   recalculationText,
@@ -87,6 +90,19 @@ assert.deepEqual(attentionItems([
   { key: '2-review', teacherName: '乙', label: '待人工確認', reason: '有項目還沒確認，請看下方的資料補登與審核。' },
   { key: '3-cash_adjustments', teacherName: '丙', label: '現金加扣款', reason: '資料尚待確認。' },
 ]);
+// One line per teacher: what the amount rests on, then the first open item.
+const weekly = (metrics) => ({ weekly_16_segments: { metrics } });
+assert.equal(teacherSummaryLine({ settlement: { payroll_subject_count: 18.9375 }, components: weekly({ week_count: 4, qualifying_weeks: 1 }) }), '科目數 18.9375 科・4 週裡有 3 週沒滿 16 段');
+assert.equal(teacherSummaryLine({ settlement: { payroll_subject_count: 20, new_hire_guarantee_applied: true }, components: weekly({ week_count: 4, qualifying_weeks: 4 }) }), '科目數 20 科・每週都滿 16 段・新進保底');
+assert.equal(teacherSummaryLine({ settlement: { payroll_subject_count: 3 }, components: weekly({ week_count: 5, qualifying_weeks: 1, unfinished_weeks: 2 }), pending_items: [{ label: '現金加扣款' }] }),
+  '科目數 3 科・還有 2 週沒結束・現金加扣款還沒處理完');
+assert.equal(teacherSummaryLine({}), '科目數 — 科');
+assert.equal(multiplierBreakdown({ multiplier_parts: [{ label: '基本', pct: 100 }, { label: '假日', pct: 0 }, { label: '平日下午', pct: 2.94 }, { label: '扣除', pct: -10 }] }), '基本 100%、平日下午 +2.94%、扣除 -10%');
+assert.equal(multiplierBreakdown(undefined), '');
+assert.equal(hasNoLessons({ settlement: { total_payout: 0 }, components: weekly({ total_segments: 0 }) }), true);
+assert.equal(hasNoLessons({ settlement: { total_payout: 0 }, components: weekly({ total_segments: 3 }) }), false);
+assert.equal(hasNoLessons({ settlement: { total_payout: 500 }, components: weekly({ total_segments: 0 }) }), false);
+assert.equal(hasNoLessons({ review_required: true, settlement: { total_payout: 0 } }), false);
 assert.deepEqual(monthWindow('2026-08'), { start: '2026-08-01', end: '2026-08-31' });
 // 正課 150 raw + 輔導試聽 12 raw = 核薪總 20.25: the three columns add up once shown on the same scale.
 assert.equal(formatSubjectUnits(150), '18.75');

@@ -77,113 +77,61 @@
           </li>
         </ul>
       </Card>
-      <div class="summary-grid tw:grid tw:grid-cols-2 tw:gap-3 tw:min-[901px]:grid-cols-4">
-        <Card :class="summaryCard"><span :class="summaryLabel">老師總數</span><strong :class="summaryValue">{{ filteredTeachers.length }}</strong></Card>
-        <Card :class="summaryCard"><span :class="summaryLabel">獎金合計總額</span><strong :class="[summaryValue, 'tw:text-[var(--ds-success)]']">{{ formatMoney(payoutTotal) }}</strong></Card>
-        <Card :class="summaryCard"><span :class="summaryLabel">待人工確認</span><strong :class="[summaryValue, 'tw:text-[var(--ds-warning)]']">{{ reviewCount }}</strong></Card>
-        <Card :class="summaryCard"><span :class="summaryLabel">有扣除案件</span><strong :class="[summaryValue, 'tw:text-destructive']">{{ deductionCount }}</strong></Card>
+      <div class="summary-grid tw:grid tw:grid-cols-1 tw:gap-3 tw:min-[601px]:grid-cols-3">
+        <Card :class="summaryCard"><span :class="summaryLabel">要你處理</span><strong :class="[summaryValue, attention.length ? 'tw:text-[var(--ds-warning)]' : '']">{{ attention.length }} 項</strong></Card>
+        <Card :class="summaryCard">
+          <span :class="summaryLabel">這個月獎金合計</span><strong :class="summaryValue">{{ formatMoney(payoutTotal) }}</strong>
+          <small v-if="reviewCount" :class="summaryLabel">不含 {{ reviewCount }} 位還沒確定的老師</small>
+        </Card>
+        <Card :class="summaryCard">
+          <span :class="summaryLabel">正職老師</span><strong :class="summaryValue">{{ filteredTeachers.length }} 位</strong>
+          <small v-if="idleTeachers.length" :class="summaryLabel">其中 {{ idleTeachers.length }} 位這個月沒有課</small>
+        </Card>
       </div>
 
       <template v-if="filteredTeachers.length">
-      <Card class="eligibility-card table-wrap desktop-table tw:gap-0 tw:py-0 tw:shadow-none tw:max-[900px]:hidden">
-        <Table class="tw:min-w-[1280px] tw:text-[length:var(--tpl-text-body)] tw:[&_td]:text-[length:var(--tpl-text-body)]">
-          <TableCaption class="tw:sr-only">{{ settlementMonth }} 正職老師薪資要件</TableCaption>
-          <TableHeader>
-            <TableRow class="tw:hover:bg-transparent">
-              <TableHead scope="col" :class="headCell">老師姓名</TableHead>
-              <TableHead scope="col" :class="headCell">正課科目數</TableHead>
-              <TableHead scope="col" :class="headCell">輔導＋試聽科目數</TableHead>
-              <TableHead scope="col" :class="headCell">核薪總科目數</TableHead>
-              <TableHead scope="col" :class="headCell">一對三總計</TableHead>
-              <TableHead scope="col" :class="headCell">科目數獎金</TableHead>
-              <TableHead scope="col" :class="headCell">一對三獎金</TableHead>
-              <TableHead scope="col" :class="headCell">教師倍率</TableHead>
-              <TableHead scope="col" :class="headCell">倍率後獎金</TableHead>
-              <TableHead scope="col" :class="headCell">加扣款</TableHead>
-              <TableHead scope="col" :class="headCell">獎金合計</TableHead>
-              <TableHead scope="col" :class="headCell">每週課段</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            <TableRow v-for="teacher in filteredTeachers" :key="teacher.teacher_id">
-              <!-- in-app #543 family: the name column keeps the whole name on one line (the table is wider than the card and scrolls). -->
-              <TableCell :class="[bodyCell, 'teacher-name tw:min-w-[7.5em] tw:whitespace-nowrap']">
-                <strong>{{ teacher.teacher_name }}</strong>
-                <small :class="smallText">老師</small>
-                <span :class="['status', statusClass(teacher.overall_status), statusChip, statusTone[statusClass(teacher.overall_status)]]">{{ statusLabel(teacher) }}</span>
-              </TableCell>
-              <TableCell :class="bodyCell">{{ formatSubjectUnits(teacher.settlement?.regular_subject_count) }}</TableCell>
-              <TableCell :class="bodyCell">{{ formatSubjectUnits(teacher.settlement?.tutoring_trial_subject_count) }}</TableCell>
-              <TableCell :class="bodyCell">{{ formatSubjects(teacher.settlement?.payroll_subject_count) }}</TableCell>
-              <TableCell :class="bodyCell">{{ formatSubjects(teacher.settlement?.one_to_three_count) }}</TableCell>
-              <TableCell :class="[bodyCell, 'tw:tabular-nums']">{{ formatMoney(teacher.settlement?.subject_count_bonus) }}</TableCell>
-              <TableCell :class="[bodyCell, 'tw:tabular-nums']">{{ formatMoney(teacher.settlement?.one_to_three_bonus) }}</TableCell>
-              <TableCell :class="[bodyCell, 'multiplier-cell tw:min-w-[150px]']">
-                <strong>{{ formatPct(teacher.settlement?.multiplier_pct) }}</strong>
-                <small v-for="part in visibleMultiplierParts(teacher)" :key="part.key" :class="smallText">{{ part.label }} {{ formatPct(part.pct) }}</small>
-              </TableCell>
-              <TableCell :class="bodyCell">
-                <strong class="tw:tabular-nums">{{ formatMoney(teacher.settlement?.weighted_bonus_amount) }}</strong>
-                <small :class="smallText">{{ weightedBonusFormula(teacher.settlement) }}</small>
-              </TableCell>
-              <TableCell :class="bodyCell">
-                <span
-                  v-for="item in teacher.settlement?.adjustments || []"
-                  :key="item.label"
-                  :class="['adj-chip', adjChip, Number(item.amount) >= 0 ? 'pos tw:bg-[var(--ds-success-wash)] tw:text-[var(--ds-success)]' : 'neg tw:bg-[var(--ds-danger-wash)] tw:text-destructive']"
-                >{{ item.label }} {{ Number(item.amount) >= 0 ? '+' : '' }}{{ Math.round(Number(item.amount)) }}</span>
-                <small v-if="!(teacher.settlement?.adjustments || []).length" :class="smallText">—</small>
-              </TableCell>
-              <TableCell :class="[bodyCell, 'total-cell']">
-                <strong class="tw:tabular-nums tw:text-[var(--ds-primary-text)]">{{ formatMoney(teacher.settlement?.total_payout) }}</strong>
-                <small v-if="isDraft(teacher)" :class="smallText">試算，未可發放</small>
-                <small v-if="recalculationText(teacher)" :class="smallText">{{ recalculationText(teacher) }}</small>
-              </TableCell>
-              <TableCell :class="[bodyCell, 'weekly-segment-cell tw:min-w-[300px]']">
-                <strong>{{ weeklySegmentsLabel(teacher) }}</strong>
-                <small :class="smallText">{{ weeklyQualificationLabel(teacher) }}</small>
-                <details v-if="weeklyWeeks(teacher).length" class="weekly-trace tw:mt-2 tw:border-t tw:border-border tw:pt-1.5">
-                  <summary class="tw:cursor-pointer tw:text-tpl-caption tw:text-[var(--ds-primary-text)]">查看每週段數</summary>
-                  <div v-for="week in weeklyWeeks(teacher)" :key="week.week_start" :class="traceRow">
-                    <span>{{ week.week_start }}～{{ week.week_end }}</span>
-                    <span class="tw:text-right">{{ weekExplanation(week).verdict }}<small :class="smallText">{{ weekExplanation(week).detail }}</small></span>
-                  </div>
-                </details>
-              </TableCell>
-            </TableRow>
-          </TableBody>
-        </Table>
-      </Card>
-      <div class="mobile-list tw:hidden tw:gap-3 tw:max-[900px]:grid">
-        <Card v-for="teacher in filteredTeachers" :key="teacher.teacher_id" class="eligibility-card teacher-card tw:gap-0 tw:p-4 tw:shadow-none">
-          <div class="teacher-card-header tw:flex tw:items-start tw:justify-between tw:gap-3">
-            <div class="tw:min-w-0 tw:[word-break:keep-all] tw:[overflow-wrap:break-word]"><strong>{{ teacher.teacher_name }}</strong><small :class="smallText">老師</small></div>
-            <span :class="['status', statusClass(teacher.overall_status), statusChip, statusTone[statusClass(teacher.overall_status)]]">{{ statusLabel(teacher) }}</span>
-          </div>
-          <div :class="componentRow"><span>核薪總科目數</span><span :class="componentValue">{{ formatSubjects(teacher.settlement?.payroll_subject_count) }}</span></div>
-          <div :class="componentRow"><span>科目數獎金</span><span :class="[componentValue, 'tw:tabular-nums']">{{ formatMoney(teacher.settlement?.subject_count_bonus) }}</span></div>
-          <div :class="componentRow"><span>一對三獎金</span><span :class="[componentValue, 'tw:tabular-nums']">{{ formatMoney(teacher.settlement?.one_to_three_bonus) }}</span></div>
-          <div :class="componentRow"><span>教師倍率</span><span :class="componentValue">{{ formatPct(teacher.settlement?.multiplier_pct) }}</span></div>
-          <div :class="componentRow"><span>倍率後獎金</span><span :class="[componentValue, 'tw:tabular-nums']">{{ formatMoney(teacher.settlement?.weighted_bonus_amount) }}</span></div>
-          <div :class="[componentRow, 'total-cell']"><span>獎金合計</span><strong class="tw:tabular-nums tw:text-[var(--ds-primary-text)]">{{ formatMoney(teacher.settlement?.total_payout) }}</strong></div>
-          <div v-if="recalculationText(teacher)" :class="componentRow"><span>和鎖定時比較</span><span :class="[componentValue, 'tw:tabular-nums']">{{ recalculationText(teacher) }}</span></div>
-          <div :class="[componentRow, 'weekly-segment-row']">
-            <span>每週課段</span>
-            <span :class="componentValue">
-              <strong>{{ weeklySegmentsLabel(teacher) }}</strong>
-              <small :class="smallText">{{ weeklyQualificationLabel(teacher) }}</small>
+      <!-- One list for every screen width: a line per teacher, opened to see how the amount was worked out. The class
+           names desktop-table, mobile-list and teacher-card are what frontend/e2e/teacher-eligibility-clarity.spec.js looks for. -->
+      <Card class="eligibility-card desktop-table mobile-list tw:gap-0 tw:px-4 tw:py-1 tw:shadow-none">
+        <details v-for="teacher in activeTeachers" :key="teacher.teacher_id" class="teacher-card tw:border-b tw:border-border tw:last:border-b-0" :open="filteredTeachers.length === 1">
+          <summary class="tw:flex tw:min-h-14 tw:cursor-pointer tw:flex-wrap tw:items-center tw:gap-x-4 tw:gap-y-1 tw:py-3">
+            <strong class="teacher-name tw:text-tpl-list tw:[word-break:keep-all]">{{ teacher.teacher_name }}</strong>
+            <span class="tw:min-w-0 tw:flex-1 tw:basis-64 tw:text-tpl-caption tw:text-tpl-secondary tw:text-pretty">{{ teacherSummaryLine(teacher) }}</span>
+            <span :class="['status', statusChip, isDraft(teacher) ? statusTone.review : statusTone.pass]">{{ isDraft(teacher) ? '要處理' : '可發放' }}</span>
+            <span class="total-cell tw:flex tw:min-w-24 tw:flex-col tw:items-end">
+              <b class="tw:text-xl tw:tabular-nums">{{ formatMoney(teacher.settlement?.total_payout) }}</b>
+              <small v-if="isDraft(teacher)" :class="smallText">試算，還不能發</small>
+              <small v-if="recalculationText(teacher)" :class="smallText">{{ recalculationText(teacher) }}</small>
             </span>
+          </summary>
+          <div class="tw:grid tw:gap-x-8 tw:gap-y-4 tw:pb-4 tw:min-[901px]:grid-cols-2">
+            <section>
+              <h3 class="tw:text-tpl-body tw:font-semibold">怎麼算出來的</h3>
+              <div :class="mathRow"><span>科目數獎金<small :class="smallText">核薪總科目數 {{ formatSubjects(teacher.settlement?.payroll_subject_count) }} 科（正課 {{ formatSubjectUnits(teacher.settlement?.regular_subject_count) }}＋輔導試聽 {{ formatSubjectUnits(teacher.settlement?.tutoring_trial_subject_count) }}）</small></span><span :class="mathValue">{{ formatMoney(teacher.settlement?.subject_count_bonus) }}</span></div>
+              <div :class="mathRow"><span>一對三獎金<small :class="smallText">一對三總計 {{ formatSubjects(teacher.settlement?.one_to_three_count) }} × 100</small></span><span :class="mathValue">{{ formatMoney(teacher.settlement?.one_to_three_bonus) }}</span></div>
+              <div :class="[mathRow, 'multiplier-cell']"><span>× 教師倍率<small :class="smallText">{{ multiplierBreakdown(teacher.settlement) }}</small></span><span :class="mathValue">{{ Number(teacher.settlement?.multiplier_pct ?? 100) }}%</span></div>
+              <div :class="mathRow"><span>倍率後獎金<small :class="smallText">{{ weightedBonusFormula(teacher.settlement) }}</small></span><span :class="mathValue">{{ formatMoney(teacher.settlement?.weighted_bonus_amount) }}</span></div>
+              <div :class="[mathRow, 'weekly-segment-cell']"><span>每週 16 段獎金<small :class="smallText">{{ weeklyQualificationLabel(teacher) }}</small></span><span :class="mathValue">{{ formatMoney(teacher.settlement?.weekly_segment_bonus_amount ?? 0) }}</span></div>
+              <div v-for="item in teacher.settlement?.adjustments || []" :key="item.label" :class="mathRow"><span>{{ item.label }}</span><span :class="mathValue">{{ Number(item.amount) >= 0 ? '+' : '−' }}{{ formatMoney(Math.abs(Number(item.amount))) }}</span></div>
+              <div :class="[mathRow, 'tw:border-b-0 tw:font-semibold']"><span>獎金合計</span><span :class="[mathValue, 'tw:text-[length:var(--tpl-text-list)]']">{{ formatMoney(teacher.settlement?.total_payout) }}</span></div>
+            </section>
+            <section>
+              <h3 class="tw:text-tpl-body tw:font-semibold">每週 16 段（一段 2 小時）</h3>
+              <p :class="smallText">看課表上的時間，同一時段重疊的課只算一次。每一週都滿，才有這筆獎金。</p>
+              <div v-for="week in weeklyWeeks(teacher)" :key="week.week_start" :class="mathRow">
+                <span>{{ week.week_start.slice(5).replace('-', '/') }}–{{ week.week_end.slice(5).replace('-', '/') }}<small :class="smallText">{{ weekExplanation(week).detail }}</small></span>
+                <span :class="[mathValue, 'tw:whitespace-nowrap']">{{ weekExplanation(week).verdict }}</span>
+              </div>
+              <p v-if="!weeklyWeeks(teacher).length" :class="smallText">這個月沒有可以判定的週。</p>
+            </section>
+            <p v-if="reasonText(teacher)" class="mobile-reason tw:text-tpl-caption tw:leading-relaxed tw:text-tpl-secondary tw:min-[901px]:col-span-2">{{ reasonText(teacher) }}</p>
           </div>
-          <details v-if="weeklyWeeks(teacher).length" class="weekly-trace mobile-weekly-trace tw:mt-2 tw:mb-3 tw:border-t tw:border-border tw:pt-1.5">
-            <summary class="tw:cursor-pointer tw:text-tpl-caption tw:text-[var(--ds-primary-text)]">查看每週段數</summary>
-            <div v-for="week in weeklyWeeks(teacher)" :key="week.week_start" :class="traceRow">
-              <span>{{ week.week_start }}～{{ week.week_end }}</span>
-              <span class="tw:text-right">{{ weekExplanation(week).verdict }}<small :class="smallText">{{ weekExplanation(week).detail }}</small></span>
-            </div>
-          </details>
-          <p class="mobile-reason tw:mt-3 tw:text-tpl-caption tw:leading-relaxed tw:text-tpl-secondary">{{ reasonText(teacher) }}</p>
-        </Card>
-      </div>
+        </details>
+        <details v-if="idleTeachers.length" class="idle-teachers">
+          <summary class="tw:flex tw:min-h-14 tw:cursor-pointer tw:items-center tw:py-3 tw:text-tpl-body tw:text-tpl-secondary">這個月沒有課的老師（{{ idleTeachers.length }} 位），不用處理</summary>
+          <p class="tw:pb-4 tw:text-tpl-body tw:text-pretty">{{ idleTeachers.map((teacher) => teacher.teacher_name).join('、') }}</p>
+        </details>
+      </Card>
       </template>
       <Card v-else class="tw:items-center tw:gap-2 tw:py-10 tw:text-center tw:shadow-none" role="status">
         <UserX class="tw:size-8 tw:text-tpl-secondary" :stroke-width="1.75" aria-hidden="true" />
@@ -213,19 +161,20 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Table, TableBody, TableCaption, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { fetchTeacherEligibility, lockFulltimePayroll, reopenFulltimePayroll, exportFulltimePayrollCsv } from '../lib/teacherEligibilityApi.js';
 import TeacherEligibilityInputPanel from '../components/TeacherEligibilityInputPanel.vue';
 import {
   attentionItems,
   formatMoney,
   inputRoster,
-  formatPct,
   formatSubjects,
   formatSubjectUnits,
+  hasNoLessons,
   monthWindow,
+  multiplierBreakdown,
   recalculationSummary,
   recalculationText,
+  teacherSummaryLine,
   weekExplanation,
   weightedBonusFormula,
 } from '../lib/teacherEligibilityDisplay.js';
@@ -237,20 +186,16 @@ const fieldControl = 'tw:h-12 tw:rounded-lg tw:border-border tw:bg-card tw:px-3 
 const summaryCard = 'tw:gap-1.5 tw:p-4 tw:shadow-none';
 const summaryLabel = 'tw:text-tpl-caption tw:text-tpl-secondary';
 const summaryValue = 'tw:block tw:text-3xl tw:tabular-nums';
-const headCell = 'tw:h-auto tw:bg-secondary tw:px-3 tw:py-3 tw:text-tpl-caption tw:text-tpl-secondary';
-const bodyCell = 'tw:px-3 tw:py-3 tw:align-top tw:whitespace-normal';
 const smallText = 'tw:mt-1 tw:block tw:text-tpl-caption tw:text-tpl-secondary';
-const statusChip = 'tw:mt-1.5 tw:inline-flex tw:rounded-full tw:px-2 tw:py-1 tw:text-tpl-caption tw:whitespace-nowrap';
-const adjChip = 'tw:mr-1.5 tw:mb-1.5 tw:inline-flex tw:rounded-full tw:px-2 tw:py-0.5 tw:text-tpl-caption';
+const statusChip = 'tw:inline-flex tw:rounded-full tw:px-2 tw:py-1 tw:text-tpl-caption tw:whitespace-nowrap';
 const statusTone = {
   pass: 'tw:bg-[var(--ds-success-wash)] tw:text-[var(--ds-success)]',
   fail: 'tw:bg-[var(--ds-danger-wash)] tw:text-destructive',
   review: 'tw:bg-[var(--ds-warning-wash)] tw:text-[var(--ds-warning)]',
   unknown: 'tw:bg-secondary tw:text-tpl-secondary',
 };
-const traceRow = 'course-trace-row tw:flex tw:justify-between tw:gap-3 tw:py-1.5 tw:text-tpl-caption tw:text-tpl-secondary';
-const componentRow = 'tw:flex tw:justify-between tw:gap-3 tw:border-b tw:border-border tw:py-2.5 tw:text-[length:var(--tpl-text-body)]';
-const componentValue = 'component-value tw:flex tw:flex-col tw:items-end tw:gap-1';
+const mathRow = 'tw:flex tw:justify-between tw:gap-4 tw:border-b tw:border-border tw:py-2.5 tw:text-[length:var(--tpl-text-body)]';
+const mathValue = 'tw:shrink-0 tw:text-right tw:font-semibold tw:tabular-nums';
 
 const props = defineProps({
   branchId: { type: [Number, String], default: null },
@@ -287,24 +232,12 @@ const reviewCount = computed(() => filteredTeachers.value.filter(t => t.review_r
 const attention = computed(() => attentionItems(teachers.value));
 // Draft rows are left out: a total that mixes final and trial amounts would look more certain than it is.
 const payoutTotal = computed(() => filteredTeachers.value.reduce((sum, teacher) => sum + (isDraft(teacher) ? 0 : Number(teacher.settlement?.total_payout || 0)), 0));
-const deductionCount = computed(() => filteredTeachers.value.filter(t => Number(t.components?.deductions?.rate || 0) < 0).length);
-
-function visibleMultiplierParts(teacher) {
-  return (teacher.settlement?.multiplier_parts || []).filter((part) => Number(part.pct) !== 0);
-}
+// Teachers with no lesson and nothing to pay are folded away at the bottom: nothing to check about them.
+const idleTeachers = computed(() => filteredTeachers.value.filter(hasNoLessons));
+const activeTeachers = computed(() => filteredTeachers.value.filter((teacher) => !hasNoLessons(teacher)));
 
 function weeklyMetrics(teacher) {
   return teacher.components?.weekly_16_segments?.metrics || {};
-}
-
-function formatSegments(value) {
-  if (value == null || value === '') return '—';
-  return Number(value).toLocaleString('zh-TW', { maximumFractionDigits: 2 });
-}
-
-function weeklySegmentsLabel(teacher) {
-  const metrics = weeklyMetrics(teacher);
-  return `排課 ${formatSegments(metrics.total_segments)} 段`;
 }
 
 function weeklyQualificationLabel(teacher) {
@@ -393,11 +326,6 @@ async function loadRecalculation(thisLoad, range) {
   } catch { /* the locked figures stay on screen */ }
 }
 
-function statusLabel(teacher) {
-  if (isDraft(teacher)) return '試算';
-  return { qualifies: '符合', not_qualifies: '不符合', review: '待人工確認' }[teacher.overall_status] || '未判定';
-}
-function statusClass(status) { return { qualifies: 'pass', not_qualifies: 'fail', review: 'review' }[status] || 'unknown'; }
 function reasonText(teacher) {
   const reasons = [];
   if (teacher.work_hours_source === 'schedule') {
