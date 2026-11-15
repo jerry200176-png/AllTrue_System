@@ -306,6 +306,8 @@ function weeklySegmentsLabel(teacher) {
 
 function weeklyQualificationLabel(teacher) {
   const metrics = weeklyMetrics(teacher);
+  // A single week in view that is still running has no verdict yet, whatever its schedule says so far.
+  if (metrics.week_count === 1 && metrics.unfinished_weeks) return '這一週還沒結束，先不判定';
   if (metrics.meets_16_segments === true) return '已達 16 段';
   if (metrics.meets_16_segments === false) return '未達 16 段';
   if (metrics.week_count && metrics.unfinished_weeks) return `${metrics.qualifying_weeks || 0}/${metrics.week_count} 週達標，${metrics.unfinished_weeks} 週還沒結束`;
