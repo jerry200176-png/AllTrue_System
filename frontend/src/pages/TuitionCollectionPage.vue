@@ -59,6 +59,7 @@
         @batch="onBillBatch"
         @export="exportBills"
         @student="(b) => openBillLedger(b, null)"
+        @documents="openBillDocuments"
         @quick="onBillQuick"
         @action="onBillAction"
         @menu="onBillMenu"
@@ -502,7 +503,7 @@
       :row-actions="ledgerRowActions"
       :branch-id="branchId"
       :can-step="ledgerNavStudentId != null"
-      :student-wide="ledgerNavStudentId != null"
+      :student-wide="ledgerNavStudentId != null && (ledgerInitialAction !== 'documents' || ledgerStudentClassId == null)"
       @close="ledgerOpen = false"
       @step="stepLedger"
       @changed="onLedgerChanged"
@@ -748,7 +749,7 @@ const error = ref('');
 
 // PRD v3 §0: 帳單 (default), 月結, 收款紀錄, 代收代付. 已結清課程 stays reachable from the reminder bar.
 const ACCOUNTING_TABS = [
-  { key: 'students', label: '帳單', icon: 'receipt' },
+  { key: 'students', label: '帳單與收款', icon: 'receipt' },
   { key: 'monthly', label: '月結', icon: 'event_repeat' },
   { key: 'payments', label: '收款紀錄', icon: 'receipt_long' },
   // In-app #439: pass-through fees have their own ledger, so they get their own tab, not a tuition list filter.
@@ -779,12 +780,14 @@ const billList = ref(null);
 const pageEl = ref(null);
 const listFilter = ref({ key: 'todo' }); // a new object per deep link, so the same chip is re-applied; the list owns it in between
 const ledgerNavStudentId = ref(null);
+let documentLookupOpener = null;
 function stepLedger(dir) {
   const next = billList.value?.neighbor(ledgerNavStudentId.value, dir);
   if (next) openLedgerForStudent(next);
 }
 // F-2: the row button opens the drawer on the contract the action is about, with that step already open.
 function openLedgerForStudent(r, action = null) {
+  documentLookupOpener = null;
   ledgerSheetEntry.value = false;
   ledgerNavStudentId.value = r.student_id;
   ledgerInitialAction.value = action?.kind || null;
@@ -1030,6 +1033,11 @@ const BILL_LEDGER_ACTION = { confirm: 'confirm', record: 'record', issue: 'issue
 function openBillLedger(b, kind) {
   const classId = b.class_id ?? null;
   openLedgerForStudent({ student_id: b.student_id, first_class_id: classId }, kind && classId ? { kind, classId } : null);
+}
+function openBillDocuments(b) {
+  const opener = document.activeElement;
+  openLedgerForStudent({ student_id: b.student_id, first_class_id: b.class_id ?? null }, { kind: 'documents', classId: b.class_id ?? null });
+  documentLookupOpener = opener instanceof HTMLElement ? opener : null;
 }
 // Billing v3 step 2: the quick view of THAT contract's bill (row click, 確認入帳 / 核對 primaries, row ⋯ 退回).
 const quickBill = ref(null);
@@ -1324,8 +1332,11 @@ const ledgerSheetEntry = ref(false); // 登記收款 from the bill list: only th
 watch(ledgerOpen, async (open) => {
   if (open || ledgerNavStudentId.value == null) return;
   const id = ledgerNavStudentId.value;
+  const opener = documentLookupOpener;
+  documentLookupOpener = null;
   ledgerNavStudentId.value = null;
   await nextTick();
+  if (opener?.isConnected) { opener.focus(); return; }
   document.querySelector(`[data-testid^="bill-name-"][data-student="${id}"]`)?.focus();
 });
 

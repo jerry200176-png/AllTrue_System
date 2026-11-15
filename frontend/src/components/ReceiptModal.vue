@@ -146,7 +146,7 @@ async function parseError(resp) {
 }
 
 /** Hotfix (#1197): only GET payment-reports/{id}/receipt — never /api/v1/receipts*. */
-async function loadReceipt() {
+async function loadReceipt(isCurrent, signal) {
   loading.value = true;
   error.value = '';
   receipt.value = null;
@@ -163,13 +163,16 @@ async function loadReceipt() {
   try {
     const resp = await trackedFetch(paymentReportReceiptUrl(reportId), {
       headers: { Accept: 'application/json', Authorization: `Bearer ${token}` },
+      signal,
     });
+    if (!isCurrent()) return;
     if (!resp.ok) throw await parseError(resp);
-    receipt.value = adaptPaymentReportReceipt(await resp.json(), reportId);
+    const body = await resp.json();
+    if (isCurrent()) receipt.value = adaptPaymentReportReceipt(body, reportId);
   } catch (e) {
-    error.value = e.message || '載入收據失敗';
+    if (isCurrent()) error.value = e.message || '載入收據失敗';
   } finally {
-    loading.value = false;
+    if (isCurrent()) loading.value = false;
   }
 }
 
@@ -264,11 +267,16 @@ watch(() => props.show, (visible) => {
   if (target && target.isConnected && typeof target.focus === 'function') target.focus();
 }, { immediate: true });
 
-watch(() => [props.show, props.reportId], async ([visible]) => {
-  if (!visible) return;
+watch(() => [props.show, props.reportId], async ([visible, reportId], _previous, onCleanup) => {
+  let current = true;
+  // Abort cannot invalidate a body already being parsed; cleanup also retires this selection.
+  const controller = new AbortController();
+  onCleanup(() => { current = false; controller.abort(); });
+  if (!visible) { receipt.value = null; loading.value = false; return; }
+  const isCurrent = () => current && props.show && props.reportId === reportId;
   copyState.value = 'idle';
   copyError.value = '';
-  await loadReceipt();
+  await loadReceipt(isCurrent, controller.signal);
 }, { immediate: true });
 </script>
 

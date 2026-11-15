@@ -146,14 +146,14 @@
                   </tr>
                 </thead>
                 <tbody>
-                  <template v-for="inv in payload.invoices" :key="inv.id">
-                    <tr :class="{ 'ledger-row--open': isExpanded(inv.id), 'ledger-row--attention': needsAttention(inv) }">
+                  <template v-for="inv in displayedInvoices" :key="inv.id">
+                    <tr :data-testid="`ledger-invoice-${inv.id}`" :class="{ 'ledger-row--open': isExpanded(inv.id), 'ledger-row--attention': needsAttention(inv) }">
                       <td class="ledger-col-expand">
                         <button
                           class="ledger-expand"
                           type="button"
                           :aria-expanded="isExpanded(inv.id)"
-                          :aria-label="isExpanded(inv.id) ? '收合上課日與收款' : '展開上課日與收款'"
+                          :aria-label="`${inv.payments?.length || 0}筆收款，${documentsView ? (isExpanded(inv.id) ? '收合上課日與備註' : '展開上課日與備註') : (isExpanded(inv.id) ? '收合上課日與收款' : '展開上課日與收款')}`"
                           :title="isExpanded(inv.id) ? undefined : '展開上課日'"
                           :data-testid="`ledger-invoice-toggle-${inv.id}`"
                           @click="toggleExpand(inv.id)"
@@ -198,15 +198,16 @@
                         </div>
                       </td>
                     </tr>
-                    <tr v-if="isExpanded(inv.id)" class="ledger-detail-row">
+                    <tr v-if="isExpanded(inv.id) || documentsView" class="ledger-detail-row">
                       <td colspan="8">
                         <LedgerCoverageDates
+                          v-if="isExpanded(inv.id)"
                           :coverage-key="`inv-${inv.id}`"
                           :entry="coverage[`inv-${inv.id}`]"
                           @retry="loadCoverage('inv', inv.id)"
                           @toggle-all="toggleCoverageAll(`inv-${inv.id}`)"
                         />
-                        <div class="ledger-timeline" aria-label="收款時間線">
+                        <div class="ledger-timeline" aria-label="收款時間線" :data-testid="`ledger-invoice-payments-${inv.id}`">
                           <p v-if="!inv.payments?.length" class="ledger-muted">尚無收款紀錄</p>
                           <ol v-else class="ledger-timeline__list">
                             <li
@@ -228,12 +229,16 @@
                                   <span v-if="p.unapplied_amount">多收 {{ formatCurrency(p.unapplied_amount) }}</span>
                                   <span v-if="p.note">備註：{{ p.note }}</span>
                                 </div>
-                                <BillingNotesPanel subject-type="payment" :subject-id="p.id" />
+                                <template v-if="canManageInvoices()">
+                                  <Button v-if="paymentHasReceipt(p)" variant="link" :class="control.row" :data-testid="`ledger-payment-receipt-${p.id}`" @click="viewReceipt(Number(p.report_id))">查看收據<span v-if="p.receipt_no"> {{ p.receipt_no }}</span></Button>
+                                  <p v-else class="ledger-muted">{{ paymentReceiptReason(p) }}</p>
+                                </template>
+                                <BillingNotesPanel v-if="isExpanded(inv.id)" subject-type="payment" :subject-id="p.id" />
                               </div>
                             </li>
                           </ol>
                         </div>
-                        <BillingNotesPanel subject-type="invoice" :subject-id="inv.id" />
+                        <BillingNotesPanel v-if="isExpanded(inv.id)" subject-type="invoice" :subject-id="inv.id" />
                       </td>
                     </tr>
                   </template>
@@ -363,6 +368,8 @@ import { computed, nextTick, onBeforeUnmount, reactive, ref, watch } from 'vue';
 import { formatDate as fmtDate } from '../lib/billingDocumentView.js';
 import { splitOwed } from '../lib/studentBillingRows.js';
 import { isDirectorRole } from '../lib/roleCapabilities.js';
+import { Button } from '@/components/ui/button';
+import { control } from '@/components/ui/page';
 import {
   formatAccountingLedgerInvoiceLabel,
   formatLedgerCourseLabel,
@@ -417,6 +424,17 @@ const props = defineProps({
 });
 
 const emit = defineEmits(['close', 'changed', 'step', 'row-action', 'save-next']);
+const documentsView = computed(() => props.initialAction === 'documents');
+
+function paymentHasReceipt(p) {
+  return !p.is_void && p.report_status === 'confirmed' && Number.isSafeInteger(Number(p.report_id)) && Number(p.report_id) > 0;
+}
+function paymentReceiptReason(p) {
+  if (p.is_void || p.report_status === 'voided') return '已撤銷，不提供有效收據';
+  if (p.report_status === 'pending') return `${REPORT_STATUS_LABELS.pending}，尚無收據`;
+  if (p.report_status === 'rejected') return '回報已退回，不提供收據';
+  return '這筆收款未連結收據';
+}
 defineExpose({ reload: () => loadLedger(), focus: () => modalEl.value?.focus() });
 
 // a11y: Esc closes, Tab stays inside the panel, focus returns to the opener.
@@ -603,8 +621,11 @@ async function loadLedger() {
     if (requestVersion !== ledgerRequestVersion) return;
     if (!resp.ok) throw new Error(humanizeApiErrorMessage(json.message || `載入失敗（${resp.status}）`));
     payload.value = json;
-    autoExpandAttention();
-    if (invoiceWarnCount.value) fold.inv = true;
+    // Receipt lookup already shows every linked payment; lesson dates/notes stay on demand.
+    if (documentsView.value) expandedIds.value = new Set();
+    else autoExpandAttention();
+    if (invoiceWarnCount.value || documentsView.value) fold.inv = true;
+    if (documentsView.value) fold.rcpt = true;
     const armed = pendingInitialAction != null;
     runInitialAction(loadDrafts());
     if (armed && !entryOpen.value) ledgerFellBack.value = true; // only the first load decides the fallback
@@ -617,7 +638,11 @@ async function loadLedger() {
   }
   if (requestVersion === ledgerRequestVersion && payload.value) {
     await nextTick();
-    scrollToOpenedContract();
+    if (documentsView.value) {
+      const documents = modalEl.value?.querySelector('[data-testid="ledger-fold-invoices"]');
+      documents?.scrollIntoView?.({ block: 'start' });
+      documents?.focus({ preventScroll: true });
+    } else scrollToOpenedContract();
   }
 }
 
@@ -645,6 +670,11 @@ const isOtherCourseInvoice = (inv) => {
   const scopeId = props.studentWide ? 0 : Number(payload.value?.scope?.student_class_id || 0);
   return !!scopeId && !invoiceCoversCourse(inv, scopeId);
 };
+// Document lookup starts with the opened contract, including combined invoices; no bill is hidden.
+const displayedInvoices = computed(() => {
+  const invoices = payload.value?.invoices || [];
+  return documentsView.value ? [...invoices.filter((inv) => !isOtherCourseInvoice(inv)), ...invoices.filter(isOtherCourseInvoice)] : invoices;
+});
 // Empty-state is judged for the opened course when the API reports one, else student-wide.
 const ledgerBothEmpty = computed(() => {
   const scopeId = props.studentWide ? 0 : Number(payload.value?.scope?.student_class_id || 0);
@@ -1007,7 +1037,7 @@ function openSlip(course) {
   slipStudentClassId.value = inv ? null : Number(course.id);
   slipOpen.value = true;
 }
-watch(() => [props.show, props.studentClassId, props.studentId], () => { receiptOpen.value = false; });
+watch(() => [props.show, props.studentClassId, props.studentId, props.reportId, props.branchId], () => { receiptOpen.value = false; });
 watch(() => [props.show, props.studentClassId, props.studentId, props.reportId, props.branchId], () => { fold.inv = fold.rcpt = fold.voided = false; openCards.clear(); });
 watch(() => [props.show, props.studentClassId, props.studentId], () => { slipOpen.value = false; });
 
@@ -1290,6 +1320,7 @@ const anomalyLabel = (code) => labelMap({
 .ledger-table{width:100%;border-collapse:collapse;font-size:13px}
 .ledger-table th,.ledger-table td{border-bottom:1px solid var(--ds-border);padding:8px 10px;text-align:left;vertical-align:top}
 .ledger-table th{color:var(--text-light,var(--ds-ink-mute));background:var(--ds-canvas-soft);font-weight:600;font-size:12px}
+.ledger-table tr:hover td{background:var(--ds-canvas-soft)}
 .ledger-table .num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
 .ledger-col-expand{width:44px;padding-left:6px;padding-right:4px}
 .ledger-expand{display:inline-flex;align-items:center;gap:4px;border:0;background:transparent;cursor:pointer;color:var(--ds-ink-mute);padding:2px 4px;border-radius:6px}
@@ -1300,11 +1331,11 @@ const anomalyLabel = (code) => labelMap({
 .ledger-overpay-hint{display:block;color:var(--ds-danger);font-weight:600}
 .ledger-rate-hint{display:block;color:var(--ds-ink-mute)}
 .ledger-other-course{display:inline-block;color:var(--ds-ink-mute);font-weight:600}
-.due{color:var(--ds-danger);font-weight:700}
+.due{color:var(--ds-danger-text);font-weight:700}
 
 .ledger-chip{display:inline-flex;border-radius:6px;padding:2px 7px;background:var(--ds-canvas-soft);color:var(--ds-ink-mute);font-size:12px;font-weight:700}
-.ledger-chip.chip--success{background:var(--ds-success-wash);color:var(--ds-success)}
-.ledger-chip.chip--warning{background:var(--ds-warning-wash);color:var(--ds-warning)}
+.ledger-chip.chip--success{background:var(--ds-success-wash);color:var(--ds-success-text)}
+.ledger-chip.chip--warning{background:var(--ds-warning-wash);color:var(--ds-warning-text)}
 .ledger-chip.chip--danger{background:var(--ds-danger-wash);color:var(--ds-danger)}
 .ledger-chip.chip--muted{background:var(--ds-canvas-soft);color:var(--ds-ink-mute)}
 

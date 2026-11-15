@@ -22,6 +22,21 @@ function rosterApi() {
 const roster = w => w.findComponent({ name: 'BillList' }).props('students');
 
 describe('in-app #549 roster status reaches the billing list', () => {
+  it.each([
+    { student_id: 99, class_id: null },
+    { student_id: 99, class_id: 42 },
+  ])('#4148 routes document lookup to the exact student/course without leaving the bill list: %j', async (row) => {
+    const { requests } = rosterApi();
+    const w = shallowMount(TuitionCollectionPage, { props: { branchId: 7 } }); wrappers.push(w);
+    await flushPromises();
+    const list = w.findComponent({ name: 'BillList' }); const uid = list.vm.$.uid;
+    list.vm.$emit('documents', row); await flushPromises();
+    const ledger = w.findComponent({ name: 'AccountingLedgerModal' });
+    expect(ledger.props()).toMatchObject({ show: true, branchId: 7, initialAction: 'documents', studentClassId: row.class_id, studentId: row.class_id ? null : 99, studentWide: row.class_id == null });
+    ledger.vm.$emit('close'); await flushPromises();
+    expect(w.findComponent({ name: 'BillList' }).vm.$.uid).toBe(uid);
+    expect(requests()).toHaveLength(1);
+  });
   it('passes pause metadata without removing the student from other campus pickers', async () => {
     const { state } = rosterApi(); state.status = 'paused';
     const w = shallowMount(TuitionCollectionPage, { props: { branchId: 1 } }); wrappers.push(w);

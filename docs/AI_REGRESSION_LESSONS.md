@@ -6,6 +6,8 @@ last_reviewed: 2026-09-05
 
 # AI／工程師防再犯紀錄（必讀）
 
+**F1／F7：收據回覆必須屬於目前選取（#4148，2026-11-16）**：關閉、切換或重開同一份收據，都要使上一個讀取失效。`ReceiptModal` 使用 watch cleanup 與原生取消；fetch、JSON、catch、finally 都以當前選取檢查後才更新，不能只取消尚未完成的 fetch。回歸需保留舊成功／失敗晚回、JSON 晚回、同 ID 重開、較新讀取仍在等待及當前錯誤；見 `ReceiptModal.test.js`。這是文件選取正確性，不代表 API 越權或帳務資料已被修改。
+
 **F7／POP 回滾重試（#4271）**：原子撤回與失敗紀錄都正確，仍可能因快取失敗 receipt 永久失去回復路徑。回歸必須在 fault injection 後實際重試，驗證有效核准、失敗紀錄保留、成功冪等重播與序列化。拒絕測試的 `$this->fail()` 必須在 RuntimeException catch 外：PHPUnit 的 AssertionFailedError 也繼承 RuntimeException，否則 helper 會捕獲自己的失敗而假通過。見 [invoice alignment plan](plans/2026-10-18-unpaid-invoice-alignment.md)。
 
 **F7／跨科額度的雙向預約邊界（#5197，in-app #535）**：轉用讀取端不能只看已物化堂次，須保留已提交但尚待投影的排課。反向也要保護：轉用耗盡來源、或還原後歸零的新批次，既有排課與直接堂次物化入口都須以 current locking read 拒絕新增使用，不能信任舊 preload 或僅以停課標記判斷。回歸須涵蓋雙方先贏的時序、原收據缺帳單編號、補償失敗後重試；不得把內部轉出當收據撤銷。完整邊界見 [同單位轉用計畫](plans/2026-11-15-same-unit-subject-credit-transfer.md)。

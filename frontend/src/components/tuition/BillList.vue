@@ -19,7 +19,7 @@
         </div>
       </Alert>
 
-      <StatStrip data-testid="bill-summary">
+      <StatStrip v-show="!receiptSearchOpen" data-testid="bill-summary">
         <StatItem label="到今天未收" :value="money(totalOwed)" :tone="totalOwed > 0 ? 'danger' : 'neutral'" class="tw:max-lg:col-span-2">
           <button type="button" :class="[sumButton, { 'is-on': filter === 'owing' }]" :aria-pressed="filter === 'owing'" data-testid="bill-sum-owed" @click="setFilter('owing')"><span class="tw:sr-only">到今天未收 {{ money(totalOwed) }}</span></button>
         </StatItem>
@@ -36,7 +36,8 @@
           <Search class="tw:pointer-events-none tw:absolute tw:top-1/2 tw:left-4 tw:size-5 tw:-translate-y-1/2 tw:text-tpl-secondary" :stroke-width="2" aria-hidden="true" />
           <Input v-model="query" type="search" placeholder="搜尋學生" aria-label="搜尋學生" class="tw:h-12 tw:rounded-full tw:bg-card tw:pl-11 tw:text-[length:var(--tpl-text-body)] tw:shadow-none" data-testid="bill-search" />
         </div>
-        <div role="group" aria-label="篩選" class="tw:-mx-4 tw:flex tw:max-w-[100vw] tw:min-w-0 tw:flex-1 tw:items-center tw:gap-2 tw:px-4 tw:md:max-lg:order-3 tw:max-lg:basis-full tw:max-md:overflow-x-auto tw:md:mx-0 tw:md:flex-wrap tw:md:px-0" data-guide="tuition-chips">
+        <Button v-if="canDocs" :variant="receiptSearchOpen ? 'default' : 'outline'" :class="[control.row, !receiptSearchOpen && 'tw:text-foreground']" :aria-pressed="receiptSearchOpen" data-testid="bill-find-receipts" @click="receiptSearchOpen = !receiptSearchOpen">{{ receiptSearchOpen ? '回待收清單' : '查收款與收據' }}</Button>
+        <div v-show="!receiptSearchOpen" role="group" aria-label="篩選" class="tw:-mx-4 tw:flex tw:max-w-[100vw] tw:min-w-0 tw:flex-1 tw:items-center tw:gap-2 tw:px-4 tw:md:max-lg:order-3 tw:max-lg:basis-full tw:max-md:overflow-x-auto tw:md:mx-0 tw:md:flex-wrap tw:md:px-0" data-guide="tuition-chips">
           <FilterChip
             v-for="c in CHIPS"
             :key="c.key"
@@ -55,14 +56,28 @@
             data-testid="bill-filter-current"
           >{{ filterLabel }}</FilterChip>
         </div>
-        <label class="tw:inline-flex tw:items-center tw:gap-1 tw:text-tpl-caption tw:whitespace-nowrap tw:text-tpl-secondary tw:ml-auto tw:md:max-lg:order-2">排序
+        <label v-show="!receiptSearchOpen" class="tw:inline-flex tw:items-center tw:gap-1 tw:text-tpl-caption tw:whitespace-nowrap tw:text-tpl-secondary tw:ml-auto tw:md:max-lg:order-2">排序
           <select v-model="sortKey" class="tw:h-11 tw:cursor-pointer tw:rounded-full tw:border-0 tw:bg-transparent tw:py-0 tw:pr-2 tw:pl-1 tw:text-[length:var(--tpl-text-caption)] tw:font-semibold tw:text-foreground tw:outline-none tw:focus-visible:ring-3 tw:focus-visible:ring-ring/50" data-testid="bill-sort">
             <option v-for="(o, key) in SORTS" :key="key" :value="key">{{ o.label }}</option>
           </select>
         </label>
       </div>
 
-      <SectionCard>
+      <SectionCard v-if="receiptSearchOpen && canDocs" aria-label="查帳單、收款與收據" data-testid="bill-receipt-search">
+        <div class="tw:p-4 tw:md:p-5">
+          <p class="tw:m-0 tw:text-tpl-body tw:font-semibold">查帳單、收款與收據</p>
+          <p class="tw:mt-1 tw:mb-0 tw:text-tpl-caption tw:text-tpl-secondary">輸入學生姓名，也能查已結清或暫停學生的舊收據，不會加入待收清單。</p>
+          <p v-if="!receiptStudents.length" class="tw:mt-4 tw:mb-0 tw:text-tpl-body" role="status">{{ query.trim() ? '找不到符合的學生' : '請先輸入學生姓名' }}</p>
+          <ul v-else class="tw:mt-3 tw:mb-0 tw:list-none tw:divide-y tw:p-0">
+            <li v-for="st in receiptStudents" :key="st.id" class="tw:flex tw:flex-wrap tw:items-center tw:justify-between tw:gap-2 tw:py-3">
+              <span class="tw:min-w-0 tw:break-words tw:text-tpl-body">{{ st.name }}<span v-if="st.status === 'paused'" class="tw:ml-2 tw:text-tpl-caption tw:text-tpl-secondary">已暫停</span></span>
+              <Button variant="outline" :class="[control.row, 'tw:text-foreground']" :data-testid="`bill-document-student-${st.id}`" :aria-label="`查帳單與收據：${st.name}`" @click="$emit('documents', { student_id: st.id, class_id: null })">帳單與收據</Button>
+            </li>
+          </ul>
+        </div>
+      </SectionCard>
+
+      <SectionCard v-show="!receiptSearchOpen">
         <SelectionBar v-if="picked.length" :announce="`已選 ${picked.length} 筆`" data-testid="bill-bulk">
           <span data-testid="bill-picked-total">已選 {{ picked.length }} 筆<template v-if="pickedOwed > 0"><span class="tw:font-normal tw:text-tpl-secondary">，到今天未收合計 <strong class="tw:font-semibold tw:whitespace-nowrap tw:text-foreground tw:tabular-nums">{{ money(pickedOwed) }}</strong></span></template></span>
           <template #actions>
@@ -134,6 +149,7 @@
                 <span :class="t.sub">
                   <button type="button" :class="openButton" :data-testid="`bill-open-${b.key}`" :aria-label="`看這筆帳單：${b.student_name} ${b.subject}`" @click.stop="$emit('quick', b)">{{ b.subject || '帳單' }}</button>{{ ' ' }}<span class="bl__period-sub tw:inline-block tw:whitespace-nowrap tw:lg:hidden">{{ periodText(b.period) }}</span>
                 </span>
+                <Button v-if="canDocs" variant="link" :class="[control.row, 'tw:justify-start tw:px-0 tw:text-tpl-caption']" :data-testid="`bill-documents-${b.key}`" :aria-label="`收款與收據：${b.student_name} ${b.subject}`" @click.stop="$emit('documents', b)">收款與收據</Button>
                 <span v-if="b.hint" :class="[t.sub, 'bl__hint']">{{ b.hint }}</span>
                 <span v-for="w in b.warnings" :key="w" :class="[t.sub, 'bl__warn tw:max-w-sm tw:text-[var(--ds-warning-text)]']" role="note" :data-testid="`bill-warn-${b.key}`">{{ w }}</span>
               </TableCell>
@@ -205,7 +221,7 @@ const props = defineProps({
   canDocs: { type: Boolean, default: false },
   exportDisabled: { type: Boolean, default: false },
 });
-const emit = defineEmits(['student', 'quick', 'action', 'menu', 'batch', 'export', 'retry']);
+const emit = defineEmits(['student', 'documents', 'quick', 'action', 'menu', 'batch', 'export', 'retry']);
 
 // Class sets for the pieces the shared page parts do not cover (tokens and tw: utilities only).
 const checkCol = 'tw:w-12 tw:pr-0 tw:pl-4 tw:md:pl-5';
@@ -274,6 +290,12 @@ const overdueCount = computed(() => rows.value.filter((b) => b.overdue_days > 0)
 const pending = computed(() => props.loading && !props.alertRows.length && !props.error);
 
 const query = ref('');
+const receiptSearchOpen = ref(false);
+const receiptStudents = computed(() => {
+  const q = query.value.trim();
+  return q ? props.students.filter((st) => String(st.name || '').includes(q)) : [];
+});
+watch(() => props.canDocs, (allowed) => { if (!allowed) receiptSearchOpen.value = false; });
 const filter = ref(FILTERS.includes(props.presetFilter?.key) ? props.presetFilter.key : 'todo');
 watch(() => props.presetFilter, (p) => { if (FILTERS.includes(p?.key)) filter.value = p.key; });
 const setFilter = (key) => { filter.value = key; };
