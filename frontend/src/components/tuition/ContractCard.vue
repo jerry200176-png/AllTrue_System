@@ -425,7 +425,9 @@ watch(open, (v) => emit('toggle', v));
 const legacyRef = ref(null);
 // in-app #556: a monthly contract is billed by the lessons held. With none held and none to come (leave or called-off
 // lessons only), no bill, no payment and nothing waiting, there is nothing to collect: it is not a missing payment.
-const nothingTaught = computed(() => isMonthly.value && state.value === 'ready' && heldCount.value === 0 && upcomingCount.value === 0
+// An empty lesson list proves nothing (a legacy monthly contract can have a weekly slot and no lesson rows yet): the
+// state needs lesson rows that are all leave or called off.
+const nothingTaught = computed(() => isMonthly.value && state.value === 'ready' && sessions.value.length > 0 && heldCount.value === 0 && upcomingCount.value === 0
   && !(props.outstanding > 0) && !props.pendingReport && !props.billDraft && !props.lastPayment?.date
   && !(props.amounts?.due || props.amounts?.received || props.amounts?.owed));
 const canRecord = computed(() => !nothingTaught.value && !props.pendingReport && !followerPointer.value && !outsideDates.value.length && !legacyResolvable.value && !noObligation.value && !waived.value

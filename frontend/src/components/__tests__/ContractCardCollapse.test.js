@@ -76,6 +76,12 @@ describe('ContractCard collapsed line', () => {
     const taught = await card({ course, expanded: true, amounts: { due: 0, received: 0, owed: 0 } });
     expect(taught.find('[data-testid="contract-nothing-taught"]').exists()).toBe(false);
     expect(taught.find('[data-testid="contract-record"]').exists()).toBe(true);
+    wrapper.unmount();
+    // No lesson rows at all (a legacy weekly slot not yet on the calendar) is not proof that nothing will be taught.
+    authedFetch.mockResolvedValue(respond({ ...leaveOnly, sessions: [] }));
+    const empty = await card({ course, expanded: true, amounts: { due: 0, received: 0, owed: 0 } });
+    expect(empty.find('[data-testid="contract-nothing-taught"]').exists()).toBe(false);
+    expect(empty.get('[data-testid="contract-pill"]').text()).not.toBe('不用繳費');
   });
 
   it('in-app #552: a 堂數制 title shows when the lessons really run, a monthly one keeps its contract dates', async () => {
