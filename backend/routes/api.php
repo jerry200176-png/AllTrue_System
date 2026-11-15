@@ -488,9 +488,6 @@ Route::prefix('v1')->group(function () {
         Route::post('finance/periods/close', [\App\Http\Controllers\AccountingPeriodController::class, 'close']);
         Route::post('finance/periods/reopen', [\App\Http\Controllers\AccountingPeriodController::class, 'reopen']);
 
-        // ── Full-time settlement: manual multiplier profile (base salary is no longer part of this page) ──
-        Route::post('finance/teacher-eligibility/salary-profiles/multiplier', [TeacherEligibilityInputController::class, 'storeMultiplierProfile'])->middleware('require_pin');
-        Route::post('finance/teacher-eligibility/salary-profiles/{id}/approve', [TeacherEligibilityInputController::class, 'approveSalaryProfile'])->whereNumber('id')->middleware('require_pin');
         Route::post('finance/teacher-eligibility/lock', [TeacherEligibilityController::class, 'lock'])->middleware('require_pin');
         Route::post('finance/teacher-eligibility/reopen', [TeacherEligibilityController::class, 'reopen'])->middleware('require_pin');
         Route::get('finance/teacher-eligibility/export', [TeacherEligibilityController::class, 'export'])->middleware('require_pin');

@@ -27,12 +27,12 @@ class FulltimePayrollLockTest extends TestCase
             ->assertJsonPath('lock.status', 'locked');
 
         $teacherId = $this->createTeacher(1, 'ft-lock-teacher@test.com');
-        $this->withHeaders($headers)->postJson('/api/v1/finance/teacher-eligibility/salary-profiles/multiplier', [
-            'teacher_id' => $teacherId,
-            'branch_id' => 1,
-            'manual_multiplier_pct' => 107,
-            'effective_from' => '2026-08-01',
+        // A locked month takes no new input that would change its numbers.
+        $this->withHeaders($headers)->postJson('/api/v1/finance/teacher-eligibility/admin-allowances', [
+            'teacher_id' => $teacherId, 'branch_id' => 1, 'role_key' => 'head_tutor', 'rate' => 5,
+            'reason' => '鎖定後補登', 'starts_on' => '2026-08-01',
         ])->assertStatus(422);
+        $this->assertDatabaseMissing('teacher_payroll_admin_allowances', ['teacher_id' => $teacherId]);
     }
 
     public function test_only_super_admin_can_reopen(): void

@@ -51,7 +51,6 @@ class StaffAuditContextAndSelfApprovalTest extends TestCase
             'teacher_payroll_cash_adjustments' => ['amount' => 100, 'reason' => 'r', 'status' => 'pending', 'director_confirmed_at' => now()],
             'teacher_payroll_events' => ['event_date' => '2026-08-31', 'event_type' => 'holiday', 'status' => 'pending'],
             'teacher_payroll_achievements' => ['outcome_key' => 'k', 'status' => 'pending'],
-            'fulltime_salary_profiles' => ['base_salary' => 30000, 'effective_from' => '2099-01-01'],
         };
 
         return DB::table($table)->insertGetId($base + $extra);
@@ -92,7 +91,6 @@ class StaffAuditContextAndSelfApprovalTest extends TestCase
         $r['achievements withdraw'] = ['teacher_payroll_achievements', 'post', "{$b}achievements/{id}/withdraw", 'director'];
         $r['achievements verify'] = ['teacher_payroll_achievements', 'post', "{$b}achievements/{id}/verify", 'director'];
         $r['events approve'] = ['teacher_payroll_events', 'post', "{$b}events/{id}/approve", 'director'];
-        $r['salary-profile approve'] = ['fulltime_salary_profiles', 'post', "{$b}salary-profiles/{id}/approve", 'hq'];
         $r['parttime teacher-rules put'] = [null, 'put', 'finance/parttime-payroll/teacher-rules', 'hq'];
         $r['parttime teacher-rules put (director)'] = [null, 'put', 'finance/parttime-payroll/teacher-rules', 'director'];
         $r['parttime teacher-rules delete'] = [null, 'delete', 'finance/parttime-payroll/teacher-rules', 'hq'];

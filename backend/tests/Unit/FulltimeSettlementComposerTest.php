@@ -173,21 +173,4 @@ class FulltimeSettlementComposerTest extends TestCase
         $this->assertNotNull($part);
         $this->assertSame(8.0, $part['pct']);
     }
-
-    public function test_manual_multiplier_replaces_the_automatic_total_and_keeps_backer_floor(): void
-    {
-        $result = FulltimeSettlementComposer::compose([
-            'subject_count_bonus' => [
-                'status' => 'qualifies', 'amount' => 0, 'rate' => 0,
-                'metrics' => ['subject_count' => 10, 'subject_count_bonus' => 3000, 'one_to_three_bonus' => 1],
-            ],
-            'holiday_16_hours' => ['status' => 'review', 'amount' => 0, 'rate' => null],
-        ], ['payroll_total' => 10], 107.0);
-
-        $this->assertSame(107.0, $result['multiplier_pct']);
-        $this->assertSame(3211.0, $result['weighted_bonus_amount']);
-        $this->assertSame(3211.0, $result['total_payout']);
-        $this->assertTrue($result['multiplier_complete']);
-        $this->assertSame('manual_teacher_multiplier', $result['multiplier_parts'][0]['key']);
-    }
 }

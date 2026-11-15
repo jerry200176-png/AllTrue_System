@@ -134,14 +134,6 @@ export function approveTeacherEligibilityCashAdjustment(id) {
   return request(`/finance/teacher-eligibility/cash-adjustments/${id}/approve`, { method: 'POST' });
 }
 
-export function approveTeacherSalaryProfile(id) {
-  return request(`/finance/teacher-eligibility/salary-profiles/${id}/approve`, { method: 'POST' });
-}
-
-export function saveTeacherMultiplierProfile(payload) {
-  return request('/finance/teacher-eligibility/salary-profiles/multiplier', { method: 'POST', body: JSON.stringify(payload) });
-}
-
 export function lockFulltimePayroll({ month, branchId }) {
   return request('/finance/teacher-eligibility/lock', { method: 'POST', body: JSON.stringify({ month, branch_id: Number(branchId) }) });
 }
