@@ -188,7 +188,7 @@
       <div class="tw:[&_.eligibility-input-panel_button]:min-h-11 tw:[&_.eligibility-input-panel_select]:min-h-11 tw:[&_.eligibility-input-panel_input]:min-h-11 tw:[&_.eligibility-input-panel_textarea]:min-h-11">
         <TeacherEligibilityInputPanel
           :branch-id="props.branchId"
-          :teachers="filteredTeachers"
+          :teachers="inputRoster(filteredTeachers, settledElsewhere)"
           :start="periodWindow.start"
           :end="periodWindow.end"
           :user-role="props.userRole"
@@ -213,6 +213,7 @@ import { fetchTeacherEligibility, lockFulltimePayroll, reopenFulltimePayroll, ex
 import TeacherEligibilityInputPanel from '../components/TeacherEligibilityInputPanel.vue';
 import {
   formatMoney,
+  inputRoster,
   formatPct,
   formatSubjects,
   formatSubjectUnits,

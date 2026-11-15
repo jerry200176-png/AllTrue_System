@@ -178,7 +178,10 @@ class TeacherEligibilityWeeklySegmentsTest extends TestCase
         $other = Campus::factory()->create();
         UserCampus::create(['CampusID' => $other->id, 'UserID' => $teacher->id, 'Admin' => 0, 'Approved' => 1]);
         UserCampus::create(['CampusID' => $other->id, 'UserID' => $director['user_id'], 'Admin' => 1, 'Approved' => 1]);
-        $this->createAttendedSession($teacher->id, 'one_on_one', '2026-08-03', '10:00', 120);
+        // Three students in the same two hours here are two hours of the teacher's time, not six.
+        foreach (range(1, 3) as $student) {
+            $this->createAttendedSession($teacher->id, 'one_on_three', '2026-08-03', '10:00', 120);
+        }
         $this->createAttendedSession($teacher->id, 'one_on_one', '2026-08-04', '10:00', 240, 'completed', 'present', $other->id);
         $view = fn (int $campusId) => $this->withHeaders($this->auth($director['token']))
             ->getJson("/api/v1/finance/teacher-eligibility?period=month&start=2026-08-01&end=2026-08-31&branch_id={$campusId}")
@@ -332,14 +335,21 @@ class TeacherEligibilityWeeklySegmentsTest extends TestCase
             $this->createAttendedSession($teacher->id, 'one_on_one', sprintf('2026-08-%02d', $day), '08:00', 120, 'completed', 'present', $otherCampus->id);
         }
 
-        foreach ([1, $otherCampus->id] as $campusId) {
-            $response = $this->withHeaders($this->auth($director['token']))
-                ->getJson('/api/v1/finance/teacher-eligibility?period=month&start=2026-08-01&end=2026-08-31&branch_id=' . $campusId)
-                ->assertOk();
-            $this->assertEqualsWithDelta(46.5, $response->json('teachers.0.settlement.regular_subject_count'), 0.0001);
-            $this->assertEqualsWithDelta(5.8125, $response->json('teachers.0.settlement.payroll_subject_count'), 0.0001);
-            $this->assertEqualsWithDelta(5.8125, $response->json('branch_subject_total'), 0.0001);
-        }
+        $view = fn (int $campusId) => $this->withHeaders($this->auth($director['token']))
+            ->getJson('/api/v1/finance/teacher-eligibility?period=month&start=2026-08-01&end=2026-08-31&branch_id=' . $campusId)
+            ->assertOk();
+
+        // Campus 1 has more of the teacher's lesson time, so it settles the teacher, with the company-wide count.
+        $settling = $view(1);
+        $this->assertEqualsWithDelta(46.5, $settling->json('teachers.0.settlement.regular_subject_count'), 0.0001);
+        $this->assertEqualsWithDelta(5.8125, $settling->json('teachers.0.settlement.payroll_subject_count'), 0.0001);
+        $this->assertEqualsWithDelta(5.8125, $settling->json('branch_subject_total'), 0.0001);
+
+        // The other campus does not list the teacher again; it only says where the teacher is settled.
+        $other = $view($otherCampus->id);
+        $this->assertSame([], $other->json('teachers'));
+        $this->assertSame(1, $other->json('settled_elsewhere.0.campus_id'));
+        $this->assertEqualsWithDelta(0, $other->json('branch_subject_total'), 0.0001);
     }
 
     /** End to end: the "20科 +5%" reaches the settlement from 正課 alone, never from 輔導／試聽. */

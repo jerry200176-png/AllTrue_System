@@ -367,11 +367,14 @@ class TeacherEligibilityController extends Controller
             $open = array_diff_key($minutes, array_flip($lockedCampuses));
             if ($open !== []) $minutes = $open;
             foreach ($lessonsByTeacher[$teacherId] ?? [] as $lessons) {
+                // Clock time, like the 段: three students in one two-hour slot are two hours, not six.
+                $rowsByCampus = [];
                 foreach ($lessons as $lesson) {
                     if (!isset($minutes[$lesson['campus_id']])) continue;
-                    $start = strtotime($lesson['start']);
-                    $end = $lesson['end'] !== '' ? strtotime($lesson['end']) : $start + 7200;
-                    $minutes[$lesson['campus_id']] += max(0, $end - $start) / 60;
+                    $rowsByCampus[$lesson['campus_id']][] = (object) ['start_time' => $lesson['start'], 'end_time' => $lesson['end'] !== '' ? $lesson['end'] : date('H:i', strtotime($lesson['start'] . ' +2 hours'))];
+                }
+                foreach ($rowsByCampus as $campusId => $rows) {
+                    $minutes[$campusId] += (int) round(60 * $this->scheduledCoverageHoursForDate($rows, fn () => true));
                 }
             }
             // Campuses are in id order and only a strictly larger total takes over: ties stay with the lowest id.

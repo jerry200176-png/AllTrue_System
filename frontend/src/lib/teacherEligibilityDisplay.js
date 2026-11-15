@@ -34,6 +34,14 @@ export function formatDifference(value) {
   return `${n > 0 ? '多' : '少'} ${formatMoney(Math.abs(n))}`;
 }
 
+/**
+ * Who the campus may enter payroll inputs for: the teachers it settles plus its teachers another campus settles.
+ * A record entered here still reaches the settlement, which reads a teacher's records from every campus.
+ */
+export function inputRoster(teachers, settledElsewhere) {
+  return [...(teachers || []), ...(settledElsewhere || []).map((row) => ({ teacher_id: row.teacher_id, teacher_name: row.teacher_name }))];
+}
+
 /** What to write under a locked total once the comparison has been asked for; '' before that. */
 export function recalculationText(teacher) {
   if (!teacher || !('recalculated' in teacher)) return '';

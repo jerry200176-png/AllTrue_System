@@ -8,6 +8,7 @@ import {
   formatSubjectUnits,
   weightedBonusFormula,
   formatDifference,
+  inputRoster,
   recalculationSummary,
   recalculationText,
   monthWindow,
@@ -53,6 +54,9 @@ assert.equal(recalculationText({ recalculated: { calculated_payout: 36500, diffe
 assert.equal(recalculationText({ recalculated: { calculated_payout: 1200, difference: null } }), '現在的算法：還有待確認項目，暫不比較');
 assert.equal(recalculationText({ recalculated: null }), '現在的算法：無法比較（已不在這個分校）');
 assert.equal(recalculationText({}), '');
+assert.deepEqual(inputRoster([{ teacher_id: 1, teacher_name: '甲' }], [{ teacher_id: 2, teacher_name: '乙', campus_id: 9, campus_name: '別的分校' }]).map((t) => [t.teacher_id, t.teacher_name]),
+  [[1, '甲'], [2, '乙']]);
+assert.deepEqual(inputRoster(undefined, undefined), []);
 assert.deepEqual(monthWindow('2026-08'), { start: '2026-08-01', end: '2026-08-31' });
 // 正課 150 raw + 輔導試聽 12 raw = 核薪總 20.25: the three columns add up once shown on the same scale.
 assert.equal(formatSubjectUnits(150), '18.75');
