@@ -137,7 +137,7 @@ last_reviewed: 2026-08-23
 | A4 | **回寫 in-app**：`new` → `triaged`；**公開留言**（非 internal）含 GitHub URL；建議帶 `disposition` + `github_issue_url` 寫入 `product_loop`（`bug-auto-intake.yml` 已先自動開 issue＋留「收到」回覆，但狀態仍是 `new`；本步走 `bug-phase-a-triage.yml`，dispatch-only） |
 | A5 | 回報 CEO：in-app # ↔ GitHub # 對照表（亦可直接讀 `product_loop`） |
 | A5b | **先查、不問（F15）**：回報者通常不會回覆。分診先看後台分診卡的「最近按過／畫面訊息／最近失敗請求／版本」（只在 app 內，不進公開 log）、正式站唯讀 probe、程式碼與同校同時段的其他回報自己重現。公開回覆寫「我們查到的原因＋會怎麼修／已修」，**不要**列問題請回報者回答；只有查完仍無法判斷、且答案會改變修法時，才問**一個**是非題。 |
-| A6 | **建議類（feature／ux／不做／重複）不留 `triaged`**（F12）：開／找到 GitHub issue → `bug-phase-a-triage.yml` 帶 `close_as_logged=true` + `disposition`（`suggestion`／`ux_friction`／`not_planned`／`duplicate`）。回覆範本：「已收進產品清單 <issue URL>。上線時會在這裡通知你；想補充直接回覆就會重開。」上線後用 `bug-followup-comment.yml`（`expected_status=closed` + `production_revision` + `deploy_run_id`）回「已上線＋怎麼用」；只對 `closed_as_logged` 且同一 issue 的單有效，會寫入 production evidence |
+| A6 | **建議類不留 `triaged`**（F12）：開／找到 GitHub issue，走既有 `close_as_logged`。Founder 2026-11-15 授權的 POP v5 只對 `suggestion`／`ux_friction` 用 `inapp-report-triage` 留固定收件回覆；上線後用 `inapp-report-resolve-after-deploy` 驗完整發布證據，對同一 issue／最新結案週期通知一次「已上線＋怎麼用」，維持 logged-closed 並記錄 production evidence。收件不是交付或驗收，保留 engineering-required 判定；回報者補充會重開，未回覆的補充不可由自動通知蓋過。`not_planned`／`duplicate` 等仍由人工處置；Agent 不得使用舊 workflow 的 SSH 寫入，也不得把建議改標 bug 繞過權限。詳見 ADR-POP-015 v5 與 Founder 常設決定。 |
 
 ##### GitHub intake consolidation metadata
 

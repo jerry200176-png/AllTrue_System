@@ -215,7 +215,7 @@ class PaymentReportPendingReturnTest extends TestCase
             $this->assertSame('founder-exact-reviewed-financial', $entry['approval_policy']); $policy = file_get_contents(dirname(base_path()).'/operations/policies/default.yaml');
             $this->assertSame(1, preg_match('/- id: founder-exact-reviewed-financial(.*?)(?=\n  - id:|\z)/s', $policy, $m)); $this->assertStringContainsString($operation, $m[1]); $this->assertStringContainsString($entry['blast_radius'], $m[1]);
         }
-        $this->assertSame(15, $catalog->version());
+        $this->assertSame(16, $catalog->version());
         $pop = app(\App\Operations\PopOperationService::class);
         $this->refuse(fn () => $pop->createDraft(ReturnReport::OPERATION, $p, (string) Str::uuid(), 'user:'.$f['user']->id, 'super_admin', [], $f['user']->id), 'exact active Founder authorization');
         $this->assertSame(0, DB::table('pop_operation_requests')->count());
@@ -273,14 +273,15 @@ class PaymentReportPendingReturnTest extends TestCase
         }
     }
 
-    public function test_request_dry_run_from_catalog_14_is_stale_after_activation_at_15(): void
+    public function test_request_dry_run_from_catalog_15_is_stale_after_activation_at_16(): void
     {
         [$f, $p] = $this->candidate(); $dir = sys_get_temp_dir().'/pending-stale-'.Str::uuid(); mkdir($dir, 0700); mkdir($dir.'/policies', 0700);
         $authorization = $dir.'/case.json'; $actor = 'user:'.$f['user']->id; $key = (string) Str::uuid();
         try {
             $reference = $this->writeFinancialAuthorization($authorization, $p, $key, $actor);
             $yaml = file_get_contents(dirname(base_path()).'/operations/catalog.yaml');
-            $yaml = preg_replace('/^version: 15$/m', 'version: 14', $yaml, 1);
+            $yaml = preg_replace('/^version: 16$/m', 'version: 15', $yaml, 1, $replacements);
+            $this->assertSame(1, $replacements, 'the prior-version fixture must actually change the committed catalog');
             $yaml = preg_replace('/(^  '.preg_quote(ReturnReport::OPERATION, '/').":\n    lifecycle: )active/m", '$1planned', $yaml, 1);
             file_put_contents($dir.'/catalog.yaml', $yaml); file_put_contents($dir.'/policies/default.yaml', "version: 1\n");
             $oldCatalog = new \App\Operations\PopOperationCatalog($dir.'/catalog.yaml');

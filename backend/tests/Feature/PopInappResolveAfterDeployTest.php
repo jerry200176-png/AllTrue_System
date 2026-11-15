@@ -4,14 +4,17 @@ namespace Tests\Feature;
 
 use App\Models\BugReport;
 use App\Models\BugReportComment;
+use App\Models\BugReportEvidence;
 use App\Models\BugReportStatusLog;
 use App\Models\User;
 use App\Operations\Inapp\InappRequesterGuard;
+use App\Operations\Inapp\InappAgentClients;
 use App\Operations\Inapp\InappStandingPolicy;
 use App\Operations\PopOperationCatalog;
 use App\Operations\PopOperationService;
 use App\Operations\Strategies\InappReportResolveAfterDeployStrategy;
 use App\Services\BugReportWritebackEvidence;
+use App\Services\BugReportService;
 use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request;
@@ -151,6 +154,183 @@ final class PopInappResolveAfterDeployTest extends TestCase
         ];
     }
 
+    public static function shippedLoggedKinds(): array
+    {
+        return ['suggestion' => ['suggestion'], 'UX friction' => ['ux_friction']];
+    }
+
+    /** @dataProvider shippedLoggedKinds */
+    public function test_verified_suggestion_shipping_notifies_once_keeps_logged_status_and_never_claims_reporter_acceptance(string $kind): void
+    {
+        $bug = $this->bug('new');
+        $received = '已收進產品清單，上線時會在這裡通知你。追蹤：' . $this->issueUrl();
+        self::assertTrue(BugReportService::closeAsLogged($bug, $this->admin, $kind, $this->issueUrl(), $received)['ok']);
+        $client = InappAgentClients::issue(User::query()->findOrFail($this->admin), 'suggestion agent', [1]);
+        $actor = InappAgentClients::actor((int) $client['record']['id']);
+        $reply = '學生清單已更新配色，請重新開啟學生清單查看；想補充可在這裡回覆。追蹤：' . $this->issueUrl();
+        $id = $this->drafted($bug, $this->params($bug, ['public_reply' => $reply]), 'ship-001', $actor);
+
+        self::assertSame([$id], $this->policy->approvePending($this->service)['approved']);
+        self::assertSame('succeeded', $this->service->runApprovedLocally($id)['status']);
+        self::assertSame('closed', BugReport::query()->whereKey($bug)->value('status'));
+        self::assertSame([['new', 'closed']], BugReportStatusLog::query()->where('bug_report_id', $bug)->orderBy('id')->get()->map(fn ($l) => [$l->from_status, $l->to_status])->all());
+        self::assertSame([$received, $reply], BugReportComment::query()->where('bug_report_id', $bug)->orderBy('id')->pluck('body')->all());
+        $evidence = BugReportEvidence::query()->where('bug_report_id', $bug)->sole();
+        self::assertSame([$this->deployed, self::RUN], [$evidence->production_revision, (string) $evidence->deploy_run_id]);
+        $closeId = BugReportStatusLog::query()->where('bug_report_id', $bug)->where('to_status', 'closed')->max('id');
+        self::assertStringStartsWith('logged_ship:' . $closeId . ':', $evidence->source_ref);
+
+        $again = $this->drafted($bug, $this->params($bug, ['public_reply' => $reply, 'request_id' => 'ship-002']), 'ship-002', $actor);
+        self::assertContains('logged_ship_already_notified', $this->dryRunErrors($again));
+        self::assertSame(2, BugReportComment::query()->where('bug_report_id', $bug)->count());
+        $otherRevision = $this->drafted($bug, $this->params($bug, ['public_reply' => $reply, 'request_id' => 'ship-003', 'fix_commit_sha' => str_repeat('c', 40)]), 'ship-003', $actor);
+        self::assertContains('logged_ship_already_notified', $this->dryRunErrors($otherRevision));
+
+        // Verify remains meaningful after re-planning correctly refuses this already shipped cycle.
+        $receipt = json_decode((string) DB::table('pop_execution_records')->where('operation_id', $id)->where('phase', 'execute')->value('payload'), true);
+        $strategy = app(InappReportResolveAfterDeployStrategy::class);
+        self::assertTrue($strategy->verify([], $receipt)['ok']);
+        foreach (['comment_id' => 0, 'author_id' => $this->reporter, 'production_revision' => $this->unrelated,
+            'deploy_run_id' => '9999', 'issue_url' => $this->issueUrl() . '1', 'reply_sha256' => str_repeat('0', 64),
+            'logged_close' => null] as $field => $wrong) {
+            self::assertFalse($strategy->verify([], array_replace($receipt, [$field => $wrong]))['ok'], $field);
+        }
+    }
+
+    public static function unauthorizedLoggedKinds(): array
+    {
+        return ['duplicate' => ['duplicate'], 'not planned' => ['not_planned']];
+    }
+
+    /** @dataProvider unauthorizedLoggedKinds */
+    public function test_explicit_non_bug_classification_requires_staff_review_in_a_bug_state(string $kind): void
+    {
+        $bug = $this->bug('triaged');
+        self::assertTrue(BugReportService::restateDisposition($bug, $this->admin, ['disposition' => $kind, 'github_issue_url' => $this->issueUrl()])['ok']);
+        $plan = app(InappReportResolveAfterDeployStrategy::class)->plan($this->params($bug));
+        self::assertFalse($plan['ok']);
+        self::assertContains('non_bug_requires_review', $plan['errors']);
+        self::assertSame('triaged', BugReport::query()->whereKey($bug)->value('status'));
+        self::assertSame(0, BugReportComment::query()->where('bug_report_id', $bug)->count());
+        self::assertSame(0, BugReportEvidence::query()->where('bug_report_id', $bug)->count());
+    }
+
+    public function test_explicit_bug_classification_preserves_the_existing_resolution_path(): void
+    {
+        $bug = $this->bug('triaged');
+        self::assertTrue(BugReportService::restateDisposition($bug, $this->admin, ['disposition' => 'bug', 'github_issue_url' => $this->issueUrl()])['ok']);
+        $this->allowRequester();
+        $id = $this->drafted($bug);
+        self::assertSame([$id], $this->policy->approvePending($this->service)['approved']);
+        self::assertSame('succeeded', $this->service->runApprovedLocally($id)['status']);
+        self::assertSame('resolved', BugReport::query()->whereKey($bug)->value('status'));
+    }
+
+    /** @dataProvider unauthorizedLoggedKinds */
+    public function test_human_logged_kinds_outside_the_new_allowlist_cannot_ship_through_the_machine_operation(string $kind): void
+    {
+        $bug = $this->bug('new');
+        self::assertTrue(BugReportService::closeAsLogged($bug, $this->admin, $kind, $this->issueUrl(), '已記錄。')['ok']);
+        $this->allowRequester();
+        $id = $this->drafted($bug);
+        self::assertContains('status_not_resolvable', $this->dryRunErrors($id));
+        self::assertSame(1, BugReportComment::query()->where('bug_report_id', $bug)->count());
+        self::assertSame(0, BugReportEvidence::query()->where('bug_report_id', $bug)->count());
+        $this->expectException(RuntimeException::class);
+        $this->service->approve($id, 'cannot-override-kind', 'user:' . $this->admin, 'super_admin', $this->deployed, $this->admin);
+    }
+
+    public function test_a_reopened_suggestion_cannot_fall_through_to_bug_resolution(): void
+    {
+        $bug = $this->bug('new');
+        self::assertTrue(BugReportService::closeAsLogged($bug, $this->admin, 'ux_friction', $this->issueUrl(), '已記錄。')['ok']);
+        BugReportService::addReporterCommentAndReopen($bug, $this->reporter, '這裡還有問題');
+        self::assertSame('triaged', BugReport::query()->whereKey($bug)->value('status'));
+        $this->allowRequester();
+        $id = $this->drafted($bug); // even the valid bug retest wording must not reclassify the UX item
+        self::assertContains('non_bug_requires_review', $this->dryRunErrors($id));
+        self::assertSame(0, BugReportEvidence::query()->where('bug_report_id', $bug)->count());
+        self::assertSame(2, BugReportComment::query()->where('bug_report_id', $bug)->count());
+    }
+
+    public function test_a_shipping_notice_cannot_be_attributed_to_its_reporter(): void
+    {
+        $bug = $this->bug('new');
+        self::assertTrue(BugReportService::closeAsLogged($bug, $this->admin, 'suggestion', $this->issueUrl(), '已記錄。')['ok']);
+        $reporter = User::query()->findOrFail($this->reporter);
+        $reporter->type = 'S';
+        $reporter->save();
+        $client = InappAgentClients::issue($reporter, 'own report agent', [1]);
+        $id = $this->drafted($bug, null, 'own-ship-001', InappAgentClients::actor((int) $client['record']['id']));
+        self::assertContains('reply_would_be_reporters_own', $this->dryRunErrors($id));
+        self::assertSame(1, BugReportComment::query()->where('bug_report_id', $bug)->count());
+    }
+
+    public function test_shipping_rolls_back_production_evidence_when_the_public_reply_fails(): void
+    {
+        $bug = $this->bug('new');
+        self::assertTrue(BugReportService::closeAsLogged($bug, $this->admin, 'suggestion', $this->issueUrl(), '已記錄。')['ok']);
+        $this->allowRequester();
+        $id = $this->drafted($bug);
+        $strategy = app(InappReportResolveAfterDeployStrategy::class);
+        $plan = $strategy->plan($this->params($bug), ['operation_id' => $id]);
+        self::assertTrue($plan['ok']);
+        BugReportComment::creating(static function ($comment): void {
+            if (str_contains($comment->body, '已修好並上線')) throw new RuntimeException('synthetic comment failure');
+        });
+        self::assertSame(['inapp_resolve_failed'], $strategy->execute($plan, ['operation_id' => $id])['errors']);
+        self::assertSame(0, BugReportEvidence::query()->where('bug_report_id', $bug)->count());
+        self::assertSame(1, BugReportComment::query()->where('bug_report_id', $bug)->count());
+        self::assertSame('closed', BugReport::query()->whereKey($bug)->value('status'));
+    }
+
+    public function test_shipping_refuses_a_reopened_and_reclosed_cycle_even_when_the_status_is_closed_again(): void
+    {
+        $bug = $this->bug('new');
+        self::assertTrue(BugReportService::closeAsLogged($bug, $this->admin, 'ux_friction', $this->issueUrl(), '已記錄。')['ok']);
+        $this->allowRequester();
+        $id = $this->drafted($bug);
+        $strategy = app(InappReportResolveAfterDeployStrategy::class);
+        $plan = $strategy->plan($this->params($bug), ['operation_id' => $id]);
+        self::assertTrue($plan['ok']);
+        BugReportService::addReporterCommentAndReopen($bug, $this->reporter, '補充說明');
+        BugReportService::addComment($bug, $this->admin, '已讀到補充，保留這項建議。');
+        self::assertTrue(BugReportService::closeAsLogged($bug, $this->admin, 'ux_friction', $this->issueUrl(), '已再記錄。')['ok']);
+        self::assertSame(['inapp_resolve_status_changed'], $strategy->execute($plan, ['operation_id' => $id])['errors']);
+        self::assertSame('closed', BugReport::query()->whereKey($bug)->value('status'));
+        self::assertSame(4, BugReportComment::query()->where('bug_report_id', $bug)->count());
+        self::assertSame(0, BugReportEvidence::query()->where('bug_report_id', $bug)->count());
+    }
+
+    public function test_unrelated_evidence_namespace_does_not_count_as_a_prior_shipping_notice(): void
+    {
+        $bug = $this->bug('new');
+        self::assertTrue(BugReportService::closeAsLogged($bug, $this->admin, 'suggestion', $this->issueUrl(), '已記錄。')['ok']);
+        $close = BugReportStatusLog::query()->where('bug_report_id', $bug)->where('to_status', 'closed')->max('id');
+        BugReportEvidence::create(['bug_report_id' => $bug, 'evidence_type' => BugReportEvidence::TYPE_RESOLUTION_PRODUCTION_VERIFICATION,
+            'production_revision' => $this->unrelated, 'deploy_run_id' => '1', 'source_ref' => 'loggedXship:' . $close . ':' . $this->unrelated,
+            'verified_by' => $this->admin, 'verified_at' => now(), 'created_at' => now()]);
+        $this->allowRequester();
+        $id = $this->drafted($bug);
+        self::assertSame([], $this->dryRunErrors($id));
+    }
+
+    public function test_shipping_rechecks_actual_human_fallback_attribution_under_the_row_lock(): void
+    {
+        User::query()->whereKey($this->reporter)->update(['type' => 'S']);
+        $bug = $this->bug('new');
+        self::assertTrue(BugReportService::closeAsLogged($bug, $this->admin, 'ux_friction', $this->issueUrl(), '已記錄。')['ok']);
+        $client = InappAgentClients::issue(User::query()->findOrFail($this->admin), 'fallback test', [1]);
+        $id = $this->drafted($bug, null, 'fallback-ship-001', InappAgentClients::actor((int) $client['record']['id']));
+        $strategy = app(InappReportResolveAfterDeployStrategy::class);
+        $plan = $strategy->plan($this->params($bug), ['operation_id' => $id]);
+        self::assertTrue($plan['ok']);
+        $this->service->approve($id, 'human-fallback', 'user:' . $this->reporter, 'super_admin', $this->deployed, $this->reporter);
+        self::assertSame(['inapp_resolve_reply_would_be_reporters_own'], $strategy->execute($plan, ['operation_id' => $id])['errors']);
+        self::assertSame(1, BugReportComment::query()->where('bug_report_id', $bug)->count());
+        self::assertSame(0, BugReportEvidence::query()->where('bug_report_id', $bug)->count());
+    }
+
     /** @dataProvider failingEvidence */
     public function test_each_missing_or_wrong_evidence_fails_the_dry_run_and_blocks_even_a_human_approval(string $case, string $error): void
     {
@@ -285,11 +465,11 @@ final class PopInappResolveAfterDeployTest extends TestCase
         $this->service->createDraft(self::OP, $this->params($bug), 'idem-scope', 'api-client:7', 'pop_machine', $scope);
     }
 
-    private function drafted(int $bug, ?array $params = null, string $rid = 'req-001'): string
+    private function drafted(int $bug, ?array $params = null, string $rid = 'req-001', string $actor = 'api-client:7'): string
     {
         $draft = $this->service->createDraft(self::OP, $params ?? $this->params($bug, ['request_id' => $rid]), 'idem-' . $rid . '-' . $bug,
-            'api-client:7', 'pop_machine', [1]);
-        $this->service->runDryRun((string) $draft['id'], 'api-client:7', null, 'pop_machine', [1]);
+            $actor, 'pop_machine', [1]);
+        $this->service->runDryRun((string) $draft['id'], $actor, null, 'pop_machine', [1]);
 
         return (string) $draft['id'];
     }
