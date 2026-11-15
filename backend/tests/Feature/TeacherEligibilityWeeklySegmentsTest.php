@@ -81,8 +81,11 @@ class TeacherEligibilityWeeklySegmentsTest extends TestCase
         // 假日16小時倍率: Sat 600 + Sun 130 minutes is under 16 hours, so 0%.
         $response->assertJsonPath('teachers.0.weekly.0.metrics.weekend_hours', 12.17);
         $response->assertJsonPath('teachers.0.components.holiday_16_hours.rate', 0);
-        // Bonus total, no base salary: 1500 cash + 4000 (the only week in view is full) + 200 一對三獎金 x 105%.
-        $response->assertJsonPath('teachers.0.settlement.calculated_payout', 5710);
+        // Bonus total, no base salary: 1500 cash + 4000 (the only week in view is full) + 200 一對三獎金 x 105% = 210,
+        // lifted to the 新進保底 of 2000: this is the teacher's first month and every week in view is full.
+        $response->assertJsonPath('teachers.0.settlement.weighted_bonus_before_guarantee', 210);
+        $response->assertJsonPath('teachers.0.settlement.new_hire_guarantee_applied', true);
+        $response->assertJsonPath('teachers.0.settlement.calculated_payout', 7500);
         $response->assertJsonPath('teachers.0.settlement.calculation_status', 'calculated');
         $response->assertJsonPath('teachers.0.components.cash_adjustments.amount', 1500);
         $response->assertJsonPath('teachers.0.settlement.adjustments.1.label', '完整結算路徑測試');
@@ -93,6 +96,8 @@ class TeacherEligibilityWeeklySegmentsTest extends TestCase
         // The month has four more weeks and none of them is full: no 16段課獎金. They have no lessons before 18:00
         // either, so the 平日下午 rate averages to (5 + 0 + 0 + 0 + 0) / 5 = 1%: 1500 + 200 x 101%.
         $monthResponse->assertJsonPath('teachers.0.components.weekday_afternoon.rate', 1);
+        // ...and a month with a short week has no 新進保底.
+        $monthResponse->assertJsonPath('teachers.0.components.new_hire_guarantee.amount', 0);
         $monthResponse->assertJsonPath('teachers.0.settlement.calculated_payout', 1702);
         $monthResponse->assertJsonPath('teachers.0.settlement.calculation_status', 'calculated');
         $monthResponse->assertJsonPath('teachers.0.components.weekly_16_segments.metrics.week_count', 5);
@@ -183,6 +188,53 @@ class TeacherEligibilityWeeklySegmentsTest extends TestCase
         DB::table('ClassSession')->where('id', $sunday->id)->update(['Status' => 'cancelled']);
         $this->assertEquals(0, $holiday()['rate']);
         $this->assertSame('not_qualifies', $holiday()['status']);
+    }
+
+    /** 新進保底 counts from the first lesson signed in under the teacher, whoever the course belongs to now. */
+    public function test_new_hire_guarantee_counts_from_the_first_lesson_under_the_teacher(): void
+    {
+        $director = $this->createDirector();
+        $teacher = $this->createTeacher();
+        $row = fn () => $this->withHeaders($this->auth($director['token']))
+            ->getJson('/api/v1/finance/teacher-eligibility?period=week&start=2026-08-03&end=2026-08-09&branch_id=1')
+            ->assertOk()->json('teachers.0');
+
+        // No sign-in under the teacher yet: the first lesson is the first one in their own course. A course taken
+        // over does not bring the former teacher's lessons along (they are signed in under that teacher).
+        $ahead = $this->createAttendedSession($teacher->id, 'one_on_one', '2026-08-10', '10:00', 120, 'scheduled');
+        DB::table('StudentSingIn')->where('ClassSessionID', $ahead->id)->update(['VoidedAt' => now(), 'VoidReason' => 'fixture']);
+        $inherited = $this->createAttendedSession($teacher->id, 'one_on_one', '2026-04-13', '10:00', 120);
+        DB::table('StudentSingIn')->where('ClassSessionID', $inherited->id)->update(['TeacherID' => $director['user_id']]);
+        $this->assertSame('2026-08-10', $row()['components']['new_hire_guarantee']['metrics']['first_lesson_date']);
+
+        // A lesson signed in under them while covering someone else's course dates the first lesson.
+        $covered = $this->createAttendedSession($director['user_id'], 'one_on_one', '2026-08-01', '10:00', 120);
+        DB::table('StudentSingIn')->where('ClassSessionID', $covered->id)->update(['TeacherID' => $teacher->id]);
+        $this->assertSame('2026-08-01', $row()['components']['new_hire_guarantee']['metrics']['first_lesson_date']);
+
+        foreach (range(0, 3) as $offset) {
+            $this->createAttendedSession($teacher->id, 'one_on_one', date('Y-m-d', strtotime("2026-08-03 +{$offset} days")), '14:00', 480);
+        }
+        $new = $row();
+        $this->assertSame('2026-08-01', $new['components']['new_hire_guarantee']['metrics']['first_lesson_date']);
+        $this->assertEquals(2000, $new['components']['new_hire_guarantee']['amount']);
+        $this->assertTrue($new['settlement']['new_hire_guarantee_applied']);
+        $this->assertEquals(2000, $new['settlement']['weighted_bonus_amount']);
+
+        // An older lesson in their own course with no sign-in at all is not proof of anything, and missing records
+        // must never make a teacher look newer: it dates the first lesson back (month 6, no guarantee).
+        $unsigned = $this->createAttendedSession($teacher->id, 'one_on_one', '2026-03-02', '10:00', 120);
+        DB::table('StudentSingIn')->where('ClassSessionID', $unsigned->id)->update(['VoidedAt' => now(), 'VoidReason' => 'fixture']);
+        $old = $row();
+        $this->assertSame('2026-03-02', $old['components']['new_hire_guarantee']['metrics']['first_lesson_date']);
+        $this->assertSame(6, $old['components']['new_hire_guarantee']['metrics']['guarantee_month']);
+        $this->assertEquals(0, $old['components']['new_hire_guarantee']['amount']);
+        $this->assertFalse($old['settlement']['new_hire_guarantee_applied']);
+
+        // A lesson signed in under them months earlier, in a course that belongs to someone else, counts as well.
+        $earlier = $this->createAttendedSession($director['user_id'], 'one_on_one', '2026-02-02', '10:00', 120);
+        DB::table('StudentSingIn')->where('ClassSessionID', $earlier->id)->update(['TeacherID' => $teacher->id]);
+        $this->assertSame('2026-02-02', $row()['components']['new_hire_guarantee']['metrics']['first_lesson_date']);
     }
 
     /** A student's leave on a substituted lesson keeps the substitute's hours in the payroll view only. */

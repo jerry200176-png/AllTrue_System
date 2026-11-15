@@ -14,6 +14,10 @@ return [
     'weekday_cutoff' => '18:00',
     'weekday_extra_rate_per_segment' => 1.0,
     'weekday_rate_cap' => 5.0,
+    // 新進保底: in a teacher's first months (counted from the month of the first lesson) the weighted bonus is at
+    // least this amount, provided every week reaches the 段 threshold.
+    'new_hire_guarantee_amount' => 2000,
+    'new_hire_guarantee_months' => 3,
     'employee_of_year_start_year' => 2027,
     'employee_of_year_rate' => 5.0,
     'student_achievement_rate' => 5.0,
