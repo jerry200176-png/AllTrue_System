@@ -1,0 +1,16 @@
+updates:
+  - id: staff-2026-11-15-fulltime-other-commendation
+    published_at: "2026-11-15"
+    audiences:
+      - director
+      - super_admin
+    importance: digest
+    title: 可登記其他值得表揚
+    summary: 正職特殊表現多一種類型「其他值得表揚」，審核通過後每項加百分之五。
+    items:
+      - category: added
+        text: 在升學成果／年度績優的表單，成果類型選「其他值得表揚」，填事由與起訖日。
+      - category: improved
+        text: 每項最多三個月，多項可以疊加；要審核通過才會加進教師倍率。
+    source_refs:
+      - "changelog:2026-11-15:fulltime-other-commendation"

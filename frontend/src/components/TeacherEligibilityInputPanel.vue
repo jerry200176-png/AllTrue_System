@@ -89,6 +89,7 @@
             <select v-model="achievementForm.outcome_key">
               <option value="student_outcome">學生升學成果</option>
               <option value="employee_of_year">年度績優員工</option>
+              <option value="other_commendation">其他值得表揚（每項加 5%，最多三個月）</option>
             </select>
           </label>
           <div class="form-two-col">
@@ -110,7 +111,7 @@
               <input v-model="achievementForm.ends_on" type="date" required />
             </label>
           </div>
-          <label>證明文件／連結／檔名
+          <label>{{ achievementForm.outcome_key === 'other_commendation' ? '表揚事由與證明' : '證明文件／連結／檔名' }}
             <textarea v-model.trim="achievementForm.evidence" rows="2" required placeholder="請填證明文件名稱、雲端連結或檔案編號"></textarea>
           </label>
         </template>
@@ -425,7 +426,7 @@ const queueItems = computed(() => {
 });
 const pendingCount = computed(() => queueItems.value.filter((item) => item.action || item.canEdit).length);
 
-function achievementLabel(key) { return key === 'employee_of_year' ? '年度績優員工' : '學生升學成果'; }
+function achievementLabel(key) { return ({ employee_of_year: '年度績優員工', other_commendation: '其他值得表揚' }[key] || '學生升學成果'); }
 function deductionLabel(key) {
   return ({ harassment: '疑似騷擾成立', major_complaint: '重大客訴成立', unexcused_late: '無故遲到早退影響營運', property_damage: '嚴重破壞公物', rights_loss: '造成補習班權益受損' }[key] || key || '扣除案件');
 }
