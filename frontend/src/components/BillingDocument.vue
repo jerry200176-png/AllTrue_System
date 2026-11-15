@@ -69,7 +69,7 @@
     <section v-if="doc.sessions.length" class="slip-sessions">
       <div class="slip-section-title">
         {{ doc.session_title || '本期上課日期' }}
-        <span class="slip-chip">共 {{ doc.sessions.length }} 堂</span>
+        <span class="slip-chip">共 {{ doc.sessions.length }} {{ doc.session_count_unit || '堂' }}</span>
         <span v-if="attendedCount" class="slip-chip slip-chip--done">已上 {{ attendedCount }} 堂</span>
       </div>
       <ol class="slip-session-list">
@@ -81,7 +81,7 @@
           <span class="slip-status" :class="`is-${statusTone(s.status)}`">{{ STATUS_ZH[s.status] || s.status || '排定' }}</span>
         </li>
       </ol>
-      <p v-if="hiddenCount" class="slip-more">另有 {{ hiddenCount }} 堂未列出（共 {{ doc.sessions.length }} 堂）</p>
+      <p v-if="hiddenCount" class="slip-more">另有 {{ hiddenCount }} {{ doc.session_count_unit || '堂' }}未列出（共 {{ doc.sessions.length }} {{ doc.session_count_unit || '堂' }}）</p>
     </section>
 
     <section v-if="doc.note" class="slip-note">

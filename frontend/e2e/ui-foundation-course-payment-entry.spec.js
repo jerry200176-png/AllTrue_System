@@ -210,8 +210,9 @@ for (const width of [375, 768, 1280]) {
 }
 
 // In-app #548: the printed warning and all dates remain reachable on a phone.
+for (const [recordCount, lastStatus] of [[12, 'scheduled'], [9, 'leave_adjusted']]) {
 for (const width of [375, 1280]) {
-  test(`繳費通知超排提示與左側日期可讀 at ${width}px`, async ({ page }) => {
+  test(`繳費通知 ${recordCount} 筆紀錄、提示與日期可讀 at ${width}px`, async ({ page }, testInfo) => {
     await page.setViewportSize({ width, height: 900 });
     await page.route('**/*', (route) => ['127.0.0.1', 'localhost'].includes(new URL(route.request().url()).hostname)
       ? route.continue() : route.abort());
@@ -222,27 +223,41 @@ for (const width of [375, 1280]) {
         student_class_id: 9, student_name: '隔離測試學生', subject: '英文', schedule_mode: 'count',
         sessions_purchased: 8, remaining_sessions: 4, estimated_amount: 8000,
         deduction_basis: 'fixed_session', scheduling_policy: 'auto_recurrence', package_id: null,
-        sessions: Array.from({ length: 12 }, (_, i) => ({ class_session_id: i + 1,
-          date: `2026-11-${String(i + 1).padStart(2, '0')}`, status: i < 4 ? 'attended' : 'scheduled',
+        sessions: Array.from({ length: recordCount }, (_, i) => ({ class_session_id: i + 1,
+          date: `2026-11-${String(i + 1).padStart(2, '0')}`, status: i < 4 ? 'attended' : (i === recordCount - 1 ? lastStatus : 'scheduled'),
           start_time: '13:00', end_time: '15:00' })),
       } });
     });
     await page.goto('/payment-slip-pilot-mount.html');
     await page.getByRole('button', { name: '預覽繳費通知' }).click();
-    await expect(page.getByTestId('slip-planning-notice')).toContainText('已超出購買堂數 4 堂');
-    await expect(page.locator('.slip-session-list li')).toHaveCount(12);
+    if (recordCount === 12) {
+      await expect(page.getByTestId('slip-planning-notice')).toContainText('已超出購買堂數 4 堂');
+    } else {
+      await expect(page.getByTestId('slip-planning-notice')).toHaveCount(0);
+      await expect(page.locator('.slip-status').last()).toHaveText('補請假');
+    }
+    await expect(page.locator('.slip-section-title')).toContainText(`共 ${recordCount} 筆`);
+    await expect(page.locator('.slip-section-title')).toContainText('已上 4 堂');
+    await expect(page.locator('.slip-session-list li')).toHaveCount(recordCount);
     const wrap = page.locator('.slip-preview-wrap');
     const left = await wrap.evaluate(el => el.getBoundingClientRect().left);
     const paper = await page.locator('article.slip').boundingBox();
     expect(paper.x).toBeGreaterThanOrEqual(left);
+    expect(paper.width).toBe(580);
+    await page.screenshot({ path: testInfo.outputPath('slip-left.png') });
     if (width === 375) {
       expect(await wrap.evaluate(el => el.scrollWidth > el.clientWidth)).toBe(true);
       await wrap.evaluate(el => { el.scrollLeft = el.scrollWidth; });
       const after = await page.locator('article.slip').boundingBox();
       expect(after.x).toBeLessThan(paper.x);
+      const status = await page.locator('.slip-status').last().boundingBox();
+      expect(status.x).toBeGreaterThanOrEqual(left);
+      expect(status.x + status.width).toBeLessThanOrEqual(left + await wrap.evaluate(el => el.clientWidth) + 1);
     }
+    await page.screenshot({ path: testInfo.outputPath('slip-status.png') });
     await page.getByTestId('slip-modal-panel').focus();
     await page.keyboard.press('Escape');
     await expect(page.getByRole('dialog')).toHaveCount(0);
   });
+}
 }
