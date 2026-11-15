@@ -184,9 +184,12 @@ export function formatNewerCourseOverlapWarning(row) {
   if (!row?.newer_course_overlap) {
     return { show: false, primary: '', shortBadge: '' };
   }
-  // in-app #554: a 堂數制 course with no lesson left cannot run into the next term, whatever end date is still
-  // registered on it (the registered date is not pulled back when a course finishes early).
-  if (row.schedule_mode !== 'date' && row.remaining_sessions != null && Number(row.remaining_sessions) <= 0) {
+  // in-app #554: a 堂數制 course with nothing left cannot run into the next term, whatever end date is still
+  // registered on it (the registered date is not pulled back when a course finishes early). The lesson count is
+  // rounded, so the exact minute balance must be empty too: part of a lesson left is still something to hold.
+  const noLessonLeft = row.remaining_sessions != null && Number(row.remaining_sessions) <= 0;
+  const noMinuteLeft = row.remaining_minutes == null || Number(row.remaining_minutes) <= 0;
+  if (row.schedule_mode !== 'date' && noLessonLeft && noMinuteLeft) {
     return { show: false, primary: '', shortBadge: '' };
   }
   const endDate = formatStudentClassOpenDate(row?.current_course_end_date);

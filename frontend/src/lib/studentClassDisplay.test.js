@@ -145,6 +145,9 @@ assert.ok(overlapShown.primary.includes('開課 8/5'));
 const finished = { newer_course_overlap: true, current_course_end_date: '2026-11-04', newer_course_start_date: '2026-09-30', schedule_mode: 'count' };
 assert.equal(formatNewerCourseOverlapWarning({ ...finished, remaining_sessions: 0 }).show, false);
 assert.equal(formatNewerCourseOverlapWarning({ ...finished, remaining_sessions: 2 }).show, true);
+// The count is rounded: 0 lessons with 30 minutes still on the balance is not finished.
+assert.equal(formatNewerCourseOverlapWarning({ ...finished, remaining_sessions: 0, remaining_minutes: 30 }).show, true);
+assert.equal(formatNewerCourseOverlapWarning({ ...finished, remaining_sessions: 0, remaining_minutes: 0 }).show, false);
 assert.equal(formatNewerCourseOverlapWarning({ ...finished, schedule_mode: 'date', remaining_sessions: 0 }).show, true);
 assert.equal(overlapShown.shortBadge, '期間重疊');
 assert.equal(primaryLeaksInternalId(overlapShown.primary), false);

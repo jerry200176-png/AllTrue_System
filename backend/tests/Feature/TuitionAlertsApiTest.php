@@ -82,6 +82,14 @@ class TuitionAlertsApiTest extends TestCase
         $res->assertOk();
         $ids = collect($res->json())->pluck('id')->map(fn ($id) => (int) $id)->all();
         $this->assertContains((int) $course->ID, $ids);
+
+        // in-app #554: the row carries the exact minute balance beside the rounded lesson count, so the list can tell
+        // "nothing left" from "part of a lesson left" (both read as 0 lessons).
+        \Illuminate\Support\Facades\DB::table('StudentClass')->where('ID', $course->ID)->update(['RemainingMinutes' => 30]);
+        $row = collect($this->withHeaders(['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])
+            ->getJson('/api/v1/alerts/tuition?branch_id=1')->assertOk()->json())->firstWhere('id', $course->ID);
+        $this->assertSame(0, $row['remaining_sessions']);
+        $this->assertSame(30, $row['remaining_minutes']);
     }
 
     public function test_monthly_unpaid_excluded_when_five_or_more_days_before_due(): void
