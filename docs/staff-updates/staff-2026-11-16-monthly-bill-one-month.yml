@@ -1,0 +1,16 @@
+updates:
+  - id: staff-2026-11-16-monthly-bill-one-month
+    published_at: "2026-11-16"
+    audiences:
+      - director
+      - super_admin
+    importance: major
+    title: 月結帳單跟著單價與堂數
+    summary: 期間寫到下個月 1 號的月結帳單，沒收款前應收會照已上堂數和現在的單價計算。
+    items:
+      - category: fixed
+        text: 期間像 11/01–12/01 的月結帳單，改過單價後不再停在開單當時的金額。
+      - category: improved
+        text: 已收款的帳單、真的跨月的週期和有折扣的合約維持原本的金額。
+    source_refs:
+      - "changelog:2026-11-16:monthly-bill-ends-into-next-month"

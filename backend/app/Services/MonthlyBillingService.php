@@ -497,6 +497,21 @@ class MonthlyBillingService
      * @param  array<string,mixed>  $projection  InvoiceAmountReconciliationService::resolve()
      * @return list<array<string,mixed>>
      */
+    /**
+     * The months (YYYY-MM) that hold a lesson of the course inside a bill's service range. Called-off lessons do not
+     * count; every other lesson does (held, to come, on leave), so the answer errs towards "more than one month".
+     *
+     * @return list<string>
+     */
+    public function lessonMonthsInRange(Model $course, string $billingPeriod, string $serviceStart, string $serviceEnd): array
+    {
+        return $this->periodSessionQuery($course, $billingPeriod, $serviceStart, $serviceEnd)
+            ->whereNotIn('Status', ['cancelled', 'voided'])
+            ->pluck('SessionDate')
+            ->map(fn ($date) => substr((string) $date, 0, 7))
+            ->unique()->sort()->values()->all();
+    }
+
     public function invoiceCoveredSessions(Invoice $invoice, array $projection): array
     {
         $studentClassIds = $invoice->loadMissing('items')->getRelationValue('items')

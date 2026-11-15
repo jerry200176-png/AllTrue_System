@@ -509,6 +509,70 @@ class MonthlyBillingSlipTest extends TestCase
         $this->assertNull($this->withHeaders($headers)->getJson("/api/v1/invoices/{$invoice->id}/slip-data")->assertOk()->json('items.0.unit_price'));
     }
 
+    /**
+     * Founder 2026-11-16 (2A, course 4635): a November contract written 11/01–12/01 was billed at renewal for the old
+     * price; the price then changed. Its lessons are all in November, so the unpaid bill follows lessons held x the
+     * price in force like any one-month bill, instead of keeping the agreed amount as a cross-month cycle.
+     */
+    public function test_unpaid_bill_whose_range_only_ends_into_the_next_month_is_a_one_month_bill(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-11-16 09:00:00', 'Asia/Taipei'));
+        $resolver = fn (Invoice $invoice, StudentClass $course) => app(\App\Services\InvoiceAmountReconciliationService::class)->resolve($invoice->fresh(), $course->fresh());
+        $bill = function (StudentClass $course, $student): Invoice {
+            $invoice = Invoice::create(['StudentID' => $student->id, 'StudentClassID' => $course->ID, 'IssueDate' => '2026-10-31', 'DueDate' => '2026-11-01',
+                'TotalAmount' => 10000, 'PaidAmount' => 0, 'Status' => 'unpaid', 'billing_period' => '2026-11']);
+            InvoiceItem::create(['InvoiceID' => $invoice->id, 'StudentClassID' => $course->ID, 'Description' => '月結費用', 'Amount' => 10000, 'PeriodStart' => '2026-11-01', 'PeriodEnd' => '2026-12-01']);
+
+            return $invoice;
+        };
+        $lessons = function (StudentClass $course): void {
+            foreach ([['2026-11-07', 'attended'], ['2026-11-14', 'attended'], ['2026-11-21', 'scheduled'], ['2026-11-28', 'scheduled']] as [$date, $status]) {
+                ClassSession::create(['StudentClassID' => $course->ID, 'SessionDate' => $date, 'StartTime' => '13:00', 'EndTime' => '15:00', 'Status' => $status]);
+            }
+        };
+
+        [$student, $course] = $this->makeMonthlyCourse('月結跨一天測試', '2026-11-01', '2026-12-01');
+        $lessons($course);
+        $invoice = $bill($course, $student);
+        $oneMonth = $resolver($invoice, $course);
+        $this->assertSame(3000, $oneMonth['total_amount']); // two lessons held x 1,500
+        $this->assertSame(10000, $oneMonth['stored_total_amount']);
+        $this->assertTrue($oneMonth['repriceable']);
+        $this->assertTrue($oneMonth['amount_discrepancy']);
+        $this->assertSame(['2026-11-01', '2026-11-30'], [$oneMonth['period_start'], $oneMonth['period_end']]);
+
+        // A lesson in the December part of the range: a real cross-month cycle, the agreed amount stands.
+        $december = ClassSession::create(['StudentClassID' => $course->ID, 'SessionDate' => '2026-12-01', 'StartTime' => '13:00', 'EndTime' => '15:00', 'Status' => 'scheduled']);
+        $crossMonth = $resolver($invoice, $course);
+        $this->assertSame(10000, $crossMonth['total_amount']);
+        $this->assertFalse($crossMonth['repriceable']);
+        // Called off: it no longer counts.
+        $december->update(['Status' => 'cancelled']);
+        $this->assertSame(3000, $resolver($invoice, $course)['total_amount']);
+
+        // A range that reaches further into December is a real cycle even while its December lessons are not on the calendar yet.
+        InvoiceItem::query()->where('InvoiceID', $invoice->id)->update(['PeriodEnd' => '2026-12-02']);
+        \Illuminate\Support\Facades\DB::table('StudentClass')->where('ID', $course->ID)->update(['EndDate' => '2026-12-02']);
+        $this->assertSame(10000, $resolver($invoice, $course)['total_amount']);
+        InvoiceItem::query()->where('InvoiceID', $invoice->id)->update(['PeriodEnd' => '2026-12-01']);
+
+        // Money already on the bill: not the system's to reprice.
+        \App\Models\Payment::create(['InvoiceID' => $invoice->id, 'Amount' => 1000, 'PaidAt' => '2026-11-15', 'Method' => 'cash']);
+        Invoice::query()->whereKey($invoice->id)->update(['Status' => 'partial', 'PaidAmount' => 1000]);
+        $partlyPaid = $resolver($invoice, $course);
+        $this->assertSame(10000, $partlyPaid['total_amount']);
+        $this->assertFalse($partlyPaid['repriceable']);
+
+        // A transaction discount on record: the bill was issued at the discounted amount, so it stays as agreed.
+        [$discountStudent, $discounted] = $this->makeMonthlyCourse('月結折扣跨一天測試', '2026-11-01', '2026-12-01');
+        $discounted->initializePricingSnapshot(['transaction_id' => 'test', 'original_amount' => 6000, 'type' => 'fixed', 'value' => 500, 'discount_amount' => 500, 'final_amount' => 5500]);
+        $lessons($discounted);
+        $kept = $resolver($bill($discounted, $discountStudent), $discounted);
+        $this->assertSame(10000, $kept['total_amount']);
+        $this->assertFalse($kept['repriceable']);
+        Carbon::setTestNow();
+    }
+
     public function test_tuition_slip_with_two_owing_periods_uses_the_payable_period(): void
     {
         // #3888 review (Codex P1 r4254441859): the slip asks for the payable bill's amount, so its period

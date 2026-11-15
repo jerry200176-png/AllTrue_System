@@ -2,6 +2,8 @@
 
 namespace App\Services;
 
+use Carbon\Carbon;
+
 use App\Models\Invoice;
 use App\Models\StudentClass;
 
@@ -105,6 +107,33 @@ class InvoiceAmountReconciliationService
                 && substr($spanStart, 0, 7) !== substr($spanEnd, 0, 7);
         }
 
+        // Founder 2026-11-16 (2A): a range that starts in the bill's month and ends on the first day of the next one (a
+        // November contract written 11/01–12/01, "one month later" counted inclusively) is a one-month bill in effect
+        // when it has lessons and all of them fall in the bill's own month. Nothing wider: a real cycle (08/15–09/14)
+        // whose later lessons are simply not on the calendar yet must not flip between the two readings. The
+        // calendar month then prices exactly the same lessons as the range, so the payment check, the first-payment
+        // freeze and the slip lesson list (all of which price billing_period's calendar month) agree with this
+        // projection by construction. Only an unpaid bill with nothing applied, for one course, with no transaction
+        // discount on record: anything else keeps its agreed amount until a reviewed correction.
+        // ponytail: one lesson query per such bill per call; preload through MonthlyBillingService if a list page shows it.
+        if (
+            $course
+            && $hasCrossMonthServiceRange
+            && (string) ($invoice->getAttribute('Status') ?? '') === 'unpaid'
+            && $netApplied === 0
+            && preg_match('/^\d{4}-\d{2}$/', (string) $billingPeriod)
+            && $items->pluck('StudentClassID')->filter()->unique()->count() <= 1
+            && !$this->hasTransactionDiscount($course)
+        ) {
+            [$rangeStart, $rangeEnd] = $this->monthlyBilling->serviceRangeForCourse($invoice, (int) $course->getKey());
+            if ($rangeStart !== null && $rangeEnd !== null
+                && substr($rangeStart, 0, 7) === (string) $billingPeriod
+                && $rangeEnd === Carbon::createFromFormat('!Y-m', (string) $billingPeriod)->addMonthNoOverflow()->toDateString()
+                && $this->monthlyBilling->lessonMonthsInRange($course, (string) $billingPeriod, $rangeStart, $rangeEnd) === [(string) $billingPeriod]) {
+                $hasCrossMonthServiceRange = false;
+            }
+        }
+
         if (
             $course
             && !$hasCrossMonthServiceRange
@@ -153,5 +182,19 @@ class InvoiceAmountReconciliationService
             'overpaid_amount' => max(0, $netApplied - $totalAmount),
             'outstanding_amount' => max(0, $totalAmount - $netApplied),
         ];
+    }
+
+    /**
+     * Whether the contract was sold with a transaction discount (its bill was issued at the discounted amount, which
+     * lessons x price cannot reproduce). Read from the database when the caller loaded the course without the snapshot
+     * column, so every screen gets the same answer whatever columns it selected.
+     */
+    private function hasTransactionDiscount(StudentClass $course): bool
+    {
+        $snapshot = array_key_exists('pricing_snapshot', $course->getAttributes())
+            ? $course->getAttribute('pricing_snapshot')
+            : StudentClass::query()->whereKey($course->getKey())->first(['ID', 'pricing_snapshot'])?->getAttribute('pricing_snapshot');
+
+        return (int) (((array) $snapshot)['discount_amount'] ?? 0) !== 0;
     }
 }
