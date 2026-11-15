@@ -507,7 +507,7 @@ class TeacherEligibilityController extends Controller
     {
         $dailyMinutes = [];
         // 平日下午倍率 (HQ 115.07: 週一至週五 18:00 前可接 5 段課): the same lessons, only the part before the cutoff.
-        $cutoff = (string) config('teacher_salary.weekday_cutoff', '18:00');
+        $cutoff = $this->policy->weekdayCutoff();
         $earlyMinutes = 0;
         foreach ($lessonsByDate as $date => $lessons) {
             if ($date < $start->toDateString() || $date > $end->toDateString()) continue;

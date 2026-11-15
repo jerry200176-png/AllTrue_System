@@ -173,6 +173,12 @@ class TeacherEligibilityPolicy
         );
     }
 
+    /** HH:MM; weekday lesson time before it counts toward the 平日下午 rate. */
+    public function weekdayCutoff(): string
+    {
+        return (string) $this->setting('weekday_cutoff', '18:00');
+    }
+
     public function specialPerformance(array $achievements, ?string $periodStart, ?string $periodEnd): array
     {
         $start = $periodStart ? Carbon::parse($periodStart)->startOfDay() : null;
