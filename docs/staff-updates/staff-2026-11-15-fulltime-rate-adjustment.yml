@@ -13,6 +13,6 @@ updates:
       - category: action_required
         text: 調整要主任確認、總部核准才生效；還沒核准時那位老師不能鎖定。
       - category: improved
-        text: 撤回調整就恢復系統算的值。
+        text: 主任確認後只有總部可以退回，退回就恢復系統算的值。
     source_refs:
       - "changelog:2026-11-15:fulltime-rate-adjustment"

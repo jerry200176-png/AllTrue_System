@@ -85,6 +85,23 @@ class FulltimeAdminAllowanceTest extends TestCase
         $this->withHeaders($this->auth($director['token']))->postJson("/api/v1/finance/teacher-eligibility/admin-allowances/{$id}/confirm")->assertOk();
         $this->withHeaders($this->auth($hq['token']))->postJson("/api/v1/finance/teacher-eligibility/admin-allowances/{$id}/approve")->assertOk();
         $this->assertDatabaseHas('teacher_payroll_admin_allowances', ['id' => $id, 'role_key' => 'weekday_afternoon', 'status' => 'approved']);
+
+        // Removing a confirmed or approved adjustment puts the system's rate back: headquarters only.
+        $withdraw = fn (array $who, int $rowId) => $this->withHeaders($this->auth($who['token']))
+            ->postJson("/api/v1/finance/teacher-eligibility/admin-allowances/{$rowId}/withdraw");
+        $withdraw($director, $id)->assertStatus(403);
+        $withdraw($hq, $id)->assertOk();
+        $this->assertDatabaseHas('teacher_payroll_admin_allowances', ['id' => $id, 'status' => 'withdrawn']);
+
+        $confirmedId = (int) $post([])->assertCreated()->json('id');
+        $this->withHeaders($this->auth($director['token']))->postJson("/api/v1/finance/teacher-eligibility/admin-allowances/{$confirmedId}/confirm")->assertOk();
+        $withdraw($director, $confirmedId)->assertStatus(403);
+        $withdraw($hq, $confirmedId)->assertOk();
+
+        // An ordinary admin allowance keeps its rule: no withdrawal once confirmed.
+        $roleId = (int) $post(['role_key' => 'head_tutor', 'ends_on' => null])->assertCreated()->json('id');
+        $this->withHeaders($this->auth($director['token']))->postJson("/api/v1/finance/teacher-eligibility/admin-allowances/{$roleId}/confirm")->assertOk();
+        $withdraw($hq, $roleId)->assertStatus(422);
     }
 
     private function auth(string $token): array

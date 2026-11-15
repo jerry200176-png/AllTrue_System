@@ -378,12 +378,14 @@ const queueItems = computed(() => {
   }
   for (const row of inputRecords.admin_allowances) {
     if (row.status === 'withdrawn') continue;
+    // Headquarters can take back a confirmed or approved rate adjustment; that puts the system's rate back.
+    const hqCanReturn = isHq.value && ['holiday_16h', 'weekday_afternoon'].includes(row.role_key);
     if (row.status === 'approved') {
       items.push({
         key: `allowance-${row.id}`, kind: 'allowance', id: row.id, row,
         title: allowanceLabel(row.role_key), subtitle: `${teacherName(row.teacher_id)}｜${row.rate}%｜${row.starts_on || '未設生效日'}`,
         description: row.reason || '', statusLabel: '已核准', tone: 'done',
-        action: '', canEdit: false, canWithdraw: false,
+        action: '', canEdit: false, canWithdraw: hqCanReturn,
       });
       continue;
     }
@@ -394,7 +396,7 @@ const queueItems = computed(() => {
       description: row.reason || '',
       statusLabel: confirmed ? '待總部核准' : '待主任確認', tone: confirmed ? 'hq' : 'pending',
       action: confirmed && isHq.value ? 'approve-allowance' : (confirmed ? '' : 'confirm-allowance'),
-      canEdit: !confirmed, canWithdraw: !confirmed,
+      canEdit: !confirmed, canWithdraw: !confirmed || hqCanReturn,
     });
   }
   for (const row of inputRecords.cash_adjustments) {

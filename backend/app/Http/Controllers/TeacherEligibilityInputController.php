@@ -451,7 +451,21 @@ class TeacherEligibilityInputController extends Controller
             return response()->json(['message' => 'Not found'], 404);
         }
         if ($record->director_confirmed_at || ($record->status ?? '') === 'approved') {
-            return response()->json(['message' => '已進入審核的行政加給不能撤回。'], 422);
+            if (!isset(\App\Services\TeacherEligibilityPolicy::RATE_ADJUSTMENT_KEYS[$record->role_key ?? ''])) {
+                return response()->json(['message' => '已進入審核的行政加給不能撤回。'], 422);
+            }
+            // A rate adjustment must stay removable after confirmation: until headquarters approves it the teacher
+            // cannot be settled, and removing an approved one puts the system's rate back. That is headquarters'
+            // call (the party that approves), never the teacher's own, and never in a locked month.
+            if ($request->attributes->get('auth_role') !== 'super_admin') {
+                return response()->json(['message' => '已確認的倍率調整只有總部可以退回。'], 403);
+            }
+            if ($blocked = $this->rejectSelfApproval($request, $record->teacher_id ?? null)) {
+                return $blocked;
+            }
+            if (!empty($record->starts_on)) {
+                $this->rejectIfSalaryMonthLocked((int) $record->teacher_id, $record->branch_id !== null ? (int) $record->branch_id : null, (string) $record->starts_on);
+            }
         }
         DB::table('teacher_payroll_admin_allowances')->where('id', $id)->update([
             'status' => 'withdrawn',
