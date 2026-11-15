@@ -121,6 +121,7 @@ for (const width of [375, 1280]) {
     for (const control of [phone, desktop]) await expect(control).toHaveAttribute('aria-expanded', 'true');
     await expect(row).toBeFocused();
     await scan('expanded');
+    await page.screenshot({ path: info.outputPath(`student-disclosure-${width}.png`), fullPage: true, animations: 'disabled' });
     await row.press('Space');
     await expect(row).toHaveAttribute('data-expanded', 'false');
     const visibleControl = width < 768 ? phone : desktop;
