@@ -53,6 +53,7 @@ use App\Http\Controllers\BugReportController;
 use App\Http\Controllers\TriageBillingSnapshotController;
 use App\Http\Controllers\TriageBugReportController;
 use App\Http\Controllers\TriageContractLinkController;
+use App\Http\Controllers\TriageFulltimePayrollController;
 use App\Http\Controllers\TriageTokenController;
 use App\Http\Controllers\PopInappApiClientController;
 use App\Http\Controllers\TeacherDuplicateController;
@@ -1041,6 +1042,8 @@ Route::prefix('v1')->group(function () {
         // #4100: ONE super-admin-linked contract of an open report; triage_tokens.billing_snapshot_enabled (default off, 待 Founder 核准).
         Route::get('student-classes/{id}/billing-snapshot', [TriageBillingSnapshotController::class, 'show'])
             ->whereNumber('id')->name('triage.student-classes.billing-snapshot');
+        // Founder GO 2026-11-15: the 正職薪資要件 report of ONE campus and month, IDs and numbers only; triage_tokens.fulltime_payroll_enabled.
+        Route::get('fulltime-payroll', [TriageFulltimePayrollController::class, 'show'])->name('triage.fulltime-payroll.report');
     });
     Route::middleware(['super_admin', 'require_password_change'])->group(function () {
         Route::get('admin/triage-tokens', [TriageTokenController::class, 'index']);
