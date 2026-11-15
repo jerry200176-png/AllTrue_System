@@ -374,6 +374,9 @@ class TeacherEligibilityInputController extends Controller
         if (!$record->director_confirmed_at) {
             return response()->json(['message' => 'Director confirmation is required first'], 422);
         }
+        if ($blocked = $this->rejectSameConfirmer($request, $record)) {
+            return $blocked;
+        }
         DB::table('teacher_payroll_deductions')->where('id', $id)->update([
             'status' => 'approved', 'hq_approved_by' => $this->actorId($request), 'hq_approved_at' => now(), 'updated_at' => now(),
         ]);
@@ -524,6 +527,9 @@ class TeacherEligibilityInputController extends Controller
         if (!$record->director_confirmed_at) {
             return response()->json(['message' => 'Director confirmation is required first'], 422);
         }
+        if ($blocked = $this->rejectSameConfirmer($request, $record)) {
+            return $blocked;
+        }
         if (!empty($record->starts_on)) {
             $this->rejectIfSalaryMonthLocked((int) $record->teacher_id, $record->branch_id !== null ? (int) $record->branch_id : null, (string) $record->starts_on);
         }
@@ -627,6 +633,9 @@ class TeacherEligibilityInputController extends Controller
         }
         if (!$record->director_confirmed_at) {
             return response()->json(['message' => 'Director confirmation is required first'], 422);
+        }
+        if ($blocked = $this->rejectSameConfirmer($request, $record)) {
+            return $blocked;
         }
         if (!empty($record->starts_on)) {
             $this->rejectIfSalaryMonthLocked((int) $record->teacher_id, $record->branch_id !== null ? (int) $record->branch_id : null, (string) $record->starts_on);
@@ -831,6 +840,17 @@ class TeacherEligibilityInputController extends Controller
             ->where('u.id', $teacherId)->where('u.type', 'T');
         if ($branchId !== null) $query->where('uc.CampusID', $branchId);
         if (!$query->exists()) abort(422, 'teacher is outside the selected branch or is not a teacher');
+    }
+
+    /** Two steps mean two people: whoever gave the director confirmation cannot also give the headquarters approval. */
+    private function rejectSameConfirmer(Request $request, object $record): ?\Illuminate\Http\JsonResponse
+    {
+        $actor = $this->actorId($request);
+        if ($actor === null || (int) ($record->director_confirmed_by ?? 0) !== $actor) {
+            return null;
+        }
+
+        return response()->json(['message' => '確認與核准必須是不同的人。', 'code' => 'same_confirmer_forbidden'], 422);
     }
 
     private function rejectSelfApproval(Request $request, mixed $subjectTeacherId): ?\Illuminate\Http\JsonResponse

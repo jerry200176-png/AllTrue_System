@@ -35,6 +35,19 @@ class FulltimePayrollLockTest extends TestCase
         $this->assertDatabaseMissing('teacher_payroll_admin_allowances', ['teacher_id' => $teacherId]);
     }
 
+    /** Only a month the 115.07 rules cover and that has begun can be locked. */
+    public function test_cannot_lock_a_month_before_the_rules_or_in_the_future(): void
+    {
+        $director = $this->createDirector(1, 'ft-lock-range-dir@test.com');
+        $headers = ['Authorization' => "Bearer {$director['token']}", 'Accept' => 'application/json'];
+        $lock = fn (string $month) => $this->withHeaders($headers)->postJson('/api/v1/finance/teacher-eligibility/lock', ['month' => $month, 'branch_id' => 1]);
+
+        $lock('2026-06')->assertStatus(422);
+        $lock(now('Asia/Taipei')->addMonth()->format('Y-m'))->assertStatus(422);
+        $this->assertSame(0, \Illuminate\Support\Facades\DB::table('fulltime_payroll_runs')->count());
+        $lock(now('Asia/Taipei')->format('Y-m'))->assertOk();
+    }
+
     public function test_only_super_admin_can_reopen(): void
     {
         $director = $this->createDirector(1, 'ft-reopen-dir@test.com');

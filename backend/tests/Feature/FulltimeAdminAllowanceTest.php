@@ -49,6 +49,22 @@ class FulltimeAdminAllowanceTest extends TestCase
         ]);
     }
 
+    /** Two steps mean two people: headquarters cannot approve what the same person confirmed as director. */
+    public function test_the_person_who_confirmed_cannot_also_approve(): void
+    {
+        $director = $this->createDirector(1, 'aa-dir4@test.com');
+        $hq = $this->createSuperAdmin('aa-hq4@test.com');
+        $id = (int) $this->withHeaders($this->auth($director['token']))->postJson('/api/v1/finance/teacher-eligibility/admin-allowances', [
+            'teacher_id' => $this->createTeacher(1, 'aa-teacher4@test.com'), 'branch_id' => 1, 'role_key' => 'head_tutor',
+            'rate' => 8, 'reason' => '總導師職務', 'starts_on' => '2026-08-01',
+        ])->assertCreated()->json('id');
+
+        $this->withHeaders($this->auth($hq['token']))->postJson("/api/v1/finance/teacher-eligibility/admin-allowances/{$id}/confirm")->assertOk();
+        $this->withHeaders($this->auth($hq['token']))->postJson("/api/v1/finance/teacher-eligibility/admin-allowances/{$id}/approve")
+            ->assertStatus(422)->assertJsonPath('code', 'same_confirmer_forbidden');
+        $this->assertDatabaseHas('teacher_payroll_admin_allowances', ['id' => $id, 'status' => 'pending', 'hq_approved_at' => null]);
+    }
+
     public function test_rate_above_ten_is_rejected(): void
     {
         $director = $this->createDirector(1, 'aa-dir2@test.com');
