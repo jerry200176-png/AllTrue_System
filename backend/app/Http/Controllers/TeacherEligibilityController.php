@@ -328,11 +328,11 @@ class TeacherEligibilityController extends Controller
     }
 
     /**
-     * The one campus that settles each teacher for the month (teachers with no approved campus link are left out and
-     * stay listed as before).
+     * The one campus that settles each teacher for the month.
      * - A campus that has already locked the month with the teacher in it keeps the teacher, whatever changed since:
      *   that month is settled there, and moving it would pay it twice.
-     * - Only approved campus links count; a link nobody approved must not decide where money is paid.
+     * - Only approved campus links count; a link nobody approved must not decide where money is paid. A teacher
+     *   with no approved link at all is placed by all of their links, so nobody is left listed in two campuses.
      * - A campus that locked the month without the teacher can no longer take the teacher, so the choice is among the
      *   campuses still open (if every one is locked, the answer simply stays put until one is reopened).
      * - Among those: the most lesson time in the weeks in view; a tie or no lessons goes to the lowest campus id, so
@@ -353,10 +353,14 @@ class TeacherEligibilityController extends Controller
                 ->where('r.month', $month)->where('r.status', 'locked')->whereIn('t.teacher_id', $teacherIds)
                 ->orderBy('r.id')->pluck('r.branch_id', 't.teacher_id')->map(fn ($id) => (int) $id)->all();
         }
-        $memberOf = [];
-        foreach (DB::table('UserCampus')->whereIn('UserID', $teacherIds)->where('Approved', 1)->orderBy('CampusID')->get(['UserID', 'CampusID']) as $row) {
-            $memberOf[(int) $row->UserID][(int) $row->CampusID] = 0;
+        // Approved links decide. A teacher with none approved still has to land in exactly one campus (the list shows
+        // a teacher wherever any link exists), so all of that teacher's links are used instead.
+        $links = ['approved' => [], 'any' => []];
+        foreach (DB::table('UserCampus')->whereIn('UserID', $teacherIds)->orderBy('CampusID')->get(['UserID', 'CampusID', 'Approved']) as $row) {
+            $links['any'][(int) $row->UserID][(int) $row->CampusID] = 0;
+            if ($row->Approved) $links['approved'][(int) $row->UserID][(int) $row->CampusID] = 0;
         }
+        $memberOf = $links['approved'] + $links['any'];
 
         foreach ($memberOf as $teacherId => $minutes) {
             if (isset($campusOf[$teacherId])) continue;

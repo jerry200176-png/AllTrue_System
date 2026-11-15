@@ -228,6 +228,11 @@ class TeacherEligibilityWeeklySegmentsTest extends TestCase
         $there = $view($other->id);
         $this->assertSame([], $there['teachers']);
         $this->assertSame(1, $there['settled_elsewhere'][0]['campus_id']);
+
+        // With no approved link at all the teacher still lands in exactly one campus (here the one with more lessons).
+        DB::table('UserCampus')->where('UserID', $teacher->id)->update(['Approved' => 0]);
+        $this->assertSame([], $view(1)['teachers']);
+        $this->assertSame([$teacher->id], array_column($view($other->id)['teachers'], 'teacher_id'));
     }
 
     /** 假日16小時倍率: every judged week needs 16 scheduled hours across Saturday and Sunday. */
