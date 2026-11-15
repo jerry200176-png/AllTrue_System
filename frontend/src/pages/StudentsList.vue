@@ -225,7 +225,7 @@
                     <BookOpen class="tw:size-5 tw:shrink-0" aria-hidden="true" />
                     {{ student.name }} 的課程安排
                   </h4>
-                  <div class="tw:flex tw:flex-wrap tw:gap-2" data-testid="course-panel-actions">
+                  <div class="course-panel-header__actions tw:flex tw:flex-wrap tw:gap-2" data-testid="course-panel-actions">
                     <Button v-if="getRenewableMonthlyCourses(student.id).length" type="button" variant="outline" :class="[control.row, 'tw:text-foreground']" data-testid="batch-monthly-renew" @click="openBatchRenew(student)">
                       <RefreshCw class="tw:size-5" aria-hidden="true" />
                       月結續報下月（{{ getRenewableMonthlyCourses(student.id).length }} 科）

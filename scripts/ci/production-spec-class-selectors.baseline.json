@@ -1,5 +1,5 @@
 {
-  "total": 156,
+  "total": 157,
   "specs": {
     "frontend/e2e/calendar-course-consistency.spec.js": 67,
     "frontend/e2e/calendar-print-production.spec.js": 13,
@@ -11,6 +11,6 @@
     "frontend/e2e/parent-portal-production.spec.js": 7,
     "frontend/e2e/payment-display-production.spec.js": 9,
     "frontend/e2e/school-directory-production.spec.js": 1,
-    "frontend/e2e/tutoring-free-production.spec.js": 15
+    "frontend/e2e/tutoring-free-production.spec.js": 16
   }
 }
