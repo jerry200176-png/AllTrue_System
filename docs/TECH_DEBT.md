@@ -891,3 +891,13 @@
 | 建議做法 | 與 TD-086 合併由 Founder 對確切範圍批准後，以非加法 migration 丟棄資料表（drop table 屬 F1，Agent 不自行執行）。 |
 | 清償成本估計 | 低（Founder 批准的 drop migration） |
 | 不做的代價 | 少量空表與已不用的遷移檔。 |
+
+### TD-088：學生清單展開列的 ARIA 語意與有資料的可及性驗證（P2）
+
+| 欄位 | 內容 |
+|---|---|
+| 狀態 | Open；詳細證據與驗收追蹤 [#5334](https://github.com/jerry200176-png/AllTrue_System/issues/5334) |
+| 發現日期 | 2026-11-15，in-app #547 配色驗證期間 |
+| 影響模組 | `StudentsList.vue`、`StudentsListRows.test.js`、UI foundation axe 測試 |
+| 描述 | 既有一般 table 的資料列使用只適用於 treegrid row 的 `aria-expanded`。有資料的合成清單在手機、桌面各有 8 個 `aria-conditional-attr` serious；空清單 axe 基準未涵蓋。本次配色未新增或修改這些屬性。 |
+| 建議做法 | 由合法控制元件提供展開語意，同步必要的測試／操作 hooks；補 populated、收合／展開及手機／桌面回歸。不以缺少完整鍵盤操作的 grid 角色規避檢查。 |

@@ -1,0 +1,14 @@
+updates:
+  - id: staff-2026-11-15-student-list-color
+    published_at: "2026-11-15"
+    audiences:
+      - director
+      - super_admin
+    importance: digest
+    title: 學生清單恢復色彩
+    summary: 頁首與科目標籤加入暖色，低堂數及歷史課程仍容易分辨。
+    items:
+      - category: improved
+        text: 一般科目標籤恢復暖色，堂數快用完時仍顯示紅色，歷史課程保持灰色。
+    source_refs:
+      - "changelog:2026-11-15:student-list-color"
