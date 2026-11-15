@@ -155,7 +155,12 @@ let svcGraph = { svcFiles: [], edges: new Map(), ctxRule: null };
 // live exceptions. New code reads it through TeacherClassCalendar (or the occurrence resolver), never the table.
 // Counted per file so edits inside an existing reader do not move the number.
 {
-  const re = /table\(\s*'schedules'|[jJ]oin(?:Sub)?\(\s*'schedules'|from\(\s*'schedules'|\bSchedule::[a-z]\w*\(/;
+  // Query-builder calls (plain or aliased `'schedules as s'`, either quote), raw SQL, and Schedule:: static calls.
+  const re = /(?:table|[jJ]oin\w*|from)\(\s*['"]schedules(?:\s+as\s+\w+)?['"]|\b(?:FROM|JOIN)\s+`?schedules`?\b|\bSchedule::[a-z]\w*\(/;
+  const hit = ["DB::table('schedules')", "DB::table('schedules as s')", '->leftJoin("schedules as sch", ', "->from('schedules')", 'FROM `schedules` ss', 'JOIN schedules s', 'Schedule::where('];
+  const miss = ['Schedule::STATUS_SUPERSEDED', "DB::table('schedule_locks')", 'rows from schedules (idempotent)'];
+  for (const form of hit) if (!re.test(form)) failures.push(`FIT-17 self-check: pattern must match ${form}`);
+  for (const form of miss) if (re.test(form)) failures.push(`FIT-17 self-check: pattern must not match ${form}`);
   const n = appPhp.filter((f) => re.test(read(f))).length;
   ratchet('FIT-17', 'files touching the schedules table directly; read lessons through TeacherClassCalendar', n, 'scheduleTableReaderFiles');
 }
