@@ -72,6 +72,11 @@ final class TriageDbReadTest extends TestCase
         $this->assertNull($this->getJson("/api/v1/triage/db/StudentClass?eq[ID]={$course->ID}", $this->bearer())->assertOk()->json('rows.0.Charge'));
         $this->getJson('/api/v1/triage/db/StudentClass?gte[Charge]=912345678', $this->bearer())->assertStatus(422);
         $this->getJson('/api/v1/triage/db/StudentClass?in[Charge]=1,912345678', $this->bearer())->assertStatus(422);
+        // Forms the database would still read as that number.
+        foreach (['912345678.0', '9.12e8', '912345678abc', '+912345678', ' 912345678', '0912345678'] as $disguised) {
+            $this->getJson('/api/v1/triage/db/StudentClass?lte[Charge]=' . urlencode($disguised), $this->bearer())->assertStatus(422);
+        }
+        $this->getJson('/api/v1/triage/db/StudentClass?lte[Charge]=99999999&gte[StartDate]=2026-08-01', $this->bearer())->assertOk();
     }
 
     public function test_withheld_columns_cannot_be_filtered_or_sorted_and_sign_in_tables_are_unreachable(): void
