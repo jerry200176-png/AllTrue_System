@@ -26,6 +26,24 @@ export function formatMoney(value) {
   return `$${n.toLocaleString('zh-TW', { maximumFractionDigits: 0 })}`;
 }
 
+/** A locked month next to today's rules: now minus locked. */
+export function formatDifference(value) {
+  if (value == null || value === '') return '無法比較';
+  const n = Number(value);
+  if (n === 0) return '相同';
+  return `${n > 0 ? '多' : '少'} ${formatMoney(Math.abs(n))}`;
+}
+
+/** One line for the whole month: how many locked rows differ under today's rules, and the net amount. */
+export function recalculationSummary(teachers) {
+  const compared = (teachers || []).filter((teacher) => teacher.recalculated?.difference != null);
+  const changed = compared.filter((teacher) => Number(teacher.recalculated.difference) !== 0);
+  if (!compared.length) return '';
+  if (!changed.length) return '照現在的算法重算，每位老師的金額都和鎖定時相同。';
+  const net = changed.reduce((sum, teacher) => sum + Number(teacher.recalculated.difference), 0);
+  return `照現在的算法重算，${changed.length} 位老師金額不同，合計${formatDifference(net)}。鎖定的數字沒有變。`;
+}
+
 export function formatSubjects(value) {
   if (value == null || value === '') return '—';
   return Number(value).toLocaleString('zh-TW', { maximumFractionDigits: 4 });

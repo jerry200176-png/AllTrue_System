@@ -32,11 +32,12 @@
       </p>
     </header>
 
-    <!-- P0 2026-11-15: remove once the old-vs-new difference report for months locked under the old rules is delivered. -->
+    <!-- P0 2026-11-15: remove once the Founder has decided what happens to months locked under the old rules. -->
     <!-- A standing notice, not an interruption: info tone keeps role=status; the warning colours are set by hand. -->
     <Alert tone="info" title="本頁已照總部 115.07 公告計算" class="tw:border-[var(--ds-warning)] tw:bg-[var(--ds-warning-wash)] tw:text-tpl-body" data-testid="eligibility-calibration-notice">
-      獎金、倍率、每週 16 段與新進保底都已照公告更新。2026-11-15 以前鎖定的月份仍是舊算法的數字，新舊差額報表整理中。
+      獎金、倍率、每週 16 段與新進保底都已照公告更新。2026-11-15 以前鎖定的月份仍是舊算法的數字；打開那個月份，會在獎金合計下面顯示照現在算法重算的金額與差額。
     </Alert>
+    <p v-if="isLocked && recalculationNote" class="tw:mt-2 tw:text-tpl-body tw:text-tpl-secondary tw:text-pretty" data-testid="eligibility-recalculation-note">{{ recalculationNote }}</p>
 
     <Card class="eligibility-card filters tw:gap-0 tw:p-4 tw:shadow-none">
       <div class="tw:flex tw:flex-wrap tw:items-end tw:gap-4">
@@ -128,6 +129,7 @@
               <TableCell :class="[bodyCell, 'total-cell']">
                 <strong class="tw:tabular-nums tw:text-[var(--ds-primary-text)]">{{ formatMoney(teacher.settlement?.total_payout) }}</strong>
                 <small v-if="isDraft(teacher)" :class="smallText">試算，未可發放</small>
+                <small v-if="teacher.recalculated" :class="smallText">現在的算法 {{ formatMoney(teacher.recalculated.calculated_payout) }}（{{ formatDifference(teacher.recalculated.difference) }}）</small>
               </TableCell>
               <TableCell :class="[bodyCell, 'weekly-segment-cell tw:min-w-[300px]']">
                 <strong>{{ weeklySegmentsLabel(teacher) }}</strong>
@@ -156,6 +158,7 @@
           <div :class="componentRow"><span>教師倍率</span><span :class="componentValue">{{ formatPct(teacher.settlement?.multiplier_pct) }}</span></div>
           <div :class="componentRow"><span>倍率後獎金</span><span :class="[componentValue, 'tw:tabular-nums']">{{ formatMoney(teacher.settlement?.weighted_bonus_amount) }}</span></div>
           <div :class="[componentRow, 'total-cell']"><span>獎金合計</span><strong class="tw:tabular-nums tw:text-[var(--ds-primary-text)]">{{ formatMoney(teacher.settlement?.total_payout) }}</strong></div>
+          <div v-if="teacher.recalculated" :class="componentRow"><span>現在的算法</span><span :class="[componentValue, 'tw:tabular-nums']">{{ formatMoney(teacher.recalculated.calculated_payout) }}（{{ formatDifference(teacher.recalculated.difference) }}）</span></div>
           <div :class="[componentRow, 'weekly-segment-row']">
             <span>每週課段</span>
             <span :class="componentValue">
@@ -206,11 +209,13 @@ import { Table, TableBody, TableCaption, TableCell, TableHead, TableHeader, Tabl
 import { fetchTeacherEligibility, lockFulltimePayroll, reopenFulltimePayroll, exportFulltimePayrollCsv } from '../lib/teacherEligibilityApi.js';
 import TeacherEligibilityInputPanel from '../components/TeacherEligibilityInputPanel.vue';
 import {
+  formatDifference,
   formatMoney,
   formatPct,
   formatSubjects,
   formatSubjectUnits,
   monthWindow,
+  recalculationSummary,
   weightedBonusFormula,
 } from '../lib/teacherEligibilityDisplay.js';
 import { humanizeApiErrorMessage } from '../lib/humanizeApiErrorMessage.js';
@@ -267,6 +272,7 @@ const isLocked = computed(() => lockState.value?.status === 'locked');
 const lockLabel = computed(() => (isLocked.value ? '已鎖定結算單' : '草稿結算單'));
 
 const filteredTeachers = computed(() => teachers.value.filter(teacher => !search.value || teacher.teacher_name.includes(search.value)));
+const recalculationNote = computed(() => recalculationSummary(teachers.value));
 const reviewCount = computed(() => filteredTeachers.value.filter(t => t.review_required).length);
 const qualifyingCount = computed(() => filteredTeachers.value.filter((teacher) => componentOptions.some((item) => {
   const component = teacher.components?.[item.key];
@@ -354,8 +360,21 @@ async function loadData() {
     policyVersion.value = data.policy_version || policyVersion.value;
     branchSubjectTotal.value = Number(data.branch_subject_total ?? 0);
     lockState.value = data.lock || { status: 'draft' };
+    if (data.lock?.status === 'locked') loadRecalculation(range);
   } catch (e) { error.value = humanizeApiErrorMessage(e?.message, '載入失敗'); }
   finally { loading.value = false; }
+}
+
+// A locked month keeps its numbers; this adds what today's rules give, next to each one. It is extra information:
+// the page is already usable, and a failure here leaves the locked figures as they are.
+async function loadRecalculation(range) {
+  const month = settlementMonth.value;
+  const branchId = props.branchId;
+  try {
+    const data = await fetchTeacherEligibility({ period: 'month', branchId, start: range.start, end: range.end, compare: true });
+    // Only if the page still shows the same locked month of the same campus.
+    if (month === settlementMonth.value && branchId === props.branchId && isLocked.value && data.lock?.status === 'locked') teachers.value = data.teachers || teachers.value;
+  } catch { /* the locked figures stay on screen */ }
 }
 
 function statusLabel(teacher) {
