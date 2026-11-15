@@ -1,6 +1,45 @@
 import { test, expect } from '@playwright/test';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+
+for (const width of [375, 1280]) {
+  test(`In-App549: paused empty lookup disappears after refresh, real bills remain @${width}`, async ({ page }, info) => {
+    let paused = false; let studentReads = 0;
+    const apiMethods = [];
+    await page.setViewportSize({ width, height: 900 });
+    await page.route('**/*', route => ['127.0.0.1', 'localhost'].includes(new URL(route.request().url()).hostname)
+      ? route.fallback() : route.abort());
+    page.on('request', request => { if (new URL(request.url()).pathname.startsWith('/api/v1/')) apiMethods.push(request.method()); });
+    await installMock(page);
+    await page.route('**/api/v1/students**', route => {
+      studentReads += 1;
+      expect(new URL(route.request().url()).searchParams.get('branch_id')).toBe('1');
+      return route.fulfill({ json: [
+        { id: 99, name: '合成學生暫停', status: paused ? 'paused' : 'active' },
+        { id: 100, name: '合成學生在學', status: 'active' },
+        { id: 101, name: '合成學生有欠款', status: 'paused' },
+      ] });
+    });
+    await page.route('**/api/v1/alerts/tuition**', route => route.fulfill({ json: [{
+      id: 9301, student_id: 101, student_name: '合成學生有欠款', subject: '數學',
+      schedule_mode: 'count', payment_status: 'unpaid', payable_status: 'invoiced',
+      payable_outstanding: 1000, remaining_sessions: 4,
+    }] }));
+    await page.goto('/tuition-collection-pilot-mount.html');
+    await page.getByTestId('bill-search').fill('合成學生');
+    await expect(page.getByTestId('bill-student-99')).toBeVisible();
+    await expect(page.getByTestId('bill-row-c9301')).toContainText('1,000');
+    paused = true;
+    await page.getByRole('button', { name: '重新整理', exact: true }).click();
+    await expect.poll(() => studentReads).toBe(2);
+    await expect(page.getByTestId('bill-student-100')).toBeVisible();
+    await expect(page.getByTestId('bill-student-99')).toHaveCount(0);
+    await expect(page.getByTestId('bill-row-c9301')).toContainText('1,000');
+    expect(apiMethods.every(method => method === 'GET')).toBe(true);
+    await expectNoOverflowAndReachableControls(page);
+    await page.screenshot({ path: info.outputPath(`paused-empty-${width}.png`), fullPage: true });
+  });
+}
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const outDir = process.env.TUITION_COLLECTION_SHOT_DIR
   || path.resolve(__dirname, '../../docs/design/evidence/tuition-collection-clarity');

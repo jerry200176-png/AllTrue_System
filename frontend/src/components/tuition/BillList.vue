@@ -300,7 +300,8 @@ const noRowStudents = computed(() => {
   const q = query.value.trim();
   if (!q) return [];
   const have = new Set(rows.value.map((b) => b.student_id));
-  return props.students.filter((st) => !have.has(Number(st.id)) && String(st.name || '').includes(q));
+  // #549: suppress only the empty search fallback; actual bill rows stay authoritative.
+  return props.students.filter((st) => st.status !== 'paused' && !have.has(Number(st.id)) && String(st.name || '').includes(q));
 });
 
 // Display only: a course period inside one year reads 11/01–11/30 (the year stays when the range crosses years).
