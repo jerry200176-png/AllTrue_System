@@ -79,6 +79,32 @@ class TeacherClassCalendar
         return $out;
     }
 
+    /**
+     * Of the given dates, those that still have a live schedule-only lesson (a makeup or substitute row whose
+     * slot has no called-off ClassSession). Company-wide; used to tell a real closure day from a day that
+     * only moved its lessons.
+     *
+     * @param  list<string>  $dates  Y-m-d
+     * @return list<string>
+     */
+    public static function datesWithLiveExceptionLessons(array $dates): array
+    {
+        if ($dates === []) {
+            return [];
+        }
+        $rowsByDate = DB::table('schedules')
+            ->whereNotNull('teacher_id')
+            ->whereIn('schedule_date', $dates)
+            ->where('status', 'scheduled')
+            ->whereNotIn('type', ['admin', 'unavailable'])
+            ->get(['schedule_date', 'start_time', 'student_course_id'])
+            ->groupBy(fn ($row) => substr((string) $row->schedule_date, 0, 10))
+            ->map(fn ($rows) => $rows->all())
+            ->all();
+
+        return array_keys(array_filter(app(StaleScheduleExceptionFilter::class)->rejectStaleBatch($rowsByDate)));
+    }
+
     private static function push(array &$out, $teacherId, $date, $start, $end, $campusId): void
     {
         $hhmm = self::hhmm($start);

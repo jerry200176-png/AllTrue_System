@@ -138,6 +138,12 @@ class TeacherEligibilityWeeklySegmentsTest extends TestCase
         $this->assertSame(1, $closed['metrics']['qualifying_weeks']);
         $this->assertSame(['2026-08-12'], $closed['metrics']['weeks'][1]['metrics']['closure_dates']);
         $this->assertSame([], $closed['metrics']['weeks'][2]['metrics']['closure_dates']);
+        // A lesson that still runs that day (a makeup that lives only in `schedules`) means the day was not a closure.
+        $makeupId = $this->schedule($teacher->id, '2026-08-12', '13:00', '15:00');
+        $open = $weekly('2026-08-01', '2026-08-31');
+        $this->assertSame(0, $open['metrics']['qualifying_weeks']);
+        $this->assertSame([], $open['metrics']['weeks'][1]['metrics']['closure_dates']);
+        DB::table('schedules')->where('id', $makeupId)->delete();
 
         // Fill the other three July weeks (4 days x 8h = 16 段 each): now every week is full.
         foreach (['2026-07-06', '2026-07-13', '2026-07-20'] as $monday) {

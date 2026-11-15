@@ -637,10 +637,13 @@ class TeacherEligibilityController extends Controller
         // ponytail: "every lesson that day was called off" is the only closure signal the product has; the floor keeps a
         // quiet day with a couple of student leaves from passing as one. A closure whose lessons were never created is
         // missed; if that happens, add an HQ-only closure calendar instead of trusting director-entered events.
-        return $this->campusClosedDatesFromSessionRows($rows->map(fn ($row) => [
+        $closed = $this->campusClosedDatesFromSessionRows($rows->map(fn ($row) => [
             'date' => substr((string) $row->event_date, 0, 10),
             'status' => $row->status,
         ])->all(), (int) config('teacher_salary.closure_min_sessions', 10));
+
+        // A makeup or substitute lesson can live in `schedules` with no ClassSession: a day that still has one is open.
+        return array_values(array_diff($closed, TeacherClassCalendar::datesWithLiveExceptionLessons($closed)));
     }
 
     private function isOpenTeachingSessionStatus(?string $status): bool
