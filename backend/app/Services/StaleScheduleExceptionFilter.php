@@ -31,13 +31,14 @@ class StaleScheduleExceptionFilter
      *
      * @param  iterable<int, object>  $rows  需含 student_course_id 與 start_time 欄位
      * @param  string  $ymd  Y-m-d
+     * @param  string[]  $liveStatuses  inactive statuses that still keep their own slot's row (payroll: a student's leave)
      * @return array<int, object> 保留的 rows（順序不變）
      */
-    public function rejectStale(iterable $rows, string $ymd, bool $lock = false): array
+    public function rejectStale(iterable $rows, string $ymd, bool $lock = false, array $liveStatuses = []): array
     {
         $rows = is_array($rows) ? $rows : iterator_to_array($rows, false);
 
-        return $this->rejectStaleBatch([$ymd => $rows], $lock)[$ymd] ?? [];
+        return $this->rejectStaleBatch([$ymd => $rows], $lock, $liveStatuses)[$ymd] ?? [];
     }
 
     /**
@@ -46,7 +47,7 @@ class StaleScheduleExceptionFilter
      * @param  array<string, array<int, object>>  $rowsByYmd  Y-m-d => rows (student_course_id, start_time)
      * @return array<string, array<int, object>> kept rows per date
      */
-    public function rejectStaleBatch(array $rowsByYmd, bool $lock = false): array
+    public function rejectStaleBatch(array $rowsByYmd, bool $lock = false, array $liveStatuses = []): array
     {
         $courseIds = [];
         foreach ($rowsByYmd as $rows) {
@@ -70,8 +71,9 @@ class StaleScheduleExceptionFilter
                 $courseId = (int) $session->StudentClassID;
                 $hhmm = $this->hhmm($session->StartTime);
                 $key = $session->ymd . '|' . $courseId . '|' . $hhmm;
-                $isActive = !in_array(strtolower(trim((string) $session->Status)), self::INACTIVE_STATUSES, true);
-                $keyState[$key] = ($keyState[$key] ?? false) || $isActive;
+                $status = strtolower(trim((string) $session->Status));
+                $isActive = !in_array($status, self::INACTIVE_STATUSES, true);
+                $keyState[$key] = ($keyState[$key] ?? false) || $isActive || in_array($status, $liveStatuses, true);
                 if ($isActive) {
                     $activeStarts[$session->ymd . '|' . $courseId][$hhmm] = true;
                 }

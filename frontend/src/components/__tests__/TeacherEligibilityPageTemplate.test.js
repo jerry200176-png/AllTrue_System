@@ -21,7 +21,7 @@ const teacher = (over = {}) => ({
     total_payout: 36000, payout_is_draft: false, adjustments: [{ label: '行政加給', amount: 500 }],
     multiplier_parts: [{ key: 'base', label: '基本', pct: 100 }],
   },
-  components: { weekly_16_segments: { status: 'qualifies', metrics: { regular_segments: 18, trial_segments: 2, total_segments: 20, meets_16_segments: true, course_sessions: [] } } },
+  components: { weekly_16_segments: { status: 'qualifies', metrics: { total_segments: 20, meets_16_segments: true, week_count: 1, qualifying_weeks: 1, weeks: [{ metrics: { week_start: '2026-08-03', week_end: '2026-08-09', total_segments: 20, meets_16_segments: true } }] } } },
   ...over,
 });
 const payload = (over = {}) => ({
