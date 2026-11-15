@@ -1921,6 +1921,59 @@ class BugReportApiTest extends TestCase
         );
     }
 
+    public static function selfFiledLoggedKinds(): array
+    {
+        return ['suggestion receipt' => ['suggestion', false], 'UX receipt' => ['ux_friction', false],
+            'suggestion shipped' => ['suggestion', true], 'UX shipped' => ['ux_friction', true]];
+    }
+
+    /** @dataProvider selfFiledLoggedKinds */
+    public function test_self_super_admin_public_reply_reopens_only_its_logged_suggestion(string $kind, bool $shipped): void
+    {
+        [$token, $admin] = $this->createUserToken([1], 'self-logged@test.com', 'S');
+        $bug = BugReport::create(['CampusID' => 1, 'reporter_user_id' => $admin->id, 'title' => 'Synthetic suggestion',
+            'description' => 'Synthetic description', 'severity' => 'low', 'status' => 'new']);
+        self::assertTrue(BugReportService::closeAsLogged($bug->id, $admin->id, $kind, 'https://github.com/jerry200176-png/AllTrue_System/issues/77', '已記錄。')['ok']);
+        if ($shipped) {
+            self::assertTrue(BugReportService::notifyLoggedSuggestionShipped($bug->id, $admin->id,
+                'https://github.com/jerry200176-png/AllTrue_System/issues/77', str_repeat('d', 40), '4242', '已上線。')['ok']);
+            self::assertTrue(BugReportService::getDetail($bug->id)['product_loop']['shipped']);
+        }
+        $this->withHeaders(['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])
+            ->postJson("/api/v1/bugs/{$bug->id}/comments", ['body' => '補充：還有另一個使用情況。'])->assertCreated();
+        self::assertSame('triaged', $bug->fresh()->status);
+        self::assertSame('reopened_by_reporter_reply', BugReportStatusLog::query()->where('bug_report_id', $bug->id)->latest('id')->value('note'));
+        self::assertFalse(BugReportService::getDetail($bug->id)['product_loop']['shipped']);
+        if ($shipped) self::assertSame(1, \App\Models\BugReportEvidence::query()->where('bug_report_id', $bug->id)->count());
+    }
+
+    public static function selfAdminCommentBoundaries(): array
+    {
+        return ['private note' => ['suggestion', true, false], 'other admin' => ['ux_friction', false, true],
+            'duplicate' => ['duplicate', false, false], 'not planned' => ['not_planned', false, false],
+            'ordinary legacy close' => ['legacy', false, false], 'legacy without close log' => ['unlogged', false, false],
+            'resolved verification timeout' => ['timeout', false, false]];
+    }
+
+    /** @dataProvider selfAdminCommentBoundaries */
+    public function test_self_super_admin_comment_keeps_other_closed_paths_unchanged(string $kind, bool $internal, bool $other): void
+    {
+        [$token, $admin] = $this->createUserToken([1], 'self-boundary@test.com', 'S');
+        $bug = BugReport::create(['CampusID' => 1, 'reporter_user_id' => $admin->id, 'title' => 'Synthetic report',
+            'description' => 'Synthetic description', 'severity' => 'low', 'status' => 'new']);
+        if (in_array($kind, ['legacy', 'timeout', 'unlogged'], true)) {
+            $bug->update(['status' => 'closed']);
+            if ($kind !== 'unlogged') BugReportStatusLog::create(['bug_report_id' => $bug->id, 'from_status' => 'resolved', 'to_status' => 'closed',
+                'changed_by' => $admin->id, 'note' => $kind === 'timeout' ? 'closed_by_timeout Evidence Contract' : 'manual closure', 'created_at' => now()]);
+        } else self::assertTrue(BugReportService::closeAsLogged($bug->id, $admin->id, $kind, 'https://github.com/jerry200176-png/AllTrue_System/issues/77', '已記錄。')['ok']);
+        if ($other) [$token] = $this->createUserToken([1], 'other-staff@test.com', 'S');
+        $before = BugReportComment::query()->where('bug_report_id', $bug->id)->count();
+        $this->withHeaders(['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])
+            ->postJson("/api/v1/bugs/{$bug->id}/comments", ['body' => '工作人員補充。', 'is_internal_note' => $internal])->assertCreated();
+        self::assertSame('closed', $bug->fresh()->status);
+        self::assertSame($before + 1, BugReportComment::query()->where('bug_report_id', $bug->id)->count());
+    }
+
     private function bothOutcomesReply(): string
     {
         $buttons = array_map(

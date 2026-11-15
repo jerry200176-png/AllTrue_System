@@ -56,7 +56,7 @@ final class InappReportResolveAfterDeployStrategy
         if ((int) $bug->getAttribute('CampusID') !== $p['campus_id']) $errors[] = 'report_outside_campus';
         if (!in_array($status, self::FROM, true) && $logged === null) $errors[] = 'status_not_resolvable';
         if ($logged !== null) {
-            array_push($errors, ...$this->loggedBlockers($bug, $logged, InappStandingPolicy::plannedAttributionUserId($context)));
+            array_push($errors, ...$this->loggedBlockers($bug, $logged, InappStandingPolicy::plannedAttributionUserId($context), $url));
         } elseif (!in_array(BugReportService::latestDispositionWithKind($bugId)['kind'] ?? null, [null, 'bug'], true)) {
             $errors[] = 'non_bug_requires_review';
         }
@@ -109,7 +109,7 @@ final class InappReportResolveAfterDeployStrategy
                 }
                 if (!in_array($plan['deployed_sha'] ?? null, $this->evidence->deployedShas(), true)) throw new RuntimeException('inapp_resolve_deployment_changed');
                 if ($logged !== null) {
-                    $errors = $this->loggedBlockers($bug, $logged, $actor);
+                    $errors = $this->loggedBlockers($bug, $logged, $actor, $p['github_issue_url']);
                     if ($errors !== []) throw new RuntimeException('inapp_resolve_' . $errors[0]);
                     $result = BugReportService::notifyLoggedSuggestionShipped($bugId, $actor, $p['github_issue_url'], $plan['deployed_sha'], $p['deploy_run_id'], $p['public_reply']);
                     if ($result['ok'] !== true || ($result['action'] ?? null) !== 'notified') throw new RuntimeException('inapp_resolve_logged_ship_rejected');
@@ -198,9 +198,9 @@ final class InappReportResolveAfterDeployStrategy
         return $id > 0 ? ['id' => $id, 'kind' => $linked['kind']] : null;
     }
 
-    private function loggedBlockers(BugReport $bug, array $logged, ?int $author): array
+    private function loggedBlockers(BugReport $bug, array $logged, ?int $author, string $issueUrl): array
     {
-        $errors = InappReportReplyGuard::loggedReportViolations($bug, $author);
+        $errors = InappReportReplyGuard::loggedReportViolations($bug, $author, $logged, $issueUrl);
         $prefix = 'logged_ship:' . $logged['id'] . ':';
         // The underscore is literal namespace text, not SQL LIKE's single-character wildcard.
         if (BugReportEvidence::query()->where('bug_report_id', $bug->getKey())->pluck('source_ref')

@@ -1,0 +1,13 @@
+updates:
+  - id: staff-2026-11-15-logged-report-self-attribution
+    published_at: "2026-11-15"
+    audiences:
+      - super_admin
+    importance: digest
+    title: 自己的建議也能持續追蹤
+    summary: 已記錄的建議或體驗改善，想再補充時直接回覆，就會重新開啟追蹤。
+    items:
+      - category: fixed
+        text: 自己提出的建議也能收到收件與上線通知，收到通知後仍可直接回覆補充。
+    source_refs:
+      - "changelog:2026-11-15:logged-report-self-attribution"

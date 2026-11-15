@@ -4,6 +4,7 @@ namespace App\Operations\Strategies;
 
 use App\Models\BugReport;
 use App\Models\BugReportComment;
+use App\Models\BugReportStatusLog;
 use App\Operations\Inapp\InappReportReplyGuard;
 use App\Operations\Inapp\InappReportResolveEvidence;
 use App\Operations\Inapp\InappStandingPolicy;
@@ -85,10 +86,11 @@ final class InappReportTriageStrategy
         $bugId = (int) $p['bug_id'];
         $kind = $this->disposition($p);
         $commentId = null;
+        $closeId = null;
         try {
             if ($kind === null || $kind !== ($plan['disposition'] ?? null)) throw new RuntimeException('inapp_triage_disposition_changed');
             $actor = InappStandingPolicy::attributionUserId($request);
-            DB::transaction(function () use ($p, $kind, $bugId, $actor, $context, &$commentId): void {
+            DB::transaction(function () use ($p, $kind, $bugId, $actor, $context, &$commentId, &$closeId): void {
                 $bug = BugReport::query()->whereKey($bugId)->lockForUpdate()->first();
                 InappStandingPolicy::assertKillSwitchesOpen((string) $context['operation_id']);
                 if (!$bug || (int) $bug->getAttribute('CampusID') !== (int) $p['campus_id']) throw new RuntimeException('inapp_triage_report_outside_campus');
@@ -105,6 +107,7 @@ final class InappReportTriageStrategy
                     $result = BugReportService::closeAsLogged($bugId, $actor, $kind, $p['github_issue_url'], $p['public_reply']);
                     if ($result['ok'] !== true || ($result['action'] ?? null) !== 'closed') throw new RuntimeException('inapp_triage_logged_close_rejected');
                     $commentId = BugReportComment::query()->where('bug_report_id', $bugId)->where('is_internal_note', false)->max('id');
+                    $closeId = BugReportStatusLog::query()->where('bug_report_id', $bugId)->where('to_status', 'closed')->max('id');
 
                     return;
                 }
@@ -123,8 +126,11 @@ final class InappReportTriageStrategy
             return ['ok' => false, 'errors' => [str_starts_with($code, 'inapp_') ? $code : 'inapp_triage_failed'], 'bug_id' => $bugId];
         }
 
-        return ['ok' => true, 'bug_id' => $bugId, 'from_status' => self::FROM, 'status' => $plan['target_status'],
+        $receipt = ['ok' => true, 'bug_id' => $bugId, 'from_status' => self::FROM, 'status' => $plan['target_status'],
             'disposition' => $kind, 'comment_id' => (int) $commentId, 'author_id' => $actor, 'github_issue' => $plan['github_issue'] ?? null];
+        if ($kind !== self::DISPOSITION) $receipt += ['reply_sha256' => hash('sha256', (string) $p['public_reply']), 'logged_close_id' => (int) $closeId];
+
+        return $receipt;
     }
 
     public function verify(array $plan, array $result): array
