@@ -6,7 +6,7 @@ updates:
       - super_admin
     importance: major
     title: 月結帳單跟著單價與堂數
-    summary: 期間寫到下個月 1 號的月結帳單，沒收款前應收會照已上堂數和現在的單價計算。
+    summary: 期間寫到次月一日的月結帳單，沒收款前應收會照已上堂數和現在的單價計算。
     items:
       - category: fixed
         text: 期間像 11/01–12/01 的月結帳單，改過單價後不再停在開單當時的金額。
