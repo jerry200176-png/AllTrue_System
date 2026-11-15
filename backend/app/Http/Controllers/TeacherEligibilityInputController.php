@@ -420,6 +420,11 @@ class TeacherEligibilityInputController extends Controller
         if ($record->director_confirmed_at || in_array($record->status ?? '', ['approved', 'withdrawn'], true)) {
             return response()->json(['message' => '已進入審核的行政加給不能修改。'], 422);
         }
+        // An edit can change a rate adjustment's value or turn it into another kind of row; on yourself that is the
+        // same as withdrawing it, so the same guard applies (judged on the row as stored, not on the new input).
+        if (isset(\App\Services\TeacherEligibilityPolicy::RATE_ADJUSTMENT_KEYS[$record->role_key ?? '']) && ($blocked = $this->rejectSelfApproval($request, $record->teacher_id ?? null))) {
+            return $blocked;
+        }
         $data = $this->validatedAllowance($request);
         if ($data instanceof \Illuminate\Http\JsonResponse) {
             return $data;

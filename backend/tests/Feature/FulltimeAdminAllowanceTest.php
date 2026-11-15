@@ -108,7 +108,11 @@ class FulltimeAdminAllowanceTest extends TestCase
             'status' => 'pending', 'starts_on' => '2026-08-01', 'ends_on' => '2026-08-31', 'created_at' => now(), 'updated_at' => now(),
         ]);
         $withdraw($director, $ownId)->assertStatus(422)->assertJsonPath('code', 'self_approval_forbidden');
-        $this->assertDatabaseHas('teacher_payroll_admin_allowances', ['id' => $ownId, 'status' => 'pending']);
+        // ...nor edits it into an ordinary allowance first to get around that.
+        $this->withHeaders($this->auth($director['token']))
+            ->putJson("/api/v1/finance/teacher-eligibility/admin-allowances/{$ownId}", ['role_key' => 'admin_assist', 'rate' => 1] + $valid)
+            ->assertStatus(422)->assertJsonPath('code', 'self_approval_forbidden');
+        $this->assertDatabaseHas('teacher_payroll_admin_allowances', ['id' => $ownId, 'status' => 'pending', 'role_key' => 'holiday_16h']);
 
         // An ordinary admin allowance keeps its rule: no withdrawal once confirmed.
         $roleId = (int) $post(['role_key' => 'head_tutor', 'ends_on' => null])->assertCreated()->json('id');
