@@ -586,6 +586,9 @@ class AlertController extends Controller
             'subject'            => $this->subjectLabel($c, $subjectNameMap),
             'schedule_mode'      => 'count',
             'remaining_sessions' => $remaining,
+            // in-app #554: the exact balance behind the rounded count above (30 minutes left of a 120-minute lesson
+            // reads as 0 lessons). Display only: the list uses it to tell a finished course from a nearly finished one.
+            'remaining_minutes'  => $c->RemainingMinutes === null ? null : max(0, (int) $c->RemainingMinutes),
             'sessions_purchased' => (int) ($c->SessionCount ?? 0),
             'paid'               => $isPaid,
             'alert_type'         => $isUnpaid ? 'unpaid' : 'low_sessions',

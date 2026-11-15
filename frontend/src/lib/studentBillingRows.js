@@ -86,7 +86,8 @@ export function buildStudentBillingRows(alertRows, students = [], today = ymdInT
     // Facts the old queue table showed beside the row and the list must not lose (director-facing, no dates are shifted).
     const money = (v) => 'NT$ ' + Number(v || 0).toLocaleString('zh-TW');
     const who = r.subject ? `${r.subject}：` : '';
-    if (r.newer_course_overlap) row.notes.push(`${who}${formatNewerCourseOverlapWarning(r).primary}`);
+    const overlap = formatNewerCourseOverlapWarning(r);
+    if (overlap.show) row.notes.push(`${who}${overlap.primary}`);
     if (r.invoice_amount_discrepancy) row.notes.push(`${who}依實際 ${r.invoice_period_sessions} 堂計算（原始帳單 ${money(r.invoice_stored_amount)}；實際計算 ${money(r.invoice_computed_amount)}）`);
     if (r.id != null) {
       row.contracts.push({
