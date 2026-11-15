@@ -26,7 +26,8 @@ class TriageFulltimePayrollController extends Controller
             'branch_id' => ['required', 'integer', 'min:1'],
         ]);
         $start = Carbon::parse($data['month'] . '-01', 'Asia/Taipei');
-        $inner = Request::create('/', 'GET', [
+        // An in-memory GET request carrying only these query values; nothing of the caller's request is passed on.
+        $inner = new Request([
             'period' => 'month',
             'start' => $start->toDateString(),
             'end' => $start->copy()->endOfMonth()->toDateString(),
