@@ -60,7 +60,7 @@ describe('ContractCard collapsed line', () => {
   });
 
   it('in-app #552: a 堂數制 title shows when the lessons really run, a monthly one keeps its contract dates', async () => {
-    const lessons = (mode, extra = {}) => ({ ...SESSIONS, schedule_mode: mode, ...extra, sessions: [
+    const lessons = (mode, extra = {}) => ({ ...SESSIONS, subject: '化學', schedule_mode: mode, ...extra, sessions: [
       { class_session_id: 1, date: '2026-08-13', start_time: '17:00', status: 'attended', payment: 'paid' },
       { class_session_id: 2, date: '2026-09-03', start_time: '17:00', status: 'leave', payment: 'paid' },
       { class_session_id: 3, date: '2026-10-06', start_time: '17:00', status: 'attended', payment: 'paid' },
