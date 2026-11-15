@@ -17,7 +17,12 @@ async function request(path, options = {}) {
     },
   });
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data?.message || '薪資要件資料操作失敗');
+  if (!res.ok) {
+    const error = new Error(data?.message || '薪資要件資料操作失敗');
+    error.status = res.status;
+    error.code = data?.code;
+    throw error;
+  }
   return data;
 }
 

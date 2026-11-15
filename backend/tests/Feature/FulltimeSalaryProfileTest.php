@@ -24,6 +24,49 @@ class FulltimeSalaryProfileTest extends TestCase
 {
     use RefreshDatabase;
 
+    public function test_pending_salary_retains_explicit_campus_scope_for_hq_confirmation(): void
+    {
+        $teacherId = $this->createTeacher(1, 'isolated-545-scope@test.com');
+        $id = DB::table('fulltime_salary_profiles')->insertGetId([
+            'teacher_id' => $teacherId, 'branch_id' => 1, 'base_salary' => 0,
+            'effective_from' => '2026-11-01', 'status' => 'pending', 'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $controller = new TeacherEligibilityController(new TeacherEligibilityPolicy(require __DIR__ . '/../../config/teacher_salary.php'));
+        $method = new ReflectionMethod($controller, 'pendingSalaryByTeacher');
+        $result = $method->invoke($controller, [$teacherId], [1]);
+        $this->assertSame(1, $result[$teacherId]['branch_id']);
+        $this->assertSame(0.0, $result[$teacherId]['base_salary']);
+        DB::table('fulltime_salary_profiles')->where('id', $id)->update(['branch_id' => null]);
+        $result = $method->invoke($controller, [$teacherId], null);
+        $this->assertArrayHasKey('branch_id', $result[$teacherId]);
+        $this->assertNull($result[$teacherId]['branch_id']);
+    }
+
+    public function test_explicit_zero_correction_preserves_old_profile_and_only_changes_payroll_after_hq_approval(): void
+    {
+        $director = $this->createDirector(1, 'isolated-545-director@test.com');
+        $hq = $this->createSuperAdmin('isolated-545-hq@test.com');
+        $teacherId = $this->createTeacher(1, 'isolated-545-teacher@test.com');
+        $oldId = DB::table('fulltime_salary_profiles')->insertGetId([
+            'teacher_id' => $teacherId, 'branch_id' => 1, 'base_salary' => 33000,
+            'effective_from' => '2026-10-01', 'status' => 'approved', 'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $old = (array) DB::table('fulltime_salary_profiles')->find($oldId);
+        $r = $this->withToken($director['token'])->postJson('/api/v1/finance/teacher-eligibility/salary-profiles', [
+            'teacher_id' => $teacherId, 'branch_id' => 1, 'base_salary' => 0, 'effective_from' => '2026-11-01',
+        ])->assertCreated()->assertJsonPath('status', 'pending');
+        $controller = new TeacherEligibilityController(new TeacherEligibilityPolicy(require __DIR__ . '/../../config/teacher_salary.php'));
+        $method = new ReflectionMethod($controller, 'salaryProfilesByTeacher');
+        $this->assertSame(33000.0, $method->invoke($controller, [$teacherId], [1], '2026-11-30')[$teacherId]);
+        $this->withToken($hq['token'])->postJson('/api/v1/finance/teacher-eligibility/salary-profiles/'.$r->json('id').'/approve')
+            ->assertOk()->assertJsonPath('status', 'approved');
+        $this->assertSame(0.0, $method->invoke($controller, [$teacherId], [1], '2026-11-30')[$teacherId]);
+        // Existing reader is per teacher: branch_id records intake context, not isolated base-pay calculation.
+        $this->assertSame(0.0, $method->invoke($controller, [$teacherId], [2], '2026-11-30')[$teacherId]);
+        $this->assertSame($old, (array) DB::table('fulltime_salary_profiles')->find($oldId));
+        $this->assertDatabaseCount('fulltime_salary_profiles', 2);
+    }
+
     public function test_super_admin_can_set_salary_profile_without_branch_id(): void
     {
         $admin = $this->createSuperAdmin('fs-super@test.com');

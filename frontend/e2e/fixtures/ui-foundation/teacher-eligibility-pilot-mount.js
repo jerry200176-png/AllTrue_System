@@ -11,6 +11,7 @@ const [{ createApp, h }, styles, uiStyles, module] = await Promise.all([
 void styles;
 void uiStyles;
 const PageComponent = module.default;
+const { default: AtToast } = await import('../../../src/components/AtToast.vue');
 const teacher = {
   teacher_id: 701,
   teacher_name: '王老師',
@@ -47,7 +48,7 @@ const payload = {
 createApp({
   name: 'TeacherEligibilityPilotMount',
   setup() {
-    return () => h(PageComponent, { branchId: 1, userRole: 'director' });
+    return () => h('main', [h(PageComponent, { branchId: 1, userRole: new URLSearchParams(location.search).get('role') === 'super_admin' ? 'super_admin' : 'director' }), h(AtToast)]);
   },
 }).mount('#app');
 

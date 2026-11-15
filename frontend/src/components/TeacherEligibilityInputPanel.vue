@@ -4,7 +4,7 @@
       <div>
         <div class="eyebrow"><span class="material-symbols-outlined">fact_check</span>資料補登與審核</div>
         <h3>把系統無法自動得知的薪資要件補進來</h3>
-        <p>全校放假與請假以課程管理為準，不必再登一次。這裡只補升學成果、績優與扣除案件。已送出或已核准的都可以退回。</p>
+        <p>全校放假與請假以課程管理為準，不必再登一次。這裡補登成果、績優、扣除與加扣款；既有本薪可在下方更正，各項沿用原核准與退回規則。</p>
       </div>
       <button class="btn-outline small" type="button" :disabled="loading" @click="loadInputs">
         <span class="material-symbols-outlined">sync</span>更新待辦
@@ -246,12 +246,14 @@
         </div>
       </div>
     </div>
+    <TeacherSalaryProfilePanel :teachers="teachers" :branch-id="branchId" :start="start" :user-role="userRole" @changed="$emit('changed')" />
     <p v-if="message" class="panel-message" role="status">{{ message }}</p>
   </section>
 </template>
 
 <script setup>
 import { ymdInTaipei } from '@/lib/sessionDates.js';
+import TeacherSalaryProfilePanel from './TeacherSalaryProfilePanel.vue';
 import { computed, onMounted, reactive, ref, watch } from 'vue';
 import {
   approveTeacherEligibilityAdminAllowance,
