@@ -39,31 +39,22 @@ class TeacherEligibilityPolicyTest extends TestCase
         $this->assertSame(['weekly_segments'], $result['missing_fields']);
     }
 
-    public function test_holiday_leave_can_offset_short_regular_hours_to_keep_ten_percent(): void
+    /** HQ 115.07: 假日未滿 16 小時者，假日倍率調整為 0%. Every judged week needs 16 hours across Saturday and Sunday. */
+    public function test_holiday_rate_needs_sixteen_weekend_hours_in_every_judged_week(): void
     {
-        $pass = $this->policy->holiday16([
-            ['date' => '2026-08-01', 'regular_scheduled_hours' => 8, 'worked_hours' => 8, 'holiday_leave_hours' => 8],
-            ['date' => '2026-08-02', 'regular_scheduled_hours' => 16, 'worked_hours' => 16, 'holiday_leave_hours' => 0],
-        ]);
-        $fail = $this->policy->holiday16([
-            ['date' => '2026-08-01', 'regular_scheduled_hours' => 8, 'worked_hours' => 8, 'holiday_leave_hours' => 4],
-            ['date' => '2026-08-02', 'regular_scheduled_hours' => 16, 'worked_hours' => 16, 'holiday_leave_hours' => 0],
-        ]);
-
+        $pass = $this->policy->holiday16([16, 18.5, 16, 20]);
+        $this->assertSame(TeacherEligibilityPolicy::QUALIFIES, $pass['status']);
         $this->assertSame(10.0, $pass['rate']);
-        $this->assertSame(0, $fail['rate']);
+
+        $fail = $this->policy->holiday16([16, 15.5, 16, 20]);
         $this->assertSame(TeacherEligibilityPolicy::NOT_QUALIFIES, $fail['status']);
-        $this->assertSame('offsets_toward_required_hours', $pass['metrics']['holiday_leave_effect']);
-    }
+        $this->assertSame(0, $fail['rate']);
 
-    public function test_holiday_multiplier_requires_regular_schedule_baseline(): void
-    {
-        $result = $this->policy->holiday16([
-            ['date' => '2026-08-01', 'worked_hours' => 16, 'holiday_leave_hours' => 0],
-        ]);
-
-        $this->assertSame(TeacherEligibilityPolicy::REVIEW, $result['status']);
-        $this->assertContains('holiday_days.0.regular_scheduled_hours', $result['missing_fields']);
+        // Closure weeks are waived: the other weeks decide; a period made only of closure weeks counts as met.
+        $this->assertSame(10.0, $this->policy->holiday16([16, 16], 2)['rate']);
+        $this->assertSame(0, $this->policy->holiday16([12], 3)['rate']);
+        $this->assertSame(10.0, $this->policy->holiday16([], 1)['rate']);
+        $this->assertSame(0, $this->policy->holiday16([])['rate']);
     }
 
     /** HQ 115.07: 週一至週五 18:00 前可接 5 段課 → 0–5%. The HQ sheet shows averaged values such as 1.5 and 2.25. */
@@ -258,14 +249,6 @@ class TeacherEligibilityPolicyTest extends TestCase
         $this->assertEquals(450, $result['metrics']['one_to_three_bonus']);
         $this->assertEquals(5.625, $result['metrics']['subject_count']);
         $this->assertEquals(4.5, $result['metrics']['one_to_three_count']);
-    }
-
-    public function test_missing_holiday_calendar_is_review_instead_of_no_holiday_zero(): void
-    {
-        $result = $this->policy->holiday16(null);
-
-        $this->assertSame(TeacherEligibilityPolicy::REVIEW, $result['status']);
-        $this->assertContains('holiday_calendar', $result['missing_fields']);
     }
 
     public function test_pending_admin_allowance_is_review(): void

@@ -27,7 +27,7 @@
             <strong>{{ formTitle }}</strong>
           </div>
           <select v-model="formType" aria-label="資料類型">
-            <option value="event">假日／公休／請假</option>
+            <!-- No new 假日／公休／請假 entries: both rates are computed from the timetable now. Old rows still list below. -->
             <option value="achievement">升學成果／年度績優</option>
             <option value="deduction">扣除案件</option>
             <option value="allowance">行政加給</option>

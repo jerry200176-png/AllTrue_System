@@ -78,6 +78,9 @@ class TeacherEligibilityWeeklySegmentsTest extends TestCase
         // is past the cutoff) = 8.92 段, capped at 5%.
         $response->assertJsonPath('teachers.0.weekly.0.metrics.weekday_early_segments', 8.92);
         $response->assertJsonPath('teachers.0.components.weekday_afternoon.rate', 5);
+        // 假日16小時倍率: Sat 600 + Sun 130 minutes is under 16 hours, so 0%.
+        $response->assertJsonPath('teachers.0.weekly.0.metrics.weekend_hours', 12.17);
+        $response->assertJsonPath('teachers.0.components.holiday_16_hours.rate', 0);
         // Bonus total, no base salary: 1500 cash + 4000 (the only week in view is full) + 200 一對三獎金 x 105%.
         $response->assertJsonPath('teachers.0.settlement.calculated_payout', 5710);
         $response->assertJsonPath('teachers.0.settlement.calculation_status', 'calculated');
@@ -160,6 +163,26 @@ class TeacherEligibilityWeeklySegmentsTest extends TestCase
         $full = $weekly('2026-07-01', '2026-07-31');
         $this->assertSame(4, $full['metrics']['qualifying_weeks']);
         $this->assertSame(4000, $full['amount']);
+    }
+
+    /** 假日16小時倍率: every judged week needs 16 scheduled hours across Saturday and Sunday. */
+    public function test_holiday_rate_follows_weekend_hours_on_the_calendar(): void
+    {
+        $director = $this->createDirector();
+        $teacher = $this->createTeacher();
+        $this->createAttendedSession($teacher->id, 'one_on_one', '2026-08-08', '09:00', 480);
+        $sunday = $this->createAttendedSession($teacher->id, 'one_on_one', '2026-08-09', '09:00', 480);
+        $holiday = fn () => $this->withHeaders($this->auth($director['token']))
+            ->getJson('/api/v1/finance/teacher-eligibility?period=week&start=2026-08-03&end=2026-08-09&branch_id=1')
+            ->assertOk()->json('teachers.0.components.holiday_16_hours');
+
+        $this->assertEquals(10, $holiday()['rate']);
+        $this->assertEquals([16], $holiday()['metrics']['weekly_weekend_hours']);
+
+        // A cancelled Sunday lesson leaves eight hours: the rate drops to 0.
+        DB::table('ClassSession')->where('id', $sunday->id)->update(['Status' => 'cancelled']);
+        $this->assertEquals(0, $holiday()['rate']);
+        $this->assertSame('not_qualifies', $holiday()['status']);
     }
 
     /** A student's leave on a substituted lesson keeps the substitute's hours in the payroll view only. */
