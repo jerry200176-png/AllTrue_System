@@ -382,7 +382,7 @@ test.describe('production acceptance — payment display (#4150)', () => {
         row = page.locator(`[data-testid="student-row"][data-student-id="${studentId}"]`);
       }
       if (!(await appears(row))) { counts.students_not_listed += 1; continue; }
-      if ((await row.getAttribute('aria-expanded')) !== 'true') await row.locator('[data-testid="student-course-disclosure"]').click();
+      if ((await row.getAttribute('data-expanded')) !== 'true') await row.locator('[data-testid="student-course-disclosure"]').click();
       const cards = page.locator(`#student-course-detail-${studentId} article.student-course-card[data-course-id]`);
       await cards.first().waitFor({ state: 'visible', timeout: 10_000 }).catch(() => {});
       for (const card of await cards.all()) {
@@ -395,7 +395,7 @@ test.describe('production acceptance — payment display (#4150)', () => {
         const problem = badgeViolation(server, text);
         if (problem) violations.push({ course_id: courseId, problem });
       }
-      if ((await row.getAttribute('aria-expanded')) === 'true') await row.locator('[data-testid="student-course-disclosure"]').click();
+      if ((await row.getAttribute('data-expanded')) === 'true') await row.locator('[data-testid="student-course-disclosure"]').click();
     }
     counts.blocked_post_reads = await guard.blockedPostReads();
     coverage(counts);

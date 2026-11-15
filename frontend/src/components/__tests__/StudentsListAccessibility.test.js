@@ -38,7 +38,7 @@ describe('StudentsList row disclosure accessibility', () => {
   it('makes the student row keyboard-operable with an explicit detail relationship', () => {
     expect(source).toContain('data-testid="student-row"');
     expect(source).toContain('tabindex="0"');
-    expect(source).toContain(':aria-expanded="expandedId === student.id"');
+    expect(source).toContain(':data-expanded="expandedId === student.id"');
     expect(source).toContain(':aria-controls="`student-course-detail-${student.id}`"');
     expect(source).toContain('@keydown.enter.prevent="toggleExpand(student, $event)"');
     expect(source).toContain('@keydown.space.prevent="toggleExpand(student, $event)"');
