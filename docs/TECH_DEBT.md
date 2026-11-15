@@ -896,7 +896,8 @@
 
 | 欄位 | 內容 |
 |---|---|
-| 狀態 | 修補驗證中；詳細證據與發布／驗收追蹤 [#5334](https://github.com/jerry200176-png/AllTrue_System/issues/5334)。本項原誤用已有的 TD-088，現更正為 TD-089；既有載入量測項不變。 |
+| 狀態 | Done；[#5343](https://github.com/jerry200176-png/AllTrue_System/pull/5343) 已上線並完成受影響正式路徑驗證，[#5334 結案證據](https://github.com/jerry200176-png/AllTrue_System/issues/5334#issuecomment-6894263161)。本項原誤用已有的 TD-088，現更正為 TD-089；既有載入量測項不變。 |
+| 完工驗證 | 2026-11-15，正式 `3658709dd0b2a68c816ab83b03eb6b9ea50718c0` [部署成功](https://github.com/jerry200176-png/AllTrue_System/actions/runs/43709147531/job/132801537785)。授權主任有資料清單在 375／1280px 的收合／展開共四次 axe 掃描，頁面範圍內 serious／critical 為 0；Enter／Space、實際按鈕狀態與控制目標正常。既有唯讀 guard 及其四筆阻擋診斷保留，不代表全站或人工螢幕閱讀器驗收。 |
 | 發現日期 | 2026-11-15，in-app #547 配色驗證期間 |
 | 影響模組 | `StudentsList.vue`、`StudentsListRows.test.js`、UI foundation axe 測試 |
 | 描述 | 既有一般 table 的資料列使用只適用於 treegrid row 的 `aria-expanded`。有資料的合成清單在手機、桌面各有 8 個 `aria-conditional-attr` serious；空清單 axe 基準未涵蓋。本次配色未新增或修改這些屬性。 |
