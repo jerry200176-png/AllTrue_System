@@ -173,4 +173,32 @@ class FulltimeSettlementComposerTest extends TestCase
         $this->assertNotNull($part);
         $this->assertSame(8.0, $part['pct']);
     }
+
+    /** 新進保底: the weighted bonus is at least the guarantee; a higher bonus is left alone; a pending rate holds it back. */
+    public function test_new_hire_guarantee_is_a_floor_for_the_weighted_bonus(): void
+    {
+        $compose = fn (int $subjectBonus, array $extra = []) => FulltimeSettlementComposer::compose($extra + [
+            'subject_count_bonus' => ['status' => 'qualifies', 'amount' => 0, 'rate' => 0, 'metrics' => ['subject_count' => 10, 'subject_count_bonus' => $subjectBonus, 'one_to_three_bonus' => 200]],
+            'weekly_16_segments' => ['status' => 'qualifies', 'amount' => 4000, 'rate' => 0],
+            'new_hire_guarantee' => ['status' => 'qualifies', 'amount' => 2000.0, 'rate' => 0],
+        ], ['payroll_total' => 10]);
+
+        $low = $compose(1000);
+        $this->assertTrue($low['new_hire_guarantee_applied']);
+        $this->assertSame(1200.0, $low['weighted_bonus_before_guarantee']);
+        $this->assertSame(2000.0, $low['weighted_bonus_amount']);
+        $this->assertSame(6000.0, $low['total_payout']);
+
+        $high = $compose(3000);
+        $this->assertFalse($high['new_hire_guarantee_applied']);
+        $this->assertSame(3200.0, $high['weighted_bonus_amount']);
+
+        $pending = $compose(1000, ['holiday_16_hours' => ['status' => 'review', 'amount' => 0, 'rate' => 0]]);
+        $this->assertFalse($pending['new_hire_guarantee_applied']);
+        $this->assertSame(1200.0, $pending['weighted_bonus_amount']);
+
+        $none = FulltimeSettlementComposer::compose(['subject_count_bonus' => ['status' => 'qualifies', 'amount' => 0, 'rate' => 0, 'metrics' => ['subject_count' => 10, 'subject_count_bonus' => 1000, 'one_to_three_bonus' => 0]]], ['payroll_total' => 10]);
+        $this->assertFalse($none['new_hire_guarantee_applied']);
+        $this->assertSame(1000.0, $none['weighted_bonus_amount']);
+    }
 }

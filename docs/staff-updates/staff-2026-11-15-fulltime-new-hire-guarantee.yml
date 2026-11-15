@@ -1,0 +1,18 @@
+updates:
+  - id: staff-2026-11-15-fulltime-new-hire-guarantee
+    published_at: "2026-11-15"
+    audiences:
+      - director
+      - super_admin
+    importance: major
+    title: 新進老師前三個月保底
+    summary: 新進正職老師前三個月，每週都排滿十六段時，倍率後獎金至少兩千元。
+    items:
+      - category: added
+        text: 到職日用老師的第一堂課日期，系統自己算，不用另外填。
+      - category: improved
+        text: 倍率後獎金不到兩千元會補到兩千元，算式旁邊會寫「新進保底」。
+      - category: action_required
+        text: 那個月只要有一週沒排滿十六段，就沒有保底，只領實際算出來的金額。
+    source_refs:
+      - "changelog:2026-11-15:fulltime-new-hire-guarantee"

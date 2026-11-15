@@ -56,7 +56,7 @@ class TeacherEligibilityController extends Controller
                 'policy_version' => $lockedRun->policy_version ?: config('teacher_salary.policy_version'),
                 'effective_from' => config('teacher_salary.effective_from'),
                 'period' => ['type' => $period['type'], 'start' => $effectiveStart->toDateString(), 'end' => $period['end']->toDateString()],
-                'components' => ['weekly_16_segments', 'holiday_16_hours', 'weekday_afternoon', 'special_performance', 'deductions', 'admin_allowance', 'cash_adjustments', 'subject_count_bonus'],
+                'components' => ['weekly_16_segments', 'holiday_16_hours', 'weekday_afternoon', 'special_performance', 'deductions', 'admin_allowance', 'cash_adjustments', 'subject_count_bonus', 'new_hire_guarantee'],
                 'teachers' => $rows,
                 'total_teachers' => count($rows),
                 'branch_subject_total' => (float) $lockedRun->branch_subject_total,
@@ -167,7 +167,9 @@ class TeacherEligibilityController extends Controller
         // partition a teacher's cross-campus subject inputs.
         $subjectUnitsByTeacher = $this->globalSubjectUnitsByTeacher($teacherIds, $effectiveStart, $period['end']);
 
-        $rows = $teachers->map(function ($teacher) use ($period, $effectiveStart, $weeks, $closureDates, $lessonsByTeacher, $achievementByTeacher, $deductionByTeacher, $allowanceByTeacher, $cashByTeacher, $cashSourceAvailable, $allowanceSourceAvailable, $subjectUnitsByTeacher) {
+        $firstLessonByTeacher = $this->firstLessonDateByTeacher($teacherIds, $this->policy->newHireWindowStart($effectiveStart->toDateString()));
+
+        $rows = $teachers->map(function ($teacher) use ($period, $effectiveStart, $weeks, $closureDates, $lessonsByTeacher, $achievementByTeacher, $deductionByTeacher, $allowanceByTeacher, $cashByTeacher, $cashSourceAvailable, $allowanceSourceAvailable, $subjectUnitsByTeacher, $firstLessonByTeacher) {
             $teacherId = (int) $teacher->id;
             $weeklyRows = [];
             foreach ($weeks as [$weekStart, $weekEnd]) {
@@ -228,6 +230,11 @@ class TeacherEligibilityController extends Controller
                 ];
             }
             $result['components']['weekly_16_segments'] = $weeklyStatus;
+            $result['components']['new_hire_guarantee'] = $this->policy->newHireGuarantee(
+                $firstLessonByTeacher[$teacherId] ?? null,
+                $effectiveStart->toDateString(),
+                $weeklyStatus['status'] === TeacherEligibilityPolicy::QUALIFIES
+            );
             $result = $this->finalizePolicyResult($result['components']);
             $settlement = FulltimeSettlementComposer::compose(
                 $result['components'],
@@ -255,7 +262,7 @@ class TeacherEligibilityController extends Controller
             'policy_version' => config('teacher_salary.policy_version'),
             'effective_from' => config('teacher_salary.effective_from'),
             'period' => ['type' => $period['type'], 'start' => $effectiveStart->toDateString(), 'end' => $period['end']->toDateString()],
-            'components' => ['weekly_16_segments', 'holiday_16_hours', 'weekday_afternoon', 'special_performance', 'deductions', 'admin_allowance', 'cash_adjustments', 'subject_count_bonus'],
+            'components' => ['weekly_16_segments', 'holiday_16_hours', 'weekday_afternoon', 'special_performance', 'deductions', 'admin_allowance', 'cash_adjustments', 'subject_count_bonus', 'new_hire_guarantee'],
             'teachers' => $rows,
             'total_teachers' => count($rows),
             // Divide only after the complete eligible monthly raw total is
@@ -576,6 +583,47 @@ class TeacherEligibilityController extends Controller
                 'payroll_raw_total' => $payrollRawTotal,
             ]];
         })->all();
+    }
+
+    /**
+     * 新進保底 counts from the teacher's first lesson (Founder 2026-11-15: no hire-date field). Company-wide, like the
+     * subject counts: the campus filter only decides which teachers are listed. The earlier of two signals is used so
+     * the date can only err early (a shorter guarantee, never a longer one): the first lesson of a course that is
+     * theirs now, and the first lesson signed in under them (covers courses later handed to someone else).
+     * The second lookup has no index to lean on, so it runs only for teachers the first one still calls new.
+     *
+     * @return array<int, string> teacher id => Y-m-d
+     */
+    private function firstLessonDateByTeacher(array $teacherIds, string $newSince): array
+    {
+        if ($teacherIds === [] || !Schema::hasTable('ClassSession') || !Schema::hasTable('StudentClass')) {
+            return [];
+        }
+        $dates = [];
+        $keep = function ($rows) use (&$dates) {
+            foreach ($rows as $row) {
+                $date = substr((string) $row->first_date, 0, 10);
+                $id = (int) $row->teacher_id;
+                if ($date !== '' && (!isset($dates[$id]) || $date < $dates[$id])) $dates[$id] = $date;
+            }
+        };
+        $keep(DB::table('ClassSession as cs')
+            ->join('StudentClass as sc', 'sc.ID', '=', 'cs.StudentClassID')
+            ->whereIn('sc.TeacherID', $teacherIds)
+            ->whereNotIn('cs.Status', ['cancelled', 'voided'])
+            ->groupBy('sc.TeacherID')
+            ->selectRaw('sc.TeacherID as teacher_id, MIN(cs.SessionDate) as first_date')->get());
+        $stillNew = array_keys(array_filter($dates, fn ($date) => $date >= $newSince));
+        if ($stillNew !== [] && Schema::hasTable('StudentSingIn')) {
+            $keep(DB::table('StudentSingIn as si')
+                ->join('ClassSession as cs', 'cs.id', '=', 'si.ClassSessionID')
+                ->whereIn('si.TeacherID', $stillNew)
+                ->whereNull('si.VoidedAt')
+                ->groupBy('si.TeacherID')
+                ->selectRaw('si.TeacherID as teacher_id, MIN(cs.SessionDate) as first_date')->get());
+        }
+
+        return $dates;
     }
 
     private function clockMinutes($value): ?int

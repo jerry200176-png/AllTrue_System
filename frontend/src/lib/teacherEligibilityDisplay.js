@@ -52,6 +52,10 @@ export function weightedBonusFormula(settlement) {
   const oneToThree = Number(settlement.one_to_three_bonus);
   const multiplier = Number(settlement.multiplier_pct);
   const weighted = Number(settlement.weighted_bonus_amount);
+  // 新進保底: show what the formula gave and that the guarantee replaced it.
+  if (settlement.new_hire_guarantee_applied) {
+    return `(${formatMoney(subject)} + ${formatMoney(oneToThree)}) × ${multiplier}% = ${formatMoney(Number(settlement.weighted_bonus_before_guarantee))}，新進保底 ${formatMoney(weighted)}`;
+  }
   return `(${formatMoney(subject)} + ${formatMoney(oneToThree)}) × ${multiplier}% = ${formatMoney(weighted)}`;
 }
 

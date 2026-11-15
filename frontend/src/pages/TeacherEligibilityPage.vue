@@ -32,10 +32,10 @@
       </p>
     </header>
 
-    <!-- P0 2026-11-14: remove once the new-hire guarantee follows the HQ 115.07 announcement. -->
+    <!-- P0 2026-11-15: remove once the old-vs-new difference report for months locked under the old rules is delivered. -->
     <!-- A standing notice, not an interruption: info tone keeps role=status; the warning colours are set by hand. -->
-    <Alert tone="info" title="本頁正依總部 115.07 公告校正中" class="tw:border-[var(--ds-warning)] tw:bg-[var(--ds-warning-wash)] tw:text-tpl-body" data-testid="eligibility-calibration-notice">
-      科目數獎金、一對三獎金、正課 20 科倍率、每週 16 段、假日與平日下午倍率已照公告更新。新進保底尚未更新，鎖定前請人工核對。
+    <Alert tone="info" title="本頁已照總部 115.07 公告計算" class="tw:border-[var(--ds-warning)] tw:bg-[var(--ds-warning-wash)] tw:text-tpl-body" data-testid="eligibility-calibration-notice">
+      獎金、倍率、每週 16 段與新進保底都已照公告更新。2026-11-15 以前鎖定的月份仍是舊算法的數字，新舊差額報表整理中。
     </Alert>
 
     <Card class="eligibility-card filters tw:gap-0 tw:p-4 tw:shadow-none">

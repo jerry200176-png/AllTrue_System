@@ -292,6 +292,20 @@ class TeacherEligibilityPolicyTest extends TestCase
         $this->assertSame(TeacherEligibilityPolicy::QUALIFIES, $pending['admin_allowance']['status']);
     }
 
+    /** HQ 115.07: 新進教師前三個月保底獎金 2000 元；任一週未滿 16 段歸零. Month 1 is the month of the first lesson. */
+    public function test_new_hire_guarantee_covers_the_first_three_months_when_every_week_is_full(): void
+    {
+        $amount = fn (?string $firstLesson, string $periodStart, bool $everyWeekFull) => $this->policy->newHireGuarantee($firstLesson, $periodStart, $everyWeekFull)['amount'];
+
+        $this->assertSame(2000.0, $amount('2026-08-20', '2026-08-01', true));
+        $this->assertSame(2000.0, $amount('2026-08-20', '2026-10-01', true));
+        $this->assertSame(0, $amount('2026-08-20', '2026-11-01', true), 'month 4');
+        $this->assertSame(0, $amount('2026-08-20', '2026-09-01', false), 'one short week removes it');
+        $this->assertSame(0, $amount('2026-08-20', '2026-07-01', true), 'before the first lesson');
+        $this->assertSame(0, $amount(null, '2026-08-01', true), 'no lesson on record');
+        $this->assertSame(3, $this->policy->newHireGuarantee('2026-08-20', '2026-10-01', true)['metrics']['guarantee_month']);
+    }
+
     public function test_pending_admin_allowance_is_review(): void
     {
         $result = $this->policy->adminAllowance([
