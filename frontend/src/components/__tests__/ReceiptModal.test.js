@@ -1,5 +1,5 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { mount } from '@vue/test-utils';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { mount, flushPromises } from '@vue/test-utils';
 import { nextTick } from 'vue';
 import ReceiptModal from '../ReceiptModal.vue';
 import {
@@ -167,6 +167,71 @@ describe('paymentReportReceipt helpers (#1197 closeout)', () => {
     expect(trial.content_snapshot.items[0].description).toContain('試聽');
     const tutor = adaptPaymentReportReceipt({ ...SAMPLE, class_type: 'tutoring', amount: 0 }, 2);
     expect(tutor.content_snapshot.items[0].description).toContain('輔導');
+  });
+});
+
+describe('#4148 latest receipt selection', () => {
+  let wrapper;
+  afterEach(() => { wrapper?.unmount(); wrapper = null; });
+  const held = () => {
+    let resolve;
+    const promise = new Promise(r => { resolve = r; });
+    return { promise, resolve };
+  };
+  const synthetic = (name, note = '') => ({ ...SAMPLE, student_name: name, amount: 1000, note });
+  async function switchToB({ jsonSlow = false, sameId = false } = {}) {
+    const a = held(); const b = held();
+    global.fetch.mockImplementationOnce(() => jsonSlow ? Promise.resolve({ ok: true, status: 200, json: () => a.promise }) : a.promise).mockImplementationOnce(() => b.promise);
+    wrapper = mount(ReceiptModal, { props: { show: true, reportId: 801 } });
+    await flushPromises();
+    await wrapper.setProps({ show: false });
+    await wrapper.setProps({ show: true, reportId: sameId ? 801 : 802 });
+    await flushPromises();
+    return { a, b };
+  }
+
+  it.each(['success', 'forbidden'])('retains B when closed A finishes late: %s', async outcome => {
+    const { a, b } = await switchToB();
+    b.resolve(ok(synthetic('合成學生B'))); await flushPromises();
+    expect(wrapper.text()).toContain('合成學生B');
+    a.resolve(outcome === 'success' ? ok(synthetic('合成學生A')) : fail(403)); await flushPromises();
+    expect(wrapper.text()).toContain('合成學生B');
+    expect(wrapper.text()).not.toContain('合成學生A');
+    expect(wrapper.find('.receipt-error').exists()).toBe(false);
+  });
+
+  it('ignores an old JSON body that completes after B has loaded', async () => {
+    const { a, b } = await switchToB({ jsonSlow: true });
+    b.resolve(ok(synthetic('合成學生B'))); await flushPromises();
+    a.resolve(synthetic('合成學生A')); await flushPromises();
+    expect(wrapper.text()).toContain('合成學生B');
+    expect(wrapper.text()).not.toContain('合成學生A');
+  });
+
+  it('invalidates the prior intent even when the same report is reopened', async () => {
+    const { a, b } = await switchToB({ sameId: true });
+    b.resolve(ok(synthetic('合成學生', '最新合成備註'))); await flushPromises();
+    a.resolve(ok(synthetic('合成學生', '舊合成備註'))); await flushPromises();
+    expect(wrapper.text()).toContain('最新合成備註');
+    expect(wrapper.text()).not.toContain('舊合成備註');
+  });
+
+  it('keeps the current loading state when the cancelled earlier request finishes', async () => {
+    const { a, b } = await switchToB();
+    a.resolve(ok(synthetic('合成學生A'))); await flushPromises();
+    expect(wrapper.find('.receipt-loading').exists()).toBe(true);
+    expect(wrapper.text()).not.toContain('合成學生A');
+    b.resolve(ok(synthetic('合成學生B'))); await flushPromises();
+    expect(wrapper.text()).toContain('合成學生B');
+  });
+
+  it('preserves a current failure when an older successful document arrives', async () => {
+    const { a, b } = await switchToB();
+    b.resolve(fail(403)); await flushPromises();
+    expect(wrapper.find('.receipt-error').exists()).toBe(true);
+    a.resolve(ok(synthetic('合成學生A'))); await flushPromises();
+    expect(wrapper.find('.receipt-error').exists()).toBe(true);
+    expect(wrapper.text()).not.toContain('合成學生A');
   });
 });
 

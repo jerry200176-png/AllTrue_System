@@ -12,5 +12,7 @@ updates:
         text: 帳單上的「收款與收據」會直接展開對應資料，同一帳單的多筆收款也能分別開收據。
       - category: improved
         text: 用「查收款與收據」搜尋姓名，可查已結清或暫停學生的舊收據，不會把暫停學生加回待收清單。
+      - category: fixed
+        text: 快速切換收據或關閉後重開，畫面保留目前選取的文件，不受先前讀取影響。
     source_refs:
       - "changelog:2026-11-16:bill-receipt-lookup"
