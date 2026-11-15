@@ -1,6 +1,6 @@
 # AllTrue Production Operations Catalog
 # Authority: ADR-POP-005 | Phase 2: approved catalog operations execute via Pi-local POP
-version: 15
+version: 16
 
 operations:
   reviewed-legacy-reversal-restatement:
@@ -687,10 +687,10 @@ operations:
     verification_required: true
     approval_required: true
     execution_authority: pop-pi-local
-    blast_radius: one_triaged_or_in_progress_report_resolved_with_one_public_reply
+    blast_radius: one_bug_resolved_or_one_authorized_logged_suggestion_notified_with_one_public_reply
     strategy_class: App\Operations\Strategies\InappReportResolveAfterDeployStrategy
     parameter_keys: [bug_id, campus_id, deploy_run_id, fix_commit_sha, github_issue_url, public_reply, request_id, smoke_result_ref, writeback_proof]
-    notes: ADR-POP-015 (b). Resolves one report only when the fix commit is in the deployed revision of a successful deploy.yml production run, health is 200, the issue's SourceRef names the report, the reply passes the reply guard with both outcome phrases, and the 15-minute review proof still matches under the row lock. deploy_run_id is a digit string; writeback_proof is {captured_at, proof} from the triage detail API. Pi-local POP only.
+    notes: ADR-POP-015 (b), Founder 2026-11-15 extension. Existing bugs resolve with both retest outcomes. A suggestion/ux_friction closed as logged for the same issue instead gets one ship notice per latest close cycle and stays closed. Both require successful deploy.yml actual production job, current manifest, fix ancestry/linkage, post-deploy smoke, health, trusted SourceRef and fresh review proof rechecked under lock. Logged replies cannot be attributed to the reporter or bury an unanswered reporter message. Other dispositions never use this branch. Pi-local POP only.
 
   inapp-report-triage:
     lifecycle: active
@@ -710,10 +710,10 @@ operations:
     verification_required: true
     approval_required: true
     execution_authority: pop-pi-local
-    blast_radius: one_new_report_triaged_with_one_public_reply
+    blast_radius: one_new_report_triaged_or_authorized_suggestion_logged_with_one_public_reply
     strategy_class: App\Operations\Strategies\InappReportTriageStrategy
-    parameter_keys: [bug_id, campus_id, github_issue_url, public_reply, request_id, writeback_proof]
-    notes: ADR-POP-015 (a). Moves one new report the agent classified as an engineering-required bug to triaged, linked to its open GitHub issue, with one public receipt reply. The issue's SourceRef must name the report, the reply must pass the reply guard and contain the issue URL, and the 15-minute review proof must still match under the row lock. Suggestions, duplicates and not-planned items stay on the human close_as_logged path. writeback_proof is {captured_at, proof} from the triage detail API. Pi-local POP only.
+    parameter_keys: [bug_id, campus_id, disposition, github_issue_url, public_reply, request_id, writeback_proof]
+    notes: ADR-POP-015 (a), Founder 2026-11-15 extension. disposition is bug, suggestion or ux_friction only; new legacy six-key input is normalized to explicit bug before exact-key/hash checks. Bug remains new-to-triaged. The two logged kinds use closeAsLogged with the fixed issue-linked receipt, not a shipping claim; retain canonical engineering-required semantics. Trusted open issue SourceRef, campus, safety, fresh review proof and lock checks remain mandatory. Logged replies cannot be attributed to the reporter or bury an unanswered reporter message. Other dispositions stay human-only. Old stored requests are never normalized. Pi-local POP only.
 
   reviewed-mismatched-pending-return:
     lifecycle: active

@@ -3,6 +3,16 @@
 > 本 repo 對 Founder 常設決定的**唯一**定義。`AGENTS.md`、`CLAUDE.md` 只放指向本檔的連結，不得另寫摘要或複本。
 > 艦隊層權威表：portfolio-ops `governance/AUTONOMY_POLICY.md`（portfolio-ops#134）。兩者不一致時開 PR 修正本檔；**較嚴格的規則優先**：艦隊層只能放寬本檔未另加限制之處，不得削弱本 repo 較嚴格的本地規則或安全規則（例如聚焦回歸測試、權威紀錄核對、產品 P0／紅線）。
 
+<a id="inapp-suggestion-writeback"></a>
+## 2026-11-15（日）（受限建議／體驗改善回寫；FSD-2026-11-15-INAPP-SUGGESTION-WRITEBACK）
+
+Founder 在本次協調對話直接回答「同意納入受限建議類回寫（推薦）」。提問範圍為：將 `suggestion`／`ux_friction` 納入**既有 POP** 的收件、正式上線通知與記錄結案；仍要求校區權限、原文核讀、去重、正式發布證據與正常審查，不含帳務、排課、帳號或資料修復，不新增平台或金鑰。Agent 完成具體修補、獨立審查，再沿用正式啟用閘門。
+
+1. 本條只擴充 ADR-POP-015 的兩類回報，沿用四個既有 operation ID、受限 requester 與 Pi-local executor。不得把體驗建議改標成 bug 來取得機器權限；`not_planned`、`duplicate` 等其他人工處置不在新 allowlist。
+2. 新回報以既有 `closeAsLogged` 留下同一 GitHub issue 與固定收件回覆；**記錄結案不代表功能交付**，保留既有 engineering-required 判定與產品清單。上線通知只對同一 issue、同一最新記錄結案週期，驗證正式部署、版本、fix 關聯、部署後 smoke、health 與新鮮原文核讀證據後才可送出；每個週期最多一次，維持 logged-closed，不偽造 bug resolved 或 reporter acceptance。
+3. 保留校區／requester、safety、核讀 MAC、鎖內重核、每日上限、撤銷及版本 pin。機器不得用自己的回覆冒充回報者，也不得以通知蓋過回報者尚未處理的補充。人工 fallback 不可繞過上述 hard guards。
+4. 本條不是對未審查程式的正式啟用，也不授權直接 approve／execute、SSH、migration、credential 或任何其他資料操作；合併、正式啟用與回滾仍依現行原生閘門。政策／catalog 升版後，舊請求不得自動補欄、重算 hash 或沿用失效核准。
+
 <a id="paid-means-confirmed"></a>
 ## 2026-11-14（六）（課程「已繳」= 已確認入帳；#5187）
 

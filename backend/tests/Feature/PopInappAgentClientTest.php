@@ -117,6 +117,26 @@ final class PopInappAgentClientTest extends TestCase
         $this->assertSame(1, DB::table('pop_operation_requests')->count());
     }
 
+    public function test_legacy_triage_defaulting_preserves_own_replay_and_never_returns_a_foreign_request(): void
+    {
+        $owner = $this->client('triage-owner');
+        $this->client('triage-other');
+        $issue = 'https://github.com/' . config('pop_inapp.github_repo') . '/issues/77';
+        $p = ['bug_id' => $this->bug('new', $this->campus), 'campus_id' => $this->campus, 'github_issue_url' => $issue,
+            'public_reply' => '已收到，會安排處理。追蹤：' . $issue, 'request_id' => 'legacy-replay-001',
+            'writeback_proof' => ['captured_at' => now()->toISOString(), 'proof' => str_repeat('0', 64)]];
+        $path = '/api/v1/pop/machine/operations/' . InappReportTriageStrategy::OPERATION . '/draft';
+        $body = ['idempotency_key' => 'legacy-triage-replay', 'parameters' => $p];
+        $draft = $this->withHeader('X-POP-MACHINE-KEY', 'triage-owner')->postJson($path, $body)->assertCreated()->json('data');
+        $body['parameters']['disposition'] = 'bug';
+        $this->withHeader('X-POP-MACHINE-KEY', 'triage-owner')->postJson($path, $body)->assertCreated()
+            ->assertJsonPath('data.id', $draft['id'])->assertJsonPath('data.actor', 'machine:api-client:' . $owner->id);
+        $this->withHeader('X-POP-MACHINE-KEY', 'triage-other')->postJson($path, $body)->assertStatus(409)->assertJsonMissingPath('data');
+        $this->assertSame(1, DB::table('pop_operation_requests')->count());
+        $this->assertSame(0, DB::table('pop_approval_events')->count());
+        $this->assertSame(0, BugReportComment::query()->count());
+    }
+
     public function test_key_is_refused_for_another_campus_another_operation_or_another_requesters_request(): void
     {
         $this->client('k-scope');

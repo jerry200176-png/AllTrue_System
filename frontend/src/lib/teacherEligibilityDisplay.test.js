@@ -8,6 +8,7 @@ import {
   formatSubjectUnits,
   weightedBonusFormula,
   formatDifference,
+  inputRoster,
   recalculationSummary,
   weekExplanation,
   recalculationText,
@@ -72,6 +73,9 @@ assert.equal(weekExplanation({ week_start: '2026-10-05', total_segments: 3, clos
 assert.equal(weekExplanation({ week_start: '2026-11-30', daily_hours: { '2026-11-30': 2, '2026-12-06': 8 } }).detail, '每天排課時數：一 2、二 0、三 0、四 0、五 0、六 0、日 8');
 assert.equal(weekExplanation({ week_start: '2026-10-05', total_segments: 3, near_closures: [{ date: '2026-10-10', total: 120, open: 2 }] }).detail,
   '每天排課時數：一 0、二 0、三 0、四 0、五 0、六 0、日 0。10/10 全公司 120 堂課有 118 堂停課，還有 2 堂照常上課，所以這一週沒有當成停課週');
+assert.deepEqual(inputRoster([{ teacher_id: 1, teacher_name: '甲' }], [{ teacher_id: 2, teacher_name: '乙', campus_id: 9, campus_name: '別的分校' }]).map((t) => [t.teacher_id, t.teacher_name]),
+  [[1, '甲'], [2, '乙']]);
+assert.deepEqual(inputRoster(undefined, undefined), []);
 assert.deepEqual(monthWindow('2026-08'), { start: '2026-08-01', end: '2026-08-31' });
 // 正課 150 raw + 輔導試聽 12 raw = 核薪總 20.25: the three columns add up once shown on the same scale.
 assert.equal(formatSubjectUnits(150), '18.75');
