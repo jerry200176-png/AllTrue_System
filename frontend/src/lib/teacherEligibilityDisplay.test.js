@@ -66,6 +66,8 @@ assert.equal(weekExplanation({ week_start: '2026-10-05', total_segments: 18, mee
 assert.equal(weekExplanation({ week_start: '2026-10-05', total_segments: 3, meets_16_segments: true, closure_dates: ['2026-10-10'] }).verdict, '3 段・停課週不列入');
 assert.equal(weekExplanation({ week_start: '2026-11-30', total_segments: 2, meets_16_segments: false, finished: false }).verdict, '2 段・還沒結束，先不判定');
 assert.equal(weekExplanation({ week_start: '2026-10-05', total_segments: 3 }).detail, '每天排課時數：一 0、二 0、三 0、四 0、五 0、六 0、日 0');
+assert.equal(weekExplanation({ week_start: '2026-10-05', total_segments: 3, closure_dates: ['2026-10-10'], near_closures: [{ date: '2026-10-09', total: 120, open: 2 }] }).detail,
+  '每天排課時數：一 0、二 0、三 0、四 0、五 0、六 0、日 0');
 // A week that crosses a month end still finds its days.
 assert.equal(weekExplanation({ week_start: '2026-11-30', daily_hours: { '2026-11-30': 2, '2026-12-06': 8 } }).detail, '每天排課時數：一 2、二 0、三 0、四 0、五 0、六 0、日 8');
 assert.equal(weekExplanation({ week_start: '2026-10-05', total_segments: 3, near_closures: [{ date: '2026-10-10', total: 120, open: 2 }] }).detail,
