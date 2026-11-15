@@ -49,10 +49,14 @@ class TeacherEligibilityController extends Controller
         $lockedRun = ($lockBranchId && $period['type'] === 'month')
             ? FulltimePayrollLockStore::lockedRun($lockBranchId, $lockMonth)
             : null;
+        // A locked month is served from its snapshot. With compare=1 the month is also computed with today's rules and
+        // each snapshot row gets the result next to it (Founder 2026-11-15: months locked under the old rules keep
+        // their numbers; the difference has to be visible). Read-only; nothing is stored.
+        $locked = null;
         if ($lockedRun) {
             $rows = FulltimePayrollLockStore::snapshotTeachers((int) $lockedRun->id);
 
-            return response()->json([
+            $locked = [
                 'policy_version' => $lockedRun->policy_version ?: config('teacher_salary.policy_version'),
                 'effective_from' => config('teacher_salary.effective_from'),
                 'period' => ['type' => $period['type'], 'start' => $effectiveStart->toDateString(), 'end' => $period['end']->toDateString()],
@@ -68,7 +72,10 @@ class TeacherEligibilityController extends Controller
                     'locked_by' => $lockedRun->locked_by,
                     'run_id' => $lockedRun->id,
                 ],
-            ]);
+            ];
+            if (!$request->boolean('compare')) {
+                return response()->json($locked);
+            }
         }
 
         $teachers = DB::table('User as u')
@@ -87,7 +94,7 @@ class TeacherEligibilityController extends Controller
             ->get();
 
         if ($teachers->isEmpty()) {
-            return response()->json([
+            return response()->json($locked !== null ? $this->withRecalculation($locked, []) : [
                 'policy_version' => config('teacher_salary.policy_version'),
                 'period' => ['type' => $period['type'], 'start' => $effectiveStart->toDateString(), 'end' => $period['end']->toDateString()],
                 'teachers' => [],
@@ -257,6 +264,9 @@ class TeacherEligibilityController extends Controller
                 'settlement' => $settlement,
             ];
         })->values()->all();
+        if ($locked !== null) {
+            return response()->json($this->withRecalculation($locked, $rows));
+        }
 
         return response()->json([
             'policy_version' => config('teacher_salary.policy_version'),
@@ -274,6 +284,32 @@ class TeacherEligibilityController extends Controller
                 'branch_id' => $lockBranchId,
             ],
         ]);
+    }
+
+    /**
+     * Puts today's result next to each locked row: the payout now, whether it is final, and now minus locked
+     * (only when today's result is final). A teacher who is in only one of the two lists has no difference; those computed now but absent from the
+     * snapshot are listed by id.
+     */
+    private function withRecalculation(array $locked, array $liveRows): array
+    {
+        $live = array_column($liveRows, null, 'teacher_id');
+        $locked['teachers'] = array_map(function ($teacher) use ($live) {
+            $now = $live[$teacher['teacher_id'] ?? null] ?? null;
+            $before = $teacher['calculated_payout'] ?? null;
+            $teacher['recalculated'] = $now === null ? null : [
+                'calculated_payout' => $now['calculated_payout'],
+                'calculation_status' => $now['calculation_status'],
+                // A difference is stated only for a finished result: with items still to confirm the payout is a subtotal.
+                'difference' => $now['calculation_status'] === 'calculated' && $now['calculated_payout'] !== null && $before !== null
+                    ? round((float) $now['calculated_payout'] - (float) $before, 2) : null,
+            ];
+
+            return $teacher;
+        }, $locked['teachers']);
+        $locked['recalculated_only_teacher_ids'] = array_values(array_diff(array_keys($live), array_column($locked['teachers'], 'teacher_id')));
+
+        return $locked;
     }
 
     private function finalizePolicyResult(array $components): array

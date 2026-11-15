@@ -118,6 +118,39 @@ describe('TeacherEligibilityPage on the template', () => {
     expect(labels()).toContain('重開結算');
   });
 
+  it('a locked month shows what today\'s rules give next to the locked total', async () => {
+    const compared = [teacher({ recalculated: { calculated_payout: 36500, calculation_status: 'calculated', difference: 500 } }),
+      teacher({ teacher_id: 702, teacher_name: '測試老師乙', recalculated: { calculated_payout: 36000, calculation_status: 'calculated', difference: 0 } })];
+    fetchMock.mockImplementation(async (url) => json(payload({ lock: { status: 'locked' }, ...(String(url).includes('compare=1') ? { teachers: compared } : {}) })));
+    await mountPage();
+    expect(eligibilityReads().some((u) => u.includes('compare=1'))).toBe(true);
+    expect(wrapper.find('[data-testid="eligibility-recalculation-note"]').text()).toBe('照現在的算法重算，1 位老師金額不同，合計多 $500。鎖定的數字沒有變。');
+    expect(wrapper.find('.desktop-table .total-cell').text()).toContain('現在的算法 $36,500（多 $500）');
+    expect(wrapper.find('.desktop-table').text()).toContain('36,000');
+  });
+
+  it('a slow answer for a campus the user has left does not replace what is on screen', async () => {
+    const answers = [];
+    fetchMock.mockImplementation((url) => new Promise((release) => { answers.push({ url: String(url), release }); }));
+    await mountPage();
+    await wrapper.setProps({ branchId: 4 }); // the page reloads for the new campus while the first read is still out
+    await flushPromises();
+    const reads = answers.filter((a) => a.url.includes('/teacher-eligibility?'));
+    expect(reads).toHaveLength(2);
+    reads[1].release(json(payload({ teachers: [teacher({ teacher_name: '新分校的老師' })] })));
+    await flushPromises();
+    reads[0].release(json(payload({ teachers: [teacher({ teacher_name: '舊分校的老師' })] })));
+    await flushPromises();
+    expect(wrapper.find('.desktop-table').text()).toContain('新分校的老師');
+    expect(wrapper.find('.desktop-table').text()).not.toContain('舊分校的老師');
+  });
+
+  it('a draft month is not compared', async () => {
+    await mountPage();
+    expect(eligibilityReads().some((u) => u.includes('compare=1'))).toBe(false);
+    expect(wrapper.find('[data-testid="eligibility-recalculation-note"]').exists()).toBe(false);
+  });
+
   it('the teacher multiplier is read-only: no hand-entered total', async () => {
     await mountPage();
     expect(wrapper.find('.desktop-table .multiplier-cell').text()).toContain('%');

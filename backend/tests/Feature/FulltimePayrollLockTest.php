@@ -101,6 +101,44 @@ class FulltimePayrollLockTest extends TestCase
         $this->assertStringContainsString(',5700,已鎖定', $csv);
     }
 
+    /** A locked month keeps its numbers; compare=1 adds what today's rules give next to each one and stores nothing. */
+    public function test_locked_month_can_be_compared_with_todays_rules(): void
+    {
+        $director = $this->createDirector(1, 'ft-compare-dir@test.com');
+        $headers = ['Authorization' => "Bearer {$director['token']}", 'Accept' => 'application/json'];
+        $lockedTeacher = $this->createTeacher(1, 'ft-compare-locked@test.com');
+        // A teacher who joined the campus after the lock: computed now, absent from the snapshot.
+        $later = User::create(['LoginName' => 'ft-compare-later@test.com', 'Name' => '後來的老師', 'PSW' => 'secret', 'type' => 'T', 'phone' => '0922111112', 'MustChangePassword' => false]);
+        UserCampus::create(['CampusID' => 1, 'UserID' => $later->id, 'Admin' => 0, 'Approved' => 1]);
+        $laterTeacher = (int) $later->id;
+        \App\Support\FulltimePayrollLockStore::lock(1, '2026-08', [[
+            'teacher_id' => $lockedTeacher, 'teacher_name' => 'T', 'calculated_payout' => 5700,
+            'settlement' => ['total_payout' => 5700, 'calculated_payout' => 5700],
+        ]], $director['user_id'], 'old');
+        $url = '/api/v1/finance/teacher-eligibility?period=month&start=2026-08-01&end=2026-08-31&branch_id=1';
+
+        $this->withHeaders($headers)->getJson($url)->assertOk()
+            ->assertJsonPath('lock.status', 'locked')->assertJsonMissingPath('teachers.0.recalculated');
+
+        // Neither teacher has lessons, so today's rules give 0: 5700 less than the locked figure.
+        $compared = $this->withHeaders($headers)->getJson($url . '&compare=1')->assertOk()
+            ->assertJsonPath('lock.status', 'locked')
+            ->assertJsonPath('teachers.0.calculated_payout', 5700)
+            ->assertJsonCount(1, 'teachers')->json();
+        $this->assertEquals(0, $compared['teachers'][0]['recalculated']['calculated_payout']);
+        $this->assertEquals(-5700, $compared['teachers'][0]['recalculated']['difference']);
+        $this->assertSame([$laterTeacher], $compared['recalculated_only_teacher_ids']);
+        $this->assertSame(1, \Illuminate\Support\Facades\DB::table('fulltime_payroll_run_teachers')->count());
+
+        // An item added after the lock and still to confirm makes today's result a subtotal: no difference is stated.
+        \Illuminate\Support\Facades\DB::table('teacher_payroll_achievements')->insert([
+            'teacher_id' => $lockedTeacher, 'branch_id' => 1, 'outcome_key' => 'k', 'status' => 'pending', 'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $partial = $this->withHeaders($headers)->getJson($url . '&compare=1')->assertOk()->json('teachers.0.recalculated');
+        $this->assertNotSame('calculated', $partial['calculation_status']);
+        $this->assertNull($partial['difference']);
+    }
+
     private function createDirector(int $campusId, string $email): array
     {
         $user = User::create([

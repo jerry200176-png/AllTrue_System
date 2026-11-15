@@ -26,11 +26,12 @@ async function request(path, options = {}) {
   return data;
 }
 
-export async function fetchTeacherEligibility({ period = 'month', start, end, branchId } = {}) {
+export async function fetchTeacherEligibility({ period = 'month', start, end, branchId, compare = false } = {}) {
   const params = new URLSearchParams({ period });
   if (start) params.set('start', start);
   if (end) params.set('end', end);
   if (branchId) params.set('branch_id', branchId);
+  if (compare) params.set('compare', '1'); // locked month: also what today's rules give
   const res = await fetch(`${API_BASE}/finance/teacher-eligibility?${params}`, { headers: headers() });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data?.message || '無法取得教師符合要件報表');

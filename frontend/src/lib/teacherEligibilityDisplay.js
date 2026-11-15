@@ -26,6 +26,41 @@ export function formatMoney(value) {
   return `$${n.toLocaleString('zh-TW', { maximumFractionDigits: 0 })}`;
 }
 
+/** A locked month next to today's rules: now minus locked. */
+export function formatDifference(value) {
+  if (value == null || value === '') return '無法比較';
+  const n = Number(value);
+  if (n === 0) return '相同';
+  return `${n > 0 ? '多' : '少'} ${formatMoney(Math.abs(n))}`;
+}
+
+/** What to write under a locked total once the comparison has been asked for; '' before that. */
+export function recalculationText(teacher) {
+  if (!teacher || !('recalculated' in teacher)) return '';
+  const now = teacher.recalculated;
+  if (!now) return '現在的算法：無法比較（已不在這個分校）';
+  if (now.difference == null) return '現在的算法：還有待確認項目，暫不比較';
+  return `現在的算法 ${formatMoney(now.calculated_payout)}（${formatDifference(now.difference)}）`;
+}
+
+/**
+ * One line for the whole month: how many locked rows differ under today's rules and the net amount. A row that could
+ * not be compared (the teacher is no longer listed, or today's result still has items to confirm) is counted and
+ * named, so the line never claims more than was compared.
+ */
+export function recalculationSummary(teachers) {
+  const asked = (teachers || []).filter((teacher) => 'recalculated' in teacher);
+  if (!asked.length) return '';
+  const compared = asked.filter((teacher) => teacher.recalculated?.difference != null);
+  const changed = compared.filter((teacher) => Number(teacher.recalculated.difference) !== 0);
+  const skipped = asked.length - compared.length;
+  const rest = skipped ? `另有 ${skipped} 位無法比較（已不在這個分校，或現在還有待確認項目）。` : '';
+  if (!compared.length) return `照現在的算法重算：${rest}`;
+  if (!changed.length) return `照現在的算法重算，比較得到的 ${compared.length} 位老師金額都和鎖定時相同。${rest}`;
+  const net = changed.reduce((sum, teacher) => sum + Number(teacher.recalculated.difference), 0);
+  return `照現在的算法重算，${changed.length} 位老師金額不同，合計${formatDifference(net)}。${rest}鎖定的數字沒有變。`;
+}
+
 export function formatSubjects(value) {
   if (value == null || value === '') return '—';
   return Number(value).toLocaleString('zh-TW', { maximumFractionDigits: 4 });
