@@ -28,7 +28,7 @@
           <label class="tw:mb-1 tw:text-tpl-caption tw:font-medium tw:text-tpl-secondary" for="students-name-filter">搜尋姓名或就讀學校</label>
           <div class="tw:relative">
             <Search class="tw:pointer-events-none tw:absolute tw:top-1/2 tw:left-3.5 tw:size-5 tw:-translate-y-1/2 tw:text-tpl-secondary" aria-hidden="true" />
-            <input id="students-name-filter" v-model="filters.search" class="tw:h-12 tw:rounded-2xl tw:pl-11 tw:text-tpl-body" placeholder="輸入姓名或學校…" @input="debouncedLoad" />
+            <input id="students-name-filter" v-model="filters.search" class="tw:h-12 tw:rounded-2xl tw:pl-11 tw:text-tpl-body" placeholder="輸入姓名、學校或課程編號…" @input="debouncedLoad" />
           </div>
         </div>
         <div class="tw:min-w-0 tw:flex-[1_1_9rem]">

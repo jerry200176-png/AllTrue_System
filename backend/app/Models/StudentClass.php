@@ -299,6 +299,15 @@ class StudentClass extends Model
         return $this->hasMany(Invoice::class, 'StudentClassID', 'ID');
     }
 
+    /**
+     * The course number in a search box (Founder 2026-11-16): staff see 「課程 004635」 on every screen and slip, so typing
+     * `4635`, `004635`, `#4635` or `課程 004635` finds that contract. Null when the text is not a course number.
+     */
+    public static function idFromSearch(?string $term): ?int
+    {
+        return preg_match('/\A\s*(?:課程)?\s*#?\s*0*([1-9]\d{0,7})\s*\z/u', (string) $term, $m) === 1 ? (int) $m[1] : null;
+    }
+
     /** @return \Illuminate\Database\Eloquent\Relations\HasMany<StudentClassPricingAmendment, $this> */
     public function pricingAmendments()
     {
