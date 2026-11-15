@@ -587,43 +587,42 @@ class TeacherEligibilityController extends Controller
 
     /**
      * 新進保底 counts from the teacher's first lesson (Founder 2026-11-15: no hire-date field). Company-wide, like the
-     * subject counts: the campus filter only decides which teachers are listed. The earlier of two signals is used so
-     * the date can only err early (a shorter guarantee, never a longer one): the first lesson of a course that is
-     * theirs now, and the first lesson signed in under them (covers courses later handed to someone else).
-     * The second lookup has no index to lean on, so it skips teachers the first one already proves are not new.
+     * subject counts: the campus filter only decides which teachers are listed.
+     * Who taught a lesson is the sign-in recorded under them, the same evidence the calendar uses to keep history on
+     * the teacher who was there: a course taken over from someone else does not bring that person's lessons along,
+     * and a lesson covered in someone else's course counts. A teacher with no sign-in yet (the first lessons are
+     * still ahead) starts at the first lesson of their own courses inside the guarantee window.
+     * ponytail: one pass over the sign-in table per load; add an index on its teacher column if this page gets slow.
      *
      * @return array<int, string> teacher id => Y-m-d
      */
     private function firstLessonDateByTeacher(array $teacherIds, string $newSince): array
     {
-        if ($teacherIds === [] || !Schema::hasTable('ClassSession') || !Schema::hasTable('StudentClass')) {
+        if ($teacherIds === [] || !Schema::hasTable('ClassSession') || !Schema::hasTable('StudentClass') || !Schema::hasTable('StudentSingIn')) {
             return [];
         }
-        $dates = [];
-        $keep = function ($rows) use (&$dates) {
-            foreach ($rows as $row) {
-                $date = substr((string) $row->first_date, 0, 10);
-                $id = (int) $row->teacher_id;
-                if ($date !== '' && (!isset($dates[$id]) || $date < $dates[$id])) $dates[$id] = $date;
-            }
-        };
-        $keep(DB::table('ClassSession as cs')
-            ->join('StudentClass as sc', 'sc.ID', '=', 'cs.StudentClassID')
-            ->whereIn('sc.TeacherID', $teacherIds)
-            ->whereNotIn('cs.Status', ['cancelled', 'voided'])
-            ->groupBy('sc.TeacherID')
-            ->selectRaw('sc.TeacherID as teacher_id, MIN(cs.SessionDate) as first_date')->get());
-        $stillNew = array_values(array_filter($teacherIds, fn ($id) => !isset($dates[(int) $id]) || $dates[(int) $id] >= $newSince));
-        if ($stillNew !== [] && Schema::hasTable('StudentSingIn')) {
-            $keep(DB::table('StudentSingIn as si')
-                ->join('ClassSession as cs', 'cs.id', '=', 'si.ClassSessionID')
-                ->whereIn('si.TeacherID', $stillNew)
-                ->whereNull('si.VoidedAt')
-                ->groupBy('si.TeacherID')
-                ->selectRaw('si.TeacherID as teacher_id, MIN(cs.SessionDate) as first_date')->get());
+        $dates = DB::table('StudentSingIn as si')
+            ->join('ClassSession as cs', 'cs.id', '=', 'si.ClassSessionID')
+            ->whereIn('si.TeacherID', $teacherIds)
+            ->whereNull('si.VoidedAt')
+            ->groupBy('si.TeacherID')
+            ->selectRaw('si.TeacherID as teacher_id, MIN(cs.SessionDate) as first_date')
+            ->pluck('first_date', 'teacher_id')
+            ->all();
+        $unseen = array_values(array_filter($teacherIds, fn ($id) => !isset($dates[$id])));
+        if ($unseen !== []) {
+            $dates += DB::table('ClassSession as cs')
+                ->join('StudentClass as sc', 'sc.ID', '=', 'cs.StudentClassID')
+                ->whereIn('sc.TeacherID', $unseen)
+                ->where('cs.SessionDate', '>=', $newSince)
+                ->whereNotIn('cs.Status', ['cancelled', 'voided'])
+                ->groupBy('sc.TeacherID')
+                ->selectRaw('sc.TeacherID as teacher_id, MIN(cs.SessionDate) as first_date')
+                ->pluck('first_date', 'teacher_id')
+                ->all();
         }
 
-        return $dates;
+        return array_map(fn ($date) => substr((string) $date, 0, 10), $dates);
     }
 
     private function clockMinutes($value): ?int
