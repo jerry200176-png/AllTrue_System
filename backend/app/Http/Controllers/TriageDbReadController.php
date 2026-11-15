@@ -40,8 +40,14 @@ class TriageDbReadController extends Controller
 
     private const OPERATORS = ['eq' => '=', 'gte' => '>=', 'lte' => '<='];
 
-    /** What a code looks like: short and plain ASCII. Anything else in a code column is typed text and is withheld. */
-    private const CODE_VALUE = '/\A[A-Za-z0-9_.:\-]{0,40}\z/';
+    /**
+     * What a code looks like here: a lowercase word such as `unpaid` or `one_on_one`, one to three capital letters (a role),
+     * or a YYYY-MM period. A capitalised word, anything with a space, and any run of digits (a phone) is typed text.
+     */
+    private const CODE_VALUE = '/\A([a-z][a-z0-9_.:\-]{0,39}|[A-Z]{1,3}|\d{4}-\d{2})?\z/';
+
+    /** Code-named columns that the application lets a person type into; never returned. */
+    private const TYPED_COLUMNS = ['course_packages' => ['closed_reason']];
 
     public function tables()
     {
@@ -82,6 +88,8 @@ class TriageDbReadController extends Controller
             $type = strtolower((string) $column['type_name']);
             if (preg_match('/int|decimal|numeric|float|double|real|bool|year|date|time/', $type) === 1) {
                 $numeric[] = $name;
+            } elseif (in_array($name, self::TYPED_COLUMNS[$table] ?? [], true)) {
+                continue;
             } elseif ($type === 'enum' || in_array(strtolower($name), self::CODE_COLUMNS, true)) {
                 $codes[] = $name;
             }

@@ -510,7 +510,7 @@ way goes into an issue, PR or commit except ids and your own technical conclusio
 Founder GO 2026-11-16. `GET /api/v1/triage/db` lists the reachable tables; `GET /api/v1/triage/db/{table}` returns
 rows (`eq[col]=`, `gte[col]=`, `lte[col]=`, `in[col]=a,b`, `order=col`, `dir=asc|desc`, `limit` ≤ 200, `offset`).
 What leaves: number and date/time columns, plus text columns that are an enum or a listed code column and whose
-value is a short ASCII code. Text is fail-closed: names, notes, memos and every other text column never leave and
+value has the shape of a code (a lowercase word, one to three capitals, or YYYY-MM). Text is fail-closed: names, notes, memos and every other text column never leave and
 cannot be filtered or sorted on; a code column takes only an exact match against a code. Numbers are guarded by
 column name (phone, pin, birthday, account …) and by size (a whole number of nine digits or more is withheld and
 cannot be filtered on), so salary figures, scores and other plain numbers ARE readable by id. Tables about signing

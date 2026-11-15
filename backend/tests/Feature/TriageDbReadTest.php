@@ -94,6 +94,13 @@ final class TriageDbReadTest extends TestCase
         $this->getJson('/api/v1/triage/db/ClassSession?order=Status', $this->bearer())->assertStatus(422);
         $this->getJson('/api/v1/triage/db/ClassSession?eq[Status]=' . urlencode('請假 補課'), $this->bearer())->assertStatus(422);
         $this->getJson('/api/v1/triage/db/ClassSession?in[Status]=leave,' . urlencode('typed text'), $this->bearer())->assertStatus(422);
+        // A code is a lowercase word, a short role or a YYYY-MM period: a name or a phone typed into a code column is not one.
+        foreach (['Amy', '0912345678', 'JohnSmith'] as $typed) {
+            $this->getJson('/api/v1/triage/db/ClassSession?eq[Status]=' . $typed, $this->bearer())->assertStatus(422);
+        }
+        // A column the application lets a person type into is not offered at all, whatever its name.
+        $this->assertNotContains('closed_reason', $this->getJson('/api/v1/triage/db/course_packages', $this->bearer())->assertOk()->json('columns'));
+        $this->getJson('/api/v1/triage/db/course_packages?eq[closed_reason]=settled', $this->bearer())->assertStatus(422);
 
         foreach (['auth_tokens', 'personal_access_tokens', 'password_reset_requests', 'ApiClient', 'ParentSession', 'student_line_bindings', 'no_such_table'] as $table) {
             $this->getJson("/api/v1/triage/db/{$table}", $this->bearer())->assertNotFound();
