@@ -16,9 +16,10 @@ use Illuminate\Support\Facades\Log;
 final class FirstBillAutoVoid
 {
     /**
-     * True when $invoice is an unmarked NT$0 bill emptied by this reversal (see below), or when, and only when, it is the bill that receipt $reportId's confirmation auto-issued at the contract Charge and
+     * True when, and only when, $invoice is the bill that receipt $reportId's confirmation auto-issued at the contract Charge and
      * that receipt was its only money row: marker names this report, total still the stamped Charge, no items, no correction
      * link, no other pending report bound to it, and the payments before the reversal are exactly the one original receipt.
+     * Also true for an unmarked NT$0 bill that this reversal empties (the second predicate in the body).
      *
      * @param Collection<int, \App\Models\Payment> $paymentsBeforeReversal
      */
