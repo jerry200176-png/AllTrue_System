@@ -192,17 +192,42 @@ class TeacherEligibilityWeeklySegmentsTest extends TestCase
         $this->assertSame([$teacher->id], array_column($there['teachers'], 'teacher_id'));
         $this->assertSame([], $there['settled_elsewhere']);
 
-        // Once that campus has locked the month with the teacher in it, later lessons elsewhere do not move the teacher.
-        $this->withHeaders($this->auth($director['token']))
-            ->postJson('/api/v1/finance/teacher-eligibility/lock', ['month' => '2026-08', 'branch_id' => $other->id])->assertOk();
+        // This campus locks the month without the teacher. Lessons added here afterwards cannot bring the teacher
+        // back into a month that is already locked: the other campus still settles the teacher.
+        $lock = fn (int $campusId) => $this->withHeaders($this->auth($director['token']))
+            ->postJson('/api/v1/finance/teacher-eligibility/lock', ['month' => '2026-08', 'branch_id' => $campusId])->assertOk();
+        $lock(1);
         $this->createAttendedSession($teacher->id, 'one_on_one', '2026-08-05', '10:00', 480);
-        $after = $view(1);
-        $this->assertSame([], $after['teachers']);
-        $this->assertSame($other->id, $after['settled_elsewhere'][0]['campus_id']);
+        $this->assertSame([$teacher->id], array_column($view($other->id)['teachers'], 'teacher_id'));
 
-        // Without the lock the same lessons would bring the teacher here: the rule follows the lesson time.
+        // Once the other campus has locked the month with the teacher in it, the teacher stays there.
+        $lock($other->id);
+        $this->assertSame(1, DB::table('fulltime_payroll_run_teachers')->where('teacher_id', $teacher->id)->count());
+
+        // With nothing locked the rule follows the lesson time: now this campus has more.
         DB::table('fulltime_payroll_runs')->update(['status' => 'reopened']);
         $this->assertSame([$teacher->id], array_column($view(1)['teachers'], 'teacher_id'));
+        $this->assertSame([], $view($other->id)['teachers']);
+    }
+
+    /** A campus link nobody approved must not decide where a teacher is paid. */
+    public function test_unapproved_campus_link_does_not_decide_the_settlement_campus(): void
+    {
+        $director = $this->createDirector();
+        $teacher = $this->createTeacher();
+        $other = Campus::factory()->create();
+        UserCampus::create(['CampusID' => $other->id, 'UserID' => $teacher->id, 'Admin' => 0, 'Approved' => 0]);
+        UserCampus::create(['CampusID' => $other->id, 'UserID' => $director['user_id'], 'Admin' => 1, 'Approved' => 1]);
+        $this->createAttendedSession($teacher->id, 'one_on_one', '2026-08-03', '10:00', 120);
+        $this->createAttendedSession($teacher->id, 'one_on_one', '2026-08-04', '10:00', 240, 'completed', 'present', $other->id);
+        $view = fn (int $campusId) => $this->withHeaders($this->auth($director['token']))
+            ->getJson("/api/v1/finance/teacher-eligibility?period=month&start=2026-08-01&end=2026-08-31&branch_id={$campusId}")
+            ->assertOk()->json();
+
+        $this->assertSame([$teacher->id], array_column($view(1)['teachers'], 'teacher_id'));
+        $there = $view($other->id);
+        $this->assertSame([], $there['teachers']);
+        $this->assertSame(1, $there['settled_elsewhere'][0]['campus_id']);
     }
 
     /** 假日16小時倍率: every judged week needs 16 scheduled hours across Saturday and Sunday. */

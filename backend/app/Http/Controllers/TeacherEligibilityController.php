@@ -328,34 +328,40 @@ class TeacherEligibilityController extends Controller
     }
 
     /**
-     * The one campus that settles each teacher who belongs to more than one (teachers of a single campus are left out).
-     * A campus that has already locked the month with the teacher in it keeps the teacher, whatever the lessons say
-     * now. Otherwise it is the campus, among those the teacher belongs to, with the most lesson time in the weeks in
-     * view; a tie or no lessons goes to the lowest campus id, so every campus reaches the same answer.
+     * The one campus that settles each teacher for the month (teachers with no approved campus link are left out and
+     * stay listed as before).
+     * - A campus that has already locked the month with the teacher in it keeps the teacher, whatever changed since:
+     *   that month is settled there, and moving it would pay it twice.
+     * - Only approved campus links count; a link nobody approved must not decide where money is paid.
+     * - A campus that locked the month without the teacher can no longer take the teacher, so the choice is among the
+     *   campuses still open (if every one is locked, the answer simply stays put until one is reopened).
+     * - Among those: the most lesson time in the weeks in view; a tie or no lessons goes to the lowest campus id, so
+     *   every campus reaches the same answer.
      *
      * @param  array<int, array<string, list<array{start:string,end:string,campus_id:int}>>>  $lessonsByTeacher
      * @return array<int, int> teacher id => campus id
      */
     private function settlementCampusByTeacher(array $teacherIds, array $lessonsByTeacher, string $month): array
     {
-        $memberOf = [];
-        foreach (DB::table('UserCampus')->whereIn('UserID', $teacherIds)->orderBy('CampusID')->get(['UserID', 'CampusID']) as $row) {
-            $memberOf[(int) $row->UserID][(int) $row->CampusID] = 0;
-        }
-        $lockedIn = FulltimePayrollLockStore::tablesReady()
-            ? DB::table('fulltime_payroll_run_teachers as t')
+        $campusOf = [];
+        $lockedCampuses = [];
+        if (FulltimePayrollLockStore::tablesReady()) {
+            $lockedCampuses = DB::table('fulltime_payroll_runs')->where('month', $month)->where('status', 'locked')
+                ->pluck('branch_id')->map(fn ($id) => (int) $id)->all();
+            $campusOf = DB::table('fulltime_payroll_run_teachers as t')
                 ->join('fulltime_payroll_runs as r', 'r.id', '=', 't.run_id')
                 ->where('r.month', $month)->where('r.status', 'locked')->whereIn('t.teacher_id', $teacherIds)
-                ->orderBy('r.id')->pluck('r.branch_id', 't.teacher_id')->all()
-            : [];
+                ->orderBy('r.id')->pluck('r.branch_id', 't.teacher_id')->map(fn ($id) => (int) $id)->all();
+        }
+        $memberOf = [];
+        foreach (DB::table('UserCampus')->whereIn('UserID', $teacherIds)->where('Approved', 1)->orderBy('CampusID')->get(['UserID', 'CampusID']) as $row) {
+            $memberOf[(int) $row->UserID][(int) $row->CampusID] = 0;
+        }
 
-        $campusOf = [];
         foreach ($memberOf as $teacherId => $minutes) {
-            if (count($minutes) < 2) continue;
-            if (isset($lockedIn[$teacherId])) {
-                $campusOf[$teacherId] = (int) $lockedIn[$teacherId];
-                continue;
-            }
+            if (isset($campusOf[$teacherId])) continue;
+            $open = array_diff_key($minutes, array_flip($lockedCampuses));
+            if ($open !== []) $minutes = $open;
             foreach ($lessonsByTeacher[$teacherId] ?? [] as $lessons) {
                 foreach ($lessons as $lesson) {
                     if (!isset($minutes[$lesson['campus_id']])) continue;
