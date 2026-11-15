@@ -114,8 +114,7 @@
             :data-student-id="student.id"
             :data-status="student.status || 'active'"
             tabindex="0"
-            :aria-expanded="expandedId === student.id"
-            :aria-controls="`student-course-detail-${student.id}`"
+            :data-expanded="expandedId === student.id"
             @click="toggleExpand(student, $event)"
             @keydown.enter.prevent="toggleExpand(student, $event)"
             @keydown.space.prevent="toggleExpand(student, $event)"
@@ -196,6 +195,7 @@
                   data-testid="student-course-disclosure"
                   :class="[rowAction.secondary, 'tw:aria-expanded:bg-muted tw:max-md:hidden']"
                   :aria-expanded="expandedId === student.id"
+                  :aria-controls="`student-course-detail-${student.id}`"
                   :title="expandedId === student.id ? '收合課程與續課明細' : '展開課程、排課與購課詳情'"
                   @click="toggleExpand(student, $event)"
                 >{{ expandedId === student.id ? '收合' : '課程/購課' }}</button>
@@ -3704,6 +3704,10 @@ onMounted(async () => {
 </script>
 
 <style scoped>
+.empty-text {
+  color: var(--ds-ink-mute);
+}
+
 /* Page-level table font bump for readability */
 table td { font-size: 14px; }
 table th { font-size: 12.5px; }

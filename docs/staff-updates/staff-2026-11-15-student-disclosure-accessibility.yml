@@ -1,0 +1,14 @@
+updates:
+  - id: staff-2026-11-15-student-disclosure-accessibility
+    published_at: "2026-11-15"
+    audiences:
+      - director
+      - super_admin
+    importance: digest
+    title: 學生課程展開資訊更清楚
+    summary: 輔助閱讀工具可辨識課程明細的展開狀態，空白說明也更容易閱讀。
+    items:
+      - category: fixed
+        text: 手機與桌面仍可使用原本的按鈕、整列點擊及鍵盤展開課程。
+    source_refs:
+      - "changelog:2026-11-15:student-disclosure-accessibility"

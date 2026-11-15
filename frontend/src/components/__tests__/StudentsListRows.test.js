@@ -113,7 +113,7 @@ describe('student table rows', () => {
       expect(all().props('modelValue')).toBe('indeterminate');
       expect(wrapper.find('[data-testid="students-bulk-bar"]').exists()).toBe(true);
       // picking a checkbox does not open the row
-      expect(rowOf(wrapper, 2001).attributes('aria-expanded')).toBe('false');
+      expect(rowOf(wrapper, 2001).attributes('data-expanded')).toBe('false');
       all().vm.$emit('update:modelValue', true);
       await flushPromises();
       expect(all().props('modelValue')).toBe(true);
@@ -135,7 +135,7 @@ describe('student table rows', () => {
       expect(open.text()).toBe('課程/購課');
       await open.trigger('click');
       await flushPromises();
-      expect(rowOf(wrapper, 2001).attributes('aria-expanded')).toBe('true');
+      expect(rowOf(wrapper, 2001).attributes('data-expanded')).toBe('true');
       expect(rowOf(wrapper, 2001).find('[data-testid="student-course-disclosure"]').text()).toBe('收合');
 
       const menu = rowOf(wrapper, 2001).findComponent(ActionMenu);
@@ -165,15 +165,24 @@ describe('student table rows', () => {
     }
   });
 
-  it('keeps the production-run hooks: row id, aria-expanded, controls and the detail row id', async () => {
+  it('#5334 keeps ordinary table rows and exposes disclosure state on real buttons', async () => {
     const wrapper = await mountRows();
     try {
       const row = rowOf(wrapper, 2001);
       expect(row.element.tagName).toBe('TR');
       expect(row.attributes('tabindex')).toBe('0');
-      expect(row.attributes('aria-controls')).toBe('student-course-detail-2001');
+      expect(row.attributes('role')).toBeUndefined();
+      expect(row.attributes('aria-expanded')).toBeUndefined();
+      expect(row.attributes('aria-controls')).toBeUndefined();
+      expect(row.attributes('data-expanded')).toBe('false');
+      const disclosure = () => rowOf(wrapper, 2001).get('[data-testid="student-course-disclosure"]');
+      expect(disclosure().element.tagName).toBe('BUTTON');
+      expect(disclosure().attributes('aria-expanded')).toBe('false');
+      expect(disclosure().attributes('aria-controls')).toBe('student-course-detail-2001');
       await row.trigger('click');
       await flushPromises();
+      expect(rowOf(wrapper, 2001).attributes('data-expanded')).toBe('true');
+      expect(disclosure().attributes('aria-expanded')).toBe('true');
       expect(wrapper.find('#student-course-detail-2001').exists()).toBe(true);
     } finally {
       wrapper.unmount();

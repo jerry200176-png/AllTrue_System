@@ -73,3 +73,68 @@ for (const [name, allowed] of Object.entries(BASELINE)) for (const vp of VIEWPOR
     expect(staleBaseline).toEqual([]);
   });
 }
+
+// #5334: an empty page has no table rows, so it cannot detect invalid row ARIA.
+for (const width of [375, 1280]) {
+  test(`populated student disclosures retain table semantics and pass axe @${width}`, async ({ page }, info) => {
+    const writes = [];
+    const errors = [];
+    page.on('pageerror', error => errors.push(error.message));
+    await page.setViewportSize({ width, height: 900 });
+    await page.route('**/api/**', route => {
+      const request = route.request();
+      const url = new URL(request.url());
+      if (request.method() !== 'GET') {
+        writes.push({ method: request.method(), path: url.pathname });
+        return route.abort();
+      }
+      const students = [
+        { id: 2000, name: '合成學生甲', grade: 'J1', status: 'active', line_bound: false },
+        { id: 2001, name: '合成學生乙', grade: 'J1', status: 'paused', line_bound: false },
+      ];
+      return route.fulfill({ json: url.pathname === '/api/v1/students' ? { data: students, total: 2 } : { data: [] } });
+    });
+    await page.goto('/pilot-mount.html?page=students');
+    const rows = page.getByTestId('student-row');
+    await expect(rows).toHaveCount(2);
+    const row = rows.first();
+    const phone = row.getByTestId('student-row-toggle');
+    const desktop = row.getByTestId('student-course-disclosure');
+    const scan = async phase => {
+      const { violations } = await new AxeBuilder({ page }).withTags(WCAG_TAGS).analyze();
+      const blocking = violations.filter(v => BLOCKING_IMPACTS.has(v.impact ?? ''));
+      await info.attach(`student-axe-${phase}`, { body: JSON.stringify(blocking), contentType: 'application/json' });
+      expect(blocking.map(v => ({ rule: v.id, nodes: v.nodes.map(n => ({ target: n.target, detail: n.failureSummary })) }))).toEqual([]);
+    };
+    await scan('collapsed');
+    await expect(row).not.toHaveAttribute('aria-expanded');
+    await expect(row).not.toHaveAttribute('role');
+    await expect(row).toHaveAttribute('data-expanded', 'false');
+    for (const control of [phone, desktop]) {
+      await expect(control).toHaveAttribute('aria-expanded', 'false');
+      await expect(control).toHaveAttribute('aria-controls', 'student-course-detail-2000');
+    }
+    await row.focus();
+    await row.press('Enter');
+    await expect(row).toHaveAttribute('data-expanded', 'true');
+    await expect(page.locator('#student-course-detail-2000')).toBeVisible();
+    for (const control of [phone, desktop]) await expect(control).toHaveAttribute('aria-expanded', 'true');
+    await expect(row).toBeFocused();
+    await scan('expanded');
+    await row.press('Space');
+    await expect(row).toHaveAttribute('data-expanded', 'false');
+    const visibleControl = width < 768 ? phone : desktop;
+    await visibleControl.focus();
+    await visibleControl.press('Enter');
+    await expect(row).toHaveAttribute('data-expanded', 'true');
+    await expect(visibleControl).toBeFocused();
+    await visibleControl.click();
+    await expect(row).toHaveAttribute('data-expanded', 'false');
+    await expect(page.getByTestId('student-select').first()).not.toBeChecked();
+    await page.getByTestId('student-select').first().click();
+    await expect(row).toHaveAttribute('data-expanded', 'false');
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
+    expect(writes).toEqual([]);
+    expect(errors).toEqual([]);
+  });
+}
