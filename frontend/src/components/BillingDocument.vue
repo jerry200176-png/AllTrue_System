@@ -36,17 +36,18 @@
 
     <table v-if="doc.items.length" class="slip-items">
       <thead>
-        <tr><th>項目</th><th v-if="hasPeriod">期間／堂數</th><th class="num">金額</th></tr>
+        <tr><th>項目</th><th v-if="hasPeriod">期間／堂數</th><th v-if="hasUnitPrice" class="num">單價</th><th class="num">金額</th></tr>
       </thead>
       <tbody>
         <tr v-for="(item, i) in doc.items" :key="i">
           <td>{{ item.description }}</td>
           <td v-if="hasPeriod" class="muted">{{ item.period || '—' }}</td>
+          <td v-if="hasUnitPrice" class="num unit-price">{{ item.unit_price || '—' }}</td>
           <td class="num">{{ item.amount }}</td>
         </tr>
       </tbody>
       <tfoot v-if="doc.total">
-        <tr><td :colspan="hasPeriod ? 2 : 1">合計</td><td class="num">{{ doc.total }}</td></tr>
+        <tr><td :colspan="1 + (hasPeriod ? 1 : 0) + (hasUnitPrice ? 1 : 0)">合計</td><td class="num">{{ doc.total }}</td></tr>
       </tfoot>
     </table>
 
@@ -125,6 +126,7 @@ const props = defineProps({
 const attendedCount = computed(() => props.doc.sessions.filter(s => isDone(s.status)).length);
 const hasSubject = computed(() => new Set(props.doc.sessions.map(s => s.subject).filter(Boolean)).size > 1);
 const hasPeriod = computed(() => props.doc.items.some(i => i.period));
+const hasUnitPrice = computed(() => props.doc.items.some(i => i.unit_price));
 // Bounded so a long course still exports as one PNG within canvas limits.
 const MAX_SESSION_ROWS = 40;
 const shownSessions = computed(() => props.doc.sessions.slice(0, MAX_SESSION_ROWS));
@@ -247,6 +249,7 @@ const hiddenCount = computed(() => Math.max(0, props.doc.sessions.length - MAX_S
 }
 .slip-items td + td, .slip-items th + th { padding-left: 12px; }
 .slip-items .num { text-align: right; white-space: nowrap; font-weight: 600; font-variant-numeric: tabular-nums; }
+.slip-items .unit-price { font-weight: 400; color: var(--slip-ink-2); }
 .slip-items .muted { color: var(--slip-ink-2); font-size: 12px; white-space: nowrap; font-variant-numeric: tabular-nums; }
 
 .slip-section-title {

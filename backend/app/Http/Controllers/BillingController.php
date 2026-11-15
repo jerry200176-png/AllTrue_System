@@ -611,13 +611,15 @@ class BillingController extends Controller
                 'stored_amount' => (int) $item->Amount,
                 'period_start' => $itemPeriodStart,
                 'period_end'   => $itemPeriodEnd,
+                // 單價 (Founder 2026-11-16): the billed course's rate, for display beside the amount.
+                ...($itemCourse instanceof StudentClass ? $itemCourse->slipUnitPrice() : ['unit_price' => null, 'unit_price_unit' => 'session']),
             ];
         });
 
         $sessions = $this->monthlyBilling->invoiceCoveredSessions($invoice, $projection);
         $amountPending = $courseAmountPending && $remaining > 0; // a paid bill on the same course keeps its amounts
         if ($amountPending) {
-            $items = $items->map(fn (array $item) => array_merge($item, ['amount' => null, 'stored_amount' => null]));
+            $items = $items->map(fn (array $item) => array_merge($item, ['amount' => null, 'stored_amount' => null, 'unit_price' => null]));
         }
 
         $authUser = $request->attributes->get('auth_user');

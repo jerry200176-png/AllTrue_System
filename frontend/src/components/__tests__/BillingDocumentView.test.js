@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { mount } from '@vue/test-utils';
 import BillingDocument from '../BillingDocument.vue';
-import { paymentSlipView, formatSessionDate, statusTone, isDone, STATUS_ZH } from '../../lib/billingDocumentView.js';
+import { paymentSlipView, slipPlainText, unitPriceLabel, formatSessionDate, statusTone, isDone, STATUS_ZH } from '../../lib/billingDocumentView.js';
 
 describe('paymentSlipView', () => {
   // In-app #548: transferred history and future bookings can exceed the
@@ -24,6 +24,38 @@ describe('paymentSlipView', () => {
     ...overplanned,
     sessions: overplanned.sessions.slice(0, 9).map((s, i) => i === 8 ? { ...s, status: 'leave_adjusted' } : s),
   };
+
+  it('shows 單價 as its own column when the course has a rate, and not at all when it has none', () => {
+    const priced = paymentSlipView({ ...overplanned, unit_price: 1000, unit_price_unit: 'session' });
+    expect(priced.items[0].unit_price).toBe('NT$ 1,000／堂');
+    const w = mount(BillingDocument, { props: { doc: priced } });
+    expect(w.findAll('.slip-items th').map((th) => th.text())).toEqual(['項目', '期間／堂數', '單價', '金額']);
+    expect(w.get('.slip-items .unit-price').text()).toBe('NT$ 1,000／堂');
+    expect(priced.amount).toBe(8000); // display only: the amount is untouched
+
+    const bare = mount(BillingDocument, { props: { doc: paymentSlipView(overplanned) } });
+    expect(bare.findAll('.slip-items th').map((th) => th.text())).toEqual(['項目', '期間／堂數', '金額']);
+    expect(unitPriceLabel(900, 'hour')).toBe('NT$ 900／小時');
+    expect(unitPriceLabel(null, 'session')).toBe('');
+
+    const invoice = paymentSlipView({ invoice_id: 7, student_name: '測試', remaining: 3000, total_amount: 3000, items: [
+      { description: '英文月結費用', amount: 3000, period_start: '2026-11-01', period_end: '2026-11-30', unit_price: 750, unit_price_unit: 'session' },
+    ] });
+    expect(invoice.items[0].unit_price).toBe('NT$ 750／堂');
+  });
+
+  it('in-app #553: the slip can be copied as text', () => {
+    const text = slipPlainText(paymentSlipView({ ...overplanned, unit_price: 1000, unit_price_unit: 'session', campus_name: '測試分校', due_date: '2026-11-20', sessions: overplanned.sessions.slice(0, 2) }));
+    expect(text.split('\n')).toEqual(expect.arrayContaining([
+      '學生：測試',
+      '英文（堂數制・估算）　剩餘 4 堂　單價 NT$ 1,000／堂　NT$ 8,000',
+      '預估金額（尚無帳單）：NT$ 8,000',
+      '繳費期限：2026/11/20',
+      '課程明細（共 2 筆）',
+    ]));
+    expect(text).toContain('1. ');
+    expect(text).toContain('13:00');
+  });
 
   it('#548 labels count-mode history as records without changing dates or money', () => {
     const original = structuredClone(withLeaveRecord);

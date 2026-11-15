@@ -135,6 +135,9 @@ class MonthlyBillingSlipTest extends TestCase
             'Accept' => 'application/json',
         ])->getJson("/api/v1/invoices/{$invoice->id}/slip-data");
 
+        // 單價: the billed course's rate rides along for display (1500 a lesson here).
+        $this->assertEquals(1500, $invoiceSlip->json('items.0.unit_price'));
+        $this->assertSame('session', $invoiceSlip->json('items.0.unit_price_unit'));
         $invoiceSlip->assertOk()
             ->assertJsonPath('total_amount', 7500)
             ->assertJsonPath('stored_total_amount', 6000)

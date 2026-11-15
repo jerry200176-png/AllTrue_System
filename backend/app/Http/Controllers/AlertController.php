@@ -955,6 +955,7 @@ class AlertController extends Controller
             'schedule_mode'    => $mode,
             // Planning metadata only: never cap dates or change payable amounts on a slip read (#548).
             'sessions_purchased' => (int) ($sc->SessionCount ?? 0),
+            ...$sc->slipUnitPrice(),
             'package_id' => $sc->PackageID,
             'scheduling_policy' => (string) ($sc->scheduling_policy ?? 'auto_recurrence'),
             'deduction_basis' => $sc->deduction_basis,

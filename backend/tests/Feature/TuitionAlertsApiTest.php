@@ -1282,8 +1282,20 @@ class TuitionAlertsApiTest extends TestCase
             'PackageID' => $pkg->id, 'PackageTotalSessions' => 8, 'PackageName' => $pkg->name,
         ]);
 
-        $this->withHeaders(['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])
+        $slip = $this->withHeaders(['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])
             ->getJson("/api/v1/alerts/tuition-slip/{$anchor->ID}")->assertOk()->assertJsonPath('charge', 8000);
+        // 單價 on the slip: a package is priced by the package (1000 a lesson), whatever the member course's own rate says.
+        $this->assertEquals(1000, $slip->json('unit_price'));
+        \Illuminate\Support\Facades\DB::table('StudentClass')->where('ID', $anchor->ID)->update(['Rate' => 625]);
+        $again = $this->withHeaders(['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])->getJson("/api/v1/alerts/tuition-slip/{$anchor->ID}")->assertOk();
+        $this->assertEquals(1000, $again->json('unit_price'));
+        $this->assertSame('session', $again->json('unit_price_unit'));
+
+        // A course of its own shows its own rate and unit; no rate set means no 單價 at all.
+        $hourly = $this->createCountModeClass($student->id, ['Rate' => 900, 'rate_unit' => 'hour', 'TotalHours' => 8, 'SessionCount' => 4, 'Charge' => 7200, 'Paid' => 0, 'RemainingSessions' => 4]);
+        $own = $this->withHeaders(['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])->getJson("/api/v1/alerts/tuition-slip/{$hourly->ID}")->assertOk();
+        $this->assertEquals(900, $own->json('unit_price'));
+        $this->assertSame('hour', $own->json('unit_price_unit'));
     }
 
     // ── #4123 / in-app #407 (#4114): 最近繳費 and 已收 come from valid Payment rows ──────────────
