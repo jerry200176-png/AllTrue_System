@@ -31,14 +31,17 @@ class TeacherEligibilityStudentAttendanceTest extends TestCase
             '2026-08-04' => [$lesson('10:00', '11:00'), $lesson('13:00', '15:00')],
             // No end time: the two-hour default.
             '2026-08-05' => [$lesson('16:00', '')],
+            // An end time before the start is a typing slip, not a 20-hour lesson: the two-hour default, and it
+            // still merges with the lesson it overlaps (18:00-22:00 in all). The same for an end equal to the start.
+            '2026-08-06' => [$lesson('20:00', '00:00'), $lesson('18:00', '21:00'), $lesson('09:00', '09:00')],
             // Another week.
             '2026-08-10' => [$lesson('08:00', '12:00')],
         ];
 
         $week = $this->invoke('evaluateWeek', Carbon::parse('2026-08-03'), Carbon::parse('2026-08-09')->endOfDay(), $lessons);
 
-        self::assertSame(['2026-08-03' => 5.0, '2026-08-04' => 3.0, '2026-08-05' => 2.0], $week['metrics']['daily_hours']);
-        self::assertSame(5.0, $week['metrics']['total_segments']);
+        self::assertSame(['2026-08-03' => 5.0, '2026-08-04' => 3.0, '2026-08-05' => 2.0, '2026-08-06' => 6.0], $week['metrics']['daily_hours']);
+        self::assertSame(8.0, $week['metrics']['total_segments']);
         self::assertFalse($week['metrics']['meets_16_segments']);
         self::assertSame(TeacherEligibilityPolicy::NOT_QUALIFIES, $week['status']);
 
@@ -46,7 +49,7 @@ class TeacherEligibilityStudentAttendanceTest extends TestCase
         $closed = $this->invoke('evaluateWeek', Carbon::parse('2026-08-03'), Carbon::parse('2026-08-09')->endOfDay(), $lessons, ['2026-08-08', '2026-08-15']);
         self::assertSame(TeacherEligibilityPolicy::QUALIFIES, $closed['status']);
         self::assertSame(['2026-08-08'], $closed['metrics']['closure_dates']);
-        self::assertSame(5.0, $closed['metrics']['total_segments']);
+        self::assertSame(8.0, $closed['metrics']['total_segments']);
     }
 
     /** A week still running is shown but not judged yet, and a short week carries what the calendar left out. */
