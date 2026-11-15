@@ -1098,6 +1098,24 @@ class BugReportService
         });
     }
 
+    /** Public HTTP reply by a self-filing admin: recheck the two logged kinds under the existing row lock. */
+    public static function addSelfFiledAdminPublicComment(int $bugId, int $actorId, string $body): BugReportComment
+    {
+        return DB::transaction(function () use ($bugId, $actorId, $body) {
+            $bug = BugReport::query()->whereKey($bugId)->lockForUpdate()->firstOrFail();
+            if ((int) $bug->getAttribute('reporter_user_id') === $actorId && $bug->getAttribute('status') === 'closed') {
+                $close = BugReportStatusLog::query()->where('bug_report_id', $bugId)->where('to_status', 'closed')->latest('id')->lockForUpdate()->first();
+                $note = (string) ($close->note ?? '');
+                $kind = self::parseMarkerPayload($note, self::DISPOSITION_MARKER)['kind'] ?? null;
+                if (str_contains($note, self::CLOSED_AS_LOGGED_NOTE) && in_array($kind, ['suggestion', 'ux_friction'], true)) {
+                    return self::addReporterCommentAndReopen($bugId, $actorId, $body);
+                }
+            }
+
+            return self::addComment($bugId, $actorId, $body, false);
+        });
+    }
+
     /**
      * A reporter reply on a timeout- or logged-closed bug reopens it (triaged, or in_progress for resolved-verification timeouts).
      */

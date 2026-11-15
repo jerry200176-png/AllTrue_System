@@ -107,7 +107,7 @@ final class PopInappReportTriageTest extends TestCase
 
         self::assertSame([$id], $this->policy->approvePending($this->service)['approved']);
         self::assertSame($this->policy->approverRef(), DB::table('pop_approval_events')->where('operation_id', $id)->value('approver'));
-        self::assertStringEndsWith('@5', $this->policy->approverRef());
+        self::assertStringEndsWith('@6', $this->policy->approverRef());
         self::assertSame('succeeded', $this->service->runApprovedLocally($id)['status']);
         self::assertSame('triaged', BugReport::query()->whereKey($bug)->value('status'));
         $replies = BugReportComment::query()->where('bug_report_id', $bug)->orderBy('id')->get();
@@ -188,14 +188,21 @@ final class PopInappReportTriageTest extends TestCase
         $this->assertNothingWritten($bug);
     }
 
-    public function test_a_logged_receipt_cannot_be_attributed_to_its_own_reporter(): void
+    public function test_self_filed_admin_report_can_use_the_existing_issuer_attribution_without_claiming_acceptance(): void
     {
         $bug = $this->bug();
         BugReport::query()->whereKey($bug)->update(['reporter_user_id' => $this->admin]);
         $p = $this->params($bug, ['disposition' => 'ux_friction', 'public_reply' => '已收進產品清單 ' . $this->issueUrl() . '。上線時會在這裡通知你；想補充直接回覆就會重開。']);
         $id = $this->drafted($bug, $p, 'own-001', $this->inappAgent());
-        self::assertContains('reply_would_be_reporters_own', $this->dryRunErrors($id));
-        $this->assertNothingWritten($bug);
+        self::assertSame([], $this->dryRunErrors($id));
+        self::assertSame([$id], $this->policy->approvePending($this->service)['approved']);
+        self::assertSame('succeeded', $this->service->runApprovedLocally($id)['status']);
+        self::assertSame('closed', BugReport::query()->whereKey($bug)->value('status'));
+        self::assertSame([$this->admin], BugReportComment::query()->where('bug_report_id', $bug)->pluck('author_user_id')->map(fn ($v) => (int) $v)->all());
+        $receipt = json_decode(DB::table('pop_execution_records')->where('operation_id', $id)->where('phase', 'execute')->value('payload'), true);
+        self::assertSame(hash('sha256', $p['public_reply']), $receipt['reply_sha256']);
+        self::assertSame((int) BugReportStatusLog::query()->where('bug_report_id', $bug)->where('to_status', 'closed')->max('id'), $receipt['logged_close_id']);
+        self::assertFalse(BugReportService::getDetail($bug)['product_loop']['shipped']);
     }
 
     public function test_a_reporters_unanswered_comment_blocks_a_logged_receipt_even_with_a_fresh_read_proof(): void
@@ -228,7 +235,7 @@ final class PopInappReportTriageTest extends TestCase
         $this->assertNothingWritten($bug);
     }
 
-    public function test_receipt_rechecks_actual_human_fallback_attribution_under_the_row_lock(): void
+    public function test_receipt_rechecks_human_fallback_attribution_after_role_revocation(): void
     {
         User::query()->whereKey($this->reporter)->update(['type' => 'S']);
         $bug = $this->bug();
@@ -238,7 +245,8 @@ final class PopInappReportTriageTest extends TestCase
         $plan = $strategy->plan($p, ['operation_id' => $id]);
         self::assertTrue($plan['ok']); // requester issuer is not the reporter
         $this->service->approve($id, 'human-fallback', 'user:' . $this->reporter, 'super_admin', $this->deployed, $this->reporter);
-        self::assertSame(['inapp_triage_reply_would_be_reporters_own'], $strategy->execute($plan, ['operation_id' => $id])['errors']);
+        User::query()->whereKey($this->reporter)->update(['type' => 'T']);
+        self::assertSame(['inapp_attribution_unresolved'], $strategy->execute($plan, ['operation_id' => $id])['errors']);
         $this->assertNothingWritten($bug);
     }
 

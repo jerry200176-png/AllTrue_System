@@ -13,6 +13,7 @@ use App\Operations\Inapp\InappStandingPolicy;
 use App\Operations\PopOperationCatalog;
 use App\Operations\PopOperationService;
 use App\Operations\Strategies\InappReportResolveAfterDeployStrategy;
+use App\Operations\Strategies\InappReportTriageStrategy;
 use App\Services\BugReportWritebackEvidence;
 use App\Services\BugReportService;
 use Carbon\Carbon;
@@ -253,7 +254,7 @@ final class PopInappResolveAfterDeployTest extends TestCase
         self::assertSame(2, BugReportComment::query()->where('bug_report_id', $bug)->count());
     }
 
-    public function test_a_shipping_notice_cannot_be_attributed_to_its_reporter(): void
+    public function test_self_filed_admin_can_receive_shipping_attributed_to_the_existing_issuer(): void
     {
         $bug = $this->bug('new');
         self::assertTrue(BugReportService::closeAsLogged($bug, $this->admin, 'suggestion', $this->issueUrl(), '已記錄。')['ok']);
@@ -262,8 +263,114 @@ final class PopInappResolveAfterDeployTest extends TestCase
         $reporter->save();
         $client = InappAgentClients::issue($reporter, 'own report agent', [1]);
         $id = $this->drafted($bug, null, 'own-ship-001', InappAgentClients::actor((int) $client['record']['id']));
-        self::assertContains('reply_would_be_reporters_own', $this->dryRunErrors($id));
+        self::assertSame([], $this->dryRunErrors($id));
+        self::assertSame([$id], $this->policy->approvePending($this->service)['approved']);
+        self::assertSame('succeeded', $this->service->runApprovedLocally($id)['status']);
+        self::assertSame(2, BugReportComment::query()->where('bug_report_id', $bug)->count());
+        self::assertSame('closed', BugReport::query()->whereKey($bug)->value('status'));
+    }
+
+    public function test_self_filed_logged_cycle_recognizes_its_real_machine_receipt_and_never_verifies_for_the_reporter(): void
+    {
+        [$bug, $actor] = $this->selfFiledLoggedReceipt();
+        $reply = '配色已更新，重新開啟學生清單即可查看。想補充請直接回覆。追蹤：' . $this->issueUrl();
+        $id = $this->drafted($bug, $this->params($bug, ['public_reply' => $reply]), 'self-ship', $actor);
+        self::assertSame([], $this->dryRunErrors($id));
+        self::assertSame([$id], $this->policy->approvePending($this->service)['approved']);
+        self::assertSame('succeeded', $this->service->runApprovedLocally($id)['status']);
+        self::assertSame('closed', BugReport::query()->whereKey($bug)->value('status'));
+        self::assertSame(2, BugReportComment::query()->where('bug_report_id', $bug)->count());
+        self::assertSame(1, BugReportEvidence::query()->where('bug_report_id', $bug)->count());
+        $loop = BugReportService::getDetail($bug)['product_loop'];
+        self::assertSame(['ux_friction', true, 'SHIPPED', true], [$loop['disposition'], $loop['engineering_required'], $loop['semantic_phase'], $loop['shipped']]);
+        self::assertSame([['new', 'closed']], BugReportStatusLog::query()->where('bug_report_id', $bug)->orderBy('id')->get()->map(fn ($l) => [$l->from_status, $l->to_status])->all());
+    }
+
+    public static function selfFiledReceiptFaults(): array
+    {
+        $keys = ['missing', 'failed', 'dry-run', 'verify-only', 'comment_id', 'author_id', 'bug_id', 'reply_sha256',
+            'logged_close_id', 'disposition', 'github_issue', 'wrong-operation', 'wrong-strategy', 'parameters-hash', 'copied-body',
+            'request-bug', 'request-campus', 'request-issue', 'request-body', 'changed-comment-body', 'missing-reply-hash'];
+
+        return array_combine($keys, array_map(fn ($key) => [$key], $keys));
+    }
+
+    /** @dataProvider selfFiledReceiptFaults */
+    public function test_self_filed_reporter_comment_requires_exact_successful_machine_origin(string $fault): void
+    {
+        [$bug, $actor, $receiptId] = $this->selfFiledLoggedReceipt();
+        $records = DB::table('pop_execution_records')->where('operation_id', $receiptId)->where('phase', 'execute');
+        $record = $records->first();
+        $payload = json_decode($record->payload, true);
+        if (in_array($fault, ['missing', 'verify-only'], true)) $records->delete();
+        elseif ($fault === 'failed') $records->update(['result' => 'failed']);
+        elseif ($fault === 'dry-run') $records->update(['phase' => 'dry-run', 'attempt_no' => 99, 'attempt_key' => 'synthetic-dry-run-99']);
+        elseif ($fault === 'wrong-operation') DB::table('pop_operation_requests')->where('id', $receiptId)->update(['operation_id' => 'inapp-report-progress-reply']);
+        elseif ($fault === 'wrong-strategy') DB::table('pop_operation_requests')->where('id', $receiptId)->update(['strategy_id' => InappReportResolveAfterDeployStrategy::class]);
+        elseif ($fault === 'parameters-hash') DB::table('pop_operation_requests')->where('id', $receiptId)->update(['parameters_hash' => str_repeat('0', 64)]);
+        elseif (str_starts_with($fault, 'request-')) {
+            $request = DB::table('pop_operation_requests')->where('id', $receiptId)->first();
+            $p = json_decode($request->parameters, true);
+            $key = ['request-bug' => 'bug_id', 'request-campus' => 'campus_id', 'request-issue' => 'github_issue_url', 'request-body' => 'public_reply'][$fault];
+            $p[$key] = is_int($p[$key]) ? $p[$key] + 100 : $p[$key] . '1';
+            DB::table('pop_operation_requests')->where('id', $receiptId)->update(['parameters' => json_encode($p),
+                'parameters_hash' => hash('sha256', json_encode(PopOperationService::canonicalParameters($p)))]);
+        } elseif ($fault === 'changed-comment-body') BugReportComment::query()->where('bug_report_id', $bug)->update(['body' => '不同的留言。']);
+        elseif ($fault === 'missing-reply-hash') {
+            unset($payload['reply_sha256']);
+            $records->update(['payload' => json_encode($payload)]);
+        }
+        elseif ($fault === 'copied-body') {
+            $comment = BugReportComment::query()->where('bug_report_id', $bug)->sole();
+            BugReportComment::create(['bug_report_id' => $bug, 'author_user_id' => $this->admin, 'body' => $comment->body, 'is_internal_note' => false, 'created_at' => now()]);
+        } else {
+            $payload[$fault] = match ($fault) {
+                'reply_sha256' => str_repeat('0', 64), 'disposition' => 'bug', default => ((int) $payload[$fault]) + 100,
+            };
+            $records->update(['payload' => json_encode($payload)]);
+        }
+        $rid = 'guard-' . str_replace('_', '-', $fault);
+        $id = $this->drafted($bug, $this->params($bug, ['request_id' => $rid,
+            'public_reply' => '配色已更新，請重新開啟學生清單。追蹤：' . $this->issueUrl()]), $rid, $actor);
+        self::assertContains('reporter_reply_pending', $this->dryRunErrors($id));
+        self::assertSame(0, BugReportEvidence::query()->where('bug_report_id', $bug)->count());
+        self::assertSame($fault === 'copied-body' ? 2 : 1, BugReportComment::query()->where('bug_report_id', $bug)->count());
+    }
+
+    public function test_self_filed_missing_receipt_fails_closed_until_its_successful_execute_record_is_persisted(): void
+    {
+        [$bug, $actor, $receiptId] = $this->selfFiledLoggedReceipt();
+        $record = DB::table('pop_execution_records')->where('operation_id', $receiptId)->where('phase', 'execute')->first();
+        DB::table('pop_execution_records')->where('id', $record->id)->delete();
+        $reply = '配色已更新，請重新開啟學生清單。追蹤：' . $this->issueUrl();
+        $missing = $this->drafted($bug, $this->params($bug, ['public_reply' => $reply]), 'missing-receipt', $actor);
+        self::assertContains('reporter_reply_pending', $this->dryRunErrors($missing));
+        DB::table('pop_execution_records')->insert((array) $record);
+        // Origin does not depend on a later verify record or the request's current status.
+        DB::table('pop_execution_records')->where('operation_id', $receiptId)->where('phase', 'verify')->delete();
+        DB::table('pop_operation_requests')->where('id', $receiptId)->update(['status' => 'executed']);
+        $late = $this->drafted($bug, $this->params($bug, ['public_reply' => $reply]), 'late-receipt', $actor);
+        self::assertSame([], $this->dryRunErrors($late));
         self::assertSame(1, BugReportComment::query()->where('bug_report_id', $bug)->count());
+    }
+
+    private function selfFiledLoggedReceipt(): array
+    {
+        $bug = $this->bug('new');
+        BugReport::query()->whereKey($bug)->update(['reporter_user_id' => $this->admin]);
+        $client = InappAgentClients::issue(User::query()->findOrFail($this->admin), 'self filed agent', [1]);
+        $actor = InappAgentClients::actor((int) $client['record']['id']);
+        $p = ['bug_id' => $bug, 'campus_id' => 1, 'request_id' => 'self-receipt', 'disposition' => 'ux_friction',
+            'github_issue_url' => $this->issueUrl(), 'writeback_proof' => $this->proof($bug),
+            'public_reply' => '已收進產品清單 ' . $this->issueUrl() . '。上線時會在這裡通知你；想補充直接回覆就會重開。'];
+        $draft = $this->service->createDraft(InappReportTriageStrategy::OPERATION, $p, 'self-receipt-' . $bug, $actor, 'pop_machine', [1]);
+        $rid = (string) $draft['id'];
+        $this->service->runDryRun($rid, $actor, null, 'pop_machine', [1]);
+        self::assertSame([], $this->dryRunErrors($rid));
+        self::assertSame([$rid], $this->policy->approvePending($this->service)['approved']);
+        self::assertSame('succeeded', $this->service->runApprovedLocally($rid)['status']);
+
+        return [$bug, $actor, $rid];
     }
 
     public function test_shipping_rolls_back_production_evidence_when_the_public_reply_fails(): void
@@ -315,7 +422,7 @@ final class PopInappResolveAfterDeployTest extends TestCase
         self::assertSame([], $this->dryRunErrors($id));
     }
 
-    public function test_shipping_rechecks_actual_human_fallback_attribution_under_the_row_lock(): void
+    public function test_shipping_rechecks_human_fallback_attribution_after_role_revocation(): void
     {
         User::query()->whereKey($this->reporter)->update(['type' => 'S']);
         $bug = $this->bug('new');
@@ -326,7 +433,8 @@ final class PopInappResolveAfterDeployTest extends TestCase
         $plan = $strategy->plan($this->params($bug), ['operation_id' => $id]);
         self::assertTrue($plan['ok']);
         $this->service->approve($id, 'human-fallback', 'user:' . $this->reporter, 'super_admin', $this->deployed, $this->reporter);
-        self::assertSame(['inapp_resolve_reply_would_be_reporters_own'], $strategy->execute($plan, ['operation_id' => $id])['errors']);
+        User::query()->whereKey($this->reporter)->update(['type' => 'T']);
+        self::assertSame(['inapp_attribution_unresolved'], $strategy->execute($plan, ['operation_id' => $id])['errors']);
         self::assertSame(1, BugReportComment::query()->where('bug_report_id', $bug)->count());
         self::assertSame(0, BugReportEvidence::query()->where('bug_report_id', $bug)->count());
     }
@@ -591,6 +699,7 @@ final class PopInappResolveAfterDeployTest extends TestCase
             str_starts_with($url, $api . 'commits/') => Http::response([['number' => 900, 'merged_at' => '2026-10-22T07:00:00Z', 'title' => 'fix', 'body' => $this->remote['pr_body']]]),
             str_starts_with($url, $api . 'issues/' . self::ISSUE . '/comments') => Http::response([]),
             $url === $api . 'issues/' . self::ISSUE => Http::response(['number' => self::ISSUE, 'repository_url' => rtrim($api, '/'),
+                'state' => 'open', 'state_reason' => null,
                 'user' => ['login' => $this->remote['author']], 'body' => "SourceRef: alltrue:bug_report:{$bug}\n\n- In-app ID: {$bug}"]
                 + ($this->remote['pull_request'] ? ['pull_request' => ['url' => 'x']] : [])),
             default => Http::response('', 599), // never reach the network
