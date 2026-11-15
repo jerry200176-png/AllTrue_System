@@ -44,6 +44,7 @@
       <span v-else-if="waived" class="contract__muted" data-testid="contract-waived">{{ WAIVED_LABEL }}</span>
       <!-- F-3: a shared package is one obligation. A follower shows no 未繳 / 還沒開帳單 of its own, only where to pay. -->
       <span v-else-if="followerPointer" class="contract__muted" data-testid="contract-shared-follower">{{ sharedLeadSubject ? `共用方案，請到「${sharedLeadSubject}」卡處理收款` : '共用方案，請到同方案另一張卡處理收款' }}</span>
+      <span v-else-if="nothingTaught" class="contract__muted" data-testid="contract-nothing-taught">沒有要收的費用</span>
       <span v-else-if="outstanding > 0">未繳 <strong class="due">{{ money(outstanding) }}</strong></span>
       <span v-else-if="!course.paid && !fullyCollected" class="contract__muted">還沒開帳單</span>
       <span v-else-if="!legacyUnverified">已收</span>
@@ -237,6 +238,7 @@ const amountsLine = computed(() => {
   const a = props.amounts;
   if (!a || followerPointer.value) return '';
   if (!a.due && !a.received && !a.owed) {
+    if (nothingTaught.value) return '';
     return noObligation.value || waived.value || props.lastPayment?.fullDiscount || props.course.free_gift_settled === true || props.course.full_discount_settled === true ? '' : '金額未填';
   }
   return `本合約帳單 應收 ${money(a.due)}・已收 ${money(a.received)}・未繳 ${money(a.owed)}`;
@@ -263,6 +265,7 @@ const payLineText = computed(() => {
   if (noObligation.value) return ''; // in-app #475: the money row says 輔導課不用繳費; never 還沒繳費 on top
   if (p?.waived || waived.value) return WAIVED_LABEL; // #4150: a waiver is not a missing payment, and not 還沒繳費 either
   if (p?.fullDiscount) return '全額折扣，不用繳費'; // #4656
+  if (nothingTaught.value) return '這份合約沒有上到課，不用繳費';
   if (!p?.date) return '還沒繳費';
   return p.amount == null ? `繳費日 ${dateOnly(p.date)}` : `繳費日 ${dateOnly(p.date)}　${money(p.amount)}`;
 });
@@ -411,7 +414,12 @@ const bodyId = `contract-body-${props.course.id}`;
 // The drawer remembers which cards are open, because an action reloads the ledger and remounts every card.
 watch(open, (v) => emit('toggle', v));
 const legacyRef = ref(null);
-const canRecord = computed(() => !props.pendingReport && !followerPointer.value && !outsideDates.value.length && !legacyResolvable.value && !noObligation.value && !waived.value
+// in-app #556: a monthly contract is billed by the lessons held. With none held and none to come (leave or called-off
+// lessons only), no bill, no payment and nothing waiting, there is nothing to collect: it is not a missing payment.
+const nothingTaught = computed(() => isMonthly.value && state.value === 'ready' && heldCount.value === 0 && upcomingCount.value === 0
+  && !(props.outstanding > 0) && !props.pendingReport && !props.billDraft && !props.lastPayment?.date
+  && !(props.amounts?.due || props.amounts?.received || props.amounts?.owed));
+const canRecord = computed(() => !nothingTaught.value && !props.pendingReport && !followerPointer.value && !outsideDates.value.length && !legacyResolvable.value && !noObligation.value && !waived.value
   && (props.outstanding > 0 || (!props.course.paid && !fullyCollected.value)));
 // Same two places the card used to offer 開帳單: nothing owed on an unpaid bill-less term, or a collected term with a ready renewal draft.
 const canIssue = computed(() => !!props.billDraft && (fullyCollected.value
@@ -426,6 +434,7 @@ const pill = computed(() => {
   if (followerPointer.value) return { text: '共用方案', cls: '' };
   if (legacyUnverified.value) return { text: props.outstanding > 0 ? `需核對 ${money(props.outstanding)}` : '需核對', cls: 'tone-warn' };
   if (props.outstanding > 0) return { text: `${C.unpaid.label} ${money(props.outstanding)}`, cls: 'pay-unpaid' };
+  if (nothingTaught.value) return { text: '不用繳費', cls: '' };
   if (!props.course.paid && !fullyCollected.value) return { text: '還沒開帳單', cls: '' };
   return { text: C.paid.label, cls: 'pay-paid' };
 });

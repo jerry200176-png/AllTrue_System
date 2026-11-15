@@ -59,6 +59,25 @@ describe('ContractCard collapsed line', () => {
     expect(menuItem('record')).not.toBeNull();
   });
 
+  it('in-app #556: a monthly contract with only a leave has nothing to collect', async () => {
+    const leaveOnly = { ...SESSIONS, subject: '化學', schedule_mode: 'date', sessions: [{ class_session_id: 1, date: '2026-10-11', start_time: '13:00', status: 'leave', payment: 'no_invoice' }] };
+    authedFetch.mockResolvedValue(respond(leaveOnly));
+    const course = { id: 9, subject: '化學', paid: false, schedule_mode: 'date', start_date: '2026-10-01', end_date: '2026-10-15' };
+    const w = await card({ course, expanded: true, amounts: { due: 0, received: 0, owed: 0 } });
+    expect(w.get('[data-testid="contract-pill"]').text()).toBe('不用繳費');
+    expect(w.get('[data-testid="contract-nothing-taught"]').text()).toBe('沒有要收的費用');
+    expect(w.text()).toContain('這份合約沒有上到課，不用繳費');
+    expect(w.text()).not.toContain('還沒繳費');
+    expect(w.text()).not.toContain('金額未填');
+    expect(w.find('[data-testid="contract-record"]').exists()).toBe(false);
+    wrapper.unmount();
+    // One lesson held: the usual unpaid wording and the record button come back.
+    authedFetch.mockResolvedValue(respond({ ...leaveOnly, sessions: [...leaveOnly.sessions, { class_session_id: 2, date: '2026-10-12', start_time: '13:00', status: 'attended', payment: 'no_invoice' }] }));
+    const taught = await card({ course, expanded: true, amounts: { due: 0, received: 0, owed: 0 } });
+    expect(taught.find('[data-testid="contract-nothing-taught"]').exists()).toBe(false);
+    expect(taught.find('[data-testid="contract-record"]').exists()).toBe(true);
+  });
+
   it('keeps warnings on the collapsed card', async () => {
     const w = await card({ course: { id: 9, subject: '數學', paid: false, start_date: '2026-10-10', end_date: '2026-10-31', lessons_outside_contract: ['2026-09-29'] } });
     expect(w.get('[data-testid="contract-outside"]').text()).toContain('需核對：9/29');
