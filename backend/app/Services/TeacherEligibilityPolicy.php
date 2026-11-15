@@ -34,7 +34,7 @@ class TeacherEligibilityPolicy
     {
         $components = [
             'weekly_16_segments' => $this->weekly16($input['weekly'] ?? null),
-            'holiday_16_hours' => $this->holiday16($input['holiday_days'] ?? null),
+            'holiday_16_hours' => $this->holiday16($input['holiday_weekend_hours'] ?? [], (int) ($input['holiday_waived_weeks'] ?? 0)),
             'weekday_afternoon' => $this->weekdayAfternoon($input['weekday_early_segments'] ?? []),
             'special_performance' => $this->specialPerformance($input['achievements'] ?? [], $input['period_start'] ?? null, $input['period_end'] ?? null),
             'deductions' => $this->deductions($input['deductions'] ?? [], $input['period_start'] ?? null, $input['period_end'] ?? null),
@@ -85,67 +85,23 @@ class TeacherEligibilityPolicy
         );
     }
 
-    public function holiday16(?array $holidayDays): array
+    /**
+     * HQ 115.07: 假日出勤達 16 小時 → up to +10%; 假日未滿 16 小時者，假日倍率調整為 0%.
+     * The system's value is all or nothing: every judged week needs 16 scheduled hours across Saturday and Sunday.
+     *
+     * A week with a company-wide closure day is waived (Founder 2026-11-15): it counts as met and is not looked at.
+     *
+     * @param  list<int|float>  $weeklyWeekendHours  one value per judged week
+     */
+    public function holiday16(array $weeklyWeekendHours, int $waivedWeeks = 0): array
     {
-        if ($holidayDays === null) {
-            return $this->review(['holiday_calendar'], '缺少假日曆資料。');
-        }
-        if ($holidayDays === []) {
-            return $this->result(self::QUALIFIES, '查詢期間沒有需計算的假日。', ['holiday_count' => 0], 0, 0);
-        }
-
-        $missing = [];
-        foreach ($holidayDays as $index => $day) {
-            foreach (['date', 'regular_scheduled_hours'] as $field) {
-                if (!array_key_exists($field, $day) || $day[$field] === null) {
-                    $missing[] = "holiday_days.{$index}.{$field}";
-                }
-            }
-        }
-        if ($missing !== []) {
-            return $this->review($missing, '缺少假日出勤或假日假抵扣時數。');
-        }
-
         $required = (float) $this->setting('holiday_required_hours', 16);
-        foreach ($holidayDays as $index => $day) {
-            $regular = (float) $day['regular_scheduled_hours'];
-            $leaveUnknown = !array_key_exists('holiday_leave_hours', $day) || $day['holiday_leave_hours'] === null;
-            if ($regular < $required && $leaveUnknown) {
-                $missing[] = "holiday_days.{$index}.holiday_leave_hours";
-            }
-        }
-        if ($missing !== []) {
-            return $this->review($missing, '缺少假日出勤或假日假抵扣時數。');
-        }
+        $qualified = $weeklyWeekendHours === [] ? $waivedWeeks > 0 : min($weeklyWeekendHours) >= $required;
 
-        $qualified = collect($holidayDays)->every(function ($day) use ($required) {
-            $covered = (float) $day['regular_scheduled_hours'] + (float) ($day['holiday_leave_hours'] ?? 0);
-            return $covered >= $required;
-        });
-        $metrics = [
-            'holiday_count' => count($holidayDays),
-            'required_hours' => $required,
-            'regular_scheduled_hours' => collect($holidayDays)->mapWithKeys(fn ($day) => [
-                (string) $day['date'] => round((float) $day['regular_scheduled_hours'], 2),
-            ])->all(),
-            'worked_hours' => collect($holidayDays)->mapWithKeys(fn ($day) => [
-                (string) $day['date'] => array_key_exists('worked_hours', $day) && $day['worked_hours'] !== null
-                    ? round((float) $day['worked_hours'], 2)
-                    : null,
-            ])->all(),
-            'holiday_leave_hours' => collect($holidayDays)->mapWithKeys(fn ($day) => [
-                (string) $day['date'] => array_key_exists('holiday_leave_hours', $day) && $day['holiday_leave_hours'] !== null
-                    ? round((float) $day['holiday_leave_hours'], 2)
-                    : null,
-            ])->all(),
-            'holiday_leave_effect' => 'offsets_toward_required_hours',
-        ];
         return $this->result(
             $qualified ? self::QUALIFIES : self::NOT_QUALIFIES,
-            $qualified
-                ? '每個假日常態排課加假日假抵扣均達16小時。'
-                : '至少一個假日常態排課加假日假仍未達16小時。',
-            $metrics,
+            $qualified ? '每週六日排課均達16小時。' : ($weeklyWeekendHours === [] ? '查詢期間沒有可判定的週。' : '有一週六日排課未達16小時。'),
+            ['required_hours' => $required, 'waived_weeks' => $waivedWeeks, 'weekly_weekend_hours' => array_map(fn ($hours) => round((float) $hours, 2), $weeklyWeekendHours)],
             0,
             $qualified ? (float) $this->setting('holiday_multiplier_pass', 10) : 0
         );

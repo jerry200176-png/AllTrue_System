@@ -1,0 +1,18 @@
+updates:
+  - id: staff-2026-11-15-fulltime-holiday-rate
+    published_at: "2026-11-15"
+    audiences:
+      - director
+      - super_admin
+    importance: major
+    title: 假日倍率改自動算
+    summary: 假日倍率改看老師行事曆，每週六日排課滿十六小時就有，不必人工補登。
+    items:
+      - category: fixed
+        text: 以前把假日當成全校停課日，老師幾乎拿不到；現在看每週六日的排課時數。
+      - category: improved
+        text: 不再因為缺假日曆或請假時數卡在待確認，可以直接鎖定。
+      - category: improved
+        text: 假日、公休、請假的補登入口已收起，舊資料不再影響金額。
+    source_refs:
+      - "changelog:2026-11-15:fulltime-holiday-rate-auto"
