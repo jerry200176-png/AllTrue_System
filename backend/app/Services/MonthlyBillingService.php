@@ -224,10 +224,8 @@ class MonthlyBillingService
             ];
         }
 
-        $pricingRows = $sessions->mapWithKeys(function (ClassSession $session) use ($course): array {
-            return [$session->getKey() => $this->pricing->forDate($course, (string) $session->SessionDate)];
-        });
-        if ($pricingRows->every(fn (array $pricing): bool => $pricing['rate'] <= 0)) {
+        $charge = $this->priceHeldSessions($course, $sessions);
+        if ($charge === null) {
             return [
                 'charge' => $storedCharge,
                 'period_sessions' => $sessions->count(),
@@ -237,20 +235,6 @@ class MonthlyBillingService
             ];
         }
 
-        $rateUnits = $pricingRows->pluck('rate_unit')->unique()->values();
-        $rateUnit = $rateUnits->count() === 1 ? (string) $rateUnits->first() : 'session';
-
-        if ($rateUnit === 'session') {
-            $charge = (int) $sessions->sum(function (ClassSession $session) use ($pricingRows): int {
-                return (int) $pricingRows->get($session->getKey())['rate'];
-            });
-        } else {
-            $charge = (int) round($sessions->sum(function (ClassSession $session) use ($pricingRows): float {
-                $pricing = $pricingRows->get($session->getKey());
-                return $this->sessionAmount($session, $pricing);
-            }));
-        }
-
         return [
             'charge' => max(0, $charge),
             'period_sessions' => $sessions->count(),
@@ -258,6 +242,53 @@ class MonthlyBillingService
             'period_end' => $periodEnd,
             'source' => 'billable_sessions',
         ];
+    }
+
+    /**
+     * What the given held lessons cost at the price in force on each lesson's date (pricing amendments included):
+     * per lesson, or by the lesson's length when the price is per hour. Null when no lesson has a price.
+     *
+     * @param Collection<int, ClassSession> $sessions
+     */
+    private function priceHeldSessions(Model $course, Collection $sessions): ?int
+    {
+        $pricingRows = $sessions->mapWithKeys(function (ClassSession $session) use ($course): array {
+            return [$session->getKey() => $this->pricing->forDate($course, (string) $session->SessionDate)];
+        });
+        if ($pricingRows->every(fn (array $pricing): bool => $pricing['rate'] <= 0)) {
+            return null;
+        }
+
+        $rateUnits = $pricingRows->pluck('rate_unit')->unique()->values();
+        $rateUnit = $rateUnits->count() === 1 ? (string) $rateUnits->first() : 'session';
+
+        if ($rateUnit === 'session') {
+            return (int) $sessions->sum(function (ClassSession $session) use ($pricingRows): int {
+                return (int) $pricingRows->get($session->getKey())['rate'];
+            });
+        }
+
+        return (int) round($sessions->sum(function (ClassSession $session) use ($pricingRows): float {
+            return $this->sessionAmount($session, $pricingRows->get($session->getKey()));
+        }));
+    }
+
+    /**
+     * in-app #557: the lessons actually held inside a bill's own service range (a cycle that crosses a month end),
+     * priced like a month. Used once the cycle is over, when the amount agreed in advance no longer describes it.
+     * Null when no lesson was held in the range or none has a price: such a bill needs a person, not a number.
+     *
+     * @return array{charge: int, period_sessions: int}|null
+     */
+    public function summarizeHeldInServiceRange(Model $course, string $billingPeriod, string $serviceStart, string $serviceEnd): ?array
+    {
+        $sessions = $this->periodSessionQuery($course, $billingPeriod, $serviceStart, $serviceEnd)
+            ->whereIn('Status', self::BILLABLE_STATUSES)
+            ->orderBy('SessionDate')->orderBy('StartTime')->orderBy('id')
+            ->get(['id', 'SessionDate', 'StartTime', 'EndTime', 'Status', 'session_charge']);
+        $charge = $sessions->isEmpty() ? null : $this->priceHeldSessions($course, $sessions);
+
+        return $charge === null ? null : ['charge' => max(0, $charge), 'period_sessions' => $sessions->count()];
     }
 
     /** Read-only review includes completed lessons outside the stored contract.

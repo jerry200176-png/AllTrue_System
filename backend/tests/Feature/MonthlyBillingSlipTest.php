@@ -509,6 +509,49 @@ class MonthlyBillingSlipTest extends TestCase
         $this->assertNull($this->withHeaders($headers)->getJson("/api/v1/invoices/{$invoice->id}/slip-data")->assertOk()->json('items.0.unit_price'));
     }
 
+    /**
+     * in-app #557: a cycle billed in advance for its planned lessons keeps that amount while it runs; once the
+     * contract is over, an unpaid bill with nothing paid on it follows the lessons actually held.
+     */
+    public function test_unpaid_cross_month_bill_of_an_ended_contract_follows_the_lessons_held(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-09-10 09:00:00', 'Asia/Taipei'));
+        [$student, $course] = $this->makeMonthlyCourse('月結跨月提前結束測試', '2026-08-15', '2026-09-26');
+        foreach ([['2026-08-22', 'attended'], ['2026-08-29', 'attended'], ['2026-09-05', 'attended'], ['2026-09-12', 'scheduled'], ['2026-09-19', 'scheduled']] as [$date, $status]) {
+            ClassSession::create(['StudentClassID' => $course->ID, 'SessionDate' => $date, 'StartTime' => '17:00', 'EndTime' => '19:00', 'Status' => $status]);
+        }
+        $invoice = Invoice::create([
+            'StudentID' => $student->id, 'StudentClassID' => $course->ID, 'IssueDate' => '2026-08-15', 'DueDate' => '2026-08-30',
+            'TotalAmount' => 7500, 'PaidAmount' => 0, 'Status' => 'unpaid', 'billing_period' => '2026-08',
+        ]);
+        InvoiceItem::create(['InvoiceID' => $invoice->id, 'StudentClassID' => $course->ID, 'Description' => '月結費用', 'Amount' => 7500, 'PeriodStart' => '2026-08-15', 'PeriodEnd' => '2026-09-26']);
+        $resolve = fn () => app(\App\Services\InvoiceAmountReconciliationService::class)->resolve($invoice->fresh(), $course->fresh());
+
+        // The cycle is still running: the agreed 7,500 (five planned lessons at 1,500) stands.
+        $running = $resolve();
+        $this->assertSame(7500, $running['total_amount']);
+        $this->assertFalse($running['repriceable']);
+
+        // The contract ends early: the two lessons still to come are called off, three were held.
+        ClassSession::where('StudentClassID', $course->ID)->where('Status', 'scheduled')->update(['Status' => 'cancelled']);
+        \Illuminate\Support\Facades\DB::table('StudentClass')->where('ID', $course->ID)->update(['Stop' => 1]);
+        $ended = $resolve();
+        $this->assertSame(4500, $ended['total_amount']);
+        $this->assertSame(7500, $ended['stored_total_amount']);
+        $this->assertSame(4500, $ended['computed_total_amount']);
+        $this->assertSame(3, $ended['period_sessions']);
+        $this->assertTrue($ended['amount_discrepancy']);
+        $this->assertTrue($ended['repriceable']);
+        $this->assertSame(['2026-08-15', '2026-09-26'], [$ended['period_start'], $ended['period_end']]);
+
+        // Money already taken on the bill: it is no longer the system's to reprice.
+        \App\Models\Payment::create(['InvoiceID' => $invoice->id, 'Amount' => 1000, 'PaidAt' => '2026-09-09', 'Method' => 'cash']);
+        Invoice::query()->whereKey($invoice->id)->update(['Status' => 'partial', 'PaidAmount' => 1000]);
+        $partlyPaid = $resolve();
+        $this->assertSame(7500, $partlyPaid['total_amount']);
+        $this->assertFalse($partlyPaid['repriceable']);
+    }
+
     public function test_tuition_slip_with_two_owing_periods_uses_the_payable_period(): void
     {
         // #3888 review (Codex P1 r4254441859): the slip asks for the payable bill's amount, so its period

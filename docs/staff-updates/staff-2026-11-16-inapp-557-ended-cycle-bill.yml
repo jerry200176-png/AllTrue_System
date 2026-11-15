@@ -1,0 +1,16 @@
+updates:
+  - id: staff-2026-11-16-inapp-557-ended-cycle-bill
+    published_at: "2026-11-16"
+    audiences:
+      - director
+      - super_admin
+    importance: major
+    title: 提前結束的月結照實際堂數
+    summary: 跨月的月結合約提前結束後，還沒收款的帳單改照實際上課堂數計算，不再維持預排金額。
+    items:
+      - category: fixed
+        text: 月結合約提前結束、實際上課比預排少時，未收款帳單的應收改成實際堂數乘單價。
+      - category: action_required
+        text: 已經收過款的帳單不會自動調整；金額要改請照原本流程聯絡總部更正。
+    source_refs:
+      - "changelog:2026-11-16:inapp-557-ended-cycle-bill-follows-lessons"

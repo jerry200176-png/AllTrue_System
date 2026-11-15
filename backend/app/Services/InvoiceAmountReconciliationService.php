@@ -2,6 +2,8 @@
 
 namespace App\Services;
 
+use Carbon\Carbon;
+
 use App\Models\Invoice;
 use App\Models\StudentClass;
 
@@ -130,6 +132,41 @@ class InvoiceAmountReconciliationService
             if ($amountDiscrepancy && $repriceable) {
                 $totalAmount = $computedTotalAmount;
                 $amountSource = 'billable_sessions';
+            }
+        }
+
+        // in-app #557: a cycle that crosses a month end keeps the amount agreed in advance while it runs (above).
+        // Once the contract is over (stopped, or past its end date) the plan no longer describes it: an unpaid bill
+        // nothing has been paid on follows the lessons actually held in its service range, as a single-month bill
+        // does. A paid or part-paid one, a bill for several courses, or a range with no priced lesson stays as it is
+        // and still needs a reviewed correction.
+        if (
+            $course
+            && $hasCrossMonthServiceRange
+            && (string) ($course->ScheduleMode ?? 'count') === 'date'
+            && preg_match('/^\d{4}-\d{2}$/', (string) $billingPeriod)
+            && (string) ($invoice->getAttribute('Status') ?? '') === 'unpaid'
+            && $netApplied === 0
+            && $items->pluck('StudentClassID')->filter()->unique()->count() <= 1
+            && ((int) ($course->Stop ?? 0) === 1
+                || ($course->EndDate && substr((string) $course->EndDate, 0, 10) < Carbon::today('Asia/Taipei')->toDateString()))
+        ) {
+            [$rangeStart, $rangeEnd] = $this->monthlyBilling->serviceRangeForCourse($invoice, (int) $course->getKey());
+            $held = $rangeStart !== null && $rangeEnd !== null
+                ? $this->monthlyBilling->summarizeHeldInServiceRange($course, (string) $billingPeriod, $rangeStart, $rangeEnd)
+                : null;
+            if ($held !== null) {
+                $computedTotalAmount = $held['charge'];
+                $periodSessions = $held['period_sessions'];
+                $periodStart = $rangeStart;
+                $periodEnd = $rangeEnd;
+                $repriceable = true;
+                $amountDiscrepancy = $computedTotalAmount !== $storedTotalAmount
+                    && !($invoice->isFullDiscount() && $invoice->freeGiftHolds($course));
+                if ($amountDiscrepancy) {
+                    $totalAmount = $computedTotalAmount;
+                    $amountSource = 'billable_sessions';
+                }
             }
         }
 
