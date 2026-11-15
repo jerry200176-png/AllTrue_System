@@ -157,18 +157,20 @@
               <option value="admin_assist">行政協助</option>
               <option value="head_tutor">總導師</option>
               <option value="deputy_director">副主任</option>
+              <option value="holiday_16h">假日倍率調整（系統算的不合實況時）</option>
+              <option value="weekday_afternoon">平日下午倍率調整（系統算的不合實況時）</option>
             </select>
           </label>
           <div class="form-two-col">
-            <label>加給倍率（0–10%）
-              <input v-model.number="allowanceForm.rate" type="number" min="0" max="10" step="0.5" required />
+            <label>{{ isRateAdjustment ? '調整後倍率' : '加給倍率' }}（0–{{ allowanceRateMax }}%）
+              <input v-model.number="allowanceForm.rate" type="number" min="0" :max="allowanceRateMax" step="0.25" required />
             </label>
             <label>生效日
               <input v-model="allowanceForm.starts_on" type="date" required />
             </label>
           </div>
-          <label>失效日（可留白）
-            <input v-model="allowanceForm.ends_on" type="date" />
+          <label>{{ isRateAdjustment ? '失效日' : '失效日（可留白）' }}
+            <input v-model="allowanceForm.ends_on" type="date" :required="isRateAdjustment" />
           </label>
           <label>判定依據
             <textarea v-model.trim="allowanceForm.reason" rows="3" required placeholder="主任判定職務與倍率的依據"></textarea>
@@ -322,6 +324,9 @@ const formTitle = computed(() => ({
   event: '假日／公休／請假事件', achievement: '升學成果／年度績優', deduction: '扣除案件', allowance: '行政加給', cash: '現金加扣款',
 }[formType.value]));
 const eventHint = computed(() => eventKindHint(eventForm.event_type));
+// A rate adjustment replaces the system's 假日／平日下午 rate for its dates; the ranges are the announcement's.
+const isRateAdjustment = computed(() => ['holiday_16h', 'weekday_afternoon'].includes(allowanceForm.role_key));
+const allowanceRateMax = computed(() => (allowanceForm.role_key === 'weekday_afternoon' ? 5 : 10));
 const isHq = computed(() => props.userRole === 'super_admin');
 const totalInputCount = computed(() => queueItems.value.length);
 const queueItems = computed(() => {
@@ -423,7 +428,7 @@ function deductionLabel(key) {
   return ({ harassment: '疑似騷擾成立', major_complaint: '重大客訴成立', unexcused_late: '無故遲到早退影響營運', property_damage: '嚴重破壞公物', rights_loss: '造成補習班權益受損' }[key] || key || '扣除案件');
 }
 function allowanceLabel(key) {
-  return ({ admin_assist: '行政協助', head_tutor: '總導師', deputy_director: '副主任' }[key] || key || '行政加給');
+  return ({ admin_assist: '行政協助', head_tutor: '總導師', deputy_director: '副主任', holiday_16h: '假日倍率調整', weekday_afternoon: '平日下午倍率調整' }[key] || key || '行政加給');
 }
 
 function branchPayload(payload) { return props.branchId ? { ...payload, branch_id: Number(props.branchId) } : payload; }

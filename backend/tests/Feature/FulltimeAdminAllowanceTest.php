@@ -63,6 +63,30 @@ class FulltimeAdminAllowanceTest extends TestCase
         ])->assertStatus(422);
     }
 
+    /** A rate adjustment needs a reason, both dates and a value inside the announced range (假日 10, 平日下午 5). */
+    public function test_rate_adjustment_is_validated_and_shares_the_two_step_approval(): void
+    {
+        $director = $this->createDirector(1, 'aa-dir3@test.com');
+        $hq = $this->createSuperAdmin('aa-hq3@test.com');
+        $valid = [
+            'teacher_id' => $this->createTeacher(1, 'aa-teacher3@test.com'), 'branch_id' => 1, 'role_key' => 'weekday_afternoon',
+            'rate' => 4, 'reason' => '週三下午固定待命，課表上沒有課', 'starts_on' => '2026-08-01', 'ends_on' => '2026-08-31',
+        ];
+        $post = fn (array $override) => $this->withHeaders($this->auth($director['token']))
+            ->postJson('/api/v1/finance/teacher-eligibility/admin-allowances', $override + $valid);
+
+        $post(['rate' => 5.5])->assertStatus(422);
+        $post(['reason' => ' '])->assertStatus(422);
+        $post(['ends_on' => null])->assertStatus(422);
+        $post(['role_key' => 'holiday_16h', 'rate' => 10.5])->assertStatus(422);
+        $post(['role_key' => 'holiday_16h', 'rate' => 10])->assertCreated();
+
+        $id = (int) $post([])->assertCreated()->json('id');
+        $this->withHeaders($this->auth($director['token']))->postJson("/api/v1/finance/teacher-eligibility/admin-allowances/{$id}/confirm")->assertOk();
+        $this->withHeaders($this->auth($hq['token']))->postJson("/api/v1/finance/teacher-eligibility/admin-allowances/{$id}/approve")->assertOk();
+        $this->assertDatabaseHas('teacher_payroll_admin_allowances', ['id' => $id, 'role_key' => 'weekday_afternoon', 'status' => 'approved']);
+    }
+
     private function auth(string $token): array
     {
         return ['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'];

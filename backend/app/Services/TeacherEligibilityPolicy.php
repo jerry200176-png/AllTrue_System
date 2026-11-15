@@ -13,6 +13,11 @@ class TeacherEligibilityPolicy
     public const QUALIFIES = 'qualifies';
     public const NOT_QUALIFIES = 'not_qualifies';
     public const REVIEW = 'review';
+    /** role_key of a director's rate adjustment => [the component it replaces, the setting that holds the top of its range]. */
+    public const RATE_ADJUSTMENT_KEYS = [
+        'holiday_16h' => ['holiday_16_hours', 'holiday_multiplier_pass'],
+        'weekday_afternoon' => ['weekday_afternoon', 'weekday_rate_cap'],
+    ];
 
     private array $settings;
 
@@ -48,6 +53,10 @@ class TeacherEligibilityPolicy
                 is_array($input['subject_units'] ?? null) ? $input['subject_units'] : []
             ),
         ];
+
+        foreach (self::RATE_ADJUSTMENT_KEYS as $roleKey => [$componentKey]) {
+            $components[$componentKey] = $this->adjustedRate($components[$componentKey], $roleKey, $input['admin_allowances'] ?? []);
+        }
 
         $missing = [];
         foreach ($components as $component) {
@@ -127,6 +136,35 @@ class TeacherEligibilityPolicy
             0,
             $rate
         );
+    }
+
+    /**
+     * Founder 2026-11-14: the system computes the 假日／平日下午 rate; a director may set another value inside the
+     * announced range with a reason, and it applies once HQ approves. The rows live with the admin allowances
+     * (same director-confirm then HQ-approve steps) under their own role_key.
+     */
+    private function adjustedRate(array $component, string $roleKey, array $rows): array
+    {
+        $rows = array_values(array_filter($rows, fn ($row) => ($row['role_key'] ?? null) === $roleKey && ($row['status'] ?? 'pending') !== 'withdrawn'));
+        if ($rows === []) {
+            return $component;
+        }
+        $metrics = $component['metrics'] + ['system_rate' => $component['rate']];
+        if (array_filter($rows, fn ($row) => ($row['status'] ?? 'pending') !== 'approved') !== []) {
+            return $this->review(['rate_adjustment_approval'], '倍率調整尚未完成主任確認及總部核准。', $metrics);
+        }
+        usort($rows, fn ($left, $right) => strcmp((string) ($left['starts_on'] ?? ''), (string) ($right['starts_on'] ?? '')));
+        $rate = round(min((float) $this->rateAdjustmentCap($roleKey), max(0.0, (float) (end($rows)['rate'] ?? 0))), 2);
+
+        return $this->result(self::QUALIFIES, '主任調整，總部已核准。', $metrics + ['adjusted' => true], 0, $rate);
+    }
+
+    /** The top of the announced range for a rate a director may adjust; null for any other role_key. */
+    public function rateAdjustmentCap(string $roleKey): ?float
+    {
+        $settingKey = self::RATE_ADJUSTMENT_KEYS[$roleKey][1] ?? null;
+
+        return $settingKey === null ? null : (float) $this->setting($settingKey, 0);
     }
 
     /** HH:MM; weekday lesson time before it counts toward the 平日下午 rate. */
@@ -262,7 +300,7 @@ class TeacherEligibilityPolicy
         $pending = [];
         $rate = 0.0;
         foreach ($allowances as $row) {
-            if (($row['status'] ?? 'pending') === 'withdrawn') {
+            if (($row['status'] ?? 'pending') === 'withdrawn' || isset(self::RATE_ADJUSTMENT_KEYS[$row['role_key'] ?? ''])) {
                 continue;
             }
             if (($row['status'] ?? 'pending') !== 'approved') {

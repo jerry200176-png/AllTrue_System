@@ -251,6 +251,35 @@ class TeacherEligibilityPolicyTest extends TestCase
         $this->assertEquals(4.5, $result['metrics']['one_to_three_count']);
     }
 
+    /** Founder 2026-11-14: a director may replace the system's 假日／平日下午 rate inside the range; HQ approves. */
+    public function test_approved_rate_adjustment_replaces_the_system_rate_and_a_pending_one_is_review(): void
+    {
+        $evaluate = fn (array $rows) => $this->policy->evaluate([
+            'holiday_weekend_hours' => [16, 16], 'weekday_early_segments' => [1, 2],
+            'admin_allowances' => $rows, 'period_start' => '2026-08-01', 'period_end' => '2026-08-31', 'subject_count' => 12,
+        ])['components'];
+        $row = fn (string $key, float $rate, string $status, string $from = '2026-08-01') => ['role_key' => $key, 'rate' => $rate, 'status' => $status, 'starts_on' => $from, 'ends_on' => '2026-08-31'];
+
+        $system = $evaluate([]);
+        $this->assertSame(10.0, $system['holiday_16_hours']['rate']);
+        $this->assertSame(1.5, $system['weekday_afternoon']['rate']);
+
+        // Approved: the newest row wins, the value is held inside the range, and the system's value stays visible.
+        $adjusted = $evaluate([$row('holiday_16h', 4, 'approved'), $row('holiday_16h', 6, 'approved', '2026-08-15'), $row('weekday_afternoon', 9, 'approved')]);
+        $this->assertSame(6.0, $adjusted['holiday_16_hours']['rate']);
+        $this->assertSame(10.0, $adjusted['holiday_16_hours']['metrics']['system_rate']);
+        $this->assertSame(5.0, $adjusted['weekday_afternoon']['rate']);
+        // They are not admin allowances: that item stays at 0.
+        $this->assertSame(0.0, $adjusted['admin_allowance']['rate']);
+
+        // Pending: that item waits for approval; the other keeps the system's value. Withdrawn rows are ignored.
+        $pending = $evaluate([$row('holiday_16h', 4, 'pending'), $row('weekday_afternoon', 3, 'withdrawn')]);
+        $this->assertSame(TeacherEligibilityPolicy::REVIEW, $pending['holiday_16_hours']['status']);
+        $this->assertContains('rate_adjustment_approval', $pending['holiday_16_hours']['missing_fields']);
+        $this->assertSame(1.5, $pending['weekday_afternoon']['rate']);
+        $this->assertSame(TeacherEligibilityPolicy::QUALIFIES, $pending['admin_allowance']['status']);
+    }
+
     public function test_pending_admin_allowance_is_review(): void
     {
         $result = $this->policy->adminAllowance([

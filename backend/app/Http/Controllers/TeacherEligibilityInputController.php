@@ -789,7 +789,7 @@ class TeacherEligibilityInputController extends Controller
         $data = $request->validate([
             'teacher_id' => ['required', 'integer', 'min:1'],
             'branch_id' => ['nullable', 'integer', 'min:1'],
-            'role_key' => ['required', 'in:admin_assist,head_tutor,deputy_director'],
+            'role_key' => ['required', 'in:admin_assist,head_tutor,deputy_director,' . implode(',', array_keys(\App\Services\TeacherEligibilityPolicy::RATE_ADJUSTMENT_KEYS))],
             'rate' => ['required', 'numeric', 'min:0', 'max:10'],
             'reason' => ['nullable', 'string', 'max:10000'],
             'starts_on' => ['nullable', 'date'],
@@ -797,6 +797,12 @@ class TeacherEligibilityInputController extends Controller
         ]);
         if (($data['starts_on'] ?? null) !== null && ($data['ends_on'] ?? null) !== null && $data['ends_on'] < $data['starts_on']) {
             return response()->json(['message' => 'ends_on must be on or after starts_on'], 422);
+        }
+        // A rate adjustment says what one period really looked like: it needs a reason, both dates (an open end
+        // would keep replacing the system's rate in every later month) and a value inside the announced range.
+        $cap = app(\App\Services\TeacherEligibilityPolicy::class)->rateAdjustmentCap($data['role_key']);
+        if ($cap !== null && (trim((string) ($data['reason'] ?? '')) === '' || empty($data['starts_on']) || empty($data['ends_on']) || (float) $data['rate'] > $cap)) {
+            return response()->json(['message' => "倍率調整要填原因、生效日與失效日，倍率不能超過 {$cap}%。"], 422);
         }
 
         return $data;
