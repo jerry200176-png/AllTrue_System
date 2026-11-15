@@ -24,6 +24,9 @@ class FulltimeSalaryProfile extends Model
         'created_by', 'approved_by', 'approved_at',
     ];
 
+    /** No screen shows base salary any more, so the write responses do not return it either. */
+    protected $hidden = ['base_salary'];
+
     protected $casts = [
         'effective_from' => 'date:Y-m-d',
         'base_salary' => 'decimal:2',
