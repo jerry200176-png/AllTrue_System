@@ -52,4 +52,19 @@ final class PruneSystemLogsTest extends TestCase
         $this->artisan('privacy:prune-logs')->expectsOutput('Pruned 0 rows (login=0, reset=0, binding=0, chat=0).')->assertSuccessful();
         Carbon::setTestNow();
     }
+
+    public function test_an_attachment_that_cannot_be_deleted_keeps_its_row_for_the_next_run(): void
+    {
+        $disk = \Mockery::mock(\Illuminate\Contracts\Filesystem\Filesystem::class);
+        $disk->shouldReceive('delete')->andReturnFalse();
+        $disk->shouldReceive('exists')->andReturnTrue();
+        Storage::shouldReceive('disk')->with('public')->andReturn($disk);
+        $thread = DB::table('chat_threads')->insertGetId(['CampusID' => 1, 'created_by' => 1]);
+        $id = DB::table('chat_messages')->insertGetId(['thread_id' => $thread, 'sender_user_id' => 1, 'sender_name_snapshot' => 'A',
+            'body' => 'a.jpg', 'created_at' => now()->subDays(60), 'deleted_at' => now()->subDays(31), 'media_url' => 'chat-attachments/1/a.jpg']);
+
+        $this->artisan('privacy:prune-logs')->expectsOutput('Pruned 0 rows (login=0, reset=0, binding=0, chat=0).')->assertFailed();
+
+        $this->assertSame(['a.jpg', 'chat-attachments/1/a.jpg'], array_values((array) DB::table('chat_messages')->where('id', $id)->first(['body', 'media_url'])));
+    }
 }

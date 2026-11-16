@@ -28,31 +28,41 @@ class PruneSystemLogs extends Command
             'login' => UserLoginActivity::query()->where('created_at', '<', now()->subYear())->delete(),
             'reset' => PasswordResetRequest::query()->where('created_at', '<', now()->subDays(30))->delete(),
             'binding' => ParentBindingAttempt::query()->where('occurred_at', '<', now()->subDays(90))->delete(),
-            'chat' => $this->scrubDeletedChat(),
         ];
+        [$counts['chat'], $stuck] = $this->scrubDeletedChat();
 
-        Log::info('Pruned system logs', $counts);
+        Log::info('Pruned system logs', $counts + ['chat_files_not_deleted' => $stuck]);
         $this->info('Pruned ' . array_sum($counts) . ' rows (' . http_build_query($counts, '', ', ') . ').');
+        if ($stuck > 0) {
+            // The row keeps its path, so the next run retries; the failure shows in the scheduler evidence.
+            $this->error("Could not delete {$stuck} chat attachment(s); kept for the next run.");
+
+            return self::FAILURE;
+        }
 
         return self::SUCCESS;
     }
 
-    private function scrubDeletedChat(): int
+    /** @return array{0: int, 1: int} scrubbed messages, attachments that could not be deleted */
+    private function scrubDeletedChat(): array
     {
-        $scrubbed = 0;
+        [$scrubbed, $stuck] = [0, 0];
         ChatMessage::query()->where('deleted_at', '<', now()->subDays(30))
             ->where(fn ($q) => $q->where('body', '!=', '')->orWhereNotNull('media_url'))
-            ->chunkById(500, function ($messages) use (&$scrubbed): void {
+            ->chunkById(500, function ($messages) use (&$scrubbed, &$stuck): void {
                 foreach ($messages as $message) {
+                    $path = (string) $message->media_url;
                     // ponytail: a legacy absolute media path (leading '/') is not on the public disk; only its link is cleared.
-                    if ($message->media_url && !str_starts_with($message->media_url, '/')) {
-                        Storage::disk('public')->delete($message->media_url);
+                    if ($path !== '' && !str_starts_with($path, '/')
+                        && !Storage::disk('public')->delete($path) && Storage::disk('public')->exists($path)) {
+                        $stuck++;
+                        continue;
                     }
                     $message->forceFill(['body' => '', 'media_url' => null, 'media_name' => null])->save();
                     $scrubbed++;
                 }
             });
 
-        return $scrubbed;
+        return [$scrubbed, $stuck];
     }
 }
