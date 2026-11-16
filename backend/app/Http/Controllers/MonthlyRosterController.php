@@ -102,7 +102,7 @@ final class MonthlyRosterController extends Controller
                 'lessons' => $courseLessons,
                 'held' => $courseLessons->where('kind', 'held')->count(),
                 'money' => [
-                    'status' => $v?->status, 'outstanding' => $v?->outstanding ?? 0, 'current_period' => $v?->currentPeriod,
+                    'status' => $v?->status, 'outstanding' => $v->outstanding ?? 0, 'current_period' => $v?->currentPeriod,
                     // This month's amount for a monthly course; not invoiced yet = the month-end estimate.
                     'month_total' => $month['total'] ?? null, 'month_invoiced' => !empty($month['invoice_ids'] ?? []),
                 ],
