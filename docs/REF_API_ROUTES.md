@@ -48,6 +48,7 @@
 
 | Method | URI | Action | Auth |
 |--------|-----|--------|------|
+| GET | `api/v1/admin/ai-activity` | `AiActivityController@index` | role |
 | GET | `api/v1/admin/billing-data-quality` | `BillingDataQualityController@index` | role |
 | GET | `api/v1/admin/branch-health` | `BranchHealthController@index` | role |
 | GET | `api/v1/admin/bug-reports` | `BugReportController@index` | role |

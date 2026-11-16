@@ -3,7 +3,7 @@
   "_ruleOrder": "first match wins; order specific -> general. The abstract base Controller.php is excluded by FIT-10.",
   "rules": [
     { "context": "platform",       "match": "DeploymentManifest" },
-    { "context": "support",        "match": "TriageBillingSnapshot|TriageContractLink|TriageDbRead|StudentClassLookup" },
+    { "context": "support",        "match": "TriageBillingSnapshot|TriageContractLink|TriageDbRead|StudentClassLookup|AiActivity" },
     { "context": "billing",        "match": "SiblingContractTransfer|PaidContractCreditMovement|SubjectCredit|ReceiptReassign|PackagePaidMarks|MonthlyBillFreeze|FirstBillAutoVoid|CollectionTarget" },
     { "context": "billing",        "match": "OrdinaryCloseEvidence|OrdinaryCloseCapture|OrdinaryCloseActivityCensus" },
     { "context": "billing",        "match": "PopOperationController|MonthlyContract|ContractRenewal|MonthlyRenewalPeriod|ContractSessionCoverage" },
