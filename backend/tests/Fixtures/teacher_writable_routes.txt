@@ -1,14 +1,11 @@
 # Write routes (non-GET) the teacher role can reach through a role: middleware. Reviewed list; see TeacherWritableRoutesRatchetTest.
 # One "METHOD uri" per line. Baseline taken from CI on 2026-11-17 (after #5400 and #5402).
-# Known to check the role or ownership inside the method: course-packages recompute / rebuild-ledger / bind-courses,
-# student-classes pause, system/settings/substitute-undo (super admin only).
-# To look at next (campus check only): rooms store / update / destroy; class-sessions/{id} for a lesson of another teacher.
+# Known to check the role or ownership inside the method: student-classes pause, system/settings/substitute-undo (super admin only).
+# 2026-11-17: 22 routes used only on director pages moved to role:director (rooms, schedules, substitutes, packages, extra lessons).
+# To look at next: PATCH class-sessions/{id} (lesson ownership).
 DELETE api/v1/chat/messages/{messageId}
 DELETE api/v1/chat/threads/{threadId}
 DELETE api/v1/chat/threads/{threadId}/members/{userId}
-DELETE api/v1/learning-records/{learningRecord}
-DELETE api/v1/rooms/{room}
-DELETE api/v1/schedules/{schedule}
 DELETE api/v1/study-tasks/{task}
 PATCH api/v1/chat/threads/{threadId}
 PATCH api/v1/class-sessions/{id}
@@ -32,11 +29,6 @@ POST api/v1/chat/threads/{threadId}/read
 POST api/v1/chat/threads/{threadId}/transfer-owner
 POST api/v1/chat/threads/{threadId}/typing
 POST api/v1/class-sessions/batch
-POST api/v1/class-sessions/{id}/substitute
-POST api/v1/class-sessions/{id}/substitute/undo
-POST api/v1/course-packages/{id}/bind-courses
-POST api/v1/course-packages/{id}/rebuild-ledger
-POST api/v1/course-packages/{id}/recompute
 POST api/v1/engagement/award-xp
 POST api/v1/engagement/badges/{key}/toggle-visibility
 POST api/v1/engagement/ranks-for
@@ -49,28 +41,17 @@ POST api/v1/learning-records
 POST api/v1/learning-records/{learningRecord}
 POST api/v1/parent-feedback/{id}/read
 POST api/v1/parent-feedback/{id}/reply
-POST api/v1/rooms
 POST api/v1/schedule-discrepancies
 POST api/v1/schedule-discrepancies/{id}/withdraw
 POST api/v1/schedule-import/preview
-POST api/v1/schedules
-POST api/v1/schedules/bulk-leave
 POST api/v1/schedules/leave-by-session
-POST api/v1/schedules/leave-cascade-preview
 POST api/v1/schedules/retro-leave
-POST api/v1/schedules/undo-leave-by-session
-POST api/v1/schedules/{schedule}/cancel-makeup
-POST api/v1/schedules/{schedule}/undo-leave
 POST api/v1/student-classes/session-dates
-POST api/v1/student-classes/{studentClass}/add-session
-POST api/v1/student-classes/{studentClass}/add-session/check
 POST api/v1/student-classes/{studentClass}/pause
 POST api/v1/students/{student}/learning-plans
 POST api/v1/students/{student}/study-tasks
 POST api/v1/students/{student}/study-tasks/copy-week
 POST api/v1/study-tasks/{task}/apply-to-students
-POST api/v1/teacher-leaves/batch-substitute
-POST api/v1/teacher-leaves/preview
 POST api/v1/truefit/diagnoses
 POST api/v1/truefit/lesson-preps/generate
 POST api/v1/truefit/mastery-evidence
@@ -78,7 +59,4 @@ POST api/v1/truefit/observations
 POST api/v1/truefit/remediations
 PUT api/v1/learning-records/{learningRecord}
 PUT api/v1/learning-records/{learningRecord}/plan-units
-PUT api/v1/learning-records/{learningRecord}/teacher-comment
-PUT api/v1/rooms/{room}
-PUT api/v1/schedules/{schedule}
 PUT api/v1/system/settings/substitute-undo
