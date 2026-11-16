@@ -3,6 +3,56 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import AxeBuilder from '@axe-core/playwright';
 
+for (const width of [390, 1440]) for (const theme of ['light', 'dark']) {
+  test(`In-App564: grouped contract periods keep owed priority and every record ${theme} @${width}`, async ({ page }, info) => {
+    const errors = []; const writes = [];
+    page.on('pageerror', (e) => errors.push(e.message));
+    page.on('request', (r) => { if (new URL(r.url()).pathname.startsWith('/api/v1/') && r.method() !== 'GET') writes.push(r.url()); });
+    await page.setViewportSize({ width, height: 950 });
+    await page.emulateMedia({ colorScheme: theme, reducedMotion: 'reduce' });
+    await page.addInitScript((theme) => {
+      document.addEventListener('DOMContentLoaded', () => { document.documentElement.classList.toggle('dark', theme === 'dark'); document.documentElement.dataset.theme = theme; }, { once: true });
+    }, theme);
+    await page.route('**/*', (r) => ['127.0.0.1', 'localhost'].includes(new URL(r.request().url()).hostname) ? r.fallback() : r.abort());
+    await page.route('**/api/v1/**', (r) => r.fulfill({ json: { data: [] } }));
+    await installMock(page);
+    const c = (id, subject, start_date, paid = true) => ({ id, subject, start_date, schedule_mode: 'count', paid, charge: 1000, stop: false });
+    const courses = [c(1, '數學', '2026-08-08'), c(2, '英文', '2026-09-23'), c(3, '數學', '2026-10-08', false),
+      c(4, '化學', '2026-10-02', false), c(5, '英文', '2026-10-07', false), c(6, '數學', '2026-10-09'), c(7, '英文', '2026-01-01', false)];
+    await page.route('**/api/v1/students**', (r) => r.fulfill({ json: [{ id: 99, name: '合成排序學生', status: 'active', enable: 1 }] }));
+    await page.route('**/api/v1/alerts/tuition**', (r) => r.fulfill({ json: [{ id: 6, student_id: 99, student_name: '合成排序學生', subject: '數學',
+      schedule_mode: 'count', payment_status: 'unpaid', payable_status: 'invoiced', payable_outstanding: 1000 }] }));
+    await page.route('**/api/v1/accounting/ledger?**', (r) => r.fulfill({ json: {
+      student: { id: 99, name: '合成排序學生' }, scope: { student_class_id: 6 }, summary: {}, courses, receipts: [], anomalies: [],
+      invoices: [{ id: 17, student_class_id: 7, status: 'unpaid', total_amount: 1000, outstanding_amount: 1000, calculated_applied_amount: 0, payments: [] }],
+    } }));
+    await page.route('**/api/v1/accounting/contracts/*/sessions', (r) => {
+      const id = Number(new URL(r.request().url()).pathname.split('/').at(-2));
+      return r.fulfill({ json: { ...courses.find((x) => x.id === id), sessions: [] } });
+    });
+    await page.goto('/tuition-collection-pilot-mount.html');
+    await page.getByTestId('bill-search').fill('合成排序學生');
+    await page.getByTestId('bill-documents-c6').click();
+    const ledger = page.getByRole('dialog', { name: '合成排序學生的帳務', exact: true });
+    const cards = ledger.locator('.ledger-contracts > [data-testid^="contract-card-"]');
+    await expect(cards).toHaveCount(7);
+    const ids = await cards.evaluateAll((els) => els.map((el) => Number(el.dataset.testid.replace('contract-card-', ''))));
+    expect(ids[0]).toBe(7);
+    expect(ids.filter((id) => [1, 3, 6].includes(id))).toEqual([6, 3, 1]);
+    expect(ids.filter((id) => [2, 5].includes(id))).toEqual([5, 2]);
+    expect(ids.indexOf(1) - ids.indexOf(6)).toBe(2);
+    await expect(ledger.getByTestId('contract-focused')).toBeVisible();
+    await expect(ledger.getByTestId('contract-card-3').getByTestId('contract-record')).toBeVisible();
+    const scan = await new AxeBuilder({ page }).include('.ledger-contracts').analyze();
+    expect(scan.violations.filter((v) => ['serious', 'critical'].includes(v.impact))).toEqual([]);
+    await ledger.getByTestId('contract-card-6').getByTestId('contract-toggle').click();
+    await ledger.evaluate((el) => { el.scrollTop = 0; });
+    const shot = info.outputPath(`contract-order-${width}.png`);
+    await ledger.screenshot({ path: shot }); await info.attach('contract-order', { path: shot, contentType: 'image/png' });
+    expect(writes).toEqual([]); expect(errors).toEqual([]);
+  });
+}
+
 // #4148: real page -> scoped ledger -> existing receipt modal, synthetic data only.
 for (const width of [375, 1280]) for (const [size, theme] of [['standard', 'light'], ['large', 'light'], ['standard', 'dark']]) {
   test(`4148 linked and historic receipt lookup ${size}/${theme} @${width}`, async ({ page }, info) => {
