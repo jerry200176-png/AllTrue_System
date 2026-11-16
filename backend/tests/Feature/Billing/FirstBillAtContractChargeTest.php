@@ -119,6 +119,21 @@ class FirstBillAtContractChargeTest extends TestCase
         $this->assertSame(1, Invoice::where('StudentClassID', $sc->ID)->where('Status', 'paid')->where('TotalAmount', 6000)->count());
     }
 
+    public function test_undoing_a_zero_amount_receipt_keeps_the_course_settled_when_another_paid_bill_backs_it(): void
+    {
+        [$h, $sc] = $this->fixture(6000, ['Paid' => 1, 'PayDate' => '2026-04-20']);
+        $real = Invoice::create(['StudentID' => $sc->StudentID, 'StudentClassID' => $sc->ID, 'IssueDate' => '2026-04-20', 'TotalAmount' => 6000, 'PaidAmount' => 6000, 'Status' => 'paid']);
+        Payment::create(['InvoiceID' => $real->id, 'Amount' => 6000, 'PaidAt' => '2026-04-20', 'Method' => 'cash']);
+        [$zero, $report] = $this->zeroBill($sc);
+
+        $this->withHeaders($h)->putJson("/api/v1/payment-reports/{$report->id}/void", ['void_reason' => '重複登記'])->assertOk();
+
+        $this->assertSame('void', $zero->refresh()->Status);
+        $this->assertSame('paid', $real->refresh()->Status);
+        $this->assertSame(1, (int) $sc->refresh()->Paid); // the real bill still settles the course
+        $this->assertSame('paid', $this->courseRow($sc)['status']);
+    }
+
     public function test_a_zero_bill_with_no_receipt_left_is_voidable_and_a_marked_or_shared_one_is_left_alone(): void
     {
         // No confirmed receipt on it: voidable directly, and the ledger offers it.

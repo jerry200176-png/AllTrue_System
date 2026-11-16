@@ -701,7 +701,7 @@ class AccountingController extends Controller
                 'status' => $status,
                 'can_direct_void' => (!in_array($status, ['paid', 'partial', 'void'], true) || ($status === 'paid' && $invoice->zero_amount_reason !== null && $paymentRows->isEmpty())
                         // An unmarked NT$0 bill marked paid with no confirmed receipt left (an old 「0 元」 登記); same rule as BillingController::voidInvoice.
-                        || ($status === 'paid' && $invoice->zero_amount_reason === null && (int) $totalAmount === 0 && !$invoiceReports->contains(fn ($r) => $r['status'] === 'confirmed')
+                        || ($status === 'paid' && $invoice->zero_amount_reason === null && (int) $totalAmount === 0 && !$invoiceReports->contains(fn ($r) => in_array($r['status'], ['confirmed', 'pending'], true))
                             && $payments->every(fn ($p) => (int) $p->Amount === 0) && $invoiceStudentClass !== null && (int) ($invoiceStudentClass->PackageID ?? 0) === 0))
                     && $paidAmount <= 0 && $netApplied <= 0,
                 // In-app #436: a confirmed receipt is undone first (收款紀錄 撤銷), then the bill is voided.

@@ -374,11 +374,14 @@ class BillingController extends Controller
             // takes the bill with it).
             // Not a refunded bill (also NT$0 and paid, but money moved on it: its history stays), and not a package member
             // (a package's settlement is reconciled by the receipt path, which locks the package).
-            $zeroBillCourse = StudentClass::query()->whereKey((int) $invoice->StudentClassID)->first();
+            // Read under the lock lockInvoiceCourses() took, so the flag cleared below is the current one.
+            $zeroBillCourse = StudentClass::query()->whereKey((int) $invoice->StudentClassID)->lockForUpdate()->first();
             $emptyZeroBill = $invoice->zero_amount_reason === null && (int) $invoice->TotalAmount === 0
                 && $zeroBillCourse !== null && (int) ($zeroBillCourse->PackageID ?? 0) === 0
                 && !$invoice->payments()->where('Amount', '!=', 0)->exists()
-                && !PaymentReport::query()->where('InvoiceID', (int) $invoice->id)->where('status', 'confirmed')->exists();
+                // A confirmed receipt is undone first; a pending one or a correction link still needs this bill.
+                && !PaymentReport::query()->where('InvoiceID', (int) $invoice->id)->whereIn('status', ['confirmed', 'pending'])->exists()
+                && !DB::table('invoice_corrections')->where(fn ($q) => $q->where('original_invoice_id', (int) $invoice->id)->orWhere('replacement_invoice_id', (int) $invoice->id))->exists();
             if ((in_array($status, ['paid', 'partial'], true) && !$freeGiftOnly && !$emptyZeroBill) || (int) ($invoice->PaidAmount ?? 0) > 0 || $netApplied > 0) {
                 return response()->json([
                     'message' => '此帳單已有收款紀錄，請先走收款撤銷/沖銷流程，不可直接作廢帳單。',
@@ -411,6 +414,8 @@ class BillingController extends Controller
             // With its last bill gone the stale 已繳 flag would read as paid by itself and block 登記收款: clear it, as undoing
             // a receipt does (CollectionTarget::unsettle). Only on the NT$0 path above; an unpaid bill never backed the flag.
             if ($emptyZeroBill && $status === 'paid' && !Invoice::courseHasLiveBill((int) $zeroBillCourse->ID)) {
+                Log::info('[InvoiceVoid] paid flag cleared with the last (NT$0) bill', ['invoice_id' => $invoice->id, 'student_class_id' => (int) $zeroBillCourse->ID,
+                    'paid_before' => (int) $zeroBillCourse->Paid, 'closed_reason_before' => $zeroBillCourse->closed_reason, 'user_id' => $authUser?->id]);
                 \App\Services\Billing\CollectionTarget::unsettle($zeroBillCourse, null, false);
             }
 

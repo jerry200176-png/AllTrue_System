@@ -748,7 +748,7 @@ const ledgerExceptions = computed(() => {
       action_label: '撤銷 0 元收款',
       hint: receipt
         ? '其實有收到錢：按「撤銷 0 元收款」，這張 0 元帳單會一起作廢，再照實際金額登記收款。'
-        : (inv.can_direct_void ? '到下面「帳單」把這張 0 元帳單按「作廢」，再照實際金額登記收款。' : '這張 0 元帳單屬於共用方案，請回報給系統管理員處理。'),
+        : (inv.can_direct_void ? '到下面「帳單」把這張 0 元帳單按「作廢」，再照實際金額登記收款。' : '這張 0 元帳單不能在這裡直接作廢，請回報給系統管理員處理。'),
       report_id: receipt ? receipt.report_id : null,
       can_void: !!receipt,
       self_service: !!receipt || !!inv.can_direct_void, // the fix is a button on this screen, not a report to an administrator
