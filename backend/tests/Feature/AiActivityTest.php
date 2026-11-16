@@ -33,6 +33,9 @@ final class AiActivityTest extends TestCase
         DB::table('pop_approval_events')->insert(['operation_id' => $op, 'event_type' => 'approved', 'approval_reference' => 'run-1', 'approver' => 'founder',
             'approver_role' => 'founder', 'commit_sha' => str_repeat('b', 40), 'phase' => 'apply', 'parameters_hash' => str_repeat('a', 64),
             'expires_at' => now()->addHour(), 'created_at' => now()]);
+        DB::table('pop_approval_events')->insert(['operation_id' => $op, 'event_type' => 'policy_revoked', 'approval_reference' => 'run-2', 'approver' => 'founder',
+            'approver_role' => 'founder', 'commit_sha' => str_repeat('b', 40), 'phase' => 'apply', 'parameters_hash' => str_repeat('a', 64),
+            'expires_at' => now()->addHour(), 'created_at' => now()]);
 
         $data = $this->withToken($this->token('S'))->getJson('/api/v1/admin/ai-activity')->assertOk()->json('data');
 

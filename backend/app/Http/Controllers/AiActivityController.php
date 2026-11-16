@@ -32,7 +32,8 @@ class AiActivityController extends Controller
 
         $operations = DB::table('pop_operation_requests')->where('created_at', '>=', $since)->orderByDesc('created_at')->limit(50)
             ->get(['id', 'operation_id', 'strategy_id', 'status', 'actor', 'created_at']);
-        $approvals = DB::table('pop_approval_events')->whereIn('operation_id', $operations->pluck('id'))
+        // Only real approvals; policy_denied / policy_revoked rows are not counted (Codex #5409).
+        $approvals = DB::table('pop_approval_events')->where('event_type', 'approved')->whereIn('operation_id', $operations->pluck('id'))
             ->selectRaw('operation_id, COUNT(*) AS n')->groupBy('operation_id')->pluck('n', 'operation_id');
 
         return response()->json(['data' => [
