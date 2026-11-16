@@ -148,7 +148,7 @@ final class MonthlyRosterTest extends TestCase
         Payment::create(['InvoiceID' => $toBill->id, 'Amount' => 8000, 'PaidAt' => '2026-10-20', 'Method' => 'cash', 'Note' => '[receipt_reassign:1] 更正移轉自收據', 'payment_report_id' => $new]);
         DB::table('payment_report_reassignments')->insert(['from_report_id' => $old, 'to_report_id' => $new, 'from_invoice_id' => $fromBill->id,
             'to_invoice_id' => $toBill->id, 'from_student_id' => $student->id, 'to_student_id' => $student->id, 'campus_id' => 1, 'amount' => 8000,
-            'reason' => '選錯課', 'idempotency_key' => 'roster-move', 'actor_user_id' => 1, 'created_at' => now(), 'updated_at' => now()]);
+            'reason' => '選錯課', 'idempotency_key' => 'roster-move', 'actor_user_id' => 1, 'created_at' => now()]);
         $token = $this->director(1);
 
         $this->assertSame(0, $this->withToken($token)->getJson('/api/v1/accounting/monthly-roster?year=2026&month=11')->assertOk()->json('summary.paid_this_month'));
