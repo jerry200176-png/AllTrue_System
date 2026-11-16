@@ -122,8 +122,9 @@ final class MonthlyRosterController extends Controller
             $courseLessons = $lessons[$id] ?? collect();
             // Credit moved between contracts is not money coming in; a reversal counts negative however it was stored.
             $payments = ($paid[$id] ?? collect())->reject(fn ($p) => Payment::isCreditMovement($p))->map(fn ($p) => [
-                'date' => substr((string) $p->PaidAt, 0, 10), 'method' => (string) $p->Method,
+                'date' => substr((string) $p->PaidAt, 0, 10),
                 'amount' => Payment::isReversal($p) ? -abs((int) $p->Amount) : (int) $p->Amount,
+                'method' => (string) $p->Method,
             ])->values();
 
             return [

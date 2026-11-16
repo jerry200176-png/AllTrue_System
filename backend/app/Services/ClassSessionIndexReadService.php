@@ -13,10 +13,10 @@ use Illuminate\Support\Facades\DB;
  */
 class ClassSessionIndexReadService
 {
-    /** Join condition for the latest non-voided sign-in `si` of session `cs` (StudentSingIn has many rows per session). */
     /** R20 / 2026-07-18: a stopped course's leftover `scheduled` rows are not lessons (needs `cs` and `sc`). */
     public const HIDE_STOPPED_SCHEDULED_SQL = "NOT (COALESCE(sc.Stop, 0) = 1 AND LOWER(cs.Status) = 'scheduled')";
 
+    /** Join condition for the latest non-voided sign-in `si` of session `cs` (StudentSingIn has many rows per session). */
     public const LATEST_SIGN_IN_SQL = 'si.id = (SELECT MAX(si2.id) FROM `StudentSingIn` si2 WHERE si2.ClassSessionID = cs.id AND si2.VoidedAt IS NULL)';
 
     /**
