@@ -1,0 +1,14 @@
+updates:
+  - id: staff-2026-11-17-subject-credit-header-only-bill
+    published_at: "2026-11-17"
+    audiences:
+      - director
+      - super_admin
+    importance: digest
+    title: 跨科轉用不再被莫名擋下
+    summary: 已付清的合約可以正常跨科轉用堂數；不能轉的時候會寫清楚原因和處理方式。
+    items:
+      - category: fixed
+        text: 用登記收款開出的已付清帳單，現在可以跨科轉用堂數；被拒時會說明是哪一點不符。
+    source_refs:
+      - "changelog:2026-11-17:subject-credit-header-only-bill"
