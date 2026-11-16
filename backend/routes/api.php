@@ -681,7 +681,7 @@ Route::prefix('v1')->group(function () {
         Route::post('student-classes/{studentClass}/convert-to-package', [\App\Http\Controllers\CoursePackageController::class, 'convertToPackage'])->middleware('role:director');
         Route::get('student-classes/{studentClass}', [StudentClassController::class, 'show']);
         Route::put('student-classes/{studentClass}', [StudentClassController::class, 'update'])->middleware('role:director');
-        Route::post('student-classes/{studentClass}/confirm-payment', [StudentClassController::class, 'confirmPayment']);
+        Route::post('student-classes/{studentClass}/confirm-payment', [StudentClassController::class, 'confirmPayment'])->middleware('role:director');
         Route::post('student-classes/{studentClass}/renewal-preview', [StudentClassController::class, 'renewalPreview'])->middleware('role:director');
         Route::post('student-classes/{studentClass}/renewal-confirm', [StudentClassController::class, 'renewalConfirm'])->middleware('role:director');
         Route::post('student-classes/{studentClass}/purchase-batch', [StudentClassController::class, 'purchaseBatch'])->middleware('role:director');
@@ -703,9 +703,9 @@ Route::prefix('v1')->group(function () {
 
         // Course packages (multi-subject shared session pool)
         Route::get('course-packages', [\App\Http\Controllers\CoursePackageController::class, 'index']);
-        Route::post('course-packages/create-multi-subject', [\App\Http\Controllers\CoursePackageController::class, 'createMultiSubject']);
+        Route::post('course-packages/create-multi-subject', [\App\Http\Controllers\CoursePackageController::class, 'createMultiSubject'])->middleware('role:director');
         Route::get('course-packages/{id}', [\App\Http\Controllers\CoursePackageController::class, 'show']);
-        Route::put('course-packages/{id}', [\App\Http\Controllers\CoursePackageController::class, 'update']);
+        Route::put('course-packages/{id}', [\App\Http\Controllers\CoursePackageController::class, 'update'])->middleware('role:director');
         Route::post('course-packages/{id}/recompute', [\App\Http\Controllers\CoursePackageController::class, 'recompute']);
         Route::post('course-packages/{id}/rebuild-ledger', [\App\Http\Controllers\CoursePackageController::class, 'rebuildLedger']);
         Route::post('course-packages/{id}/bind-courses', [\App\Http\Controllers\CoursePackageController::class, 'bindCourses']);
