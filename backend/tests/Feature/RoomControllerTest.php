@@ -14,16 +14,16 @@ class RoomControllerTest extends TestCase
 {
     use RefreshDatabase;
 
-    private function directorToken(int $campusId): string
+    private function directorToken(int $campusId, string $type = 'A'): string
     {
         $user = User::create([
             'LoginName' => 'room-dir-' . uniqid() . '@test.com',
             'Name'      => 'Room Director',
             'PSW'       => 'secret',
-            'type'      => 'A',
+            'type'      => $type,
             'phone'     => 912000001,
         ]);
-        UserCampus::create(['CampusID' => $campusId, 'UserID' => $user->id, 'Admin' => 1, 'Approved' => 1]);
+        UserCampus::create(['CampusID' => $campusId, 'UserID' => $user->id, 'Admin' => $type === 'A' ? 1 : 0, 'Approved' => 1]);
         $raw = bin2hex(random_bytes(16));
         AuthToken::create(['user_id' => $user->id, 'token' => $raw, 'expires_at' => now()->addDay()]);
         return $raw;
@@ -102,6 +102,21 @@ class RoomControllerTest extends TestCase
         $res = $this->withToken($token)->deleteJson("/api/v1/rooms/{$room->id}");
         $res->assertOk();
         $this->assertDatabaseMissing('rooms', ['id' => $room->id]);
+    }
+
+    /** Rooms are edited on the director's 設定 → 教室 tab only; a teacher's token changes nothing. */
+    public function test_teacher_cannot_create_edit_or_delete_a_room_in_their_campus(): void
+    {
+        $campus = Campus::factory()->create();
+        $room = Room::create(['name' => '教室A', 'campus_id' => $campus->id, 'capacity' => 4, 'is_active' => true]);
+        $token = $this->directorToken($campus->id, 'T');
+
+        $this->withToken($token)->getJson("/api/v1/rooms?branch_id={$campus->id}")->assertOk();
+        $this->withToken($token)->postJson('/api/v1/rooms', ['name' => '老師建的', 'capacity' => 4, 'campus_id' => $campus->id])->assertStatus(403);
+        $this->withToken($token)->putJson("/api/v1/rooms/{$room->id}", ['name' => '老師改的'])->assertStatus(403);
+        $this->withToken($token)->deleteJson("/api/v1/rooms/{$room->id}")->assertStatus(403);
+        $this->assertDatabaseMissing('rooms', ['name' => '老師建的']);
+        $this->assertDatabaseHas('rooms', ['id' => $room->id, 'name' => '教室A']);
     }
 
     // ── SEC R-10 (#979): campus authorization on mutations + listing ──────────

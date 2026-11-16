@@ -812,9 +812,10 @@ Route::prefix('v1')->group(function () {
 
         // ── Rooms ────────────────────────────────────────────────────
         Route::get('rooms', [RoomController::class, 'index']);
-        Route::post('rooms', [RoomController::class, 'store']);
-        Route::put('rooms/{room}', [RoomController::class, 'update']);
-        Route::delete('rooms/{room}', [RoomController::class, 'destroy']);
+        // Rooms are edited on the director's 設定 → 教室 tab; teachers only read them (scheduling, print).
+        Route::post('rooms', [RoomController::class, 'store'])->middleware('role:director');
+        Route::put('rooms/{room}', [RoomController::class, 'update'])->middleware('role:director');
+        Route::delete('rooms/{room}', [RoomController::class, 'destroy'])->middleware('role:director');
     });
 
     Route::middleware(['role:director,teacher,super_admin', 'require_campus', 'require_password_change'])->group(function () {
