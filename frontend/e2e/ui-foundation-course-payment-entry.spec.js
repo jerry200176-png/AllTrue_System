@@ -5,7 +5,7 @@ import { LEGACY_FLAG_UNVERIFIED_HELP, REPORT_STATUS_LABELS, REVIEW_REQUIRED_LABE
 import { dismissOverlays } from './fixtures/dismissOverlays.js';
 import { expectCoursePaymentEntryOpensLedgerInPlace, recordCourseLists } from './fixtures/coursePaymentEntry.js';
 
-async function installCourseLinkMocks(page, { unavailable = false } = {}) {
+async function installCourseLinkMocks(page, { unavailable = false, beforeCourseListReply = async () => {} } = {}) {
   const target = { ...course(7101, 7201, '合成連結目標', 'paid'), payment_type: 'session', StartDate: '2026-10-03' };
   const other = { ...course(7102, 7202, '合成不同學生', 'unpaid'), payment_type: 'session' };
   const writes = [];
@@ -24,6 +24,7 @@ async function installCourseLinkMocks(page, { unavailable = false } = {}) {
     if (path.endsWith('/branches') || path.endsWith('/campuses')) return route.fulfill({ json: [{ id: 1, name: '合成分校' }] });
     if (path === '/api/v1/student-classes') {
       courseQueries.push(Object.fromEntries(url.searchParams));
+      await beforeCourseListReply(url);
       const rows = unavailable ? [] : [other, target];
       return route.fulfill({ json: { data: rows, total: rows.length, current_page: 1, last_page: 1 } });
     }
@@ -84,6 +85,51 @@ for (const scenario of ['wrong-student', 'unavailable-course', 'outside-campus']
     expect(writes).toEqual([]);
   });
 }
+
+for (const mismatch of ['student', 'course']) {
+  test(`shareable course link clears an already open course on a new invalid ${mismatch} intent`, async ({ page }) => {
+    const { target, writes } = await installCourseLinkMocks(page);
+    await page.goto('/app-pilot-mount.html?app_page=course-mgmt&branch_id=1&student_id=7201&course_id=7101');
+    await expect(page.getByTestId('course-manager').getByRole('heading', { level: 2 })).toContainText(target.student_name);
+    await page.evaluate(mismatch => {
+      history.pushState({}, '', `?app_page=course-mgmt&branch_id=1&student_id=${mismatch === 'student' ? 7202 : 7201}&course_id=${mismatch === 'course' ? 7999 : 7101}`);
+      window.dispatchEvent(new PopStateEvent('popstate'));
+    }, mismatch);
+    await expect(page.getByTestId('course-link-unavailable')).toContainText('無法定位指定課程');
+    await expect(page.getByTestId('course-manager')).toHaveCount(0);
+    expect(writes).toEqual([]);
+  });
+}
+
+test('shareable course link invalidates old controls while loading and ignores a late previous response', async ({ page }) => {
+  let releaseB;
+  let requestedB = false;
+  const heldB = new Promise(resolve => { releaseB = resolve; });
+  const { target, writes } = await installCourseLinkMocks(page, {
+    beforeCourseListReply: async url => {
+      if (url.searchParams.get('student_id') === '7202') { requestedB = true; await heldB; }
+    },
+  });
+  const a = '?app_page=course-mgmt&branch_id=1&student_id=7201&course_id=7101';
+  const b = '?app_page=course-mgmt&branch_id=1&student_id=7202&course_id=7102';
+  const navigate = search => page.evaluate(search => { history.pushState({}, '', search); window.dispatchEvent(new PopStateEvent('popstate')); }, search);
+  await page.goto(`/app-pilot-mount.html${a}`);
+  const manager = page.getByTestId('course-manager');
+  await expect(manager.getByRole('heading', { level: 2 })).toContainText(target.student_name);
+  await navigate(b);
+  await expect.poll(() => requestedB).toBe(true);
+  await expect(manager).toHaveCount(0);
+  await expect(page.locator('[data-contract-id="7101"]')).toHaveCount(0);
+  await navigate(a);
+  await expect(manager.getByRole('heading', { level: 2 })).toContainText(target.student_name);
+  const late = page.waitForResponse(response => new URL(response.url()).pathname === '/api/v1/student-classes'
+    && new URL(response.url()).searchParams.get('student_id') === '7202');
+  releaseB();
+  await late;
+  await expect(manager.getByRole('heading', { level: 2 })).toContainText(target.student_name);
+  await expect(page.getByTestId('course-link-unavailable')).toHaveCount(0);
+  expect(writes).toEqual([]);
+});
 
 /**
  * #4130 follow-up regression: the production acceptance checks the 課程查找 payment

@@ -5823,6 +5823,9 @@ watch(
       pendingConvertTrialId.value = Number(props.initialCourseId) || 0;
       convertTrialStudentId.value = sid ?? null;
     } else if (props.initialCourseIntent === 'lessons') {
+      // A new explicit destination replaces the old one, including during a failed/slow lookup.
+      closeCourseManager();
+      courses.value = [];
       pendingLessonsCourseId.value = Number(props.initialCourseId) || 0;
       convertTrialStudentId.value = sid ?? null;
     } else if (props.initialCourseIntent === 'manual-session') {
