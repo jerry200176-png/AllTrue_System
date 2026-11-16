@@ -54,6 +54,18 @@ final class BillingDataQualityTest extends TestCase
         Payment::create(['InvoiceID' => $back->id, 'Amount' => -6000, 'PaidAt' => '2026-11-05', 'Method' => 'refund']);
         $recent = $this->course(1);
         $this->bill($recent, ['TotalAmount' => 6000, 'Status' => 'unpaid', 'IssueDate' => '2026-11-10']);
+        // Payment rows are the truth: an old bill and an ended contract whose stored flags are stale but fully covered.
+        $covered = $this->course(1, ['Stop' => 1, 'closed_reason' => 'settled_pending']);
+        $stale = $this->bill($covered, ['TotalAmount' => 6000, 'Status' => 'unpaid', 'IssueDate' => '2026-08-01']);
+        Payment::create(['InvoiceID' => $stale->id, 'Amount' => 6000, 'PaidAt' => '2026-08-02', 'Method' => 'cash']);
+        // A count-mode bill kept after the course became monthly has no month by design.
+        $converted = $this->course(2, ['ScheduleMode' => 'date']);
+        $kept = $this->bill($converted, ['TotalAmount' => 6000, 'PaidAmount' => 6000, 'Status' => 'paid', 'IssueDate' => '2026-10-01', 'ScheduleModeAtIssue' => 'count']);
+        Payment::create(['InvoiceID' => $kept->id, 'Amount' => 6000, 'PaidAt' => '2026-10-01', 'Method' => 'cash']);
+        // A campus with nothing wrong still has a row of zeros.
+        $clean = 77;
+        DB::table('Campus')->insert(['id' => $clean, 'name' => '乾淨分校', 'LineNotifyID' => '', 'Client_ID' => '', 'Client_Secret' => '', 'LIFFID' => '',
+            'LIFF_URL' => '', 'URL' => '', 'TelegramURL' => '', 'TeachLIFFID' => '', 'TeachLIFF_URL' => '']);
 
         $data = $this->withToken($this->token('S'))->getJson('/api/v1/admin/billing-data-quality')->assertOk()->json('data');
 
@@ -67,6 +79,8 @@ final class BillingDataQualityTest extends TestCase
         foreach (['zero_paid_bill', 'unpaid_over_60_days', 'ended_money_pending', 'monthly_bill_without_month', 'advance_monthly_bill'] as $key) {
             $this->assertSame(1, $data['totals'][$key], $key);
         }
+        $this->assertSame(0, array_sum($byCampus[$clean]['counts']));
+        $this->assertSame('乾淨分校', $byCampus[$clean]['campus_name']);
         // Counts and campus names only: no student, no amount.
         $body = (string) json_encode($data, JSON_UNESCAPED_UNICODE);
         $this->assertStringNotContainsString('品質學生', $body);

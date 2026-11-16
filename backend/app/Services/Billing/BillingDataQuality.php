@@ -2,6 +2,7 @@
 
 namespace App\Services\Billing;
 
+use App\Models\Invoice;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -33,18 +34,25 @@ final class BillingDataQuality
         $cutoff = now('Asia/Taipei')->subDays(60)->toDateString();
         $bill = 'FROM Invoice i JOIN Student s ON s.id = i.StudentID';
         $monthlyBill = $bill . ' JOIN StudentClass sc ON sc.ID = i.StudentClassID';
+        // Payment rows are the truth (Founder Q2, R28), never a stored Status or closure flag.
+        $owes = 'i.TotalAmount > ' . Invoice::netPaidSql('i');
+        $link = PaidFlagInvoiceMismatch::linkSql();
+        // The mode the bill was issued under; a course later converted keeps its old bills as they were (#934).
+        $monthly = "COALESCE(i.ScheduleModeAtIssue, sc.ScheduleMode) = 'date'";
         $queries = [
             // An old 「0 元」 登記: not payment evidence (#3991). A refunded bill is NT$0 too, but money moved on it.
             'zero_paid_bill' => ["{$bill} WHERE i.Status = 'paid' AND i.TotalAmount = 0 AND i.zero_amount_reason IS NULL"
                 . ' AND NOT EXISTS (SELECT 1 FROM Payment p WHERE p.InvoiceID = i.id AND p.Amount <> 0)', []],
-            'unpaid_over_60_days' => ["{$bill} WHERE i.Status IN ('unpaid', 'partial') AND i.IssueDate < ?", [$cutoff]],
-            'ended_money_pending' => ["FROM StudentClass sc JOIN Student s ON s.id = sc.StudentID WHERE sc.closed_reason = 'settled_pending'", []],
+            'unpaid_over_60_days' => ["{$bill} WHERE COALESCE(i.Status, '') <> 'void' AND {$owes} AND i.IssueDate < ?", [$cutoff]],
+            // Still pending unless its bills exist and Payment rows cover every one (then 已結清 keeps it in history).
+            'ended_money_pending' => ["FROM StudentClass sc JOIN Student s ON s.id = sc.StudentID WHERE sc.closed_reason = 'settled_pending'"
+                . " AND NOT (EXISTS (SELECT 1 FROM Invoice i WHERE {$link}) AND NOT EXISTS (SELECT 1 FROM Invoice i WHERE {$link} AND {$owes}))", []],
             // The nightly G-009 predicate, per campus.
             'paid_flag_vs_bill' => ['FROM StudentClass sc JOIN Student s ON s.id = sc.StudentID WHERE ' . PaidFlagInvoiceMismatch::whereSql(), []],
-            'monthly_bill_without_month' => ["{$monthlyBill} WHERE sc.ScheduleMode = 'date' AND COALESCE(i.Status, '') <> 'void'"
+            'monthly_bill_without_month' => ["{$monthlyBill} WHERE {$monthly} AND COALESCE(i.Status, '') <> 'void'"
                 . " AND (i.billing_period IS NULL OR i.billing_period NOT REGEXP '^[0-9]{4}-(0[1-9]|1[0-2])$')", []],
             // Root cause A of the rework: a bill issued before its period was over, still unpaid.
-            'advance_monthly_bill' => ["{$monthlyBill} WHERE sc.ScheduleMode = 'date' AND i.Status = 'unpaid'"
+            'advance_monthly_bill' => ["{$monthlyBill} WHERE {$monthly} AND i.Status = 'unpaid'"
                 . ' AND EXISTS (SELECT 1 FROM InvoiceItem ii WHERE ii.InvoiceID = i.id AND ii.PeriodEnd >= ?)', [$today]],
         ];
 
@@ -56,6 +64,8 @@ final class BillingDataQuality
             }
         }
         $names = DB::table('Campus')->pluck('name', 'id');
+        // Every campus has a row: a zero is a verified zero, not a missing campus.
+        $counts += array_fill_keys($names->keys()->map(fn ($id) => (int) $id)->all(), []);
         ksort($counts);
         $campuses = [];
         $totals = $zero;
