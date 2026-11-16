@@ -215,6 +215,12 @@ class StudentClassTogglePauseAuthzTest extends TestCase
             $this->postJson("/api/v1/student-classes/{$sc->ID}/{$action}", [], $auth)->assertForbidden();
         }
         $this->deleteJson("/api/v1/student-classes/{$sc->ID}", [], $auth)->assertForbidden();
+        // Shared packages carry the same terms (rate, paid mark) for every member contract; marking a contract paid is the director's.
+        $this->postJson('/api/v1/course-packages/create-multi-subject', [], $auth)->assertForbidden();
+        $this->putJson('/api/v1/course-packages/1', ['rate' => 1, 'paid' => 1], $auth)->assertForbidden();
+        $this->postJson("/api/v1/student-classes/{$sc->ID}/confirm-payment", ['paid_at' => '2026-11-17'], $auth)->assertForbidden();
+        $this->postJson("/api/v1/student-classes/{$sc->ID}/renewal-preview", [], $auth)->assertForbidden();
+        $this->postJson('/api/v1/course-contract-groups', [], $auth)->assertForbidden();
 
         $sc->refresh();
         $this->assertSame([8800, 1100, 0], [(int) $sc->Charge, (int) $sc->Rate, (int) $sc->Paid]);
