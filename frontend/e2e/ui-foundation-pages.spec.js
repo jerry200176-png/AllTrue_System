@@ -9,6 +9,129 @@ import { test, expect } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
 import { dismissOverlays } from './fixtures/dismissOverlays.js';
 import { installApiMocks } from './fixtures/ui-foundation/apiMocks.js';
+
+// #561/#562: exercise the actual paid-course entry and PUT, with synthetic records only.
+for (const width of [375, 1280]) {
+  test(`paid schedule-only entry preserves financial fields and errors @${width}`, async ({ page }, testInfo) => {
+    const managerEnabled = process.env.VITE_COURSE_MANAGER_V1 === 'true';
+    await page.setViewportSize({ width, height: 900 });
+    const pageErrors = [];
+    page.on('pageerror', (error) => pageErrors.push(error.message));
+    await page.route('**/*', (route) => ['127.0.0.1', 'localhost'].includes(new URL(route.request().url()).hostname)
+      ? route.fallback() : route.abort('blockedbyclient'));
+    await installApiMocks(page, 'normal', 'course');
+    const course = { id: 4201, student_id: 900561, student_name: '合成學生', subject: 'Math', teacher_id: 3000,
+      teacher_name: '合成老師', data_source: 'laravel', branch_id: 1, branch_name: '合成分校', room_name: 'A',
+      status: 'active', ScheduleMode: 'count', payment_type: 'session', class_type: 'one_on_one',
+      sessions_purchased: 8, sessions_used: 3, remaining_sessions: 5, payment_status: 'paid',
+      legacy_paid_flag_only: false, Rate: 1600, rate_per_30min: 1600, rate_unit: 'session', Charge: 12000, charge: 12000,
+      first_class_date: '2030-01-07', duration_hours: 2, days_of_week: [1],
+      day_time_slots: [{ day: 1, start_time: '20:00', duration_hours: 2 }], start_time: '20:00', end_time: '22:00' };
+    const puts = [];
+    let conflict = true;
+    await page.route('**/api/v1/student-classes?**', (route) => route.fulfill({ json: {
+      data: [course], total: 1, current_page: 1, last_page: 1,
+    } }));
+    await page.route('**/api/v1/student-classes/4201/editability', (route) => route.fulfill({ json: {
+      editable: true, reasons: [], fields: {},
+    } }));
+    await page.route('**/api/v1/student-classes/4201', (route) => {
+      if (route.request().method() !== 'PUT') return route.fulfill({ json: { data: course } });
+      const body = route.request().postDataJSON();
+      puts.push(body);
+      if (conflict) return route.fulfill({ status: 409, json: { message: '合成衝堂：老師於此時段已有課程，請選其他時間。' } });
+      Object.assign(course, { days_of_week: body.days_of_week, start_time: body.start_time,
+        day_time_slots: body.day_time_slots.map((slot) => ({ ...slot, duration_hours: slot.duration_minutes / 60 })) });
+      return route.fulfill({ json: { data: course, session_sync: { updated_future_sessions: 5 } } });
+    });
+    await page.route('**/api/v1/teachers?**', (route) => route.fulfill({ json: { data: [{ id: 3000, username: '合成老師', name: '合成老師' }] } }));
+    await page.route('**/api/v1/class-sessions**', (route) => {
+      const projected = new URL(route.request().url()).pathname.endsWith('/projection');
+      const data = [{ id: 6201, student_class_id: 4201, student_id: 900561, session_date: '2030-01-07',
+        start_time: '20:00', end_time: '22:00', status: 'scheduled', teacher_id: 3000, branch_id: 1 }];
+      return route.fulfill({ json: projected
+        ? { api_kind: 'projection', completeness: 'full', data: [], by_class: {} }
+        : { data, total: 1, current_page: 1, last_page: 1 } });
+    });
+    await page.goto('/pilot-mount.html?page=course&mode=normal');
+    await expect(page.locator('html')).toHaveAttribute('data-pilot-ready', '1');
+    await dismissOverlays(page);
+    if (managerEnabled) {
+      await page.getByTestId('course-manager-open').click();
+      await page.getByRole('tab', { name: '帳務', exact: true }).click();
+    }
+    const adjust = page.getByRole('button', { name: '合約／堂次調整', exact: true });
+    const openAdjust = async () => {
+      if (managerEnabled) await adjust.click();
+      else {
+        await page.locator('.course-row').getByRole('button', { name: /更多/ }).click();
+        await page.getByRole('menuitem', { name: '合約／堂次調整', exact: true }).click();
+      }
+    };
+    await openAdjust();
+    const choice = page.getByRole('dialog', { name: '合約／堂次調整', exact: true });
+    await expect(choice).toBeVisible();
+    await expect(page.getByTestId('contract-adjust-schedule')).toBeVisible();
+    await expect(page.getByTestId('contract-adjust-fixed-schedule')).toBeVisible();
+    await expect(choice.getByRole('button', { name: /未付款，更正堂數/ })).toBeDisabled();
+    const a11y = await new AxeBuilder({ page }).include('.adjustment-choice-modal').analyze();
+    expect(a11y.violations.filter((v) => ['serious', 'critical'].includes(v.impact))).toEqual([]);
+    const bounds = await choice.boundingBox();
+    expect(bounds.x).toBeGreaterThanOrEqual(0);
+    expect(bounds.x + bounds.width).toBeLessThanOrEqual(width + 1);
+    await choice.screenshot({ path: testInfo.outputPath('paid-schedule-choice.png') });
+    await page.keyboard.press('Tab');
+    expect(await choice.evaluate((el) => el.contains(document.activeElement))).toBe(true);
+    await page.keyboard.press('Escape');
+    await expect(choice).toHaveCount(0);
+    if (managerEnabled) await expect(adjust).toBeFocused();
+    await openAdjust();
+    await page.getByTestId('contract-adjust-schedule').click();
+    if (managerEnabled) {
+      await expect(page.getByRole('tab', { name: '堂次', exact: true })).toHaveAttribute('aria-selected', 'true');
+      await expect(page.getByTestId('lesson-reschedule').first()).toBeVisible();
+      await page.getByRole('tab', { name: '帳務', exact: true }).click();
+    } else {
+      await expect(page.locator('.session-edit-modal')).toContainText('2030-01-07');
+      await page.locator('.session-edit-modal').getByRole('button', { name: '關閉', exact: true }).click();
+    }
+    expect(puts).toEqual([]);
+    await openAdjust();
+    await page.getByTestId('contract-adjust-fixed-schedule').click();
+    await expect(page.getByTestId('course-schedule-only')).toBeVisible();
+    await expect(page.getByLabel('第1天時數', { exact: true })).toBeDisabled();
+    await expect(page.getByLabel('第1天時數', { exact: true })).toHaveValue('2');
+    await expect(page.locator('.course-form-wrapper')).not.toContainText('費用與繳費');
+    await page.locator('.course-form-wrapper').screenshot({ path: testInfo.outputPath('paid-schedule-form.png') });
+    await page.getByLabel('第1天星期', { exact: true }).selectOption('3');
+    await page.getByLabel('第1天開始時間', { exact: true }).selectOption('18:00');
+    const save = page.getByRole('button', { name: managerEnabled ? '儲存課程設定' : '儲存', exact: true });
+    await save.click();
+    await expect(page.getByText('合成衝堂：老師於此時段已有課程，請選其他時間。', { exact: true }).first()).toBeVisible();
+    expect(puts).toHaveLength(1);
+    const expected = { days_of_week: [3], start_time: '18:00', end_time: '20:00',
+      day_time_slots: [{ day: 3, start_time: '18:00', duration_minutes: 120 }], force_rebuild_if_mismatch: true };
+    expect(puts[0]).toEqual(expected);
+    expect(course.Charge).toBe(12000);
+    conflict = false;
+    await save.click();
+    await expect.poll(() => puts.length).toBe(2);
+    expect(puts[1]).toEqual(expected);
+    if (managerEnabled) await expect(page.getByLabel('第1天開始時間', { exact: true })).toHaveValue('18:00');
+    else await expect(page.getByTestId('course-schedule-only')).toHaveCount(0);
+    expect(course.sessions_purchased).toBe(8);
+    expect(course.payment_status).toBe('paid');
+    expect(course.Charge).toBe(12000);
+    if (managerEnabled) {
+      await page.keyboard.press('Escape');
+      await page.getByTestId('course-manager-open').click();
+      await page.getByRole('tab', { name: '設定', exact: true }).click();
+      await expect(page.getByTestId('course-schedule-only')).toHaveCount(0);
+      await expect(page.locator('.course-form-wrapper')).toContainText('費用與繳費');
+    }
+    expect(pageErrors).toEqual([]);
+  });
+}
 import path from 'node:path';
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';

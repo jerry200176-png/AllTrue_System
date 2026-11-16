@@ -1,0 +1,16 @@
+updates:
+  - id: staff-2026-11-16-paid-course-schedule-entry
+    published_at: "2026-11-16"
+    audiences:
+      - director
+      - super_admin
+    importance: digest
+    title: 調課與更正堂數分開操作
+    summary: 已付款課程只改日期或時間時，可直接進入對應排課流程。
+    items:
+      - category: improved
+        text: 在合約／堂次調整選「調整單堂日期／時間」，再選要調整的那一堂。
+      - category: improved
+        text: 已確認收款的自動排課堂數制課程，可改之後固定時段；時長、堂數與收款紀錄保留。
+    source_refs:
+      - "changelog:2026-11-16:paid-course-schedule-entry"

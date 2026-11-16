@@ -1,9 +1,17 @@
 <template>
-  <div v-if="show" class="modal-overlay" @click.self="$emit('close')">
-    <div class="modal course-modal adjustment-choice-modal" role="dialog" aria-modal="true" aria-labelledby="contract-adjustment-title">
+  <div v-if="show" class="modal-overlay" @click.self="$emit('close')" @keydown.esc.stop.prevent="$emit('close')">
+    <div ref="panelRef" class="modal course-modal adjustment-choice-modal" tabindex="-1" @keydown.tab="trapTab($event, panelRef)" role="dialog" aria-modal="true" aria-labelledby="contract-adjustment-title">
       <h3 id="contract-adjustment-title" class="modal-title">合約／堂次調整</h3>
       <p class="modal-desc">{{ studentName }}／{{ subjectLabel }}</p>
       <p class="choice-intro">先選你要處理的事情，系統會帶到正確流程。</p>
+
+      <div class="renew-hint" data-testid="contract-adjust-schedule-hint">
+        <p class="renew-hint__text"><strong>只改上課日期／時間</strong>：單堂調課請選那一堂；改之後的固定時段，會保留總堂數與原有收款紀錄。</p>
+        <div class="tw:flex tw:flex-wrap tw:gap-2">
+          <Button type="button" variant="outline" class="tw:min-h-11" data-testid="contract-adjust-schedule" @click="onChoose('schedule')">調整單堂日期／時間</Button>
+          <Button v-if="fixedScheduleAvailable && normalizedPaymentStatus === 'paid'" type="button" variant="outline" class="tw:min-h-11" data-testid="contract-adjust-fixed-schedule" @click="onChoose('schedule-settings')">更改之後固定時段</Button>
+        </div>
+      </div>
 
       <!-- Founder 2026-10-15 Q8=A (#4014): lessons still to come are added through 續課. Founder 2026-11-03 (in-app #466):
            lessons already taught beyond an unbilled, unpaid contract can be covered by 未付款，更正堂數 below. -->
@@ -59,7 +67,9 @@
 </template>
 
 <script setup>
-import { computed } from 'vue';
+import { computed, nextTick, ref, watch } from 'vue';
+import { Button } from '../ui/button';
+import { trapTab } from '../../lib/focusTrap.js';
 import { getSubjectLabel } from '../../lib/constants';
 import { REPORT_STATUS_LABELS, TUITION_STATUS_CONFIG } from '../../lib/courseMoneyState.js';
 
@@ -69,9 +79,21 @@ const props = defineProps({
   subject: { type: String, default: '' },
   paymentStatus: { type: String, default: '' },
   billingAvailable: { type: Boolean, default: true },
+  fixedScheduleAvailable: { type: Boolean, default: false },
 });
 
 const emit = defineEmits(['close', 'choose']);
+const panelRef = ref(null);
+let opener;
+watch(() => props.show, (show) => {
+  if (show) {
+    opener = document.activeElement;
+    nextTick(() => panelRef.value?.focus());
+  } else {
+    nextTick(() => { if (opener?.isConnected) opener.focus(); });
+  }
+}, { immediate: true });
+
 
 const subjectLabel = computed(() => getSubjectLabel(props.subject));
 const normalizedPaymentStatus = computed(() => String(props.paymentStatus || '').trim().toLowerCase());
