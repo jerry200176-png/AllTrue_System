@@ -47,6 +47,7 @@ final class SchedulerEvidence
         'reconcile-nightly' => ['command' => 'reconcile:nightly', 'time' => '02:00'],
         'student-signin-close-orphans' => ['command' => 'student-signin:close-orphans', 'time' => '02:30'],
         'rfid-prune-pending' => ['command' => 'rfid:prune-pending', 'time' => '03:00'],
+        'privacy-prune-logs' => ['command' => 'privacy:prune-logs', 'time' => '03:05'],
         'learning-records-drift-check' => ['command' => 'learning-records:drift-check --fix', 'time' => '03:20'],
         'sessions-audit-stranded' => ['command' => 'sessions:audit-stranded --json', 'time' => '03:40'],
         'sessions-generate-forward' => ['command' => 'sessions:generate-forward --execute --scheduled --horizon-weeks=4', 'time' => '03:45'],
@@ -523,6 +524,7 @@ final class SchedulerEvidence
             'student-signin-close-orphans' => '/Closed\s+(\d+) orphan StudentSignIn record/',
             'teacher-signin-close-orphans' => '/Closed\s+(\d+) orphan TeacherSingIn record/',
             'rfid-prune-pending' => '/Deleted\s+(\d+) pending swipes/',
+            'privacy-prune-logs' => '/Pruned\s+(\d+) rows/',
             'learning-records-backfill-missing' => '/total created:\s*(\d+)/',
             'learning-records-void-stale-leave' => '/total voided:\s*(\d+)/',
         ];
