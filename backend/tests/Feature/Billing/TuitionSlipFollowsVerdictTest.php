@@ -92,13 +92,47 @@ class TuitionSlipFollowsVerdictTest extends TestCase
     {
         $settled = $this->course([['2026-08', 10000, 'paid', 10000, [[10000, 'cash']]]]);
         $owing = $this->course([['2026-08', 10000, 'unpaid', 0, []]]);
+        $waived = $this->course([], ['Stop' => 1, 'closed_reason' => 'waived', 'Paid' => 0]);
         $missing = $this->slip(99999999, 2);
         $missing->assertStatus(403);
 
-        foreach ([$settled, $owing] as $course) {
+        foreach ([$settled, $owing, $waived] as $course) {
             $res = $this->slip($course->ID, 2);
             $res->assertStatus(403);
             $this->assertSame($missing->json('message'), $res->json('message'), 'no money, status or name in the message');
         }
+    }
+
+    /** In-app #551: a terminal waiver is not an unpaid obligation, even if the old Charge remains. */
+    public function test_waived_course_refuses_a_notice_without_touching_history_or_another_courses_receipt(): void
+    {
+        $course = $this->course([], ['Paid' => 0,
+            'Charge' => 4800, 'Rate' => 0, 'SessionCount' => 1, 'UsedSessions' => 1, 'RemainingSessions' => 0]);
+        $this->course([['2026-08', 6400, 'paid', 6400, [[6400, 'cash']]]], [], [], $course->student);
+        foreach (['attended', 'scheduled'] as $i => $status) {
+            ClassSession::create(['StudentClassID' => $course->ID, 'SessionDate' => '2026-08-0' . ($i + 1),
+                'StartTime' => '23:00', 'EndTime' => '23:30', 'Status' => $status]);
+        }
+        $course->update(['Stop' => 1, 'closed_reason' => 'waived']);
+        $beforeCourse = $course->fresh()->getAttributes();
+        $beforeRows = [];
+        foreach (['ClassSession', 'Invoice', 'Payment'] as $table) {
+            $beforeRows[$table] = DB::table($table)->orderBy('id')->get()->toJson();
+        }
+
+        $this->slip($course->ID)->assertStatus(422)
+            ->assertJson(['message' => '此課程已確認不收，不需要繳費單']);
+
+        $this->assertSame($beforeCourse, $course->fresh()->getAttributes());
+        foreach ($beforeRows as $table => $rows) {
+            $this->assertSame($rows, DB::table($table)->orderBy('id')->get()->toJson(), $table);
+        }
+    }
+
+    public function test_zero_unit_rate_does_not_reinterpret_an_active_positive_contract_as_free(): void
+    {
+        $course = $this->course([], ['Charge' => 4800, 'Rate' => 0]);
+        $this->slip($course->ID)->assertOk()->assertJsonPath('charge', 4800);
+        $this->assertSame(4800, (int) $course->fresh()->Charge);
     }
 }

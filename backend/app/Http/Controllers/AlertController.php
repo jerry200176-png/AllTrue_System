@@ -833,6 +833,11 @@ class AlertController extends Controller
             abort(403);
         }
 
+        // A confirmed waiver leaves historical amounts intact; it is never a new request for payment (#551).
+        if ((string) $sc->getAttribute('closed_reason') === 'waived') {
+            return response()->json(['message' => '此課程已確認不收，不需要繳費單'], 422);
+        }
+
         // ARCH2: a slip exists only while the Verdict says the contract owes. Paid=1 beside an unpaid invoice still gets
         // its slip (the money is owed); Payment rows that settle a Paid=0 contract refuse it. No Verdict answer
         // (review_required) keeps the legacy flag test.
