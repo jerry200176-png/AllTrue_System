@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { classificationUnknown, closedReason, isPackageMember, isSessionPayment, isMonthlyPaymentType } from '../../lib/courseMoneyState.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const pagePath = resolve(__dirname, '../../pages/CourseManagement.vue');
@@ -11,6 +12,12 @@ const courseActionsSource = readFileSync(resolve(__dirname, '../../lib/courseAct
 const closeCourseActionPath = resolve(__dirname, '../../lib/closeCourseNoRenew.js');
 const manualSessionModalPath = resolve(__dirname, '../course-management/ManualSessionModal.vue');
 const source = readFileSync(pagePath, 'utf8');
+// Execute the page's actual predicate with its shared classification helpers.
+// A string check for one old terminal state missed refunded/usage_settled courses.
+const canCloseCourse = new Function('classificationUnknown', 'isPackageMember', 'isSessionMode', 'isMonthlyMode', 'effectiveClosedReason',
+  `${source.match(/function canCloseCourse\(c\) \{[\s\S]*?\n\}/)[0]}; return canCloseCourse;`)(
+  classificationUnknown, isPackageMember, isSessionPayment, isMonthlyPaymentType, closedReason,
+);
 const studentsSource = readFileSync(studentsPagePath, 'utf8');
 const closeCourseActionSource = readFileSync(closeCourseActionPath, 'utf8');
 const manualSessionModalSource = readFileSync(manualSessionModalPath, 'utf8');
@@ -102,8 +109,7 @@ describe('CourseManagement action hierarchy', () => {
   });
 
   it('offers explicit settlement for unpaid courses and preserves reconciliation messaging', () => {
-    expect(source).toContain("&& (isSessionMode(c) || isMonthlyMode(c))");
-    expect(source).toContain("c.closed_reason !== 'settled_pending';");
+    expect(canCloseCourse({ payment_type: 'session', payment_status: 'unpaid', status: 'inactive', closed_reason: null })).toBe(true);
     expect(courseActionsSource).toContain('結束課程（不再續課）');
     expect(studentsSource).toContain("['session', 'monthly'].includes");
     expect(studentsSource).toContain("course?.closed_reason !== 'settled_pending'");
@@ -115,6 +121,28 @@ describe('CourseManagement action hierarchy', () => {
     expect(studentsSource).toContain('settled_pending');
     expect(closeCourseActionSource).toContain('forfeit_remaining: true');
     expect(closeCourseActionSource).toContain('放棄這 ${remaining} 堂剩餘額度');
+  });
+
+  it.each(['session', 'monthly'])('allows an active unclosed %s course to close', (payment_type) => {
+    expect(canCloseCourse({ payment_type, status: 'active', closed_reason: null })).toBe(true);
+  });
+
+  it('allows a plain session pause to close, while preserving inferred monthly completion', () => {
+    expect(canCloseCourse({ payment_type: 'session', status: 'inactive', Stop: 1, closed_reason: null })).toBe(true);
+    expect(canCloseCourse({ payment_type: 'monthly', status: 'inactive', Stop: 1, closed_reason: null })).toBe(false);
+  });
+
+  it.each(['settled_pending', 'settled', 'completed', 'contract_amended', 'waived', 'refunded', 'usage_settled', 'converted_trial', 'future_terminal'])
+  ('refuses another close when the course has closure reason %s', (closed_reason) => {
+    for (const payment_type of ['session', 'monthly']) {
+      expect(canCloseCourse({ payment_type, status: 'inactive', closed_reason })).toBe(false);
+    }
+  });
+
+  it('keeps package and unknown-classification courses out of the standalone close action', () => {
+    expect(canCloseCourse({ payment_type: 'session', PackageID: 9, closed_reason: null })).toBe(false);
+    expect(canCloseCourse({ _noncanonical: true, payment_type: 'session', closed_reason: null })).toBe(false);
+    expect(canCloseCourse({ payment_type: 'unrecognized', closed_reason: null })).toBe(false);
   });
 
   it('normalizes legacy course IDs and gives monthly scheduling failures a visible result', () => {
