@@ -25,7 +25,7 @@ for (const width of [375, 1280]) {
       status: 'active', ScheduleMode: 'count', payment_type: 'session', class_type: 'one_on_one',
       sessions_purchased: 8, sessions_used: 3, remaining_sessions: 5, payment_status: 'paid',
       legacy_paid_flag_only: false, Rate: 1600, rate_per_30min: 1600, rate_unit: 'session', Charge: 12000, charge: 12000,
-      first_class_date: '2030-01-07', duration_hours: 2, days_of_week: [1],
+      first_class_date: '2030-01-07', SessionDuration: 120, week: 1, time: '20:00', duration_hours: 2, days_of_week: [1],
       day_time_slots: [{ day: 1, start_time: '20:00', duration_hours: 2 }], start_time: '20:00', end_time: '22:00' };
     const puts = [];
     let conflict = true;
@@ -133,6 +133,19 @@ for (const width of [375, 1280]) {
     // A mixed 2h/1h cadence cannot promise unchanged lesson lengths after remapping weekdays.
     course.days_of_week = [3, 5];
     course.day_time_slots.push({ day: 5, start_time: '20:00', duration_hours: 1 });
+    await page.reload();
+    await expect(page.locator('html')).toHaveAttribute('data-pilot-ready', '1');
+    await dismissOverlays(page);
+    if (managerEnabled) {
+      await page.getByTestId('course-manager-open').click();
+      await page.getByRole('tab', { name: '帳務', exact: true }).click();
+    }
+    await openAdjust();
+    await expect(page.getByTestId('contract-adjust-fixed-schedule')).toHaveCount(0);
+    await expect(page.getByTestId('contract-adjust-schedule')).toBeVisible();
+    // Native rounded 91min -> 1.5h is not proof that a 90min roundtrip preserves the contract.
+    Object.assign(course, { SessionDuration: 91, duration_hours: 1.5, days_of_week: [1],
+      day_time_slots: [{ day: 1, start_time: '20:00', duration_hours: 1.5 }] });
     await page.reload();
     await expect(page.locator('html')).toHaveAttribute('data-pilot-ready', '1');
     await dismissOverlays(page);

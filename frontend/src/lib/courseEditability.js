@@ -3,8 +3,15 @@ import { REPORT_STATUS_LABELS } from './courseMoneyState.js';
 // The time-only shortcut cannot preserve each lesson's length when a mixed cadence is remapped.
 export function hasUniformFixedSlotDuration(course) {
   const hours = Number(course?.duration_hours);
-  if (!Number.isFinite(hours) || hours < 0.5) return false;
+  const minutes = Number(course?.SessionDuration);
+  // duration_hours is rounded by the index serializer (75min -> 1.3h); require raw exact evidence.
+  if (!Number.isFinite(hours) || hours < 0.5 || !Number.isInteger(hours * 2) || minutes !== hours * 60) return false;
   if (!Array.isArray(course?.day_time_slots)) return false;
+  for (let i = 1; i <= 6; i += 1) {
+    if (!(Number(course[`week${i}`]) >= 1 && Number(course[`week${i}`]) <= 7) || !course[`time${i}`]) continue;
+    const raw = course[`duration${i}`];
+    if (raw != null && Number(raw) !== 0 && Number(raw) !== minutes) return false;
+  }
   return course.day_time_slots.every((slot) => {
     if (!slot || typeof slot !== 'object') return false;
     const slotHours = slot.duration_hours == null ? hours : Number(slot.duration_hours);
