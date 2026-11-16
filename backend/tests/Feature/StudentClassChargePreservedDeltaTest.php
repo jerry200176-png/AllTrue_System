@@ -137,6 +137,21 @@ class StudentClassChargePreservedDeltaTest extends TestCase
         $this->assertSame(14400, (int) $sc->fresh()->Charge);
     }
 
+    /** A bill that names the course only on one of its lines (header on a sibling course) protects the fee as well. */
+    public function test_unit_price_zero_leaves_the_fee_when_only_a_bill_line_names_the_contract(): void
+    {
+        $token = $this->createDirectorToken([1]);
+        $student = $this->createStudent();
+        $sc = $this->createStudentClass($student->id, ['Rate' => 1800, 'rate_unit' => 'session', 'SessionCount' => 8, 'Charge' => 14400, 'Paid' => 0]);
+        $sibling = $this->createStudentClass($student->id, ['Rate' => 1800, 'rate_unit' => 'session', 'SessionCount' => 8, 'Charge' => 14400, 'Paid' => 0]);
+        $bill = \App\Models\Invoice::create(['StudentID' => $student->id, 'StudentClassID' => $sibling->ID, 'IssueDate' => now()->toDateString(), 'TotalAmount' => 28800, 'PaidAmount' => 0, 'Status' => 'unpaid']);
+        \App\Models\InvoiceItem::create(['InvoiceID' => $bill->id, 'StudentClassID' => $sc->ID, 'Description' => 'x', 'Amount' => 14400]);
+
+        $this->putJson("/api/v1/student-classes/{$sc->ID}", ['rate_per_30min' => 0], ['Authorization' => "Bearer {$token}"]);
+
+        $this->assertSame(14400, (int) $sc->fresh()->Charge);
+    }
+
     private function createDirectorToken(array $campusIds): string
     {
         $user = User::create([

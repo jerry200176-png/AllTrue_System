@@ -2186,6 +2186,8 @@ class StudentClassController extends Controller
             if ($newCharge === null && isset($mapped['Rate']) && $oldRateSnapshot > 0 && (float) $studentClass->Rate <= 0 && $oldChargeSnapshot > 0
                 && (int) ($studentClass->Paid ?? 0) !== 1 && !$studentClass->isPartOfPackage()
                 && !Invoice::courseHasLiveBill((int) $studentClass->getKey())
+                // A bill can name the course only on a line (package / sibling bills): that is a bill too.
+                && !Invoice::query()->scopes('notVoided')->whereIn('id', InvoiceItem::query()->where('StudentClassID', (int) $studentClass->getKey())->select('InvoiceID'))->exists()
                 && !\App\Models\PaymentReport::query()->where('StudentClassID', (int) $studentClass->getKey())->whereIn('status', ['pending', 'confirmed'])->exists()) {
                 $newCharge = 0;
             }
