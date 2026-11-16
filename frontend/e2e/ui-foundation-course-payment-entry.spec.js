@@ -35,12 +35,15 @@ const READ_ONLY_POSTS = new Set(['/api/v1/student-classes/session-dates', '/api/
 
 // #5410: a paused course with teaching history must not require a temporary resume to close.
 for (const width of [390, 1440]) {
-  for (const cancelClose of [true, false]) {
-    test(`history-protected deletion offers the existing paused-course close, cancel=${cancelClose} @${width}`, async ({ page }, testInfo) => {
+  for (const { cancelClose, closedReason } of [
+    { cancelClose: true, closedReason: null }, { cancelClose: false, closedReason: null },
+    ...['refunded', 'usage_settled', 'unknown_future_closure'].map(closedReason => ({ cancelClose: true, closedReason })),
+  ]) {
+    test(`history-protected deletion offers the existing paused-course close, cancel=${cancelClose}, closed=${closedReason} @${width}`, async ({ page }, testInfo) => {
       await page.setViewportSize({ width, height: 900 });
       const target = { ...course(7101, 7201, '合成結案學生', 'unpaid'), status: 'inactive', stop: 1,
         payment_type: 'session',
-        closed_reason: null, sessions_purchased: 8, sessions_used: 5, remaining_sessions: 3,
+        closed_reason: closedReason, sessions_purchased: 8, sessions_used: 5, remaining_sessions: 3,
         UsedSessions: 5, RemainingSessions: 3 };
       const writes = [];
       const errors = [];
@@ -72,6 +75,12 @@ for (const width of [390, 1440]) {
       const row = page.locator('[data-contract-id="7101"]');
       await expect(row).toBeVisible();
       await row.locator('.action-menu-trigger').click();
+      if (closedReason) {
+        await expect(page.getByRole('menuitem', { name: '結束課程（不再續課）…', exact: true })).toHaveCount(0);
+        expect(writes).toEqual([]);
+        expect(errors).toEqual([]);
+        return;
+      }
       // The normal menu also exposes close while merely paused.
       await expect(page.getByRole('menuitem', { name: '結束課程（不再續課）…', exact: true })).toBeVisible();
       await page.getByRole('menuitem', { name: '刪除課程…', exact: true }).click();

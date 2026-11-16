@@ -3078,7 +3078,7 @@ function canCloseCourse(c) {
   return !classificationUnknown(c)
     && !isPackageMember(c)
     && (isSessionMode(c) || isMonthlyMode(c))
-    && !isClosedReason(effectiveClosedReason(c));
+    && !effectiveClosedReason(c);
 }
 
 // 新增課程: pick the student inside the same UniversalClassScheduler 學生管理 uses, then the same form.
