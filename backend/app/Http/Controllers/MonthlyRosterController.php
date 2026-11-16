@@ -3,6 +3,8 @@
 namespace App\Http\Controllers;
 
 use App\Models\ClassSession;
+use App\Models\Invoice;
+use App\Models\Payment;
 use App\Models\Student;
 use App\Models\StudentClass;
 use App\Services\Billing\ContractMoneyVerdict;
@@ -52,7 +54,8 @@ final class MonthlyRosterController extends Controller
         // ponytail: a bill with no course on its header is left to the student ledger.
         $billed = DB::table('Invoice')->whereIn('StudentID', $studentIds)->where('StudentClassID', '>', 0)
             ->whereRaw("COALESCE(Status, '') NOT IN ('void', 'cancelled')")
-            ->where(fn ($q) => $q->where('billing_period', $period)->orWhereRaw('TotalAmount > PaidAmount'))
+            // Payment rows are the truth, not the stored PaidAmount (Founder Q2/R28).
+            ->where(fn ($q) => $q->where('billing_period', $period)->orWhereRaw(Invoice::mayOweSql('Invoice')))
             ->pluck('StudentClassID');
         $courses = StudentClass::with(['student', 'teacher'])->whereIn('StudentID', $studentIds)
             ->whereIn('ID', $lessons->keys()->merge($billed)->map(fn ($id) => (int) $id)->unique()->values())
@@ -80,7 +83,8 @@ final class MonthlyRosterController extends Controller
                 'kind' => isset($held[$l->Status]) ? 'held' : (in_array($l->Status, ['scheduled', 'rescheduled'], true) ? 'upcoming' : 'off'),
                 'status' => (string) $l->Status,
             ])->values();
-            $payments = ($paid[$id] ?? collect())->map(fn ($p) => [
+            // Credit moved between contracts is not money coming in.
+            $payments = ($paid[$id] ?? collect())->reject(fn ($p) => Payment::isCreditMovement($p))->map(fn ($p) => [
                 'date' => substr((string) $p->PaidAt, 0, 10), 'amount' => (int) $p->Amount, 'method' => (string) $p->Method,
             ])->values();
 

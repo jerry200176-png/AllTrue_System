@@ -42,12 +42,17 @@ final class MonthlyRosterTest extends TestCase
         }
         $bill = $this->bill($math, ['TotalAmount' => 6000, 'PaidAmount' => 1500, 'Status' => 'partial', 'IssueDate' => '2026-11-01']);
         Payment::create(['InvoiceID' => $bill->id, 'Amount' => 1500, 'PaidAt' => '2026-11-05 10:00:00', 'Method' => 'cash']);
+        Payment::create(['InvoiceID' => $bill->id, 'Amount' => 500, 'PaidAt' => '2026-11-06 10:00:00', 'Method' => 'transfer_in']);
         $this->report($math);
         // No lesson this month but a bill still unpaid: listed. A settled course without lessons: not listed.
         $owing = $this->course($student, ['SubjectID' => 2]);
         $this->bill($owing, ['TotalAmount' => 3000, 'Status' => 'unpaid', 'IssueDate' => '2026-08-01']);
         $settled = $this->course($student, ['SubjectID' => 3]);
-        $this->bill($settled, ['TotalAmount' => 3000, 'PaidAmount' => 3000, 'Status' => 'paid', 'IssueDate' => '2026-08-01']);
+        $paidBill = $this->bill($settled, ['TotalAmount' => 3000, 'PaidAmount' => 3000, 'Status' => 'paid', 'IssueDate' => '2026-08-01']);
+        Payment::create(['InvoiceID' => $paidBill->id, 'Amount' => 3000, 'PaidAt' => '2026-08-05 10:00:00', 'Method' => 'cash']);
+        // Marked paid with no Payment row behind it: still owes, so listed.
+        $markedOnly = $this->course($student, ['SubjectID' => 4]);
+        $this->bill($markedOnly, ['TotalAmount' => 3000, 'PaidAmount' => 3000, 'Status' => 'paid', 'IssueDate' => '2026-08-01']);
         $elsewhere = $this->course($this->student(2));
         ClassSession::create(['StudentClassID' => $elsewhere->ID, 'SessionDate' => '2026-11-04', 'StartTime' => '10:00', 'EndTime' => '12:00', 'Status' => 'attended']);
 
@@ -55,7 +60,7 @@ final class MonthlyRosterTest extends TestCase
 
         $this->assertCount(1, $res->json('data'));
         $courses = collect($res->json('data.0.courses'))->keyBy('course_id');
-        $this->assertSame([$math->ID, $owing->ID], $courses->keys()->sort()->values()->all());
+        $this->assertSame([$math->ID, $owing->ID, $markedOnly->ID], $courses->keys()->sort()->values()->all());
         $row = $courses[$math->ID];
         $this->assertSame([['2026-11-03', 'held'], ['2026-11-10', 'off'], ['2026-11-24', 'upcoming']],
             array_map(fn ($l) => [$l['date'], $l['kind']], $row['lessons']));
@@ -66,8 +71,9 @@ final class MonthlyRosterTest extends TestCase
         $verdict = app(ContractMoneyVerdict::class)->forCourse($math->fresh());
         $this->assertSame([$verdict->status, $verdict->outstanding], [$row['money']['status'], $row['money']['outstanding']]);
         $this->assertGreaterThan(0, $courses[$owing->ID]['money']['outstanding']);
-        $this->assertSame($row['money']['outstanding'] + $courses[$owing->ID]['money']['outstanding'], $res->json('summary.outstanding'));
-        $this->assertSame([1, 2, 1500, 1], [$res->json('summary.students'), $res->json('summary.courses'), $res->json('summary.paid_this_month'), $res->json('summary.pending_reports')]);
+        $this->assertGreaterThan(0, $courses[$markedOnly->ID]['money']['outstanding']);
+        $this->assertSame($courses->sum('money.outstanding'), $res->json('summary.outstanding'));
+        $this->assertSame([1, 3, 1500, 1], [$res->json('summary.students'), $res->json('summary.courses'), $res->json('summary.paid_this_month'), $res->json('summary.pending_reports')]);
     }
 
     public function test_one_campus_at_a_time_and_directors_only(): void
