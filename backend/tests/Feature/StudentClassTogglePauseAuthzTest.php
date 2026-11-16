@@ -200,6 +200,38 @@ class StudentClassTogglePauseAuthzTest extends TestCase
 
     private int $lastTeacherUserId = 0;
 
+    /** Contract terms and money are the director's: a teacher is refused at the route, even for an own course in the same campus. */
+    public function test_contract_write_routes_refuse_a_teacher_and_change_nothing(): void
+    {
+        $token = $this->createTeacherToken([1]);
+        $sc = $this->createStudentClassOnCampus(1, ['TeacherID' => $this->lastTeacherUserId, 'Charge' => 8800, 'Rate' => 1100]);
+        $auth = ['Authorization' => "Bearer {$token}"];
+
+        $this->putJson("/api/v1/student-classes/{$sc->ID}", ['StudentID' => $sc->StudentID, 'Charge' => 1, 'Paid' => 1, 'ScheduleMode' => 'count'], $auth)->assertForbidden();
+        $this->putJson("/api/v1/student-classes/{$sc->ID}", ['rate_per_30min' => 1], $auth)->assertForbidden();
+        $this->postJson('/api/v1/student-classes', ['StudentID' => $sc->StudentID], $auth)->assertForbidden();
+        $this->postJson('/api/v1/student-classes/sync', [], $auth)->assertForbidden();
+        foreach (['renewal-confirm', 'purchase-batch', 'renew-monthly', 'convert-trial', 'transfer-sessions', 'convert-to-package'] as $action) {
+            $this->postJson("/api/v1/student-classes/{$sc->ID}/{$action}", [], $auth)->assertForbidden();
+        }
+        $this->deleteJson("/api/v1/student-classes/{$sc->ID}", [], $auth)->assertForbidden();
+
+        $sc->refresh();
+        $this->assertSame([8800, 1100, 0], [(int) $sc->Charge, (int) $sc->Rate, (int) $sc->Paid]);
+        // Reads stay open to the teacher of the course.
+        $this->getJson("/api/v1/student-classes/{$sc->ID}", $auth)->assertOk();
+    }
+
+    public function test_contract_edit_still_works_for_a_director_in_the_campus(): void
+    {
+        $token = $this->createDirectorToken([1]);
+        $sc = $this->createStudentClassOnCampus(1, ['Charge' => 8800, 'Rate' => 1100, 'rate_unit' => 'session']);
+
+        $this->putJson("/api/v1/student-classes/{$sc->ID}", ['rate_per_30min' => 1200, 'sessions_purchased' => 8], ['Authorization' => "Bearer {$token}"])->assertOk();
+
+        $this->assertSame(9600, (int) $sc->fresh()->Charge);
+    }
+
     private function createDirectorToken(array $campusIds): string
     {
         $user = User::create([
