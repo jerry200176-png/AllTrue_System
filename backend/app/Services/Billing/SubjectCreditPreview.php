@@ -80,9 +80,16 @@ final class SubjectCreditPreview
             $q->where('StudentClassID', $source->ID)->orWhereHas('items', fn ($items) => $items->where('StudentClassID', $source->ID));
         })->orderBy('id')->lockForUpdate()->get();
         $invoice = $invoices->first();
-        if ($invoices->count() !== 1 || !$invoice || (int) $invoice->StudentID !== (int) $student->id
-            || (int) $invoice->StudentClassID !== (int) $source->ID || $invoice->Status !== 'paid') {
-            $this->refusePaid();
+        // in-app #563: say which condition failed and what to do; every condition is kept, and the one-line rule applies only when the bill has lines.
+        if ($invoices->count() !== 1 || !$invoice) {
+            $this->refusePaid($invoices->isEmpty() ? '這份合約還沒有帳單，請先登記收款並確認入帳。'
+                : "這份合約有 {$invoices->count()} 張帳單（作廢的也算）；跨科轉用只支援「只有一張已付清帳單」的合約。");
+        }
+        if ((int) $invoice->StudentID !== (int) $student->id || (int) $invoice->StudentClassID !== (int) $source->ID) {
+            $this->refusePaid('這張帳單不是開在這份合約上（多科合收或別的合約的帳單），不能直接跨科轉用。');
+        }
+        if ($invoice->Status !== 'paid') {
+            $this->refusePaid('這張帳單還沒付清，請先收齊並確認入帳。');
         }
         $items = InvoiceItem::query()->where('InvoiceID', $invoice->getKey())->orderBy('id')->lockForUpdate()->get();
         $payments = Payment::query()->where('InvoiceID', $invoice->getKey())->orderBy('id')->lockForUpdate()->get();
@@ -103,15 +110,25 @@ final class SubjectCreditPreview
         $known = $this->funding->knownPayments($source, $invoice, $payments, (int) $student->CampusID);
         $paid = (int) $payments->sum('Amount');
         $money = $this->verdict->forCourse($source);
-        if ($payments->isEmpty() || $payments->contains(fn ($p) => !isset($known[(int) $p->id]) && ((int) $p->Amount <= 0
+        // A bill with no item lines (issued by 登記收款／確認入帳) is one bill for this contract just the same: the header
+        // already names the source and its total is checked against the payments below (in-app #563).
+        $reason = match (true) {
+            $payments->isEmpty() => '這張帳單沒有收款紀錄，請先登記收款並確認入帳。',
+            $payments->contains(fn ($p) => !isset($known[(int) $p->id]) && ((int) $p->Amount <= 0
                 || in_array(strtolower((string) $p->Method), ['void', 'refund', 'transfer_in', 'transfer_out', 'transfer_reversal_in', 'transfer_reversal_out'], true)))
-            || $reports->contains(fn ($r) => $r->status === 'pending')
-            || $items->count() !== 1 || (int) $items->first()->StudentClassID !== (int) $source->ID
-            || (int) $items->first()->Amount !== $paid
-            || !$money || $money->source !== 'invoice' || $money->status !== 'paid' || $money->outstanding !== 0
-            || $money->overpaid !== 0 || $money->applied !== $paid || $paid < 1
-            || (int) $source->Charge !== $paid || (int) $invoice->TotalAmount !== $paid || (int) $invoice->PaidAmount !== $paid) {
-            $this->refusePaid();
+                => '這張帳單有退費、撤銷或轉入轉出的收款紀錄，不能再跨科轉用。',
+            $reports->contains(fn ($r) => $r->status === 'pending') => '這份合約有一筆繳費回報還沒確認入帳，請先確認或撤銷。',
+            $items->isNotEmpty() && ($items->count() !== 1 || (int) $items->first()->StudentClassID !== (int) $source->ID)
+                => '這張帳單不是只收這一門課（多科合收），不能直接跨科轉用。',
+            ($items->isNotEmpty() && (int) $items->first()->Amount !== $paid) || (int) $invoice->TotalAmount !== $paid || (int) $invoice->PaidAmount !== $paid
+                || !$money || $money->source !== 'invoice' || $money->status !== 'paid' || $money->outstanding !== 0
+                || $money->overpaid !== 0 || $money->applied !== $paid || $paid < 1
+                => '帳單金額 ' . number_format((int) $invoice->TotalAmount) . ' 和實收 ' . number_format($paid) . ' 對不上（沒收齊或多收），請先處理。',
+            (int) $source->Charge !== $paid => '合約金額 ' . number_format((int) $source->Charge) . ' 和實收 ' . number_format($paid) . ' 不一樣，請先更正合約金額。',
+            default => null,
+        };
+        if ($reason !== null) {
+            $this->refusePaid($reason);
         }
         $rate = BigRational::of((string) $source->Rate);
         if (!$rate->multipliedBy((int) $source->SessionCount)->isEqualTo($paid)
@@ -211,9 +228,9 @@ final class SubjectCreditPreview
         }
     }
 
-    private function refusePaid(): never
+    private function refusePaid(string $why): never
     {
-        $this->refuse('subject_credit_paid_unclear', '來源必須是可明確核對、已付清的單一帳單；特殊收款請先走帳務核對。');
+        $this->refuse('subject_credit_paid_unclear', '不能轉用：' . $why);
     }
 
     private function refuse(string $code, string $message): never
