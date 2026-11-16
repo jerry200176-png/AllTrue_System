@@ -2,12 +2,14 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\ClassSession;
 use App\Models\Invoice;
 use App\Models\Payment;
 use App\Models\Student;
 use App\Models\StudentClass;
 use App\Services\Billing\ContractMoneyVerdict;
+use App\Services\ClassSessionIndexProjectionService;
+use App\Services\ClassSessionIndexReadService;
+use App\Services\StudentClassPricingService;
 use App\Support\AttendanceStatus;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
@@ -16,12 +18,17 @@ use Illuminate\Support\Facades\DB;
 /**
  * 月對帳表 (Founder 2026-11-17): one campus, one month, one row per student per course — the month's lessons, what the
  * course still owes and what came in this month. It follows how directors reconciled in their old monthly sheet.
- * Read-only. Money comes from ContractMoneyVerdict, the verdict the student ledger shows, so the two always agree.
+ * Read-only. Each figure comes from the code the other screens use, so they always agree: money from
+ * ContractMoneyVerdict (student ledger), lessons from the calendar's sign-in-aware status and its 預排 projection,
+ * the unit price from StudentClassPricingService (payment slip).
  */
 final class MonthlyRosterController extends Controller
 {
-    public function __construct(private readonly ContractMoneyVerdict $verdicts)
-    {
+    public function __construct(
+        private readonly ContractMoneyVerdict $verdicts,
+        private readonly ClassSessionIndexProjectionService $projection,
+        private readonly StudentClassPricingService $pricing,
+    ) {
     }
 
     public function index(Request $request)
@@ -43,49 +50,74 @@ final class MonthlyRosterController extends Controller
         [$start, $end, $period] = [$first->toDateString(), $first->copy()->endOfMonth()->toDateString(), $first->format('Y-m')];
         $studentIds = Student::query()->where('CampusID', $campusId)->pluck('id');
 
-        $lessons = ClassSession::query()
-            ->whereIn('StudentClassID', StudentClass::query()->select('ID')->whereIn('StudentID', $studentIds))
-            ->whereBetween('SessionDate', [$start, $end])
-            ->whereNotIn('Status', ['cancelled', 'voided']) // a cancelled lesson was taken off the calendar; 請假 stays
-            ->orderBy('SessionDate')->orderBy('StartTime')
-            ->get(['StudentClassID', 'SessionDate', 'StartTime', 'Status'])
+        $campusCourses = StudentClass::query()->select('ID')->whereIn('StudentID', $studentIds);
+
+        // Every row incl. cancelled ones (the projection must not re-plan a cancelled date); the status is the one the
+        // attendance screen shows, so a lesson signed in but still stored as scheduled counts as held.
+        $sessions = DB::table('ClassSession as cs')
+            ->leftJoin('StudentSingIn as si', fn ($join) => $join->on('si.ClassSessionID', '=', 'cs.id')
+                ->whereRaw(ClassSessionIndexReadService::LATEST_SIGN_IN_SQL))
+            ->whereIn('cs.StudentClassID', $campusCourses)
+            ->whereBetween('cs.SessionDate', [$start, $end])
+            ->select(['cs.id', 'cs.StudentClassID', 'cs.SessionDate as session_date', 'cs.StartTime as start_time', 'cs.EndTime as end_time', 'cs.Status as status'])
+            ->selectRaw(...ClassSessionIndexReadService::effectiveStatusSelect())
+            ->get()->groupBy('StudentClassID');
+        // 預排 not yet written as lessons, exactly as the calendar plans them (true = count contracts too).
+        $activeIds = (clone $campusCourses)->where(fn ($q) => $q->where('Stop', 0)->orWhereNull('Stop'))->pluck('ID')->map(fn ($id) => (int) $id)->all();
+        $projected = $this->projection->buildProjectedByClassForIndex(
+            $request, $sessions->map(fn ($rows) => $rows->all())->all(), $start, $end, $activeIds, true);
+
+        $held = array_flip(AttendanceStatus::attendedSessionStatuses());
+        $lessons = collect(array_unique(array_merge($sessions->keys()->all(), array_keys($projected))))
+            ->mapWithKeys(fn ($id) => [(int) $id => collect($sessions[$id] ?? [])
+                ->reject(fn ($l) => in_array($l->status, ['cancelled', 'voided'], true)) // taken off the calendar; 請假 stays
+                ->map(fn ($l) => ['date' => (string) $l->session_date, 'start' => substr((string) $l->start_time, 0, 5),
+                    'kind' => isset($held[$l->effective_status]) ? 'held' : (in_array($l->effective_status, ['scheduled', 'rescheduled'], true) ? 'upcoming' : 'off'),
+                    'status' => (string) $l->effective_status])
+                ->concat(collect($projected[(string) $id] ?? [])->map(fn ($p) => ['date' => (string) $p['session_date'],
+                    'start' => substr((string) $p['start_time'], 0, 5), 'kind' => 'upcoming', 'status' => 'projected']))
+                ->sortBy(fn ($l) => $l['date'] . ' ' . $l['start'])->values()])
+            ->filter(fn ($rows) => $rows->isNotEmpty());
+
+        // Money in this month, whichever bill it paid (an October debt collected in November counts in November).
+        $paid = DB::table('Payment')->join('Invoice', 'Invoice.id', '=', 'Payment.InvoiceID')
+            ->whereIn('Invoice.StudentID', $studentIds)->where('Invoice.StudentClassID', '>', 0)
+            ->whereBetween('Payment.PaidAt', [$start . ' 00:00:00', $end . ' 23:59:59'])
+            ->orderBy('Payment.PaidAt')
+            ->get(['Invoice.StudentClassID', 'Payment.Amount', 'Payment.PaidAt', 'Payment.Method'])
             ->groupBy('StudentClassID');
-        // Courses with a lesson this month, plus courses with this month's bill or any bill still unpaid.
+        // Courses with a lesson this month, money this month, this month's bill or any bill still unpaid.
         // ponytail: a bill with no course on its header is left to the student ledger.
         $billed = DB::table('Invoice')->whereIn('StudentID', $studentIds)->where('StudentClassID', '>', 0)
             ->whereRaw("COALESCE(Status, '') NOT IN ('void', 'cancelled')")
             // Payment rows are the truth, not the stored PaidAmount (Founder Q2/R28).
             ->where(fn ($q) => $q->where('billing_period', $period)->orWhereRaw(Invoice::mayOweSql('Invoice')))
             ->pluck('StudentClassID');
-        $courses = StudentClass::with(['student', 'teacher'])->whereIn('StudentID', $studentIds)
-            ->whereIn('ID', $lessons->keys()->merge($billed)->map(fn ($id) => (int) $id)->unique()->values())
+        $courses = StudentClass::with(['student', 'teacher', 'pricingAmendments'])->whereIn('StudentID', $studentIds)
+            ->whereIn('ID', $lessons->keys()->merge($paid->keys())->merge($billed)->map(fn ($id) => (int) $id)->unique()->values())
             ->get();
         $verdicts = $this->verdicts->forCourses($courses);
 
         $courseIds = $courses->pluck('ID');
-        $paid = DB::table('Payment')->join('Invoice', 'Invoice.id', '=', 'Payment.InvoiceID')
-            ->whereIn('Invoice.StudentClassID', $courseIds)->whereBetween('Payment.PaidAt', [$start . ' 00:00:00', $end . ' 23:59:59'])
-            ->orderBy('Payment.PaidAt')
-            ->get(['Invoice.StudentClassID', 'Payment.Amount', 'Payment.PaidAt', 'Payment.Method'])
-            ->groupBy('StudentClassID');
         $pending = DB::table('payment_reports')->whereIn('StudentClassID', $courseIds)->where('status', 'pending')
             ->selectRaw('StudentClassID, COUNT(*) AS n')->groupBy('StudentClassID')->pluck('n', 'StudentClassID');
 
-        $held = array_flip(AttendanceStatus::payableSessionStatuses());
-        $rows = $courses->map(function (StudentClass $c) use ($lessons, $verdicts, $paid, $pending, $held, $period) {
+        $rows = $courses->map(function (StudentClass $c) use ($lessons, $verdicts, $paid, $pending, $period, $start, $end) {
             $id = (int) $c->ID;
             $v = $verdicts[$id] ?? null;
             $month = $v ? collect($v->periods)->firstWhere('billing_period', $period) : null;
-            $rate = (float) ($c->Rate ?? 0) > 0 ? (float) $c->Rate
-                : ((int) ($c->SessionCount ?? 0) > 0 ? (float) ($c->Charge ?? 0) / (int) $c->SessionCount : 0.0);
-            $courseLessons = ($lessons[$id] ?? collect())->map(fn ($l) => [
-                'date' => (string) $l->SessionDate, 'start' => substr((string) $l->StartTime, 0, 5),
-                'kind' => isset($held[$l->Status]) ? 'held' : (in_array($l->Status, ['scheduled', 'rescheduled'], true) ? 'upcoming' : 'off'),
-                'status' => (string) $l->Status,
-            ])->values();
-            // Credit moved between contracts is not money coming in.
+            // The payment slip's 單價: null when the price changed inside the month (no single figure is true).
+            $price = $this->pricing->slipUnitPrice($c, $start, $end);
+            $rate = $price['unit_price'];
+            if ($rate === null && (float) ($c->Rate ?? 0) <= 0 && (int) ($c->SessionCount ?? 0) > 0
+                && $this->pricing->forDate($c, $end)['source'] === 'student_class_rate') {
+                $rate = (int) round((float) ($c->Charge ?? 0) / (int) $c->SessionCount); // a package priced by its total
+            }
+            $courseLessons = $lessons[$id] ?? collect();
+            // Credit moved between contracts is not money coming in; a reversal counts negative however it was stored.
             $payments = ($paid[$id] ?? collect())->reject(fn ($p) => Payment::isCreditMovement($p))->map(fn ($p) => [
-                'date' => substr((string) $p->PaidAt, 0, 10), 'amount' => (int) $p->Amount, 'method' => (string) $p->Method,
+                'date' => substr((string) $p->PaidAt, 0, 10), 'method' => (string) $p->Method,
+                'amount' => Payment::isReversal($p) ? -abs((int) $p->Amount) : (int) $p->Amount,
             ])->values();
 
             return [
@@ -97,7 +129,8 @@ final class MonthlyRosterController extends Controller
                 'teacher_name' => (string) ($c->teacher->Name ?? ''),
                 'class_type' => (string) ($c->ClassType ?? ''),
                 'schedule_mode' => (string) ($c->ScheduleMode ?? 'count'),
-                'rate' => (int) round($rate),
+                'rate' => $rate,
+                'rate_unit' => $price['unit_price_unit'],
                 'stopped' => (bool) $c->Stop,
                 'lessons' => $courseLessons,
                 'held' => $courseLessons->where('kind', 'held')->count(),

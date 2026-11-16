@@ -98,6 +98,18 @@ final class AttendanceStatus
         return array_keys($out);
     }
 
+    /** ClassSession.Status 中，學生有到（含試聽、輔導；不看老師是否計薪）的集合。 */
+    public static function attendedSessionStatuses(): array
+    {
+        $out = ['completed' => true]; // 歷史 attended 同義
+        foreach (self::META as $meta) {
+            if ($meta['attended']) {
+                $out[$meta['session_status']] = true;
+            }
+        }
+        return array_keys($out);
+    }
+
     /** ClassSession.Status 中，計入老師鐘點（payroll）的集合。 */
     public static function payableSessionStatuses(): array
     {

@@ -13,6 +13,42 @@ use Illuminate\Support\Facades\DB;
  */
 class ClassSessionIndexReadService
 {
+    /** Join condition for the latest non-voided sign-in `si` of session `cs` (StudentSingIn has many rows per session). */
+    public const LATEST_SIGN_IN_SQL = 'si.id = (SELECT MAX(si2.id) FROM `StudentSingIn` si2 WHERE si2.ClassSessionID = cs.id AND si2.VoidedAt IS NULL)';
+
+    /**
+     * The status the attendance screen shows: an ended scheduled/absent lesson with an active present/late/leave
+     * sign-in counts as that sign-in. Needs `cs` (ClassSession) and `si` (LATEST_SIGN_IN_SQL) in the query.
+     * Uses the application's Taipei clock rather than the DB server clock: production DBs may run in UTC, and
+     * CURRENT_DATE/CURRENT_TIME made a Taiwan "today" session look like a future reservation. Future scheduled
+     * rows still remain scheduled until their slot has ended.
+     *
+     * @return array{0: string, 1: list<string>}
+     */
+    public static function effectiveStatusSelect(): array
+    {
+        $asOf = Carbon::now();
+
+        return [
+            "CASE
+                    WHEN si.id IS NOT NULL AND LOWER(cs.Status) IN ('scheduled','absent')
+                        AND (
+                            cs.SessionDate < ?
+                            OR (cs.SessionDate = ? AND cs.EndTime <= ?)
+                            OR COALESCE(si.SessionDeducted, 0) = 0
+                        )
+                    THEN CASE
+                        WHEN LOWER(si.Status) = 'present' THEN 'attended'
+                        WHEN LOWER(si.Status) = 'late' THEN 'late'
+                        WHEN LOWER(si.Status) IN ('leave','excused') THEN 'leave'
+                        ELSE cs.Status
+                    END
+                    ELSE cs.Status
+                END AS effective_status",
+            [$asOf->toDateString(), $asOf->toDateString(), $asOf->format('H:i:s')],
+        ];
+    }
+
     /**
      * @return array<int, object>
      */
@@ -39,10 +75,6 @@ class ClassSessionIndexReadService
         if ($requestedCampus > 0) {
             $campusIds = [$requestedCampus];
         }
-
-        $attendanceAsOf = Carbon::now();
-        $attendanceAsOfDate = $attendanceAsOf->toDateString();
-        $attendanceAsOfTime = $attendanceAsOf->format('H:i:s');
 
         // Substitutes only matter on the requested dates; bounding the GROUP BY keeps it off the whole schedules table.
         // Only a real calendar Y-m-d is used (digits and dashes only, so the literal is injection-safe); anything else
@@ -81,8 +113,7 @@ class ClassSessionIndexReadService
             })
             // StudentSingIn has many rows per session: pick the latest non-voided via idx_ssi_classsession_id.
             ->leftJoin('StudentSingIn as si', function ($join) {
-                $join->on('si.ClassSessionID', '=', 'cs.id')
-                    ->whereRaw('si.id = (SELECT MAX(si2.id) FROM `StudentSingIn` si2 WHERE si2.ClassSessionID = cs.id AND si2.VoidedAt IS NULL)');
+                $join->on('si.ClassSessionID', '=', 'cs.id')->whereRaw(self::LATEST_SIGN_IN_SQL);
             })
             ->leftJoin('User as subu', fn ($join) => $join->whereRaw("subu.id = {$subTeacherSql}"))
             ->leftJoin('User as u', 'u.id', '=', 'sc.TeacherID')
@@ -128,28 +159,7 @@ class ClassSessionIndexReadService
                 DB::raw("EXISTS (SELECT 1 FROM Notifications sub_n WHERE sub_n.SourceKey = CONCAT('substitute:', cs.id) AND sub_n.ResolvedAt IS NULL) as substitute_notice"),
             ]);
 
-        // Use the application's Taipei clock rather than the DB server clock.
-        // Production DBs may run in UTC; CURRENT_DATE/CURRENT_TIME therefore
-        // made a Taiwan "today" session look like a future reservation. Future
-        // scheduled rows still remain scheduled until their slot has ended.
-        $query->selectRaw(
-            "CASE
-                WHEN si.id IS NOT NULL AND LOWER(cs.Status) IN ('scheduled','absent')
-                    AND (
-                        cs.SessionDate < ?
-                        OR (cs.SessionDate = ? AND cs.EndTime <= ?)
-                        OR COALESCE(si.SessionDeducted, 0) = 0
-                    )
-                THEN CASE
-                    WHEN LOWER(si.Status) = 'present' THEN 'attended'
-                    WHEN LOWER(si.Status) = 'late' THEN 'late'
-                    WHEN LOWER(si.Status) IN ('leave','excused') THEN 'leave'
-                    ELSE cs.Status
-                END
-                ELSE cs.Status
-            END AS effective_status",
-            [$attendanceAsOfDate, $attendanceAsOfDate, $attendanceAsOfTime]
-        );
+        $query->selectRaw(...self::effectiveStatusSelect());
 
         // Same author-wins teacher the row shows (teacher_locked_to_author): a filled assessment belongs to its author.
         $lockedSql = '(' . \App\Support\LearningRecordMutableOwnership::filledByTeacherSql('lr') . ' AND COALESCE(lr.TeacherID, 0) > 0)';

@@ -76,6 +76,45 @@ final class MonthlyRosterTest extends TestCase
         $this->assertSame([1, 3, 1500, 1], [$res->json('summary.students'), $res->json('summary.courses'), $res->json('summary.paid_this_month'), $res->json('summary.pending_reports')]);
     }
 
+    public function test_reads_lessons_prices_and_money_the_way_the_other_screens_do(): void
+    {
+        $student = $this->student(1);
+        // A trial lesson the student came to, and one signed in at the door but still stored as scheduled: both held.
+        $trial = $this->course($student, ['ClassType' => 'trial']);
+        ClassSession::create(['StudentClassID' => $trial->ID, 'SessionDate' => '2026-11-05', 'StartTime' => '10:00', 'EndTime' => '12:00', 'Status' => 'trial']);
+        $signed = ClassSession::create(['StudentClassID' => $trial->ID, 'SessionDate' => '2026-11-12', 'StartTime' => '10:00', 'EndTime' => '12:00', 'Status' => 'scheduled']);
+        DB::table('StudentSingIn')->insert(['StudentClassID' => $trial->ID, 'ClassSessionID' => $signed->id, 'StudentID' => $student->id, 'TeacherID' => 99, 'Status' => 'present', 'SignInDT' => '2026-11-12 10:00:00']);
+        // An October bill collected in November: listed for its money; a reversal stored as a positive 'void' counts negative.
+        $old = $this->course($student, ['SubjectID' => 2]);
+        $oldBill = $this->bill($old, ['TotalAmount' => 3000, 'PaidAmount' => 3000, 'Status' => 'paid', 'IssueDate' => '2026-10-01']);
+        foreach ([[3000, 'cash', '2026-11-08'], [1000, 'cash', '2026-11-09'], [1000, 'void', '2026-11-10']] as [$amount, $method, $day]) {
+            Payment::create(['InvoiceID' => $oldBill->id, 'Amount' => $amount, 'PaidAt' => $day . ' 10:00:00', 'Method' => $method]);
+        }
+        // Price changed mid-month: no single 單價. Changed before the month: the new price, as on the payment slip.
+        $repriced = $this->course($student, ['SubjectID' => 3]);
+        $amended = $this->course($student, ['SubjectID' => 4]);
+        foreach ([[$repriced, '2026-11-15'], [$amended, '2026-10-15']] as [$course, $from]) {
+            ClassSession::create(['StudentClassID' => $course->ID, 'SessionDate' => '2026-11-20', 'StartTime' => '10:00', 'EndTime' => '12:00', 'Status' => 'scheduled']);
+            DB::table('student_class_pricing_amendments')->insert(['student_class_id' => $course->ID, 'effective_from' => $from, 'rate' => 1800,
+                'rate_unit' => 'session', 'source_reference' => 'roster-test', 'reason' => 'test', 'created_at' => now()]);
+        }
+        // A Monday course whose lessons are not written yet: the calendar's 預排.
+        $planned = $this->course($student, ['SubjectID' => 5, 'StartDate' => '2026-11-02', 'week' => 1, 'time' => '10:00:00']);
+
+        $res = $this->withToken($this->director(1))->getJson('/api/v1/accounting/monthly-roster?year=2026&month=11')->assertOk();
+
+        $courses = collect($res->json('data.0.courses'))->keyBy('course_id');
+        $this->assertSame([['2026-11-05', 'held', 'trial'], ['2026-11-12', 'held', 'attended']],
+            array_map(fn ($l) => [$l['date'], $l['kind'], $l['status']], $courses[$trial->ID]['lessons']));
+        $this->assertSame(2, $courses[$trial->ID]['held']);
+        $this->assertSame([3000, 1000, -1000], array_column($courses[$old->ID]['paid_this_month'], 'amount'));
+        $this->assertSame(3000, $res->json('summary.paid_this_month'));
+        $this->assertNull($courses[$repriced->ID]['rate']);
+        $this->assertSame(1800, $courses[$amended->ID]['rate']);
+        $this->assertContains(['2026-11-23', 'upcoming', 'projected'],
+            array_map(fn ($l) => [$l['date'], $l['kind'], $l['status']], $courses[$planned->ID]['lessons']));
+    }
+
     public function test_one_campus_at_a_time_and_directors_only(): void
     {
         $elsewhere = $this->course($this->student(2));
