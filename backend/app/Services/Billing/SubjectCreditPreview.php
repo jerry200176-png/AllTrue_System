@@ -80,7 +80,7 @@ final class SubjectCreditPreview
             $q->where('StudentClassID', $source->ID)->orWhereHas('items', fn ($items) => $items->where('StudentClassID', $source->ID));
         })->orderBy('id')->lockForUpdate()->get();
         $invoice = $invoices->first();
-        // in-app #563: say which condition failed and what to do; the conditions themselves are unchanged.
+        // in-app #563: say which condition failed and what to do; every condition is kept, and the one-line rule applies only when the bill has lines.
         if ($invoices->count() !== 1 || !$invoice) {
             $this->refusePaid($invoices->isEmpty() ? '這份合約還沒有帳單，請先登記收款並確認入帳。'
                 : "這份合約有 {$invoices->count()} 張帳單（作廢的也算）；跨科轉用只支援「只有一張已付清帳單」的合約。");
