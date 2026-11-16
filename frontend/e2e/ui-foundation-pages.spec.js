@@ -6,6 +6,7 @@
  * Static HTML harness under e2e/fixtures is design exploration only.
  */
 import { test, expect } from '@playwright/test';
+import AxeBuilder from '@axe-core/playwright';
 import { dismissOverlays } from './fixtures/dismissOverlays.js';
 import { installApiMocks } from './fixtures/ui-foundation/apiMocks.js';
 import path from 'node:path';
@@ -24,9 +25,11 @@ const viewports = [
   { name: '1440', width: 1440, height: 900 },
 ];
 
-// #527: outer contracts follow creation/ID newest-first; opening dates remain display metadata.
-for (const viewport of [{ width: 390, height: 844 }, { width: 1280, height: 900 }]) {
-  test(`newest contracts across working/history segments @${viewport.width}`, async ({ page }) => {
+// #559 consolidates history; #527 newest-first order remains within each collection.
+for (const viewport of [{ width: 375, height: 844 }, { width: 1280, height: 900 }]) {
+  test(`single history collection with newest contracts in each list @${viewport.width}`, async ({ page }) => {
+    const pageErrors = [];
+    page.on('pageerror', error => pageErrors.push(error.message));
     await page.setViewportSize(viewport);
     // Every response is synthetic. Any unmocked external request is blocked.
     await page.route('**/*', (route) => ['127.0.0.1', 'localhost'].includes(new URL(route.request().url()).hostname)
@@ -40,23 +43,27 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 1280, height: 900 
       sessions_used: reason ? 8 : 3, remaining_sessions: reason ? 0 : 5, payment_status: 'paid',
     });
     await page.route('**/api/v1/student-classes?**', (route) => route.fulfill({ json: {
-      data: [contract(50), contract(40, 'completed'), contract(30), contract(20, 'settled'), contract(10)],
+      data: [contract(50), { ...contract(40, 'completed'), closed_reason: 'settled_pending', payment_status: 'review_required', usage_balance_status: 'review_required' }, contract(30), contract(20, 'settled'), contract(10)],
       total: 5, current_page: 1, last_page: 1,
     } }));
     await page.goto('/pilot-mount.html?page=course&mode=normal');
     await expect(page.locator('html')).toHaveAttribute('data-pilot-ready', '1');
     await dismissOverlays(page);
     const toggles = page.locator('.history-section__toggle');
-    await expect(toggles).toHaveCount(2);
+    await expect(toggles).toHaveCount(1);
+    await expect(toggles).toContainText('2 筆');
+    await expect(toggles).toContainText('1 筆需留意');
     const targets = await toggles.evaluateAll((buttons) => buttons.map((button) => button.getAttribute('aria-controls')));
-    expect(new Set(targets).size).toBe(2);
-    for (const toggle of await toggles.all()) await toggle.click();
+    expect(new Set(targets).size).toBe(1);
+    await toggles.focus();
+    await page.keyboard.press('Enter');
+    await expect(toggles).toHaveAttribute('aria-expanded', 'true');
     const rows = page.locator('.course-row, .history-course-card');
     await expect(rows).toHaveCount(5);
     expect(await rows.evaluateAll((nodes) => nodes.map((node) => Number(node.textContent.match(/Chronology(\d+)/)?.[1]))))
-      .toEqual([50, 40, 30, 20, 10]);
+      .toEqual([50, 30, 10, 40, 20]);
     for (const [index, row] of (await rows.all()).entries()) {
-      const date = ['2025-01-01', '2026-04-01', '2026-03-01', '2026-02-01', '2026-01-01'][index];
+      const date = ['2025-01-01', '2026-03-01', '2026-01-01', '2026-04-01', '2026-02-01'][index];
       // A course row shows 「開課 date」 as one line; a history card shows the label (dt) over the date (dd).
       const isHistory = await row.evaluate((node) => node.classList.contains('history-course-card'));
       if (isHistory) await expect(row.locator('dt', { hasText: '開課' }).locator('xpath=following-sibling::dd')).toHaveText(date);
@@ -69,12 +76,20 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 1280, height: 900 
       await expect(row).toBeInViewport();
     }
     for (const id of targets) await expect(page.locator(`[id="${id}"]`)).toHaveCount(1);
+    const accessibility = await new AxeBuilder({ page }).include('.history-section').analyze();
+    expect(accessibility.violations.filter(v => ['serious', 'critical'].includes(v.impact))).toEqual([]);
     const bounds = await page.locator('.group-table-wrap').first().boundingBox();
     expect(bounds.x).toBeGreaterThanOrEqual(0);
     expect(bounds.x + bounds.width).toBeLessThanOrEqual(viewport.width + 1);
     await rows.first().scrollIntoViewIfNeeded();
     fs.mkdirSync(outDir, { recursive: true });
     await page.screenshot({ path: path.join(outDir, `course-chronology-${viewport.width}.png`), fullPage: true });
+    await toggles.focus();
+    await page.keyboard.press('Space');
+    await expect(toggles).toHaveAttribute('aria-expanded', 'false');
+    await expect(page.locator('.history-course-card')).toHaveCount(0);
+    await expect(page.locator('.course-row')).toHaveCount(3);
+    expect(pageErrors).toEqual([]);
   });
 }
 
@@ -1325,7 +1340,8 @@ for (const scenario of [
     await expect(page.locator('.course-row')).toHaveCount(2);
     await page.locator('.history-section__toggle').click();
     const cards = page.locator('.course-row, .history-course-card');
-    expect(await cards.evaluateAll((rows) => rows.map((row) => Number(row.getAttribute('data-contract-id'))))).toEqual([50, 40, 30]);
+    // #559: pending reconciliation stays working, before the single history collection.
+    expect(await cards.evaluateAll((rows) => rows.map((row) => Number(row.getAttribute('data-contract-id'))))).toEqual([50, 30, 40]);
     const primaryRow = page.locator('.course-row').filter({ has: page.locator('[data-course-id="50"]') });
     for (const field of await primaryRow.locator('[data-col], .cell-actions').all()) {
       await field.scrollIntoViewIfNeeded();

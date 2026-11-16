@@ -267,7 +267,7 @@
             tabindex="0"
             :aria-labelledby="studentGroupTabId(group.key, 'courses')"
           >
-            <template v-for="segment in chronologicalCourseSegments(group)" :key="segment.key">
+            <template v-for="segment in courseDisplaySections(group)" :key="segment.key">
             <template v-if="segment.kind === 'working'">
             <div class="course-contract-list" role="list" aria-label="課程合約">
               <div :class="['contract-list-head', contractGrid.head]" aria-hidden="true">
@@ -569,6 +569,7 @@
                   <ChevronRight :size="22" aria-hidden="true" :class="['tw:shrink-0 tw:text-tpl-secondary tw:transition-transform tw:motion-reduce:transition-none', expandedHistoryGroups.has(historySegmentKey(group.key, segment.key)) ? 'tw:rotate-90' : '']" />
                   <span class="history-section__label">歷史課程</span>
                   <span class="history-section__count tw:text-tpl-caption tw:font-semibold tw:tabular-nums tw:text-tpl-secondary">{{ segment.courses.length }} 筆</span>
+                  <StatusBadge v-if="historyAttentionCount(segment.courses)" tone="warning">{{ historyAttentionCount(segment.courses) }} 筆需留意</StatusBadge>
                 </button>
               </div>
               <div
@@ -593,7 +594,6 @@
                       type="button"
                       :class="[rowAction.dangerWrap, 'tag-usage-review tag-usage-review--action']"
                       :title="`${usageBalanceWarningTitle(hc)} 點擊查看對帳明細。`"
-                      aria-label="堂數待對帳"
                       @click.stop="openLedgerForCourse(hc)"
                     >⚠ 堂數待對帳 <span class="tag-usage-review__action tw:ml-1 tw:underline tw:underline-offset-2">查看對帳明細</span></button>
                   </div>
@@ -4372,12 +4372,17 @@ const groupHasPausedCourse = (group) =>
 
 const activeCourses = (group) => (group?.courses || []).filter(c => !isCourseManagementHistory(c));
 const historyCourses = (group) => (group?.courses || []).filter(c => isCourseManagementHistory(c));
-const chronologicalCourseSegments = (group) => {
+const courseDisplaySections = (group) => {
   const segments = buildContractChronology(group?.courses || []);
-  // Retain the existing "no active courses" hint when this loaded group contains only history.
-  if (!segments.some((segment) => segment.kind === 'working')) segments.unshift({ kind: 'working', key: 'empty-working', courses: [] });
-  return segments;
+  // #559: one disclosure per student; preserve newest-created order within each collection.
+  // Classification and financial actions still use the existing server-owned verdicts.
+  return ['working', 'history'].map(kind => ({
+    kind, key: kind, courses: segments.filter(segment => segment.kind === kind).flatMap(segment => segment.courses),
+  })).filter(section => section.kind === 'working' || section.courses.length > 0);
 };
+const historyAttentionCount = (courses) => courses.filter(course =>
+  course.usage_balance_status === 'review_required' || ['pending', 'review'].includes(closedPaymentState(course)),
+).length;
 
 // #2007/#2006: a renewal that left the old course open shows up here as two
 // "進行中" rows fighting over the same teacher slot. Paused rows remain in

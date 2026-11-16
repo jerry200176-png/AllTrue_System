@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { shallowMount, flushPromises } from '@vue/test-utils';
 import CourseManagement from '../../pages/CourseManagement.vue';
+import { ENDED_REVIEW_LABEL } from '../../lib/courseMoneyState.js';
 
 const fixture = vi.hoisted(() => ({ courses: [], total: 0, lastPage: 1 }));
 vi.mock('../../supabase', () => ({ supabase: { auth: { getSession: vi.fn(async () => ({ data: { session: { access_token: 'synthetic-chronology' } } })) } } }));
@@ -52,25 +53,23 @@ describe('#527: real CourseManagement newest-first contracts', () => {
     expect(wrapper.findAll('.course-row').find((row) => row.text().includes('測試老師2543')).text()).toContain('尚未完成繳費');
   });
 
-  it('preserves working/history/working order with independent history disclosures and unique aria targets', async () => {
+  it('#559 collects interleaved history behind one disclosure, retaining newest-first order within each list', async () => {
     await open([
       contract(50, '2026-05-01'), contract(40, '2026-04-01', 'completed'),
       contract(30, '2026-03-01'), contract(20, '2026-02-01', 'settled'), contract(10, '2026-01-01'),
     ]);
     const buttons = wrapper.findAll('.history-section__toggle');
-    expect(buttons).toHaveLength(2);
+    expect(buttons).toHaveLength(1);
     const targets = buttons.map((button) => button.attributes('aria-controls'));
-    expect(new Set(targets).size).toBe(2);
+    expect(new Set(targets).size).toBe(1);
     const before = fetch.mock.calls.length;
     await buttons[0].trigger('click');
-    expect(order()).toEqual([50, 40, 30, 10]);
+    expect(order()).toEqual([50, 30, 10, 40, 20]);
     expect(buttons[0].attributes('aria-expanded')).toBe('true');
-    expect(buttons[1].attributes('aria-expanded')).toBe('false');
-    await buttons[1].trigger('click');
-    expect(order()).toEqual([50, 40, 30, 20, 10]);
+    expect(wrapper.get('.history-section__count').text()).toBe('2 筆');
     for (const id of targets) expect(wrapper.findAll(`[id="${id}"]`)).toHaveLength(1);
     await buttons[0].trigger('click');
-    expect(order()).toEqual([50, 30, 20, 10]);
+    expect(order()).toEqual([50, 30, 10]);
     expect(fetch.mock.calls).toHaveLength(before);
   });
 
@@ -108,9 +107,9 @@ describe('#527: real CourseManagement newest-first contracts', () => {
     ]);
     await expandHistory();
     const rows = wrapper.findAll('.course-row, .history-course-card');
-    expect(order()).toEqual([30, 20, 10]);
+    expect(order()).toEqual([30, 10, 20]);
     expect(rows.map((row) => row.text().match(/開課\s*(\d{4}-\d{2}-\d{2}|未填)/)?.[1]))
-      .toEqual(['未填', '2026-02-01', '2026-01-01']);
+      .toEqual(['未填', '2026-01-01', '2026-02-01']);
   });
 
   it('keeps a new backdated contract first across mixed working/history without rewriting its displayed start', async () => {
@@ -120,10 +119,52 @@ describe('#527: real CourseManagement newest-first contracts', () => {
       contract(20, '2026-06-01', 'completed'),
     ]);
     await expandHistory();
-    expect(order()).toEqual([30, 20, 10]);
+    expect(order()).toEqual([30, 10, 20]);
     const rows = wrapper.findAll('.course-row, .history-course-card');
     expect(rows.map((row) => row.text().match(/開課\s*(\d{4}-\d{2}-\d{2})/)?.[1]))
-      .toEqual(['2025-01-01', '2026-06-01', '2026-05-01']);
+      .toEqual(['2025-01-01', '2026-05-01', '2026-06-01']);
     expect(rows[0].text()).toContain('尚未完成繳費');
+  });
+
+  it('#559 shows the seven-history total and financial attention before expansion without losing the review action', async () => {
+    await open([
+      contract(90, '2026-09-01', 'completed', { closed_reason: 'settled_pending', payment_status: 'review_required', usage_balance_status: 'review_required' }),
+      contract(80, '2026-08-01'),
+      ...[70, 60, 50, 40, 30, 20].map(id => contract(id, '2026-01-01', 'completed')),
+    ]);
+    expect(wrapper.findAll('.history-section__toggle')).toHaveLength(1);
+    expect(wrapper.get('.history-section__count').text()).toBe('7 筆');
+    expect(wrapper.get('.history-section__toggle').text()).toContain('1 筆需留意');
+    expect(wrapper.findAll('.history-course-card')).toHaveLength(0);
+    await expandHistory();
+    expect(wrapper.findAll('.history-course-card')).toHaveLength(7);
+    const review = wrapper.get('[data-contract-id="90"]');
+    expect(review.text()).toContain(ENDED_REVIEW_LABEL);
+    const detail = review.get('button.tag-usage-review--action');
+    expect(detail.text()).toContain('堂數待對帳');
+    expect(detail.text()).toContain('查看對帳明細');
+    await detail.trigger('click');
+    expect(wrapper.vm.$.setupState.ledgerOpen).toBe(true);
+    expect(wrapper.vm.$.setupState.ledgerStudentClassId).toBe(90);
+  });
+
+  it('#559 keeps each student disclosure independent, and leaves unknown/paused and pending reconciliation in the working list', async () => {
+    await open([
+      contract(60, '2026-06-01', 'completed'),
+      contract(50, '2026-05-01', null, { _noncanonical: true, status: 'inactive' }),
+      contract(40, '2026-04-01', 'settled_pending', { payment_status: 'unpaid' }),
+      contract(30, '2026-03-01', 'completed'),
+      contract(20, '2026-02-01', 'completed', { student_id: 900494, student_name: '另一位合成學生' }),
+    ]);
+    const buttons = wrapper.findAll('.history-section__toggle');
+    expect(buttons).toHaveLength(2);
+    expect(new Set(buttons.map(b => b.attributes('aria-controls'))).size).toBe(2);
+    expect(order()).toEqual([50, 40]);
+    expect(wrapper.text()).toContain('恢復課程');
+    await buttons[0].trigger('click');
+    expect(order()).toEqual([50, 40, 60, 30]);
+    expect(buttons[1].attributes('aria-expanded')).toBe('false');
+    await buttons[1].trigger('click');
+    expect(order()).toEqual([50, 40, 60, 30, 20]);
   });
 });
