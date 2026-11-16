@@ -130,6 +130,35 @@ final class MonthlyRosterTest extends TestCase
             array_map(fn ($l) => [$l['date'], $l['kind'], $l['status']], $courses[$planned->ID]['lessons']));
     }
 
+    public function test_a_receipt_moved_to_another_course_counts_once_on_the_new_course(): void
+    {
+        $student = $this->student(1);
+        [$from, $to] = [$this->course($student), $this->course($student, ['SubjectID' => 2])];
+        $fromBill = $this->bill($from, ['TotalAmount' => 8000, 'Status' => 'void', 'billing_period' => '2026-10']);
+        $toBill = $this->bill($to, ['TotalAmount' => 8000, 'PaidAmount' => 8000, 'Status' => 'paid', 'billing_period' => '2026-10']);
+        $original = Payment::create(['InvoiceID' => $fromBill->id, 'Amount' => 8000, 'PaidAt' => '2026-10-20 10:00:00', 'Method' => 'cash']);
+        $receipt = fn (StudentClass $c, Invoice $bill, string $status, ?int $paymentId, string $hash) => DB::table('payment_reports')->insertGetId([
+            'StudentID' => $student->id, 'StudentClassID' => $c->ID, 'InvoiceID' => $bill->id, 'reported_by_name' => 'parent',
+            'payment_date' => '2026-10-20', 'payment_method' => 'cash', 'reported_amount' => 8000, 'status' => $status, 'payment_id' => $paymentId,
+            'report_token_hash' => str_repeat($hash, 64), 'token_expires_at' => now(), 'created_at' => now(), 'updated_at' => now()]);
+        $old = $receipt($from, $fromBill, 'voided', $original->id, 'e');
+        $new = $receipt($to, $toBill, 'confirmed', null, 'f');
+        // What ReceiptReassignService::write() leaves: a reversal dated the day of the move, a replacement at the original date.
+        Payment::create(['InvoiceID' => $fromBill->id, 'Amount' => -8000, 'PaidAt' => '2026-11-10', 'Method' => 'void', 'Note' => '[receipt_reassign:1] 更正移轉', 'payment_report_id' => $old]);
+        Payment::create(['InvoiceID' => $toBill->id, 'Amount' => 8000, 'PaidAt' => '2026-10-20', 'Method' => 'cash', 'Note' => '[receipt_reassign:1] 更正移轉自收據', 'payment_report_id' => $new]);
+        DB::table('payment_report_reassignments')->insert(['from_report_id' => $old, 'to_report_id' => $new, 'from_invoice_id' => $fromBill->id,
+            'to_invoice_id' => $toBill->id, 'from_student_id' => $student->id, 'to_student_id' => $student->id, 'campus_id' => 1, 'amount' => 8000,
+            'reason' => '選錯課', 'idempotency_key' => 'roster-move', 'actor_user_id' => 1, 'created_at' => now(), 'updated_at' => now()]);
+        $token = $this->director(1);
+
+        $this->assertSame(0, $this->withToken($token)->getJson('/api/v1/accounting/monthly-roster?year=2026&month=11')->assertOk()->json('summary.paid_this_month'));
+        $oct = $this->withToken($token)->getJson('/api/v1/accounting/monthly-roster?year=2026&month=10')->assertOk();
+        $this->assertSame(8000, $oct->json('summary.paid_this_month'));
+        $courses = collect($oct->json('data.0.courses'))->keyBy('course_id');
+        $this->assertSame([8000], array_column($courses[$to->ID]['paid_this_month'], 'amount'));
+        $this->assertFalse($courses->has($from->ID));
+    }
+
     public function test_one_campus_at_a_time_and_directors_only(): void
     {
         $elsewhere = $this->course($this->student(2));

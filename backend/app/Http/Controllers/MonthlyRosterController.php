@@ -82,8 +82,13 @@ final class MonthlyRosterController extends Controller
             ->filter(fn ($rows) => $rows->isNotEmpty());
 
         // Money in this month, whichever bill it paid (an October debt collected in November counts in November).
+        // A receipt moved to another student or course (ReceiptReassignService) is bookkeeping, not money in or out:
+        // its original payment and the reversal are skipped, the replacement (new course, original date) counts.
+        $moved = DB::table('payment_report_reassignments')->select('from_report_id');
         $paid = DB::table('Payment')->join('Invoice', 'Invoice.id', '=', 'Payment.InvoiceID')
             ->whereIn('Invoice.StudentID', $studentIds)->where('Invoice.StudentClassID', '>', 0)
+            ->whereNotIn('Payment.id', DB::table('payment_reports')->whereIn('id', $moved)->whereNotNull('payment_id')->select('payment_id'))
+            ->where(fn ($q) => $q->whereNull('Payment.payment_report_id')->orWhereNotIn('Payment.payment_report_id', $moved))
             ->whereBetween('Payment.PaidAt', [$start . ' 00:00:00', $end . ' 23:59:59'])
             ->orderBy('Payment.PaidAt')
             ->get(['Invoice.StudentClassID', 'Payment.Amount', 'Payment.PaidAt', 'Payment.Method'])
