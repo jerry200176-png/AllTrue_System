@@ -688,8 +688,8 @@ Route::prefix('v1')->group(function () {
         Route::post('student-classes/{studentClass}/convert-trial', [StudentClassController::class, 'convertTrial'])->middleware('role:director');
         Route::post('student-classes/{studentClass}/renew-monthly', [StudentClassController::class, 'renewMonthly'])->middleware('role:director');
         Route::get('student-classes/{studentClass}/invoices', [StudentClassController::class, 'invoices']);
-        Route::post('student-classes/{studentClass}/add-session', [StudentClassController::class, 'addSession'])->middleware('role:director');
-        Route::post('student-classes/{studentClass}/add-session/check', [StudentClassController::class, 'checkAddSession'])->middleware('role:director');
+        Route::post('student-classes/{studentClass}/add-session', [StudentClassController::class, 'addSession']);
+        Route::post('student-classes/{studentClass}/add-session/check', [StudentClassController::class, 'checkAddSession']);
         Route::post('student-classes/{studentClass}/pause', [StudentClassController::class, 'togglePause']);
         Route::post('student-classes/{studentClass}/transfer-sessions', [StudentClassController::class, 'transferSessions'])->middleware('role:director');
         Route::delete('student-classes/{studentClass}', [StudentClassController::class, 'destroy'])->middleware('role:director');

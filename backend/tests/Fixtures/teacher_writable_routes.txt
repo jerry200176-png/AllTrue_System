@@ -1,7 +1,8 @@
 # Write routes (non-GET) the teacher role can reach through a role: middleware. Reviewed list; see TeacherWritableRoutesRatchetTest.
 # One "METHOD uri" per line. Baseline taken from CI on 2026-11-17 (after #5400 and #5402).
 # Known to check the role or ownership inside the method: student-classes pause, system/settings/substitute-undo (super admin only).
-# 2026-11-17: 22 routes used only on director pages moved to role:director (rooms, schedules, substitutes, packages, extra lessons).
+# 2026-11-17: 20 routes used only on director pages moved to role:director (rooms, schedules, substitutes, packages, learning-record delete and comment).
+# add-session stays teacher-writable (MonthlyCalendarLeaveNoBackfillTest: a teacher adds a lesson).
 # To look at next: PATCH class-sessions/{id} (lesson ownership).
 DELETE api/v1/chat/messages/{messageId}
 DELETE api/v1/chat/threads/{threadId}
@@ -47,6 +48,8 @@ POST api/v1/schedule-import/preview
 POST api/v1/schedules/leave-by-session
 POST api/v1/schedules/retro-leave
 POST api/v1/student-classes/session-dates
+POST api/v1/student-classes/{studentClass}/add-session
+POST api/v1/student-classes/{studentClass}/add-session/check
 POST api/v1/student-classes/{studentClass}/pause
 POST api/v1/students/{student}/learning-plans
 POST api/v1/students/{student}/study-tasks

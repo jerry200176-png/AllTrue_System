@@ -242,12 +242,10 @@ class StudentClassTogglePauseAuthzTest extends TestCase
     public function test_director_only_schedule_substitute_and_package_writes_refuse_a_teacher(): void
     {
         $token = $this->createTeacherToken([1]);
-        $sc = $this->createStudentClassOnCampus(1, ['TeacherID' => $this->lastTeacherUserId]);
         $routes = ['course-packages/1/bind-courses', 'course-packages/1/recompute', 'course-packages/1/rebuild-ledger',
             'class-sessions/1/substitute', 'class-sessions/1/substitute/undo', 'teacher-leaves/preview', 'teacher-leaves/batch-substitute',
-            'schedules', 'schedules/bulk-leave', 'schedules/leave-cascade-preview', 'schedules/undo-leave-by-session',
-            "student-classes/{$sc->ID}/add-session", "student-classes/{$sc->ID}/add-session/check"];
-        $this->assertCount(13, $routes);
+            'schedules', 'schedules/bulk-leave', 'schedules/leave-cascade-preview', 'schedules/undo-leave-by-session'];
+        $this->assertCount(11, $routes);
         foreach ($routes as $route) {
             $this->postJson("/api/v1/{$route}", [], ['Authorization' => "Bearer {$token}"])->assertStatus(403);
         }
