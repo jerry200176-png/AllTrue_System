@@ -30,6 +30,7 @@
 | POST | `api/v1/accounting/courses/{id}/waive` | `AccountingController@waiveCourse` | role+campus |
 | GET | `api/v1/accounting/ledger` | `AccountingController@ledger` | role+campus |
 | GET | `api/v1/accounting/monthly-drafts` | `AccountingController@monthlyDrafts` | role+campus |
+| GET | `api/v1/accounting/monthly-roster` | `MonthlyRosterController@index` | role+campus |
 | GET | `api/v1/accounting/notes` | `BillingNoteController@index` | role+campus |
 | POST | `api/v1/accounting/notes` | `BillingNoteController@store` | role+campus |
 | GET | `api/v1/accounting/payments` | `AccountingController@payments` | role+campus |

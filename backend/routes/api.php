@@ -539,6 +539,7 @@ Route::prefix('v1')->group(function () {
 
         // ── Payment Reports (學收核銷) ──────────────────────────────
         Route::get('accounting/ledger', [AccountingController::class, 'ledger']);
+        Route::get('accounting/monthly-roster', [\App\Http\Controllers\MonthlyRosterController::class, 'index']); // 月對帳表 (Founder 2026-11-17)
         // #3836: append-only billing notes. GET and POST only; there is deliberately no PUT/PATCH/DELETE.
         Route::get('accounting/notes', [\App\Http\Controllers\BillingNoteController::class, 'index']);
         Route::post('accounting/notes', [\App\Http\Controllers\BillingNoteController::class, 'store']);
