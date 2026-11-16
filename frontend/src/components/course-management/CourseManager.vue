@@ -73,7 +73,7 @@ export default {
     const copyLinkSucceeded = ref(false);
     const copyLinkBusy = ref(false);
     const courseLink = computed(() => typeof window === 'undefined' ? null : buildCourseFocusUrl(window.location.href, {
-      branchId: props.course.branch_id ?? props.course.campus_id,
+      branchId: props.course.student?.CampusID ?? props.course.student?.campus_id ?? props.course.campus_id ?? props.course.branch_id,
       studentId: props.course.student_id ?? props.course.StudentID,
       courseId: props.course.id ?? props.course.ID,
     }));

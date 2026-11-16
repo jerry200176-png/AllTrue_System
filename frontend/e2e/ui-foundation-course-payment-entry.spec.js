@@ -5,8 +5,9 @@ import { LEGACY_FLAG_UNVERIFIED_HELP, REPORT_STATUS_LABELS, REVIEW_REQUIRED_LABE
 import { dismissOverlays } from './fixtures/dismissOverlays.js';
 import { expectCoursePaymentEntryOpensLedgerInPlace, recordCourseLists } from './fixtures/coursePaymentEntry.js';
 
-async function installCourseLinkMocks(page, { unavailable = false, beforeCourseListReply = async () => {} } = {}) {
-  const target = { ...course(7101, 7201, '合成連結目標', 'paid'), payment_type: 'session', StartDate: '2026-10-03' };
+async function installCourseLinkMocks(page, { unavailable = false, beforeCourseListReply = async () => {}, roomCampus = 1, olderTarget = false } = {}) {
+  const target = { ...course(7101, 7201, '合成連結目標', 'paid'), payment_type: 'session', StartDate: '2026-10-03',
+    branch_id: roomCampus, student: { id: 7201, CampusID: 1, name: '合成連結目標' } };
   const other = { ...course(7102, 7202, '合成不同學生', 'unpaid'), payment_type: 'session' };
   const writes = [];
   const courseQueries = [];
@@ -25,8 +26,11 @@ async function installCourseLinkMocks(page, { unavailable = false, beforeCourseL
     if (path === '/api/v1/student-classes') {
       courseQueries.push(Object.fromEntries(url.searchParams));
       await beforeCourseListReply(url);
-      const rows = unavailable ? [] : [other, target];
-      return route.fulfill({ json: { data: rows, total: rows.length, current_page: 1, last_page: 1 } });
+      const rows = unavailable ? [] : olderTarget
+        ? url.searchParams.get('course_id') === '7101' ? [target] : Array.from({ length: 50 }, (_, i) => ({ ...target, id: 8000 + i }))
+        : [other, target];
+      return route.fulfill({ json: { data: rows, total: olderTarget && !url.searchParams.has('course_id') ? 51 : rows.length,
+        current_page: 1, last_page: olderTarget && !url.searchParams.has('course_id') ? 2 : 1 } });
     }
     if (path === '/api/v1/students') return route.fulfill({ json: { data: [{ id: 7201, name: target.student_name }, { id: 7202, name: other.student_name }] } });
     return route.fulfill({ json: { data: [], total: 0, unread_count: 0 } });
@@ -37,7 +41,7 @@ async function installCourseLinkMocks(page, { unavailable = false, beforeCourseL
 for (const width of [390, 1440]) {
   test(`shareable course link opens the exact course, copies safely and survives reload @${width}`, async ({ page, context }, testInfo) => {
     await context.grantPermissions(['clipboard-read', 'clipboard-write'], { origin: new URL(testInfo.project.use.baseURL).origin });
-    const { target, writes } = await installCourseLinkMocks(page);
+    const { target, writes } = await installCourseLinkMocks(page, { roomCampus: width === 390 ? null : 2 });
     await page.setViewportSize({ width, height: 900 });
     const errors = [];
     page.on('pageerror', error => errors.push(error.message));
@@ -81,10 +85,19 @@ for (const scenario of ['wrong-student', 'unavailable-course', 'outside-campus']
     await expect(page.getByTestId('course-link-unavailable')).toContainText('無法定位指定課程');
     await expect(page.getByTestId('course-manager')).toHaveCount(0);
     expect(courseQueries.length).toBeGreaterThan(0);
-    if (scenario === 'outside-campus') expect(courseQueries.every(query => String(query.branch_id) === '1')).toBe(true);
+    if (scenario === 'outside-campus') expect(courseQueries.every(query => String(query.campus_id ?? query.branch_id) === '1')).toBe(true);
     expect(writes).toEqual([]);
   });
 }
+
+test('shareable course link targets an older course without scanning student pages', async ({ page }) => {
+  const { target, writes, courseQueries } = await installCourseLinkMocks(page, { olderTarget: true, roomCampus: null });
+  await page.goto('/app-pilot-mount.html?app_page=course-mgmt&branch_id=1&student_id=7201&course_id=7101');
+  await expect(page.getByTestId('course-manager').getByRole('heading', { level: 2 })).toContainText(target.student_name);
+  expect(courseQueries.some(query => query.course_id === '7101' && query.student_id === '7201' && query.campus_id === '1')).toBe(true);
+  expect(courseQueries.every(query => query.page === '1')).toBe(true);
+  expect(writes).toEqual([]);
+});
 
 for (const mismatch of ['student', 'course']) {
   test(`shareable course link clears an already open course on a new invalid ${mismatch} intent`, async ({ page }) => {

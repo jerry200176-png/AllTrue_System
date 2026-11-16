@@ -119,6 +119,12 @@ class StudentClassController extends Controller
             $query->where('StudentID', $request->input('student_id'));
         }
 
+        // A course link selects one record inside the same existing role/campus/student scope.
+        $request->validate(['course_id' => ['sometimes', 'integer', 'min:1']]);
+        if ($request->filled('course_id')) {
+            $query->whereKey((int) $request->input('course_id'));
+        }
+
         // 老師端常帶 teacher_id=自己（智慧排課）；範圍已由 applyTeacherOrSubstituteStudentClassScope 處理。
         // 若再 where TeacherID=自己，會把「僅單堂代課」之 StudentClass（正班為他人）整批排除。
         if ($request->filled('teacher_id') && $role !== 'teacher') {

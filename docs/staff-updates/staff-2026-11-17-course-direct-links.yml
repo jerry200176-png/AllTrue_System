@@ -10,5 +10,7 @@ updates:
     items:
       - category: improved
         text: 連結沿用原本分校與角色權限；課程不存在或無權限時，會提示無法定位。
+      - category: fixed
+        text: 沒有指定教室、或學生的課程超過一頁時，也能直接找到該課程。
     source_refs:
       - "changelog:2026-11-17:course-direct-links"

@@ -4665,6 +4665,12 @@ const loadCourses = async (page = 1) => {
       if (!pinnedHandoff && filters.value.name) params.set('name', filters.value.name);
       // convert-trial deep link: pin the target student so same-name/pagination can't hide the course.
       if ((pendingConvertTrialId.value || pendingManualSessionId.value || pendingLessonsCourseId.value) && convertTrialStudentId.value) params.set('student_id', String(convertTrialStudentId.value));
+      if (pendingLessonsCourseId.value) {
+        // Ownership comes from the student campus; a missing/legacy classroom is not the lookup boundary.
+        params.delete('branch_id');
+        params.set('campus_id', String(props.branchId));
+        params.set('course_id', String(pendingLessonsCourseId.value));
+      }
       const res = await authedFetch(`/api/v1/student-classes?${params}`, {
         credentials: 'include',
         headers: { 'Accept': 'application/json' }
