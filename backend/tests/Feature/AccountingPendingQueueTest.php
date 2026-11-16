@@ -179,6 +179,9 @@ class AccountingPendingQueueTest extends TestCase
         $this->assertTrue($alert['amount_pending_confirmation']);
         $this->assertSame(4400, $alert['pending_confirmation_amount']);
         $this->assertSame(4400, $alert['outstanding']);
+        // The list carries the resolver's reason codes, so the row can say why and what to do.
+        $this->assertSame(array_values($verdict['review_reasons']), $alert['review_reasons']);
+        $this->assertNotSame([], $alert['review_reasons']);
     }
 
     public function test_review_required_pending_amount_uses_the_settled_page_basis(): void
