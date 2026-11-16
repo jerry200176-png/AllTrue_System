@@ -296,6 +296,8 @@
         <TriageTokenPanel v-if="isSuperAdmin" v-model:secret="triageSecret" v-model:pending="triagePending" :token="token" />
         <PopInappAgentKeyPanel v-if="isSuperAdmin" :token="token" @update:pending="popKeyPending = $event" />
         <ContractLookupPanel v-if="isSuperAdmin" :token="token" />
+        <!-- 帳務中心重整 G2: how many records of each known billing problem every campus holds (read-only). -->
+        <BillingDataQualityCard v-if="isSuperAdmin" :token="token" />
       </section>
 
       <section v-if="activeTab === 'notifications'" id="profile-panel-notifications" class="card" data-guide="profile-active-panel" role="tabpanel" aria-labelledby="profile-tab-notifications" tabindex="0">
@@ -369,6 +371,7 @@ import AvatarCropModal from '../components/AvatarCropModal.vue';
 import TriageTokenPanel from '../components/TriageTokenPanel.vue';
 import PopInappAgentKeyPanel from '../components/PopInappAgentKeyPanel.vue';
 import ContractLookupPanel from '../components/ContractLookupPanel.vue';
+import BillingDataQualityCard from '../components/BillingDataQualityCard.vue';
 import {
   getMe,
   getNotificationPrefs,
