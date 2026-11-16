@@ -14,6 +14,9 @@ use Illuminate\Support\Facades\DB;
 class ClassSessionIndexReadService
 {
     /** Join condition for the latest non-voided sign-in `si` of session `cs` (StudentSingIn has many rows per session). */
+    /** R20 / 2026-07-18: a stopped course's leftover `scheduled` rows are not lessons (needs `cs` and `sc`). */
+    public const HIDE_STOPPED_SCHEDULED_SQL = "NOT (COALESCE(sc.Stop, 0) = 1 AND LOWER(cs.Status) = 'scheduled')";
+
     public const LATEST_SIGN_IN_SQL = 'si.id = (SELECT MAX(si2.id) FROM `StudentSingIn` si2 WHERE si2.ClassSessionID = cs.id AND si2.VoidedAt IS NULL)';
 
     /**
@@ -236,7 +239,7 @@ class ClassSessionIndexReadService
         // R20 / 2026-07-18：Stop=1 課程殘留的 scheduled 會讓出缺勤「今日待點名」出現雙列。
         // 預設隱藏；稽核可用 include_stopped_scheduled=1 帶回。
         if (!$request->boolean('include_stopped_scheduled')) {
-            $query->whereRaw("NOT (COALESCE(sc.Stop, 0) = 1 AND LOWER(cs.Status) = 'scheduled')");
+            $query->whereRaw(self::HIDE_STOPPED_SCHEDULED_SQL);
         }
 
         if ($request->boolean('exclude_history_future')) {

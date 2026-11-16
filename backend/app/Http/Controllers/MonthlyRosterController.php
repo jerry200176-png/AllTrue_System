@@ -55,6 +55,8 @@ final class MonthlyRosterController extends Controller
         // Every row incl. cancelled ones (the projection must not re-plan a cancelled date); the status is the one the
         // attendance screen shows, so a lesson signed in but still stored as scheduled counts as held.
         $sessions = DB::table('ClassSession as cs')
+            ->join('StudentClass as sc', 'sc.ID', '=', 'cs.StudentClassID')
+            ->whereRaw(ClassSessionIndexReadService::HIDE_STOPPED_SCHEDULED_SQL) // as the attendance screen; history stays
             ->leftJoin('StudentSingIn as si', fn ($join) => $join->on('si.ClassSessionID', '=', 'cs.id')
                 ->whereRaw(ClassSessionIndexReadService::LATEST_SIGN_IN_SQL))
             ->whereIn('cs.StudentClassID', $campusCourses)
@@ -91,7 +93,11 @@ final class MonthlyRosterController extends Controller
         $billed = DB::table('Invoice')->whereIn('StudentID', $studentIds)->where('StudentClassID', '>', 0)
             ->whereRaw("COALESCE(Status, '') NOT IN ('void', 'cancelled')")
             // Payment rows are the truth, not the stored PaidAmount (Founder Q2/R28).
-            ->where(fn ($q) => $q->where('billing_period', $period)->orWhereRaw(Invoice::mayOweSql('Invoice')))
+            // A bill without a period belongs to its IssueDate month, as InvoiceAmountReconciliationService::resolve() reads it.
+            ->where(fn ($q) => $q->where('billing_period', $period)
+                ->orWhere(fn ($legacy) => $legacy->where(fn ($none) => $none->whereNull('billing_period')->orWhere('billing_period', ''))
+                    ->where('IssueDate', 'like', $period . '%'))
+                ->orWhereRaw(Invoice::mayOweSql('Invoice')))
             ->pluck('StudentClassID');
         $courses = StudentClass::with(['student', 'teacher', 'pricingAmendments'])->whereIn('StudentID', $studentIds)
             ->whereIn('ID', $lessons->keys()->merge($paid->keys())->merge($billed)->map(fn ($id) => (int) $id)->unique()->values())

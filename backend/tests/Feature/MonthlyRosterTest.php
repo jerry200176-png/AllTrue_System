@@ -98,6 +98,17 @@ final class MonthlyRosterTest extends TestCase
             DB::table('student_class_pricing_amendments')->insert(['student_class_id' => $course->ID, 'effective_from' => $from, 'rate' => 1800,
                 'rate_unit' => 'session', 'source_reference' => 'roster-test', 'reason' => 'test', 'created_at' => now()]);
         }
+        // A settled bill with no period, issued in November and paid in October: November's bill, so listed.
+        $legacy = $this->course($student, ['SubjectID' => 6]);
+        $legacyBill = $this->bill($legacy, ['TotalAmount' => 2000, 'PaidAmount' => 2000, 'Status' => 'paid', 'IssueDate' => '2026-11-03', 'billing_period' => null]);
+        Payment::create(['InvoiceID' => $legacyBill->id, 'Amount' => 2000, 'PaidAt' => '2026-10-30 10:00:00', 'Method' => 'cash']);
+        // A stopped course: its leftover scheduled row is hidden (as on the attendance screen), its held lesson stays.
+        $stopped = $this->course($student, ['SubjectID' => 7, 'Stop' => 1]);
+        $stale = $this->course($student, ['SubjectID' => 8, 'Stop' => 1]);
+        ClassSession::create(['StudentClassID' => $stopped->ID, 'SessionDate' => '2026-11-04', 'StartTime' => '10:00', 'EndTime' => '12:00', 'Status' => 'attended']);
+        foreach ([$stopped, $stale] as $course) {
+            ClassSession::create(['StudentClassID' => $course->ID, 'SessionDate' => '2026-11-25', 'StartTime' => '10:00', 'EndTime' => '12:00', 'Status' => 'scheduled']);
+        }
         // A Monday course whose lessons are not written yet: the calendar's 預排.
         $planned = $this->course($student, ['SubjectID' => 5, 'StartDate' => '2026-11-02', 'week' => 1, 'time' => '10:00:00']);
 
@@ -109,6 +120,9 @@ final class MonthlyRosterTest extends TestCase
         $this->assertSame(2, $courses[$trial->ID]['held']);
         $this->assertSame([3000, 1000, -1000], array_column($courses[$old->ID]['paid_this_month'], 'amount'));
         $this->assertSame(3000, $res->json('summary.paid_this_month'));
+        $this->assertTrue($courses->has($legacy->ID));
+        $this->assertSame([['2026-11-04', 'held']], array_map(fn ($l) => [$l['date'], $l['kind']], $courses[$stopped->ID]['lessons']));
+        $this->assertFalse($courses->has($stale->ID));
         $this->assertNull($courses[$repriced->ID]['rate']);
         $this->assertSame(1800, $courses[$amended->ID]['rate']);
         $this->assertContains(['2026-11-23', 'upcoming', 'projected'],
