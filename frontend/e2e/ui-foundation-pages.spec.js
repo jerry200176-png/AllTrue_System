@@ -74,6 +74,10 @@ for (const width of [375, 1280]) {
     await expect(page.getByTestId('contract-adjust-schedule')).toBeVisible();
     await expect(page.getByTestId('contract-adjust-fixed-schedule')).toBeVisible();
     await expect(choice.getByRole('button', { name: /未付款，更正堂數/ })).toBeDisabled();
+    // The overlay fades in for 200ms; audit its settled colours, as overlay-layout does.
+    await choice.locator('..').evaluate(async (el) => {
+      await Promise.all(el.getAnimations({ subtree: true }).map((animation) => animation.finished));
+    });
     const a11y = await new AxeBuilder({ page }).include('.adjustment-choice-modal').analyze();
     expect(a11y.violations.filter((v) => ['serious', 'critical'].includes(v.impact))).toEqual([]);
     const bounds = await choice.boundingBox();
