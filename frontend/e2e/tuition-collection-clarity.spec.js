@@ -6,6 +6,7 @@ import AxeBuilder from '@axe-core/playwright';
 for (const width of [390, 1440]) for (const theme of ['light', 'dark']) {
   test(`In-App564: grouped contract periods keep owed priority and every record ${theme} @${width}`, async ({ page }, info) => {
     const errors = []; const writes = [];
+    let openedOldFirst = false;
     page.on('pageerror', (e) => errors.push(e.message));
     page.on('request', (r) => { if (new URL(r.url()).pathname.startsWith('/api/v1/') && r.method() !== 'GET') writes.push(r.url()); });
     await page.setViewportSize({ width, height: 950 });
@@ -20,11 +21,11 @@ for (const width of [390, 1440]) for (const theme of ['light', 'dark']) {
     const courses = [c(1, '數學', '2026-08-08'), c(2, '英文', '2026-09-23'), c(3, '數學', '2026-10-08', false),
       c(4, '化學', '2026-10-02', false), c(5, '英文', '2026-10-07', false), c(6, '數學', '2026-10-09'), c(7, '英文', '2026-01-01', false)];
     await page.route('**/api/v1/students**', (r) => r.fulfill({ json: [{ id: 99, name: '合成排序學生', status: 'active', enable: 1 }] }));
-    await page.route('**/api/v1/alerts/tuition**', (r) => r.fulfill({ json: [{ id: 6, student_id: 99, student_name: '合成排序學生', subject: '數學',
+    await page.route('**/api/v1/alerts/tuition**', (r) => r.fulfill({ json: [{ id: openedOldFirst ? 1 : 6, student_id: 99, student_name: '合成排序學生', subject: '數學',
       schedule_mode: 'count', payment_status: 'unpaid', payable_status: 'invoiced', payable_outstanding: 1000 }] }));
     await page.route('**/api/v1/accounting/ledger?**', (r) => r.fulfill({ json: {
-      student: { id: 99, name: '合成排序學生' }, scope: { student_class_id: 6 }, summary: {}, courses, receipts: [], anomalies: [],
-      invoices: [{ id: 17, student_class_id: 7, status: 'unpaid', total_amount: 1000, outstanding_amount: 1000, calculated_applied_amount: 0, payments: [] }],
+      student: { id: 99, name: '合成排序學生' }, scope: { student_class_id: openedOldFirst ? 1 : 6 }, summary: {}, courses, receipts: [], anomalies: [],
+      invoices: openedOldFirst ? [] : [{ id: 17, student_class_id: 7, status: 'unpaid', total_amount: 1000, outstanding_amount: 1000, calculated_applied_amount: 0, payments: [] }],
     } }));
     await page.route('**/api/v1/accounting/contracts/*/sessions', (r) => {
       const id = Number(new URL(r.request().url()).pathname.split('/').at(-2));
@@ -49,6 +50,12 @@ for (const width of [390, 1440]) for (const theme of ['light', 'dark']) {
     await ledger.evaluate((el) => { el.scrollTop = 0; });
     const shot = info.outputPath(`contract-order-${width}.png`);
     await ledger.screenshot({ path: shot }); await info.attach('contract-order', { path: shot, contentType: 'image/png' });
+    await ledger.getByRole('button', { name: '關閉學生帳務', exact: true }).click();
+    openedOldFirst = true;
+    await page.reload();
+    await page.getByTestId('bill-search').fill('合成排序學生');
+    await page.getByTestId('bill-documents-c1').click();
+    await expect(ledger.getByTestId('contract-card-1').getByTestId('contract-focused')).toBeInViewport();
     expect(writes).toEqual([]); expect(errors).toEqual([]);
   });
 }

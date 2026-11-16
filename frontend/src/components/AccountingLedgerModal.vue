@@ -657,8 +657,8 @@ watch(() => [props.show, props.studentClassId, props.reportId, props.studentId, 
 // #3987: a student-wide launch passes an arbitrary first course only to load the ledger; it is not a course scope.
 const isOpenedCourse = (c) => !props.studentWide && Number(props.studentClassId || 0) > 0 && Number(c?.id) === Number(props.studentClassId);
 function scrollToOpenedContract() {
-  if (props.studentWide || !Number(props.studentClassId || 0) || contractCourses.value.length < 2) return;
-  if (isOpenedCourse(contractCourses.value[0])) return;
+  if (props.studentWide || !Number(props.studentClassId || 0) || displayContractCourses.value.length < 2) return;
+  if (isOpenedCourse(displayContractCourses.value[0])) return;
   const card = modalEl.value?.querySelector(`[data-testid="contract-card-${Number(props.studentClassId)}"]`);
   card?.scrollIntoView?.({ block: 'start' });
 }

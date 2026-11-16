@@ -9,15 +9,15 @@ const course = (id, subject, start_date, over = {}) => ({
   paid: true, stop: false, package_id: null, ...over,
 });
 const wrappers = [];
-afterEach(() => { wrappers.splice(0).forEach((w) => w.unmount()); vi.unstubAllGlobals(); localStorage.clear(); });
-async function open(courses, invoices = []) {
-  const payload = { summary: {}, scope: {}, courses, invoices, receipts: [], anomalies: [] };
+afterEach(() => { wrappers.splice(0).forEach((w) => w.unmount()); vi.unstubAllGlobals(); localStorage.clear(); delete Element.prototype.scrollIntoView; });
+async function open(courses, invoices = [], studentClassId = null) {
+  const payload = { summary: {}, scope: { student_class_id: studentClassId }, courses, invoices, receipts: [], anomalies: [] };
   const before = JSON.stringify(payload);
   localStorage.setItem('alltrue_session', JSON.stringify({ access_token: 'synthetic-only' }));
   vi.stubGlobal('fetch', vi.fn(async (url) => ({ ok: true, status: 200,
     json: async () => String(url).startsWith('/api/v1/accounting/ledger') ? payload : { sessions: [] },
   })));
-  const w = mount(AccountingLedgerModal, { props: { show: true, studentId: 99, branchId: 1 }, global: { stubs: { Transition: false } } });
+  const w = mount(AccountingLedgerModal, { props: { show: true, studentId: 99, studentClassId, branchId: 1 }, global: { stubs: { Transition: false } } });
   wrappers.push(w); await flushPromises();
   return { w, payload, before, cards: () => w.findAllComponents(ContractCard) };
 }
@@ -69,5 +69,13 @@ describe('in-app564 contract scan order', () => {
       course(3, '數學', 'bad-date'), course(4, '數學', '2026-10-01'),
     ]);
     expect(cards().map((c) => c.props('course').id)).toEqual([4, 2, 3, 1]);
+  });
+
+  it('scrolls to the opened course when the former first row moves below newer contracts', async () => {
+    const scrolled = [];
+    Element.prototype.scrollIntoView = function () { scrolled.push(this.getAttribute('data-testid')); };
+    const { cards } = await open([course(1, '數學', '2026-01-01'), course(2, '英文', '2026-10-01'), course(3, '數學', '2026-10-01')], [], 1);
+    expect(cards().at(-1).props('course').id).toBe(1);
+    expect(scrolled).toContain('contract-card-1');
   });
 });
