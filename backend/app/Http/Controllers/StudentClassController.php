@@ -1858,18 +1858,7 @@ class StudentClassController extends Controller
             }
         }
 
-        // Rate/SessionCount 異動「前」快照舊 Charge vs 舊 Rate × 舊數量 的差額，
-        // 以便在更新 Charge 時保留透過單堂時間調整（session_charge）累積的手動調整金額。
-        $oldChargeSnapshot = (int) ($studentClass->Charge ?? 0);
-        $oldRateSnapshot = (float) ($studentClass->Rate ?? 0);
-        $oldSessionCountSnapshot = (int) ($studentClass->SessionCount ?? 0);
-        $oldRemainingSessionsSnapshot = (int) ($studentClass->RemainingSessions ?? 0);
-        $oldTotalHoursSnapshot = (int) ($studentClass->TotalHours ?? 0);
         $oldTeacherSnapshot = (int) ($studentClass->TeacherID ?? 0);
-        $oldRateUnitSnapshot = strtolower(trim((string) ($studentClass->rate_unit ?? 'session')));
-        if (!in_array($oldRateUnitSnapshot, ['session', 'hour'], true)) {
-            $oldRateUnitSnapshot = 'session';
-        }
 
         // Course edits are another authoritative scheduling writer. Validate
         // the resulting recurring slots before mutating StudentClass; otherwise
@@ -2011,14 +2000,8 @@ class StudentClassController extends Controller
             $mapped,
             $oldScheduleMode,
             $request,
-            $oldSessionCountSnapshot,
-            $oldRemainingSessionsSnapshot,
             $oldTeacherSnapshot,
             $rawInput,
-            $oldRateUnitSnapshot,
-            $oldRateSnapshot,
-            $oldTotalHoursSnapshot,
-            $oldChargeSnapshot,
             $previousStartDate,
             $scheduleSlotsForRebuild,
             $previousScheduleSlots,
