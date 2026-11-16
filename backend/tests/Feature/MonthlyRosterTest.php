@@ -93,8 +93,9 @@ final class MonthlyRosterTest extends TestCase
         // Price changed mid-month: no single 單價. Changed before the month: the new price, as on the payment slip.
         $repriced = $this->course($student, ['SubjectID' => 3]);
         $amended = $this->course($student, ['SubjectID' => 4]);
-        foreach ([[$repriced, '2026-11-15'], [$amended, '2026-10-15']] as [$course, $from]) {
-            ClassSession::create(['StudentClassID' => $course->ID, 'SessionDate' => '2026-11-20', 'StartTime' => '10:00', 'EndTime' => '12:00', 'Status' => 'scheduled']);
+        // One student cannot have two lessons at the same time (SlotOccupiedException), so each course gets its own day.
+        foreach ([[$repriced, '2026-11-15', '2026-11-20'], [$amended, '2026-10-15', '2026-11-27']] as [$course, $from, $day]) {
+            ClassSession::create(['StudentClassID' => $course->ID, 'SessionDate' => $day, 'StartTime' => '10:00', 'EndTime' => '12:00', 'Status' => 'scheduled']);
             DB::table('student_class_pricing_amendments')->insert(['student_class_id' => $course->ID, 'effective_from' => $from, 'rate' => 1800,
                 'rate_unit' => 'session', 'source_reference' => 'roster-test', 'reason' => 'test', 'created_at' => now()]);
         }
