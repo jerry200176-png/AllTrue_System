@@ -5,6 +5,7 @@ import { RENEW_LESSONS_LABEL } from '../../lib/courseIntent.js';
 import { monthlyPaymentLabel, periodPaymentLabel } from '../../lib/courseMoneyState.js';
 import CourseSessionCalendar from './CourseSessionCalendar.vue';
 import ActionMenu from '../ActionMenu.vue';
+import { buildCourseFocusUrl } from '../../lib/appNavigationHistory.js';
 import { ArrowLeft, X, CalendarClock, Wallet, Repeat, Hash, ChevronRight } from 'lucide-vue-next';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -68,6 +69,26 @@ export default {
   },
   emits: ['close', 'update:tab', 'action', 'open-session', 'create-day', 'toggle-cancelled', 'restore-cancelled', 'toggle-notes', 'move-lesson'],
   setup(props, { emit }) {
+    const copyLinkFailed = ref(false);
+    const copyLinkSucceeded = ref(false);
+    const copyLinkBusy = ref(false);
+    const courseLink = computed(() => typeof window === 'undefined' ? null : buildCourseFocusUrl(window.location.href, {
+      branchId: props.course.student?.CampusID ?? props.course.student?.campus_id ?? props.course.campus_id ?? props.course.branch_id,
+      studentId: props.course.student_id ?? props.course.StudentID,
+      courseId: props.course.id ?? props.course.ID,
+    }));
+    watch(courseLink, () => { copyLinkFailed.value = false; copyLinkSucceeded.value = false; });
+    async function copyCourseLink() {
+      const link = courseLink.value;
+      if (!link || copyLinkBusy.value) return;
+      copyLinkBusy.value = true;
+      try {
+        await navigator.clipboard.writeText(link);
+        if (courseLink.value === link) { copyLinkSucceeded.value = true; copyLinkFailed.value = false; }
+      } catch {
+        if (courseLink.value === link) { copyLinkSucceeded.value = false; copyLinkFailed.value = true; }
+      } finally { copyLinkBusy.value = false; }
+    }
     // Dialog focus: land on the title, keep Tab inside, give focus back to whatever opened the drawer (管理課程).
     const panelRef = ref(null);
     const titleRef = ref(null);
@@ -169,6 +190,7 @@ export default {
     const cat = (c) => `var(--ds-cat-${c}-deep)`;
     const badgeCls = { ok: 'tw:bg-[var(--ds-success-wash)] tw:text-foreground', warn: 'tw:bg-[var(--ds-warning-wash)] tw:text-foreground', neutral: 'tw:bg-secondary tw:text-tpl-secondary' };
     return {
+      courseLink, copyLinkFailed, copyLinkSucceeded, copyLinkBusy, copyCourseLink,
       cls, badgeCls, cat, CalendarClock, Wallet, Repeat, Hash, panelRef, titleRef, onKeydown, onTabKey, tabs: TABS, activeTab, act, primaryScheduleCta, billingType, statusTone,
       sessionsView, dangerOpen, listUnits, sessionNo, onSelectDay, onMoveSession, monthlySummary, gapMonths, selectedPeriod, effectivePaymentLabel, periodPaymentLabel,
     };
@@ -196,7 +218,7 @@ export default {
           </h2>
           <p class="tw:mt-1 tw:text-tpl-secondary">{{ course.teacher_name || '待指派' }} · {{ classTypeLabel }}<template v-if="course.room_name"> · {{ course.room_name }}</template></p>
         </div>
-        <div v-if="actionModel?.primary || actionModel?.groups?.length" class="tw:mt-3 tw:flex tw:items-center tw:gap-3">
+        <div v-if="actionModel?.primary || actionModel?.groups?.length || courseLink" class="tw:mt-3 tw:flex tw:flex-wrap tw:items-center tw:gap-3">
           <Button v-if="actionModel?.primary" :class="cls.primary" class="tw:flex-1 tw:sm:flex-none" data-testid="course-manager-primary" @click="act(actionModel.primary.id)">{{ actionModel.primary.label }}</Button>
           <ActionMenu
             v-if="actionModel?.groups?.length"
@@ -205,6 +227,12 @@ export default {
             trigger-class="cmw__more"
             @select="act"
           />
+          <Button v-if="courseLink" type="button" variant="secondary" :class="cls.second" :disabled="copyLinkBusy" data-testid="copy-course-link" @click="copyCourseLink">{{ copyLinkSucceeded ? '已複製' : '複製課程連結' }}</Button>
+          <span class="tw:sr-only" aria-live="polite">{{ copyLinkSucceeded ? '已複製課程連結' : '' }}</span>
+        </div>
+        <div v-if="copyLinkFailed && courseLink" class="tw:mt-2 tw:min-w-0">
+          <p class="tw:text-tpl-caption tw:text-tpl-secondary" role="alert">未能複製，請選取下方連結複製。</p>
+          <input :value="courseLink" readonly aria-label="課程連結" class="tw:h-11 tw:w-full tw:rounded-lg tw:border tw:border-input tw:bg-background tw:px-3 tw:text-tpl-body" @focus="$event.target.select()" />
         </div>
       </header>
       <nav class="cmw__tabs tw:grid tw:grid-cols-4 tw:gap-1 tw:rounded-2xl tw:bg-secondary tw:p-1" role="tablist" aria-label="課程管理分區">
