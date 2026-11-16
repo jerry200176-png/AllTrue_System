@@ -125,6 +125,7 @@
       </Alert>
     </transition>
 
+    <Alert v-if="courseNavigationError" tone="warning" data-testid="course-link-unavailable">{{ courseNavigationError }}</Alert>
     <Alert v-if="closedCourseNotice" tone="info" data-testid="closed-course-hidden-notice">
       <div class="tw:flex tw:flex-wrap tw:items-center tw:gap-x-3 tw:gap-y-2 tw:text-tpl-body">
         <span class="material-symbols-outlined tw:shrink-0" aria-hidden="true">info</span>
@@ -1718,6 +1719,7 @@ const pendingConvertTrialId = ref(0);
 const pendingManualSessionId = ref(0);
 // in-app #342: calendar 「看全部堂次」 opens this course's 排課與堂次 tab.
 const pendingLessonsCourseId = ref(0);
+const courseNavigationError = ref('');
 const handoffNarrowedList = ref(false);
 const convertTrialStudentId = ref(null);
 const coursesLoading = ref(true); // 首次載入完成前顯示骨架，避免「0 位學生」假空狀態
@@ -4620,6 +4622,7 @@ const onCancelledRestored = async () => {
 };
 const reloadCoursesQuietly = () => { quietRefreshNext = true; return loadCourses(pagination.value.page); };
 const loadCourses = async (page = 1) => {
+  courseNavigationError.value = '';
   const requestId = ++courseLoadRequestId;
   closedCourseNotice.value = null;
   const quiet = quietRefreshNext;
@@ -5779,10 +5782,13 @@ watch(
 );
 watch(coursesLoading, (loading) => {
   if (loading || !pendingLessonsCourseId.value) return;
-  const course = courses.value.find((c) => c.id === pendingLessonsCourseId.value);
+  const studentId = Number(convertTrialStudentId.value) || 0;
+  const course = courses.value.find((c) => c.id === pendingLessonsCourseId.value
+    && (!studentId || Number(c.student_id ?? c.StudentID) === studentId));
   pendingLessonsCourseId.value = 0;
   convertTrialStudentId.value = null;
   if (course) openCourseManager(course, 'sessions');
+  else courseNavigationError.value = '無法定位指定課程，請確認連結、分校權限或重新整理後再試。';
 });
 watch(coursesLoading, (loading) => {
   if (loading || !pendingManualSessionId.value) return;

@@ -5,6 +5,86 @@ import { LEGACY_FLAG_UNVERIFIED_HELP, REPORT_STATUS_LABELS, REVIEW_REQUIRED_LABE
 import { dismissOverlays } from './fixtures/dismissOverlays.js';
 import { expectCoursePaymentEntryOpensLedgerInPlace, recordCourseLists } from './fixtures/coursePaymentEntry.js';
 
+async function installCourseLinkMocks(page, { unavailable = false } = {}) {
+  const target = { ...course(7101, 7201, '合成連結目標', 'paid'), payment_type: 'session', StartDate: '2026-10-03' };
+  const other = { ...course(7102, 7202, '合成不同學生', 'unpaid'), payment_type: 'session' };
+  const writes = [];
+  const courseQueries = [];
+  await page.route('**/*', route => ['127.0.0.1', 'localhost'].includes(new URL(route.request().url()).hostname) ? route.fallback() : route.abort());
+  await page.route('**/api/v1/**', async route => {
+    const request = route.request();
+    const url = new URL(request.url());
+    const path = url.pathname;
+    if (request.method() !== 'GET') {
+      if (request.method() === 'POST' && READ_ONLY_POSTS.has(path)) return route.fulfill({ json: { data: [] } });
+      writes.push(`${request.method()} ${path}`);
+      return route.fulfill({ status: 500, json: { message: 'unexpected write' } });
+    }
+    if (path.endsWith('/me')) return route.fulfill({ json: { id: 9001, role: 'director', name: 'E2E Director', campuses: [1], must_change_password: false, capabilities: [] } });
+    if (path.endsWith('/branches') || path.endsWith('/campuses')) return route.fulfill({ json: [{ id: 1, name: '合成分校' }] });
+    if (path === '/api/v1/student-classes') {
+      courseQueries.push(Object.fromEntries(url.searchParams));
+      const rows = unavailable ? [] : [other, target];
+      return route.fulfill({ json: { data: rows, total: rows.length, current_page: 1, last_page: 1 } });
+    }
+    if (path === '/api/v1/students') return route.fulfill({ json: { data: [{ id: 7201, name: target.student_name }, { id: 7202, name: other.student_name }] } });
+    return route.fulfill({ json: { data: [], total: 0, unread_count: 0 } });
+  });
+  return { target, writes, courseQueries };
+}
+
+for (const width of [390, 1440]) {
+  test(`shareable course link opens the exact course, copies safely and survives reload @${width}`, async ({ page, context }, testInfo) => {
+    await context.grantPermissions(['clipboard-read', 'clipboard-write'], { origin: new URL(testInfo.project.use.baseURL).origin });
+    const { target, writes } = await installCourseLinkMocks(page);
+    await page.setViewportSize({ width, height: 900 });
+    const errors = [];
+    page.on('pageerror', error => errors.push(error.message));
+    await page.goto('/app-pilot-mount.html?app_page=course-mgmt&branch_id=1&student_id=7201&course_id=7101&unrelated=discard#private-fragment');
+    const manager = page.getByTestId('course-manager');
+    await expect(manager).toBeVisible();
+    await expect(manager.getByRole('heading', { level: 2 })).toContainText(target.student_name);
+    await expect(manager.getByRole('tab', { name: '堂次', exact: true })).toHaveAttribute('aria-selected', 'true');
+    const copy = manager.getByTestId('copy-course-link');
+    await expect(copy).toBeVisible();
+    expect((await copy.boundingBox()).height).toBeGreaterThanOrEqual(44);
+    await copy.click();
+    await expect(copy).toContainText('已複製');
+    const link = await page.evaluate(() => navigator.clipboard.readText());
+    const parsed = new URL(link);
+    expect(Object.fromEntries(parsed.searchParams)).toEqual({ app_page: 'course-mgmt', branch_id: '1', student_id: '7201', course_id: '7101' });
+    expect(parsed.hash).toBe('');
+    expect(link).not.toContain(target.student_name);
+    await page.goto(link);
+    await expect(manager.getByRole('heading', { level: 2 })).toContainText(target.student_name);
+    await page.reload();
+    await expect(manager.getByRole('heading', { level: 2 })).toContainText(target.student_name);
+    await expect(page).toHaveURL(/branch_id=1.*student_id=7201.*course_id=7101/);
+    // If the clipboard is unavailable, retain a selectable URL instead of claiming it copied.
+    await page.evaluate(() => { navigator.clipboard.writeText = async () => { throw new Error('synthetic clipboard denied'); }; });
+    await manager.getByTestId('copy-course-link').click();
+    await expect(manager.getByRole('textbox', { name: '課程連結', exact: true })).toHaveValue(link);
+    await expect(manager.getByRole('alert')).toContainText('未能複製');
+    expect(writes).toEqual([]);
+    expect(errors).toEqual([]);
+  });
+}
+
+for (const scenario of ['wrong-student', 'unavailable-course', 'outside-campus']) {
+  test(`shareable course link does not fall back to another course: ${scenario}`, async ({ page }) => {
+    const unavailable = scenario !== 'wrong-student';
+    const { writes, courseQueries } = await installCourseLinkMocks(page, { unavailable });
+    const branch = scenario === 'outside-campus' ? 2 : 1;
+    const student = scenario === 'wrong-student' ? 7202 : 7201;
+    await page.goto(`/app-pilot-mount.html?app_page=course-mgmt&branch_id=${branch}&student_id=${student}&course_id=7101`);
+    await expect(page.getByTestId('course-link-unavailable')).toContainText('無法定位指定課程');
+    await expect(page.getByTestId('course-manager')).toHaveCount(0);
+    expect(courseQueries.length).toBeGreaterThan(0);
+    if (scenario === 'outside-campus') expect(courseQueries.every(query => String(query.branch_id) === '1')).toBe(true);
+    expect(writes).toEqual([]);
+  });
+}
+
 /**
  * #4130 follow-up regression: the production acceptance checks the 課程查找 payment
  * entry through the shared expectCoursePaymentEntryOpensLedgerInPlace fixture. Run

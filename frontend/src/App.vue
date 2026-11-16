@@ -951,7 +951,7 @@ import {
 import { findNavItem, getMobileTabItems, getNavigationGroups, getTodoPages, getToolbarItems, navigationPages, requiredContextForPage, sidebarMoreTrigger } from './lib/navigationRegistry';
 import HubTabBar from './components/HubTabBar.vue';
 import ActingContextChip from './components/ActingContextChip.vue';
-import { buildAppPageUrl, parseAppPage } from './lib/appNavigationHistory.js';
+import { buildAppPageUrl, parseAppPage, parseCourseFocusSearch, COURSE_FOCUS_QUERY_KEYS } from './lib/appNavigationHistory.js';
 import { resolveActiveAfterProfileLoad } from './lib/resolveActiveAfterProfileLoad';
 import { createDashboardReturnContext } from './lib/dashboardReturnContext';
 import { isUserEngagementRankDisplayEnabled } from './lib/userEngagementDisplay';
@@ -1746,12 +1746,13 @@ function authorizedNavigationPages() {
   return pages;
 }
 
-function syncAppPageUrl(page, { mode = 'replace', preserveInboxContext = false } = {}) {
+function syncAppPageUrl(page, { mode = 'replace', preserveInboxContext = false, preserveCourseContext = false } = {}) {
   if (typeof window === 'undefined' || !window.history || !page) return;
   const params = new URLSearchParams(window.location.search);
   if (!preserveInboxContext) {
-    INBOX_DEEP_LINK_KEYS.forEach((key) => params.delete(key));
+    INBOX_DEEP_LINK_KEYS.forEach((key) => { if (key !== 'branch_id' || !preserveCourseContext) params.delete(key); });
   }
+  if (!preserveCourseContext) COURSE_FOCUS_QUERY_KEYS.forEach(key => params.delete(key));
   const nextUrl = buildAppPageUrl({
     pathname: window.location.pathname,
     search: params.toString(),
@@ -1782,6 +1783,15 @@ function applyDeepLinkFromUrl() {
       }
     }
     const appPage = parseAppPage(window.location.search, authorizedPages);
+    const courseFocus = appPage === 'course-mgmt' ? parseCourseFocusSearch(window.location.search) : null;
+    if (appPage === 'course-mgmt') {
+      clearCourseMgmtNavigationContext();
+      if (courseFocus) {
+        courseMgmtFocusStudentId.value = courseFocus.studentId;
+        courseMgmtFocusCourseId.value = courseFocus.courseId;
+        courseMgmtFocusIntent.value = 'lessons';
+      }
+    }
     let resolvedPage = appPage;
     if ((page === 'notifications' || page === 'director') && authorizedPages.has(page)) resolvedPage = page;
     if (authorizedPages.has('director') && (page === 'director' || workflowId)) {
@@ -1795,6 +1805,7 @@ function applyDeepLinkFromUrl() {
     if (resolvedPage) active.value = resolvedPage;
     syncAppPageUrl(active.value, {
       mode: 'replace',
+      preserveCourseContext: Boolean(courseFocus),
       preserveInboxContext: authorizedPages.has('director')
         && (page === 'notifications' || page === 'director' || Boolean(workflowId)),
     });
@@ -2176,6 +2187,7 @@ async function switchStaffMode(nextMode, { page = null } = {}) {
   syncAppPageUrl(active.value, {
     mode: page ? 'push' : 'replace',
     preserveInboxContext: Boolean(page) && hasInboxDeepLink(window.location.search),
+    preserveCourseContext: page === 'course-mgmt' && Boolean(parseCourseFocusSearch(window.location.search)),
   });
   await fetchProfile(getSessionUserId(session.value));
   if (normalized === 'director') await ensureDirectorBranches();
