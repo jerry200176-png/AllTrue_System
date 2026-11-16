@@ -1,12 +1,12 @@
 ---
-
-**F7／R7：時長與計價數量必須一起驗（#5379，2026-11-16）**：`SessionDuration` 已更新不代表 `TotalHours` 已同步。未開單、未收款／上課的堂數制小時計費編輯，沿用 `ContractRenewal::plannedBatchHours` 的實際混合時長規劃與既有捨入，再交回 `chargeAfterChange`；不可只重算繳費單。測試須含僅改時長、重存既有錯配、改堂數、混合時長、手動差額及他校拒絕。既有帳單／回報／使用紀錄、月結與共用方案不以這個修復追溯改價；B3 小數時數仍另列原計畫。
 owner: jerry (CEO)
 review_cycle: quarterly
 last_reviewed: 2026-09-05
 ---
 
 # AI／工程師防再犯紀錄（必讀）
+
+**F7／R7：時長與計價數量必須一起驗（#5379，2026-11-16）**：`SessionDuration` 已更新不代表 `TotalHours` 已同步。未開單、未收款／上課的堂數制小時計費編輯，沿用 `ContractRenewal::plannedBatchHours` 的實際混合時長規劃與既有捨入，再交回 `chargeAfterChange`；不可只重算繳費單。測試須含僅改時長、重存既有錯配、改堂數、混合時長、手動差額及他校拒絕。既有帳單／回報／使用紀錄、月結與共用方案不以這個修復追溯改價；B3 小數時數仍另列原計畫。
 
 **F1／F7：收據回覆必須屬於目前選取（#4148，2026-11-16）**：關閉、切換或重開同一份收據，都要使上一個讀取失效。`ReceiptModal` 使用 watch cleanup 與原生取消；fetch、JSON、catch、finally 都以當前選取檢查後才更新，不能只取消尚未完成的 fetch。回歸需保留舊成功／失敗晚回、JSON 晚回、同 ID 重開、較新讀取仍在等待及當前錯誤；見 `ReceiptModal.test.js`。這是文件選取正確性，不代表 API 越權或帳務資料已被修改。
 

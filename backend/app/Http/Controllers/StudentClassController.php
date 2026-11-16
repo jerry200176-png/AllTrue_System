@@ -2028,6 +2028,23 @@ class StudentClassController extends Controller
             $guardContractDates,
             $dateOf
         ) {
+        // Lock before the teacher-change branch's first plain read can pin an old RR view.
+        // InvoiceIssuer / payment writers use this same course mutex. Never lock Student after it.
+        $lockedCourse = StudentClass::query()->whereKey($studentClass->getKey())->lockForUpdate()->firstOrFail();
+        $oldChargeSnapshot = (int) ($lockedCourse->Charge ?? 0);
+        $oldRateSnapshot = (float) ($lockedCourse->Rate ?? 0);
+        $oldTotalHoursSnapshot = (int) ($lockedCourse->TotalHours ?? 0);
+        $oldSessionCountSnapshot = (int) ($lockedCourse->SessionCount ?? 0);
+        $oldRemainingSessionsSnapshot = (int) ($lockedCourse->RemainingSessions ?? 0);
+        $oldRateUnitSnapshot = strtolower(trim((string) ($lockedCourse->rate_unit ?? 'session')));
+        if (!in_array($oldRateUnitSnapshot, ['session', 'hour'], true)) {
+            $oldRateUnitSnapshot = 'session';
+        }
+        // A deduction may have committed while the edit was waiting for the course mutex.
+        if ($contractError = $this->guardBillingContractUpdate($lockedCourse, $mapped)) {
+            return [[], null, $this->withTransferHint($contractError, $lockedCourse, $mapped, $scheduleSlotsForRebuild)];
+        }
+
         // TD-076 B2: flag on, pin taught past occurrences (D2 evidence) BEFORE TeacherID moves; replaces the legacy #207 pin below.
         $occurrencePinned = false;
         $pinNewTeacherId = (int) ($mapped['TeacherID'] ?? 0);

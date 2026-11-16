@@ -3,6 +3,8 @@
 namespace Tests\Feature;
 
 use App\Models\AuthToken;
+use App\Models\CoursePackage;
+use App\Models\SessionDeductionLedger;
 use App\Models\Invoice;
 use App\Models\InvoiceItem;
 use App\Models\PaymentReport;
@@ -149,7 +151,7 @@ class StudentClassRateUnitUpdateTest extends TestCase
     {
         return array_map(fn ($state) => [$state], [
             'legacy_paid', 'stored_usage', 'attended', 'open_invoice', 'void_invoice',
-            'line_item_invoice', 'pending_report', 'confirmed_report', 'manual', 'monthly',
+            'line_item_invoice', 'pending_report', 'confirmed_report', 'manual', 'monthly', 'package', 'ledger_only',
         ]);
     }
 
@@ -164,6 +166,19 @@ class StudentClassRateUnitUpdateTest extends TestCase
             'scheduling_policy' => $state === 'manual' ? 'manual_occurrence' : 'auto_recurrence',
             'ScheduleMode' => $state === 'monthly' ? 'date' : 'count',
         ]);
+        if ($state === 'package') {
+            $package = CoursePackage::create(['student_id' => $course->StudentID, 'campus_id' => 1,
+                'name' => 'Synthetic shared package', 'billing_mode' => 'count', 'total_sessions' => 1,
+                'remaining_sessions' => 1, 'used_sessions' => 0, 'rate' => 1200, 'rate_unit' => 'session',
+                'class_type' => 'one_on_one', 'paid' => false, 'stop' => false, 'enabled' => true]);
+            $course->update(['PackageID' => $package->id]);
+        }
+        if ($state === 'ledger_only') {
+            $sessionId = DB::table('ClassSession')->insertGetId(['StudentClassID' => $course->ID,
+                'SessionDate' => '2030-01-07', 'StartTime' => '20:00', 'EndTime' => '21:00', 'Status' => 'scheduled']);
+            SessionDeductionLedger::create(['student_class_id' => $course->ID, 'class_session_id' => $sessionId,
+                'event_type' => 'deduct', 'source' => 'manual', 'minutes' => 60]);
+        }
         if ($state === 'attended') {
             DB::table('ClassSession')->insert(['StudentClassID' => $course->ID, 'SessionDate' => '2026-01-01',
                 'StartTime' => '20:00', 'EndTime' => '21:00', 'Status' => 'attended']);
