@@ -19,6 +19,18 @@ final class ContractAmendmentService
     {
         $this->assertRequest($course, $newCount);
         $classId = (int) $course->getKey();
+        // in-app #550: only lessons dated today or later are cancelled below. A lesson already past and never marked
+        // would stay and leave the contract over its new count, so refuse and name the dates (the same rule as the
+        // 更正堂數 flow, ContractSessionSchedule::partitionExcessScheduledRows). History is never cancelled silently.
+        $pastUnmarked = \App\Services\Scheduling\ContractSessionSchedule::partitionExcessScheduledRows(
+            ClassSession::query()->where('StudentClassID', $classId)->orderBy('SessionDate')->orderBy('StartTime')->orderBy('id')->get(),
+            $newCount
+        )['past_unrecorded'];
+        if ($pastUnmarked->isNotEmpty()) {
+            $dates = $pastUnmarked->map(static fn (ClassSession $s): string => substr((string) $s->SessionDate, 5, 5))->implode('、');
+            throw ValidationException::withMessages(['new_session_count' => "調整為 {$newCount} 堂後，有 {$pastUnmarked->count()} 堂已過日期、還沒點名的課會超出堂數（{$dates}）。"
+                . '請先到行事曆替這些課補點名或取消，再重新調整。系統不會自動取消已過日期的課。']);
+        }
         $diagnostic = SessionDeductionService::batchExpectedUsedSessionDiagnostics([$classId])[$classId] ?? [];
         $used = max((int) ($diagnostic['expected_used'] ?? 0), (int) ($diagnostic['uncapped_used'] ?? 0));
         $newRemaining = max(0, $newCount - $used);

@@ -1,0 +1,14 @@
+updates:
+  - id: staff-2026-11-17-amend-count-past-unmarked
+    published_at: "2026-11-17"
+    audiences:
+      - director
+      - super_admin
+    importance: digest
+    title: 調整總堂數不再留下超排的課
+    summary: 調整合約總堂數時，如果有已過日期還沒點名的課，系統會先提醒是哪幾天，處理完再調整。
+    items:
+      - category: fixed
+        text: 提前結束或調整合約總堂數時，已過日期還沒點名的課會先列出來請你補點名或取消，不會再默默留下造成超排。
+    source_refs:
+      - "changelog:2026-11-17:amend-count-past-unmarked-lessons"

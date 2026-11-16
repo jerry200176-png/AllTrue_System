@@ -249,6 +249,38 @@ class ContractAmendmentTest extends TestCase
     }
 
     /** #472: a free contract (Charge 0) is never priced by a count change. */
+    /** in-app #550: a past lesson nobody marked is not cancelled by this flow, so the amendment is refused, not left over-scheduled. */
+    public function test_past_unmarked_lessons_beyond_the_new_count_refuse_preview_and_execute(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-09-16 10:00:00', 'Asia/Taipei'));
+        try {
+            [$token] = $this->director();
+            $course = $this->course($this->student()->id, ['Charge' => 8800]);
+            $this->createClassSession($course->ID, '2026-09-01', 'attended');
+            $past = [$this->createClassSession($course->ID, '2026-09-08', 'scheduled'), $this->createClassSession($course->ID, '2026-09-15', 'scheduled')];
+
+            foreach (['contract-amendment/preview', 'contract-amendment'] as $path) {
+                $response = $this->withToken($token)->postJson("/api/v1/student-classes/{$course->ID}/{$path}", ['new_session_count' => 1, 'reason' => '提前結束'])
+                    ->assertStatus(422);
+                $this->assertStringContainsString('有 2 堂已過日期、還沒點名的課會超出堂數（09-08、09-15）', (string) $response->json('message'));
+            }
+            $course->refresh();
+            $this->assertSame([8, 8800, 0], [(int) $course->SessionCount, (int) $course->Charge, (int) $course->Stop]);
+            foreach ($past as $session) {
+                $this->assertSame('scheduled', $session->fresh()->Status);
+            }
+
+            // Once the past lessons are dealt with, the same request goes through.
+            foreach ($past as $session) {
+                $session->update(['Status' => 'cancelled']);
+            }
+            $this->withToken($token)->postJson("/api/v1/student-classes/{$course->ID}/contract-amendment", ['new_session_count' => 1, 'reason' => '提前結束'])->assertOk();
+            $this->assertSame(1, (int) $course->fresh()->SessionCount);
+        } finally {
+            Carbon::setTestNow();
+        }
+    }
+
     public function test_free_contract_amount_stays_zero(): void
     {
         Carbon::setTestNow(Carbon::parse('2026-09-16 10:00:00', 'Asia/Taipei'));
