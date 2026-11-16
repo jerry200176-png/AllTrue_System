@@ -76,7 +76,7 @@ last_reviewed: 2026-11-17
 - 位置：帳務中心「月結」分頁（現有 `MonthlyDraftsPanel`、`GET accounting/monthly-drafts`，`AccountingController::monthlyDrafts` :46）。每個月 1 號起，列出上個月還沒定案的合約，主任按一次「全部定案」。也可以一張一張按。
 - 定案做的事（每份合約、每個月，一個交易、同一把鎖、可重送）：
   1. 這個月有沒有「過去還沒點名的堂」？有 → **這份不定案**，列進「需要處理」，寫出日期（跟 #5398 調整總堂數同一個規則）。
-  2. 算定案金額 ＝ 這個月已上的堂 × 當天單價（`summarizePeriod()`，`source = billable_sessions`）。
+  2. 算定案金額 ＝ 這個月已上的堂 × 當天單價（`summarizePeriod()`，`source = billable_sessions`），**先排除已經被別張沒作廢帳單的明細服務期間涵蓋的堂**（舊的跨月帳單；沿用 `MonthlyBillingService::unbilledPeriodFor()`（`app/Services/MonthlyBillingService.php:137`）對 `InvoiceItem` 服務期間的檢查）。整個月都被涵蓋 → 不開帳單。回歸：一張已繳的 11 月帳單涵蓋 11/15–12/26，12 月定案只算 12/27 以後的堂。
   3. 沒有帳單 → 開一張（定案）；有一張預估 → 把金額寫進去、寫 `finalized_at`、存證據快照（堂數、期間、單價）到 `billing_snapshot`。
   4. 拉前面定案帳單的多收來抵（§3.4）。
   5. 這個月 0 堂而且也沒收錢 → 預估帳單作廢（原因「本月沒有上課」），不留 0 元帳單。
@@ -97,10 +97,10 @@ last_reviewed: 2026-11-17
 
 收據（`payment_reports`）指的是原本那張帳單。錢被「抵」或「更正」轉走以後，原帳單的已收可能是 0；現在的 `PaymentReportController::void()` 遇到「作廢帳單、已收 0」會當成「已經沖銷過」，回「已撤銷收款」卻沒有把錢從新帳單拿掉。所以：
 
-- 撤銷收據前，先找出**這張收據入帳之後**從同一張帳單轉出去的錢（`billing_carry_forwards`、`kind = 'bill_correction'` 的 `invoice_corrections`），在同一個交易裡依相反順序倒轉（`transfer_reversal_out`／`transfer_reversal_in`，`Payment::isCreditMovement()` 已認得），錢回到原帳單後再照現有流程沖銷。
+- 撤銷收據前，先找出**這張收據入帳之後**從同一張帳單轉出去的錢（`billing_carry_forwards`、`kind = 'bill_correction'` 的 `invoice_corrections`），**沿著轉帳鏈往下追**（A→B 之後又 B→C，就追到 C），從最後一段開始依相反順序倒轉（`transfer_reversal_out`／`transfer_reversal_in`，`Payment::isCreditMovement()` 已認得），倒轉的金額合計只到這張收據的金額為止；錢回到原帳單後再照現有流程沖銷。每一段的連結表都記了來源、目標帳單，所以追得到。
 - 收到錢的那張帳單因此變成「還要補收」，畫面照常顯示。
 - 倒轉後那張帳單的已收會變成負的（例如錢已經被退多收退掉）→ **拒絕撤銷**，說明要先處理哪張帳單。
-- 回歸測試：更正已收款帳單後撤銷原收據；月底抵到下個月後撤銷原收據；兩者都要確認錢從收到的帳單上消失、現金合計正確。
+- 回歸測試：更正已收款帳單後撤銷原收據；月底抵到下個月後撤銷原收據；A→B→C 轉兩次後撤銷 A 的收據；都要確認錢從最後收到的帳單上消失、中間帳單回到 0、現金合計正確。
 - 開關：只對列在設定裡的分校打開（先大安），Founder 核准上線時才加分校。
 
 ### 3.7 狀態轉換表（#4991 P6）
@@ -113,12 +113,13 @@ last_reviewed: 2026-11-17
 | 預估 | 作廢 | 系統、主任 | 定案時本月 0 堂且沒收錢；主任作廢（沒有收款時） |
 | 定案 | 作廢＋新的定案 | 主任、總部 | 更正帳單 |
 | 定案 | 作廢 | 主任、總部 | 現有作廢（只限沒有收款；有收款請用更正） |
+| 定案 | 定案（金額調低） | 主任、總部 | **只限堂數制現有退費**（`BillingRefundService::refund()`，`BillingRefundService.php:88-94`：記負數收款、加一行「退費」明細、`TotalAmount` 一起調低）。規則不變，所以保留；月結不走這條（月結用「退多收」，§3.4） |
 
 除了這張表，不准別的地方寫 `Status`、`TotalAmount`、`finalized_at`。之後加一個架構測試擋直接寫入（P6）。
 
 ## 4. 不變式（每個 PR 都要有測試）
 
-1. 定案帳單的 `TotalAmount` 只會經由「更正帳單」改變（作廢＋新帳單）。
+1. 定案帳單的 `TotalAmount` 只會經由「更正帳單」改變（作廢＋新帳單）；唯一例外是 §3.7 列的堂數制現有退費。回歸：PR 1 之後堂數制退費照常成功，帳單明細合計仍等於 `TotalAmount`。
 2. 每份月結合約、每個月，沒作廢的帳單最多一張。
 3. 每一對轉入／轉出加起來等於 0。**抵**：轉走的錢 ≤ 來源帳單定案後的多收。**更正**：轉走的錢 ＝ 舊帳單當下的全部已收（全額、部分收款都要有測試）。任何帳單的已收、任何學生的餘額都不會是負的。
 4. 定案、抵、更正都不改變現金合計（`Payment::isCreditMovement()` 為否的收款紀錄總和）。
@@ -126,7 +127,7 @@ last_reviewed: 2026-11-17
 
 ## 5. 收款規則
 
-- 先收：月結合約還沒定案的月份可以收錢。上限＝這份合約所有還沒定案月份的預估合計 − 已收 − 餘額（擋打錯字，但允許一次繳整個週期）。取代 `monthly_amount_stale`（`PaymentReportController` 456-479、735-752）和 `amount_exceeds_outstanding` 對月結的判斷。
+- 先收：月結合約還沒定案的月份可以收錢。上限＝這份合約所有還沒定案月份的預估合計 − 已收 − **同一條合約鏈上可以抵的多收**（範圍跟 §3.4 自動抵的一樣；別科、別條合約鏈的多收不算）。擋打錯字，但允許一次繳整個週期。回歸：同一位學生英文多收 1,000、數學一份新合約，數學的上限不受影響。取代 `monthly_amount_stale`（`PaymentReportController` 456-479、735-752）和 `amount_exceeds_outstanding` 對月結的判斷。
 - 少繳：照舊允許。
 - 繳費單：預估帳單列「這個月已上＋預排的堂」，金額寫「預估」；定案帳單列這個月實際上的堂（`MonthlyBillingService::invoiceCoveredSessions()`）。
 
