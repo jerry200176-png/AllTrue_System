@@ -163,6 +163,20 @@ class SubjectCreditTransferTest extends TestCase
         $this->assertDatabaseCount('contract_subject_credit_transfers', 0);
     }
 
+    /** in-app #563: a paid bill issued without item lines moves and reverses on its header totals. */
+    public function test_a_bill_without_item_lines_transfers_and_reverses_on_its_header(): void
+    {
+        [$token, $source, $template, $invoice] = $this->fixture();
+        \App\Models\InvoiceItem::where('InvoiceID', $invoice->id)->delete();
+        $r = $this->send($token, $source, $this->payload($token, $source, $template))->assertCreated();
+        $this->assertSame([9000, 9000], [(int) $invoice->fresh()->TotalAmount, (int) $invoice->fresh()->PaidAmount]);
+        Carbon::setTestNow(Carbon::parse('2026-10-01 10:00:00', 'Asia/Taipei'));
+        $this->withToken($token)->postJson("/api/v1/student-classes/{$source->ID}/subject-credit-transfer/{$r->json('transfer.id')}/reverse", ['reason' => 'header-only bill reversal'])->assertOk();
+        $this->assertSame([12000, 12000], [(int) $invoice->fresh()->TotalAmount, (int) $invoice->fresh()->PaidAmount]);
+        $this->assertSame([8, 12000], [(int) $source->fresh()->SessionCount, (int) $source->fresh()->Charge]);
+        $this->assertSame(0, \App\Models\InvoiceItem::where('InvoiceID', $invoice->id)->count());
+    }
+
     public function test_reverse_is_compensating_idempotent_and_refuses_a_reserved_target(): void
     {
         [$token, $source, $template] = $this->fixture();

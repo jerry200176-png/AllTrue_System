@@ -144,6 +144,23 @@ class SubjectCreditPreviewTest extends TestCase
         }
     }
 
+    /** in-app #563: a paid bill issued without item lines is still one bill for the contract; and a refusal says why. */
+    public function test_a_paid_bill_without_item_lines_is_spendable_and_refusals_name_the_reason(): void
+    {
+        [$token, $source, $target, $invoice] = $this->fixture();
+        InvoiceItem::where('InvoiceID', $invoice->id)->delete();
+        $this->preview($token, $source, $target)->assertOk()->assertJsonPath('plan.moved_sessions', 2);
+
+        [$token, $source, $target, $invoice] = $this->fixture();
+        InvoiceItem::create(['InvoiceID' => $invoice->id, 'StudentClassID' => $target->ID, 'Description' => 'other', 'Amount' => 0]);
+        $this->preview($token, $source, $target)->assertStatus(422)->assertJsonPath('code', 'subject_credit_paid_unclear')
+            ->assertJsonPath('message', '不能轉用：這張帳單不是只收這一門課（多科合收），不能直接跨科轉用。');
+
+        [$token, $source, $target, $invoice] = $this->fixture();
+        Payment::where('InvoiceID', $invoice->id)->delete();
+        $this->preview($token, $source, $target)->assertStatus(422)->assertJsonPath('message', '不能轉用：這張帳單沒有收款紀錄，請先登記收款並確認入帳。');
+    }
+
     public function test_uncapped_usage_and_invalid_quantities_cannot_create_availability(): void
     {
         [$token, $source, $target] = $this->fixture(used: 9);
