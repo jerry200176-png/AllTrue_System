@@ -19,8 +19,8 @@
 | 規定 | 怎麼做到的 |
 |---|---|
 | AI **不能直接改**正式資料 | 沒有寫入用的金鑰或端點 |
-| 要改正式資料：**試跑 → Founder 核准 → 執行 → 可還原** | 受控操作（POP）：先出試跑清單，核准後才執行，留稽核紀錄與還原編號 |
-| 資料庫結構變更只能經部署流程 | `deploy.yml`；正式環境的 migration 要 Founder 核准 |
+| 要改正式資料：走受控操作（POP），**先試跑、留紀錄、可還原** | 哪些要 Founder 先核准、哪些已經可以自動，只看 `docs/governance/FOUNDER_STANDING_DECISIONS.md`（2026-10-21 之二、2026-10-28 之二）；這一頁不另訂 |
+| 資料庫結構變更只能經部署流程 | `deploy.yml`。只新增型的 migration 可以自動；其他的要 Founder 核准（同上那份決定） |
 | 不碰正式主機 | 禁止對正式主機 SSH、跑 artisan／測試、印出密碼金鑰 |
 
 ## 結論和程式
@@ -30,7 +30,7 @@
 | 說「原因是 X」要附資料證據；算得剛好不算證據 | 先用唯讀查詢查到編號和數字再下結論 |
 | 動到錢、資料、權限的程式改動要**獨立審查**，每個版本都要 | R3：`security-data-reviewer` 對該版本蓋章才能合併；另有 Codex 審查 |
 | 不直接推主線、不跳過檢查 | 一律 PR；禁止 force-push 與 `--admin` |
-| 上線要 Founder 核准 | `deploy.yml` 的核准關卡 |
+| 上線照風險分級走 | `docs/governance/RISK_BASED_MERGE_POLICY.md` 與 `docs/sop/MERGE_SOP.md`：符合條件的會自動上線，其餘才等 Founder 核准。AI 不自己決定跳過 |
 
 ## 還沒做的
 

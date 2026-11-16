@@ -9,7 +9,7 @@
 |---|---|---|---|
 | **合約金額** | 堂數制合約講好的總學費 | `StudentClass.Charge` | 主任：合約變更（`ContractAmendmentService`，留紀錄） |
 | **單價** | 一堂（或一小時）多少錢，以**上課那天**生效的為準 | `StudentClassPricingService::forDate()` | 主任：改單價（`student_class_pricing_amendments` 留紀錄，不覆蓋舊的） |
-| **應收** | 這張帳單要收多少 | `InvoiceAmountReconciliationService::resolve()` 的 `total_amount`（存在 `Invoice.TotalAmount`） | 不能直接改數字。開錯：作廢帳單再開；第 2 步上線後用「更正帳單」 |
+| **應收** | 這張帳單要收多少 | `InvoiceAmountReconciliationService::resolve()` 的 `total_amount`。注意：`Invoice.TotalAmount` 是**存下來的原始金額**（留底用），兩個不一定相同——還沒收款的單月月結帳單，應收會照實際上課堂數重算，存的數字不會跟著改 | 不能直接改數字。開錯：作廢帳單再開；第 2 步上線後用「更正帳單」 |
 | **已收** | 這張帳單實際收到多少＝收款紀錄加總，扣掉撤銷與退費 | `Payment` 的列（`Invoice::netPaidSql()`） | 主任：登記收款、撤銷收款。每一筆都留著，不刪 |
 | **未繳** | 應收 − 已收，最小是 0 | 一張帳單：上面兩個相減。一份合約：`ContractMoneyVerdict`（`BillingPayableResolver` 的 `outstanding`） | 不能改；它是算出來的 |
 | **預估** | 月結這個月**還沒定案**前的金額＝已上堂數 × 當日單價 | `MonthlyBillingService::summarizePeriod()` | 不能改；改上課紀錄或單價它就跟著變 |
@@ -20,7 +20,7 @@
 
 1. **錢的證據是收款紀錄。** `Invoice.Status`、`Invoice.PaidAmount`、`StudentClass.Paid` 都只是記號，會過期；對不上時以收款紀錄為準（Founder Q2、R28）。
 2. **0 元帳單不是收款證據**（#3991）。真的免費要標「免費／贈送」或「全額折扣」。
-3. **已定案的帳單金額不會自己變。** 要改就走作廢或更正，留下原因和誰改的。
+3. **已定案的帳單金額不會自己變**（目標）。現在還有一個例外：上面說的「還沒收款的單月月結帳單會重算」；第 3 步（月底才定案）做完就拿掉。要改金額就走作廢或更正，留下原因和誰改的。
 4. **畫面不自己算錢。** 前端只有「建課／續課預覽」可以用 `coursePricing.js` 試算；其他一律顯示伺服器給的數字。
 
 ## 不要再用的講法
