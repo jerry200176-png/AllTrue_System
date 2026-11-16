@@ -14,6 +14,7 @@
         <div class="tw:flex tw:flex-wrap tw:gap-2" role="group" aria-label="只看">
           <FilterChip v-for="f in FILTERS" :key="f.key" :active="filter === f.key" :count="counts[f.key]" :data-testid="`roster-filter-${f.key}`" @click="filter = f.key">{{ f.label }}</FilterChip>
         </div>
+        <Button variant="outline" class="tw:min-h-11 tw:sm:ml-auto" :disabled="!visible.length" data-testid="roster-export" @click="exportCsv"><Download class="tw:size-4" aria-hidden="true" />匯出 Excel</Button>
       </div>
 
       <StatStrip>
@@ -85,7 +86,7 @@
 
 <script setup>
 import { computed, ref, watch } from 'vue';
-import { ChevronLeft, ChevronRight } from '@lucide/vue';
+import { ChevronLeft, ChevronRight, Download } from '@lucide/vue';
 import { Alert } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -146,6 +147,24 @@ function shift(step) {
   const d = new Date(year.value, month.value - 1 + step, 1);
   year.value = d.getFullYear();
   month.value = d.getMonth() + 1;
+}
+// The directors' old sheet column order (Founder 2026-11-17); the rows on screen (search and filter apply). UTF-8 BOM so Excel opens it.
+const CSV_HEADERS = ['科目', '老師', '學校', '學生', '繳費日期', '付費方式', '單價', '已上堂數', '本月預估', '這個月收到', '未繳', '收款狀態', '這個月的課'];
+const csvCell = (v) => (typeof v === 'number' ? v : `"${String(v ?? '').replace(/^([=+\-@])/, "'$1").replace(/"/g, '""')}"`); // no spreadsheet formulas from names
+function exportCsv() {
+  const rows = visible.value.flatMap((s) => s.courses.map((c) => [
+    c.subject, c.teacher_name, s.school, s.student_name,
+    c.paid_this_month.map((p) => p.date).join('、'), c.paid_this_month.map((p) => METHOD[p.method] || p.method).join('、'),
+    rateLabel(c), c.held, c.money.month_total != null && !c.money.month_invoiced ? c.money.month_total : '',
+    c.paid_this_month.reduce((n, p) => n + Number(p.amount || 0), 0), c.money.outstanding, state(c).label,
+    c.lessons.map((l) => `${md(l.date)}${l.kind === 'held' ? '' : `（${LESSON[l.kind].label}）`}`).join('、'),
+  ]));
+  const csv = '\ufeff' + [CSV_HEADERS, ...rows].map((r) => r.map(csvCell).join(',')).join('\n');
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8;' }));
+  a.download = `月對帳表_${year.value}-${String(month.value).padStart(2, '0')}.csv`;
+  a.click();
+  URL.revokeObjectURL(a.href);
 }
 function open(s, c, kind) {
   emit('open', { student_id: s.student_id, first_class_id: c.course_id }, kind ? { kind, classId: c.course_id } : { classId: c.course_id });

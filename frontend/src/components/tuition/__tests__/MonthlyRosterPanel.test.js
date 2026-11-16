@@ -102,3 +102,27 @@ it('moves across the year boundary and drops a slow reply for the month it left'
   expect(urls().at(-1)).toBe('/api/v1/accounting/monthly-roster?year=2027&month=1&branch_id=9');
   expect(wrapper.text()).toContain('這個月沒有課，也沒有要收的錢');
 });
+
+it('exports the rows on screen in the old sheet order, with formulas neutralised', async () => {
+  const blobs = [];
+  vi.stubGlobal('Blob', class { constructor(parts) { this.parts = parts; blobs.push(this); } });
+  const urlFns = { create: URL.createObjectURL, revoke: URL.revokeObjectURL };
+  URL.createObjectURL = () => 'blob:x';
+  URL.revokeObjectURL = () => {};
+  const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
+  const evil = { ...roster, data: [{ ...roster.data[0], student_name: '=HYPERLINK("x")' }] };
+  mockFetch.mockImplementation(async () => res(evil));
+  wrapper = mountIt();
+  await flushPromises();
+
+  await wrapper.get('[data-testid="roster-export"]').trigger('click');
+
+  expect(click).toHaveBeenCalledTimes(1);
+  const lines = blobs[0].parts.join('').replace(/^\ufeff/, '').split('\n');
+  expect(lines[0]).toBe('"科目","老師","學校","學生","繳費日期","付費方式","單價","已上堂數","本月預估","這個月收到","未繳","收款狀態","這個月的課"');
+  expect(lines[1]).toBe(`"數學","張翔","崇光","'=HYPERLINK(""x"")","2026-11-05","現金","NT$1,500",1,"",1500,4500,"未繳 NT$4,500","11/3、11/24（還沒上）"`);
+  expect(lines).toHaveLength(3);
+  click.mockRestore();
+  vi.unstubAllGlobals();
+  Object.assign(URL, { createObjectURL: urlFns.create, revokeObjectURL: urlFns.revoke });
+});
