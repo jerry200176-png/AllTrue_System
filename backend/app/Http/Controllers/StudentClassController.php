@@ -3883,6 +3883,11 @@ class StudentClassController extends Controller
         // explicit director choice; omitted input fails closed to pending.
         $autoApprove = array_key_exists('auto_approve', $data) ? (bool) $data['auto_approve'] : false;
         $teacherId = (int) ($data['teacher_id'] ?? $studentClass->TeacherID ?? 0);
+        if ($request->attributes->get('auth_role') === 'teacher') {
+            // 2026-11-17 route audit: a teacher may add a lesson, but it waits for a director and stays on the course's own teacher.
+            $autoApprove = false;
+            $teacherId = (int) ($studentClass->TeacherID ?? 0);
+        }
         $note = trim((string) ($data['note'] ?? ''));
 
         return DB::transaction(function () use (
