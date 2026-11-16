@@ -47,6 +47,17 @@ final class AiActivityTest extends TestCase
         Carbon::setTestNow();
     }
 
+    public function test_counts_a_token_request_refused_by_its_scope(): void
+    {
+        $admin = $this->token('S');
+        $triage = (string) $this->withToken($admin)->postJson('/api/v1/admin/triage-tokens', ['name' => 'ci'])->assertCreated()->json('token');
+        $this->flushHeaders()->withToken($triage)->getJson('/api/v1/me')->assertForbidden();
+
+        $reads = $this->flushHeaders()->withToken($admin)->getJson('/api/v1/admin/ai-activity')->assertOk()->json('data.reads');
+
+        $this->assertSame([1, 1], [$reads['total'], $reads['refused']]);
+    }
+
     public function test_is_super_admin_only_and_read_only(): void
     {
         $this->getJson('/api/v1/admin/ai-activity')->assertUnauthorized();

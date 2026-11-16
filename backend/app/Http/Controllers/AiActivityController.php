@@ -16,7 +16,8 @@ class AiActivityController extends Controller
     {
         $since = now()->subDays(self::DAYS);
         // ponytail: one month of read events aggregated in PHP; move the grouping into SQL if this passes ~50k rows.
-        $reads = DB::table('security_audit_events')->where('event_type', 'triage_token.read')
+        // A read outside the token's scope is refused by RestrictAccessTokenScope and logged as scope_denied (Codex #5409).
+        $reads = DB::table('security_audit_events')->whereIn('event_type', ['triage_token.read', 'triage_token.scope_denied'])
             ->where('occurred_at', '>=', $since)->get(['occurred_at', 'outcome', 'metadata']);
         $bySource = [];
         $byDay = [];
