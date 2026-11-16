@@ -8,7 +8,7 @@ export function hasUniformFixedSlotDuration(course) {
   if (!Number.isFinite(hours) || hours < 0.5 || !Number.isInteger(hours * 2) || minutes !== hours * 60) return false;
   if (!Array.isArray(course?.day_time_slots)) return false;
   for (let i = 1; i <= 6; i += 1) {
-    if (!(Number(course[`week${i}`]) >= 1 && Number(course[`week${i}`]) <= 7) || !course[`time${i}`]) continue;
+    if (!(Number(course[`week${i}`]) >= 1 && Number(course[`week${i}`]) <= 7) || !String(course[`time${i}`] ?? course.time ?? '')) continue;
     const raw = course[`duration${i}`];
     if (raw != null && Number(raw) !== 0 && Number(raw) !== minutes) return false;
   }

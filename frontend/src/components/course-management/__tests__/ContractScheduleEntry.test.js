@@ -35,6 +35,8 @@ describe('in-app #561/#562 date/time intent', () => {
     { SessionDuration: 91, duration_hours: 1.5, day_time_slots: [{ day: 1, duration_hours: 1.5 }] },
     { SessionDuration: 90, duration_hours: 1.5, week1: 3, time1: '20:00', duration1: 91,
       day_time_slots: [{ day: 1, duration_hours: 1.5 }, { day: 3, duration_hours: 1.5 }] },
+    { SessionDuration: 90, duration_hours: 1.5, week1: 3, time1: null, time: '20:00', duration1: 91,
+      day_time_slots: [{ day: 1, duration_hours: 1.5 }, { day: 3, duration_hours: 1.5 }] },
     { duration_hours: 2, day_time_slots: [{ day: 1, duration_hours: 2 }] },
   ])('rejects mixed or unverified fixed-slot lengths: %j', (course) => {
     expect(hasUniformFixedSlotDuration(course)).toBe(false);
