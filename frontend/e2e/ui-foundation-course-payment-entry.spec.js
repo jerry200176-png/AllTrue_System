@@ -5,6 +5,145 @@ import { LEGACY_FLAG_UNVERIFIED_HELP, REPORT_STATUS_LABELS, REVIEW_REQUIRED_LABE
 import { dismissOverlays } from './fixtures/dismissOverlays.js';
 import { expectCoursePaymentEntryOpensLedgerInPlace, recordCourseLists } from './fixtures/coursePaymentEntry.js';
 
+async function installCourseLinkMocks(page, { unavailable = false, beforeCourseListReply = async () => {}, roomCampus = 1, olderTarget = false } = {}) {
+  const target = { ...course(7101, 7201, '合成連結目標', 'paid'), payment_type: 'session', StartDate: '2026-10-03',
+    branch_id: roomCampus, student: { id: 7201, CampusID: 1, name: '合成連結目標' } };
+  const other = { ...course(7102, 7202, '合成不同學生', 'unpaid'), payment_type: 'session' };
+  const writes = [];
+  const courseQueries = [];
+  await page.route('**/*', route => ['127.0.0.1', 'localhost'].includes(new URL(route.request().url()).hostname) ? route.fallback() : route.abort());
+  await page.route('**/api/v1/**', async route => {
+    const request = route.request();
+    const url = new URL(request.url());
+    const path = url.pathname;
+    if (request.method() !== 'GET') {
+      if (request.method() === 'POST' && READ_ONLY_POSTS.has(path)) return route.fulfill({ json: { data: [] } });
+      writes.push(`${request.method()} ${path}`);
+      return route.fulfill({ status: 500, json: { message: 'unexpected write' } });
+    }
+    if (path.endsWith('/me')) return route.fulfill({ json: { id: 9001, role: 'director', name: 'E2E Director', campuses: [1], must_change_password: false, capabilities: [] } });
+    if (path.endsWith('/branches') || path.endsWith('/campuses')) return route.fulfill({ json: [{ id: 1, name: '合成分校' }] });
+    if (path === '/api/v1/student-classes') {
+      courseQueries.push(Object.fromEntries(url.searchParams));
+      await beforeCourseListReply(url);
+      const rows = unavailable ? [] : olderTarget
+        ? url.searchParams.get('course_id') === '7101' ? [target] : Array.from({ length: 50 }, (_, i) => ({ ...target, id: 8000 + i }))
+        : [other, target];
+      return route.fulfill({ json: { data: rows, total: olderTarget && !url.searchParams.has('course_id') ? 51 : rows.length,
+        current_page: 1, last_page: olderTarget && !url.searchParams.has('course_id') ? 2 : 1 } });
+    }
+    if (path === '/api/v1/students') return route.fulfill({ json: { data: [{ id: 7201, name: target.student_name }, { id: 7202, name: other.student_name }] } });
+    return route.fulfill({ json: { data: [], total: 0, unread_count: 0 } });
+  });
+  return { target, writes, courseQueries };
+}
+
+for (const width of [390, 1440]) {
+  test(`shareable course link opens the exact course, copies safely and survives reload @${width}`, async ({ page, context }, testInfo) => {
+    await context.grantPermissions(['clipboard-read', 'clipboard-write'], { origin: new URL(testInfo.project.use.baseURL).origin });
+    const { target, writes } = await installCourseLinkMocks(page, { roomCampus: width === 390 ? null : 2 });
+    await page.setViewportSize({ width, height: 900 });
+    const errors = [];
+    page.on('pageerror', error => errors.push(error.message));
+    await page.goto('/app-pilot-mount.html?app_page=course-mgmt&branch_id=1&student_id=7201&course_id=7101&unrelated=discard#private-fragment');
+    const manager = page.getByTestId('course-manager');
+    await expect(manager).toBeVisible();
+    await expect(manager.getByRole('heading', { level: 2 })).toContainText(target.student_name);
+    await expect(manager.getByRole('tab', { name: '堂次', exact: true })).toHaveAttribute('aria-selected', 'true');
+    const copy = manager.getByTestId('copy-course-link');
+    await expect(copy).toBeVisible();
+    expect((await copy.boundingBox()).height).toBeGreaterThanOrEqual(44);
+    await copy.click();
+    await expect(copy).toContainText('已複製');
+    const link = await page.evaluate(() => navigator.clipboard.readText());
+    const parsed = new URL(link);
+    expect(Object.fromEntries(parsed.searchParams)).toEqual({ app_page: 'course-mgmt', branch_id: '1', student_id: '7201', course_id: '7101' });
+    expect(parsed.hash).toBe('');
+    expect(link).not.toContain(target.student_name);
+    await page.goto(link);
+    await expect(manager.getByRole('heading', { level: 2 })).toContainText(target.student_name);
+    await page.reload();
+    await expect(manager.getByRole('heading', { level: 2 })).toContainText(target.student_name);
+    await expect(page).toHaveURL(/branch_id=1.*student_id=7201.*course_id=7101/);
+    // If the clipboard is unavailable, retain a selectable URL instead of claiming it copied.
+    await page.evaluate(() => { navigator.clipboard.writeText = async () => { throw new Error('synthetic clipboard denied'); }; });
+    await manager.getByTestId('copy-course-link').click();
+    await expect(manager.getByRole('textbox', { name: '課程連結', exact: true })).toHaveValue(link);
+    await expect(manager.getByRole('alert')).toContainText('未能複製');
+    expect(writes).toEqual([]);
+    expect(errors).toEqual([]);
+  });
+}
+
+for (const scenario of ['wrong-student', 'unavailable-course', 'outside-campus']) {
+  test(`shareable course link does not fall back to another course: ${scenario}`, async ({ page }) => {
+    const unavailable = scenario !== 'wrong-student';
+    const { writes, courseQueries } = await installCourseLinkMocks(page, { unavailable });
+    const branch = scenario === 'outside-campus' ? 2 : 1;
+    const student = scenario === 'wrong-student' ? 7202 : 7201;
+    await page.goto(`/app-pilot-mount.html?app_page=course-mgmt&branch_id=${branch}&student_id=${student}&course_id=7101`);
+    await expect(page.getByTestId('course-link-unavailable')).toContainText('無法定位指定課程');
+    await expect(page.getByTestId('course-manager')).toHaveCount(0);
+    expect(courseQueries.length).toBeGreaterThan(0);
+    if (scenario === 'outside-campus') expect(courseQueries.every(query => String(query.campus_id ?? query.branch_id) === '1')).toBe(true);
+    expect(writes).toEqual([]);
+  });
+}
+
+test('shareable course link targets an older course without scanning student pages', async ({ page }) => {
+  const { target, writes, courseQueries } = await installCourseLinkMocks(page, { olderTarget: true, roomCampus: null });
+  await page.goto('/app-pilot-mount.html?app_page=course-mgmt&branch_id=1&student_id=7201&course_id=7101');
+  await expect(page.getByTestId('course-manager').getByRole('heading', { level: 2 })).toContainText(target.student_name);
+  expect(courseQueries.some(query => query.course_id === '7101' && query.student_id === '7201' && query.campus_id === '1')).toBe(true);
+  expect(courseQueries.every(query => query.page === '1')).toBe(true);
+  expect(writes).toEqual([]);
+});
+
+for (const mismatch of ['student', 'course']) {
+  test(`shareable course link clears an already open course on a new invalid ${mismatch} intent`, async ({ page }) => {
+    const { target, writes } = await installCourseLinkMocks(page);
+    await page.goto('/app-pilot-mount.html?app_page=course-mgmt&branch_id=1&student_id=7201&course_id=7101');
+    await expect(page.getByTestId('course-manager').getByRole('heading', { level: 2 })).toContainText(target.student_name);
+    await page.evaluate(mismatch => {
+      history.pushState({}, '', `?app_page=course-mgmt&branch_id=1&student_id=${mismatch === 'student' ? 7202 : 7201}&course_id=${mismatch === 'course' ? 7999 : 7101}`);
+      window.dispatchEvent(new PopStateEvent('popstate'));
+    }, mismatch);
+    await expect(page.getByTestId('course-link-unavailable')).toContainText('無法定位指定課程');
+    await expect(page.getByTestId('course-manager')).toHaveCount(0);
+    expect(writes).toEqual([]);
+  });
+}
+
+test('shareable course link invalidates old controls while loading and ignores a late previous response', async ({ page }) => {
+  let releaseB;
+  let requestedB = false;
+  const heldB = new Promise(resolve => { releaseB = resolve; });
+  const { target, writes } = await installCourseLinkMocks(page, {
+    beforeCourseListReply: async url => {
+      if (url.searchParams.get('student_id') === '7202') { requestedB = true; await heldB; }
+    },
+  });
+  const a = '?app_page=course-mgmt&branch_id=1&student_id=7201&course_id=7101';
+  const b = '?app_page=course-mgmt&branch_id=1&student_id=7202&course_id=7102';
+  const navigate = search => page.evaluate(search => { history.pushState({}, '', search); window.dispatchEvent(new PopStateEvent('popstate')); }, search);
+  await page.goto(`/app-pilot-mount.html${a}`);
+  const manager = page.getByTestId('course-manager');
+  await expect(manager.getByRole('heading', { level: 2 })).toContainText(target.student_name);
+  await navigate(b);
+  await expect.poll(() => requestedB).toBe(true);
+  await expect(manager).toHaveCount(0);
+  await expect(page.locator('[data-contract-id="7101"]')).toHaveCount(0);
+  await navigate(a);
+  await expect(manager.getByRole('heading', { level: 2 })).toContainText(target.student_name);
+  const late = page.waitForResponse(response => new URL(response.url()).pathname === '/api/v1/student-classes'
+    && new URL(response.url()).searchParams.get('student_id') === '7202');
+  releaseB();
+  await late;
+  await expect(manager.getByRole('heading', { level: 2 })).toContainText(target.student_name);
+  await expect(page.getByTestId('course-link-unavailable')).toHaveCount(0);
+  expect(writes).toEqual([]);
+});
+
 /**
  * #4130 follow-up regression: the production acceptance checks the 課程查找 payment
  * entry through the shared expectCoursePaymentEntryOpensLedgerInPlace fixture. Run
@@ -32,6 +171,83 @@ const STATES = [
  * Any other non-GET request fails the test.
  */
 const READ_ONLY_POSTS = new Set(['/api/v1/student-classes/session-dates', '/api/v1/adoption/events']);
+
+// #5410: a paused course with teaching history must not require a temporary resume to close.
+for (const width of [390, 1440]) {
+  for (const { cancelClose, closedReason } of [
+    { cancelClose: true, closedReason: null }, { cancelClose: false, closedReason: null },
+    ...['refunded', 'usage_settled', 'unknown_future_closure'].map(closedReason => ({ cancelClose: true, closedReason })),
+  ]) {
+    test(`history-protected deletion offers the existing paused-course close, cancel=${cancelClose}, closed=${closedReason} @${width}`, async ({ page }, testInfo) => {
+      await page.setViewportSize({ width, height: 900 });
+      const target = { ...course(7101, 7201, '合成結案學生', 'unpaid'), status: 'inactive', stop: 1,
+        payment_type: 'session',
+        closed_reason: closedReason, sessions_purchased: 8, sessions_used: 5, remaining_sessions: 3,
+        UsedSessions: 5, RemainingSessions: 3 };
+      const writes = [];
+      const errors = [];
+      page.on('pageerror', error => errors.push(error.message));
+      await page.route('**/*', async route => {
+        const request = route.request();
+        const url = new URL(request.url());
+        if (url.origin !== new URL(testInfo.project.use.baseURL).origin) return route.abort();
+        if (!url.pathname.startsWith('/api/')) return route.continue();
+        const path = url.pathname;
+        if (request.method() === 'POST' && READ_ONLY_POSTS.has(path)) return route.fulfill({ json: { data: [] } });
+        if (request.method() !== 'GET') {
+          writes.push({ method: request.method(), path, body: request.postDataJSON() });
+          if (request.method() === 'DELETE' && path === '/api/v1/student-classes/7101') {
+            return route.fulfill({ status: 422, json: { code: 'course_has_history', reasons: ['sign_in', 'held_session'],
+              message: '這門課已有點名、上課或請假紀錄，不能刪除；尚未收款的費用不會自動免除。' } });
+          }
+          if (request.method() === 'POST' && path === '/api/v1/student-classes/7101/pause') {
+            target.closed_reason = 'settled_pending';
+            return route.fulfill({ json: { pending_reconciliation: true } });
+          }
+          return route.fulfill({ status: 500, json: { message: 'unexpected write' } });
+        }
+        if (path === '/api/v1/student-classes') return route.fulfill({ json: { data: [target], total: 1, current_page: 1, last_page: 1 } });
+        if (path === '/api/v1/students') return route.fulfill({ json: { data: [{ id: 7201, name: '合成結案學生' }] } });
+        return route.fulfill({ json: { data: [], total: 0 } });
+      });
+      await page.goto('/pilot-mount.html?page=course');
+      const row = page.locator('[data-contract-id="7101"]');
+      await expect(row).toBeVisible();
+      await row.locator('.action-menu-trigger').click();
+      if (closedReason) {
+        await expect(page.getByRole('menuitem', { name: '結束課程（不再續課）…', exact: true })).toHaveCount(0);
+        expect(writes).toEqual([]);
+        expect(errors).toEqual([]);
+        return;
+      }
+      // The normal menu also exposes close while merely paused.
+      await expect(page.getByRole('menuitem', { name: '結束課程（不再續課）…', exact: true })).toBeVisible();
+      await page.getByRole('menuitem', { name: '刪除課程…', exact: true }).click();
+      const deletion = page.getByTestId('delete-course-dialog');
+      await deletion.getByRole('button', { name: '刪除課程', exact: true }).click();
+      await expect(page.getByTestId('delete-course-refusal')).toContainText('點名');
+      await expect(deletion).toContainText('尚未收款的費用不會自動免除');
+      await expect(deletion.getByRole('button', { name: '刪除課程', exact: true })).toHaveCount(0);
+      await deletion.getByRole('button', { name: '結束課程（保留紀錄）', exact: true }).click();
+      const confirmation = page.getByRole('alertdialog', { name: '結束數學？', exact: true });
+      await expect(confirmation).toContainText('放棄這 3 堂剩餘額度');
+      await expect(confirmation).toContainText('不會視為已收');
+      await expect(confirmation).toContainText('已繳費與已上課紀錄仍會保留');
+      await confirmation.getByRole('button', { name: cancelClose ? '取消' : '結束課程', exact: true }).click();
+      if (!cancelClose) {
+        await expect.poll(() => writes.length).toBe(2);
+        expect(writes[1]).toEqual({ method: 'POST', path: '/api/v1/student-classes/7101/pause',
+          body: { action: 'pause', reason: 'settled', forfeit_remaining: true } });
+      }
+      expect(writes).toHaveLength(cancelClose ? 1 : 2);
+      expect(writes[0]).toMatchObject({ method: 'DELETE', path: '/api/v1/student-classes/7101' });
+      expect(writes.some(write => /resume|waive|payment|correction/.test(write.path) || write.body?.action === 'resume')).toBe(false);
+      expect(target.UsedSessions).toBe(5);
+      expect(target.charge).toBe(4000);
+      expect(errors).toEqual([]);
+    });
+  }
+}
 
 function course(id, studentId, studentName, paymentStatus, legacyFlagOnly = false) {
   return {

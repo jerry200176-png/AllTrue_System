@@ -1,0 +1,14 @@
+updates:
+  - id: staff-2026-11-17-course-history-close-entry
+    published_at: "2026-11-17"
+    audiences:
+      - director
+      - super_admin
+    importance: digest
+    title: 不再上課，可直接結束並保留紀錄
+    summary: 有點名或上課紀錄而無法刪除時，可直接進入結束課程；暫停中的課程也不用先恢復。
+    items:
+      - category: fixed
+        text: 結束前會確認剩餘堂數；既有上課與收款紀錄保留，未收款費用不會自動免除。
+    source_refs:
+      - "changelog:2026-11-17:course-history-close-entry"
