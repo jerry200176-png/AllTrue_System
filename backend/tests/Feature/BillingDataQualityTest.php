@@ -101,6 +101,9 @@ final class BillingDataQualityTest extends TestCase
         $paidGone = $this->bill($goneToo, ['TotalAmount' => 5000, 'PaidAmount' => 5000, 'Status' => 'paid', 'IssueDate' => '2026-11-10']);
         Payment::create(['InvoiceID' => $paidGone->id, 'Amount' => 5000, 'PaidAt' => '2026-11-10', 'Method' => 'cash']);
         DB::table('StudentClass')->whereIn('ID', [$gone->ID, $goneToo->ID])->delete();
+        // A bill issued with no course on its header is not a deleted course.
+        Invoice::create(['StudentID' => $ok->StudentID, 'StudentClassID' => null, 'DueDate' => '2026-11-30', 'PaidAmount' => 0,
+            'TotalAmount' => 3000, 'Status' => 'unpaid', 'IssueDate' => '2026-11-10']);
         // Receipts: one whose payment row is gone, one on a void bill, one pending for 47 days; healthy twins beside them.
         $voided = $this->bill($ok, ['TotalAmount' => 6000, 'Status' => 'void', 'IssueDate' => '2026-10-01']);
         $this->report($ok, ['status' => 'confirmed', 'InvoiceID' => $okBill->id, 'payment_id' => 999999]);
@@ -113,9 +116,10 @@ final class BillingDataQualityTest extends TestCase
         InvoiceItem::create(['InvoiceID' => $short->id, 'StudentClassID' => $ok->ID, 'Description' => 'x', 'Amount' => 5000]);
         InvoiceItem::create(['InvoiceID' => $okBill->id, 'StudentClassID' => $ok->ID, 'Description' => 'x', 'Amount' => 6000]);
         InvoiceItem::create(['InvoiceID' => $voided->id, 'StudentClassID' => $ok->ID, 'Description' => 'x', 'Amount' => 1]);
-        // Sessions: used beyond the contract counts; a contract without a session count does not.
+        // Sessions: a count contract used beyond its count counts; one without a count, or a monthly one, does not.
         $this->course(3, ['SessionCount' => 4, 'UsedSessions' => 5]);
         $this->course(3, ['SessionCount' => 0, 'UsedSessions' => 3]);
+        $this->course(3, ['ScheduleMode' => 'date', 'SessionCount' => 4, 'UsedSessions' => 5]);
 
         $data = $this->withToken($this->token('S'))->getJson('/api/v1/admin/billing-data-quality')->assertOk()->json('data');
 

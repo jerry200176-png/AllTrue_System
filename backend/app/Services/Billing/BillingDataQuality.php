@@ -64,7 +64,8 @@ final class BillingDataQuality
             'advance_monthly_bill' => ["{$monthlyBill} WHERE {$monthly} AND i.Status = 'unpaid'"
                 . ' AND EXISTS (SELECT 1 FROM InvoiceItem ii WHERE ii.InvoiceID = i.id AND ii.PeriodEnd >= ?)', [$today]],
             // The main list is built from courses, so money owed on a deleted course shows only inside one student's account.
-            'bill_course_deleted' => ["{$bill} WHERE COALESCE(i.Status, '') <> 'void' AND {$owes}"
+            // A bill issued with no course on its header (BillingController::store allows it) is not a deleted course.
+            'bill_course_deleted' => ["{$bill} WHERE COALESCE(i.Status, '') <> 'void' AND {$owes} AND COALESCE(i.StudentClassID, 0) > 0"
                 . ' AND NOT EXISTS (SELECT 1 FROM StudentClass sc WHERE sc.ID = i.StudentClassID)', []],
             'receipt_payment_missing' => ["{$report} WHERE r.status = 'confirmed'"
                 . ' AND NOT EXISTS (SELECT 1 FROM Payment p WHERE p.id = r.payment_id)', []],
@@ -74,7 +75,8 @@ final class BillingDataQuality
                 . ' AND EXISTS (SELECT 1 FROM InvoiceItem ii WHERE ii.InvoiceID = i.id)'
                 . ' AND (SELECT SUM(ii.Amount) FROM InvoiceItem ii WHERE ii.InvoiceID = i.id) <> i.TotalAmount', []],
             'sessions_over_contract' => ['FROM StudentClass sc JOIN Student s ON s.id = sc.StudentID'
-                . ' WHERE sc.SessionCount > 0 AND sc.UsedSessions > sc.SessionCount', []],
+                // Count mode only: a monthly contract bills each lesson held, so passing its planned count is normal.
+                . " WHERE COALESCE(sc.ScheduleMode, 'count') = 'count' AND sc.SessionCount > 0 AND sc.UsedSessions > sc.SessionCount", []],
             'report_pending_14_days' => ["{$report} WHERE r.status = 'pending' AND r.created_at < ?", [$pendingCutoff]],
         ];
 
