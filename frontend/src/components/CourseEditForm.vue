@@ -2,7 +2,7 @@
   <div class="course-form-wrapper">
     <p v-if="contextTitle" class="edit-context-title">{{ contextTitle }}</p>
 
-    <div v-if="packageInfo" class="package-info-banner">
+    <div v-if="packageInfo && !scheduleOnly" class="package-info-banner">
       <span class="package-info-icon">📦</span>
       <div>
         <strong>{{ packageInfo.name || '共用方案' }}</strong>
@@ -13,7 +13,7 @@
       </div>
     </div>
 
-    <div v-if="editability?.reasons?.length" class="editability-banner" role="status">
+    <div v-if="!scheduleOnly && editability?.reasons?.length" class="editability-banner" role="status">
       <strong>一般欄位仍可編輯</strong>
       <p>堂數、收款與對帳資料請依上方分流處理，避免直接改寫已發生的紀錄。</p>
     </div>
@@ -22,8 +22,10 @@
       ⚠️ {{ scopeWarning }}（仍可儲存）
     </div>
 
+    <p v-if="scheduleOnly" class="field-hint field-hint--info" data-testid="course-schedule-only">只修改之後的固定上課日與開始時間；每堂時長、總堂數、費用與收款資料沿用原設定，已點名／已核准的紀錄保留。</p>
+
     <!-- Section 1: 基本資料 -->
-    <section class="form-section">
+    <section v-if="!scheduleOnly" class="form-section">
       <h4 class="form-section-title">基本資料</h4>
       <div class="form-section-grid">
         <div class="form-group" :class="{ 'field-has-error': fieldErrors.subject }">
@@ -93,7 +95,7 @@
     </section>
 
     <!-- Section 2: 費用與繳費 -->
-    <section class="form-section">
+    <section v-if="!scheduleOnly" class="form-section">
       <h4 class="form-section-title">費用與繳費</h4>
       <p v-if="form.class_type === 'tutoring'" class="field-hint field-hint--info">參考單價供既有課務與核薪使用，不是向學生收費。延續下一期請用「延續輔導課（不收費）」。</p>
       <div class="form-section-grid">
@@ -233,6 +235,7 @@
             </label>
           </div>
           <TeacherAvailabilityPlanner
+            v-if="!scheduleOnly"
             :teacher-id="form.teacher_id"
             :teacher="selectedTeacher"
             :student-id="form.student_id"
@@ -272,6 +275,7 @@
               <input
                 type="number"
                 class="per-day-dur"
+                :disabled="scheduleOnly"
                 :aria-label="`第${idx + 1}天時數`"
                 :value="Number(slot.duration_hours ?? form.duration_hours)"
                 min="0.5"
@@ -303,7 +307,7 @@
           </div>
         </div>
 
-        <div class="form-group span-full">
+        <div v-if="!scheduleOnly" class="form-group span-full">
           <label>備註</label>
           <textarea
             v-model="form.memo"
@@ -342,6 +346,7 @@ const props = defineProps({
   timeOptions: { type: Array, default: () => [] },
   settlementDayOptions: { type: Array, default: () => [] },
   showRemaining: { type: Boolean, default: false },
+  scheduleOnly: { type: Boolean, default: false },
   studentGrade: { type: [String, Number], default: null },
   packageInfo: { type: Object, default: null },
   contextTitle: { type: String, default: '' },
@@ -444,7 +449,7 @@ const hasPerDayDuration = computed(() => {
   return new Set(vals.map((v) => v.toFixed(1))).size > 1;
 });
 const effectiveRateUnit = computed(() => {
-  if (hasPerDayDuration.value) return 'hour';
+  if (!props.scheduleOnly && hasPerDayDuration.value) return 'hour';
   return form.rate_unit === 'hour' ? 'hour' : 'session';
 });
 const teacherChanged = computed(() => {
@@ -672,6 +677,8 @@ function updateSlotDay(idx, dayVal) {
 
 function updateSlotTime(idx, nextTime) {
   const t = String(nextTime || '').slice(0, 5);
+  // Emit the first slot and legacy start together; the parent otherwise receives the old start.
+  if (idx === 0) form.start_time = t;
   form.day_time_slots = (form.day_time_slots || []).map((slot, i) => (
     i === idx ? { ...slot, start_time: t } : slot
   ));
