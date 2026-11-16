@@ -1,0 +1,104 @@
+import { mount, flushPromises } from '@vue/test-utils';
+import { afterEach, beforeEach, expect, it, vi } from 'vitest';
+import MonthlyRosterPanel from '../MonthlyRosterPanel.vue';
+
+const mockFetch = vi.fn();
+vi.mock('../../../lib/authedFetch', () => ({
+  getAccessToken: async () => 'tok',
+  authedFetch: (...a) => mockFetch(...a),
+}));
+
+const course = (id, over = {}) => ({
+  course_id: id, subject: '數學', teacher_name: '張翔', class_type: 'one_on_one', schedule_mode: 'count', rate: 1500, stopped: false,
+  lessons: [{ date: '2026-11-03', start: '10:00', kind: 'held', status: 'attended' }, { date: '2026-11-24', start: '10:00', kind: 'upcoming', status: 'scheduled' }],
+  held: 1, money: { status: 'paid', outstanding: 0, current_period: null, month_total: null, month_invoiced: false },
+  paid_this_month: [], pending_reports: 0, ...over,
+});
+const roster = {
+  data: [
+    { student_id: 1, student_name: '王小明', school: '崇光', outstanding: 4500, courses: [
+      course(11, { money: { status: 'partial', outstanding: 4500, current_period: null, month_total: null, month_invoiced: false },
+        paid_this_month: [{ date: '2026-11-05', amount: 1500, method: 'cash' }] }),
+      course(12, { subject: '英文', pending_reports: 1 }),
+    ] },
+    { student_id: 2, student_name: '李小華', school: '五峰', outstanding: 0, courses: [
+      course(21, { schedule_mode: 'date', money: { status: 'paid', outstanding: 0, current_period: '2026-11', month_total: 6000, month_invoiced: false } }),
+    ] },
+  ],
+  summary: { period: '2026-11', students: 2, courses: 3, outstanding: 4500, paid_this_month: 1500, pending_reports: 1 },
+};
+const res = (body, ok = true, status = 200) => ({ ok, status, json: async () => body });
+let wrapper;
+const mountIt = (branchId = 9) => mount(MonthlyRosterPanel, { props: { branchId } });
+const urls = () => mockFetch.mock.calls.map(([u]) => u);
+
+beforeEach(() => {
+  vi.useFakeTimers({ toFake: ['Date'] });
+  vi.setSystemTime(new Date(2026, 10, 17, 9));
+  mockFetch.mockReset();
+  mockFetch.mockImplementation(async () => res(roster));
+});
+afterEach(() => { wrapper?.unmount(); vi.useRealTimers(); });
+
+it('asks for a campus first and loads nothing without one', async () => {
+  wrapper = mountIt(null);
+  await flushPromises();
+  expect(wrapper.text()).toContain('請先選分校');
+  expect(mockFetch).not.toHaveBeenCalled();
+});
+
+it('shows each student once with every course of the month, its lessons and what it owes', async () => {
+  wrapper = mountIt();
+  await flushPromises();
+  expect(urls()[0]).toBe('/api/v1/accounting/monthly-roster?year=2026&month=11&branch_id=9');
+  expect(wrapper.find('[data-testid="roster-month"]').text()).toBe('2026 年 11 月');
+  const first = wrapper.find('[data-testid="roster-student-1"]');
+  expect(first.findAll('tr')).toHaveLength(2);
+  expect(first.text().match(/王小明/g)).toHaveLength(1);
+  const math = wrapper.find('[data-testid="roster-course-11"]');
+  expect(math.findAll('li').map((l) => l.text())).toEqual(['11/3 已上', '11/24 還沒上']);
+  expect(math.text()).toContain('未繳 NT$4,500');
+  expect(math.text()).toContain('11/5 現金 NT$1,500');
+  expect(wrapper.find('[data-testid="roster-course-12"]').text()).toContain('待確認 1 筆');
+  expect(wrapper.find('[data-testid="roster-course-21"]').text()).toContain('本月預估 NT$6,000');
+  expect(wrapper.find('[data-testid="roster-course-21"]').text()).toContain('已收齊');
+});
+
+it('opens the student ledger on the course, straight at record or confirm', async () => {
+  wrapper = mountIt();
+  await flushPromises();
+  await wrapper.find('[data-testid="roster-record-11"]').trigger('click');
+  await wrapper.find('[data-testid="roster-confirm-12"]').trigger('click');
+  await wrapper.find('[data-testid="roster-student-2"] button').trigger('click');
+  expect(wrapper.emitted('open')).toEqual([
+    [{ student_id: 1, first_class_id: 11 }, { kind: 'record', classId: 11 }],
+    [{ student_id: 1, first_class_id: 12 }, { kind: 'confirm', classId: 12 }],
+    [{ student_id: 2, first_class_id: 21 }, { classId: 21 }],
+  ]);
+});
+
+it('filters to who owes or has a receipt to confirm, and finds a student by name or course id', async () => {
+  wrapper = mountIt();
+  await flushPromises();
+  expect(wrapper.find('[data-testid="roster-filter-owing"]').text()).toContain('1');
+  await wrapper.find('[data-testid="roster-filter-owing"]').trigger('click');
+  expect(wrapper.find('[data-testid="roster-student-2"]').exists()).toBe(false);
+  await wrapper.find('[data-testid="roster-filter-all"]').trigger('click');
+  await wrapper.find('input[type="search"]').setValue('21');
+  expect(wrapper.find('[data-testid="roster-student-1"]').exists()).toBe(false);
+  expect(wrapper.find('[data-testid="roster-student-2"]').exists()).toBe(true);
+});
+
+it('moves across the year boundary and drops a slow reply for the month it left', async () => {
+  let release;
+  mockFetch.mockImplementationOnce(() => new Promise((r) => { release = () => r(res(roster)); }));
+  mockFetch.mockImplementation(async () => res({ data: [], summary: { students: 0, outstanding: 0, paid_this_month: 0, pending_reports: 0 } }));
+  wrapper = mountIt();
+  await wrapper.find('button[aria-label="下一月"]').trigger('click');
+  await wrapper.find('button[aria-label="下一月"]').trigger('click');
+  await flushPromises();
+  release();
+  await flushPromises();
+  expect(urls().at(-1)).toBe('/api/v1/accounting/monthly-roster?year=2027&month=1&branch_id=9');
+  expect(wrapper.text()).toContain('這個月沒有課，也沒有要收的錢');
+});
