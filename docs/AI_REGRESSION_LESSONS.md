@@ -1092,7 +1092,7 @@ Intake consolidation regression (2026-10-17): the oldest trusted SourceRef issue
   1. **分診**（未改 code）：`triaged` + **公開**留言（含 GitHub 連結、已看附件 id）— 見 `CHAT_BUG_SYSTEM.md` §3.7 Phase A。
   2. **上線後**（有 deployable 修復）：`resolved` + **公開**留言（請按「確認已修好／問題仍存在」）— 見 §3.7 Phase C；等 `reporter-verify` 才視為結案。
   3. 禁止只 `Closes #nnn` 而不動 in-app 狀態／留言。
-- **詳細 SOP**：`docs/CHAT_BUG_SYSTEM.md` §3.7（Claude／Cursor 同適用）。
+- **詳細 SOP**：`docs/CHAT_BUG_SYSTEM.md` §3.7（Claude／Codex 同適用）。
 
 ---
 
