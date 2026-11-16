@@ -372,7 +372,12 @@ class BillingController extends Controller
             // Founder 2026-11-16: an unmarked NT$0 bill marked paid, with no money on it and no confirmed receipt left, is an
             // old 「0 元」 登記, not a settlement: voidable like an unpaid bill (a confirmed receipt is undone first, which
             // takes the bill with it).
+            // Not a refunded bill (also NT$0 and paid, but money moved on it: its history stays), and not a package member
+            // (a package's settlement is reconciled by the receipt path, which locks the package).
+            $zeroBillCourse = StudentClass::query()->whereKey((int) $invoice->StudentClassID)->first();
             $emptyZeroBill = $invoice->zero_amount_reason === null && (int) $invoice->TotalAmount === 0
+                && $zeroBillCourse !== null && (int) ($zeroBillCourse->PackageID ?? 0) === 0
+                && !$invoice->payments()->where('Amount', '!=', 0)->exists()
                 && !PaymentReport::query()->where('InvoiceID', (int) $invoice->id)->where('status', 'confirmed')->exists();
             if ((in_array($status, ['paid', 'partial'], true) && !$freeGiftOnly && !$emptyZeroBill) || (int) ($invoice->PaidAmount ?? 0) > 0 || $netApplied > 0) {
                 return response()->json([
@@ -403,6 +408,11 @@ class BillingController extends Controller
             $free = trim(str_replace($keep, '', $note));
             $invoice->Note = implode(' ', array_filter([trim(mb_substr($free, 0, max(0, 253 - mb_strlen($audit) - mb_strlen($keep)))), $keep, $audit], fn ($p) => $p !== ''));
             $invoice->save();
+            // With its last bill gone the stale 已繳 flag would read as paid by itself and block 登記收款: clear it, as undoing
+            // a receipt does (CollectionTarget::unsettle). Only on the NT$0 path above; an unpaid bill never backed the flag.
+            if ($emptyZeroBill && $status === 'paid' && !Invoice::courseHasLiveBill((int) $zeroBillCourse->ID)) {
+                \App\Services\Billing\CollectionTarget::unsettle($zeroBillCourse, null, false);
+            }
 
             Log::info('[InvoiceVoid] invoice voided', [
                 'invoice_id' => $invoice->id,

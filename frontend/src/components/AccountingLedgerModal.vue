@@ -735,6 +735,8 @@ const ledgerExceptions = computed(() => {
   // it), then record the real amount. A bill with no receipt left is voided from the bill list below.
   (payload.value?.invoices || []).forEach((inv) => {
     if (inv.status !== 'paid' || Number(inv.total_amount) !== 0 || inv.zero_amount_reason) return;
+    // A fully refunded bill is NT$0 and paid too, but money moved on it: that is history, not a wrong 0 元 登記.
+    if ((inv.payments || []).some((p) => Number(p.amount) !== 0)) return;
     const receipt = (inv.reports || []).find((r) => r.status === 'confirmed');
     if (receipt && rows.some((row) => Number(row.report_id) === Number(receipt.report_id))) return;
     rows.push({
@@ -746,10 +748,10 @@ const ledgerExceptions = computed(() => {
       action_label: '撤銷 0 元收款',
       hint: receipt
         ? '其實有收到錢：按「撤銷 0 元收款」，這張 0 元帳單會一起作廢，再照實際金額登記收款。'
-        : '到下面「帳單」把這張 0 元帳單按「作廢」，再照實際金額登記收款。',
+        : (inv.can_direct_void ? '到下面「帳單」把這張 0 元帳單按「作廢」，再照實際金額登記收款。' : '這張 0 元帳單屬於共用方案，請回報給系統管理員處理。'),
       report_id: receipt ? receipt.report_id : null,
       can_void: !!receipt,
-      self_service: true, // the fix is a button on this screen, not a report to an administrator
+      self_service: !!receipt || !!inv.can_direct_void, // the fix is a button on this screen, not a report to an administrator
       severity: 1,
     });
   });

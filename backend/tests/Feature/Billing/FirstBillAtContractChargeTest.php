@@ -128,6 +128,20 @@ class FirstBillAtContractChargeTest extends TestCase
         $this->assertTrue($ledger['can_direct_void']);
         $this->withHeaders($h)->postJson("/api/v1/invoices/{$bare->id}/void", ['reason' => '金額登記錯誤'])->assertOk();
         $this->assertSame('void', $bare->refresh()->Status);
+        // The stale 已繳 flag goes with its last bill, so the real amount can be recorded.
+        $this->assertSame(0, (int) $sc->refresh()->Paid);
+        $this->assertSame(['unbilled', 6000], array_values($this->courseRow($sc)));
+        $this->confirmEntered($h, $sc, 6000);
+
+        // A fully refunded bill is NT$0 and paid too, but money moved on it: its history is not offered for voiding.
+        [$hr, $refunded] = $this->fixture(6000, ['Paid' => 1]);
+        $back = Invoice::create(['StudentID' => $refunded->StudentID, 'StudentClassID' => $refunded->ID, 'IssueDate' => '2026-04-20', 'TotalAmount' => 0, 'PaidAmount' => 0, 'Status' => 'paid']);
+        Payment::create(['InvoiceID' => $back->id, 'Amount' => 6000, 'PaidAt' => '2026-04-20', 'Method' => 'cash']);
+        Payment::create(['InvoiceID' => $back->id, 'Amount' => -6000, 'PaidAt' => '2026-04-25', 'Method' => 'refund']);
+        $row = collect($this->withHeaders($hr)->getJson("/api/v1/accounting/ledger?student_class_id={$refunded->ID}")->assertOk()->json('invoices'))->firstWhere('id', $back->id);
+        $this->assertFalse($row['can_direct_void']);
+        $this->withHeaders($hr)->postJson("/api/v1/invoices/{$back->id}/void", ['reason' => '金額登記錯誤'])->assertStatus(422);
+        $this->assertSame(1, (int) $refunded->refresh()->Paid);
 
         // Marked 免費／贈送: NT$0 by decision. Undoing its receipt leaves the bill.
         [$h2, $free] = $this->fixture(6000, ['Paid' => 1]);

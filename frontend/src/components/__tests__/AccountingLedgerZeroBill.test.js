@@ -25,13 +25,15 @@ describe('學生帳務 · 0 元卻標成已繳的帳單', () => {
   });
 
   it('points at 作廢 when no receipt is left, and says nothing about a marked or a real bill', async () => {
-    const bare = await mountLedger([bill({})]);
+    const bare = await mountLedger([bill({ can_direct_void: true })]);
     expect(bare.text()).toContain('這張帳單是 0 元，卻標成已繳');
     expect(bare.get('[data-testid="ledger-exception-hint"]').text()).toContain('按「作廢」');
     expect(bare.text()).not.toContain('撤銷 0 元收款');
     expect(bare.find('[data-testid="ledger-exception-report"]').exists()).toBe(false);
 
-    const fine = await mountLedger([bill({ zero_amount_reason: 'free_gift' }), bill({ id: 8, total_amount: 6000, paid_amount: 6000 })]);
+    // Marked free, an ordinary paid bill, and a fully refunded one (NT$0 after money moved both ways): none is a wrong 0 元 登記.
+    const fine = await mountLedger([bill({ zero_amount_reason: 'free_gift' }), bill({ id: 8, total_amount: 6000, paid_amount: 6000 }),
+      bill({ id: 9, payments: [{ id: 1, amount: 6000 }, { id: 2, amount: -6000 }], reports: [{ report_id: 5, status: 'confirmed' }] })]);
     expect(fine.text()).not.toContain('這張帳單是 0 元，卻標成已繳');
   });
 });
