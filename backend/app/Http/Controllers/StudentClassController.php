@@ -2184,6 +2184,8 @@ class StudentClassController extends Controller
             // on it yet (not paid, no live bill, no payment report, not a shared-package member): the fee follows to 0,
             // as amount = price x quantity does everywhere else. With money on it the fee stays; that is a correction.
             if ($newCharge === null && isset($mapped['Rate']) && $oldRateSnapshot > 0 && (float) $studentClass->Rate <= 0 && $oldChargeSnapshot > 0
+                // Money evidence as it was under the lock (an edit cannot un-pay and zero the fee in one request), incl. the legacy columns.
+                && (int) ($lockedCourse->Paid ?? 0) !== 1 && (int) ($lockedCourse->Pay ?? 0) <= 0 && empty($lockedCourse->PayDate)
                 && (int) ($studentClass->Paid ?? 0) !== 1 && !$studentClass->isPartOfPackage()
                 && !Invoice::courseHasLiveBill((int) $studentClass->getKey())
                 // A bill can name the course only on a line (package / sibling bills): that is a bill too.

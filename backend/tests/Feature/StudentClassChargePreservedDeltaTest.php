@@ -132,7 +132,7 @@ class StudentClassChargePreservedDeltaTest extends TestCase
         $sc = $this->createStudentClass($student->id, ['Rate' => 1800, 'rate_unit' => 'session', 'SessionCount' => 8, 'Charge' => 14400, 'Paid' => 0]);
         \App\Models\Invoice::create(['StudentID' => $student->id, 'StudentClassID' => $sc->ID, 'IssueDate' => now()->toDateString(), 'TotalAmount' => 14400, 'PaidAmount' => 0, 'Status' => 'unpaid']);
 
-        $this->putJson("/api/v1/student-classes/{$sc->ID}", ['rate_per_30min' => 0], ['Authorization' => "Bearer {$token}"]);
+        $this->putJson("/api/v1/student-classes/{$sc->ID}", ['rate_per_30min' => 0], ['Authorization' => "Bearer {$token}"])->assertOk();
 
         $this->assertSame(14400, (int) $sc->fresh()->Charge);
     }
@@ -147,7 +147,7 @@ class StudentClassChargePreservedDeltaTest extends TestCase
         $bill = \App\Models\Invoice::create(['StudentID' => $student->id, 'StudentClassID' => $sibling->ID, 'IssueDate' => now()->toDateString(), 'TotalAmount' => 28800, 'PaidAmount' => 0, 'Status' => 'unpaid']);
         \App\Models\InvoiceItem::create(['InvoiceID' => $bill->id, 'StudentClassID' => $sc->ID, 'Description' => 'x', 'Amount' => 14400]);
 
-        $this->putJson("/api/v1/student-classes/{$sc->ID}", ['rate_per_30min' => 0], ['Authorization' => "Bearer {$token}"]);
+        $this->putJson("/api/v1/student-classes/{$sc->ID}", ['rate_per_30min' => 0], ['Authorization' => "Bearer {$token}"])->assertOk();
 
         $this->assertSame(14400, (int) $sc->fresh()->Charge);
     }
