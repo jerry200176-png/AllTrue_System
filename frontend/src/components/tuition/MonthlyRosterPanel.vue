@@ -65,7 +65,7 @@
                 </ul>
                 <span :class="t.sub">已上 {{ c.held }} 堂</span>
               </TableCell>
-              <TableCell :class="[t.num, t.phoneHide]">{{ c.rate ? money(c.rate) : '—' }}</TableCell>
+              <TableCell :class="[t.num, t.phoneHide]">{{ rateLabel(c) }}</TableCell>
               <TableCell :class="[t.cell, 'tw:pr-5 tw:whitespace-normal']">
                 <div class="tw:flex tw:flex-wrap tw:items-center tw:gap-2">
                   <StatusBadge :tone="state(c).tone">{{ state(c).label }}</StatusBadge>
@@ -98,6 +98,9 @@ const props = defineProps({ branchId: { type: [Number, String], default: null } 
 const emit = defineEmits(['open']);
 
 const FILTERS = [{ key: 'all', label: '全部' }, { key: 'owing', label: '未繳' }, { key: 'pending', label: '待確認入帳' }];
+// The payment slip's price; null = no price set, or it changed inside this month (the student ledger has both).
+const rateLabel = (c) => (c.rate ? `${money(c.rate)}${c.rate_unit === 'hour' ? '／小時' : ''}` : '—');
+
 const LESSON = {
   held: { label: '已上', cls: 'tw:bg-secondary tw:text-foreground' },
   upcoming: { label: '還沒上', cls: 'tw:border tw:border-dashed tw:border-[var(--tpl-line)] tw:text-tpl-secondary' },
@@ -117,7 +120,7 @@ const error = ref('');
 const campusId = computed(() => (props.branchId == null || props.branchId === '' ? null : Number(props.branchId)));
 let seq = 0; // only the newest request may write: a slow reply for another month or campus is dropped
 
-const money = (n) => `NT$${Number(n || 0).toLocaleString('en-US')}`;
+const money = (n) => `${n < 0 ? '−' : ''}NT$${Math.abs(Number(n || 0)).toLocaleString('en-US')}`;
 const md = (d) => `${Number(d.slice(5, 7))}/${Number(d.slice(8, 10))}`;
 const lessonLine = (c) => (c.lessons.length ? `${c.lessons.map((l) => md(l.date)).join('、')}（已上 ${c.held}）` : '沒有排課');
 function state(c) {
