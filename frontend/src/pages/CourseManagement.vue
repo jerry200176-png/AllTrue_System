@@ -1505,6 +1505,7 @@ import {
   editabilityFieldLabel,
   editabilityNextStepForError,
   editabilityNextStepLabel,
+  hasUniformFixedSlotDuration,
 } from '../lib/courseEditability';
 import { useCourseSessionsDisplay } from '../composables/course-management/useCourseSessionsDisplay';
 import { useMonthlyAttendanceSummary } from '../composables/course-management/useMonthlyAttendanceSummary';
@@ -2341,7 +2342,7 @@ function handleSchedulerDuplicateCM(evt) {
 const showEditModal = ref(false);
 const editScheduleOnly = ref(false);
 const isLaravelCourse = (c) => Boolean(c && (c.data_source === 'laravel' || c.branch_name != null || c.room_name != null || c.settlement_day != null));
-const canEditPaidFixedSchedule = (c) => isLaravelCourse(c) && isSessionMode(c) && !isManualOccurrenceCourse(c) && c.legacy_paid_flag_only !== true && c.payment_status === 'paid';
+const canEditPaidFixedSchedule = (c) => isLaravelCourse(c) && isSessionMode(c) && !isManualOccurrenceCourse(c) && c.legacy_paid_flag_only !== true && c.payment_status === 'paid' && hasUniformFixedSlotDuration(c);
 const editingId = ref(null);
 const editingCourseFromLaravel = ref(false);
 const editingCourseRaw = ref(null);

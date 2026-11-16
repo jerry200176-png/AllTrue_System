@@ -11,6 +11,6 @@ updates:
       - category: improved
         text: 在合約／堂次調整選「調整單堂日期／時間」，再選要調整的那一堂。
       - category: improved
-        text: 已確認收款的自動排課堂數制課程，可改之後固定時段；時長、堂數與收款紀錄保留。
+        text: 已確認收款、同堂長的自動排課堂數制課程，可改之後固定時段；時長、堂數與收款紀錄保留。
     source_refs:
       - "changelog:2026-11-16:paid-course-schedule-entry"

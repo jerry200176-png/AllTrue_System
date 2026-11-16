@@ -130,6 +130,19 @@ for (const width of [375, 1280]) {
       await expect(page.getByTestId('course-schedule-only')).toHaveCount(0);
       await expect(page.locator('.course-form-wrapper')).toContainText('費用與繳費');
     }
+    // A mixed 2h/1h cadence cannot promise unchanged lesson lengths after remapping weekdays.
+    course.days_of_week = [3, 5];
+    course.day_time_slots.push({ day: 5, start_time: '20:00', duration_hours: 1 });
+    await page.reload();
+    await expect(page.locator('html')).toHaveAttribute('data-pilot-ready', '1');
+    await dismissOverlays(page);
+    if (managerEnabled) {
+      await page.getByTestId('course-manager-open').click();
+      await page.getByRole('tab', { name: '帳務', exact: true }).click();
+    }
+    await openAdjust();
+    await expect(page.getByTestId('contract-adjust-fixed-schedule')).toHaveCount(0);
+    await expect(page.getByTestId('contract-adjust-schedule')).toBeVisible();
     expect(pageErrors).toEqual([]);
   });
 }
