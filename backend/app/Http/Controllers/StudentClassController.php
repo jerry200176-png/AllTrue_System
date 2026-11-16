@@ -2180,6 +2180,15 @@ class StudentClassController extends Controller
                 $newBase = (int) round((float) $studentClass->Rate * (int) $studentClass->SessionCount);
             }
             $newCharge = StudentClass::chargeAfterChange((int) $studentClass->getKey(), $oldChargeSnapshot, $oldBase, $newBase);
+            // in-app #551 (Founder 2026-11-16, choice A): the unit price was changed to 0 on a contract with no money
+            // on it yet (not paid, no live bill, no payment report, not a shared-package member): the fee follows to 0,
+            // as amount = price x quantity does everywhere else. With money on it the fee stays; that is a correction.
+            if ($newCharge === null && isset($mapped['Rate']) && $oldRateSnapshot > 0 && (float) $studentClass->Rate <= 0 && $oldChargeSnapshot > 0
+                && (int) ($studentClass->Paid ?? 0) !== 1 && !$studentClass->isPartOfPackage()
+                && !Invoice::courseHasLiveBill((int) $studentClass->getKey())
+                && !\App\Models\PaymentReport::query()->where('StudentClassID', (int) $studentClass->getKey())->whereIn('status', ['pending', 'confirmed'])->exists()) {
+                $newCharge = 0;
+            }
             if ($newCharge !== null) {
                 $studentClass->update(['Charge' => $newCharge]);
                 $studentClass->refresh();

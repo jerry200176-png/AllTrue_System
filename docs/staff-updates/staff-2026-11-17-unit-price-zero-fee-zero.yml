@@ -1,0 +1,14 @@
+updates:
+  - id: staff-2026-11-17-unit-price-zero-fee-zero
+    published_at: "2026-11-17"
+    audiences:
+      - director
+      - super_admin
+    importance: digest
+    title: 單價改成零，合約金額跟著歸零
+    summary: 還沒收錢也沒開帳單的合約，把單價改成零之後，合約金額會一起變成零。
+    items:
+      - category: fixed
+        text: 課程編輯把單價改成零時，還沒收錢、沒開帳單的合約金額會跟著歸零；已收款或已開帳單的合約不受影響。
+    source_refs:
+      - "changelog:2026-11-17:unit-price-zero-fee-zero"

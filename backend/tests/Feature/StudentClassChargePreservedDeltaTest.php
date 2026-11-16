@@ -112,6 +112,31 @@ class StudentClassChargePreservedDeltaTest extends TestCase
 
     // ── Helpers（對齊 StudentClassPaidStatusTest，避免 NOT NULL 地雷）──
 
+    /** in-app #551: unit price set to 0 on a contract with no money on it yet → the fee follows to 0. */
+    public function test_unit_price_zero_makes_an_unpaid_unbilled_contract_fee_zero(): void
+    {
+        $token = $this->createDirectorToken([1]);
+        $sc = $this->createStudentClass($this->createStudent()->id, ['Rate' => 1800, 'rate_unit' => 'session', 'SessionCount' => 8, 'Charge' => 14400, 'Paid' => 0]);
+
+        $this->putJson("/api/v1/student-classes/{$sc->ID}", ['rate_per_30min' => 0], ['Authorization' => "Bearer {$token}"])->assertOk();
+
+        $sc->refresh();
+        $this->assertSame([0, 0], [(int) $sc->Rate, (int) $sc->Charge]);
+    }
+
+    /** With a live bill on it the fee stays: changing what was billed is a correction, never a side effect of an edit. */
+    public function test_unit_price_zero_leaves_the_fee_when_the_contract_has_a_bill(): void
+    {
+        $token = $this->createDirectorToken([1]);
+        $student = $this->createStudent();
+        $sc = $this->createStudentClass($student->id, ['Rate' => 1800, 'rate_unit' => 'session', 'SessionCount' => 8, 'Charge' => 14400, 'Paid' => 0]);
+        \App\Models\Invoice::create(['StudentID' => $student->id, 'StudentClassID' => $sc->ID, 'IssueDate' => now()->toDateString(), 'TotalAmount' => 14400, 'PaidAmount' => 0, 'Status' => 'unpaid']);
+
+        $this->putJson("/api/v1/student-classes/{$sc->ID}", ['rate_per_30min' => 0], ['Authorization' => "Bearer {$token}"]);
+
+        $this->assertSame(14400, (int) $sc->fresh()->Charge);
+    }
+
     private function createDirectorToken(array $campusIds): string
     {
         $user = User::create([
