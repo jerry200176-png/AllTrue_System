@@ -1,4 +1,6 @@
 ---
+
+**F7／R7：時長與計價數量必須一起驗（#5379，2026-11-16）**：`SessionDuration` 已更新不代表 `TotalHours` 已同步。未開單、未收款／上課的堂數制小時計費編輯，沿用 `ContractRenewal::plannedBatchHours` 的實際混合時長規劃與既有捨入，再交回 `chargeAfterChange`；不可只重算繳費單。測試須含僅改時長、重存既有錯配、改堂數、混合時長、手動差額及他校拒絕。既有帳單／回報／使用紀錄、月結與共用方案不以這個修復追溯改價；B3 小數時數仍另列原計畫。
 owner: jerry (CEO)
 review_cycle: quarterly
 last_reviewed: 2026-09-05

@@ -711,7 +711,8 @@ final class ContractRenewal
      *
      * @param list<array<string, mixed>> $slots
      */
-    private function plannedBatchHours(StudentClass $course, string $planStart, int $sessions, array $slots, int $globalDur): int
+    /** Shared count-course plan quantity; keeps the existing whole-hour rounding. */
+    public function plannedBatchHours(StudentClass $course, string $planStart, int $sessions, array $slots, int $globalDur): int
     {
         $built = ContractSessionSchedule::buildSessionsForCount((int) $course->ID, $planStart, $sessions, $slots, $globalDur);
         if ($built === []) {

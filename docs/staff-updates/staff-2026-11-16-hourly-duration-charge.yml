@@ -1,0 +1,16 @@
+updates:
+  - id: staff-2026-11-16-hourly-duration-charge
+    published_at: "2026-11-16"
+    audiences:
+      - director
+      - super_admin
+    importance: digest
+    title: 小時計費改堂長時同步更新費用
+    summary: 尚未開單或上課的堂數制課程，修改時長或堂數時會一併更新計價時數。
+    items:
+      - category: fixed
+        text: 例如每小時 1,200、1 堂改成 2 小時，儲存後會按 2 小時計算為 2,400。
+      - category: improved
+        text: 已有帳單、收款或上課紀錄的課程仍保留原紀錄，需沿用既有帳務更正流程。
+    source_refs:
+      - "changelog:2026-11-16:hourly-duration-charge"
