@@ -69,7 +69,8 @@ final class BillingDataQualityTest extends TestCase
 
         $data = $this->withToken($this->token('S'))->getJson('/api/v1/admin/billing-data-quality')->assertOk()->json('data');
 
-        $this->assertSame(['zero_paid_bill', 'unpaid_over_60_days', 'ended_money_pending', 'paid_flag_vs_bill', 'monthly_bill_without_month', 'advance_monthly_bill'],
+        $this->assertSame(['zero_paid_bill', 'unpaid_over_60_days', 'ended_money_pending', 'paid_flag_vs_bill', 'monthly_bill_without_month', 'advance_monthly_bill',
+            'bill_course_deleted', 'receipt_payment_missing', 'receipt_on_void_bill', 'items_not_total', 'sessions_over_contract', 'report_pending_14_days'],
             array_column($data['rules'], 'key'));
         $byCampus = collect($data['campuses'])->keyBy('campus_id');
         $this->assertSame([1, 1, 1, 0, 0], array_values(array_intersect_key($byCampus[1]['counts'],
@@ -85,6 +86,43 @@ final class BillingDataQualityTest extends TestCase
         $body = (string) json_encode($data, JSON_UNESCAPED_UNICODE);
         $this->assertStringNotContainsString('品質學生', $body);
         $this->assertStringNotContainsString('8800', $body);
+    }
+
+    /** 2026-11-17 census rules: broken links and to-dos nobody picked up; the healthy twin of each is left out. */
+    public function test_counts_broken_links_and_stale_to_dos(): void
+    {
+        $ok = $this->course(3);
+        $okBill = $this->bill($ok, ['TotalAmount' => 6000, 'PaidAmount' => 6000, 'Status' => 'paid', 'IssueDate' => '2026-11-01']);
+        $okPay = Payment::create(['InvoiceID' => $okBill->id, 'Amount' => 6000, 'PaidAt' => '2026-11-01', 'Method' => 'cash']);
+        // Course deleted: the unpaid bill counts, the paid one is history.
+        $gone = $this->course(3);
+        $this->bill($gone, ['TotalAmount' => 5000, 'Status' => 'unpaid', 'IssueDate' => '2026-11-10']);
+        $goneToo = $this->course(3);
+        $paidGone = $this->bill($goneToo, ['TotalAmount' => 5000, 'PaidAmount' => 5000, 'Status' => 'paid', 'IssueDate' => '2026-11-10']);
+        Payment::create(['InvoiceID' => $paidGone->id, 'Amount' => 5000, 'PaidAt' => '2026-11-10', 'Method' => 'cash']);
+        DB::table('StudentClass')->whereIn('ID', [$gone->ID, $goneToo->ID])->delete();
+        // Receipts: one whose payment row is gone, one on a void bill, one pending for 47 days; healthy twins beside them.
+        $voided = $this->bill($ok, ['TotalAmount' => 6000, 'Status' => 'void', 'IssueDate' => '2026-10-01']);
+        $this->report($ok, ['status' => 'confirmed', 'InvoiceID' => $okBill->id, 'payment_id' => 999999]);
+        $this->report($ok, ['status' => 'confirmed', 'InvoiceID' => $voided->id, 'payment_id' => $okPay->id]);
+        $this->report($ok, ['status' => 'confirmed', 'InvoiceID' => $okBill->id, 'payment_id' => $okPay->id]);
+        $this->report($ok, ['status' => 'pending', 'InvoiceID' => $okBill->id, 'created_at' => '2026-10-01 10:00:00']);
+        $this->report($ok, ['status' => 'pending', 'InvoiceID' => $okBill->id, 'created_at' => '2026-11-16 10:00:00']);
+        // Item lines: a live bill whose lines do not add up counts; a matching one and a void one do not.
+        $short = $this->bill($ok, ['TotalAmount' => 6000, 'Status' => 'unpaid', 'IssueDate' => '2026-11-12']);
+        InvoiceItem::create(['InvoiceID' => $short->id, 'StudentClassID' => $ok->ID, 'Description' => 'x', 'Amount' => 5000]);
+        InvoiceItem::create(['InvoiceID' => $okBill->id, 'StudentClassID' => $ok->ID, 'Description' => 'x', 'Amount' => 6000]);
+        InvoiceItem::create(['InvoiceID' => $voided->id, 'StudentClassID' => $ok->ID, 'Description' => 'x', 'Amount' => 1]);
+        // Sessions: used beyond the contract counts; a contract without a session count does not.
+        $this->course(3, ['SessionCount' => 4, 'UsedSessions' => 5]);
+        $this->course(3, ['SessionCount' => 0, 'UsedSessions' => 3]);
+
+        $data = $this->withToken($this->token('S'))->getJson('/api/v1/admin/billing-data-quality')->assertOk()->json('data');
+
+        $counts = collect($data['campuses'])->keyBy('campus_id')[3]['counts'];
+        $keys = ['bill_course_deleted', 'receipt_payment_missing', 'receipt_on_void_bill', 'items_not_total', 'sessions_over_contract', 'report_pending_14_days'];
+        $this->assertCount(6, $keys);
+        $this->assertSame(array_fill_keys($keys, 1), array_intersect_key($counts, array_flip($keys)));
     }
 
     public function test_is_super_admin_only_and_read_only(): void
@@ -110,6 +148,14 @@ final class BillingDataQualityTest extends TestCase
     private function bill(StudentClass $course, array $overrides): Invoice
     {
         return Invoice::create(array_merge(['StudentID' => $course->StudentID, 'StudentClassID' => $course->ID, 'DueDate' => '2026-11-30', 'PaidAmount' => 0], $overrides));
+    }
+
+    private function report(StudentClass $course, array $overrides): void
+    {
+        DB::table('payment_reports')->insert(array_merge(['StudentID' => $course->StudentID, 'StudentClassID' => $course->ID,
+            'reported_by_name' => 'p', 'payment_date' => '2026-11-01', 'payment_method' => 'cash', 'reported_amount' => 6000,
+            'status' => 'confirmed', 'report_token_hash' => bin2hex(random_bytes(32)), 'token_expires_at' => now()->addDay(),
+            'created_at' => now(), 'updated_at' => now()], $overrides));
     }
 
     private function token(string $type): string

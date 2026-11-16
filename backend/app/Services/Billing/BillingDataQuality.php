@@ -22,6 +22,13 @@ final class BillingDataQuality
         'paid_flag_vs_bill' => '「已繳」標記和帳單對不上的合約',
         'monthly_bill_without_month' => '沒有所屬月份的月結帳單',
         'advance_monthly_bill' => '期間還沒結束就先開的月結帳單（未繳）',
+        // 2026-11-17 census (學生帳務整理與資料治理計畫 §2): links that broke and to-dos nobody picked up.
+        'bill_course_deleted' => '課程已刪除、還沒收齊的帳單',
+        'receipt_payment_missing' => '已確認的收據，收款紀錄不見了',
+        'receipt_on_void_bill' => '還有效的收據，帳單卻已作廢',
+        'items_not_total' => '明細合計和應收對不上的帳單',
+        'sessions_over_contract' => '已上堂數超過合約堂數的合約',
+        'report_pending_14_days' => '待確認入帳超過 14 天的收據',
     ];
 
     /**
@@ -32,6 +39,8 @@ final class BillingDataQuality
     {
         $today = now('Asia/Taipei')->toDateString();
         $cutoff = now('Asia/Taipei')->subDays(60)->toDateString();
+        $pendingCutoff = now('Asia/Taipei')->subDays(14)->toDateTimeString();
+        $report = 'FROM payment_reports r JOIN Student s ON s.id = r.StudentID';
         $bill = 'FROM Invoice i JOIN Student s ON s.id = i.StudentID';
         $monthlyBill = $bill . ' JOIN StudentClass sc ON sc.ID = i.StudentClassID';
         // Payment rows are the truth (Founder Q2, R28), never a stored Status or closure flag.
@@ -54,6 +63,19 @@ final class BillingDataQuality
             // Root cause A of the rework: a bill issued before its period was over, still unpaid.
             'advance_monthly_bill' => ["{$monthlyBill} WHERE {$monthly} AND i.Status = 'unpaid'"
                 . ' AND EXISTS (SELECT 1 FROM InvoiceItem ii WHERE ii.InvoiceID = i.id AND ii.PeriodEnd >= ?)', [$today]],
+            // The main list is built from courses, so money owed on a deleted course shows only inside one student's account.
+            'bill_course_deleted' => ["{$bill} WHERE COALESCE(i.Status, '') <> 'void' AND {$owes}"
+                . ' AND NOT EXISTS (SELECT 1 FROM StudentClass sc WHERE sc.ID = i.StudentClassID)', []],
+            'receipt_payment_missing' => ["{$report} WHERE r.status = 'confirmed'"
+                . ' AND NOT EXISTS (SELECT 1 FROM Payment p WHERE p.id = r.payment_id)', []],
+            'receipt_on_void_bill' => ["{$report} WHERE r.status = 'confirmed'"
+                . " AND EXISTS (SELECT 1 FROM Invoice i WHERE i.id = r.InvoiceID AND i.Status = 'void')", []],
+            'items_not_total' => ["{$bill} WHERE COALESCE(i.Status, '') <> 'void'"
+                . ' AND EXISTS (SELECT 1 FROM InvoiceItem ii WHERE ii.InvoiceID = i.id)'
+                . ' AND (SELECT SUM(ii.Amount) FROM InvoiceItem ii WHERE ii.InvoiceID = i.id) <> i.TotalAmount', []],
+            'sessions_over_contract' => ['FROM StudentClass sc JOIN Student s ON s.id = sc.StudentID'
+                . ' WHERE sc.SessionCount > 0 AND sc.UsedSessions > sc.SessionCount', []],
+            'report_pending_14_days' => ["{$report} WHERE r.status = 'pending' AND r.created_at < ?", [$pendingCutoff]],
         ];
 
         $zero = array_fill_keys(array_keys(self::RULES), 0);
