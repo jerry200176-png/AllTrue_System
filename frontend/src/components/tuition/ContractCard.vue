@@ -497,7 +497,7 @@ onMounted(() => { if (props.autoConfirm && props.pendingReport) openConfirm(); }
 .contract__line{display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px}
 .contract__toggle{display:inline-flex;align-items:baseline;gap:6px;max-width:100%;border:0;background:transparent;padding:4px 0;text-align:left;cursor:pointer;color:inherit;font:inherit}
 .contract__leftline{font-size:var(--ds-font-size-sm);color:var(--ds-ink-mute);white-space:nowrap}
-.contract__warn{margin:0;font-size:var(--ds-font-size-sm);font-weight:600;color:var(--ds-warning)}
+.contract__warn{margin:0;font-size:var(--ds-font-size-sm);font-weight:600;color:var(--ds-warning-text)}
 .contract__body{display:grid;gap:10px}
 .contract__excel{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:10px 12px;border:1px solid var(--ds-border);border-radius:8px;background:var(--ds-canvas-soft)}
 .contract__pay{display:grid;gap:2px;min-width:0}
@@ -532,11 +532,11 @@ onMounted(() => { if (props.autoConfirm && props.pendingReport) openConfirm(); }
 .contract__time{min-width:44px;color:var(--ds-ink-mute);font-variant-numeric:tabular-nums}
 .contract__num{font-size:12px;font-weight:700;font-variant-numeric:tabular-nums}
 .contract__chip{display:inline-flex;border-radius:6px;padding:1px 7px;font-size:12px;font-weight:700;background:var(--ds-canvas-soft);color:var(--ds-ink-mute)}
-.contract__chip.pay-paid{background:none;color:var(--ds-success);padding:1px 0;font-weight:600}
-.contract__chip.tone-done{background:var(--ds-success-wash);color:var(--ds-success)}
-.contract__chip.tone-warn,.contract__chip.pay-partial{background:var(--ds-warning-wash);color:var(--ds-warning)}
-.contract__chip.pay-unpaid{background:var(--ds-danger-wash);color:var(--ds-danger)}
+.contract__chip.pay-paid{background:none;color:var(--ds-success-text);padding:1px 0;font-weight:600}
+.contract__chip.tone-done{background:var(--ds-success-wash);color:var(--ds-success-text)}
+.contract__chip.tone-warn,.contract__chip.pay-partial{background:var(--ds-warning-wash);color:var(--ds-warning-text)}
+.contract__chip.pay-unpaid{background:var(--ds-danger-wash);color:var(--ds-danger-text)}
 .contract__muted{margin:0;font-size:13px;color:var(--ds-ink-mute)}
-.contract__error{margin:0;font-size:13px;color:var(--ds-danger)}
+.contract__error{margin:0;font-size:13px;color:var(--ds-danger-text)}
 .contract__link{border:0;background:transparent;color:var(--ds-primary-text);font-size:13px;font-weight:600;cursor:pointer;padding:0;justify-self:start}
 </style>

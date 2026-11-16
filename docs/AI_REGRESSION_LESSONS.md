@@ -1929,3 +1929,4 @@ Intake consolidation regression (2026-10-17): the oldest trusted SourceRef issue
 
 - **現象**：同一天有三個測試在空清單上通過、共用元件改動漏列使用者、對話框搬進共用 Dialog 後層級／焦點錯誤；每次都靠協調者臨時在任務說明裡重複交代。
 - **強制規則**：實作者的通用做法（起手、測試、UI 證據、共用元件使用者清單、巢狀對話框檢查）只寫在 [`docs/agents/IMPLEMENTER_BRIEF.md`](agents/IMPLEMENTER_BRIEF.md)，協調者的檢查表在 [`docs/agents/orchestration.md`](agents/orchestration.md)；本檔不重複條文。新的實作者踩坑，先補那兩份檔，再在這裡記一條指向它們的紀錄。
+- **2026-11-17 實例（in-app #564）**：帳務卡片改呈現排序時，定位仍用舊首列判斷，選中課程移後會跳過捲動。`AccountingLedgerContractOrder.test.js` 與實際 viewport 回歸涵蓋「舊首列移到末列」；共用方案收款主卡與批次分配仍讀原有集合。此為上述 UI 任務證據與共用使用者檢查的案例。

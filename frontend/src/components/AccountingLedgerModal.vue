@@ -91,10 +91,11 @@
 
           <section v-if="contractCourses.length" class="ledger-section">
             <h4>合約（每一堂課與付款）</h4>
+            <p class="ledger-muted">未繳優先；同科依合約開課日由新到舊</p>
             <AtHelpDisclosure v-if="contractCourses.some(hasMultiplePackageBills)" label="共用方案" data-testid="ledger-package-batch-note"><p>共用方案有多門課的帳單待收，請從要處理的課程卡「登記這筆」；不加入下方批次收款。</p></AtHelpDisclosure>
             <div class="ledger-contracts">
               <ContractCard
-                v-for="c in contractCourses"
+                v-for="c in displayContractCourses"
                 :key="c.id"
                 :course="c"
                 :focused="isOpenedCourse(c)"
@@ -656,8 +657,8 @@ watch(() => [props.show, props.studentClassId, props.reportId, props.studentId, 
 // #3987: a student-wide launch passes an arbitrary first course only to load the ledger; it is not a course scope.
 const isOpenedCourse = (c) => !props.studentWide && Number(props.studentClassId || 0) > 0 && Number(c?.id) === Number(props.studentClassId);
 function scrollToOpenedContract() {
-  if (props.studentWide || !Number(props.studentClassId || 0) || contractCourses.value.length < 2) return;
-  if (isOpenedCourse(contractCourses.value[0])) return;
+  if (props.studentWide || !Number(props.studentClassId || 0) || displayContractCourses.value.length < 2) return;
+  if (isOpenedCourse(displayContractCourses.value[0])) return;
   const card = modalEl.value?.querySelector(`[data-testid="contract-card-${Number(props.studentClassId)}"]`);
   card?.scrollIntoView?.({ block: 'start' });
 }
@@ -888,6 +889,14 @@ const rateNoteFor = (inv) => {
 };
 // Contracts with money still due come first (PRD v2 §0.3).
 const contractCourses = computed(() => [...(payload.value?.courses || [])].sort((a, b) => owedFor(b.id) - owedFor(a.id)));
+// in-app564: presentation order must not choose a different shared-package payment lead.
+const subjectOrder = new Intl.Collator('zh-Hant', { numeric: true });
+const contractOrderDate = (c) => /^\d{4}-\d{2}-\d{2}(?:$|[ T])/.test(String(c.start_date || '')) ? String(c.start_date).slice(0, 10) : '';
+const displayContractCourses = computed(() => [...contractCourses.value].sort((a, b) =>
+  Number(owedFor(b.id) > 0) - Number(owedFor(a.id) > 0)
+  || subjectOrder.compare(String(a.subject || ''), String(b.subject || ''))
+  || contractOrderDate(b).localeCompare(contractOrderDate(a))
+  || Number(b.id) - Number(a.id)));
 // One card of a shared package carries its single payment action; the other members point to it. Lead = the member
 // holding a pending report, else the first one that still needs payment (mixed states), else the first member.
 // #3892 review: a legacy package whose bills are already open on several members stays actionable per member (each
