@@ -26,6 +26,18 @@ Every implementer agent follows this. The coordinator sends only the task-specif
 - No empty commits, no force-push. Merge `main` into the branch; do not rebase.
 - CI stuck or cancelled: rerun the failed jobs through the REST API, or report it.
 
+## Money and authorization changes (check before the first push)
+Every item below was a review finding on 2026-11-16 (#5385, #5386, #5395, #5399); each review round re-reads the whole PR. Definitions: [`REF_BILLING_DATA_DICTIONARY.md`](../REF_BILLING_DATA_DICTIONARY.md).
+- "Has a bill?" checks the bill header AND its lines (`InvoiceItem.StudentClassID`): package and combined bills name a course only on a line. Bills issued by 登記收款 have no lines at all.
+- "Paid / owed?" comes from Payment rows (`Invoice::netPaidSql()`), never from `Invoice.Status`, `PaidAmount`, `StudentClass.Paid` or `closed_reason` alone; include legacy `Pay` / `PayDate`.
+- A NT$0 paid bill can be a refunded bill: require "no non-zero payment row".
+- Read the old state from the row this request locked, not from the model after the save.
+- When a path voids or unsettles: what if another live bill still backs the course, or a pending report or `invoice_corrections` link exists?
+- Monthly vs count for a bill: `ScheduleModeAtIssue`, not the course's current mode.
+- New route or new write: which roles reach the route group, is there a role check, and is there a 403 test? `RequireRole` lets `super_admin` through.
+- Docs never state a blanket rule (approval, immediacy) that the canonical policy qualifies; mark unshipped things as planned.
+- No new special case inside `InvoiceAmountReconciliationService::resolve()` (Founder 2026-11-16).
+
 ## UI changes
 - Load the design skills first (`impeccable`, `make-interfaces-feel-better`, `web-design-guidelines`; `ui-ux-pro-max` for tables and forms) and build the page from [`docs/design/PAGE_TEMPLATE.md`](../design/PAGE_TEMPLATE.md).
 - Attach its evidence to the PR: real-browser screenshots at 1536 and 375 at each 字級, before and after.
