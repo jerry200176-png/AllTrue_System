@@ -4622,9 +4622,9 @@ const onCancelledRestored = async () => {
 };
 const reloadCoursesQuietly = () => { quietRefreshNext = true; return loadCourses(pagination.value.page); };
 const loadCourses = async (page = 1) => {
-  courseNavigationError.value = '';
   const requestId = ++courseLoadRequestId;
   closedCourseNotice.value = null;
+  courseNavigationError.value = '';
   const quiet = quietRefreshNext;
   quietRefreshNext = false;
   if (!props.branchId) {
