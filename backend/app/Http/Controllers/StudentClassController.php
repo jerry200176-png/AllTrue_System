@@ -1858,18 +1858,7 @@ class StudentClassController extends Controller
             }
         }
 
-        // Rate/SessionCount 異動「前」快照舊 Charge vs 舊 Rate × 舊數量 的差額，
-        // 以便在更新 Charge 時保留透過單堂時間調整（session_charge）累積的手動調整金額。
-        $oldChargeSnapshot = (int) ($studentClass->Charge ?? 0);
-        $oldRateSnapshot = (float) ($studentClass->Rate ?? 0);
-        $oldSessionCountSnapshot = (int) ($studentClass->SessionCount ?? 0);
-        $oldRemainingSessionsSnapshot = (int) ($studentClass->RemainingSessions ?? 0);
-        $oldTotalHoursSnapshot = (int) ($studentClass->TotalHours ?? 0);
         $oldTeacherSnapshot = (int) ($studentClass->TeacherID ?? 0);
-        $oldRateUnitSnapshot = strtolower(trim((string) ($studentClass->rate_unit ?? 'session')));
-        if (!in_array($oldRateUnitSnapshot, ['session', 'hour'], true)) {
-            $oldRateUnitSnapshot = 'session';
-        }
 
         // Course edits are another authoritative scheduling writer. Validate
         // the resulting recurring slots before mutating StudentClass; otherwise
@@ -2011,14 +2000,8 @@ class StudentClassController extends Controller
             $mapped,
             $oldScheduleMode,
             $request,
-            $oldSessionCountSnapshot,
-            $oldRemainingSessionsSnapshot,
             $oldTeacherSnapshot,
             $rawInput,
-            $oldRateUnitSnapshot,
-            $oldRateSnapshot,
-            $oldTotalHoursSnapshot,
-            $oldChargeSnapshot,
             $previousStartDate,
             $scheduleSlotsForRebuild,
             $previousScheduleSlots,
@@ -2028,6 +2011,23 @@ class StudentClassController extends Controller
             $guardContractDates,
             $dateOf
         ) {
+        // Lock before the teacher-change branch's first plain read can pin an old RR view.
+        // InvoiceIssuer / payment writers use this same course mutex. Never lock Student after it.
+        $lockedCourse = StudentClass::query()->whereKey($studentClass->getKey())->lockForUpdate()->firstOrFail();
+        $oldChargeSnapshot = (int) ($lockedCourse->Charge ?? 0);
+        $oldRateSnapshot = (float) ($lockedCourse->Rate ?? 0);
+        $oldTotalHoursSnapshot = (int) ($lockedCourse->TotalHours ?? 0);
+        $oldSessionCountSnapshot = (int) ($lockedCourse->SessionCount ?? 0);
+        $oldRemainingSessionsSnapshot = (int) ($lockedCourse->RemainingSessions ?? 0);
+        $oldRateUnitSnapshot = strtolower(trim((string) ($lockedCourse->rate_unit ?? 'session')));
+        if (!in_array($oldRateUnitSnapshot, ['session', 'hour'], true)) {
+            $oldRateUnitSnapshot = 'session';
+        }
+        // A deduction may have committed while the edit was waiting for the course mutex.
+        if ($contractError = $this->guardBillingContractUpdate($lockedCourse, $mapped)) {
+            return [[], null, $this->withTransferHint($contractError, $lockedCourse, $mapped, $scheduleSlotsForRebuild)];
+        }
+
         // TD-076 B2: flag on, pin taught past occurrences (D2 evidence) BEFORE TeacherID moves; replaces the legacy #207 pin below.
         $occurrencePinned = false;
         $pinNewTeacherId = (int) ($mapped['TeacherID'] ?? 0);
@@ -2167,7 +2167,9 @@ class StudentClassController extends Controller
         // 避免老師／主任調漲調降課程費率時，把已經手動微調過的金額一併洗掉。
         // #798：delta 只在課程實際存在單堂時間調整（session_charge）時才保留；
         // 否則視為錯誤存量資料，直接以 費率×數量 重算，讓主任能從 UI 改回正確金額。
-        if (isset($mapped['Rate']) || isset($mapped['SessionCount']) || array_key_exists('rate_unit', $mapped)) {
+        $hourQuantityChanged = $oldScheduleMode === 'count'
+            && $this->syncUnbilledHourlyQuantity($studentClass, $mapped, $scheduleSlotsForRebuild);
+        if ($hourQuantityChanged || isset($mapped['Rate']) || isset($mapped['SessionCount']) || array_key_exists('rate_unit', $mapped)) {
             $oldBase = $oldRateUnitSnapshot === 'hour'
                 ? (int) round($oldRateSnapshot * $oldTotalHoursSnapshot)
                 : (int) round($oldRateSnapshot * $oldSessionCountSnapshot);
@@ -6550,6 +6552,44 @@ class StudentClassController extends Controller
     private function subjectLabelForGuard(int $subjectId): string
     {
         return (string) (DB::table('Subject')->where('id', $subjectId)->value('Subject_Name') ?? "#{$subjectId}");
+    }
+
+    /**
+     * #5379: price a never-billed/used hourly course from the saved plan, not stale TotalHours.
+     *
+     * @param array<string, mixed> $mapped
+     * @param list<array<string, mixed>> $providedSlots
+     */
+    private function syncUnbilledHourlyQuantity(StudentClass $course, array $mapped, array $providedSlots): bool
+    {
+        if ((string) $course->ScheduleMode !== 'count' || (string) $course->rate_unit !== 'hour'
+            || $course->isPartOfPackage() || (string) $course->scheduling_policy === ManualSessionBookingService::POLICY
+            || (int) $course->Paid === 1 || (int) $course->UsedSessions > 0 || (int) $course->SessionCount <= 0
+            || array_key_exists('TotalHours', $mapped)
+            || (!isset($mapped['Rate']) && !isset($mapped['SessionCount']) && !array_key_exists('rate_unit', $mapped)
+                && !ContractSessionSchedule::scheduleFieldsPresentInMapped($mapped))) {
+            return false;
+        }
+        $id = (int) $course->getKey();
+        // Never reinterpret a sold/consumed quantity or an issued document, including retained void history.
+        // The enclosing update transaction already holds this course's write lock.
+        if ($course->hasDeductionHistory() || ClassSessionDeleteGuard::courseHasProtectedHistory($id)
+            || PaymentReport::query()->where('StudentClassID', $id)->exists()
+            || Invoice::query()->where(fn ($q) => $q->where('StudentClassID', $id)
+                ->orWhereIn('id', InvoiceItem::query()->where('StudentClassID', $id)->select('InvoiceID')))->exists()) {
+            return false;
+        }
+        $slots = ContractSessionSchedule::resolveScheduleSlotsForRebuild($course, $providedSlots);
+        $hours = app(ContractRenewal::class)->plannedBatchHours(
+            $course, ContractSessionSchedule::normalizeDateString($course->StartDate) ?? Carbon::today()->toDateString(),
+            (int) $course->SessionCount, $slots, max(30, (int) ($course->SessionDuration ?: 120))
+        );
+        if ($hours === (int) $course->TotalHours) {
+            return false;
+        }
+        $course->update(['TotalHours' => $hours]);
+
+        return true;
     }
 
     private function calculateCourseChargeFromRate(
