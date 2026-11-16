@@ -25,8 +25,7 @@ description: >-
 1. `AGENTS.md` 操作者權限 + 本 skill  
 2. [`docs/plans/INAPP_PRODUCT_LOOP_EXECUTION_POLICY_V1.md`](../../../docs/plans/INAPP_PRODUCT_LOOP_EXECUTION_POLICY_V1.md)  
 3. [`docs/CHAT_BUG_SYSTEM.md`](../../../docs/CHAT_BUG_SYSTEM.md) **§3.6–§3.7**（含 `product_loop`）  
-4. 工作狀態：GitHub issue／PR（cloud session 預設，2026-10-14 起）。本機 WSL 才有的 `agent-start` manifest 與  
-   本機 `$HOME/workspace/state/alltrue/delivery/`（`*_RELEASE_PACKET.json`、`*_EXECUTION_PLAN.md`）若存在可參考；cloud session 沒有此目錄，略過  
+4. 工作狀態：GitHub issue／PR（cloud session 預設，2026-10-14 起；`agent-start` 已退役）  
 5. **In-app backlog 讀取與各階段自動化**（缺 dogfood actor ≠ 無法讀 backlog）：一律依 [`docs/sop/DELIVERY_LIFECYCLE.md`](../../../docs/sop/DELIVERY_LIFECYCLE.md) 的 In-app 自動化對照表（哪個 workflow、schedule／push request-file／dispatch-only、cloud 能否自行完成）與 Freshness gate。要點：log 只有 ID／數量，標題／描述／留言只在加密 artifact；解密由已授權且完成 secret 綁定的受控環境執行，不以本機為必要條件（見 SOP 的 Cloud decryption custody）；`bug-auto-intake.yml` 每小時已自動建 issue＋留「收到」回覆；**禁止** Pi SSH。`meta.counts` 任一不符 → **PARTIAL**。`resolved` 是待回報者確認的獨立營運佇列，不回填 active delivery owner。
 6. 依風險再開：`alltrue-debugging` · `alltrue-testing` · `alltrue-code-review` · `alltrue-release` · `alltrue-security`（非每筆全開）
 
@@ -84,7 +83,7 @@ Codex／Cursor 共用本路徑。啟動：cloud session 從 fresh clone 的 `ori
 - 可預見決策一次打包（推薦、影響、驗收、資料、恢復）。  
 - 一筆停 → 只停該項與依賴；其他已授權工作繼續。  
 - Session／quota 中斷：寫既有 checkpoint；未驗證 durable runner → **不宣稱會自行醒來**；不新造 scheduler。  
-- GitHub environment 核准**不會**自動喚醒本機 Cursor／agent-start。
+- GitHub environment 核准**不會**自動喚醒任何本機 agent。
 
 停止並回報（該項）：超出批准的 SHA／範圍／資料操作；必要安全證據不可得；需新權限／migration／identity／billing／資料修復；失敗超出已批准可執行恢復。
 
