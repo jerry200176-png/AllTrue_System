@@ -93,6 +93,7 @@ for (const width of [375, 1280]) {
       await page.getByRole('tab', { name: '帳務', exact: true }).click();
     } else {
       await expect(page.locator('.session-edit-modal')).toContainText('2030-01-07');
+      await page.locator('.session-edit-modal').getByRole('button', { name: '返回', exact: true }).click();
       await page.locator('.session-edit-modal').getByRole('button', { name: '關閉', exact: true }).click();
     }
     expect(puts).toEqual([]);
