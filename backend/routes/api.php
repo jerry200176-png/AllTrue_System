@@ -670,34 +670,36 @@ Route::prefix('v1')->group(function () {
         Route::get('subjects', [SubjectController::class, 'index']);
 
         Route::get('student-classes/session-dates', [StudentClassController::class, 'sessionDates']);
+        // Contract terms and money are the director's (super admin passes every role check). A teacher keeps the reads,
+        // 加課 and pause of an own course; the routes marked role:director below refuse a teacher at the door.
         Route::post('student-classes/session-dates', [StudentClassController::class, 'sessionDates']);
-        Route::post('student-classes/sync', [StudentClassController::class, 'sync']);
+        Route::post('student-classes/sync', [StudentClassController::class, 'sync'])->middleware('role:director');
         Route::get('student-classes', [StudentClassController::class, 'index']);
-        Route::post('student-classes', [StudentClassController::class, 'store']);
+        Route::post('student-classes', [StudentClassController::class, 'store'])->middleware('role:director');
         Route::get('student-classes/{studentClass}/editability', [StudentClassController::class, 'editability']);
         Route::get('student-classes/{studentClass}/package-conversion-preview', [\App\Http\Controllers\CoursePackageController::class, 'conversionPreview']);
-        Route::post('student-classes/{studentClass}/convert-to-package', [\App\Http\Controllers\CoursePackageController::class, 'convertToPackage']);
+        Route::post('student-classes/{studentClass}/convert-to-package', [\App\Http\Controllers\CoursePackageController::class, 'convertToPackage'])->middleware('role:director');
         Route::get('student-classes/{studentClass}', [StudentClassController::class, 'show']);
-        Route::put('student-classes/{studentClass}', [StudentClassController::class, 'update']);
+        Route::put('student-classes/{studentClass}', [StudentClassController::class, 'update'])->middleware('role:director');
         Route::post('student-classes/{studentClass}/confirm-payment', [StudentClassController::class, 'confirmPayment']);
-        Route::post('student-classes/{studentClass}/renewal-preview', [StudentClassController::class, 'renewalPreview']);
-        Route::post('student-classes/{studentClass}/renewal-confirm', [StudentClassController::class, 'renewalConfirm']);
-        Route::post('student-classes/{studentClass}/purchase-batch', [StudentClassController::class, 'purchaseBatch']);
-        Route::post('student-classes/{studentClass}/convert-trial', [StudentClassController::class, 'convertTrial']);
-        Route::post('student-classes/{studentClass}/renew-monthly', [StudentClassController::class, 'renewMonthly']);
+        Route::post('student-classes/{studentClass}/renewal-preview', [StudentClassController::class, 'renewalPreview'])->middleware('role:director');
+        Route::post('student-classes/{studentClass}/renewal-confirm', [StudentClassController::class, 'renewalConfirm'])->middleware('role:director');
+        Route::post('student-classes/{studentClass}/purchase-batch', [StudentClassController::class, 'purchaseBatch'])->middleware('role:director');
+        Route::post('student-classes/{studentClass}/convert-trial', [StudentClassController::class, 'convertTrial'])->middleware('role:director');
+        Route::post('student-classes/{studentClass}/renew-monthly', [StudentClassController::class, 'renewMonthly'])->middleware('role:director');
         Route::get('student-classes/{studentClass}/invoices', [StudentClassController::class, 'invoices']);
         Route::post('student-classes/{studentClass}/add-session', [StudentClassController::class, 'addSession']);
         Route::post('student-classes/{studentClass}/add-session/check', [StudentClassController::class, 'checkAddSession']);
         Route::post('student-classes/{studentClass}/pause', [StudentClassController::class, 'togglePause']);
-        Route::post('student-classes/{studentClass}/transfer-sessions', [StudentClassController::class, 'transferSessions']);
-        Route::delete('student-classes/{studentClass}', [StudentClassController::class, 'destroy']);
+        Route::post('student-classes/{studentClass}/transfer-sessions', [StudentClassController::class, 'transferSessions'])->middleware('role:director');
+        Route::delete('student-classes/{studentClass}', [StudentClassController::class, 'destroy'])->middleware('role:director');
 
         // Course Continuity (#1382) — group link without physical merge
         Route::get('course-contract-groups', [\App\Http\Controllers\CourseContractGroupController::class, 'index']);
-        Route::post('course-contract-groups', [\App\Http\Controllers\CourseContractGroupController::class, 'store']);
-        Route::post('course-contract-groups/{id}/members', [\App\Http\Controllers\CourseContractGroupController::class, 'addMember'])->whereNumber('id');
+        Route::post('course-contract-groups', [\App\Http\Controllers\CourseContractGroupController::class, 'store'])->middleware('role:director');
+        Route::post('course-contract-groups/{id}/members', [\App\Http\Controllers\CourseContractGroupController::class, 'addMember'])->whereNumber('id')->middleware('role:director');
         Route::delete('course-contract-groups/{id}/members/{memberId}', [\App\Http\Controllers\CourseContractGroupController::class, 'unlinkMember'])
-            ->whereNumber('id')->whereNumber('memberId');
+            ->whereNumber('id')->whereNumber('memberId')->middleware('role:director');
 
         // Course packages (multi-subject shared session pool)
         Route::get('course-packages', [\App\Http\Controllers\CoursePackageController::class, 'index']);
