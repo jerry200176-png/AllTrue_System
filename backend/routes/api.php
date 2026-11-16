@@ -364,6 +364,8 @@ Route::prefix('v1')->group(function () {
         Route::get('admin/reconcile', [AdminReconcileController::class, 'index']);
         // 帳務中心重整 G2 (Founder 2026-11-16): billing data-quality scoreboard, counts per campus, read-only.
         Route::get('admin/billing-data-quality', [\App\Http\Controllers\BillingDataQualityController::class, 'index']);
+        // 帳務中心重整 G3: what AI read (triage token) and which governed data operations were requested, last 30 days.
+        Route::get('admin/ai-activity', [\App\Http\Controllers\AiActivityController::class, 'index']);
 
         // ── Bug Reports (admin) ──
         Route::get('admin/bug-reports', [BugReportController::class, 'index']);
