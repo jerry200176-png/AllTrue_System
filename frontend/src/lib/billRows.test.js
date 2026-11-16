@@ -89,4 +89,14 @@ describe('billRows 已收 regressions (#4114)', () => {
   it('a paid contract next to an owing one stays its own row', () => {
     expect(kinds([r({ id: 281, payment_status: 'paid', payable_status: 'paid', payable_outstanding: 0 }), r({ id: 282, payment_status: 'unpaid', due_date: '2026-10-01' })])).toEqual({ c281: 'paid', c282: 'owing' });
   });
+
+  it('a 需核對 row says why and what to do', () => {
+    const [b] = billRows([r({ payment_status: 'amount_review', amount_pending_confirmation: true, pending_confirmation_amount: 4400, payable_outstanding: 4400,
+      review_reasons: ['contract_not_covered_to_end', 'not_a_known_code'] })], T);
+    expect(b.kind).toBe('review');
+    expect(b.warnings).toHaveLength(1); // an unknown code adds nothing
+    expect(b.warnings[0]).toMatch(/^數學：需核對：合約後段沒有帳單涵蓋。怎麼處理：/);
+    // No reasons from the server: nothing is invented.
+    expect(billRows([r({ payment_status: 'amount_review', amount_pending_confirmation: true })], T)[0].warnings).toEqual([]);
+  });
 });

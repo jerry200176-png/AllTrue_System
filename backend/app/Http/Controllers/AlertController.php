@@ -417,6 +417,7 @@ class AlertController extends Controller
 
                 $paymentStatus = ContractMoneyState::alertStatus($sc, $paidAmount, $charge, $pendingReportId !== null, $verdict['status'] ?? null);
                 $amountPendingConfirmation = false;
+                $reviewReasons = [];
                 if ($row['alert_type'] === 'pending_reconciliation') {
                     // F7 S3a: stopped + still owing per the invoices. Every amount the UI reads comes from the
                     // resolver's cumulative totals (never the single-invoice payable or the contract price).
@@ -435,6 +436,9 @@ class AlertController extends Controller
                     // the resolver's `outstanding`, the same field 已結清 → 待核對 (AccountingController::settledCourses) shows.
                     if ($sc instanceof StudentClass && BillingPayableResolver::isAmountPendingConfirmation($sc, $stopped)) {
                         $amountPendingConfirmation = true;
+                        // Read-only: why the amount is still to be confirmed (the resolver's own codes), so the list can say it
+                        // and what to do instead of a bare 需核對. No condition of the list changes.
+                        $reviewReasons = array_values((array) ($stopped['review_reasons'] ?? []));
                         // A pending parent report stays confirmable (確認入帳 / 待核對入帳); the amount is still unconfirmed.
                         $paymentStatus = $pendingReportId !== null ? 'pending_report' : 'amount_review';
                     }
@@ -483,6 +487,7 @@ class AlertController extends Controller
                         : [],
                     'payment_status'           => $paymentStatus,
                     'amount_pending_confirmation' => $amountPendingConfirmation,
+                    'review_reasons' => $reviewReasons,
                     'pending_confirmation_amount' => $amountPendingConfirmation ? $outstanding : 0,
                     'latest_payment_report_id' => $pendingReportId,
                     'has_newer_course'         => $newerInfo !== null,

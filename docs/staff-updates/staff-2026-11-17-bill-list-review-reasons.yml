@@ -1,0 +1,14 @@
+updates:
+  - id: staff-2026-11-17-bill-list-review-reasons
+    published_at: "2026-11-17"
+    audiences:
+      - director
+      - super_admin
+    importance: digest
+    title: 需核對會寫出原因
+    summary: 帳單清單上需核對的合約，直接寫出原因和處理方式，不用再到別的分頁找。
+    items:
+      - category: improved
+        text: 帳單清單的需核對列會顯示原因與怎麼處理，內容和已結清課程分頁相同。
+    source_refs:
+      - "changelog:2026-11-17:bill-list-review-reasons"
