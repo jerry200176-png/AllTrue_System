@@ -707,11 +707,10 @@ final class ContractRenewal
 
     /**
      * Hours of the lessons a purchase batch will create, from the same plan purchaseBatch() materializes.
-     * Preview and purchase both bill rate_unit=hour from this, so they cannot drift apart.
+     * Preview, purchase and unused-course edits share this quantity and existing whole-hour rounding.
      *
      * @param list<array<string, mixed>> $slots
      */
-    /** Shared count-course plan quantity; keeps the existing whole-hour rounding. */
     public function plannedBatchHours(StudentClass $course, string $planStart, int $sessions, array $slots, int $globalDur): int
     {
         $built = ContractSessionSchedule::buildSessionsForCount((int) $course->ID, $planStart, $sessions, $slots, $globalDur);

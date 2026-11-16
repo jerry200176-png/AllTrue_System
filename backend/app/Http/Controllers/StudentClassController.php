@@ -6554,7 +6554,12 @@ class StudentClassController extends Controller
         return (string) (DB::table('Subject')->where('id', $subjectId)->value('Subject_Name') ?? "#{$subjectId}");
     }
 
-    /** #5379: a never-billed/used hourly course must price the plan saved by this edit, not stale TotalHours. */
+    /**
+     * #5379: price a never-billed/used hourly course from the saved plan, not stale TotalHours.
+     *
+     * @param array<string, mixed> $mapped
+     * @param list<array<string, mixed>> $providedSlots
+     */
     private function syncUnbilledHourlyQuantity(StudentClass $course, array $mapped, array $providedSlots): bool
     {
         if ((string) $course->ScheduleMode !== 'count' || (string) $course->rate_unit !== 'hour'
