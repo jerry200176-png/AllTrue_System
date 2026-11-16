@@ -2122,6 +2122,43 @@ class StudentClassUpdateScheduleReconcileTest extends TestCase
         }
     }
 
+    /** #561/#562: the narrow paid time-only payload must not reprice a historical contract. */
+    public function test_paid_time_only_payload_preserves_financial_snapshots_and_attended_history(): void
+    {
+        [$token, $student, $course] = $this->seedCourseWithHistory();
+        // Deliberately different from Rate × SessionCount, as on a discounted paid contract.
+        $course->update(['Paid' => 1, 'Rate' => 1600, 'Charge' => 12000]);
+        $invoice = \App\Models\Invoice::create(['StudentID' => $student->id, 'StudentClassID' => $course->ID,
+            'IssueDate' => '2026-03-01', 'TotalAmount' => 12000, 'PaidAmount' => 12000, 'Status' => 'paid']);
+        $report = \App\Models\PaymentReport::create(['StudentID' => $student->id, 'StudentClassID' => $course->ID,
+            'reported_by_name' => 'Synthetic payer', 'payment_date' => '2026-03-01', 'payment_method' => 'cash',
+            'reported_amount' => 12000, 'status' => 'confirmed',
+            'report_token_hash' => hash('sha256', 'synthetic-schedule-only'), 'token_expires_at' => now()->addDay()]);
+        $payment = \App\Models\Payment::create(['InvoiceID' => $invoice->id, 'Amount' => 12000,
+            'Method' => 'cash', 'PaidAt' => '2026-03-01 10:00:00', 'payment_report_id' => $report->id]);
+        $money = [$invoice->fresh()->getAttributes(), $report->fresh()->getAttributes(), $payment->fresh()->getAttributes()];
+        $history = ClassSession::where('StudentClassID', $course->ID)->where('Status', 'attended')->firstOrFail();
+        $past = $history->getAttributes();
+        $this->withHeaders(['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])
+            ->putJson("/api/v1/student-classes/{$course->ID}", [
+                'days_of_week' => [7], 'start_time' => '18:00', 'end_time' => '20:00',
+                'day_time_slots' => [['day' => 7, 'start_time' => '18:00', 'duration_minutes' => 120]],
+                'force_rebuild_if_mismatch' => true,
+            ])->assertOk();
+        $course->refresh();
+        $this->assertSame([12000, 1600, 8, 4, 4, 120, 1], array_map('intval', [
+            $course->Charge, $course->Rate, $course->SessionCount, $course->RemainingSessions,
+            $course->UsedSessions, $course->SessionDuration, $course->Paid,
+        ]));
+        $this->assertSame($money, [$invoice->fresh()->getAttributes(), $report->fresh()->getAttributes(), $payment->fresh()->getAttributes()]);
+        $this->assertSame($past, $history->fresh()->getAttributes());
+        $future = ClassSession::where('StudentClassID', $course->ID)->where('Status', 'scheduled')->get();
+        $this->assertCount(4, $future);
+        foreach ($future as $row) {
+            $this->assertSame(['18:00', '20:00'], [substr($row->StartTime, 0, 5), substr($row->EndTime, 0, 5)]);
+        }
+    }
+
     private function seedCourseWithHistory(bool $allFutureCompleted = false): array
     {
         $token = $this->createDirectorToken([1]);

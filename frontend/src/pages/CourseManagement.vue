@@ -879,7 +879,7 @@
             <button v-if="canOpenEditabilityAction(reason.next_step)" type="button" class="ghost small editability-action-row__button" @click="openEditabilityAction(reason.next_step)">{{ editabilityActionLabel(reason.next_step) }} <span aria-hidden="true">→</span></button>
           </div>
         </section>
-        <CourseEditForm ref="editFormRef" v-model="editForm" :branch-id="props.branchId" :teachers="editTeacherOptions" :rooms="rooms" :subjects="subjectOptions" :day-options="DAY_OPTIONS" :time-options="TIME_OPTIONS_30" :settlement-day-options="settlementDayOptions" :show-remaining="true" :package-info="editPackageInfo" :context-title="editContextTitle" :editability="editability" :payment-state-unavailable="editabilityLoading || !!editabilityError" @open-billing="openEditabilityAction('void_payment')" />
+        <CourseEditForm ref="editFormRef" v-model="editForm" :branch-id="props.branchId" :teachers="editTeacherOptions" :rooms="rooms" :subjects="subjectOptions" :day-options="DAY_OPTIONS" :time-options="TIME_OPTIONS_30" :settlement-day-options="settlementDayOptions" :show-remaining="true" :schedule-only="editScheduleOnly" :package-info="editPackageInfo" :context-title="editContextTitle" :editability="editability" :payment-state-unavailable="editabilityLoading || !!editabilityError" @open-billing="openEditabilityAction('void_payment')" />
         <div class="cm-settings-footer">
           <div class="cm-settings-footer__primary form-actions">
             <button type="button" class="ghost" data-testid="course-manager-settings-back" @click="leaveCourseManagerSettings">返回總覽</button>
@@ -909,8 +909,8 @@
         @escape-key-down="ignoreComposingEscape"
       >
         <DialogHeader :class="sheetDialog.header">
-          <DialogTitle class="tw:text-tpl-list tw:font-bold tw:text-balance">編輯課程</DialogTitle>
-          <DialogDescription class="tw:sr-only">修改課程的老師、時間與付款方式後按儲存</DialogDescription>
+          <DialogTitle class="tw:text-tpl-list tw:font-bold tw:text-balance">{{ editScheduleOnly ? '更改之後固定時段' : '編輯課程' }}</DialogTitle>
+          <DialogDescription class="tw:sr-only">{{ editScheduleOnly ? '修改之後的固定上課日與開始時間，堂數與帳務資料保留' : '修改課程的老師、時間與付款方式後按儲存' }}</DialogDescription>
         </DialogHeader>
         <div :class="sheetDialog.body">
           <Alert v-if="editabilityLoading" tone="info" title="正在檢查課程狀態" style="margin: 0 0 14px;">
@@ -956,6 +956,7 @@
               :time-options="TIME_OPTIONS_30"
               :settlement-day-options="settlementDayOptions"
               :show-remaining="true"
+              :schedule-only="editScheduleOnly"
               :package-info="editPackageInfo"
               :context-title="editContextTitle"
               :editability="editability"
@@ -999,6 +1000,7 @@
       :subject="contractAdjustmentCourse?.subject_name || contractAdjustmentCourse?.subject || ''"
       :payment-status="contractAdjustmentCourse?.payment_status || ''"
       :billing-available="isBillingCorrectionStructureEligible(contractAdjustmentCourse)"
+      :fixed-schedule-available="canEditPaidFixedSchedule(contractAdjustmentCourse)"
       @close="showContractAdjustmentModal = false"
       @choose="chooseContractAdjustment"
     />
@@ -1503,6 +1505,7 @@ import {
   editabilityFieldLabel,
   editabilityNextStepForError,
   editabilityNextStepLabel,
+  hasUniformFixedSlotDuration,
 } from '../lib/courseEditability';
 import { useCourseSessionsDisplay } from '../composables/course-management/useCourseSessionsDisplay';
 import { useMonthlyAttendanceSummary } from '../composables/course-management/useMonthlyAttendanceSummary';
@@ -2337,6 +2340,9 @@ function handleSchedulerDuplicateCM(evt) {
 
 // Edit
 const showEditModal = ref(false);
+const editScheduleOnly = ref(false);
+const isLaravelCourse = (c) => Boolean(c && (c.data_source === 'laravel' || c.branch_name != null || c.room_name != null || c.settlement_day != null));
+const canEditPaidFixedSchedule = (c) => isLaravelCourse(c) && isSessionMode(c) && !isManualOccurrenceCourse(c) && c.legacy_paid_flag_only !== true && c.payment_status === 'paid' && hasUniformFixedSlotDuration(c);
 const editingId = ref(null);
 const editingCourseFromLaravel = ref(false);
 const editingCourseRaw = ref(null);
@@ -2650,6 +2656,19 @@ function chooseContractAdjustment(action) {
   const course = contractAdjustmentCourse.value;
   showContractAdjustmentModal.value = false;
   if (!course) return;
+  if (action === 'schedule') {
+    if (courseManagerEnabled) {
+      openCourseManager(course, 'sessions');
+      nextTick(() => document.getElementById('cm-tab-sessions')?.focus());
+    } else runRowAction(course, 'reschedule');
+    return;
+  }
+  if (action === 'schedule-settings') {
+    if (!canEditPaidFixedSchedule(course)) return;
+    if (courseManagerEnabled) openCourseManager(course, 'settings', { scheduleOnly: true });
+    else editCourse(course, { scheduleOnly: true });
+    return;
+  }
   // #4014 (Founder Q8=A): adding lessons = the course row's existing 續課／加購 entry.
   if (action === 'renew') { openCommercialPurchaseEntry(course); return; }
   if (action === 'billing') {
@@ -2834,16 +2853,17 @@ function courseManagerOverviewNeeds(c) {
   if (c.usage_balance_status === 'review_required') needs.push({ id: 'ledger', title: '堂數待對帳', action: 'ledger', actionLabel: '查看對帳明細' });
   return needs;
 }
-async function openCourseManager(c, tab = 'overview') {
+async function openCourseManager(c, tab = 'overview', options = {}) {
   closeActionMenu();
   courseManagerCourse.value = c;
   courseManagerTab.value = tab;
   courseManagerOpen.value = true;
   if (!expandedDates.value.has(c.id)) await toggleDatesAndMakeups(c);
-  if (tab === 'settings') editCourse(c, { openModal: false });
+  if (tab === 'settings') editCourse(c, { ...options, openModal: false });
 }
 function closeCourseManager() {
   courseManagerOpen.value = false;
+  editScheduleOnly.value = false;
   courseManagerCourse.value = null;
   courseManagerTab.value = 'overview';
   showEditModal.value = false;
@@ -5124,12 +5144,8 @@ const editCourse = (c, options = {}) => {
   editability.value = null;
   editabilityError.value = '';
   editingCourseRaw.value = c;
-  editingCourseFromLaravel.value = !!(
-    c.data_source === 'laravel'
-    || c.branch_name != null
-    || c.room_name != null
-    || c.settlement_day != null
-  );
+  editingCourseFromLaravel.value = isLaravelCourse(c);
+  editScheduleOnly.value = options.scheduleOnly === true && editingCourseFromLaravel.value;
   const existingDaysRaw = Array.isArray(c.days_of_week) && c.days_of_week.length
     ? c.days_of_week.map(Number).filter((d) => d >= 1 && d <= 7)
     : (c.day_of_week ? [Number(c.day_of_week)] : []);
@@ -5182,6 +5198,7 @@ const editCourse = (c, options = {}) => {
   if (editingCourseFromLaravel.value) void loadCourseEditability(c.id);
   nextTick(() => {
     editScheduleBaseline.value = scheduleFingerprintForEdit(editForm.value);
+    if (editScheduleOnly.value) document.querySelector('.course-form-wrapper select[aria-label="第1天星期"]')?.focus();
   });
 };
 
@@ -5217,7 +5234,11 @@ const submitEdit = async () => {
           end_date: form.payment_type === 'monthly' ? form.end_date || null : null,
           force_rebuild_if_mismatch: true,
         } : {};
-        const body = {
+        // A paid time-only edit never resubmits pricing or entitlement fields to their writers.
+        const body = editScheduleOnly.value
+          ? Object.fromEntries(['days_of_week', 'start_time', 'day_time_slots', 'end_time', 'force_rebuild_if_mismatch']
+            .filter((key) => Object.hasOwn(scheduleFields, key)).map((key) => [key, scheduleFields[key]]))
+          : {
           subject: form.subject,
           teacher_id: form.teacher_id || null,
           // Past sessions keep the former teacher; default effective date = today.
@@ -5238,7 +5259,7 @@ const submitEdit = async () => {
           Memo: form.memo || null,
           ...scheduleFields,
         };
-        if (String(form.paid_at || '') !== String(form.original_paid_at || '')) {
+        if (!editScheduleOnly.value && String(form.paid_at || '') !== String(form.original_paid_at || '')) {
           body.paid_at = form.paid_at ? form.paid_at : null;
         }
         const res = await authedFetch(`/api/v1/student-classes/${id}`, {
@@ -5289,7 +5310,7 @@ const submitEdit = async () => {
           await loadCourses();
           syncCourseManagerCourseFromList();
           if (courseManagerOpen.value && courseManagerCourse.value) {
-            editCourse(courseManagerCourse.value, { openModal: false });
+            editCourse(courseManagerCourse.value, { openModal: false, scheduleOnly: editScheduleOnly.value });
           }
           if (sync?.warning) {
             toastRef.value?.show?.({

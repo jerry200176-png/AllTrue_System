@@ -1,4 +1,24 @@
 import { REPORT_STATUS_LABELS } from './courseMoneyState.js';
+
+// The time-only shortcut cannot preserve each lesson's length when a mixed cadence is remapped.
+export function hasUniformFixedSlotDuration(course) {
+  const hours = Number(course?.duration_hours);
+  const minutes = Number(course?.SessionDuration);
+  // duration_hours is rounded by the index serializer (75min -> 1.3h); require raw exact evidence.
+  if (!Number.isFinite(hours) || hours < 0.5 || !Number.isInteger(hours * 2) || minutes !== hours * 60) return false;
+  if (!Array.isArray(course?.day_time_slots)) return false;
+  for (let i = 1; i <= 6; i += 1) {
+    if (!(Number(course[`week${i}`]) >= 1 && Number(course[`week${i}`]) <= 7) || !String(course[`time${i}`] ?? course.time ?? '')) continue;
+    const raw = course[`duration${i}`];
+    if (raw != null && Number(raw) !== 0 && Number(raw) !== minutes) return false;
+  }
+  return course.day_time_slots.every((slot) => {
+    if (!slot || typeof slot !== 'object') return false;
+    const slotHours = slot.duration_hours == null ? hours : Number(slot.duration_hours);
+    const slotMinutes = slot.duration_minutes == null ? hours * 60 : Number(slot.duration_minutes);
+    return slotHours === hours && slotMinutes === hours * 60;
+  });
+}
 const NEXT_STEP_LABELS = {
   billing_correction: '堂數若要更正，請改走「合約／堂次調整」；要加之後的課請用「續課」。',
   edit_charge_only: '堂數維持不變，請在一般編輯畫面只調整總費用。',
