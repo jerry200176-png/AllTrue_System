@@ -100,6 +100,23 @@ class MonthlyCalendarLeaveNoBackfillTest extends TestCase
         $this->assertNull($extra->fresh()->OriginalStartTimeHM, 'A read must not invent a legacy occurrence identity.');
     }
 
+    /** 2026-11-17 route audit: a teacher may add a past lesson, but cannot approve it or put it on another teacher. */
+    public function test_a_teacher_added_past_lesson_waits_for_a_director_and_keeps_the_course_teacher(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-10-13 09:00:00', 'Asia/Taipei'));
+        [$teacherId, $teacherToken] = $this->createUserWithToken('T', 'teacher-3901-add-past@example.com');
+        $course = $this->createMonthlyCourse($teacherId, ['week1' => 2, 'time1' => '13:00']);
+        $this->withHeaders(['Authorization' => "Bearer {$teacherToken}", 'Accept' => 'application/json'])
+            ->postJson("/api/v1/student-classes/{$course->ID}/add-session", ['session_date' => '2026-10-12', 'start_time' => '14:00',
+                'duration_minutes' => 120, 'auto_approve' => true, 'teacher_id' => $teacherId + 999])
+            ->assertSuccessful();
+
+        $records = \App\Models\LearningRecord::where('StudentClassID', $course->ID)->get();
+        $this->assertCount(1, $records);
+        $this->assertSame($teacherId, (int) $records[0]->TeacherID);
+        $this->assertNotSame('approved', $records[0]->Status);
+    }
+
     /** Owner decision (#3905 thread 4256922713): a lesson added through add-session at a non-contract time hides no contract slot. */
     public function test_a_lesson_added_through_add_session_off_contract_does_not_hide_recurring_slots(): void
     {

@@ -238,6 +238,36 @@ class StudentClassTogglePauseAuthzTest extends TestCase
         $this->assertSame(9600, (int) $sc->fresh()->Charge);
     }
 
+    /** 2026-11-17 route audit: these writes are used only on director pages; a teacher token is refused before the controller runs. */
+    public function test_director_only_schedule_substitute_and_package_writes_refuse_a_teacher(): void
+    {
+        $token = $this->createTeacherToken([1]);
+        $routes = ['course-packages/1/bind-courses', 'course-packages/1/recompute', 'course-packages/1/rebuild-ledger',
+            'class-sessions/1/substitute', 'class-sessions/1/substitute/undo', 'teacher-leaves/preview', 'teacher-leaves/batch-substitute',
+            'schedules', 'schedules/bulk-leave', 'schedules/leave-cascade-preview', 'schedules/undo-leave-by-session'];
+        $this->assertCount(11, $routes);
+        foreach ($routes as $route) {
+            $this->postJson("/api/v1/{$route}", [], ['Authorization' => "Bearer {$token}"])->assertStatus(403);
+        }
+    }
+
+    /** Counters, closure and package links have their own audited flows; a raw contract edit cannot set them. */
+    public function test_raw_contract_edit_cannot_set_counters_closure_or_package_links(): void
+    {
+        $token = $this->createDirectorToken([1]);
+        $sc = $this->createStudentClassOnCampus(1, ['Charge' => 8800, 'Rate' => 1100, 'rate_unit' => 'session']);
+        $before = $sc->fresh()->getAttributes();
+
+        $this->putJson("/api/v1/student-classes/{$sc->ID}", ['StudentID' => $sc->StudentID, 'UsedSessions' => 0, 'closed_reason' => 'waived'],
+            ['Authorization' => "Bearer {$token}"])->assertStatus(422)->assertJsonPath('code', 'protected_contract_fields')
+            ->assertJsonPath('fields', ['UsedSessions', 'closed_reason']);
+        $this->assertSame($before, $sc->fresh()->getAttributes());
+
+        $this->putJson("/api/v1/student-classes/{$sc->ID}", ['StudentID' => $sc->StudentID, 'Memo' => 'raw edit still works'],
+            ['Authorization' => "Bearer {$token}"])->assertOk();
+        $this->assertSame('raw edit still works', $sc->fresh()->Memo);
+    }
+
     private function createDirectorToken(array $campusIds): string
     {
         $user = User::create([

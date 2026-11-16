@@ -3883,6 +3883,11 @@ class StudentClassController extends Controller
         // explicit director choice; omitted input fails closed to pending.
         $autoApprove = array_key_exists('auto_approve', $data) ? (bool) $data['auto_approve'] : false;
         $teacherId = (int) ($data['teacher_id'] ?? $studentClass->TeacherID ?? 0);
+        if ($request->attributes->get('auth_role') === 'teacher') {
+            // 2026-11-17 route audit: a teacher may add a lesson, but it waits for a director and stays on the course's own teacher.
+            $autoApprove = false;
+            $teacherId = (int) ($studentClass->TeacherID ?? 0);
+        }
         $note = trim((string) ($data['note'] ?? ''));
 
         return DB::transaction(function () use (
@@ -5871,6 +5876,9 @@ class StudentClassController extends Controller
         return $cols;
     }
 
+    private const RAW_PAYLOAD_PROTECTED_FIELDS = ['UsedSessions', 'PurchasedMinutes', 'RemainingMinutes', 'closed_reason',
+        'settlement_locked_at', 'settlement_snapshot', 'PackageID', 'PackageTotalSessions', 'PackageName', 'trial_converted_to_id', 'purchase_request_key'];
+
     private function mapFrontendPayload(Request $request): array
     {
         $input = $request->json()->all();
@@ -5881,6 +5889,12 @@ class StudentClassController extends Controller
 
         // If no translation needed (e.g. standard backend request), return straight away
         if (isset($input['StudentID'])) {
+            // Counters, closure, settlement and package links change only through their own audited flows (2026-11-17).
+            $protected = array_values(array_intersect(array_keys($input), self::RAW_PAYLOAD_PROTECTED_FIELDS));
+            if ($protected !== []) {
+                abort(response()->json(['message' => '這些欄位要用專門的功能修改（點名、確認不收、結清、套裝、轉正），不能直接改：' . implode('、', $protected) . '。沒有修改任何資料。',
+                    'code' => 'protected_contract_fields', 'fields' => $protected], 422));
+            }
             return $input;
         }
 

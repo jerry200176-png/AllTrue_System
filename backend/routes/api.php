@@ -706,9 +706,9 @@ Route::prefix('v1')->group(function () {
         Route::post('course-packages/create-multi-subject', [\App\Http\Controllers\CoursePackageController::class, 'createMultiSubject'])->middleware('role:director');
         Route::get('course-packages/{id}', [\App\Http\Controllers\CoursePackageController::class, 'show']);
         Route::put('course-packages/{id}', [\App\Http\Controllers\CoursePackageController::class, 'update'])->middleware('role:director');
-        Route::post('course-packages/{id}/recompute', [\App\Http\Controllers\CoursePackageController::class, 'recompute']);
-        Route::post('course-packages/{id}/rebuild-ledger', [\App\Http\Controllers\CoursePackageController::class, 'rebuildLedger']);
-        Route::post('course-packages/{id}/bind-courses', [\App\Http\Controllers\CoursePackageController::class, 'bindCourses']);
+        Route::post('course-packages/{id}/recompute', [\App\Http\Controllers\CoursePackageController::class, 'recompute'])->middleware('role:director');
+        Route::post('course-packages/{id}/rebuild-ledger', [\App\Http\Controllers\CoursePackageController::class, 'rebuildLedger'])->middleware('role:director');
+        Route::post('course-packages/{id}/bind-courses', [\App\Http\Controllers\CoursePackageController::class, 'bindCourses'])->middleware('role:director');
 
         Route::get('attendance', [AttendanceController::class, 'index']);
         Route::get('attendance/ended-sessions', [AttendanceController::class, 'endedSessions']);
@@ -736,8 +736,8 @@ Route::prefix('v1')->group(function () {
         Route::post('learning-records', [LearningRecordController::class, 'store']);
         Route::post('learning-records/{learningRecord}', [LearningRecordController::class, 'update']);
         Route::put('learning-records/{learningRecord}', [LearningRecordController::class, 'update']);
-        Route::delete('learning-records/{learningRecord}', [LearningRecordController::class, 'destroy']);
-        Route::put('learning-records/{learningRecord}/teacher-comment', [LearningRecordTeacherCommentController::class, 'upsert']);
+        Route::delete('learning-records/{learningRecord}', [LearningRecordController::class, 'destroy'])->middleware('role:director');
+        Route::put('learning-records/{learningRecord}/teacher-comment', [LearningRecordTeacherCommentController::class, 'upsert'])->middleware('role:director');
         Route::post('learning-record-teacher-comments/{comment}/read', [LearningRecordTeacherCommentController::class, 'markRead']);
         Route::get('me/unread-feedback-count', [LearningRecordFeedbackController::class, 'unreadCount']);
         Route::get('me/awaiting-reply-count', [LearningRecordFeedbackController::class, 'awaitingReplyCount']);
@@ -778,31 +778,31 @@ Route::prefix('v1')->group(function () {
         // Move a session to another contract of the same student+subject (director + super_admin, campus-scoped).
         Route::get('class-sessions/{id}/reassign-contract-targets', [ClassSessionController::class, 'reassignContractTargets'])->whereNumber('id')->middleware('role:director,super_admin');
         Route::post('class-sessions/{id}/reassign-contract', [ClassSessionController::class, 'reassignContract'])->whereNumber('id')->middleware('role:director,super_admin');
-        Route::post('class-sessions/{id}/substitute', [ClassSessionController::class, 'substitute']);
+        Route::post('class-sessions/{id}/substitute', [ClassSessionController::class, 'substitute'])->middleware('role:director');
         // PRD 9c058f19 — 代課流程 UX 優化
-        Route::post('class-sessions/{id}/substitute/undo', [SubstituteController::class, 'undo']);
+        Route::post('class-sessions/{id}/substitute/undo', [SubstituteController::class, 'undo'])->middleware('role:director');
         Route::get('teachers/{id}/availability', [SubstituteController::class, 'availability']);
-        Route::post('teacher-leaves/preview', [TeacherLeaveController::class, 'preview']);
-        Route::post('teacher-leaves/batch-substitute', [TeacherLeaveController::class, 'batchSubstitute']);
+        Route::post('teacher-leaves/preview', [TeacherLeaveController::class, 'preview'])->middleware('role:director');
+        Route::post('teacher-leaves/batch-substitute', [TeacherLeaveController::class, 'batchSubstitute'])->middleware('role:director');
         Route::get('substitutes/recent', [SubstituteController::class, 'recent']);
         // Undo 時間窗設定（Gmail Undo Send 模式：5/10/20/30 秒）
         Route::get('system/settings/substitute-undo', [SubstituteController::class, 'getUndoSetting']);
         Route::put('system/settings/substitute-undo', [SubstituteController::class, 'setUndoSetting']);
 
         Route::get('schedules', [\App\Http\Controllers\ScheduleController::class, 'index']);
-        Route::post('schedules', [\App\Http\Controllers\ScheduleController::class, 'store']);
-        Route::post('schedules/{schedule}/cancel-makeup', [\App\Http\Controllers\ScheduleController::class, 'cancelMakeup']);
-        Route::post('schedules/{schedule}/undo-leave', [\App\Http\Controllers\ScheduleController::class, 'undoLeave']);
-        Route::post('schedules/undo-leave-by-session', [\App\Http\Controllers\ScheduleController::class, 'undoLeaveBySession']);
+        Route::post('schedules', [\App\Http\Controllers\ScheduleController::class, 'store'])->middleware('role:director');
+        Route::post('schedules/{schedule}/cancel-makeup', [\App\Http\Controllers\ScheduleController::class, 'cancelMakeup'])->middleware('role:director');
+        Route::post('schedules/{schedule}/undo-leave', [\App\Http\Controllers\ScheduleController::class, 'undoLeave'])->middleware('role:director');
+        Route::post('schedules/undo-leave-by-session', [\App\Http\Controllers\ScheduleController::class, 'undoLeaveBySession'])->middleware('role:director');
         Route::post('schedules/retro-leave', [\App\Http\Controllers\ScheduleController::class, 'retroLeave']);
         Route::post('schedules/leave-by-session', [\App\Http\Controllers\ScheduleController::class, 'leaveBySession']);
-        Route::post('schedules/leave-cascade-preview', [\App\Http\Controllers\ScheduleController::class, 'leaveCascadePreview']);
+        Route::post('schedules/leave-cascade-preview', [\App\Http\Controllers\ScheduleController::class, 'leaveCascadePreview'])->middleware('role:director');
         // In-app #410: leave tail that lands in a pre-created renewal → preview, then shift the renewal back.
         Route::post('schedules/leave-successor-shift/preview', [\App\Http\Controllers\ScheduleLeaveSuccessorShiftController::class, 'preview'])->middleware('role:director,super_admin');
         Route::post('schedules/leave-successor-shift/apply', [\App\Http\Controllers\ScheduleLeaveSuccessorShiftController::class, 'apply'])->middleware('role:director,super_admin');
-        Route::post('schedules/bulk-leave', [\App\Http\Controllers\ScheduleController::class, 'bulkHolidayLeave']);
-        Route::put('schedules/{schedule}', [\App\Http\Controllers\ScheduleController::class, 'update']);
-        Route::delete('schedules/{schedule}', [\App\Http\Controllers\ScheduleController::class, 'destroy']);
+        Route::post('schedules/bulk-leave', [\App\Http\Controllers\ScheduleController::class, 'bulkHolidayLeave'])->middleware('role:director');
+        Route::put('schedules/{schedule}', [\App\Http\Controllers\ScheduleController::class, 'update'])->middleware('role:director');
+        Route::delete('schedules/{schedule}', [\App\Http\Controllers\ScheduleController::class, 'destroy'])->middleware('role:director');
 
         // #995: alerts/tuition is intentionally registered ONCE in the director-only
         // group above (least privilege — tuition/financial alerts; only the director
@@ -812,9 +812,10 @@ Route::prefix('v1')->group(function () {
 
         // ── Rooms ────────────────────────────────────────────────────
         Route::get('rooms', [RoomController::class, 'index']);
-        Route::post('rooms', [RoomController::class, 'store']);
-        Route::put('rooms/{room}', [RoomController::class, 'update']);
-        Route::delete('rooms/{room}', [RoomController::class, 'destroy']);
+        // Rooms are edited on the director's 設定 → 教室 tab; teachers only read them (scheduling, print).
+        Route::post('rooms', [RoomController::class, 'store'])->middleware('role:director');
+        Route::put('rooms/{room}', [RoomController::class, 'update'])->middleware('role:director');
+        Route::delete('rooms/{room}', [RoomController::class, 'destroy'])->middleware('role:director');
     });
 
     Route::middleware(['role:director,teacher,super_admin', 'require_campus', 'require_password_change'])->group(function () {
