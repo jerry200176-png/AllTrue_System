@@ -33,6 +33,74 @@ const STATES = [
  */
 const READ_ONLY_POSTS = new Set(['/api/v1/student-classes/session-dates', '/api/v1/adoption/events']);
 
+// #5410: a paused course with teaching history must not require a temporary resume to close.
+for (const width of [390, 1440]) {
+  for (const cancelClose of [true, false]) {
+    test(`history-protected deletion offers the existing paused-course close, cancel=${cancelClose} @${width}`, async ({ page }, testInfo) => {
+      await page.setViewportSize({ width, height: 900 });
+      const target = { ...course(7101, 7201, '合成結案學生', 'unpaid'), status: 'inactive', stop: 1,
+        payment_type: 'session',
+        closed_reason: null, sessions_purchased: 8, sessions_used: 5, remaining_sessions: 3,
+        UsedSessions: 5, RemainingSessions: 3 };
+      const writes = [];
+      const errors = [];
+      page.on('pageerror', error => errors.push(error.message));
+      await page.route('**/*', async route => {
+        const request = route.request();
+        const url = new URL(request.url());
+        if (url.origin !== new URL(testInfo.project.use.baseURL).origin) return route.abort();
+        if (!url.pathname.startsWith('/api/')) return route.continue();
+        const path = url.pathname;
+        if (request.method() === 'POST' && READ_ONLY_POSTS.has(path)) return route.fulfill({ json: { data: [] } });
+        if (request.method() !== 'GET') {
+          writes.push({ method: request.method(), path, body: request.postDataJSON() });
+          if (request.method() === 'DELETE' && path === '/api/v1/student-classes/7101') {
+            return route.fulfill({ status: 422, json: { code: 'course_has_history', reasons: ['sign_in', 'held_session'],
+              message: '這門課已有點名、上課或請假紀錄，不能刪除；尚未收款的費用不會自動免除。' } });
+          }
+          if (request.method() === 'POST' && path === '/api/v1/student-classes/7101/pause') {
+            target.closed_reason = 'settled_pending';
+            return route.fulfill({ json: { pending_reconciliation: true } });
+          }
+          return route.fulfill({ status: 500, json: { message: 'unexpected write' } });
+        }
+        if (path === '/api/v1/student-classes') return route.fulfill({ json: { data: [target], total: 1, current_page: 1, last_page: 1 } });
+        if (path === '/api/v1/students') return route.fulfill({ json: { data: [{ id: 7201, name: '合成結案學生' }] } });
+        return route.fulfill({ json: { data: [], total: 0 } });
+      });
+      await page.goto('/pilot-mount.html?page=course');
+      const row = page.locator('[data-contract-id="7101"]');
+      await expect(row).toBeVisible();
+      await row.locator('.action-menu-trigger').click();
+      // The normal menu also exposes close while merely paused.
+      await expect(page.getByRole('menuitem', { name: '結束課程（不再續課）…', exact: true })).toBeVisible();
+      await page.getByRole('menuitem', { name: '刪除課程…', exact: true }).click();
+      const deletion = page.getByTestId('delete-course-dialog');
+      await deletion.getByRole('button', { name: '刪除課程', exact: true }).click();
+      await expect(page.getByTestId('delete-course-refusal')).toContainText('點名');
+      await expect(deletion).toContainText('尚未收款的費用不會自動免除');
+      await expect(deletion.getByRole('button', { name: '刪除課程', exact: true })).toHaveCount(0);
+      await deletion.getByRole('button', { name: '結束課程（保留紀錄）', exact: true }).click();
+      const confirmation = page.getByRole('alertdialog', { name: '結束數學？', exact: true });
+      await expect(confirmation).toContainText('放棄這 3 堂剩餘額度');
+      await expect(confirmation).toContainText('不會視為已收');
+      await expect(confirmation).toContainText('已繳費與已上課紀錄仍會保留');
+      await confirmation.getByRole('button', { name: cancelClose ? '取消' : '結束課程', exact: true }).click();
+      if (!cancelClose) {
+        await expect.poll(() => writes.length).toBe(2);
+        expect(writes[1]).toEqual({ method: 'POST', path: '/api/v1/student-classes/7101/pause',
+          body: { action: 'pause', reason: 'settled', forfeit_remaining: true } });
+      }
+      expect(writes).toHaveLength(cancelClose ? 1 : 2);
+      expect(writes[0]).toMatchObject({ method: 'DELETE', path: '/api/v1/student-classes/7101' });
+      expect(writes.some(write => /resume|waive|payment|correction/.test(write.path) || write.body?.action === 'resume')).toBe(false);
+      expect(target.UsedSessions).toBe(5);
+      expect(target.charge).toBe(4000);
+      expect(errors).toEqual([]);
+    });
+  }
+}
+
 function course(id, studentId, studentName, paymentStatus, legacyFlagOnly = false) {
   return {
     legacy_paid_flag_only: legacyFlagOnly,
