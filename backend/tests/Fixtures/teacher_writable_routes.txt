@@ -1,0 +1,2 @@
+# Write routes (non-GET) the teacher role can reach through a role: middleware. Reviewed list; see TeacherWritableRoutesRatchetTest.
+# One "METHOD uri" per line, sorted. Baseline taken from CI on 2026-11-17.
