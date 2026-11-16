@@ -1,0 +1,16 @@
+updates:
+  - id: staff-2026-11-16-zero-amount-bill
+    published_at: "2026-11-16"
+    audiences:
+      - director
+      - super_admin
+    importance: major
+    title: 零元帳單可以自己處理
+    summary: 收款登記成零元造成的需核對，學生帳務會直接給撤銷按鈕，再照實際金額登記。
+    items:
+      - category: fixed
+        text: 帳單是零元卻標成已繳時，學生帳務的要先處理會列出來，並可撤銷那筆零元收款。
+      - category: action_required
+        text: 撤銷後合約會回到未繳，請照實際收到的金額和日期重新登記收款。
+    source_refs:
+      - "changelog:2026-11-16:zero-amount-bill-one-step"

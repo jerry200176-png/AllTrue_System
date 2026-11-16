@@ -95,6 +95,84 @@ class FirstBillAtContractChargeTest extends TestCase
         $this->assertSame(1, Invoice::where('StudentClassID', $sc->ID)->where('Status', 'paid')->count());
     }
 
+    /**
+     * Founder 2026-11-16 (course 1907; 80 such bills in production): an old 「0 元」 登記 left a NT$0 bill marked paid, which
+     * could be voided neither way. Undoing the NT$0 receipt now takes the bill with it and the course is 未繳 again.
+     */
+    public function test_undoing_a_zero_amount_receipt_takes_its_unmarked_zero_bill_with_it_and_the_course_can_be_recorded(): void
+    {
+        [$h, $sc] = $this->fixture(6000, ['Paid' => 1, 'PayDate' => '2026-04-20']);
+        [$invoice, $report] = $this->zeroBill($sc);
+        $this->assertSame('review_required', $this->courseRow($sc)['status']); // a NT$0 bill is not payment evidence
+        // The bill itself cannot be voided while its receipt stands: the receipt is undone first.
+        $this->withHeaders($h)->postJson("/api/v1/invoices/{$invoice->id}/void", ['reason' => '金額登記錯誤'])->assertStatus(422);
+
+        $this->withHeaders($h)->putJson("/api/v1/payment-reports/{$report->id}/void", ['void_reason' => '金額登記錯誤'])->assertOk();
+
+        $this->assertSame('void', $invoice->refresh()->Status);
+        $this->assertSame('voided', $report->refresh()->status);
+        $this->assertSame([0, null], [(int) $sc->refresh()->Paid, $sc->PayDate]);
+        $row = $this->courseRow($sc);
+        $this->assertSame(['unbilled', 6000], [$row['status'], $row['outstanding']]);
+        // The real amount can now be recorded.
+        $this->confirmEntered($h, $sc, 6000);
+        $this->assertSame(1, Invoice::where('StudentClassID', $sc->ID)->where('Status', 'paid')->where('TotalAmount', 6000)->count());
+    }
+
+    public function test_undoing_a_zero_amount_receipt_keeps_the_course_settled_when_another_paid_bill_backs_it(): void
+    {
+        [$h, $sc] = $this->fixture(6000, ['Paid' => 1, 'PayDate' => '2026-04-20']);
+        $real = Invoice::create(['StudentID' => $sc->StudentID, 'StudentClassID' => $sc->ID, 'IssueDate' => '2026-04-20', 'TotalAmount' => 6000, 'PaidAmount' => 6000, 'Status' => 'paid']);
+        Payment::create(['InvoiceID' => $real->id, 'Amount' => 6000, 'PaidAt' => '2026-04-20', 'Method' => 'cash']);
+        [$zero, $report] = $this->zeroBill($sc);
+
+        $this->withHeaders($h)->putJson("/api/v1/payment-reports/{$report->id}/void", ['void_reason' => '重複登記'])->assertOk();
+
+        $this->assertSame('void', $zero->refresh()->Status);
+        $this->assertSame('paid', $real->refresh()->Status);
+        $this->assertSame(1, (int) $sc->refresh()->Paid); // the real bill still settles the course
+        $this->assertSame('paid', $this->courseRow($sc)['status']);
+    }
+
+    public function test_a_zero_bill_with_no_receipt_left_is_voidable_and_a_marked_or_shared_one_is_left_alone(): void
+    {
+        // No confirmed receipt on it: voidable directly, and the ledger offers it.
+        [$h, $sc] = $this->fixture(6000, ['Paid' => 1, 'PayDate' => '2026-04-20']);
+        $bare = Invoice::create(['StudentID' => $sc->StudentID, 'StudentClassID' => $sc->ID, 'IssueDate' => '2026-04-20', 'TotalAmount' => 0, 'PaidAmount' => 0, 'Status' => 'paid']);
+        $ledger = collect($this->withHeaders($h)->getJson("/api/v1/accounting/ledger?student_class_id={$sc->ID}")->assertOk()->json('invoices'))->firstWhere('id', $bare->id);
+        $this->assertTrue($ledger['can_direct_void']);
+        $this->withHeaders($h)->postJson("/api/v1/invoices/{$bare->id}/void", ['reason' => '金額登記錯誤'])->assertOk();
+        $this->assertSame('void', $bare->refresh()->Status);
+        // The stale 已繳 flag goes with its last bill, so the real amount can be recorded.
+        $this->assertSame(0, (int) $sc->refresh()->Paid);
+        $this->assertSame(['unbilled', 6000], array_values($this->courseRow($sc)));
+        $this->confirmEntered($h, $sc, 6000);
+
+        // A fully refunded bill is NT$0 and paid too, but money moved on it: its history is not offered for voiding.
+        [$hr, $refunded] = $this->fixture(6000, ['Paid' => 1]);
+        $back = Invoice::create(['StudentID' => $refunded->StudentID, 'StudentClassID' => $refunded->ID, 'IssueDate' => '2026-04-20', 'TotalAmount' => 0, 'PaidAmount' => 0, 'Status' => 'paid']);
+        Payment::create(['InvoiceID' => $back->id, 'Amount' => 6000, 'PaidAt' => '2026-04-20', 'Method' => 'cash']);
+        Payment::create(['InvoiceID' => $back->id, 'Amount' => -6000, 'PaidAt' => '2026-04-25', 'Method' => 'refund']);
+        $row = collect($this->withHeaders($hr)->getJson("/api/v1/accounting/ledger?student_class_id={$refunded->ID}")->assertOk()->json('invoices'))->firstWhere('id', $back->id);
+        $this->assertFalse($row['can_direct_void']);
+        $this->withHeaders($hr)->postJson("/api/v1/invoices/{$back->id}/void", ['reason' => '金額登記錯誤'])->assertStatus(422);
+        $this->assertSame(1, (int) $refunded->refresh()->Paid);
+
+        // Marked 免費／贈送: NT$0 by decision. Undoing its receipt leaves the bill.
+        [$h2, $free] = $this->fixture(6000, ['Paid' => 1]);
+        [$marked, $markedReport] = $this->zeroBill($free, ['zero_amount_reason' => Invoice::ZERO_REASON_FREE_GIFT]);
+        $this->withHeaders($h2)->putJson("/api/v1/payment-reports/{$markedReport->id}/void", ['void_reason' => 'x'])->assertOk();
+        $this->assertNotSame('void', $marked->refresh()->Status);
+
+        // A second confirmed receipt on the same bill: the bill stays for it.
+        [$h3, $two] = $this->fixture(6000, ['Paid' => 1]);
+        [$shared, $first] = $this->zeroBill($two);
+        $second = $this->pendingReport($two, 0, 'second-zero', $shared->id);
+        $second->update(['status' => 'confirmed']);
+        $this->withHeaders($h3)->putJson("/api/v1/payment-reports/{$first->id}/void", ['void_reason' => 'x'])->assertOk();
+        $this->assertNotSame('void', $shared->refresh()->Status);
+    }
+
     public function test_reversing_one_of_two_receipts_keeps_the_bill(): void
     {
         [$h, $sc] = $this->fixture(20000);
@@ -272,6 +350,22 @@ class FirstBillAtContractChargeTest extends TestCase
             'payment_date' => '2026-04-28', 'payment_method' => 'cash', 'reported_amount' => $amount, 'status' => 'pending',
             'report_token_hash' => hash('sha256', $tag), 'token_expires_at' => Carbon::now()->addDay(),
         ]);
+    }
+
+    /**
+     * The shape an old 「0 元」 登記 left behind: a NT$0 bill marked paid, a NT$0 payment row and its confirmed NT$0 receipt.
+     *
+     * @return array{0: Invoice, 1: PaymentReport}
+     */
+    private function zeroBill(StudentClass $sc, array $invoiceOverrides = []): array
+    {
+        $invoice = Invoice::create(array_merge(['StudentID' => $sc->StudentID, 'StudentClassID' => $sc->ID, 'IssueDate' => '2026-04-20',
+            'TotalAmount' => 0, 'PaidAmount' => 0, 'Status' => 'paid'], $invoiceOverrides));
+        $report = $this->pendingReport($sc, 0, 'zero-' . $invoice->id, $invoice->id);
+        $payment = Payment::create(['InvoiceID' => $invoice->id, 'Amount' => 0, 'PaidAt' => '2026-04-20', 'Method' => 'transfer', 'payment_report_id' => $report->id]);
+        $report->update(['status' => 'confirmed', 'payment_id' => $payment->id, 'confirmed_at' => Carbon::now()]);
+
+        return [$invoice, $report];
     }
 
     /** @return array{status: string, outstanding: int} */
