@@ -1418,6 +1418,34 @@ class ScheduleGuardService
      */
     private function countDistinctStudents(array $entries): int
     {
+        // in-app #565: count the most students present at one moment, not everyone who touches the slot.
+        // 18:00-20:00 (two students) and 20:00-22:00 (one) never meet, so a 19:00-21:00 lesson sees two.
+        // Intervals that all overlap the slot and each other share a point inside it (Helly), so the peak
+        // over the entries' own start times is the peak inside the slot. An entry without times counts everywhere.
+        $minutes = static fn ($t): ?int => preg_match('/^(\d{1,2}):(\d{2})/', (string) $t, $m) ? (int) $m[1] * 60 + (int) $m[2] : null;
+        $starts = array_unique(array_filter(array_map(fn ($e) => $minutes($e['start_time'] ?? null), $entries), fn ($v) => $v !== null));
+        if ($starts === []) {
+            return $this->countDistinctOccupants($entries);
+        }
+        $peak = 0;
+        foreach ($starts as $t) {
+            $present = array_filter($entries, function ($e) use ($t, $minutes) {
+                $start = $minutes($e['start_time'] ?? null);
+                $end = $minutes($e['end_time'] ?? null);
+
+                return ($start === null || $start <= $t) && ($end === null || $t < $end);
+            });
+            $peak = max($peak, $this->countDistinctOccupants(array_values($present)));
+        }
+
+        return $peak;
+    }
+
+    /**
+     * @param  array<int, array<string, mixed>>  $entries
+     */
+    private function countDistinctOccupants(array $entries): int
+    {
         $studentIds = [];
         $anonymousEntries = [];
 

@@ -20,6 +20,13 @@ last_reviewed: 2026-09-05
 
 **佇列跨版本升級（#4103）**：PR 自己通過 CI，不代表從舊版 main 啟動的合併佇列能替它跑組合測試。刪除 dispatch 目標前，先將呼叫端更新合併到 main；過渡版本保留手動 dispatch 相容性，等新版佇列生效再刪檔。`land-queue-dispatch-contract.test.mjs` 核對已安裝 main 的 dispatch 目標仍存在，避免佇列在升級自己時找不到 workflow。
 
+### in-app #565. 時段人數上限要算「同一時間最多幾人」，不是「碰到這個時段的全部人」（2026-11-17）
+
+- **現象**：一對三老師 18–20 有 2 人、20–22 有 1 人，要排 19–21 的第 3 人被擋：「此時段已有 3 位學生，上限為 3 位」。其實同一時間最多 2 人。
+- **根因**：`ScheduleGuardService::countDistinctStudents()` 把所有與新時段重疊的學生加總，前後接續、彼此不重疊的課也算在一起。老師人數與教室人數都用它。
+- **強制規則**：人數上限一律比「同一時刻在場的不重複學生數」的最大值（區間半開：20:00 結束的課不算在 20:00 開始的時段裡）。同一位學生的合約與堂次仍算一人（#406）。
+- **測試必補**：`ScheduleGuardrailsTest::test_inapp_565_capacity_counts_students_present_at_the_same_time`（前後接續可排、真正同時 3 人仍擋、同一人兩筆算一人）。
+
 ### R157. MariaDB 上不可直接重放 MySQL 8 形狀的 SHOW GRANTS（staged DB principal rotation Phase 1，run 38724893175／#4160，2026-10-15）
 
 - **現象**：`deploy.yml` 的 `phase1-create` 以 `SHOW GRANTS contains authentication material; refusing unsafe replay` fail closed。正式機是 MariaDB，它會在 `GRANT USAGE` 行後面附上舊帳號的 `IDENTIFIED BY PASSWORD '*…'`／`IDENTIFIED VIA <plugin> USING '…'`；轉換器卻假設 MySQL 8 的形狀（GRANT 行不帶認證子句）。另外，轉換器在檢查 GRANT 之前就先印出 `CREATE USER`，所以拒絕時那一行仍可能送進 `mysql`，再被 cleanup trap 靜默 DROP，log 無法證明最後狀態。
