@@ -864,7 +864,8 @@ const amountsFor = (id) => {
 const monthLinesFor = (id) => Object.fromEntries(courseInvoices(id).map((inv) => {
   const key = String(inv.billing_period || inv.period_start || '').slice(0, 7);
   const paid = latestStandingPayment(inv.payments);
-  return [key, { due: Number(inv.total_amount || 0), paidDate: paid ? paid.date : '', paidAmount: Number(inv.calculated_applied_amount || 0) }];
+  return [key, { due: Number(inv.total_amount || 0), paidDate: paid ? paid.date : '', paidAmount: Number(inv.calculated_applied_amount || 0),
+    periodStart: inv.period_start, periodEnd: inv.period_end }];
 }).filter(([k]) => k));
 // #3753 (D18): members of one shared CoursePackage are one obligation; one pending report covers them all.
 const packageMemberIds = (id) => {
