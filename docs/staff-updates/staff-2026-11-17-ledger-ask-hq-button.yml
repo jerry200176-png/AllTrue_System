@@ -1,0 +1,14 @@
+updates:
+  - id: staff-2026-11-17-ledger-ask-hq-button
+    published_at: "2026-11-17"
+    audiences:
+      - director
+      - super_admin
+    importance: digest
+    title: 學生帳務多了「回報給總部」
+    summary: 收據對不到帳單時，旁邊多一顆「回報給總部」，不用再自己打電話或傳訊息。
+    items:
+      - category: improved
+        text: 「要先處理」裡需要總部處理的項目，都有「回報給總部」按鈕，回報表單會先填好學生、課程和收據編號。
+    source_refs:
+      - "changelog:2026-11-17:ledger-ask-hq-button"

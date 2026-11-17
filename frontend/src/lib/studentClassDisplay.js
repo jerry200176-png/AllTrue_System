@@ -302,14 +302,16 @@ export function ledgerReceiptHelp(codes) {
     return {
       title: '收據確認了，但沒有收款紀錄',
       message: '這張收據已經確認，可是沒有對應的收款。',
-      hint: '怎麼處理：錢真的收了，請聯絡總部補記收款；收據開錯、根本沒收這筆錢，才按「撤銷收據」。若系統說這裡不能撤銷，請聯絡總部對帳。',
+      hint: '怎麼處理：錢真的收了，按「回報給總部」請總部補記收款；收據開錯、根本沒收這筆錢，才按「撤銷收據」。若系統說這裡不能撤銷，按「回報給總部」請總部對帳。',
+      ask_hq: true,
     };
   }
   // Which bill the money is on is not known here (#4847 review), so the copy never guesses another student's bill.
   return {
     title: '這張收據對不到這位學生的帳單',
     message: '收據已經確認，但這位學生的帳單上找不到對應的收款，可能記在別的帳單上（例如兄弟姊妹合開的帳單）。',
-    hint: '怎麼處理：先不要撤銷。錢真的收了，請聯絡總部對帳；收據開錯、根本沒收這筆錢，才按「撤銷收據」。若系統說這裡不能撤銷（收據綁在別的帳單上），請聯絡總部對帳。',
+    hint: '怎麼處理：先不要撤銷。錢真的收了，按「回報給總部」請總部對帳；收據開錯、根本沒收這筆錢，才按「撤銷收據」。若系統說這裡不能撤銷（收據綁在別的帳單上），按「回報給總部」請總部對帳。',
+    ask_hq: true, // 帳務重整 §3: every 「請總部…」 has its button next to it
   };
 }
 
@@ -447,7 +449,7 @@ export function formatLedgerDriftLine(inv) {
   return `這張帳單${parts.join('，')}${over > 0 ? `，多收 ${money(over)}` : ''}。這一筆沒有可以直接撤銷的收款，需要系統管理員核對。`;
 }
 
-/** Pre-filled in-app report for the 回報給系統管理員 action: IDs only, never names. */
+/** Pre-filled in-app report for the 回報給總部 action: IDs only, never names. */
 // in-app #476: the report a director sends says the problem in words; the code stays in brackets for triage.
 const LEDGER_CODE_WORDS = {
   overpayment_pending_review: '多收，沒有記進帳單',
@@ -459,10 +461,11 @@ const LEDGER_CODE_WORDS = {
 
 export function buildLedgerIssueReport(a, inv, studentId) {
   const ids = [`學生ID ${studentId || '-'}`, `帳單ID ${a?.invoice_id || inv?.id || '-'}`, `課程ID ${a?.student_class_id || inv?.student_class_id || '-'}`];
+  if (a?.report_id) ids.push(`收據ID ${a.report_id}`);
   const recorded = inv ? Number(inv.calculated_applied_amount || 0) + Number(inv.overpaid_amount || 0) : null;
   const nums = inv ? `應收 ${inv.total_amount}、帳單記錄已收 ${inv.paid_amount}、收款紀錄合計 ${recorded}` : '';
   return {
-    description: `學生帳務出現「${LEDGER_CODE_WORDS[a?.code] ? `${LEDGER_CODE_WORDS[a.code]}（${a.code}）` : (a?.code || 'ledger')}」，沒有可撤銷的收款，請核對。${nums}`,
+    description: `學生帳務出現「${LEDGER_CODE_WORDS[a?.code] ? `${LEDGER_CODE_WORDS[a.code]}（${a.code}）` : (a?.code || 'ledger')}」${a?.report_id ? '' : '，沒有可撤銷的收款'}，請核對。${nums}`,
     relatedReference: ids.join(' / '),
   };
 }
