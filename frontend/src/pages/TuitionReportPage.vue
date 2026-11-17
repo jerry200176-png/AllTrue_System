@@ -59,7 +59,7 @@
 
         <div v-if="!rows.length" class="tr-empty tw:flex tw:flex-col tw:items-center tw:gap-2 tw:px-5 tw:py-10 tw:text-center" role="status">
           <CircleCheck class="tw:size-8 tw:text-tpl-secondary" :stroke-width="1.75" aria-hidden="true" />
-          <p class="tw:text-tpl-body tw:text-tpl-secondary">{{ collection.allCollected ? '本月學收已收齊' : `本分校 ${year}/${month} 無有效課程紀錄` }}</p>
+          <p class="tw:text-tpl-body tw:text-tpl-secondary">{{ collection.allCollected ? '本月學收已收齊' : '這個月沒有未收的課' }}</p>
         </div>
 
         <Table v-else class="tr-table" :class="t.table">
@@ -78,7 +78,8 @@
             </TableRow>
           </TableHeader>
           <TableBody>
-            <TableRow v-for="r in rows" :key="r.student_class_id" class="tw:hover:bg-muted/60">
+            <!-- package rows have no student_class_id: key by row type + id so Vue never patches the wrong row -->
+            <TableRow v-for="r in rows" :key="`${r.row_type}-${r.student_class_id ?? r.package_id}`" class="tw:hover:bg-muted/60">
               <!-- in-app #543: a name stays on one line (PAGE_TEMPLATE name-cell rule 1); the subject and teacher repeat under it on phone. -->
               <TableCell :class="[t.name, 'tw:pl-5']">
                 <span class="student-name" :title="r.student_name">{{ r.student_name }}</span>
@@ -206,7 +207,10 @@ function goPage(p) {
   loadData();
 }
 
+// A slower earlier response (e.g. after clicking 上一月 twice) must not overwrite the month now on screen.
+let loadSeq = 0;
 async function loadData() {
+  const seq = ++loadSeq;
   loading.value = true;
   error.value = '';
   try {
@@ -228,13 +232,14 @@ async function loadData() {
     });
     if (!resp.ok) throw new Error(`載入失敗（${resp.status}）`);
     const json = await resp.json();
+    if (seq !== loadSeq) return;
     rows.value = json.data || [];
     summary.value = json.summary || { total_students: 0, total_sessions: 0, total_tuition: 0, total_due: 0, total_collected: 0, total_outstanding: 0, unpaid_students: 0 };
     meta.value = json.meta || { current_page: 1, last_page: 1, per_page: 50, total: 0 };
   } catch (e) {
-    error.value = e.message || '載入失敗';
+    if (seq === loadSeq) error.value = e.message || '載入失敗';
   } finally {
-    loading.value = false;
+    if (seq === loadSeq) loading.value = false;
   }
 }
 
@@ -253,9 +258,9 @@ async function exportCsv() {
     const blob = await resp.blob();
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
-    const cd = resp.headers.get('Content-Disposition') || '';
-    const match = cd.match(/filename\*?=['"]?([^'";\s]+)/);
-    a.download = match ? decodeURIComponent(match[1]) : `當月學收_${year.value}${String(month.value).padStart(2,'0')}.csv`;
+    // The UTF-8 name (filename*=), not the ASCII fallback (filename=) that comes first in the header; as lib/billExport.js.
+    const name = /filename\*=UTF-8''([^;]+)/i.exec(resp.headers.get('Content-Disposition') || '')?.[1];
+    a.download = name ? decodeURIComponent(name) : `當月學收_${year.value}${String(month.value).padStart(2,'0')}.csv`;
     a.click();
     URL.revokeObjectURL(a.href);
   } catch (e) {
