@@ -126,6 +126,16 @@ class ContractMoneyCallersAgreeTest extends TestCase
             }
         }
 
+        // 6a. 月對帳表 (#5414/#5428): a listed contract shows the Verdict's status and outstanding, and a contract that still
+        //     owes on its bills is listed whatever the month (no fixture contract is waived; that one reads waived/0 there).
+        $rosterRow = collect($this->withHeaders($headers)->getJson('/api/v1/accounting/monthly-roster?year=2026&month=8&branch_id=1')->assertOk()->json('data'))
+            ->flatMap(fn ($s) => $s['courses'])->firstWhere('course_id', $id);
+        if ($rosterRow && [$rosterRow['money']['status'], (int) $rosterRow['money']['outstanding']] !== [$v->status, $v->outstanding]) {
+            $answers['monthly_roster'] = "status {$rosterRow['money']['status']}/{$rosterRow['money']['outstanding']} but verdict {$v->status}/{$v->outstanding}";
+        } elseif (!$rosterRow && $v->source === 'invoice' && $v->outstanding > 0) {
+            $answers['monthly_roster_listing'] = "owes {$v->outstanding} on its bills but is not listed";
+        }
+
         // 6. R28 invariant: collecting is only ever against what still owes. Never above the outstanding amount, never
         //    against a bill whose Payment rows already cover it (stored Status may be stale), whatever Paid says.
         if ($class === 'owing' && $v->source === 'invoice' && !$c['package'] && $v->outstanding > 0) {
