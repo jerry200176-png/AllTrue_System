@@ -1364,7 +1364,7 @@ const anomalyLabel = (code) => labelMap({
 
 .ledger-issue{margin:0;font-size:14px;line-height:1.6}
 .ledger-error-text{margin:8px 0 0;color:var(--ds-danger);font-size:13px}
-.ledger-reason{display:grid;gap:8px;margin:0 0 12px;padding:12px;border:1px solid var(--ds-canvas-soft);border-radius:var(--ds-radius-lg)}
+.ledger-reason{display:grid;gap:8px;margin:0 0 12px;padding:12px;border:1px solid var(--ds-border);border-radius:var(--ds-radius-lg)}
 .ledger-owed{display:grid;gap:2px;margin-bottom:14px}
 .ledger-owed p{margin:0}
 .ledger-owed__label{font-size:12px;color:var(--ds-ink-mute)}
