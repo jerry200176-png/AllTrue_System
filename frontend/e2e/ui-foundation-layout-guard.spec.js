@@ -561,16 +561,6 @@ const PAGES = [
     },
   },
   {
-    key: 'tuition-report',
-    url: '/pilot-mount.html?page=tuition-report',
-    names: NAMES,
-    rows: ['tbody tr td:first-child'],
-    mock: async (page) => {
-      const data = NAMES.map((n, i) => ({ student_class_id: i + 1, student_name: n, subject: SUBJECTS[i % 6], teacher_name: ['王老師', '李大華老師', '陳老師'][i % 3], class_type: 'one_on_one', monthly_sessions: 8, rate: 600, monthly_tuition: 4800, pay_status: ['paid', 'partial', 'unpaid', 'review'][i % 4], outstanding_amount: 1200, last_paid_at: '2026-11-03' }));
-      await page.route('**/api/v1/finance/branch-monthly-tuition**', (r) => json(r, { data, summary: { total_students: 20, total_sessions: 160, total_tuition: 96000, total_due: 96000, total_collected: 50000, total_outstanding: 46000, unpaid_students: 9 }, meta: { current_page: 1, last_page: 1, per_page: 50, total: 20 } }));
-    },
-  },
-  {
     // issue 5269 step 2: the teacher's week view (a tab of the student profile). Day labels are the "names" (never wrap);
     // the plan lines and the day grid share the card's left edge; every control a finger meets is at least 44px.
     key: 'student-study-week',

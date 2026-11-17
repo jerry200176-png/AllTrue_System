@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { findNavItem, getMobileTabItems, getNavigationGroups, getTodoPages, getToolbarItems, navigationPages, requiredContextForPage } from './navigationRegistry';
+import { findNavItem, getMobileTabItems, getNavigationGroups, getTodoPages, getToolbarItems, MOVED_PAGES, navigationPages, requiredContextForPage } from './navigationRegistry';
 
 const pages = role => navigationPages(getNavigationGroups(role));
 const sidebar = role => getNavigationGroups(role).flatMap(group => group.items.map(item => item.label));
@@ -70,7 +70,7 @@ describe('navigation registry', () => {
   it('folds reports, settings and system admin into three tabbed hubs', () => {
     const hubs = role => getNavigationGroups(role).flatMap(g => g.items).filter(i => i.tabs);
     expect(hubs('director').map(h => [h.label, h.tabs.map(t => t.label)])).toEqual([
-      ['報表與薪資', ['當月學收', '科目數統計', '兼職薪資', '正職薪資要件']],
+      ['報表與薪資', ['科目數統計', '兼職薪資', '正職薪資要件', '當月學收']],
       ['設定', ['老師管理', '教室', '科目', '家長 LINE 通知', '家長 LINE 綁定', '綁定衝突審查', '綁定健康度']],
     ]);
     expect(hubs('super_admin').map(h => h.label)).toEqual(['報表與薪資', '設定', '系統管理']);
@@ -116,6 +116,16 @@ describe('navigation registry', () => {
       'nightly-reconcile': ['系統管理', '夜間堂數對帳'],
     },
   };
+  // 當月學收 moved into 帳務中心 > 月對帳表 (Jerry 2026-11-18): the old key opens a page the same roles can reach, on its tab.
+  it('a moved page opens a reachable page on the tab it moved to', () => {
+    expect(MOVED_PAGES['tuition-report']).toEqual({ page: 'tuition-collect', tab: 'roster' });
+    for (const role of ['director', 'super_admin']) {
+      expect(pages(role)).toEqual(expect.arrayContaining(['tuition-report', 'tuition-collect']));
+    }
+    const hub = findNavItem(getNavigationGroups('director'), 'tuition-report');
+    expect(hub.page).toBe('subject-units'); // opening 報表與薪資 lands on a report, not on a jump to 帳務中心
+  });
+
   for (const [role, map] of Object.entries(RETIRED)) {
     for (const [key, [hubLabel, tabLabel]] of Object.entries(map)) {
       it(`retired key ${key} still resolves to ${hubLabel} > ${tabLabel} for ${role}`, () => {
