@@ -190,7 +190,7 @@ final class MonthlyRosterTest extends TestCase
 
     private function bill(StudentClass $course, array $overrides): Invoice
     {
-        return Invoice::create(array_merge(['StudentID' => $course->StudentID, 'StudentClassID' => $course->ID, 'DueDate' => '2026-11-30', 'PaidAmount' => 0], $overrides));
+        return Invoice::create(array_merge(['StudentID' => $course->StudentID, 'StudentClassID' => $course->ID, 'DueDate' => '2026-11-30', 'IssueDate' => '2026-10-01', 'PaidAmount' => 0], $overrides));
     }
 
     private function report(StudentClass $course): void
