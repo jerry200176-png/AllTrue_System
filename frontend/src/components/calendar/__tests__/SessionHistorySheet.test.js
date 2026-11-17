@@ -1,5 +1,8 @@
 import { mount, flushPromises } from '@vue/test-utils';
 import { afterEach, beforeAll, expect, it, vi } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { resolveSessionRowForCell } from '../../../lib/classSessionPick';
 import SessionHistorySheet from '../SessionHistorySheet.vue';
 
 const mockFetch = vi.fn();
@@ -62,4 +65,15 @@ it('does not load while closed or without a session', async () => {
   await flushPromises();
 
   expect(mockFetch).not.toHaveBeenCalled();
+});
+
+it('the calendar opens the history of the clicked occurrence, not the base slot (two lessons on one date)', () => {
+  const page = readFileSync(resolve(__dirname, '../../../pages/SmartCalendar.vue'), 'utf8');
+  expect(page).toContain('  const clickedSession = findSessionRowForCell(course, fullDateStr);\n  historySessionId.value = clickedSession?.id ?? null;');
+  expect(page).toContain('@history="showModal = false; historyOpen = true"');
+  const rows = [
+    { id: 701, session_date: '2026-11-20', start_time: '10:00', status: 'scheduled' },
+    { id: 702, session_date: '2026-11-20', start_time: '14:00', status: 'scheduled' },
+  ];
+  expect(resolveSessionRowForCell(rows, '2026-11-20', '14:00')?.id).toBe(702); // the clicked 14:00 cell
 });

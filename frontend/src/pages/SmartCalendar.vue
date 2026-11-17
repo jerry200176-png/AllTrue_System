@@ -444,7 +444,7 @@
       @goto-attendance="goToAttendanceFromSession"
       @all-lessons="openAllLessonsInCourseMgmt"
       @goto-learning="goToLearningFromSession"
-      @history="historySessionId = cancelTargetSession?.id ?? null; showModal = false; historyOpen = true"
+      @history="showModal = false; historyOpen = true"
     />
     <SessionHistorySheet v-model:open="historyOpen" :session-id="historySessionId" />
 
@@ -726,7 +726,7 @@ function selectCalendarFlowStep(stepId) {
 }
 const showModal = ref(false);
 const historyOpen = ref(false); // 異動紀錄 sheet (#4529 C)
-const historySessionId = ref(null);
+const historySessionId = ref(null); // the occurrence the user clicked, set in onCourseClick (not the base slot's session)
 const showCalendarPrint = ref(false);
 const editingCourseId = ref(null);
 /** 點擊的那一堂的實際日期（僅編輯單堂時有值），用於限定只能做請假/調課/加課 */
@@ -2187,6 +2187,7 @@ const onCourseClick = (course, fullDateStr) => {
   editingActionDate.value = fullDateStr || '';
   editingException.value = course.is_exception ? course : null;
   const clickedSession = findSessionRowForCell(course, fullDateStr);
+  historySessionId.value = clickedSession?.id ?? null;
   resetSessionRecovery();
   moveContract.value = makeMoveContract();
   conflictWarning.value = '';
@@ -2437,7 +2438,7 @@ const sessionEditSession = computed(() => {
     cancelState: cancelState.value,
     recovery: sessionRecovery.value,
     canMoveContract: isDirectorRole(props.userRole) && !!cancelTargetSession.value?.id,
-    canViewHistory: isDirectorRole(props.userRole) && !!cancelTargetSession.value?.id,
+    canViewHistory: isDirectorRole(props.userRole) && !!editingCourseId.value && !!historySessionId.value,
     moveContract: moveContract.value,
     editingException: !!editingException.value,
     editingExceptionIsExtra: editingExceptionIsExtra.value,
