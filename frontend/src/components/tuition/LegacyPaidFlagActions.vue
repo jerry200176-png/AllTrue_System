@@ -78,7 +78,7 @@ defineExpose({ openBackfill, openClear });
 
 <style scoped>
 .legacy{display:grid;gap:6px}
-.legacy__text{margin:0;font-size:var(--ds-font-size-base);font-weight:600;color:var(--ds-warning)}
+.legacy__text{margin:0;font-size:var(--ds-font-size-base);font-weight:600;color:var(--ds-warning-text)}
 .legacy__buttons{display:flex;flex-wrap:wrap;gap:6px 8px}
 .legacy__label{display:block;margin-bottom:6px;font-size:var(--ds-font-size-base);font-weight:700}
 .legacy__note{margin:0 0 6px;font-size:var(--ds-font-size-base);line-height:1.6}

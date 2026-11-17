@@ -125,6 +125,7 @@
       </Alert>
     </transition>
 
+    <Alert v-if="courseNavigationError" tone="warning" data-testid="course-link-unavailable">{{ courseNavigationError }}</Alert>
     <Alert v-if="closedCourseNotice" tone="info" data-testid="closed-course-hidden-notice">
       <div class="tw:flex tw:flex-wrap tw:items-center tw:gap-x-3 tw:gap-y-2 tw:text-tpl-body">
         <span class="material-symbols-outlined tw:shrink-0" aria-hidden="true">info</span>
@@ -1415,18 +1416,22 @@
     <Dialog :open="!!confirmDeleteTarget" @update:open="(v) => { if (!v && !deleteCourseSubmitting) confirmDeleteTarget = null; }">
       <DialogContent :show-close-button="false" class="tw:sm:max-w-sm" data-testid="delete-course-dialog" @interact-outside="(e) => deleteCourseSubmitting && e.preventDefault()" @open-auto-focus="(e) => { e.preventDefault(); deleteCancelBtn?.$el?.focus(); }">
         <DialogHeader class="tw:text-left">
-          <DialogTitle id="delete-course-title" class="tw:text-tpl-list tw:font-bold tw:text-balance">{{ `刪除${confirmDeleteTarget ? (confirmDeleteTarget.subject_name || getSubjectLabel(confirmDeleteTarget.subject)) : ''}？` }}</DialogTitle>
-          <DialogDescription class="tw:sr-only">刪除後無法復原</DialogDescription>
+          <DialogTitle id="delete-course-title" class="tw:text-tpl-list tw:font-bold tw:text-balance">{{ deleteCourseError?.code === 'course_has_history' ? '這門課需要保留紀錄' : `刪除${confirmDeleteTarget ? (confirmDeleteTarget.subject_name || getSubjectLabel(confirmDeleteTarget.subject)) : ''}？` }}</DialogTitle>
+          <DialogDescription class="tw:sr-only">{{ deleteCourseError?.code === 'course_has_history' ? '可結束未結案課程，既有上課與帳務紀錄會保留' : '刪除後無法復原' }}</DialogDescription>
         </DialogHeader>
   <template v-if="confirmDeleteTarget">
           <p class="tw:m-0 tw:text-tpl-body tw:text-tpl-secondary">
             {{ confirmDeleteTarget.subject_name || confirmDeleteTarget.subject }}<template v-if="confirmDeleteTarget.student_name"> — {{ confirmDeleteTarget.student_name }}</template>
           </p>
-          <p class="tw:m-0 tw:text-tpl-body tw:font-semibold tw:text-[var(--ds-danger-text)]">刪除後無法復原，所有堂次紀錄將一併移除，未繳帳單會一併作廢。</p>
+          <p v-if="deleteCourseError" class="tw:m-0 tw:text-tpl-body tw:text-pretty" role="alert" data-testid="delete-course-refusal">{{ deleteCourseError.message }}</p>
+          <p v-if="deleteCourseError?.code === 'course_has_history'" class="tw:m-0 tw:text-tpl-body tw:text-tpl-secondary">結束課程會取消未來排課，已上課與收款紀錄仍保留；尚未收款的費用不會自動免除。</p>
+          <p v-else class="tw:m-0 tw:text-tpl-body tw:font-semibold tw:text-[var(--ds-danger-text)]">刪除後無法復原，所有堂次紀錄將一併移除，未繳帳單會一併作廢。</p>
         </template>
         <DialogFooter>
           <Button ref="deleteCancelBtn" type="button" variant="secondary" :class="control.page" :disabled="deleteCourseSubmitting" @click="confirmDeleteTarget = null">取消</Button>
-          <Button type="button" variant="destructive" :class="control.page" :disabled="deleteCourseSubmitting" @click="executeDeleteCourse">
+          <Button v-if="deleteCourseError?.code === 'course_has_history' && canCloseCourse(confirmDeleteTarget)" type="button" :class="control.page" :disabled="deleteCourseSubmitting" @click="closeAfterDeleteRefusal">結束課程（保留紀錄）</Button>
+          <Button v-else-if="deleteCourseError?.code === 'course_has_history'" type="button" :class="control.page" :disabled="deleteCourseSubmitting" @click="openDeleteRefusalLedger">查看帳務與紀錄</Button>
+          <Button v-else type="button" variant="destructive" :class="control.page" :disabled="deleteCourseSubmitting" @click="executeDeleteCourse">
             {{ deleteCourseSubmitting ? '刪除中…' : '刪除課程' }}
           </Button>
         </DialogFooter>
@@ -1714,6 +1719,7 @@ const pendingConvertTrialId = ref(0);
 const pendingManualSessionId = ref(0);
 // in-app #342: calendar 「看全部堂次」 opens this course's 排課與堂次 tab.
 const pendingLessonsCourseId = ref(0);
+const courseNavigationError = ref('');
 const handoffNarrowedList = ref(false);
 const convertTrialStudentId = ref(null);
 const coursesLoading = ref(true); // 首次載入完成前顯示骨架，避免「0 位學生」假空狀態
@@ -3072,10 +3078,9 @@ const UNKNOWN_CLASSIFICATION_HINT = '目前顯示的是備用資料，無法判�
 
 function canCloseCourse(c) {
   return !classificationUnknown(c)
-    && c.status !== 'inactive'
     && !isPackageMember(c)
     && (isSessionMode(c) || isMonthlyMode(c))
-    && c.closed_reason !== 'settled_pending';
+    && !effectiveClosedReason(c);
 }
 
 // 新增課程: pick the student inside the same UniversalClassScheduler 學生管理 uses, then the same form.
@@ -4619,6 +4624,7 @@ const reloadCoursesQuietly = () => { quietRefreshNext = true; return loadCourses
 const loadCourses = async (page = 1) => {
   const requestId = ++courseLoadRequestId;
   closedCourseNotice.value = null;
+  courseNavigationError.value = '';
   const quiet = quietRefreshNext;
   quietRefreshNext = false;
   if (!props.branchId) {
@@ -4659,6 +4665,12 @@ const loadCourses = async (page = 1) => {
       if (!pinnedHandoff && filters.value.name) params.set('name', filters.value.name);
       // convert-trial deep link: pin the target student so same-name/pagination can't hide the course.
       if ((pendingConvertTrialId.value || pendingManualSessionId.value || pendingLessonsCourseId.value) && convertTrialStudentId.value) params.set('student_id', String(convertTrialStudentId.value));
+      if (pendingLessonsCourseId.value) {
+        // Ownership comes from the student campus; a missing/legacy classroom is not the lookup boundary.
+        params.delete('branch_id');
+        params.set('campus_id', String(props.branchId));
+        params.set('course_id', String(pendingLessonsCourseId.value));
+      }
       const res = await authedFetch(`/api/v1/student-classes?${params}`, {
         credentials: 'include',
         headers: { 'Accept': 'application/json' }
@@ -5385,6 +5397,8 @@ const submitEdit = async () => {
 
 const confirmDeleteTarget = ref(null);
 const deleteCourseSubmitting = ref(false);
+const deleteCourseError = ref(null);
+watch(confirmDeleteTarget, () => { deleteCourseError.value = null; });
 const ledgerOpen = ref(false);
 const ledgerStudentClassId = ref(null);
 const ledgerInitialAction = ref(null);
@@ -5519,6 +5533,20 @@ const openLedgerForCourse = (course, initialAction = null) => {
   ledgerOpen.value = true;
 };
 
+async function closeAfterDeleteRefusal() {
+  const course = confirmDeleteTarget.value;
+  if (deleteCourseSubmitting.value || !course || !canCloseCourse(course)) return;
+  confirmDeleteTarget.value = null;
+  await courseCloseFlow.closeFromDrawer(course);
+}
+
+function openDeleteRefusalLedger() {
+  const course = confirmDeleteTarget.value;
+  if (deleteCourseSubmitting.value || !course) return;
+  confirmDeleteTarget.value = null;
+  openLedgerForCourse(course);
+}
+
 const executeDeleteCourse = async () => {
   if (deleteCourseSubmitting.value) return;
   const c = confirmDeleteTarget.value;
@@ -5544,6 +5572,7 @@ const executeDeleteCourse = async () => {
           return;
         }
         const err = await res.json().catch(() => ({}));
+        deleteCourseError.value = { code: err?.code, message: err?.message || '刪除失敗，請稍後再試。' };
         toastRef.value?.show?.({ title: '刪除失敗', description: err?.message || '刪除失敗', variant: 'error', durationMs: 5000 });
         return;
       }
@@ -5759,10 +5788,13 @@ watch(
 );
 watch(coursesLoading, (loading) => {
   if (loading || !pendingLessonsCourseId.value) return;
-  const course = courses.value.find((c) => c.id === pendingLessonsCourseId.value);
+  const studentId = Number(convertTrialStudentId.value) || 0;
+  const course = courses.value.find((c) => c.id === pendingLessonsCourseId.value
+    && (!studentId || Number(c.student_id ?? c.StudentID) === studentId));
   pendingLessonsCourseId.value = 0;
   convertTrialStudentId.value = null;
   if (course) openCourseManager(course, 'sessions');
+  else courseNavigationError.value = '無法定位指定課程，請確認連結、分校權限或重新整理後再試。';
 });
 watch(coursesLoading, (loading) => {
   if (loading || !pendingManualSessionId.value) return;
@@ -5797,6 +5829,9 @@ watch(
       pendingConvertTrialId.value = Number(props.initialCourseId) || 0;
       convertTrialStudentId.value = sid ?? null;
     } else if (props.initialCourseIntent === 'lessons') {
+      // A new explicit destination replaces the old one, including during a failed/slow lookup.
+      closeCourseManager();
+      courses.value = [];
       pendingLessonsCourseId.value = Number(props.initialCourseId) || 0;
       convertTrialStudentId.value = sid ?? null;
     } else if (props.initialCourseIntent === 'manual-session') {

@@ -6,6 +6,8 @@ last_reviewed: 2026-09-05
 
 # AI／工程師防再犯紀錄（必讀）
 
+**F1：課程連結的目標不可由教室或第一頁推定（#5415，2026-11-17）**：`branch_id` 是教室資料，無教室時可為空；課程擁有校區讀既有 `student.CampusID`。指定課程以原校區／學生範圍加精確 ID 查詢，不以第一頁 50 筆代表全部。新的明確導覽先使舊抽屜與舊列表失效，晚回覆仍由既有 request ID 擋下。回歸須含無教室、不同教室校區、超過一頁、錯學生／無校區、A→錯連結及 A→延遲 B→A；見 `StudentClassCourseLinkLookupTest` 與課程付款入口 browser spec。這是定位正確性，不新增查看或資料修改權限。
+
 **F7／R7：時長與計價數量必須一起驗（#5379，2026-11-16）**：`SessionDuration` 已更新不代表 `TotalHours` 已同步。未開單、未收款／上課的堂數制小時計費編輯，沿用 `ContractRenewal::plannedBatchHours` 的實際混合時長規劃與既有捨入，再交回 `chargeAfterChange`；不可只重算繳費單。測試須含僅改時長、重存既有錯配、改堂數、混合時長、手動差額及他校拒絕。既有帳單／回報／使用紀錄、月結與共用方案不以這個修復追溯改價；B3 小數時數仍另列原計畫。
 
 **F1／F7：收據回覆必須屬於目前選取（#4148，2026-11-16）**：關閉、切換或重開同一份收據，都要使上一個讀取失效。`ReceiptModal` 使用 watch cleanup 與原生取消；fetch、JSON、catch、finally 都以當前選取檢查後才更新，不能只取消尚未完成的 fetch。回歸需保留舊成功／失敗晚回、JSON 晚回、同 ID 重開、較新讀取仍在等待及當前錯誤；見 `ReceiptModal.test.js`。這是文件選取正確性，不代表 API 越權或帳務資料已被修改。
@@ -1092,7 +1094,7 @@ Intake consolidation regression (2026-10-17): the oldest trusted SourceRef issue
   1. **分診**（未改 code）：`triaged` + **公開**留言（含 GitHub 連結、已看附件 id）— 見 `CHAT_BUG_SYSTEM.md` §3.7 Phase A。
   2. **上線後**（有 deployable 修復）：`resolved` + **公開**留言（請按「確認已修好／問題仍存在」）— 見 §3.7 Phase C；等 `reporter-verify` 才視為結案。
   3. 禁止只 `Closes #nnn` 而不動 in-app 狀態／留言。
-- **詳細 SOP**：`docs/CHAT_BUG_SYSTEM.md` §3.7（Claude／Cursor 同適用）。
+- **詳細 SOP**：`docs/CHAT_BUG_SYSTEM.md` §3.7（Claude／Codex 同適用）。
 
 ---
 
@@ -1927,3 +1929,4 @@ Intake consolidation regression (2026-10-17): the oldest trusted SourceRef issue
 
 - **現象**：同一天有三個測試在空清單上通過、共用元件改動漏列使用者、對話框搬進共用 Dialog 後層級／焦點錯誤；每次都靠協調者臨時在任務說明裡重複交代。
 - **強制規則**：實作者的通用做法（起手、測試、UI 證據、共用元件使用者清單、巢狀對話框檢查）只寫在 [`docs/agents/IMPLEMENTER_BRIEF.md`](agents/IMPLEMENTER_BRIEF.md)，協調者的檢查表在 [`docs/agents/orchestration.md`](agents/orchestration.md)；本檔不重複條文。新的實作者踩坑，先補那兩份檔，再在這裡記一條指向它們的紀錄。
+- **2026-11-17 實例（in-app #564）**：帳務卡片改呈現排序時，定位仍用舊首列判斷，選中課程移後會跳過捲動。`AccountingLedgerContractOrder.test.js` 與實際 viewport 回歸涵蓋「舊首列移到末列」；共用方案收款主卡與批次分配仍讀原有集合。此為上述 UI 任務證據與共用使用者檢查的案例。

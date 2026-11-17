@@ -4,7 +4,7 @@
  * Session must be written before importing modules that read alltrue_session at init.
  */
 const params = new URLSearchParams(window.location.search);
-const page = params.get('page') || 'inbox';
+const page = params.get('page') || document.documentElement.dataset.pilotPage || 'inbox';
 const mode = params.get('mode') || 'normal';
 const role = params.get('role') || (page === 'teacher' ? 'teacher' : 'director');
 

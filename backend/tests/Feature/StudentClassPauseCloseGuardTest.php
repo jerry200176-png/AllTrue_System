@@ -91,6 +91,36 @@ class StudentClassPauseCloseGuardTest extends TestCase
         $this->assertSame('settled', $course->closed_reason);
     }
 
+    /** #5410: the newly reachable paused-course entry retains teaching and outstanding money. */
+    public function test_closing_paused_unpaid_course_preserves_completed_lessons_and_does_not_waive_fees(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-10-16 10:00:00'));
+        [$token, $course] = $this->fixture([
+            'Stop' => 1, 'Paid' => 0, 'Charge' => 4800, 'Rate' => 600,
+            'UsedSessions' => 5, 'RemainingSessions' => 3,
+        ]);
+        $held = [];
+        foreach (['2026-10-01', '2026-10-03', '2026-10-05', '2026-10-07', '2026-10-09'] as $date) {
+            $held[] = $this->createClassSession((int) $course->ID, $date, 'completed');
+        }
+        $future = $this->createClassSession((int) $course->ID, '2026-10-20', 'scheduled');
+        $before = DB::table('ClassSession')->whereIn('ID', $held)->orderBy('ID')->get()->toJson();
+
+        $this->lifecycle($token, $course, ['action' => 'pause', 'reason' => 'settled', 'forfeit_remaining' => true])
+            ->assertOk()->assertJsonPath('pending_reconciliation', true);
+
+        $course->refresh();
+        $this->assertSame('settled_pending', $course->closed_reason);
+        foreach (['Stop' => 1, 'Paid' => 0, 'Charge' => 4800, 'Rate' => 600, 'UsedSessions' => 5, 'RemainingSessions' => 3] as $field => $expected) {
+            $this->assertSame($expected, (int) $course->getAttribute($field), $field);
+        }
+        $this->assertSame($before, DB::table('ClassSession')->whereIn('ID', $held)->orderBy('ID')->get()->toJson());
+        $this->assertSame('cancelled', DB::table('ClassSession')->where('ID', $future)->value('Status'));
+        $this->assertDatabaseCount('Invoice', 0);
+        $this->assertDatabaseCount('Payment', 0);
+        $this->assertDatabaseCount('payment_reports', 0);
+    }
+
     public function test_resume_after_committed_close_is_refused_and_row_unchanged(): void
     {
         Carbon::setTestNow(Carbon::parse('2026-10-16 10:00:00'));

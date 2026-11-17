@@ -1,0 +1,16 @@
+updates:
+  - id: staff-2026-11-17-ledger-contract-order
+    published_at: "2026-11-17"
+    audiences:
+      - director
+      - super_admin
+    importance: digest
+    title: 帳務合約依科目整理
+    summary: 學生帳務面板保留未繳優先，同科合約依開課日由新到舊排列，更容易找到要看的課程。
+    items:
+      - category: improved
+        text: 舊合約與核對提示都保留；共用方案和批次收款仍沿用原有規則。
+      - category: fixed
+        text: 提高合約狀態及舊已收標記提示在明暗主題的文字對比。
+    source_refs:
+      - "changelog:2026-11-17:ledger-contract-order"
