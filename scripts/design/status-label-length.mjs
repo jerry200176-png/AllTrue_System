@@ -10,7 +10,7 @@ import path from 'node:path';
 export const MAX_LABEL_LENGTH = 6;
 const SRC = 'frontend/src/';
 export const SCOPE = [
-  'lib/courseMoneyState.js', 'lib/paymentStatus.js', 'lib/tuitionPayStatus.js', 'lib/studentBillingRows.js',
+  'lib/courseMoneyState.js', 'lib/paymentStatus.js', 'lib/studentBillingRows.js',
   'pages/TuitionCollectionPage.vue', 'components/PaymentEntryModal.vue', 'components/AccountingLedgerModal.vue',
 ];
 // A line that starts a label source: STATUS label maps / *_LABEL consts / label+tone objects / badge-chip markup.
