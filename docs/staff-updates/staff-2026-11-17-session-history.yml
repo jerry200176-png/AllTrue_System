@@ -1,0 +1,14 @@
+updates:
+  - id: staff-2026-11-17-session-history
+    published_at: "2026-11-17"
+    audiences:
+      - director
+      - super_admin
+    importance: digest
+    title: 日曆可以看一堂課的異動紀錄
+    summary: 在日曆點一堂課，按「異動紀錄」，就能看到誰在什麼時候改了日期、時間或狀態。
+    items:
+      - category: added
+        text: 只能看、不能改；只看得到自己分校的課。
+    source_refs:
+      - "changelog:2026-11-17:session-history"
