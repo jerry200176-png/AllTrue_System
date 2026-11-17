@@ -1370,6 +1370,8 @@ Intake consolidation regression (2026-10-17): the oldest trusted SourceRef issue
 - **稽核規則**：判斷誤點或系統問題時，先看 `StudentSingIn.RecordedByUserID/recorded_by_name/MDT`；有人員即人工登記，NULL 則屬系統／刷卡路徑，再對照 `schedule_audit_logs.operator_id + old_data/new_data`。
 - **測試必補**：成功時四類資料一起提交；晚期 slot conflict 時 schedules 必須為 0 且 ClassSession 原位；相同 payload retry 仍只有一組；前端收到 2xx 但無 `committed=true` 仍視為失敗。
 
+- **延伸（2026-11-18／#5404 前置）**：一般新增／沿用 `scheduled` 也不可先提交 Schedule 才補 ClassSession。原生 student／metadata／occupancy 鎖與整個寫入投影須在同一個有界重試交易；投影或沿用更新失敗時，全部回復。afterCommit 觀察點必須已看見投影，不可把已移除的中間缺口當測試契約。保留跨日 anchor 的既有例外；測試見 `ScheduleStoreAtomicProjectionTest`、`SubjectCreditConcurrencyTest`。
+
 ### R72. 已取消 ClassSession 不得讓 schedules.scheduled 例外繼續佔用代課老師
 
 - **觸發情境**：2026-07-18 in-app #203／GitHub #1296：主任代課時挑選器顯示老師「已滿／衝堂」，但該時段僅有 `schedules.status=scheduled` 例外 row，對應 ClassSession 已全部 `cancelled`。
