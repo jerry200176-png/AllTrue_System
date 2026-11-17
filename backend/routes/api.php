@@ -510,9 +510,6 @@ Route::prefix('v1')->group(function () {
 
         // finance/subject-units is intentionally registered in the role:director,teacher group below
         // so that teachers can also call this endpoint for their own hours view (FR-008).
-        // #769 Phase C：當月學收（tuition-report 頁）為敏感 API。
-        Route::get('finance/branch-monthly-tuition', [FinanceController::class, 'branchMonthlyTuition'])->middleware('require_pin');
-        Route::get('finance/branch-monthly-tuition/export', [FinanceController::class, 'branchMonthlyTuitionExport'])->middleware('require_pin');
         Route::get('finance/duplicate-courses', [FinanceController::class, 'duplicateCourses']);
 
         // #769 Phase C：兼職薪資（parttime-payroll 頁）+ 費率卡為敏感 API，掛 require_pin（soft）。

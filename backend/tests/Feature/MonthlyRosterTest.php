@@ -236,12 +236,8 @@ final class MonthlyRosterTest extends TestCase
         $this->assertSame([3000, 0], [$res->json('summary.tuition_total'), $res->json('summary.tuition_unpriced')]);
     }
 
-    /**
-     * Until the old 當月學收 report is removed: on lessons stored as attended or late (no sign-in, no price change), the
-     * roster's 學收合計 equals the report's total — course rate, a course priced by its total, a monthly contract's
-     * dates (#2451) and a monthly package's rate.
-     */
-    public function test_tuition_total_equals_the_old_report_on_the_same_lessons(): void
+    /** 學收 by course rate, by a course's total, inside a monthly contract's dates only (#2451), and at a monthly package's rate. */
+    public function test_tuition_prices_a_course_rate_a_total_a_monthly_contract_and_a_package_rate(): void
     {
         $byRate = $this->course($this->student(1));
         $this->lesson($byRate, '2026-11-03', 'attended');
@@ -261,12 +257,10 @@ final class MonthlyRosterTest extends TestCase
         $token = $this->director(1);
 
         $res = $this->withToken($token)->getJson('/api/v1/accounting/monthly-roster?year=2026&month=11')->assertOk();
-        $old = $this->withToken($token)->getJson('/api/v1/finance/branch-monthly-tuition?branch_id=1&year=2026&month=11')->assertOk();
 
         $rows = collect($res->json('data'))->flatMap(fn ($s) => $s['courses'])->keyBy('course_id');
         $this->assertSame([3000, 1500, 1500, 1400], [$rows[$byRate->ID]['tuition'], $rows[$byTotal->ID]['tuition'], $rows[$monthly->ID]['tuition'], $rows[$inPackage->ID]['tuition']]);
         $this->assertSame(7400, $res->json('summary.tuition_total'));
-        $this->assertEquals($old->json('summary.total_tuition'), $res->json('summary.tuition_total'));
     }
 
     public function test_tuition_prices_an_hourly_package_by_length_and_a_course_priced_by_its_total_without_rounding_each_lesson(): void
