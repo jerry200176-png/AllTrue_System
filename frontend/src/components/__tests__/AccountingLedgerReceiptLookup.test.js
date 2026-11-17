@@ -63,7 +63,6 @@ describe('#4148 bill-linked receipt lookup', () => {
     for (const [action, expected] of [['documents', [501, 502, 504, 503]], [null, [503, 501, 502, 504]]]) {
       const { wrapper: w } = await open({ payload, action });
       try {
-        if (!action) await w.get('[data-testid="ledger-fold-invoices"]').trigger('click');
         expect(w.findAll('[data-testid^="ledger-invoice-"]').filter((r) => /^ledger-invoice-\d+$/.test(r.attributes('data-testid'))).map((r) => Number(r.attributes('data-testid').split('-').at(-1)))).toEqual(expected);
         expect(w.findAll('[data-testid="ledger-other-course"]')).toHaveLength(1);
       } finally { w.unmount(); }
