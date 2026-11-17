@@ -40,13 +40,7 @@ final class SubjectCreditPreview
         if (DB::transactionLevel() < 1) {
             throw new \LogicException('Subject credit requires a transaction.');
         }
-        // The Student tenant scope contains a non-locking Campus subquery: on MySQL it can open
-        // an old RR read view before waiting for this mutex. Enforce that SAME native filter with
-        // a locking Campus read instead; no ordinary business read precedes the course locks.
-        $student = Student::withoutGlobalScope(OperationalTenantScope::class)->whereKey($routeCourse->StudentID)->lockForUpdate()->first();
-        if (!$student || ($campusIds !== null && !in_array((int) $student->CampusID, $campusIds, true))) {
-            abort(403);
-        }
+        $student = $this->lockAuthorizedStudent($routeCourse, $campusIds);
         $ids = array_unique([(int) $routeCourse->getKey(), (int) $input['target_course_id'], ...$extraCourseIds]);
         $courses = StudentClass::query()->where('StudentID', $student->id)
             ->whereIn('ID', $ids)
@@ -62,8 +56,30 @@ final class SubjectCreditPreview
         return ['student' => $student, 'source' => $source, 'target' => $target];
     }
 
+    /** Shared student authorization/mutex; calendar restore takes occupancy locks before exclusive course rows. */
+    public function lockAuthorizedStudent(StudentClass $routeCourse, ?array $campusIds): Student
+    {
+        if (DB::transactionLevel() < 1) throw new \LogicException('Subject credit requires a transaction.');
+        // A tenant-scope non-locking Campus subquery could open an old RR view before this mutex.
+        // The same campus filter is enforced on the current locked Student; callers check Campus with a current read.
+        $student = Student::withoutGlobalScope(OperationalTenantScope::class)->whereKey($routeCourse->StudentID)->lockForUpdate()->first();
+        if (!$student || ($campusIds !== null && !in_array((int) $student->CampusID, $campusIds, true))) abort(403);
+        return $student;
+    }
+
     /** @param array{student:Student,source:StudentClass,target:StudentClass} $scope */
     public function inspectLocked(array $scope, array $input): array
+    {
+        return $this->inspect($scope, $input, false);
+    }
+
+    /** Source evidence shared by the separate existing-target planner; grants no releases or spending authority. */
+    public function inspectSourceForAllocationLocked(array $scope): array
+    {
+        return $this->inspect($scope, ['target_course_id' => (int) $scope['target']->ID, 'sessions' => 0], true);
+    }
+
+    private function inspect(array $scope, array $input, bool $sourceEvidenceOnly): array
     {
         ['student' => $student, 'source' => $source, 'target' => $target] = $scope;
         if ((int) $student->enable !== 1) {
@@ -171,7 +187,7 @@ final class SubjectCreditPreview
         // Conservatively reserve scheduled rows even if attendance and status have not yet converged.
         $available = max(0, $remaining - $reserved);
         $moving = (int) $input['sessions'];
-        if ($moving < 1 || $moving > $available) {
+        if (!$sourceEvidenceOnly && ($moving < 1 || $moving > $available)) {
             $this->refuse('subject_credit_unavailable', '可轉用堂數不足；已上課與已排課堂數都會保留。');
         }
         try {
@@ -187,7 +203,7 @@ final class SubjectCreditPreview
             'reports' => $reports->toArray(), 'sessions' => $sessions->toArray(), 'bookings' => $bookings->toArray(), 'usage' => $usage,
         ];
 
-        return ['invoice' => $invoice, 'response' => [
+        return ['invoice' => $invoice, 'sessions' => $sessions, 'response' => [
             'preview' => true, 'execution_available' => SubjectCreditTransfer::storageReady()
                 && (int) $source->RemainingSessions === $remaining && (int) $source->UsedSessions === $used,
             'state_hash' => hash('sha256', json_encode($state, JSON_THROW_ON_ERROR)),
@@ -205,7 +221,7 @@ final class SubjectCreditPreview
         ]];
     }
 
-    private function assertUnits(StudentClass $source, StudentClass $target): void
+    public function assertUnits(StudentClass $source, StudentClass $target): void
     {
         foreach ([$source, $target] as $course) {
             if ($course->ScheduleMode !== 'count' || $course->getRawOriginal('rate_unit') !== 'session'
