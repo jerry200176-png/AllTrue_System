@@ -366,6 +366,7 @@ import learningCompanionUrl from '../assets/alltrue-learning-companion.png';
 import { supabase } from '../supabase';
 import { branches, campusIdFrom, getBranchName } from '../lib/useBranches';
 import { fetchClassSessions, fetchClassSessionsProjection } from '../lib/classSessionsApi';
+import { quietly } from '../lib/loadingBar.js';
 import { resolveLearningSessionState } from '../lib/sessionConsistency.js';
 import { dedupeSessionsByStudentSlot } from '../lib/classSessionPick';
 import ReportDiscrepancyModal from '../components/ReportDiscrepancyModal.vue';
@@ -1018,11 +1019,7 @@ function startPolling() {
   stopPolling();
   pollTimer = setInterval(() => {
     if (document.visibilityState === 'visible') {
-      fetchPendingAttendance();
-      fetchOverdueLearning();
-      fetchAwaitingReplyCount();
-      fetchPendingExams();
-      fetchClockinStatus();
+      quietly(fetchPendingAttendance, fetchOverdueLearning, fetchAwaitingReplyCount, fetchPendingExams, fetchClockinStatus);
     }
   }, POLL_INTERVAL);
 }
