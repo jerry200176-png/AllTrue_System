@@ -62,7 +62,7 @@
             <p class="ledger-owed__label">{{ owedLabel }}</p>
             <p class="ledger-owed__now" :class="{ due: owedSplit.now > 0 }" data-testid="ledger-owed-now">{{ formatCurrency(owedSplit.now) }}</p>
             <p v-if="owedSplit.later > 0" class="ledger-owed__later" data-testid="ledger-owed-later">之後還會到期 {{ formatCurrency(owedSplit.later) }}</p>
-            <p v-if="overpaidTotal > 0" class="ledger-owed__over" role="status" data-testid="ledger-overpaid">多收 {{ formatCurrency(overpaidTotal) }}（舊資料）。{{ ledgerExceptions.some((x) => x.can_void) ? '詳情在「要先處理」。' : '這筆多收沒有對應的收款，系統無法自動處理。可按下面的「回報給系統管理員」。' }}</p>
+            <p v-if="overpaidTotal > 0" class="ledger-owed__over" role="status" data-testid="ledger-overpaid">多收 {{ formatCurrency(overpaidTotal) }}（舊資料）。{{ ledgerExceptions.some((x) => x.can_void) ? '詳情在「要先處理」。' : '這筆多收沒有對應的收款，系統無法自動處理。可按下面的「回報給總部」。' }}</p>
           </div>
 
           <section v-if="ledgerExceptions.length" class="ledger-section">
@@ -81,10 +81,9 @@
                   :disabled="busyReportId === x.report_id"
                   @click="voidReport(x.report_id)"
                 >{{ x.action_label || '撤銷收款' }}</button>
-                <template v-if="!x.can_void && !x.report_id && !x.self_service">
-                  <span class="ledger-muted" data-testid="ledger-exception-drift">{{ x.drift_line }}</span>
-                  <button class="ledger-action" type="button" data-testid="ledger-exception-report" @click="reportToAdmin(x)">回報給系統管理員</button>
-                </template>
+                <span v-if="!x.can_void && !x.report_id && !x.self_service" class="ledger-muted" data-testid="ledger-exception-drift">{{ x.drift_line }}</span>
+                <!-- 帳務重整 §3: a step that needs HQ is a button here, never just 「請聯絡總部」. -->
+                <button v-if="x.ask_hq || (!x.can_void && !x.report_id && !x.self_service)" class="ledger-action" type="button" data-testid="ledger-exception-report" @click="reportToAdmin(x)">回報給總部</button>
               </div>
             </div>
             <button
@@ -785,7 +784,7 @@ const ledgerExceptions = computed(() => {
       action_label: '撤銷 0 元收款',
       hint: receipt
         ? '其實有收到錢：按「撤銷 0 元收款」，這張 0 元帳單會一起作廢，再照實際金額登記收款。'
-        : (inv.can_direct_void ? '到下面「帳單」把這張 0 元帳單按「作廢」，再照實際金額登記收款。' : '這張 0 元帳單不能在這裡直接作廢，請回報給系統管理員處理。'),
+        : (inv.can_direct_void ? '到下面「帳單」把這張 0 元帳單按「作廢」，再照實際金額登記收款。' : '這張 0 元帳單不能在這裡直接作廢，按「回報給總部」請總部處理。'),
       report_id: receipt ? receipt.report_id : null,
       can_void: !!receipt,
       self_service: !!receipt || !!inv.can_direct_void, // the fix is a button on this screen, not a report to an administrator

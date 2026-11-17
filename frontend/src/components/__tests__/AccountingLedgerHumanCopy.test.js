@@ -45,7 +45,7 @@ describe('ledger anomaly with nothing to undo (in-app #446)', () => {
   it('explains the drift and offers a working action, not a dead end', () => {
     expect(ledger).not.toContain('請找老闆確認');
     expect(ledger).toContain('data-testid="ledger-exception-drift"');
-    expect(ledger).toContain('回報給系統管理員');
+    expect(ledger).toContain('回報給總部');
     expect(ledger).toContain("new CustomEvent('alltrue-open-bug-report'");
     expect(ledger).toContain('不會自動抵上面的未繳金額');
   });
