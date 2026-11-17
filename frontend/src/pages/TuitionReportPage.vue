@@ -93,12 +93,12 @@
                 {{ formatAmount(r.monthly_tuition) }}
                 <span :class="['tw:mt-1 tw:ml-auto tw:flex tw:max-w-[12em] tw:flex-wrap tw:items-center tw:justify-end tw:gap-x-2 tw:gap-y-1', t.phoneOnly]">
                   <span v-if="owed(r)" class="pay-owed tw:text-tpl-caption tw:font-normal tw:text-tpl-secondary">差 {{ formatAmount(r.outstanding_amount) }}</span>
-                  <StatusBadge :tone="payTone[r.pay_status] || 'neutral'" class="pay-tag" :class="`pay-tag--${r.pay_status}`">{{ payStatusLabel(r.pay_status) }}</StatusBadge>
+                  <StatusBadge :tone="payTone[r.pay_status] || 'neutral'" class="pay-tag" :class="`pay-tag--${r.pay_status}`">{{ payStatusLabel(r.pay_status, r.legacy_paid) }}</StatusBadge>
                 </span>
               </TableCell>
               <TableCell :class="[t.cell, t.phoneHide]">
                 <span class="tw:flex tw:items-center tw:gap-2">
-                  <StatusBadge :tone="payTone[r.pay_status] || 'neutral'" class="pay-tag" :class="`pay-tag--${r.pay_status}`">{{ payStatusLabel(r.pay_status) }}</StatusBadge>
+                  <StatusBadge :tone="payTone[r.pay_status] || 'neutral'" class="pay-tag" :class="`pay-tag--${r.pay_status}`">{{ payStatusLabel(r.pay_status, r.legacy_paid) }}</StatusBadge>
                   <span v-if="owed(r)" class="pay-owed tw:text-tpl-caption tw:whitespace-nowrap tw:text-tpl-secondary tw:tabular-nums">差 {{ formatAmount(r.outstanding_amount) }}</span>
                 </span>
               </TableCell>

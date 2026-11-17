@@ -1,0 +1,16 @@
+updates:
+  - id: staff-2026-11-17-legacy-paid-label
+    published_at: "2026-11-17"
+    audiences:
+      - director
+      - super_admin
+    importance: digest
+    title: 舊資料已收不再待確認
+    summary: 當月學收裡，以前只勾「已繳」的課現在顯示「已收（舊資料）」。
+    items:
+      - category: fixed
+        text: 這些課不再顯示「待確認」，會算進已收；只看未收時也不會再出現。
+      - category: improved
+        text: 月對帳表同樣顯示「已收（舊資料）」。
+    source_refs:
+      - "changelog:2026-11-17:inapp-566-legacy-paid-label"
