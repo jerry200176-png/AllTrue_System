@@ -887,6 +887,7 @@ Route::prefix('v1')->group(function () {
     Route::middleware(['role:director,super_admin', 'require_campus', 'require_password_change'])->group(function () {
         Route::get('director/operations-trust', [DirectorOperationsTrustController::class, 'show']);
         // POP control plane: draft/dry-run/approve only; execution remains Pi-local.
+        Route::post('pop/operations/reviewed-paid-invoice-charge-alignment/preview', [PopOperationController::class, 'previewPaidInvoiceAlignment'])->middleware('throttle:20,1');
         Route::post('pop/operations/{operationId}/draft', [PopOperationController::class, 'storeDraft'])->where('operationId', '[a-z0-9-]+');
         Route::post('pop/operations/requests/{requestId}/dry-run', [PopOperationController::class, 'dryRun'])->whereUuid('requestId');
         Route::post('pop/operations/requests/{requestId}/approvals', [PopOperationController::class, 'approve'])->whereUuid('requestId');

@@ -10,6 +10,19 @@ use RuntimeException;
 /** Control-plane request/approval API; it deliberately has no execute endpoint. */
 final class PopOperationController extends Controller
 {
+    public function previewPaidInvoiceAlignment(Request $request, PopOperationService $service)
+    {
+        $validated = $request->validate(['parameters' => ['required', 'array']]);
+        $user = $request->attributes->get('auth_user');
+        if (!$user) return response()->json(['message' => 'Unauthenticated'], 401);
+        try {
+            return response()->json(['data' => $service->previewPaidInvoiceAlignment($validated['parameters'],
+                (string) $request->attributes->get('auth_role'), (array) $request->attributes->get('auth_campus_ids', []), (int) $user->id)]);
+        } catch (RuntimeException $e) {
+            return response()->json(['message' => 'POP preview rejected', 'reason_code' => $e->getMessage()], $this->errorStatus($e));
+        }
+    }
+
     public function status(Request $request, string $requestId, PopOperationService $service)
     {
         if (!$request->attributes->get('auth_user')) return response()->json(['message' => 'Unauthenticated'], 401);
