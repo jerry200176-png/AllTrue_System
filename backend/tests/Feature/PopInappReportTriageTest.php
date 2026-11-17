@@ -116,6 +116,25 @@ final class PopInappReportTriageTest extends TestCase
         self::assertSame($this->admin, (int) BugReportStatusLog::query()->where('bug_report_id', $bug)->value('changed_by'));
     }
 
+    public function test_triage_origin_distinguishes_legacy_absence_from_explicit_null_and_invalid_types(): void
+    {
+        $actor = $this->inappAgent(); $bug = $this->bug(); $id = $this->drafted($bug, null, 'origin-triage', $actor);
+        self::assertSame([$id], $this->policy->approvePending($this->service)['approved']);
+        self::assertSame('succeeded', $this->service->runApprovedLocally($id)['status']);
+        $model = BugReport::findOrFail($bug); $comment = BugReportComment::where('bug_report_id', $bug)->orderByDesc('id')->firstOrFail();
+        $request = DB::table('pop_operation_requests')->where('id', $id);
+        $p = json_decode($request->value('parameters'), true);
+        self::assertSame([$comment->id => true], \App\Operations\Inapp\InappSupportCommentOrigin::ids($model, [$comment]));
+        foreach ([null, 0, true, 'unknown'] as $kind) {
+            $bad = array_replace($p, ['disposition' => $kind]);
+            $request->update(['parameters' => json_encode($bad), 'parameters_hash' => hash('sha256', json_encode(PopOperationService::canonicalParameters($bad)))]);
+            self::assertSame([], \App\Operations\Inapp\InappSupportCommentOrigin::ids($model, [$comment]));
+        }
+        unset($p['disposition']);
+        $request->update(['parameters' => json_encode($p), 'parameters_hash' => hash('sha256', json_encode(PopOperationService::canonicalParameters($p)))]);
+        self::assertSame([$comment->id => true], \App\Operations\Inapp\InappSupportCommentOrigin::ids($model, [$comment]));
+    }
+
     public static function untrustedRequesters(): array
     {
         return ['control-plane machine client' => ['machine'], 'human flow caller' => ['human'], 'in-app agent scoped to another campus' => ['other_campus']];

@@ -55,6 +55,7 @@ final class InappReportReplyGuard
                 && ($receipt['github_issue'] ?? null) === (int) basename($issueUrl);
         }
         return $origin['operation'] === InappReportResolveAfterDeployStrategy::OPERATION
+            && ($receipt['from_status'] ?? null) === 'closed'
             && ($receipt['issue_url'] ?? null) === $issueUrl
             && is_array($receipt['logged_close'] ?? null) && count($receipt['logged_close']) === 2
             && ($receipt['logged_close']['id'] ?? null) === $close['id'] && ($receipt['logged_close']['kind'] ?? null) === $close['kind'];

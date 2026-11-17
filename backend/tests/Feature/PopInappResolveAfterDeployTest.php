@@ -10,6 +10,7 @@ use App\Models\User;
 use App\Operations\Inapp\InappRequesterGuard;
 use App\Operations\Inapp\InappAgentClients;
 use App\Operations\Inapp\InappStandingPolicy;
+use App\Operations\Inapp\InappReportReplyGuard;
 use App\Operations\PopOperationCatalog;
 use App\Operations\PopOperationService;
 use App\Operations\Strategies\InappReportResolveAfterDeployStrategy;
@@ -284,6 +285,23 @@ final class PopInappResolveAfterDeployTest extends TestCase
         $loop = BugReportService::getDetail($bug)['product_loop'];
         self::assertSame(['ux_friction', true, 'SHIPPED', true], [$loop['disposition'], $loop['engineering_required'], $loop['semantic_phase'], $loop['shipped']]);
         self::assertSame([['new', 'closed']], BugReportStatusLog::query()->where('bug_report_id', $bug)->orderBy('id')->get()->map(fn ($l) => [$l->from_status, $l->to_status])->all());
+    }
+
+    public function test_logged_resolve_origin_retains_the_closed_from_status_guard(): void
+    {
+        [$bug, $actor] = $this->selfFiledLoggedReceipt();
+        $id = $this->drafted($bug, $this->params($bug, ['public_reply' => '配色已更新，想補充請直接回覆。追蹤：'.$this->issueUrl()]), 'origin-ship', $actor);
+        self::assertSame([$id], $this->policy->approvePending($this->service)['approved']);
+        self::assertSame('succeeded', $this->service->runApprovedLocally($id)['status']);
+        $records = DB::table('pop_execution_records')->where('operation_id', $id)->where('phase', 'execute');
+        $receipt = json_decode($records->value('payload'), true); $model = BugReport::findOrFail($bug);
+        self::assertSame([], InappReportReplyGuard::loggedReportViolations($model, $this->admin, $receipt['logged_close'], $this->issueUrl()));
+        foreach (['triaged', null] as $from) {
+            $bad = $receipt;
+            if ($from === null) unset($bad['from_status']); else $bad['from_status'] = $from;
+            $records->update(['payload' => json_encode($bad)]);
+            self::assertContains('reporter_reply_pending', InappReportReplyGuard::loggedReportViolations($model, $this->admin, $receipt['logged_close'], $this->issueUrl()));
+        }
     }
 
     public static function selfFiledReceiptFaults(): array

@@ -67,7 +67,7 @@ final class InappSupportCommentOrigin
                         && (!in_array($p['expected_status'] ?? null, ['triaged', 'in_progress'], true) || ($receipt['status'] ?? null) !== $p['expected_status'])) continue;
                     if ($op === InappReportResolveAfterDeployStrategy::OPERATION && !in_array($receipt['status'] ?? null, ['resolved', 'closed'], true)) continue;
                     if ($op === InappReportTriageStrategy::OPERATION) {
-                        $kind = $p['disposition'] ?? InappReportTriageStrategy::DISPOSITION;
+                        $kind = array_key_exists('disposition', $p) ? $p['disposition'] : InappReportTriageStrategy::DISPOSITION;
                         if (!in_array($kind, ['bug', ...InappStandingPolicy::LOGGED_DISPOSITIONS], true)
                             || ($receipt['from_status'] ?? null) !== 'new' || ($receipt['disposition'] ?? null) !== $kind
                             || ($receipt['status'] ?? null) !== ($kind === 'bug' ? 'triaged' : 'closed')) continue;
