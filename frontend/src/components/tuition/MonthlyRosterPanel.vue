@@ -124,7 +124,9 @@ let seq = 0; // only the newest request may write: a slow reply for another mont
 
 const money = (n) => `${n < 0 ? '−' : ''}NT$${Math.abs(Number(n || 0)).toLocaleString('en-US')}`;
 const md = (d) => `${Number(d.slice(5, 7))}/${Number(d.slice(8, 10))}`;
-const lessonLine = (c) => (c.lessons.length ? `${c.lessons.map((l) => md(l.date)).join('、')}（已上 ${c.held}）` : '沒有排課');
+// Each date with its state unless held, e.g. 11/3、11/10（請假或沒上）、11/24（還沒上）: the phone line and the export column.
+const lessonDates = (c) => c.lessons.map((l) => `${md(l.date)}${l.kind === 'held' ? '' : `（${LESSON[l.kind].label}）`}`).join('、');
+const lessonLine = (c) => (c.lessons.length ? `${lessonDates(c)}・已上 ${c.held} 堂` : '沒有排課');
 function state(c) {
   if (c.pending_reports) return { tone: 'warning', label: `待確認 ${c.pending_reports} 筆` };
   // review_required can still carry a balance (BillingPayableResolver::courseStatus); the warning must not hide behind 未繳.
@@ -160,7 +162,7 @@ function exportCsv() {
     c.paid_this_month.map((p) => p.date).join('、'), c.paid_this_month.map((p) => METHOD[p.method] || p.method).join('、'),
     rateLabel(c), c.held, c.money.month_total != null && !c.money.month_invoiced ? c.money.month_total : '',
     c.paid_this_month.reduce((n, p) => n + Number(p.amount || 0), 0), c.money.outstanding, state(c).label,
-    c.lessons.map((l) => `${md(l.date)}${l.kind === 'held' ? '' : `（${LESSON[l.kind].label}）`}`).join('、'),
+    lessonDates(c),
   ]));
   const csv = '\ufeff' + [CSV_HEADERS, ...rows].map((r) => r.map(csvCell).join(',')).join('\n');
   const a = document.createElement('a');

@@ -136,7 +136,7 @@ it('a balance under review still says 要核對, and the phone line shows the pr
   await flushPromises();
   const row = wrapper.find('[data-testid="roster-course-31"]');
   expect(row.text()).toContain('要核對（未繳 NT$3,000）');
-  expect(row.text()).toContain('11/3、11/24（已上 1）・單價 NT$800／小時');
+  expect(row.text()).toContain('11/3、11/24（還沒上）・已上 1 堂・單價 NT$800／小時'); // phone line keeps each date's state
 });
 
 it('switching month clears the old rows and disables export until the new month loads', async () => {
