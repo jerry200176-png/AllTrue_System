@@ -68,6 +68,7 @@
 </template>
 
 <script setup>
+import { trackedFetch as fetch } from '../lib/loadingBar';
 import { ref, computed, watch } from 'vue';
 import { REPORT_STATUS_LABELS } from '../lib/courseMoneyState.js';
 

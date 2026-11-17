@@ -159,6 +159,7 @@
 </template>
 
 <script setup>
+import { trackedFetch as fetch } from '../lib/loadingBar';
 import AtButton from '../components/design-system/AtButton.vue';
 import AtPageHeader from '../components/design-system/AtPageHeader.vue';
 import AtIconButton from '../components/design-system/AtIconButton.vue';

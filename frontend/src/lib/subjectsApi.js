@@ -1,3 +1,4 @@
+import { trackedFetch as fetch } from './loadingBar.js';
 import { supabase } from '../supabase';
 
 const CANONICAL_REVERSE = {

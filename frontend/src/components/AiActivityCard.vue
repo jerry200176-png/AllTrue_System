@@ -40,6 +40,7 @@
 
 <script setup>
 // 帳務中心重整 G3 (Founder 2026-11-16): one place to see what AI read and which data changes it asked for.
+import { trackedFetch as fetch } from '../lib/loadingBar';
 import { computed, onMounted, ref } from 'vue';
 import { Table, TableBody, TableCaption, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 

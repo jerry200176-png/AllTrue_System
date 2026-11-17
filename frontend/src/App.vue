@@ -931,7 +931,7 @@ import BugReportLauncher from './components/BugReportLauncher.vue';
 import PinLockModal from './components/PinLockModal.vue';
 import AtToast from './components/AtToast.vue';
 import AtLoadingBar from './components/AtLoadingBar.vue';
-import { trackLoader } from './lib/loadingBar';
+import { trackLoader, quietly } from './lib/loadingBar';
 import { useDelayedLoading } from './composables/useDelayedLoading';
 import { useToast } from './composables/useToast';
 import { fetchChatUnreadCount } from './lib/chatApi';
@@ -1521,23 +1521,19 @@ function _startBadgePolling() {
   unreadPollingTimer = window.setInterval(() => {
     if (pauseOnHidden && document.visibilityState !== 'visible') return;
     if (_badgePollingPaused) return;
-    refreshUnreadNotifications();
+    quietly(refreshUnreadNotifications);
   }, notifInterval);
 
   chatBadgePollingTimer = window.setInterval(() => {
     if (pauseOnHidden && document.visibilityState !== 'visible') return;
     if (_badgePollingPaused) return;
-    mergeChatUnreadBadge();
-    mergeBugUnreadBadge();
-    mergeDirectorPendingBadge();
-    mergeScheduleDiscrepancyBadge();
+    quietly(mergeChatUnreadBadge, mergeBugUnreadBadge, mergeDirectorPendingBadge, mergeScheduleDiscrepancyBadge);
   }, badgeInterval);
 
   feedbackBadgePollingTimer = window.setInterval(() => {
     if (pauseOnHidden && document.visibilityState !== 'visible') return;
     if (_badgePollingPaused) return;
-    mergeParentFeedbackBadge();
-    mergeTeacherLearningPendingBadge();
+    quietly(mergeParentFeedbackBadge, mergeTeacherLearningPendingBadge);
   }, feedbackInterval);
 }
 

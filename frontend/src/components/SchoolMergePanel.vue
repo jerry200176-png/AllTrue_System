@@ -40,6 +40,7 @@
 </template>
 
 <script setup>
+import { trackedFetch as fetch } from '../lib/loadingBar';
 import { onMounted, ref } from 'vue';
 import { Badge } from './ui/badge';
 import { Button } from './ui/button';

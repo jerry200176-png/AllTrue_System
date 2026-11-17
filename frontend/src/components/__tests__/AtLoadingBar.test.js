@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { nextTick } from 'vue';
 import { mount } from '@vue/test-utils';
 import AtLoadingBar from '../AtLoadingBar.vue';
-import { pending, track, trackedFetch, trackLoader, SHOW_DELAY_MS } from '../../lib/loadingBar';
+import { pending, track, trackedFetch, trackLoader, quietly, SHOW_DELAY_MS } from '../../lib/loadingBar';
 
 const tick = async () => { await Promise.resolve(); await Promise.resolve(); await nextTick(); };
 
@@ -32,6 +32,20 @@ describe('loadingBar', () => {
     await expect(p).rejects.toThrow('net');
     await tick();
     expect(pending.value).toBe(0);
+  });
+
+  it('requests made inside quietly (background polls) do not count, and later ones do again', async () => {
+    let resolve;
+    vi.stubGlobal('fetch', vi.fn(() => new Promise((r) => { resolve = r; })));
+    const poll = async () => { await Promise.resolve(); await trackedFetch('/poll'); }; // fetches after an await, like the pollers
+    const done = quietly(poll, false, () => { throw new Error('one failing refresh'); });
+    await tick();
+    expect(fetch).toHaveBeenCalledWith('/poll');
+    expect(pending.value).toBe(0);
+    resolve({ ok: true });
+    await done;
+    trackedFetch('/user');
+    expect(pending.value).toBe(1);
   });
 
   it('tracks a lazy page load', async () => {

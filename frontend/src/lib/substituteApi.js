@@ -1,3 +1,4 @@
+import { trackedFetch as fetch } from './loadingBar.js';
 // substituteApi.js — 前端呼叫 PRD 9c058f19 新增的代課相關端點。
 //
 // 每個 fetch 都帶 Authorization: Bearer <access_token>，錯誤時 throw Error 讓上層攔截。

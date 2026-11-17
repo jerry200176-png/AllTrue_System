@@ -118,6 +118,7 @@
 </template>
 
 <script setup>
+import { trackedFetch as fetch } from '../lib/loadingBar';
 import { ref, reactive, nextTick, onMounted } from 'vue';
 import AtDialog from '../components/design-system/AtDialog.vue';
 import AtButton from '../components/design-system/AtButton.vue';

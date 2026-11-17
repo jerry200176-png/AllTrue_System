@@ -360,6 +360,7 @@
 </template>
 
 <script setup>
+import { trackedFetch as fetch } from '../lib/loadingBar';
 import { computed, onMounted, ref, watch } from 'vue';
 import { branches, loadBranches } from '../lib/useBranches';
 import AtButton from '../components/design-system/AtButton.vue';

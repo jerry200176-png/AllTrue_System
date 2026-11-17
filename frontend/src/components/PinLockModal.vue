@@ -119,6 +119,7 @@
 </template>
 
 <script setup>
+import { trackedFetch as fetch } from '../lib/loadingBar';
 import { ref, computed, onMounted, nextTick } from 'vue';
 import { pinFormatError } from '../lib/pinGate';
 
