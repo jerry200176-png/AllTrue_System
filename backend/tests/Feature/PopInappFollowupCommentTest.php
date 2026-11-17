@@ -24,6 +24,7 @@ class PopInappFollowupCommentTest extends TestCase
     private int $campus;
     private int $admin;
     private BugReport $bug;
+    private array $remoteIssue;
 
     protected function setUp(): void
     {
@@ -47,10 +48,10 @@ class PopInappFollowupCommentTest extends TestCase
         BugReportComment::create(['bug_report_id' => $this->bug->id, 'author_user_id' => $reporter->id,
             'body' => '課程仍看不到，重新輸入卻顯示已存在。', 'is_internal_note' => false, 'created_at' => now()]);
         $repo = (string) config('pop_inapp.github_repo');
+        $this->remoteIssue = ['number' => 500, 'repository_url' => 'https://api.github.com/repos/'.$repo, 'state' => 'open',
+            'user' => ['login' => 'github-actions[bot]'], 'body' => 'SourceRef: alltrue:bug_report:'.$this->bug->id];
         Http::fake(function ($request) use ($repo) {
-            if ($request->url() === 'https://api.github.com/repos/'.$repo.'/issues/500') return Http::response([
-                'number' => 500, 'repository_url' => 'https://api.github.com/repos/'.$repo, 'state' => 'open',
-                'user' => ['login' => 'github-actions[bot]'], 'body' => 'SourceRef: alltrue:bug_report:'.$this->bug->id]);
+            if ($request->url() === 'https://api.github.com/repos/'.$repo.'/issues/500') return Http::response($this->remoteIssue);
             return str_contains($request->url(), '/issues/500/comments') ? Http::response([]) : Http::response('', 599);
         });
     }
@@ -125,6 +126,24 @@ class PopInappFollowupCommentTest extends TestCase
         $this->expectException(\RuntimeException::class);
         $this->service->createDraft(self::OP, $this->params(['reporter_verify' => true, 'status' => 'resolved']),
             'forbidden-status', $this->actor, 'pop_machine', [$this->campus]);
+    }
+
+    public static function untrustedIssues(): array { return [['outsider'], ['other_report'], ['closed'], ['pull_request']]; }
+
+    #[\PHPUnit\Framework\Attributes\DataProvider('untrustedIssues')]
+    public function test_untrusted_issue_never_authorizes_this_followup(string $case): void
+    {
+        if ($case === 'outsider') $this->remoteIssue['user']['login'] = 'untrusted-synthetic-author';
+        if ($case === 'other_report') $this->remoteIssue['body'] = 'SourceRef: alltrue:bug_report:'.($this->bug->id + 100);
+        if ($case === 'closed') { $this->remoteIssue['state'] = 'closed'; $this->remoteIssue['state_reason'] = 'completed'; }
+        if ($case === 'pull_request') $this->remoteIssue['pull_request'] = ['url' => 'synthetic-not-an-issue'];
+        $before = $this->bug->fresh()->getAttributes(); $id = $this->draft($this->params());
+        self::assertContains('issue_source_ref_untrusted', $this->dryPlan($id)['errors']);
+        self::assertSame([], $this->policy->approvePending($this->service)['approved']);
+        self::assertSame(0, DB::table('pop_approval_events')->where('operation_id', $id)->where('event_type', 'approved')->count());
+        self::assertSame($before, $this->bug->fresh()->getAttributes());
+        self::assertSame(1, BugReportComment::where('bug_report_id', $this->bug->id)->count());
+        self::assertSame(0, BugReportStatusLog::where('bug_report_id', $this->bug->id)->count());
     }
 
     public static function refusals(): array
