@@ -1,0 +1,15 @@
+updates:
+  - id: staff-2026-11-18-self-filed-inapp-support-origin
+    published_at: "2026-11-18"
+    audiences:
+      - director
+      - teacher
+      - super_admin
+    importance: digest
+    title: 意見與建議標明支援回覆
+    summary: 支援答覆會在留言旁標示來源，即使用同一帳號回報，也能分清楚支援答覆與本人後續補充。
+    items:
+      - category: fixed
+        text: 本人補充仍保留原身分，不會因文字相同就被當作支援回覆或確認已修好。
+    source_refs:
+      - "changelog:2026-11-18:self-filed-inapp-support-origin"
