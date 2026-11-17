@@ -514,7 +514,8 @@ function closeReason(ok) {
   // The focused field is gone: keep focus inside the drawer so its Esc and Tab trap still work.
   const back = reasonBack;
   reasonBack = null;
-  nextTick(() => (back?.isConnected && modalEl.value?.contains(back) ? back : modalEl.value)?.focus?.());
+  // After 送出 the ledger reloads and that button is replaced, so the drawer itself takes focus.
+  nextTick(() => (!ok && back?.isConnected && modalEl.value?.contains(back) ? back : modalEl.value)?.focus?.());
 }
 const payload = ref(null);
 const busyReportId = ref(null);
