@@ -495,7 +495,7 @@ const error = ref('');
 // #4551: a failed action (void report/invoice) is not a failed load: keep the ledger on screen, reread it, show the reason.
 const actionError = ref('');
 // A reason that is empty or too short used to do nothing at all, with no message (it read as 「按了沒反應」).
-// One open reason request at a time; a new one (or closing the drawer) cancels the old one.
+// One open reason request at a time; a new one, or any reload (closing, another student), cancels the old one.
 const reasonAsk = ref(null);
 function askReason(title, action, min) {
   reasonAsk.value?.resolve(null);
@@ -616,6 +616,7 @@ async function loadCoverage(kind, id) {
 
 let ledgerRequestVersion = 0;
 async function loadLedger() {
+  closeReason(false); // the reload unmounts the reason field; cancel it rather than leave it hidden
   const requestVersion = ++ledgerRequestVersion;
   loading.value = false;
   payload.value = null;
@@ -1100,7 +1101,7 @@ function openSlip(course) {
   slipOpen.value = true;
 }
 watch(() => [props.show, props.studentClassId, props.studentId, props.reportId, props.branchId], () => { receiptOpen.value = false; });
-watch(() => [props.show, props.studentClassId, props.studentId, props.reportId, props.branchId], () => { fold.inv = true; fold.rcpt = fold.voided = false; openCards.clear(); closeReason(false); });
+watch(() => [props.show, props.studentClassId, props.studentId, props.reportId, props.branchId], () => { fold.inv = true; fold.rcpt = fold.voided = false; openCards.clear(); });
 watch(() => [props.show, props.studentClassId, props.studentId], () => { slipOpen.value = false; });
 
 // In-app #398: 「登記繳費回報」 from 課程查找 lands on the entry form, with the ledger behind it. Armed once per open;
