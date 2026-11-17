@@ -61,7 +61,7 @@
               </TableCell>
               <TableCell :class="[t.cell, t.phoneHide, 'tw:whitespace-normal']">
                 <ul class="tw:m-0 tw:flex tw:list-none tw:flex-wrap tw:gap-1.5 tw:p-0" :aria-label="`${c.subject}這個月 ${c.lessons.length} 堂`">
-                  <li v-for="l in c.lessons" :key="l.date + l.start" :class="['tw:rounded-full tw:px-2 tw:py-0.5 tw:text-tpl-caption tw:tabular-nums', LESSON[l.kind].cls]" :title="`${l.date} ${l.start} ${LESSON[l.kind].label}`">{{ md(l.date) }}<span class="tw:sr-only"> {{ LESSON[l.kind].label }}</span></li>
+                  <li v-for="l in c.lessons" :key="l.date + l.start" :class="['tw:rounded-full tw:px-2 tw:py-0.5 tw:text-tpl-caption tw:tabular-nums', LESSON[l.kind].cls]" :title="`${l.date} ${l.start} ${LESSON[l.kind].label}`">{{ md(l.date) }}<span class="tw:sr-only">{{ ' ' + LESSON[l.kind].label }}</span></li>
                   <li v-if="!c.lessons.length" class="tw:text-tpl-caption tw:text-tpl-secondary">沒有排課</li>
                 </ul>
                 <span :class="t.sub">已上 {{ c.held }} 堂</span>
