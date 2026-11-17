@@ -369,6 +369,26 @@ def _wf_patch(*lines, path=WF):
     return f"diff --git a/{path} b/{path}\n@@ -1 +1 @@\n" + "\n".join("+" + l for l in lines)
 
 
+class DeclarationMatchesDeployTest(unittest.TestCase):
+    """2026-11-17: #5441 passed presubmit as R1 but deploy.yml read the same diff as T3 (ledger
+    semantics) and held every later deploy for the Founder. Merge time must ask for what deploy checks."""
+
+    PATH = "frontend/src/components/AccountingLedgerModal.vue"
+    PATCH = f"diff --git a/{PATH} b/{PATH}\n+const label = ledger.title;\n"
+
+    def test_a_ledger_frontend_change_cannot_be_declared_below_the_deploy_tier(self):
+        self.assertEqual(classify_activation_scope([self.PATH], self.PATCH)["tier_name"], "T3")
+        low = validate_declaration("Risk-Class: R1\nAutonomy-Tier: T1", [self.PATH], self.PATCH)
+        self.assertFalse(low["valid"], low)
+        self.assertEqual(low["generated"]["autonomy_tier"], "T3")
+        self.assertTrue(validate_declaration("Risk-Class: R3\nAutonomy-Tier: T3", [self.PATH], self.PATCH)["valid"])
+
+    def test_a_control_plane_only_change_is_not_raised(self):
+        # deploy.yml skips control-plane-only PRs, so the read-only probe keeps its merge tier (T2).
+        self.assertTrue(validate_declaration(
+            "Risk-Class: R2\nAutonomy-Tier: T2", [WF, ".agent-session/manifest.json"], _wf_patch(*ReadOnlyProbeTierTest.READ))["valid"])
+
+
 class ReadOnlyProbeTierTest(unittest.TestCase):
     READ = ("if ($case === 'x') {", "$out['n'] = $db::table('Student')->where('id', 1)->count();", "}")
 
@@ -649,7 +669,10 @@ class ClassifierSelfProtectionTest(unittest.TestCase):
                 tier = classify_scope(paths, self.PATCH)["machine_minimum_tier"]
                 self.assertGreaterEqual(tier, before)
                 self.assertEqual(tier, after)
-                self.assertEqual(machine_declaration(paths, self.PATCH)["machine_minimum_tier"], after)
+                # The declaration also covers the deploy's activation tier for an application PR (#5441).
+                app = any(autonomy_gate.is_application_runtime_path(path) for path in paths)
+                activation_floor = classify_activation_scope(paths, self.PATCH)["machine_minimum_tier"] if app else 0
+                self.assertEqual(machine_declaration(paths, self.PATCH)["machine_minimum_tier"], max(after, activation_floor))
                 activation = classify_activation_scope(paths, self.PATCH)
                 self.assertEqual(
                     (activation["activation_class"], activation["machine_minimum_tier"]), (activation_class, activation_tier))
