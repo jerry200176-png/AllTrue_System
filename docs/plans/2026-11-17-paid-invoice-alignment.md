@@ -1,0 +1,27 @@
+# Paid invoice alignment — #5413
+
+An old header-only count bill can retain the amount of a fully reversed receipt after a new receipt settles the already-established agreed fee. The invoice then appears partially paid even though the course and valid cash agree. Never fix this by silently repricing every paid bill, reversing valid cash, changing a receipt or relaxing unpaid-only correction guards.
+
+## Native operation and scope
+
+`reviewed-paid-invoice-charge-alignment` reuses the existing invoice alignment proof, transaction, audit, retry and rollback machinery. It requires one active standalone count course, one header-only partial bill, no pricing amendments, correction or entitlement/subject-credit history, exactly one fully linked voided receipt/reversal pair and one later fully linked confirmed receipt. Every payment must belong to those reports; amounts are compared exactly, including decimal report amounts. The valid receipt must equal the established course charge, which must be below the stale invoice total. Pending reports, partial reversals, orphan links, refunds, extra documents and unknown payment methods refuse the operation.
+
+The mutation changes only invoice total/status and the existing canonical course settlement projection (`Paid`, and an empty `PayDate`). The valid receipt must supply the latest payment date so canonical settlement cannot select an older reversed receipt's date. Invoice paid amount, original billing snapshot, every payment/report/receipt, lesson, schedule, price and purchased/used/remaining entitlement remain unchanged. The complete before/after images and required audit co-commit with the native POP execution receipt. The unpaid strategy retains its eligibility, proof identifiers and financial behavior.
+
+## Protected execution
+
+1. Require final-head review, native checks, canonical release and the actual deployed backend identity. The prepared #5413 case and immutable private manifest are described in [the incident record](../incidents/2026-11-17-course4326-paid-invoice.md). Code merge or deployment is not data repair.
+2. A currently authenticated director in the student's campus, or the existing global super-admin exception, calls `POST /api/v1/pop/operations/reviewed-paid-invoice-charge-alignment/preview` with the exact catalog parameter object, initially using `expected_state_hash: null`. This bounded read-only endpoint returns only the state hash and old/new totals. It creates no operation request or approval and changes no business data. Existing security-denial logging remains. A director with no campus gets no scope; machine keys cannot use this human route.
+3. Use that fresh hash in the final immutable parameters. The existing protected `pop-mount-reviewed-financial-once.yml` accepts only its original unpaid operation or this paid operation, and still mounts exactly one expiring Founder tuple binding operation, full parameter hash, idempotency key, actual human requester, actual human approver and reference. Its staging, owner/ACL, app-serving identity, expiry and failure restoration controls remain. **That installer uses production SSH internally. An operator subject to the SSH machine ban must not dispatch it, borrow a session or create a substitute mount.** The Founder-authorized control-plane operator performs this external step.
+4. The real human submits the ordinary POP draft, successful dry-run and exact Founder approval through existing authenticated endpoints. No machine financial draft, approval or HTTP execute capability is added. The Pi-local executor consumes the approved request and performs execute/verify. No additional human identity is required beyond the native tuple policy.
+5. Require native successful execute/verify receipts and a fresh authorized readback of the invoice, course, ledger, original receipt/reversal history and user-visible outstanding amount. A source/hash/owner/cash change means stop and preview again; never reuse an obsolete tuple. Keep #5413 open until actual correction is verified.
+
+Catalog19 and default policy5 invalidate previous catalog-bound requests/approvals. Reread/redraft; do not recompute stored request hashes or replay stale approvals. This change grants no standing financial approval, broad case allowlist, credential or direct production access.
+
+## Recovery
+
+Use the same originating POP request's retained proof. Lost-response replay cannot apply a second mutation. Failed attempts retain diagnostic evidence and require the existing explicit recovery path; no new automatic retry is introduced. Rollback restores the exact prior invoice total/status/timestamp and only the changed course settlement fields, and proves the complete original state. Any later financial, contract or scope drift refuses rollback; do not overwrite a later receipt reversal or other work. A code revert preserves audits and does not undo a successful financial correction. Do not claim rollback success without its native receipt and readback.
+
+## Verification
+
+Use synthetic fixtures through the existing isolated PHPUnit/InnoDB harness: full correction and exact rollback, unchanged cash/reports/lessons, fresh scoped read-only preview, human/missing-tuple refusal, proof/audit/outer-receipt faults, same/distinct requests and the actual receipt-void writer in both race orders. Native required CI and independent R3 review remain separate gates. No production test, SQL repair, extra service or optimization platform is introduced.

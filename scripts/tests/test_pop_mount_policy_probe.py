@@ -3,10 +3,12 @@ import base64
 import hashlib
 import json
 import os
+import re
 from pathlib import Path
 import subprocess
 import tarfile
 import tempfile
+import textwrap
 import unittest
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -16,6 +18,19 @@ SENTINEL = "PRIVATE_POLICY_SENTINEL_DO_NOT_LOG"
 
 
 class PolicyProbeTest(unittest.TestCase):
+    def test_both_native_mount_validators_accept_only_reviewed_unpaid_or_paid_alignment(self):
+        workflow = (ROOT/".github/workflows/pop-mount-reviewed-financial-once.yml").read_text()
+        validators = re.findall(r"python3 -[^\n]*<<'PY'[^\n]*\n(.*?)\n          PY", workflow, re.S)
+        validators = [code for code in validators if 'assert c["operation_id"]' in code]
+        self.assertEqual(len(validators), 2, "exercise both pre-upload and staged-file validation")
+        for operation, accepted in [("reviewed-unpaid-invoice-charge-alignment", True), ("reviewed-paid-invoice-charge-alignment", True), ("course-contract-repair", False), ("reviewed-mismatched-pending-return", False)]:
+            with self.subTest(operation=operation), tempfile.TemporaryDirectory() as td:
+                path = Path(td)/"case.json"
+                path.write_text(json.dumps({"version": 1, "eligible_cases": [{"operation_id": operation, **dict.fromkeys(["parameters_sha256", "idempotency_sha256", "requester_sha256", "approver_sha256", "approval_reference", "valid_until"], "synthetic") }]}))
+                for source in validators:
+                    result = subprocess.run(["python3", "-", str(path)], input=textwrap.dedent(source), text=True, capture_output=True, timeout=5)
+                    self.assertEqual(result.returncode == 0, accepted, result.stderr)
+
     def run_probe(self, status=0, host="pi.lifenet.com.tw", expired=False, mode="probe-policy", complete=True):
         temp = tempfile.TemporaryDirectory()
         self.addCleanup(temp.cleanup)

@@ -1,6 +1,6 @@
 # AllTrue Production Operations Catalog
 # Authority: ADR-POP-005 | Phase 2: approved catalog operations execute via Pi-local POP
-version: 18
+version: 19
 
 operations:
   reviewed-legacy-reversal-restatement:
@@ -766,6 +766,35 @@ operations:
     parameter_keys: [campus_id, student_id, course_id, invoice_id, report_id, expected_reported_amount, expected_charge, expected_invoice_total, decision_reference, reason, expected_state_hash]
     tags: [repair, billing, reviewed-case]
     notes: Active after catalog v15 deployment; every request requires a mounted, expiring Founder tuple binding operation, full parameters hash, idempotency key, requester and approver before Pi-local execution. Preserve reported amount; no cash receipt/refund.
+
+  reviewed-paid-invoice-charge-alignment:
+    lifecycle: active
+    domain: billing-entitlement
+    business_owner: director-data
+    technical_owner: platform-data
+    owner: platform-ops
+    approver_roles: [super_admin]
+    approval_policy: founder-exact-reviewed-financial
+    founder_approval_required: true
+    runbook: docs/plans/2026-11-17-paid-invoice-alignment.md
+    alert_group: LINE:ops-data
+    escalation_policy: billing-entitlement-critical-escalation
+    capabilities: [repair, plan, dry_run, verify, rollback, snapshot, audit]
+    risk: critical
+    reversible: true
+    snapshot_required: true
+    transaction_required: true
+    rollback_supported: true
+    verification_required: true
+    approval_required: true
+    execution_authority: pop-pi-local
+    blast_radius: one_exact_paid_invoice_and_settlement
+    estimated_duration: 5m
+    invariant_packs: [billing-entitlement-pack@1.0.0]
+    strategy_class: App\Operations\Strategies\PaidInvoiceChargeAlignmentStrategy
+    parameter_keys: [student_id, course_id, campus_id, invoice_id, expected_invoice_total, expected_charge, decision_reference, expected_state_hash]
+    tags: [repair, billing, reviewed-case]
+    notes: One header-only partial count bill after one fully reversed linked receipt and one linked confirmed receipt equal to the agreed charge. Updates invoice total/status and canonical course Paid/PayDate only. No cash, report, receipt, lesson or entitlement rewrite. Requires an exact expiring Founder tuple and authenticated human approval; no machine financial request or automatic case execution.
 
   reviewed-unpaid-invoice-charge-alignment:
     lifecycle: active
