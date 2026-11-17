@@ -54,7 +54,7 @@ describe('帳務面板 · 只有方案已收標記的共用方案成員 (#4597)'
     const w = await mountLedger([course(1, '數學', member), course(2, '英文', { ...member, package_id: null, paid: false })]);
     const card = w.find('[data-testid="contract-card-1"]');
     expect(card.find('[data-testid="contract-legacy-unverified"]').exists()).toBe(true);
-    await openCardMenu(w);
+    await openCardMenu(card);
     expect(menuItem('legacy-backfill')).not.toBeNull();
     expect(menuItem('legacy-clear')).not.toBeNull();
     document.body.querySelector('.am__menu').dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));

@@ -94,6 +94,7 @@ class StudentClassDestroyBillingTest extends TestCase
         $res = $this->deleteJson("/api/v1/student-classes/{$c->ID}", [], $this->auth())->assertStatus(422)
             ->assertJsonPath('code', 'course_has_history')->assertJsonPath('reasons', ['dunning_events']);
         $this->assertStringContainsString('繳費提醒', $res->json('message'));
+        $this->assertStringContainsString('尚未收款的費用不會自動免除', $res->json('message'));
         $this->assertNotNull(StudentClass::find($c->ID));
     }
 

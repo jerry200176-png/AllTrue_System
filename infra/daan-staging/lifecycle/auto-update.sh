@@ -21,6 +21,13 @@ run_cycle() { # $1=sha ; migrate/health are inside redeploy.sh
     && bash "${DIR}/assert-host-checkout-clean.sh" >>"${EVID}" 2>&1
 }
 
+heal() { # $1=deployed sha. Containers use restart:"no": after a host reboot nothing runs until redeployed (#5067).
+  [[ -n "$1" ]] || return 0
+  bash "${DIR}/health.sh" >/dev/null 2>&1 && return 0
+  log "UNHEALTHY at ${1:0:12}; redeploying"
+  if run_cycle "$1"; then log "OK ${1:0:12}"; return 0; else log "FAIL ${1:0:12}"; return 1; fi
+}
+
 main() {
   mkdir -p "${STATE}"
   exec 9>"${STATE}/lock"; flock -n 9 || { log "SKIP another run active"; return 0; }
@@ -33,15 +40,10 @@ main() {
   good="$(cat "${STATE}/last_good_sha" 2>/dev/null || true)"
   git -C "${REPO_ROOT}" fetch -q origin main >>"${EVID}" 2>&1 || { log "ERROR fetch origin main"; return 1; }
   case "$(rule_decide "${REPO_ROOT}" "${good}" "${sha}")" in
-    NOOP_NOT_ON_MAIN) log "NOOP ${sha:0:12} not on origin/main"; return 0 ;;   # force-pushed away / branch-only
-    NOOP_OLDER) log "NOOP ${sha:0:12} older than deployed ${good:0:12}"; return 0 ;;
+    NOOP_NOT_ON_MAIN) log "NOOP ${sha:0:12} not on origin/main"; heal "${good}"; return $? ;;   # force-pushed away / branch-only
+    NOOP_OLDER) log "NOOP ${sha:0:12} older than deployed ${good:0:12}"; heal "${good}"; return $? ;;
   esac
-  if [[ "${sha}" == "${good}" ]]; then
-    # Containers use restart:"no"; after a host reboot the SHA matches but nothing runs. Heal by redeploying it.
-    if bash "${DIR}/health.sh" >/dev/null 2>&1; then log "NOOP green main=${sha:0:12} already deployed"; return 0; fi
-    log "UNHEALTHY at ${sha:0:12}; redeploying"
-    if run_cycle "${sha}"; then log "OK ${sha:0:12}"; return 0; else log "FAIL ${sha:0:12}"; return 1; fi
-  fi
+  if [[ "${sha}" == "${good}" ]]; then log "NOOP green main=${sha:0:12} already deployed"; heal "${sha}"; return $?; fi
 
   log "DEPLOY ${good:0:12} -> ${sha:0:12}"
   if run_cycle "${sha}"; then
