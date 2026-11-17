@@ -18,7 +18,7 @@ class ScheduleGuardrailsTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_inapp565_staggered_recurring_slots_allow_the_third_simultaneous_student_but_block_a_fourth(): void
+    public function test_inapp565_staggered_schedule_creation_allows_the_third_simultaneous_student_but_blocks_a_fourth(): void
     {
         $token = $this->createDirectorToken([1], 'director-peak@example.com');
         $teacher = $this->createTeacher(1, 'teacher-peak@example.com');
