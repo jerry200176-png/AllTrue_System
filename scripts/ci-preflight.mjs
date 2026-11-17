@@ -57,32 +57,48 @@ function checkLegacySize(errors, warnings) {
     }));
     return;
   }
-  const out = execFileSync('git', [
-    'diff', '--numstat', `${base}...HEAD`, '--',
+  // Match Presubmit CHECK 2: tests/docs count toward total, not the logic limit.
+  const excludes = [
     ':!*.lock', ':!**/package-lock.json', ':!package-lock.json',
     ':!**/composer.lock', ':!composer.lock', ':!*.sql', ':!*.sql.gz',
     ':!*.min.js', ':!*.min.css', ':!*.log', ':!**/*.log',
-    ':!*phpstan-baseline.neon', ':!**/*.generated.js', ':!.agents/skills/**', ':!.cursor/**',
-  ], { cwd: ROOT, encoding: 'utf8', maxBuffer: 20 * 1024 * 1024 });
-  let total = 0;
-  for (const line of out.split('\n')) {
-    const [a, d] = line.split('\t');
-    if (!a || a === '-') continue;
-    total += (Number(a) || 0) + (Number(d) || 0);
-  }
-  const changedNames = git(['diff', '--name-only', `${base}...HEAD`]).split('\n').filter(Boolean);
+    ':!*phpstan-baseline.neon', ':!**/*.generated.js', ':!.agents/skills/**', ':!.claude/skills/**', ':!.cursor/**',
+  ];
+  const branch = process.env.GITHUB_HEAD_REF || git(['rev-parse', '--abbrev-ref', 'HEAD']);
+  if (/^chore\/docs-/.test(branch)) excludes.push(':!docs/CHANGELOG.md', ':!docs/archive/**');
+  const stat = (extra = []) => {
+    const out = execFileSync('git', ['diff', '--numstat', `${base}...HEAD`, '--', ...excludes, ...extra],
+      { cwd: ROOT, encoding: 'utf8', maxBuffer: 20 * 1024 * 1024 });
+    let add = 0; let del = 0;
+    for (const line of out.split('\n')) {
+      const [a, d] = line.split('\t');
+      if (!a || a === '-') continue;
+      add += Number(a) || 0; del += Number(d) || 0;
+    }
+    return { add, del };
+  };
+  const { add, del } = stat();
+  const total = add + del;
+  const logicStat = stat([':!backend/tests/**', ':!scripts/tests/**', ':!**/__tests__/**', ':!**/*.test.*',
+    ':!**/*.spec.*', ':!frontend/e2e/**', ':!docs/**', ':!**/*.md']);
+  const logic = logicStat.add + logicStat.del;
+  const changedNames = git(['diff', '--name-only', '-z', `${base}...HEAD`]).split('\0').filter(Boolean);
   const touchesProduction = changedNames.some((name) => /^(backend\/app\/|backend\/routes\/|backend\/database\/|frontend\/src\/)/.test(name));
   const hardLimit = touchesProduction ? 700 : 1300;
-  if (total > hardLimit) {
+  const totalLimit = 1500;
+  // Preserve the native narrow cleanup exception, including its deletion ceiling.
+  const deletionCleanup = add <= 30 && del > hardLimit;
+  if (deletionCleanup ? del > 3000 : logic > hardLimit || total > totalLimit) {
     errors.push(formatGovError({
-      code: GOV_CODES.SIZE, message: `Legacy PR size ${total} > ${hardLimit}`,
-      actual: JSON.stringify({ total, base, hardLimit, touchesProduction }), policy: 'presubmit.yml CHECK 2',
+      code: GOV_CODES.SIZE,
+      message: deletionCleanup ? `Deletion cleanup ${del} > 3000` : `PR size ${logic} logic lines (limit: ${hardLimit}), ${total} lines with tests/docs (limit: ${totalLimit})`,
+      actual: JSON.stringify({ add, del, logic, total, base, hardLimit, totalLimit, touchesProduction }), policy: 'presubmit.yml CHECK 2',
       fix: 'Split PR. Stacked: export PR_BASE_SHA=<base>. Risk-based gate = G2.',
     }));
-  } else if (total > 400) {
+  } else if (!deletionCleanup && logic > 400) {
     warnings.push(formatGovError({
-      code: GOV_CODES.SIZE, message: `PR size ${total} > 400 (recommended)`,
-      actual: String(total), policy: 'presubmit CHECK 2', fix: 'Consider splitting', blocking: false,
+      code: GOV_CODES.SIZE, message: `PR logic size ${logic} > 400 (recommended)`,
+      actual: JSON.stringify({ logic, total }), policy: 'presubmit CHECK 2', fix: 'Consider splitting', blocking: false,
     }));
   }
 }
