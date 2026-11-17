@@ -41,13 +41,13 @@ const detail = {
   status_logs: [],
 };
 
-async function installMock(page) {
+async function installMock(page, replyDetail = detail) {
   await page.addInitScript(() => { window.__bugsRetryAllowed = false; });
   await page.route('**/api/v1/bugs**', async (route) => {
     const requestUrl = new URL(route.request().url());
     const currentMode = new URL(page.url()).searchParams.get('mode') || 'normal';
     if (requestUrl.pathname.endsWith('/101')) {
-      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(detail) });
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(replyDetail) });
     }
     if (currentMode === 'loading') await new Promise((resolve) => setTimeout(resolve, 700));
     if (currentMode === 'error' && !await page.evaluate(() => Boolean(window.__bugsRetryAllowed))) {
@@ -161,4 +161,25 @@ test.describe('Bug reports clarity browser verification', () => {
     await expectNoOverflowAndReachableControls(page);
     expect(await page.locator('.bug-item').evaluate((node) => node.getBoundingClientRect().height)).toBeGreaterThan(44);
   });
+  test('distinguishes receipt-backed support from a same-author human reply', async ({ page }) => {
+    const replies = [detail.comments[0],
+      { id: 2, author_user_id: 7, author_name: '同一位回報者', origin: 'support', created_at: '2026-11-18T01:00:00Z', body: '請補充目前看不到的日期與頁面。', is_internal_note: false },
+      { id: 3, author_user_id: 7, author_name: '同一位回報者', origin: 'reporter', created_at: '2026-11-18T01:01:00Z', body: '請補充目前看不到的日期與頁面。', is_internal_note: false }];
+    await installMock(page, { ...detail, comments: replies });
+    for (const width of [375, 1280]) {
+      await page.setViewportSize({ width, height: 1000 });
+      await page.goto('/bug-reports-pilot-mount.html?mode=normal');
+      await page.locator('.bug-item').click();
+      const comments = page.locator('.comment-item');
+      await expect(comments).toHaveCount(3);
+      await expect(comments.nth(1).getByTestId('support-comment-origin')).toHaveText('支援回覆');
+      await expect(comments.nth(2).getByTestId('support-comment-origin')).toHaveCount(0);
+      await expect(comments.nth(0).getByTestId('support-comment-origin')).toHaveCount(0);
+      await expect(comments.nth(1).locator('.comment-author')).toHaveText('同一位回報者');
+      await expect(comments.nth(2).locator('.comment-author')).toHaveText('同一位回報者');
+      await expectNoOverflowAndReachableControls(page);
+      await page.locator('.comments-section').screenshot({ path: path.join(outDir, `support-origin-${width}.png`) });
+    }
+  });
+
 });

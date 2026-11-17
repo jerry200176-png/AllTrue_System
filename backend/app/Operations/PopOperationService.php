@@ -539,7 +539,8 @@ final class PopOperationService
 
         return $this->atomicFinancialRepair($strategy)
             || in_array(is_object($strategy) ? get_class($strategy) : $strategy, [\App\Operations\Strategies\TaughtLessonSignInRepairStrategy::class,
-                \App\Operations\Strategies\CourseContractChainRebalanceStrategy::class], true); // #5124: moves and their snapshot commit together
+                \App\Operations\Strategies\CourseContractChainRebalanceStrategy::class,
+                \App\Operations\Strategies\InappReportFollowupCommentStrategy::class], true); // self-filed support needs its origin receipt atomically
     }
 
     private function isRekeyStrategy(object|string $strategy): bool
