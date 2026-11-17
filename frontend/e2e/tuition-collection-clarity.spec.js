@@ -447,3 +447,52 @@ test.describe('Tuition Collection clarity browser verification', () => {
     await expectNoOverflowAndReachableControls(page);
   });
 });
+
+for (const width of [375, 1536]) for (const size of ['standard', 'large']) for (const theme of ['light', 'dark']) {
+  test(`In-App558: whole invoice scope is readable beneath a month ${size}/${theme} @${width}`, async ({ page }, info) => {
+    const writes = []; const errors = [];
+    page.on('pageerror', (e) => errors.push(e.message));
+    page.on('request', (r) => { if (new URL(r.url()).pathname.startsWith('/api/v1/') && r.method() !== 'GET') writes.push(r.url()); });
+    await page.setViewportSize({ width, height: 1100 });
+    await page.addInitScript(({ size, theme }) => {
+      localStorage.setItem('alltrue_text_size', size);
+      document.addEventListener('DOMContentLoaded', () => {
+        document.documentElement.dataset.textSize = size;
+        document.documentElement.dataset.theme = theme;
+        document.documentElement.classList.toggle('dark', theme === 'dark');
+      }, { once: true });
+    }, { size, theme });
+    await page.route('**/*', (r) => ['127.0.0.1', 'localhost'].includes(new URL(r.request().url()).hostname) ? r.fallback() : r.abort());
+    await page.route('**/api/v1/**', (r) => r.fulfill({ json: { data: [] } }));
+    await installMock(page);
+    const course = { id: 9, subject: '合成數學', schedule_mode: 'date', start_date: '2024-01-01', end_date: '2024-02-28', charge: 1200, paid: false };
+    await page.route('**/api/v1/students**', (r) => r.fulfill({ json: [{ id: 99, name: '合成跨期學生', status: 'active', enable: 1 }] }));
+    await page.route('**/api/v1/alerts/tuition**', (r) => r.fulfill({ json: [{ id: 9, student_id: 99, student_name: '合成跨期學生', subject: '合成數學',
+      schedule_mode: 'date', payment_status: 'partial', payable_status: 'invoiced', payable_outstanding: 900, billing_period: '2024-01' }] }));
+    await page.route('**/api/v1/accounting/ledger?**', (r) => r.fulfill({ json: {
+      student: { id: 99, name: '合成跨期學生' }, scope: { student_class_id: 9 }, summary: {}, courses: [course], receipts: [], anomalies: [],
+      invoices: [{ id: 31, student_class_id: 9, billing_period: '2024-01', period_start: '2024-01-01', period_end: '2024-02-28',
+        status: 'partial', total_amount: 1200, calculated_applied_amount: 300, outstanding_amount: 900,
+        payments: [{ id: 41, amount: 300, applied_amount: 300, application_status: 'applied', paid_at: '2024-02-20', method: 'cash' }] }],
+    } }));
+    await page.route('**/api/v1/accounting/contracts/9/sessions', (r) => r.fulfill({ json: { ...course, unscheduled_count: 0,
+      sessions: ['2024-01-06', '2024-01-13', '2024-02-03', '2024-02-10'].map((date, i) => ({ class_session_id: i + 1, date, status: 'attended', payment: i ? 'unpaid' : 'paid' })),
+    } }));
+    await page.goto('/tuition-collection-pilot-mount.html');
+    await page.getByTestId('bill-search').fill('合成跨期學生');
+    await page.getByTestId('bill-documents-c9').click();
+    const card = page.getByTestId('contract-card-9');
+    const line = card.getByTestId('contract-month-pay');
+    await expect(line).toContainText('帳單期間 2024/01/01–2024/02/28，整張帳單合計 NT$ 1,200');
+    await expect(line).toContainText('已收 2/20 NT$ 300');
+    await expect(card.getByTestId('contract-month-summary')).toHaveCount(2);
+    for (const summary of await card.getByTestId('contract-month-summary').allTextContents()) expect(summary).toMatch(/2\s*堂/);
+    expect(await line.evaluate((el) => el.scrollWidth <= el.clientWidth + 1)).toBe(true);
+    await line.evaluate(async (el) => { await Promise.all(el.closest('.ledger-modal').getAnimations({ subtree: true }).map((a) => a.finished)); });
+    const scan = await new AxeBuilder({ page }).include('[data-testid="contract-month-pay"]').analyze();
+    expect(scan.violations.filter((v) => ['serious', 'critical'].includes(v.impact))).toEqual([]);
+    const shot = info.outputPath('invoice-period-scope.png');
+    await card.screenshot({ path: shot }); await info.attach('invoice-period-scope', { path: shot, contentType: 'image/png' });
+    expect(writes).toEqual([]); expect(errors).toEqual([]);
+  });
+}
