@@ -4,11 +4,9 @@ namespace App\Operations\Inapp;
 
 use App\Models\BugReport;
 use App\Models\BugReportComment;
-use App\Operations\PopOperationService;
 use App\Operations\Strategies\InappReportResolveAfterDeployStrategy;
 use App\Operations\Strategies\InappReportTriageStrategy;
 use App\Services\BugReportService;
-use Illuminate\Support\Facades\DB;
 
 /**
  * ADR-POP-015 reply checks: the PII patterns of .github/scripts/inapp-writeback-rows.py, stricter on links (only the report's
@@ -47,41 +45,20 @@ final class InappReportReplyGuard
     private static function loggedMachineReply(BugReport $bug, BugReportComment $comment, ?array $close, ?string $issueUrl): bool
     {
         if (!$close || !$issueUrl || !is_int($close['id'] ?? null) || !in_array($close['kind'] ?? null, InappStandingPolicy::LOGGED_DISPOSITIONS, true)) return false;
-        $strategies = [InappReportTriageStrategy::OPERATION => InappReportTriageStrategy::class,
-            InappReportResolveAfterDeployStrategy::OPERATION => InappReportResolveAfterDeployStrategy::class];
-        try {
-            $rows = DB::table('pop_operation_requests as r')->join('pop_execution_records as e', 'e.operation_id', '=', 'r.id')
-                ->whereIn('r.operation_id', array_keys($strategies))->where('r.parameters->bug_id', (int) $bug->getKey())
-                ->where('r.parameters->campus_id', (int) $bug->getAttribute('CampusID'))
-                ->where('e.phase', 'execute')->where('e.result', 'succeeded')->where('e.payload->comment_id', (int) $comment->getKey())
-                ->select(['r.id', 'r.operation_id', 'r.strategy_id', 'r.parameters', 'r.parameters_hash', 'e.payload', 'e.execution_id'])->limit(2)->get();
-            if ($rows->count() !== 1) return false; // missing, late, failed or ambiguous origin stays untrusted
-            $row = $rows->first();
-            $p = json_decode((string) $row->parameters, true, 512, JSON_THROW_ON_ERROR);
-            $receipt = json_decode((string) $row->payload, true, 512, JSON_THROW_ON_ERROR);
-            if (!is_array($p) || !is_array($receipt) || !is_string($p['public_reply'] ?? null)) return false;
-            $bodyHash = hash('sha256', (string) $comment->body);
-            if ($row->strategy_id !== ($strategies[$row->operation_id] ?? null)
-                || !hash_equals((string) $row->parameters_hash, hash('sha256', json_encode(PopOperationService::canonicalParameters($p), JSON_THROW_ON_ERROR)))
-                || ($p['bug_id'] ?? null) !== (int) $bug->getKey() || ($p['campus_id'] ?? null) !== (int) $bug->getAttribute('CampusID')
-                || ($p['github_issue_url'] ?? null) !== $issueUrl || !hash_equals($bodyHash, hash('sha256', $p['public_reply']))
-                || ($receipt['ok'] ?? null) !== true || ($receipt['operation_id'] ?? null) !== $row->id
-                || ($receipt['execution_id'] ?? null) !== $row->execution_id || ($receipt['strategy'] ?? null) !== $row->strategy_id
-                || ($receipt['bug_id'] ?? null) !== (int) $bug->getKey() || ($receipt['comment_id'] ?? null) !== (int) $comment->getKey()
-                || ($receipt['author_id'] ?? null) !== (int) $comment->author_user_id || ($receipt['status'] ?? null) !== 'closed'
-                || ($receipt['reply_sha256'] ?? null) !== $bodyHash) return false;
-            if ($row->operation_id === InappReportTriageStrategy::OPERATION) {
-                return ($p['disposition'] ?? null) === $close['kind'] && ($receipt['disposition'] ?? null) === $close['kind']
-                    && ($receipt['logged_close_id'] ?? null) === $close['id'] && ($receipt['from_status'] ?? null) === 'new'
-                    && ($receipt['github_issue'] ?? null) === (int) basename($issueUrl);
-            }
-
-            return ($receipt['from_status'] ?? null) === 'closed' && ($receipt['issue_url'] ?? null) === $issueUrl
-                && is_array($receipt['logged_close'] ?? null) && count($receipt['logged_close']) === 2
-                && ($receipt['logged_close']['id'] ?? null) === $close['id'] && ($receipt['logged_close']['kind'] ?? null) === $close['kind'];
-        } catch (\Throwable) {
-            return false; // corrupt or unavailable provenance must never bury a real reporter message
+        $origin = InappSupportCommentOrigin::receipts($bug, [$comment])[(int) $comment->id] ?? null;
+        if (!$origin || ($origin['parameters']['github_issue_url'] ?? null) !== $issueUrl) return false;
+        $p = $origin['parameters']; $receipt = $origin['receipt'];
+        if (($receipt['status'] ?? null) !== 'closed') return false;
+        if ($origin['operation'] === InappReportTriageStrategy::OPERATION) {
+            return ($p['disposition'] ?? null) === $close['kind'] && ($receipt['disposition'] ?? null) === $close['kind']
+                && ($receipt['logged_close_id'] ?? null) === $close['id']
+                && ($receipt['github_issue'] ?? null) === (int) basename($issueUrl);
         }
+        return $origin['operation'] === InappReportResolveAfterDeployStrategy::OPERATION
+            && ($receipt['from_status'] ?? null) === 'closed'
+            && ($receipt['issue_url'] ?? null) === $issueUrl
+            && is_array($receipt['logged_close'] ?? null) && count($receipt['logged_close']) === 2
+            && ($receipt['logged_close']['id'] ?? null) === $close['id'] && ($receipt['logged_close']['kind'] ?? null) === $close['kind'];
     }
 
     /** @return list<string> rule names the reply breaks; [] passes */

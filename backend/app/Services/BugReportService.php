@@ -9,6 +9,7 @@ use App\Models\BugReportEvidence;
 use App\Models\BugReportStatusLog;
 use App\Models\BugReportUserRead;
 use App\Models\User;
+use App\Operations\Inapp\InappSupportCommentOrigin;
 use Carbon\Carbon;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
@@ -258,10 +259,13 @@ class BugReportService
         if (!$includeInternalNotes) {
             $commentsQuery->where('is_internal_note', false);
         }
-        $comments = $commentsQuery->get()->map(fn ($c) => [
+        $commentModels = $commentsQuery->get();
+        $support = InappSupportCommentOrigin::ids($bug, $commentModels);
+        $comments = $commentModels->map(fn ($c) => [
             'id' => $c->id,
             'author_user_id' => $c->author_user_id,
             'author_name' => $c->author?->Name ?? '',
+            'origin' => isset($support[$c->id]) ? 'support' : ((int) $c->author_user_id === (int) $bug->reporter_user_id ? 'reporter' : 'staff'),
             'body' => $c->body,
             'is_internal_note' => $c->is_internal_note,
             'created_at' => $c->created_at->toIso8601String(),
@@ -769,7 +773,7 @@ class BugReportService
 
     public static function unreadBadgeCount(int $userId, string $role, array $campusIds): int
     {
-        $reporter = self::countReporterReplyUnread($userId, $campusIds);
+        $reporter = self::countReporterReplyUnread($userId, $campusIds, $role === 'super_admin');
         if ($role === 'super_admin') {
             return $reporter + self::countNewBugsForSuperAdminInbox($userId, $campusIds);
         }
@@ -780,7 +784,7 @@ class BugReportService
     /**
      * Reporter-facing unread: public comments or status changes by someone else after last list or detail view.
      */
-    private static function countReporterReplyUnread(int $userId, array $campusIds): int
+    private static function countReporterReplyUnread(int $userId, array $campusIds, bool $allCampuses = false): int
     {
         $query = BugReport::query()->where('reporter_user_id', $userId);
         if (!empty($campusIds)) {
@@ -788,6 +792,7 @@ class BugReportService
         }
 
         $epoch = '1970-01-01 00:00:00';
+        $ownUnread = clone $query;
         $query->where(function ($outer) use ($userId, $epoch) {
             $outer->whereExists(function ($q) use ($userId, $epoch) {
                 $q->selectRaw('1')
@@ -811,7 +816,15 @@ class BugReportService
             });
         });
 
-        return (int) $query->count();
+        $otherUnreadIds = $query->pluck('id')->all();
+        if ($campusIds === [] && !$allCampuses) return count($otherUnreadIds);
+        $unreadComments = static fn ($q) => $q->where('is_internal_note', false)->where('author_user_id', $userId)
+            ->whereRaw('created_at > COALESCE((SELECT r.read_at FROM bug_report_user_reads r WHERE r.bug_report_id = bug_report_comments.bug_report_id AND r.user_id = ?), ?)', [$userId, $epoch]);
+        $supportUnread = 0;
+        foreach ($ownUnread->whereNotIn('id', $otherUnreadIds)->whereHas('comments', $unreadComments)->with(['comments' => $unreadComments])->get() as $bug) {
+            if (InappSupportCommentOrigin::ids($bug, $bug->comments) !== []) $supportUnread++;
+        }
+        return count($otherUnreadIds) + $supportUnread;
     }
 
     private static function countNewBugsForSuperAdminInbox(int $userId, array $campusIds): int
@@ -956,11 +969,11 @@ class BugReportService
         $now = $now ?: Carbon::now();
         $cutoff = $now->copy()->subDays($days);
 
-        $reporterIdsByBug = BugReport::query()->where('status', 'resolved')
-            ->pluck('reporter_user_id', 'id')->all();
+        $resolvedBugs = BugReport::query()->where('status', 'resolved')
+            ->get(['id', 'reporter_user_id', 'CampusID']);
         $out = [];
-        foreach ($reporterIdsByBug as $rawBugId => $rawReporterId) {
-            $bugId = (int) $rawBugId;
+        foreach ($resolvedBugs as $bug) {
+            $bugId = (int) $bug->id; $rawReporterId = (int) $bug->reporter_user_id;
             $resolveLog = BugReportStatusLog::query()
                 ->where('bug_report_id', $bugId)
                 ->where('to_status', 'resolved')
@@ -980,25 +993,24 @@ class BugReportService
                 // Exclusion: production-unverified resolve (legacy / pre-enforcement)
                 continue;
             }
-            if (BugReportComment::query()
-                ->where('bug_report_id', $bugId)
-                ->where('author_user_id', (int) $rawReporterId)
-                ->where('created_at', '>=', $resolvedAt)
-                ->get()
-                ->contains(fn (BugReportComment $comment) => !self::isTrackedStaffReply($comment, self::RETEST_REQUEST_PATTERN))) {
+            $reporterComments = BugReportComment::query()->where('bug_report_id', $bugId)
+                ->where('author_user_id', $rawReporterId)->where('created_at', '>=', $resolvedAt)->get();
+            $support = InappSupportCommentOrigin::ids($bug, $reporterComments);
+            if ($reporterComments->contains(fn (BugReportComment $comment) => !isset($support[$comment->id]))) {
                 continue;
             }
 
             // The existing lifecycle posts the public reply just before resolve.
             // A bounded window prevents an old triage comment from qualifying.
-            $retestRequest = BugReportComment::query()
+            $public = BugReportComment::query()
                 ->where('bug_report_id', $bugId)
                 ->where('is_internal_note', false)
                 ->where('created_at', '>=', $resolvedAt->copy()->subDay())
                 ->orderByDesc('created_at')
                 ->orderByDesc('id')
-                ->get()
-                ->first(fn (BugReportComment $comment) => ((int) $comment->author_user_id !== (int) $rawReporterId || self::isTrackedStaffReply($comment, self::RETEST_REQUEST_PATTERN))
+                ->get();
+            $support = InappSupportCommentOrigin::ids($bug, $public);
+            $retestRequest = $public->first(fn (BugReportComment $comment) => ((int) $comment->author_user_id !== $rawReporterId || isset($support[$comment->id]))
                     && preg_match(self::RETEST_REQUEST_PATTERN, (string) $comment->getAttribute('body')) === 1);
             if (!$retestRequest || $retestRequest->created_at->gt($cutoff)) {
                 continue;
@@ -1040,22 +1052,6 @@ class BugReportService
      *
      * @return array{bug_id:int,asked_at:string,days_waiting:int}|null
      */
-    /**
-     * A public ask written back by staff tooling: it links its GitHub issue (bug-phase-a-triage /
-     * bug-followup-comment refuse a reply without it) AND asks the reporter in our wording ($askPattern). It can
-     * carry the reporter's own user id when the reporter is the super_admin the writer acts as, so the author id
-     * alone cannot tell a reporter reply from ours (37 of the reports since #327 are self-filed). A reporter's
-     * "still broken, see <issue link>" has the link but not the ask, so it still counts as the reporter's.
-     * ponytail: a reporter typing 「請再試一次 + issue link」 reads as staff; add an author-role column if that happens.
-     */
-    private static function isTrackedStaffReply(BugReportComment $comment, string $askPattern): bool
-    {
-        $body = (string) $comment->body;
-
-        return preg_match('#https://github\.com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+/issues/\d+#', $body) === 1
-            && preg_match($askPattern, $body) === 1;
-    }
-
     private static function awaitingReporterRow(int $bugId, int $reporterId, Carbon $now): ?array
     {
         $cutoff = $now->copy()->subDays(self::AWAITING_REPORTER_TIMEOUT_DAYS);
@@ -1065,7 +1061,9 @@ class BugReportService
             ->orderByDesc('created_at')
             ->orderByDesc('id')
             ->first();
-        if (!$last || ((int) $last->author_user_id === $reporterId && !self::isTrackedStaffReply($last, self::AWAITING_REPORTER_QUESTION_PATTERN)) || $last->created_at->gt($cutoff)) {
+        $bug = BugReport::find($bugId);
+        $support = $bug && $last ? InappSupportCommentOrigin::ids($bug, [$last]) : [];
+        if (!$last || ((int) $last->author_user_id === $reporterId && !isset($support[$last->id])) || $last->created_at->gt($cutoff)) {
             return null;
         }
         // Only a real question waits on the reporter; "noted your suggestion" waits on us (in-app #290).
@@ -1179,9 +1177,10 @@ class BugReportService
             $reopened = BugReportStatusLog::query()->where('bug_report_id', $bugId)
                 ->where('note', 'reopened_by_reporter_reply')->exists();
             if ($reopened) {
-                $lastAuthor = BugReportComment::query()->where('bug_report_id', $bugId)
-                    ->where('is_internal_note', false)->orderByDesc('id')->value('author_user_id');
-                if ((int) $lastAuthor === (int) $bug->getAttribute('reporter_user_id')) {
+                $last = BugReportComment::query()->where('bug_report_id', $bugId)
+                    ->where('is_internal_note', false)->orderByDesc('id')->first();
+                $support = $last ? InappSupportCommentOrigin::ids($bug, [$last]) : [];
+                if ($last && (int) $last->author_user_id === (int) $bug->getAttribute('reporter_user_id') && !isset($support[$last->id])) {
                     return ['ok' => false, 'code' => 'reporter_reply_unanswered', 'message' => 'answer the reporter reply before closing again'];
                 }
             }
