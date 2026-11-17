@@ -60,7 +60,7 @@
     "test:e2e:director-acceptance-local": "playwright test -c playwright.director-acceptance-local.config.js",
     "pretest:e2e:director-acceptance-local": "npm run sync-release-notes",
     "test:director-acceptance-privacy": "node --test e2e/fixtures/directorPrivacy.test.js",
-    "test:director-acceptance-helpers": "node --test e2e/fixtures/directorExportGuard.test.js && python3 ../scripts/tests/test_student_bill_xlsx_acceptance.py",
+    "test:director-acceptance-helpers": "node --test e2e/fixtures/directorExportGuard.test.js e2e/fixtures/directorCalendarAcceptance.test.js && python3 ../scripts/tests/test_student_bill_xlsx_acceptance.py",
     "test:e2e:ui-foundation": "playwright test -c playwright.ui-foundation.config.js",
     "test:visual": "bash ../scripts/visual-docker.sh",
     "test:visual:update": "bash ../scripts/visual-docker.sh --update-snapshots",

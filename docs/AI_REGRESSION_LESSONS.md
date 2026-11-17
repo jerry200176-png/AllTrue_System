@@ -1524,6 +1524,7 @@ Intake consolidation regression (2026-10-17): the oldest trusted SourceRef issue
 
 - 使用 pilot mount／mock API 的頁面證據測試，必須由專用 Playwright config 明確收斂；default production smoke config 必須 `testIgnore`，避免在沒有 fixture server 時把測試誤當 production smoke 執行。
 - 新增任何 foundation spec 後，必須同時驗證專用 config 會執行它、default config 不會執行它，並在 CI 的 UI Smoke 與 Vite Frontend Build gate 中各自確認結果。
+- 主任受影響路徑的合成 calendar fixture 也須涵蓋實站仍使用的唯讀 POST（`student-classes/session-dates`）：只回傳同一組合成堂次、鎖定已綁定校區與合成課程 ID，絕不放行到正式 API。2026-11-18 的 smoke44147730799 因漏攔此唯讀形狀而失敗；不可刪除 rejected-count／寫入阻擋斷言，應以拒絕真實寫入、錯校區及非合成 ID 的測試固定邊界。不同版本前端可能不再呼叫此查詢，不能把呼叫次數正值當成產品契約。
 
 ---
 
