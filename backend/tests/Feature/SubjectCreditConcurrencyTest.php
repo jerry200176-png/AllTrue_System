@@ -93,7 +93,7 @@ class SubjectCreditConcurrencyTest extends TestCase
         $this->assertSame($transferFirst ? 'confirmed' : 'voided', $report->fresh()->status);
     }
 
-    public function test_actual_schedule_commit_before_materialization_cannot_lose_its_reservation(): void
+    public function test_committed_schedule_and_projection_cannot_lose_their_reservation(): void
     {
         foreach ([false, true] as $reverse) {
             [$token, $source, $template] = $this->fixture();
@@ -112,12 +112,16 @@ class SubjectCreditConcurrencyTest extends TestCase
                 if (!$enabled || (int) $schedule->student_course_id !== (int) $course->ID) return;
                 DB::afterCommit(function () use (&$observed, $course, $source, $input, $reverse, $transfer, $movement, $actor, $campus): void {
                     $this->assertSame(0, DB::transactionLevel());
-                    $this->assertSame(0, DB::table('ClassSession')->where('StudentClassID', $course->ID)->whereDate('SessionDate', '2026-10-14')->count());
+                    $this->assertSame(1, DB::table('ClassSession')->where('StudentClassID', $course->ID)->whereDate('SessionDate', '2026-10-14')->count(), 'Committed booking includes its projection in the same transaction.');
+                    $before = $this->businessSnapshot();
                     try {
                         if ($reverse) $movement->reverse($source, $transfer['id'], 'must retain committed reservation', $actor, [$campus]);
                         else $movement->apply($source, $input, $actor, [$campus]);
-                        $observed = 200;
-                    } catch (\Illuminate\Http\Exceptions\HttpResponseException $e) { $observed = $e->getResponse()->getStatusCode(); }
+                        $observed = ['status' => 200];
+                    } catch (\Illuminate\Http\Exceptions\HttpResponseException $e) {
+                        $observed = ['status' => $e->getResponse()->getStatusCode(), 'code' => $e->getResponse()->getData(true)['code']];
+                    }
+                    $this->assertSame($before, $this->businessSnapshot(), 'Committed reservation/projection must survive a stale credit decision.');
                 });
             });
             try {
@@ -126,7 +130,8 @@ class SubjectCreditConcurrencyTest extends TestCase
                     'schedule_date' => '2026-10-14', 'start_time' => '18:00', 'end_time' => '20:00',
                     'duration_hours' => 2, 'status' => 'scheduled', 'type' => 'normal'])->assertCreated();
             } finally { $enabled = false; }
-            $this->assertSame($reverse ? 409 : 422, $observed, 'Credit decision runs after committed booking and before its ClassSession projection.');
+            $this->assertSame(['status' => 409, 'code' => $reverse ? 'subject_credit_reverse_used' : 'subject_credit_preview_changed'], $observed,
+                'Credit decision observes the committed booking and its atomic ClassSession projection.');
             $this->assertSame(1, DB::table('ClassSession')->where('StudentClassID', $course->ID)->whereDate('SessionDate', '2026-10-14')->count());
             $this->assertSame($reverse ? 6 : 8, (int) $source->fresh()->SessionCount);
         }
