@@ -18,6 +18,18 @@ class ScheduleGuardrailsTest extends TestCase
 {
     use RefreshDatabase;
 
+    public function test_inapp565_staggered_schedule_creation_allows_the_third_simultaneous_student_but_blocks_a_fourth(): void
+    {
+        $token = $this->createDirectorToken([1], 'director-peak@example.com');
+        $teacher = $this->createTeacher(1, 'teacher-peak@example.com');
+        foreach (['18:00', '18:00', '20:00', '19:00'] as $i => $start) {
+            $student = $this->createStudent(1, 'isolated-peak-' . $i);
+            $this->createCourseViaApi($token, $student->id, $teacher, ['class_type' => 'one_on_three', 'start_time' => $start])->assertCreated();
+        }
+        $this->createCourseViaApi($token, $this->createStudent(1, 'isolated-fourth')->id, $teacher,
+            ['class_type' => 'one_on_three', 'start_time' => '19:00'])->assertStatus(409)->assertJsonPath('conflicts.0.type', 'teacher_capacity');
+    }
+
     public function test_pure_teacher_capacity_decision_allows_targeted_trial_until_third_seat(): void
     {
         $guard = app(\App\Services\ScheduleGuardService::class);
