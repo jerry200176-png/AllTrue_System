@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import test from 'node:test';
@@ -18,12 +19,23 @@ const jobNames = {
   'ci.yml': ['Control Plane Contract Lint', 'Golden scenarios report', 'PHPUnit Feature & Unit Tests', 'Vite Frontend Build'],
   'docs-integrity.yml': ['Docs Integrity Check'],
   'secret-scan.yml': ['gitleaks scan'],
-  'agent-provenance.yml': ['Agent Session Provenance'],
 };
 
 test('queue dispatches exactly the workflows covered here and passes pr_number', () => {
   assert.deepEqual(dispatched.sort(), [...Object.keys(jobNames), ...Object.keys(batchOnly)].sort());
   assert.match(queue, /'-f', `pr_number=\$\{n\}`/);
+});
+
+test('queue upgrades retain the installed main queue dispatch targets until callers have landed', () => {
+  // The executor is loaded from main, not this PR. A batch that deletes a target
+  // before its caller lands cannot run its checks, even if this PR's checks pass.
+  const installed = execFileSync('git', ['show', 'origin/main:.github/scripts/land-queue.mjs'], { cwd: root, encoding: 'utf8' });
+  const declaration = /const CHECK_WORKFLOWS = \[([^\]]+)\]/.exec(installed);
+  assert.ok(declaration, 'installed queue workflow list must be readable');
+  const workflows = [...declaration[1].matchAll(/'([^']+\.yml)'/g)].map(match => match[1]);
+  assert.ok(workflows.length > 0, 'installed queue dispatch targets must be known');
+  for (const workflow of workflows) assert.ok(fs.existsSync(path.join(root, '.github/workflows', workflow)),
+    `${workflow}: land its caller removal on main before deleting the dispatch target`);
 });
 
 for (const [wf, names] of Object.entries(jobNames)) {
@@ -158,7 +170,7 @@ test('batch-only workflows keep their required job name and are dispatchable wit
 test('every context the batch must prove is produced by a dispatched workflow', () => {
   const produced = new Set([...Object.values(jobNames).flat(), ...Object.values(batchOnly)]);
   // the live main ruleset's required contexts at the time of writing
-  for (const c of ['Presubmit Checks', 'PHPStan Advisory (php)', 'PHPUnit Feature & Unit Tests', 'Vite Frontend Build', 'Docs Integrity Check', 'gitleaks scan', 'Golden scenarios report', 'Control Plane Contract Lint', 'Agent Session Provenance']) {
+  for (const c of ['Presubmit Checks', 'PHPStan Advisory (php)', 'PHPUnit Feature & Unit Tests', 'Vite Frontend Build', 'Docs Integrity Check', 'gitleaks scan', 'Golden scenarios report', 'Control Plane Contract Lint']) {
     assert.ok(produced.has(c), `no dispatched workflow produces ${c}`);
   }
 });
@@ -228,12 +240,4 @@ test('every squash goes through guardedSquash (fresh thread + final-head review 
   assert.equal([...queue.matchAll(/\bsquash\(/g)].length, 0, 'call squash only via guardedSquash(n, sha, unresolvedThreads, readReview, squash)');
   const guarded = [...queue.matchAll(/guardedSquash\([^)]*unresolvedThreads, readReview, squash\)/g)].length;
   assert.equal(guarded, 2, 'serial path (processQueue) and batch path (landBatch) both re-check threads and review');
-});
-
-test('retired Agent Session Provenance stays a pass-through until the ruleset drops it', () => {
-  // Founder 2026-10-14（三）#6 retired the manifest check, but the main ruleset still
-  // requires the context, so the job must keep its name and must not run the deleted script.
-  const wf = read('.github/workflows/agent-provenance.yml');
-  assert.match(wf, /name: Agent Session Provenance/);
-  assert.doesNotMatch(wf, /check-agent-provenance|\bif: github\.event\.pull_request\.user/);
 });

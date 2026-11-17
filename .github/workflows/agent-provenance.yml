@@ -1,8 +1,8 @@
 name: Agent Session Provenance
 
 on:
-  pull_request:
-    branches: [main]
+  # Temporary compatibility for a queue executor loaded from the previous main.
+  # Delete this file after the caller removal in #4103 is installed on main.
   workflow_dispatch:
     inputs:
       pr_number:
@@ -20,9 +20,7 @@ permissions:
 
 jobs:
   provenance:
-    # Retired (Founder 2026-10-14（三）#6): the manifest check is gone. This job keeps
-    # the context name only because the main ruleset still requires it; delete the
-    # workflow once the ruleset drops "Agent Session Provenance" (see #4083).
+    # Retired check, manual-only while older installed queue code may dispatch it.
     name: Agent Session Provenance
     runs-on: ubuntu-latest
     timeout-minutes: 5

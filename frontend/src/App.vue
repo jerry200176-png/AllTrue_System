@@ -590,7 +590,7 @@
         @navigate-learning="onNavigateLearningFromTeacherHome"
         @navigate-context="onNavigateFromNotifications"
       />
-      <LearningRecordsPage v-if="!isPasswordChangeLocked && (!isDirector || directorBranchReady) && active === 'learning'" :branch-id="currentBranch" :user-role="role" :user-id="session.user.id" :target-record-id="learningTargetRecordId" :target-session="learningTargetSession" :target-student-name="learningTargetStudentName" :feedback-focus-token="learningFeedbackFocusToken" @feedback-read="onFeedbackQueueChanged" @clear-target-student="learningTargetStudentName = ''" />
+      <LearningRecordsPage v-if="!isPasswordChangeLocked && (!isDirector || directorBranchReady) && active === 'learning'" :branch-id="currentBranch" :user-role="role" :user-id="session.user.id" :target-record-id="learningTargetRecordId" :target-session="learningTargetSession" :target-student-name="learningTargetStudentName" :target-only-unfilled="learningTargetOnlyUnfilled" :feedback-focus-token="learningFeedbackFocusToken" @feedback-read="onFeedbackQueueChanged" @clear-target-student="learningTargetStudentName = ''" />
       <ExamGradesPage v-if="!isPasswordChangeLocked && (!isDirector || directorBranchReady) && (isDirector || isTeacher) && active === 'exam-grades'" :branch-id="currentBranch" :user-role="role" :focus-round-id="examFocusRoundId" />
       <ProfileCenterPage
         v-if="(isTeacher || isDirector) && active === 'profile'"
@@ -1421,6 +1421,7 @@ const currentBranchName = computed(() => {
 const learningTargetRecordId = ref(null);
 const learningTargetSession = ref(null);
 const learningTargetStudentName = ref('');
+const learningTargetOnlyUnfilled = ref(false); // #4529 A: the student list's 待補評量 opens that student's unfilled evaluations
 const learningFeedbackFocusToken = ref(0);
 
 // Sidebar collapse state (desktop)
@@ -1846,6 +1847,7 @@ function onNavigateFromNotifications(payload = {}) {
     intent,
     studentName,
     teacherId,
+    onlyUnfilled,
   } = payload;
   if (isPasswordChangeLocked.value) {
     active.value = 'profile';
@@ -1883,6 +1885,7 @@ function onNavigateFromNotifications(payload = {}) {
     learningTargetRecordId.value = null;
   }
   learningTargetStudentName.value = target === 'learning' ? String(studentName || '').trim() : '';
+  learningTargetOnlyUnfilled.value = target === 'learning' && onlyUnfilled === true;
   if (target === 'students') {
     const normalizedStudentId = Number(studentId);
     const normalizedCourseId = Number(courseId);
