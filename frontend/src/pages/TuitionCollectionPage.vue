@@ -1485,7 +1485,7 @@ async function loadSettledCourses() {
 }
 
 async function onLedgerChanged() {
-  await Promise.all([loadAlerts(), loadAccountingPayments(), loadSettledCourses()]);
+  await Promise.all([loadAlerts(), loadAccountingPayments(), loadSettledCourses(), roster.value?.reload()]);
 }
 
 async function fetchAccountingExportRows() {

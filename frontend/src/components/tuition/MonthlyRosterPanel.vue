@@ -57,7 +57,7 @@
               <TableCell :class="[t.cell, 'tw:min-w-[9em] tw:whitespace-normal']">
                 {{ c.subject }}<span class="tw:text-tpl-secondary">・{{ c.teacher_name || '—' }}</span>
                 <span v-if="c.stopped" :class="t.sub">已停課</span>
-                <span :class="[t.sub, t.phoneOnly]">{{ lessonLine(c) }}</span>
+                <span :class="[t.sub, t.phoneOnly]">{{ lessonLine(c) }}・單價 {{ rateLabel(c) }}</span>
               </TableCell>
               <TableCell :class="[t.cell, t.phoneHide, 'tw:whitespace-normal']">
                 <ul class="tw:m-0 tw:flex tw:list-none tw:flex-wrap tw:gap-1.5 tw:p-0" :aria-label="`${c.subject}這個月 ${c.lessons.length} 堂`">
@@ -115,7 +115,8 @@ const month = ref(now.getMonth() + 1);
 const query = ref('');
 const filter = ref('all');
 const students = ref([]);
-const summary = ref({ students: 0, outstanding: 0, paid_this_month: 0, pending_reports: 0 });
+const EMPTY_SUMMARY = { students: 0, outstanding: 0, paid_this_month: 0, pending_reports: 0 };
+const summary = ref(EMPTY_SUMMARY);
 const loading = ref(false);
 const error = ref('');
 const campusId = computed(() => (props.branchId == null || props.branchId === '' ? null : Number(props.branchId)));
@@ -126,8 +127,9 @@ const md = (d) => `${Number(d.slice(5, 7))}/${Number(d.slice(8, 10))}`;
 const lessonLine = (c) => (c.lessons.length ? `${c.lessons.map((l) => md(l.date)).join('、')}（已上 ${c.held}）` : '沒有排課');
 function state(c) {
   if (c.pending_reports) return { tone: 'warning', label: `待確認 ${c.pending_reports} 筆` };
+  // review_required can still carry a balance (BillingPayableResolver::courseStatus); the warning must not hide behind 未繳.
+  if (c.money.status === 'review_required') return { tone: 'warning', label: c.money.outstanding > 0 ? `要核對（未繳 ${money(c.money.outstanding)}）` : '要核對' };
   if (c.money.outstanding > 0) return { tone: 'danger', label: `未繳 ${money(c.money.outstanding)}` };
-  if (c.money.status === 'review_required') return { tone: 'warning', label: '要核對' };
   if (['paid', 'free'].includes(c.money.status)) return { tone: 'success', label: '已收齊' };
   return { tone: 'neutral', label: '還沒有帳單' };
 }
@@ -190,6 +192,7 @@ async function load() {
     if (mine === seq) loading.value = false;
   }
 }
-watch([campusId, year, month], load, { immediate: true });
+// A new month or campus clears the old rows first, so they can't be acted on or exported under the new heading.
+watch([campusId, year, month], () => { students.value = []; summary.value = EMPTY_SUMMARY; load(); }, { immediate: true });
 defineExpose({ reload: load, loading });
 </script>

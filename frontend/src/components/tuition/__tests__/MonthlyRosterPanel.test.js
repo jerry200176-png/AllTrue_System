@@ -126,3 +126,31 @@ it('exports the rows on screen in the old sheet order, with formulas neutralised
   vi.unstubAllGlobals();
   Object.assign(URL, { createObjectURL: urlFns.create, revokeObjectURL: urlFns.revoke });
 });
+
+it('a balance under review still says 要核對, and the phone line shows the price', async () => {
+  const review = { data: [{ student_id: 3, student_name: '陳小安', school: '光復', outstanding: 3000, courses: [
+    course(31, { rate: 800, rate_unit: 'hour', money: { status: 'review_required', outstanding: 3000, current_period: null, month_total: null, month_invoiced: false } }),
+  ] }], summary: { students: 1, outstanding: 3000, paid_this_month: 0, pending_reports: 0 } };
+  mockFetch.mockResolvedValue(res(review));
+  wrapper = mountIt();
+  await flushPromises();
+  const row = wrapper.find('[data-testid="roster-course-31"]');
+  expect(row.text()).toContain('要核對（未繳 NT$3,000）');
+  expect(row.text()).toContain('11/3、11/24（已上 1）・單價 NT$800／小時');
+});
+
+it('switching month clears the old rows and disables export until the new month loads', async () => {
+  let release;
+  mockFetch.mockResolvedValueOnce(res(roster));
+  mockFetch.mockImplementationOnce(() => new Promise((r) => { release = () => r(res(roster)); }));
+  wrapper = mountIt();
+  await flushPromises();
+  expect(wrapper.find('[data-testid="roster-student-1"]').exists()).toBe(true);
+  await wrapper.find('button[aria-label="下一月"]').trigger('click');
+  await flushPromises();
+  expect(wrapper.find('[data-testid="roster-student-1"]').exists()).toBe(false);
+  expect(wrapper.find('[data-testid="roster-export"]').attributes('disabled')).toBeDefined();
+  release();
+  await flushPromises();
+  expect(wrapper.find('[data-testid="roster-student-1"]').exists()).toBe(true);
+});
