@@ -159,15 +159,15 @@ function shift(step) {
   month.value = d.getMonth() + 1;
 }
 // The directors' old sheet column order (Founder 2026-11-17); the rows on screen (search and filter apply). UTF-8 BOM so Excel opens it.
-const CSV_HEADERS = ['科目', '老師', '學校', '學生', '繳費日期', '付費方式', '單價', '已上堂數', '月學收', '本月預估', '這個月收到', '未繳', '收款狀態', '這個月的課'];
+const CSV_HEADERS = ['科目', '老師', '學校', '學生', '繳費日期', '付費方式', '單價', '已上堂數', '本月預估', '這個月收到', '未繳', '收款狀態', '這個月的課', '月學收'];
 const csvCell = (v) => (typeof v === 'number' ? v : `"${String(v ?? '').replace(/^([=+\-@])/, "'$1").replace(/"/g, '""')}"`); // no spreadsheet formulas from names
 function exportCsv() {
   const rows = visible.value.flatMap((s) => s.courses.map((c) => [
     c.subject, c.teacher_name, s.school, s.student_name,
     c.paid_this_month.map((p) => p.date).join('、'), c.paid_this_month.map((p) => METHOD[p.method] || p.method).join('、'),
-    rateLabel(c), c.held, c.tuition ?? '', c.money.month_total != null && !c.money.month_invoiced ? c.money.month_total : '',
+    rateLabel(c), c.held, c.money.month_total != null && !c.money.month_invoiced ? c.money.month_total : '',
     c.paid_this_month.reduce((n, p) => n + Number(p.amount || 0), 0), c.money.outstanding, state(c).label,
-    lessonDates(c),
+    lessonDates(c), c.tuition ?? '', // 月學收 last, so the old sheet's columns keep their places
   ]));
   const csv = '\ufeff' + [CSV_HEADERS, ...rows].map((r) => r.map(csvCell).join(',')).join('\n');
   const a = document.createElement('a');

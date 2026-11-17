@@ -119,8 +119,8 @@ it('exports the rows on screen in the old sheet order, with formulas neutralised
 
   expect(click).toHaveBeenCalledTimes(1);
   const lines = blobs[0].parts.join('').replace(/^\ufeff/, '').split('\n');
-  expect(lines[0]).toBe('"科目","老師","學校","學生","繳費日期","付費方式","單價","已上堂數","月學收","本月預估","這個月收到","未繳","收款狀態","這個月的課"');
-  expect(lines[1]).toBe(`"數學","張翔","崇光","'=HYPERLINK(""x"")","2026-11-05","現金","NT$1,500",1,"","",1500,4500,"未繳 NT$4,500","11/3、11/24（還沒上）"`);
+  expect(lines[0]).toBe('"科目","老師","學校","學生","繳費日期","付費方式","單價","已上堂數","本月預估","這個月收到","未繳","收款狀態","這個月的課","月學收"');
+  expect(lines[1]).toBe(`"數學","張翔","崇光","'=HYPERLINK(""x"")","2026-11-05","現金","NT$1,500",1,"",1500,4500,"未繳 NT$4,500","11/3、11/24（還沒上）",""`);
   expect(lines).toHaveLength(3);
   click.mockRestore();
   vi.unstubAllGlobals();
@@ -149,9 +149,10 @@ it('shows 學收合計 and each course\'s 學收, says which have no price, and 
 
   await wrapper.get('[data-testid="roster-export"]').trigger('click');
   const lines = blobs[0].parts.join('').replace(/^\ufeff/, '').split('\n');
-  // 單價, 已上堂數, then 月學收 (prices contain commas, so match the cells in place)
-  expect(lines[1]).toContain('"NT$1,500",1,1500,');
-  expect(lines[2]).toContain('"—",1,"",');
+  // 月學收 is the last column, after the old sheet's
+  expect(lines[0].endsWith('"這個月的課","月學收"')).toBe(true);
+  expect(lines[1].endsWith(',1500')).toBe(true);
+  expect(lines[2].endsWith(',""')).toBe(true);
   click.mockRestore();
   vi.unstubAllGlobals();
   Object.assign(URL, { createObjectURL: urlFns.create, revokeObjectURL: urlFns.revoke });
