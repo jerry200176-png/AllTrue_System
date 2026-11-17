@@ -123,7 +123,7 @@ final class InappReportResolveAfterDeployStrategy
                 $note = 'pop ' . self::OPERATION . ' ' . $context['operation_id'];
                 if ($from === 'triaged') $this->step(BugReportService::changeStatus($bugId, $actor, 'in_progress', $note));
                 // Posted unconditionally: the resolve check reads the latest public reply, so an older copy never counts.
-                BugReportService::addComment($bugId, $actor, (string) $p['public_reply'], false);
+                $commentId = BugReportService::addComment($bugId, $actor, (string) $p['public_reply'], false)->id;
                 $this->step(BugReportService::changeStatus($bugId, $actor, 'resolved', $note, [
                     'production_revision' => $plan['deployed_sha'],
                     'deploy_run_id' => (string) $p['deploy_run_id'],

@@ -11,6 +11,7 @@ use App\Operations\Inapp\InappRequesterGuard;
 use App\Operations\Inapp\InappAgentClients;
 use App\Operations\Inapp\InappStandingPolicy;
 use App\Operations\Inapp\InappReportReplyGuard;
+use App\Operations\Inapp\InappSupportCommentOrigin;
 use App\Operations\PopOperationCatalog;
 use App\Operations\PopOperationService;
 use App\Operations\Strategies\InappReportResolveAfterDeployStrategy;
@@ -103,6 +104,32 @@ final class PopInappResolveAfterDeployTest extends TestCase
         $records = DB::table('pop_execution_records')->where('operation_id', $id)->pluck('payload')->implode("\n");
         self::assertStringNotContainsString('確認已修好', $records);
         self::assertStringContainsString(self::RUN, $records);
+    }
+
+    /** @dataProvider resolvableStatuses */
+    public function test_native_self_filed_bug_resolution_records_its_reply_and_preserves_timeout_guards(string $status, array $steps): void
+    {
+        // PR5468: normal resolve must produce the same exact provenance as logged shipping.
+        $bugId = $this->bug($status);
+        BugReport::whereKey($bugId)->update(['reporter_user_id' => $this->admin]);
+        $id = $this->drafted($bugId);
+        $this->service->approve($id, 'inapp-human-review', 'user:' . $this->admin, 'super_admin', $this->deployed, $this->admin);
+        self::assertSame('succeeded', $this->service->runApprovedLocally($id)['status']);
+        $bug = BugReport::findOrFail($bugId);
+        $comment = BugReportComment::where('bug_report_id', $bugId)->sole();
+        $receipt = json_decode(DB::table('pop_execution_records')->where('operation_id', $id)->where('phase', 'execute')->value('payload'), true);
+        self::assertSame($comment->id, $receipt['comment_id']);
+        self::assertSame([$comment->id => true], InappSupportCommentOrigin::ids($bug, [$comment]));
+        self::assertSame('support', BugReportService::getDetail($bugId)['comments'][0]['origin']);
+        self::assertSame($steps, BugReportStatusLog::where('bug_report_id', $bugId)->orderBy('id')->get()->map(fn ($log) => [$log->from_status, $log->to_status])->all());
+        self::assertSame('resolved', $bug->status); // no reporter verification on their behalf
+        Carbon::setTestNow(now()->addDays(15));
+        self::assertContains($bugId, array_column(BugReportService::listEligibleForReporterTimeout(14), 'bug_id'));
+        BugReportComment::create(['bug_report_id' => $bugId, 'author_user_id' => $this->admin,
+            'body' => $comment->body, 'is_internal_note' => false, 'created_at' => now()]);
+        self::assertNotContains($bugId, array_column(BugReportService::listEligibleForReporterTimeout(14), 'bug_id'));
+        self::assertSame('not_eligible', BugReportService::closeByReporterTimeout($bugId, $this->admin, false, 14)['code']);
+        self::assertSame('resolved', $bug->fresh()->status);
     }
 
     public function test_standing_policy_approves_and_executes_attributed_to_the_issuing_super_admin(): void
