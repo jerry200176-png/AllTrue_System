@@ -159,6 +159,22 @@ final class MonthlyRosterTest extends TestCase
         $this->assertFalse($courses->has($from->ID));
     }
 
+    public function test_an_older_bill_is_listed_only_while_it_really_owes(): void
+    {
+        $student = $this->student(1);
+        [$settled, $owing] = [$this->course($student), $this->course($student, ['SubjectID' => 2])];
+        // Stored Status still says unpaid, but the payment rows settle it (Billing/PaidStatusParityTest stored_zero_pay_full).
+        $stale = $this->bill($settled, ['TotalAmount' => 3000, 'Status' => 'unpaid', 'billing_period' => '2026-09', 'IssueDate' => '2026-09-01']);
+        Payment::create(['InvoiceID' => $stale->id, 'Amount' => 3000, 'PaidAt' => '2026-09-05 10:00:00', 'Method' => 'cash']);
+        $this->bill($owing, ['TotalAmount' => 3000, 'Status' => 'unpaid', 'billing_period' => '2026-09', 'IssueDate' => '2026-09-01']);
+
+        $res = $this->withToken($this->director(1))->getJson('/api/v1/accounting/monthly-roster?year=2026&month=11')->assertOk();
+
+        $courses = collect($res->json('data.0.courses'))->keyBy('course_id');
+        $this->assertFalse($courses->has($settled->ID));
+        $this->assertGreaterThan(0, $courses[$owing->ID]['money']['outstanding']);
+    }
+
     public function test_one_campus_at_a_time_and_directors_only(): void
     {
         $elsewhere = $this->course($this->student(2));

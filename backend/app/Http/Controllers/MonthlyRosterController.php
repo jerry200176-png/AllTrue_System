@@ -95,19 +95,22 @@ final class MonthlyRosterController extends Controller
             ->groupBy('StudentClassID');
         // Courses with a lesson this month, money this month, this month's bill or any bill still unpaid.
         // ponytail: a bill with no course on its header is left to the student ledger.
-        $billed = DB::table('Invoice')->whereIn('StudentID', $studentIds)->where('StudentClassID', '>', 0)
-            ->whereRaw("COALESCE(Status, '') NOT IN ('void', 'cancelled')")
-            // Payment rows are the truth, not the stored PaidAmount (Founder Q2/R28).
-            // A bill without a period belongs to its IssueDate month, as InvoiceAmountReconciliationService::resolve() reads it.
-            ->where(fn ($q) => $q->where('billing_period', $period)
-                ->orWhere(fn ($legacy) => $legacy->where(fn ($none) => $none->whereNull('billing_period')->orWhere('billing_period', ''))
-                    ->where('IssueDate', 'like', $period . '%'))
-                ->orWhereRaw(Invoice::mayOweSql('Invoice')))
+        $bills = DB::table('Invoice')->whereIn('StudentID', $studentIds)->where('StudentClassID', '>', 0)
+            ->whereRaw("COALESCE(Status, '') NOT IN ('void', 'cancelled')");
+        // A bill without a period belongs to its IssueDate month, as InvoiceAmountReconciliationService::resolve() reads it.
+        $billed = (clone $bills)->where(fn ($q) => $q->where('billing_period', $period)
+            ->orWhere(fn ($legacy) => $legacy->where(fn ($none) => $none->whereNull('billing_period')->orWhere('billing_period', ''))
+                ->where('IssueDate', 'like', $period . '%')))
             ->pluck('StudentClassID');
+        $listed = $lessons->keys()->merge($paid->keys())->merge($billed)->map(fn ($id) => (int) $id)->unique();
+        // An older bill that may still owe is only a candidate: its stored Status can lag the Payment rows, which are the
+        // truth (Founder Q2/R28), so such a course stays only when its verdict really has money outstanding.
+        $owing = (clone $bills)->whereRaw(Invoice::mayOweSql('Invoice'))->pluck('StudentClassID')->map(fn ($id) => (int) $id);
         $courses = StudentClass::with(['student', 'teacher', 'pricingAmendments'])->whereIn('StudentID', $studentIds)
-            ->whereIn('ID', $lessons->keys()->merge($paid->keys())->merge($billed)->map(fn ($id) => (int) $id)->unique()->values())
+            ->whereIn('ID', $listed->merge($owing)->unique()->values())
             ->get();
         $verdicts = $this->verdicts->forCourses($courses);
+        $courses = $courses->filter(fn (StudentClass $c) => $listed->contains((int) $c->ID) || ($verdicts[(int) $c->ID]->outstanding ?? 0) > 0)->values();
 
         $courseIds = $courses->pluck('ID');
         $pending = DB::table('payment_reports')->whereIn('StudentClassID', $courseIds)->where('status', 'pending')
