@@ -114,7 +114,7 @@ final class PopInappProgressReplyTest extends TestCase
         $id = $this->drafted($bug, [], 'req-001', $actor);
 
         self::assertSame([$id], $this->policy->approvePending($this->service)['approved']);
-        self::assertStringEndsWith('@7', $this->policy->approverRef());
+        self::assertStringEndsWith('@8', $this->policy->approverRef());
         self::assertSame('succeeded', $this->service->runApprovedLocally($id)['status']);
         $comment = BugReportComment::query()->where('bug_report_id', $bug)->sole();
         self::assertSame([Templates::text('received'), $this->admin], [$comment->body, (int) $comment->author_user_id]);

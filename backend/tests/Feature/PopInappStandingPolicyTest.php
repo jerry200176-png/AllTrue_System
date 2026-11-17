@@ -59,7 +59,7 @@ final class PopInappStandingPolicyTest extends TestCase
 
         self::assertSame([$id], $this->policy->approvePending($this->service)['approved']);
         $event = DB::table('pop_approval_events')->where('operation_id', $id)->sole();
-        self::assertSame(['approved', 'policy', 'policy:founder-standing-inapp-lifecycle@7', 'FSD-2026-10-14-II:#4069:#4073:FSD-2026-11-15-INAPP-SUGGESTION-WRITEBACK:FSD-2026-11-17-INAPP-SUBSTANTIVE-FOLLOWUP', null, str_repeat('a', 40), true, 'approved'],
+        self::assertSame(['approved', 'policy', 'policy:founder-standing-inapp-lifecycle@8', 'FSD-2026-10-14-II:#4069:#4073:FSD-2026-11-15-INAPP-SUGGESTION-WRITEBACK:FSD-2026-11-17-INAPP-SUBSTANTIVE-FOLLOWUP', null, str_repeat('a', 40), true, 'approved'],
             [$event->event_type, $event->approver_role, $event->approver, $event->approval_reference, $event->approver_id, $event->commit_sha, $event->token_hash !== null, $this->storedStatus($id)]);
 
         self::assertSame('succeeded', $this->service->runApprovedLocally($id)['status']);
@@ -117,7 +117,7 @@ final class PopInappStandingPolicyTest extends TestCase
         match ($switch) {
             'flag' => config(['pop_inapp.standing_policy_enabled' => false]),
             'frozen' => $this->editPolicy('lifecycle: active', 'lifecycle: frozen'),
-            'version' => $this->editPolicy('version: 7', 'version: 8'),
+            'version' => $this->editPolicy('version: 8', 'version: 9'),
             'requester' => $this->allowRequester(false),
         };
 

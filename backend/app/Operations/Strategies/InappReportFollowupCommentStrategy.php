@@ -88,7 +88,6 @@ final class InappReportFollowupCommentStrategy
         $status = (string) $bug->getRawOriginal('status');
         if (!in_array($status, self::OPEN, true)) $errors[] = 'status_not_open';
         if ($status !== $p['expected_status']) $errors[] = 'status_mismatch';
-        if ((int) $bug->reporter_user_id === $author) $errors[] = 'reply_would_be_reporters_own';
         if (BugReportComment::where('bug_report_id', $bug->id)->where('is_internal_note', false)->where('body', $p['public_reply'])->exists())
             $errors[] = 'reply_already_posted';
         $own = BugReportComment::where('bug_report_id', $bug->id)->where('author_user_id', $bug->reporter_user_id)->pluck('body')->all();
