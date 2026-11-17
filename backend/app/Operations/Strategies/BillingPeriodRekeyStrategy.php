@@ -8,8 +8,9 @@ use Illuminate\Support\Str;
 use RuntimeException;
 
 /**
- * in-app #514: re-keys renewal bills (one dated item = the whole cycle) whose billing_period differs from the month of the cycle's first
- * lesson. Writes only the period, that bill's payment_reports period and a number tag; per-bill optimistic transactions, journaled, resumable.
+ * in-app #514: re-keys renewal bills (one dated item = the billed cycle) whose billing_period differs from the month of the first lesson
+ * inside that item, the rule new bills use (BillingPeriod::pick). The item's own dates decide, not the contract's: a contract whose
+ * dates were edited after billing still has a misfiled bill (in-app #514/#555 follow-up, 2026-11-17: 9 such bills). Writes only the period, that bill's payment_reports period and a number tag; per-bill optimistic transactions, journaled, resumable.
  */
 class BillingPeriodRekeyStrategy
 {
@@ -294,11 +295,11 @@ class BillingPeriodRekeyStrategy
             ->where(fn ($w) => $w->whereNull('o.Status')->orWhere('o.Status', '<>', 'void'))->get(['o.id', 'c.StudentID', 'c.SubjectID', 'o.StudentClassID', 'o.billing_period']);
         $candidates = [];
         foreach ($invoices as $inv) {
-            $start = substr((string) $inv->StartDate, 0, 10);
-            $end = substr((string) $inv->EndDate, 0, 10);
             $own = $items->get($inv->id, collect());
             $one = $own->count() === 1 ? $own->first() : null;
-            if (!$one || substr((string) $one->PeriodStart, 0, 10) !== $start || substr((string) $one->PeriodEnd, 0, 10) !== $end) continue; // not a whole-cycle bill
+            if (!$one || !$one->PeriodStart || !$one->PeriodEnd) continue; // needs exactly one dated item: the cycle this bill covers
+            $start = substr((string) $one->PeriodStart, 0, 10);
+            $end = substr((string) $one->PeriodEnd, 0, 10);
             if ((int) $one->StudentClassID > 0 && (int) $one->StudentClassID !== (int) $inv->class_id) continue; // the item belongs to another course: not this contract's renewal
             $dates = ($lessons->get($inv->class_id) ?? collect())->map(fn ($s) => substr((string) $s->SessionDate, 0, 10))->filter(fn ($d) => $d >= $start && $d <= $end);
             $to = substr((string) ($dates->min() ?? $start), 0, 7);

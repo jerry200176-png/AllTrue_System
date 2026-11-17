@@ -179,14 +179,27 @@ final class BillingPeriodRekeyStrategyTest extends TestCase
         $this->assertSame(['2026-04', '2026-04'], [DB::table('payment_reports')->where('id', 1)->value('billing_period'), DB::table('payment_reports')->where('id', 2)->value('billing_period')]);
     }
 
-    public function test_a_single_item_bill_that_is_not_the_whole_cycle_is_never_a_candidate(): void
+    public function test_the_bills_own_item_dates_decide_not_the_contracts(): void
     {
-        // mid-cycle split: the one item covers only part of the contract (04-29 ~ 05-10 of 04-29 ~ 05-27), lessons in May, stored April
+        // 11-17 follow-up: the contract's dates were edited after billing (contract 05-01 ~ 06-10, item 04-25 ~ 05-31), stored April.
+        // The 04-24 lesson is outside the item, so it never decides; the first lesson inside the item (05-05) does: May, as BillingPeriod::pick.
+        DB::table('Student')->insert(['id' => 6, 'name' => 's6', 'CampusID' => 16, 'ClassID' => 1, 'enable' => 1]);
+        $this->cycle(400, 6, 1, '2026-05-01', '2026-06-10', '2026-04', ['2026-04-24', '2026-05-05']);
+        DB::table('InvoiceItem')->where('InvoiceID', 301)->update(['PeriodStart' => '2026-04-25', 'PeriodEnd' => '2026-05-31']);
+        $row = collect((new BillingPeriodRekeyStrategy)->plan($this->params('all'))['manifest'])->firstWhere('invoice_id', 301);
+        $this->assertSame(['ready', '2026-04', '2026-05'], [$row['status'], $row['from'], $row['to']]);
+    }
+
+    public function test_a_bill_without_one_dated_item_is_never_a_candidate(): void
+    {
         DB::table('Student')->insert(['id' => 6, 'name' => 's6', 'CampusID' => 16, 'ClassID' => 1, 'enable' => 1]);
         $this->cycle(400, 6, 1, '2026-04-29', '2026-05-27', '2026-04', ['2026-05-05']);
-        DB::table('InvoiceItem')->where('InvoiceID', 301)->update(['PeriodEnd' => '2026-05-10']);
+        DB::table('InvoiceItem')->where('InvoiceID', 301)->update(['PeriodStart' => null]);
+        $this->cycle(401, 6, 2, '2026-04-29', '2026-05-27', '2026-04', ['2026-05-05']);
+        DB::table('InvoiceItem')->insert(['InvoiceID' => 302, 'StudentClassID' => 401, 'Description' => 'y', 'Amount' => 1, 'PeriodStart' => '2026-04-29', 'PeriodEnd' => '2026-05-27']);
         $ids = array_column((new BillingPeriodRekeyStrategy)->plan($this->params('all'))['manifest'], 'invoice_id');
-        $this->assertNotContains(301, $ids, 'a bill whose item is not the whole cycle is out of scope, ready or skipped');
+        $this->assertNotContains(301, $ids, 'an undated item says nothing about the cycle');
+        $this->assertNotContains(302, $ids, 'two items: not one billed cycle');
     }
 
     public function test_a_cancelled_first_lesson_does_not_decide_the_month(): void
@@ -259,7 +272,8 @@ final class BillingPeriodRekeyStrategyTest extends TestCase
 
     public function test_an_item_changed_after_the_dry_run_skips_the_bill(): void
     {
-        [, , $result] = $this->executed(fn () => DB::table('InvoiceItem')->where('InvoiceID', 1)->update(['PeriodEnd' => '2026-05-10']));
+        // the item now ends before the first lesson: no lesson inside it, so the start month (= stored April) is right and the plan no longer holds
+        [, , $result] = $this->executed(fn () => DB::table('InvoiceItem')->where('InvoiceID', 1)->update(['PeriodEnd' => '2026-05-01']));
         $this->assertSame('2026-04', DB::table('Invoice')->where('id', 1)->value('billing_period'));
         $this->assertSame('drifted', $result['skipped'][1]);
     }
