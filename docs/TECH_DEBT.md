@@ -262,7 +262,7 @@
 
 | 欄位 | 內容 |
 |---|---|
-| 狀態 | Open |
+| 狀態 | Open — 跟 TD-065 一起決定（員工的重要通知 LINE 推播目前沒有真的發，自填 LINE ID 也沒用） |
 | 優先級 | P2 |
 | 發現日期 | 2026-04-26 |
 | 發現來源 | 開發中 |
@@ -319,7 +319,7 @@
 
 | 欄位 | 內容 |
 |---|---|
-| 狀態 | Open |
+| 狀態 | **Done**（2026-11-17 核對：前端由 `GET /api/v1/engagement/rank-thresholds` 取門檻，#331 已關；`engagementRankProgress.js` 的表只在 API 失敗時當後備） |
 | 優先級 | P2 |
 | 發現日期 | 2026-05-10 |
 | 發現來源 | 開發中（#326 前端進度條）|
@@ -529,7 +529,7 @@
 
 | 欄位 | 內容 |
 |---|---|
-| 狀態 | Open |
+| 狀態 | Open — 等 Founder 決定要不要開（2026-11-17 核對） |
 | 優先級 | P2（需使用者決策後再清，涉及 LINE 推播行為） |
 | 發現日期 | 2026-06-13 |
 | 發現來源 | [BUG] 修 #766 audit observer 時發現同源問題 |
@@ -538,6 +538,7 @@
 | 建議做法 | 由 [ARCH]+[SEC] 評估：(1) 確認生產 LINE 推播是否確實未經此 observer（可能另有路徑）；(2) 若確為失效，將 `Notification::observe` 一併移入 `app->booted()` 或把 `AppServiceProvider` 移回 config/app.php 慣例位置（框架 provider 之後）；(3) 啟用前先驗證不會對既有 staff 造成突發推播灌爆。|
 | 清償成本估計 | 低（程式改動小）/ 中（需驗證 LINE 行為與生產佐證） |
 | 不做的代價 | 若 LINE staff 推播確實失效，相關通知持續不送達，且 root cause 隱藏在 provider 順序中難察覺 |
+| 2026-11-17 核對 | 仍然沒作用：`config/app.php` 的 providers 仍把 `AppServiceProvider` 排在 `DatabaseServiceProvider` 前，`Notification::observe` 仍在 `boot()` 直接呼叫（`ClassSession` 那個已移進 `app->booted()`）。修好的效果：分校在職、有綁 LINE、沒關 LINE 的人會收到 `Severity=high` 通知的 LINE，目前只有兩種有分校的：「未識別刷卡待處理」（每張新的未識別刷卡一則）與「刷卡出席但扣堂失敗」；夜間堂數對帳沒有分校，不會推。通知同步現在依 `SourceKey` 只新增新的一列，不會每次同步重推。這是使用者看得到的新行為，要 Founder 決定才改（改法就是把那一行移進 `app->booted()`，再加一個「建立通知會呼叫 dispatcher」的測試）。TD-013 跟著這個決定。 |
 
 ### TD-066：老師頁（teachers）PII 後端 PIN 強制因端點共享而延後
 
@@ -557,7 +558,7 @@
 
 | 欄位 | 內容 |
 |---|---|
-| 狀態 | **UI 已隱藏（2026-08-16），完整 API 仍 Open** |
+| 狀態 | **Done**（2026-11-17 核對：#3548 已刪 `BatchInvoiceModal.vue`／`OverdueBucketsPanel.vue`，前端沒有任何地方呼叫 `invoices/batch*`／`overdue-summary`；要做批次開單另開需求） |
 | 優先級 | P1 → P2（使用者不會再點到必失敗操作） |
 | 發現日期 | 2026-07-21 |
 | 發現來源 | [REVIEW] 收據 404 hotfix closeout（#1363 後） |
