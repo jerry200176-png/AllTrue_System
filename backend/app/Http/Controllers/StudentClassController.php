@@ -481,8 +481,8 @@ class StudentClassController extends Controller
                     }
                 }
                 foreach ($csSlots as $ss) {
-                    $d = (int) ($ss['day'] ?? 0);
-                    $t = (string) ($ss['start_time'] ?? '');
+                    $d = (int) $ss['day'];
+                    $t = (string) $ss['start_time'];
                     $dur = round((float) ($ss['duration_hours'] ?? $globalDurHours), 1);
                     $key = $d . '|' . $t . '|' . $dur;
                     if (!isset($contractKeys[$key])) {
