@@ -55,7 +55,7 @@ The same decision requires #3943/#3955 to drop the GitHub-runner→SSH write pat
      - After that deploy, the manifest SHA on the Pi equals the run's target, and health returned 200.
      - `smoke_result_ref` is present.
    - **(c) timeout:**
-     - The policy counts the **whole** eligible queue (`listEligibleForReporterTimeout`, 14-day window). If it exceeds `AUTO_MAX_PER_RUN` (20), the policy denies, and closing that pile needs the human reviewed-batch path.
+     - The policy counts the **whole** eligible queue (`listEligibleForReporterTimeout`, 14-day window). If it exceeds `AUTO_MAX_PER_RUN` (20), the policy denies, and closing that pile needs the human reviewed-batch path. Since Founder 2026-11-17 the daily `--auto` run closes the oldest 20 each day, so a pile drains without that path.
      - Otherwise every listed ID must be eligible. Each is rechecked under the existing row lock at execute time.
      - An ID that becomes ineligible is skipped and reported, never closed.
      - A report whose reporter replied that the problem persists is ineligible under the existing rule.
