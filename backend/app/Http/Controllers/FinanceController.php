@@ -977,7 +977,7 @@ class FinanceController extends Controller
                     round($sessions * $rate, 2),
                     $c->PayDate ? substr($c->PayDate, 0, 10) : '',
                     $c->Stop ? '已結課' : '進行中',
-                    $statusLabels[$exportStatus[(int) $c->ID]['pay_status']],
+                    !empty($exportStatus[(int) $c->ID]['legacy_paid']) ? '已收（舊資料）' : $statusLabels[$exportStatus[(int) $c->ID]['pay_status']],
                     $exportStatus[(int) $c->ID]['outstanding_amount'],
                 ]);
             }
@@ -995,7 +995,9 @@ class FinanceController extends Controller
      * - Monthly package row (in-app #537): follows its member contracts' bills for this month (verdict periods);
      *   a billed month follows its bills; a taught-but-unbilled member beside billed ones => review; no bill and no lesson =>
      *   `none` (nothing to collect; the page shows —); no bill but lessons => PackagePaidStatusRule (member verdicts, then flag).
-     * - review (待確認): review_required verdicts and legacy Paid flags without invoice/payment evidence. Their amount is
+     * - Legacy Paid flag without invoice/payment evidence: paid like any settled contract, marked `legacy_paid`
+     *   (已收（舊資料）; Founder 2026-11-17, in-app #566; was 待確認 since in-app #447).
+     * - review (待確認): review_required verdicts. Their amount is
      *   an estimate kept in `estimated_amount` and the summary's `unconfirmed_amount`, never in confirmed due/outstanding.
      *
      * @return array{course: array<int, array>, package: array<int, array>, summary: array}
@@ -1097,8 +1099,6 @@ class FinanceController extends Controller
                 $st = 'review'; // this month's lessons cannot be attributed to an invoice
             } elseif ($v->status === 'review_required' && !$monthlyBilled) {
                 $st = 'review';
-            } elseif ($v->source === 'legacy_flag' && !isset($evidence['classes'][(int) $c->ID])) {
-                $st = 'review'; // Paid flag only, no invoice/payment evidence: never green, never debt
             } elseif ($monthlyBilled) {
                 [$st, $owed, $out] = $v->isSettled() ? ['paid', $tuition, 0.0] : ['unpaid', $tuition, $tuition];
             } else {
@@ -1128,7 +1128,9 @@ class FinanceController extends Controller
                 continue;
             }
             $note((int) $c->StudentID, $owed, $out);
-            $course[(int) $c->ID] = ['pay_status' => $st, 'due_amount' => round($owed, 2), 'outstanding_amount' => round($out, 2)];
+            $course[(int) $c->ID] = ['pay_status' => $st, 'due_amount' => round($owed, 2), 'outstanding_amount' => round($out, 2)]
+                // in-app #566/#567, Founder 2026-11-17 (billing plan decision 4): the old Paid mark alone is 已收（舊資料）, not 待確認.
+                + ($v->source === 'legacy_flag' && !isset($evidence['classes'][(int) $c->ID]) ? ['legacy_paid' => true] : []);
         }
 
         // Monthly package rows (in-app #537). A billed month is decided by its bills (same verdict periods as regular rows);

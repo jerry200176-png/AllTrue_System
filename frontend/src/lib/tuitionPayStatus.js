@@ -1,6 +1,7 @@
 // in-app #447: wording for the 當月學收 month-scoped payment status (values come from the backend verdict).
 export const PAY_STATUS_LABELS = { paid: '已收', partial: '部分', unpaid: '未收', review: '待確認', waived: '已免收' };
-export const payStatusLabel = (s) => PAY_STATUS_LABELS[s] || '—';
+// in-app #566: a course paid only by the old Paid mark reads 已收（舊資料）(Founder 2026-11-17).
+export const payStatusLabel = (s, legacyPaid = false) => (s === 'paid' && legacyPaid ? '已收（舊資料）' : PAY_STATUS_LABELS[s] || '—');
 
 const money = (n) => Number(n || 0).toLocaleString('zh-TW');
 

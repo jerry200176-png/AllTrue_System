@@ -135,10 +135,12 @@ class BranchMonthlyTuitionPaymentStatusTest extends TestCase
         $by = fn ($c) => collect($res->json('data'))->firstWhere('student_class_id', (int) $c->ID);
         $this->assertSame('paid', $by($augPaid)['pay_status']);
         $this->assertSame(['partial', 5000], [$by($partial)['pay_status'], (int) $by($partial)['outstanding_amount']]);
-        $this->assertSame(['review', 0, 6000], [$by($legacy)['pay_status'], (int) $by($legacy)['outstanding_amount'], (int) $by($legacy)['estimated_amount']]);
+        // in-app #566, Founder 2026-11-17: the old Paid mark alone is 已收（舊資料）, counted as collected, never debt
+        $this->assertSame(['paid', 0, 6000, true], [$by($legacy)['pay_status'], (int) $by($legacy)['outstanding_amount'], (int) $by($legacy)['due_amount'], $by($legacy)['legacy_paid'] ?? false]);
+        $this->assertArrayNotHasKey('legacy_paid', $by($augPaid)); // a real payment is plain 已收
         $s = $res->json('summary');
-        $this->assertSame(5000, (int) $s['total_outstanding']); // review estimate is not debt
-        $this->assertSame([6000, 1, 1], [(int) $s['unconfirmed_amount'], (int) $s['review_students'], (int) $s['unpaid_students']]);
+        $this->assertSame(5000, (int) $s['total_outstanding']);
+        $this->assertSame([0, 0, 1], [(int) $s['unconfirmed_amount'], (int) $s['review_students'], (int) $s['unpaid_students']]);
     }
 
     /** Codex P1 round: invoice total below gross lesson value bounds FIFO; a same-month discrepancy stays review. */
@@ -235,6 +237,7 @@ class BranchMonthlyTuitionPaymentStatusTest extends TestCase
 
         $row = collect($this->fetchReport()->assertOk()->json('data'))->firstWhere('student_class_id', (int) $member->ID);
         $this->assertSame(['paid', 0], [$row['pay_status'], (int) $row['outstanding_amount']]);
+        $this->assertArrayNotHasKey('legacy_paid', $row); // the package receipt is real evidence, not the old mark alone
     }
 
     /** Codex P2 on #4726: a separate invoice starting in the selected month is not hidden by an earlier carried range. */
