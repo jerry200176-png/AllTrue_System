@@ -1,0 +1,18 @@
+updates:
+  - id: staff-2026-11-17-monthly-roster
+    published_at: "2026-11-17"
+    audiences:
+      - director
+      - super_admin
+    importance: major
+    title: 帳務中心新增「月對帳表」
+    summary: 選一個月，一個學生一列：上了哪幾堂、單價、收了沒，未繳可以直接登記收款。
+    items:
+      - category: added
+        text: 每堂課用三種樣子標示：已上、請假或沒上、還沒上；同一個學生的多科排在一起。
+      - category: added
+        text: 未繳的直接按「登記收款」，家長回報的按「確認入帳」，點學生名字打開學生帳務。
+      - category: added
+        text: 「匯出 Excel」照以前對帳表的欄位順序，篩選後的畫面是什麼就匯出什麼。
+    source_refs:
+      - "changelog:2026-11-17:monthly-roster"

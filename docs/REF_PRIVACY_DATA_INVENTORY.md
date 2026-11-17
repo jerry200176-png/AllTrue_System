@@ -63,11 +63,23 @@
 - `TeacherScopeService` 管的是科目/年級教學權限範圍，**不是**分校資料隔離機制，兩者不可混淆。
 - 上述所有帶 `CampusID`/`campus_id` 的個資表（`Student`、`Teacher`、`StudentSingIn`、`TeacherSingIn`、`chat_threads`、`bug_reports`、`parent_feedback`、`student_line_bindings`、`learning_record_*`）的安全性完全取決於每個 controller 自己有沒有加篩選——建議把這些表上的 list/export endpoint 都列進一次專門的 scoping 稽核。
 
+## 保存期限（Founder 2026-11-17，#889 選項 A）
+
+| 資料 | 保存 | 到期做什麼 | 執行 |
+|---|---|---|---|
+| 帳單、收款、收據 | 10 年（商業會計法：帳簿 10 年、憑證 5 年） | 不刪 | — |
+| 學生姓名、電話、家長、LINE | 停課滿 2 年 | 去識別化，帳務紀錄留著 | 未做：先試跑名單給 Founder 核准 |
+| 登入紀錄 `user_login_activities` | 1 年 | 刪除 | `privacy:prune-logs` 每天 03:05 |
+| 密碼重設 `password_reset_requests` | 30 天 | 刪除 | 同上 |
+| 家長綁定嘗試 `parent_binding_attempts` | 90 天（`parent-binding:report` 最多查 90 天） | 刪除 | 同上 |
+| 已刪除的聊天訊息 `chat_messages` | 刪除後 30 天 | 清掉文字與附件檔，留「已刪除」那一列 | 同上 |
+| RFID 待處理刷卡 `PendingSwipe` | 30 天 | 刪除 | `rfid:prune-pending`（既有） |
+
 ## 缺口總結（優先處理順序建議）
 
 1. **上傳檔案走公開 disk**（頭像、bug 附件、聊天附件）——任何人取得路徑即可讀取，含學生個資的截圖/附件曝險，**本次盤點中最具體、最該優先修的一項**。
 2. **學生刪除流程不完整**——`purgeStudentRecords()` 遺漏 `student_line_bindings`、`parent_feedback`（含回覆）、`learning_record_teacher_comments`/`learning_record_feedbacks`（含回覆），刪除學生後這些個資變孤兒資料，不算真正刪除乾淨。
-3. **完全沒有保存期限政策**——全庫唯一的排程清除是 `PrunePendingSwipes`（30 天 RFID 佇列）；登入活動、密碼重設請求、家長綁定嘗試記錄、聊天訊息/附件、學習紀錄自由文字全部無限累積。
+3. **（2026-11-17 已定，見上方「保存期限」；學生個資那列未做）完全沒有保存期限政策**——全庫唯一的排程清除是 `PrunePendingSwipes`（30 天 RFID 佇列）；登入活動、密碼重設請求、家長綁定嘗試記錄、聊天訊息/附件、學習紀錄自由文字全部無限累積。
 4. **沒有「退班/退學」封存流程**——目前只有「硬刪除」或「不刪除」兩種選項，沒有中間的封存/去識別化選項。
 5. **跨分校範圍靠慣例而非框架保證**——每個個資 endpoint 都需要個別稽核，沒有單一可信賴的隔離機制。
 6. 一個正面先例：`2026_07_24_130000_require_verified_parent_line_bindings.php` 顯示團隊已經執行過一次真正的 P0 隱私圍堵修復（讓未驗證的家長 session 全域過期）——未來的保存/補救 migration 可以參考這個做法的寫法。
