@@ -42,7 +42,7 @@ describe('學生帳務 · 操作失敗後保留畫面', () => {
     vi.stubGlobal('fetch', fetchMock);
     const prompt = vi.fn();
     vi.stubGlobal('prompt', prompt);
-    const w = mount(AccountingLedgerModal, { props: { show: true, studentClassId: 1, branchId: 1 }, global: { stubs: { Transition: false } } });
+    const w = mount(AccountingLedgerModal, { attachTo: document.body, props: { show: true, studentClassId: 1, branchId: 1 }, global: { stubs: { Transition: false } } });
     await flushPromises();
     const posts = () => fetchMock.mock.calls.filter(([, o]) => o?.method === 'POST').length;
     const submit = () => w.get('[data-testid="ledger-reason-submit"]');
@@ -55,13 +55,16 @@ describe('學生帳務 · 操作失敗後保留畫面', () => {
     expect(submit().attributes('disabled')).toBeDefined();
     await w.get('[data-testid="ledger-reason-cancel"]').trigger('click');
     await cancelled;
+    await flushPromises();
     expect(w.find('[data-testid="ledger-reason"]').exists()).toBe(false);
     expect(posts()).toBe(0);
+    expect(document.activeElement?.closest('[role="dialog"]')).not.toBeNull(); // focus stays in the drawer (Codex #5435)
 
     await withReason(w, () => w.vm.voidInvoice({ id: 7 }, 'direct'), '重複');
     await flushPromises();
     expect(posts()).toBe(1);
     expect(JSON.parse(fetchMock.mock.calls.find(([, o]) => o?.method === 'POST')[1].body).reason).toBe('重複');
     expect(prompt).not.toHaveBeenCalled();
+    w.unmount();
   });
 });

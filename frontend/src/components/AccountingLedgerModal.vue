@@ -497,8 +497,10 @@ const actionError = ref('');
 // A reason that is empty or too short used to do nothing at all, with no message (it read as 「按了沒反應」).
 // One open reason request at a time; a new one, or any reload (closing, another student), cancels the old one.
 const reasonAsk = ref(null);
+let reasonBack = null; // the control that opened the field; focus returns there (Codex #5435)
 function askReason(title, action, min) {
   reasonAsk.value?.resolve(null);
+  reasonBack = document.activeElement;
   return new Promise((resolve) => {
     reasonAsk.value = { title, action, min, text: '', resolve };
     nextTick(() => document.getElementById('ledger-reason-input')?.focus());
@@ -509,6 +511,10 @@ function closeReason(ok) {
   if (!ask) return;
   reasonAsk.value = null;
   ask.resolve(ok ? ask.text.trim() : null);
+  // The focused field is gone: keep focus inside the drawer so its Esc and Tab trap still work.
+  const back = reasonBack;
+  reasonBack = null;
+  nextTick(() => (back?.isConnected && modalEl.value?.contains(back) ? back : modalEl.value)?.focus?.());
 }
 const payload = ref(null);
 const busyReportId = ref(null);
