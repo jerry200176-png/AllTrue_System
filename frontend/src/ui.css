@@ -40,6 +40,7 @@
 @source "./pages/TuitionReportPage.vue";
 @source "./pages/TuitionCollectionPage.vue";
 @source "./components/tuition/BillList.vue";
+@source "./components/tuition/MonthlyRosterPanel.vue";
 @source "./pages/TeacherEligibilityPage.vue";
 @source "./components/CurriculumTemplatesPanel.vue";
 @source "./components/ParentTelegramBind.vue";

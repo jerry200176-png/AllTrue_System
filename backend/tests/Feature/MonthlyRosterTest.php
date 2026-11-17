@@ -175,6 +175,33 @@ final class MonthlyRosterTest extends TestCase
         $this->assertGreaterThan(0, $courses[$owing->ID]['money']['outstanding']);
     }
 
+    public function test_a_paid_mark_with_no_bill_or_payment_says_check_it_except_a_dated_trial_fee(): void
+    {
+        $legacy = $this->course($this->student(1), ['Paid' => 1]);
+        $trial = $this->course($this->student(1), ['Paid' => 1, 'ClassType' => 'trial', 'PayDate' => '2026-11-02']);
+        foreach ([[$legacy, '2026-11-04'], [$trial, '2026-11-06']] as [$course, $day]) {
+            ClassSession::create(['StudentClassID' => $course->ID, 'SessionDate' => $day, 'StartTime' => '10:00', 'EndTime' => '12:00', 'Status' => 'attended']);
+        }
+
+        $res = $this->withToken($this->director(1))->getJson('/api/v1/accounting/monthly-roster?year=2026&month=11')->assertOk();
+
+        $money = collect($res->json('data'))->flatMap(fn ($s) => $s['courses'])->keyBy('course_id')->map(fn ($c) => $c['money']);
+        $this->assertSame(['paid', true], [$money[$legacy->ID]['status'], $money[$legacy->ID]['legacy_unverified']]);
+        $this->assertSame(['paid', false], [$money[$trial->ID]['status'], $money[$trial->ID]['legacy_unverified']]);
+    }
+
+    public function test_a_waived_contract_owes_nothing_here(): void
+    {
+        $waived = $this->course($this->student(1));
+        ClassSession::create(['StudentClassID' => $waived->ID, 'SessionDate' => '2026-11-04', 'StartTime' => '10:00', 'EndTime' => '12:00', 'Status' => 'attended']);
+        DB::table('StudentClass')->where('ID', $waived->ID)->update(['closed_reason' => 'waived']); // after the lesson: a waived course locks its sessions
+
+        $res = $this->withToken($this->director(1))->getJson('/api/v1/accounting/monthly-roster?year=2026&month=11')->assertOk();
+
+        $this->assertSame(['waived', 0], [$res->json('data.0.courses.0.money.status'), $res->json('data.0.courses.0.money.outstanding')]);
+        $this->assertSame(0, $res->json('summary.outstanding'));
+    }
+
     public function test_one_campus_at_a_time_and_directors_only(): void
     {
         $elsewhere = $this->course($this->student(2));

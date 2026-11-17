@@ -23,7 +23,7 @@
     </div>
 
     <!-- 帳單 sits straight on the page (strip, toolbar, one card); the other tabs keep their old white panel until their own PRs. -->
-    <div :class="activeAccountingTab === 'students' ? 'tw:contents' : 'tc-page__body'">
+    <div :class="['students', 'roster'].includes(activeAccountingTab) ? 'tw:contents' : 'tc-page__body'">
     <div v-if="tuitionFocusMessage" class="tc-focus-context" role="status">
       <span class="material-symbols-outlined" aria-hidden="true">my_location</span>
       <span>{{ tuitionFocusMessage }}</span>
@@ -31,7 +31,7 @@
     </div>
 
     <!-- in-app #480: 已結清 is a tuition list; on 收款紀錄 / 代收代付 it read like a status of that page. -->
-    <nav v-if="!['students', 'payments', 'fees'].includes(activeAccountingTab)" class="tc-reminders" aria-label="其他清單" data-testid="tc-reminders">
+    <nav v-if="!['students', 'roster', 'payments', 'fees'].includes(activeAccountingTab)" class="tc-reminders" aria-label="其他清單" data-testid="tc-reminders">
       <button v-if="!['students', 'monthly', 'payments', 'fees'].includes(activeAccountingTab)" type="button" class="tc-reminder tc-reminder--back" @click="activeAccountingTab = 'students'">← 回帳單清單</button>
       <button
         v-for="v in REMINDER_VIEWS"
@@ -42,6 +42,10 @@
         @click="activeAccountingTab = v.key"
       >{{ v.label }}</button>
     </nav>
+
+    <section v-if="activeAccountingTab === 'roster'" id="tuition-accounting-panel-roster" role="tabpanel" aria-labelledby="tuition-accounting-tab-roster" tabindex="0">
+      <MonthlyRosterPanel ref="roster" :branch-id="branchId" @open="openLedgerForStudent" />
+    </section>
 
     <!-- Billing v3: 帳單 = one row per contract that needs something (PRD §0 v3). -->
     <section v-if="activeAccountingTab === 'students'" id="tuition-accounting-panel-students" role="tabpanel" aria-labelledby="tuition-accounting-tab-students" tabindex="0">
@@ -701,6 +705,7 @@ import FeeLedgerPanel from '../components/tuition/FeeLedgerPanel.vue';
 import ReceiptModal from '../components/ReceiptModal.vue';
 import AccountingLedgerModal from '../components/AccountingLedgerModal.vue';
 import BillList from '../components/tuition/BillList.vue';
+import MonthlyRosterPanel from '../components/tuition/MonthlyRosterPanel.vue';
 import BillQuickView from '../components/tuition/BillQuickView.vue';
 import { billMenuGroups, billRows } from '../lib/billRows.js';
 import { buildStudentsCommercialNav } from '../lib/authoritativeMutationRoutes.js';
@@ -749,6 +754,8 @@ const error = ref('');
 
 // PRD v3 §0: 帳單 (default), 月結, 收款紀錄, 代收代付. 已結清課程 stays reachable from the reminder bar.
 const ACCOUNTING_TABS = [
+  // 月對帳表 (Founder 2026-11-17) goes first; 帳單與收款 stays the default until the e2e suites move with it.
+  { key: 'roster', label: '月對帳表', icon: 'table_view' },
   { key: 'students', label: '帳單與收款', icon: 'receipt' },
   { key: 'monthly', label: '月結', icon: 'event_repeat' },
   { key: 'payments', label: '收款紀錄', icon: 'receipt_long' },
@@ -782,7 +789,7 @@ const listFilter = ref({ key: 'todo' }); // a new object per deep link, so the s
 const ledgerNavStudentId = ref(null);
 let documentLookupOpener = null;
 function stepLedger(dir) {
-  const next = billList.value?.neighbor(ledgerNavStudentId.value, dir);
+  const next = (activeAccountingTab.value === 'roster' ? roster : billList).value?.neighbor(ledgerNavStudentId.value, dir);
   if (next) openLedgerForStudent(next);
 }
 // F-2: the row button opens the drawer on the contract the action is about, with that step already open.
@@ -884,7 +891,7 @@ function exportSelectedAccountingCSV() {
 }
 
 const activeTabLoading = computed(() => (
-  activeAccountingTab.value === 'monthly' ? Boolean(monthlyDrafts.value?.loading || monthlyReview.value?.loading) : activeAccountingTab.value === 'fees' ? Boolean(feeLedger.value?.loading) : activeAccountingTab.value === 'students' ? loading.value : activeAccountingTab.value === 'settled' ? settledLoading.value : accountingLoading.value
+  activeAccountingTab.value === 'roster' ? Boolean(roster.value?.loading) : activeAccountingTab.value === 'monthly' ? Boolean(monthlyDrafts.value?.loading || monthlyReview.value?.loading) : activeAccountingTab.value === 'fees' ? Boolean(feeLedger.value?.loading) : activeAccountingTab.value === 'students' ? loading.value : activeAccountingTab.value === 'settled' ? settledLoading.value : accountingLoading.value
 ));
 
 function getToken() {
@@ -1267,8 +1274,11 @@ async function startGuide() {
   emit('start-guide');
 }
 
+const roster = ref(null);
 function refreshActiveTab() {
-  if (activeAccountingTab.value === 'monthly') {
+  if (activeAccountingTab.value === 'roster') {
+    roster.value?.reload();
+  } else if (activeAccountingTab.value === 'monthly') {
     monthlyDrafts.value?.reload();
     monthlyReview.value?.reload();
   } else if (activeAccountingTab.value === 'fees') {
@@ -1337,7 +1347,7 @@ watch(ledgerOpen, async (open) => {
   ledgerNavStudentId.value = null;
   await nextTick();
   if (opener?.isConnected) { opener.focus(); return; }
-  document.querySelector(`[data-testid^="bill-name-"][data-student="${id}"]`)?.focus();
+  document.querySelector(`[data-testid^="bill-name-"][data-student="${id}"], [data-testid^="roster-name-"][data-student="${id}"]`)?.focus();
 });
 
 function openLedgerForClass(row) {
@@ -1475,7 +1485,7 @@ async function loadSettledCourses() {
 }
 
 async function onLedgerChanged() {
-  await Promise.all([loadAlerts(), loadAccountingPayments(), loadSettledCourses()]);
+  await Promise.all([loadAlerts(), loadAccountingPayments(), loadSettledCourses(), roster.value?.reload()]);
 }
 
 async function fetchAccountingExportRows() {
@@ -1897,6 +1907,8 @@ watch(() => props.initialTab, (tab) => {
     activeAccountingTab.value = 'payments';
   } else if (tab === 'settled') {
     activeAccountingTab.value = 'settled';
+  } else if (tab === 'roster') {
+    activeAccountingTab.value = 'roster';
   } else if (tab === 'ledger') {
     activeAccountingTab.value = 'students';
     listFilter.value = { key: 'todo' };
@@ -1919,7 +1931,7 @@ watch(() => [props.initialStudentId, props.initialCourseId, rows.value.length], 
 }, { immediate: true });
 
 watch(activeAccountingTab, (tab) => {
-  if (tab === 'monthly' || tab === 'fees') return;
+  if (tab === 'monthly' || tab === 'fees' || tab === 'roster') return;
   if (tab === 'students') {
     if (!rows.value.length) loadAlerts();
   } else if (tab === 'settled') {

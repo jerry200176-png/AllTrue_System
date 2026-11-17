@@ -6,6 +6,7 @@ use App\Models\Invoice;
 use App\Models\Payment;
 use App\Models\Student;
 use App\Models\StudentClass;
+use App\Services\Billing\ContractMoneyState;
 use App\Services\Billing\ContractMoneyVerdict;
 use App\Services\ClassSessionIndexProjectionService;
 use App\Services\ClassSessionIndexReadService;
@@ -106,17 +107,19 @@ final class MonthlyRosterController extends Controller
         // An older bill that may still owe is only a candidate: its stored Status can lag the Payment rows, which are the
         // truth (Founder Q2/R28), so such a course stays only when its verdict really has money outstanding.
         $owing = (clone $bills)->whereRaw(Invoice::mayOweSql('Invoice'))->pluck('StudentClassID')->map(fn ($id) => (int) $id);
-        $courses = StudentClass::with(['student', 'teacher', 'pricingAmendments'])->whereIn('StudentID', $studentIds)
+        $courses = StudentClass::with(['student', 'teacher', 'pricingAmendments', 'coursePackage'])->whereIn('StudentID', $studentIds)
             ->whereIn('ID', $listed->merge($owing)->unique()->values())
             ->get();
         $verdicts = $this->verdicts->forCourses($courses);
-        $courses = $courses->filter(fn (StudentClass $c) => $listed->contains((int) $c->ID) || ($verdicts[(int) $c->ID]->outstanding ?? 0) > 0)->values();
+        // 確認不收 (waived) keeps Charge with Paid=0 and void bills, so its verdict still reads as owed: nothing is collected (ledger: isWaivedContract).
+        $owes = fn (StudentClass $c) => !ContractMoneyState::isWaived($c) && ($verdicts[(int) $c->ID]->outstanding ?? 0) > 0;
+        $courses = $courses->filter(fn (StudentClass $c) => $listed->contains((int) $c->ID) || $owes($c))->values();
 
         $courseIds = $courses->pluck('ID');
         $pending = DB::table('payment_reports')->whereIn('StudentClassID', $courseIds)->where('status', 'pending')
             ->selectRaw('StudentClassID, COUNT(*) AS n')->groupBy('StudentClassID')->pluck('n', 'StudentClassID');
 
-        $rows = $courses->map(function (StudentClass $c) use ($lessons, $verdicts, $paid, $pending, $period, $start, $end) {
+        $rows = $courses->map(function (StudentClass $c) use ($lessons, $verdicts, $owes, $paid, $pending, $period, $start, $end) {
             $id = (int) $c->ID;
             $v = $verdicts[$id] ?? null;
             $month = $v ? collect($v->periods)->firstWhere('billing_period', $period) : null;
@@ -150,9 +153,11 @@ final class MonthlyRosterController extends Controller
                 'lessons' => $courseLessons,
                 'held' => $courseLessons->where('kind', 'held')->count(),
                 'money' => [
-                    'status' => $v?->status, 'outstanding' => $v->outstanding ?? 0, 'current_period' => $v?->currentPeriod,
+                    'status' => ContractMoneyState::isWaived($c) ? 'waived' : $v?->status, 'outstanding' => $owes($c) ? $v->outstanding : 0, 'current_period' => $v?->currentPeriod,
                     // This month's amount for a monthly course; not invoiced yet = the month-end estimate.
                     'month_total' => $month['total'] ?? null, 'month_invoiced' => !empty($month['invoice_ids'] ?? []),
+                    // Old data: only the Paid mark says paid (no bill, no payment) — the student ledger shows 需核對; a trial fee recorded by date is the exception.
+                    'legacy_unverified' => $v?->source === 'legacy_flag' && !$c->isTrialFeeRecordedByDate(),
                 ],
                 'paid_this_month' => $payments,
                 'pending_reports' => (int) ($pending[$id] ?? 0),
