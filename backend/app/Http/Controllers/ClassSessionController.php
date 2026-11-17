@@ -1149,6 +1149,15 @@ class ClassSessionController extends Controller
             return response()->json(['message' => 'Forbidden'], 403);
         }
 
+        // #5408 follow-up: a teacher writes only lessons of a course they teach or cover (substitute or makeup),
+        // the same rule as the teacher's course list. Same campus alone let any teacher mark anyone's lesson.
+        if ($role === 'teacher') {
+            $teacherId = (int) ($request->attributes->get('auth_teacher_id') ?? 0);
+            if ($teacherId <= 0 || !StudentClass::query()->whereKey($studentClass->ID)->visibleToTeacher($teacherId)->exists()) {
+                return response()->json(['message' => '只能點名自己授課或代課的課程'], 403);
+            }
+        }
+
         $currentStatus = strtolower(trim((string) ($session->Status ?? 'scheduled')));
         $newStatus = strtolower(trim((string) $data['status']));
 
