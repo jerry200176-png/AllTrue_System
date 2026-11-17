@@ -8,6 +8,7 @@ use App\Operations\PopLockName;
 use App\Operations\PopOperationCatalog;
 use App\Operations\PopOperationService;
 use App\Operations\Strategies\InappReportProgressReplyStrategy;
+use App\Operations\Strategies\InappReportFollowupCommentStrategy;
 use App\Operations\Strategies\InappReportReporterTimeoutStrategy;
 use App\Operations\Strategies\InappReportResolveAfterDeployStrategy;
 use App\Operations\Strategies\InappReportTriageStrategy;
@@ -25,6 +26,7 @@ final class InappStandingPolicy
     // Founder 2026-11-15: only these non-bug kinds may use the machine lifecycle.
     public const LOGGED_DISPOSITIONS = ['suggestion', 'ux_friction'];
     public const OPERATIONS = [
+        InappReportFollowupCommentStrategy::OPERATION => InappReportFollowupCommentStrategy::class,
         InappReportProgressReplyStrategy::OPERATION => InappReportProgressReplyStrategy::class,
         InappReportReporterTimeoutStrategy::OPERATION => InappReportReporterTimeoutStrategy::class,
         InappReportResolveAfterDeployStrategy::OPERATION => InappReportResolveAfterDeployStrategy::class,
