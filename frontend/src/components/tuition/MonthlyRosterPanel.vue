@@ -134,7 +134,8 @@ function state(c) {
   if (c.money.status === 'review_required') return { tone: 'warning', label: c.money.outstanding > 0 ? `要核對（未繳 ${money(c.money.outstanding)}）` : '要核對' };
   if (c.money.outstanding > 0) return { tone: 'danger', label: `未繳 ${money(c.money.outstanding)}` };
   if (c.money.legacy_unverified) return { tone: 'neutral', label: '舊資料要核對' }; // only the old Paid mark, no bill or payment (ledger: 需核對)
-  if (['paid', 'free'].includes(c.money.status)) return { tone: 'success', label: '已收齊' };
+  if (c.money.status === 'free') return { tone: 'neutral', label: '不用收費' }; // tutoring or a zero-fee course: nothing was collected (ledger: 不需繳費)
+  if (c.money.status === 'paid') return { tone: 'success', label: '已收齊' };
   return { tone: 'neutral', label: '還沒有帳單' };
 }
 const matches = {

@@ -176,3 +176,12 @@ it('a waived contract says 已確認不收 and offers no collection', async () =
   expect(wrapper.find('[data-testid="roster-course-21"]').text()).toContain('已確認不收');
   expect(wrapper.find('[data-testid="roster-record-21"]').exists()).toBe(false);
 });
+
+it('a free course (tutoring, zero fee) says 不用收費, not 已收齊', async () => {
+  const free = JSON.parse(JSON.stringify(roster));
+  free.data[1].courses[0].money = { status: 'free', outstanding: 0, current_period: null, month_total: null, month_invoiced: false };
+  mockFetch.mockResolvedValue(res(free));
+  wrapper = mountIt();
+  await flushPromises();
+  expect(wrapper.find('[data-testid="roster-course-21"]').text()).toContain('不用收費');
+});
