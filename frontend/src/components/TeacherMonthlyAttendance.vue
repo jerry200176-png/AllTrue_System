@@ -77,6 +77,7 @@
 </template>
 
 <script setup>
+import { trackedFetch as fetch } from '../lib/loadingBar';
 import { ref, computed, watch, onMounted, nextTick } from 'vue';
 import { supabase } from '../supabase';
 import AtBadge from './design-system/AtBadge.vue';

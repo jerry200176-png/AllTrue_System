@@ -301,6 +301,7 @@ import DiscrepancyResolveForm from '@/components/schedule-discrepancy/Discrepanc
 import DiscrepancyStatusBadge from '@/components/schedule-discrepancy/DiscrepancyStatusBadge.vue';
 import { fetchDiscrepancies, fetchDiscrepancySummary, updateDiscrepancyStatus, STATUS_LABELS } from '../lib/scheduleDiscrepanciesApi';
 import { scheduleDiscrepancyActionLabel } from '../lib/calendarViewDisplay.js';
+import { quietly } from '../lib/loadingBar.js';
 
 const props = defineProps({
   branchId: { type: [Number, String], default: null },
@@ -402,7 +403,7 @@ function startPagePolling() {
   stopPagePolling();
   _pagePollingTimer = setInterval(() => {
     if (!hasBranch.value || document.visibilityState !== 'visible') return;
-    load();
+    quietly(load);
   }, _pollInterval());
 }
 

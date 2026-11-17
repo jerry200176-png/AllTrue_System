@@ -134,6 +134,7 @@
 </template>
 
 <script setup>
+import { trackedFetch as fetch } from '../lib/loadingBar';
 import { computed, nextTick, ref, watch, onMounted } from 'vue';
 import { DoorOpen, Plus } from 'lucide-vue-next';
 import { ConfirmDialog, FormDialog } from '@/components/app-overlay';

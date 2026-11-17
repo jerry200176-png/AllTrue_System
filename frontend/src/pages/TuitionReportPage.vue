@@ -138,6 +138,7 @@
 </template>
 
 <script setup>
+import { trackedFetch as fetch } from '../lib/loadingBar';
 import { computed, ref, watch } from 'vue';
 import { CalendarDays, ChevronLeft, ChevronRight, CircleCheck, Download, RefreshCw } from 'lucide-vue-next';
 import { collectionSummary, payStatusLabel } from '../lib/tuitionPayStatus';

@@ -204,6 +204,7 @@
 </template>
 
 <script setup>
+import { trackedFetch as fetch } from '../lib/loadingBar';
 import { computed, onMounted, reactive, ref, watch } from 'vue';
 import AtPageHeader from '../components/design-system/AtPageHeader.vue';
 import AtButton from '../components/design-system/AtButton.vue';
