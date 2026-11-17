@@ -652,6 +652,7 @@
 | POST | `api/v1/pop/operations/requests/{requestId}/approvals` | `PopOperationController@approve` | role+campus |
 | POST | `api/v1/pop/operations/requests/{requestId}/dry-run` | `PopOperationController@dryRun` | role+campus |
 | GET | `api/v1/pop/operations/requests/{requestId}/status` | `PopOperationController@status` | role+campus |
+| POST | `api/v1/pop/operations/reviewed-paid-invoice-charge-alignment/preview` | `PopOperationController@previewPaidInvoiceAlignment` | role+campus |
 | POST | `api/v1/pop/operations/{operationId}/draft` | `PopOperationController@storeDraft` | role+campus |
 
 ## /api/v1/profiles
