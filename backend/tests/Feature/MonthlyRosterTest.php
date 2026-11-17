@@ -192,8 +192,9 @@ final class MonthlyRosterTest extends TestCase
 
     public function test_a_waived_contract_owes_nothing_here(): void
     {
-        $waived = $this->course($this->student(1), ['closed_reason' => 'waived']);
+        $waived = $this->course($this->student(1));
         ClassSession::create(['StudentClassID' => $waived->ID, 'SessionDate' => '2026-11-04', 'StartTime' => '10:00', 'EndTime' => '12:00', 'Status' => 'attended']);
+        DB::table('StudentClass')->where('ID', $waived->ID)->update(['closed_reason' => 'waived']); // after the lesson: a waived course locks its sessions
 
         $res = $this->withToken($this->director(1))->getJson('/api/v1/accounting/monthly-roster?year=2026&month=11')->assertOk();
 
