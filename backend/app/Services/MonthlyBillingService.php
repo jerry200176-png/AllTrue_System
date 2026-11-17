@@ -304,7 +304,8 @@ class MonthlyBillingService
     /**
      * 學收 of one course for one month (月對帳表, Jerry 2026-11-18): the lessons a bill charges (BILLABLE_STATUSES:
      * 到班/遲到/補課; not 值班, 試聽, 輔導), each priced as reviewSessions() prices it. A 輔導 course owes nothing (#325);
-     * a monthly package member is priced at the package's rate and unit; a monthly contract counts only lessons inside
+     * a monthly package member is priced at the package's rate and unit unless a price amendment of its own is in force
+     * that day (as forDate() prices it for the bill); a monthly contract counts only lessons inside
      * its dates (#2451); a course priced by its total (Rate 0, no amendment) at Charge ÷ SessionCount, rounded once.
      *
      * @param  Collection<int, ClassSession>  $sessions  the month's lessons, Status = the status the calendar shows
@@ -326,7 +327,10 @@ class MonthlyBillingService
             : null;
         $total = 0.0;
         foreach ($lessons as $s) {
-            $pricing = $packagePricing ?? $this->pricing->forDate($course, (string) $s->SessionDate);
+            $pricing = $this->pricing->forDate($course, (string) $s->SessionDate);
+            if ($packagePricing !== null && $pricing['source'] !== 'pricing_amendment') {
+                $pricing = $packagePricing;
+            }
             if (!self::priceKnown($s, $pricing)) {
                 $total = null;
                 break;

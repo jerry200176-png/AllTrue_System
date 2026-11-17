@@ -278,6 +278,10 @@ final class MonthlyRosterTest extends TestCase
             'total_sessions' => 0, 'remaining_sessions' => 0, 'used_sessions' => 0]);
         $hourly = $this->course($member, ['PackageID' => $package->id]);
         $this->lesson($hourly, '2026-11-05', 'attended'); // 10:00-12:00
+        // A member's own price amendment wins from its date, as on the bill: 11-12 at 900 per lesson.
+        DB::table('student_class_pricing_amendments')->insert(['student_class_id' => $hourly->ID, 'effective_from' => '2026-11-10', 'rate' => 900,
+            'rate_unit' => 'session', 'source_reference' => 'roster-test', 'reason' => 'test', 'created_at' => now()]);
+        $this->lesson($hourly, '2026-11-12', 'attended');
         // 10,000 for 12 lessons, 3 held: 2,500 (rounding 833.33 per lesson first would give 2,499).
         $byTotal = $this->course($this->student(1), ['Rate' => 0, 'Charge' => 10000, 'SessionCount' => 12]);
         foreach (['03', '10', '17'] as $day) {
@@ -287,9 +291,9 @@ final class MonthlyRosterTest extends TestCase
         $res = $this->withToken($this->director(1))->getJson('/api/v1/accounting/monthly-roster?year=2026&month=11')->assertOk();
 
         $rows = collect($res->json('data'))->flatMap(fn ($s) => $s['courses'])->keyBy('course_id');
-        $this->assertSame([1, 1400], [$rows[$hourly->ID]['tuition_lessons'], $rows[$hourly->ID]['tuition']]);
+        $this->assertSame([2, 2300], [$rows[$hourly->ID]['tuition_lessons'], $rows[$hourly->ID]['tuition']]); // 2h x 700 + 900
         $this->assertSame([3, 2500], [$rows[$byTotal->ID]['tuition_lessons'], $rows[$byTotal->ID]['tuition']]);
-        $this->assertSame(3900, $res->json('summary.tuition_total'));
+        $this->assertSame(4800, $res->json('summary.tuition_total'));
     }
 
     private function lesson(StudentClass $course, string $date, string $status): void
