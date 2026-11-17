@@ -1770,7 +1770,8 @@ function applyDeepLinkFromUrl() {
     }
     const authorizedPages = authorizedNavigationPages();
     const linkedPage = deepLinkTargetPage(window.location.search);
-    const requestedPage = MOVED_PAGES[linkedPage]?.page ?? linkedPage; // a moved page asks for the page it moved to
+    // A moved page asks for the page it moved to, with its tab set now: a staff-mode switch below rewrites the URL to it.
+    const requestedPage = retiredPageTarget(linkedPage);
     if (requestedPage && !authorizedPages.has(requestedPage)) {
       const ctx = routeContextSwitch(requestedPage);
       if (ctx.action === 'switch') {
