@@ -126,6 +126,7 @@ test('login observer accepts only the exact origin, path and POST and removes it
   const response = (url, method, status) => ({ url: () => url, request: () => ({ method: () => method }), status: () => status,
     body() { throw new Error('must not read a response body'); } });
   const result = await observePrivateLoginStatus(page, origin, { loginStatus: status => statuses.push(status) }, async () => {
+    await Promise.resolve(); // real login awaits navigation before a response arrives
     assert.equal(page.listenerCount('response'), 1);
     for (const [url, method] of [
       ['https://foreign.test/api/v1/auth/login', 'POST'],
@@ -149,6 +150,7 @@ test('login observer preserves the failure and cleans up even when work throws',
   const page = new EventEmitter(), statuses = [];
   const failure = new Error('synthetic submit failure');
   await assert.rejects(observePrivateLoginStatus(page, 'https://synthetic.test', { loginStatus: status => statuses.push(status) }, async () => {
+    await Promise.resolve();
     assert.equal(page.listenerCount('response'), 1);
     throw failure;
   }), error => error === failure);
