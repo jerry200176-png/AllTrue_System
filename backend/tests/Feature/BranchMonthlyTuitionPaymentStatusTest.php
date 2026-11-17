@@ -136,7 +136,8 @@ class BranchMonthlyTuitionPaymentStatusTest extends TestCase
         $this->assertSame('paid', $by($augPaid)['pay_status']);
         $this->assertSame(['partial', 5000], [$by($partial)['pay_status'], (int) $by($partial)['outstanding_amount']]);
         // in-app #566, Founder 2026-11-17: the old Paid mark alone is 已收（舊資料）, counted as collected, never debt
-        $this->assertSame(['paid', 0, 6000, true], [$by($legacy)['pay_status'], (int) $by($legacy)['outstanding_amount'], (int) $by($legacy)['due_amount'], $by($legacy)['legacy_paid'] ?? false]);
+        // due = the month's share of the contract: 6000 over 10 lessons x 1500 scales by 0.4, so 4 August lessons = 2400
+        $this->assertSame(['paid', 0, 2400, true], [$by($legacy)['pay_status'], (int) $by($legacy)['outstanding_amount'], (int) $by($legacy)['due_amount'], $by($legacy)['legacy_paid'] ?? false]);
         $this->assertArrayNotHasKey('legacy_paid', $by($augPaid)); // a real payment is plain 已收
         $s = $res->json('summary');
         $this->assertSame(5000, (int) $s['total_outstanding']);
