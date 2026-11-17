@@ -168,18 +168,17 @@ describe('AccountingLedgerModal sections', () => {
     return wrapper;
   };
 
-  it('starts with the opened contract open, the others one line, and 帳單 / 收款紀錄 / 備註 folded with counts', async () => {
+  it('starts with the opened contract open, the others one line, 帳單 open, and 收款紀錄 / 備註 folded with counts', async () => {
     const w = await open();
     expect(w.get('[data-testid="contract-card-2"] [data-testid="contract-toggle"]').attributes('aria-expanded')).toBe('true');
     expect(w.get('[data-testid="contract-card-3"] [data-testid="contract-toggle"]').attributes('aria-expanded')).toBe('false');
     expect(w.get('[data-testid="ledger-fold-invoices"]').text()).toContain('帳單（1）');
     expect(w.get('[data-testid="ledger-fold-receipts"]').text()).toContain('收款紀錄（2）');
     expect(w.get('[data-testid="ledger-fold-voided"]').text()).toContain('已刪除課程的帳單備註（1）');
-    expect(w.find('.ledger-table').exists()).toBe(false);
+    expect(w.find('.ledger-table').exists()).toBe(true);
     expect(w.find('.ledger-receipt').exists()).toBe(false);
     expect(w.find('.ledger-voided-notes').exists()).toBe(false);
-    await unfold(w, 'invoices'); await unfold(w, 'receipts'); await unfold(w, 'voided');
-    expect(w.find('.ledger-table').exists()).toBe(true);
+    await unfold(w, 'receipts'); await unfold(w, 'voided');
     expect(w.findAll('.ledger-receipt').length).toBeGreaterThan(0);
     expect(w.find('.ledger-voided-notes').exists()).toBe(true);
   });
@@ -191,7 +190,7 @@ describe('AccountingLedgerModal sections', () => {
     expect(w.get('[data-testid="ledger-fold-receipts"]').attributes('aria-expanded')).toBe('true');
   });
 
-  it('auto-opens 帳單 and counts bills with a warning (差額 / 多收), so the fold never hides them', async () => {
+  it('帳單 starts open and counts bills with a warning (差額 / 多收)', async () => {
     ledger.invoices = [{ ...ledger.invoices[0], id: 6, amount_discrepancy: true, stored_total_amount: 100, computed_total_amount: 120, period_sessions: 4 }];
     const w = await open();
     expect(w.get('[data-testid="ledger-fold-invoices"]').attributes('aria-expanded')).toBe('true');
@@ -200,7 +199,7 @@ describe('AccountingLedgerModal sections', () => {
     ledger.invoices = [{ ...ledger.invoices[0], amount_discrepancy: false }];
     wrapper.unmount();
     const q = await open();
-    expect(q.get('[data-testid="ledger-fold-invoices"]').attributes('aria-expanded')).toBe('false');
+    expect(q.get('[data-testid="ledger-fold-invoices"]').attributes('aria-expanded')).toBe('true');
     expect(q.find('[data-testid="ledger-fold-warn"]').exists()).toBe(false);
   });
 

@@ -6,11 +6,19 @@ import AccountingLedgerModal from '../AccountingLedgerModal.vue';
 
 afterEach(() => vi.unstubAllGlobals());
 
+// The reason is typed in the drawer now (no window.prompt): start the action, type, press the action button.
+async function withReason(w, call, reason) {
+  const done = call();
+  await flushPromises();
+  await w.get('[data-testid="ledger-reason-input"]').setValue(reason);
+  await w.get('[data-testid="ledger-reason-submit"]').trigger('click');
+  await done;
+}
+
 const REFUSAL = '這張收據綁在別位學生或別門課的帳單上，這裡不能撤銷。請聯絡總部對帳，確認收據該歸哪張帳單。';
 
 function setup(putResponse) {
   localStorage.setItem('alltrue_session', JSON.stringify({ access_token: 't', user: { role: 'director' } }));
-  vi.spyOn(window, 'prompt').mockReturnValue('收據開錯');
   const ledger = {
     summary: {}, scope: { student_class_id: 1 }, student: { name: '合成學生' }, invoices: [], receipts: [],
     anomalies: [{ code: 'receipt_without_invoice', severity: 'warning', message: 'm', report_id: 9, invoice_id: null, student_class_id: 1, action: { type: 'void_report', report_id: 9 } }],
@@ -26,7 +34,7 @@ describe('學生帳務 · 撤銷收據被拒絕後', () => {
     const w = mountIt();
     await flushPromises();
     expect(w.findAll('button.ledger-action--danger').length).toBe(1); // offered before the first try
-    await w.vm.voidReport(9);
+    await withReason(w, () => w.vm.voidReport(9), '收據開錯');
     await flushPromises();
     expect(w.findAll('button.ledger-action--danger').length).toBe(0); // no second dead-end click
     const refused = w.find('[data-testid="ledger-void-refused"]');
@@ -40,7 +48,7 @@ describe('學生帳務 · 撤銷收據被拒絕後', () => {
     const { mountIt } = setup({ ok: false, status: 409, json: async () => ({ message: '這張帳單有舊的沖銷紀錄還沒對帳，請先找系統管理員處理', code: 'legacy_reversal_unreconciled' }) });
     const w = mountIt();
     await flushPromises();
-    await w.vm.voidReport(9);
+    await withReason(w, () => w.vm.voidReport(9), '收據開錯');
     await flushPromises();
     expect(w.findAll('button.ledger-action--danger').length).toBe(1);
     expect(w.find('[data-testid="ledger-void-refused"]').exists()).toBe(false);
@@ -51,7 +59,7 @@ describe('學生帳務 · 撤銷收據被拒絕後', () => {
     const { mountIt } = setup({ ok: false, status: 500, json: async () => ({ message: 'Server error' }) });
     const w = mountIt();
     await flushPromises();
-    await w.vm.voidReport(9);
+    await withReason(w, () => w.vm.voidReport(9), '收據開錯');
     await flushPromises();
     expect(w.findAll('button.ledger-action--danger').length).toBe(1);
     expect(w.find('[data-testid="ledger-void-refused"]').exists()).toBe(false);
