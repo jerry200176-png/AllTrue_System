@@ -5,10 +5,10 @@ updates:
       - director
       - super_admin
     importance: digest
-    title: 當月學收翻頁與匯出修正，輔導課不算學費
-    summary: 當月學收翻頁不再重複出現套裝，匯出的 CSV 跟畫面一樣，輔導課不再算進學收。
+    title: 當月學收翻頁與匯出修正
+    summary: 翻頁不再重複出現套裝，匯出 CSV 跟畫面一樣，輔導課不算學收。
     items:
       - category: fixed
-        text: 當月學收超過一頁時，月結套裝只出現一次；匯出 CSV 的列和合計跟畫面相同，檔名月份補 0；輔導課不收費，不再列入當月學收。
+        text: 超過一頁時套裝只出現一次；CSV 的列與合計跟畫面相同；輔導課不再列入當月學收。
     source_refs:
       - "changelog:2026-11-17:tuition-report-paging-export"
