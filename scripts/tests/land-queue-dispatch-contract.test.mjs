@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import test from 'node:test';
@@ -23,6 +24,18 @@ const jobNames = {
 test('queue dispatches exactly the workflows covered here and passes pr_number', () => {
   assert.deepEqual(dispatched.sort(), [...Object.keys(jobNames), ...Object.keys(batchOnly)].sort());
   assert.match(queue, /'-f', `pr_number=\$\{n\}`/);
+});
+
+test('queue upgrades retain the installed main queue dispatch targets until callers have landed', () => {
+  // The executor is loaded from main, not this PR. A batch that deletes a target
+  // before its caller lands cannot run its checks, even if this PR's checks pass.
+  const installed = execFileSync('git', ['show', 'origin/main:.github/scripts/land-queue.mjs'], { cwd: root, encoding: 'utf8' });
+  const declaration = /const CHECK_WORKFLOWS = \[([^\]]+)\]/.exec(installed);
+  assert.ok(declaration, 'installed queue workflow list must be readable');
+  const workflows = [...declaration[1].matchAll(/'([^']+\.yml)'/g)].map(match => match[1]);
+  assert.ok(workflows.length > 0, 'installed queue dispatch targets must be known');
+  for (const workflow of workflows) assert.ok(fs.existsSync(path.join(root, '.github/workflows', workflow)),
+    `${workflow}: land its caller removal on main before deleting the dispatch target`);
 });
 
 for (const [wf, names] of Object.entries(jobNames)) {

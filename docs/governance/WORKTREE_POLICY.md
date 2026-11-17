@@ -39,8 +39,9 @@ make production-identity
 
 The local task-path allowlist, `scripts/check-agent-provenance.sh` and the
 "Agent Session Provenance" check were retired by Founder 2026-10-14（三）#6.
-The unused pass-through workflow was removed after the live ruleset dropped
-that context (#4103; see [`REF_GITHUB_RULESET_BASELINE.md`](../REF_GITHUB_RULESET_BASELINE.md)). `.agent-session/manifest.json` (still written by a legacy
+The live ruleset no longer requires the unused pass-through. Its automatic
+trigger and queue callers are retired first, with manual dispatch retained until
+the installed main queue no longer calls it (#4103; see [`REF_GITHUB_RULESET_BASELINE.md`](../REF_GITHUB_RULESET_BASELINE.md)). `.agent-session/manifest.json` (still written by a legacy
 local `agent-start`) stays git-ignored and is not delivery evidence; the PR's
 diff, risk declaration, review, and required CI are.
 
