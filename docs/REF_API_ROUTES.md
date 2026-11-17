@@ -381,8 +381,6 @@
 | Method | URI | Action | Auth |
 |--------|-----|--------|------|
 | GET | `api/v1/finance/ar-aging` | `FinanceController@arAging` | role+campus |
-| GET | `api/v1/finance/branch-monthly-tuition` | `FinanceController@branchMonthlyTuition` | role+campus+pin |
-| GET | `api/v1/finance/branch-monthly-tuition/export` | `FinanceController@branchMonthlyTuitionExport` | role+campus+pin |
 | GET | `api/v1/finance/consolidated-summary` | `FinanceController@consolidatedSummary` | role+campus |
 | GET | `api/v1/finance/duplicate-courses` | `FinanceController@duplicateCourses` | role+campus |
 | GET | `api/v1/finance/gl-export` | `FinanceController@glExport` | role+campus |

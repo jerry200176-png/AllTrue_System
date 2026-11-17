@@ -9,7 +9,7 @@
   "teacherDirectWrites": 0,
   "moneyWritesOutsideBilling": 3,
   "readPathWritesInQueryMethods": 0,
-  "feeMathInControllers": 4,
+  "feeMathInControllers": 2,
   "scheduleTableReaderFiles": 50,
   "requireOwnerFrontmatter": [
     "docs/CONSTITUTION.md",
