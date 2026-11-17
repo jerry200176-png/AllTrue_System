@@ -17,7 +17,7 @@ class CloseStaleResolvedBugsCommand extends Command
     /** --auto closes only reports resolved this long ago (Founder 2A, 2026-10-08). */
     public const AUTO_DAYS = 14;
 
-    /** --auto refuses to act when more than this many are eligible: a sudden pile means look first. */
+    /** --auto closes at most this many per run, oldest resolve first; the rest wait for the next run (Founder 2026-11-17). */
     public const AUTO_MAX_PER_RUN = 20;
 
     protected $signature = 'bugs:close-stale-resolved
@@ -83,9 +83,14 @@ class CloseStaleResolvedBugsCommand extends Command
         }
         $eligibleIds = array_map('intval', array_column($eligible, 'bug_id'));
         $reviewedIds = [];
-        if ($auto && count($eligibleIds) > self::AUTO_MAX_PER_RUN) {
-            $this->error('--auto refuses ' . count($eligibleIds) . ' eligible reports (max ' . self::AUTO_MAX_PER_RUN . '); review with a dry-run first. No status was changed');
-            return self::FAILURE;
+        $deferred = 0;
+        if ($auto && count($eligible) > self::AUTO_MAX_PER_RUN) {
+            // Founder 2026-11-17: refusing the whole pile left 44 reports waiting with nobody reviewing them.
+            usort($eligible, fn (array $a, array $b): int => strcmp((string) $a['resolved_at'], (string) $b['resolved_at']));
+            $deferred = count($eligible) - self::AUTO_MAX_PER_RUN;
+            $eligible = array_slice($eligible, 0, self::AUTO_MAX_PER_RUN);
+            $eligibleIds = array_map('intval', array_column($eligible, 'bug_id'));
+            $this->warn("--auto closes the oldest " . self::AUTO_MAX_PER_RUN . "; {$deferred} wait for the next run");
         }
         if ($auto) {
             $reviewedIds = $eligibleIds; // eligibility already excludes any reporter reply; closeByReporterTimeout rechecks under lock
@@ -126,6 +131,7 @@ class CloseStaleResolvedBugsCommand extends Command
             'dry_run' => $dryRun,
             'days' => $days,
             'eligible' => count($eligible),
+            'deferred' => $deferred,
             'acted' => $closed,
             'skipped' => $skipped,
             'actor_user_id' => $actorId,

@@ -551,19 +551,24 @@ class BugReporterTimeoutTest extends TestCase
         Carbon::setTestNow();
     }
 
-    public function test_auto_fails_closed_on_flag_misuse_and_on_a_sudden_pile(): void
+    public function test_auto_fails_closed_on_flag_misuse_and_closes_only_the_oldest_of_a_pile(): void
     {
         Carbon::setTestNow(Carbon::parse('2026-10-20 12:00:00'));
         [$admin, $reporter] = $this->seedUsers();
         $this->artisan('bugs:close-stale-resolved', ['--auto' => true, '--reviewed-ids' => '1', '--actor' => $admin->id])->assertExitCode(1);
         $this->artisan('bugs:close-stale-resolved', ['--auto' => true, '--days' => 7, '--actor' => $admin->id])->assertExitCode(1);
 
+        // Founder 2026-11-17: a pile closes its oldest AUTO_MAX_PER_RUN; the newest waits for the next run.
         $ids = [];
         for ($i = 0; $i <= \App\Console\Commands\CloseStaleResolvedBugsCommand::AUTO_MAX_PER_RUN; $i++) {
-            $ids[] = $this->makeResolvedBug($admin->id, $reporter->id, Carbon::now()->subDays(20), true)->id;
+            $ids[] = $this->makeResolvedBug($admin->id, $reporter->id, Carbon::now()->subDays(20 + $i), true)->id;
         }
-        $this->artisan('bugs:close-stale-resolved', ['--auto' => true, '--actor' => $admin->id])->assertExitCode(1);
-        $this->assertSame(0, BugReport::whereIn('id', $ids)->where('status', 'closed')->count(), 'nothing closed');
+        $this->artisan('bugs:close-stale-resolved', ['--auto' => true, '--actor' => $admin->id])->assertExitCode(0);
+        $this->assertSame(\App\Console\Commands\CloseStaleResolvedBugsCommand::AUTO_MAX_PER_RUN, BugReport::whereIn('id', $ids)->where('status', 'closed')->count());
+        $this->assertSame('resolved', BugReport::find($ids[0])->status, 'the most recently resolved waits');
+
+        $this->artisan('bugs:close-stale-resolved', ['--auto' => true, '--actor' => $admin->id])->assertExitCode(0);
+        $this->assertSame('closed', BugReport::find($ids[0])->status, 'the next run takes it');
 
         Carbon::setTestNow();
     }
