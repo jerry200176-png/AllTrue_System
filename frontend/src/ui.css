@@ -37,7 +37,6 @@
 @source "./pages/ClassroomManagement.vue";
 @source "./pages/BindingConflictReviewPage.vue";
 @source "./pages/BindingHealthDashboard.vue";
-@source "./pages/TuitionReportPage.vue";
 @source "./pages/TuitionCollectionPage.vue";
 @source "./components/tuition/BillList.vue";
 @source "./components/tuition/MonthlyRosterPanel.vue";

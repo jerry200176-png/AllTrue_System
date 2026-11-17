@@ -1,0 +1,14 @@
+updates:
+  - id: staff-2026-11-18-retire-tuition-report
+    published_at: "2026-11-18"
+    audiences:
+      - director
+      - super_admin
+    importance: digest
+    title: 當月學收搬進月對帳表
+    summary: 當月學收改成打開帳務中心的月對帳表，學收合計、收款、未繳都在同一頁。
+    items:
+      - category: improved
+        text: 報表的當月學收、舊書籤和連結都會打開月對帳表，不用輸入 PIN；數字只算一次，兩頁不會對不起來。
+    source_refs:
+      - "changelog:2026-11-18:retire-tuition-report"

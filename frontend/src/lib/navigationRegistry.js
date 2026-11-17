@@ -7,11 +7,15 @@ import { isDirectorRole } from './roleCapabilities.js';
 // `item.page` is the default tab, and every tab keeps its original page key, so old
 // ?app_page= URLs, bookmarks and LINE links still resolve to the same screen.
 const REPORT_TABS = [
-  { page: 'tuition-report', label: '當月學收' },
   { page: 'subject-units', label: '科目數統計' },
   { page: 'parttime-payroll', label: '兼職薪資' },
   { page: 'teacher-eligibility', label: '正職薪資要件' },
+  // Kept so directors still find it here; it opens 帳務中心 > 月對帳表 (MOVED_PAGES).
+  { page: 'tuition-report', label: '當月學收' },
 ];
+// A page that moved into another page's tab: its menu entry, old ?app_page= links and bookmarks open the new place.
+// 當月學收 became 帳務中心 > 月對帳表 (Jerry 2026-11-18: one page, one set of numbers).
+export const MOVED_PAGES = { 'tuition-report': { page: 'tuition-collect', tab: 'roster' } };
 const SETTINGS_TABS = [
   { page: 'teachers', label: '老師管理', badgeTypes: ['pending_teachers'] },
   { page: 'classroom', label: '教室' },

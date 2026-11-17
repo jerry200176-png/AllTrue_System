@@ -3,7 +3,6 @@
     <PageHeader title="帳務中心" :context="`處理未繳、${REPORT_STATUS_LABELS.pending}與確認入帳。`" data-guide="tuition-header">
       <template #actions>
         <Button variant="outline" :class="[control.page, 'tw:max-md:flex-1']" :disabled="loading" @click="startGuide"><CircleHelp class="tw:size-4" :stroke-width="2" aria-hidden="true" />操作導覽</Button>
-        <Button variant="outline" :class="[control.page, 'tw:max-md:flex-1']" title="當月學收（查各月是否收齊）" @click="$emit('navigate', 'tuition-report')"><BarChart3 class="tw:size-4" :stroke-width="2" aria-hidden="true" />當月學收</Button>
         <Button variant="outline" size="icon" :class="control.pageIcon" aria-label="重新整理" :aria-busy="activeTabLoading ? 'true' : undefined" :disabled="activeTabLoading" @click="refreshActiveTab()"><RefreshCw :class="['tw:size-5', { 'tw:animate-spin': activeTabLoading }]" :stroke-width="2" aria-hidden="true" /></Button>
       </template>
     </PageHeader>
@@ -721,7 +720,7 @@ import { askConfirm } from '../composables/useConfirmDialog';
 import ConfirmDialogHost from '../components/course-management/ConfirmDialogHost.vue';
 import AtEmpty from '../components/design-system/AtEmpty.vue';
 import AtInlineAlert from '../components/design-system/AtInlineAlert.vue';
-import { BarChart3, CircleHelp, RefreshCw } from '@lucide/vue';
+import { CircleHelp, RefreshCw } from '@lucide/vue';
 import { Button } from '@/components/ui/button';
 import { FilterChip, PageHeader, control, pageShell, pageTabs } from '@/components/ui/page';
 import AtSkeleton from '../components/design-system/AtSkeleton.vue';

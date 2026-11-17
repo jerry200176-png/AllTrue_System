@@ -534,7 +534,7 @@
         role="status"
       >
         <p class="pin-gate-placeholder-title">此頁需要 PIN 才能查看</p>
-        <p class="pin-gate-placeholder-body">薪資、當月學收與老師管理會先解鎖。請在中央視窗輸入 PIN，或按「暫不啟用，直接進入」。帳務中心可直接進入，不必先解 PIN。</p>
+        <p class="pin-gate-placeholder-body">薪資與老師管理會先解鎖。請在中央視窗輸入 PIN，或按「暫不啟用，直接進入」。帳務中心可直接進入，不必先解 PIN。</p>
       </div>
       <div v-if="!isPasswordChangeLocked && isDirector && !directorBranchReady && directorBranchScopedPages.has(active)" class="card" role="status">
         <p>{{ directorBranchStatus === 'failed' ? '無法載入授權分校，請重試或聯繫管理員。' : '正在確認您的分校權限…' }}</p>
@@ -558,7 +558,6 @@
       <KeepAlive><SmartCalendar v-if="!isPasswordChangeLocked && (!isDirector || directorBranchReady) && active === 'calendar'" :branch-id="currentBranch" :branch-name="currentBranchName" :user-role="role" :user-id="session.user.id" :initial-teacher-id="initialTeacherIdForNav" :initial-student-id="calendarInitialStudentId" :initial-course-id="calendarInitialCourseId" :initial-date="calendarInitialDate" :reset-week-token="calendarResetToken" :initial-intent="calendarInitialIntent" @clear-initial-teacher="initialTeacherIdForNav = null" @clear-initial-intent="calendarInitialIntent = ''" @clear-initial-context="clearCalendarNavigationContext" @navigate="onNavigateFromNotifications" /></KeepAlive>
       <KeepAlive><StudentsList v-if="!isPasswordChangeLocked && directorBranchReady && active === 'students'" :branch-id="currentBranch" :initial-student-id="studentFocusIdForNav" :initial-course-id="studentFocusCourseIdForNav" :initial-student-intent="studentFocusIntentForNav" :user-role="role" @clear-initial-student="clearStudentNavigationContext" @navigate="onNavigateFromNotifications" /></KeepAlive>
       <KeepAlive><TuitionCollectionPage v-if="!isPasswordChangeLocked && directorBranchReady && active === 'tuition-collect'" :branch-id="currentBranch" :initial-tab="tuitionInitialTab" :initial-student-id="tuitionInitialStudentId" :initial-course-id="tuitionInitialCourseId" @clear-initial-tab="tuitionInitialTab = ''" @clear-initial-context="clearTuitionNavigationContext" @navigate="onNavigateFromCourseManagement" @start-guide="guideTour.startTour('tuition-collect', { role })" /></KeepAlive>
-      <TuitionReportPage v-if="!isPasswordChangeLocked && directorBranchReady && active === 'tuition-report' && !pinModalActive" :branch-id="currentBranch" />
       <ParttimePayrollPage v-if="!isPasswordChangeLocked && directorBranchReady && active === 'parttime-payroll' && !pinModalActive" :branch-id="currentBranch" :user-role="role" />
       <TeacherEligibilityPage v-if="!isPasswordChangeLocked && directorBranchReady && active === 'teacher-eligibility' && !pinModalActive" :branch-id="currentBranch" :user-role="role" />
       <TeachersList v-if="!isPasswordChangeLocked && directorBranchReady && active === 'teachers' && !pinModalActive" :branch-id="currentBranch" @navigate-to-schedule="onNavigateToSchedule" />
@@ -909,7 +908,6 @@ const TeachersList          = asyncPage(() => import('./pages/TeachersList.vue')
 const AttendancePage        = asyncPage(() => import('./pages/AttendancePage.vue'));
 const SubjectUnitsPage      = asyncPage(() => import('./pages/SubjectUnitsTimelinePage.vue'));
 const TuitionCollectionPage = asyncPage(() => import('./pages/TuitionCollectionPage.vue'));
-const TuitionReportPage     = asyncPage(() => import('./pages/TuitionReportPage.vue'));
 const ParttimePayrollPage   = asyncPage(() => import('./pages/ParttimePayrollPage.vue'));
 const TeacherEligibilityPage = asyncPage(() => import('./pages/TeacherEligibilityPage.vue'));
 const DirectorAccountsPage  = asyncPage(() => import('./pages/DirectorAccountsPage.vue'));
@@ -948,7 +946,7 @@ import {
   PIN_UNLOCK_TTL_MS,
   PIN_IDLE_LOCK_MS,
 } from './lib/pinGate';
-import { findNavItem, getMobileTabItems, getNavigationGroups, getTodoPages, getToolbarItems, navigationPages, requiredContextForPage, sidebarMoreTrigger } from './lib/navigationRegistry';
+import { findNavItem, getMobileTabItems, getNavigationGroups, getTodoPages, getToolbarItems, MOVED_PAGES, navigationPages, requiredContextForPage, sidebarMoreTrigger } from './lib/navigationRegistry';
 import HubTabBar from './components/HubTabBar.vue';
 import ActingContextChip from './components/ActingContextChip.vue';
 import { buildAppPageUrl, parseAppPage, parseCourseFocusSearch, COURSE_FOCUS_QUERY_KEYS } from './lib/appNavigationHistory.js';
@@ -1771,7 +1769,9 @@ function applyDeepLinkFromUrl() {
       if (safe) currentBranch.value = safe;
     }
     const authorizedPages = authorizedNavigationPages();
-    const requestedPage = deepLinkTargetPage(window.location.search);
+    const linkedPage = deepLinkTargetPage(window.location.search);
+    // A moved page asks for the page it moved to, with its tab set now: a staff-mode switch below rewrites the URL to it.
+    const requestedPage = retiredPageTarget(linkedPage);
     if (requestedPage && !authorizedPages.has(requestedPage)) {
       const ctx = routeContextSwitch(requestedPage);
       if (ctx.action === 'switch') {
@@ -1799,7 +1799,7 @@ function applyDeepLinkFromUrl() {
       directorFocusSection.value = null;
       directorFocusWorkflowId.value = null;
     }
-    if (resolvedPage) active.value = resolvedPage;
+    if (resolvedPage) active.value = retiredPageTarget(resolvedPage);
     syncAppPageUrl(active.value, {
       mode: 'replace',
       preserveCourseContext: Boolean(courseFocus),
@@ -1822,6 +1822,14 @@ function clearCalendarNavigationContext() {
   calendarInitialStudentId.value = null;
   calendarInitialCourseId.value = null;
   calendarInitialDate.value = '';
+}
+
+// A moved page (當月學收 → 帳務中心 > 月對帳表): its menu tab, old ?app_page= links and bookmarks open the new place.
+function retiredPageTarget(page) {
+  const moved = MOVED_PAGES[page];
+  if (!moved) return page;
+  tuitionInitialTab.value = moved.tab;
+  return moved.page;
 }
 
 function clearTuitionNavigationContext() {
@@ -2031,6 +2039,7 @@ const KEEP_ALIVE_PAGES = new Set(['director', 'course-mgmt', 'students', 'tuitio
 const pageScroll = new Map();
 
 function setActivePage(page, { history = 'push', preserveInboxContext = false } = {}) {
+  page = retiredPageTarget(page);
   if (page === 'truefit') {
     openTrueFitWorkspace();
     return;
