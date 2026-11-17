@@ -1,4 +1,4 @@
-import { trackedFetch as fetch } from './loadingBar';
+import { trackedFetch as fetch } from './loadingBar.js';
 import { MAX_BUG_ATTACHMENTS } from './bugReportAttachments';
 
 const API = '/api/v1';

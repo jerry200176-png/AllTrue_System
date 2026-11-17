@@ -1,4 +1,4 @@
-import { trackedFetch as fetch } from './loadingBar';
+import { trackedFetch as fetch } from './loadingBar.js';
 const API_BASE = (import.meta.env.VITE_API_BASE || '/api') + '/v1';
 
 function getToken() {

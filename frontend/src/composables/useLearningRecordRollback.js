@@ -1,4 +1,4 @@
-import { trackedFetch as fetch } from '../lib/loadingBar';
+import { trackedFetch as fetch } from '../lib/loadingBar.js';
 import { reactive } from 'vue';
 import { httpFailureMessage } from '../lib/humanizeApiErrorMessage';
 import { useToast } from './useToast';

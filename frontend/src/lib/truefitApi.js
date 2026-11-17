@@ -1,4 +1,4 @@
-import { trackedFetch as fetch } from './loadingBar';
+import { trackedFetch as fetch } from './loadingBar.js';
 /**
  * TrueFit API client (Slice 0 + Slice 1 Teacher Brief).
  */

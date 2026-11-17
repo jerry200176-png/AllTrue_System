@@ -1,4 +1,4 @@
-import { trackedFetch as fetch } from './loadingBar';
+import { trackedFetch as fetch } from './loadingBar.js';
 /**
  * #1130 P2 審核 API — 查詢 / 逐組決策並執行
  *
