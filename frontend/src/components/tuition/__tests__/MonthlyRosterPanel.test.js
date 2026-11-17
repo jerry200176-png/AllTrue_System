@@ -119,9 +119,40 @@ it('exports the rows on screen in the old sheet order, with formulas neutralised
 
   expect(click).toHaveBeenCalledTimes(1);
   const lines = blobs[0].parts.join('').replace(/^\ufeff/, '').split('\n');
-  expect(lines[0]).toBe('"科目","老師","學校","學生","繳費日期","付費方式","單價","已上堂數","本月預估","這個月收到","未繳","收款狀態","這個月的課"');
-  expect(lines[1]).toBe(`"數學","張翔","崇光","'=HYPERLINK(""x"")","2026-11-05","現金","NT$1,500",1,"",1500,4500,"未繳 NT$4,500","11/3、11/24（還沒上）"`);
+  expect(lines[0]).toBe('"科目","老師","學校","學生","繳費日期","付費方式","單價","已上堂數","本月預估","這個月收到","未繳","收款狀態","這個月的課","月學收"');
+  expect(lines[1]).toBe(`"數學","張翔","崇光","'=HYPERLINK(""x"")","2026-11-05","現金","NT$1,500",1,"",1500,4500,"未繳 NT$4,500","11/3、11/24（還沒上）",""`);
   expect(lines).toHaveLength(3);
+  click.mockRestore();
+  vi.unstubAllGlobals();
+  Object.assign(URL, { createObjectURL: urlFns.create, revokeObjectURL: urlFns.revoke });
+});
+
+it('shows 學收合計 and each course\'s 學收, says which have no price, and exports the column', async () => {
+  const blobs = [];
+  vi.stubGlobal('Blob', class { constructor(parts) { this.parts = parts; blobs.push(this); } });
+  const urlFns = { create: URL.createObjectURL, revoke: URL.revokeObjectURL };
+  URL.createObjectURL = () => 'blob:x';
+  URL.revokeObjectURL = () => {};
+  const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
+  const priced = { data: [{ student_id: 4, student_name: '林小美', school: '光華', outstanding: 0, courses: [
+    course(41, { tuition: 1500, tuition_lessons: 1 }),
+    course(42, { subject: '英文', rate: null, tuition: null, tuition_lessons: 1 }),
+  ] }], summary: { students: 1, outstanding: 0, paid_this_month: 0, pending_reports: 0, tuition_total: 1500, tuition_unpriced: 1 } };
+  mockFetch.mockResolvedValue(res(priced));
+  wrapper = mountIt();
+  await flushPromises();
+  const stat = wrapper.findAll('[data-slot="stat-item"]').find((n) => n.text().includes('學收合計'));
+  expect(stat.text()).toContain('NT$1,500');
+  expect(stat.text()).toContain('1 門課沒有單價，沒算進來');
+  expect(wrapper.get('[data-testid="roster-course-41"]').text()).toContain('已上 1 堂・學收 1 堂 NT$1,500');
+  expect(wrapper.get('[data-testid="roster-course-42"]').text()).toContain('學收 —');
+
+  await wrapper.get('[data-testid="roster-export"]').trigger('click');
+  const lines = blobs[0].parts.join('').replace(/^\ufeff/, '').split('\n');
+  // 月學收 is the last column, after the old sheet's
+  expect(lines[0].endsWith('"這個月的課","月學收"')).toBe(true);
+  expect(lines[1].endsWith(',1500')).toBe(true);
+  expect(lines[2].endsWith(',""')).toBe(true);
   click.mockRestore();
   vi.unstubAllGlobals();
   Object.assign(URL, { createObjectURL: urlFns.create, revokeObjectURL: urlFns.revoke });

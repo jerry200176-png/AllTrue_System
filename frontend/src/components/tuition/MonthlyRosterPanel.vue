@@ -19,6 +19,7 @@
 
       <StatStrip>
         <StatItem label="學生" :value="summary.students" unit="人" />
+        <StatItem v-if="summary.tuition_total != null" label="學收合計" :value="money(summary.tuition_total)" :sub="summary.tuition_unpriced ? `${summary.tuition_unpriced} 門課沒有單價，沒算進來` : ''" />
         <StatItem label="這個月收到" :value="money(summary.paid_this_month)" tone="success" />
         <StatItem label="未繳" :value="money(summary.outstanding)" :tone="summary.outstanding > 0 ? 'danger' : 'neutral'" />
         <StatItem label="待確認入帳" :value="summary.pending_reports" unit="筆" :tone="summary.pending_reports > 0 ? 'warning' : 'neutral'" />
@@ -64,7 +65,7 @@
                   <li v-for="l in c.lessons" :key="l.date + l.start" :class="['tw:rounded-full tw:px-2 tw:py-0.5 tw:text-tpl-caption tw:tabular-nums', LESSON[l.kind].cls]" :title="`${l.date} ${l.start} ${LESSON[l.kind].label}`">{{ md(l.date) }}<span class="tw:sr-only">{{ ' ' + LESSON[l.kind].label }}</span></li>
                   <li v-if="!c.lessons.length" class="tw:text-tpl-caption tw:text-tpl-secondary">沒有排課</li>
                 </ul>
-                <span :class="t.sub">已上 {{ c.held }} 堂</span>
+                <span :class="t.sub">已上 {{ c.held }} 堂<template v-if="c.tuition !== undefined">・學收 {{ tuitionLabel(c) }}</template></span>
               </TableCell>
               <TableCell :class="[t.num, t.phoneHide]">{{ rateLabel(c) }}</TableCell>
               <TableCell :class="[t.cell, 'tw:pr-5 tw:whitespace-normal']">
@@ -126,7 +127,9 @@ const money = (n) => `${n < 0 ? '−' : ''}NT$${Math.abs(Number(n || 0)).toLocal
 const md = (d) => `${Number(d.slice(5, 7))}/${Number(d.slice(8, 10))}`;
 // Each date with its state unless held, e.g. 11/3、11/10（請假或沒上）、11/24（還沒上）: the phone line and the export column.
 const lessonDates = (c) => c.lessons.map((l) => `${md(l.date)}${l.kind === 'held' ? '' : `（${LESSON[l.kind].label}）`}`).join('、');
-const lessonLine = (c) => (c.lessons.length ? `${lessonDates(c)}・已上 ${c.held} 堂` : '沒有排課');
+// 學收: this month's 到班/遲到/補課 × price, as the monthly bill counts them (not 值班, 試聽, 輔導); null = no price known.
+const tuitionLabel = (c) => (c.tuition == null ? '—' : `${c.tuition_lessons} 堂 ${money(c.tuition)}`);
+const lessonLine = (c) => (c.lessons.length ? `${lessonDates(c)}・已上 ${c.held} 堂` : '沒有排課') + (c.tuition !== undefined ? `・學收 ${tuitionLabel(c)}` : '');
 function state(c) {
   if (c.money.status === 'waived') return { tone: 'neutral', label: '已確認不收' }; // ledger: isWaivedContract; the API sends outstanding 0
   if (c.pending_reports) return { tone: 'warning', label: `待確認 ${c.pending_reports} 筆` };
@@ -156,7 +159,7 @@ function shift(step) {
   month.value = d.getMonth() + 1;
 }
 // The directors' old sheet column order (Founder 2026-11-17); the rows on screen (search and filter apply). UTF-8 BOM so Excel opens it.
-const CSV_HEADERS = ['科目', '老師', '學校', '學生', '繳費日期', '付費方式', '單價', '已上堂數', '本月預估', '這個月收到', '未繳', '收款狀態', '這個月的課'];
+const CSV_HEADERS = ['科目', '老師', '學校', '學生', '繳費日期', '付費方式', '單價', '已上堂數', '本月預估', '這個月收到', '未繳', '收款狀態', '這個月的課', '月學收'];
 const csvCell = (v) => (typeof v === 'number' ? v : `"${String(v ?? '').replace(/^([=+\-@])/, "'$1").replace(/"/g, '""')}"`); // no spreadsheet formulas from names
 function exportCsv() {
   const rows = visible.value.flatMap((s) => s.courses.map((c) => [
@@ -164,7 +167,7 @@ function exportCsv() {
     c.paid_this_month.map((p) => p.date).join('、'), c.paid_this_month.map((p) => METHOD[p.method] || p.method).join('、'),
     rateLabel(c), c.held, c.money.month_total != null && !c.money.month_invoiced ? c.money.month_total : '',
     c.paid_this_month.reduce((n, p) => n + Number(p.amount || 0), 0), c.money.outstanding, state(c).label,
-    lessonDates(c),
+    lessonDates(c), c.tuition ?? '', // 月學收 last, so the old sheet's columns keep their places
   ]));
   const csv = '\ufeff' + [CSV_HEADERS, ...rows].map((r) => r.map(csvCell).join(',')).join('\n');
   const a = document.createElement('a');
