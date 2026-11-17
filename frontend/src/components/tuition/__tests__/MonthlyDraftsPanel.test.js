@@ -35,8 +35,25 @@ it('renders three sections', async () => {
   const t = wrapper.text();
   expect(t).toContain('可開立（3）');
   expect(t).toContain('有 3 堂已上課沒有帳單');
-  expect(t).toContain('請聯絡總部補開');
+  expect(t).toContain('按「回報給總部」請總部補開');
+  expect(t).not.toContain('請聯絡總部');
   expect(t).toContain('到課程管理結案');
+});
+
+it('需補開 rows open the in-app report for HQ, prefilled with the course id', async () => {
+  const sent = [];
+  const onReport = (e) => sent.push(e.detail);
+  window.addEventListener('alltrue-open-bug-report', onReport);
+  try {
+    wrapper = mountIt();
+    await flushPromises();
+    await wrapper.get('[data-testid="mdp-ask-hq-4"]').trigger('click');
+    expect(sent).toHaveLength(1);
+    expect(sent[0].relatedReference).toContain('課程ID 4');
+    expect(sent[0].description).toContain('需要總部補開');
+  } finally {
+    window.removeEventListener('alltrue-open-bug-report', onReport);
+  }
 });
 
 it('batch confirm renews each selected row with proposed_end_date; failure shows message', async () => {

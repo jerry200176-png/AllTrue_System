@@ -389,6 +389,7 @@
                   <div class="tc-actions">
                     <button class="tc-btn tc-btn--ledger" @click="openLedgerForClass(row)" title="查看學生繳費明細"><span class="material-symbols-outlined">account_balance</span>繳費明細</button>
                     <button v-if="row.payment_review_required && reviewNeeds(row, 'course')" class="tc-btn" :data-testid="`tc-review-course-${row.student_class_id}`" @click="emit('navigate', { target: 'course-mgmt', studentId: row.student_id, courseId: row.student_class_id, studentName: row.student_name })"><span class="material-symbols-outlined">edit_calendar</span>到課程處理</button>
+                    <button v-if="row.payment_review_required && reviewAsksHq(row)" class="tc-btn" type="button" :data-testid="`tc-review-hq-${row.student_class_id}`" @click="askHq(row)"><span class="material-symbols-outlined">support_agent</span>回報給總部</button>
                     <button v-if="row.payment_review_required && row.outstanding_amount === 0" class="tc-btn" :data-testid="`tc-review-check-${row.student_class_id}`" @click="checkReviewed(row)"><span class="material-symbols-outlined">task_alt</span>已核對</button>
                   </div>
                 </td>
@@ -1665,6 +1666,15 @@ async function openWaiveDialog(row) {
 }
 
 const reviewNeeds = (row, action) => reviewReasonFixes(row.review_reasons).some((r) => r.action === action);
+// 帳務重整 §3: what only HQ can fix opens the in-app report, prefilled with the reasons and IDs.
+const reviewAsksHq = (row) => reviewReasonFixes(row.review_reasons).some((r) => r.hq);
+function askHq(row) {
+  const why = reviewReasonFixes(row.review_reasons).filter((r) => r.hq).map((r) => r.label).join('、');
+  window.dispatchEvent(new CustomEvent('alltrue-open-bug-report', { detail: {
+    description: `學費收款「需核對：${why}」，需要總部更正或補開帳單。`,
+    relatedReference: `學生ID ${row.student_id || '-'} / 課程ID ${row.student_class_id}`,
+  } }));
+}
 async function checkReviewed(row) {
   if (!await askConfirm({ title: '已核對？', message: '確認這門課的帳都對了？標記後就不再列在待核對。', confirmLabel: '已核對' })) return;
   try {

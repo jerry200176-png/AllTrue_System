@@ -97,6 +97,7 @@ last_reviewed: 2026-11-12
 - bug 先寫會失敗的回歸測試，再改程式（見〈閉環〉每個 bug 一個回歸測試）；屬於〈復發家族〉的 bug，回歸測試寫成該家族性質測試的新 property 或 seed，不只寫單一例子。
 - 使用者看得到的變更：`docs/changes/` fragment 與版本更新卡（[`GUIDE_STAFF_UPDATES.md`](../GUIDE_STAFF_UPDATES.md)）。
 - PR 內文：`pr_declaration.py` 產生的宣告、Rollback 行、`Release-Impact`；in-app 對應的 issue 一律寫 `Refs`。
+- in-app 的修正：開工前先在 intake issue 留一行 `Claimed by <agent> — branch <name>`；24 小時內已有別的 agent 認領就不要開工，改在該 issue 上協調（2026-11-17：565 同時出現兩份修正 #5440／#5443）。
 
 ### 階段 6：審查
 
@@ -109,6 +110,7 @@ last_reviewed: 2026-11-12
 
 ### 階段 7：上線
 
+- `pr_declaration.py` 印出 `Activation: needs the Founder's click` 的 PR（例如登入／權限套件升級），合併後到 Founder 核准前，之後每個合併都排在它後面、不會上線。這種 PR 排在 release train 前合併，並告訴 Founder（2026-11-17：#5417 讓當天下午的修正都沒上線）。
 - 唯一的部署執行器是 `deploy.yml`。哪些範圍跟自己的 CI 自動上線、哪些等 release train 或 Founder 按：見 `FOUNDER_STANDING_DECISIONS.md` 2026-10-21（二）之二與 2026-10-28（二）之二（此處不摘要）。
 - `release-manager`：確認這班有哪些 PR、寫 go／no-go 摘要；要 Founder 按時，一次列清楚按什麼、為什麼。
 - Release 說明：每次 production 部署成功發布一則 GitHub Release，tag 為 CalVer `vYYYY.MM.DD.N`，說明用 GitHub 內建產生（`.github/release.yml` 依 `type:` 標籤分類，涵蓋上一則 Release 之後的 PR）。這是唯一的 Release 來源；`release.yml` 已移除。
