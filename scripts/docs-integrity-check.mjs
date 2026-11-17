@@ -217,6 +217,15 @@ for (const rel of markdownFilesToCheck) {
   }
 }
 
+// One TD-NNN heading per item: two TD-086 and two TD-087 entries were found on 2026-11-17.
+if (exists('docs/TECH_DEBT.md')) {
+  const seen = new Set();
+  for (const [, id] of readText('docs/TECH_DEBT.md').matchAll(/^#{2,3} (TD-\d+)\b/gm)) {
+    if (seen.has(id)) errors.push(`docs/TECH_DEBT.md: duplicate ${id} heading (take the next free number)`);
+    seen.add(id);
+  }
+}
+
 if (process.env.GITHUB_STEP_SUMMARY) {
   const lines = [
     '### Docs Integrity Report',
