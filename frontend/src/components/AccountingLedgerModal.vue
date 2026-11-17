@@ -669,8 +669,10 @@ async function loadLedger() {
     await nextTick();
     if (documentsView.value) {
       const documents = modalEl.value?.querySelector('[data-testid="ledger-fold-invoices"]');
-      documents?.scrollIntoView?.({ block: 'start' });
       documents?.focus({ preventScroll: true });
+      // 帳務重整 §3: contracts sit below 收款紀錄 now. With no bill for the opened course, show its card instead.
+      if (displayedInvoices.value.some((inv) => invoiceCoversCourse(inv, Number(props.studentClassId)))) documents?.scrollIntoView?.({ block: 'start' });
+      else scrollToOpenedContract();
     } else scrollToOpenedContract();
   }
 }
@@ -683,7 +685,6 @@ watch(() => [props.show, props.studentClassId, props.reportId, props.studentId, 
 const isOpenedCourse = (c) => !props.studentWide && Number(props.studentClassId || 0) > 0 && Number(c?.id) === Number(props.studentClassId);
 function scrollToOpenedContract() {
   if (props.studentWide || !Number(props.studentClassId || 0) || displayContractCourses.value.length < 2) return;
-  if (isOpenedCourse(displayContractCourses.value[0])) return;
   const card = modalEl.value?.querySelector(`[data-testid="contract-card-${Number(props.studentClassId)}"]`);
   card?.scrollIntoView?.({ block: 'start' });
 }
