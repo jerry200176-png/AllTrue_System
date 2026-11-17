@@ -128,6 +128,7 @@ const md = (d) => `${Number(d.slice(5, 7))}/${Number(d.slice(8, 10))}`;
 const lessonDates = (c) => c.lessons.map((l) => `${md(l.date)}${l.kind === 'held' ? '' : `（${LESSON[l.kind].label}）`}`).join('、');
 const lessonLine = (c) => (c.lessons.length ? `${lessonDates(c)}・已上 ${c.held} 堂` : '沒有排課');
 function state(c) {
+  if (c.money.status === 'waived') return { tone: 'neutral', label: '已確認不收' }; // ledger: isWaivedContract; the API sends outstanding 0
   if (c.pending_reports) return { tone: 'warning', label: `待確認 ${c.pending_reports} 筆` };
   // review_required can still carry a balance (BillingPayableResolver::courseStatus); the warning must not hide behind 未繳.
   if (c.money.status === 'review_required') return { tone: 'warning', label: c.money.outstanding > 0 ? `要核對（未繳 ${money(c.money.outstanding)}）` : '要核對' };

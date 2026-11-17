@@ -166,3 +166,13 @@ it('a paid mark with no bill says 舊資料要核對, and the drawer can step to
   expect(wrapper.vm.neighbor(2, 1)).toBeNull();
   expect(wrapper.find('[data-testid="roster-name-1"]').attributes('data-student')).toBe('1');
 });
+
+it('a waived contract says 已確認不收 and offers no collection', async () => {
+  const waived = JSON.parse(JSON.stringify(roster));
+  waived.data[1].courses[0].money = { status: 'waived', outstanding: 0, current_period: null, month_total: null, month_invoiced: false };
+  mockFetch.mockResolvedValue(res(waived));
+  wrapper = mountIt();
+  await flushPromises();
+  expect(wrapper.find('[data-testid="roster-course-21"]').text()).toContain('已確認不收');
+  expect(wrapper.find('[data-testid="roster-record-21"]').exists()).toBe(false);
+});

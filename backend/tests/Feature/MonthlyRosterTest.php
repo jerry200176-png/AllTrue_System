@@ -190,6 +190,17 @@ final class MonthlyRosterTest extends TestCase
         $this->assertSame(['paid', false], [$money[$trial->ID]['status'], $money[$trial->ID]['legacy_unverified']]);
     }
 
+    public function test_a_waived_contract_owes_nothing_here(): void
+    {
+        $waived = $this->course($this->student(1), ['closed_reason' => 'waived']);
+        ClassSession::create(['StudentClassID' => $waived->ID, 'SessionDate' => '2026-11-04', 'StartTime' => '10:00', 'EndTime' => '12:00', 'Status' => 'attended']);
+
+        $res = $this->withToken($this->director(1))->getJson('/api/v1/accounting/monthly-roster?year=2026&month=11')->assertOk();
+
+        $this->assertSame(['waived', 0], [$res->json('data.0.courses.0.money.status'), $res->json('data.0.courses.0.money.outstanding')]);
+        $this->assertSame(0, $res->json('summary.outstanding'));
+    }
+
     public function test_one_campus_at_a_time_and_directors_only(): void
     {
         $elsewhere = $this->course($this->student(2));
