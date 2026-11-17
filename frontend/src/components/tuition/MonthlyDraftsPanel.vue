@@ -1,6 +1,7 @@
 <script setup>
 import { computed, ref, watch, onMounted } from 'vue';
 import AtButton from '../design-system/AtButton.vue';
+import { Button } from '@/components/ui/button';
 import AtSelectAll from '../design-system/AtSelectAll.vue';
 import AtDialog from '../design-system/AtDialog.vue';
 import AtEmpty from '../design-system/AtEmpty.vue';
@@ -36,6 +37,11 @@ const { submit } = useMonthlyRenewal({
 
 const ready = computed(() => items.value.filter((r) => r.status === 'ready'));
 const blocked = computed(() => items.value.filter((r) => r.status === 'blocked'));
+// 帳務重整 §3: 補開 is HQ's job, so the row opens the in-app report prefilled with its IDs.
+const askHq = (r) => window.dispatchEvent(new CustomEvent('alltrue-open-bug-report', { detail: {
+  description: `月結草稿「需補開」：這門課缺上一期帳單，需要總部補開。${r.blocker_message || ''}`,
+  relatedReference: `學生ID ${r.student_id || '-'} / 課程ID ${r.student_class_id}`,
+} }));
 const lapsed = computed(() => items.value.filter((r) => r.status === 'lapsed_no_lessons'));
 const isPast = (r) => !r.proposed_end_date || r.proposed_end_date <= todayYmd();
 // Past-period rows can't be opened here, so select-all skips them and the header can still read "all".
@@ -138,9 +144,12 @@ defineExpose({ reload: load, loading });
 
       <section v-if="blocked.length" class="mdp__sec" aria-label="需補開">
         <h3>需補開（{{ blocked.length }}）</h3>
-        <p class="mdp__hint">這幾筆缺上一期帳單，請聯絡總部補開。</p>
+        <p class="mdp__hint">這幾筆缺上一期帳單，按「回報給總部」請總部補開。</p>
         <ul>
-          <li v-for="r in blocked" :key="r.student_class_id">{{ r.student_name }}　{{ r.subject }}：{{ r.blocker_message }}</li>
+          <li v-for="r in blocked" :key="r.student_class_id">
+            {{ r.student_name }}　{{ r.subject }}：{{ r.blocker_message }}
+            <Button variant="outline" size="sm" :data-testid="`mdp-ask-hq-${r.student_class_id}`" @click="askHq(r)">回報給總部</Button>
+          </li>
         </ul>
       </section>
 
