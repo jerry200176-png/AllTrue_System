@@ -39,7 +39,8 @@ class ScheduleAuditController extends Controller
             $allowedBranches = null;
         }
 
-        $query = ScheduleAuditLog::query()->orderByDesc('created_at');
+        // The calendar's 異動紀錄 sheet (#4529 C) shows who made each change; only id and Name leave the users table.
+        $query = ScheduleAuditLog::query()->with('operator:id,Name')->orderByDesc('created_at');
 
         if ($allowedBranches !== null) {
             $query->whereIn('branch_id', $allowedBranches);
