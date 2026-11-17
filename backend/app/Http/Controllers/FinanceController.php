@@ -901,6 +901,7 @@ class FinanceController extends Controller
                 'monthly_tuition'    => round($sessions * $rate, 2),
                 'paid'               => (bool) $pkg->paid,
                 'paid_at'            => $pkg->paid_at ? substr($pkg->paid_at, 0, 10) : null,
+                'last_paid_at'       => $pkg->paid_at ? substr($pkg->paid_at, 0, 10) : null, // the 繳費日期 column (page and CSV) reads last_paid_at
                 'is_stopped'         => (bool) $pkg->stop,
             ] + $pkgStatus[$pkg->id];
         })->values()->all();

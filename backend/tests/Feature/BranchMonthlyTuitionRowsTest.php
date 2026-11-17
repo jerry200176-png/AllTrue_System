@@ -132,6 +132,7 @@ class BranchMonthlyTuitionRowsTest extends TestCase
     {
         $this->course([], [], self::AUG); // 4 x 1500 = 6000
         $pkg = $this->monthlyPackage(700);
+        $pkg->forceFill(['paid_at' => '2026-08-12 10:00:00'])->save();
         $this->course([], ['PackageID' => $pkg->id, 'Rate' => 1500], self::AUG, Student::find($pkg->student_id)); // member: 4 x 700 on the package row
         $headers = $this->headers();
 
@@ -143,6 +144,8 @@ class BranchMonthlyTuitionRowsTest extends TestCase
         $this->assertCount(2, $csv, 'one course row and one package row; the member is not a row of its own');
         $this->assertSame(['一對一', '月結套裝'], array_column($csv, 3));
         $this->assertSame(8800, (int) array_sum(array_column($csv, 6)), 'the CSV 月學收 adds up to the page 學收合計');
+        $this->assertSame('2026-08-12', $csv[1][7], 'the package row keeps its 繳費日期');
+        $this->assertSame('2026-08-12', collect($page->json('data'))->firstWhere('row_type', 'package')['last_paid_at']);
 
         $disposition = $this->withHeaders($headers)->get('/api/v1/finance/branch-monthly-tuition/export?branch_id=1&year=2026&month=8')
             ->headers->get('Content-Disposition');
