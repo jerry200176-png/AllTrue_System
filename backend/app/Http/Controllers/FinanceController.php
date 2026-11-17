@@ -852,6 +852,7 @@ class FinanceController extends Controller
         $regularRows = $regularRows->sortBy([
             fn ($a, $b) => strcmp($a->student->name ?? '', $b->student->name ?? ''),
             fn ($a, $b) => strcmp($a->displaySubjectName(), $b->displaySubjectName()),
+            fn ($a, $b) => (int) $a->ID <=> (int) $b->ID, // same name and subject: a fixed order, so paging never repeats or skips a row
         ])->values();
         $paidAtMap = app(\App\Services\BillingPayableResolver::class)
             ->lastPaidAtByStudentClassIds($regularRows->pluck('ID')->map(fn ($id) => (int) $id)->all());
