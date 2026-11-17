@@ -14,6 +14,7 @@ use Illuminate\Database\Eloquent\Model;
  * @property string|null $billing_mode
  * @property bool $stop
  * @property float|string|null $rate
+ * @property string|null $rate_unit
  */
 class CoursePackage extends Model
 {

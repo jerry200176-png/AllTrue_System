@@ -3,7 +3,6 @@
 namespace App\Http\Controllers;
 
 use App\Models\ClassSession;
-use App\Models\CoursePackage;
 use App\Models\Invoice;
 use App\Models\Payment;
 use App\Models\Student;
@@ -17,7 +16,6 @@ use App\Services\StudentClassPricingService;
 use App\Support\AttendanceStatus;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
-use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -136,7 +134,10 @@ final class MonthlyRosterController extends Controller
                 $rate = (int) round((float) ($c->Charge ?? 0) / (int) $c->SessionCount); // a package priced by its total
             }
             $courseLessons = $lessons[$id] ?? collect();
-            $tuition = $this->tuition($c, collect($sessions[$id] ?? []), $rate);
+            // 學收 (the old 當月學收 report's figure), priced by the bill engine; the rows carry the calendar's status.
+            $tuition = $this->billing->monthTuition($c, ClassSession::hydrate(collect($sessions[$id] ?? [])
+                ->map(fn ($l) => ['id' => $l->id, 'StudentClassID' => $l->StudentClassID, 'SessionDate' => $l->session_date, 'StartTime' => $l->start_time,
+                    'EndTime' => $l->end_time, 'Status' => $l->effective_status, 'session_charge' => $l->session_charge])->values()->all()));
             // Credit moved between contracts is not money coming in; a reversal counts negative however it was stored.
             $payments = ($paid[$id] ?? collect())->reject(fn ($p) => Payment::isCreditMovement($p))->map(fn ($p) => [
                 'date' => substr((string) $p->PaidAt, 0, 10),
@@ -193,39 +194,6 @@ final class MonthlyRosterController extends Controller
                 'pending_reports' => $rows->sum('pending_reports'),
             ],
         ]);
-    }
-
-    /**
-     * 學收 (Jerry 2026-11-18; replaces the old 當月學收 report): the month's lessons the student used, priced the way the
-     * monthly bill prices them. MonthlyBillingService::reviewSessions() keeps only 到班/遲到/補課 (not 值班, 試聽, 輔導)
-     * and prices each lesson on its own date. A 輔導 course owes nothing (#325); a monthly package member is priced at the
-     * package rate; a monthly contract counts only lessons inside its dates (#2451). Amount null = a lesson has no price.
-     *
-     * @return array{lessons: int, amount: int|null}
-     */
-    private function tuition(StudentClass $c, Collection $rows, ?int $rate): array
-    {
-        if (strtolower(trim((string) $c->ClassType)) === 'tutoring') {
-            return ['lessons' => 0, 'amount' => 0];
-        }
-        $dated = (string) $c->ScheduleMode === 'date';
-        [$from, $to] = [substr((string) $c->StartDate, 0, 10), substr((string) $c->EndDate, 0, 10)];
-        $review = $this->billing->reviewSessions($c, ClassSession::hydrate($rows
-            ->filter(fn ($l) => !$dated || (($from === '' || substr((string) $l->session_date, 0, 10) >= $from)
-                && ($to === '' || substr((string) $l->session_date, 0, 10) <= $to)))
-            ->map(fn ($l) => ['id' => $l->id, 'StudentClassID' => $l->StudentClassID, 'SessionDate' => $l->session_date,
-                'StartTime' => $l->start_time, 'EndTime' => $l->end_time, 'Status' => $l->effective_status, 'session_charge' => $l->session_charge])
-            ->values()->all()));
-        $n = (int) $review['completed_sessions'];
-        $package = $c->coursePackage;
-        if ($package !== null && $package->billing_mode === CoursePackage::BILLING_MODE_MONTHLY && !$package->stop) {
-            return ['lessons' => $n, 'amount' => (int) round($n * (float) $package->rate)];
-        }
-        // A course priced by its total (Rate 0, no price amendment): the per-lesson price shown in 單價 (Charge ÷ lessons).
-        $byTotal = (float) ($c->Rate ?? 0) <= 0 && $rate !== null && $c->pricingAmendments->whereNull('voided_at')->isEmpty();
-        $amount = $review['estimated_charge'] ?? ($byTotal ? $n * $rate : null);
-
-        return ['lessons' => $n, 'amount' => $amount === null ? null : (int) $amount];
     }
 
     /** One campus: a director's own (or the one picked among theirs); a super admin must pick one. 0 = not allowed. */

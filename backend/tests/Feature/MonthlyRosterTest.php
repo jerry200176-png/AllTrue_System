@@ -269,6 +269,29 @@ final class MonthlyRosterTest extends TestCase
         $this->assertEquals($old->json('summary.total_tuition'), $res->json('summary.tuition_total'));
     }
 
+    public function test_tuition_prices_an_hourly_package_by_length_and_a_course_priced_by_its_total_without_rounding_each_lesson(): void
+    {
+        // A monthly package priced by the hour, as the monthly bill prices it: one 2-hour lesson at 700/hour = 1,400.
+        $member = $this->student(1);
+        $package = CoursePackage::create(['student_id' => $member->id, 'campus_id' => 1, 'name' => 'H', 'billing_mode' => CoursePackage::BILLING_MODE_MONTHLY,
+            'rate' => 700, 'rate_unit' => 'hour', 'class_type' => 'one_on_one', 'paid' => false, 'stop' => false, 'enabled' => true,
+            'total_sessions' => 0, 'remaining_sessions' => 0, 'used_sessions' => 0]);
+        $hourly = $this->course($member, ['PackageID' => $package->id]);
+        $this->lesson($hourly, '2026-11-05', 'attended'); // 10:00-12:00
+        // 10,000 for 12 lessons, 3 held: 2,500 (rounding 833.33 per lesson first would give 2,499).
+        $byTotal = $this->course($this->student(1), ['Rate' => 0, 'Charge' => 10000, 'SessionCount' => 12]);
+        foreach (['03', '10', '17'] as $day) {
+            $this->lesson($byTotal, "2026-11-$day", 'attended');
+        }
+
+        $res = $this->withToken($this->director(1))->getJson('/api/v1/accounting/monthly-roster?year=2026&month=11')->assertOk();
+
+        $rows = collect($res->json('data'))->flatMap(fn ($s) => $s['courses'])->keyBy('course_id');
+        $this->assertSame([1, 1400], [$rows[$hourly->ID]['tuition_lessons'], $rows[$hourly->ID]['tuition']]);
+        $this->assertSame([3, 2500], [$rows[$byTotal->ID]['tuition_lessons'], $rows[$byTotal->ID]['tuition']]);
+        $this->assertSame(3900, $res->json('summary.tuition_total'));
+    }
+
     private function lesson(StudentClass $course, string $date, string $status): void
     {
         ClassSession::create(['StudentClassID' => $course->ID, 'SessionDate' => $date, 'StartTime' => '10:00', 'EndTime' => '12:00', 'Status' => $status]);

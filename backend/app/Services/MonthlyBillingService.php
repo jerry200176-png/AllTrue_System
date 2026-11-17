@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\ClassSession;
+use App\Models\CoursePackage;
 use App\Models\Invoice;
 use App\Models\StudentClass;
 use Carbon\Carbon;
@@ -268,9 +269,7 @@ class MonthlyBillingService
         $completed = $sessions->whereIn('Status', self::BILLABLE_STATUSES)->values();
         $details = $completed->map(function (ClassSession $session) use ($course): array {
             $pricing = $this->pricing->forDate($course, (string) $session->SessionDate);
-            $validDuration = self::minutes((string) $session->EndTime) > self::minutes((string) $session->StartTime);
-            $known = $pricing['rate'] > 0 && ($pricing['rate_unit'] === 'session'
-                || ($pricing['source'] === 'student_class_rate' && $session->session_charge !== null) || $validDuration);
+            $known = self::priceKnown($session, $pricing);
             return ['session_id' => (int) $session->getKey(), 'date' => substr((string) $session->SessionDate, 0, 10),
                 'rate' => $pricing['rate'], 'rate_unit' => $pricing['rate_unit'],
                 'pricing_source' => $pricing['source'], 'amendment_id' => $pricing['amendment_id'],
@@ -295,14 +294,60 @@ class MonthlyBillingService
         $total = 0.0;
         foreach ($remaining as $session) {
             $pricing = $this->pricing->forDate($course, (string) $session->SessionDate);
-            $known = $pricing['rate'] > 0 && ($pricing['rate_unit'] === 'session'
-                || ($pricing['source'] === 'student_class_rate' && $session->session_charge !== null)
-                || self::minutes((string) $session->EndTime) > self::minutes((string) $session->StartTime));
-            if (!$known) return null;
+            if (!self::priceKnown($session, $pricing)) return null;
             $total += $this->sessionAmount($session, $pricing);
         }
 
         return max(0, (int) round($total));
+    }
+
+    /**
+     * 學收 of one course for one month (月對帳表, Jerry 2026-11-18): the lessons a bill charges (BILLABLE_STATUSES:
+     * 到班/遲到/補課; not 值班, 試聽, 輔導), each priced as reviewSessions() prices it. A 輔導 course owes nothing (#325);
+     * a monthly package member is priced at the package's rate and unit; a monthly contract counts only lessons inside
+     * its dates (#2451); a course priced by its total (Rate 0, no amendment) at Charge ÷ SessionCount, rounded once.
+     *
+     * @param  Collection<int, ClassSession>  $sessions  the month's lessons, Status = the status the calendar shows
+     * @return array{lessons: int, amount: int|null}  amount null = a lesson has no known price
+     */
+    public function monthTuition(StudentClass $course, Collection $sessions): array
+    {
+        if (strtolower(trim((string) $course->ClassType)) === 'tutoring') {
+            return ['lessons' => 0, 'amount' => 0];
+        }
+        $dated = (string) $course->ScheduleMode === 'date';
+        [$from, $to] = [substr((string) $course->StartDate, 0, 10), substr((string) $course->EndDate, 0, 10)];
+        $lessons = $sessions->whereIn('Status', self::BILLABLE_STATUSES)->filter(fn (ClassSession $s) => !$dated
+            || (($from === '' || substr((string) $s->SessionDate, 0, 10) >= $from) && ($to === '' || substr((string) $s->SessionDate, 0, 10) <= $to)))->values();
+        $n = $lessons->count();
+        $package = $course->coursePackage;
+        $packagePricing = $package !== null && $package->billing_mode === CoursePackage::BILLING_MODE_MONTHLY && !$package->stop
+            ? ['rate' => (float) $package->rate, 'rate_unit' => strtolower(trim((string) $package->rate_unit)) === 'hour' ? 'hour' : 'session', 'source' => 'package']
+            : null;
+        $total = 0.0;
+        foreach ($lessons as $s) {
+            $pricing = $packagePricing ?? $this->pricing->forDate($course, (string) $s->SessionDate);
+            if (!self::priceKnown($s, $pricing)) {
+                $total = null;
+                break;
+            }
+            $total += $this->sessionAmount($s, $pricing);
+        }
+        $byTotal = $total === null && $packagePricing === null && (float) ($course->Rate ?? 0) <= 0 && (int) ($course->SessionCount ?? 0) > 0
+            && $course->pricingAmendments()->whereNull('voided_at')->doesntExist();
+        if ($byTotal) {
+            $total = $n * (float) ($course->Charge ?? 0) / (int) $course->SessionCount;
+        }
+
+        return ['lessons' => $n, 'amount' => $total === null ? null : max(0, (int) round($total))];
+    }
+
+    /** A lesson's price is known: a per-lesson price, or the lesson's own stored charge, or a real length for an hourly one. */
+    private static function priceKnown(ClassSession $session, array $pricing): bool
+    {
+        return $pricing['rate'] > 0 && ($pricing['rate_unit'] === 'session'
+            || ($pricing['source'] === 'student_class_rate' && $session->session_charge !== null)
+            || self::minutes((string) $session->EndTime) > self::minutes((string) $session->StartTime));
     }
 
     private function sessionAmount(ClassSession $session, array $pricing): float
