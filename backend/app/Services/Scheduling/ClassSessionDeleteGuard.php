@@ -77,10 +77,14 @@ final class ClassSessionDeleteGuard
      * substitute, a note, a payroll line. Only a lesson with none of these never happened anywhere (#4734).
      *
      * @param  array<int|string>  $sessionIds
+     * @param  bool  $lock  Server-owned current read for transactional financial eligibility; normal callers stay read-only.
      * @return array<int, true> class_session_id => true
      */
-    public static function referencedSessionIds(array $sessionIds): array
+    public static function referencedSessionIds(array $sessionIds, bool $lock = false): array
     {
+        if ($lock && DB::transactionLevel() < 1) {
+            throw new \LogicException('Current reference checks require a transaction.');
+        }
         $ids = array_values(array_unique(array_filter(array_map('intval', $sessionIds), fn (int $id) => $id > 0)));
         $out = [];
         foreach (self::REFERENCES as $table => $columns) {
@@ -89,7 +93,8 @@ final class ClassSessionDeleteGuard
                     continue;
                 }
                 foreach (array_chunk($ids, 500) as $chunk) {
-                    foreach (DB::table($table)->whereIn($column, $chunk)->distinct()->pluck($column) as $id) {
+                    foreach (DB::table($table)->whereIn($column, $chunk)->distinct()
+                        ->when($lock, fn ($q) => $q->lockForUpdate())->pluck($column) as $id) {
                         $out[(int) $id] = true;
                     }
                 }
@@ -104,10 +109,14 @@ final class ClassSessionDeleteGuard
      * the substitute and the original teacher's rows by course and date, not by lesson id), a move or a make-up.
      *
      * @param  iterable<\App\Models\ClassSession>  $sessions
+     * @param  bool  $lock  Current read plus gap locks; the caller must hold its course mutex in the same transaction.
      * @return array<int, true> class_session_id => true
      */
-    public static function datedScheduleSessionIds(iterable $sessions): array
+    public static function datedScheduleSessionIds(iterable $sessions, bool $lock = false): array
     {
+        if ($lock && DB::transactionLevel() < 1) {
+            throw new \LogicException('Current dated-booking checks require a transaction.');
+        }
         $byDay = [];
         foreach ($sessions as $s) {
             $byDay[(int) $s->StudentClassID . '|' . substr((string) $s->SessionDate, 0, 10)][] = (int) $s->id;
@@ -119,6 +128,7 @@ final class ClassSessionDeleteGuard
         $out = [];
         foreach (array_chunk($courses, 500) as $chunk) {
             foreach (DB::table('schedules')->whereIn('student_course_id', $chunk)->whereNotNull('schedule_date')
+                ->when($lock, fn ($q) => $q->orderBy('id')->lockForUpdate())
                 ->get(['student_course_id', 'schedule_date']) as $row) {
                 foreach ($byDay[(int) $row->student_course_id . '|' . substr((string) $row->schedule_date, 0, 10)] ?? [] as $id) {
                     $out[$id] = true;
