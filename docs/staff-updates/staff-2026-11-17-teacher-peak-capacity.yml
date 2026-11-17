@@ -1,0 +1,14 @@
+updates:
+  - id: staff-2026-11-17-teacher-peak-capacity
+    published_at: "2026-11-17"
+    audiences:
+      - director
+      - super_admin
+    importance: digest
+    title: 一對三跨時段調課不再誤判滿班
+    summary: 跨兩個相接時段調課時，依同時在場的最高人數判斷是否還有空位。
+    items:
+      - category: fixed
+        text: 例如 18–20 點有兩位、20–22 點有一位，19–21 點仍可加入一位一對三學生；真正同時超過上限仍會擋下。
+    source_refs:
+      - "changelog:2026-11-17:teacher-peak-capacity"

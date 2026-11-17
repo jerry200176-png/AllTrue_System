@@ -1125,7 +1125,7 @@ class ScheduleGuardService
     public function teacherCapacityDecision(string $newClassType, array $slot, array $preparedOverlaps, ?string $newTrialTarget = null): array
     {
         $overlaps = array_values(array_filter($preparedOverlaps, fn ($entry) => $entry['teacher_occupancy'] ?? true));
-        $existingCount = $this->countDistinctStudents($overlaps);
+        $existingCount = $this->peakDistinctStudents($overlaps, $slot);
         $newCapacity = $this->capacityForClassType($newClassType);
 
         // Trial classes are a director-arranged add-on to existing sessions
@@ -1160,7 +1160,7 @@ class ScheduleGuardService
             $trialOverlaps = array_values(array_filter($overlaps, function ($entry) {
                 return (string) ($entry['class_type'] ?? '') === 'trial';
             }));
-            $existingTrialCount = $this->countDistinctStudents($trialOverlaps);
+            $existingTrialCount = $this->peakDistinctStudents($trialOverlaps, $slot);
             if ($existingTrialCount >= 1) {
                 return ['allowed' => false, 'distinct_students' => $existingCount, 'conflict' => [
                     'type' => 'teacher_capacity',
@@ -1438,6 +1438,38 @@ class ScheduleGuardService
         }
 
         return count($studentIds) + count($anonymousEntries);
+    }
+
+    /**
+     * in-app565: half-open intervals. A student leaving at20:00 does not share a seat with one arriving at20:00.
+     * Occupancy can increase only at the requested start or an occupant's start; reuse the canonical identity rule
+     * at those breakpoints. Do not infer free seats from incomplete/overnight evidence this day-based guard cannot order.
+     * @param array<int, array<string,mixed>> $entries
+     */
+    private function peakDistinctStudents(array $entries, array $slot): int
+    {
+        if (empty($slot['start_time']) || empty($slot['end_time'])) return $this->countDistinctStudents($entries);
+        $start = $this->minutesOfDay((string) $slot['start_time']);
+        $end = $this->minutesOfDay((string) $slot['end_time']);
+        if ($end <= $start) return $this->countDistinctStudents($entries);
+        $points = [$start => true]; $intervals = [];
+        foreach ($entries as $entry) {
+            if (empty($entry['start_time']) || empty($entry['end_time'])) return $this->countDistinctStudents($entries);
+            $from = $this->minutesOfDay((string) $entry['start_time']);
+            $to = $this->minutesOfDay((string) $entry['end_time']);
+            if ($to <= $from) return $this->countDistinctStudents($entries);
+            $intervals[] = ['from' => $from, 'to' => $to, 'entry' => $entry];
+            if ($from > $start && $from < $end) $points[$from] = true;
+        }
+        $peak = 0;
+        foreach (array_keys($points) as $point) {
+            $active = [];
+            foreach ($intervals as $interval) {
+                if ($interval['from'] <= $point && $point < $interval['to']) $active[] = $interval['entry'];
+            }
+            $peak = max($peak, $this->countDistinctStudents($active));
+        }
+        return $peak;
     }
 
     /**

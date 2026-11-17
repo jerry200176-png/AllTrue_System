@@ -1726,6 +1726,8 @@ Intake consolidation regression (2026-10-17): the oldest trusted SourceRef issue
 - **強制規則**：剩餘＝`capacity(即將加入或被代課班型) − unique 學生`。一對一仍獨佔；老師實體上限 3。徽章有一對三且無一對一時 max=3，count 不 clamp 成較嚴班型。佔用全在目前分校時，文案寫本分校，不寫他校。禁止用別的班型的滿席蓋掉一對三空位。禁止禁混班（正式站已有混班）。
 - **測試必補**：`AvailabilityCapacityTest::test_mixed_one_on_two_and_one_on_three_remaining_follows_row_class_type`；`ScheduleGuardrailsTest::test_mixed_one_on_two_full_still_allows_one_on_three_third_seat`；`frontend/src/lib/slotOccupancy.test.js`；picker 混班案例。Revert 後上述至少一項必須 fail。
 
+- **錯開時段邊界（2026-11-17 / in-app565）**：跨多段時間的容量必須算「同時在場的最高 unique 人數」，不能把整個查詢期間遇過的不同學生相加。相接時間以左含右不含計算；一對一獨佔、試聽完整涵蓋條件、即將加入班型上限與分校／教室／學生衝突不變。資料缺時間或跨午夜而現有日內守衛不能排序時，維持保守拒絕，不推定空位。防復發：`ScheduleGuardPeakCapacityTest` 的 Eris 分鐘逐點 census，以及 `ScheduleGuardrailsTest::test_inapp565_staggered_recurring_slots_allow_the_third_simultaneous_student_but_block_a_fourth`。
+
 ### R117. 帳務中心收據紀錄不可只要求 PIN 卻沒有輸入框（2026-08-19）
 
 - **現象**：主任進帳務中心「收據流水紀錄」，畫面顯示「請輸入 PIN 碼以存取此頁」，但沒有 PIN 輸入視窗。
