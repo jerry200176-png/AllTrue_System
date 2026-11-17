@@ -45,6 +45,25 @@ class ScheduleGuardrailsTest extends TestCase
         $this->assertSame([], $queries);
     }
 
+    public function test_inapp_565_capacity_counts_students_present_at_the_same_time(): void
+    {
+        $guard = app(\App\Services\ScheduleGuardService::class);
+        $slot = ['day_of_week' => 2, 'start_time' => '19:00', 'end_time' => '21:00'];
+        $row = fn (int $id, string $start, string $end) => ['student_id' => $id, 'class_type' => 'one_on_three', 'start_time' => $start, 'end_time' => $end];
+        $earlyTwoLateOne = [$row(201, '18:00', '20:00'), $row(202, '18:00', '20:00'), $row(203, '20:00', '22:00')];
+
+        $allowed = $guard->teacherCapacityDecision('one_on_three', $slot, $earlyTwoLateOne);
+        $this->assertTrue($allowed['allowed'], 'two students at 19:00, one at 20:00: the third seat is free all lesson');
+        $this->assertSame(2, $allowed['distinct_students']);
+
+        $blocked = $guard->teacherCapacityDecision('one_on_three', $slot, [...$earlyTwoLateOne, $row(204, '19:30', '20:30')]);
+        $this->assertFalse($blocked['allowed'], 'three students at 19:30 fill the slot');
+        $this->assertSame(3, $blocked['distinct_students']);
+
+        $sameStudentTwice = [$row(201, '18:00', '20:00'), $row(201, '19:00', '21:00'), $row(202, '19:00', '21:00')];
+        $this->assertSame(2, $guard->teacherCapacityDecision('one_on_three', $slot, $sameStudentTwice)['distinct_students']);
+    }
+
     public function test_teacher_capacity_context_batches_targets_across_dates_and_the_incoming_course(): void
     {
         $teacher = $this->createTeacher(1, 'teacher-capacity-batch@example.com');
