@@ -117,6 +117,9 @@ final class ExistingCourseCreditPreview
             $this->refuse('existing_credit_release_invalid', '可用堂數不足，或選取的釋出堂次已變動。請核對目的課程，並只選擇需要釋出的未來未上課堂次。');
         }
         $released = $eligible->whereIn('id', $plan['released_session_ids'])->values();
+        if ($released->isNotEmpty() && (int) $source->TeacherID < 1) {
+            $this->refuse('existing_credit_calendar_unverified', '來源課程尚未指定老師，請先補齊老師再釋出已排課堂。');
+        }
         // Calendar capacity currently uses day-local intervals. Do not cancel a cross-day row whose restore
         // cannot be checked by that same native authority; the financial candidate calculation alone grants no release.
         foreach ($released as $session) {

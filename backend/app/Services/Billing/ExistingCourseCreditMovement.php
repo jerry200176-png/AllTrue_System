@@ -157,6 +157,9 @@ final class ExistingCourseCreditMovement
                 [$r['before']['SessionDate'], $r['before']['StartTime'], (int) $r['before']['id']])->values();
             $meta = $metadata->get((int) $course->ID);
             if (!$meta) $this->changed();
+            if ($lessons->isNotEmpty() && (int) $meta->TeacherID < 1) {
+                $this->refuse('existing_credit_calendar_unverified', '原課程缺少老師資料，無法安全核對原時段；這批配置尚未還原。');
+            }
             foreach ($lessons as $row) {
                 $old = $row['before']; $date = substr((string) $old['SessionDate'], 0, 10);
                 if (Carbon::parse($date . ' ' . $old['EndTime'])->lessThanOrEqualTo(Carbon::parse($date . ' ' . $old['StartTime'])))

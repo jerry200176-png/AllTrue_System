@@ -131,6 +131,50 @@ class ExistingCourseCreditInverseTest extends TestCase
         $this->assertBlocked($source, $group, $actor, $campus, 'existing_credit_reverse_capacity');
     }
 
+    public function test_legacy_unassigned_teacher_group_cannot_skip_room_safety_when_restoring_lessons(): void
+    {
+        [$source, , $input, $actor, $campus] = $this->allocationWithTeacher();
+        $room = DB::table('rooms')->insertGetId(['campus_id' => $campus, 'name' => 'isolated-unassigned-room', 'capacity' => 2]);
+        $source->forceFill(['ClassType' => 'one_on_three', 'room_id' => $room])->save();
+        $beforeAttributes = $source->refresh()->getAttributes();
+        $input['state_hash'] = app(\App\Services\Billing\ExistingCourseCreditPreview::class)->run($source, $input, [$campus])['state_hash'];
+        $group = $this->fund($source, $input, $actor, $campus);
+        // Seed the valid persisted shape accepted by the earlier writer with TeacherID=0.
+        // The new preview must refuse creating it; inverse still has to protect historical groups.
+        $source->refresh()->forceFill(['TeacherID' => 0])->save();
+        $before = $group->source_before; $after = $group->source_after;
+        $before['course']['TeacherID'] = $after['course']['TeacherID'] = $beforeAttributes['TeacherID'] = 0;
+        $before['course_context_digest'] = \App\Services\Billing\SubjectCreditState::digest($beforeAttributes);
+        $after['course_context_digest'] = \App\Services\Billing\SubjectCreditState::digest($source->fresh()->getAttributes());
+        $group->forceFill(['source_before' => $before, 'source_after' => $after])->save();
+        foreach (SubjectCreditTransfer::where('allocation_group_id', $group->id)->get() as $child) {
+            $childBefore = $child->source_before; $childAfter = $child->source_after;
+            $childBefore['course']['TeacherID'] = $childAfter['course']['TeacherID'] = 0;
+            $child->forceFill(['source_before' => $childBefore, 'source_after' => $childAfter])->save();
+        }
+        $student = Student::create(['name' => 'isolated-unassigned-occupant', 'CampusID' => $campus, 'ClassID' => 1, 'enable' => 1, 'MDT' => now(), 'Notify_Token' => '']);
+        $other = $source->fresh()->replicate(); $other->StudentID = $student->id; $other->save();
+        ClassSession::create(['StudentClassID' => $other->ID, 'SessionDate' => '2026-10-02', 'StartTime' => '08:00', 'EndTime' => '10:00', 'Status' => 'scheduled']);
+        $audit = $group->fresh()->getAttributes();
+        $this->assertBlocked($source, $group, $actor, $campus, 'existing_credit_calendar_unverified');
+        $this->assertSame($audit, $group->fresh()->getAttributes());
+    }
+
+    public function test_unassigned_teacher_does_not_block_funding_and_inverse_without_calendar_releases(): void
+    {
+        [$source, , $input, $actor, $campus] = $this->allocationWithTeacher();
+        ClassSession::where('StudentClassID', $source->ID)->where('Status', 'scheduled')->delete();
+        $source->forceFill(['TeacherID' => 0])->save();
+        $input['released_session_ids'] = [];
+        $input['state_hash'] = app(\App\Services\Billing\ExistingCourseCreditPreview::class)->run($source, $input, [$campus])['state_hash'];
+        $before = $source->fresh()->only(['SessionCount', 'UsedSessions', 'RemainingSessions', 'Charge', 'Pay', 'Paid']);
+        $group = $this->fund($source, $input, $actor, $campus);
+        $this->assertSame([], $group->released_sessions);
+        $this->assertFalse($this->reverse($source, $group, $actor, $campus)['replayed']);
+        $this->assertSame($before, $source->fresh()->only(array_keys($before)));
+        $this->assertSame(12000, (int) Payment::sum('Amount'));
+    }
+
     public function test_exhausted_source_restore_checks_the_students_new_other_course_before_reopening_quota(): void
     {
         [$source, $targets, $input, $actor, $campus] = $this->allocationWithTeacher();
