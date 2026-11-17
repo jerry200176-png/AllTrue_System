@@ -22,6 +22,7 @@ def run_gate(files: dict[str, int | None], *, local=False, branch="fix/x", base_
     with tempfile.TemporaryDirectory() as tmp:
         git = lambda *args: subprocess.run(["git", *args], cwd=tmp, check=True, capture_output=True)
         git("init", "-q", "-b", "main")
+        git("config", "core.quotePath", "true")
         # Exercise the real local CLI without exporting/reimplementing its size rule.
         # Unrelated generated-file checks are inspected separately below.
         for source in ["scripts/ci-preflight.mjs", "scripts/ci/gov-codes.mjs", "scripts/ci/branch-policy.mjs"]:
@@ -62,6 +63,8 @@ class SizeGateTest(unittest.TestCase):
         cases = [
             ({"backend/app/X.php": 280, "backend/tests/Feature/XTest.php": 500, "docs/x.md": 10}, True),
             ({"backend/app/X.php": 701}, False),
+            ({"frontend/src/fixture_測試.js": 701}, False),
+            ({"frontend/src/fixture view.js": 701}, False),
             ({"backend/app/X.php": 100, "backend/tests/Feature/XTest.php": 1401}, False),
             ({"backend/app/X.php": 700, "backend/tests/Feature/XTest.php": 800}, True),
             ({"scripts/tool.mjs": 1300}, True),

@@ -82,7 +82,7 @@ function checkLegacySize(errors, warnings) {
   const logicStat = stat([':!backend/tests/**', ':!scripts/tests/**', ':!**/__tests__/**', ':!**/*.test.*',
     ':!**/*.spec.*', ':!frontend/e2e/**', ':!docs/**', ':!**/*.md']);
   const logic = logicStat.add + logicStat.del;
-  const changedNames = git(['diff', '--name-only', `${base}...HEAD`]).split('\n').filter(Boolean);
+  const changedNames = git(['diff', '--name-only', '-z', `${base}...HEAD`]).split('\0').filter(Boolean);
   const touchesProduction = changedNames.some((name) => /^(backend\/app\/|backend\/routes\/|backend\/database\/|frontend\/src\/)/.test(name));
   const hardLimit = touchesProduction ? 700 : 1300;
   const totalLimit = 1500;

@@ -206,7 +206,7 @@ jobs:
                ':!*phpstan-baseline.neon' ':!**/*.generated.js' \
                "${EXTRA_EXCLUDE[@]}")
           read -r ADD DEL <<< "$(git diff --numstat origin/main...HEAD -- "${BASE_EXCLUDE[@]}" \
-            | awk 'NF==3 {add+=$1; del+=$2} END {print add+0, del+0}')"
+            | awk -F '\t' 'NF==3 {add+=$1; del+=$2} END {print add+0, del+0}')"
           TOTAL=$((ADD + DEL))
           # Founder 2026-10-28 (governance smoothing): the 700-line limit bounds the review of *logic*.
           # Tests and docs make a change safer, so they no longer force a split; they count only
@@ -214,7 +214,7 @@ jobs:
           LOGIC=$(git diff --numstat origin/main...HEAD -- "${BASE_EXCLUDE[@]}" \
                ':!backend/tests/**' ':!scripts/tests/**' ':!**/__tests__/**' ':!**/*.test.*' ':!**/*.spec.*' \
                ':!frontend/e2e/**' ':!docs/**' ':!**/*.md' \
-            | awk 'NF==3 {n+=$1+$2} END {print n+0}')
+            | awk -F '\t' 'NF==3 {n+=$1+$2} END {print n+0}')
           TOTAL_LIMIT=1500
 
           echo "PR size: $TOTAL lines changed (+$ADD/-$DEL, excluding lock/data files); $LOGIC logic lines (no tests/docs)"
