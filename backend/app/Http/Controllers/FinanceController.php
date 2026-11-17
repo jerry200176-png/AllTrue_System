@@ -693,29 +693,53 @@ class FinanceController extends Controller
 
     /**
      * GET /api/v1/finance/branch-monthly-tuition
-     * Per-student, per-course monthly tuition report for a branch.
+     * Per-student, per-course monthly tuition report for a branch: one page of monthlyTuitionRows().
      *
-     * Query params: branch_id (required), year, month, page, per_page
+     * Query params: branch_id (required), year, month, page, per_page, unpaid_only
      */
     public function branchMonthlyTuition(Request $request)
+    {
+        $report  = $this->monthlyTuitionRows($request);
+        $perPage = max(1, min((int) $request->input('per_page', 50), 200));
+        $page    = max((int) $request->input('page', 1), 1);
+        $total   = count($report['rows']);
+
+        return response()->json([
+            // Courses and monthly package rows are one list, paged once: a package row is never repeated on every page.
+            'data'    => array_slice($report['rows'], ($page - 1) * $perPage, $perPage),
+            'summary' => $report['summary'],
+            'meta'    => [
+                'current_page' => $page,
+                'last_page'    => max(1, (int) ceil($total / $perPage)),
+                'per_page'     => $perPage,
+                'total'        => $total,
+            ],
+        ]);
+    }
+
+    /**
+     * The 當月學收 rows of one month in display order (courses by student, then subject; then monthly package rows) and the
+     * whole-month summary. The page shows one page of this list and the CSV writes all of it, so both list the same rows.
+     *
+     * @return array{period: string, rows: list<array<string,mixed>>, summary: array<string,mixed>}
+     */
+    private function monthlyTuitionRows(Request $request): array
     {
         $campusIds      = $this->getCampusIds($request);
         $branchFiltered = !empty($campusIds);
         $studentIds     = $branchFiltered ? Student::whereIn('CampusID', $campusIds)->pluck('id')->all() : [];
 
-        if ($branchFiltered && empty($studentIds)) {
-            return response()->json([
-                'data'    => [],
-                'summary' => ['total_students' => 0, 'total_sessions' => 0, 'total_tuition' => 0,
-                    'total_due' => 0, 'total_collected' => 0, 'total_outstanding' => 0, 'unpaid_students' => 0,
-                    'unconfirmed_amount' => 0, 'review_students' => 0],
-                'meta'    => ['current_page' => 1, 'last_page' => 1, 'per_page' => 50, 'total' => 0],
-            ]);
-        }
-
         $year  = (int) $request->input('year', date('Y'));
         $month = (int) $request->input('month', date('n'));
-        $startDate = sprintf('%04d-%02d-01', $year, $month);
+        $period = sprintf('%04d-%02d', $year, $month);
+
+        if ($branchFiltered && empty($studentIds)) {
+            return ['period' => $period, 'rows' => [], 'summary' => ['total_students' => 0, 'total_sessions' => 0, 'total_tuition' => 0,
+                'total_due' => 0, 'total_collected' => 0, 'total_outstanding' => 0, 'unpaid_students' => 0,
+                'unconfirmed_amount' => 0, 'review_students' => 0]];
+        }
+
+        $startDate = $period . '-01';
         $endDate   = date('Y-m-t', strtotime($startDate));
 
         // #765：計薪集合由 registry 提供（含值班 duty；試聽/輔導不計薪）。
@@ -736,6 +760,8 @@ class FinanceController extends Controller
             ->joinSub($sessionCounts, 'sc_counts', function ($join) {
                 $join->on('StudentClass.ID', '=', 'sc_counts.StudentClassID');
             })
+            // 輔導課 has no payment obligation (#325, BillingController refuses its bills): never tuition here (Jerry 2026-11-17).
+            ->whereRaw("LOWER(TRIM(COALESCE(StudentClass.ClassType, ''))) <> ?", ['tutoring'])
             ->with(['student', 'teacher']);
 
         if (!empty($studentIds)) {
@@ -744,7 +770,7 @@ class FinanceController extends Controller
 
         $query->select('StudentClass.*', 'sc_counts.cnt as monthly_session_count');
 
-        $allRows = (clone $query)->get();
+        $allRows = $query->get();
 
         // ── Monthly billing packages: aggregate members into a single row ──
         // Fetch active monthly billing packages for this branch; every one is listed even with 0 sessions (a deliberate rule),
@@ -794,7 +820,7 @@ class FinanceController extends Controller
             }
         }
 
-        // Exclude monthly-package members from regular course rows
+        // Exclude monthly-package members from regular course rows (the CSV did not, so its total differed from the page)
         $regularRows = $allRows->filter(
             fn ($c) => !$monthlyMemberIds->contains($c->ID)
         );
@@ -814,31 +840,24 @@ class FinanceController extends Controller
         });
 
         // Month-scoped payment status (one verdict batch for every row, so the summary covers all pages).
-        $payStatus = $this->monthPaymentStatuses($regularRows, $monthlyPkgs, $pkgSessionTotals, sprintf('%04d-%02d', $year, $month), $memberSessionCounts);
+        $payStatus = $this->monthPaymentStatuses($regularRows, $monthlyPkgs, $pkgSessionTotals, $period, $memberSessionCounts);
         $courseStatus = $payStatus['course'];
         $pkgStatus    = $payStatus['package'];
-        $paySummary   = $payStatus['summary'];
 
-        $unpaidOnly = $request->boolean('unpaid_only');
-        if ($unpaidOnly) {
+        if ($request->boolean('unpaid_only')) {
             $regularRows = $regularRows->filter(fn ($c) => !in_array($courseStatus[(int) $c->ID]['pay_status'], ['paid', 'waived'], true));
             $monthlyPkgs = $monthlyPkgs->filter(fn ($p) => !in_array($pkgStatus[$p->id]['pay_status'], ['paid', 'none'], true));
         }
 
-        $perPage = min((int) $request->input('per_page', 50), 200);
-        $page    = max((int) $request->input('page', 1), 1);
-        $total   = $regularRows->count() + $monthlyPkgs->count();
-        $lastPage = max(1, (int) ceil($total / $perPage));
-
-        $paged = $regularRows->sortBy([
+        $regularRows = $regularRows->sortBy([
             fn ($a, $b) => strcmp($a->student->name ?? '', $b->student->name ?? ''),
             fn ($a, $b) => strcmp($a->displaySubjectName(), $b->displaySubjectName()),
-        ])->slice(($page - 1) * $perPage, $perPage)->values();
+            fn ($a, $b) => (int) $a->ID <=> (int) $b->ID, // same name and subject: a fixed order, so paging never repeats or skips a row
+        ])->values();
+        $paidAtMap = app(\App\Services\BillingPayableResolver::class)
+            ->lastPaidAtByStudentClassIds($regularRows->pluck('ID')->map(fn ($id) => (int) $id)->all());
 
-        $pagedClassIds = $paged->pluck('ID')->map(fn ($id) => (int) $id)->all();
-        $paidAtMap = app(\App\Services\BillingPayableResolver::class)->lastPaidAtByStudentClassIds($pagedClassIds);
-
-        $data = $paged->map(function ($c) use ($paidAtMap, $courseStatus) {
+        $courseRows = $regularRows->map(function ($c) use ($paidAtMap, $courseStatus) {
             $rate = $this->resolveRate($c);
             $sessions = (int) $c->monthly_session_count;
             return [
@@ -859,9 +878,9 @@ class FinanceController extends Controller
                 'last_paid_at'       => ($c->PayDate ? substr($c->PayDate, 0, 10) : null) ?? ($paidAtMap[(int) $c->ID] ?? null),
                 'is_stopped'         => (bool) $c->Stop,
             ] + $courseStatus[(int) $c->ID];
-        })->values()->all();
+        })->all();
 
-        // Append monthly billing package rows
+        // Monthly billing package rows
         $pkgTeachers = $monthlyPkgs->isEmpty() ? collect() : StudentClass::whereIn('PackageID', $monthlyPkgs->keys())->with('teacher')->get()
             ->groupBy('PackageID')->map(fn ($ms) => $ms->map(fn ($m) => $m->teacher->Name ?? null)->filter()->unique()->implode('、'));
         $pkgRows = $monthlyPkgs->map(function ($pkg) use ($pkgSessionTotals, $pkgStatus, $pkgTeachers) {
@@ -882,103 +901,57 @@ class FinanceController extends Controller
                 'monthly_tuition'    => round($sessions * $rate, 2),
                 'paid'               => (bool) $pkg->paid,
                 'paid_at'            => $pkg->paid_at ? substr($pkg->paid_at, 0, 10) : null,
+                'last_paid_at'       => $pkg->paid_at ? substr($pkg->paid_at, 0, 10) : null, // the 繳費日期 column (page and CSV) reads last_paid_at
                 'is_stopped'         => (bool) $pkg->stop,
             ] + $pkgStatus[$pkg->id];
         })->values()->all();
 
-        return response()->json([
-            'data'    => array_merge(array_values($data), $pkgRows),
+        return [
+            'period'  => $period,
+            'rows'    => array_merge($courseRows, $pkgRows),
             'summary' => [
                 'total_students'  => $uniqueStudents,
                 'total_sessions'  => $totalSessions,
                 'total_tuition'   => round($totalTuition, 2),
-            ] + $paySummary,
-            'meta' => [
-                'current_page' => $page,
-                'last_page'    => $lastPage,
-                'per_page'     => $perPage,
-                'total'        => $total,
-            ],
-        ]);
+            ] + $payStatus['summary'],
+        ];
     }
 
     /**
      * GET /api/v1/finance/branch-monthly-tuition/export
-     * Export monthly tuition as UTF-8 CSV.
+     * Export monthly tuition as UTF-8 CSV: every row of monthlyTuitionRows(), so it matches the page (package rows included).
      */
     public function branchMonthlyTuitionExport(Request $request): StreamedResponse
     {
-        $campusIds      = $this->getCampusIds($request);
-        $branchFiltered = !empty($campusIds);
-        $studentIds     = $branchFiltered ? Student::whereIn('CampusID', $campusIds)->pluck('id')->all() : [];
-
-        $year  = (int) $request->input('year', date('Y'));
-        $month = (int) $request->input('month', date('n'));
-        $startDate = sprintf('%04d-%02d-01', $year, $month);
-        $endDate   = date('Y-m-t', strtotime($startDate));
-
-        // #765：計薪集合由 registry 提供（含值班 duty；試聽/輔導不計薪）。
-        $attendedStatuses = AttendanceStatus::payableSessionStatuses();
-
-        $sessionCounts = DB::table('ClassSession')
-            ->whereBetween('SessionDate', [$startDate, $endDate])
-            ->whereIn('Status', $attendedStatuses)
-            ->select('StudentClassID', DB::raw('COUNT(*) as cnt'))
-            ->groupBy('StudentClassID');
-        $this->constrainMonthlyContractSessions($sessionCounts);
-
-        // FR-002: Remove Stop=0 snapshot filter — same rationale as branchMonthlyTuition.
-        $query = StudentClass::query()
-            ->joinSub($sessionCounts, 'sc_counts', function ($join) {
-                $join->on('StudentClass.ID', '=', 'sc_counts.StudentClassID');
-            })
-            ->with(['student', 'teacher']);
-
-        if (!empty($studentIds)) {
-            $query->whereIn('StudentClass.StudentID', $studentIds);
-        }
-
-        $query->select('StudentClass.*', 'sc_counts.cnt as monthly_session_count');
-
-        $allRows = $query->get()->sortBy([
-            fn ($a, $b) => strcmp($a->student->name ?? '', $b->student->name ?? ''),
-            fn ($a, $b) => strcmp($a->displaySubjectName(), $b->displaySubjectName()),
-        ])->values();
-
-        // Export lists regular course rows only (monthly package rows are not exported today).
-        $exportStatus = $this->monthPaymentStatuses($allRows, collect(), [], sprintf('%04d-%02d', $year, $month))['course'];
+        $report = $this->monthlyTuitionRows($request);
         $statusLabels = ['paid' => '已收', 'partial' => '部分', 'unpaid' => '未收', 'review' => '待確認', 'waived' => '已免收'];
+        $classTypeLabels = ['one_on_one' => '一對一', 'one_on_two' => '一對二', 'one_on_three' => '一對三', 'tutoring' => '輔導', 'trial' => '試聽'];
 
-        $branchIds = $campusIds ?: [];
+        $branchIds = $this->getCampusIds($request);
         $branchName = !empty($branchIds)
             ? (DB::table('Campus')->where('id', $branchIds[0])->value('name') ?? 'all')
             : 'all';
-        $filename = "當月學收_{$branchName}_{$year}{$month}.csv";
+        $filename = "當月學收_{$branchName}_" . str_replace('-', '', $report['period']) . '.csv'; // 202601, not 20261
 
-        return response()->streamDownload(function () use ($allRows, $exportStatus, $statusLabels) {
+        return response()->streamDownload(function () use ($report, $statusLabels, $classTypeLabels) {
             $out = fopen('php://output', 'w');
             fprintf($out, chr(0xEF) . chr(0xBB) . chr(0xBF));
             // FR-003: Added 課程狀態 column to distinguish active vs stopped courses.
             $this->putCsv($out, ['學生', '科目', '老師', '班型', '月堂數', '費率', '月學收', '繳費日期', '課程狀態', '收款狀態', '本月未收金額']);
-            foreach ($allRows as $c) {
-                $rate = $this->resolveRate($c);
-                $sessions = (int) $c->monthly_session_count;
-                $classTypeLabels = [
-                    'one_on_one' => '一對一', 'one_on_two' => '一對二',
-                    'one_on_three' => '一對三', 'tutoring' => '輔導', 'trial' => '試聽',
-                ];
+            foreach ($report['rows'] as $r) {
+                $classType = $r['row_type'] === 'package' ? '月結套裝' : ($classTypeLabels[$r['class_type']] ?? $r['class_type']);
                 $this->putCsv($out, [
-                    $c->student->name ?? 'Unknown',
-                    $c->displaySubjectName(),
-                    $c->teacher->Name ?? 'Unknown',
-                    $classTypeLabels[$c->ClassType ?? ''] ?? ($c->ClassType ?? ''),
-                    $sessions,
-                    $rate,
-                    round($sessions * $rate, 2),
-                    $c->PayDate ? substr($c->PayDate, 0, 10) : '',
-                    $c->Stop ? '已結課' : '進行中',
-                    !empty($exportStatus[(int) $c->ID]['legacy_paid']) ? '已收（舊資料）' : $statusLabels[$exportStatus[(int) $c->ID]['pay_status']],
-                    $exportStatus[(int) $c->ID]['outstanding_amount'],
+                    $r['student_name'],
+                    $r['subject'],
+                    $r['teacher_name'],
+                    $classType,
+                    $r['monthly_sessions'],
+                    $r['rate'],
+                    $r['monthly_tuition'],
+                    $r['last_paid_at'] ?? '',
+                    $r['is_stopped'] ? '已結課' : '進行中',
+                    !empty($r['legacy_paid']) ? '已收（舊資料）' : ($statusLabels[$r['pay_status']] ?? '—'),
+                    $r['outstanding_amount'],
                 ]);
             }
             fclose($out);
