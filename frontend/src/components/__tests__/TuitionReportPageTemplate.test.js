@@ -131,6 +131,53 @@ describe('TuitionReportPage on the template', () => {
     expect(wrapper.get('.tr-stats').text()).toContain('本月學收已收齊');
   });
 
+  // 2026-11-17 review of the page.
+  it('a slower earlier month never overwrites the month now on screen', async () => {
+    await mountPage();
+    let finishOld;
+    const row = (name) => payload({ data: [{ ...payload().data[0], student_name: name }] });
+    fetchMock.mockImplementationOnce(() => new Promise((res) => { finishOld = () => res(json(row('舊月份'))); }));
+    fetchMock.mockImplementationOnce(async () => json(row('新月份')));
+    await wrapper.get('button[aria-label="上一月"]').trigger('click');
+    await wrapper.get('button[aria-label="上一月"]').trigger('click');
+    await flushPromises();
+    finishOld();
+    await flushPromises();
+    expect(wrapper.get('.tr-table tbody').text()).toContain('新月份');
+    expect(wrapper.get('.tr-table tbody').text()).not.toContain('舊月份');
+    expect(wrapper.find('[data-testid="tuition-report-loading"]').exists()).toBe(false);
+  });
+
+  it('names the download from the UTF-8 file name, not the ASCII fallback that comes first', async () => {
+    await mountPage();
+    const utf8 = '當月學收_新店_202611.csv';
+    fetchMock.mockImplementationOnce(async () => ({ ok: true, status: 200, blob: async () => new Blob(['x']),
+      headers: new Headers({ 'Content-Disposition': `attachment; filename="Dang Yue Xue Shou _Xin Dian _202611.csv"; filename*=utf-8''${encodeURIComponent(utf8)}` }) }));
+    const saved = { create: URL.createObjectURL, revoke: URL.revokeObjectURL };
+    URL.createObjectURL = () => 'blob:x';
+    URL.revokeObjectURL = () => {};
+    let downloaded;
+    const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function () { downloaded = this.download; });
+    try {
+      await wrapper.findAll('button').find((b) => b.text().includes('匯出 CSV')).trigger('click');
+      await flushPromises();
+    } finally {
+      click.mockRestore();
+      URL.createObjectURL = saved.create;
+      URL.revokeObjectURL = saved.revoke;
+    }
+    expect(downloaded).toBe(utf8);
+  });
+
+  it('says there is nothing unpaid (not 無有效課程紀錄) when 只看未收 is empty but nothing was due', async () => {
+    await mountPage();
+    fetchMock.mockImplementation(async () => json(payload({ data: [], summary: { total_students: 1, total_sessions: 4, total_tuition: 0, total_due: 0, total_collected: 0, total_outstanding: 0, unpaid_students: 0 } })));
+    await wrapper.get('.tr-filter button[role="checkbox"]').trigger('click');
+    await flushPromises();
+    expect(wrapper.get('.tr-empty').text()).toContain('這個月沒有未收的課');
+    expect(wrapper.get('.tr-empty').text()).not.toContain('無有效課程紀錄');
+  });
+
   it('has no axe violations (colour contrast is checked in the browser spec)', async () => {
     await mountPage();
     const res = await axe.run(wrapper.element, { rules: { 'color-contrast': { enabled: false } } });
