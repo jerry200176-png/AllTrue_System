@@ -32,6 +32,7 @@
 
 <script setup>
 // 帳務中心重整 G2 (Founder 2026-11-16): the scoreboard that says whether each step of the rework worked.
+import { trackedFetch as fetch } from '../lib/loadingBar';
 import { onMounted, ref } from 'vue';
 import { Table, TableBody, TableCaption, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 

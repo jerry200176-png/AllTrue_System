@@ -43,6 +43,7 @@
 </template>
 
 <script setup>
+import { trackedFetch as fetch } from '../lib/loadingBar';
 import { ref, reactive, onMounted } from 'vue';
 import { officialBranchesFromApi, DEFAULT_BRANCHES as FALLBACK_BRANCHES } from '../lib/useBranches';
 

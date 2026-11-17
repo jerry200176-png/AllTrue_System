@@ -1,3 +1,4 @@
+import { trackedFetch as fetch } from './loadingBar';
 const API = '/api/v1';
 
 function getToken() {

@@ -280,6 +280,7 @@
 </template>
 
 <script setup>
+import { trackedFetch } from '../lib/loadingBar';
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
 import {
   casePriorityLabel,
@@ -567,7 +568,7 @@ const copyTuitionMessage = async (item) => {
   try {
     const token = getToken();
     const baseUrl = getBaseUrl();
-    const res = await fetch(`${baseUrl}/v1/parent/payment-message/${studentId}`, {
+    const res = await trackedFetch(`${baseUrl}/v1/parent/payment-message/${studentId}`, {
       headers: {
         Authorization: `Bearer ${token}`,
         Accept: 'application/json',
@@ -877,7 +878,7 @@ const syncNotifications = async (showAlert = false) => {
   try {
     const token = getToken();
     const baseUrl = getBaseUrl();
-    const res = await fetch(`${baseUrl}/v1/notifications/sync`, {
+    const res = await trackedFetch(`${baseUrl}/v1/notifications/sync`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -907,7 +908,7 @@ const markRead = async (notificationId) => {
   try {
     const token = getToken();
     const baseUrl = getBaseUrl();
-    const res = await fetch(`${baseUrl}/v1/notifications/${notificationId}/read`, {
+    const res = await trackedFetch(`${baseUrl}/v1/notifications/${notificationId}/read`, {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${token}`,
@@ -933,7 +934,7 @@ const markAllRead = async () => {
     if (typeFilter.value) body.type = typeFilter.value;
     if (includeResolved.value) body.include_resolved = true;
 
-    const res = await fetch(`${baseUrl}/v1/notifications/read-all`, {
+    const res = await trackedFetch(`${baseUrl}/v1/notifications/read-all`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -959,7 +960,7 @@ const clearResolved = async () => {
   try {
     const token = getToken();
     const baseUrl = getBaseUrl();
-    const res = await fetch(`${baseUrl}/v1/notifications/read-all`, {
+    const res = await trackedFetch(`${baseUrl}/v1/notifications/read-all`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

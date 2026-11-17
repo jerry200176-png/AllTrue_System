@@ -1,3 +1,4 @@
+import { trackedFetch as fetch } from './loadingBar';
 // Shared fetch for the super-admin key endpoints under /api/v1/admin/<resource>
 // (triage tokens: TriageTokenController; POP in-app agent keys: PopInappApiClientController).
 const API_BASE = (import.meta.env.VITE_API_BASE || '/api') + '/v1';

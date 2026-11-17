@@ -1,3 +1,4 @@
+import { trackedFetch as fetch } from './loadingBar';
 import { supabase } from '../supabase';
 import { normalizeUniversalScheduleErrorMessage } from './universalSchedulerErrorMessage.js';
 import { isDuplicateInterceptCode } from './universalSchedulerDuplicateCode.js';

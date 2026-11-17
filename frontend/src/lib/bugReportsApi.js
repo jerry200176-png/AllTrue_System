@@ -1,3 +1,4 @@
+import { trackedFetch as fetch } from './loadingBar';
 import { MAX_BUG_ATTACHMENTS } from './bugReportAttachments';
 
 const API = '/api/v1';
@@ -88,7 +89,7 @@ export async function fetchBugReports(branchId, filters = {}, perPage = 20, page
 /** F13: the reporter's own unfinished reports on this page (read-only; does not mark the inbox seen). */
 export async function fetchOpenReportsOnPage(branchId, pageKey) {
   const params = new URLSearchParams({ branch_id: branchId, page_key: pageKey });
-  const res = await fetch(`${API}/bugs/open-on-page?${params}`, { headers: headers() });
+  const res = await globalThis.fetch(`${API}/bugs/open-on-page?${params}`, { headers: headers() });
   return (await json(res)).data || [];
 }
 

@@ -110,6 +110,7 @@
 </template>
 
 <script setup>
+import { trackedFetch as fetch } from '../lib/loadingBar';
 import { computed, ref, onMounted, nextTick, watch } from 'vue';
 import { supabase } from '../supabase';
 import { branches as BRANCHES, loadBranches } from '../lib/useBranches';

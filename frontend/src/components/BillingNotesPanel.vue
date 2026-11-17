@@ -28,6 +28,7 @@
 </template>
 
 <script setup>
+import { trackedFetch as fetch } from '../lib/loadingBar';
 import { ref } from 'vue';
 import { getToken } from '../lib/bugReportsApi.js';
 import { humanizeApiErrorMessage } from '../lib/humanizeApiErrorMessage.js';

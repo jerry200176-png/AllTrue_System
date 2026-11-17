@@ -1,3 +1,4 @@
+import { trackedFetch as fetch } from './loadingBar';
 import { fetchAllPages } from './pagedFetchAll.js';
 import { sessionViewModelFromClassSessionsRow } from './classSessionsApi.js';
 import { filterEffectiveSessions, filterVisibleCancelledSessions } from './sessionOccurrenceFilter.js';

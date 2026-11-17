@@ -1,3 +1,4 @@
+import { trackedFetch as fetch } from './loadingBar';
 const API_BASE = (import.meta.env.VITE_API_BASE || '/api') + '/v1';
 
 function buildHeaders(token, extra = {}) {

@@ -37,6 +37,7 @@
  * @property {string} [subjectName]
  */
 
+import { trackedFetch as fetch } from './loadingBar';
 import { filterEffectiveSessions } from './sessionOccurrenceFilter.js';
 
 function hm(value) {

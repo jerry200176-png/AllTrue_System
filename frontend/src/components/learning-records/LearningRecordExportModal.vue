@@ -57,6 +57,7 @@
 
 <script setup>
 // Export-cards modal of LearningRecordsPage. Mounted with v-if, so each open starts from a fresh form.
+import { trackedFetch as fetch } from '../../lib/loadingBar';
 import { reactive, computed } from 'vue';
 import { supabase } from '../../supabase';
 import { exportStudentCards } from '../../lib/learningRecordExport';

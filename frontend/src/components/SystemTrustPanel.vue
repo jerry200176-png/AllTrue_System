@@ -57,6 +57,7 @@
 </template>
 
 <script setup>
+import { trackedFetch as fetch } from '../lib/loadingBar';
 import { computed, onMounted, ref, watch } from 'vue';
 
 const props = defineProps({

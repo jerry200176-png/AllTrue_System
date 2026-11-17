@@ -1526,6 +1526,7 @@
 </template>
 
 <script setup>
+import { trackedFetch as fetch } from '../lib/loadingBar';
 import { ref, onMounted, onBeforeUnmount, reactive, computed, watch, nextTick } from 'vue';
 import { safeHttpHref } from '../lib/safeHttpHref.js';
 import { deleteRecordConfirmText } from '../lib/learningRecordDeleteConfirm.js';
