@@ -21,6 +21,46 @@ class RescheduleOccupiedSlotTest extends TestCase
 {
     use RefreshDatabase;
 
+    public function test_inapp565_real_reschedule_endpoint_allows_staggered_third_seat_and_refuses_fourth(): void
+    {
+        \Carbon\Carbon::setTestNow(\Carbon\Carbon::parse('2026-09-01 10:00:00', 'Asia/Taipei'));
+        try {
+            $campus = \App\Models\Campus::factory()->create();
+            [$token, $id] = $this->seedCourse((int) $campus->id);
+            $course = StudentClass::findOrFail($id);
+            $course->forceFill(['ClassType' => 'one_on_three', 'Charge' => 8000, 'Pay' => 0])->save();
+            $peer = function () use ($course, $campus): StudentClass {
+                $student = Student::create(['name' => 'isolated-peak-' . uniqid(), 'CampusID' => $campus->id,
+                    'ClassID' => 1, 'enable' => 1, 'MDT' => now(), 'Notify_Token' => '']);
+                $other = $course->replicate(); $other->StudentID = $student->id; $other->save();
+                return $other;
+            };
+            $occupants = [];
+            foreach ([['18:00', '20:00'], ['18:00', '20:00'], ['20:00', '22:00']] as [$start, $end]) {
+                $occupants[] = ClassSession::create(['StudentClassID' => $peer()->ID, 'SessionDate' => '2026-09-03',
+                    'StartTime' => $start, 'EndTime' => $end, 'Status' => 'scheduled']);
+            }
+            $before = array_map(fn ($s) => $s->refresh()->getAttributes(), $occupants);
+            $moving = ClassSession::create(['StudentClassID' => $id, 'SessionDate' => '2026-09-02',
+                'StartTime' => '14:00', 'EndTime' => '16:00', 'Status' => 'scheduled']);
+            $payload = ['student_class_id' => $id, 'old_date' => '2026-09-02', 'old_start_time' => '14:00',
+                'new_date' => '2026-09-03', 'start_time' => '19:00', 'end_time' => '21:00', 'ensure_schedule_exception' => true];
+            $this->postReschedule($token, $payload)->assertOk();
+            $moving->refresh();
+            $this->assertSame('2026-09-03', substr((string) $moving->SessionDate, 0, 10));
+            $this->assertSame('19:00', substr((string) $moving->StartTime, 0, 5));
+            $this->assertSame($before, array_map(fn ($s) => $s->refresh()->getAttributes(), $occupants));
+            $fourth = $peer();
+            $blocked = ClassSession::create(['StudentClassID' => $fourth->ID, 'SessionDate' => '2026-09-02',
+                'StartTime' => '12:00', 'EndTime' => '14:00', 'Status' => 'scheduled']);
+            $this->postReschedule($token, array_replace($payload, ['student_class_id' => $fourth->ID, 'old_start_time' => '12:00']))
+                ->assertStatus(409)->assertJsonPath('conflicts.0.type', 'teacher_capacity');
+            $this->assertSame('2026-09-02', substr((string) $blocked->fresh()->SessionDate, 0, 10));
+            $this->assertDatabaseCount('session_deduction_ledger', 0);
+            $this->assertDatabaseCount('Payment', 0);
+        } finally { \Carbon\Carbon::setTestNow(); }
+    }
+
     public function test_reschedule_onto_occupied_live_slot_returns_422_not_500(): void
     {
         [$token, $courseId] = $this->seedCourse();
