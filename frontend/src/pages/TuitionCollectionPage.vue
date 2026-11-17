@@ -789,7 +789,7 @@ const listFilter = ref({ key: 'todo' }); // a new object per deep link, so the s
 const ledgerNavStudentId = ref(null);
 let documentLookupOpener = null;
 function stepLedger(dir) {
-  const next = billList.value?.neighbor(ledgerNavStudentId.value, dir);
+  const next = (activeAccountingTab.value === 'roster' ? roster : billList).value?.neighbor(ledgerNavStudentId.value, dir);
   if (next) openLedgerForStudent(next);
 }
 // F-2: the row button opens the drawer on the contract the action is about, with that step already open.
@@ -1347,7 +1347,7 @@ watch(ledgerOpen, async (open) => {
   ledgerNavStudentId.value = null;
   await nextTick();
   if (opener?.isConnected) { opener.focus(); return; }
-  document.querySelector(`[data-testid^="bill-name-"][data-student="${id}"]`)?.focus();
+  document.querySelector(`[data-testid^="bill-name-"][data-student="${id}"], [data-testid^="roster-name-"][data-student="${id}"]`)?.focus();
 });
 
 function openLedgerForClass(row) {

@@ -50,7 +50,7 @@
           <TableBody v-for="s in visible" :key="s.student_id" :data-testid="`roster-student-${s.student_id}`">
             <TableRow v-for="(c, i) in s.courses" :key="c.course_id" class="tw:hover:bg-muted/60" :data-testid="`roster-course-${c.course_id}`">
               <TableCell v-if="i === 0" :rowspan="s.courses.length" :class="[t.name, 'tw:pl-5 tw:align-top']">
-                <button type="button" class="tw:cursor-pointer tw:border-0 tw:bg-transparent tw:p-0 tw:text-left tw:font-semibold tw:text-foreground tw:underline-offset-4 tw:hover:underline" @click="open(s, c, null)">{{ s.student_name }}</button>
+                <button type="button" class="tw:cursor-pointer tw:border-0 tw:bg-transparent tw:p-0 tw:text-left tw:font-semibold tw:text-foreground tw:underline-offset-4 tw:hover:underline" :data-testid="`roster-name-${s.student_id}`" :data-student="s.student_id" @click="open(s, c, null)">{{ s.student_name }}</button>
                 <span :class="t.sub">{{ s.school }}</span>
                 <span v-if="s.outstanding > 0" :class="[t.sub, 'tw:text-[var(--ds-danger-text)]']">共欠 {{ money(s.outstanding) }}</span>
               </TableCell>
@@ -130,6 +130,7 @@ function state(c) {
   // review_required can still carry a balance (BillingPayableResolver::courseStatus); the warning must not hide behind 未繳.
   if (c.money.status === 'review_required') return { tone: 'warning', label: c.money.outstanding > 0 ? `要核對（未繳 ${money(c.money.outstanding)}）` : '要核對' };
   if (c.money.outstanding > 0) return { tone: 'danger', label: `未繳 ${money(c.money.outstanding)}` };
+  if (c.money.legacy_unverified) return { tone: 'neutral', label: '舊資料要核對' }; // only the old Paid mark, no bill or payment (ledger: 需核對)
   if (['paid', 'free'].includes(c.money.status)) return { tone: 'success', label: '已收齊' };
   return { tone: 'neutral', label: '還沒有帳單' };
 }
@@ -194,5 +195,11 @@ async function load() {
 }
 // A new month or campus clears the old rows first, so they can't be acted on or exported under the new heading.
 watch([campusId, year, month], () => { students.value = []; summary.value = EMPTY_SUMMARY; load(); }, { immediate: true });
-defineExpose({ reload: load, loading });
+// Adjacent student on screen (the ledger drawer's ↑/↓), like BillList.neighbor: the next/previous student's first course.
+function neighbor(studentId, dir) {
+  const i = visible.value.findIndex((s) => s.student_id === Number(studentId));
+  const s = i >= 0 ? visible.value[i + dir] : null;
+  return s ? { student_id: s.student_id, first_class_id: s.courses[0]?.course_id ?? null } : null;
+}
+defineExpose({ reload: load, loading, neighbor });
 </script>

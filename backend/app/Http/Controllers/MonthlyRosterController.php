@@ -106,7 +106,7 @@ final class MonthlyRosterController extends Controller
         // An older bill that may still owe is only a candidate: its stored Status can lag the Payment rows, which are the
         // truth (Founder Q2/R28), so such a course stays only when its verdict really has money outstanding.
         $owing = (clone $bills)->whereRaw(Invoice::mayOweSql('Invoice'))->pluck('StudentClassID')->map(fn ($id) => (int) $id);
-        $courses = StudentClass::with(['student', 'teacher', 'pricingAmendments'])->whereIn('StudentID', $studentIds)
+        $courses = StudentClass::with(['student', 'teacher', 'pricingAmendments', 'coursePackage'])->whereIn('StudentID', $studentIds)
             ->whereIn('ID', $listed->merge($owing)->unique()->values())
             ->get();
         $verdicts = $this->verdicts->forCourses($courses);
@@ -153,6 +153,8 @@ final class MonthlyRosterController extends Controller
                     'status' => $v?->status, 'outstanding' => $v->outstanding ?? 0, 'current_period' => $v?->currentPeriod,
                     // This month's amount for a monthly course; not invoiced yet = the month-end estimate.
                     'month_total' => $month['total'] ?? null, 'month_invoiced' => !empty($month['invoice_ids'] ?? []),
+                    // Old data: only the Paid mark says paid (no bill, no payment) — the student ledger shows 需核對; a trial fee recorded by date is the exception.
+                    'legacy_unverified' => $v?->source === 'legacy_flag' && !$c->isTrialFeeRecordedByDate(),
                 ],
                 'paid_this_month' => $payments,
                 'pending_reports' => (int) ($pending[$id] ?? 0),

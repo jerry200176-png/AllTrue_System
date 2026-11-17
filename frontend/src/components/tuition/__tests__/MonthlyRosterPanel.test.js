@@ -154,3 +154,15 @@ it('switching month clears the old rows and disables export until the new month 
   await flushPromises();
   expect(wrapper.find('[data-testid="roster-student-1"]').exists()).toBe(true);
 });
+
+it('a paid mark with no bill says 舊資料要核對, and the drawer can step to the next student on screen', async () => {
+  const legacy = JSON.parse(JSON.stringify(roster));
+  legacy.data[1].courses[0].money = { status: 'paid', outstanding: 0, current_period: null, month_total: null, month_invoiced: false, legacy_unverified: true };
+  mockFetch.mockResolvedValue(res(legacy));
+  wrapper = mountIt();
+  await flushPromises();
+  expect(wrapper.find('[data-testid="roster-course-21"]').text()).toContain('舊資料要核對');
+  expect(wrapper.vm.neighbor(1, 1)).toEqual({ student_id: 2, first_class_id: 21 });
+  expect(wrapper.vm.neighbor(2, 1)).toBeNull();
+  expect(wrapper.find('[data-testid="roster-name-1"]').attributes('data-student')).toBe('1');
+});
