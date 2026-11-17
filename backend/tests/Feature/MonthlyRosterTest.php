@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\AuthToken;
 use App\Models\ClassSession;
+use App\Models\CoursePackage;
 use App\Models\Invoice;
 use App\Models\Payment;
 use App\Models\Student;
@@ -214,6 +215,90 @@ final class MonthlyRosterTest extends TestCase
         $this->flushHeaders()->withToken($this->user('S'))->getJson($url)->assertStatus(422);
         $this->flushHeaders()->withToken($this->user('S'))->getJson($url . '&branch_id=2')->assertOk()->assertJsonPath('data.0.courses.0.course_id', $elsewhere->ID);
         $this->flushHeaders()->withToken($this->director(1))->getJson('/api/v1/accounting/monthly-roster?year=2026&month=13')->assertStatus(422);
+    }
+
+    public function test_tuition_counts_only_the_lessons_a_bill_charges(): void
+    {
+        // 到班 + 遲到 count; 值班, 請假, 試聽有到, 輔導有到 and lessons still to come do not (Jerry 2026-11-18).
+        $course = $this->course($this->student(1));
+        foreach ([['03', 'attended'], ['04', 'late'], ['05', 'duty'], ['06', 'leave'], ['07', 'trial'], ['08', 'tutoring_attend'], ['24', 'scheduled']] as [$day, $status]) {
+            $this->lesson($course, "2026-11-$day", $status);
+        }
+        // A 輔導 course owes nothing (#325), even for a lesson stored as attended.
+        $tutoring = $this->course($this->student(1), ['ClassType' => 'tutoring']);
+        $this->lesson($tutoring, '2026-11-10', 'attended');
+
+        $res = $this->withToken($this->director(1))->getJson('/api/v1/accounting/monthly-roster?year=2026&month=11')->assertOk();
+
+        $rows = collect($res->json('data'))->flatMap(fn ($s) => $s['courses'])->keyBy('course_id');
+        $this->assertSame([2, 3000], [$rows[$course->ID]['tuition_lessons'], $rows[$course->ID]['tuition']]);
+        $this->assertSame([0, 0], [$rows[$tutoring->ID]['tuition_lessons'], $rows[$tutoring->ID]['tuition']]);
+        $this->assertSame([3000, 0], [$res->json('summary.tuition_total'), $res->json('summary.tuition_unpriced')]);
+    }
+
+    /**
+     * Until the old 當月學收 report is removed: on lessons stored as attended or late (no sign-in, no price change), the
+     * roster's 學收合計 equals the report's total — course rate, a course priced by its total, a monthly contract's
+     * dates (#2451) and a monthly package's rate.
+     */
+    public function test_tuition_total_equals_the_old_report_on_the_same_lessons(): void
+    {
+        $byRate = $this->course($this->student(1));
+        $this->lesson($byRate, '2026-11-03', 'attended');
+        $this->lesson($byRate, '2026-11-10', 'late');
+        $byTotal = $this->course($this->student(1), ['Rate' => 0, 'Charge' => 6000, 'SessionCount' => 4]);
+        $this->lesson($byTotal, '2026-11-04', 'attended');
+        $monthly = $this->course($this->student(1), ['ScheduleMode' => 'date', 'StartDate' => '2026-11-10', 'EndDate' => '2026-11-30', 'SessionCount' => 0]);
+        $this->lesson($monthly, '2026-11-02', 'attended'); // before the contract: not this contract's lesson
+        $this->lesson($monthly, '2026-11-16', 'attended');
+        $member = $this->student(1);
+        $package = CoursePackage::create(['student_id' => $member->id, 'campus_id' => 1, 'name' => 'P', 'billing_mode' => CoursePackage::BILLING_MODE_MONTHLY,
+            'rate' => 700, 'rate_unit' => 'session', 'class_type' => 'one_on_one', 'paid' => false, 'stop' => false, 'enabled' => true,
+            'total_sessions' => 0, 'remaining_sessions' => 0, 'used_sessions' => 0]);
+        $inPackage = $this->course($member, ['PackageID' => $package->id]);
+        $this->lesson($inPackage, '2026-11-05', 'attended');
+        $this->lesson($inPackage, '2026-11-12', 'attended');
+        $token = $this->director(1);
+
+        $res = $this->withToken($token)->getJson('/api/v1/accounting/monthly-roster?year=2026&month=11')->assertOk();
+        $old = $this->withToken($token)->getJson('/api/v1/finance/branch-monthly-tuition?branch_id=1&year=2026&month=11')->assertOk();
+
+        $rows = collect($res->json('data'))->flatMap(fn ($s) => $s['courses'])->keyBy('course_id');
+        $this->assertSame([3000, 1500, 1500, 1400], [$rows[$byRate->ID]['tuition'], $rows[$byTotal->ID]['tuition'], $rows[$monthly->ID]['tuition'], $rows[$inPackage->ID]['tuition']]);
+        $this->assertSame(7400, $res->json('summary.tuition_total'));
+        $this->assertEquals($old->json('summary.total_tuition'), $res->json('summary.tuition_total'));
+    }
+
+    public function test_tuition_prices_an_hourly_package_by_length_and_a_course_priced_by_its_total_without_rounding_each_lesson(): void
+    {
+        // A monthly package priced by the hour, as the monthly bill prices it: one 2-hour lesson at 700/hour = 1,400.
+        $member = $this->student(1);
+        $package = CoursePackage::create(['student_id' => $member->id, 'campus_id' => 1, 'name' => 'H', 'billing_mode' => CoursePackage::BILLING_MODE_MONTHLY,
+            'rate' => 700, 'rate_unit' => 'hour', 'class_type' => 'one_on_one', 'paid' => false, 'stop' => false, 'enabled' => true,
+            'total_sessions' => 0, 'remaining_sessions' => 0, 'used_sessions' => 0]);
+        $hourly = $this->course($member, ['PackageID' => $package->id]);
+        $this->lesson($hourly, '2026-11-05', 'attended'); // 10:00-12:00
+        // A member's own price amendment wins from its date, as on the bill: 11-12 at 900 per lesson.
+        DB::table('student_class_pricing_amendments')->insert(['student_class_id' => $hourly->ID, 'effective_from' => '2026-11-10', 'rate' => 900,
+            'rate_unit' => 'session', 'source_reference' => 'roster-test', 'reason' => 'test', 'created_at' => now()]);
+        $this->lesson($hourly, '2026-11-12', 'attended');
+        // 10,000 for 12 lessons, 3 held: 2,500 (rounding 833.33 per lesson first would give 2,499).
+        $byTotal = $this->course($this->student(1), ['Rate' => 0, 'Charge' => 10000, 'SessionCount' => 12]);
+        foreach (['03', '10', '17'] as $day) {
+            $this->lesson($byTotal, "2026-11-$day", 'attended');
+        }
+
+        $res = $this->withToken($this->director(1))->getJson('/api/v1/accounting/monthly-roster?year=2026&month=11')->assertOk();
+
+        $rows = collect($res->json('data'))->flatMap(fn ($s) => $s['courses'])->keyBy('course_id');
+        $this->assertSame([2, 2300], [$rows[$hourly->ID]['tuition_lessons'], $rows[$hourly->ID]['tuition']]); // 2h x 700 + 900
+        $this->assertSame([3, 2500], [$rows[$byTotal->ID]['tuition_lessons'], $rows[$byTotal->ID]['tuition']]);
+        $this->assertSame(4800, $res->json('summary.tuition_total'));
+    }
+
+    private function lesson(StudentClass $course, string $date, string $status): void
+    {
+        ClassSession::create(['StudentClassID' => $course->ID, 'SessionDate' => $date, 'StartTime' => '10:00', 'EndTime' => '12:00', 'Status' => $status]);
     }
 
     private function student(int $campusId): Student
