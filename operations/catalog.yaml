@@ -1,6 +1,6 @@
 # AllTrue Production Operations Catalog
 # Authority: ADR-POP-005 | Phase 2: approved catalog operations execute via Pi-local POP
-version: 17
+version: 18
 
 operations:
   reviewed-legacy-reversal-restatement:
@@ -622,6 +622,29 @@ operations:
     parameter_keys: [campus_id, decision_reference, expected_digest]
     tags: [repair, session, scheduling, td076]
     notes: R-2. Dry-run first (expected_digest empty) returns an ids-only digest-pinned manifest; execute needs that exact digest. Taught past occurrences whose evidence teachers disagree are quarantined, never pinned. Inverse removes exactly the created pins. Pi-local POP only.
+
+  inapp-report-followup-comment:
+    lifecycle: active
+    domain: support
+    business_owner: director-support
+    technical_owner: platform-support
+    approver_roles: [super_admin]
+    approval_policy: founder-standing-inapp-lifecycle
+    founder_approval_required: false
+    runbook: docs/pop/adr/ADR-POP-015-standing-policy-inapp-lifecycle.md
+    alert_group: LINE:ops-support
+    escalation_policy: support-escalation
+    capabilities: [plan, dry_run, verify, audit]
+    risk: medium
+    reversible: false
+    transaction_required: true
+    verification_required: true
+    approval_required: true
+    execution_authority: pop-pi-local
+    blast_radius: one_substantive_public_reply_on_one_open_report
+    strategy_class: App\Operations\Strategies\InappReportFollowupCommentStrategy
+    parameter_keys: [bug_id, campus_id, expected_status, github_issue_url, public_reply, writeback_proof, request_id]
+    notes: Founder 2026-11-17 requested substantive replies without manual relay (#5117/#5151). One caller-written reply up to600 characters on triaged/in_progress, fresh complete source proof and trusted issue link, current explicit campus, support attribution, duplicate refusal. Status and disposition never change; no resolution/closure, reporter acceptance or business-data action. Existing separated approval/executor and kill switches remain.
 
   inapp-report-progress-reply:
     lifecycle: active

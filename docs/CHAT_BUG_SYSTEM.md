@@ -211,6 +211,8 @@ This metadata only preserves GitHub tracking ownership. It does not resolve the 
 
 **相關防再犯**：`docs/AI_REGRESSION_LESSONS.md` §R51（分診前必查附件）、§R53（上線後必回 in-app）。
 
+**2026-11-17 實質 follow-up 補充（#5117）**：原生 POP `inapp-report-followup-comment` 在部署 catalog18／policy7 且 requester 校區有效後，可對處理中的原回報實質答覆／追問，狀態不變；它與固定罐頭進度回覆不同，不使用正式 SSH。能力、先決條件與驗證以 [DELIVERY_LIFECYCLE 自動化表](sop/DELIVERY_LIFECYCLE.md#in-app-自動化對照表) 為準。未釐清不標已修好；發布後 resolve 與回報者驗收仍用原路徑。
+
 ### 3.8 公開留言寫作：白話優先（給老師／主任）
 
 **權威規則**：本節。
