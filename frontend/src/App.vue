@@ -1769,7 +1769,8 @@ function applyDeepLinkFromUrl() {
       if (safe) currentBranch.value = safe;
     }
     const authorizedPages = authorizedNavigationPages();
-    const requestedPage = deepLinkTargetPage(window.location.search);
+    const linkedPage = deepLinkTargetPage(window.location.search);
+    const requestedPage = MOVED_PAGES[linkedPage]?.page ?? linkedPage; // a moved page asks for the page it moved to
     if (requestedPage && !authorizedPages.has(requestedPage)) {
       const ctx = routeContextSwitch(requestedPage);
       if (ctx.action === 'switch') {
