@@ -302,6 +302,35 @@ class ClassSessionUpdateTest extends TestCase
             ->assertForbidden();
     }
 
+    public function test_a_teacher_marks_only_lessons_they_teach_or_cover(): void
+    {
+        $dirToken = $this->createDirectorToken([1], 'dir-own-cs@example.com');
+        $ownerId = $this->createTeacher(1, 'teacher-own-cs@example.com');
+        $otherId = $this->createTeacher(1, 'teacher-other-cs@example.com');
+        $student = $this->createStudent(1, '授課限制CS學生');
+        $courseId = $this->createCourseWithSessions($dirToken, $student->id, $ownerId);
+        $session = ClassSession::where('StudentClassID', $courseId)->first();
+        $before = $session->only(['Status', 'StartTime', 'EndTime', 'Note']);
+
+        // Same campus, not the course's teacher: neither attendance nor a same-status time edit goes through.
+        $other = $this->createTeacherToken($otherId);
+        $this->patchSession($other, $session->id, ['status' => 'attended'])->assertForbidden();
+        $this->patchSession($other, $session->id, ['status' => $before['Status'], 'start_time' => '07:00', 'note' => 'x'])->assertForbidden();
+        $this->assertSame($before, $session->fresh()->only(['Status', 'StartTime', 'EndTime', 'Note']));
+
+        // Once they cover a lesson of it (a substitute schedule row), they can mark it.
+        $assignment = DB::table('schedules')->insertGetId([
+            'student_id' => $student->id, 'student_course_id' => $courseId, 'teacher_id' => $ownerId, 'branch_id' => 1,
+            'schedule_date' => substr((string) $session->SessionDate, 0, 10), 'day_of_week' => 1, 'subject' => 'synthetic',
+            'start_time' => '19:00', 'end_time' => '21:00', 'duration_hours' => 2, 'class_type' => 'one_on_one',
+            'status' => 'scheduled', 'type' => 'normal', 'deduction' => 0,
+        ]);
+        $row = (array) DB::table('schedules')->where('id', $assignment)->first();
+        unset($row['id']);
+        DB::table('schedules')->insert(array_replace($row, ['teacher_id' => $otherId, 'original_schedule_id' => $assignment]));
+        $this->patchSession($other, $session->id, ['status' => 'attended'])->assertOk();
+    }
+
     public function test_idempotent_same_status(): void
     {
         [$token, $courseId, $session] = $this->setupCourseWithSession('attended');
