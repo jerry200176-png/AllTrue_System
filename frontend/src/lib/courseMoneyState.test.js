@@ -286,4 +286,9 @@ console.log('courseMoneyState passed');
   // A review reason never proves a bill is extra, so a hint may mention voiding only to say not to (Codex #4836).
   for (const [code, fix] of Object.entries(M.REVIEW_REASON_FIX)) assert.ok(!fix.text.includes('作廢') || /不要[先直接自己]*作廢/.test(fix.text), `${code} tells the director to void`);
   assert.deepEqual(M.reviewReasonFixes(null), []);
+  // 帳務重整 §3: a step that needs HQ comes with the 回報給總部 button, and no hint just says 「請聯絡總部」.
+  for (const [code, fix] of Object.entries(M.REVIEW_REASON_FIX)) {
+    assert.ok(!fix.text.includes('請聯絡總部'), `${code} still says 請聯絡總部`);
+    assert.equal(Boolean(fix.hq), fix.text.includes('回報給總部'), `${code}: hq flag and text disagree`);
+  }
 }
