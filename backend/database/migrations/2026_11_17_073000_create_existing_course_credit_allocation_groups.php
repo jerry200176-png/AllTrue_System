@@ -39,10 +39,7 @@ return new class extends Migration
 
     public function down(): void
     {
-        Schema::table('contract_subject_credit_transfers', function (Blueprint $t) {
-            $t->dropForeign('subject_credit_allocation_group_fk');
-            $t->dropColumn('allocation_group_id');
-        });
-        Schema::dropIfExists('existing_course_credit_allocation_groups');
+        // Code rollback retains audit lineage. Even an empty check could race a new group before DDL.
+        throw new \RuntimeException('existing_credit_audit_storage_is_retained');
     }
 };

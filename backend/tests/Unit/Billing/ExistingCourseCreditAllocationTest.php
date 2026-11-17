@@ -98,6 +98,12 @@ class ExistingCourseCreditAllocationTest extends TestCase
                 self::assertSame($purchased * $price, $plan['source_amount'] + array_sum(array_column($plan['allocations'], 'amount')));
                 self::assertSame($used, $plan['source_used']);
                 self::assertSame([$a, intdiv($b, 2)], array_column($plan['allocations'], 'used'));
+                $byId = array_column($plan['allocations'], null, 'id');
+                foreach ($targets as $target) {
+                    self::assertArrayHasKey($target['id'], $byId);
+                    self::assertSame([$target['sessions'], $target['used'], $target['charge']],
+                        [$byId[$target['id']]['sessions'], $byId[$target['id']]['used'], $byId[$target['id']]['amount']]);
+                }
                 self::assertGreaterThanOrEqual($reserved - count($release), $plan['source_remaining']);
                 self::assertSame($this->targets($a, $b, $price), $targets);
                 self::assertSame($plan, ExistingCourseCreditAllocation::plan($purchased, $used, $reserved, (string) $price, 90,

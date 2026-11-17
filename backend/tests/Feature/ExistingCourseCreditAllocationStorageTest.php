@@ -30,6 +30,14 @@ class ExistingCourseCreditAllocationStorageTest extends TestCase
     public function test_additive_storage_preserves_a_preexisting_transfer_and_its_native_replay_and_reverse(): void
     {
         Carbon::setTestNow(Carbon::parse('2026-09-30 10:00:00', 'Asia/Taipei'));
+        // Build the genuine pre-migration shape only in this isolated test; production down() retains audit schema.
+        $this->assertStringStartsWith('AllTrue_test_', DB::connection()->getDatabaseName());
+        $this->assertDatabaseCount('existing_course_credit_allocation_groups', 0);
+        Schema::table('contract_subject_credit_transfers', function (Blueprint $t): void {
+            $t->dropForeign('subject_credit_allocation_group_fk');
+            $t->dropColumn('allocation_group_id');
+        });
+        Schema::drop('existing_course_credit_allocation_groups');
         [$token, $source, $target] = $this->fixture();
         $url = "/api/v1/student-classes/{$source->ID}/subject-credit-transfer";
         $input = ['target_course_id' => (int) $target->ID, 'sessions' => 2, 'reason' => 'synthetic legacy transfer'];
@@ -38,10 +46,7 @@ class ExistingCourseCreditAllocationStorageTest extends TestCase
         $created = $this->withToken($token)->postJson($url, $input)->assertCreated();
         $transferId = $created->json('transfer.id');
 
-        // Simulate the schema before this additive migration only in the native isolated database.
-        $this->assertStringStartsWith('AllTrue_test_', DB::connection()->getDatabaseName());
         $migration = require database_path('migrations/2026_11_17_073000_create_existing_course_credit_allocation_groups.php');
-        $migration->down();
         $this->assertFalse(ExistingCourseCreditAllocationGroup::storageReady());
         $business = $this->businessSnapshot();
         $audit = (array) DB::table('contract_subject_credit_transfers')->where('id', $transferId)->first();
@@ -92,5 +97,50 @@ class ExistingCourseCreditAllocationStorageTest extends TestCase
             });
         }
         $this->assertTrue(ExistingCourseCreditAllocationGroup::storageReady());
+    }
+
+    public function test_schema_rollback_is_also_refused_while_the_audit_table_is_empty(): void
+    {
+        $this->assertDatabaseCount('existing_course_credit_allocation_groups', 0);
+        $this->assertSchemaRollbackRefused();
+    }
+
+    public function test_schema_rollback_cannot_erase_an_existing_audit_group_or_its_child_lineage(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-09-30 10:00:00', 'Asia/Taipei'));
+        [$token, $source, $target] = $this->fixture();
+        $url = "/api/v1/student-classes/{$source->ID}/subject-credit-transfer";
+        $input = ['target_course_id' => (int) $target->ID, 'sessions' => 2, 'reason' => 'synthetic rollback audit'];
+        $input += ['state_hash' => $this->withToken($token)->postJson($url . '/preview', $input)->assertOk()->json('state_hash'),
+            'idempotency_key' => 'storage-rollback-transfer'];
+        $created = $this->withToken($token)->postJson($url, $input)->assertCreated();
+        $child = DB::table('contract_subject_credit_transfers')->where('id', $created->json('transfer.id'))->first();
+        $group = ExistingCourseCreditAllocationGroup::create([
+            'operation_key' => 'synthetic-retained-audit', 'request_fingerprint' => str_repeat('a', 64),
+            'campus_id' => $child->campus_id, 'student_id' => $child->student_id,
+            'source_student_class_id' => $child->source_student_class_id, 'source_invoice_id' => $child->source_invoice_id,
+            'created_by' => $child->created_by, 'sessions' => 2, 'amount' => 3000, 'reason' => 'synthetic retained history',
+            'source_before' => [], 'source_after' => [], 'targets_before' => [], 'targets_after' => [], 'released_sessions' => [],
+        ]);
+        DB::table('contract_subject_credit_transfers')->where('id', $child->id)->update(['allocation_group_id' => $group->id]);
+        $this->assertSchemaRollbackRefused();
+    }
+
+    private function assertSchemaRollbackRefused(): void
+    {
+        $this->assertStringStartsWith('AllTrue_test_', DB::connection()->getDatabaseName());
+        $before = ['business' => $this->businessSnapshot()];
+        foreach (['existing_course_credit_allocation_groups', 'contract_subject_credit_transfers'] as $table) {
+            $before[$table] = [Schema::getColumnListing($table), Schema::getForeignKeys($table), DB::table($table)->orderBy('id')->get()->toJson()];
+        }
+        $migration = require database_path('migrations/2026_11_17_073000_create_existing_course_credit_allocation_groups.php');
+        $refusal = null;
+        try { $migration->down(); } catch (\RuntimeException $e) { $refusal = $e; }
+        $this->assertInstanceOf(\RuntimeException::class, $refusal, 'Audit schema rollback must refuse before any DDL.');
+        $this->assertSame('existing_credit_audit_storage_is_retained', $refusal->getMessage());
+        $this->assertSame($before['business'], $this->businessSnapshot());
+        foreach (['existing_course_credit_allocation_groups', 'contract_subject_credit_transfers'] as $table) {
+            $this->assertSame($before[$table], [Schema::getColumnListing($table), Schema::getForeignKeys($table), DB::table($table)->orderBy('id')->get()->toJson()]);
+        }
     }
 }
