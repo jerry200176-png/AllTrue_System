@@ -5,6 +5,8 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
+import { EventEmitter } from 'node:events';
+import { privateAcceptance, observePrivateLoginStatus } from './privateDirectorAcceptance.js';
 
 for (const [profile, configName] of [
   ['director', 'playwright.director-acceptance.config.js'],
@@ -16,21 +18,24 @@ test(`private ${profile} capture excludes a synthetic DOM sentinel and cleans fa
   const config = new URL('../../' + configName, import.meta.url).href;
   const playwright = new URL('../../node_modules/@playwright/test/index.mjs', import.meta.url).href;
   const sentinel = 'SYNTHETIC_PRIVATE_DOM_' + process.pid;
+  const privateHelper = new URL('./privateDirectorAcceptance.js', import.meta.url).href;
   let report;
   try {
     writeFileSync(join(scratch, 'probe.spec.mjs'), `import { test } from ${JSON.stringify(playwright)};
 import { writeFileSync } from 'node:fs';
-test('synthetic private failure', async ({ page }) => {
+import { privateAcceptance } from ${JSON.stringify(privateHelper)};
+test('synthetic private failure', async ({ page }) => privateAcceptance(async diagnostic => {
+  diagnostic.stage('choose-student'); diagnostic.loginStatus(429);
   await page.setContent('<main>' + process.env.DIRECTOR_PRIVACY_SENTINEL + '</main>');
   writeFileSync(process.env.DIRECTOR_PRIVACY_EXECUTION_MARKER, 'synthetic-dom-ready');
-  throw new Error('UNVERIFIED: synthetic private failure.');
-});`);
+  await page.getByText(process.env.DIRECTOR_PRIVACY_SENTINEL + '_missing', { exact: true }).click({ timeout: 100 });
+}));`);
     writeFileSync(join(scratch, 'probe-reporter.cjs'), `const fs = require('node:fs');
 module.exports = class {
   onBegin(config) { this.output = config.projects[0].outputDir; this.attachments = []; this.executions = []; }
   onTestEnd(test, result) {
     this.executions.push({ status: result.status, errorCount: result.errors.length,
-      expectedFailure: result.errors.some(error => ['UNVERIFIED: synthetic private failure.', 'Error: UNVERIFIED: synthetic private failure.'].includes(error.message)) });
+      expectedFailure: result.errors.some(error => ['UNVERIFIED: director path acceptance did not complete; stage=choose-student; login_http=429; private details suppressed.', 'Error: UNVERIFIED: director path acceptance did not complete; stage=choose-student; login_http=429; private details suppressed.'].includes(error.message)) });
     for (const attachment of result.attachments) {
       const body = attachment.path && fs.existsSync(attachment.path) ? fs.readFileSync(attachment.path) : attachment.body;
       this.attachments.push({ name: attachment.name, private: Boolean(body && body.includes(process.env.DIRECTOR_PRIVACY_SENTINEL)), path: attachment.path });
@@ -88,4 +93,67 @@ console.log(JSON.stringify({trace:config.use.trace,screenshot:config.use.screens
   { env, encoding: 'utf8', timeout: 10_000 });
   assert.equal(result.status, 0);
   assert.deepEqual(JSON.parse(result.stdout), { trace: 'on-first-retry', screenshot: 'only-on-failure', video: 'retain-on-failure' });
+});
+
+
+test('private director failure exposes a fixed stage and numeric status, never original error or cause', async () => {
+  let executed = false;
+  await assert.rejects(privateAcceptance(async d => {
+    executed = true; d.stage('calendar-original'); d.loginStatus(200);
+    throw new Error('SYNTHETIC_PRIVATE_ERROR_ACCOUNT_TOKEN_URL');
+  }), error => {
+    assert.match(error.message, /stage=calendar-original; login_http=200/);
+    assert.equal(error.stack.includes('SYNTHETIC_PRIVATE_ERROR_ACCOUNT_TOKEN_URL'), false);
+    assert.equal(error.cause, undefined); return true;
+  });
+  assert.equal(executed, true);
+});
+
+test('untrusted diagnostic values fail closed without string coercion or private data', async () => {
+  for (const value of ['SYNTHETIC_PRIVATE_STAGE', {}, 200.5, 99, 600, NaN, Infinity, null]) {
+    await assert.rejects(privateAcceptance(async d => { d.stage(value); d.loginStatus(value); throw new Error('SYNTHETIC_PRIVATE_ERROR'); }),
+      error => { assert.match(error.message, /stage=unknown; login_http=unknown/); assert.equal(error.message.includes('SYNTHETIC_PRIVATE'), false); return true; });
+  }
+});
+
+test('successful private work retains its return value and emits no failure', async () => {
+  assert.equal(await privateAcceptance(async d => { d.stage('verify-identity'); return 42; }), 42);
+});
+
+test('login observer accepts only the exact origin, path and POST and removes itself on success', async () => {
+  const page = new EventEmitter(), statuses = [];
+  const origin = 'https://synthetic.test';
+  const response = (url, method, status) => ({ url: () => url, request: () => ({ method: () => method }), status: () => status,
+    body() { throw new Error('must not read a response body'); } });
+  const result = await observePrivateLoginStatus(page, origin, { loginStatus: status => statuses.push(status) }, async () => {
+    await Promise.resolve(); // real login awaits navigation before a response arrives
+    assert.equal(page.listenerCount('response'), 1);
+    for (const [url, method] of [
+      ['https://foreign.test/api/v1/auth/login', 'POST'],
+      [origin + '/api/v1/auth/logout', 'POST'],
+      [origin + '/api/v1/auth/login', 'GET'],
+    ]) {
+      page.emit('response', response(url, method, 418));
+      assert.deepEqual(statuses, [], `foreign event ignored: ${url} ${method}`);
+    }
+    page.emit('response', response(origin + '/api/v1/auth/login', 'POST', 429));
+    assert.deepEqual(statuses, [429]);
+    return 42;
+  });
+  assert.equal(result, 42);
+  assert.equal(page.listenerCount('response'), 0);
+  page.emit('response', response(origin + '/api/v1/auth/login', 'POST', 200));
+  assert.deepEqual(statuses, [429]);
+});
+
+test('login observer preserves the failure and cleans up even when work throws', async () => {
+  const page = new EventEmitter(), statuses = [];
+  const failure = new Error('synthetic submit failure');
+  await assert.rejects(observePrivateLoginStatus(page, 'https://synthetic.test', { loginStatus: status => statuses.push(status) }, async () => {
+    await Promise.resolve();
+    assert.equal(page.listenerCount('response'), 1);
+    throw failure;
+  }), error => error === failure);
+  assert.equal(page.listenerCount('response'), 0);
+  assert.deepEqual(statuses, []);
 });
