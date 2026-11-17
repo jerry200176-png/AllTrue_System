@@ -3,6 +3,16 @@
 > 本 repo 對 Founder 常設決定的**唯一**定義。`AGENTS.md`、`CLAUDE.md` 只放指向本檔的連結，不得另寫摘要或複本。
 > 艦隊層權威表：portfolio-ops `governance/AUTONOMY_POLICY.md`（portfolio-ops#134）。兩者不一致時開 PR 修正本檔；**較嚴格的規則優先**：艦隊層只能放寬本檔未另加限制之處，不得削弱本 repo 較嚴格的本地規則或安全規則（例如聚焦回歸測試、權威紀錄核對、產品 P0／紅線）。
 
+<a id="inapp-substantive-followup"></a>
+## 2026-11-17（二）（實質答覆回報者，接續既有驗證與結案；FSD-2026-11-17-INAPP-SUBSTANTIVE-FOLLOWUP）
+
+Founder 原話：「為什麼你不能幫我回復結案 這有問題 需要修正」。情境：in-app #530 按「問題仍存在」後仍為處理中；現有固定進度回覆在回報者最新留言未答時拒絕，Agent 因而請 Founder 代貼。Founder 要求修正這個能力缺口。
+
+1. Agent 可沿用原回報實質回答、追問與說明，無需 Founder 逐則代貼。實作在既有 POP 加入 `inapp-report-followup-comment`：只對 `triaged`／`in_progress` 貼一則公開答覆，狀態不變；仍須當前校區授權、完整且新鮮的原文核讀證據、可信對應 issue、白話與個資／連結檢查、去重、可稽核支援身分，以及既有職責分離、日限額、kill switches。
+2. 固定罐頭回覆的 `reporter_reply_pending` 保留；實質答覆不得由罐頭代替。普通主任仍不能冒充總部或替其他回報者留言；Agent 只能以現有合法支援身分及原金鑰明示的校區範圍請求，不能自行擴權或修改憑證。
+3. 修復、發布、受影響路徑驗證後，沿用既有 `inapp-report-resolve-after-deploy`；回報者驗收、問題仍存在重開與既有逾時結案條件不變。未釐清的 #530 保留處理中，不因模擬畫面正常而標記已修好；不准代替回報者驗收。
+4. 沿用原生分離核准／執行機制，不使用受禁的正式 SSH、不新增排程器或審批平台。catalog／policy 改版依既有失效規則處理舊請求與舊核准，重新核讀後建單，不自動續送；正式啟用仍遵守平台實際 gate。
+
 <a id="inapp-auto-close-oldest-first"></a>
 ## 2026-11-17（二）（in-app 自動結案：一次超過 20 件時先結最舊的 20 件）
 
