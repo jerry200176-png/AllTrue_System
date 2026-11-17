@@ -19,6 +19,8 @@ final class PopOperationController extends Controller
             return response()->json(['data' => $service->previewPaidInvoiceAlignment($validated['parameters'],
                 (string) $request->attributes->get('auth_role'), (array) $request->attributes->get('auth_campus_ids', []), (int) $user->id)]);
         } catch (RuntimeException $e) {
+            Log::warning('POP paid invoice preview refused', ['actor_user_id' => (int) $user->id,
+                'reason_code' => str_starts_with($e->getMessage(), 'invoice_alignment:') ? $e->getMessage() : 'preview_precondition_failed']);
             return response()->json(['message' => 'POP preview rejected', 'reason_code' => $e->getMessage()], $this->errorStatus($e));
         }
     }

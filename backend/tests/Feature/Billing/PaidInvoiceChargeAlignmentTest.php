@@ -202,4 +202,15 @@ class PaidInvoiceChargeAlignmentTest extends TestCase
         $this->assertSame($before, $this->graph($f));
         $this->assertSame(0, DB::table('pop_approval_events')->count());
     }
+
+    public function test_preview_refuses_non_text_decision_reference_without_500_or_new_request(): void
+    {
+        [$f, $p] = $this->candidate(); $before = $this->graph($f); $count = DB::table('pop_operation_requests')->count();
+        foreach ([[], (object) ['unexpected' => 'object'], 123, null] as $reference) {
+            $bad = $p; $bad['decision_reference'] = $reference;
+            $this->withHeaders(['Authorization' => 'Bearer '.$f['token']])->postJson('/api/v1/pop/operations/reviewed-paid-invoice-charge-alignment/preview', ['parameters' => $bad])->assertStatus(422);
+            $this->assertSame($before, $this->graph($f));
+            $this->assertSame($count, DB::table('pop_operation_requests')->count());
+        }
+    }
 }

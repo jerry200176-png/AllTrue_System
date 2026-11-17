@@ -101,7 +101,7 @@ class UnpaidInvoiceChargeAlignmentStrategy
     {
         foreach (['student_id', 'course_id', 'campus_id', 'invoice_id', 'expected_invoice_total', 'expected_charge'] as $key)
             if (!isset($p[$key]) || !is_int($p[$key]) || $p[$key] <= 0) $this->fail('invalid_parameters');
-        if (!preg_match('/\A[A-Za-z0-9:_-]{3,80}\z/', $p['decision_reference'] ?? '')) $this->fail('invalid_decision');
+        if (!is_string($p['decision_reference'] ?? null) || !preg_match('/\A[A-Za-z0-9:_-]{3,80}\z/', $p['decision_reference'])) $this->fail('invalid_decision');
         $one = fn ($q) => (array) $q->when($lock, fn ($q) => $q->lockForUpdate())->first();
         $student = $one(DB::table('Student')->where('id', $p['student_id'])->select('id', 'CampusID'));
         $course = $one(DB::table('StudentClass')->where('ID', $p['course_id']));
