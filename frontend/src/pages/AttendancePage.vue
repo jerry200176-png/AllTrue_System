@@ -1088,7 +1088,10 @@
 </template>
 
 <script setup>
-import { trackedFetch as fetch } from '../lib/loadingBar';
+import { trackedFetch } from '../lib/loadingBar';
+// The top loading bar counts this page's loads, except the 30-second background refresh below (it must not flash while idle).
+let backgroundRefresh = false;
+const fetch = (...args) => (backgroundRefresh ? globalThis.fetch(...args) : trackedFetch(...args));
 import { ymdInTaipei, recentDaysRangeTaipei } from '@/lib/sessionDates.js';
 import { withPoolNotice } from '../lib/sharedPoolNotice.js';
 import { ref, computed, reactive, onMounted, onBeforeUnmount, watch } from 'vue';
@@ -2563,9 +2566,10 @@ onMounted(() => {
     fetchTeacherCourses();
   }
   refreshTimer = setInterval(() => {
-    fetchRecords();
-    fetchPendingSessions();
-    if (!isTeacher.value) fetchPending();
+    backgroundRefresh = true;
+    // ponytail: a user action that fetches while this refresh is in flight is not counted either; fine for a 30 s idle poll.
+    Promise.allSettled([fetchRecords(), fetchPendingSessions(), !isTeacher.value && fetchPending()])
+      .finally(() => { backgroundRefresh = false; });
   }, 30000);
 });
 
