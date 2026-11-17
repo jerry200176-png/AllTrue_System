@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\ClassSession;
 use App\Models\Invoice;
 use App\Models\Payment;
 use App\Models\Student;
@@ -10,6 +11,7 @@ use App\Services\Billing\ContractMoneyState;
 use App\Services\Billing\ContractMoneyVerdict;
 use App\Services\ClassSessionIndexProjectionService;
 use App\Services\ClassSessionIndexReadService;
+use App\Services\MonthlyBillingService;
 use App\Services\StudentClassPricingService;
 use App\Support\AttendanceStatus;
 use Carbon\Carbon;
@@ -29,6 +31,7 @@ final class MonthlyRosterController extends Controller
         private readonly ContractMoneyVerdict $verdicts,
         private readonly ClassSessionIndexProjectionService $projection,
         private readonly StudentClassPricingService $pricing,
+        private readonly MonthlyBillingService $billing,
     ) {
     }
 
@@ -62,7 +65,7 @@ final class MonthlyRosterController extends Controller
                 ->whereRaw(ClassSessionIndexReadService::LATEST_SIGN_IN_SQL))
             ->whereIn('cs.StudentClassID', $campusCourses)
             ->whereBetween('cs.SessionDate', [$start, $end])
-            ->select(['cs.id', 'cs.StudentClassID', 'cs.SessionDate as session_date', 'cs.StartTime as start_time', 'cs.EndTime as end_time', 'cs.Status as status'])
+            ->select(['cs.id', 'cs.StudentClassID', 'cs.SessionDate as session_date', 'cs.StartTime as start_time', 'cs.EndTime as end_time', 'cs.Status as status', 'cs.session_charge'])
             ->selectRaw(...ClassSessionIndexReadService::effectiveStatusSelect())
             ->get()->groupBy('StudentClassID');
         // 預排 not yet written as lessons, exactly as the calendar plans them (true = count contracts too).
@@ -119,7 +122,7 @@ final class MonthlyRosterController extends Controller
         $pending = DB::table('payment_reports')->whereIn('StudentClassID', $courseIds)->where('status', 'pending')
             ->selectRaw('StudentClassID, COUNT(*) AS n')->groupBy('StudentClassID')->pluck('n', 'StudentClassID');
 
-        $rows = $courses->map(function (StudentClass $c) use ($lessons, $verdicts, $owes, $paid, $pending, $period, $start, $end) {
+        $rows = $courses->map(function (StudentClass $c) use ($sessions, $lessons, $verdicts, $owes, $paid, $pending, $period, $start, $end) {
             $id = (int) $c->ID;
             $v = $verdicts[$id] ?? null;
             $month = $v ? collect($v->periods)->firstWhere('billing_period', $period) : null;
@@ -131,6 +134,10 @@ final class MonthlyRosterController extends Controller
                 $rate = (int) round((float) ($c->Charge ?? 0) / (int) $c->SessionCount); // a package priced by its total
             }
             $courseLessons = $lessons[$id] ?? collect();
+            // 學收 (the old 當月學收 report's figure), priced by the bill engine; the rows carry the calendar's status.
+            $tuition = $this->billing->monthTuition($c, ClassSession::hydrate(collect($sessions[$id] ?? [])
+                ->map(fn ($l) => ['id' => $l->id, 'StudentClassID' => $l->StudentClassID, 'SessionDate' => $l->session_date, 'StartTime' => $l->start_time,
+                    'EndTime' => $l->end_time, 'Status' => $l->effective_status, 'session_charge' => $l->session_charge])->values()->all()));
             // Credit moved between contracts is not money coming in; a reversal counts negative however it was stored.
             $payments = ($paid[$id] ?? collect())->reject(fn ($p) => Payment::isCreditMovement($p))->map(fn ($p) => [
                 'date' => substr((string) $p->PaidAt, 0, 10),
@@ -152,6 +159,8 @@ final class MonthlyRosterController extends Controller
                 'stopped' => (bool) $c->Stop,
                 'lessons' => $courseLessons,
                 'held' => $courseLessons->where('kind', 'held')->count(),
+                'tuition_lessons' => $tuition['lessons'],
+                'tuition' => $tuition['amount'],
                 'money' => [
                     'status' => ContractMoneyState::isWaived($c) ? 'waived' : $v?->status, 'outstanding' => $owes($c) ? $v->outstanding : 0, 'current_period' => $v?->currentPeriod,
                     // This month's amount for a monthly course; not invoiced yet = the month-end estimate.
@@ -180,6 +189,8 @@ final class MonthlyRosterController extends Controller
                 'courses' => $rows->count(),
                 'outstanding' => $rows->sum('money.outstanding'),
                 'paid_this_month' => $rows->sum(fn ($r) => $r['paid_this_month']->sum('amount')),
+                'tuition_total' => (int) $rows->sum('tuition'), // 學收合計
+                'tuition_unpriced' => $rows->filter(fn ($r) => $r['tuition'] === null)->count(), // courses left out of it: no known price
                 'pending_reports' => $rows->sum('pending_reports'),
             ],
         ]);
