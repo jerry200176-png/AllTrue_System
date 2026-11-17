@@ -2,6 +2,7 @@
 import { execFileSync, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { test, expect } from '@playwright/test';
+import { privateAcceptance } from './fixtures/privateDirectorAcceptance.js';
 import { dismissOverlays } from './fixtures/dismissOverlays.js';
 import { appOriginOf, installReadOnlyAppGuard, isKnownPostRead } from './fixtures/readOnlyAppGuard.js';
 import { installSingleStudentExportGuard } from './fixtures/directorExportGuard.js';
@@ -19,18 +20,25 @@ test.beforeEach(() => {
   }
 });
 
-async function privateAcceptance(work) {
-  try { await work(); }
-  catch { throw new Error('UNVERIFIED: director path acceptance did not complete; private details suppressed.'); }
-}
-
 /** Same login controls as smoke.spec.js; wait for submission before continuing. */
-async function login(page) {
-  await page.goto('/');
-  await page.locator('#login-account').fill(process.env.SMOKE_DIRECTOR_USER);
-  await page.locator('#login-password').fill(process.env.SMOKE_DIRECTOR_PASS);
-  await page.locator('button.login-btn').click();
-  await expect(page.locator('#login-account')).toHaveCount(0, { timeout: 15_000 });
+async function login(page, diagnostic) {
+  const observed = response => {
+    const url = new URL(response.url());
+    if (url.origin === ORIGIN && url.pathname === '/api/v1/auth/login' && response.request().method() === 'POST')
+      diagnostic.loginStatus(response.status());
+  };
+  page.on('response', observed);
+  try {
+    diagnostic.stage('login-page');
+    await page.goto('/');
+    diagnostic.stage('login-form');
+    await page.locator('#login-account').fill(process.env.SMOKE_DIRECTOR_USER);
+    await page.locator('#login-password').fill(process.env.SMOKE_DIRECTOR_PASS);
+    diagnostic.stage('login-submit');
+    await page.locator('button.login-btn').click();
+    diagnostic.stage('login-complete');
+    await expect(page.locator('#login-account')).toHaveCount(0, { timeout: 15_000 });
+  } finally { page.off('response', observed); }
 }
 
 async function navigate(page, label) {
@@ -46,14 +54,16 @@ async function navigate(page, label) {
 }
 
 test('director acceptance: approved assessment rollback prompt can be cancelled without a business POST', async ({ page, context }) => {
-  await privateAcceptance(async () => {
+  await privateAcceptance(async (diagnostic) => {
     let pageErrors = 0;
     page.on('pageerror', () => { pageErrors += 1; });
-    await login(page);
+    await login(page, diagnostic);
     const blocked = await installReadOnlyAppGuard(context, ORIGIN, { allowTransactionTelemetry: true });
+    diagnostic.stage('navigate-assessment');
     await navigate(page, '學習評量');
     await page.locator('#lr-review-tab-approved').click();
     await page.getByRole('button', { name: '卡片', exact: true }).click();
+    diagnostic.stage('assessment-editor');
     const card = page.locator('.lr-record-card')
       .filter({ has: page.getByRole('button', { name: '退回待審', exact: true }) })
       .filter({ has: page.getByRole('button', { name: '編輯評量', exact: true }) }).first();
@@ -63,6 +73,7 @@ test('director acceptance: approved assessment rollback prompt can be cancelled 
     const rollback = editor.getByRole('button', { name: '退回待審', exact: true });
     await expect(rollback).toBeVisible();
     const before = blocked.filter(request => !isKnownPostRead(ORIGIN, request)).length;
+    diagnostic.stage('cancel-rollback');
     let promptSeen = false;
     page.once('dialog', async dialog => { promptSeen = dialog.type() === 'prompt'; await dialog.dismiss(); });
     await rollback.click();
@@ -78,12 +89,14 @@ test('director acceptance: approved assessment rollback prompt can be cancelled 
 });
 
 test('director acceptance: one student UI filter downloads a typed native workbook', async ({ page, context }) => {
-  await privateAcceptance(async () => {
+  await privateAcceptance(async (diagnostic) => {
     let pageErrors = 0;
     page.on('pageerror', () => { pageErrors += 1; });
-    await login(page);
+    await login(page, diagnostic);
     await installReadOnlyAppGuard(context, ORIGIN, { allowTransactionTelemetry: true });
+    diagnostic.stage('navigate-billing');
     await navigate(page, '帳務中心');
+    diagnostic.stage('choose-student');
     await page.getByTestId('bill-filter-owing').click();
     const candidates = await page.locator('[data-testid^="bill-row-"][data-kind="owing"]').evaluateAll(rows => rows
       .filter(row => row.querySelector('.bl__check:not(:disabled)')).slice(0, 5)
@@ -106,10 +119,12 @@ test('director acceptance: one student UI filter downloads a typed native workbo
     // Export uses visible rows, not the bulk-operation checkbox selection. The UI search above bounds its scope.
     await page.locator('.bl__check:not(:disabled)').first().check();
     const guard = await installSingleStudentExportGuard(context, ORIGIN, selected.keys, selected.name.trim());
+    diagnostic.stage('export-workbook');
     const downloaded = page.waitForEvent('download', { timeout: 30_000 });
     await page.getByTestId('bill-export').click();
     const download = await downloaded;
     try {
+      diagnostic.stage('validate-workbook');
       const script = fileURLToPath(new URL('../../scripts/student_bill_xlsx_acceptance.py', import.meta.url));
       const checked = spawnSync('python3', [script], { input: JSON.stringify({ path: await download.path(), student: selected.name, sources: selected.keys.length }),
         encoding: 'utf8', timeout: 10_000, maxBuffer: 16 * 1024 });
@@ -125,27 +140,32 @@ test('director acceptance: one student UI filter downloads a typed native workbo
 });
 
 test('director acceptance: 528 deployed calendar replaces a moved card using only mocked reschedule data', async ({ page, context }) => {
-  await privateAcceptance(async () => {
+  await privateAcceptance(async (diagnostic) => {
     const local = ['127.0.0.1', 'localhost'].includes(new URL(ORIGIN).hostname);
     const readCounters = async () => {
       const response = await context.request.get(ORIGIN + '/__director-acceptance-counts', { maxRedirects: 0 });
       try { return await response.json(); } finally { await response.dispose(); }
     };
     const localCounters = local ? await readCounters() : null;
+    diagnostic.stage('identity');
     const before = await readDirectorRuntimeIdentity(context, ORIGIN);
     const bundles = observeDirectorCalendarBundles(page, ORIGIN);
+    diagnostic.stage('calendar-fixture');
     const calendar = await installDirectorCalendarMocks(context, ORIGIN);
     let pageErrors = 0;
     page.on('pageerror', () => { pageErrors += 1; });
-    await login(page);
+    await login(page, diagnostic);
     const blocked = await installReadOnlyAppGuard(context, ORIGIN, { allowTransactionTelemetry: true });
     await calendar.install();
     await page.clock.setFixedTime(new Date('2026-11-09T11:00:00Z'));
+    diagnostic.stage('navigate-calendar');
     await navigate(page, '班級行事曆');
     await page.getByRole('button', { name: '週檢視', exact: true }).click();
+    diagnostic.stage('calendar-original');
     const card = page.locator('.course-block').filter({ hasText: 'Synthetic Move' });
     await expect(card).toHaveCount(1);
     await expect(card).toHaveAttribute('aria-label', /20:00/);
+    diagnostic.stage('calendar-reschedule');
     await card.click();
     await page.getByRole('button', { name: '🔄 調課', exact: true }).click();
     await page.locator('#cal-reschedule-date').fill('2026-11-09');
@@ -157,11 +177,13 @@ test('director acceptance: 528 deployed calendar replaces a moved card using onl
     expect(dialog.message().includes('19:30')).toBe(true);
     await dialog.accept();
     await submitting;
+    diagnostic.stage('calendar-replacement');
     await expect(page.locator('#cal-reschedule-date')).toHaveCount(0);
     await expect(card).toHaveCount(1);
     await expect(card).toHaveAttribute('aria-label', /19:30/);
     await expect(card).not.toHaveAttribute('aria-label', /20:00/);
     await expect(page.locator('.course-block').filter({ hasText: 'Synthetic Other' })).toHaveCount(1);
+    diagnostic.stage('verify-guards');
     expect(calendar.counts.reschedule).toBe(1);
     expect(calendar.counts.projection).toBeGreaterThan(1);
     expect(calendar.counts.rejected).toBe(0);
@@ -169,6 +191,7 @@ test('director acceptance: 528 deployed calendar replaces a moved card using onl
     expect(blocked.filter(request => !isKnownPostRead(ORIGIN, request))).toEqual([]);
     expect(pageErrors).toBe(0);
     if (local) expect(await readCounters()).toEqual(localCounters);
+    diagnostic.stage('verify-identity');
     expect(await readDirectorRuntimeIdentity(context, ORIGIN)).toBe(before);
     const loaded = await bundles();
     const harness = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: fileURLToPath(new URL('../..', import.meta.url)), encoding: 'utf8' }).trim();
