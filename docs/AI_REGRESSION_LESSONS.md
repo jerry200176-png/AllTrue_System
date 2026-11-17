@@ -6,6 +6,8 @@ last_reviewed: 2026-09-05
 
 # AI／工程師防再犯紀錄（必讀）
 
+**F32／F7：新畫面顯示合約「欠多少／收齊了沒」，先加入 `ContractMoneyCallersAgreeTest`（#5428／#5430，2026-11-17）**：月對帳表第一版自己判斷狀態，Codex 分 7 輪才抓完它跟學生帳務的落差：要核對被未繳蓋掉、只有舊 Paid 標記當已收齊、確認不收（waived）仍顯示未繳、免費課寫已收齊、手機看不到單價與每堂狀態。根因是另寫一套判斷，沒有接上共用的 `ContractMoneyVerdict`。新畫面一律讀 Verdict 的 `status`／`outstanding`，例外（waived、legacy_flag 但試聽費依日期已記、free）由伺服器給欄位，前端不重算；同一個 PR 把新 API 加進 `ContractMoneyCallersAgreeTest`（120 份隨機合約），讓之後的漂移在 CI 失敗，而不是等主任或 review 一個一個找。
+
 **F1：課程連結的目標不可由教室或第一頁推定（#5415，2026-11-17）**：`branch_id` 是教室資料，無教室時可為空；課程擁有校區讀既有 `student.CampusID`。指定課程以原校區／學生範圍加精確 ID 查詢，不以第一頁 50 筆代表全部。新的明確導覽先使舊抽屜與舊列表失效，晚回覆仍由既有 request ID 擋下。回歸須含無教室、不同教室校區、超過一頁、錯學生／無校區、A→錯連結及 A→延遲 B→A；見 `StudentClassCourseLinkLookupTest` 與課程付款入口 browser spec。這是定位正確性，不新增查看或資料修改權限。
 
 **F7／R7：時長與計價數量必須一起驗（#5379，2026-11-16）**：`SessionDuration` 已更新不代表 `TotalHours` 已同步。未開單、未收款／上課的堂數制小時計費編輯，沿用 `ContractRenewal::plannedBatchHours` 的實際混合時長規劃與既有捨入，再交回 `chargeAfterChange`；不可只重算繳費單。測試須含僅改時長、重存既有錯配、改堂數、混合時長、手動差額及他校拒絕。既有帳單／回報／使用紀錄、月結與共用方案不以這個修復追溯改價；B3 小數時數仍另列原計畫。

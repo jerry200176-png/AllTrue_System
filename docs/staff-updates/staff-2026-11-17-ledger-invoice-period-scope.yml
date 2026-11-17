@@ -1,0 +1,14 @@
+updates:
+  - id: staff-2026-11-17-ledger-invoice-period-scope
+    published_at: "2026-11-17"
+    audiences:
+      - director
+      - super_admin
+    importance: digest
+    title: 跨月帳單標明完整期間
+    summary: 月份下方若列的是跨月帳單，會清楚標明帳單期間與整張合計，方便對照上課堂數。
+    items:
+      - category: fixed
+        text: 期間不明的帳單也會標示為整張合計；收款日期與已收金額照原紀錄顯示。
+    source_refs:
+      - "changelog:2026-11-17:ledger-invoice-period-scope"

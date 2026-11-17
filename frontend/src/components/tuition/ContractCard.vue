@@ -281,7 +281,13 @@ const payLineText = computed(() => {
 const monthLineText = (key) => {
   const m = props.monthLines?.[key];
   if (!m) return '';
-  return `應繳 ${money(m.due)}${m.paidDate ? `　已收 ${shortDate(m.paidDate)} ${money(m.paidAmount)}` : ''}`;
+  // Invoice totals belong to their service range, not necessarily this lesson-heading month.
+  const start = String(m.periodStart || '').slice(0, 10);
+  const end = String(m.periodEnd || '').slice(0, 10);
+  const knownRange = /^\d{4}-\d{2}-\d{2}$/.test(start) && /^\d{4}-\d{2}-\d{2}$/.test(end) && start <= end;
+  const scope = knownRange && start.slice(0, 7) === key && end.slice(0, 7) === key ? '應繳'
+    : knownRange ? `帳單期間 ${dateOnly(start)}–${dateOnly(end)}，整張帳單合計` : '整張帳單合計';
+  return `${scope} ${money(m.due)}${m.paidDate ? `　已收 ${shortDate(m.paidDate)} ${money(m.paidAmount)}` : ''}`;
 };
 
 // Month payment state from the per-lesson state the endpoint already returns (no money math here).
