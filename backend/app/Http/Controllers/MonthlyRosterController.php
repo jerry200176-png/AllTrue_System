@@ -221,8 +221,9 @@ final class MonthlyRosterController extends Controller
         if ($package !== null && $package->billing_mode === CoursePackage::BILLING_MODE_MONTHLY && !$package->stop) {
             return ['lessons' => $n, 'amount' => (int) round($n * (float) $package->rate)];
         }
-        // A course priced by its total (Rate 0): the per-lesson price shown in 單價 (Charge ÷ lessons).
-        $amount = $review['estimated_charge'] ?? ((float) ($c->Rate ?? 0) <= 0 && $rate !== null ? $n * $rate : null);
+        // A course priced by its total (Rate 0, no price amendment): the per-lesson price shown in 單價 (Charge ÷ lessons).
+        $byTotal = (float) ($c->Rate ?? 0) <= 0 && $rate !== null && $c->pricingAmendments->whereNull('voided_at')->isEmpty();
+        $amount = $review['estimated_charge'] ?? ($byTotal ? $n * $rate : null);
 
         return ['lessons' => $n, 'amount' => $amount === null ? null : (int) $amount];
     }
