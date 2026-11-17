@@ -6,8 +6,8 @@ updates:
       - director
       - super_admin
     importance: digest
-    title: 讀取比較久時，畫面最上方都會出現進度線
-    summary: 學習紀錄、點名、老師名單、帳務、通知等畫面在讀資料時，上方會出現細細的進度線，不會看起來像當掉。
+    title: 讀取時上方都有進度線
+    summary: 學習紀錄、點名、帳務、通知等畫面讀資料時，上方會出現進度線，不再像當掉。
     items:
       - category: improved
         text: 原本只有部分畫面有讀取進度線，現在其他讀取超過 0.3 秒的畫面也會出現；背景自動更新不會一直閃。
