@@ -5,7 +5,8 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
-import { privateAcceptance } from './privateDirectorAcceptance.js';
+import { EventEmitter } from 'node:events';
+import { privateAcceptance, observePrivateLoginStatus } from './privateDirectorAcceptance.js';
 
 for (const [profile, configName] of [
   ['director', 'playwright.director-acceptance.config.js'],
@@ -117,4 +118,40 @@ test('untrusted diagnostic values fail closed without string coercion or private
 
 test('successful private work retains its return value and emits no failure', async () => {
   assert.equal(await privateAcceptance(async d => { d.stage('verify-identity'); return 42; }), 42);
+});
+
+test('login observer accepts only the exact origin, path and POST and removes itself on success', async () => {
+  const page = new EventEmitter(), statuses = [];
+  const origin = 'https://synthetic.test';
+  const response = (url, method, status) => ({ url: () => url, request: () => ({ method: () => method }), status: () => status,
+    body() { throw new Error('must not read a response body'); } });
+  const result = await observePrivateLoginStatus(page, origin, { loginStatus: status => statuses.push(status) }, async () => {
+    assert.equal(page.listenerCount('response'), 1);
+    for (const [url, method] of [
+      ['https://foreign.test/api/v1/auth/login', 'POST'],
+      [origin + '/api/v1/auth/logout', 'POST'],
+      [origin + '/api/v1/auth/login', 'GET'],
+    ]) {
+      page.emit('response', response(url, method, 418));
+      assert.deepEqual(statuses, [], `foreign event ignored: ${url} ${method}`);
+    }
+    page.emit('response', response(origin + '/api/v1/auth/login', 'POST', 429));
+    assert.deepEqual(statuses, [429]);
+    return 42;
+  });
+  assert.equal(result, 42);
+  assert.equal(page.listenerCount('response'), 0);
+  page.emit('response', response(origin + '/api/v1/auth/login', 'POST', 200));
+  assert.deepEqual(statuses, [429]);
+});
+
+test('login observer preserves the failure and cleans up even when work throws', async () => {
+  const page = new EventEmitter(), statuses = [];
+  const failure = new Error('synthetic submit failure');
+  await assert.rejects(observePrivateLoginStatus(page, 'https://synthetic.test', { loginStatus: status => statuses.push(status) }, async () => {
+    assert.equal(page.listenerCount('response'), 1);
+    throw failure;
+  }), error => error === failure);
+  assert.equal(page.listenerCount('response'), 0);
+  assert.deepEqual(statuses, []);
 });

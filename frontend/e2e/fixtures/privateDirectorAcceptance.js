@@ -3,6 +3,17 @@ const STAGES = new Set(['start', 'identity', 'calendar-fixture', 'login-page', '
   'navigate-assessment', 'navigate-billing', 'navigate-calendar', 'assessment-editor', 'cancel-rollback', 'choose-student',
   'export-workbook', 'validate-workbook', 'calendar-original', 'calendar-reschedule', 'calendar-replacement', 'verify-guards', 'verify-identity']);
 
+export async function observePrivateLoginStatus(page, origin, diagnostic, work) {
+  const observed = response => {
+    const url = new URL(response.url());
+    if (url.origin === origin && url.pathname === '/api/v1/auth/login' && response.request().method() === 'POST')
+      diagnostic.loginStatus(response.status());
+  };
+  page.on('response', observed);
+  try { return await work(); }
+  finally { page.off('response', observed); }
+}
+
 export async function privateAcceptance(work) {
   let stage = 'start', loginHttp = null;
   const diagnostic = {

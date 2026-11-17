@@ -2,7 +2,7 @@
 import { execFileSync, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { test, expect } from '@playwright/test';
-import { privateAcceptance } from './fixtures/privateDirectorAcceptance.js';
+import { privateAcceptance, observePrivateLoginStatus } from './fixtures/privateDirectorAcceptance.js';
 import { dismissOverlays } from './fixtures/dismissOverlays.js';
 import { appOriginOf, installReadOnlyAppGuard, isKnownPostRead } from './fixtures/readOnlyAppGuard.js';
 import { installSingleStudentExportGuard } from './fixtures/directorExportGuard.js';
@@ -22,13 +22,7 @@ test.beforeEach(() => {
 
 /** Same login controls as smoke.spec.js; wait for submission before continuing. */
 async function login(page, diagnostic) {
-  const observed = response => {
-    const url = new URL(response.url());
-    if (url.origin === ORIGIN && url.pathname === '/api/v1/auth/login' && response.request().method() === 'POST')
-      diagnostic.loginStatus(response.status());
-  };
-  page.on('response', observed);
-  try {
+  await observePrivateLoginStatus(page, ORIGIN, diagnostic, async () => {
     diagnostic.stage('login-page');
     await page.goto('/');
     diagnostic.stage('login-form');
@@ -38,7 +32,7 @@ async function login(page, diagnostic) {
     await page.locator('button.login-btn').click();
     diagnostic.stage('login-complete');
     await expect(page.locator('#login-account')).toHaveCount(0, { timeout: 15_000 });
-  } finally { page.off('response', observed); }
+  });
 }
 
 async function navigate(page, label) {
