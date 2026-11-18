@@ -233,7 +233,7 @@ describe('收據移到正確帳單 · refusals', () => {
 });
 
 describe('收據移到正確帳單 · ledger entry points', () => {
-  const receipt = (o) => ({ report_id: 7, student_class_id: 1, amount: 3000, status: 'confirmed', payment_date: '2026-11-10', payment_method: 'transfer', invoice_id: null, ...o });
+  const receipt = (o) => ({ report_id: 7, student_class_id: 1, amount: 3000, status: 'confirmed', payment_date: '2026-11-10', payment_method: 'transfer', invoice_id: null, payment_id: 70, ...o });
   async function ledger(extra = {}) {
     const body = { summary: {}, scope: { student_class_id: 1 }, student: { id: 10, name: '合成學生', campus_id: 1 }, courses: [{ id: 1, subject: '數學' }], invoices: [],
       receipts: [receipt()], anomalies: [{ code: 'receipt_without_invoice', severity: 'warning', message: 'x', report_id: 7, action: { type: 'void_report', report_id: 7 } }], ...extra };
@@ -266,12 +266,13 @@ describe('收據移到正確帳單 · ledger entry points', () => {
     expect(q('rm-source').textContent).toContain('NT$ 3,000');
   });
 
-  it('a receipt with no payment record gets no card button, but its row keeps 收錯帳單？', async () => {
-    const w = await ledger({ can_reassign_receipt: true,
+  it('a receipt with no payment record gets no card button, but its row keeps 收錯帳單？ while it still names its bill', async () => {
+    const w = await ledger({ can_reassign_receipt: true, receipts: [receipt({ payment_id: null, invoice_id: 50 }), receipt({ report_id: 8, payment_id: null })],
       anomalies: [{ code: 'confirmed_receipt_without_payment', severity: 'warning', message: 'x', report_id: 7, action: { type: 'void_report', report_id: 7 } }] });
     await w.get('[data-testid="ledger-fold-receipts"]').trigger('click');
     expect(w.find('[data-testid="ledger-move-7"]').exists()).toBe(false);
     expect(w.find('[data-testid="ledger-receipt-move-7"]').exists()).toBe(true);
+    expect(w.find('[data-testid="ledger-receipt-move-8"]').exists()).toBe(false); // no payment and no bill: the move can never find its source
   });
 
   it('a read-only history receipt (its course is gone) gets no move entry; a normal receipt beside it does', async () => {

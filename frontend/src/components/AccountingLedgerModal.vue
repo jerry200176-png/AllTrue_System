@@ -1343,7 +1343,8 @@ const correctingInvoiceId = ref(null);
 // 收據移到正確帳單 (#5113): the server hint says the move is on for this student's campus; the dialog's own answers decide the rest.
 const MOVE_CODES = ['receipt_without_invoice']; // not confirmed_receipt_without_payment: the backend mostly refuses that shape
 const moving = ref(null); // { report_id, amount, label }
-const canMoveReceipt = (r) => canManageInvoices() && !!payload.value?.can_reassign_receipt && !r?.history_read_only && Number(r?.amount) > 0;
+const canMoveReceipt = (r) => canManageInvoices() && !!payload.value?.can_reassign_receipt && !r?.history_read_only
+  && !!(r?.payment_id || r?.invoice_id) && Number(r?.amount) > 0; // the service finds the source bill from one of these
 const canMoveException = (x) => !!x.report_id && !x.ask_hq && x.codes?.some((c) => MOVE_CODES.includes(c))
   && canMoveReceipt((payload.value?.receipts || []).find((r) => Number(r.report_id) === Number(x.report_id)));
 function openMove(reportId) {
