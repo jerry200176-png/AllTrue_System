@@ -1,0 +1,14 @@
+updates:
+  - id: staff-2026-11-18-package-close-boundary
+    published_at: "2026-11-18"
+    audiences:
+      - director
+      - super_admin
+    importance: digest
+    title: 共用方案結案先整包核對
+    summary: 避免只結束其中一門課，重新整理後方案又出現。
+    items:
+      - category: fixed
+        text: 共用方案會顯示須整包核對，暫不提供單一成員的結案；課程、剩餘額度與帳款保留。一般單科仍可依原流程結案。
+    source_refs:
+      - "changelog:2026-11-18:package-close-boundary"
