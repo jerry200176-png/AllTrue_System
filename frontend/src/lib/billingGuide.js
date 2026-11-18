@@ -38,7 +38,7 @@ export function guideFacts(bill, invoice = null) {
     course_period: range(r.course_start_date, r.course_end_date),
     billed,
     bill_period: billed ? range(invoice?.period_start ?? r.billing_period_start, invoice?.period_end ?? r.billing_period_end) || r.billing_period || null : null,
-    due_date: ymd(r.due_date),
+    due_date: ymd(invoice?.due_date ?? r.due_date), // a count contract's deadline is only on its bill
     amount_pending: r.amount_pending_confirmation === true,
     // 應收／已收／未繳 of THAT bill, as the server reports them. No bill yet: only the server's 預估.
     receivable: billed ? num(invoice?.total_amount ?? r.payable_amount) : null,

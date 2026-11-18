@@ -92,6 +92,11 @@
           <Button class="tw:min-h-11 tw:justify-self-start" data-testid="bg-record" @click="entryOpen = true">繳了，登記收款</Button>
         </template>
 
+        <template v-else-if="renewal">
+          <p class="tw:m-0 tw:font-bold">{{ bill.label }}：這期已收，堂數快用完了，要不要續課？</p>
+          <Button v-if="canDocs" class="tw:min-h-11 tw:justify-self-start" data-testid="bg-renew" @click="$emit('renew', bill)">去續課</Button>
+        </template>
+
         <template v-else-if="bill.kind === 'issue'">
           <p class="tw:m-0 tw:font-bold">{{ bill.label }}：還沒開帳單，所以還不能收款。</p>
           <Button class="tw:min-h-11 tw:justify-self-start" data-testid="bg-issue" @click="$emit('ledger', bill, 'issue')">去開帳單</Button>
@@ -119,10 +124,10 @@
 
       <footer class="tw:flex tw:flex-wrap tw:justify-end tw:gap-2">
         <template v-if="!confirmedId && !gone">
-          <Button variant="ghost" class="tw:min-h-11" :disabled="busy" data-testid="bg-later" @click="advance('later')">稍後處理</Button>
-          <Button variant="ghost" class="tw:min-h-11" :disabled="busy" data-testid="bg-skip" @click="advance('done')">略過</Button>
+          <Button variant="ghost" class="tw:min-h-11" :disabled="busy || exporting" data-testid="bg-later" @click="advance('later')">稍後處理</Button>
+          <Button variant="ghost" class="tw:min-h-11" :disabled="busy || exporting" data-testid="bg-skip" @click="advance('done')">略過</Button>
         </template>
-        <Button :variant="confirmedId || gone ? 'default' : 'outline'" class="tw:min-h-11" :disabled="busy" data-testid="bg-next" @click="advance('done')">處理下一筆</Button>
+        <Button :variant="confirmedId || gone ? 'default' : 'outline'" class="tw:min-h-11" :disabled="busy || exporting" data-testid="bg-next" @click="advance('done')">處理下一筆</Button>
       </footer>
     </div>
 
@@ -140,7 +145,7 @@ import BillingDocument from '../BillingDocument.vue';
 import PaymentEntryModal from '../PaymentEntryModal.vue';
 import { askConfirm } from '../../composables/useConfirmDialog';
 import { authedFetch } from '../../lib/authedFetch.js';
-import { TODO_KINDS } from '../../lib/billRows.js';
+import { TODO_KINDS, isPaidCountRenewal } from '../../lib/billRows.js';
 import { NO_DATA, guideFacts, guideQueue, nextBill } from '../../lib/billingGuide.js';
 import { slipAvailability } from '../../lib/billingDocState.js';
 import { STATUS_ZH, formatSessionDate, paymentMethodLabel, paymentSlipView, receiptView, slipPlainText } from '../../lib/billingDocumentView.js';
@@ -158,7 +163,7 @@ const props = defineProps({
   canDocs: { type: Boolean, default: false },
   reload: { type: Function, default: async () => true }, // the page rereads /alerts/tuition; false = it failed
 });
-defineEmits(['close', 'ledger', 'reject']);
+defineEmits(['close', 'ledger', 'reject', 'renew']);
 
 const money = (v) => `NT$ ${Number(v || 0).toLocaleString('zh-TW')}`;
 const done = reactive(new Set());
@@ -219,6 +224,7 @@ const facts = computed(() => {
   return { ...f, billed: true, estimate: null, bill_period: i.period_start || i.period_end ? `${String(i.period_start || '—').slice(0, 10)} ~ ${String(i.period_end || '—').slice(0, 10)}` : f.bill_period,
     receivable: Number(i.total_amount), received: Number(i.calculated_applied_amount), outstanding: Number(i.outstanding_amount) };
 });
+const renewal = computed(() => Boolean(bill.value) && isPaidCountRenewal(bill.value));
 const entryRow = computed(() => (bill.value ? { ...bill.value.src, id: bill.value.class_id } : null));
 const stageLabel = computed(() => (confirmedId.value ? '已確認入帳' : gone.value ? '不在要處理' : bill.value.label));
 
@@ -279,17 +285,21 @@ async function showBill() {
   notice.value = ''; actionError.value = ''; recordedId.value = null; confirmedId.value = null; receipt.value = null;
   frozen.value = false; paidInvoiceId.value = null; reloadFailed.value = false;
   previewOpen.value = false; copied.value = '';
+  slipRaw.value = null; slipError.value = ''; // now, not after the ledger answers: never the previous bill's slip
   if (!bill.value) return;
   await loadLedger();
   await loadSlip();
 }
 watch(currentKey, showBill, { immediate: true });
-// The drawer or the 退回 dialog changed this bill behind the guide: read its ledger and slip again.
-watch(() => live.value?.kind, (kind, was) => { if (kind && was && kind !== was && !busy.value) loadLedger().then(loadSlip); });
+// The page reread the rows behind the guide (its 重新整理, the drawer, the 退回 dialog): read this bill's ledger and slip
+// again. The guide's own rereads (refresh) do that themselves.
+let refreshing = false;
+watch(() => live.value?.src, (src, was) => { if (src && was && !refreshing && !frozen.value) loadLedger().then(loadSlip); });
 
 async function refresh() {
   // The list (and its error line) is hidden behind the guide, so a failed reread is said here.
-  reloadFailed.value = await props.reload() === false;
+  refreshing = true;
+  try { reloadFailed.value = await props.reload() === false; } finally { refreshing = false; }
   await loadLedger();
   if (!confirmedId.value) await loadSlip();
 }
@@ -341,9 +351,10 @@ async function confirmNow() {
     frozen.value = false;
     if (live.value) snapshot.value = live.value;
     actionError.value = res.message;
+    await loadSlip(); // the reread ran while frozen: the bill may be 未繳 again (its report was 退回 elsewhere)
     return;
   }
-  paidInvoiceId.value = (res.ok ? res.data?.invoice_id : null) ?? (ledger.value?.receipts || []).find((x) => Number(x.report_id) === id)?.invoice_id ?? bill.value.src.payable_invoice_id ?? null;
+  paidInvoiceId.value = (res.ok ? res.data?.invoice_id : null) ?? (ledger.value?.receipts || []).find((x) => Number(x.report_id) === id)?.invoice_id ?? null;
   confirmedId.value = id;
   await openReceipt(id);
 }
@@ -373,6 +384,8 @@ async function copyDocText() {
 }
 async function downloadDoc() {
   exporting.value = true; actionError.value = '';
+  // Name the file from the document being captured (moving on is also blocked until the image is done).
+  const filename = receipt.value ? `電子收據-${receipt.value.receipt_number || 'receipt'}.png` : shownDoc.value.filename;
   try {
     previewOpen.value = true; // the image is the preview itself
     await nextTick();
@@ -381,7 +394,7 @@ async function downloadDoc() {
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = receipt.value ? `電子收據-${receipt.value.receipt_number || 'receipt'}.png` : shownDoc.value.filename;
+    link.download = filename;
     link.click();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   } catch {

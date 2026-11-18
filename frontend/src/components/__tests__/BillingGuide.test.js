@@ -7,6 +7,7 @@ vi.mock('../../lib/receiptImage.js', () => ({ receiptImageBlob: vi.fn(() => Prom
 
 import BillingGuide from '../tuition/BillingGuide.vue';
 import { askConfirm } from '../../composables/useConfirmDialog';
+import { receiptImageBlob } from '../../lib/receiptImage.js';
 import { billRows } from '../../lib/billRows.js';
 
 const T = '2026-11-18';
@@ -246,6 +247,69 @@ describe('BillingGuide', () => {
     const money = w.get('[data-testid="bg-money"]').text();
     expect(money).toMatch(/應收NT\$ 6,000已收NT\$ 6,000未繳NT\$ 0/);
     expect(money).not.toContain('預估');
+  });
+
+  it('never offers the previous bill\'s slip while the next bill is still loading', async () => {
+    const w = await mountGuide(TWO);
+    expect(w.find('[data-testid="bg-doc-copy"]').exists()).toBe(true);
+    let release;
+    const inner = global.fetch;
+    global.fetch = vi.fn((url, init) => (String(url).includes('/accounting/ledger') ? new Promise((r) => { release = () => r(json(structuredClone(ledger))); }) : inner(url, init)));
+    await w.get('[data-testid="bg-next"]').trigger('click');
+    await nextTick();
+    expect(title(w)).toContain('學生乙');
+    expect(w.find('[data-testid="bg-doc-copy"]').exists()).toBe(false);
+    release();
+    await flushPromises();
+    expect(hits('/api/v1/invoices/10/slip-data')).toHaveLength(1);
+  });
+
+  it('rereads the bill when the page refreshed its rows, even when the state did not change', async () => {
+    const w = await mountGuide([row()]);
+    ledger.invoices = [invoice({ status: 'partial', calculated_applied_amount: 2000, outstanding_amount: 4000 })];
+    await w.setProps({ bills: billRows([row({ payment_status: 'partial', paid_amount: 2000, payable_outstanding: 4000 })], T) });
+    await flushPromises();
+    expect(w.get('[data-testid="bg-money"]').text()).toContain('未繳NT$ 4,000');
+    expect(hits('/slip-data')).toHaveLength(2);
+  });
+
+  it('a paid count contract that needs renewing goes to the renewal flow, not 開帳單', async () => {
+    const w = await mountGuide([row({ payment_status: 'renew_needed', payable_outstanding: 0, remaining_sessions: 1 })]);
+    expect(w.find('[data-testid="bg-issue"]').exists()).toBe(false);
+    await w.get('[data-testid="bg-renew"]').trigger('click');
+    expect(w.emitted('renew')[0][0].class_id).toBe(7);
+  });
+
+  it('reads a count contract\'s payment deadline from its bill', async () => {
+    ledger.invoices = [invoice({ due_date: '2026-11-25' })];
+    const w = await mountGuide([row({ due_date: null })]);
+    expect(w.get('[data-testid="bg-facts"]').text()).toContain('繳費期限2026-11-25');
+  });
+
+  it('names the downloaded file after the document it captured and blocks moving on meanwhile', async () => {
+    const w = await mountGuide(TWO);
+    let finish;
+    receiptImageBlob.mockImplementationOnce(() => new Promise((r) => { finish = () => r(new Blob(['x'], { type: 'image/png' })); }));
+    const names = [];
+    HTMLAnchorElement.prototype.click = vi.fn(function click() { names.push(this.download); });
+    await w.get('[data-testid="bg-doc-download"]').trigger('click');
+    await flushPromises();
+    expect(w.get('[data-testid="bg-next"]').attributes('disabled')).toBeDefined();
+    finish();
+    await flushPromises();
+    expect(names).toEqual(['繳費單_學生甲_9.png']);
+    expect(w.get('[data-testid="bg-next"]').attributes('disabled')).toBeUndefined();
+  });
+
+  it('a refused 確認入帳 whose report was 退回 elsewhere brings the slip back', async () => {
+    ledger.receipts = [{ report_id: 55, student_class_id: 7, status: 'pending', amount: 6000, payment_method: 'cash' }];
+    const w = await mountGuide([row({ payment_status: 'pending_report', latest_payment_report_id: 55 })]);
+    await w.setProps({ reload: vi.fn(async () => { ledger.receipts = []; await w.setProps({ bills: billRows([row()], T) }); }) });
+    confirmAnswer = json({ message: '此回報已處理過' }, false);
+    await w.get('[data-testid="bg-confirm"]').trigger('click');
+    await flushPromises();
+    expect(w.get('[data-testid="bg-error"]').text()).toContain('已處理過');
+    expect(w.find('[data-testid="bg-doc-copy"]').exists()).toBe(true);
   });
 
   it('cancelling the 確認入帳 question writes nothing', async () => {

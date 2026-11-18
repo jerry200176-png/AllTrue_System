@@ -99,6 +99,11 @@ export function billRows(alertRows, today = ymdInTaipei()) {
     || a.student_name.localeCompare(b.student_name, 'zh-Hant'));
 }
 
+/** A paid count contract that only needs renewing (#4919 rule of the list's 續課 button): there is no bill to issue. */
+export const isPaidCountRenewal = (b) => b.kind === 'issue' && b.src.schedule_mode === 'count' && b.src.payment_status === 'renew_needed'
+  && !b.package_id && Number.isSafeInteger(Number(b.class_id)) && Number(b.class_id) > 0
+  && Number.isSafeInteger(b.student_id) && b.student_id > 0;
+
 const md = (d) => { const [, m, day] = String(d).slice(0, 10).split('-'); return `${Number(m)}/${Number(day)}`; };
 /** The 到期／逾期 cell of a row (the server export has a PHP twin, BillRowText; fixtures keep them equal). */
 export const billDueText = (b) => (b.overdue_days > 0 ? `逾期 ${b.overdue_days} 天` : b.due_date && b.kind === 'owing' ? `${md(b.due_date)} 到期` : '—');

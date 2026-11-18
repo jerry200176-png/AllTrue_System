@@ -58,6 +58,7 @@
         @close="billingGuideOpen = false"
         @ledger="openBillLedger"
         @reject="(b) => openQuick(b, true)"
+        @renew="(b) => onBillAction(b, 'renew')"
       />
       <div v-else-if="guideTodoCount > 0" class="tw:mb-3 tw:flex tw:justify-end">
         <Button class="tw:min-h-11" data-testid="billing-guide-start" @click="billingGuideOpen = true">開始登帳引導（{{ guideTodoCount }} 筆要處理）</Button>
