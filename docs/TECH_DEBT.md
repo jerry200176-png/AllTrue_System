@@ -903,3 +903,16 @@
 | 影響模組 | `StudentsList.vue`、`StudentsListRows.test.js`、UI foundation axe 測試 |
 | 描述 | 既有一般 table 的資料列使用只適用於 treegrid row 的 `aria-expanded`。有資料的合成清單在手機、桌面各有 8 個 `aria-conditional-attr` serious；空清單 axe 基準未涵蓋。本次配色未新增或修改這些屬性。 |
 | 建議做法 | 由合法控制元件提供展開語意，同步必要的測試／操作 hooks；補 populated、收合／展開及手機／桌面回歸。不以缺少完整鍵盤操作的 grid 角色規避檢查。 |
+
+### TD-092：夜間檢查的「強制」開關只靠原始碼比對，handle() 的行為沒有測試鎖（P3）
+| 欄位 | 內容 |
+|---|---|
+| 狀態 | Open |
+| 優先級 | P3 |
+| 發現日期 | 2026-11-18 |
+| 發現來源 | [REVIEW] #5500 獨立審查 |
+| 影響模組 | `scripts/arch-fitness-check.mjs` FIT-21、`VerifyBugReproductions::handle()`、`scripts/arch-fitness-baseline.json` |
+| 描述 | FIT-21 用文字比對鎖住 `'enforced' => true` 與判斷回歸的那一行，但 handle() 裡用 `array_map`、`??=`、對某個 key `continue` 或把 count 改成 0，仍能讓已強制的條件不會失敗。`arch-fitness-baseline.json` 其他數字型 baseline 也還能跟程式在同一個 PR 調高（FIT-20／21 的 pin 已對 merge base 比對）。 |
+| 建議做法 | 加一個 PHPUnit 行為測試：每個 pin 的條件塞一筆壞資料，命令必須非零結束；其他 baseline 併入 `check-ratchet-baseline-touch.mjs` 的 merge-base 比對。 |
+| 清償成本估計 | 低（< 2hr） |
+| 不做的代價 | 有人刻意改 handle() 時，夜間檢查可以被悄悄關掉；目前只靠 review 看得到。 |

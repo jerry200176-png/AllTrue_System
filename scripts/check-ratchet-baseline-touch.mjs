@@ -42,9 +42,51 @@ export function findViolations(changes, branch) {
   return out;
 }
 
-const git = (...args) => execFileSync('git', args, { encoding: 'utf8', maxBuffer: 64 << 20 });
+// Frozen lists (#4991 line 4): lines may only be deleted, on every branch. A new write route declares its
+// inverse in write_route_inverses.txt instead of joining the grandfathered list.
+export const FROZEN_LISTS = ['backend/tests/Fixtures/write_routes_grandfathered.txt'];
+const entries = (text) => (text ?? '').split('\n').map((l) => l.trim()).filter((l) => l && !l.startsWith('#'));
+
+// changes: [{ path, before, after }]; a list absent at the base (the PR that introduces it) is skipped.
+export function frozenListViolations(changes) {
+  const out = [];
+  for (const { path, before, after } of changes) {
+    if (!FROZEN_LISTS.includes(path) || before == null) continue;
+    const had = new Set(entries(before));
+    const added = entries(after).filter((l) => !had.has(l));
+    if (added.length) out.push(`${path} is frozen (lines are only deleted); added: ${added.slice(0, 5).join(' | ')}${added.length > 5 ? ` (+${added.length - 5} more)` : ''}`);
+  }
+  return out;
+}
+
+// Nightly-check pins in arch-fitness-baseline.json (FIT-20, FIT-21) are read from the PR's own checkout, so the
+// same PR could loosen a check and its pin together. Against the base: an allowance never rises or turns null,
+// and an enforced condition is never unpinned. Applies to every branch.
+export const NIGHTLY_PINS = 'scripts/arch-fitness-baseline.json';
+export function nightlyPinViolations(before, after) {
+  if (before == null) return [];
+  const a = JSON.parse(before);
+  const b = after == null ? {} : JSON.parse(after);
+  const out = [];
+  for (const key of a.enforcedReproductions ?? []) {
+    if (!(b.enforcedReproductions ?? []).includes(key)) out.push(`${NIGHTLY_PINS}: enforcedReproductions lost ${key}; a condition verified fixed stays enforced`);
+  }
+  // An enforced condition with no listed allowance tolerates 0 (VerifyBugReproductions defaults to 0).
+  const allow = a.reproductionBaselines ?? {};
+  for (const key of new Set([...Object.keys(allow), ...(a.enforcedReproductions ?? [])])) {
+    const was = key in allow ? allow[key] : 0;
+    const now = (b.reproductionBaselines ?? {})[key];
+    if (typeof was === 'number' && now !== undefined && !(typeof now === 'number' && now <= was)) out.push(`${NIGHTLY_PINS}: reproductionBaselines.${key} ${was} -> ${now}; allowances only shrink`);
+  }
+  return out;
+}
+
+const git = (...args) => execFileSync('git', args, { encoding: 'utf8', maxBuffer: 64 << 20, stdio: ['ignore', 'pipe', 'pipe'] });
+// null only when the path is absent at that commit; any other git error throws (fail closed).
 const show = (rev, path) => {
-  try { return git('show', `${rev}:${path}`); } catch { return null; }
+  git('rev-parse', '--verify', `${rev}^{commit}`);
+  try { git('cat-file', '-e', `${rev}:${path}`); } catch { return null; }
+  return git('show', `${rev}:${path}`);
 };
 
 function main() {
@@ -54,6 +96,15 @@ function main() {
   if (!base) { console.error('--base required'); process.exit(2); }
   // Fail closed: any git/JSON error throws and exits non-zero.
   const changes = RATCHET_BASELINES.map((path) => ({ path, before: show(base, path), after: show('HEAD', path) }));
+  const frozen = frozenListViolations(FROZEN_LISTS.map((path) => ({ path, before: show(base, path), after: show('HEAD', path) })));
+  frozen.push(...nightlyPinViolations(show(base, NIGHTLY_PINS), show('HEAD', NIGHTLY_PINS)));
+  const reader = show('HEAD', 'backend/tests/Feature/WriteRouteInverseRatchetTest.php') ?? '';
+  if (!reader.includes(`base_path('${FROZEN_LISTS[0].replace('backend/', '')}')`)) frozen.push('WriteRouteInverseRatchetTest.php no longer reads the frozen route list');
+  if (frozen.length) {
+    console.error('::error::A frozen list grew or a nightly-check pin was loosened');
+    for (const v of frozen) console.error(`  ${v}`);
+    process.exit(1);
+  }
   const violations = findViolations(changes, branch);
   if (violations.length) {
     console.error(`::error::Ratchet baseline touched by a non-chore/ branch (${branch})`);
