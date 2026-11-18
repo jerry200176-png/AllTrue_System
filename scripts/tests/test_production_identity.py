@@ -125,6 +125,7 @@ else:
     def test_missing_ambiguous_failed_or_unreadable_jobs_fail_closed(self):
         good = self.fixture["jobs"]["20"][0].copy()
         for jobs in [[], [good, good], [dict(good, conclusion="failure")],
+                     [dict(good, status="in_progress")],
                      [dict(good, status="in_progress", conclusion=None)],
                      [dict(good, completed_at=None)], [dict(good, run_id=999)],
                      [dict(good, name="Unrelated job")], [dict(good, id=True)],
@@ -155,6 +156,7 @@ else:
         good = self.fixture["details"]["20"].copy()
         for change in [{"path": ".github/workflows/other.yml"}, {"id": 999},
                        {"head_branch": "feature"}, {"head_sha": "b" * 40},
+                       {"status": "in_progress"}, {"conclusion": "failure"},
                        {"status": "in_progress", "conclusion": None}]:
             with self.subTest(change=change):
                 self.fixture["details"]["20"] = dict(good, **change)
