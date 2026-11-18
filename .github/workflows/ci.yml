@@ -935,7 +935,7 @@ jobs:
         shard: [1, 2]
     runs-on: ubuntu-latest
     # Browsers + system deps are baked in; the tag must equal @playwright/test in frontend/package-lock.json.
-    container: mcr.microsoft.com/playwright:v1.65.0-noble
+    container: mcr.microsoft.com/playwright:v1.65.1-noble
     timeout-minutes: 25
 
     steps:
