@@ -7,6 +7,12 @@ attempt needs its own Founder approval.
 """
 import itertools
 import re
+import os
+import json
+import subprocess
+import sys
+import tempfile
+import textwrap
 import unittest
 from pathlib import Path
 
@@ -35,6 +41,8 @@ REPAIR_IF = (
     "needs.founder-approval.result == 'skipped') || (inputs.mode == 'approve' && "
     "needs.founder-approval.result == 'success' && needs.founder-approval.outputs.attempt == github.run_attempt)) }}"
 )
+CANCEL_GATE_IF = GATE_IF.replace("inputs.mode == 'approve'", "(inputs.mode == 'approve' || inputs.mode == 'rollback')")
+CANCEL_REPAIR_IF = REPAIR_IF.replace("inputs.mode == 'approve'", "(inputs.mode == 'approve' || inputs.mode == 'rollback')")
 SECRET = re.compile(r"secrets\.PI_", re.I)
 
 
@@ -67,17 +75,18 @@ class PopDryRunGate(unittest.TestCase):
             job = jobs(text)
             gate, repair = job["founder-approval"], job[ssh_job]
             self.assertIn("    environment:\n      name: production-activation\n", gate, name)
-            self.assertIn(GATE_IF, gate, name)
+            extended = name == 'pop-past-scheduled-cancel.yml'
+            self.assertIn(CANCEL_GATE_IF if extended else GATE_IF, gate, name)
             self.assertNotRegex(gate, SECRET, name)
             self.assertIn("    environment:\n      name: production-ssh\n", repair, name)
-            self.assertIn(REPAIR_IF, repair, name)
+            self.assertIn(CANCEL_REPAIR_IF if extended else REPAIR_IF, repair, name)
             # Inside the SSH job only an exact "approve" passes the exit; the approval request comes after it.
             self.assertNotIn('"$MODE" == dry-run ]]; then', repair, name)
-            exit_at = repair.index('if [[ "$MODE" != approve ]]; then')
+            exit_at = repair.index('if [[ "$MODE" != approve && "$MODE" != rollback ]]; then' if extended else 'if [[ "$MODE" != approve ]]; then')
             self.assertLess(exit_at, repair.index("/approvals"), name)
             self.assertIn("exit 0", repair[exit_at:repair.index("/approvals")], name)
             guard = job["guard"]
-            self.assertIn('[[ "$MODE" == dry-run || "$MODE" == approve ]] || exit 1', guard, name)
+            self.assertIn('[[ "$MODE" == dry-run || "$MODE" == approve || "$MODE" == rollback ]] || exit 1' if extended else '[[ "$MODE" == dry-run || "$MODE" == approve ]] || exit 1', guard, name)
             self.assertRegex(guard, r"DRY_RUN_\w+", name)
             self.assertRegex(guard, r"APPROVE_\w+", name)
 
@@ -112,6 +121,47 @@ class PopDryRunGate(unittest.TestCase):
             for job_id, body in jobs((WORKFLOWS / name).read_text()).items():
                 if SECRET.search(body):
                     self.assertRegex(body, r"environment:(?:\n      name:)? production-activation\n", f"{name}:{job_id}")
+
+    def test_new_cancel_rollback_needs_this_attempts_founder_and_only_accepts_the_exact_case(self):
+        job = jobs((WORKFLOWS / 'pop-past-scheduled-cancel.yml').read_text())
+        gate = re.search(r'(?m)^    if: (.+)$', job['founder-approval']).group(0).strip()
+        repair = re.search(r'(?m)^    if: (.+)$', job['repair']).group(0).strip()
+        for mode, guard, fa, fa_attempt, attempt in itertools.product(
+            ('dry-run', 'approve', 'rollback', 'other'), ('success', 'failure'),
+            ('success', 'skipped', 'failure', 'cancelled'), ('1', '2', ''), ('1', '2'),
+        ):
+            values = dict(mode=mode, guard=guard, fa=fa, fa_attempt=fa_attempt, attempt=attempt)
+            self.assertEqual(evaluate(gate, **values), guard == 'success' and mode in {'approve', 'rollback'})
+            if evaluate(repair, **values) and mode in {'approve', 'rollback'}:
+                self.assertEqual((guard, fa, fa_attempt), ('success', 'success', attempt))
+        script = textwrap.dedent(job['guard'].split('        run: |\n', 1)[1])
+        for case, mode, confirm, sha, ok in [
+            ('3380', 'rollback', 'ROLLBACK_PAST_SCHEDULED_CANCEL_20261118', 'a'*40, True),
+            ('2942', 'rollback', 'ROLLBACK_PAST_SCHEDULED_CANCEL_20261008', 'a'*40, False),
+            ('3380', 'rollback', 'APPROVE_PAST_SCHEDULED_CANCEL_20261118', 'a'*40, False),
+            ('3380', 'rollback', 'ROLLBACK_PAST_SCHEDULED_CANCEL_20261118', 'a'*39, False),
+            ('3380; false', 'rollback', 'ROLLBACK_PAST_SCHEDULED_CANCEL_20261118', 'a'*40, False),
+            ('2942', 'approve', 'APPROVE_PAST_SCHEDULED_CANCEL_20261008', 'a'*40, True),
+            ('3380', 'dry-run', 'DRY_RUN_PAST_SCHEDULED_CANCEL_20261118', 'a'*40, True),
+        ]:
+            result = subprocess.run(['bash', '-c', script], env={'PATH': os.defpath, 'CASE_ID': case, 'MODE': mode, 'CONFIRM': confirm, 'INPUT_SHA': sha}, capture_output=True)
+            self.assertEqual(result.returncode == 0, ok, (case, mode, result.stderr))
+
+    def test_cancel_rollback_poll_requires_its_own_native_receipt(self):
+        text = (WORKFLOWS / 'pop-past-scheduled-cancel.yml').read_text()
+        script = textwrap.dedent(re.search(r"if poll_summary=.*?<<'PY'\n(.*?)\n          PY", text, re.S).group(1))
+        sha, ref = 'a'*40, 'founder-go-past-scheduled-cancel-rollback-20261118'
+        record = dict(phase='rollback', result='rolled_back', actor='pop-pi-local', commit_sha=sha, approval_reference=ref)
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / 'receipt.json'
+            for change, ok in [({}, True), ({'actor': 'other'}, False), ({'commit_sha': 'b'*40}, False),
+                               ({'approval_reference': 'founder-go-past-scheduled-cancel-20261118'}, False),
+                               ({'phase': 'verify', 'result': 'succeeded'}, False)]:
+                path.write_text(json.dumps({'request_status': 'rolled_back', 'records':
+                    [{'phase': 'execute', 'snapshot_present': True}, record | change]}))
+                result = subprocess.run([sys.executable, '-c', script, str(path)],
+                    env={'MODE': 'rollback', 'TARGET_SHA': sha, 'APPROVAL_REF': ref}, capture_output=True)
+                self.assertEqual(result.returncode == 0, ok, result.stderr)
 
 
 if __name__ == "__main__":
