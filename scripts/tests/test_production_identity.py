@@ -122,6 +122,17 @@ else:
         self.assertEqual(19, identity["last_deploy_workflow_run"]["databaseId"])
         self.assertEqual(190, identity["production_deploy_job"]["id"])
 
+    def test_backend_only_deploy_preserves_the_separate_frontend_revision(self):
+        frontend_sha = "b" * 40
+        self.fixture["version"]["build_sha"] = frontend_sha
+        self.fixture["deployment"]["frontend_build_sha"] = frontend_sha
+        result, identity = self.run_helper()
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertEqual(self.sha, identity["deployed_backend_full_sha"])
+        self.assertEqual(frontend_sha, identity["deployed_frontend_build_sha"])
+        self.assertEqual(frontend_sha, identity["deployment_manifest_frontend_sha"])
+        self.assertEqual(200, identity["production_deploy_job"]["id"])
+
     def test_missing_ambiguous_failed_or_unreadable_jobs_fail_closed(self):
         good = self.fixture["jobs"]["20"][0].copy()
         for jobs in [[], [good, good], [dict(good, conclusion="failure")],
