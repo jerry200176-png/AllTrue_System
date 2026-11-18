@@ -1,0 +1,15 @@
+updates:
+  - id: staff-2026-11-18-bill-correction
+    published_at: "2026-11-18"
+    audiences:
+      - director
+    importance: digest
+    title: 帳單金額不對可自己更正
+    summary: 目前只有大安、新店、木柵的主任可以自己更正帳單金額。
+    items:
+      - category: added
+        text: 目前只有大安、新店、木柵看得到「更正帳單」鈕，其他分校之後再開。
+      - category: added
+        text: 在帳單列按它，先看結果、填原因再確認；已收的錢轉到新帳單，總部看得到紀錄。
+    source_refs:
+      - "changelog:2026-11-18:bill-correction-activate"

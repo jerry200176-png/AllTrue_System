@@ -38,10 +38,10 @@ final class BillCorrection
         return preg_match('/^\[bill_correction:(\d+)\]/', (string) $note, $m) ? (int) $m[1] : null;
     }
 
-    /** Whether any campus is listed: list screens skip the chain lookup while the feature is off everywhere (the void guard still checks). */
-    public static function enabledAnywhere(): bool
+    /** Cheap in-memory hint for list screens (no query): a replacement bill's Note starts with this. The void guard does the real lookup. */
+    public static function mayBeReplacement(?string $note): bool
     {
-        return array_filter((array) config('billing.bill_correction_campus_ids', [])) !== [];
+        return str_contains((string) $note, '帳單更正，原帳單 #');
     }
 
     public static function campusOn(int $campusId): bool
