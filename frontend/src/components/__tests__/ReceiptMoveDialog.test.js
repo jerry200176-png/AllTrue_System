@@ -63,6 +63,16 @@ describe('收據移到正確帳單 · flow', () => {
     expect(document.body.textContent).not.toMatch(/reassign_|invoice_id|課程編號/);
   });
 
+  it('names the source from the bill that holds the payment (server), not from the ledger label', async () => {
+    const src = { student_name: '合成哥哥', subject: '理化', billing_period: null, start_date: '2026-08-01', issue_date: '2026-08-02' };
+    stubFetch({ targets: [res(200, { ...TARGETS, source: src })], preview: [res(200, { ...PLAN, from: { ...PLAN.from, ...src } })] });
+    await openDialog({ fromLabel: '數學（錯的標籤）' });
+    expect(q('rm-source').textContent).toContain('合成哥哥 · 理化 · 2026-08-01 開始');
+    expect(q('rm-source').textContent).not.toContain('錯的標籤');
+    await choose();
+    expect(q('rm-from-label').textContent).toBe('原帳單：合成哥哥 · 理化 · 2026-08-01 開始 · 2026-08-02 開立');
+  });
+
   it('two same-subject bills look different in the picker and in the review', async () => {
     const t = (id, start, issue) => ({ invoice_id: id, course_id: id, subject: '數學', billing_period: null, start_date: start, issue_date: issue, total: 3000, remaining: 3000, status: 'unpaid' });
     stubFetch({ targets: [res(200, { ...TARGETS, targets: [t(21, '2026-09-01', '2026-09-02'), t(22, '2026-10-05', '2026-10-06')] })], preview: [res(200, PLAN)] });

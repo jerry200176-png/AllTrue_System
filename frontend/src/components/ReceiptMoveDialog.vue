@@ -27,10 +27,12 @@ const emit = defineEmits(['update:open', 'moved', 'changed']);
 const money = (n) => `NT$ ${Number(n || 0).toLocaleString('zh-TW')}`;
 const period = (p) => (p ? String(p).replace('-', '/') : '');
 // Same-subject contracts must look different: add the contract start and the bill's issue date.
+const sideLabel = (t) => [t.student_name, targetLabel(t)].filter(Boolean).join(' · ');
 const targetLabel = (t) => [t.subject || '課程', period(t.billing_period), t.start_date && `${t.start_date} 開始`, t.issue_date && `${t.issue_date} 開立`].filter(Boolean).join(' · ');
 
 const pickedStudent = ref({ id: null, name: '' });
 const targets = ref(null); // null = loading
+const source = ref(null); // where the money sits, named by the server from the bill that holds the payment
 const chosen = ref(null);
 const plan = ref(null);
 const reason = ref('');
@@ -56,6 +58,7 @@ async function loadTargets(studentId, keep = null) {
   if (mine !== seq) return;
   if (res.ok) {
     targets.value = res.data.targets || [];
+    source.value = res.data.source || null;
     return;
   }
   targets.value = [];
@@ -175,7 +178,7 @@ watch(() => [props.open, props.reportId], ([open]) => {
         <DialogDescription>這張收據記在別人的帳單上。可以直接移到正確的帳單，金額不變，舊收據會作廢並留下紀錄。</DialogDescription>
       </DialogHeader>
 
-      <p class="tw:text-sm" data-testid="rm-source">這筆 <strong class="tw:tabular-nums">{{ money(amount) }}</strong> 現在記在：{{ fromLabel || '原帳單' }}</p>
+      <p class="tw:text-sm" data-testid="rm-source">這筆 <strong class="tw:tabular-nums">{{ money(amount) }}</strong> 現在記在：{{ (source ? sideLabel(source) : fromLabel) || '原帳單' }}</p>
 
       <Alert v-if="refusal" :tone="dead ? 'danger' : 'warning'" data-testid="rm-refusal">{{ refusal.text }}</Alert>
 
@@ -226,8 +229,9 @@ watch(() => [props.open, props.reportId], ([open]) => {
 
       <!-- Step 2: review, reason, confirm -->
       <div v-if="plan" class="tw:space-y-3 tw:text-sm" data-testid="rm-plan">
-        <p class="tw:text-base tw:font-semibold">把這筆 {{ money(plan.amount) }} 移到：{{ pickedStudent.name }} · {{ targetLabel(chosen) }}</p>
+        <p class="tw:text-base tw:font-semibold">把這筆 {{ money(plan.amount) }} 移到：{{ plan.to.student_name || pickedStudent.name }} · {{ targetLabel(plan.to.subject ? plan.to : chosen) }}</p>
         <ul class="tw:space-y-1 tw:tabular-nums">
+          <li data-testid="rm-from-label">原帳單：{{ sideLabel(plan.from) }}</li>
           <li data-testid="rm-from-balance">原帳單：還差 {{ money(plan.from.balance_before) }} → {{ money(plan.from.balance_after) }}</li>
           <li data-testid="rm-to-balance">正確帳單：還差 {{ money(plan.to.balance_before) }} → {{ money(plan.to.balance_after) }}</li>
         </ul>

@@ -274,6 +274,9 @@ class ReceiptReassignPreviewTest extends TestCase
         $res = $this->getJson("/api/v1/payment-reports/{$f['report']->id}/reassign-targets?student_id={$f['right']->id}", $this->h($this->token('A', 1)))->assertOk();
         $this->assertArrayHasKey('subject', $res->json('targets.0'));
         $this->assertArrayHasKey('start_date', $res->json('targets.0'));
+        // The source label comes from the bill that holds the payment, not from the report's own course link.
+        $this->assertSame($f['wrong']->name, $res->json('source.student_name'));
+        $this->assertArrayHasKey('subject', $res->json('source'));
         $this->assertArrayHasKey('issue_date', $res->json('targets.0'));
         $url = "/api/v1/accounting/ledger?student_class_id={$f['wrongCourse']->ID}";
         $this->getJson($url, $this->h($this->token('A', 1)))->assertOk()->assertJsonPath('can_reassign_receipt', true);
