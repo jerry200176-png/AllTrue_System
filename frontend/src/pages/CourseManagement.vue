@@ -1194,6 +1194,7 @@
       @check="runManualSessionCheck"
       @submit="submitManualSession"
       @edit-course="editManualSessionCourse"
+      @view-history="viewManualSessionHistory"
       @next-period="selectNextMonthlyContract"
       @open-course="openConflictBlockerCourse"
     />
@@ -3622,6 +3623,14 @@ function closeManualSessionModal() {
 
 function openMonthlySessionModal(course) {
   openManualSessionModal(course);
+}
+
+function viewManualSessionHistory() {
+  const course = manualSessionCourse.value;
+  if (!course || !isMonthlyMode(course) || manualSessionSubmitting.value) return;
+  closeManualSessionModal();
+  showCancelledSessions.value = new Set([...showCancelledSessions.value, course.id]);
+  return openCourseManager(course, 'sessions');
 }
 
 async function selectNextMonthlyContract(targetId) {
