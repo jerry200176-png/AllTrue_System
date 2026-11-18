@@ -225,10 +225,12 @@ describe('收據移到正確帳單 · ledger entry points', () => {
 
   it('card and receipt row offer the move only when the server says it is on', async () => {
     let w = await ledger();
+    await w.get('[data-testid="ledger-fold-receipts"]').trigger('click'); // the receipt list starts folded
     expect(w.find('[data-testid="ledger-move-7"]').exists()).toBe(false);
     expect(w.find('[data-testid="ledger-receipt-move-7"]').exists()).toBe(false);
     wrappers.pop().unmount(); document.body.innerHTML = '';
     w = await ledger({ can_reassign_receipt: true });
+    await w.get('[data-testid="ledger-fold-receipts"]').trigger('click');
     expect(w.get('[data-testid="ledger-move-hint-7"]').text()).toBe('這張收據記在別人的帳單上。可以直接移到正確的帳單。');
     expect(w.get('[data-testid="ledger-move-7"]').text()).toBe('移到正確帳單');
     expect(w.get('[data-testid="ledger-receipt-move-7"]').text()).toBe('收錯帳單？');
@@ -246,6 +248,7 @@ describe('收據移到正確帳單 · ledger entry points', () => {
   it('other anomaly codes and voided receipts get no move button', async () => {
     const w = await ledger({ can_reassign_receipt: true, receipts: [receipt({ status: 'voided' })],
       anomalies: [{ code: 'paid_amount_mismatch', severity: 'warning', message: 'x', report_id: 7, action: null }] });
+    await w.get('[data-testid="ledger-fold-receipts"]').trigger('click');
     expect(w.find('[data-testid="ledger-move-7"]').exists()).toBe(false);
     expect(w.find('[data-testid="ledger-receipt-move-7"]').exists()).toBe(false);
   });
