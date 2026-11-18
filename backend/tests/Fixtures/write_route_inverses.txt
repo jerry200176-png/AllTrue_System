@@ -1,0 +1,2 @@
+# Every write route (non-GET) and how it is undone. See WriteRouteInverseRatchetTest for the three line shapes.
+# Starting list taken from CI on 2026-11-18. Lines without "=>" are not declared yet; that number only goes down.
