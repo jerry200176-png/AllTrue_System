@@ -5,6 +5,7 @@ namespace App\Console\Commands;
 use App\Models\Invoice;
 use App\Services\Billing\InvoiceAmountParityCensus;
 use App\Services\Billing\PaidFlagInvoiceMismatch;
+use App\Services\Scheduling\ScheduleTeacherParityCensus;
 use App\Support\AppClockSql;
 use App\Support\AttendanceStatus;
 use App\Support\ContractPeriod;
@@ -29,6 +30,7 @@ use Illuminate\Support\Facades\Log;
  * Read-only: only SELECT. Scheduled nightly (Kernel) — feeds #904 recurrence report.
  * `screen_amount_vs_resolver` (#4991 item 2) is counted by InvoiceAmountParityCensus instead of one COUNT(*); its JSON row
  * carries `unevaluated`, `census_error` and a `detail` (per campus, per type, named exclusions, truncated flag).
+ * `lesson_teacher_disagreement` (#4991 item 7) is counted the same way by ScheduleTeacherParityCensus.
  */
 class VerifyBugReproductions extends Command
 {
@@ -37,7 +39,7 @@ class VerifyBugReproductions extends Command
     protected $description = 'Run every recurring bug reproduction query against production; fail if a FIXED bug regresses (#1080).';
 
     /**
-     * @return list<array{key:string,label:string,issue:string,enforced:bool,sql?:string}>
+     * @return list<array{key:string,label:string,issue:string,enforced:bool,sql?:string,census?:class-string}>
      */
     private function conditions(): array
     {
@@ -189,6 +191,14 @@ class VerifyBugReproductions extends Command
                 'key' => 'screen_amount_vs_resolver',
                 'label' => 'Live bills whose header, line items and the amount the screens show (resolver) do not agree',
                 'issue' => '#4991/#3521', 'enforced' => false,
+                'census' => InvoiceAmountParityCensus::class,
+            ],
+            [
+                // No `sql`: counted by ScheduleTeacherParityCensus. Reported first; enforce after 14 nights at 0 (#4991 item 7).
+                'key' => 'lesson_teacher_disagreement',
+                'label' => 'Taught lessons (last 35 days) whose evaluation author is not the teacher the schedule resolver names',
+                'issue' => '#4991/#4901', 'enforced' => false,
+                'census' => ScheduleTeacherParityCensus::class,
             ],
             [
                 // Observe-only (never enforced): allowed by Founder decision #5198 option A; ids per campus via sessions:census-before-contract-start.
@@ -207,12 +217,12 @@ class VerifyBugReproductions extends Command
      *
      * @return array<string,mixed>
      */
-    private function census(): array
+    private function census(string $class): array
     {
         try {
-            return ['census_error' => 0] + app(InvoiceAmountParityCensus::class)->run();
+            return ['census_error' => 0] + app($class)->run();
         } catch (\Throwable $e) {
-            Log::warning('amount_parity.census_error', ['error' => $e::class]);
+            Log::warning($class === InvoiceAmountParityCensus::class ? 'amount_parity.census_error' : 'reproduction.census_error', ['error' => $e::class, 'census' => class_basename($class)]);
 
             return ['census_error' => 1, 'mismatch_count' => 0, 'unevaluated' => 0, 'truncated' => false];
         }
@@ -231,7 +241,7 @@ class VerifyBugReproductions extends Command
         }
 
         foreach ($conditions as $cond) {
-            $detail = isset($cond['sql']) ? null : $this->census();
+            $detail = isset($cond['sql']) ? null : $this->census($cond['census']);
             $count = $detail === null ? (int) (DB::selectOne(...AppClockSql::bind($cond['sql']))->c ?? 0) : $detail['mismatch_count'];
             // Known-baseline allowance (config/reproduction_baselines.php): an enforced condition fails only above it;
             // a listed null means the baseline is not measured yet (reported, never failing).
