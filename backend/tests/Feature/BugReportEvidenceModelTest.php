@@ -19,6 +19,30 @@ class BugReportEvidenceModelTest extends TestCase
 {
     use RefreshDatabase;
 
+    /** #5498 prerequisite: unknown/internal append-only data must stay private even after a producer rollback. */
+    public function test_public_evidence_is_an_explicit_type_allowlist_without_deleting_internal_rows(): void
+    {
+        $admin = $this->seedAdmin();
+        $public = $this->makeEvidence($admin);
+        foreach (['native_support_comment_origin', 'unreviewed_future_type', ''] as $i => $type) {
+            BugReportEvidence::create([
+                'bug_report_id' => $public->bug_report_id, 'evidence_type' => $type,
+                'production_revision' => str_repeat('a', 40), 'deploy_run_id' => '123',
+                'source_ref' => 'synthetic-private-type:' . $i, 'verified_by' => $admin->id,
+                'verified_at' => now(), 'created_at' => now(),
+                'metadata' => ['private_marker' => 'SYNTHETIC-PRIVATE-PROOF'],
+            ]);
+        }
+        foreach ([false, true] as $includeInternalNotes) {
+            $detail = BugReportService::getDetail((int) $public->bug_report_id, $includeInternalNotes);
+            $this->assertSame([$public->id], array_column($detail['evidence'], 'id'));
+            $this->assertSame($public->production_revision, $detail['evidence'][0]['production_revision']);
+            $this->assertSame(1, $detail['product_loop']['evidence_count']);
+            $this->assertStringNotContainsString('SYNTHETIC-PRIVATE-PROOF', json_encode($detail));
+        }
+        $this->assertSame(4, BugReportEvidence::where('bug_report_id', $public->bug_report_id)->count(), 'append-only audit rows remain intact');
+    }
+
     public function test_append_only_evidence_enables_timeout_without_rewriting_status_history(): void
     {
         Carbon::setTestNow(Carbon::parse('2026-09-20 12:00:00'));
