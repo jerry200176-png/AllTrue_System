@@ -29,7 +29,7 @@
           <span v-if="!blockers.length">衝堂詳情：{{ result.conflict_detail.message || result.conflict_detail.type || '已有其他排課' }}</span>
           <ul v-else class="manual-session-blockers" aria-label="衝堂的課">
             <li v-for="b in blockers" :key="`${b.source}-${b.source_id}`">
-              {{ b.student_name || '另一位學生' }}{{ b.subject_name ? `・${b.subject_name}` : '' }}{{ b.course_period ? `（${b.course_period}）` : '' }}，{{ form.session_date }} {{ String(b.start_time ?? '').slice(0, 5) }}–{{ String(b.end_time ?? '').slice(0, 5) }}<template v-if="b.same_contract !== undefined">（{{ b.same_contract ? '本合約的課' : '另一份合約的課' }}）</template>
+              {{ scheduleBlockerLabel(b, form.session_date) }}
               <button v-if="b.course_id" type="button" class="ghost small manual-session-open-blocker" @click="$emit('open-course', b)">打開那堂課</button>
             </li>
           </ul>
@@ -67,6 +67,7 @@
 <script setup>
 import AtSubmitButton from '../design-system/AtSubmitButton.vue';
 import { computed, ref } from 'vue';
+import { scheduleBlockerLabel, uniqueScheduleBlockers } from '../../lib/scheduleDisplay.js';
 
 const props = defineProps({
   show: Boolean,
@@ -80,13 +81,7 @@ const props = defineProps({
 defineEmits(['close', 'check', 'submit', 'edit-course', 'next-period', 'open-course', 'view-history']);
 const dateInput = ref(null);
 // Who holds the slot: overlap_details from the server's schedule conflicts, de-duplicated.
-const blockers = computed(() => {
-  const seen = new Set();
-  return (props.result?.conflicts || []).flatMap((c) => c.overlap_details || []).filter((b) => {
-    const k = `${b.source}-${b.source_id}`;
-    return !seen.has(k) && seen.add(k);
-  });
-});
+const blockers = computed(() => uniqueScheduleBlockers(props.result?.conflicts));
 const focusDate = () => dateInput.value?.focus();
 </script>
 
