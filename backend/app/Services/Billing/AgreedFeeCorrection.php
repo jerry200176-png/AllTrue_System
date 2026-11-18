@@ -18,6 +18,12 @@ final class AgreedFeeCorrection
             && Schema::hasTable('security_audit_events');
     }
 
+    /** The one query-builder write of the agreed fee (no entitlement hooks); BillCorrection's count shape uses it too. */
+    public static function setCharge(int $courseId, int $charge): void
+    {
+        DB::table('StudentClass')->where('ID', $courseId)->update(['Charge' => $charge]);
+    }
+
     public function run(int $courseId, array $input, array $actor, bool $apply = false): array
     {
         if (!self::available()) $this->refuse('更正功能尚未啟用或資料表尚未準備完成。', 'unavailable', 503);
@@ -91,7 +97,7 @@ final class AgreedFeeCorrection
                 DB::table('Invoice')->where('id', $original->id)->update($attrs);
             }
             // Query-builder update intentionally avoids any entitlement/model update hooks.
-            DB::table('StudentClass')->where('ID', $courseId)->update(['Charge' => $request['new_charge']]);
+            self::setCharge($courseId, $request['new_charge']);
             $row = ['kind' => $kind, 'campus_id' => $campusId, 'student_class_id' => $courseId,
                 'original_invoice_id' => $original?->id, 'replacement_invoice_id' => $replacement?->id, 'payment_report_id' => null,
                 'amount' => $replacement ? $request['new_charge'] : null, 'old_charge' => $plan['old_charge'], 'new_charge' => $request['new_charge'],

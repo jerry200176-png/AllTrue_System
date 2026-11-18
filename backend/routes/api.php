@@ -614,6 +614,9 @@ Route::prefix('v1')->group(function () {
         // Agreed-fee correction (S1): default-off; controller 404 when flag false; service 503 without extension schema.
         Route::post('student-classes/{studentClass}/agreed-fee-correction/preview', [\App\Http\Controllers\AgreedFeeCorrectionController::class, 'preview']);
         Route::post('student-classes/{studentClass}/agreed-fee-correction/apply', [\App\Http\Controllers\AgreedFeeCorrectionController::class, 'apply']);
+        // Step 2 更正帳單: off unless the bill's campus is in billing.bill_correction_campus_ids.
+        Route::post('invoices/{invoice}/correction/preview', [\App\Http\Controllers\BillCorrectionController::class, 'preview'])->whereNumber('invoice');
+        Route::post('invoices/{invoice}/correction/apply', [\App\Http\Controllers\BillCorrectionController::class, 'apply'])->whereNumber('invoice');
         Route::post('student-classes/{studentClass}/billing-correction', [StudentClassController::class, 'billingCorrection']);
         Route::post('student-classes/{studentClass}/payment-review/check', [StudentClassController::class, 'paymentReviewCheck']);
         Route::get('student-classes/{studentClass}/refund/preview', [\App\Http\Controllers\BillingRefundController::class, 'preview']);

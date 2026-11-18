@@ -8,6 +8,8 @@ return [
     // These scope values do not activate the API; agreed_fee_correction_enabled remains literal false.
     'agreed_fee_correction_campus_ids' => array_map('intval', array_filter(explode(',', (string) env('AGREED_FEE_CORRECTION_CAMPUS_IDS', '')))),
     'agreed_fee_correction_course_ids' => array_map('intval', array_filter(explode(',', (string) env('AGREED_FEE_CORRECTION_COURSE_IDS', '')))),
+    // Step 2 更正帳單 (RFC_MONTHLY_BILL_LIFECYCLE §3.6): campuses where a director may correct a bill. Committed literal, never env-driven; empty = off.
+    'bill_correction_campus_ids' => [],
     // F7 S5: log (never act on) disagreements between the legacy paid predicate and BillingPayableResolver at outbound sites.
     'paid_status_shadow' => (bool) env('BILLING_PAID_STATUS_SHADOW', true),
     // F7 S5: the tuition notification center decides who owes from BillingPayableResolver (shadow-verified). false = legacy predicate + shadow.
