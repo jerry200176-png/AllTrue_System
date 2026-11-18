@@ -136,7 +136,8 @@ class BillCorrectionTest extends TestCase
         $own = $this->token('A', $this->campus);
         $this->correct($this->token('T', $this->campus), $b['invoice'], ['new_total' => 8000])->assertStatus(403);
         $this->correct($this->token('A', $other), $b['invoice'], ['new_total' => 8000])->assertStatus(403);
-        $this->correct($own, $b['invoice'], ['reason' => 'x'])->assertStatus(422); // reason too short
+        $this->correct($own, $b['invoice'], ['new_total' => 8000, 'reason' => 'x', 'state_hash' => str_repeat('a', 64)], 'apply')->assertStatus(422); // reason too short (apply only)
+        $this->postJson("/api/v1/invoices/{$b['invoice']->id}/correction/preview", ['new_total' => 8000], $this->h($own))->assertOk(); // preview needs no reason
         $this->correct($own, $b['invoice'], [])->assertStatus(422)->assertJsonPath('code', 'new_total_required');
         $this->correct($own, $b['invoice'], ['new_total' => 10000])->assertStatus(422)->assertJsonPath('code', 'unchanged_total');
         $this->correct($own, $b['invoice'], ['new_total' => 8000], 'apply')->assertStatus(422); // state_hash required

@@ -31,7 +31,7 @@ final class BillCorrectionController extends Controller
         }
         $data = $request->validate([
             'new_total' => 'nullable|integer|min:1|max:999999',
-            'reason' => 'required|string|min:2|max:80|regex:/\S/u',
+            'reason' => $apply ? 'required|string|min:2|max:80|regex:/\S/u' : 'sometimes|string|max:80', // preview does not need it (not part of the state_hash)
             'state_hash' => ($apply ? 'required' : 'nullable').'|string|size:64',
         ]);
         $actor = ['id' => $actorId, 'role' => $role, 'campus_ids' => array_map('intval', (array) $request->attributes->get('auth_campus_ids', []))];

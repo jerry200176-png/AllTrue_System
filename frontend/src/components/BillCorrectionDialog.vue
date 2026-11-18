@@ -41,8 +41,7 @@ async function preview() {
   loading.value = true;
   plan.value = null;
   refusal.value = null;
-  // The preview endpoint asks for a reason too (≥2 chars); the real reason is sent with the apply.
-  const body = { reason: '預覽', ...(isCount.value && totalOk.value ? { new_total: Number(newTotal.value) } : {}) };
+  const body = isCount.value && totalOk.value ? { new_total: Number(newTotal.value) } : {};
   const res = await previewBillCorrection(props.invoiceId, body);
   if (mine !== seq) return;
   loading.value = false;
