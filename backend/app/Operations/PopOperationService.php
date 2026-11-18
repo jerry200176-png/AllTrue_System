@@ -281,8 +281,18 @@ final class PopOperationService
             }
             $recoveryPhase = $this->financialRecoveryPhase($locked);
             $renewal = $recoveryPhase !== null; $approvalPhase = $recoveryPhase ?? 'execute';
+            $nativeCancel = $this->isNativePastScheduledRecovery($locked);
+            if ($nativeCancel) {
+                if (DB::table('pop_execution_records')->where('operation_id', $locked->id)->where('phase', 'rollback')->where('result', 'rolled_back')->exists()) {
+                    throw new RuntimeException('POP session request is already rolled back.');
+                }
+                $reference = str_starts_with($approvalPhase, 'rollback') ? 'founder-go-past-scheduled-cancel-rollback-20261118' : 'founder-go-past-scheduled-cancel-20261118';
+                if ($approvalReference !== $reference) throw new RuntimeException('POP session approval requires the exact execute or rollback reference.');
+                if (str_starts_with($approvalPhase, 'rollback')) $this->assertNativeCancelSnapshot($locked);
+            }
             $sameRole = $this->approvals($locked)
                 ->where('approver_role', $approverRole)
+                ->when($nativeCancel, fn ($q) => $q->where('phase', $approvalPhase)->where('expires_at', '>', now()))
                 ->exists();
             if ($sameRole) {
                 throw new RuntimeException('POP approval role has already approved this request.');
@@ -319,7 +329,7 @@ final class PopOperationService
             $token = null;
             $expiresAt = null;
             if ($ready) {
-                $expiresAt = $renewal ? Carbon::parse((string) $this->approvals($locked)->min('expires_at')) : now()->addMinutes($ttlMinutes);
+                $expiresAt = $renewal && !$nativeCancel ? Carbon::parse((string) $this->approvals($locked)->min('expires_at')) : now()->addMinutes($ttlMinutes);
                 $token = $this->sign($locked, $approvalPhase, $commitSha, $expiresAt->timestamp);
                 DB::table('pop_approval_events')
                     ->where('id', $approvalId)
@@ -327,14 +337,14 @@ final class PopOperationService
                     ->update(['token_hash' => hash('sha256', $token), 'expires_at' => $expiresAt]);
             }
             DB::table('pop_operation_requests')->where('id', $requestId)->update([
-                'status' => $renewal ? 'failed' : ($ready ? 'approved' : 'awaiting_approval'),
+                'status' => $renewal && !$nativeCancel ? 'failed' : ($ready ? 'approved' : 'awaiting_approval'),
                 'updated_at' => now(),
             ]);
             $this->audit($locked, 'approval', 'success', $parameters, $approverId, $approverRole);
 
             return [
                 'request_id' => $requestId,
-                'status' => $renewal ? 'failed' : ($ready ? 'approved' : 'awaiting_approval'),
+                'status' => $renewal && !$nativeCancel ? 'failed' : ($ready ? 'approved' : 'awaiting_approval'),
                 'ready' => $ready,
                 'required_roles' => $requiredRoles,
                 'approved_roles' => $approvedRoles,
@@ -401,7 +411,8 @@ final class PopOperationService
     ): array
     {
         $run = fn () => $this->runPhase($requestId, $phase, $token, $commitSha, $actor, $actorId, $actorRole, $context);
-        if (!in_array($phase, ['execute', 'verify', 'rollback'], true) || !$this->coCommitsWithRecord((string) $this->request($requestId)->strategy_id)) return $run();
+        $request = $this->request($requestId);
+        if (!in_array($phase, ['execute', 'verify', 'rollback'], true) || !$this->coCommitsWithRecord((string) $request->strategy_id, $request)) return $run();
         $this->phaseFailure = null;
         $level = DB::transactionLevel();
         try { return DB::transaction(function () use ($requestId, $phase, $run): array {
@@ -497,7 +508,8 @@ final class PopOperationService
             'errors' => ['execution_failed'],
         ], $actor, $approval, $commitSha, $this->durationMs($startedAt), 'execution_failed');
         // #5236 P1: a nested "Lock wait timeout" gets no ROLLBACK TO SAVEPOINT from Laravel, so recording inside run()'s transaction would commit the moves made before it. This strategy alone leaves that transaction first; run() then writes the receipt.
-        $this->phaseFailure = (string) $entry['strategy_class'] === \App\Operations\Strategies\CourseContractChainRebalanceStrategy::class ? $failed : null;
+        $this->phaseFailure = (string) $entry['strategy_class'] === \App\Operations\Strategies\CourseContractChainRebalanceStrategy::class
+            || $this->isNativePastScheduledRecovery($request) ? $failed : null;
         try {
             if ($phase === 'execute') {
                 $strategy = app((string) $entry['strategy_class']);
@@ -514,7 +526,7 @@ final class PopOperationService
                     $this->durationMs($startedAt)
                 );
                 // Co-commit financial repair/receipt; preserve other strategies' external-effect contracts.
-                return $this->coCommitsWithRecord($strategy)
+                return $this->coCommitsWithRecord($strategy, $request)
                     ? DB::transaction($executeAndRecord, 3)
                     : $executeAndRecord();
             }
@@ -528,7 +540,7 @@ final class PopOperationService
             $complete = fn () => $this->record($request, $entry, $parameters, $phase,
                 $phase === 'verify' ? $strategy->verify($plan, $payload) : $strategy->rollback($payload['snapshot'] ?? [], ['actor' => $actor, 'operation_id' => $request->id]),
                 $actor, $approval, $commitSha, $this->durationMs($startedAt));
-            return $this->coCommitsWithRecord($strategy)
+            return $this->coCommitsWithRecord($strategy, $request)
                 ? DB::transaction($complete, 3) : $complete();
         } catch (Throwable) {
             if ($this->phaseFailure !== null) throw new PopPhaseAborted($failed);
@@ -537,11 +549,12 @@ final class PopOperationService
     }
 
     /** Strategies whose writes must commit in the same transaction as their POP execution record (no committed repair without its snapshot). */
-    private function coCommitsWithRecord(object|string $strategy): bool
+    private function coCommitsWithRecord(object|string $strategy, ?object $request = null): bool
     {
         if ($this->isRekeyStrategy($strategy)) return false;
 
         return $this->atomicFinancialRepair($strategy)
+            || ($request !== null && $this->isNativePastScheduledRecovery($request))
             || in_array(is_object($strategy) ? get_class($strategy) : $strategy, [\App\Operations\Strategies\TaughtLessonSignInRepairStrategy::class,
                 \App\Operations\Strategies\CourseContractChainRebalanceStrategy::class,
                 \App\Operations\Strategies\InappReportFollowupCommentStrategy::class], true); // self-filed support needs its origin receipt atomically
@@ -561,6 +574,34 @@ final class PopOperationService
     private function atomicFinancialRepair(object|string $strategy): bool
     {
         return in_array(is_object($strategy) ? get_class($strategy) : $strategy, ['App\\Operations\\Strategies\\UnpaidInvoiceChargeAlignmentStrategy', Strategies\PaidInvoiceChargeAlignmentStrategy::class, 'App\\Operations\\Strategies\\PaymentReversalRestatementStrategy', 'App\\Operations\\Strategies\\PaymentReportPendingReturnStrategy', 'App\\Operations\\Strategies\\InvoiceHeaderItemRepairStrategy', 'App\\Operations\\Strategies\\LegacyVoidLinkStrategy', 'App\\Operations\\Strategies\\BillingPeriodRekeyStrategy'], true);
+    }
+
+    /** New exact case only; the shared strategy must not enable legacy-case recovery. */
+    private function isNativePastScheduledRecovery(object $request): bool
+    {
+        $id = 'cancel-past-scheduled-course3380-20261118';
+        if (($request->operation_id ?? null) !== $id
+            || ($request->strategy_id ?? null) !== Strategies\PastScheduledSessionsCancelStrategy::class) return false;
+        $entry = $this->catalog->operation($id);
+        return $this->isExactPastScheduledCancel($entry)
+            && ($entry['blast_radius'] ?? null) === 'seven_exact_class_sessions_status_only'
+            && $this->approvalRoles($entry) === ['super_admin']
+            && json_decode((string) ($request->parameters ?? ''), true, 512, JSON_THROW_ON_ERROR) === ['decision_reference' => $id];
+    }
+
+    private function nativeSnapshotRecovery(object $request): bool
+    {
+        return $this->atomicFinancialRepair((string) $request->strategy_id) || $this->isNativePastScheduledRecovery($request);
+    }
+
+    private function assertNativeCancelSnapshot(object $request): void
+    {
+        $record = DB::table('pop_execution_records')->where('operation_id', $request->id)
+            ->where('phase', 'execute')->where('result', 'succeeded')->where('actor', 'pop-pi-local')->first();
+        $snapshot = $record ? json_decode((string) $record->snapshot, true, 512, JSON_THROW_ON_ERROR) : null;
+        if (!is_array($snapshot) || !Strategies\PastScheduledSessionsCancelStrategy::hasNativeRecoverySnapshot($snapshot)) {
+            throw new RuntimeException('POP session rollback requires its original successful execute snapshot.');
+        }
     }
 
     /**
@@ -620,16 +661,18 @@ final class PopOperationService
             $request = $this->request((string) $candidate->id);
             $retry = $requestId !== null && $this->retryableFinancialExecute($request);
             $records = DB::table('pop_execution_records')->where('operation_id', $request->id);
-            $recover = $requestId !== null && $this->atomicFinancialRepair((string) $request->strategy_id)
+            $recover = $requestId !== null && $this->nativeSnapshotRecovery($request)
                 && ((clone $records)->where('phase', 'execute')->where('result', 'succeeded')->exists() || ($phase === 'rollback' && $this->hasRekeyJournal($request)))
                 && !(clone $records)->where('phase', 'rollback')->when($phase === 'rollback', fn ($q) => $q->where('result', 'rolled_back'))->exists();
             if ($phase === 'execute' ? ((string) $request->status !== 'approved' && !$retry) : !$recover) {
                 return ['ok' => true, 'status' => 'skipped', 'request_id' => (string) $request->id];
             }
-            $approval = $this->localApproval($request);
+            $approval = $this->localApproval($request, $phase);
             $commitSha = (string) $approval->commit_sha;
             $this->assertLocalDeployment($commitSha);
             $token = $this->reconstructToken($request, $approval, $commitSha);
+            // Only this exact signed Owner rollback intent is consumed by the ordinary Pi scheduler.
+            if ($phase === 'execute' && $this->isNativePastScheduledRecovery($request) && str_starts_with((string) $approval->phase, 'rollback')) $phase = 'rollback';
             if ($phase !== 'execute') return $this->localSummary($request, $this->run((string) $request->id, $phase, $token, $commitSha, 'pop-pi-local'));
             $execute = $this->run((string) $request->id, 'execute', $token, $commitSha, 'pop-pi-local');
             if (($execute['result'] ?? null) !== 'succeeded') {
@@ -646,6 +689,12 @@ final class PopOperationService
     /** Explicit Pi-local retries only; the ordinary scheduler never requeues failed requests. */
     private function retryableFinancialExecute(object $request): bool
     {
+        if (in_array((string) $request->status, ['failed', 'approved', 'awaiting_approval'], true) && $this->isNativePastScheduledRecovery($request)) {
+            $records = DB::table('pop_execution_records')->where('operation_id', $request->id);
+            return (clone $records)->where('phase', 'execute')->where('result', 'failed')->where('payload->failure_reason', 'execution_failed')->exists()
+                && !(clone $records)->where('phase', 'execute')->where('result', 'succeeded')->exists()
+                && !(clone $records)->where('phase', 'rollback')->exists();
+        }
         if ((string) $request->status !== 'failed' || !$this->atomicFinancialRepair((string) $request->strategy_id)) return false;
         $executions = DB::table('pop_execution_records')->where('operation_id', $request->id)->where('phase', 'execute');
         return ((clone $executions)->where('result', 'failed')->where('payload->failure_reason', 'execution_failed')->exists()
@@ -1551,6 +1600,15 @@ final class PopOperationService
         if (!$approval || Carbon::parse((string) $approval->expires_at)->isPast()) {
             return null;
         }
+        if ($this->isNativePastScheduledRecovery($request)) {
+            $rollbackIntent = str_starts_with((string) $approval->phase, 'rollback');
+            if ($rollbackIntent !== ($phase === 'rollback')) return null;
+            if ($rollbackIntent) {
+                if ($approval->phase !== $this->nativeCancelRollbackPurpose($request)
+                    || $approval->approval_reference !== 'founder-go-past-scheduled-cancel-rollback-20261118') return null;
+                $this->assertNativeCancelSnapshot($request);
+            }
+        }
         if ((string) $approval->parameters_hash !== (string) $request->parameters_hash) {
             return null;
         }
@@ -1563,7 +1621,7 @@ final class PopOperationService
             : null;
     }
 
-    private function localApproval(object $request): object
+    private function localApproval(object $request, string $phase = 'execute'): object
     {
         $entry = $this->catalog->operation((string) $request->operation_id);
         $approvals = DB::table('pop_approval_events')
@@ -1571,7 +1629,12 @@ final class PopOperationService
             ->where('event_type', 'approved')
             ->get();
         $current = $approvals->filter(fn ($row) => Carbon::parse((string) $row->expires_at)->isFuture());
-        if ($this->atomicFinancialRepair((string) $request->strategy_id) && $current->isNotEmpty()) $approvals = $current;
+        if ($this->nativeSnapshotRecovery($request) && $current->isNotEmpty()) $approvals = $current;
+        if ($this->isNativePastScheduledRecovery($request)) {
+            $purpose = $phase === 'verify' ? ['execute', 'execute-recovery'] : [$this->financialRecoveryPhase($request) ?? 'execute'];
+            $approvals = $current->whereIn('phase', $purpose)->sortByDesc('id')->values();
+            if ($approvals->isEmpty()) throw new RuntimeException('POP session recovery requires a fresh, unexpired purpose-bound approval.');
+        }
         $requiredRoles = $this->quorumRoles($entry, $approvals, (string) $request->id);
         $this->assertMonthlyApprovalEvents($request, $entry, $approvals->all());
         $roles = $approvals->pluck('approver_role')->map(fn ($role): string => (string) $role)->unique()->values()->all();
@@ -1649,16 +1712,26 @@ final class PopOperationService
 
     private function financialRecoveryPhase(object $request): ?string
     {
-        if (!$this->atomicFinancialRepair((string) $request->strategy_id)) return null;
+        if (!$this->nativeSnapshotRecovery($request)) return null;
         $records = DB::table('pop_execution_records')->where('operation_id', $request->id);
         if ((clone $records)->where('phase', 'rollback')->where('result', 'rolled_back')->exists()) return null;
         if ((clone $records)->where('phase', 'execute')->where('result', 'succeeded')->exists())
-            return (clone $records)->where('phase', 'rollback')->exists() ? 'rollback' : 'recovery';
+            return $this->isNativePastScheduledRecovery($request) ? $this->nativeCancelRollbackPurpose($request)
+                : ((clone $records)->where('phase', 'rollback')->exists() ? 'rollback' : 'recovery');
+        // Session cancellation never produces or consumes financial proof/rekey recovery records.
+        if ($this->isNativePastScheduledRecovery($request)) return $this->retryableFinancialExecute($request) ? 'execute-recovery' : null;
         $proof = (clone $records)->whereIn('phase', ['repair-proof', 'reversal-proof', 'pending-return-proof'])->where('result', 'succeeded')->first();
         if (!$proof && $this->retryableFinancialExecute($request)) return 'execute-recovery';
         $snapshot = $proof ? json_decode((string) $proof->snapshot, true, 512, JSON_THROW_ON_ERROR) : []; $parameters = $snapshot['parameters'] ?? $snapshot['request_parameters'] ?? [];
         return $proof && hash_equals((string) $request->parameters_hash, hash('sha256', json_encode(self::canonicalParameters($parameters), JSON_THROW_ON_ERROR)))
             && !(clone $records)->where('phase', 'rollback')->exists() ? 'execute-recovery' : null;
+    }
+
+    /** Bind each explicitly approved rollback attempt without mutating earlier approval evidence. */
+    private function nativeCancelRollbackPurpose(object $request): string
+    {
+        $attempt = 1 + (int) DB::table('pop_execution_records')->where('operation_id', $request->id)->where('phase', 'rollback')->max('attempt_no');
+        return $attempt === 1 ? 'rollback' : 'rollback-'.$attempt;
     }
 
     private function approvals(object $request): \Illuminate\Database\Query\Builder
@@ -1746,7 +1819,7 @@ final class PopOperationService
         $idempotencyKey = $request->idempotency_key . ':' . $phase;
         $attemptNo = 1;
         $attemptKey = $idempotencyKey;
-        if ($phase === 'dry-run' || (in_array($phase, ['execute', 'verify', 'rollback'], true) && $this->atomicFinancialRepair((string) $request->strategy_id))) {
+        if ($phase === 'dry-run' || (in_array($phase, ['execute', 'verify', 'rollback'], true) && $this->nativeSnapshotRecovery($request))) {
             $attemptNo = ((int) DB::table('pop_execution_records')
                 ->where('operation_id', $request->id)
                 ->where('phase', $phase)
@@ -1893,7 +1966,7 @@ final class PopOperationService
 
     private function existing(object $request, string $phase): ?array
     {
-        if (in_array($phase, ['execute', 'verify', 'rollback'], true) && $this->atomicFinancialRepair((string) $request->strategy_id)) {
+        if (in_array($phase, ['execute', 'verify', 'rollback'], true) && $this->nativeSnapshotRecovery($request)) {
             $row = DB::table('pop_execution_records')->where('operation_id', $request->id)
                 ->where('phase', $phase)->where('result', $this->resultFor($phase, true, null))->orderByDesc('attempt_no')->first();
             return $row ? json_decode((string) $row->payload, true, 512, JSON_THROW_ON_ERROR)

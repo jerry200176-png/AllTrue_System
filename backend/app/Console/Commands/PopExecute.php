@@ -9,7 +9,7 @@ use Illuminate\Console\Command;
 /** Local Pi adapter. Approval and execution policy remain in PopOperationService. */
 final class PopExecute extends Command
 {
-    protected $signature = 'pop:execute-approved {--request= : Optional approved request UUID} {--phase=execute : Explicit financial recovery phase: verify or rollback}';
+    protected $signature = 'pop:execute-approved {--request= : Optional approved request UUID} {--phase=execute : Explicit supported recovery phase: verify or rollback}';
 
     protected $description = 'Execute one approved POP operation locally on the production host';
 

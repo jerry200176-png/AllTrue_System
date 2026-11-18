@@ -7,7 +7,7 @@ use Illuminate\Support\Facades\DB;
 use RuntimeException;
 
 /**
- * Exact-case POP strategy (Founder 2026-10-08, in-app #341; second case course 3380 Founder 2026-11-18, in-app #550): past ClassSession rows that are still
+ * Exact-case POP strategy (in-app #341; second case course 3380, in-app #550): past ClassSession rows that are still
  * `scheduled` on an early-ended contract become `cancelled`. Only ClassSession.Status changes; they have no
  * attendance, learning record or deduction ledger row (checked in plan and again under lock), so no billing,
  * Charge, Paid or SessionCount value is touched. Written with the query builder on purpose: the ClassSession
@@ -91,6 +91,9 @@ final class PastScheduledSessionsCancelStrategy
     {
         $this->useRef($plan['reference'] ?? self::REF);
         if (($plan['ok'] ?? false) && ($plan['state'] ?? null) === 'after') {
+            // Already cancelled before this request: do not manufacture authority to undo someone else's work.
+            if ($this->ref === self::REF_3380) return ['ok' => true, 'already_applied' => true, 'updated' => 0,
+                'snapshot' => ['reference' => $this->ref, 'rows' => []]];
             // Already applied (retry after the execution record failed to persist): idempotent, let verify run.
             // The rollback snapshot restores the known original status.
             $snapshot = $plan['snapshot'] ?? [];
@@ -141,13 +144,29 @@ final class PastScheduledSessionsCancelStrategy
         return ['ok' => $errors === [], 'errors' => $errors, 'checks' => ['cancelled', 'no_billing_change']];
     }
 
+    /** A new native rollback must refer to the complete before-state this request actually changed. */
+    public static function hasNativeRecoverySnapshot(array $snapshot): bool
+    {
+        $rows = $snapshot['rows'] ?? null;
+        if (($snapshot['reference'] ?? null) !== self::REF_3380 || !is_array($rows) || array_keys($rows) !== array_keys(self::cases(self::REF_3380))) return false;
+        foreach (self::cases(self::REF_3380) as $id => $case) {
+            $row = $rows[$id];
+            if (!is_array($row) || ($row['status'] ?? null) !== 'scheduled' || ($row['course_id'] ?? null) !== $case['course_id']
+                || ($row['date'] ?? null) !== $case['date'] || !is_array($row['course'] ?? null)) return false;
+        }
+        return true;
+    }
+
     public function rollback(array $snapshot, array $context): array
     {
-        $this->useRef($snapshot['reference'] ?? self::REF); // snapshots stored before 3380 have no reference: 2942
+        if (!$this->useRef($snapshot['reference'] ?? self::REF)) { // old snapshots without reference remain 2942
+            throw new RuntimeException('past_scheduled_rollback_reference_invalid');
+        }
         $before = $snapshot['rows'] ?? [];
         if (!is_array($before) || array_keys($before) !== array_keys($this->selected())) {
             throw new RuntimeException('past_scheduled_rollback_snapshot_invalid');
         }
+        if ($this->ref === self::REF_3380 && !self::hasNativeRecoverySnapshot($snapshot)) throw new RuntimeException('past_scheduled_rollback_snapshot_invalid');
 
         return DB::transaction(function () use ($before): array {
             $now = $this->inspect(true);
@@ -155,6 +174,17 @@ final class PastScheduledSessionsCancelStrategy
             $skippedIds = [];
             foreach ($before as $id => $old) {
                 $row = $now[$id] ?? null;
+                if ($this->ref === self::REF_3380) {
+                    $case = $this->selected()[$id];
+                    if (!$row || $row['course_id'] !== $case['course_id'] || $row['date'] !== $case['date']
+                        || $row['campus_id'] !== $case['campus_id'] || ($old['course_id'] ?? null) !== $case['course_id']
+                        || ($old['date'] ?? null) !== $case['date'] || ($old['status'] ?? null) !== 'scheduled') {
+                        $skippedIds[] = $id;
+                        continue;
+                    }
+                    // A previous partial attempt already restored this row. No overwrite or second write.
+                    if ($row['status'] === 'scheduled' && $row['activity'] === 0) continue;
+                }
                 if (!$row || $row['status'] !== 'cancelled' || $row['activity'] !== 0) {
                     $skippedIds[] = $id; // already moved on or has activity since: leave it alone
                     continue;

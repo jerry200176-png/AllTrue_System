@@ -32,7 +32,7 @@ Pi-local POP runs one transaction (lock sessions + course, re-check, update exac
 Stored snapshot restores `scheduled` for rows still `cancelled` with no activity; otherwise the row is skipped and
 the result is `ok=false, partial=true`. As with other POP repairs this is a new Founder-approved request, not a button.
 
-## Second case: course 3380 (Founder 2026-11-18, in-app #550 / GitHub #5361)
+## Second case: course 3380 (in-app #550 / GitHub #5361)
 
 Same strategy, same per-session checks, selected by `decision_reference` = `cancel-past-scheduled-course3380-20261118`
 (catalog operation of the same id; an unknown reference returns `case_parameters_mismatch`). StudentClass 3380 is closed
@@ -40,3 +40,22 @@ Same strategy, same per-session checks, selected by `decision_reference` = `canc
 scheduled to cancelled only. Dispatch the workflow with `case=3380`, confirm `DRY_RUN_PAST_SCHEDULED_CANCEL_20261118` /
 `APPROVE_PAST_SCHEDULED_CANCEL_20261118`, approval reference `founder-go-past-scheduled-cancel-20261118`. Expect counts
 `{sessions:7,to_cancel:7}`. The 2942 case (`case=2942`, default) is unchanged. The data change runs later through POP, not in the PR.
+
+### Native recovery for 3380 only
+
+Cancellation and its execute snapshot/receipt co-commit. A failed receipt retains no cancellation;
+the scheduler does not retry a failed request without another explicit Owner approval. An already
+cancelled case is a no-op with no undo authority. The older 2942 executor recovery gap is not expanded.
+
+For post-success recovery, the Owner runs the **same workflow**, `case=3380`, `mode=rollback`,
+confirmation `ROLLBACK_PAST_SCHEDULED_CANCEL_20261118`, and the **original execute SHA still deployed**.
+Its fresh production-activation gate submits the distinct reference
+`founder-go-past-scheduled-cancel-rollback-20261118`. It reuses the original request and successful
+snapshot; it does not replan or execute over SSH. The existing Pi scheduler consumes the signed
+rollback intent. An execute-purpose token cannot authorize it. The workflow verifies that request's
+`rolled_back` receipt, Pi-local actor, exact SHA and rollback reference. A later deployed revision
+requires separately reviewed recovery; this adapter does not repin an old approval.
+
+Rows with changed identity, campus or downstream activity are skipped and reported as partial;
+successful restores and the failed receipt co-commit. The request then waits for a new Owner gate,
+bound to the next rollback attempt. No activity is deleted; no partial retry runs automatically.

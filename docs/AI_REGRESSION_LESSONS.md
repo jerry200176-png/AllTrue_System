@@ -20,6 +20,8 @@ last_reviewed: 2026-09-05
 
 **F7／POP 回滾重試（#4271）**：原子撤回與失敗紀錄都正確，仍可能因快取失敗 receipt 永久失去回復路徑。回歸必須在 fault injection 後實際重試，驗證有效核准、失敗紀錄保留、成功冪等重播與序列化。拒絕測試的 `$this->fail()` 必須在 RuntimeException catch 外：PHPUnit 的 AssertionFailedError 也繼承 RuntimeException，否則 helper 會捕獲自己的失敗而假通過。見 [invoice alignment plan](plans/2026-10-18-unpaid-invoice-alignment.md)。
 
+**F7 補充：還原函式通過不代表原生入口可用（#5481，2026-11-18）**：新增單案須從無參數 Pi 排程測到本人核准的還原；`ok=true/status=skipped` 不是還原成功。狀態與 receipt／原始 snapshot 必須共同提交，執行核准不得兼作還原；部分還原後停止，下一次須綁新核准。擴充共用 strategy 時以精確 operation／參數限制新能力，不把舊案件或財務 proof 一起放寬。見 `PastScheduledCancelNativeRecoveryTest`。
+
 **F7／跨科額度的雙向預約邊界（#5197，in-app #535）**：轉用讀取端不能只看已物化堂次，須保留已提交但尚待投影的排課。反向也要保護：轉用耗盡來源、或還原後歸零的新批次，既有排課與直接堂次物化入口都須以 current locking read 拒絕新增使用，不能信任舊 preload 或僅以停課標記判斷。回歸須涵蓋雙方先贏的時序、原收據缺帳單編號、補償失敗後重試；不得把內部轉出當收據撤銷。完整邊界見 [同單位轉用計畫](plans/2026-11-15-same-unit-subject-credit-transfer.md)。
 
 **佇列跨版本升級（#4103）**：PR 自己通過 CI，不代表從舊版 main 啟動的合併佇列能替它跑組合測試。刪除 dispatch 目標前，先將呼叫端更新合併到 main；過渡版本保留手動 dispatch 相容性，等新版佇列生效再刪檔。`land-queue-dispatch-contract.test.mjs` 核對已安裝 main 的 dispatch 目標仍存在，避免佇列在升級自己時找不到 workflow。
