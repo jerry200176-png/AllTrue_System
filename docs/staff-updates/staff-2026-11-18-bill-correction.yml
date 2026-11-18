@@ -5,11 +5,11 @@ updates:
       - director
     importance: digest
     title: 帳單金額不對可自己更正
-    summary: 帳單金額不對時，主任可以在帳務中心自己更正，不用再回報總部。
+    summary: 目前只有大安、新店、木柵的主任可以自己更正帳單金額。
     items:
       - category: added
-        text: 在學生帳務的帳單列按「更正帳單」，先看結果，填原因再確認；已收的錢會一起轉到新帳單。
+        text: 目前只有大安、新店、木柵看得到「更正帳單」鈕，其他分校之後再開。
       - category: added
-        text: 適用：調價前開的單、開完帳單後才加的課。每次更正總部都看得到紀錄。
+        text: 在帳單列按它，先看結果、填原因再確認；已收的錢轉到新帳單，總部看得到紀錄。
     source_refs:
       - "changelog:2026-11-18:bill-correction-activate"
