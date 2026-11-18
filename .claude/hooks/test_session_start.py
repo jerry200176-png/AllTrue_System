@@ -80,7 +80,9 @@ sys.exit(0)
         self.env['CLAUDE_CODE_REMOTE'] = 'false'
         _, calls = self.run_hook()
         # The only call is the release banner's one read-only GitHub GET.
-        self.assertEqual([c['args'][:1] for c in calls if c['command'] == 'gh'], [['api']])
+        gh = [c['args'] for c in calls if c['command'] == 'gh']
+        self.assertEqual([a[:1] for a in gh], [['api']])
+        self.assertFalse({'-X', '--method', '-f', '-F', '--field', '--raw-field', '--input'} & set(gh[0]))
         self.assertEqual([c for c in calls if c['command'] != 'gh'], [])
 
     def test_denied_install_has_no_alternate_network_or_success_stamp(self):

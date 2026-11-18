@@ -65,7 +65,7 @@ print_handoff 2>/dev/null || true
 print_release_status() {
   local out
   if ! out="$(timeout 15 gh api "repos/jerry200176-png/AllTrue_System/actions/runs?status=waiting&per_page=20" \
-      --jq '.workflow_runs[] | "- \(.name) run \(.id), \(.head_sha[0:9]), since \(.created_at): \(.html_url)"' 2>/dev/null)"; then
+      --jq '.workflow_runs[] | "- \(.name | gsub("[[:cntrl:]]"; " ")) run \(.id), \(.head_sha[0:9]), since \(.created_at): \(.html_url)"' 2>/dev/null)"; then
     echo "[release] UNKNOWN: could not read GitHub; check before telling anyone: gh run list --status waiting"
     return 0
   fi
