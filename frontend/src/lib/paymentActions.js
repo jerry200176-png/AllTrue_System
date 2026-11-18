@@ -12,8 +12,8 @@ async function send(path, method, body, fallback) {
       body: JSON.stringify(body ?? {}),
     });
     const data = await resp.json().catch(() => ({}));
-    if (resp.ok) return { ok: true, data, code: null, message: '' };
-    return { ok: false, data, code: data.code ?? null, message: humanizeApiErrorMessage(data.message || `${fallback}（${resp.status}）`) };
+    if (resp.ok) return { ok: true, status: resp.status, data, code: null, message: '' };
+    return { ok: false, status: resp.status, data, code: data.code ?? null, message: humanizeApiErrorMessage(data.message || `${fallback}（${resp.status}）`) };
   } catch (e) {
     return { ok: false, data: {}, code: 'network', message: humanizeApiErrorMessage(e?.message || fallback) };
   }

@@ -86,7 +86,7 @@
         </div>
 
         <div v-if="submitError" class="pe-error" role="alert">{{ submitError }}</div>
-        <button v-if="correctableInvoiceId" type="button" class="ghost" data-testid="pe-correct-bill" @click="correctOpen = true">更正帳單</button>
+        <Button v-if="correctableInvoiceId" type="button" variant="outline" class="tw:min-h-11" data-testid="pe-correct-bill" @click="correctOpen = true">更正帳單</Button>
         <BillCorrectionDialog :open="correctOpen" :invoice-id="correctableInvoiceId" @update:open="(o) => { correctOpen = o; }" @corrected="onBillCorrected" @changed="emit('conflict', {})" />
 
         <div class="pe-actions">
@@ -106,6 +106,7 @@ import { ymdInTaipei } from '@/lib/sessionDates.js';
 import { ref, reactive, watch, computed, h } from 'vue';
 import AtDialog from './design-system/AtDialog.vue';
 import BillCorrectionDialog from './BillCorrectionDialog.vue';
+import { Button } from '@/components/ui/button';
 import { backfillLegacyPayment, recordPayment } from '../lib/paymentActions.js';
 import { FREE_GIFT_LABEL, REPORT_STATUS_LABELS, TUITION_STATUS_CONFIG } from '../lib/courseMoneyState.js';
 

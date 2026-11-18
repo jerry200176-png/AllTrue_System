@@ -19,8 +19,14 @@ export const REFUSAL_COPY = {
   missing_rate: '漏收的課沒有設定每堂單價（或是按小時計價），這裡算不出來。請回報總部。',
   no_gap: '沒有找到這張帳單漏收的課，不需要更正，請直接關閉。',
   gap_covered_elsewhere: '漏收的日期已經有另一張有效帳單算進去。請先到學生帳務核對那張帳單。',
+  range_price_mismatch: '這張帳單有折扣或固定價，這裡算不出要補多少。請回報總部處理。',
   forbidden: '只有主任或總部可以更正帳單。',
   network: '連線中斷，不確定有沒有更正成功。請先看學生帳務（畫面會自動更新）；帳單還沒變的話，再按一次「確認更正」，不會重複更正。',
+  preview_failed: '預覽沒有完成，帳單沒有任何改變。請按「重新預覽」再試一次。',
+  bad_request: '送出的資料有問題，帳單沒有任何改變。請按「重新預覽」再試一次。',
   reason_short: '請寫下更正原因（至少 2 個字）。',
   fallback: '這次不確定有沒有更正成功。請先看學生帳務（畫面會自動更新）；帳單還沒變的話，再按一次「確認更正」，還是不行請回報總部。',
 };
+
+// Refusals that end with 「請回報總部」: the dialog offers a 回報給總部 button for each (an HQ step is a button, never only text).
+export const HQ_CODES = new Set(['bill_correction_off', 'unavailable', 'unsupported_bill', 'unsupported_course', 'money_moved', 'paid_state_unverified', 'missing_rate', 'range_price_mismatch', 'fallback']);

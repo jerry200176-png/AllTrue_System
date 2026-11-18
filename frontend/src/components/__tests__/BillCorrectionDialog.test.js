@@ -4,7 +4,9 @@ import { mount, flushPromises } from '@vue/test-utils';
 import BillCorrectionDialog from '../BillCorrectionDialog.vue';
 import AccountingLedgerModal from '../AccountingLedgerModal.vue';
 import PaymentEntryModal from '../PaymentEntryModal.vue';
-import { REFUSAL_COPY } from '../../lib/billCorrectionCopy.js';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { HQ_CODES, REFUSAL_COPY } from '../../lib/billCorrectionCopy.js';
 
 const q = (id) => document.querySelector(`[data-testid="${id}"]`);
 const type = async (el, v) => { el.value = v; el.dispatchEvent(new Event('input', { bubbles: true })); await flushPromises(); };
@@ -142,6 +144,76 @@ describe('更正帳單 · races and unknown outcomes', () => {
     expect(q('bc-refusal').textContent).toContain('不確定有沒有更正成功');
     expect(q('bc-refusal').textContent).not.toContain('沒有改到任何資料');
     expect(w.emitted('changed')).toHaveLength(1);
+  });
+});
+
+describe('更正帳單 · preview failures, HQ button, copy coverage', () => {
+  it('a failed preview says nothing changed and offers 重新預覽 (never the unsure-outcome text)', async () => {
+    stubFetch({ preview: [res(502, {}), res(200, PLAN)] });
+    const w = await openDialog();
+    expect(q('bc-refusal').textContent).toBe(REFUSAL_COPY.preview_failed);
+    expect(q('bc-refusal').textContent).toContain('帳單沒有任何改變');
+    expect(q('bc-apply')).toBeNull();
+    expect(w.emitted('changed')).toBeUndefined();
+    q('bc-repreview').click();
+    await flushPromises();
+    expect(q('bc-plan')).not.toBeNull();
+    expect(q('bc-refusal')).toBeNull();
+  });
+
+  it('state_changed hides the stale figures; a 422 without errors.reason is not blamed on the reason', async () => {
+    stubFetch({ preview: [res(200, PLAN)], apply: [res(409, { code: 'state_changed' })] });
+    await openDialog();
+    await type(q('bc-reason'), '補上漏收的課');
+    q('bc-apply').click();
+    await flushPromises();
+    expect(q('bc-plan')).toBeNull();
+    wrappers.pop().unmount(); document.body.innerHTML = '';
+    stubFetch({ preview: [res(200, PLAN)], apply: [res(422, { message: 'x', errors: { state_hash: ['bad'] } }), res(422, { errors: { reason: ['short'] } })] });
+    await openDialog();
+    await type(q('bc-reason'), '補上漏收的課');
+    q('bc-apply').click();
+    await flushPromises();
+    expect(q('bc-refusal').textContent).toBe(REFUSAL_COPY.bad_request);
+    expect(q('bc-repreview')).not.toBeNull();
+  });
+
+  it('the controller 403 maps to forbidden without a ledger reload; a prototype key is not a code', async () => {
+    stubFetch({ preview: [res(403, { message: 'This action is unauthorized.' })] });
+    const w = await openDialog();
+    expect(q('bc-refusal').textContent).toBe(REFUSAL_COPY.forbidden);
+    expect(w.emitted('changed')).toBeUndefined();
+    wrappers.pop().unmount(); document.body.innerHTML = '';
+    stubFetch({ preview: [res(200, PLAN)], apply: [res(422, { code: 'constructor' })] });
+    await openDialog();
+    await type(q('bc-reason'), '補上漏收的課');
+    q('bc-apply').click();
+    await flushPromises();
+    expect(q('bc-refusal').textContent).toBe(REFUSAL_COPY.fallback);
+  });
+
+  it('every refusal that says 回報總部 has a 回報給總部 button that opens the in-app report with the bill id only', async () => {
+    const asked = [];
+    const on = (e) => asked.push(e.detail);
+    window.addEventListener('alltrue-open-bug-report', on);
+    const textual = Object.keys(REFUSAL_COPY).filter((c) => REFUSAL_COPY[c].includes('回報總部'));
+    expect([...HQ_CODES].sort()).toEqual(textual.sort());
+    stubFetch({ preview: [res(422, { code: 'missing_rate' })] });
+    const w = await openDialog();
+    q('bc-ask-hq').click();
+    window.removeEventListener('alltrue-open-bug-report', on);
+    expect(asked).toEqual([{ description: `更正帳單時：${REFUSAL_COPY.missing_rate}`, relatedReference: '帳單ID 5' }]);
+    expect(w.emitted('update:open')).toEqual([[false]]);
+  });
+
+  it('maps every refusal code written in BillCorrection.php / BillCorrectionController.php (and #5495\'s range_price_mismatch)', () => {
+    const IGNORE = new Set(['replay', 'void_refunded', 'legacy_reversal_unreconciled', 'void_transferred_credit']); // replay is internal; the other three belong to the receipt-void path and never reach this dialog
+    const src = ['Services/Billing/BillCorrection.php', 'Http/Controllers/BillCorrectionController.php']
+      .map((f) => readFileSync(resolve(__dirname, '../../../../backend/app', f), 'utf8')).join('\n');
+    const codes = [...src.matchAll(/(?:refuse\('|'code' => ')([a-z_]+)'/g)].map((m) => m[1]).filter((c) => !IGNORE.has(c));
+    expect(codes.length).toBeGreaterThan(15); // the extraction found the list
+    expect(codes.filter((c) => !Object.hasOwn(REFUSAL_COPY, c))).toEqual([]);
+    expect(Object.hasOwn(REFUSAL_COPY, 'range_price_mismatch')).toBe(true);
   });
 });
 

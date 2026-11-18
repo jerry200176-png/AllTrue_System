@@ -7,14 +7,14 @@ import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
-import { REFUSAL_COPY } from '../lib/billCorrectionCopy.js';
+import { HQ_CODES, REFUSAL_COPY } from '../lib/billCorrectionCopy.js';
 import { applyBillCorrection, previewBillCorrection } from '../lib/paymentActions.js';
 
 const props = defineProps({ open: { type: Boolean, default: false }, invoiceId: { type: Number, default: null } });
 const emit = defineEmits(['update:open', 'corrected', 'changed']);
 
 // Refusals the director can recover from on this screen; any other refusal ends the flow (nothing left to press but 關閉).
-const RETRYABLE = new Set(['state_changed', 'network', 'reason_short', 'fallback', 'new_total_required', 'unchanged_total']);
+const RETRYABLE = new Set(['state_changed', 'network', 'reason_short', 'fallback', 'new_total_required', 'unchanged_total', 'preview_failed', 'bad_request']);
 
 const money = (n) => `NT$ ${Number(n || 0).toLocaleString('zh-TW')}`;
 
@@ -30,11 +30,25 @@ const dead = computed(() => !!refusal.value && !RETRYABLE.has(refusal.value.code
 const reasonOk = computed(() => reason.value.trim().length >= 2);
 const totalOk = computed(() => /^\d+$/.test(String(newTotal.value)) && Number(newTotal.value) >= 1 && Number(newTotal.value) <= 999999);
 
-function refuse(res) {
-  const code = res.data?.message === 'Forbidden' ? 'forbidden' : (res.code ?? (res.data?.errors ? 'reason_short' : 'fallback'));
-  const known = code in REFUSAL_COPY ? code : 'fallback';
-  refusal.value = { code: known, text: REFUSAL_COPY[known] };
+// phase 'preview' never claims an unsure outcome: nothing was written yet. Only an apply can be unconfirmed.
+function refuse(res, phase) {
+  let code = res.code;
+  if (res.status === 403 || res.data?.message === 'Forbidden') code = 'forbidden';
+  else if (!code && res.status === 422) code = res.data?.errors?.reason ? 'reason_short' : 'bad_request';
+  else if (!code || !Object.hasOwn(REFUSAL_COPY, code)) code = phase === 'preview' ? 'preview_failed' : 'fallback';
+  else if (phase === 'preview' && (code === 'network' || code === 'fallback')) code = 'preview_failed';
+  if (code === 'state_changed' || code === 'bad_request') plan.value = null; // the old figures are stale: show them again only after a new preview
+  refusal.value = { code, text: REFUSAL_COPY[code] };
 }
+
+function askHq() {
+  window.dispatchEvent(new CustomEvent('alltrue-open-bug-report', { detail: {
+    description: `更正帳單時：${refusal.value.text}`,
+    relatedReference: `帳單ID ${props.invoiceId}`,
+  } }));
+  emit('update:open', false);
+}
+const canRepreview = computed(() => ['state_changed', 'preview_failed', 'bad_request'].includes(refusal.value?.code));
 
 async function preview() {
   const mine = ++seq;
@@ -50,7 +64,7 @@ async function preview() {
   if (res.ok) { plan.value = res.data; return; }
   // A count bill answers new_total_required until a total is typed: that is the cue to show the input, not a failure.
   if (res.code === 'new_total_required' && !isCount.value) { isCount.value = true; return; }
-  refuse(res);
+  refuse(res, 'preview');
 }
 
 async function apply() {
@@ -70,7 +84,7 @@ async function apply() {
     emit('update:open', false);
     return;
   }
-  refuse(res);
+  refuse(res, 'apply');
   // The outcome may be unknown (lost response): have the parent reread the authoritative ledger.
   if (refusal.value.code === 'network' || refusal.value.code === 'fallback') emit('changed');
 }
@@ -126,8 +140,9 @@ watch(newTotal, () => { if (plan.value && Number(newTotal.value) !== plan.value.
 
       <DialogFooter>
         <Button variant="outline" class="tw:min-h-11" :disabled="loading" @click="emit('update:open', false)">關閉</Button>
-        <Button v-if="refusal?.code === 'state_changed'" class="tw:min-h-11" :disabled="loading" data-testid="bc-repreview" @click="preview">重新預覽</Button>
-        <Button v-else-if="!dead" class="tw:min-h-11" :disabled="!plan || !reasonOk || loading" data-testid="bc-apply" @click="apply">確認更正</Button>
+        <Button v-if="refusal && HQ_CODES.has(refusal.code)" variant="outline" class="tw:min-h-11" data-testid="bc-ask-hq" @click="askHq">回報給總部</Button>
+        <Button v-if="canRepreview" class="tw:min-h-11" :disabled="loading" data-testid="bc-repreview" @click="preview">重新預覽</Button>
+        <Button v-else-if="!dead && !canRepreview" class="tw:min-h-11" :disabled="!plan || !reasonOk || loading" data-testid="bc-apply" @click="apply">確認更正</Button>
       </DialogFooter>
     </DialogContent>
   </Dialog>
