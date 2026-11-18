@@ -18,6 +18,11 @@ async function attempt(code, amount, extra = {}) {
   await w.setProps({ show: true });
   await w.find('input[type="number"]').setValue(amount);
   await w.find('form').trigger('submit');
+  if (amount !== 8000) {
+    expect(global.fetch).not.toHaveBeenCalled();
+    await w.get('[data-testid="pe-amount-ack"]').setValue(true);
+    await w.find('form').trigger('submit');
+  }
   await new Promise((resolve) => setTimeout(resolve, 10));
   await nextTick();
   return w;
