@@ -733,12 +733,17 @@ const ledgerBothEmpty = computed(() => {
 const ledgerExceptions = computed(() => {
   const rows = [];
   const byReceipt = new Map(); // in-app #474: one card per receipt, however many checks it fails
+  const history = (payload.value?.invoices || []).filter((inv) => inv.historical_course_missing);
+  const historicalIds = new Set(history.map((inv) => Number(inv.id)));
+  const historicalReports = new Set(history.flatMap((inv) => [...(inv.reports || []), ...(inv.payments || [])]).map((r) => Number(r.report_id)).filter((id) => id > 0));
   (payload.value?.anomalies || []).forEach((a, idx) => {
+    const manual = a.action?.type === 'manual_review' || historicalIds.has(Number(a.invoice_id)) || historicalReports.has(Number(a.report_id));
+    const anomaly = manual ? { ...a, action: { ...a.action, type: 'manual_review' } } : a;
     const same = a.report_id ? byReceipt.get(a.report_id) : null;
     if (same) {
       same.codes.push(a.code);
-      same.can_void = same.can_void || a.action?.type === 'void_report';
-      if (a.action?.type === 'manual_review') Object.assign(same, { ask_hq: true, message: a.message, anomaly: a });
+      same.can_void = same.can_void || anomaly.action?.type === 'void_report';
+      if (manual) Object.assign(same, { ask_hq: true, message: a.message, anomaly });
       return;
     }
     const row = {
@@ -746,12 +751,12 @@ const ledgerExceptions = computed(() => {
       codes: [a.code],
       title: anomalyLabel(a.code),
       message: a.message,
-      detail: formatLedgerAnomalyDetail(a),
+      detail: formatLedgerAnomalyDetail(anomaly),
       report_id: a.report_id || null,
-      can_void: a.action?.type === 'void_report',
-      ask_hq: a.action?.type === 'manual_review',
+      can_void: anomaly.action?.type === 'void_report',
+      ask_hq: manual,
       drift_line: formatLedgerDriftLine((payload.value?.invoices || []).find((i) => Number(i.id) === Number(a.invoice_id))),
-      anomaly: a,
+      anomaly,
       severity: a.severity === 'critical' ? 0 : 1,
     };
     rows.push(row);
@@ -805,6 +810,7 @@ const ledgerExceptions = computed(() => {
       can_void: !inv.historical_course_missing && !!receipt,
       ask_hq: !!inv.historical_course_missing,
       self_service: !inv.historical_course_missing && (!!receipt || !!inv.can_direct_void), // the fix is a button on this screen, not a report to an administrator
+      anomaly: { code: 'zero_amount_bill', invoice_id: inv.id, student_class_id: inv.student_class_id, report_id: receipt?.report_id || null },
       severity: 1,
     });
   });
