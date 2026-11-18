@@ -38,6 +38,12 @@ final class BillCorrection
         return preg_match('/^\[bill_correction:(\d+)\]/', (string) $note, $m) ? (int) $m[1] : null;
     }
 
+    /** Whether any campus is listed: list screens skip the chain lookup while the feature is off everywhere (the void guard still checks). */
+    public static function enabledAnywhere(): bool
+    {
+        return array_filter((array) config('billing.bill_correction_campus_ids', [])) !== [];
+    }
+
     public static function campusOn(int $campusId): bool
     {
         return $campusId > 0 && in_array($campusId, array_map('intval', (array) config('billing.bill_correction_campus_ids', [])), true);

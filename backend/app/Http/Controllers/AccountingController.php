@@ -707,7 +707,7 @@ class AccountingController extends Controller
                 // In-app #436: a confirmed receipt is undone first (收款紀錄 撤銷), then the bill is voided.
                 'can_exception_void' => $status !== 'void' && ($netApplied > 0 || $paidAmount > 0)
                     && !$invoiceReports->contains(fn ($r) => $r['status'] === 'confirmed')
-                    && !\App\Services\Billing\BillCorrection::chainHasConfirmedReceipt((int) $invoice->id),
+                    && !(\App\Services\Billing\BillCorrection::enabledAnywhere() && \App\Services\Billing\BillCorrection::chainHasConfirmedReceipt((int) $invoice->id)),
                 'payments' => $paymentRows->all(),
                 'reports' => $invoiceReports->all(),
                 'anomalies' => $invoiceAnomalies,
