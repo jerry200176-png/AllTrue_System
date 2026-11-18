@@ -206,12 +206,15 @@ let svcGraph = { svcFiles: [], edges: new Map(), ctxRule: null };
   const src = read(path.join(ROOT, 'backend/config/reproduction_baselines.php'));
   // Strict: inside `return [ ... ];` every line is `'key' => <integer>,` or `'key' => null,` (plus a comment).
   // Anything else (an expression, env(), two keys on a line) fails, so a raise cannot hide in a shape we do not read.
-  const body = (src.match(/return\s*\[([\s\S]*?)\];/) || [])[1];
+  // Whole-line anchors and exactly one `return`, so a `return [];` in a comment cannot stand in for the real array.
+  const body = (src.match(/^return \[\n([\s\S]*?)^\];$/m) || [])[1];
   const bad = [];
   let n = 0, sum = 0;
-  if (body === undefined) bad.push('no `return [ ... ];` block found in reproduction_baselines.php');
+  if (body === undefined) bad.push('no `return [` ... `];` block on its own lines in reproduction_baselines.php');
+  if ((src.match(/\breturn\b/g) || []).length !== 1) bad.push('reproduction_baselines.php must contain the word `return` exactly once');
   for (const raw of (body || '').split('\n')) {
     const line = raw.replace(/\/\/.*$/, '').trim();
+    if (/\];|\/\*|\*\//.test(raw)) { bad.push(`no "];" or block comment inside the array: ${raw.trim()}`); continue; }
     if (line === '') continue;
     const m = line.match(/^'([a-z_]+)'\s*=>\s*(\d+|null),$/);
     if (!m) { bad.push(`unreadable line (write 'key' => <integer>,): ${line}`); continue; }
@@ -222,6 +225,7 @@ let svcGraph = { svcFiles: [], edges: new Map(), ctxRule: null };
     if (pin === undefined) { if (Number(val) > 0) bad.push(`new allowance ${key} = ${val}; start at 0, or pin it in arch-fitness-baseline.json with the reason in the PR.`); }
     else if (pin === null || Number(val) > pin) bad.push(`allowance ${key} rose ${pin} -> ${val}. Allowances only shrink.`);
   }
+  if (n === 0) bad.push('no allowance lines read');
   if (bad.length) for (const b of bad) failures.push(`FIT-20: ${b}`);
   else note(`FIT-20: ${n} nightly allowances at or below their pins (sum ${sum}).`);
 }
