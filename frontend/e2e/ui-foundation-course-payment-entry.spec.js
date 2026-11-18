@@ -5,10 +5,15 @@ import { LEGACY_FLAG_UNVERIFIED_HELP, REPORT_STATUS_LABELS, REVIEW_REQUIRED_LABE
 import { dismissOverlays } from './fixtures/dismissOverlays.js';
 import { expectCoursePaymentEntryOpensLedgerInPlace, recordCourseLists } from './fixtures/coursePaymentEntry.js';
 
-async function installCourseLinkMocks(page, { unavailable = false, beforeCourseListReply = async () => {}, roomCampus = 1, olderTarget = false } = {}) {
+async function installCourseLinkMocks(page, { unavailable = false, beforeCourseListReply = async () => {}, roomCampus = 1, olderTarget = false, monthlyHistory = false } = {}) {
   const target = { ...course(7101, 7201, '合成連結目標', 'paid'), payment_type: 'session', StartDate: '2026-10-03',
     branch_id: roomCampus, student: { id: 7201, CampusID: 1, name: '合成連結目標' } };
   const other = { ...course(7102, 7202, '合成不同學生', 'unpaid'), payment_type: 'session' };
+  if (monthlyHistory) Object.assign(target, { payment_type: 'monthly', schedule_mode: 'date',
+    StartDate: '2026-10-28', start_date: '2026-10-28', end_date: '2026-11-30',
+    SessionCount: 4, RemainingSessions: 0, duration_hours: 2 });
+  const cancelled = { id: 7901, student_class_id: 7101, session_date: '2026-11-12',
+    start_time: '17:00', end_time: '19:00', status: 'cancelled' };
   const writes = [];
   const courseQueries = [];
   await page.route('**/*', route => ['127.0.0.1', 'localhost'].includes(new URL(route.request().url()).hostname) ? route.fallback() : route.abort());
@@ -17,12 +22,21 @@ async function installCourseLinkMocks(page, { unavailable = false, beforeCourseL
     const url = new URL(request.url());
     const path = url.pathname;
     if (request.method() !== 'GET') {
+      if (monthlyHistory && path === '/api/v1/student-classes/7101/manual-sessions/check' && request.method() === 'POST') {
+        const past = request.postDataJSON().session_date < '2026-11-18';
+        return route.fulfill({ status: past ? 422 : 200, json: { can_add: !past,
+          error_code: past ? 'past_session' : null, message: past ? '只能新增尚未結束的日期與時間' : '可建立下一堂',
+          start_time: '17:00', end_time: '19:00', duration_minutes: 120 } });
+      }
+      if (monthlyHistory && path === '/api/v1/student-classes/session-dates') return route.fulfill({ json: { 7101: { materialized: [cancelled], projected: [] } } });
       if (request.method() === 'POST' && READ_ONLY_POSTS.has(path)) return route.fulfill({ json: { data: [] } });
       writes.push(`${request.method()} ${path}`);
       return route.fulfill({ status: 500, json: { message: 'unexpected write' } });
     }
     if (path.endsWith('/me')) return route.fulfill({ json: { id: 9001, role: 'director', name: 'E2E Director', campuses: [1], must_change_password: false, capabilities: [] } });
     if (path.endsWith('/branches') || path.endsWith('/campuses')) return route.fulfill({ json: [{ id: 1, name: '合成分校' }] });
+    if (monthlyHistory && path === '/api/v1/class-sessions') return route.fulfill({ json: { data: [cancelled], total: 1, current_page: 1, last_page: 1 } });
+    if (monthlyHistory && path === '/api/v1/class-sessions/7901/recovery') return route.fulfill({ json: { available: true, audit_id: 99, previous_status: 'scheduled' } });
     if (path === '/api/v1/student-classes') {
       courseQueries.push(Object.fromEntries(url.searchParams));
       await beforeCourseListReply(url);
@@ -36,6 +50,44 @@ async function installCourseLinkMocks(page, { unavailable = false, beforeCourseL
     return route.fulfill({ json: { data: [], total: 0, unread_count: 0 } });
   });
   return { target, writes, courseQueries };
+}
+
+for (const width of [375, 1280]) {
+  test(`monthly booking returns to the same course cancelled history without writes @${width} (#5491)`, async ({ page }, testInfo) => {
+    await page.clock.install({ time: new Date('2026-11-18T09:00:00+08:00') });
+    const { target, writes } = await installCourseLinkMocks(page, { monthlyHistory: true });
+    await page.setViewportSize({ width, height: 900 });
+    await page.goto('/app-pilot-mount.html?app_page=course-mgmt&branch_id=1&student_id=7201&course_id=7101');
+    const manager = page.getByTestId('course-manager');
+    await expect(manager.getByRole('heading', { level: 2 })).toContainText(target.student_name);
+    await manager.getByTestId('course-manager-schedule-cta').click();
+    const booking = page.getByRole('dialog').filter({ has: page.getByRole('heading', { name: '新增月結堂次', exact: true }) });
+    await expect(booking).toBeVisible();
+    await expect(booking.locator('input[type="date"]')).toHaveAttribute('min', '2026-11-18');
+    await booking.locator('input[type="date"]').fill('2026-11-12');
+    await booking.locator('input[type="date"]').dispatchEvent('change');
+    await expect(booking.getByText('只能新增尚未結束的日期與時間', { exact: true })).toBeVisible();
+    await expect(booking.getByRole('button', { name: '建立這一堂', exact: true })).toBeDisabled();
+    const guidancePath = testInfo.outputPath('monthly-history-guidance.png');
+    await booking.screenshot({ path: guidancePath });
+    await testInfo.attach('monthly-history-guidance', { path: guidancePath, contentType: 'image/png' });
+    const history = booking.getByTestId('manual-session-history');
+    expect((await history.boundingBox()).height).toBeGreaterThanOrEqual(44);
+    await history.click();
+    await expect(booking).toHaveCount(0);
+    await expect(manager.getByRole('heading', { level: 2 })).toContainText(target.student_name);
+    await expect(manager.getByRole('tab', { name: '堂次', exact: true })).toHaveAttribute('aria-selected', 'true');
+    const cancelledList = manager.getByTestId('course-manager-cancelled-list');
+    await expect(cancelledList).toContainText('11/12');
+    await expect(cancelledList).toContainText('17:00');
+    await cancelledList.getByRole('button', { name: '復原', exact: true }).click();
+    await expect(page.getByRole('dialog', { name: '復原已取消的課', exact: true })).toBeVisible();
+    await expect(page.getByTestId('restore-submit')).toBeEnabled();
+    const recoveryPath = testInfo.outputPath('existing-lesson-recovery.png');
+    await page.screenshot({ path: recoveryPath });
+    await testInfo.attach('existing-lesson-recovery', { path: recoveryPath, contentType: 'image/png' });
+    expect(writes).toEqual([]);
+  });
 }
 
 for (const width of [390, 1440]) {

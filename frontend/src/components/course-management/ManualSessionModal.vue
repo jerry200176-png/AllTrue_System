@@ -4,6 +4,11 @@
       <h3 class="modal-title">{{ isMonthly ? '新增月結堂次' : '新增下一堂' }}</h3>
       <p class="modal-desc">{{ isMonthly ? '補入區間內的單堂課；月結依實際上課計費，不會扣除購買堂數。' : '逐堂手動排課：每次只新增一堂，課程時長沿用課程設定。' }}</p>
 
+      <section v-if="isMonthly" class="manual-session-history" aria-label="過去課堂處理">
+        <p>這裡只新增尚未結束的課。已上過或已取消的課，請先查看原堂次；已取消的課可從原紀錄復原。</p>
+        <button type="button" class="ghost small" data-testid="manual-session-history" :disabled="submitting" @click="$emit('view-history')">查看過去及已取消的課</button>
+      </section>
+
       <div class="manual-session-grid">
         <label class="form-group">
           <span>上課日期</span>
@@ -72,7 +77,7 @@ const props = defineProps({
   isMonthly: Boolean,
   today: { type: String, required: true },
 });
-defineEmits(['close', 'check', 'submit', 'edit-course', 'next-period', 'open-course']);
+defineEmits(['close', 'check', 'submit', 'edit-course', 'next-period', 'open-course', 'view-history']);
 const dateInput = ref(null);
 // Who holds the slot: overlap_details from the server's schedule conflicts, de-duplicated.
 const blockers = computed(() => {
@@ -96,8 +101,9 @@ const focusDate = () => dateInput.value?.focus();
 .manual-session-blockers { margin: 0; padding-left: 18px; overflow-wrap: anywhere; }
 .manual-session-warning { color: var(--ds-warning); font-weight: 600; line-height: 1.5; }
 .manual-session-retry { justify-self: start; margin-top: 4px; }
-.manual-session-next-period { margin-top: 14px; display: grid; gap: 8px; font-size: .88rem; }
-.manual-session-next-period p { margin: 0; color: var(--ds-text-secondary); }
+.manual-session-next-period, .manual-session-history { margin-top: 14px; display: grid; gap: 8px; font-size: .88rem; }
+.manual-session-next-period p, .manual-session-history p { margin: 0; color: var(--ds-text-secondary); }
+.manual-session-history button { min-height: 44px; }
 .manual-session-edit-course { margin-top: 10px; width: 100%; }
 @media (max-width: 560px) { .manual-session-grid { grid-template-columns: 1fr; } }
 </style>

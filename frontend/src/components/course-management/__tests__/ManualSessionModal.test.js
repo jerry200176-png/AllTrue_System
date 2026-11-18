@@ -8,6 +8,21 @@ const props = () => ({ show: true, today: '2026-09-29', isMonthly: true,
     next_period: { source_end: '2026-09-30', candidates: [] } } });
 
 describe('monthly cross-period booking', () => {
+  it('offers existing lesson history without relaxing future booking or submitting a lesson (#5491)', async () => {
+    const wrapper = mount(ManualSessionModal, { props: props() });
+    expect(wrapper.find('input[type="date"]').attributes('min')).toBe('2026-09-29');
+    const history = wrapper.get('[data-testid="manual-session-history"]');
+    expect(wrapper.text()).toContain('已取消');
+    await history.trigger('click');
+    expect(wrapper.emitted('view-history')).toEqual([[]]);
+    expect(wrapper.emitted('submit')).toBeUndefined();
+    await wrapper.setProps({ submitting: true });
+    expect(history.attributes('disabled')).toBeDefined();
+    await wrapper.setProps({ isMonthly: false, submitting: false });
+    expect(wrapper.find('[data-testid="manual-session-history"]').exists()).toBe(false);
+    expect(wrapper.find('input[type="date"]').attributes('min')).toBe('2026-09-29');
+    wrapper.unmount();
+  });
   it('guides next unpaid contract preview without an old-course extension action', async () => {
     const wrapper = mount(ManualSessionModal, { props: props() });
     expect(wrapper.text()).toContain('預覽建立下一期未繳費合約');
