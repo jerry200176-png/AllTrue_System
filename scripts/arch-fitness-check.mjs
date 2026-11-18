@@ -21,6 +21,7 @@
  * FIT-17 TD-076        files touching the `schedules` exception table directly ratchet (one timetable reader)
  * FIT-18 #4991 M       product files writing StudentClass.Paid / .Charge ratchet (one money writer)
  * FIT-19 #4991 M       frontend files multiplying a price by a count ratchet (screens display, they do not compute)
+ * FIT-20 #4991 item 9  nightly reproduction allowances (reproduction_baselines.php) only shrink
  */
 import fs from 'node:fs';
 import path from 'node:path';
@@ -194,6 +195,22 @@ let svcGraph = { svcFiles: [], edges: new Map(), ctxRule: null };
   const files = walk(path.join(ROOT, 'frontend/src'), (p) => /\.(js|ts|vue)$/.test(p) && !/\.(test|spec)\.|__tests__/.test(p) && !p.endsWith(path.join('lib', 'coursePricing.js')))
     .filter((f) => re.test(read(f)));
   ratchet('FIT-19', `frontend files computing money (${files.map((f) => path.basename(f)).join(', ') || 'none'}); show the server amount`, files.length, 'frontendMoneyMathFiles');
+}
+
+// FIT-20 (#4991 item 9): backend/config/reproduction_baselines.php says how many known-bad rows the nightly
+// `bugs:verify-reproductions` tolerates. Raising a number, or adding a new allowance, hides a regression; both need
+// the matching number raised here, which a reviewer sees. Fixing data lowers both.
+{
+  ran.add('FIT-20');
+  const pinned = baseline.reproductionBaselines;
+  const src = read(path.join(ROOT, 'backend/config/reproduction_baselines.php'));
+  const found = [...src.matchAll(/^\s*'([a-z_]+)'\s*=>\s*(\d+)\s*,/gm)].map((m) => [m[1], Number(m[2])]);
+  if (found.length === 0) failures.push('FIT-20: no numeric allowance parsed from reproduction_baselines.php (format changed?)');
+  for (const [key, n] of found) {
+    if (!(key in pinned)) { if (n > 0) failures.push(`FIT-20: new nightly allowance ${key} = ${n}; a new condition starts at 0 or null, or pin it in arch-fitness-baseline.json with the reason in the PR.`); }
+    else if (n > pinned[key]) failures.push(`FIT-20: nightly allowance ${key} rose ${pinned[key]} -> ${n}. Allowances only shrink.`);
+  }
+  note(`FIT-20: ${found.length} nightly allowances at or below their pins (sum ${found.reduce((s, [, n]) => s + n, 0)}).`);
 }
 
 // FIT-10 context map completeness + forbidden edges (DEP-1)
