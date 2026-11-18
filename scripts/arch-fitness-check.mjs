@@ -204,13 +204,26 @@ let svcGraph = { svcFiles: [], edges: new Map(), ctxRule: null };
   ran.add('FIT-20');
   const pinned = baseline.reproductionBaselines;
   const src = read(path.join(ROOT, 'backend/config/reproduction_baselines.php'));
-  const found = [...src.matchAll(/^\s*'([a-z_]+)'\s*=>\s*(\d+)\s*,/gm)].map((m) => [m[1], Number(m[2])]);
-  if (found.length === 0) failures.push('FIT-20: no numeric allowance parsed from reproduction_baselines.php (format changed?)');
-  for (const [key, n] of found) {
-    if (!(key in pinned)) { if (n > 0) failures.push(`FIT-20: new nightly allowance ${key} = ${n}; a new condition starts at 0 or null, or pin it in arch-fitness-baseline.json with the reason in the PR.`); }
-    else if (n > pinned[key]) failures.push(`FIT-20: nightly allowance ${key} rose ${pinned[key]} -> ${n}. Allowances only shrink.`);
+  // Strict: inside `return [ ... ];` every line is `'key' => <integer>,` or `'key' => null,` (plus a comment).
+  // Anything else (an expression, env(), two keys on a line) fails, so a raise cannot hide in a shape we do not read.
+  const body = (src.match(/return\s*\[([\s\S]*?)\];/) || [])[1];
+  const bad = [];
+  let n = 0, sum = 0;
+  if (body === undefined) bad.push('no `return [ ... ];` block found in reproduction_baselines.php');
+  for (const raw of (body || '').split('\n')) {
+    const line = raw.replace(/\/\/.*$/, '').trim();
+    if (line === '') continue;
+    const m = line.match(/^'([a-z_]+)'\s*=>\s*(\d+|null),$/);
+    if (!m) { bad.push(`unreadable line (write 'key' => <integer>,): ${line}`); continue; }
+    const [, key, val] = m; n++;
+    const pin = pinned[key];
+    if (val === 'null') { if (pin !== null) bad.push(`${key} = null switches the check off; pin it as null in arch-fitness-baseline.json with the reason in the PR.`); continue; }
+    sum += Number(val);
+    if (pin === undefined) { if (Number(val) > 0) bad.push(`new allowance ${key} = ${val}; start at 0, or pin it in arch-fitness-baseline.json with the reason in the PR.`); }
+    else if (pin === null || Number(val) > pin) bad.push(`allowance ${key} rose ${pin} -> ${val}. Allowances only shrink.`);
   }
-  note(`FIT-20: ${found.length} nightly allowances at or below their pins (sum ${found.reduce((s, [, n]) => s + n, 0)}).`);
+  if (bad.length) for (const b of bad) failures.push(`FIT-20: ${b}`);
+  else note(`FIT-20: ${n} nightly allowances at or below their pins (sum ${sum}).`);
 }
 
 // FIT-10 context map completeness + forbidden edges (DEP-1)
