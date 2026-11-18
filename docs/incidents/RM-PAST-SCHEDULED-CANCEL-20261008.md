@@ -31,3 +31,12 @@ Pi-local POP runs one transaction (lock sessions + course, re-check, update exac
 
 Stored snapshot restores `scheduled` for rows still `cancelled` with no activity; otherwise the row is skipped and
 the result is `ok=false, partial=true`. As with other POP repairs this is a new Founder-approved request, not a button.
+
+## Second case: course 3380 (Founder 2026-11-18, in-app #550 / GitHub #5361)
+
+Same strategy, same per-session checks, selected by `decision_reference` = `cancel-past-scheduled-course3380-20261118`
+(catalog operation of the same id; an unknown reference returns `case_parameters_mismatch`). StudentClass 3380 is closed
+(waived) with 7 past `scheduled` rows: 32305, 32306, 32307, 32308, 32309, 32310, 32311, campus 16. Status
+scheduled to cancelled only. Dispatch the workflow with `case=3380`, confirm `DRY_RUN_PAST_SCHEDULED_CANCEL_20261118` /
+`APPROVE_PAST_SCHEDULED_CANCEL_20261118`, approval reference `founder-go-past-scheduled-cancel-20261118`. Expect counts
+`{sessions:7,to_cancel:7}`. The 2942 case (`case=2942`, default) is unchanged. The data change runs later through POP, not in the PR.

@@ -206,6 +206,35 @@ operations:
     tags: [repair, session, in-app-341]
     notes: Exact three past still-scheduled sessions of one early-ended contract (in-app #341, GitHub #3199). Status scheduled to cancelled only; no billing field is written. Pi-local POP only.
 
+  cancel-past-scheduled-course3380-20261118:
+    lifecycle: active
+    domain: session
+    business_owner: director-scheduling
+    technical_owner: platform-scheduling
+    owner: platform-ops
+    approver_roles: [super_admin]
+    approval_policy: founder-exact-past-scheduled-cancel
+    founder_approval_required: true
+    runbook: docs/incidents/RM-PAST-SCHEDULED-CANCEL-20261008.md
+    alert_group: LINE:ops-scheduling
+    escalation_policy: session-critical-escalation
+    capabilities: [repair, plan, dry_run, verify, rollback, snapshot, audit]
+    risk: critical
+    reversible: true
+    snapshot_required: true
+    transaction_required: true
+    rollback_supported: true
+    verification_required: true
+    approval_required: true
+    execution_authority: pop-pi-local
+    blast_radius: seven_exact_class_sessions_status_only
+    estimated_duration: 5m
+    invariant_packs: [session-pack@1.0.0]
+    strategy_class: App\Operations\Strategies\PastScheduledSessionsCancelStrategy
+    parameter_keys: [decision_reference]
+    tags: [repair, session, in-app-550]
+    notes: Exact seven past still-scheduled sessions of one closed (waived) course (in-app #550, GitHub #5361); same strategy as the 2942 case. Status scheduled to cancelled only; no billing field is written. Pi-local POP only.
+
   invoice1997-stale-values-20261008:
     lifecycle: active
     domain: billing-entitlement

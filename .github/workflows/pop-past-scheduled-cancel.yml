@@ -1,10 +1,17 @@
-name: Founder POP cancel past scheduled sessions (course 2942)
-# Case adapter for POP operation cancel-past-scheduled-course2942-20261008 (Founder decision 2026-10-08, GitHub #3797 / #3199).
+name: Founder POP cancel past scheduled sessions (course 2942 or 3380)
+# Case adapter for POP operations cancel-past-scheduled-course2942-20261008 (Founder decision 2026-10-08, GitHub #3797 / #3199)
+# and cancel-past-scheduled-course3380-20261118 (Founder decision 2026-11-18, GitHub #5361). The `case` input picks one exact case.
 # Execution stays on the Pi scheduler; the super_admin Bearer session is read on the Pi and never leaves it.
 # dry-run is read-only and prints ids, counts and the sha256 digest; approve waits for Pi-local execute + verify.
 on:
   workflow_dispatch:
     inputs:
+      case:
+        description: Exact case (course id)
+        required: true
+        type: choice
+        options: ['2942', '3380']
+        default: '2942'
       mode:
         description: dry-run or approve (approve waits for Pi-local verify)
         required: true
@@ -12,7 +19,7 @@ on:
         options: [dry-run, approve]
         default: dry-run
       confirm:
-        description: "DRY_RUN_PAST_SCHEDULED_CANCEL_20261008 or APPROVE_PAST_SCHEDULED_CANCEL_20261008"
+        description: "DRY_RUN_PAST_SCHEDULED_CANCEL_<date> or APPROVE_PAST_SCHEDULED_CANCEL_<date> (2942: 20261008, 3380: 20261118)"
         required: true
         type: string
       deployed_backend_sha:
@@ -33,19 +40,25 @@ jobs:
     steps:
       - name: Reject scope or confirmation drift
         env:
+          CASE_ID: ${{ inputs.case }}
           MODE: ${{ inputs.mode }}
           CONFIRM: ${{ inputs.confirm }}
           INPUT_SHA: ${{ inputs.deployed_backend_sha }}
         run: |
           set -euo pipefail
+          case "$CASE_ID" in
+            2942) SUFFIX=20261008; COUNT=3 ;;
+            3380) SUFFIX=20261118; COUNT=7 ;;
+            *) echo '::error::unknown case'; exit 1 ;;
+          esac
           [[ "$MODE" == dry-run || "$MODE" == approve ]] || exit 1
           [[ "$INPUT_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo '::error::deployed_backend_sha must be a full commit SHA'; exit 1; }
           if [[ "$MODE" == dry-run ]]; then
-            [[ "$CONFIRM" == DRY_RUN_PAST_SCHEDULED_CANCEL_20261008 ]] || exit 1
+            [[ "$CONFIRM" == "DRY_RUN_PAST_SCHEDULED_CANCEL_$SUFFIX" ]] || exit 1
           else
-            [[ "$CONFIRM" == APPROVE_PAST_SCHEDULED_CANCEL_20261008 ]] || exit 1
+            [[ "$CONFIRM" == "APPROVE_PAST_SCHEDULED_CANCEL_$SUFFIX" ]] || exit 1
           fi
-          echo "Founder gate passed: mode=$MODE backend_sha=$INPUT_SHA scope=exact_manifest_3_sessions"
+          echo "Founder gate passed: case=$CASE_ID mode=$MODE backend_sha=$INPUT_SHA scope=exact_manifest_${COUNT}_sessions"
   founder-approval:
     # Founder 2026-10-28 A: only approve waits for the Founder click; dry-run skips this job.
     name: Founder approval (approve mode only)
@@ -87,13 +100,14 @@ jobs:
           PI_HOST_KEY: ${{ secrets.PI_HOST_KEY }}
           PI_SSH_USER: ${{ secrets.PI_SSH_USER }}
           PI_SSH_HOST: ${{ secrets.PI_SSH_HOST }}
+          CASE_ID: ${{ inputs.case }}
           MODE: ${{ inputs.mode }}
           TARGET_SHA: ${{ inputs.deployed_backend_sha }}
         run: |
           set -euo pipefail
           test -n "$PI_SSH_KEY" && test -n "$PI_HOST_KEY"
           # Both values were allowlisted by the guard job (mode choice, 40-hex SHA) before reaching the remote shell.
-          [[ "$MODE" == dry-run || "$MODE" == approve ]] && [[ "$TARGET_SHA" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$MODE" == dry-run || "$MODE" == approve ]] && [[ "$TARGET_SHA" =~ ^[0-9a-f]{40}$ ]] && [[ "$CASE_ID" == 2942 || "$CASE_ID" == 3380 ]]
           SSH_DIR="$RUNNER_TEMP/pop-past-sched-ssh"
           install -d -m 700 "$SSH_DIR"
           printf '%s' "$PI_SSH_KEY" | tr -d '[:space:]' | base64 -d > "$SSH_DIR/deploy_key"
@@ -102,13 +116,18 @@ jobs:
           ssh -i "$SSH_DIR/deploy_key" \
             -o IdentitiesOnly=yes -o BatchMode=yes -o ConnectTimeout=20 \
             -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$HOME/.ssh/known_hosts" \
-            "$PI_SSH_USER@$PI_SSH_HOST" "MODE='$MODE' TARGET_SHA='$TARGET_SHA' bash -s" <<'REMOTE'
+            "$PI_SSH_USER@$PI_SSH_HOST" "CASE_ID='$CASE_ID' MODE='$MODE' TARGET_SHA='$TARGET_SHA' bash -s" <<'REMOTE'
           set -euo pipefail
           umask 077
           cd /home/admin/backend
           BASE_URL=https://daan.lifenet.com.tw
-          OPERATION=cancel-past-scheduled-course2942-20261008
-          APPROVAL_REF=founder-go-past-scheduled-cancel-20261008
+          case "$CASE_ID" in
+            2942) SUFFIX=20261008 ;;
+            3380) SUFFIX=20261118 ;;
+            *) echo '::error::unknown case'; exit 1 ;;
+          esac
+          OPERATION="cancel-past-scheduled-course${CASE_ID}-${SUFFIX}"
+          APPROVAL_REF="founder-go-past-scheduled-cancel-${SUFFIX}"
           WORK_DIR="$(mktemp -d /tmp/pop-past-sched.XXXXXX)"
           TOKEN=''
           cleanup() {
@@ -139,8 +158,8 @@ jobs:
             curl -sS --proto '=https' --tlsv1.2 -H "Authorization: Bearer $TOKEN" \
               -H 'Accept: application/json' -H 'Content-Type: application/json' --data "$body" -o "$output" -w '%{http_code}' "$BASE_URL$path"
           }
-          # Exact catalog-bound parameters; the 3-row manifest lives in code (PastScheduledSessionsCancelStrategy::cases).
-          PARAMETERS_JSON='{"parameters":{"decision_reference":"cancel-past-scheduled-course2942-20261008"},"idempotency_key":"founder-past-scheduled-cancel-20261008"}'
+          # Exact catalog-bound parameters; the manifest per case lives in code (PastScheduledSessionsCancelStrategy::cases).
+          PARAMETERS_JSON="{\"parameters\":{\"decision_reference\":\"$OPERATION\"},\"idempotency_key\":\"founder-past-scheduled-cancel-$SUFFIX\"}"
           draft="$WORK_DIR/draft.json"
           draft_status="$(post_human "/api/v1/pop/operations/$OPERATION/draft" "$PARAMETERS_JSON" "$draft")"
           [[ "$draft_status" == 201 || "$draft_status" == 200 ]] || { echo "::error::POP draft rejected with HTTP $draft_status"; exit 1; }
