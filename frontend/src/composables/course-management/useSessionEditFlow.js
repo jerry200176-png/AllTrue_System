@@ -564,7 +564,7 @@ export function useSessionEditFlow({
       // #4991 line 3: name the lessons in the way inside the modal, each with a way to open it.
       const blockers = uniqueScheduleBlockers(error?.conflicts);
       if (blockers.length) {
-        sessionEditForm.value.blocked = { message: '調課失敗：' + message, blockers, date: form.new_date };
+        form.blocked = { message: '調課失敗：' + message, blockers, date: form.new_date }; // the lesson this request was for
         return;
       }
       const conflictLine = formatRescheduleConflictStudents(error?.conflicts?.[0]?.overlap_details);
@@ -649,7 +649,7 @@ export function useSessionEditFlow({
         let errMsg = json.message || res.statusText;
         const blockers = res.status === 409 ? uniqueScheduleBlockers(json.conflicts) : [];
         if (blockers.length) {
-          sessionEditForm.value.blocked = { message: '代課設定失敗：' + errMsg, blockers, date: form.session_date };
+          form.blocked = { message: '代課設定失敗：' + errMsg, blockers, date: form.session_date };
           return;
         }
         if (res.status === 409 && Array.isArray(json.conflicts) && json.conflicts.length > 0) {
