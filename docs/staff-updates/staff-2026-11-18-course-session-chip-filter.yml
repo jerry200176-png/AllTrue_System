@@ -1,0 +1,13 @@
+updates:
+  - id: staff-2026-11-18-course-session-chip-filter
+    published_at: "2026-11-18"
+    audiences:
+      - director
+    importance: digest
+    title: 課程管理可只看已上的課
+    summary: 每門課的日期列上方可按「已上」「未上」「請假／缺席」，只看那一種。
+    items:
+      - category: added
+        text: 只改變畫面上列出的日期，不影響堂數、行事曆或帳務；預設仍顯示全部。
+    source_refs:
+      - "changelog:2026-11-18:course-session-chip-filter"
