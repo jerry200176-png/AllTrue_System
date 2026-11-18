@@ -5,7 +5,11 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Schema;
 
-/** Atomic existing-target allocation audit; Invoice/Payment remain the financial authority. */
+/**
+ * Atomic existing-target allocation audit; Invoice/Payment remain the financial authority.
+ * @property int $source_student_class_id
+ * @property int $created_by
+ */
 class ExistingCourseCreditAllocationGroup extends Model
 {
     public const SNAPSHOT_PROTOCOL = 'existing-course-credit-allocation:v1';

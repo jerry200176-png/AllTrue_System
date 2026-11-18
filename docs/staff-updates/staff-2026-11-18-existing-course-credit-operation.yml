@@ -1,0 +1,16 @@
+updates:
+  - id: staff-2026-11-18-existing-course-credit-operation
+    published_at: "2026-11-18"
+    audiences:
+      - director
+      - super_admin
+    importance: major
+    title: 已付學費抵付既有課程
+    summary: 於跨科轉用選擇已建立的課程，核對逐科學費與排課日期後整批抵付，不再額外收款。
+    items:
+      - category: added
+        text: 限同一學生、同校區、同單價與堂長；已開單收款或免費的課程須先核對。
+      - category: improved
+        text: 需取消未來排課時先列日期確認，已上課與原收據保留；紀錄支援受限整批還原。
+    source_refs:
+      - "changelog:2026-11-18:existing-course-credit-operation"

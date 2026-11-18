@@ -29,6 +29,85 @@ beforeEach(() => {
     return response({ data: records, current_page: 1, last_page: 1, total: records.length });
   });
 });
+
+describe('existing-course paid-credit allocation', () => {
+  const releases = Array.from({ length: 5 }, (_, n) => ({ id: 100 + n, date: `2026-11-${20 + n}`, start_time: '10:00:00', end_time: '12:00:00' }));
+  const allocation = { preview: true, execution_available: true, storage_ready: true, state_hash: 'b'.repeat(64),
+    released_lessons: releases, plan: { source_sessions: 3, source_used: 2, source_remaining: 1, source_amount: 4500,
+      allocations: [{ id: 20, sessions: 1, used: 1, amount: 1500 }, { id: 21, sessions: 4, used: 3, amount: 6000 }],
+      released_session_ids: releases.map(s => s.id) } };
+  const group = { id: 8, source_course_id: 10, sessions: 5, amount: 7500, targets: allocation.plan.allocations,
+    reason: '抵付另一科', reversed: false };
+  const setup = () => {
+    const previous = fetcher.getMockImplementation();
+    fetcher.mockImplementation((url, init) => url.includes('?student_id=')
+      ? Promise.resolve(response({ data: url.includes('page=2') ? [{ ...target, StartDate: '2026-09-01', SessionCount: 1 }, { ...target, id: 21, subject: 'science', subject_name: '自然', StartDate: '2026-10-01', SessionCount: 4 }] : [course], last_page: 2, total: 3 }))
+      : previous(url, init));
+  };
+  const existing = async w => { await w.get('#credit-mode-existing').setValue(true); await flushPromises(); };
+  const fillExisting = async w => {
+    await w.get('#credit-existing-20').setValue(true); await w.get('#credit-existing-21').setValue(true);
+    await w.get('#credit-reason').setValue('抵付另一科');
+  };
+  const quoteExisting = async w => { writes.push(response(allocation)); await button(w, '預覽抵付與排課影響').trigger('click'); await flushPromises(); };
+
+  it('reuses loaded courses and requires acknowledgement of exact named reservation releases', async () => {
+    setup(); const w = await open(); await existing(w); await fillExisting(w);
+    expect(fetcher.mock.calls.filter(([u]) => u.includes('?student_id='))).toHaveLength(2);
+    expect(w.get('#credit-existing-20').element.closest('label').textContent).toContain('2026-09-01 · 1 堂');
+    expect(w.get('#credit-existing-21').element.closest('label').textContent).toContain('2026-10-01 · 4 堂');
+    await quoteExisting(w);
+    expect(bodies()[0]).toEqual({ target_course_ids: [20, 21] });
+    expect(w.get('[data-testid="credit-preview"]').text()).toContain('英文 · 英文教師');
+    expect(w.get('[data-testid="credit-preview"]').text()).toContain('自然');
+    expect(w.text()).toContain('2026-11-24'); expect(w.text()).toContain('7,500');
+    expect(button(w, '確認抵付既有課程').attributes('disabled')).toBeDefined();
+    await w.get('#credit-release-confirm').setValue(true);
+    writes.push(response({ allocation_group: group, replayed: false }, 201));
+    await button(w, '確認抵付既有課程').trigger('click'); await flushPromises();
+    expect(bodies()[1]).toMatchObject({ target_course_ids: [20, 21], released_session_ids: releases.map(s => s.id), state_hash: allocation.state_hash });
+    expect(w.text()).toContain('不需再付這筆學費'); expect(w.emitted('changed')).toHaveLength(1);
+  });
+  it('invalidates acknowledgement on selection change and retains the exact uncertain intent across reopening', async () => {
+    setup(); const w = await open(); await existing(w); await fillExisting(w); await quoteExisting(w);
+    await w.get('#credit-release-confirm').setValue(true);
+    await w.get('#credit-reason').setValue('更正原因'); expect(w.find('#credit-release-confirm').exists()).toBe(false);
+    await quoteExisting(w); expect(w.get('#credit-release-confirm').element.checked).toBe(false);
+    await w.get('#credit-release-confirm').setValue(true); writes.push(new Error('lost response'));
+    await button(w, '確認抵付既有課程').trigger('click'); await flushPromises(); const original = bodies().at(-1);
+    expect(w.get('#credit-mode-new').element.matches(':disabled')).toBe(true);
+    await w.setProps({ show: false }); await w.setProps({ show: true }); await flushPromises();
+    writes.push(response({ allocation_group: group, replayed: true }));
+    await button(w, '重試確認結果').trigger('click'); await flushPromises();
+    expect(bodies().at(-1)).toEqual(original); expect(w.emitted('changed')).toHaveLength(1);
+  });
+  it('never paints a late quote or committed result onto a different course context', async () => {
+    setup(); const w = await open(); await existing(w); await fillExisting(w);
+    let finish; writes.push(new Promise(resolve => { finish = resolve; }));
+    await button(w, '預覽抵付與排課影響').trigger('click');
+    await w.setProps({ course: { ...course, id: 11, student_name: '另一位學生' } }); await flushPromises();
+    finish(response(allocation)); await flushPromises();
+    expect(w.find('[data-testid="credit-preview"]').exists()).toBe(false);
+    await fillExisting(w); await quoteExisting(w); await w.get('#credit-release-confirm').setValue(true);
+    let commit; writes.push(new Promise(resolve => { commit = resolve; }));
+    await button(w, '確認抵付既有課程').trigger('click');
+    await w.setProps({ course: { ...course, id: 12 } }); await flushPromises();
+    commit(response({ allocation_group: group }, 201)); await flushPromises();
+    expect(w.text()).not.toContain('已確認抵付'); expect(w.emitted('changed')).toHaveLength(1);
+  });
+  it('uses whole-group inverse and never offers the old child inverse for grouped allocations', async () => {
+    setup(); records = [{ ...transfer, allocation_group_id: 8 }]; const w = await open();
+    expect(button(w, '還原這筆轉用')).toBeUndefined();
+    records = [group]; await existing(w);
+    await button(w, '還原整批抵付').trigger('click'); await w.get('#credit-reverse-reason').setValue('回復原課程');
+    writes.push(response({ message: '尚未確認' }, 503)); await button(w, '確認還原').trigger('click'); await flushPromises();
+    writes.push(response({ allocation_group: { ...group, reversed: true }, replayed: true }));
+    await button(w, '重試確認結果').trigger('click'); await flushPromises();
+    expect(fetcher.mock.calls.filter(([, i]) => i?.method === 'POST').map(([u]) => u)).toEqual([
+      '/api/v1/student-classes/10/existing-credit-allocations/8/reverse', '/api/v1/student-classes/10/existing-credit-allocations/8/reverse']);
+    expect(bodies()[1]).toEqual(bodies()[0]); expect(w.emitted('changed')).toHaveLength(1);
+  });
+});
 afterEach(() => { wrappers.splice(0).forEach(w => w.unmount()); document.body.innerHTML = ''; });
 
 describe('in-app #535 subject-credit workflow', () => {
@@ -109,9 +188,9 @@ describe('in-app #535 subject-credit workflow', () => {
   });
   it('traps/restores focus and rejects partial candidate pagination', async () => {
     const opener = document.createElement('button'); document.body.appendChild(opener); opener.focus();
-    const w = await open(); expect(document.activeElement.id).toBe('credit-target');
+    const w = await open(); expect(document.activeElement.id).toBe('credit-mode-new');
     [...w.element.querySelectorAll('button:not([disabled])')].pop().focus();
-    await w.get('[role="dialog"]').trigger('keydown', { key: 'Tab' }); expect(document.activeElement.id).toBe('credit-target');
+    await w.get('[role="dialog"]').trigger('keydown', { key: 'Tab' }); expect(document.activeElement.id).toBe('credit-mode-new');
     await w.get('[role="dialog"]').trigger('keydown', { key: 'Escape' }); expect(w.emitted('close')).toHaveLength(1);
     await w.setProps({ show: false }); expect(document.activeElement).toBe(opener);
     fetcher.mockImplementation(async u => u.includes('?student_id=') ? response({ data: [target], last_page: 30, total: 3000 }) : response({ data: [] }));

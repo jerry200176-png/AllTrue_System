@@ -632,6 +632,10 @@ Route::prefix('v1')->group(function () {
         Route::post('student-classes/{studentClass}/subject-credit-transfer/preview', [\App\Http\Controllers\SubjectCreditTransferController::class, 'preview'])->middleware('throttle:20,1');
         Route::post('student-classes/{studentClass}/subject-credit-transfer', [\App\Http\Controllers\SubjectCreditTransferController::class, 'apply'])->middleware('throttle:10,1');
         Route::post('student-classes/{studentClass}/subject-credit-transfer/{transferId}/reverse', [\App\Http\Controllers\SubjectCreditTransferController::class, 'reverse'])->whereNumber('transferId')->middleware('throttle:10,1');
+        Route::get('student-classes/{studentClass}/existing-credit-allocations', [\App\Http\Controllers\SubjectCreditTransferController::class, 'existingIndex'])->middleware('throttle:60,1');
+        Route::post('student-classes/{studentClass}/existing-credit-allocations/preview', [\App\Http\Controllers\SubjectCreditTransferController::class, 'existingPreview'])->middleware('throttle:20,1');
+        Route::post('student-classes/{studentClass}/existing-credit-allocations', [\App\Http\Controllers\SubjectCreditTransferController::class, 'existingApply'])->middleware('throttle:10,1');
+        Route::post('student-classes/{studentClass}/existing-credit-allocations/{allocationGroupId}/reverse', [\App\Http\Controllers\SubjectCreditTransferController::class, 'existingReverse'])->whereNumber('allocationGroupId')->middleware('throttle:10,1');
         Route::post('student-classes/{studentClass}/recover-transfer-sessions', [StudentClassController::class, 'recoverAndTransferSessions']);
         Route::get('student-identities', [StudentIdentityController::class, 'index']);
         Route::post('student-identities/link', [StudentIdentityController::class, 'link']);

@@ -45,12 +45,17 @@ class ExistingCourseCreditAllocationStorageTest extends TestCase
         $input += ['state_hash' => $preview->json('state_hash'), 'idempotency_key' => 'storage-legacy-transfer'];
         $created = $this->withToken($token)->postJson($url, $input)->assertCreated();
         $transferId = $created->json('transfer.id');
-
         $migration = require database_path('migrations/2026_11_17_073000_create_existing_course_credit_allocation_groups.php');
         $this->assertFalse(ExistingCourseCreditAllocationGroup::storageReady());
         $business = $this->businessSnapshot();
         $audit = (array) DB::table('contract_subject_credit_transfers')->where('id', $transferId)->first();
-        $migration->up();
+        try {
+            $this->withToken($token)->getJson($url)->assertOk()
+                ->assertJsonStructure(['data' => [['allocation_group_id']]])->assertJsonPath('data.0.allocation_group_id', null);
+            $this->withToken($token)->getJson("/api/v1/student-classes/{$source->ID}/existing-credit-allocations")->assertStatus(503);
+        } finally {
+            $migration->up(); // A failed HTTP assertion must not leak the old schema into later tests.
+        }
 
         $this->assertTrue(ExistingCourseCreditAllocationGroup::storageReady());
         $this->assertDatabaseCount('existing_course_credit_allocation_groups', 0);
