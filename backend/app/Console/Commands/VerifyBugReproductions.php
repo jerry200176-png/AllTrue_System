@@ -3,6 +3,7 @@
 namespace App\Console\Commands;
 
 use App\Models\Invoice;
+use App\Models\StudentClass;
 use App\Services\Billing\InvoiceAmountParityCensus;
 use App\Services\Billing\PaidFlagInvoiceMismatch;
 use App\Services\Scheduling\ScheduleTeacherParityCensus;
@@ -10,6 +11,7 @@ use App\Support\AppClockSql;
 use App\Support\AttendanceStatus;
 use App\Support\ContractPeriod;
 use App\Support\SchedulerEvidence;
+use App\Support\SessionStatus;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -47,6 +49,12 @@ class VerifyBugReproductions extends Command
             static fn (string $status): string => "'" . addslashes($status) . "'",
             AttendanceStatus::requiresLogSessionStatuses()
         ));
+        $quoted = static fn (array $values): string => implode(',', array_map(
+            static fn (string $v): string => "'" . addslashes($v) . "'",
+            $values
+        ));
+        $freeingStatuses = $quoted(SessionStatus::futureReservationExclusionStatuses());
+        $usageLocks = $quoted(StudentClass::USAGE_LOCK_CLOSURES);
         return [
             [
                 'key' => 'attended_session_without_learning_record',
@@ -207,6 +215,19 @@ class VerifyBugReproductions extends Command
                 'issue' => '#5198', 'enforced' => false,
                 'sql' => "SELECT COUNT(*) AS c FROM ClassSession cs JOIN StudentClass sc ON sc.ID = cs.StudentClassID
                           WHERE " . ContractPeriod::SQL_BEFORE_START . " AND LOWER(COALESCE(cs.Status, '')) NOT IN ('cancelled', 'voided')",
+            ],
+            [
+                // #4991 line 3: ScheduleGuardService counts every live lesson of a running (Stop = 0) course as taken,
+                // but a usage-locked course (StudentClass::isUsageSettlementLocked) can never teach it, so the slot is
+                // blocked for nobody. Reported first; enforce after 14 nights at 0.
+                'key' => 'seat_held_by_finished_contract',
+                'label' => 'Upcoming lessons of a settled/closed course that still block the teacher, room and student slot',
+                'issue' => '#4991', 'enforced' => false,
+                'sql' => "SELECT COUNT(*) AS c FROM ClassSession cs JOIN StudentClass sc ON sc.ID = cs.StudentClassID
+                          WHERE (sc.Stop = 0 OR sc.Stop IS NULL)
+                            AND (sc.settlement_locked_at IS NOT NULL OR sc.closed_reason IN ({$usageLocks}))
+                            AND cs.SessionDate >= CAST(:app_today AS DATE)
+                            AND LOWER(COALESCE(cs.Status, '')) NOT IN ({$freeingStatuses})",
             ],
         ];
     }
