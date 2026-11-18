@@ -466,6 +466,11 @@ class BillCorrectionTest extends TestCase
         $this->assertNull(BillCorrection::correctableInvoiceId((int) $b['course']->ID));
     }
 
+    public function test_the_committed_pilot_campuses_are_daan_xindian_muzha(): void
+    {
+        $this->assertSame([15, 9, 16], (require base_path('config/billing.php'))['bill_correction_campus_ids']);
+    }
+
     // ── helpers ─────────────────────────────────────────────────────────
 
     /** @param array<string, mixed> $body */

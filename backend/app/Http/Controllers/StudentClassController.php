@@ -3705,7 +3705,7 @@ class StudentClassController extends Controller
                     'calculated_paid_amount' => $appliedAmount,
                     'outstanding_amount' => $outstandingAmount,
                     'can_direct_void' => !in_array($status, ['paid', 'partial', 'void'], true) && (int) ($inv->PaidAmount ?? 0) <= 0 && $netApplied <= 0,
-                    'can_exception_void' => $netApplied > 0 && $status !== 'void' && !(\App\Services\Billing\BillCorrection::enabledAnywhere() && \App\Services\Billing\BillCorrection::chainHasConfirmedReceipt((int) $inv->id)),
+                    'can_exception_void' => $netApplied > 0 && $status !== 'void' && !(\App\Services\Billing\BillCorrection::mayBeReplacement($inv->Note) && \App\Services\Billing\BillCorrection::chainHasConfirmedReceipt((int) $inv->id)),
                 ];
             })->values()->all(),
         ]);
