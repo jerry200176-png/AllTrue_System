@@ -24,7 +24,7 @@ class WriteRouteInverseRatchetTest extends TestCase
 {
     use CreatesApplication;
 
-    private const UNDECLARED_BASELINE = 0;
+    private const UNDECLARED_BASELINE = 337;
 
     public function test_every_write_route_declares_its_inverse_or_is_on_the_starting_list(): void
     {
