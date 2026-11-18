@@ -483,7 +483,15 @@ class AccountingController extends Controller
                     ->orderBy('PaidAt')
                     ->orderBy('id');
             }])
-            ->whereIn('StudentClassID', $classIds)
+            ->where(function ($query) use ($classIds, $student) {
+                $query->whereIn('StudentClassID', $classIds)
+                    // BillingController::index/slipData already authorize old bills through Invoice.StudentID.
+                    // Recover only this student's non-void bills whose source truly no longer exists.
+                    ->orWhere(fn ($old) => $old->where('Invoice.StudentID', (int) $student->id)
+                        ->where('Invoice.StudentClassID', '>', 0)->notVoided()
+                        ->whereDoesntHave('studentClass')
+                        ->whereDoesntHave('items.studentClass', fn ($course) => $course->where('StudentID', '!=', (int) $student->id)));
+            })
             ->orderByRaw("COALESCE(billing_period, DATE_FORMAT(IssueDate, '%Y-%m')) DESC")
             ->orderByDesc('id')
             ->get();
@@ -506,6 +514,7 @@ class AccountingController extends Controller
         $invoiceRows = $invoices->map(function (Invoice $invoice) use ($correctCampusOn, $restatedPaymentIds, $reportsByPaymentId, $reportsById, $reportsByInvoiceId, $firstSessionDates, $subjectNames, &$anomalies) {
             $invoiceStudentClassId = (int) $invoice->getAttribute('StudentClassID');
             $invoiceStudentClass = $invoice->getRelationValue('studentClass');
+            $historical = $invoiceStudentClass === null;
             $payments = $invoice->payments;
             $projection = $this->invoiceAmounts->resolve($invoice, $invoiceStudentClass);
             $totalAmount = $projection['total_amount'];
@@ -678,7 +687,8 @@ class AccountingController extends Controller
                 'invoice_no' => $this->invoiceNo($invoice),
                 'student_class_id' => (int) $invoice->StudentClassID,
                 'course_ref' => $this->courseRef((int) $invoice->StudentClassID),
-                'subject' => $invoiceStudentClass?->displaySubjectName($subjectNames),
+                'subject' => $invoiceStudentClass?->displaySubjectName($subjectNames) ?? ($historical ? '原課程已移除' : null),
+                ...($historical ? ['historical_course_missing' => true] : []),
                 'first_session_date' => $firstSessionDates->get($invoiceStudentClassId),
                 'billing_period' => $invoice->billing_period,
                 // Service range from the items: a 9/28–10/27 cycle is billing_period 2026-09,
@@ -701,17 +711,17 @@ class AccountingController extends Controller
                 'overpaid_amount' => $overpaidAmount,
                 'outstanding_amount' => $outstanding,
                 'status' => $status,
-                'can_direct_void' => (!in_array($status, ['paid', 'partial', 'void'], true) || ($status === 'paid' && $invoice->zero_amount_reason !== null && $paymentRows->isEmpty())
+                'can_direct_void' => !$historical && (!in_array($status, ['paid', 'partial', 'void'], true) || ($status === 'paid' && $invoice->zero_amount_reason !== null && $paymentRows->isEmpty())
                         // An unmarked NT$0 bill marked paid with no confirmed receipt left (an old 「0 元」 登記); same rule as BillingController::voidInvoice.
                         || ($status === 'paid' && $invoice->zero_amount_reason === null && (int) $totalAmount === 0 && !$invoiceReports->contains(fn ($r) => in_array($r['status'], ['confirmed', 'pending'], true))
-                            && $payments->every(fn ($p) => (int) $p->Amount === 0) && $invoiceStudentClass !== null && (int) ($invoiceStudentClass->PackageID ?? 0) === 0))
+                            && $payments->every(fn ($p) => (int) $p->Amount === 0) && (int) ($invoiceStudentClass->PackageID ?? 0) === 0))
                     && $paidAmount <= 0 && $netApplied <= 0,
                 // In-app #436: a confirmed receipt is undone first (收款紀錄 撤銷), then the bill is voided.
-                'can_exception_void' => $status !== 'void' && ($netApplied > 0 || $paidAmount > 0)
+                'can_exception_void' => !$historical && $status !== 'void' && ($netApplied > 0 || $paidAmount > 0)
                     && !$invoiceReports->contains(fn ($r) => $r['status'] === 'confirmed')
                     && !(\App\Services\Billing\BillCorrection::mayBeReplacement($invoice->Note) && \App\Services\Billing\BillCorrection::chainHasConfirmedReceipt((int) $invoice->id)),
                 // 更正帳單 button: only where the campus is on (the preview answers the real eligibility); absent = no button.
-                ...($correctCampusOn ? ['can_correct' => $status !== 'void'] : []),
+                ...($correctCampusOn ? ['can_correct' => !$historical && $status !== 'void'] : []),
                 'payments' => $paymentRows->all(),
                 'reports' => $invoiceReports->all(),
                 'anomalies' => $invoiceAnomalies,
@@ -730,8 +740,22 @@ class AccountingController extends Controller
 
         $invoiceIds = $invoices->pluck('id')->map(fn ($id) => (int) $id)->all();
         $paymentIds = $invoices->flatMap(fn ($invoice) => $invoice->payments)->pluck('id')->map(fn ($id) => (int) $id)->all();
-        $reportRows = $reports->map(function (PaymentReport $report) use ($invoiceIds, $paymentIds, &$anomalies) {
+        // Reuse the already resolved bill/report and legacy payment/report links, including mixed-course drift.
+        $readOnlyReportIds = [];
+        foreach ($invoiceRows as $bill) {
+            if (empty($bill['historical_course_missing'])) continue;
+            foreach ([...$bill['reports'], ...$bill['payments']] as $linked) {
+                if (($id = (int) ($linked['report_id'] ?? 0)) > 0) $readOnlyReportIds[$id] = true;
+            }
+        }
+        $reportRows = $reports->map(function (PaymentReport $report) use ($invoiceIds, $paymentIds, $classIds, $readOnlyReportIds, &$anomalies) {
             $row = $this->ledgerReportRow($report);
+            // #5511 / in-app #576: the void endpoint cannot safely operate without this student's source course.
+            $sourceCourseAvailable = in_array((int) $report->StudentClassID, $classIds, true);
+            $canUseSource = $sourceCourseAvailable && !isset($readOnlyReportIds[(int) $report->id]);
+            $reviewMessage = $sourceCourseAvailable
+                ? '這張收據連到原課程已移除的舊帳單，無法在這裡撤銷。請按「回報給總部」核對課程與帳單。'
+                : '這張收據的課程不在本學生帳務中，無法在這裡撤銷。請按「回報給總部」核對歸屬，原收據與收款紀錄仍保留。';
             // A report without InvoiceID whose Payment sits on this student's bill is on the bill (#4847 review; the same
             // COALESCE(pr.InvoiceID, p.InvoiceID) AlertController uses), not a receipt_without_invoice.
             $linkedByPayment = !$report->InvoiceID && $report->payment_id && in_array((int) $report->payment_id, $paymentIds, true);
@@ -739,36 +763,36 @@ class AccountingController extends Controller
                 $anomalies[] = [
                     'code' => 'receipt_without_invoice',
                     'severity' => 'warning',
-                    'message' => '已確認收據尚未對到本學生帳單。',
+                    'message' => $canUseSource ? '已確認收據尚未對到本學生帳單。' : $reviewMessage,
                     'invoice_id' => $report->InvoiceID ? (int) $report->InvoiceID : null,
                     'student_class_id' => (int) $report->StudentClassID,
                     'report_id' => (int) $report->id,
                     'payment_id' => $report->payment_id ? (int) $report->payment_id : null,
-                    'action' => $this->ledgerAnomalyAction('receipt_without_invoice', (int) $report->id, $report->payment_id ? (int) $report->payment_id : null),
+                    'action' => $this->ledgerAnomalyAction('receipt_without_invoice', (int) $report->id, $report->payment_id ? (int) $report->payment_id : null, $canUseSource),
                 ];
             }
             if ($report->status === 'confirmed' && empty($report->payment_id)) {
                 $anomalies[] = [
                     'code' => 'confirmed_receipt_without_payment',
                     'severity' => 'warning',
-                    'message' => '已確認收據缺少收款紀錄。',
+                    'message' => $canUseSource ? '已確認收據缺少收款紀錄。' : $reviewMessage,
                     'invoice_id' => $report->InvoiceID ? (int) $report->InvoiceID : null,
                     'student_class_id' => (int) $report->StudentClassID,
                     'report_id' => (int) $report->id,
                     'payment_id' => null,
-                    'action' => $this->ledgerAnomalyAction('confirmed_receipt_without_payment', (int) $report->id, null),
+                    'action' => $this->ledgerAnomalyAction('confirmed_receipt_without_payment', (int) $report->id, null, $canUseSource),
                 ];
             }
             if ($report->payment_id && !in_array((int) $report->payment_id, $paymentIds, true)) {
                 $anomalies[] = [
                     'code' => 'receipt_payment_outside_ledger',
                     'severity' => 'warning',
-                    'message' => '收據對應的收款不在本學生帳單紀錄內。',
+                    'message' => $canUseSource ? '收據對應的收款不在本學生帳單紀錄內。' : $reviewMessage,
                     'invoice_id' => $report->InvoiceID ? (int) $report->InvoiceID : null,
                     'student_class_id' => (int) $report->StudentClassID,
                     'report_id' => (int) $report->id,
                     'payment_id' => (int) $report->payment_id,
-                    'action' => $this->ledgerAnomalyAction('receipt_payment_outside_ledger', (int) $report->id, (int) $report->payment_id),
+                    'action' => $this->ledgerAnomalyAction('receipt_payment_outside_ledger', (int) $report->id, (int) $report->payment_id, $canUseSource),
                 ];
             }
             return $row;
@@ -1132,12 +1156,15 @@ class AccountingController extends Controller
             'student_class_id' => (int) $invoice->StudentClassID,
             'report_id' => $reportId,
             'payment_id' => $paymentId,
-            'action' => $this->ledgerAnomalyAction($code, $reportId, $paymentId),
+            'action' => $this->ledgerAnomalyAction($code, $reportId, $paymentId, $invoice->getRelationValue('studentClass') !== null),
         ];
     }
 
-    private function ledgerAnomalyAction(string $code, ?int $reportId, ?int $paymentId): array
+    private function ledgerAnomalyAction(string $code, ?int $reportId, ?int $paymentId, bool $sourceCourseAvailable = true): array
     {
+        if ($reportId && !$sourceCourseAvailable) {
+            return ['type' => 'manual_review', 'label' => '回報給總部核對收據', 'report_id' => $reportId];
+        }
         if ($reportId && in_array($code, ['receipt_without_invoice', 'receipt_without_payment', 'confirmed_receipt_without_payment'], true)) {
             return ['type' => 'void_report', 'label' => '撤銷收據', 'report_id' => $reportId];
         }
