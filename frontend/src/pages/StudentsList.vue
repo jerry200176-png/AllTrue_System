@@ -469,6 +469,7 @@
                         <button v-if="shouldShowPaymentAction(course)" type="button" class="small ghost" @click="goToTuitionBilling(course)">{{ paymentNextActionLabel(course) }}</button>
                         <button type="button" class="small ghost" @click="openAddSessionsForCourse(course)">{{ isTutoringCourse(course) ? '延續輔導課（不收費）' : isTrialCourse(course) ? '轉為正式課程' : course.payment_type === 'monthly' ? '結算 / 續約下月' : RENEW_LESSONS_LABEL }}</button>
                         <button v-if="course.payment_type === 'monthly'" type="button" class="small ghost" title="打開這位學生的帳務" @click="openTuitionLedger(course)">學生帳務</button>
+                        <button type="button" class="small ghost" title="這位學生還沒填的評量（所有科目）" data-testid="student-unfilled-evaluations" @click="$emit('navigate', { target: 'learning', studentName: student.name, onlyUnfilled: true })">待補評量</button>
                         <button v-if="isSessionPaymentLow(course)" type="button" class="small ghost" @click="editCourse(course)">編輯課程</button>
                         <button v-if="canCloseCourse(course)" type="button" class="small close-btn" @click="closeCourseNoRenew(course, student.name)">結案</button>
                         <button type="button" class="small danger" @click="deleteCourse(course)">刪除</button>

@@ -1526,6 +1526,7 @@
 </template>
 
 <script setup>
+import { trackedFetch as fetch } from '../lib/loadingBar';
 import { ref, onMounted, onBeforeUnmount, reactive, computed, watch, nextTick } from 'vue';
 import { safeHttpHref } from '../lib/safeHttpHref.js';
 import { deleteRecordConfirmText } from '../lib/learningRecordDeleteConfirm.js';
@@ -1591,7 +1592,7 @@ import { createLearningRecordSaver } from '../composables/useLearningRecordSave'
 import { useSelection } from '../composables/useSelection';
 import { createLearningRecordReadLane, useLearningRecordRollback } from '../composables/useLearningRecordRollback';
 
-const props = defineProps(['branchId', 'userRole', 'userId', 'targetRecordId', 'targetSession', 'targetStudentName', 'feedbackFocusToken']);
+const props = defineProps(['branchId', 'userRole', 'userId', 'targetRecordId', 'targetSession', 'targetStudentName', 'targetOnlyUnfilled', 'feedbackFocusToken']);
 const emit = defineEmits(['feedback-read', 'clear-target-student']);
 
 const feedbackPreviewOpen = ref(new Set());
@@ -1786,7 +1787,8 @@ if (openedForStudent) {
 }
 const replyMode = ref(false);
 const feedbackReplyTextareaEl = ref(null);
-const onlyUnfilled = ref(false);
+// #4529 A: opened from the student list's 待補評量 = that student's evaluations still to fill (待審／需修改, body empty).
+const onlyUnfilled = ref(openedForStudent && props.targetOnlyUnfilled === true);
 // #199: symmetric "only filled" lens so directors/super-admins can review completed
 // assessments — every other filter here is unfilled/to-do oriented. Client-side display
 // only (no API/data/permission change); mutually exclusive with onlyUnfilled below.

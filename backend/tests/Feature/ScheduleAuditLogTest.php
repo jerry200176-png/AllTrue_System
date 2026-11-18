@@ -232,6 +232,21 @@ class ScheduleAuditLogTest extends TestCase
     }
 
     /** @test */
+    public function audit_log_rows_name_the_operator_and_nothing_else_about_them(): void
+    {
+        $session = $this->makeSession($this->makeStudentClass());
+        $operator = User::where('LoginName', 'audit-director@example.com')->firstOrFail();
+        ScheduleAuditLog::create(['session_id' => $session->id, 'action_type' => 'update', 'description' => 'x', 'operator_id' => $operator->id,
+            'branch_id' => $this->campus->id, 'old_data' => ['StartTime' => '10:00:00'], 'new_data' => ['StartTime' => '11:00:00']]);
+
+        $rows = $this->withHeaders(['Authorization' => "Bearer {$this->directorToken}"])
+            ->getJson("/api/v1/schedule-audit?session_id={$session->id}")->assertOk()->json('data');
+
+        $row = collect($rows)->firstWhere('operator_id', $operator->id);
+        $this->assertSame(['id' => $operator->id, 'Name' => 'AuditDir'], $row['operator']);
+    }
+
+    /** @test */
     public function audit_log_rows_contain_required_fields(): void
     {
         $scId    = $this->makeStudentClass();

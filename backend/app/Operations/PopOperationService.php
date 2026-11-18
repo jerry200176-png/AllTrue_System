@@ -26,6 +26,17 @@ final class PopOperationService
     {
     }
 
+    /** Read-only human preview, before mounting the exact final tuple. No request, approval or mutation is created. */
+    public function previewPaidInvoiceAlignment(array $parameters, string $role, array $campusIds, int $userId): array
+    {
+        if ($userId <= 0 || !in_array($role, ['director', 'super_admin'], true)) throw new RuntimeException('Paid alignment preview requires an authenticated human director.');
+        $entry = $this->catalog->operation('reviewed-paid-invoice-charge-alignment');
+        if (!$this->isReviewedFinancialCase($entry) || $entry['strategy_class'] !== Strategies\PaidInvoiceChargeAlignmentStrategy::class) throw new RuntimeException('Paid alignment catalog contract is unavailable.');
+        $this->assertParameterContract($entry, $parameters);
+        $this->assertCampusScope($parameters, $role, $campusIds);
+        return DB::transaction(fn () => app(Strategies\PaidInvoiceChargeAlignmentStrategy::class)->preview($parameters));
+    }
+
     /** @param array<string,mixed> $parameters @param array<int,int> $actorCampusIds */
     public function createDraft(
         string $operationId,
@@ -528,7 +539,8 @@ final class PopOperationService
 
         return $this->atomicFinancialRepair($strategy)
             || in_array(is_object($strategy) ? get_class($strategy) : $strategy, [\App\Operations\Strategies\TaughtLessonSignInRepairStrategy::class,
-                \App\Operations\Strategies\CourseContractChainRebalanceStrategy::class], true); // #5124: moves and their snapshot commit together
+                \App\Operations\Strategies\CourseContractChainRebalanceStrategy::class,
+                \App\Operations\Strategies\InappReportFollowupCommentStrategy::class], true); // self-filed support needs its origin receipt atomically
     }
 
     private function isRekeyStrategy(object|string $strategy): bool
@@ -544,7 +556,7 @@ final class PopOperationService
 
     private function atomicFinancialRepair(object|string $strategy): bool
     {
-        return in_array(is_object($strategy) ? get_class($strategy) : $strategy, ['App\\Operations\\Strategies\\UnpaidInvoiceChargeAlignmentStrategy', 'App\\Operations\\Strategies\\PaymentReversalRestatementStrategy', 'App\\Operations\\Strategies\\PaymentReportPendingReturnStrategy', 'App\\Operations\\Strategies\\InvoiceHeaderItemRepairStrategy', 'App\\Operations\\Strategies\\LegacyVoidLinkStrategy', 'App\\Operations\\Strategies\\BillingPeriodRekeyStrategy'], true);
+        return in_array(is_object($strategy) ? get_class($strategy) : $strategy, ['App\\Operations\\Strategies\\UnpaidInvoiceChargeAlignmentStrategy', Strategies\PaidInvoiceChargeAlignmentStrategy::class, 'App\\Operations\\Strategies\\PaymentReversalRestatementStrategy', 'App\\Operations\\Strategies\\PaymentReportPendingReturnStrategy', 'App\\Operations\\Strategies\\InvoiceHeaderItemRepairStrategy', 'App\\Operations\\Strategies\\LegacyVoidLinkStrategy', 'App\\Operations\\Strategies\\BillingPeriodRekeyStrategy'], true);
     }
 
     /**
@@ -1348,6 +1360,8 @@ final class PopOperationService
     private function isReviewedFinancialCase(array $e): bool
     {
         $shapes = [
+            'reviewed-paid-invoice-charge-alignment' => [Strategies\PaidInvoiceChargeAlignmentStrategy::class,
+                ['student_id', 'course_id', 'campus_id', 'invoice_id', 'expected_invoice_total', 'expected_charge', 'decision_reference', 'expected_state_hash'], 'one_exact_paid_invoice_and_settlement'],
             'reviewed-unpaid-invoice-charge-alignment' => ['App\\Operations\\Strategies\\UnpaidInvoiceChargeAlignmentStrategy',
                 ['student_id', 'course_id', 'campus_id', 'invoice_id', 'expected_invoice_total', 'expected_charge', 'decision_reference', 'expected_state_hash'], 'one_exact_unpaid_invoice_total'],
             'reviewed-legacy-reversal-restatement' => ['App\\Operations\\Strategies\\PaymentReversalRestatementStrategy',

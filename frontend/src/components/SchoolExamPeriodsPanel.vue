@@ -32,6 +32,7 @@
 </template>
 
 <script setup>
+import { trackedFetch as fetch } from '../lib/loadingBar';
 import { computed, onMounted, reactive, ref, watch } from 'vue';
 import { Badge } from './ui/badge';
 import { Button } from './ui/button';

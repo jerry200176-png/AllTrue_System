@@ -6,6 +6,8 @@ last_reviewed: 2026-09-05
 
 # AI／工程師防再犯紀錄（必讀）
 
+**F32／F7：新畫面顯示合約「欠多少／收齊了沒」，先加入 `ContractMoneyCallersAgreeTest`（#5428／#5430，2026-11-17）**：月對帳表第一版自己判斷狀態，Codex 分 7 輪才抓完它跟學生帳務的落差：要核對被未繳蓋掉、只有舊 Paid 標記當已收齊、確認不收（waived）仍顯示未繳、免費課寫已收齊、手機看不到單價與每堂狀態。根因是另寫一套判斷，沒有接上共用的 `ContractMoneyVerdict`。新畫面一律讀 Verdict 的 `status`／`outstanding`，例外（waived、legacy_flag 但試聽費依日期已記、free）由伺服器給欄位，前端不重算；同一個 PR 把新 API 加進 `ContractMoneyCallersAgreeTest`（120 份隨機合約），讓之後的漂移在 CI 失敗，而不是等主任或 review 一個一個找。
+
 **F1：課程連結的目標不可由教室或第一頁推定（#5415，2026-11-17）**：`branch_id` 是教室資料，無教室時可為空；課程擁有校區讀既有 `student.CampusID`。指定課程以原校區／學生範圍加精確 ID 查詢，不以第一頁 50 筆代表全部。新的明確導覽先使舊抽屜與舊列表失效，晚回覆仍由既有 request ID 擋下。回歸須含無教室、不同教室校區、超過一頁、錯學生／無校區、A→錯連結及 A→延遲 B→A；見 `StudentClassCourseLinkLookupTest` 與課程付款入口 browser spec。這是定位正確性，不新增查看或資料修改權限。
 
 **F7／R7：時長與計價數量必須一起驗（#5379，2026-11-16）**：`SessionDuration` 已更新不代表 `TotalHours` 已同步。未開單、未收款／上課的堂數制小時計費編輯，沿用 `ContractRenewal::plannedBatchHours` 的實際混合時長規劃與既有捨入，再交回 `chargeAfterChange`；不可只重算繳費單。測試須含僅改時長、重存既有錯配、改堂數、混合時長、手動差額及他校拒絕。既有帳單／回報／使用紀錄、月結與共用方案不以這個修復追溯改價；B3 小數時數仍另列原計畫。
@@ -15,6 +17,15 @@ last_reviewed: 2026-09-05
 **F7／POP 回滾重試（#4271）**：原子撤回與失敗紀錄都正確，仍可能因快取失敗 receipt 永久失去回復路徑。回歸必須在 fault injection 後實際重試，驗證有效核准、失敗紀錄保留、成功冪等重播與序列化。拒絕測試的 `$this->fail()` 必須在 RuntimeException catch 外：PHPUnit 的 AssertionFailedError 也繼承 RuntimeException，否則 helper 會捕獲自己的失敗而假通過。見 [invoice alignment plan](plans/2026-10-18-unpaid-invoice-alignment.md)。
 
 **F7／跨科額度的雙向預約邊界（#5197，in-app #535）**：轉用讀取端不能只看已物化堂次，須保留已提交但尚待投影的排課。反向也要保護：轉用耗盡來源、或還原後歸零的新批次，既有排課與直接堂次物化入口都須以 current locking read 拒絕新增使用，不能信任舊 preload 或僅以停課標記判斷。回歸須涵蓋雙方先贏的時序、原收據缺帳單編號、補償失敗後重試；不得把內部轉出當收據撤銷。完整邊界見 [同單位轉用計畫](plans/2026-11-15-same-unit-subject-credit-transfer.md)。
+
+**佇列跨版本升級（#4103）**：PR 自己通過 CI，不代表從舊版 main 啟動的合併佇列能替它跑組合測試。刪除 dispatch 目標前，先將呼叫端更新合併到 main；過渡版本保留手動 dispatch 相容性，等新版佇列生效再刪檔。`land-queue-dispatch-contract.test.mjs` 核對已安裝 main 的 dispatch 目標仍存在，避免佇列在升級自己時找不到 workflow。
+
+### in-app #565. 時段人數上限要算「同一時間最多幾人」，不是「碰到這個時段的全部人」（2026-11-17）
+
+- **現象**：一對三老師 18–20 有 2 人、20–22 有 1 人，要排 19–21 的第 3 人被擋：「此時段已有 3 位學生，上限為 3 位」。其實同一時間最多 2 人。
+- **根因**：`ScheduleGuardService::countDistinctStudents()` 把所有與新時段重疊的學生加總，前後接續、彼此不重疊的課也算在一起。老師人數與教室人數都用它。
+- **強制規則**：人數上限一律比「同一時刻在場的不重複學生數」的最大值（區間半開：20:00 結束的課不算在 20:00 開始的時段裡）。同一位學生的合約與堂次仍算一人（#406）。
+- **測試必補**：`ScheduleGuardrailsTest::test_inapp_565_capacity_counts_students_present_at_the_same_time`（前後接續可排、真正同時 3 人仍擋、同一人兩筆算一人）。
 
 ### R157. MariaDB 上不可直接重放 MySQL 8 形狀的 SHOW GRANTS（staged DB principal rotation Phase 1，run 38724893175／#4160，2026-10-15）
 
@@ -1359,6 +1370,8 @@ Intake consolidation regression (2026-10-17): the oldest trusted SourceRef issue
 - **稽核規則**：判斷誤點或系統問題時，先看 `StudentSingIn.RecordedByUserID/recorded_by_name/MDT`；有人員即人工登記，NULL 則屬系統／刷卡路徑，再對照 `schedule_audit_logs.operator_id + old_data/new_data`。
 - **測試必補**：成功時四類資料一起提交；晚期 slot conflict 時 schedules 必須為 0 且 ClassSession 原位；相同 payload retry 仍只有一組；前端收到 2xx 但無 `committed=true` 仍視為失敗。
 
+- **延伸（2026-11-18／#5404 前置）**：一般新增／沿用 `scheduled` 也不可先提交 Schedule 才補 ClassSession。原生 student／metadata／occupancy 鎖與整個寫入投影須在同一個有界重試交易；投影或沿用更新失敗時，全部回復。afterCommit 觀察點必須已看見投影，不可把已移除的中間缺口當測試契約。保留跨日 anchor 的既有例外；測試見 `ScheduleStoreAtomicProjectionTest`、`SubjectCreditConcurrencyTest`。
+
 ### R72. 已取消 ClassSession 不得讓 schedules.scheduled 例外繼續佔用代課老師
 
 - **觸發情境**：2026-07-18 in-app #203／GitHub #1296：主任代課時挑選器顯示老師「已滿／衝堂」，但該時段僅有 `schedules.status=scheduled` 例外 row，對應 ClassSession 已全部 `cancelled`。
@@ -1513,6 +1526,7 @@ Intake consolidation regression (2026-10-17): the oldest trusted SourceRef issue
 
 - 使用 pilot mount／mock API 的頁面證據測試，必須由專用 Playwright config 明確收斂；default production smoke config 必須 `testIgnore`，避免在沒有 fixture server 時把測試誤當 production smoke 執行。
 - 新增任何 foundation spec 後，必須同時驗證專用 config 會執行它、default config 不會執行它，並在 CI 的 UI Smoke 與 Vite Frontend Build gate 中各自確認結果。
+- 主任受影響路徑的合成 calendar fixture 也須涵蓋實站仍使用的唯讀 POST（`student-classes/session-dates`）：只回傳同一組合成堂次、鎖定已綁定校區與合成課程 ID，絕不放行到正式 API。2026-11-18 的 smoke44147730799 因漏攔此唯讀形狀而失敗；不可刪除 rejected-count／寫入阻擋斷言，應以拒絕真實寫入、錯校區及非合成 ID 的測試固定邊界。不同版本前端可能不再呼叫此查詢，不能把呼叫次數正值當成產品契約。
 
 ---
 

@@ -430,6 +430,7 @@
             <div v-for="c in detail.comments" :key="c.id" class="comment-item" :class="{ internal: c.is_internal_note }">
               <div class="comment-header">
                 <span class="comment-author">{{ c.author_name }}</span>
+                <span v-if="c.origin === 'support'" class="comment-time" data-testid="support-comment-origin">支援回覆</span>
                 <span class="comment-time">{{ formatDate(c.created_at) }}</span>
                 <span v-if="c.is_internal_note" class="internal-tag">內部</span>
                 <button
@@ -1516,7 +1517,7 @@ function formatDate(iso) {
 .comments-section strong { display: block; margin-bottom: 8px; }
 .comment-item { padding: 10px 12px; background: var(--ds-canvas); border-radius: 8px; margin-bottom: 8px; }
 .comment-item.internal { background: var(--ds-warning-wash); border-left: 3px solid var(--warning); }
-.comment-header { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+.comment-header { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 4px; }
 .comment-author { font-weight: 600; font-size: 13px; }
 .comment-time { font-size: 12px; color: var(--text-light); }
 .internal-tag { font-size: 10px; background: var(--warning); color: var(--ds-canvas); padding: 1px 6px; border-radius: 8px; }

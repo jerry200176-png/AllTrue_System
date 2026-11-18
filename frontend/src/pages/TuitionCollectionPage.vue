@@ -3,7 +3,6 @@
     <PageHeader title="帳務中心" :context="`處理未繳、${REPORT_STATUS_LABELS.pending}與確認入帳。`" data-guide="tuition-header">
       <template #actions>
         <Button variant="outline" :class="[control.page, 'tw:max-md:flex-1']" :disabled="loading" @click="startGuide"><CircleHelp class="tw:size-4" :stroke-width="2" aria-hidden="true" />操作導覽</Button>
-        <Button variant="outline" :class="[control.page, 'tw:max-md:flex-1']" title="當月學收（查各月是否收齊）" @click="$emit('navigate', 'tuition-report')"><BarChart3 class="tw:size-4" :stroke-width="2" aria-hidden="true" />當月學收</Button>
         <Button variant="outline" size="icon" :class="control.pageIcon" aria-label="重新整理" :aria-busy="activeTabLoading ? 'true' : undefined" :disabled="activeTabLoading" @click="refreshActiveTab()"><RefreshCw :class="['tw:size-5', { 'tw:animate-spin': activeTabLoading }]" :stroke-width="2" aria-hidden="true" /></Button>
       </template>
     </PageHeader>
@@ -23,7 +22,7 @@
     </div>
 
     <!-- 帳單 sits straight on the page (strip, toolbar, one card); the other tabs keep their old white panel until their own PRs. -->
-    <div :class="activeAccountingTab === 'students' ? 'tw:contents' : 'tc-page__body'">
+    <div :class="['students', 'roster'].includes(activeAccountingTab) ? 'tw:contents' : 'tc-page__body'">
     <div v-if="tuitionFocusMessage" class="tc-focus-context" role="status">
       <span class="material-symbols-outlined" aria-hidden="true">my_location</span>
       <span>{{ tuitionFocusMessage }}</span>
@@ -31,7 +30,7 @@
     </div>
 
     <!-- in-app #480: 已結清 is a tuition list; on 收款紀錄 / 代收代付 it read like a status of that page. -->
-    <nav v-if="!['students', 'payments', 'fees'].includes(activeAccountingTab)" class="tc-reminders" aria-label="其他清單" data-testid="tc-reminders">
+    <nav v-if="!['students', 'roster', 'payments', 'fees'].includes(activeAccountingTab)" class="tc-reminders" aria-label="其他清單" data-testid="tc-reminders">
       <button v-if="!['students', 'monthly', 'payments', 'fees'].includes(activeAccountingTab)" type="button" class="tc-reminder tc-reminder--back" @click="activeAccountingTab = 'students'">← 回帳單清單</button>
       <button
         v-for="v in REMINDER_VIEWS"
@@ -42,6 +41,10 @@
         @click="activeAccountingTab = v.key"
       >{{ v.label }}</button>
     </nav>
+
+    <section v-if="activeAccountingTab === 'roster'" id="tuition-accounting-panel-roster" role="tabpanel" aria-labelledby="tuition-accounting-tab-roster" tabindex="0">
+      <MonthlyRosterPanel ref="roster" :branch-id="branchId" @open="openLedgerForStudent" />
+    </section>
 
     <!-- Billing v3: 帳單 = one row per contract that needs something (PRD §0 v3). -->
     <section v-if="activeAccountingTab === 'students'" id="tuition-accounting-panel-students" role="tabpanel" aria-labelledby="tuition-accounting-tab-students" tabindex="0">
@@ -385,6 +388,7 @@
                   <div class="tc-actions">
                     <button class="tc-btn tc-btn--ledger" @click="openLedgerForClass(row)" title="查看學生繳費明細"><span class="material-symbols-outlined">account_balance</span>繳費明細</button>
                     <button v-if="row.payment_review_required && reviewNeeds(row, 'course')" class="tc-btn" :data-testid="`tc-review-course-${row.student_class_id}`" @click="emit('navigate', { target: 'course-mgmt', studentId: row.student_id, courseId: row.student_class_id, studentName: row.student_name })"><span class="material-symbols-outlined">edit_calendar</span>到課程處理</button>
+                    <button v-if="row.payment_review_required && reviewAsksHq(row)" class="tc-btn" type="button" :data-testid="`tc-review-hq-${row.student_class_id}`" @click="askHq(row)"><span class="material-symbols-outlined">support_agent</span>回報給總部</button>
                     <button v-if="row.payment_review_required && row.outstanding_amount === 0" class="tc-btn" :data-testid="`tc-review-check-${row.student_class_id}`" @click="checkReviewed(row)"><span class="material-symbols-outlined">task_alt</span>已核對</button>
                   </div>
                 </td>
@@ -701,6 +705,7 @@ import FeeLedgerPanel from '../components/tuition/FeeLedgerPanel.vue';
 import ReceiptModal from '../components/ReceiptModal.vue';
 import AccountingLedgerModal from '../components/AccountingLedgerModal.vue';
 import BillList from '../components/tuition/BillList.vue';
+import MonthlyRosterPanel from '../components/tuition/MonthlyRosterPanel.vue';
 import BillQuickView from '../components/tuition/BillQuickView.vue';
 import { billMenuGroups, billRows } from '../lib/billRows.js';
 import { buildStudentsCommercialNav } from '../lib/authoritativeMutationRoutes.js';
@@ -715,7 +720,7 @@ import { askConfirm } from '../composables/useConfirmDialog';
 import ConfirmDialogHost from '../components/course-management/ConfirmDialogHost.vue';
 import AtEmpty from '../components/design-system/AtEmpty.vue';
 import AtInlineAlert from '../components/design-system/AtInlineAlert.vue';
-import { BarChart3, CircleHelp, RefreshCw } from '@lucide/vue';
+import { CircleHelp, RefreshCw } from '@lucide/vue';
 import { Button } from '@/components/ui/button';
 import { FilterChip, PageHeader, control, pageShell, pageTabs } from '@/components/ui/page';
 import AtSkeleton from '../components/design-system/AtSkeleton.vue';
@@ -749,6 +754,8 @@ const error = ref('');
 
 // PRD v3 §0: 帳單 (default), 月結, 收款紀錄, 代收代付. 已結清課程 stays reachable from the reminder bar.
 const ACCOUNTING_TABS = [
+  // 月對帳表 (Founder 2026-11-17) goes first; 帳單與收款 stays the default until the e2e suites move with it.
+  { key: 'roster', label: '月對帳表', icon: 'table_view' },
   { key: 'students', label: '帳單與收款', icon: 'receipt' },
   { key: 'monthly', label: '月結', icon: 'event_repeat' },
   { key: 'payments', label: '收款紀錄', icon: 'receipt_long' },
@@ -782,7 +789,7 @@ const listFilter = ref({ key: 'todo' }); // a new object per deep link, so the s
 const ledgerNavStudentId = ref(null);
 let documentLookupOpener = null;
 function stepLedger(dir) {
-  const next = billList.value?.neighbor(ledgerNavStudentId.value, dir);
+  const next = (activeAccountingTab.value === 'roster' ? roster : billList).value?.neighbor(ledgerNavStudentId.value, dir);
   if (next) openLedgerForStudent(next);
 }
 // F-2: the row button opens the drawer on the contract the action is about, with that step already open.
@@ -884,7 +891,7 @@ function exportSelectedAccountingCSV() {
 }
 
 const activeTabLoading = computed(() => (
-  activeAccountingTab.value === 'monthly' ? Boolean(monthlyDrafts.value?.loading || monthlyReview.value?.loading) : activeAccountingTab.value === 'fees' ? Boolean(feeLedger.value?.loading) : activeAccountingTab.value === 'students' ? loading.value : activeAccountingTab.value === 'settled' ? settledLoading.value : accountingLoading.value
+  activeAccountingTab.value === 'roster' ? Boolean(roster.value?.loading) : activeAccountingTab.value === 'monthly' ? Boolean(monthlyDrafts.value?.loading || monthlyReview.value?.loading) : activeAccountingTab.value === 'fees' ? Boolean(feeLedger.value?.loading) : activeAccountingTab.value === 'students' ? loading.value : activeAccountingTab.value === 'settled' ? settledLoading.value : accountingLoading.value
 ));
 
 function getToken() {
@@ -1267,8 +1274,11 @@ async function startGuide() {
   emit('start-guide');
 }
 
+const roster = ref(null);
 function refreshActiveTab() {
-  if (activeAccountingTab.value === 'monthly') {
+  if (activeAccountingTab.value === 'roster') {
+    roster.value?.reload();
+  } else if (activeAccountingTab.value === 'monthly') {
     monthlyDrafts.value?.reload();
     monthlyReview.value?.reload();
   } else if (activeAccountingTab.value === 'fees') {
@@ -1337,7 +1347,7 @@ watch(ledgerOpen, async (open) => {
   ledgerNavStudentId.value = null;
   await nextTick();
   if (opener?.isConnected) { opener.focus(); return; }
-  document.querySelector(`[data-testid^="bill-name-"][data-student="${id}"]`)?.focus();
+  document.querySelector(`[data-testid^="bill-name-"][data-student="${id}"], [data-testid^="roster-name-"][data-student="${id}"]`)?.focus();
 });
 
 function openLedgerForClass(row) {
@@ -1475,7 +1485,7 @@ async function loadSettledCourses() {
 }
 
 async function onLedgerChanged() {
-  await Promise.all([loadAlerts(), loadAccountingPayments(), loadSettledCourses()]);
+  await Promise.all([loadAlerts(), loadAccountingPayments(), loadSettledCourses(), roster.value?.reload()]);
 }
 
 async function fetchAccountingExportRows() {
@@ -1655,6 +1665,15 @@ async function openWaiveDialog(row) {
 }
 
 const reviewNeeds = (row, action) => reviewReasonFixes(row.review_reasons).some((r) => r.action === action);
+// 帳務重整 §3: what only HQ can fix opens the in-app report, prefilled with the reasons and IDs.
+const reviewAsksHq = (row) => reviewReasonFixes(row.review_reasons).some((r) => r.hq);
+function askHq(row) {
+  const why = reviewReasonFixes(row.review_reasons).filter((r) => r.hq).map((r) => r.label).join('、');
+  window.dispatchEvent(new CustomEvent('alltrue-open-bug-report', { detail: {
+    description: `學費收款「需核對：${why}」，需要總部更正或補開帳單。`,
+    relatedReference: `學生ID ${row.student_id || '-'} / 課程ID ${row.student_class_id}`,
+  } }));
+}
 async function checkReviewed(row) {
   if (!await askConfirm({ title: '已核對？', message: '確認這門課的帳都對了？標記後就不再列在待核對。', confirmLabel: '已核對' })) return;
   try {
@@ -1897,6 +1916,8 @@ watch(() => props.initialTab, (tab) => {
     activeAccountingTab.value = 'payments';
   } else if (tab === 'settled') {
     activeAccountingTab.value = 'settled';
+  } else if (tab === 'roster') {
+    activeAccountingTab.value = 'roster';
   } else if (tab === 'ledger') {
     activeAccountingTab.value = 'students';
     listFilter.value = { key: 'todo' };
@@ -1919,7 +1940,7 @@ watch(() => [props.initialStudentId, props.initialCourseId, rows.value.length], 
 }, { immediate: true });
 
 watch(activeAccountingTab, (tab) => {
-  if (tab === 'monthly' || tab === 'fees') return;
+  if (tab === 'monthly' || tab === 'fees' || tab === 'roster') return;
   if (tab === 'students') {
     if (!rows.value.length) loadAlerts();
   } else if (tab === 'settled') {

@@ -142,7 +142,10 @@ describe('ContractCard', () => {
       { class_session_id: 1, date: '2026-09-01', status: 'attended', payment: 'paid' },
       { class_session_id: 4, date: '2026-10-06', status: 'scheduled', payment: 'unpaid' },
     ] }));
-    const w = mount(ContractCard, { props: { focused: true, course: { id: 9 }, monthLines: { '2026-09': { due: 4800, paidDate: '2026-09-05', paidAmount: 4800 }, '2026-10': { due: 4800, paidDate: '', paidAmount: 0 } } } });
+    const w = mount(ContractCard, { props: { focused: true, course: { id: 9 }, monthLines: {
+      '2026-09': { due: 4800, paidDate: '2026-09-05', paidAmount: 4800, periodStart: '2026-09-01', periodEnd: '2026-09-30' },
+      '2026-10': { due: 4800, paidDate: '', paidAmount: 0, periodStart: '2026-10-01', periodEnd: '2026-10-31' },
+    } } });
     await flushPromises();
     expect(w.find('[data-testid="contract-left"]').exists()).toBe(false);
     expect(w.findAll('[data-testid="contract-month-pay"]').map((n) => n.text())).toEqual(['應繳 NT$ 4,800　已收 9/5 NT$ 4,800', '應繳 NT$ 4,800']);

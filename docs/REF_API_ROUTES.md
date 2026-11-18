@@ -30,6 +30,7 @@
 | POST | `api/v1/accounting/courses/{id}/waive` | `AccountingController@waiveCourse` | role+campus |
 | GET | `api/v1/accounting/ledger` | `AccountingController@ledger` | role+campus |
 | GET | `api/v1/accounting/monthly-drafts` | `AccountingController@monthlyDrafts` | role+campus |
+| GET | `api/v1/accounting/monthly-roster` | `MonthlyRosterController@index` | role+campus |
 | GET | `api/v1/accounting/notes` | `BillingNoteController@index` | role+campus |
 | POST | `api/v1/accounting/notes` | `BillingNoteController@store` | role+campus |
 | GET | `api/v1/accounting/payments` | `AccountingController@payments` | role+campus |
@@ -380,8 +381,6 @@
 | Method | URI | Action | Auth |
 |--------|-----|--------|------|
 | GET | `api/v1/finance/ar-aging` | `FinanceController@arAging` | role+campus |
-| GET | `api/v1/finance/branch-monthly-tuition` | `FinanceController@branchMonthlyTuition` | role+campus+pin |
-| GET | `api/v1/finance/branch-monthly-tuition/export` | `FinanceController@branchMonthlyTuitionExport` | role+campus+pin |
 | GET | `api/v1/finance/consolidated-summary` | `FinanceController@consolidatedSummary` | role+campus |
 | GET | `api/v1/finance/duplicate-courses` | `FinanceController@duplicateCourses` | role+campus |
 | GET | `api/v1/finance/gl-export` | `FinanceController@glExport` | role+campus |
@@ -651,6 +650,7 @@
 | POST | `api/v1/pop/operations/requests/{requestId}/approvals` | `PopOperationController@approve` | role+campus |
 | POST | `api/v1/pop/operations/requests/{requestId}/dry-run` | `PopOperationController@dryRun` | role+campus |
 | GET | `api/v1/pop/operations/requests/{requestId}/status` | `PopOperationController@status` | role+campus |
+| POST | `api/v1/pop/operations/reviewed-paid-invoice-charge-alignment/preview` | `PopOperationController@previewPaidInvoiceAlignment` | role+campus |
 | POST | `api/v1/pop/operations/{operationId}/draft` | `PopOperationController@storeDraft` | role+campus |
 
 ## /api/v1/profiles

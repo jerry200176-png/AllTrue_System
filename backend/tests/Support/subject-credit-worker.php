@@ -23,7 +23,15 @@ Illuminate\Support\Facades\DB::connection()->beforeExecuting(static function ($s
 file_put_contents($data['connection_file'], (string) Illuminate\Support\Facades\DB::selectOne('SELECT CONNECTION_ID() AS id')->id);
 touch($data['started']);
 try {
-    if ($data['op'] === 'apply') {
+    if ($data['op'] === 'existing_apply') {
+        $r = app(App\Services\Billing\ExistingCourseCreditMovement::class)->apply(App\Models\StudentClass::findOrFail($data['course_id']),
+            $data['input'], $data['actor_id'], [$data['campus_id']]);
+        $status = $r['status']; $body = $r['body'];
+    } elseif ($data['op'] === 'existing_reverse') {
+        $body = app(App\Services\Billing\ExistingCourseCreditMovement::class)->reverse(App\Models\StudentClass::findOrFail($data['course_id']),
+            $data['group_id'], $data['input']['reason'], $data['actor_id'], [$data['campus_id']]);
+        $status = 200;
+    } elseif ($data['op'] === 'apply') {
         $r = app(App\Services\Billing\SubjectCreditMovement::class)->apply(App\Models\StudentClass::findOrFail($data['course_id']),
             $data['input'], $data['actor_id'], [$data['campus_id']]);
         $status = $r['status']; $body = $r['body'];

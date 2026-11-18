@@ -378,22 +378,23 @@ class ScheduleController extends Controller
             return \App\Support\LearningRecordMutableOwnership::lockedResponse();
         }
 
+        $capacityPayload = [
+            'teacher_id'          => $effectiveTeacherId,
+            'class_type'          => $effectiveClassType,
+            // in-app #426: a linked trial course carries its target class type.
+            'trial_target_class_type' => $effectiveClassType === 'trial' && $courseId > 0
+                ? DB::table('StudentClass')->where('ID', $courseId)->value('trial_target_class_type')
+                : null,
+            'room_id'             => $effectiveRoomId,
+            'branch_id'           => $branchId,
+            'schedule_date'       => $data['schedule_date'] ?? null,
+            'start_time'          => $data['start_time'] ?? null,
+            'end_time'            => $data['end_time'] ?? null,
+            'exclude_student_id'  => (int) ($data['student_id'] ?? 0),
+            'exclude_schedule_id' => $excludeScheduledId,
+        ];
         if (($data['status'] ?? 'scheduled') === 'scheduled') {
-            $guardConflicts = $this->scheduleGuardService->validateScheduleOccurrence([
-                'teacher_id'          => $effectiveTeacherId,
-                'class_type'          => $effectiveClassType,
-                // in-app #426: a linked trial course carries its target class type.
-                'trial_target_class_type' => $effectiveClassType === 'trial' && $courseId > 0
-                    ? DB::table('StudentClass')->where('ID', $courseId)->value('trial_target_class_type')
-                    : null,
-                'room_id'             => $effectiveRoomId,
-                'branch_id'           => $branchId,
-                'schedule_date'       => $data['schedule_date'] ?? null,
-                'start_time'          => $data['start_time'] ?? null,
-                'end_time'            => $data['end_time'] ?? null,
-                'exclude_student_id'  => (int) ($data['student_id'] ?? 0),
-                'exclude_schedule_id' => $excludeScheduledId,
-            ]);
+            $guardConflicts = $this->scheduleGuardService->validateScheduleOccurrence($capacityPayload);
 
             if (!empty($guardConflicts)) {
                 Log::warning('Schedule create conflict', [
@@ -529,40 +530,55 @@ class ScheduleController extends Controller
             });
         }
 
-        // Prevent duplicate scheduled rows for reschedule/substitute on same course+date+time.
-        // If an identical row already exists, update it instead of creating a new one.
-        // ($origId was already extracted above for FR-001/FR-002 guards.)
-        if ($status === 'scheduled' && $courseId > 0 && !empty($data['schedule_date']) && $origId) {
-            $existing = Schedule::where('student_course_id', $courseId)
-                ->whereDate('schedule_date', $data['schedule_date'])
-                ->whereRaw('SUBSTRING(start_time, 1, 5) = ?', [substr((string) ($data['start_time'] ?? ''), 0, 5)])
-                ->where('status', 'scheduled')
-                ->where(function ($query) use ($origId): void {
-                    $query->where('original_schedule_id', $origId)
-                        ->orWhereNull('original_schedule_id');
-                })
-                ->orderByRaw('CASE WHEN original_schedule_id = ? THEN 0 ELSE 1 END', [(int) $origId])
-                ->first();
-            if ($existing) {
-                $existing->update(array_filter($data, fn ($v) => $v !== null));
-                $this->ensureClassSessionForScheduleData($existing->toArray());
-                return response()->json(array_merge($existing->toArray(), [
-                    'write_disposition' => 'reused',
-                ]), 201);
-            }
-        }
-
-        // #3738: take the forced renewal's per-student lock so its slot check and this booking serialize.
-        $schedule = DB::transaction(function () use ($data, $ownerStudentId) {
+        // Student mutex -> current covering metadata -> occupancy -> row write/projection, under one retry boundary.
+        $courseMeta = $courseMeta ?? null;
+        return DB::transaction(function () use ($status, $courseId, $origId, $data, $ownerStudentId, $courseMeta, $capacityPayload) {
             self::lockStudentForWrite($ownerStudentId);
-            return Schedule::create($data);
-        });
+            if (strtolower((string) $data['status']) === 'scheduled') {
+                // Repeat the native capacity decision inside the write transaction. Student locks alone do not
+                // serialize different students taking the same teacher slot; metadata precedes occupancy/course X.
+                if ($courseMeta) {
+                    $current = DB::table(DB::raw('StudentClass FORCE INDEX (idx_sc_current_metadata)'))->where('ID', $data['student_course_id'])
+                        ->select(['ID', 'StudentID', 'TeacherID', 'ClassType', 'room_id'])->sharedLock()->first();
+                    foreach (['StudentID', 'TeacherID', 'ClassType', 'room_id'] as $field) {
+                        if (!$current || (string) $current->$field !== (string) $courseMeta->$field)
+                            abort(response()->json(['message' => '課程設定已變動，請重新整理後再排課。', 'code' => 'schedule_course_changed'], 409));
+                    }
+                }
+                $conflicts = $this->scheduleGuardService->validateScheduleOccurrence($capacityPayload, true);
+                if ($conflicts !== []) abort(response()->json(['message' => $conflicts[0]['message'], 'conflicts' => $conflicts,
+                    'suggested_actions' => $conflicts[0]['suggested_actions'] ?? []], 409));
+            }
 
-        $this->ensureClassSessionForScheduleData($schedule->toArray());
+            // Prevent duplicate scheduled rows for reschedule/substitute on same course+date+time.
+            // If an identical row already exists, update it instead of creating a new one.
+            // ($origId was already extracted above for FR-001/FR-002 guards.)
+            if ($status === 'scheduled' && $courseId > 0 && !empty($data['schedule_date']) && $origId) {
+                $existing = Schedule::where('student_course_id', $courseId)
+                    ->whereDate('schedule_date', $data['schedule_date'])
+                    ->whereRaw('SUBSTRING(start_time, 1, 5) = ?', [substr((string) ($data['start_time'] ?? ''), 0, 5)])
+                    ->where('status', 'scheduled')
+                    ->where(function ($query) use ($origId): void {
+                        $query->where('original_schedule_id', $origId)
+                            ->orWhereNull('original_schedule_id');
+                    })
+                    ->orderByRaw('CASE WHEN original_schedule_id = ? THEN 0 ELSE 1 END', [(int) $origId])
+                    ->lockForUpdate()->first();
+                if ($existing) {
+                    $existing->update(array_filter($data, fn ($v) => $v !== null));
+                    $this->ensureClassSessionForScheduleData($existing->toArray());
+                    return response()->json(array_merge($existing->toArray(), [
+                        'write_disposition' => 'reused',
+                    ]), 201);
+                }
+            }
 
-        return response()->json(array_merge($schedule->toArray(), [
-            'write_disposition' => 'created',
-        ]), 201);
+            $schedule = Schedule::create($data);
+            $this->ensureClassSessionForScheduleData($schedule->toArray());
+            return response()->json(array_merge($schedule->toArray(), [
+                'write_disposition' => 'created',
+            ]), 201);
+        }, 3);
     }
 
     public function undoLeave(Request $request, Schedule $schedule)

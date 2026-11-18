@@ -1088,6 +1088,7 @@
 </template>
 
 <script setup>
+import { trackedFetch as fetch, quietly } from '../lib/loadingBar';
 import { ymdInTaipei, recentDaysRangeTaipei } from '@/lib/sessionDates.js';
 import { withPoolNotice } from '../lib/sharedPoolNotice.js';
 import { ref, computed, reactive, onMounted, onBeforeUnmount, watch } from 'vue';
@@ -2562,9 +2563,7 @@ onMounted(() => {
     fetchTeacherCourses();
   }
   refreshTimer = setInterval(() => {
-    fetchRecords();
-    fetchPendingSessions();
-    if (!isTeacher.value) fetchPending();
+    quietly(fetchRecords, fetchPendingSessions, !isTeacher.value && fetchPending);
   }, 30000);
 });
 

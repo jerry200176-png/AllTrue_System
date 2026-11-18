@@ -288,6 +288,9 @@ console.log('studentClassDisplay.test.js: all assertions passed');
   assert.equal(rpt.relatedReference, '學生ID 55 / 帳單ID 2032 / 課程ID 7');
   assert.ok(rpt.description.includes('paid_amount_mismatch') && rpt.description.includes('7500'));
   // in-app #476: words first, code kept for triage
+  const rcpt = buildLedgerIssueReport({ code: 'receipt_without_invoice', report_id: 88, student_class_id: 7 }, null, 55);
+  assert.equal(rcpt.relatedReference, '學生ID 55 / 帳單ID - / 課程ID 7 / 收據ID 88');
+  assert.ok(!rcpt.description.includes('沒有可撤銷的收款'), 'a receipt row has a receipt to void');
   assert.ok(buildLedgerIssueReport({ code: 'overpayment_pending_review', invoice_id: 1 }, inv, 55).description.startsWith('學生帳務出現「多收，沒有記進帳單（overpayment_pending_review）」'));
 }
 
@@ -299,5 +302,6 @@ for (const codes of [['receipt_without_invoice'], ['receipt_payment_outside_ledg
   const h = ledgerReceiptHelp(codes);
   assert.ok(h.hint.startsWith('怎麼處理：'), codes.join());
   assert.ok(/才按「撤銷收據」/.test(h.hint), 'void is only the last step for a receipt issued in error');
-  assert.ok(/若系統說這裡不能撤銷.*聯絡總部對帳/.test(h.hint), 'in-app #522: the hint already says what to do when the server refuses the void');
+  assert.ok(/若系統說這裡不能撤銷.*按「回報給總部」請總部對帳/.test(h.hint), 'in-app #522: the hint already says what to do when the server refuses the void');
+  assert.ok(h.ask_hq && !h.hint.includes('請聯絡總部'), '帳務重整 §3: the HQ step is a button, not 「請聯絡總部」');
 }

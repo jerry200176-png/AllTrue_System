@@ -30,7 +30,15 @@
             {{ actionError }} 下方是已重新讀取的最新帳務，確認後再操作。
             <button type="button" data-testid="ledger-action-reload" @click="loadLedger()">重新整理</button>
           </div>
-          <div v-if="reasonError" class="ledger-state ledger-error" role="alert" data-testid="ledger-reason-error">{{ reasonError }}</div>
+          <!-- 帳務重整 §3: the reason is typed on the drawer itself, not in a browser prompt. -->
+          <div v-if="reasonAsk" class="ledger-reason" role="group" aria-labelledby="ledger-reason-title" data-testid="ledger-reason">
+            <label id="ledger-reason-title" for="ledger-reason-input">{{ reasonAsk.title }}</label>
+            <Textarea id="ledger-reason-input" v-model="reasonAsk.text" rows="2" data-testid="ledger-reason-input" @keydown.esc.stop.prevent="closeReason(false)" />
+            <div class="ledger-actions">
+              <Button variant="outline" size="sm" data-testid="ledger-reason-cancel" @click="closeReason(false)">取消</Button>
+              <Button size="sm" :disabled="reasonAsk.text.trim().length < reasonAsk.min" data-testid="ledger-reason-submit" @click="closeReason(true)">{{ reasonAsk.action }}</Button>
+            </div>
+          </div>
           <PaymentAllocation
             v-if="allocating"
             :student-name="payload.student?.name || '學生'"
@@ -54,7 +62,7 @@
             <p class="ledger-owed__label">{{ owedLabel }}</p>
             <p class="ledger-owed__now" :class="{ due: owedSplit.now > 0 }" data-testid="ledger-owed-now">{{ formatCurrency(owedSplit.now) }}</p>
             <p v-if="owedSplit.later > 0" class="ledger-owed__later" data-testid="ledger-owed-later">之後還會到期 {{ formatCurrency(owedSplit.later) }}</p>
-            <p v-if="overpaidTotal > 0" class="ledger-owed__over" role="status" data-testid="ledger-overpaid">多收 {{ formatCurrency(overpaidTotal) }}（舊資料）。{{ ledgerExceptions.some((x) => x.can_void) ? '詳情在「要先處理」。' : '這筆多收沒有對應的收款，系統無法自動處理。可按下面的「回報給系統管理員」。' }}</p>
+            <p v-if="overpaidTotal > 0" class="ledger-owed__over" role="status" data-testid="ledger-overpaid">多收 {{ formatCurrency(overpaidTotal) }}（舊資料）。{{ ledgerExceptions.some((x) => x.can_void) ? '詳情在「要先處理」。' : '這筆多收沒有對應的收款，系統無法自動處理。可按下面的「回報給總部」。' }}</p>
           </div>
 
           <section v-if="ledgerExceptions.length" class="ledger-section">
@@ -73,10 +81,9 @@
                   :disabled="busyReportId === x.report_id"
                   @click="voidReport(x.report_id)"
                 >{{ x.action_label || '撤銷收款' }}</button>
-                <template v-if="!x.can_void && !x.report_id && !x.self_service">
-                  <span class="ledger-muted" data-testid="ledger-exception-drift">{{ x.drift_line }}</span>
-                  <button class="ledger-action" type="button" data-testid="ledger-exception-report" @click="reportToAdmin(x)">回報給系統管理員</button>
-                </template>
+                <span v-if="!x.can_void && !x.report_id && !x.self_service" class="ledger-muted" data-testid="ledger-exception-drift">{{ x.drift_line }}</span>
+                <!-- 帳務重整 §3: a step that needs HQ is a button here, never just 「請聯絡總部」. -->
+                <button v-if="x.ask_hq || (!x.can_void && !x.report_id && !x.self_service)" class="ledger-action" type="button" data-testid="ledger-exception-report" @click="reportToAdmin(x)">回報給總部</button>
               </div>
             </div>
             <button
@@ -89,43 +96,6 @@
             </button>
           </section>
 
-          <section v-if="contractCourses.length" class="ledger-section">
-            <h4>合約（每一堂課與付款）</h4>
-            <p class="ledger-muted">未繳優先；同科依合約開課日由新到舊</p>
-            <AtHelpDisclosure v-if="contractCourses.some(hasMultiplePackageBills)" label="共用方案" data-testid="ledger-package-batch-note"><p>共用方案有多門課的帳單待收，請從要處理的課程卡「登記這筆」；不加入下方批次收款。</p></AtHelpDisclosure>
-            <div class="ledger-contracts">
-              <ContractCard
-                v-for="c in displayContractCourses"
-                :key="c.id"
-                :course="c"
-                :focused="isOpenedCourse(c)"
-                :expanded="openCards.has(Number(c.id))"
-                @toggle="(v) => (v ? openCards.add(Number(c.id)) : openCards.delete(Number(c.id)))"
-                :can-view-docs="canManageInvoices()"
-                :outstanding="owedFor(c.id)"
-                :pending-report="packageLead(c) ? pendingReportFor(c.id) : null"
-                :shared-follower="!packageLead(c)"
-                :shared-lead-subject="packageLead(c) ? '' : (packageLeadOf(c)?.subject || '')"
-                :shared-member-subjects="sharedMembersOf(c)"
-                :last-payment="payLineFor(c)"
-                :amounts="amountsFor(c.id)"
-                :month-lines="monthLinesFor(c.id)"
-                :bill-draft="draftFor(c.id)"
-                :rate-note="issuedBillRateNote(c, payload.invoices)"
-                :can-resolve-legacy="canManageInvoices()"
-                :has-confirmed-report="hasConfirmedReportFor(c.id)"
-                :auto-confirm="autoConfirmId === Number(c.id)"
-                :row-actions="rowActions[Number(c.id)] || null"
-                @row-action="(kind) => emit('row-action', { kind, courseId: Number(c.id) })"
-                @record="openEntry"
-                @legacy-backfill="openEntry($event, 'legacy-backfill')"
-                @issue="openIssue"
-                @confirmed="openReceipt"
-                @changed="onPanelChanged"
-                @slip="openSlip"
-              />
-            </div>
-          </section>
 
           <section class="ledger-section">
             <h4><button type="button" class="ledger-fold" :aria-expanded="fold.inv" :aria-controls="fold.inv ? 'ledger-sec-invoices' : undefined" data-testid="ledger-fold-invoices" @click="fold.inv = !fold.inv">帳單（{{ payload.invoices?.length || 0 }}）<span v-if="invoiceWarnCount" class="ledger-fold__warn" data-testid="ledger-fold-warn">需留意 {{ invoiceWarnCount }}</span><span aria-hidden="true">{{ fold.inv ? '▾' : '▸' }}</span></button></h4>
@@ -322,6 +292,44 @@
             >{{ showOtherReceipts ? '收合其他紀錄' : `已退回／已撤銷（${otherReceipts.length}）` }}</button>
           </section>
 
+          <section v-if="contractCourses.length" class="ledger-section">
+            <h4>合約（每一堂課與付款）</h4>
+            <p class="ledger-muted">未繳優先；同科依合約開課日由新到舊</p>
+            <AtHelpDisclosure v-if="contractCourses.some(hasMultiplePackageBills)" label="共用方案" data-testid="ledger-package-batch-note"><p>共用方案有多門課的帳單待收，請從要處理的課程卡「登記這筆」；不加入下方批次收款。</p></AtHelpDisclosure>
+            <div class="ledger-contracts">
+              <ContractCard
+                v-for="c in displayContractCourses"
+                :key="c.id"
+                :course="c"
+                :focused="isOpenedCourse(c)"
+                :expanded="openCards.has(Number(c.id))"
+                @toggle="(v) => (v ? openCards.add(Number(c.id)) : openCards.delete(Number(c.id)))"
+                :can-view-docs="canManageInvoices()"
+                :outstanding="owedFor(c.id)"
+                :pending-report="packageLead(c) ? pendingReportFor(c.id) : null"
+                :shared-follower="!packageLead(c)"
+                :shared-lead-subject="packageLead(c) ? '' : (packageLeadOf(c)?.subject || '')"
+                :shared-member-subjects="sharedMembersOf(c)"
+                :last-payment="payLineFor(c)"
+                :amounts="amountsFor(c.id)"
+                :month-lines="monthLinesFor(c.id)"
+                :bill-draft="draftFor(c.id)"
+                :rate-note="issuedBillRateNote(c, payload.invoices)"
+                :can-resolve-legacy="canManageInvoices()"
+                :has-confirmed-report="hasConfirmedReportFor(c.id)"
+                :auto-confirm="autoConfirmId === Number(c.id)"
+                :row-actions="rowActions[Number(c.id)] || null"
+                @row-action="(kind) => emit('row-action', { kind, courseId: Number(c.id) })"
+                @record="openEntry"
+                @legacy-backfill="openEntry($event, 'legacy-backfill')"
+                @issue="openIssue"
+                @confirmed="openReceipt"
+                @changed="onPanelChanged"
+                @slip="openSlip"
+              />
+            </div>
+          </section>
+
           <!-- PRD v2 D5/D18: one 登記收款 for every open contract (allocation step); each card keeps 登記這筆. -->
           <div v-if="allocContracts.length" class="ledger-sticky-pay" data-testid="ledger-sticky-pay">
             <p id="ledger-pay-scope" class="ledger-muted ledger-sticky-pay__scope" data-testid="ledger-pay-scope">{{ payScopeText }}</p>
@@ -371,6 +379,7 @@ import { formatDate as fmtDate } from '../lib/billingDocumentView.js';
 import { splitOwed } from '../lib/studentBillingRows.js';
 import { isDirectorRole } from '../lib/roleCapabilities.js';
 import { Button } from '@/components/ui/button';
+import { Textarea } from '@/components/ui/textarea';
 import { control } from '@/components/ui/page';
 import {
   formatAccountingLedgerInvoiceLabel,
@@ -406,8 +415,8 @@ import {
 } from '../lib/ledgerCoverageDates.js';
 
 const EXCEPTION_PREVIEW = 2;
-// Step 5: 帳單 / 收款紀錄 / 已刪除課程備註 open in place; collapsed again for each student.
-const fold = reactive({ inv: false, rcpt: false, voided: false });
+// 帳務重整 §3: 帳單 is the main table and starts open; 收款紀錄 / 已刪除課程備註 start folded for each student.
+const fold = reactive({ inv: true, rcpt: false, voided: false });
 const openCards = reactive(new Set()); // contract ids opened by hand; survives the reload every action triggers
 const justRecorded = ref(null); // F-2: the 現在確認入帳 prompt after a 登記 save
 const ledgerFellBack = ref(false); // sheet mode: the sheet could not open, so the visible ledger shows (reason, or load error)
@@ -444,6 +453,7 @@ const modalEl = ref(null);
 let returnFocusEl = null;
 const FOCUSABLE = 'a[href],button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])';
 function onEsc() {
+  if (reasonAsk.value) return closeReason(false);
   if (!entryOpen.value) emit('close');
 }
 // ↑/↓ moves to the adjacent student (Linear-style peek). Only when the drawer itself or a step button has focus,
@@ -484,7 +494,28 @@ const error = ref('');
 // #4551: a failed action (void report/invoice) is not a failed load: keep the ledger on screen, reread it, show the reason.
 const actionError = ref('');
 // A reason that is empty or too short used to do nothing at all, with no message (it read as 「按了沒反應」).
-const reasonError = ref('');
+// One open reason request at a time; a new one, or any reload (closing, another student), cancels the old one.
+const reasonAsk = ref(null);
+let reasonBack = null; // the control that opened the field; focus returns there (Codex #5435)
+function askReason(title, action, min) {
+  reasonAsk.value?.resolve(null);
+  reasonBack = document.activeElement;
+  return new Promise((resolve) => {
+    reasonAsk.value = { title, action, min, text: '', resolve };
+    nextTick(() => document.getElementById('ledger-reason-input')?.focus());
+  });
+}
+function closeReason(ok) {
+  const ask = reasonAsk.value;
+  if (!ask) return;
+  reasonAsk.value = null;
+  ask.resolve(ok ? ask.text.trim() : null);
+  // The focused field is gone: keep focus inside the drawer so its Esc and Tab trap still work.
+  const back = reasonBack;
+  reasonBack = null;
+  // After 送出 the ledger reloads and that button is replaced, so the drawer itself takes focus.
+  nextTick(() => (!ok && back?.isConnected && modalEl.value?.contains(back) ? back : modalEl.value)?.focus?.());
+}
 const payload = ref(null);
 const busyReportId = ref(null);
 // in-app #522: receipts the server already refused to void (it said why); the card stops offering the same dead-end click.
@@ -591,6 +622,7 @@ async function loadCoverage(kind, id) {
 
 let ledgerRequestVersion = 0;
 async function loadLedger() {
+  closeReason(false); // the reload unmounts the reason field; cancel it rather than leave it hidden
   const requestVersion = ++ledgerRequestVersion;
   loading.value = false;
   payload.value = null;
@@ -628,7 +660,6 @@ async function loadLedger() {
     // Receipt lookup already shows every linked payment; lesson dates/notes stay on demand.
     if (documentsView.value) expandedIds.value = new Set();
     else autoExpandAttention();
-    if (invoiceWarnCount.value || documentsView.value) fold.inv = true;
     if (documentsView.value) fold.rcpt = true;
     const armed = pendingInitialAction != null;
     runInitialAction(loadDrafts());
@@ -644,8 +675,10 @@ async function loadLedger() {
     await nextTick();
     if (documentsView.value) {
       const documents = modalEl.value?.querySelector('[data-testid="ledger-fold-invoices"]');
-      documents?.scrollIntoView?.({ block: 'start' });
       documents?.focus({ preventScroll: true });
+      // 帳務重整 §3: contracts sit below 收款紀錄 now. With no bill for the opened course, show its card instead.
+      if (displayedInvoices.value.some((inv) => invoiceCoversCourse(inv, Number(props.studentClassId)))) documents?.scrollIntoView?.({ block: 'start' });
+      else scrollToOpenedContract();
     } else scrollToOpenedContract();
   }
 }
@@ -658,7 +691,6 @@ watch(() => [props.show, props.studentClassId, props.reportId, props.studentId, 
 const isOpenedCourse = (c) => !props.studentWide && Number(props.studentClassId || 0) > 0 && Number(c?.id) === Number(props.studentClassId);
 function scrollToOpenedContract() {
   if (props.studentWide || !Number(props.studentClassId || 0) || displayContractCourses.value.length < 2) return;
-  if (isOpenedCourse(displayContractCourses.value[0])) return;
   const card = modalEl.value?.querySelector(`[data-testid="contract-card-${Number(props.studentClassId)}"]`);
   card?.scrollIntoView?.({ block: 'start' });
 }
@@ -752,7 +784,7 @@ const ledgerExceptions = computed(() => {
       action_label: '撤銷 0 元收款',
       hint: receipt
         ? '其實有收到錢：按「撤銷 0 元收款」，這張 0 元帳單會一起作廢，再照實際金額登記收款。'
-        : (inv.can_direct_void ? '到下面「帳單」把這張 0 元帳單按「作廢」，再照實際金額登記收款。' : '這張 0 元帳單不能在這裡直接作廢，請回報給系統管理員處理。'),
+        : (inv.can_direct_void ? '到下面「帳單」把這張 0 元帳單按「作廢」，再照實際金額登記收款。' : '這張 0 元帳單不能在這裡直接作廢，按「回報給總部」請總部處理。'),
       report_id: receipt ? receipt.report_id : null,
       can_void: !!receipt,
       self_service: !!receipt || !!inv.can_direct_void, // the fix is a button on this screen, not a report to an administrator
@@ -864,7 +896,8 @@ const amountsFor = (id) => {
 const monthLinesFor = (id) => Object.fromEntries(courseInvoices(id).map((inv) => {
   const key = String(inv.billing_period || inv.period_start || '').slice(0, 7);
   const paid = latestStandingPayment(inv.payments);
-  return [key, { due: Number(inv.total_amount || 0), paidDate: paid ? paid.date : '', paidAmount: Number(inv.calculated_applied_amount || 0) }];
+  return [key, { due: Number(inv.total_amount || 0), paidDate: paid ? paid.date : '', paidAmount: Number(inv.calculated_applied_amount || 0),
+    periodStart: inv.period_start, periodEnd: inv.period_end }];
 }).filter(([k]) => k));
 // #3753 (D18): members of one shared CoursePackage are one obligation; one pending report covers them all.
 const packageMemberIds = (id) => {
@@ -1075,7 +1108,7 @@ function openSlip(course) {
   slipOpen.value = true;
 }
 watch(() => [props.show, props.studentClassId, props.studentId, props.reportId, props.branchId], () => { receiptOpen.value = false; });
-watch(() => [props.show, props.studentClassId, props.studentId, props.reportId, props.branchId], () => { fold.inv = fold.rcpt = fold.voided = false; openCards.clear(); });
+watch(() => [props.show, props.studentClassId, props.studentId, props.reportId, props.branchId], () => { fold.inv = true; fold.rcpt = fold.voided = false; openCards.clear(); });
 watch(() => [props.show, props.studentClassId, props.studentId], () => { slipOpen.value = false; });
 
 // In-app #398: 「登記繳費回報」 from 課程查找 lands on the entry form, with the ledger behind it. Armed once per open;
@@ -1234,10 +1267,8 @@ function getAuthRole() {
 
 async function voidReport(reportId) {
   if (!reportId || !isDirectorRole(getAuthRole())) return;
-  const reason = window.prompt('撤銷這筆收款（帳單金額不變）。請寫原因：');
-  reasonError.value = '';
+  const reason = await askReason('撤銷這筆收款（帳單金額不變）。請寫原因：', '撤銷', 1);
   if (reason == null) return; // cancelled
-  if (!reason.trim()) { reasonError.value = '沒有寫原因，這次沒有撤銷。請再按一次「撤銷」並寫下原因。'; return; }
   busyReportId.value = reportId;
   try {
     const res = await voidReportAction(reportId, reason.trim());
@@ -1265,10 +1296,8 @@ async function voidInvoice(invoice, mode) {
   if (!invoice?.id || !canManageInvoices()) return;
   const isException = mode === 'exception';
   const actionLabel = isException ? '更正並作廢' : '作廢';
-  const reason = window.prompt(`請輸入${actionLabel}原因（至少 2 個字，會保留稽核紀錄）`);
-  reasonError.value = '';
+  const reason = await askReason(`請輸入${actionLabel}原因（至少 2 個字，會保留稽核紀錄）`, actionLabel, 2);
   if (reason == null) return; // cancelled
-  if (reason.trim().length < 2) { reasonError.value = `原因至少要寫 2 個字，這次沒有${actionLabel}。請再按一次「${actionLabel}」。`; return; }
 
   busyInvoiceId.value = invoice.id;
   try {
@@ -1342,6 +1371,7 @@ const anomalyLabel = (code) => labelMap({
 
 .ledger-issue{margin:0;font-size:14px;line-height:1.6}
 .ledger-error-text{margin:8px 0 0;color:var(--ds-danger);font-size:13px}
+.ledger-reason{display:grid;gap:8px;margin:0 0 12px;padding:12px;border:1px solid var(--ds-border);border-radius:var(--ds-radius-lg)}
 .ledger-owed{display:grid;gap:2px;margin-bottom:14px}
 .ledger-owed p{margin:0}
 .ledger-owed__label{font-size:12px;color:var(--ds-ink-mute)}

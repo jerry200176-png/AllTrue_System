@@ -53,6 +53,7 @@
 </template>
 
 <script setup>
+import { trackedFetch as fetch } from '../lib/loadingBar';
 import { ref, watch } from 'vue';
 import { supabase } from '../supabase';
 

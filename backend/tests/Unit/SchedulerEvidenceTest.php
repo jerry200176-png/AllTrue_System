@@ -134,6 +134,7 @@ class SchedulerEvidenceTest extends TestCase
             'reconcile-nightly' => "Checked: 3 courses | Mismatches: 3 | Report: /private/path\nCauses: {\"attendance_ahead\":2,\"ledger_ahead\":1}\n",
             'student-signin-close-orphans' => "Closed 0 orphan StudentSignIn record(s).\n",
             'rfid-prune-pending' => "Deleted 0 pending swipes.\n",
+            'privacy-prune-logs' => "Pruned 0 rows (login=0, reset=0, binding=0, chat=0).\n",
             'learning-records-drift-check' => "Drift counts: {\"null_class_session_id\":0}\n",
             'sessions-audit-stranded' => "{\"as_of\":\"2037-01-02\",\"stranded_courses\":0,\"stranded_sessions\":0}\n",
             'sessions-generate-forward' => "=== EXECUTE sessions:generate-forward (horizon=4w, courses=2) ===\n---\ncourses_planned=1 courses_skipped=1 slots_planned=3 sessions_created=3\n",

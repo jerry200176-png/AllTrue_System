@@ -25,6 +25,7 @@
 </template>
 
 <script setup>
+import { trackedFetch as fetch } from '../lib/loadingBar';
 import { ref, computed, onMounted, watch } from 'vue';
 import { Button } from './ui/button';
 import { supabase } from '../supabase';

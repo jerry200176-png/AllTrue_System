@@ -18,7 +18,6 @@ it('names non-cash movements and explains the retained original receipt', async 
     global: { stubs: { Transition: false, BillingNotesPanel: true } } });
   try {
     await flushPromises();
-    await w.get('[data-testid="ledger-fold-invoices"]').trigger('click');
     expect(w.text()).toContain('已轉出 NT$ 3,000；原收據保留');
     await w.get('[data-testid="ledger-invoice-toggle-7"]').trigger('click');
     const history = w.get('.ledger-timeline__list').text();

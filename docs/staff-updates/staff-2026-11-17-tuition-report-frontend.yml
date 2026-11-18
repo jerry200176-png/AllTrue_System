@@ -1,0 +1,14 @@
+updates:
+  - id: staff-2026-11-17-tuition-report-frontend
+    published_at: "2026-11-17"
+    audiences:
+      - director
+      - super_admin
+    importance: digest
+    title: 當月學收換月份與檔名修正
+    summary: 快速換月份只顯示最後選的月份，匯出檔名是中文。
+    items:
+      - category: fixed
+        text: 快速換月份不會顯示錯的月份；CSV 用中文檔名；只看未收沒資料時顯示「這個月沒有未收的課」。
+    source_refs:
+      - "changelog:2026-11-17:tuition-report-frontend"

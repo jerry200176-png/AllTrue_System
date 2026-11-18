@@ -122,6 +122,7 @@
 </template>
 
 <script setup>
+import { trackedFetch as fetch } from '../lib/loadingBar';
 import { computed, onMounted, ref } from 'vue';
 import { Activity, Info, RefreshCw } from 'lucide-vue-next';
 import { useRefetchView } from '../composables/useDelayedLoading';

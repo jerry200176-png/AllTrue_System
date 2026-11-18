@@ -16,7 +16,7 @@ const FEATURE_USAGES = {
     'admission-inquiries': '登記家長來電諮詢、安排新生體驗試聽與追蹤後續報名轉化。',
     'tuition-collect': '開立學費繳費單、記錄家長繳費（現金/轉帳）與收據明細查詢。',
     'teachers': '維護分校師資名單、基本資料、授課科目與聯絡方式。',
-    'tuition-report': '月底或週對帳時，查看分校學費應收、實收總額與帳務對帳報表。',
+    'tuition-report': '已搬到帳務中心的「月對帳表」：每月學收合計、收款與未繳，同一套數字。',
     'subject-units': '統計各班與全校科目堂數，核對每週、每月的授課量是否正確。',
     'parttime-payroll': '每月發薪日前核算兼職時薪老師的總授課時數與應發鐘點費。',
     'teacher-eligibility': '審查正職老師每月授課指標與業績獎金計算要件。',

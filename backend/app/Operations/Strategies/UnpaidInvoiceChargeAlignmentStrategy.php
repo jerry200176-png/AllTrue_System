@@ -9,7 +9,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use RuntimeException;
 
-final class UnpaidInvoiceChargeAlignmentStrategy
+class UnpaidInvoiceChargeAlignmentStrategy
 {
     public const STRATEGY = self::class;
     public function preview(array $parameters): array
@@ -57,17 +57,16 @@ final class UnpaidInvoiceChargeAlignmentStrategy
                 if ((int) ($course->StudentID ?? 0) !== $p['student_id'] || (int) ($student->CampusID ?? 0) !== $p['campus_id']
                     || (int) ($invoice->StudentID ?? 0) !== $p['student_id'] || (int) ($invoice->StudentClassID ?? 0) !== $p['course_id']
                     || !isset($snapshot['after_invoice']) || !hash_equals($this->hash($snapshot['after_invoice']), $this->hash((array) $invoice))) $this->fail('target_moved_on');
+                $this->assertReplayCourse($snapshot, (array) $course);
                 return ['ok' => true, 'already_applied' => true, 'updated' => 0, 'snapshot' => $snapshot];
             }
             $before = $this->capture($p, true);
             $this->eligible($before, $p);
             if (!hash_equals($this->hash($before), $p['expected_state_hash'])
                 || !hash_equals($plan['digest'], $p['expected_state_hash'])) $this->fail('state_changed');
-            $updated = DB::table('Invoice')->where('id', $p['invoice_id'])->where('TotalAmount', $p['expected_invoice_total'])
-                ->update(['TotalAmount' => $p['expected_charge'], 'updated_at' => now()]);
-            if ($updated !== 1) $this->fail('update_failed');
+            $this->writeCorrection($p);
             $after = $this->capture($p, true);
-            $snapshot = ['parameters' => $p, 'before' => $before, 'after_hash' => $this->hash($after), 'after_invoice' => $after['invoice']];
+            $snapshot = ['parameters' => $p, 'before' => $before, 'after_hash' => $this->hash($after), 'after_invoice' => $after['invoice'], 'after_course' => $after['course']];
             $this->persistProof($request, $context, 'repair-proof', $snapshot);
             $this->audit($p, $request->id, 'billing.invoice_charge_alignment');
             return ['ok' => true, 'updated' => 1, 'snapshot' => $snapshot];
@@ -78,7 +77,7 @@ final class UnpaidInvoiceChargeAlignmentStrategy
         $s = $result['snapshot'] ?? [];
         $ok = ($result['ok'] ?? false) && isset($s['parameters'], $s['after_hash'])
             && hash_equals($s['after_hash'], $this->hash($this->capture($s['parameters'], true)));
-        return ['ok' => (bool) $ok, 'checks' => ['invoice_total_aligned', 'course_payments_reports_unchanged']];
+        return ['ok' => (bool) $ok, 'checks' => $this->verificationChecks()];
     }
     public function rollback(array $snapshot, array $context): array
     {
@@ -91,19 +90,18 @@ final class UnpaidInvoiceChargeAlignmentStrategy
             $current = $this->capture($p, true);
             if (!hash_equals($rolledBack ? $this->hash($snapshot['before']['invoice']) : $snapshot['after_hash'], $this->hash($rolledBack ? $current['invoice'] : $current))) $this->fail('values_moved_on');
             if ($rolledBack) return ['ok' => true, 'already_rolled_back' => true, 'restored' => 0];
-            $old = $snapshot['before']['invoice'];
-            DB::table('Invoice')->where('id', $p['invoice_id'])->update(['TotalAmount' => $old['TotalAmount'], 'updated_at' => $old['updated_at']]);
+            $this->restoreCorrection($snapshot);
             if (!hash_equals($p['expected_state_hash'], $this->hash($this->capture($p, true)))) $this->fail('restore_mismatch');
             $this->persistProof($request, $context, 'repair-proof-rollback', $snapshot);
             $this->audit($p, $request->id, 'billing.invoice_charge_alignment.rollback');
             return ['ok' => true, 'restored' => 1];
         }, 3);
     }
-    private function capture(array $p, bool $lock): array
+    protected function capture(array $p, bool $lock): array
     {
         foreach (['student_id', 'course_id', 'campus_id', 'invoice_id', 'expected_invoice_total', 'expected_charge'] as $key)
             if (!isset($p[$key]) || !is_int($p[$key]) || $p[$key] <= 0) $this->fail('invalid_parameters');
-        if (!preg_match('/\A[A-Za-z0-9:_-]{3,80}\z/', $p['decision_reference'] ?? '')) $this->fail('invalid_decision');
+        if (!is_string($p['decision_reference'] ?? null) || !preg_match('/\A[A-Za-z0-9:_-]{3,80}\z/', $p['decision_reference'])) $this->fail('invalid_decision');
         $one = fn ($q) => (array) $q->when($lock, fn ($q) => $q->lockForUpdate())->first();
         $student = $one(DB::table('Student')->where('id', $p['student_id'])->select('id', 'CampusID'));
         $course = $one(DB::table('StudentClass')->where('ID', $p['course_id']));
@@ -126,7 +124,7 @@ final class UnpaidInvoiceChargeAlignmentStrategy
         if (count($epoch) > 100) $this->fail('history_budget');
         return ['student' => $student, 'course' => $course, 'invoice' => $invoices[0], 'items' => $items, 'payments' => $payments, 'reports' => $reports, 'amendments' => $amendments, 'rollback_epoch' => $epoch];
     }
-    private function eligible(array $g, array $p): void
+    protected function eligible(array $g, array $p): void
     {
         $c = $g['course']; $i = $g['invoice'];
         if ($g['items'] !== [] || $g['amendments'] !== [] || $i['Status'] !== 'unpaid' || (int) $i['PaidAmount'] !== 0
@@ -143,7 +141,7 @@ final class UnpaidInvoiceChargeAlignmentStrategy
     {
         if (!Str::isUuid($context['operation_id'] ?? '') || !is_string($context['actor'] ?? null) || trim($context['actor']) === '') $this->fail('invalid_context');
         $r = DB::table('pop_operation_requests')->where('id', $context['operation_id'])->lockForUpdate()->first();
-        if (!$r || $r->strategy_id !== self::STRATEGY || !hash_equals($this->hash(json_decode($r->parameters, true, 512, JSON_THROW_ON_ERROR)), $this->hash($p))) $this->fail('request_mismatch');
+        if (!$r || $r->strategy_id !== static::STRATEGY || !hash_equals($this->hash(json_decode($r->parameters, true, 512, JSON_THROW_ON_ERROR)), $this->hash($p))) $this->fail('request_mismatch');
         return $r; // POP owns approval validation; this unregistered strategy cannot grant approval.
     }
     private function proof(string $id, string $phase): ?object
@@ -156,13 +154,13 @@ final class UnpaidInvoiceChargeAlignmentStrategy
         DB::table('pop_execution_records')->insert(['id' => $id, 'execution_id' => $id, 'operation_id' => $request->id,
             'phase' => $phase, 'result' => 'succeeded', 'idempotency_key' => $request->id.':'.$phase,
             'attempt_key' => $request->id.':'.$phase, 'correlation_id' => (string) Str::uuid(),
-            'snapshot' => json_encode($snapshot, JSON_THROW_ON_ERROR), 'payload' => json_encode(['kind' => self::STRATEGY], JSON_THROW_ON_ERROR),
+            'snapshot' => json_encode($snapshot, JSON_THROW_ON_ERROR), 'payload' => json_encode(['kind' => static::STRATEGY], JSON_THROW_ON_ERROR),
             'actor' => substr($context['actor'], 0, 128), 'created_at' => now()]);
     }
     private function proofId(array $parameters, string $phase): string
     {
         return \Ramsey\Uuid\Uuid::uuid5(\Ramsey\Uuid\Uuid::NAMESPACE_OID,
-            'alltrue:invoice-alignment:'.$phase.':'.$this->hash($parameters))->toString();
+            'alltrue:invoice-alignment:'.(static::STRATEGY === self::STRATEGY ? '' : static::STRATEGY.':').$phase.':'.$this->hash($parameters))->toString();
     }
     private function audit(array $p, string $id, string $event): void
     {
@@ -170,9 +168,22 @@ final class UnpaidInvoiceChargeAlignmentStrategy
             'subject_type' => 'invoice', 'subject_id' => $p['invoice_id'], 'correlation_id' => $id],
             ['operation_id' => $id, 'reason_code' => $p['decision_reference'], 'row_count' => 1], true);
     }
-    private function hash(array $data): string
+    protected function writeCorrection(array $p): void
+    {
+        $updated = DB::table('Invoice')->where('id', $p['invoice_id'])->where('TotalAmount', $p['expected_invoice_total'])
+            ->update(['TotalAmount' => $p['expected_charge'], 'updated_at' => now()]);
+        if ($updated !== 1) $this->fail('update_failed');
+    }
+    protected function restoreCorrection(array $snapshot): void
+    {
+        $old = $snapshot['before']['invoice'];
+        DB::table('Invoice')->where('id', $snapshot['parameters']['invoice_id'])->update(['TotalAmount' => $old['TotalAmount'], 'updated_at' => $old['updated_at']]);
+    }
+    protected function assertReplayCourse(array $snapshot, array $course): void {}
+    protected function verificationChecks(): array { return ['invoice_total_aligned', 'course_payments_reports_unchanged']; }
+    protected function hash(array $data): string
     {
         return hash('sha256', json_encode(PopOperationService::canonicalParameters($data), JSON_THROW_ON_ERROR));
     }
-    private function fail(string $code): never { throw new RuntimeException('invoice_alignment:'.$code); }
+    protected function fail(string $code): never { throw new RuntimeException('invoice_alignment:'.$code); }
 }

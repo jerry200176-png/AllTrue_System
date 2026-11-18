@@ -444,7 +444,9 @@
       @goto-attendance="goToAttendanceFromSession"
       @all-lessons="openAllLessonsInCourseMgmt"
       @goto-learning="goToLearningFromSession"
+      @history="showModal = false; historyOpen = true"
     />
+    <SessionHistorySheet v-model:open="historyOpen" :session-id="historySessionId" />
 
     <!-- #740 Modals：請假 -->
     <CalendarLeaveModal
@@ -590,6 +592,7 @@ import DayTabsBar from '../components/calendar/DayTabsBar.vue';
 import WeekTeacherChips from '../components/calendar/WeekTeacherChips.vue';
 import CourseBlockContent from '../components/calendar/CourseBlockContent.vue';
 import CalendarSessionEditModal from '../components/calendar/modals/CalendarSessionEditModal.vue';
+import SessionHistorySheet from '../components/calendar/SessionHistorySheet.vue';
 import CalendarLeaveModal from '../components/calendar/modals/CalendarLeaveModal.vue';
 import CalendarRescheduleModal from '../components/calendar/modals/CalendarRescheduleModal.vue';
 import CalendarSubstituteLegacyModal from '../components/calendar/modals/CalendarSubstituteLegacyModal.vue';
@@ -722,6 +725,8 @@ function selectCalendarFlowStep(stepId) {
   }
 }
 const showModal = ref(false);
+const historyOpen = ref(false); // 異動紀錄 sheet (#4529 C)
+const historySessionId = ref(null); // the occurrence the user clicked, set in onCourseClick (not the base slot's session)
 const showCalendarPrint = ref(false);
 const editingCourseId = ref(null);
 /** 點擊的那一堂的實際日期（僅編輯單堂時有值），用於限定只能做請假/調課/加課 */
@@ -2182,6 +2187,7 @@ const onCourseClick = (course, fullDateStr) => {
   editingActionDate.value = fullDateStr || '';
   editingException.value = course.is_exception ? course : null;
   const clickedSession = findSessionRowForCell(course, fullDateStr);
+  historySessionId.value = clickedSession?.id ?? null;
   resetSessionRecovery();
   moveContract.value = makeMoveContract();
   conflictWarning.value = '';
@@ -2432,6 +2438,7 @@ const sessionEditSession = computed(() => {
     cancelState: cancelState.value,
     recovery: sessionRecovery.value,
     canMoveContract: isDirectorRole(props.userRole) && !!cancelTargetSession.value?.id,
+    canViewHistory: isDirectorRole(props.userRole) && !!editingCourseId.value && !!historySessionId.value,
     moveContract: moveContract.value,
     editingException: !!editingException.value,
     editingExceptionIsExtra: editingExceptionIsExtra.value,

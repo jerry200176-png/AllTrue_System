@@ -2760,13 +2760,22 @@ def machine_declaration(
     validate the submitted declaration with :func:`validate_declaration`.
     """
 
+    paths = list(paths)
     scope = classify_scope(paths, patch, additive_declared)
+    reasons = list(scope["reasons"])
     minimum = int(scope["machine_minimum_tier"])
+    # deploy.yml re-checks an application PR's declaration against the activation classifier
+    # (classify_activation_provenance); a lower minimum here let #5417 and #5441 merge as R1/R2 and
+    # then hold every later deploy for the Founder (2026-11-17).
+    activation = classify_activation_scope(paths, patch, additive_declared)
+    if any(is_application_runtime_path(path) for path in paths) and int(activation["machine_minimum_tier"]) > minimum:
+        minimum = int(activation["machine_minimum_tier"])
+        reasons += [f"deploy activation: {reason}" for reason in activation["reasons"]]
     return {
         "risk_class": f"R{minimum}",
         "autonomy_tier": f"T{minimum}",
         "machine_minimum_tier": minimum,
-        "reasons": list(scope["reasons"]),
+        "reasons": reasons,
     }
 
 

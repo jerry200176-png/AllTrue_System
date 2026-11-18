@@ -262,7 +262,7 @@
 
 | 欄位 | 內容 |
 |---|---|
-| 狀態 | Open |
+| 狀態 | Open — 跟 TD-065 一起決定（員工的重要通知 LINE 推播目前沒有真的發，自填 LINE ID 也沒用） |
 | 優先級 | P2 |
 | 發現日期 | 2026-04-26 |
 | 發現來源 | 開發中 |
@@ -276,7 +276,7 @@
 
 | 欄位 | 內容 |
 |---|---|
-| 狀態 | Open |
+| 狀態 | Done（`backend/composer.json`：`laravel/framework` ^12.68；8.x advisories no longer apply） |
 | 優先級 | P1 |
 | 發現日期 | 2026-04-27 |
 | 發現來源 | [ARCH] 技術債月度評估 |
@@ -319,7 +319,7 @@
 
 | 欄位 | 內容 |
 |---|---|
-| 狀態 | Open |
+| 狀態 | Open（2026-11-17 核對，Codex #5454 指正）：`GET /api/v1/engagement/rank-thresholds` 只餵「軍階總覽」視窗；進度條（`rankTierProgress`／`xpRemainingToNext`）仍只用前端寫死的表，`fetchRankThresholds`／`setCachedThresholds` 沒有任何呼叫者。修法：`EngagementRankStrip` 掛載時呼叫 `fetchRankThresholds`，進度 computed 依賴一個載入完成的 ref。 |
 | 優先級 | P2 |
 | 發現日期 | 2026-05-10 |
 | 發現來源 | 開發中（#326 前端進度條）|
@@ -529,7 +529,7 @@
 
 | 欄位 | 內容 |
 |---|---|
-| 狀態 | Open |
+| 狀態 | Open — 等 Founder 決定要不要開（2026-11-17 核對） |
 | 優先級 | P2（需使用者決策後再清，涉及 LINE 推播行為） |
 | 發現日期 | 2026-06-13 |
 | 發現來源 | [BUG] 修 #766 audit observer 時發現同源問題 |
@@ -538,6 +538,7 @@
 | 建議做法 | 由 [ARCH]+[SEC] 評估：(1) 確認生產 LINE 推播是否確實未經此 observer（可能另有路徑）；(2) 若確為失效，將 `Notification::observe` 一併移入 `app->booted()` 或把 `AppServiceProvider` 移回 config/app.php 慣例位置（框架 provider 之後）；(3) 啟用前先驗證不會對既有 staff 造成突發推播灌爆。|
 | 清償成本估計 | 低（程式改動小）/ 中（需驗證 LINE 行為與生產佐證） |
 | 不做的代價 | 若 LINE staff 推播確實失效，相關通知持續不送達，且 root cause 隱藏在 provider 順序中難察覺 |
+| 2026-11-17 核對 | 仍然沒作用：`config/app.php` 的 providers 仍把 `AppServiceProvider` 排在 `DatabaseServiceProvider` 前，`Notification::observe` 仍在 `boot()` 直接呼叫（`ClassSession` 那個已移進 `app->booted()`）。修好的效果：分校在職、有綁 LINE、沒關 LINE、不在勿擾時段的人，會收到該分校每一則**新建**的 `Severity=high` 通知（dispatcher 只看嚴重度與分校，不看種類）。目前會是 high 的：學費提醒（剩 0 堂或未繳，`buildTuitionNotifications`）、堂數快用完（剩 1 堂以下，`buildLowSessionsNotifications`）、帳單逾期「急件」級（`resolveOverdueTier`）、未識別刷卡待處理（每張新卡一則）、刷卡出席但扣堂失敗。夜間堂數對帳沒有分校，不會推；代課（low）、學習回饋（medium）、升級預覽（info／error）不會推。通知同步依 `SourceKey` 只對新的一列 `create`，既有列只更新，不會每次同步重推。這是使用者看得到的新行為（量最大的是學費與堂數提醒），要 Founder 決定才改（改法：把那一行移進 `app->booted()`，加「建立 high 通知會呼叫 dispatcher」的測試；可能要先限定種類）。TD-013 跟著這個決定。 |
 
 ### TD-066：老師頁（teachers）PII 後端 PIN 強制因端點共享而延後
 
@@ -557,7 +558,7 @@
 
 | 欄位 | 內容 |
 |---|---|
-| 狀態 | **UI 已隱藏（2026-08-16），完整 API 仍 Open** |
+| 狀態 | **Done**（2026-11-17 核對：#3548 已刪 `BatchInvoiceModal.vue`／`OverdueBucketsPanel.vue`，前端沒有任何地方呼叫 `invoices/batch*`／`overdue-summary`；要做批次開單另開需求） |
 | 優先級 | P1 → P2（使用者不會再點到必失敗操作） |
 | 發現日期 | 2026-07-21 |
 | 發現來源 | [REVIEW] 收據 404 hotfix closeout（#1363 後） |
@@ -686,7 +687,7 @@
 
 | 欄位 | 內容 |
 |---|---|
-| 狀態 | **本 PR 實作雙階段核准與倍率疊加（2026-08-16）** |
+| 狀態 | Done（2026-08-16，#1851 正職行政加給與底薪核准畫面） |
 | 優先級 | P2 |
 | 發現日期 | 2026-08-13 |
 | 發現來源 | 建置正職結算「底薪＋總發放金額」（`FulltimeSettlementComposer`）時，對照 115.07 薪資規定公告全文才發現既有 `TeacherEligibilityPolicy` 的六項要件（每週16段、假日16小時、平日下午課、特殊表現、扣除、科目數獎金）沒有涵蓋公告第 3 條第 4 項「行政加給倍率」。 |
@@ -700,7 +701,7 @@
 
 | 欄位 | 內容 |
 |---|---|
-| 狀態 | **後端已修；前端待核准列與總部核准鈕本 PR 補上（2026-08-16）** |
+| 狀態 | Done（2026-08-16，後端 #1820、前端核准列與總部核准鈕 #1851） |
 | 優先級 | P2 |
 | 發現日期 | 2026-08-14 |
 | 發現來源 | 自動安全審查（push/commit security review）在 `TeacherEligibilityInputController.php` 點出 separation-of-duties 缺口，經跟使用者確認後記錄為技術債，暫不在這次 PR（#1773）處理。 |
@@ -864,7 +865,7 @@
 | 清償成本估計 | 高（需先盤點既有 transfer audit／ledger 資料，再抽 service、補 rollback／權限／容量回歸測試） |
 | 不做的代價 | 新功能可能誤把教務紀錄轉移當成帳務額度轉移，造成 `ClassSession`、評量、點名與扣堂 ledger 不一致；不同入口的錯誤訊息與稽核證據也會繼續分叉。 |
 
-### TD-086：學習檢測（learning assessment MVP）資料表與模型留在原地，僅剩家長／學習歷程讀取（P3）
+### TD-090：學習檢測（learning assessment MVP）資料表與模型留在原地，僅剩家長／學習歷程讀取（P3）
 
 | 欄位 | 內容 |
 |---|---|
@@ -878,7 +879,7 @@
 | 清償成本估計 | 低（讀取端移除）＋ Founder 批准的 drop migration |
 | 不做的代價 | 少量死程式與空表；日後若有人重新寫入需重新確認欄位語意。 |
 
-### TD-087：題庫（question bank）資料表與遷移留在原地，已無任何讀取者與寫入者（P3）
+### TD-091：題庫（question bank）資料表與遷移留在原地，已無任何讀取者與寫入者（P3）
 
 | 欄位 | 內容 |
 |---|---|

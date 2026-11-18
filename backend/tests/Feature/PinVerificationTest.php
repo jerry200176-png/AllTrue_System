@@ -224,7 +224,6 @@ class PinVerificationTest extends TestCase
         $protected = [
             ['GET', 'api/v1/finance/parttime-payroll'],
             ['GET', 'api/v1/finance/teacher-payroll'],
-            ['GET', 'api/v1/finance/branch-monthly-tuition'],
         ];
         foreach ($protected as [$m, $u]) {
             $this->assertContains('require_pin', $middlewareFor($m, $u), "{$u} 應掛 require_pin");

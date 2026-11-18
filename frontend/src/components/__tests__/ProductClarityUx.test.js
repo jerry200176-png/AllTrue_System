@@ -2,12 +2,10 @@ import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { control } from '@/components/ui/page';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const discrepancySource = readFileSync(resolve(__dirname, '../../pages/ScheduleDiscrepancyPage.vue'), 'utf8');
 const notificationsSource = readFileSync(resolve(__dirname, '../../pages/NotificationsCenter.vue'), 'utf8');
-const tuitionReportSource = readFileSync(resolve(__dirname, '../../pages/TuitionReportPage.vue'), 'utf8');
 
 describe('Product clarity UX improvements', () => {
   describe('ScheduleDiscrepancyPage', () => {
@@ -45,29 +43,6 @@ describe('Product clarity UX improvements', () => {
       expect(notificationsSource).toContain('課程合約');
       expect(notificationsSource).toContain('學費帳單');
       expect(notificationsSource).toContain('sourceTypeLabel(item.SourceType)');
-    });
-  });
-
-  describe('TuitionReportPage', () => {
-    it('provides an actionable error state with a retry button', () => {
-      expect(tuitionReportSource).toContain('<Alert v-else-if="error" tone="danger" class="tr-error');
-      expect(tuitionReportSource).toContain('tr-retry-btn ${ctrlButton}');
-      expect(tuitionReportSource).toContain('再試一次');
-    });
-
-    it('keeps report requests and export contracts while making controls accessible', () => {
-      expect(tuitionReportSource).toContain('/api/v1/finance/branch-monthly-tuition?${params}');
-      expect(tuitionReportSource).toContain('/api/v1/finance/branch-monthly-tuition/export?${params}');
-      expect(tuitionReportSource).toContain('aria-label="上一月"');
-      expect(tuitionReportSource).toContain('aria-label="下一月"');
-      expect(tuitionReportSource).toContain('class="tr-loading tw:flex tw:flex-col tw:gap-3" role="status" aria-live="polite"');
-      expect(tuitionReportSource).toContain('role="status"');
-      expect(tuitionReportSource).toContain('aria-label="學收報表分頁"');
-      // 48px page controls now come from the shared control set instead of a page-local class string.
-      expect(tuitionReportSource).toContain('const ctrlButton = control.page');
-      expect(tuitionReportSource).toContain('control.pageIcon');
-      expect(control.page).toContain('tw:h-12');
-      expect(control.pageIcon).toContain('tw:size-12');
     });
   });
 });

@@ -363,6 +363,7 @@
 </template>
 
 <script setup>
+import { trackedFetch as fetch } from '../lib/loadingBar';
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import AtButton from '../components/design-system/AtButton.vue';
 import TextSizeToggle from '../components/TextSizeToggle.vue';

@@ -37,9 +37,9 @@
 @source "./pages/ClassroomManagement.vue";
 @source "./pages/BindingConflictReviewPage.vue";
 @source "./pages/BindingHealthDashboard.vue";
-@source "./pages/TuitionReportPage.vue";
 @source "./pages/TuitionCollectionPage.vue";
 @source "./components/tuition/BillList.vue";
+@source "./components/tuition/MonthlyRosterPanel.vue";
 @source "./pages/TeacherEligibilityPage.vue";
 @source "./components/CurriculumTemplatesPanel.vue";
 @source "./components/ParentTelegramBind.vue";
@@ -52,6 +52,7 @@
 @source "./pages/ParentPortal.vue";
 @source "./components/BillingDataQualityCard.vue";
 @source "./components/AiActivityCard.vue";
+@source "./components/calendar/SessionHistorySheet.vue";
 
 /* Light theme only. Dark comes later: add a `.dark { ... }` block remapping these to dark --ds-* tokens. */
 :root {

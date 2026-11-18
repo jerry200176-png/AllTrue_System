@@ -524,6 +524,7 @@
 </template>
 
 <script setup>
+import { trackedFetch as fetch } from '../lib/loadingBar';
 import { ymdInTaipei } from '@/lib/sessionDates.js';
 import { ref, onMounted, computed, watch } from 'vue';
 import { supabase } from '../supabase';

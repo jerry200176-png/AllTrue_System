@@ -35,6 +35,8 @@ class Kernel extends ConsoleKernel
         $this->scheduleObservedCommand($schedule, 'reconcile-nightly');
         $this->scheduleObservedCommand($schedule, 'student-signin-close-orphans');
         $this->scheduleObservedCommand($schedule, 'rfid-prune-pending');
+        // #889 資料保存期限 (Founder 2026-11-17): login history, reset requests, binding attempts, deleted chat.
+        $this->scheduleObservedCommand($schedule, 'privacy-prune-logs');
         $this->scheduleObservedCommand($schedule, 'learning-records-drift-check');
         // tuition:send-reminders 目前不自動執行，需手動呼叫或按需開啟
         // $schedule->command('tuition:send-reminders')->dailyAt('08:00');

@@ -12,7 +12,7 @@ ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from scripts.governance.autonomy_gate import machine_declaration
+from scripts.governance.autonomy_gate import classify_activation_scope, machine_declaration
 
 
 def _git_output(*args: str) -> str:
@@ -63,6 +63,11 @@ def main() -> int:
     print("Machine reasons:")
     for reason in declaration["reasons"]:
         print(f"- {reason}")
+    # 2026-11-17 (#5417): a merge that deploy.yml holds for the Founder also holds every later merge behind it.
+    holds = classify_activation_scope(names, patch, False)["auto_activation_holds"]
+    if holds:
+        print(f"Activation: needs the Founder's click to go live ({'; '.join(holds)}).")
+        print("Every later merge waits behind it until then: merge it just before a release train and tell the Founder.")
     return 0
 
 

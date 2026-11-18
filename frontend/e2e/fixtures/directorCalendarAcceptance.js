@@ -9,7 +9,7 @@ const positive = value => Number.isSafeInteger(value) && value > 0;
 
 /** Exact browser-local calendar fixtures; auth, me and campus authorization stay real. */
 export async function installDirectorCalendarMocks(context, origin) {
-  const counts = { projection: 0, materializer: 0, reschedule: 0, rejected: 0 };
+  const counts = { projection: 0, materializer: 0, sessionDates: 0, reschedule: 0, rejected: 0 };
   let branch = 0;
   let session = { id: 7001, student_class_id: 99, student_id: 1, teacher_id: 5,
     session_date: '2026-11-09', start_time: '20:00', end_time: '22:00', status: 'scheduled' };
@@ -48,6 +48,21 @@ export async function installDirectorCalendarMocks(context, origin) {
       exceptions = [anchor, { ...anchor, id: 8002, original_schedule_id: anchor.id,
         start_time: session.start_time, end_time: session.end_time, status: 'scheduled' }];
       return json({ committed: true, session_id: 7001 });
+    }
+    // The app sends this read as POST. Fulfill locally from the same synthetic
+    // sessions; never continue/fetch it or broaden the global HTTP write guard.
+    if (url.pathname === PREFIX + 'student-classes/session-dates' && method === 'POST') {
+      let body; try { body = request.postDataJSON(); } catch { return reject(); }
+      const ids = body?.courses;
+      if (!branch || Number(url.searchParams.get('branch_id')) !== branch || body?.branch_id !== branch
+        || !body || Object.keys(body).some(key => !['branch_id', 'range_start', 'range_end', 'courses'].includes(key))
+        || !/^\d{4}-\d{2}-\d{2}$/.test(body.range_start) || !/^\d{4}-\d{2}-\d{2}$/.test(body.range_end)
+        || body.range_end < body.range_start || !Array.isArray(ids) || ids.length > 2
+        || ids.some(row => !row || ![99, 100].includes(row.id)) || new Set(ids.map(row => row.id)).size !== ids.length) return reject();
+      counts.sessionDates += 1;
+      return json(Object.fromEntries([99, 100].map(id => [id, { projected: [], materialized: [session, otherSession]
+        .filter(row => row.student_class_id === id && row.session_date >= body.range_start && row.session_date <= body.range_end)
+        .map(row => ({ ...row, date: row.session_date })) }])));
     }
     if (!['GET', 'HEAD'].includes(method) || !PATHS.has(url.pathname)) return reject();
     const requestedBranch = Number(url.searchParams.get('branch_id') || url.searchParams.get('campus_id'));

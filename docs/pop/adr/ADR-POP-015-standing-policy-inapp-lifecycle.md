@@ -24,7 +24,8 @@ The same decision requires #3943/#3955 to drop the GitHub-runner→SSH write pat
 
 ## Decision
 
-1. **Three catalog operations** (`operations/catalog.yaml`), domain `support`, with `execution_authority: pop-pi-local`, `transaction_required: true` and `verification_required: true`. Every operation carries `campus_id`, which must equal each target report's `CampusID` and belong to the requester's campus scope. That scope is checked by the existing `PopOperationService::assertCampusScope()`; an empty or missing scope denies everything.
+1. **Scoped catalog operations** (`operations/catalog.yaml`), domain `support`, with `execution_authority: pop-pi-local`, `transaction_required: true` and `verification_required: true`. Every operation carries `campus_id`, which must equal each target report's `CampusID` and belong to the requester's campus scope. That scope is checked by the existing `PopOperationService::assertCampusScope()`; an empty or missing scope denies everything.
+   - `inapp-report-followup-comment` (Founder 2026-11-17, [bounded decision](../../governance/FOUNDER_STANDING_DECISIONS.md#inapp-substantive-followup)): params `campus_id`, `bug_id`, `expected_status`, `github_issue_url`, `public_reply`, `writeback_proof`, `request_id`. Posts one substantive support answer on `triaged`/`in_progress`, including when the latest message is the reporter's. No status, disposition or reporter verification change. Requires the same complete current source proof and trusted issue/reply guards as triage, a verified existing support author (self-filed reports use the receipt-backed origin below), current explicit client campus scope and duplicate-body refusal. The canned-progress operation retains its refusal for unanswered reporter messages. Resolution continues only through the existing release-evidence operation.
    - `inapp-report-triage`: params `campus_id`, `bug_id`, `github_issue_url`, `public_reply`, `writeback_proof`, `request_id`.
      - Only for reports the agent classifies as an engineering-required bug.
      - Through policy v4, suggestions and UX friction kept the human `close_as_logged` path. The Founder-authorized v5 extension below adds only `suggestion` and `ux_friction`; duplicates, not-planned and other dispositions remain outside the machine allowlist. Logged suggestions retain the canonical engineering-required classification: logging is not delivery.
@@ -55,7 +56,7 @@ The same decision requires #3943/#3955 to drop the GitHub-runner→SSH write pat
      - After that deploy, the manifest SHA on the Pi equals the run's target, and health returned 200.
      - `smoke_result_ref` is present.
    - **(c) timeout:**
-     - The policy counts the **whole** eligible queue (`listEligibleForReporterTimeout`, 14-day window). If it exceeds `AUTO_MAX_PER_RUN` (20), the policy denies, and closing that pile needs the human reviewed-batch path.
+     - The policy counts the **whole** eligible queue (`listEligibleForReporterTimeout`, 14-day window). If it exceeds `AUTO_MAX_PER_RUN` (20), the policy denies, and closing that pile needs the human reviewed-batch path. Since Founder 2026-11-17 the daily `--auto` run closes the oldest 20 each day, so a pile drains without that path.
      - Otherwise every listed ID must be eligible. Each is rechecked under the existing row lock at execute time.
      - An ID that becomes ineligible is skipped and reported, never closed.
      - A report whose reporter replied that the problem persists is ineligible under the existing rule.
@@ -142,3 +143,13 @@ Catalog17/policy6 correct v5's blanket author-equals-reporter refusal. Existing 
 - A missing or late execute record remains untrusted. Existing comment/execute-record commit timing is unchanged; a crash without a record requires diagnosis, not guessed provenance, automatic record repair or duplicate public replies.
 - An authenticated admin's public HTTP reply to their own `closed_as_logged` suggestion/UX report uses the existing reopen behavior. Reporter identity, closed state, latest close marker and kind are rechecked under the report/status-log locks. Other staff, private notes, duplicate/not-planned and admin legacy timeout/bug paths retain their behavior. Machine lifecycle calls use the service directly and do not impersonate this human reply.
 - Progress macros, reporter verification, approvals, scope, safety, MAC, caps, kill switches and deployment evidence stay in force. Old pending requests and approvals are not repaired or reused after the version bump. Logging, shipping and reporter acceptance remain separate.
+
+## Self-filed substantive support origin (policy v8 / catalog20)
+
+FSD-2026-11-17-INAPP-SUBSTANTIVE-FOLLOWUP requires auditable support authorship, not another account. The existing legitimate support issuer may answer its own filed report through the same substantive-followup operation; no author override, new identity, credential, campus, role or approval power is added. Status and reporter acceptance stay unchanged. The fixed-progress operation keeps its existing pending-reporter guard.
+
+Origin is derived from one exact successful native execute record bound to request, strategy, canonical parameter hash, report/campus, public comment, actual author and body. Missing, ambiguous, failed or mismatched records fail closed. The same validator is reused for existing logged-cycle guards and reporter lifecycle classification; text and an issue link alone no longer prove support authorship. Detail returns only a public `origin` label; internal receipt data is never serialized. Unread counts include verified self-attributed support comments within the same existing campus scope. Legacy unrecorded self-attributed asks require human reconciliation; no provenance is guessed or backfilled.
+
+New followup comments co-commit with their receipt using the existing native transaction mechanism. Genuine receipt-persistence fault injection must leave no new support comment. A later human message, including copied support wording, stays human, invalidates the full source proof and blocks timeout as before. This is no reporter acceptance, automatic historical closeout or change to the >20 whole-queue policy.
+
+Normal version invalidation applies: old pending requests and approvals must be reread/recreated, never silently repinned. Code rollback does not retract public replies. No production data, migration, auth setup or SSH action is part of this source change.

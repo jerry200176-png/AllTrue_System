@@ -2028,7 +2028,11 @@ class PaymentReportController extends Controller
         // 的預期堂次，補足到已購堂數，讓家長看到的堂數與實付堂數一致。
         // 結構：[{ date: 'Y/m/d', expected: bool }]。attended_dates 保留供既有相容。
         $sessionDates = [];
-        if ($sc && $billingSnapshot && $sc->ScheduleMode === 'date') {
+        if ($sc && $sc->ScheduleMode !== 'date') {
+            $calendar = app(\App\Services\Billing\CountCourseReceiptCalendar::class)->read($sc, $report);
+            $attendedDates = $calendar['attended_dates']; $sessionDates = $calendar['session_dates'];
+            $periodStart = $calendar['period_start']; $periodEnd = $calendar['period_end'];
+        } elseif ($sc && $billingSnapshot) {
             $formatSnapshotDate = static function ($date): ?string {
                 if (!$date) {
                     return null;
@@ -2057,19 +2061,14 @@ class PaymentReportController extends Controller
                 $sessionDates
             ));
         } elseif ($sc) {
-            $reportedDate = $sc->ScheduleMode === 'date' ? Carbon::make($report->payment_date) : null;
+            $reportedDate = Carbon::make($report->payment_date);
             // No snapshot: the bill's service period (#3888), slip precedence: this course's items, a single item, else billing_period.
             [$itemStart, $itemEnd] = $invoice && $reportedDate ? $this->monthlyBilling->serviceRangeForCourse($invoice, (int) $sc->ID) : [null, null];
             $anchor = preg_match('/^\d{4}-\d{2}$/', (string) $invoiceBillingPeriod) ? Carbon::createFromFormat('!Y-m', (string) $invoiceBillingPeriod) : $reportedDate;
             [$from, $to] = $itemStart !== null && $itemEnd !== null ? [Carbon::parse($itemStart), Carbon::parse($itemEnd)]
                 : [$anchor?->copy()->startOfMonth(), $anchor?->copy()->endOfMonth()];
-            if ($sc->ScheduleMode === 'date') {
-                $periodStart = $from?->format('Y/m/d');
-                $periodEnd = $to?->format('Y/m/d');
-            } else {
-                $periodStart = $sc->StartDate ? Carbon::parse($sc->StartDate)->format('Y/m/d') : null;
-                $periodEnd = $sc->EndDate ? Carbon::parse($sc->EndDate)->format('Y/m/d') : null;
-            }
+            $periodStart = $from?->format('Y/m/d');
+            $periodEnd = $to?->format('Y/m/d');
 
             $sessionQuery = \App\Models\ClassSession::where('StudentClassID', $sc->ID)
                 ->whereIn('Status', ['attended', 'completed', 'late'])
@@ -2079,13 +2078,11 @@ class PaymentReportController extends Controller
                 $sessionQuery->whereDate('SessionDate', '>=', $from->toDateString())->whereDate('SessionDate', '<=', $to->toDateString());
             }
 
-            if ($sc->ScheduleMode === 'date') {
-                if ($sc->StartDate) {
-                    $sessionQuery->whereDate('SessionDate', '>=', Carbon::parse($sc->StartDate)->toDateString());
-                }
-                if ($sc->EndDate) {
-                    $sessionQuery->whereDate('SessionDate', '<=', Carbon::parse($sc->EndDate)->toDateString());
-                }
+            if ($sc->StartDate) {
+                $sessionQuery->whereDate('SessionDate', '>=', Carbon::parse($sc->StartDate)->toDateString());
+            }
+            if ($sc->EndDate) {
+                $sessionQuery->whereDate('SessionDate', '<=', Carbon::parse($sc->EndDate)->toDateString());
             }
 
             $attendedDates = $sessionQuery->pluck('SessionDate')
@@ -2095,44 +2092,7 @@ class PaymentReportController extends Controller
 
             $sessionDates = array_map(fn ($d) => ['date' => $d, 'expected' => false], $attendedDates);
 
-            // 月結制（date）以月份為單位，不補預期堂次；僅堂數制補足到已購堂數。
-            if ($sc->ScheduleMode !== 'date') {
-                $purchased = (int) ($sc->SessionCount ?? 0);
-                // $needed = null 代表未設已購堂數（不限制，列出全部尚未上課的排課）
-                $needed = $purchased > 0 ? max(0, $purchased - count($attendedDates)) : null;
-                if ($needed === null || $needed > 0) {
-                    $upcoming = \App\Models\ClassSession::where('StudentClassID', $sc->ID)
-                        ->whereIn('Status', ['scheduled', 'rescheduled'])
-                        ->orderBy('SessionDate')
-                        ->pluck('SessionDate')
-                        ->map(fn ($d) => Carbon::parse((string) $d)->format('Y/m/d'))
-                        ->values()
-                        ->all();
-                    if ($needed !== null) {
-                        $upcoming = array_slice($upcoming, 0, $needed);
-                    }
-                    foreach ($upcoming as $d) {
-                        $sessionDates[] = ['date' => $d, 'expected' => true];
-                    }
-                }
 
-                // A count-course's StartDate/EndDate is legacy contract metadata,
-                // not the receipt period. Renewal, leave-extension, and older
-                // imports can leave those fields stale (or even inverted) while
-                // ClassSession remains the authoritative dated record. Derive
-                // the printed period from the same sessions shown on the receipt
-                // so an old payment cannot display a newer course period (#232).
-                $receiptDates = collect($sessionDates)
-                    ->pluck('date')
-                    ->filter()
-                    ->map(fn ($d) => Carbon::createFromFormat('Y/m/d', (string) $d)->startOfDay())
-                    ->sortBy(fn (Carbon $d) => $d->timestamp)
-                    ->values();
-                if ($receiptDates->isNotEmpty()) {
-                    $periodStart = $receiptDates->first()->format('Y/m/d');
-                    $periodEnd = $receiptDates->last()->format('Y/m/d');
-                }
-            }
         }
 
         $campusName = '';

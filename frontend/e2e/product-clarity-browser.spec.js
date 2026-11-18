@@ -32,8 +32,7 @@ function setupErrorTracking(page) {
   return errors;
 }
 
-async function installUnifiedMocks(page, { failTuitionFirst = false } = {}) {
-  let tuitionAttempts = 0;
+async function installUnifiedMocks(page) {
   await page.route('**/api/v1/**', async (route) => {
     const url = new URL(route.request().url());
     const p = url.pathname;
@@ -77,23 +76,6 @@ async function installUnifiedMocks(page, { failTuitionFirst = false } = {}) {
         body: JSON.stringify({
           data: [{ id: 701, reporter_id: 301, reporter_name: null, branch_id: 101, branch_name: null, student_name: '測試學生甲', session_date: '2026-09-07', time_range: '14:00–16:00', corrected_time_range: '14:30–16:30', discrepancy_type: 'wrong_time', discrepancy_type_label: '上課時間有誤', status: 'pending', class_session_id: 8888, notes: '現場提早半小時上課。' }],
           meta: { current_page: 1, last_page: 1, total: 1 },
-        }),
-      });
-    }
-    if (p.includes('/branch-monthly-tuition')) {
-      tuitionAttempts += 1;
-      if (failTuitionFirst && tuitionAttempts === 1) {
-        return route.fulfill({ status: 500, contentType: 'application/json', body: JSON.stringify({ message: '連線逾時，無法取得學收資料' }) });
-      }
-      return route.fulfill({
-        status: 200, contentType: 'application/json',
-        body: JSON.stringify({
-          data: [
-            { student_class_id: 101, student_name: '測試學生甲', subject: '國中數學', teacher_name: '王老師', class_type: 'one_on_one', monthly_sessions: 4, rate: 1500, monthly_tuition: 6000, last_paid_at: '2026-09-01' },
-            { student_class_id: 102, student_name: '測試學生乙', subject: '高中英文', teacher_name: '李老師', class_type: 'one_on_two', monthly_sessions: 4, rate: 1200, monthly_tuition: 4800, last_paid_at: '2026-09-02' },
-          ],
-          summary: { total_students: 2, total_sessions: 8, total_tuition: 10800 },
-          meta: { current_page: 1, last_page: 1, per_page: 50, total: 2 },
         }),
       });
     }
@@ -170,31 +152,5 @@ test.describe('Product Clarity — Real Browser Verification', () => {
       }
     });
 
-    test(`3. Tuition Report — ${vp.name}`, async ({ page }) => {
-      const errors = setupErrorTracking(page);
-      await page.setViewportSize({ width: vp.width, height: vp.height });
-      await installUnifiedMocks(page, { failTuitionFirst: true });
-
-      await page.goto('/pilot-mount.html?page=tuition-report');
-
-      // Observe 500 error & retry button
-      const errorAlert = page.locator('.tr-error[role="alert"]');
-      await expect(errorAlert).toBeVisible();
-      const retryBtn = page.locator('.tr-retry-btn');
-      await expect(retryBtn).toBeVisible();
-      expect(await retryBtn.textContent()).toBe('再試一次');
-      auditLog.push({ route: 'tuition-report', viewport: vp.name, action: 'Observe error state with retry button', expectedResult: 'Alert banner + retry button', actualResult: 'PASS', errors: [...errors] });
-
-      // Click retry and verify recovery
-      await retryBtn.click();
-      await page.waitForSelector('.tr-stats');
-      await expect(errorAlert).not.toBeVisible();
-      const statsText = await page.locator('.tr-stats').textContent();
-      expect(statsText).toContain('2 人');
-      expect(statsText).toContain('8 堂');
-      expect(statsText).toContain('10,800');
-      expect(await page.locator('.tr-table tbody tr').count()).toBe(2);
-      auditLog.push({ route: 'tuition-report', viewport: vp.name, action: 'Click retry and verify recovery', expectedResult: 'Data loaded successfully', actualResult: 'PASS', errors: [...errors] });
-    });
   }
 });
