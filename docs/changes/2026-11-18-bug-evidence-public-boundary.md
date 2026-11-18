@@ -1,5 +1,6 @@
 ## 2026-11-18 — fix(in-app): allowlist public resolution evidence before internal provenance
 <!-- release-notes: silent_ship=silent-2026-11-18-bug-evidence-public-boundary -->
+<!-- silent-reason: Internal reader prerequisite only; existing public evidence stays unchanged and no new producer or user action is enabled. -->
 
 - 公開回報明細與產品閉環計數只讀既有 `resolution_production_verification`；未知或內部類型仍保留於 append-only 稽核儲存，不會被當作上線證據。
 - 這是 #5498 原生留言來源修正的先行讀取防護，尚未新增任何來源證據寫入、狀態操作或歷史資料修復。
