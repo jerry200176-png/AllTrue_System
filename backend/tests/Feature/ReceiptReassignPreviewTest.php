@@ -268,6 +268,19 @@ class ReceiptReassignPreviewTest extends TestCase
         $this->assertSame(self::AMOUNT, $res->json('amount'));
     }
 
+    public function test_targets_name_the_course_and_the_ledger_hints_the_button_only_where_the_flag_is_on(): void
+    {
+        $f = $this->fixture();
+        $res = $this->getJson("/api/v1/payment-reports/{$f['report']->id}/reassign-targets?student_id={$f['right']->id}", $this->h($this->token('A', 1)))->assertOk();
+        $this->assertArrayHasKey('subject', $res->json('targets.0'));
+        $url = "/api/v1/accounting/ledger?student_class_id={$f['wrongCourse']->ID}";
+        $this->getJson($url, $this->h($this->token('A', 1)))->assertOk()->assertJsonPath('can_reassign_receipt', true);
+        config(['feature_flags.values' => ['FEATURE_RECEIPT_REASSIGN' => false]]);
+        $this->assertArrayNotHasKey('can_reassign_receipt', $this->getJson($url, $this->h($this->token('A', 1)))->assertOk()->json());
+        config(['feature_flags.values' => ['FEATURE_RECEIPT_REASSIGN' => false, 'FEATURE_RECEIPT_REASSIGN_CAMPUS_1' => true]]);
+        $this->getJson($url, $this->h($this->token('A', 1)))->assertOk()->assertJsonPath('can_reassign_receipt', true);
+    }
+
     public function test_targets_default_to_the_receipts_own_student_and_never_offer_the_current_bill(): void
     {
         $f = $this->fixture();

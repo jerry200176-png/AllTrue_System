@@ -74,6 +74,11 @@
                 <small v-if="x.detail">{{ x.detail }}</small>
                 <small v-if="x.refused_message" class="ledger-muted" data-testid="ledger-void-refused">{{ x.refused_message }}</small>
                 <small v-else-if="x.hint" class="ledger-muted" data-testid="ledger-exception-hint">{{ x.hint }}</small>
+                <!-- 收據移到正確帳單 (#5113): only where the server says the move is on for this campus. -->
+                <template v-if="canMoveException(x)">
+                  <small :data-testid="`ledger-move-hint-${x.report_id}`">這張收據記在別人的帳單上。可以直接移到正確的帳單。</small>
+                  <button class="ledger-action" type="button" :data-testid="`ledger-move-${x.report_id}`" @click="openMove(x.report_id)">移到正確帳單</button>
+                </template>
                 <button
                   v-if="x.can_void"
                   class="ledger-action ledger-action--danger"
@@ -266,6 +271,13 @@
                   @click="viewReceipt(r.report_id)"
                 >查看收據</button>
                 <button
+                  v-if="r.status === 'confirmed' && canMoveReceipt(r)"
+                  class="ledger-action"
+                  type="button"
+                  :data-testid="`ledger-receipt-move-${r.report_id}`"
+                  @click="openMove(r.report_id)"
+                >收錯帳單？</button>
+                <button
                   v-if="canShowReceiptCoverage(r)"
                   class="ledger-more ledger-receipt-toggle"
                   type="button"
@@ -375,6 +387,18 @@
       </AtDialog>
       <PaymentEntryModal :show="entryOpen" :row="entryRow" :mode="entryMode" :placement="sheetOnly ? 'right' : 'center'" :next-offer="sheetOnly && nextOffer" @close="onEntryClose" @confirmed="onEntryRecorded" @pending="onPanelChanged" @conflict="onEntryConflict" />
       <BillCorrectionDialog :open="correctingInvoiceId != null" :invoice-id="correctingInvoiceId" @update:open="(o) => { if (!o) correctingInvoiceId = null; }" @corrected="onBillCorrected" @changed="onBillCorrected" />
+      <ReceiptMoveDialog
+        :open="moving != null"
+        :report-id="moving?.report_id ?? null"
+        :student-id="Number(payload?.student?.id) || null"
+        :student-name="payload?.student?.name || ''"
+        :campus-id="Number(payload?.student?.campus_id) || null"
+        :amount="moving?.amount || 0"
+        :from-label="moving?.label || ''"
+        @update:open="(o) => { if (!o) moving = null; }"
+        @moved="onReceiptMoved"
+        @changed="onBillCorrected"
+      />
       <ReceiptModal :show="receiptOpen" :report-id="receiptReportId" :later-label="receiptLaterLabel" :return-focus-to="modalEl" @close="receiptOpen = false" />
       <PaymentSlipModal :show="slipOpen" :invoice-id="slipInvoiceId" :student-class-id="slipStudentClassId" :return-focus-to="modalEl" @close="slipOpen = false" />
     </div>
@@ -408,6 +432,7 @@ import ContractCard from './tuition/ContractCard.vue';
 import { issuedBillRateNote } from '../lib/issuedBillRateNote.js';
 import ReceiptModal from './ReceiptModal.vue';
 import BillCorrectionDialog from './BillCorrectionDialog.vue';
+import ReceiptMoveDialog from './ReceiptMoveDialog.vue';
 import PaymentSlipModal from './PaymentSlipModal.vue';
 import AtButton from './design-system/AtButton.vue';
 import AtDialog from './design-system/AtDialog.vue';
@@ -1302,6 +1327,20 @@ const canDirectVoidInvoice = (invoice) => canManageInvoices() && !!invoice?.can_
 const canExceptionVoidInvoice = (invoice) => canManageInvoices() && !!invoice?.can_exception_void;
 const canCorrectInvoice = (invoice) => canManageInvoices() && !!invoice?.can_correct;
 const correctingInvoiceId = ref(null);
+// 收據移到正確帳單 (#5113): the server hint says the move is on for this student's campus; the dialog's own answers decide the rest.
+const MOVE_CODES = ['receipt_without_invoice', 'confirmed_receipt_without_payment'];
+const moving = ref(null); // { report_id, amount, label }
+const canMoveReceipt = (r) => canManageInvoices() && !!payload.value?.can_reassign_receipt && Number(r?.amount) > 0;
+const canMoveException = (x) => !!x.report_id && x.codes?.some((c) => MOVE_CODES.includes(c))
+  && canMoveReceipt((payload.value?.receipts || []).find((r) => Number(r.report_id) === Number(x.report_id)));
+function openMove(reportId) {
+  const r = (payload.value?.receipts || []).find((x) => Number(x.report_id) === Number(reportId));
+  if (r) moving.value = { report_id: Number(r.report_id), amount: Number(r.amount), label: `${receiptCourseLabel(r)}，${formatLedgerReceiptBillLine(r)}` };
+}
+async function onReceiptMoved() {
+  await loadLedger();
+  emit('changed');
+}
 async function onBillCorrected() {
   await loadLedger();
   emit('changed');

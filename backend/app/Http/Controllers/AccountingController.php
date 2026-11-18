@@ -883,6 +883,8 @@ class AccountingController extends Controller
             'invoices' => $invoiceRows->all(),
             'receipts' => $reportRows->all(),
             'anomalies' => $uniqueAnomalies->all(),
+            // 收據移到正確帳單 (#5113): the key is only present where the flag is on for this student's campus (absent = no button).
+            ...(\App\Helpers\FeatureFlag::enabled(\App\Services\Billing\ReceiptReassignService::FLAG, (int) $student->CampusID) ? ['can_reassign_receipt' => true] : []),
         ]);
     }
 

@@ -409,6 +409,7 @@ final class ReceiptReassignService
                 $targets[] = [
                     'invoice_id' => (int) $inv->id,
                     'course_id' => $courseId,
+                    'subject' => $course?->displaySubjectName(), // the picker names the course, never its id
                     'billing_period' => $inv->billing_period,
                     'total' => (int) $money['total_amount'],
                     'remaining' => (int) $money['outstanding_amount'],
