@@ -190,6 +190,46 @@ else:
         self.assertEqual(0, result.returncode, result.stderr)
         self.assertNotIn(private_marker, result.stdout + result.stderr)
 
+    def test_untrusted_job_metadata_never_requests_any_log(self):
+        baseline = json.loads(json.dumps(self.fixture))
+        for corruption in ['workflow', 'branch', 'run', 'envelope', 'resolver-owner', 'shared-job-id', 'other-duplicate-id']:
+            with self.subTest(corruption=corruption):
+                self.fixture = json.loads(json.dumps(baseline))
+                calls_path = self.root / 'calls.jsonl'
+                calls_path.unlink(missing_ok=True)
+                if corruption == 'workflow':
+                    self.fixture['details']['20']['path'] = '.github/workflows/other.yml'
+                elif corruption == 'branch':
+                    self.fixture['details']['20']['head_branch'] = 'feature'
+                elif corruption == 'run':
+                    self.fixture['details']['20']['id'] = 999
+                elif corruption == 'envelope':
+                    self.fixture['job_envelopes'] = {'20': {'jobs': self.fixture['jobs']['20'], 'total_count': 101}}
+                elif corruption == 'resolver-owner':
+                    self.fixture['jobs']['20'][1]['run_id'] = 999
+                elif corruption == 'shared-job-id':
+                    self.fixture['jobs']['20'][1]['id'] = 200
+                    self.fixture['resolver_logs']['200'] = baseline['resolver_logs']['201']
+                else:
+                    self.fixture['jobs']['20'].append(dict(self.resolver, name='Other job'))
+                result, identity = self.run_helper()
+                self.assertEqual(1, result.returncode)
+                self.assertIsNone(identity['production_deploy_job'])
+                calls = [json.loads(line) for line in calls_path.read_text().splitlines()]
+                self.assertFalse([args for name, args in calls if name == 'gh' and any('/logs' in arg for arg in args)])
+
+    def test_malformed_target_markers_and_impossible_native_dates_fail_closed(self):
+        good = self.fixture['resolver_logs']['201']
+        invalid = [good.replace('2026-11-18T08:01:00Z', date)
+                   for date in ['2026-99-99T99:99:99Z', '2026-02-30T08:01:00Z', '0000-11-18T08:01:00Z']]
+        invalid.append(good + '2026-11-18T08:01:01Z Resolved activation target: not-a-sha\n')
+        for log in invalid:
+            with self.subTest(log=log):
+                self.fixture['resolver_logs']['201'] = log
+                result, identity = self.run_helper()
+                self.assertEqual(1, result.returncode)
+                self.assertIsNone(identity['production_deploy_job'])
+
     def test_missing_ambiguous_failed_or_unreadable_jobs_fail_closed(self):
         good = self.fixture["jobs"]["20"][0].copy()
         for jobs in [[], [good, good], [dict(good, conclusion="failure")],

@@ -76,16 +76,68 @@ while IFS= read -r run_id; do
         || printf '{}' > "$IDENTITY_TMP_DIR/deploy-jobs-$run_id.json"
     # The workflow revision is not the resolved target, particularly on manual
     # dispatches. Read only this short native resolver job's timestamped output.
-    RESOLVER_JOB_ID="$(python3 - "$IDENTITY_TMP_DIR/deploy-jobs-$run_id.json" <<'PY'
-import json, sys
-try:
-    envelope = json.load(open(sys.argv[1]))
-    jobs = envelope.get('jobs', []) if isinstance(envelope, dict) else []
-    matches = [job for job in jobs if isinstance(job, dict) and job.get('name') == 'Resolve exact activation target'] if isinstance(jobs, list) else []
-    if len(matches) == 1 and type(matches[0].get('id')) is int and matches[0]['id'] > 0:
-        print(matches[0]['id'])
-except (ValueError, OSError):
-    pass
+    RESOLVER_JOB_ID="$(python3 - "$IDENTITY_TMP_DIR" "$run_id" <<'PY'
+import datetime, json, sys
+from pathlib import Path
+root, run_id = Path(sys.argv[1]), int(sys.argv[2])
+
+def verified_metadata():
+    try:
+        runs = json.loads((root / 'candidate-deploy-runs.json').read_text())
+        run = next((item for item in runs if item.get('databaseId') == run_id), {})
+        metadata = json.loads((root / f'deploy-run-{run_id}.json').read_text())
+        envelope = json.loads((root / f'deploy-jobs-{run_id}.json').read_text())
+    except (ValueError, OSError):
+        return None
+    if not isinstance(metadata, dict) or not isinstance(envelope, dict):
+        return None
+    jobs = envelope.get('jobs')
+    if (run.get('status') != 'completed' or run.get('conclusion') != 'success'
+            or type(metadata.get('id')) is not int or metadata['id'] != run_id
+            or metadata.get('path') != '.github/workflows/deploy.yml'
+            or metadata.get('head_branch') != 'main'
+            or metadata.get('head_sha') != run.get('headSha')
+            or metadata.get('status') != 'completed' or metadata.get('conclusion') != 'success'
+            or not isinstance(jobs, list)
+            or type(envelope.get('total_count')) is not int or envelope['total_count'] != len(jobs)):
+        return None
+    if any(not isinstance(job, dict) for job in jobs):
+        return None
+    if any(type(job.get('id')) is not int or job['id'] <= 0 for job in jobs):
+        return None
+    if len({job['id'] for job in jobs}) != len(jobs):
+        return None
+    resolvers = [job for job in jobs if job.get('name') == 'Resolve exact activation target']
+    if len(resolvers) != 1:
+        return None
+    resolver = resolvers[0]
+    if (type(resolver.get('id')) is not int or resolver['id'] <= 0
+            or type(resolver.get('run_id')) is not int or resolver['run_id'] != run_id
+            or resolver.get('status') != 'completed' or resolver.get('conclusion') != 'success'):
+        return None
+    production = [job for job in jobs if job.get('name') == 'Deploy to Production']
+    if len(production) != 1:
+        return None
+    job = production[0]
+    if (type(job.get('id')) is not int or job['id'] <= 0
+            or type(job.get('run_id')) is not int or job['run_id'] != run_id
+            or job.get('status') != 'completed' or job.get('conclusion') != 'success'
+            or not isinstance(job.get('completed_at'), str)
+            or resolver['id'] == job['id']):
+        return None
+    try:
+        completed = datetime.datetime.fromisoformat(job['completed_at'].replace('Z', '+00:00'))
+    except ValueError:
+        return None
+    if completed.tzinfo is None:
+        return None
+    return {**{key: job[key] for key in ('id', 'run_id', 'name', 'status', 'conclusion', 'completed_at')},
+            'resolver_job_id': resolver['id']}
+
+proof = verified_metadata()
+if proof is not None:
+    (root / f'deploy-proof-{run_id}.json').write_text(json.dumps(proof))
+    print(proof['resolver_job_id'])
 PY
 )"
     if [[ -n "$RESOLVER_JOB_ID" ]]; then
@@ -156,52 +208,28 @@ def verified_job(run):
         except OSError:
             return {}
         return value if isinstance(value, dict) else {}
-    metadata = evidence('deploy-run')
-    envelope = evidence('deploy-jobs')
-    jobs = envelope.get('jobs')
-    if (run.get('status') != 'completed' or run.get('conclusion') != 'success'
-            or type(metadata.get('id')) is not int or metadata['id'] != run_id
-            or metadata.get('path') != '.github/workflows/deploy.yml'
-            or metadata.get('head_branch') != 'main'
-            or metadata.get('head_sha') != run.get('headSha')
-            or metadata.get('status') != 'completed' or metadata.get('conclusion') != 'success'
-            or not isinstance(jobs, list)
-            or type(envelope.get('total_count')) is not int or envelope['total_count'] != len(jobs)):
-        return None
-    if any(not isinstance(job, dict) for job in jobs):
-        return None
-    resolvers = [job for job in jobs if job.get('name') == 'Resolve exact activation target']
-    if len(resolvers) != 1:
-        return None
-    resolver = resolvers[0]
-    if (type(resolver.get('id')) is not int or resolver['id'] <= 0
-            or type(resolver.get('run_id')) is not int or resolver['run_id'] != run_id
-            or resolver.get('status') != 'completed' or resolver.get('conclusion') != 'success'):
+    # This private proof is written only after full metadata validation, before
+    # requesting the distinct resolver's log. Never reclassify raw jobs here.
+    proof = evidence('deploy-proof')
+    if not proof:
         return None
     try:
         target_log = (root / f'deploy-target-{run_id}.log').read_text()
-    except OSError:
+    except (OSError, UnicodeError):
         return None
-    targets = re.findall(r'^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z Resolved activation target: ([0-9a-f]{40})\r?$', target_log, re.MULTILINE)
-    if targets != [deployment_backend_sha]:
+    markers = re.findall(r'^(\S+) Resolved activation target: (.*)$', target_log, re.MULTILINE)
+    if len(markers) != 1:
         return None
-    production = [job for job in jobs if job.get('name') == 'Deploy to Production']
-    if len(production) != 1:
+    timestamp, target = markers[0]
+    if not re.fullmatch(r'\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z', timestamp):
         return None
-    job = production[0]
-    if (type(job.get('id')) is not int or job['id'] <= 0
-            or type(job.get('run_id')) is not int or job['run_id'] != run_id
-            or job.get('status') != 'completed' or job.get('conclusion') != 'success'
-            or not isinstance(job.get('completed_at'), str)):
+    if not re.fullmatch(r'[0-9a-f]{40}', target) or target != deployment_backend_sha:
         return None
     try:
-        completed = datetime.datetime.fromisoformat(job['completed_at'].replace('Z', '+00:00'))
+        datetime.datetime.fromisoformat(timestamp.replace('Z', '+00:00'))
     except ValueError:
         return None
-    if completed.tzinfo is None:
-        return None
-    return {**{key: job[key] for key in ('id', 'run_id', 'name', 'status', 'conclusion', 'completed_at')},
-            'target_sha': targets[0], 'resolver_job_id': resolver['id']}
+    return {**proof, 'target_sha': target}
 
 deploy = None
 production_job = None
