@@ -317,6 +317,7 @@ export function ledgerReceiptHelp(codes) {
 
 /** Anomaly detail — no Payment # / bare invoice id. */
 export function formatLedgerAnomalyDetail(a) {
+  if (a?.action?.type === 'manual_review') return '待總部核對收據與帳單歸屬';
   const parts = [];
   if (a?.report_id) parts.push('相關收據可撤銷');
   if (a?.invoice_id) parts.push('已對應帳單');

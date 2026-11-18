@@ -1,0 +1,14 @@
+updates:
+  - id: staff-2026-11-19-ledger-orphan-receipt-action
+    published_at: "2026-11-19"
+    audiences:
+      - director
+      - super_admin
+    importance: digest
+    title: 舊收據無法撤銷時，直接回報核對
+    summary: 收據的原課程已不在學生帳務中時，會說明原因並提供「回報給總部」。
+    items:
+      - category: fixed
+        text: 原收據與收款紀錄會保留，不會因提醒而改帳；總部仍需核對歸屬後處理。
+    source_refs:
+      - "changelog:2026-11-19:ledger-orphan-receipt-action"

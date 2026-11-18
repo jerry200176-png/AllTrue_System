@@ -196,6 +196,8 @@ assert.equal(humanizeDocumentRef('RCPT-LEGACY-000123'), '收據-舊資料-000123
 assert.equal(humanizeDocumentRef('PAY-202508-1'), '收款-202508-1');
 assert.equal(formatLedgerReceiptBillLine({ invoice_id: 1, course_ref: 'COURSE-1' }), '已對應帳單 · 本課程');
 assert.ok(!formatLedgerAnomalyDetail({ payment_id: 3, invoice_id: 1, report_id: 2 }).includes('Payment'));
+assert.equal(formatLedgerAnomalyDetail({ report_id: 2, invoice_id: 1, action: { type: 'manual_review' } }), '待總部核對收據與帳單歸屬');
+assert.equal(formatLedgerAnomalyDetail({ report_id: 2, action: { type: 'void_report' } }), '相關收據可撤銷');
 
 // --- User Task: 請假 — 批次略過清單不得用「課程 #id」 ---
 assert.equal(humanizeBulkLeaveSkipReason('該堂已有核准評量'), '該堂已有核准評量');

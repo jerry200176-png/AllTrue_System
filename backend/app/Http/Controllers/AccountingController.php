@@ -730,8 +730,11 @@ class AccountingController extends Controller
 
         $invoiceIds = $invoices->pluck('id')->map(fn ($id) => (int) $id)->all();
         $paymentIds = $invoices->flatMap(fn ($invoice) => $invoice->payments)->pluck('id')->map(fn ($id) => (int) $id)->all();
-        $reportRows = $reports->map(function (PaymentReport $report) use ($invoiceIds, $paymentIds, &$anomalies) {
+        $reportRows = $reports->map(function (PaymentReport $report) use ($invoiceIds, $paymentIds, $classIds, &$anomalies) {
             $row = $this->ledgerReportRow($report);
+            // #5511 / in-app #576: the void endpoint cannot safely operate without this student's source course.
+            $sourceCourseAvailable = in_array((int) $report->StudentClassID, $classIds, true);
+            $missingCourseMessage = '這張收據的課程不在本學生帳務中，無法在這裡撤銷。請按「回報給總部」核對歸屬，原收據與收款紀錄仍保留。';
             // A report without InvoiceID whose Payment sits on this student's bill is on the bill (#4847 review; the same
             // COALESCE(pr.InvoiceID, p.InvoiceID) AlertController uses), not a receipt_without_invoice.
             $linkedByPayment = !$report->InvoiceID && $report->payment_id && in_array((int) $report->payment_id, $paymentIds, true);
@@ -739,36 +742,36 @@ class AccountingController extends Controller
                 $anomalies[] = [
                     'code' => 'receipt_without_invoice',
                     'severity' => 'warning',
-                    'message' => '已確認收據尚未對到本學生帳單。',
+                    'message' => $sourceCourseAvailable ? '已確認收據尚未對到本學生帳單。' : $missingCourseMessage,
                     'invoice_id' => $report->InvoiceID ? (int) $report->InvoiceID : null,
                     'student_class_id' => (int) $report->StudentClassID,
                     'report_id' => (int) $report->id,
                     'payment_id' => $report->payment_id ? (int) $report->payment_id : null,
-                    'action' => $this->ledgerAnomalyAction('receipt_without_invoice', (int) $report->id, $report->payment_id ? (int) $report->payment_id : null),
+                    'action' => $this->ledgerAnomalyAction('receipt_without_invoice', (int) $report->id, $report->payment_id ? (int) $report->payment_id : null, $sourceCourseAvailable),
                 ];
             }
             if ($report->status === 'confirmed' && empty($report->payment_id)) {
                 $anomalies[] = [
                     'code' => 'confirmed_receipt_without_payment',
                     'severity' => 'warning',
-                    'message' => '已確認收據缺少收款紀錄。',
+                    'message' => $sourceCourseAvailable ? '已確認收據缺少收款紀錄。' : $missingCourseMessage,
                     'invoice_id' => $report->InvoiceID ? (int) $report->InvoiceID : null,
                     'student_class_id' => (int) $report->StudentClassID,
                     'report_id' => (int) $report->id,
                     'payment_id' => null,
-                    'action' => $this->ledgerAnomalyAction('confirmed_receipt_without_payment', (int) $report->id, null),
+                    'action' => $this->ledgerAnomalyAction('confirmed_receipt_without_payment', (int) $report->id, null, $sourceCourseAvailable),
                 ];
             }
             if ($report->payment_id && !in_array((int) $report->payment_id, $paymentIds, true)) {
                 $anomalies[] = [
                     'code' => 'receipt_payment_outside_ledger',
                     'severity' => 'warning',
-                    'message' => '收據對應的收款不在本學生帳單紀錄內。',
+                    'message' => $sourceCourseAvailable ? '收據對應的收款不在本學生帳單紀錄內。' : $missingCourseMessage,
                     'invoice_id' => $report->InvoiceID ? (int) $report->InvoiceID : null,
                     'student_class_id' => (int) $report->StudentClassID,
                     'report_id' => (int) $report->id,
                     'payment_id' => (int) $report->payment_id,
-                    'action' => $this->ledgerAnomalyAction('receipt_payment_outside_ledger', (int) $report->id, (int) $report->payment_id),
+                    'action' => $this->ledgerAnomalyAction('receipt_payment_outside_ledger', (int) $report->id, (int) $report->payment_id, $sourceCourseAvailable),
                 ];
             }
             return $row;
@@ -1136,8 +1139,11 @@ class AccountingController extends Controller
         ];
     }
 
-    private function ledgerAnomalyAction(string $code, ?int $reportId, ?int $paymentId): array
+    private function ledgerAnomalyAction(string $code, ?int $reportId, ?int $paymentId, bool $sourceCourseAvailable = true): array
     {
+        if ($reportId && !$sourceCourseAvailable) {
+            return ['type' => 'manual_review', 'label' => '回報給總部核對收據', 'report_id' => $reportId];
+        }
         if ($reportId && in_array($code, ['receipt_without_invoice', 'receipt_without_payment', 'confirmed_receipt_without_payment'], true)) {
             return ['type' => 'void_report', 'label' => '撤銷收據', 'report_id' => $reportId];
         }

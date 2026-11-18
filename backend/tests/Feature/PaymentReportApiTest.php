@@ -2843,6 +2843,43 @@ class PaymentReportApiTest extends TestCase
         $this->assertNotContains('receipt_without_invoice', $codes);
     }
 
+    /** in-app #576 / #5511: an orphan remains traceable but must not offer a known-impossible void. */
+    public function test_ledger_source_course_availability_controls_the_receipt_action_without_writes(): void
+    {
+        $token = $this->createDirectorToken([1]);
+        foreach ([[true, true], [true, false], [false, false]] as [$missing, $hasPayment]) {
+            $student = $this->createStudent(1);
+            $anchor = $this->createCountModeClass($student->id);
+            $source = $this->createCountModeClass($student->id, ['Paid' => 1]);
+            $invoice = Invoice::create(['StudentID' => $student->id, 'StudentClassID' => $source->ID,
+                'IssueDate' => '2026-04-01', 'DueDate' => '2026-04-10', 'TotalAmount' => 8800,
+                'PaidAmount' => 8800, 'Status' => 'paid']);
+            $payment = $hasPayment ? Payment::create(['InvoiceID' => $invoice->id, 'Amount' => 8800,
+                'PaidAt' => '2026-04-05', 'Method' => 'cash']) : null;
+            $report = $this->createConfirmedReport($student, $source, ['reported_amount' => 8800,
+                'InvoiceID' => $missing ? $invoice->id : null, 'payment_id' => $payment?->id]);
+            if ($missing) DB::table('StudentClass')->where('ID', $source->ID)->delete();
+            $before = [$report->fresh()->getRawOriginal(), $invoice->fresh()->getRawOriginal(), $payment?->fresh()->getRawOriginal()];
+
+            $json = $this->withToken($token)->getJson("/api/v1/accounting/ledger?student_class_id={$anchor->ID}")->assertOk()->json();
+            $anomalies = collect($json['anomalies'])->where('report_id', $report->id);
+            $this->assertNotEmpty($anomalies->all());
+            $this->assertContains('receipt_without_invoice', $anomalies->pluck('code')->all());
+            foreach ($anomalies as $anomaly) {
+                $this->assertSame($missing ? 'manual_review' : 'void_report', $anomaly['action']['type']);
+            }
+            if ($missing) {
+                $this->assertStringContainsString('回報給總部', $anomalies->first()['message']);
+            }
+            $receipt = collect($json['receipts'])->firstWhere('report_id', $report->id);
+            $this->assertSame('confirmed', $receipt['status']);
+            $this->assertSame(8800, $receipt['amount']);
+            $this->assertSame($before, [$report->fresh()->getRawOriginal(), $invoice->fresh()->getRawOriginal(), $payment?->fresh()->getRawOriginal()]);
+            $this->withToken($this->createDirectorToken([2]))
+                ->getJson("/api/v1/accounting/ledger?student_class_id={$anchor->ID}")->assertForbidden();
+        }
+    }
+
     public function test_accounting_ledger_aligns_invoice_payments_and_receipts(): void
     {
         $token = $this->createDirectorToken([1]);

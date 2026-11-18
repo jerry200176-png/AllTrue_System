@@ -787,6 +787,7 @@ Intake consolidation regression (2026-10-17): the oldest trusted SourceRef issue
 - 帳務中心「待收與核帳」是提醒/催繳 queue，「收款與收據紀錄」是 receipt/payment 流水，課程管理帳單是單一課程 Invoice；三者若各自顯示不同口徑且不能互相 drill down，主任會無法對齊同一學生的帳。
 - **強制規則**：所有帳務入口若呈現應收、已收、收據或帳單狀態，必須能連到同一份以 `Invoice` 為中心的學生 AR ledger，並同時顯示 `PaymentReport` 收據、`Payment` 套用、void/reversal 與未結清金額。
 - **強制規則**：歷史錯帳不可用「畫面看起來一致」掩蓋；ledger 必須標示同帳單多筆正向收款、收據未套帳單、收據缺 Payment、Payment 缺收據、帳單狀態與付款流水不一致等異常。
+- **2026-11-19／in-app #576**：來源課程不在本學生授權 ledger 時，異常保留並導向既有「回報給總部」，不可先提供必定失敗的撤銷；合併多個異常卡時，server `manual_review` 優先於通用撤銷提示。使用已載入的學生課程集合，不新增跨校查詢；顯示修正不代表歷史收據已對帳。
 - **測試必補**：至少一個 regression case 驗證同一學生/課程可從 `student_class_id` 打開 ledger，且 Invoice、Payment、PaymentReport 的 receipt no 與異常標籤能對齊；跨分校 ledger 必須 403。
 
 ---

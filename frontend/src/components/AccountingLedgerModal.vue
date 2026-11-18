@@ -737,6 +737,7 @@ const ledgerExceptions = computed(() => {
     if (same) {
       same.codes.push(a.code);
       same.can_void = same.can_void || a.action?.type === 'void_report';
+      if (a.action?.type === 'manual_review') Object.assign(same, { ask_hq: true, message: a.message, anomaly: a });
       return;
     }
     const row = {
@@ -747,6 +748,7 @@ const ledgerExceptions = computed(() => {
       detail: formatLedgerAnomalyDetail(a),
       report_id: a.report_id || null,
       can_void: a.action?.type === 'void_report',
+      ask_hq: a.action?.type === 'manual_review',
       drift_line: formatLedgerDriftLine((payload.value?.invoices || []).find((i) => Number(i.id) === Number(a.invoice_id))),
       anomaly: a,
       severity: a.severity === 'critical' ? 0 : 1,
@@ -755,6 +757,8 @@ const ledgerExceptions = computed(() => {
     if (a.report_id) byReceipt.set(a.report_id, row);
   });
   rows.forEach((row) => {
+    // A server refusal wins over generic receipt advice, including duplicate anomaly cards (#5511).
+    if (row.ask_hq) { row.can_void = false; row.detail = formatLedgerAnomalyDetail(row.anomaly); return; }
     const help = ledgerReceiptHelp(row.codes);
     if (help) Object.assign(row, help, { detail: '', action_label: '撤銷收據' });
   });
