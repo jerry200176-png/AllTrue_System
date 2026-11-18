@@ -52,8 +52,13 @@ final class BillCorrection
     /** The extension columns of the #4132 history table; without them nothing here may run (fail closed). */
     public static function schemaReady(): bool
     {
-        return Schema::hasColumns('invoice_corrections', ['kind', 'campus_id', 'old_charge', 'new_charge', 'original_invoice_total', 'request_hash', 'state_hash'])
-            && Schema::hasTable('security_audit_events');
+        // Once per request (the container is per request; a static would outlive tests that rebuild the schema).
+        if (!app()->bound('bill_correction.schema_ready')) {
+            app()->instance('bill_correction.schema_ready', Schema::hasColumns('invoice_corrections', ['kind', 'campus_id', 'old_charge', 'new_charge', 'original_invoice_total', 'request_hash', 'state_hash'])
+                && Schema::hasTable('security_audit_events'));
+        }
+
+        return app('bill_correction.schema_ready');
     }
 
     /** The bill at the end of the correction chain that starts at $invoiceId (itself when never corrected). */
@@ -202,6 +207,10 @@ final class BillCorrection
         // A paid state the Payment rows do not back (legacy / stored-only) would move 0 and then clear the course paid flag.
         if ((int) $bill->PaidAmount !== $moved || ((int) $course->Paid === 1
                 && !$payments->contains(fn ($p) => (int) $p->Amount > 0 && (string) $p->Method !== 'void' && !Payment::isCreditMovement($p)))) {
+            if ($stateHash !== '') { // a preview never passes this, so the screen's state is stale
+                return ['out' => $this->refuse('state_changed', '畫面上的帳單資料已經變動，請重新預覽確認後再送出。', 409)];
+            }
+
             return ['out' => $this->refuse('paid_state_unverified', '這張帳單的已收金額跟收款紀錄對不上，請回報總部處理，不要自行更正。')];
         }
         $extra = ['added_lessons' => [], 'period_end' => null, 'range_shortfall' => 0];
@@ -282,34 +291,46 @@ final class BillCorrection
         $window = MonthlyBillingService::boundByContract($course, substr((string) $item->PeriodStart, 0, 10), date('Y-m-t', strtotime((string) $item->PeriodEnd)));
         $held = DB::table('ClassSession as cs')
             ->leftJoin('StudentSingIn as si', fn ($j) => $j->on('si.ClassSessionID', '=', 'cs.id')->whereRaw(ClassSessionIndexReadService::LATEST_SIGN_IN_SQL))
-            ->where('cs.StudentClassID', $course->ID)->whereBetween('cs.SessionDate', $window)->orderBy('cs.id')->select(['cs.SessionDate'])
+            ->where('cs.StudentClassID', $course->ID)->whereBetween('cs.SessionDate', $window)->orderBy('cs.id')->select(['cs.SessionDate', 'cs.created_at'])
             ->selectRaw(...ClassSessionIndexReadService::effectiveStatusSelect())->get()
-            ->filter(fn ($s) => in_array(strtolower(rtrim((string) $s->effective_status)), MonthlyBillingService::BILLABLE_STATUSES, true))
-            ->map(fn ($s) => substr((string) $s->SessionDate, 0, 10));
+            ->filter(fn ($s) => in_array(strtolower(rtrim((string) $s->effective_status)), MonthlyBillingService::BILLABLE_STATUSES, true));
+        $createdAt = $held->mapToGroups(fn ($s) => [substr((string) $s->SessionDate, 0, 10) => (string) $s->created_at]);
+        $held = $held->map(fn ($s) => substr((string) $s->SessionDate, 0, 10));
         $covered = BillingPeriod::datesCoveredByBills($course, $held->unique()->values()->all());
         $end = substr((string) $item->PeriodEnd, 0, 10);
         // Only the rest of the item's own calendar month (and the contract): later lessons belong to the next month's bill.
         $cap = min(date('Y-m-t', strtotime($end)), substr((string) $course->EndDate, 0, 10));
         $open = $held->reject(fn ($d) => in_array($d, $covered, true) || $d <= $end || $d > $cap)->sort()->values();
-        // A date inside the range counts as covered, but the frozen amount only carries the lessons held when it was issued:
-        // what the range's lessons price to beyond the stored total is the shortfall (late-added lessons inside the range).
+        // A date inside the range counts as covered, but the frozen amount only carries the lessons that existed when the bill was issued.
+        // Those must price exactly to the bill total (else a discount, a free lesson or a fixed price: HQ, not a number from here);
+        // only lessons created after the issue time are added.
         $start = substr((string) $item->PeriodStart, 0, 10);
         $pricing = app(StudentClassPricingService::class);
-        $inside = $held->filter(fn ($d) => $d >= $start && $d <= $end);
+        $issued = (string) ($bill->created_at ?? '');
+        $atIssue = 0;
         $shortfall = 0;
         $amount = 0;
-        foreach ([[$inside, 'inside'], [$open, 'open']] as [$dates, $kind]) {
-            foreach ($dates as $date) {
-                $p = $pricing->forDate($course, $date);
-                // ponytail: per-session price only; an hourly price needs the lesson length (MonthlyBillingService::sessionAmount is private).
-                if ($p['rate'] <= 0 || $p['rate_unit'] !== 'session') {
-                    return ['refusal' => $this->refuse('missing_rate', '漏收的課沒有每堂單價（或是按小時計價），請找總部核對。')];
-                }
-                $kind === 'inside' ? $shortfall += $p['rate'] : $amount += $p['rate'];
+        foreach ($held as $date) {
+            if ($date < $start || $date > $end) {
+                continue;
             }
-            if ($kind === 'inside') {
-                $shortfall = max(0, $shortfall - (int) $bill->TotalAmount);
+            $p = $pricing->forDate($course, $date);
+            if ($p['rate'] <= 0 || $p['rate_unit'] !== 'session') {
+                return ['refusal' => $this->refuse('missing_rate', '漏收的課沒有每堂單價（或是按小時計價），請找總部核對。')];
             }
+            $late = $issued !== '' && (string) $createdAt[$date]->max() > $issued; // ponytail: a date with several lessons takes the newest creation time
+            $late ? $shortfall += $p['rate'] : $atIssue += $p['rate'];
+        }
+        if ($atIssue !== (int) $bill->TotalAmount) {
+            return ['refusal' => $this->refuse('range_price_mismatch', '這張帳單開立時的課程金額跟課堂單價對不上（可能有折扣、免費或固定價），請回報總部處理。')];
+        }
+        foreach ($open as $date) {
+            $p = $pricing->forDate($course, $date);
+            // ponytail: per-session price only; an hourly price needs the lesson length (MonthlyBillingService::sessionAmount is private).
+            if ($p['rate'] <= 0 || $p['rate_unit'] !== 'session') {
+                return ['refusal' => $this->refuse('missing_rate', '漏收的課沒有每堂單價（或是按小時計價），請找總部核對。')];
+            }
+            $amount += $p['rate'];
         }
         if ($open->isEmpty() && $shortfall === 0) {
             return ['refusal' => $this->refuse('no_gap', '沒有找到這張帳單漏收的課。')];
@@ -423,13 +444,13 @@ final class BillCorrection
     /** The stored answer (identical for the first reply and every replay). */
     private function describe(object $row): array
     {
-        $new = Invoice::query()->whereKey((int) $row->replacement_invoice_id)->firstOrFail();
-        $new->loadMissing(['payments', 'items']);
-        $money = $this->amounts->resolve($new, StudentClass::query()->where('ID', (int) $new->StudentClassID)->first());
+        // Only the stored row: a later payment or void on the replacement must not change what a replay says.
+        $outstanding = max(0, (int) $row->new_charge - (int) $row->amount);
 
         return ['correction_id' => (int) $row->id, 'original_invoice_id' => (int) $row->original_invoice_id, 'replacement_invoice_id' => (int) $row->replacement_invoice_id,
             'old_total' => (int) $row->original_invoice_total, 'new_total' => (int) $row->new_charge, 'moved_amount' => (int) $row->amount,
-            'status' => (string) $new->Status, 'outstanding_after' => (int) $money['outstanding_amount'], 'overpaid_after' => (int) $money['overpaid_amount']];
+            'status' => Invoice::statusFromProjection(['outstanding_amount' => $outstanding, 'net_applied' => (int) $row->amount]),
+            'outstanding_after' => $outstanding, 'overpaid_after' => max(0, (int) $row->amount - (int) $row->new_charge)];
     }
 
     /** What the caller asked for (total as typed, trimmed reason, operator): a replay must carry the same. */

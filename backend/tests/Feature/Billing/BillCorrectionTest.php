@@ -316,13 +316,60 @@ class BillCorrectionTest extends TestCase
     public function test_lessons_outside_the_contract_dates_are_not_priced_in(): void
     {
         [$m] = $this->monthlyBill(2000);
-        $m['course']->update(['StartDate' => '2026-10-10']);
-        foreach (['2026-10-06', '2026-10-07'] as $d) { // inside the bill's range, before the contract began
+        $m['course']->update(['StartDate' => '2026-10-05']);
+        foreach (['2026-10-02', '2026-10-03'] as $d) { // inside the bill's range, before the contract began
             DB::table('ClassSession')->insert(['StudentClassID' => $m['course']->ID, 'SessionDate' => $d, 'StartTime' => '18:00:00', 'EndTime' => '20:00:00',
                 'Status' => 'completed', 'created_at' => now(), 'updated_at' => now()]);
         }
 
         $this->correct($this->token('A', $this->campus), $m['invoice'])->assertOk()->assertJsonPath('range_shortfall', 0)->assertJsonPath('new_total', 8000);
+    }
+
+    public function test_a_discounted_monthly_bill_is_refused_not_inflated(): void
+    {
+        [$m] = $this->monthlyBill(2000);
+        $m['invoice']->update(['TotalAmount' => 5000]); // 3 lessons at 2000 were billed at 5000
+        DB::table('InvoiceItem')->where('InvoiceID', $m['invoice']->id)->update(['Amount' => 5000]);
+        $before = $this->snapshot();
+
+        $this->correct($this->token('A', $this->campus), $m['invoice'])->assertStatus(422)->assertJsonPath('code', 'range_price_mismatch');
+        $this->assertSame($before, $this->snapshot());
+    }
+
+    public function test_another_live_bill_over_part_of_the_gap_is_a_409(): void
+    {
+        [$m] = $this->monthlyBill(2000);
+        $other = Invoice::create(['StudentID' => $m['course']->StudentID, 'StudentClassID' => $m['course']->ID, 'IssueDate' => '2026-10-20', 'TotalAmount' => 2000, 'PaidAmount' => 0, 'Status' => 'unpaid', 'billing_period' => '2026-10']);
+        InvoiceItem::create(['InvoiceID' => $other->id, 'StudentClassID' => $m['course']->ID, 'Description' => 'x', 'Amount' => 2000, 'PeriodStart' => '2026-10-28', 'PeriodEnd' => '2026-10-30']); // beside the gap, not over 10-31
+
+        $this->correct($this->token('A', $this->campus), $m['invoice'])->assertStatus(409)->assertJsonPath('code', 'gap_covered_elsewhere');
+    }
+
+    public function test_a_stale_preview_on_a_bill_whose_paid_state_changed_is_a_409_and_a_replay_ignores_later_changes(): void
+    {
+        $b = $this->bill($this->student($this->campus), 10000, 'unpaid', 4000);
+        $tok = $this->token('A', $this->campus);
+        $hash = $this->correct($tok, $b['invoice'], ['new_total' => 8000])->json('state_hash');
+        $b['invoice']->update(['PaidAmount' => 9999]); // the stored paid state no longer matches the payment rows
+        $this->correct($tok, $b['invoice'], ['new_total' => 8000, 'state_hash' => $hash], 'apply')->assertStatus(409)->assertJsonPath('code', 'state_changed');
+        $b['invoice']->update(['PaidAmount' => 4000]);
+        $first = $this->correct($tok, $b['invoice'], ['new_total' => 8000, 'state_hash' => $hash], 'apply')->assertStatus(201)->json();
+        $this->payment(Invoice::findOrFail($first['replacement_invoice_id']), 4000, 'cash'); // a later payment on the replacement
+
+        $replay = $this->correct($tok, $b['invoice'], ['new_total' => 8000, 'state_hash' => $hash], 'apply')->assertOk()->json();
+        unset($replay['replayed'], $first['replayed']);
+        $this->assertSame($first, $replay);
+    }
+
+    public function test_with_the_campus_switched_off_the_guard_still_refuses_the_replacement_exception_void(): void
+    {
+        $b = $this->bill($this->student($this->campus), 10000, 'paid', 10000);
+        $this->confirmedReport($b);
+        $tok = $this->token('S', $this->campus);
+        $new = (int) $this->applyCorrection($tok, $b['invoice'], ['new_total' => 8000])->json('replacement_invoice_id');
+        config(['billing.bill_correction_campus_ids' => []]); // list screens stop looking up the chain; the void guard does not
+
+        $this->postJson("/api/v1/invoices/{$new}/exception-void", ['reason' => '開錯了'], $this->h($tok))->assertStatus(422)->assertJsonPath('code', 'confirmed_receipt_on_invoice');
     }
 
     public function test_the_gap_stops_at_the_end_of_the_items_calendar_month(): void
@@ -404,10 +451,11 @@ class BillCorrectionTest extends TestCase
             'StartDate' => '2026-10-01', 'EndDate' => '2026-10-31', 'Charge' => 6000], ['billing_period' => '2026-10', 'IssueDate' => '2026-10-01']);
         InvoiceItem::create(['InvoiceID' => $m['invoice']->id, 'StudentClassID' => $m['course']->ID, 'Description' => '十月學費', 'Amount' => 6000,
             'PeriodStart' => '2026-10-01', 'PeriodEnd' => '2026-10-27']);
+        DB::table('Invoice')->where('id', $m['invoice']->id)->update(['created_at' => '2026-10-03 09:00:00']); // issued 10-03; a lesson created later is "added after issue"
         $late = 0;
         foreach (['2026-10-05', '2026-10-12', '2026-10-19', '2026-10-31'] as $d) {
             $id = DB::table('ClassSession')->insertGetId(['StudentClassID' => $m['course']->ID, 'SessionDate' => $d, 'StartTime' => '18:00:00', 'EndTime' => '20:00:00',
-                'Status' => 'completed', 'created_at' => now(), 'updated_at' => now()]);
+                'Status' => 'completed', 'created_at' => $d === '2026-10-31' ? now() : '2026-10-02 09:00:00', 'updated_at' => now()]); // all but 10-31 existed when the bill was issued
             $late = $d === '2026-10-31' ? $id : $late;
         }
 
