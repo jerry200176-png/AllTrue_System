@@ -54,7 +54,7 @@
         :bills="guideBills"
         :branch-id="branchId"
         :can-docs="canWaive"
-        :reload="() => loadAlerts({ quiet: true })"
+        :reload="reloadForGuide"
         @close="billingGuideOpen = false"
         @ledger="openBillLedger"
         @reject="(b) => openQuick(b, true)"
@@ -1066,6 +1066,8 @@ function openBillDocuments(b) {
   documentLookupOpener = opener instanceof HTMLElement ? opener : null;
 }
 const billingGuideOpen = ref(false);
+async function reloadForGuide() { await loadAlerts({ quiet: true }); return !error.value; }
+watch(() => props.branchId, () => { billingGuideOpen.value = false; }); // another campus = another queue
 const guideBills = computed(() => billRows(rows.value));
 const guideTodoCount = computed(() => guideQueue(guideBills.value).length);
 // Billing v3 step 2: the quick view of THAT contract's bill (row click, 確認入帳 / 核對 primaries, row ⋯ 退回).

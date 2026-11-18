@@ -41,7 +41,7 @@
         <p v-if="report.note" class="tw:m-0 tw:text-tpl-secondary">備註：{{ report.note }}</p>
       </section>
 
-      <details v-if="bill.class_id != null" class="tw:text-tpl-secondary" data-testid="bg-lessons" @toggle="onLessons">
+      <details v-if="bill.class_id != null" :key="currentKey" class="tw:text-tpl-secondary" data-testid="bg-lessons" @toggle="onLessons">
         <summary class="tw:flex tw:min-h-11 tw:cursor-pointer tw:items-center">上課明細</summary>
         <p v-if="lessonsState === 'loading'" class="tw:m-0">載入中…</p>
         <p v-else-if="lessonsState === 'error'" class="tw:m-0">上課明細載入失敗。</p>
@@ -68,7 +68,7 @@
         </template>
 
         <template v-else-if="gone">
-          <p class="tw:m-0 tw:font-bold" data-testid="bg-gone">這筆已經處理好了，不用再做什麼。</p>
+          <p class="tw:m-0 tw:font-bold" data-testid="bg-gone">這筆現在不在「要處理」裡了（可能已經處理，或狀態變了）。要確認請回帳單清單看。</p>
         </template>
 
         <template v-else-if="bill.class_id == null">
@@ -155,7 +155,7 @@ const props = defineProps({
   bills: { type: Array, default: () => [] }, // billRows() of the page's /alerts/tuition rows
   branchId: { type: [Number, String], default: null },
   canDocs: { type: Boolean, default: false },
-  reload: { type: Function, default: async () => {} }, // the page rereads /alerts/tuition
+  reload: { type: Function, default: async () => true }, // the page rereads /alerts/tuition; false = it failed
 });
 defineEmits(['close', 'ledger', 'reject']);
 
@@ -166,12 +166,16 @@ const queue = computed(() => guideQueue(props.bills));
 const currentKey = ref(nextBill(queue.value)?.key ?? null);
 const snapshot = ref(null);
 const live = computed(() => props.bills.find((b) => b.key === currentKey.value) || null);
-watch(live, (b) => { if (b) snapshot.value = b; }, { immediate: true });
-const bill = computed(() => (currentKey.value == null ? null : live.value || snapshot.value));
+// From 確認入帳 on, the screen stays on the bill that was paid: after a full payment the server's row moves on to the
+// contract's next unpaid bill, and that bill's amounts must not appear beside this payment's receipt.
+const frozen = ref(false);
+const paidInvoiceId = ref(null);
+watch(live, (b) => { if (b && !frozen.value) snapshot.value = b; }, { immediate: true });
+const bill = computed(() => (currentKey.value == null ? null : (!frozen.value && live.value) || snapshot.value));
 const total = computed(() => done.size + queue.value.filter((b) => !done.has(b.key)).length);
 const position = computed(() => Math.min(done.size + 1, total.value));
 // Someone else (or another tab) already handled it: the server no longer lists it as something to do.
-const gone = computed(() => !live.value || !TODO_KINDS.includes(live.value.kind));
+const gone = computed(() => !frozen.value && (!live.value || !TODO_KINDS.includes(live.value.kind)));
 
 // ── This bill's ledger: its invoice amounts and the pending parent/office report ──
 const ledger = ref(null);
@@ -200,10 +204,14 @@ const memberIds = computed(() => {
 });
 const report = computed(() => (ledger.value?.receipts || []).find((r) => r.status === 'pending' && memberIds.value.includes(Number(r.student_class_id))) || null);
 const invoice = computed(() => {
-  const id = Number(bill.value?.src?.payable_invoice_id || 0);
+  const id = Number((frozen.value ? paidInvoiceId.value : bill.value?.src?.payable_invoice_id) || 0);
   return (id && (ledger.value?.invoices || []).find((i) => Number(i.id) === id && i.status !== 'void')) || null;
 });
-const facts = computed(() => guideFacts(bill.value, invoice.value));
+const facts = computed(() => {
+  const f = guideFacts(bill.value, invoice.value);
+  // After a payment only the reread ledger knows that bill's amounts; without it, say so instead of showing old ones.
+  return frozen.value && !invoice.value ? { ...f, receivable: null, received: null, outstanding: null } : f;
+});
 const entryRow = computed(() => (bill.value ? { ...bill.value.src, id: bill.value.class_id } : null));
 const stageLabel = computed(() => (confirmedId.value ? '已確認入帳' : gone.value ? '已處理' : bill.value.label));
 
@@ -262,6 +270,7 @@ async function loadSlip() {
 async function showBill() {
   ledger.value = null; lessons.value = []; lessonsState.value = 'idle';
   notice.value = ''; actionError.value = ''; recordedId.value = null; confirmedId.value = null; receipt.value = null;
+  frozen.value = false; paidInvoiceId.value = null;
   previewOpen.value = false; copied.value = '';
   if (!bill.value) return;
   await loadLedger();
@@ -272,7 +281,8 @@ watch(currentKey, showBill, { immediate: true });
 watch(() => live.value?.kind, (kind, was) => { if (kind && was && kind !== was && !busy.value) loadLedger().then(loadSlip); });
 
 async function refresh() {
-  await props.reload();
+  // The list (and its error line) is hidden behind the guide, so a failed reread is said here.
+  if (await props.reload() === false) actionError.value = '重新載入失敗，畫面可能不是最新的。請按右上角的重新整理。';
   await loadLedger();
   if (!confirmedId.value) await loadSlip();
 }
@@ -290,7 +300,8 @@ function advance(how) {
 async function onRecorded(result) {
   entryOpen.value = false;
   recordedId.value = Number(result?.report_id) || null;
-  notice.value = '已登記，還沒確認入帳。確認入帳後才算已收。';
+  // 免費／贈送 needs no confirmation and has no report: repeat what the server said.
+  notice.value = recordedId.value ? '已登記，還沒確認入帳。確認入帳後才算已收。' : (result?.message || '已登記。');
   await refresh();
 }
 async function onConflict(data) {
@@ -307,15 +318,23 @@ async function confirmNow() {
   const r = report.value;
   if (!r || busy.value) return;
   if (!await askConfirm({ title: '確認入帳？', message: `確認收到 ${money(r.amount)}？確認後算「已收」。金額不對請取消，改按「退回」。`, confirmLabel: '確認入帳' })) return;
+  if (busy.value) return;
   busy.value = true; actionError.value = ''; notice.value = '';
   const id = Number(r.report_id);
+  frozen.value = true; // keep the bill being paid on screen through the reread
   const res = await confirmReport(id);
   await refresh();
   // A resend of a report that was already confirmed is refused by the server; the ledger then shows it confirmed, so the
   // director gets that payment's receipt instead of an error (and no second payment).
   const confirmed = res.ok || (ledger.value?.receipts || []).some((x) => Number(x.report_id) === id && x.status === 'confirmed');
   busy.value = false;
-  if (!confirmed) { actionError.value = res.message; return; }
+  if (!confirmed) {
+    frozen.value = false;
+    if (live.value) snapshot.value = live.value;
+    actionError.value = res.message;
+    return;
+  }
+  paidInvoiceId.value = res.data?.invoice_id ?? (ledger.value?.receipts || []).find((x) => Number(x.report_id) === id)?.invoice_id ?? bill.value.src.payable_invoice_id ?? null;
   confirmedId.value = id;
   await openReceipt(id);
 }

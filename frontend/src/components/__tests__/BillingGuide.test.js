@@ -6,6 +6,7 @@ vi.mock('../../composables/useConfirmDialog', () => ({ askConfirm: vi.fn(() => P
 vi.mock('../../lib/receiptImage.js', () => ({ receiptImageBlob: vi.fn(() => Promise.resolve(new Blob(['x'], { type: 'image/png' }))) }));
 
 import BillingGuide from '../tuition/BillingGuide.vue';
+import { askConfirm } from '../../composables/useConfirmDialog';
 import { billRows } from '../../lib/billRows.js';
 
 const T = '2026-11-18';
@@ -194,7 +195,46 @@ describe('BillingGuide', () => {
     expect(hits('/receipt')).toEqual([]);
   });
 
-  it('says a bill someone else already handled is done', async () => {
+  it('after a full payment the screen stays on the bill that was paid, not the contract\'s next unpaid bill', async () => {
+    const oct = { billing_period_start: '2026-10-01', billing_period_end: '2026-10-31' };
+    ledger.invoices = [invoice({ ...{ period_start: '2026-10-01', period_end: '2026-10-31' } }), invoice({ id: 10 })];
+    ledger.receipts = [{ report_id: 55, student_class_id: 7, status: 'pending', amount: 6000, payment_method: 'cash' }];
+    const w = await mountGuide([row({ ...oct, payment_status: 'pending_report', latest_payment_report_id: 55 })]);
+    // The server's row moves on to November (invoice 10) once October is paid in full.
+    await w.setProps({ reload: vi.fn(async () => {
+      ledger.receipts = [{ ...ledger.receipts[0], status: 'confirmed' }];
+      ledger.invoices = [invoice({ status: 'paid', calculated_applied_amount: 6000, outstanding_amount: 0, period_start: '2026-10-01', period_end: '2026-10-31' }), invoice({ id: 10 })];
+      await w.setProps({ bills: billRows([row({ payable_invoice_id: 10 })], T) });
+    }) });
+    await w.get('[data-testid="bg-confirm"]').trigger('click');
+    await flushPromises();
+    expect(w.get('[data-testid="bg-facts"]').text()).toContain('本次帳單計費期間2026-10-01 ~ 2026-10-31');
+    expect(w.get('[data-testid="bg-money"]').text()).toMatch(/應收NT\$ 6,000已收NT\$ 6,000未繳NT\$ 0/);
+    expect(w.find('[data-testid="bg-remaining"]').exists()).toBe(false);
+    expect(hits('slip')).toEqual([]);
+  });
+
+  it('cancelling the 確認入帳 question writes nothing', async () => {
+    ledger.receipts = [{ report_id: 55, student_class_id: 7, status: 'pending', amount: 6000, payment_method: 'cash' }];
+    const w = await mountGuide([row({ payment_status: 'pending_report', latest_payment_report_id: 55 })]);
+    askConfirm.mockResolvedValueOnce(false);
+    await w.get('[data-testid="bg-confirm"]').trigger('click');
+    await flushPromises();
+    expect(writes()).toEqual([]);
+    expect(w.find('[data-testid="bg-confirm"]').exists()).toBe(true);
+  });
+
+  it('says so when the reread after 登記 failed, and a 免費／贈送 登記 repeats the server message', async () => {
+    const w = await mountGuide([row()]);
+    await w.setProps({ reload: vi.fn(async () => false) });
+    await w.get('[data-testid="bg-record"]').trigger('click');
+    w.getComponent(EntryStub).vm.$emit('confirmed', { report_id: null, message: '已記為免費／贈送' });
+    await flushPromises();
+    expect(w.get('[data-testid="bg-notice"]').text()).toBe('已記為免費／贈送');
+    expect(w.get('[data-testid="bg-error"]').text()).toContain('重新載入失敗');
+  });
+
+  it('says a bill that left the 要處理 list is no longer there, without claiming it was paid', async () => {
     const w = await mountGuide([row()]);
     await w.setProps({ bills: billRows([row({ payment_status: 'paid', payable_outstanding: 0 })], T) });
     await nextTick();
