@@ -118,9 +118,10 @@
             <section>
               <h3 class="tw:text-tpl-body tw:font-semibold">每週 16 段（一段 2 小時）</h3>
               <p :class="smallText">看課表上的時間，同一時段重疊的課只算一次。每一週都滿，才有這筆獎金。</p>
-              <div v-for="week in weeklyWeeks(teacher)" :key="week.week_start" :class="mathRow">
-                <span>{{ week.week_start.slice(5).replace('-', '/') }}–{{ week.week_end.slice(5).replace('-', '/') }}<small :class="smallText">{{ weekExplanation(week).detail }}</small></span>
-                <span :class="[mathValue, 'tw:whitespace-nowrap']">{{ weekExplanation(week).verdict }}</span>
+              <div v-for="week in weeklyWeeks(teacher)" :key="week.week_start" :class="[mathRow, 'tw:flex-wrap tw:items-start tw:gap-y-1']">
+                <span class="tw:min-w-0 tw:flex-1 tw:basis-28">{{ week.week_start.slice(5).replace('-', '/') }}–{{ week.week_end.slice(5).replace('-', '/') }}</span>
+                <span :class="[mathValue, 'tw:min-w-0 tw:max-w-full tw:text-pretty']">{{ weekExplanation(week).verdict }}</span>
+                <small :class="[smallText, 'tw:basis-full']">{{ weekExplanation(week).detail }}</small>
               </div>
               <p v-if="!weeklyWeeks(teacher).length" :class="smallText">這個月沒有可以判定的週。</p>
             </section>

@@ -669,6 +669,44 @@ const PAGES = [
       }
     },
   })),
+  {
+    key: 'tuition-monthly-summary',
+    url: '/pilot-mount.html?page=tuition',
+    names: ['王小明'],
+    rows: ['[data-testid^="roster-course-"]'],
+    mock: async (page) => {
+      await PAGES.find((p) => p.key === 'tuition-collect (bill list, mixed selectable rows)').mock(page);
+      await page.route('**/api/v1/accounting/monthly-roster**', (r) => json(r, {
+        data: [{ student_id: 701, student_name: '王小明', school: '範例國中', outstanding: 1500, courses: [{
+          course_id: 701, subject: '數學', teacher_name: '張老師', class_type: 'one_on_one', schedule_mode: 'count', rate: 1500,
+          lessons: [{ date: '2026-11-03', start: '10:00', kind: 'held', status: 'attended' }], held: 1,
+          money: { status: 'partial', outstanding: 1500 }, paid_this_month: [], pending_reports: 0,
+        }] }],
+        // Synthetic wide figures stress display, not a financial reconciliation fixture.
+        summary: { students: 27, tuition_total: 4567890, tuition_unpriced: 0, paid_this_month: 1234567, outstanding: 9876543, pending_reports: 17 },
+      }));
+    },
+    setup: async (page) => {
+      await page.addStyleTag({ content: '#app { max-width: calc(100vw - 20px); margin-inline: auto; } @media (min-width: 1024px) { #app { max-width: calc(100vw - 352px); } }' });
+      await page.getByRole('tab', { name: '月對帳表', exact: true }).click();
+      await expect(page.getByTestId('monthly-roster').getByRole('button', { name: '王小明', exact: true })).toBeVisible();
+      if (process.env.TEACHER_ELIGIBILITY_SHOT_DIR) await page.getByTestId('monthly-roster').locator('[data-slot="stat-strip"]').screenshot({
+        path: `${process.env.TEACHER_ELIGIBILITY_SHOT_DIR}/monthly-${page.viewportSize().width}-${await page.locator('html').getAttribute('data-text-size')}.png`,
+      });
+    },
+    extra: {
+      run: () => [...document.querySelectorAll('[data-testid="monthly-roster"] [data-slot="stat-item"]')].map((item) => {
+        const value = item.querySelector('dd'); const box = item.getBoundingClientRect();
+        const range = document.createRange(); range.selectNodeContents(value);
+        return { label: item.querySelector('dt').textContent.trim(), text: value.textContent.replace(/\s+/g, ' ').trim(),
+          clipped: [...range.getClientRects()].some((r) => r.left < box.left - 1 || r.right > box.right + 1) };
+      }),
+      assert: (m) => {
+        expect(m.map((v) => v.text)).toEqual(['27 人', 'NT$4,567,890', 'NT$1,234,567', 'NT$9,876,543', '17 筆']);
+        expect(m.filter((v) => v.clipped), 'every currency digit fits its own summary cell').toEqual([]);
+      },
+    },
+  },
   COURSE_MGMT,
   COURSE_MGMT_HELP_OPEN,
   COURSE_MGMT_HISTORY,
@@ -683,10 +721,43 @@ const PAGES = [
     names: ['王老師', '李大華老師', '陳小明'],
     rows: ['.desktop-table tbody tr td:first-child', '.teacher-card'],
     mock: async (page) => {
-      const t = (id, name) => ({ teacher_id: id, teacher_name: name, overall_status: 'qualifies', review_required: false, settlement: { regular_subject_count: 4, tutoring_trial_subject_count: 2, payroll_subject_count: 6, one_to_three_count: 3, subject_count_bonus: 1200, one_to_three_bonus: 800, multiplier_pct: 105, weighted_bonus_amount: 2100, total_payout: 36000, payout_is_draft: false, adjustments: [{ label: '行政加給', amount: 500 }], multiplier_parts: [{ key: 'base', label: '基本', pct: 100 }] }, components: { weekly_16_segments: { status: 'qualifies', metrics: { regular_segments: 18, trial_segments: 2, total_segments: 20, meets_16_segments: true, course_sessions: [] } }, subject_count_bonus: { status: 'qualifies', amount: 1200 } } });
+      const t = (id, name) => ({ teacher_id: id, teacher_name: name, overall_status: 'qualifies', review_required: false, settlement: { regular_subject_count: 4, tutoring_trial_subject_count: 2, payroll_subject_count: 6, one_to_three_count: 3, subject_count_bonus: 1200, one_to_three_bonus: 800, multiplier_pct: 105, weighted_bonus_amount: 2100, total_payout: 36000, payout_is_draft: false, adjustments: [{ label: '行政加給', amount: 500 }], multiplier_parts: [{ key: 'base', label: '基本', pct: 100 }] }, components: { weekly_16_segments: { status: 'qualifies', metrics: { regular_segments: 18, trial_segments: 2, total_segments: 20, meets_16_segments: true, course_sessions: [], weeks: [
+        { metrics: { week_start: '2026-11-02', week_end: '2026-11-08', total_segments: 16.25, meets_16_segments: true, finished: true, daily_hours: { '2026-11-02': 5, '2026-11-03': 5.5 }, uncounted: { cancelled: 1 } } },
+        { metrics: { week_start: '2026-11-09', week_end: '2026-11-15', total_segments: 15.25, finished: true } },
+        { metrics: { week_start: '2026-11-16', week_end: '2026-11-22', total_segments: 18.25, finished: false, uncounted: { moved: 2 } } },
+      ] } }, subject_count_bonus: { status: 'qualifies', amount: 1200 } } });
       await page.route('**/api/v1/finance/teacher-eligibility**', (r) => (r.request().url().includes('/inputs')
         ? json(r, { events: [], achievements: [], deductions: [], admin_allowances: [], cash_adjustments: [] })
         : json(r, { teachers: [t(701, '王老師'), t(702, '李大華老師'), t(703, '陳小明')], period: { start: '2026-09-01', end: '2026-09-30' }, policy_version: '115.07', branch_subject_total: 12, lock: { status: 'draft' } })));
+    },
+    setup: async (page) => {
+      // In-app #545: reproduce the space left by the real app shell, then open the details.
+      await page.addStyleTag({ content: '#app { max-width: calc(100vw - 20px); margin-inline: auto; } @media (min-width: 1024px) { #app { max-width: calc(100vw - 352px); } }' });
+      await page.locator('.teacher-card').first().locator('summary').click();
+      if (process.env.TEACHER_ELIGIBILITY_SHOT_DIR) await page.locator('.teacher-card').first().screenshot({
+        path: `${process.env.TEACHER_ELIGIBILITY_SHOT_DIR}/weekly-${page.viewportSize().width}-${await page.locator('html').getAttribute('data-text-size')}.png`,
+      });
+    },
+    extra: {
+      run: () => {
+        const card = document.querySelector('.teacher-card');
+        const box = card.getBoundingClientRect();
+        const weekly = [...card.querySelectorAll('section')].find((el) => el.querySelector('h3')?.textContent.includes('每週 16 段'));
+        const expected = ['16.25 段・達標', '15.25 段・未達（差 0.75 段）', '18.25 段・還沒結束，先不判定'];
+        const labels = [...weekly.querySelectorAll('span')].filter((el) => expected.includes(el.textContent));
+        const clipped = [...labels, ...weekly.querySelectorAll('small')].filter((el) => {
+          const range = document.createRange(); range.selectNodeContents(el);
+          return [...range.getClientRects()].some((r) => r.left < box.left - 1 || r.right > box.right + 1);
+        }).map((el) => el.textContent);
+        return { labels: labels.map((el) => el.textContent), expected, clipped, detail: weekly.textContent, total: card.querySelector('.total-cell').textContent };
+      },
+      assert: (m) => {
+        expect(m.labels, 'all weekly verdicts remain complete').toEqual(m.expected);
+        expect(m.clipped, 'weekly words remain inside the visible teacher card').toEqual([]);
+        expect(m.detail).toContain('每天排課時數：一 5、二 5.5、三 0、四 0、五 0、六 0、日 0。另有 1 堂取消，不算在內');
+        expect(m.detail).toContain('另有 2 堂改期（算在改到的那一天），不算在內');
+        expect(m.total).toContain('$36,000');
+      },
     },
   },
   {
@@ -738,7 +809,7 @@ function measure({ names, rows, touch = [] }) {
 
 for (const entry of PAGES) {
   for (const size of TEXT_SIZES) {
-    for (const vp of entry.key.startsWith('course-mgmt') ? [...VIEWPORTS, ...TABLET_VIEWPORTS] : VIEWPORTS) {
+    for (const vp of entry.key.startsWith('course-mgmt') ? [...VIEWPORTS, ...TABLET_VIEWPORTS] : ['teacher-eligibility', 'tuition-monthly-summary'].includes(entry.key) ? [...VIEWPORTS, { name: 'laptop-1280', width: 1280, height: 900 }] : VIEWPORTS) {
       test(`layout guard: ${entry.key} @${vp.name} text-size ${size}`, async ({ page }) => {
         await page.setViewportSize({ width: vp.width, height: vp.height });
         await page.addInitScript((s) => {

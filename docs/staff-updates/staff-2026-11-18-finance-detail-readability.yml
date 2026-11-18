@@ -1,0 +1,16 @@
+updates:
+  - id: staff-2026-11-18-finance-detail-readability
+    published_at: "2026-11-18"
+    audiences:
+      - director
+      - super_admin
+    importance: digest
+    title: 金額摘要與薪資明細完整顯示
+    summary: 月對帳表金額不再被裁掉尾數；薪資週統計也會依畫面寬度完整換行。
+    items:
+      - category: fixed
+        text: 月對帳表保留全部金額與原字級，欄位放不下時換列，方便直接核對。
+      - category: fixed
+        text: 展開老師明細後，週別判定與每日時數不再擠在窄欄；段數、倍率與金額計算不變。
+    source_refs:
+      - "changelog:2026-11-18:finance-detail-readability"

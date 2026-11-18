@@ -17,7 +17,7 @@
         <Button variant="outline" class="tw:min-h-11 tw:sm:ml-auto" :disabled="!visible.length" data-testid="roster-export" @click="exportCsv"><Download class="tw:size-4" aria-hidden="true" />匯出 Excel</Button>
       </div>
 
-      <StatStrip>
+      <StatStrip class="tw:flex tw:flex-wrap tw:[&>[data-slot=stat-item]]:min-w-max tw:[&>[data-slot=stat-item]]:flex-1">
         <StatItem label="學生" :value="summary.students" unit="人" />
         <StatItem v-if="summary.tuition_total != null" label="學收合計" :value="money(summary.tuition_total)" :sub="summary.tuition_unpriced ? `${summary.tuition_unpriced} 門課沒有單價，沒算進來` : ''" />
         <StatItem label="這個月收到" :value="money(summary.paid_this_month)" tone="success" />
