@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { mount, flushPromises } from '@vue/test-utils';
 import { reactive, nextTick } from 'vue';
+import fc from 'fast-check';
 import PaymentEntryModal from '../PaymentEntryModal.vue';
 
 let wrapper;
@@ -37,6 +38,37 @@ describe('in-app #577: acknowledge a different receipt amount', () => {
 });
 
 describe('in-app #577: preserve payment rules and invalidate stale acknowledgement', () => {
+  it('property: any valid differing amount needs fresh acknowledgement and sends the entered amount unchanged (seed20261119)', async () => {
+    let equalCases = 0, differingCases = 0;
+    await fc.assert(fc.asyncProperty(
+      fc.integer({ min: 1, max: 999999 }), fc.integer({ min: 1, max: 999999 }), fc.boolean(),
+      async (balance, candidate, equal) => {
+        let entered = equal ? balance : candidate;
+        try {
+          await open({ charge: balance, payable_amount: balance, payable_outstanding: balance });
+          await amount(entered); await submit();
+          if (entered !== balance) {
+            differingCases += 1;
+            expect(fetch).not.toHaveBeenCalled();
+            await acknowledge();
+            entered = entered === 999999 ? 1 : entered + 1;
+            await amount(entered);
+            if (entered !== balance) {
+              expect(wrapper.get('[data-testid="pe-amount-ack"]').element.checked).toBe(false);
+              await submit(); expect(fetch).not.toHaveBeenCalled(); await acknowledge();
+            }
+            await submit();
+          } else equalCases += 1;
+          expect(fetch).toHaveBeenCalledTimes(1);
+          expect(JSON.parse(fetch.mock.calls[0][1].body)).toMatchObject({ student_class_id: 5, invoice_id: 77, amount: entered });
+        } finally {
+          wrapper?.unmount(); wrapper = null; vi.unstubAllGlobals(); localStorage.clear();
+        }
+      },
+    ), { seed: 20261119, numRuns: 100 });
+    expect(equalCases).toBeGreaterThan(0); expect(differingCases).toBeGreaterThan(0);
+  }, 15000);
+
   it('keeps equal-amount entry one step, using outstanding rather than the original bill total', async () => {
     await open({ payable_amount: 6000 }); await submit();
     expect(wrapper.find('[data-testid="pe-amount-ack"]').exists()).toBe(false);
