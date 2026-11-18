@@ -4,7 +4,7 @@ namespace App\Services\Billing;
 
 use App\Models\{Campus, ClassSession, ExistingCourseCreditAllocationGroup as Group, Invoice, InvoiceItem, Payment, PaymentReport, StudentClass, SubjectCreditTransfer};
 use App\Models\Scopes\OperationalTenantScope;
-use App\Services\{ClassSessionMaterializationService, ScheduleGuardService};
+use App\Services\{ClassSessionMaterializationService, ScheduleGuardService, SessionDeductionService};
 use App\Services\Scheduling\ClassSessionDeleteGuard;
 use Brick\Math\BigRational;
 use Carbon\Carbon;
@@ -84,9 +84,10 @@ final class ExistingCourseCreditMovement
                 if ((int) $source->Pay === (int) $childBefore['invoice']['PaidAmount']) $source->Pay = $kept;
                 $source->Charge = $kept;
                 $source->SessionCount = (int) $source->SessionCount - $allocation['sessions'];
-                $source->RemainingSessions = (int) $source->SessionCount - (int) $source->UsedSessions;
-                if ((int) $source->RemainingSessions === 0) { $source->Stop = 1; $source->closed_reason = 'completed'; }
+                if ((int) $source->SessionCount === (int) $source->UsedSessions) { $source->Stop = 1; $source->closed_reason = 'completed'; }
                 $source->save();
+                SessionDeductionService::recomputeCounters((int) $source->ID);
+                $source->refresh();
                 // Targets retain their original quantity, used count, dates and completion state; only funding changes.
                 $target->forceFill(['Pay' => $allocation['amount'], 'Paid' => 1, 'PayDate' => $paidAt])->save();
                 $targetsAfter[(int) $target->ID] = $this->snapshot($target, $movement['invoice']);
@@ -237,7 +238,9 @@ final class ExistingCourseCreditMovement
                     'reverse_out_payment_id' => $out->id, 'reverse_in_payment_id' => $back->id])->save();
             }
             $before = $group->getAttribute('source_before');
-            $source->forceFill(array_intersect_key($before['course'], array_flip(['SessionCount', 'UsedSessions', 'RemainingSessions', 'Charge', 'Pay', 'Paid', 'Stop', 'closed_reason', 'EndDate'])))->save();
+            $source->forceFill(array_intersect_key($before['course'], array_flip(['SessionCount', 'Charge', 'Pay', 'Paid', 'Stop', 'closed_reason', 'EndDate'])))->save();
+            // Reopen canonical quota before native lesson-save guards restore reservations.
+            SessionDeductionService::recomputeCounters((int) $source->ID);
             $invoice->forceFill(array_intersect_key($before['invoice'], array_flip(['TotalAmount', 'PaidAmount', 'Status'])))->save();
             foreach ($before['items'] as $item) InvoiceItem::whereKey($item['id'])->where('InvoiceID', $invoice->id)->update(['Amount' => $item['Amount']]);
             foreach ($lessons as $row) {

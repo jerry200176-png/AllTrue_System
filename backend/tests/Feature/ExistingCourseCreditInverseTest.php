@@ -40,6 +40,7 @@ class ExistingCourseCreditInverseTest extends TestCase
         $result = $this->reverse($source, $group, $actor, $campus);
         $this->assertFalse($result['replayed']);
         $this->assertSame($beforeSource, $source->fresh()->only(array_keys($beforeSource)));
+        $this->assertSame([960, 720], array_values(array_map('intval', $source->fresh()->only(['PurchasedMinutes', 'RemainingMinutes']))));
         foreach ($beforeTargets as $id => $values) $this->assertSame($values, StudentClass::findOrFail($id)->only(array_keys($values)));
         $this->assertSame($cash, Payment::findOrFail($cash['id'])->getAttributes());
         $this->assertSame($lessons, ClassSession::orderBy('id')->get(['id', 'StudentClassID', 'SessionDate', 'StartTime', 'EndTime', 'Status'])->toArray());
