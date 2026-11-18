@@ -62,3 +62,9 @@ test('nightly pins: an allowance may shrink or go away, never rise or turn null'
   assert.deepEqual(nightlyPinViolations(pins([], { x: null }), pins([], { x: 4 })), []);
   assert.deepEqual(nightlyPinViolations(null, pins([], { x: 9 })), []);
 });
+test('nightly pins: an enforced condition with no listed allowance may not gain one (Codex P2)', () => {
+  assert.equal(nightlyPinViolations(pins(['a'], {}), pins(['a'], { a: 3 })).length, 1);
+  assert.equal(nightlyPinViolations(pins(['a'], {}), pins(['a'], { a: null })).length, 1);
+  assert.deepEqual(nightlyPinViolations(pins(['a'], {}), pins(['a'], { a: 0 })), []);
+  assert.deepEqual(nightlyPinViolations(pins([], {}), pins(['n'], { n: 4 })), [], 'newly enforced in this PR: FIT-20 asks for the reason');
+});

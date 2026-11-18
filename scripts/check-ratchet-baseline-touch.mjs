@@ -71,7 +71,10 @@ export function nightlyPinViolations(before, after) {
   for (const key of a.enforcedReproductions ?? []) {
     if (!(b.enforcedReproductions ?? []).includes(key)) out.push(`${NIGHTLY_PINS}: enforcedReproductions lost ${key}; a condition verified fixed stays enforced`);
   }
-  for (const [key, was] of Object.entries(a.reproductionBaselines ?? {})) {
+  // An enforced condition with no listed allowance tolerates 0 (VerifyBugReproductions defaults to 0).
+  const allow = a.reproductionBaselines ?? {};
+  for (const key of new Set([...Object.keys(allow), ...(a.enforcedReproductions ?? [])])) {
+    const was = key in allow ? allow[key] : 0;
     const now = (b.reproductionBaselines ?? {})[key];
     if (typeof was === 'number' && now !== undefined && !(typeof now === 'number' && now <= was)) out.push(`${NIGHTLY_PINS}: reproductionBaselines.${key} ${was} -> ${now}; allowances only shrink`);
   }
