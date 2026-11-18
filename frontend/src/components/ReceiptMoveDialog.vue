@@ -209,7 +209,7 @@ watch(() => [props.open, props.reportId], ([open]) => {
           <li v-for="t in targets" :key="t.invoice_id">
             <button
               type="button"
-              class="tw:flex tw:min-h-11 tw:w-full tw:items-center tw:justify-between tw:gap-2 tw:rounded-lg tw:border tw:bg-background tw:p-3 tw:text-left tw:text-sm tw:hover:bg-accent"
+              class="tw:flex tw:min-h-12 tw:w-full tw:items-center tw:justify-between tw:gap-2 tw:rounded-lg tw:border tw:bg-background tw:p-3 tw:text-left tw:text-sm tw:hover:bg-accent"
               :disabled="busy"
               :data-testid="`rm-target-${t.invoice_id}`"
               @click="choose(t)"
