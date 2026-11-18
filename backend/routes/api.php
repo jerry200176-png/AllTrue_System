@@ -346,6 +346,7 @@ Route::prefix('v1')->group(function () {
     // ── Super Admin: 分校管理 CRUD ───────────────────────────────────────────────
     Route::middleware(['role:super_admin'])->group(function () {
         Route::get('admin/business-digest', [BusinessDigestController::class, 'index']);
+        Route::get('accounting/bill-corrections', [\App\Http\Controllers\BillCorrectionLogController::class, 'index']); // 更正帳單 history for HQ
         Route::get('admin/branch-health', [BranchHealthController::class, 'index']);
         Route::get('admin/campuses', [AdminCampusController::class, 'index']);
         Route::post('admin/campuses', [AdminCampusController::class, 'store']);

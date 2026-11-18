@@ -32,6 +32,7 @@ const FEATURE_USAGES = {
     'branch-management': '總部專用：維護各校區據點資料與營業狀態。',
     'branch-health-board': '總部專用：監控各分校營運健康度與系統運作指標。',
     'nightly-reconcile': '總部專用：每晚核對已用堂數，列出對不上的課程與下一步。',
+    'bill-corrections': '總部專用：查看各分校主任「更正帳單」的日期、金額、原因與操作人。',
   },
   teacher: {
     'teacher-home': '每天上班必看第一站，確認今日自己的班級課表、學生名單與教室。',

@@ -25,6 +25,7 @@
 
 | Method | URI | Action | Auth |
 |--------|-----|--------|------|
+| GET | `api/v1/accounting/bill-corrections` | `BillCorrectionLogController@index` | role |
 | POST | `api/v1/accounting/bills/export` | `BillExportController@export` | role+campus |
 | GET | `api/v1/accounting/contracts/{studentClass}/sessions` | `ContractSessionCoverageController@show` | role+campus |
 | POST | `api/v1/accounting/courses/{id}/waive` | `AccountingController@waiveCourse` | role+campus |
