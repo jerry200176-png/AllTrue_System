@@ -1,0 +1,14 @@
+updates:
+  - id: staff-2026-11-18-inapp-native-origin
+    published_at: "2026-11-18"
+    audiences:
+      - director
+      - super_admin
+    importance: digest
+    title: 意見回報自動通知來源修正
+    summary: 新的系統收件與逾時通知會標示為支援回覆，避免誤判您已回覆。
+    items:
+      - category: fixed
+        text: 您親自留言仍算您的回覆；補充資料後沿用原本重開流程。既有留言不會自動改寫。
+    source_refs:
+      - "changelog:2026-11-18:inapp-native-origin"
