@@ -347,7 +347,7 @@ final class BillCorrection
         }
         self::settleBill($new);
         if (!$ctx['monthly']) {
-            DB::table('StudentClass')->where('ID', $course->ID)->update(['Charge' => $newTotal]); // query builder: no entitlement hooks, as AgreedFeeCorrection
+            AgreedFeeCorrection::setCharge((int) $course->ID, $newTotal);
         }
         $fresh = StudentClass::query()->whereKey($course->ID)->firstOrFail();
         (string) $new->fresh()->Status === 'paid' ? CollectionTarget::settle($fresh, null, 'paid', false, $today) : CollectionTarget::unsettle($fresh, null, true);
