@@ -6,6 +6,7 @@ import {
   formatRescheduleSuccessMessage,
   formatRescheduleConflictStudents,
   humanizeRescheduleFailure,
+  uniqueScheduleBlockers,
 } from '../../lib/scheduleDisplay';
 import { getSubjectLabel } from '../../lib/constants';
 import { commitReschedule } from '../../lib/rescheduleApi';
@@ -486,6 +487,7 @@ export function useSessionEditFlow({
 
   function startSessionReschedule() {
     sessionEditMode.value = 'reschedule';
+    sessionEditForm.value.blocked = null;
     sessionEditForm.value.new_date = '';
     sessionEditForm.value.new_start = sessionEditForm.value.start_time || '16:00';
   }
@@ -513,6 +515,7 @@ export function useSessionEditFlow({
   async function doSessionReschedule() {
     const form = sessionEditForm.value;
     if (!form.new_date || !form.session_id) return;
+    form.blocked = null;
     const reschedulePreview = [
       `原堂次：${form.session_date} ${form.start_time}~${form.end_time}`,
       `新堂次：${form.new_date} ${form.new_start}`,
@@ -558,6 +561,12 @@ export function useSessionEditFlow({
       await loadCourses();
     } catch (error) {
       let message = humanizeRescheduleFailure(error?.message || '調課未完成，資料沒有變更');
+      // #4991 line 3: name the lessons in the way inside the modal, each with a way to open it.
+      const blockers = uniqueScheduleBlockers(error?.conflicts);
+      if (blockers.length) {
+        sessionEditForm.value.blocked = { message: '調課失敗：' + message, blockers, date: form.new_date };
+        return;
+      }
       const conflictLine = formatRescheduleConflictStudents(error?.conflicts?.[0]?.overlap_details);
       if (conflictLine) message = `${message}\n${conflictLine}`;
       alert('調課失敗：' + message);
@@ -610,6 +619,7 @@ export function useSessionEditFlow({
 
   function startSubstitute() {
     sessionEditMode.value = 'substitute';
+    sessionEditForm.value.blocked = null;
     sessionEditForm.value.substitute_teacher_id = '';
     sessionEditForm.value.substitute_reason = '';
   }
@@ -617,6 +627,7 @@ export function useSessionEditFlow({
   async function doSubstitute() {
     const form = sessionEditForm.value;
     if (!form.session_id || !form.substitute_teacher_id) return;
+    form.blocked = null;
     if (!await askConfirm({ title: '換為代課老師？', message: '只影響這一堂，不影響後續排課。', confirmLabel: '確認代課' })) return;
 
     sessionEditSubmitting.value = true;
@@ -636,6 +647,11 @@ export function useSessionEditFlow({
       const json = await res.json().catch(() => ({}));
       if (!res.ok) {
         let errMsg = json.message || res.statusText;
+        const blockers = res.status === 409 ? uniqueScheduleBlockers(json.conflicts) : [];
+        if (blockers.length) {
+          sessionEditForm.value.blocked = { message: '代課設定失敗：' + errMsg, blockers, date: form.session_date };
+          return;
+        }
         if (res.status === 409 && Array.isArray(json.conflicts) && json.conflicts.length > 0) {
           const details = json.conflicts[0]?.overlap_details;
           const conflictLine = formatRescheduleConflictStudents(details);

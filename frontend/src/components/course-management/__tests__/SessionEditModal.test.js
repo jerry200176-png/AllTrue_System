@@ -81,3 +81,33 @@ describe('SessionEditModal tutoring fee (in-app #443)', () => {
     expect(mk('one_on_one').text()).toContain('NT$ 500');
   });
 });
+
+describe('SessionEditModal blocked reschedule (#4991 line 3)', () => {
+  const blockers = [
+    { source: 'class_session', source_id: 7, course_id: 31, student_name: '甲', subject_name: '數學', start_time: '16:00:00', end_time: '17:00:00' },
+    { source: 'schedule', source_id: 9, course_id: 0, student_name: '', start_time: '16:00', end_time: '17:00' },
+  ];
+  const mountBlocked = (mode) => mount(SessionEditModal, {
+    props: {
+      show: true, mode, submitting: false, timeOptions: [], makeupLoading: false, computeEndTime: () => '',
+      form: { student_name: '測試學生', session_date: '2026-08-08', start_time: '13:00', end_time: '15:00', current_status: 'scheduled',
+        blocked: { message: '調課失敗：此時段已有其他課', blockers, date: '2026-08-10' } },
+    },
+  });
+
+  it('lists each blocking lesson and opens its course', async () => {
+    const wrapper = mountBlocked('reschedule');
+    const items = wrapper.findAll('.se-blocked-list li');
+    expect(items).toHaveLength(2);
+    expect(items[0].text()).toContain('甲・數學，2026-08-10 16:00–17:00');
+    expect(items[1].text()).toContain('另一位學生');
+    expect(items[1].find('.se-open-blocker').exists()).toBe(false);
+    await items[0].find('.se-open-blocker').trigger('click');
+    expect(wrapper.emitted('open-course')).toEqual([[blockers[0]]]);
+  });
+
+  it('stays hidden outside the reschedule and substitute steps', () => {
+    expect(mountBlocked('menu').find('.se-blocked').exists()).toBe(false);
+    expect(mountBlocked('substitute').find('.se-blocked').exists()).toBe(true);
+  });
+});

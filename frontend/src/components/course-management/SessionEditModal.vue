@@ -109,6 +109,16 @@
         </div>
       </div>
 
+      <div v-if="form.blocked && (mode === 'reschedule' || mode === 'substitute')" class="se-blocked" role="alert">
+        <strong>{{ form.blocked.message }}</strong>
+        <ul class="se-blocked-list" aria-label="衝堂的課">
+          <li v-for="b in form.blocked.blockers" :key="`${b.source}-${b.source_id}`">
+            {{ scheduleBlockerLabel(b, form.blocked.date) }}
+            <Button v-if="b.course_id" type="button" variant="outline" size="xs" class="se-open-blocker" @click="$emit('open-course', b)">打開那堂課</Button>
+          </li>
+        </ul>
+      </div>
+
       <div v-if="mode === 'edit-note-time'" class="session-edit-note-time">
         <h4 class="se-section-title">備註 / 調整時段</h4>
         <div v-if="form.lr_status === 'approved'" class="se-info-banner se-banner-info">
@@ -171,12 +181,13 @@
 </template>
 
 <script setup>
+import { Button } from '@/components/ui/button';
 import AtSubmitButton from '../design-system/AtSubmitButton.vue';
 import { computed } from 'vue';
 import LessonPickerSelect from './LessonPickerSelect.vue';
 import { askConfirm } from '../../composables/useConfirmDialog';
 import { getSubjectLabel } from '../../lib/constants';
-import { MAKEUP_SLOT_QUERY_LABEL } from '../../lib/scheduleDisplay';
+import { MAKEUP_SLOT_QUERY_LABEL, scheduleBlockerLabel } from '../../lib/scheduleDisplay';
 import { SESSION_STATUS_LABELS } from '../../lib/sessionStatus';
 
 const SESSION_STATUS_TRANSITIONS = {
@@ -208,7 +219,7 @@ const emit = defineEmits([
   'close', 'set-mode', 'status-change', 'start-retro-leave', 'do-retro-leave',
   'start-reschedule', 'do-reschedule', 'fetch-makeup', 'add-session',
   'start-substitute', 'do-substitute', 'open-substitute-v2',
-  'start-edit-note-time', 'do-edit-note-time', 'pick-lesson',
+  'start-edit-note-time', 'do-edit-note-time', 'pick-lesson', 'open-course',
 ]);
 
 const makeupQueryLabel = MAKEUP_SLOT_QUERY_LABEL;
@@ -389,6 +400,9 @@ async function onSaveClick() {
   font-size: 15px;
 }
 .se-time-input:focus { outline: none; border-color: var(--primary, var(--ds-primary)); box-shadow: var(--ds-focus-ring, 0 0 0 3px rgba(245,124,0,0.22)); }
+.se-blocked { margin-top: 12px; padding: 12px; border-radius: var(--ds-radius-lg); display: grid; gap: 6px; font-size: var(--ds-font-size-md); background: var(--ds-danger-wash); color: var(--ds-danger); white-space: pre-line; }
+.se-blocked-list { margin: 0; padding-left: 18px; display: grid; gap: 6px; overflow-wrap: anywhere; }
+.se-blocked-list li { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 .se-inline-error {
   margin: 6px 0 10px;
   padding: 8px 12px;
