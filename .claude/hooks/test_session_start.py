@@ -40,6 +40,10 @@ if name == 'mysql': record['sql'] = sys.stdin.read()
 with (root/'trace.jsonl').open('a') as f: f.write(json.dumps(record)+'\\n')
 mode = (root/'mode').read_text()
 if name in ('git','curl'): sys.exit(22)
+if name == 'gh':
+    if mode == 'gh-down': sys.exit(1)
+    if mode == 'gh-waiting': print('- Release train run 7, abc123def, since 2026-11-18T00:00:00Z: https://github.invalid/run/7')
+    sys.exit(0)
 if name == 'composer':
     if 'config' in args:
         if mode == 'old-composer': sys.exit(1)
@@ -52,7 +56,7 @@ if name == 'mysql' and mode == 'ddl-failed': sys.exit(1)
 sys.exit(0)
 ''')
         mock.chmod(0o755)
-        for name in ['composer','php','npm','node','git','curl','mysql','mysqladmin','mariadbd','service']:
+        for name in ['composer','php','npm','node','git','curl','mysql','mysqladmin','mariadbd','service','gh']:
             (self.bin / name).symlink_to(mock)
         self.env = {
             'PATH': str(self.bin) + ':/usr/bin:/bin', 'HOME': str(self.root),
@@ -75,7 +79,11 @@ sys.exit(0)
     def test_not_cloud_has_no_side_effects(self):
         self.env['CLAUDE_CODE_REMOTE'] = 'false'
         _, calls = self.run_hook()
-        self.assertEqual(calls, [])
+        # The only call is the release banner's one read-only GitHub GET.
+        gh = [c['args'] for c in calls if c['command'] == 'gh']
+        self.assertEqual([a[:1] for a in gh], [['api']])
+        self.assertFalse({'-X', '--method', '-f', '-F', '--field', '--raw-field', '--input'} & set(gh[0]))
+        self.assertEqual([c for c in calls if c['command'] != 'gh'], [])
 
     def test_denied_install_has_no_alternate_network_or_success_stamp(self):
         self.mode.write_text('denied')
@@ -167,7 +175,21 @@ sys.exit(0)
         self.env['CLAUDE_CODE_REMOTE'] = 'false'
         r, calls = self.run_hook()
         self.assertIn('STALE', r.stdout)
-        self.assertEqual(calls, [])
+        self.assertEqual([c for c in calls if c['command'] != 'gh'], [])
+
+    def test_release_banner_lists_what_waits_for_approve(self):
+        self.mode.write_text('gh-waiting')
+        r, _ = self.run_hook()
+        self.assertIn('[release] WAITING for Founder Approve:', r.stdout)
+        self.assertIn('Release train run 7', r.stdout)
+
+    def test_release_banner_says_nothing_waiting_only_when_github_answered(self):
+        r, _ = self.run_hook()
+        self.assertIn('[release] nothing waiting for Approve', r.stdout)
+        self.mode.write_text('gh-down')
+        r, _ = self.run_hook()
+        self.assertIn('[release] UNKNOWN', r.stdout)
+        self.assertNotIn('nothing waiting', r.stdout)
 
 
 if __name__ == '__main__':
