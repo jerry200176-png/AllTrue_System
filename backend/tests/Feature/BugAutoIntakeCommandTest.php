@@ -26,6 +26,126 @@ class BugAutoIntakeCommandTest extends TestCase
         parent::tearDown();
     }
 
+    /** #5498: author identity alone cannot label a native acknowledgement of the actor's own report. */
+    public function test_5498_self_filed_native_ack_has_support_origin_without_triage_or_public_proof(): void
+    {
+        [$admin] = $this->users();
+        $bug = $this->bug($admin, 'new', now()->subHour()->toDateTimeString());
+        $this->assertSame(0, Artisan::call('bugs:auto-intake', ['--ack' => true, '--bug-id' => $bug->id, '--issue-url' => self::ISSUE]));
+        $detail = BugReportService::getDetail($bug->id, true);
+        $this->assertCount(1, $detail['comments']);
+        $this->assertSame('support', $detail['comments'][0]['origin']);
+        $this->assertSame('new', $bug->fresh()->status);
+        $this->assertSame([], $detail['evidence'], 'origin proof is internal, not production verification');
+        $this->assertSame(0, $detail['product_loop']['evidence_count']);
+        $this->assertFalse($detail['product_loop']['shipped']);
+        $this->assertSame(0, BugReportStatusLog::where('bug_report_id', $bug->id)->count());
+    }
+
+    public function test_5498_native_ack_proof_failure_rolls_back_the_comment(): void
+    {
+        [$admin] = $this->users();
+        $bug = $this->bug($admin, 'new', now()->subHour()->toDateTimeString());
+        $event = 'eloquent.creating: ' . \App\Models\BugReportEvidence::class;
+        \Illuminate\Support\Facades\Event::listen($event, static function ($row) {
+            if ($row->evidence_type === 'native_support_comment_origin') throw new \RuntimeException('synthetic origin proof failure');
+        });
+        $caught = null;
+        try { Artisan::call('bugs:auto-intake', ['--ack' => true, '--bug-id' => $bug->id, '--issue-url' => self::ISSUE]); }
+        catch (\RuntimeException $e) { $caught = $e; }
+        finally { \Illuminate\Support\Facades\Event::forget($event); }
+        $this->assertInstanceOf(\RuntimeException::class, $caught);
+        $this->assertSame('synthetic origin proof failure', $caught->getMessage());
+        $this->assertSame(0, BugReportComment::where('bug_report_id', $bug->id)->count());
+        $this->assertSame('new', $bug->fresh()->status);
+    }
+
+    public function test_5498_cannot_attach_native_origin_to_a_preexisting_human_comment(): void
+    {
+        [$admin] = $this->users();
+        $bug = $this->bug($admin, 'new', now()->subHour()->toDateTimeString());
+        $human = BugReportService::addComment($bug->id, $admin->id, BugAutoIntakeCommand::ACK_TEXT);
+        $loaded = BugReportComment::findOrFail($human->id);
+        $caught = null;
+        try { DB::transaction(fn () => \App\Operations\Inapp\NativeInappCommentOrigin::recordAck($bug, $loaded)); }
+        catch (\LogicException $e) { $caught = $e; }
+        $this->assertInstanceOf(\LogicException::class, $caught);
+        $this->assertSame('reporter', BugReportService::getDetail($bug->id, true)['comments'][0]['origin']);
+        $this->assertSame(0, \App\Models\BugReportEvidence::where('bug_report_id', $bug->id)->count());
+    }
+
+    #[\PHPUnit\Framework\Attributes\DataProvider('nativeOriginTamperCases')]
+    public function test_5498_invalid_or_ambiguous_proof_never_upgrades_a_human_identity(string $field, bool $rebind = false): void
+    {
+        [$admin, $other] = $this->users();
+        $bug = $this->bug($admin, 'new', now()->subHour()->toDateTimeString());
+        Artisan::call('bugs:auto-intake', ['--ack' => true, '--bug-id' => $bug->id, '--issue-url' => self::ISSUE]);
+        $proof = \App\Models\BugReportEvidence::where('bug_report_id', $bug->id)->firstOrFail();
+        $metadata = $proof->metadata;
+        if ($field === 'body') BugReportComment::where('bug_report_id', $bug->id)->update(['body' => 'edited human wording']);
+        elseif ($field === 'version') $metadata['version'] = '1';
+        elseif ($field === 'author_id' && $rebind) {
+            $metadata[$field] = $other->id;
+            DB::table('bug_report_evidence')->where('id', $proof->id)->update(['verified_by' => $other->id]);
+        }
+        elseif (in_array($field, ['bug_id', 'campus_id', 'author_id', 'comment_id'], true)) $metadata[$field] += 999;
+        elseif ($field === 'body_sha256') $metadata[$field] = str_repeat('0', 64);
+        elseif ($field === 'producer') $metadata[$field] = 'caller_says_support';
+        elseif ($field === 'context') $metadata[$field] = ['caller_origin' => 'support'];
+        elseif ($field === 'duplicate') {
+            $copy = $proof->getAttributes(); unset($copy['id']); $copy['source_ref'] .= ':duplicate';
+            DB::table('bug_report_evidence')->insert($copy);
+        } else {
+            $value = match ($field) {
+                'verified_by' => $admin->id + 999,
+                'verified_at' => now()->addDay()->toDateTimeString(),
+                'source_ref' => 'copied proof',
+                'evidence_type' => 'unrelated_metadata',
+                'production_revision' => str_repeat('a', 40),
+                'deploy_run_id' => '12345',
+            };
+            DB::table('bug_report_evidence')->where('id', $proof->id)->update([$field => $value]);
+        }
+        $changes = ['metadata' => json_encode($metadata, JSON_THROW_ON_ERROR)];
+        if ($rebind) $changes['source_ref'] = 'native_support_comment:' . $proof->metadata['comment_id'] . ':'
+            . hash('sha256', json_encode(\App\Operations\PopOperationService::canonicalParameters($metadata), JSON_THROW_ON_ERROR));
+        DB::table('bug_report_evidence')->where('id', $proof->id)->update($changes);
+        $this->assertSame('reporter', BugReportService::getDetail($bug->id, true)['comments'][0]['origin'], $field);
+    }
+
+    /** @return array<string, array{string,bool}> */
+    public static function nativeOriginTamperCases(): array
+    {
+        $cases = array_combine($keys = ['body', 'version', 'bug_id', 'campus_id', 'author_id', 'comment_id', 'body_sha256',
+            'producer', 'context', 'duplicate', 'verified_by', 'verified_at', 'source_ref', 'evidence_type',
+            'production_revision', 'deploy_run_id'], array_map(static fn ($key) => [$key, false], $keys));
+        foreach (['version', 'bug_id', 'campus_id', 'author_id', 'comment_id', 'body_sha256', 'producer', 'context'] as $key)
+            $cases['coherent reference / ' . $key] = [$key, true];
+        return $cases;
+    }
+
+    #[\PHPUnit\Framework\Attributes\DataProvider('nativeWriterGuardCases')]
+    public function test_5498_each_native_writer_boundary_rejects_a_fresh_comment(string $boundary): void
+    {
+        [$admin] = $this->users();
+        $bug = $this->bug($admin, 'new', now()->subHour()->toDateTimeString());
+        $commentBug = $boundary === 'wrong bug' ? $this->bug($admin, 'new', now()->subHour()->toDateTimeString()) : $bug;
+        $comment = BugReportService::addComment($commentBug->id, $admin->id, 'synthetic fresh candidate', $boundary === 'internal');
+        $this->assertTrue($comment->wasRecentlyCreated);
+        if ($boundary === 'no transaction') DB::partialMock()->shouldReceive('transactionLevel')->andReturn(0);
+        $caught = null;
+        try { \App\Operations\Inapp\NativeInappCommentOrigin::recordAck($bug, $comment); }
+        catch (\LogicException $error) { $caught = $error; }
+        $this->assertInstanceOf(\LogicException::class, $caught);
+        $this->assertSame(0, \App\Models\BugReportEvidence::where('bug_report_id', $bug->id)->count());
+    }
+
+    /** @return array<string,array{string}> */
+    public static function nativeWriterGuardCases(): array
+    {
+        return ['no transaction' => ['no transaction'], 'wrong bug' => ['wrong bug'], 'internal' => ['internal']];
+    }
+
     public function test_flagged_report_lists_codes_only_and_gets_the_neutral_ack(): void
     {
         $reporter = $this->users()[1];
