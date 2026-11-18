@@ -446,7 +446,7 @@ class BillingPayableResolver
                     DB::table('invoice_corrections')->where('kind', \App\Services\Billing\BillCorrection::KIND)->select('original_invoice_id'))))
             // a legacy-backfilled receipt is linked only one way, via payment_reports.payment_id (BackfillLegacyPayments)
             ->leftJoin('payment_reports as reversed_report', 'reversed_report.id', '=', 'Payment.payment_report_id')
-            ->select('Invoice.StudentClassID', 'Payment.InvoiceID', 'Payment.id', 'Payment.Amount', 'Payment.Method', 'Payment.PaidAt',
+            ->select('Invoice.StudentClassID', 'Invoice.Status as invoice_status', 'Payment.InvoiceID', 'Payment.id', 'Payment.Amount', 'Payment.Method', 'Payment.PaidAt',
                 'Payment.payment_report_id', 'reversed_report.payment_id as report_payment_id')
             ->orderBy('Payment.id')
             ->get();
@@ -454,6 +454,11 @@ class BillingPayableResolver
         $map = [];
         foreach ($rows->groupBy('InvoiceID') as $payments) {
             $classId = (int) $payments->first()->StudentClassID;
+            // A bill a correction voided only keeps its date while the money it moved still stands on the live bill at the end of the chain.
+            if ((string) $payments->first()->invoice_status === 'void'
+                && (int) Invoice::query()->whereKey(\App\Services\Billing\BillCorrection::liveEndOf((int) $payments->first()->InvoiceID))->selectRaw(Invoice::netPaidSql('Invoice').' AS n')->value('n') <= 0) {
+                continue;
+            }
             $date = $this->latestUnreversedReceiptDate($payments);
             if ($date !== null && (!isset($map[$classId]) || $date > $map[$classId])) {
                 $map[$classId] = $date;

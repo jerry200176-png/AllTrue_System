@@ -467,6 +467,8 @@
 | GET | `api/v1/invoices` | `BillingController@index` | role+campus |
 | POST | `api/v1/invoices` | `BillingController@store` | role+campus |
 | GET | `api/v1/invoices/export` | `ExportController@invoices` | role+campus |
+| POST | `api/v1/invoices/{invoice}/correction/apply` | `BillCorrectionController@apply` | role+campus |
+| POST | `api/v1/invoices/{invoice}/correction/preview` | `BillCorrectionController@preview` | role+campus |
 | POST | `api/v1/invoices/{invoice}/exception-void` | `BillingController@exceptionVoidInvoice` | role+campus |
 | POST | `api/v1/invoices/{invoice}/payments` | `BillingController@recordPayment` | role+campus |
 | GET | `api/v1/invoices/{invoice}/slip-data` | `BillingController@slipData` | role+campus |

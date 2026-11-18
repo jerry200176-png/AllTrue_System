@@ -50,6 +50,16 @@ final class BillCorrection
             && Schema::hasTable('security_audit_events');
     }
 
+    /** The bill at the end of the correction chain that starts at $invoiceId (itself when never corrected). */
+    public static function liveEndOf(int $invoiceId): int
+    {
+        for ($i = 0; $i < 20 && ($next = DB::table('invoice_corrections')->where('kind', self::KIND)->where('original_invoice_id', $invoiceId)->value('replacement_invoice_id')); $i++) {
+            $invoiceId = (int) $next;
+        }
+
+        return $invoiceId;
+    }
+
     /** Whether a correction of this kind moved the bill's money away (void() must then follow it). */
     public static function isCorrected(int $invoiceId): bool
     {
@@ -174,7 +184,7 @@ final class BillCorrection
                 && !$payments->contains(fn ($p) => (int) $p->Amount > 0 && (string) $p->Method !== 'void' && !Payment::isCreditMovement($p)))) {
             return ['out' => $this->refuse('paid_state_unverified', '這張帳單的已收金額跟收款紀錄對不上，請回報總部處理，不要自行更正。')];
         }
-        $extra = ['added_lessons' => [], 'period_end' => null];
+        $extra = ['added_lessons' => [], 'period_end' => null, 'range_shortfall' => 0];
         if ($monthly) {
             if ($money['repriceable']) {
                 return ['out' => $this->refuse('repriceable', '這張月結帳單還沒收款，金額會自己照上課堂數重算，不需要更正。')];
@@ -199,7 +209,7 @@ final class BillCorrection
         $hash = hash('sha256', json_encode([self::HASH_VERSION, $campusId, $newTotal, $course->getRawOriginal(), $invoices, $items, $payments, $reports, $extra], JSON_THROW_ON_ERROR));
         $body = ['shape' => $monthly ? 'monthly' : 'count', 'invoice_id' => $invoiceId, 'old_total' => (int) $bill->TotalAmount, 'new_total' => $newTotal,
             'moved_amount' => $moved, 'outstanding_after' => $outstanding, 'overpaid_after' => max(0, $moved - $newTotal),
-            'status_after' => Invoice::statusFromProjection($after), 'added_lessons' => $extra['added_lessons'], 'range_shortfall' => $extra['range_shortfall'] ?? 0, 'period_end_after' => $extra['period_end'],
+            'status_after' => Invoice::statusFromProjection($after), 'added_lessons' => $extra['added_lessons'], 'range_shortfall' => $extra['range_shortfall'], 'period_end_after' => $extra['period_end'],
             'effects' => ['cash_total_change' => 0, 'receipt' => 0, 'refund' => 0, 'notification' => 0], 'state_hash' => $hash];
 
         return ['out' => ['status' => 200, 'body' => $body], 'ctx' => compact('course', 'bill', 'mine', 'model', 'moved', 'newTotal', 'extra', 'hash', 'monthly')];
@@ -241,7 +251,7 @@ final class BillCorrection
     /**
      * Monthly shape: the lessons held but covered by no live bill, priced per lesson on its own day. They must follow the bill's own range.
      *
-     * @return array{refusal?:array<string, mixed>, amount?:int, added_lessons?:list<string>, period_end?:string}
+     * @return array{refusal?:array<string, mixed>, amount?:int, added_lessons?:list<string>, range_shortfall?:int, period_end?:string}
      */
     private function gap(StudentClass $course, object $bill, object $item, $invoices, $items): array
     {

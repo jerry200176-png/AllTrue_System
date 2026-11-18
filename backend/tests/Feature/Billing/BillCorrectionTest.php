@@ -244,7 +244,7 @@ class BillCorrectionTest extends TestCase
         $refund = $this->payment($new, -3000, 'refund');
         $this->putJson("/api/v1/payment-reports/{$report->id}/void", ['void_reason' => '收錯了'], $this->h($tok))->assertStatus(409)->assertJsonPath('code', 'void_refunded');
         $refund->delete();
-        $this->payment($new, -5000, 'void'); // another reversal already took part of it: 5000 left, 10000 to take back
+        $this->payment($new, -5000, 'transfer_out'); // 5000 of it already moved on: 5000 left, 10000 to take back
         $this->putJson("/api/v1/payment-reports/{$report->id}/void", ['void_reason' => '收錯了'], $this->h($tok))->assertStatus(409)->assertJsonPath('code', 'void_transferred_credit');
         $this->assertSame('confirmed', $report->fresh()->status);
         $this->assertSame($before['payments'] + [], array_slice($this->snapshot()['payments'], 0, count($before['payments'])));
@@ -284,6 +284,18 @@ class BillCorrectionTest extends TestCase
         $this->applyCorrection($this->token('A', $this->campus), $b['invoice'], ['new_total' => 8000]);
 
         $this->assertSame([$id => '2026-11-10'], app(\App\Services\BillingPayableResolver::class)->lastPaidAtByStudentClassIds([$id]));
+    }
+
+    public function test_last_paid_date_is_gone_once_the_moved_money_is_taken_back(): void
+    {
+        $b = $this->bill($this->student($this->campus), 10000, 'paid', 10000);
+        $report = $this->confirmedReport($b);
+        $id = (int) $b['course']->ID;
+        $tok = $this->token('S', $this->campus);
+        $this->applyCorrection($tok, $b['invoice'], ['new_total' => 8000]);
+        $this->putJson("/api/v1/payment-reports/{$report->id}/void", ['void_reason' => '收錯了'], $this->h($tok))->assertOk();
+
+        $this->assertSame([], app(\App\Services\BillingPayableResolver::class)->lastPaidAtByStudentClassIds([$id]));
     }
 
     public function test_the_gap_stops_at_the_end_of_the_items_calendar_month(): void
