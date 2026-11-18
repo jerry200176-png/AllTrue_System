@@ -36,6 +36,8 @@ export default defineConfig({
     /director-path-acceptance\.spec\.js$/, // Private acceptance uses its list-only config in the same smoke job.
     // Built fake-data preview on 5189; advisory ui-preview job runs its dedicated config.
     /parent-text-size\.spec\.js$/,
+    // Built fake-data preview on 5190; advisory ui-preview job runs its dedicated config.
+    /bill-correction-preview\.spec\.js$/,
     // Executed by the required foundation suite against the dedicated Vue fixture server.
     /ui-foundation-pages\.spec\.js$/,
     /ui-foundation-a11y-axe\.spec\.js$/,

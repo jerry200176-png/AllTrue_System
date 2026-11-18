@@ -2843,6 +2843,177 @@ class PaymentReportApiTest extends TestCase
         $this->assertNotContains('receipt_without_invoice', $codes);
     }
 
+    /** in-app #576 / #5511: an orphan remains traceable but must not offer a known-impossible void. */
+    public function test_ledger_source_course_availability_controls_the_receipt_action_without_writes(): void
+    {
+        $token = $this->createDirectorToken([1]);
+        foreach ([[true, true], [true, false], [false, false]] as [$missing, $hasPayment]) {
+            $student = $this->createStudent(1);
+            $anchor = $this->createCountModeClass($student->id);
+            $source = $this->createCountModeClass($student->id, ['Paid' => 1]);
+            // A bill naming another student is not recovered merely because its old course ID matches a receipt.
+            $billStudent = $missing ? $this->createStudent(1) : $student;
+            $invoice = Invoice::create(['StudentID' => $billStudent->id, 'StudentClassID' => $source->ID,
+                'IssueDate' => '2026-04-01', 'DueDate' => '2026-04-10', 'TotalAmount' => 8800,
+                'PaidAmount' => 8800, 'Status' => 'paid']);
+            $payment = $hasPayment ? Payment::create(['InvoiceID' => $invoice->id, 'Amount' => 8800,
+                'PaidAt' => '2026-04-05', 'Method' => 'cash']) : null;
+            $report = $this->createConfirmedReport($student, $source, ['reported_amount' => 8800,
+                'InvoiceID' => $missing ? $invoice->id : null, 'payment_id' => $payment?->id]);
+            if ($missing) DB::table('StudentClass')->where('ID', $source->ID)->delete();
+            $before = [$report->fresh()->getRawOriginal(), $invoice->fresh()->getRawOriginal(), $payment?->fresh()->getRawOriginal()];
+
+            $json = $this->withToken($token)->getJson("/api/v1/accounting/ledger?student_class_id={$anchor->ID}")->assertOk()->json();
+            $anomalies = collect($json['anomalies'])->where('report_id', $report->id);
+            $this->assertNotEmpty($anomalies->all());
+            $this->assertContains('receipt_without_invoice', $anomalies->pluck('code')->all());
+            foreach ($anomalies as $anomaly) {
+                $this->assertSame($missing ? 'manual_review' : 'void_report', $anomaly['action']['type']);
+            }
+            if ($missing) {
+                $this->assertNotContains($invoice->id, array_column($json['invoices'], 'id'), 'a foreign invoice stays private');
+                $this->assertStringContainsString('回報給總部', $anomalies->first()['message']);
+            }
+            $receipt = collect($json['receipts'])->firstWhere('report_id', $report->id);
+            $this->assertSame('confirmed', $receipt['status']);
+            $this->assertSame(8800, $receipt['amount']);
+            $this->assertSame($before, [$report->fresh()->getRawOriginal(), $invoice->fresh()->getRawOriginal(), $payment?->fresh()->getRawOriginal()]);
+            $this->withToken($this->createDirectorToken([2]))
+                ->getJson("/api/v1/accounting/ledger?student_class_id={$anchor->ID}")->assertForbidden();
+        }
+    }
+
+    /** #5511: the actual legacy shape has a valid paid bill and one-way receipt/payment link; only the course is gone. */
+    public function test_ledger_retains_owned_historical_bill_payment_and_receipt_without_reassigning_them(): void
+    {
+        config()->set('billing.bill_correction_campus_ids', [1]);
+        $student = $this->createStudent(1);
+        $anchor = $this->createCountModeClass($student->id);
+        $source = $this->createCountModeClass($student->id, ['Paid' => 1]);
+        $invoice = Invoice::create(['StudentID' => $student->id, 'StudentClassID' => $source->ID,
+            'IssueDate' => '2026-04-01', 'TotalAmount' => 4400, 'PaidAmount' => 4400, 'Status' => 'paid']);
+        $payment = Payment::create(['InvoiceID' => $invoice->id, 'Amount' => 4400, 'PaidAt' => '2026-04-05', 'Method' => 'transfer']);
+        $report = $this->createConfirmedReport($student, $source, ['reported_amount' => 4400,
+            'InvoiceID' => $invoice->id, 'payment_id' => $payment->id]);
+        DB::table('StudentClass')->where('ID', $source->ID)->delete();
+        $before = [$invoice->fresh()->getRawOriginal(), $payment->fresh()->getRawOriginal(), $report->fresh()->getRawOriginal()];
+
+        $json = $this->withToken($this->createDirectorToken([1]))
+            ->getJson("/api/v1/accounting/ledger?student_class_id={$anchor->ID}")->assertOk()->json();
+        $bill = collect($json['invoices'])->firstWhere('id', $invoice->id);
+        $this->assertNotNull($bill, 'a deleted course must not hide its owned original bill');
+        $this->assertTrue($bill['historical_course_missing']);
+        $this->assertSame([4400, 4400, 0, 'paid'], [$bill['total_amount'], $bill['calculated_applied_amount'], $bill['outstanding_amount'], $bill['status']]);
+        $this->assertFalse($bill['can_direct_void']);
+        $this->assertFalse($bill['can_exception_void']);
+        $this->assertFalse($bill['can_correct'] ?? false);
+        $this->assertSame($report->id, $bill['payments'][0]['report_id']);
+        $this->assertSame($payment->id, $bill['payments'][0]['id']);
+        $this->assertEmpty(collect($json['anomalies'])->where('report_id', $report->id)->all());
+        $this->assertSame($before, [$invoice->fresh()->getRawOriginal(), $payment->fresh()->getRawOriginal(), $report->fresh()->getRawOriginal()]);
+        $this->withToken($this->createDirectorToken([2]))->getJson("/api/v1/accounting/ledger?student_id={$student->id}")->assertForbidden();
+        $this->withToken($this->createDirectorToken([]))->getJson("/api/v1/accounting/ledger?student_id={$student->id}")->assertForbidden();
+    }
+
+    public function test_historical_bills_do_not_offer_mutations_when_the_normal_bill_would(): void
+    {
+        config()->set('billing.bill_correction_campus_ids', [1]);
+        $student = $this->createStudent(1);
+        $anchor = $this->createCountModeClass($student->id);
+        foreach ([false, true] as $paid) {
+            $source = $this->createCountModeClass($student->id);
+            $invoice = Invoice::create(['StudentID' => $student->id, 'StudentClassID' => $source->ID,
+                'IssueDate' => '2026-04-01', 'TotalAmount' => 4400, 'PaidAmount' => $paid ? 4400 : 0, 'Status' => $paid ? 'paid' : 'unpaid']);
+            if ($paid) Payment::create(['InvoiceID' => $invoice->id, 'Amount' => 4400, 'PaidAt' => '2026-04-05', 'Method' => 'transfer']);
+            DB::table('StudentClass')->where('ID', $source->ID)->delete();
+            $before = $invoice->fresh()->getRawOriginal();
+            $json = $this->withToken($this->createDirectorToken([1]))
+                ->getJson("/api/v1/accounting/ledger?student_class_id={$anchor->ID}")->assertOk()->json();
+            $row = collect($json['invoices'])->firstWhere('id', $invoice->id);
+            $this->assertNotNull($row);
+            $this->assertSame([false, false, false], [$row['can_direct_void'], $row['can_exception_void'], $row['can_correct']]);
+            $this->assertSame($paid ? 0 : 4400, $row['outstanding_amount'], 'read the original ledger; do not fabricate or waive debt');
+            $this->assertSame($before, $invoice->fresh()->getRawOriginal());
+        }
+    }
+
+    public function test_historical_fallback_keeps_void_notes_and_unanchored_bills_out_of_the_live_invoice_list(): void
+    {
+        $student = $this->createStudent(1);
+        $anchor = $this->createCountModeClass($student->id);
+        $source = $this->createCountModeClass($student->id);
+        $void = Invoice::create(['StudentID' => $student->id, 'StudentClassID' => $source->ID,
+            'IssueDate' => '2026-04-01', 'TotalAmount' => 4400, 'PaidAmount' => 0, 'Status' => 'void', 'Note' => 'synthetic cancellation history']);
+        $unanchored = Invoice::create(['StudentID' => $student->id, 'StudentClassID' => 0,
+            'IssueDate' => '2026-04-01', 'TotalAmount' => 4400, 'PaidAmount' => 4400, 'Status' => 'paid']);
+        DB::table('StudentClass')->where('ID', $source->ID)->delete();
+        $json = $this->withToken($this->createDirectorToken([1]))
+            ->getJson("/api/v1/accounting/ledger?student_class_id={$anchor->ID}")->assertOk()->json();
+        $this->assertNotContains($void->id, array_column($json['invoices'], 'id'));
+        $this->assertNotContains($unanchored->id, array_column($json['invoices'], 'id'));
+        $this->assertContains($void->id, array_column($json['voided_invoice_notes'], 'invoice_id'));
+    }
+
+    public function test_historical_invoice_fallback_refuses_a_live_foreign_course_or_foreign_line(): void
+    {
+        $student = $this->createStudent(1);
+        $anchor = $this->createCountModeClass($student->id);
+        $other = $this->createStudent(2);
+        $foreign = $this->createCountModeClass($other->id);
+        foreach ([false, true] as $foreignLine) {
+            $source = $foreignLine ? $this->createCountModeClass($student->id) : $foreign;
+            $invoice = Invoice::create(['StudentID' => $student->id, 'StudentClassID' => $source->ID,
+                'IssueDate' => '2026-04-01', 'TotalAmount' => 4400, 'PaidAmount' => 4400, 'Status' => 'paid']);
+            if ($foreignLine) {
+                DB::table('InvoiceItem')->insert(['InvoiceID' => $invoice->id, 'StudentClassID' => $foreign->ID,
+                    'Description' => 'synthetic foreign line', 'Amount' => 4400]);
+                DB::table('StudentClass')->where('ID', $source->ID)->delete();
+            }
+            $this->createConfirmedReport($student, $source, ['InvoiceID' => $invoice->id]);
+            $json = $this->withToken($this->createDirectorToken([1]))
+                ->getJson("/api/v1/accounting/ledger?student_class_id={$anchor->ID}")->assertOk()->json();
+            $this->assertNotContains($invoice->id, array_column($json['invoices'], 'id'));
+        }
+    }
+
+    public function test_historical_invoice_stays_read_only_when_its_receipt_names_a_different_live_course(): void
+    {
+        $student = $this->createStudent(1);
+        $live = $this->createCountModeClass($student->id);
+        $old = $this->createCountModeClass($student->id);
+        $invoice = Invoice::create(['StudentID' => $student->id, 'StudentClassID' => $old->ID,
+            'IssueDate' => '2026-04-01', 'TotalAmount' => 4400, 'PaidAmount' => 4400, 'Status' => 'paid']);
+        $report = $this->createConfirmedReport($student, $live, ['InvoiceID' => $invoice->id]);
+        DB::table('StudentClass')->where('ID', $old->ID)->delete();
+        $json = $this->withToken($this->createDirectorToken([1]))
+            ->getJson("/api/v1/accounting/ledger?student_class_id={$live->ID}")->assertOk()->json();
+        $anomalies = collect($json['anomalies'])->where('report_id', $report->id);
+        $this->assertGreaterThanOrEqual(2, $anomalies->count());
+        foreach ($anomalies as $anomaly) $this->assertSame('manual_review', $anomaly['action']['type']);
+    }
+
+    public function test_historical_payment_link_blocks_a_receipt_with_a_different_unavailable_invoice_pointer(): void
+    {
+        $student = $this->createStudent(1);
+        $live = $this->createCountModeClass($student->id);
+        $old = $this->createCountModeClass($student->id);
+        $other = $this->createStudent(2);
+        $foreign = $this->createCountModeClass($other->id);
+        $invoice = Invoice::create(['StudentID' => $student->id, 'StudentClassID' => $old->ID,
+            'IssueDate' => '2026-04-01', 'TotalAmount' => 4400, 'PaidAmount' => 4400, 'Status' => 'paid']);
+        $unavailable = Invoice::create(['StudentID' => $other->id, 'StudentClassID' => $foreign->ID,
+            'IssueDate' => '2026-04-01', 'TotalAmount' => 4400, 'PaidAmount' => 0, 'Status' => 'unpaid']);
+        $payment = Payment::create(['InvoiceID' => $invoice->id, 'Amount' => 4400, 'PaidAt' => '2026-04-05', 'Method' => 'cash']);
+        $report = $this->createConfirmedReport($student, $live, ['InvoiceID' => $unavailable->id, 'payment_id' => $payment->id]);
+        DB::table('StudentClass')->where('ID', $old->ID)->delete();
+        $json = $this->withToken($this->createDirectorToken([1]))
+            ->getJson("/api/v1/accounting/ledger?student_class_id={$live->ID}")->assertOk()->json();
+        $this->assertNotContains($unavailable->id, array_column($json['invoices'], 'id'));
+        $anomalies = collect($json['anomalies'])->where('report_id', $report->id);
+        $this->assertNotEmpty($anomalies->all());
+        foreach ($anomalies as $anomaly) $this->assertSame('manual_review', $anomaly['action']['type']);
+    }
+
     public function test_accounting_ledger_aligns_invoice_payments_and_receipts(): void
     {
         $token = $this->createDirectorToken([1]);

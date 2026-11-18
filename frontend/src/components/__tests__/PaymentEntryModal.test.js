@@ -63,6 +63,10 @@ describe('PaymentEntryModal — director-record submission contract', () => {
     await covered.find('input[type="number"]').setValue(500);
     await covered.find('form').trigger('submit');
     await tick();
+    expect(global.fetch).not.toHaveBeenCalled();
+    await covered.get('[data-testid="pe-amount-ack"]').setValue(true);
+    await covered.find('form').trigger('submit');
+    await tick();
     expect(JSON.parse(global.fetch.mock.calls[0][1].body)).toMatchObject({ student_class_id: 5, amount: 500, invoice_id: 78 });
   });
 

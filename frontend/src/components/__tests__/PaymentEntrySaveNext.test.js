@@ -46,6 +46,10 @@ describe('PaymentEntryModal save and next', () => {
     await w.get('input[type="number"]').setValue(5000);
     await w.get('[data-testid="pe-save-next"]').trigger('click');
     await flushPromises();
+    expect(global.fetch).not.toHaveBeenCalled();
+    await w.get('[data-testid="pe-amount-ack"]').setValue(true);
+    await w.get('[data-testid="pe-save-next"]').trigger('click');
+    await flushPromises();
     expect(w.get('.pe-error').text()).toContain('超過帳單未收餘額');
     expect(w.emitted('confirmed')).toBeUndefined();
   });

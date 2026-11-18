@@ -1,0 +1,14 @@
+updates:
+  - id: staff-2026-11-19-ledger-orphan-receipt-action
+    published_at: "2026-11-19"
+    audiences:
+      - director
+      - super_admin
+    importance: digest
+    title: 原課程移除後，舊帳單與收款仍可查找
+    summary: 已移除課程的舊帳單與收款會留在同一份學生帳務，並標示僅供核對。
+    items:
+      - category: fixed
+        text: 原金額與收據不會改寫；仍有資料異常時，請按「回報給總部」，不會提供無法執行的撤銷操作。
+    source_refs:
+      - "changelog:2026-11-19:ledger-orphan-receipt-action"

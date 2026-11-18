@@ -10,6 +10,7 @@ use App\Models\BugReportStatusLog;
 use App\Models\BugReportUserRead;
 use App\Models\User;
 use App\Operations\Inapp\InappSupportCommentOrigin;
+use App\Operations\Inapp\NativeInappCommentOrigin;
 use Carbon\Carbon;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
@@ -290,7 +291,9 @@ class BugReportService
             'mime_type' => $a->mime_type,
         ])->all();
 
-        $evidenceRows = $bug->evidence()->orderBy('id')->get()->map(fn ($e) => [
+        // Public evidence is opt-in by type. Ship this boundary before any internal append-only producer,
+        // so rolling that producer back never exposes its provenance metadata or inflates delivery evidence.
+        $evidenceRows = $bug->evidence()->where('evidence_type', BugReportEvidence::TYPE_RESOLUTION_PRODUCTION_VERIFICATION)->orderBy('id')->get()->map(fn ($e) => [
             'id' => $e->id,
             'evidence_type' => $e->evidence_type,
             'production_revision' => $e->production_revision,
@@ -1363,15 +1366,18 @@ class BugReportService
             return ['ok' => true, 'action' => 'would_close'];
         }
         $result = DB::transaction(function () use ($bugId, $actorUserId, $eligible) {
-            if (!$eligible(BugReport::query()->where('id', $bugId)->lockForUpdate()->first())) {
+            $locked = BugReport::query()->where('id', $bugId)->lockForUpdate()->first();
+            if (!$eligible($locked)) {
                 return ['ok' => false, 'code' => 'not_eligible'];
             }
-            self::addComment($bugId, $actorUserId, '這張回報之前已處理完成，先結案。還有問題直接在這裡回覆就會重開。');
-            $res = self::changeStatus($bugId, $actorUserId, 'closed',
-                'closed_by_timeout — Evidence Contract legacy batch: resolve without production evidence (Founder GO 2026-10-31)');
+            $comment = self::addComment($bugId, $actorUserId, '這張回報之前已處理完成，先結案。還有問題直接在這裡回覆就會重開。');
+            $note = 'closed_by_timeout — Evidence Contract legacy batch: resolve without production evidence (Founder GO 2026-10-31)';
+            $res = self::changeStatus($bugId, $actorUserId, 'closed', $note);
             if (!$res['ok']) {
                 throw new \RuntimeException($res['message'] ?? 'close failed');
             }
+
+            NativeInappCommentOrigin::recordTimeout($locked, $comment, 'legacy_resolved', null, $note);
 
             return $res;
         });
@@ -1439,11 +1445,13 @@ class BugReportService
                 if (!$stillEligible) {
                     return ['ok' => false, 'code' => 'not_eligible', 'message' => 'No longer eligible'];
                 }
-                self::addComment($bugId, $actorUserId, '超過 ' . self::AWAITING_REPORTER_TIMEOUT_DAYS . ' 天沒收到回覆，先結案。直接在這裡回覆就會重開。');
+                $comment = self::addComment($bugId, $actorUserId, '超過 ' . self::AWAITING_REPORTER_TIMEOUT_DAYS . ' 天沒收到回覆，先結案。直接在這裡回覆就會重開。');
                 $res = self::changeStatus($bugId, $actorUserId, 'closed', $note);
                 if (!$res['ok']) {
                     throw new \RuntimeException($res['message'] ?? 'close failed');
                 }
+
+                NativeInappCommentOrigin::recordTimeout($locked, $comment, 'awaiting_reporter', self::AWAITING_REPORTER_TIMEOUT_DAYS, $note);
 
                 return $res;
             });
@@ -1457,11 +1465,13 @@ class BugReportService
                 if (!$stillEligible) {
                     return ['ok' => false, 'code' => 'not_eligible', 'message' => 'No longer eligible'];
                 }
-                self::addComment($bugId, $actorUserId, '超過 ' . $days . ' 天沒收到回覆，先結案。直接在這裡回覆就會重開。');
+                $comment = self::addComment($bugId, $actorUserId, '超過 ' . $days . ' 天沒收到回覆，先結案。直接在這裡回覆就會重開。');
                 $res = self::changeStatus($bugId, $actorUserId, 'closed', $note);
                 if (!$res['ok']) {
                     throw new \RuntimeException($res['message'] ?? 'close failed');
                 }
+
+                NativeInappCommentOrigin::recordTimeout($locked, $comment, 'resolved', $days, $note);
 
                 return $res;
             });

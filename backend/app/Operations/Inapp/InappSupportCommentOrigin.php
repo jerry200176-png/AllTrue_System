@@ -14,7 +14,10 @@ final class InappSupportCommentOrigin
     /** @param iterable<BugReportComment> $comments @return array<int,true> */
     public static function ids(BugReport $bug, iterable $comments): array
     {
-        return array_fill_keys(array_keys(self::receipts($bug, $comments)), true);
+        $models = [];
+        foreach ($comments as $comment) $models[] = $comment;
+        // Native authorship is not a POP reply/resolution receipt and cannot grant lifecycle eligibility.
+        return array_fill_keys(array_keys(self::receipts($bug, $models)), true) + NativeInappCommentOrigin::ids($bug, $models);
     }
 
     /** Internal validated origin for lifecycle guards; never expose native receipt data in an API response.
