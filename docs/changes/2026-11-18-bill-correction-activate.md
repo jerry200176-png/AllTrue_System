@@ -5,4 +5,4 @@
 - 帳務列表只在該分校才回 `can_correct`；列表上「例外作廢」的收據檢查改用帳單備註的暗示（不多查資料庫），真正的檢查仍在作廢時。
 - 回復：把分校清單改回 `[]`。
 
-Release-Impact: staff
+Release-Impact: user-visible

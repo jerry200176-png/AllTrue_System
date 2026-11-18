@@ -44,7 +44,7 @@ class BillCorrectionTest extends TestCase
         $b['invoice']->update(['Status' => 'void']);
         $this->withHeaders($h)->getJson($url)->assertOk()->assertJsonPath('invoices.0.can_correct', false);
         config(['billing.bill_correction_campus_ids' => [$this->campus + 999]]);
-        $this->withHeaders($h)->getJson($url)->assertOk()->assertJsonPath('invoices.0.can_correct', false);
+        $this->assertArrayNotHasKey('can_correct', $this->withHeaders($h)->getJson($url)->assertOk()->json('invoices.0')); // another campus is on: no key here
         config(['billing.bill_correction_campus_ids' => []]);
         $this->assertArrayNotHasKey('can_correct', $this->withHeaders($h)->getJson($url)->assertOk()->json('invoices.0'));
     }
