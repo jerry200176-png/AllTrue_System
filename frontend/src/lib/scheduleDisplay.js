@@ -204,6 +204,24 @@ export function formatRescheduleConflictStudents(details) {
   return '';
 }
 
+/**
+ * Lessons that hold the slot (overlap_details of the server's schedule conflicts), one per source row.
+ * Shared by the manual-lesson modal and the session edit modal (#4991 line 3).
+ */
+export function uniqueScheduleBlockers(conflicts) {
+  const seen = new Set();
+  return (Array.isArray(conflicts) ? conflicts : []).flatMap((c) => c?.overlap_details || []).filter((b) => {
+    const k = `${b.source}-${b.source_id}`;
+    return !seen.has(k) && seen.add(k);
+  });
+}
+
+export function scheduleBlockerLabel(b, date) {
+  const time = `${String(b.start_time ?? '').slice(0, 5)}–${String(b.end_time ?? '').slice(0, 5)}`;
+  const contract = b.same_contract === undefined ? '' : (b.same_contract ? '（本合約的課）' : '（另一份合約的課）');
+  return `${b.student_name || '另一位學生'}${b.subject_name ? `・${b.subject_name}` : ''}${b.course_period ? `（${b.course_period}）` : ''}，${date || ''} ${time}${contract}`;
+}
+
 /** Server summaries are complete; append details only for legacy responses. */
 export function formatRescheduleFailure(error) {
   const message = humanizeRescheduleFailure(error?.message || '調課未完成，資料沒有變更');

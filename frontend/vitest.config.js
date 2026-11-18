@@ -19,6 +19,7 @@ export default defineConfig({
       'src/lib/classSessionsApi.beforeContractStart.test.js',
       'src/lib/directorHomeCards.test.js',
       'src/lib/billRows.test.js',
+      'src/lib/scheduleBlockers.test.js',
       'src/lib/billingDocState.test.js',
       'src/lib/studentBillingRowsList.test.js',
       'src/lib/learningRecordSessionPolicy.test.js',

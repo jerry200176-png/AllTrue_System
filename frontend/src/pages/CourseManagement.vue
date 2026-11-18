@@ -1341,6 +1341,7 @@
       @open-substitute-v2="openSubstituteV2FromEdit"
       @start-edit-note-time="startEditNoteTime"
       @do-edit-note-time="doEditNoteTime"
+      @open-course="openConflictBlockerCourse"
     />
 
     <!-- 預排日期／暫停中 chip question (shared Dialog; issue 4989 slice 7b). Esc and an outside click close it, like the old overlay. -->
@@ -3613,6 +3614,7 @@ function openConflictBlockerCourse(blocker) {
   const id = Number(blocker?.course_id) || 0;
   if (!id) return;
   closeManualSessionModal();
+  closeSessionEdit();
   const loaded = courses.value.find((c) => c.id === id);
   if (loaded) { openCourseManager(loaded, 'sessions'); return; }
   pendingLessonsCourseId.value = id;

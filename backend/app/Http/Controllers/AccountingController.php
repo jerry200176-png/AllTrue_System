@@ -501,8 +501,8 @@ class AccountingController extends Controller
         $reportsByInvoiceId = $reports->whereNotNull('InvoiceID')->groupBy('InvoiceID');
         $anomalies = [];
 
-        // 更正帳單: null while the feature is off everywhere (the key is then left out of every row).
-        $correctCampusOn = \App\Services\Billing\BillCorrection::enabledAnywhere() ? \App\Services\Billing\BillCorrection::campusOn((int) $student->CampusID) : null;
+        // 更正帳單: the key is only present on rows of a campus where it is on (absent = no button).
+        $correctCampusOn = \App\Services\Billing\BillCorrection::campusOn((int) $student->CampusID);
         $invoiceRows = $invoices->map(function (Invoice $invoice) use ($correctCampusOn, $restatedPaymentIds, $reportsByPaymentId, $reportsById, $reportsByInvoiceId, $firstSessionDates, $subjectNames, &$anomalies) {
             $invoiceStudentClassId = (int) $invoice->getAttribute('StudentClassID');
             $invoiceStudentClass = $invoice->getRelationValue('studentClass');
@@ -709,9 +709,9 @@ class AccountingController extends Controller
                 // In-app #436: a confirmed receipt is undone first (收款紀錄 撤銷), then the bill is voided.
                 'can_exception_void' => $status !== 'void' && ($netApplied > 0 || $paidAmount > 0)
                     && !$invoiceReports->contains(fn ($r) => $r['status'] === 'confirmed')
-                    && !(\App\Services\Billing\BillCorrection::enabledAnywhere() && \App\Services\Billing\BillCorrection::chainHasConfirmedReceipt((int) $invoice->id)),
-                // 更正帳單 button: only where the campus is on (the preview answers the real eligibility); the key is absent while the feature is off everywhere.
-                ...($correctCampusOn !== null ? ['can_correct' => $status !== 'void' && $correctCampusOn] : []),
+                    && !(\App\Services\Billing\BillCorrection::mayBeReplacement($invoice->Note) && \App\Services\Billing\BillCorrection::chainHasConfirmedReceipt((int) $invoice->id)),
+                // 更正帳單 button: only where the campus is on (the preview answers the real eligibility); absent = no button.
+                ...($correctCampusOn ? ['can_correct' => $status !== 'void'] : []),
                 'payments' => $paymentRows->all(),
                 'reports' => $invoiceReports->all(),
                 'anomalies' => $invoiceAnomalies,

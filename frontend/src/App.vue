@@ -607,6 +607,7 @@
       <DirectorAccountsPage v-if="!isPasswordChangeLocked && role === 'super_admin' && active === 'director-accounts'" :token="session?.access_token ?? ''" />
       <BranchManagementPage v-if="!isPasswordChangeLocked && role === 'super_admin' && active === 'branch-management'" :token="session?.access_token ?? ''" />
       <BranchHealthBoard v-if="!isPasswordChangeLocked && role === 'super_admin' && active === 'branch-health-board'" :token="session?.access_token ?? ''" />
+      <BillCorrectionLogPage v-if="!isPasswordChangeLocked && role === 'super_admin' && active === 'bill-corrections'" />
       <NightlyReconcilePanel v-if="!isPasswordChangeLocked && role === 'super_admin' && active === 'nightly-reconcile'" :token="session?.access_token ?? ''" />
       <ChatPage v-if="!isPasswordChangeLocked && (!isDirector || directorBranchReady) && (isDirector || isTeacher) && active === 'chat'" :branch-id="currentBranch" :user-id="session?.user?.id" :avatar-url="avatarUrl" :super-admin="role === 'super_admin'" :user-role="role" />
       <BugReportsPage v-if="!isPasswordChangeLocked && (!isDirector || directorBranchReady) && (isDirector || isTeacher) && active === 'bugs'" :branch-id="currentBranch" :user-role="role" :focus-bug-id="focusBugId" />
@@ -921,6 +922,7 @@ const TeacherHomePage       = asyncPage(() => import('./pages/TeacherHomePage.vu
 const ScheduleDiscrepancyPage = asyncPage(() => import('./pages/ScheduleDiscrepancyPage.vue'));
 const ReleaseNotesPage      = asyncPage(() => import('./pages/ReleaseNotesPage.vue'));
 const NightlyReconcilePanel  = asyncPage(() => import('./pages/NightlyReconcilePanel.vue'));
+const BillCorrectionLogPage  = asyncPage(() => import('./pages/BillCorrectionLogPage.vue'));
 const DuplicateSessionReviewPage = asyncPage(() => import('./pages/DuplicateSessionReviewPage.vue'));
 import AmbientMusicPlayer from './components/AmbientMusicPlayer.vue';
 import EngagementRankStrip from './components/EngagementRankStrip.vue';
