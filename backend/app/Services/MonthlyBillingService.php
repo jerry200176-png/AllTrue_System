@@ -23,7 +23,7 @@ use Illuminate\Support\Facades\DB;
 class MonthlyBillingService
 {
     /** @var list<string> */
-    private const BILLABLE_STATUSES = ['attended', 'completed', 'late'];
+    public const BILLABLE_STATUSES = ['attended', 'completed', 'late'];
     private const PLANNED_STATUSES = ['scheduled', 'rescheduled'];
 
     public function __construct(private StudentClassPricingService $pricing)

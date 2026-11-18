@@ -426,7 +426,7 @@ class BillingPayableResolver
      * a negative row or a `Method='void'` row of any sign. Per non-void invoice, reversals are applied in write order; see
      * latestUnreversedReceiptDate for how each one is matched to the receipt it reverses. A date counts only from a receipt
      * that still has a positive amount after that, so an invoice whose net applied is 0 gives no date. Void invoices are
-     * ignored.
+     * ignored, except one a bill correction voided (BillCorrection::KIND): its cash rows still count.
      *
      * @param  int[]  $studentClassIds
      * @return array<int, string>  only classes that have a dated payment
@@ -440,7 +440,10 @@ class BillingPayableResolver
         $rows = DB::table('Invoice')
             ->join('Payment', 'Payment.InvoiceID', '=', 'Invoice.id')
             ->whereIn('Invoice.StudentClassID', $studentClassIds)
-            ->where(fn ($q) => $q->whereNull('Invoice.Status')->orWhere('Invoice.Status', '!=', 'void'))
+            ->where(fn ($q) => $q->whereNull('Invoice.Status')->orWhere('Invoice.Status', '!=', 'void')
+                // 更正帳單 voids the old bill but its cash rows still stand (the credit move is skipped below); the receipt date is theirs.
+                ->when(\App\Services\Billing\BillCorrection::schemaReady(), fn ($w) => $w->orWhereIn('Invoice.id',
+                    DB::table('invoice_corrections')->where('kind', \App\Services\Billing\BillCorrection::KIND)->select('original_invoice_id'))))
             // a legacy-backfilled receipt is linked only one way, via payment_reports.payment_id (BackfillLegacyPayments)
             ->leftJoin('payment_reports as reversed_report', 'reversed_report.id', '=', 'Payment.payment_report_id')
             ->select('Invoice.StudentClassID', 'Payment.InvoiceID', 'Payment.id', 'Payment.Amount', 'Payment.Method', 'Payment.PaidAt',

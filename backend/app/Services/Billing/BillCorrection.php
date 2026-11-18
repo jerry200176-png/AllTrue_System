@@ -3,7 +3,7 @@
 namespace App\Services\Billing;
 
 use App\Models\{Invoice, Payment, SecurityAuditEvent, StudentClass};
-use App\Services\{InvoiceAmountReconciliationService, StudentClassPricingService};
+use App\Services\{ClassSessionIndexReadService, InvoiceAmountReconciliationService, MonthlyBillingService, StudentClassPricingService};
 use App\Support\DeadlockRetry;
 use Illuminate\Support\Facades\{DB, Schema};
 
@@ -164,6 +164,11 @@ final class BillCorrection
         $model->setRelation('items', \App\Models\InvoiceItem::query()->where('InvoiceID', $invoiceId)->get());
         $money = $this->amounts->resolve($model, $course);
         $moved = (int) $money['net_applied'];
+        // A paid state the Payment rows do not back (legacy / stored-only) would move 0 and then clear the course paid flag.
+        if ((int) $bill->PaidAmount !== $moved || ((int) $course->Paid === 1
+                && !$payments->contains(fn ($p) => (int) $p->Amount > 0 && (string) $p->Method !== 'void' && !Payment::isCreditMovement($p)))) {
+            return ['out' => $this->refuse('paid_state_unverified', '這張帳單的已收金額跟收款紀錄對不上，請回報總部處理，不要自行更正。')];
+        }
         $extra = ['added_lessons' => [], 'period_end' => null];
         if ($monthly) {
             if ($money['repriceable']) {
@@ -238,16 +243,20 @@ final class BillCorrection
         if (!$item->PeriodStart || !$item->PeriodEnd) {
             return ['refusal' => $this->refuse('unsupported_bill', '這張帳單沒有服務期間，不能算出漏收的課。')];
         }
-        $held = DB::table('ClassSession')->where('StudentClassID', $course->ID)->whereIn('Status', ['attended', 'completed', 'late'])->orderBy('ID')->get(['SessionDate'])
+        // The lesson status the 月對帳表 學收 uses: the calendar's sign-in-aware status, then the bill engine's billable set.
+        $held = DB::table('ClassSession as cs')
+            ->leftJoin('StudentSingIn as si', fn ($j) => $j->on('si.ClassSessionID', '=', 'cs.id')->whereRaw(ClassSessionIndexReadService::LATEST_SIGN_IN_SQL))
+            ->where('cs.StudentClassID', $course->ID)->orderBy('cs.id')->select(['cs.SessionDate'])
+            ->selectRaw(...ClassSessionIndexReadService::effectiveStatusSelect())->get()
+            ->filter(fn ($s) => in_array(strtolower(rtrim((string) $s->effective_status)), MonthlyBillingService::BILLABLE_STATUSES, true))
             ->map(fn ($s) => substr((string) $s->SessionDate, 0, 10));
         $covered = BillingPeriod::datesCoveredByBills($course, $held->unique()->values()->all());
-        $open = $held->reject(fn ($d) => in_array($d, $covered, true))->sort()->values();
         $end = substr((string) $item->PeriodEnd, 0, 10);
+        // Only the rest of the item's own calendar month (and the contract): later lessons belong to the next month's bill.
+        $cap = min(date('Y-m-t', strtotime($end)), substr((string) $course->EndDate, 0, 10));
+        $open = $held->reject(fn ($d) => in_array($d, $covered, true) || $d <= $end || $d > $cap)->sort()->values();
         if ($open->isEmpty()) {
             return ['refusal' => $this->refuse('no_gap', '沒有找到這張帳單漏收的課。')];
-        }
-        if ($open->first() <= $end || $open->last() > substr((string) $course->EndDate, 0, 10)) {
-            return ['refusal' => $this->refuse('gap_not_contiguous', '漏收的課不在這張帳單服務期間之後、合約結束之前，請找總部核對。')];
         }
         $newEnd = (string) $open->last();
         if ($invoices->filter(fn ($i) => $i->Status !== 'void' && (int) $i->id !== (int) $bill->id)->contains(fn ($i) => $items->where('InvoiceID', $i->id)

@@ -129,6 +129,7 @@ class BillCorrectionTest extends TestCase
         config(['billing.bill_correction_campus_ids' => []]);
         $this->correct($own, $b['invoice'], ['new_total' => 8000])->assertStatus(404)->assertJsonPath('code', 'bill_correction_off');
         $this->correct($own, $b['invoice'], ['new_total' => 8000, 'state_hash' => str_repeat('a', 64)], 'apply')->assertStatus(404);
+        $this->correct($this->token('S', $this->campus), $b['invoice'], ['new_total' => 8000, 'state_hash' => str_repeat('a', 64)], 'apply')->assertStatus(404)->assertJsonPath('code', 'bill_correction_off');
         $this->assertSame($before, $this->snapshot());
     }
 
@@ -159,6 +160,7 @@ class BillCorrectionTest extends TestCase
         $tok = $this->token('A', $this->campus);
         $stale = $this->correct($tok, $b['invoice'], ['new_total' => 8000])->assertOk()->json('state_hash');
         $this->payment($b['invoice'], 1000, 'cash'); // the bill moved after the screen saw it
+        $b['invoice']->update(['PaidAmount' => 5000]);
         $before = $this->snapshot();
         $this->correct($tok, $b['invoice'], ['new_total' => 8000, 'state_hash' => $stale], 'apply')->assertStatus(409)->assertJsonPath('code', 'state_changed');
         $this->assertSame($before, $this->snapshot());
@@ -170,7 +172,7 @@ class BillCorrectionTest extends TestCase
     public function test_monthly_gap_already_covered_by_another_live_bill_is_refused(): void
     {
         [$m] = $this->monthlyBill(2000);
-        $other = $this->invoice($m['course'], \App\Models\Student::findOrFail($m['course']->StudentID), '2026-11', 2000, 'unpaid', 0, []);
+        $other = Invoice::create(['StudentID' => $m['course']->StudentID, 'StudentClassID' => $m['course']->ID, 'IssueDate' => '2026-11-01', 'TotalAmount' => 2000, 'PaidAmount' => 0, 'Status' => 'unpaid', 'billing_period' => '2026-11']);
         InvoiceItem::create(['InvoiceID' => $other->id, 'StudentClassID' => $m['course']->ID, 'Description' => 'x', 'Amount' => 2000, 'PeriodStart' => '2026-10-31', 'PeriodEnd' => '2026-10-31']);
         $this->correct($this->token('A', $this->campus), $m['invoice'])->assertStatus(422)->assertJsonPath('code', 'no_gap');
     }
@@ -248,6 +250,51 @@ class BillCorrectionTest extends TestCase
         $this->assertSame($before['payments'] + [], array_slice($this->snapshot()['payments'], 0, count($before['payments'])));
     }
 
+    public function test_void_is_refused_when_the_live_bill_was_itself_voided(): void
+    {
+        $b = $this->bill($this->student($this->campus), 10000, 'paid', 10000);
+        $report = $this->confirmedReport($b);
+        $tok = $this->token('S', $this->campus);
+        $new = (int) $this->applyCorrection($tok, $b['invoice'], ['new_total' => 8000])->json('replacement_invoice_id');
+        DB::table('Invoice')->where('id', $new)->update(['Status' => 'void']);
+        $before = $this->snapshot();
+
+        $this->putJson("/api/v1/payment-reports/{$report->id}/void", ['void_reason' => '收錯了'], $this->h($tok))->assertStatus(409)->assertJsonPath('code', 'void_transferred_credit');
+        $this->assertSame($before, $this->snapshot());
+    }
+
+    // ── legacy / stored-only paid state, last paid date, month cap ──────
+
+    public function test_a_paid_state_the_payment_rows_do_not_back_is_refused(): void
+    {
+        $tok = $this->token('A', $this->campus);
+        $stored = $this->bill($this->student($this->campus), 10000);
+        $stored['invoice']->update(['PaidAmount' => 5000, 'Status' => 'partial']);
+        $this->correct($tok, $stored['invoice'], ['new_total' => 8000])->assertStatus(422)->assertJsonPath('code', 'paid_state_unverified');
+
+        $flag = $this->bill($this->student($this->campus), 10000);
+        $flag['course']->update(['Paid' => 1]);
+        $this->correct($tok, $flag['invoice'], ['new_total' => 8000])->assertStatus(422)->assertJsonPath('code', 'paid_state_unverified');
+    }
+
+    public function test_last_paid_date_survives_a_correction(): void
+    {
+        $b = $this->bill($this->student($this->campus), 10000, 'paid', 10000); // receipt dated 2026-11-10
+        $id = (int) $b['course']->ID;
+        $this->applyCorrection($this->token('A', $this->campus), $b['invoice'], ['new_total' => 8000]);
+
+        $this->assertSame([$id => '2026-11-10'], app(\App\Services\BillingPayableResolver::class)->lastPaidAtByStudentClassIds([$id]));
+    }
+
+    public function test_the_gap_stops_at_the_end_of_the_items_calendar_month(): void
+    {
+        [$m] = $this->monthlyBill(2000);
+        DB::table('ClassSession')->insert(['StudentClassID' => $m['course']->ID, 'SessionDate' => '2026-11-03', 'StartTime' => '18:00:00', 'EndTime' => '20:00:00',
+            'Status' => 'completed', 'created_at' => now(), 'updated_at' => now()]);
+
+        $this->correct($this->token('A', $this->campus), $m['invoice'])->assertOk()->assertJsonPath('added_lessons', ['2026-10-31'])->assertJsonPath('new_total', 8000);
+    }
+
     // ── pointer from the confirm refusals ───────────────────────────────
 
     public function test_pointer_only_when_the_campus_is_on_and_the_charge_differs_from_the_bill(): void
@@ -275,13 +322,13 @@ class BillCorrectionTest extends TestCase
         return $this->correct($tok, $invoice, $body + ['state_hash' => $hash], 'apply')->assertStatus(201);
     }
 
-    /** @return array{0: array{course:StudentClass, invoice:Invoice, payment:?Payment}, 1:int} a monthly October bill (3 lessons, range to 10-30) and the id of the 10-31 lesson */
+    /** @return array{0: array{course:StudentClass, invoice:Invoice, payment:?Payment}, 1:int} a monthly October bill (3 lessons, range to 10-27) and the id of the 10-31 lesson */
     private function monthlyBill(int $paid): array
     {
         $m = $this->bill($this->student($this->campus), 6000, 'unpaid', $paid, ['ScheduleMode' => 'date', 'Rate' => 2000, 'rate_unit' => 'session',
-            'StartDate' => '2026-10-01', 'EndDate' => '2026-10-31', 'Charge' => 6000], ['billing_period' => '2026-10', 'IssueDate' => '2026-10-01']);
+            'StartDate' => '2026-10-01', 'EndDate' => '2026-11-30', 'Charge' => 6000], ['billing_period' => '2026-10', 'IssueDate' => '2026-10-01']);
         InvoiceItem::create(['InvoiceID' => $m['invoice']->id, 'StudentClassID' => $m['course']->ID, 'Description' => '十月學費', 'Amount' => 6000,
-            'PeriodStart' => '2026-10-01', 'PeriodEnd' => '2026-10-30']);
+            'PeriodStart' => '2026-10-01', 'PeriodEnd' => '2026-10-27']);
         $late = 0;
         foreach (['2026-10-05', '2026-10-12', '2026-10-19', '2026-10-31'] as $d) {
             $id = DB::table('ClassSession')->insertGetId(['StudentClassID' => $m['course']->ID, 'SessionDate' => $d, 'StartTime' => '18:00:00', 'EndTime' => '20:00:00',
