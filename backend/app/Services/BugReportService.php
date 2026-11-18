@@ -290,7 +290,9 @@ class BugReportService
             'mime_type' => $a->mime_type,
         ])->all();
 
-        $evidenceRows = $bug->evidence()->orderBy('id')->get()->map(fn ($e) => [
+        // Public evidence is opt-in by type. Ship this boundary before any internal append-only producer,
+        // so rolling that producer back never exposes its provenance metadata or inflates delivery evidence.
+        $evidenceRows = $bug->evidence()->where('evidence_type', BugReportEvidence::TYPE_RESOLUTION_PRODUCTION_VERIFICATION)->orderBy('id')->get()->map(fn ($e) => [
             'id' => $e->id,
             'evidence_type' => $e->evidence_type,
             'production_revision' => $e->production_revision,

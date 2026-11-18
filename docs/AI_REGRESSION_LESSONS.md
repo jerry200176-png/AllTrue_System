@@ -6,6 +6,8 @@ last_reviewed: 2026-09-05
 
 # AI／工程師防再犯紀錄（必讀）
 
+**F11：新內部稽核格式先保護舊版讀取（#5498，2026-11-18）**：既有 API 若把所有 evidence type 與 metadata 直接序列化，新增 append-only 內部格式後回退程式會重新公開它。先部署公開類型 allowlist，再啟用 producer；producer 的退版下限須保留讀取防護。測試同時驗證未知類型不外露／不計入交付、已知證據不變及原始稽核列仍在，不能用刪稽核或放寬計數收尾。
+
 **F1／F7：取消狀態先更新快取，再過濾顯示（in-app #568／#5439，2026-11-18）**：先把新回覆裡的取消堂次濾掉，會讓同 ID 的舊有效課卡永遠留在快取；續報課調進同一時段就變成兩張卡。沿用既有實體堂次合併，再套顯示過濾，保留其他週／其他課程與歷史；不得用同學生去重吞掉真正的兩筆有效堂次。回歸見 `useCalendarCancelledCache.test.js` 與 `calendar-reschedule-cache-528.spec.js` 的完整調課流程。
 
 **PR 送件先跑現成的說明／生成檢查（#5474，2026-11-18）**：本機程式測試綠燈仍漏了近期改寫宣告、發布分類及新增路由索引，導致原生檢查先擋住、部分 PHPUnit 根本未執行。送件前以實際 PR body 跑既有 `check-recent-work-revert.py`、`check-production-release-classification.mjs` 與 release-notes coverage；動路由時用 `generate-ref-api-routes.sh` 生成並檢查。沿用現成檢查，不另造規則，也不把未執行或 skipped 當作測試通過。
