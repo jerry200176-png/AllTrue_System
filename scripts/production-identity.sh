@@ -14,10 +14,10 @@ need_cmd gh
 need_cmd git
 
 REMOTE_MAIN="$(git ls-remote "https://github.com/${REPO}.git" refs/heads/main | awk '{print $1}')"
-HEALTH_RAW="$(curl -sk --max-time 20 "${PROD_URL}/api/v1/health" || true)"
-VERSION_RAW="$(curl -sk --max-time 20 "${PROD_URL}/version.json" || true)"
-DEPLOYMENT_RAW="$(curl -sk --max-time 20 "${PROD_URL}/deployment.json" || true)"
-HEALTH_CODE="$(curl -sk -o /dev/null -w '%{http_code}' --max-time 20 "${PROD_URL}/api/v1/health" || echo 000)"
+HEALTH_RAW="$(curl -sS --max-time 20 "${PROD_URL}/api/v1/health" || true)"
+VERSION_RAW="$(curl -sS --max-time 20 "${PROD_URL}/version.json" || true)"
+DEPLOYMENT_RAW="$(curl -sS --max-time 20 "${PROD_URL}/deployment.json" || true)"
+HEALTH_CODE="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 20 "${PROD_URL}/api/v1/health" || echo 000)"
 
 PI_HEALTH_JSON="$(gh run list -R "$REPO" --workflow=pi-health.yml --limit 1 --json databaseId,conclusion,status,createdAt,url,displayTitle 2>/dev/null || echo '[]')"
 DEPLOYMENT_BACKEND_SHA="$(python3 -c 'import json,sys; print((json.loads(sys.stdin.read() or "{}") or {}).get("backend_sha") or "")' <<< "$DEPLOYMENT_RAW" 2>/dev/null || true)"
@@ -41,6 +41,33 @@ printf '%s' "$DEPLOY_JSON" > "$IDENTITY_TMP_DIR/deploy-runs.json"
 printf '%s' "$MATCHING_DEPLOY_JSON" > "$IDENTITY_TMP_DIR/matching-deploy-runs.json"
 printf '%s' "$PI_HEALTH_JSON" > "$IDENTITY_TMP_DIR/pi-health.json"
 printf '%s' "$COMPARE_JSON" > "$IDENTITY_TMP_DIR/compare.json"
+
+# A successful wrapper may skip production entirely. Read bounded native Actions
+# metadata, never logs or production SSH, for the matching successful candidates.
+python3 - "$DEPLOYMENT_BACKEND_SHA" "$IDENTITY_TMP_DIR/matching-deploy-runs.json" > "$IDENTITY_TMP_DIR/candidates.txt" <<'PY'
+import json, re, sys
+try:
+    runs = json.load(open(sys.argv[2]))
+except (ValueError, OSError):
+    runs = []
+seen = set()
+for run in runs[:20] if isinstance(runs, list) else []:
+    if not isinstance(run, dict):
+        continue
+    run_id = run.get("databaseId")
+    if (type(run_id) is int and run_id > 0 and run_id not in seen
+            and re.fullmatch(r"[0-9a-f]{40}", sys.argv[1])
+            and run.get("headSha") == sys.argv[1]
+            and run.get("status") == "completed" and run.get("conclusion") == "success"):
+        seen.add(run_id)
+        print(run_id)
+PY
+while IFS= read -r run_id; do
+    gh api "/repos/$REPO/actions/runs/$run_id" > "$IDENTITY_TMP_DIR/deploy-run-$run_id.json" 2>/dev/null \
+        || printf '{}' > "$IDENTITY_TMP_DIR/deploy-run-$run_id.json"
+    gh api "/repos/$REPO/actions/runs/$run_id/jobs?per_page=100&filter=latest" > "$IDENTITY_TMP_DIR/deploy-jobs-$run_id.json" 2>/dev/null \
+        || printf '{}' > "$IDENTITY_TMP_DIR/deploy-jobs-$run_id.json"
+done < "$IDENTITY_TMP_DIR/candidates.txt"
 
 # Keep large API responses out of argv. Apart from avoiding the host's
 # ARG_MAX limit, this keeps evidence transport independent of response size.
@@ -93,12 +120,58 @@ successful_deploy_runs = [
 # is the authoritative runtime identity, so select the successful deploy run
 # whose head actually matches that manifest instead of blindly taking the
 # newest workflow trigger.
-deploy = next(
-    (run for run in matching_deploy_runs
-     if run.get('status') == 'completed' and run.get('conclusion') == 'success'
-     and run.get('headSha') == deployment_backend_sha),
-    None,
-)
+def verified_job(run):
+    if not isinstance(run, dict):
+        return None
+    run_id = run.get('databaseId')
+    if type(run_id) is not int or run_id <= 0:
+        return None
+    root = Path(matching_deploy_path).parent
+    def evidence(name):
+        try:
+            value = parse((root / f'{name}-{run_id}.json').read_text(), {})
+        except OSError:
+            return {}
+        return value if isinstance(value, dict) else {}
+    metadata = evidence('deploy-run')
+    envelope = evidence('deploy-jobs')
+    jobs = envelope.get('jobs')
+    if (run.get('status') != 'completed' or run.get('conclusion') != 'success'
+            or run.get('headSha') != deployment_backend_sha
+            or type(metadata.get('id')) is not int or metadata['id'] != run_id
+            or metadata.get('path') != '.github/workflows/deploy.yml'
+            or metadata.get('head_branch') != 'main'
+            or metadata.get('head_sha') != deployment_backend_sha
+            or metadata.get('status') != 'completed' or metadata.get('conclusion') != 'success'
+            or not isinstance(jobs, list)
+            or type(envelope.get('total_count')) is not int or envelope['total_count'] != len(jobs)):
+        return None
+    if any(not isinstance(job, dict) for job in jobs):
+        return None
+    production = [job for job in jobs if job.get('name') == 'Deploy to Production']
+    if len(production) != 1:
+        return None
+    job = production[0]
+    if (type(job.get('id')) is not int or job['id'] <= 0
+            or type(job.get('run_id')) is not int or job['run_id'] != run_id
+            or job.get('status') != 'completed' or job.get('conclusion') != 'success'
+            or not isinstance(job.get('completed_at'), str)):
+        return None
+    try:
+        completed = datetime.datetime.fromisoformat(job['completed_at'].replace('Z', '+00:00'))
+    except ValueError:
+        return None
+    if completed.tzinfo is None:
+        return None
+    return {key: job[key] for key in ('id', 'run_id', 'name', 'status', 'conclusion', 'completed_at')}
+
+deploy = None
+production_job = None
+for candidate in matching_deploy_runs[:20]:
+    job = verified_job(candidate)
+    if job is not None:
+        deploy, production_job = candidate, job
+        break
 deploy_sha = (deploy or {}).get('headSha')
 deploy_conclusion = (deploy or {}).get('conclusion')
 pi_conclusion = (pi or {}).get('conclusion')
@@ -161,6 +234,7 @@ identity = {
   'frontend_asset_built_at_local': frontend_time,
   'frontend_sha_is_full_git_sha': False,
   'last_deploy_workflow_run': deploy,
+  'production_deploy_job': production_job,
   'latest_deploy_workflow_run': latest_deploy_workflow_run,
   'successful_deploy_runs_considered': len(successful_deploy_runs),
   'deploy_status': deploy_conclusion,
@@ -180,7 +254,8 @@ identity = {
   },
   'db_migration_version': None,
   'db_migration_version_status': 'unknown_without_pi_ssh',
-  'rollback_target': deploy_sha,
+  'rollback_target': None,
+  'rollback_target_status': 'unknown_not_validated',
   'data_reconciliation_last_result': None,
   'data_reconciliation_status': 'unknown_without_authenticated_ops_api',
   'reconciliation_baseline': {

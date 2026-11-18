@@ -1015,6 +1015,8 @@ Intake consolidation regression (2026-10-17): the oldest trusted SourceRef issue
 - **測試必補**：`scripts/tests/test_deploy_activation_state.py`（`_execute_isolated_migration` 實際執行 migration 區塊：失敗即中止、status 失敗不得當成 0 筆 pending；success 標記步驟不得有 `if:`／`continue-on-error`）。
 - **同族告警（#4370）**：HTTP 呼叫完成不等於通知被接收。`monitor-alert.sh` 必須同時驗 HTTP 與 provider 成功回應；失敗回傳非零且不印成功，不輸出憑證／原始回應，也不自動重送可能已接收的 POST。`scripts/tests/test_monitor_alert_notify.py` 用 stub 驗證拒收、timeout、回應契約與清理，禁止對正式通知通道跑測試。
 
+- **同族告警（#5070，2026-11-18）**：`deploy.yml` 外層成功可能只有 skipped 的正式 job。`production-identity.sh` 必須以原生 Actions metadata 核對 main／workflow／SHA 與唯一成功的 `Deploy to Production` job，保留 job ID／完成時間；缺失、模糊、失敗或仍執行均不得報已交付。未驗證的 rollback target 保持 unknown，不能填目前版本。`test_production_identity.py` 實際執行 helper，用合成 transport 驗證此邊界與原有健康／排程故障，避免只比對原始碼字串。
+
 ---
 
 ### R139. 給創辦人的週報只能由正式站唯讀編號組成，且同週重跑必須是更新（in-app 閉環 2A，2026-10-08）
