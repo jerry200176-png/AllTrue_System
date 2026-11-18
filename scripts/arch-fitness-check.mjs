@@ -19,6 +19,8 @@
  * FIT-13 L3            required SOP docs present
  * FIT-16 #4659 step 3  fee math (Rate × count) in controllers ratchet (one fee source)
  * FIT-17 TD-076        files touching the `schedules` exception table directly ratchet (one timetable reader)
+ * FIT-18 #4991 M       product files writing StudentClass.Paid / .Charge ratchet (one money writer)
+ * FIT-19 #4991 M       frontend files multiplying a price by a count ratchet (screens display, they do not compute)
  */
 import fs from 'node:fs';
 import path from 'node:path';
@@ -163,6 +165,32 @@ let svcGraph = { svcFiles: [], edges: new Map(), ctxRule: null };
   for (const form of miss) if (re.test(form)) failures.push(`FIT-17 self-check: pattern must not match ${form}`);
   const n = appPhp.filter((f) => re.test(read(f))).length;
   ratchet('FIT-17', 'files touching the schedules table directly; read lessons through TeacherClassCalendar', n, 'scheduleTableReaderFiles');
+}
+
+// FIT-18 (#4991 family M): "paid" and the contract fee drifted because many files set them. New writes go through
+// the Billing services (BillCorrection, ContractRenewal, the verdict); this list only shrinks.
+// Operations/ and Console/ are left out: one-off governed repairs, reviewed by the POP gates.
+// ponytail: sees `->Paid =` and an array key within 300 chars of a write call; a write built in a variable first is missed.
+{
+  const re = /->(?:Paid|Charge)\s*=[^=>]|(?:->update|::create|->create|->fill|->forceFill|->insert|updateOrCreate)\(\s*\[[^\]]{0,300}?['"](?:Paid|Charge)['"]\s*=>/;
+  const hit = ['$sc->Paid = 1;', '$c->Charge = $fee;', "->update(['Paid' => 0])", "->update([\n 'Stop' => 1,\n 'Charge' => 0])"];
+  const miss = ['$sc->Paid == 1', "'Charge' => $sc->Charge,", '$inv->PaidAmount = 0;', "['Paid' => $x]"];
+  for (const form of hit) if (!re.test(form)) failures.push(`FIT-18 self-check: pattern must match ${form}`);
+  for (const form of miss) if (re.test(form)) failures.push(`FIT-18 self-check: pattern must not match ${form}`);
+  const files = appPhp.filter((f) => !/backend\/app\/(Operations|Console)\//.test(f.split(path.sep).join('/')) && re.test(read(f)));
+  ratchet('FIT-18', `product files writing Paid/Charge (${files.map((f) => path.basename(f, '.php')).join(', ')}); write through a Billing service`, files.length, 'contractMoneyWriterFiles');
+}
+
+// FIT-19 (#4991 family M, #3521): a screen that multiplies a price by a count shows its own amount. The server's
+// verdict is the amount; lib/coursePricing.js is the one place allowed to preview it before save.
+// ponytail: name-based (rate|price|charge|fee × count|sessions|lessons|hours|qty|units); other names are missed.
+{
+  const re = /\b\w*(?:[rR]ate|[pP]rice|[cC]harge|[fF]ee)\w*(?:\(\))?\s*\*\s*\(?\w*(?:[cC]ount|[sS]essions?|[lL]essons?|[hH]ours?|[qQ]ty|[uU]nits?)/;
+  for (const form of ['unitPrice * sessionCount', 'row.rate * (lessons']) if (!re.test(form)) failures.push(`FIT-19 self-check: pattern must match ${form}`);
+  for (const form of ['width * count', 'rate + count']) if (re.test(form)) failures.push(`FIT-19 self-check: pattern must not match ${form}`);
+  const files = walk(path.join(ROOT, 'frontend/src'), (p) => /\.(js|ts|vue)$/.test(p) && !/\.(test|spec)\.|__tests__/.test(p) && !p.endsWith(path.join('lib', 'coursePricing.js')))
+    .filter((f) => re.test(read(f)));
+  ratchet('FIT-19', `frontend files computing money (${files.map((f) => path.basename(f)).join(', ') || 'none'}); show the server amount`, files.length, 'frontendMoneyMathFiles');
 }
 
 // FIT-10 context map completeness + forbidden edges (DEP-1)
