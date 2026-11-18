@@ -35,6 +35,20 @@ class BillCorrectionTest extends TestCase
         parent::tearDown();
     }
 
+    public function test_ledger_payload_carries_can_correct_only_for_live_bills_of_an_enabled_campus(): void
+    {
+        $b = $this->bill($this->student($this->campus), 10000, 'unpaid', 0);
+        $url = "/api/v1/accounting/ledger?student_class_id={$b['course']->ID}";
+        $h = ['Authorization' => 'Bearer '.$this->token('A', $this->campus), 'Accept' => 'application/json'];
+        $this->withHeaders($h)->getJson($url)->assertOk()->assertJsonPath('invoices.0.can_correct', true);
+        $b['invoice']->update(['Status' => 'void']);
+        $this->withHeaders($h)->getJson($url)->assertOk()->assertJsonPath('invoices.0.can_correct', false);
+        config(['billing.bill_correction_campus_ids' => [$this->campus + 999]]);
+        $this->withHeaders($h)->getJson($url)->assertOk()->assertJsonPath('invoices.0.can_correct', false);
+        config(['billing.bill_correction_campus_ids' => []]);
+        $this->assertArrayNotHasKey('can_correct', $this->withHeaders($h)->getJson($url)->assertOk()->json('invoices.0'));
+    }
+
     // ── 560: count bill at the old price ────────────────────────────────
 
     public function test_560_fully_paid_old_bill_then_lower_price_keeps_cash_and_shows_the_overpay(): void
@@ -122,7 +136,8 @@ class BillCorrectionTest extends TestCase
         $own = $this->token('A', $this->campus);
         $this->correct($this->token('T', $this->campus), $b['invoice'], ['new_total' => 8000])->assertStatus(403);
         $this->correct($this->token('A', $other), $b['invoice'], ['new_total' => 8000])->assertStatus(403);
-        $this->correct($own, $b['invoice'], ['reason' => 'x'])->assertStatus(422); // reason too short
+        $this->correct($own, $b['invoice'], ['new_total' => 8000, 'reason' => 'x', 'state_hash' => str_repeat('a', 64)], 'apply')->assertStatus(422); // reason too short (apply only)
+        $this->postJson("/api/v1/invoices/{$b['invoice']->id}/correction/preview", ['new_total' => 8000], $this->h($own))->assertOk(); // preview needs no reason
         $this->correct($own, $b['invoice'], [])->assertStatus(422)->assertJsonPath('code', 'new_total_required');
         $this->correct($own, $b['invoice'], ['new_total' => 10000])->assertStatus(422)->assertJsonPath('code', 'unchanged_total');
         $this->correct($own, $b['invoice'], ['new_total' => 8000], 'apply')->assertStatus(422); // state_hash required

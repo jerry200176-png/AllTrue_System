@@ -53,6 +53,8 @@
 @source "./components/BillingDataQualityCard.vue";
 @source "./components/AiActivityCard.vue";
 @source "./components/calendar/SessionHistorySheet.vue";
+@source "./components/BillCorrectionDialog.vue";
+@source "./components/PaymentEntryModal.vue";
 
 /* Light theme only. Dark comes later: add a `.dark { ... }` block remapping these to dark --ds-* tokens. */
 :root {
