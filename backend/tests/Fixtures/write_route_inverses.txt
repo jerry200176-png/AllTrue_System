@@ -337,3 +337,5 @@ PUT api/v1/students/{student}
 PUT api/v1/students/{student}/guardians/{studentGuardian}
 PUT api/v1/subjects/{id}
 PUT api/v1/system/settings/substitute-undo
+POST api/v1/invoices/{invoice}/correction/apply => none: no direct undo; the old bill stays voided and linked. A wrong correction is fixed on the replacement bill (correct or void it), RFC_MONTHLY_BILL_LIFECYCLE 3.6
+POST api/v1/invoices/{invoice}/correction/preview => none: computes a plan and a state hash, writes nothing
