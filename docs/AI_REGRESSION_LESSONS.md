@@ -6,6 +6,10 @@ last_reviewed: 2026-09-05
 
 # AI／工程師防再犯紀錄（必讀）
 
+**F1／F7：取消狀態先更新快取，再過濾顯示（in-app #568／#5439，2026-11-18）**：先把新回覆裡的取消堂次濾掉，會讓同 ID 的舊有效課卡永遠留在快取；續報課調進同一時段就變成兩張卡。沿用既有實體堂次合併，再套顯示過濾，保留其他週／其他課程與歷史；不得用同學生去重吞掉真正的兩筆有效堂次。回歸見 `useCalendarCancelledCache.test.js` 與 `calendar-reschedule-cache-528.spec.js` 的完整調課流程。
+
+**PR 送件先跑現成的說明／生成檢查（#5474，2026-11-18）**：本機程式測試綠燈仍漏了近期改寫宣告、發布分類及新增路由索引，導致原生檢查先擋住、部分 PHPUnit 根本未執行。送件前以實際 PR body 跑既有 `check-recent-work-revert.py`、`check-production-release-classification.mjs` 與 release-notes coverage；動路由時用 `generate-ref-api-routes.sh` 生成並檢查。沿用現成檢查，不另造規則，也不把未執行或 skipped 當作測試通過。
+
 **F32／F7：新畫面顯示合約「欠多少／收齊了沒」，先加入 `ContractMoneyCallersAgreeTest`（#5428／#5430，2026-11-17）**：月對帳表第一版自己判斷狀態，Codex 分 7 輪才抓完它跟學生帳務的落差：要核對被未繳蓋掉、只有舊 Paid 標記當已收齊、確認不收（waived）仍顯示未繳、免費課寫已收齊、手機看不到單價與每堂狀態。根因是另寫一套判斷，沒有接上共用的 `ContractMoneyVerdict`。新畫面一律讀 Verdict 的 `status`／`outstanding`，例外（waived、legacy_flag 但試聽費依日期已記、free）由伺服器給欄位，前端不重算；同一個 PR 把新 API 加進 `ContractMoneyCallersAgreeTest`（120 份隨機合約），讓之後的漂移在 CI 失敗，而不是等主任或 review 一個一個找。
 
 **F1：課程連結的目標不可由教室或第一頁推定（#5415，2026-11-17）**：`branch_id` 是教室資料，無教室時可為空；課程擁有校區讀既有 `student.CampusID`。指定課程以原校區／學生範圍加精確 ID 查詢，不以第一頁 50 筆代表全部。新的明確導覽先使舊抽屜與舊列表失效，晚回覆仍由既有 request ID 擋下。回歸須含無教室、不同教室校區、超過一頁、錯學生／無校區、A→錯連結及 A→延遲 B→A；見 `StudentClassCourseLinkLookupTest` 與課程付款入口 browser spec。這是定位正確性，不新增查看或資料修改權限。
