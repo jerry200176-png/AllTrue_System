@@ -17,6 +17,155 @@ class BugReporterTimeoutTest extends TestCase
 {
     use RefreshDatabase;
 
+    protected function tearDown(): void
+    {
+        Carbon::setTestNow();
+        parent::tearDown();
+    }
+
+    /** #5498: shared native service, not just a POP receipt, must preserve automation authorship. */
+    public function test_5498_self_filed_native_timeout_is_support_but_identical_human_text_is_reporter(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-11-18 12:00:00'));
+        [$admin, $staff] = $this->seedUsers();
+        $staff->forceFill(['type' => 'S'])->save();
+        $bug = $this->makeTriagedBug($staff->id, $admin->id, now()->subDays(15));
+        $this->assertSame('closed', BugReportService::closeByReporterTimeout($bug->id, $admin->id)['action']);
+        $native = BugReportComment::where('bug_report_id', $bug->id)->latest('id')->firstOrFail();
+        $human = BugReportService::addComment($bug->id, $admin->id, $native->body);
+        $detail = BugReportService::getDetail($bug->id, true);
+        $comments = collect($detail['comments'])->keyBy('id');
+        $this->assertSame('support', $comments[$native->id]['origin']);
+        $this->assertSame('reporter', $comments[$human->id]['origin'], 'same actor, body and timestamp without bound proof is still human');
+        $this->assertSame([], $detail['evidence'], 'native origin proof never leaks into public production evidence');
+        $this->assertSame(0, $detail['product_loop']['evidence_count']);
+        $this->assertFalse($detail['product_loop']['shipped']);
+        $bug->forceFill(['status' => 'in_progress'])->save();
+        $later = collect(BugReportService::getDetail($bug->id, true)['comments'])->keyBy('id');
+        $this->assertSame('support', $later[$native->id]['origin'], 'later report state cannot rewrite historical authorship');
+    }
+
+    public function test_5498_native_timeout_origin_survives_reader_timezone_change(): void
+    {
+        $timezone = date_default_timezone_get();
+        $configuredTimezone = config('app.timezone');
+        try {
+            date_default_timezone_set('UTC');
+            config(['app.timezone' => 'UTC']);
+            Carbon::setTestNow(Carbon::parse('2026-11-18 12:00:00', 'UTC'));
+            [$admin, $staff] = $this->seedUsers();
+            $bug = $this->makeTriagedBug($staff->id, $admin->id, now()->subDays(15));
+            $this->assertSame('closed', BugReportService::closeByReporterTimeout($bug->id, $admin->id)['action']);
+            $commentId = BugReportComment::where('bug_report_id', $bug->id)->latest('id')->value('id');
+            date_default_timezone_set('Asia/Taipei');
+            config(['app.timezone' => 'Asia/Taipei']);
+            Carbon::setTestNow(Carbon::parse('2026-11-18 20:00:00', 'Asia/Taipei'));
+            $comments = collect(BugReportService::getDetail($bug->id, true)['comments'])->keyBy('id');
+            $this->assertSame('support', $comments[$commentId]['origin'], 'formatting timezone cannot rewrite stored authorship');
+        } finally {
+            date_default_timezone_set($timezone);
+            config(['app.timezone' => $configuredTimezone]);
+            Carbon::setTestNow();
+        }
+    }
+
+    public function test_5498_unexpected_origin_read_failure_keeps_diagnostic_without_private_payload(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-11-18 12:00:00'));
+        [$admin, $staff] = $this->seedUsers();
+        $bug = $this->makeTriagedBug($staff->id, $admin->id, now()->subDays(15));
+        $this->assertSame('closed', BugReportService::closeByReporterTimeout($bug->id, $admin->id)['action']);
+        $native = BugReportComment::where('bug_report_id', $bug->id)->latest('id')->firstOrFail();
+        \Illuminate\Support\Facades\Log::spy();
+        $event = 'eloquent.retrieved: ' . \App\Models\BugReportEvidence::class;
+        \Illuminate\Support\Facades\Event::listen($event, static function ($row) {
+            if ($row->evidence_type === 'native_support_comment_origin') throw new \RuntimeException('private synthetic diagnostic');
+        });
+        try { $origins = \App\Operations\Inapp\NativeInappCommentOrigin::ids($bug, [$native]); }
+        finally { \Illuminate\Support\Facades\Event::forget($event); }
+        $this->assertSame([], $origins, 'unreadable proof cannot assert automation authorship');
+        \Illuminate\Support\Facades\Log::shouldHaveReceived('warning')->once()->with(
+            'Native in-app origin proof could not be read',
+            ['bug_report_id' => (int) $bug->id, 'exception_class' => \RuntimeException::class],
+        );
+    }
+
+    public function test_5498_timeout_proof_failure_rolls_back_comment_status_and_log(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-11-18 12:00:00'));
+        [$admin, $staff] = $this->seedUsers();
+        $bug = $this->makeTriagedBug($staff->id, $admin->id, now()->subDays(15));
+        $counts = [BugReportComment::count(), BugReportStatusLog::count()];
+        $event = 'eloquent.creating: ' . \App\Models\BugReportEvidence::class;
+        \Illuminate\Support\Facades\Event::listen($event, static function ($row) {
+            if ($row->evidence_type === 'native_support_comment_origin') throw new \RuntimeException('synthetic timeout proof failure');
+        });
+        $caught = null;
+        try { BugReportService::closeByReporterTimeout($bug->id, $admin->id); }
+        catch (\RuntimeException $e) { $caught = $e; }
+        finally { \Illuminate\Support\Facades\Event::forget($event); }
+        $this->assertInstanceOf(\RuntimeException::class, $caught);
+        $this->assertSame('synthetic timeout proof failure', $caught->getMessage());
+        $this->assertSame('triaged', $bug->fresh()->status);
+        $this->assertSame($counts, [BugReportComment::count(), BugReportStatusLog::count()]);
+        $this->assertSame('closed', BugReportService::closeByReporterTimeout($bug->id, $admin->id)['action'], 'retry after rollback is not poisoned');
+        $n = \App\Models\BugReportEvidence::where('bug_report_id', $bug->id)->count();
+        $this->assertSame('already_closed_by_timeout', BugReportService::closeByReporterTimeout($bug->id, $admin->id)['action']);
+        $this->assertSame($n, \App\Models\BugReportEvidence::where('bug_report_id', $bug->id)->count());
+    }
+
+    #[\PHPUnit\Framework\Attributes\DataProvider('nativeTimeoutContextCases')]
+    public function test_5498_timeout_context_and_bound_close_log_cannot_be_rewritten(string $field, bool $rebind = false): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-11-18 12:00:00'));
+        [$admin, $staff] = $this->seedUsers();
+        $bug = $this->makeTriagedBug($staff->id, $admin->id, now()->subDays(15));
+        $this->assertSame('closed', BugReportService::closeByReporterTimeout($bug->id, $admin->id)['action']);
+        $proof = \App\Models\BugReportEvidence::where('bug_report_id', $bug->id)->firstOrFail();
+        $m = $proof->metadata;
+        if ($field === 'log') \Illuminate\Support\Facades\DB::table('bug_report_status_logs')->where('id', $m['context']['status_log_id'])->update(['note' => 'edited close note']);
+        else {
+            if ($field === 'producer') $m['producer'] = 'untrusted_producer';
+            elseif ($field === 'window_days_type') $m['context']['window_days'] = '14';
+            else $m['context'][$field] = match ($field) {
+                'queue' => 'resolved', 'window_days' => $rebind ? 6 : 7,
+                'status_log_id' => 999999, 'status_log_sha256' => str_repeat('0', 64),
+            };
+            $changes = ['metadata' => json_encode($m, JSON_THROW_ON_ERROR)];
+            if ($rebind) $changes['source_ref'] = 'native_support_comment:' . $m['comment_id'] . ':'
+                . hash('sha256', json_encode(\App\Operations\PopOperationService::canonicalParameters($m), JSON_THROW_ON_ERROR));
+            \Illuminate\Support\Facades\DB::table('bug_report_evidence')->where('id', $proof->id)->update($changes);
+        }
+        $last = collect(BugReportService::getDetail($bug->id, true)['comments'])->last();
+        $this->assertSame('reporter', $last['origin']);
+    }
+
+    /** @return array<string,array{string,bool}> */
+    public static function nativeTimeoutContextCases(): array
+    {
+        $cases = ['queue' => ['queue', false], 'days' => ['window_days', false], 'log ID' => ['status_log_id', false],
+            'log hash' => ['status_log_sha256', false], 'changed log' => ['log', false]];
+        foreach (['queue', 'window_days', 'window_days_type', 'status_log_id', 'status_log_sha256', 'producer'] as $field)
+            $cases['coherent reference / ' . $field] = [$field, true];
+        return $cases;
+    }
+
+    #[\PHPUnit\Framework\Attributes\DataProvider('nativeResolvedTimeoutKinds')]
+    public function test_5498_resolved_and_legacy_native_producers_keep_support_origin(bool $legacy): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-11-18 12:00:00'));
+        [$admin, $staff] = $this->seedUsers();
+        $bug = $this->makeResolvedBug($staff->id, $admin->id, now()->subDays(90), !$legacy);
+        $result = $legacy ? BugReportService::closeLegacyResolved($bug->id, $admin->id)
+            : BugReportService::closeByReporterTimeout($bug->id, $admin->id);
+        $this->assertSame('closed', $result['action']);
+        $last = collect(BugReportService::getDetail($bug->id, true)['comments'])->last();
+        $this->assertSame('support', $last['origin']);
+    }
+
+    /** @return array<string,array{bool}> */
+    public static function nativeResolvedTimeoutKinds(): array { return ['resolved' => [false], 'legacy' => [true]]; }
+
     public function test_eligible_requires_age_and_resolution_evidence(): void
     {
         Carbon::setTestNow(Carbon::parse('2026-07-18 12:00:00'));

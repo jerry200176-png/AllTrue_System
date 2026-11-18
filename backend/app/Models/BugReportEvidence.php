@@ -11,6 +11,7 @@ use LogicException;
 class BugReportEvidence extends Model
 {
     public const TYPE_RESOLUTION_PRODUCTION_VERIFICATION = 'resolution_production_verification';
+    public const TYPE_NATIVE_SUPPORT_COMMENT_ORIGIN = 'native_support_comment_origin';
 
     protected $table = 'bug_report_evidence';
     public $timestamps = false;

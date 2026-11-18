@@ -14,10 +14,10 @@ need_cmd gh
 need_cmd git
 
 REMOTE_MAIN="$(git ls-remote "https://github.com/${REPO}.git" refs/heads/main | awk '{print $1}')"
-HEALTH_RAW="$(curl -sk --max-time 20 "${PROD_URL}/api/v1/health" || true)"
-VERSION_RAW="$(curl -sk --max-time 20 "${PROD_URL}/version.json" || true)"
-DEPLOYMENT_RAW="$(curl -sk --max-time 20 "${PROD_URL}/deployment.json" || true)"
-HEALTH_CODE="$(curl -sk -o /dev/null -w '%{http_code}' --max-time 20 "${PROD_URL}/api/v1/health" || echo 000)"
+HEALTH_RAW="$(curl -sS --max-time 20 "${PROD_URL}/api/v1/health" || true)"
+VERSION_RAW="$(curl -sS --max-time 20 "${PROD_URL}/version.json" || true)"
+DEPLOYMENT_RAW="$(curl -sS --max-time 20 "${PROD_URL}/deployment.json" || true)"
+HEALTH_CODE="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 20 "${PROD_URL}/api/v1/health" || echo 000)"
 
 PI_HEALTH_JSON="$(gh run list -R "$REPO" --workflow=pi-health.yml --limit 1 --json databaseId,conclusion,status,createdAt,url,displayTitle 2>/dev/null || echo '[]')"
 DEPLOYMENT_BACKEND_SHA="$(python3 -c 'import json,sys; print((json.loads(sys.stdin.read() or "{}") or {}).get("backend_sha") or "")' <<< "$DEPLOYMENT_RAW" 2>/dev/null || true)"
@@ -42,10 +42,114 @@ printf '%s' "$MATCHING_DEPLOY_JSON" > "$IDENTITY_TMP_DIR/matching-deploy-runs.js
 printf '%s' "$PI_HEALTH_JSON" > "$IDENTITY_TMP_DIR/pi-health.json"
 printf '%s' "$COMPARE_JSON" > "$IDENTITY_TMP_DIR/compare.json"
 
+# A successful wrapper may skip production entirely. Read bounded native Actions
+# metadata and the short resolver log, never production executor logs or SSH.
+python3 - "$DEPLOYMENT_BACKEND_SHA" "$IDENTITY_TMP_DIR/matching-deploy-runs.json" "$IDENTITY_TMP_DIR/deploy-runs.json" > "$IDENTITY_TMP_DIR/candidates.txt" <<'PY'
+import json, re, sys
+from pathlib import Path
+try:
+    matching, recent = (json.load(open(path)) for path in sys.argv[2:4])
+    runs = (matching if isinstance(matching, list) else []) + (recent if isinstance(recent, list) else [])
+except (ValueError, OSError):
+    runs = []
+seen = set()
+candidates = []
+for run in runs:
+    if not isinstance(run, dict):
+        continue
+    run_id = run.get("databaseId")
+    if (type(run_id) is int and run_id > 0 and run_id not in seen
+            and re.fullmatch(r"[0-9a-f]{40}", sys.argv[1])
+            and isinstance(run.get("headSha"), str) and re.fullmatch(r"[0-9a-f]{40}", run["headSha"])
+            and run.get("status") == "completed" and run.get("conclusion") == "success"):
+        seen.add(run_id)
+        candidates.append(run)
+        print(run_id)
+        if len(candidates) == 20:
+            break
+Path(sys.argv[2]).with_name("candidate-deploy-runs.json").write_text(json.dumps(candidates))
+PY
+while IFS= read -r run_id; do
+    gh api "/repos/$REPO/actions/runs/$run_id" > "$IDENTITY_TMP_DIR/deploy-run-$run_id.json" 2>/dev/null \
+        || printf '{}' > "$IDENTITY_TMP_DIR/deploy-run-$run_id.json"
+    gh api "/repos/$REPO/actions/runs/$run_id/jobs?per_page=100&filter=latest" > "$IDENTITY_TMP_DIR/deploy-jobs-$run_id.json" 2>/dev/null \
+        || printf '{}' > "$IDENTITY_TMP_DIR/deploy-jobs-$run_id.json"
+    # The workflow revision is not the resolved target, particularly on manual
+    # dispatches. Read only this short native resolver job's timestamped output.
+    RESOLVER_JOB_ID="$(python3 - "$IDENTITY_TMP_DIR" "$run_id" <<'PY'
+import datetime, json, sys
+from pathlib import Path
+root, run_id = Path(sys.argv[1]), int(sys.argv[2])
+
+def verified_metadata():
+    try:
+        runs = json.loads((root / 'candidate-deploy-runs.json').read_text())
+        run = next((item for item in runs if item.get('databaseId') == run_id), {})
+        metadata = json.loads((root / f'deploy-run-{run_id}.json').read_text())
+        envelope = json.loads((root / f'deploy-jobs-{run_id}.json').read_text())
+    except (ValueError, OSError):
+        return None
+    if not isinstance(metadata, dict) or not isinstance(envelope, dict):
+        return None
+    jobs = envelope.get('jobs')
+    if (run.get('status') != 'completed' or run.get('conclusion') != 'success'
+            or type(metadata.get('id')) is not int or metadata['id'] != run_id
+            or metadata.get('path') != '.github/workflows/deploy.yml'
+            or metadata.get('head_branch') != 'main'
+            or metadata.get('head_sha') != run.get('headSha')
+            or metadata.get('status') != 'completed' or metadata.get('conclusion') != 'success'
+            or not isinstance(jobs, list)
+            or type(envelope.get('total_count')) is not int or envelope['total_count'] != len(jobs)):
+        return None
+    if any(not isinstance(job, dict) for job in jobs):
+        return None
+    if any(type(job.get('id')) is not int or job['id'] <= 0 for job in jobs):
+        return None
+    if len({job['id'] for job in jobs}) != len(jobs):
+        return None
+    resolvers = [job for job in jobs if job.get('name') == 'Resolve exact activation target']
+    if len(resolvers) != 1:
+        return None
+    resolver = resolvers[0]
+    if (type(resolver.get('id')) is not int or resolver['id'] <= 0
+            or type(resolver.get('run_id')) is not int or resolver['run_id'] != run_id
+            or resolver.get('status') != 'completed' or resolver.get('conclusion') != 'success'):
+        return None
+    production = [job for job in jobs if job.get('name') == 'Deploy to Production']
+    if len(production) != 1:
+        return None
+    job = production[0]
+    if (type(job.get('id')) is not int or job['id'] <= 0
+            or type(job.get('run_id')) is not int or job['run_id'] != run_id
+            or job.get('status') != 'completed' or job.get('conclusion') != 'success'
+            or not isinstance(job.get('completed_at'), str)
+            or resolver['id'] == job['id']):
+        return None
+    try:
+        completed = datetime.datetime.fromisoformat(job['completed_at'].replace('Z', '+00:00'))
+    except ValueError:
+        return None
+    if completed.tzinfo is None:
+        return None
+    return {**{key: job[key] for key in ('id', 'run_id', 'name', 'status', 'conclusion', 'completed_at')},
+            'resolver_job_id': resolver['id']}
+
+proof = verified_metadata()
+if proof is not None:
+    (root / f'deploy-proof-{run_id}.json').write_text(json.dumps(proof))
+    print(proof['resolver_job_id'])
+PY
+)"
+    if [[ -n "$RESOLVER_JOB_ID" ]]; then
+        gh api "/repos/$REPO/actions/jobs/$RESOLVER_JOB_ID/logs" > "$IDENTITY_TMP_DIR/deploy-target-$run_id.log" 2>/dev/null \
+            || : > "$IDENTITY_TMP_DIR/deploy-target-$run_id.log"
+    fi
+done < "$IDENTITY_TMP_DIR/candidates.txt"
+
 # Keep large API responses out of argv. Apart from avoiding the host's
 # ARG_MAX limit, this keeps evidence transport independent of response size.
 python3 - "$REMOTE_MAIN" "$IDENTITY_TMP_DIR/health.json" "$IDENTITY_TMP_DIR/version.json" "$IDENTITY_TMP_DIR/deployment.json" "$HEALTH_CODE" "$IDENTITY_TMP_DIR/deploy-runs.json" "$IDENTITY_TMP_DIR/matching-deploy-runs.json" "$IDENTITY_TMP_DIR/pi-health.json" "$IDENTITY_TMP_DIR/compare.json" "$PROD_URL" "$REPO" <<'PY'
-import json,sys,datetime
+import json,sys,datetime,re
 from pathlib import Path
 
 remote_main, health_path, version_path, deployment_path, health_code, deploy_path, matching_deploy_path, pi_path, compare_path, prod_url, repo = sys.argv[1:12]
@@ -71,7 +175,7 @@ health = parse(health_raw, {})
 version = parse(version_raw, {})
 deployment = parse(deployment_raw, {})
 deploy_runs = parse(deploy_json, []) or []
-matching_deploy_runs = parse(matching_deploy_json, []) or []
+matching_deploy_runs = parse(read_raw(Path(matching_deploy_path).with_name('candidate-deploy-runs.json')), []) or []
 pi = (parse(pi_json, []) or [None])[0]
 compare = parse(compare_json, {}) or {}
 
@@ -88,18 +192,57 @@ successful_deploy_runs = [
     run for run in deploy_runs
     if run.get('status') == 'completed' and run.get('conclusion') == 'success'
 ]
-# workflow_run fires for every main CI completion, including deployable=false
-# runs where the real production job is skipped. The public deployment manifest
-# is the authoritative runtime identity, so select the successful deploy run
-# whose head actually matches that manifest instead of blindly taking the
-# newest workflow trigger.
-deploy = next(
-    (run for run in matching_deploy_runs
-     if run.get('status') == 'completed' and run.get('conclusion') == 'success'
-     and run.get('headSha') == deployment_backend_sha),
-    None,
-)
-deploy_sha = (deploy or {}).get('headSha')
+# workflow_run can finish without deployment. A workflow revision can also
+# differ from its resolved activation target. Require both the real deployment
+# job and the resolver's unique timestamped target to match the manifest.
+def verified_job(run):
+    if not isinstance(run, dict):
+        return None
+    run_id = run.get('databaseId')
+    if type(run_id) is not int or run_id <= 0:
+        return None
+    root = Path(matching_deploy_path).parent
+    def evidence(name):
+        try:
+            value = parse((root / f'{name}-{run_id}.json').read_text(), {})
+        except OSError:
+            return {}
+        return value if isinstance(value, dict) else {}
+    # This private proof is written only after full metadata validation, before
+    # requesting the distinct resolver's log. Never reclassify raw jobs here.
+    proof = evidence('deploy-proof')
+    if not proof:
+        return None
+    try:
+        target_log = (root / f'deploy-target-{run_id}.log').read_text()
+    except (OSError, UnicodeError):
+        return None
+    markers = re.findall(r'^(\S+) Resolved activation target:(.*)$', target_log, re.MULTILINE)
+    if len(markers) != 1:
+        return None
+    timestamp, suffix = markers[0]
+    if not re.fullmatch(r'\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z', timestamp):
+        return None
+    target_match = re.fullmatch(r' ([0-9a-f]{40})', suffix)
+    if target_match is None:
+        return None
+    target = target_match.group(1)
+    if target != deployment_backend_sha:
+        return None
+    try:
+        datetime.datetime.fromisoformat(timestamp.replace('Z', '+00:00'))
+    except ValueError:
+        return None
+    return {**proof, 'target_sha': target}
+
+deploy = None
+production_job = None
+for candidate in matching_deploy_runs[:20]:
+    job = verified_job(candidate)
+    if job is not None:
+        deploy, production_job = candidate, job
+        break
+deploy_sha = (production_job or {}).get('target_sha')
 deploy_conclusion = (deploy or {}).get('conclusion')
 pi_conclusion = (pi or {}).get('conclusion')
 pi_created = (pi or {}).get('createdAt')
@@ -161,6 +304,7 @@ identity = {
   'frontend_asset_built_at_local': frontend_time,
   'frontend_sha_is_full_git_sha': False,
   'last_deploy_workflow_run': deploy,
+  'production_deploy_job': production_job,
   'latest_deploy_workflow_run': latest_deploy_workflow_run,
   'successful_deploy_runs_considered': len(successful_deploy_runs),
   'deploy_status': deploy_conclusion,
@@ -180,7 +324,8 @@ identity = {
   },
   'db_migration_version': None,
   'db_migration_version_status': 'unknown_without_pi_ssh',
-  'rollback_target': deploy_sha,
+  'rollback_target': None,
+  'rollback_target_status': 'unknown_not_validated',
   'data_reconciliation_last_result': None,
   'data_reconciliation_status': 'unknown_without_authenticated_ops_api',
   'reconciliation_baseline': {
