@@ -1445,7 +1445,7 @@ class PaymentReportController extends Controller
             'message' => sprintf('金額超過此課程未繳餘額 NT$%d，請重新核對後再登記。', $outstanding),
             'code' => 'amount_exceeds_outstanding',
             'expected_amount' => $outstanding,
-        ], 422);
+        ] + $this->correctablePointer($studentClassId), 422);
     }
 
     private function lockPackageForCourse(StudentClass $studentClass): ?CoursePackage
@@ -1648,7 +1648,15 @@ class PaymentReportController extends Controller
             'code' => 'amount_exceeds_outstanding',
             'expected_amount' => $outstanding,
             'invoice_id' => (int) $invoice->id,
-        ], 422);
+        ] + $this->correctablePointer((int) $invoice->StudentClassID, $invoice), 422);
+    }
+
+    /** @return array{correctable_invoice_id?:int} the bill a director may correct (更正帳單), only where the campus is on */
+    private function correctablePointer(int $courseId, ?Invoice $invoice = null): array
+    {
+        $id = \App\Services\Billing\BillCorrection::correctableInvoiceId($courseId, $invoice);
+
+        return $id === null ? [] : ['correctable_invoice_id' => $id];
     }
 
     /** The target bill is settled by its Payment rows: warn and block; the money is never moved to another bill. */
@@ -1801,7 +1809,13 @@ class PaymentReportController extends Controller
                 $payments = $invoice->payments()->lockForUpdate()->get();
                 // Current locked rows, as Invoice::netPaidSql; never a pre-wait snapshot.
                 $net = $payments->sum(fn ($p) => (int) $p->Amount > 0 && (string) $p->Method !== 'void' ? (int) $p->Amount : -abs((int) $p->Amount));
-                if ((string) $invoice->Status === 'void') {
+                if ((string) $invoice->Status === 'void' && \App\Services\Billing\BillCorrection::isCorrected((int) $invoice->id)) {
+                    // 更正帳單 moved this bill's money to a newer bill: take it back from there (RFC_MONTHLY_BILL_LIFECYCLE §3.6.1).
+                    if ($refusal = app(\App\Services\Billing\BillCorrection::class)->reverseReceipt($invoice, (int) $report->getKey(), $originalAmount, $data['void_reason'])) {
+                        return response()->json($refusal['body'], $refusal['status']);
+                    }
+                    $alreadyReversed = true;
+                } elseif ((string) $invoice->Status === 'void') {
                     // In-app #436: 更正並作廢 voided the bill and reversed all of its money but left this receipt
                     // confirmed. Undo the receipt alone; a second reversal would take the money back twice.
                     // A void bill that still holds money stays refused (Invoice::netPaidSql rule).

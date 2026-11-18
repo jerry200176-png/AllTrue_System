@@ -754,6 +754,7 @@ Intake consolidation regression (2026-10-17): the oldest trusted SourceRef issue
 - **強制規則**：已收款錯帳若需作廢，必須建立負值 `Payment` 沖銷（`Method='void'`）並保留原始正向 Payment/收據；UI 必須顯示 ledger 派生狀態（例如「已收足額 · 狀態待修復」），不可只照 `Invoice.Status` 顯示成未繳。
 - **強制規則**：對帳視窗若列出可處理的 Invoice，就必須同頁提供正確操作；一般作廢只看 `can_direct_void`，沖銷作廢只看 `can_exception_void`，不可用 anomaly 標籤自行推導按鈕。
 - **強制規則**：未收款錯帳不可因使用者按到沖銷作廢而卡住；後端若判斷淨收款與 `PaidAmount` 都是 0，必須安全降級為一般作廢。
+- **R28 補充（2026-11-18，更正帳單）**：已收款的帳單只能由「更正帳單」（`BillCorrection`）作廢，而且要先把錢轉出去（`transfer_out`／`transfer_in`，`[bill_correction:{id}]`）；不可直接把已收款帳單 `Status` 改成 void。錢轉走之後撤銷原收據，`PaymentReportController::void()` 必須沿著 `invoice_corrections` 追到有錢的那張帳單，從最新一段起寫 `transfer_reversal_out`／`transfer_reversal_in`，再寫正常沖銷；那張帳單的已收會變負、或錢已退費，就拒絕撤銷（不能回「已撤銷」卻沒把錢拿掉）。`InvoiceAmountReconciliationService::resolve()` 不為更正加特例。
 - **測試必補**：已繳課程重複呼叫 `directorRecord` 或 `confirm` 不得新增第二張 Invoice 或第二筆 Payment；已繳課程殘留 unpaid Invoice 時仍必須拒絕；invoice API 必須排除 void payment count 與 void invoice，並回傳付款/沖銷明細供稽核；Invoice 作廢 API 必須覆蓋 paid/partial/cross-campus/teacher forbidden。
 - **單課作廢要加入費用更正的課程鎖，並重查歸屬（#4247／#4262）**：從 DB 讀取當前 header/item 課程，鎖單課後再鎖帳單；以 fresh invoice/item locking reads 比對歸屬，漂移回409且不寫款項。多課合併帳單雖不符合新 fee API 資格，既有 count correction 仍可用 header 找到它，作廢至少要鎖 header owner；不可新增會與轉移相反的多課鎖集；直接收款保留既有 sorted course locks。測試以 PROCESSLIST 觀測真實等待查詢及 post-query marker 未出現，不能只憑 beforeExecuting 訊號宣稱已阻塞。
 

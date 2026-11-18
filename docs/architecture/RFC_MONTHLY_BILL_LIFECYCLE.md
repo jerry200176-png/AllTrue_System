@@ -166,7 +166,7 @@ last_reviewed: 2026-11-17
 |---|---|---|---|
 | 0 | 這份規格 | R0 | — |
 | 1 | migration：`finalized_at`、`billing_carry_forwards`、回填；`InvoiceIssuer` 統一寫 `finalized_at` | R3 | Founder 核准 migration |
-| 2 | 更正帳單（定案帳單）：寫入、預覽、按鈕、更正紀錄頁；撤銷收據跟著錢走（更正的部分，§3.6.1）；分校開關 | R3 | Founder 核准大安上線 |
+| 2 | 更正帳單（定案帳單）：寫入、預覽、按鈕、更正紀錄頁；撤銷收據跟著錢走（更正的部分，§3.6.1）；分校開關。**更正先於第 1 步 migration 上線**（Founder 2026-11-18）：不用 `finalized_at`，直接用 `invoice_corrections`（已有欄位）與 `billing.bill_correction_campus_ids`（寫死在程式的分校清單，空 = 關）。後端 PR 1（`BillCorrection`、`invoices/{invoice}/correction/preview｜apply`、`void()` 跟著錢走）預設關；之後依序是畫面、總部更正紀錄頁、開分校 | R3 | Founder 核准大安上線 |
 | 3 | 月底定案＋抵：`MonthlyBillFinalizer`、月結分頁按鈕；退多收；撤銷收據跟著錢走（抵的部分，§3.6.1）；分校開關 | R3 | 同上 |
 | 4 | 金額規則換成 §3.2（開了開關的分校）；收款上限 §5；繳費單 | R3 | 同上 |
 | 5 | 續課不開帳單（開了開關的分校） | R3 | 同上 |
