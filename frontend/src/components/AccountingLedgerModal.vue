@@ -76,7 +76,7 @@
                 <small v-else-if="x.hint" class="ledger-muted" data-testid="ledger-exception-hint">{{ x.hint }}</small>
                 <!-- 收據移到正確帳單 (#5113): only where the server says the move is on for this campus. -->
                 <template v-if="canMoveException(x)">
-                  <small :data-testid="`ledger-move-hint-${x.report_id}`">這張收據記在別人的帳單上。可以直接移到正確的帳單。</small>
+                  <small :data-testid="`ledger-move-hint-${x.report_id}`">這張收據還沒對到這位學生的帳單。如果是收錯帳單，可以移到正確的帳單。</small>
                   <button class="ledger-action" type="button" :data-testid="`ledger-move-${x.report_id}`" @click="openMove(x.report_id)">移到正確帳單</button>
                 </template>
                 <button
@@ -1343,8 +1343,8 @@ const correctingInvoiceId = ref(null);
 // 收據移到正確帳單 (#5113): the server hint says the move is on for this student's campus; the dialog's own answers decide the rest.
 const MOVE_CODES = ['receipt_without_invoice']; // not confirmed_receipt_without_payment: the backend mostly refuses that shape
 const moving = ref(null); // { report_id, amount, label }
-const canMoveReceipt = (r) => canManageInvoices() && !!payload.value?.can_reassign_receipt && Number(r?.amount) > 0;
-const canMoveException = (x) => !!x.report_id && x.codes?.some((c) => MOVE_CODES.includes(c))
+const canMoveReceipt = (r) => canManageInvoices() && !!payload.value?.can_reassign_receipt && !r?.history_read_only && Number(r?.amount) > 0;
+const canMoveException = (x) => !!x.report_id && !x.ask_hq && x.codes?.some((c) => MOVE_CODES.includes(c))
   && canMoveReceipt((payload.value?.receipts || []).find((r) => Number(r.report_id) === Number(x.report_id)));
 function openMove(reportId) {
   const r = (payload.value?.receipts || []).find((x) => Number(x.report_id) === Number(reportId));

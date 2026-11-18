@@ -175,7 +175,7 @@ watch(() => [props.open, props.reportId], ([open]) => {
     >
       <DialogHeader>
         <DialogTitle>移到正確帳單</DialogTitle>
-        <DialogDescription>這張收據記在別人的帳單上。可以直接移到正確的帳單，金額不變，舊收據會作廢並留下紀錄。</DialogDescription>
+        <DialogDescription>把這張收據移到正確的帳單。金額不變，舊收據會作廢並留下紀錄。</DialogDescription>
       </DialogHeader>
 
       <p class="tw:text-sm" data-testid="rm-source">這筆 <strong class="tw:tabular-nums">{{ money(amount) }}</strong> 現在記在：{{ (source ? sideLabel(source) : fromLabel) || '原帳單' }}</p>

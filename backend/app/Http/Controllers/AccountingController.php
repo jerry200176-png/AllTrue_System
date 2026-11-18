@@ -753,6 +753,8 @@ class AccountingController extends Controller
             // #5511 / in-app #576: the void endpoint cannot safely operate without this student's source course.
             $sourceCourseAvailable = in_array((int) $report->StudentClassID, $classIds, true);
             $canUseSource = $sourceCourseAvailable && !isset($readOnlyReportIds[(int) $report->id]);
+            // Same read-only judgment for 收據移到正確帳單 (#5113): the move needs the source course, so history gets no entry.
+            if (!$canUseSource) $row['history_read_only'] = true;
             $reviewMessage = $sourceCourseAvailable
                 ? '這張收據連到原課程已移除的舊帳單，無法在這裡撤銷。請按「回報給總部」核對課程與帳單。'
                 : '這張收據的課程不在本學生帳務中，無法在這裡撤銷。請按「回報給總部」核對歸屬，原收據與收款紀錄仍保留。';

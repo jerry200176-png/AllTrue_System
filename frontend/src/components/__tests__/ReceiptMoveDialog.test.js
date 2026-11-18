@@ -252,7 +252,7 @@ describe('收據移到正確帳單 · ledger entry points', () => {
     wrappers.pop().unmount(); document.body.innerHTML = '';
     w = await ledger({ can_reassign_receipt: true });
     await w.get('[data-testid="ledger-fold-receipts"]').trigger('click');
-    expect(w.get('[data-testid="ledger-move-hint-7"]').text()).toBe('這張收據記在別人的帳單上。可以直接移到正確的帳單。');
+    expect(w.get('[data-testid="ledger-move-hint-7"]').text()).toBe('這張收據還沒對到這位學生的帳單。如果是收錯帳單，可以移到正確的帳單。');
     expect(w.get('[data-testid="ledger-move-7"]').text()).toBe('移到正確帳單');
     expect(w.get('[data-testid="ledger-receipt-move-7"]').text()).toBe('收錯帳單？');
   });
@@ -272,6 +272,17 @@ describe('收據移到正確帳單 · ledger entry points', () => {
     await w.get('[data-testid="ledger-fold-receipts"]').trigger('click');
     expect(w.find('[data-testid="ledger-move-7"]').exists()).toBe(false);
     expect(w.find('[data-testid="ledger-receipt-move-7"]').exists()).toBe(true);
+  });
+
+  it('a read-only history receipt (its course is gone) gets no move entry; a normal receipt beside it does', async () => {
+    const w = await ledger({ can_reassign_receipt: true, receipts: [receipt({ history_read_only: true }), receipt({ report_id: 8 })],
+      anomalies: [{ code: 'receipt_without_invoice', severity: 'warning', message: 'x', report_id: 7, action: { type: 'manual_review', report_id: 7 } },
+        { code: 'receipt_without_invoice', severity: 'warning', message: 'x', report_id: 8, action: { type: 'void_report', report_id: 8 } }] });
+    await w.get('[data-testid="ledger-fold-receipts"]').trigger('click');
+    expect(w.find('[data-testid="ledger-move-7"]').exists()).toBe(false);
+    expect(w.find('[data-testid="ledger-receipt-move-7"]').exists()).toBe(false);
+    expect(w.find('[data-testid="ledger-move-8"]').exists()).toBe(true);
+    expect(w.find('[data-testid="ledger-receipt-move-8"]').exists()).toBe(true);
   });
 
   it('other anomaly codes and voided receipts get no move button', async () => {
