@@ -59,6 +59,10 @@ final class PopOperationService
         }
         $normalized = self::canonicalParameters($parameters);
         $this->assertParameterContract($entry, $normalized);
+        if ($this->isExactPastScheduledCancel($entry) && ($normalized['decision_reference'] ?? null) !== $entry['id']) {
+            // One operation record and approval per case: a 2942 draft can never carry the 3380 case, or the reverse.
+            throw new RuntimeException('Past scheduled cancel decision_reference must equal its operation id.');
+        }
         $this->assertCampusScope($normalized, $actorRole, $actorCampusIds);
         $hash = hash('sha256', json_encode($normalized, JSON_THROW_ON_ERROR));
         $contextHash = $this->contextHash($context);

@@ -161,4 +161,13 @@ final class PastScheduledSessionsCancelStrategyTest extends TestCase
         self::assertFalse($plan['ok']);
         self::assertSame(['activity_9201'], $plan['errors']);
     }
+
+    public function test_an_operation_only_drafts_its_own_case(): void
+    {
+        $service = new \App\Operations\PopOperationService(new \App\Operations\PopOperationCatalog(dirname(base_path()) . '/operations/catalog.yaml'));
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessage('must equal its operation id');
+        $service->createDraft('cancel-past-scheduled-course2942-20261008', ['decision_reference' => 'cancel-past-scheduled-course3380-20261118'],
+            'past-cancel-cross-case', 'machine:test', 'super_admin', [1], 1, ['production_sha' => str_repeat('a', 40), 'source' => 'github-actions:test']);
+    }
 }
