@@ -501,7 +501,9 @@ class AccountingController extends Controller
         $reportsByInvoiceId = $reports->whereNotNull('InvoiceID')->groupBy('InvoiceID');
         $anomalies = [];
 
-        $invoiceRows = $invoices->map(function (Invoice $invoice) use ($restatedPaymentIds, $reportsByPaymentId, $reportsById, $reportsByInvoiceId, $firstSessionDates, $subjectNames, &$anomalies) {
+        // 更正帳單: null while the feature is off everywhere (the key is then left out of every row).
+        $correctCampusOn = \App\Services\Billing\BillCorrection::enabledAnywhere() ? \App\Services\Billing\BillCorrection::campusOn((int) $student->CampusID) : null;
+        $invoiceRows = $invoices->map(function (Invoice $invoice) use ($correctCampusOn, $restatedPaymentIds, $reportsByPaymentId, $reportsById, $reportsByInvoiceId, $firstSessionDates, $subjectNames, &$anomalies) {
             $invoiceStudentClassId = (int) $invoice->getAttribute('StudentClassID');
             $invoiceStudentClass = $invoice->getRelationValue('studentClass');
             $payments = $invoice->payments;
@@ -709,7 +711,7 @@ class AccountingController extends Controller
                     && !$invoiceReports->contains(fn ($r) => $r['status'] === 'confirmed')
                     && !(\App\Services\Billing\BillCorrection::enabledAnywhere() && \App\Services\Billing\BillCorrection::chainHasConfirmedReceipt((int) $invoice->id)),
                 // 更正帳單 button: only where the campus is on (the preview answers the real eligibility); the key is absent while the feature is off everywhere.
-                ...(\App\Services\Billing\BillCorrection::enabledAnywhere() ? ['can_correct' => $status !== 'void' && \App\Services\Billing\BillCorrection::campusOn((int) $student->CampusID)] : []),
+                ...($correctCampusOn !== null ? ['can_correct' => $status !== 'void' && $correctCampusOn] : []),
                 'payments' => $paymentRows->all(),
                 'reports' => $invoiceReports->all(),
                 'anomalies' => $invoiceAnomalies,
