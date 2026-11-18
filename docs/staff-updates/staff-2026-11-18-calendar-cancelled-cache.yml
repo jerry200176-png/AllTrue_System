@@ -1,0 +1,15 @@
+updates:
+  - id: staff-2026-11-18-calendar-cancelled-cache
+    published_at: "2026-11-18"
+    audiences:
+      - director
+      - teacher
+      - super_admin
+    importance: digest
+    title: 行事曆移除已取消舊課卡
+    summary: 調課後重新讀取課表時，已取消的舊課卡會正確移除，避免與新課卡重複顯示。
+    items:
+      - category: fixed
+        text: 保留其他週與已上課歷史；真正的兩筆有效課程仍分別顯示，方便核對。
+    source_refs:
+      - "changelog:2026-11-18:calendar-cancelled-cache"

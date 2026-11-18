@@ -225,10 +225,11 @@ export function useCalendarDataLoad({
         // a July session while the calendar was on the July week silently dropped a
         // completed May session for an unrelated, untouched contract). Merge per course-id
         // instead so a fetch can only add/update the sessions it actually queried.
-        sessionDatesByCourseId.value = mergeSessionsByCourse(
+        // Explicit cancellations must replace cached live IDs before the display filter drops them (#568).
+        sessionDatesByCourseId.value = mapSessionViewModelsForCalendar(mergeSessionsByCourse(
           sessionDatesByCourseId.value,
-          mapSessionViewModelsForCalendar(byClass || {}),
-        );
+          byClass || {},
+        ));
         const knownCourseIds = new Set(
           preFilterCourseList.map((c) => Number(c?.id)).filter((id) => id > 0),
         );
