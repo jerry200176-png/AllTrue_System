@@ -214,6 +214,40 @@ describe('BillingGuide', () => {
     expect(hits('slip')).toEqual([]);
   });
 
+  it('two bills confirmed one after the other each show their own receipt', async () => {
+    const pend = (id, report) => row({ id, payable_invoice_id: id + 2, payment_status: 'pending_report', latest_payment_report_id: report });
+    ledger.courses = [{ id: 7 }, { id: 8 }];
+    ledger.invoices = [invoice(), invoice({ id: 10, student_class_id: 8 })];
+    ledger.receipts = [{ report_id: 55, student_class_id: 7, status: 'pending', amount: 6000, payment_method: 'cash' }, { report_id: 56, student_class_id: 8, status: 'pending', amount: 6000, payment_method: 'cash' }];
+    const w = await mountGuide([pend(7, 55), pend(8, 56)]);
+    const settle = (left) => vi.fn(async () => { await w.setProps({ bills: billRows(left, T) }); });
+    for (const [report, left] of [[55, [pend(8, 56)]], [56, []]]) {
+      confirmAnswer = json({ message: '已確認入帳', report_id: report, payment_id: 1, invoice_id: report === 55 ? 9 : 10 });
+      await w.setProps({ reload: settle(left) });
+      await w.get('[data-testid="bg-confirm"]').trigger('click');
+      await flushPromises();
+      expect(w.get('[data-testid="bg-step"]').text()).toContain('已確認入帳');
+      expect(hits(`/payment-reports/${report}/receipt`)).toHaveLength(1);
+      expect(w.find('[data-testid="bg-doc-copy"]').exists()).toBe(true);
+      await w.get('[data-testid="bg-next"]').trigger('click');
+      await flushPromises();
+    }
+    expect(w.find('[data-testid="bg-finished"]').exists()).toBe(true);
+    expect(writes().map((c) => c[0])).toEqual(['/api/v1/payment-reports/55/confirm', '/api/v1/payment-reports/56/confirm']);
+  });
+
+  it('a report confirmed on a contract with no bill yet shows the bill the confirm issued, not 預估', async () => {
+    ledger.invoices = [];
+    ledger.receipts = [{ report_id: 55, student_class_id: 7, status: 'pending', amount: 6000, payment_method: 'cash' }];
+    const w = await mountGuide([row({ payable_status: 'unbilled', payable_invoice_id: null, payable_amount: null, payable_outstanding: null, estimated_amount: 6000, payment_status: 'pending_report', latest_payment_report_id: 55 })]);
+    await w.setProps({ reload: vi.fn(async () => { ledger.invoices = [invoice({ status: 'paid', calculated_applied_amount: 6000, outstanding_amount: 0 })]; await w.setProps({ bills: [] }); }) });
+    await w.get('[data-testid="bg-confirm"]').trigger('click');
+    await flushPromises();
+    const money = w.get('[data-testid="bg-money"]').text();
+    expect(money).toMatch(/應收NT\$ 6,000已收NT\$ 6,000未繳NT\$ 0/);
+    expect(money).not.toContain('預估');
+  });
+
   it('cancelling the 確認入帳 question writes nothing', async () => {
     ledger.receipts = [{ report_id: 55, student_class_id: 7, status: 'pending', amount: 6000, payment_method: 'cash' }];
     const w = await mountGuide([row({ payment_status: 'pending_report', latest_payment_report_id: 55 })]);
@@ -231,7 +265,7 @@ describe('BillingGuide', () => {
     w.getComponent(EntryStub).vm.$emit('confirmed', { report_id: null, message: '已記為免費／贈送' });
     await flushPromises();
     expect(w.get('[data-testid="bg-notice"]').text()).toBe('已記為免費／贈送');
-    expect(w.get('[data-testid="bg-error"]').text()).toContain('重新載入失敗');
+    expect(w.get('[data-testid="bg-reload-failed"]').text()).toContain('重新載入失敗');
   });
 
   it('says a bill that left the 要處理 list is no longer there, without claiming it was paid', async () => {
@@ -239,6 +273,8 @@ describe('BillingGuide', () => {
     await w.setProps({ bills: billRows([row({ payment_status: 'paid', payable_outstanding: 0 })], T) });
     await nextTick();
     expect(w.find('[data-testid="bg-gone"]').exists()).toBe(true);
+    expect(w.get('[data-testid="bg-gone"]').text()).not.toContain('已處理');
+    expect(w.get('[data-testid="bg-state"]').text()).toBe('不在要處理');
     expect(w.find('[data-testid="bg-record"]').exists()).toBe(false);
   });
 });

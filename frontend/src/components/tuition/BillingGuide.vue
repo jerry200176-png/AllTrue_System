@@ -52,6 +52,7 @@
       </details>
 
       <p v-if="notice" class="tw:m-0 tw:font-medium" role="status" data-testid="bg-notice">{{ notice }}</p>
+      <p v-if="reloadFailed" class="tw:m-0 tw:text-destructive" role="alert" data-testid="bg-reload-failed">重新載入失敗，畫面可能不是最新的。請按右上角的重新整理。</p>
       <p v-if="actionError" class="tw:m-0 tw:text-destructive" role="alert" data-testid="bg-error">{{ actionError }}</p>
 
       <!-- One question per bill: only what the system cannot know by itself. -->
@@ -181,6 +182,7 @@ const gone = computed(() => !frozen.value && (!live.value || !TODO_KINDS.include
 const ledger = ref(null);
 const busy = ref(false);
 const notice = ref('');
+const reloadFailed = ref(false);
 const actionError = ref('');
 const recordedId = ref(null);
 const confirmedId = ref(null);
@@ -209,11 +211,16 @@ const invoice = computed(() => {
 });
 const facts = computed(() => {
   const f = guideFacts(bill.value, invoice.value);
-  // After a payment only the reread ledger knows that bill's amounts; without it, say so instead of showing old ones.
-  return frozen.value && !invoice.value ? { ...f, receivable: null, received: null, outstanding: null } : f;
+  if (!frozen.value) return f;
+  // After a payment only the reread ledger knows that bill (confirming may even have issued it): show its numbers,
+  // or say there are none, never the ones from before the payment.
+  const i = invoice.value;
+  if (!i) return { ...f, receivable: null, received: null, outstanding: null, estimate: null };
+  return { ...f, billed: true, estimate: null, bill_period: i.period_start || i.period_end ? `${String(i.period_start || '—').slice(0, 10)} ~ ${String(i.period_end || '—').slice(0, 10)}` : f.bill_period,
+    receivable: Number(i.total_amount), received: Number(i.calculated_applied_amount), outstanding: Number(i.outstanding_amount) };
 });
 const entryRow = computed(() => (bill.value ? { ...bill.value.src, id: bill.value.class_id } : null));
-const stageLabel = computed(() => (confirmedId.value ? '已確認入帳' : gone.value ? '已處理' : bill.value.label));
+const stageLabel = computed(() => (confirmedId.value ? '已確認入帳' : gone.value ? '不在要處理' : bill.value.label));
 
 const cell = (label, value, fallback = NO_DATA) => ({ label, value: value ?? fallback, missing: value == null });
 const factRows = computed(() => {
@@ -270,7 +277,7 @@ async function loadSlip() {
 async function showBill() {
   ledger.value = null; lessons.value = []; lessonsState.value = 'idle';
   notice.value = ''; actionError.value = ''; recordedId.value = null; confirmedId.value = null; receipt.value = null;
-  frozen.value = false; paidInvoiceId.value = null;
+  frozen.value = false; paidInvoiceId.value = null; reloadFailed.value = false;
   previewOpen.value = false; copied.value = '';
   if (!bill.value) return;
   await loadLedger();
@@ -282,7 +289,7 @@ watch(() => live.value?.kind, (kind, was) => { if (kind && was && kind !== was &
 
 async function refresh() {
   // The list (and its error line) is hidden behind the guide, so a failed reread is said here.
-  if (await props.reload() === false) actionError.value = '重新載入失敗，畫面可能不是最新的。請按右上角的重新整理。';
+  reloadFailed.value = await props.reload() === false;
   await loadLedger();
   if (!confirmedId.value) await loadSlip();
 }
@@ -292,6 +299,7 @@ function advance(how) {
   if (how === 'later') later.value = [...later.value.filter((k) => k !== key), key];
   else done.add(key);
   snapshot.value = null;
+  frozen.value = false; // before the key changes, so the next bill is tracked from its first render
   currentKey.value = nextBill(queue.value, { done, later: later.value })?.key ?? null;
   if (currentKey.value === key) showBill(); // the only one left came round again
 }
@@ -321,6 +329,7 @@ async function confirmNow() {
   if (busy.value) return;
   busy.value = true; actionError.value = ''; notice.value = '';
   const id = Number(r.report_id);
+  snapshot.value = bill.value;
   frozen.value = true; // keep the bill being paid on screen through the reread
   const res = await confirmReport(id);
   await refresh();
@@ -334,7 +343,7 @@ async function confirmNow() {
     actionError.value = res.message;
     return;
   }
-  paidInvoiceId.value = res.data?.invoice_id ?? (ledger.value?.receipts || []).find((x) => Number(x.report_id) === id)?.invoice_id ?? bill.value.src.payable_invoice_id ?? null;
+  paidInvoiceId.value = (res.ok ? res.data?.invoice_id : null) ?? (ledger.value?.receipts || []).find((x) => Number(x.report_id) === id)?.invoice_id ?? bill.value.src.payable_invoice_id ?? null;
   confirmedId.value = id;
   await openReceipt(id);
 }
