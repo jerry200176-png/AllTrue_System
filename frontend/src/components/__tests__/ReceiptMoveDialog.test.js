@@ -245,6 +245,14 @@ describe('收據移到正確帳單 · ledger entry points', () => {
     expect(q('rm-source').textContent).toContain('NT$ 3,000');
   });
 
+  it('a receipt with no payment record gets no card button, but its row keeps 收錯帳單？', async () => {
+    const w = await ledger({ can_reassign_receipt: true,
+      anomalies: [{ code: 'confirmed_receipt_without_payment', severity: 'warning', message: 'x', report_id: 7, action: { type: 'void_report', report_id: 7 } }] });
+    await w.get('[data-testid="ledger-fold-receipts"]').trigger('click');
+    expect(w.find('[data-testid="ledger-move-7"]').exists()).toBe(false);
+    expect(w.find('[data-testid="ledger-receipt-move-7"]').exists()).toBe(true);
+  });
+
   it('other anomaly codes and voided receipts get no move button', async () => {
     const w = await ledger({ can_reassign_receipt: true, receipts: [receipt({ status: 'voided' })],
       anomalies: [{ code: 'paid_amount_mismatch', severity: 'warning', message: 'x', report_id: 7, action: null }] });

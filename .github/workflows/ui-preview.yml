@@ -81,39 +81,6 @@ jobs:
             frontend/work/bill-correction-preview-results.json
           if-no-files-found: warn
           retention-days: 14
-  receipt-move-preview:
-    # Advisory only: built fake-data preview, every /api/ call stubbed in the spec; no credentials, staging, deploy or PR comments.
-    name: Receipt move fake-data screenshots (advisory)
-    permissions:
-      contents: read
-    runs-on: ubuntu-latest
-    container: mcr.microsoft.com/playwright:v1.64.1-noble
-    timeout-minutes: 15
-    continue-on-error: true
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
-        with:
-          node-version: "22"
-          package-manager-cache: false
-      - name: Install dependencies
-        working-directory: frontend
-        run: npm ci --no-audit --no-fund
-      - name: Run the 收據移到正確帳單 screenshots (1536x784 and 375x812)
-        working-directory: frontend
-        run: npx playwright test -c e2e/receipt-move-preview-playwright.config.js
-      - name: Upload screenshots
-        if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: receipt-move-fake-data-screenshots
-          path: |
-            frontend/test-results/
-            frontend/work/receipt-move-preview-results.json
-          if-no-files-found: warn
-          retention-days: 14
   preview:
     permissions:
       contents: read

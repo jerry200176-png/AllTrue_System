@@ -38,8 +38,6 @@ export default defineConfig({
     /parent-text-size\.spec\.js$/,
     // Built fake-data preview on 5190; advisory ui-preview job runs its dedicated config.
     /bill-correction-preview\.spec\.js$/,
-    // Built fake-data preview on 5191; the same advisory ui-preview job runs its dedicated config.
-    /receipt-move-preview\.spec\.js$/,
     // Executed by the required foundation suite against the dedicated Vue fixture server.
     /ui-foundation-pages\.spec\.js$/,
     /ui-foundation-a11y-axe\.spec\.js$/,
