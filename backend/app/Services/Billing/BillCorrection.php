@@ -112,7 +112,7 @@ final class BillCorrection
         }
 
         return DB::transaction(function () use ($invoiceId, $courseId, $campusId, $input, $actor) {
-            $plan = $this->plan($invoiceId, $courseId, $campusId, $input, true, (string) ($input['state_hash'] ?? ''));
+            $plan = $this->plan($invoiceId, $courseId, $campusId, $input, true, (string) ($input['state_hash'] ?? ''), (int) $actor['id']);
             if (isset($plan['replay'])) {
                 return $plan['replay'];
             }
@@ -133,7 +133,7 @@ final class BillCorrection
      *
      * @return array{out:array<string, mixed>, ctx?:array<string, mixed>, replay?:array<string, mixed>}
      */
-    private function plan(int $invoiceId, int $courseId, int $campusId, array $input, bool $lock, string $stateHash = ''): array
+    private function plan(int $invoiceId, int $courseId, int $campusId, array $input, bool $lock, string $stateHash = '', int $actorId = 0): array
     {
         $q = fn ($query) => $lock ? $query->lockForUpdate() : $query;
         $course = $q(StudentClass::query()->whereKey($courseId))->first();
@@ -149,6 +149,11 @@ final class BillCorrection
         $prior = DB::table('invoice_corrections')->where('original_invoice_id', $invoiceId)->first();
         if ($prior) {
             $same = $prior->kind === self::KIND && $stateHash !== '' && hash_equals((string) $prior->idempotency_key, self::idempotencyKey($invoiceId, $stateHash));
+
+            // The same preview with another total, reason or operator is not the same request.
+            if ($same && !hash_equals((string) $prior->request_hash, self::requestHash($invoiceId, $input, $actorId))) {
+                return ['out' => $this->refuse('idempotency_conflict', '這張帳單已用另一組內容更正過，請重新整理學生帳務。', 409)];
+            }
 
             return $same ? ['out' => $this->refuse('replay', ''), 'replay' => ['status' => 200, 'body' => ['replayed' => true] + $this->describe($prior)]]
                 : ['out' => $this->refuse('already_corrected', '這張帳單已更正過，請重新整理學生帳務。', 409)];
@@ -191,10 +196,10 @@ final class BillCorrection
         }
         $outstanding = max(0, $newTotal - $moved);
         $after = ['outstanding_amount' => $outstanding, 'net_applied' => $moved];
-        $hash = hash('sha256', json_encode([self::HASH_VERSION, $campusId, $newTotal, $course->getRawOriginal(), $invoices, $items, $payments, $reports, $extra['added_lessons']], JSON_THROW_ON_ERROR));
+        $hash = hash('sha256', json_encode([self::HASH_VERSION, $campusId, $newTotal, $course->getRawOriginal(), $invoices, $items, $payments, $reports, $extra], JSON_THROW_ON_ERROR));
         $body = ['shape' => $monthly ? 'monthly' : 'count', 'invoice_id' => $invoiceId, 'old_total' => (int) $bill->TotalAmount, 'new_total' => $newTotal,
             'moved_amount' => $moved, 'outstanding_after' => $outstanding, 'overpaid_after' => max(0, $moved - $newTotal),
-            'status_after' => Invoice::statusFromProjection($after), 'added_lessons' => $extra['added_lessons'], 'period_end_after' => $extra['period_end'],
+            'status_after' => Invoice::statusFromProjection($after), 'added_lessons' => $extra['added_lessons'], 'range_shortfall' => $extra['range_shortfall'] ?? 0, 'period_end_after' => $extra['period_end'],
             'effects' => ['cash_total_change' => 0, 'receipt' => 0, 'refund' => 0, 'notification' => 0], 'state_hash' => $hash];
 
         return ['out' => ['status' => 200, 'body' => $body], 'ctx' => compact('course', 'bill', 'mine', 'model', 'moved', 'newTotal', 'extra', 'hash', 'monthly')];
@@ -255,26 +260,36 @@ final class BillCorrection
         // Only the rest of the item's own calendar month (and the contract): later lessons belong to the next month's bill.
         $cap = min(date('Y-m-t', strtotime($end)), substr((string) $course->EndDate, 0, 10));
         $open = $held->reject(fn ($d) => in_array($d, $covered, true) || $d <= $end || $d > $cap)->sort()->values();
-        if ($open->isEmpty()) {
+        // A date inside the range counts as covered, but the frozen amount only carries the lessons held when it was issued:
+        // what the range's lessons price to beyond the stored total is the shortfall (late-added lessons inside the range).
+        $start = substr((string) $item->PeriodStart, 0, 10);
+        $pricing = app(StudentClassPricingService::class);
+        $inside = $held->filter(fn ($d) => $d >= $start && $d <= $end);
+        $shortfall = 0;
+        $amount = 0;
+        foreach ([[$inside, 'inside'], [$open, 'open']] as [$dates, $kind]) {
+            foreach ($dates as $date) {
+                $p = $pricing->forDate($course, $date);
+                // ponytail: per-session price only; an hourly price needs the lesson length (MonthlyBillingService::sessionAmount is private).
+                if ($p['rate'] <= 0 || $p['rate_unit'] !== 'session') {
+                    return ['refusal' => $this->refuse('missing_rate', '漏收的課沒有每堂單價（或是按小時計價），請找總部核對。')];
+                }
+                $kind === 'inside' ? $shortfall += $p['rate'] : $amount += $p['rate'];
+            }
+            if ($kind === 'inside') {
+                $shortfall = max(0, $shortfall - (int) $bill->TotalAmount);
+            }
+        }
+        if ($open->isEmpty() && $shortfall === 0) {
             return ['refusal' => $this->refuse('no_gap', '沒有找到這張帳單漏收的課。')];
         }
-        $newEnd = (string) $open->last();
+        $newEnd = $open->isEmpty() ? $end : (string) $open->last();
         if ($invoices->filter(fn ($i) => $i->Status !== 'void' && (int) $i->id !== (int) $bill->id)->contains(fn ($i) => $items->where('InvoiceID', $i->id)
             ->contains(fn ($it) => $it->PeriodStart && $it->PeriodEnd && substr((string) $it->PeriodStart, 0, 10) <= $newEnd && substr((string) $it->PeriodEnd, 0, 10) > $end))) {
             return ['refusal' => $this->refuse('gap_covered_elsewhere', '漏收的日期已有另一張有效帳單涵蓋，請先核對。', 409)];
         }
-        $pricing = app(StudentClassPricingService::class);
-        $amount = 0;
-        foreach ($open as $date) {
-            $p = $pricing->forDate($course, $date);
-            // ponytail: per-session price only; an hourly price needs the lesson length (MonthlyBillingService::sessionAmount is private).
-            if ($p['rate'] <= 0 || $p['rate_unit'] !== 'session') {
-                return ['refusal' => $this->refuse('missing_rate', '漏收的課沒有每堂單價（或是按小時計價），請找總部核對。')];
-            }
-            $amount += $p['rate'];
-        }
 
-        return ['amount' => $amount, 'added_lessons' => $open->all(), 'period_end' => $newEnd];
+        return ['amount' => $amount + $shortfall, 'added_lessons' => $open->all(), 'range_shortfall' => $shortfall, 'period_end' => $newEnd];
     }
 
     /** One transaction's writes; the caller holds every lock and has matched the state_hash. */
@@ -289,8 +304,8 @@ final class BillCorrection
         $today = now()->toDateString();
         $new = app(InvoiceIssuer::class)->issue(['StudentID' => $old->StudentID, 'StudentClassID' => $course->ID, 'IssueDate' => $today, 'DueDate' => $old->DueDate,
             'TotalAmount' => $newTotal, 'billing_period' => $old->billing_period, 'ScheduleModeAtIssue' => $old->ScheduleModeAtIssue, 'Note' => '帳單更正，原帳單 #'.$old->id],
-            [['Description' => $item?->Description ?? '帳單更正', 'Amount' => $newTotal, 'PeriodStart' => $item?->PeriodStart,
-                'PeriodEnd' => $ctx['extra']['period_end'] ?? $item?->PeriodEnd]]);
+            [['Description' => data_get($item, 'Description') ?? '帳單更正', 'Amount' => $newTotal, 'PeriodStart' => data_get($item, 'PeriodStart'),
+                'PeriodEnd' => $ctx['extra']['period_end'] ?? data_get($item, 'PeriodEnd')]]);
         $note = (string) $old->Note;
         $reference = ' [帳單更正→#'.$new->id.']';
         DB::table('Invoice')->where('id', $old->id)->update(['Status' => 'void', 'PaidAmount' => 0] + (mb_strlen($note.$reference) <= 255 ? ['Note' => $note.$reference] : []));
@@ -298,7 +313,7 @@ final class BillCorrection
         $row = ['kind' => self::KIND, 'campus_id' => $campusId, 'student_class_id' => (int) $course->ID, 'original_invoice_id' => (int) $old->id,
             'replacement_invoice_id' => (int) $new->id, 'payment_report_id' => null, 'amount' => $moved, 'old_charge' => (int) $course->Charge, 'new_charge' => $newTotal,
             'original_invoice_total' => (int) $old->TotalAmount, 'reason' => $reason, 'idempotency_key' => $key, 'operator_user_id' => $actor['id'],
-            'request_hash' => hash('sha256', json_encode([(int) $old->id, $newTotal, $reason, $actor['id']], JSON_THROW_ON_ERROR)), 'state_hash' => $ctx['hash'], 'created_at' => now()];
+            'request_hash' => self::requestHash((int) $old->id, $input, (int) $actor['id']), 'state_hash' => $ctx['hash'], 'created_at' => now()];
         $row['id'] = DB::table('invoice_corrections')->insertGetId($row);
         $tag = self::tag((int) $row['id']);
         if ($moved > 0) {
@@ -342,6 +357,10 @@ final class BillCorrection
         if ($rows->contains(fn ($p) => Payment::reversesReport($p, $reportId))) {
             return null;
         }
+        // As the ordinary branch of void(): a reversal no receipt is linked to may belong to this one; moving 'all' back could take it twice.
+        if ($rows->contains(fn ($p) => Payment::isUnlinkedLegacyReversal($p))) {
+            return $this->refuse('legacy_reversal_unreconciled', '這張帳單有舊的沖銷紀錄還沒對帳，請先找系統管理員處理', 409);
+        }
         $liveModel = Invoice::query()->whereKey($live)->firstOrFail();
         $liveModel->setRelation('payments', $rows->where('InvoiceID', $live)->values());
         if ((string) $liveModel->Status === 'void' || (int) $this->amounts->resolve($liveModel, null)['net_applied'] - $amount < 0) {
@@ -380,6 +399,12 @@ final class BillCorrection
         return ['correction_id' => (int) $row->id, 'original_invoice_id' => (int) $row->original_invoice_id, 'replacement_invoice_id' => (int) $row->replacement_invoice_id,
             'old_total' => (int) $row->original_invoice_total, 'new_total' => (int) $row->new_charge, 'moved_amount' => (int) $row->amount,
             'status' => (string) $new->Status, 'outstanding_after' => (int) $money['outstanding_amount'], 'overpaid_after' => (int) $money['overpaid_amount']];
+    }
+
+    /** What the caller asked for (total as typed, trimmed reason, operator): a replay must carry the same. */
+    private static function requestHash(int $invoiceId, array $input, int $actorId): string
+    {
+        return hash('sha256', json_encode([$invoiceId, isset($input['new_total']) ? (int) $input['new_total'] : null, trim((string) ($input['reason'] ?? '')), $actorId], JSON_THROW_ON_ERROR));
     }
 
     /** Scoped to the bill and the exact plan the screen saw: the same preview applied twice is one correction. */

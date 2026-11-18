@@ -53,7 +53,7 @@ class BillCorrectionTest extends TestCase
         $this->assertSame([8000, 1], [(int) $b['course']->fresh()->Charge, (int) $b['course']->fresh()->Paid]);
         $this->assertCashAndPairs($b['course'], 10000);
         $v = app(ContractMoneyVerdict::class)->forCourse($b['course']->fresh());
-        $this->assertSame(['paid', 8000, 10000, 0, 2000], [$v->status, $v->owed, $v->applied, $v->outstanding, $v->overpaid]);
+        $this->assertSame(['paid', 8000, 8000, 0, 2000], [$v->status, $v->owed, $v->applied, $v->outstanding, $v->overpaid]);
         $row = DB::table('invoice_corrections')->sole();
         $this->assertSame([BillCorrection::KIND, $this->campus, 10000, 8000, 10000], [$row->kind, (int) $row->campus_id, (int) $row->original_invoice_total, (int) $row->new_charge, (int) $row->amount]);
         $this->assertSame($audits + 1, DB::table('security_audit_events')->count());
@@ -289,10 +289,46 @@ class BillCorrectionTest extends TestCase
     public function test_the_gap_stops_at_the_end_of_the_items_calendar_month(): void
     {
         [$m] = $this->monthlyBill(2000);
+        $m['course']->update(['EndDate' => '2026-11-30']);
         DB::table('ClassSession')->insert(['StudentClassID' => $m['course']->ID, 'SessionDate' => '2026-11-03', 'StartTime' => '18:00:00', 'EndTime' => '20:00:00',
             'Status' => 'completed', 'created_at' => now(), 'updated_at' => now()]);
 
         $this->correct($this->token('A', $this->campus), $m['invoice'])->assertOk()->assertJsonPath('added_lessons', ['2026-10-31'])->assertJsonPath('new_total', 8000);
+    }
+
+    public function test_a_lesson_added_inside_the_original_range_is_priced_in_too(): void
+    {
+        [$m] = $this->monthlyBill(2000);
+        DB::table('ClassSession')->insert(['StudentClassID' => $m['course']->ID, 'SessionDate' => '2026-10-22', 'StartTime' => '18:00:00', 'EndTime' => '20:00:00',
+            'Status' => 'completed', 'created_at' => now(), 'updated_at' => now()]); // inside 10-01..10-27, held after the bill froze at 6000
+
+        $this->correct($this->token('A', $this->campus), $m['invoice'])->assertOk()->assertJsonPath('range_shortfall', 2000)
+            ->assertJsonPath('added_lessons', ['2026-10-31'])->assertJsonPath('new_total', 10000);
+    }
+
+    public function test_replaying_the_applied_hash_with_other_contents_conflicts(): void
+    {
+        $b = $this->bill($this->student($this->campus), 10000, 'paid', 10000);
+        $tok = $this->token('A', $this->campus);
+        $hash = $this->correct($tok, $b['invoice'], ['new_total' => 8000])->json('state_hash');
+        $this->correct($tok, $b['invoice'], ['new_total' => 8000, 'state_hash' => $hash], 'apply')->assertStatus(201);
+
+        $this->correct($tok, $b['invoice'], ['new_total' => 7000, 'state_hash' => $hash], 'apply')->assertStatus(409)->assertJsonPath('code', 'idempotency_conflict');
+        $this->correct($tok, $b['invoice'], ['new_total' => 8000, 'reason' => '另一個原因', 'state_hash' => $hash], 'apply')->assertStatus(409)->assertJsonPath('code', 'idempotency_conflict');
+    }
+
+    public function test_void_is_refused_while_the_original_bill_has_an_unlinked_reversal(): void
+    {
+        $b = $this->bill($this->student($this->campus), 10000, 'paid', 10000);
+        $report = $this->confirmedReport($b);
+        $this->payment($b['invoice'], -4000, 'void'); // a legacy reversal no receipt is linked to
+        $b['invoice']->update(['PaidAmount' => 6000, 'Status' => 'partial']);
+        $tok = $this->token('S', $this->campus);
+        $this->applyCorrection($tok, $b['invoice'], ['new_total' => 8000]);
+        $before = $this->snapshot();
+
+        $this->putJson("/api/v1/payment-reports/{$report->id}/void", ['void_reason' => '收錯了'], $this->h($tok))->assertStatus(409)->assertJsonPath('code', 'legacy_reversal_unreconciled');
+        $this->assertSame($before, $this->snapshot());
     }
 
     // ── pointer from the confirm refusals ───────────────────────────────
@@ -326,7 +362,7 @@ class BillCorrectionTest extends TestCase
     private function monthlyBill(int $paid): array
     {
         $m = $this->bill($this->student($this->campus), 6000, 'unpaid', $paid, ['ScheduleMode' => 'date', 'Rate' => 2000, 'rate_unit' => 'session',
-            'StartDate' => '2026-10-01', 'EndDate' => '2026-11-30', 'Charge' => 6000], ['billing_period' => '2026-10', 'IssueDate' => '2026-10-01']);
+            'StartDate' => '2026-10-01', 'EndDate' => '2026-10-31', 'Charge' => 6000], ['billing_period' => '2026-10', 'IssueDate' => '2026-10-01']);
         InvoiceItem::create(['InvoiceID' => $m['invoice']->id, 'StudentClassID' => $m['course']->ID, 'Description' => '十月學費', 'Amount' => 6000,
             'PeriodStart' => '2026-10-01', 'PeriodEnd' => '2026-10-27']);
         $late = 0;
