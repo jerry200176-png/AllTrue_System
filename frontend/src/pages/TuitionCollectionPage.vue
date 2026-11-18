@@ -48,6 +48,22 @@
 
     <!-- Billing v3: 帳單 = one row per contract that needs something (PRD §0 v3). -->
     <section v-if="activeAccountingTab === 'students'" id="tuition-accounting-panel-students" role="tabpanel" aria-labelledby="tuition-accounting-tab-students" tabindex="0">
+      <!-- 智慧登帳引導: the same 要處理 rows, one at a time (the list stays mounted underneath). -->
+      <BillingGuide
+        v-if="billingGuideOpen"
+        :bills="guideBills"
+        :branch-id="branchId"
+        :can-docs="canWaive"
+        :reload="() => loadAlerts({ quiet: true })"
+        @close="billingGuideOpen = false"
+        @ledger="openBillLedger"
+        @reject="(b) => openQuick(b, true)"
+      />
+      <div v-else-if="guideTodoCount > 0" class="tw:mb-3 tw:flex tw:justify-end">
+        <Button class="tw:min-h-11" data-testid="billing-guide-start" @click="billingGuideOpen = true">開始登帳引導（{{ guideTodoCount }} 筆要處理）</Button>
+      </div>
+      <!-- The list has several root nodes, so the wrapper hides it. -->
+      <div v-show="!billingGuideOpen">
       <BillList
         ref="billList"
         :alert-rows="rows"
@@ -68,6 +84,7 @@
         @menu="onBillMenu"
         @retry="loadAlerts"
       />
+      </div>
     </section>
     <!-- 已結清課程 keeps its own list (the bill list has no stopped, fully paid contracts); entry is this quiet link. -->
     <nav v-if="activeAccountingTab === 'students'" class="tc-reminders tc-reminders--below tw:m-0 tw:flex tw:flex-wrap tw:gap-2" aria-label="其他清單" data-testid="tc-reminders">
@@ -707,6 +724,8 @@ import AccountingLedgerModal from '../components/AccountingLedgerModal.vue';
 import BillList from '../components/tuition/BillList.vue';
 import MonthlyRosterPanel from '../components/tuition/MonthlyRosterPanel.vue';
 import BillQuickView from '../components/tuition/BillQuickView.vue';
+import BillingGuide from '../components/tuition/BillingGuide.vue';
+import { guideQueue } from '../lib/billingGuide.js';
 import { billMenuGroups, billRows } from '../lib/billRows.js';
 import { buildStudentsCommercialNav } from '../lib/authoritativeMutationRoutes.js';
 import PaymentSlipModal from '../components/PaymentSlipModal.vue';
@@ -1046,6 +1065,9 @@ function openBillDocuments(b) {
   openLedgerForStudent({ student_id: b.student_id, first_class_id: b.class_id ?? null }, { kind: 'documents', classId: b.class_id ?? null });
   documentLookupOpener = opener instanceof HTMLElement ? opener : null;
 }
+const billingGuideOpen = ref(false);
+const guideBills = computed(() => billRows(rows.value));
+const guideTodoCount = computed(() => guideQueue(guideBills.value).length);
 // Billing v3 step 2: the quick view of THAT contract's bill (row click, 確認入帳 / 核對 primaries, row ⋯ 退回).
 const quickBill = ref(null);
 const quickReject = ref(false);

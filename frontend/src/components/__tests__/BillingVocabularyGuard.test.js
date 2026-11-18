@@ -8,6 +8,7 @@ const FILES = [
   'lib/courseMoneyState.js', 'lib/studentBillingRows.js', 'lib/billingDocState.js',
   'components/AccountingLedgerModal.vue', 'components/PaymentEntryModal.vue', 'components/PaymentSlipModal.vue',
   'components/MonthlyBillingReview.vue', 'components/tuition/ContractCard.vue', 'components/tuition/BillList.vue', 'lib/billRows.js',
+  'components/tuition/BillingGuide.vue', 'lib/billingGuide.js', 'lib/slipData.js',
   'components/tuition/PaymentAllocation.vue', 'components/tuition/MonthlyDraftsPanel.vue', 'pages/TuitionCollectionPage.vue',
 ];
 const stripComments = (s) => s.replace(/<!--[\s\S]*?-->/g, '').replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|\s)\/\/.*$/gm, '');

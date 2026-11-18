@@ -1,0 +1,18 @@
+updates:
+  - id: staff-2026-11-18-billing-guided-entry
+    published_at: "2026-11-18"
+    audiences:
+      - director
+      - super_admin
+    importance: digest
+    title: 帳務中心多了「智慧登帳引導」
+    summary: 按「開始登帳引導」，要處理的帳單一筆一筆做，當場拿繳費單或收據。
+    items:
+      - category: added
+        text: 一次只看一筆，可以略過或稍後處理，做完自動跳下一筆。
+      - category: added
+        text: 還沒繳的帳單可以直接複製繳費單文字、預覽或下載；沒登記收款就維持未繳。
+      - category: added
+        text: 登記收款後在同一個畫面確認入帳，接著複製收據文字、預覽或下載收據。
+    source_refs:
+      - "changelog:2026-11-18:billing-guided-entry"

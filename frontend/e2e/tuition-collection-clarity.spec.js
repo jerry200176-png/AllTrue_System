@@ -549,3 +549,101 @@ for (const width of [375, 1280]) {
     expect(writes).toEqual([]); expect(errors).toEqual([]);
   });
 }
+
+// 智慧登帳引導: one bill at a time — the slip for an unpaid bill, then 登記 → 現在確認入帳 → that payment's receipt.
+for (const width of [375, 1280]) {
+  test(`billing guide walks unpaid → slip → 登記 → 確認入帳 → receipt → next @${width}`, async ({ page, context }, info) => {
+    const writes = []; const errors = []; const receiptReads = [];
+    let state = 'unpaid';
+    page.on('pageerror', error => errors.push(error.message));
+    page.on('request', request => {
+      const p = new URL(request.url()).pathname;
+      if (p.startsWith('/api/v1/') && request.method() !== 'GET') writes.push(request.method() + ' ' + p);
+      if (p.endsWith('/receipt')) receiptReads.push(p);
+    });
+    await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+    await page.setViewportSize({ width, height: 950 });
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    await page.route('**/*', route => ['127.0.0.1', 'localhost'].includes(new URL(route.request().url()).hostname) ? route.fallback() : route.abort());
+    await page.route('**/api/v1/**', route => route.fulfill({ json: { data: [] } }));
+    await installMock(page);
+    const base = { student_id: 99, schedule_mode: 'date', payable_status: 'invoiced', settlement_day: 10,
+      course_start_date: '2026-09-01', course_end_date: '2027-01-31', billing_period: '2026-11', billing_period_start: '2026-11-01', billing_period_end: '2026-11-30', due_date: '2026-11-10' };
+    const first = () => ({ ...base, id: 6, student_name: '合成引導學生甲', subject: '合成數學', payable_invoice_id: 17, payable_amount: 6000,
+      ...(state === 'unpaid' ? { payment_status: 'unpaid', payable_outstanding: 6000, paid_amount: 0 }
+        : state === 'pending' ? { payment_status: 'pending_report', latest_payment_report_id: 55, payable_outstanding: 6000, paid_amount: 0 }
+        : { payment_status: 'partial', payable_outstanding: 3000, paid_amount: 3000, has_confirmed_receipt: true, receipt_report_id: 55 }) });
+    const second = { ...base, id: 8, student_name: '合成引導學生乙', subject: '合成英文', payable_invoice_id: 18, payable_amount: 1000, payable_outstanding: 1000, paid_amount: 0, payment_status: 'unpaid' };
+    await page.route('**/api/v1/students**', route => route.fulfill({ json: [{ id: 99, name: '合成引導學生', status: 'active', enable: 1 }] }));
+    await page.route('**/api/v1/alerts/tuition**', route => route.fulfill({ json: [first(), second] }));
+    await page.route('**/api/v1/accounting/ledger?**', route => route.fulfill({ json: {
+      student: { id: 99, name: '合成引導學生' }, summary: {}, courses: [{ id: 6 }, { id: 8 }], anomalies: [],
+      invoices: [
+        { id: 17, student_class_id: 6, status: state === 'confirmed' ? 'partial' : 'unpaid', total_amount: 6000, calculated_applied_amount: state === 'confirmed' ? 3000 : 0, outstanding_amount: state === 'confirmed' ? 3000 : 6000, period_start: '2026-11-01', period_end: '2026-11-30', payments: [] },
+        { id: 18, student_class_id: 8, status: 'unpaid', total_amount: 1000, calculated_applied_amount: 0, outstanding_amount: 1000, period_start: '2026-11-01', period_end: '2026-11-30', payments: [] },
+      ],
+      receipts: state === 'unpaid' ? [] : [{ report_id: 55, student_class_id: 6, status: state, amount: 3000, payment_date: '2026-11-18', payment_method: 'transfer', account_last5: '12345' }],
+    } }));
+    await page.route('**/api/v1/accounting/contracts/*/sessions', route => route.fulfill({ json: { sessions: [{ class_session_id: 1, date: '2026-11-04', start_time: '18:00', status: 'attended' }] } }));
+    await page.route('**/api/v1/invoices/*/slip-data', route => route.fulfill({ json: { invoice_id: 17, student_name: '合成引導學生甲', campus_name: '合成分校', status: 'unpaid', remaining: 6000, total_amount: 6000, paid_amount: 0,
+      due_date: '2026-11-10', issue_date: '2026-11-01', items: [{ description: '合成數學 2026-11', period_start: '2026-11-01', period_end: '2026-11-30', amount: 6000 }], sessions: [] } }));
+    await page.route('**/api/v1/payment-reports/director-record', route => { state = 'pending'; return route.fulfill({ json: { message: '已送出，待確認入帳', report_id: 55, payment_id: null, invoice_id: 17, status: 'pending' } }); });
+    await page.route('**/api/v1/payment-reports/55/confirm', route => { state = 'confirmed'; return route.fulfill({ json: { message: '已確認入帳', report_id: 55, payment_id: 501, invoice_id: 17 } }); });
+    await page.route('**/api/v1/payment-reports/55/receipt', route => route.fulfill({ json: { receipt_no: 'R-000055', student_name: '合成引導學生甲', campus_name: '合成分校', subject: '合成數學', schedule_mode: 'date',
+      amount: 3000, payment_date: '2026-11-18', payment_method: 'transfer', period_start: '2026-11-01', period_end: '2026-11-30', confirmed_at: '2026-11-18 21:00' } }));
+
+    await page.goto('/tuition-collection-pilot-mount.html');
+    await page.getByTestId('billing-guide-start').click();
+    const guide = page.getByTestId('billing-guide');
+    await expect(guide.getByTestId('bg-progress')).toHaveText('第 1 筆／共 2 筆');
+    await expect(guide.getByTestId('bg-title')).toContainText('合成引導學生甲');
+    await expect(guide.getByTestId('bg-facts')).toContainText('課程期間2026-09-01 ~ 2027-01-31');
+    await expect(guide.getByTestId('bg-facts')).toContainText('本次帳單計費期間2026-11-01 ~ 2026-11-30');
+    await expect(guide.getByTestId('bg-money')).toContainText('未繳NT$ 6,000');
+    const box = await guide.boundingBox();
+    expect(box.x).toBeGreaterThanOrEqual(0); expect(box.x + box.width).toBeLessThanOrEqual(width + 1);
+
+    // 未繳: the slip of this bill, without leaving the screen.
+    await guide.getByTestId('bg-doc-copy').click();
+    await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toContain('帳單編號 #17');
+    const slipDownload = page.waitForEvent('download');
+    await guide.getByTestId('bg-doc-download').click();
+    expect((await slipDownload).suggestedFilename()).toBe('繳費單_合成引導學生甲_17.png');
+    await expect(guide.getByTestId('bg-doc')).toBeVisible();
+    const shot = async (name) => { const p = info.outputPath(`billing-guide-${name}-${width}.png`); await page.screenshot({ path: p, fullPage: true }); await info.attach(`billing-guide-${name}`, { path: p, contentType: 'image/png' }); };
+    await expect(guide.getByTestId('bg-doc-download')).toBeEnabled();
+    await expect(page.getByTestId('bill-search')).toBeHidden(); // one bill at a time: the list is out of the way
+    await shot('unpaid-slip');
+    expect(writes).toEqual([]);
+
+    // 繳了: the existing 登記 form, a part payment, then 現在確認入帳 on the same screen.
+    await guide.getByTestId('bg-record').click();
+    const form = page.getByRole('dialog', { name: '登記收款' });
+    await form.locator('input[type="number"]').fill('3000');
+    await form.getByRole('button', { name: '登記收款' }).click();
+    await expect(guide.getByTestId('bg-notice')).toContainText('還沒確認入帳');
+    await expect(guide.getByTestId('bg-report')).toContainText('NT$ 3,000');
+    await guide.getByTestId('bg-confirm').click();
+    await page.getByRole('button', { name: '確認入帳', exact: true }).last().click();
+    await expect(guide.getByTestId('bg-step')).toContainText('本次實收 NT$ 3,000');
+    await expect(guide.getByTestId('bg-remaining')).toContainText('未繳 NT$ 3,000');
+
+    // 收據: of that confirmed payment; copying and downloading twice creates nothing.
+    await guide.getByTestId('bg-doc-copy').click();
+    await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toContain('R-000055');
+    for (let i = 0; i < 2; i += 1) {
+      const receiptDownload = page.waitForEvent('download');
+      await guide.getByTestId('bg-doc-download').click();
+      expect((await receiptDownload).suggestedFilename()).toBe('電子收據-R-000055.png');
+    }
+    await expect(guide.getByTestId('bg-doc-download')).toBeEnabled();
+    await shot('receipt');
+    expect(writes).toEqual(['POST /api/v1/payment-reports/director-record', 'PUT /api/v1/payment-reports/55/confirm']);
+    expect(receiptReads).toHaveLength(1);
+
+    await guide.getByTestId('bg-next').click();
+    await expect(guide.getByTestId('bg-title')).toContainText('合成引導學生乙');
+    await expect(guide.getByTestId('bg-progress')).toHaveText('第 2 筆／共 2 筆');
+    expect(errors).toEqual([]);
+  });
+}
