@@ -273,6 +273,8 @@ class ReceiptReassignPreviewTest extends TestCase
         $f = $this->fixture();
         $res = $this->getJson("/api/v1/payment-reports/{$f['report']->id}/reassign-targets?student_id={$f['right']->id}", $this->h($this->token('A', 1)))->assertOk();
         $this->assertArrayHasKey('subject', $res->json('targets.0'));
+        $this->assertArrayHasKey('start_date', $res->json('targets.0'));
+        $this->assertArrayHasKey('issue_date', $res->json('targets.0'));
         $url = "/api/v1/accounting/ledger?student_class_id={$f['wrongCourse']->ID}";
         $this->getJson($url, $this->h($this->token('A', 1)))->assertOk()->assertJsonPath('can_reassign_receipt', true);
         config(['feature_flags.values' => ['FEATURE_RECEIPT_REASSIGN' => false]]);

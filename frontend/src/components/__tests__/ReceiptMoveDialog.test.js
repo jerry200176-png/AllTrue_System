@@ -63,6 +63,17 @@ describe('收據移到正確帳單 · flow', () => {
     expect(document.body.textContent).not.toMatch(/reassign_|invoice_id|課程編號/);
   });
 
+  it('two same-subject bills look different in the picker and in the review', async () => {
+    const t = (id, start, issue) => ({ invoice_id: id, course_id: id, subject: '數學', billing_period: null, start_date: start, issue_date: issue, total: 3000, remaining: 3000, status: 'unpaid' });
+    stubFetch({ targets: [res(200, { ...TARGETS, targets: [t(21, '2026-09-01', '2026-09-02'), t(22, '2026-10-05', '2026-10-06')] })], preview: [res(200, PLAN)] });
+    await openDialog();
+    expect(q('rm-target-21').textContent).not.toBe(q('rm-target-22').textContent);
+    expect(q('rm-target-22').textContent).toContain('2026-10-05 開始');
+    await choose(22);
+    expect(q('rm-plan').textContent).toContain('2026-10-05 開始');
+    expect(q('rm-plan').textContent).toContain('2026-10-06 開立');
+  });
+
   it('empty list explains the next step', async () => {
     stubFetch({ targets: [res(200, { ...TARGETS, targets: [] })] });
     await openDialog();

@@ -410,6 +410,8 @@ final class ReceiptReassignService
                     'invoice_id' => (int) $inv->id,
                     'course_id' => $courseId,
                     'subject' => $course?->displaySubjectName(), // the picker names the course, never its id
+                    'start_date' => $course?->StartDate ? substr((string) $course->StartDate, 0, 10) : null, // tells same-subject contracts apart
+                    'issue_date' => $inv->IssueDate ? substr((string) $inv->IssueDate, 0, 10) : null,
                     'billing_period' => $inv->billing_period,
                     'total' => (int) $money['total_amount'],
                     'remaining' => (int) $money['outstanding_amount'],

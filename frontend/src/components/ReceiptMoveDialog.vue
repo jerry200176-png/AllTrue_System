@@ -26,7 +26,8 @@ const emit = defineEmits(['update:open', 'moved', 'changed']);
 
 const money = (n) => `NT$ ${Number(n || 0).toLocaleString('zh-TW')}`;
 const period = (p) => (p ? String(p).replace('-', '/') : '');
-const targetLabel = (t) => [t.subject || '課程', period(t.billing_period)].filter(Boolean).join(' · ');
+// Same-subject contracts must look different: add the contract start and the bill's issue date.
+const targetLabel = (t) => [t.subject || '課程', period(t.billing_period), t.start_date && `${t.start_date} 開始`, t.issue_date && `${t.issue_date} 開立`].filter(Boolean).join(' · ');
 
 const pickedStudent = ref({ id: null, name: '' });
 const targets = ref(null); // null = loading
