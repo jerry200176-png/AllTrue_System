@@ -23,6 +23,7 @@ describe('學生帳務 · 要總部處理的項目', () => {
       expect(w.text()).toContain('多收');
       expect(w.text()).not.toContain('沒有對應的收款');
       expect(w.findAll('button.ledger-action--danger')).toHaveLength(0);
+      expect(w.findAll('button.ledger-action--warning')).toHaveLength(0);
       expect(w.find('[data-testid="ledger-correct-8"]').exists()).toBe(false);
       expect(w.find('[data-testid="ledger-correct-10"]').exists()).toBe(false);
       expect(w.text()).not.toContain('按「撤銷');
