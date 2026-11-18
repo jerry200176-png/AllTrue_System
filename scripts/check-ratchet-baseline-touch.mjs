@@ -96,7 +96,7 @@ function main() {
   const frozen = frozenListViolations(FROZEN_LISTS.map((path) => ({ path, before: show(base, path), after: show('HEAD', path) })));
   frozen.push(...nightlyPinViolations(show(base, NIGHTLY_PINS), show('HEAD', NIGHTLY_PINS)));
   const reader = show('HEAD', 'backend/tests/Feature/WriteRouteInverseRatchetTest.php') ?? '';
-  if (!reader.includes(FROZEN_LISTS[0].replace('backend/', ''))) frozen.push('WriteRouteInverseRatchetTest.php no longer reads the frozen route list');
+  if (!reader.includes(`base_path('${FROZEN_LISTS[0].replace('backend/', '')}')`)) frozen.push('WriteRouteInverseRatchetTest.php no longer reads the frozen route list');
   if (frozen.length) {
     console.error('::error::A frozen list grew or a nightly-check pin was loosened');
     for (const v of frozen) console.error(`  ${v}`);

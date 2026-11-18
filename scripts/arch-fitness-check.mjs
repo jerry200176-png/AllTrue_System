@@ -251,14 +251,14 @@ let svcGraph = { svcFiles: [], edges: new Map(), ctxRule: null };
   if (/\[\s*'enforced'\s*\]\s*=(?!=)/.test(whole)) bad.push("'enforced' is assigned outside the conditions() list");
   if (!whole.includes("$isRegression = $cond['enforced'] && !$pending && $count > (int) $baseline;")) bad.push('handle() no longer decides a regression from the enforced flag; update FIT-21 with the change');
   for (const raw of blocks) {
-    const b = raw.replace(/\/\/.*$/gm, '');
+    const b = raw.replace(/^\s*\/\/.*$/gm, ''); // whole-line comments only: a `//` inside a string must not hide a flag
     const key = (b.match(/^([a-z_]+)'/) || [])[1];
     const flags = [...b.matchAll(/'enforced'\s*=>\s*([^,\]\n]+)/g)].map((m) => m[1].trim());
     if (!key || flags.length !== 1 || !['true', 'false'].includes(flags[0])) { bad.push(`condition ${key || '?'}: write exactly one literal 'enforced' => true|false`); continue; }
     if (flags[0] === 'true') enforced.add(key);
   }
   if (blocks.length < 10) bad.push(`read only ${blocks.length} conditions from VerifyBugReproductions.php; the parser no longer matches the file`);
-  for (const key of pinned) if (!enforced.has(key)) bad.push(`${key} is no longer enforced (or was removed). A condition verified fixed stays enforced; reopening it needs the pin removed with the reason in the PR.`);
+  for (const key of pinned) if (!enforced.has(key)) bad.push(`${key} is no longer enforced (or was removed). A condition verified fixed stays enforced; reopening one needs a reviewed change to this check (the pin list only grows against the merge base).`);
   for (const key of enforced) if (!pinned.includes(key)) bad.push(`${key} is enforced but not pinned; add it to enforcedReproductions in arch-fitness-baseline.json.`);
   if (bad.length) for (const b of bad) failures.push(`FIT-21: ${b}`);
   else note(`FIT-21: ${enforced.size} enforced nightly conditions, all pinned.`);
