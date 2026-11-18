@@ -114,7 +114,7 @@
         <ul class="se-blocked-list" aria-label="衝堂的課">
           <li v-for="b in form.blocked.blockers" :key="`${b.source}-${b.source_id}`">
             {{ scheduleBlockerLabel(b, form.blocked.date) }}
-            <Button v-if="b.course_id" type="button" variant="outline" size="xs" class="se-open-blocker" @click="$emit('open-course', b)">打開那堂課</Button>
+            <Button v-if="b.course_id" type="button" variant="outline" size="sm" class="se-open-blocker" @click="$emit('open-course', b)">打開那堂課</Button>
           </li>
         </ul>
       </div>
@@ -403,6 +403,7 @@ async function onSaveClick() {
 .se-blocked { margin-top: 12px; padding: 12px; border-radius: var(--ds-radius-lg); display: grid; gap: 6px; font-size: var(--ds-font-size-md); background: var(--ds-danger-wash); color: var(--ds-danger); white-space: pre-line; }
 .se-blocked-list { margin: 0; padding-left: 18px; display: grid; gap: 6px; overflow-wrap: anywhere; }
 .se-blocked-list li { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.se-open-blocker { min-height: 44px; } /* touch hit area: directors use phones */
 .se-inline-error {
   margin: 6px 0 10px;
   padding: 8px 12px;
