@@ -18,7 +18,7 @@ describe('navigation registry', () => {
     expect(pages('director')).toContain('exam-grades');
     expect(pages('teacher')).toContain('exam-grades');
     expect(pages('super_admin')).toEqual(expect.arrayContaining([
-      'director-accounts', 'branch-management', 'branch-health-board', 'nightly-reconcile',
+      'director-accounts', 'branch-management', 'branch-health-board', 'nightly-reconcile', 'bill-corrections',
     ]));
     expect(pages('super_admin')).not.toContain('ui-improvements');
     expect(pages('student')).toEqual([]);
@@ -75,7 +75,7 @@ describe('navigation registry', () => {
     ]);
     expect(hubs('super_admin').map(h => h.label)).toEqual(['報表與薪資', '設定', '系統管理']);
     expect(hubs('super_admin')[2].tabs.map(t => t.page)).toEqual([
-      'director-accounts', 'branch-management', 'branch-health-board', 'nightly-reconcile',
+      'director-accounts', 'branch-management', 'branch-health-board', 'nightly-reconcile', 'bill-corrections',
     ]);
     expect(hubs('teacher')).toEqual([]);
     for (const hub of hubs('super_admin')) expect(hub.page).toBe(hub.tabs[0].page);
@@ -114,6 +114,7 @@ describe('navigation registry', () => {
       'branch-management': ['系統管理', '分校管理'],
       'branch-health-board': ['系統管理', '分校健康'],
       'nightly-reconcile': ['系統管理', '夜間堂數對帳'],
+      'bill-corrections': ['系統管理', '更正紀錄'],
     },
   };
   // 當月學收 moved into 帳務中心 > 月對帳表 (Jerry 2026-11-18): the old key opens a page the same roles can reach, on its tab.

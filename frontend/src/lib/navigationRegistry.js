@@ -30,6 +30,7 @@ const SYSTEM_TABS = [
   { page: 'branch-management', label: '分校管理' },
   { page: 'branch-health-board', label: '分校健康' },
   { page: 'nightly-reconcile', label: '夜間堂數對帳' },
+  { page: 'bill-corrections', label: '更正紀錄' },
 ];
 const hub = (label, icon, tabs) => ({ page: tabs[0].page, label, icon, tabs });
 
