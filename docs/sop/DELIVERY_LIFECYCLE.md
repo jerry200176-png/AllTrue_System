@@ -97,6 +97,7 @@ last_reviewed: 2026-11-12
 - bug 先寫會失敗的回歸測試，再改程式（見〈閉環〉每個 bug 一個回歸測試）；屬於〈復發家族〉的 bug，回歸測試寫成該家族性質測試的新 property 或 seed，不只寫單一例子。
 - 使用者看得到的變更：`docs/changes/` fragment 與版本更新卡（[`GUIDE_STAFF_UPDATES.md`](../GUIDE_STAFF_UPDATES.md)）。
 - PR 內文：`pr_declaration.py` 產生的宣告、Rollback 行、`Release-Impact`；in-app 對應的 issue 一律寫 `Refs`。
+- 正式資料修復（POP）：同一個 PR 或下一個 PR 要在 `bugs:verify-reproductions` 留一個夜間條件，能數出這種壞資料還剩幾筆；`backend/config/reproduction_baselines.php` 的容許數只能變小（`arch-fitness-check.mjs` FIT-20 會擋）。
 - in-app 的修正：開工前先在 intake issue 留一行 `Claimed by <agent> — branch <name>`；24 小時內已有別的 agent 認領就不要開工，改在該 issue 上協調（2026-11-17：565 同時出現兩份修正 #5440／#5443）。
 
 ### 階段 6：審查

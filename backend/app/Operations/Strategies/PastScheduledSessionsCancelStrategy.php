@@ -7,7 +7,7 @@ use Illuminate\Support\Facades\DB;
 use RuntimeException;
 
 /**
- * Exact-case POP strategy (Founder 2026-10-08, in-app #341): three past ClassSession rows that are still
+ * Exact-case POP strategy (in-app #341; second case course 3380, in-app #550): past ClassSession rows that are still
  * `scheduled` on an early-ended contract become `cancelled`. Only ClassSession.Status changes; they have no
  * attendance, learning record or deduction ledger row (checked in plan and again under lock), so no billing,
  * Charge, Paid or SessionCount value is touched. Written with the query builder on purpose: the ClassSession
@@ -16,6 +16,10 @@ use RuntimeException;
 final class PastScheduledSessionsCancelStrategy
 {
     private const REF = 'cancel-past-scheduled-course2942-20261008';
+    private const REF_3380 = 'cancel-past-scheduled-course3380-20261118';
+
+    /** Case chosen by decision_reference (plan) or snapshot reference (rollback); default is the original 2942 case. */
+    private string $ref = self::REF;
 
     /** @var array<int,array{course_id:int,date:string,campus_id:int}>|null test-only override */
     private static ?array $override = null;
@@ -27,19 +31,45 @@ final class PastScheduledSessionsCancelStrategy
     }
 
     /** @return array<int,array{course_id:int,date:string,campus_id:int}> session id => expected state */
-    public static function cases(): array
+    public static function cases(string $ref = self::REF): array
     {
-        // Read-only Pi SELECT 2026-10-08 (GitHub #3199): StudentClass 2942, campus 15, contract_amended.
         return self::$override ?? [
-            27142 => ['course_id' => 2942, 'date' => '2026-09-03', 'campus_id' => 15],
-            27143 => ['course_id' => 2942, 'date' => '2026-09-10', 'campus_id' => 15],
-            27144 => ['course_id' => 2942, 'date' => '2026-09-17', 'campus_id' => 15],
-        ];
+            // Read-only Pi SELECT 2026-10-08 (GitHub #3199): StudentClass 2942, campus 15, contract_amended.
+            self::REF => [
+                27142 => ['course_id' => 2942, 'date' => '2026-09-03', 'campus_id' => 15],
+                27143 => ['course_id' => 2942, 'date' => '2026-09-10', 'campus_id' => 15],
+                27144 => ['course_id' => 2942, 'date' => '2026-09-17', 'campus_id' => 15],
+            ],
+            // Read-only triage DB 2026-11-18 (in-app #550, GitHub #5361): StudentClass 3380, campus 16, closed waived.
+            self::REF_3380 => [
+                32305 => ['course_id' => 3380, 'date' => '2026-08-28', 'campus_id' => 16],
+                32306 => ['course_id' => 3380, 'date' => '2026-09-01', 'campus_id' => 16],
+                32307 => ['course_id' => 3380, 'date' => '2026-09-04', 'campus_id' => 16],
+                32308 => ['course_id' => 3380, 'date' => '2026-09-08', 'campus_id' => 16],
+                32309 => ['course_id' => 3380, 'date' => '2026-09-11', 'campus_id' => 16],
+                32310 => ['course_id' => 3380, 'date' => '2026-09-15', 'campus_id' => 16],
+                32311 => ['course_id' => 3380, 'date' => '2026-09-18', 'campus_id' => 16],
+            ],
+        ][$ref];
+    }
+
+    private function useRef(mixed $ref): bool
+    {
+        $known = in_array($ref, [self::REF, self::REF_3380], true);
+        $this->ref = $known ? $ref : self::REF;
+
+        return $known;
+    }
+
+    /** @return array<int,array{course_id:int,date:string,campus_id:int}> */
+    private function selected(): array
+    {
+        return self::cases($this->ref);
     }
 
     public function plan(array $parameters): array
     {
-        $paramErrors = ($parameters['decision_reference'] ?? null) === self::REF ? [] : ['case_parameters_mismatch'];
+        $paramErrors = $this->useRef($parameters['decision_reference'] ?? null) ? [] : ['case_parameters_mismatch'];
         $rows = $this->inspect(false);
         $errors = $this->beforeErrors($rows);
         $state = 'before';
@@ -52,19 +82,26 @@ final class PastScheduledSessionsCancelStrategy
         return ['ok' => $errors === [], 'errors' => $errors, 'state' => $state,
             'digest' => hash('sha256', json_encode([$state, $this->snapshot($rows)], JSON_THROW_ON_ERROR)),
             'counts' => ['sessions' => count($rows), 'to_cancel' => $state === 'before' ? count($rows) : 0],
+            'reference' => $this->ref,
             'manifest' => array_map(fn ($r) => ['status' => $r['status'], 'course_id' => $r['course_id'], 'date' => $r['date']], $rows),
             'snapshot' => $errors === [] ? $this->snapshot($rows) : []];
     }
 
     public function execute(array $plan, array $context): array
     {
+        $this->useRef($plan['reference'] ?? self::REF);
         if (($plan['ok'] ?? false) && ($plan['state'] ?? null) === 'after') {
+            // Already cancelled before this request: do not manufacture authority to undo someone else's work.
+            if ($this->ref === self::REF_3380) return ['ok' => true, 'already_applied' => true, 'updated' => 0,
+                'snapshot' => ['reference' => $this->ref, 'rows' => []]];
             // Already applied (retry after the execution record failed to persist): idempotent, let verify run.
             // The rollback snapshot restores the known original status.
             $snapshot = $plan['snapshot'] ?? [];
             foreach ($snapshot['rows'] ?? [] as $id => $row) {
                 $snapshot['rows'][$id]['status'] = 'scheduled';
             }
+
+            $snapshot['reference'] = $this->ref;
 
             return ['ok' => true, 'already_applied' => true, 'updated' => 0, 'snapshot' => $snapshot];
         }
@@ -73,7 +110,7 @@ final class PastScheduledSessionsCancelStrategy
         }
 
         return DB::transaction(function () use ($context): array {
-            $ids = array_keys(self::cases());
+            $ids = array_keys($this->selected());
             $rows = $this->inspect(true);
             $errors = $this->beforeErrors($rows);
             if ($errors !== []) {
@@ -84,15 +121,16 @@ final class PastScheduledSessionsCancelStrategy
             if ($n !== count($ids)) {
                 throw new RuntimeException("past_scheduled_updated_{$n}_of_" . count($ids));
             }
-            $this->audit('pop.past_scheduled_sessions_cancel', ['reason_code' => self::REF,
+            $this->audit('pop.past_scheduled_sessions_cancel', ['reason_code' => $this->ref,
                 'operation_id' => (string) ($context['operation_id'] ?? ''), 'session_count' => $n, 'outcome' => 'success']);
 
-            return ['ok' => true, 'snapshot' => $this->snapshot($rows), 'updated' => $n];
+            return ['ok' => true, 'snapshot' => $this->snapshot($rows) + ['reference' => $this->ref], 'updated' => $n];
         }, 3);
     }
 
     public function verify(array $plan, array $result): array
     {
+        $this->useRef($plan['reference'] ?? self::REF);
         $errors = ($result['ok'] ?? false) ? [] : ['execution_result_missing'];
         $rows = $this->inspect(false);
         $errors = array_values(array_unique([...$errors, ...$this->afterErrors($rows)]));
@@ -106,12 +144,29 @@ final class PastScheduledSessionsCancelStrategy
         return ['ok' => $errors === [], 'errors' => $errors, 'checks' => ['cancelled', 'no_billing_change']];
     }
 
+    /** A new native rollback must refer to the complete before-state this request actually changed. */
+    public static function hasNativeRecoverySnapshot(array $snapshot): bool
+    {
+        $rows = $snapshot['rows'] ?? null;
+        if (($snapshot['reference'] ?? null) !== self::REF_3380 || !is_array($rows) || array_keys($rows) !== array_keys(self::cases(self::REF_3380))) return false;
+        foreach (self::cases(self::REF_3380) as $id => $case) {
+            $row = $rows[$id];
+            if (!is_array($row) || ($row['status'] ?? null) !== 'scheduled' || ($row['course_id'] ?? null) !== $case['course_id']
+                || ($row['date'] ?? null) !== $case['date'] || !is_array($row['course'] ?? null)) return false;
+        }
+        return true;
+    }
+
     public function rollback(array $snapshot, array $context): array
     {
+        if (!$this->useRef($snapshot['reference'] ?? self::REF)) { // old snapshots without reference remain 2942
+            throw new RuntimeException('past_scheduled_rollback_reference_invalid');
+        }
         $before = $snapshot['rows'] ?? [];
-        if (!is_array($before) || array_keys($before) !== array_keys(self::cases())) {
+        if (!is_array($before) || array_keys($before) !== array_keys($this->selected())) {
             throw new RuntimeException('past_scheduled_rollback_snapshot_invalid');
         }
+        if ($this->ref === self::REF_3380 && !self::hasNativeRecoverySnapshot($snapshot)) throw new RuntimeException('past_scheduled_rollback_snapshot_invalid');
 
         return DB::transaction(function () use ($before): array {
             $now = $this->inspect(true);
@@ -119,6 +174,17 @@ final class PastScheduledSessionsCancelStrategy
             $skippedIds = [];
             foreach ($before as $id => $old) {
                 $row = $now[$id] ?? null;
+                if ($this->ref === self::REF_3380) {
+                    $case = $this->selected()[$id];
+                    if (!$row || $row['course_id'] !== $case['course_id'] || $row['date'] !== $case['date']
+                        || $row['campus_id'] !== $case['campus_id'] || ($old['course_id'] ?? null) !== $case['course_id']
+                        || ($old['date'] ?? null) !== $case['date'] || ($old['status'] ?? null) !== 'scheduled') {
+                        $skippedIds[] = $id;
+                        continue;
+                    }
+                    // A previous partial attempt already restored this row. No overwrite or second write.
+                    if ($row['status'] === 'scheduled' && $row['activity'] === 0) continue;
+                }
                 if (!$row || $row['status'] !== 'cancelled' || $row['activity'] !== 0) {
                     $skippedIds[] = $id; // already moved on or has activity since: leave it alone
                     continue;
@@ -130,7 +196,7 @@ final class PastScheduledSessionsCancelStrategy
                 }
                 $restored++;
             }
-            $this->audit('pop.past_scheduled_sessions_cancel.rollback', ['reason_code' => self::REF,
+            $this->audit('pop.past_scheduled_sessions_cancel.rollback', ['reason_code' => $this->ref,
                 'restored' => $restored, 'skipped' => count($skippedIds), 'outcome' => 'success']);
 
             return ['ok' => $skippedIds === [], 'partial' => $skippedIds !== [], 'restored' => $restored, 'skipped_ids' => $skippedIds];
@@ -151,23 +217,28 @@ final class PastScheduledSessionsCancelStrategy
     /** @return array<int,array<string,mixed>> session id => live state (ids, dates, counts only) */
     private function inspect(bool $lock): array
     {
-        $ids = array_keys(self::cases());
+        $current = $lock && $this->ref === self::REF_3380;
+        $ids = array_keys($this->selected());
         $q = DB::table('ClassSession')->whereIn('id', $ids)->orderBy('id');
-        $sessions = ($lock ? $q->lockForUpdate() : $q)->get()->keyBy('id');
-        $courseIds = array_values(array_unique(array_column(self::cases(), 'course_id')));
+        $courseIds = array_values(array_unique(array_column($this->selected(), 'course_id')));
         $cq = DB::table('StudentClass')->whereIn('ID', $courseIds);
-        $courses = ($lock ? $cq->lockForUpdate() : $cq)->get()->keyBy('ID');
+        // Match attendance's course -> session locks. All rechecks must be current reads,
+        // even when safePlan established an earlier REPEATABLE READ snapshot.
+        $courses = $current ? $cq->lockForUpdate()->get()->keyBy('ID') : null;
+        $sessions = ($lock ? $q->lockForUpdate() : $q)->get()->keyBy('id');
+        $courses ??= ($lock ? $cq->lockForUpdate() : $cq)->get()->keyBy('ID');
         $out = [];
         foreach ($sessions as $id => $s) {
             $course = $courses->get((int) $s->StudentClassID);
+            $student = $course ? DB::table('Student')->where('id', $course->StudentID) : null;
             $out[(int) $id] = [
                 'status' => (string) $s->Status,
                 'course_id' => (int) $s->StudentClassID,
                 'date' => substr((string) $s->SessionDate, 0, 10),
-                'campus_id' => $course ? (int) DB::table('Student')->where('id', $course->StudentID)->value('CampusID') : 0,
-                'activity' => DB::table('StudentSingIn')->where('ClassSessionID', $id)->count()
-                    + DB::table('LearningRecord')->where('ClassSessionID', $id)->count()
-                    + DB::table('session_deduction_ledger')->where('class_session_id', $id)->count(),
+                'campus_id' => $student ? (int) ($current ? $student->lockForUpdate() : $student)->value('CampusID') : 0,
+                'activity' => $this->activityCount('StudentSingIn', 'ClassSessionID', $id, $current)
+                    + $this->activityCount('LearningRecord', 'ClassSessionID', $id, $current)
+                    + $this->activityCount('session_deduction_ledger', 'class_session_id', $id, $current),
                 'course' => $course ? ['charge' => (int) $course->Charge, 'paid' => (int) $course->Paid,
                     'session_count' => (int) $course->SessionCount] : null,
             ];
@@ -176,12 +247,18 @@ final class PastScheduledSessionsCancelStrategy
         return $out;
     }
 
+    private function activityCount(string $table, string $key, int $id, bool $current): int
+    {
+        $query = DB::table($table)->where($key, $id);
+        return $current ? $query->lockForUpdate()->pluck($key)->count() : $query->count();
+    }
+
     /** @param array<int,array<string,mixed>> $rows @return list<string> */
     private function beforeErrors(array $rows): array
     {
         $errors = [];
         $today = now()->toDateString();
-        foreach (self::cases() as $id => $case) {
+        foreach ($this->selected() as $id => $case) {
             $r = $rows[$id] ?? null;
             if (!$r) { $errors[] = "missing_{$id}"; continue; }
             if ($r['status'] !== 'scheduled') $errors[] = "status_{$id}";
@@ -198,7 +275,7 @@ final class PastScheduledSessionsCancelStrategy
     private function afterErrors(array $rows): array
     {
         $errors = [];
-        foreach (array_keys(self::cases()) as $id) {
+        foreach (array_keys($this->selected()) as $id) {
             if (($rows[$id]['status'] ?? null) !== 'cancelled') {
                 $errors[] = "not_cancelled_{$id}";
             }

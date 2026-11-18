@@ -167,6 +167,16 @@ final class PopOperationCatalogTest extends TestCase
         $method->invoke($service, $entry);
     }
 
+    public function test_past_scheduled_cancel_3380_shares_strategy_and_policy_shape(): void
+    {
+        $catalog = new PopOperationCatalog(dirname(__DIR__, 3) . '/operations/catalog.yaml');
+        $service = new PopOperationService($catalog);
+        $entry = $catalog->operation('cancel-past-scheduled-course3380-20261118');
+        self::assertSame(\App\Operations\Strategies\PastScheduledSessionsCancelStrategy::class, $entry['strategy_class']);
+        self::assertSame(['decision_reference'], $entry['parameter_keys']);
+        self::assertSame(['super_admin'], (new ReflectionMethod($service, 'approvalRoles'))->invoke($service, $entry));
+    }
+
     public function test_package_ledger_net_repair_requires_founder_approval_and_exact_pop_policy_shape(): void
     {
         $catalog = new PopOperationCatalog(dirname(__DIR__, 3) . '/operations/catalog.yaml');

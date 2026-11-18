@@ -9,7 +9,7 @@
 |---|---|---|---|
 | **合約金額** | 堂數制合約講好的總學費 | `StudentClass.Charge` | 主任：合約變更（`ContractAmendmentService`，留紀錄） |
 | **單價** | 一堂（或一小時）多少錢，以**上課那天**生效的為準 | `StudentClassPricingService::forDate()` | 主任：改單價（`student_class_pricing_amendments` 留紀錄，不覆蓋舊的） |
-| **應收** | 這張帳單要收多少 | `InvoiceAmountReconciliationService::resolve()` 的 `total_amount`。注意：`Invoice.TotalAmount` 是**存下來的原始金額**（留底用），兩個不一定相同——還沒收款的單月月結帳單，應收會照實際上課堂數重算，存的數字不會跟著改 | 不能直接改數字。開錯：作廢帳單再開；第 2 步上線後用「更正帳單」 |
+| **應收** | 這張帳單要收多少 | `InvoiceAmountReconciliationService::resolve()` 的 `total_amount`。注意：`Invoice.TotalAmount` 是**存下來的原始金額**（留底用），兩個不一定相同——還沒收款的單月月結帳單，應收會照實際上課堂數重算，存的數字不會跟著改 | 不能直接改數字。開錯：作廢帳單再開；用「更正帳單」（`BillCorrection`，後端已有、預設關，分校清單 `billing.bill_correction_campus_ids`）：作廢舊帳單、開新帳單、已收的錢用 `transfer_out`／`transfer_in` 整筆轉過去，留 `invoice_corrections` 與稽核 |
 | **已收** | 這張帳單實際收到多少＝收款紀錄加總，扣掉撤銷與退費 | `Payment` 的列（`Invoice::netPaidSql()`） | 主任：登記收款、撤銷收款。每一筆都留著，不刪 |
 | **未繳** | 應收 − 已收，最小是 0 | 一張帳單：上面兩個相減。一份合約：`ContractMoneyVerdict`（`BillingPayableResolver` 的 `outstanding`） | 不能改；它是算出來的 |
 | **預估** | 月結這個月**還沒定案**前的金額＝已上堂數 × 當日單價 | `MonthlyBillingService::summarizePeriod()` | 不能改；改上課紀錄或單價它就跟著變 |

@@ -19,6 +19,9 @@
  * FIT-13 L3            required SOP docs present
  * FIT-16 #4659 step 3  fee math (Rate × count) in controllers ratchet (one fee source)
  * FIT-17 TD-076        files touching the `schedules` exception table directly ratchet (one timetable reader)
+ * FIT-18 #4991 M       product files writing StudentClass.Paid / .Charge ratchet (one money writer)
+ * FIT-19 #4991 M       frontend files multiplying a price by a count ratchet (screens display, they do not compute)
+ * FIT-20 #4991 item 9  nightly reproduction allowances (reproduction_baselines.php) only shrink
  */
 import fs from 'node:fs';
 import path from 'node:path';
@@ -163,6 +166,68 @@ let svcGraph = { svcFiles: [], edges: new Map(), ctxRule: null };
   for (const form of miss) if (re.test(form)) failures.push(`FIT-17 self-check: pattern must not match ${form}`);
   const n = appPhp.filter((f) => re.test(read(f))).length;
   ratchet('FIT-17', 'files touching the schedules table directly; read lessons through TeacherClassCalendar', n, 'scheduleTableReaderFiles');
+}
+
+// FIT-18 (#4991 family M): "paid" and the contract fee drifted because many files set them. New writes go through
+// the Billing services (BillCorrection, ContractRenewal, the verdict); this list only shrinks.
+// Operations/ is left out: one-off governed repairs, reviewed by the POP gates.
+// ponytail: sees an assignment, setAttribute/increment/decrement, and an array key within 1500 chars of a write
+// call; an array built in a variable first is missed.
+{
+  const re = /->(?:Paid|Charge)\s*[-+]?=[^=>]|(?:setAttribute|increment|decrement)\(\s*['"](?:Paid|Charge)['"]|(?:->update|->updateQuietly|::create|->create|->fill|->forceFill|->insert|updateOrCreate)\(\s*\[(?:[^\[\]]|\[[^\[\]]*\]){0,1500}?['"](?:Paid|Charge)['"]\s*=>/;
+  const hit = ["->update(['Rate' => $in['rate'], 'Charge' => 0])", "$sc->packages()->create(['Paid' => 1])", "->decrement('Charge', 5)", '$sc->Paid = 1;', '$c->Charge = $fee;', '$c->Charge += 100;', "$c->setAttribute('Charge', 0)", "->increment('Charge', 5)",
+    "->update(['Paid' => 0])", "->update([\n 'Stop' => 1,\n 'Charge' => 0])", "->updateQuietly(['Paid' => 1])", "StudentClass::create(['Charge' => 1])",
+    "->fill(['Paid' => 1])", "->forceFill(['Charge' => 2])", "->insert(['Charge' => 2])", "updateOrCreate(['id' => 1, 'Paid' => 1]"];
+  const miss = ['$sc->Paid == 1', "'Charge' => $sc->Charge,", '$inv->PaidAmount = 0;', "['Paid' => $x]", "getAttribute('Charge')"];
+  for (const form of hit) if (!re.test(form)) failures.push(`FIT-18 self-check: pattern must match ${form}`);
+  for (const form of miss) if (re.test(form)) failures.push(`FIT-18 self-check: pattern must not match ${form}`);
+  const files = appPhp.filter((f) => !/backend\/app\/Operations\//.test(f.split(path.sep).join('/')) && re.test(read(f)));
+  ratchet('FIT-18', `files writing Paid/Charge (${files.map((f) => path.basename(f, '.php')).join(', ')}); write through a Billing service`, files.length, 'contractMoneyWriterFiles');
+}
+
+// FIT-19 (#4991 family M, #3521): a screen that multiplies a price by a count shows its own amount. The server's
+// verdict is the amount; lib/coursePricing.js is the one place allowed to preview it before save.
+// ponytail: name-based (rate|price|charge|fee × count|sessions|lessons|hours|minutes|qty|units, or × x / 60); other names are missed.
+{
+  const re = /\b(?![\w.]*[aA]ttendance)[\w.]*(?:[rR]ate|[pP]rice|[cC]harge|[fF]ee)\w*(?:\(\))?\s*\*\s*\(?[\w.]*(?:[cC]ount|[sS]essions?|[lL]essons?|[hH]ours?|[qQ]ty|[uU]nits?|[mM]inutes?|\s*\/\s*60)/;
+  for (const form of ['unitPrice * sessionCount', 'row.rate * (lessons', 'item.price * item.qty', 'rate * (actual / 60)']) if (!re.test(form)) failures.push(`FIT-19 self-check: pattern must match ${form}`);
+  for (const form of ['width * count', 'rate + count', 'attendanceRate * totalSessions']) if (re.test(form)) failures.push(`FIT-19 self-check: pattern must not match ${form}`);
+  const files = walk(path.join(ROOT, 'frontend/src'), (p) => /\.(js|ts|vue)$/.test(p) && !/\.(test|spec)\.|__tests__/.test(p) && !p.endsWith(path.join('lib', 'coursePricing.js')))
+    .filter((f) => re.test(read(f)));
+  ratchet('FIT-19', `frontend files computing money (${files.map((f) => path.basename(f)).join(', ') || 'none'}); show the server amount`, files.length, 'frontendMoneyMathFiles');
+}
+
+// FIT-20 (#4991 item 9): backend/config/reproduction_baselines.php says how many known-bad rows the nightly
+// `bugs:verify-reproductions` tolerates. Raising a number, or adding a new allowance, hides a regression; both need
+// the matching number raised here, which a reviewer sees. Fixing data lowers both.
+{
+  ran.add('FIT-20');
+  const pinned = baseline.reproductionBaselines;
+  const src = read(path.join(ROOT, 'backend/config/reproduction_baselines.php'));
+  // Strict: inside `return [ ... ];` every line is `'key' => <integer>,` or `'key' => null,` (plus a comment).
+  // Anything else (an expression, env(), two keys on a line) fails, so a raise cannot hide in a shape we do not read.
+  // Whole-line anchors and exactly one `return`, so a `return [];` in a comment cannot stand in for the real array.
+  const body = (src.match(/^return \[\n([\s\S]*?)^\];$/m) || [])[1];
+  const bad = [];
+  let n = 0, sum = 0;
+  if (body === undefined) bad.push('no `return [` ... `];` block on its own lines in reproduction_baselines.php');
+  if ((src.match(/\breturn\b/gi) || []).length !== 1) bad.push('reproduction_baselines.php must contain the word `return` exactly once');
+  for (const raw of (body || '').split('\n')) {
+    const line = raw.replace(/\/\/.*$/, '').trim();
+    if (/\];|\/\*|\*\//.test(raw)) { bad.push(`no "];" or block comment inside the array: ${raw.trim()}`); continue; }
+    if (line === '') continue;
+    const m = line.match(/^'([a-z_]+)'\s*=>\s*(\d+|null),$/);
+    if (!m) { bad.push(`unreadable line (write 'key' => <integer>,): ${line}`); continue; }
+    const [, key, val] = m; n++;
+    const pin = pinned[key];
+    if (val === 'null') { if (pin !== null) bad.push(`${key} = null switches the check off; pin it as null in arch-fitness-baseline.json with the reason in the PR.`); continue; }
+    sum += Number(val);
+    if (pin === undefined) { if (Number(val) > 0) bad.push(`new allowance ${key} = ${val}; start at 0, or pin it in arch-fitness-baseline.json with the reason in the PR.`); }
+    else if (pin === null || Number(val) > pin) bad.push(`allowance ${key} rose ${pin} -> ${val}. Allowances only shrink.`);
+  }
+  if (n === 0) bad.push('no allowance lines read');
+  if (bad.length) for (const b of bad) failures.push(`FIT-20: ${b}`);
+  else note(`FIT-20: ${n} nightly allowances at or below their pins (sum ${sum}).`);
 }
 
 // FIT-10 context map completeness + forbidden edges (DEP-1)

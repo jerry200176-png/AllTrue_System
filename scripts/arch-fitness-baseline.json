@@ -11,6 +11,9 @@
   "readPathWritesInQueryMethods": 0,
   "feeMathInControllers": 2,
   "scheduleTableReaderFiles": 50,
+  "contractMoneyWriterFiles": 21,
+  "frontendMoneyMathFiles": 3,
+  "reproductionBaselines": { "package_over_debit": 109, "session_debited_twice": 2, "unpaid_charge_vs_rate_count": 0, "paid_flag_vs_invoice": 1 },
   "requireOwnerFrontmatter": [
     "docs/CONSTITUTION.md",
     "docs/RULE_ARCHITECTURE_GOVERNANCE.md",
