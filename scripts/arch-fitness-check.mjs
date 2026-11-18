@@ -211,7 +211,7 @@ let svcGraph = { svcFiles: [], edges: new Map(), ctxRule: null };
   const bad = [];
   let n = 0, sum = 0;
   if (body === undefined) bad.push('no `return [` ... `];` block on its own lines in reproduction_baselines.php');
-  if ((src.match(/\breturn\b/g) || []).length !== 1) bad.push('reproduction_baselines.php must contain the word `return` exactly once');
+  if ((src.match(/\breturn\b/gi) || []).length !== 1) bad.push('reproduction_baselines.php must contain the word `return` exactly once');
   for (const raw of (body || '').split('\n')) {
     const line = raw.replace(/\/\/.*$/, '').trim();
     if (/\];|\/\*|\*\//.test(raw)) { bad.push(`no "];" or block comment inside the array: ${raw.trim()}`); continue; }
