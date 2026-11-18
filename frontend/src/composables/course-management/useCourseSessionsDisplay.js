@@ -30,6 +30,16 @@ const ATTENDED_SESSION_STATUSES = new Set(['completed', 'attended', 'late']);
 const SESSION_DISPLAY_CONSUMED = new Set(['completed', 'absent']);
 const UPCOMING_NON_LESSON_STATUSES = new Set(['leave', 'leave_adjusted', 'excused']);
 
+// In-app #571: lesson chip filter. Groups come from the chip's own state class, so a chip and its filter never disagree.
+export const SESSION_CHIP_FILTERS = [
+  { value: 'all', label: '全部' },
+  { value: 'done', label: '已上' },
+  { value: 'upcoming', label: '未上' },
+  { value: 'leave', label: '請假／缺席' },
+];
+const SESSION_CHIP_GROUP_BY_CLASS = { completed: 'done', absent: 'leave', leave: 'leave', 'leave-requested': 'leave', cancelled: 'cancelled' };
+export const sessionChipGroup = (stateClass) => SESSION_CHIP_GROUP_BY_CLASS[stateClass] || 'upcoming';
+
 export function useCourseSessionsDisplay({
   sessionsByCourse,
   completedSessionDatesByCourse,
@@ -619,12 +629,19 @@ export function useCourseSessionsDisplay({
     }
   }
 
+  const filteredSessionUnits = (course, filter) => {
+    const units = primarySessionUnits(course);
+    if (!filter || filter === 'all') return units;
+    return units.filter((u) => sessionChipGroup(getSessionStateClass(course, (u.date || '').slice(0, 10), u.id)) === filter);
+  };
+
   return {
     expandedDates,
     toggleDates,
     sessions,
     sessionUnits,
     primarySessionUnits,
+    filteredSessionUnits,
     upcomingSessionPreview,
     allSessionUnits,
     cancelledSessionCount,

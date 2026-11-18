@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { ref } from 'vue';
-import { useCourseSessionsDisplay } from '../useCourseSessionsDisplay.js';
+import { useCourseSessionsDisplay, sessionChipGroup } from '../useCourseSessionsDisplay.js';
 import { sessionViewModelFromClassSessionsRow, createSessionViewModel } from '../../../lib/classSessionsApi.js';
 
 /**
@@ -322,5 +322,38 @@ describe('useCourseSessionsDisplay', () => {
     const course = { id: 1, first_class_date: '2026-09-01', sessions_purchased: 4, days_of_week: [1] };
     expect(await display.loadEffectiveSessionDates([course], 'token')).toBe(true);
     expect(await display.loadEffectiveSessionDates([course], 'token')).toBe(false);
+  });
+});
+
+describe('lesson chip filter (in-app #571)', () => {
+  it('keeps only the chips whose own state matches the chosen filter', () => {
+    const course = { id: 79, ScheduleMode: 'count', payment_type: 'session', sessions_purchased: 5, SessionCount: 5 };
+    const mk = (id, date, status) => sessionViewModelFromClassSessionsRow({
+      id, student_class_id: 79, session_date: date, start_time: '10:00', end_time: '12:00', status,
+    });
+    const display = useCourseSessionsDisplay({
+      sessionsByCourse: ref({ 79: [
+        mk(1, '2026-08-01', 'attended'),
+        mk(2, '2026-08-08', 'leave'),
+        mk(3, '2026-08-15', 'absent'),
+        mk(4, '2026-08-22', 'scheduled'),
+      ] }),
+      completedSessionDatesByCourse: ref({}),
+      fetchClassSessionsFn: vi.fn(),
+      supabase: { auth: { getSession: vi.fn() } },
+      branchId: ref(1),
+    });
+    const ids = (filter) => display.filteredSessionUnits(course, filter).map((u) => u.id);
+    expect(ids('all')).toEqual(display.primarySessionUnits(course).map((u) => u.id));
+    expect(ids('done')).toEqual([1]);
+    expect(ids('leave')).toEqual([2, 3]);
+    expect(ids('upcoming')).toEqual([4]);
+  });
+
+  it('never files a cancelled or unknown chip under 已上 or 請假', () => {
+    expect(sessionChipGroup('cancelled')).toBe('cancelled');
+    expect(sessionChipGroup('leave-requested')).toBe('leave');
+    expect(sessionChipGroup('over-quota')).toBe('upcoming');
+    expect(sessionChipGroup('')).toBe('upcoming');
   });
 });

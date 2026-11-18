@@ -502,9 +502,21 @@
                             @create-day="(payload) => openCourseSessionCalendarCreate(c, payload)"
                             @quick-add="openQuickAddSessionModal(c)"
                           />
-                          <div v-if="primarySessionUnits(c).length > 0" class="dates-chip-grid">
+                          <div v-if="primarySessionUnits(c).length > 0" class="session-chip-filter" role="group" aria-label="篩選堂次" data-testid="session-chip-filter">
+                            <Button
+                              v-for="f in SESSION_CHIP_FILTERS"
+                              :key="f.value"
+                              type="button"
+                              size="xs"
+                              :variant="sessionChipFilter === f.value ? 'secondary' : 'ghost'"
+                              :aria-pressed="sessionChipFilter === f.value"
+                              @click.stop="sessionChipFilter = f.value"
+                            >{{ f.label }}</Button>
+                          </div>
+                          <p v-if="primarySessionUnits(c).length > 0 && filteredSessionUnits(c, sessionChipFilter).length === 0" class="hint" data-testid="session-chip-filter-empty">沒有符合這個篩選的堂次。</p>
+                          <div v-if="filteredSessionUnits(c, sessionChipFilter).length > 0" class="dates-chip-grid">
                             <button
-                              v-for="u in primarySessionUnits(c)"
+                              v-for="u in filteredSessionUnits(c, sessionChipFilter)"
                               :key="sessionRowKey(u)"
                               type="button"
                               :class="[
@@ -1512,7 +1524,7 @@ import {
   editabilityNextStepLabel,
   hasUniformFixedSlotDuration,
 } from '../lib/courseEditability';
-import { useCourseSessionsDisplay } from '../composables/course-management/useCourseSessionsDisplay';
+import { useCourseSessionsDisplay, SESSION_CHIP_FILTERS } from '../composables/course-management/useCourseSessionsDisplay';
 import { useMonthlyAttendanceSummary } from '../composables/course-management/useMonthlyAttendanceSummary';
 import { isSessionModeCourse } from '../lib/sessionPlanningStatus';
 import { useRescheduleAndMakeup } from '../composables/course-management/useRescheduleAndMakeup';
@@ -1826,7 +1838,7 @@ const visibleGroups = computed(() =>
 );
 
 const {
-  expandedDates, toggleDates, sessions, sessionUnits, primarySessionUnits, upcomingSessionPreview, allSessionUnits, cancelledSessionCount, movedOrCancelledUnits, sessionRowKey, getSessionNumber, getSessionNumberMap, countNonLeaveSessions, effectiveSessionCount, leaveSessionCount,
+  expandedDates, toggleDates, sessions, sessionUnits, primarySessionUnits, filteredSessionUnits, upcomingSessionPreview, allSessionUnits, cancelledSessionCount, movedOrCancelledUnits, sessionRowKey, getSessionNumber, getSessionNumberMap, countNonLeaveSessions, effectiveSessionCount, leaveSessionCount,
   getSessionPlanningStatus, canMaterializeProjectedSession,
   getCourseSessionRows, getSessionRowsForDate, getSessionRowById, getSessionDisplayRow,
   getSessionState, getSessionStateLabel, getSessionStateClass, getSessionTooltip,
@@ -4324,6 +4336,9 @@ const isMonthlyMode = isMonthlyPaymentType;
 // The server's sum of lessons held x the price on each lesson's date; an older payload falls back to the local estimate.
 const monthlyAttendedFee = (c) => c?.held_lessons_amount ?? Math.round(getPerSessionFee(c) * getCompletedSessionCount(c));
 
+// 堂次篩選（in-app #571）：全部／已上／未上／請假缺席；只影響下方日期列，不影響行事曆與堂數。
+const sessionChipFilter = ref('all');
+
 // 備註開關（預設關閉，截圖給家長時保持乾淨）
 const showSessionNotes = ref(localStorage.getItem('cm_show_notes') === '1');
 const toggleSessionNotes = () => {
@@ -6610,6 +6625,7 @@ button.danger:disabled {
   color: var(--ds-danger);
   background: var(--ds-danger-wash);
 }
+.session-chip-filter { display: flex; flex-wrap: wrap; gap: 4px; margin: 8px 0 4px; }
 .dates-chip-grid {
   display: flex;
   flex-wrap: wrap;
