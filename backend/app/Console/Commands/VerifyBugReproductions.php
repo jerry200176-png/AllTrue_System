@@ -219,9 +219,10 @@ class VerifyBugReproductions extends Command
             [
                 // #4991 line 3: ScheduleGuardService counts every live lesson of a running (Stop = 0) course as taken,
                 // but a usage-locked course (StudentClass::isUsageSettlementLocked) can never teach it, so the slot is
-                // blocked for nobody. Reported first; enforce after 14 nights at 0.
+                // blocked for nobody. Legacy closures outside the lock (settled, completed, settled_pending) are not counted.
+                // Reported first; enforce after 14 nights at 0.
                 'key' => 'seat_held_by_finished_contract',
-                'label' => 'Upcoming lessons of a settled/closed course that still block the teacher, room and student slot',
+                'label' => 'Upcoming lessons of a usage-locked running course that still block the teacher, room and student slot',
                 'issue' => '#4991', 'enforced' => false,
                 'sql' => "SELECT COUNT(*) AS c FROM ClassSession cs JOIN StudentClass sc ON sc.ID = cs.StudentClassID
                           WHERE (sc.Stop = 0 OR sc.Stop IS NULL)
