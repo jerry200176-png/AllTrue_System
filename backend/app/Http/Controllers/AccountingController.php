@@ -483,7 +483,15 @@ class AccountingController extends Controller
                     ->orderBy('PaidAt')
                     ->orderBy('id');
             }])
-            ->whereIn('StudentClassID', $classIds)
+            ->where(function ($query) use ($classIds, $student) {
+                $query->whereIn('StudentClassID', $classIds)
+                    // BillingController::index/slipData already authorize old bills through Invoice.StudentID.
+                    // Recover only this student's non-void bills whose source truly no longer exists.
+                    ->orWhere(fn ($old) => $old->where('Invoice.StudentID', (int) $student->id)
+                        ->where('Invoice.StudentClassID', '>', 0)->notVoided()
+                        ->whereDoesntHave('studentClass')
+                        ->whereDoesntHave('items.studentClass', fn ($course) => $course->where('StudentID', '!=', (int) $student->id)));
+            })
             ->orderByRaw("COALESCE(billing_period, DATE_FORMAT(IssueDate, '%Y-%m')) DESC")
             ->orderByDesc('id')
             ->get();
@@ -506,6 +514,7 @@ class AccountingController extends Controller
         $invoiceRows = $invoices->map(function (Invoice $invoice) use ($correctCampusOn, $restatedPaymentIds, $reportsByPaymentId, $reportsById, $reportsByInvoiceId, $firstSessionDates, $subjectNames, &$anomalies) {
             $invoiceStudentClassId = (int) $invoice->getAttribute('StudentClassID');
             $invoiceStudentClass = $invoice->getRelationValue('studentClass');
+            $historical = $invoiceStudentClass === null;
             $payments = $invoice->payments;
             $projection = $this->invoiceAmounts->resolve($invoice, $invoiceStudentClass);
             $totalAmount = $projection['total_amount'];
@@ -678,7 +687,8 @@ class AccountingController extends Controller
                 'invoice_no' => $this->invoiceNo($invoice),
                 'student_class_id' => (int) $invoice->StudentClassID,
                 'course_ref' => $this->courseRef((int) $invoice->StudentClassID),
-                'subject' => $invoiceStudentClass?->displaySubjectName($subjectNames),
+                'subject' => $invoiceStudentClass?->displaySubjectName($subjectNames) ?? ($historical ? '原課程已移除' : null),
+                ...($historical ? ['historical_course_missing' => true] : []),
                 'first_session_date' => $firstSessionDates->get($invoiceStudentClassId),
                 'billing_period' => $invoice->billing_period,
                 // Service range from the items: a 9/28–10/27 cycle is billing_period 2026-09,
@@ -701,17 +711,17 @@ class AccountingController extends Controller
                 'overpaid_amount' => $overpaidAmount,
                 'outstanding_amount' => $outstanding,
                 'status' => $status,
-                'can_direct_void' => (!in_array($status, ['paid', 'partial', 'void'], true) || ($status === 'paid' && $invoice->zero_amount_reason !== null && $paymentRows->isEmpty())
+                'can_direct_void' => !$historical && (!in_array($status, ['paid', 'partial', 'void'], true) || ($status === 'paid' && $invoice->zero_amount_reason !== null && $paymentRows->isEmpty())
                         // An unmarked NT$0 bill marked paid with no confirmed receipt left (an old 「0 元」 登記); same rule as BillingController::voidInvoice.
                         || ($status === 'paid' && $invoice->zero_amount_reason === null && (int) $totalAmount === 0 && !$invoiceReports->contains(fn ($r) => in_array($r['status'], ['confirmed', 'pending'], true))
-                            && $payments->every(fn ($p) => (int) $p->Amount === 0) && $invoiceStudentClass !== null && (int) ($invoiceStudentClass->PackageID ?? 0) === 0))
+                            && $payments->every(fn ($p) => (int) $p->Amount === 0) && (int) ($invoiceStudentClass->PackageID ?? 0) === 0))
                     && $paidAmount <= 0 && $netApplied <= 0,
                 // In-app #436: a confirmed receipt is undone first (收款紀錄 撤銷), then the bill is voided.
-                'can_exception_void' => $status !== 'void' && ($netApplied > 0 || $paidAmount > 0)
+                'can_exception_void' => !$historical && $status !== 'void' && ($netApplied > 0 || $paidAmount > 0)
                     && !$invoiceReports->contains(fn ($r) => $r['status'] === 'confirmed')
                     && !(\App\Services\Billing\BillCorrection::mayBeReplacement($invoice->Note) && \App\Services\Billing\BillCorrection::chainHasConfirmedReceipt((int) $invoice->id)),
                 // 更正帳單 button: only where the campus is on (the preview answers the real eligibility); absent = no button.
-                ...($correctCampusOn ? ['can_correct' => $status !== 'void'] : []),
+                ...($correctCampusOn ? ['can_correct' => !$historical && $status !== 'void'] : []),
                 'payments' => $paymentRows->all(),
                 'reports' => $invoiceReports->all(),
                 'anomalies' => $invoiceAnomalies,

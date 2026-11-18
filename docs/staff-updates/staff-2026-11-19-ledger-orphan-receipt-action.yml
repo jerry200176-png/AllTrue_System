@@ -5,10 +5,10 @@ updates:
       - director
       - super_admin
     importance: digest
-    title: 舊收據無法撤銷時，直接回報核對
-    summary: 收據的原課程已不在學生帳務中時，會說明原因並提供「回報給總部」。
+    title: 原課程移除後，舊帳單與收款仍可查找
+    summary: 已移除課程的舊帳單與收款會留在同一份學生帳務，並標示僅供核對。
     items:
       - category: fixed
-        text: 原收據與收款紀錄會保留，不會因提醒而改帳；總部仍需核對歸屬後處理。
+        text: 原金額與收據不會改寫；仍有資料異常時，請按「回報給總部」，不會提供無法執行的撤銷操作。
     source_refs:
       - "changelog:2026-11-19:ledger-orphan-receipt-action"

@@ -62,7 +62,7 @@
             <p class="ledger-owed__label">{{ owedLabel }}</p>
             <p class="ledger-owed__now" :class="{ due: owedSplit.now > 0 }" data-testid="ledger-owed-now">{{ formatCurrency(owedSplit.now) }}</p>
             <p v-if="owedSplit.later > 0" class="ledger-owed__later" data-testid="ledger-owed-later">之後還會到期 {{ formatCurrency(owedSplit.later) }}</p>
-            <p v-if="overpaidTotal > 0" class="ledger-owed__over" role="status" data-testid="ledger-overpaid">多收 {{ formatCurrency(overpaidTotal) }}（舊資料）。{{ ledgerExceptions.some((x) => x.can_void) ? '詳情在「要先處理」。' : '這筆多收沒有對應的收款，系統無法自動處理。可按下面的「回報給總部」。' }}</p>
+            <p v-if="overpaidTotal > 0" class="ledger-owed__over" role="status" data-testid="ledger-overpaid">多收 {{ formatCurrency(overpaidTotal) }}（舊資料）。{{ ledgerExceptions.some((x) => x.can_void) ? '詳情在「要先處理」。' : '這筆多收目前無法在這裡直接處理，請按「回報給總部」核對。' }}</p>
           </div>
 
           <section v-if="ledgerExceptions.length" class="ledger-section">
@@ -136,6 +136,7 @@
                       </td>
                       <td class="ledger-cell-title">
                         <strong>{{ formatAccountingLedgerInvoiceLabel(inv) }}</strong>
+                        <small v-if="inv.historical_course_missing" class="ledger-muted" :data-testid="`ledger-historical-${inv.id}`">原課程已移除，帳單與收款保留供核對；如需更正，請回報給總部。</small>
                         <small v-if="isOtherCourseInvoice(inv)" class="ledger-other-course" data-testid="ledger-other-course">其他課程</small>
                         <small>{{ inv.period_start && inv.period_end ? `${inv.period_start.replaceAll('-', '/')}–${inv.period_end.replaceAll('-', '/')}` : formatPeriod(inv.billing_period) }}</small>
                         <small v-if="rateNoteFor(inv)" class="ledger-rate-hint" :data-testid="`ledger-rate-hint-${inv.id}`">開單時金額 {{ formatCurrency(rateNoteFor(inv).issued) }} ／ 目前課程金額 {{ formatCurrency(rateNoteFor(inv).current) }}（金額不同可能是約定調整，不代表帳單有誤）</small>
@@ -771,9 +772,10 @@ const ledgerExceptions = computed(() => {
         message: `${fmtDate(p.paid_at)} ${paymentMethodLabel(p.method)} ${formatCurrency(p.amount)}，比帳單多 ${formatCurrency(p.unapplied_amount)}`,
         detail: formatAccountingLedgerInvoiceLabel(inv),
         action_label: '撤銷這筆收款',
-        hint: '多收的錢沒有記進任何帳單。若是重複收款，按「撤銷這筆收款」。',
+        hint: inv.historical_course_missing ? '原課程已移除，請按「回報給總部」核對這筆多收。' : '多收的錢沒有記進任何帳單。若是重複收款，按「撤銷這筆收款」。',
         report_id: p.report_id || null,
-        can_void: !!p.report_id && !p.is_void,
+        can_void: !inv.historical_course_missing && !!p.report_id && !p.is_void,
+        ask_hq: !!inv.historical_course_missing,
         drift_line: formatLedgerDriftLine(inv),
         anomaly: { code: 'overpayment_pending_review', invoice_id: inv.id, student_class_id: inv.student_class_id },
         severity: 1,
@@ -796,12 +798,13 @@ const ledgerExceptions = computed(() => {
       message: '收款被登記成 0 元，系統不算有收到錢。',
       detail: formatAccountingLedgerInvoiceLabel(inv),
       action_label: '撤銷 0 元收款',
-      hint: receipt
+      hint: inv.historical_course_missing ? '原課程已移除，請按「回報給總部」核對這張 0 元帳單。' : receipt
         ? '其實有收到錢：按「撤銷 0 元收款」，這張 0 元帳單會一起作廢，再照實際金額登記收款。'
         : (inv.can_direct_void ? '到下面「帳單」把這張 0 元帳單按「作廢」，再照實際金額登記收款。' : '這張 0 元帳單不能在這裡直接作廢，按「回報給總部」請總部處理。'),
       report_id: receipt ? receipt.report_id : null,
-      can_void: !!receipt,
-      self_service: !!receipt || !!inv.can_direct_void, // the fix is a button on this screen, not a report to an administrator
+      can_void: !inv.historical_course_missing && !!receipt,
+      ask_hq: !!inv.historical_course_missing,
+      self_service: !inv.historical_course_missing && (!!receipt || !!inv.can_direct_void), // the fix is a button on this screen, not a report to an administrator
       severity: 1,
     });
   });
@@ -1302,9 +1305,9 @@ async function voidReport(reportId) {
 }
 
 const canManageInvoices = () => isDirectorRole(getAuthRole());
-const canDirectVoidInvoice = (invoice) => canManageInvoices() && !!invoice?.can_direct_void;
-const canExceptionVoidInvoice = (invoice) => canManageInvoices() && !!invoice?.can_exception_void;
-const canCorrectInvoice = (invoice) => canManageInvoices() && !!invoice?.can_correct;
+const canDirectVoidInvoice = (invoice) => canManageInvoices() && !invoice?.historical_course_missing && !!invoice?.can_direct_void;
+const canExceptionVoidInvoice = (invoice) => canManageInvoices() && !invoice?.historical_course_missing && !!invoice?.can_exception_void;
+const canCorrectInvoice = (invoice) => canManageInvoices() && !invoice?.historical_course_missing && !!invoice?.can_correct;
 const correctingInvoiceId = ref(null);
 async function onBillCorrected() {
   await loadLedger();
