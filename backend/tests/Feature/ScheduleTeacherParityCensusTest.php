@@ -27,6 +27,8 @@ class ScheduleTeacherParityCensusTest extends TestCase
         $this->lesson($course, daysAgo: 5, recordTeacher: 2, voided: true);         // voided record: ignored
         $this->lesson($course, daysAgo: 6, recordTeacher: 2, status: 'scheduled');  // not taught: ignored
         $this->lesson($course, daysAgo: ScheduleTeacherParityCensus::DAYS + 5, recordTeacher: 2); // outside the window
+        $this->lesson($course, daysAgo: 7, recordTeacher: 2, content: '');             // blank placeholder: no claim
+        $this->lesson($course, daysAgo: 8, recordTeacher: 2, content: '（系統補登/扣除堂數）'); // system back-fill: no claim
 
         $before = [DB::table('ClassSession')->count(), DB::table('LearningRecord')->count()];
         $result = app(ScheduleTeacherParityCensus::class)->run();
@@ -65,14 +67,14 @@ class ScheduleTeacherParityCensusTest extends TestCase
         ])->ID;
     }
 
-    private function lesson(int $courseId, int $daysAgo, int $recordTeacher, bool $voided = false, string $status = 'attended'): void
+    private function lesson(int $courseId, int $daysAgo, int $recordTeacher, bool $voided = false, string $status = 'attended', string $content = '今天教了分數的加減'): void
     {
         $date = CarbonImmutable::now('Asia/Taipei')->subDays($daysAgo)->toDateString();
         $sessionId = DB::table('ClassSession')->insertGetId([
             'StudentClassID' => $courseId, 'SessionDate' => $date, 'StartTime' => '10:00', 'EndTime' => '12:00', 'Status' => $status,
         ]);
         DB::table('LearningRecord')->insert([
-            'StudentClassID' => $courseId, 'ClassSessionID' => $sessionId, 'TeacherID' => $recordTeacher, 'Content' => '',
+            'StudentClassID' => $courseId, 'ClassSessionID' => $sessionId, 'TeacherID' => $recordTeacher, 'Content' => $content,
             'Status' => 'pending', 'VoidedAt' => $voided ? now() : null,
         ]);
     }

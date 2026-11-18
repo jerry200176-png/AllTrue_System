@@ -3,6 +3,7 @@
 namespace App\Services\Scheduling;
 
 use App\Services\SubstituteScheduleService;
+use App\Support\LearningRecordMutableOwnership;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
 
@@ -10,7 +11,7 @@ use Illuminate\Support\Facades\DB;
  * Nightly census (#4991 item 7, family "ownership and identity"): for taught lessons of the last DAYS days that carry
  * a live evaluation record, does the one answer to "who teaches this occurrence"
  * (SubstituteScheduleService::teachersForOccurrences, read by pay, subject units and the calendar) name the teacher
- * who wrote the record? Founder rule (#4901): the record's author is the lesson's teacher. A disagreement is the
+ * who wrote the record? Founder rule (#4901): the author of a teacher-written record is the lesson's teacher. A disagreement is the
  * #499 / #488 / #307 shape. SELECT only, never repairs, counts only.
  * ponytail: one window, one LIMIT; the nightly row says `truncated` when the window holds more. Widen if that shows.
  */
@@ -29,6 +30,8 @@ final class ScheduleTeacherParityCensus
             ->whereNull('lr.VoidedAt')
             ->whereColumn('lr.StudentClassID', 'cs.StudentClassID')
             ->where('lr.TeacherID', '>', 0)
+            // Only a teacher-written body claims the lesson; blank placeholders and system back-fills do not (#4901).
+            ->whereRaw(LearningRecordMutableOwnership::filledByTeacherSql('lr'))
             ->whereRaw("LOWER(TRIM(COALESCE(cs.Status, ''))) IN ('attended', 'completed', 'late')")
             ->whereDate('cs.SessionDate', '>=', $today->subDays(self::DAYS)->toDateString())
             ->whereDate('cs.SessionDate', '<=', $today->toDateString())
