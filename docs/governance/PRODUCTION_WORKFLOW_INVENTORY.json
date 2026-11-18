@@ -96,6 +96,17 @@
       ],
       "replacement": "pop-unbilled-backlog-catchup.yml for computed catch-up billing; the exact-case backend operation and its runbook are unchanged.",
       "production_authority_removed": true
+    },
+    "xindian-capacity-diagnose.yml": {
+      "retired_at": "2026-11-18",
+      "reason": "One-off read-only capacity diagnosis for one campus, added 2026-09-05. Its question was answered and the guard was fixed in code; not edited since except repo-wide security hardening.",
+      "evidence": [
+        "Added 2026-09-05 (release-notes exemption silent-2026-09-05-xindian-capacity-diagnose)",
+        "No reference from any doc, script or other workflow besides its own analysis script",
+        "Actions run history is empty (runs are purged hourly by pii-log-purge.yml)"
+      ],
+      "replacement": "ops-entitlement-capacity-diagnose.yml and teacher-availability-diagnose.yml for capacity questions; a refusal now names the occupant (ScheduleGuardService overlap_details).",
+      "production_authority_removed": true
     }
   },
   "workflows": {
@@ -323,7 +334,6 @@
     "teacher-signin-diagnose.yml": {"classification":"read-only-probe","production_mutation":"marker-only","evidence":"Diagnose mode has no --apply and emits evidence only."},
     "teacher-signin-recovery.yml": {"classification":"legacy-case-specific-mutation","production_mutation":"confirmed","trigger":"workflow_dispatch","production_command_or_path":"teacher-signin:recover-rfid-collisions --apply","authorization":"Manual exact recovery scope and pinned production SSH trust","concurrency":"teacher-signin-recovery; cancel-in-progress=false","rollback":"Backup and post-recovery verification; manual correction if needed","canonical":false,"required":"One-off recovery","future_state":"Retire after case closure or migrate through Founder-approved controlled operation"},
     "telegram-webhook-presence-audit.yml": {"classification":"read-only-probe","production_mutation":"marker-only","evidence":"Webhook presence audit reads configuration/status only."},
-    "xindian-capacity-diagnose.yml": {"classification":"read-only-probe","production_mutation":"marker-only","evidence":"Capacity diagnose workflow has no apply/execute path."},
     "staff-identity-merge.yml": {"classification":"read-only-probe","production_mutation":"marker-only","evidence":"Phase 1 of the dual-account identity merge: pinned-SSH artisan `staff:identity-merge --candidates|--dry-run`, query-builder reads only, ids/counts output, no apply/execute/revert path and no migration."}
   }
 }
