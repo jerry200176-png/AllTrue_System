@@ -125,4 +125,40 @@ final class PastScheduledSessionsCancelStrategyTest extends TestCase
         self::assertSame(2, $s->rollback($result['snapshot'], [])['restored']);
         self::assertSame('scheduled', $this->storedStatus(9201));
     }
+
+    private const PARAMS_3380 = ['decision_reference' => 'cancel-past-scheduled-course3380-20261118'];
+
+    public function test_course_3380_manifest_is_exact_and_2942_is_unchanged(): void
+    {
+        PastScheduledSessionsCancelStrategy::useCasesForTesting(null);
+        $c = PastScheduledSessionsCancelStrategy::cases('cancel-past-scheduled-course3380-20261118');
+        self::assertSame(range(32305, 32311), array_keys($c));
+        self::assertSame([3380], array_values(array_unique(array_column($c, 'course_id'))));
+        self::assertSame([16], array_values(array_unique(array_column($c, 'campus_id'))));
+        self::assertSame([27142, 27143, 27144], array_keys(PastScheduledSessionsCancelStrategy::cases()));
+    }
+
+    public function test_course_3380_reference_plans_executes_verifies_and_rolls_back(): void
+    {
+        $s = new PastScheduledSessionsCancelStrategy();
+        $plan = $s->plan(self::PARAMS_3380);
+        self::assertTrue($plan['ok'], implode(',', $plan['errors']));
+        self::assertSame('cancel-past-scheduled-course3380-20261118', $plan['reference']);
+        $result = $s->execute($plan, ['operation_id' => 't']);
+        self::assertSame(2, $result['updated']);
+        self::assertSame('cancel-past-scheduled-course3380-20261118', $result['snapshot']['reference']);
+        self::assertTrue($s->verify($plan, $result)['ok']);
+        self::assertSame(2, (new PastScheduledSessionsCancelStrategy())->rollback($result['snapshot'], [])['restored']);
+        self::assertSame(['scheduled', 'scheduled', 'scheduled'], [$this->storedStatus(9201), $this->storedStatus(9202), $this->storedStatus(9203)]);
+    }
+
+    public function test_unknown_reference_is_rejected_and_attendance_blocks_3380(): void
+    {
+        $s = new PastScheduledSessionsCancelStrategy();
+        self::assertContains('case_parameters_mismatch', $s->plan(['decision_reference' => 'cancel-past-scheduled-course9999-20261118'])['errors']);
+        DB::table('StudentSingIn')->insert(['ClassSessionID' => 9201, 'StudentID' => 9200, 'StudentClassID' => 9200, 'TeacherID' => 1, 'Status' => 'present', 'SignInDT' => now()]);
+        $plan = $s->plan(self::PARAMS_3380);
+        self::assertFalse($plan['ok']);
+        self::assertSame(['activity_9201'], $plan['errors']);
+    }
 }

@@ -1093,7 +1093,7 @@ final class PopOperationService
         if ($this->isExactPastScheduledCancel($entry)
             && ($entry['founder_approval_required'] ?? false) === true
             && ($entry['risk'] ?? null) === 'critical'
-            && ($entry['blast_radius'] ?? null) === 'three_exact_class_sessions_status_only'
+            && in_array($entry['blast_radius'] ?? null, ['three_exact_class_sessions_status_only', 'seven_exact_class_sessions_status_only'], true)
             && ($entry['reversible'] ?? false) === true
             && ($entry['snapshot_required'] ?? false) === true
             && ($entry['transaction_required'] ?? false) === true
@@ -1425,7 +1425,7 @@ final class PopOperationService
     /** Same single-super_admin Founder-exact shape as the unpaid-hidden-closures case (in-app #341). */
     private function isExactPastScheduledCancel(array $entry): bool
     {
-        return ($entry['id'] ?? null) === 'cancel-past-scheduled-course2942-20261008'
+        return in_array($entry['id'] ?? null, ['cancel-past-scheduled-course2942-20261008', 'cancel-past-scheduled-course3380-20261118'], true)
             && ($entry['strategy_class'] ?? null) === \App\Operations\Strategies\PastScheduledSessionsCancelStrategy::class
             && ($entry['approval_policy'] ?? null) === 'founder-exact-past-scheduled-cancel'
             && ($entry['parameter_keys'] ?? null) === ['decision_reference'];
