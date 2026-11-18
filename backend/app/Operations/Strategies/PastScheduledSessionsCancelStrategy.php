@@ -217,29 +217,40 @@ final class PastScheduledSessionsCancelStrategy
     /** @return array<int,array<string,mixed>> session id => live state (ids, dates, counts only) */
     private function inspect(bool $lock): array
     {
+        $current = $lock && $this->ref === self::REF_3380;
         $ids = array_keys($this->selected());
         $q = DB::table('ClassSession')->whereIn('id', $ids)->orderBy('id');
-        $sessions = ($lock ? $q->lockForUpdate() : $q)->get()->keyBy('id');
         $courseIds = array_values(array_unique(array_column($this->selected(), 'course_id')));
         $cq = DB::table('StudentClass')->whereIn('ID', $courseIds);
-        $courses = ($lock ? $cq->lockForUpdate() : $cq)->get()->keyBy('ID');
+        // Match attendance's course -> session locks. All rechecks must be current reads,
+        // even when safePlan established an earlier REPEATABLE READ snapshot.
+        $courses = $current ? $cq->lockForUpdate()->get()->keyBy('ID') : null;
+        $sessions = ($lock ? $q->lockForUpdate() : $q)->get()->keyBy('id');
+        $courses ??= ($lock ? $cq->lockForUpdate() : $cq)->get()->keyBy('ID');
         $out = [];
         foreach ($sessions as $id => $s) {
             $course = $courses->get((int) $s->StudentClassID);
+            $student = $course ? DB::table('Student')->where('id', $course->StudentID) : null;
             $out[(int) $id] = [
                 'status' => (string) $s->Status,
                 'course_id' => (int) $s->StudentClassID,
                 'date' => substr((string) $s->SessionDate, 0, 10),
-                'campus_id' => $course ? (int) DB::table('Student')->where('id', $course->StudentID)->value('CampusID') : 0,
-                'activity' => DB::table('StudentSingIn')->where('ClassSessionID', $id)->count()
-                    + DB::table('LearningRecord')->where('ClassSessionID', $id)->count()
-                    + DB::table('session_deduction_ledger')->where('class_session_id', $id)->count(),
+                'campus_id' => $student ? (int) ($current ? $student->lockForUpdate() : $student)->value('CampusID') : 0,
+                'activity' => $this->activityCount('StudentSingIn', 'ClassSessionID', $id, $current)
+                    + $this->activityCount('LearningRecord', 'ClassSessionID', $id, $current)
+                    + $this->activityCount('session_deduction_ledger', 'class_session_id', $id, $current),
                 'course' => $course ? ['charge' => (int) $course->Charge, 'paid' => (int) $course->Paid,
                     'session_count' => (int) $course->SessionCount] : null,
             ];
         }
 
         return $out;
+    }
+
+    private function activityCount(string $table, string $key, int $id, bool $current): int
+    {
+        $query = DB::table($table)->where($key, $id);
+        return $current ? $query->lockForUpdate()->pluck($key)->count() : $query->count();
     }
 
     /** @param array<int,array<string,mixed>> $rows @return list<string> */
