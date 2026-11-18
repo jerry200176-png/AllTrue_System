@@ -21,6 +21,7 @@
  * FIT-17 TD-076        files touching the `schedules` exception table directly ratchet (one timetable reader)
  * FIT-18 #4991 M       product files writing StudentClass.Paid / .Charge ratchet (one money writer)
  * FIT-19 #4991 M       frontend files multiplying a price by a count ratchet (screens display, they do not compute)
+ * FIT-20 #4991 item 9  nightly reproduction allowances (reproduction_baselines.php) only shrink
  */
 import fs from 'node:fs';
 import path from 'node:path';
@@ -194,6 +195,39 @@ let svcGraph = { svcFiles: [], edges: new Map(), ctxRule: null };
   const files = walk(path.join(ROOT, 'frontend/src'), (p) => /\.(js|ts|vue)$/.test(p) && !/\.(test|spec)\.|__tests__/.test(p) && !p.endsWith(path.join('lib', 'coursePricing.js')))
     .filter((f) => re.test(read(f)));
   ratchet('FIT-19', `frontend files computing money (${files.map((f) => path.basename(f)).join(', ') || 'none'}); show the server amount`, files.length, 'frontendMoneyMathFiles');
+}
+
+// FIT-20 (#4991 item 9): backend/config/reproduction_baselines.php says how many known-bad rows the nightly
+// `bugs:verify-reproductions` tolerates. Raising a number, or adding a new allowance, hides a regression; both need
+// the matching number raised here, which a reviewer sees. Fixing data lowers both.
+{
+  ran.add('FIT-20');
+  const pinned = baseline.reproductionBaselines;
+  const src = read(path.join(ROOT, 'backend/config/reproduction_baselines.php'));
+  // Strict: inside `return [ ... ];` every line is `'key' => <integer>,` or `'key' => null,` (plus a comment).
+  // Anything else (an expression, env(), two keys on a line) fails, so a raise cannot hide in a shape we do not read.
+  // Whole-line anchors and exactly one `return`, so a `return [];` in a comment cannot stand in for the real array.
+  const body = (src.match(/^return \[\n([\s\S]*?)^\];$/m) || [])[1];
+  const bad = [];
+  let n = 0, sum = 0;
+  if (body === undefined) bad.push('no `return [` ... `];` block on its own lines in reproduction_baselines.php');
+  if ((src.match(/\breturn\b/gi) || []).length !== 1) bad.push('reproduction_baselines.php must contain the word `return` exactly once');
+  for (const raw of (body || '').split('\n')) {
+    const line = raw.replace(/\/\/.*$/, '').trim();
+    if (/\];|\/\*|\*\//.test(raw)) { bad.push(`no "];" or block comment inside the array: ${raw.trim()}`); continue; }
+    if (line === '') continue;
+    const m = line.match(/^'([a-z_]+)'\s*=>\s*(\d+|null),$/);
+    if (!m) { bad.push(`unreadable line (write 'key' => <integer>,): ${line}`); continue; }
+    const [, key, val] = m; n++;
+    const pin = pinned[key];
+    if (val === 'null') { if (pin !== null) bad.push(`${key} = null switches the check off; pin it as null in arch-fitness-baseline.json with the reason in the PR.`); continue; }
+    sum += Number(val);
+    if (pin === undefined) { if (Number(val) > 0) bad.push(`new allowance ${key} = ${val}; start at 0, or pin it in arch-fitness-baseline.json with the reason in the PR.`); }
+    else if (pin === null || Number(val) > pin) bad.push(`allowance ${key} rose ${pin} -> ${val}. Allowances only shrink.`);
+  }
+  if (n === 0) bad.push('no allowance lines read');
+  if (bad.length) for (const b of bad) failures.push(`FIT-20: ${b}`);
+  else note(`FIT-20: ${n} nightly allowances at or below their pins (sum ${sum}).`);
 }
 
 // FIT-10 context map completeness + forbidden edges (DEP-1)
