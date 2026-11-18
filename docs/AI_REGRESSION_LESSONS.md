@@ -801,6 +801,7 @@ Intake consolidation regression (2026-10-17): the oldest trusted SourceRef issue
 - **強制規則**：「待收/待核」是工作 queue，不可拿來當完整已繳查詢；已結清課程必須由 Invoice/Payment/Receipt 與課程主檔彙整，堂數制已繳且剩餘堂數充足也要查得到。
 - **強制規則**：Ledger 的例外帳不可只顯示警告；可處理的 confirmed receipt 必須提供撤銷/沖銷入口，不能自動處理的 legacy/payment 關聯缺口才標示需人工修復。
 - **測試必補**：同一 Invoice 三筆收款且合計超過應收時，API 必須回傳已套用等於應收、溢收等於超額、第三筆為 `overpayment_pending_review`。
+- **2026-11-19／in-app #577**：登記金額不同於既有未收餘額時先明示差額並要求核對；部分收款仍有效，不可自動改輸入金額或把估算變成硬性帳單上限。金額、帳單、學生、模式或比較值改變後確認必須失效，補登與「儲存並看下一筆」也不得繞過；未知金額不可當成 0。
 
 ---
 

@@ -32,6 +32,11 @@ async function captureModal({ row: r, typed }) {
   await wrapper.setProps({ show: true }); await nextTick();
   await wrapper.find('input[type="radio"][value="cash"]').setValue(true);
   if (typed !== undefined) await wrapper.find('input[type="number"]').setValue(typed);
+  // This fixture checks the API contract after the current UI's explicit amount acknowledgement.
+  if (wrapper.find('[data-testid="pe-amount-ack"]').exists()) {
+    expect(sent).toEqual([]);
+    await wrapper.get('[data-testid="pe-amount-ack"]').setValue(true);
+  }
   await wrapper.find('form').trigger('submit');
   await flushPromises();
   const blocked = wrapper.find('.pe-error').exists() ? wrapper.find('.pe-error').text() : null;

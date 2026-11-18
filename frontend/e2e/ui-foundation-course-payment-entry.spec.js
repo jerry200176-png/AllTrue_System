@@ -5,6 +5,57 @@ import { LEGACY_FLAG_UNVERIFIED_HELP, REPORT_STATUS_LABELS, REVIEW_REQUIRED_LABE
 import { dismissOverlays } from './fixtures/dismissOverlays.js';
 import { expectCoursePaymentEntryOpensLedgerInPlace, recordCourseLists } from './fixtures/coursePaymentEntry.js';
 
+for (const width of [375, 1280]) {
+  test(`in-app577: different receipt amount needs acknowledgement and edits reset it @${width}`, async ({ page }, info) => {
+    const writes = [], errors = [];
+    page.setDefaultTimeout(15_000);
+    await page.setViewportSize({ width, height: 950 });
+    page.on('pageerror', error => errors.push(error.message));
+    await page.route('**/*', route => ['127.0.0.1', 'localhost'].includes(new URL(route.request().url()).hostname) ? route.fallback() : route.abort());
+    await page.route('**/api/v1/**', route => {
+      if (route.request().method() !== 'GET') writes.push(route.request().postDataJSON());
+      return route.fulfill({ json: { data: [] } });
+    });
+    await page.route('**/api/v1/students**', route => route.fulfill({ json: [{ id: 55, name: '合成收款學生', status: 'active', enable: 1 }] }));
+    await page.route('**/api/v1/alerts/tuition**', route => route.fulfill({ json: [{ id: 1, student_id: 55, student_name: '合成收款學生', subject: '英文',
+      schedule_mode: 'count', payment_status: 'unpaid', payable_status: 'invoiced', payable_invoice_id: 8,
+      payable_amount: 3000, payable_outstanding: 3000, remaining_sessions: 4 }] }));
+    await page.route('**/api/v1/accounting/ledger?**', route => route.fulfill({ json: {
+      student: { id: 55, name: '合成收款學生' }, scope: { student_class_id: 1 }, summary: {}, receipts: [], anomalies: [],
+      courses: [{ id: 1, subject: '英文', schedule_mode: 'count', charge: 3000, paid: false }],
+      invoices: [{ id: 8, student_class_id: 1, status: 'unpaid', total_amount: 3000, outstanding_amount: 3000, payments: [] }],
+    } }));
+    await page.route('**/api/v1/payment-reports/director-record', route => {
+      writes.push(route.request().postDataJSON());
+      return route.fulfill({ json: { report_id: 7, status: 'pending' } });
+    });
+    await page.goto('/tuition-collection-pilot-mount.html');
+    if (width < 768) {
+      await page.getByTestId('bill-row-c1').click();
+      await page.getByTestId('qv-record').click();
+    } else await page.getByTestId('bill-action-c1').click();
+    const sheet = page.getByRole('dialog', { name: '登記收款', exact: true });
+    const entered = sheet.locator('input[type="number"]');
+    await entered.fill('2000');
+    await sheet.locator('button[type="submit"]').click();
+    const warning = sheet.getByTestId('pe-amount-mismatch');
+    await expect(warning).toContainText('NT$ 2,000'); await expect(warning).toContainText('NT$ 3,000');
+    await expect(warning).toContainText('剩餘金額仍會列為未繳');
+    expect(writes).toEqual([]);
+    const acknowledgement = sheet.getByRole('checkbox', { name: '我已核對本次登記金額', exact: true });
+    expect((await acknowledgement.locator('..').boundingBox()).height).toBeGreaterThanOrEqual(44);
+    expect(await warning.evaluate(el => el.scrollWidth <= el.clientWidth + 1)).toBe(true);
+    await sheet.screenshot({ path: info.outputPath(`amount-confirm-${width}.png`) });
+    await acknowledgement.check(); await entered.fill('2500');
+    await expect(acknowledgement).not.toBeChecked(); await sheet.locator('button[type="submit"]').click();
+    expect(writes).toEqual([]);
+    await acknowledgement.check(); await sheet.locator('button[type="submit"]').click();
+    await expect.poll(() => writes.length).toBe(1);
+    expect(writes[0]).toMatchObject({ student_class_id: 1, invoice_id: 8, amount: 2500 });
+    expect(errors).toEqual([]);
+  });
+}
+
 async function installCourseLinkMocks(page, { unavailable = false, beforeCourseListReply = async () => {}, roomCampus = 1, olderTarget = false, monthlyHistory = false } = {}) {
   const target = { ...course(7101, 7201, '合成連結目標', 'paid'), payment_type: 'session', StartDate: '2026-10-03',
     branch_id: roomCampus, student: { id: 7201, CampusID: 1, name: '合成連結目標' } };
