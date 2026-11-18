@@ -19,6 +19,10 @@ merge 前確認變更**解決根因**、不引入新風險、範圍可控。
 
 ## 3. Required workflow
 
+開 PR 前（含不會自動帶入範本的 MCP／API）先讀 [PR 範本](../../../.github/pull_request_template.md)，以既有 `scripts/governance/pr_declaration.py` 產生實際風險宣告。依 [教職員公告規則](../../../docs/GUIDE_STAFF_UPDATES.md) 檢查 fragment 與 `silent-reason`，先跑既有 release coverage／classification 檢查器；`ci:preflight` 不包含它們，不能當成已驗證。 PR body 必須有具體 `Rollback:` 行，並通過既有 `autonomy_gate.has_actionable_rollback`；散文提到可退版不等於閘門已識別。
+
+CI 未出現時，先核對 live head、draft 與 mergeability：真實衝突可能只留下 `pull_request_target` 工作，須先保留雙方成果解衝突，再驗新 head；不要直接等候、重開 PR 或重複 dispatch。門檻與續接機制仍以 [MERGE_SOP](../../../docs/sop/MERGE_SOP.md) 為準。
+
 五軸檢查（改寫自上游 code-review，AllTrue 化）：
 
 1. **正確性**：是否對應 FR/AC？根因還是 patch？
