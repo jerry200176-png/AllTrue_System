@@ -22,6 +22,7 @@
  * FIT-18 #4991 M       product files writing StudentClass.Paid / .Charge ratchet (one money writer)
  * FIT-19 #4991 M       frontend files multiplying a price by a count ratchet (screens display, they do not compute)
  * FIT-20 #4991 item 9  nightly reproduction allowances (reproduction_baselines.php) only shrink
+ * FIT-21 #4991 item 9  nightly conditions verified fixed stay enforced (VerifyBugReproductions.php)
  */
 import fs from 'node:fs';
 import path from 'node:path';
@@ -228,6 +229,33 @@ let svcGraph = { svcFiles: [], edges: new Map(), ctxRule: null };
   if (n === 0) bad.push('no allowance lines read');
   if (bad.length) for (const b of bad) failures.push(`FIT-20: ${b}`);
   else note(`FIT-20: ${n} nightly allowances at or below their pins (sum ${sum}).`);
+}
+
+// FIT-21 (#4991 item 9): a nightly condition marked `'enforced' => true` is a bug verified fixed. Flipping it to
+// false, or deleting it, hides a regression just like raising its allowance (FIT-20). The pinned list only grows.
+{
+  ran.add('FIT-21');
+  const pinned = baseline.enforcedReproductions;
+  const whole = read(path.join(ROOT, 'backend/app/Console/Commands/VerifyBugReproductions.php'));
+  // Only the conditions() list: handle() below also says 'enforced' => ... about each result.
+  const from = whole.indexOf('function conditions(');
+  const to = whole.indexOf('function census(');
+  const src = from > -1 && to > from ? whole.slice(from, to) : '';
+  const blocks = src.split(/^\s*'key' => '/m).slice(1);
+  const enforced = new Set();
+  const bad = [];
+  if (!src) bad.push('cannot find conditions() followed by census() in VerifyBugReproductions.php');
+  for (const b of blocks) {
+    const key = (b.match(/^([a-z_]+)'/) || [])[1];
+    const flags = [...b.matchAll(/'enforced'\s*=>\s*([^,\]\n]+)/g)].map((m) => m[1].trim());
+    if (!key || flags.length !== 1 || !['true', 'false'].includes(flags[0])) { bad.push(`condition ${key || '?'}: write exactly one literal 'enforced' => true|false`); continue; }
+    if (flags[0] === 'true') enforced.add(key);
+  }
+  if (blocks.length < 10) bad.push(`read only ${blocks.length} conditions from VerifyBugReproductions.php; the parser no longer matches the file`);
+  for (const key of pinned) if (!enforced.has(key)) bad.push(`${key} is no longer enforced (or was removed). A condition verified fixed stays enforced; reopening it needs the pin removed with the reason in the PR.`);
+  const added = [...enforced].filter((k) => !pinned.includes(k));
+  if (bad.length) for (const b of bad) failures.push(`FIT-21: ${b}`);
+  else note(`FIT-21: ${enforced.size} enforced nightly conditions, all ${pinned.length} pins held${added.length ? ` — newly enforced: ${added.join(', ')}; add them to enforcedReproductions to lock it.` : '.'}`);
 }
 
 // FIT-10 context map completeness + forbidden edges (DEP-1)

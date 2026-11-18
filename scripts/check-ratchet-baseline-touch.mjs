@@ -42,6 +42,23 @@ export function findViolations(changes, branch) {
   return out;
 }
 
+// Frozen lists (#4991 line 4): lines may only be deleted, on every branch. A new write route declares its
+// inverse in write_route_inverses.txt instead of joining the grandfathered list.
+export const FROZEN_LISTS = ['backend/tests/Fixtures/write_routes_grandfathered.txt'];
+const entries = (text) => (text ?? '').split('\n').map((l) => l.trim()).filter((l) => l && !l.startsWith('#'));
+
+// changes: [{ path, before, after }]; a list absent at the base (the PR that introduces it) is skipped.
+export function frozenListViolations(changes) {
+  const out = [];
+  for (const { path, before, after } of changes) {
+    if (!FROZEN_LISTS.includes(path) || before == null) continue;
+    const had = new Set(entries(before));
+    const added = entries(after).filter((l) => !had.has(l));
+    if (added.length) out.push(`${path} is frozen (lines are only deleted); added: ${added.slice(0, 5).join(' | ')}${added.length > 5 ? ` (+${added.length - 5} more)` : ''}`);
+  }
+  return out;
+}
+
 const git = (...args) => execFileSync('git', args, { encoding: 'utf8', maxBuffer: 64 << 20 });
 const show = (rev, path) => {
   try { return git('show', `${rev}:${path}`); } catch { return null; }
@@ -54,6 +71,12 @@ function main() {
   if (!base) { console.error('--base required'); process.exit(2); }
   // Fail closed: any git/JSON error throws and exits non-zero.
   const changes = RATCHET_BASELINES.map((path) => ({ path, before: show(base, path), after: show('HEAD', path) }));
+  const frozen = frozenListViolations(FROZEN_LISTS.map((path) => ({ path, before: show(base, path), after: show('HEAD', path) })));
+  if (frozen.length) {
+    console.error('::error::A frozen list grew');
+    for (const v of frozen) console.error(`  ${v}`);
+    process.exit(1);
+  }
   const violations = findViolations(changes, branch);
   if (violations.length) {
     console.error(`::error::Ratchet baseline touched by a non-chore/ branch (${branch})`);
