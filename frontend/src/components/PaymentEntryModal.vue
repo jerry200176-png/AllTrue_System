@@ -86,6 +86,8 @@
         </div>
 
         <div v-if="submitError" class="pe-error" role="alert">{{ submitError }}</div>
+        <button v-if="correctableInvoiceId" type="button" class="ghost" data-testid="pe-correct-bill" @click="correctOpen = true">更正帳單</button>
+        <BillCorrectionDialog :open="correctOpen" :invoice-id="correctableInvoiceId" @update:open="(o) => { correctOpen = o; }" @corrected="onBillCorrected" />
 
         <div class="pe-actions">
           <button type="button" class="ghost" :disabled="submitting" @click="requestClose">取消</button>
@@ -103,6 +105,7 @@
 import { ymdInTaipei } from '@/lib/sessionDates.js';
 import { ref, reactive, watch, computed, h } from 'vue';
 import AtDialog from './design-system/AtDialog.vue';
+import BillCorrectionDialog from './BillCorrectionDialog.vue';
 import { backfillLegacyPayment, recordPayment } from '../lib/paymentActions.js';
 import { FREE_GIFT_LABEL, REPORT_STATUS_LABELS, TUITION_STATUS_CONFIG } from '../lib/courseMoneyState.js';
 
@@ -156,6 +159,13 @@ const form = reactive({
 
 const submitting = ref(false);
 const submitError = ref('');
+const correctableInvoiceId = ref(null); // the refusal's pointer to the bill a director may correct (只有開放更正的分校才會有)
+const correctOpen = ref(false);
+function onBillCorrected() {
+  correctableInvoiceId.value = null;
+  submitError.value = '';
+  emit('conflict', {}); // same as a refusal: the parent rereads the authoritative ledger, then the director enters the payment again
+}
 const isZeroCharge = computed(() => Number(props.row?.charge ?? 0) === 0);
 // Zero charge or missing rate metadata alone cannot establish that a contract has no payment obligation.
 const legacyNoObligation = computed(() => legacyBackfill.value && isZeroCharge.value
@@ -176,6 +186,7 @@ watch(() => props.show, (val) => {
     form.note = '';
     form.free_gift = false;
     submitError.value = '';
+    correctableInvoiceId.value = null;
     idempotencyKey.value = legacyBackfill.value ? newKey() : '';
   }
 });
@@ -184,6 +195,7 @@ watch(() => props.show, (val) => {
 async function submit(andNext = false) {
   andNext = andNext === true; // the form's submit event also lands here
   submitError.value = '';
+  correctableInvoiceId.value = null;
 
   const amount = Number(form.amount);
   if (!form.payment_date || form.amount === '' || form.amount == null || !Number.isFinite(amount) || amount < 0) {
@@ -248,6 +260,7 @@ async function submit(andNext = false) {
         const detail = expected != null && expected !== '' && Number.isFinite(Number(expected))
           ? `目前帳單未收餘額為 NT$${Number(expected).toLocaleString('zh-TW')}。`
           : (res.message ? `${res.message}。` : '');
+        correctableInvoiceId.value = res.data?.correctable_invoice_id ?? null;
         submitError.value = `${detail}這筆金額超過帳單未收餘額。請先核對實收款項與應繳金額，不要為了送出而改小實收金額。帳單金額有誤，請先核對約定費用並走帳務更正流程；款項屬於其他帳單，請分別登記。尚未完成核對前，請勿確認入帳。`;
         emit('conflict', res.data);
         return;

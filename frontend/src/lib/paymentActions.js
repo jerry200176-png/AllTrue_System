@@ -29,6 +29,9 @@ export const rejectReport = (reportId, note) => send(`payment-reports/${id(repor
 export const voidReport = (reportId, reason) => send(`payment-reports/${id(reportId)}/void`, 'PUT', { void_reason: reason }, '撤銷失敗');
 export const voidInvoice = (invoiceId, reason, { exception = false } = {}) =>
   send(`invoices/${id(invoiceId)}/${exception ? 'exception-void' : 'void'}`, 'POST', { reason }, exception ? '更正並作廢失敗' : '作廢失敗');
+// Step 2 更正帳單 (backend #5483): preview shows the plan and its state_hash; apply must send that hash back.
+export const previewBillCorrection = (invoiceId, body) => send(`invoices/${id(invoiceId)}/correction/preview`, 'POST', body, '預覽失敗');
+export const applyBillCorrection = (invoiceId, body) => send(`invoices/${id(invoiceId)}/correction/apply`, 'POST', body, '更正失敗');
 // Founder GO 2026-10-21 (§只有舊「已收」標記): resolve a legacy-flag-only course either way.
 export const backfillLegacyPayment = (body) => send('payment-reports/director-record', 'POST', { ...body, legacy_flag_backfill: true }, '補登收款失敗');
 export const clearLegacyPaidFlag = (studentClassId, reason) =>

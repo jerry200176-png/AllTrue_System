@@ -154,6 +154,14 @@
                       <td class="ledger-cell-actions">
                         <div class="ledger-actions">
                           <button
+                            v-if="canCorrectInvoice(inv)"
+                            class="ledger-action"
+                            type="button"
+                            :data-testid="`ledger-correct-${inv.id}`"
+                            :disabled="isBusyInvoice(inv)"
+                            @click="correctingInvoiceId = inv.id"
+                          >更正帳單</button>
+                          <button
                             v-if="canDirectVoidInvoice(inv)"
                             class="ledger-action ledger-action--danger"
                             type="button"
@@ -366,6 +374,7 @@
         <p class="ledger-state" data-testid="ledger-sheet-loading">正在讀取帳務…</p>
       </AtDialog>
       <PaymentEntryModal :show="entryOpen" :row="entryRow" :mode="entryMode" :placement="sheetOnly ? 'right' : 'center'" :next-offer="sheetOnly && nextOffer" @close="onEntryClose" @confirmed="onEntryRecorded" @pending="onPanelChanged" @conflict="onEntryConflict" />
+      <BillCorrectionDialog :open="correctingInvoiceId != null" :invoice-id="correctingInvoiceId" @update:open="(o) => { if (!o) correctingInvoiceId = null; }" @corrected="onBillCorrected" />
       <ReceiptModal :show="receiptOpen" :report-id="receiptReportId" :later-label="receiptLaterLabel" :return-focus-to="modalEl" @close="receiptOpen = false" />
       <PaymentSlipModal :show="slipOpen" :invoice-id="slipInvoiceId" :student-class-id="slipStudentClassId" :return-focus-to="modalEl" @close="slipOpen = false" />
     </div>
@@ -398,6 +407,7 @@ import BillingNotesPanel from './BillingNotesPanel.vue';
 import ContractCard from './tuition/ContractCard.vue';
 import { issuedBillRateNote } from '../lib/issuedBillRateNote.js';
 import ReceiptModal from './ReceiptModal.vue';
+import BillCorrectionDialog from './BillCorrectionDialog.vue';
 import PaymentSlipModal from './PaymentSlipModal.vue';
 import AtButton from './design-system/AtButton.vue';
 import AtDialog from './design-system/AtDialog.vue';
@@ -1290,6 +1300,12 @@ async function voidReport(reportId) {
 const canManageInvoices = () => isDirectorRole(getAuthRole());
 const canDirectVoidInvoice = (invoice) => canManageInvoices() && !!invoice?.can_direct_void;
 const canExceptionVoidInvoice = (invoice) => canManageInvoices() && !!invoice?.can_exception_void;
+const canCorrectInvoice = (invoice) => canManageInvoices() && !!invoice?.can_correct;
+const correctingInvoiceId = ref(null);
+async function onBillCorrected() {
+  await loadLedger();
+  emit('changed');
+}
 const isBusyInvoice = (invoice) => busyInvoiceId.value === invoice?.id;
 
 async function voidInvoice(invoice, mode) {

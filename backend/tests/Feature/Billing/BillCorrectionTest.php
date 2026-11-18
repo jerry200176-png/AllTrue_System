@@ -35,6 +35,20 @@ class BillCorrectionTest extends TestCase
         parent::tearDown();
     }
 
+    public function test_ledger_payload_carries_can_correct_only_for_live_bills_of_an_enabled_campus(): void
+    {
+        $b = $this->bill($this->student($this->campus), 10000, 'unpaid', 0);
+        $url = "/api/v1/accounting/ledger?student_class_id={$b['course']->ID}";
+        $h = ['Authorization' => 'Bearer '.$this->token('A', $this->campus), 'Accept' => 'application/json'];
+        $this->withHeaders($h)->getJson($url)->assertOk()->assertJsonPath('invoices.0.can_correct', true);
+        $b['invoice']->update(['Status' => 'void']);
+        $this->withHeaders($h)->getJson($url)->assertOk()->assertJsonPath('invoices.0.can_correct', false);
+        config(['billing.bill_correction_campus_ids' => [$this->campus + 999]]);
+        $this->withHeaders($h)->getJson($url)->assertOk()->assertJsonPath('invoices.0.can_correct', false);
+        config(['billing.bill_correction_campus_ids' => []]);
+        $this->assertArrayNotHasKey('can_correct', $this->withHeaders($h)->getJson($url)->assertOk()->json('invoices.0'));
+    }
+
     // ── 560: count bill at the old price ────────────────────────────────
 
     public function test_560_fully_paid_old_bill_then_lower_price_keeps_cash_and_shows_the_overpay(): void

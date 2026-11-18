@@ -708,6 +708,8 @@ class AccountingController extends Controller
                 'can_exception_void' => $status !== 'void' && ($netApplied > 0 || $paidAmount > 0)
                     && !$invoiceReports->contains(fn ($r) => $r['status'] === 'confirmed')
                     && !(\App\Services\Billing\BillCorrection::enabledAnywhere() && \App\Services\Billing\BillCorrection::chainHasConfirmedReceipt((int) $invoice->id)),
+                // 更正帳單 button: only where the campus is on (the preview answers the real eligibility); the key is absent while the feature is off everywhere.
+                ...(\App\Services\Billing\BillCorrection::enabledAnywhere() ? ['can_correct' => $status !== 'void' && \App\Services\Billing\BillCorrection::campusOn((int) $student->CampusID)] : []),
                 'payments' => $paymentRows->all(),
                 'reports' => $invoiceReports->all(),
                 'anomalies' => $invoiceAnomalies,
