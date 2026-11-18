@@ -59,6 +59,25 @@ print_handoff() {
 }
 print_handoff 2>/dev/null || true
 
+# Release banner (cloud AND local): what waits for the Founder's Approve right now (release train, POP approve, ...),
+# read from GitHub, not from a hand-written line. Unknown is never reported as "nothing waiting" (2026-11-18: a release
+# waited 5 h while a session, reading only the latest runs, told the Founder none was waiting).
+print_release_status() {
+  local out
+  if ! out="$(timeout 15 gh api "repos/jerry200176-png/AllTrue_System/actions/runs?status=waiting&per_page=20" \
+      --jq '.workflow_runs[] | "- \(.name) run \(.id), \(.head_sha[0:9]), since \(.created_at): \(.html_url)"' 2>/dev/null)"; then
+    echo "[release] UNKNOWN: could not read GitHub; check before telling anyone: gh run list --status waiting"
+    return 0
+  fi
+  if [ -n "$out" ]; then
+    echo "[release] WAITING for Founder Approve:"
+    printf '%s\n' "$out"
+  else
+    echo "[release] nothing waiting for Approve (read from GitHub $(date -u +%Y-%m-%dT%H:%MZ))"
+  fi
+}
+print_release_status 2>/dev/null || true
+
 if [ "${CLAUDE_CODE_REMOTE:-}" != "true" ]; then
   exit 0
 fi
