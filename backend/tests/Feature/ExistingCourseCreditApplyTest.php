@@ -35,6 +35,7 @@ class ExistingCourseCreditApplyTest extends TestCase
         $result = $this->apply($source, $input, $actor, $campus);
         $this->assertSame(201, $result['status']);
         $this->assertSame([3, 2, 1, 4500], array_values(array_map('intval', $source->fresh()->only(['SessionCount', 'UsedSessions', 'RemainingSessions', 'Charge']))));
+        $this->assertSame([360, 120], array_values(array_map('intval', $source->fresh()->only(['PurchasedMinutes', 'RemainingMinutes']))));
         foreach ($targets as $id => [$count, $used, $amount]) {
             $target = StudentClass::findOrFail($id);
             $this->assertSame([$count, $used, $count - $used, $amount, 1, $amount], array_values(array_map('intval', $target->only(['SessionCount', 'UsedSessions', 'RemainingSessions', 'Charge', 'Paid', 'Pay']))));
