@@ -6988,6 +6988,20 @@ class StudentClassController extends Controller
                 $reason = 'completed';
             }
 
+            // #5494 / shared-package RFC acceptance40: a row's ID is only its representative
+            // member. Closing it must not claim that the whole pool has ended. Check after
+            // reason inference, under the existing lock, so omitted reasons cannot bypass it.
+            if ($action === 'pause'
+                && in_array((string) $reason, ['settled', 'completed'], true)
+                && $sc->isPartOfPackage()
+            ) {
+                DB::rollBack();
+                return response()->json([
+                    'message' => '這是共用方案，須整包核對，目前不能只結束其中一門課。課程、剩餘額度與帳款都未變更。',
+                    'error_code' => 'package_close_requires_review',
+                ], 422);
+            }
+
             $remainingOwed = (int) ($sc->getAttribute('RemainingSessions') ?? 0);
             $pendingReconciliation = $action === 'pause'
                 && in_array((string) $reason, ['settled', 'completed'], true)

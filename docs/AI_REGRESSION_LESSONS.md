@@ -6,6 +6,8 @@ last_reviewed: 2026-09-05
 
 # AI／工程師防再犯紀錄（必讀）
 
+**F1／F7：方案列不是成員列（#5494，2026-11-18）**：提醒列的 `id` 是可變的代表成員，不是方案 ID。對它送單科結案會回成功，但方案仍啟用，刷新後換另一成員再出現。依既有 shared-package RFC 的保守邊界，伺服器在授權／鎖內、推定原因之後拒絕成員結案；前端不提供假整包成功入口，保留說明與帳款。測試必須寫後重讀：比較單科及兩成員方案，涵蓋省略原因、月結、放棄餘額與未來排課不變。真正整包 lifecycle 仍須獨立具體決策，不能以藏列或只設 package.stop 代替。
+
 **F1／F7：取消狀態先更新快取，再過濾顯示（in-app #568／#5439，2026-11-18）**：先把新回覆裡的取消堂次濾掉，會讓同 ID 的舊有效課卡永遠留在快取；續報課調進同一時段就變成兩張卡。沿用既有實體堂次合併，再套顯示過濾，保留其他週／其他課程與歷史；不得用同學生去重吞掉真正的兩筆有效堂次。回歸見 `useCalendarCancelledCache.test.js` 與 `calendar-reschedule-cache-528.spec.js` 的完整調課流程。
 
 **PR 送件先跑現成的說明／生成檢查（#5474，2026-11-18）**：本機程式測試綠燈仍漏了近期改寫宣告、發布分類及新增路由索引，導致原生檢查先擋住、部分 PHPUnit 根本未執行。送件前以實際 PR body 跑既有 `check-recent-work-revert.py`、`check-production-release-classification.mjs` 與 release-notes coverage；動路由時用 `generate-ref-api-routes.sh` 生成並檢查。沿用現成檢查，不另造規則，也不把未執行或 skipped 當作測試通過。

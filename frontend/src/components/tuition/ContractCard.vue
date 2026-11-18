@@ -53,6 +53,7 @@
       <span v-if="outsideDates.length" class="contract__muted" data-testid="contract-outside">{{ outsideText }}</span>
       <span v-if="slipReasonShown" :id="`contract-slip-reason-${course.id}`" class="contract__muted" data-testid="contract-slip-reason">{{ slipState.reason }}</span>
     </div>
+    <p v-if="rowActions?.settleBlockedReason" class="contract__warn" data-testid="contract-package-close">{{ rowActions.settleBlockedReason }}</p>
 
     <!-- #4115 / Founder Q2 = A + D3: display only. A different amount alone is no reason to void, so no void action here. -->
     <div v-if="rateNote" class="contract__ratenote" data-testid="contract-rate-note">
@@ -459,6 +460,7 @@ const outsideText = computed(() => `需核對：${outsideDates.value.map(md).joi
 const slipReasonShown = computed(() => showSlip.value && !slipState.value.ok);
 // Warnings never hide: a collapsed card keeps them as one warning-tone line each.
 const warnings = computed(() => [
+  props.rowActions?.settleBlockedReason && { testid: 'contract-package-close', text: props.rowActions.settleBlockedReason },
   legacyUnverified.value && { testid: 'contract-legacy-unverified', text: LEGACY_FLAG_UNVERIFIED_HELP },
   outsideDates.value.length && { testid: 'contract-outside', text: outsideText.value },
   slipReasonShown.value && { testid: 'contract-slip-reason', text: slipState.value.reason },

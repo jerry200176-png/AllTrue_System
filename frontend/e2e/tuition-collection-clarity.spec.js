@@ -496,3 +496,56 @@ for (const width of [375, 1536]) for (const size of ['standard', 'large']) for (
     expect(writes).toEqual([]); expect(errors).toEqual([]);
   });
 }
+
+// #5494: headless actual page + existing ledger/card, synthetic package only; no mutation is allowed.
+for (const width of [375, 1280]) {
+  test(`5494 package close explains the boundary and preserves single close @${width}`, async ({ page }, info) => {
+    const writes = []; const errors = [];
+    page.on('pageerror', error => errors.push(error.message));
+    page.on('request', request => {
+      if (new URL(request.url()).pathname.startsWith('/api/v1/') && request.method() !== 'GET') writes.push(request.method() + ' ' + new URL(request.url()).pathname);
+    });
+    await page.setViewportSize({ width, height: 950 });
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    await page.route('**/*', route => ['127.0.0.1', 'localhost'].includes(new URL(route.request().url()).hostname) ? route.fallback() : route.abort());
+    await page.route('**/api/v1/**', route => route.fulfill({ json: { data: [] } }));
+    await installMock(page);
+    const courses = [
+      { id: 42, subject: '合成共用數學', package_id: 81 }, { id: 43, subject: '合成共用英文', package_id: 81 },
+      { id: 44, subject: '合成單科' },
+    ].map(c => ({ ...c, schedule_mode: 'count', paid: true, charge: 8000, stop: false, start_date: '2026-09-01' }));
+    await page.route('**/api/v1/students**', route => route.fulfill({ json: [{ id: 99, name: '合成結案學生', status: 'active', enable: 1 }] }));
+    await page.route('**/api/v1/alerts/tuition**', route => route.fulfill({ json: [42, 44].map(id => ({
+      id, student_id: 99, student_name: '合成結案學生', subject: courses.find(c => c.id === id).subject,
+      ...(id === 42 ? { package_id: 81, member_class_ids: [42, 43] } : {}),
+      schedule_mode: 'count', payment_status: 'renew_needed', payable_outstanding: 0, remaining_sessions: 0,
+    })) }));
+    await page.route('**/api/v1/accounting/ledger?**', route => route.fulfill({ json: {
+      student: { id: 99, name: '合成結案學生' }, scope: { student_class_id: 42 }, summary: {}, courses,
+      invoices: [], receipts: [], payments: [], reports: [], anomalies: [],
+    } }));
+    await page.route('**/api/v1/accounting/contracts/*/sessions', route => route.fulfill({ json: { sessions: [] } }));
+    await page.goto('/tuition-collection-pilot-mount.html');
+    await page.getByTestId('bill-search').fill('合成結案學生');
+    await page.getByTestId('bill-documents-c42').click();
+    const card = page.getByTestId('contract-card-42');
+    const reason = card.getByTestId('contract-package-close');
+    await expect(reason).toHaveText('共用方案須整包核對，目前不能只結束其中一門課。');
+    await reason.scrollIntoViewIfNeeded();
+    await expect(reason).toBeInViewport();
+    const box = await reason.boundingBox();
+    expect(box.x).toBeGreaterThanOrEqual(0); expect(box.x + box.width).toBeLessThanOrEqual(width + 1);
+    await card.getByRole('button', { name: '合成共用數學 的更多操作', exact: true }).click();
+    await expect(page.getByRole('menuitem', { name: '結案（不續報）', exact: true })).toHaveCount(0);
+    await page.keyboard.press('Escape');
+    await card.getByTestId('contract-toggle').click();
+    await expect(reason).toBeVisible();
+    const shot = info.outputPath(`package-close-${width}.png`);
+    await reason.screenshot({ path: shot }); await info.attach('package-close-explanation', { path: shot, contentType: 'image/png' });
+    const single = page.getByTestId('contract-card-44');
+    await single.getByRole('button', { name: '合成單科 的更多操作', exact: true }).click();
+    await page.getByRole('menuitem', { name: '結案（不續報）', exact: true }).click();
+    await expect(page.locator('.tc-overlay')).toContainText('合成單科');
+    expect(writes).toEqual([]); expect(errors).toEqual([]);
+  });
+}

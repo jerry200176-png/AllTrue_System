@@ -34,11 +34,28 @@ describe('ContractCard row actions (F-5a1)', () => {
   });
 });
 
+describe('Shared package close explanation (#5494)', () => {
+  it('keeps the reason visible expanded and collapsed without hiding money or offering a false close', async () => {
+    const reason = '共用方案須整包核對，目前不能只結束其中一門課。';
+    const w = mount(ContractCard, { props: { focused: true, course: { id: 91, package_id: 81, subject: '合成共用科目' }, outstanding: 800,
+      rowActions: { settle: false, settleBlockedReason: reason } } });
+    try {
+      await flushPromises();
+      expect(w.get('[data-testid="contract-package-close"]').text()).toBe(reason);
+      expect(w.get('[data-testid="contract-money"]').text()).toContain('800');
+      await openCardMenu(w);
+      expect(menuItem('settle')).toBeNull();
+      await w.get('[data-testid="contract-toggle"]').trigger('click');
+      expect(w.get('[data-testid="contract-package-close"]').text()).toBe(reason);
+    } finally { w.unmount(); }
+  });
+});
+
 describe('page wiring (F-5a1)', () => {
   it('derives the drawer actions from the old table rules and reuses the existing dialogs', () => {
     expect(page).toContain("waive: canWaive.value && r.payment_status === 'pending_reconciliation' && Boolean(r.closed_reason)");
     expect(page).toContain('void: canVoid.value && paidGroup && hasVoidableReceipt(r)');
-    expect(page).toContain("settle: r.payment_status === 'renew_needed' || r.payment_status === 'monthly_due_soon'");
+    // Package vs standalone close eligibility is exercised with mounted page behavior in TuitionCollectionPackageClose.test.js.
     expect(page).toContain("if (kind === 'waive') openWaiveDialog(row);");
     expect(page).toContain("else if (kind === 'void') openVoidDialog(row);");
     expect(page).toContain("else if (kind === 'settle') openSettleDialog(row);");

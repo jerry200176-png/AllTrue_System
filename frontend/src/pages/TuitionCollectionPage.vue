@@ -1722,7 +1722,8 @@ const ledgerRowActions = computed(() => Object.fromEntries(rows.value.filter((r)
   return [Number(r.id), {
     waive: canWaive.value && r.payment_status === 'pending_reconciliation' && Boolean(r.closed_reason),
     void: canVoid.value && paidGroup && hasVoidableReceipt(r),
-    settle: r.payment_status === 'renew_needed' || r.payment_status === 'monthly_due_soon',
+    settle: !r.package_id && (r.payment_status === 'renew_needed' || r.payment_status === 'monthly_due_soon'),
+    settleBlockedReason: r.package_id ? '共用方案須整包核對，目前不能只結束其中一門課。' : '',
   }];
 })));
 function onLedgerRowAction({ kind, courseId }) {

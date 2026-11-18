@@ -1136,6 +1136,76 @@ class TuitionAlertsApiTest extends TestCase
         $this->assertFalse($newRow['has_newer_course']);
     }
 
+    /** #5494: RFC_SHARED_PACKAGE_COLLECTION acceptance40 forbids closing a pool through its member ID. */
+    #[\PHPUnit\Framework\Attributes\DataProvider('inapp5494PackageCloseRequests')]
+    public function test_inapp5494_package_close_must_not_claim_success_while_pool_reappears(array $request, string $mode, int $remaining): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-11-18 12:00:00', 'Asia/Taipei'));
+        $token = $this->createDirectorToken([1], 'inapp5494-synthetic@example.com');
+        $student = Student::create([
+            'name' => 'Synthetic pool close', 'CampusID' => 1, 'ClassID' => 1,
+            'enable' => 1, 'MDT' => now(), 'Notify_Token' => '',
+        ]);
+        $package = CoursePackage::create([
+            'student_id' => $student->id, 'campus_id' => 1, 'name' => 'Synthetic exhausted pool',
+            'total_sessions' => 8, 'remaining_sessions' => $remaining, 'used_sessions' => 8 - $remaining,
+            'rate' => 1000, 'rate_unit' => 'session', 'class_type' => 'one_on_one',
+            'paid' => true, 'stop' => false, 'enabled' => true,
+        ]);
+        $member = ['Paid' => 1, 'Charge' => 0, 'SessionCount' => 8, 'RemainingSessions' => $remaining, 'ScheduleMode' => $mode,
+            'PackageID' => $package->id, 'PackageTotalSessions' => 8, 'PackageName' => $package->name];
+        $a = $this->createCountModeClass($student->id, $member);
+        $b = $this->createCountModeClass($student->id, $member + ['SubjectID' => 2]);
+        foreach (['2026-11-17' => 'attended', '2026-11-19' => 'scheduled'] as $date => $status) {
+            \Illuminate\Support\Facades\DB::table('ClassSession')->insert([
+                'StudentClassID' => $a->ID, 'SessionDate' => $date, 'StartTime' => '23:00', 'EndTime' => '23:30', 'Status' => $status,
+            ]);
+        }
+        $snapshot = [$a->fresh()->getAttributes(), $b->fresh()->getAttributes(), $package->fresh()->getAttributes(),
+            \Illuminate\Support\Facades\DB::table('ClassSession')->orderBy('id')->get()->toArray()];
+        $headers = ['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'];
+        $before = collect($this->withHeaders($headers)->getJson('/api/v1/alerts/tuition?branch_id=1')
+            ->assertOk()->json())->firstWhere('package_id', $package->id);
+        $this->assertNotNull($before);
+        $this->assertSame((int) $a->ID, (int) $before['id']);
+        $response = $this->withHeaders($headers)->postJson("/api/v1/student-classes/{$before['id']}/pause", $request);
+        $after = collect($this->withHeaders($headers)->getJson('/api/v1/alerts/tuition?branch_id=1')
+            ->assertOk()->json())->firstWhere('package_id', $package->id);
+        $diagnostic = json_encode([
+            'http' => $response->status(), 'message' => $response->json('message'),
+            'before' => array_intersect_key($before, array_flip(['id','package_id','payment_status','remaining_sessions'])),
+            'after' => $after === null ? null : array_intersect_key($after, array_flip(['id','package_id','payment_status','remaining_sessions'])),
+            'package_stop' => (bool) $package->fresh()->stop,
+            'member_stop' => [(int) $a->fresh()->Stop, (int) $b->fresh()->Stop],
+            'invoices' => Invoice::count(), 'payments' => Payment::count(),
+        ], JSON_UNESCAPED_UNICODE);
+        // Existing accepted invariant, not a newly defined whole-package cancellation command.
+        $this->assertSame(422, $response->status(), (string) $diagnostic);
+        $response->assertJsonPath('error_code', 'package_close_requires_review');
+        $this->assertEquals($snapshot, [$a->fresh()->getAttributes(), $b->fresh()->getAttributes(), $package->fresh()->getAttributes(),
+            \Illuminate\Support\Facades\DB::table('ClassSession')->orderBy('id')->get()->toArray()]);
+        $this->assertSame(0, Invoice::count());
+        $this->assertSame(0, Payment::count());
+        $this->assertNotNull($after);
+        $this->assertSame((int) $a->ID, (int) $after['id']);
+        $this->assertSame(0, (int) $a->fresh()->Stop);
+        $this->assertSame(0, (int) $b->fresh()->Stop);
+        $this->assertFalse((bool) $package->fresh()->stop);
+    }
+
+    /** @return array<string, array{0: array<string, mixed>, 1: string, 2: int}> */
+    public static function inapp5494PackageCloseRequests(): array
+    {
+        return [
+            'explicit count settled' => [['action' => 'pause', 'reason' => 'settled'], 'count', 0],
+            'explicit count completed' => [['action' => 'pause', 'reason' => 'completed'], 'count', 0],
+            'inferred exhausted count completion' => [['action' => 'pause'], 'count', 0],
+            'explicit monthly close' => [['action' => 'pause', 'reason' => 'settled'], 'date', 0],
+            'inferred monthly completion' => [['action' => 'pause'], 'date', 0],
+            'forfeit does not grant pool closure' => [['action' => 'pause', 'reason' => 'settled', 'forfeit_remaining' => true], 'count', 1],
+        ];
+    }
+
     public function test_settle_closes_course_and_removes_from_alerts(): void
     {
         $token = $this->createDirectorToken([1], 'settle@example.com');
