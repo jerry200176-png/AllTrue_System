@@ -325,6 +325,28 @@ class BillCorrectionTest extends TestCase
         $this->correct($this->token('A', $this->campus), $m['invoice'])->assertOk()->assertJsonPath('range_shortfall', 0)->assertJsonPath('new_total', 8000);
     }
 
+    public function test_two_lessons_on_one_day_are_classified_one_by_one(): void
+    {
+        [$m] = $this->monthlyBill(2000);
+        DB::table('ClassSession')->insert(['StudentClassID' => $m['course']->ID, 'SessionDate' => '2026-10-12', 'StartTime' => '20:00:00', 'EndTime' => '21:00:00',
+            'Status' => 'completed', 'created_at' => now(), 'updated_at' => now()]); // a second slot added after issue, beside the one billed
+
+        $this->correct($this->token('A', $this->campus), $m['invoice'])->assertOk()->assertJsonPath('range_shortfall', 2000)->assertJsonPath('new_total', 10000);
+    }
+
+    public function test_the_frozen_snapshot_counts_a_lesson_created_after_the_invoice_as_billed(): void
+    {
+        [$m] = $this->monthlyBill(2000);
+        $id = DB::table('ClassSession')->insertGetId(['StudentClassID' => $m['course']->ID, 'SessionDate' => '2026-10-22', 'StartTime' => '18:00:00', 'EndTime' => '20:00:00',
+            'Status' => 'completed', 'created_at' => now(), 'updated_at' => now()]);
+        $ids = DB::table('ClassSession')->where('StudentClassID', $m['course']->ID)->where('SessionDate', '<=', '2026-10-27')->pluck('id')->map(fn ($i) => ['class_session_id' => (int) $i])->all();
+        $this->assertContains(['class_session_id' => (int) $id], $ids);
+        $m['invoice']->update(['TotalAmount' => 8000, 'billing_snapshot' => ['version' => 1, 'sessions' => $ids]]); // priced at the first payment with 4 lessons
+        DB::table('InvoiceItem')->where('InvoiceID', $m['invoice']->id)->update(['Amount' => 8000]);
+
+        $this->correct($this->token('A', $this->campus), $m['invoice'])->assertOk()->assertJsonPath('range_shortfall', 0)->assertJsonPath('new_total', 10000);
+    }
+
     public function test_a_discounted_monthly_bill_is_refused_not_inflated(): void
     {
         [$m] = $this->monthlyBill(2000);

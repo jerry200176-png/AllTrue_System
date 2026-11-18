@@ -291,10 +291,10 @@ final class BillCorrection
         $window = MonthlyBillingService::boundByContract($course, substr((string) $item->PeriodStart, 0, 10), date('Y-m-t', strtotime((string) $item->PeriodEnd)));
         $held = DB::table('ClassSession as cs')
             ->leftJoin('StudentSingIn as si', fn ($j) => $j->on('si.ClassSessionID', '=', 'cs.id')->whereRaw(ClassSessionIndexReadService::LATEST_SIGN_IN_SQL))
-            ->where('cs.StudentClassID', $course->ID)->whereBetween('cs.SessionDate', $window)->orderBy('cs.id')->select(['cs.SessionDate', 'cs.created_at'])
+            ->where('cs.StudentClassID', $course->ID)->whereBetween('cs.SessionDate', $window)->orderBy('cs.id')->select(['cs.id', 'cs.SessionDate', 'cs.created_at'])
             ->selectRaw(...ClassSessionIndexReadService::effectiveStatusSelect())->get()
             ->filter(fn ($s) => in_array(strtolower(rtrim((string) $s->effective_status)), MonthlyBillingService::BILLABLE_STATUSES, true));
-        $createdAt = $held->mapToGroups(fn ($s) => [substr((string) $s->SessionDate, 0, 10) => (string) $s->created_at]);
+        $rows = $held->values();
         $held = $held->map(fn ($s) => substr((string) $s->SessionDate, 0, 10));
         $covered = BillingPeriod::datesCoveredByBills($course, $held->unique()->values()->all());
         $end = substr((string) $item->PeriodEnd, 0, 10);
@@ -310,7 +310,12 @@ final class BillCorrection
         $atIssue = 0;
         $shortfall = 0;
         $amount = 0;
-        foreach ($held as $date) {
+        // The frozen evidence first: a bill priced at its first payment lists its lessons in billing_snapshot (MonthlyBillFreeze); only a bill
+        // without it falls back to the creation time of each lesson against the bill's.
+        $snapshot = is_string($bill->billing_snapshot ?? null) ? json_decode($bill->billing_snapshot, true) : null;
+        $frozen = collect(is_array($snapshot) ? ($snapshot['sessions'] ?? []) : [])->pluck('class_session_id')->map(fn ($id) => (int) $id);
+        foreach ($rows as $row) {
+            $date = substr((string) $row->SessionDate, 0, 10);
             if ($date < $start || $date > $end) {
                 continue;
             }
@@ -318,7 +323,7 @@ final class BillCorrection
             if ($p['rate'] <= 0 || $p['rate_unit'] !== 'session') {
                 return ['refusal' => $this->refuse('missing_rate', '漏收的課沒有每堂單價（或是按小時計價），請找總部核對。')];
             }
-            $late = $issued !== '' && (string) $createdAt[$date]->max() > $issued; // ponytail: a date with several lessons takes the newest creation time
+            $late = $frozen->isNotEmpty() ? !$frozen->contains((int) $row->id) : ($issued !== '' && (string) $row->created_at > $issued);
             $late ? $shortfall += $p['rate'] : $atIssue += $p['rate'];
         }
         if ($atIssue !== (int) $bill->TotalAmount) {
