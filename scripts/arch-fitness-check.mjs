@@ -170,11 +170,11 @@ let svcGraph = { svcFiles: [], edges: new Map(), ctxRule: null };
 // FIT-18 (#4991 family M): "paid" and the contract fee drifted because many files set them. New writes go through
 // the Billing services (BillCorrection, ContractRenewal, the verdict); this list only shrinks.
 // Operations/ is left out: one-off governed repairs, reviewed by the POP gates.
-// ponytail: sees an assignment, setAttribute/increment/decrement, and an array key within 300 chars of a write
+// ponytail: sees an assignment, setAttribute/increment/decrement, and an array key within 1500 chars of a write
 // call; an array built in a variable first is missed.
 {
-  const re = /->(?:Paid|Charge)\s*[-+]?=[^=>]|(?:setAttribute|increment|decrement)\(\s*['"](?:Paid|Charge)['"]|(?:->update|->updateQuietly|::create|->create|->fill|->forceFill|->insert|updateOrCreate)\(\s*\[[^\]]{0,300}?['"](?:Paid|Charge)['"]\s*=>/;
-  const hit = ['$sc->Paid = 1;', '$c->Charge = $fee;', '$c->Charge += 100;', "$c->setAttribute('Charge', 0)", "->increment('Charge', 5)",
+  const re = /->(?:Paid|Charge)\s*[-+]?=[^=>]|(?:setAttribute|increment|decrement)\(\s*['"](?:Paid|Charge)['"]|(?:->update|->updateQuietly|::create|->create|->fill|->forceFill|->insert|updateOrCreate)\(\s*\[(?:[^\[\]]|\[[^\[\]]*\]){0,1500}?['"](?:Paid|Charge)['"]\s*=>/;
+  const hit = ["->update(['Rate' => $in['rate'], 'Charge' => 0])", "$sc->packages()->create(['Paid' => 1])", "->decrement('Charge', 5)", '$sc->Paid = 1;', '$c->Charge = $fee;', '$c->Charge += 100;', "$c->setAttribute('Charge', 0)", "->increment('Charge', 5)",
     "->update(['Paid' => 0])", "->update([\n 'Stop' => 1,\n 'Charge' => 0])", "->updateQuietly(['Paid' => 1])", "StudentClass::create(['Charge' => 1])",
     "->fill(['Paid' => 1])", "->forceFill(['Charge' => 2])", "->insert(['Charge' => 2])", "updateOrCreate(['id' => 1, 'Paid' => 1]"];
   const miss = ['$sc->Paid == 1', "'Charge' => $sc->Charge,", '$inv->PaidAmount = 0;', "['Paid' => $x]", "getAttribute('Charge')"];
