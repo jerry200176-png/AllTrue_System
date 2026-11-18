@@ -10,7 +10,7 @@ use Illuminate\Support\Facades\DB;
 final class PaidContractCreditMovement
 {
     /** @return array{invoice:Invoice,out:Payment,in:Payment} */
-    public function move(Invoice $sourceInvoice, StudentClass $source, StudentClass $target, int $sessions, int $amount, string $paidAt, string $label): array
+    public function move(Invoice $sourceInvoice, StudentClass $source, StudentClass $target, int $sessions, int $amount, string $paidAt, string $label, ?string $issueDate = null): array
     {
         $kept = (int) $sourceInvoice->TotalAmount - $amount;
         if (DB::transactionLevel() < 1 || $amount < 1 || $kept < 0 || (int) $sourceInvoice->PaidAmount !== (int) $sourceInvoice->TotalAmount) {
@@ -18,7 +18,7 @@ final class PaidContractCreditMovement
         }
         $sourceId = (int) $source->getKey();
         $targetId = (int) $target->getKey();
-        $issueDate = Carbon::parse($target->StartDate)->toDateString();
+        $issueDate = Carbon::parse($issueDate ?? $target->StartDate)->toDateString();
         $sourceInvoice->forceFill(['TotalAmount' => $kept, 'PaidAmount' => $kept])->save();
         InvoiceItem::where('InvoiceID', $sourceInvoice->getKey())->where('StudentClassID', $sourceId)->update(['Amount' => $kept]);
         $out = Payment::create([

@@ -17,6 +17,7 @@ use Illuminate\Support\Facades\DB;
  * @property int $transfer_out_payment_id
  * @property int $transfer_in_payment_id
  * @property int $created_by
+ * @property int|null $allocation_group_id
  */
 class SubjectCreditTransfer extends Model
 {
@@ -26,7 +27,7 @@ class SubjectCreditTransfer extends Model
         'template_student_class_id', 'target_student_class_id', 'source_invoice_id', 'target_invoice_id',
         'transfer_out_payment_id', 'transfer_in_payment_id', 'sessions', 'amount', 'unit_price', 'lesson_minutes',
         'reason', 'created_by', 'source_before', 'source_after', 'target_after', 'reversed_at', 'reversed_by',
-        'reverse_reason', 'reverse_out_payment_id', 'reverse_in_payment_id',
+        'reverse_reason', 'reverse_out_payment_id', 'reverse_in_payment_id', 'allocation_group_id',
     ];
     protected $casts = [
         'source_before' => 'array', 'source_after' => 'array', 'target_after' => 'array', 'reversed_at' => 'datetime',
@@ -35,7 +36,8 @@ class SubjectCreditTransfer extends Model
     public static function storageReady(): bool
     {
         return Schema::hasTable('contract_subject_credit_transfers')
-            && Schema::hasColumns('contract_subject_credit_transfers', (new self())->getFillable())
+            // The original new-batch flow remains usable before the optional group migration is installed.
+            && Schema::hasColumns('contract_subject_credit_transfers', array_diff((new self())->getFillable(), ['allocation_group_id']))
             && Schema::hasColumns('StudentClass', ['SessionCount', 'SessionDuration', 'Rate', 'Charge', 'UsedSessions',
                 'RemainingSessions', 'scheduling_policy', 'deduction_basis', 'standard_lesson_minutes', 'closed_reason']);
     }

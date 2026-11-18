@@ -106,6 +106,25 @@ class ExistingCourseCreditPreviewTest extends TestCase
         app(ExistingCourseCreditPreview::class)->run($source, ['target_course_ids' => $targets, 'released_session_ids' => $ids], []);
     }
 
+    public static function unassignedReleaseModes(): array { return [['run'], ['propose']]; }
+
+    #[\PHPUnit\Framework\Attributes\DataProvider('unassignedReleaseModes')]
+    public function test_unassigned_source_teacher_cannot_offer_unverified_calendar_releases(string $mode): void
+    {
+        [$source, $targets, $ids] = $this->allocationFixture();
+        $source->forceFill(['TeacherID' => 0])->save();
+        $campus = (int) Student::findOrFail($source->StudentID)->CampusID;
+        $before = $this->businessSnapshot();
+        $input = ['target_course_ids' => $targets] + ($mode === 'run' ? ['released_session_ids' => $ids] : []);
+        try {
+            app(ExistingCourseCreditPreview::class)->{$mode}($source, $input, [$campus]);
+            $this->fail('A release without verifiable native teacher/room metadata must not be offered.');
+        } catch (HttpResponseException $e) {
+            $this->assertSame('existing_credit_calendar_unverified', $e->getResponse()->getData(true)['code']);
+        }
+        $this->assertSame($before, $this->businessSnapshot());
+    }
+
     public function test_legacy_new_batch_mode_still_refuses_fully_reserved_source_even_with_extra_release_input(): void
     {
         [$source, $targets, $ids] = $this->allocationFixture();

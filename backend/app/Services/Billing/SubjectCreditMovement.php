@@ -130,6 +130,9 @@ final class SubjectCreditMovement
             if ((int) $record->student_id !== (int) $student->id || (int) $record->campus_id !== (int) $student->CampusID) {
                 abort(403);
             }
+            if (($record->getAttributes()['allocation_group_id'] ?? null) !== null) {
+                $this->refuse('subject_credit_allocation_group', '這筆轉用屬於整批既有課程配置，請從整批紀錄還原，不能單獨還原一科。');
+            }
             if ($record->reversed_at !== null) {
                 if (trim($reason) !== (string) $record->reverse_reason) {
                     $this->refuse('subject_credit_reverse_reused', '這筆轉用已還原，不能更改原本的還原紀錄。');
