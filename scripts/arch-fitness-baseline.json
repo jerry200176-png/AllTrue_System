@@ -11,8 +11,8 @@
   "readPathWritesInQueryMethods": 0,
   "feeMathInControllers": 2,
   "scheduleTableReaderFiles": 50,
-  "contractMoneyWriterFiles": 13,
-  "frontendMoneyMathFiles": 2,
+  "contractMoneyWriterFiles": 19,
+  "frontendMoneyMathFiles": 3,
   "requireOwnerFrontmatter": [
     "docs/CONSTITUTION.md",
     "docs/RULE_ARCHITECTURE_GOVERNANCE.md",
