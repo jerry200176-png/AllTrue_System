@@ -460,18 +460,25 @@ class MonthlyBillingService
                     return;
                 }
 
-                $courseStart = $course->getAttribute('StartDate')
-                    ? Carbon::parse($course->getAttribute('StartDate'))->toDateString()
-                    : $periodStart;
-                $courseEnd = $course->getAttribute('EndDate')
-                    ? Carbon::parse($course->getAttribute('EndDate'))->toDateString()
-                    : $periodEnd;
-                $query->whereBetween('SessionDate', [
-                    max($periodStart, $courseStart),
-                    min($periodEnd, $courseEnd),
-                ]);
+                $query->whereBetween('SessionDate', self::boundByContract($course, $periodStart, $periodEnd));
             });
         return $query;
+    }
+
+    /**
+     * A date-mode contract bounds the lessons it bills to its StartDate..EndDate; other contracts keep the window as given.
+     *
+     * @return array{0: string, 1: string} Y-m-d from, to
+     */
+    public static function boundByContract(Model $course, string $from, string $to): array
+    {
+        if (strtolower((string) ($course->getAttribute('ScheduleMode') ?? 'count')) !== 'date') {
+            return [$from, $to];
+        }
+        $courseStart = $course->getAttribute('StartDate') ? Carbon::parse($course->getAttribute('StartDate'))->toDateString() : $from;
+        $courseEnd = $course->getAttribute('EndDate') ? Carbon::parse($course->getAttribute('EndDate'))->toDateString() : $to;
+
+        return [max($from, $courseStart), min($to, $courseEnd)];
     }
 
     /** @return list<array{class_session_id:int,date:string,start_time:?string,end_time:?string,subject:string,lesson:int,status:string}> */

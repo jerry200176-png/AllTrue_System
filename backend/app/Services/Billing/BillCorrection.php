@@ -60,6 +60,20 @@ final class BillCorrection
         return $invoiceId;
     }
 
+    /** A confirmed receipt on this bill or on any bill a correction replaced into it: the money sits here, the receipt on the original. */
+    public static function chainHasConfirmedReceipt(int $invoiceId): bool
+    {
+        if (!self::schemaReady()) {
+            return false;
+        }
+        $ids = [$invoiceId];
+        for ($cur = $invoiceId, $i = 0; $i < 20 && ($prev = DB::table('invoice_corrections')->where('kind', self::KIND)->where('replacement_invoice_id', $cur)->value('original_invoice_id')); $i++) {
+            $ids[] = $cur = (int) $prev;
+        }
+
+        return count($ids) > 1 && DB::table('payment_reports')->whereIn('InvoiceID', $ids)->where('status', 'confirmed')->exists();
+    }
+
     /** Whether a correction of this kind moved the bill's money away (void() must then follow it). */
     public static function isCorrected(int $invoiceId): bool
     {
@@ -259,9 +273,10 @@ final class BillCorrection
             return ['refusal' => $this->refuse('unsupported_bill', '這張帳單沒有服務期間，不能算出漏收的課。')];
         }
         // The lesson status the 月對帳表 學收 uses: the calendar's sign-in-aware status, then the bill engine's billable set.
+        $window = MonthlyBillingService::boundByContract($course, substr((string) $item->PeriodStart, 0, 10), date('Y-m-t', strtotime((string) $item->PeriodEnd)));
         $held = DB::table('ClassSession as cs')
             ->leftJoin('StudentSingIn as si', fn ($j) => $j->on('si.ClassSessionID', '=', 'cs.id')->whereRaw(ClassSessionIndexReadService::LATEST_SIGN_IN_SQL))
-            ->where('cs.StudentClassID', $course->ID)->orderBy('cs.id')->select(['cs.SessionDate'])
+            ->where('cs.StudentClassID', $course->ID)->whereBetween('cs.SessionDate', $window)->orderBy('cs.id')->select(['cs.SessionDate'])
             ->selectRaw(...ClassSessionIndexReadService::effectiveStatusSelect())->get()
             ->filter(fn ($s) => in_array(strtolower(rtrim((string) $s->effective_status)), MonthlyBillingService::BILLABLE_STATUSES, true))
             ->map(fn ($s) => substr((string) $s->SessionDate, 0, 10));

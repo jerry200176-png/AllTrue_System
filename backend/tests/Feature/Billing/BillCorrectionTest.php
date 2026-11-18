@@ -298,6 +298,33 @@ class BillCorrectionTest extends TestCase
         $this->assertSame([], app(\App\Services\BillingPayableResolver::class)->lastPaidAtByStudentClassIds([$id]));
     }
 
+    public function test_the_replacement_cannot_be_exception_voided_while_the_original_receipt_is_confirmed(): void
+    {
+        $b = $this->bill($this->student($this->campus), 10000, 'paid', 10000);
+        $report = $this->confirmedReport($b);
+        $tok = $this->token('S', $this->campus);
+        $new = (int) $this->applyCorrection($tok, $b['invoice'], ['new_total' => 8000])->json('replacement_invoice_id');
+        $this->assertTrue(BillCorrection::chainHasConfirmedReceipt($new));
+        $before = $this->snapshot();
+
+        $this->postJson("/api/v1/invoices/{$new}/exception-void", ['reason' => '開錯了'], $this->h($tok))->assertStatus(422)->assertJsonPath('code', 'confirmed_receipt_on_invoice');
+        $this->assertSame($before, $this->snapshot());
+        $report->update(['status' => 'voided']);
+        $this->assertFalse(BillCorrection::chainHasConfirmedReceipt($new));
+    }
+
+    public function test_lessons_outside_the_contract_dates_are_not_priced_in(): void
+    {
+        [$m] = $this->monthlyBill(2000);
+        $m['course']->update(['StartDate' => '2026-10-10']);
+        foreach (['2026-10-06', '2026-10-07'] as $d) { // inside the bill's range, before the contract began
+            DB::table('ClassSession')->insert(['StudentClassID' => $m['course']->ID, 'SessionDate' => $d, 'StartTime' => '18:00:00', 'EndTime' => '20:00:00',
+                'Status' => 'completed', 'created_at' => now(), 'updated_at' => now()]);
+        }
+
+        $this->correct($this->token('A', $this->campus), $m['invoice'])->assertOk()->assertJsonPath('range_shortfall', 0)->assertJsonPath('new_total', 8000);
+    }
+
     public function test_the_gap_stops_at_the_end_of_the_items_calendar_month(): void
     {
         [$m] = $this->monthlyBill(2000);
