@@ -779,6 +779,10 @@
 | POST | `api/v1/student-classes/{studentClass}/convert-to-package` | `CoursePackageController@convertToPackage` | role+campus |
 | POST | `api/v1/student-classes/{studentClass}/convert-trial` | `StudentClassController@convertTrial` | role+campus |
 | GET | `api/v1/student-classes/{studentClass}/editability` | `StudentClassController@editability` | role+campus |
+| GET | `api/v1/student-classes/{studentClass}/existing-credit-allocations` | `SubjectCreditTransferController@existingIndex` | role+campus |
+| POST | `api/v1/student-classes/{studentClass}/existing-credit-allocations` | `SubjectCreditTransferController@existingApply` | role+campus |
+| POST | `api/v1/student-classes/{studentClass}/existing-credit-allocations/preview` | `SubjectCreditTransferController@existingPreview` | role+campus |
+| POST | `api/v1/student-classes/{studentClass}/existing-credit-allocations/{allocationGroupId}/reverse` | `SubjectCreditTransferController@existingReverse` | role+campus |
 | GET | `api/v1/student-classes/{studentClass}/invoices` | `StudentClassController@invoices` | role+campus |
 | POST | `api/v1/student-classes/{studentClass}/manual-sessions` | `StudentClassController@createManualSession` | role+campus |
 | POST | `api/v1/student-classes/{studentClass}/manual-sessions/check` | `StudentClassController@checkManualSession` | role+campus |
