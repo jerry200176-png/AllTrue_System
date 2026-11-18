@@ -669,6 +669,44 @@ const PAGES = [
       }
     },
   })),
+  {
+    key: 'tuition-monthly-summary',
+    url: '/pilot-mount.html?page=tuition',
+    names: ['王小明'],
+    rows: ['[data-testid^="roster-course-"]'],
+    mock: async (page) => {
+      await PAGES.find((p) => p.key === 'tuition-collect (bill list, mixed selectable rows)').mock(page);
+      await page.route('**/api/v1/accounting/monthly-roster**', (r) => json(r, {
+        data: [{ student_id: 701, student_name: '王小明', school: '範例國中', outstanding: 1500, courses: [{
+          course_id: 701, subject: '數學', teacher_name: '張老師', class_type: 'one_on_one', schedule_mode: 'count', rate: 1500,
+          lessons: [{ date: '2026-11-03', start: '10:00', kind: 'held', status: 'attended' }], held: 1,
+          money: { status: 'partial', outstanding: 1500 }, paid_this_month: [], pending_reports: 0,
+        }] }],
+        // Synthetic wide figures stress display, not a financial reconciliation fixture.
+        summary: { students: 27, tuition_total: 4567890, tuition_unpriced: 0, paid_this_month: 1234567, outstanding: 9876543, pending_reports: 17 },
+      }));
+    },
+    setup: async (page) => {
+      await page.addStyleTag({ content: '#app { max-width: calc(100vw - 20px); margin-inline: auto; } @media (min-width: 1024px) { #app { max-width: calc(100vw - 352px); } }' });
+      await page.getByRole('tab', { name: '月對帳表', exact: true }).click();
+      await expect(page.getByTestId('monthly-roster').getByRole('button', { name: '王小明', exact: true })).toBeVisible();
+      if (process.env.TEACHER_ELIGIBILITY_SHOT_DIR) await page.getByTestId('monthly-roster').locator('[data-slot="stat-strip"]').screenshot({
+        path: `${process.env.TEACHER_ELIGIBILITY_SHOT_DIR}/monthly-${page.viewportSize().width}-${await page.locator('html').getAttribute('data-text-size')}.png`,
+      });
+    },
+    extra: {
+      run: () => [...document.querySelectorAll('[data-testid="monthly-roster"] [data-slot="stat-item"]')].map((item) => {
+        const value = item.querySelector('dd'); const box = item.getBoundingClientRect();
+        const range = document.createRange(); range.selectNodeContents(value);
+        return { label: item.querySelector('dt').textContent.trim(), text: value.textContent.replace(/\s+/g, ' ').trim(),
+          clipped: [...range.getClientRects()].some((r) => r.left < box.left - 1 || r.right > box.right + 1) };
+      }),
+      assert: (m) => {
+        expect(m.map((v) => v.text)).toEqual(['27 人', 'NT$4,567,890', 'NT$1,234,567', 'NT$9,876,543', '17 筆']);
+        expect(m.filter((v) => v.clipped), 'every currency digit fits its own summary cell').toEqual([]);
+      },
+    },
+  },
   COURSE_MGMT,
   COURSE_MGMT_HELP_OPEN,
   COURSE_MGMT_HISTORY,
@@ -771,7 +809,7 @@ function measure({ names, rows, touch = [] }) {
 
 for (const entry of PAGES) {
   for (const size of TEXT_SIZES) {
-    for (const vp of entry.key.startsWith('course-mgmt') ? [...VIEWPORTS, ...TABLET_VIEWPORTS] : entry.key === 'teacher-eligibility' ? [...VIEWPORTS, { name: 'laptop-1280', width: 1280, height: 900 }] : VIEWPORTS) {
+    for (const vp of entry.key.startsWith('course-mgmt') ? [...VIEWPORTS, ...TABLET_VIEWPORTS] : ['teacher-eligibility', 'tuition-monthly-summary'].includes(entry.key) ? [...VIEWPORTS, { name: 'laptop-1280', width: 1280, height: 900 }] : VIEWPORTS) {
       test(`layout guard: ${entry.key} @${vp.name} text-size ${size}`, async ({ page }) => {
         await page.setViewportSize({ width: vp.width, height: vp.height });
         await page.addInitScript((s) => {
