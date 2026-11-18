@@ -374,7 +374,7 @@
         <p class="ledger-state" data-testid="ledger-sheet-loading">正在讀取帳務…</p>
       </AtDialog>
       <PaymentEntryModal :show="entryOpen" :row="entryRow" :mode="entryMode" :placement="sheetOnly ? 'right' : 'center'" :next-offer="sheetOnly && nextOffer" @close="onEntryClose" @confirmed="onEntryRecorded" @pending="onPanelChanged" @conflict="onEntryConflict" />
-      <BillCorrectionDialog :open="correctingInvoiceId != null" :invoice-id="correctingInvoiceId" @update:open="(o) => { if (!o) correctingInvoiceId = null; }" @corrected="onBillCorrected" />
+      <BillCorrectionDialog :open="correctingInvoiceId != null" :invoice-id="correctingInvoiceId" @update:open="(o) => { if (!o) correctingInvoiceId = null; }" @corrected="onBillCorrected" @changed="onBillCorrected" />
       <ReceiptModal :show="receiptOpen" :report-id="receiptReportId" :later-label="receiptLaterLabel" :return-focus-to="modalEl" @close="receiptOpen = false" />
       <PaymentSlipModal :show="slipOpen" :invoice-id="slipInvoiceId" :student-class-id="slipStudentClassId" :return-focus-to="modalEl" @close="slipOpen = false" />
     </div>

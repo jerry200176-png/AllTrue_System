@@ -87,7 +87,7 @@
 
         <div v-if="submitError" class="pe-error" role="alert">{{ submitError }}</div>
         <button v-if="correctableInvoiceId" type="button" class="ghost" data-testid="pe-correct-bill" @click="correctOpen = true">更正帳單</button>
-        <BillCorrectionDialog :open="correctOpen" :invoice-id="correctableInvoiceId" @update:open="(o) => { correctOpen = o; }" @corrected="onBillCorrected" />
+        <BillCorrectionDialog :open="correctOpen" :invoice-id="correctableInvoiceId" @update:open="(o) => { correctOpen = o; }" @corrected="onBillCorrected" @changed="emit('conflict', {})" />
 
         <div class="pe-actions">
           <button type="button" class="ghost" :disabled="submitting" @click="requestClose">取消</button>
@@ -164,7 +164,8 @@ const correctOpen = ref(false);
 function onBillCorrected() {
   correctableInvoiceId.value = null;
   submitError.value = '';
-  emit('conflict', {}); // same as a refusal: the parent rereads the authoritative ledger, then the director enters the payment again
+  emit('conflict', {}); // the parent rereads the authoritative ledger
+  emit('close'); // the form still points at the voided bill: the director reopens it on the replacement
 }
 const isZeroCharge = computed(() => Number(props.row?.charge ?? 0) === 0);
 // Zero charge or missing rate metadata alone cannot establish that a contract has no payment obligation.

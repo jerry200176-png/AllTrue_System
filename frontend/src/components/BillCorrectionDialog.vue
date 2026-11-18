@@ -11,7 +11,7 @@ import { REFUSAL_COPY } from '../lib/billCorrectionCopy.js';
 import { applyBillCorrection, previewBillCorrection } from '../lib/paymentActions.js';
 
 const props = defineProps({ open: { type: Boolean, default: false }, invoiceId: { type: Number, default: null } });
-const emit = defineEmits(['update:open', 'corrected']);
+const emit = defineEmits(['update:open', 'corrected', 'changed']);
 
 // Refusals the director can recover from on this screen; any other refusal ends the flow (nothing left to press but 關閉).
 const RETRYABLE = new Set(['state_changed', 'network', 'reason_short', 'fallback', 'new_total_required', 'unchanged_total']);
@@ -41,10 +41,12 @@ async function preview() {
   loading.value = true;
   plan.value = null;
   refusal.value = null;
-  const body = isCount.value && totalOk.value ? { new_total: Number(newTotal.value) } : {};
+  const asked = isCount.value && totalOk.value ? Number(newTotal.value) : null;
+  const body = asked === null ? {} : { new_total: asked };
   const res = await previewBillCorrection(props.invoiceId, body);
   if (mine !== seq) return;
   loading.value = false;
+  if (isCount.value && asked !== null && asked !== Number(newTotal.value)) return; // the total was edited while waiting: drop this answer
   if (res.ok) { plan.value = res.data; return; }
   // A count bill answers new_total_required until a total is typed: that is the cue to show the input, not a failure.
   if (res.code === 'new_total_required' && !isCount.value) { isCount.value = true; return; }
@@ -69,6 +71,8 @@ async function apply() {
     return;
   }
   refuse(res);
+  // The outcome may be unknown (lost response): have the parent reread the authoritative ledger.
+  if (refusal.value.code === 'network' || refusal.value.code === 'fallback') emit('changed');
 }
 
 watch(() => [props.open, props.invoiceId], ([open]) => {
@@ -99,7 +103,7 @@ watch(newTotal, () => { if (plan.value && Number(newTotal.value) !== plan.value.
 
       <div v-if="!dead" class="tw:space-y-3">
         <label v-if="isCount" class="tw:flex tw:flex-col tw:gap-1 tw:text-sm">新的帳單總額（元）
-          <Input v-model="newTotal" type="number" inputmode="numeric" min="1" max="999999" data-testid="bc-new-total" />
+          <Input v-model="newTotal" :disabled="loading" type="number" inputmode="numeric" min="1" max="999999" data-testid="bc-new-total" />
         </label>
         <Button v-if="isCount && !plan" variant="outline" class="tw:min-h-11" :disabled="loading || !totalOk" data-testid="bc-preview" @click="preview">看更正後的結果</Button>
 

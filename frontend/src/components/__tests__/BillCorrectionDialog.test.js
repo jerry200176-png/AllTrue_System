@@ -111,6 +111,40 @@ describe('更正帳單 · count bill (director types the total)', () => {
   });
 });
 
+describe('更正帳單 · races and unknown outcomes', () => {
+  it('drops a count preview whose total was edited while it was running', async () => {
+    let release;
+    stubFetch({ preview: [res(422, { code: 'new_total_required' })] });
+    const base = fetch;
+    vi.stubGlobal('fetch', vi.fn(async (url, opts) => {
+      const b = JSON.parse(opts.body);
+      if (b.new_total === 8000) await new Promise((r) => { release = r; });
+      return b.new_total === 8000 ? res(200, { ...PLAN, shape: 'count', new_total: 8000 }) : base(url, opts);
+    }));
+    await openDialog();
+    await type(q('bc-new-total'), '8000');
+    q('bc-preview').click();
+    await flushPromises();
+    expect(q('bc-new-total').disabled).toBe(true); // locked while the preview runs
+    q('bc-new-total').disabled = false; // as a stubborn keyboard would
+    await type(q('bc-new-total'), '7000');
+    release();
+    await flushPromises();
+    expect(q('bc-plan')).toBeNull();
+  });
+
+  it('tells the director a lost apply response is unconfirmed and asks the parent to reread the ledger', async () => {
+    stubFetch({ preview: [res(200, PLAN)], apply: [res(502, {})] });
+    const w = await openDialog();
+    await type(q('bc-reason'), '補上漏收的課');
+    q('bc-apply').click();
+    await flushPromises();
+    expect(q('bc-refusal').textContent).toContain('不確定有沒有更正成功');
+    expect(q('bc-refusal').textContent).not.toContain('沒有改到任何資料');
+    expect(w.emitted('changed')).toHaveLength(1);
+  });
+});
+
 describe('更正帳單 · refusal copy', () => {
   const SERVER_CODES = ['invoice_not_found', 'bill_correction_off', 'unavailable', 'unsupported_bill', 'unchanged_total', 'state_changed', 'invoice_void', 'pending_report',
     'unsupported_course', 'money_moved', 'ambiguous_invoice', 'idempotency_conflict', 'already_corrected', 'paid_state_unverified', 'repriceable', 'missing_rate', 'no_gap', 'gap_covered_elsewhere'];
@@ -178,6 +212,11 @@ describe('更正帳單 buttons', () => {
       await w.find('form').trigger('submit');
       await flushPromises();
       expect(w.find('[data-testid="pe-correct-bill"]').exists()).toBe(shown);
+      if (shown) { // after a correction the form (still on the voided bill) closes and the parent rereads the ledger
+        w.findComponent(BillCorrectionDialog).vm.$emit('corrected', {});
+        expect(w.emitted('conflict')).toHaveLength(2);
+        expect(w.emitted('close')).toHaveLength(1);
+      }
     }
   });
 });
