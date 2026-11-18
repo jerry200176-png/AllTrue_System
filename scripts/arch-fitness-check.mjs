@@ -232,7 +232,8 @@ let svcGraph = { svcFiles: [], edges: new Map(), ctxRule: null };
 }
 
 // FIT-21 (#4991 item 9): a nightly condition marked `'enforced' => true` is a bug verified fixed. Flipping it to
-// false, or deleting it, hides a regression just like raising its allowance (FIT-20). The pinned list only grows.
+// false, or deleting it, hides a regression just like raising its allowance (FIT-20). The pinned list only grows:
+// check-ratchet-baseline-touch.mjs compares it with the merge base.
 {
   ran.add('FIT-21');
   const pinned = baseline.enforcedReproductions;
@@ -241,11 +242,16 @@ let svcGraph = { svcFiles: [], edges: new Map(), ctxRule: null };
   const from = whole.indexOf('function conditions(');
   const to = whole.indexOf('function census(');
   const src = from > -1 && to > from ? whole.slice(from, to) : '';
-  const blocks = src.split(/^\s*'key' => '/m).slice(1);
+  const blocks = src.split(/^\s*'key'\s*=>\s*'/m).slice(1);
   const enforced = new Set();
   const bad = [];
   if (!src) bad.push('cannot find conditions() followed by census() in VerifyBugReproductions.php');
-  for (const b of blocks) {
+  if (whole.split('function conditions(').length !== 2 || !whole.includes('$this->conditions()')) bad.push('VerifyBugReproductions.php must define conditions() once and handle() must read $this->conditions()');
+  // The flag decides nothing unless handle() reads it this way; a later assignment would override the list.
+  if (/\[\s*'enforced'\s*\]\s*=(?!=)/.test(whole)) bad.push("'enforced' is assigned outside the conditions() list");
+  if (!whole.includes("$isRegression = $cond['enforced'] && !$pending && $count > (int) $baseline;")) bad.push('handle() no longer decides a regression from the enforced flag; update FIT-21 with the change');
+  for (const raw of blocks) {
+    const b = raw.replace(/\/\/.*$/gm, '');
     const key = (b.match(/^([a-z_]+)'/) || [])[1];
     const flags = [...b.matchAll(/'enforced'\s*=>\s*([^,\]\n]+)/g)].map((m) => m[1].trim());
     if (!key || flags.length !== 1 || !['true', 'false'].includes(flags[0])) { bad.push(`condition ${key || '?'}: write exactly one literal 'enforced' => true|false`); continue; }
@@ -253,9 +259,9 @@ let svcGraph = { svcFiles: [], edges: new Map(), ctxRule: null };
   }
   if (blocks.length < 10) bad.push(`read only ${blocks.length} conditions from VerifyBugReproductions.php; the parser no longer matches the file`);
   for (const key of pinned) if (!enforced.has(key)) bad.push(`${key} is no longer enforced (or was removed). A condition verified fixed stays enforced; reopening it needs the pin removed with the reason in the PR.`);
-  const added = [...enforced].filter((k) => !pinned.includes(k));
+  for (const key of enforced) if (!pinned.includes(key)) bad.push(`${key} is enforced but not pinned; add it to enforcedReproductions in arch-fitness-baseline.json.`);
   if (bad.length) for (const b of bad) failures.push(`FIT-21: ${b}`);
-  else note(`FIT-21: ${enforced.size} enforced nightly conditions, all ${pinned.length} pins held${added.length ? ` — newly enforced: ${added.join(', ')}; add them to enforcedReproductions to lock it.` : '.'}`);
+  else note(`FIT-21: ${enforced.size} enforced nightly conditions, all pinned.`);
 }
 
 // FIT-10 context map completeness + forbidden edges (DEP-1)

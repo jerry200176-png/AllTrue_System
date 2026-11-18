@@ -59,9 +59,31 @@ export function frozenListViolations(changes) {
   return out;
 }
 
-const git = (...args) => execFileSync('git', args, { encoding: 'utf8', maxBuffer: 64 << 20 });
+// Nightly-check pins in arch-fitness-baseline.json (FIT-20, FIT-21) are read from the PR's own checkout, so the
+// same PR could loosen a check and its pin together. Against the base: an allowance never rises or turns null,
+// and an enforced condition is never unpinned. Applies to every branch.
+export const NIGHTLY_PINS = 'scripts/arch-fitness-baseline.json';
+export function nightlyPinViolations(before, after) {
+  if (before == null) return [];
+  const a = JSON.parse(before);
+  const b = after == null ? {} : JSON.parse(after);
+  const out = [];
+  for (const key of a.enforcedReproductions ?? []) {
+    if (!(b.enforcedReproductions ?? []).includes(key)) out.push(`${NIGHTLY_PINS}: enforcedReproductions lost ${key}; a condition verified fixed stays enforced`);
+  }
+  for (const [key, was] of Object.entries(a.reproductionBaselines ?? {})) {
+    const now = (b.reproductionBaselines ?? {})[key];
+    if (typeof was === 'number' && now !== undefined && !(typeof now === 'number' && now <= was)) out.push(`${NIGHTLY_PINS}: reproductionBaselines.${key} ${was} -> ${now}; allowances only shrink`);
+  }
+  return out;
+}
+
+const git = (...args) => execFileSync('git', args, { encoding: 'utf8', maxBuffer: 64 << 20, stdio: ['ignore', 'pipe', 'pipe'] });
+// null only when the path is absent at that commit; any other git error throws (fail closed).
 const show = (rev, path) => {
-  try { return git('show', `${rev}:${path}`); } catch { return null; }
+  git('rev-parse', '--verify', `${rev}^{commit}`);
+  try { git('cat-file', '-e', `${rev}:${path}`); } catch { return null; }
+  return git('show', `${rev}:${path}`);
 };
 
 function main() {
@@ -72,8 +94,11 @@ function main() {
   // Fail closed: any git/JSON error throws and exits non-zero.
   const changes = RATCHET_BASELINES.map((path) => ({ path, before: show(base, path), after: show('HEAD', path) }));
   const frozen = frozenListViolations(FROZEN_LISTS.map((path) => ({ path, before: show(base, path), after: show('HEAD', path) })));
+  frozen.push(...nightlyPinViolations(show(base, NIGHTLY_PINS), show('HEAD', NIGHTLY_PINS)));
+  const reader = show('HEAD', 'backend/tests/Feature/WriteRouteInverseRatchetTest.php') ?? '';
+  if (!reader.includes(FROZEN_LISTS[0].replace('backend/', ''))) frozen.push('WriteRouteInverseRatchetTest.php no longer reads the frozen route list');
   if (frozen.length) {
-    console.error('::error::A frozen list grew');
+    console.error('::error::A frozen list grew or a nightly-check pin was loosened');
     for (const v of frozen) console.error(`  ${v}`);
     process.exit(1);
   }

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { findViolations, frozenListViolations } from './check-ratchet-baseline-touch.mjs';
+import { findViolations, frozenListViolations, nightlyPinViolations } from './check-ratchet-baseline-touch.mjs';
 
 const P = 'docs/design-style-baseline.json';
 const j = (n) => JSON.stringify({ totals: { a: 999 }, files: { x: { a: n } } });
@@ -43,4 +43,22 @@ test('frozen route list: comments, blank lines and reordering do not count', () 
 test('frozen route list: the introducing PR (absent at base) is skipped; other paths ignored', () => {
   assert.deepEqual(frozenListViolations([{ path: G, before: null, after: 'POST a\n' }]), []);
   assert.deepEqual(frozenListViolations([{ path: 'other.txt', before: 'a\n', after: 'a\nb\n' }]), []);
+});
+test('frozen route list: CRLF and trailing spaces are not new lines; a case change is', () => {
+  assert.deepEqual(frozenListViolations([{ path: G, before: 'POST a\nPOST b\n', after: 'POST a \r\nPOST b\r\n' }]), []);
+  assert.equal(frozenListViolations([{ path: G, before: 'POST a\n', after: 'post a\n' }]).length, 1);
+});
+
+const pins = (enforced, allowances) => JSON.stringify({ enforcedReproductions: enforced, reproductionBaselines: allowances });
+test('nightly pins: unpinning an enforced condition fails; adding one is fine', () => {
+  assert.equal(nightlyPinViolations(pins(['a', 'b'], {}), pins(['a'], {})).length, 1);
+  assert.deepEqual(nightlyPinViolations(pins(['a'], {}), pins(['a', 'c'], {})), []);
+});
+test('nightly pins: an allowance may shrink or go away, never rise or turn null', () => {
+  assert.deepEqual(nightlyPinViolations(pins([], { x: 5 }), pins([], { x: 3 })), []);
+  assert.deepEqual(nightlyPinViolations(pins([], { x: 5 }), pins([], {})), []);
+  assert.equal(nightlyPinViolations(pins([], { x: 5 }), pins([], { x: 6 })).length, 1);
+  assert.equal(nightlyPinViolations(pins([], { x: 5 }), pins([], { x: null })).length, 1);
+  assert.deepEqual(nightlyPinViolations(pins([], { x: null }), pins([], { x: 4 })), []);
+  assert.deepEqual(nightlyPinViolations(null, pins([], { x: 9 })), []);
 });
