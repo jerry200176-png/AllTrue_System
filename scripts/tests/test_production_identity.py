@@ -221,8 +221,14 @@ else:
     def test_malformed_target_markers_and_impossible_native_dates_fail_closed(self):
         good = self.fixture['resolver_logs']['201']
         invalid = [good.replace('2026-11-18T08:01:00Z', date)
-                   for date in ['2026-99-99T99:99:99Z', '2026-02-30T08:01:00Z', '0000-11-18T08:01:00Z']]
+                   for date in ['2026-99-99T99:99:99Z', '2026-02-30T08:01:00Z', '0000-11-18T08:01:00Z',
+                                '2026-11-18T08:01:00+00:00']]
         invalid.append(good + '2026-11-18T08:01:01Z Resolved activation target: not-a-sha\n')
+        invalid.append(good + '2026-11-18T08:01:01Z Resolved activation target:\n')
+        invalid.append(good + '2026-11-18T08:01:01Z Resolved activation target:not-a-sha\n')
+        invalid.extend([good.replace(': ' + self.sha, ':' + self.sha),
+                        good.replace(': ' + self.sha, ':  ' + self.sha),
+                        good.replace(self.sha + '\n', self.sha + ' \n')])
         for log in invalid:
             with self.subTest(log=log):
                 self.fixture['resolver_logs']['201'] = log

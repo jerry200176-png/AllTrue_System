@@ -217,13 +217,17 @@ def verified_job(run):
         target_log = (root / f'deploy-target-{run_id}.log').read_text()
     except (OSError, UnicodeError):
         return None
-    markers = re.findall(r'^(\S+) Resolved activation target: (.*)$', target_log, re.MULTILINE)
+    markers = re.findall(r'^(\S+) Resolved activation target:(.*)$', target_log, re.MULTILINE)
     if len(markers) != 1:
         return None
-    timestamp, target = markers[0]
+    timestamp, suffix = markers[0]
     if not re.fullmatch(r'\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z', timestamp):
         return None
-    if not re.fullmatch(r'[0-9a-f]{40}', target) or target != deployment_backend_sha:
+    target_match = re.fullmatch(r' ([0-9a-f]{40})', suffix)
+    if target_match is None:
+        return None
+    target = target_match.group(1)
+    if target != deployment_backend_sha:
         return None
     try:
         datetime.datetime.fromisoformat(timestamp.replace('Z', '+00:00'))
