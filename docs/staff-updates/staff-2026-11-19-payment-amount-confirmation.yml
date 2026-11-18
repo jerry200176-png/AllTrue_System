@@ -1,0 +1,14 @@
+updates:
+  - id: staff-2026-11-19-payment-amount-confirmation
+    published_at: "2026-11-19"
+    audiences:
+      - director
+      - super_admin
+    importance: digest
+    title: 不同收款金額先核對
+    summary: 登記金額和目前未收餘額不同時，先核對差額並勾選確認。
+    items:
+      - category: improved
+        text: 部分收款仍可登記；修改金額或帳單後需重新確認，未開單的估算會另行標明。
+    source_refs:
+      - "changelog:2026-11-19:payment-amount-confirmation"
