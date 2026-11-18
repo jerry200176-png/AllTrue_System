@@ -224,6 +224,36 @@ class VerifyBugReproductionsTest extends TestCase
         $this->assertSame($before + 1, $this->condition($key)['count']);
     }
 
+    /**
+     * #4991 line 3: an upcoming live lesson of a usage-locked running course blocks a slot no one can teach.
+     *
+     * @dataProvider taipeiInstants
+     */
+    public function test_seat_held_by_finished_contract_counts_only_live_upcoming_lessons_of_locked_running_courses(string $taipeiNow): void
+    {
+        Carbon::setTestNow(Carbon::parse($taipeiNow, 'Asia/Taipei'));
+        $key = 'seat_held_by_finished_contract';
+        $today = now()->toDateString();
+        $closed = $this->course(['closed_reason' => 'refunded']);
+        $locked = $this->course(['settlement_locked_at' => now()]);
+        $this->classSession($closed, 'scheduled', $today); // today (Taipei) is still upcoming
+        $this->classSession($locked, 'scheduled', now()->addDays(3)->toDateString());
+
+        $row = $this->condition($key);
+        $this->assertSame(2, $row['count']);
+        $this->assertFalse($row['enforced']);
+        $this->assertSame('OPEN', $row['state']);
+
+        // Not counted: a past lesson, a lesson that frees the slot, a stopped course, a course that is not locked.
+        $this->classSession($closed, 'scheduled', now()->subDay()->toDateString());
+        $this->classSession($closed, 'cancelled', now()->addDay()->toDateString());
+        $this->classSession($closed, 'leave', now()->addDays(2)->toDateString());
+        $this->classSession($this->course(['closed_reason' => 'waived', 'Stop' => 1]), 'scheduled', now()->addDay()->toDateString());
+        $this->classSession($this->course(['closed_reason' => 'settled']), 'scheduled', now()->addDay()->toDateString());
+        $this->classSession($this->course(), 'scheduled', now()->addDay()->toDateString());
+        $this->assertSame(2, $this->condition($key)['count']);
+    }
+
     public function test_package_over_debit_flags_used_beyond_taught_and_not_a_balanced_ledger(): void
     {
         $pkg = $this->package();
