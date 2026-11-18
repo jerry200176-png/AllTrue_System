@@ -6,6 +6,10 @@ import { installApiMocks } from './fixtures/ui-foundation/apiMocks.js';
 // UI Smoke (SMOKE_BASE_URL set) must skip it; the UI-foundation jobs run it.
 test.skip(Boolean(process.env.SMOKE_BASE_URL), 'Fixture-only guard runs in the UI-foundation jobs.');
 
+// Let native sharding split this large fixture file without adding CI workers.
+// Every case owns its page/routes and resets its mock counters before use.
+test.describe.configure({ mode: 'parallel' });
+
 /**
  * Layout guard for pages migrated to the ui components (in-app #541 / #542 / #543, #4989).
  * Real browser, realistic CJK data, desktop + phone, every 字級 setting. A page is guarded by adding ONE entry to PAGES.
