@@ -1,4 +1,6 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
+import { flushPromises, shallowMount } from '@vue/test-utils';
+import TuitionCollectionPage from '../../pages/TuitionCollectionPage.vue';
 import { readFileSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -73,8 +75,22 @@ describe('TuitionCollectionPage receipt entry paths', () => {
     expect(source).not.toContain('請先排課後再結案');
   });
 
-  it('offers no-renew settlement for the paid monthly reminder state (now on the drawer card)', () => {
-    expect(source).toContain("settle: r.payment_status === 'renew_needed' || r.payment_status === 'monthly_due_soon'");
-    expect(readFileSync(resolve(__dirname, '../tuition/ContractCard.vue'), 'utf8')).toContain('結案（不續報）');
+  it('offers the real no-renew dialog for a paid standalone monthly reminder', async () => {
+    localStorage.setItem('alltrue_session', JSON.stringify({ access_token: 'synthetic-token', user: { role: 'director' } }));
+    const fetch = vi.fn(async url => ({ ok: true, status: 200, json: async () => String(url).includes('/api/v1/alerts/tuition')
+      ? [{ id: 71, student_id: 81, student_name: '合成月結學生', subject: '合成月結', schedule_mode: 'date', payment_status: 'monthly_due_soon', remaining_sessions: 0 }]
+      : [] }));
+    vi.stubGlobal('fetch', fetch);
+    const page = shallowMount(TuitionCollectionPage, { props: { branchId: 1 } });
+    try {
+      await flushPromises();
+      const ledger = page.findComponent({ name: 'AccountingLedgerModal' });
+      expect(ledger.props('rowActions')[71].settle).toBe(true);
+      ledger.vm.$emit('row-action', { kind: 'settle', courseId: 71 });
+      await flushPromises();
+      expect(page.find('.tc-overlay').text()).toContain('合成月結');
+      expect(page.find('.tc-overlay').text()).toContain('結案');
+      expect(fetch.mock.calls.every(([, options]) => !options?.method || options.method === 'GET')).toBe(true);
+    } finally { page.unmount(); vi.unstubAllGlobals(); localStorage.clear(); }
   });
 });
