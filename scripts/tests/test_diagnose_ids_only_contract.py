@@ -321,11 +321,14 @@ class WorkflowContractTest(unittest.TestCase):
 
     def test_calendar_acceptance_report_is_encrypted_not_uploaded_plaintext(self):
         text = (WF / "calendar-course-acceptance.yml").read_text(encoding="utf-8")
-        uploads = [x for x in steps("calendar-course-acceptance.yml") if "upload-artifact" in str(x.get("uses", ""))]
+        uploads = [x for x in steps("calendar-course-acceptance.yml", job="acceptance")
+                   if "upload-artifact" in str(x.get("uses", ""))]
         self.assertTrue(uploads)
         for u in uploads:
             self.assertNotIn("playwright-report", str(u["with"]["path"]))
             self.assertNotIn("test-results", str(u["with"]["path"]))
+        self.assertFalse(any("upload-artifact" in str(x.get("uses", ""))
+                             for x in steps("calendar-course-acceptance.yml", job="deployment_evidence")))
         self.assertIn("DUMP_ARTIFACT_KEY", text)
         self.assertIn("openssl enc -aes-256-cbc", text)
 

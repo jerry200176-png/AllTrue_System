@@ -1371,11 +1371,17 @@ class DeployActivationWorkflowContractTest(unittest.TestCase):
             ("actual deployment", [actual], 1, "true"),
             ("stand-down wrapper", [skipped], 1, "false"),
             ("no deploy job in this attempt", [], 0, "false"),
+            ("different successful job", [dict(actual, name="Release state")], 1, "false"),
             ("executor skipped", [dict(actual, steps=[dict(deploy_step, conclusion="skipped")])], 1, "false"),
             ("duplicate deploy jobs", [actual, skipped], 2, None),
             ("incomplete API listing", [actual], 2, None),
+            ("jobs object", {"unexpected": actual}, 1, None),
             ("non-final job", [dict(actual, status="in_progress")], 1, None),
             ("missing deploy step", [dict(actual, steps=[])], 1, None),
+            ("different successful step", [dict(actual, steps=[dict(deploy_step, name="Prepare")])], 1, None),
+            ("non-final deploy step", [dict(actual, steps=[dict(deploy_step, status="in_progress")])], 1, None),
+            ("duplicate deploy steps", [dict(actual, steps=[deploy_step, deploy_step])], 1, None),
+            ("steps object", [dict(actual, steps={"unexpected": deploy_step})], 1, None),
         ]
         with tempfile.TemporaryDirectory() as folder:
             output = Path(folder) / "github-output"

@@ -88,6 +88,7 @@ jobs:
                   | if .status != "completed" or (.conclusion | type) != "string" then
                       error("Production deploy job has no final result")
                     elif .conclusion != "success" then "false"
+                    elif (.steps | type) != "array" then error("Invalid deploy step evidence")
                     else [.steps[] | select(.name == "Deploy")]
                       | if length != 1 then error("Missing or ambiguous deploy step")
                         elif .[0].status != "completed" or (.[0].conclusion | type) != "string" then
