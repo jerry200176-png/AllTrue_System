@@ -187,6 +187,12 @@
               </div>
               <div v-if="detail.status === 'contacted' || (detail.status === 'new' && showDirectTrial)" class="admission-action-content">
                 <p>為學生選派老師、日期與時段建立試聽課。系統會自動建置試聽課程，後續若轉正式課可直接沿用。</p>
+                <label v-if="holdsHere.length" class="admission-hold-pick">用試聽暫留（選填）
+                  <select v-model="trial.trial_hold_id" data-testid="admission-trial-hold" @change="applyHold">
+                    <option value="">不用暫留</option>
+                    <option v-for="h in holdsHere" :key="h.id" :value="String(h.id)">{{ h.hold_date }} {{ h.start_time }}–{{ h.end_time }} {{ h.teacher_name }}{{ h.note ? '｜' + h.note : '' }}</option>
+                  </select>
+                </label>
                 <div class="admission-mini-form">
                   <select v-model="trial.teacher_id" required><option value="" disabled>選擇老師</option><option v-for="teacher in teachers" :key="teacher.id" :value="teacher.id">{{ teacher.name || teacher.Name || teacher.username }}</option></select>
                   <input v-model="trial.trial_date" type="date" required aria-label="試聽日期" />
@@ -226,7 +232,10 @@
 
 <script setup>
 import { computed, nextTick, onMounted, ref, watch } from 'vue';
-import { admissionAction, convertAdmissionTrial, getAdmissionBranches, getAdmissionInquiry, getAdmissionInquiries, getAdmissionTeachers, submitAdmissionInquiry } from '../api';
+import { admissionAction, convertAdmissionTrial, getAdmissionBranches, getAdmissionInquiry, getAdmissionInquiries, getAdmissionTeachers, getTrialHolds, submitAdmissionInquiry } from '../api';
+import { addDays } from '../lib/calendarDateUtils.js';
+import { ymdInTaipei } from '../lib/sessionDates.js';
+import { holdDurationMinutes } from '../lib/trialHolds.js';
 import { GRADES, SUBJECTS } from '../lib/constants';
 import { buildPublicAdmissionsUrl, parsePublicAdmissionsContext, matchPresetCampus } from '../lib/admissionsUrl';
 import perfFlags from '../lib/perfFlags';
@@ -243,7 +252,19 @@ const trialResult = ref('attended'), showDirectTrial = ref(false), copySuccess =
 let copyTimer = null;
 
 const publicForm = ref({ campus_id: '', parent_name: '', parent_phone: '', student_name: '', grade: '', school_name: '', subject: '', preferred_slots: [''], public_notes: '', consent: false });
-const trial = ref({ teacher_id: '', trial_date: '', start_time: '16:00', duration_minutes: 120 });
+const trial = ref({ teacher_id: '', trial_date: '', start_time: '16:00', duration_minutes: 120, trial_hold_id: '' });
+// 試聽暫留 (in-app #575): a held slot prefills the trial; the server checks it still matches and releases it.
+const trialHolds = ref([]);
+const holdsHere = computed(() => trialHolds.value.filter((h) => Number(h.campus_id) === Number(props.branchId)));
+function applyHold() {
+  const hold = holdsHere.value.find((h) => String(h.id) === String(trial.value.trial_hold_id));
+  if (hold) trial.value = { ...trial.value, teacher_id: hold.teacher_id, trial_date: hold.hold_date, start_time: hold.start_time, duration_minutes: Math.max(30, holdDurationMinutes(hold)) };
+}
+async function loadTrialHolds() {
+  const today = ymdInTaipei();
+  // ponytail: a failed read only hides the picker; the trial can still be booked by hand.
+  try { trialHolds.value = await getTrialHolds(props.token, today, addDays(today, 60)); } catch { trialHolds.value = []; }
+}
 const formal = ref({ sessions: 8, start_date: '' });
 const grades = GRADES, subjects = SUBJECTS;
 const slots = ['平日下午', '平日晚上', '週六上午', '週六下午', '週日上午'];
@@ -352,7 +373,10 @@ async function selectInquiry(id) {
 async function claimInquiry() { await runAction('claim'); }
 async function saveFollowUp() { await runAction('follow-up', { follow_up_at: followUpAt.value || null, staff_notes: contactNote.value }); }
 async function contactInquiry() { await runAction('contact', { staff_notes: contactNote.value }); }
-async function scheduleTrial() { await runAction('trial', { ...trial.value, teacher_id: Number(trial.value.teacher_id), duration_minutes: Number(trial.value.duration_minutes) }); }
+async function scheduleTrial() {
+  await runAction('trial', { ...trial.value, teacher_id: Number(trial.value.teacher_id), duration_minutes: Number(trial.value.duration_minutes), trial_hold_id: trial.value.trial_hold_id ? Number(trial.value.trial_hold_id) : null });
+  if (!errorMessage.value) { trial.value = { ...trial.value, trial_hold_id: '' }; await loadTrialHolds(); }
+}
 async function recordResult() { await runAction('trial-result', { trial_result: trialResult.value }); }
 async function markLost() { await runAction('lost', { staff_notes: contactNote.value }); }
 async function enroll() {
@@ -372,6 +396,7 @@ async function runAction(action, payload) {
 async function loadStaff() {
   await loadQueue();
   try { teachers.value = await getAdmissionTeachers(props.token, props.branchId); } catch (err) { errorMessage.value = err.message; }
+  await loadTrialHolds();
 }
 
 onMounted(async () => { if (standalone.value) await loadPublic(); else await loadStaff(); });
@@ -408,7 +433,7 @@ input, select, textarea { width: 100%; min-height: 44px; padding: 10px 12px; bor
 .admission-detail { padding: clamp(18px, 4vw, 28px); display: grid; gap: 16px; } .admission-detail-head { display: flex; justify-content: space-between; gap: 20px; flex-wrap: wrap; padding-bottom: 16px; border-bottom: 1px solid var(--ds-hairline); } .admission-detail h2 { margin: 10px 0 4px; } .admission-detail p { color: var(--ds-ink-mute); margin: 0; } .admission-phone { color: var(--ds-cta); font-weight: 700; text-decoration: none; display: inline-flex; align-items: center; gap: 4px; }
 .admission-meta { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; margin: 0; padding: 14px; background: var(--ds-canvas-soft); border-radius: var(--ds-radius-md); } .admission-meta div { display: grid; gap: 2px; } .admission-meta dt { font-size: 12px; color: var(--ds-ink-mute); } .admission-meta dd { margin: 0; font-weight: 600; }
 .admission-owner-panel { margin-top: 4px; } .admission-history { margin-top: 10px; padding: 14px; border: 1px solid var(--ds-hairline); border-radius: var(--ds-radius-lg); background: var(--ds-canvas-soft); } .admission-history h3 { margin-bottom: 10px; font-size: 15px; } .admission-history ol { display: grid; gap: 8px; margin: 0; padding-left: 20px; } .admission-history li { display: flex; justify-content: space-between; gap: 12px; color: var(--ds-ink); font-size: 13px; } .admission-history time { color: var(--ds-ink-mute); font-size: 12px; white-space: nowrap; }
-.admission-note { margin: 0; padding: 12px; background: var(--ds-primary-wash); border-radius: var(--ds-radius-md); font-size: 13px; } .admission-workflow { display: grid; gap: 14px; } .admission-panel { display: grid; gap: 10px; padding: 16px; box-shadow: none; } .admission-panel h3 { font-size: 15px; margin: 0; } .admission-mini-form { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; }
+.admission-note { margin: 0; padding: 12px; background: var(--ds-primary-wash); border-radius: var(--ds-radius-md); font-size: 13px; } .admission-workflow { display: grid; gap: 14px; } .admission-panel { display: grid; gap: 10px; padding: 16px; box-shadow: none; } .admission-panel h3 { font-size: 15px; margin: 0; } .admission-mini-form { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; } .admission-hold-pick { display: grid; gap: 4px; font-size: 13px; font-weight: 600; } .admission-hold-pick select { min-height: 44px; font-weight: 400; }
 .admission-empty, .admission-loading { display: grid; justify-items: center; gap: 14px; padding: 48px 24px; text-align: center; color: var(--ds-ink-mute); } .admission-empty.compact { padding: 18px; border: 1px dashed var(--ds-hairline); border-radius: var(--ds-radius-md); display: flex; align-items: center; gap: 10px; text-align: left; } .admission-empty .material-symbols-outlined { font-size: 48px; color: var(--ds-primary-text); }
 .admission-skeleton { display: grid; gap: 12px; margin-bottom: 20px; } .admission-skeleton-row { height: 64px; border-radius: var(--ds-radius-md); background: linear-gradient(90deg, var(--ds-surface-0), var(--ds-primary-wash), var(--ds-surface-0)); background-size: 200% 100%; animation: admission-shimmer 1.2s ease-in-out infinite; }
 @keyframes admission-shimmer { 0% { background-position: 100% 0; } 100% { background-position: -100% 0; } }

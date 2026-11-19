@@ -135,6 +135,7 @@
               <div class="toolbar-secondary-actions">
                 <button type="button" class="btn-secondary btn-icon-text toolbar-action-btn" @click="showRoomManager = !showRoomManager" title="管理教室"><span class="material-symbols-outlined btn-icon">meeting_room</span><span class="btn-text">教室</span></button>
                 <button type="button" class="btn-primary btn-icon-text toolbar-action-btn" data-guide="calendar-quick-add" @click="openQuickAdd"><span class="material-symbols-outlined btn-icon">add_circle</span><span class="btn-text">快速排課</span></button>
+                <button v-if="canHoldTrials" type="button" class="btn-secondary btn-icon-text toolbar-action-btn" data-testid="calendar-trial-hold" @click="openHoldDialog({ hold_date: ymdOfDow(selectedDow) })"><span class="material-symbols-outlined btn-icon">bookmark_add</span><span class="btn-text">試聽暫留</span></button>
               </div>
             </div>
           </div>
@@ -248,6 +249,15 @@
                     :layout="{ compact: isTeacherGridCompact, splitSlot: getCoursesForTeacherAt(teacher.id, h).length > 1, splitCount: getCoursesForTeacherAt(teacher.id, h).length, firstBadge: (cIdx === 0 && getSlotOccupancy(teacher.id, selectedDow, h).count > 0) ? (isTeacherGridCompact ? 'compact' : 'full') : null }"
                   />
                 </div>
+                <button
+                  v-for="hold in holdsForTeacherAt(teacher.id, h)"
+                  :key="'hold-' + hold.id"
+                  type="button"
+                  class="trial-hold-block"
+                  :style="holdBlockStyle(hold)"
+                  :aria-label="`試聽暫留 ${hold.teacher_name} ${hold.start_time} 到 ${hold.end_time}`"
+                  @click.stop="holdToCancel = hold"
+                >試聽暫留 {{ hold.start_time }}–{{ hold.end_time }}</button>
               </div>
             </div>
           </div>
@@ -319,6 +329,15 @@
                     :layout="{ compact: false, splitSlot: getCoursesForWeekCell(idx + 1, h).length > 1, splitCount: getCoursesForWeekCell(idx + 1, h).length, firstBadge: null }"
                   />
                 </div>
+                <button
+                  v-for="hold in holdsForWeekCell(idx + 1, h)"
+                  :key="'hold-' + hold.id"
+                  type="button"
+                  class="trial-hold-block"
+                  :style="holdBlockStyle(hold)"
+                  :aria-label="`試聽暫留 ${hold.teacher_name} ${hold.start_time} 到 ${hold.end_time}`"
+                  @click.stop="holdToCancel = hold"
+                >試聽暫留 {{ hold.start_time }}–{{ hold.end_time }}<template v-if="weekViewTeacherIds.length !== 1"> · {{ hold.teacher_name }}</template></button>
               </div>
             </div>
             </div>
@@ -449,6 +468,26 @@
     <SessionHistorySheet v-model:open="historyOpen" :session-id="historySessionId" />
 
     <!-- #740 Modals：請假 -->
+    <TrialHoldDialog
+      v-if="canHoldTrials"
+      v-model:open="showHoldDialog"
+      :token="holdToken"
+      :campus-id="branchId"
+      :teachers="visibleTeachers"
+      :prefill="holdPrefill"
+      @created="onHoldCreated"
+    />
+    <ConfirmDialog
+      :open="!!holdToCancel"
+      title="取消這筆試聽暫留？"
+      :description="holdToCancel ? `${holdToCancel.teacher_name}｜${holdToCancel.hold_date} ${holdToCancel.start_time}–${holdToCancel.end_time}${holdToCancel.note ? '｜' + holdToCancel.note : ''}\n要轉成正式試聽：到「招生詢問」安排試聽時，選這筆暫留。` : ''"
+      confirm-label="取消暫留"
+      cancel-label="保留"
+      destructive
+      :loading="holdCancelling"
+      @update:open="(o) => { if (!o && !holdCancelling) holdToCancel = null; }"
+      @confirm="confirmCancelHold"
+    />
     <CalendarLeaveModal
       :show="showLeaveModal"
       :form="leaveForm"
@@ -559,6 +598,10 @@
 import { ymdInTaipei } from '@/lib/sessionDates.js';
 import { ref, computed, onMounted, onUnmounted, onActivated, onDeactivated, watch, nextTick } from 'vue';
 import { isDirectorRole } from '../lib/roleCapabilities.js';
+import { ConfirmDialog } from '@/components/app-overlay';
+import TrialHoldDialog from '../components/calendar/TrialHoldDialog.vue';
+import { cancelTrialHold, getTrialHolds } from '../api.js';
+import { holdBlockStyle, holdsInSlot } from '../lib/trialHolds.js';
 import AtButton from '../components/design-system/AtButton.vue';
 import AtSkeleton from '../components/design-system/AtSkeleton.vue';
 import AtPageHeader from '../components/design-system/AtPageHeader.vue';
@@ -1508,6 +1551,56 @@ const getCoursesForWeekCell = (dow, hour) => {
     return true;
   });
 };
+
+// 試聽暫留 (in-app #575): directors see and manage holds; the server clash check is the authority.
+const canHoldTrials = computed(() => !isTeacher.value && isDirectorRole(props.userRole) && Number(props.branchId || 0) > 0);
+const trialHolds = ref([]);
+const holdToken = ref('');
+const showHoldDialog = ref(false);
+const holdPrefill = ref({});
+const holdToCancel = ref(null);
+const holdCancelling = ref(false);
+const ymdOfDow = (dow) => String(getDisplayDateFull(dow) || '').slice(0, 10);
+const loadTrialHolds = async () => {
+  if (!canHoldTrials.value) { trialHolds.value = []; return; }
+  // ponytail: a failed read only hides the cards; the server still refuses a clash with an existing hold.
+  try {
+    holdToken.value = (await getToken()) || '';
+    trialHolds.value = await getTrialHolds(holdToken.value, ymdOfDow(1), ymdOfDow(7));
+  } catch { trialHolds.value = []; }
+};
+const holdsForWeekCell = (dow, hour) => holdsInSlot(trialHolds.value, {
+  date: ymdOfDow(dow), hour, campusId: props.branchId,
+  teacherIds: weekViewTeacherIds.value.length > 0 ? weekViewExpandedTeacherIdSet.value : null,
+});
+const holdsForTeacherAt = (teacherId, hour) => holdsInSlot(trialHolds.value, {
+  date: ymdOfDow(selectedDow.value), hour, campusId: props.branchId, teacherIds: getTeacherAliasIdSet(teacherId),
+});
+const openHoldDialog = async (prefill = {}) => {
+  holdToken.value = (await getToken().catch(() => null)) || holdToken.value;
+  holdPrefill.value = prefill;
+  showHoldDialog.value = true;
+};
+const onHoldCreated = async () => {
+  toastRef.value?.show?.({ title: '已暫留這個時段', variant: 'success', durationMs: 3000 });
+  await loadTrialHolds();
+};
+const confirmCancelHold = async () => {
+  const hold = holdToCancel.value;
+  if (!hold) return;
+  holdCancelling.value = true;
+  try {
+    await cancelTrialHold(holdToken.value, hold.id);
+    toastRef.value?.show?.({ title: '已取消暫留，時段空出來了', variant: 'success', durationMs: 3000 });
+    await loadTrialHolds();
+  } catch (e) {
+    toastRef.value?.show?.({ title: e?.message || '沒有取消成功，請再試一次。', variant: 'error', durationMs: 5000 });
+  } finally {
+    holdCancelling.value = false;
+    holdToCancel.value = null;
+  }
+};
+watch([() => props.branchId, () => props.userRole, displayYear, displayMonth, displayWeek, weekOffset], loadTrialHolds, { immediate: true });
 
 const getWeekTeacherDayCount = (dow) => {
   return filteredCourses.value.filter(c => {
@@ -3346,6 +3439,25 @@ onUnmounted(removeContextMenuListeners);
 .slot.no-click:hover { background: transparent; }
 
 /* Course Block */
+/* 試聽暫留 (in-app #575): a reserved slot, not a lesson — dashed outline, no teacher colour. */
+.trial-hold-block {
+  position: absolute;
+  left: 3px;
+  right: 3px;
+  z-index: 3;
+  min-height: 20px;
+  padding: 2px 6px;
+  border: 1.5px dashed var(--ds-warning);
+  border-radius: 8px;
+  background: var(--ds-warning-wash);
+  color: var(--ds-ink);
+  font-size: 11px;
+  line-height: 1.35;
+  text-align: left;
+  overflow: hidden;
+  cursor: pointer;
+}
+.trial-hold-block:focus-visible { outline: 2px solid var(--ds-primary); outline-offset: 1px; }
 .course-block {
   position: absolute;
   left: 3px;
