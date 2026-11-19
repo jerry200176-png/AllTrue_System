@@ -1377,9 +1377,11 @@ class DeployActivationWorkflowContractTest(unittest.TestCase):
             ("incomplete API listing", [actual], 2, None),
             ("jobs object", {"unexpected": actual}, 1, None),
             ("non-final job", [dict(actual, status="in_progress")], 1, None),
+            ("missing deploy job conclusion", [dict(actual, conclusion=None)], 1, None),
             ("missing deploy step", [dict(actual, steps=[])], 1, None),
             ("different successful step", [dict(actual, steps=[dict(deploy_step, name="Prepare")])], 1, None),
             ("non-final deploy step", [dict(actual, steps=[dict(deploy_step, status="in_progress")])], 1, None),
+            ("missing deploy step conclusion", [dict(actual, steps=[dict(deploy_step, conclusion=None)])], 1, None),
             ("duplicate deploy steps", [dict(actual, steps=[deploy_step, deploy_step])], 1, None),
             ("steps object", [dict(actual, steps={"unexpected": deploy_step})], 1, None),
         ]
