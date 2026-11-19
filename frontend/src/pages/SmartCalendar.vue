@@ -125,7 +125,7 @@
                 </div>
                 <!-- #740 Step 4c：老師篩選 chips 剝離為 presentational 元件 -->
                 <WeekTeacherChips
-                  v-if="visibleTeachers.length > 1 && !isTeacher"
+                  v-if="visibleTeachers.length > 1 && teacherChips.length > 0 && !isTeacher"
                   :teachers="teacherChips"
                   :selected-ids="selectedTeacherChipIds"
                   @toggle="toggleTeacherSelection"
@@ -622,7 +622,7 @@ import {
   isRangeWithinFetchedBounds,
 } from '../lib/calendarLoadPerformance';
 import UniversalClassScheduler from '../components/UniversalClassScheduler.vue';
-import { buildCreateTeacherOptions, resolveCreateTeacherId } from '../lib/courseTeacherOptions.js';
+import { buildCreateTeacherOptions, isAssignableTeacher, resolveCreateTeacherId } from '../lib/courseTeacherOptions.js';
 import OperationsQuickStart from '../components/OperationsQuickStart.vue';
 import { createUniversalClassSchedule } from '../lib/universalSchedulerApi';
 import { adoptionErrorType, trackWorkflowEvent } from '../lib/adoptionTelemetry.js';
@@ -1770,11 +1770,12 @@ const visibleTeachers = computed(() => {
 });
 
 // #740 Step 4c：WeekTeacherChips 資料源（color 由父層預算，active 時套用）
-const teacherChips = computed(() => visibleTeachers.value.map(t => ({
-  id: t.id,
-  username: t.username,
-  color: getTeacherColor(t.id),
-})));
+const teacherChips = computed(() => {
+  const disabledIds = new Set(teachers.value.filter(t => !isAssignableTeacher(t)).map(t => Number(t.id)));
+  return visibleTeachers.value
+    .filter(t => resolveTeacherAliasIds(t, t.id).some(id => !disabledIds.has(id)))
+    .map(t => ({ id: t.id, username: t.username, color: getTeacherColor(t.id) }));
+});
 const selectedTeacherChipIds = computed(() => weekViewTeacherIds.value.map(String));
 const calendarSecondaryControlsSummary = computed(() => {
   const activeFilters = [
@@ -2807,7 +2808,7 @@ watch(() => [props.initialStudentId, props.initialCourseId, props.initialDate, c
   if (!props.initialStudentId && !props.initialCourseId && !props.initialDate) consumedCalendarFocusKey.value = '';
   applyCalendarFocus();
 }, { immediate: true });
-watch(visibleTeachers, (list) => {
+watch([visibleTeachers, teacherChips], ([list, chips]) => {
   if (!Array.isArray(list) || list.length === 0) {
     weekViewTeacherIds.value = [];
     return;
@@ -2816,7 +2817,8 @@ watch(visibleTeachers, (list) => {
   if (filterTeacherId.value && !visibleIds.has(String(filterTeacherId.value))) {
     filterTeacherId.value = '';
   }
-  const cleaned = weekViewTeacherIds.value.filter(id => visibleIds.has(String(id)));
+  const selectableIds = filterTeacherId.value ? visibleIds : new Set(chips.map(t => String(t.id)));
+  const cleaned = weekViewTeacherIds.value.filter(id => selectableIds.has(String(id)));
   if (cleaned.length !== weekViewTeacherIds.value.length) {
     weekViewTeacherIds.value = cleaned;
   }

@@ -44,7 +44,8 @@ class EngagementApiTest extends TestCase
         $eng = $r->json('engagement');
         $this->assertEquals(500, $eng['xp_total']);
         $this->assertEquals('sergeant', $eng['rank_key']);
-        $this->assertArrayHasKey('next_rank_xp', $eng);
+        $this->assertSame(450, $eng['xp_at_current']); // sergeant floor
+        $this->assertSame(700, $eng['next_rank_xp']);   // staff_sergeant
         $this->assertFalse($eng['is_max']);
     }
 
