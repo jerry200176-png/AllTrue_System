@@ -529,7 +529,7 @@
 
 | 欄位 | 內容 |
 |---|---|
-| 狀態 | Open — 等 Founder 決定要不要開（2026-11-17 核對） |
+| 狀態 | Done 2026-11-19（前提不成立，已關閉）：`Application::registerConfiguredProviders()` 會先註冊並啟動所有 `Illuminate\*` provider，再啟動 App 的 provider，所以 `config/app.php` 的排列順序不影響；`AppServiceProvider::boot()` 執行時 Eloquent dispatcher 已綁定，`Notification::observe()` 一直有效。Founder 11-19 確認主任有收到「[AllTrue]」開頭的 LINE。修正 `AppServiceProvider` 裡誤導的註解，並新增 `NotificationLineDispatcherTest::test_creating_a_high_notification_pushes_through_the_registered_observer` 鎖住「只建立通知列就會推播」。 |
 | 優先級 | P2（需使用者決策後再清，涉及 LINE 推播行為） |
 | 發現日期 | 2026-06-13 |
 | 發現來源 | [BUG] 修 #766 audit observer 時發現同源問題 |
@@ -645,7 +645,7 @@
 
 | 欄位 | 內容 |
 |---|---|
-| 狀態 | Open |
+| 狀態 | Partly done 2026-11-19：(2) 已由架構檢查做到。FIT-5 擋狀態字面值重複；FIT-1/6/7/16/18/19 擋扣堂、付款、學費計算等業務邏輯在多處重寫；當初出事的 `一般請假` 已收成 `CourseLeaveCascadeService::VOID_REASON_LEAVE`。剩 (1) 通用複製貼上偵測：建議的 `phpcpd` 上游已封存、不再維護；若要做，改用 `jscpd`（支援 PHP，可設門檻、輸出 baseline）。降為 P3，等再出現同類事故再做。 |
 | 優先級 | P1（原 P2，2026-08-06 因第三個實例落在金流顯示邏輯而調升，見下） |
 | 發現日期 | 2026-08-06 |
 | 發現來源 | 陳禹慈堂數超排案（主任直接回報）根因調查：`CourseLeaveCascadeService::appendTailAfterLeave()` 與 `ClassSessionController::tryExtendOnLeave()` 是同一條業務規則的兩份獨立實作，各自對「已計入堂數」的定義不同步，交替呼叫時會讓已排堂次數悄悄超過購買堂數（PR #1644 修正）；同一批調查也發現 `一般請假` VoidReason 字面值在 `CourseLeaveCascadeService.php` 被重複打了 6 次、`LearningRecordResurrectionPolicy.php` 又獨立抄一份，其中一份被打壞正是 #217/#218 server error 的根因（PR #1645 修正）。詳見 `docs/SYSTEM_TECH_GUIDE.md` §12.4 根因分析。**第三個實例（同日）**：何昀佳帳務中心繳費狀態不一致案（主任直接回報）——`AlertController::computePaymentStatus()` 只認 `StudentClass.Paid` 旗標，沒把「帳單足額收款」算進已繳費判斷，跟課程管理頁面的邏輯不同步（PR #1648 修正，R94）。修復後的盤點掃出這不是單一巧合：`backend/app` 至少 **8 個檔案**（`StudentClassController`、`AlertController` 自身另外兩處、`NotificationSyncService`、`DunningService`、`PaymentReportController`、`ParentPortalController`、`NotificationController`、`AccountingController`、`SendTuitionReminders`）各自獨立重新實作「這筆課程是否已繳費」，且彼此條件互不相同（`Paid` 旗標單一判斷 / `Paid` 或任一筆收款 / `Paid` 或足額收款 / 舊制 `Pay>=Charge` 欄位比較，四種變體並存），`StudentClass`／`Invoice` model 完全沒有任何集中的 `isPaid()`／`isFullyPaid()` 存取器——每個呼叫點都是從零重寫。詳見 `docs/SYSTEM_TECH_GUIDE.md` §12.5。 |
@@ -673,7 +673,7 @@
 
 | 欄位 | 內容 |
 |---|---|
-| 狀態 | Open |
+| 狀態 | Done 2026-11-19：#4504 升級到 Laravel 12 時整份 `audit.ignore` 已移除，`backend/composer.json` 目前沒有任何 accepted-risk 條目，沒有需要到期複查的東西。之後若再加 ignore，每條都要寫複查日期與觸發條件（比照 Snyk／Dependabot waiver）。 |
 | 優先級 | P3 |
 | 發現日期 | 2026-08-07 |
 | 發現來源 | 追查 `Pi Health Monitor`／`bugs:verify-reproductions` 連續紅燈（#170）過程中，CI 的 `Composer audit (security)` 步驟被 4 個新公開的 `league/commonmark` HIGH 嚴重度 DoS advisory（GHSA-mh25-x5hq-wrqp 等）擋下，經 reachability review 確認本專案完全不觸發該套件（僅為 `laravel/framework` 內建 Markdown 郵件功能的可選 transitive dependency，本專案未使用該功能），比照既有的 `GHSA-5vg9-5847-vvmq` accepted-risk 先例加入 `composer.json` 的 `audit.ignore`。 |

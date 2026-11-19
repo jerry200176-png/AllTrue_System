@@ -78,6 +78,20 @@ class NotificationLineDispatcherTest extends TestCase
         );
     }
 
+    public function test_creating_a_high_notification_pushes_through_the_registered_observer(): void
+    {
+        // TD-065 (closed, wrong premise): AppServiceProvider::boot() registers NotificationObserver and Laravel boots
+        // Illuminate\* providers (DatabaseServiceProvider binds the Eloquent dispatcher) before App\* ones, so the
+        // observer is live: creating the row alone, with no direct dispatch() call, sends the staff LINE push.
+        $campus = Campus::factory()->create(['messaging_channel_token' => 'fake-token-abc']);
+        $this->makeStaffWithLine($campus->id, 'Uf0e1d2c3b4a5968778695a4b3c2d1e0f');
+
+        $this->makeHighNotification($campus->id);
+
+        Http::assertSent(fn ($req) => str_contains($req->url(), 'api.line.me/v2/bot/message/push')
+            && $req['to'] === 'Uf0e1d2c3b4a5968778695a4b3c2d1e0f');
+    }
+
     public function test_does_not_send_when_staff_has_no_line_id(): void
     {
         $campus = Campus::factory()->create([

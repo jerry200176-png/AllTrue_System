@@ -41,11 +41,10 @@ class AppServiceProvider extends ServiceProvider
         // missing with()/load() fails the suite; production is unaffected.
         Model::preventLazyLoading(! $this->app->environment('production'));
 
-        // AppServiceProvider is registered before Illuminate's
-        // DatabaseServiceProvider in config/app.php, so the Eloquent event
-        // dispatcher is not bound yet when this boot() runs. Registering an
-        // observer here would silently no-op. Defer until the framework has
-        // fully booted so the dispatcher exists and audit events actually fire.
+        // Deferred since #766, which blamed the config/app.php order for a silent no-op. That premise is wrong:
+        // Application::registerConfiguredProviders() registers and boots Illuminate\* providers first, so the
+        // Eloquent dispatcher exists in this boot() and observers registered here (Notification's above) are live
+        // (TD-065; NotificationLineDispatcherTest locks it). Deferring stays harmless.
         $this->app->booted(function () {
             ClassSession::observe(ClassSessionObserver::class);
         });
