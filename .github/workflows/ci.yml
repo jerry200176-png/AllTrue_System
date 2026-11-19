@@ -959,6 +959,15 @@ jobs:
         working-directory: frontend
         run: npm run sync-release-notes
 
+      # #5178: exercise the same acceptance spec against its loopback-only fixture
+      # on the PR and merge-batch refs, once per run alongside the existing UI suite.
+      - name: Calendar and course acceptance with synthetic data
+        if: matrix.shard == 1 && github.ref != 'refs/heads/main'
+        working-directory: frontend
+        timeout-minutes: 3
+        # The preceding step already generated the release notes used by the fixture.
+        run: npm --ignore-scripts run test:e2e:calendar-course-local
+
       - name: UI foundation page-level Playwright (real Vue + mocked API)
         working-directory: frontend
         env:

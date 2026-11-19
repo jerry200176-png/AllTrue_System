@@ -16,6 +16,7 @@ export default {
   testMatch: /calendar-course-consistency\.spec\.js$/,
   grep: /calendar and course management agree|contracted four-session|in-app 390|in-app 395\/403|in-app 400|in-app 417/,
   metadata: { calendarCourseFixture: true },
+  forbidOnly: Boolean(process.env.CI),
   fullyParallel: true,
   workers: 2,
   use: { ...local.use, baseURL: origin },
