@@ -362,9 +362,10 @@ class ScheduleGuardService
      * @param  array<string, mixed>  $base   teacher_id, class_type, room_id, branch_id, exclude_*
      * @param  iterable<array{date: string, start_time: string, end_time: string}>  $slots
      * @param  bool  $dedupe  collapse repeats of the same type/date/time/room (edit paths)
+     * @param  bool  $lock  read occupancy with row locks; call inside the write transaction (TD-094)
      * @return array<int, array<string, mixed>>
      */
-    public function validateOccurrences(array $base, iterable $slots, bool $dedupe = false): array
+    public function validateOccurrences(array $base, iterable $slots, bool $dedupe = false, bool $lock = false): array
     {
         $out = [];
         $seen = [];
@@ -373,7 +374,7 @@ class ScheduleGuardService
                 'schedule_date' => $slot['date'],
                 'start_time' => $slot['start_time'],
                 'end_time' => $slot['end_time'],
-            ]);
+            ], $lock);
             $start = substr((string) $slot['start_time'], 0, 5);
             $end = substr((string) $slot['end_time'], 0, 5);
             foreach ($conflicts as $conflict) {
@@ -1738,6 +1739,9 @@ class ScheduleGuardService
                 'sc.StudentID',
                 'sc.ClassType',
                 'sc.room_id',
+                // Read with the occupancy row: under $lock this is a current read, while withTrialTargets()'
+                // plain lookup would read the transaction's older snapshot (TD-094 review).
+                'sc.trial_target_class_type',
             ])
             ->when($lock, fn ($q) => $q->lockForUpdate())->get();
 
@@ -1782,7 +1786,7 @@ class ScheduleGuardService
                 'room_id' => $row->room_id ? (int) $row->room_id : null,
                 'start_time' => $start,
                 'end_time' => $end,
-            ];
+            ] + (($row->ClassType ?? '') === 'trial' ? ['trial_target_class_type' => $row->trial_target_class_type ?? null] : []);
             $existingKeys[$courseId . '|' . $start . '|' . $end] = true;
             if ($courseId > 0) {
                 $classSessionCourseIds[$courseId] = true;
@@ -1838,7 +1842,7 @@ class ScheduleGuardService
                 'room_id' => $roomId,
                 'start_time' => $start,
                 'end_time' => $end,
-            ];
+            ] + ($classType === 'trial' && $meta ? ['trial_target_class_type' => $meta->trial_target_class_type ?? null] : []);
         }
 
         // #3590 item 9 (flag on): a substitute on a makeup occurrence is busy too.
@@ -1923,7 +1927,7 @@ class ScheduleGuardService
             return [];
         }
         $courseMeta = [];
-        foreach (DB::table('StudentClass')->whereIn('ID', $ids)->select(['ID', 'ClassType', 'room_id', 'TeacherID', 'Stop'])->when($lock, fn ($q) => $q->lockForUpdate())->get() as $meta) {
+        foreach (DB::table('StudentClass')->whereIn('ID', $ids)->select(['ID', 'ClassType', 'room_id', 'TeacherID', 'Stop', 'trial_target_class_type'])->when($lock, fn ($q) => $q->lockForUpdate())->get() as $meta) {
             $courseMeta[(int) $meta->ID] = $meta;
         }
 

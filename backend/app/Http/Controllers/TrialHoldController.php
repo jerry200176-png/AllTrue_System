@@ -101,7 +101,7 @@ class TrialHoldController extends Controller
                 'note' => isset($data['note']) ? trim((string) $data['note']) : null,
                 'created_by' => $this->actorId($request),
             ]);
-        });
+        }, 3); // retry a deadlock with ScheduleController, which locks the slot without the teacher lock (TD-096)
 
         return response()->json(['data' => $this->present($this->row((int) $hold->id))], 201);
     }

@@ -150,8 +150,16 @@ class TrialHoldTest extends TestCase
             ->assertStatus(422)->assertJsonPath('code', 'trial_hold_mismatch');
         $this->assertSame(0, \App\Models\StudentClass::count());
 
+        $locked = [];
+        \Illuminate\Support\Facades\DB::listen(function ($query) use (&$locked) {
+            if (str_contains(strtolower($query->sql), 'for update')) {
+                $locked[] = str_contains($query->sql, '`User`') ? 'User' : (str_contains($query->sql, '`trial_holds`') ? 'trial_holds' : 'other');
+            }
+        });
         $classId = $this->as($token)->postJson("/api/v1/admission-inquiries/{$inquiry->id}/trial", ['trial_hold_id' => $hold['id']] + $trial)
             ->assertCreated()->json('student_class_id');
+        // TD-094: teacher before hold, the same order as hold creation and enrollment, so they cannot deadlock.
+        $this->assertLessThan(array_search('trial_holds', $locked, true), array_search('User', $locked, true));
         $converted = TrialHold::findOrFail($hold['id']);
         $this->assertSame([TrialHold::CONVERTED, (int) $classId], [$converted->status, (int) $converted->converted_student_class_id]);
         $this->as($token)->getJson('/api/v1/trial-holds?from=2026-09-01&to=2026-09-30')->assertOk()->assertJsonCount(0, 'data');
@@ -161,6 +169,30 @@ class TrialHoldTest extends TestCase
         $other = $this->inquiry($campus);
         $this->as($token)->postJson("/api/v1/admission-inquiries/{$other->id}/trial", ['trial_hold_id' => $hold['id']] + $trial)
             ->assertStatus(409)->assertJsonPath('code', 'trial_hold_not_held');
+    }
+
+    public function test_enrollment_checks_capacity_under_the_teacher_lock_and_a_refusal_writes_nothing(): void
+    {
+        // TD-094: the capacity check runs inside the enrollment write transaction under the teacher's
+        // User row lock (the same mutex a hold takes), so a hold and an enrollment cannot both win a slot.
+        [$campus, $teacher, $token] = $this->campusWithTeacherAndDirector();
+        $this->as($token)->postJson('/api/v1/trial-holds', $this->holdPayload($campus, $teacher))->assertCreated();
+        $inquiry = $this->inquiry($campus);
+        $students = \App\Models\Student::count();
+
+        $teacherLocks = [];
+        \Illuminate\Support\Facades\DB::listen(function ($query) use (&$teacherLocks) {
+            if (str_contains($query->sql, '`User`') && str_contains(strtolower($query->sql), 'for update')) {
+                $teacherLocks[] = $query->bindings;
+            }
+        });
+        $this->as($token)->postJson("/api/v1/admission-inquiries/{$inquiry->id}/trial", [
+            'teacher_id' => $teacher->id, 'trial_date' => self::DATE, 'start_time' => '20:00', 'duration_minutes' => 30,
+        ])->assertStatus(409)->assertJsonPath('code', 'teacher_schedule_conflict');
+
+        $this->assertContains([$teacher->id], $teacherLocks, 'the capacity check ran under the teacher row lock');
+        $this->assertSame($students, \App\Models\Student::count(), 'the refused enrollment rolled back its inline student');
+        $this->assertSame(0, \App\Models\StudentClass::count());
     }
 
     /** @return array{0: Campus, 1: User, 2: string} */
