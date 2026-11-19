@@ -49,6 +49,9 @@ return [
     // (no in-app Notification rows, no parent LINE push) — production behaviour unchanged.
     // Flip to true (PERF_FEEDBACK_PUSH=true) only after notification cadence/opt-out copy is confirmed.
     'feedback_push_enabled' => (bool) env('PERF_FEEDBACK_PUSH', false),
+    // Per-campus pilot while the global switch above stays off (Founder GO 2026-11-19, TD-063: 板橋 = 25 only,
+    // every other campus off). "25,26" lists campuses, "*" = all, "" = none.
+    'feedback_push_campus_ids' => env('PERF_FEEDBACK_PUSH_CAMPUS_IDS', '25'),
 
     // Merge window (seconds): within this window, repeated feedback/reply events on the same
     // thread+direction are merged into a single push (anti-notification-fatigue). Default 600 = 10 min.

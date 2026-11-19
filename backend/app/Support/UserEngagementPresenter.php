@@ -91,11 +91,26 @@ final class UserEngagementPresenter
             $rankKey = self::DEFAULT_RANK_KEY;
         }
 
+        // TD-017: the server owns the rank table; the progress bar only renders these two numbers.
+        $mins = array_values(EngagementRankProgression::thresholdsForTrack($roleTrack));
+        sort($mins);
+        $xpAtCurrent = 0;
+        $nextRankXp = null;
+        foreach ($mins as $min) {
+            if ($xp >= $min) {
+                $xpAtCurrent = $min;
+            } elseif ($nextRankXp === null) {
+                $nextRankXp = $min;
+            }
+        }
+
         return [
             'role_track' => $roleTrack,
             'rank_key' => $rankKey,
             'rank_label' => self::rankLabel($rankKey),
             'xp_total' => $xp,
+            'xp_at_current' => $xpAtCurrent,
+            'next_rank_xp' => $nextRankXp,
         ];
     }
 }

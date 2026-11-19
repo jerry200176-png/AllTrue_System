@@ -1,10 +1,11 @@
 // @ts-check
 import { test, expect } from '@playwright/test';
 import { latestReleaseVersionForRole } from '../src/lib/releaseNotes.js';
-import { coursePaymentBadge, REPORT_STATUS_LABELS, shortPaymentLabel, TUITION_STATUS_CONFIG } from '../src/lib/courseMoneyState.js';
+import { coursePaymentBadge, REPORT_STATUS_LABELS, shortPaymentLabel } from '../src/lib/courseMoneyState.js';
 import { getNavigationGroups, sidebarMoreTrigger } from '../src/lib/navigationRegistry.js';
 import { formatCourseRef, formatCoursePeriod } from '../src/lib/studentBillingRows.js';
 import { dismissOverlays } from './fixtures/dismissOverlays.js';
+import { expectAmendedCoursePlanning, installCoursePlanningRead, readCoursePlanningWindow } from './fixtures/coursePlanningDetails.js';
 import {
   BILLING_ACTION,
   expectedCoursePaymentActionLabel,
@@ -20,7 +21,7 @@ import {
   isKnownPostRead,
   isKnownStatefulRead,
 } from './fixtures/readOnlyAppGuard.js';
-import { installLocalClassSessionReads, nonMaterializingProjectionPath } from './fixtures/classSessionReadResponder.js';
+import { installLocalClassSessionReads, readBoundedProjection } from './fixtures/classSessionReadResponder.js';
 import { formatCalendarRange } from '../src/lib/calendarViewDisplay.js';
 import { compareDrawnCards, describeDrawnCards, drawsServedSessions } from './fixtures/calendarDrawnCards.js';
 
@@ -281,7 +282,9 @@ async function openDirectorApp(page, viewport) {
 // "precondition absent" for it (acceptance-report-gate prints the note)
 // instead of reporting it as verified.
 function notePreconditionAbsent(name) {
-  test.info().annotations.push({ type: 'precondition-absent', description: name });
+  const info = test.info();
+  if (info.project.metadata.calendarCourseFixture) throw new Error(`synthetic case is missing: ${name}`);
+  info.annotations.push({ type: 'precondition-absent', description: name });
 }
 
 // How many live cases a check compared; a name and a number, never page text.
@@ -424,14 +427,10 @@ test.describe('production acceptance — calendar/course parity', () => {
         end: END,
         per_page: '2000',
       });
-      // The only class-session read this spec sends to the app. It throws for a one-day window,
-      // which would make the server create class sessions (#5175).
-      const projectionPath = nonMaterializingProjectionPath({ branchId: BRANCH_ID, start: START, end: END });
-
       const [coursesPayload, schedulesPayload, projectionPayload] = await Promise.all([
         getJson(request, `/api/v1/student-classes?${params}`, token),
         getJson(request, `/api/v1/schedules?${params}`, token),
-        getJson(request, projectionPath, token),
+        readBoundedProjection(request, APP_ORIGIN, { branchId: BRANCH_ID, start: START, end: END }, token),
       ]);
 
       const courses = listFromPayload(coursesPayload);
@@ -489,6 +488,9 @@ test.describe('production acceptance — calendar/course parity', () => {
       const orphanDates = [...new Set(orphanTargets
         .map((row) => ymd(valueOf(row, 'schedule_date', 'session_date', 'SessionDate')))
         .filter((date) => date >= START && date <= END))];
+      if (test.info().project.metadata.calendarCourseFixture) {
+        expect(orphanDates, 'synthetic data must exercise the orphan schedule assertion').toHaveLength(1);
+      }
 
       // The calendar must show the checked window with its sessions. Without this, the orphan check
       // below passes on a calendar that received nothing (the state of this test after #5147).
@@ -657,6 +659,9 @@ test.describe('production acceptance — calendar/course parity', () => {
       test.skip(!BASE || !SESSION?.access_token || !SESSION?.user?.id,
         'missing controlled production director session');
       test.skip(BRANCH_ID !== 9, 'the reported unarranged-session course is scoped to campus 9');
+      expect(AUTHORIZED_CAMPUSES).toContain(BRANCH_ID);
+      // Before the student search, the initial page may contain only other courses.
+      countBlockedKnownPostReads();
       await page.setViewportSize({ width: viewport.width, height: viewport.height });
       const token = SESSION.access_token;
       const coursesPayload = await getJson(
@@ -681,6 +686,14 @@ test.describe('production acceptance — calendar/course parity', () => {
       expect(studentName).not.toBe('');
       expect(subjectName).not.toBe('');
 
+      const courseId = Number(valueOf(target, 'id', 'ID'));
+      expect(Number.isSafeInteger(courseId) && courseId > 0).toBe(true);
+      const { served, limits } = await installCoursePlanningRead(page, APP_ORIGIN, {
+        branchId: BRANCH_ID,
+        courseId,
+        readWindow: (window) => readCoursePlanningWindow(request, APP_ORIGIN, window, token),
+      });
+
       await primeDirectorSession(page);
       await page.goto('/');
       await expect(page.locator('#login-account')).toHaveCount(0, { timeout: 20_000 });
@@ -693,33 +706,15 @@ test.describe('production acceptance — calendar/course parity', () => {
       await expect(group).toBeVisible({ timeout: 20_000 });
       const toggle = group.locator('.student-group-toggle');
       if (await toggle.getAttribute('aria-expanded') !== 'true') await toggle.click();
-      const targetCourseId = Number(valueOf(target, 'id', 'ID'));
-      expect(targetCourseId).toBeGreaterThan(0);
-      const row = group.locator(`.course-row[data-contract-id="${targetCourseId}"]`);
+      const row = group.locator(`.course-row[data-contract-id="${courseId}"]`);
       await expect(row).toBeVisible({ timeout: 15_000 });
       await expect(row).toContainText(subjectName);
-      await row.getByRole('button', { name: '詳情', exact: true }).click();
-
-      const detail = group.locator('.detail-panel').first();
-      const planning = detail.locator('.drift-hint-info');
-      await expect(planning).toBeVisible({ timeout: 15_000 });
-      await expect(planning).toContainText('已排 2／購買 4 堂，尚有 2 堂未安排');
-      await expect(planning).toContainText('下方日期清單只列已實際排定的堂次');
-      // Keep the count contract independent of typography, while ensuring the
-      // selected detail is the reported 2-attended / 4-purchased course.
-      await expect(detail.locator('.dates-panel-title')).toContainText(/已上\s*2\s*[／/]\s*購買\s*4\s*堂/);
-      if (viewport.name === 'desktop') {
-        await expect(row.getByRole('button', { name: '排課', exact: true })).toBeEnabled();
-      } else {
-        const isClipped = await planning.evaluate((element) => element.scrollWidth > element.clientWidth + 1);
-        expect(isClipped, 'the unarranged-session explanation must wrap rather than clip on mobile').toBeFalsy();
-        await row.getByRole('button', { name: /更多/ }).click();
-        const makeupEntry = group.getByRole('menuitem', { name: /補課 \/ 補登/ });
-        await expect(makeupEntry).toBeVisible();
-        // This exact report is an already-ended contract. Keep the existing
-        // guard: the entry remains discoverable but cannot create a new
-        // session after a contract amendment.
-        await expect(makeupEntry).toBeDisabled();
+      await expectAmendedCoursePlanning(page, group, row, { mobile: viewport.name === 'mobile' });
+      expect(served.some((count) => count >= 2), 'selected course must receive its real dated rows').toBe(true);
+      expect(limits, 'course planning acceptance stayed within the read budget').toEqual([]);
+      if (test.info().project.metadata.calendarCourseFixture) {
+        expect(blockedHttpWrites.some((request) => isKnownPostRead(APP_ORIGIN, request)),
+          'the initial list omits the target and its POST read must be blocked locally').toBe(true);
       }
     });
   }
@@ -748,6 +743,7 @@ test.describe('production acceptance — calendar/course parity', () => {
     await expect(panel, 'search panel closes').toHaveCount(0);
   });
 
+  // Keep the title stable for the production acceptance report manifest.
   test('director desktop: in-app 395/403 帳務中心應收分頁用新標籤，不再出現舊字樣', async ({ page }) => {
     test.setTimeout(90_000);
     await openDirectorApp(page, DESKTOP);
@@ -757,34 +753,21 @@ test.describe('production acceptance — calendar/course parity', () => {
       readySelector: '[data-guide="tuition-header"]',
     });
     const center = page.locator('.tc-page');
-    // loadAlerts() starts in setup, so 待處理清單 has no count while loading; then it reads
-    // 「待處理清單 N 筆」, or is hidden when nothing is pending.
-    const queue = page.getByTestId('tc-reminder-receivables');
-    const queueState = async () => {
-      if (await queue.count() === 0) return 'empty';
-      return /\d+\s*筆$/.test((await queue.innerText()).trim()) ? 'listed' : 'loading';
-    };
-    await expect.poll(queueState, { timeout: 20_000, message: '帳務中心 queue loads' }).not.toBe('loading');
-    await expectNoRetiredBillingLabels(center, '帳務中心 學生');
-
-    if (await queueState() === 'listed') {
-      await queue.click();
-      const tabs = page.locator('#tuition-accounting-panel-receivables .tc-tabs .tc-tab');
-      await expect(tabs.first(), '應收 tabs').toBeVisible({ timeout: 15_000 });
-      const labels = await tabs.evaluateAll((buttons) => buttons.map((button) => [...button.childNodes]
-        .filter((node) => !(node instanceof Element && node.classList.contains('tc-tab-badge')))
-        .map((node) => node.textContent).join('').trim()));
-      for (const label of [
-        `${TUITION_STATUS_CONFIG.unpaid.label}／${TUITION_STATUS_CONFIG.partial.label}`,
-        REPORT_STATUS_LABELS.pending,
-        TUITION_STATUS_CONFIG.pending_reconciliation.label,
-        TUITION_STATUS_CONFIG.amount_review.label,
-      ]) expect(labels, `應收 tab ${label}`).toContain(label);
-      expect(labels.filter((label) => /等你確認|付款期間待確認/.test(label)), 'no 應收 tab keeps a retired label').toEqual([]);
-      await expectNoRetiredBillingLabels(center, '帳務中心 待處理清單');
-    } else {
-      notePreconditionAbsent('receivables_queue');
+    const bills = center.locator('#tuition-accounting-panel-students');
+    await expect(bills.getByTestId('bill-search')).toBeVisible({ timeout: 20_000 });
+    await expect(bills.getByTestId('bill-error')).toHaveCount(0);
+    // #5464 folded the separate receivables queue into the canonical bill list.
+    await expect(center.getByTestId('tc-reminder-receivables')).toHaveCount(0);
+    for (const [key, label] of [
+      ['todo', '要處理'], ['confirm', REPORT_STATUS_LABELS.pending], ['owing', '未繳'],
+      ['issue', '要開帳單'], ['review', '需核對'],
+    ]) {
+      await expect(bills.getByTestId(`bill-filter-${key}`)).toContainText(label);
     }
+    const confirm = bills.getByTestId('bill-filter-confirm');
+    await confirm.click();
+    await expect(confirm).toHaveAttribute('aria-pressed', 'true');
+    await expectNoRetiredBillingLabels(center, '帳務中心 帳單與收款');
 
     await page.locator('#tuition-accounting-tab-monthly').click();
     const monthly = page.locator('#tuition-accounting-panel-monthly .monthly-review');

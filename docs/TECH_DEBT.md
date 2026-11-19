@@ -262,7 +262,7 @@
 
 | 欄位 | 內容 |
 |---|---|
-| 狀態 | Open — 跟 TD-065 一起決定（員工的重要通知 LINE 推播目前沒有真的發，自填 LINE ID 也沒用） |
+| 狀態 | Closed 2026-11-20（隨 TD-065）：員工 LINE 推播已刪除，自填 LINE ID 沒有用途。日後若要員工 LINE 通知，改用跟家長一樣的綁定流程（官方帳號輸入綁定碼），不用自填 U 開頭的 LINE user ID（LINE app 裡看不到）。 |
 | 優先級 | P2 |
 | 發現日期 | 2026-04-26 |
 | 發現來源 | 開發中 |
@@ -319,7 +319,7 @@
 
 | 欄位 | 內容 |
 |---|---|
-| 狀態 | Open（2026-11-17 核對，Codex #5454 指正）：`GET /api/v1/engagement/rank-thresholds` 只餵「軍階總覽」視窗；進度條（`rankTierProgress`／`xpRemainingToNext`）仍只用前端寫死的表，`fetchRankThresholds`／`setCachedThresholds` 沒有任何呼叫者。修法：`EngagementRankStrip` 掛載時呼叫 `fetchRankThresholds`，進度 computed 依賴一個載入完成的 ref。 |
+| 狀態 | Done 2026-11-20：軍階表只留後端一份。`UserEngagementPresenter::forMe`（`/me` 與 `engagement/my-progress` 都用它）多回傳 `xp_at_current`、`next_rank_xp`；前端 `engagementRankProgress.js` 刪掉寫死的兩張表、`fetchRankThresholds`／`setCachedThresholds`／`rankKeyForXp`，進度條只用這兩個數字計算。「軍階總覽」視窗本來就讀 `GET engagement/rank-thresholds`。 |
 | 優先級 | P2 |
 | 發現日期 | 2026-05-10 |
 | 發現來源 | 開發中（#326 前端進度條）|
@@ -501,7 +501,7 @@
 
 | 欄位 | 內容 |
 |---|---|
-| 狀態 | Open |
+| 狀態 | In progress 2026-11-19：Founder 決定先在板橋分校（25）試辦，其他分校關閉。新增 `perfflags.feedback_push_campus_ids`（`PERF_FEEDBACK_PUSH_CAMPUS_IDS`，預設 `25`），`FeedbackPushNotifier::enabledFor()` 依回饋所屬分校判斷。家長端退訂開關已存在（ParentPortal「學習回饋通知」）。剩：觀察 1–2 週推播量與家長回覆率（TD-057）後，由 Founder 決定是否擴大。 |
 | 優先級 | P2 |
 | 發現日期 | 2026-06-01 |
 | 發現來源 | 開發中（feedback push dark launch，PRD：`docs/archive/cursor-plans/feedback-push-notifications_2026-06-01.md`）|
@@ -529,7 +529,7 @@
 
 | 欄位 | 內容 |
 |---|---|
-| 狀態 | Open — 等 Founder 決定要不要開（2026-11-17 核對） |
+| 狀態 | Done 2026-11-20（Founder 11-19 決定刪除死碼）：CI 實測（#5542 診斷）建立 high 通知時 app 的 event dispatcher 上沒有 `eloquent.created: Notification` listener，`NotificationObserver` 從未觸發，員工 LINE 推播從未送出（個人設定頁本來就寫「暫不影響既有通知流程」）。已刪除 `NotificationObserver`、`NotificationLineDispatcher` 與其測試；`AppServiceProviderObserverRegistrationTest` 擋住之後再把 `::observe()` 寫在 `boot()` 而不是 `booted()`。若日後要員工 LINE 通知，重新設計（先計量、再送出），並從綁定流程開始（見 TD-013）。 |
 | 優先級 | P2（需使用者決策後再清，涉及 LINE 推播行為） |
 | 發現日期 | 2026-06-13 |
 | 發現來源 | [BUG] 修 #766 audit observer 時發現同源問題 |
@@ -645,7 +645,7 @@
 
 | 欄位 | 內容 |
 |---|---|
-| 狀態 | Open |
+| 狀態 | Partly done 2026-11-19：(2) 已由架構檢查做到。FIT-5 擋狀態字面值重複；FIT-1/6/7/16/18/19 擋扣堂、付款、學費計算等業務邏輯在多處重寫；當初出事的 `一般請假` 已收成 `CourseLeaveCascadeService::VOID_REASON_LEAVE`。剩 (1) 通用複製貼上偵測：建議的 `phpcpd` 上游已封存、不再維護；若要做，改用 `jscpd`（支援 PHP，可設門檻、輸出 baseline）。降為 P3，等再出現同類事故再做。 |
 | 優先級 | P1（原 P2，2026-08-06 因第三個實例落在金流顯示邏輯而調升，見下） |
 | 發現日期 | 2026-08-06 |
 | 發現來源 | 陳禹慈堂數超排案（主任直接回報）根因調查：`CourseLeaveCascadeService::appendTailAfterLeave()` 與 `ClassSessionController::tryExtendOnLeave()` 是同一條業務規則的兩份獨立實作，各自對「已計入堂數」的定義不同步，交替呼叫時會讓已排堂次數悄悄超過購買堂數（PR #1644 修正）；同一批調查也發現 `一般請假` VoidReason 字面值在 `CourseLeaveCascadeService.php` 被重複打了 6 次、`LearningRecordResurrectionPolicy.php` 又獨立抄一份，其中一份被打壞正是 #217/#218 server error 的根因（PR #1645 修正）。詳見 `docs/SYSTEM_TECH_GUIDE.md` §12.4 根因分析。**第三個實例（同日）**：何昀佳帳務中心繳費狀態不一致案（主任直接回報）——`AlertController::computePaymentStatus()` 只認 `StudentClass.Paid` 旗標，沒把「帳單足額收款」算進已繳費判斷，跟課程管理頁面的邏輯不同步（PR #1648 修正，R94）。修復後的盤點掃出這不是單一巧合：`backend/app` 至少 **8 個檔案**（`StudentClassController`、`AlertController` 自身另外兩處、`NotificationSyncService`、`DunningService`、`PaymentReportController`、`ParentPortalController`、`NotificationController`、`AccountingController`、`SendTuitionReminders`）各自獨立重新實作「這筆課程是否已繳費」，且彼此條件互不相同（`Paid` 旗標單一判斷 / `Paid` 或任一筆收款 / `Paid` 或足額收款 / 舊制 `Pay>=Charge` 欄位比較，四種變體並存），`StudentClass`／`Invoice` model 完全沒有任何集中的 `isPaid()`／`isFullyPaid()` 存取器——每個呼叫點都是從零重寫。詳見 `docs/SYSTEM_TECH_GUIDE.md` §12.5。 |
@@ -673,7 +673,7 @@
 
 | 欄位 | 內容 |
 |---|---|
-| 狀態 | Open |
+| 狀態 | Done 2026-11-19：#4504 升級到 Laravel 12 時整份 `audit.ignore` 已移除，`backend/composer.json` 目前沒有任何 accepted-risk 條目，沒有需要到期複查的東西。之後若再加 ignore，每條都要寫複查日期與觸發條件（比照 Snyk／Dependabot waiver）。 |
 | 優先級 | P3 |
 | 發現日期 | 2026-08-07 |
 | 發現來源 | 追查 `Pi Health Monitor`／`bugs:verify-reproductions` 連續紅燈（#170）過程中，CI 的 `Composer audit (security)` 步驟被 4 個新公開的 `league/commonmark` HIGH 嚴重度 DoS advisory（GHSA-mh25-x5hq-wrqp 等）擋下，經 reachability review 確認本專案完全不觸發該套件（僅為 `laravel/framework` 內建 Markdown 郵件功能的可選 transitive dependency，本專案未使用該功能），比照既有的 `GHSA-5vg9-5847-vvmq` accepted-risk 先例加入 `composer.json` 的 `audit.ignore`。 |
@@ -869,7 +869,7 @@
 
 | 欄位 | 內容 |
 |---|---|
-| 狀態 | Open |
+| 狀態 | Partly done 2026-11-19（Founder GO 2026-11-19）：同一個 migration 丟棄沒有讀寫者的 `assessment_attempts`、`assessment_answers`、`assessment_question_snapshots`、`assessment_audit_logs`（丟棄前皆 0 列）。剩：`assessments`、`assessment_results`、`assessment_remediation_actions` 仍被家長端與學習歷程讀取，要先移除那些讀取才能處理。 |
 | 優先級 | P3 |
 | 發現日期 | 2026-11-13 |
 | 發現來源 | Founder 決定 2026-11-13「學習檢測頁沒什麼人用就移除」；正式環境唯讀量測所有校區 0 筆檢測、0 筆結果、0 筆補強 |
@@ -883,7 +883,7 @@
 
 | 欄位 | 內容 |
 |---|---|
-| 狀態 | Open |
+| 狀態 | Done 2026-11-19（Founder GO 2026-11-19）：`2026_11_19_200000_drop_unused_question_bank_and_assessment_attempt_tables` 丟棄 `question_banks`、`question_bank_items`、`question_bank_audit_logs`。丟棄前正式資料皆 0 列。 |
 | 優先級 | P3 |
 | 發現日期 | 2026-11-13 |
 | 發現來源 | Founder 決定 2026-11-13「未使用的功能移除、不遷移」（issue #4991）；正式環境唯讀量測 14 個校區皆 0 筆題庫 |

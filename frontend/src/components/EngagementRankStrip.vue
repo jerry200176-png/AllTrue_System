@@ -85,14 +85,14 @@ const progress = computed(() => {
   if (!showXp.value) {
     return { pct: 0, isMax: true, xpAtNext: null };
   }
-  return rankTierProgress(props.engagement.xp_total, track.value);
+  return rankTierProgress(props.engagement);
 });
 
 const barWidth = computed(() => (showXp.value ? progress.value.pct : 0));
 
 const remainingXp = computed(() => {
   if (!showXp.value) return 0;
-  return xpRemainingToNext(props.engagement.xp_total, track.value);
+  return xpRemainingToNext(props.engagement);
 });
 
 const showRankOverview = ref(false);
