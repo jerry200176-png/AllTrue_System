@@ -39,15 +39,18 @@ trait AgreedFeeRefreshDatabase
             $this->app[Kernel::class]->setArtisan(null);
             RefreshDatabaseState::$migrated = true;
         }
-        // Always ensure — not only on first migrate in this process.
+        // Remember whether the migration supplied these columns before this fixture ran.
+        $hadExtensionColumns = AgreedFeeTestSchema::hasExtensionColumns();
         AgreedFeeTestSchema::ensureExtensionColumns();
         $this->beginDatabaseTransaction();
-        // Laravel registers rollback first. Only after it has cleared the rows
-        // may we undo this helper's extension DDL and reuse the base generation.
-        $this->beforeApplicationDestroyed(function () {
+        // Laravel rolls back fixture rows first. Preserve the schema that was
+        // present at setup so ordinary RefreshDatabase tests can reuse it.
+        $this->beforeApplicationDestroyed(function () use ($hadExtensionColumns) {
             RefreshDatabaseState::$migrated = false;
             if (!$this->agreedFeeRequiresFreshSchema) {
-                RefreshDatabaseState::$migrated = AgreedFeeTestSchema::restoreBaseSchemaAfterTest();
+                RefreshDatabaseState::$migrated = $hadExtensionColumns
+                    ? AgreedFeeTestSchema::hasExtensionColumns()
+                    : AgreedFeeTestSchema::restoreBaseSchemaAfterTest();
             }
         });
     }

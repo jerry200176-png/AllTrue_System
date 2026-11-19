@@ -102,7 +102,7 @@ class AgreedFeeSchemaLifecycleTest extends TestCase
         $this->assertSame(1, DB::table('invoice_corrections')->where('kind', 'agreed_fee_unbilled')->count());
     }
 
-    public function test_following_ordinary_refresh_reuses_the_restored_base_without_remigrating(): void
+    public function test_following_ordinary_refresh_preserves_migrated_extensions_without_remigrating(): void
     {
         $fixture = $this->fixture();
         $report = $this->receiptFor($fixture);
@@ -126,10 +126,10 @@ class AgreedFeeSchemaLifecycleTest extends TestCase
             });
             try {
                 $this->laravelRefreshTestDatabase();
-                $this->assertFalse(Schema::hasColumn('invoice_corrections', 'kind'));
+                $this->assertTrue(AgreedFeeTestSchema::hasExtensionColumns());
                 $column = collect(DB::select('SHOW COLUMNS FROM invoice_corrections'))->firstWhere('Field', 'amount');
-                $this->assertSame('NO', $column->Null);
-                $this->assertSame([], $ddl, 'ordinary refresh must not remigrate an already restored base');
+                $this->assertSame('YES', $column->Null);
+                $this->assertSame([], $ddl, 'ordinary refresh must not remigrate an intact baseline');
             } finally {
                 $this->endOuterTestingTransactions();
                 RefreshDatabaseState::$migrated = false;
