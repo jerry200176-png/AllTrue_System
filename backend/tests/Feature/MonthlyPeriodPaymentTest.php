@@ -361,7 +361,7 @@ class MonthlyPeriodPaymentTest extends TestCase
         $this->assertSame('unpaid', $ended['periods'][0]['payment_status']);
 
         ClassSession::where('StudentClassID', $course->ID)->delete();
-        $this->assertTrue($at('2026-09-05 12:00:00')['periods'][0]['amount_discrepancy'], 'no held lesson must not turn the bill into NT$0 owed');
+        $this->assertSame(2000, $at('2026-09-05 12:00:00')['periods'][0]['charge'], 'no held lesson must not turn the bill into NT$0 owed');
     }
 
     public function test_review_reasons_explain_flag(): void

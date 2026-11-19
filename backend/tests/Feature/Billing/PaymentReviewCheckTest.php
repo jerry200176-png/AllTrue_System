@@ -172,7 +172,7 @@ class PaymentReviewCheckTest extends TestCase
     public function test_owed_course_is_refused(): void
     {
         $course = $this->course();
-        $this->invoice($course, '2026-08', 1500, 0);
+        $this->invoice($course, '2026-08', 1500, 500); // partly paid: an unpaid ended bill is plainly owed, not a review (2026-11-19)
         $this->check($this->token(), $course)->assertStatus(409)->assertJson(['code' => 'payment_review_check_owed']);
         $this->assertNull($course->fresh()->review_checked_signature);
     }

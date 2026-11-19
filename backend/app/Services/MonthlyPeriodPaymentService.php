@@ -89,7 +89,7 @@ final class MonthlyPeriodPaymentService
             if ($existing['period_start'] !== $start || $existing['period_end'] !== $end) { $ambiguous = true; $reasons[] = 'period_mismatch'; }
             // Founder 2026-11-19: an unpaid bill whose period is over is already shown and collected at its held-lesson
             // total (repriceable), so the issue-time total is not a mismatch to review. No held lesson (NT$0) stays in review.
-            $repriced = $amount['amount_discrepancy'] && ($amount['repriceable'] ?? false)
+            $repriced = $amount['amount_discrepancy'] && $amount['repriceable']
                 && (int) ($amount['computed_total_amount'] ?? 0) > 0 && $end < Carbon::now('Asia/Taipei')->toDateString();
             $amount['amount_discrepancy'] = $amount['amount_discrepancy'] && !$repriced;
             $existing['amount_discrepancy'] = $existing['amount_discrepancy'] || $amount['amount_discrepancy'];

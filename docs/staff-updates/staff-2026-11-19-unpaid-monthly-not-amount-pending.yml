@@ -5,10 +5,10 @@ updates:
       - director
       - super_admin
     importance: digest
-    title: 月結帳單還沒收款時不再顯示「金額待確認」
+    title: 月結未收款帳單不再待確認
     summary: 月份結束、還沒收款的月結帳單，會直接顯示未繳和照實際堂數算的金額。
     items:
       - category: fixed
-        text: 開帳單後有請假的月結課程，月份結束且還沒收款時直接顯示「未繳」，可以照常傳繳費單；已收款或整月沒有上課紀錄的帳單仍需核對。
+        text: 開帳單後有請假的月結課程，月份結束且還沒收款時直接顯示「未繳」，可以照常傳繳費單。
     source_refs:
       - "changelog:2026-11-19-unpaid-monthly-not-amount-pending"
