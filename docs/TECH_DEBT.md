@@ -907,7 +907,7 @@
 ### TD-092：夜間檢查的「強制」開關只靠原始碼比對，handle() 的行為沒有測試鎖（P3）
 | 欄位 | 內容 |
 |---|---|
-| 狀態 | Open |
+| 狀態 | Done 2026-11-19（新增行為測試 `VerifyBugReproductionsTest::test_each_enforced_condition_alone_fails_the_command`：每個強制條件各塞一筆壞資料，其他強制條件的 baseline 設成不可能達到的數字，確認命令單獨因它而非零結束、狀態為 REGRESSED；另一個測試要求每個強制條件都有對應的壞資料案例。第二項「其他 baseline 也比對 merge base」不做：調高 baseline 一定出現在 PR diff，Codex 與獨立審查都會看到；等真的有人偷調才加。） |
 | 優先級 | P3 |
 | 發現日期 | 2026-11-18 |
 | 發現來源 | [REVIEW] #5500 獨立審查 |
