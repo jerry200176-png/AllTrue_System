@@ -12,12 +12,15 @@ use App\Models\StudentClass;
 use App\Models\User;
 use App\Models\UserCampus;
 use Carbon\Carbon;
+use Eris\Generators;
+use Eris\TestTrait;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
 class MonthlyBillingSlipTest extends TestCase
 {
     use RefreshDatabase;
+    use TestTrait;
 
     protected function tearDown(): void
     {
@@ -163,6 +166,75 @@ class MonthlyBillingSlipTest extends TestCase
             ->assertJsonPath('data.0.TotalAmount', 7500)
             ->assertJsonPath('data.0.stored_total_amount', 6000)
             ->assertJsonPath('data.0.amount_discrepancy', true);
+
+        // A previously corrected header can already match the lessons while its line is stale.
+        $invoice->update(['TotalAmount' => 7500]);
+        $invoice->items()->update([
+            'Amount' => 9000,
+            'Description' => '合成月結服務明細',
+            'PeriodStart' => '2026-07-01',
+            'PeriodEnd' => '2026-07-29',
+        ]);
+        $this->withHeaders(['Authorization' => "Bearer {$token}"])
+            ->getJson("/api/v1/invoices/{$invoice->id}/slip-data")
+            ->assertOk()
+            ->assertJsonPath('total_amount', 7500)
+            ->assertJsonPath('amount_discrepancy', false)
+            ->assertJsonPath('items.0.amount', 7500)
+            ->assertJsonPath('items.0.stored_amount', 9000)
+            ->assertJsonPath('items.0.description', '合成月結服務明細')
+            ->assertJsonPath('items.0.period_start', '2026-07-01')
+            ->assertJsonPath('items.0.period_end', '2026-07-29')
+            ->assertJsonCount(5, 'sessions');
+        $this->assertDatabaseHas('InvoiceItem', ['InvoiceID' => $invoice->id, 'Amount' => 9000]);
+
+        // The monthly total cannot replace a line for a service window that excludes a billed lesson.
+        $invoice->items()->update(['Amount' => 6000, 'PeriodEnd' => '2026-07-22']);
+        $this->withHeaders(['Authorization' => "Bearer {$token}"])
+            ->getJson("/api/v1/invoices/{$invoice->id}/slip-data")
+            ->assertOk()
+            ->assertJsonPath('total_amount', 7500)
+            ->assertJsonPath('items.0.amount', 6000)
+            ->assertJsonPath('items.0.period_end', '2026-07-22');
+
+        // The sole line still belongs to a different course if it has a different course ID.
+        $otherCourse = $course->replicate();
+        $otherCourse->save();
+        $invoice->items()->update(['StudentClassID' => $otherCourse->ID, 'Amount' => 9000, 'PeriodEnd' => '2026-07-29']);
+        $this->withHeaders(['Authorization' => "Bearer {$token}"])
+            ->getJson("/api/v1/invoices/{$invoice->id}/slip-data")
+            ->assertOk()
+            ->assertJsonPath('total_amount', 7500)
+            ->assertJsonPath('items.0.amount', 9000)
+            ->assertJsonPath('items.0.description', '合成月結服務明細')
+            ->assertJsonPath('items.0.period_end', '2026-07-29');
+
+        $this->seed = (int) (getenv('ERIS_SEED') ?: 5541);
+        $lineCourseIds = [null, $course->ID, $otherCourse->ID];
+        $this->limitTo(32)
+            ->forAll(Generators::choose(0, 20000), Generators::choose(0, 2), Generators::choose(27, 31))
+            ->then(function (int $storedAmount, int $link, int $lastDay) use ($invoice, $lineCourseIds): void {
+                $serviceEnd = '2026-07-' . $lastDay;
+                $invoice->items()->update([
+                    'StudentClassID' => $lineCourseIds[$link],
+                    'Amount' => $storedAmount,
+                    'PeriodEnd' => $serviceEnd,
+                ]);
+                // Five held lessons cost 1,500 each. The last falls on July 29.
+                $expected = $link !== 2 && $lastDay >= 29 ? 7500 : $storedAmount;
+                $this->getJson("/api/v1/invoices/{$invoice->id}/slip-data")
+                    ->assertOk()
+                    ->assertJsonPath('total_amount', 7500)
+                    ->assertJsonPath('items.0.amount', $expected)
+                    ->assertJsonPath('items.0.stored_amount', $storedAmount)
+                    ->assertJsonPath('items.0.period_end', $serviceEnd);
+                $this->assertDatabaseHas('InvoiceItem', [
+                    'InvoiceID' => $invoice->id,
+                    'StudentClassID' => $lineCourseIds[$link],
+                    'Amount' => $storedAmount,
+                    'PeriodEnd' => $serviceEnd,
+                ]);
+            });
     }
 
     public function test_monthly_slip_keeps_stored_charge_when_period_has_no_billable_sessions(): void
@@ -291,6 +363,24 @@ class MonthlyBillingSlipTest extends TestCase
             ->assertJsonPath('sessions.1.date', '2026-08-10')
             ->assertJsonPath('total_amount', 6000)
             ->assertJsonPath('items.0.description', '數學月結費用 2026年8月'); // in-app #445
+
+        // No billed lessons in August cannot justify zeroing an explicit September line.
+        $course->update(['EndDate' => '2026-09-30']);
+        ClassSession::create([
+            'StudentClassID' => $course->ID,
+            'SessionDate' => '2026-09-07',
+            'StartTime' => '18:00',
+            'EndTime' => '20:00',
+            'Status' => 'attended',
+        ]);
+        $invoice->update(['Status' => 'unpaid', 'TotalAmount' => 0, 'PaidAmount' => 0]);
+        $invoice->items()->update(['Amount' => 1500, 'PeriodStart' => '2026-09-01', 'PeriodEnd' => '2026-09-30']);
+        $this->getJson("/api/v1/invoices/{$invoice->id}/slip-data")
+            ->assertOk()
+            ->assertJsonPath('computed_total_amount', 0)
+            ->assertJsonPath('amount_discrepancy', false)
+            ->assertJsonPath('items.0.amount', 1500)
+            ->assertJsonPath('items.0.period_start', '2026-09-01');
     }
 
     public function test_prepaid_next_period_slip_lists_dates_in_item_service_range(): void
