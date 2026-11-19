@@ -120,6 +120,8 @@ jobs:
         run: |
           if [[ -s storage/infection/infection.log ]]; then
             echo 'available=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'Mutation report missing or empty after Infection completed. PR summary unavailable.'
           fi
       - name: Job summary
         if: ${{ always() && steps.scope.outputs.run != 'false' }}
