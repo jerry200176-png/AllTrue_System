@@ -24,7 +24,7 @@ async function openDirectorMondayDayView(page) {
   await page.waitForSelector('.teacher-grid .course-block');
 }
 
-async function installDirectorDayCalendarMocks(page, { tripleSlot = true, pairSlot = false } = {}) {
+async function installDirectorDayCalendarMocks(page, { tripleSlot = true, pairSlot = false, teacherProfiles = null } = {}) {
   const mondayStr = mondayYmd();
   const session = {
     access_token: 'e2e-director-token',
@@ -70,7 +70,7 @@ async function installDirectorDayCalendarMocks(page, { tripleSlot = true, pairSl
         status: 200,
         contentType: 'application/json',
         body: JSON.stringify({
-          data: [
+          data: teacherProfiles ?? [
             { id: 9001, username: '陳老師', name: '陳老師' },
             { id: 9002, username: '林老師', name: '林老師' },
             { id: 9003, username: '黃老師', name: '黃老師' },
@@ -100,6 +100,24 @@ async function installDirectorDayCalendarMocks(page, { tripleSlot = true, pairSl
     return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, session_date: mondayStr }) });
   });
 }
+
+test('director calendar filters omit disabled teachers while keeping their existing cards', async ({ page }) => {
+  await installDirectorDayCalendarMocks(page, {
+    pairSlot: true,
+    teacherProfiles: [
+      { id: 9001, username: '陳老師', branch_id: 1, status: 'active' },
+      { id: 9002, username: '林老師', branch_id: 1, status: 'active' },
+      { id: 9003, username: '黃老師', branch_id: 1, status: 'inactive' },
+    ],
+  });
+  await openDirectorMondayDayView(page);
+  await page.getByText('篩選與更多操作', { exact: true }).click();
+  const chips = page.getByRole('group', { name: '篩選老師（可多選）' });
+  await expect(chips.getByRole('button', { name: '陳老師', exact: true })).toBeVisible();
+  await expect(chips.getByRole('button', { name: '林老師', exact: true })).toBeVisible();
+  await expect(chips.getByRole('button', { name: '黃老師', exact: true })).toHaveCount(0);
+  await expect(page.locator('.teacher-grid .course-block').filter({ hasText: '張同學' })).toBeVisible();
+});
 
 async function readTextMetrics(locator) {
   return locator.evaluate((el) => {

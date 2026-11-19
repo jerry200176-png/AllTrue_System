@@ -1,0 +1,13 @@
+updates:
+  - id: staff-2026-11-19-calendar-disabled-teacher-filters
+    published_at: "2026-11-19"
+    audiences:
+      - director
+    importance: digest
+    title: 行事曆老師篩選已更新
+    summary: 老師篩選會排除已停用的老師，既有課堂仍可查看。
+    items:
+      - category: fixed
+        text: 在班級行事曆打開「篩選與更多操作」，可選擇仍在任的老師。
+    source_refs:
+      - "changelog:2026-11-19:calendar-disabled-teacher-filters"
