@@ -1,4 +1,6 @@
 ## 2026-11-19 — feat(scheduling): 試聽暫留的後端（#5499 第一步，in-app #575）
+<!-- release-notes: silent_ship=silent-2026-11-19-trial-hold-backend -->
+<!-- silent-reason: 只有後端 API 與資料表，畫面還沒有入口；員工更新卡跟行事曆畫面（下一步）一起發。 -->
 
 - 新表 `trial_holds`（additive，只新增），新 API 三支：`GET/POST /api/v1/trial-holds`、`POST /api/v1/trial-holds/{id}/cancel`。只開給主任和 super_admin，而且只能操作自己授權的分校，老師必須屬於該分校。
 - 暫留不建學生、課程、點名、扣堂或帳單。它在衝堂檢查裡算成「一個試聽席位」，所以沿用現有規則：同時段只能有一個試聽，一對一的課不能疊上去，一對三時段占一個位子。

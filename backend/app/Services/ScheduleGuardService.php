@@ -1873,7 +1873,7 @@ class ScheduleGuardService
      * with a null campus, everywhere (the cross-campus busy check). Cancelled and converted holds free the slot;
      * a converted hold's trial lesson occupies it from then on.
      *
-     * @return \Illuminate\Support\Collection<int, object>
+     * @return \Illuminate\Support\Collection<int, \stdClass>
      */
     public static function heldTrialHolds(int $teacherId, ?int $campusId, string $from, ?string $to = null, ?int $excludeId = null, bool $lock = false): \Illuminate\Support\Collection
     {
