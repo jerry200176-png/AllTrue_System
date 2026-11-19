@@ -1739,6 +1739,9 @@ class ScheduleGuardService
                 'sc.StudentID',
                 'sc.ClassType',
                 'sc.room_id',
+                // Read with the occupancy row: under $lock this is a current read, while withTrialTargets()'
+                // plain lookup would read the transaction's older snapshot (TD-094 review).
+                'sc.trial_target_class_type',
             ])
             ->when($lock, fn ($q) => $q->lockForUpdate())->get();
 
@@ -1783,7 +1786,7 @@ class ScheduleGuardService
                 'room_id' => $row->room_id ? (int) $row->room_id : null,
                 'start_time' => $start,
                 'end_time' => $end,
-            ];
+            ] + (($row->ClassType ?? '') === 'trial' ? ['trial_target_class_type' => $row->trial_target_class_type ?? null] : []);
             $existingKeys[$courseId . '|' . $start . '|' . $end] = true;
             if ($courseId > 0) {
                 $classSessionCourseIds[$courseId] = true;
@@ -1839,7 +1842,7 @@ class ScheduleGuardService
                 'room_id' => $roomId,
                 'start_time' => $start,
                 'end_time' => $end,
-            ];
+            ] + ($classType === 'trial' && $meta ? ['trial_target_class_type' => $meta->trial_target_class_type ?? null] : []);
         }
 
         // #3590 item 9 (flag on): a substitute on a makeup occurrence is busy too.
@@ -1924,7 +1927,7 @@ class ScheduleGuardService
             return [];
         }
         $courseMeta = [];
-        foreach (DB::table('StudentClass')->whereIn('ID', $ids)->select(['ID', 'ClassType', 'room_id', 'TeacherID', 'Stop'])->when($lock, fn ($q) => $q->lockForUpdate())->get() as $meta) {
+        foreach (DB::table('StudentClass')->whereIn('ID', $ids)->select(['ID', 'ClassType', 'room_id', 'TeacherID', 'Stop', 'trial_target_class_type'])->when($lock, fn ($q) => $q->lockForUpdate())->get() as $meta) {
             $courseMeta[(int) $meta->ID] = $meta;
         }
 

@@ -254,7 +254,7 @@ class AdmissionInquiryController extends Controller
             app(GuardianSyncService::class)->syncPrimaryFromStudent($student);
             $this->audit($request, $admissionInquiry, 'trial_scheduled');
             return response()->json(['status' => $admissionInquiry->status, 'student_id' => $studentId, 'student_class_id' => $classId], 201);
-        });
+        }, 3); // retry the whole handoff on a deadlock: the nested enrollment transaction cannot retry itself (TD-094)
     }
 
     public function recordResult(Request $request, AdmissionInquiry $admissionInquiry)
