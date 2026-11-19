@@ -1345,7 +1345,8 @@ const MOVE_CODES = ['receipt_without_invoice']; // not confirmed_receipt_without
 const moving = ref(null); // { report_id, amount, label }
 const canMoveReceipt = (r) => canManageInvoices() && !!payload.value?.can_reassign_receipt && !r?.history_read_only
   && !!(r?.payment_id || r?.invoice_id) && Number(r?.amount) > 0; // the service finds the source bill from one of these
-const canMoveException = (x) => !!x.report_id && !x.ask_hq && x.codes?.some((c) => MOVE_CODES.includes(c))
+// manual_review = the server's read-only history judgment (#5516); ask_hq alone is generic receipt advice, not a refusal.
+const canMoveException = (x) => !!x.report_id && x.anomaly?.action?.type !== 'manual_review' && x.codes?.some((c) => MOVE_CODES.includes(c))
   && canMoveReceipt((payload.value?.receipts || []).find((r) => Number(r.report_id) === Number(x.report_id)));
 function openMove(reportId) {
   const r = (payload.value?.receipts || []).find((x) => Number(x.report_id) === Number(reportId));
