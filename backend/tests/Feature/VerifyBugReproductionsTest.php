@@ -326,6 +326,71 @@ class VerifyBugReproductionsTest extends TestCase
         $this->assertSame(3, $this->condition('paid_flag_vs_invoice')['count']);
     }
 
+    /**
+     * TD-092: behaviour lock behind FIT-21's source match. Each enforced condition, seeded with one bad row while every
+     * other enforced condition gets an unreachable baseline, must alone fail the command and read REGRESSED. A handle()
+     * change that skips a key, zeroes its count, ignores the flag or stops counting it toward the exit code fails here.
+     *
+     * @dataProvider enforcedConditions
+     */
+    public function test_each_enforced_condition_alone_fails_the_command(string $key): void
+    {
+        $others = array_diff(array_merge(...array_values(self::enforcedConditions())), [$key]);
+        config(['reproduction_baselines' => array_fill_keys($others, 1_000_000) + [$key => 0]]);
+        $this->violate($key);
+
+        $this->assertSame(1, Artisan::call('bugs:verify-reproductions'), "{$key} violated must exit non-zero");
+        $this->assertSame('REGRESSED', $this->condition($key)['state'] ?? null);
+    }
+
+    public function test_every_enforced_condition_has_a_violation_case(): void
+    {
+        Artisan::call('bugs:verify-reproductions', ['--json' => true]);
+        $enforced = collect(json_decode(Artisan::output(), true)['conditions'])->where('enforced', true)->pluck('key')->sort()->values()->all();
+
+        $this->assertSame($enforced, collect(self::enforcedConditions())->flatten()->sort()->values()->all(),
+            'a newly enforced condition needs a violation case in violate()');
+    }
+
+    /** @return array<string, array{0: string}> */
+    public static function enforcedConditions(): array
+    {
+        $keys = ['attended_session_without_learning_record', 'leave_session_with_live_learning_record', 'package_over_debit',
+            'session_debited_twice', 'unpaid_charge_vs_rate_count', 'paid_flag_vs_invoice'];
+
+        return array_combine($keys, array_map(fn ($k) => [$k], $keys));
+    }
+
+    /** One bad row per enforced condition (same shapes as the per-condition tests above). */
+    private function violate(string $key): void
+    {
+        match ($key) {
+            'attended_session_without_learning_record' => $this->classSession($this->course(), 'attended'),
+            'leave_session_with_live_learning_record' => DB::table('LearningRecord')->insert([
+                'StudentClassID' => $sc = $this->course(), 'ClassSessionID' => $this->classSession($sc, 'leave'), 'TeacherID' => 1,
+                'Content' => '', 'Subject' => '英文', 'SessionDate' => '2020-01-01', 'StartTime' => '10:00', 'EndTime' => '12:00', 'Status' => 'pending',
+            ]),
+            'package_over_debit' => (function () {
+                $pkg = $this->package();
+                $sc = $this->course(['PackageID' => $pkg]);
+                $this->packageDebit($pkg, $sc, $this->classSession($sc, 'attended'), 'attendance');
+                $this->packageDebit($pkg, $sc, null, 'conversion_seed_orphan');
+            })(),
+            'session_debited_twice' => (function () {
+                $pkg = $this->package();
+                $sc = $this->course(['PackageID' => $pkg]);
+                $s = $this->classSession($sc, 'attended');
+                $this->packageDebit($pkg, $sc, $s, 'attendance');
+                $this->packageDebit($pkg, $sc, $s, 'retro_leave');
+            })(),
+            'unpaid_charge_vs_rate_count' => $this->course(['Rate' => 500, 'SessionCount' => 10, 'Charge' => 500, 'Paid' => 0]),
+            'paid_flag_vs_invoice' => DB::table('Invoice')->insert([
+                'StudentID' => 1, 'StudentClassID' => $this->course(['Paid' => 1]), 'IssueDate' => '2026-10-01', 'TotalAmount' => 1000,
+                'PaidAmount' => 0, 'Status' => 'unpaid', 'created_at' => now(), 'updated_at' => now(),
+            ]),
+        };
+    }
+
     public function test_baseline_allows_known_drift_and_fails_only_above_it(): void
     {
         config(['reproduction_baselines.unpaid_charge_vs_rate_count' => null]); // production pins a number; test the unmeasured path
