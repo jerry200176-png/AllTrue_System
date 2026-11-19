@@ -625,28 +625,43 @@ class BillingController extends Controller
         $totalAmount = $projection['total_amount'];
         $paidAmount = $projection['net_applied'];
         $remaining = $projection['outstanding_amount'];
+        $sessions = $this->monthlyBilling->invoiceCoveredSessions($invoice, $projection);
 
         $singleItem = $invoice->items->first();
         $singleCourseItem = $invoice->items->count() === 1
             && $singleItem !== null
             && ($invoice->getRelationValue('studentClass') !== null
                 || (int) ($singleItem->StudentClassID ?? 0) > 0);
-        // The stored total may already be correct while the original line amount is stale.
         $useReconciledItem = $singleCourseItem
-            && $projection['repriceable']
-            && $projection['computed_total_amount'] === $totalAmount
-            && ($projection['amount_discrepancy'] || (int) $singleItem->Amount !== $totalAmount)
+            && $projection['amount_discrepancy']
+            && $projection['amount_source'] === 'billable_sessions'
             && $projection['period_start'] !== null
             && $projection['period_end'] !== null;
 
-        $items = $invoice->items->map(function ($item) use ($invoice, $projection, $useReconciledItem) {
-            $itemAmount = (int) $item->Amount;
+        // An already-correct invoice can retain a stale amount on its own line. Keep its service details.
+        $itemCourseId = (int) ($singleItem?->StudentClassID ?? 0);
+        $alignItemAmount = $useReconciledItem || (
+            $singleCourseItem
+            && ($itemCourseId === 0 || $itemCourseId === (int) $invoice->StudentClassID)
+            && !$projection['amount_discrepancy']
+            && $projection['repriceable']
+            && $projection['computed_total_amount'] === $totalAmount
+            && ($projection['period_sessions'] === 0 || (
+                count($sessions) === $projection['period_sessions']
+                && collect($sessions)->every(
+                    fn (array $session): bool => $session['date'] >= ($singleItem->PeriodStart ?? $projection['period_start'])
+                        && $session['date'] <= ($singleItem->PeriodEnd ?? $projection['period_end'])
+                )
+            ))
+        );
+
+        $items = $invoice->items->map(function ($item) use ($invoice, $projection, $useReconciledItem, $alignItemAmount) {
+            $itemAmount = $alignItemAmount ? $projection['total_amount'] : (int) $item->Amount;
             $itemDescription = (string) $item->Description;
             $itemPeriodStart = $item->PeriodStart;
             $itemPeriodEnd = $item->PeriodEnd;
 
             if ($useReconciledItem) {
-                $itemAmount = (int) $projection['total_amount'];
                 $itemPeriodStart = $projection['period_start'];
                 $itemPeriodEnd = $projection['period_end'];
 
@@ -685,7 +700,6 @@ class BillingController extends Controller
             ];
         });
 
-        $sessions = $this->monthlyBilling->invoiceCoveredSessions($invoice, $projection);
         $amountPending = $courseAmountPending && $remaining > 0; // a paid bill on the same course keeps its amounts
         if ($amountPending) {
             $items = $items->map(fn (array $item) => array_merge($item, ['amount' => null, 'stored_amount' => null, 'unit_price' => null]));

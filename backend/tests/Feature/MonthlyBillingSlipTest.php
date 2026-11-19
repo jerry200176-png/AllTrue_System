@@ -166,7 +166,12 @@ class MonthlyBillingSlipTest extends TestCase
 
         // A previously corrected header can already match the lessons while its line is stale.
         $invoice->update(['TotalAmount' => 7500]);
-        $invoice->items()->update(['Amount' => 9000]);
+        $invoice->items()->update([
+            'Amount' => 9000,
+            'Description' => '合成月結服務明細',
+            'PeriodStart' => '2026-07-01',
+            'PeriodEnd' => '2026-07-29',
+        ]);
         $this->withHeaders(['Authorization' => "Bearer {$token}"])
             ->getJson("/api/v1/invoices/{$invoice->id}/slip-data")
             ->assertOk()
@@ -174,8 +179,32 @@ class MonthlyBillingSlipTest extends TestCase
             ->assertJsonPath('amount_discrepancy', false)
             ->assertJsonPath('items.0.amount', 7500)
             ->assertJsonPath('items.0.stored_amount', 9000)
+            ->assertJsonPath('items.0.description', '合成月結服務明細')
+            ->assertJsonPath('items.0.period_start', '2026-07-01')
+            ->assertJsonPath('items.0.period_end', '2026-07-29')
             ->assertJsonCount(5, 'sessions');
         $this->assertDatabaseHas('InvoiceItem', ['InvoiceID' => $invoice->id, 'Amount' => 9000]);
+
+        // The monthly total cannot replace a line for a service window that excludes a billed lesson.
+        $invoice->items()->update(['Amount' => 6000, 'PeriodEnd' => '2026-07-22']);
+        $this->withHeaders(['Authorization' => "Bearer {$token}"])
+            ->getJson("/api/v1/invoices/{$invoice->id}/slip-data")
+            ->assertOk()
+            ->assertJsonPath('total_amount', 7500)
+            ->assertJsonPath('items.0.amount', 6000)
+            ->assertJsonPath('items.0.period_end', '2026-07-22');
+
+        // The sole line still belongs to a different course if it has a different course ID.
+        $otherCourse = $course->replicate();
+        $otherCourse->save();
+        $invoice->items()->update(['StudentClassID' => $otherCourse->ID, 'Amount' => 9000, 'PeriodEnd' => '2026-07-29']);
+        $this->withHeaders(['Authorization' => "Bearer {$token}"])
+            ->getJson("/api/v1/invoices/{$invoice->id}/slip-data")
+            ->assertOk()
+            ->assertJsonPath('total_amount', 7500)
+            ->assertJsonPath('items.0.amount', 9000)
+            ->assertJsonPath('items.0.description', '合成月結服務明細')
+            ->assertJsonPath('items.0.period_end', '2026-07-29');
     }
 
     public function test_monthly_slip_keeps_stored_charge_when_period_has_no_billable_sessions(): void
