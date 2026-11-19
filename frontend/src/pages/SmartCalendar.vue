@@ -473,7 +473,7 @@
       v-model:open="showHoldDialog"
       :token="holdToken"
       :campus-id="branchId"
-      :teachers="visibleTeachers"
+      :teachers="schedulerTeachers"
       :prefill="holdPrefill"
       @created="onHoldCreated"
     />
@@ -1744,7 +1744,9 @@ const visibleTeachers = computed(() => {
   const teacherHasCourseToday = (aliasIds) => {
     if (dowForSort == null) return false;
     const aliasSet = new Set(aliasIds);
-    return hours.some((h) => getCoursesForAliasSetAt(aliasSet, h).length > 0);
+    // A teacher holding only a 試聽暫留 keeps the column, so the hold stays visible and cancellable.
+    return hours.some((h) => getCoursesForAliasSetAt(aliasSet, h).length > 0
+      || holdsInSlot(trialHolds.value, { date: ymdOfDow(dowForSort), hour: h, campusId: props.branchId, teacherIds: aliasSet }).length > 0);
   };
   const withBusyFlag = filtered.map((t) => ({
     ...t,

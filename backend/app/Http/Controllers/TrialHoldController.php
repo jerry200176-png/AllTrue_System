@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\TrialHold;
+use App\Services\EnrollmentService;
 use App\Services\ScheduleGuardService;
 use App\Services\SubstituteService;
 use Carbon\Carbon;
@@ -66,8 +67,10 @@ class TrialHoldController extends Controller
         if (!$this->mayManageCampus($request, $campusId)) {
             return response()->json(['message' => 'Forbidden'], 403);
         }
-        if (!app(SubstituteService::class)->teacherBoundToAny($teacherId, [$campusId])) {
-            return response()->json(['message' => '所選老師不是這個分校的老師，不能暫留。沒有變更任何資料。', 'code' => 'teacher_not_assignable'], 422);
+        // Same eligibility the trial handoff enforces (active teacher), plus a binding to this campus.
+        if (EnrollmentService::teacherAssignmentErrors(['teacher_id' => $teacherId]) !== []
+            || !app(SubstituteService::class)->teacherBoundToAny($teacherId, [$campusId])) {
+            return response()->json(['message' => '所選老師已停用，或不是這個分校的老師，不能暫留。沒有變更任何資料。', 'code' => 'teacher_not_assignable'], 422);
         }
 
         $hold = DB::transaction(function () use ($data, $campusId, $teacherId, $request) {

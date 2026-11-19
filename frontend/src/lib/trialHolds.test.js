@@ -10,6 +10,8 @@ test('a hold shows only in its campus, date, start hour and (when filtered) teac
   assert.deepEqual(holdsInSlot(holds, { date: '2026-11-21', hour: 17, campusId: 9 }).map((h) => h.id), [4]);
   assert.deepEqual(holdsInSlot(holds, { date: '2026-11-21', hour: 16, campusId: 9, teacherIds: new Set(['6']) }), []);
   assert.deepEqual(holdsInSlot(null, { date: '2026-11-21', hour: 16, campusId: 9 }), []);
+  // the day view passes numeric alias ids (resolveTeacherAliasIds), the week view string ids
+  assert.deepEqual(holdsInSlot(holds, { date: '2026-11-21', hour: 16, campusId: 9, teacherIds: new Set([5]) }).map((h) => h.id), [1]);
 });
 
 test('position follows the minute offset and the duration', () => {

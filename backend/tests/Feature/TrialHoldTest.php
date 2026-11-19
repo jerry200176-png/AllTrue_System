@@ -108,6 +108,11 @@ class TrialHoldTest extends TestCase
         $stranger = $this->teacher('別校老師', (int) $other->id);
         $this->as($token)->postJson('/api/v1/trial-holds', $this->holdPayload($campus, $stranger))
             ->assertStatus(422)->assertJsonPath('code', 'teacher_not_assignable');
+        // An inactive teacher still bound to the campus cannot be held either: the trial handoff would refuse them.
+        $inactive = $this->teacher('停用老師', (int) $campus->id);
+        $inactive->forceFill(['status' => 'inactive'])->save();
+        $this->as($token)->postJson('/api/v1/trial-holds', $this->holdPayload($campus, $inactive))
+            ->assertStatus(422)->assertJsonPath('code', 'teacher_not_assignable');
         $teacherToken = $this->tokenFor($teacher);
         $this->as($teacherToken)->getJson('/api/v1/trial-holds?from=2026-09-01&to=2026-09-30')->assertForbidden();
         $this->as($teacherToken)->postJson('/api/v1/trial-holds', $this->holdPayload($campus, $teacher))->assertForbidden();
