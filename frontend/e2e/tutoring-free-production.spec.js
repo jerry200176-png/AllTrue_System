@@ -4,6 +4,8 @@ import { latestReleaseVersionForRole } from '../src/lib/releaseNotes.js';
 import { dismissOverlays } from './fixtures/dismissOverlays.js';
 import { assertDirectorDashboardTelemetry, openStudentsAfterDashboardOpened } from './fixtures/directorDashboardTelemetry.js';
 import { assertTutoringReceivableControls, invoiceReceivableControls } from './fixtures/tutoringReceivableControls.js';
+import { installReadOnlyAppGuard } from './fixtures/readOnlyAppGuard.js';
+import { installLocalClassSessionReads } from './fixtures/classSessionReadResponder.js';
 
 /** Authenticated, read-only production acceptance for In-App #325. */
 test.use({ serviceWorkers: 'block', trace: 'off', screenshot: 'off', video: 'off' });
@@ -93,12 +95,15 @@ async function getPagedRows(request, path, token) {
 }
 
 test.describe('production acceptance — tutoring free/non-receivable', () => {
-  test('director read-only API and real UI acceptance', async ({ page, request }) => {
+  test('director read-only API and real UI acceptance', async ({ page, context, request }) => {
     // Bounded pagination plus a real UI journey can exceed the default 45s
     // suite timeout; individual locators retain their shorter fail-fast limits.
     test.setTimeout(120_000);
     test.skip(!BASE || !SESSION?.access_token, 'missing controlled production director session');
     expect(SESSION_CONTRACT, 'session must satisfy the exact bounded read-only contract').toBe(true);
+    const appOrigin = new URL(BASE).origin;
+    const blockedNetworkRequests = await installReadOnlyAppGuard(context, appOrigin, { allowTransactionTelemetry: true });
+    await installLocalClassSessionReads(context, appOrigin);
     const token = SESSION.access_token;
     const unsafe = [];
     const telemetry = [];
@@ -225,6 +230,10 @@ test.describe('production acceptance — tutoring free/non-receivable', () => {
       await route.fulfill({ status: 204, body: '' });
     });
     await page.route('**/api/v1/class-sessions/batch', async (route) => {
+      if (new URL(route.request().url()).origin !== appOrigin) {
+        await route.fallback();
+        return;
+      }
       if (!schedulerCreateIntercepted && await page.evaluate(() => window.__schedulerSubmitProbe === true)) {
         expect(route.request().method()).toBe('POST');
         schedulerCreatePayload = route.request().postDataJSON() || {};
@@ -381,6 +390,7 @@ test.describe('production acceptance — tutoring free/non-receivable', () => {
     expect(await page.evaluate(() => window.__readOnlyViolations)).toEqual([]);
 
     expect(unsafe, `non-read-only requests observed: ${JSON.stringify(unsafe)}`).toEqual([]);
+    expect(blockedNetworkRequests, 'tutoring acceptance must not attempt unhandled writes or stateful reads').toEqual([]);
     expect(telemetry.length, 'at least one real adoption event must be observed').toBeGreaterThan(0);
   });
 });
