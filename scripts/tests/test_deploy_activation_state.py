@@ -1337,6 +1337,74 @@ class DeployActivationWorkflowContractTest(unittest.TestCase):
                     msg=f"{listener} workflow_run must list {identity!r}",
                 )
 
+    def test_calendar_course_acceptance_checks_actual_deploy_before_auth_setup(self):
+        workflow = (WORKFLOW.parent / "calendar-course-acceptance.yml").read_text(encoding="utf-8")
+        evidence, acceptance = workflow.split("\n  deployment_evidence:\n", 1)[1].split("\n  acceptance:\n", 1)
+        self.assertIn("github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success'", evidence)
+        self.assertIn("RUN_ATTEMPT: ${{ github.event.workflow_run.run_attempt }}", evidence)
+        self.assertIn("      actions: read\n", evidence)
+        self.assertNotIn("environment:", evidence)
+        self.assertNotIn("secrets.", evidence)
+        self.assertIn("    needs: deployment_evidence\n", acceptance)
+        gate = next(line for line in acceptance.splitlines() if line.startswith("    if:"))
+        self.assertIn("!cancelled() && (github.event_name == 'workflow_dispatch' ||", gate)
+        self.assertIn("needs.deployment_evidence.result == 'success' && needs.deployment_evidence.outputs.deployed == 'true'", gate)
+        self.assertIn("    environment: production-ssh\n", acceptance)
+
+        # Run the workflow's real shell with a local, credential-free fixture for GitHub's attempt API.
+        probe = textwrap.dedent(evidence.split("\n        run: |\n", 1)[1])
+        stub = textwrap.dedent('''\
+            gh() {
+              if [[ "$#" != 2 || "$1" != 'api' ||
+                    "$2" != '/repos/owner/project/actions/runs/42/attempts/2/jobs?per_page=100' ]]; then
+                echo 'Unexpected deployment evidence request.' >&2
+                return 71
+              fi
+              if [[ "$FIXTURE" == 'api-failure' ]]; then return 72; fi
+              printf '%s\\n' "$FIXTURE"
+            }
+        ''')
+        deploy_step = dict(name="Deploy", status="completed", conclusion="success")
+        actual = dict(name="Deploy to Production", status="completed", conclusion="success", steps=[deploy_step])
+        skipped = dict(actual, conclusion="skipped", steps=[])
+        scenarios = [
+            ("actual deployment", [actual], 1, "true"),
+            ("stand-down wrapper", [skipped], 1, "false"),
+            ("no deploy job in this attempt", [], 0, "false"),
+            ("executor skipped", [dict(actual, steps=[dict(deploy_step, conclusion="skipped")])], 1, "false"),
+            ("duplicate deploy jobs", [actual, skipped], 2, None),
+            ("incomplete API listing", [actual], 2, None),
+            ("non-final job", [dict(actual, status="in_progress")], 1, None),
+            ("missing deploy step", [dict(actual, steps=[])], 1, None),
+        ]
+        with tempfile.TemporaryDirectory() as folder:
+            output = Path(folder) / "github-output"
+            env = {
+                "PATH": os.environ["PATH"], "REPO": "owner/project", "RUN_ID": "42", "RUN_ATTEMPT": "2",
+                "WORKFLOW_PATH": ".github/workflows/deploy.yml", "GITHUB_OUTPUT": str(output),
+            }
+            for label, jobs, total, expected in scenarios:
+                with self.subTest(label=label):
+                    output.write_text("")
+                    result = subprocess.run(["bash", "-c", stub + probe], env={
+                        **env, "FIXTURE": json.dumps({"jobs": jobs, "total_count": total}),
+                    }, capture_output=True, text=True, check=False)
+                    self.assertEqual(expected is not None, result.returncode == 0, result.stderr)
+                    self.assertEqual(f"deployed={expected}\n" if expected is not None else "", output.read_text())
+            valid_response = json.dumps({"jobs": [actual], "total_count": 1})
+            for extra, error in (
+                ({"FIXTURE": "api-failure"}, 72),
+                ({"WORKFLOW_PATH": ".github/workflows/other.yml"}, 1),
+                ({"RUN_ID": ""}, 1),
+                ({"RUN_ATTEMPT": "0"}, 1),
+            ):
+                with self.subTest(extra=extra):
+                    output.write_text("")
+                    result = subprocess.run(["bash", "-c", stub + probe], env={**env, "FIXTURE": valid_response, **extra},
+                                            capture_output=True, text=True, check=False)
+                    self.assertEqual(error, result.returncode, result.stderr)
+                    self.assertEqual("", output.read_text())
+
     def test_manual_activation_is_existing_workflow_dispatch_and_environment_gate(self):
         self.assertIn("repository_dispatch:", self.workflow)
         self.assertIn("autonomous-production-deploy", self.workflow)
