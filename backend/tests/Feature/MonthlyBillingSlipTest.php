@@ -163,6 +163,19 @@ class MonthlyBillingSlipTest extends TestCase
             ->assertJsonPath('data.0.TotalAmount', 7500)
             ->assertJsonPath('data.0.stored_total_amount', 6000)
             ->assertJsonPath('data.0.amount_discrepancy', true);
+
+        // A previously corrected header can already match the lessons while its line is stale.
+        $invoice->update(['TotalAmount' => 7500]);
+        $invoice->items()->update(['Amount' => 9000]);
+        $this->withHeaders(['Authorization' => "Bearer {$token}"])
+            ->getJson("/api/v1/invoices/{$invoice->id}/slip-data")
+            ->assertOk()
+            ->assertJsonPath('total_amount', 7500)
+            ->assertJsonPath('amount_discrepancy', false)
+            ->assertJsonPath('items.0.amount', 7500)
+            ->assertJsonPath('items.0.stored_amount', 9000)
+            ->assertJsonCount(5, 'sessions');
+        $this->assertDatabaseHas('InvoiceItem', ['InvoiceID' => $invoice->id, 'Amount' => 9000]);
     }
 
     public function test_monthly_slip_keeps_stored_charge_when_period_has_no_billable_sessions(): void

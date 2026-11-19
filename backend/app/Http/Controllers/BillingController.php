@@ -631,9 +631,11 @@ class BillingController extends Controller
             && $singleItem !== null
             && ($invoice->getRelationValue('studentClass') !== null
                 || (int) ($singleItem->StudentClassID ?? 0) > 0);
+        // The stored total may already be correct while the original line amount is stale.
         $useReconciledItem = $singleCourseItem
-            && $projection['amount_discrepancy']
-            && $projection['amount_source'] === 'billable_sessions'
+            && $projection['repriceable']
+            && $projection['computed_total_amount'] === $totalAmount
+            && ($projection['amount_discrepancy'] || (int) $singleItem->Amount !== $totalAmount)
             && $projection['period_start'] !== null
             && $projection['period_end'] !== null;
 

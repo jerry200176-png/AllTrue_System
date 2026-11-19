@@ -1,0 +1,13 @@
+updates:
+  - id: staff-2026-11-19-monthly-slip-aligned-line
+    published_at: "2026-11-19"
+    audiences:
+      - director
+    importance: digest
+    title: 月結繳費單金額一致
+    summary: 未付款的單一課程月結繳費單，明細會顯示核對過的應繳金額。
+    items:
+      - category: fixed
+        text: 開啟或列印繳費單時，課程明細與上方應繳總額一致。
+    source_refs:
+      - "changelog:2026-11-19:monthly-slip-aligned-line"
