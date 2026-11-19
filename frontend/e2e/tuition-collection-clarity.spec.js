@@ -620,6 +620,7 @@ for (const width of [375, 1280]) {
     await guide.getByTestId('bg-record').click();
     const form = page.getByRole('dialog', { name: '登記收款' });
     await form.locator('input[type="number"]').fill('3000');
+    await form.getByTestId('pe-amount-ack').check(); // a part payment differs from the bill: the form asks for a check first (#5514)
     await form.getByRole('button', { name: '登記收款' }).click();
     await expect(guide.getByTestId('bg-notice')).toContainText('還沒確認入帳');
     await expect(guide.getByTestId('bg-report')).toContainText('NT$ 3,000');
