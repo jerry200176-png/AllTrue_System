@@ -3,9 +3,7 @@
 namespace App\Providers;
 
 use App\Models\ClassSession;
-use App\Models\Notification;
 use App\Observers\ClassSessionObserver;
-use App\Observers\NotificationObserver;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Cache\RateLimiting\Limit;
@@ -35,16 +33,13 @@ class AppServiceProvider extends ServiceProvider
         ]);
         RateLimiter::for('bug-comment', fn (Request $r) => Limit::perHour(30)->by($who($r))->response($tooMany));
 
-        Notification::observe(NotificationObserver::class);
-
         // N+1 guard: lazy loads throw outside production (tests/CI/local), so a
         // missing with()/load() fails the suite; production is unaffected.
         Model::preventLazyLoading(! $this->app->environment('production'));
 
-        // Deferred since #766, which blamed the config/app.php order for a silent no-op. That premise is wrong:
-        // Application::registerConfiguredProviders() registers and boots Illuminate\* providers first, so the
-        // Eloquent dispatcher exists in this boot() and observers registered here (Notification's above) are live
-        // (TD-065; NotificationLineDispatcherTest locks it). Deferring stays harmless.
+        // Register model observers only inside booted(). An observer registered directly in boot() never fires:
+        // #766 (ClassSession audit log stayed empty) and TD-065 (NotificationObserver; a CI check on 2026-11-19 found
+        // no `eloquent.created` listener on the app dispatcher). AppServiceProviderObserverRegistrationTest guards it.
         $this->app->booted(function () {
             ClassSession::observe(ClassSessionObserver::class);
         });

@@ -262,7 +262,7 @@
 
 | 欄位 | 內容 |
 |---|---|
-| 狀態 | Open — 跟 TD-065 一起決定（員工的重要通知 LINE 推播目前沒有真的發，自填 LINE ID 也沒用） |
+| 狀態 | Closed 2026-11-20（隨 TD-065）：員工 LINE 推播已刪除，自填 LINE ID 沒有用途。日後若要員工 LINE 通知，改用跟家長一樣的綁定流程（官方帳號輸入綁定碼），不用自填 U 開頭的 LINE user ID（LINE app 裡看不到）。 |
 | 優先級 | P2 |
 | 發現日期 | 2026-04-26 |
 | 發現來源 | 開發中 |
@@ -529,7 +529,7 @@
 
 | 欄位 | 內容 |
 |---|---|
-| 狀態 | Done 2026-11-19（前提不成立，已關閉）：`Application::registerConfiguredProviders()` 會先註冊並啟動所有 `Illuminate\*` provider，再啟動 App 的 provider，所以 `config/app.php` 的排列順序不影響；`AppServiceProvider::boot()` 執行時 Eloquent dispatcher 已綁定，`Notification::observe()` 一直有效。Founder 11-19 確認主任有收到「[AllTrue]」開頭的 LINE。修正 `AppServiceProvider` 裡誤導的註解，並新增 `NotificationLineDispatcherTest::test_creating_a_high_notification_pushes_through_the_registered_observer` 鎖住「只建立通知列就會推播」。 |
+| 狀態 | Done 2026-11-20（Founder 11-19 決定刪除死碼）：CI 實測（#5542 診斷）建立 high 通知時 app 的 event dispatcher 上沒有 `eloquent.created: Notification` listener，`NotificationObserver` 從未觸發，員工 LINE 推播從未送出（個人設定頁本來就寫「暫不影響既有通知流程」）。已刪除 `NotificationObserver`、`NotificationLineDispatcher` 與其測試；`AppServiceProviderObserverRegistrationTest` 擋住之後再把 `::observe()` 寫在 `boot()` 而不是 `booted()`。若日後要員工 LINE 通知，重新設計（先計量、再送出），並從綁定流程開始（見 TD-013）。 |
 | 優先級 | P2（需使用者決策後再清，涉及 LINE 推播行為） |
 | 發現日期 | 2026-06-13 |
 | 發現來源 | [BUG] 修 #766 audit observer 時發現同源問題 |
