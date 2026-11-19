@@ -93,7 +93,7 @@ export async function expectAmendedCoursePlanning(page, group, row, { mobile }) 
     await drawer.getByRole('tab', { name: '堂次', exact: true }).click();
     await drawer.getByTestId('course-manager-view-list').click();
     const list = drawer.getByTestId('course-manager-session-list');
-    await expect(list.getByRole('button', { name: /第\d+堂/ })).toHaveCount(2);
+    await expect(list.getByRole('button', { name: /^(?!(?:調課|代課) )/ })).toHaveCount(2);
     await expect(list.getByText('預排', { exact: true })).toHaveCount(0);
     await expect(drawer.getByTestId('course-manager-schedule-cta')).toBeEnabled();
     await expect(drawer.getByTestId('course-manager-quick-add')).toHaveCount(0);
@@ -111,8 +111,8 @@ export async function expectAmendedCoursePlanning(page, group, row, { mobile }) 
     await page.keyboard.press('Escape');
   }
   await expect(planning).toBeVisible();
+  await expect(planning).toContainText('尚未排滿');
   await expect(planning).toContainText('已排 2／購買 4 堂，尚有 2 堂未安排');
-  await expect(planning).toContainText(planningCaption);
   if (mobile) {
     const clipped = await planning.evaluate((element) => element.scrollWidth > element.clientWidth + 1);
     expect(clipped, 'the planning explanation must wrap on mobile').toBe(false);
