@@ -869,7 +869,7 @@
 
 | 欄位 | 內容 |
 |---|---|
-| 狀態 | Open |
+| 狀態 | Partly done 2026-11-19（Founder GO 2026-11-19）：同一個 migration 丟棄沒有讀寫者的 `assessment_attempts`、`assessment_answers`、`assessment_question_snapshots`、`assessment_audit_logs`（丟棄前皆 0 列）。剩：`assessments`、`assessment_results`、`assessment_remediation_actions` 仍被家長端與學習歷程讀取，要先移除那些讀取才能處理。 |
 | 優先級 | P3 |
 | 發現日期 | 2026-11-13 |
 | 發現來源 | Founder 決定 2026-11-13「學習檢測頁沒什麼人用就移除」；正式環境唯讀量測所有校區 0 筆檢測、0 筆結果、0 筆補強 |
@@ -883,7 +883,7 @@
 
 | 欄位 | 內容 |
 |---|---|
-| 狀態 | Open |
+| 狀態 | Done 2026-11-19（Founder GO 2026-11-19）：`2026_11_19_200000_drop_unused_question_bank_and_assessment_attempt_tables` 丟棄 `question_banks`、`question_bank_items`、`question_bank_audit_logs`。丟棄前正式資料皆 0 列。 |
 | 優先級 | P3 |
 | 發現日期 | 2026-11-13 |
 | 發現來源 | Founder 決定 2026-11-13「未使用的功能移除、不遷移」（issue #4991）；正式環境唯讀量測 14 個校區皆 0 筆題庫 |
