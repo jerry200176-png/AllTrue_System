@@ -52,6 +52,17 @@ export function nonMaterializingProjectionPath({ branchId, start, end }) {
   return `${CLASS_SESSION_PROJECTION_PATH}?${params}`;
 }
 
+/** Read only the validated projection on the app origin and refuse any redirect. */
+export async function readBoundedProjection(request, appOrigin, window, token) {
+  const path = nonMaterializingProjectionPath(window);
+  const response = await request.get(new URL(appOrigin).origin + path, {
+    headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
+    maxRedirects: 0,
+  });
+  if (!response.ok()) throw new Error(`bounded calendar projection returned HTTP ${response.status()}`);
+  return response.json();
+}
+
 /** 'list' or 'projection' for a plain GET/HEAD to the app origin, else null (the guard decides). */
 export function classSessionReadKind(appOrigin, method, url) {
   const verb = String(method || '').toUpperCase();
@@ -120,12 +131,14 @@ export function localClassSessionBody(kind, searchParams, source = null) {
 /**
  * Install after installReadOnlyAppGuard on the same context. Returns:
  *  - answered: one { kind, method, start, end, rows } per local answer (no row content);
+ *  - completedProjectionPaths: canonical paths backed by validated API responses served locally;
  *  - serveProjection(source): rows for later projection reads (see projectionSource).
  * An optional projectionRead reads the exact requested multi-day window for its campus. Its
- * callback only receives a canonical multi-day path. The browser request is still fulfilled locally.
+ * callback only receives the validated window. The browser request is still fulfilled locally.
  */
 export async function installLocalClassSessionReads(context, appOrigin, { projectionRead = null } = {}) {
   const answered = [];
+  const completedProjectionPaths = [];
   let source = null;
   await context.route((url) => isKnownStatefulRead(appOrigin, 'GET', url), async (route) => {
     const request = route.request();
@@ -139,11 +152,13 @@ export async function installLocalClassSessionReads(context, appOrigin, { projec
     const start = searchParams.get('start');
     const end = searchParams.get('end');
     let requestSource = source;
+    let projectionPath = null;
     if (kind === 'projection' && method === 'GET' && projectionRead
         && searchParams.get('branch_id') === String(projectionRead.branchId)
         && [...searchParams].length === 3 && isNonMaterializingWindow(start, end)) {
       const window = { branchId: projectionRead.branchId, start, end };
-      const payload = await projectionRead.read(nonMaterializingProjectionPath(window));
+      projectionPath = nonMaterializingProjectionPath(window);
+      const payload = await projectionRead.read(window);
       requestSource = projectionSource({ ...window, payload });
     }
     const body = localClassSessionBody(kind, searchParams, requestSource);
@@ -159,9 +174,11 @@ export async function installLocalClassSessionReads(context, appOrigin, { projec
       contentType: 'application/json',
       body: method === 'HEAD' ? '' : JSON.stringify(body),
     });
+    if (projectionPath) completedProjectionPaths.push(projectionPath);
   });
   return {
     answered,
+    completedProjectionPaths,
     serveProjection(next) {
       source = projectionSource(next);
     },

@@ -4,7 +4,9 @@ import { latestReleaseVersionForRole } from '../src/lib/releaseNotes.js';
 import { dismissOverlays } from './fixtures/dismissOverlays.js';
 import { assertDirectorDashboardTelemetry, isDirectorDashboardEvent } from './fixtures/directorDashboardTelemetry.js';
 import { installReadOnlyAppGuard } from './fixtures/readOnlyAppGuard.js';
-import { installLocalClassSessionReads } from './fixtures/classSessionReadResponder.js';
+import {
+  installLocalClassSessionReads, nonMaterializingProjectionPath, readBoundedProjection,
+} from './fixtures/classSessionReadResponder.js';
 
 const BASE = process.env.SMOKE_BASE_URL;
 const REQUESTED_BRANCH_ID = Number(process.env.SMOKE_BRANCH_ID || 0);
@@ -106,13 +108,27 @@ async function assertSheetContrast(sheet, message) {
   expect(contrast.ratio, `${message}: sheet text must remain readable`).toBeGreaterThanOrEqual(4.5);
 }
 
-async function assertPrintPreviewContract(page, expectedPeriod) {
+async function assertPrintPreviewContract(page, expectedPeriod, { subsequentTelemetry, subsequentProjections }) {
   const dialog = page.locator('[data-calendar-print-dialog]');
   await expect(dialog).toBeVisible({ timeout: 20_000 });
   await expect(dialog.getByRole('heading', { name: '列印課表', exact: true })).toBeVisible();
   const period = dialog.locator('.calendar-print-toolbar select').first();
   await period.selectOption(expectedPeriod);
   await expect(period).toHaveValue(expectedPeriod);
+  const findPreview = () => subsequentTelemetry().find((payload) =>
+    payload?.event === 'calendar_print_preview_opened' && payload.branch_id === BRANCH_ID
+    && payload.meta?.mode === expectedPeriod && payload.meta.result === 'success');
+  await expect.poll(() => Boolean(findPreview()), {
+    timeout: 20_000,
+    message: `${expectedPeriod} print dialog must finish loading its preview`,
+  }).toBe(true);
+  const { range_start: previewStart, range_end: previewEnd } = findPreview().meta;
+  const expectedProjection = nonMaterializingProjectionPath({
+    branchId: BRANCH_ID, start: previewStart, end: previewEnd,
+  });
+  await expect.poll(subsequentProjections, {
+    message: `${expectedPeriod} print dialog must receive the projection for its exact dates`,
+  }).toContain(expectedProjection);
   const settled = dialog.locator('.calendar-print-sheet').or(
     dialog.locator('.calendar-print-state').filter({ hasNotText: '正在準備' }),
   ).first();
@@ -132,8 +148,7 @@ async function assertPrintPreviewContract(page, expectedPeriod) {
     await expect(dayCards).not.toHaveCount(0);
     const rangeText = await overview.locator('.calendar-print-sheet__header span').first().innerText();
     const [rangeStart, rangeEnd] = rangeText.match(/\d{4}-\d{2}-\d{2}/g) || [];
-    expect(rangeStart).toMatch(/^\d{4}-\d{2}-\d{2}$/);
-    expect(rangeEnd).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    expect([rangeStart, rangeEnd]).toEqual([previewStart, previewEnd]);
     const expectedDates = datesBetween(rangeStart, rangeEnd);
     const cardData = await dayCards.evaluateAll((cards) => cards.map((card) => ({
       date: card.querySelector('b')?.textContent?.match(/\d{4}-\d{2}-\d{2}/)?.[0] || '',
@@ -219,19 +234,11 @@ test.describe('production acceptance — calendar print preview', () => {
     expect(AUTHORIZED_CAMPUSES).toContain(BRANCH_ID);
     const appOrigin = new URL(BASE).origin;
     const blockedNetworkRequests = await installReadOnlyAppGuard(context, appOrigin, { allowTransactionTelemetry: true });
-    let completedProjectionReads = 0;
-    await installLocalClassSessionReads(context, appOrigin, {
+    const { completedProjectionPaths } = await installLocalClassSessionReads(context, appOrigin, {
       projectionRead: {
         branchId: BRANCH_ID,
-        async read(path) {
-          const response = await request.get(appOrigin + path, {
-            headers: { Authorization: `Bearer ${SESSION.access_token}`, Accept: 'application/json' },
-            maxRedirects: 0,
-          });
-          expect(response.ok(), `bounded calendar projection returned ${response.status()}`).toBe(true);
-          const payload = await response.json();
-          completedProjectionReads += 1;
-          return payload;
+        read(window) {
+          return readBoundedProjection(request, appOrigin, window, SESSION.access_token);
         },
       },
     });
@@ -253,13 +260,15 @@ test.describe('production acceptance — calendar print preview', () => {
     await page.getByRole('button', { name: '班級行事曆', exact: false }).first().click();
     await expect(page.getByRole('heading', { name: '班級行事曆 / 課表', exact: true })).toBeVisible({ timeout: 20_000 });
     await page.locator('html').evaluate((element) => { element.dataset.theme = 'dark'; });
-    const beforeWeek = completedProjectionReads;
-    await page.getByRole('button', { name: '列印課表', exact: true }).click();
-    await assertPrintPreviewContract(page, 'week');
-    expect(completedProjectionReads, 'weekly preview must read the bounded projection').toBeGreaterThan(beforeWeek);
-    const beforeMonth = completedProjectionReads;
-    await assertPrintPreviewContract(page, 'month');
-    expect(completedProjectionReads, 'monthly preview must read the bounded projection').toBeGreaterThan(beforeMonth);
+    for (const period of ['week', 'month']) {
+      const firstTelemetry = suppressedTelemetry.length;
+      const firstProjection = completedProjectionPaths.length;
+      if (period === 'week') await page.getByRole('button', { name: '列印課表', exact: true }).click();
+      await assertPrintPreviewContract(page, period, {
+        subsequentTelemetry: () => suppressedTelemetry.slice(firstTelemetry),
+        subsequentProjections: () => completedProjectionPaths.slice(firstProjection),
+      });
+    }
     const dialog = page.locator('[data-calendar-print-dialog]');
     await expect(dialog.getByRole('button', { name: '列印／另存 PDF', exact: true })).toBeVisible();
     const controls = await page.evaluate(() => window.__calendarPrintAcceptance);

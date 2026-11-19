@@ -1,4 +1,7 @@
 // @vitest-environment node
+import { once } from 'node:events';
+import { createServer } from 'node:http';
+import { request } from '@playwright/test';
 import { describe, it, expect } from 'vitest';
 import { installReadOnlyAppGuard } from './readOnlyAppGuard.js';
 import {
@@ -10,6 +13,7 @@ import {
   localClassSessionBody,
   nonMaterializingProjectionPath,
   projectionSource,
+  readBoundedProjection,
   strictYmd,
 } from './classSessionReadResponder.js';
 
@@ -90,6 +94,33 @@ describe('classSessionReadResponder — which direct read is safe', () => {
     expect(() => nonMaterializingProjectionPath({ branchId: 0, start: '2026-08-05', end: '2026-08-07' }))
       .toThrow(/positive branch id/);
     expect(() => nonMaterializingProjectionPath({ branchId: '16', start: '2026-08-05', end: '2026-08-07' })).toThrow();
+  });
+
+  it('refuses a redirect from the real Playwright projection transport', async () => {
+    const window = { branchId: 16, start: '2026-08-05', end: '2026-08-07' };
+    const path = nonMaterializingProjectionPath(window);
+    const received = [];
+    const server = createServer((req, res) => {
+      received.push(req.url);
+      if (req.url === path) {
+        res.writeHead(307, { Location: '/redirected' }).end();
+        return;
+      }
+      res.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify(payload()));
+    });
+    server.listen(0, '127.0.0.1');
+    await once(server, 'listening');
+    let transport;
+    try {
+      transport = await request.newContext();
+      const origin = `http://127.0.0.1:${server.address().port}`;
+      await expect(readBoundedProjection(transport, origin, window, 'synthetic-session'))
+        .rejects.toThrow('bounded calendar projection returned HTTP 307');
+      expect(received).toEqual([path]);
+    } finally {
+      await transport?.dispose();
+      await new Promise((resolve) => server.close(resolve));
+    }
   });
 });
 
@@ -178,8 +209,14 @@ describe('classSessionReadResponder — installed after the guard', () => {
     const context = fakeContext();
     await installReadOnlyAppGuard(context, APP);
     const requested = [];
-    await installLocalClassSessionReads(context, APP, {
-      projectionRead: { branchId: 16, async read(path) { requested.push(path); return payload(); } },
+    const { completedProjectionPaths } = await installLocalClassSessionReads(context, APP, {
+      projectionRead: {
+        branchId: 16,
+        async read(window) {
+          requested.push(nonMaterializingProjectionPath(window));
+          return payload();
+        },
+      },
     });
     const endpoint = `${APP}${CLASS_SESSION_PROJECTION_PATH}`;
     const multiDay = 'branch_id=16&start=2026-08-05&end=2026-08-07';
@@ -202,17 +239,19 @@ describe('classSessionReadResponder — installed after the guard', () => {
     expect((await context.dispatch('POST', `${endpoint}?${multiDay}`)).action).toBe('abort');
     await context.dispatch('GET', `${APP}${CLASS_SESSION_LIST_PATH}?${multiDay}`);
     expect(requested).toHaveLength(1);
+    expect(completedProjectionPaths).toEqual(requested);
     expect(context.sent).toEqual([]);
   });
 
   it('rejects a bounded source that does not meet the application projection contract', async () => {
     const context = fakeContext();
     await installReadOnlyAppGuard(context, APP);
-    await installLocalClassSessionReads(context, APP, {
+    const { completedProjectionPaths } = await installLocalClassSessionReads(context, APP, {
       projectionRead: { branchId: 16, async read() { return { ...payload(), last_page: 2 }; } },
     });
     await expect(context.dispatch('GET', `${APP}${CLASS_SESSION_PROJECTION_PATH}?branch_id=16&start=2026-08-05&end=2026-08-07`))
       .rejects.toThrow(/complete projection/);
+    expect(completedProjectionPaths).toEqual([]);
     expect(context.sent).toEqual([]);
   });
 
