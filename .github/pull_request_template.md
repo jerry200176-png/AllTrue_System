@@ -104,3 +104,7 @@ Release-Impact: user-visible
 - [ ] 空狀態含圖示 + 一句說明 + 下一步行動（`docs/GUIDE_UI_COPY.md §2`）
 - [ ] Loading 狀態：骨架屏或 spinner，非白屏（`RULE_DESIGN_SYSTEM §4`）
 - [ ] 未改業務邏輯 / 繳費規則（只動樣式 / 文案 / 空狀態）
+- [ ] 新做或大改的頁面：照 `docs/design/PAGE_TEMPLATE.md` §8 跑過，並在下面寫 3 行
+  - 重色（落在哪一兩處）：
+  - 第一屏（給了哪一樣）：
+  - 減掉（拿掉了什麼）：

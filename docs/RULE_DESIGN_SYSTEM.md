@@ -153,21 +153,11 @@ AllTrue 的視覺方向是 **淺色優先、專業可信、為「資料與金流
 
 這是 Stripe / Shopify Polaris / GitHub Primer 做品牌改版的標準路徑：先換 token，再逐面精修，絕不一次改 62 檔。
 
-## 9. Rollout Order（逐頁順序，每頁一個小 PR）
+## 9. Rollout Order（逐頁順序）
 
-1. `DirectorDashboard`、`CourseManagement`（reference pages）
-2. `StudentsList`
-3. `TeachersList`
-4. `TuitionCollectionPage`、`TuitionReportPage`（金流，重點 tabular）
-5. `AttendancePage`
-6. `LearningRecordsPage`
-7. `SmartCalendar`、其餘頁面與 modal
+順序、每頁做到哪、完成定義只看 [`docs/design/UI_FOUNDATION_MIGRATION_SEQUENCING.md`](design/UI_FOUNDATION_MIGRATION_SEQUENCING.md)。這裡原本的 2026-06 順序已停用。
 
-每頁 PR 必含：本地 `npm run build` → PR CI 綠 → merge → deploy success → `/api/v1/health` OK → 前端有改時確認 `/version.json` 更新。
-
-進度追蹤見 GitHub Epic issue（逐頁子 issue + Project 看板）。
-
-## 10. Rollout Tracker（2026-06-06 起）
+## 10. Rollout Tracker（2026-06-06 的 hex 清理，已結束；現行進度見 §9 的連結）
 
 Epic：[#687](https://github.com/jerry200176-png/AllTrue_System/issues/687)
 
