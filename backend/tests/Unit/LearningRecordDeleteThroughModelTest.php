@@ -14,7 +14,7 @@ class LearningRecordDeleteThroughModelTest extends TestCase
     /** Whole-data purges that must not leave copies behind. */
     private const ALLOWED = [
         'Http/Controllers/ResetDataController.php',  // test-environment reset of every table
-        'Http/Controllers/StudentController.php',    // purgeStudentRecords(): only for students with no history
+        'Http/Controllers/StudentController.php',    // purgeStudentRecords(): deliberate whole-student delete (refused once money exists)
     ];
 
     public function test_learning_records_are_never_bulk_deleted_past_the_model(): void

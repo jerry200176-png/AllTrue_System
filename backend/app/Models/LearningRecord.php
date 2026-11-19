@@ -233,7 +233,7 @@ class LearningRecord extends Model
         // TD-074 / #4907: a delete keeps the teacher-written body as an insert-only snapshot. Bulk deletes must
         // load the models and delete them one by one, or this never runs (LearningRecordDeleteThroughModelTest).
         static::deleting(function (self $record): void {
-            $comment = $record->teacherComment;
+            $comment = $record->loadMissing('teacherComment')->teacherComment; // eager: bulk get() rows refuse lazy loads outside production
             if ($comment === null && !LearningRecordMutableOwnership::isFilledByTeacher($record)) {
                 return;
             }
