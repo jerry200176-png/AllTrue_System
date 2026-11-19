@@ -639,7 +639,7 @@ class BillingController extends Controller
             && $projection['period_end'] !== null;
 
         // Align a stale line only when it covers the lessons backing a positive verified total.
-        $itemCourseId = (int) ($singleItem?->StudentClassID ?? 0);
+        $itemCourseId = (int) ($singleItem->StudentClassID ?? 0);
         $alignItemAmount = $useReconciledItem || (
             $singleCourseItem
             && ($itemCourseId === 0 || $itemCourseId === (int) $invoice->StudentClassID)
