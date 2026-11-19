@@ -585,6 +585,19 @@ export async function admissionAction(token, inquiryId, action, payload = {}) {
   return admissionFetch('/admission-inquiries/' + inquiryId + '/' + action, { token, method: 'POST', body: payload });
 }
 
+// 試聽暫留 (in-app #575): director/super_admin only; the server scopes rows to the caller's campuses.
+export async function getTrialHolds(token, from, to) {
+  return (await admissionFetch('/trial-holds?' + new URLSearchParams({ from, to }).toString(), { token }))?.data || [];
+}
+
+export async function createTrialHold(token, payload) {
+  return admissionFetch('/trial-holds', { token, method: 'POST', body: payload });
+}
+
+export async function cancelTrialHold(token, holdId) {
+  return admissionFetch('/trial-holds/' + holdId + '/cancel', { token, method: 'POST' });
+}
+
 export async function getAdmissionTeachers(token, branchId) {
   const res = await fetch(API_BASE + '/teachers?branch_id=' + encodeURIComponent(branchId), {
     headers: { Accept: 'application/json', Authorization: 'Bearer ' + token },

@@ -916,3 +916,29 @@
 | 建議做法 | 加一個 PHPUnit 行為測試：每個 pin 的條件塞一筆壞資料，命令必須非零結束；其他 baseline 併入 `check-ratchet-baseline-touch.mjs` 的 merge-base 比對。 |
 | 清償成本估計 | 低（< 2hr） |
 | 不做的代價 | 有人刻意改 handle() 時，夜間檢查可以被悄悄關掉；目前只靠 review 看得到。 |
+
+### TD-093：migration 演練的 `rollback --step=5` 會退到別人刻意不可逆的 migration（P3）
+| 欄位 | 內容 |
+|---|---|
+| 狀態 | Open |
+| 優先級 | P3 |
+| 發現日期 | 2026-11-19 |
+| 發現來源 | [CI] #5524 `Apply migrations against ephemeral MySQL` |
+| 影響模組 | `.github/workflows/migration-dryrun.yml`（`migrate:rollback --step=5`） |
+| 描述 | 演練在乾淨資料庫跑全部 migration，再退最後 5 支。`2026_11_17_073000`（#5470）的 `down()` 刻意拒絕（`existing_credit_audit_storage_is_retained`），所以在它之後新增的 4 支 migration，PR 都會失敗，即使自己的 `down()` 正常。現在只能在 PR 內文寫 irreversible 字樣來通過，這會讓真正不可逆的 PR 也一起被放過。 |
+| 建議做法 | 只退這個 PR 新增的 migration：`--step` 改成 `git diff --name-only --diff-filter=A origin/main...HEAD -- backend/database/migrations` 的數量（0 就跳過）。 |
+| 清償成本估計 | 低（< 1hr） |
+| 不做的代價 | 之後 3 支新 migration 都要在 PR 內文補說明；可逆性檢查在那段期間形同關閉。 |
+
+### TD-094：排課的老師容量檢查在寫入交易外面做，同時送出的兩筆可能都成功（P2）
+| 欄位 | 內容 |
+|---|---|
+| 狀態 | Open |
+| 優先級 | P2 |
+| 發現日期 | 2026-11-19 |
+| 發現來源 | [REVIEW] #5524 Codex（試聽暫留） |
+| 影響模組 | `EnrollmentService::store()`（`validateOccurrences` 在第 718 行，寫入交易在第 740 行）、`TrialHoldController::store()` |
+| 描述 | 新增課程的老師容量檢查在交易開始前做，也沒有鎖老師那一列。兩筆新增同時送出時（兩堂課，或一堂課加一筆暫留），兩邊都可能通過檢查，接著都寫進同一個時段。暫留這邊已經會鎖老師那一列，但課程那邊沒鎖，所以兩邊還是沒有一起排隊。這個缺口在暫留出現之前就有（兩筆新增課程互撞）。 |
+| 建議做法 | 在 `EnrollmentService` 的寫入交易裡，先鎖每位相關老師的 `User` 列（依 id 排序，避免死結），在同一個交易裡再跑一次 `validateOccurrences(lock: true)`；有衝突就丟出例外，讓整筆撤回。補一個測試：在檢查跟寫入之間插入一筆暫留，第二筆必須被拒絕。 |
+| 清償成本估計 | 中（半天，含測試） |
+| 不做的代價 | 機率低（兩個人要在同一秒排同一位老師），但真的發生時，老師同一時段會被排到兩個學生，得靠人工改課。 |

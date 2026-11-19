@@ -1,0 +1,17 @@
+updates:
+  - id: staff-2026-11-19-trial-hold
+    published_at: "2026-11-19"
+    audiences:
+      - director
+    importance: digest
+    title: 沒有學生資料，也能先留試聽時段
+    summary: 行事曆多了「試聽暫留」，之後在招生詢問轉成正式試聽。
+    items:
+      - category: added
+        text: 在行事曆按「試聽暫留」，選老師、日期、時間就能留住時段；不用填學生，不會產生課程或帳單。
+      - category: added
+        text: 暫留以虛線框顯示，別人排課會被擋下不撞堂；點一下可取消，時段馬上空出來。
+      - category: added
+        text: 之後在「招生詢問」安排試聽時選「用試聽暫留」，老師與時間自動帶入，排好後暫留自動消失。
+    source_refs:
+      - "changelog:2026-11-19:trial-hold-ui"

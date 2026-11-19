@@ -83,6 +83,7 @@ use App\Http\Controllers\SchoolMergeController;
 use App\Http\Controllers\PopOperationController;
 use App\Http\Controllers\ContractAmendmentController;
 use App\Http\Controllers\AdmissionInquiryController;
+use App\Http\Controllers\TrialHoldController;
 use App\Http\Controllers\GlobalSearchController;
 use App\Http\Controllers\SchoolDirectoryController;
 
@@ -398,6 +399,10 @@ Route::prefix('v1')->group(function () {
         Route::post('admission-inquiries/{admissionInquiry}/trial', [AdmissionInquiryController::class, 'scheduleTrial'])->whereNumber('admissionInquiry');
         Route::post('admission-inquiries/{admissionInquiry}/trial-result', [AdmissionInquiryController::class, 'recordResult'])->whereNumber('admissionInquiry');
         Route::post('admission-inquiries/{admissionInquiry}/enroll', [AdmissionInquiryController::class, 'linkEnrollment'])->whereNumber('admissionInquiry');
+        // 試聽暫留 (in-app #575): reserve a teacher's slot for a trial before the student exists.
+        Route::get('trial-holds', [TrialHoldController::class, 'index']);
+        Route::post('trial-holds', [TrialHoldController::class, 'store']);
+        Route::post('trial-holds/{trialHold}/cancel', [TrialHoldController::class, 'cancel'])->whereNumber('trialHold');
         Route::post('admission-inquiries/{admissionInquiry}/lost', [AdmissionInquiryController::class, 'markLost'])->whereNumber('admissionInquiry');
     });
 

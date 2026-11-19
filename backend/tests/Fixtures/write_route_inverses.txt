@@ -298,6 +298,8 @@ POST api/v1/teacher_branches
 POST api/v1/telegram/bindings/unbind
 POST api/v1/telegram/webhook/{code}
 POST api/v1/temp-rfid/consume
+POST api/v1/trial-holds => POST api/v1/trial-holds/{trialHold}/cancel
+POST api/v1/trial-holds/{trialHold}/cancel => none: the cancelled hold row stays for the record; reserve the slot again with a new hold
 POST api/v1/truefit/diagnoses
 POST api/v1/truefit/lesson-preps/generate
 POST api/v1/truefit/mastery-evidence

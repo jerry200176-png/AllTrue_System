@@ -7,12 +7,14 @@ use App\Models\Campus;
 use App\Models\SecurityAuditEvent;
 use App\Models\Student;
 use App\Models\StudentClass;
+use App\Models\TrialHold;
 use App\Models\User;
 use App\Services\AdmissionInquiryService;
 use App\Services\EnrollmentService;
 use App\Services\ParentBinding\GuardianSyncService;
 use Carbon\Carbon;
 use Illuminate\Auth\Access\AuthorizationException;
+use Illuminate\Http\Exceptions\HttpResponseException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -185,7 +187,7 @@ class AdmissionInquiryController extends Controller
     {
         $this->ensureEnabled();
         $this->authorizeInquiry($request, $admissionInquiry);
-        $data = $request->validate(['teacher_id' => 'required|integer|exists:User,id', 'trial_date' => 'required|date', 'start_time' => 'required|date_format:H:i', 'duration_minutes' => 'required|integer|min:30|max:480']);
+        $data = $request->validate(['teacher_id' => 'required|integer|exists:User,id', 'trial_date' => 'required|date', 'start_time' => 'required|date_format:H:i', 'duration_minutes' => 'required|integer|min:30|max:480', 'trial_hold_id' => 'nullable|integer|min:1']);
         return DB::transaction(function () use ($request, $data, $admissionInquiry, $enrollmentService) {
             // Serialize the handoff before invoking EnrollmentService. Without the
             // row lock, two retries arriving together can both observe an inquiry
@@ -208,16 +210,30 @@ class AdmissionInquiryController extends Controller
             abort_unless(in_array($admissionInquiry->status, [AdmissionInquiry::STATUS_NEW, AdmissionInquiry::STATUS_CONTACTED], true), 422, '目前狀態不可安排試聽。');
 
             $trialDate = Carbon::parse($data['trial_date'])->toDateString();
+            // 試聽暫留 (in-app #575): converting a hold lets the trial take the held seat, then releases the hold.
+            $hold = null;
+            if (!empty($data['trial_hold_id'])) {
+                $hold = TrialHold::query()->whereKey((int) $data['trial_hold_id'])->lockForUpdate()->first();
+                if (!$hold || $hold->status !== TrialHold::HELD) {
+                    throw new HttpResponseException(response()->json(['message' => '這筆暫留已經取消或已轉成試聽。沒有變更任何資料。', 'code' => 'trial_hold_not_held'], 409));
+                }
+                if ((int) $hold->campus_id !== (int) $admissionInquiry->campus_id || (int) $hold->teacher_id !== (int) $data['teacher_id']
+                    || $hold->hold_date->toDateString() !== $trialDate) {
+                    throw new HttpResponseException(response()->json(['message' => '暫留的分校、老師或日期跟這次試聽不同。沒有變更任何資料。', 'code' => 'trial_hold_mismatch'], 422));
+                }
+            }
             $enrollmentRequest = $request;
             $payload = [
                 'student' => ['name' => $admissionInquiry->student_name, 'grade' => $admissionInquiry->grade, 'school' => $admissionInquiry->school_name, 'parent_name' => $admissionInquiry->parent_name, 'parent_phone' => $admissionInquiry->parent_phone],
                 'teacher_id' => $data['teacher_id'], 'subject' => $admissionInquiry->subject, 'class_type' => 'trial', 'total_classes' => 1,
                 'confirmed_dates' => [], 'future_dates' => [$trialDate], 'start_time' => $data['start_time'], 'duration_minutes' => $data['duration_minutes'],
                 'price_per_session' => 0, 'payment_type' => 'session', 'branch_id' => $admissionInquiry->campus_id, 'mode' => 'enrollment',
+                'exclude_trial_hold_id' => $hold?->id,
             ];
             $response = $enrollmentService->store($enrollmentRequest, $payload);
             if ($response->getStatusCode() >= 300) {
-                return $response;
+                // Throw, not return: a returned response would commit this transaction (and anything locked or written in it).
+                throw new HttpResponseException($response);
             }
             $result = $response->getData(true);
             $studentId = (int) ($result['student_id'] ?? 0);
@@ -230,6 +246,7 @@ class AdmissionInquiryController extends Controller
                 'trial_student_class_id' => $classId, 'contacted_at' => $admissionInquiry->contacted_at ?: now(), 'trial_scheduled_at' => now(),
                 'assigned_to' => $admissionInquiry->assigned_to ?: $request->attributes->get('auth_user')->id,
             ]);
+            $hold?->update(['status' => TrialHold::CONVERTED, 'converted_student_class_id' => $classId, 'resolved_by' => $request->attributes->get('auth_user')->id, 'resolved_at' => now()]);
             $student = Student::query()->whereKey($studentId)->firstOrFail();
             app(GuardianSyncService::class)->syncPrimaryFromStudent($student);
             $this->audit($request, $admissionInquiry, 'trial_scheduled');

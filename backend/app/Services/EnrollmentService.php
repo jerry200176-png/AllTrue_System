@@ -722,6 +722,9 @@ class EnrollmentService
                 'room_id' => $roomId,
                 'branch_id' => $targetCampusId,
                 'exclude_student_id' => $studentId > 0 ? $studentId : null,
+                // Only AdmissionInquiryController::scheduleTrial sets this, after locking the hold it converts;
+                // the HTTP callers pass validated arrays, so a request cannot inject it.
+                'exclude_trial_hold_id' => $data['exclude_trial_hold_id'] ?? null,
             ], $slots));
         }
         if (!empty($capacityConflicts)) {
