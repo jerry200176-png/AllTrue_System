@@ -4,7 +4,7 @@ from pathlib import Path
 import argparse
 import io
 import json
-from contextlib import redirect_stderr, redirect_stdout
+from contextlib import contextmanager, redirect_stderr, redirect_stdout
 import os
 import subprocess
 import tempfile
@@ -26,6 +26,31 @@ if str(ROOT) not in sys.path:
 REMOTE_DEPLOY = ROOT / "scripts" / "production-deploy" / "pi-remote-deploy.sh"
 REMOTE_RENDERER = ROOT / "scripts" / "production-deploy" / "render_pi_remote_deploy.py"
 SSH_LINE = '"${DEPLOY_PI_SSH_USER}@${DEPLOY_PI_SSH_HOST}" < "$remote_script" || rc=$?\n'
+
+
+@contextmanager
+def capture_fixture_stdout():
+    """Keep expected fixture output local and replay it if the call raises."""
+    output = io.StringIO()
+    try:
+        with redirect_stdout(output):
+            yield output
+    except BaseException:
+        sys.stdout.write(output.getvalue())
+        raise
+
+
+class FixtureDiagnosticsTest(unittest.TestCase):
+    def test_unexpected_exception_preserves_stdout_and_exception(self):
+        outer = io.StringIO()
+        error = RuntimeError("fixture crashed")
+        with redirect_stdout(outer):
+            with self.assertRaises(RuntimeError) as caught:
+                with capture_fixture_stdout():
+                    print("diagnostic before crash")
+                    raise error
+        self.assertIs(error, caught.exception)
+        self.assertEqual("diagnostic before crash\n", outer.getvalue())
 
 
 def deploy_step_env(workflow_text):
@@ -2122,8 +2147,7 @@ class DeployActivationWorkflowContractTest(unittest.TestCase):
 
         def assert_fixture_result(argv, expected, context=""):
             # Expected fixture rejections must not publish real Actions errors.
-            output = io.StringIO()
-            with redirect_stdout(output):
+            with capture_fixture_stdout() as output:
                 result = guard.main(argv)
             self.assertEqual(expected, result, f"{context}\n{output.getvalue()}")
             if expected == 1:
@@ -3287,8 +3311,7 @@ class PostDeployVerifyRollbackTest(unittest.TestCase):
             target_sha=self.TARGET, previous_sha=self.PREV, frontend_changed=frontend_changed,
             migration_ran=migration_ran, smoke="/x/post-merge-smoke.sh", deadline=150,
         )
-        output = io.StringIO()
-        with redirect_stdout(output):
+        with capture_fixture_stdout() as output:
             rc = self.pdv.gate(args, verify_fn=verify_fn, run=run, migrations_fn=lambda prev, target: migrations,
                                additive_fn=lambda prev, target: migrations_additive)
         seen["diagnostics"] = output.getvalue()
