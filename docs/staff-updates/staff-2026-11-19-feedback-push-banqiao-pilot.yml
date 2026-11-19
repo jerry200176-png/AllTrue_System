@@ -1,0 +1,15 @@
+updates:
+  - id: staff-2026-11-19-feedback-push-banqiao-pilot
+    published_at: "2026-11-19"
+    audiences:
+      - director
+    importance: digest
+    title: 學習回饋通知，先在板橋試辦
+    summary: 板橋分校的家長回饋與老師回覆會互相通知；其他分校暫時不變。
+    items:
+      - category: added
+        text: 板橋分校的家長送出學習回饋時，老師與主任的鈴鐺會收到通知。
+      - category: added
+        text: 板橋分校的老師或主任回覆後，有綁 LINE 的家長會收到 LINE；家長可以在設定裡關掉。
+    source_refs:
+      - "changelog:2026-11-19:feedback-push-banqiao-pilot"

@@ -15,7 +15,7 @@ use Illuminate\Support\Facades\Log;
  * 學習回饋／回覆事件 → 推播。
  *
  * 設計重點：
- * - DARK LAUNCH：`perfflags.feedback_push_enabled` 預設 false → 全程 no-op，production 行為不變。
+ * - DARK LAUNCH：`perfflags.feedback_push_enabled` 預設 false；只有 `feedback_push_campus_ids` 列出的分校（試辦：板橋）會推播，其他分校全程 no-op。
  * - 兩條既有 lane：to_staff = 站內 Notification 鈴鐺；to_parent = 家長 LINE（StudentLineBinding + Campus token）。
  * - 防騷擾：同 (feedback, direction) 在 merge window（預設 10 分鐘）內只推一次。
  * - 個資退出權：家長可於 binding 關閉 `notify_learning_feedback`。
@@ -26,6 +26,15 @@ class FeedbackPushNotifier
     public function enabled(): bool
     {
         return (bool) config('perfflags.feedback_push_enabled', false);
+    }
+
+    /** On for this campus: the global switch, or the campus is in the pilot list (TD-063: 板橋 only). */
+    public function enabledFor(int $campusId): bool
+    {
+        $raw = trim((string) config('perfflags.feedback_push_campus_ids', ''));
+
+        return $this->enabled() || ($campusId > 0 && $raw !== ''
+            && ($raw === '*' || in_array($campusId, array_map('intval', array_filter(array_map('trim', explode(',', $raw)), 'ctype_digit')), true)));
     }
 
     private function mergeWindowSeconds(): int
@@ -71,7 +80,7 @@ class FeedbackPushNotifier
 
     private function dispatchToStaff(LearningRecordFeedback $feedback, string $event): void
     {
-        if (!$this->enabled()) {
+        if (!$this->enabledFor((int) $feedback->getAttribute('campus_id'))) {
             return;
         }
         // in-app #413: a parent follow-up is new work. Reopen the thread's staff notice and show it
@@ -119,7 +128,7 @@ class FeedbackPushNotifier
 
     private function dispatchToParent(LearningRecordFeedback $feedback): void
     {
-        if (!$this->enabled()) {
+        if (!$this->enabledFor((int) $feedback->getAttribute('campus_id'))) {
             return;
         }
         if (!$this->passMergeWindow($feedback, 'to_parent')) {
