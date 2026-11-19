@@ -181,6 +181,8 @@ class ScheduleGuardService
         $excludeCourseId = isset($payload['exclude_course_id']) && $payload['exclude_course_id']
             ? (int) $payload['exclude_course_id']
             : null;
+        // 試聽暫留 (in-app #575): converting a hold into its trial must not collide with the hold itself.
+        $excludeTrialHoldId = !empty($payload['exclude_trial_hold_id']) ? (int) $payload['exclude_trial_hold_id'] : null;
 
         $entries = $this->buildTeacherDateOccupancyEntries(
             $teacherId,
@@ -191,7 +193,9 @@ class ScheduleGuardService
             $excludeCourseId,
             $startTime,
             $endTime,
-            $lock
+            $lock,
+            false,
+            $excludeTrialHoldId
         );
         $overlaps = array_values(array_filter($entries, function ($entry) use ($startTime, $endTime) {
             return $this->timesOverlap($startTime, $endTime, (string) $entry['start_time'], (string) $entry['end_time']);
@@ -207,7 +211,7 @@ class ScheduleGuardService
         $roomOverlaps = $overlaps;
         if ($roomId) {
             $roomEntries = $this->buildTeacherDateOccupancyEntries($teacherId, $branchId, $date,
-                $excludeScheduleId, $excludeStudentId, $excludeCourseId, $startTime, $endTime, $lock, true);
+                $excludeScheduleId, $excludeStudentId, $excludeCourseId, $startTime, $endTime, $lock, true, $excludeTrialHoldId);
             $roomOverlaps = array_values(array_filter($roomEntries, fn ($entry) =>
                 $this->timesOverlap($startTime, $endTime, (string) $entry['start_time'], (string) $entry['end_time'])));
         }
@@ -979,6 +983,14 @@ class ScheduleGuardService
             ];
         }
 
+        foreach (self::heldTrialHolds($teacherId, $branchId, $horizonStart, $endDate) as $hold) {
+            $entry = self::trialHoldEntry($hold);
+            if ((int) Carbon::parse($entry['schedule_date'])->dayOfWeekIso === $dow
+                && $this->timesOverlap($slotStart, $slotEnd, $entry['start_time'], $entry['end_time'])) {
+                $overlaps[] = ['teacher_occupancy' => true] + $entry;
+            }
+        }
+
         return $overlaps;
     }
 
@@ -1580,7 +1592,7 @@ class ScheduleGuardService
         foreach ($details as $row) {
             $name = (string) ($row['student_name'] ?? '');
             $sid = (int) ($row['student_id'] ?? 0);
-            $studentLabel = $name !== '' ? $name : ($sid > 0 ? ('#' . $sid) : '未綁定學生');
+            $studentLabel = $name !== '' ? $name : ($sid > 0 ? ('#' . $sid) : (($row['source'] ?? '') === 'trial_hold' ? '尚未建立學生' : '未綁定學生'));
             $subjectName = (string) ($row['subject_name'] ?? '');
             $coursePeriod = (string) ($row['course_period'] ?? '');
             $courseLabel = trim($subjectName . ($coursePeriod !== '' ? '・' . $coursePeriod : ''));
@@ -1592,6 +1604,7 @@ class ScheduleGuardService
                 'student_class' => '固定課程',
                 'class_session' => '課堂紀錄',
                 'schedule' => '排課紀錄',
+                'trial_hold' => '試聽暫留',
                 default => $source,
             };
             $occupant = $sid > 0
@@ -1652,7 +1665,8 @@ class ScheduleGuardService
         ?string $targetStartTime = null,
         ?string $targetEndTime = null,
         bool $lock = false,
-        bool $includeSubstitutedForRoom = false
+        bool $includeSubstitutedForRoom = false,
+        ?int $excludeTrialHoldId = null
     ): array {
         $scheduleRowsQuery = DB::table($lock ? DB::raw('schedules FORCE INDEX (idx_schedules_teacher_day)') : 'schedules')
             ->where('branch_id', $branchId)
@@ -1847,7 +1861,53 @@ class ScheduleGuardService
             ];
         }
 
+        foreach (self::heldTrialHolds($teacherId, $branchId, $date, $date, $excludeTrialHoldId, $lock) as $hold) {
+            $entries[] = self::trialHoldEntry($hold);
+        }
+
         return $entries;
+    }
+
+    /**
+     * 試聽暫留 (in-app #575): held holds of a teacher between two dates (inclusive), at one campus or,
+     * with a null campus, everywhere (the cross-campus busy check). Cancelled and converted holds free the slot;
+     * a converted hold's trial lesson occupies it from then on.
+     *
+     * @return \Illuminate\Support\Collection<int, object>
+     */
+    public static function heldTrialHolds(int $teacherId, ?int $campusId, string $from, ?string $to = null, ?int $excludeId = null, bool $lock = false): \Illuminate\Support\Collection
+    {
+        return DB::table('trial_holds')
+            ->where('teacher_id', $teacherId)
+            ->where('status', \App\Models\TrialHold::HELD)
+            ->where('hold_date', '>=', $from)
+            ->when($to !== null, fn ($q) => $q->where('hold_date', '<=', $to))
+            ->when($campusId !== null, fn ($q) => $q->where('campus_id', $campusId))
+            ->when($excludeId, fn ($q) => $q->where('id', '!=', $excludeId))
+            ->when($lock, fn ($q) => $q->lockForUpdate())
+            ->orderBy('id')
+            ->get(['id', 'campus_id', 'hold_date', 'start_time', 'end_time']);
+    }
+
+    /**
+     * A hold occupies the teacher exactly like the trial lesson it stands for: one anonymous trial seat,
+     * no course (course_id 0 so nothing reads the hold id as a StudentClass id) and no room.
+     *
+     * @return array<string, mixed>
+     */
+    public static function trialHoldEntry(object $hold): array
+    {
+        return [
+            'source' => 'trial_hold',
+            'source_id' => (int) $hold->id,
+            'course_id' => 0,
+            'student_id' => 0,
+            'class_type' => 'trial',
+            'room_id' => null,
+            'start_time' => substr((string) $hold->start_time, 0, 5),
+            'end_time' => substr((string) $hold->end_time, 0, 5),
+            'schedule_date' => substr((string) $hold->hold_date, 0, 10),
+        ];
     }
 
     /**

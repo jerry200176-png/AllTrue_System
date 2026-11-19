@@ -128,6 +128,15 @@ class SubstituteService
                 'source' => 'class_session',
             ];
         }
+        // 試聽暫留 (in-app #575): a held hold makes the teacher busy at every campus, like its trial would.
+        foreach (ScheduleGuardService::heldTrialHolds($teacherId, null, $ymd, $ymd) as $hold) {
+            $busy[] = [
+                'start_time' => $this->hhmm($hold->start_time),
+                'end_time' => $this->hhmm($hold->end_time),
+                'campus_id' => (int) $hold->campus_id,
+                'source' => 'trial_hold',
+            ];
+        }
 
         return $this->mergeBusySlots($busy);
     }
@@ -260,6 +269,22 @@ class SubstituteService
                 'schedule_id' => (int) ($row->id ?? 0),
                 'source' => 'schedule',
                 'occupancy_key' => 'schedule:' . (int) ($row->id ?? 0),
+            ];
+        }
+
+        // 試聽暫留 (in-app #575): one anonymous trial seat, the same entry the write guard counts.
+        foreach (ScheduleGuardService::heldTrialHolds($teacherId, null, $ymd, $ymd) as $hold) {
+            $rawSlots[] = [
+                'start_time' => $this->hhmm($hold->start_time),
+                'end_time'   => $this->hhmm($hold->end_time),
+                'campus_id'  => (int) $hold->campus_id,
+                'class_type' => 'trial',
+                'student_id' => 0,
+                'course_id' => 0,
+                'class_session_id' => 0,
+                'schedule_id' => 0,
+                'source' => 'trial_hold',
+                'occupancy_key' => 'trial_hold:' . (int) $hold->id,
             ];
         }
 

@@ -965,6 +965,14 @@
 | GET | `api/v1/triage/fulltime-payroll` | `TriageFulltimePayrollController@show` | auth |
 | GET | `api/v1/triage/student-classes/{id}/billing-snapshot` | `TriageBillingSnapshotController@show` | auth |
 
+## /api/v1/trial-holds
+
+| Method | URI | Action | Auth |
+|--------|-----|--------|------|
+| GET | `api/v1/trial-holds` | `TrialHoldController@index` | role+campus |
+| POST | `api/v1/trial-holds` | `TrialHoldController@store` | role+campus |
+| POST | `api/v1/trial-holds/{trialHold}/cancel` | `TrialHoldController@cancel` | role+campus |
+
 ## /api/v1/truefit
 
 | Method | URI | Action | Auth |
