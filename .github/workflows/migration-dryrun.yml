@@ -47,6 +47,8 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          # The PR merge commit plus its base parent, so the rollback step can count this PR's new migrations.
+          fetch-depth: 2
 
       - name: Setup PHP
         uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962 # 2.40.0
@@ -107,8 +109,29 @@ jobs:
           PR_BODY: ${{ github.event.pull_request.body }}
         run: |
           set +e
-          php artisan migrate:rollback --step=5 --force --no-interaction
+          # TD-093: roll back exactly the migrations this PR adds, by path. A fixed --step=5 (or any --step)
+          # follows file-name order, so it could hit other PRs' intentionally irreversible migrations
+          # (2026_11_17_073000) or miss this PR's own down() when its file sorts before an existing one.
+          # Without --step, rollback takes the last batch (all of them, from the fresh migrate above) and
+          # only runs the ones whose files are under the given --path.
+          NEW=$(git diff --name-only --no-renames --diff-filter=A HEAD^1 HEAD -- database/migrations) || {
+            echo "::error title=migration rollback check::cannot diff this PR against its base"; exit 1; }
+          PATHS=()
+          for f in $NEW; do case "$f" in *.php) PATHS+=("--path=${f#backend/}");; esac; done
+          if [ ${#PATHS[@]} -eq 0 ]; then
+            echo "This PR adds no migration; reversibility check not needed."
+            exit 0
+          fi
+          echo "Rolling back the ${#PATHS[@]} migration(s) this PR adds: ${PATHS[*]}"
+          OUT=$(php artisan migrate:rollback "${PATHS[@]}" --force --no-interaction 2>&1)
           RC=$?
+          printf '%s\n' "$OUT" | grep -v "Migration not found"
+          # Fail closed: a wrong --path would roll back nothing and still exit 0.
+          DONE=$(printf '%s\n' "$OUT" | grep -c "DONE")
+          if [ $RC -eq 0 ] && [ "$DONE" -ne ${#PATHS[@]} ]; then
+            echo "::error title=migration rollback check::rolled back $DONE of ${#PATHS[@]} added migration(s)"
+            exit 1
+          fi
           if [ $RC -ne 0 ]; then
             # PR body via env avoids bash quote breakage from HTML footers
             if printf '%s' "$PR_BODY" | grep -qi "irreversible"; then

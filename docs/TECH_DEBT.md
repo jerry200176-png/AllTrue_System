@@ -920,7 +920,7 @@
 ### TD-093：migration 演練的 `rollback --step=5` 會退到別人刻意不可逆的 migration（P3）
 | 欄位 | 內容 |
 |---|---|
-| 狀態 | Open |
+| 狀態 | Done 2026-11-19（演練改成依路徑只退這個 PR 新增的 migration；沒有新增就略過） |
 | 優先級 | P3 |
 | 發現日期 | 2026-11-19 |
 | 發現來源 | [CI] #5524 `Apply migrations against ephemeral MySQL` |
@@ -942,3 +942,16 @@
 | 建議做法 | 在 `EnrollmentService` 的寫入交易裡，先鎖每位相關老師的 `User` 列（依 id 排序，避免死結），在同一個交易裡再跑一次 `validateOccurrences(lock: true)`；有衝突就丟出例外，讓整筆撤回。補一個測試：在檢查跟寫入之間插入一筆暫留，第二筆必須被拒絕。 |
 | 清償成本估計 | 中（半天，含測試） |
 | 不做的代價 | 機率低（兩個人要在同一秒排同一位老師），但真的發生時，老師同一時段會被排到兩個學生，得靠人工改課。 |
+
+### TD-095：部署後驗收「director mobile: calendar and course management agree」偶爾失敗（P3）
+| 欄位 | 內容 |
+|---|---|
+| 狀態 | Open |
+| 優先級 | P3 |
+| 發現日期 | 2026-11-19 |
+| 發現來源 | [CI] in-app #522 交接（#5521）：部署後 calendar-course-acceptance 約 18 次失敗 1 次 |
+| 影響模組 | `calendar-course-consistency.spec.js`（`.github/scripts/acceptance-report-gate.mjs` 第 27 行登記的手機版主任案例） |
+| 描述 | 同一個版本重跑會通過，所以是偶發失敗，不是真的回歸。失敗那次的 run 沒有留在公開清單裡，原因還沒有證據（可能是手機版行事曆資料還沒載完就比對）。 |
+| 建議做法 | 下次失敗時，先保存 trace 和截圖，再看是等待條件不足，還是資料競態；修等待條件，不要加重試次數。 |
+| 清償成本估計 | 低～中（拿到一次失敗的 trace 後 < 2hr） |
+| 不做的代價 | 部署後驗收偶爾變紅，需要人工重跑；更糟的是大家習慣「紅了就重跑」，真的回歸會被當成偶發。 |
