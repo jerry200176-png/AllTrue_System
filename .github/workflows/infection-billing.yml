@@ -28,7 +28,7 @@ jobs:
     timeout-minutes: 90
     continue-on-error: true
     outputs:
-      report_available: ${{ steps.mutation.outputs.report_available }}
+      report_available: ${{ steps.mutation_report.outputs.available }}
     env:
       DB_PASSWORD: ci-ephemeral # non-sensitive, ephemeral CI-only MySQL
     services:
@@ -112,10 +112,15 @@ jobs:
             exit "${pipeline_status[1]}"
           fi
           echo "Infection exit: $infection_status" | tee -a storage/infection/run.out
-          if [[ "$infection_status" == 0 && -s storage/infection/infection.log ]]; then
-            echo 'report_available=true' >> "$GITHUB_OUTPUT"
-          fi
           exit "$infection_status"
+      - name: Check completed mutation report
+        id: mutation_report
+        if: ${{ steps.mutation.outcome == 'success' }}
+        working-directory: backend
+        run: |
+          if [[ -s storage/infection/infection.log ]]; then
+            echo 'available=true' >> "$GITHUB_OUTPUT"
+          fi
       - name: Job summary
         if: ${{ always() && steps.scope.outputs.run != 'false' }}
         working-directory: backend
