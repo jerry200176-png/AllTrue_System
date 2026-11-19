@@ -605,6 +605,15 @@ test.describe('UI foundation — real Vue page evidence', () => {
 
     const failedPage = await openStudentWorkspace(page, 'error');
     await expect(failedPage.locator('.student-course-dates__state--error')).toHaveCount(3);
+    // The error line must really be the danger colour: two text-colour classes on one element do not merge, the later CSS rule wins.
+    expect(await failedPage.locator('.student-course-dates__state--error').first().evaluate((el) => {
+      const probe = document.createElement('span');
+      probe.style.color = 'var(--ds-danger-text)';
+      el.append(probe);
+      const same = getComputedStyle(el).color === getComputedStyle(probe).color;
+      probe.remove();
+      return same;
+    })).toBe(true);
     await expect(failedPage.getByText('上課日期暫時無法載入。')).toHaveCount(3);
     await expect(failedPage.getByText('目前沒有可顯示的上課日期。')).toHaveCount(0);
 

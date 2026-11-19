@@ -1,0 +1,14 @@
+updates:
+  - id: staff-2026-11-19-student-course-card-top
+    published_at: "2026-11-19"
+    audiences:
+      - director
+      - super_admin
+    importance: digest
+    title: 學生課程卡的字可以放大了
+    summary: 展開學生後，課程卡的日期、提醒和進度會跟著字級設定變大。
+    items:
+      - category: fixed
+        text: 課程卡的科目、上課日期、「現在先處理」和課程進度會隨字級設定放大；「已暫停」「即將用完」改用一致的狀態標籤。
+    source_refs:
+      - "changelog:2026-11-19-student-course-card-top"

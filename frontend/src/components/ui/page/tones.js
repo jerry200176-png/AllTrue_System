@@ -55,6 +55,9 @@ const rowButton = `${rowButtonBase} tw:h-11 tw:shrink-0 tw:whitespace-nowrap`;
 const rowWrapBase = `${rowButtonBase} tw:max-w-full tw:min-h-11 tw:py-2 tw:text-left tw:whitespace-normal tw:bg-card tw:shadow-[inset_0_0_0_1px_var(--ds-hairline)] tw:hover:bg-muted`;
 export const rowAction = Object.freeze({
   primary: `${rowButton} tw:bg-primary tw:text-primary-foreground`,
+  // A row's main action when it is a warning (續課 when lessons run low): same pill, warning wash + AA text. Its own full set, because a
+  // second background class on top of `primary` does not win (the later rule in the stylesheet does).
+  warning: `${rowButton} tw:bg-[var(--ds-warning-wash)] tw:text-[var(--ds-warning-text)]`,
   secondary: `${rowButton} tw:bg-card tw:text-foreground tw:shadow-[inset_0_0_0_1px_var(--ds-hairline)] tw:hover:bg-muted`,
   // A secondary action whose words are a sentence (堂數待對帳 查看對帳明細): at least 44px, wraps instead of pushing the page sideways.
   secondaryWrap: `${rowWrapBase} tw:text-foreground`,
