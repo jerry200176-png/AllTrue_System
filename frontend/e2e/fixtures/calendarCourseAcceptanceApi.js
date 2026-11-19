@@ -79,7 +79,10 @@ export function calendarCourseAcceptanceApi() {
         if (url.pathname === '/api/v1/student-classes') {
           if (url.searchParams.get('branch_id') !== '9') return send({}, 403);
           const name = url.searchParams.get('name');
-          const data = [course, liveCourse].filter((item) => !name || item.student_name.includes(name));
+          // The older ended contract is absent from page one until the student search.
+          const data = name
+            ? [course, liveCourse].filter((item) => item.student_name.includes(name))
+            : url.searchParams.get('per_page') === '2000' ? [course, liveCourse] : [liveCourse];
           return send({ data, total: data.length, current_page: 1, last_page: 1 });
         }
         if (url.pathname === '/api/v1/class-sessions/projection') {

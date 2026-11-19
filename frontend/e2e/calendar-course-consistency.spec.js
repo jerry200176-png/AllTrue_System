@@ -660,6 +660,8 @@ test.describe('production acceptance — calendar/course parity', () => {
         'missing controlled production director session');
       test.skip(BRANCH_ID !== 9, 'the reported unarranged-session course is scoped to campus 9');
       expect(AUTHORIZED_CAMPUSES).toContain(BRANCH_ID);
+      // Before the student search, the initial page may contain only other courses.
+      countBlockedKnownPostReads();
       await page.setViewportSize({ width: viewport.width, height: viewport.height });
       const token = SESSION.access_token;
       const coursesPayload = await getJson(
@@ -686,7 +688,7 @@ test.describe('production acceptance — calendar/course parity', () => {
 
       const courseId = Number(valueOf(target, 'id', 'ID'));
       expect(Number.isSafeInteger(courseId) && courseId > 0).toBe(true);
-      const served = await installCoursePlanningRead(page, APP_ORIGIN, {
+      const { served, limits } = await installCoursePlanningRead(page, APP_ORIGIN, {
         branchId: BRANCH_ID,
         courseId,
         readWindow: (window) => readCoursePlanningWindow(request, APP_ORIGIN, window, token),
@@ -709,6 +711,11 @@ test.describe('production acceptance — calendar/course parity', () => {
       await expect(row).toContainText(subjectName);
       await expectAmendedCoursePlanning(page, group, row, { mobile: viewport.name === 'mobile' });
       expect(served.some((count) => count >= 2), 'selected course must receive its real dated rows').toBe(true);
+      expect(limits, 'course planning acceptance stayed within the read budget').toEqual([]);
+      if (test.info().project.metadata.calendarCourseFixture) {
+        expect(blockedHttpWrites.some((request) => isKnownPostRead(APP_ORIGIN, request)),
+          'the initial list omits the target and its POST read must be blocked locally').toBe(true);
+      }
     });
   }
 
@@ -736,7 +743,8 @@ test.describe('production acceptance — calendar/course parity', () => {
     await expect(panel, 'search panel closes').toHaveCount(0);
   });
 
-  test('director desktop: in-app 395/403 帳務中心使用帳單篩選，不再出現舊標籤', async ({ page }) => {
+  // Keep the title stable for the production acceptance report manifest.
+  test('director desktop: in-app 395/403 帳務中心應收分頁用新標籤，不再出現舊字樣', async ({ page }) => {
     test.setTimeout(90_000);
     await openDirectorApp(page, DESKTOP);
     await openPageFromSidebarSearch(page, {

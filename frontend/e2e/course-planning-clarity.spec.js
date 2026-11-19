@@ -39,7 +39,7 @@ for (const width of [390, 1440]) {
       const data = url.pathname === '/api/v1/student-classes' && url.searchParams.get('branch_id') === '1' ? [course] : [];
       await route.fulfill({ json: { data, total: data.length, current_page: 1, last_page: 1 } });
     });
-    const served = await installCoursePlanningRead(page, origin, {
+    const { served, limits } = await installCoursePlanningRead(page, origin, {
       branchId: 1, courseId: course.id, readWindow: () => ({ materialized: sessions, projected: [] }),
     });
 
@@ -54,6 +54,7 @@ for (const width of [390, 1440]) {
     await expectAmendedCoursePlanning(page, group, row, { mobile: width < 640 });
 
     expect(served).toContain(2);
+    expect(limits).toEqual([]);
     expect(blocked).toEqual([]);
   });
 }
@@ -63,7 +64,7 @@ test('course details serve only the selected local course data', async ({ page, 
   expect(new URL(origin).hostname).toBe('127.0.0.1');
   const blocked = await installReadOnlyAppGuard(context, origin);
   const sourceWindows = [];
-  const served = await installCoursePlanningRead(page, origin, {
+  const { served, limits } = await installCoursePlanningRead(page, origin, {
     branchId: 1, courseId: course.id,
     readWindow: (window) => {
       sourceWindows.push(window);
@@ -87,12 +88,15 @@ test('course details serve only the selected local course data', async ({ page, 
     return {
       selected: await read('?branch_id=1'),
       repeated: await read('?branch_id=1'),
+      secondWindow: await read('?branch_id=1', { ...body, range_end: '2026-08-30' }),
       denied: await Promise.all([
         read('?branch_id=2'),
         read('?branch_id=1&branch_id=2'),
         read('?branch_id=1', { ...body, branch_id: 2 }),
         read('?branch_id=1', { ...body, courses: [{ id: courseId + 1 }] }),
         read('?branch_id=1', { ...body, range_end: '2026-08-01' }),
+        read('?branch_id=1', { ...body, range_start: '0001-01-01', range_end: '9999-12-31' }),
+        read('?branch_id=1', { ...body, range_end: '2026-08-29' }),
         read('?branch_id=1', body, 'PUT'),
       ]),
     };
@@ -100,11 +104,16 @@ test('course details serve only the selected local course data', async ({ page, 
 
   expect(result.selected).toEqual({ [course.id]: { materialized: [sessions[1]], projected: [] } });
   expect(result.repeated).toEqual(result.selected);
-  expect(result.denied).toEqual(Array(6).fill(null));
-  expect(served).toEqual([1, 1]);
-  expect(sourceWindows).toEqual([{ branchId: 1, courseId: course.id, start: '2026-08-10', end: '2026-08-31' }]);
+  expect(result.secondWindow).toEqual(result.selected);
+  expect(result.denied).toEqual(Array(8).fill(null));
+  expect(served).toEqual([1, 1, 1]);
+  expect(limits.sort()).toEqual(['date window exceeds 366 days', 'more than two distinct date windows']);
+  expect(sourceWindows).toEqual([
+    { branchId: 1, courseId: course.id, start: '2026-08-10', end: '2026-08-31' },
+    { branchId: 1, courseId: course.id, start: '2026-08-10', end: '2026-08-30' },
+  ]);
   expect(blocked.every((entry) => entry.origin === origin && entry.path === SESSION_DATES_PATH)).toBe(true);
-  expect(blocked.map((entry) => entry.method).sort()).toEqual(['POST', 'POST', 'POST', 'POST', 'POST', 'PUT']);
+  expect(blocked.map((entry) => entry.method).sort()).toEqual([...Array(7).fill('POST'), 'PUT']);
 });
 
 test('course planning reads use a canonical GET and decline redirects', async ({ request }) => {
@@ -129,6 +138,7 @@ test('course planning reads use a canonical GET and decline redirects', async ({
     const read = (overrides = {}) => readCoursePlanningWindow(request, origin, { ...window, ...overrides }, 'synthetic-session');
     await expect(read()).resolves.toEqual(payload[course.id]);
     await expect(read({ branchId: 0 })).rejects.toThrow('invalid course planning read scope');
+    await expect(read({ start: '0001-01-01', end: '9999-12-31' })).rejects.toThrow('exceeds the acceptance date limit');
     await expect(read({ start: '2026-08-02' })).rejects.toThrow('course planning read returned HTTP 307');
     await expect(read({ start: '2026-08-03' })).rejects.toThrow('rows outside the selected course or dates');
     expect(received).toEqual([

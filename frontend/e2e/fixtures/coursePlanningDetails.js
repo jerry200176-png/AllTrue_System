@@ -2,6 +2,15 @@ import { expect } from '@playwright/test';
 import { strictYmd } from './classSessionReadResponder.js';
 
 export const SESSION_DATES_PATH = '/api/v1/student-classes/session-dates';
+// The GET reads the authorized campus. Give the test room for historical lessons
+// beyond the app's four-month default without allowing arbitrary date scans.
+const MAX_ACCEPTANCE_DAYS = 366;
+const MAX_ACCEPTANCE_WINDOWS = 2;
+const DAY_MS = 86_400_000;
+
+function withinAcceptanceSpan(start, end) {
+  return Date.parse(end) - Date.parse(start) < MAX_ACCEPTANCE_DAYS * DAY_MS;
+}
 
 function inCourseWindow(row, courseId, start, end) {
   return row?.student_class_id === courseId && Boolean(strictYmd(row.session_date))
@@ -12,6 +21,7 @@ function inCourseWindow(row, courseId, start, end) {
 export async function readCoursePlanningWindow(request, origin, { branchId, courseId, start, end }, token) {
   if (!Number.isSafeInteger(branchId) || branchId <= 0 || !Number.isSafeInteger(courseId) || courseId <= 0
       || !strictYmd(start) || !strictYmd(end) || end < start) throw new Error('invalid course planning read scope');
+  if (!withinAcceptanceSpan(start, end)) throw new Error('course planning read exceeds the acceptance date limit');
   const params = new URLSearchParams({ branch_id: String(branchId), range_start: start, range_end: end });
   const response = await request.get(`${new URL(origin).origin}${SESSION_DATES_PATH}?${params}`, {
     headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
@@ -33,6 +43,7 @@ export async function readCoursePlanningWindow(request, origin, { branchId, cour
 /** Answer the selected course's read locally, leaving all other verbs and scopes to the guard. */
 export async function installCoursePlanningRead(page, origin, { branchId, courseId, readWindow }) {
   const served = [];
+  const limits = [];
   const windows = new Map();
   await page.route((url) => url.origin === origin && url.pathname === SESSION_DATES_PATH, async (route) => {
     const request = route.request();
@@ -48,15 +59,25 @@ export async function installCoursePlanningRead(page, origin, { branchId, course
     const start = strictYmd(body.range_start);
     const end = strictYmd(body.range_end);
     if (!start || !end || end < start) return route.fallback();
+    if (!withinAcceptanceSpan(start, end)) {
+      limits.push('date window exceeds 366 days');
+      return route.fallback();
+    }
     const key = `${start}/${end}`;
-    if (!windows.has(key)) windows.set(key, readWindow({ branchId, courseId, start, end }));
+    if (!windows.has(key)) {
+      if (windows.size >= MAX_ACCEPTANCE_WINDOWS) {
+        limits.push('more than two distinct date windows');
+        return route.fallback();
+      }
+      windows.set(key, readWindow({ branchId, courseId, start, end }));
+    }
     const { materialized, projected } = await windows.get(key);
     const inScope = (row) => inCourseWindow(row, courseId, start, end);
     const visible = { materialized: materialized.filter(inScope), projected: projected.filter(inScope) };
     await route.fulfill({ json: { [courseId]: visible } });
     served.push(visible.materialized.length);
   });
-  return served;
+  return { served, limits };
 }
 
 export async function expectAmendedCoursePlanning(page, group, row, { mobile }) {
