@@ -58,7 +58,7 @@ import { ref, computed, watch, nextTick } from 'vue';
 import BillingDocument from './BillingDocument.vue';
 import { paymentSlipView, slipPlainText } from '../lib/billingDocumentView.js';
 import { trapTab } from '../lib/focusTrap';
-import { trackedFetch } from '../lib/loadingBar';
+import { loadSlipData } from '../lib/slipData.js';
 
 const props = defineProps({
   show: Boolean,
@@ -77,37 +77,6 @@ const docRef = ref(null);
 const copying = ref(false);
 const textCopy = ref('');
 const exporting = ref(false);
-
-function getToken() {
-  const session = JSON.parse(localStorage.getItem('alltrue_session') || 'null');
-  return session?.access_token;
-}
-
-async function fetchInvoiceSlip(id) {
-  const resp = await trackedFetch(`/api/v1/invoices/${id}/slip-data`, {
-    headers: { Accept: 'application/json', Authorization: `Bearer ${getToken()}` },
-  });
-  if (!resp.ok) {
-    // Founder D2: a 422 says why (e.g. 金額需核對，不能產生繳費單); show it instead of a generic error.
-    const body = await resp.json().catch(() => ({}));
-    throw new Error(body.message || '無法載入帳單資料');
-  }
-  const body = await resp.json();
-  // Founder D2: an unpaid bill whose amount is still 金額待確認 never becomes a parent slip (no render, no share).
-  if (body?.amount_pending_confirmation === true) throw new Error('金額需核對，不能產生繳費單');
-  return body;
-}
-
-async function fetchTuitionSlip(scId) {
-  const resp = await trackedFetch(`/api/v1/alerts/tuition-slip/${scId}`, {
-    headers: { Accept: 'application/json', Authorization: `Bearer ${getToken()}` },
-  });
-  if (!resp.ok) {
-    const body = await resp.json().catch(() => ({}));
-    throw new Error(body.message || '無法載入催繳資料');
-  }
-  return resp.json();
-}
 
 // Same nested-dialog behaviour as ReceiptModal (the slip can open over the ledger, in-app #425): take focus,
 // keep Tab inside, close only this dialog on Escape, give focus back on close.
@@ -150,9 +119,7 @@ watch(() => props.show, async (v) => {
   error.value = '';
   raw.value = null;
   try {
-    raw.value = props.invoiceId
-      ? await fetchInvoiceSlip(props.invoiceId)
-      : await fetchTuitionSlip(props.studentClassId);
+    raw.value = await loadSlipData({ invoiceId: props.invoiceId, studentClassId: props.studentClassId });
     loading.value = false;
     await nextTick();
     exporting.value = true;

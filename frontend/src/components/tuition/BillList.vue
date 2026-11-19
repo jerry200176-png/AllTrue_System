@@ -202,7 +202,7 @@ import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Table, TableBody, TableCaption, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { FilterChip, SectionCard, SelectionBar, StatItem, StatStrip, StatusBadge, control, dataTable as t } from '@/components/ui/page';
-import { billCounts, billDueText as dueText, billMenuGroups, billRows, TODO_KINDS } from '../../lib/billRows.js';
+import { billCounts, billDueText as dueText, billMenuGroups, billRows, TODO_KINDS, isPaidCountRenewal } from '../../lib/billRows.js';
 import { slipAvailability } from '../../lib/billingDocState.js';
 import { courseNumberFromSearch } from '../../lib/studentBillingRows.js';
 
@@ -255,9 +255,7 @@ function primaryOf(b) {
   if (b.kind !== 'issue') return null;
   // #4919: a package row has no contract to issue against (class_id null), so it only opens the billing.
   if (b.class_id == null) return { label: '看帳務', action: 'open' };
-  if (props.canDocs && b.src.schedule_mode === 'count' && b.src.payment_status === 'renew_needed'
-    && !b.package_id && Number.isSafeInteger(Number(b.class_id)) && Number(b.class_id) > 0
-    && Number.isSafeInteger(b.student_id) && b.student_id > 0) return { label: '續課', action: 'renew' };
+  if (props.canDocs && isPaidCountRenewal(b)) return { label: '續課', action: 'renew' };
   if (b.src.schedule_mode === 'date') return { label: '開帳單', action: 'issue' };
   return slipOf(b).ok ? { label: '繳費單', action: 'slip' } : { label: '看帳務', action: 'open' };
 }
