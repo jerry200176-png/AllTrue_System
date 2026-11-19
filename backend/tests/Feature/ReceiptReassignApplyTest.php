@@ -103,6 +103,22 @@ class ReceiptReassignApplyTest extends TestCase
         $this->apply($token, $f['report'], $f['rightInvoice'], $hash)->assertOk()->assertJsonPath('replayed', true);
     }
 
+    public function test_move_preserves_a_paid_source_header_that_is_also_an_item_on_the_target(): void
+    {
+        $f = $this->fixture();
+        $this->payment($f['wrongInvoice'], self::AMOUNT);
+        $f['wrongInvoice']->update(['PaidAmount' => self::AMOUNT * 2]);
+        $target = $this->bill($f['wrong'], self::AMOUNT);
+        $target['invoice']->items()->create(['StudentClassID' => $f['wrongCourse']->ID, 'Description' => 'Shared destination', 'Amount' => self::AMOUNT]);
+        $f['rightInvoice'] = $target['invoice'];
+        $token = $this->token('S', 1);
+        $hash = $this->preview($token, $f)->assertOk()->json('state_hash');
+        $this->apply($token, $f['report'], $f['rightInvoice'], $hash)->assertStatus(201);
+
+        $this->assertSame([self::AMOUNT, self::AMOUNT], [$this->net($f['wrongInvoice']), $this->net($target['invoice'])]);
+        $this->assertSame([1, 1], [(int) $f['wrongCourse']->fresh()->Paid, (int) $target['course']->fresh()->Paid]);
+    }
+
     public function test_after_balance_of_an_over_collected_source_keeps_its_surplus(): void
     {
         $f = $this->fixture();

@@ -16,8 +16,10 @@ use App\Services\BillingPayableResolver;
 use App\Services\MonthlyBillingService;
 use App\Services\PaymentReportTokenService;
 use Carbon\Carbon;
+use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
 /**
@@ -196,6 +198,50 @@ class MonthlyCalendarMonthCollectionTest extends TestCase
         $this->assertSame([1, 0], [(int) $header->fresh()->Paid, (int) $line->fresh()->Paid]);
         $this->assertSame([], app(BillingPayableResolver::class)->validPaymentEvidence([$line->ID], [], [1])['classes']);
         $this->assertSame(1, $bill->payments()->count());
+    }
+
+    public function test_voiding_a_legacy_zero_bill_clears_a_paid_mark_when_the_shared_bill_is_unpaid(): void
+    {
+        [, $line, $bill] = $this->sharedCountBill();
+        $line->update(['Paid' => 1]);
+        $zero = Invoice::create([
+            'StudentID' => $line->StudentID, 'StudentClassID' => $line->ID, 'IssueDate' => '2026-10-22',
+            'TotalAmount' => 0, 'PaidAmount' => 0, 'Status' => 'paid',
+        ]);
+
+        $this->api('postJson', "/api/v1/invoices/{$zero->id}/void", ['reason' => 'Synthetic cleanup'])->assertOk();
+        $this->assertSame('void', (string) $zero->fresh()->Status);
+        $this->assertSame('unpaid', (string) $bill->fresh()->Status);
+        $this->assertSame(0, (int) $line->fresh()->Paid);
+        $this->assertSame(0, $bill->payments()->count());
+    }
+
+    public function test_batch_confirmation_reports_a_stale_item_scope_after_an_earlier_success(): void
+    {
+        [$first, , $firstBill] = $this->sharedCountBill();
+        [$second, , $secondBill] = $this->sharedCountBill();
+        $extra = $this->course('2026-10-01', '2026-11-30', [], ['StudentID' => $second->StudentID, 'ScheduleMode' => 'count']);
+        $firstReport = $this->record($first, 4000)->assertOk()->json('report_id');
+        $secondReport = $this->record($second, 4000)->assertOk()->json('report_id');
+        $routed = false;
+        DB::listen(function (QueryExecuted $query) use ($second, $secondBill, $extra, &$routed) {
+            $sql = strtolower($query->sql);
+            if (!$routed && str_contains($sql, '`studentclass`') && str_contains($sql, 'for update')
+                && in_array((int) $second->ID, array_map('intval', $query->bindings), true)) {
+                $routed = true;
+                // Introduce an item outside the scope that the API routed before this lock was acquired.
+                $secondBill->items()->create(['StudentClassID' => $extra->ID, 'Description' => 'Synthetic scope drift', 'Amount' => 100]);
+            }
+        });
+
+        $this->api('postJson', '/api/v1/payment-reports/confirm-batch', ['ids' => [$firstReport, $secondReport]])
+            ->assertStatus(207)->assertJsonPath('accepted', 1)
+            ->assertJsonPath('results.0.http_status', 200)
+            ->assertJsonPath('results.1.http_status', 409)->assertJsonPath('results.1.code', 'invoice_owner_changed');
+        $this->assertTrue($routed);
+        $this->assertSame('confirmed', (string) PaymentReport::findOrFail($firstReport)->status);
+        $this->assertSame('pending', (string) PaymentReport::findOrFail($secondReport)->status);
+        $this->assertSame([1, 0], [$firstBill->payments()->count(), $secondBill->payments()->count()]);
     }
 
     /** Codex P1 #2 on #4867: a multi-course bill headed by a monthly plan member keeps its stored total on confirm. */

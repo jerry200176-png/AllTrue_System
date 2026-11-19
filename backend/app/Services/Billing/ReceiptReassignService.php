@@ -662,9 +662,6 @@ final class ReceiptReassignService
         // As void() (#531 / #5160): the bill this receipt's own confirmation auto-issued goes with its only receipt.
         $autoVoided = FirstBillAutoVoid::apply($fromInvoice, (int) $old->id, $old->payment_id === null ? null : (int) $old->payment_id,
             $paymentsBefore, $fromCourseId, $actorId);
-        $this->settleSourceCourse($fromCourseId, (string) $fromInvoice->Status, $autoVoided);
-        CollectionTarget::syncInvoiceLineCourses($fromInvoice, $lineCourses->get((int) $fromInvoice->id, collect()), true);
-
         // Reapply: a repriced monthly target is saved at the total the plan used, as confirm() does (must-do 2), then the money lands.
         $toCourse = StudentClass::query()->where('ID', $toCourseId)->firstOrFail();
         if ((string) $toCourse->ScheduleMode === 'date') {
@@ -675,6 +672,9 @@ final class ReceiptReassignService
             'Method' => $old->payment_method === 'transfer' ? 'transfer' : 'cash', 'Note' => "{$tag} 更正移轉自收據 #{$old->id}",
             'payment_report_id' => (int) $new->id]);
         $this->settleBill($toInvoice, $actorId);
+        // A course can be named on both bills. Settle only after both balances reflect the completed move.
+        $this->settleSourceCourse($fromCourseId, (string) $fromInvoice->Status, $autoVoided);
+        CollectionTarget::syncInvoiceLineCourses($fromInvoice, $lineCourses->get((int) $fromInvoice->id, collect()), true);
         // confirm()'s settle rules (CollectionTarget): course Paid from the resolver, the package mark as confirm sets it on an existing bill.
         $toCourse->refresh();
         $toPackage = (int) ($toCourse->PackageID ?? 0) > 0 ? CoursePackage::query()->whereKey((int) $toCourse->PackageID)->first() : null;
@@ -713,7 +713,7 @@ final class ReceiptReassignService
         $course = StudentClass::query()->where('ID', $courseId)->firstOrFail();
         $package = $billStatus !== 'paid' && (int) ($course->PackageID ?? 0) > 0 ? CoursePackage::query()->whereKey((int) $course->PackageID)->first() : null;
         // As void(): an auto-voided bill, or money off an already-void bill with no live bill left, backs no settlement.
-        CollectionTarget::unsettle($course, $package, !$billAutoVoided && ($billStatus !== 'void' || Invoice::courseHasLiveBill($courseId)));
+        CollectionTarget::unsettle($course, $package, (!$billAutoVoided && $billStatus !== 'void') || Invoice::courseHasLiveBill($courseId));
     }
 
     /**

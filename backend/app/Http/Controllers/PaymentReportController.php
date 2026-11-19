@@ -1335,7 +1335,12 @@ class PaymentReportController extends Controller
             foreach (['auth_user_id', 'auth_role', 'auth_campus_ids'] as $key) {
                 $inner->attributes->set($key, $request->attributes->get($key));
             }
-            $resp = $this->confirm($inner, $id);
+            try {
+                $resp = $this->confirm($inner, $id);
+            } catch (HttpResponseException $e) {
+                // The individual transaction has rolled back; another entry may already have committed.
+                $resp = $e->getResponse();
+            }
             $body = json_decode($resp->getContent(), true) ?: [];
             $http = $resp->getStatusCode();
             if ($http < 300) {

@@ -194,8 +194,13 @@ class Invoice extends Model
      */
     public static function courseHasLiveBill(int $courseId): bool
     {
-        return self::query()->where('StudentClassID', $courseId)->notVoided()->exists()
+        return self::courseHasOwnLiveBill($courseId)
             || self::standaloneCountLineBills([$courseId])->exists();
+    }
+
+    public static function courseHasOwnLiveBill(int $courseId): bool
+    {
+        return self::query()->where('StudentClassID', $courseId)->notVoided()->exists();
     }
 
     /**
