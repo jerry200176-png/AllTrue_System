@@ -19,7 +19,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Tests\TestCase;
 
-/** #4928 step 1: staff read-only learning timeline merged from evaluations, assessment scores and sign-ins. */
+/** #4928 step 1: staff read-only learning timeline merged from evaluations, sign-ins and school exam scores. */
 class StudentLearningTimelineTest extends TestCase
 {
     use RefreshDatabase;
