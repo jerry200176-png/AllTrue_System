@@ -85,6 +85,12 @@ Shared parts live in `frontend/src/components/ui/page/` (`PageShell`, `PageHeade
 
 ## 8. Per-page checklist (implementer and reviewer both run it)
 
+Before building, write three answers in the PR body, one line each. A page that cannot answer one is redesigned first.
+
+- [ ] **重色** — where the heavy colour lands: name the one or two places (the primary action, the current state) and roughly what share of the screen. Everything else is ink, secondary grey and hairlines; status tones (§6) are states, not decoration.
+- [ ] **第一屏** — what gets the first screen: one thing only. A home page leads with the next thing to do; a list page with the list (filters stay one row); a form page with the form; a detail page with the record's state and its one action. The summary strip never pushes that below the fold at 375.
+- [ ] **減掉** — what was removed compared with the old page: at least one line, shape, colour or block.
+
 - [ ] Built from `components/ui/page` parts; no page-level font size, radius, shadow or colour; no `design-system/At*` import.
 - [ ] One `h2`, one context line, at most one primary action; wording unchanged from the old page.
 - [ ] Every name on one line at 375 and 1536, at 標準, 稍大 and 大.

@@ -1,25 +1,39 @@
 # UI Foundation — migration sequencing
 
-Companion to [`ALLTRUE_UI_FOUNDATION.md`](ALLTRUE_UI_FOUNDATION.md) (look and rules) and [`UI_AUDIT_2026-07-26.md`](UI_AUDIT_2026-07-26.md). Decision: #4659 (shadcn-vue template, Apple-style look). This is the single order; the older At*-pilot wave tables are retired.
+Companion to [`ALLTRUE_UI_FOUNDATION.md`](ALLTRUE_UI_FOUNDATION.md) (look and rules) and [`UI_AUDIT_2026-07-26.md`](UI_AUDIT_2026-07-26.md). Decision: #4659 (shadcn-vue template, Apple-style look). This is the single order; the older At*-pilot wave tables and the five waves in #4989 are retired.
 
 Every PR touching `frontend/` gets a preview of the whole app (demo logins 主任/老師/家長, fake data) from the `ui-preview` workflow's sticky PR comment; review there in addition to the screenshots that [`PAGE_TEMPLATE.md`](PAGE_TEMPLATE.md) §9 requires (the one evidence rule).
 
 ## Order
 
-| # | Step | Status |
+One order, most used first (Founder decision 2026-11-13, #4989). It replaces the earlier step table and the wave lists in #4989; a page's PRs merge in this order unless a bug forces otherwise.
+
+1. Director: 帳務中心 → 課程查找 → 學生管理 → 班級行事曆 → 出缺勤 → 學習評量 / 段考成績 → 報表與薪資 → 設定.
+2. Teacher: 老師工作台 and its daily flow (點名, 評量, 課表).
+3. Parent: 家長入口 (overview, 課表, 繳費, 學習), track #4986.
+4. Whatever is left in `scripts/ui-legacy-pages.json`.
+
+A routed page that is not in the nav registry is checked for usage first; an unused one is removed, not migrated.
+
+### Where each page stands
+
+Leaving `scripts/ui-legacy-pages.json` only means the page no longer imports `At*`. A page is done when it follows [`PAGE_TEMPLATE.md`](PAGE_TEMPLATE.md) and its §8 checklist passed. Update this table in the PR that changes a page's state.
+
+| Page | State (2026-11-19) | Next |
 |---|---|---|
-| 1 | PR-0 template foundation (shadcn-vue on `--ds-*`) | done, #4951 |
-| 2 | 主任首頁 (next) | #4949 |
-| 3 | 課程管理 | #4918 |
-| 4 | App shell (sidebar, top bar, mobile tabs) | planned |
-| 5 | 老師首頁 | planned |
-| 6 | 帳務中心 v3 | planned |
-| 7 | Remaining pages, one PR each | planned |
-| P | Parent track #4986 | step 1 #4987; steps 2-6 planned |
+| Template foundation (shadcn-vue on `--ds-*`) | done, #4951 | |
+| Shared page parts (`components/ui/page`) | done, #5265 | add parts only on first need |
+| 今日工作台 (`DirectorDashboard.vue`) | the reference page | |
+| 課程查找 (`CourseManagement.vue`) | done, last slice #5295 | |
+| 學生管理 (`StudentsList.vue`) | slices 1-4 merged (#5359) | slices 5-11: course cards, history section, dialogs, child modals, cleanup |
+| 帳務中心 (`TuitionCollectionPage.vue`) | on the template parts in places (direction A: table with a checkbox column, phone = list rows); still in the legacy list | finish after the billing-guide PR #5510 lands; refresh its visual baseline |
+| 當月學收 | migrated in #5270, page removed in #5464 | |
+| 班級行事曆, 出缺勤, 學習評量 / 段考成績, 報表與薪資, 設定 | not started | in the order above |
+| Teacher pages, parent pages | not started (parent step 1: #4987) | after the director pages |
 
 Page layout (shell, header, summary strip, cards, list vs table, name cells, required screenshots) is one contract: [`PAGE_TEMPLATE.md`](PAGE_TEMPLATE.md), taken from 今日工作台. A migration that only swaps components without that layout is not done.
 
-The Apple-style look is delivered per page, not by changing global tokens; global `--ds-*` values stay until the last pages migrate. Every migrated page uses `components/ui` plus the `ParentHome.vue` pattern (small label over big value, one dark primary pill). `At*` components are not restyled; they retire as pages move.
+The Apple-style look is delivered per page, not by changing global tokens; global `--ds-*` values stay until the last pages migrate. Every migrated page uses `components/ui` and the shared page parts; the layout reference is 今日工作台 ([`PAGE_TEMPLATE.md`](PAGE_TEMPLATE.md)). Parent pages keep the `ParentHome.vue` pattern (small label over big value, one dark primary pill) inside the same shell. `At*` components are not restyled; they retire as pages move.
 
 ## Constraints that outlive the waves
 
@@ -49,6 +63,7 @@ The Apple-style look is delivered per page, not by changing global tokens; globa
    - Declare the risk class AFTER adding baselines (#5189, #5195).
    - No staff card unless staff would notice and act on it (#5189).
 8. Design QA (in this order, vendored under `.claude/skills/`): `impeccable` critique/audit, then polish; the `make-interfaces-feel-better` checklist; the existing `web-design-guidelines` review; `ui-ux-pro-max` for data-heavy pages (tables, forms, charts). Brand: ink #0B0B0C + gold #F7D917/#F2C40F, amber #E9A51A, red only for danger; body >=16px, touch targets >=44px.
+9. The three questions, answered in the PR body before the page is built ([`PAGE_TEMPLATE.md`](PAGE_TEMPLATE.md) §8): where the heavy colour lands, what gets the first screen, what was removed.
 
 ## Motion layer
 

@@ -16,12 +16,12 @@ last_reviewed: 2026-11-06
 Founder 2026-11-06: every page, staff and parent, gets the look of the parent 首頁 (#4987). Reference screenshot: `frontend/e2e/__screenshots__/parent-home-390.png` (lands with #4987); pattern: `frontend/src/components/parent/ParentHome.vue`.
 
 - **Delivered per page**, when the page moves onto `components/ui`, not by changing global tokens or restyling `At*`. Global `--ds-*` values in `frontend/src/styles.css` stay until the last pages migrate, so unmigrated pages stay consistent.
-- Look: white rounded cards (radius 16-20), hairline border, soft shadow, light-gray canvas; small gray label over a large bold value; one dark primary pill per card, light-gray secondary pills; 44px touch targets; generous spacing; brand orange only as accent/active colour.
+- Look: white rounded cards on a light-gray canvas; small gray label over a large bold value; one dark primary pill, light-gray secondary pills; 44px touch targets; generous spacing. The exact card surface (radius, hairline, shadow), sizes and button rules are in [`PAGE_TEMPLATE.md`](PAGE_TEMPLATE.md) §2, §4 and §6 and are not repeated here.
 - Font stack: `-apple-system, "SF Pro Text", "PingFang TC", "Noto Sans TC"`.
 - Migrated pages use `components/ui` with `--ds-*` tokens, never new literals. This section overrides the older "Radius low-medium / Elevation minimal" dials for migrated pages.
 - Migration order and definition of done: [`UI_FOUNDATION_MIGRATION_SEQUENCING.md`](UI_FOUNDATION_MIGRATION_SEQUENCING.md).
 
-分類 icon 用繽紛漸層（iOS 風），主要按鈕金色，紅色只給危險（Founder 2026-11-07）。Category hues are `--ds-cat-*` tokens (orange, green, blue, violet, pink, teal, indigo); the hero stays warm and the primary button gold. 登入：橘金流動絲綢（Vue Bits Silk 移植，WebGL，舊機自動退回 CSS）（Founder 2026-11-07）。Elsewhere (parent home): one accent on the primary action, hierarchy by type and whitespace, hairline or soft shadow (never both), neutral badges, motion once and quiet. Parent-facing copy is gentle and polite (您, no blame words such as 欠, 逾期, 未繳).
+分類 icon 用繽紛漸層（iOS 風），主要按鈕金色，紅色只給危險（Founder 2026-11-07）。Category hues are `--ds-cat-*` tokens (orange, green, blue, violet, pink, teal, indigo), used on category icons only. On the director home the hero stays warm and its one daily action is the gold button; on every other staff page the primary is the ink pill ([`PAGE_TEMPLATE.md`](PAGE_TEMPLATE.md) §2, Founder 2026-11-13). 登入：橘金流動絲綢（Vue Bits Silk 移植，WebGL，舊機自動退回 CSS）（Founder 2026-11-07）。Elsewhere (parent home): one accent on the primary action, hierarchy by type and whitespace, neutral badges, motion once and quiet. Parent-facing copy is gentle and polite (您, no blame words such as 欠, 逾期, 未繳).
 
 ## Authority map
 
@@ -64,7 +64,7 @@ Reason: Vue-native ops product language close to AllTrue’s workflow UI; MIT-li
 | Density | 7/10 |
 | Decoration | 2/10 |
 | Contrast | 6/10 |
-| Radius | Low–medium (3 levels) |
+| Radius | Unmigrated pages: low–medium (3 levels). Template pages: `PAGE_TEMPLATE.md` §6 |
 | Elevation | Minimal (≤2 shadows) |
 | Motion | Restrained + `prefers-reduced-motion` |
 | Color count | Low (AllTrue amber brand + neutrals + semantic) |
@@ -154,16 +154,7 @@ Dashboard acceptance targets are 390, 412, 768, 1280, and 1440 CSS pixels. At ev
 
 ## 9. Migration strategy
 
-1. **Tokens first** (PR A).
-2. **Pilot A**: 主任收件匣 (`NotificationsCenter.vue`) — merged/stacked base.
-3. **Pilot B** (this PR): 學生列表 (`StudentsList.vue`) + audit (`UI_AUDIT_2026-07-26.md`).
-4. **Wave 1** (structure only): TeachersList → CourseManagement chrome (filters/toolbar/header only).
-5. **Wave 2**: Billing/Tuition table density + filter placement (Carbon table anatomy; no charge logic).
-6. **Wave 3**: Attendance list chrome; leave SmartCalendar visual alone (G-007).
-7. Keep `AtButton shape="pill"` default; new ops surfaces use `shape="rect"`.
-8. Do **not** install `@gitlab/ui` / Carbon packages for full-app swap.
-
-Rollback: revert the stacked PR; page-scoped + additive primitives. See audit table for severity ordering.
+Order, per-page state and definition of done: [`UI_FOUNDATION_MIGRATION_SEQUENCING.md`](UI_FOUNDATION_MIGRATION_SEQUENCING.md). The 2026-07 pilot and wave list that stood here is retired. Rollback is per page: revert that page's PR.
 
 ## 10. Source / license register
 
