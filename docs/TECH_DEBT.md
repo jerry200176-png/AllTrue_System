@@ -501,7 +501,7 @@
 
 | 欄位 | 內容 |
 |---|---|
-| 狀態 | Open |
+| 狀態 | In progress 2026-11-19：Founder 決定先在板橋分校（25）試辦，其他分校關閉。新增 `perfflags.feedback_push_campus_ids`（`PERF_FEEDBACK_PUSH_CAMPUS_IDS`，預設 `25`），`FeedbackPushNotifier::enabledFor()` 依回饋所屬分校判斷。家長端退訂開關已存在（ParentPortal「學習回饋通知」）。剩：觀察 1–2 週推播量與家長回覆率（TD-057）後，由 Founder 決定是否擴大。 |
 | 優先級 | P2 |
 | 發現日期 | 2026-06-01 |
 | 發現來源 | 開發中（feedback push dark launch，PRD：`docs/archive/cursor-plans/feedback-push-notifications_2026-06-01.md`）|

@@ -71,6 +71,28 @@ class FeedbackPushNotifierTest extends TestCase
         Http::assertNothingSent();
     }
 
+    public function test_campus_pilot_list_turns_push_on_only_for_the_listed_campus(): void
+    {
+        // TD-063 (Founder GO 2026-11-19): global switch off, pilot list on → only the listed campus pushes.
+        config(['perfflags.feedback_push_enabled' => false]);
+        Http::fake();
+        $pilot = Campus::factory()->create();
+        $other = Campus::factory()->create();
+        config(['perfflags.feedback_push_campus_ids' => (string) $pilot->id]);
+
+        $this->notifier()->notifyParentSubmitted($this->makeFeedback((int) $other->id));
+        $this->assertSame(0, Notification::count(), 'a campus outside the pilot list stays off');
+
+        $this->notifier()->notifyParentSubmitted($this->makeFeedback((int) $pilot->id));
+        $this->assertSame(1, Notification::count(), 'the pilot campus gets the staff in-app notice');
+
+        $this->assertTrue($this->notifier()->enabledFor((int) $pilot->id));
+        $this->assertFalse($this->notifier()->enabledFor((int) $other->id));
+        $this->assertFalse($this->notifier()->enabledFor(0));
+        config(['perfflags.feedback_push_campus_ids' => '']);
+        $this->assertFalse($this->notifier()->enabledFor((int) $pilot->id), 'an empty list is off');
+    }
+
     public function test_parent_event_creates_staff_inapp_notification(): void
     {
         config(['perfflags.feedback_push_enabled' => true]);
