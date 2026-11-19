@@ -362,9 +362,10 @@ class ScheduleGuardService
      * @param  array<string, mixed>  $base   teacher_id, class_type, room_id, branch_id, exclude_*
      * @param  iterable<array{date: string, start_time: string, end_time: string}>  $slots
      * @param  bool  $dedupe  collapse repeats of the same type/date/time/room (edit paths)
+     * @param  bool  $lock  read occupancy with row locks; call inside the write transaction (TD-094)
      * @return array<int, array<string, mixed>>
      */
-    public function validateOccurrences(array $base, iterable $slots, bool $dedupe = false): array
+    public function validateOccurrences(array $base, iterable $slots, bool $dedupe = false, bool $lock = false): array
     {
         $out = [];
         $seen = [];
@@ -373,7 +374,7 @@ class ScheduleGuardService
                 'schedule_date' => $slot['date'],
                 'start_time' => $slot['start_time'],
                 'end_time' => $slot['end_time'],
-            ]);
+            ], $lock);
             $start = substr((string) $slot['start_time'], 0, 5);
             $end = substr((string) $slot['end_time'], 0, 5);
             foreach ($conflicts as $conflict) {

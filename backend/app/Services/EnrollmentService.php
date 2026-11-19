@@ -17,6 +17,7 @@ use App\Support\MysqlCharsetRejection;
 use App\Services\StudentIdentityService;
 use Carbon\Carbon;
 use Illuminate\Database\QueryException;
+use Illuminate\Http\Exceptions\HttpResponseException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -694,47 +695,7 @@ class EnrollmentService
             }
         }
 
-        // The schedule endpoint already guards single-row writes, but enrollment
-        // creates a course and its ClassSessions in one batch. Validate every
-        // concrete occurrence before that transaction so this path cannot bypass
-        // the teacher/class-size capacity rule (#253).
-        $capacityConflicts = [];
-        $classType = (string) ($data['class_type'] ?? 'one_on_one');
-        $isTutoring = strtolower(trim($classType)) === 'tutoring';
-        $roomId = !empty($data['room_id']) ? (int) $data['room_id'] : null;
-        foreach ($subjectGroups as $groupKey => $rowsForSubject) {
-            $slots = [];
-            foreach ($rowsForSubject as $row) {
-                if (!$row['date'] || !$row['start_time']) {
-                    continue;
-                }
-                $duration = max(30, (int) $row['duration_minutes']);
-                $slots[] = [
-                    'date' => $row['date'],
-                    'start_time' => $row['start_time'],
-                    'end_time' => $this->computeEndTime((string) $row['start_time'], $duration),
-                ];
-            }
-            $capacityConflicts = array_merge($capacityConflicts, app(ScheduleGuardService::class)->validateOccurrences([
-                'teacher_id' => $this->teacherFromGroupKey($groupKey, $globalTeacherId),
-                'class_type' => $classType,
-                'trial_target_class_type' => $data['trial_target_class_type'] ?? null,
-                'room_id' => $roomId,
-                'branch_id' => $targetCampusId,
-                'exclude_student_id' => $studentId > 0 ? $studentId : null,
-                // Only AdmissionInquiryController::scheduleTrial sets this, after locking the hold it converts;
-                // the HTTP callers pass validated arrays, so a request cannot inject it.
-                'exclude_trial_hold_id' => $data['exclude_trial_hold_id'] ?? null,
-            ], $slots));
-        }
-        if (!empty($capacityConflicts)) {
-            return response()->json([
-                'message' => $capacityConflicts[0]['message'] ?? '老師此時段已有其他課程或已達人數上限，無法排課。',
-                'code' => 'teacher_schedule_conflict',
-                'conflicts' => $capacityConflicts,
-                'suggested_actions' => $capacityConflicts[0]['suggested_actions'] ?? [],
-            ], 409);
-        }
+        $isTutoring = strtolower(trim((string) ($data['class_type'] ?? 'one_on_one'))) === 'tutoring';
 
         // #1378: wrap transaction so utf8mb3 Memo rejects become a clean 422 (no half-baked rows).
         // Canonical fix is migration 2026_07_22_130000 (utf8mb4); this mapping does NOT strip emoji.
@@ -768,6 +729,27 @@ class EnrollmentService
             $student = $studentId > 0
                 ? ($lockRenewal ? Student::query()->whereKey($studentId)->lockForUpdate()->first() : Student::find($studentId))
                 : $this->createStudentInline((array) ($data['student'] ?? []), $targetCampusId);
+
+            // TD-094: the teacher/class-size capacity check runs here, inside the write transaction and
+            // under each teacher's User row lock (id order; same mutex as TrialHoldController), so two
+            // enrollments, or an enrollment and a 試聽暫留, cannot both pass for one teacher slot.
+            // Enrollment creates a course and its ClassSessions in one batch, so every concrete
+            // occurrence is checked (#253). A refusal throws, rolling back an inline-created student.
+            $teacherIds = array_values(array_unique(array_filter(array_map(
+                fn ($groupKey) => $this->teacherFromGroupKey((string) $groupKey, $globalTeacherId),
+                array_keys($subjectGroups)
+            ))));
+            sort($teacherIds);
+            DB::table('User')->whereIn('id', $teacherIds)->orderBy('id')->lockForUpdate()->pluck('id');
+            $capacityConflicts = $this->capacityConflicts($data, $subjectGroups, $globalTeacherId, $targetCampusId, $studentId);
+            if ($capacityConflicts !== []) {
+                throw new HttpResponseException(response()->json([
+                    'message' => $capacityConflicts[0]['message'] ?? '老師此時段已有其他課程或已達人數上限，無法排課。',
+                    'code' => 'teacher_schedule_conflict',
+                    'conflicts' => $capacityConflicts,
+                    'suggested_actions' => $capacityConflicts[0]['suggested_actions'] ?? [],
+                ], 409));
+            }
 
             if ($identityGroupId > 0 && $student && (int) $student->CampusID !== $targetCampusId) {
                 $student = app(StudentIdentityService::class)->createBranchMember(
@@ -1865,6 +1847,46 @@ class EnrollmentService
     }
 
     /** Extract effective teacher_id from a group key; falls back to $globalTeacherId. */
+    /**
+     * Capacity conflicts for every concrete occurrence of this enrollment, read under locks (TD-094).
+     *
+     * @param  array<string, mixed>  $data
+     * @param  array<string, array<int, array<string, mixed>>>  $subjectGroups
+     * @return array<int, array<string, mixed>>
+     */
+    private function capacityConflicts(array $data, array $subjectGroups, int $globalTeacherId, int $targetCampusId, int $studentId): array
+    {
+        $conflicts = [];
+        $classType = (string) ($data['class_type'] ?? 'one_on_one');
+        $roomId = !empty($data['room_id']) ? (int) $data['room_id'] : null;
+        foreach ($subjectGroups as $groupKey => $rowsForSubject) {
+            $slots = [];
+            foreach ($rowsForSubject as $row) {
+                if (!$row['date'] || !$row['start_time']) {
+                    continue;
+                }
+                $slots[] = [
+                    'date' => $row['date'],
+                    'start_time' => $row['start_time'],
+                    'end_time' => $this->computeEndTime((string) $row['start_time'], max(30, (int) $row['duration_minutes'])),
+                ];
+            }
+            $conflicts = array_merge($conflicts, app(ScheduleGuardService::class)->validateOccurrences([
+                'teacher_id' => $this->teacherFromGroupKey((string) $groupKey, $globalTeacherId),
+                'class_type' => $classType,
+                'trial_target_class_type' => $data['trial_target_class_type'] ?? null,
+                'room_id' => $roomId,
+                'branch_id' => $targetCampusId,
+                'exclude_student_id' => $studentId > 0 ? $studentId : null,
+                // Only AdmissionInquiryController::scheduleTrial sets this, after locking the hold it converts;
+                // the HTTP callers pass validated arrays, so a request cannot inject it.
+                'exclude_trial_hold_id' => $data['exclude_trial_hold_id'] ?? null,
+            ], $slots, false, true));
+        }
+
+        return $conflicts;
+    }
+
     private function teacherFromGroupKey(string $key, int $globalTeacherId): int
     {
         $pos = strrpos($key, '::');

@@ -163,6 +163,30 @@ class TrialHoldTest extends TestCase
             ->assertStatus(409)->assertJsonPath('code', 'trial_hold_not_held');
     }
 
+    public function test_enrollment_checks_capacity_under_the_teacher_lock_and_a_refusal_writes_nothing(): void
+    {
+        // TD-094: the capacity check runs inside the enrollment write transaction under the teacher's
+        // User row lock (the same mutex a hold takes), so a hold and an enrollment cannot both win a slot.
+        [$campus, $teacher, $token] = $this->campusWithTeacherAndDirector();
+        $this->as($token)->postJson('/api/v1/trial-holds', $this->holdPayload($campus, $teacher))->assertCreated();
+        $inquiry = $this->inquiry($campus);
+        $students = \App\Models\Student::count();
+
+        $teacherLocks = [];
+        \Illuminate\Support\Facades\DB::listen(function ($query) use (&$teacherLocks) {
+            if (str_contains($query->sql, '`User`') && str_contains(strtolower($query->sql), 'for update')) {
+                $teacherLocks[] = $query->bindings;
+            }
+        });
+        $this->as($token)->postJson("/api/v1/admission-inquiries/{$inquiry->id}/trial", [
+            'teacher_id' => $teacher->id, 'trial_date' => self::DATE, 'start_time' => '20:00', 'duration_minutes' => 30,
+        ])->assertStatus(409)->assertJsonPath('code', 'teacher_schedule_conflict');
+
+        $this->assertContains([$teacher->id], $teacherLocks, 'the capacity check ran under the teacher row lock');
+        $this->assertSame($students, \App\Models\Student::count(), 'the refused enrollment rolled back its inline student');
+        $this->assertSame(0, \App\Models\StudentClass::count());
+    }
+
     /** @return array{0: Campus, 1: User, 2: string} */
     private function campusWithTeacherAndDirector(): array
     {
