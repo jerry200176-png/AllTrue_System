@@ -4,7 +4,7 @@ from pathlib import Path
 import argparse
 import io
 import json
-from contextlib import redirect_stderr
+from contextlib import redirect_stderr, redirect_stdout
 import os
 import subprocess
 import tempfile
@@ -2120,22 +2120,31 @@ class DeployActivationWorkflowContractTest(unittest.TestCase):
     def test_expression_size_guard_fails_over_the_limit_and_on_unmeasurable_forms(self):
         from scripts.ci import workflow_expression_size as guard
 
+        def assert_fixture_result(argv, expected, context=""):
+            # Expected fixture rejections must not publish real Actions errors.
+            output = io.StringIO()
+            with redirect_stdout(output):
+                result = guard.main(argv)
+            self.assertEqual(expected, result, f"{context}\n{output.getvalue()}")
+            if expected == 1:
+                self.assertIn("::error::", output.getvalue())
+
         with tempfile.TemporaryDirectory() as tmp:
             big = Path(tmp) / "big.yml"
             for key in ("run:", "run :", " run:"):
                 big.write_text(f"      - {key} |\n" + "          echo ${{ x }}\n" * 1500, encoding="utf-8")
-                self.assertEqual(1, guard.main([str(big)]), key)
-            self.assertEqual(0, guard.main(["--limit", "100000", str(big)]))
+                assert_fixture_result([str(big)], 1, key)
+            assert_fixture_result(["--limit", "100000", str(big)], 0)
             # A plain block (no ${{ }}) is not an expression; it is reported but never fails.
             plain = Path(tmp) / "plain.yml"
             plain.write_text("      - run: |\n" + "          echo x\n" * 5000, encoding="utf-8")
-            self.assertEqual(0, guard.main([str(plain)]))
+            assert_fixture_result([str(plain)], 0)
             # #4085 and #4066 review: anchors, aliases, tags and |N cannot be sized line by line: fail closed.
             for head in ("run: &script |", "run: *script", "run: !!str |", "run: |2", "run: >-4", "run: |2-",
                          '"run": |', "'run': |", "{name: x, run: echo}"):
                 odd = Path(tmp) / "odd.yml"
                 odd.write_text(f"      - {head}\n          echo ${{{{ x }}}}\n", encoding="utf-8")
-                self.assertEqual(1, guard.main([str(odd)]), head)
+                assert_fixture_result([str(odd)], 1, head)
                 with self.assertRaises(guard.UnmeasurableRunBlock):
                     guard.run_blocks(odd.read_text(encoding="utf-8"))
 
@@ -3278,39 +3287,45 @@ class PostDeployVerifyRollbackTest(unittest.TestCase):
             target_sha=self.TARGET, previous_sha=self.PREV, frontend_changed=frontend_changed,
             migration_ran=migration_ran, smoke="/x/post-merge-smoke.sh", deadline=150,
         )
-        rc = self.pdv.gate(args, verify_fn=verify_fn, run=run, migrations_fn=lambda prev, target: migrations,
-                           additive_fn=lambda prev, target: migrations_additive)
+        output = io.StringIO()
+        with redirect_stdout(output):
+            rc = self.pdv.gate(args, verify_fn=verify_fn, run=run, migrations_fn=lambda prev, target: migrations,
+                               additive_fn=lambda prev, target: migrations_additive)
+        seen["diagnostics"] = output.getvalue()
         return rc, seen
 
     def test_gate_passes_only_after_verify_and_smoke(self):
         rc, seen = self._gate()
-        self.assertEqual(0, rc)
+        self.assertEqual(0, rc, seen)
         self.assertEqual(self.TARGET, seen["verify"].expect_backend_sha)
         self.assertIsNone(seen["verify"].expect_frontend_sha)
         self.assertEqual((["bash", "/x/post-merge-smoke.sh"], None), seen["smoke"])
 
     def test_gate_requires_frontend_identity_and_strict_smoke_when_frontend_changed(self):
         rc, seen = self._gate(frontend_changed="2")
-        self.assertEqual(0, rc)
+        self.assertEqual(0, rc, seen)
         self.assertEqual(self.TARGET, seen["verify"].expect_frontend_sha)
         self.assertEqual("1", seen["smoke"][1])
 
     def test_gate_failure_without_migration_asks_for_the_reviewed_rollback(self):
         rc, seen = self._gate(verify_rc=1)
-        self.assertEqual(self.pdv.RC_GATE_ROLLBACK, rc)
+        self.assertEqual(self.pdv.RC_GATE_ROLLBACK, rc, seen)
         self.assertNotEqual(1, self.pdv.RC_GATE_ROLLBACK)  # a Python traceback exits 1: must never mean rollback
         self.assertNotIn("smoke", seen)  # smoke never runs against an unverified target
-        self.assertEqual(self.pdv.RC_GATE_ROLLBACK, self._gate(smoke_rc=1)[0])
+        rc, seen = self._gate(smoke_rc=1)
+        self.assertEqual(self.pdv.RC_GATE_ROLLBACK, rc, seen)
 
     def test_gate_holds_without_rollback_when_a_migration_is_in_range(self):
         for kwargs in ({"migrations": "2"}, {"migration_ran": "1"}, {"migrations": "unknown"}):
             for failure in ({"verify_rc": 1}, {"smoke_rc": 1}):
-                self.assertEqual(self.pdv.RC_HELD_MIGRATION, self._gate(**kwargs, **failure)[0], (kwargs, failure))
+                rc, seen = self._gate(**kwargs, **failure)
+                self.assertEqual(self.pdv.RC_HELD_MIGRATION, rc, (kwargs, failure, seen))
+                self.assertIn("::error::", seen["diagnostics"])
 
     def test_gate_rolls_back_when_every_range_migration_is_additive(self):
         for failure in ({"verify_rc": 1}, {"smoke_rc": 1}):
-            rc = self._gate(migrations="2", migration_ran="1", migrations_additive="1", **failure)[0]
-            self.assertEqual(self.pdv.RC_GATE_ROLLBACK, rc, failure)
+            rc, seen = self._gate(migrations="2", migration_ran="1", migrations_additive="1", **failure)
+            self.assertEqual(self.pdv.RC_GATE_ROLLBACK, rc, (failure, seen))
         self.assertEqual("rollback", self.pdv.decide("2", "1", "1"))
         for additive in ("0", "", "unknown", "true"):
             self.assertEqual("hold", self.pdv.decide("2", "1", additive), additive)
@@ -3390,8 +3405,8 @@ class PostDeployVerifyRollbackTest(unittest.TestCase):
         self.assertEqual("0", self.pdv.pending_in_range("Pending but no name\n", "p", "t", run=run_with(added)))
         self.assertEqual("0", self.pdv.pending_in_range("", "p", "t", run=run_with(added)))
         # The gate never takes the additive rollback once a pending migration from outside the range ran.
-        rc = self._gate(migrations="1", migration_ran="hard1", migrations_additive="1", verify_rc=1)[0]
-        self.assertEqual(self.pdv.RC_HELD_MIGRATION, rc)
+        rc, seen = self._gate(migrations="1", migration_ran="hard1", migrations_additive="1", verify_rc=1)
+        self.assertEqual(self.pdv.RC_HELD_MIGRATION, rc, seen)
         self.assertIn('--migration-ran "$MIG_HARD$MIGRATION_RAN"', self.workflow)
         self.assertIn('[ -n "$MIG_HARD" ]', self.workflow)
         rejection = self.workflow.split('pending-in-range "$PREV_COMMIT" "$TARGET_SHA" <<<"$MIGRATE_STATUS")" != 1 ]; then', 1)[1].split('  fi', 1)[0]
