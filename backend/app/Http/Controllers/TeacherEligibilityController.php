@@ -367,9 +367,11 @@ class TeacherEligibilityController extends Controller
         return response()->streamDownload(function () use ($rows, $campuses) {
             $out = fopen('php://output', 'w');
             fprintf($out, chr(0xEF) . chr(0xBB) . chr(0xBF));
-            fputcsv($out, array_merge(['老師姓名'], array_values($campuses), ['合計時數']));
+            // Names are typed by people: a cell starting with = + - @ tab or CR gets a leading ' so a spreadsheet never runs it.
+            $text = fn ($value) => preg_match('/^[=+\-@\t\r]/', (string) $value) ? "'" . $value : $value;
+            fputcsv($out, array_merge(['老師姓名'], array_map($text, array_values($campuses)), ['合計時數']));
             foreach ($rows as $row) {
-                fputcsv($out, array_merge([$row['teacher_name']], array_map(fn ($id) => $row['by_campus'][$id] ?? 0, array_keys($campuses)), [$row['total_hours']]));
+                fputcsv($out, array_merge([$text($row['teacher_name'])], array_map(fn ($id) => $row['by_campus'][$id] ?? 0, array_keys($campuses)), [$row['total_hours']]));
             }
             fclose($out);
         }, "正職老師各分校時數_{$data['month']}.csv", ['Content-Type' => 'text/csv; charset=UTF-8']);

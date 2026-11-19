@@ -42,6 +42,8 @@ class TeacherEligibilityWeeklySegmentsTest extends TestCase
         $csv = $this->withHeaders($this->auth($director['token']))->get('/api/v1/finance/teacher-eligibility/campus-hours?month=2026-08&branch_id=1&format=csv')->assertOk()->streamedContent();
         $this->assertStringContainsString('合計時數', $csv);
         $this->assertStringContainsString($teacher->Name . ',4,2,6', $csv);
+        $teacher->forceFill(['Name' => '=1+1'])->save();
+        $this->assertStringContainsString("'=1+1,4,2,6", $this->withHeaders($this->auth($director['token']))->get('/api/v1/finance/teacher-eligibility/campus-hours?month=2026-08&branch_id=1&format=csv')->streamedContent());
     }
 
     public function test_director_sees_calendar_backed_weekly_segments(): void
