@@ -2,8 +2,6 @@
 
 namespace Tests\Feature;
 
-use App\Models\Assessment;
-use App\Models\AssessmentResult;
 use App\Models\AuthToken;
 use App\Models\ClassSession;
 use App\Models\ExamRound;
@@ -43,31 +41,16 @@ class StudentLearningTimelineTest extends TestCase
             'Content' => 'x', 'Status' => 'approved', 'SessionDate' => '2026-10-01', 'HomeworkStatus' => '完成',
             'QuizScore' => '小考 90', 'NextWeekTestScope' => '第三章',
         ]);
-        $assessment = Assessment::create([
-            'campus_id' => $campus, 'student_class_id' => $course->ID, 'subject_id' => 1, 'title' => '單元檢測',
-            'status' => 'published', 'max_score' => 100,
-        ]);
-        AssessmentResult::create([
-            'assessment_id' => $assessment->id, 'student_id' => $student->id, 'student_class_id' => $course->ID,
-            'attempt_no' => 1, 'score' => 80, 'max_score_snapshot' => 100, 'percent' => 80, 'status' => 'submitted',
-            'recorded_at' => '2026-10-08 10:00:00',
-        ]);
-        AssessmentResult::create([ // voided results stay hidden, as in every assessment view
-            'assessment_id' => $assessment->id, 'student_id' => $student->id, 'student_class_id' => $course->ID,
-            'attempt_no' => 2, 'score' => 10, 'max_score_snapshot' => 100, 'percent' => 10, 'status' => 'voided',
-            'recorded_at' => '2026-10-09 10:00:00',
-        ]);
 
         $items = $this->withAuth($director['token'])->getJson("/api/v1/students/{$student->id}/learning-timeline")
             ->assertOk()->json('items');
 
         // The evaluated lesson carries its own sign-in; only the un-evaluated lesson shows as an attendance row.
-        $this->assertSame(['attendance', 'assessment', 'evaluation'], array_column($items, 'type'));
-        $this->assertSame(['2026-10-15', '2026-10-08', '2026-10-01'], array_column($items, 'date'));
+        $this->assertSame(['attendance', 'evaluation'], array_column($items, 'type'));
+        $this->assertSame(['2026-10-15', '2026-10-01'], array_column($items, 'date'));
         $this->assertSame('缺席', $items[0]['attendance']);
-        $this->assertEquals(80, $items[1]['score']);
-        $this->assertSame('到班', $items[2]['attendance']);
-        $this->assertSame('第三章', $items[2]['next_week_scope']);
+        $this->assertSame('到班', $items[1]['attendance']);
+        $this->assertSame('第三章', $items[1]['next_week_scope']);
     }
 
     public function test_other_campus_director_and_parent_are_refused(): void

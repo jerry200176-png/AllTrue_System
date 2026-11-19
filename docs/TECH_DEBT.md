@@ -869,7 +869,7 @@
 
 | 欄位 | 內容 |
 |---|---|
-| 狀態 | Partly done 2026-11-19（Founder GO 2026-11-19）：同一個 migration 丟棄沒有讀寫者的 `assessment_attempts`、`assessment_answers`、`assessment_question_snapshots`、`assessment_audit_logs`（丟棄前皆 0 列）。剩：`assessments`、`assessment_results`、`assessment_remediation_actions` 仍被家長端與學習歷程讀取，要先移除那些讀取才能處理。 |
+| 狀態 | Partly done 2026-11-20：2026-11-19 已丟棄 `assessment_attempts`、`assessment_answers`、`assessment_question_snapshots`、`assessment_audit_logs`（Founder GO 2026-11-19）。2026-11-20 移除家長端與學習歷程對 `assessments`、`assessment_results`、`assessment_remediation_actions` 的讀取並刪除三個 model（唯讀量測三表皆 0 列）。剩：這三張表已無讀寫者，丟棄需 Founder 對確切範圍批准 migration；前端 `StudentLearningTimeline.vue` 仍容許 `assessment` 類型（後端已不送，無害）。 |
 | 優先級 | P3 |
 | 發現日期 | 2026-11-13 |
 | 發現來源 | Founder 決定 2026-11-13「學習檢測頁沒什麼人用就移除」；正式環境唯讀量測所有校區 0 筆檢測、0 筆結果、0 筆補強 |
