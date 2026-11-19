@@ -81,7 +81,7 @@ async function submit() {
       <div class="tw:grid tw:grid-cols-2 tw:gap-3">
         <div class="tw:flex tw:flex-col tw:gap-1">
           <Label for="hold-start">開始</Label>
-          <Input id="hold-start" v-model="form.start_time" type="time" required class="tw:h-11" />
+          <Input id="hold-start" v-model="form.start_time" type="time" min="08:00" max="22:59" required class="tw:h-11" />
         </div>
         <div class="tw:flex tw:flex-col tw:gap-1">
           <Label for="hold-end">結束</Label>

@@ -22,7 +22,7 @@ class TrialHoldTest extends TestCase
 {
     use RefreshDatabase;
 
-    private const DATE = '2026-09-12'; // a Saturday after "now"; 23:00 keeps the slot in the future (Y2)
+    private const DATE = '2026-09-12'; // a Saturday after "now" (2026-09-04), so every slot is in the future (Y2)
 
     protected function setUp(): void
     {
@@ -48,19 +48,19 @@ class TrialHoldTest extends TestCase
         // A one-on-one lesson cannot overlap the held slot; the refusal names the hold.
         $conflicts = app(ScheduleGuardService::class)->validateScheduleOccurrence([
             'teacher_id' => $teacher->id, 'branch_id' => $campus->id, 'schedule_date' => self::DATE,
-            'start_time' => '23:15', 'end_time' => '23:45', 'class_type' => 'one_on_one',
+            'start_time' => '20:15', 'end_time' => '20:45', 'class_type' => 'one_on_one',
         ]);
         $this->assertSame('teacher_capacity', $conflicts[0]['type'] ?? null);
         $this->assertStringContainsString('試聽暫留', json_encode($conflicts, JSON_UNESCAPED_UNICODE));
 
         // A second trial in the same slot is refused (one trial per slot), but not once the hold is excluded (conversion).
         $inquiry = $this->inquiry($campus);
-        $trial = ['teacher_id' => $teacher->id, 'trial_date' => self::DATE, 'start_time' => '23:00', 'duration_minutes' => 30];
+        $trial = ['teacher_id' => $teacher->id, 'trial_date' => self::DATE, 'start_time' => '20:00', 'duration_minutes' => 30];
         $this->as($token)->postJson("/api/v1/admission-inquiries/{$inquiry->id}/trial", $trial)
             ->assertStatus(409)->assertJsonPath('code', 'teacher_schedule_conflict');
         $this->assertSame([], app(ScheduleGuardService::class)->validateScheduleOccurrence([
             'teacher_id' => $teacher->id, 'branch_id' => $campus->id, 'schedule_date' => self::DATE,
-            'start_time' => '23:00', 'end_time' => '23:30', 'class_type' => 'trial', 'exclude_trial_hold_id' => $hold['id'],
+            'start_time' => '20:00', 'end_time' => '20:30', 'class_type' => 'trial', 'exclude_trial_hold_id' => $hold['id'],
         ]));
 
         $this->as($token)->postJson("/api/v1/trial-holds/{$hold['id']}/cancel")->assertOk()->assertJsonPath('data.status', 'cancelled');
@@ -74,7 +74,7 @@ class TrialHoldTest extends TestCase
         [$campus, $teacher, $token] = $this->campusWithTeacherAndDirector();
         $inquiry = $this->inquiry($campus);
         $this->as($token)->postJson("/api/v1/admission-inquiries/{$inquiry->id}/trial", [
-            'teacher_id' => $teacher->id, 'trial_date' => self::DATE, 'start_time' => '23:00', 'duration_minutes' => 30,
+            'teacher_id' => $teacher->id, 'trial_date' => self::DATE, 'start_time' => '20:00', 'duration_minutes' => 30,
         ])->assertCreated();
 
         $this->as($token)->postJson('/api/v1/trial-holds', $this->holdPayload($campus, $teacher))
@@ -85,6 +85,8 @@ class TrialHoldTest extends TestCase
             ->assertStatus(422)->assertJsonPath('code', 'trial_hold_conflict');
         $this->as($token)->postJson('/api/v1/trial-holds', $this->holdPayload($campus, $teacher, ['start_time' => '21:00', 'end_time' => '21:15']))
             ->assertStatus(422)->assertJsonPath('code', 'trial_hold_duration');
+        $this->as($token)->postJson('/api/v1/trial-holds', $this->holdPayload($campus, $teacher, ['start_time' => '07:30', 'end_time' => '08:30']))
+            ->assertStatus(422)->assertJsonPath('code', 'trial_hold_outside_grid');
         $this->assertSame(1, TrialHold::count());
     }
 
@@ -100,7 +102,7 @@ class TrialHoldTest extends TestCase
         $this->as($otherToken)->getJson('/api/v1/trial-holds?from=2026-09-01&to=2026-09-30')->assertOk()->assertJsonCount(0, 'data');
         $this->as($otherToken)->postJson("/api/v1/trial-holds/{$hold['id']}/cancel")->assertNotFound();
         $this->as($token)->getJson('/api/v1/trial-holds?from=2026-09-01&to=2026-09-30')->assertOk()
-            ->assertJsonCount(1, 'data')->assertJsonPath('data.0.teacher_name', '試聽老師')->assertJsonPath('data.0.start_time', '23:00');
+            ->assertJsonCount(1, 'data')->assertJsonPath('data.0.teacher_name', '試聽老師')->assertJsonPath('data.0.start_time', '20:00');
 
         // A teacher of another campus cannot be held here; teachers cannot manage holds.
         $stranger = $this->teacher('別校老師', (int) $other->id);
@@ -123,10 +125,10 @@ class TrialHoldTest extends TestCase
         // The same-campus guard is per campus (unchanged); the availability finder sees the teacher busy everywhere.
         $this->assertSame([], app(ScheduleGuardService::class)->validateScheduleOccurrence([
             'teacher_id' => $teacher->id, 'branch_id' => $campus->id, 'schedule_date' => self::DATE,
-            'start_time' => '23:00', 'end_time' => '23:30', 'class_type' => 'one_on_one',
+            'start_time' => '20:00', 'end_time' => '20:30', 'class_type' => 'one_on_one',
         ]));
         $busy = app(SubstituteService::class)->collectTeacherBusySlots((int) $teacher->id, self::DATE);
-        $this->assertSame([['23:00', '23:30', (int) $second->id]], array_map(fn ($b) => [$b['start_time'], $b['end_time'], $b['campus_id']], $busy));
+        $this->assertSame([['20:00', '20:30', (int) $second->id]], array_map(fn ($b) => [$b['start_time'], $b['end_time'], $b['campus_id']], $busy));
         $withCapacity = app(SubstituteService::class)->collectTeacherBusySlotsWithCapacity((int) $teacher->id, self::DATE);
         $this->assertSame(['trial', 1, ['trial_hold']], [$withCapacity[0]['class_type'], $withCapacity[0]['student_count'], $withCapacity[0]['source_types']]);
     }
@@ -136,7 +138,7 @@ class TrialHoldTest extends TestCase
         [$campus, $teacher, $token] = $this->campusWithTeacherAndDirector();
         $hold = $this->as($token)->postJson('/api/v1/trial-holds', $this->holdPayload($campus, $teacher))->assertCreated()->json('data');
         $inquiry = $this->inquiry($campus);
-        $trial = ['teacher_id' => $teacher->id, 'trial_date' => self::DATE, 'start_time' => '23:00', 'duration_minutes' => 30];
+        $trial = ['teacher_id' => $teacher->id, 'trial_date' => self::DATE, 'start_time' => '20:00', 'duration_minutes' => 30];
 
         // Wrong date or an unheld hold is refused and writes nothing.
         $this->as($token)->postJson("/api/v1/admission-inquiries/{$inquiry->id}/trial", ['trial_date' => '2026-09-13', 'trial_hold_id' => $hold['id']] + $trial)
@@ -196,7 +198,7 @@ class TrialHoldTest extends TestCase
     /** @return array<string, mixed> */
     private function holdPayload(Campus $campus, User $teacher, array $over = []): array
     {
-        return $over + ['campus_id' => $campus->id, 'teacher_id' => $teacher->id, 'hold_date' => self::DATE, 'start_time' => '23:00', 'end_time' => '23:30'];
+        return $over + ['campus_id' => $campus->id, 'teacher_id' => $teacher->id, 'hold_date' => self::DATE, 'start_time' => '20:00', 'end_time' => '20:30'];
     }
 
     private function inquiry(Campus $campus): AdmissionInquiry
