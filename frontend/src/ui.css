@@ -54,6 +54,7 @@
 @source "./components/AiActivityCard.vue";
 @source "./components/calendar/SessionHistorySheet.vue";
 @source "./components/BillCorrectionDialog.vue";
+@source "./components/ReceiptMoveDialog.vue";
 @source "./pages/BillCorrectionLogPage.vue";
 @source "./components/PaymentEntryModal.vue";
 

@@ -2846,6 +2846,7 @@ class PaymentReportApiTest extends TestCase
     /** in-app #576 / #5511: an orphan remains traceable but must not offer a known-impossible void. */
     public function test_ledger_source_course_availability_controls_the_receipt_action_without_writes(): void
     {
+        config(['feature_flags.values' => ['FEATURE_RECEIPT_REASSIGN' => true]]); // #5113: the move entry follows the same judgment
         $token = $this->createDirectorToken([1]);
         foreach ([[true, true], [true, false], [false, false]] as [$missing, $hasPayment]) {
             $student = $this->createStudent(1);
@@ -2877,6 +2878,8 @@ class PaymentReportApiTest extends TestCase
             $receipt = collect($json['receipts'])->firstWhere('report_id', $report->id);
             $this->assertSame('confirmed', $receipt['status']);
             $this->assertSame(8800, $receipt['amount']);
+            $this->assertTrue($json['can_reassign_receipt']);
+            $this->assertSame($missing ?: null, $receipt['history_read_only'] ?? null, 'only a receipt whose course is gone loses the move');
             $this->assertSame($before, [$report->fresh()->getRawOriginal(), $invoice->fresh()->getRawOriginal(), $payment?->fresh()->getRawOriginal()]);
             $this->withToken($this->createDirectorToken([2]))
                 ->getJson("/api/v1/accounting/ledger?student_class_id={$anchor->ID}")->assertForbidden();
@@ -2910,6 +2913,7 @@ class PaymentReportApiTest extends TestCase
         $this->assertSame($report->id, $bill['payments'][0]['report_id']);
         $this->assertSame($payment->id, $bill['payments'][0]['id']);
         $this->assertEmpty(collect($json['anomalies'])->where('report_id', $report->id)->all());
+        $this->assertTrue(data_get(collect($json['receipts'])->firstWhere('report_id', $report->id), 'history_read_only'), 'a receipt on a historical bill is read-only (#5113 move)');
         $this->assertSame($before, [$invoice->fresh()->getRawOriginal(), $payment->fresh()->getRawOriginal(), $report->fresh()->getRawOriginal()]);
         $this->withToken($this->createDirectorToken([2]))->getJson("/api/v1/accounting/ledger?student_id={$student->id}")->assertForbidden();
         $this->withToken($this->createDirectorToken([]))->getJson("/api/v1/accounting/ledger?student_id={$student->id}")->assertForbidden();
