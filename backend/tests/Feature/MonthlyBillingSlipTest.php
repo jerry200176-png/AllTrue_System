@@ -12,12 +12,15 @@ use App\Models\StudentClass;
 use App\Models\User;
 use App\Models\UserCampus;
 use Carbon\Carbon;
+use Eris\Generators;
+use Eris\TestTrait;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
 class MonthlyBillingSlipTest extends TestCase
 {
     use RefreshDatabase;
+    use TestTrait;
 
     protected function tearDown(): void
     {
@@ -205,6 +208,33 @@ class MonthlyBillingSlipTest extends TestCase
             ->assertJsonPath('items.0.amount', 9000)
             ->assertJsonPath('items.0.description', '合成月結服務明細')
             ->assertJsonPath('items.0.period_end', '2026-07-29');
+
+        $this->seed = (int) (getenv('ERIS_SEED') ?: 5541);
+        $lineCourseIds = [null, $course->ID, $otherCourse->ID];
+        $this->limitTo(32)
+            ->forAll(Generators::choose(0, 20000), Generators::choose(0, 2), Generators::choose(27, 31))
+            ->then(function (int $storedAmount, int $link, int $lastDay) use ($invoice, $lineCourseIds): void {
+                $serviceEnd = '2026-07-' . $lastDay;
+                $invoice->items()->update([
+                    'StudentClassID' => $lineCourseIds[$link],
+                    'Amount' => $storedAmount,
+                    'PeriodEnd' => $serviceEnd,
+                ]);
+                // Five held lessons cost 1,500 each. The last falls on July 29.
+                $expected = $link !== 2 && $lastDay >= 29 ? 7500 : $storedAmount;
+                $this->getJson("/api/v1/invoices/{$invoice->id}/slip-data")
+                    ->assertOk()
+                    ->assertJsonPath('total_amount', 7500)
+                    ->assertJsonPath('items.0.amount', $expected)
+                    ->assertJsonPath('items.0.stored_amount', $storedAmount)
+                    ->assertJsonPath('items.0.period_end', $serviceEnd);
+                $this->assertDatabaseHas('InvoiceItem', [
+                    'InvoiceID' => $invoice->id,
+                    'StudentClassID' => $lineCourseIds[$link],
+                    'Amount' => $storedAmount,
+                    'PeriodEnd' => $serviceEnd,
+                ]);
+            });
     }
 
     public function test_monthly_slip_keeps_stored_charge_when_period_has_no_billable_sessions(): void
