@@ -18,6 +18,32 @@ class TeacherEligibilityWeeklySegmentsTest extends TestCase
 {
     use RefreshDatabase;
 
+    public function test_campus_hours_split_one_calendar_month_by_campus_and_count_shared_slots_once(): void // Founder 2026-11-20
+    {
+        $director = $this->createDirector();
+        $teacher = $this->createTeacher();
+        $other = Campus::factory()->create();
+        // 一對二: two students in the same slot are one two-hour lesson.
+        $this->createAttendedSession($teacher->id, 'one_on_two', '2026-08-03', '10:00', 120);
+        $this->createAttendedSession($teacher->id, 'one_on_two', '2026-08-03', '10:00', 120);
+        $this->createAttendedSession($teacher->id, 'one_on_one', '2026-08-03', '14:00', 120, 'completed', 'present', $other->id);
+        $this->createAttendedSession($teacher->id, 'one_on_one', '2026-08-05', '10:00', 120, 'cancelled');
+        $this->schedule($teacher->id, '2026-08-31', '08:00', '10:00'); // an extra lesson on the month's last day
+        // The neighbouring months stay out, though the weekly report's weeks reach into them.
+        $this->createAttendedSession($teacher->id, 'one_on_one', '2026-07-31', '10:00', 120);
+        $this->createAttendedSession($teacher->id, 'one_on_one', '2026-09-01', '10:00', 120);
+
+        $response = $this->withHeaders($this->auth($director['token']))->getJson('/api/v1/finance/teacher-eligibility/campus-hours?month=2026-08&branch_id=1')->assertOk();
+        $row = collect($response->json('teachers'))->firstWhere('teacher_id', $teacher->id);
+        $this->assertEquals(6, $row['total_hours']);
+        $this->assertEquals([1 => 4, $other->id => 2], $row['by_campus']);
+        $this->assertEqualsCanonicalizing([1, $other->id], array_keys($response->json('campuses')));
+
+        $csv = $this->withHeaders($this->auth($director['token']))->get('/api/v1/finance/teacher-eligibility/campus-hours?month=2026-08&branch_id=1&format=csv')->assertOk()->streamedContent();
+        $this->assertStringContainsString('合計時數', $csv);
+        $this->assertStringContainsString($teacher->Name . ',4,2,6', $csv);
+    }
+
     public function test_director_sees_calendar_backed_weekly_segments(): void
     {
         $director = $this->createDirector();

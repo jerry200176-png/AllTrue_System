@@ -11,9 +11,13 @@
             <RefreshCw class="tw:size-4" :stroke-width="2" aria-hidden="true" />
             {{ isLocked ? '已鎖定' : '重新結算' }}
           </Button>
-          <Button variant="outline" :class="[ctrlButton, 'tw:max-md:flex-1']" :disabled="loading || !props.branchId" @click="exportCsv">
+          <Button variant="outline" :class="[ctrlButton, 'tw:max-md:flex-1']" :disabled="loading || !props.branchId" @click="exportCsv()">
             <Download class="tw:size-4" :stroke-width="2" aria-hidden="true" />
             匯出 Excel
+          </Button>
+          <Button variant="outline" :class="[ctrlButton, 'tw:max-md:flex-1']" :disabled="loading || !props.branchId" @click="exportCsv(exportCampusHoursCsv)">
+            <Download class="tw:size-4" :stroke-width="2" aria-hidden="true" />
+            各分校時數
           </Button>
           <Button v-if="!isLocked" variant="outline" :class="[ctrlButton, 'tw:max-md:flex-1']" :disabled="loading || !props.branchId || reviewCount > 0" @click="lockMonth">
             <Lock class="tw:size-4" :stroke-width="2" aria-hidden="true" />
@@ -162,7 +166,7 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
-import { fetchTeacherEligibility, lockFulltimePayroll, reopenFulltimePayroll, exportFulltimePayrollCsv } from '../lib/teacherEligibilityApi.js';
+import { fetchTeacherEligibility, lockFulltimePayroll, reopenFulltimePayroll, exportFulltimePayrollCsv, exportCampusHoursCsv } from '../lib/teacherEligibilityApi.js';
 import TeacherEligibilityInputPanel from '../components/TeacherEligibilityInputPanel.vue';
 import {
   attentionItems,
@@ -264,10 +268,10 @@ function isDraft(teacher) {
   return Boolean(teacher.review_required || teacher.settlement?.payout_is_draft);
 }
 
-async function exportCsv() {
+async function exportCsv(download = exportFulltimePayrollCsv) {
   if (!props.branchId) return;
   try {
-    await exportFulltimePayrollCsv({ month: settlementMonth.value, branchId: props.branchId });
+    await download({ month: settlementMonth.value, branchId: props.branchId });
   } catch (e) {
     error.value = humanizeApiErrorMessage(e?.message, '匯出失敗');
   }

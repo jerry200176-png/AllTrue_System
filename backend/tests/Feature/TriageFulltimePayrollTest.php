@@ -74,6 +74,21 @@ final class TriageFulltimePayrollTest extends TestCase
         $this->postJson('/api/v1/finance/teacher-eligibility/lock', ['month' => '2026-08', 'branch_id' => 1], $this->bearer())->assertForbidden();
     }
 
+    public function test_campus_hours_carry_ids_and_numbers_only(): void // Founder 2026-11-20
+    {
+        $teacher = User::create(['LoginName' => 'hours-triage-teacher@test.com', 'Name' => 'Amy', 'PSW' => 'secret', 'type' => 'T', 'phone' => '0922000902', 'MustChangePassword' => false, 'employment_type' => 'full_time']);
+        UserCampus::create(['CampusID' => 1, 'UserID' => $teacher->id, 'Admin' => 0, 'Approved' => 1]);
+        DB::table('schedules')->insert(['student_id' => 1, 'day_of_week' => 1, 'type' => 'normal', 'deduction' => 1, 'branch_id' => 1, 'schedule_date' => '2026-08-03',
+            'teacher_id' => $teacher->id, 'status' => 'scheduled', 'start_time' => '10:00:00', 'end_time' => '12:00:00', 'created_at' => now(), 'updated_at' => now()]);
+
+        $url = '/api/v1/triage/fulltime-campus-hours?month=2026-08';
+        $json = $this->getJson($url, $this->bearer())->assertOk()->json();
+        $this->assertSame(['month', 'teachers'], array_keys($json));
+        $this->assertEquals(['teacher_id' => $teacher->id, 'total_hours' => 2, 'by_campus' => [1 => 2]], collect($json['teachers'])->firstWhere('teacher_id', $teacher->id));
+        config(['triage_tokens.fulltime_payroll_enabled' => false]);
+        $this->getJson($url, $this->bearer())->assertNotFound();
+    }
+
     public function test_switch_off_answers_404(): void
     {
         config(['triage_tokens.fulltime_payroll_enabled' => false]);
