@@ -966,7 +966,7 @@ jobs:
         working-directory: frontend
         timeout-minutes: 3
         run: |
-          set -euo pipefail
+          set -eu
           report="$(mktemp "$RUNNER_TEMP/calendar-course-local.XXXXXX.json")"
           # The preceding step already generated the release notes used by the fixture.
           PLAYWRIGHT_JSON_OUTPUT_FILE="$report" npm --ignore-scripts run test:e2e:calendar-course-local
