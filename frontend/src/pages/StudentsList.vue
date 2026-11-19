@@ -341,7 +341,7 @@
                       </div>
                       <button
                         type="button"
-                        :class="['student-course-card__primary', rowAction.primary, 'tw:max-md:w-full tw:gap-1.5', getCoursePrimaryAction(course).tone === 'warning' && COURSE_PRIMARY_WARNING]"
+                        :class="['student-course-card__primary', getCoursePrimaryAction(course).tone === 'warning' ? rowAction.warning : rowAction.primary, 'tw:max-md:w-full tw:gap-1.5']"
                         :data-tone="getCoursePrimaryAction(course).tone === 'warning' ? 'warning' : 'default'"
                         @click="openCoursePrimaryAction(course, student.name)"
                       >
@@ -367,7 +367,7 @@
                           {{ isStudentCourseDatesExpanded(student.id, course) ? '收合日期' : `再顯示 ${studentCourseSessionPreview(student.id, course).overflow} 堂` }}
                         </button>
                       </div>
-                      <div v-if="isStudentCourseSessionsLoading(student.id)" :class="['student-course-dates__state', DATES_STATE]" role="status">上課日期載入中…</div>
+                      <div v-if="isStudentCourseSessionsLoading(student.id)" :class="['student-course-dates__state', DATES_STATE, DATES_QUIET]" role="status">上課日期載入中…</div>
                       <div v-else-if="studentCourseSessionsLoadError(student.id)" :class="['student-course-dates__state student-course-dates__state--error', DATES_STATE, toneText.danger]" role="alert">
                         <span>上課日期暫時無法載入。</span>
                         <button type="button" :class="rowAction.secondary" @click.stop="retryLoadStudentCourseSessions(student.id)">重試</button>
@@ -378,7 +378,7 @@
                           <span v-if="studentCourseSessionStatus(session)" class="student-course-dates__status tw:text-tpl-caption tw:whitespace-nowrap tw:text-tpl-secondary">{{ studentCourseSessionStatus(session) }}</span>
                         </li>
                       </ol>
-                      <div v-else :class="['student-course-dates__state', DATES_STATE]">目前沒有可顯示的上課日期。</div>
+                      <div v-else :class="['student-course-dates__state', DATES_STATE, DATES_QUIET]">目前沒有可顯示的上課日期。</div>
                     </section>
 
                     <div
@@ -388,7 +388,7 @@
                     >
                       <span :class="['material-symbols-outlined tw:mt-0.5 tw:text-[1.4em]', isCourseNeedsAttention(course) ? toneText.warning : 'tw:text-tpl-secondary']" aria-hidden="true">{{ getCoursePrimaryAction(course).icon }}</span>
                       <div>
-                        <span :class="[factRow.label, 'tw:mb-0']">現在先處理</span>
+                        <span class="tw:block tw:text-tpl-caption tw:font-medium tw:text-tpl-secondary">現在先處理</span>
                         <strong :class="[factRow.value, 'tw:block']">{{ getCoursePrimaryAction(course).title }}</strong>
                         <p class="tw:m-0 tw:mt-0.5 tw:text-tpl-caption tw:text-tpl-secondary">{{ getCoursePrimaryAction(course).description }}</p>
                       </div>
@@ -539,7 +539,7 @@
                             {{ isStudentCourseDatesExpanded(student.id, hc) ? '收合日期' : `再顯示 ${studentCourseSessionPreview(student.id, hc).overflow} 堂` }}
                           </button>
                         </div>
-                        <div v-if="isStudentCourseSessionsLoading(student.id)" :class="['student-course-dates__state', DATES_STATE]" role="status">上課日期載入中…</div>
+                        <div v-if="isStudentCourseSessionsLoading(student.id)" :class="['student-course-dates__state', DATES_STATE, DATES_QUIET]" role="status">上課日期載入中…</div>
                         <div v-else-if="studentCourseSessionsLoadError(student.id)" :class="['student-course-dates__state student-course-dates__state--error', DATES_STATE, toneText.danger]" role="alert">
                           <span>上課日期暫時無法載入。</span>
                           <button type="button" :class="rowAction.secondary" @click.stop="retryLoadStudentCourseSessions(student.id)">重試</button>
@@ -550,7 +550,7 @@
                             <span v-if="studentCourseSessionStatus(session)" class="student-course-dates__status tw:text-tpl-caption tw:whitespace-nowrap tw:text-tpl-secondary">{{ studentCourseSessionStatus(session) }}</span>
                           </li>
                         </ol>
-                        <div v-else :class="['student-course-dates__state', DATES_STATE]">目前沒有可顯示的上課日期。</div>
+                        <div v-else :class="['student-course-dates__state', DATES_STATE, DATES_QUIET]">目前沒有可顯示的上課日期。</div>
                       </section>
                       <div class="sl-history-card__actions">
                         <button type="button" class="small ghost" @click="editCourse(hc)">編輯</button>
@@ -1052,10 +1052,10 @@ import { FilterChip, PageHeader, SelectionBar, StatItem, StatStrip, StatusBadge,
 import { Checkbox } from '../components/ui/checkbox';
 
 // Course card class sets (template rollout slice 5): type sizes come from the template tokens so 字級 moves them.
-const DATES_STATE = 'tw:mt-2.5 tw:flex tw:items-center tw:gap-2 tw:text-tpl-caption tw:text-tpl-secondary';
+const DATES_STATE = 'tw:mt-2.5 tw:flex tw:items-center tw:gap-2 tw:text-tpl-caption';
 const CARD_NOTE = 'tw:mt-4 tw:flex tw:flex-wrap tw:items-center tw:gap-2 tw:rounded-lg tw:bg-muted tw:px-3 tw:py-2.5 tw:text-tpl-caption';
-// The warning primary keeps its meaning (wash + AA text + icon), on the same 44px pill as the ink primary.
-const COURSE_PRIMARY_WARNING = 'tw:bg-[var(--ds-warning-wash)]! tw:text-[var(--ds-warning-text)]!';
+// One text colour per element: two colour classes do not merge (the later rule in the stylesheet wins), so the state line gets its colour where it is used.
+const DATES_QUIET = 'tw:text-tpl-secondary';
 import ActionMenu from '../components/ActionMenu.vue';
 import { BookOpen, Building2, ChevronDown, ChevronRight, Download, FileUp, GraduationCap, Merge, Plus, RefreshCw, Search, SearchX, StickyNote, Trash2 } from 'lucide-vue-next';
 import { Alert } from '../components/ui/alert';
