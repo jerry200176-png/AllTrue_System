@@ -256,7 +256,7 @@
                   class="trial-hold-block"
                   :style="holdDayStyle(hold, teacher.id, h, hIdx)"
                   :aria-label="`試聽暫留 ${hold.teacher_name} ${hold.start_time} 到 ${hold.end_time}`"
-                  @click.stop="holdToCancel = hold"
+                  @click.stop="openHoldCancel(hold)"
                 >試聽暫留 {{ hold.start_time }}–{{ hold.end_time }}</button>
               </div>
             </div>
@@ -336,7 +336,7 @@
                   class="trial-hold-block"
                   :style="holdWeekStyle(hold, idx + 1, h, hIdx)"
                   :aria-label="`試聽暫留 ${hold.teacher_name} ${hold.start_time} 到 ${hold.end_time}`"
-                  @click.stop="holdToCancel = hold"
+                  @click.stop="openHoldCancel(hold)"
                 >試聽暫留 {{ hold.start_time }}–{{ hold.end_time }}<template v-if="weekViewTeacherIds.length !== 1"> · {{ hold.teacher_name }}</template></button>
               </div>
             </div>
@@ -478,14 +478,14 @@
       @created="onHoldCreated"
     />
     <ConfirmDialog
-      :open="!!holdToCancel"
+      :open="holdCancelOpen"
       title="取消這筆試聽暫留？"
       :description="holdToCancel ? `${holdToCancel.teacher_name}｜${holdToCancel.hold_date} ${holdToCancel.start_time}–${holdToCancel.end_time}${holdToCancel.note ? '｜' + holdToCancel.note : ''}\n要轉成正式試聽：到「招生詢問」安排試聽時，選這筆暫留。` : ''"
       confirm-label="取消暫留"
       cancel-label="保留"
       destructive
       :loading="holdCancelling"
-      @update:open="(o) => { if (!o && !holdCancelling) holdToCancel = null; }"
+      @update:open="(o) => { if (!holdCancelling) holdCancelOpen = o; }"
       @confirm="confirmCancelHold"
     />
     <CalendarLeaveModal
@@ -1558,7 +1558,11 @@ const trialHolds = ref([]);
 const holdToken = ref('');
 const showHoldDialog = ref(false);
 const holdPrefill = ref({});
+// The dialog's open flag is separate from the hold it shows: AlertDialogAction closes the dialog in the same click as
+// confirm, so confirm must not depend on the dialog still being open.
 const holdToCancel = ref(null);
+const holdCancelOpen = ref(false);
+const openHoldCancel = (hold) => { holdToCancel.value = hold; holdCancelOpen.value = true; };
 const holdCancelling = ref(false);
 const ymdOfDow = (dow) => String(getDisplayDateFull(dow) || '').slice(0, 10);
 const loadTrialHolds = async () => {
@@ -1605,7 +1609,7 @@ const confirmCancelHold = async () => {
     toastRef.value?.show?.({ title: e?.message || '沒有取消成功，請再試一次。', variant: 'error', durationMs: 5000 });
   } finally {
     holdCancelling.value = false;
-    holdToCancel.value = null;
+    holdCancelOpen.value = false;
   }
 };
 watch([() => props.branchId, () => props.userRole, displayYear, displayMonth, displayWeek, weekOffset], loadTrialHolds, { immediate: true });
