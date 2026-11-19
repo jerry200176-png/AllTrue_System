@@ -1221,7 +1221,7 @@ class ScheduleController extends Controller
             return $this->applyLeaveScheduleUpdate($schedule, $data, $courseId, $merged, $request);
         }
 
-        $conflict = fn () => $this->scheduleUpdateConflict($schedule, $merged, $effectiveTeacherId, $effectiveClassType, $courseMeta ?? null, $effectiveRoomId, $branchId, $courseId);
+        $conflict = fn (bool $lock = false) => $this->scheduleUpdateConflict($schedule, $merged, $effectiveTeacherId, $effectiveClassType, $courseMeta ?? null, $effectiveRoomId, $branchId, $courseId, $lock);
         if ($early = $conflict()) {
             return $early;
         }
@@ -1233,7 +1233,11 @@ class ScheduleController extends Controller
 
         return DB::transaction(function () use ($schedule, $data, $conflict, $ownerId) {
             self::lockStudentForWrite($ownerId);
-            if ($late = $conflict()) {
+            // Locked recheck (current reads + gap locks), as in store(): the student lock alone does not stop two
+            // students being moved into one teacher slot at once. Locked reads can deadlock, so the transaction
+            // retries; refresh first so a retry re-saves instead of seeing a rolled-back save as clean.
+            $schedule->refresh();
+            if ($late = $conflict(true)) {
                 return $late;
             }
             $schedule->fill(array_filter($data, fn ($v) => $v !== null));
@@ -1241,11 +1245,11 @@ class ScheduleController extends Controller
             $this->ensureClassSessionForScheduleData($schedule->toArray());
 
             return response()->json($schedule);
-        });
+        }, 3);
     }
 
     /** Teacher/room conflict of an updated schedule row as a 409, or null; shared by the pre-check and the post-lock recheck. */
-    private function scheduleUpdateConflict(Schedule $schedule, array $merged, int $effectiveTeacherId, string $effectiveClassType, ?object $courseMeta, ?int $effectiveRoomId, int $branchId, int $courseId): ?\Illuminate\Http\JsonResponse
+    private function scheduleUpdateConflict(Schedule $schedule, array $merged, int $effectiveTeacherId, string $effectiveClassType, ?object $courseMeta, ?int $effectiveRoomId, int $branchId, int $courseId, bool $lock = false): ?\Illuminate\Http\JsonResponse
     {
         if (($merged['status'] ?? 'scheduled') !== 'scheduled') {
             return null;
@@ -1261,7 +1265,7 @@ class ScheduleController extends Controller
             'end_time' => $merged['end_time'] ?? null,
             'exclude_student_id' => (int) ($merged['student_id'] ?? 0),
             'exclude_schedule_id' => (int) $schedule->id,
-        ]);
+        ], $lock);
         if (!empty($guardConflicts)) {
             Log::warning('Schedule update conflict', [
                 'schedule_id' => (int) $schedule->id,

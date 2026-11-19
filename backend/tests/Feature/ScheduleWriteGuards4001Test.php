@@ -84,6 +84,26 @@ class ScheduleWriteGuards4001Test extends TestCase
         $this->assertSame(1, ClassSession::whereDate('SessionDate', '2026-04-25')->count());
     }
 
+    public function test_update_recheck_reads_teacher_occupancy_with_locks_like_store(): void
+    {
+        // TD-096: the in-transaction recheck is a locked read, so two students moved into one teacher slot at once
+        // cannot both pass. The FORCE INDEX schedules query is the guard's locked (current-read) path only.
+        $row = Schedule::create(['student_id' => $this->sc->StudentID, 'student_course_id' => $this->sc->ID, 'teacher_id' => $this->teacherId,
+            'subject' => 'Math', 'day_of_week' => 5, 'start_time' => '16:00', 'end_time' => '18:00', 'class_type' => 'one_on_one',
+            'status' => 'scheduled', 'type' => 'normal', 'branch_id' => 1, 'schedule_date' => '2026-04-24']);
+        $lockedReads = 0;
+        \Illuminate\Support\Facades\DB::listen(function ($query) use (&$lockedReads) {
+            if (str_contains($query->sql, 'idx_schedules_teacher_day') && str_contains(strtolower($query->sql), 'for update')) {
+                $lockedReads++;
+            }
+        });
+
+        $this->api()->putJson("/api/v1/schedules/{$row->id}", ['start_time' => '17:00', 'end_time' => '19:00'])->assertOk();
+
+        $this->assertGreaterThan(0, $lockedReads, 'the recheck read teacher occupancy with locks');
+        $this->assertSame('17:00', substr((string) $row->fresh()->start_time, 0, 5));
+    }
+
     public function test_store_refuses_a_payload_student_that_does_not_own_the_course(): void
     {
         $stranger = $this->course('stranger');
