@@ -221,6 +221,22 @@ class FilledAssessmentTeacherLockTest extends TestCase
         $this->assertSame('deleted', $snap->reason);
     }
 
+    public function test_a_bulk_delete_through_the_model_keeps_teacher_text_and_skips_blank_rows(): void
+    {
+        // TD-074: the course-rebuild and drift-repair paths delete with ->get()->each->delete().
+        [, $lr] = $this->filled();
+        $s2 = $this->mkSession('2026-04-11');
+        $blank = LearningRecord::create(['StudentClassID' => $s2->StudentClassID, 'ClassSessionID' => $s2->id, 'TeacherID' => $this->aId, 'Subject' => 'Math',
+            'Content' => '', 'Status' => 'pending', 'SessionDate' => '2026-04-11', 'StartTime' => '16:00:00', 'EndTime' => '18:00:00']);
+        LearningRecord::whereIn('id', [$lr->id, $blank->id])->get()->each->delete();
+
+        $this->assertSame(0, LearningRecord::whereIn('id', [$lr->id, $blank->id])->count());
+        $snaps = LearningRecordAuthorSnapshot::all();
+        $this->assertSame([(int) $lr->id], $snaps->pluck('learning_record_id')->map(fn ($id) => (int) $id)->all());
+        $this->assertSame(self::BODY, $snaps[0]->payload['Content']);
+        $this->assertSame(0, (int) $snaps[0]->new_teacher_id); // never counts as the current owner's evidence
+    }
+
     public function test_deleting_an_approved_blank_record_with_only_a_director_comment_rolls_back_the_count(): void
     {
         $s = $this->mkSession();

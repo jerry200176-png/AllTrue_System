@@ -5,7 +5,6 @@ namespace App\Http\Controllers;
 use App\Models\ClassSession;
 use App\Services\OccurrenceAssignmentService;
 use App\Models\LearningRecord;
-use App\Models\LearningRecordAuthorSnapshot;
 use App\Models\LearningRecordFeedback;
 use App\Models\LearningRecordTeacherComment;
 use App\Models\LearningRecordTeacherChange;
@@ -1510,18 +1509,6 @@ class LearningRecordController extends Controller
         }
         $reviewerId = $this->reviewerUserId($request);
         DB::transaction(function () use ($learningRecord, $reviewerId) {
-            // #4907: keep the teacher's text (insert-only snapshot, no migration) before the hard delete.
-            if (LearningRecordMutableOwnership::isFilledByTeacher($learningRecord) || $learningRecord->teacherComment !== null) {
-                LearningRecordAuthorSnapshot::create([
-                    'learning_record_id' => (int) $learningRecord->id,
-                    'author_teacher_id' => (int) $learningRecord->TeacherID ?: null,
-                    'new_teacher_id' => 0, // no successor: the record is deleted
-                    'status_at_snapshot' => (string) $learningRecord->Status,
-                    'payload' => $learningRecord->toArray() + ['teacher_comment' => $learningRecord->teacherComment?->toArray()],
-                    'created_by' => $reviewerId,
-                    'reason' => 'deleted',
-                ]);
-            }
             // Same rollback as rollbackApproval(), for any approved record (blank body + director comment included).
             if (strtolower(trim((string) $learningRecord->Status)) === 'approved') {
                 app(UserEngagementXpAwardService::class)->revokeLearningRecordApproved((int) $learningRecord->id);
@@ -1534,7 +1521,7 @@ class LearningRecordController extends Controller
                     ApprovalSessionSyncService::syncOnRollback($learningRecord, $sc, (int) ($reviewerId ?? 0));
                 }
             }
-            $learningRecord->delete();
+            $learningRecord->delete(); // the model keeps the teacher's text as a snapshot (#4907, TD-074)
         });
         return response()->json(['message' => 'Deleted']);
     }

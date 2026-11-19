@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Services\UserEngagementXpAwardService;
+use App\Support\LearningRecordMutableOwnership;
 use App\Support\SessionStatus;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Model;
@@ -227,6 +228,24 @@ class LearningRecord extends Model
                 return;
             }
             app(UserEngagementXpAwardService::class)->revokeLearningRecordApproved((int) $lr->id);
+        });
+
+        // TD-074 / #4907: a delete keeps the teacher-written body as an insert-only snapshot. Bulk deletes must
+        // load the models and delete them one by one, or this never runs (LearningRecordDeleteThroughModelTest).
+        static::deleting(function (self $record): void {
+            $comment = $record->teacherComment;
+            if ($comment === null && !LearningRecordMutableOwnership::isFilledByTeacher($record)) {
+                return;
+            }
+            LearningRecordAuthorSnapshot::create([
+                'learning_record_id' => (int) $record->id,
+                'author_teacher_id' => (int) $record->TeacherID ?: null,
+                'new_teacher_id' => 0, // no successor: the record is deleted
+                'status_at_snapshot' => (string) $record->Status,
+                'payload' => $record->toArray() + ['teacher_comment' => $comment?->toArray()],
+                'created_by' => (int) (request()->attributes->get('auth_user')->id ?? 0) ?: null,
+                'reason' => 'deleted',
+            ]);
         });
     }
 }
