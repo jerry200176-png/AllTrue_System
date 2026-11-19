@@ -4,7 +4,7 @@ name: Infection (billing money, advisory)
 # (scripts/governance/r3_backend_paths.py, same list as autonomy_gate) or the billing money files mutate only the
 # changed lines (--git-diff-lines). Surviving mutants go to ONE sticky PR comment (scripts/ci/mutation-comment.mjs).
 # workflow_dispatch: full run of the three billing files (hours; per-mutant RefreshDatabase). Advisory only: never
-# required, never fails. No cron: PR events only.
+# required. Keep failures visible in the advisory logs. No cron: PR events only.
 on:
   workflow_dispatch:
   pull_request:
@@ -28,7 +28,7 @@ jobs:
     timeout-minutes: 90
     continue-on-error: true
     outputs:
-      run: ${{ steps.scope.outputs.run }}
+      report_available: ${{ steps.mutation.outputs.report_available }}
     env:
       DB_PASSWORD: ci-ephemeral # non-sensitive, ephemeral CI-only MySQL
     services:
@@ -78,30 +78,44 @@ jobs:
         run: |
           php -r '$p=new PDO("mysql:host=127.0.0.1;port=3306","root","root"); $p->exec("GRANT ALL ON `AllTrue\\_test%`.* TO \"admin\"@\"%\"");'
       - name: Run Infection on billing money code
+        id: mutation
         if: ${{ steps.scope.outputs.run != 'false' }}
         working-directory: backend
         env:
           LARAVEL_PARALLEL_TESTING: "1"
+          # Infection supplies numeric TEST_TOKENs to mutation workers, but the initial suite inherits this one.
+          TEST_TOKEN: infection_initial
         run: |
+          set -euo pipefail
           mkdir -p storage/infection
-          set +e
           # --filter and --git-diff-* are mutually exclusive in Infection: PRs mutate only changed lines,
           # manual runs mutate the three money files in full.
-          SCOPE="--filter=Services/Billing/ContractMoneyVerdict.php,Services/Billing/ContractMoneyState.php,Services/BillingPayableResolver.php"
+          SCOPE=(--filter=Services/Billing/ContractMoneyVerdict.php,Services/Billing/ContractMoneyState.php,Services/BillingPayableResolver.php)
           if [ "${{ github.event_name }}" = pull_request ]; then
             git fetch -q origin main
             # Infection runs in backend/; make `git diff` print paths relative to it (backend/app/... -> app/...).
             git config diff.relative true
-            SCOPE="--git-diff-lines --git-diff-base=origin/main"
+            SCOPE=(--git-diff-lines --git-diff-base=origin/main)
           fi
           TESTS=()
           if [ "${{ github.event_name }}" != pull_request ] || [ "${{ steps.scope.outputs.only_billing }}" = true ]; then
             TESTS=(--test-framework-options='--filter=ContractMoney|BillingPayable|BillingCourseStatus|FreeGiftZeroBill|FullDiscountSettled|PaidStatus|TuitionSlipFollows|SharedPackage|CollectionQueueRequestShape')
           fi
-          vendor/bin/infection --threads=4 --no-progress --min-msi=0 $SCOPE "${TESTS[@]}" \
+          set +e
+          vendor/bin/infection --threads=4 --no-progress --min-msi=0 "${SCOPE[@]}" "${TESTS[@]}" \
             2>&1 | tee storage/infection/run.out
-          echo "infection exit: ${PIPESTATUS[0]} (advisory, ignored)"
-          exit 0
+          pipeline_status=("${PIPESTATUS[@]}")
+          set -e
+          infection_status="${pipeline_status[0]}"
+          if (( pipeline_status[1] != 0 )); then
+            echo "Infection log capture failed (tee exit: ${pipeline_status[1]}, Infection exit: $infection_status)" >&2
+            exit "${pipeline_status[1]}"
+          fi
+          echo "Infection exit: $infection_status" | tee -a storage/infection/run.out
+          if [[ "$infection_status" == 0 && -s storage/infection/infection.log ]]; then
+            echo 'report_available=true' >> "$GITHUB_OUTPUT"
+          fi
+          exit "$infection_status"
       - name: Job summary
         if: ${{ always() && steps.scope.outputs.run != 'false' }}
         working-directory: backend
@@ -125,7 +139,7 @@ jobs:
     # scripts/ci/mutation-comment.mjs from there on the downloaded log (data only).
     name: Sticky surviving-mutants comment
     needs: infection
-    if: ${{ always() && github.event_name == 'pull_request' && needs.infection.result != 'skipped' && needs.infection.outputs.run != 'false' && github.event.pull_request.head.repo.full_name == github.repository }}
+    if: ${{ always() && github.event_name == 'pull_request' && needs.infection.outputs.report_available == 'true' && github.event.pull_request.head.repo.full_name == github.repository }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     continue-on-error: true
