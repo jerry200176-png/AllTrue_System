@@ -140,6 +140,12 @@ class MonthlyCalendarMonthCollectionTest extends TestCase
         $lineStatus = app(BillingPayableResolver::class)->courseStatusesByStudentClassIds([$line->ID])[$line->ID];
         $this->assertSame('review_required', $lineStatus['status']);
         $this->assertSame(0, $lineStatus['applied']);
+        $rows = collect($this->api('getJson', '/api/v1/alerts/tuition?branch_id=1')->assertOk()->json())->keyBy('id');
+        $this->assertSame('review_required', $rows[$line->ID]['payable_status']);
+        $this->assertNull($rows[$line->ID]['payable_amount']);
+        $this->assertSame(2000, $rows[$header->ID]['payable_outstanding']);
+        $this->api('getJson', "/api/v1/alerts/tuition-slip/{$line->ID}")->assertStatus(422)->assertJsonPath('code', 'course_on_shared_bill');
+        $this->api('getJson', "/api/v1/alerts/tuition-slip/{$header->ID}")->assertOk();
         $this->record($line, 2000)->assertStatus(422)
             ->assertJsonPath('code', 'course_on_shared_bill')->assertJsonPath('invoice_id', $bill->id);
         $this->assertSame([1, 1, 1], [Invoice::count(), $bill->payments()->count(), PaymentReport::count()]);

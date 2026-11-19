@@ -50,7 +50,8 @@ class AgreedFeeConcurrencyTest extends AgreedFeeConcurrencyHarness
     public function test_report_confirmation_serializes_with_stale_fee_apply(): void
     {
         $f = $this->fixture(); $input = $this->preview($f); $report = $this->reportFor($f);
-        $pause = $this->pause('from `studentclass` where `studentclass`.`id` =');
+        // Pause on the first course lock; the harness requires FOR UPDATE.
+        $pause = $this->pause('from `studentclass`');
         $confirm = $this->spawn($f, 'confirm', [], $report->id, $pause); $this->await($pause['ready']);
         $fee = $this->spawn($f, 'fee', $input); $this->awaitBlocked($fee); touch($pause['release']);
         $this->assertSame(200, $this->finish($confirm)['status']); $this->assertSame(409, $this->finish($fee)['status']);

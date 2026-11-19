@@ -16,7 +16,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
 /**
- * ARCH2 PR0: pins what each money caller returns TODAY for the same contract fixtures (no behaviour change).
+ * Pins what each money caller returns for the same contract fixtures.
  * Where columns differ for one fixture, the callers disagree; that table is the evidence for the Verdict module.
  *
  * Columns (one string per caller):
@@ -166,9 +166,10 @@ class ContractMoneyVerdictCharacterizationTest extends TestCase
             'recon' => '10000/3000/7000',
         ],
         'multi_course_invoice_member' => [
-            'resolver' => 'unbilled/5000/0/5000/none',
-            'payable' => 'unbilled/null/null',
-            'alert' => 'unpaid/5000',
+            // The open bill is already counted at its header; no allocation is available for the line course.
+            'resolver' => 'review_required/0/0/0/invoice',
+            'payable' => 'review_required/null/null',
+            'alert' => 'unpaid/0',
             'guard' => 'allow',
             'intake' => 'ok',
             'recon' => '0/0/0',

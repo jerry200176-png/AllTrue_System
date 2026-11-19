@@ -366,11 +366,19 @@ class BillingPayableResolver
         if ($dateIds !== []) {
             $this->invoiceAmounts->preloadSessions($dateIds);
         }
+        $coursesWithoutOwnBills = $ids->diff($invoicesByClass->keys())->values()->all();
+        $sharedLineCourses = $coursesWithoutOwnBills === [] ? [] : Invoice::standaloneCountLineBills($coursesWithoutOwnBills)
+            ->distinct()->pluck('course.ID')->mapWithKeys(fn ($id) => [(int) $id => true])->all();
         $resolved = [];
         foreach ($ids as $classId) {
             [$invoice, $projection] = $this->selectRelevantInvoice($invoicesByClass->get($classId, collect()), $courseMap[$classId] ?? null);
             if (!$invoice) {
                 $resolved[$classId] = $this->unbilled();
+                if (isset($sharedLineCourses[$classId])) {
+                    // The original bill owns the amount and collection action. Do not offer a new bill on its line.
+                    $resolved[$classId]['payable_status'] = 'review_required';
+                    $resolved[$classId]['payable_source'] = 'invoice';
+                }
                 continue;
             }
 
