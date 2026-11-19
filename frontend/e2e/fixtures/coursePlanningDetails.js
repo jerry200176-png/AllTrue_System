@@ -84,6 +84,7 @@ export async function expectAmendedCoursePlanning(page, group, row, { mobile }) 
   const more = row.getByRole('button', { name: /更多課程操作/ });
   const menu = page.getByRole('menu', { name: /更多課程操作/ });
   const manager = row.getByTestId('course-manager-open');
+  const planningCaption = '下方日期清單只列已實際排定的堂次';
   let planning;
   if (await manager.isVisible()) {
     await manager.click();
@@ -92,17 +93,16 @@ export async function expectAmendedCoursePlanning(page, group, row, { mobile }) 
     await drawer.getByRole('tab', { name: '堂次', exact: true }).click();
     await drawer.getByTestId('course-manager-view-list').click();
     const list = drawer.getByTestId('course-manager-session-list');
-    await expect(list.locator('.cmw__session-row.is-materialized')).toHaveCount(2);
-    await expect(list.locator('.cmw__session-row.is-projected')).toHaveCount(0);
+    await expect(list.getByRole('button', { name: /第\d+堂/ })).toHaveCount(2);
+    await expect(list.getByText('預排', { exact: true })).toHaveCount(0);
     await expect(drawer.getByTestId('course-manager-schedule-cta')).toBeEnabled();
     await expect(drawer.getByTestId('course-manager-quick-add')).toHaveCount(0);
-    planning = drawer.getByTestId('course-manager-sessions').locator('.cmw__hint').filter({ hasText: '尚未排滿' });
+    planning = drawer.getByTestId('course-manager-sessions').getByText(planningCaption);
   } else {
     await more.click();
     await menu.getByRole('menuitem', { name: '詳情', exact: true }).click();
-    const detail = group.locator('.detail-panel').filter({ hasText: '尚未排滿' });
-    await expect(detail.locator('.dates-panel-title')).toContainText(/已上\s*2\s*[／/]\s*購買\s*4\s*堂/);
-    planning = detail.locator('.drift-hint-info');
+    await expect(group.getByText(/^上課日期[（(]/)).toContainText(/已上\s*2\s*[／/]\s*購買\s*4\s*堂/);
+    planning = group.getByText(planningCaption);
     await more.click();
     await expect(menu.getByRole('menuitem', { name: '排課', exact: true })).toBeEnabled();
     const makeup = menu.getByRole('menuitem', { name: /^補課／補登/ });
@@ -112,7 +112,7 @@ export async function expectAmendedCoursePlanning(page, group, row, { mobile }) 
   }
   await expect(planning).toBeVisible();
   await expect(planning).toContainText('已排 2／購買 4 堂，尚有 2 堂未安排');
-  await expect(planning).toContainText('下方日期清單只列已實際排定的堂次');
+  await expect(planning).toContainText(planningCaption);
   if (mobile) {
     const clipped = await planning.evaluate((element) => element.scrollWidth > element.clientWidth + 1);
     expect(clipped, 'the planning explanation must wrap on mobile').toBe(false);
