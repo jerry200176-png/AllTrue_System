@@ -51,9 +51,64 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  deployment_evidence:
+    name: Check actual production deployment
+    if: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    permissions:
+      actions: read
+    outputs:
+      deployed: ${{ steps.verify.outputs.deployed }}
+    steps:
+      - name: Inspect the triggering deployment attempt
+        id: verify
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.event.workflow_run.id }}
+          RUN_ATTEMPT: ${{ github.event.workflow_run.run_attempt }}
+          WORKFLOW_PATH: ${{ github.event.workflow_run.path }}
+        run: |
+          set -euo pipefail
+          if [[ "$WORKFLOW_PATH" != '.github/workflows/deploy.yml' ||
+                ! "$RUN_ID" =~ ^[1-9][0-9]*$ || ! "$RUN_ATTEMPT" =~ ^[1-9][0-9]*$ ]]; then
+            echo 'Unrecognized deployment workflow or invalid run identity.' >&2
+            exit 1
+          fi
+          # Read the event's attempt, so a later retry cannot supply evidence for this event.
+          jobs="$(gh api "/repos/${REPO}/actions/runs/${RUN_ID}/attempts/${RUN_ATTEMPT}/jobs?per_page=100")"
+          deployed="$(jq -er '
+            if (.jobs | type) != "array" or .total_count != (.jobs | length) then
+              error("Incomplete deployment job evidence")
+            else [.jobs[] | select(.name == "Deploy to Production")]
+              | if length == 0 then "false"
+                elif length != 1 then error("Ambiguous production deploy jobs")
+                else .[0]
+                  | if .status != "completed" or (.conclusion | type) != "string" then
+                      error("Production deploy job has no final result")
+                    elif .conclusion != "success" then "false"
+                    elif (.steps | type) != "array" then error("Invalid deploy step evidence")
+                    else [.steps[] | select(.name == "Deploy")]
+                      | if length != 1 then error("Missing or ambiguous deploy step")
+                        elif .[0].status != "completed" or (.[0].conclusion | type) != "string" then
+                          error("Deploy step has no final result")
+                        else (.[0].conclusion == "success" | tostring)
+                        end
+                    end
+                end
+            end
+          ' <<< "$jobs")"
+          echo "deployed=$deployed" >> "$GITHUB_OUTPUT"
+          if [[ "$deployed" == "false" ]]; then
+            echo 'No successful production deployment in this attempt. Skipping automatic acceptance.'
+          fi
+
   acceptance:
     name: Authenticated calendar/course parity (bounded auth setup + read-only)
-    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+    needs: deployment_evidence
+    # Manual dispatch skips the read-only job and keeps its existing environment protection.
+    if: ${{ !cancelled() && (github.event_name == 'workflow_dispatch' || (needs.deployment_evidence.result == 'success' && needs.deployment_evidence.outputs.deployed == 'true')) }}
     runs-on: ubuntu-latest
     environment: production-ssh
     timeout-minutes: 20
