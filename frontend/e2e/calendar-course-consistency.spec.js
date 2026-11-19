@@ -5,6 +5,7 @@ import { coursePaymentBadge, REPORT_STATUS_LABELS, shortPaymentLabel, TUITION_ST
 import { getNavigationGroups, sidebarMoreTrigger } from '../src/lib/navigationRegistry.js';
 import { formatCourseRef, formatCoursePeriod } from '../src/lib/studentBillingRows.js';
 import { dismissOverlays } from './fixtures/dismissOverlays.js';
+import { expectAmendedCoursePlanning, installCoursePlanningRead, readCoursePlanningWindow } from './fixtures/coursePlanningDetails.js';
 import {
   BILLING_ACTION,
   expectedCoursePaymentActionLabel,
@@ -657,6 +658,7 @@ test.describe('production acceptance — calendar/course parity', () => {
       test.skip(!BASE || !SESSION?.access_token || !SESSION?.user?.id,
         'missing controlled production director session');
       test.skip(BRANCH_ID !== 9, 'the reported unarranged-session course is scoped to campus 9');
+      expect(AUTHORIZED_CAMPUSES).toContain(BRANCH_ID);
       await page.setViewportSize({ width: viewport.width, height: viewport.height });
       const token = SESSION.access_token;
       const coursesPayload = await getJson(
@@ -681,6 +683,14 @@ test.describe('production acceptance — calendar/course parity', () => {
       expect(studentName).not.toBe('');
       expect(subjectName).not.toBe('');
 
+      const courseId = Number(valueOf(target, 'id', 'ID'));
+      expect(Number.isSafeInteger(courseId) && courseId > 0).toBe(true);
+      const served = await installCoursePlanningRead(page, APP_ORIGIN, {
+        branchId: BRANCH_ID,
+        courseId,
+        readWindow: (window) => readCoursePlanningWindow(request, APP_ORIGIN, window, token),
+      });
+
       await primeDirectorSession(page);
       await page.goto('/');
       await expect(page.locator('#login-account')).toHaveCount(0, { timeout: 20_000 });
@@ -693,34 +703,11 @@ test.describe('production acceptance — calendar/course parity', () => {
       await expect(group).toBeVisible({ timeout: 20_000 });
       const toggle = group.locator('.student-group-toggle');
       if (await toggle.getAttribute('aria-expanded') !== 'true') await toggle.click();
-      const targetCourseId = Number(valueOf(target, 'id', 'ID'));
-      expect(targetCourseId).toBeGreaterThan(0);
-      const row = group.locator(`.course-row[data-contract-id="${targetCourseId}"]`);
+      const row = group.locator(`.course-row[data-contract-id="${courseId}"]`);
       await expect(row).toBeVisible({ timeout: 15_000 });
       await expect(row).toContainText(subjectName);
-      await row.getByRole('button', { name: '詳情', exact: true }).click();
-
-      const detail = group.locator('.detail-panel').first();
-      const planning = detail.locator('.drift-hint-info');
-      await expect(planning).toBeVisible({ timeout: 15_000 });
-      await expect(planning).toContainText('已排 2／購買 4 堂，尚有 2 堂未安排');
-      await expect(planning).toContainText('下方日期清單只列已實際排定的堂次');
-      // Keep the count contract independent of typography, while ensuring the
-      // selected detail is the reported 2-attended / 4-purchased course.
-      await expect(detail.locator('.dates-panel-title')).toContainText(/已上\s*2\s*[／/]\s*購買\s*4\s*堂/);
-      if (viewport.name === 'desktop') {
-        await expect(row.getByRole('button', { name: '排課', exact: true })).toBeEnabled();
-      } else {
-        const isClipped = await planning.evaluate((element) => element.scrollWidth > element.clientWidth + 1);
-        expect(isClipped, 'the unarranged-session explanation must wrap rather than clip on mobile').toBeFalsy();
-        await row.getByRole('button', { name: /更多/ }).click();
-        const makeupEntry = group.getByRole('menuitem', { name: /補課 \/ 補登/ });
-        await expect(makeupEntry).toBeVisible();
-        // This exact report is an already-ended contract. Keep the existing
-        // guard: the entry remains discoverable but cannot create a new
-        // session after a contract amendment.
-        await expect(makeupEntry).toBeDisabled();
-      }
+      await expectAmendedCoursePlanning(page, group, row, { mobile: viewport.name === 'mobile' });
+      expect(served.some((count) => count >= 2), 'selected course must receive its real dated rows').toBe(true);
     });
   }
 

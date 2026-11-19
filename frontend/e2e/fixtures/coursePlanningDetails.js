@@ -3,9 +3,37 @@ import { strictYmd } from './classSessionReadResponder.js';
 
 export const SESSION_DATES_PATH = '/api/v1/student-classes/session-dates';
 
+function inCourseWindow(row, courseId, start, end) {
+  return row?.student_class_id === courseId && Boolean(strictYmd(row.session_date))
+    && row.session_date >= start && row.session_date <= end;
+}
+
+/** The existing GET route serves the same read-only action as the page's POST. */
+export async function readCoursePlanningWindow(request, origin, { branchId, courseId, start, end }, token) {
+  if (!Number.isSafeInteger(branchId) || branchId <= 0 || !Number.isSafeInteger(courseId) || courseId <= 0
+      || !strictYmd(start) || !strictYmd(end) || end < start) throw new Error('invalid course planning read scope');
+  const params = new URLSearchParams({ branch_id: String(branchId), range_start: start, range_end: end });
+  const response = await request.get(`${new URL(origin).origin}${SESSION_DATES_PATH}?${params}`, {
+    headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
+    maxRedirects: 0,
+  });
+  if (!response.ok()) throw new Error(`course planning read returned HTTP ${response.status()}`);
+  const payload = await response.json();
+  const course = payload?.[String(courseId)];
+  if (!Array.isArray(course?.materialized) || !Array.isArray(course?.projected)) {
+    throw new Error('course planning read did not return both row lists for the selected course');
+  }
+  const inScope = (row) => inCourseWindow(row, courseId, start, end);
+  if (!course.materialized.every(inScope) || !course.projected.every(inScope)) {
+    throw new Error('course planning read returned rows outside the selected course or dates');
+  }
+  return course;
+}
+
 /** Answer the selected course's read locally, leaving all other verbs and scopes to the guard. */
-export async function installCoursePlanningRead(page, origin, { branchId, courseId, materialized }) {
+export async function installCoursePlanningRead(page, origin, { branchId, courseId, readWindow }) {
   const served = [];
+  const windows = new Map();
   await page.route((url) => url.origin === origin && url.pathname === SESSION_DATES_PATH, async (route) => {
     const request = route.request();
     const { searchParams } = new URL(request.url());
@@ -20,10 +48,13 @@ export async function installCoursePlanningRead(page, origin, { branchId, course
     const start = strictYmd(body.range_start);
     const end = strictYmd(body.range_end);
     if (!start || !end || end < start) return route.fallback();
-    const rows = materialized.filter((row) => row.student_class_id === courseId
-      && row.session_date >= start && row.session_date <= end);
-    await route.fulfill({ json: { [courseId]: { materialized: rows, projected: [] } } });
-    served.push(rows.length);
+    const key = `${start}/${end}`;
+    if (!windows.has(key)) windows.set(key, readWindow({ branchId, courseId, start, end }));
+    const { materialized, projected } = await windows.get(key);
+    const inScope = (row) => inCourseWindow(row, courseId, start, end);
+    const visible = { materialized: materialized.filter(inScope), projected: projected.filter(inScope) };
+    await route.fulfill({ json: { [courseId]: visible } });
+    served.push(visible.materialized.length);
   });
   return served;
 }

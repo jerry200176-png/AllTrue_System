@@ -79,6 +79,44 @@ class SessionDatesRangeFilterTest extends TestCase
         ], $extra));
     }
 
+    public function test_get_session_dates_supplies_amended_course_rows_without_mutation(): void
+    {
+        Carbon::setTestNow('2026-11-19 12:00:00');
+        $token = $this->makeToken([1]);
+        $student = Student::create([
+            'name' => 'Synthetic amended course student', 'CampusID' => 1, 'ClassID' => 1,
+            'enable' => 1, 'SchoolName' => 'Test',
+        ]);
+        $courseId = $this->makeCourse($student->id, 1, [
+            'StartDate' => '2026-08-05 00:00:00', 'ScheduleMode' => 'count', 'week' => 3,
+            'SessionCount' => 4, 'UsedSessions' => 0, 'RemainingSessions' => 4,
+        ]);
+        $dates = ['2026-08-05', '2026-08-12'];
+        foreach ($dates as $date) {
+            ClassSession::create([
+                'StudentClassID' => $courseId, 'SessionDate' => $date,
+                'StartTime' => '17:00', 'EndTime' => '19:00', 'Status' => 'attended',
+            ]);
+        }
+        DB::table('StudentClass')->where('ID', $courseId)->update([
+            'UsedSessions' => 2, 'RemainingSessions' => 2, 'Stop' => 1, 'closed_reason' => 'contract_amended',
+        ]);
+        $snapshot = fn () => [
+            DB::table('StudentClass')->where('ID', $courseId)->first(),
+            DB::table('ClassSession')->where('StudentClassID', $courseId)->orderBy('id')->get()->all(),
+            DB::table('schedules')->where('student_course_id', $courseId)->orderBy('id')->get()->all(),
+        ];
+        $before = $snapshot();
+        $headers = ['Authorization' => "Bearer {$token}"];
+        $path = '/api/v1/student-classes/session-dates';
+
+        $response = $this->getJson($path.'?branch_id=1&range_start=2026-08-01&range_end=2026-08-31', $headers);
+        $response->assertOk()->assertJsonPath("{$courseId}.projected", []);
+        $this->assertSame($dates, array_column($response->json("{$courseId}.materialized"), 'session_date'));
+        $this->getJson($path.'?branch_id=2&range_start=2026-08-01&range_end=2026-08-31', $headers)->assertForbidden();
+        $this->assertEquals($before, $snapshot());
+    }
+
     /**
      * The session-dates API should only return ClassSession dates within the
      * requested range_start / range_end window.

@@ -1,6 +1,10 @@
+import { once } from 'node:events';
+import { createServer } from 'node:http';
 import { expect, test } from '@playwright/test';
 import { installLocalClassSessionReads } from './fixtures/classSessionReadResponder.js';
-import { expectAmendedCoursePlanning, installCoursePlanningRead, SESSION_DATES_PATH } from './fixtures/coursePlanningDetails.js';
+import {
+  expectAmendedCoursePlanning, installCoursePlanningRead, readCoursePlanningWindow, SESSION_DATES_PATH,
+} from './fixtures/coursePlanningDetails.js';
 import { dismissOverlays } from './fixtures/dismissOverlays.js';
 import { installReadOnlyAppGuard, isKnownStatefulRead } from './fixtures/readOnlyAppGuard.js';
 
@@ -35,7 +39,9 @@ for (const width of [390, 1440]) {
       const data = url.pathname === '/api/v1/student-classes' && url.searchParams.get('branch_id') === '1' ? [course] : [];
       await route.fulfill({ json: { data, total: data.length, current_page: 1, last_page: 1 } });
     });
-    const served = await installCoursePlanningRead(page, origin, { branchId: 1, courseId: course.id, materialized: sessions });
+    const served = await installCoursePlanningRead(page, origin, {
+      branchId: 1, courseId: course.id, readWindow: () => ({ materialized: sessions, projected: [] }),
+    });
 
     await page.goto('/pilot-mount.html?page=course&mode=normal');
     await expect(page.locator('html')).toHaveAttribute('data-pilot-ready', '1');
@@ -56,9 +62,13 @@ test('course details serve only the selected local course data', async ({ page, 
   const origin = new URL(baseURL).origin;
   expect(new URL(origin).hostname).toBe('127.0.0.1');
   const blocked = await installReadOnlyAppGuard(context, origin);
+  const sourceWindows = [];
   const served = await installCoursePlanningRead(page, origin, {
     branchId: 1, courseId: course.id,
-    materialized: [...sessions, { ...sessions[0], student_class_id: 42 }],
+    readWindow: (window) => {
+      sourceWindows.push(window);
+      return { materialized: [...sessions, { ...sessions[1], student_class_id: 42 }], projected: [] };
+    },
   });
   const mount = origin + '/course-planning-test';
   await page.route(mount, (route) => route.fulfill({ contentType: 'text/html', body: '<title>Course planning</title>' }));
@@ -76,6 +86,7 @@ test('course details serve only the selected local course data', async ({ page, 
     };
     return {
       selected: await read('?branch_id=1'),
+      repeated: await read('?branch_id=1'),
       denied: await Promise.all([
         read('?branch_id=2'),
         read('?branch_id=1&branch_id=2'),
@@ -88,8 +99,44 @@ test('course details serve only the selected local course data', async ({ page, 
   }, { path: SESSION_DATES_PATH, courseId: course.id });
 
   expect(result.selected).toEqual({ [course.id]: { materialized: [sessions[1]], projected: [] } });
+  expect(result.repeated).toEqual(result.selected);
   expect(result.denied).toEqual(Array(6).fill(null));
-  expect(served).toEqual([1]);
+  expect(served).toEqual([1, 1]);
+  expect(sourceWindows).toEqual([{ branchId: 1, courseId: course.id, start: '2026-08-10', end: '2026-08-31' }]);
   expect(blocked.every((entry) => entry.origin === origin && entry.path === SESSION_DATES_PATH)).toBe(true);
   expect(blocked.map((entry) => entry.method).sort()).toEqual(['POST', 'POST', 'POST', 'POST', 'POST', 'PUT']);
+});
+
+test('course planning reads use a canonical GET and decline redirects', async ({ request }) => {
+  const received = [];
+  const payload = { [course.id]: { materialized: sessions, projected: [] }, 42: { materialized: [], projected: [] } };
+  const server = createServer((req, res) => {
+    received.push([req.method, req.url]);
+    if (req.url.includes('range_start=2026-08-02')) {
+      res.writeHead(307, { Location: '/other' }).end();
+      return;
+    }
+    const json = req.url.includes('range_start=2026-08-03')
+      ? { [course.id]: { materialized: [], projected: [{ ...sessions[1], student_class_id: 42 }] } }
+      : payload;
+    res.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify(json));
+  });
+  server.listen(0, '127.0.0.1');
+  await once(server, 'listening');
+  try {
+    const origin = `http://127.0.0.1:${server.address().port}`;
+    const window = { branchId: 1, courseId: course.id, start: '2026-08-01', end: '2026-08-31' };
+    const read = (overrides = {}) => readCoursePlanningWindow(request, origin, { ...window, ...overrides }, 'synthetic-session');
+    await expect(read()).resolves.toEqual(payload[course.id]);
+    await expect(read({ branchId: 0 })).rejects.toThrow('invalid course planning read scope');
+    await expect(read({ start: '2026-08-02' })).rejects.toThrow('course planning read returned HTTP 307');
+    await expect(read({ start: '2026-08-03' })).rejects.toThrow('rows outside the selected course or dates');
+    expect(received).toEqual([
+      ['GET', `${SESSION_DATES_PATH}?branch_id=1&range_start=2026-08-01&range_end=2026-08-31`],
+      ['GET', `${SESSION_DATES_PATH}?branch_id=1&range_start=2026-08-02&range_end=2026-08-31`],
+      ['GET', `${SESSION_DATES_PATH}?branch_id=1&range_start=2026-08-03&range_end=2026-08-31`],
+    ]);
+  } finally {
+    await new Promise((resolve) => server.close(resolve));
+  }
 });
