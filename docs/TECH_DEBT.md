@@ -319,7 +319,7 @@
 
 | 欄位 | 內容 |
 |---|---|
-| 狀態 | Open（2026-11-17 核對，Codex #5454 指正）：`GET /api/v1/engagement/rank-thresholds` 只餵「軍階總覽」視窗；進度條（`rankTierProgress`／`xpRemainingToNext`）仍只用前端寫死的表，`fetchRankThresholds`／`setCachedThresholds` 沒有任何呼叫者。修法：`EngagementRankStrip` 掛載時呼叫 `fetchRankThresholds`，進度 computed 依賴一個載入完成的 ref。 |
+| 狀態 | Done 2026-11-20：軍階表只留後端一份。`UserEngagementPresenter::forMe`（`/me` 與 `engagement/my-progress` 都用它）多回傳 `xp_at_current`、`next_rank_xp`；前端 `engagementRankProgress.js` 刪掉寫死的兩張表、`fetchRankThresholds`／`setCachedThresholds`／`rankKeyForXp`，進度條只用這兩個數字計算。「軍階總覽」視窗本來就讀 `GET engagement/rank-thresholds`。 |
 | 優先級 | P2 |
 | 發現日期 | 2026-05-10 |
 | 發現來源 | 開發中（#326 前端進度條）|
