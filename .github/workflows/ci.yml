@@ -965,8 +965,13 @@ jobs:
         if: matrix.shard == 1 && github.ref != 'refs/heads/main'
         working-directory: frontend
         timeout-minutes: 3
-        # The preceding step already generated the release notes used by the fixture.
-        run: npm --ignore-scripts run test:e2e:calendar-course-local
+        run: |
+          set -euo pipefail
+          report="$(mktemp "$RUNNER_TEMP/calendar-course-local.XXXXXX.json")"
+          # The preceding step already generated the release notes used by the fixture.
+          PLAYWRIGHT_JSON_OUTPUT_FILE="$report" npm --ignore-scripts run test:e2e:calendar-course-local
+          RESULTS_PATH="$report" EFFECTIVE_BRANCH_ID=9 ACCEPTANCE_SCOPE=calendar-synthetic \
+            node ../.github/scripts/acceptance-report-gate.mjs
 
       - name: UI foundation page-level Playwright (real Vue + mocked API)
         working-directory: frontend
