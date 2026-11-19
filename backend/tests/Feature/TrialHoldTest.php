@@ -150,8 +150,16 @@ class TrialHoldTest extends TestCase
             ->assertStatus(422)->assertJsonPath('code', 'trial_hold_mismatch');
         $this->assertSame(0, \App\Models\StudentClass::count());
 
+        $locked = [];
+        \Illuminate\Support\Facades\DB::listen(function ($query) use (&$locked) {
+            if (str_contains(strtolower($query->sql), 'for update')) {
+                $locked[] = str_contains($query->sql, '`User`') ? 'User' : (str_contains($query->sql, '`trial_holds`') ? 'trial_holds' : 'other');
+            }
+        });
         $classId = $this->as($token)->postJson("/api/v1/admission-inquiries/{$inquiry->id}/trial", ['trial_hold_id' => $hold['id']] + $trial)
             ->assertCreated()->json('student_class_id');
+        // TD-094: teacher before hold, the same order as hold creation and enrollment, so they cannot deadlock.
+        $this->assertLessThan(array_search('trial_holds', $locked, true), array_search('User', $locked, true));
         $converted = TrialHold::findOrFail($hold['id']);
         $this->assertSame([TrialHold::CONVERTED, (int) $classId], [$converted->status, (int) $converted->converted_student_class_id]);
         $this->as($token)->getJson('/api/v1/trial-holds?from=2026-09-01&to=2026-09-30')->assertOk()->assertJsonCount(0, 'data');

@@ -213,6 +213,9 @@ class AdmissionInquiryController extends Controller
             // 試聽暫留 (in-app #575): converting a hold lets the trial take the held seat, then releases the hold.
             $hold = null;
             if (!empty($data['trial_hold_id'])) {
+                // TD-094 lock order: the teacher's User row before the hold, as in TrialHoldController and
+                // EnrollmentService (whose locked guard read also locks held holds); the reverse order deadlocks.
+                DB::table('User')->where('id', (int) $data['teacher_id'])->lockForUpdate()->value('id');
                 $hold = TrialHold::query()->whereKey((int) $data['trial_hold_id'])->lockForUpdate()->first();
                 if (!$hold || $hold->status !== TrialHold::HELD) {
                     throw new HttpResponseException(response()->json(['message' => '這筆暫留已經取消或已轉成試聽。沒有變更任何資料。', 'code' => 'trial_hold_not_held'], 409));

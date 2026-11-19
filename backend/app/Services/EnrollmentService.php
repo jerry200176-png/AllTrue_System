@@ -1118,7 +1118,7 @@ class EnrollmentService
             }
 
             return response()->json($payload, 201);
-        });
+        }, 3); // retry a deadlock between the locked capacity read and other slot writers (closure is DB-only)
             // #4001: the override is audited only once the enrollment committed, never for a request that is refused afterwards.
             if ($this->forceAudit !== null && $response->getStatusCode() < 400) {
                 Log::info('enrollment_force_override', $this->forceAudit);
@@ -1846,7 +1846,6 @@ class EnrollmentService
         return $pos !== false ? substr($key, 0, $pos) : $key;
     }
 
-    /** Extract effective teacher_id from a group key; falls back to $globalTeacherId. */
     /**
      * Capacity conflicts for every concrete occurrence of this enrollment, read under locks (TD-094).
      *
@@ -1887,6 +1886,7 @@ class EnrollmentService
         return $conflicts;
     }
 
+    /** Extract effective teacher_id from a group key; falls back to $globalTeacherId. */
     private function teacherFromGroupKey(string $key, int $globalTeacherId): int
     {
         $pos = strrpos($key, '::');
