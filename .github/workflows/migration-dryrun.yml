@@ -123,8 +123,15 @@ jobs:
             exit 0
           fi
           echo "Rolling back the ${#PATHS[@]} migration(s) this PR adds: ${PATHS[*]}"
-          php artisan migrate:rollback "${PATHS[@]}" --force --no-interaction | grep -v "Migration not found"
-          RC=${PIPESTATUS[0]}
+          OUT=$(php artisan migrate:rollback "${PATHS[@]}" --force --no-interaction 2>&1)
+          RC=$?
+          printf '%s\n' "$OUT" | grep -v "Migration not found"
+          # Fail closed: a wrong --path would roll back nothing and still exit 0.
+          DONE=$(printf '%s\n' "$OUT" | grep -c "DONE")
+          if [ $RC -eq 0 ] && [ "$DONE" -ne ${#PATHS[@]} ]; then
+            echo "::error title=migration rollback check::rolled back $DONE of ${#PATHS[@]} added migration(s)"
+            exit 1
+          fi
           if [ $RC -ne 0 ]; then
             # PR body via env avoids bash quote breakage from HTML footers
             if printf '%s' "$PR_BODY" | grep -qi "irreversible"; then
