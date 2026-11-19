@@ -258,7 +258,7 @@ const trialHolds = ref([]);
 const holdsHere = computed(() => trialHolds.value.filter((h) => Number(h.campus_id) === Number(props.branchId)));
 function applyHold() {
   const hold = holdsHere.value.find((h) => String(h.id) === String(trial.value.trial_hold_id));
-  if (hold) trial.value = { ...trial.value, teacher_id: hold.teacher_id, trial_date: hold.hold_date, start_time: hold.start_time, duration_minutes: Math.max(30, holdDurationMinutes(hold)) };
+  if (hold) trial.value = { ...trial.value, teacher_id: hold.teacher_id, trial_date: hold.hold_date, start_time: hold.start_time, duration_minutes: holdDurationMinutes(hold) };
 }
 async function loadTrialHolds() {
   const today = ymdInTaipei();

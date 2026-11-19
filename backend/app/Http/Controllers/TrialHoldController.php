@@ -54,6 +54,11 @@ class TrialHoldController extends Controller
         ]);
         $campusId = (int) $data['campus_id'];
         $teacherId = (int) $data['teacher_id'];
+        // Same 30–480 minute range the trial handoff accepts, so every hold can be converted at its own time.
+        $minutes = (int) Carbon::parse($data['start_time'])->diffInMinutes(Carbon::parse($data['end_time'])); // end > start (validated)
+        if ($minutes < 30 || $minutes > 480) {
+            return response()->json(['message' => '暫留長度要在 30 分鐘到 8 小時之間，跟試聽一樣。沒有變更任何資料。', 'code' => 'trial_hold_duration'], 422);
+        }
         if (!$this->mayManageCampus($request, $campusId)) {
             return response()->json(['message' => 'Forbidden'], 403);
         }

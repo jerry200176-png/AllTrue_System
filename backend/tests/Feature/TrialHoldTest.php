@@ -83,6 +83,8 @@ class TrialHoldTest extends TestCase
             ->assertCreated();
         $this->as($token)->postJson('/api/v1/trial-holds', $this->holdPayload($campus, $teacher, ['start_time' => '22:15', 'end_time' => '22:45']))
             ->assertStatus(422)->assertJsonPath('code', 'trial_hold_conflict');
+        $this->as($token)->postJson('/api/v1/trial-holds', $this->holdPayload($campus, $teacher, ['start_time' => '21:00', 'end_time' => '21:15']))
+            ->assertStatus(422)->assertJsonPath('code', 'trial_hold_duration');
         $this->assertSame(1, TrialHold::count());
     }
 

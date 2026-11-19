@@ -25,6 +25,13 @@ export function holdBlockStyle(hold) {
   };
 }
 
+/** Side-by-side lane `index` of `total` in one slot (lessons first, then holds), so a hold never covers a lesson. */
+export function laneStyle(index, total, gap = 2) {
+  if (total <= 1) return {};
+  const width = 100 / total;
+  return { left: `calc(${index * width}% + ${gap}px)`, width: `calc(${width}% - ${gap * 2}px)`, right: 'auto' };
+}
+
 /** Minutes between two HH:MM times (for prefilling a trial from a hold). */
 export function holdDurationMinutes(hold) {
   return minutesOf(hold.end_time) - minutesOf(hold.start_time);

@@ -250,11 +250,11 @@
                   />
                 </div>
                 <button
-                  v-for="hold in holdsForTeacherAt(teacher.id, h)"
+                  v-for="(hold, hIdx) in holdsForTeacherAt(teacher.id, h)"
                   :key="'hold-' + hold.id"
                   type="button"
                   class="trial-hold-block"
-                  :style="holdBlockStyle(hold)"
+                  :style="holdDayStyle(hold, teacher.id, h, hIdx)"
                   :aria-label="`試聽暫留 ${hold.teacher_name} ${hold.start_time} 到 ${hold.end_time}`"
                   @click.stop="holdToCancel = hold"
                 >試聽暫留 {{ hold.start_time }}–{{ hold.end_time }}</button>
@@ -330,11 +330,11 @@
                   />
                 </div>
                 <button
-                  v-for="hold in holdsForWeekCell(idx + 1, h)"
+                  v-for="(hold, hIdx) in holdsForWeekCell(idx + 1, h)"
                   :key="'hold-' + hold.id"
                   type="button"
                   class="trial-hold-block"
-                  :style="holdBlockStyle(hold)"
+                  :style="holdWeekStyle(hold, idx + 1, h, hIdx)"
                   :aria-label="`試聽暫留 ${hold.teacher_name} ${hold.start_time} 到 ${hold.end_time}`"
                   @click.stop="holdToCancel = hold"
                 >試聽暫留 {{ hold.start_time }}–{{ hold.end_time }}<template v-if="weekViewTeacherIds.length !== 1"> · {{ hold.teacher_name }}</template></button>
@@ -601,7 +601,7 @@ import { isDirectorRole } from '../lib/roleCapabilities.js';
 import { ConfirmDialog } from '@/components/app-overlay';
 import TrialHoldDialog from '../components/calendar/TrialHoldDialog.vue';
 import { cancelTrialHold, getTrialHolds } from '../api.js';
-import { holdBlockStyle, holdsInSlot } from '../lib/trialHolds.js';
+import { holdBlockStyle, holdsInSlot, laneStyle } from '../lib/trialHolds.js';
 import AtButton from '../components/design-system/AtButton.vue';
 import AtSkeleton from '../components/design-system/AtSkeleton.vue';
 import AtPageHeader from '../components/design-system/AtPageHeader.vue';
@@ -1503,7 +1503,7 @@ const getCoursesForAliasSetAt = (aliasSet, hour) => {
 
 const getTeacherCourseBlockStyle = (course, teacherId, hour, idx) => {
   const coursesAtSlot = getCoursesForTeacherAt(teacherId, hour);
-  const total = coursesAtSlot.length;
+  const total = coursesAtSlot.length + holdsForTeacherAt(teacherId, hour).length;
   const gap = 2;
   if (total <= 1) {
     return {
@@ -1576,6 +1576,14 @@ const holdsForWeekCell = (dow, hour) => holdsInSlot(trialHolds.value, {
 const holdsForTeacherAt = (teacherId, hour) => holdsInSlot(trialHolds.value, {
   date: ymdOfDow(selectedDow.value), hour, campusId: props.branchId, teacherIds: getTeacherAliasIdSet(teacherId),
 });
+const holdWeekStyle = (hold, dow, hour, hIdx) => {
+  const lessons = getCoursesForWeekCell(dow, hour).length;
+  return { ...holdBlockStyle(hold), ...laneStyle(lessons + hIdx, lessons + holdsForWeekCell(dow, hour).length) };
+};
+const holdDayStyle = (hold, teacherId, hour, hIdx) => {
+  const lessons = getCoursesForTeacherAt(teacherId, hour).length;
+  return { ...holdBlockStyle(hold), ...laneStyle(lessons + hIdx, lessons + holdsForTeacherAt(teacherId, hour).length) };
+};
 const openHoldDialog = async (prefill = {}) => {
   holdToken.value = (await getToken().catch(() => null)) || holdToken.value;
   holdPrefill.value = prefill;
@@ -1611,7 +1619,7 @@ const getWeekTeacherDayCount = (dow) => {
 
 const getWeekCourseBlockStyle = (course, dow, hour, idx) => {
   const coursesAtSlot = getCoursesForWeekCell(dow, hour);
-  const total = coursesAtSlot.length;
+  const total = coursesAtSlot.length + holdsForWeekCell(dow, hour).length;
   const gap = 2;
   if (total <= 1) {
     return {
@@ -3444,7 +3452,7 @@ onUnmounted(removeContextMenuListeners);
   position: absolute;
   left: 3px;
   right: 3px;
-  z-index: 3;
+  z-index: 2;
   min-height: 20px;
   padding: 2px 6px;
   border: 1.5px dashed var(--ds-warning);
