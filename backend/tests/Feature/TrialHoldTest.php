@@ -129,6 +129,31 @@ class TrialHoldTest extends TestCase
         $this->assertSame(['trial', 1, ['trial_hold']], [$withCapacity[0]['class_type'], $withCapacity[0]['student_count'], $withCapacity[0]['source_types']]);
     }
 
+    public function test_converting_a_hold_books_the_trial_in_the_held_seat_and_releases_the_hold(): void
+    {
+        [$campus, $teacher, $token] = $this->campusWithTeacherAndDirector();
+        $hold = $this->as($token)->postJson('/api/v1/trial-holds', $this->holdPayload($campus, $teacher))->assertCreated()->json('data');
+        $inquiry = $this->inquiry($campus);
+        $trial = ['teacher_id' => $teacher->id, 'trial_date' => self::DATE, 'start_time' => '23:00', 'duration_minutes' => 30];
+
+        // Wrong date or an unheld hold is refused and writes nothing.
+        $this->as($token)->postJson("/api/v1/admission-inquiries/{$inquiry->id}/trial", ['trial_date' => '2026-09-13', 'trial_hold_id' => $hold['id']] + $trial)
+            ->assertStatus(422)->assertJsonPath('code', 'trial_hold_mismatch');
+        $this->assertSame(0, \App\Models\StudentClass::count());
+
+        $classId = $this->as($token)->postJson("/api/v1/admission-inquiries/{$inquiry->id}/trial", ['trial_hold_id' => $hold['id']] + $trial)
+            ->assertCreated()->json('student_class_id');
+        $converted = TrialHold::findOrFail($hold['id']);
+        $this->assertSame([TrialHold::CONVERTED, (int) $classId], [$converted->status, (int) $converted->converted_student_class_id]);
+        $this->as($token)->getJson('/api/v1/trial-holds?from=2026-09-01&to=2026-09-30')->assertOk()->assertJsonCount(0, 'data');
+
+        // The trial now occupies the slot itself; the converted hold cannot be used again.
+        $this->as($token)->postJson('/api/v1/trial-holds', $this->holdPayload($campus, $teacher))->assertStatus(422)->assertJsonPath('code', 'trial_hold_conflict');
+        $other = $this->inquiry($campus);
+        $this->as($token)->postJson("/api/v1/admission-inquiries/{$other->id}/trial", ['trial_hold_id' => $hold['id']] + $trial)
+            ->assertStatus(409)->assertJsonPath('code', 'trial_hold_not_held');
+    }
+
     /** @return array{0: Campus, 1: User, 2: string} */
     private function campusWithTeacherAndDirector(): array
     {
