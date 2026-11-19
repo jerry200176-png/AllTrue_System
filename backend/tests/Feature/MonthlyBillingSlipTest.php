@@ -333,6 +333,24 @@ class MonthlyBillingSlipTest extends TestCase
             ->assertJsonPath('sessions.1.date', '2026-08-10')
             ->assertJsonPath('total_amount', 6000)
             ->assertJsonPath('items.0.description', '數學月結費用 2026年8月'); // in-app #445
+
+        // No billed lessons in August cannot justify zeroing an explicit September line.
+        $course->update(['EndDate' => '2026-09-30']);
+        ClassSession::create([
+            'StudentClassID' => $course->ID,
+            'SessionDate' => '2026-09-07',
+            'StartTime' => '18:00',
+            'EndTime' => '20:00',
+            'Status' => 'attended',
+        ]);
+        $invoice->update(['Status' => 'unpaid', 'TotalAmount' => 0, 'PaidAmount' => 0]);
+        $invoice->items()->update(['Amount' => 1500, 'PeriodStart' => '2026-09-01', 'PeriodEnd' => '2026-09-30']);
+        $this->getJson("/api/v1/invoices/{$invoice->id}/slip-data")
+            ->assertOk()
+            ->assertJsonPath('computed_total_amount', 0)
+            ->assertJsonPath('amount_discrepancy', false)
+            ->assertJsonPath('items.0.amount', 1500)
+            ->assertJsonPath('items.0.period_start', '2026-09-01');
     }
 
     public function test_prepaid_next_period_slip_lists_dates_in_item_service_range(): void

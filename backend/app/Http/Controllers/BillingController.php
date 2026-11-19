@@ -638,21 +638,20 @@ class BillingController extends Controller
             && $projection['period_start'] !== null
             && $projection['period_end'] !== null;
 
-        // An already-correct invoice can retain a stale amount on its own line. Keep its service details.
+        // Align a stale line only when it covers the lessons backing a positive verified total.
         $itemCourseId = (int) ($singleItem?->StudentClassID ?? 0);
         $alignItemAmount = $useReconciledItem || (
             $singleCourseItem
             && ($itemCourseId === 0 || $itemCourseId === (int) $invoice->StudentClassID)
             && !$projection['amount_discrepancy']
             && $projection['repriceable']
+            && $totalAmount > 0
             && $projection['computed_total_amount'] === $totalAmount
-            && ($projection['period_sessions'] === 0 || (
-                count($sessions) === $projection['period_sessions']
-                && collect($sessions)->every(
-                    fn (array $session): bool => $session['date'] >= ($singleItem->PeriodStart ?? $projection['period_start'])
-                        && $session['date'] <= ($singleItem->PeriodEnd ?? $projection['period_end'])
-                )
-            ))
+            && count($sessions) === $projection['period_sessions']
+            && collect($sessions)->every(
+                fn (array $session): bool => $session['date'] >= ($singleItem->PeriodStart ?? $projection['period_start'])
+                    && $session['date'] <= ($singleItem->PeriodEnd ?? $projection['period_end'])
+            )
         );
 
         $items = $invoice->items->map(function ($item) use ($invoice, $projection, $useReconciledItem, $alignItemAmount) {
