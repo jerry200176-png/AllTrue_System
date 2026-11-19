@@ -473,7 +473,7 @@
 
 | 欄位 | 內容 |
 |---|---|
-| 狀態 | Open |
+| 狀態 | Done 2026-11-20（核對 `origin/main` 的 lock 檔）：5 筆全部已升過修補版本。`laravel/framework` v12.72.0（CVE-2025-27515 在 12.1.1 修補；#4504 升級 Laravel 12）、`symfony/routing` v7.4.23、`symfony/polyfill-intl-idn` v1.43.0、`vite` 6.4.5、`esbuild` 0.25.12。之後的新漏洞走每月 OSV 深掃，不再掛在這一條。 |
 | 優先級 | P2 |
 | 發現日期 | 2026-05-31 |
 | 發現來源 | `osv-scanner.yml` 首次深掃（#544）|
@@ -529,7 +529,7 @@
 
 | 欄位 | 內容 |
 |---|---|
-| 狀態 | Done 2026-11-20（Founder 11-19 決定刪除死碼）：CI 實測（#5542 診斷）建立 high 通知時 app 的 event dispatcher 上沒有 `eloquent.created: Notification` listener，`NotificationObserver` 從未觸發，員工 LINE 推播從未送出（個人設定頁本來就寫「暫不影響既有通知流程」）。已刪除 `NotificationObserver`、`NotificationLineDispatcher` 與其測試；`AppServiceProviderObserverRegistrationTest` 擋住之後再把 `::observe()` 寫在 `boot()` 而不是 `booted()`。若日後要員工 LINE 通知，重新設計（先計量、再送出），並從綁定流程開始（見 TD-013）。 |
+| 狀態 | Done 2026-11-20（Founder 11-19 決定刪除死碼）：CI 實測（#5542 診斷）建立 high 通知時 app 的 event dispatcher 上沒有 `eloquent.created: Notification` listener，`NotificationObserver` 從未觸發，員工 LINE 推播從未送出（個人設定頁本來就寫「暫不影響既有通知流程」）。已刪除 `NotificationObserver`、`NotificationLineDispatcher` 與其測試；`AppServiceProviderObserverRegistrationTest` 擋住之後再把 `::observe()` 寫在 `boot()` 而不是 `booted()`。若日後要員工 LINE 通知，重新設計（先計量、再送出），並從綁定流程開始（見 TD-013）。 根因（獨立審查查證）：`backend/bootstrap/app.php` 第 55–56 行在 kernel bootstrap 之前就 `$app->register(AppServiceProvider)`，所以它比 `DatabaseServiceProvider` 先 boot，`Model::setEventDispatcher` 還沒執行；與 `config/app.php` 的排列順序無關。 |
 | 優先級 | P2（需使用者決策後再清，涉及 LINE 推播行為） |
 | 發現日期 | 2026-06-13 |
 | 發現來源 | [BUG] 修 #766 audit observer 時發現同源問題 |
