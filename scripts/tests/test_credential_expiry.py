@@ -126,6 +126,10 @@ class ReminderWorkflowTest(unittest.TestCase):
             (fixture / "docs/ops/credential-expiry.yml").write_text(yaml.safe_dump(reg(14, "2000-01-01") if registry is None else registry))
             bin_dir = fixture / "bin"
             bin_dir.mkdir()
+            jq = shutil.which("jq")
+            self.assertIsNotNone(jq, "jq is required to exercise the reminder shell")
+            # Keep user-local jq visible without exposing other user-local tools to the fixture.
+            (bin_dir / "jq").symlink_to(Path(jq).resolve())
             gh = bin_dir / "gh"
             gh.write_text(f"#!{sys.executable}\n" + '''import json, os, sys
 with open(os.environ["GH_STUB_LOG"], "a") as log:

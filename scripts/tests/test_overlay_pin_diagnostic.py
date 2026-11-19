@@ -1,6 +1,7 @@
 """Exercise the real shell gate offline; malformed/migrated input must fail closed."""
 import os
 from pathlib import Path
+import shlex
 import subprocess
 import tempfile
 import unittest
@@ -54,11 +55,19 @@ class OverlayPinDiagnosticTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             (root / "constitution.md").write_text("**Version:** 0.1.0\n")
+            # Use the real gate body with an absent fixture checkout in place of the host checkout.
+            host_overlay = "/home/jerry/workspace/sunrise-cafe/docs/governance/OVERLAY.md"
+            gate_body = SCRIPT.read_text()
+            self.assertEqual(2, gate_body.count(host_overlay))
+            fixture_gate = root / "scripts" / "governance" / SCRIPT.name
+            fixture_gate.parent.mkdir(parents=True)
+            absent_overlay = root / "sunrise-cafe" / "docs" / "governance" / "OVERLAY.md"
+            fixture_gate.write_text(gate_body.replace(host_overlay, shlex.quote(str(absent_overlay))))
             curl = root / "curl"
             curl.write_text("#!/bin/sh\nexit 22\n")
             curl.chmod(0o700)
             result = subprocess.run(
-                ["bash", str(SCRIPT)], capture_output=True, text=True,
+                ["bash", str(fixture_gate)], capture_output=True, text=True,
                 env={**os.environ, "CONSTITUTION_FILE": str(root / "constitution.md"),
                      "OVERLAY_FILE": "", "PATH": str(root) + os.pathsep + os.environ["PATH"]},
             )
