@@ -172,6 +172,11 @@ class MonthlyCalendarMonthCollectionTest extends TestCase
         $resolver = app(BillingPayableResolver::class);
         $this->assertSame('unbilled', $resolver->courseStatusesByStudentClassIds([$other->ID])[$other->ID]['status']);
         $this->assertSame([], $resolver->validPaymentEvidence([$other->ID], [], [1])['classes']);
+
+        $this->api('postJson', "/api/v1/invoices/{$bill->id}/exception-void", ['reason' => 'Synthetic reversal'])->assertOk();
+        $this->assertSame([0, 0, 0], [(int) $header->fresh()->Paid, (int) $line->fresh()->Paid, (int) $other->fresh()->Paid]);
+        $this->assertSame('void', (string) $bill->fresh()->Status);
+        $this->assertSame([2, 0], [$bill->payments()->count(), (int) $bill->payments()->sum('Amount')]);
     }
 
     public function test_confirm_refuses_a_shared_bill_whose_student_changed_after_intake(): void
@@ -214,6 +219,23 @@ class MonthlyCalendarMonthCollectionTest extends TestCase
         $this->assertSame('unpaid', (string) $bill->fresh()->Status);
         $this->assertSame(0, (int) $line->fresh()->Paid);
         $this->assertSame(0, $bill->payments()->count());
+    }
+
+    public function test_voiding_a_legacy_receipt_without_a_bill_keeps_separate_confirmed_shared_coverage(): void
+    {
+        [$header, $line, $bill] = $this->sharedCountBill();
+        $this->confirm($this->record($header, 4000)->assertOk()->json('report_id'));
+        $legacy = PaymentReport::create([
+            'StudentID' => $line->StudentID, 'StudentClassID' => $line->ID, 'reported_by_name' => 'Synthetic historic report',
+            'payment_date' => '2026-10-22', 'payment_method' => 'cash', 'reported_amount' => 100, 'status' => 'confirmed',
+            'report_token_hash' => str_repeat('a', 64), 'token_expires_at' => now()->addDay(),
+        ]);
+
+        $this->api('putJson', "/api/v1/payment-reports/{$legacy->id}/void", ['void_reason' => 'Synthetic historic cleanup'])->assertOk();
+        $this->assertSame('voided', (string) $legacy->fresh()->status);
+        $this->assertSame('paid', (string) $bill->fresh()->Status);
+        $this->assertSame(1, $bill->payments()->count());
+        $this->assertSame(1, (int) $line->fresh()->Paid);
     }
 
     public function test_batch_confirmation_reports_a_stale_item_scope_after_an_earlier_success(): void

@@ -1907,7 +1907,9 @@ class PaymentReportController extends Controller
             // resolver would read the stale flag itself as paid.
             // $sc already required above (missing/mismatched course returns void_invoice_mismatch).
             // An auto-voided bill no longer backs the course, but another live bill may: then the resolver decides, as below.
-            $ledgerBacked = $invoice && (!$autoVoided || Invoice::courseHasLiveBill((int) $sc->ID)) && (!$alreadyReversed || Invoice::courseHasLiveBill((int) $sc->ID));
+            $ledgerBacked = $invoice
+                ? ((!$autoVoided && !$alreadyReversed) || Invoice::courseHasLiveBill($courseId))
+                : Invoice::standaloneCountLineBills([$courseId])->exists();
             $scPaid = CollectionTarget::unsettle($sc, $package, $ledgerBacked); // shared with the receipt move (#5113)
             if ($invoice) {
                 CollectionTarget::syncInvoiceLineCourses($invoice, $lineCourses, true);

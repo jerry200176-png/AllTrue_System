@@ -552,14 +552,15 @@ class BillingController extends Controller
             $invoice->PaidAmount = 0;
             $invoice->Note = mb_substr(trim($note . ' ' . $audit), 0, 255);
             $invoice->save();
-            if ($lineCourses->isNotEmpty()) {
-                CollectionTarget::syncInvoiceLineCourses($invoice, $lineCourses, true);
-                $header = $lockedCourses->get((int) $invoice->StudentClassID);
-                if ($header?->Paid && (int) $header->StudentID === $studentId && (int) $header->PackageID === 0
-                    && (string) ($header->ScheduleMode ?? 'count') === 'count' && !$header->isTerminalMoneyClosure()) {
-                    $id = (int) $header->ID;
-                    CollectionTarget::unsettle($header, null, Invoice::courseHasLiveBill($id));
-                }
+            CollectionTarget::syncInvoiceLineCourses($invoice, $lineCourses, true);
+            $headerId = (int) $invoice->StudentClassID;
+            $header = $lockedCourses->get($headerId);
+            if ($header?->Paid && (int) $header->StudentID === $studentId && (int) $header->PackageID === 0
+                && (string) ($header->ScheduleMode ?? 'count') === 'count' && !$header->isTerminalMoneyClosure()
+                && (int) $invoice->TotalAmount > 0 && $invoice->items()->where('Amount', '>', 0)
+                    ->where('StudentClassID', '>', 0)->where('StudentClassID', '!=', $headerId)->exists()) {
+                // The shared bill backed the header even when its other items were ineligible for a paid mark.
+                CollectionTarget::unsettle($header, null, Invoice::courseHasLiveBill($headerId));
             }
 
             Log::info('[InvoiceExceptionVoid] invoice reversed and voided', [
