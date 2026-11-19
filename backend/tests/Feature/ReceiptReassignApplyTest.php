@@ -85,6 +85,40 @@ class ReceiptReassignApplyTest extends TestCase
 
     // ── must-do 1: after-balances through the resolver ──────────────────
 
+    public function test_move_resynchronizes_the_positive_item_courses_on_both_bills(): void
+    {
+        $f = $this->fixture();
+        $sourceLine = $f['wrongCourse']->replicate();
+        $sourceLine->save();
+        $targetLine = $f['rightCourse']->replicate();
+        $targetLine->save();
+        $f['wrongInvoice']->items()->create(['StudentClassID' => $sourceLine->ID, 'Description' => 'Shared source', 'Amount' => self::AMOUNT]);
+        $f['rightInvoice']->items()->create(['StudentClassID' => $targetLine->ID, 'Description' => 'Shared destination', 'Amount' => self::AMOUNT]);
+        $token = $this->token('S', 1);
+        $hash = $this->preview($token, $f)->assertOk()->json('state_hash');
+        $this->apply($token, $f['report'], $f['rightInvoice'], $hash)->assertStatus(201);
+
+        $this->assertSame([0, 1], [(int) $sourceLine->fresh()->Paid, (int) $targetLine->fresh()->Paid]);
+        $this->assertSame([0, self::AMOUNT], [$this->net($f['wrongInvoice']), $this->net($f['rightInvoice'])]);
+        $this->apply($token, $f['report'], $f['rightInvoice'], $hash)->assertOk()->assertJsonPath('replayed', true);
+    }
+
+    public function test_move_preserves_a_paid_source_header_that_is_also_an_item_on_the_target(): void
+    {
+        $f = $this->fixture();
+        $this->payment($f['wrongInvoice'], self::AMOUNT);
+        $f['wrongInvoice']->update(['PaidAmount' => self::AMOUNT * 2]);
+        $target = $this->bill($f['wrong'], self::AMOUNT);
+        $target['invoice']->items()->create(['StudentClassID' => $f['wrongCourse']->ID, 'Description' => 'Shared destination', 'Amount' => self::AMOUNT]);
+        $f['rightInvoice'] = $target['invoice'];
+        $token = $this->token('S', 1);
+        $hash = $this->preview($token, $f)->assertOk()->json('state_hash');
+        $this->apply($token, $f['report'], $f['rightInvoice'], $hash)->assertStatus(201);
+
+        $this->assertSame([self::AMOUNT, self::AMOUNT], [$this->net($f['wrongInvoice']), $this->net($target['invoice'])]);
+        $this->assertSame([1, 1], [(int) $f['wrongCourse']->fresh()->Paid, (int) $target['course']->fresh()->Paid]);
+    }
+
     public function test_after_balance_of_an_over_collected_source_keeps_its_surplus(): void
     {
         $f = $this->fixture();

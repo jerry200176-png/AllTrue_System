@@ -22,6 +22,10 @@ describe('slip / receipt availability', () => {
   it('a 金額待確認 contract never gets a slip (Founder D2)', () => {
     expect(slipAvailability(mk({ payment_status: 'pending_reconciliation', amount_pending_confirmation: true }))).toEqual({ ok: false, reason: '金額需核對，不能產生繳費單' });
   });
+  it('directs a shared-invoice line to the original bill', () => {
+    expect(slipAvailability(mk({ payment_status: 'unpaid', payable_status: 'review_required' })))
+      .toEqual({ ok: false, reason: '請在原共用帳單查看繳費單' });
+  });
   it('package rows (id null) get their own reasons, and a bill id still allows a slip', () => {
     expect(receiptAvailability({ id: null, payment_status: 'monthly_due_soon' }).reason).toBe('共用方案收據請至成員課程查看');
     expect(receiptAvailability({ id: null, payment_status: 'paid' }).reason).toBe('共用方案收據請至成員課程查看');

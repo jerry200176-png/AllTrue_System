@@ -13,6 +13,7 @@ use App\Models\StudentClass;
 use App\Services\InvoiceAmountReconciliationService;
 use App\Support\DeadlockRetry;
 use Carbon\Carbon;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
@@ -39,7 +40,7 @@ final class ReceiptReassignService
     public const FLAG = 'receipt_reassign';
 
     /** Bumped whenever the hashed fields change, so a hash from an older preview can never match. */
-    public const STATE_HASH_VERSION = 'v2';
+    public const STATE_HASH_VERSION = 'v3';
 
     public const AUDIT_EVENT = 'billing.receipt_reassigned';
 
@@ -107,7 +108,7 @@ final class ReceiptReassignService
             // Lock order of confirm()/void(): courses (ascending), the report, packages, then bills and their payments. The courses
             // include every member of either side's package, because the package marks rewrite them (PackagePaidMarks).
             // Every read before the plan is a locking read, so the snapshot of the plan's plain reads starts after the waits.
-            $courses = StudentClass::query()->whereIn('ID', $route['courses'])->orderBy('ID')->lockForUpdate()->get(['ID', 'PackageID']);
+            $courses = StudentClass::query()->whereIn('ID', $route['courses'])->orderBy('ID')->lockForUpdate()->get()->keyBy('ID');
             $report = PaymentReport::query()->whereKey($reportId)->lockForUpdate()->first();
             $packageIds = $route['packages'];
             if ($packageIds !== []) {
@@ -115,7 +116,10 @@ final class ReceiptReassignService
             }
             $invoiceIds = array_values(array_unique([$route['from_invoice'], $targetInvoiceId]));
             sort($invoiceIds);
-            Invoice::query()->whereIn('id', $invoiceIds)->orderBy('id')->lockForUpdate()->get(['id']);
+            $bills = Invoice::query()->whereIn('id', $invoiceIds)->orderBy('id')->lockForUpdate()->get();
+            $lineCourses = $bills->mapWithKeys(fn (Invoice $bill) => [
+                (int) $bill->id => CollectionTarget::lockInvoiceLineCourses($bill, $courses, $route['courses']),
+            ]);
             Payment::query()->whereIn('InvoiceID', $invoiceIds)->orderBy('id')->lockForUpdate()->get(['id']);
 
             if (!$report) {
@@ -154,7 +158,7 @@ final class ReceiptReassignService
                 return $this->refuse('reassign_state_changed', '畫面上的帳單資料已經變動，請重新預覽確認後再送出。', 409);
             }
 
-            return $this->write($ctx, trim($reason), $key, $actorId);
+            return $this->write($ctx, trim($reason), $key, $actorId, $lineCourses);
         }, DeadlockRetry::ATTEMPTS); // a deadlock victim re-runs whole: locks, replay check and plan again, so a re-run never moves twice
     }
 
@@ -285,6 +289,8 @@ final class ReceiptReassignService
         // Package identity and membership of both sides: joining or leaving a package changes which courses the move marks.
         $packageIds = self::packageIdsOf([$from['course'], $toCourse]);
         $packageMembers = $packageIds === [] ? [] : DB::table('StudentClass')->whereIn('PackageID', $packageIds)->orderBy('ID')->pluck('ID')->map(fn ($v) => (int) $v)->all();
+        $lineCourseIds = fn (Invoice $bill) => $bill->items->filter(fn ($item) => (int) $item->Amount > 0)
+            ->pluck('StudentClassID')->map(fn ($id) => (int) $id)->filter()->unique()->sort()->values()->all();
         $fromBefore = (int) $from['money']['outstanding_amount'];
         $warnings = [$sourceVoided ? 'source_bill_voided' : 'source_bill_becomes_unpaid'];
         if ((int) ($from['course']->PackageID ?? 0) > 0 || (int) ($toCourse->PackageID ?? 0) > 0) {
@@ -321,6 +327,7 @@ final class ReceiptReassignService
                 // The projected results too: a session change after the preview can move a repriced balance with no stored field changing.
                 (int) $fromAfter['total_amount'], (int) $fromAfter['outstanding_amount'], (int) $toAfter['total_amount'], (int) $toAfter['outstanding_amount'], $sourceVoided,
                 (int) ($from['course']->PackageID ?? 0), (int) ($toCourse->PackageID ?? 0), $packageMembers,
+                $lineCourseIds($from['model']), $lineCourseIds($toModel),
             ], JSON_THROW_ON_ERROR)),
         ], 'ctx' => [
             'report' => $report, 'campus_id' => $ctx['campus_id'], 'amount' => $amount, 'from' => $from,
@@ -598,6 +605,7 @@ final class ReceiptReassignService
         $packages = self::packageIdsOf(DB::table('StudentClass')->whereIn('ID', [$fromCourse, $toCourse])->get(['PackageID']));
         $courses = array_merge([$fromCourse, $toCourse], $packages === [] ? []
             : DB::table('StudentClass')->whereIn('PackageID', $packages)->pluck('ID')->map(fn ($v) => (int) $v)->all());
+        $courses = array_merge($courses, CollectionTarget::invoiceLineCourseIds([$fromInvoice, $targetInvoiceId]));
         $courses = array_values(array_unique($courses));
         sort($courses);
 
@@ -618,7 +626,7 @@ final class ReceiptReassignService
      * @param array<string, mixed> $ctx
      * @return array{status:int, body:array<string, mixed>}
      */
-    private function write(array $ctx, string $reason, string $key, int $actorId): array
+    private function write(array $ctx, string $reason, string $key, int $actorId, Collection $lineCourses): array
     {
         $old = PaymentReport::query()->whereKey((int) $ctx['report']->id)->firstOrFail();
         $amount = (int) $ctx['amount'];
@@ -654,8 +662,6 @@ final class ReceiptReassignService
         // As void() (#531 / #5160): the bill this receipt's own confirmation auto-issued goes with its only receipt.
         $autoVoided = FirstBillAutoVoid::apply($fromInvoice, (int) $old->id, $old->payment_id === null ? null : (int) $old->payment_id,
             $paymentsBefore, $fromCourseId, $actorId);
-        $this->settleSourceCourse($fromCourseId, (string) $fromInvoice->Status, $autoVoided);
-
         // Reapply: a repriced monthly target is saved at the total the plan used, as confirm() does (must-do 2), then the money lands.
         $toCourse = StudentClass::query()->where('ID', $toCourseId)->firstOrFail();
         if ((string) $toCourse->ScheduleMode === 'date') {
@@ -666,10 +672,14 @@ final class ReceiptReassignService
             'Method' => $old->payment_method === 'transfer' ? 'transfer' : 'cash', 'Note' => "{$tag} 更正移轉自收據 #{$old->id}",
             'payment_report_id' => (int) $new->id]);
         $this->settleBill($toInvoice, $actorId);
+        // A course can be named on both bills. Settle only after both balances reflect the completed move.
+        $this->settleSourceCourse($fromCourseId, (string) $fromInvoice->Status, $autoVoided);
+        CollectionTarget::syncInvoiceLineCourses($fromInvoice, $lineCourses->get((int) $fromInvoice->id, collect()), true);
         // confirm()'s settle rules (CollectionTarget): course Paid from the resolver, the package mark as confirm sets it on an existing bill.
         $toCourse->refresh();
         $toPackage = (int) ($toCourse->PackageID ?? 0) > 0 ? CoursePackage::query()->whereKey((int) $toCourse->PackageID)->first() : null;
         CollectionTarget::settle($toCourse, $toPackage, (string) $toInvoice->Status, false, $old->payment_date);
+        CollectionTarget::syncInvoiceLineCourses($toInvoice, $lineCourses->get((int) $toInvoice->id, collect()), false);
 
         $new->update(['payment_id' => (int) $payment->id]);
         $old->update(['status' => 'voided', 'voided_by' => $actorId, 'voided_at' => Carbon::now(),
@@ -703,7 +713,7 @@ final class ReceiptReassignService
         $course = StudentClass::query()->where('ID', $courseId)->firstOrFail();
         $package = $billStatus !== 'paid' && (int) ($course->PackageID ?? 0) > 0 ? CoursePackage::query()->whereKey((int) $course->PackageID)->first() : null;
         // As void(): an auto-voided bill, or money off an already-void bill with no live bill left, backs no settlement.
-        CollectionTarget::unsettle($course, $package, !$billAutoVoided && ($billStatus !== 'void' || Invoice::courseHasLiveBill($courseId)));
+        CollectionTarget::unsettle($course, $package, (!$billAutoVoided && $billStatus !== 'void') || Invoice::courseHasLiveBill($courseId));
     }
 
     /**

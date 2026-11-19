@@ -10,6 +10,7 @@ use App\Services\MonthlyBillingService;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
 
 /**
  * One home for the rules of money landing on a course, so every path that records a payment applies the same ones
@@ -39,7 +40,23 @@ final class CollectionTarget
     public static function sharedBillRefusal(StudentClass $course, ?int $invoiceId, mixed $paymentDate): ?JsonResponse
     {
         if ($course->getAttribute('ScheduleMode') !== 'date') {
-            return null;
+            $standaloneCount = (string) ($course->ScheduleMode ?? 'count') === 'count' && (int) $course->PackageID === 0;
+            if (!$standaloneCount) {
+                return null;
+            }
+            $carrier = Invoice::standaloneCountLineBills([(int) $course->ID])->orderBy('Invoice.id')->value('Invoice.id');
+            if ($carrier === null) {
+                return null;
+            }
+            $ownOpenBill = Invoice::query()->where('StudentClassID', $course->ID)->where('StudentID', $course->StudentID)
+                ->notVoided()->where('TotalAmount', '>', 0)
+                ->when($invoiceId !== null, fn ($q) => $q->whereKey($invoiceId))
+                ->whereRaw('Invoice.TotalAmount > ' . Invoice::netPaidSql())->exists();
+
+            return $ownOpenBill ? null : response()->json([
+                'message' => sprintf('這門課的費用已列在帳單 #%d，請在原帳單處理收款。沒有新增任何收款。', $carrier),
+                'code' => 'course_on_shared_bill', 'invoice_id' => (int) $carrier,
+            ], 422);
         }
         $id = (int) $course->getKey();
         $own = $invoiceId === null ? null : Invoice::where('id', $invoiceId)->where('StudentClassID', $id)->value('billing_period');
@@ -51,6 +68,55 @@ final class CollectionTarget
             'message' => sprintf('這個月的課已經在另一門課的帳單上（帳單 #%d），請從那門課的帳單收款，不能再收一次。沒有新增任何收款。', $shared->id),
             'code' => 'period_on_shared_bill', 'invoice_id' => (int) $shared->id,
         ], 422);
+    }
+
+    /** @param list<int> $invoiceIds @return list<int> Candidate item course locks before the report or invoice locks. */
+    public static function invoiceLineCourseIds(array $invoiceIds): array
+    {
+        return $invoiceIds === [] ? [] : DB::table('InvoiceItem')
+            ->whereIn('InvoiceID', $invoiceIds)->where('Amount', '>', 0)->where('StudentClassID', '>', 0)
+            ->distinct()->pluck('StudentClassID')->map(fn ($id) => (int) $id)->all();
+    }
+
+    /**
+     * Call with the invoice already locked, and only course rows acquired before any report or bill lock.
+     * Recheck the current positive items before the payment rows; a stale scope rolls the transaction back.
+     *
+     * @param Collection<int, StudentClass> $lockedCourses
+     * @param list<int> $courseLockIds The IDs taken to the locking query, including references to deleted courses
+     */
+    public static function lockInvoiceLineCourses(Invoice $invoice, Collection $lockedCourses, array $courseLockIds): Collection
+    {
+        if ((int) $invoice->TotalAmount <= 0) {
+            return collect();
+        }
+        $ids = $invoice->items()->where('Amount', '>', 0)->where('StudentClassID', '>', 0)
+            ->orderBy('id')->lockForUpdate()->pluck('StudentClassID')->map(fn ($id) => (int) $id)->unique();
+        $lineIds = $ids->reject(fn ($id) => $id === (int) $invoice->StudentClassID);
+        if ($lineIds->diff($courseLockIds)->isNotEmpty()) {
+            abort(response()->json([
+                'message' => '帳單所屬課程已變更，請重新載入後再試。沒有變更帳款。',
+                'code' => 'invoice_owner_changed',
+            ], 409));
+        }
+        return $lockedCourses->only($lineIds->all())->filter(fn (StudentClass $course) => (int) $course->StudentID === (int) $invoice->StudentID
+            && (int) $course->PackageID === 0 && (string) ($course->ScheduleMode ?? 'count') === 'count'
+            && !$course->isTerminalMoneyClosure());
+    }
+
+    /** @param Collection<int, StudentClass> $lineCourses from lockInvoiceLineCourses() in this transaction */
+    public static function syncInvoiceLineCourses(Invoice $invoice, Collection $lineCourses, bool $reversal): void
+    {
+        foreach ($lineCourses as $course) {
+            if ($reversal) {
+                if ($course->Paid) {
+                    $id = (int) $course->ID;
+                    self::unsettle($course, null, Invoice::courseHasLiveBill($id));
+                }
+            } else {
+                self::settle($course, null, (string) $invoice->Status, false, null);
+            }
+        }
     }
 
     /**

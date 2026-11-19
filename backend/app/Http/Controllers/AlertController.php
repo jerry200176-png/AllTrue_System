@@ -884,6 +884,9 @@ class AlertController extends Controller
         // lessons and deadline come from that same bill, not the newest stored-open one.
         $payable = $this->payableResolver->byStudentClassIds([$studentClassId], [$sc])[$studentClassId]
             ?? $this->payableResolver->unbilled();
+        if ($payable['payable_status'] === 'review_required') {
+            return response()->json(['message' => '這門課已列在共用帳單，請在原帳單查看繳費單。', 'code' => 'course_on_shared_bill'], 422);
+        }
         // in-app #432 (#4573 review): a settled bill does not hold the slip while a later month is still unbilled.
         if ($mode === 'date' && (int) ($payable['payable_outstanding'] ?? 0) <= 0 && $this->monthlyBilling->unbilledPeriodFor($sc) !== null) {
             $payable = $this->payableResolver->unbilled();

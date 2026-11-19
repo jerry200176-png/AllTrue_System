@@ -12,6 +12,7 @@ export function slipAvailability(row, canView = true) {
   if (isLegacyPaidNoInvoice(row)) return { ok: false, reason: '已繳清，系統裡沒有帳單' };
   const s = row.payment_status;
   if (row.amount_pending_confirmation === true) return { ok: false, reason: AMOUNT_PENDING_REASON };
+  if (row.payable_status === 'review_required') return { ok: false, reason: '請在原共用帳單查看繳費單' };
   if (row.id == null && !row.invoice_id && SLIP_STATUSES.includes(s)) return { ok: false, reason: '共用方案繳費單請至成員課程開立' }; // 沒有課程 id 也沒有帳單 id，繳費單無從查起
   if (SLIP_STATUSES.includes(s)) return { ok: true };
   if (s === 'pending_report') return { ok: false, reason: '已回報，等確認入帳' };

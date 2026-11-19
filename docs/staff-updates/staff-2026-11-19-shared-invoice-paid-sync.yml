@@ -1,0 +1,16 @@
+updates:
+  - id: staff-2026-11-19-shared-invoice-paid-sync
+    published_at: "2026-11-19"
+    audiences:
+      - director
+      - super_admin
+    importance: digest
+    title: 共用帳單同步繳費狀態
+    summary: 同一張帳單涵蓋的堂數制課程，會依確認入帳金額同步判定是否已繳。
+    items:
+      - category: fixed
+        text: 確認、撤銷或移轉收款後，系統會重新核對帳單涵蓋的各門課。
+      - category: improved
+        text: 若只收到部分款項，請在原帳單接著處理收款。
+    source_refs:
+      - "changelog:2026-11-19:shared-invoice-paid-sync"
