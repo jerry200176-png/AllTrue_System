@@ -1,0 +1,15 @@
+updates:
+  - id: staff-2026-11-19-receipt-move
+    published_at: "2026-11-19"
+    audiences:
+      - director
+    importance: digest
+    title: 收據記錯帳單，可以自己移到正確的帳單
+    summary: 先給大安、新店、木柵的主任試用；總部開通後，學生帳務才會出現這顆按鈕。
+    items:
+      - category: added
+        text: 開通後，在學生帳務的收據卡按「移到正確帳單」，或在收款紀錄按「收錯帳單？」；金額不變，舊收據會作廢並開新收據。
+      - category: added
+        text: 先選帳單、看移動前後的未繳金額、寫原因再確認。金額太大或收據太舊時，畫面會請你回報總部處理。
+    source_refs:
+      - "changelog:2026-11-19:receipt-move-ui"

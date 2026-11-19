@@ -120,7 +120,8 @@ class BugAutoIntakeCommand extends Command
             }
             // Recomputed here, not trusted from the workflow: a flagged report only ever gets the neutral reply.
             $text = self::safety($locked)['flagged'] ? self::SAFETY_ACK_TEXT : self::ACK_TEXT;
-            BugReportService::addComment($bugId, $actor, $text, false);
+            $comment = BugReportService::addComment($bugId, $actor, $text, false);
+            \App\Operations\Inapp\NativeInappCommentOrigin::recordAck($locked, $comment);
             return ['bug_id' => $bugId, 'status' => $status, 'ack' => 'posted', 'issue' => $issueUrl];
         });
         $this->line(json_encode($result));

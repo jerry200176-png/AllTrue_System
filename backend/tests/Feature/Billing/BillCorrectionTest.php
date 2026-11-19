@@ -44,7 +44,7 @@ class BillCorrectionTest extends TestCase
         $b['invoice']->update(['Status' => 'void']);
         $this->withHeaders($h)->getJson($url)->assertOk()->assertJsonPath('invoices.0.can_correct', false);
         config(['billing.bill_correction_campus_ids' => [$this->campus + 999]]);
-        $this->withHeaders($h)->getJson($url)->assertOk()->assertJsonPath('invoices.0.can_correct', false);
+        $this->assertArrayNotHasKey('can_correct', $this->withHeaders($h)->getJson($url)->assertOk()->json('invoices.0')); // another campus is on: no key here
         config(['billing.bill_correction_campus_ids' => []]);
         $this->assertArrayNotHasKey('can_correct', $this->withHeaders($h)->getJson($url)->assertOk()->json('invoices.0'));
     }
@@ -464,6 +464,11 @@ class BillCorrectionTest extends TestCase
         $this->assertSame((int) $b['invoice']->id, BillCorrection::correctableInvoiceId((int) $b['course']->ID));
         config(['billing.bill_correction_campus_ids' => []]);
         $this->assertNull(BillCorrection::correctableInvoiceId((int) $b['course']->ID));
+    }
+
+    public function test_the_committed_pilot_campuses_are_daan_xindian_muzha(): void
+    {
+        $this->assertSame([15, 9, 16], (require base_path('config/billing.php'))['bill_correction_campus_ids']);
     }
 
     // ── helpers ─────────────────────────────────────────────────────────

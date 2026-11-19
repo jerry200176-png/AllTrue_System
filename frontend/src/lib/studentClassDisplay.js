@@ -317,6 +317,7 @@ export function ledgerReceiptHelp(codes) {
 
 /** Anomaly detail — no Payment # / bare invoice id. */
 export function formatLedgerAnomalyDetail(a) {
+  if (a?.action?.type === 'manual_review') return '待總部核對收據與帳單歸屬';
   const parts = [];
   if (a?.report_id) parts.push('相關收據可撤銷');
   if (a?.invoice_id) parts.push('已對應帳單');
@@ -452,6 +453,7 @@ export function formatLedgerDriftLine(inv) {
 /** Pre-filled in-app report for the 回報給總部 action: IDs only, never names. */
 // in-app #476: the report a director sends says the problem in words; the code stays in brackets for triage.
 const LEDGER_CODE_WORDS = {
+  zero_amount_bill: '0 元帳單需核對',
   overpayment_pending_review: '多收，沒有記進帳單',
   paid_amount_mismatch: '帳單已收金額和收款紀錄對不上',
   receipt_without_invoice: '收據對不到帳單',

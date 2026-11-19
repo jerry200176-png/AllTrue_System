@@ -62,7 +62,7 @@
             <p class="ledger-owed__label">{{ owedLabel }}</p>
             <p class="ledger-owed__now" :class="{ due: owedSplit.now > 0 }" data-testid="ledger-owed-now">{{ formatCurrency(owedSplit.now) }}</p>
             <p v-if="owedSplit.later > 0" class="ledger-owed__later" data-testid="ledger-owed-later">之後還會到期 {{ formatCurrency(owedSplit.later) }}</p>
-            <p v-if="overpaidTotal > 0" class="ledger-owed__over" role="status" data-testid="ledger-overpaid">多收 {{ formatCurrency(overpaidTotal) }}（舊資料）。{{ ledgerExceptions.some((x) => x.can_void) ? '詳情在「要先處理」。' : '這筆多收沒有對應的收款，系統無法自動處理。可按下面的「回報給總部」。' }}</p>
+            <p v-if="overpaidTotal > 0" class="ledger-owed__over" role="status" data-testid="ledger-overpaid">多收 {{ formatCurrency(overpaidTotal) }}（舊資料）。{{ ledgerExceptions.some((x) => x.can_void) ? '詳情在「要先處理」。' : '這筆多收目前無法在這裡直接處理，請按「回報給總部」核對。' }}</p>
           </div>
 
           <section v-if="ledgerExceptions.length" class="ledger-section">
@@ -74,6 +74,11 @@
                 <small v-if="x.detail">{{ x.detail }}</small>
                 <small v-if="x.refused_message" class="ledger-muted" data-testid="ledger-void-refused">{{ x.refused_message }}</small>
                 <small v-else-if="x.hint" class="ledger-muted" data-testid="ledger-exception-hint">{{ x.hint }}</small>
+                <!-- 收據移到正確帳單 (#5113): only where the server says the move is on for this campus. -->
+                <template v-if="canMoveException(x)">
+                  <small :data-testid="`ledger-move-hint-${x.report_id}`">這張收據還沒對到這位學生的帳單。如果是收錯帳單，可以移到正確的帳單。</small>
+                  <button class="ledger-action" type="button" :data-testid="`ledger-move-${x.report_id}`" @click="openMove(x.report_id)">移到正確帳單</button>
+                </template>
                 <button
                   v-if="x.can_void"
                   class="ledger-action ledger-action--danger"
@@ -136,6 +141,7 @@
                       </td>
                       <td class="ledger-cell-title">
                         <strong>{{ formatAccountingLedgerInvoiceLabel(inv) }}</strong>
+                        <small v-if="inv.historical_course_missing" class="ledger-muted" :data-testid="`ledger-historical-${inv.id}`">原課程已移除，帳單與收款保留供核對；如需更正，請回報給總部。</small>
                         <small v-if="isOtherCourseInvoice(inv)" class="ledger-other-course" data-testid="ledger-other-course">其他課程</small>
                         <small>{{ inv.period_start && inv.period_end ? `${inv.period_start.replaceAll('-', '/')}–${inv.period_end.replaceAll('-', '/')}` : formatPeriod(inv.billing_period) }}</small>
                         <small v-if="rateNoteFor(inv)" class="ledger-rate-hint" :data-testid="`ledger-rate-hint-${inv.id}`">開單時金額 {{ formatCurrency(rateNoteFor(inv).issued) }} ／ 目前課程金額 {{ formatCurrency(rateNoteFor(inv).current) }}（金額不同可能是約定調整，不代表帳單有誤）</small>
@@ -266,6 +272,13 @@
                   @click="viewReceipt(r.report_id)"
                 >查看收據</button>
                 <button
+                  v-if="r.status === 'confirmed' && canMoveReceipt(r)"
+                  class="ledger-action"
+                  type="button"
+                  :data-testid="`ledger-receipt-move-${r.report_id}`"
+                  @click="openMove(r.report_id)"
+                >收錯帳單？</button>
+                <button
                   v-if="canShowReceiptCoverage(r)"
                   class="ledger-more ledger-receipt-toggle"
                   type="button"
@@ -375,6 +388,18 @@
       </AtDialog>
       <PaymentEntryModal :show="entryOpen" :row="entryRow" :mode="entryMode" :placement="sheetOnly ? 'right' : 'center'" :next-offer="sheetOnly && nextOffer" @close="onEntryClose" @confirmed="onEntryRecorded" @pending="onPanelChanged" @conflict="onEntryConflict" />
       <BillCorrectionDialog :open="correctingInvoiceId != null" :invoice-id="correctingInvoiceId" @update:open="(o) => { if (!o) correctingInvoiceId = null; }" @corrected="onBillCorrected" @changed="onBillCorrected" />
+      <ReceiptMoveDialog
+        :open="moving != null"
+        :report-id="moving?.report_id ?? null"
+        :student-id="Number(payload?.student?.id) || null"
+        :student-name="payload?.student?.name || ''"
+        :campus-id="Number(payload?.student?.campus_id) || null"
+        :amount="moving?.amount || 0"
+        :from-label="moving?.label || ''"
+        @update:open="(o) => { if (!o) moving = null; }"
+        @moved="onReceiptMoved"
+        @changed="onBillCorrected"
+      />
       <ReceiptModal :show="receiptOpen" :report-id="receiptReportId" :later-label="receiptLaterLabel" :return-focus-to="modalEl" @close="receiptOpen = false" />
       <PaymentSlipModal :show="slipOpen" :invoice-id="slipInvoiceId" :student-class-id="slipStudentClassId" :return-focus-to="modalEl" @close="slipOpen = false" />
     </div>
@@ -408,6 +433,7 @@ import ContractCard from './tuition/ContractCard.vue';
 import { issuedBillRateNote } from '../lib/issuedBillRateNote.js';
 import ReceiptModal from './ReceiptModal.vue';
 import BillCorrectionDialog from './BillCorrectionDialog.vue';
+import ReceiptMoveDialog from './ReceiptMoveDialog.vue';
 import PaymentSlipModal from './PaymentSlipModal.vue';
 import AtButton from './design-system/AtButton.vue';
 import AtDialog from './design-system/AtDialog.vue';
@@ -732,11 +758,17 @@ const ledgerBothEmpty = computed(() => {
 const ledgerExceptions = computed(() => {
   const rows = [];
   const byReceipt = new Map(); // in-app #474: one card per receipt, however many checks it fails
+  const history = (payload.value?.invoices || []).filter((inv) => inv.historical_course_missing);
+  const historicalIds = new Set(history.map((inv) => Number(inv.id)));
+  const historicalReports = new Set(history.flatMap((inv) => [...(inv.reports || []), ...(inv.payments || [])]).map((r) => Number(r.report_id)).filter((id) => id > 0));
   (payload.value?.anomalies || []).forEach((a, idx) => {
+    const manual = a.action?.type === 'manual_review' || historicalIds.has(Number(a.invoice_id)) || historicalReports.has(Number(a.report_id));
+    const anomaly = manual ? { ...a, action: { ...a.action, type: 'manual_review' } } : a;
     const same = a.report_id ? byReceipt.get(a.report_id) : null;
     if (same) {
       same.codes.push(a.code);
-      same.can_void = same.can_void || a.action?.type === 'void_report';
+      same.can_void = same.can_void || anomaly.action?.type === 'void_report';
+      if (manual) Object.assign(same, { ask_hq: true, message: a.message, anomaly });
       return;
     }
     const row = {
@@ -744,17 +776,20 @@ const ledgerExceptions = computed(() => {
       codes: [a.code],
       title: anomalyLabel(a.code),
       message: a.message,
-      detail: formatLedgerAnomalyDetail(a),
+      detail: formatLedgerAnomalyDetail(anomaly),
       report_id: a.report_id || null,
-      can_void: a.action?.type === 'void_report',
+      can_void: anomaly.action?.type === 'void_report',
+      ask_hq: manual,
       drift_line: formatLedgerDriftLine((payload.value?.invoices || []).find((i) => Number(i.id) === Number(a.invoice_id))),
-      anomaly: a,
+      anomaly,
       severity: a.severity === 'critical' ? 0 : 1,
     };
     rows.push(row);
     if (a.report_id) byReceipt.set(a.report_id, row);
   });
   rows.forEach((row) => {
+    // A server refusal wins over generic receipt advice, including duplicate anomaly cards (#5511).
+    if (row.ask_hq) { row.can_void = false; row.detail = formatLedgerAnomalyDetail(row.anomaly); return; }
     const help = ledgerReceiptHelp(row.codes);
     if (help) Object.assign(row, help, { detail: '', action_label: '撤銷收據' });
   });
@@ -767,9 +802,10 @@ const ledgerExceptions = computed(() => {
         message: `${fmtDate(p.paid_at)} ${paymentMethodLabel(p.method)} ${formatCurrency(p.amount)}，比帳單多 ${formatCurrency(p.unapplied_amount)}`,
         detail: formatAccountingLedgerInvoiceLabel(inv),
         action_label: '撤銷這筆收款',
-        hint: '多收的錢沒有記進任何帳單。若是重複收款，按「撤銷這筆收款」。',
+        hint: inv.historical_course_missing ? '原課程已移除，請按「回報給總部」核對這筆多收。' : '多收的錢沒有記進任何帳單。若是重複收款，按「撤銷這筆收款」。',
         report_id: p.report_id || null,
-        can_void: !!p.report_id && !p.is_void,
+        can_void: !inv.historical_course_missing && !!p.report_id && !p.is_void,
+        ask_hq: !!inv.historical_course_missing,
         drift_line: formatLedgerDriftLine(inv),
         anomaly: { code: 'overpayment_pending_review', invoice_id: inv.id, student_class_id: inv.student_class_id },
         severity: 1,
@@ -792,12 +828,14 @@ const ledgerExceptions = computed(() => {
       message: '收款被登記成 0 元，系統不算有收到錢。',
       detail: formatAccountingLedgerInvoiceLabel(inv),
       action_label: '撤銷 0 元收款',
-      hint: receipt
+      hint: inv.historical_course_missing ? '原課程已移除，請按「回報給總部」核對這張 0 元帳單。' : receipt
         ? '其實有收到錢：按「撤銷 0 元收款」，這張 0 元帳單會一起作廢，再照實際金額登記收款。'
         : (inv.can_direct_void ? '到下面「帳單」把這張 0 元帳單按「作廢」，再照實際金額登記收款。' : '這張 0 元帳單不能在這裡直接作廢，按「回報給總部」請總部處理。'),
       report_id: receipt ? receipt.report_id : null,
-      can_void: !!receipt,
-      self_service: !!receipt || !!inv.can_direct_void, // the fix is a button on this screen, not a report to an administrator
+      can_void: !inv.historical_course_missing && !!receipt,
+      ask_hq: !!inv.historical_course_missing,
+      self_service: !inv.historical_course_missing && (!!receipt || !!inv.can_direct_void), // the fix is a button on this screen, not a report to an administrator
+      anomaly: { code: 'zero_amount_bill', invoice_id: inv.id, student_class_id: inv.student_class_id, report_id: receipt?.report_id || null },
       severity: 1,
     });
   });
@@ -1298,10 +1336,26 @@ async function voidReport(reportId) {
 }
 
 const canManageInvoices = () => isDirectorRole(getAuthRole());
-const canDirectVoidInvoice = (invoice) => canManageInvoices() && !!invoice?.can_direct_void;
-const canExceptionVoidInvoice = (invoice) => canManageInvoices() && !!invoice?.can_exception_void;
-const canCorrectInvoice = (invoice) => canManageInvoices() && !!invoice?.can_correct;
+const canDirectVoidInvoice = (invoice) => canManageInvoices() && !invoice?.historical_course_missing && !!invoice?.can_direct_void;
+const canExceptionVoidInvoice = (invoice) => canManageInvoices() && !invoice?.historical_course_missing && !!invoice?.can_exception_void;
+const canCorrectInvoice = (invoice) => canManageInvoices() && !invoice?.historical_course_missing && !!invoice?.can_correct;
 const correctingInvoiceId = ref(null);
+// 收據移到正確帳單 (#5113): the server hint says the move is on for this student's campus; the dialog's own answers decide the rest.
+const MOVE_CODES = ['receipt_without_invoice']; // not confirmed_receipt_without_payment: the backend mostly refuses that shape
+const moving = ref(null); // { report_id, amount, label }
+const canMoveReceipt = (r) => canManageInvoices() && !!payload.value?.can_reassign_receipt && !r?.history_read_only
+  && !!(r?.payment_id || r?.invoice_id) && Number(r?.amount) > 0; // the service finds the source bill from one of these
+// manual_review = the server's read-only history judgment (#5516); ask_hq alone is generic receipt advice, not a refusal.
+const canMoveException = (x) => !!x.report_id && x.anomaly?.action?.type !== 'manual_review' && x.codes?.some((c) => MOVE_CODES.includes(c))
+  && canMoveReceipt((payload.value?.receipts || []).find((r) => Number(r.report_id) === Number(x.report_id)));
+function openMove(reportId) {
+  const r = (payload.value?.receipts || []).find((x) => Number(x.report_id) === Number(reportId));
+  if (r) moving.value = { report_id: Number(r.report_id), amount: Number(r.amount), label: `${receiptCourseLabel(r)}，${formatLedgerReceiptBillLine(r)}` };
+}
+async function onReceiptMoved() {
+  await loadLedger();
+  emit('changed');
+}
 async function onBillCorrected() {
   await loadLedger();
   emit('changed');

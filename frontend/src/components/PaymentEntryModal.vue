@@ -65,6 +65,16 @@
               step="1"
             />
           </div>
+          <div v-if="amountMismatch" class="pe-workflow-hint" role="alert" data-testid="pe-amount-mismatch">
+            <span class="material-symbols-outlined" aria-hidden="true">warning</span>
+            <div>
+              <p>{{ amountMismatch }}</p>
+              <label class="pe-check tw:min-h-11">
+                <input v-model="amountAcknowledged" type="checkbox" data-testid="pe-amount-ack" />
+                我已核對本次登記金額
+              </label>
+            </div>
+          </div>
           <label v-if="isZeroCharge && !legacyBackfill" class="pe-check">
             <input type="checkbox" v-model="form.free_gift" data-testid="pe-free-gift" />
             這期是「{{ FREE_GIFT_LABEL }}」：登錄一張 NT$ 0 帳單（不是收款）
@@ -174,6 +184,41 @@ const legacyNoObligation = computed(() => legacyBackfill.value && isZeroCharge.v
   && props.row?.current_contract_rate_positive === false
   && Number(props.row?.payable_outstanding ?? props.row?.payable_amount ?? props.row?.estimated_amount ?? 0) <= 0);
 
+// Compare only amounts the current row actually supplies; an absent amount is not NT$0.
+const amountComparison = computed(() => {
+  const unbilled = props.row?.payable_status === 'unbilled';
+  const raw = unbilled
+    ? (props.row?.estimated_amount ?? props.row?.payable_outstanding ?? props.row?.payable_amount)
+    : (props.row?.payable_outstanding ?? props.row?.payable_amount);
+  if (!['number', 'string'].includes(typeof raw) || String(raw).trim() === '') return null;
+  const amount = Number(raw);
+  return Number.isFinite(amount) && amount >= 0 ? { amount, unbilled } : null;
+});
+const amountAcknowledged = ref(false);
+const amountMismatch = computed(() => {
+  const comparison = amountComparison.value;
+  const entered = Number(form.amount);
+  if (!comparison || form.amount === '' || form.amount == null || !Number.isFinite(entered)
+    || entered <= 0 || entered === comparison.amount) return '';
+  const money = value => `NT$ ${Number(value).toLocaleString('zh-TW')}`;
+  const label = comparison.unbilled ? '目前估算（還沒開帳單）' : '帳單未收餘額';
+  const difference = entered - comparison.amount;
+  const consequence = comparison.unbilled
+    ? '估算不是已開帳單，請核對本期費用與本次登記金額。'
+    : difference < 0 ? '若這是部分收款，剩餘金額仍會列為未繳。'
+    : '請核對帳單與本次登記金額；帳單有誤請走帳務更正，系統仍會檢查金額。';
+  return `本次輸入 ${money(entered)}，${label} ${money(comparison.amount)}，${difference < 0 ? '少' : '多'} ${money(Math.abs(difference))}。${consequence}請勿為了讓金額相同而改小實收金額。`;
+});
+watch([
+  () => props.show,
+  () => props.row?.id,
+  () => props.row?.payable_invoice_id ?? props.row?.invoice_id,
+  () => props.mode,
+  () => form.amount,
+  () => amountComparison.value?.amount,
+  () => amountComparison.value?.unbilled,
+], () => { amountAcknowledged.value = false; }, { flush: 'sync' });
+
 watch(() => props.show, (val) => {
   if (val && props.row) {
     form.payment_date = today.value;
@@ -195,6 +240,7 @@ watch(() => props.show, (val) => {
 
 
 async function submit(andNext = false) {
+  if (submitting.value) return;
   andNext = andNext === true; // the form's submit event also lands here
   submitError.value = '';
   correctableInvoiceId.value = null;
@@ -221,6 +267,11 @@ async function submit(andNext = false) {
   }
   if (form.free_gift && amount !== 0) {
     submitError.value = `勾選「${FREE_GIFT_LABEL}」時金額必須是 0。`;
+    return;
+  }
+
+  if (amountMismatch.value && !amountAcknowledged.value) {
+    submitError.value = '登記金額與目前顯示的金額不同，請先核對並勾選確認。';
     return;
   }
 

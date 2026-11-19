@@ -9,7 +9,7 @@ async function send(path, method, body, fallback) {
     const resp = await authedFetch(`/api/v1/${path}`, {
       method,
       headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
-      body: JSON.stringify(body ?? {}),
+      ...(method === 'GET' ? {} : { body: JSON.stringify(body ?? {}) }),
     });
     const data = await resp.json().catch(() => ({}));
     if (resp.ok) return { ok: true, status: resp.status, data, code: null, message: '' };
@@ -32,6 +32,14 @@ export const voidInvoice = (invoiceId, reason, { exception = false } = {}) =>
 // Step 2 更正帳單 (backend #5483): preview shows the plan and its state_hash; apply must send that hash back.
 export const previewBillCorrection = (invoiceId, body) => send(`invoices/${id(invoiceId)}/correction/preview`, 'POST', body, '預覽失敗');
 export const applyBillCorrection = (invoiceId, body) => send(`invoices/${id(invoiceId)}/correction/apply`, 'POST', body, '更正失敗');
+// 收據移到正確帳單 (#5113 backend #5304/#5305): targets lists the bills that can take the receipt, preview shows both balances
+// and a state_hash, apply must send that hash and a reason back.
+export const getReceiptMoveTargets = (reportId, studentId) =>
+  send(`payment-reports/${id(reportId)}/reassign-targets${studentId ? `?student_id=${id(studentId)}` : ''}`, 'GET', null, '讀取帳單失敗');
+export const previewReceiptMove = (reportId, targetInvoiceId) =>
+  send(`payment-reports/${id(reportId)}/reassign`, 'POST', { target_invoice_id: id(targetInvoiceId), preview: true }, '預覽失敗');
+export const applyReceiptMove = (reportId, body) =>
+  send(`payment-reports/${id(reportId)}/reassign`, 'POST', { ...body, target_invoice_id: id(body.target_invoice_id) }, '移動失敗');
 // Founder GO 2026-10-21 (§只有舊「已收」標記): resolve a legacy-flag-only course either way.
 export const backfillLegacyPayment = (body) => send('payment-reports/director-record', 'POST', { ...body, legacy_flag_backfill: true }, '補登收款失敗');
 export const clearLegacyPaidFlag = (studentClassId, reason) =>

@@ -787,6 +787,8 @@ Intake consolidation regression (2026-10-17): the oldest trusted SourceRef issue
 - 帳務中心「待收與核帳」是提醒/催繳 queue，「收款與收據紀錄」是 receipt/payment 流水，課程管理帳單是單一課程 Invoice；三者若各自顯示不同口徑且不能互相 drill down，主任會無法對齊同一學生的帳。
 - **強制規則**：所有帳務入口若呈現應收、已收、收據或帳單狀態，必須能連到同一份以 `Invoice` 為中心的學生 AR ledger，並同時顯示 `PaymentReport` 收據、`Payment` 套用、void/reversal 與未結清金額。
 - **強制規則**：歷史錯帳不可用「畫面看起來一致」掩蓋；ledger 必須標示同帳單多筆正向收款、收據未套帳單、收據缺 Payment、Payment 缺收據、帳單狀態與付款流水不一致等異常。
+- **2026-11-19／in-app #576**：來源課程不在本學生授權 ledger 時，異常保留並導向既有「回報給總部」，不可先提供必定失敗的撤銷；合併多個異常卡時，server `manual_review` 優先於通用撤銷提示。使用已載入的學生課程集合，不新增跨校查詢；顯示修正不代表歷史收據已對帳。
+- 舊課程已移除不代表帳單消失：沿用既有 invoice API 的學生／校區權威，將確實失去來源且不含有效外人課程的原帳單留供核對，不能要求先重分配收據或改金額。歷史唯讀標記同時限制帳單更正、撤銷、溢收與 0 元收款操作；不可只擋其中一個入口。
 - **測試必補**：至少一個 regression case 驗證同一學生/課程可從 `student_class_id` 打開 ledger，且 Invoice、Payment、PaymentReport 的 receipt no 與異常標籤能對齊；跨分校 ledger 必須 403。
 
 ---
@@ -799,6 +801,7 @@ Intake consolidation regression (2026-10-17): the oldest trusted SourceRef issue
 - **強制規則**：「待收/待核」是工作 queue，不可拿來當完整已繳查詢；已結清課程必須由 Invoice/Payment/Receipt 與課程主檔彙整，堂數制已繳且剩餘堂數充足也要查得到。
 - **強制規則**：Ledger 的例外帳不可只顯示警告；可處理的 confirmed receipt 必須提供撤銷/沖銷入口，不能自動處理的 legacy/payment 關聯缺口才標示需人工修復。
 - **測試必補**：同一 Invoice 三筆收款且合計超過應收時，API 必須回傳已套用等於應收、溢收等於超額、第三筆為 `overpayment_pending_review`。
+- **2026-11-19／in-app #577**：登記金額不同於既有未收餘額時先明示差額並要求核對；部分收款仍有效，不可自動改輸入金額或把估算變成硬性帳單上限。金額、帳單、學生、模式或比較值改變後確認必須失效，補登與「儲存並看下一筆」也不得繞過；未知金額不可當成 0。
 
 ---
 
@@ -1017,6 +1020,8 @@ Intake consolidation regression (2026-10-17): the oldest trusted SourceRef issue
 - **測試必補**：`scripts/tests/test_deploy_activation_state.py`（`_execute_isolated_migration` 實際執行 migration 區塊：失敗即中止、status 失敗不得當成 0 筆 pending；success 標記步驟不得有 `if:`／`continue-on-error`）。
 - **同族告警（#4370）**：HTTP 呼叫完成不等於通知被接收。`monitor-alert.sh` 必須同時驗 HTTP 與 provider 成功回應；失敗回傳非零且不印成功，不輸出憑證／原始回應，也不自動重送可能已接收的 POST。`scripts/tests/test_monitor_alert_notify.py` 用 stub 驗證拒收、timeout、回應契約與清理，禁止對正式通知通道跑測試。
 
+- **同族告警（#5070，2026-11-18）**：`deploy.yml` 外層成功可能只有 skipped 的正式 job。`production-identity.sh` 必須核對原生 Actions main／workflow 與唯一成功的 `Deploy to Production` job，並以 resolver 的唯一實際 target 對照 runtime manifest（不可拿 workflow revision 代替），保留 job ID／完成時間；缺失、模糊、失敗或仍執行均不得報已交付。未驗證的 rollback target 保持 unknown，不能填目前版本。`test_production_identity.py` 實際執行 helper，用合成 transport 驗證此邊界與原有健康／排程故障，避免只比對原始碼字串。
+
 ---
 
 ### R139. 給創辦人的週報只能由正式站唯讀編號組成，且同週重跑必須是更新（in-app 閉環 2A，2026-10-08）
@@ -1121,6 +1126,8 @@ Intake consolidation regression (2026-10-17): the oldest trusted SourceRef issue
 - **詳細 SOP**：`docs/CHAT_BUG_SYSTEM.md` §3.7（Claude／Codex 同適用）。
 
 ---
+
+- **來源判定補充（#5498，2026-11-18）**：自填回報的系統通知不能因 actor 相同就算成人員回覆。原生 producer 的來源憑據須與新留言／狀態同交易寫入，採內部類型且不計入上線或驗收。讀取同時驗 body／actor／校區／context／狀態紀錄，拒絕缺漏／模糊；相同字句與時間的真人留言仍是本人回覆。時間雜湊綁儲存值，不綁顯示時區；意外讀取失敗只記去識別診斷，不吞掉錯誤或輸出原文。既有歷史修復另走授權，不可補造同交易證明。
 
 ### R59. 共用 `useScrollLock` 的 lock/unlock 必須在元件卸載時平衡（否則整頁灰白遮罩、無法點選）
 

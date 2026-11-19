@@ -525,6 +525,7 @@ class ContractSessionSchedule
         $occupiedKeys = [];
         $currentCount = 0;
         $hasScheduledOutsideContract = false;
+        $replaceableOutside = 0;
         $hasLockedQuotaSession = false;
         $hasLockedQuotaOutsideContract = false;
         foreach ($existingSessions as $session) {
@@ -549,8 +550,12 @@ class ContractSessionSchedule
             if ($status === 'scheduled'
                 && !isset($expectedKeys[$key])
                 && empty($session->IsContractException)
+                // An ended, unmarked lesson is history awaiting 點名, not a slot to swap: replacing it would
+                // plan new lessons and cancel one that was taught (in-app #524, StartDate edit on a used-up course).
+                && !self::sessionEndedByEndTime($date, (string) ($session->EndTime ?? '18:00:00'), Carbon::now())
             ) {
                 $hasScheduledOutsideContract = true;
+                $replaceableOutside++;
             } elseif (!in_array($status, $nonQuotaStatuses, true)
                 && !isset($expectedKeys[$key])
             ) {
@@ -581,7 +586,8 @@ class ContractSessionSchedule
                 continue;
             }
             $newSessions[] = $session;
-            if ($quotaShortfall > 0 && count($newSessions) >= $quotaShortfall) {
+            // Never plan more than was bought (shortfall) or than the swapped-out future rows (in-app #524).
+            if (count($newSessions) >= ($quotaShortfall > 0 ? $quotaShortfall : $replaceableOutside)) {
                 break;
             }
         }
@@ -680,8 +686,9 @@ class ContractSessionSchedule
                 ->orderBy('StartTime')
                 ->orderBy('id')
                 ->get()
-                ->filter(function ($session) use ($expectedKeys) {
-                    if (!empty($session->IsContractException)) {
+                ->filter(function ($session) use ($expectedKeys, $now) {
+                    if (!empty($session->IsContractException)
+                        || self::sessionEndedByEndTime((string) self::normalizeDateString($session->SessionDate ?? null), (string) ($session->EndTime ?? '18:00:00'), $now)) {
                         return false;
                     }
                     $date = self::normalizeDateString($session->SessionDate ?? null);

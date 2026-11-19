@@ -302,14 +302,14 @@ final class ReceiptReassignService
                 'invoice_id' => (int) $from['invoice']->id,
                 'balance_before' => $fromBefore,
                 'balance_after' => (int) $fromAfter['outstanding_amount'],
-            ],
+            ] + $this->sideLabel($from['invoice'], $from['course']),
             'to' => [
                 'student_id' => (int) $toInvoice->StudentID,
                 'course_id' => (int) $toCourse->ID,
                 'invoice_id' => (int) $toInvoice->id,
                 'balance_before' => $toBefore,
                 'balance_after' => (int) $toAfter['outstanding_amount'],
-            ],
+            ] + $this->sideLabel($toInvoice, $toCourse),
             'warnings' => $warnings,
             // Every value the move depends on, owner and course of both sides included (must-do 4); apply recomputes it under lock.
             'state_hash' => self::STATE_HASH_VERSION . ':' . hash('sha256', json_encode([
@@ -409,6 +409,9 @@ final class ReceiptReassignService
                 $targets[] = [
                     'invoice_id' => (int) $inv->id,
                     'course_id' => $courseId,
+                    'subject' => $course?->displaySubjectName(), // the picker names the course, never its id
+                    'start_date' => $course?->StartDate ? substr((string) $course->StartDate, 0, 10) : null, // tells same-subject contracts apart
+                    'issue_date' => $inv->IssueDate ? substr((string) $inv->IssueDate, 0, 10) : null,
                     'billing_period' => $inv->billing_period,
                     'total' => (int) $money['total_amount'],
                     'remaining' => (int) $money['outstanding_amount'],
@@ -422,7 +425,19 @@ final class ReceiptReassignService
             $this->amounts->forgetPreloadedSessions();
         }
 
-        return ['status' => 200, 'body' => ['amount' => $amount, 'student_id' => $studentId, 'targets' => $targets]];
+        return ['status' => 200, 'body' => ['amount' => $amount, 'student_id' => $studentId, 'source' => $this->sideLabel($ctx['from']['invoice'], $ctx['from']['course']), 'targets' => $targets]];
+    }
+
+    /** Plain-words identity of one side (never ids): lets the screen show where the money really sits, from the bill itself. */
+    private function sideLabel(object $invoice, object $course): array
+    {
+        return [
+            'student_name' => (string) DB::table('Student')->where('id', $invoice->StudentID)->value('name'),
+            'subject' => $course instanceof StudentClass ? $course->displaySubjectName() : null,
+            'billing_period' => $invoice->billing_period ?? null,
+            'start_date' => $course->StartDate ? substr((string) $course->StartDate, 0, 10) : null,
+            'issue_date' => $invoice->IssueDate ? substr((string) $invoice->IssueDate, 0, 10) : null,
+        ];
     }
 
     /** 'director' when a director may do it alone, else 'super_admin'. Limits are read from config on every call. */
