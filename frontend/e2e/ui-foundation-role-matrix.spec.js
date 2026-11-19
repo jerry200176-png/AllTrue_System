@@ -182,7 +182,6 @@ async function runPopulatedParentPortal(page, viewport) {
     },
     learning_records: pageNumber === 1 ? [recordOne] : [recordTwo],
     learning_records_meta: { page: pageNumber, per_page: 10, total: 2, has_more: pageNumber === 1 },
-    assessment_progress: { items: [] },
     attendance_history: [
       ...Array.from({ length: 12 }, (_, index) => ({
         id: 5000 + index,
@@ -391,7 +390,7 @@ test('parent portal: header remains clear for empty and long Traditional Chinese
           enrollments: [{ student_id: 2000, campus_id: 1, campus_name: '臺北市中心分校' }, { student_id: 2000, campus_id: 2, campus_name: '新北市新店區第二分校' }],
           cross_campus_access: 'actions',
           progress_summary: { week_label: '9/7–9/13', week_progress: { attended: 0, scheduled: 0 }, payment: { paid_courses: 0, total_courses: 0, status: 'none' }, pending_total: 0 },
-          learning_records: [], learning_records_meta: { total: 0, has_more: false }, attendance_history: [], upcoming_sessions: [], classes: [], remaining_sessions_total: 0, remaining_by_subject: {}, payment_alerts: [], invoices: [], announcements: [], assessment_progress: { items: [] },
+          learning_records: [], learning_records_meta: { total: 0, has_more: false }, attendance_history: [], upcoming_sessions: [], classes: [], remaining_sessions_total: 0, remaining_by_subject: {}, payment_alerts: [], invoices: [], announcements: [],
         }),
       });
     }

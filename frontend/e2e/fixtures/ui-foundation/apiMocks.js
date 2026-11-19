@@ -22,7 +22,6 @@ export const PARENT_DASHBOARD = {
   remaining_by_subject: { 數學: 2 },
   payment_alerts: [{ class_id: 9401, subject: '數學', remaining_sessions: 2, paid: false }],
   invoices: [],
-  assessment_progress: { items: [] },
 };
 
 const CASE_NORMAL = {
