@@ -3,6 +3,8 @@ import { test, expect } from '@playwright/test';
 import { latestReleaseVersionForRole } from '../src/lib/releaseNotes.js';
 import { dismissOverlays } from './fixtures/dismissOverlays.js';
 import { assertDirectorDashboardTelemetry, isDirectorDashboardEvent } from './fixtures/directorDashboardTelemetry.js';
+import { installReadOnlyAppGuard } from './fixtures/readOnlyAppGuard.js';
+import { installLocalClassSessionReads } from './fixtures/classSessionReadResponder.js';
 
 const BASE = process.env.SMOKE_BASE_URL;
 const REQUESTED_BRANCH_ID = Number(process.env.SMOKE_BRANCH_ID || 0);
@@ -206,19 +208,39 @@ function assertBoundedTelemetry(payloads) {
 }
 
 test.describe('production acceptance — calendar print preview', () => {
+  test.use({ serviceWorkers: 'block' });
   test.skip(!BASE || !SESSION?.access_token || !SESSION?.user?.id,
     'missing controlled production director session');
   test('session branch is authorized', async () => {
     expect(AUTHORIZED_CAMPUSES).toContain(BRANCH_ID);
   });
 
-  test('director opens week/month print preview without printing or writes', async ({ page }) => {
+  test('director opens week/month print preview without printing or writes', async ({ page, context, request }) => {
+    expect(AUTHORIZED_CAMPUSES).toContain(BRANCH_ID);
+    const appOrigin = new URL(BASE).origin;
+    const blockedNetworkRequests = await installReadOnlyAppGuard(context, appOrigin, { allowTransactionTelemetry: true });
+    let completedProjectionReads = 0;
+    await installLocalClassSessionReads(context, appOrigin, {
+      projectionRead: {
+        branchId: BRANCH_ID,
+        async read(path) {
+          const response = await request.get(appOrigin + path, {
+            headers: { Authorization: `Bearer ${SESSION.access_token}`, Accept: 'application/json' },
+            maxRedirects: 0,
+          });
+          expect(response.ok(), `bounded calendar projection returned ${response.status()}`).toBe(true);
+          const payload = await response.json();
+          completedProjectionReads += 1;
+          return payload;
+        },
+      },
+    });
     const suppressedTelemetry = [];
     await page.route('**/api/v1/adoption/events', async (route) => {
       const request = route.request();
       const url = new URL(request.url());
-      if (request.method() !== 'POST' || url.pathname !== '/api/v1/adoption/events') {
-        await route.continue();
+      if (request.method() !== 'POST' || url.origin !== appOrigin || url.pathname !== '/api/v1/adoption/events') {
+        await route.fallback();
         return;
       }
       suppressedTelemetry.push(request.postDataJSON());
@@ -231,14 +253,19 @@ test.describe('production acceptance — calendar print preview', () => {
     await page.getByRole('button', { name: '班級行事曆', exact: false }).first().click();
     await expect(page.getByRole('heading', { name: '班級行事曆 / 課表', exact: true })).toBeVisible({ timeout: 20_000 });
     await page.locator('html').evaluate((element) => { element.dataset.theme = 'dark'; });
+    const beforeWeek = completedProjectionReads;
     await page.getByRole('button', { name: '列印課表', exact: true }).click();
     await assertPrintPreviewContract(page, 'week');
+    expect(completedProjectionReads, 'weekly preview must read the bounded projection').toBeGreaterThan(beforeWeek);
+    const beforeMonth = completedProjectionReads;
     await assertPrintPreviewContract(page, 'month');
+    expect(completedProjectionReads, 'monthly preview must read the bounded projection').toBeGreaterThan(beforeMonth);
     const dialog = page.locator('[data-calendar-print-dialog]');
     await expect(dialog.getByRole('button', { name: '列印／另存 PDF', exact: true })).toBeVisible();
     const controls = await page.evaluate(() => window.__calendarPrintAcceptance);
     expect(controls.printCalls).toBe(0);
     expect(controls.writes).toEqual([]);
+    expect(blockedNetworkRequests, 'print acceptance must not attempt unhandled writes or stateful reads').toEqual([]);
     assertBoundedTelemetry(suppressedTelemetry);
   });
 });

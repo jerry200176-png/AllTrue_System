@@ -174,6 +174,48 @@ describe('classSessionReadResponder — installed after the guard', () => {
     return { context, blocked, reads };
   }
 
+  it('loads print rows only for the requested multi-day GET in the enrolled campus', async () => {
+    const context = fakeContext();
+    await installReadOnlyAppGuard(context, APP);
+    const requested = [];
+    await installLocalClassSessionReads(context, APP, {
+      projectionRead: { branchId: 16, async read(path) { requested.push(path); return payload(); } },
+    });
+    const endpoint = `${APP}${CLASS_SESSION_PROJECTION_PATH}`;
+    const multiDay = 'branch_id=16&start=2026-08-05&end=2026-08-07';
+    const positive = await context.dispatch('GET', `${endpoint}?${multiDay}`);
+    expect(JSON.parse(positive.response.body).data).toEqual(ROWS);
+    expect(requested).toEqual([`${CLASS_SESSION_PROJECTION_PATH}?${multiDay}`]);
+
+    for (const unsafeQuery of [
+      'branch_id=16&start=2026-08-05&end=2026-08-05',
+      'branch_id=16&start=2026-08-07&end=2026-08-05',
+      'branch_id=16&start=2026-08-05',
+      'branch_id=9&start=2026-08-05&end=2026-08-07',
+      `${multiDay}&teacher_id=4`,
+      `${multiDay}&end=2026-08-09`,
+    ]) {
+      const reply = await context.dispatch('GET', `${endpoint}?${unsafeQuery}`);
+      expect(JSON.parse(reply.response.body).data).toEqual([]);
+    }
+    expect((await context.dispatch('HEAD', `${endpoint}?${multiDay}`)).response.body).toBe('');
+    expect((await context.dispatch('POST', `${endpoint}?${multiDay}`)).action).toBe('abort');
+    await context.dispatch('GET', `${APP}${CLASS_SESSION_LIST_PATH}?${multiDay}`);
+    expect(requested).toHaveLength(1);
+    expect(context.sent).toEqual([]);
+  });
+
+  it('rejects a bounded source that does not meet the application projection contract', async () => {
+    const context = fakeContext();
+    await installReadOnlyAppGuard(context, APP);
+    await installLocalClassSessionReads(context, APP, {
+      projectionRead: { branchId: 16, async read() { return { ...payload(), last_page: 2 }; } },
+    });
+    await expect(context.dispatch('GET', `${APP}${CLASS_SESSION_PROJECTION_PATH}?branch_id=16&start=2026-08-05&end=2026-08-07`))
+      .rejects.toThrow(/complete projection/);
+    expect(context.sent).toEqual([]);
+  });
+
   it('answers class-session reads in the browser; none is sent and none is recorded as blocked', async () => {
     const { context, blocked, reads } = await arm();
     reads.serveProjection({ branchId: 16, start: '2026-08-05', end: '2026-08-07', payload: payload() });

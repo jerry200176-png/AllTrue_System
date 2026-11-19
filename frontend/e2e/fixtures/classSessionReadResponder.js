@@ -77,7 +77,8 @@ function requestedBranch(searchParams) {
 export function projectionSource({ branchId, start, end, payload }) {
   if (!Number.isSafeInteger(branchId) || branchId <= 0) throw new Error('projection source needs a positive branch id');
   if (!isNonMaterializingWindow(start, end)) throw new Error('projection source needs a multi-day window');
-  if (payload?.api_kind !== 'projection' || payload?.completeness !== 'full' || !Array.isArray(payload?.data)) {
+  if (payload?.api_kind !== 'projection' || payload?.completeness !== 'full' || !Array.isArray(payload?.data)
+      || payload.current_page != null || payload.last_page != null) {
     throw new Error('projection source is not a complete projection response');
   }
   const byClass = payload.by_class && typeof payload.by_class === 'object' && !Array.isArray(payload.by_class)
@@ -120,8 +121,10 @@ export function localClassSessionBody(kind, searchParams, source = null) {
  * Install after installReadOnlyAppGuard on the same context. Returns:
  *  - answered: one { kind, method, start, end, rows } per local answer (no row content);
  *  - serveProjection(source): rows for later projection reads (see projectionSource).
+ * An optional projectionRead reads the exact requested multi-day window for its campus. Its
+ * callback only receives a canonical multi-day path. The browser request is still fulfilled locally.
  */
-export async function installLocalClassSessionReads(context, appOrigin) {
+export async function installLocalClassSessionReads(context, appOrigin, { projectionRead = null } = {}) {
   const answered = [];
   let source = null;
   await context.route((url) => isKnownStatefulRead(appOrigin, 'GET', url), async (route) => {
@@ -133,7 +136,17 @@ export async function installLocalClassSessionReads(context, appOrigin) {
       return;
     }
     const { searchParams } = new URL(request.url());
-    const body = localClassSessionBody(kind, searchParams, source);
+    const start = searchParams.get('start');
+    const end = searchParams.get('end');
+    let requestSource = source;
+    if (kind === 'projection' && method === 'GET' && projectionRead
+        && searchParams.get('branch_id') === String(projectionRead.branchId)
+        && [...searchParams].length === 3 && isNonMaterializingWindow(start, end)) {
+      const window = { branchId: projectionRead.branchId, start, end };
+      const payload = await projectionRead.read(nonMaterializingProjectionPath(window));
+      requestSource = projectionSource({ ...window, payload });
+    }
+    const body = localClassSessionBody(kind, searchParams, requestSource);
     answered.push({
       kind,
       method,
