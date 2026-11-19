@@ -1,7 +1,7 @@
 // @ts-check
 import { test, expect } from '@playwright/test';
 import { latestReleaseVersionForRole } from '../src/lib/releaseNotes.js';
-import { coursePaymentBadge, REPORT_STATUS_LABELS, shortPaymentLabel, TUITION_STATUS_CONFIG } from '../src/lib/courseMoneyState.js';
+import { coursePaymentBadge, REPORT_STATUS_LABELS, shortPaymentLabel } from '../src/lib/courseMoneyState.js';
 import { getNavigationGroups, sidebarMoreTrigger } from '../src/lib/navigationRegistry.js';
 import { formatCourseRef, formatCoursePeriod } from '../src/lib/studentBillingRows.js';
 import { dismissOverlays } from './fixtures/dismissOverlays.js';
@@ -282,7 +282,9 @@ async function openDirectorApp(page, viewport) {
 // "precondition absent" for it (acceptance-report-gate prints the note)
 // instead of reporting it as verified.
 function notePreconditionAbsent(name) {
-  test.info().annotations.push({ type: 'precondition-absent', description: name });
+  const info = test.info();
+  if (info.project.metadata.calendarCourseFixture) throw new Error(`synthetic case is missing: ${name}`);
+  info.annotations.push({ type: 'precondition-absent', description: name });
 }
 
 // How many live cases a check compared; a name and a number, never page text.
@@ -490,6 +492,9 @@ test.describe('production acceptance — calendar/course parity', () => {
       const orphanDates = [...new Set(orphanTargets
         .map((row) => ymd(valueOf(row, 'schedule_date', 'session_date', 'SessionDate')))
         .filter((date) => date >= START && date <= END))];
+      if (test.info().project.metadata.calendarCourseFixture) {
+        expect(orphanDates, 'synthetic data must exercise the orphan schedule assertion').toHaveLength(1);
+      }
 
       // The calendar must show the checked window with its sessions. Without this, the orphan check
       // below passes on a calendar that received nothing (the state of this test after #5147).
@@ -735,7 +740,7 @@ test.describe('production acceptance — calendar/course parity', () => {
     await expect(panel, 'search panel closes').toHaveCount(0);
   });
 
-  test('director desktop: in-app 395/403 帳務中心應收分頁用新標籤，不再出現舊字樣', async ({ page }) => {
+  test('director desktop: in-app 395/403 帳務中心使用帳單篩選，不再出現舊標籤', async ({ page }) => {
     test.setTimeout(90_000);
     await openDirectorApp(page, DESKTOP);
     await openPageFromSidebarSearch(page, {
@@ -744,34 +749,21 @@ test.describe('production acceptance — calendar/course parity', () => {
       readySelector: '[data-guide="tuition-header"]',
     });
     const center = page.locator('.tc-page');
-    // loadAlerts() starts in setup, so 待處理清單 has no count while loading; then it reads
-    // 「待處理清單 N 筆」, or is hidden when nothing is pending.
-    const queue = page.getByTestId('tc-reminder-receivables');
-    const queueState = async () => {
-      if (await queue.count() === 0) return 'empty';
-      return /\d+\s*筆$/.test((await queue.innerText()).trim()) ? 'listed' : 'loading';
-    };
-    await expect.poll(queueState, { timeout: 20_000, message: '帳務中心 queue loads' }).not.toBe('loading');
-    await expectNoRetiredBillingLabels(center, '帳務中心 學生');
-
-    if (await queueState() === 'listed') {
-      await queue.click();
-      const tabs = page.locator('#tuition-accounting-panel-receivables .tc-tabs .tc-tab');
-      await expect(tabs.first(), '應收 tabs').toBeVisible({ timeout: 15_000 });
-      const labels = await tabs.evaluateAll((buttons) => buttons.map((button) => [...button.childNodes]
-        .filter((node) => !(node instanceof Element && node.classList.contains('tc-tab-badge')))
-        .map((node) => node.textContent).join('').trim()));
-      for (const label of [
-        `${TUITION_STATUS_CONFIG.unpaid.label}／${TUITION_STATUS_CONFIG.partial.label}`,
-        REPORT_STATUS_LABELS.pending,
-        TUITION_STATUS_CONFIG.pending_reconciliation.label,
-        TUITION_STATUS_CONFIG.amount_review.label,
-      ]) expect(labels, `應收 tab ${label}`).toContain(label);
-      expect(labels.filter((label) => /等你確認|付款期間待確認/.test(label)), 'no 應收 tab keeps a retired label').toEqual([]);
-      await expectNoRetiredBillingLabels(center, '帳務中心 待處理清單');
-    } else {
-      notePreconditionAbsent('receivables_queue');
+    const bills = center.locator('#tuition-accounting-panel-students');
+    await expect(bills.getByTestId('bill-search')).toBeVisible({ timeout: 20_000 });
+    await expect(bills.getByTestId('bill-error')).toHaveCount(0);
+    // #5464 folded the separate receivables queue into the canonical bill list.
+    await expect(center.getByTestId('tc-reminder-receivables')).toHaveCount(0);
+    for (const [key, label] of [
+      ['todo', '要處理'], ['confirm', REPORT_STATUS_LABELS.pending], ['owing', '未繳'],
+      ['issue', '要開帳單'], ['review', '需核對'],
+    ]) {
+      await expect(bills.getByTestId(`bill-filter-${key}`)).toContainText(label);
     }
+    const confirm = bills.getByTestId('bill-filter-confirm');
+    await confirm.click();
+    await expect(confirm).toHaveAttribute('aria-pressed', 'true');
+    await expectNoRetiredBillingLabels(center, '帳務中心 帳單與收款');
 
     await page.locator('#tuition-accounting-tab-monthly').click();
     const monthly = page.locator('#tuition-accounting-panel-monthly .monthly-review');
