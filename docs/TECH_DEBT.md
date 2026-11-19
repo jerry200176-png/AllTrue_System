@@ -920,7 +920,7 @@
 ### TD-093：migration 演練的 `rollback --step=5` 會退到別人刻意不可逆的 migration（P3）
 | 欄位 | 內容 |
 |---|---|
-| 狀態 | Done 2026-11-19（演練改成只退這個 PR 新增的 migration 數；沒有新增就略過） |
+| 狀態 | Done 2026-11-19（演練改成依路徑只退這個 PR 新增的 migration；沒有新增就略過） |
 | 優先級 | P3 |
 | 發現日期 | 2026-11-19 |
 | 發現來源 | [CI] #5524 `Apply migrations against ephemeral MySQL` |
