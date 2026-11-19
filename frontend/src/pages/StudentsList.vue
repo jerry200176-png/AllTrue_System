@@ -325,100 +325,101 @@
                     <div class="student-course-cards" data-testid="student-course-cards">
                   <template v-for="course in getActiveStudentCourses(student.id)" :key="course.id">
                   <article
-                    class="student-course-card student-course-card--focused"
+                    class="student-course-card"
                     :class="{ 'student-course-card--attention': isCourseNeedsAttention(course) }"
                     :data-course-id="course.id"
                   >
-                    <header class="student-course-card__header">
-                      <div class="student-course-card__identity">
-                        <span class="student-course-card__eyebrow">學生課程</span>
-                        <h5>{{ getStudentCourseSubjectDisplayLabel(course) }}</h5>
-                        <div class="student-course-card__badges">
-                          <span class="status-tag" :class="course.class_type">{{ classTypeLabel(course.class_type) }}</span>
-                          <span v-if="isPackageMember(course)" class="tag tag-package" :title="course.PackageName || '多科方案'">方案</span>
-                          <span v-if="course.status === 'inactive'" class="tag tag-paused-sm">已暫停</span>
-                          <span v-else-if="isSessionPaymentLow(course)" class="tag tag-expiring">即將用完</span>
+                    <header class="student-course-card__header tw:flex tw:flex-wrap tw:items-start tw:justify-between tw:gap-x-4 tw:gap-y-3">
+                      <div class="student-course-card__identity tw:min-w-0">
+                        <h5 class="tw:m-0 tw:text-tpl-list tw:font-semibold tw:text-foreground tw:[overflow-wrap:anywhere]">{{ getStudentCourseSubjectDisplayLabel(course) }}</h5>
+                        <div class="student-course-card__badges tw:mt-1.5 tw:flex tw:flex-wrap tw:items-center tw:gap-2">
+                          <span v-if="classTypeLabel(course.class_type)" class="tw:text-tpl-caption tw:text-tpl-secondary" data-testid="course-class-type">{{ classTypeLabel(course.class_type) }}</span>
+                          <StatusBadge v-if="isPackageMember(course)" tone="neutral" :title="course.PackageName || '多科方案'">方案</StatusBadge>
+                          <StatusBadge v-if="course.status === 'inactive'" tone="warning">已暫停</StatusBadge>
+                          <StatusBadge v-else-if="isSessionPaymentLow(course)" tone="danger">即將用完</StatusBadge>
                         </div>
                       </div>
                       <button
                         type="button"
-                        :class="['student-course-card__primary', getCoursePrimaryAction(course).tone === 'warning' ? 'btn-renew-warn' : 'primary']"
+                        :class="['student-course-card__primary', rowAction.primary, 'tw:max-md:w-full tw:gap-1.5', getCoursePrimaryAction(course).tone === 'warning' && COURSE_PRIMARY_WARNING]"
+                        :data-tone="getCoursePrimaryAction(course).tone === 'warning' ? 'warning' : 'default'"
                         @click="openCoursePrimaryAction(course, student.name)"
                       >
-                        <span class="material-symbols-outlined" aria-hidden="true">{{ getCoursePrimaryAction(course).icon }}</span>
+                        <span class="material-symbols-outlined tw:text-[1.25em]" aria-hidden="true">{{ getCoursePrimaryAction(course).icon }}</span>
                         {{ getCoursePrimaryAction(course).label }}
                       </button>
                     </header>
 
-                    <section class="student-course-dates" :aria-labelledby="`student-course-dates-${student.id}-${course.id}`">
-                      <div class="student-course-dates__header">
+                    <section class="student-course-dates tw:mt-4 tw:border-0 tw:border-t tw:border-solid tw:border-border tw:pt-3.5" :aria-labelledby="`student-course-dates-${student.id}-${course.id}`">
+                      <div class="student-course-dates__header tw:flex tw:items-center tw:justify-between tw:gap-3">
                         <div>
-                          <span class="student-course-dates__eyebrow">上課日期</span>
-                          <strong :id="`student-course-dates-${student.id}-${course.id}`">{{ studentCourseDateSummary(course) }}</strong>
+                          <span :class="factRow.label">上課日期</span>
+                          <strong :class="[factRow.value, 'tw:tabular-nums']" :id="`student-course-dates-${student.id}-${course.id}`">{{ studentCourseDateSummary(course) }}</strong>
                         </div>
                         <button
                           v-if="studentCourseSessionPreview(student.id, course).overflow > 0"
                           type="button"
-                          class="student-course-dates__toggle"
+                          :class="['student-course-dates__toggle', rowAction.secondary, 'tw:gap-1']"
                           :aria-expanded="isStudentCourseDatesExpanded(student.id, course)"
                           @click.stop="toggleStudentCourseDates(student.id, course)"
                         >
-                          <span class="material-symbols-outlined" aria-hidden="true">{{ isStudentCourseDatesExpanded(student.id, course) ? 'expand_less' : 'expand_more' }}</span>
+                          <span class="material-symbols-outlined tw:text-[1.25em]" aria-hidden="true">{{ isStudentCourseDatesExpanded(student.id, course) ? 'expand_less' : 'expand_more' }}</span>
                           {{ isStudentCourseDatesExpanded(student.id, course) ? '收合日期' : `再顯示 ${studentCourseSessionPreview(student.id, course).overflow} 堂` }}
                         </button>
                       </div>
-                      <div v-if="isStudentCourseSessionsLoading(student.id)" class="student-course-dates__state" role="status">上課日期載入中…</div>
-                      <div v-else-if="studentCourseSessionsLoadError(student.id)" class="student-course-dates__state student-course-dates__state--error" role="alert">
+                      <div v-if="isStudentCourseSessionsLoading(student.id)" :class="['student-course-dates__state', DATES_STATE]" role="status">上課日期載入中…</div>
+                      <div v-else-if="studentCourseSessionsLoadError(student.id)" :class="['student-course-dates__state student-course-dates__state--error', DATES_STATE, toneText.danger]" role="alert">
                         <span>上課日期暫時無法載入。</span>
-                        <button type="button" class="small ghost" @click.stop="retryLoadStudentCourseSessions(student.id)">重試</button>
+                        <button type="button" :class="rowAction.secondary" @click.stop="retryLoadStudentCourseSessions(student.id)">重試</button>
                       </div>
-                      <ol v-else-if="studentCourseSessionPreview(student.id, course).total > 0" class="student-course-dates__list">
-                        <li v-for="session in studentCourseSessionPreview(student.id, course).visible" :key="studentCourseSessionRowKey(session, course)">
-                          <span class="student-course-dates__date">{{ formatStudentCourseSessionDate(session) }}</span>
-                          <span v-if="studentCourseSessionStatus(session)" class="student-course-dates__status">{{ studentCourseSessionStatus(session) }}</span>
+                      <ol v-else-if="studentCourseSessionPreview(student.id, course).total > 0" class="student-course-dates__list tw:m-0 tw:mt-2.5 tw:grid tw:list-none tw:gap-1.5 tw:p-0">
+                        <li class="tw:flex tw:min-h-9 tw:items-center tw:justify-between tw:gap-2.5 tw:rounded-md tw:bg-muted tw:px-2.5 tw:py-1.5" v-for="session in studentCourseSessionPreview(student.id, course).visible" :key="studentCourseSessionRowKey(session, course)">
+                          <span class="student-course-dates__date tw:text-tpl-caption tw:text-foreground tw:tabular-nums">{{ formatStudentCourseSessionDate(session) }}</span>
+                          <span v-if="studentCourseSessionStatus(session)" class="student-course-dates__status tw:text-tpl-caption tw:whitespace-nowrap tw:text-tpl-secondary">{{ studentCourseSessionStatus(session) }}</span>
                         </li>
                       </ol>
-                      <div v-else class="student-course-dates__state">目前沒有可顯示的上課日期。</div>
+                      <div v-else :class="['student-course-dates__state', DATES_STATE]">目前沒有可顯示的上課日期。</div>
                     </section>
 
                     <div
-                      class="student-course-card__next-step"
-                      :class="{ 'student-course-card__next-step--attention': isCourseNeedsAttention(course) }"
+                      class="student-course-card__next-step tw:mt-4 tw:grid tw:grid-cols-[auto_minmax(0,1fr)] tw:items-start tw:gap-2.5 tw:rounded-xl tw:px-3 tw:py-2.5"
+                      :class="isCourseNeedsAttention(course) ? 'student-course-card__next-step--attention tw:bg-[var(--ds-warning-wash)]' : 'tw:bg-muted'"
                       role="note"
                     >
-                      <span class="material-symbols-outlined" aria-hidden="true">{{ getCoursePrimaryAction(course).icon }}</span>
+                      <span :class="['material-symbols-outlined tw:mt-0.5 tw:text-[1.4em]', isCourseNeedsAttention(course) ? toneText.warning : 'tw:text-tpl-secondary']" aria-hidden="true">{{ getCoursePrimaryAction(course).icon }}</span>
                       <div>
-                        <span class="student-course-card__next-step-label">現在先處理</span>
-                        <strong>{{ getCoursePrimaryAction(course).title }}</strong>
-                        <p>{{ getCoursePrimaryAction(course).description }}</p>
+                        <span :class="[factRow.label, 'tw:mb-0']">現在先處理</span>
+                        <strong :class="[factRow.value, 'tw:block']">{{ getCoursePrimaryAction(course).title }}</strong>
+                        <p class="tw:m-0 tw:mt-0.5 tw:text-tpl-caption tw:text-tpl-secondary">{{ getCoursePrimaryAction(course).description }}</p>
                       </div>
                     </div>
 
-                    <section v-if="courseProgress(course)" class="student-course-card__progress" aria-label="課程堂數進度">
-                      <div class="student-course-card__progress-head">
-                        <span>課程進度</span>
-                        <strong>{{ courseProgress(course).remaining }} / {{ courseProgress(course).total }} 堂剩餘</strong>
+                    <section v-if="courseProgress(course)" class="student-course-card__progress tw:mt-4" aria-label="課程堂數進度">
+                      <div class="student-course-card__progress-head tw:flex tw:items-baseline tw:justify-between tw:gap-3">
+                        <span class="tw:text-tpl-caption tw:font-medium tw:text-tpl-secondary">課程進度</span>
+                        <strong :class="[factRow.value, 'tw:tabular-nums']">{{ courseProgress(course).remaining }} / {{ courseProgress(course).total }} 堂剩餘</strong>
                       </div>
+                      <!-- Same look as components/ui/progress; kept a native element so the track's role and values stay literal in this file. -->
                       <div
-                        class="student-course-card__progress-track"
+                        class="student-course-card__progress-track tw:mt-2 tw:h-2 tw:w-full tw:overflow-hidden tw:rounded-full tw:bg-primary/20"
                         role="progressbar"
                         :aria-valuemin="0"
                         :aria-valuemax="courseProgress(course).total"
                         :aria-valuenow="courseProgress(course).used"
                         :aria-label="`已使用 ${courseProgress(course).used} 堂，共 ${courseProgress(course).total} 堂`"
                       >
-                        <span class="student-course-card__progress-fill" :style="{ width: `${courseProgress(course).percent}%` }"></span>
+                        <span :class="['student-course-card__progress-fill tw:block tw:h-full tw:rounded-full tw:transition-[width]', isCourseNeedsAttention(course) ? 'tw:bg-[var(--ds-warning)]' : 'tw:bg-primary']" :style="{ width: `${courseProgress(course).percent}%` }"></span>
                       </div>
-                      <span class="student-course-card__progress-caption">已使用 {{ courseProgress(course).used }} 堂<span v-if="isPackageMember(course)"> · 方案共用堂數</span></span>
+                      <span class="student-course-card__progress-caption tw:mt-1.5 tw:block tw:text-tpl-caption tw:text-tpl-secondary tw:tabular-nums">已使用 {{ courseProgress(course).used }} 堂<span v-if="isPackageMember(course)"> · 方案共用堂數</span></span>
                     </section>
-                    <div v-else-if="isPackageMember(course)" class="student-course-card__progress-empty" role="note">
+                    <div v-else-if="isPackageMember(course)" :class="['student-course-card__progress-empty', CARD_NOTE, toneText.warning]" role="note">
                       本課程使用共用方案；堂數請見上方方案摘要，上課日期見本課程明細。
                     </div>
-                    <div v-else-if="String(course.payment_type || '').toLowerCase() === 'session'" class="student-course-card__progress-empty" role="status">
+                    <div v-else-if="String(course.payment_type || '').toLowerCase() === 'session'" :class="['student-course-card__progress-empty', CARD_NOTE, toneText.warning]" role="status">
                       堂數未設定，請編輯課程確認。
                     </div>
-                    <div v-else class="student-course-card__cadence">
-                      <span class="material-symbols-outlined" aria-hidden="true">event_repeat</span>
+                    <div v-else :class="['student-course-card__cadence', CARD_NOTE, 'tw:text-tpl-secondary']">
+                      <span class="material-symbols-outlined tw:text-[1.4em]" aria-hidden="true">event_repeat</span>
                       <strong>月結</strong>
                       <span v-if="course.settlement_day">每月{{ course.settlement_day }}號結算</span>
                       <span v-if="parseCourseNumber(course.monthly_sessions) != null && parseCourseNumber(course.monthly_sessions) > 0">每月 {{ parseCourseNumber(course.monthly_sessions) }} 堂</span>
@@ -521,35 +522,35 @@
                         <span v-if="hc.payment_type === 'session'"><span class="sl-history-card__label">堂數</span>{{ hc.used_sessions || 0 }} / {{ hc.sessions_purchased || 0 }}</span>
                         <span v-if="hc.last_paid_at"><span class="sl-history-card__label">繳費</span>{{ hc.last_paid_at }}</span>
                       </div>
-                      <section class="student-course-dates student-course-dates--history" :aria-labelledby="`student-history-dates-${student.id}-${hc.id}`">
-                        <div class="student-course-dates__header">
+                      <section class="student-course-dates student-course-dates--history tw:mt-3 tw:border-0 tw:border-t tw:border-solid tw:border-border tw:pt-3" :aria-labelledby="`student-history-dates-${student.id}-${hc.id}`">
+                        <div class="student-course-dates__header tw:flex tw:items-center tw:justify-between tw:gap-3">
                           <div>
-                            <span class="student-course-dates__eyebrow">完整上課日期</span>
-                            <strong :id="`student-history-dates-${student.id}-${hc.id}`">{{ studentCourseDateSummary(hc) }}</strong>
+                            <span :class="factRow.label">完整上課日期</span>
+                            <strong :class="[factRow.value, 'tw:tabular-nums']" :id="`student-history-dates-${student.id}-${hc.id}`">{{ studentCourseDateSummary(hc) }}</strong>
                           </div>
                           <button
                             v-if="studentCourseSessionPreview(student.id, hc).overflow > 0"
                             type="button"
-                            class="student-course-dates__toggle"
+                            :class="['student-course-dates__toggle', rowAction.secondary, 'tw:gap-1']"
                             :aria-expanded="isStudentCourseDatesExpanded(student.id, hc)"
                             @click.stop="toggleStudentCourseDates(student.id, hc)"
                           >
-                            <span class="material-symbols-outlined" aria-hidden="true">{{ isStudentCourseDatesExpanded(student.id, hc) ? 'expand_less' : 'expand_more' }}</span>
+                            <span class="material-symbols-outlined tw:text-[1.25em]" aria-hidden="true">{{ isStudentCourseDatesExpanded(student.id, hc) ? 'expand_less' : 'expand_more' }}</span>
                             {{ isStudentCourseDatesExpanded(student.id, hc) ? '收合日期' : `再顯示 ${studentCourseSessionPreview(student.id, hc).overflow} 堂` }}
                           </button>
                         </div>
-                        <div v-if="isStudentCourseSessionsLoading(student.id)" class="student-course-dates__state" role="status">上課日期載入中…</div>
-                        <div v-else-if="studentCourseSessionsLoadError(student.id)" class="student-course-dates__state student-course-dates__state--error" role="alert">
+                        <div v-if="isStudentCourseSessionsLoading(student.id)" :class="['student-course-dates__state', DATES_STATE]" role="status">上課日期載入中…</div>
+                        <div v-else-if="studentCourseSessionsLoadError(student.id)" :class="['student-course-dates__state student-course-dates__state--error', DATES_STATE, toneText.danger]" role="alert">
                           <span>上課日期暫時無法載入。</span>
-                          <button type="button" class="small ghost" @click.stop="retryLoadStudentCourseSessions(student.id)">重試</button>
+                          <button type="button" :class="rowAction.secondary" @click.stop="retryLoadStudentCourseSessions(student.id)">重試</button>
                         </div>
-                        <ol v-else-if="studentCourseSessionPreview(student.id, hc).total > 0" class="student-course-dates__list">
-                          <li v-for="session in studentCourseSessionPreview(student.id, hc).visible" :key="studentCourseSessionRowKey(session, hc)">
-                            <span class="student-course-dates__date">{{ formatStudentCourseSessionDate(session) }}</span>
-                            <span v-if="studentCourseSessionStatus(session)" class="student-course-dates__status">{{ studentCourseSessionStatus(session) }}</span>
+                        <ol v-else-if="studentCourseSessionPreview(student.id, hc).total > 0" class="student-course-dates__list tw:m-0 tw:mt-2.5 tw:grid tw:list-none tw:gap-1.5 tw:p-0">
+                          <li class="tw:flex tw:min-h-9 tw:items-center tw:justify-between tw:gap-2.5 tw:rounded-md tw:bg-muted tw:px-2.5 tw:py-1.5" v-for="session in studentCourseSessionPreview(student.id, hc).visible" :key="studentCourseSessionRowKey(session, hc)">
+                            <span class="student-course-dates__date tw:text-tpl-caption tw:text-foreground tw:tabular-nums">{{ formatStudentCourseSessionDate(session) }}</span>
+                            <span v-if="studentCourseSessionStatus(session)" class="student-course-dates__status tw:text-tpl-caption tw:whitespace-nowrap tw:text-tpl-secondary">{{ studentCourseSessionStatus(session) }}</span>
                           </li>
                         </ol>
-                        <div v-else class="student-course-dates__state">目前沒有可顯示的上課日期。</div>
+                        <div v-else :class="['student-course-dates__state', DATES_STATE]">目前沒有可顯示的上課日期。</div>
                       </section>
                       <div class="sl-history-card__actions">
                         <button type="button" class="small ghost" @click="editCourse(hc)">編輯</button>
@@ -1049,6 +1050,12 @@ import {
 import { Button } from '../components/ui/button';
 import { FilterChip, PageHeader, SelectionBar, StatItem, StatStrip, StatusBadge, control, dataTable, factRow, pageShell, rowAction, surface, toneBadge, toneText } from '../components/ui/page';
 import { Checkbox } from '../components/ui/checkbox';
+
+// Course card class sets (template rollout slice 5): type sizes come from the template tokens so 字級 moves them.
+const DATES_STATE = 'tw:mt-2.5 tw:flex tw:items-center tw:gap-2 tw:text-tpl-caption tw:text-tpl-secondary';
+const CARD_NOTE = 'tw:mt-4 tw:flex tw:flex-wrap tw:items-center tw:gap-2 tw:rounded-lg tw:bg-muted tw:px-3 tw:py-2.5 tw:text-tpl-caption';
+// The warning primary keeps its meaning (wash + AA text + icon), on the same 44px pill as the ink primary.
+const COURSE_PRIMARY_WARNING = 'tw:bg-[var(--ds-warning-wash)]! tw:text-[var(--ds-warning-text)]!';
 import ActionMenu from '../components/ActionMenu.vue';
 import { BookOpen, Building2, ChevronDown, ChevronRight, Download, FileUp, GraduationCap, Merge, Plus, RefreshCw, Search, SearchX, StickyNote, Trash2 } from 'lucide-vue-next';
 import { Alert } from '../components/ui/alert';
@@ -3907,16 +3914,14 @@ table th { font-size: 12.5px; }
   gap: 8px 12px;
   justify-content: flex-end;
 }
-.student-course-detail__bulk-toggle,
-.student-course-dates__toggle {
+.student-course-detail__bulk-toggle {
   align-items: center;
   display: inline-flex;
   gap: 4px;
   min-height: 36px;
   white-space: nowrap;
 }
-.student-course-detail__bulk-toggle .material-symbols-outlined,
-.student-course-dates__toggle .material-symbols-outlined {
+.student-course-detail__bulk-toggle .material-symbols-outlined {
   font-size: 17px;
 }
 .student-course-cards {
@@ -3932,237 +3937,8 @@ table th { font-size: 12.5px; }
   box-shadow: none;
   padding: 16px;
 }
-.student-course-card--attention {
-  border-color: var(--ds-warning);
-  box-shadow: none;
-}
-.student-course-card--focused {
-  box-shadow: inset 3px 0 0 var(--ds-primary);
-}
-.student-course-card--focused.student-course-card--attention {
-  box-shadow: inset 3px 0 0 var(--ds-warning);
-}
-.student-course-dates {
-  border-top: 1px solid var(--ds-hairline);
-  margin-top: 16px;
-  padding-top: 14px;
-}
-.student-course-dates--history {
-  margin-top: 12px;
-  padding-top: 12px;
-}
-.student-course-dates__header {
-  align-items: center;
-  display: flex;
-  gap: 12px;
-  justify-content: space-between;
-}
-.student-course-dates__eyebrow {
-  color: var(--ds-ink-mute);
-  display: block;
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  margin-bottom: 2px;
-}
-.student-course-dates__header strong {
-  color: var(--ds-ink);
-  font-size: 14px;
-  font-variant-numeric: tabular-nums;
-}
-.student-course-dates__list {
-  display: grid;
-  gap: 5px;
-  list-style: none;
-  margin: 10px 0 0;
-  padding: 0;
-}
-.student-course-dates__list li {
-  align-items: center;
-  background: var(--ds-canvas-soft);
-  display: flex;
-  gap: 10px;
-  justify-content: space-between;
-  min-height: 34px;
-  padding: 6px 9px;
-}
-.student-course-dates__date {
-  color: var(--ds-ink-secondary);
-  font-size: 13px;
-  font-variant-numeric: tabular-nums;
-  letter-spacing: 0.01em;
-}
-.student-course-dates__status {
-  color: var(--ds-ink-mute);
-  font-size: 11px;
-  white-space: nowrap;
-}
-.student-course-dates__state {
-  align-items: center;
-  color: var(--ds-ink-mute);
-  display: flex;
-  font-size: 12px;
-  gap: 8px;
-  line-height: 1.5;
-  margin-top: 10px;
-}
-.student-course-dates__state--error {
-  color: var(--ds-danger);
-}
-.student-course-card__header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 16px;
-}
-.student-course-card__identity {
-  min-width: 0;
-}
-.student-course-card__eyebrow {
-  display: block;
-  color: var(--ds-ink-mute);
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  margin-bottom: 2px;
-}
-.student-course-card__identity h5 {
-  color: var(--ds-ink);
-  font-size: 17px;
-  line-height: 1.35;
-  margin: 0;
-  overflow-wrap: anywhere;
-}
-.student-course-card__badges {
-  align-items: center;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  margin-top: 7px;
-}
-.student-course-card__badges .tag-expiring,
-.student-course-card__badges .tag-paused-sm {
-  margin-left: 0;
-}
-.student-course-card__primary {
-  align-items: center;
-  flex: 0 0 auto;
-  gap: 6px;
-  min-height: 44px;
-  min-width: 112px;
-  white-space: nowrap;
-}
-.student-course-card__primary .material-symbols-outlined {
-  font-size: 18px;
-}
-.student-course-card__next-step {
-  align-items: flex-start;
-  background: var(--ds-canvas-soft);
-  border: 1px solid var(--ds-hairline);
-  border-radius: 10px;
-  color: var(--ds-ink-secondary);
-  display: grid;
-  gap: 10px;
-  grid-template-columns: auto minmax(0, 1fr);
-  margin-top: 14px;
-  padding: 12px 14px;
-}
-.student-course-card__next-step--attention {
-  background: var(--ds-warning-wash);
-  border-color: var(--ds-warning-wash);
-}
-.student-course-card__next-step > .material-symbols-outlined {
-  color: var(--ds-primary-text);
-  font-size: 21px;
-  margin-top: 1px;
-}
-.student-course-card__next-step--attention > .material-symbols-outlined {
-  color: var(--ds-warning);
-}
-.student-course-card__next-step-label {
-  color: var(--ds-ink-mute);
-  display: block;
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  line-height: 1.4;
-}
-.student-course-card__next-step strong {
-  color: var(--ds-ink);
-  display: block;
-  font-size: 14px;
-  line-height: 1.4;
-  margin-top: 1px;
-}
-.student-course-card__next-step p {
-  color: var(--ds-ink-secondary);
-  font-size: 12px;
-  line-height: 1.5;
-  margin: 3px 0 0;
-}
-.student-course-card__progress {
-  margin-top: 16px;
-}
-.student-course-card__progress-head {
-  align-items: baseline;
-  color: var(--ds-ink-secondary);
-  display: flex;
-  font-size: 13px;
-  justify-content: space-between;
-  gap: 12px;
-}
-.student-course-card__progress-head strong,
-.student-course-card__progress-caption,
 .student-course-card__money {
   font-variant-numeric: tabular-nums;
-}
-.student-course-card__progress-head strong {
-  color: var(--ds-ink);
-  font-size: 14px;
-}
-.student-course-card__progress-track {
-  background: var(--ds-canvas-soft);
-  border: 1px solid var(--ds-hairline);
-  border-radius: 999px;
-  height: 10px;
-  margin-top: 8px;
-  overflow: hidden;
-}
-.student-course-card__progress-fill {
-  background: var(--ds-primary);
-  border-radius: inherit;
-  display: block;
-  height: 100%;
-  transition: width 180ms ease;
-}
-.student-course-card--attention .student-course-card__progress-fill {
-  background: var(--ds-warning);
-}
-.student-course-card__progress-caption {
-  color: var(--ds-ink-mute);
-  display: block;
-  font-size: 12px;
-  margin-top: 5px;
-}
-.student-course-card__progress-empty,
-.student-course-card__cadence {
-  align-items: center;
-  background: var(--ds-canvas-soft);
-  border-radius: 8px;
-  color: var(--ds-ink-secondary);
-  display: flex;
-  gap: 7px;
-  font-size: 13px;
-  line-height: 1.5;
-  margin-top: 16px;
-  padding: 10px 12px;
-}
-.student-course-card__progress-empty {
-  color: var(--ds-warning);
-}
-.student-course-card__cadence .material-symbols-outlined {
-  color: var(--ds-primary-text);
-  font-size: 19px;
 }
 .student-course-card__meta {
   border-top: 1px solid var(--ds-hairline);
@@ -4417,13 +4193,6 @@ table th { font-size: 12.5px; }
   .student-course-detail__bulk-toggle {
     margin-top: 8px;
   }
-  .student-course-card__header {
-    display: block;
-  }
-  .student-course-card__primary {
-    margin-top: 12px;
-    width: 100%;
-  }
   .student-course-card__meta {
     grid-template-columns: minmax(0, 1fr);
   }
@@ -4439,56 +4208,6 @@ table th { font-size: 12.5px; }
   border: 1px solid #c4b5fd;
   font-size: 0.65rem;
   cursor: help;
-}
-.tag-package-hint {
-  font-size: 0.7em;
-  color: #6d28d9;
-  font-weight: 400;
-}
-.package-pool-hint {
-  display: block;
-  font-size: 0.7em;
-  color: #7c3aed;
-  font-weight: 400;
-  margin-top: 2px;
-}
-.tag-paused-sm {
-  background: var(--ds-warning-wash);
-  color: var(--ds-warning);
-  border: 1px solid var(--ds-warning);
-  border-radius: 6px;
-  font-size: 11px;
-  padding: 2px 7px;
-  font-weight: 600;
-  margin-left: 4px;
-}
-.tag-expiring {
-  background: var(--ds-warning-wash);
-  color: var(--ds-warning);
-  border: 1px solid var(--ds-warning);
-  border-radius: 6px;
-  font-size: 11px;
-  padding: 2px 7px;
-  font-weight: 600;
-  margin-left: 4px;
-  animation: pulse-warn 2s ease-in-out infinite;
-}
-@keyframes pulse-warn {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.7; }
-}
-.btn-renew-warn {
-  background: var(--ds-warning) !important;
-  color: var(--ds-on-primary) !important;
-  border: 1px solid var(--ds-warning) !important;
-  font-weight: 600;
-  border-radius: 6px;
-  padding: 4px 10px;
-  font-size: 12px;
-  cursor: pointer;
-}
-.btn-renew-warn:hover {
-  filter: brightness(0.92);
 }
 
 /* ── Empty active courses ── */
