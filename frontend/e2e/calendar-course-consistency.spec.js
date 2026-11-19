@@ -21,7 +21,7 @@ import {
   isKnownPostRead,
   isKnownStatefulRead,
 } from './fixtures/readOnlyAppGuard.js';
-import { installLocalClassSessionReads, nonMaterializingProjectionPath } from './fixtures/classSessionReadResponder.js';
+import { installLocalClassSessionReads, readBoundedProjection } from './fixtures/classSessionReadResponder.js';
 import { formatCalendarRange } from '../src/lib/calendarViewDisplay.js';
 import { compareDrawnCards, describeDrawnCards, drawsServedSessions } from './fixtures/calendarDrawnCards.js';
 
@@ -427,14 +427,10 @@ test.describe('production acceptance — calendar/course parity', () => {
         end: END,
         per_page: '2000',
       });
-      // The only class-session read this spec sends to the app. It throws for a one-day window,
-      // which would make the server create class sessions (#5175).
-      const projectionPath = nonMaterializingProjectionPath({ branchId: BRANCH_ID, start: START, end: END });
-
       const [coursesPayload, schedulesPayload, projectionPayload] = await Promise.all([
         getJson(request, `/api/v1/student-classes?${params}`, token),
         getJson(request, `/api/v1/schedules?${params}`, token),
-        getJson(request, projectionPath, token),
+        readBoundedProjection(request, APP_ORIGIN, { branchId: BRANCH_ID, start: START, end: END }, token),
       ]);
 
       const courses = listFromPayload(coursesPayload);
