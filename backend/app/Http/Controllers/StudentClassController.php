@@ -4560,8 +4560,11 @@ class StudentClassController extends Controller
 
         try {
             return DB::transaction(function () use ($studentClass, $data) {
-            $source = StudentClass::where('ID', $studentClass->ID)->lockForUpdate()->firstOrFail();
-            $target = StudentClass::where('ID', $data['target_student_class_id'])->lockForUpdate()->firstOrFail();
+            // The same ascending course order as shared-invoice payment and reversal.
+            $courses = StudentClass::whereIn('ID', [$studentClass->ID, $data['target_student_class_id']])
+                ->orderBy('ID')->lockForUpdate()->get();
+            $source = $courses->findOrFail((int) $studentClass->ID);
+            $target = $courses->findOrFail((int) $data['target_student_class_id']);
 
             // Caller must have write authority over the TARGET course too, not just the
             // source — otherwise a caller could smuggle session/evaluation records into

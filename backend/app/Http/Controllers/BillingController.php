@@ -11,11 +11,13 @@ use App\Models\PaymentReport;
 use App\Models\Student;
 use App\Models\StudentClass;
 use App\Services\Billing\BillingPeriodInvoiceExists;
+use App\Services\Billing\CollectionTarget;
 use App\Services\Billing\ContractMoneyState;
 use App\Services\Billing\InvoiceIssuer;
 use App\Services\BillingPayableResolver;
 use App\Services\InvoiceAmountReconciliationService;
 use App\Services\MonthlyBillingService;
+use App\Support\DeadlockRetry;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -311,10 +313,9 @@ class BillingController extends Controller
     }
 
     /**
-     * Void joins the header owner's count-correction mutex, or the sole item
-     * owner when there is no header. Never add a multi-course void lock set:
-     * it would invert existing transfer locks. Direct payments retain their
-     * pre-existing sorted multi-course protocol.
+     * Unpaid void joins the header owner's count-correction mutex, or its sole
+     * item owner. Payment and confirmed-money reversal use ascending course IDs,
+     * the same order as transferSessions.
      */
     private function lockInvoiceCourses(Invoice $invoice, bool $allCourses = false): array
     {
@@ -450,9 +451,12 @@ class BillingController extends Controller
             'reason' => 'required|string|min:2|max:255', // two characters: 「重複」「開錯」 are whole reasons in Chinese
         ]);
 
-        return DB::transaction(function () use ($request, $invoice, $data) {
+        // Routing read before the transaction. Unpaid void still only needs the header lock.
+        $hasMoney = Invoice::query()->whereKey($invoice->id)->whereRaw(Invoice::netPaidSql() . ' > 0')->exists();
+
+        return DB::transaction(function () use ($request, $invoice, $data, $hasMoney) {
             $studentId = (int) $invoice->StudentID;
-            $owners = $this->lockInvoiceCourses($invoice);
+            $owners = $this->lockInvoiceCourses($invoice, $hasMoney);
             $invoice = Invoice::whereKey($invoice->id)->lockForUpdate()->firstOrFail();
             $this->assertInvoiceOwnersUnchanged($invoice, $owners, $studentId);
             $status = strtolower((string) ($invoice->Status ?? ''));
@@ -483,6 +487,15 @@ class BillingController extends Controller
                 ->filter(fn ($payment) => (int) ($payment->Amount ?? 0) < 0 || (string) ($payment->Method ?? '') === 'void')
                 ->sum(fn ($payment) => (int) ($payment->Amount ?? 0)));
             $netApplied = max(0, $positiveTotal - $voidedTotal);
+            $lockedCourses = collect();
+            $lineCourses = collect();
+            if ($netApplied > 0) {
+                // A payment may have landed while the routing read waited for the header. Never write a sibling
+                // outside the original course-lock scope, even though its invoice items are already locked.
+                $lockIds = $hasMoney ? $owners : [(int) ($invoice->StudentClassID ?: (count($owners) === 1 ? $owners[0] : 0))];
+                $lockedCourses = StudentClass::query()->whereIn('ID', $lockIds)->get()->keyBy('ID');
+                $lineCourses = CollectionTarget::lockInvoiceLineCourses($invoice, $lockedCourses, $lockIds);
+            }
 
             $authUser = $request->attributes->get('auth_user');
             $reason = trim((string) $data['reason']);
@@ -519,6 +532,15 @@ class BillingController extends Controller
             $invoice->PaidAmount = 0;
             $invoice->Note = mb_substr(trim($note . ' ' . $audit), 0, 255);
             $invoice->save();
+            if ($lineCourses->isNotEmpty()) {
+                CollectionTarget::syncInvoiceLineCourses($invoice, $lineCourses, true);
+                $header = $lockedCourses->get((int) $invoice->StudentClassID);
+                if ($header?->Paid && (int) $header->StudentID === $studentId && (int) $header->PackageID === 0
+                    && (string) ($header->ScheduleMode ?? 'count') === 'count' && !$header->isTerminalMoneyClosure()) {
+                    $id = (int) $header->ID;
+                    CollectionTarget::unsettle($header, null, Invoice::courseHasLiveBill($id));
+                }
+            }
 
             Log::info('[InvoiceExceptionVoid] invoice reversed and voided', [
                 'invoice_id' => $invoice->id,
@@ -544,7 +566,7 @@ class BillingController extends Controller
                     'method' => (string) $reversalPayment->Method,
                 ] : null,
             ]);
-        });
+        }, DeadlockRetry::ATTEMPTS);
     }
 
     public function slipData(Invoice $invoice, Request $request)
@@ -706,7 +728,10 @@ class BillingController extends Controller
 
         foreach ($classIds as $classId) {
             $sc = StudentClass::where('ID', $classId)->first();
-            if (!$sc) {
+            if (!$sc || (int) $sc->StudentID !== (int) $invoice->StudentID) {
+                continue;
+            }
+            if ($classId !== (int) $invoice->StudentClassID && $sc->isTerminalMoneyClosure()) {
                 continue;
             }
             if ((app(BillingPayableResolver::class)->courseStatusesByStudentClassIds([(int) $classId])[(int) $classId]['status'] ?? null) !== 'paid') {
@@ -741,7 +766,7 @@ class BillingController extends Controller
         $invoice->loadMissing('items');
         foreach ($invoice->getRelationValue('items') as $item) {
             $itemClassId = (int) ($item->StudentClassID ?? 0);
-            if ($itemClassId > 0) {
+            if ($itemClassId > 0 && (int) $item->Amount > 0) {
                 $ids[] = $itemClassId;
             }
         }

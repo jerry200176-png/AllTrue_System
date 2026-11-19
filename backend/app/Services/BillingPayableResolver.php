@@ -106,6 +106,9 @@ class BillingPayableResolver
             ->havingRaw("SUM(CASE WHEN Payment.Amount < 0 OR Payment.Method = 'void' THEN -ABS(Payment.Amount) ELSE Payment.Amount END) > 0")
             ->pluck('Invoice.StudentClassID')->mapWithKeys(fn ($id) => [(int) $id => true])->all();
         $paidPackages = [];
+        $coveredLines = $ids === [] ? [] : Invoice::standaloneCountLineBills($ids, $campuses)
+            ->whereRaw('Invoice.TotalAmount <= ' . Invoice::netPaidSql())
+            ->distinct()->pluck('course.ID')->mapWithKeys(fn ($id) => [(int) $id => true])->all();
         foreach ($members as $classId => $packageId) {
             if (isset($paid[$classId])) {
                 $paidPackages[$packageId] = true;
@@ -114,7 +117,7 @@ class BillingPayableResolver
         $classes = [];
         foreach ($ids as $id) {
             // A seed reads its package's receipts only when it is itself an in-scope member of that package.
-            if (isset($paid[$id]) || (isset($members[$id]) && isset($paidPackages[$members[$id]]))) {
+            if (isset($paid[$id]) || isset($coveredLines[$id]) || (isset($members[$id]) && isset($paidPackages[$members[$id]]))) {
                 $classes[$id] = true;
             }
         }
@@ -161,6 +164,9 @@ class BillingPayableResolver
             ->get(['id', 'StudentClassID', 'IssueDate', 'DueDate', 'TotalAmount', 'Status', 'billing_period', 'zero_amount_reason', 'billing_snapshot'])
             ->groupBy('StudentClassID');
         $monthlyByClass = $this->monthlyPeriods->batch(collect($courseMap)->only($ids->all())->values());
+        $sharedBills = Invoice::standaloneCountLineBills($ids->all())
+            ->selectRaw('course.ID AS course_id, Invoice.id, Invoice.TotalAmount <= ' . Invoice::netPaidSql() . ' AS covered')
+            ->distinct()->get()->groupBy('course_id');
 
         $out = [];
         foreach ($ids as $classId) {
@@ -171,6 +177,7 @@ class BillingPayableResolver
                 $courseMap[$classId],
                 $invoicesByClass->get($classId, collect()),
                 $monthlyByClass[$classId] ?? [],
+                $sharedBills->get($classId, collect()),
             );
         }
 
@@ -184,7 +191,7 @@ class BillingPayableResolver
     }
 
     /** @param Collection<int, Invoice> $invoices */
-    private function courseStatus(StudentClass $course, Collection $invoices, array $monthly): array
+    private function courseStatus(StudentClass $course, Collection $invoices, array $monthly, Collection $sharedBills): array
     {
         $result = fn (string $status, int $total, int $applied, int $overpaid, array $periods, string $source, ?int $invoiceId) => [
             'status' => $status, 'payable_total' => $total, 'applied' => $applied,
@@ -194,7 +201,8 @@ class BillingPayableResolver
             'review_signature' => null, 'review_checked' => false,
         ];
         $charge = max(0, (int) ($course->getAttribute('Charge') ?? 0));
-        $hasBillableInvoice = $invoices->contains(fn ($invoice) => (int) $invoice->getAttribute('TotalAmount') > 0);
+        $hasBillableInvoice = $sharedBills->isNotEmpty() || $invoices->contains(fn ($invoice) => (int) $invoice->getAttribute('TotalAmount') > 0);
+        $sharedBillOwes = $sharedBills->contains(fn ($invoice) => !(bool) $invoice->covered);
         $tutoring = strtolower(trim((string) ($course->getAttribute('ClassType') ?? ''))) === 'tutoring';
         // B15 is the period engine for monthly courses: a period it cannot attribute is review_required,
         // even without invoices (a legacy flag must not settle unattributed months).
@@ -218,6 +226,10 @@ class BillingPayableResolver
         }
         if ($tutoring || $zeroFee) {
             return $result('free', 0, 0, 0, [], 'none', null);
+        }
+        if ($invoices->isEmpty() && $sharedBills->isNotEmpty()) {
+            // Coverage is a fact about the whole bill. Keep amounts at its header instead of duplicating cash on its item courses.
+            return $result($sharedBillOwes ? 'review_required' : 'paid', 0, 0, 0, [], 'invoice', null);
         }
         if ($invoices->isEmpty() && ($unattributed !== [] || $monthlyReview)) {
             $periods = array_map(fn ($billingPeriod) => $this->unattributedPeriod($billingPeriod), $unattributed);
@@ -280,6 +292,9 @@ class BillingPayableResolver
         $zeroValueOnly = !$hasBillableInvoice && !$refundedClean && !$invoices->contains(fn ($invoice) => $invoice->isFullDiscount() && $invoice->freeGiftHolds($course)); // #4018: a full-discount NT$0 term is settled, not review // free courses already returned above
 
         $status = ($unattributed !== [] || $monthlyReview || $zeroValueOnly) ? 'review_required' : ($worst['status'] ?? 'paid');
+        if ($status === 'paid' && $sharedBillOwes) {
+            $status = 'review_required';
+        }
         $total = (int) collect($periods)->sum('total');
         $applied = (int) collect($periods)->sum('applied');
         $out = $result($status, $total, $applied, (int) collect($periods)->sum('overpaid'), $periods, 'invoice', $currentInvoiceId ?: null);
@@ -294,7 +309,7 @@ class BillingPayableResolver
                 $p['total'], $p['applied'], $p['overpaid'] ?? null, $p['status']], $periods), $monthly['session_review'] ?? [], $terms]));
             // A lesson outside every bill's range in an already-billed month is unbilled too (B15 adds no unattributed row then).
             $out['uncovered_sessions'] = (int) collect($monthly['session_review'] ?? [])->sum('uncovered_sessions');
-            if ((string) $course->getAttribute('review_checked_signature') === $out['review_signature']
+            if (!$sharedBillOwes && (string) $course->getAttribute('review_checked_signature') === $out['review_signature']
                 && $total - $applied === 0 && $unattributed === [] && $out['uncovered_sessions'] === 0 && !$zeroValueOnly) {
                 $out['status'] = 'paid';
                 $out['review_checked'] = true;

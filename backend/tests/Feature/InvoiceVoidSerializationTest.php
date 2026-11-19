@@ -145,6 +145,27 @@ class InvoiceVoidSerializationTest extends TestCase
         $this->assertSame(0, Payment::count());
     }
 
+    public function test_paid_shared_exception_reversal_waits_for_the_item_before_changing_money(): void
+    {
+        [$course, $invoice, $other] = $this->fixture('multiple');
+        $invoice->update(['Status' => 'paid', 'PaidAmount' => 8000]);
+        $invoice->payments()->create(['Amount' => 8000, 'PaidAt' => '2026-10-01', 'Method' => 'cash']);
+        $course->update(['Paid' => 1]);
+        $other->update(['Paid' => 1]);
+
+        DB::beginTransaction();
+        StudentClass::whereKey($other->ID)->lockForUpdate()->firstOrFail();
+        [$worker, $connection, $after, $bindings] = $this->spawnVoid($invoice, 'exceptionVoidInvoice');
+        $this->awaitBlockedQuery($worker, $connection, $after, $bindings, (int) $other->ID);
+        $this->assertSame(8000, (int) $invoice->payments()->sum('Amount'));
+        DB::commit();
+
+        $this->assertSame(200, $this->raceFinish($worker)['status']);
+        $this->assertSame('void', $invoice->fresh()->Status);
+        $this->assertSame(0, (int) $invoice->payments()->sum('Amount'));
+        $this->assertSame([0, 0], [(int) $course->fresh()->Paid, (int) $other->fresh()->Paid]);
+    }
+
     private function spawnVoid(Invoice $invoice, string $operation, ?array $pause = null): array
     {
         $connection = $this->raceFile(); $after = $this->raceFile(); $bindings = $this->raceFile();

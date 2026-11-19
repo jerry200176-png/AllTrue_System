@@ -11,6 +11,8 @@ use App\Models\Student;
 use App\Models\StudentClass;
 use App\Models\User;
 use App\Models\UserCampus;
+use App\Services\Billing\PaidFlagInvoiceMismatch;
+use App\Services\BillingPayableResolver;
 use App\Services\MonthlyBillingService;
 use App\Services\PaymentReportTokenService;
 use Carbon\Carbon;
@@ -74,6 +76,126 @@ class MonthlyCalendarMonthCollectionTest extends TestCase
         $this->assertSame(0, (int) $b->fresh()->Paid);
         $this->confirm($this->record($b->fresh(), 2000)->assertOk()->json('report_id'));
         $this->assertSame([['2026-05', 2000]], $this->bills($b));
+    }
+
+    public function test_confirming_a_positive_shared_bill_synchronizes_both_named_count_contracts(): void
+    {
+        [$header, $line, $bill] = $this->sharedCountBill();
+        $reportId = $this->record($header, 4000)->assertOk()->json('report_id');
+        $this->assertSame('pending', (string) PaymentReport::findOrFail($reportId)->status);
+        $this->assertSame([0, 0], [(int) $header->fresh()->Paid, (int) $line->fresh()->Paid]);
+        $this->assertSame(0, $bill->payments()->count());
+
+        $this->confirm($reportId);
+        $this->assertSame('confirmed', (string) PaymentReport::findOrFail($reportId)->status);
+        $this->assertSame('paid', (string) $bill->fresh()->Status);
+        $this->assertSame(1, $bill->payments()->count());
+        $this->assertSame(4000, (int) $bill->payments()->sum('Amount'));
+        $verdicts = app(BillingPayableResolver::class)->courseStatusesByStudentClassIds([$header->ID, $line->ID]);
+        $mismatches = array_column((new PaidFlagInvoiceMismatch())->rows(), 'side', 'student_class_id');
+        $this->assertSame(
+            ['paid_flags' => [1, 1], 'bill_statuses' => ['paid', 'paid'], 'nightly_side' => [null, null]],
+            [
+                'paid_flags' => [(int) $header->fresh()->Paid, (int) $line->fresh()->Paid],
+                'bill_statuses' => [$verdicts[$header->ID]['status'], $verdicts[$line->ID]['status']],
+                'nightly_side' => [$mismatches[$header->ID] ?? null, $mismatches[$line->ID] ?? null],
+            ],
+        );
+    }
+
+    public function test_reversing_a_positive_shared_bill_clears_both_named_count_contracts_when_nothing_remains_paid(): void
+    {
+        [$header, $line, $bill] = $this->sharedCountBill();
+        $reportId = $this->record($header, 4000)->assertOk()->json('report_id');
+        $this->confirm($reportId);
+
+        // Seed the correctly settled initial flag so this reversal regression is independent of the confirm regression above.
+        $line->update(['Paid' => 1, 'PayDate' => '2026-10-23']);
+        $this->assertSame([1, 1], [(int) $header->fresh()->Paid, (int) $line->fresh()->Paid]);
+
+        $this->api('putJson', "/api/v1/payment-reports/{$reportId}/void", ['void_reason' => 'Synthetic reversal'])->assertOk();
+        $this->assertSame('voided', (string) PaymentReport::findOrFail($reportId)->status);
+        $this->assertSame('unpaid', (string) $bill->fresh()->Status);
+        $this->assertSame(2, $bill->payments()->count());
+        $this->assertSame(0, (int) $bill->payments()->sum('Amount'));
+        $mismatches = array_column((new PaidFlagInvoiceMismatch())->rows(), 'side', 'student_class_id');
+        $this->assertSame(
+            ['paid_flags' => [0, 0], 'nightly_side' => [null, null]],
+            [
+                'paid_flags' => [(int) $header->fresh()->Paid, (int) $line->fresh()->Paid],
+                'nightly_side' => [$mismatches[$header->ID] ?? null, $mismatches[$line->ID] ?? null],
+            ],
+        );
+    }
+
+    public function test_partial_shared_count_payment_does_not_allocate_to_the_line_or_start_a_second_bill(): void
+    {
+        [$header, $line, $bill] = $this->sharedCountBill();
+        $this->confirm($this->record($header, 2000)->assertOk()->json('report_id'));
+
+        $this->assertSame('partial', (string) $bill->fresh()->Status);
+        $this->assertSame([0, 0], [(int) $header->fresh()->Paid, (int) $line->fresh()->Paid]);
+        $lineStatus = app(BillingPayableResolver::class)->courseStatusesByStudentClassIds([$line->ID])[$line->ID];
+        $this->assertSame('review_required', $lineStatus['status']);
+        $this->assertSame(0, $lineStatus['applied']);
+        $this->record($line, 2000)->assertStatus(422)
+            ->assertJsonPath('code', 'course_on_shared_bill')->assertJsonPath('invoice_id', $bill->id);
+        $this->assertSame([1, 1, 1], [Invoice::count(), $bill->payments()->count(), PaymentReport::count()]);
+    }
+
+    public function test_direct_shared_count_payment_and_exception_reversal_update_both_course_marks(): void
+    {
+        [$header, $line, $bill] = $this->sharedCountBill();
+        $this->api('postJson', "/api/v1/invoices/{$bill->id}/payments", ['Amount' => 4000])->assertOk();
+        $this->assertSame([1, 1], [(int) $header->fresh()->Paid, (int) $line->fresh()->Paid]);
+        $evidence = app(BillingPayableResolver::class)->validPaymentEvidence([$line->ID], [], [1]);
+        $this->assertSame([$line->ID => true], $evidence['classes']);
+
+        $this->api('postJson', "/api/v1/invoices/{$bill->id}/exception-void", ['reason' => 'Synthetic reversal'])->assertOk();
+        $this->assertSame([0, 0], [(int) $header->fresh()->Paid, (int) $line->fresh()->Paid]);
+        $this->assertSame('void', (string) $bill->fresh()->Status);
+        $this->assertSame(2, $bill->payments()->count());
+        $this->assertSame(0, (int) $bill->payments()->sum('Amount'));
+        $this->assertSame(0, PaymentReport::count());
+    }
+
+    public function test_legacy_invoice_item_link_to_another_student_cannot_supply_paid_evidence(): void
+    {
+        [$header, $line, $bill] = $this->sharedCountBill();
+        $other = $this->course('2026-10-01', '2026-11-30', [], ['ScheduleMode' => 'count']);
+        $bill->items()->where('StudentClassID', $line->ID)->update(['StudentClassID' => $other->ID]);
+        $this->api('postJson', "/api/v1/invoices/{$bill->id}/payments", ['Amount' => 4000])->assertOk();
+
+        $this->assertSame([1, 0, 0], [(int) $header->fresh()->Paid, (int) $line->fresh()->Paid, (int) $other->fresh()->Paid]);
+        $resolver = app(BillingPayableResolver::class);
+        $this->assertSame('unbilled', $resolver->courseStatusesByStudentClassIds([$other->ID])[$other->ID]['status']);
+        $this->assertSame([], $resolver->validPaymentEvidence([$other->ID], [], [1])['classes']);
+    }
+
+    public function test_confirm_refuses_a_shared_bill_whose_student_changed_after_intake(): void
+    {
+        [$header, $line, $bill] = $this->sharedCountBill();
+        $reportId = $this->record($header, 4000)->assertOk()->json('report_id');
+        $other = $this->course('2026-10-01', '2026-11-30', []);
+        $bill->update(['StudentID' => $other->StudentID]);
+
+        $this->api('putJson', "/api/v1/payment-reports/{$reportId}/confirm")->assertStatus(409)
+            ->assertJsonPath('code', 'invoice_owner_changed');
+        $this->assertSame('pending', (string) PaymentReport::findOrFail($reportId)->status);
+        $this->assertSame([0, 0], [(int) $header->fresh()->Paid, (int) $line->fresh()->Paid]);
+        $this->assertSame(0, $bill->payments()->count());
+    }
+
+    public function test_a_refunded_line_is_not_marked_paid_when_an_old_shared_bill_is_settled(): void
+    {
+        [$header, $line, $bill] = $this->sharedCountBill();
+        $line->update(['closed_reason' => 'refunded']);
+        $this->confirm($this->record($header, 4000)->assertOk()->json('report_id'));
+
+        $this->assertSame('refunded', (string) $line->fresh()->closed_reason);
+        $this->assertSame([1, 0], [(int) $header->fresh()->Paid, (int) $line->fresh()->Paid]);
+        $this->assertSame([], app(BillingPayableResolver::class)->validPaymentEvidence([$line->ID], [], [1])['classes']);
+        $this->assertSame(1, $bill->payments()->count());
     }
 
     /** Codex P1 #2 on #4867: a multi-course bill headed by a monthly plan member keeps its stored total on confirm. */
@@ -275,6 +397,26 @@ class MonthlyCalendarMonthCollectionTest extends TestCase
         $link = $controller->generateLink(Request::create('/x', 'POST', ['student_class_id' => $sc->ID]), $tokens)->getData(true);
         $form = $controller->formData(Request::create('/x', 'GET', ['token' => $link['token']]), $tokens)->getData(true);
         $this->assertSame(['2026-10', '2026-10'], [$link['billing_period'], $form['billing_period']]);
+    }
+
+    /** @return array{StudentClass, StudentClass, Invoice} */
+    private function sharedCountBill(): array
+    {
+        $terms = ['ScheduleMode' => 'count', 'SessionCount' => 8, 'RemainingSessions' => 8, 'Charge' => 2000, 'Rate' => 250];
+        $header = $this->course('2026-10-01', '2026-11-30', [], $terms);
+        $line = $this->course('2026-10-01', '2026-11-30', [], $terms + ['StudentID' => $header->StudentID, 'SubjectID' => 2]);
+        $bill = Invoice::create([
+            'StudentID' => $header->StudentID,
+            'StudentClassID' => $header->ID,
+            'IssueDate' => '2026-10-23',
+            'TotalAmount' => 4000,
+            'PaidAmount' => 0,
+            'Status' => 'unpaid',
+        ]);
+        $bill->items()->create(['StudentClassID' => $header->ID, 'Description' => 'a', 'Amount' => 2000]);
+        $bill->items()->create(['StudentClassID' => $line->ID, 'Description' => 'b', 'Amount' => 2000]);
+
+        return [$header, $line, $bill];
     }
 
     private function course(string $start, string $end, array $lessons, array $overrides = []): StudentClass

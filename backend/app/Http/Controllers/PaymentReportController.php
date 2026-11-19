@@ -353,7 +353,13 @@ class PaymentReportController extends Controller
      * legacyFlagRefusal() proved `paid` rests on the legacy Paid flag alone: it skips just the "already paid" guards that
      * flag trips; every other guard, the bill cap and the ledger writes stay this one confirm path.
      */
-    public function confirm(Request $request, $id, bool $legacyFlagBackfill = false)
+    public function confirm(Request $request, $id)
+    {
+        return $this->confirmReport($request, $id);
+    }
+
+    /** The legacy backfill must pass the scope already locked by its outer transaction. */
+    private function confirmReport(Request $request, $id, bool $legacyFlagBackfill = false, ?array $courseLocks = null)
     {
         $found = PaymentReport::findOrFail($id);
         if ($denied = $this->studentCampusRefusal($request, (int) $found->getAttribute('StudentID'))) {
@@ -365,13 +371,18 @@ class PaymentReportController extends Controller
         // Routing id only — must not run inside the transaction (would start an RR
         // consistent-read snapshot before waiting on the course lock).
         $courseId = $this->resolveReportCourseId((int) $id);
+        $studentId = (int) $found->StudentID;
+        $courseLocks ??= $this->paymentCourseLockIds($courseId, $studentId);
 
-        return DB::transaction(function () use ($id, $courseId, $userId, $confirmationNote, $legacyFlagBackfill) {
+        return DB::transaction(function () use ($id, $courseId, $userId, $confirmationNote, $legacyFlagBackfill, $courseLocks, $studentId) {
             // Global lock order with BillingCorrection::applyCountCorrection and void:
             // StudentClass → payment_reports (never report-first). Serializes confirm retries
             // after a lost response so a second Payment cannot be created.
-            [$sc, $report] = $this->lockCourseThenReport((int) $id, $courseId);
+            [$sc, $report, $lockedCourses] = $this->lockCourseThenReport((int) $id, $courseId, $courseLocks);
 
+            if ((int) $report->StudentID !== $studentId || ($sc && (int) $sc->StudentID !== $studentId)) {
+                return response()->json(['message' => '回報與課程的學生不一致，請重新核對。沒有變更帳款。', 'code' => 'invoice_owner_changed'], 409);
+            }
             if ($report->status !== 'pending') {
                 return response()->json(['message' => '此回報已處理過'], 422);
             }
@@ -432,6 +443,10 @@ class PaymentReportController extends Controller
             if (! $invoice && $sc && $this->isSharedPackageObligation($package, $sc)) {
                 $invoice = $this->pickOpenPackageInvoice($package, $sc);
             }
+            if ($invoice && (int) $invoice->StudentID !== (int) $report->StudentID) {
+                return response()->json(['message' => '回報與帳單的學生不一致，請重新核對。沒有變更帳款。', 'code' => 'invoice_owner_changed'], 409);
+            }
+            $lineCourses = $invoice ? CollectionTarget::lockInvoiceLineCourses($invoice, $lockedCourses, $courseLocks) : collect();
 
             if ($invoice && $this->invoiceCoveredByPayments($invoice, $sc instanceof StudentClass ? $sc : null)) {
                 return $this->invoiceAlreadyCoveredResponse($invoice);
@@ -555,6 +570,7 @@ class PaymentReportController extends Controller
 
             // Course Paid and the shared package mark: one rule set, shared with the receipt move (#5113).
             CollectionTarget::settle($sc, $package, $status, $enteredOnlyPackageBill, $report->payment_date);
+            CollectionTarget::syncInvoiceLineCourses($invoice, $lineCourses, false);
 
             $report->update([
                 'status'       => 'confirmed',
@@ -808,9 +824,10 @@ class PaymentReportController extends Controller
             return $denied;
         }
         $lockIds = $this->legacyFlagCourseIds($routing);
+        $paymentCourseIds = $this->paymentCourseLockIds($courseId, (int) $routing->StudentID);
 
-        return DB::transaction(function () use ($request, $data, $courseId, $userId, $tokenHash, $lockIds, $invoiceId) {
-            [$course, $package, $standingReport] = $this->lockLegacyFlagCourses($courseId, $lockIds);
+        return DB::transaction(function () use ($request, $data, $courseId, $userId, $tokenHash, $lockIds, $invoiceId, $paymentCourseIds) {
+            [$course, $package, $standingReport] = $this->lockLegacyFlagCourses($courseId, $lockIds, $paymentCourseIds);
             if ($denied = $this->legacyFlagAccessRefusal($request, $course)) { // again on the locked row
                 return $denied;
             }
@@ -843,7 +860,7 @@ class PaymentReportController extends Controller
                 }
             }
             $report = $this->createPendingReport($course, $data, $picked?->id, $tokenHash);
-            $confirmed = $this->confirm($request, $report->id, true); // the backfill already holds the course lock
+            $confirmed = $this->confirmReport($request, $report->id, true, $paymentCourseIds);
             if (!$confirmed instanceof JsonResponse || $confirmed->getStatusCode() !== 200) {
                 throw new HttpResponseException($confirmed); // roll the pending report back with the refusal
             }
@@ -997,9 +1014,9 @@ class PaymentReportController extends Controller
      * @param int[] $ids legacyFlagCourseIds() of the routing read
      * @return array{0: ?StudentClass, 1: ?CoursePackage, 2: ?PaymentReport} course (null = missing), package, a standing report
      */
-    private function lockLegacyFlagCourses(int $courseId, array $ids): array
+    private function lockLegacyFlagCourses(int $courseId, array $ids, array $paymentCourseIds = []): array
     {
-        StudentClass::query()->whereIn('ID', $ids)->orderBy('ID')->lockForUpdate()->pluck('ID');
+        StudentClass::query()->whereIn('ID', array_unique([...$ids, ...$paymentCourseIds]))->orderBy('ID')->lockForUpdate()->pluck('ID');
         $course = StudentClass::query()->whereKey($courseId)->lockForUpdate()->first(); // a lone model, as the callers always used
         if (!$course) {
             return [null, null, null];
@@ -1366,17 +1383,29 @@ class PaymentReportController extends Controller
         return $courseId;
     }
 
+    /** @return list<int> The reported course and positive item courses on its candidate bills. */
+    private function paymentCourseLockIds(int $courseId, int $studentId): array
+    {
+        $course = StudentClass::query()->whereKey($courseId)->where('StudentID', $studentId)->first(['ID', 'StudentID', 'PackageID']);
+        $headers = $course ? $this->legacyFlagCourseIds($course) : [$courseId];
+        $bills = Invoice::query()->where('StudentID', $studentId)->whereIn('StudentClassID', $headers)
+            ->pluck('id')->map(fn ($id) => (int) $id)->all();
+
+        return array_values(array_unique([$courseId, ...CollectionTarget::invoiceLineCourseIds($bills)]));
+    }
+
     /**
      * Shared course-first confirm/void lock prefix — must stay aligned with
      * BillingCorrection::applyCountCorrection (course, then payment_reports).
      * $courseId must already be resolved outside the transaction; after both locks,
      * re-check report StudentClassID / presence (status checked by callers).
      *
-     * @return array{0: ?StudentClass, 1: PaymentReport}
+     * @param list<int> $courseLocks the routing scope computed before the transaction
+     * @return array{0: ?StudentClass, 1: PaymentReport, 2: \Illuminate\Database\Eloquent\Collection<int, StudentClass>}
      */
-    private function lockCourseThenReport(int $reportId, int $courseId): array
+    private function lockCourseThenReport(int $reportId, int $courseId, array $courseLocks): array
     {
-        $sc = StudentClass::query()->whereKey($courseId)->lockForUpdate()->first();
+        $courses = StudentClass::query()->whereIn('ID', $courseLocks)->orderBy('ID')->lockForUpdate()->get()->keyBy('ID');
         $report = PaymentReport::query()->whereKey($reportId)->lockForUpdate()->first();
         if (!$report instanceof PaymentReport) {
             abort(404);
@@ -1388,7 +1417,7 @@ class PaymentReportController extends Controller
             ], 409));
         }
 
-        return [$sc, $report];
+        return [$courses->get($courseId), $report, $courses];
     }
 
     /**
@@ -1756,11 +1785,12 @@ class PaymentReportController extends Controller
         // Routing id only — outside the write transaction so waiting on the course
         // lock cannot inherit a stale REPEATABLE-READ snapshot from a plain SELECT.
         $courseId = $this->resolveReportCourseId((int) $id);
+        $courseLocks = $this->paymentCourseLockIds($courseId, (int) $report->StudentID);
 
-        return DB::transaction(function () use ($id, $courseId, $userId, $data, $role, $campusIds) {
+        return DB::transaction(function () use ($id, $courseId, $userId, $data, $role, $campusIds, $courseLocks) {
             // Align with BillingCorrection (StudentClass → payment_reports).
             // A delayed request must not reuse its pre-transaction status.
-            [$sc, $report] = $this->lockCourseThenReport((int) $id, $courseId);
+            [$sc, $report, $lockedCourses] = $this->lockCourseThenReport((int) $id, $courseId, $courseLocks);
             if ($report->getAttribute('status') !== 'confirmed') {
                 return response()->json(['message' => '此收款已處理過，請重新整理'], 422);
             }
@@ -1785,6 +1815,7 @@ class PaymentReportController extends Controller
 
             $invoiceId = $report->getAttribute('InvoiceID');
             $invoice = null;
+            $lineCourses = collect();
             $alreadyReversed = false;
             $autoVoided = false;
             if ($invoiceId === null) {
@@ -1806,6 +1837,7 @@ class PaymentReportController extends Controller
                     || (int) $invoice->StudentID !== $reportStudentId) {
                     return $this->voidMismatchRefusal($invoice ? 'invoice_other_owner' : 'invoice_not_found', $report);
                 }
+                $lineCourses = CollectionTarget::lockInvoiceLineCourses($invoice, $lockedCourses, $courseLocks);
                 $payments = $invoice->payments()->lockForUpdate()->get();
                 // Current locked rows, as Invoice::netPaidSql; never a pre-wait snapshot.
                 $net = $payments->sum(fn ($p) => (int) $p->Amount > 0 && (string) $p->Method !== 'void' ? (int) $p->Amount : -abs((int) $p->Amount));
@@ -1872,6 +1904,9 @@ class PaymentReportController extends Controller
             // An auto-voided bill no longer backs the course, but another live bill may: then the resolver decides, as below.
             $ledgerBacked = $invoice && (!$autoVoided || Invoice::courseHasLiveBill((int) $sc->ID)) && (!$alreadyReversed || Invoice::courseHasLiveBill((int) $sc->ID));
             $scPaid = CollectionTarget::unsettle($sc, $package, $ledgerBacked); // shared with the receipt move (#5113)
+            if ($invoice) {
+                CollectionTarget::syncInvoiceLineCourses($invoice, $lineCourses, true);
+            }
 
             $report->update([
                 'status'      => 'voided',

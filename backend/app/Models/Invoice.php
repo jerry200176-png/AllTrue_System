@@ -3,6 +3,8 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Query\Builder;
+use Illuminate\Support\Facades\DB;
 
 /**
  * @property int $id
@@ -135,6 +137,25 @@ class Invoice extends Model
             ->when($openOnly, fn ($q) => $q->whereRaw('Invoice.TotalAmount > ' . self::netPaidSql()))->exists();
     }
 
+    /** Existing positive bills that carry a standalone count contract on an item, outside its own header. */
+    public static function standaloneCountLineBills(array $courseIds, ?array $campusIds = null): Builder
+    {
+        return DB::table('InvoiceItem as line')
+            ->join('Invoice', 'Invoice.id', '=', 'line.InvoiceID')
+            ->join('StudentClass as course', 'course.ID', '=', 'line.StudentClassID')
+            ->whereIn('course.ID', $courseIds)
+            ->whereColumn('Invoice.StudentID', 'course.StudentID')
+            ->where(fn ($q) => $q->whereNull('Invoice.StudentClassID')->orWhereColumn('Invoice.StudentClassID', '!=', 'course.ID'))
+            ->where(fn ($q) => $q->whereNull('Invoice.Status')->orWhere('Invoice.Status', '!=', 'void'))
+            ->where(fn ($q) => $q->whereNull('course.ScheduleMode')->orWhere('course.ScheduleMode', 'count'))
+            ->where(fn ($q) => $q->whereNull('course.PackageID')->orWhere('course.PackageID', 0))
+            ->where(fn ($q) => $q->whereNull('course.closed_reason')->orWhereNotIn('course.closed_reason', StudentClass::TERMINAL_MONEY_CLOSURES))
+            ->where('Invoice.TotalAmount', '>', 0)
+            ->where('line.Amount', '>', 0)
+            ->when($campusIds !== null, fn ($q) => $q->join('Student', 'Student.id', '=', 'course.StudentID')
+                ->whereIn('Student.CampusID', $campusIds));
+    }
+
     /** #4005: priced evidence beyond the course's own columns: a live priced amendment, or a positive live bill (line) naming the course ($openOnly: still owing). */
     public static function courseHasBillEvidence(StudentClass $course, bool $openOnly = false): bool
     {
@@ -173,7 +194,8 @@ class Invoice extends Model
      */
     public static function courseHasLiveBill(int $courseId): bool
     {
-        return self::query()->where('StudentClassID', $courseId)->where(fn ($q) => $q->whereNull('Status')->orWhere('Status', '!=', 'void'))->exists();
+        return self::query()->where('StudentClassID', $courseId)->notVoided()->exists()
+            || self::standaloneCountLineBills([$courseId])->exists();
     }
 
     /**
