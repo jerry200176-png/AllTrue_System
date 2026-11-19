@@ -86,6 +86,13 @@ class NotificationLineDispatcherTest extends TestCase
         $campus = Campus::factory()->create(['messaging_channel_token' => 'fake-token-abc']);
         $this->makeStaffWithLine($campus->id, 'Uf0e1d2c3b4a5968778695a4b3c2d1e0f');
 
+        // Diagnostic (TD-065): is the observer's listener on the dispatcher Eloquent fires through?
+        $dispatcher = Notification::getEventDispatcher();
+        fwrite(STDERR, sprintf("\nTD065 dispatcher=%s same_as_app=%s has_created=%s\n",
+            $dispatcher ? get_class($dispatcher) : 'null',
+            var_export($dispatcher === app('events'), true),
+            var_export($dispatcher?->hasListeners('eloquent.created: ' . Notification::class), true)));
+
         $this->makeHighNotification($campus->id);
 
         Http::assertSent(fn ($req) => str_contains($req->url(), 'api.line.me/v2/bot/message/push')
