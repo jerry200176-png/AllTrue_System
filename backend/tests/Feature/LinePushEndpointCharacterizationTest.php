@@ -8,7 +8,6 @@ use App\Models\ScheduleDiscrepancy;
 use App\Models\Student;
 use App\Models\StudentClass;
 use App\Models\StudentLineBinding;
-use App\Services\NotificationLineDispatcher;
 use App\Services\ScheduleDiscrepancyNotifier;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
@@ -57,45 +56,6 @@ class LinePushEndpointCharacterizationTest extends TestCase
         $req = Http::recorded()->first()[0];
 
         return [$req->url(), $req->header('Authorization')[0] ?? '', json_decode($req->body(), true)];
-    }
-
-    public function test_notification_dispatcher_wire_format(): void
-    {
-        Http::fake();
-        $campus = $this->campus('tok-disp');
-        $uid = DB::table('User')->insertGetId([
-            'LoginName' => 'd-' . uniqid() . '@t.com', 'Name' => 'S', 'PSW' => bcrypt('x'),
-            'type' => 'A', 'status' => 'active', 'LineID' => 'Ustaff',
-        ]);
-        DB::table('UserCampus')->insert(['UserID' => $uid, 'CampusID' => $campus->id, 'Approved' => 1]);
-        $n = \App\Models\Notification::create([
-            'CampusID' => $campus->id, 'Type' => 'x', 'Title' => '標題', 'Body' => '內文',
-            'Severity' => 'high', 'SourceKey' => 'k-' . uniqid(),
-        ]);
-
-        app(NotificationLineDispatcher::class)->dispatch($n);
-
-        [$url, $auth, $body] = $this->onlyRequest();
-        $this->assertSame(self::PUSH, $url);
-        $this->assertSame('Bearer tok-disp', $auth);
-        $this->assertSame(['to' => 'Ustaff', 'messages' => [['type' => 'text', 'text' => "[AllTrue] 標題\n內文"]]], $body);
-    }
-
-    public function test_dispatcher_swallows_transport_failure(): void
-    {
-        Http::fake(fn () => throw new \Illuminate\Http\Client\ConnectionException('boom'));
-        $campus = $this->campus();
-        $uid = DB::table('User')->insertGetId([
-            'LoginName' => 'd-' . uniqid() . '@t.com', 'Name' => 'S', 'PSW' => bcrypt('x'),
-            'type' => 'A', 'status' => 'active', 'LineID' => 'Ustaff',
-        ]);
-        DB::table('UserCampus')->insert(['UserID' => $uid, 'CampusID' => $campus->id, 'Approved' => 1]);
-        $n = \App\Models\Notification::create([
-            'CampusID' => $campus->id, 'Type' => 'x', 'Title' => 't', 'Severity' => 'high', 'SourceKey' => 'k-' . uniqid(),
-        ]);
-
-        app(NotificationLineDispatcher::class)->dispatch($n);
-        $this->addToAssertionCount(1); // no throw
     }
 
     private function discrepancy(int $branchId): ScheduleDiscrepancy

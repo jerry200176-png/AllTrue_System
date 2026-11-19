@@ -3,7 +3,6 @@
 namespace Tests\Feature;
 
 use App\Models\Notification;
-use App\Observers\NotificationObserver;
 use App\Services\SubstituteService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
@@ -77,11 +76,10 @@ class SubstituteNotificationConcurrencyTest extends TestCase
             Notification::where('SourceKey', $sourceKey)->delete();
             DB::disconnect($connectionName);
 
-            // The creating hook is process-global in Eloquent. Restore the
-            // application observer so this concurrency test cannot alter the
-            // event listeners seen by later feature tests.
+            // The creating hook is process-global in Eloquent. Flush it so
+            // this concurrency test cannot alter the event listeners seen by
+            // later feature tests (Notification has no application observer).
             Notification::flushEventListeners();
-            Notification::observe(NotificationObserver::class);
         }
     }
 }
