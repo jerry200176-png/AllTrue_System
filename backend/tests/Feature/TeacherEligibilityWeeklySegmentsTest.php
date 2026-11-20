@@ -95,6 +95,21 @@ class TeacherEligibilityWeeklySegmentsTest extends TestCase
         $this->assertSame(['2026-08-05'], array_keys($calendar[$contract->id])); // not the 3rd (taken over), not the 4th (moved on)
     }
 
+    public function test_calendar_keeps_a_substitute_row_moved_onto_a_slot_that_was_vacated_later(): void
+    {
+        $contract = $this->createTeacher();
+        $substitute = $this->createTeacher();
+        // The substitute row is older than the slot's own "moved away" marker (a reschedule moves the row in place, id unchanged),
+        // but a lesson is held on the slot: the substitute teaches it.
+        $session = $this->createAttendedSession($contract->id, 'one_on_one', '2026-08-10', '10:00', 120);
+        $anchor = $this->schedule($contract->id, '2026-08-03', '10:00', '12:00', ['student_course_id' => $session->StudentClassID, 'status' => 'rescheduled']);
+        $this->schedule($substitute->id, '2026-08-10', '10:00', '12:00', ['student_course_id' => $session->StudentClassID, 'original_schedule_id' => $anchor]);
+        $this->schedule($contract->id, '2026-08-10', '10:00', '12:00', ['student_course_id' => $session->StudentClassID, 'status' => 'rescheduled']);
+
+        $calendar = \App\Services\TeacherClassCalendar::load('2026-08-10', '2026-08-10', null, null, true);
+        $this->assertSame([$substitute->id], array_keys($calendar));
+    }
+
     public function test_director_sees_calendar_backed_weekly_segments(): void
     {
         $director = $this->createDirector();

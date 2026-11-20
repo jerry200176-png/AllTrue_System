@@ -11,8 +11,10 @@ use Illuminate\Support\Facades\DB;
  * - ClassSession（G-010 來源真相）+ StudentClass.TeacherID，排除取消／請假，
  *   也排除已由別的老師代課的堂次（合約老師當天不用到）。
  * - schedules 的 scheduled 例外 row（代課／加課），用 StaleScheduleExceptionFilter 剔除殘影。
- * - 同一堂（課程＋日期＋起始時間）只認最新的一筆 schedules row：之後又被改期（較新的 rescheduled）或被較新的
- *   代課 row 取代的舊 scheduled row 不算，否則同一堂會算給兩位老師、或算在已經改走的日期（Founder 2026-11-20）。
+ * - 同一堂（課程＋日期＋起始時間）只認最新的一筆 scheduled row（舊一代的代課 row 不算，否則同一堂算給兩位老師）。
+ * - 該時段另有較新的 rescheduled row、而且那個時段沒有有效的 ClassSession：這筆 scheduled 是改期後留下的殘影，不算
+ *   （有 ClassSession 時不能這樣判：改期會把代課 row 原地搬到新時段、id 不變，可能比該時段的舊 rescheduled 小）。
+ *   Founder 2026-11-20。
  */
 class TeacherClassCalendar
 {
@@ -35,15 +37,35 @@ class TeacherClassCalendar
             $scheduleQuery->whereIn('branch_id', $campusIds);
         }
         $allRows = $scheduleQuery->get();
-        $newest = [];
+        $newest = ['scheduled' => [], 'rescheduled' => []]; // status => slot key => largest id
         foreach ($allRows as $row) {
-            if ((int) $row->student_course_id > 0) {
+            $row->status = strtolower(trim((string) $row->status));
+            if ((int) $row->student_course_id > 0 && isset($newest[$row->status])) {
                 $key = self::key($row->student_course_id, $row->schedule_date, $row->start_time);
-                $newest[$key] = max($newest[$key] ?? 0, (int) $row->id);
+                $newest[$row->status][$key] = max($newest[$row->status][$key] ?? 0, (int) $row->id);
             }
         }
-        $scheduleRows = $allRows->filter(fn ($row) => $row->status === 'scheduled' && ((int) $row->student_course_id <= 0
-            || (int) $row->id === $newest[self::key($row->student_course_id, $row->schedule_date, $row->start_time)]))->values();
+        // Slots whose live row is older than a rescheduled row on the same slot: a leftover only if no lesson is held there.
+        $movedOn = array_filter($newest['scheduled'], fn ($id, $key) => ($newest['rescheduled'][$key] ?? 0) > $id, ARRAY_FILTER_USE_BOTH);
+        $held = [];
+        if ($movedOn !== []) {
+            $sessions = DB::table('ClassSession')
+                ->whereIn('StudentClassID', array_values(array_unique(array_map('intval', array_keys($movedOn)))))
+                ->whereBetween('SessionDate', [$from, $to])
+                ->whereNotIn('Status', ['cancelled', 'leave', 'leave_adjusted', 'excused', 'voided'])
+                ->get(['StudentClassID', 'SessionDate', 'StartTime']);
+            foreach ($sessions as $session) {
+                $held[self::key($session->StudentClassID, $session->SessionDate, $session->StartTime)] = true;
+            }
+        }
+        $scheduleRows = $allRows->filter(function ($row) use ($newest, $movedOn, $held) {
+            if ($row->status !== 'scheduled' || (int) $row->student_course_id <= 0) {
+                return $row->status === 'scheduled';
+            }
+            $key = self::key($row->student_course_id, $row->schedule_date, $row->start_time);
+
+            return (int) $row->id === $newest['scheduled'][$key] && (! isset($movedOn[$key]) || isset($held[$key]));
+        })->values();
 
         // 代課 row：course|日期|HH:MM → 代課老師 id
         $substitutedBy = [];
