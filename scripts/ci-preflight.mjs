@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 /**
- * Canonical fast CI preflight. `npm run ci:preflight` [--json] [--self-test]
+ * Canonical fast CI preflight. `npm run ci:preflight` [--json] [--self-test] [--routes]
+ * --routes: only the route-registration check (lefthook pre-push, when backend/routes changed).
  */
 import { execFileSync, spawnSync } from 'node:child_process';
 import fs from 'node:fs';
@@ -137,8 +138,44 @@ function checkSecrets(errors) {
   }
 }
 
+// A route change must carry its registrations in the same push (2026-11-20: two CI rounds lost on #5550).
+// Pure: diff = `git diff -U0` of backend/routes, changed = changed paths, allowlist = triage_tokens.php text.
+function routeRegistrationGaps(diff, changed, allowlist) {
+  const gaps = [];
+  const lines = diff.split('\n').filter((l) => /^[+-](?![+-])/.test(l));
+  if (lines.some((l) => /^[+-]\s*Route::\w+\(/.test(l)) && !changed.includes('docs/REF_API_ROUTES.md')) gaps.push('docs/REF_API_ROUTES.md');
+  for (const l of lines.filter((x) => x.startsWith('+'))) {
+    const name = l.match(/->name\('(triage\.[^']+)'\)/)?.[1];
+    if (name && !allowlist.includes(`'${name}'`)) gaps.push(name);
+  }
+  return gaps;
+}
+
+function checkRouteRegistration(errors) {
+  let diff = ''; let changed = [];
+  try {
+    const range = `${resolveBase()}...HEAD`;
+    diff = git(['diff', '-U0', range, '--', 'backend/routes']);
+    changed = git(['diff', '--name-only', range]).split('\n');
+  } catch { return; }
+  for (const gap of routeRegistrationGaps(diff, changed, read('backend/config/triage_tokens.php'))) {
+    const doc = gap.endsWith('.md');
+    errors.push(formatGovError({
+      code: GOV_CODES.GENERATED,
+      message: doc ? 'A route was added, removed or changed but docs/REF_API_ROUTES.md was not updated' : `Triage route ${gap} is not in allowed_routes (every token gets 403)`,
+      actual: gap, policy: doc ? 'scripts/generate-ref-api-routes.sh --check (PHPUnit job)' : 'backend/config/triage_tokens.php',
+      fix: doc ? 'bash scripts/generate-ref-api-routes.sh (needs backend/vendor), or add/remove the row by hand in URI order; CI verifies it'
+        : `Add '${gap}' to allowed_routes in backend/config/triage_tokens.php`,
+    }));
+  }
+}
+
 async function main() {
   if (selfTest) {
+    const added = "+    Route::get('x', [C::class, 'x'])->name('triage.x');";
+    if (routeRegistrationGaps(added, [], "'triage.y'").join() !== 'docs/REF_API_ROUTES.md,triage.x') throw new Error('route gaps not detected');
+    if (routeRegistrationGaps(added, ['docs/REF_API_ROUTES.md'], "'triage.x',").length) throw new Error('registered route flagged');
+    if (routeRegistrationGaps('+    // Route::get in a comment', [], '').length) throw new Error('comment flagged as a route');
     if (classifyStepFailure({ step: 'Branch naming', logSnippet: 'Invalid branch name' }).primary !== 'BRANCH_NAMING_POLICY') throw new Error('taxonomy');
     if (classifySameShaRerun({ earlierConclusion: 'failure', laterConclusion: 'success', headShaSame: true }).kind !== 'flake') throw new Error('flake');
     if (!validateBranchName('sec/x').ok || validateBranchName('agent/x').ok) throw new Error('branch');
@@ -150,6 +187,12 @@ async function main() {
   }
   const errors = [];
   const warnings = [];
+  if (process.argv.includes('--routes')) {
+    checkRouteRegistration(errors);
+    for (const e of errors) console.log(`FAIL  ${e.code}: ${e.message}\n      fix: ${e.fix}`);
+    process.exit(errors.length ? 1 : 0);
+  }
+  checkRouteRegistration(errors);
   checkBranch(errors);
   checkGenerated(errors);
   checkWorkflowYaml(errors);
