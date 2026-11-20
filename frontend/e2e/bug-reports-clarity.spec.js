@@ -73,6 +73,32 @@ async function expectNoOverflowAndReachableControls(page) {
 }
 
 test.describe('Bug reports clarity browser verification', () => {
+  test('staff open the referenced course without following external report URLs', async ({ page, baseURL }) => {
+    const mock = { ...detail, client_info: '' };
+    await installMock(page, mock);
+    await page.setViewportSize({ width: 390, height: 844 });
+    const parameters = '?app_page=course-mgmt&branch_id=1&student_id=99&course_id=42';
+    const app = new URL('/bug-reports-pilot-mount.html', String(baseURL));
+    const reference = app.href + parameters;
+    mock.client_info = JSON.stringify({ relatedReference: reference + '&discard=1#unused 共用方案編號 81' });
+    await page.goto('/bug-reports-pilot-mount.html?mode=admin');
+    await page.locator('.bug-item').first().click();
+    await expect(page.getByRole('link', { name: '開啟課程' })).toHaveAttribute('href', reference);
+    const contextCard = page.locator('.triage-context-card');
+    await expect.poll(() => contextCard.evaluate(card => card.scrollWidth <= card.clientWidth + 1)).toBe(true);
+
+    await page.goto('/bug-reports-pilot-mount.html?mode=normal');
+    await page.locator('.bug-item').first().click();
+    await expect(page.locator('.detail-description')).toBeVisible();
+    await expect(page.getByRole('link', { name: '開啟課程' })).toHaveCount(0);
+
+    mock.client_info = JSON.stringify({ relatedReference: 'https://external.invalid/' + parameters });
+    await page.goto('/bug-reports-pilot-mount.html?mode=admin');
+    await page.locator('.bug-item').first().click();
+    await expect(page.locator('.triage-context-card')).toContainText('https://external.invalid/');
+    await expect(page.getByRole('link', { name: '開啟課程' })).toHaveCount(0);
+  });
+
   test('keeps the phone feedback dialog actions above persistent bottom navigation', async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
     await page.goto('/bug-reports-pilot-mount.html?mode=launcher');

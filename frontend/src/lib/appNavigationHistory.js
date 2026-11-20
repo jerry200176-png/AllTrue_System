@@ -33,6 +33,18 @@ export function buildCourseFocusUrl(base, { branchId, studentId, courseId } = {}
   } catch { return null; }
 }
 
+/** Only turn a referenced course on this app into a link. Rebuild it from the routing IDs. */
+export function reportCourseFocusUrl(base, reference) {
+  try {
+    const target = new URL(String(reference ?? '').trim().split(/\s+/, 1)[0]);
+    if (target.origin !== new URL(base).origin) return null;
+    const focus = parseCourseFocusSearch(target.search);
+    return focus ? buildCourseFocusUrl(base, focus) : null;
+  } catch {
+    return null;
+  }
+}
+
 function asPageSet(allowedPages) {
   return allowedPages instanceof Set ? allowedPages : new Set(allowedPages || []);
 }

@@ -10,5 +10,7 @@ updates:
     items:
       - category: improved
         text: 表單會帶入方案與課程編號。補上情況並送出，總部就能核對整個方案。
+      - category: improved
+        text: 帳務列的「更多操作」可選「回報這筆帳務」，表單會帶入可直接開啟的課程連結。
     source_refs:
       - "changelog:2026-11-20:package-close-support-entry"

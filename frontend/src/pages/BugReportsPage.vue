@@ -413,7 +413,11 @@
             <strong>回報補充（僅處理人員可見）</strong>
             <div v-if="triageContext.feedbackType"><b>回報類型：</b>{{ triageContext.feedbackType }}</div>
             <div v-if="triageContext.occurrenceAt"><b>發生時間：</b>{{ triageContext.occurrenceAt }}<span v-if="triageContext.timeZone">（{{ triageContext.timeZone }}）</span></div>
-            <div v-if="triageContext.relatedReference"><b>相關資料：</b>{{ triageContext.relatedReference }}</div>
+            <div v-if="triageContext.relatedReference">
+              <b>相關資料：</b>
+              <a v-if="relatedCourseUrl" :href="relatedCourseUrl" target="_blank" rel="noopener noreferrer">開啟課程</a>
+              {{ triageContext.relatedReference }}
+            </div>
             <div v-if="triageContext.buildSha"><b>版本：</b>{{ triageContext.buildSha.slice(0, 10) }}</div>
             <div v-if="triageContext.recentApiFailures"><b>最近失敗請求：</b>{{ triageContext.recentApiFailures.join('；') }}</div>
             <div v-if="triageContext.recentClicks"><b>最近按過：</b>{{ triageContext.recentClicks.join(' → ') }}</div>
@@ -543,6 +547,7 @@ import {
 } from '../lib/bugReportsApi';
 import { buildResolveReplyTemplate, resolveOutcomeLabels, shouldPrefillResolveReply } from '../lib/bugResolveReply';
 import { bugListDisplay, parseBugReportClientInfo, PRODUCT_DISPOSITION_OPTIONS, dispositionLabel, productLoopPhaseLabel, statusLogDisplayNote } from '../lib/bugReportContext';
+import { reportCourseFocusUrl } from '../lib/appNavigationHistory.js';
 import { getNavigationGroups, getTodoPages, getToolbarItems } from '../lib/navigationRegistry';
 import { getParentFeedbackList, getParentFeedbackUnreadCount, markParentFeedbackRead } from '../api';
 
@@ -736,6 +741,7 @@ const resolutionNote = computed(() => {
 });
 
 const triageContext = computed(() => parseBugReportClientInfo(detail.value?.client_info));
+const relatedCourseUrl = computed(() => reportCourseFocusUrl(window.location.href, triageContext.value?.relatedReference));
 const productLoop = computed(() => detail.value?.product_loop || null);
 // GitHub #3750: choosing 已解決 pre-fills a public reply that names both reporter outcomes.
 // The phrases come from the running backend (detail.resolve_reply_outcomes), never a local copy.
@@ -1472,9 +1478,11 @@ function formatDate(iso) {
 .triage-context-card {
   margin: 12px 0; padding: 10px 12px; border: 1px solid var(--border);
   border-radius: 8px; background: var(--ds-canvas-soft); font-size: 13px; line-height: 1.6;
+  overflow-wrap: anywhere;
 }
 .triage-context-card > strong { display: block; margin-bottom: 4px; }
 .triage-context-card b { font-weight: 600; }
+.triage-context-card a { text-decoration: underline; }
 .product-loop-card {
   margin: 12px 0; padding: 10px 12px; border: 1px solid var(--border);
   border-radius: 8px; background: var(--ds-canvas); font-size: 13px; line-height: 1.6;

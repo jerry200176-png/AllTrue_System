@@ -728,6 +728,7 @@ import BillQuickView from '../components/tuition/BillQuickView.vue';
 import BillingGuide from '../components/tuition/BillingGuide.vue';
 import { guideQueue } from '../lib/billingGuide.js';
 import { billMenuGroups, billRows } from '../lib/billRows.js';
+import { buildCourseFocusUrl } from '../lib/appNavigationHistory.js';
 import { buildStudentsCommercialNav } from '../lib/authoritativeMutationRoutes.js';
 import PaymentSlipModal from '../components/PaymentSlipModal.vue';
 import RefundDialog from '../components/tuition/RefundDialog.vue';
@@ -1137,9 +1138,25 @@ function onBillMenu(b, id) {
   if (id === 'student') openBillLedger(b, null);
   else if (id === 'reject') { if (b.class_id == null) openBillLedger(b, null); else openQuick(b, true); }
   else if (id === 'sessions') openSessionDetail(b.src);
+  else if (id === 'report-bill') openBillReport(b);
   else if (id === 'slip') openBillSlip(b);
   else if (id === 'refund') refundCourseId.value = b.class_id;
   else onLedgerRowAction({ kind: id, courseId: b.class_id });
+}
+
+function openBillReport(bill) {
+  if (!canWaive.value) return;
+  const courseLink = buildCourseFocusUrl(window.location.href, {
+    branchId: bill.src.campus_id ?? props.branchId,
+    studentId: bill.student_id,
+    courseId: bill.class_id,
+  });
+  if (!courseLink) return;
+  const packageId = Number(bill.package_id);
+  const relatedReference = Number.isSafeInteger(packageId) && packageId > 0
+    ? `${courseLink} 共用方案編號 ${packageId}`
+    : courseLink;
+  window.dispatchEvent(new CustomEvent('alltrue-open-bug-report', { detail: { relatedReference } }));
 }
 
 async function submitBatchReport() {

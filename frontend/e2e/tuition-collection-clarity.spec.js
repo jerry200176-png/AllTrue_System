@@ -527,6 +527,22 @@ for (const width of [375, 1280]) {
     await page.route('**/api/v1/accounting/contracts/*/sessions', route => route.fulfill({ json: { sessions: [] } }));
     await page.goto('/tuition-collection-pilot-mount.html?with-report-form');
     await page.getByTestId('bill-search').fill('合成結案學生');
+    const report = page.getByRole('dialog', { name: '意見與建議' });
+    for (const id of [42, 44]) {
+      const bill = page.getByTestId(`bill-row-c${id}`);
+      await bill.getByRole('button', { name: /更多操作/ }).click();
+      await page.getByRole('menuitem', { name: '回報這筆帳務' }).click();
+      const reference = await report.getByLabel('相關資料').inputValue();
+      const [url, ...context] = reference.split(' ');
+      expect(Object.fromEntries(new URL(url).searchParams)).toEqual({
+        app_page: 'course-mgmt', branch_id: '1', student_id: '99', course_id: String(id),
+      });
+      expect(context.join(' ')).toBe(id === 42 ? '共用方案編號 81' : '');
+      await expect(report.getByRole('button', { name: '送出意見' })).toBeDisabled();
+      page.once('dialog', dialog => dialog.accept());
+      await report.getByRole('button', { name: '關閉回報視窗' }).click();
+      await expect(report).toBeHidden();
+    }
     await page.getByTestId('bill-documents-c42').click();
     const card = page.getByTestId('contract-card-42');
     const reason = card.getByTestId('contract-package-close');
@@ -546,7 +562,6 @@ for (const width of [375, 1280]) {
     const shot = info.outputPath(`package-close-${width}.png`);
     await reason.locator('..').screenshot({ path: shot }); await info.attach('package-close-explanation', { path: shot, contentType: 'image/png' });
     await support.click();
-    const report = page.getByRole('dialog', { name: '意見與建議' });
     await expect(report.getByLabel('相關資料')).toHaveValue('方案ID 81 / 課程ID 42');
     await expect(report.getByLabel('請告訴我們發生了什麼')).toHaveValue(/請總部一併核對/);
     const formShot = info.outputPath(`package-close-form-${width}.png`);
