@@ -1324,7 +1324,6 @@
       :time-options="TIME_OPTIONS_30"
       :today-ymd="todayYmd"
       :makeup-loading="makeupLoading"
-      :compute-end-time="computeEndTime"
       :teachers="teachers"
       :feature-substitute-v2="featureSubstituteV2"
       :lesson-picker="lessonPickerView"
@@ -4884,8 +4883,6 @@ const {
 } = useSessionEditFlow({
   supabase,
   branchId: computed(() => props.branchId),
-  computeEndTime,
-  normalizeTo30Min,
   dayOfWeekFromDate,
   getSessionDisplayRow,
   getSessionRowsForDate,

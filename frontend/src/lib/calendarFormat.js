@@ -58,13 +58,24 @@ export const computeEndTime = (startTime, durationHours) => {
   return `${String(endH).padStart(2, '0')}:${String(endMin).padStart(2, '0')}`;
 };
 
+function clockMinutes(value) {
+  const clock = /^(\d{1,2}):([0-5]\d)(?::[0-5]\d)?$/.exec(String(value ?? '').trim());
+  if (!clock || Number(clock[1]) >= 24) return null;
+  return Number(clock[1]) * 60 + Number(clock[2]);
+}
+
 export function durationHoursBetween(startTime, endTime) {
-  const toMinutes = (value) => {
-    const clock = /^(\d{1,2}):([0-5]\d)(?::[0-5]\d)?$/.exec(String(value ?? '').trim());
-    if (!clock || Number(clock[1]) >= 24) return null;
-    return Number(clock[1]) * 60 + Number(clock[2]);
-  };
-  const start = toMinutes(startTime);
-  const end = toMinutes(endTime);
+  const start = clockMinutes(startTime);
+  const end = clockMinutes(endTime);
   return start !== null && end !== null && end > start ? (end - start) / 60 : null;
+}
+
+export function lessonRescheduleSlot(startTime, durationHours) {
+  const start = clockMinutes(startTime);
+  const duration = Math.round(Number(durationHours) * 60);
+  if (start === null || !Number.isFinite(duration) || duration <= 0 || start + duration >= 24 * 60) {
+    return null;
+  }
+  const format = (minutes) => `${String(Math.floor(minutes / 60)).padStart(2, '0')}:${String(minutes % 60).padStart(2, '0')}`;
+  return { start: format(start), end: format(start + duration) };
 }

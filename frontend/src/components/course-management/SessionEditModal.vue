@@ -84,20 +84,21 @@
         <h4 class="se-section-title">調課 — 選擇新時段</h4>
         <div class="se-reschedule-grid">
           <div class="form-group">
-            <label>新日期</label>
-            <input v-model="form.new_date" type="date" />
+            <label for="session-edit-reschedule-date">新日期</label>
+            <input id="session-edit-reschedule-date" v-model="form.new_date" type="date" />
           </div>
           <div class="form-group">
-            <label>新開始時間</label>
-            <select v-model="form.new_start">
-              <option v-for="t in timeOptions" :key="t" :value="t">{{ t }}</option>
+            <label for="session-edit-reschedule-start">新開始時間</label>
+            <select id="session-edit-reschedule-start" v-model="form.new_start">
+              <option v-for="t in rescheduleStartOptions" :key="t" :value="t">{{ t }}</option>
             </select>
           </div>
           <div class="form-group">
             <label>預計新結束</label>
-            <p class="computed-end-time">{{ computedEndTime || '—' }}</p>
+            <p class="computed-end-time">{{ rescheduleSlot?.end || '—' }}</p>
           </div>
         </div>
+        <p v-if="form.new_start && !rescheduleSlot" class="se-action-hint" role="status">請選擇當天能上完整堂課的開始時間。</p>
         <div style="margin: 8px 0;">
           <button class="small ghost btn-makeup-query" @click="$emit('fetch-makeup')" :disabled="makeupLoading">
             {{ makeupLoading ? '查詢中…' : makeupQueryLabel }}
@@ -105,7 +106,7 @@
         </div>
         <div class="actions">
           <button class="ghost" @click="$emit('set-mode', 'menu')">返回</button>
-          <AtSubmitButton shape="rect" :pending="submitting" :disabled="!form.new_date" pending-text="調課中…" @click="$emit('do-reschedule')">確認調課</AtSubmitButton>
+          <AtSubmitButton shape="rect" :pending="submitting" :disabled="!form.new_date || !rescheduleSlot" pending-text="調課中…" @click="$emit('do-reschedule')">確認調課</AtSubmitButton>
         </div>
       </div>
 
@@ -187,6 +188,7 @@ import { computed } from 'vue';
 import LessonPickerSelect from './LessonPickerSelect.vue';
 import { askConfirm } from '../../composables/useConfirmDialog';
 import { getSubjectLabel } from '../../lib/constants';
+import { lessonRescheduleSlot } from '../../lib/calendarFormat';
 import { MAKEUP_SLOT_QUERY_LABEL, scheduleBlockerLabel } from '../../lib/scheduleDisplay';
 import { SESSION_STATUS_LABELS } from '../../lib/sessionStatus';
 
@@ -209,7 +211,6 @@ const props = defineProps({
   timeOptions: Array,
   todayYmd: String,
   makeupLoading: Boolean,
-  computeEndTime: Function,
   teachers: { type: Array, default: () => [] },
   // PRD 9c058f19：啟用代課 V2 卡片式 Modal（由父層處理 open-substitute-v2 事件）
   featureSubstituteV2: { type: Boolean, default: false },
@@ -232,7 +233,12 @@ const canTransition = (target) => {
   }
   return allowed.includes(target);
 };
-const computedEndTime = computed(() => props.computeEndTime?.(props.form?.new_start, props.form?.duration_hours) || '');
+const rescheduleSlot = computed(() => lessonRescheduleSlot(props.form?.new_start, props.form?.duration_hours));
+const rescheduleStartOptions = computed(() => {
+  const options = props.timeOptions ?? [];
+  const original = props.form?.start_time;
+  return original && !options.includes(original) ? [original, ...options] : options;
+});
 
 function minutesOf(hhmm) {
   if (!hhmm || typeof hhmm !== 'string') return null;

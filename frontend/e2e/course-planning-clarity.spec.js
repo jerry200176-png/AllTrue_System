@@ -64,7 +64,7 @@ test('moving a one-hour lesson keeps its own duration on a two-hour contract', a
   const origin = new URL(baseURL).origin;
   expect(new URL(origin).hostname).toBe('127.0.0.1');
   const activeCourse = { ...course, status: 'active', Stop: 0, closed_reason: null, is_active_course: true };
-  const lesson = { ...sessions[0], start_time: '17:00', end_time: '18:00', status: 'scheduled' };
+  const lesson = { ...sessions[0], start_time: '17:15', end_time: '18:15', status: 'scheduled' };
   await page.clock.install({ time: new Date('2026-08-03T09:00:00+08:00') });
   await context.route((url) => url.origin !== origin, (route) => route.abort('blockedbyclient'));
   await installLocalClassSessionReads(context, origin);
@@ -94,11 +94,16 @@ test('moving a one-hour lesson keeps its own duration on a two-hour contract', a
   await expect(manager).toBeVisible();
   await manager.getByRole('tab', { name: '堂次', exact: true }).click();
   await manager.getByTestId('course-manager-view-list').click();
-  await manager.getByRole('button', { name: /調課 08\/05.*17:00–18:00/ }).click();
+  await manager.getByRole('button', { name: /調課 08\/05.*17:15–18:15/ }).click();
   const editor = page.locator('.session-edit-modal');
   await expect(editor.getByRole('heading', { name: /調課.*選擇新時段/ })).toBeVisible();
-  await expect(editor.locator('.computed-end-time')).toHaveText('18:00');
-  await editor.locator('select').last().selectOption('19:00');
+  const newStart = editor.getByLabel('新開始時間');
+  await expect(newStart).toHaveValue('17:15');
+  await expect(editor.locator('.computed-end-time')).toHaveText('18:15');
+  await editor.getByLabel('新日期').fill('2026-08-06');
+  await expect(newStart).toHaveValue('17:15');
+  await expect(editor.locator('.computed-end-time')).toHaveText('18:15');
+  await newStart.selectOption('19:00');
   await expect(editor.locator('.computed-end-time')).toHaveText('20:00');
 });
 

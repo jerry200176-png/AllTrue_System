@@ -86,9 +86,17 @@ class ClassSessionChargeTest extends TestCase
     }
 
     #[DataProvider('paidHourlyRescheduleTimes')]
-    public function test_paid_hourly_reschedule_preserves_the_ledger_on_retry(string $endTime): void
+    public function test_paid_hourly_reschedule_preserves_the_ledger_on_retry(
+        string $startTime,
+        string $originalEnd,
+        string $endTime,
+        ?int $sessionCharge,
+    ): void
     {
         [$token, $courseId, $session] = $this->setupCourseWithSession(750, 120, 'hour');
+        $session->forceFill([
+            'StartTime' => $startTime, 'EndTime' => $originalEnd, 'session_charge' => $sessionCharge,
+        ])->save();
         $course = StudentClass::findOrFail($courseId);
         $oldDate = substr((string) $session->SessionDate, 0, 10);
         $newDate = Carbon::parse($oldDate)->addDay()->toDateString();
@@ -100,9 +108,9 @@ class ClassSessionChargeTest extends TestCase
             'student_class_id' => $courseId,
             'ensure_schedule_exception' => true,
             'old_date' => $oldDate,
-            'old_start_time' => '16:00',
+            'old_start_time' => $startTime,
             'new_date' => $newDate,
-            'start_time' => '16:00',
+            'start_time' => $startTime,
             'end_time' => $endTime,
         ];
         $endpoint = '/api/v1/learning-records/reschedule-session';
@@ -116,6 +124,7 @@ class ClassSessionChargeTest extends TestCase
 
         $session->refresh();
         $this->assertSame($newDate, substr((string) $session->SessionDate, 0, 10));
+        $this->assertSame($startTime, substr((string) $session->StartTime, 0, 5));
         $this->assertSame($endTime, substr((string) $session->EndTime, 0, 5));
         $this->assertSame(2, DB::table('schedules')->where('student_course_id', $courseId)->count());
         $this->assertSame([$invoiceBefore], Invoice::where('StudentClassID', $courseId)->get()
@@ -123,16 +132,18 @@ class ClassSessionChargeTest extends TestCase
         $this->assertSame([$paymentBefore], Payment::where('InvoiceID', $invoice->id)->get()
             ->map(fn (Payment $row) => $row->getRawOriginal())->all());
 
-        if ($endTime === '18:00') {
+        if ($endTime === $originalEnd) {
             $this->assertSame($charge, (int) $course->fresh()->Charge);
+            $this->assertSame($sessionCharge, $session->session_charge);
         }
     }
 
     public static function paidHourlyRescheduleTimes(): array
     {
         return [
-            'same two-hour duration' => ['18:00'],
-            'shortened to one hour' => ['17:00'],
+            'same two-hour duration' => ['16:00', '18:00', '18:00', null],
+            'shortened to one hour' => ['16:00', '18:00', '17:00', null],
+            'date-only move for an already shortened quarter-hour slot' => ['16:15', '17:15', '17:15', 750],
         ];
     }
 
