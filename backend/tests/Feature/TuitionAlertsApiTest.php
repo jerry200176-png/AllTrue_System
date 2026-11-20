@@ -1136,6 +1136,86 @@ class TuitionAlertsApiTest extends TestCase
         $this->assertFalse($newRow['has_newer_course']);
     }
 
+    /** #5494: existing metadata update for an already settled package, not a member close operation. */
+    public function test_inapp573_retiring_an_already_settled_package_removes_only_its_renewal_alert(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-11-21 12:00:00', 'Asia/Taipei'));
+        $token = $this->createDirectorToken([1], 'inapp573-exact-shape@example.com');
+        $student = Student::create([
+            'name' => 'Synthetic settled package', 'CampusID' => 1, 'ClassID' => 1,
+            'enable' => 1, 'MDT' => now(), 'Notify_Token' => '',
+        ]);
+        $package = CoursePackage::create([
+            'student_id' => $student->id, 'campus_id' => 1, 'name' => 'Synthetic exhausted package',
+            'total_sessions' => 3, 'remaining_sessions' => 0, 'used_sessions' => 3,
+            'rate' => 1000, 'rate_unit' => 'session', 'class_type' => 'one_on_one',
+            'billing_mode' => CoursePackage::BILLING_MODE_SESSION,
+            'paid' => true, 'stop' => false, 'enabled' => true,
+        ]);
+        $member = $this->createCountModeClass($student->id, [
+            'Paid' => 1, 'Charge' => 0, 'SessionCount' => 3, 'RemainingSessions' => 0, 'UsedSessions' => 3,
+            'PackageID' => $package->id, 'PackageTotalSessions' => 3, 'PackageName' => $package->name,
+            'Stop' => 1, 'closed_reason' => 'settled',
+        ]);
+        foreach (['2026-11-15', '2026-11-16', '2026-11-17', '2026-11-24', '2026-11-25', '2026-11-26'] as $index => $date) {
+            \Illuminate\Support\Facades\DB::table('ClassSession')->insert([
+                'StudentClassID' => $member->ID, 'SessionDate' => $date,
+                'StartTime' => '16:00', 'EndTime' => '18:00',
+                'Status' => $index < 3 ? 'attended' : 'cancelled',
+            ]);
+        }
+        $invoice = Invoice::create([
+            'StudentID' => $student->id, 'StudentClassID' => $member->ID, 'IssueDate' => '2026-11-15',
+            'TotalAmount' => 3000, 'PaidAmount' => 3000, 'Status' => 'paid',
+        ]);
+        $payment = Payment::create([
+            'InvoiceID' => $invoice->id, 'Amount' => 3000, 'PaidAt' => '2026-11-16', 'Method' => 'cash',
+        ]);
+        PaymentReport::create([
+            'StudentClassID' => $member->ID, 'StudentID' => $student->id, 'InvoiceID' => $invoice->id,
+            'reported_amount' => 3000, 'payment_date' => '2026-11-16', 'status' => 'confirmed',
+            'payment_id' => $payment->id, 'reported_by_name' => $student->name, 'payment_method' => 'cash',
+            'report_token_hash' => hash('sha256', 'synthetic-settled-package'),
+            'token_expires_at' => now()->addDay(),
+        ]);
+
+        $controlStudent = Student::create([
+            'name' => 'Synthetic other open course', 'CampusID' => 1, 'ClassID' => 1,
+            'enable' => 1, 'MDT' => now(), 'Notify_Token' => '',
+        ]);
+        $control = $this->createCountModeClass($controlStudent->id, ['Paid' => 0, 'Charge' => 2000]);
+        $this->withToken($token);
+        $alertsPath = '/api/v1/alerts/tuition?branch_id=1';
+        $before = collect($this->getJson($alertsPath)->assertOk()->json());
+        $target = $before->firstWhere('package_id', $package->id);
+        $this->assertNotNull($target);
+        $this->assertSame('renew_needed', $target['payment_status']);
+        $this->assertSame(0, $target['outstanding']);
+        $this->assertNotNull($before->firstWhere('id', $control->ID));
+        $tables = ['StudentClass', 'ClassSession', 'Invoice', 'Payment', 'payment_reports', 'package_session_ledger'];
+        $snapshot = fn () => collect($tables)->mapWithKeys(
+            fn (string $table) => [$table => \Illuminate\Support\Facades\DB::table($table)->get()->toArray()]
+        )->all();
+        $originalRecords = $snapshot();
+        $packageWithoutStop = fn () => array_diff_key($package->fresh()->getRawOriginal(), ['stop' => true, 'updated_at' => true]);
+        $originalPackageOtherFields = $packageWithoutStop();
+
+        $path = "/api/v1/course-packages/{$package->id}";
+        for ($attempt = 0; $attempt < 2; $attempt++) {
+            $this->putJson($path, ['stop' => true])->assertOk()
+                ->assertJsonPath('package.stop', true)
+                ->assertJsonPath('cancelled_sessions', [])
+                ->assertJsonPath('extended_count', 0);
+            $this->assertTrue($package->fresh()->stop);
+            $this->assertSame($originalPackageOtherFields, $packageWithoutStop());
+            $this->assertEquals($originalRecords, $snapshot());
+        }
+
+        $after = collect($this->getJson($alertsPath)->assertOk()->json());
+        $this->assertNull($after->firstWhere('package_id', $package->id), 'A retired package must stay absent after reloading alerts.');
+        $this->assertSame($before->firstWhere('id', $control->ID), $after->firstWhere('id', $control->ID));
+    }
+
     /** #5494: RFC_SHARED_PACKAGE_COLLECTION acceptance40 forbids closing a pool through its member ID. */
     #[\PHPUnit\Framework\Attributes\DataProvider('inapp5494PackageCloseRequests')]
     public function test_inapp5494_package_close_must_not_claim_success_while_pool_reappears(array $request, string $mode, int $remaining): void

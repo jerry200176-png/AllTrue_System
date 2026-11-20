@@ -4,6 +4,8 @@ namespace Tests\Feature;
 
 use App\Models\AuthToken;
 use App\Models\ClassSession;
+use App\Models\Invoice;
+use App\Models\Payment;
 use App\Models\Student;
 use App\Models\StudentClass;
 use App\Models\User;
@@ -11,6 +13,7 @@ use App\Models\UserCampus;
 use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\TestCase;
 
 /**
@@ -80,6 +83,95 @@ class ClassSessionChargeTest extends TestCase
         $standardCharge = (int) round(750 * (120 / 60));
         $sc = StudentClass::find($courseId);
         $this->assertSame($originalCharge + (1125 - $standardCharge), (int) $sc->Charge);
+    }
+
+    #[DataProvider('paidHourlyRescheduleTimes')]
+    public function test_paid_hourly_reschedule_preserves_the_ledger_on_retry(
+        string $startTime,
+        string $originalEnd,
+        string $endTime,
+        ?int $sessionCharge,
+    ): void
+    {
+        [$token, $courseId, $session] = $this->setupCourseWithSession(750, 120, 'hour');
+        $session->forceFill([
+            'StartTime' => $startTime, 'EndTime' => $originalEnd, 'session_charge' => $sessionCharge,
+        ])->save();
+        $course = StudentClass::findOrFail($courseId);
+        $oldDate = substr((string) $session->SessionDate, 0, 10);
+        $newDate = Carbon::parse($oldDate)->addDay()->toDateString();
+        $charge = (int) $course->Charge;
+        [$invoice, $payment] = $this->paidInvoiceFor($course);
+        $invoiceBefore = $invoice->getRawOriginal();
+        $paymentBefore = $payment->getRawOriginal();
+        $payload = [
+            'student_class_id' => $courseId,
+            'ensure_schedule_exception' => true,
+            'old_date' => $oldDate,
+            'old_start_time' => $startTime,
+            'new_date' => $newDate,
+            'start_time' => $startTime,
+            'end_time' => $endTime,
+        ];
+        $endpoint = '/api/v1/learning-records/reschedule-session';
+
+        $this->withToken($token)->postJson($endpoint, $payload)->assertOk()
+            ->assertJsonPath('committed', true)
+            ->assertJsonPath('session_id', (int) $session->id);
+        $this->withToken($token)->postJson($endpoint, $payload)->assertOk()
+            ->assertJsonPath('idempotent_replay', true)
+            ->assertJsonPath('session_id', (int) $session->id);
+
+        $session->refresh();
+        $this->assertSame($newDate, substr((string) $session->SessionDate, 0, 10));
+        $this->assertSame($startTime, substr((string) $session->StartTime, 0, 5));
+        $this->assertSame($endTime, substr((string) $session->EndTime, 0, 5));
+        $this->assertSame(2, DB::table('schedules')->where('student_course_id', $courseId)->count());
+        $this->assertSame([$invoiceBefore], Invoice::where('StudentClassID', $courseId)->get()
+            ->map(fn (Invoice $row) => $row->getRawOriginal())->all());
+        $this->assertSame([$paymentBefore], Payment::where('InvoiceID', $invoice->id)->get()
+            ->map(fn (Payment $row) => $row->getRawOriginal())->all());
+
+        if ($endTime === $originalEnd) {
+            $this->assertSame($charge, (int) $course->fresh()->Charge);
+            $this->assertSame($sessionCharge, $session->session_charge);
+        }
+    }
+
+    public static function paidHourlyRescheduleTimes(): array
+    {
+        return [
+            'same two-hour duration' => ['16:00', '18:00', '18:00', null],
+            'shortened to one hour' => ['16:00', '18:00', '17:00', null],
+            'date-only move for an already shortened quarter-hour slot' => ['16:15', '17:15', '17:15', 750],
+        ];
+    }
+
+    public function test_explicit_time_correction_recomputes_the_hourly_charge_without_changing_paid_history(): void
+    {
+        [$token, $courseId, $session] = $this->setupCourseWithSession(750, 120, 'hour');
+        $course = StudentClass::findOrFail($courseId);
+        $paidCharge = (int) $course->Charge;
+        [$invoice, $payment] = $this->paidInvoiceFor($course);
+        $invoiceBefore = $invoice->getRawOriginal();
+        $paymentBefore = $payment->getRawOriginal();
+
+        // Replay a moved short lesson whose time was stored without its pricing adjustment.
+        $course->forceFill(['Charge' => $paidCharge + 750, 'Paid' => 1])->save();
+        $session->forceFill(['EndTime' => '17:00'])->save();
+        $dateBefore = $session->fresh()->getRawOriginal('SessionDate');
+
+        foreach ([1, 2] as $attempt) {
+            $this->patchSession($token, $session->id, ['status' => 'scheduled', 'end_time' => '17:00'])
+                ->assertOk()->assertJsonPath('session.session_charge', 750);
+            $this->assertSame($paidCharge, (int) $course->fresh()->Charge);
+        }
+
+        $this->assertSame($dateBefore, $session->fresh()->getRawOriginal('SessionDate'));
+        $this->assertSame($invoiceBefore, $invoice->fresh()->getRawOriginal());
+        $this->assertSame($paymentBefore, $payment->fresh()->getRawOriginal());
+        $this->assertSame(1, Invoice::where('StudentClassID', $courseId)->count());
+        $this->assertSame(1, Payment::where('InvoiceID', $invoice->id)->count());
     }
 
     public function test_hour_mode_extend_time_updates_course_charge(): void
@@ -282,6 +374,27 @@ class ClassSessionChargeTest extends TestCase
     }
 
     // ─── Helpers ──────────────────────────────────────────────────
+
+    private function paidInvoiceFor(StudentClass $course): array
+    {
+        $charge = (int) $course->Charge;
+        $invoice = Invoice::create([
+            'StudentID' => $course->StudentID,
+            'StudentClassID' => $course->ID,
+            'IssueDate' => today()->toDateString(),
+            'TotalAmount' => $charge,
+            'PaidAmount' => $charge,
+            'Status' => 'paid',
+        ]);
+        $payment = Payment::create([
+            'InvoiceID' => $invoice->id,
+            'Amount' => $charge,
+            'PaidAt' => now(),
+            'Method' => 'cash',
+        ]);
+
+        return [$invoice->refresh(), $payment->refresh()];
+    }
 
     private function setupCourseWithSession(int $rate, int $durationMinutes, string $rateUnit): array
     {

@@ -501,6 +501,7 @@ for (const width of [375, 1536]) for (const size of ['standard', 'large']) for (
 for (const width of [375, 1280]) {
   test(`5494 package close explains the boundary and preserves single close @${width}`, async ({ page }, info) => {
     const writes = []; const errors = [];
+    let packageRetired = false;
     page.on('pageerror', error => errors.push(error.message));
     page.on('request', request => {
       if (new URL(request.url()).pathname.startsWith('/api/v1/') && request.method() !== 'GET') writes.push(request.method() + ' ' + new URL(request.url()).pathname);
@@ -515,7 +516,7 @@ for (const width of [375, 1280]) {
       { id: 44, subject: '合成單科' },
     ].map(c => ({ ...c, schedule_mode: 'count', paid: true, charge: 8000, stop: false, start_date: '2026-09-01' }));
     await page.route('**/api/v1/students**', route => route.fulfill({ json: [{ id: 99, name: '合成結案學生', status: 'active', enable: 1 }] }));
-    await page.route('**/api/v1/alerts/tuition**', route => route.fulfill({ json: [42, 44].map(id => ({
+    await page.route('**/api/v1/alerts/tuition**', route => route.fulfill({ json: (packageRetired ? [44] : [42, 44]).map(id => ({
       id, student_id: 99, student_name: '合成結案學生', subject: courses.find(c => c.id === id).subject,
       ...(id === 42 ? { package_id: 81, member_class_ids: [42, 43] } : {}),
       schedule_mode: 'count', payment_status: 'renew_needed', payable_outstanding: 0, remaining_sessions: 0,
@@ -546,6 +547,13 @@ for (const width of [375, 1280]) {
     await single.getByRole('button', { name: '合成單科 的更多操作', exact: true }).click();
     await page.getByRole('menuitem', { name: '結案（不續報）', exact: true }).click();
     await expect(page.locator('.tc-overlay')).toContainText('合成單科');
+
+    // #573: reflect the next backend read after retiring a settled package.
+    packageRetired = true;
+    await page.reload();
+    await page.getByTestId('bill-search').fill('合成結案學生');
+    await expect(page.getByTestId('bill-row-c44')).toBeVisible();
+    await expect(page.getByTestId('bill-row-c42')).toHaveCount(0);
     expect(writes).toEqual([]); expect(errors).toEqual([]);
   });
 }
