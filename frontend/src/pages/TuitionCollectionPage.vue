@@ -1044,7 +1044,7 @@ function confirmBatchPreview() {
 
 watch(activeAccountingTab, () => {
   selectedIds.value = [];
-  billList.value?.clearSelection();
+  billList.value?.clearSelection?.();
   batchFromList = false;
 });
 
