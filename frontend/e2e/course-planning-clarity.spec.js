@@ -59,6 +59,49 @@ for (const width of [390, 1440]) {
   });
 }
 
+test('moving a one-hour lesson keeps its own duration on a two-hour contract', async ({ page, context, baseURL }) => {
+  page.setDefaultTimeout(10_000);
+  const origin = new URL(baseURL).origin;
+  expect(new URL(origin).hostname).toBe('127.0.0.1');
+  const activeCourse = { ...course, status: 'active', Stop: 0, closed_reason: null, is_active_course: true };
+  const lesson = { ...sessions[0], start_time: '17:00', end_time: '18:00', status: 'scheduled' };
+  await page.clock.install({ time: new Date('2026-08-03T09:00:00+08:00') });
+  await context.route((url) => url.origin !== origin, (route) => route.abort('blockedbyclient'));
+  await installLocalClassSessionReads(context, origin);
+  await context.route((url) => url.origin === origin && url.pathname.startsWith('/api/v1/')
+      && !isKnownStatefulRead(origin, 'GET', url), (route) => {
+    const request = route.request();
+    if (request.method() !== 'GET') return route.abort('blockedbyclient');
+    const { pathname } = new URL(request.url());
+    if (pathname === '/api/v1/me') return route.fulfill({ json: {
+      id: 9001, role: 'director', name: 'Synthetic Director', campuses: [1], must_change_password: false,
+    } });
+    if (pathname === '/api/v1/campuses' || pathname === '/api/v1/branches') {
+      return route.fulfill({ json: [{ id: 1, name: '合成分校' }] });
+    }
+    const data = pathname === '/api/v1/student-classes' ? [activeCourse]
+      : pathname === '/api/v1/class-sessions' ? [lesson] : [];
+    return route.fulfill({ json: { data, total: data.length, current_page: 1, last_page: 1 } });
+  });
+  await installCoursePlanningRead(page, origin, {
+    branchId: 1, courseId: course.id,
+    readWindow: () => ({ materialized: [lesson], projected: [] }),
+  });
+
+  await page.goto(`/app-pilot-mount.html?app_page=course-mgmt&branch_id=1&student_id=${course.student_id}&course_id=${course.id}`);
+  await dismissOverlays(page);
+  const manager = page.getByTestId('course-manager');
+  await expect(manager).toBeVisible();
+  await manager.getByRole('tab', { name: '堂次', exact: true }).click();
+  await manager.getByTestId('course-manager-view-list').click();
+  await manager.getByRole('button', { name: /調課 08\/05.*17:00–18:00/ }).click();
+  const editor = page.locator('.session-edit-modal');
+  await expect(editor.getByRole('heading', { name: /調課.*選擇新時段/ })).toBeVisible();
+  await expect(editor.locator('.computed-end-time')).toHaveText('18:00');
+  await editor.locator('select').last().selectOption('19:00');
+  await expect(editor.locator('.computed-end-time')).toHaveText('20:00');
+});
+
 test('course details serve only the selected local course data', async ({ page, context, baseURL }) => {
   const origin = new URL(baseURL).origin;
   expect(new URL(origin).hostname).toBe('127.0.0.1');

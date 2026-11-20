@@ -57,3 +57,14 @@ export const computeEndTime = (startTime, durationHours) => {
   const endMin = endM % 60;
   return `${String(endH).padStart(2, '0')}:${String(endMin).padStart(2, '0')}`;
 };
+
+export function durationHoursBetween(startTime, endTime) {
+  const toMinutes = (value) => {
+    const clock = /^(\d{1,2}):([0-5]\d)(?::[0-5]\d)?$/.exec(String(value ?? '').trim());
+    if (!clock || Number(clock[1]) >= 24) return null;
+    return Number(clock[1]) * 60 + Number(clock[2]);
+  };
+  const start = toMinutes(startTime);
+  const end = toMinutes(endTime);
+  return start !== null && end !== null && end > start ? (end - start) / 60 : null;
+}

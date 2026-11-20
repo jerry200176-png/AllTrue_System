@@ -1,5 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { computeEndTime } from '../../../lib/calendarFormat';
 import { useSessionEditFlow } from '../useSessionEditFlow';
+
+vi.mock('../../useConfirmDialog', () => ({ askConfirm: vi.fn(async () => true) }));
 
 // Regression coverage for #942 (in-app #177): clicking a session chip whose real
 // ClassSession is missing from the local cache (duplicate / overlapping sessions or
@@ -102,6 +105,45 @@ describe('openSessionEdit reload-on-miss (#177)', () => {
     expect(globalThis.alert).not.toHaveBeenCalled();
     expect(flow.showSessionEditModal.value).toBe(false);
     expect(flow.chipActionDialog.value?.kind).toBe('resolve_retry');
+  });
+});
+
+describe('moving a concrete lesson', () => {
+  it.each([
+    ['17:30', '20:00'],
+    ['17:15', '19:45'],
+  ])('keeps the selected lesson length when its stored end is %s', async (oldEnd, newEnd) => {
+    vi.spyOn(globalThis, 'alert').mockImplementation(() => {});
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(async (url) => {
+      if (url !== '/api/v1/learning-records/reschedule-session') {
+        throw new Error('Unexpected request');
+      }
+      return { ok: true, json: async () => ({ committed: true }) };
+    });
+
+    try {
+      const flow = buildFlow({
+        getSessionDisplayRow: () => makeRow({
+          startTime: '16:30', endTime: oldEnd, contractRateUnit: 'hour',
+        }),
+        computeEndTime,
+        normalizeTo30Min: (time) => time,
+      });
+
+      await flow.openSessionEdit({ id: 42, duration_hours: 2 }, '2026-11-26', 555);
+      flow.startSessionReschedule();
+      flow.sessionEditForm.value.new_date = '2026-11-27';
+      flow.sessionEditForm.value.new_start = '19:00';
+      await flow.doSessionReschedule();
+
+      const [request] = fetchSpy.mock.calls.filter(([url]) => url === '/api/v1/learning-records/reschedule-session');
+      expect(JSON.parse(request[1].body)).toMatchObject({
+        old_date: '2026-11-26', old_start_time: '16:30',
+        new_date: '2026-11-27', start_time: '19:00', end_time: newEnd,
+      });
+    } finally {
+      fetchSpy.mockRestore();
+    }
   });
 });
 

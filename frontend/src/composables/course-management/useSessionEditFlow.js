@@ -14,6 +14,7 @@ import { canMaterializeProjectedSession, canCancelPausedProjectedSession } from 
 import { SESSION_STATUS_LABELS } from '../../lib/sessionStatus';
 import { askConfirm } from '../useConfirmDialog';
 import { trackedFetch } from '../../lib/loadingBar';
+import { durationHoursBetween } from '../../lib/calendarFormat';
 
 const SESSION_STATUS_TRANSITIONS = {
   scheduled:      ['attended', 'late', 'absent', 'leave', 'cancelled'],
@@ -228,7 +229,7 @@ export function useSessionEditFlow({
       reason: '',
       new_date: '',
       new_start: row.startTime || '16:00',
-      duration_hours: course.duration_hours ?? 2,
+      duration_hours: durationHoursBetween(row.startTime, row.endTime) ?? course.duration_hours ?? 2,
       note: row.note || '',
       edit_start_time: row.startTime || '',
       edit_end_time: row.endTime || '',
