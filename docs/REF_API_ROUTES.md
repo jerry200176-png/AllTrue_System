@@ -415,6 +415,7 @@
 | POST | `api/v1/finance/teacher-eligibility/admin-allowances/{id}/approve` | `TeacherEligibilityInputController@approveAdminAllowance` | role+campus+pin |
 | POST | `api/v1/finance/teacher-eligibility/admin-allowances/{id}/confirm` | `TeacherEligibilityInputController@confirmAdminAllowance` | role+campus+pin |
 | POST | `api/v1/finance/teacher-eligibility/admin-allowances/{id}/withdraw` | `TeacherEligibilityInputController@withdrawAdminAllowance` | role+campus+pin |
+| GET | `api/v1/finance/teacher-eligibility/campus-hours` | `TeacherEligibilityController@campusHours` | role+campus+pin |
 | POST | `api/v1/finance/teacher-eligibility/cash-adjustments` | `TeacherEligibilityInputController@storeCashAdjustment` | role+campus+pin |
 | PUT | `api/v1/finance/teacher-eligibility/cash-adjustments/{id}` | `TeacherEligibilityInputController@updateCashAdjustment` | role+campus+pin |
 | POST | `api/v1/finance/teacher-eligibility/cash-adjustments/{id}/approve` | `TeacherEligibilityInputController@approveCashAdjustment` | role+campus+pin |
@@ -962,6 +963,7 @@
 | GET | `api/v1/triage/bug-reports/{id}/attachments/{attachmentId}` | `TriageBugReportController@attachment` | auth |
 | GET | `api/v1/triage/db` | `TriageDbReadController@tables` | auth |
 | GET | `api/v1/triage/db/{table}` | `TriageDbReadController@rows` | auth |
+| GET | `api/v1/triage/fulltime-campus-hours` | `TriageFulltimePayrollController@campusHours` | auth |
 | GET | `api/v1/triage/fulltime-payroll` | `TriageFulltimePayrollController@show` | auth |
 | GET | `api/v1/triage/student-classes/{id}/billing-snapshot` | `TriageBillingSnapshotController@show` | auth |
 
