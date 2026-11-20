@@ -149,6 +149,16 @@ class TeacherEligibilityWeeklySegmentsTest extends TestCase
         }
     }
 
+    public function test_calendar_ignores_schedule_rows_of_a_deleted_course(): void
+    {
+        $teacher = $this->createTeacher();
+        $this->schedule($teacher->id, '2026-08-03', '10:00', '12:00', ['student_course_id' => 999999]);
+        $this->schedule($teacher->id, '2026-08-04', '10:00', '12:00'); // no course (personal / admin row): unchanged
+
+        $calendar = \App\Services\TeacherClassCalendar::load('2026-08-03', '2026-08-04', null, null, true);
+        $this->assertSame(['2026-08-04'], array_keys($calendar[$teacher->id]));
+    }
+
     public function test_calendar_ignores_a_newer_schedule_owner_without_a_teacher_binding(): void
     {
         $contract = $this->createTeacher();
