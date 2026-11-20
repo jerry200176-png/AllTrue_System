@@ -5,7 +5,7 @@
       <p class="modal-desc">
         {{ form.student_name }} — {{ subjectLabel }}
       </p>
-      <p v-if="form.is_monthly" class="modal-hint">選這堂課實際上課的日期和時間。月結依實際上課計費，補登後這一堂會算進那個月的學費。</p>
+      <p v-if="form.is_monthly" class="modal-hint">選這堂課實際上課的日期和時間（要在這份合約的期間內）。那個月的帳單還沒收款：金額會跟著重算。已經收過款：金額不會自動變，帳單會標「金額待確認」，差額要另外處理。</p>
       <p v-else class="modal-hint">堂數制課程若堂次已排滿，系統會將最後一筆可調整的未來排課移至您選的日期，購買總堂數不會增加。</p>
       <div class="form-group">
         <label>本堂日期</label>
@@ -28,7 +28,7 @@
       <div class="form-group">
         <label class="hint">
           <input v-model="form.auto_approve" type="checkbox" />
-          {{ form.is_monthly ? '這堂已經上完：直接標記已上課，評量同時自動核准（不勾＝等老師填評量）' : '若該堂已下課，直接補登並扣堂，評量同時自動核准' }}
+          {{ form.is_monthly ? '評量同時自動核准並寫入點名（不勾＝評量等老師填；這堂一樣算已上課、會計費）' : '若該堂已下課，直接補登並扣堂，評量同時自動核准' }}
         </label>
       </div>
 

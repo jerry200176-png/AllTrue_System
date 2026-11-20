@@ -20,8 +20,8 @@ export function courseActions(course, caps = {}) {
       : caps.isSession
         ? { id: 'quick-add', label: '補課／補登', ...(caps.canQuickAdd ? {} : { disabled: true, reason: caps.quickAddReason || '' }) }
         : null;
-  // 月結: 新增月結堂次 only takes a lesson that has not ended, so a lesson that was taught but never booked needs its own entry.
-  const backfill = caps.isMonthly && !caps.isManualOccurrence ? { id: 'quick-add', label: '補登已上過的課' } : null;
+  // 月結: 新增月結堂次 only takes a lesson that has not ended, so a lesson that was taught but never booked needs its own entry (not on a paused or closed course).
+  const backfill = caps.isMonthly && !caps.isManualOccurrence && !paused ? { id: 'quick-add', label: '補登已上過的課' } : null;
   const purchase = { id: 'purchase', label: caps.purchaseLabel || RENEW_LESSONS_LABEL };
 
   const fallback = { id: caps.fallback === 'manage' ? 'manage' : 'edit', label: caps.fallback === 'manage' ? '管理課程' : '編輯' };

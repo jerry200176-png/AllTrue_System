@@ -271,6 +271,32 @@ class AddSessionConflictTest extends TestCase
             ->assertJsonPath('existing_session_id', $session->id);
     }
 
+    // --- add-session: 月結 lesson outside the contract dates would never be billed ---
+    public function test_monthly_add_session_is_refused_outside_the_contract_dates(): void
+    {
+        $token = $this->createDirectorToken([1]);
+        $student = $this->createStudent(1);
+        $sc = $this->createStudentClass($student->id, [
+            'ScheduleMode' => 'date', 'SessionCount' => 0, 'RemainingSessions' => 0,
+            'StartDate' => '2026-10-01', 'EndDate' => '2026-10-31',
+        ]);
+        $headers = ['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'];
+
+        foreach (['2026-09-30', '2026-11-01'] as $outside) {
+            $this->withHeaders($headers)->postJson("/api/v1/student-classes/{$sc->ID}/add-session/check", [
+                'session_date' => $outside, 'start_time' => '19:00',
+            ])->assertOk()->assertJsonPath('can_add', false)->assertJsonPath('conflict_type', 'outside_contract');
+            $this->withHeaders($headers)->postJson("/api/v1/student-classes/{$sc->ID}/add-session", [
+                'session_date' => $outside, 'start_time' => '19:00', 'duration_minutes' => 120,
+            ])->assertStatus(409)->assertJsonPath('error_code', 'OUTSIDE_CONTRACT_PERIOD');
+        }
+        $this->assertSame(0, ClassSession::where('StudentClassID', $sc->ID)->count());
+
+        $this->withHeaders($headers)->postJson("/api/v1/student-classes/{$sc->ID}/add-session/check", [
+            'session_date' => '2026-10-15', 'start_time' => '19:00',
+        ])->assertOk()->assertJsonPath('conflict_type', 'none');
+    }
+
     // --- add-session: full capacity, no movable session ---
     public function test_add_session_returns_full_capacity_when_all_slots_used(): void
     {
