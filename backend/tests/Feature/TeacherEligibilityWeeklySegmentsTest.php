@@ -61,8 +61,8 @@ class TeacherEligibilityWeeklySegmentsTest extends TestCase
             ->assertOk()->json('teachers'))->firstWhere('teacher_id', $teacher->id);
         $this->assertEquals(9, $row['total_hours']); // 10–13 once, 14–16, then 10–14
         $this->assertEquals([1 => 4, $other->id => 6], $row['by_campus']);
-        $this->assertEquals([['date' => '2026-08-03', 'total_hours' => 5, 'by_campus' => [1 => 2, $other->id => 4]],
-            ['date' => '2026-08-04', 'total_hours' => 4, 'by_campus' => [1 => 2, $other->id => 2]]], $row['by_day']);
+        $this->assertSame([['date' => '2026-08-03', 'minutes' => 300, 'minutes_by_campus' => [1 => 120, $other->id => 240]],
+            ['date' => '2026-08-04', 'minutes' => 240, 'minutes_by_campus' => [1 => 120, $other->id => 120]]], $row['by_day']);
         $this->assertCount(1, $row['overlaps']);
         $this->assertSame('2026-08-03', $row['overlaps'][0]['date']);
         $this->assertEquals([['10:00', '12:00', 1], ['11:00', '13:00', $other->id]],

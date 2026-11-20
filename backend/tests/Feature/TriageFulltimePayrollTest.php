@@ -85,7 +85,7 @@ final class TriageFulltimePayrollTest extends TestCase
         $json = $this->getJson($url, $this->bearer())->assertOk()->json();
         $this->assertSame(['month', 'teachers'], array_keys($json));
         $this->assertEquals(['teacher_id' => $teacher->id, 'total_hours' => 2, 'by_campus' => [1 => 2], 'overlaps' => [],
-            'by_day' => [['date' => '2026-08-03', 'total_hours' => 2, 'by_campus' => [1 => 2]]]], collect($json['teachers'])->firstWhere('teacher_id', $teacher->id));
+            'by_day' => [['date' => '2026-08-03', 'minutes' => 120, 'minutes_by_campus' => [1 => 120]]]], collect($json['teachers'])->firstWhere('teacher_id', $teacher->id));
         config(['triage_tokens.fulltime_payroll_enabled' => false]);
         $this->getJson($url, $this->bearer())->assertNotFound();
     }

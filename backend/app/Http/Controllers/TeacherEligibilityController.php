@@ -381,11 +381,13 @@ class TeacherEligibilityController extends Controller
                 $total += $dayTotal;
                 $dayCampus = [];
                 foreach (collect($lessons)->groupBy('campus_id') as $campusId => $atCampus) {
-                    $dayCampus[(int) $campusId] = round($hours($atCampus->all()), 2);
-                    $byCampus[(int) $campusId] = ($byCampus[(int) $campusId] ?? 0.0) + $hours($atCampus->all());
+                    $campusHours = $hours($atCampus->all());
+                    $dayCampus[(int) $campusId] = (int) round($campusHours * 60);
+                    $byCampus[(int) $campusId] = ($byCampus[(int) $campusId] ?? 0.0) + $campusHours;
                 }
                 ksort($dayCampus);
-                $byDay[] = ['date' => (string) $date, 'total_hours' => round($dayTotal, 2), 'by_campus' => $dayCampus];
+                // Whole minutes, so the days add up to the month exactly (hours rounded per day would drift).
+                $byDay[] = ['date' => (string) $date, 'minutes' => (int) round($dayTotal * 60), 'minutes_by_campus' => $dayCampus];
             }
             ksort($byCampus);
 
