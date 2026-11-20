@@ -5,7 +5,8 @@
       <p class="modal-desc">{{ isMonthly ? '補入區間內的單堂課；月結依實際上課計費，不會扣除購買堂數。' : '逐堂手動排課：每次只新增一堂，課程時長沿用課程設定。' }}</p>
 
       <section v-if="isMonthly" class="manual-session-history" aria-label="過去課堂處理">
-        <p>這裡只新增尚未結束的課。已上過或已取消的課，請先查看原堂次；已取消的課可從原紀錄復原。</p>
+        <p>這裡只新增尚未結束的課。已經上過、系統裡沒有這一堂：按「補登已上過的課」。已取消的課：先查看原堂次，從原紀錄復原。</p>
+        <button type="button" class="ghost small" data-testid="manual-session-backfill" :disabled="submitting" @click="$emit('backfill')">補登已上過的課</button>
         <button type="button" class="ghost small" data-testid="manual-session-history" :disabled="submitting" @click="$emit('view-history')">查看過去及已取消的課</button>
       </section>
 
@@ -78,7 +79,7 @@ const props = defineProps({
   isMonthly: Boolean,
   today: { type: String, required: true },
 });
-defineEmits(['close', 'check', 'submit', 'edit-course', 'next-period', 'open-course', 'view-history']);
+defineEmits(['close', 'check', 'submit', 'edit-course', 'next-period', 'open-course', 'view-history', 'backfill']);
 const dateInput = ref(null);
 // Who holds the slot: overlap_details from the server's schedule conflicts, de-duplicated.
 const blockers = computed(() => uniqueScheduleBlockers(props.result?.conflicts));

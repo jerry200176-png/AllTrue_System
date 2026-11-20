@@ -46,6 +46,9 @@ describe('courseActions — one primary, overflow grouped by intent', () => {
     const monthly = courseActions(session, { isMonthly: true });
     expect(monthly.groups[0].items.find((i) => i.id === 'manual-session').label).toBe('排月結');
     expect(monthly.groups[0].items.find((i) => i.id === 'monthly-session').label).toBe('新增月結堂次');
+    // 新增月結堂次 refuses a lesson that already ended; the taught-but-never-booked lesson has its own entry.
+    expect(monthly.groups[0].items.find((i) => i.id === 'quick-add')).toEqual({ id: 'quick-add', label: '補登已上過的課' });
+    expect(courseActions(session, { ...base, isMonthly: true }).groups.flatMap((g) => g.items).find((i) => i.id === 'quick-add').label).toBe('補登已上過的課');
     expect(ids(courseActions(session, {}))).not.toContain('manual-session');
   });
 

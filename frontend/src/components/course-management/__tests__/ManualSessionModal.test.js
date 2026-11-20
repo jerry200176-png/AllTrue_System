@@ -15,6 +15,8 @@ describe('monthly cross-period booking', () => {
     expect(wrapper.text()).toContain('已取消');
     await history.trigger('click');
     expect(wrapper.emitted('view-history')).toEqual([[]]);
+    await wrapper.get('[data-testid="manual-session-backfill"]').trigger('click'); // taught but never booked: its own form
+    expect(wrapper.emitted('backfill')).toEqual([[]]);
     expect(wrapper.emitted('submit')).toBeUndefined();
     await wrapper.setProps({ submitting: true });
     expect(history.attributes('disabled')).toBeDefined();
