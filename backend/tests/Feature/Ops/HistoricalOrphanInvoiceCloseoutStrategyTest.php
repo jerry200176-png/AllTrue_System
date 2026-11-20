@@ -27,6 +27,8 @@ final class HistoricalOrphanInvoiceCloseoutStrategyTest extends TestCase
     private const REPORT = 40004;
     private const CASH = 40005;
     private const REVERSAL = 40006;
+    private const LEAVE = 40007;
+    private const REMOVED_SESSION = 40008;
 
     private array $parameters;
 
@@ -48,9 +50,14 @@ final class HistoricalOrphanInvoiceCloseoutStrategyTest extends TestCase
             ['id' => self::REVERSAL, 'InvoiceID' => self::BILL, 'Amount' => -9120, 'Method' => 'void',
                 'PaidAt' => $now, 'payment_report_id' => self::REPORT, 'updated_at' => $now],
         ]);
+        $leave = ['id' => self::LEAVE, 'StudentID' => self::STUDENT, 'StudentClassID' => self::COURSE,
+            'CampusID' => 11, 'ClassSessionID' => self::REMOVED_SESSION, 'PersonType' => 'student', 'Status' => 'leave', 'SessionDeducted' => 0,
+            'Hours' => null, 'SignInDT' => '2026-06-25 18:00:00', 'SignOutDT' => null, 'VoidedAt' => null];
+        DB::table('StudentSingIn')->insert($leave);
         // Construct the safe-field digest independently as the private operator packet does.
         $state = [
             'student' => ['id' => self::STUDENT, 'CampusID' => 11],
+            'leave' => $leave,
             'invoice' => ['id' => self::BILL, 'StudentID' => self::STUDENT, 'StudentClassID' => self::COURSE, 'IssueDate' => '2026-06-26',
                 'DueDate' => null, 'TotalAmount' => 9120, 'PaidAmount' => 0, 'Status' => 'unpaid', 'billing_period' => null, 'updated_at' => $now],
             'report' => ['id' => self::REPORT, 'StudentID' => self::STUDENT, 'StudentClassID' => self::COURSE, 'InvoiceID' => self::BILL,
@@ -118,6 +125,77 @@ final class HistoricalOrphanInvoiceCloseoutStrategyTest extends TestCase
         $this->assertSame($before, $this->ledger());
     }
 
+    public function test_course_activity_other_documents_and_due_invoices_are_ineligible(): void
+    {
+        $svc = new Strategy();
+        $plan = $svc->plan($this->parameters);
+        $context = ['actor' => 'pop-pi-local', 'operation_id' => (string) Str::uuid()];
+        $changes = [
+            'live_source' => fn () => $this->activeCourse(self::COURSE),
+            'held_lesson' => fn () => DB::table('ClassSession')->insert(['StudentClassID' => self::COURSE,
+                'SessionDate' => '2026-06-25', 'StartTime' => '16:00', 'EndTime' => '18:00', 'Status' => 'completed']),
+            'other_bill' => fn () => DB::table('Invoice')->insert(['StudentID' => self::STUDENT, 'StudentClassID' => self::COURSE,
+                'IssueDate' => '2026-06-30', 'TotalAmount' => 200, 'PaidAmount' => 0, 'Status' => 'unpaid']),
+            'item' => fn () => DB::table('InvoiceItem')->insert(['InvoiceID' => self::BILL,
+                'StudentClassID' => self::COURSE, 'Description' => 'fixture', 'Amount' => 100]),
+            'leave_other_person_type' => fn () => DB::table('StudentSingIn')->where('id', self::LEAVE)->update(['PersonType' => 'teacher']),
+            'deduction_ledger' => fn () => DB::table('session_deduction_ledger')->insert([
+                'student_class_id' => self::COURSE, 'event_type' => 'deduct', 'source' => 'manual']),
+            'present' => fn () => DB::table('StudentSingIn')->where('id', self::LEAVE)->update(['Status' => 'present']),
+            'deducted' => fn () => DB::table('StudentSingIn')->where('id', self::LEAVE)->update(['SessionDeducted' => 1]),
+            'leave_other_campus' => fn () => DB::table('StudentSingIn')->where('id', self::LEAVE)->update(['CampusID' => 13]),
+            'live_link' => fn () => DB::table('ClassSession')->insert(['id' => self::REMOVED_SESSION, 'StudentClassID' => self::COURSE + 100,
+                'SessionDate' => '2026-06-25', 'StartTime' => '16:00', 'EndTime' => '18:00', 'Status' => 'scheduled']),
+            'due_date' => fn () => DB::table('Invoice')->where('id', self::BILL)->update(['DueDate' => '2026-06-30']),
+            'known_period' => fn () => DB::table('Invoice')->where('id', self::BILL)->update(['billing_period' => '2026-06']),
+            'extra_payment' => fn () => DB::table('Payment')->insert(['InvoiceID' => self::BILL,
+                'Amount' => 100, 'PaidAt' => '2026-06-26 10:00:00', 'Method' => 'cash']),
+            'extra_report' => fn () => DB::table('payment_reports')->insert(['StudentID' => self::STUDENT, 'StudentClassID' => self::COURSE,
+                'InvoiceID' => self::BILL, 'status' => 'pending', 'reported_amount' => 100, 'payment_date' => '2026-06-29',
+                'reported_by_name' => 'fixture', 'report_token_hash' => str_repeat('b', 64), 'token_expires_at' => '2026-06-30 12:00:00']),
+        ];
+        foreach ($changes as $name => $apply) {
+            DB::beginTransaction();
+            try {
+                $apply();
+                $before = $this->ledger();
+                $this->assertFalse($svc->plan($this->parameters)['ok'], $name);
+                try {
+                    $svc->execute($plan, $context);
+                    $this->fail("Applied despite {$name}");
+                } catch (DomainException) {
+                    $this->assertSame($before, $this->ledger(), $name);
+                }
+            } finally {
+                DB::rollBack();
+            }
+        }
+    }
+
+    public function test_native_actor_required_and_rollback_does_not_overwrite_drift(): void
+    {
+        $svc = new Strategy();
+        $plan = $svc->plan($this->parameters);
+        $context = ['actor' => 'pop-pi-local', 'operation_id' => (string) Str::uuid()];
+        try {
+            $svc->execute($plan, array_replace($context, ['actor' => 'pop-runner']));
+            $this->fail('Non-native actor accepted');
+        } catch (DomainException $error) {
+            $this->assertSame('native_atomic_operation_required', $error->getMessage());
+        }
+        $applied = DB::transaction(fn () => $svc->execute($plan, $context));
+        DB::table('Invoice')->where('id', self::BILL)->update(['updated_at' => '2026-11-25 09:30:00']);
+        $before = $this->ledger();
+        $this->assertFalse($svc->verify([], $applied)['ok']);
+        try {
+            DB::transaction(fn () => $svc->rollback($applied['snapshot'], $context));
+            $this->fail('Stale rollback accepted');
+        } catch (DomainException $error) {
+            $this->assertSame('state_changed_after_closeout', $error->getMessage());
+        }
+        $this->assertSame($before, $this->ledger());
+    }
+
     public function test_an_unapproved_request_cannot_be_created(): void
     {
         $service = new PopOperationService(app(PopOperationCatalog::class), null, null,
@@ -179,12 +257,17 @@ final class HistoricalOrphanInvoiceCloseoutStrategyTest extends TestCase
 
     private function addFallInvoice(): void
     {
-        $course = StudentClass::create(['StudentID' => self::STUDENT, 'TeacherID' => 1, 'GradeID' => 1, 'SubjectID' => 1,
+        $course = $this->activeCourse(41001);
+        DB::table('Invoice')->insert(['StudentID' => self::STUDENT, 'StudentClassID' => $course->ID,
+            'IssueDate' => '2026-10-01', 'TotalAmount' => 1600, 'PaidAmount' => 0, 'Status' => 'unpaid']);
+    }
+
+    private function activeCourse(int $id): StudentClass
+    {
+        return StudentClass::forceCreate(['ID' => $id, 'StudentID' => self::STUDENT, 'TeacherID' => 1, 'GradeID' => 1, 'SubjectID' => 1,
             'by1' => 1, 'Period' => 4, 'StartDate' => '2026-10-01', 'EndDate' => '2026-12-31', 'TotalHours' => 8,
             'Charge' => 1600, 'Rate' => 200, 'Paid' => 0, 'MDate' => now(), 'Stop' => 0, 'ScheduleMode' => 'count',
             'SessionCount' => 4, 'RemainingSessions' => 4, 'UsedSessions' => 0, 'SessionDuration' => 120, 'ClassType' => 'trial']);
-        DB::table('Invoice')->insert(['StudentID' => self::STUDENT, 'StudentClassID' => $course->ID,
-            'IssueDate' => '2026-10-01', 'TotalAmount' => 1600, 'PaidAmount' => 0, 'Status' => 'unpaid']);
     }
 
     private function outstanding(): int
@@ -202,6 +285,7 @@ final class HistoricalOrphanInvoiceCloseoutStrategyTest extends TestCase
         return [
             'invoice' => (array) DB::table('Invoice')->where('id', self::BILL)->first(),
             'payments' => DB::table('Payment')->where('InvoiceID', self::BILL)->orderBy('id')->get()->toJson(),
+            'attendance' => (array) DB::table('StudentSingIn')->where('id', self::LEAVE)->first(),
             'report' => (array) DB::table('payment_reports')->where('id', self::REPORT)->first(),
         ];
     }

@@ -794,7 +794,7 @@ operations:
     strategy_class: App\Operations\Strategies\HistoricalOrphanInvoiceCloseoutStrategy
     parameter_keys: [campus_id, student_id, course_id, invoice_id, report_id, expected_issue_date, expected_invoice_total, decision_reference, expected_state_hash]
     tags: [repair, billing, reviewed-case]
-    notes: One reviewed historical orphan invoice with no live or historical lessons, no active payment report and one exactly reversed receipt. Voids only the invoice and preserves all original money rows. Requires an authenticated human, an exact expiring Founder tuple and Pi-local execution.
+    notes: One reviewed historical orphan invoice with one unchanged non-deducted leave marker, no lessons or active payment report, and one exactly reversed receipt. Voids only the invoice and preserves all original money rows. Requires an authenticated human, an exact expiring Founder tuple and Pi-local execution.
 
   reviewed-mismatched-pending-return:
     lifecycle: active

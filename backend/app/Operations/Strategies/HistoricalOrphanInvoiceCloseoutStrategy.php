@@ -123,6 +123,22 @@ final class HistoricalOrphanInvoiceCloseoutStrategy
             throw new DomainException('student_scope_or_course_exists');
         }
 
+        $attendance = $rows(DB::table('StudentSingIn')
+            ->select('id', 'StudentID', 'StudentClassID', 'CampusID', 'ClassSessionID', 'PersonType', 'Status', 'SessionDeducted', 'Hours', 'SignInDT', 'SignOutDT', 'VoidedAt')
+            ->where('StudentClassID', $p['course_id'])->orderBy('id'), 2);
+        $leave = $attendance->first();
+        if ($attendance->count() !== 1 || (int) $leave->StudentID !== $p['student_id'] || (int) $leave->CampusID !== $p['campus_id']
+            || $leave->PersonType !== 'student' || $leave->Status !== 'leave' || (int) $leave->SessionDeducted !== 0 || $leave->Hours !== null
+            || $leave->VoidedAt !== null || (int) $leave->ClassSessionID <= 0
+            || $rows(DB::table('ClassSession')->select('id')->where('id', $leave->ClassSessionID), 1)->isNotEmpty()
+            || $rows(DB::table('StudentSingIn')->select('id')->where('ClassSessionID', $leave->ClassSessionID)->where('id', '<>', $leave->id), 1)->isNotEmpty()
+            || $rows(DB::table('LearningRecord')->select('id')->where('StudentClassID', $p['course_id'])
+                ->orWhere('ClassSessionID', $leave->ClassSessionID), 1)->isNotEmpty()
+            || $rows(DB::table('session_deduction_ledger')->select('id')->where('student_class_id', $p['course_id'])
+                ->orWhere('class_session_id', $leave->ClassSessionID), 1)->isNotEmpty()) {
+            throw new DomainException('source_activity_changed');
+        }
+
         $bills = $rows(DB::table('Invoice')
             ->select('id', 'StudentID', 'StudentClassID', 'IssueDate', 'DueDate', 'TotalAmount', 'PaidAmount', 'Status', 'billing_period', 'updated_at')
             ->where('StudentClassID', $p['course_id'])->orderBy('id'), 2);
@@ -163,7 +179,7 @@ final class HistoricalOrphanInvoiceCloseoutStrategy
         }
 
         return ['student' => (array) $student, 'invoice' => (array) $bill, 'report' => (array) $report,
-            'payments' => $payments->map(fn (object $row) => (array) $row)->all()];
+            'leave' => (array) $leave, 'payments' => $payments->map(fn (object $row) => (array) $row)->all()];
     }
 
     private function assertNativeContext(array $context): void
