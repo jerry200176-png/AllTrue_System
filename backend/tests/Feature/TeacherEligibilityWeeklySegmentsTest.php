@@ -128,6 +128,24 @@ class TeacherEligibilityWeeklySegmentsTest extends TestCase
         $this->assertSame([$substitute->id], array_keys(\App\Services\TeacherClassCalendar::load('2026-08-10', '2026-08-10', null, null, true)));
     }
 
+    public function test_calendar_ignores_a_newer_schedule_owner_without_a_teacher_binding(): void
+    {
+        $contract = $this->createTeacher();
+        $substitute = $this->createTeacher('weekly-teacher-2@test.com');
+        $date = '2026-08-03';
+        $session = $this->createAttendedSession($contract->id, 'one_on_one', $date, '10:00', 120);
+        $slot = ['student_course_id' => $session->StudentClassID];
+        $anchor = $this->schedule($contract->id, $date, '10:00', '12:00', $slot + ['status' => 'rescheduled']);
+        $this->schedule($substitute->id, $date, '10:00', '12:00', $slot + ['original_schedule_id' => $anchor]);
+        $this->schedule(999999, $date, '10:00', '12:00', $slot + ['original_schedule_id' => $anchor]);
+
+        foreach ([false, true] as $forPayroll) {
+            $calendar = \App\Services\TeacherClassCalendar::load($date, $date, [1], null, $forPayroll);
+            $this->assertSame([$substitute->id], array_keys($calendar));
+            $this->assertCount(1, $calendar[$substitute->id][$date]);
+        }
+    }
+
     public function test_director_sees_calendar_backed_weekly_segments(): void
     {
         $director = $this->createDirector();

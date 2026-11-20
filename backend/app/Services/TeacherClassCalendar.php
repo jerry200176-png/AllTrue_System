@@ -33,6 +33,14 @@ class TeacherClassCalendar
             ->whereIn('status', ['scheduled', 'rescheduled'])
             ->when($forPayroll, fn ($q) => $q->whereNotIn('type', ['admin', 'unavailable']))
             ->select('id', 'status', 'teacher_id', 'schedule_date', 'start_time', 'end_time', 'branch_id', 'student_course_id', 'student_id', 'original_schedule_id');
+        // Legacy rows with invalid owners must not win a course slot over the real substitute.
+        $scheduleQuery->where(function ($query) {
+            $query->whereNull('student_course_id')->orWhere('student_course_id', '<=', 0)
+                ->orWhere(fn ($courseRows) => SubstituteScheduleService::ownedByTeacher(
+                    $courseRows,
+                    DB::table('StudentClass')->select('TeacherID')->whereColumn('ID', 'schedules.student_course_id'),
+                ));
+        });
         if ($campusIds !== null) {
             $scheduleQuery->whereIn('branch_id', $campusIds);
         }
