@@ -67,6 +67,9 @@ class TeacherEligibilityWeeklySegmentsTest extends TestCase
             array_map(fn ($lesson) => [$lesson['start'], $lesson['end'], $lesson['campus_id']], $row['overlaps'][0]['lessons']));
         $this->assertGreaterThan(0, $row['overlaps'][0]['lessons'][0]['student_id']);
         $this->assertGreaterThan(0, $row['overlaps'][0]['lessons'][0]['course_id']);
+        // The other campus's lesson shows when and where, not whose: the director cannot read that campus.
+        $this->assertNull($row['overlaps'][0]['lessons'][1]['student_id']);
+        $this->assertNull($row['overlaps'][0]['lessons'][1]['course_id']);
     }
 
     public function test_director_sees_calendar_backed_weekly_segments(): void

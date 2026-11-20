@@ -351,7 +351,10 @@ class TeacherEligibilityController extends Controller
 
             return [$start, $end !== null && $end > $start ? $end : min($start + 120, 1440)];
         };
-        $rows = $teachers->map(function ($teacher) use ($calendar, $hours, $span) {
+        // A director sees which of another campus's lessons clash (time and campus, as the hours columns already show),
+        // but not whose lesson it is: the student and course ids stay with the campuses the caller may read.
+        $visible = $campusIds === null ? null : array_map('intval', $campusIds);
+        $rows = $teachers->map(function ($teacher) use ($calendar, $hours, $span, $visible) {
             $total = 0.0;
             $byCampus = [];
             $overlaps = [];
@@ -370,7 +373,8 @@ class TeacherEligibilityController extends Controller
                 }
                 if ($hit !== []) {
                     usort($hit, fn ($x, $y) => [$x['start'], $x['campus_id'], $x['student_id']] <=> [$y['start'], $y['campus_id'], $y['student_id']]);
-                    $overlaps[] = ['date' => (string) $date, 'lessons' => $hit];
+                    $overlaps[] = ['date' => (string) $date, 'lessons' => array_map(fn ($lesson) => $visible === null || in_array($lesson['campus_id'], $visible, true)
+                        ? $lesson : ['student_id' => null, 'course_id' => null] + $lesson, $hit)];
                 }
                 $total += $hours($lessons);
                 foreach (collect($lessons)->groupBy('campus_id') as $campusId => $atCampus) {
