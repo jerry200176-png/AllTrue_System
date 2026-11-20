@@ -1,0 +1,14 @@
+updates:
+  - id: staff-2026-11-20-teacher-calendar-superseded
+    published_at: "2026-11-20"
+    audiences:
+      - director
+      - super_admin
+    importance: digest
+    title: 正職時數不再重複計算
+    summary: 代課重排或再次改期的堂次，只算給行事曆上實際的老師與日期。
+    items:
+      - category: fixed
+        text: 正職薪資要件與各分校時數：同一堂課排過兩次代課或再次改期時，不再多算。
+    source_refs:
+      - "changelog:2026-11-20:teacher-calendar-superseded-rows"

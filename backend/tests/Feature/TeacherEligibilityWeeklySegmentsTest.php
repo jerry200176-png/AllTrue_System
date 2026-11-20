@@ -72,6 +72,29 @@ class TeacherEligibilityWeeklySegmentsTest extends TestCase
         $this->assertNull($row['overlaps'][0]['lessons'][1]['course_id']);
     }
 
+    public function test_calendar_counts_one_slot_once_when_older_schedule_rows_were_superseded(): void // Founder 2026-11-20
+    {
+        $contract = $this->createTeacher();
+        $other = $this->createTeacher();
+        // Two generations of substitute rows on one slot: the older one (contract teacher) was replaced by a newer one.
+        $session = $this->createAttendedSession($contract->id, 'one_on_one', '2026-08-03', '10:00', 120);
+        $first = $this->schedule($other->id, '2026-08-03', '10:00', '12:00', ['student_course_id' => $session->StudentClassID, 'status' => 'rescheduled']);
+        $this->schedule($contract->id, '2026-08-03', '10:00', '12:00', ['student_course_id' => $session->StudentClassID, 'original_schedule_id' => $first]);
+        $second = $this->schedule($other->id, '2026-08-03', '10:00', '12:00', ['student_course_id' => $session->StudentClassID, 'status' => 'rescheduled']);
+        $this->schedule($other->id, '2026-08-03', '10:00', '12:00', ['student_course_id' => $session->StudentClassID, 'original_schedule_id' => $second]);
+        // A lesson moved to the 4th and then on to the 5th: the row left on the 4th is no lesson.
+        $moved = $this->createAttendedSession($contract->id, 'one_on_one', '2026-08-05', '14:00', 120);
+        $from = $this->schedule($contract->id, '2026-08-06', '14:00', '16:00', ['student_course_id' => $moved->StudentClassID, 'status' => 'rescheduled']);
+        $this->schedule($contract->id, '2026-08-04', '14:00', '16:00', ['student_course_id' => $moved->StudentClassID, 'original_schedule_id' => $from]);
+        $again = $this->schedule($contract->id, '2026-08-04', '14:00', '16:00', ['student_course_id' => $moved->StudentClassID, 'status' => 'rescheduled']);
+        $this->schedule($contract->id, '2026-08-05', '14:00', '16:00', ['student_course_id' => $moved->StudentClassID, 'original_schedule_id' => $again]);
+
+        $calendar = \App\Services\TeacherClassCalendar::load('2026-08-03', '2026-08-06', null, null, true);
+        $this->assertSame(['2026-08-03'], array_keys($calendar[$other->id]));
+        $this->assertCount(1, $calendar[$other->id]['2026-08-03']);
+        $this->assertSame(['2026-08-05'], array_keys($calendar[$contract->id])); // not the 3rd (taken over), not the 4th (moved on)
+    }
+
     public function test_director_sees_calendar_backed_weekly_segments(): void
     {
         $director = $this->createDirector();

@@ -11,6 +11,8 @@ use Illuminate\Support\Facades\DB;
  * - ClassSession（G-010 來源真相）+ StudentClass.TeacherID，排除取消／請假，
  *   也排除已由別的老師代課的堂次（合約老師當天不用到）。
  * - schedules 的 scheduled 例外 row（代課／加課），用 StaleScheduleExceptionFilter 剔除殘影。
+ * - 同一堂（課程＋日期＋起始時間）只認最新的一筆 schedules row：之後又被改期（較新的 rescheduled）或被較新的
+ *   代課 row 取代的舊 scheduled row 不算，否則同一堂會算給兩位老師、或算在已經改走的日期（Founder 2026-11-20）。
  */
 class TeacherClassCalendar
 {
@@ -26,13 +28,22 @@ class TeacherClassCalendar
         $scheduleQuery = DB::table('schedules')
             ->whereNotNull('teacher_id')
             ->whereBetween('schedule_date', [$from, $to])
-            ->where('status', 'scheduled')
+            ->whereIn('status', ['scheduled', 'rescheduled'])
             ->when($forPayroll, fn ($q) => $q->whereNotIn('type', ['admin', 'unavailable']))
-            ->select('teacher_id', 'schedule_date', 'start_time', 'end_time', 'branch_id', 'student_course_id', 'student_id', 'original_schedule_id');
+            ->select('id', 'status', 'teacher_id', 'schedule_date', 'start_time', 'end_time', 'branch_id', 'student_course_id', 'student_id', 'original_schedule_id');
         if ($campusIds !== null) {
             $scheduleQuery->whereIn('branch_id', $campusIds);
         }
-        $scheduleRows = $scheduleQuery->get();
+        $allRows = $scheduleQuery->get();
+        $newest = [];
+        foreach ($allRows as $row) {
+            if ((int) $row->student_course_id > 0) {
+                $key = self::key($row->student_course_id, $row->schedule_date, $row->start_time);
+                $newest[$key] = max($newest[$key] ?? 0, (int) $row->id);
+            }
+        }
+        $scheduleRows = $allRows->filter(fn ($row) => $row->status === 'scheduled' && ((int) $row->student_course_id <= 0
+            || (int) $row->id === $newest[self::key($row->student_course_id, $row->schedule_date, $row->start_time)]))->values();
 
         // 代課 row：course|日期|HH:MM → 代課老師 id
         $substitutedBy = [];
