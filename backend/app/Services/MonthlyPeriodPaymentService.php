@@ -87,6 +87,14 @@ final class MonthlyPeriodPaymentService
             $existing = $periods[$period] ?? ['billing_period' => $period, 'period_start' => $start, 'period_end' => $end,
                 'charge' => 0, 'paid_amount' => 0, 'invoice_ids' => [], 'source' => 'invoice', 'amount_discrepancy' => false];
             if ($existing['period_start'] !== $start || $existing['period_end'] !== $end) { $ambiguous = true; $reasons[] = 'period_mismatch'; }
+            // Founder 2026-11-19: an unpaid bill whose period is over is already shown and collected at its held-lesson
+            // total (repriceable), so the issue-time total is not a mismatch to review. Stays in review: no held lesson
+            // (NT$0), a legacy paid amount, and a month with a second live bill (each would be repriced to the whole
+            // month's lessons, so the month would be owed twice).
+            $repriced = $amount['amount_discrepancy'] && $amount['repriceable'] && $paid === 0
+                && (int) ($amount['computed_total_amount'] ?? 0) > 0 && $end < Carbon::now('Asia/Taipei')->toDateString()
+                && $invoices->where('billing_period', $invoice->billing_period)->count() === 1;
+            $amount['amount_discrepancy'] = $amount['amount_discrepancy'] && !$repriced;
             $existing['amount_discrepancy'] = $existing['amount_discrepancy'] || $amount['amount_discrepancy'];
             $existing['stored_charge'] = ($existing['stored_charge'] ?? 0) + (int) $amount['stored_total_amount'];
             // in-app #510 / #518: kept as data only; forDisplay() reads it. Guards keep using amount_discrepancy unchanged.

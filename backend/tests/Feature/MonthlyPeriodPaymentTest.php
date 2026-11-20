@@ -339,6 +339,36 @@ class MonthlyPeriodPaymentTest extends TestCase
         $this->assertTrue($shown['review_required']);
     }
 
+    public function test_unpaid_bill_of_an_ended_period_is_owed_at_the_held_lesson_total_not_reviewed(): void // Founder 2026-11-19
+    {
+        $course = $this->course();
+        ClassSession::where('StudentClassID', $course->ID)->where('SessionDate', '2026-09-02')->delete();
+        $course->update(['EndDate' => '2026-08-31', 'Paid' => 0, 'Stop' => 1]);
+        $this->invoice($course, '2026-08', 0)->update(['TotalAmount' => 2000]); // issued for 2 lessons, 1 was held
+        $svc = app(MonthlyPeriodPaymentService::class);
+        $at = function (string $now) use ($svc, $course) {
+            \Illuminate\Support\Carbon::setTestNow($now);
+            try { return $svc->batch(collect([$course->fresh()]))[$course->ID]; } finally { \Illuminate\Support\Carbon::setTestNow(); }
+        };
+
+        $running = $at('2026-08-20 12:00:00');
+        $this->assertTrue($running['periods'][0]['amount_discrepancy'], 'a month still running keeps the review');
+
+        $ended = $at('2026-09-05 12:00:00');
+        $this->assertFalse($ended['periods'][0]['amount_discrepancy']);
+        $this->assertNotContains('amount_discrepancy', $ended['review_reasons']);
+        $this->assertSame(1000, $ended['periods'][0]['charge']);
+        $this->assertSame('unpaid', $ended['periods'][0]['payment_status']);
+
+        $second = $this->invoice($course, '2026-08', 0);
+        $second->update(['TotalAmount' => 1500]);
+        $this->assertTrue($at('2026-09-05 12:00:00')['periods'][0]['amount_discrepancy'], 'two live bills of one month would each be repriced to the whole month');
+        $second->forceFill(['Status' => 'void'])->save();
+
+        ClassSession::where('StudentClassID', $course->ID)->update(['Status' => 'leave']);
+        $this->assertTrue($at('2026-09-05 12:00:00')['periods'][0]['amount_discrepancy'], 'lessons that were all leave must not turn the bill into NT$0 owed');
+    }
+
     public function test_review_reasons_explain_flag(): void
     {
         $svc = app(MonthlyPeriodPaymentService::class);
