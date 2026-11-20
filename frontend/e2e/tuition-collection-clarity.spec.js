@@ -396,8 +396,77 @@ test.describe('Tuition Collection clarity browser verification', () => {
     await expect(page.locator('[data-testid="tc-reminder-settled"]')).toHaveText('已結清課程');
     await page.getByRole('tab', { name: '收款紀錄' }).click();
     await expect(page.locator('[data-testid="tc-reminders"]')).toHaveCount(0);
-    await page.getByRole('tab', { name: '帳單' }).click();
+    await page.getByRole('tab', { name: '帳單', exact: true }).click();
     await expect(page.locator('[data-testid="tc-reminder-settled"]')).toBeVisible();
+  });
+
+  for (const width of [390, 1440]) {
+    test(`In-App581: open receipts inside billing and preserve the bill search @${width}`, async ({ page }) => {
+      await installMock(page);
+      await page.setViewportSize({ width, height: 900 });
+      let historyReads = 0;
+      const writes = [];
+      page.on('request', (request) => {
+        if (new URL(request.url()).pathname.startsWith('/api/v1/') && request.method() !== 'GET') {
+          writes.push(request.method());
+        }
+      });
+      await page.route('**/api/v1/accounting/payments?**', (route) => {
+        historyReads++;
+        return route.fulfill({ json: { data: [{ ...accountingRows[0], status: 'confirmed' }] } });
+      });
+      await page.route('**/api/v1/payment-reports/701/receipt', (route) =>
+        route.fulfill({ json: { receipt_no: accountingRows[0].receipt_no, amount: 4200, status: 'confirmed' } }));
+      await page.goto('/tuition-collection-pilot-mount.html');
+      const top = page.getByRole('tablist', { name: '帳務中心分頁' });
+      const billing = top.getByRole('tab', { name: '帳單與收款' });
+      const views = page.getByRole('tablist', { name: '帳單與收款檢視' });
+      const bills = views.getByRole('tab', { name: '帳單', exact: true });
+      const receipts = views.getByRole('tab', { name: '收款紀錄' });
+      const search = page.getByTestId('bill-search');
+      const pick = page.getByTestId('bill-pick-c101');
+      await search.fill('林宥辰');
+      await pick.click();
+      await expect(pick).toBeChecked();
+      expect(historyReads).toBe(0);
+      await expect(top.getByRole('tab', { name: '收款紀錄' })).toHaveCount(0);
+
+      await bills.focus();
+      await page.keyboard.press('ArrowRight');
+      await expect(receipts).toBeFocused();
+      await expect(bills).toHaveAttribute('aria-selected', 'true');
+      const opened = page.waitForRequest('**/api/v1/accounting/payments?**');
+      await page.keyboard.press('Enter');
+      const request = await opened;
+      expect(request.method()).toBe('GET');
+      expect(new URL(request.url()).searchParams.get('branch_id')).toBe('1');
+      await expect(billing).toHaveAttribute('aria-selected', 'true');
+      await expect(receipts).toHaveAttribute('aria-selected', 'true');
+      const history = page.getByRole('tabpanel', { name: '收款紀錄' });
+      await expect(history).toBeVisible();
+      await expect(search).toBeHidden();
+      await history.getByRole('button', { name: `查看 ${accountingRows[0].receipt_no}`, exact: true }).click();
+      const receipt = page.getByRole('dialog', { name: '電子收據' });
+      await expect(receipt).toContainText(accountingRows[0].receipt_no);
+      await receipt.press('Escape');
+      await expect(receipt).toBeHidden();
+
+      await bills.click();
+      await expect(search).toHaveValue('林宥辰');
+      await expect(pick).not.toBeChecked();
+      expect(historyReads).toBe(1);
+      expect(writes).toEqual([]);
+    });
+  }
+
+  test('In-App581: existing receipt links select the nested receipt history', async ({ page }) => {
+    await installMock(page);
+    for (const alias of ['payments', 'receipts']) {
+      await page.goto(`/tuition-collection-pilot-mount.html?tab=${alias}`);
+      await expect(page.getByRole('tab', { name: '帳單與收款' })).toHaveAttribute('aria-selected', 'true');
+      await expect(page.getByRole('tab', { name: '收款紀錄' })).toHaveAttribute('aria-selected', 'true');
+      await expect(page.getByRole('tabpanel', { name: '收款紀錄' }).locator('.acct-table')).toBeVisible();
+    }
   });
 
   test('captures the accounting tabs without page overflow', async ({ page }) => {
@@ -434,12 +503,13 @@ test.describe('Tuition Collection clarity browser verification', () => {
   test('keeps accounting loading and long Chinese content usable', async ({ page }) => {
     await installMock(page);
     await page.setViewportSize({ width: 390, height: 844 });
+    const history = page.getByRole('tabpanel', { name: '收款紀錄', exact: true });
     await page.goto('/tuition-collection-pilot-mount.html?mode=loading');
     await page.getByRole('tab', { name: '收款紀錄' }).click();
-    await expect(page.getByTestId('at-skeleton')).toBeVisible();
+    await expect(history.getByTestId('at-skeleton')).toBeVisible();
     await page.goto('/tuition-collection-pilot-mount.html?mode=long');
     await page.getByRole('tab', { name: '收款紀錄' }).click();
-    await expect(page.getByText(/很長的學生姓名/).first()).toBeVisible();
+    await expect(history.getByText(/很長的學生姓名/).first()).toBeVisible();
     await expectNoOverflowAndReachableControls(page);
     await page.goto('/tuition-collection-pilot-mount.html?mode=long');
     await page.locator('[data-testid="tc-reminder-settled"]').click();
