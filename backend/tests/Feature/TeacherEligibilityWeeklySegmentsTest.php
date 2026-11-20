@@ -46,6 +46,32 @@ class TeacherEligibilityWeeklySegmentsTest extends TestCase
         $this->assertStringContainsString("'=1+1,4,2,6", $this->withHeaders($this->auth($director['token']))->get('/api/v1/finance/teacher-eligibility/campus-hours?month=2026-08&branch_id=1&format=csv')->streamedContent());
     }
 
+    public function test_campus_hours_list_the_lessons_of_two_campuses_that_share_clock_time(): void // Founder 2026-11-20
+    {
+        $director = $this->createDirector();
+        $teacher = $this->createTeacher();
+        $other = Campus::factory()->create();
+        $this->createAttendedSession($teacher->id, 'one_on_one', '2026-08-03', '10:00', 120);
+        $this->createAttendedSession($teacher->id, 'one_on_one', '2026-08-03', '11:00', 120, 'completed', 'present', $other->id);
+        $this->createAttendedSession($teacher->id, 'one_on_one', '2026-08-03', '14:00', 120, 'completed', 'present', $other->id); // same day, clear of both
+        $this->createAttendedSession($teacher->id, 'one_on_one', '2026-08-04', '10:00', 120);
+        $this->createAttendedSession($teacher->id, 'one_on_one', '2026-08-04', '12:00', 120, 'completed', 'present', $other->id); // back to back is not an overlap
+
+        $row = collect($this->withHeaders($this->auth($director['token']))->getJson('/api/v1/finance/teacher-eligibility/campus-hours?month=2026-08&branch_id=1')
+            ->assertOk()->json('teachers'))->firstWhere('teacher_id', $teacher->id);
+        $this->assertEquals(9, $row['total_hours']); // 10–13 once, 14–16, then 10–14
+        $this->assertEquals([1 => 4, $other->id => 6], $row['by_campus']);
+        $this->assertCount(1, $row['overlaps']);
+        $this->assertSame('2026-08-03', $row['overlaps'][0]['date']);
+        $this->assertEquals([['10:00', '12:00', 1], ['11:00', '13:00', $other->id]],
+            array_map(fn ($lesson) => [$lesson['start'], $lesson['end'], $lesson['campus_id']], $row['overlaps'][0]['lessons']));
+        $this->assertGreaterThan(0, $row['overlaps'][0]['lessons'][0]['student_id']);
+        $this->assertGreaterThan(0, $row['overlaps'][0]['lessons'][0]['course_id']);
+        // The other campus's lesson shows when and where, not whose: the director cannot read that campus.
+        $this->assertNull($row['overlaps'][0]['lessons'][1]['student_id']);
+        $this->assertNull($row['overlaps'][0]['lessons'][1]['course_id']);
+    }
+
     public function test_director_sees_calendar_backed_weekly_segments(): void
     {
         $director = $this->createDirector();
