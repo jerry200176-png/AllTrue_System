@@ -767,6 +767,35 @@ operations:
     parameter_keys: [bug_id, campus_id, disposition, github_issue_url, public_reply, request_id, writeback_proof]
     notes: ADR-POP-015 (a), Founder 2026-11-15 extension. disposition is bug, suggestion or ux_friction only; new legacy six-key input is normalized to explicit bug before exact-key/hash checks. Bug remains new-to-triaged. The two logged kinds use closeAsLogged with the fixed issue-linked receipt, not a shipping claim; retain canonical engineering-required semantics. Trusted open issue SourceRef, campus, safety, fresh review proof and lock checks remain mandatory. Logged replies cannot be attributed to the reporter or bury an unanswered reporter message. Other dispositions stay human-only. Old stored requests are never normalized. Pi-local POP only.
 
+  reviewed-historical-orphan-invoice-closeout:
+    lifecycle: active
+    domain: billing-entitlement
+    business_owner: director-data
+    technical_owner: platform-data
+    owner: platform-ops
+    approver_roles: [super_admin]
+    approval_policy: founder-exact-reviewed-financial
+    founder_approval_required: true
+    runbook: docs/plans/2026-11-20-historical-orphan-invoice-closeout.md
+    alert_group: LINE:ops-data
+    escalation_policy: billing-entitlement-critical-escalation
+    capabilities: [repair, plan, dry_run, verify, rollback, snapshot, audit]
+    risk: critical
+    reversible: true
+    snapshot_required: true
+    transaction_required: true
+    rollback_supported: true
+    verification_required: true
+    approval_required: true
+    execution_authority: pop-pi-local
+    blast_radius: one_exact_historical_orphan_invoice
+    estimated_duration: 5m
+    invariant_packs: [billing-entitlement-pack@1.0.0]
+    strategy_class: App\Operations\Strategies\HistoricalOrphanInvoiceCloseoutStrategy
+    parameter_keys: [campus_id, student_id, course_id, invoice_id, report_id, expected_issue_date, expected_invoice_total, decision_reference, expected_state_hash]
+    tags: [repair, billing, reviewed-case]
+    notes: One reviewed historical orphan invoice with no live or historical lessons, no active payment report and one exactly reversed receipt. Voids only the invoice and preserves all original money rows. Requires an authenticated human, an exact expiring Founder tuple and Pi-local execution.
+
   reviewed-mismatched-pending-return:
     lifecycle: active
     domain: billing-entitlement
