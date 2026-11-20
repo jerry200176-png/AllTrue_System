@@ -143,7 +143,9 @@ final class InappReportResolveAfterDeployStrategy
 
                 return $from;
             });
-        } catch (RuntimeException $e) { // nothing was written: the transaction rolled back
+        } catch (RuntimeException $e) {
+            // The close and receipt share POP's outer transaction, which must roll back on any failed write.
+            if (($plan['answered_suggestion'] ?? null) !== null) throw $e;
             $code = $e->getMessage();
 
             return ['ok' => false, 'errors' => [str_starts_with($code, 'inapp_') ? $code : 'inapp_resolve_failed'], 'bug_id' => $bugId];

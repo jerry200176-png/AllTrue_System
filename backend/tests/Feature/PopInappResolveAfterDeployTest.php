@@ -287,6 +287,7 @@ final class PopInappResolveAfterDeployTest extends TestCase
     #[\PHPUnit\Framework\Attributes\TestWith(['new_reporter_reply'])]
     #[\PHPUnit\Framework\Attributes\TestWith(['waiting_on_reporter'])]
     #[\PHPUnit\Framework\Attributes\TestWith(['receipt_write_failed'])]
+    #[\PHPUnit\Framework\Attributes\TestWith(['evidence_lock_timeout'])]
     public function test_a_verified_support_reply_can_only_reclose_a_reopened_suggestion_after_human_approval(string $outcome): void
     {
         $bug = $this->bug('new');
@@ -357,11 +358,16 @@ final class PopInappResolveAfterDeployTest extends TestCase
 
             return;
         }
-        if ($outcome === 'receipt_write_failed') {
+        if (in_array($outcome, ['receipt_write_failed', 'evidence_lock_timeout'], true)) {
             $injected = false;
-            DB::connection()->beforeExecuting(function (string $sql, array $bindings) use (&$injected): void {
-                if (!$injected && str_starts_with(strtolower($sql), 'insert')
-                    && str_contains($sql, '`pop_execution_records`') && in_array('execute', $bindings, true)) {
+            DB::connection()->beforeExecuting(function (string $sql, array $bindings) use (&$injected, $outcome): void {
+                if ($injected || !str_starts_with(strtolower($sql), 'insert')) return;
+                if ($outcome === 'evidence_lock_timeout' && str_contains($sql, '`bug_report_evidence`')) {
+                    $injected = true;
+                    throw new \Illuminate\Database\QueryException('mysql', $sql, [],
+                        new \PDOException('SQLSTATE[HY000]: General error: 1205 Lock wait timeout exceeded; try restarting transaction'));
+                }
+                if ($outcome === 'receipt_write_failed' && str_contains($sql, '`pop_execution_records`') && in_array('execute', $bindings, true)) {
                     $injected = true;
                     throw new RuntimeException('synthetic execute receipt persistence failure');
                 }
@@ -372,6 +378,7 @@ final class PopInappResolveAfterDeployTest extends TestCase
             self::assertSame(3, BugReportComment::query()->where('bug_report_id', $bug)->count());
             self::assertSame(2, BugReportStatusLog::query()->where('bug_report_id', $bug)->count());
             self::assertSame(0, BugReportEvidence::query()->where('bug_report_id', $bug)->count());
+            self::assertSame('failed', DB::table('pop_execution_records')->where('operation_id', $reclose)->where('phase', 'execute')->value('result'));
 
             return;
         }

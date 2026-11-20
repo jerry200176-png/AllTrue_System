@@ -528,7 +528,17 @@ final class PopOperationService
                 // A reclosed suggestion reuses an earlier comment, so its new state must have its own execution receipt.
                 $reusesSupportReply = $strategy instanceof Strategies\InappReportResolveAfterDeployStrategy
                     && ($plan['answered_suggestion'] ?? null) !== null;
-                return $this->coCommitsWithRecord($strategy, $request) || $reusesSupportReply
+                if ($reusesSupportReply) {
+                    return DB::transaction(function () use ($executeAndRecord): array {
+                        try {
+                            return $executeAndRecord();
+                        } catch (Throwable $error) {
+                            // Also roll back the savepoint on lock timeout. Laravel skips it for a raw nested concurrency error (#5236).
+                            throw new RuntimeException('Reviewed suggestion closeout aborted', 0, $error);
+                        }
+                    });
+                }
+                return $this->coCommitsWithRecord($strategy, $request)
                     ? DB::transaction($executeAndRecord, 3)
                     : $executeAndRecord();
             }
