@@ -286,6 +286,7 @@ final class PopInappResolveAfterDeployTest extends TestCase
     #[\PHPUnit\Framework\Attributes\TestWith(['completed'])]
     #[\PHPUnit\Framework\Attributes\TestWith(['new_reporter_reply'])]
     #[\PHPUnit\Framework\Attributes\TestWith(['waiting_on_reporter'])]
+    #[\PHPUnit\Framework\Attributes\TestWith(['receipt_write_failed'])]
     public function test_a_verified_support_reply_can_only_reclose_a_reopened_suggestion_after_human_approval(string $outcome): void
     {
         $bug = $this->bug('new');
@@ -352,6 +353,24 @@ final class PopInappResolveAfterDeployTest extends TestCase
             self::assertSame('failed', $this->service->runApprovedLocally($reclose)['status']);
             self::assertSame('triaged', $report->fresh()->status);
             self::assertSame(4, BugReportComment::query()->where('bug_report_id', $bug)->count());
+            self::assertSame(0, BugReportEvidence::query()->where('bug_report_id', $bug)->count());
+
+            return;
+        }
+        if ($outcome === 'receipt_write_failed') {
+            $injected = false;
+            DB::connection()->beforeExecuting(function (string $sql, array $bindings) use (&$injected): void {
+                if (!$injected && str_starts_with(strtolower($sql), 'insert')
+                    && str_contains($sql, '`pop_execution_records`') && in_array('execute', $bindings, true)) {
+                    $injected = true;
+                    throw new RuntimeException('synthetic execute receipt persistence failure');
+                }
+            });
+            self::assertSame('failed', $this->service->runApprovedLocally($reclose)['status']);
+            self::assertTrue($injected);
+            self::assertSame('triaged', $report->fresh()->status);
+            self::assertSame(3, BugReportComment::query()->where('bug_report_id', $bug)->count());
+            self::assertSame(2, BugReportStatusLog::query()->where('bug_report_id', $bug)->count());
             self::assertSame(0, BugReportEvidence::query()->where('bug_report_id', $bug)->count());
 
             return;

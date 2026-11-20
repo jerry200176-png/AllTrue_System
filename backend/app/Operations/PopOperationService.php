@@ -525,8 +525,10 @@ final class PopOperationService
                     $commitSha,
                     $this->durationMs($startedAt)
                 );
-                // Co-commit financial repair/receipt; preserve other strategies' external-effect contracts.
-                return $this->coCommitsWithRecord($strategy, $request)
+                // A reclosed suggestion reuses an earlier comment, so its new state must have its own execution receipt.
+                $reusesSupportReply = $strategy instanceof Strategies\InappReportResolveAfterDeployStrategy
+                    && ($plan['answered_suggestion'] ?? null) !== null;
+                return $this->coCommitsWithRecord($strategy, $request) || $reusesSupportReply
                     ? DB::transaction($executeAndRecord, 3)
                     : $executeAndRecord();
             }
