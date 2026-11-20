@@ -14,6 +14,19 @@
       <AtButton v-else-if="primary === 'issue'" variant="secondary" size="sm" shape="rect" data-testid="contract-issue" @click="emit('issue', billDraft)">開帳單 {{ money(billDraft.amount) }}</AtButton>
       <ActionMenu v-if="menuGroups.length" :groups="menuGroups" :label="`${course.subject || '課程'} 的更多操作`" trigger-class="contract__more" @select="onMenu" />
     </div>
+    <div v-if="rowActions?.settleBlockedReason" class="tw:flex tw:flex-wrap tw:items-center tw:gap-2">
+      <p :id="`contract-package-close-${course.id}`" class="contract__warn" data-testid="contract-package-close">{{ rowActions.settleBlockedReason }}</p>
+      <AtButton
+        v-if="rowActions.packageCloseReview"
+        type="button"
+        variant="secondary"
+        size="sm"
+        shape="rect"
+        :aria-describedby="`contract-package-close-${course.id}`"
+        data-testid="contract-package-close-review"
+        @click="emit('row-action', 'packageCloseReview')"
+      >回報給總部</AtButton>
+    </div>
     <p v-for="w in (open ? [] : warnings)" :key="w.testid" class="contract__warn" :data-testid="w.testid">{{ w.text }}</p>
     <p v-if="actionError" class="contract__error">{{ actionError }}</p>
     <!-- Dialog owner stays mounted while collapsed so the ••• items can open it. -->
@@ -53,7 +66,6 @@
       <span v-if="outsideDates.length" class="contract__muted" data-testid="contract-outside">{{ outsideText }}</span>
       <span v-if="slipReasonShown" :id="`contract-slip-reason-${course.id}`" class="contract__muted" data-testid="contract-slip-reason">{{ slipState.reason }}</span>
     </div>
-    <p v-if="rowActions?.settleBlockedReason" class="contract__warn" data-testid="contract-package-close">{{ rowActions.settleBlockedReason }}</p>
 
     <!-- #4115 / Founder Q2 = A + D3: display only. A different amount alone is no reason to void, so no void action here. -->
     <div v-if="rateNote" class="contract__ratenote" data-testid="contract-rate-note">
@@ -460,7 +472,6 @@ const outsideText = computed(() => `需核對：${outsideDates.value.map(md).joi
 const slipReasonShown = computed(() => showSlip.value && !slipState.value.ok);
 // Warnings never hide: a collapsed card keeps them as one warning-tone line each.
 const warnings = computed(() => [
-  props.rowActions?.settleBlockedReason && { testid: 'contract-package-close', text: props.rowActions.settleBlockedReason },
   legacyUnverified.value && { testid: 'contract-legacy-unverified', text: LEGACY_FLAG_UNVERIFIED_HELP },
   outsideDates.value.length && { testid: 'contract-outside', text: outsideText.value },
   slipReasonShown.value && { testid: 'contract-slip-reason', text: slipState.value.reason },

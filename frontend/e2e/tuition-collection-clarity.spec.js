@@ -497,7 +497,7 @@ for (const width of [375, 1536]) for (const size of ['standard', 'large']) for (
   });
 }
 
-// #5494: headless actual page + existing ledger/card, synthetic package only; no mutation is allowed.
+// #5494 and in-app #578: actual ledger and report form, synthetic package only.
 for (const width of [375, 1280]) {
   test(`5494 package close explains the boundary and preserves single close @${width}`, async ({ page }, info) => {
     const writes = []; const errors = [];
@@ -525,12 +525,14 @@ for (const width of [375, 1280]) {
       invoices: [], receipts: [], payments: [], reports: [], anomalies: [],
     } }));
     await page.route('**/api/v1/accounting/contracts/*/sessions', route => route.fulfill({ json: { sessions: [] } }));
-    await page.goto('/tuition-collection-pilot-mount.html');
+    await page.goto('/tuition-collection-pilot-mount.html?with-report-form');
     await page.getByTestId('bill-search').fill('合成結案學生');
     await page.getByTestId('bill-documents-c42').click();
     const card = page.getByTestId('contract-card-42');
     const reason = card.getByTestId('contract-package-close');
+    const support = card.getByRole('button', { name: '回報給總部' });
     await expect(reason).toHaveText('共用方案須整包核對，目前不能只結束其中一門課。');
+    await expect(support).toBeVisible();
     await reason.scrollIntoViewIfNeeded();
     await expect(reason).toBeInViewport();
     const box = await reason.boundingBox();
@@ -540,9 +542,22 @@ for (const width of [375, 1280]) {
     await page.keyboard.press('Escape');
     await card.getByTestId('contract-toggle').click();
     await expect(reason).toBeVisible();
+    await expect(support).toBeInViewport({ ratio: 1 });
     const shot = info.outputPath(`package-close-${width}.png`);
-    await reason.screenshot({ path: shot }); await info.attach('package-close-explanation', { path: shot, contentType: 'image/png' });
+    await reason.locator('..').screenshot({ path: shot }); await info.attach('package-close-explanation', { path: shot, contentType: 'image/png' });
+    await support.click();
+    const report = page.getByRole('dialog', { name: '意見與建議' });
+    await expect(report.getByLabel('相關資料')).toHaveValue('方案ID 81 / 課程ID 42');
+    await expect(report.getByLabel('請告訴我們發生了什麼')).toHaveValue(/請總部一併核對/);
+    const formShot = info.outputPath(`package-close-form-${width}.png`);
+    await report.screenshot({ path: formShot });
+    await info.attach('package-close-report-form', { path: formShot, contentType: 'image/png' });
+    await expect(writes).toEqual([]);
+    page.once('dialog', dialog => dialog.accept());
+    await report.getByRole('button', { name: '關閉回報視窗' }).click();
+    await expect(report).toBeHidden();
     const single = page.getByTestId('contract-card-44');
+    await expect(single.getByRole('button', { name: '回報給總部' })).toHaveCount(0);
     await single.getByRole('button', { name: '合成單科 的更多操作', exact: true }).click();
     await page.getByRole('menuitem', { name: '結案（不續報）', exact: true }).click();
     await expect(page.locator('.tc-overlay')).toContainText('合成單科');

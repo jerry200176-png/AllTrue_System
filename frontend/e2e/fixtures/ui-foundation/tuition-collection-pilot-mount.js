@@ -6,6 +6,9 @@ localStorage.setItem('alltrue_session', JSON.stringify({
 localStorage.setItem('app_branch', '1');
 const params = new URLSearchParams(window.location.search);
 const initialTab = params.get('tab') || '';
+const BugReportLauncher = params.has('with-report-form')
+  ? (await import('../../../src/components/BugReportLauncher.vue')).default
+  : null;
 
 const [{ createApp, h }, styles, uiStyles, { default: TuitionCollectionPage }] = await Promise.all([
   import('vue'),
@@ -20,7 +23,10 @@ void uiStyles;
 createApp({
   name: 'TuitionCollectionPilotMount',
   setup() {
-    return () => h(TuitionCollectionPage, { branchId: 1, initialTab });
+    return () => [
+      h(TuitionCollectionPage, { branchId: 1, initialTab }),
+      BugReportLauncher && h(BugReportLauncher, { branchId: 1, currentPageKey: 'tuition-collect' }),
+    ];
   },
 }).mount('#app');
 

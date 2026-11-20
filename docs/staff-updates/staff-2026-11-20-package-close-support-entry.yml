@@ -1,0 +1,14 @@
+updates:
+  - id: staff-2026-11-20-package-close-support-entry
+    published_at: "2026-11-20"
+    audiences:
+      - director
+      - super_admin
+    importance: digest
+    title: 共用方案結案可回報給總部
+    summary: 帳務中心的共用方案結案提示有了「回報給總部」。
+    items:
+      - category: improved
+        text: 表單會帶入方案與課程編號。補上情況並送出，總部就能核對整個方案。
+    source_refs:
+      - "changelog:2026-11-20:package-close-support-entry"
