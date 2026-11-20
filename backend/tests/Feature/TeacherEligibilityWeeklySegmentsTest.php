@@ -61,6 +61,8 @@ class TeacherEligibilityWeeklySegmentsTest extends TestCase
             ->assertOk()->json('teachers'))->firstWhere('teacher_id', $teacher->id);
         $this->assertEquals(9, $row['total_hours']); // 10–13 once, 14–16, then 10–14
         $this->assertEquals([1 => 4, $other->id => 6], $row['by_campus']);
+        $this->assertSame([['date' => '2026-08-03', 'minutes' => 300, 'minutes_by_campus' => [1 => 120, $other->id => 240]],
+            ['date' => '2026-08-04', 'minutes' => 240, 'minutes_by_campus' => [1 => 120, $other->id => 120]]], $row['by_day']);
         $this->assertCount(1, $row['overlaps']);
         $this->assertSame('2026-08-03', $row['overlaps'][0]['date']);
         $this->assertEquals([['10:00', '12:00', 1], ['11:00', '13:00', $other->id]],
@@ -70,6 +72,109 @@ class TeacherEligibilityWeeklySegmentsTest extends TestCase
         // The other campus's lesson shows when and where, not whose: the director cannot read that campus.
         $this->assertNull($row['overlaps'][0]['lessons'][1]['student_id']);
         $this->assertNull($row['overlaps'][0]['lessons'][1]['course_id']);
+    }
+
+    public function test_calendar_counts_one_slot_once_when_older_schedule_rows_were_superseded(): void // Founder 2026-11-20
+    {
+        $contract = $this->createTeacher();
+        $other = $this->createTeacher('weekly-teacher-2@test.com');
+        // Two generations of substitute rows on one slot: the older one (contract teacher) was replaced by a newer one.
+        $session = $this->createAttendedSession($contract->id, 'one_on_one', '2026-08-03', '10:00', 120);
+        $first = $this->schedule($other->id, '2026-08-03', '10:00', '12:00', ['student_course_id' => $session->StudentClassID, 'status' => 'rescheduled']);
+        $this->schedule($contract->id, '2026-08-03', '10:00', '12:00', ['student_course_id' => $session->StudentClassID, 'original_schedule_id' => $first]);
+        $second = $this->schedule($other->id, '2026-08-03', '10:00', '12:00', ['student_course_id' => $session->StudentClassID, 'status' => 'rescheduled']);
+        $this->schedule($other->id, '2026-08-03', '10:00', '12:00', ['student_course_id' => $session->StudentClassID, 'original_schedule_id' => $second]);
+        // A lesson moved to the 4th and then on to the 5th: the row left on the 4th is no lesson.
+        $moved = $this->createAttendedSession($contract->id, 'one_on_one', '2026-08-05', '14:00', 120);
+        $from = $this->schedule($contract->id, '2026-08-06', '14:00', '16:00', ['student_course_id' => $moved->StudentClassID, 'status' => 'rescheduled']);
+        $this->schedule($contract->id, '2026-08-04', '14:00', '16:00', ['student_course_id' => $moved->StudentClassID, 'original_schedule_id' => $from]);
+        $again = $this->schedule($contract->id, '2026-08-04', '14:00', '16:00', ['student_course_id' => $moved->StudentClassID, 'status' => 'rescheduled']);
+        $this->schedule($contract->id, '2026-08-05', '14:00', '16:00', ['student_course_id' => $moved->StudentClassID, 'original_schedule_id' => $again]);
+
+        $calendar = \App\Services\TeacherClassCalendar::load('2026-08-03', '2026-08-06', null, null, true);
+        $this->assertSame(['2026-08-03'], array_keys($calendar[$other->id]));
+        $this->assertCount(1, $calendar[$other->id]['2026-08-03']);
+        $this->assertSame(['2026-08-05'], array_keys($calendar[$contract->id])); // not the 3rd (taken over), not the 4th (moved on)
+    }
+
+    public function test_calendar_keeps_the_substitute_when_a_newer_contract_teacher_row_shares_the_slot(): void
+    {
+        $contract = $this->createTeacher();
+        $substitute = $this->createTeacher('weekly-teacher-2@test.com');
+        $session = $this->createAttendedSession($contract->id, 'one_on_one', '2026-08-03', '10:00', 120);
+        $anchor = $this->schedule($contract->id, '2026-08-03', '10:00', '12:00', ['student_course_id' => $session->StudentClassID, 'status' => 'rescheduled']);
+        $this->schedule($substitute->id, '2026-08-03', '10:00', '12:00', ['student_course_id' => $session->StudentClassID, 'original_schedule_id' => $anchor]);
+        $this->schedule($contract->id, '2026-08-03', '10:00', '12:00', ['student_course_id' => $session->StudentClassID, 'original_schedule_id' => $anchor]); // stale, newer
+
+        $calendar = \App\Services\TeacherClassCalendar::load('2026-08-03', '2026-08-03', null, null, true);
+        $this->assertSame([$substitute->id], array_keys($calendar));
+        $this->assertCount(1, $calendar[$substitute->id]['2026-08-03']);
+    }
+
+    public function test_calendar_keeps_a_substitute_row_moved_onto_a_slot_that_was_vacated_later(): void
+    {
+        $contract = $this->createTeacher();
+        $substitute = $this->createTeacher('weekly-teacher-2@test.com');
+        // The substitute row is older than the slot's own "moved away" marker (a reschedule moves the row in place, id unchanged),
+        // but a lesson is held on the slot: the substitute teaches it.
+        $session = $this->createAttendedSession($contract->id, 'one_on_one', '2026-08-10', '10:00', 120);
+        $anchor = $this->schedule($contract->id, '2026-08-03', '10:00', '12:00', ['student_course_id' => $session->StudentClassID, 'status' => 'rescheduled']);
+        $this->schedule($substitute->id, '2026-08-10', '10:00', '12:00', ['student_course_id' => $session->StudentClassID, 'original_schedule_id' => $anchor]);
+        $this->schedule($contract->id, '2026-08-10', '10:00', '12:00', ['student_course_id' => $session->StudentClassID, 'status' => 'rescheduled']);
+
+        $calendar = \App\Services\TeacherClassCalendar::load('2026-08-10', '2026-08-10', null, null, true);
+        $this->assertSame([$substitute->id], array_keys($calendar));
+
+        // The student takes leave: payroll still counts the lesson, and it stays with the substitute.
+        DB::table('ClassSession')->where('id', $session->id)->update(['Status' => 'leave']);
+        $this->assertSame([$substitute->id], array_keys(\App\Services\TeacherClassCalendar::load('2026-08-10', '2026-08-10', null, null, true)));
+    }
+
+    public function test_calendar_prefers_a_stamped_live_row_over_a_newer_unstamped_substitute_row(): void
+    {
+        $contract = $this->createTeacher();
+        $substitute = $this->createTeacher('weekly-teacher-2@test.com');
+        $session = $this->createAttendedSession($contract->id, 'one_on_one', '2026-08-03', '10:00', 120);
+        $slot = ['student_course_id' => $session->StudentClassID];
+        // Restored contract-teacher live row (stamped by the occurrence writer), then a stale legacy substitute row.
+        $this->schedule($contract->id, '2026-08-03', '10:00', '12:00', $slot + ['original_schedule_date' => '2026-08-03', 'original_start_time' => '10:00:00']);
+        $anchor = $this->schedule($contract->id, '2026-08-03', '10:00', '12:00', $slot + ['status' => 'rescheduled']);
+        $this->schedule($substitute->id, '2026-08-03', '10:00', '12:00', $slot + ['original_schedule_id' => $anchor]);
+
+        // Stamps rank only where the course's campus runs schedule-occurrence-v2; elsewhere the newer substitute row wins.
+        foreach ([true => $contract->id, false => $substitute->id] as $on => $expected) {
+            config(['feature_flags.values' => ['FEATURE_SCHEDULE_OCCURRENCE_V2' => false, 'FEATURE_SCHEDULE_OCCURRENCE_V2_CAMPUS_1' => (bool) $on]]);
+            $calendar = \App\Services\TeacherClassCalendar::load('2026-08-03', '2026-08-03', null, null, true);
+            $this->assertSame([$expected], array_keys($calendar), $on ? 'flag on' : 'flag off');
+        }
+    }
+
+    public function test_calendar_ignores_schedule_rows_of_a_deleted_course(): void
+    {
+        $teacher = $this->createTeacher();
+        $this->schedule($teacher->id, '2026-08-03', '10:00', '12:00', ['student_course_id' => 999999]);
+        $this->schedule($teacher->id, '2026-08-04', '10:00', '12:00'); // no course (personal / admin row): unchanged
+
+        $calendar = \App\Services\TeacherClassCalendar::load('2026-08-03', '2026-08-04', null, null, true);
+        $this->assertSame(['2026-08-04'], array_keys($calendar[$teacher->id]));
+    }
+
+    public function test_calendar_ignores_a_newer_schedule_owner_without_a_teacher_binding(): void
+    {
+        $contract = $this->createTeacher();
+        $substitute = $this->createTeacher('weekly-teacher-2@test.com');
+        $date = '2026-08-03';
+        $session = $this->createAttendedSession($contract->id, 'one_on_one', $date, '10:00', 120);
+        $slot = ['student_course_id' => $session->StudentClassID];
+        $anchor = $this->schedule($contract->id, $date, '10:00', '12:00', $slot + ['status' => 'rescheduled']);
+        $this->schedule($substitute->id, $date, '10:00', '12:00', $slot + ['original_schedule_id' => $anchor]);
+        $this->schedule(999999, $date, '10:00', '12:00', $slot + ['original_schedule_id' => $anchor]);
+
+        foreach ([false, true] as $forPayroll) {
+            $calendar = \App\Services\TeacherClassCalendar::load($date, $date, [1], null, $forPayroll);
+            $this->assertSame([$substitute->id], array_keys($calendar));
+            $this->assertCount(1, $calendar[$substitute->id][$date]);
+        }
     }
 
     public function test_director_sees_calendar_backed_weekly_segments(): void
@@ -514,10 +619,10 @@ class TeacherEligibilityWeeklySegmentsTest extends TestCase
         return ['user_id' => (int) $user->id, 'token' => $token];
     }
 
-    private function createTeacher(): User
+    private function createTeacher(string $login = 'weekly-teacher@test.com'): User
     {
         $teacher = User::create([
-            'LoginName' => 'weekly-teacher@test.com', 'Name' => '每週段數老師', 'PSW' => 'secret',
+            'LoginName' => $login, 'Name' => '每週段數老師', 'PSW' => 'secret',
             'type' => 'T', 'phone' => '0922000000', 'MustChangePassword' => false,
             'employment_type' => 'full_time',
         ]);
