@@ -344,10 +344,34 @@ class TeacherEligibilityController extends Controller
 
             return $this->scheduledCoverageHoursForDate($rows, fn () => true);
         };
-        $rows = $teachers->map(function ($teacher) use ($calendar, $hours) {
+        // [start, end) in minutes, with the same two-hour default as the hours above when the end is missing or not after the start.
+        $span = function (array $lesson): array {
+            $start = (int) $this->clockMinutes($lesson['start']);
+            $end = $this->clockMinutes($lesson['end']);
+
+            return [$start, $end !== null && $end > $start ? $end : min($start + 120, 1440)];
+        };
+        $rows = $teachers->map(function ($teacher) use ($calendar, $hours, $span) {
             $total = 0.0;
             $byCampus = [];
-            foreach ($calendar[(int) $teacher->id] ?? [] as $lessons) {
+            $overlaps = [];
+            $days = $calendar[(int) $teacher->id] ?? [];
+            ksort($days);
+            foreach ($days as $date => $lessons) {
+                // Lessons of two campuses that share clock time: each campus column counts them, the total counts them once.
+                $hit = [];
+                foreach ($lessons as $i => $a) {
+                    foreach ($lessons as $j => $b) {
+                        if ($j > $i && $a['campus_id'] !== $b['campus_id'] && $span($a)[0] < $span($b)[1] && $span($b)[0] < $span($a)[1]) {
+                            $hit[$i] = $a;
+                            $hit[$j] = $b;
+                        }
+                    }
+                }
+                if ($hit !== []) {
+                    usort($hit, fn ($x, $y) => [$x['start'], $x['campus_id'], $x['student_id']] <=> [$y['start'], $y['campus_id'], $y['student_id']]);
+                    $overlaps[] = ['date' => (string) $date, 'lessons' => $hit];
+                }
                 $total += $hours($lessons);
                 foreach (collect($lessons)->groupBy('campus_id') as $campusId => $atCampus) {
                     $byCampus[(int) $campusId] = ($byCampus[(int) $campusId] ?? 0.0) + $hours($atCampus->all());
@@ -357,7 +381,7 @@ class TeacherEligibilityController extends Controller
 
             // total_hours merges the whole day, so two campuses' lessons that overlap on the clock count once there.
             return ['teacher_id' => (int) $teacher->id, 'teacher_name' => (string) $teacher->Name, 'total_hours' => round($total, 2),
-                'by_campus' => array_map(fn ($value) => round($value, 2), $byCampus)];
+                'by_campus' => array_map(fn ($value) => round($value, 2), $byCampus), 'overlaps' => $overlaps];
         })->values()->all();
         $campuses = DB::table('Campus')->whereIn('id', collect($rows)->flatMap(fn ($row) => array_keys($row['by_campus']))->unique()->all())->orderBy('id')->pluck('name', 'id')->all();
         if ($request->input('format') !== 'csv') {

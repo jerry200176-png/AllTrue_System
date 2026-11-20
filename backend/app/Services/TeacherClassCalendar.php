@@ -18,7 +18,7 @@ class TeacherClassCalendar
      * @param  int[]|null  $campusIds  null = 不限分校
      * @param  int|int[]|null  $teacherId  one teacher, several, or null for all
      * @param  bool  $forPayroll  正職段數用：學生請假的堂次照算（已安排補課的 leave_adjusted 不算，補課算在新時段），行政／不可排時段不算
-     * @return array<int, array<string, list<array{start:string,end:string,campus_id:int}>>> teacherId => Y-m-d => 課
+     * @return array<int, array<string, list<array{start:string,end:string,campus_id:int,student_id:int,course_id:int}>>> teacherId => Y-m-d => 課
      */
     public static function load(string $from, string $to, ?array $campusIds, int|array|null $teacherId = null, bool $forPayroll = false): array
     {
@@ -48,7 +48,7 @@ class TeacherClassCalendar
             ->whereNotNull('sc.TeacherID')
             ->whereBetween('cs.SessionDate', [$from, $to])
             ->whereNotIn('cs.Status', $forPayroll ? ['cancelled', 'voided', 'leave_adjusted'] : ['cancelled', 'leave'])
-            ->select('sc.TeacherID as teacher_id', 'cs.StudentClassID as course_id', 'cs.SessionDate as d', 'cs.StartTime as start_time', 'cs.EndTime as end_time', 'st.CampusID as campus_id');
+            ->select('sc.TeacherID as teacher_id', 'cs.StudentClassID as course_id', 'cs.SessionDate as d', 'cs.StartTime as start_time', 'cs.EndTime as end_time', 'st.CampusID as campus_id', 'sc.StudentID as student_id');
         if ($campusIds !== null) {
             $sessionQuery->whereIn('st.CampusID', $campusIds);
         }
@@ -63,7 +63,7 @@ class TeacherClassCalendar
             if ($subs !== [] || SubstituteScheduleService::isSubstitutedAway((int) $row->course_id, $row->d, (string) $row->start_time)) {
                 continue;
             }
-            self::push($out, $row->teacher_id, $row->d, $row->start_time, $row->end_time, $row->campus_id);
+            self::push($out, $row->teacher_id, $row->d, $row->start_time, $row->end_time, $row->campus_id, $row->student_id, $row->course_id);
         }
 
         $filter = app(StaleScheduleExceptionFilter::class);
@@ -72,7 +72,7 @@ class TeacherClassCalendar
             ->groupBy(fn ($r) => substr((string) $r->schedule_date, 0, 10));
         foreach ($byDate as $date => $rows) {
             foreach ($filter->rejectStale($rows, $date, false, $forPayroll ? ['leave'] : []) as $row) {
-                self::push($out, $row->teacher_id, $date, $row->start_time, $row->end_time, $row->branch_id);
+                self::push($out, $row->teacher_id, $date, $row->start_time, $row->end_time, $row->branch_id, $row->student_id, $row->student_course_id);
             }
         }
 
@@ -105,11 +105,12 @@ class TeacherClassCalendar
         return array_keys(array_filter(app(StaleScheduleExceptionFilter::class)->rejectStaleBatch($rowsByDate)));
     }
 
-    private static function push(array &$out, $teacherId, $date, $start, $end, $campusId): void
+    private static function push(array &$out, $teacherId, $date, $start, $end, $campusId, $studentId, $courseId): void
     {
         $hhmm = self::hhmm($start);
         if ($hhmm !== '') {
-            $out[(int) $teacherId][substr((string) $date, 0, 10)][] = ['start' => $hhmm, 'end' => self::hhmm($end), 'campus_id' => (int) $campusId];
+            $out[(int) $teacherId][substr((string) $date, 0, 10)][] = ['start' => $hhmm, 'end' => self::hhmm($end), 'campus_id' => (int) $campusId,
+                'student_id' => (int) $studentId, 'course_id' => (int) $courseId];
         }
     }
 
