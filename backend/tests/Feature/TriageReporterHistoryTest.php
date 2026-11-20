@@ -5,7 +5,9 @@ namespace Tests\Feature;
 use App\Models\BugReport;
 use App\Models\BugReportAttachment;
 use App\Models\BugReportComment;
+use App\Models\BugReportStatusLog;
 use App\Models\User;
+use App\Models\UserCampus;
 use Database\Factories\CampusFactory;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -63,19 +65,34 @@ final class TriageReporterHistoryTest extends TestCase
         $headers = $this->headers();
         $reporter = $this->user('T');
         $campus = (int) CampusFactory::new()->create()->id;
+        UserCampus::create(['CampusID' => $campus, 'UserID' => $reporter->id, 'Approved' => 1]);
         $older = $this->bug($reporter, 'closed', $campus);
+        BugReportStatusLog::create([
+            'bug_report_id' => $older->id,
+            'changed_by' => $this->user('S')->id,
+            'from_status' => 'triaged',
+            'to_status' => 'closed',
+            'note' => 'closed_by_timeout',
+        ]);
         $newer = $this->bug($reporter, 'new', $campus);
         $url = '/api/v1/triage/bug-reports?status=new,triaged,in_progress,resolved&limit=1';
         $page = $this->getJson($url, $headers)->assertOk();
         $this->assertSame([$newer->id], array_column($page->json('data'), 'id'));
         $page->assertJsonPath('next_since_id', $newer->id);
 
-        $older->update(['status' => 'triaged']); // A writer reopens an excluded row between reader requests.
+        $this->postJson("/api/v1/bugs/{$older->id}/comments", ['body' => 'The issue is still present.'], [
+            'X-User-Id' => (string) $reporter->id,
+        ])->assertCreated();
+        $this->assertDatabaseHas('bug_report_status_logs', [
+            'bug_report_id' => $older->id, 'to_status' => 'triaged', 'note' => 'reopened_by_reporter_reply',
+        ]);
         $this->getJson($url . '&since_id=' . $newer->id, $headers)->assertOk()
             ->assertJsonCount(0, 'data')->assertJsonPath('next_since_id', null);
         $fresh = $this->getJson($url . '&since_id=0', $headers)->assertOk();
         $this->assertSame([$older->id], array_column($fresh->json('data'), 'id'));
-        $fresh->assertJsonPath('data.0.status', 'triaged')->assertJsonPath('next_since_id', $older->id);
+        $fresh->assertJsonPath('data.0.status', 'triaged')
+            ->assertJsonPath('data.0.comments_count', 1)
+            ->assertJsonPath('next_since_id', $older->id);
         $this->getJson($url . '&since_id=' . $older->id, $headers)->assertOk()
             ->assertJsonPath('data.0.id', $newer->id);
     }
