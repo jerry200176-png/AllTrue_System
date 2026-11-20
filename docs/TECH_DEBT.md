@@ -659,7 +659,7 @@
 
 | 欄位 | 內容 |
 |---|---|
-| 狀態 | Open |
+| 狀態 | Partly done 2026-11-20：**刪除**已全面保護。快照邏輯從 `LearningRecordController::destroy` 移到 `LearningRecord` 的 `deleting` model event（沿用 #4907 的 insert-only `learning_record_author_snapshots`，`new_teacher_id=0`、`reason=deleted`，不影響作者證據判斷）。課程重建、請假重建、drift 修復孤兒等 6 處 query-builder 大量刪除改成 `->get()->each->delete()`，也會留快照。`LearningRecordDeleteThroughModelTest` 擋住新的 query-builder 刪除；只允許 `ResetDataController` 與 `StudentController::purgeStudentRecords`（無歷史學生的整筆清除）。剩：**覆寫**（老師或主任改內容）仍沒有版本紀錄，需要另開一張歷史表（additive migration）；`DB::table('LearningRecord')->update(...)` 的修復指令只改關聯欄位與 VoidedAt，不改正文。 |
 | 優先級 | P2 |
 | 發現日期 | 2026-08-06 |
 | 發現來源 | in-app #219 修復過程中的自我檢討（R100）——一次已徵得使用者同意的資料修正意外觸發 `maybeRebuildSessionsAfterUpdate()` 整批重建，刪除並重建了課程 3153 的 `ClassSession`/`LearningRecord`。事後想找回評量記錄內容才發現：`ClassSession` 有 `ScheduleAuditLog`/`ClassSessionObserver` 這套審計機制（雖然這次因批次刪除繞過而沒發揮作用，已在同一批修復補上），但 `LearningRecord`（老師實際填寫的評量文字）本身完全沒有對應的審計或版本歷史，內容一旦被覆蓋或刪除就是真的、永久地消失，沒有任何補救管道。 |
@@ -869,7 +869,7 @@
 
 | 欄位 | 內容 |
 |---|---|
-| 狀態 | Partly done 2026-11-19（Founder GO 2026-11-19）：同一個 migration 丟棄沒有讀寫者的 `assessment_attempts`、`assessment_answers`、`assessment_question_snapshots`、`assessment_audit_logs`（丟棄前皆 0 列）。剩：`assessments`、`assessment_results`、`assessment_remediation_actions` 仍被家長端與學習歷程讀取，要先移除那些讀取才能處理。 |
+| 狀態 | Partly done 2026-11-20：2026-11-19 已丟棄 `assessment_attempts`、`assessment_answers`、`assessment_question_snapshots`、`assessment_audit_logs`（Founder GO 2026-11-19）。2026-11-20 移除家長端與學習歷程對 `assessments`、`assessment_results`、`assessment_remediation_actions` 的讀取並刪除三個 model（唯讀量測三表皆 0 列）。剩：這三張表已無讀寫者，丟棄需 Founder 對確切範圍批准 migration；前端 `StudentLearningTimeline.vue` 仍容許 `assessment` 類型（後端已不送，無害）。 |
 | 優先級 | P3 |
 | 發現日期 | 2026-11-13 |
 | 發現來源 | Founder 決定 2026-11-13「學習檢測頁沒什麼人用就移除」；正式環境唯讀量測所有校區 0 筆檢測、0 筆結果、0 筆補強 |

@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands;
 
+use App\Models\LearningRecord;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -257,7 +258,9 @@ class LearningRecordDriftCheck extends Command
             ->pluck('lr.id');
 
         if ($orphanIds->isNotEmpty()) {
-            $deletedOrphan = DB::table('LearningRecord')->whereIn('id', $orphanIds->all())->delete();
+            $orphans = LearningRecord::whereIn('id', $orphanIds->all())->get();
+            $orphans->each->delete(); // through the model: keeps a snapshot of teacher text (TD-074)
+            $deletedOrphan = $orphans->count();
         }
 
         $driver = DB::getDriverName();

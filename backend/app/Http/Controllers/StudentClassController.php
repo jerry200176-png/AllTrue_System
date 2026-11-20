@@ -2492,7 +2492,7 @@ class StudentClassController extends Controller
                                 LearningRecord::where('StudentClassID', (int) $id)
                                     ->where('SessionDate', $csDate)
                                     ->where('Status', 'pending')
-                                    ->delete();
+                                    ->get()->each->delete();
                                 $cs->delete();
                             }
                         }
@@ -2510,7 +2510,7 @@ class StudentClassController extends Controller
                             LearningRecord::where('StudentClassID', (int) $id)
                                 ->where('SessionDate', $lrDate)
                                 ->where('Status', 'pending')
-                                ->delete();
+                                ->get()->each->delete();
                         }
                     }
 
@@ -6316,11 +6316,11 @@ class StudentClassController extends Controller
 
             $sessionIds = ClassSession::where('StudentClassID', $classId)->pluck('id')->all();
             if (!empty($sessionIds)) {
-                LearningRecord::whereIn('ClassSessionID', $sessionIds)->delete();
+                LearningRecord::whereIn('ClassSessionID', $sessionIds)->get()->each->delete();
             }
             LearningRecord::where('StudentClassID', $classId)
                 ->whereNull('ClassSessionID')
-                ->delete();
+                ->get()->each->delete();
             ClassSession::where('StudentClassID', $classId)->delete();
 
             $createdSessions = 0;
@@ -6505,11 +6505,11 @@ class StudentClassController extends Controller
                     'new_data'    => null,
                 ]);
             }
-            LearningRecord::whereIn('ClassSessionID', $sessionIds)->delete();
+            LearningRecord::whereIn('ClassSessionID', $sessionIds)->get()->each->delete();
         }
         LearningRecord::where('StudentClassID', (int) $studentClass->ID)
             ->whereNull('ClassSessionID')
-            ->delete();
+            ->get()->each->delete();
         ClassSession::where('StudentClassID', (int) $studentClass->ID)->get()->each->delete();
 
         $createdSessions = 0;

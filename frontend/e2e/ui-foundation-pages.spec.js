@@ -1344,7 +1344,6 @@ test.describe('Visual regression @visual', () => {
         payment_alerts: [{ class_id: 5, subject: '英文', remaining_sessions: 2, paid: false }],
         invoices: [{ id: 9, Status: 'unpaid', TotalAmount: 7200, DueDate: '2026-09-20', payments: [] }],
         announcements: [],
-        assessment_progress: { items: [] },
       } : { data: [] };
       return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(json) });
     });
@@ -1374,7 +1373,6 @@ test.describe('Visual regression @visual', () => {
         payment_alerts: [{ class_id: 5, subject: '英文', remaining_sessions: 2, paid: false }],
         invoices: [{ id: 9, Status: 'unpaid', TotalAmount: 7200, DueDate: '2026-09-20', payments: [] }],
         announcements: [],
-        assessment_progress: { items: [] },
       } : { data: [] };
       return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(json) });
     });

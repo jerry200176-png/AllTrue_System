@@ -2,7 +2,6 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\AssessmentResult;
 use App\Models\LearningRecord;
 use App\Models\Student;
 use App\Models\StudentClass;
@@ -14,9 +13,9 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
 /**
- * GET students/{student}/learning-timeline (#4970 step3a): staff read-only view that merges four existing
+ * GET students/{student}/learning-timeline (#4970 step3a): staff read-only view that merges three existing
  * sources into one newest-first list: LearningRecord evaluations (with their lesson's sign-in status),
- * formal assessment scores, sign-ins and visible school exam scores. No business writes.
+ * sign-ins and visible school exam scores. No business writes.
  * Access = viewing the student (campus) plus, for a teacher, only courses visible to them.
  */
 class LearningRecordStudentTimelineController extends Controller
@@ -94,25 +93,7 @@ class LearningRecordStudentTimelineController extends Controller
             ];
         }
 
-        $results = AssessmentResult::query()->with('assessment')->where('student_id', $student->id)->where('status', '!=', 'voided')
-            ->when($teacherId !== null, fn ($q) => $q->whereIn('student_class_id', $ownCourseIds))
-            ->orderByDesc('id')->limit(self::PER_SOURCE_LIMIT + 1)->get();
-        if ($results->count() > self::PER_SOURCE_LIMIT) $capped[] = 'assessment';
-        $results = $results->take(self::PER_SOURCE_LIMIT);
-        foreach ($results as $res) {
-            $a = $res->assessment;
-            $subjectId = $a?->subject_id ?: ($courseSubject[$res->student_class_id] ?? null);
-            $items[] = [
-                'type' => 'assessment', 'id' => $res->id,
-                'date' => substr((string) ($res->recorded_at ?? $a->scheduled_for ?? $res->created_at), 0, 10),
-                'subject_id' => $subjectId, 'subject' => $subjectNames[$subjectId] ?? null,
-                'title' => $a?->title, 'score' => (float) $res->score, 'max_score' => (float) $res->max_score_snapshot,
-                'percent' => (float) $res->percent, 'approval_status' => $res->status,
-            ];
-        }
-
-        // School exam scores are a separate source from AssessmentResult. Never
-        // widen teacher visibility merely because this student has a past lesson.
+        // Never widen teacher visibility merely because this student has a past lesson.
         $scores = DB::table('exam_scores as score_item')
             ->join('exam_rounds as round', 'round.id', '=', 'score_item.exam_round_id')
             ->join('exam_round_subjects as part', fn ($join) => $join->on('part.id', '=', 'score_item.exam_round_subject_id')
