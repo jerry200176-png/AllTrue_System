@@ -246,23 +246,38 @@ const QC = `query($o:String!,$r:String!,$s:GitObjectID!,$after:String){
 }`;
 
 const QS = `query($o:String!,$r:String!,$s:GitObjectID!,$after:String){
-  repository(owner:$o,name:$r){object(oid:$s){... on Commit{checkSuites(first:50,after:$after){${PAGE_INFO} nodes{
+  repository(owner:$o,name:$r){object(oid:$s){... on Commit{oid checkSuites(first:50,after:$after){${PAGE_INFO} nodes{
     id app{databaseId} repository{nameWithOwner} workflowRun{databaseId}
     checkRuns(first:100){${PAGE_INFO} nodes{${RUN_FIELDS}}}
   }}}}}
 }`;
 
 const QR = `query($id:ID!,$after:String!){
-  node(id:$id){... on CheckSuite{checkRuns(first:100,after:$after){${PAGE_INFO} nodes{${RUN_FIELDS}}}}}
+  node(id:$id){... on CheckSuite{id commit{oid} checkRuns(first:100,after:$after){${PAGE_INFO} nodes{${RUN_FIELDS}}}}}
 }`;
 
-function commitCheckObject(query, sha, cursor) {
-  const [o, r] = REPO.split('/');
-  const after = cursor ? ['-f', `after=${cursor}`] : [];
-  return JSON.parse(gh('api', 'graphql', '-f', `query=${query}`, '-F', `o=${o}`, '-F', `r=${r}`, '-F', `s=${sha}`, ...after)).data.repository.object;
+function readGitHubGraph(query, ...variables) {
+  return JSON.parse(gh('api', 'graphql', '-f', `query=${query}`, ...variables));
 }
 
-export function contextRuns(sha, commit, readNext = (cursor) => commitCheckObject(QC, sha, cursor)) {
+function graphData(response) {
+  if (!response?.data || typeof response.data !== 'object' || Array.isArray(response.data)
+      || (response.errors !== undefined && (!Array.isArray(response.errors) || response.errors.length > 0))) {
+    throw new Error('Incomplete GitHub check response');
+  }
+  return response.data;
+}
+
+function commitCheckObject(repo, query, sha, cursor, read = readGitHubGraph) {
+  const [o, r] = repo.split('/');
+  const after = cursor ? ['-f', `after=${cursor}`] : [];
+  const data = graphData(read(query, '-F', `o=${o}`, '-F', `r=${r}`, '-F', `s=${sha}`, ...after));
+  const commit = data.repository?.object;
+  if (commit?.oid !== sha) throw new Error('GitHub check response does not match the requested commit');
+  return commit;
+}
+
+export function contextRuns(sha, commit, readNext = (cursor) => commitCheckObject(REPO, QC, sha, cursor)) {
   if (commit?.oid !== sha || !commit.statusCheckRollup) return [];
   return readCheckPages(commit.statusCheckRollup.contexts, (cursor) => {
     const next = readNext(cursor);
@@ -271,13 +286,22 @@ export function contextRuns(sha, commit, readNext = (cursor) => commitCheckObjec
   });
 }
 
-export function rollupFor(sha) {
-  const commit = commitCheckObject(QC, sha);
-  const nodes = commit?.statusCheckRollup ? contextRuns(sha, commit) : suiteRuns(
-    readCheckPages(commitCheckObject(QS, sha)?.checkSuites, (cursor) => commitCheckObject(QS, sha, cursor)?.checkSuites),
-    (id, cursor) => JSON.parse(gh('api', 'graphql', '-f', `query=${QR}`, '-f', `id=${id}`, '-f', `after=${cursor}`)).data.node?.checkRuns,
-  );
-  return fromPinned(nodes, PINS, REPO);
+export function rollupFor(sha, read = readGitHubGraph, repo = REPO) {
+  const loadPage = (query, cursor) => commitCheckObject(repo, query, sha, cursor, read);
+  const commit = loadPage(QC);
+  if (commit.statusCheckRollup) {
+    return fromPinned(contextRuns(sha, commit, (cursor) => loadPage(QC, cursor)), PINS, repo);
+  }
+  const suites = readCheckPages(loadPage(QS).checkSuites, (cursor) => loadPage(QS, cursor).checkSuites);
+  const nodes = suiteRuns(suites, (id, cursor) => {
+    if (typeof id !== 'string' || !id) throw new Error('GitHub check suite identity is missing');
+    const { node } = graphData(read(QR, '-f', `id=${id}`, '-f', `after=${cursor}`));
+    if (node?.id !== id || node.commit?.oid !== sha) {
+      throw new Error('GitHub check run page does not match the requested suite and commit');
+    }
+    return node.checkRuns;
+  });
+  return fromPinned(nodes, PINS, repo);
 }
 
 // Separate query so a failure yields "unknown" (no merge) instead of aborting the whole queue run.
@@ -293,7 +317,7 @@ function unresolvedThreads(n) {
 
 export function load(n) {
   const [o, r] = REPO.split('/');
-  const p = JSON.parse(gh('api', 'graphql', '-f', `query=${Q}`, '-F', `o=${o}`, '-F', `r=${r}`, '-F', `n=${n}`)).data.repository.pullRequest;
+  const p = graphData(readGitHubGraph(Q, '-F', `o=${o}`, '-F', `r=${r}`, '-F', `n=${n}`)).repository.pullRequest;
   const commit = p.commits.nodes[0]?.commit;
   return {
     behindBy: api(`compare/main...${p.headRefOid}`).behind_by,

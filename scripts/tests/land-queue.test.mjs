@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { BATCH_BASE_MESSAGE, BATCH_MAX, batchSerial, guardedSquash, isBatchBase, TRUSTED_AUTHORS, contextRuns, fromPinned, readCheckPages, suiteRuns, memberOf, staleReason, batchVerdict, checkStates, decide, marker, memberMessage, neutral, orderQueue, parseMember, planBatch, serialDecision, unresolvedCount } from '../../.github/scripts/land-queue.mjs';
+import { BATCH_BASE_MESSAGE, BATCH_MAX, batchSerial, guardedSquash, isBatchBase, TRUSTED_AUTHORS, contextRuns, fromPinned, readCheckPages, rollupFor, suiteRuns, memberOf, staleReason, batchVerdict, checkStates, decide, marker, memberMessage, neutral, orderQueue, parseMember, planBatch, serialDecision, unresolvedCount } from '../../.github/scripts/land-queue.mjs';
 import { CODEX_LOGIN, REVIEW_CHECK, automaticMerge, carryChecks, carryRepo, trivialRebase, withCarryRepo, classifyScope, decodeEntities, gateMarker, onlyMainMerged, patchId, reviewGate, reviewMarker, sameDiff, samePatchFor, verdictText } from '../../.github/scripts/review-gate.mjs';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -252,6 +252,50 @@ test('suiteRuns: a dispatch-only batch tip (no statusCheckRollup) is judged from
   assert.equal(batchVerdict(checkStates(pinned, ['A', 'B']), 0), 'land');
   assert.equal(pinned.find((run) => run.name === 'B').checkSuite.workflowRun.databaseId, 42);
   assert.deepEqual(suiteRuns([]), []);
+});
+
+test('batch fallback reads both paginations and rejects incomplete or misbound GitHub results', () => {
+  const repo = 'o/r';
+  const suite = {
+    id: 'suite-on-head',
+    app: { databaseId: 15368 },
+    repository: { nameWithOwner: repo },
+    checkRuns: checkPage([{ name: 'A', conclusion: 'SUCCESS' }], 'next-run'),
+  };
+  const commit = (fields, oid = H) => ({ data: { repository: { object: { oid, ...fields } } } });
+  const read = (fault) => (query, ...args) => {
+    if (query.includes('statusCheckRollup')) {
+      if (fault === 'missing-data') return { data: null };
+      if (fault === 'wrong-type') return { data: [] };
+      return commit({ statusCheckRollup: null }, fault === 'wrong-rollup-head' ? 'wrong' : H);
+    }
+    if (query.includes('checkSuites')) {
+      assert.ok(args.includes(`s=${H}`));
+      const next = args.includes('after=next-suite');
+      const node = next && fault === 'missing-suite-id' ? { ...suite, id: null } : suite;
+      const oid = fault === (next ? 'wrong-next-suite-head' : 'wrong-first-suite-head') ? 'wrong' : H;
+      const response = commit({ checkSuites: next ? checkPage([node]) : checkPage([], 'next-suite') }, oid);
+      return fault === 'partial-errors' ? { ...response, errors: [{ message: 'unavailable' }] } : response;
+    }
+    assert.ok(args.includes('id=suite-on-head') && args.includes('after=next-run'));
+    return { data: { node: fault === 'missing-suite' ? null : {
+      id: fault === 'wrong-suite' ? 'different-suite' : suite.id,
+      commit: fault === 'missing-suite-commit' ? null : { oid: fault === 'wrong-suite-commit' ? 'wrong' : H },
+      checkRuns: checkPage([{ name: 'B', conclusion: 'SUCCESS' }]),
+    } } };
+  };
+
+  assert.deepEqual(checkStates(rollupFor(H, read(), repo), ['A', 'B']), { A: 'pass', B: 'pass' });
+  for (const fault of ['missing-data', 'wrong-type', 'partial-errors']) {
+    assert.throws(() => rollupFor(H, read(fault), repo), /Incomplete GitHub check response/, fault);
+  }
+  for (const fault of ['wrong-rollup-head', 'wrong-first-suite-head', 'wrong-next-suite-head']) {
+    assert.throws(() => rollupFor(H, read(fault), repo), /does not match the requested commit/, fault);
+  }
+  assert.throws(() => rollupFor(H, read('missing-suite-id'), repo), /suite identity is missing/);
+  for (const fault of ['missing-suite', 'wrong-suite', 'missing-suite-commit', 'wrong-suite-commit']) {
+    assert.throws(() => rollupFor(H, read(fault), repo), /does not match the requested suite and commit/, fault);
+  }
 });
 
 test('fromPinned: only check runs of the pinned app from this repo count, pinned or not', () => {
