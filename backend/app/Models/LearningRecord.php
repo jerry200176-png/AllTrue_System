@@ -69,6 +69,11 @@ class LearningRecord extends Model
         'VoidedAt', 'VoidedByUserID', 'VoidReason',
     ];
 
+    /** The teacher-written body (same fields as LearningRecordMutableOwnership::filledByTeacherSql). */
+    public const BODY_FIELDS = [
+        'Content', 'Progress', 'NextHomework', 'NextWeekTestScope', 'QuizScore', 'HomeworkStatus', 'Performance', 'Comment', 'AttachmentUrl',
+    ];
+
     protected $casts = [
         'SessionDeducted'        => 'boolean',
         'ExcludeFromSubjectCount' => 'boolean',
@@ -228,6 +233,27 @@ class LearningRecord extends Model
                 return;
             }
             app(UserEngagementXpAwardService::class)->revokeLearningRecordApproved((int) $lr->id);
+        });
+
+        // TD-074: changing a teacher-written body keeps the previous version. new_teacher_id=0 rows are history only:
+        // never authorship evidence, never the 「原內容已保存」 note (both read new_teacher_id > 0).
+        static::updating(function (self $record): void {
+            if (!$record->isDirty(self::BODY_FIELDS)) {
+                return;
+            }
+            $before = (new self())->setRawAttributes($record->getRawOriginal(), true);
+            if (!LearningRecordMutableOwnership::isFilledByTeacher($before)) {
+                return;
+            }
+            LearningRecordAuthorSnapshot::create([
+                'learning_record_id' => (int) $record->id,
+                'author_teacher_id' => (int) $before->TeacherID ?: null,
+                'new_teacher_id' => 0,
+                'status_at_snapshot' => (string) $before->Status,
+                'payload' => $before->toArray(),
+                'created_by' => (int) (request()->attributes->get('auth_user')->id ?? 0) ?: null,
+                'reason' => 'edited',
+            ]);
         });
 
         // TD-074 / #4907: a delete keeps the teacher-written body as an insert-only snapshot. Bulk deletes must

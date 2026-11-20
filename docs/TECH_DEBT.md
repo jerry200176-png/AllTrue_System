@@ -659,7 +659,7 @@
 
 | 欄位 | 內容 |
 |---|---|
-| 狀態 | Partly done 2026-11-20：**刪除**已全面保護。快照邏輯從 `LearningRecordController::destroy` 移到 `LearningRecord` 的 `deleting` model event（沿用 #4907 的 insert-only `learning_record_author_snapshots`，`new_teacher_id=0`、`reason=deleted`，不影響作者證據判斷）。課程重建、請假重建、drift 修復孤兒等 6 處 query-builder 大量刪除改成 `->get()->each->delete()`，也會留快照。`LearningRecordDeleteThroughModelTest` 擋住新的 query-builder 刪除；只允許 `ResetDataController` 與 `StudentController::purgeStudentRecords`（無歷史學生的整筆清除）。剩：**覆寫**（老師或主任改內容）仍沒有版本紀錄，需要另開一張歷史表（additive migration）；`DB::table('LearningRecord')->update(...)` 的修復指令只改關聯欄位與 VoidedAt，不改正文。 |
+| 狀態 | Done 2026-11-20：**刪除**已全面保護。快照邏輯從 `LearningRecordController::destroy` 移到 `LearningRecord` 的 `deleting` model event（沿用 #4907 的 insert-only `learning_record_author_snapshots`，`new_teacher_id=0`、`reason=deleted`，不影響作者證據判斷）。課程重建、請假重建、drift 修復孤兒等 6 處 query-builder 大量刪除改成 `->get()->each->delete()`，也會留快照。`LearningRecordDeleteThroughModelTest` 擋住新的 query-builder 刪除；只允許 `ResetDataController` 與 `StudentController::purgeStudentRecords`（無歷史學生的整筆清除）。**覆寫**也保護了：`updating` event 在老師正文欄位（`LearningRecord::BODY_FIELDS`）有變更、且舊版是老師寫的內容時，把舊版存成同一張表的 `reason=edited` 列（`new_teacher_id=0`）；不新增 migration。「原內容已保存」提示與主任的「原作者內容」視窗只讀 `new_teacher_id > 0` 的列，所以畫面不變。目前歷史只能由資料庫讀回（還沒有畫面，要做再開需求）。`DB::table('LearningRecord')->update(...)` 的修復指令只改關聯欄位與 VoidedAt，不改正文。 |
 | 優先級 | P2 |
 | 發現日期 | 2026-08-06 |
 | 發現來源 | in-app #219 修復過程中的自我檢討（R100）——一次已徵得使用者同意的資料修正意外觸發 `maybeRebuildSessionsAfterUpdate()` 整批重建，刪除並重建了課程 3153 的 `ClassSession`/`LearningRecord`。事後想找回評量記錄內容才發現：`ClassSession` 有 `ScheduleAuditLog`/`ClassSessionObserver` 這套審計機制（雖然這次因批次刪除繞過而沒發揮作用，已在同一批修復補上），但 `LearningRecord`（老師實際填寫的評量文字）本身完全沒有對應的審計或版本歷史，內容一旦被覆蓋或刪除就是真的、永久地消失，沒有任何補救管道。 |
