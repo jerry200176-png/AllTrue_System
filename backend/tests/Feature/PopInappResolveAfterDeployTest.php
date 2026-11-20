@@ -283,7 +283,10 @@ final class PopInappResolveAfterDeployTest extends TestCase
         self::assertSame(2, BugReportComment::query()->where('bug_report_id', $bug)->count());
     }
 
-    public function test_a_verified_support_reply_does_not_close_a_reopened_suggestion(): void
+    #[\PHPUnit\Framework\Attributes\TestWith(['completed'])]
+    #[\PHPUnit\Framework\Attributes\TestWith(['new_reporter_reply'])]
+    #[\PHPUnit\Framework\Attributes\TestWith(['waiting_on_reporter'])]
+    public function test_a_verified_support_reply_can_only_reclose_a_reopened_suggestion_after_human_approval(string $outcome): void
     {
         $bug = $this->bug('new');
         $issueUrl = $this->issueUrl();
@@ -295,12 +298,15 @@ final class PopInappResolveAfterDeployTest extends TestCase
         $issuer = User::query()->findOrFail($this->admin);
         $client = InappAgentClients::issue($issuer, 'suggestion follow-up test', [1]);
         $actor = InappAgentClients::actor((int) $client['record']['id']);
+        $publicReply = $outcome === 'waiting_on_reporter'
+            ? '請提供看不到入口的日期和畫面，我們再核對。'
+            : '現在可以從課表先暫留時段，等確認後再補資料。';
         $followup = $this->service->createDraft(InappReportFollowupCommentStrategy::OPERATION, [
             'bug_id' => $bug,
             'campus_id' => 1,
             'expected_status' => 'triaged',
             'github_issue_url' => $issueUrl,
-            'public_reply' => '現在可以從課表先暫留時段，等確認後再補資料。追蹤：' . $issueUrl,
+            'public_reply' => $publicReply . '追蹤：' . $issueUrl,
             'request_id' => 'suggestion-followup',
             'writeback_proof' => $this->proof($bug),
         ], 'suggestion-followup', $actor, 'pop_machine', [1]);
@@ -321,6 +327,46 @@ final class PopInappResolveAfterDeployTest extends TestCase
         self::assertSame('triaged', $report->fresh()->status);
         self::assertSame($comments->modelKeys(), BugReportComment::query()->where('bug_report_id', $bug)->orderBy('id')->pluck('id')->all());
         self::assertSame(0, BugReportEvidence::query()->where('bug_report_id', $bug)->count());
+
+        $params = $this->params($bug, ['public_reply' => $comments->last()->body, 'request_id' => 'suggestion-reclose']);
+        if ($outcome === 'waiting_on_reporter') {
+            $this->remote['issue_state'] = 'closed';
+            $blocked = $this->drafted($bug, $params, 'suggestion-awaiting-information', $actor);
+            self::assertContains('non_bug_requires_review', $this->dryRunErrors($blocked));
+            self::assertSame([], $this->policy->approvePending($this->service)['approved']);
+            self::assertSame('triaged', $report->fresh()->status);
+            self::assertSame(0, BugReportEvidence::query()->where('bug_report_id', $bug)->count());
+
+            return;
+        }
+        $beforeDelivery = $this->drafted($bug, $params, 'suggestion-before-delivery', $actor);
+        self::assertContains('issue_source_ref_untrusted', $this->dryRunErrors($beforeDelivery));
+        $this->remote['issue_state'] = 'closed';
+        $params['request_id'] = 'suggestion-reclose-confirmed';
+        $reclose = $this->drafted($bug, $params, 'suggestion-reclose', $actor);
+        self::assertSame([], $this->dryRunErrors($reclose));
+        self::assertSame([], $this->policy->approvePending($this->service)['approved']);
+        $this->service->approve($reclose, 'reopened-suggestion-review', 'user:' . $this->admin, 'super_admin', $this->deployed, $this->admin);
+        if ($outcome === 'new_reporter_reply') {
+            BugReportService::addReporterCommentAndReopen($bug, $this->reporter, '補充：別的分頁還是找不到。');
+            self::assertSame('failed', $this->service->runApprovedLocally($reclose)['status']);
+            self::assertSame('triaged', $report->fresh()->status);
+            self::assertSame(4, BugReportComment::query()->where('bug_report_id', $bug)->count());
+            self::assertSame(0, BugReportEvidence::query()->where('bug_report_id', $bug)->count());
+
+            return;
+        }
+        self::assertSame('succeeded', $this->service->runApprovedLocally($reclose)['status']);
+        self::assertSame('closed', $report->fresh()->status);
+        self::assertSame($comments->modelKeys(), BugReportComment::query()->where('bug_report_id', $bug)->orderBy('id')->pluck('id')->all());
+        self::assertSame($origin, InappSupportCommentOrigin::receipts($report->fresh(), [$comments->last()]));
+        $evidence = BugReportEvidence::query()->where('bug_report_id', $bug)->sole();
+        self::assertSame($replyId, $evidence->metadata['reused_comment_id']);
+        self::assertSame($this->deployed, $evidence->production_revision);
+        self::assertTrue(BugReportService::getDetail($bug)['product_loop']['shipped']);
+        BugReportService::addReporterCommentAndReopen($bug, $this->reporter, '仍有問題，請重新看一下。');
+        self::assertSame('triaged', $report->fresh()->status);
+        self::assertFalse(BugReportService::getDetail($bug)['product_loop']['shipped']);
     }
 
     public function test_self_filed_admin_can_receive_shipping_attributed_to_the_existing_issuer(): void
@@ -785,7 +831,7 @@ final class PopInappResolveAfterDeployTest extends TestCase
             str_starts_with($url, $api . 'commits/') => Http::response([['number' => 900, 'merged_at' => '2026-10-22T07:00:00Z', 'title' => 'fix', 'body' => $this->remote['pr_body']]]),
             str_starts_with($url, $api . 'issues/' . self::ISSUE . '/comments') => Http::response([]),
             $url === $api . 'issues/' . self::ISSUE => Http::response(['number' => self::ISSUE, 'repository_url' => rtrim($api, '/'),
-                'state' => 'open', 'state_reason' => null,
+                'state' => $this->remote['issue_state'] ?? 'open', 'state_reason' => isset($this->remote['issue_state']) ? 'completed' : null,
                 'user' => ['login' => $this->remote['author']], 'body' => "SourceRef: alltrue:bug_report:{$bug}\n\n- In-app ID: {$bug}"]
                 + ($this->remote['pull_request'] ? ['pull_request' => ['url' => 'x']] : [])),
             default => Http::response('', 599), // never reach the network

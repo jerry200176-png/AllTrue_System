@@ -8,7 +8,9 @@ use App\Models\BugReportEvidence;
 use App\Models\BugReportStatusLog;
 use App\Operations\Inapp\InappReportReplyGuard;
 use App\Operations\Inapp\InappReportResolveEvidence;
+use App\Operations\Inapp\InappReopenedSuggestion;
 use App\Operations\Inapp\InappStandingPolicy;
+use App\Operations\Inapp\InappSupportCommentOrigin;
 use App\Services\BugReportService;
 use App\Services\BugReportWritebackEvidence;
 use App\Services\BugSafetyScreen;
@@ -53,22 +55,23 @@ final class InappReportResolveAfterDeployStrategy
         if (!$bug) return $this->result(['report_missing'], $p);
         $status = (string) $bug->getRawOriginal('status');
         $logged = $status === 'closed' ? $this->loggedClose($bugId, $url) : null;
+        $answered = $status === 'triaged' ? $this->answeredSuggestion($bug, $url, $p['public_reply']) : null;
         if ((int) $bug->getAttribute('CampusID') !== $p['campus_id']) $errors[] = 'report_outside_campus';
         if (!in_array($status, self::FROM, true) && $logged === null) $errors[] = 'status_not_resolvable';
         if ($logged !== null) {
             array_push($errors, ...$this->loggedBlockers($bug, $logged, InappStandingPolicy::plannedAttributionUserId($context), $url));
-        } elseif (!in_array(BugReportService::latestDispositionWithKind($bugId)['kind'] ?? null, [null, 'bug'], true)) {
+        } elseif ($answered === null && !in_array(BugReportService::latestDispositionWithKind($bugId)['kind'] ?? null, [null, 'bug'], true)) {
             $errors[] = 'non_bug_requires_review';
         }
-        array_push($errors, ...InappReportReplyGuard::violations($p['public_reply'], $url, $logged === null));
+        array_push($errors, ...InappReportReplyGuard::violations($p['public_reply'], $url, $logged === null && $answered === null));
         // Automation never resolves a report the safety screen flags (its text or the reporter's own comments); a person handles it
         // in the app. A comment that arrives after this plan makes the write-back proof stale, which execute() re-checks under the lock.
         $own = BugReportComment::query()->where('bug_report_id', $bugId)->where('author_user_id', $bug->getAttribute('reporter_user_id'))->pluck('body')->all();
         if (BugSafetyScreen::screenReport($bug->title, $bug->description, $own)['flagged']) $errors[] = 'safety_review_required';
-        if ($errors !== []) return $this->result($errors, $p, $status, null, null, $logged);
+        if ($errors !== []) return $this->result($errors, $p, $status, null, null, $logged, $answered);
 
         // Remote evidence before the proof check, so no report row is locked while waiting on the network.
-        if (!$this->evidence->issueOwnsReport($issue, $bugId)) $errors[] = 'issue_source_ref_untrusted';
+        if (!$this->evidence->issueOwnsReport($issue, $bugId, completed: $answered !== null)) $errors[] = 'issue_source_ref_untrusted';
         $deploy = $this->evidence->successfulDeploy($run);
         $head = $deploy['head'] ?? null;
         $manifest = $this->evidence->manifest();
@@ -84,7 +87,7 @@ final class InappReportResolveAfterDeployStrategy
             $errors[] = 'writeback_proof_stale';
         }
 
-        return $this->result($errors, $p, $status, $head, $manifest, $logged);
+        return $this->result($errors, $p, $status, $head, $manifest, $logged, $answered);
     }
 
     public function execute(array $plan, array $context): array
@@ -94,9 +97,10 @@ final class InappReportResolveAfterDeployStrategy
         $p = json_decode((string) $request?->parameters, true, 512, JSON_THROW_ON_ERROR);
         $bugId = (int) $p['bug_id'];
         $commentId = null;
+        $reclosedId = null;
         try {
             $actor = InappStandingPolicy::attributionUserId($request);
-            $from = DB::transaction(function () use ($p, $plan, $bugId, $actor, $context, &$commentId): string {
+            $from = DB::transaction(function () use ($p, $plan, $bugId, $actor, $context, &$commentId, &$reclosedId): string {
                 $bug = BugReport::query()->whereKey($bugId)->lockForUpdate()->first();
                 InappStandingPolicy::assertKillSwitchesOpen((string) $context['operation_id']);
                 if (!$bug || (int) $bug->getAttribute('CampusID') !== (int) $p['campus_id']) throw new RuntimeException('inapp_resolve_report_outside_campus');
@@ -108,6 +112,13 @@ final class InappReportResolveAfterDeployStrategy
                     throw new RuntimeException('inapp_resolve_writeback_proof_stale');
                 }
                 if (!in_array($plan['deployed_sha'] ?? null, $this->evidence->deployedShas(), true)) throw new RuntimeException('inapp_resolve_deployment_changed');
+                if (($plan['answered_suggestion'] ?? null) !== null) {
+                    $answered = $this->answeredSuggestion($bug, $p['github_issue_url'], $p['public_reply']);
+                    if ($answered !== $plan['answered_suggestion']) throw new RuntimeException('inapp_resolve_answered_cycle_changed');
+                    $reclosedId = $this->recloseAnsweredSuggestion($bugId, $actor, $answered, $plan, $p, (string) $context['operation_id']);
+
+                    return $from;
+                }
                 if ($logged !== null) {
                     $errors = $this->loggedBlockers($bug, $logged, $actor, $p['github_issue_url']);
                     if ($errors !== []) throw new RuntimeException('inapp_resolve_' . $errors[0]);
@@ -138,8 +149,13 @@ final class InappReportResolveAfterDeployStrategy
             return ['ok' => false, 'errors' => [str_starts_with($code, 'inapp_') ? $code : 'inapp_resolve_failed'], 'bug_id' => $bugId];
         }
 
-        return ['ok' => true, 'bug_id' => $bugId, 'from_status' => $from, 'status' => $plan['logged_close'] === null ? 'resolved' : 'closed',
-            'comment_id' => (int) $commentId, 'author_id' => $actor, 'production_revision' => $plan['deployed_sha'],
+        $replyResult = $reclosedId === null ? ['comment_id' => (int) $commentId] : [
+            'reused_comment_id' => $plan['answered_suggestion']['reply_id'], 'reclosed_id' => $reclosedId,
+            'reopened_status_log_id' => $plan['answered_suggestion']['reopen_id'],
+        ];
+        return $replyResult + ['ok' => true, 'bug_id' => $bugId, 'from_status' => $from,
+            'status' => $plan['logged_close'] === null && $reclosedId === null ? 'resolved' : 'closed',
+            'author_id' => $actor, 'production_revision' => $plan['deployed_sha'],
             'logged_close' => $plan['logged_close'], 'issue_url' => (string) $p['github_issue_url'],
             'reply_sha256' => hash('sha256', (string) $p['public_reply']),
             'deploy_run_id' => (string) $p['deploy_run_id'], 'smoke_result_ref' => (string) $p['smoke_result_ref']];
@@ -147,6 +163,11 @@ final class InappReportResolveAfterDeployStrategy
 
     public function verify(array $plan, array $result): array
     {
+        if (isset($result['reclosed_id'])) {
+            $ok = $this->verifyAnsweredSuggestion($result);
+
+            return ['ok' => $ok, 'errors' => $ok ? [] : ['answered_suggestion_not_verified'], 'checks' => ['logged_closed', 'production_evidence', 'reused_reply']];
+        }
         // POP re-plans after execute: the fresh plan correctly refuses a duplicate notice.
         // Verify the immutable execution receipt, not that now-ineligible plan's empty deploy fields.
         if (($result['logged_close'] ?? null) !== null) {
@@ -198,6 +219,62 @@ final class InappReportResolveAfterDeployStrategy
         return $id > 0 ? ['id' => $id, 'kind' => $linked['kind']] : null;
     }
 
+    /** The exact previous logged phase and verified support reply make this a re-close, not a bug resolution. */
+    private function answeredSuggestion(BugReport $bug, string $issueUrl, string $reply): ?array
+    {
+        $bugId = (int) $bug->getKey();
+        $close = $this->loggedClose($bugId, $issueUrl);
+        if (!$close || (BugReportService::latestDispositionWithKind($bugId)['kind'] ?? null) !== $close['kind']) return null;
+        $cycle = InappReopenedSuggestion::answeredCycle($bug, $close, $issueUrl, $reply);
+
+        return $cycle === null ? null : $cycle + ['previous_close' => $close];
+    }
+
+    private function recloseAnsweredSuggestion(int $bugId, int $actor, array $answered, array $plan, array $p, string $operationId): int
+    {
+        if (!DB::table('pop_approval_events')->where('operation_id', $operationId)->where('event_type', 'approved')
+            ->where('approver_role', 'super_admin')->where('approver_id', $actor)->exists()) {
+            throw new RuntimeException('inapp_resolve_answered_requires_human_approval');
+        }
+        $this->step(BugReportService::changeStatus($bugId, $actor, 'closed',
+            BugReportService::CLOSED_AS_LOGGED_NOTE . "\n已使用原客服回覆與正式上線紀錄結案。", [
+                'disposition' => $answered['previous_close']['kind'], 'github_issue_url' => $p['github_issue_url'],
+            ]));
+        $closed = $this->loggedClose($bugId, $p['github_issue_url']);
+        if ($closed === null || $closed['id'] <= $answered['reopen_id']) throw new RuntimeException('inapp_resolve_answered_close_missing');
+        BugReportEvidence::create([
+            'bug_report_id' => $bugId, 'evidence_type' => BugReportEvidence::TYPE_RESOLUTION_PRODUCTION_VERIFICATION,
+            'production_revision' => $plan['deployed_sha'], 'deploy_run_id' => $p['deploy_run_id'],
+            'source_ref' => 'logged_ship:' . $closed['id'] . ':' . $plan['deployed_sha'],
+            'verified_by' => $actor, 'verified_at' => now(), 'created_at' => now(),
+            'metadata' => ['github_issue_url' => $p['github_issue_url'], 'reused_comment_id' => $answered['reply_id'],
+                'reopened_status_log_id' => $answered['reopen_id']],
+        ]);
+
+        return $closed['id'];
+    }
+
+    private function verifyAnsweredSuggestion(array $result): bool
+    {
+        $bug = BugReport::query()->find($result['bug_id'] ?? null);
+        if (($result['ok'] ?? null) !== true || !$bug || $bug->status !== 'closed'
+            || ($this->loggedClose((int) $bug->id, $result['issue_url'])['id'] ?? null) !== $result['reclosed_id']) return false;
+        $reply = BugReportComment::query()->where('bug_report_id', $bug->id)->where('is_internal_note', false)
+            ->whereKey($result['reused_comment_id'])->first();
+        $origin = $reply === null ? null : InappSupportCommentOrigin::receipts($bug, [$reply])[$result['reused_comment_id']] ?? null;
+
+        return $reply !== null && hash('sha256', (string) $reply->body) === $result['reply_sha256']
+            && ($origin['operation'] ?? null) === InappReportFollowupCommentStrategy::OPERATION
+            && ($origin['parameters']['github_issue_url'] ?? null) === $result['issue_url']
+            && BugReportEvidence::query()->where('bug_report_id', $bug->id)
+                ->where('source_ref', 'logged_ship:' . $result['reclosed_id'] . ':' . $result['production_revision'])
+                ->where('evidence_type', BugReportEvidence::TYPE_RESOLUTION_PRODUCTION_VERIFICATION)
+                ->where('deploy_run_id', $result['deploy_run_id'])->where('production_revision', $result['production_revision'])
+                ->where('verified_by', $result['author_id'])
+                ->where('metadata->reused_comment_id', $result['reused_comment_id'])
+                ->where('metadata->reopened_status_log_id', $result['reopened_status_log_id'])->exists();
+    }
+
     private function loggedBlockers(BugReport $bug, array $logged, ?int $author, string $issueUrl): array
     {
         $errors = InappReportReplyGuard::loggedReportViolations($bug, $author, $logged, $issueUrl);
@@ -212,13 +289,15 @@ final class InappReportResolveAfterDeployStrategy
     }
 
     /** IDs, public issue references and hashes only: never report or reply text. */
-    private function result(array $errors, array $p, ?string $status = null, ?string $deployedSha = null, ?array $manifest = null, ?array $logged = null): array
+    private function result(array $errors, array $p, ?string $status = null, ?string $deployedSha = null, ?array $manifest = null, ?array $logged = null, ?array $answered = null): array
     {
         $errors = array_values(array_unique($errors));
         $reply = $p['public_reply'] ?? null;
 
         return ['ok' => $errors === [], 'errors' => $errors, 'bug_id' => is_int($p['bug_id'] ?? null) ? $p['bug_id'] : null,
-            'from_status' => $status, 'deployed_sha' => $deployedSha, 'policy_blockers' => [],
+            'from_status' => $status, 'deployed_sha' => $deployedSha,
+            'policy_blockers' => $answered === null ? [] : ['answered_suggestion_requires_human_approval'],
+            'answered_suggestion' => $answered,
             'logged_close' => $logged, 'issue_url' => is_string($p['github_issue_url'] ?? null) ? $p['github_issue_url'] : null,
             'reply_sha256' => is_string($reply) ? hash('sha256', $reply) : null,
             // Diagnostic only (public SHAs and a state word, never a path); deliberately outside the digest below.
@@ -227,6 +306,6 @@ final class InappReportResolveAfterDeployStrategy
             'digest' => hash('sha256', json_encode([self::OPERATION, $p['bug_id'] ?? null, $p['campus_id'] ?? null, $status, $logged, $deployedSha,
                 $p['fix_commit_sha'] ?? null, $p['deploy_run_id'] ?? null, $p['smoke_result_ref'] ?? null, $p['github_issue_url'] ?? null,
                 is_string($reply) ? hash('sha256', $reply) : null, is_array($p['writeback_proof'] ?? null) ? ($p['writeback_proof']['captured_at'] ?? null) : null,
-                $errors], JSON_THROW_ON_ERROR))];
+                $errors, ...($answered === null ? [] : [$answered])], JSON_THROW_ON_ERROR))];
     }
 }
