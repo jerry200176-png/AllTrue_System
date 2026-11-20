@@ -75,7 +75,7 @@ class TeacherEligibilityWeeklySegmentsTest extends TestCase
     public function test_calendar_counts_one_slot_once_when_older_schedule_rows_were_superseded(): void // Founder 2026-11-20
     {
         $contract = $this->createTeacher();
-        $other = $this->createTeacher();
+        $other = $this->createTeacher('weekly-teacher-2@test.com');
         // Two generations of substitute rows on one slot: the older one (contract teacher) was replaced by a newer one.
         $session = $this->createAttendedSession($contract->id, 'one_on_one', '2026-08-03', '10:00', 120);
         $first = $this->schedule($other->id, '2026-08-03', '10:00', '12:00', ['student_course_id' => $session->StudentClassID, 'status' => 'rescheduled']);
@@ -98,7 +98,7 @@ class TeacherEligibilityWeeklySegmentsTest extends TestCase
     public function test_calendar_keeps_a_substitute_row_moved_onto_a_slot_that_was_vacated_later(): void
     {
         $contract = $this->createTeacher();
-        $substitute = $this->createTeacher();
+        $substitute = $this->createTeacher('weekly-teacher-2@test.com');
         // The substitute row is older than the slot's own "moved away" marker (a reschedule moves the row in place, id unchanged),
         // but a lesson is held on the slot: the substitute teaches it.
         $session = $this->createAttendedSession($contract->id, 'one_on_one', '2026-08-10', '10:00', 120);
@@ -556,10 +556,10 @@ class TeacherEligibilityWeeklySegmentsTest extends TestCase
         return ['user_id' => (int) $user->id, 'token' => $token];
     }
 
-    private function createTeacher(): User
+    private function createTeacher(string $login = 'weekly-teacher@test.com'): User
     {
         $teacher = User::create([
-            'LoginName' => 'weekly-teacher@test.com', 'Name' => '每週段數老師', 'PSW' => 'secret',
+            'LoginName' => $login, 'Name' => '每週段數老師', 'PSW' => 'secret',
             'type' => 'T', 'phone' => '0922000000', 'MustChangePassword' => false,
             'employment_type' => 'full_time',
         ]);
