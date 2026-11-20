@@ -1,0 +1,13 @@
+updates:
+  - id: staff-2026-11-21-reschedule-selected-lesson-duration
+    published_at: "2026-11-21"
+    audiences:
+      - director
+    importance: digest
+    title: 單堂調課保留原堂長
+    summary: 從課程管理的單堂檢視調課時，會保留該堂原本的上課長度。
+    items:
+      - category: fixed
+        text: 已縮成一小時的堂次，換日期或開始時間後，預覽仍是上課一小時。
+    source_refs:
+      - "changelog:2026-11-21:reschedule-selected-lesson-duration"
