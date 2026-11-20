@@ -20,6 +20,8 @@ describe('monthly cross-period booking', () => {
     expect(wrapper.emitted('submit')).toBeUndefined();
     await wrapper.setProps({ submitting: true });
     expect(history.attributes('disabled')).toBeDefined();
+    await wrapper.setProps({ canBackfill: false }); // paused or closed course: no back-fill entry
+    expect(wrapper.find('[data-testid="manual-session-backfill"]').exists()).toBe(false);
     await wrapper.setProps({ isMonthly: false, submitting: false });
     expect(wrapper.find('[data-testid="manual-session-history"]').exists()).toBe(false);
     expect(wrapper.find('input[type="date"]').attributes('min')).toBe('2026-09-29');

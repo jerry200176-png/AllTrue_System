@@ -5,7 +5,7 @@
       <p class="modal-desc">
         {{ form.student_name }} — {{ subjectLabel }}
       </p>
-      <p v-if="form.is_monthly" class="modal-hint">選這堂課實際上課的日期和時間（要在這份合約的期間內）。那個月的帳單還沒收款：金額會跟著重算。已經收過款：金額不會自動變，帳單會標「金額待確認」，差額要另外處理。</p>
+      <p v-if="form.is_monthly" class="modal-hint">選這堂課實際上課的日期和時間（要在這份合約的期間內）。那個月的帳單還沒收款：金額會跟著重算（一張帳單含多門課時不會，請自己核對）。已經收過款：金額不會自動變，帳單會標成需核對，差額要另外處理。</p>
       <p v-else class="modal-hint">堂數制課程若堂次已排滿，系統會將最後一筆可調整的未來排課移至您選的日期，購買總堂數不會增加。</p>
       <div class="form-group">
         <label>本堂日期</label>

@@ -1201,6 +1201,7 @@
       :checking="manualSessionChecking"
       :submitting="manualSessionSubmitting"
       :is-monthly="isMonthlyMode(manualSessionCourse)"
+      :can-backfill="manualSessionCourse?.status !== 'inactive'"
       :today="todayYmd"
       @close="closeManualSessionModal"
       @check="runManualSessionCheck"
@@ -3644,7 +3645,7 @@ function openMonthlySessionModal(course) {
 
 function backfillFromManualSession() {
   const course = manualSessionCourse.value;
-  if (!course || !isMonthlyMode(course) || manualSessionSubmitting.value) return;
+  if (!course || !isMonthlyMode(course) || course.status === 'inactive' || manualSessionSubmitting.value) return;
   closeManualSessionModal();
   openQuickAddSessionModal(course);
 }
