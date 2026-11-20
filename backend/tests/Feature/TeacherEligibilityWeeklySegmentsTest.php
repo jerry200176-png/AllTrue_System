@@ -108,6 +108,10 @@ class TeacherEligibilityWeeklySegmentsTest extends TestCase
 
         $calendar = \App\Services\TeacherClassCalendar::load('2026-08-10', '2026-08-10', null, null, true);
         $this->assertSame([$substitute->id], array_keys($calendar));
+
+        // The student takes leave: payroll still counts the lesson, and it stays with the substitute.
+        DB::table('ClassSession')->where('id', $session->id)->update(['Status' => 'leave']);
+        $this->assertSame([$substitute->id], array_keys(\App\Services\TeacherClassCalendar::load('2026-08-10', '2026-08-10', null, null, true)));
     }
 
     public function test_director_sees_calendar_backed_weekly_segments(): void

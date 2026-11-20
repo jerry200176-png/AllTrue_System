@@ -37,6 +37,8 @@ class TeacherClassCalendar
             $scheduleQuery->whereIn('branch_id', $campusIds);
         }
         $allRows = $scheduleQuery->get();
+        // ClassSession statuses that are no lesson here; the same list decides below whether a slot is still held.
+        $off = $forPayroll ? ['cancelled', 'voided', 'leave_adjusted'] : ['cancelled', 'leave'];
         $newest = ['scheduled' => [], 'rescheduled' => []]; // status => slot key => largest id
         foreach ($allRows as $row) {
             $row->status = strtolower(trim((string) $row->status));
@@ -52,7 +54,7 @@ class TeacherClassCalendar
             $sessions = DB::table('ClassSession')
                 ->whereIn('StudentClassID', array_values(array_unique(array_map('intval', array_keys($movedOn)))))
                 ->whereBetween('SessionDate', [$from, $to])
-                ->whereNotIn('Status', ['cancelled', 'leave', 'leave_adjusted', 'excused', 'voided'])
+                ->whereNotIn('Status', $off)
                 ->get(['StudentClassID', 'SessionDate', 'StartTime']);
             foreach ($sessions as $session) {
                 $held[self::key($session->StudentClassID, $session->SessionDate, $session->StartTime)] = true;
@@ -80,7 +82,7 @@ class TeacherClassCalendar
             ->leftJoin('Student as st', 'sc.StudentID', '=', 'st.id')
             ->whereNotNull('sc.TeacherID')
             ->whereBetween('cs.SessionDate', [$from, $to])
-            ->whereNotIn('cs.Status', $forPayroll ? ['cancelled', 'voided', 'leave_adjusted'] : ['cancelled', 'leave'])
+            ->whereNotIn('cs.Status', $off)
             ->select('sc.TeacherID as teacher_id', 'cs.StudentClassID as course_id', 'cs.SessionDate as d', 'cs.StartTime as start_time', 'cs.EndTime as end_time', 'st.CampusID as campus_id', 'sc.StudentID as student_id');
         if ($campusIds !== null) {
             $sessionQuery->whereIn('st.CampusID', $campusIds);
