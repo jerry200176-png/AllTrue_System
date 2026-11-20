@@ -128,6 +128,21 @@ class TeacherEligibilityWeeklySegmentsTest extends TestCase
         $this->assertSame([$substitute->id], array_keys(\App\Services\TeacherClassCalendar::load('2026-08-10', '2026-08-10', null, null, true)));
     }
 
+    public function test_calendar_prefers_a_stamped_live_row_over_a_newer_unstamped_substitute_row(): void
+    {
+        $contract = $this->createTeacher();
+        $substitute = $this->createTeacher('weekly-teacher-2@test.com');
+        $session = $this->createAttendedSession($contract->id, 'one_on_one', '2026-08-03', '10:00', 120);
+        $slot = ['student_course_id' => $session->StudentClassID];
+        // Restored contract-teacher live row (stamped by the occurrence writer), then a stale legacy substitute row.
+        $this->schedule($contract->id, '2026-08-03', '10:00', '12:00', $slot + ['original_schedule_date' => '2026-08-03', 'original_start_time' => '10:00:00']);
+        $anchor = $this->schedule($contract->id, '2026-08-03', '10:00', '12:00', $slot + ['status' => 'rescheduled']);
+        $this->schedule($substitute->id, '2026-08-03', '10:00', '12:00', $slot + ['original_schedule_id' => $anchor]);
+
+        $calendar = \App\Services\TeacherClassCalendar::load('2026-08-03', '2026-08-03', null, null, true);
+        $this->assertSame([$contract->id], array_keys($calendar));
+    }
+
     public function test_calendar_ignores_a_newer_schedule_owner_without_a_teacher_binding(): void
     {
         $contract = $this->createTeacher();

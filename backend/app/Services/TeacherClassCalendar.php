@@ -32,7 +32,8 @@ class TeacherClassCalendar
             ->whereBetween('schedule_date', [$from, $to])
             ->whereIn('status', ['scheduled', 'rescheduled'])
             ->when($forPayroll, fn ($q) => $q->whereNotIn('type', ['admin', 'unavailable']))
-            ->select('id', 'status', 'teacher_id', 'schedule_date', 'start_time', 'end_time', 'branch_id', 'student_course_id', 'student_id', 'original_schedule_id');
+            ->select('id', 'status', 'type', 'teacher_id', 'schedule_date', 'start_time', 'end_time', 'branch_id', 'student_course_id', 'student_id', 'original_schedule_id',
+                'original_schedule_date', 'original_start_time');
         // Legacy rows with invalid owners must not win a course slot over the real substitute.
         $scheduleQuery->where(function ($query) {
             $query->whereNull('student_course_id')->orWhere('student_course_id', '<=', 0)
@@ -48,20 +49,23 @@ class TeacherClassCalendar
         // ClassSession statuses that are no lesson here; the same list decides below whether a slot is still held.
         $off = $forPayroll ? ['cancelled', 'voided', 'leave_adjusted'] : ['cancelled', 'leave'];
         $contractTeacher = DB::table('StudentClass')->whereIn('ID', $allRows->pluck('student_course_id')->filter()->unique()->values()->all())->pluck('TeacherID', 'ID');
-        // slot key => largest id. A substitute row (another teacher, with its anchor) outranks any row of the contract
-        // teacher on the slot, as in SubstituteScheduleService::substituteScheduleDerivedSql (what the course calendar shows).
-        $newest = ['scheduled' => [], 'rescheduled' => [], 'substitute' => []];
+        // slot key => largest id. Precedence as in SubstituteScheduleService::occurrence(): a stamped live row
+        // (original_schedule_date + original_start_time, not a makeup; written by schedule-occurrence-v2) wins, then a
+        // substitute row (another teacher, with its anchor; substituteScheduleDerivedSql), then any other scheduled row.
+        $newest = ['scheduled' => [], 'rescheduled' => [], 'substitute' => [], 'stamped' => []];
         foreach ($allRows as $row) {
             $row->status = strtolower(trim((string) $row->status));
             if ((int) $row->student_course_id > 0 && isset($newest[$row->status])) {
                 $key = self::key($row->student_course_id, $row->schedule_date, $row->start_time);
                 $isSubstitute = $row->status === 'scheduled' && $row->original_schedule_id !== null
                     && (int) $row->teacher_id !== (int) ($contractTeacher[$row->student_course_id] ?? 0);
-                $status = $isSubstitute ? 'substitute' : $row->status;
+                $isStamped = $row->status === 'scheduled' && $row->original_schedule_date !== null && $row->original_start_time !== null
+                    && $row->type !== 'extra';
+                $status = $isStamped ? 'stamped' : ($isSubstitute ? 'substitute' : $row->status);
                 $newest[$status][$key] = max($newest[$status][$key] ?? 0, (int) $row->id);
             }
         }
-        $newest['scheduled'] = $newest['substitute'] + $newest['scheduled'];
+        $newest['scheduled'] = $newest['stamped'] + $newest['substitute'] + $newest['scheduled'];
         // Slots whose live row is older than a rescheduled row on the same slot: a leftover only if no lesson is held there.
         $movedOn = array_filter($newest['scheduled'], fn ($id, $key) => ($newest['rescheduled'][$key] ?? 0) > $id, ARRAY_FILTER_USE_BOTH);
         $held = [];
