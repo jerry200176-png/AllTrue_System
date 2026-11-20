@@ -14,6 +14,7 @@ use App\Operations\Inapp\InappReportReplyGuard;
 use App\Operations\Inapp\InappSupportCommentOrigin;
 use App\Operations\PopOperationCatalog;
 use App\Operations\PopOperationService;
+use App\Operations\Strategies\InappReportFollowupCommentStrategy;
 use App\Operations\Strategies\InappReportResolveAfterDeployStrategy;
 use App\Operations\Strategies\InappReportTriageStrategy;
 use App\Services\BugReportWritebackEvidence;
@@ -280,6 +281,46 @@ final class PopInappResolveAfterDeployTest extends TestCase
         self::assertContains('non_bug_requires_review', $this->dryRunErrors($id));
         self::assertSame(0, BugReportEvidence::query()->where('bug_report_id', $bug)->count());
         self::assertSame(2, BugReportComment::query()->where('bug_report_id', $bug)->count());
+    }
+
+    public function test_a_verified_support_reply_does_not_close_a_reopened_suggestion(): void
+    {
+        $bug = $this->bug('new');
+        $issueUrl = $this->issueUrl();
+        self::assertTrue(BugReportService::closeAsLogged($bug, $this->admin, 'suggestion', $issueUrl, '已收進產品清單。')['ok']);
+        BugReportService::addReporterCommentAndReopen($bug, $this->reporter, '想補充：希望先保留時段，稍後再填學生資料。');
+        $report = BugReport::query()->findOrFail($bug);
+        self::assertSame('triaged', $report->status);
+
+        $issuer = User::query()->findOrFail($this->admin);
+        $client = InappAgentClients::issue($issuer, 'suggestion follow-up test', [1]);
+        $actor = InappAgentClients::actor((int) $client['record']['id']);
+        $followup = $this->service->createDraft(InappReportFollowupCommentStrategy::OPERATION, [
+            'bug_id' => $bug,
+            'campus_id' => 1,
+            'expected_status' => 'triaged',
+            'github_issue_url' => $issueUrl,
+            'public_reply' => '現在可以從課表先暫留時段，等確認後再補資料。追蹤：' . $issueUrl,
+            'request_id' => 'suggestion-followup',
+            'writeback_proof' => $this->proof($bug),
+        ], 'suggestion-followup', $actor, 'pop_machine', [1]);
+        $followupId = (string) $followup['id'];
+        $this->service->runDryRun($followupId, $actor, null, 'pop_machine', [1]);
+        self::assertSame([$followupId], $this->policy->approvePending($this->service)['approved']);
+        self::assertSame('succeeded', $this->service->runApprovedLocally($followupId)['status']);
+
+        $comments = BugReportComment::query()->where('bug_report_id', $bug)->orderBy('id')->get();
+        $replyId = (int) $comments->last()->id;
+        $origin = InappSupportCommentOrigin::receipts($report->fresh(), [$comments->last()]);
+        self::assertSame(InappReportFollowupCommentStrategy::OPERATION, $origin[$replyId]['operation'] ?? null);
+        self::assertCount(3, $comments);
+
+        $resolve = $this->drafted($bug, null, 'suggestion-release', $actor);
+        self::assertSame(['non_bug_requires_review'], $this->dryRunErrors($resolve));
+        self::assertSame([], $this->policy->approvePending($this->service)['approved']);
+        self::assertSame('triaged', $report->fresh()->status);
+        self::assertSame($comments->modelKeys(), BugReportComment::query()->where('bug_report_id', $bug)->orderBy('id')->pluck('id')->all());
+        self::assertSame(0, BugReportEvidence::query()->where('bug_report_id', $bug)->count());
     }
 
     public function test_self_filed_admin_can_receive_shipping_attributed_to_the_existing_issuer(): void
