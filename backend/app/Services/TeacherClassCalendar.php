@@ -48,7 +48,18 @@ class TeacherClassCalendar
         $allRows = $scheduleQuery->get();
         // ClassSession statuses that are no lesson here; the same list decides below whether a slot is still held.
         $off = $forPayroll ? ['cancelled', 'voided', 'leave_adjusted'] : ['cancelled', 'leave'];
-        $contractTeacher = DB::table('StudentClass')->whereIn('ID', $allRows->pluck('student_course_id')->filter()->unique()->values()->all())->pluck('TeacherID', 'ID');
+        $courses = DB::table('StudentClass as sc')->leftJoin('Student as s', 's.id', '=', 'sc.StudentID')
+            ->whereIn('sc.ID', $allRows->pluck('student_course_id')->filter()->unique()->values()->all())
+            ->get(['sc.ID', 'sc.TeacherID', 's.CampusID'])->keyBy('ID');
+        $contractTeacher = $courses->map(fn ($course) => $course->TeacherID);
+        // Stamps only rank where the course's campus has schedule-occurrence-v2 on (as occurrence() / the calendar do).
+        $anyV2 = SubstituteScheduleService::anyCampusOn();
+        $v2Campus = [];
+        $stampsCount = function ($courseId) use ($anyV2, $courses, &$v2Campus): bool {
+            $campusId = (int) ($courses[$courseId]->CampusID ?? 0);
+
+            return $anyV2 && $campusId > 0 && ($v2Campus[$campusId] ??= OccurrenceAssignmentService::enabledFor($campusId));
+        };
         // slot key => largest id. Precedence as in SubstituteScheduleService::occurrence(): a stamped live row
         // (original_schedule_date + original_start_time, not a makeup; written by schedule-occurrence-v2) wins, then a
         // substitute row (another teacher, with its anchor; substituteScheduleDerivedSql), then any other scheduled row.
@@ -60,7 +71,7 @@ class TeacherClassCalendar
                 $isSubstitute = $row->status === 'scheduled' && $row->original_schedule_id !== null
                     && (int) $row->teacher_id !== (int) ($contractTeacher[$row->student_course_id] ?? 0);
                 $isStamped = $row->status === 'scheduled' && $row->original_schedule_date !== null && $row->original_start_time !== null
-                    && $row->type !== 'extra';
+                    && $row->type !== 'extra' && $stampsCount($row->student_course_id);
                 $status = $isStamped ? 'stamped' : ($isSubstitute ? 'substitute' : $row->status);
                 $newest[$status][$key] = max($newest[$status][$key] ?? 0, (int) $row->id);
             }

@@ -139,8 +139,12 @@ class TeacherEligibilityWeeklySegmentsTest extends TestCase
         $anchor = $this->schedule($contract->id, '2026-08-03', '10:00', '12:00', $slot + ['status' => 'rescheduled']);
         $this->schedule($substitute->id, '2026-08-03', '10:00', '12:00', $slot + ['original_schedule_id' => $anchor]);
 
-        $calendar = \App\Services\TeacherClassCalendar::load('2026-08-03', '2026-08-03', null, null, true);
-        $this->assertSame([$contract->id], array_keys($calendar));
+        // Stamps rank only where the course's campus runs schedule-occurrence-v2; elsewhere the newer substitute row wins.
+        foreach ([true => $contract->id, false => $substitute->id] as $on => $expected) {
+            config(['feature_flags.values' => ['FEATURE_SCHEDULE_OCCURRENCE_V2' => false, 'FEATURE_SCHEDULE_OCCURRENCE_V2_CAMPUS_1' => (bool) $on]]);
+            $calendar = \App\Services\TeacherClassCalendar::load('2026-08-03', '2026-08-03', null, null, true);
+            $this->assertSame([$expected], array_keys($calendar), $on ? 'flag on' : 'flag off');
+        }
     }
 
     public function test_calendar_ignores_a_newer_schedule_owner_without_a_teacher_binding(): void
