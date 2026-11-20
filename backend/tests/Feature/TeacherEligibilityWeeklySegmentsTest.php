@@ -95,6 +95,20 @@ class TeacherEligibilityWeeklySegmentsTest extends TestCase
         $this->assertSame(['2026-08-05'], array_keys($calendar[$contract->id])); // not the 3rd (taken over), not the 4th (moved on)
     }
 
+    public function test_calendar_keeps_the_substitute_when_a_newer_contract_teacher_row_shares_the_slot(): void
+    {
+        $contract = $this->createTeacher();
+        $substitute = $this->createTeacher('weekly-teacher-2@test.com');
+        $session = $this->createAttendedSession($contract->id, 'one_on_one', '2026-08-03', '10:00', 120);
+        $anchor = $this->schedule($contract->id, '2026-08-03', '10:00', '12:00', ['student_course_id' => $session->StudentClassID, 'status' => 'rescheduled']);
+        $this->schedule($substitute->id, '2026-08-03', '10:00', '12:00', ['student_course_id' => $session->StudentClassID, 'original_schedule_id' => $anchor]);
+        $this->schedule($contract->id, '2026-08-03', '10:00', '12:00', ['student_course_id' => $session->StudentClassID, 'original_schedule_id' => $anchor]); // stale, newer
+
+        $calendar = \App\Services\TeacherClassCalendar::load('2026-08-03', '2026-08-03', null, null, true);
+        $this->assertSame([$substitute->id], array_keys($calendar));
+        $this->assertCount(1, $calendar[$substitute->id]['2026-08-03']);
+    }
+
     public function test_calendar_keeps_a_substitute_row_moved_onto_a_slot_that_was_vacated_later(): void
     {
         $contract = $this->createTeacher();
