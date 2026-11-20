@@ -4,6 +4,8 @@ namespace Tests\Feature;
 
 use App\Models\AuthToken;
 use App\Models\ClassSession;
+use App\Models\Invoice;
+use App\Models\Payment;
 use App\Models\Student;
 use App\Models\StudentClass;
 use App\Models\User;
@@ -11,6 +13,7 @@ use App\Models\UserCampus;
 use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\TestCase;
 
 /**
@@ -80,6 +83,70 @@ class ClassSessionChargeTest extends TestCase
         $standardCharge = (int) round(750 * (120 / 60));
         $sc = StudentClass::find($courseId);
         $this->assertSame($originalCharge + (1125 - $standardCharge), (int) $sc->Charge);
+    }
+
+    #[DataProvider('paidHourlyRescheduleTimes')]
+    public function test_paid_hourly_reschedule_preserves_the_ledger_on_retry(string $endTime): void
+    {
+        [$token, $courseId, $session] = $this->setupCourseWithSession(750, 120, 'hour');
+        $course = StudentClass::findOrFail($courseId);
+        $oldDate = substr((string) $session->SessionDate, 0, 10);
+        $newDate = Carbon::parse($oldDate)->addDay()->toDateString();
+        $charge = (int) $course->Charge;
+        $invoice = Invoice::create([
+            'StudentID' => $course->StudentID,
+            'StudentClassID' => $courseId,
+            'IssueDate' => today()->toDateString(),
+            'TotalAmount' => $charge,
+            'PaidAmount' => $charge,
+            'Status' => 'paid',
+        ]);
+        $payment = Payment::create([
+            'InvoiceID' => $invoice->id,
+            'Amount' => $charge,
+            'PaidAt' => now(),
+            'Method' => 'cash',
+        ]);
+        $invoiceBefore = $invoice->refresh()->getRawOriginal();
+        $paymentBefore = $payment->refresh()->getRawOriginal();
+        $payload = [
+            'student_class_id' => $courseId,
+            'ensure_schedule_exception' => true,
+            'old_date' => $oldDate,
+            'old_start_time' => '16:00',
+            'new_date' => $newDate,
+            'start_time' => '16:00',
+            'end_time' => $endTime,
+        ];
+        $endpoint = '/api/v1/learning-records/reschedule-session';
+
+        $this->withToken($token)->postJson($endpoint, $payload)->assertOk()
+            ->assertJsonPath('committed', true)
+            ->assertJsonPath('session_id', (int) $session->id);
+        $this->withToken($token)->postJson($endpoint, $payload)->assertOk()
+            ->assertJsonPath('idempotent_replay', true)
+            ->assertJsonPath('session_id', (int) $session->id);
+
+        $session->refresh();
+        $this->assertSame($newDate, substr((string) $session->SessionDate, 0, 10));
+        $this->assertSame($endTime, substr((string) $session->EndTime, 0, 5));
+        $this->assertSame(2, DB::table('schedules')->where('student_course_id', $courseId)->count());
+        $this->assertSame([$invoiceBefore], Invoice::where('StudentClassID', $courseId)->get()
+            ->map(fn (Invoice $row) => $row->getRawOriginal())->all());
+        $this->assertSame([$paymentBefore], Payment::where('InvoiceID', $invoice->id)->get()
+            ->map(fn (Payment $row) => $row->getRawOriginal())->all());
+
+        if ($endTime === '18:00') {
+            $this->assertSame($charge, (int) $course->fresh()->Charge);
+        }
+    }
+
+    public static function paidHourlyRescheduleTimes(): array
+    {
+        return [
+            'same two-hour duration' => ['18:00'],
+            'shortened to one hour' => ['17:00'],
+        ];
     }
 
     public function test_hour_mode_extend_time_updates_course_charge(): void
