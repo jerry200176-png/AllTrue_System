@@ -22,6 +22,7 @@ class LearningRecordAuthorSnapshotController extends Controller
         }
 
         return response()->json((new LearningRecordAuthorSnapshot())->newQuery()->where('learning_record_id', $learningRecord->id)
+            ->where('new_teacher_id', '>', 0) // the original author's body only; TD-074 edit history is not shown here
             ->orderBy('id')->get()->map(fn ($s) => [
                 'id' => $s->id,
                 'author_teacher_id' => $s->author_teacher_id,
