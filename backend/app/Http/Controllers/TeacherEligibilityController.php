@@ -78,20 +78,7 @@ class TeacherEligibilityController extends Controller
             }
         }
 
-        $teachers = DB::table('User as u')
-            ->join('UserCampus as uc', 'uc.UserID', '=', 'u.id')
-            ->where('u.type', 'T')
-            ->where(function ($query) {
-                $query->whereNull('u.status')->orWhere('u.status', 'active');
-            })
-            ->where(function ($query) {
-                $query->whereNull('u.employment_type')->orWhere('u.employment_type', 'full_time');
-            })
-            ->when($campusIds !== null, fn ($query) => $query->whereIn('uc.CampusID', $campusIds))
-            ->select('u.id', 'u.Name', 'u.employment_type')
-            ->distinct()
-            ->orderBy('u.Name')
-            ->get();
+        $teachers = $this->fullTimeTeachers($campusIds);
 
         if ($teachers->isEmpty()) {
             return response()->json($locked !== null ? $this->withRecalculation($locked, []) : [
@@ -311,6 +298,83 @@ class TeacherEligibilityController extends Controller
                 'branch_id' => $lockBranchId,
             ],
         ]);
+    }
+
+    /** Active full-time teachers who belong to one of the campuses (null = every campus). */
+    private function fullTimeTeachers(?array $campusIds): \Illuminate\Support\Collection
+    {
+        return DB::table('User as u')
+            ->join('UserCampus as uc', 'uc.UserID', '=', 'u.id')
+            ->where('u.type', 'T')
+            ->where(function ($query) {
+                $query->whereNull('u.status')->orWhere('u.status', 'active');
+            })
+            ->where(function ($query) {
+                $query->whereNull('u.employment_type')->orWhere('u.employment_type', 'full_time');
+            })
+            ->when($campusIds !== null, fn ($query) => $query->whereIn('uc.CampusID', $campusIds))
+            ->select('u.id', 'u.Name', 'u.employment_type')
+            ->distinct()
+            ->orderBy('u.Name')
+            ->get();
+    }
+
+    /**
+     * Founder 2026-11-20: each full-time teacher's teaching hours in ONE calendar month, split by the campus the lesson
+     * was at. Same teacher calendar and overlap merge as the weekly 段 (一對二／一對三 at one time count once, a student's
+     * leave still counts, substitute and extra lessons count where they were taught). The weekly report cannot answer
+     * this: its weeks run Monday to Sunday across the month's edges. Read-only; `format=csv` downloads it.
+     */
+    public function campusHours(Request $request)
+    {
+        $data = $request->validate([
+            'month' => ['required', 'regex:/^\\d{4}-(0[1-9]|1[0-2])$/'],
+            'branch_id' => ['nullable', 'integer', 'min:1'],
+        ]);
+        $campusIds = $this->resolveCampusIds($request);
+        if ($campusIds instanceof \Illuminate\Http\JsonResponse) {
+            return $campusIds;
+        }
+        $from = Carbon::parse($data['month'] . '-01', 'Asia/Taipei');
+        $teachers = $this->fullTimeTeachers($campusIds);
+        $ids = $teachers->pluck('id')->map(fn ($id) => (int) $id)->all();
+        $calendar = $ids === [] ? [] : TeacherClassCalendar::load($from->toDateString(), $from->copy()->endOfMonth()->toDateString(), null, $ids, true);
+        $hours = function (array $lessons): float {
+            $rows = array_map(fn ($lesson) => (object) ['start_time' => $lesson['start'], 'end_time' => $lesson['end'] !== '' ? $lesson['end'] : date('H:i', strtotime($lesson['start'] . ' +2 hours'))], $lessons);
+
+            return $this->scheduledCoverageHoursForDate($rows, fn () => true);
+        };
+        $rows = $teachers->map(function ($teacher) use ($calendar, $hours) {
+            $total = 0.0;
+            $byCampus = [];
+            foreach ($calendar[(int) $teacher->id] ?? [] as $lessons) {
+                $total += $hours($lessons);
+                foreach (collect($lessons)->groupBy('campus_id') as $campusId => $atCampus) {
+                    $byCampus[(int) $campusId] = ($byCampus[(int) $campusId] ?? 0.0) + $hours($atCampus->all());
+                }
+            }
+            ksort($byCampus);
+
+            // total_hours merges the whole day, so two campuses' lessons that overlap on the clock count once there.
+            return ['teacher_id' => (int) $teacher->id, 'teacher_name' => (string) $teacher->Name, 'total_hours' => round($total, 2),
+                'by_campus' => array_map(fn ($value) => round($value, 2), $byCampus)];
+        })->values()->all();
+        $campuses = DB::table('Campus')->whereIn('id', collect($rows)->flatMap(fn ($row) => array_keys($row['by_campus']))->unique()->all())->orderBy('id')->pluck('name', 'id')->all();
+        if ($request->input('format') !== 'csv') {
+            return response()->json(['month' => $data['month'], 'campuses' => $campuses, 'teachers' => $rows]);
+        }
+
+        return response()->streamDownload(function () use ($rows, $campuses) {
+            $out = fopen('php://output', 'w');
+            fprintf($out, chr(0xEF) . chr(0xBB) . chr(0xBF));
+            // Names are typed by people: a cell starting with = + - @ tab or CR gets a leading ' so a spreadsheet never runs it.
+            $text = fn ($value) => preg_match('/^[=+\-@\t\r]/', (string) $value) ? "'" . $value : $value;
+            fputcsv($out, array_merge(['老師姓名'], array_map($text, array_values($campuses)), ['合計時數']));
+            foreach ($rows as $row) {
+                fputcsv($out, array_merge([$text($row['teacher_name'])], array_map(fn ($id) => $row['by_campus'][$id] ?? 0, array_keys($campuses)), [$row['total_hours']]));
+            }
+            fclose($out);
+        }, "正職老師各分校時數_{$data['month']}.csv", ['Content-Type' => 'text/csv; charset=UTF-8']);
     }
 
     /**

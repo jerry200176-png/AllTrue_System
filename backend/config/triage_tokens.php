@@ -13,7 +13,7 @@ return [
     'allowed_routes' => [
         'triage.bug-reports.index', 'triage.bug-reports.show', 'triage.bug-reports.attachment',
         'triage.student-classes.billing-snapshot',
-        'triage.fulltime-payroll.report',
+        'triage.fulltime-payroll.report', 'triage.fulltime-payroll.campus-hours',
         'triage.db.tables', 'triage.db.rows',
     ],
     'list_max_limit' => 100,
