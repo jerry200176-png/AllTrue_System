@@ -1201,12 +1201,14 @@
       :checking="manualSessionChecking"
       :submitting="manualSessionSubmitting"
       :is-monthly="isMonthlyMode(manualSessionCourse)"
+      :can-backfill="manualSessionCourse?.status !== 'inactive'"
       :today="todayYmd"
       @close="closeManualSessionModal"
       @check="runManualSessionCheck"
       @submit="submitManualSession"
       @edit-course="editManualSessionCourse"
       @view-history="viewManualSessionHistory"
+      @backfill="backfillFromManualSession"
       @next-period="selectNextMonthlyContract"
       @open-course="openConflictBlockerCourse"
     />
@@ -3455,7 +3457,9 @@ function openQuickAddSessionModal(course, prefill = null) {
     if (Number.isFinite(mins) && mins >= 30) durationMinutes = mins;
   }
   quickAddSessionForm.value = {
-    session_date: prefillDate || nextManualSessionDate(course),
+    // 月結補登 is for a lesson already taught: start on today, not on the next future slot.
+    session_date: prefillDate || (isMonthlyMode(course) ? todayYmd.value : nextManualSessionDate(course)),
+    is_monthly: isMonthlyMode(course),
     start_time: prefillStart || normalizeTo30Min(course?.start_time || '16:00'),
     duration_minutes: durationMinutes,
     note: '',
@@ -3637,6 +3641,13 @@ function closeManualSessionModal() {
 
 function openMonthlySessionModal(course) {
   openManualSessionModal(course);
+}
+
+function backfillFromManualSession() {
+  const course = manualSessionCourse.value;
+  if (!course || !isMonthlyMode(course) || course.status === 'inactive' || manualSessionSubmitting.value) return;
+  closeManualSessionModal();
+  openQuickAddSessionModal(course);
 }
 
 function viewManualSessionHistory() {

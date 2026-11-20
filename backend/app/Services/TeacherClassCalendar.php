@@ -11,6 +11,10 @@ use Illuminate\Support\Facades\DB;
  * - ClassSession（G-010 來源真相）+ StudentClass.TeacherID，排除取消／請假，
  *   也排除已由別的老師代課的堂次（合約老師當天不用到）。
  * - schedules 的 scheduled 例外 row（代課／加課），用 StaleScheduleExceptionFilter 剔除殘影。
+ * - 同一堂（課程＋日期＋起始時間）只認最新的一筆 scheduled row（舊一代的代課 row 不算，否則同一堂算給兩位老師）。
+ * - 該時段另有較新的 rescheduled row、而且那個時段沒有有效的 ClassSession：這筆 scheduled 是改期後留下的殘影，不算
+ *   （有 ClassSession 時不能這樣判：改期會把代課 row 原地搬到新時段、id 不變，可能比該時段的舊 rescheduled 小）。
+ *   Founder 2026-11-20。
  */
 class TeacherClassCalendar
 {
@@ -18,7 +22,7 @@ class TeacherClassCalendar
      * @param  int[]|null  $campusIds  null = 不限分校
      * @param  int|int[]|null  $teacherId  one teacher, several, or null for all
      * @param  bool  $forPayroll  正職段數用：學生請假的堂次照算（已安排補課的 leave_adjusted 不算，補課算在新時段），行政／不可排時段不算
-     * @return array<int, array<string, list<array{start:string,end:string,campus_id:int}>>> teacherId => Y-m-d => 課
+     * @return array<int, array<string, list<array{start:string,end:string,campus_id:int,student_id:int,course_id:int}>>> teacherId => Y-m-d => 課
      */
     public static function load(string $from, string $to, ?array $campusIds, int|array|null $teacherId = null, bool $forPayroll = false): array
     {
@@ -26,13 +30,74 @@ class TeacherClassCalendar
         $scheduleQuery = DB::table('schedules')
             ->whereNotNull('teacher_id')
             ->whereBetween('schedule_date', [$from, $to])
-            ->where('status', 'scheduled')
+            ->whereIn('status', ['scheduled', 'rescheduled'])
             ->when($forPayroll, fn ($q) => $q->whereNotIn('type', ['admin', 'unavailable']))
-            ->select('teacher_id', 'schedule_date', 'start_time', 'end_time', 'branch_id', 'student_course_id', 'student_id', 'original_schedule_id');
+            ->select('id', 'status', 'type', 'teacher_id', 'schedule_date', 'start_time', 'end_time', 'branch_id', 'student_course_id', 'student_id', 'original_schedule_id',
+                'original_schedule_date', 'original_start_time');
+        // Legacy rows with invalid owners must not win a course slot over the real substitute.
+        $scheduleQuery->where(function ($query) {
+            $query->whereNull('student_course_id')->orWhere('student_course_id', '<=', 0)
+                ->orWhere(fn ($courseRows) => SubstituteScheduleService::ownedByTeacher(
+                    $courseRows,
+                    DB::table('StudentClass')->select('TeacherID')->whereColumn('ID', 'schedules.student_course_id'),
+                ));
+        });
         if ($campusIds !== null) {
             $scheduleQuery->whereIn('branch_id', $campusIds);
         }
-        $scheduleRows = $scheduleQuery->get();
+        $allRows = $scheduleQuery->get();
+        // ClassSession statuses that are no lesson here; the same list decides below whether a slot is still held.
+        $off = $forPayroll ? ['cancelled', 'voided', 'leave_adjusted'] : ['cancelled', 'leave'];
+        $courses = DB::table('StudentClass as sc')->leftJoin('Student as s', 's.id', '=', 'sc.StudentID')
+            ->whereIn('sc.ID', $allRows->pluck('student_course_id')->filter()->unique()->values()->all())
+            ->get(['sc.ID', 'sc.TeacherID', 's.CampusID'])->keyBy('ID');
+        $contractTeacher = $courses->map(fn ($course) => $course->TeacherID);
+        // Stamps only rank where the course's campus has schedule-occurrence-v2 on (as occurrence() / the calendar do).
+        $anyV2 = SubstituteScheduleService::anyCampusOn();
+        $v2Campus = [];
+        $stampsCount = function ($courseId) use ($anyV2, $courses, &$v2Campus): bool {
+            $campusId = (int) ($courses[$courseId]->CampusID ?? 0);
+
+            return $anyV2 && $campusId > 0 && ($v2Campus[$campusId] ??= OccurrenceAssignmentService::enabledFor($campusId));
+        };
+        // slot key => largest id. Precedence as in SubstituteScheduleService::occurrence(): a stamped live row
+        // (original_schedule_date + original_start_time, not a makeup; written by schedule-occurrence-v2) wins, then a
+        // substitute row (another teacher, with its anchor; substituteScheduleDerivedSql), then any other scheduled row.
+        $newest = ['scheduled' => [], 'rescheduled' => [], 'substitute' => [], 'stamped' => []];
+        foreach ($allRows as $row) {
+            $row->status = strtolower(trim((string) $row->status));
+            if ((int) $row->student_course_id > 0 && isset($newest[$row->status])) {
+                $key = self::key($row->student_course_id, $row->schedule_date, $row->start_time);
+                $isSubstitute = $row->status === 'scheduled' && $row->original_schedule_id !== null
+                    && (int) $row->teacher_id !== (int) ($contractTeacher[$row->student_course_id] ?? 0);
+                $isStamped = $row->status === 'scheduled' && $row->original_schedule_date !== null && $row->original_start_time !== null
+                    && $row->type !== 'extra' && $stampsCount($row->student_course_id);
+                $status = $isStamped ? 'stamped' : ($isSubstitute ? 'substitute' : $row->status);
+                $newest[$status][$key] = max($newest[$status][$key] ?? 0, (int) $row->id);
+            }
+        }
+        $newest['scheduled'] = $newest['stamped'] + $newest['substitute'] + $newest['scheduled'];
+        // Slots whose live row is older than a rescheduled row on the same slot: a leftover only if no lesson is held there.
+        $movedOn = array_filter($newest['scheduled'], fn ($id, $key) => ($newest['rescheduled'][$key] ?? 0) > $id, ARRAY_FILTER_USE_BOTH);
+        $held = [];
+        if ($movedOn !== []) {
+            $sessions = DB::table('ClassSession')
+                ->whereIn('StudentClassID', array_values(array_unique(array_map('intval', array_keys($movedOn)))))
+                ->whereBetween('SessionDate', [$from, $to])
+                ->whereNotIn('Status', $off)
+                ->get(['StudentClassID', 'SessionDate', 'StartTime']);
+            foreach ($sessions as $session) {
+                $held[self::key($session->StudentClassID, $session->SessionDate, $session->StartTime)] = true;
+            }
+        }
+        $scheduleRows = $allRows->filter(function ($row) use ($newest, $movedOn, $held) {
+            if ($row->status !== 'scheduled' || (int) $row->student_course_id <= 0) {
+                return $row->status === 'scheduled';
+            }
+            $key = self::key($row->student_course_id, $row->schedule_date, $row->start_time);
+
+            return (int) $row->id === $newest['scheduled'][$key] && (! isset($movedOn[$key]) || isset($held[$key]));
+        })->values();
 
         // 代課 row：course|日期|HH:MM → 代課老師 id
         $substitutedBy = [];
@@ -47,8 +112,8 @@ class TeacherClassCalendar
             ->leftJoin('Student as st', 'sc.StudentID', '=', 'st.id')
             ->whereNotNull('sc.TeacherID')
             ->whereBetween('cs.SessionDate', [$from, $to])
-            ->whereNotIn('cs.Status', $forPayroll ? ['cancelled', 'voided', 'leave_adjusted'] : ['cancelled', 'leave'])
-            ->select('sc.TeacherID as teacher_id', 'cs.StudentClassID as course_id', 'cs.SessionDate as d', 'cs.StartTime as start_time', 'cs.EndTime as end_time', 'st.CampusID as campus_id');
+            ->whereNotIn('cs.Status', $off)
+            ->select('sc.TeacherID as teacher_id', 'cs.StudentClassID as course_id', 'cs.SessionDate as d', 'cs.StartTime as start_time', 'cs.EndTime as end_time', 'st.CampusID as campus_id', 'sc.StudentID as student_id');
         if ($campusIds !== null) {
             $sessionQuery->whereIn('st.CampusID', $campusIds);
         }
@@ -63,7 +128,7 @@ class TeacherClassCalendar
             if ($subs !== [] || SubstituteScheduleService::isSubstitutedAway((int) $row->course_id, $row->d, (string) $row->start_time)) {
                 continue;
             }
-            self::push($out, $row->teacher_id, $row->d, $row->start_time, $row->end_time, $row->campus_id);
+            self::push($out, $row->teacher_id, $row->d, $row->start_time, $row->end_time, $row->campus_id, $row->student_id, $row->course_id);
         }
 
         $filter = app(StaleScheduleExceptionFilter::class);
@@ -72,7 +137,7 @@ class TeacherClassCalendar
             ->groupBy(fn ($r) => substr((string) $r->schedule_date, 0, 10));
         foreach ($byDate as $date => $rows) {
             foreach ($filter->rejectStale($rows, $date, false, $forPayroll ? ['leave'] : []) as $row) {
-                self::push($out, $row->teacher_id, $date, $row->start_time, $row->end_time, $row->branch_id);
+                self::push($out, $row->teacher_id, $date, $row->start_time, $row->end_time, $row->branch_id, $row->student_id, $row->student_course_id);
             }
         }
 
@@ -105,11 +170,12 @@ class TeacherClassCalendar
         return array_keys(array_filter(app(StaleScheduleExceptionFilter::class)->rejectStaleBatch($rowsByDate)));
     }
 
-    private static function push(array &$out, $teacherId, $date, $start, $end, $campusId): void
+    private static function push(array &$out, $teacherId, $date, $start, $end, $campusId, $studentId, $courseId): void
     {
         $hhmm = self::hhmm($start);
         if ($hhmm !== '') {
-            $out[(int) $teacherId][substr((string) $date, 0, 10)][] = ['start' => $hhmm, 'end' => self::hhmm($end), 'campus_id' => (int) $campusId];
+            $out[(int) $teacherId][substr((string) $date, 0, 10)][] = ['start' => $hhmm, 'end' => self::hhmm($end), 'campus_id' => (int) $campusId,
+                'student_id' => (int) $studentId, 'course_id' => (int) $courseId];
         }
     }
 

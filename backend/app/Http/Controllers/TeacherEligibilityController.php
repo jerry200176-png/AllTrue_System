@@ -344,20 +344,56 @@ class TeacherEligibilityController extends Controller
 
             return $this->scheduledCoverageHoursForDate($rows, fn () => true);
         };
-        $rows = $teachers->map(function ($teacher) use ($calendar, $hours) {
+        // [start, end) in minutes, with the same two-hour default as the hours above when the end is missing or not after the start.
+        $span = function (array $lesson): array {
+            $start = (int) $this->clockMinutes($lesson['start']);
+            $end = $this->clockMinutes($lesson['end']);
+
+            return [$start, $end !== null && $end > $start ? $end : min($start + 120, 1440)];
+        };
+        // A director sees which of another campus's lessons clash (time and campus, as the hours columns already show),
+        // but not whose lesson it is: the student and course ids stay with the campuses the caller may read.
+        $visible = $campusIds === null ? null : array_map('intval', $campusIds);
+        $rows = $teachers->map(function ($teacher) use ($calendar, $hours, $span, $visible) {
             $total = 0.0;
             $byCampus = [];
-            foreach ($calendar[(int) $teacher->id] ?? [] as $lessons) {
-                $total += $hours($lessons);
-                foreach (collect($lessons)->groupBy('campus_id') as $campusId => $atCampus) {
-                    $byCampus[(int) $campusId] = ($byCampus[(int) $campusId] ?? 0.0) + $hours($atCampus->all());
+            $overlaps = [];
+            $byDay = [];
+            $days = $calendar[(int) $teacher->id] ?? [];
+            ksort($days);
+            foreach ($days as $date => $lessons) {
+                // Lessons of two campuses that share clock time: each campus column counts them, the total counts them once.
+                $hit = [];
+                foreach ($lessons as $i => $a) {
+                    foreach ($lessons as $j => $b) {
+                        if ($j > $i && $a['campus_id'] !== $b['campus_id'] && $span($a)[0] < $span($b)[1] && $span($b)[0] < $span($a)[1]) {
+                            $hit[$i] = $a;
+                            $hit[$j] = $b;
+                        }
+                    }
                 }
+                if ($hit !== []) {
+                    usort($hit, fn ($x, $y) => [$x['start'], $x['campus_id'], $x['student_id']] <=> [$y['start'], $y['campus_id'], $y['student_id']]);
+                    $overlaps[] = ['date' => (string) $date, 'lessons' => array_map(fn ($lesson) => $visible === null || in_array($lesson['campus_id'], $visible, true)
+                        ? $lesson : ['student_id' => null, 'course_id' => null] + $lesson, $hit)];
+                }
+                $dayTotal = $hours($lessons);
+                $total += $dayTotal;
+                $dayCampus = [];
+                foreach (collect($lessons)->groupBy('campus_id') as $campusId => $atCampus) {
+                    $campusHours = $hours($atCampus->all());
+                    $dayCampus[(int) $campusId] = (int) round($campusHours * 60);
+                    $byCampus[(int) $campusId] = ($byCampus[(int) $campusId] ?? 0.0) + $campusHours;
+                }
+                ksort($dayCampus);
+                // Whole minutes, so the days add up to the month exactly (hours rounded per day would drift).
+                $byDay[] = ['date' => (string) $date, 'minutes' => (int) round($dayTotal * 60), 'minutes_by_campus' => $dayCampus];
             }
             ksort($byCampus);
 
             // total_hours merges the whole day, so two campuses' lessons that overlap on the clock count once there.
             return ['teacher_id' => (int) $teacher->id, 'teacher_name' => (string) $teacher->Name, 'total_hours' => round($total, 2),
-                'by_campus' => array_map(fn ($value) => round($value, 2), $byCampus)];
+                'by_campus' => array_map(fn ($value) => round($value, 2), $byCampus), 'overlaps' => $overlaps, 'by_day' => $byDay];
         })->values()->all();
         $campuses = DB::table('Campus')->whereIn('id', collect($rows)->flatMap(fn ($row) => array_keys($row['by_campus']))->unique()->all())->orderBy('id')->pluck('name', 'id')->all();
         if ($request->input('format') !== 'csv') {
