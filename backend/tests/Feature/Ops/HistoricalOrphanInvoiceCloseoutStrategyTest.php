@@ -141,6 +141,20 @@ final class HistoricalOrphanInvoiceCloseoutStrategyTest extends TestCase
             'leave_other_person_type' => fn () => DB::table('StudentSingIn')->where('id', self::LEAVE)->update(['PersonType' => 'teacher']),
             'deduction_ledger' => fn () => DB::table('session_deduction_ledger')->insert([
                 'student_class_id' => self::COURSE, 'event_type' => 'deduct', 'source' => 'manual']),
+            'hours' => fn () => DB::table('StudentSingIn')->where('id', self::LEAVE)->update(['Hours' => 2]),
+            'voided_leave' => fn () => DB::table('StudentSingIn')->where('id', self::LEAVE)->update(['VoidedAt' => '2026-06-30 12:25:00']),
+            'second_sign_in' => function (): void {
+                $extra = (array) DB::table('StudentSingIn')->where('id', self::LEAVE)->first();
+                unset($extra['id']);
+                $extra['ClassSessionID'] = self::REMOVED_SESSION + 1;
+                DB::table('StudentSingIn')->insert($extra);
+            },
+            'learning_evidence' => function (): void {
+                $other = DB::table('ClassSession')->insertGetId(['StudentClassID' => self::COURSE + 100,
+                    'SessionDate' => '2026-06-25', 'StartTime' => '16:00', 'EndTime' => '18:00', 'Status' => 'completed']);
+                DB::table('LearningRecord')->insert(['StudentClassID' => self::COURSE, 'ClassSessionID' => $other,
+                    'TeacherID' => 1, 'Content' => 'fixture']);
+            },
             'present' => fn () => DB::table('StudentSingIn')->where('id', self::LEAVE)->update(['Status' => 'present']),
             'deducted' => fn () => DB::table('StudentSingIn')->where('id', self::LEAVE)->update(['SessionDeducted' => 1]),
             'leave_other_campus' => fn () => DB::table('StudentSingIn')->where('id', self::LEAVE)->update(['CampusID' => 13]),
@@ -155,15 +169,23 @@ final class HistoricalOrphanInvoiceCloseoutStrategyTest extends TestCase
                 'reported_by_name' => 'fixture', 'report_token_hash' => str_repeat('b', 64), 'token_expires_at' => '2026-06-30 12:00:00']),
         ];
         foreach ($changes as $name => $apply) {
+            $reason = match ($name) {
+                'live_source', 'held_lesson' => 'student_scope_or_course_exists',
+                'other_bill', 'due_date', 'known_period' => 'invoice_state_or_scope_changed',
+                'item' => 'invoice_has_other_allocations',
+                'extra_payment', 'extra_report' => 'receipt_not_fully_reversed',
+                default => 'source_activity_changed',
+            };
             DB::beginTransaction();
             try {
                 $apply();
                 $before = $this->ledger();
-                $this->assertFalse($svc->plan($this->parameters)['ok'], $name);
+                $this->assertSame([$reason], $svc->plan($this->parameters)['errors'] ?? [], $name);
                 try {
                     $svc->execute($plan, $context);
                     $this->fail("Applied despite {$name}");
-                } catch (DomainException) {
+                } catch (DomainException $error) {
+                    $this->assertSame($reason, $error->getMessage(), $name);
                     $this->assertSame($before, $this->ledger(), $name);
                 }
             } finally {
