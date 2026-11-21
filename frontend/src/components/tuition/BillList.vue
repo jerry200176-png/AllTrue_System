@@ -37,6 +37,7 @@
           <Input v-model="query" type="search" placeholder="搜尋學生或課程編號" aria-label="搜尋學生" class="tw:h-12 tw:rounded-full tw:bg-card tw:pl-11 tw:text-[length:var(--tpl-text-body)] tw:shadow-none" data-testid="bill-search" />
         </div>
         <Button v-if="canDocs" :variant="receiptSearchOpen ? 'default' : 'outline'" :class="[control.row, !receiptSearchOpen && 'tw:text-foreground']" :aria-pressed="receiptSearchOpen" data-testid="bill-find-receipts" @click="receiptSearchOpen = !receiptSearchOpen">{{ receiptSearchOpen ? '回待收清單' : '查收款與收據' }}</Button>
+        <slot name="actions" />
         <div v-show="!receiptSearchOpen" role="group" aria-label="篩選" class="tw:-mx-4 tw:flex tw:max-w-[100vw] tw:min-w-0 tw:flex-1 tw:items-center tw:gap-2 tw:px-4 tw:md:max-lg:order-3 tw:max-lg:basis-full tw:max-md:overflow-x-auto tw:md:mx-0 tw:md:flex-wrap tw:md:px-0" data-guide="tuition-chips">
           <FilterChip
             v-for="c in CHIPS"
