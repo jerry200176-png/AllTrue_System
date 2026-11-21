@@ -1958,7 +1958,7 @@ class StudentClassController extends Controller
                     // materialize sessions), but don't block on occupancy that already exists.
                     $recurringConflicts = array_values(array_filter(
                         $recurringConflicts,
-                        static fn ($c) => !in_array($c['type'] ?? '', ['teacher_capacity', 'room_capacity'], true)
+                        static fn ($c) => !in_array($c['type'] ?? '', ['teacher_capacity', 'room_capacity', 'cross_campus'], true)
                     ));
                 }
                 if (!empty($recurringConflicts)) {

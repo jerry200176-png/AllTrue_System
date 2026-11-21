@@ -56,6 +56,13 @@ class ScheduleGuardService
             $excludeStudentClassId,
             $excludeStudentId
         ), $startDate, $endDate);
+        $elsewhere = self::templatesActiveInWindow($this->loadTeacherRecurringCourses(
+            $teacherId,
+            $branchId,
+            $excludeStudentClassId,
+            $excludeStudentId,
+            true
+        ), $startDate, $endDate);
         $conflicts = [];
         $selfOverlaps = [];
         // Lock state of the edited course's sessions, loaded once for all slots.
@@ -76,6 +83,9 @@ class ScheduleGuardService
         }
 
         foreach ($slots as $slot) {
+            if ($cross = $this->crossCampusRecurringConflict($elsewhere, $slot)) {
+                $conflicts[] = $cross;
+            }
             $recurringOverlaps = $this->collectRecurringOverlaps($teacherCourses, $slot);
             $concreteOverlaps = $this->collectConcreteRecurringOverlaps(
                 $teacherId,
@@ -219,8 +229,63 @@ class ScheduleGuardService
         if ($roomConflict) {
             $conflicts[] = $roomConflict;
         }
+        if ($cross = $this->crossCampusOccurrenceConflict($teacherId, $branchId, $date, $startTime, $endTime, $excludeScheduleId, $excludeStudentId)) {
+            $conflicts[] = $cross;
+        }
 
         return $conflicts;
+    }
+
+    /**
+     * One teacher cannot be at two campuses at once. Same-campus load is a capacity question (a 1-on-3 slot can
+     * take more students); another campus at an overlapping time is always a conflict. Lessons that already
+     * ended are not checked, so backfilling attendance, substitutes or bills is never blocked.
+     * ponytail: unlocked read (SubstituteService), so two campuses booking the same teacher in the same second can both pass.
+     */
+    private function crossCampusOccurrenceConflict(int $teacherId, int $branchId, string $date, string $start, string $end, ?int $excludeScheduleId, ?int $excludeStudentId): ?array
+    {
+        if (Carbon::parse($date . ' ' . $end)->lte(Carbon::now())) {
+            return null;
+        }
+        foreach (app(SubstituteService::class)->detectCrossCampusConflict($teacherId, $date, $start, $end, $excludeScheduleId ? [$excludeScheduleId] : [], $excludeStudentId) as $busy) {
+            if ($busy['campus_id'] > 0 && $busy['campus_id'] !== $branchId) {
+                return $this->crossCampusPayload($busy['campus_id'], $date, $busy['start_time'], $busy['end_time'], $date);
+            }
+        }
+
+        return null;
+    }
+
+    /** A weekly slot that overlaps the teacher's weekly course at another campus (still running in the edited window). */
+    private function crossCampusRecurringConflict(array $elsewhere, array $slot): ?array
+    {
+        $campusOf = [];
+        foreach ($elsewhere as $course) {
+            $campusOf[(int) $course->ID] = (int) $course->CampusID;
+        }
+        foreach ($this->collectRecurringOverlaps($elsewhere, $slot) as $hit) {
+            return $this->crossCampusPayload($campusOf[$hit['source_id']] ?? 0, null, $hit['start_time'], $hit['end_time'],
+                '每週' . mb_substr('一二三四五六日', (int) $slot['day_of_week'] - 1, 1));
+        }
+
+        return null;
+    }
+
+    /** @param  string  $day  a date, or 每週X for a weekly slot */
+    private function crossCampusPayload(int $campusId, ?string $date, string $start, string $end, string $day): array
+    {
+        $start = substr($start, 0, 5);
+        $end = substr($end, 0, 5);
+        $campus = (string) (DB::table('Campus')->where('id', $campusId)->value('name') ?? '其他');
+
+        return [
+            'type' => 'cross_campus',
+            'campus_id' => $campusId,
+            'schedule_date' => $date,
+            'start_time' => $start,
+            'end_time' => $end,
+            'message' => sprintf('這位老師 %s %s~%s 已在「%s」分校有課，同一時間不能排在兩個分校。請改時段或改老師。', $day, $start, $end, $campus),
+        ];
     }
 
     /**
@@ -488,17 +553,19 @@ class ScheduleGuardService
         int $teacherId,
         int $branchId,
         ?int $excludeStudentClassId = null,
-        ?int $excludeStudentId = null
+        ?int $excludeStudentId = null,
+        bool $otherCampuses = false
     ): array {
         $query = DB::table('StudentClass as sc')
             ->join('Student as st', 'st.id', '=', 'sc.StudentID')
             ->where('sc.TeacherID', $teacherId)
-            ->where('st.CampusID', $branchId)
+            ->where('st.CampusID', $otherCampuses ? '!=' : '=', $branchId)
             // In-app #373: used-up count courses no longer hold a weekly seat (F8 single rule).
             ->tap(fn ($q) => StudentClass::applyHoldsTemplateSeat($q, 'sc'))
             ->select([
                 'sc.ID',
                 'sc.StudentID',
+                'st.CampusID',
                 'sc.ClassType',
                 'sc.room_id',
                 'sc.SessionDuration',
