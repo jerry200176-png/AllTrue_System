@@ -74,6 +74,17 @@ class CrossCampusCourseCreationTest extends TestCase
         $this->assertStringNotContainsString('他校生', $reminder, 'other campus students stay private');
     }
 
+    public function test_a_past_clash_with_a_since_settled_course_is_still_noted(): void
+    {
+        DB::table('StudentClass')->where('TeacherID', $this->teacher)->update(['Stop' => 1]);
+        $guard = app(ScheduleGuardService::class);
+        $this->assertNull($guard->crossCampusConflict($this->teacher, 1, $this->past, '16:30', '17:30'));
+        $this->assertCount(1, (array) request()->attributes->get(ScheduleGuardService::PAST_CLASH_ATTRIBUTE));
+        request()->attributes->remove(ScheduleGuardService::PAST_CLASH_ATTRIBUTE);
+        $this->assertNull($guard->crossCampusConflict($this->teacher, 1, $this->past, '17:00', '18:00'), 'back-to-back is not a clash');
+        $this->assertNull(request()->attributes->get(ScheduleGuardService::PAST_CLASH_ATTRIBUTE));
+    }
+
     public function test_a_pre_check_never_carries_the_reminder(): void
     {
         $request = \Illuminate\Http\Request::create('/api/v1/student-classes/1/add-session/check', 'POST');

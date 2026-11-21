@@ -268,8 +268,34 @@ class ScheduleGuardService
                 }
             }
         }
+        if ($ended && ($row = $this->pastLessonElsewhere($teacherId, $branchId, $date, $start, $end, $excludeStudentId))) {
+            self::notePastClash($this->crossCampusPayload((int) $row->CampusID, $date, substr((string) $row->StartTime, 0, 5),
+                substr((string) $row->EndTime, 0, 5), $date, true)['message']);
+        }
 
         return null;
+    }
+
+    /**
+     * A past lesson of the teacher's own course at another campus, including courses settled since (renewals set
+     * Stop=1 on the old period, which the live occupancy read skips). Reminder only.
+     * ponytail: contract teacher only — a past lesson the teacher gave as a substitute on a since-settled course is
+     * missed, and one handed to a substitute may be flagged; fine for a non-blocking reminder.
+     */
+    private function pastLessonElsewhere(int $teacherId, int $branchId, string $date, string $start, string $end, ?int $excludeStudentId): ?object
+    {
+        return DB::table('ClassSession as cs')
+            ->join('StudentClass as sc', 'sc.ID', '=', 'cs.StudentClassID')
+            ->join('Student as st', 'st.id', '=', 'sc.StudentID')
+            ->where('sc.TeacherID', $teacherId)
+            ->where('st.CampusID', '!=', $branchId)
+            ->whereDate('cs.SessionDate', $date)
+            ->whereNotIn('cs.Status', SessionStatus::futureReservationExclusionStatuses())
+            ->where('cs.StartTime', '<', $end . ':00')
+            ->where('cs.EndTime', '>', $start . ':00')
+            ->when($excludeStudentId, fn ($q) => $q->where('sc.StudentID', '!=', $excludeStudentId))
+            ->orderBy('cs.StartTime')
+            ->first(['st.CampusID', 'cs.StartTime', 'cs.EndTime']);
     }
 
     /**
