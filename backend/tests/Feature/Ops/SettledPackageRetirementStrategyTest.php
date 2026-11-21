@@ -80,7 +80,7 @@ final class SettledPackageRetirementStrategyTest extends TestCase
         $this->assertTrue($plan['ok']);
         DB::table($table)->update($fields);
         $afterDrift = $this->businessRows();
-        $this->assertSame([$expectedError], $this->strategy->plan($this->parameters)['errors']);
+        $this->assertSame([$expectedError], $this->strategy->plan($this->parameters)['errors'] ?? []);
         try {
             DB::transaction(fn () => $this->strategy->execute($plan, $this->nativeContext()));
             $this->fail('An older plan executed after the live data changed.');
@@ -115,7 +115,7 @@ final class SettledPackageRetirementStrategyTest extends TestCase
         $row = (array) DB::table($table)->first();
         DB::table($table)->insert(array_replace($row, [$idColumn => 40100], $changes));
         $before = $this->businessRows();
-        $this->assertSame([$expectedError], $this->strategy->plan($this->parameters)['errors']);
+        $this->assertSame([$expectedError], $this->strategy->plan($this->parameters)['errors'] ?? []);
         try {
             DB::transaction(fn () => $this->strategy->execute($plan, $this->nativeContext()));
             $this->fail('An old plan ignored an additional row.');
@@ -142,6 +142,8 @@ final class SettledPackageRetirementStrategyTest extends TestCase
         $this->getJson($url)->assertUnauthorized();
         $directorToken = $this->tokenFor('A');
         $this->withToken($directorToken)->getJson($url)->assertForbidden();
+        $lockedOwnerToken = $this->tokenFor('S', true);
+        $this->withToken($lockedOwnerToken)->getJson($url)->assertStatus(428)->assertJsonPath('code', 'PASSWORD_CHANGE_REQUIRED');
         $ownerToken = $this->tokenFor('S');
         $before = $this->businessRows();
         $this->withToken($ownerToken)->getJson($url.'?package_id=62')->assertOk()->assertExactJson([
@@ -157,9 +159,10 @@ final class SettledPackageRetirementStrategyTest extends TestCase
             ->assertExactJson(['data' => ['ok' => false, 'errors' => ['package_ledger_not_exactly_exhausted']]]);
     }
 
-    private function tokenFor(string $type): string
+    private function tokenFor(string $type, bool $mustChangePassword = false): string
     {
-        $user = User::create(['LoginName' => 'package-preview-'.$type, 'Name' => 'Fixture', 'PSW' => 'test', 'type' => $type, 'phone' => '']);
+        $user = User::create(['LoginName' => 'package-preview-'.$type.'-'.(int) $mustChangePassword, 'Name' => 'Fixture',
+            'PSW' => 'test', 'type' => $type, 'phone' => '', 'MustChangePassword' => $mustChangePassword]);
         $token = bin2hex(random_bytes(32));
         AuthToken::create(['user_id' => $user->id, 'token' => $token, 'expires_at' => now()->addHour()]);
 
