@@ -124,6 +124,26 @@ class ScheduleGuardCrossCampusTest extends TestCase
         $this->assertSame([], $guard->validateRecurringCourse($payload('12:00')));
     }
 
+    public function test_a_substitute_booking_at_an_unbound_campus_still_counts(): void
+    {
+        $owner = $this->teacher();
+        $substitute = User::create(['LoginName' => 'unbound-sub@example.com', 'Name' => '代課', 'PSW' => 'secret',
+            'type' => 'T', 'phone' => '0922000001', 'MustChangePassword' => false]);
+        UserCampus::create(['CampusID' => 1, 'UserID' => $substitute->id, 'Admin' => 0, 'Approved' => 1]); // bound to campus 1 only
+        $date = Carbon::today()->addDays(7)->toDateString();
+        $course = $this->course($owner, 2, '甲');
+        $row = ['student_id' => $course->StudentID, 'student_course_id' => $course->ID, 'teacher_id' => $owner, 'branch_id' => 2,
+            'schedule_date' => $date, 'day_of_week' => Carbon::parse($date)->dayOfWeekIso, 'subject' => 'synthetic',
+            'start_time' => '17:00', 'end_time' => '19:00', 'duration_hours' => 2, 'class_type' => 'one_on_one',
+            'status' => 'scheduled', 'type' => 'normal', 'deduction' => 0];
+        $anchor = DB::table('schedules')->insertGetId($row);
+        DB::table('schedules')->insert(array_replace($row, ['teacher_id' => $substitute->id, 'original_schedule_id' => $anchor]));
+
+        $conflicts = app(ScheduleGuardService::class)->validateScheduleOccurrence(['teacher_id' => $substitute->id, 'branch_id' => 1,
+            'class_type' => 'one_on_one', 'schedule_date' => $date, 'start_time' => '18:00', 'end_time' => '20:00']);
+        $this->assertSame([['cross_campus', 2]], array_map(fn ($c) => [$c['type'], $c['campus_id']], $conflicts));
+    }
+
     private function teacher(string $login = 'cross-campus-teacher@example.com'): int
     {
         $teacher = User::create([

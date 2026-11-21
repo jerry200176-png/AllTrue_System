@@ -292,16 +292,25 @@ class ScheduleGuardService
     private array $otherCampusCache = [];
 
     /**
-     * Campuses other than $branchId where the teacher can have lessons: campus bindings plus campuses of the teacher's
-     * running courses (a course can outlive its binding). A teacher of one campus costs two small queries and no cross check.
+     * Campuses other than $branchId where the teacher can have lessons: campus bindings, campuses of the teacher's
+     * running courses (a course can outlive its binding), and of future schedule rows and held trial holds in the
+     * teacher's name (a substitute may teach where they are not bound). A teacher of one campus costs four small
+     * queries and no cross check.
+     * ponytail: a makeup taught only through LearningRecord.TeacherID at an unbound, course-less campus is not found.
      *
      * @return int[]
      */
     private function otherCampusesOf(int $teacherId, int $branchId): array
     {
+        $today = Carbon::today()->toDateString();
+
         return $this->otherCampusCache[$teacherId . '|' . $branchId] ??= DB::table('UserCampus')->where('UserID', $teacherId)->pluck('CampusID')
             ->merge(DB::table('StudentClass as sc')->join('Student as st', 'st.id', '=', 'sc.StudentID')
                 ->where('sc.TeacherID', $teacherId)->where(fn ($q) => $q->where('sc.Stop', 0)->orWhereNull('sc.Stop'))->distinct()->pluck('st.CampusID'))
+            ->merge(DB::table('schedules')->where('teacher_id', $teacherId)->where('status', 'scheduled')
+                ->where('schedule_date', '>=', $today)->distinct()->pluck('branch_id'))
+            ->merge(DB::table('trial_holds')->where('teacher_id', $teacherId)->where('status', \App\Models\TrialHold::HELD)
+                ->where('hold_date', '>=', $today)->distinct()->pluck('campus_id'))
             ->map(fn ($id) => (int) $id)->filter(fn ($id) => $id > 0 && $id !== $branchId)->unique()->sort()->values()->all();
     }
 
