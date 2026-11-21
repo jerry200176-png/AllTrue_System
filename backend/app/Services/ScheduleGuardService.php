@@ -288,6 +288,61 @@ class ScheduleGuardService
         return null;
     }
 
+    /**
+     * Cross-campus clash for one lesson of $course at $date $start-$end, for write paths that move or revive a single
+     * lesson without the capacity guard (retime, restore). The teacher is whoever teaches that occurrence now
+     * ($occurrenceStart = its current start time). Null when free or already ended.
+     *
+     * @return array<string, mixed>|null
+     */
+    public function crossCampusConflictForLesson(StudentClass $course, string $date, string $start, string $end, ?string $occurrenceStart = null): ?array
+    {
+        $campusId = (int) (DB::table('Student')->where('id', (int) $course->getAttribute('StudentID'))->value('CampusID') ?? 0);
+        $date = Carbon::parse($date)->toDateString();
+        $start = $this->normalizeTime($start);
+        $end = $this->normalizeTime($end);
+        if ($campusId <= 0 || !$start || !$end) {
+            return null;
+        }
+        $teacherId = SubstituteScheduleService::teacherForOccurrence((int) $course->getKey(), $date,
+            (int) $course->getAttribute('TeacherID'), $this->normalizeTime($occurrenceStart) ?? $start);
+
+        return $teacherId > 0
+            ? $this->crossCampusOccurrenceConflict($teacherId, $campusId, $date, $start, $end, null, (int) $course->getAttribute('StudentID') ?: null, null)
+            : null;
+    }
+
+    /**
+     * Cross-campus clash for the weekly slots of a course being created by a path without the capacity guard
+     * (multi-subject package). $slots: day_of_week, start_time, end_time.
+     *
+     * @return array<string, mixed>|null
+     */
+    public function crossCampusWeeklyConflict(int $teacherId, int $branchId, array $slots, ?int $studentId, ?string $startDate, ?string $endDate): ?array
+    {
+        if ($teacherId <= 0 || $branchId <= 0) {
+            return null;
+        }
+        $elsewhere = self::templatesActiveInWindow($this->loadTeacherRecurringCourses($teacherId, $branchId, null, $studentId, true), $startDate, $endDate);
+        foreach ($this->normalizeSlots($slots) as $slot) {
+            if ($cross = $this->crossCampusRecurringConflict($elsewhere, $slot, $teacherId, $branchId, $startDate, $endDate, $studentId)) {
+                return $cross;
+            }
+        }
+
+        return null;
+    }
+
+    /** 409 body every write path returns for a cross-campus clash (same shape as the course-edit conflict). */
+    public static function crossCampusResponse(array $conflict): \Illuminate\Http\JsonResponse
+    {
+        return response()->json([
+            'message' => $conflict['message'],
+            'code' => 'teacher_schedule_conflict',
+            'conflicts' => [$conflict],
+        ], 409);
+    }
+
     /** @var array<string, int[]> */
     private array $otherCampusCache = [];
 
