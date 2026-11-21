@@ -558,6 +558,48 @@ for (const width of [375, 1280]) {
   });
 }
 
+for (const width of [375, 1280]) {
+  test(`In-App584: billing guide can close a paid single course @${width}`, async ({ page }, info) => {
+    const writes = [];
+    let closed = false;
+    await page.setViewportSize({ width, height: 950 });
+    await page.route('**/*', route => new URL(route.request().url()).hostname === '127.0.0.1' ? route.fallback() : route.abort());
+    await page.route('**/api/v1/**', route => route.fulfill({ json: { data: [] } }));
+    await installMock(page);
+    const common = { student_id: 99, student_name: '合成續課學生', schedule_mode: 'count',
+      payment_status: 'renew_needed', payable_outstanding: 0, remaining_sessions: 1 };
+    const single = { ...common, id: 42, subject: '合成單科' };
+    const shared = { ...common, id: null, package_id: 81, subject: '合成共用方案' };
+    await page.route('**/api/v1/alerts/tuition**', route => route.fulfill({ json: closed ? [shared] : [single, shared] }));
+    await page.route('**/api/v1/accounting/ledger?**', route => route.fulfill({ json: { courses: [{ id: 42 }], invoices: [], receipts: [] } }));
+    await page.route('**/api/v1/student-classes/42/pause', route => {
+      writes.push({ method: route.request().method(), body: route.request().postDataJSON() });
+      closed = true;
+      return route.fulfill({ json: { message: '已結案' } });
+    });
+    await page.goto('/tuition-collection-pilot-mount.html');
+    await page.getByTestId('billing-guide-start').click();
+    const step = page.getByTestId('bg-step');
+    await expect(step.getByRole('button', { name: '去續課', exact: true })).toBeVisible();
+    const settle = step.getByRole('button', { name: '結案（不續報）', exact: true });
+    await expect(settle).toBeVisible();
+    await step.screenshot({ path: info.outputPath('renewal-actions.png') });
+    const dialog = page.locator('.tc-dialog').filter({ hasText: '確認結案此課程' });
+    await settle.click();
+    await expect(dialog).toContainText('合成單科');
+    await expect(dialog).toContainText('還有 1 堂未上');
+    await dialog.getByRole('button', { name: '取消', exact: true }).click();
+    expect(writes).toEqual([]);
+    await settle.click();
+    await dialog.getByRole('button', { name: '確認結案', exact: true }).click();
+    await expect(step.getByTestId('bg-gone')).toBeVisible();
+    expect(writes).toEqual([{ method: 'POST', body: { action: 'pause', reason: 'settled', forfeit_remaining: true } }]);
+    await page.getByTestId('bg-next').click();
+    await expect(step.getByRole('button', { name: '到學生帳務', exact: true })).toBeVisible();
+    await expect(settle).toHaveCount(0);
+  });
+}
+
 // 智慧登帳引導: one bill at a time — the slip for an unpaid bill, then 登記 → 現在確認入帳 → that payment's receipt.
 for (const width of [375, 1280]) {
   test(`billing guide walks unpaid → slip → 登記 → 確認入帳 → receipt → next @${width}`, async ({ page, context }, info) => {
