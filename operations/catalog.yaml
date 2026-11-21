@@ -796,6 +796,35 @@ operations:
     tags: [repair, billing, reviewed-case]
     notes: One reviewed historical orphan invoice with one unchanged non-deducted leave marker, no lessons or active payment report, and one exactly reversed receipt. Voids only the invoice and preserves all original money rows. Requires an authenticated human, an exact expiring Founder tuple and Pi-local execution.
 
+  reviewed-settled-package-retirement:
+    lifecycle: active
+    domain: billing-entitlement
+    business_owner: director-data
+    technical_owner: platform-data
+    owner: platform-ops
+    approver_roles: [super_admin]
+    approval_policy: founder-exact-reviewed-financial
+    founder_approval_required: true
+    runbook: docs/plans/2026-11-21-573-settled-package-retirement.md
+    alert_group: LINE:ops-data
+    escalation_policy: billing-entitlement-critical-escalation
+    capabilities: [repair, plan, dry_run, verify, rollback, snapshot, audit]
+    risk: critical
+    reversible: true
+    snapshot_required: true
+    transaction_required: true
+    rollback_supported: true
+    verification_required: true
+    approval_required: true
+    execution_authority: pop-pi-local
+    blast_radius: one_exact_settled_package_stop_flag
+    estimated_duration: 5m
+    invariant_packs: [billing-entitlement-pack@1.0.0]
+    strategy_class: App\Operations\Strategies\SettledPackageRetirementStrategy
+    parameter_keys: [campus_id, package_id, course_id, invoice_id, decision_reference, expected_state_hash]
+    tags: [repair, billing, reviewed-case]
+    notes: Exact retirement of the settled package identified in in-app 573. Changes one stop flag through the existing reviewed Founder tuple and Pi-local execution. Requires current member, invoice, receipt and lesson evidence.
+
   reviewed-mismatched-pending-return:
     lifecycle: active
     domain: billing-entitlement
