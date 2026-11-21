@@ -277,6 +277,7 @@ class ScheduleGuardService
         $start = substr($start, 0, 5);
         $end = substr($end, 0, 5);
         $campus = (string) (DB::table('Campus')->where('id', $campusId)->value('name') ?? '其他');
+        $campus = str_ends_with($campus, '分校') ? $campus : $campus . '分校';
 
         return [
             'type' => 'cross_campus',
@@ -284,7 +285,7 @@ class ScheduleGuardService
             'schedule_date' => $date,
             'start_time' => $start,
             'end_time' => $end,
-            'message' => sprintf('這位老師 %s %s~%s 已在「%s」分校有課，同一時間不能排在兩個分校。請改時段或改老師。', $day, $start, $end, $campus),
+            'message' => sprintf('這位老師 %s %s~%s 已在「%s」有課，同一時間不能排在兩個分校。請改時段或改老師。', $day, $start, $end, $campus),
         ];
     }
 
