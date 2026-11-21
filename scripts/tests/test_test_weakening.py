@@ -67,6 +67,16 @@ class T(unittest.TestCase):
     def test_empty_waiver_does_not_borrow_next_line(self):
         self.assertFalse(guard.WAIVER.search("Test-Weakening:\n## Risk-Class and more text\n"))
 
+    def test_chained_assertion_removed(self):
+        p = "backend/tests/Feature/AT.php"
+        rows = run(diff(p, ["        $r->assertStatus(409)->assertJsonPath('code', 'x');"], ["        $r->assertStatus(409);"]))
+        self.assertIn(f"{p}: assertions 2 removed, 1 added", rows)
+
+    def test_phpunit_test_annotation_removed(self):
+        p = "backend/tests/Unit/BT.php"
+        rows = run(diff(p, ["    /** @test */"], ["    /** helper */"]))
+        self.assertEqual(rows, [f"{p}: test cases 1 removed, 0 added"])
+
     def test_waiver_needs_reason(self):
         self.assertTrue(guard.WAIVER.search("x\nTest-Weakening: coupon feature removed in #1\n"))
         self.assertFalse(guard.WAIVER.search("Test-Weakening: ok\n"))

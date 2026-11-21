@@ -22,14 +22,14 @@ COUNTERS = {
         r"\.(toBe|toEqual|toStrictEqual|toHaveText|toHaveValue|toHaveCount|toHaveURL|toHaveLength)\(|"
         r"assert(Same|Equals|Count|EqualsCanonicalizing)\(|assertEqual\(|assert\.(equal|strictEqual|deepEqual|deepStrictEqual)\(|"
         r"^\s*assert .*==[^=]"),
-    "test cases": re.compile(r"\b(it|test)(\.(skip|only|fixme)|\.each\(.*?\))?\(\s*['\"`]|\bfunction test\w+\(|#\[Test\]|\bdef test_\w+\("),
+    "test cases": re.compile(r"\b(it|test)(\.(skip|only|fixme)|\.each\(.*?\))?\(\s*['\"`]|\bfunction test\w+\(|#\[Test\]|\*\s*@test\b|\bdef test_\w+\("),
 }
 SKIP = re.compile(r"\.(skip|only|fixme)\(|markTestSkipped|markTestIncomplete|@pytest\.mark\.skip|unittest\.skip")
 WAIVER = re.compile(r"^[ \t]*Test-Weakening:[ \t]*\S.{9,}", re.M)  # reason on the same line
 
 
 def counts(lines):
-    return {k: sum(bool(rx.search(l)) for l in lines) for k, rx in COUNTERS.items()}
+    return {k: sum(len(list(rx.finditer(l))) for l in lines) for k, rx in COUNTERS.items()}  # every match, not lines
 
 
 def parse_diff(text):
