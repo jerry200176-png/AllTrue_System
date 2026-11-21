@@ -108,6 +108,7 @@ last_reviewed: 2026-11-12
 - `qa-lead` 對階段 4 不變式範圍的 PR 確認性質測試存在且在 CI 跑；Infection（後端）／Stryker（前端）對變更行的 advisory 結果附在 PR，不擋合併。
 - 有 UI：`product-designer` 看視覺差異（自動視覺回歸是**目標（L6，#4952）**）。
 - 全過後加 `queue`（[`MERGE_SOP.md`](MERGE_SOP.md)）。
+- 合併佇列只會對有確證的 runner 啟動失敗在原 head 嘗試重跑一次。測試失敗、取消或逾時須先讀原檢查診斷。重跑結果不明時回查原 run，無法確認就保留證據與操作頁。既有佇列在同 head 等候超過 60 分鐘會留言一次（Actions variable `LAND_QUEUE_ATTENTION_MINUTES` 可設 15–360），不解除原關卡。
 
 ### 階段 7：上線
 
