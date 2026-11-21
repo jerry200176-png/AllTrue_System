@@ -18,6 +18,22 @@ final class SettledPackageRetirementStrategy
 
     private const CASE_IDS = ['campus_id' => 9, 'package_id' => 61, 'course_id' => 1383, 'invoice_id' => 746];
 
+    public function preview(): array
+    {
+        $parameters = self::CASE_IDS + ['decision_reference' => self::OPERATION, 'expected_state_hash' => str_repeat('0', 64)];
+        try {
+            $state = $this->readState($parameters, false);
+            if ((int) $state['package']['stop'] !== 0) {
+                throw new DomainException('package_not_active');
+            }
+            $parameters['expected_state_hash'] = $this->hash($state);
+
+            return ['ok' => true, 'parameters' => $parameters];
+        } catch (DomainException $error) {
+            return ['ok' => false, 'errors' => [$error->getMessage()]];
+        }
+    }
+
     public function plan(array $parameters, array $context = []): array
     {
         try {
@@ -130,6 +146,16 @@ final class SettledPackageRetirementStrategy
             throw new DomainException('package_student_campus_mismatch');
         }
 
+        $ledger = $rows(DB::table('package_session_ledger')->where('package_id', $package->id)->orderBy('id')
+            ->select('id', 'package_id', 'student_class_id', 'class_session_id', 'delta', 'updated_at'), 100);
+        // The ledger is authoritative. Require exact exhaustion, including agreement with the stored counter.
+        $total = (int) $package->total_sessions;
+        if ($total <= 0 || $ledger->isEmpty() || $ledger->count() >= 100
+            || $ledger->contains(fn (object $entry) => (int) $entry->student_class_id !== (int) $member->ID)
+            || (int) $ledger->sum('delta') !== -$total || (int) $package->used_sessions !== $total) {
+            throw new DomainException('package_ledger_not_exactly_exhausted');
+        }
+
         $sessions = $rows(DB::table('ClassSession')->where('StudentClassID', $member->ID)->orderBy('id')
             ->select('id', 'SessionDate', 'StartTime', 'EndTime', 'Status', 'updated_at'), 100);
         if ($sessions->isEmpty() || $sessions->count() >= 100
@@ -172,7 +198,8 @@ final class SettledPackageRetirementStrategy
         }
 
         return ['student' => (array) $student, 'package' => [...(array) $package, 'stop' => (int) $package->stop],
-            'member' => (array) $member, 'sessions' => $sessions->map(fn (object $row) => (array) $row)->all(),
+            'member' => (array) $member, 'ledger' => $ledger->map(fn (object $row) => (array) $row)->all(),
+            'sessions' => $sessions->map(fn (object $row) => (array) $row)->all(),
             'invoice' => (array) $invoice, 'items' => $items->map(fn (object $row) => (array) $row)->all(),
             'report' => (array) $report, 'payment' => (array) $payment];
     }

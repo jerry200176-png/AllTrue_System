@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Ops;
 
+use App\Models\AuthToken;
 use App\Models\User;
 use App\Operations\PopOperationCatalog;
 use App\Operations\PopOperationService;
@@ -40,6 +41,8 @@ final class SettledPackageRetirementStrategyTest extends TestCase
             'by1' => 1, 'StartDate' => '2026-06-02', 'TotalHours' => 2, 'RemainingSessions' => 0, 'Paid' => 1]);
         DB::table('ClassSession')->insert(['id' => 40002, 'StudentClassID' => 1383, 'SessionDate' => '2026-06-02',
             'StartTime' => '16:00', 'EndTime' => '18:00', 'Status' => 'attended']);
+        DB::table('package_session_ledger')->insert(['package_id' => 61, 'student_class_id' => 1383,
+            'class_session_id' => 40002, 'delta' => -1, 'reason' => 'attendance']);
         DB::table('Invoice')->insert(['id' => 746, 'StudentID' => 40001, 'StudentClassID' => 1383, 'IssueDate' => '2026-06-01',
             'TotalAmount' => 1200, 'PaidAmount' => 1200, 'Status' => 'paid']);
         DB::table('InvoiceItem')->insert(['InvoiceID' => 746, 'StudentClassID' => 1383, 'Description' => 'Fixture', 'Amount' => 1200]);
@@ -91,6 +94,9 @@ final class SettledPackageRetirementStrategyTest extends TestCase
     {
         return [
             'moved campus' => ['Student', ['CampusID' => 1], 'package_student_campus_mismatch'],
+            'covered by a different course' => ['InvoiceItem', ['StudentClassID' => 1384], 'package_invoice_has_other_coverage'],
+            'ledger credit' => ['package_session_ledger', ['delta' => 1], 'package_ledger_not_exactly_exhausted'],
+            'ledger row drift without net change' => ['package_session_ledger', ['updated_at' => '2026-06-03 00:00:00'], 'package_state_changed'],
             'remaining entitlement' => ['course_packages', ['remaining_sessions' => 1], 'package_not_exhausted_and_paid'],
             'closed member reopened' => ['StudentClass', ['Stop' => 0], 'sole_member_not_settled'],
             'new scheduled lesson' => ['ClassSession', ['Status' => 'scheduled'], 'package_has_open_lessons'],
@@ -99,6 +105,65 @@ final class SettledPackageRetirementStrategyTest extends TestCase
             'different payment' => ['Payment', ['Amount' => 1], 'package_receipt_ledger_not_settled'],
             'changed date' => ['Invoice', ['DueDate' => '2026-08-01'], 'package_state_changed'],
         ];
+    }
+
+    #[DataProvider('additionalRows')]
+    public function test_additional_members_documents_and_ledger_entries_refuse_a_prior_plan(
+        string $table, string $idColumn, array $changes, string $expectedError,
+    ): void {
+        $plan = $this->strategy->plan($this->parameters);
+        $row = (array) DB::table($table)->first();
+        DB::table($table)->insert(array_replace($row, [$idColumn => 40100], $changes));
+        $before = $this->businessRows();
+        $this->assertSame([$expectedError], $this->strategy->plan($this->parameters)['errors']);
+        try {
+            DB::transaction(fn () => $this->strategy->execute($plan, $this->nativeContext()));
+            $this->fail('An old plan ignored an additional row.');
+        } catch (DomainException $error) {
+            $this->assertSame($expectedError, $error->getMessage());
+        }
+        $this->assertSame($before, $this->businessRows());
+    }
+
+    public static function additionalRows(): array
+    {
+        return [
+            'second member' => ['StudentClass', 'ID', [], 'sole_member_not_settled'],
+            'second invoice' => ['Invoice', 'id', ['Status' => 'unpaid'], 'package_invoice_not_paid'],
+            'second receipt' => ['payment_reports', 'id', ['status' => 'pending', 'report_token_hash' => str_repeat('e', 64)], 'package_receipt_not_confirmed'],
+            'negative payment' => ['Payment', 'id', ['Amount' => -1200, 'Method' => 'void'], 'package_receipt_ledger_not_settled'],
+            'added neutral ledger row' => ['package_session_ledger', 'id', ['class_session_id' => null, 'delta' => 0], 'package_state_changed'],
+        ];
+    }
+
+    public function test_preview_requires_a_super_admin_and_can_only_return_an_opaque_digest_for_the_case(): void
+    {
+        $url = '/api/v1/pop/operations/reviewed-settled-package-retirement/preview';
+        $this->getJson($url)->assertUnauthorized();
+        $directorToken = $this->tokenFor('A');
+        $this->withToken($directorToken)->getJson($url)->assertForbidden();
+        $ownerToken = $this->tokenFor('S');
+        $before = $this->businessRows();
+        $this->withToken($ownerToken)->getJson($url.'?package_id=62')->assertOk()->assertExactJson([
+            'data' => ['ok' => true, 'parameters' => $this->parameters],
+        ]);
+        $this->assertSame($before, $this->businessRows());
+        $this->assertDatabaseCount('pop_operation_requests', 0);
+        $this->assertDatabaseCount('pop_execution_records', 0);
+        $this->assertDatabaseCount('pop_approval_events', 0);
+
+        DB::table('package_session_ledger')->delete();
+        $this->withToken($ownerToken)->getJson($url)->assertStatus(409)
+            ->assertExactJson(['data' => ['ok' => false, 'errors' => ['package_ledger_not_exactly_exhausted']]]);
+    }
+
+    private function tokenFor(string $type): string
+    {
+        $user = User::create(['LoginName' => 'package-preview-'.$type, 'Name' => 'Fixture', 'PSW' => 'test', 'type' => $type, 'phone' => '']);
+        $token = bin2hex(random_bytes(32));
+        AuthToken::create(['user_id' => $user->id, 'token' => $token, 'expires_at' => now()->addHour()]);
+
+        return $token;
     }
 
     public function test_unapproved_drafts_and_non_native_execution_are_refused(): void

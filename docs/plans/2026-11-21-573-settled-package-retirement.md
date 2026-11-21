@@ -4,7 +4,7 @@ The single package in #573 still produces a renewal reminder after its sole memb
 
 ## Preview and approval
 
-Use the existing reviewed-case POP control plane for the exact campus, package, course and invoice in #573. Pin a fresh digest of the fields read by the strategy. Preview compares that digest and refuses unsettled invoices, additional members, outstanding sessions, a receipt mismatch, or other drift. The ordinary reviewed financial tuple binds that exact request and its human requester and approver to the activation. The POP executor runs it locally with an authenticated Founder decision.
+Use the existing reviewed-case POP control plane for the exact campus, package, course and invoice in #573. The read-only preview returns the operation parameters and digest to an authenticated super admin. The snapshot includes the package session ledger. Preview compares that digest and refuses unsettled invoices, additional members, outstanding sessions, a receipt mismatch, or other drift. The ordinary reviewed financial tuple binds that exact request and its human requester and approver to the activation. The POP executor runs it locally with an authenticated Founder decision.
 
 ## Apply and recover
 
