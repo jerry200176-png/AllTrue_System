@@ -1,0 +1,14 @@
+updates:
+  - id: staff-2026-11-21-monthly-roster-name-type
+    published_at: "2026-11-21"
+    audiences:
+      - director
+      - super_admin
+    importance: digest
+    title: 月對帳表姓名更好讀
+    summary: 學生姓名跟隨表格字體大小，學校名稱維持較小的輔助字級。
+    items:
+      - category: fixed
+        text: 在手機或桌面調整字體大小時，學生姓名依然是辨識重點。
+    source_refs:
+      - "changelog:2026-11-21:monthly-roster-name-type"
