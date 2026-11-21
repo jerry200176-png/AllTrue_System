@@ -23,7 +23,10 @@ async function mountTuition(props, rows = alertRows) {
     const data = url.pathname === '/api/v1/alerts/tuition' ? rows : [];
     return { ok: true, json: async () => data };
   }));
-  const wrapper = shallowMount(TuitionCollectionPage, { props: { branchId: 1, ...props } });
+  const wrapper = shallowMount(TuitionCollectionPage, {
+    props: { branchId: 1, ...props },
+    global: { renderStubDefaultSlot: true },
+  });
   await flushPromises();
   return wrapper;
 }

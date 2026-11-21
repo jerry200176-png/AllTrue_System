@@ -341,6 +341,35 @@ async function expectNoOverflowAndReachableControls(page) {
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 2)).toBe(true);
 }
 test.describe('Tuition Collection clarity browser verification', () => {
+  test('monthly roster separates selected-month invoices from balances in other months', async ({ page }) => {
+    await page.setViewportSize({ width: 393, height: 852 });
+    await page.route('**/*', route => ['127.0.0.1', 'localhost'].includes(new URL(route.request().url()).hostname)
+      ? route.fallback() : route.abort());
+    await page.route('**/api/v1/**', route => route.fulfill({ json: { data: [] } }));
+    await installMock(page);
+    const now = new Date();
+    await page.route('**/api/v1/accounting/monthly-roster**', route => {
+      const isCurrentMonth = Number(new URL(route.request().url()).searchParams.get('month')) === now.getMonth() + 1;
+      const balances = { selected_billed: isCurrentMonth ? 0 : 3400, other_billed: isCurrentMonth ? 3400 : 0,
+        undated_billed: 0, unbilled: 5700 };
+      return route.fulfill({ json: {
+        summary: { students: 1, outstanding: 9100, outstanding_by_scope: balances, paid_this_month: 0, pending_reports: 0 },
+        data: [{ student_id: 4, student_name: '合成學生', school: '', outstanding: 9100,
+          courses: [{ course_id: 42, subject: '合成數學', teacher_name: '', lessons: [], held: 0, pending_reports: 0,
+            paid_this_month: [], money: { outstanding: 9100, outstanding_by_scope: balances, status: 'unpaid' } }] }],
+      } });
+    });
+    await page.goto('/tuition-collection-pilot-mount.html');
+    await page.getByRole('tab', { name: '月對帳表', exact: true }).click();
+    const roster = page.getByTestId('monthly-roster');
+    const current = roster.locator('[data-slot="stat-item"]').filter({ hasText: '本月帳單未收' });
+    await expect(current).toContainText('NT$0');
+    await expect(roster.getByText('其他月份帳單未收 NT$3,400・未開單合約餘額 NT$5,700')).toHaveCount(2);
+    await page.getByRole('button', { name: '上一月' }).click();
+    await expect(current).toContainText('NT$3,400');
+    await expect(roster.getByTestId('roster-record-42')).toBeVisible();
+  });
+
   test('uses clear loading, empty, error, and retry feedback', async ({ page }) => {
     await installMock(page);
     await page.setViewportSize({ width: 390, height: 844 });
@@ -396,8 +425,98 @@ test.describe('Tuition Collection clarity browser verification', () => {
     await expect(page.locator('[data-testid="tc-reminder-settled"]')).toHaveText('已結清課程');
     await page.getByRole('tab', { name: '收款紀錄' }).click();
     await expect(page.locator('[data-testid="tc-reminders"]')).toHaveCount(0);
-    await page.getByRole('tab', { name: '帳單' }).click();
+    await page.getByRole('tab', { name: '帳單', exact: true }).click();
     await expect(page.locator('[data-testid="tc-reminder-settled"]')).toBeVisible();
+  });
+
+  for (const width of [390, 1440]) {
+    test(`In-App581: open receipts inside billing and preserve the bill search @${width}`, async ({ page }) => {
+      await installMock(page);
+      await page.setViewportSize({ width, height: 900 });
+      let historyReads = 0;
+      const writes = [];
+      page.on('request', (request) => {
+        if (new URL(request.url()).pathname.startsWith('/api/v1/') && request.method() !== 'GET') {
+          writes.push(request.method());
+        }
+      });
+      await page.route('**/api/v1/accounting/payments?**', (route) => {
+        historyReads++;
+        return route.fulfill({ json: { data: [{ ...accountingRows[0], status: 'confirmed' }] } });
+      });
+      await page.route('**/api/v1/payment-reports/701/receipt', (route) =>
+        route.fulfill({ json: { receipt_no: accountingRows[0].receipt_no, amount: 4200, status: 'confirmed' } }));
+      await page.goto('/tuition-collection-pilot-mount.html');
+      const top = page.getByRole('tablist', { name: '帳務中心分頁' });
+      const billing = top.getByRole('tab', { name: '帳單與收款' });
+      const views = page.getByRole('tablist', { name: '帳單與收款檢視' });
+      const bills = views.getByRole('tab', { name: '帳單', exact: true });
+      const receipts = views.getByRole('tab', { name: '收款紀錄' });
+      await expect(receipts).toHaveAttribute('aria-controls', /.+/);
+      const receiptPanelId = await receipts.getAttribute('aria-controls');
+      await expect(page.locator(`[id="${receiptPanelId}"]`)).toBeAttached();
+      await expect(page.locator(`[id="${receiptPanelId}"]`)).toBeHidden();
+      const search = page.getByTestId('bill-search');
+      const pick = page.getByTestId('bill-pick-c101');
+      await search.fill('林宥辰');
+      await pick.click();
+      await expect(pick).toBeChecked();
+      expect(historyReads).toBe(0);
+      await expect(top.getByRole('tab', { name: '收款紀錄' })).toHaveCount(0);
+
+      await bills.focus();
+      await page.keyboard.press('ArrowRight');
+      await expect(receipts).toBeFocused();
+      await expect(bills).toHaveAttribute('aria-selected', 'true');
+      const opened = page.waitForRequest('**/api/v1/accounting/payments?**');
+      await page.keyboard.press('Enter');
+      const request = await opened;
+      expect(request.method()).toBe('GET');
+      expect(new URL(request.url()).searchParams.get('branch_id')).toBe('1');
+      await expect(billing).toHaveAttribute('aria-selected', 'true');
+      await expect(receipts).toHaveAttribute('aria-selected', 'true');
+      const history = page.getByRole('tabpanel', { name: '收款紀錄' });
+      await expect(history).toBeVisible();
+      await expect(search).toBeHidden();
+      await history.getByRole('button', { name: `查看 ${accountingRows[0].receipt_no}`, exact: true }).click();
+      const receipt = page.getByRole('dialog', { name: '電子收據' });
+      await expect(receipt).toContainText(accountingRows[0].receipt_no);
+      await receipt.press('Escape');
+      await expect(receipt).toBeHidden();
+
+      await bills.click();
+      await expect(search).toHaveValue('林宥辰');
+      await expect(pick).not.toBeChecked();
+      expect(historyReads).toBe(1);
+      expect(writes).toEqual([]);
+    });
+  }
+
+  test('In-App581: existing receipt links select the nested receipt history', async ({ page }) => {
+    const director = { id: 9001, name: '合成主任', role: 'director', campuses: [1], must_change_password: false };
+    await page.addInitScript((user) => {
+      localStorage.setItem('alltrue_session', JSON.stringify({ access_token: 'local-e2e-only', user }));
+      localStorage.setItem('app_branch', '1');
+    }, director);
+    await page.route('**/*', route => ['127.0.0.1', 'localhost'].includes(new URL(route.request().url()).hostname)
+      ? route.fallback() : route.abort());
+    await page.route('**/api/v1/**', route => {
+      const path = new URL(route.request().url()).pathname;
+      if (path === '/api/v1/me') return route.fulfill({ json: director });
+      if (path === '/api/v1/branches' || path === '/api/v1/campuses') {
+        return route.fulfill({ json: [{ id: 1, name: '合成分校', code: 'local' }] });
+      }
+      return route.fulfill({ json: { data: [] } });
+    });
+    await installMock(page);
+    for (const alias of ['payments', 'receipts']) {
+      await page.goto(`/app-pilot-mount.html?app_page=tuition-collect&tab=${alias}`);
+      await expect(page.getByRole('tab', { name: '帳單與收款' })).toHaveAttribute('aria-selected', 'true');
+      await expect(page.getByRole('tab', { name: '收款紀錄' })).toHaveAttribute('aria-selected', 'true');
+      await expect(page.getByRole('tabpanel', { name: '收款紀錄' }).locator('.acct-table')).toBeVisible();
+    }
+    await page.goto('/app-pilot-mount.html?app_page=tuition-collect&tab=unknown');
+    await expect(page.getByRole('tab', { name: '帳單', exact: true })).toHaveAttribute('aria-selected', 'true');
   });
 
   test('captures the accounting tabs without page overflow', async ({ page }) => {
@@ -434,12 +553,13 @@ test.describe('Tuition Collection clarity browser verification', () => {
   test('keeps accounting loading and long Chinese content usable', async ({ page }) => {
     await installMock(page);
     await page.setViewportSize({ width: 390, height: 844 });
+    const history = page.getByRole('tabpanel', { name: '收款紀錄', exact: true });
     await page.goto('/tuition-collection-pilot-mount.html?mode=loading');
     await page.getByRole('tab', { name: '收款紀錄' }).click();
-    await expect(page.getByTestId('at-skeleton')).toBeVisible();
+    await expect(history.getByTestId('at-skeleton')).toBeVisible();
     await page.goto('/tuition-collection-pilot-mount.html?mode=long');
     await page.getByRole('tab', { name: '收款紀錄' }).click();
-    await expect(page.getByText(/很長的學生姓名/).first()).toBeVisible();
+    await expect(history.getByText(/很長的學生姓名/).first()).toBeVisible();
     await expectNoOverflowAndReachableControls(page);
     await page.goto('/tuition-collection-pilot-mount.html?mode=long');
     await page.locator('[data-testid="tc-reminder-settled"]').click();
@@ -501,6 +621,7 @@ for (const width of [375, 1536]) for (const size of ['standard', 'large']) for (
 for (const width of [375, 1280]) {
   test(`5494 package close explains the boundary and preserves single close @${width}`, async ({ page }, info) => {
     const writes = []; const errors = [];
+    let packageRetired = false;
     page.on('pageerror', error => errors.push(error.message));
     page.on('request', request => {
       if (new URL(request.url()).pathname.startsWith('/api/v1/') && request.method() !== 'GET') writes.push(request.method() + ' ' + new URL(request.url()).pathname);
@@ -515,7 +636,7 @@ for (const width of [375, 1280]) {
       { id: 44, subject: '合成單科' },
     ].map(c => ({ ...c, schedule_mode: 'count', paid: true, charge: 8000, stop: false, start_date: '2026-09-01' }));
     await page.route('**/api/v1/students**', route => route.fulfill({ json: [{ id: 99, name: '合成結案學生', status: 'active', enable: 1 }] }));
-    await page.route('**/api/v1/alerts/tuition**', route => route.fulfill({ json: [42, 44].map(id => ({
+    await page.route('**/api/v1/alerts/tuition**', route => route.fulfill({ json: (packageRetired ? [44] : [42, 44]).map(id => ({
       id, student_id: 99, student_name: '合成結案學生', subject: courses.find(c => c.id === id).subject,
       ...(id === 42 ? { package_id: 81, member_class_ids: [42, 43] } : {}),
       schedule_mode: 'count', payment_status: 'renew_needed', payable_outstanding: 0, remaining_sessions: 0,
@@ -576,7 +697,56 @@ for (const width of [375, 1280]) {
     await single.getByRole('button', { name: '合成單科 的更多操作', exact: true }).click();
     await page.getByRole('menuitem', { name: '結案（不續報）', exact: true }).click();
     await expect(page.locator('.tc-overlay')).toContainText('合成單科');
+
+    // #573: reflect the next backend read after retiring a settled package.
+    packageRetired = true;
+    await page.reload();
+    await page.getByTestId('bill-search').fill('合成結案學生');
+    await expect(page.getByTestId('bill-row-c44')).toBeVisible();
+    await expect(page.getByTestId('bill-row-c42')).toHaveCount(0);
     expect(writes).toEqual([]); expect(errors).toEqual([]);
+  });
+}
+
+for (const width of [375, 1280]) {
+  test(`In-App584: billing guide can close a paid single course @${width}`, async ({ page }, info) => {
+    const writes = [];
+    let closed = false;
+    await page.setViewportSize({ width, height: 950 });
+    await page.route('**/*', route => new URL(route.request().url()).hostname === '127.0.0.1' ? route.fallback() : route.abort());
+    await page.route('**/api/v1/**', route => route.fulfill({ json: { data: [] } }));
+    await installMock(page);
+    const common = { student_id: 99, student_name: '合成續課學生', schedule_mode: 'count',
+      payment_status: 'renew_needed', payable_outstanding: 0, remaining_sessions: 1 };
+    const single = { ...common, id: 42, subject: '合成單科' };
+    const shared = { ...common, id: null, package_id: 81, subject: '合成共用方案' };
+    await page.route('**/api/v1/alerts/tuition**', route => route.fulfill({ json: closed ? [shared] : [single, shared] }));
+    await page.route('**/api/v1/accounting/ledger?**', route => route.fulfill({ json: { courses: [{ id: 42 }], invoices: [], receipts: [] } }));
+    await page.route('**/api/v1/student-classes/42/pause', route => {
+      writes.push({ method: route.request().method(), body: route.request().postDataJSON() });
+      closed = true;
+      return route.fulfill({ json: { message: '已結案' } });
+    });
+    await page.goto('/tuition-collection-pilot-mount.html');
+    await page.getByTestId('billing-guide-start').click();
+    const step = page.getByTestId('bg-step');
+    await expect(step.getByRole('button', { name: '去續課', exact: true })).toBeVisible();
+    const settle = step.getByRole('button', { name: '結案（不續報）', exact: true });
+    await expect(settle).toBeVisible();
+    await step.screenshot({ path: info.outputPath('renewal-actions.png') });
+    const dialog = page.locator('.tc-dialog').filter({ hasText: '確認結案此課程' });
+    await settle.click();
+    await expect(dialog).toContainText('合成單科');
+    await expect(dialog).toContainText('還有 1 堂未上');
+    await dialog.getByRole('button', { name: '取消', exact: true }).click();
+    expect(writes).toEqual([]);
+    await settle.click();
+    await dialog.getByRole('button', { name: '確認結案', exact: true }).click();
+    await expect(step.getByTestId('bg-gone')).toBeVisible();
+    expect(writes).toEqual([{ method: 'POST', body: { action: 'pause', reason: 'settled', forfeit_remaining: true } }]);
+    await page.getByTestId('bg-next').click();
+    await expect(step.getByRole('button', { name: '到學生帳務', exact: true })).toBeVisible();
+    await expect(settle).toHaveCount(0);
   });
 }
 

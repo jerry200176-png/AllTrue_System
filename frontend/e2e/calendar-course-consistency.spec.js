@@ -778,14 +778,20 @@ test.describe('production acceptance — calendar/course parity', () => {
 
     // 已結清 first: in-app #480 hides the reminder bar (and its 已結清 button) on 收款紀錄 / 代收代付.
     for (const view of [
-      { open: page.getByTestId('tc-reminder-settled'), path: '/api/v1/accounting/settled-courses', panel: 'settled', where: '已結清', failed: '已結清課程載入失敗' },
-      { open: page.locator('#tuition-accounting-tab-payments'), path: '/api/v1/accounting/payments', panel: 'payments', where: '收款紀錄', failed: '收據紀錄載入失敗' },
+      { open: () => page.getByTestId('tc-reminder-settled').click(), path: '/api/v1/accounting/settled-courses', panel: page.locator('#tuition-accounting-panel-settled'), where: '已結清', failed: '已結清課程載入失敗' },
+      {
+        open: async () => {
+          await center.getByRole('tab', { name: '帳單與收款', exact: true }).click();
+          await center.getByRole('tab', { name: '收款紀錄', exact: true }).click();
+        },
+        path: '/api/v1/accounting/payments', panel: center.getByRole('tabpanel', { name: '收款紀錄', exact: true }), where: '收款紀錄', failed: '收據紀錄載入失敗',
+      },
     ]) {
       const loaded = page.waitForResponse((response) => new URL(response.url()).pathname === view.path
         && response.request().method() === 'GET', { timeout: 20_000 });
-      await view.open.click();
+      await view.open();
       expect((await loaded).status(), `帳務中心 ${view.where} loads`).toBe(200);
-      const panel = page.locator(`#tuition-accounting-panel-${view.panel}`);
+      const panel = view.panel;
       await expect(panel).toBeVisible({ timeout: 15_000 });
       await expect(panel.locator('.tc-skeleton-area')).toHaveCount(0, { timeout: 15_000 });
       await expect(panel.getByText(view.failed, { exact: true }), `帳務中心 ${view.where} shows no load error`).toHaveCount(0);

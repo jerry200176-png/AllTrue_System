@@ -358,6 +358,7 @@ class TeacherEligibilityController extends Controller
             $total = 0.0;
             $byCampus = [];
             $overlaps = [];
+            $byDay = [];
             $days = $calendar[(int) $teacher->id] ?? [];
             ksort($days);
             foreach ($days as $date => $lessons) {
@@ -376,16 +377,23 @@ class TeacherEligibilityController extends Controller
                     $overlaps[] = ['date' => (string) $date, 'lessons' => array_map(fn ($lesson) => $visible === null || in_array($lesson['campus_id'], $visible, true)
                         ? $lesson : ['student_id' => null, 'course_id' => null] + $lesson, $hit)];
                 }
-                $total += $hours($lessons);
+                $dayTotal = $hours($lessons);
+                $total += $dayTotal;
+                $dayCampus = [];
                 foreach (collect($lessons)->groupBy('campus_id') as $campusId => $atCampus) {
-                    $byCampus[(int) $campusId] = ($byCampus[(int) $campusId] ?? 0.0) + $hours($atCampus->all());
+                    $campusHours = $hours($atCampus->all());
+                    $dayCampus[(int) $campusId] = (int) round($campusHours * 60);
+                    $byCampus[(int) $campusId] = ($byCampus[(int) $campusId] ?? 0.0) + $campusHours;
                 }
+                ksort($dayCampus);
+                // Whole minutes, so the days add up to the month exactly (hours rounded per day would drift).
+                $byDay[] = ['date' => (string) $date, 'minutes' => (int) round($dayTotal * 60), 'minutes_by_campus' => $dayCampus];
             }
             ksort($byCampus);
 
             // total_hours merges the whole day, so two campuses' lessons that overlap on the clock count once there.
             return ['teacher_id' => (int) $teacher->id, 'teacher_name' => (string) $teacher->Name, 'total_hours' => round($total, 2),
-                'by_campus' => array_map(fn ($value) => round($value, 2), $byCampus), 'overlaps' => $overlaps];
+                'by_campus' => array_map(fn ($value) => round($value, 2), $byCampus), 'overlaps' => $overlaps, 'by_day' => $byDay];
         })->values()->all();
         $campuses = DB::table('Campus')->whereIn('id', collect($rows)->flatMap(fn ($row) => array_keys($row['by_campus']))->unique()->all())->orderBy('id')->pluck('name', 'id')->all();
         if ($request->input('format') !== 'csv') {
