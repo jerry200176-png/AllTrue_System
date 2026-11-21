@@ -5,9 +5,9 @@ lifecycle: active
 rules:
   - id: founder-exact-reviewed-financial
     match:
-      operation_id: [reviewed-legacy-reversal-restatement, reviewed-unpaid-invoice-charge-alignment, reviewed-mismatched-pending-return, reviewed-paid-invoice-charge-alignment]
+      operation_id: [reviewed-legacy-reversal-restatement, reviewed-unpaid-invoice-charge-alignment, reviewed-mismatched-pending-return, reviewed-paid-invoice-charge-alignment, reviewed-historical-orphan-invoice-closeout]
       risk: critical
-      blast_radius: [one_exact_unlinked_negative_posting, one_exact_unpaid_invoice_total, one_exact_mismatched_pending_report, one_exact_paid_invoice_and_settlement]
+      blast_radius: [one_exact_unlinked_negative_posting, one_exact_unpaid_invoice_total, one_exact_mismatched_pending_report, one_exact_paid_invoice_and_settlement, one_exact_historical_orphan_invoice]
     require_approvals: [super_admin]
     founder_explicit: true
     maintenance_window: null

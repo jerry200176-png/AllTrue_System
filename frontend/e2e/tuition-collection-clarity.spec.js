@@ -571,6 +571,7 @@ for (const width of [375, 1536]) for (const size of ['standard', 'large']) for (
 for (const width of [375, 1280]) {
   test(`5494 package close explains the boundary and preserves single close @${width}`, async ({ page }, info) => {
     const writes = []; const errors = [];
+    let packageRetired = false;
     page.on('pageerror', error => errors.push(error.message));
     page.on('request', request => {
       if (new URL(request.url()).pathname.startsWith('/api/v1/') && request.method() !== 'GET') writes.push(request.method() + ' ' + new URL(request.url()).pathname);
@@ -585,7 +586,7 @@ for (const width of [375, 1280]) {
       { id: 44, subject: '合成單科' },
     ].map(c => ({ ...c, schedule_mode: 'count', paid: true, charge: 8000, stop: false, start_date: '2026-09-01' }));
     await page.route('**/api/v1/students**', route => route.fulfill({ json: [{ id: 99, name: '合成結案學生', status: 'active', enable: 1 }] }));
-    await page.route('**/api/v1/alerts/tuition**', route => route.fulfill({ json: [42, 44].map(id => ({
+    await page.route('**/api/v1/alerts/tuition**', route => route.fulfill({ json: (packageRetired ? [44] : [42, 44]).map(id => ({
       id, student_id: 99, student_name: '合成結案學生', subject: courses.find(c => c.id === id).subject,
       ...(id === 42 ? { package_id: 81, member_class_ids: [42, 43] } : {}),
       schedule_mode: 'count', payment_status: 'renew_needed', payable_outstanding: 0, remaining_sessions: 0,
@@ -616,7 +617,56 @@ for (const width of [375, 1280]) {
     await single.getByRole('button', { name: '合成單科 的更多操作', exact: true }).click();
     await page.getByRole('menuitem', { name: '結案（不續報）', exact: true }).click();
     await expect(page.locator('.tc-overlay')).toContainText('合成單科');
+
+    // #573: reflect the next backend read after retiring a settled package.
+    packageRetired = true;
+    await page.reload();
+    await page.getByTestId('bill-search').fill('合成結案學生');
+    await expect(page.getByTestId('bill-row-c44')).toBeVisible();
+    await expect(page.getByTestId('bill-row-c42')).toHaveCount(0);
     expect(writes).toEqual([]); expect(errors).toEqual([]);
+  });
+}
+
+for (const width of [375, 1280]) {
+  test(`In-App584: billing guide can close a paid single course @${width}`, async ({ page }, info) => {
+    const writes = [];
+    let closed = false;
+    await page.setViewportSize({ width, height: 950 });
+    await page.route('**/*', route => new URL(route.request().url()).hostname === '127.0.0.1' ? route.fallback() : route.abort());
+    await page.route('**/api/v1/**', route => route.fulfill({ json: { data: [] } }));
+    await installMock(page);
+    const common = { student_id: 99, student_name: '合成續課學生', schedule_mode: 'count',
+      payment_status: 'renew_needed', payable_outstanding: 0, remaining_sessions: 1 };
+    const single = { ...common, id: 42, subject: '合成單科' };
+    const shared = { ...common, id: null, package_id: 81, subject: '合成共用方案' };
+    await page.route('**/api/v1/alerts/tuition**', route => route.fulfill({ json: closed ? [shared] : [single, shared] }));
+    await page.route('**/api/v1/accounting/ledger?**', route => route.fulfill({ json: { courses: [{ id: 42 }], invoices: [], receipts: [] } }));
+    await page.route('**/api/v1/student-classes/42/pause', route => {
+      writes.push({ method: route.request().method(), body: route.request().postDataJSON() });
+      closed = true;
+      return route.fulfill({ json: { message: '已結案' } });
+    });
+    await page.goto('/tuition-collection-pilot-mount.html');
+    await page.getByTestId('billing-guide-start').click();
+    const step = page.getByTestId('bg-step');
+    await expect(step.getByRole('button', { name: '去續課', exact: true })).toBeVisible();
+    const settle = step.getByRole('button', { name: '結案（不續報）', exact: true });
+    await expect(settle).toBeVisible();
+    await step.screenshot({ path: info.outputPath('renewal-actions.png') });
+    const dialog = page.locator('.tc-dialog').filter({ hasText: '確認結案此課程' });
+    await settle.click();
+    await expect(dialog).toContainText('合成單科');
+    await expect(dialog).toContainText('還有 1 堂未上');
+    await dialog.getByRole('button', { name: '取消', exact: true }).click();
+    expect(writes).toEqual([]);
+    await settle.click();
+    await dialog.getByRole('button', { name: '確認結案', exact: true }).click();
+    await expect(step.getByTestId('bg-gone')).toBeVisible();
+    expect(writes).toEqual([{ method: 'POST', body: { action: 'pause', reason: 'settled', forfeit_remaining: true } }]);
+    await page.getByTestId('bg-next').click();
+    await expect(step.getByRole('button', { name: '到學生帳務', exact: true })).toBeVisible();
+    await expect(settle).toHaveCount(0);
   });
 }
 

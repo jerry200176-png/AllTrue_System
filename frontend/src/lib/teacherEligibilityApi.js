@@ -144,9 +144,12 @@ export function reopenFulltimePayroll({ month, branchId, reason }) {
   return request('/finance/teacher-eligibility/reopen', { method: 'POST', body: JSON.stringify({ month, branch_id: Number(branchId), reason }) });
 }
 
-export async function exportFulltimePayrollCsv({ month, branchId }) {
-  const params = new URLSearchParams({ month, branch_id: String(branchId) });
-  const res = await fetch(`${API_BASE}/finance/teacher-eligibility/export?${params}`, { headers: headers() });
+export const exportFulltimePayrollCsv = ({ month, branchId }) => downloadCsv('export', { month, branch_id: String(branchId) }, `正職薪資_${month}.csv`);
+// Each full-time teacher's hours of the calendar month, one column per campus.
+export const exportCampusHoursCsv = ({ month, branchId }) => downloadCsv('campus-hours', { month, branch_id: String(branchId), format: 'csv' }, `正職老師各分校時數_${month}.csv`);
+
+async function downloadCsv(path, query, fallbackName) {
+  const res = await fetch(`${API_BASE}/finance/teacher-eligibility/${path}?${new URLSearchParams(query)}`, { headers: headers() });
   if (!res.ok) {
     const data = await res.json().catch(() => ({}));
     throw new Error(data?.message || '匯出失敗');
@@ -154,7 +157,7 @@ export async function exportFulltimePayrollCsv({ month, branchId }) {
   const blob = await res.blob();
   const disposition = res.headers.get('Content-Disposition') || '';
   const match = disposition.match(/filename[^;=\n]*=["']?([^"';\n]*)["']?/);
-  const filename = match ? decodeURIComponent(match[1]) : `正職薪資_${month}.csv`;
+  const filename = match ? decodeURIComponent(match[1]) : fallbackName;
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;

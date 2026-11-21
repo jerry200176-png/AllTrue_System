@@ -43,6 +43,21 @@ class TriageFulltimePayrollController extends Controller
         return response()->json(is_array($payload) ? $payload : [], $response->getStatusCode());
     }
 
+    /** Founder 2026-11-20: every full-time teacher's hours of one calendar month by campus; ids and numbers only. Same switch. */
+    public function campusHours(Request $request, TeacherEligibilityController $report)
+    {
+        if (!(bool) config('triage_tokens.fulltime_payroll_enabled')) {
+            return response()->json(['message' => 'Not found'], 404);
+        }
+        $data = $request->validate(['month' => ['required', 'regex:/^\\d{4}-(0[1-9]|1[0-2])$/']]);
+        $inner = new Request(['month' => $data['month']]);
+        $inner->attributes->set('auth_role', 'super_admin');
+        $payload = $report->campusHours($inner)->getData(true);
+        unset($payload['campuses']); // campus names
+
+        return response()->json($this->plain($payload));
+    }
+
     /**
      * Keeps numbers, booleans, nulls and strings made only of ASCII letters, digits and `_ . : -` (ids, dates, status
      * codes). Text keys go by name as well, because a name can be plain ASCII.

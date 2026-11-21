@@ -115,7 +115,7 @@ export function useCourseRowActions(d) {
       delete: () => d.requestDelete(c),
       'manual-session': () => d.openManualSessionModal(c),
       'monthly-session': () => d.openMonthlySessionModal(c),
-      'quick-add': () => d.canQuickAddSession(c) && d.openQuickAddSessionModal(c),
+      'quick-add': () => (d.canQuickAddSession(c) || d.isMonthlyMode(c)) && d.openQuickAddSessionModal(c),
       reschedule: () => moveNextLesson(c, 'reschedule'),
       substitute: () => moveNextLesson(c, 'substitute'),
       transfer: () => d.openCourseTransfer(c),

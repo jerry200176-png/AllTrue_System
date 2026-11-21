@@ -659,7 +659,7 @@
 
 | 欄位 | 內容 |
 |---|---|
-| 狀態 | Partly done 2026-11-20：**刪除**已全面保護。快照邏輯從 `LearningRecordController::destroy` 移到 `LearningRecord` 的 `deleting` model event（沿用 #4907 的 insert-only `learning_record_author_snapshots`，`new_teacher_id=0`、`reason=deleted`，不影響作者證據判斷）。課程重建、請假重建、drift 修復孤兒等 6 處 query-builder 大量刪除改成 `->get()->each->delete()`，也會留快照。`LearningRecordDeleteThroughModelTest` 擋住新的 query-builder 刪除；只允許 `ResetDataController` 與 `StudentController::purgeStudentRecords`（無歷史學生的整筆清除）。剩：**覆寫**（老師或主任改內容）仍沒有版本紀錄，需要另開一張歷史表（additive migration）；`DB::table('LearningRecord')->update(...)` 的修復指令只改關聯欄位與 VoidedAt，不改正文。 |
+| 狀態 | Done 2026-11-20：**刪除**已全面保護。快照邏輯從 `LearningRecordController::destroy` 移到 `LearningRecord` 的 `deleting` model event（沿用 #4907 的 insert-only `learning_record_author_snapshots`，`new_teacher_id=0`、`reason=deleted`，不影響作者證據判斷）。課程重建、請假重建、drift 修復孤兒等 6 處 query-builder 大量刪除改成 `->get()->each->delete()`，也會留快照。`LearningRecordDeleteThroughModelTest` 擋住新的 query-builder 刪除；只允許 `ResetDataController` 與 `StudentController::purgeStudentRecords`（無歷史學生的整筆清除）。**覆寫**也保護了：`updating` event 在老師正文欄位（`LearningRecord::BODY_FIELDS`）有變更、且舊版是老師寫的內容時，把舊版存成同一張表的 `reason=edited` 列（`new_teacher_id=0`）；不新增 migration。「原內容已保存」提示與主任的「原作者內容」視窗只讀 `new_teacher_id > 0` 的列，所以畫面不變。目前歷史只能由資料庫讀回（還沒有畫面，要做再開需求）。`DB::table('LearningRecord')->update(...)` 的修復指令只改關聯欄位與 VoidedAt，不改正文。 |
 | 優先級 | P2 |
 | 發現日期 | 2026-08-06 |
 | 發現來源 | in-app #219 修復過程中的自我檢討（R100）——一次已徵得使用者同意的資料修正意外觸發 `maybeRebuildSessionsAfterUpdate()` 整批重建，刪除並重建了課程 3153 的 `ClassSession`/`LearningRecord`。事後想找回評量記錄內容才發現：`ClassSession` 有 `ScheduleAuditLog`/`ClassSessionObserver` 這套審計機制（雖然這次因批次刪除繞過而沒發揮作用，已在同一批修復補上），但 `LearningRecord`（老師實際填寫的評量文字）本身完全沒有對應的審計或版本歷史，內容一旦被覆蓋或刪除就是真的、永久地消失，沒有任何補救管道。 |
@@ -968,3 +968,16 @@
 | 建議做法 | `ScheduleController` 的寫入交易在 guard 之前也鎖老師 `User` 列（依 id），跟其他路徑同一把鎖。 |
 | 清償成本估計 | 低～中（含測試 < 半天） |
 | 不做的代價 | 機率很低（同老師、同一天、同一秒）。發生時有一邊回錯誤，資料不會壞，重試即可。 |
+
+### TD-097：`add-session` 會把同時段已取消／請假的堂次直接變成已上課；月結列的 check 與 add 判斷不一致（P2）
+| 欄位 | 內容 |
+|---|---|
+| 狀態 | Open |
+| 優先級 | P2 |
+| 發現日期 | 2026-11-20 |
+| 發現來源 | [REVIEW] #5565（月結補登入口）的獨立審查 |
+| 影響模組 | `StudentClassController::addSession`／`checkAddSession`／`detectAddSessionConflict`、`QuickAddSessionModal` |
+| 描述 | (1) 選到的日期／時段已有一筆未鎖定的已取消或請假堂次時，送出會覆寫成 `completed` 並還原評量，沒有走需要原因與稽核的復原流程；畫面還把它標成「未上課」。(2) 月結列帶正的 `SessionCount` 時，check 當成堂數制（可能回 `SESSIONS_FULL`、叫主任增加總堂數），add 則當成月結。(3) 月結補登成功後的訊息仍是堂數制說法（扣堂、總堂數不變）。 |
+| 建議做法 | (1) 既有堂次是已取消／請假時回衝突，導到原堂次的復原；(2) check 與 add 共用同一個 `isSessionMode` 判斷；(3) 依課程類型回訊息。 |
+| 清償成本估計 | 中（含測試約 1 天） |
+| 不做的代價 | 補登可能繞過復原的稽核紀錄；少數月結舊資料列補登會被誤擋。#5565 已先擋掉合約期間外的日期。 |

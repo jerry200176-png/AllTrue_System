@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use Carbon\Carbon;
+use Illuminate\Database\Query\Builder;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -462,8 +463,8 @@ class SubstituteScheduleService
         return $tid > 0 ? $tid : null;
     }
 
-    /** In-app #468: the same owner rule as substituteScheduleDerivedSql(), for the single-occurrence resolvers. */
-    private static function ownedByTeacher($query, int $contract = 0): void
+    /** In-app #468: same owner rule as substituteScheduleDerivedSql(), applied before ranking schedules. */
+    public static function ownedByTeacher(Builder $query, int|Builder $contract = 0): void
     {
         $query->where(fn ($t) => $t->whereNull('teacher_id')->orWhere('teacher_id', $contract)
             ->orWhereExists(fn ($e) => $e->selectRaw('1')->from('UserCampus')->whereColumn('UserCampus.UserID', 'schedules.teacher_id')));

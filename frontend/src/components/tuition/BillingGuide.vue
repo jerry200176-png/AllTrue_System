@@ -94,7 +94,10 @@
 
         <template v-else-if="renewal">
           <p class="tw:m-0 tw:font-bold">{{ bill.label }}：這期已收，堂數快用完了，要不要續課？</p>
-          <Button v-if="canDocs" class="tw:min-h-11 tw:justify-self-start" data-testid="bg-renew" @click="$emit('renew', bill)">去續課</Button>
+          <div v-if="canDocs" class="tw:flex tw:flex-wrap tw:gap-2">
+            <Button class="tw:min-h-11" data-testid="bg-renew" @click="$emit('renew', bill)">去續課</Button>
+            <Button v-if="rowActions[bill.class_id]?.settle" variant="outline" class="tw:min-h-11" @click="$emit('settle', bill)">結案（不續報）</Button>
+          </div>
         </template>
 
         <template v-else-if="bill.kind === 'issue'">
@@ -161,9 +164,10 @@ const props = defineProps({
   bills: { type: Array, default: () => [] }, // billRows() of the page's /alerts/tuition rows
   branchId: { type: [Number, String], default: null },
   canDocs: { type: Boolean, default: false },
+  rowActions: { type: Object, default: () => ({}) },
   reload: { type: Function, default: async () => true }, // the page rereads /alerts/tuition; false = it failed
 });
-defineEmits(['close', 'ledger', 'reject', 'renew']);
+defineEmits(['close', 'ledger', 'reject', 'renew', 'settle']);
 
 const money = (v) => `NT$ ${Number(v || 0).toLocaleString('zh-TW')}`;
 const done = reactive(new Set());

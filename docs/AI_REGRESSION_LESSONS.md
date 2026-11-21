@@ -1615,6 +1615,7 @@ Intake consolidation regression (2026-10-17): the oldest trusted SourceRef issue
 - **測試**：`RebuildDestructiveDeleteAuditTest`——驗證整批重建刪除 `ClassSession`／`LearningRecord` 前，`schedule_audit_logs` 都留下可還原的快照。
 - **防再犯**：(1) 任何要刪除「有價值內容」（使用者填寫的文字、審核紀錄等）的 Model 時，先確認是走 `->delete()`（觸發 events，既有 observer 可攔截）還是 `Model::where(...)->delete()`（query builder，繞過所有 events）——後者只適合「純粹衍生、可重算」的資料，不適合任何帶內容的紀錄。(2) 做任何有風險的 production 資料修正前，先確認「如果這個修正觸發了非預期的連鎖反應，有沒有辦法事後查到發生了什麼」——這次剛好系統已經有審計機制，只是被繞過，算是運氣好；下次不能只靠運氣，修正前應該先確認目標資料表有沒有審計/備份機制、機制實際上會不會被觸發。(3) `LearningRecord` 本身完全沒有任何審計/歷史版本機制（不像 `ClassSession` 有 `ScheduleAuditLog`），這次事件確認了一旦內容被覆蓋或刪除就無法還原——這是後續可評估是否要補上的技術債，記在 `docs/TECH_DEBT.md`。
 - **這次遺失的評量內容如何結案**：吳宥萱 6/18 試聽課的評量記錄已確認無法還原（無備份、無法聯繫到當事老師 高為澎 核實），CEO 已核准直接結案，不再追查；堂數與收費不受影響，純粹是這一筆評量文字內容遺失。
+- **2026-11-20 後續**：防再犯 (3) 已做完（TD-074），見 R163。
 
 ### R101. 「這個行事曆格子對應哪一筆 ClassSession」在同一份檔案裡有兩套獨立比對邏輯，其中一套沒跟著新功能更新（in-app #224，2026-08-07）
 
@@ -1968,3 +1969,22 @@ Intake consolidation regression (2026-10-17): the oldest trusted SourceRef issue
 - **現象**：同一天有三個測試在空清單上通過、共用元件改動漏列使用者、對話框搬進共用 Dialog 後層級／焦點錯誤；每次都靠協調者臨時在任務說明裡重複交代。
 - **強制規則**：實作者的通用做法（起手、測試、UI 證據、共用元件使用者清單、巢狀對話框檢查）只寫在 [`docs/agents/IMPLEMENTER_BRIEF.md`](agents/IMPLEMENTER_BRIEF.md)，協調者的檢查表在 [`docs/agents/orchestration.md`](agents/orchestration.md)；本檔不重複條文。新的實作者踩坑，先補那兩份檔，再在這裡記一條指向它們的紀錄。
 - **2026-11-17 實例（in-app #564）**：帳務卡片改呈現排序時，定位仍用舊首列判斷，選中課程移後會跳過捲動。`AccountingLedgerContractOrder.test.js` 與實際 viewport 回歸涵蓋「舊首列移到末列」；共用方案收款主卡與批次分配仍讀原有集合。此為上述 UI 任務證據與共用使用者檢查的案例。
+
+### R162. `AppServiceProvider::boot()` 裡直接註冊的 model observer 從未觸發；推理說「有效」不算證據（TD-065，2026-11-19）
+
+- **現象**：員工高嚴重度通知的 LINE 推播（`Notification::observe(...)`）寫好半年，CI 診斷證明從來沒有 listener（`has_created=false`）。#766 的 `ClassSession` 稽核是同一個坑。過程中我先用 provider 載入順序「推理」出它有效，還據此推翻了 Founder 的刪除決定，後來被 CI 證明是錯的。
+- **根因**：`bootstrap/app.php` 在 kernel bootstrap 之前就 `register` 了 `AppServiceProvider`，它的 `boot()` 會比 `DatabaseServiceProvider::boot()`（設定 `Model::setEventDispatcher`）早執行，所以在這裡呼叫 `X::observe()` 什麼都不會做，也不會報錯。
+- **強制規則**：observer 只能在 `$this->app->booted(...)` 裡註冊，或寫在 model 自己的 `booted()` 裡。要判斷「某段程式碼在正式環境有沒有執行」，先看實際證據（CI 診斷、log、資料列），再下結論或去修正別人的決定。
+- **測試**：`tests/Unit/AppServiceProviderObserverRegistrationTest`：`boot()` 裡在 `$this->app->booted(` 之前出現 `::observe(` 就失敗。
+
+### R163. 評量記錄的刪除與覆寫一律留快照，query-builder 刪除由測試擋住（TD-074，R100 結案，2026-11-20）
+
+- **現象**：R100 只修好課程重建的其中一條路。請假重建、另一段課程重建、drift 修復孤兒仍然用 `LearningRecord::where(...)->delete()` 或 `DB::table('LearningRecord')->...->delete()` 直接刪掉老師寫的內容；改內容時也不留舊版。
+- **修法**：把快照放進 `LearningRecord::booted()`。`deleting` 在有老師正文或主任留言時寫一列；`updating` 在老師正文欄位有變更、且舊版是老師寫的內容時寫一列。兩種都寫進 `learning_record_author_snapshots`，`new_teacher_id=0`。大量刪除改成 `->get()->each->delete()`。畫面與作者證據只讀 `new_teacher_id > 0` 的列，所以行為不變。
+- **坑**：model hook 裡要讀關聯，必須用 `loadMissing()`。非正式環境開了 `Model::preventLazyLoading`，多列 `get()` 回來的 model 一 lazy load 就丟例外，正式環境反而看不出來。
+- **測試**：`tests/Unit/LearningRecordDeleteThroughModelTest` 掃 `backend/app`：出現 LearningRecord 的 query-builder 刪除就失敗，只允許 `ResetDataController` 與 `StudentController::purgeStudentRecords`。`FilledAssessmentTeacherLockTest` 驗證刪除與覆寫的快照。
+
+### R164. 等 Founder 按的 release train 鎖定舊 SHA；之後合併的東西不會跟著上（2026-11-20）
+
+- **現象**：一班 train 目標是較早的 SHA，Founder 還沒按 approve；排程看到「已有 train 在等」就不再發新的。結果之後合併的 13 個 PR（包含 Founder 已批准的 drop migration）都卡在後面，一次核准只能上一小段。
+- **作法**：請 Founder 按之前，先比對 train 的 `Resolved activation target` 與 `origin/main`。如果 train 還沒核准、而且已經落後，就取消它（`waiting` 狀態要用 `actions/runs/{id}/force-cancel`），再 dispatch `release-train`，讓一次核准涵蓋全部。drop／contract migration 要等移除讀取端的 PR 先上線，才能合併（expand → contract），不可以跟讀取端移除排在同一班。

@@ -65,6 +65,14 @@ describe('useCourseRowActions', () => {
     expect(useCourseRowActions(d).rowModel(course).primary.id).toBe('edit');
   });
 
+  it('月結 offers 補登已上過的課 and it opens the back-fill form (新增月結堂次 only takes future lessons)', () => {
+    const d = bag({ isSessionMode: () => false, isMonthlyMode: () => true, canQuickAddSession: () => false, openQuickAddSessionModal: vi.fn() });
+    const { rowModel, runRowAction } = useCourseRowActions(d);
+    expect(rowModel(course).groups.flatMap((g) => g.items).find((i) => i.id === 'quick-add')).toEqual({ id: 'quick-add', label: '補登已上過的課' });
+    runRowAction(course, 'quick-add');
+    expect(d.openQuickAddSessionModal).toHaveBeenCalledWith(course);
+  });
+
   it('補課 stays visible but disabled with the page reason', () => {
     const d = bag({ canQuickAddSession: () => false, quickAddDisabledReason: () => '課程已暫停，請先恢復後再補課' });
     const item = useCourseRowActions(d).rowModel(course).groups.flatMap((g) => g.items).find((i) => i.id === 'quick-add');

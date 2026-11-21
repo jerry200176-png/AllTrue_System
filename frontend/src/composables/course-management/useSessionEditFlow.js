@@ -14,6 +14,7 @@ import { canMaterializeProjectedSession, canCancelPausedProjectedSession } from 
 import { SESSION_STATUS_LABELS } from '../../lib/sessionStatus';
 import { askConfirm } from '../useConfirmDialog';
 import { trackedFetch } from '../../lib/loadingBar';
+import { durationHoursBetween, lessonRescheduleSlot } from '../../lib/calendarFormat';
 
 const SESSION_STATUS_TRANSITIONS = {
   scheduled:      ['attended', 'late', 'absent', 'leave', 'cancelled'],
@@ -30,8 +31,6 @@ const SESSION_STATUS_TRANSITIONS = {
 export function useSessionEditFlow({
   supabase,
   branchId,
-  computeEndTime,
-  normalizeTo30Min,
   dayOfWeekFromDate,
   getSessionDisplayRow,
   getSessionRowsForDate,
@@ -228,7 +227,7 @@ export function useSessionEditFlow({
       reason: '',
       new_date: '',
       new_start: row.startTime || '16:00',
-      duration_hours: course.duration_hours ?? 2,
+      duration_hours: durationHoursBetween(row.startTime, row.endTime) ?? course.duration_hours ?? 2,
       note: row.note || '',
       edit_start_time: row.startTime || '',
       edit_end_time: row.endTime || '',
@@ -514,11 +513,13 @@ export function useSessionEditFlow({
 
   async function doSessionReschedule() {
     const form = sessionEditForm.value;
-    if (!form.new_date || !form.session_id) return;
+    const newDate = form.new_date;
+    const slot = lessonRescheduleSlot(form.new_start, form.duration_hours);
+    if (!newDate || !form.session_id || !slot) return;
     form.blocked = null;
     const reschedulePreview = [
       `原堂次：${form.session_date} ${form.start_time}~${form.end_time}`,
-      `新堂次：${form.new_date} ${form.new_start}`,
+      `新堂次：${newDate} ${slot.start}~${slot.end}`,
       '系統會一次同步課表、點名與評量資料。',
     ].join('\n');
     if (!await askConfirm({ title: '確認調課', message: reschedulePreview, confirmLabel: '確認調課' })) return;
@@ -531,17 +532,15 @@ export function useSessionEditFlow({
 
       const bid = Number(typeof branchId === 'object' ? branchId.value : branchId) || 0;
       const course = form.course;
-      const newEnd = computeEndTime(form.new_start, form.duration_hours);
-
       await commitReschedule({
         token,
         payload: {
           student_class_id: form.student_class_id || course.id,
           old_date: form.session_date,
           old_start_time: form.start_time,
-          new_date: form.new_date,
-          start_time: normalizeTo30Min(form.new_start),
-          end_time: newEnd,
+          new_date: newDate,
+          start_time: slot.start,
+          end_time: slot.end,
           subject: form.subject || null,
         },
       });
@@ -553,9 +552,9 @@ export function useSessionEditFlow({
         originalDate: form.session_date,
         originalStart: form.start_time,
         originalEnd: form.end_time,
-        newDate: form.new_date,
-        newStart: normalizeTo30Min(form.new_start),
-        newEnd,
+        newDate,
+        newStart: slot.start,
+        newEnd: slot.end,
       }));
       trackAdoptionEvent('flow_submitted', bid, { flow: 'reschedule', source: 'session-edit-atomic' });
       await loadCourses();
@@ -564,7 +563,7 @@ export function useSessionEditFlow({
       // #4991 line 3: name the lessons in the way inside the modal, each with a way to open it.
       const blockers = uniqueScheduleBlockers(error?.conflicts);
       if (blockers.length) {
-        form.blocked = { message: '調課失敗：' + message, blockers, date: form.new_date }; // the lesson this request was for
+        form.blocked = { message: '調課失敗：' + message, blockers, date: newDate };
         return;
       }
       const conflictLine = formatRescheduleConflictStudents(error?.conflicts?.[0]?.overlap_details);

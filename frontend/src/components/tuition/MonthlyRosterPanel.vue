@@ -51,7 +51,7 @@
           <TableBody v-for="s in visible" :key="s.student_id" :data-testid="`roster-student-${s.student_id}`">
             <TableRow v-for="(c, i) in s.courses" :key="c.course_id" class="tw:hover:bg-muted/60" :data-testid="`roster-course-${c.course_id}`">
               <TableCell v-if="i === 0" :rowspan="s.courses.length" :class="[t.name, 'tw:pl-5 tw:align-top']">
-                <button type="button" class="tw:cursor-pointer tw:border-0 tw:bg-transparent tw:p-0 tw:text-left tw:font-semibold tw:text-foreground tw:underline-offset-4 tw:hover:underline" :data-testid="`roster-name-${s.student_id}`" :data-student="s.student_id" @click="open(s, c, null)">{{ s.student_name }}</button>
+                <button type="button" class="tw:cursor-pointer tw:border-0 tw:bg-transparent tw:p-0 tw:text-left tw:text-tpl-body tw:font-semibold tw:text-foreground tw:underline-offset-4 tw:hover:underline" :data-testid="`roster-name-${s.student_id}`" :data-student="s.student_id" @click="open(s, c, null)">{{ s.student_name }}</button>
                 <span :class="t.sub">{{ s.school }}</span>
                 <span v-if="s.outstanding > 0" :class="[t.sub, 'tw:text-[var(--ds-danger-text)]']">共欠 {{ money(s.outstanding) }}</span>
               </TableCell>
