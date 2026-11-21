@@ -151,6 +151,24 @@ jobs:
           fi
           python3 scripts/check-recent-work-revert.py --base origin/main --head HEAD ${body:+--body-file "$body"}
 
+      # Test-weakening guard: a test file may not lose assertions, exact assertions or test cases, or gain a skip,
+      # so a red test is fixed in the code, not by loosening the test. Waiver: PR body line `Test-Weakening: <reason>`.
+      - name: "[CHECK 0e] Tests do not check less than before"
+        if: ${{ env.LQ_BATCH != 'true' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number || inputs.pr_number }}
+        run: |
+          set -euo pipefail
+          python3 scripts/tests/test_test_weakening.py
+          body=""
+          if [ -n "${PR_NUMBER:-}" ]; then
+            body="$RUNNER_TEMP/pr-body-0e.md"
+            gh api "repos/${REPO}/pulls/${PR_NUMBER}" --jq '.body // ""' > "$body"
+          fi
+          python3 scripts/check-test-weakening.py --base origin/main --head HEAD ${body:+--body-file "$body"}
+
       - name: "[CHECK 1] Branch naming convention"
         env:
           # workflow_dispatch has no head_ref (pull_request-only); fall back
