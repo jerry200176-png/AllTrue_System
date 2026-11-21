@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { APP_PAGE_QUERY_KEY, buildAppPageUrl, parseAppPage, buildCourseFocusUrl, parseCourseFocusSearch } from './appNavigationHistory.js';
+import { APP_PAGE_QUERY_KEY, buildAppPageUrl, parseAppPage, buildCourseFocusUrl, parseCourseFocusSearch, reportCourseFocusUrl } from './appNavigationHistory.js';
 
 const authorized = new Set(['teacher-home', 'calendar', 'attendance']);
 
@@ -41,6 +41,20 @@ test('course link IDs round trip at boundaries without rounding or changing iden
   }
   assert.deepEqual(parseCourseFocusSearch('?app_page=course-mgmt&branch_id=09&student_id=033&course_id=004151'),
     { branchId: 9, studentId: 33, courseId: 4151 });
+});
+
+test('report references open only same-origin course links with unambiguous IDs', () => {
+  const app = 'https://example.test/app';
+  const query = '?app_page=course-mgmt&branch_id=9&student_id=33&course_id=4151';
+  assert.equal(reportCourseFocusUrl(app, `${app}${query}&other=private#ignore 共用方案編號 81`), app + query);
+  for (const reference of [
+    `https://example.test.attacker.invalid/app${query}`,
+    `http://example.test/app${query}`,
+    `${app}${query}&course_id=4152`,
+    `${app}?app_page=calendar&branch_id=9`,
+    'javascript:alert(1)',
+    '課程 004151',
+  ]) assert.equal(reportCourseFocusUrl(app, reference), null);
 });
 
 test('invalid, incomplete or ambiguous course links fail closed', () => {

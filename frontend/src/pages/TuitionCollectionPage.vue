@@ -538,6 +538,7 @@
       :next-offer="ledgerSheetEntry"
       @save-next="onSaveNext"
       :row-actions="ledgerRowActions"
+      :can-report-package-close="canWaive"
       :branch-id="branchId"
       :can-step="ledgerNavStudentId != null"
       :student-wide="ledgerNavStudentId != null && (ledgerInitialAction !== 'documents' || ledgerStudentClassId == null)"
@@ -545,6 +546,7 @@
       @step="stepLedger"
       @changed="onLedgerChanged"
       @row-action="onLedgerRowAction"
+      @report-package-close="openPackageCloseReport"
     />
 
     <BillQuickView
@@ -743,6 +745,7 @@ import BillQuickView from '../components/tuition/BillQuickView.vue';
 import BillingGuide from '../components/tuition/BillingGuide.vue';
 import { guideQueue } from '../lib/billingGuide.js';
 import { billMenuGroups, billRows } from '../lib/billRows.js';
+import { buildCourseFocusUrl } from '../lib/appNavigationHistory.js';
 import { buildStudentsCommercialNav } from '../lib/authoritativeMutationRoutes.js';
 import PaymentSlipModal from '../components/PaymentSlipModal.vue';
 import RefundDialog from '../components/tuition/RefundDialog.vue';
@@ -1156,9 +1159,37 @@ function onBillMenu(b, id) {
   if (id === 'student') openBillLedger(b, null);
   else if (id === 'reject') { if (b.class_id == null) openBillLedger(b, null); else openQuick(b, true); }
   else if (id === 'sessions') openSessionDetail(b.src);
+  else if (id === 'report-bill') openBillReport(b);
   else if (id === 'slip') openBillSlip(b);
   else if (id === 'refund') refundCourseId.value = b.class_id;
   else onLedgerRowAction({ kind: id, courseId: b.class_id });
+}
+
+function openBillReport(bill) {
+  openCourseReport({
+    branchId: bill.src.campus_id ?? props.branchId,
+    studentId: bill.student_id,
+    courseId: bill.class_id,
+    packageId: bill.package_id,
+  });
+}
+
+function openPackageCloseReport(course) {
+  openCourseReport({
+    ...course,
+    description: '想處理共用方案中的課程結案，請總部一併核對方案其他課程、已排堂次及剩餘堂數。',
+  });
+}
+
+function openCourseReport({ branchId, studentId, courseId, packageId, description }) {
+  if (!canWaive.value) return;
+  const courseLink = buildCourseFocusUrl(window.location.href, { branchId, studentId, courseId });
+  if (!courseLink) return;
+  const id = Number(packageId);
+  const relatedReference = Number.isSafeInteger(id) && id > 0
+    ? `${courseLink} 共用方案編號 ${id}`
+    : courseLink;
+  window.dispatchEvent(new CustomEvent('alltrue-open-bug-report', { detail: { relatedReference, description } }));
 }
 
 async function submitBatchReport() {

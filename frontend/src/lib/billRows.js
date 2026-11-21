@@ -129,6 +129,7 @@ export function billMenuGroups(b, { rowActions = {}, canDocs = false } = {}) {
     { id: 'slip', label: '傳繳費單', disabled: !slip.ok, reason: slip.ok ? '' : slip.reason },
     { id: 'student', label: '看學生全部帳務' },
     ...(b.class_id != null ? [{ id: 'sessions', label: '上課明細' }] : []),
+    ...(canDocs && b.class_id > 0 && b.student_id > 0 ? [{ id: 'report-bill', label: '回報這筆帳務' }] : []),
   ];
   const danger = [
     ...(a.waive ? [{ id: 'waive', label: '改成不收', danger: true }] : []),
