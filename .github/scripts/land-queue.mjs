@@ -55,7 +55,7 @@ function latestRuns(rollup) {
   for (const c of rollup || []) {
     const name = c.name || c.context;
     // A check still waiting for a runner (e.g. an accepted rerun) has no startedAt yet; it is the newest attempt (#4705).
-    const at = c.startedAt || c.createdAt || (c.status && String(c.status).toUpperCase() !== 'COMPLETED' ? '~' : '');
+    const at = c.startedAt || c.createdAt || ((c.__typename === 'CheckRun' || c.name) && c.status !== 'COMPLETED' ? '~' : '');
     if (name && (!latest.has(name) || at >= latest.get(name).at)) latest.set(name, { c, at });
   }
   return new Map([...latest].map(([n, v]) => [n, v.c]));
@@ -67,7 +67,7 @@ export function checkStates(rollup, required) {
   return Object.fromEntries(required.map((name) => {
     const c = latest.get(name);
     if (!c) return [name, 'pending'];
-    if (c.status && String(c.status).toUpperCase() !== 'COMPLETED') return [name, 'pending'];
+    if ((c.__typename === 'CheckRun' || c.name) && c.status !== 'COMPLETED') return [name, 'pending'];
     const v = String(c.conclusion || c.state || '').toUpperCase();
     return [name, FAILED.has(v) ? 'fail' : PASSED.has(v) ? 'pass' : 'pending'];
   }));
@@ -146,7 +146,7 @@ export function canRetryStartup(run, sha) {
     && ['startup_failure', 'failure'].includes(run?.conclusion);
 }
 
-export function retryStartup(sha, { readRun, hasIntent, recordIntent, request }) {
+export function retryStartup(sha, { readRun, hasIntent, recordIntent, matchesCurrentHead, request }) {
   let run;
   try { run = readRun(); } catch { return 'ineligible'; }
   if (run?.head_sha === sha && (['queued', 'pending', 'in_progress', 'waiting', 'requested'].includes(run.status)
@@ -154,6 +154,9 @@ export function retryStartup(sha, { readRun, hasIntent, recordIntent, request })
   if (!canRetryStartup(run, sha) || hasIntent()) return 'ineligible';
   const priorAttempt = run.run_attempt;
   recordIntent(); // no native write without durable intent
+  try {
+    if (!matchesCurrentHead()) return 'head-moved';
+  } catch { return 'unconfirmed'; }
   try {
     request();
     return 'accepted';
@@ -507,20 +510,27 @@ function processQueue() {
       // second POST. Read the native attempt again before deciding the outcome.
       const key = (id) => `${pr.sha}:${id}`;
       const needsReview = [];
+      let headMoved = false;
       for (const id of d.runs) {
         const endpoint = `actions/runs/${id}`;
         const result = retryStartup(pr.sha, {
           readRun: () => api(endpoint),
           hasIntent: () => seen(n, marker(d.reason, key(id))),
           recordIntent: () => note(n, key(id), d.reason, `${d.text} (run ${id})`),
+          matchesCurrentHead: () => {
+            const current = api(`pulls/${n}`);
+            return current.head.sha === pr.sha && current.state === 'open' && !current.draft
+              && current.base.ref === 'main' && current.labels.some(({ name }) => name === 'queue');
+          },
           request: () => gh('api', '-X', 'POST', `/repos/${REPO}/${endpoint}/rerun-failed-jobs`),
         });
+        if (result === 'head-moved') { headMoved = true; break; }
         if (result === 'ineligible') needsReview.push(id);
         if (result === 'unconfirmed') {
           note(n, key(id), 'rerun-unconfirmed', `retry result could not be confirmed. Inspect https://github.com/${REPO}/actions/runs/${id} before taking any further action.`);
         }
       }
-      if (needsReview.length) {
+      if (needsReview.length && !headMoved) {
         reject(n, pr.sha, { reason: 'checks', text: `inspect ${needsReview.map((id) => `https://github.com/${REPO}/actions/runs/${id}`).join(', ')}. An automatic retry is not available for this head. Confirm the existing run, resolve the failure, then re-add \`queue\`.` });
       }
       continue;

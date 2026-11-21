@@ -106,6 +106,20 @@ class HarnessStatusTest(unittest.TestCase):
         self.assertEqual(lease, self.store.get_lease(lease["resource_key"]))
         self.assertEqual(1, len(self.store.list_worker_runs()))
 
+    def test_observation_reads_a_consistent_snapshot_during_a_concurrent_write(self):
+        now = datetime.now(timezone.utc)
+        task, _ = self.seed(now=now, progress=now)
+        observer = HarnessStore(self.db, create=False, read_only=True)
+        self.addCleanup(observer.close)
+        with observer.read_snapshot():
+            self.assertEqual(TaskState.EXECUTING, observer.get_task("t").status)
+            task.status = TaskState.CI_PENDING
+            self.store.upsert_task(task)
+            state = observe_workers(observer, now=now, stale_after=timedelta(hours=1))[0]
+            self.assertEqual("running", state["observation"])
+        state = observe_workers(observer, now=now, stale_after=timedelta(hours=1))[0]
+        self.assertEqual("external_wait_recorded", state["observation"])
+
 
 if __name__ == "__main__":
     unittest.main()

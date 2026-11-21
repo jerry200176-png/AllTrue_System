@@ -23,6 +23,10 @@ RESULT_CODES = {
 }
 
 
+def is_full_sha(value):
+    return isinstance(value, str) and FULL_SHA.fullmatch(value) is not None
+
+
 class ObservationError(Exception):
     def __init__(self, message, *, retryable=False):
         super().__init__(message)
@@ -40,6 +44,8 @@ def read_command(args, deadline, *, accepted=(0,), env=None):
         )
     except subprocess.TimeoutExpired as exc:
         raise ObservationError("Read timed out.", retryable=True) from exc
+    except UnicodeError as exc:
+        raise ObservationError("Read returned invalid text.") from exc
     except OSError as exc:
         raise ObservationError("Required read command could not be started.") from exc
     if result.returncode not in accepted:
@@ -81,12 +87,12 @@ class Observer:
                 return {"status": "waiting", "reason": "The PR has not merged.",
                         "next": "Check required reviews and checks for this PR."}
             self.target = pr.get("merge_commit_sha") or ""
-            if not FULL_SHA.fullmatch(self.target):
+            if not is_full_sha(self.target):
                 raise ObservationError("GitHub did not return an exact merge commit.")
-        if self.target and not FULL_SHA.fullmatch(self.target):
+        if self.target and not is_full_sha(self.target):
             commit = self.api(f"commits/{self.target}")
             resolved = commit.get("sha") or ""
-            if not FULL_SHA.fullmatch(resolved) or not resolved.startswith(self.target):
+            if not is_full_sha(resolved) or not resolved.startswith(self.target):
                 raise ObservationError("Could not resolve the requested commit prefix.")
             self.target = resolved
         if self.run_id is None:
@@ -144,10 +150,17 @@ class Observer:
                  "ALLTRUE_DEPLOY_RUN_ID": str(self.run_id)},
         )
         identity = decode_json(raw)
-        job = identity.get("production_deploy_job") or {}
+        if not isinstance(identity, dict):
+            raise ObservationError("Production identity is not an object.")
+        job = identity.get("production_deploy_job")
+        if job is not None and not isinstance(job, dict):
+            raise ObservationError("Production identity has an invalid deploy job.")
+        job = job or {}
         backend = identity.get("deployment_manifest_backend_sha") or ""
         target = job.get("target_sha") or ""
-        if (job.get("run_id") == self.run_id and FULL_SHA.fullmatch(backend)
+        if not isinstance(backend, str) or not isinstance(target, str):
+            raise ObservationError("Production identity has an invalid commit field.")
+        if (job.get("run_id") == self.run_id and is_full_sha(backend)
                 and backend == target == identity.get("deployed_backend_full_sha")
                 and (not self.target or target == self.target)):
             self.target = target
@@ -169,7 +182,7 @@ class Observer:
                 or run.get("path") != f".github/workflows/{self.options.workflow}"):
             raise ObservationError("The run is outside the requested main-branch deploy workflow.")
         status = run.get("status")
-        if status not in {"completed", "waiting", "pending", "in_progress", "queued", "requested"}:
+        if status not in ("completed", "waiting", "pending", "in_progress", "queued", "requested"):
             raise ObservationError("GitHub returned an unknown run state.")
         if status == "completed":
             conclusion = run.get("conclusion")

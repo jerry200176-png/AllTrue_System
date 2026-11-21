@@ -41,28 +41,29 @@ def cmd_status(args: argparse.Namespace) -> int:
     if args.sync:
         sync_programs_to_store(store)
     rows: list[dict[str, Any]] = []
-    for prog in store.list_programs():
-        tasks = store.list_tasks(program_id=prog.program_id)
-        active = [t for t in tasks if t.status in ACTIVE_MUTATING]
-        current = store.get_task(prog.current_task_id) if prog.current_task_id else None
-        if current is None and active:
-            current = active[0]
-        if current is None:
-            ready = [t for t in tasks if t.status.value == "READY"]
-            current = ready[0] if ready else (tasks[0] if tasks else None)
-        rows.append({
-            "PROGRAM": prog.name,
-            "CURRENT_TASK": current.task_id if current else "-",
-            "STATE": current.status.value if current else (
-                "BLOCKED_HUMAN" if prog.blockers else "IDLE"
-            ),
-            "OWNER": (current.assignee if current and current.assignee else prog.owner),
-        })
-    workers = observe_workers(
-        store, now=datetime.now(timezone.utc), stale_after=timedelta(minutes=args.stale_after_minutes),
-    )
-    counts = {"founder_open": len(store.list_open_escalations()), "leases": len(store.list_leases()),
-              "goals": len(store.list_goals()), "worker_runs_open": len(workers)}
+    with store.read_snapshot():
+        for prog in store.list_programs():
+            tasks = store.list_tasks(program_id=prog.program_id)
+            active = [t for t in tasks if t.status in ACTIVE_MUTATING]
+            current = store.get_task(prog.current_task_id) if prog.current_task_id else None
+            if current is None and active:
+                current = active[0]
+            if current is None:
+                ready = [t for t in tasks if t.status.value == "READY"]
+                current = ready[0] if ready else (tasks[0] if tasks else None)
+            rows.append({
+                "PROGRAM": prog.name,
+                "CURRENT_TASK": current.task_id if current else "-",
+                "STATE": current.status.value if current else (
+                    "BLOCKED_HUMAN" if prog.blockers else "IDLE"
+                ),
+                "OWNER": (current.assignee if current and current.assignee else prog.owner),
+            })
+        workers = observe_workers(
+            store, now=datetime.now(timezone.utc), stale_after=timedelta(minutes=args.stale_after_minutes),
+        )
+        counts = {"founder_open": len(store.list_open_escalations()), "leases": len(store.list_leases()),
+                  "goals": len(store.list_goals()), "worker_runs_open": len(workers)}
     if args.json:
         print(json.dumps({"programs": rows, "worker_runs_open": workers, "counts": counts}, indent=2))
         store.close()
@@ -93,7 +94,9 @@ def cmd_resume(args: argparse.Namespace) -> int:
     if args.sync:
         sync_programs_to_store(store)
     if args.checkpoint:
-        print(json.dumps(resume_from_checkpoint(store, args.checkpoint), indent=2))
+        with store.read_snapshot():
+            checkpoint = resume_from_checkpoint(store, args.checkpoint)
+        print(json.dumps(checkpoint, indent=2))
         store.close()
         return 0
     reclaimed = reclaim_stale(store)

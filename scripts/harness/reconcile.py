@@ -242,7 +242,8 @@ def resume_from_checkpoint(store: HarnessStore, checkpoint_id: str) -> dict[str,
 def reconcile_ci_sha(
     *, expected_head_sha: str, observed_ci_sha: str, conclusion: str,
 ) -> GovernanceDecision:
-    if not all(re.fullmatch(r"[0-9a-f]{40}", value) for value in (expected_head_sha, observed_ci_sha)):
+    if not all(isinstance(value, str) and re.fullmatch(r"[0-9a-f]{40}", value)
+               for value in (expected_head_sha, observed_ci_sha)):
         return GovernanceDecision(
             autonomous=False, founder_required=False, machine_tier="T?",
             effective_tier="T?", reasons=["ci_head_unverified"],

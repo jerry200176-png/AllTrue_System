@@ -5,8 +5,9 @@ from __future__ import annotations
 import json
 import os
 import sqlite3
+from contextlib import contextmanager
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any, Iterable, Iterator
 
 from .contracts import Checkpoint, DecisionReceipt, GoalContract
 from .models import Escalation, Program, Task
@@ -82,6 +83,15 @@ class HarnessStore:
 
     def close(self) -> None:
         self._conn.close()
+
+    @contextmanager
+    def read_snapshot(self) -> Iterator[None]:
+        """Keep related reads on the same SQLite snapshot while other connections write."""
+        self._conn.execute("BEGIN DEFERRED")
+        try:
+            yield
+        finally:
+            self._conn.rollback()
 
     def _migrate(self) -> None:
         apply_additive_v4(self._conn)

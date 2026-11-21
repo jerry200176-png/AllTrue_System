@@ -71,6 +71,32 @@ class DeployObserverTest(unittest.TestCase):
         self.assertEqual("unverified", result["status"])
         self.assertEqual(1, sum(command[0] == "bash" for command in self.calls))
 
+    def test_invalid_identity_structure_is_an_observation_failure(self):
+        for malformed in ([], None, {"production_deploy_job": []},
+                          {"deployment_manifest_backend_sha": 42}):
+            with self.subTest(identity=malformed):
+                self.identity = malformed
+                self.assertEqual("unavailable", self.observe()["status"])
+
+    def test_invalid_transport_text_is_an_observation_failure(self):
+        err = UnicodeDecodeError("utf-8", b"\xff", 0, 1, "invalid start byte")
+        with patch.object(deploy.subprocess, "run", side_effect=err):
+            result = deploy.watch(deploy.Observer(self.options))
+        self.assertEqual("unavailable", result["status"])
+        self.assertIn("invalid text", result["reason"])
+
+    def test_invalid_run_state_is_an_observation_failure(self):
+        self.run["status"] = []
+        self.assertEqual("unavailable", self.observe()["status"])
+
+    def test_non_string_merge_commit_is_an_observation_failure(self):
+        self.options.pr = 42
+        self.options.sha = ""
+        with patch.object(deploy.Observer, "api", return_value={"merged": True, "merge_commit_sha": 17}):
+            result = deploy.watch(deploy.Observer(self.options))
+        self.assertEqual("unavailable", result["status"])
+        self.assertIn("exact merge commit", result["reason"])
+
     def test_actual_approval_wait_names_exact_run_target_step_and_resume(self):
         self.run["status"] = "waiting"
         result = self.observe()

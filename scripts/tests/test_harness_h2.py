@@ -81,6 +81,7 @@ class HarnessH2EvalTest(unittest.TestCase):
 
     def test_equal_ci_sha_must_be_full_and_successful(self):
         for expected, observed, conclusion in [("", "", "success"), (SHA_A, "", "success"),
+                                                (SHA_A, None, "success"),
                                                 ("a" * 8, "a" * 8, "success"),
                                                 (SHA_A, SHA_A, "pending")]:
             with self.subTest(expected=expected, observed=observed, conclusion=conclusion):
