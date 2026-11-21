@@ -170,6 +170,21 @@ class Invoice extends Model
         });
     }
 
+    /** A stale header cannot contribute money to a different student's course report. */
+    public function scopeForLinkedCourseOwner($query)
+    {
+        return $query->whereExists(fn (Builder $course) => $course->selectRaw('1')
+            ->from('StudentClass as invoice_course')
+            ->whereColumn('invoice_course.ID', 'Invoice.StudentClassID')
+            ->whereColumn('invoice_course.StudentID', 'Invoice.StudentID'));
+    }
+
+    public function scopeActiveBill($query)
+    {
+        return $query->where(fn ($bill) => $bill->whereNull('Invoice.Status')
+            ->orWhereNotIn('Invoice.Status', ['void', 'cancelled']));
+    }
+
     /**
      * A bill's status from its resolver projection (Payment rows are the truth, #3864): settled when nothing is outstanding,
      * partial while some money is applied, else unpaid. Shared by confirm(), BillingController and the receipt move (#5113).

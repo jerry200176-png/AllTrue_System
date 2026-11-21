@@ -189,16 +189,21 @@ final class MonthlyRosterTest extends TestCase
         Payment::create(['InvoiceID' => $current->id, 'Amount' => 1000, 'PaidAt' => '2026-11-05 10:00:00', 'Method' => 'cash']);
         $this->bill($billed, ['TotalAmount' => 6000, 'Status' => 'unpaid', 'IssueDate' => '2026-10-01']);
         $this->bill($billed, ['TotalAmount' => 5000, 'Status' => 'void', 'billing_period' => '2026-11']);
+        $this->bill($billed, ['TotalAmount' => 10000, 'Status' => 'cancelled', 'billing_period' => '2026-11']);
+        $this->bill($billed, ['TotalAmount' => 800, 'Status' => 'unpaid', 'billing_period' => '2026-13']);
+        $this->bill($billed, ['StudentID' => $this->student(2)->id, 'TotalAmount' => 20000, 'Status' => 'unpaid', 'billing_period' => '2026-11']);
+        $mislinked = $this->bill($billed, ['StudentID' => $this->student(1)->id, 'TotalAmount' => 30000, 'Status' => 'partial', 'billing_period' => '2026-11']);
+        Payment::create(['InvoiceID' => $mislinked->id, 'Amount' => 2000, 'PaidAt' => '2026-11-06 10:00:00', 'Method' => 'cash']);
 
         $res = $this->withToken($this->director(1))->getJson('/api/v1/accounting/monthly-roster?year=2026&month=11')->assertOk();
 
-        $expected = ['selected_billed' => 3000, 'other_billed' => 6000, 'undated_billed' => 0, 'unbilled' => 7200];
-        $res->assertJsonPath('summary.outstanding', 16200);
+        $expected = ['selected_billed' => 3000, 'other_billed' => 6000, 'undated_billed' => 800, 'unbilled' => 7200];
+        $res->assertJsonPath('summary.outstanding', 17000);
         $res->assertJsonPath('summary.paid_this_month', 1000);
         $res->assertJsonPath('summary.outstanding_by_scope', $expected);
         $res->assertJsonPath('data.0.outstanding_by_scope', $expected);
         $courses = collect($res->json('data.0.courses'))->keyBy('course_id');
-        $this->assertSame(['selected_billed' => 3000, 'other_billed' => 6000, 'undated_billed' => 0, 'unbilled' => 0],
+        $this->assertSame(['selected_billed' => 3000, 'other_billed' => 6000, 'undated_billed' => 800, 'unbilled' => 0],
             $courses[$billed->ID]['money']['outstanding_by_scope']);
         $this->assertSame(['selected_billed' => 0, 'other_billed' => 0, 'undated_billed' => 0, 'unbilled' => 7200],
             $courses[$unbilled->ID]['money']['outstanding_by_scope']);

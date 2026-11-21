@@ -136,7 +136,7 @@ class BillingPayableResolver
      * @param int[] $studentClassIds
      * @return array<int, array<string, mixed>>
      */
-    public function courseStatusesByStudentClassIds(array $studentClassIds, iterable $courses = []): array
+    public function courseStatusesByStudentClassIds(array $studentClassIds, iterable $courses = [], bool $activeOwnedOnly = false): array
     {
         $ids = collect($studentClassIds)->map(fn ($id) => (int) $id)->filter(fn (int $id) => $id > 0)->unique()->values();
         if ($ids->isEmpty()) {
@@ -157,14 +157,15 @@ class BillingPayableResolver
         // One query for package paid state (isEffectivelyPaid would otherwise query per package member).
         (new \Illuminate\Database\Eloquent\Collection($courseMap))->loadMissing('coursePackage');
         $invoicesByClass = Invoice::query()
-            ->where(fn ($query) => $query->whereNull('Status')->orWhere('Status', '!=', 'void'))
+            ->when($activeOwnedOnly, fn ($query) => $query->forLinkedCourseOwner()->activeBill(), fn ($query) => $query->notVoided())
             ->with(['payments' => fn ($query) => $query->select(['id', 'InvoiceID', 'Amount', 'Method']), 'items'])
             ->whereIn('StudentClassID', $ids->all())
             ->orderBy('id')
             ->get(['id', 'StudentClassID', 'IssueDate', 'DueDate', 'TotalAmount', 'Status', 'billing_period', 'zero_amount_reason', 'billing_snapshot'])
             ->groupBy('StudentClassID');
-        $monthlyByClass = $this->monthlyPeriods->batch(collect($courseMap)->only($ids->all())->values());
+        $monthlyByClass = $this->monthlyPeriods->batch(collect($courseMap)->only($ids->all())->values(), $activeOwnedOnly);
         $sharedBills = Invoice::standaloneCountLineBills($ids->all())
+            ->when($activeOwnedOnly, fn ($query) => $query->where(fn ($bill) => $bill->whereNull('Invoice.Status')->orWhere('Invoice.Status', '!=', 'cancelled')))
             ->selectRaw('course.ID AS course_id, Invoice.id, Invoice.TotalAmount <= ' . Invoice::netPaidSql() . ' AS covered')
             ->distinct()->get()->groupBy('course_id');
 

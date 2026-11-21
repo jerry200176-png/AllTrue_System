@@ -93,7 +93,7 @@ final class MonthlyRosterController extends Controller
         // A receipt moved to another student or course (ReceiptReassignService) is bookkeeping, not money in or out:
         // its original payment and the reversal are skipped, the replacement (new course, original date) counts.
         $moved = DB::table('payment_report_reassignments')->select('from_report_id');
-        $paid = DB::table('Payment')->join('Invoice', 'Invoice.id', '=', 'Payment.InvoiceID')
+        $paid = Invoice::query()->forLinkedCourseOwner()->join('Payment', 'Payment.InvoiceID', '=', 'Invoice.id')
             ->whereIn('Invoice.StudentID', $studentIds)->where('Invoice.StudentClassID', '>', 0)
             ->whereNotIn('Payment.id', DB::table('payment_reports')->whereIn('id', $moved)->whereNotNull('payment_id')->select('payment_id'))
             ->where(fn ($q) => $q->whereNull('Payment.payment_report_id')->orWhereNotIn('Payment.payment_report_id', $moved))
@@ -103,8 +103,7 @@ final class MonthlyRosterController extends Controller
             ->groupBy('StudentClassID');
         // Courses with a lesson this month, money this month, this month's bill or any bill still unpaid.
         // ponytail: a bill with no course on its header is left to the student ledger.
-        $bills = DB::table('Invoice')->whereIn('StudentID', $studentIds)->where('StudentClassID', '>', 0)
-            ->whereRaw("COALESCE(Status, '') NOT IN ('void', 'cancelled')");
+        $bills = Invoice::query()->forLinkedCourseOwner()->activeBill()->whereIn('StudentID', $studentIds);
         // A bill without a period belongs to its IssueDate month, as InvoiceAmountReconciliationService::resolve() reads it.
         $billed = (clone $bills)->where(fn ($q) => $q->where('billing_period', $period)
             ->orWhere(fn ($legacy) => $legacy->where(fn ($none) => $none->whereNull('billing_period')->orWhere('billing_period', ''))
@@ -117,7 +116,7 @@ final class MonthlyRosterController extends Controller
         $courses = StudentClass::with(['student', 'teacher', 'pricingAmendments', 'coursePackage'])->whereIn('StudentID', $studentIds)
             ->whereIn('ID', $listed->merge($owing)->unique()->values())
             ->get();
-        $verdicts = $this->verdicts->forCourses($courses);
+        $verdicts = $this->verdicts->forCourses($courses, activeOwnedOnly: true);
         // 確認不收 (waived) keeps Charge with Paid=0 and void bills, so its verdict still reads as owed: nothing is collected (ledger: isWaivedContract).
         $owes = fn (StudentClass $c) => !ContractMoneyState::isWaived($c) && ($verdicts[(int) $c->ID]->outstanding ?? 0) > 0;
         $courses = $courses->filter(fn (StudentClass $c) => $listed->contains((int) $c->ID) || $owes($c))->values();
@@ -215,7 +214,7 @@ final class MonthlyRosterController extends Controller
             }
             $key = match (true) {
                 $billed['billing_period'] === $period => 'selected_billed',
-                $billed['billing_period'] === null => 'undated_billed',
+                preg_match('/\A\d{4}-(?:0[1-9]|1[0-2])\z/', (string) $billed['billing_period']) !== 1 => 'undated_billed',
                 default => 'other_billed',
             };
             $amounts[$key] += (int) $billed['outstanding'];
