@@ -42,13 +42,13 @@ describe('Package close boundary from actual alert rows', () => {
     const report = vi.fn();
     window.addEventListener('alltrue-open-bug-report', report);
     try {
-      expect(ledger.props('rowActions')[31].packageCloseReview).toBe(allowed);
-      ledger.vm.$emit('row-action', { kind: 'packageCloseReview', courseId: 41 });
+      expect(ledger.props('canReportPackageClose')).toBe(allowed);
+      ledger.vm.$emit('report-package-close', { branchId: 1, studentId: 131, courseId: null });
       expect(report).not.toHaveBeenCalled();
-      ledger.vm.$emit('row-action', { kind: 'packageCloseReview', courseId: 31 });
+      ledger.vm.$emit('report-package-close', { branchId: 1, studentId: 131, courseId: 31, packageId: 81 });
       expect(report).toHaveBeenCalledTimes(allowed ? 1 : 0);
       if (allowed) {
-        expect(report.mock.calls[0][0].detail.relatedReference).toBe('方案ID 81 / 課程ID 31');
+        expect(report.mock.calls[0][0].detail.relatedReference).toMatch(/app_page=course-mgmt&branch_id=1&student_id=131&course_id=31 共用方案編號 81$/);
       }
       expect(fetch.mock.calls.every(([, options]) => !options?.method || options.method === 'GET')).toBe(true);
     } finally {

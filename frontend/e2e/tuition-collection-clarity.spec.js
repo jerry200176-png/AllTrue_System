@@ -634,15 +634,17 @@ for (const width of [375, 1280]) {
     const courses = [
       { id: 42, subject: '合成共用數學', package_id: 81 }, { id: 43, subject: '合成共用英文', package_id: 81 },
       { id: 44, subject: '合成單科' },
-    ].map(c => ({ ...c, schedule_mode: 'count', paid: true, charge: 8000, stop: false, start_date: '2026-09-01' }));
+      { id: 45, subject: '合成月結方案成員', in_package: true, schedule_mode: 'date' },
+    ].map(c => ({ schedule_mode: 'count', paid: true, charge: 8000, stop: false, start_date: '2026-09-01', ...c }));
     await page.route('**/api/v1/students**', route => route.fulfill({ json: [{ id: 99, name: '合成結案學生', status: 'active', enable: 1 }] }));
-    await page.route('**/api/v1/alerts/tuition**', route => route.fulfill({ json: (packageRetired ? [44] : [42, 44]).map(id => ({
+    await page.route('**/api/v1/alerts/tuition**', route => route.fulfill({ json: [...(packageRetired ? [44] : [42, 44]).map(id => ({
       id, student_id: 99, student_name: '合成結案學生', subject: courses.find(c => c.id === id).subject,
       ...(id === 42 ? { package_id: 81, member_class_ids: [42, 43] } : {}),
       schedule_mode: 'count', payment_status: 'renew_needed', payable_outstanding: 0, remaining_sessions: 0,
-    })) }));
+    })), { id: null, package_id: 82, student_id: 99, student_name: '合成結案學生', subject: '合成月結方案',
+      schedule_mode: 'date', payment_status: 'monthly_due_soon', payable_outstanding: 0 }] }));
     await page.route('**/api/v1/accounting/ledger?**', route => route.fulfill({ json: {
-      student: { id: 99, name: '合成結案學生' }, scope: { student_class_id: 42 }, summary: {}, courses,
+      student: { id: 99, name: '合成結案學生', campus_id: 1 }, scope: { student_class_id: 42 }, summary: {}, courses,
       invoices: [], receipts: [], payments: [], reports: [], anomalies: [],
     } }));
     await page.route('**/api/v1/accounting/contracts/*/sessions', route => route.fulfill({ json: { sessions: [] } }));
@@ -683,7 +685,7 @@ for (const width of [375, 1280]) {
     const shot = info.outputPath(`package-close-${width}.png`);
     await reason.locator('..').screenshot({ path: shot }); await info.attach('package-close-explanation', { path: shot, contentType: 'image/png' });
     await support.click();
-    await expect(report.getByLabel('相關資料')).toHaveValue('方案ID 81 / 課程ID 42');
+    await expect(report.getByLabel('相關資料')).toHaveValue(/app_page=course-mgmt&branch_id=1&student_id=99&course_id=42 共用方案編號 81$/);
     await expect(report.getByLabel('請告訴我們發生了什麼')).toHaveValue(/請總部一併核對/);
     const formShot = info.outputPath(`package-close-form-${width}.png`);
     await report.screenshot({ path: formShot });
@@ -692,6 +694,19 @@ for (const width of [375, 1280]) {
     page.once('dialog', dialog => dialog.accept());
     await report.getByRole('button', { name: '關閉回報視窗' }).click();
     await expect(report).toBeHidden();
+    for (const id of [43, 45]) {
+      const member = page.getByTestId(`contract-card-${id}`);
+      await expect(member.getByTestId('contract-package-close')).toBeVisible();
+      await member.getByRole('button', { name: '回報給總部' }).click();
+      const [url, ...context] = (await report.getByLabel('相關資料').inputValue()).split(' ');
+      expect(Object.fromEntries(new URL(url).searchParams)).toEqual({
+        app_page: 'course-mgmt', branch_id: '1', student_id: '99', course_id: String(id),
+      });
+      expect(context.join(' ')).toBe(id === 43 ? '共用方案編號 81' : '');
+      page.once('dialog', dialog => dialog.accept());
+      await report.getByRole('button', { name: '關閉回報視窗' }).click();
+      await expect(report).toBeHidden();
+    }
     const single = page.getByTestId('contract-card-44');
     await expect(single.getByRole('button', { name: '回報給總部' })).toHaveCount(0);
     await single.getByRole('button', { name: '合成單科 的更多操作', exact: true }).click();

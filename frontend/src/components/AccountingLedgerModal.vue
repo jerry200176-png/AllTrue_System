@@ -339,8 +339,8 @@
                 :can-resolve-legacy="canManageInvoices()"
                 :has-confirmed-report="hasConfirmedReportFor(c.id)"
                 :auto-confirm="autoConfirmId === Number(c.id)"
-                :row-actions="rowActions[Number(c.id)] || null"
-                @row-action="(kind) => emit('row-action', { kind, courseId: Number(c.id) })"
+                :row-actions="actionsForCourse(c)"
+                @row-action="(kind) => onContractRowAction(c, kind)"
                 @record="openEntry"
                 @legacy-backfill="openEntry($event, 'legacy-backfill')"
                 @issue="openIssue"
@@ -468,10 +468,38 @@ const props = defineProps({
   nextOffer: Boolean,
   // F-5a1: { [studentClassId]: { waive, void, settle } } from the page's alert rows (the old table's rules).
   rowActions: { type: Object, default: () => ({}) },
+  canReportPackageClose: Boolean,
 });
 
-const emit = defineEmits(['close', 'changed', 'step', 'row-action', 'save-next']);
+const emit = defineEmits(['close', 'changed', 'step', 'row-action', 'report-package-close', 'save-next']);
 const documentsView = computed(() => props.initialAction === 'documents');
+
+function actionsForCourse(course) {
+  const actions = props.rowActions[Number(course.id)];
+  if (!course.in_package && !course.package_id) return actions || null;
+  // Monthly package members have no shared payment anchor. The ledger supplies membership for every course.
+  return {
+    ...actions,
+    settle: false,
+    settleBlockedReason: actions?.settleBlockedReason || '共用方案須整包核對，目前不能只結束其中一門課。',
+    packageCloseReview: props.canReportPackageClose,
+  };
+}
+
+function onContractRowAction(course, kind) {
+  const courseId = Number(course.id);
+  if (kind !== 'packageCloseReview') {
+    emit('row-action', { kind, courseId });
+    return;
+  }
+  if (!actionsForCourse(course)?.packageCloseReview) return;
+  emit('report-package-close', {
+    branchId: payload.value?.student?.campus_id,
+    studentId: payload.value?.student?.id,
+    courseId,
+    packageId: course.package_id,
+  });
+}
 
 function paymentHasReceipt(p) {
   return !p.is_void && p.report_status === 'confirmed' && Number.isSafeInteger(Number(p.report_id)) && Number(p.report_id) > 0;

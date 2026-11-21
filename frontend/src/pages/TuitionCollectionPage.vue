@@ -538,6 +538,7 @@
       :next-offer="ledgerSheetEntry"
       @save-next="onSaveNext"
       :row-actions="ledgerRowActions"
+      :can-report-package-close="canWaive"
       :branch-id="branchId"
       :can-step="ledgerNavStudentId != null"
       :student-wide="ledgerNavStudentId != null && (ledgerInitialAction !== 'documents' || ledgerStudentClassId == null)"
@@ -545,6 +546,7 @@
       @step="stepLedger"
       @changed="onLedgerChanged"
       @row-action="onLedgerRowAction"
+      @report-package-close="openPackageCloseReport"
     />
 
     <BillQuickView
@@ -1164,18 +1166,30 @@ function onBillMenu(b, id) {
 }
 
 function openBillReport(bill) {
-  if (!canWaive.value) return;
-  const courseLink = buildCourseFocusUrl(window.location.href, {
+  openCourseReport({
     branchId: bill.src.campus_id ?? props.branchId,
     studentId: bill.student_id,
     courseId: bill.class_id,
+    packageId: bill.package_id,
   });
+}
+
+function openPackageCloseReport(course) {
+  openCourseReport({
+    ...course,
+    description: '想處理共用方案中的課程結案，請總部一併核對方案其他課程、已排堂次及剩餘堂數。',
+  });
+}
+
+function openCourseReport({ branchId, studentId, courseId, packageId, description }) {
+  if (!canWaive.value) return;
+  const courseLink = buildCourseFocusUrl(window.location.href, { branchId, studentId, courseId });
   if (!courseLink) return;
-  const packageId = Number(bill.package_id);
-  const relatedReference = Number.isSafeInteger(packageId) && packageId > 0
-    ? `${courseLink} 共用方案編號 ${packageId}`
+  const id = Number(packageId);
+  const relatedReference = Number.isSafeInteger(id) && id > 0
+    ? `${courseLink} 共用方案編號 ${id}`
     : courseLink;
-  window.dispatchEvent(new CustomEvent('alltrue-open-bug-report', { detail: { relatedReference } }));
+  window.dispatchEvent(new CustomEvent('alltrue-open-bug-report', { detail: { relatedReference, description } }));
 }
 
 async function submitBatchReport() {
@@ -1785,19 +1799,11 @@ const ledgerRowActions = computed(() => Object.fromEntries(rows.value.filter((r)
     void: canVoid.value && paidGroup && hasVoidableReceipt(r),
     settle: !r.package_id && (r.payment_status === 'renew_needed' || r.payment_status === 'monthly_due_soon'),
     settleBlockedReason: r.package_id ? '共用方案須整包核對，目前不能只結束其中一門課。' : '',
-    packageCloseReview: canWaive.value && Boolean(r.package_id),
   }];
 })));
 function onLedgerRowAction({ kind, courseId }) {
   const row = rows.value.find((r) => Number(r.id) === Number(courseId));
   if (!row || !ledgerRowActions.value[Number(courseId)]?.[kind]) return;
-  if (kind === 'packageCloseReview') {
-    window.dispatchEvent(new CustomEvent('alltrue-open-bug-report', { detail: {
-      description: '想處理共用方案中的課程結案，請總部一併核對方案其他課程、已排堂次及剩餘堂數。',
-      relatedReference: `方案ID ${row.package_id} / 課程ID ${courseId}`,
-    } }));
-    return;
-  }
   if (kind === 'waive') openWaiveDialog(row);
   else if (kind === 'void') openVoidDialog(row);
   else if (kind === 'settle') openSettleDialog(row);
