@@ -20,6 +20,7 @@ export default defineConfig({
       'src/lib/directorHomeCards.test.js',
       'src/lib/billRows.test.js',
       'src/lib/billingGuide.test.js',
+      'src/lib/scheduleWarnings.test.js',
       'src/lib/scheduleBlockers.test.js',
       'src/lib/billingDocState.test.js',
       'src/lib/studentBillingRowsList.test.js',
