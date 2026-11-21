@@ -48,6 +48,10 @@ class SchedulerEvidenceTest extends TestCase
         $this->assertSame(12, $summary['jobs']['ops-business-digest']['observed_result']['revenue_at_risk_sessions']);
         $this->assertSame(44, $summary['jobs']['ops-business-digest']['observed_result']['coverage_next_7d']);
         $this->assertSame('succeeded_with_zero_work', $summary['jobs']['teacher-signin-close-orphans']['status']);
+        $timeout = $summary['jobs']['bugs-reporter-timeout'];
+        $this->assertSame('succeeded', $timeout['status']);
+        $this->assertSame(3, $timeout['processed_count']);
+        $this->assertSame(['affected_rows' => 3], $timeout['observed_result']);
         $this->assertNotSame(
             $summary['jobs']['teacher-signin-close-orphans']['status'],
             'no_run',
@@ -127,6 +131,33 @@ class SchedulerEvidenceTest extends TestCase
         $this->assertStringContainsString('pop-execute-approved.log', $events[0]->output);
     }
 
+    public function test_reporter_timeout_is_single_daily_production_schedule_with_overlap_guard(): void
+    {
+        $events = array_values(array_filter(
+            app(Schedule::class)->events(),
+            static fn ($event): bool => str_contains($event->command, 'bugs:close-stale-resolved')
+        ));
+
+        $this->assertCount(1, $events);
+        $event = $events[0];
+        $this->assertStringEndsWith(' bugs:close-stale-resolved --auto', $event->command);
+        $this->assertSame('20 8 * * *', $event->expression);
+        $this->assertSame(SchedulerEvidence::TIMEZONE, $event->timezone);
+        $this->assertTrue($event->runsInEnvironment('production'));
+        $this->assertFalse($event->runsInEnvironment('testing'));
+        $this->assertTrue($event->withoutOverlapping);
+    }
+
+    public function test_nine_am_health_check_can_detect_a_missing_reporter_timeout_run(): void
+    {
+        $date = $this->date->toDateString();
+        $beforeDeadline = SchedulerEvidence::summarize($date, $this->date->setTime(8, 49));
+        $healthCheck = SchedulerEvidence::summarize($date, $this->date->setTime(9, 0));
+
+        $this->assertSame('scheduled', $beforeDeadline['jobs']['bugs-reporter-timeout']['status']);
+        $this->assertSame('no_run', $healthCheck['jobs']['bugs-reporter-timeout']['status']);
+    }
+
     private function outputFor(string $job): string
     {
         $outputs = [
@@ -143,6 +174,7 @@ class SchedulerEvidenceTest extends TestCase
             'bugs-verify-reproductions' => "{\"regressed\":0,\"conditions\":[{\"key\":\"fixed-condition\",\"count\":0,\"state\":\"FIXED-OK\"}]}\n",
             'bindings-cleanup-orphans' => "orphan_bindings_deleted=0 anomaly_students=0\n",
             'grade-promotion-scheduled-preview' => "{\"status\":\"skipped\",\"reason\":\"empty_campus_allowlist\"}\n",
+            'bugs-reporter-timeout' => "bug #99 [resolved]: closed\ndone acted=3 skipped=1\n",
             'ops-business-digest' => <<<'OUTPUT'
                 === AllTrue Business Digest — 2037-01-02 04:10:00 ===
                 +----------------------------+-------+-----------------------------------------+

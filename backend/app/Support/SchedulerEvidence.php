@@ -61,6 +61,7 @@ final class SchedulerEvidence
             'command' => 'grade-promotion:scheduled-preview',
             'time' => '08:00',
         ],
+        'bugs-reporter-timeout' => ['command' => 'bugs:close-stale-resolved --auto', 'time' => '08:20'],
     ];
 
     /** @return array<string,array{command:string,time:string}> */
@@ -528,6 +529,7 @@ final class SchedulerEvidence
             'privacy-prune-logs' => '/Pruned\s+(\d+) rows/',
             'learning-records-backfill-missing' => '/total created:\s*(\d+)/',
             'learning-records-void-stale-leave' => '/total voided:\s*(\d+)/',
+            'bugs-reporter-timeout' => '/^done acted=(\d+) skipped=\d+\r?$/m',
         ];
         if (isset($countPatterns[$job]) && preg_match($countPatterns[$job], $output, $matches)) {
             return ['affected_rows' => (int) $matches[1]];
