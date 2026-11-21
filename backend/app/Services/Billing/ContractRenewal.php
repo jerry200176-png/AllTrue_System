@@ -9,12 +9,14 @@ use App\Models\Student;
 use App\Models\StudentClass;
 use App\Services\ClassSessionMaterializationService;
 use App\Services\MonthlyRenewalPeriodService;
+use App\Services\ScheduleGuardService;
 use App\Services\Scheduling\ContractSessionSchedule;
 use App\Services\SessionDeductionService;
 use App\Services\StaleScheduleExceptionFilter;
 use App\Services\TransactionDiscountCalculator;
 use App\Support\SessionStatus;
 use Carbon\Carbon;
+use Illuminate\Http\Exceptions\HttpResponseException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
@@ -884,6 +886,7 @@ final class ContractRenewal
                 (int) $newCourse->ID, $planStart, $sessions, $slots, $globalDur
             );
 
+            $this->refuseCrossCampusClash($newCourse, $builtSessions);
             $createdSessions = 0;
             $lastSessionDate = null;
             foreach ($builtSessions as $sess) {
@@ -1122,6 +1125,22 @@ final class ContractRenewal
         return $course;
     }
 
+    /**
+     * The renewed period's lessons must not land on a time the teacher already teaches at another campus (#5588).
+     * Throws the shared 409; the caller's transaction rolls back the new course and its bill.
+     *
+     * @param  iterable<array{SessionDate: mixed, StartTime: mixed, EndTime: mixed}>  $sessions
+     */
+    private function refuseCrossCampusClash(StudentClass $course, iterable $sessions): void
+    {
+        $guard = app(ScheduleGuardService::class);
+        foreach ($sessions as $sess) {
+            if ($cross = $guard->crossCampusConflictForLesson($course, (string) $sess['SessionDate'], (string) $sess['StartTime'], (string) $sess['EndTime'])) {
+                throw new HttpResponseException(ScheduleGuardService::crossCampusResponse($cross));
+            }
+        }
+    }
+
     private function saveNewCourse(array $payload): StudentClass
     {
         $course = new StudentClass($payload);
@@ -1253,6 +1272,9 @@ final class ContractRenewal
             $studentClass->refresh();
 
             $sessionSync = app(ContractSessionSchedule::class)->ensureMonthlyFutureScheduledSessions($newCourse);
+            // Raw rows: model toArray() would serialize SessionDate as UTC ISO and can shift the day.
+            $this->refuseCrossCampusClash($newCourse, DB::table('ClassSession')->where('StudentClassID', (int) $newCourse->ID)
+                ->where('Status', 'scheduled')->get(['SessionDate', 'StartTime', 'EndTime'])->map(fn ($row) => (array) $row));
 
             $billingPeriod = $periodReview['billing_period'];
             $totalAmount = max(0, (int) ($newCourse->Charge ?? 0));
