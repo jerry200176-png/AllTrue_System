@@ -2,11 +2,13 @@
 
 namespace Tests\Feature;
 
+use App\Models\AuthToken;
 use App\Models\BugReport;
 use App\Models\BugReportComment;
 use App\Models\BugReportEvidence;
 use App\Models\BugReportStatusLog;
 use App\Models\User;
+use App\Models\UserCampus;
 use App\Operations\Inapp\InappRequesterGuard;
 use App\Operations\Inapp\InappAgentClients;
 use App\Operations\Inapp\InappStandingPolicy;
@@ -389,10 +391,30 @@ final class PopInappResolveAfterDeployTest extends TestCase
         $evidence = BugReportEvidence::query()->where('bug_report_id', $bug)->sole();
         self::assertSame($replyId, $evidence->metadata['reused_comment_id']);
         self::assertSame($this->deployed, $evidence->production_revision);
-        self::assertTrue(BugReportService::getDetail($bug)['product_loop']['shipped']);
-        BugReportService::addReporterCommentAndReopen($bug, $this->reporter, '仍有問題，請重新看一下。');
-        self::assertSame('triaged', $report->fresh()->status);
-        self::assertFalse(BugReportService::getDetail($bug)['product_loop']['shipped']);
+
+        UserCampus::create(['CampusID' => 1, 'UserID' => $this->reporter, 'Admin' => 0, 'Approved' => 1]);
+        $token = bin2hex(random_bytes(16));
+        AuthToken::create(['user_id' => $this->reporter, 'token' => $token, 'expires_at' => now()->addDay()]);
+        $reportUrl = "/api/v1/bugs/{$bug}";
+        $this->withToken($token)->getJson($reportUrl)
+            ->assertOk()
+            ->assertJsonPath('status', 'closed')
+            ->assertJsonPath('product_loop.shipped', true)
+            ->assertJsonCount(3, 'comments')
+            ->assertJsonPath('comments.2.id', $replyId)
+            ->assertJsonPath('comments.2.body', $comments->last()->body)
+            ->assertJsonPath('comments.2.origin', 'support');
+
+        $response = $this->withToken($token)->postJson("{$reportUrl}/comments", [
+            'body' => '仍有問題，請重新看一下。',
+        ])->assertCreated();
+        $this->withToken($token)->getJson($reportUrl)
+            ->assertOk()
+            ->assertJsonPath('status', 'triaged')
+            ->assertJsonPath('product_loop.shipped', false)
+            ->assertJsonCount(4, 'comments')
+            ->assertJsonPath('comments.3.id', $response->json('id'))
+            ->assertJsonPath('comments.3.origin', 'reporter');
     }
 
     public function test_self_filed_admin_can_receive_shipping_attributed_to_the_existing_issuer(): void
