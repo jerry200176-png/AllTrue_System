@@ -1,5 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { askConfirm } from '../../useConfirmDialog';
 import { useSessionEditFlow } from '../useSessionEditFlow';
+
+vi.mock('../../useConfirmDialog', () => ({ askConfirm: vi.fn(async () => true) }));
 
 // Regression coverage for #942 (in-app #177): clicking a session chip whose real
 // ClassSession is missing from the local cache (duplicate / overlapping sessions or
@@ -102,6 +105,64 @@ describe('openSessionEdit reload-on-miss (#177)', () => {
     expect(globalThis.alert).not.toHaveBeenCalled();
     expect(flow.showSessionEditModal.value).toBe(false);
     expect(flow.chipActionDialog.value?.kind).toBe('resolve_retry');
+  });
+});
+
+describe('moving a concrete lesson', () => {
+  it.each([
+    ['16:30', '17:30', '19:00', '20:00'],
+    ['16:30', '17:15', '19:00', '19:45'],
+    ['16:15', '17:15', '16:15', '17:15'],
+  ])('keeps the duration of a %s–%s lesson when moving to %s', async (oldStart, oldEnd, newStart, newEnd) => {
+    vi.spyOn(globalThis, 'alert').mockImplementation(() => {});
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(async (url) => {
+      if (url !== '/api/v1/learning-records/reschedule-session') {
+        throw new Error('Unexpected request');
+      }
+      return { ok: true, json: async () => ({ committed: true }) };
+    });
+
+    try {
+      const flow = buildFlow({
+        getSessionDisplayRow: () => makeRow({
+          startTime: oldStart, endTime: oldEnd, contractRateUnit: 'hour',
+        }),
+      });
+
+      await flow.openSessionEdit({ id: 42, duration_hours: 2 }, '2026-11-26', 555);
+      flow.startSessionReschedule();
+      flow.sessionEditForm.value.new_date = '2026-11-27';
+      flow.sessionEditForm.value.new_start = newStart;
+      await flow.doSessionReschedule();
+
+      expect(askConfirm).toHaveBeenLastCalledWith(expect.objectContaining({
+        message: expect.stringContaining(`2026-11-27 ${newStart}~${newEnd}`),
+      }));
+      const [request] = fetchSpy.mock.calls.filter(([url]) => url === '/api/v1/learning-records/reschedule-session');
+      expect(JSON.parse(request[1].body)).toMatchObject({
+        old_date: '2026-11-26', old_start_time: oldStart,
+        new_date: '2026-11-27', start_time: newStart, end_time: newEnd,
+      });
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
+
+  it('does not submit when the lesson would end on a different day', async () => {
+    askConfirm.mockClear();
+    const fetchSpy = vi.spyOn(globalThis, 'fetch');
+    try {
+      const flow = buildFlow({ getSessionDisplayRow: () => makeRow() });
+      await flow.openSessionEdit({ id: 42, duration_hours: 2 }, '2026-11-26', 555);
+      flow.startSessionReschedule();
+      flow.sessionEditForm.value.new_date = '2026-11-27';
+      flow.sessionEditForm.value.new_start = '22:00';
+      await flow.doSessionReschedule();
+      expect(askConfirm).not.toHaveBeenCalled();
+      expect(fetchSpy).not.toHaveBeenCalled();
+    } finally {
+      fetchSpy.mockRestore();
+    }
   });
 });
 

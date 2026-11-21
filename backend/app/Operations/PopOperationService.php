@@ -509,6 +509,7 @@ final class PopOperationService
         ], $actor, $approval, $commitSha, $this->durationMs($startedAt), 'execution_failed');
         // #5236 P1: a nested "Lock wait timeout" gets no ROLLBACK TO SAVEPOINT from Laravel, so recording inside run()'s transaction would commit the moves made before it. This strategy alone leaves that transaction first; run() then writes the receipt.
         $this->phaseFailure = (string) $entry['strategy_class'] === \App\Operations\Strategies\CourseContractChainRebalanceStrategy::class
+            || (string) $entry['strategy_class'] === Strategies\HistoricalOrphanInvoiceCloseoutStrategy::class
             || $this->isNativePastScheduledRecovery($request) ? $failed : null;
         try {
             if ($phase === 'execute') {
@@ -573,7 +574,7 @@ final class PopOperationService
 
     private function atomicFinancialRepair(object|string $strategy): bool
     {
-        return in_array(is_object($strategy) ? get_class($strategy) : $strategy, ['App\\Operations\\Strategies\\UnpaidInvoiceChargeAlignmentStrategy', Strategies\PaidInvoiceChargeAlignmentStrategy::class, 'App\\Operations\\Strategies\\PaymentReversalRestatementStrategy', 'App\\Operations\\Strategies\\PaymentReportPendingReturnStrategy', 'App\\Operations\\Strategies\\InvoiceHeaderItemRepairStrategy', 'App\\Operations\\Strategies\\LegacyVoidLinkStrategy', 'App\\Operations\\Strategies\\BillingPeriodRekeyStrategy'], true);
+        return in_array(is_object($strategy) ? get_class($strategy) : $strategy, ['App\\Operations\\Strategies\\UnpaidInvoiceChargeAlignmentStrategy', Strategies\PaidInvoiceChargeAlignmentStrategy::class, Strategies\HistoricalOrphanInvoiceCloseoutStrategy::class, 'App\\Operations\\Strategies\\PaymentReversalRestatementStrategy', 'App\\Operations\\Strategies\\PaymentReportPendingReturnStrategy', 'App\\Operations\\Strategies\\InvoiceHeaderItemRepairStrategy', 'App\\Operations\\Strategies\\LegacyVoidLinkStrategy', 'App\\Operations\\Strategies\\BillingPeriodRekeyStrategy'], true);
     }
 
     /** New exact case only; the shared strategy must not enable legacy-case recovery. */
@@ -1413,6 +1414,8 @@ final class PopOperationService
     private function isReviewedFinancialCase(array $e): bool
     {
         $shapes = [
+            Strategies\HistoricalOrphanInvoiceCloseoutStrategy::OPERATION => [Strategies\HistoricalOrphanInvoiceCloseoutStrategy::class,
+                Strategies\HistoricalOrphanInvoiceCloseoutStrategy::KEYS, 'one_exact_historical_orphan_invoice'],
             'reviewed-paid-invoice-charge-alignment' => [Strategies\PaidInvoiceChargeAlignmentStrategy::class,
                 ['student_id', 'course_id', 'campus_id', 'invoice_id', 'expected_invoice_total', 'expected_charge', 'decision_reference', 'expected_state_hash'], 'one_exact_paid_invoice_and_settlement'],
             'reviewed-unpaid-invoice-charge-alignment' => ['App\\Operations\\Strategies\\UnpaidInvoiceChargeAlignmentStrategy',

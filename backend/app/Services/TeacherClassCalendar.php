@@ -90,9 +90,13 @@ class TeacherClassCalendar
                 $held[self::key($session->StudentClassID, $session->SessionDate, $session->StartTime)] = true;
             }
         }
-        $scheduleRows = $allRows->filter(function ($row) use ($newest, $movedOn, $held) {
+        $scheduleRows = $allRows->filter(function ($row) use ($newest, $movedOn, $held, $courses) {
             if ($row->status !== 'scheduled' || (int) $row->student_course_id <= 0) {
                 return $row->status === 'scheduled';
+            }
+            // A row left behind by a deleted course is no lesson (the course calendar inner-joins StudentClass). Founder 2026-11-20.
+            if (! isset($courses[(int) $row->student_course_id])) {
+                return false;
             }
             $key = self::key($row->student_course_id, $row->schedule_date, $row->start_time);
 
