@@ -386,7 +386,9 @@ class ScheduleGuardService
     public static function attachPastClashHeader(\Illuminate\Http\Request $request, \Symfony\Component\HttpFoundation\Response $response): void
     {
         $notes = array_keys((array) $request->attributes->get(self::PAST_CLASH_ATTRIBUTE, []));
-        if ($notes !== [] && !$request->isMethodSafe() && $response->getStatusCode() < 300) {
+        // Pre-checks (…/check, …preview) save nothing, so "照樣儲存" would be wrong there; the real save repeats it.
+        if ($notes !== [] && !$request->isMethodSafe() && $response->getStatusCode() < 300
+            && !$request->is('api/*/check', 'api/*preview*')) {
             $response->headers->set(self::PAST_CLASH_HEADER, rawurlencode(implode("\n", array_slice($notes, 0, 3))));
         }
     }

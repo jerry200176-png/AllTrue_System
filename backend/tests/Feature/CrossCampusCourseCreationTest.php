@@ -74,6 +74,15 @@ class CrossCampusCourseCreationTest extends TestCase
         $this->assertStringNotContainsString('他校生', $reminder, 'other campus students stay private');
     }
 
+    public function test_a_pre_check_never_carries_the_reminder(): void
+    {
+        $request = \Illuminate\Http\Request::create('/api/v1/student-classes/1/add-session/check', 'POST');
+        $request->attributes->set(ScheduleGuardService::PAST_CLASH_ATTRIBUTE, ['提醒：甲' => true]);
+        $response = response()->json([]);
+        ScheduleGuardService::attachPastClashHeader($request, $response);
+        $this->assertFalse($response->headers->has(ScheduleGuardService::PAST_CLASH_HEADER));
+    }
+
     public function test_the_guard_notes_but_never_returns_a_past_clash(): void
     {
         $guard = app(ScheduleGuardService::class);

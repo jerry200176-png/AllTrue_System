@@ -1,6 +1,6 @@
 // Past lessons that clash with another campus are saved anyway (#5588); the server sends the reminder in the
 // X-Schedule-Warnings header (URL-encoded, one message per line) and every successful write shows it here.
-import { toast } from 'vue-sonner';
+import { useToast } from '../composables/useToast';
 
 export const SCHEDULE_WARNINGS_HEADER = 'X-Schedule-Warnings';
 
@@ -15,7 +15,7 @@ export function scheduleWarningsFrom(res) {
 
 let installed = false;
 
-export function installScheduleWarnings(target = typeof window === 'undefined' ? null : window, show = (m) => toast.warning(m, { duration: 12000 })) {
+export function installScheduleWarnings(target = typeof window === 'undefined' ? null : window, show = (m) => useToast().warning(m, { duration: 12000 })) {
   if (installed || typeof target?.fetch !== 'function') return;
   installed = true;
   const orig = target.fetch.bind(target);

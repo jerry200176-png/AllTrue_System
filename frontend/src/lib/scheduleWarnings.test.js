@@ -1,7 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
 
-vi.mock('vue-sonner', () => ({ toast: { warning: vi.fn() } }));
-
 import { installScheduleWarnings, scheduleWarningsFrom } from './scheduleWarnings';
 
 const response = (ok, header) => ({ ok, headers: { get: (name) => (name === 'X-Schedule-Warnings' ? header : null) } });
