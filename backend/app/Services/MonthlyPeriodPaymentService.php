@@ -14,12 +14,14 @@ final class MonthlyPeriodPaymentService
 {
     public function __construct(private InvoiceAmountReconciliationService $amounts, private MonthlyBillingService $billing) {}
 
-    public function batch(Collection $courses): array
+    public function batch(Collection $courses, bool $activeOwnedOnly = false): array
     {
         $courses = $courses->filter(fn ($course) => (string) $course->getAttribute('ScheduleMode') === 'date');
         if ($courses->isEmpty()) return [];
         $ids = $courses->pluck('ID')->all();
-        $invoices = (new Invoice)->scopeNotVoided(Invoice::query())->whereIn('StudentClassID', $ids)
+        $invoices = Invoice::query()
+            ->when($activeOwnedOnly, fn ($query) => $query->forLinkedCourseOwner()->activeBill(), fn ($query) => $query->notVoided())
+            ->whereIn('StudentClassID', $ids)
             ->with(['payments', 'items'])->orderBy('id')->get()->groupBy('StudentClassID');
         $sessions = ClassSession::query()->whereIn('StudentClassID', $ids)
             ->whereNotIn('Status', ['cancelled', 'voided', 'leave', 'rescheduled'])
