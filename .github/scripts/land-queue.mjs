@@ -146,6 +146,12 @@ export function canRetryStartup(run, sha) {
     && ['startup_failure', 'failure'].includes(run?.conclusion);
 }
 
+export function queuedAtHead(current, sha) {
+  return current?.head?.sha === sha && current.state === 'open' && current.draft === false
+    && current.base?.ref === 'main' && Array.isArray(current.labels)
+    && current.labels.some((label) => label?.name === 'queue');
+}
+
 export function retryStartup(sha, { readRun, hasIntent, recordIntent, matchesCurrentHead, request }) {
   let run;
   try { run = readRun(); } catch { return 'ineligible'; }
@@ -517,11 +523,7 @@ function processQueue() {
           readRun: () => api(endpoint),
           hasIntent: () => seen(n, marker(d.reason, key(id))),
           recordIntent: () => note(n, key(id), d.reason, `${d.text} (run ${id})`),
-          matchesCurrentHead: () => {
-            const current = api(`pulls/${n}`);
-            return current.head.sha === pr.sha && current.state === 'open' && !current.draft
-              && current.base.ref === 'main' && current.labels.some(({ name }) => name === 'queue');
-          },
+          matchesCurrentHead: () => queuedAtHead(api(`pulls/${n}`), pr.sha),
           request: () => gh('api', '-X', 'POST', `/repos/${REPO}/${endpoint}/rerun-failed-jobs`),
         });
         if (result === 'head-moved') { headMoved = true; break; }

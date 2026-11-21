@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { BATCH_BASE_MESSAGE, BATCH_MAX, batchSerial, guardedSquash, isBatchBase, TRUSTED_AUTHORS, fromPinned, suiteRuns, memberOf, staleReason, batchVerdict, canRetryStartup, checkStates, decide, marker, memberMessage, neutral, orderQueue, parseMember, planBatch, retryStartup, serialDecision, unresolvedCount, waitingNotice } from '../../.github/scripts/land-queue.mjs';
+import { BATCH_BASE_MESSAGE, BATCH_MAX, batchSerial, guardedSquash, isBatchBase, TRUSTED_AUTHORS, fromPinned, suiteRuns, memberOf, staleReason, batchVerdict, canRetryStartup, checkStates, decide, marker, memberMessage, neutral, orderQueue, parseMember, planBatch, queuedAtHead, retryStartup, serialDecision, unresolvedCount, waitingNotice } from '../../.github/scripts/land-queue.mjs';
 import { CODEX_LOGIN, REVIEW_CHECK, automaticMerge, carryChecks, carryRepo, trivialRebase, withCarryRepo, classifyScope, decodeEntities, gateMarker, onlyMainMerged, patchId, reviewGate, reviewMarker, sameDiff, samePatchFor, verdictText } from '../../.github/scripts/review-gate.mjs';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -95,12 +95,17 @@ test('a lost rerun response is reconciled and never replays the request', () => 
 
 test('startup retry does not POST if the PR head moved while recording the intent', () => {
   const sha = 'a'.repeat(40);
-  let currentHead = sha;
+  const current = { head: { sha }, state: 'open', draft: false, base: { ref: 'main' }, labels: [{ name: 'queue' }] };
+  assert.equal(queuedAtHead(current, sha), true);
+  for (const delta of [{ head: null }, { draft: true }, { draft: undefined }, { draft: null },
+    { state: 'closed' }, { base: { ref: 'other' } }, { labels: [] }, { labels: null }]) {
+    assert.equal(queuedAtHead({ ...current, ...delta }, sha), false);
+  }
   assert.equal(retryStartup(sha, {
     readRun: () => ({ head_sha: sha, status: 'completed', conclusion: 'startup_failure', run_attempt: 1 }),
     hasIntent: () => false,
-    recordIntent: () => { currentHead = 'b'.repeat(40); },
-    matchesCurrentHead: () => currentHead === sha,
+    recordIntent: () => { current.head.sha = 'b'.repeat(40); },
+    matchesCurrentHead: () => queuedAtHead(current, sha),
     request: () => assert.fail('must not send a rerun request for the previous head'),
   }), 'head-moved');
 });
