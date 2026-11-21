@@ -39,6 +39,21 @@ describe('ContractCard collapsed line', () => {
     expect(f.get('[data-testid="contract-toggle"]').attributes('aria-expanded')).toBe('true');
   });
 
+  it('in-app #572: displays the remaining count once when opening and closing the contract', async () => {
+    const w = await card();
+    const toggle = w.get('[data-testid="contract-toggle"]');
+    const summaryCount = '[data-testid="contract-left-line"]';
+    expect(w.get(summaryCount).text()).toBe('剩 1 堂');
+
+    await toggle.trigger('click');
+    expect(w.find(summaryCount).exists()).toBe(false);
+    expect(w.get('[data-testid="contract-left"]').text()).toBe('剩 1 堂');
+
+    await toggle.trigger('click');
+    expect(w.get(summaryCount).text()).toBe('剩 1 堂');
+    expect(w.find('[data-testid="contract-left"]').exists()).toBe(false);
+  });
+
   it.each([
     ['pending report -> 確認入帳', { pendingReport: { report_id: 1, amount: 500 }, outstanding: 500 }, 'contract-confirm'],
     ['owes -> 登記這筆', { outstanding: 800 }, 'contract-record'],
