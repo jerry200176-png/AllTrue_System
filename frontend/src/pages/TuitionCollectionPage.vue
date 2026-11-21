@@ -94,8 +94,8 @@
         @menu="onBillMenu"
         @retry="loadAlerts"
       >
-        <template #actions>
-          <Button v-if="guideTodoCount > 0" :class="control.row" data-testid="billing-guide-start" @click="billingGuideOpen = true">開始登帳引導（{{ guideTodoCount }} 筆要處理）</Button>
+        <template v-if="guideTodoCount > 0" #actions>
+          <Button :class="control.row" data-testid="billing-guide-start" @click="billingGuideOpen = true">開始登帳引導（{{ guideTodoCount }} 筆要處理）</Button>
         </template>
       </BillList>
       </div>
