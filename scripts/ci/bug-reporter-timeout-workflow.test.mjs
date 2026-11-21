@@ -50,7 +50,7 @@ assert.match(shell, /php artisan bugs:close-stale-resolved --days="\$DAYS" \$ACT
 assert.match(step, /REVIEWED_IDS: \$\{\{ inputs\.reviewed_ids \}\}/, 'workflow dispatch input is wired');
 
 // Founder 2A: daily unattended auto mode.
-assert.match(workflow, /schedule:\n    - cron: "40 2 \* \* \*"/, 'daily schedule');
+assert.match(workflow, /schedule:\n    - cron: "47 2 \* \* \*"/, 'daily schedule at 10:47 Asia/Taipei');
 assert.match(step, /MODE: \$\{\{ github\.event_name == 'schedule' && 'auto' \|\| inputs\.mode \}\}/, 'schedule runs auto, never apply');
 assert.equal(request({ MODE: 'auto', DAYS: '7' }), 0, 'scheduled auto run validates (inputs default to empty/7)');
 assert.equal(request({ MODE: 'auto-dry-run' }), 0, 'auto dry-run is allowed');
