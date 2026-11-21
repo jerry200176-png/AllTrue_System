@@ -141,11 +141,21 @@ class SchedulerEvidenceTest extends TestCase
         $this->assertCount(1, $events);
         $event = $events[0];
         $this->assertStringEndsWith(' bugs:close-stale-resolved --auto', $event->command);
-        $this->assertSame('40 10 * * *', $event->expression);
+        $this->assertSame('20 8 * * *', $event->expression);
         $this->assertSame(SchedulerEvidence::TIMEZONE, $event->timezone);
         $this->assertTrue($event->runsInEnvironment('production'));
         $this->assertFalse($event->runsInEnvironment('testing'));
         $this->assertTrue($event->withoutOverlapping);
+    }
+
+    public function test_nine_am_health_check_can_detect_a_missing_reporter_timeout_run(): void
+    {
+        $date = $this->date->toDateString();
+        $beforeDeadline = SchedulerEvidence::summarize($date, $this->date->setTime(8, 49));
+        $healthCheck = SchedulerEvidence::summarize($date, $this->date->setTime(9, 0));
+
+        $this->assertSame('scheduled', $beforeDeadline['jobs']['bugs-reporter-timeout']['status']);
+        $this->assertSame('no_run', $healthCheck['jobs']['bugs-reporter-timeout']['status']);
     }
 
     private function outputFor(string $job): string

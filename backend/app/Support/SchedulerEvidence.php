@@ -61,7 +61,7 @@ final class SchedulerEvidence
             'command' => 'grade-promotion:scheduled-preview',
             'time' => '08:00',
         ],
-        'bugs-reporter-timeout' => ['command' => 'bugs:close-stale-resolved --auto', 'time' => '10:40'],
+        'bugs-reporter-timeout' => ['command' => 'bugs:close-stale-resolved --auto', 'time' => '08:20'],
     ];
 
     /** @return array<string,array{command:string,time:string}> */
