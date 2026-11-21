@@ -105,11 +105,13 @@
     </TabsContent>
 
     <TabsContent
-      v-if="activeAccountingTab === 'payments'"
+      v-show="activeAccountingTab === 'payments'"
+      force-mount
       as="section"
       value="payments"
       class="acct-panel tc-page__body"
     >
+      <template v-if="activeAccountingTab === 'payments'">
       <div class="acct-filter-card">
         <div class="acct-filter-grid">
           <label>
@@ -323,6 +325,7 @@
             </tbody>
           </table>
         </div>
+      </template>
       </template>
     </TabsContent>
     </Tabs>

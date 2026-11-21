@@ -452,6 +452,10 @@ test.describe('Tuition Collection clarity browser verification', () => {
       const views = page.getByRole('tablist', { name: '帳單與收款檢視' });
       const bills = views.getByRole('tab', { name: '帳單', exact: true });
       const receipts = views.getByRole('tab', { name: '收款紀錄' });
+      await expect(receipts).toHaveAttribute('aria-controls', /.+/);
+      const receiptPanelId = await receipts.getAttribute('aria-controls');
+      await expect(page.locator(`[id="${receiptPanelId}"]`)).toBeAttached();
+      await expect(page.locator(`[id="${receiptPanelId}"]`)).toBeHidden();
       const search = page.getByTestId('bill-search');
       const pick = page.getByTestId('bill-pick-c101');
       await search.fill('林宥辰');
@@ -489,13 +493,30 @@ test.describe('Tuition Collection clarity browser verification', () => {
   }
 
   test('In-App581: existing receipt links select the nested receipt history', async ({ page }) => {
+    const director = { id: 9001, name: '合成主任', role: 'director', campuses: [1], must_change_password: false };
+    await page.addInitScript((user) => {
+      localStorage.setItem('alltrue_session', JSON.stringify({ access_token: 'local-e2e-only', user }));
+      localStorage.setItem('app_branch', '1');
+    }, director);
+    await page.route('**/*', route => ['127.0.0.1', 'localhost'].includes(new URL(route.request().url()).hostname)
+      ? route.fallback() : route.abort());
+    await page.route('**/api/v1/**', route => {
+      const path = new URL(route.request().url()).pathname;
+      if (path === '/api/v1/me') return route.fulfill({ json: director });
+      if (path === '/api/v1/branches' || path === '/api/v1/campuses') {
+        return route.fulfill({ json: [{ id: 1, name: '合成分校', code: 'local' }] });
+      }
+      return route.fulfill({ json: { data: [] } });
+    });
     await installMock(page);
     for (const alias of ['payments', 'receipts']) {
-      await page.goto(`/tuition-collection-pilot-mount.html?tab=${alias}`);
+      await page.goto(`/app-pilot-mount.html?app_page=tuition-collect&tab=${alias}`);
       await expect(page.getByRole('tab', { name: '帳單與收款' })).toHaveAttribute('aria-selected', 'true');
       await expect(page.getByRole('tab', { name: '收款紀錄' })).toHaveAttribute('aria-selected', 'true');
       await expect(page.getByRole('tabpanel', { name: '收款紀錄' }).locator('.acct-table')).toBeVisible();
     }
+    await page.goto('/app-pilot-mount.html?app_page=tuition-collect&tab=unknown');
+    await expect(page.getByRole('tab', { name: '帳單', exact: true })).toHaveAttribute('aria-selected', 'true');
   });
 
   test('captures the accounting tabs without page overflow', async ({ page }) => {
