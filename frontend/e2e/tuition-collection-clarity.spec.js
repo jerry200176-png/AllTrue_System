@@ -723,6 +723,40 @@ for (const width of [375, 1280]) {
   });
 }
 
+test('In-App588: the bill summary follows its tabs and the guide stays with bill controls', async ({ page }, info) => {
+  await installMock(page);
+  for (const width of [390, 655, 1024, 1280]) {
+    await page.setViewportSize({ width, height: 900 });
+    await page.goto('/tuition-collection-pilot-mount.html');
+    const tabs = page.getByRole('tablist', { name: '帳單與收款檢視' });
+    const bills = page.getByRole('tabpanel', { name: '帳單', exact: true });
+    const summary = bills.getByTestId('bill-summary');
+    const guide = bills.getByTestId('billing-guide-start');
+    await expect(guide).toBeVisible();
+    const tabBounds = await tabs.boundingBox();
+    const summaryBounds = await summary.boundingBox();
+    const guideBounds = await guide.boundingBox();
+    const summaryGap = summaryBounds.y - (tabBounds.y + tabBounds.height);
+    expect(summaryGap, `summary gap at ${width}px`).toBeLessThanOrEqual(32);
+    expect(guideBounds.y).toBeGreaterThanOrEqual(summaryBounds.y + summaryBounds.height);
+    expect(guideBounds.height).toBeGreaterThanOrEqual(44);
+    await info.attach(`accounting-layout-${width}`, { body: JSON.stringify({ summaryGap, guideHeight: guideBounds.height }), contentType: 'application/json' });
+    if (width === 1024) {
+      const filters = await bills.getByRole('group', { name: '篩選', exact: true }).boundingBox();
+      expect(filters.width).toBeGreaterThanOrEqual(360);
+      expect(filters.height).toBeLessThanOrEqual(112);
+      await info.attach('accounting-filters-1024', { body: JSON.stringify({ width: filters.width, height: filters.height }), contentType: 'application/json' });
+    }
+    await tabs.getByRole('tab', { name: '收款紀錄' }).click();
+    await expect(page.getByRole('tabpanel', { name: '收款紀錄' })).toBeVisible();
+    await expect(guide).toBeHidden();
+    await tabs.getByRole('tab', { name: '帳單', exact: true }).click();
+    await guide.focus();
+    await guide.press('Enter');
+    await expect(bills.getByTestId('bg-step')).toBeVisible();
+  }
+});
+
 for (const width of [375, 1280]) {
   test(`In-App584: billing guide can close a paid single course @${width}`, async ({ page }, info) => {
     const writes = [];

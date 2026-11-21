@@ -72,9 +72,6 @@
         @renew="(b) => onBillAction(b, 'renew')"
         @settle="(b) => onLedgerRowAction({ kind: 'settle', courseId: b.class_id })"
       />
-      <div v-else-if="guideTodoCount > 0" class="tw:mb-3 tw:flex tw:justify-end">
-        <Button class="tw:min-h-11" data-testid="billing-guide-start" @click="billingGuideOpen = true">開始登帳引導（{{ guideTodoCount }} 筆要處理）</Button>
-      </div>
       <!-- The list has several root nodes, so the wrapper hides it. -->
       <div v-show="!billingGuideOpen">
       <BillList
@@ -96,7 +93,11 @@
         @action="onBillAction"
         @menu="onBillMenu"
         @retry="loadAlerts"
-      />
+      >
+        <template v-if="guideTodoCount > 0" #actions>
+          <Button :class="control.row" data-testid="billing-guide-start" @click="billingGuideOpen = true">開始登帳引導（{{ guideTodoCount }} 筆要處理）</Button>
+        </template>
+      </BillList>
       </div>
     <!-- 已結清課程 keeps its own list (the bill list has no stopped, fully paid contracts); entry is this quiet link. -->
     <nav v-if="activeAccountingTab === 'students'" class="tc-reminders tc-reminders--below tw:m-0 tw:flex tw:flex-wrap tw:gap-2" aria-label="其他清單" data-testid="tc-reminders">
