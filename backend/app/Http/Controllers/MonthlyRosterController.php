@@ -225,7 +225,7 @@ final class MonthlyRosterController extends Controller
     }
 
     /**
-     * @param Collection<int, array<string, mixed>> $rows
+     * @param Collection<int, covariant array<string, mixed>> $rows
      * @return array<string, int>
      */
     private function sumOutstandingByScope(Collection $rows): array

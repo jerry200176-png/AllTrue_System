@@ -136,7 +136,18 @@ class BillingPayableResolver
      * @param int[] $studentClassIds
      * @return array<int, array<string, mixed>>
      */
-    public function courseStatusesByStudentClassIds(array $studentClassIds, iterable $courses = [], bool $activeOwnedOnly = false): array
+    public function courseStatusesByStudentClassIds(array $studentClassIds, iterable $courses = []): array
+    {
+        return $this->courseStatuses($studentClassIds, $courses, activeOwnedOnly: false);
+    }
+
+    /** Complete money verdicts for the monthly roster's active, owner-matched invoices. */
+    public function activeOwnedCourseStatuses(array $studentClassIds, iterable $courses): array
+    {
+        return $this->courseStatuses($studentClassIds, $courses, activeOwnedOnly: true);
+    }
+
+    private function courseStatuses(array $studentClassIds, iterable $courses, bool $activeOwnedOnly): array
     {
         $ids = collect($studentClassIds)->map(fn ($id) => (int) $id)->filter(fn (int $id) => $id > 0)->unique()->values();
         if ($ids->isEmpty()) {

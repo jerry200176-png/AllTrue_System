@@ -39,7 +39,10 @@ final class ContractMoneyVerdict
     {
         $courses = collect($courses)->keyBy(fn (StudentClass $c) => (int) $c->getKey());
         $out = [];
-        foreach ($this->resolver->courseStatusesByStudentClassIds($courses->keys()->all(), $courses, $activeOwnedOnly) as $id => $s) {
+        $ids = $courses->keys()->all();
+        $statuses = $activeOwnedOnly ? $this->resolver->activeOwnedCourseStatuses($ids, $courses)
+            : $this->resolver->courseStatusesByStudentClassIds($ids, $courses);
+        foreach ($statuses as $id => $s) {
             $periods = $s['periods'];
             $invoiceId = $s['current_invoice_id'];
             $current = $invoiceId === null ? null : collect($periods)->first(fn ($p) => in_array($invoiceId, $p['invoice_ids'], true));
