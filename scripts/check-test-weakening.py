@@ -17,14 +17,15 @@ import sys
 
 TEST_FILE = re.compile(r"(^backend/tests/.*\.php$|\.(test|spec)\.(js|mjs|ts)$|^scripts/tests/test_.*\.py$)")
 COUNTERS = {
-    "assertions": re.compile(r"\bexpect(\.soft)?\(|->assert\w+\(|\$this->expectException|\bassert\w*\(|^\s*assert\s"),
+    "assertions": re.compile(r"\bexpect(\.soft)?\(|->assert\w+\(|\$this->expectException|\bassert[\w.]*\(|^\s*assert\s"),
     "exact assertions": re.compile(
         r"\.(toBe|toEqual|toStrictEqual|toHaveText|toHaveValue|toHaveCount|toHaveURL|toHaveLength)\(|"
-        r"assert(Same|Equals|Count|EqualsCanonicalizing)\(|assertEqual\(|^\s*assert .*==[^=]"),
+        r"assert(Same|Equals|Count|EqualsCanonicalizing)\(|assertEqual\(|assert\.(equal|strictEqual|deepEqual|deepStrictEqual)\(|"
+        r"^\s*assert .*==[^=]"),
     "test cases": re.compile(r"\b(it|test)(\.(skip|only|fixme)|\.each\(.*?\))?\(\s*['\"`]|\bfunction test\w+\(|#\[Test\]|\bdef test_\w+\("),
 }
 SKIP = re.compile(r"\.(skip|only|fixme)\(|markTestSkipped|markTestIncomplete|@pytest\.mark\.skip|unittest\.skip")
-WAIVER = re.compile(r"^\s*Test-Weakening:\s*\S.{9,}", re.M)
+WAIVER = re.compile(r"^[ \t]*Test-Weakening:[ \t]*\S.{9,}", re.M)  # reason on the same line
 
 
 def counts(lines):

@@ -58,6 +58,15 @@ class T(unittest.TestCase):
     def test_production_file_ignored(self):
         self.assertEqual(run(diff("frontend/src/lib/a.js", ["expect(x).toBe(1);"], [])), [])
 
+    def test_node_assert_deleted(self):
+        p = "scripts/tests/x.test.mjs"
+        rows = run(diff(p, ["  assert.equal(a, 1);", "  assert.ok(b);"], []))
+        self.assertIn(f"{p}: assertions 2 removed, 0 added", rows)
+        self.assertIn(f"{p}: exact assertions 1 removed, 0 added", rows)
+
+    def test_empty_waiver_does_not_borrow_next_line(self):
+        self.assertFalse(guard.WAIVER.search("Test-Weakening:\n## Risk-Class and more text\n"))
+
     def test_waiver_needs_reason(self):
         self.assertTrue(guard.WAIVER.search("x\nTest-Weakening: coupon feature removed in #1\n"))
         self.assertFalse(guard.WAIVER.search("Test-Weakening: ok\n"))
