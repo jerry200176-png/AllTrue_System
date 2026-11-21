@@ -693,7 +693,14 @@ const PAGES = [
     setup: async (page) => {
       await page.addStyleTag({ content: '#app { max-width: calc(100vw - 20px); margin-inline: auto; } @media (min-width: 1024px) { #app { max-width: calc(100vw - 352px); } }' });
       await page.getByRole('tab', { name: '月對帳表', exact: true }).click();
-      await expect(page.getByTestId('monthly-roster').getByRole('button', { name: '王小明', exact: true })).toBeVisible();
+      const student = page.getByTestId('monthly-roster').getByRole('button', { name: '王小明', exact: true });
+      await expect(student).toBeVisible();
+      const sizes = await student.evaluate((name) => {
+        const size = (element) => parseFloat(getComputedStyle(element).fontSize);
+        return { name: size(name), school: size(name.nextElementSibling), cell: size(name.parentElement) };
+      });
+      expect(sizes.name, '#585 student name follows the table body size').toBe(sizes.cell);
+      expect(sizes.name, '#585 school is secondary to the student name').toBeGreaterThan(sizes.school);
       if (process.env.TEACHER_ELIGIBILITY_SHOT_DIR) await page.getByTestId('monthly-roster').locator('[data-slot="stat-strip"]').screenshot({
         path: `${process.env.TEACHER_ELIGIBILITY_SHOT_DIR}/monthly-${page.viewportSize().width}-${await page.locator('html').getAttribute('data-text-size')}.png`,
       });
