@@ -1417,6 +1417,10 @@ class ClassSessionController extends Controller
                 return response()->json(['message' => '取消期間同一日期／時段已有其他有效堂次，為避免重複排課，未復原。'], 422);
             }
 
+            if ($previousStatus === 'scheduled' && ($cross = app(ScheduleGuardService::class)->crossCampusConflictForLesson($studentClass,
+                (string) $session->getAttribute('SessionDate'), (string) $session->getAttribute('StartTime'), (string) $session->getAttribute('EndTime')))) {
+                return ScheduleGuardService::crossCampusResponse($cross);
+            }
             $before = $this->sessionSnapshot($session);
             $session->setAttribute('Status', $previousStatus);
             if ($previousStatus === 'scheduled') {
@@ -1614,6 +1618,13 @@ class ClassSessionController extends Controller
         }
         if (!empty($data['end_time'])) {
             $session->EndTime = substr($data['end_time'], 0, 5);
+        }
+        if ($hasTimeChange && !in_array(strtolower((string) $session->Status), \App\Support\SessionStatus::futureReservationExclusionStatuses(), true)
+            && ($course = StudentClass::query()->where('ID', (int) $session->StudentClassID)->first())
+            && ($cross = app(ScheduleGuardService::class)->crossCampusConflictForLesson($course, (string) $session->SessionDate,
+                (string) $session->StartTime, (string) $session->EndTime, $oldStartHm))) {
+            // Same teacher at another campus at the new time; the caller's transaction rolls back.
+            throw new \Illuminate\Http\Exceptions\HttpResponseException(ScheduleGuardService::crossCampusResponse($cross));
         }
         if (array_key_exists('note', $data)) {
             $session->Note = $data['note'] ?? '';

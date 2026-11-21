@@ -1,0 +1,16 @@
+updates:
+  - id: staff-2026-11-21-cross-campus-guard-more-paths
+    published_at: "2026-11-21"
+    audiences:
+      - director
+      - super_admin
+    importance: digest
+    title: 更多地方會擋跨分校撞課
+    summary: 這三個地方原本沒有檢查老師在其他分校有沒有課，現在和排課一樣會擋下。
+    items:
+      - category: improved
+        text: 改某一堂的時間、復原取消的堂次、建立多科方案：老師同時段在其他分校有課會擋下，並寫出分校與時間。
+      - category: improved
+        text: 已上完、請假或取消的堂次不檢查。
+    source_refs:
+      - "changelog:2026-11-21:cross-campus-guard-more-paths"
