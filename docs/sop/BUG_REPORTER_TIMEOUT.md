@@ -1,6 +1,6 @@
 # Bug reporter-verify timeout (manual operational)
 
-> 2026-10-08 (Founder 2A): `bug-reporter-timeout.yml` also runs daily with `--auto` (resolved queue, 14 days, max 20 per run, oldest first, plain public reply). Since Founder 2026-11-17 a larger queue drains over several days instead of stopping the run. The manual dry-run/apply path below is unchanged.
+> Founder 2A automatic close runs daily at 10:40 Taipei on the production Laravel scheduler. It invokes `--auto` (resolved queue, 14 days, max 20 per run, oldest first, plain public reply). The `bugs-reporter-timeout` entry in Scheduler Evidence shows completed, zero work, failed, or missing executions. GitHub remains available for the existing manual preview and apply paths.
 
 **Status:** Manual operational capability — **not** fully automated.  
 **Owner:** Founder / CTO Agent  

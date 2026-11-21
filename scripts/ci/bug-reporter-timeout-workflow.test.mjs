@@ -49,10 +49,11 @@ assert.match(shell, /\[\[ "\$command_help" == \*--reviewed-ids\* \]\]/, 'apply c
 assert.match(shell, /php artisan bugs:close-stale-resolved --days="\$DAYS" \$ACTOR_ARG --reviewed-ids="\$REVIEWED_IDS"/, 'apply passes exact reviewed IDs');
 assert.match(step, /REVIEWED_IDS: \$\{\{ inputs\.reviewed_ids \}\}/, 'workflow dispatch input is wired');
 
-// Founder 2A: daily unattended auto mode.
-assert.match(workflow, /schedule:\n    - cron: "47 2 \* \* \*"/, 'daily schedule at 10:47 Asia/Taipei');
-assert.match(step, /MODE: \$\{\{ github\.event_name == 'schedule' && 'auto' \|\| inputs\.mode \}\}/, 'schedule runs auto, never apply');
-assert.equal(request({ MODE: 'auto', DAYS: '7' }), 0, 'scheduled auto run validates (inputs default to empty/7)');
+// The app scheduler owns the daily trigger. Keep the same manual fallback on main.
+assert.match(workflow, /^on:\n  workflow_dispatch:\n/m, 'GitHub is dispatch-only');
+assert.doesNotMatch(workflow, /^  schedule:/m, 'GitHub cannot also run the daily writer');
+assert.match(step, /MODE: \$\{\{ inputs\.mode \}\}/, 'manual dispatch selects the mode');
+assert.equal(request({ MODE: 'auto', DAYS: '7' }), 0, 'manual auto fallback validates');
 assert.equal(request({ MODE: 'auto-dry-run' }), 0, 'auto dry-run is allowed');
 assert.notEqual(request({ MODE: 'auto', REVIEWED_IDS: '335' }), 0, 'auto takes no reviewed IDs');
 assert.notEqual(request({ MODE: 'auto', CONFIRMATION: 'CLOSE_STALE_RESOLVED' }), 0, 'auto takes no confirmation');

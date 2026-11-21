@@ -3,18 +3,16 @@ name: Bug reporter verification timeout
 # Evidence Contract: a manual, fail-closed operational path for resolved bugs
 # past the reporter-verify timeout and triaged bugs whose public staff question
 # has waited 14 days (F11). Manual applies are individually reviewed and never scheduled.
-# Update 2026-10-08 (Founder 2A): the manual modes below stay unscheduled; only `auto` runs daily.
 # - dry-run / apply (manual): every apply is individually reviewed (reviewed_ids).
 # - legacy-dry-run / legacy-apply (manual, Founder GO 2026-10-31, one reviewed batch): resolves logged
 #   before the Evidence Contract (no production evidence, 60+ days old) that the timeout can never close.
 #   Same confirmation + reviewed_ids gate as apply; a reporter reply reopens to in_progress.
-# - auto (daily schedule, Founder 2A 2026-10-08): `bugs:close-stale-resolved --auto` closes resolved
+# - auto (manual fallback for the production Laravel schedule, Founder 2A 2026-10-08):
+#   `bugs:close-stale-resolved --auto` closes resolved
 #   reports with no reporter reply for 14 days, with the standard plain public reply. Resolved queue
 #   only, capped per run, re-checked under a row lock, idempotent. A reporter reply (or 問題仍存在)
 #   reopens the report. A deployed command without --auto fails the run instead of guessing.
 on:
-  schedule:
-    - cron: "47 2 * * *" # 10:47 Asia/Taipei, away from the repository's 5/10-minute sweeps
   workflow_dispatch:
     inputs:
       mode:
@@ -93,7 +91,7 @@ jobs:
         env:
           PI_SSH_USER: ${{ secrets.PI_SSH_USER }}
           PI_SSH_HOST: ${{ secrets.PI_SSH_HOST }}
-          MODE: ${{ github.event_name == 'schedule' && 'auto' || inputs.mode }}
+          MODE: ${{ inputs.mode }}
           DAYS: ${{ inputs.days || '7' }}
           ACTOR: ${{ inputs.actor }}
           CONFIRMATION: ${{ inputs.confirmation }}
