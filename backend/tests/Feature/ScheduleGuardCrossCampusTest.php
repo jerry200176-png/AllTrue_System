@@ -86,10 +86,48 @@ class ScheduleGuardCrossCampusTest extends TestCase
         $this->assertSame([], $guard->validateRecurringCourse($payload(7, '12:00')));
     }
 
-    private function teacher(): int
+    public function test_a_substituted_away_lesson_frees_the_contract_teacher_but_busies_the_substitute(): void
+    {
+        $owner = $this->teacher();
+        $substitute = $this->teacher('cross-campus-substitute@example.com');
+        $date = Carbon::today()->addDays(7)->toDateString();
+        $course = $this->course($owner, 2, '甲');
+        $this->lesson($course, $date, '17:00', '19:00');
+        $row = ['student_id' => $course->StudentID, 'student_course_id' => $course->ID, 'teacher_id' => $owner, 'branch_id' => 2,
+            'schedule_date' => $date, 'day_of_week' => Carbon::parse($date)->dayOfWeekIso, 'subject' => 'synthetic',
+            'start_time' => '17:00', 'end_time' => '19:00', 'duration_hours' => 2, 'class_type' => 'one_on_one',
+            'status' => 'scheduled', 'type' => 'normal', 'deduction' => 0];
+        // A leftover contract-teacher projection stays next to the substitute row.
+        $anchor = DB::table('schedules')->insertGetId($row);
+        DB::table('schedules')->insert(array_replace($row, ['teacher_id' => $substitute, 'original_schedule_id' => $anchor]));
+        $guard = app(ScheduleGuardService::class);
+        $payload = fn (int $teacher) => ['teacher_id' => $teacher, 'branch_id' => 1, 'class_type' => 'one_on_one',
+            'schedule_date' => $date, 'start_time' => '18:00', 'end_time' => '20:00'];
+
+        $this->assertSame([], $guard->validateScheduleOccurrence($payload($owner)));
+        $this->assertSame(['cross_campus'], array_column($guard->validateScheduleOccurrence($payload($substitute)), 'type'));
+    }
+
+    public function test_a_weekly_slot_is_blocked_by_a_one_off_lesson_at_another_campus(): void
+    {
+        $teacher = $this->teacher();
+        $date = Carbon::today()->addDays(9)->toDateString();
+        $this->lesson($this->course($teacher, 2, '補課生'), $date, '10:00', '12:00'); // no weekly template at campus 2
+        $payload = fn (string $start) => ['teacher_id' => $teacher, 'class_type' => 'one_on_one', 'branch_id' => 1,
+            'start_date' => Carbon::today()->toDateString(),
+            'slots' => [['day_of_week' => Carbon::parse($date)->dayOfWeekIso, 'start_time' => $start, 'end_time' => Carbon::parse($start)->addHours(2)->format('H:i')]]];
+        $guard = app(ScheduleGuardService::class);
+
+        $conflicts = $guard->validateRecurringCourse($payload('11:00'));
+        $this->assertSame(['cross_campus'], array_column($conflicts, 'type'));
+        $this->assertSame($date, $conflicts[0]['schedule_date']);
+        $this->assertSame([], $guard->validateRecurringCourse($payload('12:00')));
+    }
+
+    private function teacher(string $login = 'cross-campus-teacher@example.com'): int
     {
         $teacher = User::create([
-            'LoginName' => 'cross-campus-teacher@example.com', 'Name' => '老師測試', 'PSW' => 'secret',
+            'LoginName' => $login, 'Name' => '老師測試', 'PSW' => 'secret',
             'type' => 'T', 'phone' => '0922000000', 'MustChangePassword' => false,
         ]);
         foreach ([1, 2] as $campus) {
