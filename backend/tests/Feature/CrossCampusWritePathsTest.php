@@ -33,6 +33,11 @@ class CrossCampusWritePathsTest extends TestCase
 
         $api->patchJson("/api/v1/class-sessions/{$mine}", ['status' => 'scheduled', 'start_time' => '20:00', 'end_time' => '22:00'])
             ->assertOk();
+
+        // An existing clash never blocks a save that resends the same times (e.g. a note edit).
+        $clash = $this->lesson($this->course($teacher, 1, '丁'), $date, '18:30', '20:30');
+        $api->patchJson("/api/v1/class-sessions/{$clash}", ['status' => 'scheduled', 'start_time' => '18:30', 'end_time' => '20:30', 'note' => '備註'])
+            ->assertOk();
     }
 
     public function test_lesson_helper_uses_the_occurrence_teacher_and_skips_ended_lessons(): void

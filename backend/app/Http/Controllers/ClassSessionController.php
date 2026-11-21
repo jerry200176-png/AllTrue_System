@@ -1619,7 +1619,8 @@ class ClassSessionController extends Controller
         if (!empty($data['end_time'])) {
             $session->EndTime = substr($data['end_time'], 0, 5);
         }
-        if ($hasTimeChange && !in_array(strtolower((string) $session->Status), \App\Support\SessionStatus::futureReservationExclusionStatuses(), true)
+        $timesMoved = substr((string) $session->StartTime, 0, 5) !== $oldStartHm || substr((string) $session->EndTime, 0, 5) !== $oldEndHm;
+        if ($timesMoved && !in_array(strtolower((string) $session->Status), \App\Support\SessionStatus::futureReservationExclusionStatuses(), true)
             && ($course = StudentClass::query()->where('ID', (int) $session->StudentClassID)->first())
             && ($cross = app(ScheduleGuardService::class)->crossCampusConflictForLesson($course, (string) $session->SessionDate,
                 (string) $session->StartTime, (string) $session->EndTime, $oldStartHm))) {
