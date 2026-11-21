@@ -40,13 +40,17 @@ class HarnessStore:
         *,
         migrate: bool = True,
         create: bool = True,
+        read_only: bool = False,
     ) -> None:
+        if read_only and create:
+            raise ValueError("Read-only stores must already exist")
         self.db_path = Path(db_path) if db_path else default_db_path()
         if create:
             self.db_path.parent.mkdir(parents=True, exist_ok=True)
         # mode=rw atomically requires an existing file, including after a race
         # with a disconnected/moved store. as_uri escapes literal ?, # and spaces.
-        target = str(self.db_path) if create else self.db_path.resolve().as_uri() + "?mode=rw"
+        mode = "ro" if read_only else "rw"
+        target = str(self.db_path) if create else self.db_path.resolve().as_uri() + f"?mode={mode}"
         # isolation_level=None enables explicit BEGIN IMMEDIATE for lease CAS.
         try:
             self._conn = sqlite3.connect(
@@ -69,7 +73,8 @@ class HarnessStore:
             if not valid:
                 self._conn.close()
                 raise HarnessStoreUnavailable(self.db_path)
-        self._conn.execute("PRAGMA journal_mode=WAL")
+        if not read_only:
+            self._conn.execute("PRAGMA journal_mode=WAL")
         self._conn.execute("PRAGMA foreign_keys=ON")
         # For empty/test DBs. Live cutover must use schema_migrate.migrate_* first.
         if migrate and create:

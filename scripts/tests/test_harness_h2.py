@@ -79,6 +79,18 @@ class HarnessH2EvalTest(unittest.TestCase):
         self.assertFalse(result.ok)
         self.assertIn("stale_evidence", result.drift_codes)
 
+    def test_equal_ci_sha_must_be_full_and_successful(self):
+        for expected, observed, conclusion in [("", "", "success"), (SHA_A, "", "success"),
+                                                ("a" * 8, "a" * 8, "success"),
+                                                (SHA_A, SHA_A, "pending")]:
+            with self.subTest(expected=expected, observed=observed, conclusion=conclusion):
+                self.assertFalse(reconcile_ci_sha(
+                    expected_head_sha=expected, observed_ci_sha=observed, conclusion=conclusion,
+                ).autonomous)
+        self.assertTrue(reconcile_ci_sha(
+            expected_head_sha=SHA_A, observed_ci_sha=SHA_A, conclusion="success",
+        ).autonomous)
+
     def test_evidence_requires_goal_binding(self):
         goal = self._goal(SHA_A)
         env = EvidenceEnvelope(kind="ci", subject_sha=SHA_A, source="gh", goal_id="", payload={})

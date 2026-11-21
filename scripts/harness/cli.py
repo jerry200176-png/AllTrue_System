@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -14,7 +15,7 @@ from .leases import reclaim_stale
 from .planner import select_across_programs, select_next_task
 from .programs_loader import sync_programs_to_store
 from .project_state import write_projection
-from .reconcile import resume_from_checkpoint
+from .reconcile import observe_workers, resume_from_checkpoint
 from .schema_migrate import migrate_copy, migrate_live_explicit
 from .states import ACTIVE_MUTATING
 from .store import HarnessStore, HarnessStoreUnavailable
@@ -36,10 +37,9 @@ def cmd_sync(args: argparse.Namespace) -> int:
 
 
 def cmd_status(args: argparse.Namespace) -> int:
-    store = _store(args)
+    store = HarnessStore(args.db, create=False, read_only=not args.sync)
     if args.sync:
         sync_programs_to_store(store)
-    reclaim_stale(store)
     rows: list[dict[str, Any]] = []
     for prog in store.list_programs():
         tasks = store.list_tasks(program_id=prog.program_id)
@@ -58,18 +58,26 @@ def cmd_status(args: argparse.Namespace) -> int:
             ),
             "OWNER": (current.assignee if current and current.assignee else prog.owner),
         })
+    workers = observe_workers(
+        store, now=datetime.now(timezone.utc), stale_after=timedelta(minutes=args.stale_after_minutes),
+    )
+    counts = {"founder_open": len(store.list_open_escalations()), "leases": len(store.list_leases()),
+              "goals": len(store.list_goals()), "worker_runs_open": len(workers)}
+    if args.json:
+        print(json.dumps({"programs": rows, "worker_runs_open": workers, "counts": counts}, indent=2))
+        store.close()
+        return 0
+
     headers = ("PROGRAM", "CURRENT_TASK", "STATE", "OWNER")
     widths = {h: max(len(h), max((len(str(r[h])) for r in rows), default=0)) for h in headers}
     print("  ".join(h.ljust(widths[h]) for h in headers))
     print("  ".join("-" * widths[h] for h in headers))
     for row in rows:
         print("  ".join(str(row[h]).ljust(widths[h]) for h in headers))
-    open_runs = [r for r in store.list_worker_runs() if r["status"] in {"starting", "running"}]
-    print(f"\ndb={store.db_path} founder_open={len(store.list_open_escalations())} "
-          f"leases={len(store.list_leases())} goals={len(store.list_goals())} "
-          f"worker_runs_open={len(open_runs)}")
-    if args.json:
-        print(json.dumps({"programs": rows, "worker_runs_open": open_runs}, indent=2))
+    print(f"\ndb={store.db_path} " + " ".join(f"{name}={count}" for name, count in counts.items()))
+    for worker in workers:
+        print(f"{worker['run_id']} {worker['task_id']} {worker['observation']}")
+    store.close()
     return 0
 
 
@@ -81,13 +89,14 @@ def cmd_founder_inbox(args: argparse.Namespace) -> int:
 
 
 def cmd_resume(args: argparse.Namespace) -> int:
-    store = _store(args)
+    store = HarnessStore(args.db, create=False, read_only=bool(args.checkpoint and not args.sync))
     if args.sync:
         sync_programs_to_store(store)
-    reclaimed = reclaim_stale(store)
     if args.checkpoint:
         print(json.dumps(resume_from_checkpoint(store, args.checkpoint), indent=2))
+        store.close()
         return 0
+    reclaimed = reclaim_stale(store)
     running, waiting, founder = [], [], []
     for prog in store.list_programs():
         for task in store.list_tasks(program_id=prog.program_id):
@@ -229,6 +238,7 @@ def build_parser() -> argparse.ArgumentParser:
     st = sub.add_parser("status")
     st.add_argument("--sync", action="store_true")
     st.add_argument("--json", action="store_true")
+    st.add_argument("--stale-after-minutes", type=int, choices=range(1, 721), metavar="MINUTES", default=60)
     st.set_defaults(func=cmd_status)
     inbox = sub.add_parser("founder-inbox")
     inbox.set_defaults(func=cmd_founder_inbox)
