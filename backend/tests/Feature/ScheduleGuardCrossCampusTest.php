@@ -23,7 +23,7 @@ class ScheduleGuardCrossCampusTest extends TestCase
         $teacher = $this->teacher();
         $date = Carbon::today()->addDays(7)->toDateString();
         $other = $this->course($teacher, 2, '甲');
-        $this->session($other, $date, '18:00', '20:00');
+        $this->lesson($other, $date, '18:00', '20:00');
         $mine = $this->course($teacher, 1, '乙');
         $guard = app(ScheduleGuardService::class);
 
@@ -46,13 +46,13 @@ class ScheduleGuardCrossCampusTest extends TestCase
 
         // Student leave at the other campus frees the teacher.
         $date = Carbon::today()->addDays(7)->toDateString();
-        $this->session($this->course($teacher, 2, '請假生'), $date, '18:00', '20:00', 'leave');
-        $this->session($this->course($teacher, 2, '取消生'), $date, '18:00', '20:00', 'cancelled');
+        $this->lesson($this->course($teacher, 2, '請假生'), $date, '18:00', '20:00', 'leave');
+        $this->lesson($this->course($teacher, 2, '取消生'), $date, '18:00', '20:00', 'cancelled');
         $this->assertSame([], $guard->validateCourseOccurrence($mine, 1, $date, '18:00', '20:00'));
 
         // A lesson that already ended can be backfilled even when it clashed.
         $past = Carbon::today()->subDays(3)->toDateString();
-        $this->session($this->course($teacher, 2, '甲'), $past, '18:00', '20:00');
+        $this->lesson($this->course($teacher, 2, '甲'), $past, '18:00', '20:00');
         $this->assertSame([], $guard->validateCourseOccurrence($mine, 1, $past, '18:00', '20:00'));
     }
 
@@ -60,7 +60,7 @@ class ScheduleGuardCrossCampusTest extends TestCase
     {
         $teacher = $this->teacher();
         $date = Carbon::today()->addDays(7)->toDateString();
-        $this->session($this->course($teacher, 1, '甲', 'one_on_three'), $date, '18:00', '20:00');
+        $this->lesson($this->course($teacher, 1, '甲', 'one_on_three'), $date, '18:00', '20:00');
         $mine = $this->course($teacher, 1, '乙', 'one_on_three');
 
         $this->assertSame([], app(ScheduleGuardService::class)->validateCourseOccurrence($mine, 1, $date, '18:00', '20:00'));
@@ -115,7 +115,7 @@ class ScheduleGuardCrossCampusTest extends TestCase
         return StudentClass::findOrFail($id);
     }
 
-    private function session(StudentClass $course, string $date, string $start, string $end, string $status = 'scheduled'): void
+    private function lesson(StudentClass $course, string $date, string $start, string $end, string $status = 'scheduled'): void
     {
         ClassSession::create([
             'StudentClassID' => $course->ID, 'SessionDate' => $date,
