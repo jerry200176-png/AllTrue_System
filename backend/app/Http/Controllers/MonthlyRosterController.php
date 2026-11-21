@@ -9,6 +9,7 @@ use App\Models\Student;
 use App\Models\StudentClass;
 use App\Services\Billing\ContractMoneyState;
 use App\Services\Billing\ContractMoneyVerdict;
+use App\Services\Billing\ContractVerdict;
 use App\Services\ClassSessionIndexProjectionService;
 use App\Services\ClassSessionIndexReadService;
 use App\Services\MonthlyBillingService;
@@ -16,6 +17,7 @@ use App\Services\StudentClassPricingService;
 use App\Support\AttendanceStatus;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -27,6 +29,8 @@ use Illuminate\Support\Facades\DB;
  */
 final class MonthlyRosterController extends Controller
 {
+    private const EMPTY_OUTSTANDING = ['selected_billed' => 0, 'other_billed' => 0, 'undated_billed' => 0, 'unbilled' => 0];
+
     public function __construct(
         private readonly ContractMoneyVerdict $verdicts,
         private readonly ClassSessionIndexProjectionService $projection,
@@ -126,6 +130,7 @@ final class MonthlyRosterController extends Controller
             $id = (int) $c->ID;
             $v = $verdicts[$id] ?? null;
             $month = $v ? collect($v->periods)->firstWhere('billing_period', $period) : null;
+            $outstanding = $v !== null && $owes($c) ? $v->outstanding : 0;
             // The payment slip's 單價: null when the price changed inside the month (no single figure is true).
             $price = $this->pricing->slipUnitPrice($c, $start, $end);
             $rate = $price['unit_price'];
@@ -162,7 +167,9 @@ final class MonthlyRosterController extends Controller
                 'tuition_lessons' => $tuition['lessons'],
                 'tuition' => $tuition['amount'],
                 'money' => [
-                    'status' => ContractMoneyState::isWaived($c) ? 'waived' : $v?->status, 'outstanding' => $owes($c) ? $v->outstanding : 0, 'current_period' => $v?->currentPeriod,
+                    'status' => ContractMoneyState::isWaived($c) ? 'waived' : $v?->status, 'outstanding' => $outstanding, 'current_period' => $v?->currentPeriod,
+                    'outstanding_by_scope' => $v !== null && $outstanding > 0
+                        ? $this->outstandingByScope($v, $period) : self::EMPTY_OUTSTANDING,
                     // This month's amount for a monthly course; not invoiced yet = the month-end estimate.
                     'month_total' => $month['total'] ?? null, 'month_invoiced' => !empty($month['invoice_ids'] ?? []),
                     // Old data: only the Paid mark says paid (no bill, no payment) — the student ledger shows 需核對; a trial fee recorded by date is the exception.
@@ -178,6 +185,7 @@ final class MonthlyRosterController extends Controller
             'student_name' => $courseRows[0]['student_name'],
             'school' => $courseRows[0]['school'],
             'outstanding' => $courseRows->sum('money.outstanding'),
+            'outstanding_by_scope' => $this->sumOutstandingByScope($courseRows),
             'courses' => $courseRows->sortBy('subject')->values()->map(fn ($r) => array_diff_key($r, array_flip(['student_id', 'student_name', 'school']))),
         ])->sortBy('student_name')->values();
 
@@ -188,12 +196,47 @@ final class MonthlyRosterController extends Controller
                 'students' => $students->count(),
                 'courses' => $rows->count(),
                 'outstanding' => $rows->sum('money.outstanding'),
+                'outstanding_by_scope' => $this->sumOutstandingByScope($rows),
                 'paid_this_month' => $rows->sum(fn ($r) => $r['paid_this_month']->sum('amount')),
                 'tuition_total' => (int) $rows->sum('tuition'), // 學收合計
                 'tuition_unpriced' => $rows->filter(fn ($r) => $r['tuition'] === null)->count(), // courses left out of it: no known price
                 'pending_reports' => $rows->sum('pending_reports'),
             ],
         ]);
+    }
+
+    /** @return array<string, int> */
+    private function outstandingByScope(ContractVerdict $verdict, string $period): array
+    {
+        $amounts = self::EMPTY_OUTSTANDING;
+        foreach ($verdict->periods as $billed) {
+            if ($billed['invoice_ids'] === []) {
+                continue;
+            }
+            $key = match (true) {
+                $billed['billing_period'] === $period => 'selected_billed',
+                $billed['billing_period'] === null => 'undated_billed',
+                default => 'other_billed',
+            };
+            $amounts[$key] += (int) $billed['outstanding'];
+        }
+        $amounts['unbilled'] = max(0, $verdict->outstanding - array_sum($amounts));
+
+        return $amounts;
+    }
+
+    /**
+     * @param Collection<int, array<string, mixed>> $rows
+     * @return array<string, int>
+     */
+    private function sumOutstandingByScope(Collection $rows): array
+    {
+        $totals = self::EMPTY_OUTSTANDING;
+        foreach (array_keys($totals) as $key) {
+            $totals[$key] = (int) $rows->sum('money.outstanding_by_scope.' . $key);
+        }
+
+        return $totals;
     }
 
     /** One campus: a director's own (or the one picked among theirs); a super admin must pick one. 0 = not allowed. */

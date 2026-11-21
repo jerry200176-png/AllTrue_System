@@ -176,6 +176,34 @@ final class MonthlyRosterTest extends TestCase
         $this->assertGreaterThan(0, $courses[$owing->ID]['money']['outstanding']);
     }
 
+    public function test_separates_selected_month_bills_from_other_periods_and_unbilled_contracts(): void
+    {
+        $student = $this->student(1);
+        $billed = $this->course($student);
+        $unbilled = $this->course($student, ['SubjectID' => 2, 'Charge' => 7200, 'Rate' => 1800]);
+        $this->lesson($unbilled, '2026-11-04', 'attended');
+        $current = $this->bill($billed, [
+            'TotalAmount' => 4000, 'PaidAmount' => 1000, 'Status' => 'partial',
+            'billing_period' => '2026-11', 'IssueDate' => '2026-11-01',
+        ]);
+        Payment::create(['InvoiceID' => $current->id, 'Amount' => 1000, 'PaidAt' => '2026-11-05 10:00:00', 'Method' => 'cash']);
+        $this->bill($billed, ['TotalAmount' => 6000, 'Status' => 'unpaid', 'IssueDate' => '2026-10-01']);
+        $this->bill($billed, ['TotalAmount' => 5000, 'Status' => 'void', 'billing_period' => '2026-11']);
+
+        $res = $this->withToken($this->director(1))->getJson('/api/v1/accounting/monthly-roster?year=2026&month=11')->assertOk();
+
+        $expected = ['selected_billed' => 3000, 'other_billed' => 6000, 'undated_billed' => 0, 'unbilled' => 7200];
+        $res->assertJsonPath('summary.outstanding', 16200);
+        $res->assertJsonPath('summary.paid_this_month', 1000);
+        $res->assertJsonPath('summary.outstanding_by_scope', $expected);
+        $res->assertJsonPath('data.0.outstanding_by_scope', $expected);
+        $courses = collect($res->json('data.0.courses'))->keyBy('course_id');
+        $this->assertSame(['selected_billed' => 3000, 'other_billed' => 6000, 'undated_billed' => 0, 'unbilled' => 0],
+            $courses[$billed->ID]['money']['outstanding_by_scope']);
+        $this->assertSame(['selected_billed' => 0, 'other_billed' => 0, 'undated_billed' => 0, 'unbilled' => 7200],
+            $courses[$unbilled->ID]['money']['outstanding_by_scope']);
+    }
+
     public function test_a_paid_mark_with_no_bill_or_payment_says_check_it_except_a_dated_trial_fee(): void
     {
         $legacy = $this->course($this->student(1), ['Paid' => 1]);

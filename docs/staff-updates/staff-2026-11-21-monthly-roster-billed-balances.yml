@@ -1,0 +1,14 @@
+updates:
+  - id: staff-2026-11-21-monthly-roster-billed-balances
+    published_at: "2026-11-21"
+    audiences:
+      - director
+      - super_admin
+    importance: digest
+    title: 月對帳表可直接看本月帳單未收
+    summary: 月對帳表和 Excel 可分開查本月、其他月份、月份待核對的帳單及未開單餘額。
+    items:
+      - category: fixed
+        text: 切換月份後，看「本月帳單未收」即可對帳。各期餘額仍可在課程列與 Excel 查看。
+    source_refs:
+      - "changelog:2026-11-21:monthly-roster-billed-balances"
