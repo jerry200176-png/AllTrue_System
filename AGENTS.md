@@ -2,6 +2,8 @@
 
 > 唯一通用入口，只導航：一個主題只有一個權威出處。P0 紅黃線在 `CLAUDE.md`。
 >
+> **Collaborator（從 fork 送 PR、不是 repo owner 的 agent）？先讀 [`docs/agents/COLLABORATOR.md`](docs/agents/COLLABORATOR.md)：你能做什麼、不能做什麼、怎麼送 PR。下方「操作者權限」不適用於你。**
+>
 > **AllTrue AI 公司 slogan：前人種樹，後人乘涼。** 做事前查 `docs/INDEX.md` 的 Start here 與任務對應節；做完把決策寫回文件，讓下一個 AI 不靠猜測。
 
 ## Worktree & path safety (canonical)

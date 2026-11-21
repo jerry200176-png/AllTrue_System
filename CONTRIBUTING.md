@@ -4,6 +4,7 @@
 
 ## 開始之前
 
+0. **協作者（從 fork 送 PR）先讀 [`docs/agents/COLLABORATOR.md`](docs/agents/COLLABORATOR.md)**：只做指派給你的 issue、不能做的事、PR 要附什麼。
 1. 讀 [`docs/INDEX.md`](docs/INDEX.md)（導航，避免整本通讀）。
 2. 讀 [`AGENTS.md`](AGENTS.md)（AI／人類共用：分支、Commit、風險分級）。
 3. 碰觸堂數／繳費／提醒規則前讀 [`docs/DIRECTOR_PAYMENT_ALERT_RULES.md`](docs/DIRECTOR_PAYMENT_ALERT_RULES.md)（勿擅自改條件）。
