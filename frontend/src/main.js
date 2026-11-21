@@ -6,9 +6,11 @@ import './styles.css';
 import './ui.css';
 import { initTextSize } from './composables/useTextSize';
 import { installFetchRecorder, installUiRecorder } from './lib/recentApiFailures';
+import { installScheduleWarnings } from './lib/scheduleWarnings';
 
 initTextSize();
 installFetchRecorder();
+installScheduleWarnings();
 installUiRecorder();
 
 // Deploy 後舊 chunk hash 失效時，自動 reload 一次讓使用者取得最新版

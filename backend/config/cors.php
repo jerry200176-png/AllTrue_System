@@ -9,7 +9,7 @@ return [
         'http://localhost:5173',
     ]),
     'allowed_headers' => ['*'],
-    'exposed_headers' => [],
+    'exposed_headers' => ['X-Schedule-Warnings'],
     'max_age' => 3600,
     'supports_credentials' => false,
 ];

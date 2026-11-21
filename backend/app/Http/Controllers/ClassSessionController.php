@@ -2573,7 +2573,11 @@ class ClassSessionController extends Controller
         }
 
         // PRD FR-004a：跨分校（物理不可分身）衝堂檢查
-        // 過去堂次（補記）跳過；否則 operator 不可把一個已在別分校上課的老師再指派。
+        // 過去堂次（補記）不擋，只回提醒（#5588）；否則 operator 不可把一個已在別分校上課的老師再指派。
+        if ($isPastSession) {
+            app(ScheduleGuardService::class)->crossCampusConflict($newTeacherId, (int) $campusId, (string) $sessionDate,
+                (string) $startTime, (string) $endTime, $studentId > 0 ? $studentId : null);
+        }
         // 只攔截「其他分校」的物理衝突；同分校衝堂由 ScheduleGuardService 於下方以 409 處理。
         if (!$isPastSession) {
             $excludeSchedIds = [];

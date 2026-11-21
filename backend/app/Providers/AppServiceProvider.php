@@ -22,6 +22,9 @@ class AppServiceProvider extends ServiceProvider
 
     public function boot(): void
     {
+        // #5588: past-lesson cross-campus reminders ride back on a response header (bodies untouched).
+        \Illuminate\Support\Facades\Event::listen(\Illuminate\Foundation\Http\Events\RequestHandled::class,
+            fn ($event) => \App\Services\ScheduleGuardService::attachPastClashHeader($event->request, $event->response));
         // 意見與建議 anti-abuse: per signed-in user (not per IP: a whole campus shares one), same Chinese answer for every limit.
         $tooMany = fn (Request $r, array $headers) => response()->json(['message' => self::BUG_LIMIT_MESSAGE, 'code' => 'bug_report_rate_limited'], 429, $headers);
         // Throttle middleware is sorted ahead of AttachAuthUser, so auth_user may not be set yet: read the bearer token's user directly.
