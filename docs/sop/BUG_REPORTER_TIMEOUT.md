@@ -43,7 +43,7 @@ Idempotent: a service re-run yields `already_closed_by_timeout`. Does not delete
 
 ## Scheduler
 
-Not enabled in `Kernel` by default. Enabling requires Founder approval + failure alert path.
+The production `Kernel` registers `bugs-reporter-timeout` with private output and failure evidence. Before the first approved deployment, confirm that the retired GitHub `schedule` source has no queued, waiting or running jobs. Verify the first 10:40 run in Scheduler Evidence and check its outcome against the In-app queue.
 
 ## Failure / retry
 
