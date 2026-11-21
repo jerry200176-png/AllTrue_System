@@ -341,6 +341,35 @@ async function expectNoOverflowAndReachableControls(page) {
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 2)).toBe(true);
 }
 test.describe('Tuition Collection clarity browser verification', () => {
+  test('monthly roster separates selected-month invoices from balances in other months', async ({ page }) => {
+    await page.setViewportSize({ width: 393, height: 852 });
+    await page.route('**/*', route => ['127.0.0.1', 'localhost'].includes(new URL(route.request().url()).hostname)
+      ? route.fallback() : route.abort());
+    await page.route('**/api/v1/**', route => route.fulfill({ json: { data: [] } }));
+    await installMock(page);
+    const now = new Date();
+    await page.route('**/api/v1/accounting/monthly-roster**', route => {
+      const isCurrentMonth = Number(new URL(route.request().url()).searchParams.get('month')) === now.getMonth() + 1;
+      const balances = { selected_billed: isCurrentMonth ? 0 : 3400, other_billed: isCurrentMonth ? 3400 : 0,
+        undated_billed: 0, unbilled: 5700 };
+      return route.fulfill({ json: {
+        summary: { students: 1, outstanding: 9100, outstanding_by_scope: balances, paid_this_month: 0, pending_reports: 0 },
+        data: [{ student_id: 4, student_name: '合成學生', school: '', outstanding: 9100,
+          courses: [{ course_id: 42, subject: '合成數學', teacher_name: '', lessons: [], held: 0, pending_reports: 0,
+            paid_this_month: [], money: { outstanding: 9100, outstanding_by_scope: balances, status: 'unpaid' } }] }],
+      } });
+    });
+    await page.goto('/tuition-collection-pilot-mount.html');
+    await page.getByRole('tab', { name: '月對帳表', exact: true }).click();
+    const roster = page.getByTestId('monthly-roster');
+    const current = roster.locator('[data-slot="stat-item"]').filter({ hasText: '本月帳單未收' });
+    await expect(current).toContainText('NT$0');
+    await expect(roster.getByText('其他月份帳單未收 NT$3,400・未開單合約餘額 NT$5,700')).toHaveCount(2);
+    await page.getByRole('button', { name: '上一月' }).click();
+    await expect(current).toContainText('NT$3,400');
+    await expect(roster.getByTestId('roster-record-42')).toBeVisible();
+  });
+
   test('uses clear loading, empty, error, and retry feedback', async ({ page }) => {
     await installMock(page);
     await page.setViewportSize({ width: 390, height: 844 });
