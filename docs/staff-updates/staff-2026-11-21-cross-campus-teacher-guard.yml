@@ -1,0 +1,16 @@
+updates:
+  - id: staff-2026-11-21-cross-campus-teacher-guard
+    published_at: "2026-11-21"
+    audiences:
+      - director
+      - super_admin
+    importance: digest
+    title: 同一位老師不能同時排在兩個分校
+    summary: 排未來的課時，系統會檢查這位老師同一時間在其他分校有沒有課。
+    items:
+      - category: improved
+        text: 新增或修改課程時段、調課、補課、單次加課、代課：老師同一時間在其他分校已有課，會擋下並告訴您是哪個分校、幾點。
+      - category: improved
+        text: 已經上完的課照常可以補登（簽到、代課、帳務），不會被擋。只改繳費方式等、不動時段與老師的課程修改，也不會被擋。
+    source_refs:
+      - "changelog:2026-11-21:cross-campus-teacher-guard"

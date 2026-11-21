@@ -127,11 +127,12 @@ class TrialHoldTest extends TestCase
         $this->as($this->directorToken((int) $second->id))
             ->postJson('/api/v1/trial-holds', $this->holdPayload($second, $teacher))->assertCreated();
 
-        // The same-campus guard is per campus (unchanged); the availability finder sees the teacher busy everywhere.
-        $this->assertSame([], app(ScheduleGuardService::class)->validateScheduleOccurrence([
+        // The guard does not count the other campus's hold as capacity, but blocks it as a cross-campus clash (one teacher, two places).
+        $conflicts = app(ScheduleGuardService::class)->validateScheduleOccurrence([
             'teacher_id' => $teacher->id, 'branch_id' => $campus->id, 'schedule_date' => self::DATE,
             'start_time' => '20:00', 'end_time' => '20:30', 'class_type' => 'one_on_one',
-        ]));
+        ]);
+        $this->assertSame([['cross_campus', (int) $second->id]], array_map(fn ($c) => [$c['type'], $c['campus_id']], $conflicts));
         $busy = app(SubstituteService::class)->collectTeacherBusySlots((int) $teacher->id, self::DATE);
         $this->assertSame([['20:00', '20:30', (int) $second->id]], array_map(fn ($b) => [$b['start_time'], $b['end_time'], $b['campus_id']], $busy));
         $withCapacity = app(SubstituteService::class)->collectTeacherBusySlotsWithCapacity((int) $teacher->id, self::DATE);
