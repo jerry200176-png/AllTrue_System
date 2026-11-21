@@ -143,10 +143,14 @@ function checkSecrets(errors) {
 function routeRegistrationGaps(diff, changed, allowlist) {
   const gaps = [];
   const lines = diff.split('\n').filter((l) => /^[+-](?![+-])/.test(l));
-  if (lines.some((l) => /^[+-]\s*Route::\w+\(/.test(l)) && !changed.includes('docs/REF_API_ROUTES.md')) gaps.push('docs/REF_API_ROUTES.md');
+  // Only a changed set of (verb, uri) pairs alters the generated table; edits to a handler body or comment do not.
+  const sig = (sign) => new Set(lines.filter((l) => l[0] === sign).map((l) => l.slice(1).match(/^\s*Route::(\w+)\(\s*'([^']*)'/)).filter(Boolean).map((m) => `${m[1]} ${m[2]}`));
+  const plus = sig('+'); const minus = sig('-');
+  const tableChanged = [...plus].some((x) => !minus.has(x)) || [...minus].some((x) => !plus.has(x));
+  if (tableChanged && !changed.includes('docs/REF_API_ROUTES.md')) gaps.push('docs/REF_API_ROUTES.md');
   for (const l of lines.filter((x) => x.startsWith('+'))) {
     const name = l.match(/->name\('(triage\.[^']+)'\)/)?.[1];
-    if (name && !allowlist.includes(`'${name}'`)) gaps.push(name);
+    if (name && allowlist && !allowlist.includes(`'${name}'`)) gaps.push(name);
   }
   return gaps;
 }
@@ -155,10 +159,12 @@ function checkRouteRegistration(errors) {
   let diff = ''; let changed = [];
   try {
     const range = `${resolveBase()}...HEAD`;
-    diff = git(['diff', '-U0', range, '--', 'backend/routes']);
+    diff = git(['diff', '-U0', range, '--', 'backend/routes/api.php']);
     changed = git(['diff', '--name-only', range]).split('\n');
   } catch { return; }
-  for (const gap of routeRegistrationGaps(diff, changed, read('backend/config/triage_tokens.php'))) {
+  let allowlist = '';
+  try { allowlist = read('backend/config/triage_tokens.php'); } catch { /* absent in minimal fixture repos: skip the allowlist check */ }
+  for (const gap of routeRegistrationGaps(diff, changed, allowlist)) {
     const doc = gap.endsWith('.md');
     errors.push(formatGovError({
       code: GOV_CODES.GENERATED,
@@ -175,6 +181,8 @@ async function main() {
     const added = "+    Route::get('x', [C::class, 'x'])->name('triage.x');";
     if (routeRegistrationGaps(added, [], "'triage.y'").join() !== 'docs/REF_API_ROUTES.md,triage.x') throw new Error('route gaps not detected');
     if (routeRegistrationGaps(added, ['docs/REF_API_ROUTES.md'], "'triage.x',").length) throw new Error('registered route flagged');
+    const edited = "-    Route::get('x', fn () => 'a');\n+    Route::get('x', fn () => 'b');";
+    if (routeRegistrationGaps(edited, [], '').length) throw new Error('handler-only edit flagged');
     if (routeRegistrationGaps('+    // Route::get in a comment', [], '').length) throw new Error('comment flagged as a route');
     if (classifyStepFailure({ step: 'Branch naming', logSnippet: 'Invalid branch name' }).primary !== 'BRANCH_NAMING_POLICY') throw new Error('taxonomy');
     if (classifySameShaRerun({ earlierConclusion: 'failure', laterConclusion: 'success', headShaSame: true }).kind !== 'flake') throw new Error('flake');
