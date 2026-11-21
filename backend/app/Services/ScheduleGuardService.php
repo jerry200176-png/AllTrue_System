@@ -289,7 +289,7 @@ class ScheduleGuardService
             ->join('Student as st', 'st.id', '=', 'sc.StudentID')
             ->where('sc.TeacherID', $teacherId)
             ->where('st.CampusID', '!=', $branchId)
-            ->whereDate('cs.SessionDate', $date)
+            ->where('cs.SessionDate', $date) // date column: plain equality keeps the (StudentClassID, SessionDate) index
             ->whereNotIn('cs.Status', SessionStatus::futureReservationExclusionStatuses())
             ->where('cs.StartTime', '<', $end . ':00')
             ->where('cs.EndTime', '>', $start . ':00')
