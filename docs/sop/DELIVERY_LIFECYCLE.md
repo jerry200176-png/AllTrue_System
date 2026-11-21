@@ -108,12 +108,14 @@ last_reviewed: 2026-11-12
 - `qa-lead` 對階段 4 不變式範圍的 PR 確認性質測試存在且在 CI 跑；Infection（後端）／Stryker（前端）對變更行的 advisory 結果附在 PR，不擋合併。
 - 有 UI：`product-designer` 看視覺差異（自動視覺回歸是**目標（L6，#4952）**）。
 - 全過後加 `queue`（[`MERGE_SOP.md`](MERGE_SOP.md)）。
+- 合併佇列只會對有確證的 runner 啟動失敗在原 head 嘗試重跑一次。測試失敗、取消或逾時須先讀原檢查診斷。重跑結果不明時回查原 run，無法確認就保留證據與操作頁。既有佇列在同 head 等候超過 60 分鐘會留言一次（Actions variable `LAND_QUEUE_ATTENTION_MINUTES` 可設 15–360），不解除原關卡。
 
 ### 階段 7：上線
 
 - `pr_declaration.py` 印出 `Activation: needs the Founder's click` 的 PR（例如登入／權限套件升級），合併後到 Founder 核准前，之後每個合併都排在它後面、不會上線。這種 PR 排在 release train 前合併，並告訴 Founder（2026-11-17：#5417 讓當天下午的修正都沒上線）。
 - 唯一的部署執行器是 `deploy.yml`。哪些範圍跟自己的 CI 自動上線、哪些等 release train 或 Founder 按：見 `FOUNDER_STANDING_DECISIONS.md` 2026-10-21（二）之二與 2026-10-28（二）之二（此處不摘要）。
 - `release-manager`：確認這班有哪些 PR、寫 go／no-go 摘要；要 Founder 按時，一次列清楚按什麼、為什麼。
+- 已知正式 run 時用 `bash scripts/wait-github-deploy.sh --once --run-id <ID> --sha <target>` 取唯讀狀態。`approval_required` 帶有效頁面、目標及接續步驟（exit 3）。完成後回查同一 run。若結果為 `not_deployed` 或 `unverified`（exit 4），先看 release-state 與正式部署證據。完整後端 SHA 與原 run 的正式 job 核對成功才回 exit 0，前端版本另列。
 - Release 說明：每次 production 部署成功發布一則 GitHub Release，tag 為 CalVer `vYYYY.MM.DD.N`，說明用 GitHub 內建產生（`.github/release.yml` 依 `type:` 標籤分類，涵蓋上一則 Release 之後的 PR）。這是唯一的 Release 來源；`release.yml` 已移除。
 
 ### 階段 8：驗證

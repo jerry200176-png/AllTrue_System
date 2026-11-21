@@ -66,6 +66,8 @@ elif name == "curl":
 elif name == "gh" and args[:2] == ["run", "list"]:
     emit(data["pi"] if any("pi-health.yml" in a for a in args)
          else data["matching"] if "--commit" in args else data["runs"])
+elif name == "gh" and args[:2] == ["run", "view"]:
+    emit(next((run for run in data["runs"] if str(run["databaseId"]) == args[2]), {}))
 elif name == "gh" and args[:1] == ["api"]:
     path = args[1].split("?")[0]
     if path.endswith("/logs"):
@@ -90,7 +92,7 @@ else:
         for name in ["git", "curl", "gh"]:
             (self.root / name).symlink_to(stub)
 
-    def run_helper(self):
+    def run_helper(self, run_id=None):
         fixture = self.root / "fixture.json"
         fixture.write_text(json.dumps(self.fixture))
         env = os.environ.copy()
@@ -99,6 +101,10 @@ else:
                    TMPDIR=str(self.root / "scratch"),
                    ALLTRUE_PROD_URL="https://example.invalid",
                    ALLTRUE_REPO="synthetic/identity")
+        if run_id is None:
+            env.pop("ALLTRUE_DEPLOY_RUN_ID", None)
+        else:
+            env["ALLTRUE_DEPLOY_RUN_ID"] = str(run_id)
         result = subprocess.run(["bash", str(SCRIPT_PATH)], env=env,
                                 capture_output=True, text=True, timeout=15)
         self.assertEqual([], list((self.root / "scratch").iterdir()), "helper leaked temporary evidence")
@@ -142,6 +148,20 @@ else:
         self.assertEqual(frontend_sha, identity["deployed_frontend_build_sha"])
         self.assertEqual(frontend_sha, identity["deployment_manifest_frontend_sha"])
         self.assertEqual(200, identity["production_deploy_job"]["id"])
+
+    def test_pinned_run_proves_backend_only_release_without_scanning_other_deploys(self):
+        frontend_sha = "b" * 40
+        self.fixture["version"]["build_sha"] = frontend_sha
+        self.fixture["deployment"]["frontend_build_sha"] = frontend_sha
+        result, identity = self.run_helper(run_id=20)
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertEqual(20, identity["production_deploy_job"]["run_id"])
+        self.assertEqual(self.sha, identity["deployed_backend_full_sha"])
+        self.assertEqual(frontend_sha, identity["deployed_frontend_build_sha"])
+        calls = [json.loads(line) for line in (self.root / "calls.jsonl").read_text().splitlines()]
+        self.assertFalse(any(name == "gh" and args[:2] == ["run", "list"]
+                             and "--workflow=deploy.yml" in args for name, args in calls))
+        self.assertTrue(any(name == "gh" and args[:3] == ["run", "view", "20"] for name, args in calls))
 
     def test_resolved_target_must_match_manifest_not_just_workflow_revision(self):
         self.fixture["resolver_logs"]["201"] = "2026-11-18T08:01:00Z Resolved activation target: " + "b" * 40 + "\n"

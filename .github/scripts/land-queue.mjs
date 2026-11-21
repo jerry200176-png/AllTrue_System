@@ -55,7 +55,7 @@ function latestRuns(rollup) {
   for (const c of rollup || []) {
     const name = c.name || c.context;
     // A check still waiting for a runner (e.g. an accepted rerun) has no startedAt yet; it is the newest attempt (#4705).
-    const at = c.startedAt || c.createdAt || (c.status && String(c.status).toUpperCase() !== 'COMPLETED' ? '~' : '');
+    const at = c.startedAt || c.createdAt || ((c.__typename === 'CheckRun' || c.name) && c.status !== 'COMPLETED' ? '~' : '');
     if (name && (!latest.has(name) || at >= latest.get(name).at)) latest.set(name, { c, at });
   }
   return new Map([...latest].map(([n, v]) => [n, v.c]));
@@ -67,6 +67,7 @@ export function checkStates(rollup, required) {
   return Object.fromEntries(required.map((name) => {
     const c = latest.get(name);
     if (!c) return [name, 'pending'];
+    if ((c.__typename === 'CheckRun' || c.name) && c.status !== 'COMPLETED') return [name, 'pending'];
     const v = String(c.conclusion || c.state || '').toUpperCase();
     return [name, FAILED.has(v) ? 'fail' : PASSED.has(v) ? 'pass' : 'pending'];
   }));
@@ -102,12 +103,14 @@ export function decide(pr, required) {
   const states = checkStates(pr.rollup, required);
   const failed = Object.keys(states).filter((n) => states[n] === 'fail');
   if (failed.length) {
-    // Failed or cancelled: rerun those workflow runs once per head before dropping (#4700). A flaky test or a starved
-    // runner passes on the retry; a real failure fails again and is rejected by the executor's once-per-head marker.
+    // Only a runner startup failure supplies evidence for an unattended retry.
+    // Failure, timeout and cancellation can be deterministic or intentional.
     const latest = latestRuns(pr.rollup);
     const runs = failed.map((n) => latest.get(n)?.checkSuite?.workflowRun?.databaseId);
-    if (runs.every(Boolean)) return { action: 'rerun', reason: 'rerun-once', runs: [...new Set(runs)], text: `required checks failed or were cancelled (${failed.join(', ')}); rerunning them once on this head. The label stays.` };
-    return { action: 'reject', reason: 'checks', text: `required checks failed: ${failed.join(', ')}. Fix and re-add \`queue\`` };
+    if (runs.every(Boolean) && failed.every((name) => latest.get(name)?.conclusion === 'STARTUP_FAILURE')) {
+      return { action: 'rerun', reason: 'rerun-once', runs: [...new Set(runs)], text: `runner startup failed (${failed.join(', ')}); one retry may be attempted on this head.` };
+    }
+    return { action: 'reject', reason: 'checks', text: `required checks failed: ${failed.join(', ')}. Read the failed checks on this exact head, correct the cause, then re-add \`queue\`.` };
   }
   const allGreen = Object.values(states).every((s) => s === 'pass');
   // CLEAN = GitHub happy path. UNSTABLE = a non-required check failed/cancelled while
@@ -117,6 +120,57 @@ export function decide(pr, required) {
   if (statusOk && allGreen && open === 0 && pr.review?.ok !== true) return { action: 'wait', reason: 'review-pending', text: `waiting for an independent review of this exact head ${pr.sha} (${pr.review?.why || 'review state unknown'}). Codex re-reviews new commits; if it is rate-limited, the orchestrator's reviewer agent can record the fallback marker (see .github/scripts/review-gate.mjs). The label stays.` };
   if (statusOk && allGreen) return open === 0 ? { action: 'merge' } : { action: 'wait', reason: 'threads-unknown' };
   return { action: 'wait' };
+}
+
+export function waitingNotice(pr, required, decision, labeledAt, now, maxWaitMinutes) {
+  if (decision.action !== 'wait' || decision.reason === 'review-pending') return null;
+  const queuedAt = Date.parse(labeledAt);
+  if (!Number.isFinite(queuedAt)) return null;
+  const latest = latestRuns(pr.rollup);
+  const recentChecks = required.map((name) => {
+    const check = latest.get(name);
+    return Date.parse(check?.startedAt || check?.createdAt || '');
+  }).filter(Number.isFinite);
+  const lastObserved = Math.max(queuedAt, ...recentChecks);
+  if (now - lastObserved < maxWaitMinutes * 60_000) return null;
+  const states = checkStates(pr.rollup, required);
+  const pending = required.filter((name) => states[name] === 'pending');
+  if (pending.length) {
+    return { reason: 'checks-waiting-long', text: `required checks are still pending on this head: ${pending.join(', ')}. Open this PR's Checks tab and read the existing run before retrying. Queue stays in place.` };
+  }
+  return { reason: 'merge-waiting-long', text: 'required checks have finished, but the PR is still waiting. Check the merge box, native rules and review evidence for this head. Queue stays in place.' };
+}
+
+export function canRetryStartup(run, sha) {
+  return run?.head_sha === sha && run?.status === 'completed' && run?.run_attempt === 1
+    && ['startup_failure', 'failure'].includes(run?.conclusion);
+}
+
+export function queuedAtHead(current, sha) {
+  return current?.head?.sha === sha && current.state === 'open' && current.draft === false
+    && current.base?.ref === 'main' && Array.isArray(current.labels)
+    && current.labels.some((label) => label?.name === 'queue');
+}
+
+export function retryStartup(sha, { readRun, hasIntent, recordIntent, matchesCurrentHead, request }) {
+  let run;
+  try { run = readRun(); } catch { return 'ineligible'; }
+  if (run?.head_sha === sha && (['queued', 'pending', 'in_progress', 'waiting', 'requested'].includes(run.status)
+      || run.conclusion === 'success')) return 'wait';
+  if (!canRetryStartup(run, sha) || hasIntent()) return 'ineligible';
+  const priorAttempt = run.run_attempt;
+  recordIntent(); // no native write without durable intent
+  try {
+    if (!matchesCurrentHead()) return 'head-moved';
+  } catch { return 'unconfirmed'; }
+  try {
+    request();
+    return 'accepted';
+  } catch {
+    let observed;
+    try { observed = readRun(); } catch { return 'unconfirmed'; }
+    return observed?.head_sha === sha && observed?.run_attempt > priorAttempt ? 'accepted' : 'unconfirmed';
+  }
 }
 
 // Batch: up to BATCH_MAX oldest eligible PRs (one is enough) tested together on a branch cut from the main tip.
@@ -425,6 +479,8 @@ function startBatch(queue, required) {
 function processQueue() {
   const { required, strict } = requiredChecks();
   const listed = JSON.parse(gh('pr', 'list', '--repo', REPO, '--label', 'queue', '--state', 'open', '--base', 'main', '--json', 'number,isDraft,baseRefName,isCrossRepository'));
+  const configuredWait = Number(process.env.LAND_QUEUE_ATTENTION_MINUTES);
+  const maxWaitMinutes = Number.isInteger(configuredWait) && configuredWait >= 15 && configuredWait <= 360 ? configuredWait : 60;
   const queue = orderQueue(listed.map((p) => ({ ...p, labeledAt: labeledAt(p.number) })));
   console.log(`queue: ${queue.map((p) => '#' + p.number).join(' ') || '(empty)'}; batching ${strict ? 'off (strict up-to-date still required)' : 'on'}`);
   const open = api(`git/matching-refs/heads/${BATCH_PREFIX}`).filter((b) => {
@@ -456,13 +512,28 @@ function processQueue() {
     }
     if (d.action === 'reject') { reject(n, pr.sha, d); continue; }
     if (d.action === 'rerun') {
-      // Once per workflow run per head: each accepted rerun leaves its own marker (a refused request stays eligible);
-      // a run that fails or is cancelled again after its rerun rejects.
+      // Record intent before the request. A lost response must never cause a
+      // second POST. Read the native attempt again before deciding the outcome.
       const key = (id) => `${pr.sha}:${id}`;
-      if (d.runs.some((id) => seen(n, marker(d.reason, key(id))))) { reject(n, pr.sha, { reason: 'checks', text: `required checks failed again after one rerun on this head. Fix and re-add \`queue\`` }); continue; }
+      const needsReview = [];
+      let headMoved = false;
       for (const id of d.runs) {
-        try { gh('api', '-X', 'POST', `/repos/${REPO}/actions/runs/${id}/rerun-failed-jobs`); } catch (e) { console.log(`#${n} rerun ${id}: ${e.message}`); continue; }
-        note(n, key(id), d.reason, `${d.text} (run ${id})`);
+        const endpoint = `actions/runs/${id}`;
+        const result = retryStartup(pr.sha, {
+          readRun: () => api(endpoint),
+          hasIntent: () => seen(n, marker(d.reason, key(id))),
+          recordIntent: () => note(n, key(id), d.reason, `${d.text} (run ${id})`),
+          matchesCurrentHead: () => queuedAtHead(api(`pulls/${n}`), pr.sha),
+          request: () => gh('api', '-X', 'POST', `/repos/${REPO}/${endpoint}/rerun-failed-jobs`),
+        });
+        if (result === 'head-moved') { headMoved = true; break; }
+        if (result === 'ineligible') needsReview.push(id);
+        if (result === 'unconfirmed') {
+          note(n, key(id), 'rerun-unconfirmed', `retry result could not be confirmed. Inspect https://github.com/${REPO}/actions/runs/${id} before taking any further action.`);
+        }
+      }
+      if (needsReview.length && !headMoved) {
+        reject(n, pr.sha, { reason: 'checks', text: `inspect ${needsReview.map((id) => `https://github.com/${REPO}/actions/runs/${id}`).join(', ')}. An automatic retry is not available for this head. Confirm the existing run, resolve the failure, then re-add \`queue\`.` });
       }
       continue;
     }
@@ -470,6 +541,8 @@ function processQueue() {
     // load()'s thread count may be stale; guardedSquash re-reads it and skips this PR unless it is still 0.
     if (d.action === 'merge') { if (guardedSquash(n, pr.sha, unresolvedThreads, readReview, squash)) break; continue; }
     if (d.reason === 'review-pending') note(n, pr.sha, d.reason, d.text); // once per head SHA
+    const notice = waitingNotice(pr, required, d, labeledAt, Date.now(), maxWaitMinutes);
+    if (notice) note(n, pr.sha, notice.reason, notice.text);
     kickChecksIfMissing(n, pr);
     continue; // wait: don't block the PRs behind it (no head-of-line blocking)
   }
