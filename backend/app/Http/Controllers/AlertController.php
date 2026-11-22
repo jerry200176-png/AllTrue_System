@@ -201,6 +201,18 @@ class AlertController extends Controller
         }
         $openMonthlyInvoiceMap = $this->openInvoiceByStudentClassIds($dateResults->pluck('ID')->unique()->values()->all());
         $pendingReportMap = self::latestPendingReportByStudentClassIds($allClassIds);
+        // in-app #589: use the all-period verdict to preserve review and overdue work. Require active,
+        // owner-matched settlement too: a stale invoice link must never hide another student's reminder.
+        $settledDateCourses = $dateResults->filter(function (StudentClass $course) use ($today, $courseStatuses, $openMonthlyInvoiceMap, $pendingReportMap) {
+            $id = (int) $course->ID;
+            return $course->EndDate && substr((string) $course->EndDate, 0, 10) < $today->toDateString()
+                && empty($openMonthlyInvoiceMap[$id]['due_date'])
+                && !isset($pendingReportMap[$id])
+                && $this->isInvoiceSettled($courseStatuses[$id] ?? null)
+                && $course->isEffectivelyPaid();
+        });
+        $ownedSettledStatuses = $this->payableResolver->activeOwnedCourseStatuses($settledDateCourses->pluck('ID')->all(), $settledDateCourses);
+        $closedMonthlyReminderIds = array_filter($ownedSettledStatuses, $this->isInvoiceSettled(...));
         $newerCourseMap = self::newerCourseByStudentClassIds($allClassIds);
         $subjectNameMap = $this->subjectNameMapForCourses($countResults->merge($dateResults)->merge($pendingSettlementResults));
 
@@ -380,14 +392,12 @@ class AlertController extends Controller
             )
             ->merge(
                 // Exclude monthly-package members from individual date-mode alerts
-                $dateResults->filter(fn ($c) => !$monthlyPkgMemberIds->contains($c->ID))
+                $dateResults->filter(fn ($c) => !$monthlyPkgMemberIds->contains($c->ID) && !isset($closedMonthlyReminderIds[(int) $c->ID]))
                     ->map(fn ($c) => $this->mapMonthlyAlert(
                         $c,
                         $today,
                         $openMonthlyInvoiceMap[(int) $c->ID] ?? null,
-                        $subjectNameMap,
-                        $courseStatuses[(int) $c->ID] ?? null,
-                        isset($pendingReportMap[(int) $c->ID])
+                        $subjectNameMap
                     ))->filter()
             )
             ->merge(
@@ -680,7 +690,14 @@ class AlertController extends Controller
         return (int) ($pkg->remaining_sessions ?? 0) <= 2 ? 'renew_needed' : 'paid';
     }
 
-    private function mapMonthlyAlert(StudentClass $c, Carbon $today, ?array $openInvoice = null, array $subjectNameMap = [], ?array $verdict = null, bool $hasPendingReport = false): ?array
+    private function isInvoiceSettled(?array $verdict): bool
+    {
+        return ($verdict['status'] ?? null) === 'paid'
+            && ($verdict['source'] ?? null) === 'invoice'
+            && ($verdict['outstanding'] ?? null) === 0;
+    }
+
+    private function mapMonthlyAlert(StudentClass $c, Carbon $today, ?array $openInvoice = null, array $subjectNameMap = []): ?array
     {
         $settlementDay = (int) ($c->settlement_day ?? 0);
         if ($settlementDay < 1 || $settlementDay > 31) {
@@ -698,15 +715,6 @@ class AlertController extends Controller
         }
 
         $isPaid = (int) ($c->Paid ?? 0) === 1 || $c->isEffectivelyPaid();
-        // in-app #589 (Founder 2026-11-22): a paid monthly course whose EndDate has passed has no next settlement.
-        // Only the billing verdict may call it settled (not the legacy flag alone), so nothing owed or unchecked is hidden.
-        $verifiedSettlement = ($verdict['outstanding'] ?? null) === 0
-            && (($verdict['status'] ?? null) === 'free'
-                || (($verdict['status'] ?? null) === 'paid' && ($verdict['source'] ?? null) === 'invoice'));
-        if ($isPaid && $verifiedSettlement && !$hasPendingReport
-            && $c->EndDate && substr((string) $c->EndDate, 0, 10) < $today->toDateString()) {
-            return null;
-        }
         $thisDue = $this->settlementDateInMonth((int) $today->year, (int) $today->month, $settlementDay);
 
         if (!$isPaid) {

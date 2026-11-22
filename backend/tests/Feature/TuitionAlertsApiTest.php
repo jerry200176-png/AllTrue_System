@@ -341,6 +341,23 @@ class TuitionAlertsApiTest extends TestCase
             'StartDate' => '2026-08-01',
             'EndDate' => '2026-08-31',
         ]);
+        $foreignInvoiceCourse = $this->createMonthlyClass($student->id, [
+            'settlement_day' => 22,
+            'Paid' => 1,
+            'StartDate' => '2026-08-01',
+            'EndDate' => '2026-08-31',
+        ]);
+        $otherStudent = Student::create(['name' => '另一位學生', 'CampusID' => 1, 'ClassID' => 1, 'enable' => 1, 'MDT' => now(), 'Notify_Token' => '']);
+        $foreignInvoice = Invoice::create([
+            'StudentID' => $otherStudent->id,
+            'StudentClassID' => $foreignInvoiceCourse->ID,
+            'IssueDate' => '2026-08-01',
+            'DueDate' => '2026-08-22',
+            'TotalAmount' => 5000,
+            'Status' => 'paid',
+            'billing_period' => '2026-08',
+        ]);
+        Payment::create(['InvoiceID' => $foreignInvoice->id, 'Amount' => 5000, 'Method' => 'cash', 'PaidAt' => '2026-08-12']);
 
         $res = $this->withHeaders([
             'Authorization' => "Bearer {$token}",
@@ -352,6 +369,7 @@ class TuitionAlertsApiTest extends TestCase
         $this->assertNotNull($rows->firstWhere('id', $endedFlagOnly->ID), 'ended, flag paid, nothing applied: still listed');
         $this->assertNull($rows->firstWhere('id', $endedPaid->ID), 'ended and paid: no next settlement');
         $this->assertNotNull($rows->firstWhere('id', $legacyOnly->ID), 'ended with only a legacy paid flag and no invoice must stay listed');
+        $this->assertNotNull($rows->firstWhere('id', $foreignInvoiceCourse->ID), 'a mislinked invoice cannot settle a different student’s course');
         $this->assertSame('monthly_due_soon', $rows->firstWhere('id', $endedUnpaid->ID)['alert_type'] ?? null, 'ended but unpaid stays listed');
         $this->assertSame('monthly_due_soon', $rows->firstWhere('id', $runningPaid->ID)['alert_type'] ?? null, 'still running: unchanged');
 
