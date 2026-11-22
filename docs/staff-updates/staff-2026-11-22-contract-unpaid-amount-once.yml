@@ -1,0 +1,14 @@
+updates:
+  - id: staff-2026-11-22-contract-unpaid-amount-once
+    published_at: "2026-11-22"
+    audiences:
+      - director
+      - super_admin
+    importance: digest
+    title: 合約卡的未繳金額只顯示一次
+    summary: 收合時從標題列查看未繳金額，展開後從金額明細查看。
+    items:
+      - category: improved
+        text: 帳單摘要與待收列的未繳金額相同時，展開的合約只在金額明細顯示一次。兩者不同時會保留兩個金額供核對。
+    source_refs:
+      - "changelog:2026-11-22:contract-unpaid-amount-once"

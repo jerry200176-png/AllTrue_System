@@ -54,6 +54,38 @@ describe('ContractCard collapsed line', () => {
     expect(w.find('[data-testid="contract-left"]').exists()).toBe(false);
   });
 
+  it('in-app #572: shows the same unpaid amount once while preserving collection and both card states', async () => {
+    const w = await card({ outstanding: 3000, amounts: { due: 8000, received: 5000, owed: 3000 } });
+    const toggle = w.get('[data-testid="contract-toggle"]');
+    expect(w.get('[data-testid="contract-pill"]').text()).toBe('未繳 NT$ 3,000');
+
+    await toggle.trigger('click');
+    expect(w.get('[data-testid="contract-pill"]').text()).toBe('未繳');
+    expect(w.get('[data-testid="contract-amounts"]').text()).toBe('本合約帳單 應收 NT$ 8,000・已收 NT$ 5,000');
+    expect(w.get('[data-testid="contract-money"]').text()).toContain('未繳 NT$ 3,000');
+    expect(w.text().match(/NT\$ 3,000/g)).toHaveLength(1);
+    await w.get('[data-testid="contract-record"]').trigger('click');
+    expect(w.emitted('record')).toEqual([[w.props('course')]]);
+
+    await toggle.trigger('click');
+    expect(w.get('[data-testid="contract-pill"]').text()).toBe('未繳 NT$ 3,000');
+    expect(w.find('[data-testid="contract-money"]').exists()).toBe(false);
+  });
+
+  it('keeps different unpaid totals visible when the expanded card has distinct balances', async () => {
+    const w = await card({ expanded: true, outstanding: 3000, amounts: { due: 8000, received: 5100, owed: 2900 } });
+    expect(w.get('[data-testid="contract-pill"]').text()).toBe('未繳 NT$ 3,000');
+    expect(w.get('[data-testid="contract-amounts"]').text()).toContain('未繳 NT$ 2,900');
+    expect(w.get('[data-testid="contract-money"]').text()).toContain('未繳 NT$ 3,000');
+  });
+
+  it('keeps the pending report amount and date available in the expanded card', async () => {
+    const w = await card({ expanded: true, outstanding: 3000, amounts: { due: 8000, received: 5000, owed: 3000 }, pendingReport: { report_id: 1, amount: 2000, date: '2026-10-05' } });
+    expect(w.get('[data-testid="contract-pill"]').text()).toContain('NT$ 2,000');
+    expect(w.get('[data-testid="contract-money"]').text()).toContain('NT$ 2,000（10/5 家長回報）');
+    expect(w.get('[data-testid="contract-confirm"]').text()).toBe('確認入帳');
+  });
+
   it.each([
     ['pending report -> 確認入帳', { pendingReport: { report_id: 1, amount: 500 }, outstanding: 500 }, 'contract-confirm'],
     ['owes -> 登記這筆', { outstanding: 800 }, 'contract-record'],
