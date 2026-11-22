@@ -450,6 +450,99 @@ async function installMock(page) {
     ] }),
   }));
 }
+
+for (const [width, scenario] of [[390, 'opens the exact form'], [1440, 'opens the exact form'], [390, 'blocks fresh shared terms'], [390, 'save and next never wraps']]) {
+  test(`in-app #592 unbilled shortcut ${scenario} @${width}`, async ({ page }, info) => {
+    const writes = [];
+    const opened = [];
+    const recorded = [];
+    const regrouped = scenario === 'blocks fresh shared terms';
+    const saveNext = scenario === 'save and next never wraps';
+    const course = { id: 42, student_id: 99, student_name: '合成收款學生', subject: '合成數學',
+      schedule_mode: 'count', payment_status: 'unpaid', payable_status: 'unbilled', remaining_sessions: 6, can_record_unbilled_count: true };
+    const unrelated = { ...course, id: 43, subject: '合成英文', latest_payment_report_id: 55, payment_status: 'pending_report' };
+    const estimated = { ...course, id: 44, subject: '合成待確認', charge: 6000, can_record_unbilled_count: false };
+    const earlier = { ...course, id: 52, student_id: 100, student_name: '合成先前學生',
+      payable_status: 'invoiced', payable_outstanding: 1000, can_record_unbilled_count: false };
+    page.on('request', (request) => {
+      if (new URL(request.url()).pathname.startsWith('/api/v1/') && request.method() !== 'GET') writes.push(request.method());
+    });
+    await page.setViewportSize({ width, height: 900 });
+    await page.route('**/*', (route) => ['127.0.0.1', 'localhost'].includes(new URL(route.request().url()).hostname) ? route.fallback() : route.abort());
+    await page.route('**/api/v1/**', (route) => route.fulfill({ json: { data: [] } }));
+    await installMock(page);
+    await page.route('**/api/v1/students**', (route) => route.fulfill({ json: [{ id: 99, name: course.student_name, status: 'active', enable: 1 }] }));
+    await page.route('**/api/v1/alerts/tuition**', (route) => route.fulfill({ json: [
+      ...(saveNext ? [earlier] : []), recorded.length ? { ...course, payment_status: 'pending_report', latest_payment_report_id: 56 } : course,
+      unrelated, estimated,
+    ] }));
+    if (saveNext) await page.route('**/api/v1/payment-reports/director-record', (route) => {
+      recorded.push(route.request().postDataJSON().student_class_id);
+      return route.fulfill({ json: { status: 'pending', report_id: 56 } });
+    });
+    await page.route('**/api/v1/accounting/ledger?**', (route) => {
+      const selected = Number(new URL(route.request().url()).searchParams.get('student_class_id'));
+      opened.push(selected);
+      if (selected === earlier.id) return route.fulfill({ json: {
+        student: { id: 100, name: earlier.student_name }, summary: {}, scope: { student_class_id: selected },
+        courses: [{ ...earlier, paid: false, charge: 1000 }], invoices: [], receipts: [], anomalies: [],
+      } });
+      return route.fulfill({ json: {
+        student: { id: 99, name: course.student_name }, summary: {}, scope: { student_class_id: selected },
+        courses: [
+          { ...course, paid: false, charge: 6000, ...(regrouped ? { package_id: 8, in_package: true } : {}) },
+          { ...unrelated, paid: false, charge: 4000 },
+        ], invoices: [], anomalies: [],
+        receipts: [
+          { report_id: 55, student_class_id: 43, status: 'pending', amount: 4000 },
+          ...(recorded.length ? [{ report_id: 56, student_class_id: 42, status: 'pending', amount: 6000 }] : []),
+        ],
+      } });
+    });
+    await page.goto('/tuition-collection-pilot-mount.html');
+    const row = page.getByTestId('bill-row-c42');
+    await expect(row.getByTestId('bill-action-c42')).toHaveText('繳費單');
+    const button = row.getByTestId('bill-record-unbilled-c42');
+    await expect(button).toBeVisible();
+    await expect(row.getByTestId('bill-action-c42')).toBeVisible();
+    await expect(page.getByTestId('bill-record-unbilled-c43')).toHaveCount(0);
+    await expect(page.getByTestId('bill-row-c44')).toBeVisible();
+    await expect(page.getByTestId('bill-record-unbilled-c44')).toHaveCount(0);
+    const box = await row.boundingBox();
+    expect(box.x + box.width).toBeLessThanOrEqual(width + 1);
+    const screenshot = info.outputPath(`unbilled-record-row-${width}.png`);
+    await row.screenshot({ path: screenshot });
+    await info.attach('unbilled-record-row', { path: screenshot, contentType: 'image/png' });
+    await button.press('Enter');
+    const form = page.getByRole('dialog', { name: '登記收款', exact: true });
+    if (regrouped) {
+      await expect(page.getByTestId('ledger-initial-action-note')).toContainText('請先核對');
+      await expect(form).toHaveCount(0);
+    } else {
+      await expect(form).toBeVisible();
+      await expect(form).toContainText(course.student_name);
+      await expect(form).toContainText(course.subject);
+      await expect(form).toContainText('還沒開帳單');
+    }
+    if (saveNext) {
+      await expect(page.getByTestId('bill-row-c52')).toBeVisible();
+      expect(await row.evaluate((target) => Boolean(target.compareDocumentPosition(
+        target.closest('table').querySelector('[data-testid="bill-row-c52"]'),
+      ) & Node.DOCUMENT_POSITION_PRECEDING))).toBe(true);
+      await form.locator('input[type="number"]').fill('6000');
+      await form.getByTestId('pe-save-next').click();
+      await expect(row).toContainText('待確認入帳');
+      await expect(form).toHaveCount(0);
+      await expect(page.getByTestId('ledger-sheet-loading')).toHaveCount(0);
+      expect(recorded).toEqual([42]);
+      expect(opened).not.toContain(52);
+      expect(writes).toEqual(['POST']);
+      return;
+    }
+    expect(opened).toEqual([42]);
+    expect(writes).toEqual([]);
+  });
+}
 async function expectNoOverflowAndReachableControls(page) {
   // Every control is 44px, with two narrow, explicit exceptions that are asserted below instead:
   //  - a role=checkbox button is a 20px box whose real hit area (its ::after) must be at least 44px;

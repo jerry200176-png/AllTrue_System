@@ -1115,17 +1115,18 @@ function onQuickDone({ action, reportId }) {
 // Billing v3 step 3: 登記收款 opens the right-side payment sheet for THAT row's contract. The owing rows in list order are
 // remembered when it opens, so 儲存並看下一筆未繳 follows the list as the director sees it (current filter and sort).
 let recordQueue = [];
-function openBillSheet(b) {
+function openBillSheet(b, kind = 'record') {
   if (b.class_id == null) { openBillLedger(b, 'record'); return; }
-  recordQueue = billList.value?.owingQueue?.() || [];
-  openLedgerForStudent({ student_id: b.student_id, first_class_id: b.class_id }, { kind: 'record', classId: b.class_id });
+  recordQueue = billList.value?.owingQueue?.(kind === 'record-unbilled' ? Number(b.class_id) : null) || [];
+  openLedgerForStudent({ student_id: b.student_id, first_class_id: b.class_id }, { kind, classId: b.class_id });
   ledgerNavStudentId.value = null;
   ledgerSheetEntry.value = true;
 }
 function onSaveNext() {
   const cur = Number(ledgerStudentClassId.value);
   const owing = new Map(billRows(rows.value).filter((x) => x.kind === 'owing').map((x) => [Number(x.class_id), x]));
-  const after = recordQueue.slice(recordQueue.indexOf(cur) + 1);
+  const currentIndex = recordQueue.indexOf(cur);
+  const after = currentIndex < 0 && ledgerInitialAction.value === 'record-unbilled' ? [] : recordQueue.slice(currentIndex + 1);
   const next = after.map((id) => owing.get(Number(id))).find(Boolean);
   if (next) { ledgerInitialAction.value = 'record'; ledgerStudentClassId.value = next.class_id; ledgerReportId.value = null; return; }
   ledgerOpen.value = false;
@@ -1137,7 +1138,7 @@ function onBillAction(b, action) {
     const target = buildStudentsCommercialNav({ id: b.class_id, student_id: b.student_id }, { intent: 'purchase' });
     if (target.studentId && target.courseId) emit('navigate', target);
   } else if (action === 'confirm') onBillQuick(b);
-  else if (action === 'record') openBillSheet(b);
+  else if (action === 'record' || action === 'record-unbilled') openBillSheet(b, action);
   else if (action === 'slip') openBillSlip(b);
   else openBillLedger(b, BILL_LEDGER_ACTION[action]);
 }

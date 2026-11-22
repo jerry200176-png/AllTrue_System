@@ -1297,8 +1297,13 @@ async function runInitialAction(draftsReady) {
     if (legacy && needsLegacyChoice(legacy)) openEntry(legacy, 'legacy-backfill');
     return;
   }
-  if (action !== 'record') return;
+  if (action !== 'record' && action !== 'record-unbilled') return;
   const course = contractCourses.value.find((c) => Number(c.id) === id);
+  if (action === 'record-unbilled') {
+    if (course && canRecordUnbilledCountCourse(course, id)) openEntry(course);
+    else initialActionNote.value = '課程或帳單狀態已更新，請先核對下方資料後再登記收款。';
+    return;
+  }
   if (!course) return;
   if (needsLegacyChoice(course)) {
     if (hasConfirmedReportFor(course.id)) {
@@ -1314,6 +1319,15 @@ async function runInitialAction(draftsReady) {
   }
   // Say why the form did not open (the same conditions the card uses), instead of falling back silently.
   initialActionNote.value = recordBlockedReason(course);
+}
+function canRecordUnbilledCountCourse(course, id) {
+  const ledger = payload.value;
+  return canManageInvoices() && Number(ledger?.scope?.student_class_id) === id
+    && course.schedule_mode === 'count' && !course.in_package && !course.package_id
+    && !course.stop && !course.paid && !course.amount_pending_confirmation
+    && Number(course.charge) > 0
+    && !ledger.invoices?.some((inv) => inv.status !== 'void' && invoiceCoversCourse(inv, id))
+    && allocContracts.value.some((c) => Number(c.id) === id);
 }
 function recordBlockedReason(c) {
   if (payload.value?.scope?.no_payment_obligation || hasNoObligation(c)) return '輔導課不用繳費，所以沒有打開登記表。';
