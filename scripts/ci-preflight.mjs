@@ -179,7 +179,7 @@ function triageAllowlistGaps(diff, allowlist) {
   if (allowed === undefined || !/^(?:\s*(['"])triage\.[\w.-]+\1\s*,)*\s*(?:(['"])triage\.[\w.-]+\2)?\s*$/.test(allowed)) return [];
   const names = new Set([...allowed.matchAll(/(['"])(triage\.[\w.-]+)\1/g)].map((match) => match[2]));
   return [...new Set(routeDiffLines(diff, '+').flatMap((line) => {
-    if (!line.startsWith('Route::') && !line.startsWith('->name')) return [];
+    if (!line.startsWith('Route::') && !line.startsWith('->')) return [];
     // Match the fluent call outside quoted strings and inline comments.
     const tokens = line.matchAll(/"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|\/\*.*?\*\/|\/\/.*|#.*|->name\(\s*(['"])(triage\.[\w.-]+)\1\s*\)/g);
     return [...tokens].map((match) => match[2]).filter((name) => name && !names.has(name));
@@ -223,6 +223,8 @@ async function main() {
     if (triageAllowlistGaps(added, "'allowed_routes' => ['triage.x']").length) throw new Error('registered route flagged');
     const quoted = '+  ->name("triage.x")';
     if (triageAllowlistGaps(quoted, "'allowed_routes' => [/* 'triage.x' */ 'triage.y']").join() !== 'triage.x') throw new Error('quoted route or commented name bypassed allowlist');
+    const chained = "+  ->whereNumber('id')->name('triage.x');";
+    if (triageAllowlistGaps(chained, "'allowed_routes' => ['triage.y']").join() !== 'triage.x') throw new Error('chained route bypassed allowlist');
     const annotated = "+Route::get('x', [C::class, 'x']); // ->name('triage.x')";
     if (triageAllowlistGaps(annotated, "'allowed_routes' => ['triage.y']").length) throw new Error('inline comment mistaken for a route name');
     const explanation = `+Route::get('x', fn () => "->name('triage.x')");`;
