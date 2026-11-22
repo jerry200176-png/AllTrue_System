@@ -138,40 +138,69 @@ function checkSecrets(errors) {
   }
 }
 
-// A route change must carry its registrations in the same push (2026-11-20: two CI rounds lost on #5550).
-// Pure: diff = `git diff -U0` of backend/routes, changed = changed paths, allowlist = triage_tokens.php text.
-function routeRegistrationGaps(diff, changed, allowlist) {
+// New triage route names must be added to the same push's allowlist.
+function triageAllowlistGaps(diff, allowlist) {
+  if (!allowlist) return [];
+  const lines = diff.split('\n').filter((line) => /^\+(?!\+\+)/.test(line));
   const gaps = [];
-  const lines = diff.split('\n').filter((l) => /^[+-](?![+-])/.test(l));
-  // Only a changed set of (verb, uri) pairs alters the generated table; edits to a handler body or comment do not.
-  const sig = (sign) => new Set(lines.filter((l) => l[0] === sign).map((l) => l.slice(1).match(/^\s*Route::(\w+)\(\s*'([^']*)'/)).filter(Boolean).map((m) => `${m[1]} ${m[2]}`));
-  const plus = sig('+'); const minus = sig('-');
-  const tableChanged = [...plus].some((x) => !minus.has(x)) || [...minus].some((x) => !plus.has(x));
-  if (tableChanged && !changed.includes('docs/REF_API_ROUTES.md')) gaps.push('docs/REF_API_ROUTES.md');
-  for (const l of lines.filter((x) => x.startsWith('+'))) {
-    const name = l.match(/->name\('(triage\.[^']+)'\)/)?.[1];
-    if (name && allowlist && !allowlist.includes(`'${name}'`)) gaps.push(name);
+  for (const line of lines) {
+    const name = line.match(/->name\('(triage\.[^']+)'\)/)?.[1];
+    if (name && !allowlist.includes(`'${name}'`)) gaps.push(name);
   }
   return gaps;
 }
 
-function checkRouteRegistration(errors) {
-  let diff = ''; let changed = [];
+function checkApiRouteReference(errors, warnings) {
+  const generator = 'scripts/generate-ref-api-routes.sh';
+  const policy = `${generator} --check (also runs in required CI)`;
+  if (!fs.existsSync(path.join(ROOT, 'backend/vendor/autoload.php'))) {
+    warnings.push(formatGovError({
+      code: GOV_CODES.GENERATED, message: 'Local API route reference check deferred: backend/vendor/autoload.php is missing',
+      policy, fix: 'Install the locked backend dependencies to run the exact check before pushing', blocking: false,
+    }));
+    return;
+  }
+  if (git(['diff', '--name-only', 'HEAD', '--', 'backend', 'docs/REF_API_ROUTES.md'])) {
+    warnings.push(formatGovError({
+      code: GOV_CODES.GENERATED, message: 'Local API route reference check deferred: uncommitted files differ from the pushed backend',
+      policy, fix: 'Commit the route and generated reference together to check the exact files before pushing', blocking: false,
+    }));
+    return;
+  }
+  // Check Laravel's full table (method, URI, action and auth) with the same generator as CI.
+  const result = spawnSync('bash', [generator, '--check'], {
+    cwd: ROOT,
+    env: { ...process.env, APP_ENV: 'testing', DB_CONNECTION: 'sqlite', DB_DATABASE: ':memory:', DATABASE_URL: '' },
+    encoding: 'utf8',
+    timeout: 30_000,
+  });
+  if (result.status === 0) return;
+  const stale = result.stderr?.includes('REF_API_ROUTES.md is stale');
+  errors.push(formatGovError({
+    code: GOV_CODES.GENERATED,
+    message: stale ? 'docs/REF_API_ROUTES.md is stale for the pushed branch' : 'The API route reference generator could not complete',
+    actual: result.error?.code ?? result.signal ?? `exit ${result.status}`,
+    policy,
+    fix: stale ? `Run bash ${generator} and commit the generated reference` : `Run bash ${generator} --check to inspect the error`,
+  }));
+}
+
+function checkRouteRegistration(errors, warnings) {
+  let diff;
   try {
     const range = `${resolveBase()}...HEAD`;
     diff = git(['diff', '-U0', range, '--', 'backend/routes/api.php']);
-    changed = git(['diff', '--name-only', range]).split('\n');
   } catch { return; }
+  if (!diff) return;
+  checkApiRouteReference(errors, warnings);
   let allowlist = '';
   try { allowlist = read('backend/config/triage_tokens.php'); } catch { /* absent in minimal fixture repos: skip the allowlist check */ }
-  for (const gap of routeRegistrationGaps(diff, changed, allowlist)) {
-    const doc = gap.endsWith('.md');
+  for (const gap of triageAllowlistGaps(diff, allowlist)) {
     errors.push(formatGovError({
       code: GOV_CODES.GENERATED,
-      message: doc ? 'A route was added, removed or changed but docs/REF_API_ROUTES.md was not updated' : `Triage route ${gap} is not in allowed_routes (every token gets 403)`,
-      actual: gap, policy: doc ? 'scripts/generate-ref-api-routes.sh --check (PHPUnit job)' : 'backend/config/triage_tokens.php',
-      fix: doc ? 'bash scripts/generate-ref-api-routes.sh (needs backend/vendor), or add/remove the row by hand in URI order; CI verifies it'
-        : `Add '${gap}' to allowed_routes in backend/config/triage_tokens.php`,
+      message: `Triage route ${gap} is not in allowed_routes (every token gets 403)`,
+      actual: gap, policy: 'backend/config/triage_tokens.php',
+      fix: `Add '${gap}' to allowed_routes in backend/config/triage_tokens.php`,
     }));
   }
 }
@@ -179,11 +208,10 @@ function checkRouteRegistration(errors) {
 async function main() {
   if (selfTest) {
     const added = "+    Route::get('x', [C::class, 'x'])->name('triage.x');";
-    if (routeRegistrationGaps(added, [], "'triage.y'").join() !== 'docs/REF_API_ROUTES.md,triage.x') throw new Error('route gaps not detected');
-    if (routeRegistrationGaps(added, ['docs/REF_API_ROUTES.md'], "'triage.x',").length) throw new Error('registered route flagged');
+    if (triageAllowlistGaps(added, "'triage.y'").join() !== 'triage.x') throw new Error('route gaps not detected');
+    if (triageAllowlistGaps(added, "'triage.x',").length) throw new Error('registered route flagged');
     const edited = "-    Route::get('x', fn () => 'a');\n+    Route::get('x', fn () => 'b');";
-    if (routeRegistrationGaps(edited, [], '').length) throw new Error('handler-only edit flagged');
-    if (routeRegistrationGaps('+    // Route::get in a comment', [], '').length) throw new Error('comment flagged as a route');
+    if (triageAllowlistGaps(edited, "'triage.y'").length) throw new Error('handler-only edit flagged');
     if (classifyStepFailure({ step: 'Branch naming', logSnippet: 'Invalid branch name' }).primary !== 'BRANCH_NAMING_POLICY') throw new Error('taxonomy');
     if (classifySameShaRerun({ earlierConclusion: 'failure', laterConclusion: 'success', headShaSame: true }).kind !== 'flake') throw new Error('flake');
     if (!validateBranchName('sec/x').ok || validateBranchName('agent/x').ok) throw new Error('branch');
@@ -196,11 +224,12 @@ async function main() {
   const errors = [];
   const warnings = [];
   if (process.argv.includes('--routes')) {
-    checkRouteRegistration(errors);
+    checkRouteRegistration(errors, warnings);
     for (const e of errors) console.log(`FAIL  ${e.code}: ${e.message}\n      fix: ${e.fix}`);
+    for (const w of warnings) console.log(`WARN  ${w.code}: ${w.message}\n      fix: ${w.fix}`);
     process.exit(errors.length ? 1 : 0);
   }
-  checkRouteRegistration(errors);
+  checkRouteRegistration(errors, warnings);
   checkBranch(errors);
   checkGenerated(errors);
   checkWorkflowYaml(errors);
