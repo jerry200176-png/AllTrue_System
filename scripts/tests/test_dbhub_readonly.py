@@ -17,13 +17,14 @@ import time
 
 
 @contextmanager
-def server(binary, dsn):
-    config = Path(__file__).resolve().parents[2] / 'infra/agent-readonly/dbhub.toml'
+def server(binary, dsn, *, config=None, dsn_key='ALLTRUE_READONLY_DSN', tools=None):
+    config = config or Path(__file__).resolve().parents[2] / 'infra/agent-readonly/dbhub.toml'
+    tools = tools or {'execute_sql', 'search_objects', 'contract_chain', 'lesson_timeline'}
     with tempfile.TemporaryDirectory(prefix='alltrue-dbhub-mcp-') as directory:
         logfile = Path(directory) / 'server.log'
         with logfile.open('w') as log:
             # Do not pass unrelated application/triage credentials to this server.
-            environment = {'PATH': os.environ['PATH'], 'ALLTRUE_READONLY_DSN': dsn}
+            environment = {'PATH': os.environ['PATH'], dsn_key: dsn}
             process = subprocess.Popen(
                 [binary, '--transport', 'stdio', '--config', str(config)],
                 stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=log,
@@ -65,7 +66,7 @@ def server(binary, dsn):
                 process.stdin.write('{"jsonrpc":"2.0","method":"notifications/initialized"}\n')
                 process.stdin.flush()
                 listed = call('tools/list', {})['result']['tools']
-                assert {item['name'] for item in listed} == {'execute_sql', 'search_objects', 'contract_chain', 'lesson_timeline'}
+                assert {item['name'] for item in listed} == tools
                 yield tool
             finally:
                 selector.close()

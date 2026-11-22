@@ -84,3 +84,83 @@ audit destination and retention in one reviewed credential/access package.
 Rollback stops the connector, revokes that identity's view grants and removes its
 Secret binding; retain audit evidence. Remove unused views/definer only after
 checking dependents. No business rows are changed by reading or by this PR.
+
+## Daan tuition reconciliation, through 2026-10-31
+
+The dedicated profile is separate from the general diagnostic profile. It has
+six fixed tools and no arbitrary SQL or schema discovery. The native views
+validate Campus 15, code `daan`, and production campus type before returning
+rows. They use the student's current campus, as the AllTrue billing scope does.
+Historical transfers or missing ownership that prevent attribution require
+separate evidence. Cross-owner links are masked and marked uncertain.
+
+### Prepare the private read entry
+
+- Run the production identity check and verify the approved MySQL server,
+  source columns, `daan` campus mapping and Taipei accounting dates.
+- Use `daan-tuition-views.sql` with the verified source schema and a dedicated
+  locked view definer. Grant a separate identity SELECT only on
+  `alltrue_diagnostics.daan_tuition_{scope,contracts,invoices,invoice_items,payments,reports}`
+  (six explicit grants). Require private routing, verified TLS and audited
+  access under the same activation boundary above. Submit the exact access and
+  credential package for Founder approval before provisioning.
+- Run the pinned DBHub stdio connector with `--config infra/agent-readonly/daan-tuition.toml`
+  inside the approved gateway runtime. Inject `ALLTRUE_DAAN_TUITION_DSN` there.
+  Only the authenticated, expiring gateway session reaches the agent. Leave the
+  connector off until native grants, routing, query timeout and audit pass.
+
+### Collect and review
+
+Call `daan_tuition_scope` first and require one matching row. For each of
+`contracts`, `invoices`, `invoice_items`, `payments` and `reports`, call
+`daan_tuition_<dataset>` with `after_id=0`, then advance to the last returned ID
+until the tool returns an empty page. Stop on a failed or truncated result.
+Use a stable approved snapshot for the full collection. A live paginated read
+can surface leads, but it needs a fresh scoped read before any approval.
+
+The worksheet takes private JSON on stdin with `scope` (the scope row) and
+`pages` (dataset names mapped to arrays of returned row arrays, including each
+final empty page):
+
+```bash
+umask 077
+python3 infra/agent-readonly/daan-tuition-review.py < "$DAAN_SNAPSHOT" > "$DAAN_REVIEW"
+```
+
+Monthly face value reflects current bill values grouped by issue date. The
+worksheet shows currently void bill face value separately. Payment amounts
+use their recorded payment date. Internal credit movements and later activity
+on in-scope accounts stay visible separately. Current status can include
+later edits, so the output is a review list and does not reconstruct historical
+invoice balances. Verify any suspected mismatch against the current AllTrue
+student ledger and the Founder/director's evidence.
+
+### Approved changes and verification
+
+Prepare a private change list with exact bill, report and payment IDs,
+observed and intended values, evidence reference, side effects and the
+production backend SHA. For pending payments use the existing accounting
+confirmation action. For eligible incorrect bills use the existing bill
+correction preview and apply action. Only include an item after checking the
+current accounting preview with that action's eligibility. Mixed action types
+retain their existing approval and application steps. Where the standard
+actions cannot express the change, use an eligible POP operation with an
+immutable Repair Manifest, dry run, recovery point and the required Founder
+approval. Keep unsupported items pending until a reviewed operation exists.
+
+After Founder applies the approved action, reread the exact records. Verify
+invoice amount and status, linked net payment, receipt and audit, and report
+partial outcomes individually. To disable the read entry, stop the connector,
+revoke its view grants and remove its secret binding through the approved
+channel. Retain review and audit evidence privately.
+
+### Synthetic verification
+
+```bash
+python3 scripts/tests/test_daan_tuition_review.py
+python3 scripts/tests/test_daan_tuition_mysql_readonly.py /path/to/dbhub
+```
+
+The second command starts a separate disposable local MariaDB with synthetic
+data and exercises the actual DBHub v1.6.0 stdio tools. Neither command
+connects to a real ledger.
