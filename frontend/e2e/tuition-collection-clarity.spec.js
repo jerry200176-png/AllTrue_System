@@ -19,14 +19,20 @@ for (const width of [390, 1440]) for (const theme of ['light', 'dark']) {
     await installMock(page);
     const c = (id, subject, start_date, paid = true) => ({ id, subject, start_date, schedule_mode: 'count', paid, charge: 1000, stop: false });
     const courses = [c(1, '數學', '2026-08-08'), c(2, '英文', '2026-09-23'), c(3, '數學', '2026-10-08', false),
-      c(4, '化學', '2026-10-02', false), c(5, '英文', '2026-10-07', false), c(6, '數學', '2026-10-09'), c(7, '英文', '2026-01-01', false)];
+      c(4, '化學', '2026-10-02', false), c(5, '英文', '2026-10-07', false), c(6, '數學', '2026-10-09'),
+      c(7, '英文', '2026-01-01', false), { ...c(8, '生物', '2026-10-01', false), schedule_mode: 'date' },
+      c(9, '歷史', '2026-10-01', false)];
     await page.route('**/api/v1/students**', (r) => r.fulfill({ json: [{ id: 99, name: '合成排序學生', status: 'active', enable: 1 }] }));
     await page.route('**/api/v1/alerts/tuition**', (r) => r.fulfill({ json: [{ id: openedOldFirst ? 1 : 6, student_id: 99, student_name: '合成排序學生', subject: '數學',
       schedule_mode: 'count', payment_status: 'unpaid', payable_status: 'invoiced', payable_outstanding: 1000 }] }));
     await page.route('**/api/v1/accounting/ledger?**', (r) => r.fulfill({ json: {
-      student: { id: 99, name: '合成排序學生' }, scope: { student_class_id: openedOldFirst ? 1 : 6 }, summary: {}, courses, receipts: [], anomalies: [],
+      student: { id: 99, name: '合成排序學生' }, scope: { student_class_id: openedOldFirst ? 1 : 6 }, summary: {}, courses, anomalies: [],
+      receipts: [{ report_id: 15, student_class_id: 9, status: 'pending', amount: 1000 }],
       invoices: openedOldFirst ? [] : [{ id: 17, student_class_id: 7, status: 'unpaid', total_amount: 1000, outstanding_amount: 1000, calculated_applied_amount: 0, payments: [] }],
     } }));
+    await page.route('**/api/v1/accounting/monthly-drafts?**', (r) => r.fulfill({ json: { data: [
+      { student_class_id: 8, status: 'ready', proposed_end_date: '2099-12-31' },
+    ] } }));
     await page.route('**/api/v1/accounting/contracts/*/sessions', (r) => {
       const id = Number(new URL(r.request().url()).pathname.split('/').at(-2));
       return r.fulfill({ json: { ...courses.find((x) => x.id === id), sessions: [] } });
@@ -36,9 +42,14 @@ for (const width of [390, 1440]) for (const theme of ['light', 'dark']) {
     await page.getByTestId('bill-documents-c6').click();
     const ledger = page.getByRole('dialog', { name: '合成排序學生的帳務', exact: true });
     const cards = ledger.locator('.ledger-contracts > [data-testid^="contract-card-"]');
-    await expect(cards).toHaveCount(7);
+    await expect(cards).toHaveCount(9);
     const ids = await cards.evaluateAll((els) => els.map((el) => Number(el.dataset.testid.replace('contract-card-', ''))));
-    expect(ids[0]).toBe(7);
+    expect(ids.slice(0, 3)).toEqual([9, 7, 8]);
+    await expect(ledger.getByTestId('ledger-contracts')).toBeVisible();
+    expect(await ledger.getByTestId('ledger-contracts').evaluate((section) =>
+      ['invoices', 'receipts'].every((name) => Boolean(section.compareDocumentPosition(
+        section.parentElement.querySelector(`[data-testid="ledger-fold-${name}"]`),
+      ) & Node.DOCUMENT_POSITION_FOLLOWING)))).toBe(true);
     expect(ids.filter((id) => [1, 3, 6].includes(id))).toEqual([6, 3, 1]);
     expect(ids.filter((id) => [2, 5].includes(id))).toEqual([5, 2]);
     expect(ids.indexOf(1) - ids.indexOf(6)).toBe(2);
