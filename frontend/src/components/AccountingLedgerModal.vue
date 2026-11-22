@@ -8,6 +8,10 @@
         aria-modal="true"
         aria-labelledby="ledger-modal-title"
         tabindex="-1"
+        @pointerdown.capture="keepLedgerPosition"
+        @click.capture="keepLedgerPosition"
+        @wheel.capture.passive="keepLedgerPosition"
+        @keydown.capture="keepLedgerPosition"
         @keydown.esc.stop.prevent="onEsc"
         @keydown.tab="trapTab"
         @keydown="onStepKey"
@@ -101,6 +105,46 @@
             </button>
           </section>
 
+
+          <section v-if="contractCourses.length" class="ledger-section" data-testid="ledger-contracts">
+            <h4>合約（每一堂課與付款）</h4>
+            <p class="ledger-muted">待確認入帳、未繳及待開帳單優先；同科依開課日由新到舊</p>
+            <AtHelpDisclosure v-if="contractCourses.some(hasMultiplePackageBills)" label="共用方案" data-testid="ledger-package-batch-note"><p>共用方案有多門課的帳單待收，請從要處理的課程卡「登記這筆」；不加入下方批次收款。</p></AtHelpDisclosure>
+            <div class="ledger-contracts">
+              <ContractCard
+                v-for="c in displayContractCourses"
+                :key="c.id"
+                :course="c"
+                :focused="isOpenedCourse(c)"
+                :expanded="openCards.has(Number(c.id))"
+                @toggle="(v) => (v ? openCards.add(Number(c.id)) : openCards.delete(Number(c.id)))"
+                :can-view-docs="canManageInvoices()"
+                :has-invoice-documents="Boolean(uniqueInvoiceForCourse(c.id))"
+                @show-invoice-documents="showInvoiceDocuments(c.id)"
+                :outstanding="owedFor(c.id)"
+                :pending-report="packageLead(c) ? pendingReportFor(c.id) : null"
+                :shared-follower="!packageLead(c)"
+                :shared-lead-subject="packageLead(c) ? '' : (packageLeadOf(c)?.subject || '')"
+                :shared-member-subjects="sharedMembersOf(c)"
+                :last-payment="payLineFor(c)"
+                :amounts="amountsFor(c.id)"
+                :month-lines="monthLinesFor(c.id)"
+                :bill-draft="draftFor(c.id)"
+                :rate-note="issuedBillRateNote(c, payload.invoices)"
+                :can-resolve-legacy="canManageInvoices()"
+                :has-confirmed-report="hasConfirmedReportFor(c.id)"
+                :auto-confirm="autoConfirmId === Number(c.id)"
+                :row-actions="actionsForCourse(c)"
+                @row-action="(kind) => onContractRowAction(c, kind)"
+                @record="openEntry"
+                @legacy-backfill="openEntry($event, 'legacy-backfill')"
+                @issue="openIssue"
+                @confirmed="openReceipt"
+                @changed="onPanelChanged"
+                @slip="openSlip"
+              />
+            </div>
+          </section>
 
           <section class="ledger-section">
             <h4><button type="button" class="ledger-fold" :aria-expanded="fold.inv" :aria-controls="fold.inv ? 'ledger-sec-invoices' : undefined" data-testid="ledger-fold-invoices" @click="fold.inv = !fold.inv">帳單（{{ payload.invoices?.length || 0 }}）<span v-if="invoiceWarnCount" class="ledger-fold__warn" data-testid="ledger-fold-warn">需留意 {{ invoiceWarnCount }}</span><span aria-hidden="true">{{ fold.inv ? '▾' : '▸' }}</span></button></h4>
@@ -311,46 +355,6 @@
               data-testid="ledger-other-receipts-toggle"
               @click="showOtherReceipts = !showOtherReceipts"
             >{{ showOtherReceipts ? '收合其他紀錄' : `已退回／已撤銷（${otherReceipts.length}）` }}</button>
-          </section>
-
-          <section v-if="contractCourses.length" class="ledger-section">
-            <h4>合約（每一堂課與付款）</h4>
-            <p class="ledger-muted">未繳優先；同科依合約開課日由新到舊</p>
-            <AtHelpDisclosure v-if="contractCourses.some(hasMultiplePackageBills)" label="共用方案" data-testid="ledger-package-batch-note"><p>共用方案有多門課的帳單待收，請從要處理的課程卡「登記這筆」；不加入下方批次收款。</p></AtHelpDisclosure>
-            <div class="ledger-contracts">
-              <ContractCard
-                v-for="c in displayContractCourses"
-                :key="c.id"
-                :course="c"
-                :focused="isOpenedCourse(c)"
-                :expanded="openCards.has(Number(c.id))"
-                @toggle="(v) => (v ? openCards.add(Number(c.id)) : openCards.delete(Number(c.id)))"
-                :can-view-docs="canManageInvoices()"
-                :has-invoice-documents="Boolean(uniqueInvoiceForCourse(c.id))"
-                @show-invoice-documents="showInvoiceDocuments(c.id)"
-                :outstanding="owedFor(c.id)"
-                :pending-report="packageLead(c) ? pendingReportFor(c.id) : null"
-                :shared-follower="!packageLead(c)"
-                :shared-lead-subject="packageLead(c) ? '' : (packageLeadOf(c)?.subject || '')"
-                :shared-member-subjects="sharedMembersOf(c)"
-                :last-payment="payLineFor(c)"
-                :amounts="amountsFor(c.id)"
-                :month-lines="monthLinesFor(c.id)"
-                :bill-draft="draftFor(c.id)"
-                :rate-note="issuedBillRateNote(c, payload.invoices)"
-                :can-resolve-legacy="canManageInvoices()"
-                :has-confirmed-report="hasConfirmedReportFor(c.id)"
-                :auto-confirm="autoConfirmId === Number(c.id)"
-                :row-actions="actionsForCourse(c)"
-                @row-action="(kind) => onContractRowAction(c, kind)"
-                @record="openEntry"
-                @legacy-backfill="openEntry($event, 'legacy-backfill')"
-                @issue="openIssue"
-                @confirmed="openReceipt"
-                @changed="onPanelChanged"
-                @slip="openSlip"
-              />
-            </div>
           </section>
 
           <!-- PRD v2 D5/D18: one 登記收款 for every open contract (allocation step); each card keeps 登記這筆. -->
@@ -687,9 +691,14 @@ async function loadCoverage(kind, id) {
 }
 
 let ledgerRequestVersion = 0;
+let userMovedInLedger = false;
+function keepLedgerPosition() {
+  userMovedInLedger = true;
+}
 async function loadLedger() {
   closeReason(false); // the reload unmounts the reason field; cancel it rather than leave it hidden
   const requestVersion = ++ledgerRequestVersion;
+  userMovedInLedger = false;
   loading.value = false;
   payload.value = null;
   if (!props.show) return;
@@ -707,6 +716,7 @@ async function loadLedger() {
   showAllExceptions.value = false;
   coverage.value = {};
   expandedReceiptIds.value = new Set();
+  let draftsReady;
   try {
     const token = getToken();
     if (!token) throw new Error('請先登入');
@@ -728,7 +738,8 @@ async function loadLedger() {
     else autoExpandAttention();
     if (documentsView.value) fold.rcpt = true;
     const armed = pendingInitialAction != null;
-    runInitialAction(loadDrafts());
+    draftsReady = loadDrafts(requestVersion);
+    runInitialAction(draftsReady);
     if (armed && !entryOpen.value) ledgerFellBack.value = true; // only the first load decides the fallback
   } catch (e) {
     if (requestVersion !== ledgerRequestVersion) return;
@@ -739,13 +750,24 @@ async function loadLedger() {
   }
   if (requestVersion === ledgerRequestVersion && payload.value) {
     await nextTick();
+    if (requestVersion !== ledgerRequestVersion) return;
     if (documentsView.value) {
       const documents = modalEl.value?.querySelector('[data-testid="ledger-fold-invoices"]');
       documents?.focus({ preventScroll: true });
-      // 帳務重整 §3: contracts sit below 收款紀錄 now. With no bill for the opened course, show its card instead.
-      if (displayedInvoices.value.some((inv) => invoiceCoversCourse(inv, Number(props.studentClassId)))) documents?.scrollIntoView?.({ block: 'start' });
-      else scrollToOpenedContract();
-    } else scrollToOpenedContract();
+      if (displayedInvoices.value.some((inv) => invoiceCoversCourse(inv, Number(props.studentClassId)))) {
+        documents?.scrollIntoView?.({ block: 'start' });
+        return;
+      }
+    }
+    if (props.studentWide || !Number(props.studentClassId || 0)) return;
+    const openedIndex = displayContractCourses.value.findIndex(isOpenedCourse);
+    if (!userMovedInLedger) scrollToOpenedContract();
+    // A ready draft can move the card. Follow only while the director hasn't taken control.
+    void draftsReady?.then(async () => {
+      await nextTick();
+      if (requestVersion !== ledgerRequestVersion || userMovedInLedger) return;
+      if (displayContractCourses.value.findIndex(isOpenedCourse) !== openedIndex) scrollToOpenedContract();
+    });
   }
 }
 
@@ -1017,14 +1039,6 @@ const rateNoteFor = (inv) => {
 };
 // Contracts with money still due come first (PRD v2 §0.3).
 const contractCourses = computed(() => [...(payload.value?.courses || [])].sort((a, b) => owedFor(b.id) - owedFor(a.id)));
-// in-app564: presentation order must not choose a different shared-package payment lead.
-const subjectOrder = new Intl.Collator('zh-Hant', { numeric: true });
-const contractOrderDate = (c) => /^\d{4}-\d{2}-\d{2}(?:$|[ T])/.test(String(c.start_date || '')) ? String(c.start_date).slice(0, 10) : '';
-const displayContractCourses = computed(() => [...contractCourses.value].sort((a, b) =>
-  Number(owedFor(b.id) > 0) - Number(owedFor(a.id) > 0)
-  || subjectOrder.compare(String(a.subject || ''), String(b.subject || ''))
-  || contractOrderDate(b).localeCompare(contractOrderDate(a))
-  || Number(b.id) - Number(a.id)));
 // One card of a shared package carries its single payment action; the other members point to it. Lead = the member
 // holding a pending report, else the first one that still needs payment (mixed states), else the first member.
 // #3892 review: a legacy package whose bills are already open on several members stays actionable per member (each
@@ -1106,7 +1120,7 @@ const { submit: submitRenewal } = useMonthlyRenewal({
   isModalOpen: () => false, currentCourseId: () => null,
 });
 const todayStr = () => ymdInTaipei();
-async function loadDrafts() {
+async function loadDrafts(requestVersion) {
   drafts.value = {};
   try {
     const token = getToken();
@@ -1115,13 +1129,32 @@ async function loadDrafts() {
     if (props.branchId != null && props.branchId !== '') params.set('branch_id', String(Number(props.branchId)));
     const resp = await trackedFetch(`/api/v1/accounting/monthly-drafts?${params}`, { headers: { Accept: 'application/json', Authorization: `Bearer ${token}` } });
     const json = await resp.json().catch(() => ({}));
-    if (!resp.ok || !Array.isArray(json.data)) return;
+    if (requestVersion !== ledgerRequestVersion || !resp.ok || !Array.isArray(json.data)) return;
     drafts.value = Object.fromEntries(json.data
       .filter((r) => r.status === 'ready' && r.proposed_end_date && r.proposed_end_date > todayStr())
       .map((r) => [Number(r.student_class_id), r]));
-  } catch { drafts.value = {}; }
+  } catch { /* The current request starts with no drafts. */ }
 }
 const draftFor = (id) => drafts.value[Number(id)] || null;
+// Display priority never decides which shared contract owns payment or changes the allocation sequence.
+function contractDisplayPriority(course) {
+  if (!packageLead(course)) return 3;
+  if (pendingReportFor(course.id)) return 0;
+  if (owedFor(course.id) > 0) return 1;
+  // The current term can be paid while the next monthly bill is ready to issue.
+  if (draftFor(course.id) && !hasNoObligation(course) && !isWaivedContract(course)) return 2;
+  return 3;
+}
+const subjectOrder = new Intl.Collator('zh-Hant', { numeric: true });
+const contractOrderDate = (c) => /^\d{4}-\d{2}-\d{2}(?:$|[ T])/.test(String(c.start_date || '')) ? String(c.start_date).slice(0, 10) : '';
+const displayContractCourses = computed(() => contractCourses.value
+  .map((course) => ({ course, priority: contractDisplayPriority(course) }))
+  .sort(({ course: a, priority: aPriority }, { course: b, priority: bPriority }) =>
+    aPriority - bPriority
+    || subjectOrder.compare(String(a.subject || ''), String(b.subject || ''))
+    || contractOrderDate(b).localeCompare(contractOrderDate(a))
+    || Number(b.id) - Number(a.id))
+  .map(({ course }) => course));
 const openIssue = (draft) => { issueError.value = ''; issueDraft.value = draft; };
 const closeIssue = () => { issueDraft.value = null; };
 async function submitIssue() {

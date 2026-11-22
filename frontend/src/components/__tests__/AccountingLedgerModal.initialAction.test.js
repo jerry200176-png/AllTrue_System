@@ -19,7 +19,7 @@ function mountLedger({ courses, invoices = [], receipts = [], props = {}, role =
   const payload = { summary: {}, scope: { student_class_id: props.studentClassId ?? 11 }, anomalies: [], courses, invoices, receipts };
   const fetchMock = vi.fn(async (url) => (String(url).startsWith('/api/v1/accounting/ledger')
     ? { ok: true, status: 200, json: async () => payload }
-    : String(url).startsWith('/api/v1/accounting/monthly-drafts') ? { ok: true, status: 200, json: async () => ({ data: drafts }) }
+    : String(url).startsWith('/api/v1/accounting/monthly-drafts') ? { ok: true, status: 200, json: async () => ({ data: await drafts }) }
     : { ok: false, status: 500, json: async () => ({}) }));
   vi.stubGlobal('fetch', fetchMock);
   return mount(AccountingLedgerModal, {
@@ -32,6 +32,25 @@ function mountLedger({ courses, invoices = [], receipts = [], props = {}, role =
 afterEach(() => { vi.unstubAllGlobals(); localStorage.clear(); document.body.innerHTML = ''; });
 
 describe('學生帳務 · 右側收款面板 (sheetEntry, #4659 step 3)', () => {
+  it('offers the next confirmation while the optional renewal draft read is still pending', async () => {
+    let releaseDrafts;
+    const drafts = new Promise((resolve) => { releaseDrafts = resolve; });
+    const receipts = [];
+    const w = mountLedger({ courses: [course(11), course(12)], invoices: [inv(1, 11)], receipts, drafts,
+      props: { initialAction: 'record', sheetEntry: true } });
+    try {
+      await flushPromises();
+      receipts.push({ report_id: 5, student_class_id: 11, status: 'pending', amount: 4400 });
+      w.getComponent(EntryStub).vm.$emit('confirmed', { report_id: 5, status: 'pending' });
+      await flushPromises();
+      expect(document.body.querySelector('[data-testid="ledger-recorded-confirm"]')?.textContent).toContain('現在確認入帳');
+    } finally {
+      releaseDrafts([]);
+      await flushPromises();
+      w.unmount();
+    }
+  });
+
   it('shows only the entry sheet (ledger hidden), and saving closes it and refreshes the list', async () => {
     const w = mountLedger({ courses: [course(11)], invoices: [inv(1, 11)], props: { initialAction: 'record', sheetEntry: true } });
     await flushPromises();
