@@ -381,7 +381,14 @@ class AlertController extends Controller
             ->merge(
                 // Exclude monthly-package members from individual date-mode alerts
                 $dateResults->filter(fn ($c) => !$monthlyPkgMemberIds->contains($c->ID))
-                    ->map(fn ($c) => $this->mapMonthlyAlert($c, $today, $openMonthlyInvoiceMap[(int) $c->ID] ?? null, $subjectNameMap, $courseStatuses[(int) $c->ID] ?? null))->filter()
+                    ->map(fn ($c) => $this->mapMonthlyAlert(
+                        $c,
+                        $today,
+                        $openMonthlyInvoiceMap[(int) $c->ID] ?? null,
+                        $subjectNameMap,
+                        $courseStatuses[(int) $c->ID] ?? null,
+                        isset($pendingReportMap[(int) $c->ID])
+                    ))->filter()
             )
             ->merge(
                 $pendingSettlementResults->map(fn ($c) => $this->mapPendingSettlementAlert($c, $subjectNameMap))
@@ -673,7 +680,7 @@ class AlertController extends Controller
         return (int) ($pkg->remaining_sessions ?? 0) <= 2 ? 'renew_needed' : 'paid';
     }
 
-    private function mapMonthlyAlert(StudentClass $c, Carbon $today, ?array $openInvoice = null, array $subjectNameMap = [], ?array $verdict = null): ?array
+    private function mapMonthlyAlert(StudentClass $c, Carbon $today, ?array $openInvoice = null, array $subjectNameMap = [], ?array $verdict = null, bool $hasPendingReport = false): ?array
     {
         $settlementDay = (int) ($c->settlement_day ?? 0);
         if ($settlementDay < 1 || $settlementDay > 31) {
@@ -693,7 +700,10 @@ class AlertController extends Controller
         $isPaid = (int) ($c->Paid ?? 0) === 1 || $c->isEffectivelyPaid();
         // in-app #589 (Founder 2026-11-22): a paid monthly course whose EndDate has passed has no next settlement.
         // Only the billing verdict may call it settled (not the legacy flag alone), so nothing owed or unchecked is hidden.
-        if ($isPaid && in_array($verdict['status'] ?? null, ['paid', 'free'], true)
+        $verifiedSettlement = ($verdict['outstanding'] ?? null) === 0
+            && (($verdict['status'] ?? null) === 'free'
+                || (($verdict['status'] ?? null) === 'paid' && ($verdict['source'] ?? null) === 'invoice'));
+        if ($isPaid && $verifiedSettlement && !$hasPendingReport
             && $c->EndDate && substr((string) $c->EndDate, 0, 10) < $today->toDateString()) {
             return null;
         }

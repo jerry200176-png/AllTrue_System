@@ -291,7 +291,7 @@ class TuitionAlertsApiTest extends TestCase
             'settlement_day' => 22,
             'Paid' => 1,
             'StartDate' => '2026-04-12',
-            'EndDate' => '2026-09-14',
+            'EndDate' => '2026-04-30',
         ]);
         $endedUnpaid = $this->createMonthlyClass($student->id, [
             'settlement_day' => 22,
@@ -335,6 +335,13 @@ class TuitionAlertsApiTest extends TestCase
         ]);
         Payment::create(['InvoiceID' => $paidInvoice->id, 'Amount' => 5000, 'Method' => 'cash', 'PaidAt' => '2026-04-12']);
 
+        $legacyOnly = $this->createMonthlyClass($student->id, [
+            'settlement_day' => 22,
+            'Paid' => 1,
+            'StartDate' => '2026-08-01',
+            'EndDate' => '2026-08-31',
+        ]);
+
         $res = $this->withHeaders([
             'Authorization' => "Bearer {$token}",
             'Accept' => 'application/json',
@@ -344,8 +351,19 @@ class TuitionAlertsApiTest extends TestCase
         $rows = collect($res->json());
         $this->assertNotNull($rows->firstWhere('id', $endedFlagOnly->ID), 'ended, flag paid, nothing applied: still listed');
         $this->assertNull($rows->firstWhere('id', $endedPaid->ID), 'ended and paid: no next settlement');
+        $this->assertNotNull($rows->firstWhere('id', $legacyOnly->ID), 'ended with only a legacy paid flag and no invoice must stay listed');
         $this->assertSame('monthly_due_soon', $rows->firstWhere('id', $endedUnpaid->ID)['alert_type'] ?? null, 'ended but unpaid stays listed');
         $this->assertSame('monthly_due_soon', $rows->firstWhere('id', $runningPaid->ID)['alert_type'] ?? null, 'still running: unchanged');
+
+        PaymentReport::create([
+            'StudentID' => $student->id, 'StudentClassID' => $endedPaid->ID,
+            'reported_by_name' => $student->name, 'payment_date' => Carbon::today(),
+            'payment_method' => 'cash', 'reported_amount' => 5000, 'status' => 'pending',
+            'report_token_hash' => hash('sha256', 'ended-monthly-awaiting-review'),
+            'token_expires_at' => Carbon::now()->addDay(),
+        ]);
+        $pendingRows = collect($this->withToken($token)->getJson('/api/v1/alerts/tuition?branch_id=1')->assertOk()->json());
+        $this->assertSame('pending_report', $pendingRows->firstWhere('id', $endedPaid->ID)['payment_status'] ?? null);
     }
 
     public function test_monthly_paid_included_when_next_due_within_window(): void
