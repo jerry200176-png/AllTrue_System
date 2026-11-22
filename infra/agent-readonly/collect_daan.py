@@ -13,7 +13,7 @@ import tempfile
 import time
 from urllib.error import HTTPError, URLError
 
-from query_alltrue import Reader
+from query_alltrue import Reader, make_opener, read_json
 
 WORKSHEET = runpy.run_path(str(Path(__file__).with_name("daan-tuition-review.py")))
 CUTOFF = WORKSHEET["CUTOFF"]
@@ -242,7 +242,7 @@ def main():
             next_read = time.monotonic() + 1.1
             return reader.fetch(table, params)
 
-        review = collect(fetch, reader.get_json(PUBLIC_BRANCHES))
+        review = collect(fetch, read_json(make_opener(), PUBLIC_BRANCHES))
         with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", dir=args.out.parent) as output:
             json.dump(review, output, ensure_ascii=False, indent=2, default=str)
             output.write("\n")

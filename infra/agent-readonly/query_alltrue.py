@@ -4,11 +4,14 @@ import argparse
 import ipaddress
 import json
 import os
+from pathlib import Path
 import re
+import ssl
+import stat
 import sys
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode, urlsplit
-from urllib.request import HTTPRedirectHandler, ProxyHandler, Request, build_opener
+from urllib.request import HTTPSHandler, HTTPRedirectHandler, ProxyHandler, Request, build_opener
 
 IDENTIFIER = re.compile(r"[A-Za-z][A-Za-z0-9_]{0,63}")
 NUMBER_OR_DATE = re.compile(r"-?\d{1,8}(\.\d{1,4})?|\d{4}-\d{2}-\d{2}([ T]\d{2}:\d{2}(:\d{2})?)?|\d{2}:\d{2}(:\d{2})?")
@@ -22,8 +25,21 @@ class NoRedirects(HTTPRedirectHandler):
 
 class Reader:
     def __init__(self, gateway):
-        self.base = origin(gateway) + READ_PATH
-        self.opener = build_opener(ProxyHandler({}), NoRedirects())
+        relay = origin(gateway)
+        self.base = relay + READ_PATH
+        cert = os.environ.get("ALLTRUE_READ_CLIENT_CERT")
+        key = os.environ.get("ALLTRUE_READ_CLIENT_KEY")
+        ca = os.environ.get("ALLTRUE_READ_SERVER_CA")
+        self.opener = make_opener()
+        if cert or key or ca:
+            if not relay.startswith("https://") or not cert or not key:
+                raise ValueError("Client certificates require HTTPS and both certificate and private key paths.")
+            mode = Path(key).stat().st_mode
+            if not stat.S_ISREG(mode) or mode & 0o077:
+                raise ValueError("The relay client key must be a private regular file.")
+            context = ssl.create_default_context(cafile=ca)
+            context.load_cert_chain(cert, key, password=lambda: b"")
+            self.opener = make_opener(HTTPSHandler(context=context))
 
     def fetch(self, table=None, params=()):
         target = self.base
@@ -31,11 +47,16 @@ class Reader:
             target += "/" + identifier(table)
         if params:
             target += "?" + urlencode(params)
-        return self.get_json(target)
+        return read_json(self.opener, target)
 
-    def get_json(self, target):
-        with self.opener.open(Request(target, headers={"Accept": "application/json"}), timeout=15) as response:
-            return json.load(response)
+
+def make_opener(*handlers):
+    return build_opener(ProxyHandler({}), NoRedirects(), *handlers)
+
+
+def read_json(opener, target):
+    with opener.open(Request(target, headers={"Accept": "application/json"}), timeout=15) as response:
+        return json.load(response)
 
 
 def origin(value):
