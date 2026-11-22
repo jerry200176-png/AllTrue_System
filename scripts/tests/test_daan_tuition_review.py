@@ -16,13 +16,14 @@ def row(id, **fields):
 
 def payment(id, **fields):
     values = {"invoice_id": 1, "report_id": None, "amount": 100, "method": "cash",
-              "paid_at": "2026-10-31 23:59:59", "report_link_uncertain": False}
+              "paid_at": "2026-10-31 23:59:59", "report_link_uncertain": False,
+              "receipt_moved_at": None, "receipt_move_uncertain": False}
     return row(id, **(values | fields))
 
 
 def invoice(id, **fields):
     values = {"contract_id": 1, "issue_date": "2026-10-01", "billing_period": "2026-10",
-              "contract_link_uncertain": False, "amount": 500, "stored_paid_amount": 0, "status": "partial"}
+              "contract_link_uncertain": False, "amount": 500, "stored_paid_amount": None, "status": "partial"}
     return row(id, **(values | fields))
 
 
@@ -99,6 +100,24 @@ class DaanReviewTest(unittest.TestCase):
         result = REVIEW.build_review(snapshot(invoices=[invoice(1, stored_paid_amount=100)],
                                               payments=[payment(1, method="void", amount=20)]))
         self.assertEqual([q["kind"] for q in result["questions"]], ["invoice_paid_amount_without_evidence"])
+
+    def test_later_reassignment_does_not_duplicate_cash(self):
+        result = REVIEW.build_review(snapshot(
+            invoices=[invoice(1, status="void"), invoice(2)],
+            payments=[payment(1), payment(2, method="void", amount=-100, receipt_moved_at="2026-11-02"),
+                      payment(3, invoice_id=2, receipt_moved_at="2026-11-02")],
+        ))
+        self.assertEqual(result["monthly"]["2026-10"]["net_recorded_collections"], Decimal(100))
+        self.assertEqual([r["event"] for r in result["later_activity"]], ["receipt_reassignment", "receipt_reassignment"])
+
+    def test_stored_amount_and_reciprocal_receipt_are_checked(self):
+        result = REVIEW.build_review(snapshot(
+            invoices=[invoice(1, stored_paid_amount=500)],
+            payments=[payment(1, amount=1, report_id=1), payment(2, amount=1, report_id=2)],
+            reports=[report(1, amount=1, status="confirmed", payment_id=2)],
+        ))
+        self.assertEqual({q["kind"] for q in result["questions"]},
+                         {"possible_duplicate", "receipt_payment_mismatch", "invoice_paid_amount_mismatch"})
 
     def test_invalid_scope_and_collection_fail_closed(self):
         source = snapshot(invoices=[invoice(1)])

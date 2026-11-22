@@ -75,6 +75,7 @@ def build_review(snapshot):
             ask("invoice_contract_link", "invoices", invoice, "這張帳單應歸哪份合約？", date=invoice["issue_date"])
 
     amounts_by_invoice = defaultdict(Decimal)
+    current_amounts_by_invoice = defaultdict(Decimal)
     positives_by_report = defaultdict(list)
     duplicate_payments = defaultdict(list)
     for payment in rows["payments"].values():
@@ -82,12 +83,17 @@ def build_review(snapshot):
         amount = money(payment["amount"])
         method = payment["method"]
         delta = -abs(amount) if method == "void" else amount
-        when = day(payment["paid_at"])
+        moved = day(payment["receipt_moved_at"])
+        when = moved or day(payment["paid_at"])
+        if invoice["status"] != "void":
+            current_amounts_by_invoice[invoice["id"]] += delta
         if in_period(when):
             month = months[when.strftime("%Y-%m")]
-            if (method in CREDIT_IN and amount > 0) or (method in CREDIT_OUT and amount < 0):
+            if moved:
+                month["receipt_reassignments"] += delta
+            elif (method in CREDIT_IN and amount > 0) or (method in CREDIT_OUT and amount < 0):
                 month["internal_credit_movement"] += delta
-            elif method in CREDIT_IN | CREDIT_OUT or method == "other" or (method == "refund" and delta > 0):
+            elif payment["receipt_move_uncertain"] or method in CREDIT_IN | CREDIT_OUT or method == "other" or (method == "refund" and delta > 0):
                 month["unclassified_movement"] += delta
                 ask("payment_method", "payments", payment, "這筆是實收、沖銷還是校內轉列？", amount=amount, date=payment["paid_at"])
             else:
@@ -95,13 +101,15 @@ def build_review(snapshot):
                 month["net_recorded_collections"] += delta
             if invoice["status"] != "void":
                 amounts_by_invoice[invoice["id"]] += delta
-            if delta > 0 and method in {"cash", "transfer"}:
+            if not moved and delta > 0 and method in {"cash", "transfer"}:
                 key = (invoice["id"], when, amount, method)
                 duplicate_payments[key].append(payment["id"])
         elif when is None:
             ask("undated_payment", "payments", payment, "這筆款實際是哪天收付或沖銷？", amount=amount, invoice_id=invoice["id"])
         else:
             later_activity.append({"dataset": "payments", "id": payment["id"], "date": str(when), "amount": amount})
+            if moved:
+                later_activity[-1]["event"] = "receipt_reassignment"
         if delta > 0 and method in {"cash", "transfer"} and payment["report_id"]:
             positives_by_report[payment["report_id"]].append(payment)
         if payment["report_link_uncertain"]:
@@ -142,6 +150,8 @@ def build_review(snapshot):
             continue
         evidence = {"invoice_id": report["invoice_id"], "date": report["payment_date"],
                     "amount": report["amount"], "period": report["billing_period"]}
+        if when is None:
+            ask("undated_report", "reports", report, "主任能確認這筆繳費的實收日期嗎？", **evidence)
         if any(report[field] for field in ("contract_link_uncertain", "invoice_link_uncertain", "payment_link_uncertain")):
             ask("report_link", "reports", report, "這筆繳費對應哪位學生、合約或帳單？", **evidence)
         if report["status"] == "pending":
@@ -154,22 +164,30 @@ def build_review(snapshot):
             matches.append(legacy)
         if not matches:
             ask("confirmed_without_payment", "reports", report, "已確認回報有對應的原始收款憑證嗎？", **evidence)
-        elif len(matches) != 1 or any(p["invoice_id"] != report["invoice_id"] or
-                                     money(p["amount"]) != money(report["amount"]) for p in matches):
-            ask("receipt_payment_mismatch", "reports", report, "回報與收款的金額或帳單不一致，哪筆才正確？",
-                payment_ids=[p["id"] for p in matches], **evidence)
+        elif len(matches) != 1 or any(
+            p["invoice_id"] != report["invoice_id"] or (report["payment_id"] and p["id"] != report["payment_id"])
+            or money(p["amount"]) != money(report["amount"]) or day(p["paid_at"]) != when for p in matches
+        ):
+            ask("receipt_payment_mismatch", "reports", report, "回報和收款的配對、日期或金額不一致，哪筆才正確？",
+                payment_ids=[p["id"] for p in matches], reported_payment_id=report["payment_id"], **evidence)
 
     used_by_contract = defaultdict(Decimal)
     used_by_package = defaultdict(Decimal)
     for invoice in rows["invoices"].values():
         contract = rows["contracts"].get(invoice["contract_id"])
-        if invoice["status"] != "void" and money(invoice["stored_paid_amount"] or 0) > 0 and amounts_by_invoice[invoice["id"]] <= 0:
+        stored = invoice["stored_paid_amount"]
+        period_net = amounts_by_invoice[invoice["id"]]
+        current_net = max(Decimal(0), current_amounts_by_invoice[invoice["id"]])
+        if invoice["status"] != "void" and money(stored or 0) > 0 and period_net <= 0:
             ask("invoice_paid_amount_without_evidence", "invoices", invoice,
                 "帳單有已收金額，但截止日前看不到淨入帳，是否是後續補登、沖銷或原帳漏記？",
-                stored_paid_amount=invoice["stored_paid_amount"], date=invoice["issue_date"])
+                stored_paid_amount=stored, date=invoice["issue_date"], current_net=current_net)
+        elif invoice["status"] != "void" and stored is not None and money(stored) != current_net:
+            ask("invoice_paid_amount_mismatch", "invoices", invoice, "帳單已收與收款流水不一致，主任能確認實收金額嗎？",
+                stored_paid_amount=stored, current_net=current_net, period_net=period_net, date=invoice["issue_date"])
         if not contract:
             continue
-        applied = max(Decimal(0), amounts_by_invoice[invoice["id"]])
+        applied = max(Decimal(0), period_net)
         used_by_contract[contract["id"]] += applied
         if contract["package_id"]:
             used_by_package[contract["package_id"]] += applied

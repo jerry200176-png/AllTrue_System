@@ -122,6 +122,8 @@ The worksheet takes private JSON on stdin with `scope` (the scope row) and
 `pages` (dataset names mapped to arrays of returned row arrays, including each
 final empty page):
 
+Keep both files in a private directory that is accessible only to the operator (mode 0700).
+
 ```bash
 umask 077
 python3 infra/agent-readonly/daan-tuition-review.py < "$DAAN_SNAPSHOT" > "$DAAN_REVIEW"
@@ -129,7 +131,8 @@ python3 infra/agent-readonly/daan-tuition-review.py < "$DAAN_SNAPSHOT" > "$DAAN_
 
 Monthly face value reflects current bill values grouped by issue date. The
 worksheet shows currently void bill face value separately. Payment amounts
-use their recorded payment date. Internal credit movements and later activity
+use their recorded payment date. Receipt reassignments use the move date and
+are excluded from cash collections. Internal credit movements and later activity
 on in-scope accounts stay visible separately. Current status can include
 later edits, so the output is a review list and does not reconstruct historical
 invoice balances. Verify any suspected mismatch against the current AllTrue

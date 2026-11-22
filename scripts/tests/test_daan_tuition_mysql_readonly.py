@@ -32,10 +32,12 @@ CREATE TABLE Invoice (id INT PRIMARY KEY, StudentID INT, StudentClassID INT, Iss
     billing_period VARCHAR(20), created_at DATETIME, updated_at DATETIME, TotalAmount INT, PaidAmount INT, Status VARCHAR(20));
 CREATE TABLE InvoiceItem (id INT PRIMARY KEY, InvoiceID INT, StudentClassID INT, Amount INT, PeriodStart DATE, PeriodEnd DATE);
 CREATE TABLE Payment (id INT PRIMARY KEY, InvoiceID INT, payment_report_id INT, Amount INT, PaidAt DATETIME,
-    created_at DATETIME, updated_at DATETIME, Method VARCHAR(40));
+    created_at DATETIME, updated_at DATETIME, Method VARCHAR(40), Note VARCHAR(100));
 CREATE TABLE payment_reports (id INT PRIMARY KEY, StudentID INT, StudentClassID INT, InvoiceID INT, payment_id INT,
     billing_period VARCHAR(20), payment_date DATE, reported_amount DECIMAL(10,2), created_at DATETIME, updated_at DATETIME,
     confirmed_at DATETIME, voided_at DATETIME, status VARCHAR(20), note VARCHAR(80));
+CREATE TABLE payment_report_reassignments (id INT PRIMARY KEY, from_report_id INT UNIQUE, to_report_id INT UNIQUE,
+    campus_id INT, from_student_id INT, to_student_id INT, from_invoice_id INT, to_invoice_id INT, amount INT, created_at DATETIME);
 INSERT INTO Campus VALUES (15,'daan',0),(9,'other',0);
 INSERT INTO Student VALUES (1,15,'never expose'),(2,9,'other campus'),(3,15,'different owner');
 INSERT INTO StudentClass (ID,StudentID,StartDate,PackageID) VALUES
@@ -51,6 +53,8 @@ INSERT INTO Payment (id,InvoiceID,payment_report_id,Amount,Method,PaidAt) VALUES
 INSERT INTO payment_reports (id,StudentID,StudentClassID,InvoiceID,payment_id,reported_amount,status,payment_date,note) VALUES
     (1,1,32,2,3,100,'confirmed','2026-10-31','private fixture'),
     (2,2,32,2,2,200,'pending','2026-10-31','other campus');
+UPDATE payment_reports SET billing_period='private malformed' WHERE id=1;
+UPDATE Invoice SET billing_period='2000 malformed' WHERE id=3;
 """
 
 
@@ -105,7 +109,7 @@ def exercise(binary, socket_path, port, operator):
         assert page("payments")[0]["paid_at"] == "2026-11-01 00:00:00"
         assert page("payments")[0]["report_link_uncertain"] == 1
         report, = page("reports")
-        assert report["invoice_id"] is None and report["payment_id"] is None and report["contract_id"] is None
+        assert all(report[field] is None for field in ("invoice_id", "payment_id", "contract_id", "billing_period"))
         collected = {name: [page(name), []] for name in VIEWS if name not in {"scope", "invoices"}}
         collected["invoices"] = [first, second, []]
         worksheet = subprocess.run([sys.executable, str(PROFILE / "daan-tuition-review.py")],
@@ -114,9 +118,19 @@ def exercise(binary, socket_path, port, operator):
         review = json.loads(worksheet.stdout)
         assert review["monthly"]["2026-10"]["net_recorded_collections"] == "650"
         assert review["later_activity"] == [{"dataset": "payments", "id": 1, "date": "2026-11-01", "amount": "100"}]
+        root(f"""USE {SOURCE};
+            INSERT INTO payment_reports (id,StudentID,InvoiceID,payment_id) VALUES (3,1,5,4),(4,3,4,6);
+            INSERT INTO payment_report_reassignments VALUES (9,3,4,15,1,3,5,4,50,'2026-11-03 12:00:00');
+            INSERT INTO Payment (id,InvoiceID,payment_report_id,Amount,Method,PaidAt,Note) VALUES
+                (5,5,3,-50,'void','2026-11-03','[receipt_reassign:9] private reason'),
+                (6,4,4,50,'cash','2026-10-31','[receipt_reassign:9] private reason'),
+                (7,4,NULL,10,'cash','2026-10-31','[receipt_reassign:9] user-supplied note');""")
+        outgoing, incoming, unmatched = page("payments", 4)
+        assert all(row["receipt_moved_at"] == "2026-11-03 12:00:00" for row in (outgoing, incoming))
+        assert unmatched["receipt_moved_at"] is None and unmatched["receipt_move_uncertain"] == 1
         root(f"UPDATE {SOURCE}.Campus SET code='wrong' WHERE id=15;")
         assert not page("invoices") and not statement(tool("daan_tuition_scope", {}))["rows"]
-    assert root(f"SELECT SUM(Amount) FROM {SOURCE}.Payment") == "950"
+    assert root(f"SELECT SUM(Amount) FROM {SOURCE}.Payment") == "960"
 
 
 def main(binary):

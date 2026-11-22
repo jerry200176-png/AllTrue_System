@@ -53,7 +53,7 @@ description = "Last row ID from the preceding page; use 0 to start."
 name = "daan_tuition_payments"
 description = "Read recorded Daan payments, including later activity on in-scope bills."
 source = "daan_tuition"
-statement = "SELECT id, campus_id, student_id, invoice_id, report_id, amount, report_link_uncertain, method, CAST(paid_at AS CHAR) AS paid_at, CAST(created_at AS CHAR) AS created_at, CAST(updated_at AS CHAR) AS updated_at FROM daan_tuition_payments WHERE id > ? ORDER BY id LIMIT 200"
+statement = "SELECT id, campus_id, student_id, invoice_id, report_id, amount, report_link_uncertain, method, receipt_move_uncertain, CAST(receipt_moved_at AS CHAR) AS receipt_moved_at, CAST(paid_at AS CHAR) AS paid_at, CAST(created_at AS CHAR) AS created_at, CAST(updated_at AS CHAR) AS updated_at FROM daan_tuition_payments WHERE id > ? ORDER BY id LIMIT 200"
 readonly = true
 max_rows = 200
 [[tools.parameters]]
