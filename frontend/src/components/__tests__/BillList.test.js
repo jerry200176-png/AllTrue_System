@@ -122,6 +122,44 @@ describe('BillList', () => {
     expect(act('c23')).toEqual(['核對', 'open']);
   });
 
+  it('in-app #592 offers the exact unbilled contract a direct record action and keeps its slip', async () => {
+    const unbilled = row({ id: 21, student_id: 7, payable_status: 'unbilled', payable_outstanding: null, can_record_unbilled_count: true });
+    const list = [
+      unbilled,
+      { ...unbilled, id: 22, schedule_mode: 'date' },
+      { ...unbilled, id: 23, package_id: 8 },
+      { ...unbilled, id: 24, payment_status: 'pending_report', latest_payment_report_id: 9 },
+      { ...unbilled, id: 25, renewed_by_newer_course: true },
+      { ...unbilled, id: 26, amount_pending_confirmation: true },
+      { ...unbilled, id: 27, payment_status: 'paid' },
+      { ...unbilled, id: 28, charge: 4400, can_record_unbilled_count: false },
+    ];
+    const w = mountList({ canDocs: true, alertRows: list, presetFilter: { key: 'all' } });
+    const button = w.get('[data-testid="bill-record-unbilled-c21"]');
+    expect(button.text()).toBe('登記收款');
+    await button.trigger('click');
+    await w.get('[data-testid="bill-action-c21"]').trigger('click');
+    expect(w.emitted('action').map(([b, kind]) => [b.class_id, b.student_id, kind]))
+      .toEqual([[21, 7, 'record-unbilled'], [21, 7, 'slip']]);
+    expect(w.findAll('[data-testid^="bill-record-unbilled-"]')).toHaveLength(1);
+    await w.setProps({ canDocs: false });
+    expect(w.find('[data-testid="bill-record-unbilled-c21"]').exists()).toBe(false);
+    w.unmount();
+  });
+
+  it('in-app #592 anchors save-and-next to the visible unbilled row', async () => {
+    const w = mountList({ canDocs: true, alertRows: [
+      row({ id: 20, remaining_sessions: 1 }),
+      row({ id: 21, remaining_sessions: 2, payable_status: 'unbilled', payable_outstanding: null, can_record_unbilled_count: true }),
+      row({ id: 22, remaining_sessions: 3 }),
+    ] });
+    expect(w.vm.owingQueue()).toEqual([20, 22]);
+    expect(w.vm.owingQueue(21)).toEqual([20, 22, 21]);
+    await w.get('[data-testid="bill-sort"]').setValue('remaining');
+    expect(w.vm.owingQueue(21)).toEqual([20, 21, 22]);
+    w.unmount();
+  });
+
   it('in-app534: renewal keeps the exact clicked student and contract', async () => {
     const w = mountList({ canDocs: true, alertRows: [
       row({ id: 30, student_id: 7, payment_status: 'renew_needed', payable_outstanding: 0 }),

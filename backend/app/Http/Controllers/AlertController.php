@@ -487,6 +487,14 @@ class AlertController extends Controller
                     'payable_amount'           => $payable['payable_amount'],
                     'payable_outstanding'      => $payable['payable_outstanding'],
                     'payable_status'           => $payable['payable_status'],
+                    // A bill estimate can be positive even when the stored count fee is unconfirmed.
+                    'can_record_unbilled_count' => $sc instanceof StudentClass
+                        && ($sc->ScheduleMode ?? 'count') === 'count'
+                        && ! $sc->isPartOfPackage()
+                        && (int) ($sc->Stop ?? 0) === 0
+                        && ($verdict['status'] ?? null) === 'unbilled'
+                        && $payable['payable_status'] === 'unbilled'
+                        && $paymentStatus === 'unpaid',
                     'payable_source'           => $payable['payable_source'],
                     'payable_invoice_id'       => $payable['payable_invoice_id'],
                     'billing_period'           => $payable['payable_billing_period'],
