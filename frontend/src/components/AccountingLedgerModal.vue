@@ -751,10 +751,12 @@ async function loadLedger() {
       }
     }
     if (props.studentWide || !Number(props.studentClassId || 0)) return;
-    // A ready draft can move the anchored card. Wait for its initial ordering before scrolling.
-    await draftsReady;
-    await nextTick();
-    if (requestVersion === ledgerRequestVersion) scrollToOpenedContract();
+    // A ready draft can move the anchored card. Only scrolling waits for that ordering;
+    // the callers that refresh posted payments or open a receipt can continue immediately.
+    void draftsReady?.then(async () => {
+      await nextTick();
+      if (requestVersion === ledgerRequestVersion) scrollToOpenedContract();
+    });
   }
 }
 
