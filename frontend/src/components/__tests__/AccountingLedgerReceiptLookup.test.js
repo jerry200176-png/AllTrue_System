@@ -7,11 +7,11 @@ const payment = (id, reportId, status = 'confirmed', extra = {}) => ({ id, repor
 const invoice = (id, payments) => ({ id, invoice_no: `I-${id}`, student_class_id: 42, status: 'paid', total_amount: 1000, calculated_applied_amount: 1000, outstanding_amount: 0, payments });
 const data = () => ({ student: { id: 5, name: '合成學生' }, scope: { student_class_id: 42 }, summary: {}, courses: [], anomalies: [], invoices: [invoice(501, [payment(71, 801), payment(72, 802)]), invoice(502, [payment(73, 803, 'pending'), payment(74, 804, 'voided', { is_void: true }), payment(75, null)])], receipts: [] });
 
-async function open({ role = 'director', payload = data(), action = 'documents' } = {}) {
+async function open({ role = 'director', payload = data(), action = 'documents', realContracts = false } = {}) {
   localStorage.setItem('alltrue_session', JSON.stringify({ access_token: 'synthetic', user: { role } }));
   const fetchMock = vi.fn(async (url) => ({ ok: true, status: 200, json: async () => String(url).startsWith('/api/v1/accounting/ledger') ? payload : { data: [] } }));
   vi.stubGlobal('fetch', fetchMock);
-  const wrapper = mount(AccountingLedgerModal, { attachTo: document.body, props: { show: true, studentClassId: 42, branchId: 7, initialAction: action }, global: { stubs: { Transition: false, BillingNotesPanel: true, ReceiptModal: Receipt, ContractCard: true } } });
+  const wrapper = mount(AccountingLedgerModal, { attachTo: document.body, props: { show: true, studentClassId: 42, branchId: 7, initialAction: action }, global: { stubs: { Transition: false, BillingNotesPanel: true, ReceiptModal: Receipt, ContractCard: !realContracts } } });
   await flushPromises();
   return { wrapper, fetchMock };
 }
@@ -90,6 +90,57 @@ describe('#4148 bill-linked receipt lookup', () => {
     try {
       await w.get('[data-testid="ledger-receipt-view-900"]').trigger('click');
       expect(w.get('[data-testid="lookup-receipt"]').text()).toContain('900');
+    } finally { w.unmount(); }
+  });
+});
+
+describe('contract invoice shortcut', () => {
+  function withContract(invoices) {
+    return {
+      ...data(),
+      courses: [{ id: 42, subject: '數學', schedule_mode: 'count', paid: true }],
+      invoices,
+    };
+  }
+
+  async function openContractMenu(wrapper) {
+    const trigger = wrapper.get('[data-testid="contract-card-42"] button[aria-haspopup="menu"]');
+    await trigger.trigger('keydown', { key: 'ArrowDown' });
+    await flushPromises();
+    return document.querySelector('[role="menu"] [data-action="invoice-documents"]');
+  }
+
+  it('reopens the invoice fold and focuses the uniquely linked combined bill without opening a receipt or writing data', async () => {
+    const related = { ...invoice(501, [payment(71, 801), payment(72, 802)]), student_class_id: 11, covered_student_class_ids: [11, 42] };
+    const unrelated = { ...invoice(502, [payment(73, 803)]), student_class_id: 77 };
+    const { wrapper: w, fetchMock } = await open({ payload: withContract([unrelated, related]), action: null, realContracts: true });
+    try {
+      await w.get('[data-testid="ledger-fold-invoices"]').trigger('click');
+      const item = await openContractMenu(w);
+      expect(item).not.toBeNull();
+      expect(item?.textContent).toContain('查看帳單與收據');
+      item.click();
+      await flushPromises();
+      const rowToggle = w.get('[data-testid="ledger-invoice-toggle-501"]');
+      expect(rowToggle.attributes('aria-expanded')).toBe('true');
+      expect(document.activeElement).toBe(rowToggle.element);
+      expect(w.get('[data-testid="ledger-invoice-toggle-502"]').attributes('aria-expanded')).toBe('false');
+      expect(w.find('[data-testid="lookup-receipt"]').exists()).toBe(false);
+      await w.get('[data-testid="ledger-payment-receipt-72"]').trigger('click');
+      expect(w.get('[data-testid="lookup-receipt"]').text()).toContain('802');
+      expect(fetchMock.mock.calls.every(([, options]) => !options?.method || options.method === 'GET')).toBe(true);
+    } finally { w.unmount(); }
+  });
+
+  it.each([
+    ['director', [], 'no bill'],
+    ['director', [invoice(501, []), invoice(502, [])], 'more than one bill'],
+    ['teacher', [invoice(501, [])], 'without document permission'],
+  ])('keeps the general documents entry whenever direct lookup is unavailable (%s, %s, %s)', async (role, invoices) => {
+    const { wrapper: w } = await open({ role, payload: withContract(invoices), action: null, realContracts: true });
+    try {
+      expect(await openContractMenu(w)).toBeNull();
+      expect(w.get('[data-testid="ledger-fold-invoices"]').exists()).toBe(true);
     } finally { w.unmount(); }
   });
 });

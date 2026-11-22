@@ -159,6 +159,7 @@ const props = defineProps({
   focused: { type: Boolean, default: false },
   // In-app #425: director/super_admin, same gate as 帳務中心 canViewBillingDocs.
   canViewDocs: { type: Boolean, default: false },
+  hasInvoiceDocuments: { type: Boolean, default: false },
   outstanding: { type: Number, default: 0 },
   pendingReport: { type: Object, default: null },
   // Most recent non-void payment on this contract: { date: 'YYYY-MM-DD', amount }, or { legacyUnverified: true }
@@ -189,7 +190,7 @@ const props = defineProps({
   // Remembered by the drawer so a reload keeps the card open.
   expanded: { type: Boolean, default: false },
 });
-const emit = defineEmits(['changed', 'record', 'issue', 'confirmed', 'slip', 'legacy-backfill', 'row-action', 'toggle']);
+const emit = defineEmits(['changed', 'record', 'issue', 'confirmed', 'slip', 'legacy-backfill', 'row-action', 'toggle', 'show-invoice-documents']);
 
 // Billing redesign PRD v2 D16: whether the money for each lesson is in.
 const PAYMENT_LABELS = { paid: '已收', partial: '繳了一部分', unpaid: '未繳', no_invoice: '還沒開帳單' };
@@ -263,7 +264,8 @@ const amountsLine = computed(() => {
     if (nothingTaught.value) return '';
     return noObligation.value || waived.value || props.lastPayment?.fullDiscount || props.course.free_gift_settled === true || props.course.full_discount_settled === true ? '' : '金額未填';
   }
-  return `本合約帳單 應收 ${money(a.due)}・已收 ${money(a.received)}・未繳 ${money(a.owed)}`;
+  const summary = `本合約帳單 應收 ${money(a.due)}・已收 ${money(a.received)}`;
+  return repeatsUnpaidAmount.value ? summary : `${summary}・未繳 ${money(a.owed)}`;
 });
 const shortDate = (d) => { const p = String(d).slice(5, 10).split('-'); return p.length === 2 ? `${Number(p[0])}/${Number(p[1])}` : ''; };
 // Same source as the printed receipt (confirmed receipts, then non-void invoice payments; never "fixed" here).
@@ -449,6 +451,9 @@ const legacyRef = ref(null);
 const nothingTaught = computed(() => isMonthly.value && state.value === 'ready' && sessions.value.length > 0 && heldCount.value === 0 && upcomingCount.value === 0
   && !(props.outstanding > 0) && !props.pendingReport && !props.billDraft && !props.lastPayment?.date
   && !(props.amounts?.due || props.amounts?.received || props.amounts?.owed));
+// An ordinary unpaid card already shows this exact amount in its expanded money row.
+const repeatsUnpaidAmount = computed(() => !props.pendingReport && !legacyUnverified.value && !noObligation.value && !waived.value
+  && !followerPointer.value && !nothingTaught.value && props.outstanding > 0 && props.amounts?.owed === props.outstanding);
 const canRecord = computed(() => !nothingTaught.value && !props.pendingReport && !followerPointer.value && !outsideDates.value.length && !legacyResolvable.value && !noObligation.value && !waived.value
   && (props.outstanding > 0 || (!props.course.paid && !fullyCollected.value)));
 // Same two places the card used to offer 開帳單: nothing owed on an unpaid bill-less term, or a collected term with a ready renewal draft.
@@ -463,7 +468,10 @@ const pill = computed(() => {
   if (waived.value) return { text: WAIVED_LABEL, cls: '' };
   if (followerPointer.value) return { text: '共用方案', cls: '' };
   if (legacyUnverified.value) return { text: props.outstanding > 0 ? `需核對 ${money(props.outstanding)}` : '需核對', cls: 'tone-warn' };
-  if (props.outstanding > 0) return { text: `${C.unpaid.label} ${money(props.outstanding)}`, cls: 'pay-unpaid' };
+  if (props.outstanding > 0) {
+    const text = open.value && repeatsUnpaidAmount.value ? C.unpaid.label : `${C.unpaid.label} ${money(props.outstanding)}`;
+    return { text, cls: 'pay-unpaid' };
+  }
   if (nothingTaught.value) return { text: '不用繳費', cls: '' };
   if (!props.course.paid && !fullyCollected.value) return { text: '還沒開帳單', cls: '' };
   return { text: C.paid.label, cls: 'pay-paid' };
@@ -482,6 +490,7 @@ const menuGroups = computed(() => {
     canRecord.value && primary.value !== 'record' && { id: 'record', label: '登記這筆' },
     canIssue.value && primary.value !== 'issue' && { id: 'issue', label: `開帳單 ${money(props.billDraft.amount)}` },
     showSlip.value && { id: 'slip', label: '繳費單', disabled: !slipState.value.ok, reason: slipState.value.ok ? '' : slipState.value.reason },
+    props.canViewDocs && props.hasInvoiceDocuments && { id: 'invoice-documents', label: '查看帳單與收據' },
     { id: 'memo', label: '改備註' },
   ].filter(Boolean);
   const ra = props.rowActions || {};
@@ -500,6 +509,7 @@ function onMenu(id) {
   else if (id === 'record') emit('record', props.course);
   else if (id === 'issue') emit('issue', props.billDraft);
   else if (id === 'slip') emit('slip', props.course);
+  else if (id === 'invoice-documents') emit('show-invoice-documents');
   else if (id === 'memo') { open.value = true; startEdit(); }
   else if (['waive', 'void', 'settle'].includes(id)) emit('row-action', id);
   else if (id === 'refund') refundOpen.value = true;

@@ -326,6 +326,8 @@
                 :expanded="openCards.has(Number(c.id))"
                 @toggle="(v) => (v ? openCards.add(Number(c.id)) : openCards.delete(Number(c.id)))"
                 :can-view-docs="canManageInvoices()"
+                :has-invoice-documents="Boolean(uniqueInvoiceForCourse(c.id))"
+                @show-invoice-documents="showInvoiceDocuments(c.id)"
                 :outstanding="owedFor(c.id)"
                 :pending-report="packageLead(c) ? pendingReportFor(c.id) : null"
                 :shared-follower="!packageLead(c)"
@@ -765,6 +767,23 @@ const invoiceCoversCourse = (inv, id) => {
     ? inv.covered_student_class_ids : [inv?.student_class_id];
   return covered.some((x) => Number(x) === Number(id));
 };
+function uniqueInvoiceForCourse(courseId) {
+  const matches = (payload.value?.invoices || []).filter((invoice) => invoiceCoversCourse(invoice, courseId));
+  return matches.length === 1 ? matches[0] : null;
+}
+
+async function showInvoiceDocuments(courseId) {
+  if (!canManageInvoices()) return;
+  const invoice = uniqueInvoiceForCourse(courseId);
+  if (!invoice) return;
+  fold.inv = true;
+  if (!isExpanded(invoice.id)) toggleExpand(invoice.id);
+  await nextTick();
+  const rowToggle = modalEl.value?.querySelector(`[data-testid="ledger-invoice-toggle-${Number(invoice.id)}"]`);
+  rowToggle?.focus({ preventScroll: true });
+  rowToggle?.scrollIntoView?.({ block: 'nearest' });
+}
+
 // 開啟的是單一課程時，列表裡別的課程的帳單要標「其他課程」（#3894）。
 const isOtherCourseInvoice = (inv) => {
   const scopeId = props.studentWide ? 0 : Number(payload.value?.scope?.student_class_id || 0);

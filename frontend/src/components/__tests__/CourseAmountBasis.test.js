@@ -26,7 +26,8 @@ afterEach(() => { vi.unstubAllGlobals(); localStorage.clear(); });
 describe('amount-source synthetic characterization', () => {
   it('issued8800 paid8000 due800 is ledger arithmetic', async () => {
     const { w, card } = await ledger({ invoices: [invoice()] });
-    expect(card.find('[data-testid="contract-amounts"]').text()).toBe('本合約帳單 應收 NT$ 8,800・已收 NT$ 8,000・未繳 NT$ 800');
+    expect(card.get('[data-testid="contract-amounts"]').text()).toBe('本合約帳單 應收 NT$ 8,800・已收 NT$ 8,000');
+    expect(card.get('[data-testid="contract-money"] .due').text()).toBe('NT$ 800');
     expect(card.find('[data-testid="contract-last-payment"]').text()).toContain('NT$ 8,000'); w.unmount();
   });
   it('manual issued8000 paid8000 remains settled despite current course8800', async () => {
@@ -51,7 +52,8 @@ describe('amount-source synthetic characterization', () => {
     const { w, card } = await ledger({ course: { schedule_mode: 'date' }, invoices: [invoice({ stored_total_amount: 8000,
       computed_total_amount: 8800, amount_source: 'billable_sessions', calculated_applied_amount: 0, paid_amount: 0,
       outstanding_amount: 8800, status: 'unpaid', payments: [], billing_period: '2026-01' })] });
-    expect(card.find('[data-testid="contract-amounts"]').text()).toBe('本合約帳單 應收 NT$ 8,800・已收 NT$ 0・未繳 NT$ 8,800');
+    expect(card.get('[data-testid="contract-amounts"]').text()).toBe('本合約帳單 應收 NT$ 8,800・已收 NT$ 0');
+    expect(card.get('[data-testid="contract-money"] .due').text()).toBe('NT$ 8,800');
     expect(card.text()).not.toContain('已收 NT$ 8,000'); expect(w.text()).toContain('8,800'); w.unmount();
   });
   it('aggregates active invoices once and excludes void bills from8800/8000/800', async () => {
