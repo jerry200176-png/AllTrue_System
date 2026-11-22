@@ -6,17 +6,22 @@
 through an approved relay. No database connection or token is configured in
 WSL. The relay must authenticate its caller, inject the existing read-only
 authorization server-side, and forward only the selected GET routes to the
-verified AllTrue origin. A local relay may bind to loopback. Use HTTPS for a
+verified AllTrue origin. Keep full query strings out of relay logs. A local relay may bind to loopback. Use HTTPS for a
 remote relay. Set `ALLTRUE_READ_GATEWAY_URL` to the approved relay origin.
+The existing token can read multiple campuses. Query filters such as
+`CampusID=15` limit the result, and the relay must enforce caller authorization
+independently.
 
 ```bash
 python3 infra/agent-readonly/query_alltrue.py
 python3 infra/agent-readonly/query_alltrue.py Student --eq CampusID=15 --order id --limit 200
 ```
 
-For larger reads, use a stable numeric order and advance the lower bound to
-the previous page's last ID plus one. Confirm table and field names before
-querying and keep exports in a private artifact directory. Write requests
+For larger reads, sort by a unique numeric ID and advance its lower bound to
+the previous page's last ID plus one. Filters take numbers, dates and times.
+Filter returned status codes locally so server-side post-page code filtering
+cannot hide later results. Confirm table and field names before querying and
+keep exports in a private artifact directory. Write requests
 continue through AllTrue's existing POP and accounting approval workflows.
 The client does not provision a relay or change production access.
 

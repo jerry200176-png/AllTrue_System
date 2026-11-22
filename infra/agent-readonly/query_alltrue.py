@@ -11,6 +11,7 @@ from urllib.parse import urlencode, urlsplit
 from urllib.request import HTTPRedirectHandler, ProxyHandler, Request, build_opener
 
 IDENTIFIER = re.compile(r"[A-Za-z][A-Za-z0-9_]{0,63}")
+NUMBER_OR_DATE = re.compile(r"-?\d{1,8}(\.\d{1,4})?|\d{4}-\d{2}-\d{2}([ T]\d{2}:\d{2}(:\d{2})?)?|\d{2}:\d{2}(:\d{2})?")
 READ_PATH = "/api/v1/triage/db"
 
 
@@ -45,10 +46,13 @@ def identifier(value):
     return value
 
 
-def filter_argument(value):
+def filter_argument(value, multiple=False):
     column, separator, term = value.partition("=")
     if not separator or not term:
         raise argparse.ArgumentTypeError("Expected COLUMN=VALUE.")
+    values = term.split(",") if multiple else [term]
+    if len(values) > 200 or not all(NUMBER_OR_DATE.fullmatch(item) for item in values):
+        raise argparse.ArgumentTypeError("Filter values must be numbers, dates, or times.")
     return identifier(column), term
 
 
@@ -59,7 +63,8 @@ def main(argv=None):
     parser.add_argument("--eq", type=filter_argument, action="append", default=[])
     parser.add_argument("--gte", type=filter_argument, action="append", default=[])
     parser.add_argument("--lte", type=filter_argument, action="append", default=[])
-    parser.add_argument("--in", dest="in_values", type=filter_argument, action="append", default=[])
+    parser.add_argument("--in", dest="in_values", type=lambda value: filter_argument(value, multiple=True),
+                        action="append", default=[])
     parser.add_argument("--order", type=identifier)
     parser.add_argument("--limit", type=int, default=50)
     args = parser.parse_args(argv)
@@ -73,6 +78,9 @@ def main(argv=None):
         if args.table:
             target += "/" + args.table
             filters = {"eq": args.eq, "gte": args.gte, "lte": args.lte, "in": args.in_values}
+            for op, entries in filters.items():
+                if len(dict(entries)) != len(entries) or len(entries) > (3 if op == "in" else 6):
+                    parser.error(f"--{op} has repeated columns or too many filters.")
             params = [(f"{op}[{column}]", term) for op, entries in filters.items() for column, term in entries]
             params.append(("limit", args.limit))
             if args.order:

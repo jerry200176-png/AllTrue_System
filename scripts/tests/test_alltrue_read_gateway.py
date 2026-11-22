@@ -62,6 +62,9 @@ class AllTrueGatewayTest(unittest.TestCase):
     def test_bad_arguments_and_redirects_fail_closed(self):
         self.assertNotEqual(self.run_client("Invoice/../Payment").returncode, 0)
         self.assertNotEqual(self.run_client("Invoice", "--limit", "201").returncode, 0)
+        self.assertNotEqual(self.run_client("Invoice", "--eq", "StudentID=name").returncode, 0)
+        self.assertNotEqual(self.run_client("Invoice", "--in", "StudentID=1,name").returncode, 0)
+        self.assertNotEqual(self.run_client("Invoice", "--eq", "StudentID=1", "--eq", "StudentID=2").returncode, 0)
         self.assertEqual(self.relay.requests, [])
         self.relay.redirect = True
         result = self.run_client("Invoice")
