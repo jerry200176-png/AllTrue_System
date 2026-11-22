@@ -487,85 +487,91 @@
                     </div>
                   </section>
                 </div>
-                <div v-else-if="getHistoryStudentCourses(student.id).length > 0" class="sl-empty-active">
-                  <span class="material-symbols-outlined sl-empty-active__icon" aria-hidden="true">school</span>
-                  <span>目前沒有進行中的課程</span>
-                </div>
+                <p v-else-if="getHistoryStudentCourses(student.id).length > 0" class="tw:m-0 tw:flex tw:items-center tw:gap-2 tw:py-3 tw:text-tpl-body tw:text-tpl-secondary">
+                  <BookOpen class="tw:size-5 tw:shrink-0" aria-hidden="true" />
+                  目前沒有進行中的課程
+                </p>
 
-                <!-- History courses collapsible section -->
-                <div v-if="getHistoryStudentCourses(student.id).length > 0" class="sl-history-section">
-                  <button
-                    type="button"
-                    class="sl-history-toggle"
-                    :aria-expanded="expandedHistoryCourses.has(student.id)"
-                    :aria-controls="`student-history-${student.id}`"
-                    @click.stop="toggleHistoryCourses(student.id)"
-                  >
-                    <span class="material-symbols-outlined sl-history-toggle__icon" aria-hidden="true">inventory_2</span>
-                    <span>歷史課程</span>
-                    <span class="sl-history-toggle__count">{{ getHistoryStudentCourses(student.id).length }} 筆</span>
-                    <span class="sl-history-toggle__chevron">{{ expandedHistoryCourses.has(student.id) ? '▲' : '▼' }}</span>
-                  </button>
-                  <div
-                    v-if="expandedHistoryCourses.has(student.id)"
-                    :id="`student-history-${student.id}`"
-                    class="sl-history-body"
-                  >
-                    <div v-for="hc in getHistoryStudentCourses(student.id)" :key="hc.id" class="sl-history-card">
-                      <div class="sl-history-card__header">
-                        <span class="tag sl-history-card__subject">{{ getStudentCourseSubjectDisplayLabel(hc) }}</span>
-                        <span class="status-tag" :class="hc.class_type">{{ classTypeLabel(hc.class_type) }}</span>
-                        <span v-if="isPackageMember(hc)" class="tag tag-package" :title="hc.PackageName || '多科方案'">方案</span>
-                        <span v-if="effectiveClosedReason(hc) === 'settled_pending' && closedPaymentState(hc) === 'pending'" class="tag sl-tag-history sl-tag-history--pending">{{ ENDED_PENDING_LABEL }}</span>
-                        <span v-else-if="closedPaymentState(hc) === 'review'" class="tag sl-tag-history sl-tag-history--pending" :title="reviewReasonText(hc) || undefined">{{ ENDED_REVIEW_LABEL }}</span>
-                        <span v-else-if="effectiveClosedReason(hc) === 'waived'" class="tag sl-tag-history sl-tag-history--settled">{{ WAIVED_LABEL }}</span>
-                        <span v-else-if="effectiveClosedReason(hc) === 'settled' || (effectiveClosedReason(hc) === 'settled_pending' && closedPaymentState(hc) === 'settled')" class="tag sl-tag-history sl-tag-history--settled">已結算</span>
-                        <span v-else class="tag sl-tag-history sl-tag-history--completed">已完課</span>
-                      </div>
-                      <div class="sl-history-card__details">
-                        <span><span class="sl-history-card__label">老師</span>{{ hc.teacher_name || '—' }}</span>
-                        <span><span class="sl-history-card__label">費用</span>{{ unitPriceDisplay(hc) }}</span>
-                        <span v-if="hc.payment_type === 'session'"><span class="sl-history-card__label">堂數</span>{{ hc.used_sessions || 0 }} / {{ hc.sessions_purchased || 0 }}</span>
-                        <span v-if="hc.last_paid_at"><span class="sl-history-card__label">繳費</span>{{ hc.last_paid_at }}</span>
-                      </div>
-                      <section class="student-course-dates student-course-dates--history tw:mt-3 tw:border-0 tw:border-t tw:border-solid tw:border-border tw:pt-3" :aria-labelledby="`student-history-dates-${student.id}-${hc.id}`">
-                        <div class="student-course-dates__header tw:flex tw:items-center tw:justify-between tw:gap-3">
-                          <div>
-                            <span :class="factRow.label">完整上課日期</span>
-                            <strong :class="[factRow.value, 'tw:tabular-nums']" :id="`student-history-dates-${student.id}-${hc.id}`">{{ studentCourseDateSummary(hc) }}</strong>
+                <CollapsibleGroup
+                  v-if="getHistoryStudentCourses(student.id).length > 0"
+                  class="tw:border-t tw:border-border"
+                  toggle-class="sl-history-toggle"
+                  :expanded="expandedHistoryCourses.has(student.id)"
+                  :controls="`student-history-${student.id}`"
+                  @toggle="toggleHistoryCourses(student.id)"
+                >
+                  <template #title>歷史課程</template>
+                  <template #meta>{{ getHistoryStudentCourses(student.id).length }} 筆</template>
+                  <div :id="`student-history-${student.id}`">
+                    <div v-if="expandedHistoryCourses.has(student.id)" class="sl-history-body tw:divide-y tw:divide-border">
+                      <article v-for="hc in getHistoryStudentCourses(student.id)" :key="hc.id" class="sl-history-card tw:min-w-0 tw:px-1 tw:py-4 tw:sm:px-4">
+                        <div class="tw:mb-3 tw:flex tw:flex-wrap tw:items-center tw:gap-x-3 tw:gap-y-1.5">
+                          <h5 class="tw:m-0 tw:text-tpl-list tw:font-semibold tw:text-foreground tw:wrap-anywhere">{{ getStudentCourseSubjectDisplayLabel(hc) }}</h5>
+                          <span :class="dataTable.sub">{{ classTypeLabel(hc.class_type) }}</span>
+                          <StatusBadge v-if="isPackageMember(hc)" tone="neutral" :title="hc.PackageName || '多科方案'">方案</StatusBadge>
+                          <StatusBadge v-if="effectiveClosedReason(hc) === 'settled_pending' && closedPaymentState(hc) === 'pending'" tone="danger">{{ ENDED_PENDING_LABEL }}</StatusBadge>
+                          <StatusBadge v-else-if="closedPaymentState(hc) === 'review'" tone="warning" :title="reviewReasonText(hc) || undefined">{{ ENDED_REVIEW_LABEL }}</StatusBadge>
+                          <StatusBadge v-else-if="effectiveClosedReason(hc) === 'waived'" tone="success">{{ WAIVED_LABEL }}</StatusBadge>
+                          <StatusBadge v-else-if="effectiveClosedReason(hc) === 'settled' || (effectiveClosedReason(hc) === 'settled_pending' && closedPaymentState(hc) === 'settled')" tone="success">已結算</StatusBadge>
+                          <StatusBadge v-else tone="neutral">已完課</StatusBadge>
+                        </div>
+                        <dl class="tw:m-0 tw:grid tw:grid-cols-2 tw:gap-x-4 tw:gap-y-2 tw:md:grid-cols-4">
+                          <div class="tw:min-w-0">
+                            <dt :class="factRow.label">老師</dt>
+                            <dd :class="[factRow.value, 'tw:m-0 tw:wrap-anywhere']">{{ hc.teacher_name || '—' }}</dd>
                           </div>
-                          <button
-                            v-if="studentCourseSessionPreview(student.id, hc).overflow > 0"
-                            type="button"
-                            :class="['student-course-dates__toggle', rowAction.secondary, 'tw:gap-1']"
-                            :aria-expanded="isStudentCourseDatesExpanded(student.id, hc)"
-                            @click.stop="toggleStudentCourseDates(student.id, hc)"
-                          >
-                            <span class="material-symbols-outlined tw:text-[1.25em]" aria-hidden="true">{{ isStudentCourseDatesExpanded(student.id, hc) ? 'expand_less' : 'expand_more' }}</span>
-                            {{ isStudentCourseDatesExpanded(student.id, hc) ? '收合日期' : `再顯示 ${studentCourseSessionPreview(student.id, hc).overflow} 堂` }}
-                          </button>
+                          <div class="tw:min-w-0">
+                            <dt :class="factRow.label">費用</dt>
+                            <dd :class="[factRow.value, dataTable.amount, 'tw:m-0 tw:wrap-anywhere']">{{ unitPriceDisplay(hc) }}</dd>
+                          </div>
+                          <div v-if="hc.payment_type === 'session'">
+                            <dt :class="factRow.label">堂數</dt>
+                            <dd :class="[factRow.value, 'tw:m-0 tw:tabular-nums']">{{ hc.used_sessions || 0 }} / {{ hc.sessions_purchased || 0 }}</dd>
+                          </div>
+                          <div v-if="hc.last_paid_at" class="tw:min-w-0">
+                            <dt :class="factRow.label">繳費</dt>
+                            <dd :class="[factRow.value, 'tw:m-0 tw:tabular-nums tw:wrap-anywhere']">{{ hc.last_paid_at }}</dd>
+                          </div>
+                        </dl>
+                        <section class="student-course-dates student-course-dates--history tw:mt-3 tw:border-0 tw:border-t tw:border-solid tw:border-border tw:pt-3" :aria-labelledby="`student-history-dates-${student.id}-${hc.id}`">
+                          <div class="student-course-dates__header tw:flex tw:items-center tw:justify-between tw:gap-3">
+                            <div>
+                              <span :class="factRow.label">完整上課日期</span>
+                              <strong :class="[factRow.value, 'tw:tabular-nums']" :id="`student-history-dates-${student.id}-${hc.id}`">{{ studentCourseDateSummary(hc) }}</strong>
+                            </div>
+                            <button
+                              v-if="studentCourseSessionPreview(student.id, hc).overflow > 0"
+                              type="button"
+                              :class="['student-course-dates__toggle', rowAction.secondary, 'tw:gap-1']"
+                              :aria-expanded="isStudentCourseDatesExpanded(student.id, hc)"
+                              @click.stop="toggleStudentCourseDates(student.id, hc)"
+                            >
+                              <span class="material-symbols-outlined tw:text-[1.25em]" aria-hidden="true">{{ isStudentCourseDatesExpanded(student.id, hc) ? 'expand_less' : 'expand_more' }}</span>
+                              {{ isStudentCourseDatesExpanded(student.id, hc) ? '收合日期' : `再顯示 ${studentCourseSessionPreview(student.id, hc).overflow} 堂` }}
+                            </button>
+                          </div>
+                          <div v-if="isStudentCourseSessionsLoading(student.id)" :class="['student-course-dates__state', DATES_STATE, DATES_QUIET]" role="status">上課日期載入中…</div>
+                          <div v-else-if="studentCourseSessionsLoadError(student.id)" :class="['student-course-dates__state student-course-dates__state--error', DATES_STATE, toneText.danger]" role="alert">
+                            <span>上課日期暫時無法載入。</span>
+                            <button type="button" :class="rowAction.secondary" @click.stop="retryLoadStudentCourseSessions(student.id)">重試</button>
+                          </div>
+                          <ol v-else-if="studentCourseSessionPreview(student.id, hc).total > 0" class="student-course-dates__list tw:m-0 tw:mt-2.5 tw:grid tw:list-none tw:gap-1.5 tw:p-0">
+                            <li class="tw:flex tw:min-h-9 tw:items-center tw:justify-between tw:gap-2.5 tw:rounded-md tw:bg-muted tw:px-2.5 tw:py-1.5" v-for="session in studentCourseSessionPreview(student.id, hc).visible" :key="studentCourseSessionRowKey(session, hc)">
+                              <span class="student-course-dates__date tw:text-tpl-caption tw:text-foreground tw:tabular-nums">{{ formatStudentCourseSessionDate(session) }}</span>
+                              <span v-if="studentCourseSessionStatus(session)" class="student-course-dates__status tw:text-tpl-caption tw:whitespace-nowrap tw:text-tpl-secondary">{{ studentCourseSessionStatus(session) }}</span>
+                            </li>
+                          </ol>
+                          <div v-else :class="['student-course-dates__state', DATES_STATE, DATES_QUIET]">目前沒有可顯示的上課日期。</div>
+                        </section>
+                        <div class="sl-history-card__actions tw:mt-3 tw:flex tw:flex-wrap tw:gap-2">
+                          <button type="button" :class="rowAction.secondary" @click="editCourse(hc)">編輯</button>
+                          <button v-if="courseHistoryReason(hc) === 'completed'" type="button" :class="rowAction.secondaryWrap" @click="openAddSessionsForCourse(hc)">{{ isTutoringCourse(hc) ? '延續輔導課（不收費）' : isTrialCourse(hc) ? '轉為正式課程' : RENEW_LESSONS_LABEL }}</button>
+                          <button v-if="effectiveClosedReason(hc) !== 'waived'" type="button" :class="rowAction.dangerWrap" @click="deleteCourse(hc)">刪除</button>
                         </div>
-                        <div v-if="isStudentCourseSessionsLoading(student.id)" :class="['student-course-dates__state', DATES_STATE, DATES_QUIET]" role="status">上課日期載入中…</div>
-                        <div v-else-if="studentCourseSessionsLoadError(student.id)" :class="['student-course-dates__state student-course-dates__state--error', DATES_STATE, toneText.danger]" role="alert">
-                          <span>上課日期暫時無法載入。</span>
-                          <button type="button" :class="rowAction.secondary" @click.stop="retryLoadStudentCourseSessions(student.id)">重試</button>
-                        </div>
-                        <ol v-else-if="studentCourseSessionPreview(student.id, hc).total > 0" class="student-course-dates__list tw:m-0 tw:mt-2.5 tw:grid tw:list-none tw:gap-1.5 tw:p-0">
-                          <li class="tw:flex tw:min-h-9 tw:items-center tw:justify-between tw:gap-2.5 tw:rounded-md tw:bg-muted tw:px-2.5 tw:py-1.5" v-for="session in studentCourseSessionPreview(student.id, hc).visible" :key="studentCourseSessionRowKey(session, hc)">
-                            <span class="student-course-dates__date tw:text-tpl-caption tw:text-foreground tw:tabular-nums">{{ formatStudentCourseSessionDate(session) }}</span>
-                            <span v-if="studentCourseSessionStatus(session)" class="student-course-dates__status tw:text-tpl-caption tw:whitespace-nowrap tw:text-tpl-secondary">{{ studentCourseSessionStatus(session) }}</span>
-                          </li>
-                        </ol>
-                        <div v-else :class="['student-course-dates__state', DATES_STATE, DATES_QUIET]">目前沒有可顯示的上課日期。</div>
-                      </section>
-                      <div class="sl-history-card__actions">
-                        <button type="button" class="small ghost" @click="editCourse(hc)">編輯</button>
-                        <button v-if="courseHistoryReason(hc) === 'completed'" type="button" class="small ghost" @click="openAddSessionsForCourse(hc)">{{ isTutoringCourse(hc) ? '延續輔導課（不收費）' : isTrialCourse(hc) ? '轉為正式課程' : RENEW_LESSONS_LABEL }}</button>
-                        <button v-if="effectiveClosedReason(hc) !== 'waived'" type="button" class="small danger" @click="deleteCourse(hc)">刪除</button>
-                      </div>
+                      </article>
                     </div>
                   </div>
-                </div>
+                </CollapsibleGroup>
                 </template>
               </div>
             </td>
@@ -1054,7 +1060,7 @@ import {
   buildBindingManagementNav,
 } from '../lib/authoritativeMutationRoutes.js';
 import { Button } from '../components/ui/button';
-import { FilterChip, PageHeader, SelectionBar, StatItem, StatStrip, StatusBadge, control, dataTable, factRow, pageShell, rowAction, surface, toneBadge, toneText } from '../components/ui/page';
+import { CollapsibleGroup, FilterChip, PageHeader, SelectionBar, StatItem, StatStrip, StatusBadge, control, dataTable, factRow, pageShell, rowAction, surface, toneBadge, toneText } from '../components/ui/page';
 import { Checkbox } from '../components/ui/checkbox';
 
 // Course card class sets (template rollout slice 5): type sizes come from the template tokens so 字級 moves them.
@@ -4105,143 +4111,6 @@ table th { font-size: 12.5px; }
   border: 1px solid #c4b5fd;
   font-size: 0.65rem;
   cursor: help;
-}
-
-/* ── Empty active courses ── */
-.sl-empty-active {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 20px 16px;
-  color: var(--ds-ink-mute);
-  font-size: 14px;
-}
-.sl-empty-active__icon {
-  font-size: 24px;
-  color: var(--ds-hairline-input);
-}
-
-/* ── History section ── */
-.sl-history-section {
-  border-top: 1px dashed var(--ds-hairline);
-  margin-top: 8px;
-  background: var(--ds-canvas-soft);
-  border-radius: 0 0 8px 8px;
-}
-.sl-history-toggle {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  width: 100%;
-  padding: 10px 14px;
-  border: none;
-  background: transparent;
-  font-family: inherit;
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--ds-ink-secondary);
-  cursor: pointer;
-  transition: background 0.15s;
-}
-.sl-history-toggle:hover {
-  background: var(--ds-hairline);
-}
-.sl-history-toggle__icon {
-  font-size: 18px;
-  color: var(--ds-ink-mute);
-}
-.sl-history-toggle__count {
-  font-weight: 400;
-  font-size: 12px;
-  color: var(--ds-ink-mute);
-}
-.sl-history-toggle__chevron {
-  margin-left: auto;
-  font-size: 11px;
-  color: var(--ds-ink-mute);
-}
-.sl-history-body {
-  padding: 4px 14px 14px;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-.sl-history-card {
-  background: var(--ds-canvas);
-  border: 1px solid var(--ds-hairline);
-  border-radius: 10px;
-  padding: 10px 14px;
-  transition: box-shadow 0.15s;
-}
-.sl-history-card:hover {
-  box-shadow: var(--ds-shadow-1);
-}
-.sl-history-card__header {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px;
-  margin-bottom: 6px;
-}
-.sl-history-card__subject {
-  background: var(--ds-canvas-soft) !important;
-  color: var(--ds-ink-secondary) !important;
-  border: 1px solid var(--ds-hairline-input) !important;
-}
-.sl-tag-history {
-  border-radius: 6px;
-  font-size: 11px;
-  padding: 2px 8px;
-  font-weight: 700;
-  letter-spacing: 0.02em;
-}
-.sl-tag-history--settled {
-  background: var(--ds-success-wash);
-  color: var(--ds-success);
-  border: 1px solid var(--ds-success);
-}
-.sl-tag-history--pending {
-  background: var(--ds-warning-wash);
-  color: var(--ds-warning);
-  border: 1px solid var(--ds-warning);
-}
-/* completed 藍屬多態語意色（無對應 ds token），維持 raw 待 token 擴充。 */
-.sl-tag-history--completed {
-  background: #eff6ff;
-  color: #1d4ed8;
-  border: 1px solid #93c5fd;
-}
-.sl-history-card__details {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px 14px;
-  font-size: 13px;
-  color: var(--ds-ink-mute);
-}
-.sl-history-card__label {
-  font-weight: 600;
-  color: var(--ds-ink-mute);
-  margin-right: 4px;
-  font-size: 12px;
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
-}
-.sl-history-card__actions {
-  display: flex;
-  gap: 6px;
-  margin-top: 8px;
-}
-@media (max-width: 640px) {
-  .sl-history-body {
-    padding: 4px 8px 12px;
-  }
-  .sl-history-card {
-    padding: 8px 10px;
-  }
-  .sl-history-card__details {
-    flex-direction: column;
-    gap: 2px;
-  }
 }
 
 /* LINE bindings section */
