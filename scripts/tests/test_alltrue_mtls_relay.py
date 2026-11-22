@@ -56,12 +56,14 @@ class RelayTest(unittest.TestCase):
                 return subprocess.run(["openssl", *args], cwd=base, capture_output=True, text=True, check=True, timeout=10).stdout
 
             openssl("req", "-x509", "-newkey", "ec", "-pkeyopt", "ec_paramgen_curve:prime256v1", "-nodes",
-                    "-subj", "/CN=Synthetic CA", "-days", "1", "-keyout", "ca.key", "-out", "client-ca.crt")
+                    "-subj", "/CN=Synthetic CA", "-days", "1", "-keyout", "ca.key", "-out", "client-ca.crt",
+                    "-addext", "keyUsage=critical,keyCertSign,cRLSign")
 
             def identity(name, extensions):
                 openssl("req", "-new", "-newkey", "ec", "-pkeyopt", "ec_paramgen_curve:prime256v1", "-nodes",
                         "-subj", f"/CN={name}", "-keyout", f"{name}.key", "-out", f"{name}.csr")
-                (base / "ext").write_text(extensions)
+                (base / "ext").write_text("basicConstraints=critical,CA:FALSE\nkeyUsage=critical,digitalSignature\n"
+                                          "subjectKeyIdentifier=hash\nauthorityKeyIdentifier=keyid,issuer\n" + extensions)
                 openssl("x509", "-req", "-in", f"{name}.csr", "-CA", "client-ca.crt", "-CAkey", "ca.key",
                         "-CAcreateserial", "-days", "1", "-extfile", "ext", "-out", f"{name}.crt")
                 (base / f"{name}.key").chmod(0o600)
@@ -129,6 +131,7 @@ class RelayTest(unittest.TestCase):
 
         def request(path, certificate=None, method="GET", headers=None):
             context = ssl.create_default_context(cafile=base / "client-ca.crt")
+            context.verify_flags |= ssl.VERIFY_X509_STRICT
             if certificate:
                 context.load_cert_chain(base / f"{certificate}.crt", base / f"{certificate}.key")
             opener = build_opener(ProxyHandler({}), HTTPSHandler(context=context))
@@ -138,7 +141,9 @@ class RelayTest(unittest.TestCase):
                     return response.status
             except HTTPError as error:
                 return error.code
-            except URLError:
+            except URLError as error:
+                if certificate:
+                    self.fail(f"Enrolled CA fixture did not establish TLS: {error.reason}")
                 return None
 
         self.assertNotEqual(request("/api/v1/triage/db"), 200)
