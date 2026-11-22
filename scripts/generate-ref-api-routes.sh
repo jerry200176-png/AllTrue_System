@@ -14,18 +14,14 @@ if [[ $# -gt 1 ]]; then
     exit 2
 fi
 
-scratch=$(mktemp -d)
-trap 'rm -f -- "$scratch/routes.json"; rmdir -- "$scratch"' EXIT
-APP_CONFIG_CACHE="$scratch/config.php" APP_ROUTES_CACHE="$scratch/routes.php" \
-  php backend/artisan route:list --json > "$scratch/routes.json"
-python3 - "$scratch/routes.json" <<'PY'
+php backend/artisan route:list --json > /tmp/ref-routes.json
+python3 - <<'PY'
 import collections
 import json
 import os
 import sys
 
-with open(sys.argv[1], encoding='utf-8') as snapshot:
-    routes = json.load(snapshot)
+routes = json.load(open('/tmp/ref-routes.json'))
 api = [r for r in routes if (r.get('uri') or '').startswith('api/')]
 
 def auth_summary(mw):
