@@ -9,8 +9,11 @@ const dialogs = [
 ];
 
 for (const [titleId, condition] of dialogs) {
-  assert.ok(source.includes(`<Dialog :open="${condition}"`));
-  assert.ok(source.includes(`<DialogTitle class="tw:text-tpl-list"><span id="${titleId}">`));
+  const [, afterOpen] = source.split(`<Dialog :open="${condition}"`);
+  assert.ok(afterOpen, `Missing dialog for ${titleId}`);
+  const [dialog] = afterOpen.split('</Dialog>');
+  assert.match(dialog, /<DialogContent\b/);
+  assert.match(dialog, new RegExp(`<DialogTitle[^>]*><span id="${titleId}">`));
 }
 
 assert.match(source, /const studentEditorOpen = computed\(\(\) => showStudentModal\.value && studentsPageActive\.value\);/);
