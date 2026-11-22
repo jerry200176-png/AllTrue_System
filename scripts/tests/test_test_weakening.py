@@ -77,6 +77,28 @@ class T(unittest.TestCase):
         rows = run(diff(p, ["    /** @test */"], ["    /** helper */"]))
         self.assertEqual(rows, [f"{p}: test cases 1 removed, 0 added"])
 
+    def test_renamed_to_non_test_name_flagged(self):  # #5595 item 1
+        text = "\n".join(["diff --git a/x.spec.js b/x.spec.js.bak", "similarity index 90%",
+                          "rename from x.spec.js", "rename to x.spec.js.bak", "--- a/x.spec.js", "+++ b/x.spec.js.bak",
+                          "@@ -1 +1 @@", "-  expect(a).toBe(1);", "+  // gone"])
+        rows = run(text)
+        self.assertIn("x.spec.js: test file renamed to non-test name x.spec.js.bak", rows)
+        self.assertIn("x.spec.js: assertions 1 removed, 0 added", rows)
+
+    def test_pure_rename_to_non_test_flagged(self):
+        text = "\n".join(["diff --git a/a/t.test.mjs b/a/t.mjs.off", "similarity index 100%",
+                          "rename from a/t.test.mjs", "rename to a/t.mjs.off"])
+        self.assertEqual(run(text), ["a/t.test.mjs: test file renamed to non-test name a/t.mjs.off"])
+
+    def test_more_test_file_patterns(self):  # #5595 item 2
+        for p in ["scripts/x.test.py", "scripts/x.test.sh", ".claude/hooks/test_guard.py", "scripts/bug-writeback/test_w.py"]:
+            self.assertIn(f"{p}: assertions 1 removed, 0 added", run(diff(p, ["assert ok(x)"], [])), p)
+
+    def test_content_line_looking_like_header(self):  # #5595 item 3
+        p = "scripts/tests/test_x.py"
+        text = diff(p, ["-- a/not-a-header", "    assert a == 1"], ["++ b/not-a-header"])
+        self.assertIn(f"{p}: assertions 1 removed, 0 added", run(text))
+
     def test_waiver_needs_reason(self):
         self.assertTrue(guard.WAIVER.search("x\nTest-Weakening: coupon feature removed in #1\n"))
         self.assertFalse(guard.WAIVER.search("Test-Weakening: ok\n"))

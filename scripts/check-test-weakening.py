@@ -15,7 +15,7 @@ import re
 import subprocess
 import sys
 
-TEST_FILE = re.compile(r"(^backend/tests/.*\.php$|\.(test|spec)\.(js|mjs|ts)$|^scripts/tests/test_.*\.py$)")
+TEST_FILE = re.compile(r"(^backend/tests/.*\.php$|\.(test|spec)\.(js|mjs|ts|py|sh)$|(^|/)test_[^/]*\.py$)")
 COUNTERS = {
     "assertions": re.compile(r"\bexpect(\.soft)?\(|->assert\w+\(|\$this->expectException|\bassert[\w.]*\(|^\s*assert\s"),
     "exact assertions": re.compile(
@@ -33,23 +33,29 @@ def counts(lines):
 
 
 def parse_diff(text):
-    """-> {path: (removed_lines, added_lines)} for test files only."""
-    files, path = {}, None
+    """-> {path: [removed_lines, added_lines, renamed_to]} for test files only.
+
+    renamed_to is set when a test file is renamed to a non-test name (its checks would vanish unseen);
+    its edited lines keep counting under the old test path. ---/+++ are headers only before the first @@,
+    so a removed or added line whose text starts with "-- a/" or "++ b/" stays a content line.
+    """
+    files, path, header, old = {}, None, False, None
     for line in text.splitlines():
         if line.startswith("diff --git"):
-            path = None
-        elif line.startswith("+++ "):
-            if line.startswith("+++ b/"):  # /dev/null (deleted file) keeps the --- path
-                p = line[6:]
-                path = p if TEST_FILE.search(p) else None
-                if path:
-                    files.setdefault(path, ([], []))
-        elif line.startswith("--- "):
-            # deleted file: +++ is /dev/null, so key it by the old path
-            p = line[6:] if line.startswith("--- a/") else None
-            if p and TEST_FILE.search(p):
-                files.setdefault(p, ([], []))
-                path = p
+            path, header, old = None, True, None
+        elif line.startswith("@@"):
+            header = False
+        elif header:
+            if line.startswith("rename from "):
+                old = line[12:]
+            elif line.startswith("rename to ") and old and TEST_FILE.search(old) and not TEST_FILE.search(line[10:]):
+                files.setdefault(old, [[], [], None])[2] = line[10:]
+            elif line.startswith("--- a/") and TEST_FILE.search(line[6:]):
+                path = line[6:]  # deleted file: +++ is /dev/null, so key it by the old path
+                files.setdefault(path, [[], [], None])
+            elif line.startswith("+++ b/") and TEST_FILE.search(line[6:]):
+                path = line[6:]
+                files.setdefault(path, [[], [], None])
         elif path and line.startswith("-"):
             files[path][0].append(line[1:])
         elif path and line.startswith("+"):
@@ -59,7 +65,9 @@ def parse_diff(text):
 
 def findings(files):
     out = []
-    for path, (removed, added) in sorted(files.items()):
+    for path, (removed, added, renamed_to) in sorted(files.items()):
+        if renamed_to:
+            out.append(f"{path}: test file renamed to non-test name {renamed_to}")
         before, after = counts(removed), counts(added)
         for k in COUNTERS:
             if after[k] < before[k]:
