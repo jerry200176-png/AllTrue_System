@@ -37,8 +37,7 @@ python3 infra/agent-readonly/collect_daan.py --out "$review_dir/daan-review.json
 
 The collector verifies the Daan code and ID at the pinned public AllTrue origin
 and verifies the campus is a production campus through the approved relay. It
-uses the same worksheet rules as the native diagnostic profile. It checks
-campus ownership, includes historical receipts confirmed on later bills and
+creates a worksheet with campus ownership checks, includes historical receipts confirmed on later bills and
 flags inconclusive receipt-move evidence. The result is a paginated live read.
 Refresh each disputed item's evidence immediately before a POP or accounting
 approval.
@@ -142,6 +141,8 @@ The application retains the query audit.
 The exact activation review binds the managed host and relay address, the
 production origin, the reader's certificate fingerprint and expiry, the
 approved table scope of the existing token, and the audit destination.
+Each enrolled identity inherits the existing triage token's full approved
+table and campus scope. Daan filtering in the worksheet is a query constraint.
 The Founder authorizes new credentials or changes in custody. No database
 account or password is needed for this existing audited read API.
 
@@ -172,6 +173,7 @@ receipt and audit afterward. The relay's credential has only read access.
 python3 -m unittest discover -s scripts/tests -p 'test_alltrue*.py'
 ```
 
-To exercise NGINX end to end, set `ALLTRUE_RELAY_NGINX_TEST_BIN` to a
-local NGINX executable. The test generates disposable TLS identities and
-uses a loopback dummy upstream, with no connection to the production API.
+The NGINX proof runs with the installed executable, including on the CI
+runner. Set `ALLTRUE_RELAY_NGINX_TEST_BIN` if NGINX is installed outside the
+shell path. The test generates disposable TLS identities and uses a
+loopback dummy upstream.

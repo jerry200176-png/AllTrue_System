@@ -4,6 +4,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
 import os
 from pathlib import Path
+import shutil
 import socket
 import ssl
 import subprocess
@@ -18,7 +19,7 @@ from urllib.request import HTTPSHandler, ProxyHandler, Request, build_opener
 ROOT = Path(__file__).resolve().parents[2]
 CONFIG = ROOT / "infra/agent-readonly/relay/nginx.conf"
 CLIENT = ROOT / "infra/agent-readonly/query_alltrue.py"
-NGINX = os.environ.get("ALLTRUE_RELAY_NGINX_TEST_BIN")
+NGINX = os.environ.get("ALLTRUE_RELAY_NGINX_TEST_BIN") or shutil.which("nginx")
 
 
 class Upstream(BaseHTTPRequestHandler):
@@ -46,8 +47,8 @@ class RelayTest(unittest.TestCase):
         self.assertNotIn("$request ", source)
         self.assertNotIn("$args", source)
 
-    @unittest.skipUnless(NGINX, "set ALLTRUE_RELAY_NGINX_TEST_BIN for the disposable TLS proof")
     def test_relay_requires_enrollment_and_forwards_only_scoped_reads(self):
+        self.assertIsNotNone(NGINX, "Install NGINX or set ALLTRUE_RELAY_NGINX_TEST_BIN.")
         with tempfile.TemporaryDirectory() as scratch:
             base = Path(scratch)
 
