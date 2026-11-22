@@ -10,6 +10,8 @@ import subprocess
 import sys
 import tempfile
 import time
+import tomllib
+import unittest
 
 from test_dbhub_readonly import server, statement
 
@@ -24,7 +26,7 @@ USE daan_fixture;
 CREATE TABLE Campus (id INT PRIMARY KEY, code VARCHAR(20), is_test TINYINT);
 CREATE TABLE Student (id INT PRIMARY KEY, CampusID INT, name VARCHAR(80));
 CREATE TABLE StudentClass (ID INT PRIMARY KEY, StudentID INT, StartDate DATE, EndDate DATE,
-    Charge INT, Paid TINYINT, MDate DATETIME, ScheduleMode VARCHAR(20), PackageID INT);
+    Charge INT, Paid TINYINT, MDate DATETIME, ScheduleMode VARCHAR(20), PackageID INT, closed_reason VARCHAR(20));
 CREATE TABLE course_packages (id INT PRIMARY KEY, student_id INT, campus_id INT, paid TINYINT);
 CREATE TABLE Invoice (id INT PRIMARY KEY, StudentID INT, StudentClassID INT, IssueDate DATE,
     billing_period VARCHAR(20), created_at DATETIME, updated_at DATETIME, TotalAmount INT, PaidAmount INT, Status VARCHAR(20));
@@ -36,13 +38,16 @@ CREATE TABLE payment_reports (id INT PRIMARY KEY, StudentID INT, StudentClassID 
     confirmed_at DATETIME, voided_at DATETIME, status VARCHAR(20), note VARCHAR(80));
 INSERT INTO Campus VALUES (15,'daan',0),(9,'other',0);
 INSERT INTO Student VALUES (1,15,'never expose'),(2,9,'other campus'),(3,15,'different owner');
-INSERT INTO StudentClass (ID,StudentID,StartDate,PackageID) VALUES (31,1,'2026-01-01',30),(32,2,'2025-01-01',NULL);
+INSERT INTO StudentClass (ID,StudentID,StartDate,PackageID) VALUES
+    (31,1,'2026-01-01',30),(32,2,'2025-01-01',NULL),(33,1,'2026-01-01',NULL);
 INSERT INTO course_packages VALUES (30,2,9,1);
 INSERT INTO Invoice (id,StudentID,StudentClassID,IssueDate,TotalAmount) VALUES
-    (1,1,32,'2026-10-31',100),(2,2,32,'2026-10-31',200),(3,1,31,'2026-11-01',300),(4,3,NULL,'2026-10-31',600);
-INSERT INTO InvoiceItem (id,InvoiceID,StudentClassID,Amount) VALUES (1,1,32,100),(2,2,32,200);
+    (1,1,32,'2026-10-31',100),(2,2,32,'2026-10-31',200),(3,1,31,'2026-11-01',300),
+    (4,3,NULL,'2026-10-31',600),(5,1,31,'2026-11-02',50);
+INSERT INTO InvoiceItem (id,InvoiceID,StudentClassID,Amount) VALUES (1,1,32,100),(2,2,32,200),(3,5,33,25);
 INSERT INTO Payment (id,InvoiceID,payment_report_id,Amount,Method,PaidAt) VALUES
-    (1,1,2,100,'cash','2026-11-01 00:00:00'),(2,2,2,200,'cash','2026-10-31'),(3,4,NULL,600,'cash','2026-10-31');
+    (1,1,2,100,'cash','2026-11-01 00:00:00'),(2,2,2,200,'cash','2026-10-31'),
+    (3,4,NULL,600,'cash','2026-10-31'),(4,5,NULL,50,'cash','2026-10-31');
 INSERT INTO payment_reports (id,StudentID,StudentClassID,InvoiceID,payment_id,reported_amount,status,payment_date,note) VALUES
     (1,1,32,2,3,100,'confirmed','2026-10-31','private fixture'),
     (2,2,32,2,2,200,'pending','2026-10-31','other campus');
@@ -89,12 +94,14 @@ def exercise(binary, socket_path, port, operator):
         assert (scope["campus_id"], scope["campus_code"], scope["cutoff_exclusive"]) == (15, "daan", "2026-11-01")
         first = page("invoices")
         second = page("invoices", first[-1]["id"])
-        assert len(first) == 200 and len(second) == 3 and not page("invoices", second[-1]["id"])
+        assert len(first) == 200 and len(second) == 4 and not page("invoices", second[-1]["id"])
         assert all(row["campus_id"] == 15 for row in first + second)
         assert {2, 3}.isdisjoint(row["id"] for row in first + second)
         assert first[0]["issue_date"] == "2026-10-31" and first[0]["contract_id"] is None
         assert page("contracts")[0]["package_link_uncertain"] == 1
-        assert page("invoice_items")[0]["contract_link_uncertain"] == 1
+        uncertain, shared = page("invoice_items")
+        assert uncertain["contract_link_uncertain"] == 1
+        assert shared["contract_id"] == 33 and shared["standalone_count_line"] == 1
         assert page("payments")[0]["paid_at"] == "2026-11-01 00:00:00"
         assert page("payments")[0]["report_link_uncertain"] == 1
         report, = page("reports")
@@ -105,11 +112,11 @@ def exercise(binary, socket_path, port, operator):
                                    input=json.dumps({"scope": scope, "pages": collected}),
                                    capture_output=True, text=True, check=True, timeout=10)
         review = json.loads(worksheet.stdout)
-        assert review["monthly"]["2026-10"]["net_recorded_collections"] == "600"
+        assert review["monthly"]["2026-10"]["net_recorded_collections"] == "650"
         assert review["later_activity"] == [{"dataset": "payments", "id": 1, "date": "2026-11-01", "amount": "100"}]
         root(f"UPDATE {SOURCE}.Campus SET code='wrong' WHERE id=15;")
         assert not page("invoices") and not statement(tool("daan_tuition_scope", {}))["rows"]
-    assert root(f"SELECT SUM(Amount) FROM {SOURCE}.Payment") == "900"
+    assert root(f"SELECT SUM(Amount) FROM {SOURCE}.Payment") == "950"
 
 
 def main(binary):
@@ -140,6 +147,21 @@ def main(binary):
                 process.terminate()
                 process.wait(timeout=15)
     print("PASS: native Daan-only grants, six DBHub tools, cursor and cutoff, masked cross-owner links")
+
+
+class DaanToolProfileTest(unittest.TestCase):
+    def test_profile_only_exposes_the_six_fixed_read_queries(self):
+        profile = tomllib.loads((PROFILE / "daan-tuition.toml").read_text())
+        self.assertEqual([source["id"] for source in profile["sources"]], ["daan_tuition"])
+        self.assertEqual(len(profile["tools"]), len(VIEWS))
+        self.assertEqual({tool["name"] for tool in profile["tools"]}, {f"daan_tuition_{view}" for view in VIEWS})
+        for tool in profile["tools"]:
+            self.assertIs(tool["readonly"], True)
+            self.assertEqual(tool["source"], "daan_tuition")
+            self.assertIn(f' FROM {tool["name"]}', tool["statement"])
+            if tool["name"] != "daan_tuition_scope":
+                self.assertEqual(tool["max_rows"], 200)
+                self.assertTrue(tool["statement"].endswith("WHERE id > ? ORDER BY id LIMIT 200"))
 
 
 if __name__ == "__main__":

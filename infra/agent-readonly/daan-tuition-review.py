@@ -93,7 +93,7 @@ def build_review(snapshot):
             else:
                 month["positive_collections" if delta > 0 else "reversals_and_refunds"] += delta
                 month["net_recorded_collections"] += delta
-            if invoice["status"] != "void" and (delta < 0 or method in {"cash", "transfer"} | CREDIT_IN):
+            if invoice["status"] != "void":
                 amounts_by_invoice[invoice["id"]] += delta
             if delta > 0 and method in {"cash", "transfer"}:
                 key = (invoice["id"], when, amount, method)
@@ -113,6 +113,7 @@ def build_review(snapshot):
                 "同帳單同日同金額的紀錄是多筆實收，還是重複登錄？",
                 invoice_id=invoice_id, payment_ids=payment_ids, date=str(when), amount=amount)
 
+    covered_line_contracts = set()
     for item in rows["invoice_items"].values():
         invoice = rows["invoices"][item["invoice_id"]]
         item_contract = rows["contracts"].get(item["contract_id"])
@@ -121,7 +122,10 @@ def build_review(snapshot):
         same_package = different_contract and item_contract["package_id"] and (
             item_contract["package_id"] == invoice_contract["package_id"]
         )
-        if item["contract_link_uncertain"] or (different_contract and not same_package):
+        standalone_line = item["standalone_count_line"] == 1
+        if standalone_line and amounts_by_invoice[invoice["id"]] >= money(invoice["amount"]):
+            covered_line_contracts.add(item["contract_id"])
+        if item["contract_link_uncertain"] or (different_contract and not (same_package or standalone_line)):
             ask("invoice_item_contract", "invoice_items", item, "這個帳單項目應歸哪份合約？",
                 invoice_id=invoice["id"], period_start=item["period_start"], amount=item["amount"])
 
@@ -159,7 +163,7 @@ def build_review(snapshot):
     used_by_package = defaultdict(Decimal)
     for invoice in rows["invoices"].values():
         contract = rows["contracts"].get(invoice["contract_id"])
-        if invoice["status"] != "void" and money(invoice["stored_paid_amount"] or 0) > 0 and not amounts_by_invoice[invoice["id"]]:
+        if invoice["status"] != "void" and money(invoice["stored_paid_amount"] or 0) > 0 and amounts_by_invoice[invoice["id"]] <= 0:
             ask("invoice_paid_amount_without_evidence", "invoices", invoice,
                 "帳單有已收金額，但截止日前看不到淨入帳，是否是後續補登、沖銷或原帳漏記？",
                 stored_paid_amount=invoice["stored_paid_amount"], date=invoice["issue_date"])
@@ -175,7 +179,7 @@ def build_review(snapshot):
         package = contract["package_id"]
         if contract["package_link_uncertain"]:
             ask("package_link", "contracts", contract, "這份合約屬於哪一個共用方案？")
-        if package in flagged_packages:
+        if package in flagged_packages or contract["id"] in covered_line_contracts:
             continue
         if (contract["paid"] == 1 or contract["package_paid"] == 1) and not (
                 used_by_package[package] if package else used_by_contract[contract["id"]]):

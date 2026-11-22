@@ -12,6 +12,8 @@ SELECT c.ID AS id, s.CampusID AS campus_id, c.StudentID AS student_id,
        c.Paid AS paid, c.MDate AS updated_at,
        CASE c.ScheduleMode WHEN 'count' THEN 'count' WHEN 'date' THEN 'date' ELSE 'other' END AS schedule_mode,
        p.id AS package_id, p.paid AS package_paid,
+       ((c.ScheduleMode IS NULL OR c.ScheduleMode = 'count') AND COALESCE(c.PackageID, 0) = 0
+        AND COALESCE(c.closed_reason, '') NOT IN ('waived', 'refunded')) AS standalone_count,
        (c.PackageID IS NOT NULL AND c.PackageID <> 0 AND p.id IS NULL) AS package_link_uncertain
 FROM __SOURCE_SCHEMA__.StudentClass c
 JOIN __SOURCE_SCHEMA__.Student s ON s.id = c.StudentID
@@ -33,11 +35,14 @@ JOIN alltrue_diagnostics.daan_tuition_scope d ON d.campus_id = s.CampusID
 LEFT JOIN alltrue_diagnostics.daan_tuition_contracts c ON c.id = i.StudentClassID AND c.student_id = s.id
 WHERE i.IssueDate < d.cutoff_exclusive
    OR LEFT(i.billing_period, 7) < LEFT(d.cutoff_exclusive, 7)
-   OR (i.IssueDate IS NULL AND (i.created_at < d.cutoff_exclusive OR i.created_at IS NULL));
+   OR (i.IssueDate IS NULL AND (i.created_at < d.cutoff_exclusive OR i.created_at IS NULL))
+   OR EXISTS (SELECT 1 FROM __SOURCE_SCHEMA__.Payment p WHERE p.InvoiceID = i.id AND p.PaidAt < d.cutoff_exclusive);
 
 CREATE SQL SECURITY DEFINER VIEW alltrue_diagnostics.daan_tuition_invoice_items AS
 SELECT a.id, i.campus_id, i.id AS invoice_id, c.id AS contract_id, a.Amount AS amount,
        a.PeriodStart AS period_start, a.PeriodEnd AS period_end,
+       (COALESCE(c.standalone_count, 0) = 1 AND (i.contract_id IS NULL OR i.contract_id <> c.id)
+        AND i.status <> 'void' AND i.amount > 0 AND a.Amount > 0) AS standalone_count_line,
        (a.StudentClassID IS NOT NULL AND c.id IS NULL) AS contract_link_uncertain
 FROM __SOURCE_SCHEMA__.InvoiceItem a
 JOIN alltrue_diagnostics.daan_tuition_invoices i ON i.id = a.InvoiceID

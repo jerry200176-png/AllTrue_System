@@ -68,7 +68,7 @@ class DaanReviewTest(unittest.TestCase):
         self.assertEqual(result["questions"], [])
 
     def test_review_signals_and_package_cash_evidence(self):
-        item = row(1, invoice_id=1, contract_id=2, contract_link_uncertain=False,
+        item = row(1, invoice_id=1, contract_id=2, contract_link_uncertain=False, standalone_count_line=False,
                    period_start="2026-10-01", amount=100)
         result = REVIEW.build_review(snapshot(
             invoices=[invoice(1), invoice(2, contract_id=3, stored_paid_amount=10)],
@@ -83,6 +83,22 @@ class DaanReviewTest(unittest.TestCase):
             ("confirmed_without_payment", 2), ("receipt_payment_mismatch", 3),
             ("invoice_paid_amount_without_evidence", 2), ("paid_flag_without_evidence", 3),
         })
+
+    def test_named_standalone_bill_line_needs_full_net_coverage(self):
+        line = row(1, invoice_id=1, contract_id=2, contract_link_uncertain=False, standalone_count_line=True)
+        for net, expected_question in ((499, True), (500, False)):
+            with self.subTest(net=net):
+                result = REVIEW.build_review(snapshot(
+                    contracts=[contract(1), contract(2)], invoices=[invoice(1)],
+                    invoice_items=[line], payments=[payment(1, amount=net)],
+                ))
+                self.assertEqual([(q["kind"], q["id"]) for q in result["questions"]],
+                                 [("paid_flag_without_evidence", 2)] if expected_question else [])
+
+    def test_negative_net_payment_flags_positive_stored_amount(self):
+        result = REVIEW.build_review(snapshot(invoices=[invoice(1, stored_paid_amount=100)],
+                                              payments=[payment(1, method="void", amount=20)]))
+        self.assertEqual([q["kind"] for q in result["questions"]], ["invoice_paid_amount_without_evidence"])
 
     def test_invalid_scope_and_collection_fail_closed(self):
         source = snapshot(invoices=[invoice(1)])

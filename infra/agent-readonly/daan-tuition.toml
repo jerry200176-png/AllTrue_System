@@ -41,7 +41,7 @@ description = "Last row ID from the preceding page; use 0 to start."
 name = "daan_tuition_invoice_items"
 description = "Read Daan tuition bill lines."
 source = "daan_tuition"
-statement = "SELECT id, campus_id, invoice_id, contract_id, amount, contract_link_uncertain, CAST(period_start AS CHAR) AS period_start, CAST(period_end AS CHAR) AS period_end FROM daan_tuition_invoice_items WHERE id > ? ORDER BY id LIMIT 200"
+statement = "SELECT id, campus_id, invoice_id, contract_id, amount, contract_link_uncertain, standalone_count_line, CAST(period_start AS CHAR) AS period_start, CAST(period_end AS CHAR) AS period_end FROM daan_tuition_invoice_items WHERE id > ? ORDER BY id LIMIT 200"
 readonly = true
 max_rows = 200
 [[tools.parameters]]
