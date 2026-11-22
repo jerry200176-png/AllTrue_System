@@ -75,11 +75,12 @@ for (const width of [390, 1440]) for (const theme of ['light', 'dark']) {
   });
 }
 
-for (const width of [390, 1440]) {
-  test(`in-app #593 course launch stays on the target after delayed drafts @${width}`, async ({ page }) => {
+for (const width of [390, 1440]) for (const nav of ['initial target', 'followed invoice']) {
+  test(`in-app #593 delayed drafts preserve the ${nav} @${width}`, async ({ page }) => {
     const target = { id: 42, student_id: 99, student_name: '合成定位學生', subject: '合成數學',
       schedule_mode: 'date', start_date: '2026-06-01', charge: 1000, paid: false };
     const other = Array.from({ length: 22 }, (_, i) => ({ ...target, id: i + 60, paid: true, start_date: '2026-10-01' }));
+    const invoice = { id: 501, student_class_id: 65, status: 'paid', total_amount: 1000, outstanding_amount: 0, calculated_applied_amount: 1000, payments: [] };
     let releaseDrafts;
     const draftsReady = new Promise((resolve) => { releaseDrafts = resolve; });
     await page.setViewportSize({ width, height: 850 });
@@ -92,7 +93,7 @@ for (const width of [390, 1440]) {
     ] }));
     await page.route('**/api/v1/accounting/ledger?**', (r) => r.fulfill({ json: {
       student: { id: 99, name: target.student_name }, scope: { student_class_id: target.id }, summary: {},
-      courses: [...other, target], invoices: [], receipts: [], anomalies: [],
+      courses: [...other, target], invoices: [invoice], receipts: [], anomalies: [],
     } }));
     await page.route('**/api/v1/accounting/monthly-drafts?**', async (r) => {
       await draftsReady;
@@ -103,13 +104,29 @@ for (const width of [390, 1440]) {
     await page.getByTestId('bill-documents-c42').click();
     const ledger = page.getByRole('dialog', { name: '合成定位學生的帳務', exact: true });
     const cards = ledger.locator('.ledger-contracts > [data-testid^="contract-card-"]');
+    const linkedBill = ledger.getByTestId('ledger-invoice-toggle-501');
     try {
       await expect(cards.last()).toHaveAttribute('data-testid', 'contract-card-42');
+      await expect(cards.last().getByTestId('contract-focused')).toBeInViewport();
+      if (nav === 'followed invoice') {
+        const menu = ledger.getByTestId('contract-card-65').locator('button[aria-haspopup="menu"]');
+        await menu.press('ArrowDown');
+        const documents = page.getByRole('menuitem', { name: '查看帳單與收據' });
+        await expect(documents).toBeVisible();
+        await documents.press('Enter');
+        await expect(linkedBill).toBeFocused();
+        await expect(linkedBill).toBeInViewport();
+      }
     } finally {
       releaseDrafts();
     }
     await expect(cards.first()).toHaveAttribute('data-testid', 'contract-card-42');
-    await expect(cards.first().getByTestId('contract-focused')).toBeInViewport();
+    if (nav === 'followed invoice') {
+      await expect(linkedBill).toBeFocused();
+      await expect(linkedBill).toBeInViewport();
+    } else {
+      await expect(cards.first().getByTestId('contract-focused')).toBeInViewport();
+    }
   });
 }
 

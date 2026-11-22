@@ -8,6 +8,10 @@
         aria-modal="true"
         aria-labelledby="ledger-modal-title"
         tabindex="-1"
+        @pointerdown.capture="keepLedgerPosition"
+        @click.capture="keepLedgerPosition"
+        @wheel.capture.passive="keepLedgerPosition"
+        @keydown.capture="keepLedgerPosition"
         @keydown.esc.stop.prevent="onEsc"
         @keydown.tab="trapTab"
         @keydown="onStepKey"
@@ -687,9 +691,14 @@ async function loadCoverage(kind, id) {
 }
 
 let ledgerRequestVersion = 0;
+let userMovedInLedger = false;
+function keepLedgerPosition() {
+  userMovedInLedger = true;
+}
 async function loadLedger() {
   closeReason(false); // the reload unmounts the reason field; cancel it rather than leave it hidden
   const requestVersion = ++ledgerRequestVersion;
+  userMovedInLedger = false;
   loading.value = false;
   payload.value = null;
   if (!props.show) return;
@@ -751,11 +760,13 @@ async function loadLedger() {
       }
     }
     if (props.studentWide || !Number(props.studentClassId || 0)) return;
-    // A ready draft can move the anchored card. Only scrolling waits for that ordering;
-    // the callers that refresh posted payments or open a receipt can continue immediately.
+    const openedIndex = displayContractCourses.value.findIndex(isOpenedCourse);
+    if (!userMovedInLedger) scrollToOpenedContract();
+    // A ready draft can move the card. Follow only while the director hasn't taken control.
     void draftsReady?.then(async () => {
       await nextTick();
-      if (requestVersion === ledgerRequestVersion) scrollToOpenedContract();
+      if (requestVersion !== ledgerRequestVersion || userMovedInLedger) return;
+      if (displayContractCourses.value.findIndex(isOpenedCourse) !== openedIndex) scrollToOpenedContract();
     });
   }
 }
