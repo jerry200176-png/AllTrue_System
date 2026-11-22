@@ -126,6 +126,14 @@ class ExceptionWorkflowCandidateGenerator
                     continue;
                 }
                 $candidate = array_shift($dayCandidates);
+                // #5588: occupancy above is this campus only; a time the teacher teaches at another campus would
+                // only fail at confirm. Checked here, on the few times actually offered, not on every slot.
+                if ($teacherId > 0 && $guard->crossCampusConflict($teacherId, (int) $workflow->campus_id,
+                    $candidate['candidate_date'], $candidate['start_time'], $candidate['end_time'], (int) $workflow->student_id ?: null)) {
+                    $added = true; // later times of this day may still fit
+
+                    continue;
+                }
                 $candidate['rank'] = count($candidates) + 1;
                 $candidates[] = $candidate;
                 $added = true;
