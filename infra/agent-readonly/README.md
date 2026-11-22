@@ -25,6 +25,21 @@ keep exports in a private artifact directory. Write requests
 continue through AllTrue's existing POP and accounting approval workflows.
 The client does not provision a relay or change production access.
 
+For Daan's first reconciliation, collect the scoped evidence and create the
+worksheet without retaining raw table pages:
+
+```bash
+review_dir=$(mktemp -d)
+python3 infra/agent-readonly/collect_daan.py --out "$review_dir/daan-review.json"
+```
+
+The collector uses the existing API and the same worksheet rules as the native
+diagnostic profile. It checks campus ownership and reads only data related to
+the Daan cohort. It includes historical receipts confirmed on later bills and
+flags inconclusive receipt-move evidence. The result is a paginated live read.
+Refresh each disputed item's evidence immediately before a POP or accounting
+approval.
+
 Use upstream [DBHub 1.6.0](https://github.com/bytebase/dbhub/tree/v1.6.0)
 (MIT, Node >=22.5) over local **stdio**. This profile provides schema discovery,
 bounded general SQL and two parameterized shortcuts. It is not restricted to

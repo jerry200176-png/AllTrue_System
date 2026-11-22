@@ -20,6 +20,21 @@ class NoRedirects(HTTPRedirectHandler):
         return None
 
 
+class Reader:
+    def __init__(self, gateway):
+        self.base = origin(gateway) + READ_PATH
+        self.opener = build_opener(ProxyHandler({}), NoRedirects())
+
+    def fetch(self, table=None, params=()):
+        target = self.base
+        if table:
+            target += "/" + identifier(table)
+        if params:
+            target += "?" + urlencode(params)
+        with self.opener.open(Request(target, headers={"Accept": "application/json"}), timeout=15) as response:
+            return json.load(response)
+
+
 def origin(value):
     parts = urlsplit(value)
     if (not parts.hostname or parts.username is not None or parts.password is not None
@@ -74,9 +89,8 @@ def main(argv=None):
         parser.error("--limit must be between 1 and 200.")
 
     try:
-        target = origin(args.gateway) + READ_PATH
+        params = []
         if args.table:
-            target += "/" + args.table
             filters = {"eq": args.eq, "gte": args.gte, "lte": args.lte, "in": args.in_values}
             for op, entries in filters.items():
                 if len(dict(entries)) != len(entries) or len(entries) > (3 if op == "in" else 6):
@@ -85,14 +99,11 @@ def main(argv=None):
             params.append(("limit", args.limit))
             if args.order:
                 params.append(("order", args.order))
-            target += "?" + urlencode(params)
         elif args.eq or args.gte or args.lte or args.in_values or args.order:
             parser.error("Specify a table before filtering.")
 
         # Credentials are added at the approved relay. Ambient proxies and redirects are disabled.
-        opener = build_opener(ProxyHandler({}), NoRedirects())
-        with opener.open(Request(target, headers={"Accept": "application/json"}), timeout=15) as response:
-            data = json.load(response)
+        data = Reader(args.gateway).fetch(args.table, params)
         print(json.dumps(data, ensure_ascii=False, indent=2))
     except HTTPError as error:
         parser.exit(1, f"AllTrue read request failed (HTTP {error.code}).\n")
