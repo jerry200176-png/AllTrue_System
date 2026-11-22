@@ -18,6 +18,8 @@ from query_alltrue import Reader
 WORKSHEET = runpy.run_path(str(Path(__file__).with_name("daan-tuition-review.py")))
 CUTOFF = WORKSHEET["CUTOFF"]
 CAMPUS = 15
+PUBLIC_BRANCHES = "https://daan.lifenet.com.tw/api/v1/branches"
+PAYMENT_METHODS = {"cash", "transfer", "void", "refund"} | WORKSHEET["CREDIT_IN"] | WORKSHEET["CREDIT_OUT"]
 
 
 def pages(fetch, table, key, fields, *, eq=(), inside=None):
@@ -83,6 +85,7 @@ def normalized(record, **fields):
 def payment_moves(fetch, raw_reports, raw_invoices, raw_payments):
     moves = {}
     suspected = set()
+    unresolved = set()
     grouped = defaultdict(list)
     for payment in raw_payments.values():
         grouped[payment["payment_report_id"]].append(payment)
@@ -95,6 +98,7 @@ def payment_moves(fetch, raw_reports, raw_invoices, raw_payments):
             owner = move[f"{side}_student_id"]
             invoice = move[f"{side}_invoice_id"]
             if not owned(raw_invoices, invoice, owner, "StudentID") or report["StudentID"] != owner:
+                unresolved.add(report["id"])
                 continue
             amount = Decimal(str(move["amount"]))
             candidates = [p for p in grouped[report["id"]] if p["InvoiceID"] == invoice
@@ -112,10 +116,14 @@ def payment_moves(fetch, raw_reports, raw_invoices, raw_payments):
                 moves[matches[0]["id"]] = move["created_at"]
             else:
                 suspected.update(p["id"] for p in candidates)
-    return moves, suspected
+                unresolved.add(report["id"])
+    return moves, suspected, unresolved
 
 
-def collect(fetch, read_at=None):
+def collect(fetch, branches, read_at=None):
+    daan = [r for r in branches if r["id"] == CAMPUS or r.get("code") == "daan"]
+    if len(daan) != 1 or daan[0]["id"] != CAMPUS or daan[0].get("code") != "daan":
+        raise ValueError("The public production campus mapping did not verify.")
     tables = set(fetch()["tables"])
     required = {"Campus", "Student", "StudentClass", "course_packages", "Invoice", "InvoiceItem", "Payment",
                 "payment_reports", "payment_report_reassignments"}
@@ -174,13 +182,14 @@ def collect(fetch, read_at=None):
         fetch, "payment_reports", "id", "StudentClassID InvoiceID payment_id billing_period payment_date reported_amount created_at confirmed_at voided_at status",
         "StudentID", students
     ) if historical(r, "payment_date") or r["InvoiceID"] in invoices or r["payment_id"] in raw_payments}
-    moves, suspected = payment_moves(fetch, raw_reports, raw_invoices, raw_payments)
+    moves, suspected, unresolved = payment_moves(fetch, raw_reports, raw_invoices, raw_payments)
     payments = {}
     for key, r in raw_payments.items():
         report = owned(raw_reports, r["payment_report_id"], raw_invoices[r["InvoiceID"]]["StudentID"], "StudentID")
         payments[key] = normalized(key, invoice_id=r["InvoiceID"], report_id=report["id"] if report else None,
                                     report_link_uncertain=bool(r["payment_report_id"] and not report),
-                                    amount=r["Amount"], paid_at=r["PaidAt"], method=r["Method"] or "other",
+                                    amount=r["Amount"], paid_at=r["PaidAt"],
+                                    method=r["Method"] if r["Method"] in PAYMENT_METHODS else "other",
                                     receipt_moved_at=moves.get(key), receipt_move_uncertain=key in suspected and key not in moves)
 
     reports = {}
@@ -205,7 +214,13 @@ def collect(fetch, read_at=None):
     for name, records in datasets.items():
         rows = [records[key] for key in sorted(records)]
         evidence["pages"][name] = [rows[i:i + 200] for i in range(0, len(rows), 200)] + [[]]
-    return WORKSHEET["build_review"](evidence)
+    review = WORKSHEET["build_review"](evidence)
+    review["questions"].extend({
+        "kind": "receipt_move_audit_link", "dataset": "reports", "id": key,
+        "question": "這張收據的移轉稽核缺少可核對的收款或沖銷。主任能確認對應紀錄嗎？",
+        "evidence": {},
+    } for key in sorted(unresolved))
+    return review
 
 
 def main():
@@ -227,7 +242,7 @@ def main():
             next_read = time.monotonic() + 1.1
             return reader.fetch(table, params)
 
-        review = collect(fetch)
+        review = collect(fetch, reader.get_json(PUBLIC_BRANCHES))
         with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", dir=args.out.parent) as output:
             json.dump(review, output, ensure_ascii=False, indent=2, default=str)
             output.write("\n")

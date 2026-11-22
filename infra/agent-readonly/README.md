@@ -33,9 +33,10 @@ review_dir=$(mktemp -d)
 python3 infra/agent-readonly/collect_daan.py --out "$review_dir/daan-review.json"
 ```
 
-The collector uses the existing API and the same worksheet rules as the native
-diagnostic profile. It checks campus ownership and reads only data related to
-the Daan cohort. It includes historical receipts confirmed on later bills and
+The collector verifies the Daan code and ID at the pinned public AllTrue origin
+and verifies the campus is a production campus through the approved relay. It
+uses the same worksheet rules as the native diagnostic profile. It checks
+campus ownership, includes historical receipts confirmed on later bills and
 flags inconclusive receipt-move evidence. The result is a paginated live read.
 Refresh each disputed item's evidence immediately before a POP or accounting
 approval.

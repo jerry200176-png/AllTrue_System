@@ -31,6 +31,9 @@ class Reader:
             target += "/" + identifier(table)
         if params:
             target += "?" + urlencode(params)
+        return self.get_json(target)
+
+    def get_json(self, target):
         with self.opener.open(Request(target, headers={"Accept": "application/json"}), timeout=15) as response:
             return json.load(response)
 

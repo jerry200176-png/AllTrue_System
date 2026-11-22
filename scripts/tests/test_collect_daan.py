@@ -16,6 +16,7 @@ SCHEMA = {
     "payment_reports": "id StudentID StudentClassID InvoiceID payment_id billing_period payment_date reported_amount created_at confirmed_at voided_at status",
     "payment_report_reassignments": "id campus_id from_report_id to_report_id from_invoice_id to_invoice_id from_student_id to_student_id amount created_at",
 }
+BRANCHES = [{"id": 15, "code": "daan"}, {"id": 9, "code": "other"}]
 
 
 class FakeReadApi:
@@ -74,19 +75,28 @@ class DaanApiCollectorTest(unittest.TestCase):
         api.add("payment_report_reassignments", id=30, campus_id=15, from_report_id=20, to_report_id=21,
                 from_invoice_id=1, to_invoice_id=2, from_student_id=1, to_student_id=1, amount=200, created_at="2026-11-10")
 
-        report = collect(api.fetch, "2026-11-23")
+        report = collect(api.fetch, BRANCHES, "2026-11-23")
         self.assertEqual(report["monthly"]["2026-10"]["net_recorded_collections"], 200)
         self.assertEqual([r["id"] for r in report["later_activity"]], [11, 12])
         self.assertEqual(report["questions"], [])
         invoice_reads = [request for name, request in api.requests if name == "Invoice"]
         self.assertEqual([r["gte[id]"] for r in invoice_reads], [1, 3, 5])
         self.assertTrue(all(r["in[StudentID]"] == "1" for r in invoice_reads))
+        api.data["Payment"] = [r for r in api.data["Payment"] if r["id"] != 11]
+        api.add("Payment", id=15, InvoiceID=1, PaidAt="2026-10-31", Amount=40, Method="card")
+        report = collect(api.fetch, BRANCHES, "2026-11-23")
+        self.assertEqual(report["monthly"]["2026-10"]["net_recorded_collections"], 200)
+        self.assertEqual(report["monthly"]["2026-10"]["unclassified_movement"], 40)
+        self.assertEqual({(q["kind"], q["id"]) for q in report["questions"]},
+                         {("payment_method", 15), ("receipt_move_audit_link", 20)})
 
     def test_scope_or_schema_mismatch_fails_closed(self):
         api = FakeReadApi()
         api.add("Campus", id=15, is_test=1)
         with self.assertRaisesRegex(ValueError, "campus"):
-            collect(api.fetch, "2026-11-23")
+            collect(api.fetch, BRANCHES, "2026-11-23")
+        with self.assertRaisesRegex(ValueError, "mapping"):
+            collect(api.fetch, [{"id": 9, "code": "daan"}], "2026-11-23")
 
         def mismatched(*_):
             return {"table": "Student", "columns": ["id", "CampusID"], "count": 1, "rows": [{"id": 1, "CampusID": 9}]}
