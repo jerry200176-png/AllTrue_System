@@ -77,6 +77,20 @@ class ParentPortalLoginIsolationTest extends TestCase
         $res->assertStatus(404);
     }
 
+    /** #5572: a 4-byte character in the name cannot match a 3-byte name column; answer not-found, never 500. */
+    public function test_login_with_supplementary_character_name_returns_not_found(): void
+    {
+        // Same phone, and a name equal to the input minus its 4-byte character: must not log in as this student.
+        $this->createStudent(1, '王小', '0912345678');
+
+        $res = $this->postJson('/api/v1/parent/login', [
+            'Name' => '王小𠮷',
+            'Phone' => '0912345678',
+        ]);
+
+        $res->assertStatus(404);
+    }
+
     public function test_dashboard_does_not_leak_same_phone_siblings(): void
     {
         $studentA = $this->createStudent(1, '王小明', '0912345678');
