@@ -1,13 +1,13 @@
 ---
 owner: jerry (CEO)
 review_cycle: quarterly
-last_reviewed: 2026-08-23
+last_reviewed: 2026-11-22
 ---
 
 # AllTrue SRE Policy — SLI / SLO / Error Budget / Release Freeze
 
 > **狀態**：v1（2026-05-23）｜**權威來源**：本檔｜**Epic**：#469 ｜**子 issue**：#483 #484
-> **下次審視**：2026-08-23（每季）或 SLO miss 後 7 天內
+> **審視週期**：每季，或 SLO miss 後 7 天內
 
 本檔定義 AllTrue 補習班管理系統的服務指標（SLI）、服務目標（SLO）、誤差預算（Error Budget）、與穩定度惡化時的功能凍結（Release Freeze）規則。
 
@@ -25,8 +25,8 @@ last_reviewed: 2026-08-23
 |---|------|---------|------|
 | SLI-01 | Health endpoint 可用率 | UptimeRobot 5min 探測 `GET /api/v1/health` 回 200 + `status=ok` 比率 | UptimeRobot |
 | SLI-02 | RFID 刷卡延遲 P95 | Sentry transaction `POST /api/v1/swipe-rfid` p95 | Sentry |
-| SLI-03 | 主任 Dashboard 延遲 P95 | Sentry transaction `GET /api/v1/director/dashboard` p95（或 alerts/tuition） | Sentry |
-| SLI-04 | API 5xx 率 | Pi nginx access log + Laravel log 中 status≥500 / 全部 ratio（日彙總） | Pi log（#485）|
+| SLI-03 | 主任 Dashboard 延遲 P95 | Sentry transaction `GET /api/v1/alerts/tuition` p95 | Sentry |
+| SLI-04 | API 5xx 率 | Pi Apache access log + Laravel log 中 status≥500 / 全部 ratio（日彙總） | Pi log（#485）|
 | SLI-05 | Deploy 後 smoke 通過率 | `deploy.yml` 結尾 smoke step 成功率（30 日滾動） | GitHub Actions |
 
 ---
@@ -38,10 +38,10 @@ last_reviewed: 2026-08-23
 | SLI-01 Health 可用率 | **≥ 99.5%**（30 日 ≈ 3.6 小時 downtime budget） | UptimeRobot → CEO LINE |
 | SLI-02 RFID p95 | **≤ 500 ms** | Sentry weekly report |
 | SLI-03 Dashboard p95 | **≤ 2 s** | Sentry weekly report |
-| SLI-04 5xx 率 | **≤ 0.5%** of 24h requests | 每日 cron digest（#485） |
+| SLI-04 5xx 率 | **≤ 0.5%** of 24h requests | 每日 digest 待接入（#485） |
 | SLI-05 Smoke 通過率 | **≥ 95%** of deploys | 連續 3 次失敗 → 自動 issue |
 
-> **基線**：v1 採保守值（小型 B2B SaaS 行業常見區間）。第 1 個 quarter 收集真實數據後再校準。
+> **基線**：v1 採保守值。表內保留目標告警通道；排程、路由和近 30 天達成率要由實際監測紀錄確認。
 
 ---
 
@@ -55,7 +55,7 @@ last_reviewed: 2026-08-23
 
 ## Release Freeze 政策
 
-當任一 SLO 連續 14 天 miss、或月度 error budget 用罄超過 50%，自動觸發 **Release Freeze**：
+當任一 SLO 連續 14 天 miss、或月度 error budget 用罄超過 50%，由負責人確認並依下列 **Release Freeze** 規則處理。[SLO／error-budget 自動閘門尚未實作](governance/FOUNDER_STANDING_DECISIONS.md)，現行 stop-the-line 檢查 main CI 與最新正式部署結果。
 
 ### Freeze 期間規則
 1. **允許 merge**：`fix/*`、`hotfix/*`、`chore/security-*`、`docs/*`（不含 feat）
@@ -73,7 +73,7 @@ last_reviewed: 2026-08-23
 
 | 月份 | SLI-01 達成 | SLI-02 達成 | SLI-03 達成 | SLI-04 達成 | SLI-05 達成 | Budget 用量 | Freeze? |
 |---|---|---|---|---|---|---|---|
-| 2026-05 | _待收集_ | _待收集_ | _待收集_ | _待收集_ | _待收集_ | — | No |
+| 2026-05 | _待收集_ | _待收集_ | _待收集_ | _待收集_ | _待收集_ | — | _未記錄_ |
 
 ---
 

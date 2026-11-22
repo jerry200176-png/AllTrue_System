@@ -1,7 +1,7 @@
 ---
 owner: jerry (CEO)
 review_cycle: quarterly
-last_reviewed: 2026-08-23
+last_reviewed: 2026-11-22
 ---
 
 # Operations Runbook (SOP + Lessons Learned)
@@ -60,7 +60,7 @@ This runbook captures the practical SOP to keep AllTrue stable during developmen
    有 Founder 級改動在等車時，之後合併的 R0–R2 也會一起等同一班車。release train 不改
    feature flag（要改 flag 用 phase=application-deploy）。merge 自己的 CI 與 bot merge 的
    `repository_dispatch` 都不再各自跳核准。唯一 production executor 另有
-   30 分鐘 runner deadline 與 SSH keepalive，避免斷線造成無界等待。
+   80 分鐘 runner deadline 與 SSH keepalive，避免斷線造成無界等待。
 6. **驗證**：只以 deploy workflow 的 exact target SHA、`deployment.json`、health、
    critical smoke 與 rollback evidence 判定 `production-verified`；單獨 health
    curl 或 workflow success 均不足。
@@ -76,30 +76,7 @@ This runbook captures the practical SOP to keep AllTrue stable during developmen
 
 ### B0. Dependabot PR Merge SOP
 
-**觸發時機**：Dependabot 開 PR（npm / composer / GitHub Actions 版本更新）
-
-**前置條件（缺一不可）**
-1. `curl https://daan.lifenet.com.tw/api/v1/health` → `{"status":"ok"}`
-2. `gh run list --workflow=deploy.yml --limit 3` → 最近 3 次全 success（代表備份正常）
-3. `git log --oneline -3` → main 與 production 一致
-
-**執行步驟**
-```bash
-# 1. 確認 PR 只改依賴版本，不碰 production 邏輯
-gh pr view <PR_NUMBER> --json files -q '.files[].path'
-
-# 2. Merge（required checks 必須通過；失敗先依 log 診斷）
-gh pr merge <PR_NUMBER> --squash --delete-branch
-
-# 3. 有 conflict → 讓 Dependabot 自動 rebase
-gh pr comment <PR_NUMBER> --body "@dependabot rebase"
-# rebase 完成後重跑步驟 2
-
-# 4. 需要 workflow scope 時先執行
-gh auth refresh -h github.com -s workflow
-```
-
-**⚠️ Dependabot PR 合併前仍須看 required checks**：目前 PR checks 由 GitHub-hosted runner 執行；不要把 PHPUnit fail 預設歸因為 Dependabot 無法讀 GitHub Secrets。若依賴更新失敗，先看 log；只有確認改動純依賴且失敗原因與專案無關時，才可依 Dependabot SOP 處理。
+依 [Merge SOP 的 Dependabot 規則](sop/MERGE_SOP.md#dependabot-prs) 核對版本幅度、鎖檔範圍、精確 head 的完整 CI、獨立 review 與待解留言。重大版本或 review 提出需決策的變更依同一節處理。
 
 ### B1. Branch Hygiene
 
@@ -271,50 +248,9 @@ Wrapper 會為每個 process 啟動只綁定 `127.0.0.1` 的非特權 ephemeral 
 
 ### B5. Solo + AI GitHub 週期 SOP（一人團隊 × 大廠 baseline）
 
-**適用**：CEO + AI agents；無第二位 maintainer。CI 取代 human review；Issue/PR 是唯一工作佇列。
+**適用**：CEO 與 AI agents 依實際風險走 PR。使用隔離 worktree，[Merge SOP](sop/MERGE_SOP.md) 管理 exact-head 審查、必需檢查與既有 land queue，[ruleset 基線](REF_GITHUB_RULESET_BASELINE.md) 記錄生效設定。
 
-**啟用（必做）**
-
-| 項目 | 設定 / 工具 | 為什麼 |
-|------|------------|--------|
-| Branch protection | `main`：required checks + no force push（live 設定見 REF_GITHUB_RULESET_BASELINE.md）| 事故 A 防再犯 |
-| Required approvals | **0**（單人）| 避免自己卡自己；§R 稽核 `reviews` 應為 0 |
-| Auto-delete head branches | Settings → General | 減少 stale branch |
-| Squash merge | 預設 squash；一 PR 一議題 | 大廠 trunk-based 習慣 |
-| Presubmit + CI gate | AI **必須**等 checks completed 再報告可 merge；合併一律加 `queue` label（[`MERGE_SOP.md`](sop/MERGE_SOP.md)；`auto-merge-safe.yml` 目前休眠）| CI + deterministic risk gate = 自動 reviewer |
-| CODEOWNERS | 保留；觸發時 CEO 自審即可 | 高風險路徑提醒 |
-| Dependabot SLA | §B0 / §T | 供應鏈 |
-| Branch hygiene | `branch-hygiene.yml` + `./scripts/branch-hygiene.sh` | 每週清理 |
-
-**刻意不開（等第二人再加入）**
-
-| 項目 | 原因 |
-|------|------|
-| Merge queue | 單人無並行 merge 競態 |
-| Required 1+ approval | 會 dead-lock |
-| GitHub Projects 當 Jira | Issue + labels 已夠 |
-| GitHub Discussions | 決策寫 docs / issue |
-| Mandatory signed commits | 維護成本 > 效益 |
-
-**每個任務（AI 必跑）**
-
-```bash
-git checkout main && git pull origin main
-git checkout -b feat|fix|chore/<slug>
-# …改動…
-git push -u origin HEAD
-gh pr create --fill
-gh pr checks --watch          # 等到全綠或自己修
-gh pr merge --squash --delete-branch   # 僅 T2/T3/保護性工作在完成對應 review/gate 後；合併用 `queue` label，見 docs/sop/MERGE_SOP.md
-# merge 後只觀察 deploy.yml 的 state、exact SHA、health、critical smoke evidence
-```
-
-正常 merged application deployment 由 `deploy.yml` 單一 executor 完成。
-已驗證可逆的 T0/T1，以及具備 exact-target CI、rollback readiness 的
-T2，走 CI 後自動 deploy；T3/protected 或 ambiguous evidence 才在同一 run 的
-`production-activation` Environment 等待 Founder approval，批准後自動 deploy。
-不得另開第二次 dispatch 或手動 production smoke；workflow success 不等於
-`production-verified`。
+正常部署使用 [既有交付流程](sop/DELIVERY_LIFECYCLE.md)。需要 Founder 平台核准的變更由 `production-activation` 承接，執行後按 exact SHA、health 和 smoke 核對。
 
 - 一 PR 一議題；大小上限見 [`FOUNDER_STANDING_DECISIONS.md`](governance/FOUNDER_STANDING_DECISIONS.md)（presubmit CHECK 2）。
 - 多階段 issue：中間 PR 用 `Refs #N`，最後一個 PR 才 `Closes #N`。
@@ -381,24 +317,13 @@ From previous incidents:
 
 ## D. Recovery SOP (website looks old / API broken)
 
-1. Confirm current code branch and latest commit:
-   - `git status`
-   - `git log -1 --oneline`
-2. Check app routing essentials:
-   - `backend/server.php`
-   - `backend/public/.htaccess`
-3. Clear Laravel cached files:
-   - `backend/bootstrap/cache/*.php` (config/services/packages)
-4. Verify DB credentials in `backend/.env`.
-5. Confirm `deploy.yml` success and `backend/public/version.json` freshness.
-6. If deploy workflow is broken and this is an incident, use the emergency manual frontend deploy path in `docs/DEPLOYMENT.md`.
-7. Re-test web + API endpoints.
+用 [事故入口](INCIDENT_START_HERE.md) 蒐集公開 health、部署 manifest 與 CI 訊號，確認目標 SHA，依事故規則選擇復原動作。正式部署或復原只經 [控制面契約](CONTROL_PLANE_CONTRACT.md) 的既有入口。
 
 ## E. Pre-merge checklist
 
 - PR target branch is correct (`main`)
 - No accidental artifacts (`dist`, cache, local binaries, temp files)
-- Frontend changes have been deployed（PR merge 後 deploy.yml 自動處理）
+- 前端改動先完成 CI／預覽測試；合併後另核對實際部署
 - No critical regressions in login, students, scheduling, attendance, finance pages
 
 ## F. High-risk areas
@@ -410,88 +335,22 @@ From previous incidents:
 
 ## G. SOP：分校設定異常（選單多 / 資料消失）
 
-> 適用症狀：分校選單顯示超過 8 間、切換分校後學生/老師/課程變空白
+> 適用症狀：分校選單異常、切換分校後學生／老師／課程變空白。
 
-1. **先確認 DB 真實 Campus.id**（最重要，勿臆測）：
-   ```bash
-   mysql -h 127.0.0.1 -u admin -p"$(grep ^DB_PASSWORD= /home/admin/backend/.env | cut -d= -f2-)" AllTrue \
-     -e "SELECT id, name FROM Campus ORDER BY id; \
-         SELECT CampusID, COUNT(*) as cnt FROM Student GROUP BY CampusID;"
-   ```
-
-2. **確認 `branches.json` ID 與 DB 一致**：
-   ```bash
-   cat backend/public/branches.json
-   ```
-   若有出入，直接依 DB 結果修正；正確格式（8 間）：
-   ```json
-   [
-     {"id": 17, "name": "興隆分校", "code": "xinglong"},
-     {"id": 9,  "name": "新店分校", "code": "xindian"},
-     {"id": 15, "name": "大安分校", "code": "daan"},
-     {"id": 16, "name": "木柵分校", "code": "muzha"},
-     {"id": 2,  "name": "東湖分校", "code": "donghu"},
-     {"id": 3,  "name": "大直分校", "code": "dazhi"},
-     {"id": 4,  "name": "汐止分校", "code": "xizhi"},
-     {"id": 1,  "name": "內湖分校", "code": "neihu"}
-   ]
-   ```
-
-3. **確認 `useBranches.js` 的 `DEFAULT_BRANCHES` ID 與上方一致**：
-   ```
-   frontend/src/lib/useBranches.js  →  const DEFAULT_BRANCHES = [...]
-   ```
-
-4. **走 PR → CI → deploy.yml 自動部署**；若是事故且 deploy workflow 無法使用，才走 `docs/DEPLOYMENT.md` 的緊急手動部署流程。
-
-5. **請使用者強制重新整理瀏覽器**（Ctrl+Shift+R / Cmd+Shift+R）。
+1. 從具權限的唯讀來源核對受影響分校 ID 與對應資料，再比對版本中的 `backend/public/branches.json` 和 `frontend/src/lib/useBranches.js` 的 fallback。
+2. 若是設定或程式不一致，依 [交付流程](sop/DELIVERY_LIFECYCLE.md) 修復並驗證分校切換。事故走 [事故入口](INCIDENT_START_HERE.md)。
 
 ---
 
 ## H. SOP：全 API 500 緊急恢復
 
-> 適用症狀：所有 `/api/v1/*` 都回傳 HTTP 500，包含 `/branches`、`/auth/login`
-
-**Step 1：查 Laravel 錯誤日誌**
-```bash
-tail -30 backend/storage/logs/laravel.log
-```
-常見關鍵字：
-- `Class "..." not found` → 快取問題，執行 Step 2
-- `SQLSTATE` / `Connection refused` → DB 連線問題，確認 `.env` 與 MySQL 狀態
-- `No application encryption key` → `.env` APP_KEY 遺失
-
-**Step 2：清 bootstrap cache（最常見修復）**
-```bash
-rm -f backend/bootstrap/cache/services.php \
-       backend/bootstrap/cache/packages.php \
-       backend/bootstrap/cache/config.php
-```
-
-**Step 3：驗證恢復**
-```bash
-curl -sk https://daan.lifenet.com.tw/api/v1/branches
-# 預期：HTTP 200，回傳 JSON 陣列
-```
-
-**Step 4：若仍 500，依序檢查**
-```bash
-# DB 是否可連
-mysql -h 127.0.0.1 -u admin -p"$(grep ^DB_PASSWORD= /home/admin/backend/.env | cut -d= -f2-)" AllTrue -e "SELECT 1"
-
-# PHP-FPM 是否存活
-ps aux | grep php-fpm | grep -v grep
-
-# Apache 是否存活
-sudo systemctl status apache2
-
-# .env 是否存在
-ls -la backend/.env
-```
+從 [事故入口](INCIDENT_START_HERE.md) 核對影響、近期版本、health 與有權讀取的錯誤紀錄。`Class ... not found`、資料庫連線錯與 APP_KEY 錯誤分別是不同線索；按事故決策選擇已核准的復原動作，並讀回 health、版本及原出錯路徑。
 
 ---
 
 ## I. CI/CD 自動部署設定（2026-04-24）
+
+> 下列是初版部署架構與事故紀錄。現行執行、核准與驗證以 [交付流程](sop/DELIVERY_LIFECYCLE.md) 和 [控制面契約](CONTROL_PLANE_CONTRACT.md) 為準。
 
 ### 架構
 
@@ -561,8 +420,7 @@ WSL2 feature branch → git push → PR → CI pass → merge main → deploy.ym
 
 ### 驗證部署成功
 
-GitHub Actions → Deploy to Pi → 最新 run 顯示 `success`  
-或：`curl -sk https://daan.lifenet.com.tw/api/v1/health | python3 -m json.tool`
+核對 [交付流程](sop/DELIVERY_LIFECYCLE.md) 的精確目標版本、`deployment.json`、health、critical smoke 及適用的回滾證據。判定 in-app 修復時另核對原使用者路徑。
 
 ---
 
@@ -637,15 +495,7 @@ GitHub Actions → Deploy to Pi → 最新 run 顯示 `success`
 
 修復前若同一 RFID 同時綁到學生與老師分校卡，老師刷卡可能被寫進 `StudentSingIn`，老師打卡區看不到。
 
-1. 先 dry-run，不寫資料：
-   ```bash
-   php artisan teacher-signin:recover-rfid-collisions --date=YYYY-MM-DD --teacher-id=<User.id>
-   ```
-2. 確認候選列的老師、分校、時間正確，且已完成 production 備份後才可 apply：
-   ```bash
-   php artisan teacher-signin:recover-rfid-collisions --date=YYYY-MM-DD --teacher-id=<User.id> --apply
-   ```
-3. 此工具只新增 `TeacherSingIn`，不刪除、不作廢原始 `StudentSingIn`；原始學生列是否要 void 必須另案人工審核。
+既有修復工具只新增 `TeacherSingIn`，保留原始 `StudentSingIn`。先經核准來源讀取老師、分校與時間；正式修復及原始列是否作廢依 [Founder 的資料修復邊界](governance/FOUNDER_STANDING_DECISIONS.md) 逐項確認，使用合規入口並核對結果。
 
 ### 5) 課程管理堂次警示排查 SOP
 
@@ -724,6 +574,8 @@ ORDER BY branch_id, course_id;
 ---
 
 ## M. Log 管理與 Tmpfs 緩衝（2026-04-16）
+
+> 本節保留當時的主機設計及工具紀錄。正式主機診斷與處置的入口見 [事故流程](INCIDENT_START_HERE.md)；主機指令僅供另有授權的主機操作者參考。
 
 ### 1) 現況
 
@@ -813,31 +665,9 @@ Migration `2026_04_17_200001_add_staff_line_group_id_to_campus` 已新增此欄�
    ```
 5. 複製 `groupId`（以 `C` 開頭，32 位英數字）
 
-#### 2) 寫入資料庫
+#### 2) 核對與變更
 
-```bash
-# 登入 MySQL（或使用 phpMyAdmin / Tinker）
-cd /home/admin/backend
-
-# 方法 A：Artisan Tinker
-php artisan tinker
->>> DB::table('Campus')->where('id', <分校ID>)->update(['staff_line_group_id' => 'C你的GroupId'])
-
-# 方法 B：直接 SQL
-mysql -u root -p alltrue -e "UPDATE Campus SET staff_line_group_id='C你的GroupId' WHERE id=<分校ID>;"
-```
-
-#### 3) 驗證
-
-```bash
-# 確認欄位已寫入
-php artisan tinker --execute="print_r(DB::table('Campus')->select('id','name','staff_line_group_id')->get()->toArray())"
-
-# 觸發測試推播（在 Tinker 中）
-php artisan tinker
->>> $d = \App\Models\ScheduleDiscrepancy::latest()->first();
->>> \App\Services\ScheduleDiscrepancyNotifier::notify($d);
-```
+分校設定變更依 [Founder 常設決定](governance/FOUNDER_STANDING_DECISIONS.md) 走授權入口。若目前沒有該欄位的受控寫入入口，記錄缺口；測試推播使用隔離資料與測試群組，避免把正式回報重送給主任。
 
 #### 4) 未設定時的行為
 
@@ -1053,33 +883,13 @@ gh api repos/jerry200176-png/AllTrue_System/branches/main/protection \
 
 > **必須在 GitHub Web UI 啟用**：`Settings → Branches → Branch protection rules → main`
 
-### R1. 必啟設定（截至 2026-05-24，**Solo + AI 模式**）
+### R1. 生效設定與變更
 
-| 設定 | 值 | 為什麼 |
-|------|---|------|
-| Require a pull request before merging | ✅ | 阻擋直推 main（事故 A 防再犯）|
-| Required approvals | **0**（單人 repo）| 避免自己卡自己；有第二位 maintainer 後改 **1** |
-| Require review from Code Owners | 選用 | 單人時 CODEOWNERS 僅提醒；多人時 ✅ |
-| Dismiss stale approvals on new push | ✅（多人時）| 防 approve 後偷塞 commit |
-| Require status checks before merging | ✅ | 必須全綠才能 merge |
-| Required checks（**GitHub 實際 job 名稱**）| `Presubmit Checks` / `PHPUnit Feature & Unit Tests` / `Vite Frontend Build` / `gitleaks scan` / `Golden scenarios report` / `Docs Integrity Check` / `PHPStan Advisory (php)` / `Control Plane Contract Lint` | 前 7 項 2026-05-31 全數納入。`PHPStan Advisory (php)`（#545）於移至 GitHub-hosted runner + baseline、連續 3 個 PR 綠燈後納入；job-level `if` skip（非 backend PR → 中性），baseline 既有問題、只擋新增問題 |
-| Require branches to be up to date | ✅ | PR behind 時先 `update-branch`（§B5）|
-| Require conversation resolution | ✅ | review comment 必須解決 |
-| Restrict force pushes | ✅（即使 admin 也禁止）| 事故 A 防再犯 |
-| Allow deletions | ❌ | 防 main 被刪 |
+以 [ruleset 基線](REF_GITHUB_RULESET_BASELINE.md) 為設定參照，以 GitHub live ruleset 核對實際狀態。[Merge SOP](sop/MERGE_SOP.md) 管理必要檢查、精確版本 review 與留言解決。ruleset 變更依既有權限核准，保持完整的既有必需檢查與回復證據。
 
-### R1b. Required checks 增減（零資料風險，可即時回滾）
+### R1b. Required checks
 
-```bash
-# 新增 required context（append，不影響既有）
-gh api -X POST repos/jerry200176-png/AllTrue_System/branches/main/protection/required_status_checks/contexts \
-  -f 'contexts[]=<job 名稱>'
-# 移除（回滾）：重設整個 contexts 清單
-gh api -X PUT repos/jerry200176-png/AllTrue_System/branches/main/protection/required_status_checks \
-  -F strict=true -f 'contexts[]=Presubmit Checks' -f 'contexts[]=PHPUnit Feature & Unit Tests' \
-  -f 'contexts[]=Vite Frontend Build' -f 'contexts[]=gitleaks scan' -f 'contexts[]=Golden scenarios report'
-```
-⚠️ 只把「每個 PR 都會回報 status」的 check 設 required；workflow-level `paths:` 過濾掉整個 workflow 的 check 設 required 會讓不觸發的 PR 永遠 pending → 卡死。job-level `if` skip（如 PHPStan、PHPUnit、Vite、改寫後的 Docs Integrity）回報 skipped＝中性，可安全 required。若某 check 仍是 workflow-level `paths:` 過濾，先比照 `docs-integrity.yml`（#543）改為「`changes` 偵測 job + `integrity` job-level `if`」再 required。
+檢查是否在各 PR 路徑回報成功或中性狀態，並確認 workflow 路徑過濾也會回報必要 context。依生效設定比對完整清單，避免用固定的舊清單取代現行設定。
 
 ### R1c. 供應鏈安全控制（OSS，無需 GHAS）— #544
 
@@ -1094,13 +904,9 @@ GitHub Advanced Security（GHAS）未購買期間，供應鏈把關**不等 GHAS
 
 OSV-Scanner 刻意只跑排程／手動（掃受信任的 main、`upload-sarif=false` 不需 GHAS code scanning），避免官方 action 在不受信任 PR 內容下的輸出注入風險（osv-scanner#2749）。手動觸發：`gh workflow run osv-scanner.yml`。**分工**：阻擋型 gate＝composer/npm audit（HIGH/CRITICAL）；OSV 深掃＝advisory 可見度（含 Medium/Low/dev），每月隨 DORA review 一起看一次並更新 TD-061。第三方 action 已 SHA-pin（供應鏈硬化），由 dependabot github-actions group 維護更新。
 
-### R2. Break-glass 流程
+### R2. 重大事故
 
-- 重大事故需直接 push main 時：
-  1. 先把當下 SHA 記到 `docs/INCIDENT_LOG.md`（包含原因）
-  2. Temporarily uncheck 「Restrict force pushes」（記時間）
-  3. 完成後立即恢復
-  4. 24 小時內 retro PR + comment in event log
+沿用 [事故入口](INCIDENT_START_HERE.md) 與 [Merge SOP](sop/MERGE_SOP.md)。保留 main 保護、必需檢查與事故當時版本；依已授權的復原路徑處理。
 
 ### R3. 驗證已啟用
 
@@ -1120,22 +926,7 @@ gh api repos/jerry200176-png/AllTrue_System/branches/main/protection \
 
 ### S2. 輪替步驟
 
-```bash
-# 在 Pi：
-TS=$(date '+%Y-%m-%d')
-ssh-keygen -t ed25519 -C "rpi_actions_deploy_${TS}" -f ~/.ssh/rpi_actions_deploy_${TS} -N ""
-cat ~/.ssh/rpi_actions_deploy_${TS}.pub >> ~/.ssh/authorized_keys
-
-# WSL2：把 private key base64 一次性貼到 GitHub Secrets PI_SSH_KEY
-base64 -w0 < ~/.ssh/rpi_actions_deploy_${TS}
-# → 更新 https://github.com/.../settings/secrets/actions PI_SSH_KEY
-
-# 驗證 deploy.yml 可用
-gh workflow run deploy.yml --ref main  # 或等下一次 PR merge
-
-# 確認新 key 成功部署後，移除舊 key
-sed -i '/rpi_actions_deploy_<OLD_TS>/d' ~/.ssh/authorized_keys
-```
+建立、輪替與撤銷 credential 由 [Founder](governance/FOUNDER_STANDING_DECISIONS.md) 執行。工程端準備影響範圍、復原點，以及部署身分、fingerprint 和 smoke 驗證方式。新憑證經現行部署流程驗證成功且有受控回復方式後，才能退役舊憑證。紀錄僅保留 fingerprint 和驗證結果。
 
 ### S3. 輪替紀錄
 
@@ -1147,7 +938,7 @@ sed -i '/rpi_actions_deploy_<OLD_TS>/d' ~/.ssh/authorized_keys
 
 - `PI_SSH_USER`：純 `admin`，不含 `@`
 - `PI_SSH_HOST`：純 hostname，不含 `user@`
-- `PI_SSH_KEY`：`base64 -w0` 的單行輸出
+- `PI_SSH_KEY`：受保護輸入使用單行 base64；稽核只比對 fingerprint
 - deploy.yml 啟動時用 `ssh-keygen -l -f` 預檢 key 是否合法
 
 ---
