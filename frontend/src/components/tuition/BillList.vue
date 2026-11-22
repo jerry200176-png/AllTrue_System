@@ -400,7 +400,9 @@ function neighbor(studentId, dir) {
   const b = i >= 0 && ids[i + dir] != null ? visible.value.find((x) => x.student_id === ids[i + dir]) : null;
   return b ? { student_id: b.student_id, first_class_id: b.class_id } : null;
 }
-// Contract ids of the owing rows in the order and filter on screen (for 儲存並看下一筆未繳).
-const owingQueue = () => visible.value.filter((b) => b.kind === 'owing' && b.class_id != null).map((b) => Number(b.class_id));
+// Preserve the visible order and include the starting row even when it has no bill yet.
+const owingQueue = (anchorId) => visible.value
+  .filter((b) => b.class_id != null && (b.kind === 'owing' || Number(b.class_id) === anchorId))
+  .map((b) => Number(b.class_id));
 defineExpose({ neighbor, clearSelection, owingQueue });
 </script>

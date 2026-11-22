@@ -147,6 +147,19 @@ describe('BillList', () => {
     w.unmount();
   });
 
+  it('in-app #592 anchors save-and-next to the visible unbilled row', async () => {
+    const w = mountList({ canDocs: true, alertRows: [
+      row({ id: 20, remaining_sessions: 1 }),
+      row({ id: 21, remaining_sessions: 2, payable_status: 'unbilled', payable_outstanding: null, can_record_unbilled_count: true }),
+      row({ id: 22, remaining_sessions: 3 }),
+    ] });
+    expect(w.vm.owingQueue()).toEqual([20, 22]);
+    expect(w.vm.owingQueue(21)).toEqual([20, 22, 21]);
+    await w.get('[data-testid="bill-sort"]').setValue('remaining');
+    expect(w.vm.owingQueue(21)).toEqual([20, 21, 22]);
+    w.unmount();
+  });
+
   it('in-app534: renewal keeps the exact clicked student and contract', async () => {
     const w = mountList({ canDocs: true, alertRows: [
       row({ id: 30, student_id: 7, payment_status: 'renew_needed', payable_outstanding: 0 }),

@@ -1117,7 +1117,7 @@ function onQuickDone({ action, reportId }) {
 let recordQueue = [];
 function openBillSheet(b, kind = 'record') {
   if (b.class_id == null) { openBillLedger(b, 'record'); return; }
-  recordQueue = billList.value?.owingQueue?.() || [];
+  recordQueue = billList.value?.owingQueue?.(kind === 'record-unbilled' ? Number(b.class_id) : null) || [];
   openLedgerForStudent({ student_id: b.student_id, first_class_id: b.class_id }, { kind, classId: b.class_id });
   ledgerNavStudentId.value = null;
   ledgerSheetEntry.value = true;
@@ -1125,7 +1125,8 @@ function openBillSheet(b, kind = 'record') {
 function onSaveNext() {
   const cur = Number(ledgerStudentClassId.value);
   const owing = new Map(billRows(rows.value).filter((x) => x.kind === 'owing').map((x) => [Number(x.class_id), x]));
-  const after = recordQueue.slice(recordQueue.indexOf(cur) + 1);
+  const currentIndex = recordQueue.indexOf(cur);
+  const after = currentIndex < 0 && ledgerInitialAction.value === 'record-unbilled' ? [] : recordQueue.slice(currentIndex + 1);
   const next = after.map((id) => owing.get(Number(id))).find(Boolean);
   if (next) { ledgerInitialAction.value = 'record'; ledgerStudentClassId.value = next.class_id; ledgerReportId.value = null; return; }
   ledgerOpen.value = false;
