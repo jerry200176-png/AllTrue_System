@@ -691,6 +691,11 @@ class AlertController extends Controller
         }
 
         $isPaid = (int) ($c->Paid ?? 0) === 1 || $c->isEffectivelyPaid();
+        // in-app #589 (Founder 2026-11-22): a paid monthly course whose EndDate has passed has no next settlement.
+        // An unpaid one keeps its overdue row so nothing owed is hidden.
+        if ($isPaid && $c->EndDate && substr((string) $c->EndDate, 0, 10) < $today->toDateString()) {
+            return null;
+        }
         $thisDue = $this->settlementDateInMonth((int) $today->year, (int) $today->month, $settlementDay);
 
         if (!$isPaid) {

@@ -1,0 +1,14 @@
+updates:
+  - id: staff-2026-11-22-ended-monthly-alert
+    published_at: "2026-11-22"
+    audiences:
+      - director
+      - super_admin
+    importance: digest
+    title: 已結束月結課不再提醒
+    summary: 月結課過了結束日又已繳清，就不會再出現在繳費提醒。
+    items:
+      - category: fixed
+        text: 課程已結束且繳清，不再每月跳「月結將到期」；還沒繳的照樣提醒。
+    source_refs:
+      - "changelog:2026-11-22:ended-monthly-alert"

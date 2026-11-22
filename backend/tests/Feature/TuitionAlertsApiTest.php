@@ -272,6 +272,52 @@ class TuitionAlertsApiTest extends TestCase
         $this->assertSame('2026-05', $row['billing_period']);
     }
 
+    /** in-app #589: a paid monthly course that ended months ago has no next settlement; an unpaid one still shows. */
+    public function test_monthly_paid_excluded_after_end_date_but_unpaid_still_listed(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-11-22', 'Asia/Taipei'));
+
+        $token = $this->createDirectorToken([1]);
+        $student = Student::create([
+            'name' => '月結已結束',
+            'CampusID' => 1,
+            'ClassID' => 1,
+            'enable' => 1,
+            'MDT' => now(),
+            'Notify_Token' => '',
+        ]);
+
+        $endedPaid = $this->createMonthlyClass($student->id, [
+            'settlement_day' => 22,
+            'Paid' => 1,
+            'StartDate' => '2026-04-12',
+            'EndDate' => '2026-09-14',
+        ]);
+        $endedUnpaid = $this->createMonthlyClass($student->id, [
+            'settlement_day' => 22,
+            'Paid' => 0,
+            'StartDate' => '2026-04-12',
+            'EndDate' => '2026-09-14',
+        ]);
+        $runningPaid = $this->createMonthlyClass($student->id, [
+            'settlement_day' => 22,
+            'Paid' => 1,
+            'StartDate' => '2026-04-12',
+            'EndDate' => '2026-12-31',
+        ]);
+
+        $res = $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->getJson('/api/v1/alerts/tuition?branch_id=1');
+
+        $res->assertOk();
+        $rows = collect($res->json());
+        $this->assertNull($rows->firstWhere('id', $endedPaid->ID), 'ended and paid: no next settlement');
+        $this->assertSame('monthly_due_soon', $rows->firstWhere('id', $endedUnpaid->ID)['alert_type'] ?? null, 'ended but unpaid stays listed');
+        $this->assertSame('monthly_due_soon', $rows->firstWhere('id', $runningPaid->ID)['alert_type'] ?? null, 'still running: unchanged');
+    }
+
     public function test_monthly_paid_included_when_next_due_within_window(): void
     {
         Carbon::setTestNow(Carbon::parse('2026-05-12', 'Asia/Taipei'));
