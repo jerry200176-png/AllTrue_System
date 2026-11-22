@@ -51,6 +51,29 @@ describe('學生帳務 · 右側收款面板 (sheetEntry, #4659 step 3)', () => 
     }
   });
 
+  it('opens the exact still-unbilled priced count contract from the direct action', async () => {
+    const w = mountLedger({ courses: [course(11)], props: { initialAction: 'record-unbilled', sheetEntry: true } });
+    await flushPromises();
+    expect(w.get('[data-testid="entry-stub"]').text()).toBe('11');
+    w.unmount();
+  });
+
+  it.each([
+    ['unpriced', { charge: 0, current_contract_rate_positive: true }, [], 'director'],
+    ['shared', { package_id: 8, in_package: true }, [], 'director'],
+    ['monthly', { schedule_mode: 'date' }, [], 'director'],
+    ['stopped', { stop: true }, [], 'director'],
+    ['outdated', {}, [inv(1, 11)], 'director'],
+    ['non-director', {}, [], 'teacher'],
+  ])('does not open the direct entry if the current ledger is %s', async (_shape, terms, invoices, role) => {
+    const w = mountLedger({ courses: [course(11, terms)], invoices, role, props: { initialAction: 'record-unbilled', sheetEntry: true } });
+    await flushPromises();
+    expect(w.find('[data-testid="entry-stub"]').exists()).toBe(false);
+    expect(w.get('.ledger-overlay').isVisible()).toBe(true);
+    expect(w.get('[data-testid="ledger-initial-action-note"]').text()).toContain('請先核對');
+    w.unmount();
+  });
+
   it('shows only the entry sheet (ledger hidden), and saving closes it and refreshes the list', async () => {
     const w = mountLedger({ courses: [course(11)], invoices: [inv(1, 11)], props: { initialAction: 'record', sheetEntry: true } });
     await flushPromises();

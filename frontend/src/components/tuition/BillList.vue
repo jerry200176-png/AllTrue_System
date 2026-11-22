@@ -176,7 +176,7 @@
                     :class="[control.row, 'tw:max-md:px-3']"
                     :data-testid="`bill-record-unbilled-${b.key}`"
                     :aria-label="`登記收款：${b.student_name} ${b.subject}`"
-                    @click="$emit('action', b, 'record')"
+                    @click="$emit('action', b, 'record-unbilled')"
                   >登記收款</Button>
                   <Button
                     v-if="primaryOf(b)"
@@ -284,7 +284,8 @@ const slipOf = (b) => slipAvailability({ ...b.src, id: b.class_id }, props.canDo
 // whether the exact contract can accept a payment after it loads fresh data.
 function canRecordUnbilled(b) {
   const src = b.src;
-  return b.kind === 'issue' && Number(b.class_id) > 0 && b.student_id > 0 && !b.package_id
+  return src.can_record_unbilled_count === true
+    && b.kind === 'issue' && Number(b.class_id) > 0 && b.student_id > 0 && !b.package_id
     && src.schedule_mode === 'count' && src.payable_status === 'unbilled' && src.payment_status === 'unpaid'
     && !src.stop && !src.closed_reason && !src.renewed_by_newer_course && !src.no_payment_obligation
     && slipOf(b).ok;

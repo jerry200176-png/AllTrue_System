@@ -451,13 +451,14 @@ async function installMock(page) {
   }));
 }
 
-for (const width of [390, 1440]) {
-  test(`in-app #592 unbilled row opens the exact record form while keeping the slip @${width}`, async ({ page }, info) => {
+for (const [width, regrouped] of [[390, false], [1440, false], [390, true]]) {
+  test(`in-app #592 ${regrouped ? 'fresh shared terms block the unbilled shortcut' : 'unbilled row opens the exact record form while keeping the slip'} @${width}`, async ({ page }, info) => {
     const writes = [];
     const opened = [];
     const course = { id: 42, student_id: 99, student_name: '合成收款學生', subject: '合成數學',
-      schedule_mode: 'count', payment_status: 'unpaid', payable_status: 'unbilled', remaining_sessions: 6 };
+      schedule_mode: 'count', payment_status: 'unpaid', payable_status: 'unbilled', remaining_sessions: 6, can_record_unbilled_count: true };
     const unrelated = { ...course, id: 43, subject: '合成英文', latest_payment_report_id: 55, payment_status: 'pending_report' };
+    const estimated = { ...course, id: 44, subject: '合成待確認', charge: 6000, can_record_unbilled_count: false };
     page.on('request', (request) => {
       if (new URL(request.url()).pathname.startsWith('/api/v1/') && request.method() !== 'GET') writes.push(request.method());
     });
@@ -466,13 +467,16 @@ for (const width of [390, 1440]) {
     await page.route('**/api/v1/**', (route) => route.fulfill({ json: { data: [] } }));
     await installMock(page);
     await page.route('**/api/v1/students**', (route) => route.fulfill({ json: [{ id: 99, name: course.student_name, status: 'active', enable: 1 }] }));
-    await page.route('**/api/v1/alerts/tuition**', (route) => route.fulfill({ json: [course, unrelated] }));
+    await page.route('**/api/v1/alerts/tuition**', (route) => route.fulfill({ json: [course, unrelated, estimated] }));
     await page.route('**/api/v1/accounting/ledger?**', (route) => {
       const selected = Number(new URL(route.request().url()).searchParams.get('student_class_id'));
       opened.push(selected);
       return route.fulfill({ json: {
         student: { id: 99, name: course.student_name }, summary: {}, scope: { student_class_id: selected },
-        courses: [{ ...course, paid: false, charge: 6000 }, { ...unrelated, paid: false, charge: 4000 }], invoices: [], anomalies: [],
+        courses: [
+          { ...course, paid: false, charge: 6000, ...(regrouped ? { package_id: 8, in_package: true } : {}) },
+          { ...unrelated, paid: false, charge: 4000 },
+        ], invoices: [], anomalies: [],
         receipts: [{ report_id: 55, student_class_id: 43, status: 'pending', amount: 4000 }],
       } });
     });
@@ -483,6 +487,8 @@ for (const width of [390, 1440]) {
     await expect(button).toBeVisible();
     await expect(row.getByTestId('bill-action-c42')).toBeVisible();
     await expect(page.getByTestId('bill-record-unbilled-c43')).toHaveCount(0);
+    await expect(page.getByTestId('bill-row-c44')).toBeVisible();
+    await expect(page.getByTestId('bill-record-unbilled-c44')).toHaveCount(0);
     const box = await row.boundingBox();
     expect(box.x + box.width).toBeLessThanOrEqual(width + 1);
     const screenshot = info.outputPath(`unbilled-record-row-${width}.png`);
@@ -490,10 +496,15 @@ for (const width of [390, 1440]) {
     await info.attach('unbilled-record-row', { path: screenshot, contentType: 'image/png' });
     await button.press('Enter');
     const form = page.getByRole('dialog', { name: '登記收款', exact: true });
-    await expect(form).toBeVisible();
-    await expect(form).toContainText(course.student_name);
-    await expect(form).toContainText(course.subject);
-    await expect(form).toContainText('還沒開帳單');
+    if (regrouped) {
+      await expect(page.getByTestId('ledger-initial-action-note')).toContainText('請先核對');
+      await expect(form).toHaveCount(0);
+    } else {
+      await expect(form).toBeVisible();
+      await expect(form).toContainText(course.student_name);
+      await expect(form).toContainText(course.subject);
+      await expect(form).toContainText('還沒開帳單');
+    }
     expect(opened).toEqual([42]);
     expect(writes).toEqual([]);
   });

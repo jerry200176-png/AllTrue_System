@@ -565,9 +565,29 @@ class TuitionAlertsApiTest extends TestCase
         $this->assertSame(0, $row['paid_amount']);
         $this->assertSame(8800, $row['outstanding']);
         $this->assertSame('unbilled', $row['payable_status']);
+        $this->assertTrue($row['can_record_unbilled_count']);
         $this->assertNull($row['payable_amount']);
         $this->assertSame(8800, $row['estimated_amount']);
         $this->assertNull($row['latest_payment_report_id']);
+    }
+
+    public function test_an_estimate_without_an_agreed_count_charge_does_not_offer_direct_record(): void
+    {
+        $token = $this->createDirectorToken([1], 'unconfirmed-fee@example.com');
+        $student = Student::create([
+            'name' => '待核對堂數制費用', 'CampusID' => 1, 'ClassID' => 1,
+            'enable' => 1, 'MDT' => now(), 'Notify_Token' => '',
+        ]);
+        $course = $this->createCountModeClass($student->id, [
+            'Paid' => 0, 'RemainingSessions' => 5, 'SessionCount' => 5, 'Rate' => 1000, 'Charge' => 0,
+        ]);
+
+        $response = $this->withToken($token)->getJson('/api/v1/alerts/tuition?branch_id=1')->assertOk();
+        $row = collect($response->json())->firstWhere('id', $course->ID);
+        $this->assertNotNull($row);
+        $this->assertSame('unbilled', $row['payable_status']);
+        $this->assertSame(5000, $row['estimated_amount']);
+        $this->assertFalse($row['can_record_unbilled_count']);
     }
 
     public function test_payment_status_partial_when_invoice_partially_paid(): void

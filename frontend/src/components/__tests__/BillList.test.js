@@ -123,7 +123,7 @@ describe('BillList', () => {
   });
 
   it('in-app #592 offers the exact unbilled contract a direct record action and keeps its slip', async () => {
-    const unbilled = row({ id: 21, student_id: 7, payable_status: 'unbilled', payable_outstanding: null });
+    const unbilled = row({ id: 21, student_id: 7, payable_status: 'unbilled', payable_outstanding: null, can_record_unbilled_count: true });
     const list = [
       unbilled,
       { ...unbilled, id: 22, schedule_mode: 'date' },
@@ -132,6 +132,7 @@ describe('BillList', () => {
       { ...unbilled, id: 25, renewed_by_newer_course: true },
       { ...unbilled, id: 26, amount_pending_confirmation: true },
       { ...unbilled, id: 27, payment_status: 'paid' },
+      { ...unbilled, id: 28, charge: 4400, can_record_unbilled_count: false },
     ];
     const w = mountList({ canDocs: true, alertRows: list, presetFilter: { key: 'all' } });
     const button = w.get('[data-testid="bill-record-unbilled-c21"]');
@@ -139,7 +140,7 @@ describe('BillList', () => {
     await button.trigger('click');
     await w.get('[data-testid="bill-action-c21"]').trigger('click');
     expect(w.emitted('action').map(([b, kind]) => [b.class_id, b.student_id, kind]))
-      .toEqual([[21, 7, 'record'], [21, 7, 'slip']]);
+      .toEqual([[21, 7, 'record-unbilled'], [21, 7, 'slip']]);
     expect(w.findAll('[data-testid^="bill-record-unbilled-"]')).toHaveLength(1);
     await w.setProps({ canDocs: false });
     expect(w.find('[data-testid="bill-record-unbilled-c21"]').exists()).toBe(false);
