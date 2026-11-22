@@ -43,9 +43,10 @@ describe('#4148 bill-linked receipt lookup', () => {
   it('keeps exact receipt actions while avoiding repeated facts only beside the expanded matching invoice', async () => {
     const payload = data();
     payload.can_reassign_receipt = true;
+    payload.invoices[1].payments.push(payload.invoices[0].payments.pop());
     payload.receipts = [
       { report_id: 801, invoice_id: 501, payment_id: 71, student_class_id: 42, amount: 500, payment_date: '2026-11-01', payment_method: 'cash', status: 'confirmed', note: '核對備註' },
-      { report_id: 802, invoice_id: 501, payment_id: 72, student_class_id: 42, amount: 500, payment_date: '2026-11-03', payment_method: 'cash', status: 'confirmed' },
+      { report_id: 802, invoice_id: 502, payment_id: 72, student_class_id: 42, amount: 500, payment_date: '2026-11-03', payment_method: 'cash', status: 'confirmed' },
     ];
     const { wrapper: w, fetchMock } = await open({ payload });
     try {
@@ -69,6 +70,39 @@ describe('#4148 bill-linked receipt lookup', () => {
       expect(repeated().exists()).toBe(false);
       expect(first.element.closest('.ledger-receipt').textContent).toContain('NT$ 500');
       expect(fetchMock.mock.calls.every(([, options]) => !options?.method || options.method === 'GET')).toBe(true);
+    } finally { w.unmount(); }
+  });
+
+  it('keeps the details distinguishing two receipts paid against the same expanded invoice', async () => {
+    const payload = data();
+    payload.invoices[0].payments[1] = payment(72, 802, 'confirmed', { amount: 900, method: 'transfer', paid_at: '2026-11-03' });
+    payload.receipts = [
+      { report_id: 801, invoice_id: 501, payment_id: 71, student_class_id: 42, amount: 500, payment_date: '2026-11-01', payment_method: 'cash', status: 'confirmed' },
+      { report_id: 802, invoice_id: 501, payment_id: 72, student_class_id: 42, amount: 900, payment_date: '2026-11-03', payment_method: 'transfer', status: 'confirmed' },
+    ];
+    const { wrapper: w } = await open({ payload });
+    try {
+      expect(w.findAll('[data-testid^="ledger-receipt-repeated-"]')).toHaveLength(0);
+      const first = w.get('[data-testid="ledger-receipt-view-801"]');
+      const second = w.get('[data-testid="ledger-receipt-view-802"]');
+      expect(first.element.closest('.ledger-receipt').textContent).toMatch(/NT\$ 500.*2026\/11\/01.*現金/);
+      expect(second.element.closest('.ledger-receipt').textContent).toMatch(/NT\$ 900.*2026\/11\/03.*匯款/);
+      await second.trigger('click');
+      expect(w.get('[data-testid="lookup-receipt"]').text()).toContain('802');
+    } finally { w.unmount(); }
+  });
+
+  it('keeps the full row when a hidden receipt also claims the same payment', async () => {
+    const payload = data();
+    payload.receipts = [
+      { report_id: 801, invoice_id: 501, payment_id: 71, student_class_id: 42, amount: 500, payment_date: '2026-11-01', payment_method: 'cash', status: 'confirmed' },
+      { report_id: 805, invoice_id: 502, payment_id: 71, student_class_id: 42, amount: 500, payment_date: '2026-11-01', payment_method: 'cash', status: 'voided' },
+    ];
+    const { wrapper: w } = await open({ payload });
+    try {
+      expect(w.find('[data-testid="ledger-receipt-view-805"]').exists()).toBe(false);
+      expect(w.find('[data-testid="ledger-receipt-repeated-801"]').exists()).toBe(false);
+      expect(w.get('[data-testid="ledger-receipt-view-801"]').element.closest('.ledger-receipt').textContent).toContain('NT$ 500');
     } finally { w.unmount(); }
   });
 

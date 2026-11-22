@@ -942,8 +942,8 @@ const shownReceipts = computed(() => {
 });
 const firstForeignReceiptId = computed(() => shownReceipts.value.find(isForeignReceipt)?.report_id ?? null);
 
-// Suppress only facts already displayed in a visible timeline. Pair by both server IDs;
-// multiple links or different facts keep the full receipt row.
+// Suppress facts only for one unambiguous receipt whose details are already visible.
+// Count all claimants, including records the current receipt filter hides.
 const repeatedReceiptFacts = computed(() => {
   const repeated = new Map();
   if (!fold.inv || !canManageInvoices()) return repeated;
@@ -952,6 +952,15 @@ const repeatedReceiptFacts = computed(() => {
     .filter(inv => inv.status !== 'void' && (documentsView.value || isExpanded(inv.id)))
     .map(inv => Number(inv.id)));
   if (!expanded.size) return repeated;
+
+  const receiptCountsByInvoice = new Map();
+  const receiptCountsByPayment = new Map();
+  for (const receipt of payload.value?.receipts || []) {
+    const invoiceId = Number(receipt.invoice_id);
+    const paymentId = Number(receipt.payment_id);
+    receiptCountsByInvoice.set(invoiceId, (receiptCountsByInvoice.get(invoiceId) || 0) + 1);
+    receiptCountsByPayment.set(paymentId, (receiptCountsByPayment.get(paymentId) || 0) + 1);
+  }
 
   const byReport = new Map();
   for (const invoice of displayedInvoices.value) {
@@ -970,8 +979,8 @@ const repeatedReceiptFacts = computed(() => {
     const invoiceId = Number(linked.invoice.id);
     const payment = linked.payment;
     const paymentId = Number(receipt.payment_id);
-    if (expanded.has(invoiceId) && invoiceId === Number(receipt.invoice_id)
-      && Number.isSafeInteger(paymentId) && paymentId > 0 && paymentId === Number(payment.id)
+    if (expanded.has(invoiceId) && invoiceId === Number(receipt.invoice_id) && receiptCountsByInvoice.get(invoiceId) === 1
+      && Number.isSafeInteger(paymentId) && paymentId > 0 && paymentId === Number(payment.id) && receiptCountsByPayment.get(paymentId) === 1
       && paymentHasReceipt(payment) && Number.isFinite(Number(receipt.amount)) && Number(receipt.amount) === Number(payment.amount)
       && receipt.payment_date && payment.paid_at && fmtDate(receipt.payment_date) === fmtDate(payment.paid_at)
       && receipt.payment_method && receipt.payment_method === payment.method) {

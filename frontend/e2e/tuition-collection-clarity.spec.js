@@ -157,11 +157,37 @@ for (const width of [375, 1280]) for (const [size, theme] of [['standard', 'ligh
     await page.route('**/api/v1/accounting/ledger?**', r => {
       const q = new URL(r.request().url()).searchParams; ledgerQueries.push(Object.fromEntries(q));
       const historic = q.get('student_id') === '99';
-      return r.fulfill({ json: { student: { id: historic ? 99 : 5, name: historic ? '合成暫停學生' : '合成學生' }, scope: { student_class_id: historic ? null : 42 }, summary: {}, courses: [], anomalies: [], invoices: historic ? [] : [{ id: 501, invoice_no: '合成帳單501', subject_name: '合成數學', first_session_date: '2026-11-01', billing_period: '2026-11', student_class_id: 42, status: 'partial', total_amount: 2000, calculated_applied_amount: 1000, outstanding_amount: 1000, payments: [71, 72].map((id, i) => ({ id, report_id: 801 + i, report_status: 'confirmed', receipt_no: `合成收據${801 + i}`, amount: 500, applied_amount: 500, application_status: 'applied', method: 'cash', paid_at: '2026-11-01' })) }], receipts: historic ? [{ report_id: 900, invoice_id: null, amount: 200, status: 'confirmed', payment_method: 'cash' }] : [801, 802].map((report_id, i) => ({ report_id, invoice_id: 501, payment_id: 71 + i, student_class_id: 42, amount: 500, status: 'confirmed', payment_date: i === 0 ? '2026-11-01' : '2026-11-03', payment_method: 'cash', subject: '合成數學' })) } });
+      const receipts = [
+        [801, 501, 71, 500, '2026-11-01', 'cash'],
+        [802, 501, 72, 900, '2026-11-03', 'transfer'],
+        [803, 503, 73, 700, '2026-11-04', 'cash'],
+      ].map(([report_id, invoice_id, payment_id, amount, payment_date, payment_method]) => ({
+        report_id, invoice_id, payment_id, amount, payment_date, payment_method,
+        student_class_id: 42, status: 'confirmed', subject: '合成數學',
+      }));
+      const invoices = [[501, 2400, 1400], [503, 700, 700]].map(([id, total_amount, applied]) => ({
+        id, invoice_no: `合成帳單${id}`, subject_name: '合成數學', first_session_date: '2026-11-01', billing_period: '2026-11',
+        student_class_id: 42, status: total_amount === applied ? 'paid' : 'partial', total_amount,
+        calculated_applied_amount: applied, outstanding_amount: total_amount - applied,
+        payments: receipts.filter(receipt => receipt.invoice_id === id).map(receipt => ({
+          id: receipt.payment_id, report_id: receipt.report_id, report_status: 'confirmed', receipt_no: `合成收據${receipt.report_id}`,
+          amount: receipt.amount, applied_amount: receipt.amount, application_status: 'applied', method: receipt.payment_method, paid_at: receipt.payment_date,
+        })),
+      }));
+      return r.fulfill({ json: {
+        student: { id: historic ? 99 : 5, name: historic ? '合成暫停學生' : '合成學生' },
+        scope: { student_class_id: historic ? null : 42 }, summary: {}, courses: [], anomalies: [],
+        invoices: historic ? [] : invoices,
+        receipts: historic ? [{ report_id: 900, invoice_id: null, amount: 200, status: 'confirmed', payment_method: 'cash' }] : receipts,
+      } });
     });
     await page.route('**/api/v1/payment-reports/*/receipt', r => {
       const id = Number(new URL(r.request().url()).pathname.split('/').at(-2)); receiptIds.push(id);
-      return r.fulfill({ json: { receipt_no: `合成收據${id}`, amount: 500, payment_date: '2026-11-01', payment_method: 'cash', status: 'confirmed', student_name: '合成學生', subject: '合成數學' } });
+      const transfer = id === 802;
+      return r.fulfill({ json: {
+        receipt_no: `合成收據${id}`, amount: transfer ? 900 : 500, payment_date: transfer ? '2026-11-03' : '2026-11-01',
+        payment_method: transfer ? 'transfer' : 'cash', status: 'confirmed', student_name: '合成學生', subject: '合成數學',
+      } });
     });
     await page.goto('/tuition-collection-pilot-mount.html');
     await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
@@ -171,18 +197,20 @@ for (const width of [375, 1280]) for (const [size, theme] of [['standard', 'ligh
     const ledger = page.getByRole('dialog', { name: '合成學生的帳務', exact: true });
     const linked = page.getByTestId('ledger-invoice-payments-501');
     await expect(linked.getByRole('button', { name: /查看收據/ })).toHaveCount(2);
-    const repeated = ledger.getByTestId('ledger-receipt-repeated-801');
-    const matchingReceiptRow = ledger.getByTestId('ledger-receipt-view-801').locator('..');
-    const differentReceiptRow = ledger.getByTestId('ledger-receipt-view-802').locator('..');
+    const repeated = ledger.getByTestId('ledger-receipt-repeated-803');
+    const matchingReceiptRow = ledger.getByTestId('ledger-receipt-view-803').locator('..');
+    const firstReceiptRow = ledger.getByTestId('ledger-receipt-view-801').locator('..');
+    const secondReceiptRow = ledger.getByTestId('ledger-receipt-view-802').locator('..');
     await expect(repeated).toBeVisible();
     await repeated.press('Enter');
-    await expect(ledger.getByTestId('ledger-invoice-toggle-501')).toBeFocused();
-    await expect(matchingReceiptRow).not.toContainText('NT$ 500');
-    await expect(differentReceiptRow).toContainText('2026/11/03');
+    await expect(ledger.getByTestId('ledger-invoice-toggle-503')).toBeFocused();
+    await expect(matchingReceiptRow).not.toContainText('NT$ 700');
+    await expect(firstReceiptRow).toContainText(/NT\$ 500.*2026\/11\/01.*現金/);
+    await expect(secondReceiptRow).toContainText(/NT\$ 900.*2026\/11\/03.*匯款/);
     const invoiceFold = ledger.getByTestId('ledger-fold-invoices');
     await invoiceFold.click();
     await expect(repeated).toHaveCount(0);
-    await expect(matchingReceiptRow).toContainText('NT$ 500');
+    await expect(matchingReceiptRow).toContainText('NT$ 700');
     await invoiceFold.click();
     await expect(repeated).toBeVisible();
     await page.getByTestId('ledger-payment-receipt-72').focus(); await page.keyboard.press('Enter');
@@ -190,12 +218,19 @@ for (const width of [375, 1280]) for (const [size, theme] of [['standard', 'ligh
     await expect(receipt).toContainText('合成收據802');
     await receipt.locator('button[title="關閉"]').click();
     await expect(page.getByTestId('ledger-payment-receipt-72')).toBeFocused();
+    await firstReceiptRow.getByRole('button', { name: '查看收據', exact: true }).press('Enter');
+    await expect(receipt).toContainText('合成收據801');
+    await receipt.locator('button[title="關閉"]').click();
+    await expect(ledger.getByTestId('ledger-receipt-view-801')).toBeFocused();
     await page.getByTestId('ledger-invoice-501').hover();
-    const scan = await new AxeBuilder({ page }).include('#ledger-sec-invoices').analyze();
+    const scan = await new AxeBuilder({ page }).include('#ledger-sec-invoices, #ledger-sec-receipts').analyze();
     expect(scan.violations.filter(v => ['serious', 'critical'].includes(v.impact))).toEqual([]);
     const linkedShot = info.outputPath(`linked-${width}-${size}-${theme}.png`);
     await ledger.screenshot({ path: linkedShot });
     await info.attach(`linked-${width}-${size}-${theme}`, { path: linkedShot, contentType: 'image/png' });
+    const receiptRowsShot = info.outputPath(`receipt-rows-${width}-${size}-${theme}.png`);
+    await ledger.locator('#ledger-sec-receipts').screenshot({ path: receiptRowsShot });
+    await info.attach(`receipt-rows-${width}-${size}-${theme}`, { path: receiptRowsShot, contentType: 'image/png' });
     await ledger.getByRole('button', { name: '關閉學生帳務', exact: true }).click();
     await expect(page.getByTestId('bill-search')).toHaveValue('合成學生');
     await expect(page.getByTestId('bill-documents-c42')).toBeFocused();
@@ -217,7 +252,7 @@ for (const width of [375, 1280]) for (const [size, theme] of [['standard', 'ligh
     await page.getByTestId('bill-receipt-search').screenshot({ path: historicShot });
     await info.attach(`historic-${width}-${size}-${theme}`, { path: historicShot, contentType: 'image/png' });
     expect(ledgerQueries).toEqual([{ student_class_id: '42', branch_id: '1' }, { student_id: '99', branch_id: '1' }]);
-    expect(receiptIds).toEqual([802, 900]);
+    expect(receiptIds).toEqual([802, 801, 900]);
     expect(coverage).toEqual([]); expect(writes).toEqual([]); expect(errors).toEqual([]);
   });
 }

@@ -6,9 +6,9 @@ updates:
       - super_admin
     importance: digest
     title: 學生帳務減少重複顯示同筆收款
-    summary: 展開帳單時，核對一致的收款金額、日期與方式集中在帳單時間線。
+    summary: 帳單只有一筆收款紀錄且資料一致時，展開後可在帳單時間線查看金額、日期與方式。
     items:
       - category: improved
-        text: 收款清單保留查看收據、備註與原有操作，帳單收合後可直接在清單查看完整資料。
+        text: 收款清單保留查看收據、備註與原有操作。多筆收款或帳單收合時，清單仍顯示完整資料。
     source_refs:
       - "changelog:2026-11-22:ledger-receipt-repeated-facts"
