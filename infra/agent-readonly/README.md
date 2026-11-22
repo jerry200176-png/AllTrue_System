@@ -1,5 +1,25 @@
 # Agent database diagnostics — preparation, not activated
 
+## WSL client for the existing AllTrue read API
+
+`query_alltrue.py` calls the existing AllTrue `/api/v1/triage/db` routes
+through an approved relay. No database connection or token is configured in
+WSL. The relay must authenticate its caller, inject the existing read-only
+authorization server-side, and forward only the selected GET routes to the
+verified AllTrue origin. A local relay may bind to loopback. Use HTTPS for a
+remote relay. Set `ALLTRUE_READ_GATEWAY_URL` to the approved relay origin.
+
+```bash
+python3 infra/agent-readonly/query_alltrue.py
+python3 infra/agent-readonly/query_alltrue.py Student --eq CampusID=15 --order id --limit 200
+```
+
+For larger reads, use a stable numeric order and advance the lower bound to
+the previous page's last ID plus one. Confirm table and field names before
+querying and keep exports in a private artifact directory. Write requests
+continue through AllTrue's existing POP and accounting approval workflows.
+The client does not provision a relay or change production access.
+
 Use upstream [DBHub 1.6.0](https://github.com/bytebase/dbhub/tree/v1.6.0)
 (MIT, Node >=22.5) over local **stdio**. This profile provides schema discovery,
 bounded general SQL and two parameterized shortcuts. It is not restricted to
