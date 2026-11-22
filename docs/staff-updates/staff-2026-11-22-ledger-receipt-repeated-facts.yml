@@ -6,7 +6,7 @@ updates:
       - super_admin
     importance: digest
     title: 學生帳務減少重複顯示同筆收款
-    summary: 帳單只有一筆收款紀錄且資料一致時，展開後可在帳單時間線查看金額、日期與方式。
+    summary: 帳單只有一筆收款紀錄且資料一致時，清單保留收據編號，金額、日期與方式可從帳單捷徑查看。
     items:
       - category: improved
         text: 收款清單保留查看收據、備註與原有操作。多筆收款或帳單收合時，清單仍顯示完整資料。

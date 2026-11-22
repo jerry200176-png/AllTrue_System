@@ -106,6 +106,36 @@ describe('#4148 bill-linked receipt lookup', () => {
     } finally { w.unmount(); }
   });
 
+  it('distinguishes compact receipts from separate invoices of the same course', async () => {
+    const payload = data();
+    payload.invoices[1].payments.push(payload.invoices[0].payments.pop());
+    payload.receipts = [
+      { report_id: 801, invoice_id: 501, payment_id: 71, student_class_id: 42, amount: 500, payment_date: '2026-11-01', payment_method: 'cash', status: 'confirmed' },
+      { report_id: 802, invoice_id: 502, payment_id: 72, student_class_id: 42, amount: 500, payment_date: '2026-11-01', payment_method: 'cash', status: 'confirmed' },
+    ];
+    const { wrapper: w } = await open({ payload });
+    try {
+      for (const [reportId, invoiceId] of [[801, 501], [802, 502]]) {
+        const compact = w.get(`[data-testid="ledger-receipt-repeated-${reportId}"]`);
+        expect(compact.text()).toContain(`R-${reportId}`);
+        expect(compact.attributes('aria-label')).toContain(`R-${reportId}`);
+        await compact.trigger('click');
+        expect(document.activeElement).toBe(w.get(`[data-testid="ledger-invoice-toggle-${invoiceId}"]`).element);
+      }
+    } finally { w.unmount(); }
+  });
+
+  it.each(['', 'R-803'])('retains full details if the visible receipt number is missing or duplicated (%s)', async (receiptNo) => {
+    const payload = data();
+    payload.invoices[0].payments[0].receipt_no = receiptNo;
+    payload.receipts = [{ report_id: 801, invoice_id: 501, payment_id: 71, student_class_id: 42, amount: 500, payment_date: '2026-11-01', payment_method: 'cash', status: 'confirmed' }];
+    const { wrapper: w } = await open({ payload });
+    try {
+      expect(w.find('[data-testid="ledger-receipt-repeated-801"]').exists()).toBe(false);
+      expect(w.get('[data-testid="ledger-receipt-view-801"]').element.closest('.ledger-receipt').textContent).toContain('NT$ 500');
+    } finally { w.unmount(); }
+  });
+
   it('keeps the full row if a second invoice references the same report', async () => {
     const payload = data();
     payload.invoices[1].payments.push(payment(76, 801));

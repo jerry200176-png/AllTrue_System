@@ -303,7 +303,14 @@
               <div class="ledger-receipt">
                 <strong v-if="!repeatedReceiptFacts.has(Number(r.report_id))">{{ formatCurrency(r.amount) }}</strong>
                 <small class="ledger-receipt__course" :data-testid="`ledger-receipt-course-${r.report_id}`">{{ receiptCourseLabel(r) }}</small>
-                <button v-if="repeatedReceiptFacts.has(Number(r.report_id))" type="button" class="ledger-more" :data-testid="`ledger-receipt-repeated-${r.report_id}`" aria-label="查看對應帳單的金額、日期與付款方式" @click="focusInvoiceToggle(repeatedReceiptFacts.get(Number(r.report_id)))">查看對應帳單</button>
+                <button
+                  v-if="repeatedReceiptFacts.has(Number(r.report_id))"
+                  type="button"
+                  class="ledger-more"
+                  :data-testid="`ledger-receipt-repeated-${r.report_id}`"
+                  :aria-label="`查看對應帳單，收據 ${repeatedReceiptFacts.get(Number(r.report_id)).receiptNo}`"
+                  @click="focusInvoiceToggle(repeatedReceiptFacts.get(Number(r.report_id)).invoiceId)"
+                >查看對應帳單 · {{ repeatedReceiptFacts.get(Number(r.report_id)).receiptNo }}</button>
                 <template v-else>
                   <span>{{ r.payment_date ? fmtDate(r.payment_date) : '未記錄日期' }}</span>
                   <span>{{ paymentMethodLabel(r.payment_method) }}</span>
@@ -963,8 +970,11 @@ const repeatedReceiptFacts = computed(() => {
   }
 
   const byReport = new Map();
+  const paymentCountsByReceiptNo = new Map();
   for (const invoice of displayedInvoices.value) {
     for (const payment of invoice.payments || []) {
+      const receiptNo = String(payment.receipt_no ?? '').trim();
+      if (receiptNo) paymentCountsByReceiptNo.set(receiptNo, (paymentCountsByReceiptNo.get(receiptNo) || 0) + 1);
       const reportId = Number(payment.report_id);
       if (!Number.isSafeInteger(reportId) || reportId <= 0) continue;
       byReport.set(reportId, byReport.has(reportId) ? null : { invoice, payment });
@@ -979,12 +989,14 @@ const repeatedReceiptFacts = computed(() => {
     const invoiceId = Number(linked.invoice.id);
     const payment = linked.payment;
     const paymentId = Number(receipt.payment_id);
+    const receiptNo = String(payment.receipt_no ?? '').trim();
+    if (!receiptNo || paymentCountsByReceiptNo.get(receiptNo) !== 1) continue;
     if (expanded.has(invoiceId) && invoiceId === Number(receipt.invoice_id) && receiptCountsByInvoice.get(invoiceId) === 1
       && Number.isSafeInteger(paymentId) && paymentId > 0 && paymentId === Number(payment.id) && receiptCountsByPayment.get(paymentId) === 1
       && paymentHasReceipt(payment) && Number.isFinite(Number(receipt.amount)) && Number(receipt.amount) === Number(payment.amount)
       && receipt.payment_date && payment.paid_at && fmtDate(receipt.payment_date) === fmtDate(payment.paid_at)
       && receipt.payment_method && receipt.payment_method === payment.method) {
-      repeated.set(reportId, invoiceId);
+      repeated.set(reportId, { invoiceId, receiptNo });
     }
   }
   return repeated;
