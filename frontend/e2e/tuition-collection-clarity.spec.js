@@ -157,7 +157,7 @@ for (const width of [375, 1280]) for (const [size, theme] of [['standard', 'ligh
     await page.route('**/api/v1/accounting/ledger?**', r => {
       const q = new URL(r.request().url()).searchParams; ledgerQueries.push(Object.fromEntries(q));
       const historic = q.get('student_id') === '99';
-      return r.fulfill({ json: { student: { id: historic ? 99 : 5, name: historic ? '合成暫停學生' : '合成學生' }, scope: { student_class_id: historic ? null : 42 }, summary: {}, courses: [], anomalies: [], invoices: historic ? [] : [{ id: 501, invoice_no: '合成帳單501', subject_name: '合成數學', first_session_date: '2026-11-01', billing_period: '2026-11', student_class_id: 42, status: 'partial', total_amount: 2000, calculated_applied_amount: 1000, outstanding_amount: 1000, payments: [71, 72].map((id, i) => ({ id, report_id: 801 + i, report_status: 'confirmed', receipt_no: `合成收據${801 + i}`, amount: 500, applied_amount: 500, application_status: 'applied', method: 'cash', paid_at: '2026-11-01' })) }], receipts: historic ? [{ report_id: 900, invoice_id: null, amount: 200, status: 'confirmed', payment_method: 'cash' }] : [801, 802].map(report_id => ({ report_id, invoice_id: 501, student_class_id: 42, amount: 500, status: 'confirmed', payment_method: 'cash', subject: '合成數學' })) } });
+      return r.fulfill({ json: { student: { id: historic ? 99 : 5, name: historic ? '合成暫停學生' : '合成學生' }, scope: { student_class_id: historic ? null : 42 }, summary: {}, courses: [], anomalies: [], invoices: historic ? [] : [{ id: 501, invoice_no: '合成帳單501', subject_name: '合成數學', first_session_date: '2026-11-01', billing_period: '2026-11', student_class_id: 42, status: 'partial', total_amount: 2000, calculated_applied_amount: 1000, outstanding_amount: 1000, payments: [71, 72].map((id, i) => ({ id, report_id: 801 + i, report_status: 'confirmed', receipt_no: `合成收據${801 + i}`, amount: 500, applied_amount: 500, application_status: 'applied', method: 'cash', paid_at: '2026-11-01' })) }], receipts: historic ? [{ report_id: 900, invoice_id: null, amount: 200, status: 'confirmed', payment_method: 'cash' }] : [801, 802].map((report_id, i) => ({ report_id, invoice_id: 501, payment_id: 71 + i, student_class_id: 42, amount: 500, status: 'confirmed', payment_date: i === 0 ? '2026-11-01' : '2026-11-03', payment_method: 'cash', subject: '合成數學' })) } });
     });
     await page.route('**/api/v1/payment-reports/*/receipt', r => {
       const id = Number(new URL(r.request().url()).pathname.split('/').at(-2)); receiptIds.push(id);
@@ -171,6 +171,20 @@ for (const width of [375, 1280]) for (const [size, theme] of [['standard', 'ligh
     const ledger = page.getByRole('dialog', { name: '合成學生的帳務', exact: true });
     const linked = page.getByTestId('ledger-invoice-payments-501');
     await expect(linked.getByRole('button', { name: /查看收據/ })).toHaveCount(2);
+    const repeated = ledger.getByTestId('ledger-receipt-repeated-801');
+    const matchingReceiptRow = ledger.getByTestId('ledger-receipt-view-801').locator('..');
+    const differentReceiptRow = ledger.getByTestId('ledger-receipt-view-802').locator('..');
+    await expect(repeated).toBeVisible();
+    await repeated.press('Enter');
+    await expect(ledger.getByTestId('ledger-invoice-toggle-501')).toBeFocused();
+    await expect(matchingReceiptRow).not.toContainText('NT$ 500');
+    await expect(differentReceiptRow).toContainText('2026/11/03');
+    const invoiceFold = ledger.getByTestId('ledger-fold-invoices');
+    await invoiceFold.click();
+    await expect(repeated).toHaveCount(0);
+    await expect(matchingReceiptRow).toContainText('NT$ 500');
+    await invoiceFold.click();
+    await expect(repeated).toBeVisible();
     await page.getByTestId('ledger-payment-receipt-72').focus(); await page.keyboard.press('Enter');
     const receipt = page.getByTestId('receipt-modal-panel');
     await expect(receipt).toContainText('合成收據802');

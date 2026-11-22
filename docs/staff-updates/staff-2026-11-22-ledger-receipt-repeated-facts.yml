@@ -1,0 +1,14 @@
+updates:
+  - id: staff-2026-11-22-ledger-receipt-repeated-facts
+    published_at: "2026-11-22"
+    audiences:
+      - director
+      - super_admin
+    importance: digest
+    title: 學生帳務減少重複顯示同筆收款
+    summary: 展開帳單時，核對一致的收款金額、日期與方式集中在帳單時間線。
+    items:
+      - category: improved
+        text: 收款清單保留查看收據、備註與原有操作，帳單收合後可直接在清單查看完整資料。
+    source_refs:
+      - "changelog:2026-11-22:ledger-receipt-repeated-facts"
