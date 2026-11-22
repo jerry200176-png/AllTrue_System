@@ -1,7 +1,7 @@
 ---
 owner: jerry (CEO)
 review_cycle: quarterly
-last_reviewed: 2026-08-23
+last_reviewed: 2026-11-22
 ---
 
 # AI 操作手冊：內部聊天、Bug 回報、使用者頭像
@@ -77,31 +77,12 @@ last_reviewed: 2026-08-23
 > 分診時每個 in-app issue 要貼**剛好一個** `rootfam:*` 根因家族標籤，依機制不是依畫面選；家族定義見 [#4991 的根因家族留言](https://github.com/jerry200176-png/AllTrue_System/issues/4991#issuecomment-6817263700)，標籤清單見 `.github/labels.yml`。週報會用它算「家族 × 月份」表，沒貼的會列在「未標家族」。
 
 > 分診先讀 `client_info.recentApiFailures`（最近 5 筆失敗請求，含 `requestId` 可對 log 的 `request_id`）與 `client_info.buildSha`、`route`，再問使用者。
-> 下列 SQL／附件是**要看的內容**；取得管道走 `bug-queue-dump`／`bug-detail-dump`（各階段 workflow、觸發方式與 cloud 能否自行完成，見 [`sop/DELIVERY_LIFECYCLE.md`](sop/DELIVERY_LIFECYCLE.md) 的 In-app 自動化對照表）。
+> 先以具該分校權限的 [唯讀 HTTPS 或合格既有 artifact](sop/DELIVERY_LIFECYCLE.md#in-app-自動化對照表) 取得證據。逐頁核對留言、狀態歷程和附件。artifact 若缺原圖、文字被截斷或太舊，在結論標明缺口。
 
-```
-1. 一定要先撈 attachments：
-   SELECT id, stored_path, original_name FROM bug_report_attachments
-    WHERE bug_report_id = ?;
-   有附件 → SCP 到 /tmp 看完再決定根因（唯讀，CLAUDE.md R6 例外；看完即刪，在 issue 記錄附件 ID）。
-   /home/admin/backend/storage/app/public/<stored_path>
-
-2. 一定要看 status_logs / comments 全部歷史：
-   - 該 bug 是不是之前另一個人已經回過了？
-   - 是不是有同主題的舊單已 resolved（同性質回歸）？
-     SELECT * FROM bug_reports
-      WHERE reporter_user_id = ? ORDER BY id DESC;
-
-3. 一定要先看 reporter 的 CampusID 與當時提交分校：
-   - 不同分校的舊單會被分校過濾擋住，不是資料遺失（見 §R51）
-
-4. 留言／開 GitHub issue 之前自己跑一次 SQL 驗證假設，
-   不要只用「程式碼推論」就通知使用者。
-
-5. 開 GitHub issue 時把 attachment id 一起寫進去
-   （image 的描述 / 觀察 / 對應的程式碼行），
-   讓未來的 AI 不必重撈也能看懂。
-```
+1. 核對已附圖檔及附件 ID，閱讀完整留言與狀態歷程，包括最近的使用者補充。
+2. 比對提交分校、回報者角色與同性質舊案，避免把分校過濾誤判成資料遺失。
+3. 用既有核准的唯讀資料或使用者路徑驗證假設。無法驗證時記下查了什麼、缺什麼。
+4. 公開 GitHub 只記回報、分校、附件 ID 和去識別的現象與證據摘要；圖檔與原文留在具權限的來源。
 
 **反面範例（2026-05-17 已發生）**：AI 處理 in-app bug #107 時只看 `description`，沒查 `bug_report_attachments`，回覆裡又叫使用者「請補一張截圖」（其實兩張早就附好了）。
 
@@ -134,7 +115,7 @@ last_reviewed: 2026-08-23
 | A1 | 讀 §3.6：附件、reporter 歷史、跨分校、comments／status_logs |
 | A2 | 必要時查業務表驗證假設（`StudentClass`、`ClassSession`…）；高風險帳務先對 `DIRECTOR_PAYMENT_ALERT_RULES.md` |
 | A3 | `gh issue create`：title 含現象；body 必含 **in-app #**、**附件 id**、分校、B1 發現、預期 vs 實際 |
-| A4 | **回寫 in-app**：`new` → `triaged`；**公開留言**（非 internal）含 GitHub URL；建議帶 `disposition` + `github_issue_url` 寫入 `product_loop`（`bug-auto-intake.yml` 已先自動開 issue＋留「收到」回覆，但狀態仍是 `new`；本步走 `bug-phase-a-triage.yml`，dispatch-only） |
+| A4 | **回寫 in-app**：`new` → `triaged`；**公開留言**（非 internal）含 GitHub URL；建議帶 `disposition` + `github_issue_url` 寫入 `product_loop`（`bug-auto-intake.yml` 已先自動開 issue＋留「收到」回覆，但狀態仍是 `new`；依現行分診路徑執行） |
 | A5 | 回報 CEO：in-app # ↔ GitHub # 對照表（亦可直接讀 `product_loop`） |
 | A5b | **先查、不問（F15）**：回報者通常不會回覆。分診先看後台分診卡的「最近按過／畫面訊息／最近失敗請求／版本」（只在 app 內，不進公開 log）、正式站唯讀 probe、程式碼與同校同時段的其他回報自己重現。公開回覆寫「我們查到的原因＋會怎麼修／已修」，**不要**列問題請回報者回答；只有查完仍無法判斷、且答案會改變修法時，才問**一個**是非題。 |
 | A6 | **建議類不留 `triaged`**（F12）：開／找到 GitHub issue，走既有 `close_as_logged`。Founder 2026-11-15 授權的兩類回報，現行 POP v6 只對 `suggestion`／`ux_friction` 用 `inapp-report-triage` 留固定收件回覆；上線後用 `inapp-report-resolve-after-deploy` 驗完整發布證據，對同一 issue／最新結案週期通知一次「已上線＋怎麼用」，維持 logged-closed 並記錄 production evidence。收件不是交付或驗收，保留 engineering-required 判定；回報者補充會重開，未回覆的補充不可由自動通知蓋過。自填回報沿用既有管理員歸屬，以精確成功執行紀錄區分機器留言；本人公開補充在鎖內核對兩類記錄結案後重開。`not_planned`／`duplicate` 等仍由人工處置；Agent 不得使用舊 workflow 的 SSH 寫入，也不得把建議改標 bug 繞過權限。詳見 ADR-POP-015 v6 與 Founder 常設決定。 |
@@ -162,7 +143,7 @@ This metadata only preserves GitHub tracking ownership. It does not resolve the 
 |------|------|
 | B1 | 確認 observed failure、direct cause、recurrence family 與可行的 prevention；分開判斷技術難度與操作授權。只有產品決策或 protected operation 才等 Founder GO。 |
 | B2 | 清楚低風險且符合 auto-fix 13 條者走精簡 implementation note；複雜但已授權者使用有來源、可追溯 revision 的 bounded Plan；`PLAN_REQUIRED` 只做 Decision Packet，GO 前不施工。 |
-| B3 | PR body：`Refs #<github>`（in-app issue 一律 `Refs`；上線後由 Phase-C 自動關，F14） |
+| B3 | PR body：`Refs #<github>`（in-app issue 一律 `Refs`；上線驗證與公開回覆後依 F14 判定是否可關） |
 | B4 | 上線驗證（DELIVERY_LIFECYCLE 階段 8）要用原回報的角色、分校與使用者路徑。 |
 
 #### Phase C — 上線後回寫 in-app（與 B4 綁定）
@@ -170,9 +151,9 @@ This metadata only preserves GitHub tracking ownership. It does not resolve the 
 | 步驟 | 動作 |
 |------|------|
 | C1 | `in_progress` → `resolved`（若仍在 `triaged`，先轉 `in_progress` 再轉 `resolved`）。舊的 SSH allowlist 路徑 2026-10-19 停用、2026-11-11 刪除。現行能力與執行先決條件只看 [DELIVERY_LIFECYCLE 的 In-app 自動化對照表](sop/DELIVERY_LIFECYCLE.md#in-app-自動化對照表)；code／catalog 已登錄不等於 scoped requester 憑證、Founder 旗標或 runtime 執行授權已就緒。`bug-followup-comment.yml` 只留言、不改狀態，且使用 production SSH，受 machine ban 限制者不得觸發；不能由 catalog 已登錄 `inapp-report-resolve-after-deploy` 推定 Phase A／follow-up 已有無 SSH 替代路徑 |
-| C2 | **公開留言**：已上線、請至 Bug 回報頁按「確認已修好」或「問題仍存在」；GitHub issue 此時即可關（Phase-C 自動關，例外見 DELIVERY_LIFECYCLE 自動化對照表），不等回報者 |
+| C2 | **公開留言**：已上線、請至 Bug 回報頁按「確認已修好」或「問題仍存在」；原追蹤問題已完整交付、正式路徑已驗證且公開回覆已讀回後，依 F14 關 GitHub issue；待回報者驗收入站內狀態 |
 | C3 | in-app `closed` 由回報者 `reporter-verify` 或逾時流程完成；若「仍存在」→ 回到 B1，重開或新開 GitHub issue |
-| C4 | `docs/CHANGELOG.md` 一行（有 deployable 修復時） |
+| C4 | 有 deployable 修復時，依 AGENTS.md 新增 `docs/changes/` 片段 |
 
 **進度回覆（機器操作）**：`inapp-report-progress-reply` 與分診、上線後回寫同屬 POP 機器操作，只用範本代碼貼固定白話回覆（已收到／已找到原因處理中／已更新請確認），不收自由文字、不改狀態；範本與規則見 [DELIVERY_LIFECYCLE 自動化對照表](sop/DELIVERY_LIFECYCLE.md#in-app-自動化對照表)。
 
@@ -187,7 +168,7 @@ This metadata only preserves GitHub tracking ownership. It does not resolve the 
 1. **super_admin UI**（`BugReportsPage`，`User.type=S`）— 留言 + 更新狀態。
 2. **API**（Bearer token）：`POST /api/v1/bugs/{id}/comments`、`POST /api/v1/bugs/{id}/status`（status 僅 super_admin）。
    - 進入 `resolved` 時必須帶 `production_revision`（SHA）或 `evidence_exception_reason`（super_admin），且已有公開留言 — 見 `docs/governance/EVIDENCE_CONTRACT.md`。
-3. **維運分診**（僅 Phase A／C 留言與狀態，禁止跑測試）：Pi 上可用 `php artisan tinker --execute="App\Services\BugReportService::changeStatus(...); App\Services\BugReportService::addComment(...);"`；`changed_by`／`author_user_id` 用 super_admin。⛔ 不可在 Pi 跑 `php artisan test` 或 `config:clear`（見 P0）。
+3. **受限的 POP 回寫**：依 [DELIVERY_LIFECYCLE 自動化表](sop/DELIVERY_LIFECYCLE.md#in-app-自動化對照表) 及 [ADR-POP-015](pop/adr/ADR-POP-015-standing-policy-inapp-lifecycle.md)，核對正式版本、校區 requester、現行 policy 和證據，再選對應的分診、追問或上線回寫。透過既有權限執行並讀回結果；缺合法入口即保留未回寫。
 
 #### Definition of Done（in-app bug 任務）
 
@@ -198,16 +179,16 @@ This metadata only preserves GitHub tracking ownership. It does not resolve the 
 - [ ]（若宣稱上線）deploy run、deployed SHA、health/runtime identity 與原使用者路徑證據可核對；UI 修復另有可讀性／互動驗收
 - [ ]（若修 code）in-app 已 `resolved` + 公開回覆請回報者驗收；`reporter-verify` 只能由回報者或既有 timeout policy 完成（不擋 GitHub issue 關閉）
 - [ ] `SourceRef → issue → Plan/not-required → PR → merge → deploy → runtime → acceptance → writeback` 未知階段明標，沒有從 merge 推定 production 完成
-- [ ] 有 deployable 修復時 CHANGELOG／staff update 決策與適用的防再犯記憶已寫回
+- [ ] 有 deployable 修復時 CHANGELOG 片段／staff update 決策與適用的防再犯記憶已寫回
 
 #### 雙軌對照（避免只做一半）
 
 | 軌道 | 分診後 | 修完上線後 |
 |------|--------|------------|
-| GitHub | issue 開著，`status:ready` 或 `status:needs-decision` | PR `Refs #nnn`；上線後 Phase-C 自動關 issue（F14） |
+| GitHub | issue 開著，`status:ready` 或 `status:needs-decision` | PR `Refs #nnn`；驗證交付且公開回覆後，依 F14 判定是否關 issue |
 | In-app | `triaged` + 公開回覆 | `resolved` + 公開回覆 → 回報者驗收或逾時 → `closed` |
 
-**自動化（收件建單、Phase-C 自動關 issue F14、reconcile 報表、同類提醒、每日逾時結案、週報）**：哪個 workflow、何時跑、cloud 能否自行完成，一律見 [`sop/DELIVERY_LIFECYCLE.md`](sop/DELIVERY_LIFECYCLE.md) 的 In-app 自動化對照表（含逾時天數見 [`sop/BUG_REPORTER_TIMEOUT.md`](sop/BUG_REPORTER_TIMEOUT.md) 與 `governance/EVIDENCE_CONTRACT.md`）。分診前先看 queue dump 的「in-app ↔ issue 不一致」報表。
+**自動化（收件建單、Phase-C 回寫、reconcile 報表、同類提醒、每日逾時結案、週報）**：哪個 workflow、何時跑、cloud 能否自行完成，一律見 [`sop/DELIVERY_LIFECYCLE.md`](sop/DELIVERY_LIFECYCLE.md) 的 In-app 自動化對照表（含逾時天數見 [`sop/BUG_REPORTER_TIMEOUT.md`](sop/BUG_REPORTER_TIMEOUT.md) 與 `governance/EVIDENCE_CONTRACT.md`）。分診前先看 queue dump 的「in-app ↔ issue 不一致」報表。
 
 **相關防再犯**：`docs/AI_REGRESSION_LESSONS.md` §R51（分診前必查附件）、§R53（上線後必回 in-app）。
 
@@ -258,7 +239,7 @@ This metadata only preserves GitHub tracking ownership. It does not resolve the 
    - 權限、帳號、金錢：由 Founder 在系統外跟本人確認，因為帳號可能被盜用。
 3. **分診權限最小。**
    - triage token 只能讀（GET）。
-   - 回寫只走 `bug-phase-a-triage.yml` 或 `bug-followup-comment.yml`，欄位固定，`public_reply` 不超過 600 字。 兩者實際依賴 production SSH；受機器禁令限制的操作者不得直接或間接觸發，不能把本節視為操作授權。此操作者的 Phase A／follow-up 合規寫回路徑尚未驗證，缺口由 #5117 追蹤；見 [SOP 操作者適用邊界](sop/DELIVERY_LIFECYCLE.md#in-app-自動化對照表)，保留未回寫狀態，不宣稱完成。
+   - 回寫只走符合當前授權的原生 UI、API 或受限 POP，並依 [操作者適用邊界](sop/DELIVERY_LIFECYCLE.md#in-app-自動化對照表) 查核。受機器禁令限制者，禁止直接或間接呼叫會使用 production SSH 的舊流程。缺合規入口時保留未回寫狀態。
    - 不要給分診 agent 寫 production 的工具。
 4. **不把回報內容貼到 GitHub**（repo 是公開的）。只寫 in-app 編號、附件 id、分校 id。
 5. **頻率上限，由後端強制（已上線：`backend/app/Providers/AppServiceProvider.php` 的 `bug-report`／`bug-comment` limiter，超過回 429 `bug_report_rate_limited`；去重在 `BugReportController.php`）。**
