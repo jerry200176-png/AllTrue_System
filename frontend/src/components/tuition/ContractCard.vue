@@ -159,6 +159,7 @@ const props = defineProps({
   focused: { type: Boolean, default: false },
   // In-app #425: director/super_admin, same gate as 帳務中心 canViewBillingDocs.
   canViewDocs: { type: Boolean, default: false },
+  hasInvoiceDocuments: { type: Boolean, default: false },
   outstanding: { type: Number, default: 0 },
   pendingReport: { type: Object, default: null },
   // Most recent non-void payment on this contract: { date: 'YYYY-MM-DD', amount }, or { legacyUnverified: true }
@@ -189,7 +190,7 @@ const props = defineProps({
   // Remembered by the drawer so a reload keeps the card open.
   expanded: { type: Boolean, default: false },
 });
-const emit = defineEmits(['changed', 'record', 'issue', 'confirmed', 'slip', 'legacy-backfill', 'row-action', 'toggle']);
+const emit = defineEmits(['changed', 'record', 'issue', 'confirmed', 'slip', 'legacy-backfill', 'row-action', 'toggle', 'show-invoice-documents']);
 
 // Billing redesign PRD v2 D16: whether the money for each lesson is in.
 const PAYMENT_LABELS = { paid: '已收', partial: '繳了一部分', unpaid: '未繳', no_invoice: '還沒開帳單' };
@@ -482,6 +483,7 @@ const menuGroups = computed(() => {
     canRecord.value && primary.value !== 'record' && { id: 'record', label: '登記這筆' },
     canIssue.value && primary.value !== 'issue' && { id: 'issue', label: `開帳單 ${money(props.billDraft.amount)}` },
     showSlip.value && { id: 'slip', label: '繳費單', disabled: !slipState.value.ok, reason: slipState.value.ok ? '' : slipState.value.reason },
+    props.canViewDocs && props.hasInvoiceDocuments && { id: 'invoice-documents', label: '查看帳單與收據' },
     { id: 'memo', label: '改備註' },
   ].filter(Boolean);
   const ra = props.rowActions || {};
@@ -500,6 +502,7 @@ function onMenu(id) {
   else if (id === 'record') emit('record', props.course);
   else if (id === 'issue') emit('issue', props.billDraft);
   else if (id === 'slip') emit('slip', props.course);
+  else if (id === 'invoice-documents') emit('show-invoice-documents');
   else if (id === 'memo') { open.value = true; startEdit(); }
   else if (['waive', 'void', 'settle'].includes(id)) emit('row-action', id);
   else if (id === 'refund') refundOpen.value = true;

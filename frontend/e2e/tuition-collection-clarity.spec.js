@@ -138,6 +138,68 @@ for (const width of [375, 1280]) for (const [size, theme] of [['standard', 'ligh
   });
 }
 
+for (const width of [390, 1280]) {
+  test(`In-App572 opens a uniquely linked invoice from a contract @${width}`, async ({ page }) => {
+    const unsafeMethods = [];
+    const receiptIds = [];
+    const course = { id: 42, subject: '合成數學', schedule_mode: 'count', paid: true };
+    await page.setViewportSize({ width, height: 900 });
+    await page.route('**/*', (route) => ['127.0.0.1', 'localhost'].includes(new URL(route.request().url()).hostname)
+      ? route.fallback() : route.abort());
+    page.on('request', (request) => {
+      if (new URL(request.url()).pathname.startsWith('/api/v1/') && request.method() !== 'GET') {
+        unsafeMethods.push(request.method());
+      }
+    });
+    await page.route('**/api/v1/**', (route) => route.fulfill({ json: { data: [] } }));
+    await installMock(page);
+    await page.route('**/api/v1/students**', (route) => route.fulfill({
+      json: [{ id: 5, name: '合成學生', status: 'active', enable: 1 }],
+    }));
+    await page.route('**/api/v1/alerts/tuition**', (route) => route.fulfill({
+      json: [{ id: 42, student_id: 5, student_name: '合成學生', subject: course.subject,
+        schedule_mode: 'count', payment_status: 'unpaid', payable_status: 'invoiced', payable_outstanding: 1000 }],
+    }));
+    await page.route('**/api/v1/accounting/contracts/42/sessions', (route) => route.fulfill({ json: { ...course, sessions: [] } }));
+    await page.route('**/api/v1/accounting/ledger?**', (route) => route.fulfill({ json: {
+      student: { id: 5, name: '合成學生' }, scope: { student_class_id: 42 }, summary: {}, courses: [course], receipts: [], anomalies: [],
+      invoices: [{ id: 501, invoice_no: '合成帳單501', student_class_id: 11, covered_student_class_ids: [11, 42],
+        status: 'paid', total_amount: 1000, paid_amount: 1000, calculated_applied_amount: 1000, outstanding_amount: 0,
+        payments: [71, 72].map((id, index) => ({ id, amount: 500, report_id: 801 + index, report_status: 'confirmed',
+          receipt_no: `合成收據${801 + index}`, method: 'cash', paid_at: '2026-11-01' })) }],
+    } }));
+    await page.route('**/api/v1/payment-reports/*/receipt', (route) => {
+      const id = Number(new URL(route.request().url()).pathname.split('/').at(-2));
+      receiptIds.push(id);
+      return route.fulfill({ json: { receipt_no: `合成收據${id}`, amount: 500, payment_date: '2026-11-01',
+        payment_method: 'cash', status: 'confirmed', student_name: '合成學生' } });
+    });
+    await page.goto('/tuition-collection-pilot-mount.html');
+    const openLedger = width < 768 ? 'bill-documents-c42' : 'bill-name-c42';
+    await page.getByTestId(openLedger).click();
+    const ledger = page.getByRole('dialog', { name: '合成學生的帳務', exact: true });
+    await ledger.getByTestId('ledger-fold-invoices').click();
+    const menuTrigger = ledger.getByRole('button', { name: '合成數學 的更多操作' });
+    await menuTrigger.press('ArrowDown');
+    const action = page.getByRole('menuitem', { name: '查看帳單與收據', exact: true });
+    await expect(action).toBeFocused();
+    await action.press('Enter');
+    const toggle = ledger.getByTestId('ledger-invoice-toggle-501');
+    await expect(toggle).toBeFocused();
+    await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+    await expect(toggle).toBeInViewport();
+    expect(receiptIds).toEqual([]);
+    const exactReceipt = ledger.getByTestId('ledger-payment-receipt-72');
+    await exactReceipt.press('Enter');
+    const receipt = page.getByTestId('receipt-modal-panel');
+    await expect(receipt).toContainText('合成收據802');
+    await receipt.locator('button[title="關閉"]').click();
+    await expect(exactReceipt).toBeFocused();
+    expect(receiptIds).toEqual([802]);
+    expect(unsafeMethods).toEqual([]);
+  });
+}
+
 for (const width of [375, 1280]) {
   test(`In-App549: paused empty lookup disappears after refresh, real bills remain @${width}`, async ({ page }, info) => {
     let paused = false; let studentReads = 0;
