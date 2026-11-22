@@ -425,47 +425,53 @@
                       <span v-if="parseCourseNumber(course.monthly_sessions) != null && parseCourseNumber(course.monthly_sessions) > 0">每月 {{ parseCourseNumber(course.monthly_sessions) }} 堂</span>
                     </div>
 
-                    <dl class="student-course-card__meta">
-                      <div>
-                        <dt>老師</dt>
-                        <dd>{{ course.teacher_name || '待指派' }}</dd>
+                    <dl class="student-course-card__meta tw:m-0 tw:mt-4 tw:grid tw:grid-cols-2 tw:gap-x-4 tw:gap-y-3 tw:border-t tw:border-border tw:pt-4">
+                      <div class="tw:min-w-0">
+                        <dt :class="factRow.label">老師</dt>
+                        <dd :class="[factRow.value, 'tw:m-0 tw:wrap-anywhere']">{{ course.teacher_name || '待指派' }}</dd>
                       </div>
-                      <div>
-                        <dt>上課時段</dt>
-                        <dd>
+                      <div class="tw:min-w-0">
+                        <dt :class="factRow.label">上課時段</dt>
+                        <dd :class="[factRow.value, 'tw:m-0 tw:wrap-anywhere']">
                           <span v-if="scheduleDisplayLines(course).length > 0">{{ scheduleDisplayLines(course).join('、') }}</span>
                           <span v-else-if="course.days_of_week && course.days_of_week.length">{{ scheduleDisplay(course) }}</span>
                           <span v-else-if="course.day_of_week">{{ dayLabel(course.day_of_week) }} {{ scheduleTimeRange(course) }}</span>
                           <span v-else class="hint">未排定</span>
                         </dd>
                       </div>
-                      <div>
-                        <dt>地點</dt>
-                        <dd>{{ [course.branch_name, course.room_name].filter(Boolean).join(' － ') || '尚未指定' }}</dd>
+                      <div class="tw:min-w-0">
+                        <dt :class="factRow.label">地點</dt>
+                        <dd :class="[factRow.value, 'tw:m-0 tw:wrap-anywhere']">{{ [course.branch_name, course.room_name].filter(Boolean).join(' － ') || '尚未指定' }}</dd>
                       </div>
-                      <div>
-                        <dt>費用</dt>
-                        <dd class="student-course-card__money">{{ unitPriceDisplay(course) }} · {{ course.duration_hours }} 小時</dd>
+                      <div class="tw:min-w-0">
+                        <dt :class="factRow.label">費用</dt>
+                        <dd class="tw:m-0">
+                          <span :class="dataTable.amount">{{ unitPriceDisplay(course) }}</span>
+                          <span :class="factRow.sub">{{ course.duration_hours }} 小時</span>
+                        </dd>
                       </div>
-                      <div>
-                        <dt>付款</dt>
-                        <dd>
-                          <span :class="['student-course-card__payment', `student-course-card__payment--${paymentCardModifier(course)}`]" :title="paymentStatusHelpTitle(course)"><template v-if="paymentChipIsShort(course)"><span aria-hidden="true">{{ paymentStatusChipText(course) }}</span><span class="tw:sr-only">{{ paymentStatusButtonLabel(course) }}</span></template><template v-else>{{ paymentStatusChipText(course) }}</template></span>
+                      <div class="tw:min-w-0">
+                        <dt :class="factRow.label">付款</dt>
+                        <dd class="tw:m-0">
+                          <StatusBadge data-testid="course-payment-badge" :tone="coursePaymentStatusTone(course)" :title="paymentStatusHelpTitle(course)" class="tw:max-w-full tw:whitespace-normal">
+                            <template v-if="paymentChipIsShort(course)"><span aria-hidden="true">{{ paymentStatusChipText(course) }}</span><span class="tw:sr-only">{{ paymentStatusButtonLabel(course) }}</span></template>
+                            <template v-else>{{ paymentStatusChipText(course) }}</template>
+                          </StatusBadge>
                           <span v-if="isTutoringBillingAnomaly(course)" class="payment-anomaly-hint" role="alert">帳務資料需修正</span>
-                          <span v-if="course.last_paid_at" class="paid-date-hint">{{ course.last_paid_at }}</span>
+                          <span v-if="course.last_paid_at" :class="[factRow.sub, 'tw:tabular-nums']">{{ course.last_paid_at }}</span>
                         </dd>
                       </div>
                     </dl>
 
-                    <div v-if="courseMemo(course) || coursePaymentSummary(course)" class="student-course-card__context" role="note">
-                      <div v-if="courseMemo(course)"><strong>備註</strong>{{ courseMemo(course) }}</div>
-                      <div v-if="coursePaymentSummary(course)"><strong>最近繳費：</strong>{{ formatPaymentSummary(course.latest_payment_summary) }}</div>
+                    <div v-if="courseMemo(course) || coursePaymentSummary(course)" class="student-course-card__context tw:mt-4 tw:grid tw:gap-2 tw:border-t tw:border-border tw:pt-3 tw:text-tpl-caption tw:text-tpl-secondary" role="note">
+                      <div v-if="courseMemo(course)" class="tw:wrap-anywhere"><strong class="tw:mr-2">備註</strong>{{ courseMemo(course) }}</div>
+                      <div v-if="coursePaymentSummary(course)" class="tw:wrap-anywhere"><strong class="tw:mr-2">最近繳費：</strong>{{ formatPaymentSummary(course.latest_payment_summary) }}</div>
                     </div>
 
                     <details class="student-course-card__actions">
-                      <summary>更多操作</summary>
+                      <summary :class="[rowAction.secondary, 'tw:gap-1.5']">更多操作 <ChevronDown class="tw:size-4" aria-hidden="true" /></summary>
                       <div class="student-course-card__actions-body">
-                        <span :class="['small', 'payment-status-badge', paymentStatusButtonClass(course)]" role="status" :title="paymentStatusHelpTitle(course)" :aria-label="paymentStatusButtonLabel(course)">{{ paymentStatusChipText(course) }}</span>
+                        <StatusBadge class="payment-status-badge tw:max-w-full tw:whitespace-normal" :tone="coursePaymentStatusTone(course)" role="status" :title="paymentStatusHelpTitle(course)" :aria-label="paymentStatusButtonLabel(course)">{{ paymentStatusChipText(course) }}</StatusBadge>
                         <span v-if="isTutoringBillingAnomaly(course)" class="payment-anomaly-hint" role="alert">帳務資料需由主任檢查，暫不提供付款操作。</span>
                         <button v-if="shouldShowPaymentAction(course)" type="button" class="small ghost" @click="goToTuitionBilling(course)">{{ paymentNextActionLabel(course) }}</button>
                         <button type="button" class="small ghost" @click="openAddSessionsForCourse(course)">{{ isTutoringCourse(course) ? '延續輔導課（不收費）' : isTrialCourse(course) ? '轉為正式課程' : course.payment_type === 'monthly' ? '結算 / 續約下月' : RENEW_LESSONS_LABEL }}</button>
@@ -988,7 +994,7 @@ import { humanizeApiErrorMessage } from '../lib/humanizeApiErrorMessage.js';
 import { isCourseSettled, isPaymentNoticeStatus } from '../lib/paymentStatus.js';
 import {
   closedReason as effectiveClosedReason, courseHistoryReason, courseProgress, isLowRemaining, isMonthlyPaymentType, isPackageMember, isSessionPaymentLow,
-  modalRemainingSessions, ownRemainingSessions, poolTotalSessions, REPORT_STATUS_LABELS, ENDED_PENDING_LABEL, ENDED_REVIEW_LABEL, reviewReasonText, WAIVED_LABEL, coursePaymentBadge, shortPaymentLabel, closedPaymentState,
+  modalRemainingSessions, ownRemainingSessions, poolTotalSessions, REPORT_STATUS_LABELS, ENDED_PENDING_LABEL, ENDED_REVIEW_LABEL, reviewReasonText, WAIVED_LABEL, coursePaymentBadge, coursePaymentStatusTone, shortPaymentLabel, closedPaymentState,
 } from '../lib/courseMoneyState.js';
 import { closeCourseNoRenew as runCloseCourseNoRenew } from '../lib/closeCourseNoRenew.js';
 import { GRADES, SUBJECTS, getSubjectLabel as getSubjectText } from '../lib/constants';
@@ -1309,11 +1315,7 @@ const interceptPendingClassType = ref('');
 const forceSubmitting = ref(false);
 
 // Quick add session moved to course-mgmt (authoritative scheduling ops)
-// #4150: label/tone/next action come from the shared coursePaymentBadge; only the CSS class and button text are local.
-const BADGE_CLASS = { anomaly: 'tag-billing-anomaly', no_payment: 'tag-no-payment', owing: 'primary' };
-const paymentStatusButtonClass = (course) => BADGE_CLASS[coursePaymentBadge(course).tone] || 'ghost';
-const CARD_MODIFIER = { anomaly: 'overdue', no_payment: 'paid', settled: 'paid', free: 'paid', owing: 'unpaid', review: 'pending' };
-const paymentCardModifier = (course) => CARD_MODIFIER[coursePaymentBadge(course).tone] || 'unknown';
+// #4150: label, tone and next action come from the shared payment state.
 const paymentStatusButtonLabel = (course) => coursePaymentBadge(course).label;
 // Chip text: long billing sentences shorten through the one helper; the full sentence stays in title / aria-label.
 const paymentStatusChipText = (course) => shortPaymentLabel(paymentStatusButtonLabel(course));
@@ -3728,7 +3730,6 @@ table th { font-size: 12.5px; }
 .computed-end-time { margin: 0; font-weight: 600; font-size: 1rem; }
 .close-btn { color: var(--ds-warning); border-color: var(--ds-warning); }
 .close-btn:hover { background: var(--ds-warning-wash); }
-.paid-date-hint { display: inline-block; font-size: 12px; color: var(--ds-success); margin-left: 4px; white-space: nowrap; }
 
 .sessions-near-empty-hint {
   font-size: 13px;
@@ -3937,91 +3938,10 @@ table th { font-size: 12.5px; }
   box-shadow: none;
   padding: 16px;
 }
-.student-course-card__money {
-  font-variant-numeric: tabular-nums;
-}
-.student-course-card__meta {
-  border-top: 1px solid var(--ds-hairline);
-  display: grid;
-  gap: 12px 18px;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  margin: 16px 0 0;
-  padding-top: 14px;
-}
-.student-course-card__meta > div {
-  min-width: 0;
-}
-.student-course-card__meta dt {
-  color: var(--ds-ink-mute);
-  font-size: 11px;
-  font-weight: 700;
-  margin-bottom: 2px;
-}
-.student-course-card__meta dd {
-  color: var(--ds-ink-secondary);
-  font-size: 13px;
-  line-height: 1.45;
-  margin: 0;
-  overflow-wrap: anywhere;
-}
-.student-course-card__money {
-  color: var(--ds-ink) !important;
-  font-weight: 700;
-}
-.student-course-card__payment {
-  border: 1px solid currentColor;
-  border-radius: 999px;
-  display: inline-block;
-  font-size: 12px;
-  font-weight: 700;
-  line-height: 1.3;
-  padding: 3px 8px;
-}
-.student-course-card__payment--paid {
-  background: var(--ds-success-wash);
-  color: var(--ds-success);
-}
-.student-course-card__payment--unpaid,
-.student-course-card__payment--pending {
-  background: var(--ds-warning-wash);
-  color: var(--ds-warning);
-}
-.student-course-card__payment--overdue {
-  background: var(--ds-danger-wash);
-  color: var(--ds-danger);
-}
-.student-course-card__context {
-  background: var(--ds-canvas-soft);
-  border: 1px solid var(--ds-hairline);
-  color: var(--ds-ink-secondary);
-  display: grid;
-  font-size: 12px;
-  gap: 4px;
-  line-height: 1.5;
-  margin-top: 14px;
-  padding: 9px 12px;
-}
-.student-course-card__context strong {
-  color: var(--ds-ink-mute);
-  margin-right: 7px;
-}
 .student-course-card__actions {
   border-top: 1px solid var(--ds-hairline);
   margin-top: 14px;
   padding-top: 10px;
-}
-.student-course-card__actions summary {
-  color: var(--ds-primary-text);
-  cursor: pointer;
-  font-size: 13px;
-  font-weight: 700;
-  min-height: 32px;
-  padding: 6px 0;
-}
-.student-course-card__actions summary:focus-visible {
-  border-radius: 4px;
-  outline: 3px solid var(--ds-primary-wash);
-  outline-offset: 2px;
 }
 .student-course-card__actions-body {
   display: flex;
@@ -4029,32 +3949,12 @@ table th { font-size: 12.5px; }
   gap: 8px;
   padding-top: 10px;
 }
-.payment-status-badge {
-  cursor: default !important;
-  border-radius: 999px !important;
-  font-weight: 900 !important;
-  pointer-events: none;
-}
 .payment-anomaly-hint {
   display: inline-block;
   margin-left: 6px;
   color: var(--ds-danger);
   font-size: 12px;
   font-weight: 700;
-}
-.tag-no-payment {
-  background: var(--ds-success-wash);
-  color: var(--ds-success);
-  border: 1px solid var(--ds-success);
-  border-radius: 6px;
-  padding: 3px 10px;
-}
-.tag-billing-anomaly {
-  background: var(--ds-danger-wash);
-  color: var(--ds-danger);
-  border: 1px solid var(--ds-danger);
-  border-radius: 6px;
-  padding: 3px 10px;
 }
 .student-course-card__actions-body button {
   min-height: 44px;
@@ -4192,9 +4092,6 @@ table th { font-size: 12.5px; }
   }
   .student-course-detail__bulk-toggle {
     margin-top: 8px;
-  }
-  .student-course-card__meta {
-    grid-template-columns: minmax(0, 1fr);
   }
   .student-course-card__actions-body button {
     flex: 1 1 calc(50% - 8px);

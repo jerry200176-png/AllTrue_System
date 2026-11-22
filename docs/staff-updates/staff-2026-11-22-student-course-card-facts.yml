@@ -1,0 +1,14 @@
+updates:
+  - id: staff-2026-11-22-student-course-card-facts
+    published_at: "2026-11-22"
+    audiences:
+      - director
+      - super_admin
+    importance: digest
+    title: 學生課程卡整理費用與付款資訊
+    summary: 老師、時段、費用與付款資訊使用同一版型。
+    items:
+      - category: improved
+        text: 付款徽章的顏色規則與課程查找一致。
+    source_refs:
+      - "changelog:2026-11-22:student-course-card-facts"

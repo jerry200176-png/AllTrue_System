@@ -389,6 +389,14 @@ export const isPartialCoursePayment = (course, { monthlyPeriod = false } = {}) =
   return (periodShown ? summary.payment_status : status) === 'partial';
 };
 
+const PAYMENT_BADGE_TONES = {
+  anomaly: 'danger', owing: 'danger', settled: 'success', free: 'success',
+  no_payment: 'neutral', neutral: 'neutral', review: 'warning',
+};
+
+export const coursePaymentStatusTone = (course, options) =>
+  isPartialCoursePayment(course, options) ? 'warning' : (PAYMENT_BADGE_TONES[coursePaymentBadge(course, options).tone] || 'warning');
+
 /**
  * in-app #442: members of one count-mode shared package are ONE payment obligation (PaymentReportController: one report
  * covers every member; the ledger gives the package a single lead card). Returns the member course whose billing row
