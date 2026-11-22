@@ -28,7 +28,7 @@ assert.ok(
   'edit UI should present guardians as parent SSOT section'
 );
 assert.ok(
-  source.includes('class="form-section-title">LINE 綁定家長'),
+  source.includes('>LINE 綁定家長</h4>'),
   'LINE bindings section must remain'
 );
 assert.ok(

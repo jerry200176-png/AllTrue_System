@@ -600,138 +600,159 @@
     </div>
 
     <!-- Add/Edit Student Modal -->
-    <div v-if="showStudentModal" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="student-modal-title" @click.self="closeStudentModal">
-      <div class="modal" style="width: 520px;">
-        <h3 id="student-modal-title">{{ editingStudentId ? '編輯學生' : '新增學生' }}</h3>
-        
-        <div class="form-section-title">基本資料</div>
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
-          <div class="form-group">
-            <label>姓名 <span class="required">*</span></label>
-            <input v-model="studentForm.name" placeholder="請輸入學生姓名" />
-          </div>
-          <div class="form-group">
-            <label>年級</label>
-            <select v-model="studentForm.grade">
-              <option v-for="g in GRADES" :key="g.value" :value="g.value">{{ g.label }}</option>
-            </select>
-          </div>
-          <div class="form-group">
-            <label for="student-school">就讀學校</label>
-            <SchoolNameInput
-              input-id="student-school"
-              v-model="studentForm.school"
-              :auth-token="schoolAuthToken"
-              :campus-id="props.branchId"
-              placeholder="例：大安國中"
-            />
+    <Dialog :open="showStudentModal && studentsPageActive" @update:open="open => { if (!open) closeStudentModal(); }">
+      <DialogContent
+        aria-modal="true"
+        class="tw:flex tw:max-h-[calc(100dvh-2rem)] tw:flex-col tw:gap-0 tw:p-0"
+        :show-close-button="false"
+      >
+        <header class="tw:shrink-0 tw:border-b tw:border-border tw:px-4 tw:py-4 tw:sm:px-6">
+          <DialogTitle class="tw:text-tpl-list"><span id="student-modal-title">{{ editingStudentId ? '編輯學生' : '新增學生' }}</span></DialogTitle>
+          <DialogDescription class="tw:sr-only">維護學生的基本資料與聯絡資訊。</DialogDescription>
+        </header>
+
+        <div class="tw:min-h-0 tw:overflow-y-auto tw:overscroll-contain tw:px-4 tw:py-4 tw:sm:px-6">
+          <div class="tw:space-y-5">
+            <section class="tw:grid tw:gap-3">
+              <h4 class="tw:m-0 tw:text-tpl-body tw:font-semibold">基本資料</h4>
+              <div class="tw:grid tw:gap-3 tw:sm:grid-cols-2">
+                <div class="tw:grid tw:gap-1.5">
+                  <Label for="student-name">姓名 <span :class="toneText.danger" aria-hidden="true">*</span></Label>
+                  <Input id="student-name" v-model="studentForm.name" aria-required="true" :class="STUDENT_EDITOR_INPUT" placeholder="請輸入學生姓名" />
+                </div>
+                <div class="tw:grid tw:gap-1.5">
+                  <Label for="student-grade">年級</Label>
+                  <select id="student-grade" v-model="studentForm.grade" :class="STUDENT_EDITOR_SELECT">
+                    <option v-for="g in GRADES" :key="g.value" :value="g.value">{{ g.label }}</option>
+                  </select>
+                </div>
+                <div class="tw:grid tw:gap-1.5 tw:sm:col-span-2">
+                  <Label for="student-school">就讀學校</Label>
+                  <SchoolNameInput
+                    input-id="student-school"
+                    v-model="studentForm.school"
+                    :auth-token="schoolAuthToken"
+                    :campus-id="props.branchId"
+                    placeholder="例：大安國中"
+                  />
+                </div>
+              </div>
+            </section>
+
+            <section v-if="showLegacyParentFields" class="tw:grid tw:gap-3">
+              <h4 class="tw:m-0 tw:text-tpl-body tw:font-semibold">家長資訊</h4>
+              <div class="tw:grid tw:gap-3 tw:sm:grid-cols-2">
+                <div class="tw:grid tw:gap-1.5">
+                  <Label for="student-parent-name">家長姓名</Label>
+                  <Input id="student-parent-name" v-model="studentForm.parent_name" :class="STUDENT_EDITOR_INPUT" placeholder="請輸入家長姓名" />
+                </div>
+                <div class="tw:grid tw:gap-1.5">
+                  <Label for="student-parent-phone">家長手機</Label>
+                  <Input id="student-parent-phone" v-model="studentForm.parent_phone" :class="STUDENT_EDITOR_INPUT" placeholder="09xxxxxxxx" />
+                </div>
+              </div>
+            </section>
+
+            <section class="tw:grid tw:gap-3">
+              <h4 class="tw:m-0 tw:text-tpl-body tw:font-semibold">RFID 卡片</h4>
+              <div class="tw:grid tw:gap-1.5">
+                <Label for="student-rfid">RFID</Label>
+                <Input id="student-rfid" v-model="studentForm.rfid" readonly :class="[STUDENT_EDITOR_INPUT, 'tw:bg-muted']" placeholder="刷卡後點「綁定卡片」" />
+                <div class="tw:flex tw:flex-wrap tw:gap-2">
+                  <button type="button" :class="rowAction.secondary" @click="bindRfidFromTemp">{{ studentForm.rfid ? '重新綁定卡片' : '綁定卡片' }}</button>
+                  <button v-if="editingStudentId && studentForm.rfid" type="button" :class="rowAction.secondary" @click="unbindStudentRfid">解除綁定</button>
+                </div>
+              </div>
+            </section>
+
+            <section v-if="editingStudentId" class="tw:grid tw:justify-items-start tw:gap-3">
+              <h4 class="tw:m-0 tw:text-tpl-body tw:font-semibold">LINE 綁定家長</h4>
+              <p v-if="lineBindingsLoading" :class="['tw:m-0', dataTable.sub]" role="status">載入中…</p>
+              <p v-else-if="lineBindings.length === 0" :class="['tw:m-0', dataTable.sub]">尚未有家長透過 LINE 綁定此學生</p>
+              <ul v-else class="tw:m-0 tw:grid tw:w-full tw:list-none tw:divide-y tw:divide-border tw:p-0">
+                <li v-for="b in lineBindings" :key="b.id" class="tw:flex tw:flex-wrap tw:items-baseline tw:justify-between tw:gap-x-2 tw:py-2">
+                  <span class="tw:text-tpl-body tw:font-medium tw:wrap-anywhere">{{ lineBindingDisplay(b).label }}</span>
+                  <span :class="dataTable.sub">{{ lineBindingDisplay(b).date }}</span>
+                </li>
+              </ul>
+              <button type="button" :class="rowAction.secondary" @click="goToBindingManagement(students.find((s) => s.id === editingStudentId))">前往家長 LINE 綁定</button>
+            </section>
+
+            <section v-if="editingStudentId && multiGuardianEnabled" class="tw:grid tw:gap-3">
+              <h4 class="tw:m-0 tw:text-tpl-body tw:font-semibold">家長／監護人</h4>
+              <p :class="['tw:m-0', dataTable.sub]">主要聯絡人的姓名與手機即為本學生家長資訊來源；請在此維護，勿再另填一組家長欄位。</p>
+              <p v-if="guardiansLoading" :class="['tw:m-0', dataTable.sub]" role="status">載入中…</p>
+              <p v-else-if="guardians.length === 0" :class="['tw:m-0', dataTable.sub]">
+                尚無監護人紀錄
+                <span v-if="studentForm.parent_name || studentForm.parent_phone">
+                  （既有家長：{{ studentForm.parent_name || '—' }}／{{ studentForm.parent_phone || '—' }}，請新增為監護人）
+                </span>
+              </p>
+              <ul v-else class="tw:m-0 tw:grid tw:list-none tw:divide-y tw:divide-border tw:p-0">
+                <li v-for="g in guardians" :key="g.id" class="tw:flex tw:flex-wrap tw:items-center tw:gap-2 tw:py-2">
+                  <span class="tw:text-tpl-body tw:font-medium tw:wrap-anywhere">{{ g.display_name || '未命名' }} · {{ guardianRoleLabel(g.role) }}{{ g.is_primary ? ' · 主要聯絡人' : '' }}</span>
+                  <span :class="[dataTable.sub, 'tw:grow tw:wrap-anywhere']">{{ g.phone || g.line_user_id_masked || '—' }}</span>
+                  <button type="button" :class="rowAction.dangerWrap" @click="removeGuardian(g.id)">解除</button>
+                </li>
+              </ul>
+              <div class="tw:grid tw:gap-3 tw:sm:grid-cols-2">
+                <div class="tw:grid tw:gap-1.5">
+                  <Label for="student-guardian-name">監護人姓名</Label>
+                  <Input id="student-guardian-name" v-model="guardianForm.display_name" :class="STUDENT_EDITOR_INPUT" placeholder="姓名" />
+                </div>
+                <div class="tw:grid tw:gap-1.5">
+                  <Label for="student-guardian-phone">監護人手機</Label>
+                  <Input id="student-guardian-phone" v-model="guardianForm.phone" :class="STUDENT_EDITOR_INPUT" placeholder="手機" />
+                </div>
+                <div class="tw:grid tw:gap-1.5">
+                  <Label for="student-guardian-role">關係</Label>
+                  <select id="student-guardian-role" v-model="guardianForm.role" :class="STUDENT_EDITOR_SELECT">
+                    <option value="father">爸爸</option>
+                    <option value="mother">媽媽</option>
+                    <option value="guardian">監護人</option>
+                    <option value="other">其他</option>
+                  </select>
+                </div>
+                <label for="student-guardian-primary" class="tw:flex tw:min-h-11 tw:cursor-pointer tw:items-center tw:gap-2 tw:self-end tw:text-tpl-body">
+                  <input id="student-guardian-primary" type="checkbox" v-model="guardianForm.is_primary" class="tw:size-4 tw:accent-primary" /> 設為主要聯絡人
+                </label>
+              </div>
+              <div>
+                <button type="button" :class="rowAction.secondary" @click="addGuardian">新增</button>
+              </div>
+              <p v-if="guardianError" :class="['tw:m-0 tw:text-tpl-caption', toneText.danger]" role="alert">{{ guardianError }}</p>
+            </section>
+
+            <section class="tw:grid tw:gap-3">
+              <h4 class="tw:m-0 tw:text-tpl-body tw:font-semibold">其他</h4>
+              <div v-if="editingStudentId" class="tw:grid tw:gap-1.5">
+                <Label for="student-edit-status">學生狀態</Label>
+                <select id="student-edit-status" v-model="studentForm.status" :class="STUDENT_EDITOR_SELECT">
+                  <option value="active">在學中</option>
+                  <option value="graduated">已畢業</option>
+                  <option value="paused">暫停中</option>
+                  <option value="transferred">已轉校</option>
+                </select>
+              </div>
+              <div class="tw:grid tw:gap-1.5">
+                <Label for="student-notes">備註</Label>
+                <Textarea id="student-notes" v-model="studentForm.notes" rows="2" class="tw:text-tpl-body!" placeholder="特殊需求、過敏、家長偏好等…" />
+                <div v-if="studentForm.latest_payment_note" class="tw:grid tw:gap-1 tw:rounded-md tw:bg-muted tw:p-3 tw:text-tpl-caption" role="note">
+                  <strong>最近已確認入帳備註（自動）</strong>
+                  <p class="tw:m-0 tw:whitespace-pre-wrap tw:wrap-anywhere">{{ studentForm.latest_payment_note }}</p>
+                  <small :class="dataTable.sub">由帳務回報自動帶入，不會覆蓋上方的學生長期備註。</small>
+                </div>
+              </div>
+            </section>
           </div>
         </div>
 
-        <div v-if="showLegacyParentFields" class="form-section-title">家長資訊</div>
-        <div v-if="showLegacyParentFields" style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
-          <div class="form-group">
-            <label>家長姓名</label>
-            <input v-model="studentForm.parent_name" placeholder="請輸入家長姓名" />
-          </div>
-          <div class="form-group">
-            <label>家長手機</label>
-            <input v-model="studentForm.parent_phone" placeholder="09xxxxxxxx" />
-          </div>
-        </div>
-
-        <div class="form-section-title">RFID 卡片</div>
-        <div class="form-group">
-          <label>RFID</label>
-          <div class="rfid-bind-row">
-            <input v-model="studentForm.rfid" readonly placeholder="刷卡後點「綁定卡片」" />
-            <button type="button" class="small" @click="bindRfidFromTemp">{{ studentForm.rfid ? '重新綁定卡片' : '綁定卡片' }}</button>
-            <button v-if="editingStudentId && studentForm.rfid" type="button" class="small ghost" @click="unbindStudentRfid">解除綁定</button>
-          </div>
-        </div>
-
-        <div v-if="editingStudentId" class="form-section-title">LINE 綁定家長</div>
-        <div v-if="editingStudentId" class="line-bindings-section">
-          <div v-if="lineBindingsLoading" class="line-bindings-empty">載入中…</div>
-          <div v-else-if="lineBindings.length === 0" class="line-bindings-empty">尚未有家長透過 LINE 綁定此學生</div>
-          <div v-else class="line-bindings-list">
-            <div v-for="b in lineBindings" :key="b.id" class="line-binding-row">
-              <span class="line-binding-id">{{ lineBindingDisplay(b).label }}</span>
-              <span class="line-binding-time">{{ lineBindingDisplay(b).date }}</span>
-            </div>
-          </div>
-          <button type="button" class="small ghost" style="margin-top:8px;" @click="goToBindingManagement(students.find((s) => s.id === editingStudentId))">
-            前往家長 LINE 綁定
-          </button>
-        </div>
-
-        <div v-if="editingStudentId && multiGuardianEnabled" class="form-section-title">家長／監護人</div>
-        <div v-if="editingStudentId && multiGuardianEnabled" class="line-bindings-section">
-          <p class="line-bindings-empty" style="margin:0 0 8px;">
-            主要聯絡人的姓名與手機即為本學生家長資訊來源；請在此維護，勿再另填一組家長欄位。
-          </p>
-          <div v-if="guardiansLoading" class="line-bindings-empty">載入中…</div>
-          <div v-else-if="guardians.length === 0" class="line-bindings-empty">
-            尚無監護人紀錄
-            <span v-if="studentForm.parent_name || studentForm.parent_phone">
-              （既有家長：{{ studentForm.parent_name || '—' }}／{{ studentForm.parent_phone || '—' }}，請新增為監護人）
-            </span>
-          </div>
-          <div v-else class="line-bindings-list">
-            <div v-for="g in guardians" :key="g.id" class="line-binding-row">
-              <span class="line-binding-id">{{ g.display_name || '未命名' }} · {{ guardianRoleLabel(g.role) }}{{ g.is_primary ? ' · 主要聯絡人' : '' }}</span>
-              <span class="line-binding-time">{{ g.phone || g.line_user_id_masked || '—' }}</span>
-              <button type="button" class="line-binding-remove" @click="removeGuardian(g.id)">解除</button>
-            </div>
-          </div>
-          <div class="guardian-add-row" style="display:grid;grid-template-columns:1fr 1fr 1fr auto;gap:8px;margin-top:8px;">
-            <input v-model="guardianForm.display_name" placeholder="姓名" />
-            <input v-model="guardianForm.phone" placeholder="手機" />
-            <select v-model="guardianForm.role">
-              <option value="father">爸爸</option>
-              <option value="mother">媽媽</option>
-              <option value="guardian">監護人</option>
-              <option value="other">其他</option>
-            </select>
-            <button type="button" class="small" @click="addGuardian">新增</button>
-          </div>
-          <label style="display:flex;align-items:center;gap:6px;margin-top:6px;font-size:13px;">
-            <input type="checkbox" v-model="guardianForm.is_primary" /> 設為主要聯絡人
-          </label>
-          <p v-if="guardianError" class="line-bindings-empty" style="color:#b00020;">{{ guardianError }}</p>
-        </div>
-
-        <div class="form-section-title">其他</div>
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
-          <div class="form-group" v-if="editingStudentId">
-            <label>學生狀態</label>
-            <select v-model="studentForm.status">
-              <option value="active">在學中</option>
-              <option value="graduated">已畢業</option>
-              <option value="paused">暫停中</option>
-              <option value="transferred">已轉校</option>
-            </select>
-          </div>
-        </div>
-        <div class="form-group">
-          <label>備註</label>
-          <textarea v-model="studentForm.notes" rows="2" placeholder="特殊需求、過敏、家長偏好等…" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-family: inherit; resize: vertical;"></textarea>
-          <div v-if="studentForm.latest_payment_note" class="student-latest-payment-note" role="note">
-            <span class="material-symbols-outlined" aria-hidden="true">receipt_long</span>
-            <div>
-              <strong>最近已確認入帳備註（自動）</strong>
-              <p>{{ studentForm.latest_payment_note }}</p>
-              <small>由帳務回報自動帶入，不會覆蓋上方的學生長期備註。</small>
-            </div>
-          </div>
-        </div>
-
-        <div class="actions">
-          <button type="button" class="ghost" @click="closeStudentModal">取消</button>
-          <button type="button" class="primary" @click="submitStudent">儲存</button>
-        </div>
-      </div>
-    </div>
+        <DialogFooter class="tw:shrink-0 tw:flex-row tw:justify-end tw:border-t tw:border-border tw:px-4 tw:py-3 tw:sm:px-6">
+          <Button type="button" variant="outline" :class="control.row" @click="closeStudentModal">取消</Button>
+          <Button type="button" :class="control.row" @click="submitStudent">儲存</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
 
     <!-- Edit Course Modal -->
     <div v-if="showCourseModal && editingCourseId" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="course-modal-title" @click.self="closeCourseModal">
@@ -993,7 +1014,7 @@
 import { ymdInTaipei } from '@/lib/sessionDates.js';
 import ConfirmDialogHost from '../components/course-management/ConfirmDialogHost.vue';
 import { askConfirm } from '../composables/useConfirmDialog';
-import { ref, onMounted, onBeforeUnmount, onActivated, onDeactivated, watch, computed, nextTick } from 'vue';
+import { ref, onMounted, onActivated, onDeactivated, watch, computed, nextTick } from 'vue';
 import { supabase } from '../supabase';
 import { authedFetch, getAccessToken } from '../lib/authedFetch';
 import { humanizeApiErrorMessage } from '../lib/humanizeApiErrorMessage.js';
@@ -1074,7 +1095,10 @@ import { Alert } from '../components/ui/alert';
 import { Skeleton } from '../components/ui/skeleton';
 import SchoolNameInput from '../components/SchoolNameInput.vue';
 import SchoolMergePanel from '../components/SchoolMergePanel.vue';
-import { Dialog, DialogContent, DialogDescription, DialogTitle } from '../components/ui/dialog';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle } from '../components/ui/dialog';
+import { Input } from '../components/ui/input';
+import { Label } from '../components/ui/label';
+import { Textarea } from '../components/ui/textarea';
 import { trialTargetPayload } from '../lib/trialTarget.js';
 import { trackedFetch } from '../lib/loadingBar';
 
@@ -1166,6 +1190,9 @@ const identityError = ref('');
 
 // Student modal
 const showStudentModal = ref(false);
+const studentsPageActive = ref(true);
+const STUDENT_EDITOR_INPUT = 'tw:h-11 tw:text-tpl-body!';
+const STUDENT_EDITOR_SELECT = 'tw:h-11 tw:w-full tw:min-w-0 tw:rounded-md tw:border tw:border-input tw:bg-background tw:px-3 tw:text-tpl-body tw:text-foreground tw:outline-none tw:focus-visible:ring-3 tw:focus-visible:ring-ring/50';
 const editingStudentId = ref(null);
 const schoolAuthToken = ref('');
 
@@ -2335,19 +2362,11 @@ const closeStudentModal = () => {
   multiGuardianEnabled.value = false;
 };
 
-// Esc 等同「取消」（此 modal 無未儲存確認，行為與取消鈕一致）
-const onStudentModalKeydown = (event) => {
-  if (event.key === 'Escape' && !event.defaultPrevented && showStudentModal.value) closeStudentModal();
-};
-watch(showStudentModal, (open) => {
-  window[open ? 'addEventListener' : 'removeEventListener']('keydown', onStudentModalKeydown);
-});
-onBeforeUnmount(() => window.removeEventListener('keydown', onStudentModalKeydown));
-// Kept alive by App.vue: a hidden page must not react to Escape.
-onDeactivated(() => window.removeEventListener('keydown', onStudentModalKeydown));
+// The editor is portalled. Hide it during KeepAlive deactivation, preserving the draft.
+onDeactivated(() => { studentsPageActive.value = false; });
 let studentsActivatedOnce = false;
 onActivated(() => {
-  if (showStudentModal.value) window.addEventListener('keydown', onStudentModalKeydown);
+  studentsPageActive.value = true;
   if (studentsActivatedOnce) void loadStudents({ quiet: true }); // stale-while-revalidate, list stays on screen
   studentsActivatedOnce = true;
 });
@@ -3872,27 +3891,6 @@ table th { font-size: 12.5px; }
   padding: 0 !important;
   background: var(--ds-canvas-soft) !important;
 }
-.student-latest-payment-note {
-  display: flex;
-  align-items: flex-start;
-  gap: 8px;
-  margin-top: 8px;
-  padding: 9px 10px;
-  border: 1px solid var(--ds-hairline);
-  border-radius: 8px;
-  background: var(--ds-success-wash);
-  color: var(--ds-ink-secondary);
-  font-size: 12px;
-  line-height: 1.5;
-}
-.student-latest-payment-note > .material-symbols-outlined {
-  flex: 0 0 auto;
-  color: var(--ds-success);
-  font-size: 17px;
-}
-.student-latest-payment-note strong { color: var(--ds-success); }
-.student-latest-payment-note p { margin: 2px 0; white-space: pre-wrap; word-break: break-word; }
-.student-latest-payment-note small { color: var(--ds-ink-mute); }
 .student-course-workspace {
   display: grid;
   gap: 12px;
@@ -4034,26 +4032,6 @@ table th { font-size: 12.5px; }
   margin-top: 12px;
 }
 
-.rfid-bind-row {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-}
-.rfid-bind-row input {
-  flex: 1;
-  padding: 8px 12px;
-  border: 1px solid var(--ds-hairline-input);
-  border-radius: 6px;
-}
-.rfid-bind-row input[readonly] {
-  background: var(--ds-canvas-soft);
-  color: var(--ds-ink);
-  cursor: default;
-}
-.required {
-  color: var(--ds-danger);
-}
-
 /* ═══ Cost Preview ═══ */
 .cost-preview {
   background: var(--ds-primary-wash);
@@ -4111,56 +4089,6 @@ table th { font-size: 12.5px; }
   border: 1px solid #c4b5fd;
   font-size: 0.65rem;
   cursor: help;
-}
-
-/* LINE bindings section */
-.line-bindings-section {
-  margin-bottom: 12px;
-}
-.line-bindings-empty {
-  color: var(--ds-ink-mute);
-  font-size: 13px;
-  padding: 6px 0;
-}
-.line-bindings-list {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-.line-binding-row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 6px 10px;
-  background: var(--ds-canvas-soft);
-  border-radius: 6px;
-  font-size: 13px;
-}
-.line-binding-id {
-  font-family: monospace;
-  font-size: 12px;
-  color: #06C755;
-  font-weight: 600;
-}
-.line-binding-time {
-  color: var(--ds-ink-mute);
-  font-size: 12px;
-  flex: 1;
-  text-align: right;
-}
-.line-binding-remove {
-  background: none;
-  border: 1px solid var(--ds-danger);
-  color: var(--ds-danger);
-  font-size: 12px;
-  padding: 2px 10px;
-  border-radius: 4px;
-  cursor: pointer;
-  transition: all 0.15s;
-}
-.line-binding-remove:hover {
-  background: var(--ds-danger);
-  color: var(--ds-on-primary);
 }
 
 /* Toast notification */

@@ -12,5 +12,6 @@ const src = readFileSync(new URL('../pages/StudentsList.vue', import.meta.url), 
 assert.doesNotMatch(src, /\{\{ b\.line_user_id_masked \}\}/);
 assert.doesNotMatch(src, /\{\{ b\.bound_at \}\}/);
 assert.match(src, /guardianRoleLabel\(g\.role\)/);
-assert.match(src, /key === 'Escape'[\s\S]{0,120}closeStudentModal\(\)/);
+// Reka dispatches update:open on Escape. The browser fixture verifies Escape in both nested layers.
+assert.match(src, /<Dialog :open="showStudentModal && studentsPageActive" @update:open="[^"]*closeStudentModal\(\)/);
 console.log('guardianDisplay.test.js: all assertions passed');

@@ -1,14 +1,15 @@
 <template>
-  <div class="school-name-input" @keydown.escape.prevent="closeSuggestions">
+  <div @keydown.escape="dismissSuggestions">
     <input
       :id="inputId"
       v-model="text"
+      class="tw:h-11 tw:w-full tw:min-w-0 tw:rounded-md tw:border tw:border-input tw:bg-background tw:px-3 tw:text-tpl-body tw:text-foreground tw:outline-none tw:focus-visible:ring-3 tw:focus-visible:ring-ring/50"
       type="text"
       autocomplete="off"
       :placeholder="placeholder"
-      :aria-expanded="open ? 'true' : 'false'"
+      :aria-expanded="suggestionsVisible ? 'true' : 'false'"
       aria-autocomplete="list"
-      :aria-controls="listId"
+      :aria-controls="suggestionsVisible ? listId : undefined"
       role="combobox"
       @input="onInput"
       @focus="onFocus"
@@ -17,7 +18,7 @@
       @keydown.enter.prevent="selectHighlighted"
     />
     <ul
-      v-if="open && (suggestions.length || showCustomHint)"
+      v-if="suggestionsVisible"
       :id="listId"
       class="school-name-suggestions"
       role="listbox"
@@ -74,6 +75,7 @@ watch(text, (v) => {
 });
 
 const showCustomHint = computed(() => text.value.trim().length >= 1);
+const suggestionsVisible = computed(() => open.value && (suggestions.value.length > 0 || showCustomHint.value));
 
 function locationOf(item) {
   const bits = [item.municipality, item.district].filter(Boolean);
@@ -83,6 +85,12 @@ function locationOf(item) {
 function closeSuggestions() {
   open.value = false;
   highlight.value = -1;
+}
+
+function dismissSuggestions(event) {
+  if (!suggestionsVisible.value) return;
+  event.preventDefault();
+  closeSuggestions();
 }
 
 // This campus's existing spellings first, so directors pick one instead of typing a new variant (#517).
@@ -181,19 +189,9 @@ onBeforeUnmount(() => clearTimeout(timer));
 </script>
 
 <style scoped>
-.school-name-input {
-  position: relative;
-}
-.school-name-input input {
-  width: 100%;
-}
 .school-name-suggestions {
-  position: absolute;
-  z-index: 20;
-  left: 0;
-  right: 0;
-  top: calc(100% + 4px);
-  margin: 0;
+  /* Keep the list in the dialog's scroll flow on short screens. */
+  margin: 4px 0 0;
   padding: 4px 0;
   list-style: none;
   background: var(--ds-surface);
@@ -201,7 +199,6 @@ onBeforeUnmount(() => clearTimeout(timer));
   border-radius: 8px;
   max-height: 240px;
   overflow: auto;
-  box-shadow: var(--ds-shadow-md, 0 8px 24px color-mix(in srgb, var(--ds-ink) 12%, transparent));
 }
 .school-name-suggestions li {
   display: flex;
