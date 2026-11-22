@@ -272,6 +272,118 @@ class TuitionAlertsApiTest extends TestCase
         $this->assertSame('2026-05', $row['billing_period']);
     }
 
+    /** in-app #589: a paid monthly course that ended months ago has no next settlement; an unpaid one still shows. */
+    public function test_monthly_paid_excluded_after_end_date_but_unpaid_still_listed(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-11-22', 'Asia/Taipei'));
+
+        $token = $this->createDirectorToken([1]);
+        $student = Student::create([
+            'name' => '月結已結束',
+            'CampusID' => 1,
+            'ClassID' => 1,
+            'enable' => 1,
+            'MDT' => now(),
+            'Notify_Token' => '',
+        ]);
+
+        $endedPaid = $this->createMonthlyClass($student->id, [
+            'settlement_day' => 22,
+            'Paid' => 1,
+            'StartDate' => '2026-04-12',
+            'EndDate' => '2026-04-30',
+        ]);
+        $endedUnpaid = $this->createMonthlyClass($student->id, [
+            'settlement_day' => 22,
+            'Paid' => 0,
+            'StartDate' => '2026-04-12',
+            'EndDate' => '2026-09-14',
+        ]);
+        $runningPaid = $this->createMonthlyClass($student->id, [
+            'settlement_day' => 22,
+            'Paid' => 1,
+            'StartDate' => '2026-04-12',
+            'EndDate' => '2026-12-31',
+        ]);
+
+        // Flag says paid, but the bill has no payment behind it: the billing verdict still owes, so it must stay listed.
+        $endedFlagOnly = $this->createMonthlyClass($student->id, [
+            'settlement_day' => 22,
+            'Paid' => 1,
+            'StartDate' => '2026-08-01',
+            'EndDate' => '2026-09-14',
+        ]);
+        Invoice::create([
+            'StudentID' => $student->id,
+            'StudentClassID' => $endedFlagOnly->ID,
+            'IssueDate' => '2026-08-01',
+            'DueDate' => '2026-08-22',
+            'TotalAmount' => 5000,
+            'PaidAmount' => 5000,
+            'Status' => 'paid',
+            'billing_period' => '2026-08',
+        ]);
+        $paidInvoice = Invoice::create([
+            'StudentID' => $student->id,
+            'StudentClassID' => $endedPaid->ID,
+            'IssueDate' => '2026-04-12',
+            'DueDate' => '2026-04-22',
+            'TotalAmount' => 5000,
+            'PaidAmount' => 5000,
+            'Status' => 'paid',
+            'billing_period' => '2026-04',
+        ]);
+        Payment::create(['InvoiceID' => $paidInvoice->id, 'Amount' => 5000, 'Method' => 'cash', 'PaidAt' => '2026-04-12']);
+
+        $legacyOnly = $this->createMonthlyClass($student->id, [
+            'settlement_day' => 22,
+            'Paid' => 1,
+            'StartDate' => '2026-08-01',
+            'EndDate' => '2026-08-31',
+        ]);
+        $foreignInvoiceCourse = $this->createMonthlyClass($student->id, [
+            'settlement_day' => 22,
+            'Paid' => 1,
+            'StartDate' => '2026-08-01',
+            'EndDate' => '2026-08-31',
+        ]);
+        $otherStudent = Student::create(['name' => '另一位學生', 'CampusID' => 1, 'ClassID' => 1, 'enable' => 1, 'MDT' => now(), 'Notify_Token' => '']);
+        $foreignInvoice = Invoice::create([
+            'StudentID' => $otherStudent->id,
+            'StudentClassID' => $foreignInvoiceCourse->ID,
+            'IssueDate' => '2026-08-01',
+            'DueDate' => '2026-08-22',
+            'TotalAmount' => 5000,
+            'Status' => 'paid',
+            'billing_period' => '2026-08',
+        ]);
+        Payment::create(['InvoiceID' => $foreignInvoice->id, 'Amount' => 5000, 'Method' => 'cash', 'PaidAt' => '2026-08-12']);
+
+        $res = $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->getJson('/api/v1/alerts/tuition?branch_id=1');
+
+        $res->assertOk();
+        $rows = collect($res->json());
+        $this->assertNotNull($rows->firstWhere('id', $endedFlagOnly->ID), 'ended, flag paid, nothing applied: still listed');
+        $this->assertNull($rows->firstWhere('id', $endedPaid->ID), 'ended and paid: no next settlement');
+        $this->assertNotNull($rows->firstWhere('id', $legacyOnly->ID), 'ended with only a legacy paid flag and no invoice must stay listed');
+        $this->assertNotNull($rows->firstWhere('id', $foreignInvoiceCourse->ID), 'a mislinked invoice cannot settle a different student’s course');
+        $this->assertSame('monthly_due_soon', $rows->firstWhere('id', $endedUnpaid->ID)['alert_type'] ?? null, 'ended but unpaid stays listed');
+        $this->assertSame('monthly_due_soon', $rows->firstWhere('id', $runningPaid->ID)['alert_type'] ?? null, 'still running: unchanged');
+
+        PaymentReport::create([
+            'StudentID' => $student->id, 'StudentClassID' => $endedPaid->ID,
+            'reported_by_name' => $student->name, 'payment_date' => Carbon::today(),
+            'payment_method' => 'cash', 'reported_amount' => 5000, 'status' => 'pending',
+            'report_token_hash' => hash('sha256', 'ended-monthly-awaiting-review'),
+            'token_expires_at' => Carbon::now()->addDay(),
+        ]);
+        $pendingRows = collect($this->withToken($token)->getJson('/api/v1/alerts/tuition?branch_id=1')->assertOk()->json());
+        $this->assertSame('pending_report', $pendingRows->firstWhere('id', $endedPaid->ID)['payment_status'] ?? null);
+    }
+
     public function test_monthly_paid_included_when_next_due_within_window(): void
     {
         Carbon::setTestNow(Carbon::parse('2026-05-12', 'Asia/Taipei'));

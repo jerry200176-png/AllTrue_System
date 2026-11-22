@@ -201,6 +201,18 @@ class AlertController extends Controller
         }
         $openMonthlyInvoiceMap = $this->openInvoiceByStudentClassIds($dateResults->pluck('ID')->unique()->values()->all());
         $pendingReportMap = self::latestPendingReportByStudentClassIds($allClassIds);
+        // in-app #589: use the all-period verdict to preserve review and overdue work. Require active,
+        // owner-matched settlement too: a stale invoice link must never hide another student's reminder.
+        $settledDateCourses = $dateResults->filter(function (StudentClass $course) use ($today, $courseStatuses, $openMonthlyInvoiceMap, $pendingReportMap) {
+            $id = (int) $course->ID;
+            return $course->EndDate && substr((string) $course->EndDate, 0, 10) < $today->toDateString()
+                && empty($openMonthlyInvoiceMap[$id]['due_date'])
+                && !isset($pendingReportMap[$id])
+                && $this->isInvoiceSettled($courseStatuses[$id] ?? null)
+                && $course->isEffectivelyPaid();
+        });
+        $ownedSettledStatuses = $this->payableResolver->activeOwnedCourseStatuses($settledDateCourses->pluck('ID')->all(), $settledDateCourses);
+        $closedMonthlyReminderIds = array_filter($ownedSettledStatuses, $this->isInvoiceSettled(...));
         $newerCourseMap = self::newerCourseByStudentClassIds($allClassIds);
         $subjectNameMap = $this->subjectNameMapForCourses($countResults->merge($dateResults)->merge($pendingSettlementResults));
 
@@ -380,8 +392,13 @@ class AlertController extends Controller
             )
             ->merge(
                 // Exclude monthly-package members from individual date-mode alerts
-                $dateResults->filter(fn ($c) => !$monthlyPkgMemberIds->contains($c->ID))
-                    ->map(fn ($c) => $this->mapMonthlyAlert($c, $today, $openMonthlyInvoiceMap[(int) $c->ID] ?? null, $subjectNameMap))->filter()
+                $dateResults->filter(fn ($c) => !$monthlyPkgMemberIds->contains($c->ID) && !isset($closedMonthlyReminderIds[(int) $c->ID]))
+                    ->map(fn ($c) => $this->mapMonthlyAlert(
+                        $c,
+                        $today,
+                        $openMonthlyInvoiceMap[(int) $c->ID] ?? null,
+                        $subjectNameMap
+                    ))->filter()
             )
             ->merge(
                 $pendingSettlementResults->map(fn ($c) => $this->mapPendingSettlementAlert($c, $subjectNameMap))
@@ -671,6 +688,13 @@ class AlertController extends Controller
             return 'unpaid';
         }
         return (int) ($pkg->remaining_sessions ?? 0) <= 2 ? 'renew_needed' : 'paid';
+    }
+
+    private function isInvoiceSettled(?array $verdict): bool
+    {
+        return ($verdict['status'] ?? null) === 'paid'
+            && ($verdict['source'] ?? null) === 'invoice'
+            && ($verdict['outstanding'] ?? null) === 0;
     }
 
     private function mapMonthlyAlert(StudentClass $c, Carbon $today, ?array $openInvoice = null, array $subjectNameMap = []): ?array
