@@ -1,7 +1,7 @@
 ---
 owner: jerry (CEO)
 review_cycle: quarterly
-last_reviewed: 2026-08-23
+last_reviewed: 2026-11-22
 ---
 
 # ⛔ AllTrue 系統危險操作清單
@@ -71,46 +71,13 @@ last_reviewed: 2026-08-23
 
 ## 三、高風險操作的安全做法
 
-### 跑測試（唯一安全方式）
+### 跑測試
 
-```bash
-# 1. 複製到 /tmp（絕對不在 /home/admin/backend/ 跑）
-cp -r /home/admin/backend /tmp/backend-test-$$
+用 GitHub Actions 或 [隔離的非正式環境測試入口](OPERATIONS_RUNBOOK.md#b4-github-hosted-runner-topology)。Pi 上一律禁止跑測試，包括從正式目錄複製到暫存目錄後執行。
 
-# 2. 改 .env 到測試 DB
-sed -i 's/^DB_DATABASE=.*/DB_DATABASE=AllTrue_test/' /tmp/backend-test-$$/.env
-sed -i 's/^APP_ENV=.*/APP_ENV=testing/' /tmp/backend-test-$$/.env
+### 修改 production `.env`
 
-# 3. 確認（必看！）
-grep DB_DATABASE /tmp/backend-test-$$/.env   # 必須是 AllTrue_test
-grep APP_ENV /tmp/backend-test-$$/.env        # 必須是 testing
-
-# 4. 在 /tmp 裡跑
-cd /tmp/backend-test-$$ && php artisan test
-
-# 5. 清掉
-cd / && rm -rf /tmp/backend-test-*
-```
-
-> **CI debug 優先走 GitHub Actions**：改 `ci.yml` 或測試檔 → push → 看 GitHub Actions log。不要「先本機跑通再 push」。
-
----
-
-### 修改 `.env`（唯一安全方式）
-
-```bash
-# ✅ 正確：只改一個欄位
-sed -i 's/^SENTRY_LARAVEL_DSN=.*/SENTRY_LARAVEL_DSN=新值/' /home/admin/backend/.env
-
-# ✅ 修改前先備份
-cp /home/admin/backend/.env /home/admin/backend/.env.bak.$(date +%s)
-
-# ❌ 絕對不可以
-echo "整個新 .env" > /home/admin/backend/.env  # 覆蓋！
-cp 某個檔案 /home/admin/backend/.env             # 覆蓋！
-```
-
----
+設定異常先走 [事故入口](INCIDENT_START_HERE.md) 確認證據和可執行動作。涉及 credential 時，由 Founder 依 [常設決定](governance/FOUNDER_STANDING_DECISIONS.md) 核准及執行受保護操作。維持現有部署與復原保障，禁止整份覆寫正式 `.env`。
 
 ### Push 到 GitHub（推之前必檢查）
 
@@ -133,29 +100,13 @@ git push origin main   # ❌ 禁止
 
 ---
 
-### artisan cache/config/route 指令（僅限部署或事故恢復）
+### 重建 production 快取
 
-```bash
-# ✅ 部署後重建快取（有必要才執行，執行前確認在 Pi 上）
-php artisan config:cache
-php artisan route:cache
+由既有 [部署流程](CONTROL_PLANE_CONTRACT.md) 負責。401／500 先從唯讀事故訊號查原因，只有事故規則允許的動作才能執行。
 
-# 執行後立即確認網站正常
-curl -sk https://daan.lifenet.com.tw/api/v1/health
-```
+### 生產 DB 寫入
 
----
-
-### 任何寫入生產 DB 的操作（必須先備份）
-
-```bash
-# 操作前先備份（10 秒完成，省一切麻煩）
-TS=$(date '+%Y-%m-%d_%H%M%S')
-mysqldump -h 127.0.0.1 -u admin -p'密碼' --single-transaction AllTrue \
-  | gzip > /home/admin/backups/emergency/pre_op_${TS}.sql.gz
-
-echo "備份完成：pre_op_${TS}.sql.gz"
-```
+按 [Founder 常設決定](governance/FOUNDER_STANDING_DECISIONS.md) 選既有受保護操作。確認精確範圍、已核准的修復計畫、可驗證復原點與讀回方式。備份本身不構成寫入授權；演練限 scratch／test DB。
 
 ### 備份健康檢查（不可只看檔案存在）
 
@@ -169,14 +120,14 @@ echo "備份完成：pre_op_${TS}.sql.gz"
 
 ## 四、快速確認清單（任何高風險操作前）
 
-執行以下五個問題，全部回答「是」才能繼續：
+逐項確認；適用項目都通過才能繼續：
 
 - [ ] 我知道這個指令的完整效果，沒有任何不確定？
 - [ ] 如果出錯，我知道怎麼還原（有備份 / 有 rollback 步驟）？
-- [ ] 我**不在** `/home/admin/backend/` 目錄下跑任何測試指令？
+- [ ] 測試使用 GitHub Actions 或隔離的非正式環境，且未在 Pi 執行？
 - [ ] 我確認**沒有** `--force` / `-f` 旗標？
-- [ ] 修改 DB 前已執行 `mysqldump` 備份？
-- [ ] 若牽涉備份/還原，我確認目標不是 production `AllTrue`？
+- [ ] 正式資料操作有適用批准、可驗證復原點與讀回計畫？
+- [ ] 恢復演練使用的目標是獨立 scratch／test DB？
 - [ ] 若牽涉 code 回復，我確認 source of truth 是 GitHub protected `main`？
 
 如果有任何一個「否」，**先停下來**，確認清楚再繼續。
@@ -185,30 +136,13 @@ echo "備份完成：pre_op_${TS}.sql.gz"
 
 ## 五、緊急恢復速查
 
-### 網站 401/500 → 快取損壞
+### 網站 401/500
 
-```bash
-cd /home/admin/backend
-php artisan config:cache
-php artisan route:cache
-sudo service php8.2-fpm reload
-curl -sk https://daan.lifenet.com.tw/api/v1/health
-```
+使用 [事故入口](INCIDENT_START_HERE.md) 查 health、版本和錯誤訊號，依 [部署與回復契約](CONTROL_PLANE_CONTRACT.md) 驗證處置結果。
 
-### DB 被清空 → 從備份還原
+### 正式 DB 疑似誤刪
 
-```bash
-# 找最新的備份
-ls -lt /home/admin/backups/sixhour/ | head -5
-
-# 還原
-zcat /home/admin/backups/sixhour/最新備份.sql.gz \
-  | mysql -h 127.0.0.1 -u admin -p AllTrue
-
-# 驗證
-mysql -h 127.0.0.1 -u admin -p AllTrue \
-  -e "SELECT COUNT(*) FROM Student;"
-```
+保留現場與備份，先由 [事故入口](INCIDENT_START_HERE.md) 確認受影響範圍。準備備份版本、復原目標及驗收項目；先在隔離 DB 演練。正式還原是 [Founder 的受保護操作](governance/FOUNDER_STANDING_DECISIONS.md)。
 
 ### git 操作出錯 → 查 reflog
 
