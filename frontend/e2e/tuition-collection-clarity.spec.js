@@ -20,7 +20,7 @@ for (const width of [390, 1440]) for (const theme of ['light', 'dark']) {
     const c = (id, subject, start_date, paid = true) => ({ id, subject, start_date, schedule_mode: 'count', paid, charge: 1000, stop: false });
     const courses = [c(1, '數學', '2026-08-08'), c(2, '英文', '2026-09-23'), c(3, '數學', '2026-10-08', false),
       c(4, '化學', '2026-10-02', false), c(5, '英文', '2026-10-07', false), c(6, '數學', '2026-10-09'),
-      c(7, '英文', '2026-01-01', false), { ...c(8, '生物', '2026-10-01', false), schedule_mode: 'date' },
+      c(7, '英文', '2026-01-01', false), { ...c(8, '生物', '2026-10-01'), schedule_mode: 'date' },
       c(9, '歷史', '2026-10-01', false)];
     await page.route('**/api/v1/students**', (r) => r.fulfill({ json: [{ id: 99, name: '合成排序學生', status: 'active', enable: 1 }] }));
     await page.route('**/api/v1/alerts/tuition**', (r) => r.fulfill({ json: [{ id: openedOldFirst ? 1 : 6, student_id: 99, student_name: '合成排序學生', subject: '數學',
@@ -28,7 +28,10 @@ for (const width of [390, 1440]) for (const theme of ['light', 'dark']) {
     await page.route('**/api/v1/accounting/ledger?**', (r) => r.fulfill({ json: {
       student: { id: 99, name: '合成排序學生' }, scope: { student_class_id: openedOldFirst ? 1 : 6 }, summary: {}, courses, anomalies: [],
       receipts: [{ report_id: 15, student_class_id: 9, status: 'pending', amount: 1000 }],
-      invoices: openedOldFirst ? [] : [{ id: 17, student_class_id: 7, status: 'unpaid', total_amount: 1000, outstanding_amount: 1000, calculated_applied_amount: 0, payments: [] }],
+      invoices: openedOldFirst ? [] : [
+        { id: 17, student_class_id: 7, status: 'unpaid', total_amount: 1000, outstanding_amount: 1000, calculated_applied_amount: 0, payments: [] },
+        { id: 18, student_class_id: 8, status: 'paid', total_amount: 1000, outstanding_amount: 0, calculated_applied_amount: 1000, payments: [] },
+      ],
     } }));
     await page.route('**/api/v1/accounting/monthly-drafts?**', (r) => r.fulfill({ json: { data: [
       { student_class_id: 8, status: 'ready', proposed_end_date: '2099-12-31' },
@@ -45,6 +48,7 @@ for (const width of [390, 1440]) for (const theme of ['light', 'dark']) {
     await expect(cards).toHaveCount(9);
     const ids = await cards.evaluateAll((els) => els.map((el) => Number(el.dataset.testid.replace('contract-card-', ''))));
     expect(ids.slice(0, 3)).toEqual([9, 7, 8]);
+    await expect(ledger.getByTestId('contract-card-8').getByTestId('contract-issue')).toBeVisible();
     await expect(ledger.getByTestId('ledger-contracts')).toBeVisible();
     expect(await ledger.getByTestId('ledger-contracts').evaluate((section) =>
       ['invoices', 'receipts'].every((name) => Boolean(section.compareDocumentPosition(
@@ -68,6 +72,44 @@ for (const width of [390, 1440]) for (const theme of ['light', 'dark']) {
     await page.getByTestId('bill-documents-c1').click();
     await expect(ledger.getByTestId('contract-card-1').getByTestId('contract-focused')).toBeInViewport();
     expect(writes).toEqual([]); expect(errors).toEqual([]);
+  });
+}
+
+for (const width of [390, 1440]) {
+  test(`in-app #593 course launch stays on the target after delayed drafts @${width}`, async ({ page }) => {
+    const target = { id: 42, student_id: 99, student_name: '合成定位學生', subject: '合成數學',
+      schedule_mode: 'date', start_date: '2026-06-01', charge: 1000, paid: false };
+    const other = Array.from({ length: 22 }, (_, i) => ({ ...target, id: i + 60, paid: true, start_date: '2026-10-01' }));
+    let releaseDrafts;
+    const draftsReady = new Promise((resolve) => { releaseDrafts = resolve; });
+    await page.setViewportSize({ width, height: 850 });
+    await page.route('**/*', (r) => ['127.0.0.1', 'localhost'].includes(new URL(r.request().url()).hostname) ? r.fallback() : r.abort());
+    await page.route('**/api/v1/**', (r) => r.fulfill({ json: { data: [] } }));
+    await installMock(page);
+    await page.route('**/api/v1/students**', (r) => r.fulfill({ json: [{ id: 99, name: target.student_name, status: 'active', enable: 1 }] }));
+    await page.route('**/api/v1/alerts/tuition**', (r) => r.fulfill({ json: [
+      { ...target, payment_status: 'unpaid', payable_status: 'unbilled' },
+    ] }));
+    await page.route('**/api/v1/accounting/ledger?**', (r) => r.fulfill({ json: {
+      student: { id: 99, name: target.student_name }, scope: { student_class_id: target.id }, summary: {},
+      courses: [...other, target], invoices: [], receipts: [], anomalies: [],
+    } }));
+    await page.route('**/api/v1/accounting/monthly-drafts?**', async (r) => {
+      await draftsReady;
+      await r.fulfill({ json: { data: [{ student_class_id: target.id, status: 'ready', proposed_end_date: '2099-12-31' }] } });
+    });
+
+    await page.goto('/tuition-collection-pilot-mount.html');
+    await page.getByTestId('bill-documents-c42').click();
+    const ledger = page.getByRole('dialog', { name: '合成定位學生的帳務', exact: true });
+    const cards = ledger.locator('.ledger-contracts > [data-testid^="contract-card-"]');
+    try {
+      await expect(cards.last()).toHaveAttribute('data-testid', 'contract-card-42');
+    } finally {
+      releaseDrafts();
+    }
+    await expect(cards.first()).toHaveAttribute('data-testid', 'contract-card-42');
+    await expect(cards.first().getByTestId('contract-focused')).toBeInViewport();
   });
 }
 

@@ -707,6 +707,7 @@ async function loadLedger() {
   showAllExceptions.value = false;
   coverage.value = {};
   expandedReceiptIds.value = new Set();
+  let draftsReady;
   try {
     const token = getToken();
     if (!token) throw new Error('請先登入');
@@ -728,7 +729,8 @@ async function loadLedger() {
     else autoExpandAttention();
     if (documentsView.value) fold.rcpt = true;
     const armed = pendingInitialAction != null;
-    runInitialAction(loadDrafts());
+    draftsReady = loadDrafts(requestVersion);
+    runInitialAction(draftsReady);
     if (armed && !entryOpen.value) ledgerFellBack.value = true; // only the first load decides the fallback
   } catch (e) {
     if (requestVersion !== ledgerRequestVersion) return;
@@ -739,13 +741,20 @@ async function loadLedger() {
   }
   if (requestVersion === ledgerRequestVersion && payload.value) {
     await nextTick();
+    if (requestVersion !== ledgerRequestVersion) return;
     if (documentsView.value) {
       const documents = modalEl.value?.querySelector('[data-testid="ledger-fold-invoices"]');
       documents?.focus({ preventScroll: true });
-      // 帳務重整 §3: contracts sit below 收款紀錄 now. With no bill for the opened course, show its card instead.
-      if (displayedInvoices.value.some((inv) => invoiceCoversCourse(inv, Number(props.studentClassId)))) documents?.scrollIntoView?.({ block: 'start' });
-      else scrollToOpenedContract();
-    } else scrollToOpenedContract();
+      if (displayedInvoices.value.some((inv) => invoiceCoversCourse(inv, Number(props.studentClassId)))) {
+        documents?.scrollIntoView?.({ block: 'start' });
+        return;
+      }
+    }
+    if (props.studentWide || !Number(props.studentClassId || 0)) return;
+    // A ready draft can move the anchored card. Wait for its initial ordering before scrolling.
+    await draftsReady;
+    await nextTick();
+    if (requestVersion === ledgerRequestVersion) scrollToOpenedContract();
   }
 }
 
@@ -1098,7 +1107,7 @@ const { submit: submitRenewal } = useMonthlyRenewal({
   isModalOpen: () => false, currentCourseId: () => null,
 });
 const todayStr = () => ymdInTaipei();
-async function loadDrafts() {
+async function loadDrafts(requestVersion) {
   drafts.value = {};
   try {
     const token = getToken();
@@ -1107,11 +1116,11 @@ async function loadDrafts() {
     if (props.branchId != null && props.branchId !== '') params.set('branch_id', String(Number(props.branchId)));
     const resp = await trackedFetch(`/api/v1/accounting/monthly-drafts?${params}`, { headers: { Accept: 'application/json', Authorization: `Bearer ${token}` } });
     const json = await resp.json().catch(() => ({}));
-    if (!resp.ok || !Array.isArray(json.data)) return;
+    if (requestVersion !== ledgerRequestVersion || !resp.ok || !Array.isArray(json.data)) return;
     drafts.value = Object.fromEntries(json.data
       .filter((r) => r.status === 'ready' && r.proposed_end_date && r.proposed_end_date > todayStr())
       .map((r) => [Number(r.student_class_id), r]));
-  } catch { drafts.value = {}; }
+  } catch { /* The current request starts with no drafts. */ }
 }
 const draftFor = (id) => drafts.value[Number(id)] || null;
 // Display priority never decides which shared contract owns payment or changes the allocation sequence.
@@ -1119,7 +1128,8 @@ function contractDisplayPriority(course) {
   if (!packageLead(course)) return 3;
   if (pendingReportFor(course.id)) return 0;
   if (owedFor(course.id) > 0) return 1;
-  if (!course.paid && draftFor(course.id) && !hasNoObligation(course) && !isWaivedContract(course)) return 2;
+  // The current term can be paid while the next monthly bill is ready to issue.
+  if (draftFor(course.id) && !hasNoObligation(course) && !isWaivedContract(course)) return 2;
   return 3;
 }
 const subjectOrder = new Intl.Collator('zh-Hant', { numeric: true });

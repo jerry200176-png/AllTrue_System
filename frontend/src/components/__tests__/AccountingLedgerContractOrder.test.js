@@ -61,11 +61,16 @@ describe('in-app564 contract scan order', () => {
       course(2, '數學', '2026-10-01', { paid: false }),
       course(3, '英文', '2026-09-12', { paid: false, schedule_mode: 'date' }),
       course(4, '國文', '2026-08-16', { paid: false }),
-    ], [{ id: 12, student_class_id: 2, status: 'unpaid', outstanding_amount: 1000, total_amount: 1000, payments: [] }], null, {
+      course(5, '英文', '2026-10-12', { schedule_mode: 'date' }),
+    ], [
+      { id: 12, student_class_id: 2, status: 'unpaid', outstanding_amount: 1000, total_amount: 1000, payments: [] },
+      { id: 13, student_class_id: 5, status: 'paid', outstanding_amount: 0, total_amount: 1000, calculated_applied_amount: 1000, payments: [] },
+    ], null, {
       receipts: [{ report_id: 15, student_class_id: 4, status: 'pending', amount: 1000 }],
-      drafts: [{ student_class_id: 3, status: 'ready', proposed_end_date: '2099-12-31' }],
+      drafts: [3, 5].map((student_class_id) => ({ student_class_id, status: 'ready', proposed_end_date: '2099-12-31' })),
     });
-    expect(cards().map((c) => c.props('course').id)).toEqual([4, 2, 3, 1]);
+    expect(cards().map((c) => c.props('course').id)).toEqual([4, 2, 5, 3, 1]);
+    expect(w.get('[data-testid="contract-card-5"]').get('[data-testid="contract-issue"]').text()).toContain('開帳單');
     const contracts = w.get('[data-testid="ledger-contracts"]').element;
     for (const name of ['invoices', 'receipts']) {
       const section = w.get(`[data-testid="ledger-fold-${name}"]`).element;
