@@ -112,10 +112,13 @@ def exercise(binary, socket_path, port, operator):
         assert all(report[field] is None for field in ("invoice_id", "payment_id", "contract_id", "billing_period"))
         collected = {name: [page(name), []] for name in VIEWS if name not in {"scope", "invoices"}}
         collected["invoices"] = [first, second, []]
-        worksheet = subprocess.run([sys.executable, str(PROFILE / "daan-tuition-review.py")],
-                                   input=json.dumps({"scope": scope, "pages": collected}),
-                                   capture_output=True, text=True, check=True, timeout=10)
-        review = json.loads(worksheet.stdout)
+        def worksheet():
+            result = subprocess.run([sys.executable, str(PROFILE / "daan-tuition-review.py")],
+                                    input=json.dumps({"scope": scope, "pages": collected}),
+                                    capture_output=True, text=True, check=True, timeout=10)
+            return json.loads(result.stdout)
+
+        review = worksheet()
         assert review["monthly"]["2026-10"]["net_recorded_collections"] == "650"
         assert review["later_activity"] == [{"dataset": "payments", "id": 1, "date": "2026-11-01", "amount": "100"}]
         root(f"""USE {SOURCE};
@@ -123,11 +126,15 @@ def exercise(binary, socket_path, port, operator):
             INSERT INTO payment_report_reassignments VALUES (9,3,4,15,1,3,5,4,50,'2026-11-03 12:00:00');
             INSERT INTO Payment (id,InvoiceID,payment_report_id,Amount,Method,PaidAt,Note) VALUES
                 (5,5,3,-50,'void','2026-11-03','[receipt_reassign:9] private reason'),
-                (6,4,4,50,'cash','2026-10-31','[receipt_reassign:9] private reason'),
+                (6,4,4,50,'cash','2026-10-31',NULL),
                 (7,4,NULL,10,'cash','2026-10-31','[receipt_reassign:9] user-supplied note');""")
         outgoing, incoming, unmatched = page("payments", 4)
         assert all(row["receipt_moved_at"] == "2026-11-03 12:00:00" for row in (outgoing, incoming))
         assert unmatched["receipt_moved_at"] is None and unmatched["receipt_move_uncertain"] == 1
+        collected["payments"] = [page("payments"), []]
+        review = worksheet()
+        assert review["monthly"]["2026-10"]["net_recorded_collections"] == "660"
+        assert any(q["id"] == 7 and q["kind"] == "receipt_move_link" for q in review["questions"])
         root(f"UPDATE {SOURCE}.Campus SET code='wrong' WHERE id=15;")
         assert not page("invoices") and not statement(tool("daan_tuition_scope", {}))["rows"]
     assert root(f"SELECT SUM(Amount) FROM {SOURCE}.Payment") == "960"

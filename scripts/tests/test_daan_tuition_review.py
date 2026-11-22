@@ -105,10 +105,12 @@ class DaanReviewTest(unittest.TestCase):
         result = REVIEW.build_review(snapshot(
             invoices=[invoice(1, status="void"), invoice(2)],
             payments=[payment(1), payment(2, method="void", amount=-100, receipt_moved_at="2026-11-02"),
-                      payment(3, invoice_id=2, receipt_moved_at="2026-11-02")],
+                      payment(3, invoice_id=2, receipt_moved_at="2026-11-02"),
+                      payment(4, invoice_id=2, amount=10, receipt_move_uncertain=True)],
         ))
-        self.assertEqual(result["monthly"]["2026-10"]["net_recorded_collections"], Decimal(100))
+        self.assertEqual(result["monthly"]["2026-10"]["net_recorded_collections"], Decimal(110))
         self.assertEqual([r["event"] for r in result["later_activity"]], ["receipt_reassignment", "receipt_reassignment"])
+        self.assertEqual([(q["kind"], q["id"]) for q in result["questions"]], [("receipt_move_link", 4)])
 
     def test_stored_amount_and_reciprocal_receipt_are_checked(self):
         result = REVIEW.build_review(snapshot(

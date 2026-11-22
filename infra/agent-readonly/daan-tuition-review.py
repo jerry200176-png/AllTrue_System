@@ -85,6 +85,9 @@ def build_review(snapshot):
         delta = -abs(amount) if method == "void" else amount
         moved = day(payment["receipt_moved_at"])
         when = moved or day(payment["paid_at"])
+        if payment["receipt_move_uncertain"]:
+            ask("receipt_move_link", "payments", payment, "這筆可能是收據移轉，能確認原收據和移轉紀錄嗎？",
+                amount=amount, date=payment["paid_at"])
         if invoice["status"] != "void":
             current_amounts_by_invoice[invoice["id"]] += delta
         if in_period(when):
@@ -93,7 +96,7 @@ def build_review(snapshot):
                 month["receipt_reassignments"] += delta
             elif (method in CREDIT_IN and amount > 0) or (method in CREDIT_OUT and amount < 0):
                 month["internal_credit_movement"] += delta
-            elif payment["receipt_move_uncertain"] or method in CREDIT_IN | CREDIT_OUT or method == "other" or (method == "refund" and delta > 0):
+            elif method in CREDIT_IN | CREDIT_OUT or method == "other" or (method == "refund" and delta > 0):
                 month["unclassified_movement"] += delta
                 ask("payment_method", "payments", payment, "這筆是實收、沖銷還是校內轉列？", amount=amount, date=payment["paid_at"])
             else:

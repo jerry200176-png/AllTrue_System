@@ -52,8 +52,10 @@ LEFT JOIN alltrue_diagnostics.daan_tuition_contracts c ON c.id = a.StudentClassI
 CREATE SQL SECURITY DEFINER VIEW alltrue_diagnostics.daan_tuition_payments AS
 SELECT p.id, i.campus_id, i.student_id, i.id AS invoice_id, r.id AS report_id, p.Amount AS amount,
        p.PaidAt AS paid_at, p.created_at, p.updated_at,
-       COALESCE(incoming.created_at, outgoing.created_at) AS receipt_moved_at,
-       (COALESCE(p.Note, '') LIKE '[receipt_reassign:%' AND incoming.id IS NULL AND outgoing.id IS NULL) AS receipt_move_uncertain,
+       COALESCE(incoming.created_at, CASE WHEN p.Note LIKE CONCAT('[receipt_reassign:', outgoing.id, ']%')
+            THEN outgoing.created_at END) AS receipt_moved_at,
+       (incoming.id IS NULL AND (outgoing.id IS NOT NULL OR COALESCE(p.Note, '') LIKE '[receipt_reassign:%')
+         AND (outgoing.id IS NULL OR COALESCE(p.Note, '') NOT LIKE CONCAT('[receipt_reassign:', outgoing.id, ']%'))) AS receipt_move_uncertain,
        (p.payment_report_id IS NOT NULL AND r.id IS NULL) AS report_link_uncertain,
        CASE p.Method WHEN 'cash' THEN 'cash' WHEN 'transfer' THEN 'transfer' WHEN 'void' THEN 'void'
             WHEN 'refund' THEN 'refund' WHEN 'transfer_in' THEN 'transfer_in' WHEN 'transfer_out' THEN 'transfer_out'
@@ -65,11 +67,9 @@ LEFT JOIN __SOURCE_SCHEMA__.payment_reports r ON r.id = p.payment_report_id AND 
 LEFT JOIN __SOURCE_SCHEMA__.payment_report_reassignments incoming ON incoming.to_report_id = r.id
        AND incoming.campus_id = i.campus_id AND incoming.to_student_id = i.student_id AND incoming.to_invoice_id = i.id
        AND p.id = r.payment_id AND p.Amount = incoming.amount AND p.Method IN ('cash', 'transfer')
-       AND p.Note LIKE CONCAT('[receipt_reassign:', incoming.id, ']%')
 LEFT JOIN __SOURCE_SCHEMA__.payment_report_reassignments outgoing ON outgoing.from_report_id = r.id
        AND outgoing.campus_id = i.campus_id AND outgoing.from_student_id = i.student_id AND outgoing.from_invoice_id = i.id
-       AND p.Amount < 0 AND ABS(p.Amount) = outgoing.amount AND p.Method = 'void'
-       AND p.Note LIKE CONCAT('[receipt_reassign:', outgoing.id, ']%');
+       AND p.Amount < 0 AND ABS(p.Amount) = outgoing.amount AND p.Method = 'void';
 
 CREATE SQL SECURITY DEFINER VIEW alltrue_diagnostics.daan_tuition_reports AS
 SELECT r.id, d.campus_id, s.id AS student_id, c.id AS contract_id, i.id AS invoice_id, p.id AS payment_id,
