@@ -263,7 +263,8 @@ const amountsLine = computed(() => {
     if (nothingTaught.value) return '';
     return noObligation.value || waived.value || props.lastPayment?.fullDiscount || props.course.free_gift_settled === true || props.course.full_discount_settled === true ? '' : '金額未填';
   }
-  return `本合約帳單 應收 ${money(a.due)}・已收 ${money(a.received)}・未繳 ${money(a.owed)}`;
+  const summary = `本合約帳單 應收 ${money(a.due)}・已收 ${money(a.received)}`;
+  return repeatsUnpaidAmount.value ? summary : `${summary}・未繳 ${money(a.owed)}`;
 });
 const shortDate = (d) => { const p = String(d).slice(5, 10).split('-'); return p.length === 2 ? `${Number(p[0])}/${Number(p[1])}` : ''; };
 // Same source as the printed receipt (confirmed receipts, then non-void invoice payments; never "fixed" here).
@@ -449,6 +450,9 @@ const legacyRef = ref(null);
 const nothingTaught = computed(() => isMonthly.value && state.value === 'ready' && sessions.value.length > 0 && heldCount.value === 0 && upcomingCount.value === 0
   && !(props.outstanding > 0) && !props.pendingReport && !props.billDraft && !props.lastPayment?.date
   && !(props.amounts?.due || props.amounts?.received || props.amounts?.owed));
+// An ordinary unpaid card already shows this exact amount in its expanded money row.
+const repeatsUnpaidAmount = computed(() => !props.pendingReport && !legacyUnverified.value && !noObligation.value && !waived.value
+  && !followerPointer.value && !nothingTaught.value && props.outstanding > 0 && props.amounts?.owed === props.outstanding);
 const canRecord = computed(() => !nothingTaught.value && !props.pendingReport && !followerPointer.value && !outsideDates.value.length && !legacyResolvable.value && !noObligation.value && !waived.value
   && (props.outstanding > 0 || (!props.course.paid && !fullyCollected.value)));
 // Same two places the card used to offer 開帳單: nothing owed on an unpaid bill-less term, or a collected term with a ready renewal draft.
@@ -463,7 +467,10 @@ const pill = computed(() => {
   if (waived.value) return { text: WAIVED_LABEL, cls: '' };
   if (followerPointer.value) return { text: '共用方案', cls: '' };
   if (legacyUnverified.value) return { text: props.outstanding > 0 ? `需核對 ${money(props.outstanding)}` : '需核對', cls: 'tone-warn' };
-  if (props.outstanding > 0) return { text: `${C.unpaid.label} ${money(props.outstanding)}`, cls: 'pay-unpaid' };
+  if (props.outstanding > 0) {
+    const text = open.value && repeatsUnpaidAmount.value ? C.unpaid.label : `${C.unpaid.label} ${money(props.outstanding)}`;
+    return { text, cls: 'pay-unpaid' };
+  }
   if (nothingTaught.value) return { text: '不用繳費', cls: '' };
   if (!props.course.paid && !fullyCollected.value) return { text: '還沒開帳單', cls: '' };
   return { text: C.paid.label, cls: 'pay-paid' };
