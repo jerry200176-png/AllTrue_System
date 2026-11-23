@@ -1862,9 +1862,12 @@ const gridTemplateStyle = computed(() => {
 
 const displayWeekFilteredCourses = computed(() => {
   if (displayWeek.value === 0) return courses.value;
+  // Legacy course patterns have five slots. A sixth calendar week uses the same
+  // filter as reaching it via the next-week arrow from week five.
+  const patternWeek = Math.min(displayWeek.value, 5);
   return courses.value.filter(c => {
     const wks = c.weeks || [1, 2, 3, 4, 5];
-    return wks.includes(displayWeek.value);
+    return wks.includes(patternWeek);
   });
 });
 
