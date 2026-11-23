@@ -913,6 +913,11 @@ test.describe('UI foundation — real Vue page evidence', () => {
       const riskDisclosure = page.locator('#director-workbench-panel-focus .director-risk-disclosure');
       const riskSummary = riskDisclosure.locator('summary');
       await expect(riskSummary).toContainText('查看為什麼這些工作排在前面');
+      if (vp.width === 390) {
+        const standardSize = await riskSummary.evaluate((el) => parseFloat(getComputedStyle(el).fontSize));
+        await page.getByRole('radio', { name: '大', exact: true }).click();
+        expect(await riskSummary.evaluate((el) => parseFloat(getComputedStyle(el).fontSize))).toBeGreaterThan(standardSize);
+      }
       expect(await riskSummary.evaluate((el) => el.getBoundingClientRect().height)).toBeGreaterThanOrEqual(44);
       await riskSummary.press('Enter');
       await expect(riskSummary).toBeFocused();
