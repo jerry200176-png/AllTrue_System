@@ -140,6 +140,38 @@ async function openPilot(page, { mode = 'normal', viewport, pageName = 'director
   await expect(page.locator('html')).toHaveAttribute('data-pilot-ready', '1');
 }
 
+for (const viewport of [VIEWPORTS[0], VIEWPORTS.at(-1)]) {
+  test(`director separates operational shortcuts from on-demand analysis @${viewport.name}`, async ({ page }) => {
+    const fillRateRequests = [];
+    page.on('request', (request) => {
+      const url = new URL(request.url());
+      if (url.pathname.endsWith('/teacher-learning-fill-rates')) fillRateRequests.push(url);
+    });
+    await openPilot(page, { viewport });
+    await page.getByRole('tab', { name: '完整營運', exact: true }).click();
+    const workspace = page.getByRole('tabpanel', { name: '完整營運', exact: true });
+    const workflows = workspace.locator('.director-secondary-tools');
+    const analysis = workspace.locator('.director-analysis');
+    await workflows.locator('summary').press('Enter');
+    for (const label of ['收款與核帳', '新增排課', '調課／代課']) {
+      await expect(workflows.getByText(label, { exact: true })).toBeVisible();
+    }
+    await expect(workflows.getByRole('region', { name: '老師評量完成率' })).toHaveCount(0);
+    expect(fillRateRequests).toHaveLength(0);
+    await expect(workspace.getByRole('heading', { name: '今日課表', exact: true })).toBeVisible();
+    await expect(workspace.getByRole('heading', { name: '繳費與續課', exact: true })).toBeVisible();
+
+    await analysis.locator('summary').press('Enter');
+    await expect(analysis.getByRole('region', { name: '老師評量完成率' })).toBeVisible();
+    await expect.poll(() => fillRateRequests.length).toBe(1);
+    expect(fillRateRequests[0].searchParams.get('branch_id')).toBe('1');
+    expect(await workspace.evaluate((el) => el.scrollWidth <= el.clientWidth + 1)).toBe(true);
+    await analysis.locator('summary').press('Space');
+    await expect(analysis.getByRole('region', { name: '老師評量完成率' })).toBeHidden();
+    await expect(workflows.getByText('收款與核帳', { exact: true })).toBeVisible();
+  });
+}
+
 for (const viewport of VIEWPORTS) {
   test(`director dashboard shell @${viewport.name}`, async ({ page }) => {
     const consoleErrors = [];
