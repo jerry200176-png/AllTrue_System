@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 
 const source = readFileSync(new URL('../pages/StudentsList.vue', import.meta.url), 'utf8');
 const dialogs = [
-  ['course-modal-title', 'showCourseModal && !!editingCourseId && studentsPageActive'],
+  ['course-modal-title', 'courseEditorOpen'],
   ['sessions-modal-title', 'showSessionsModal && studentsPageActive'],
   ['grade-promotion-modal-title', 'showGradePromotion && studentsPageActive'],
 ];
@@ -18,6 +18,7 @@ for (const [titleId, condition] of dialogs) {
 
 assert.match(source, /const studentEditorOpen = computed\(\(\) => showStudentModal\.value && studentsPageActive\.value\);/);
 assert.match(source, /<Dialog :open="studentEditorOpen"/);
+assert.match(source, /<DialogContent\s+v-if="courseEditorOpen"/);
 assert.match(source, /<DialogContent\s+v-if="studentEditorOpen"/);
 assert.match(source, /<DialogTitle[^>]*><span id="student-modal-title">/);
 

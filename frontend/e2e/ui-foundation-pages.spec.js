@@ -247,7 +247,7 @@ for (const viewport of [{ width: 375, height: 844 }, { width: 1280, height: 900 
   });
 }
 
-async function openPilot(page, { pageName, mode, viewport, authProfile = null }) {
+async function openPilot(page, { pageName, mode, viewport, authProfile = null, configure = null }) {
   await page.setViewportSize({ width: viewport.width, height: viewport.height });
   const mocks = await installApiMocks(page, mode, pageName, authProfile, authProfile?.onAuthRequest);
   if (authProfile?.initialActingAs) {
@@ -255,6 +255,7 @@ async function openPilot(page, { pageName, mode, viewport, authProfile = null })
       localStorage.setItem('alltrue_acting_as', actingAs);
     }, authProfile.initialActingAs);
   }
+  if (configure) await configure(page);
   await page.goto(`/pilot-mount.html?page=${pageName}&mode=${mode}`);
   await expect(page.locator('html')).toHaveAttribute('data-pilot-ready', '1', { timeout: 15_000 });
   return mocks;
@@ -762,6 +763,61 @@ test.describe('UI foundation — real Vue page evidence', () => {
       await expect(edit).toBeHidden();
     });
   }
+
+  test('course editor keeps its target open while saving and allows retry after rejection', async ({ page }) => {
+    await openPilot(page, {
+      pageName: 'students', mode: 'normal', viewport: { width: 375, height: 800 },
+      configure: (fixturePage) => fixturePage.route('**/api/v1/teachers?**', (route) =>
+        route.fulfill({ json: [{ id: 3000, username: '合成老師', branch_id: Number(new URL(route.request().url()).searchParams.get('branch_id')) }] })),
+    });
+    await page.getByTestId('student-row').first().press('Enter');
+    const entry = page.getByTestId('student-course-workspace');
+    await entry.locator('[data-testid="course-picker-item"][data-course-id="5001"] button').click();
+    await entry.locator('article.student-course-card[data-course-id="5001"]')
+      .getByRole('button', { name: '編輯課程', exact: true }).click();
+    const editor = page.getByRole('dialog', { name: '編輯課程', exact: true });
+    await editor.getByRole('combobox', { name: '老師', exact: true }).selectOption('3000');
+    const save = editor.getByRole('button', { name: /儲存/ });
+    const cancel = editor.getByRole('button', { name: '取消', exact: true });
+    await expect(save).toBeEnabled();
+    let release;
+    const hold = new Promise(resolve => { release = resolve; });
+    let puts = 0;
+    await page.route('**/api/v1/student-classes/5001', async route => {
+      if (route.request().method() !== 'PUT') return route.fallback();
+      puts += 1;
+      if (puts === 1) {
+        await hold;
+        return route.fulfill({ status: 409, json: { message: '課程已變更，請重新確認。' } });
+      }
+      return route.fulfill({ json: { ok: true } });
+    });
+    const firstSave = page.waitForRequest(
+      request => request.method() === 'PUT' && request.url().endsWith('/student-classes/5001'),
+      { timeout: 8000 },
+    );
+    try {
+      await save.click();
+      const request = await firstSave;
+      expect(request.postDataJSON()).not.toHaveProperty('paid_at');
+      expect(request.postDataJSON()).not.toHaveProperty('force_rebuild_if_mismatch');
+      await page.keyboard.press('Escape');
+      await expect(editor).toBeVisible();
+      await expect(save).toBeDisabled();
+      await expect(cancel).toBeDisabled();
+      await page.mouse.click(3, 3);
+      await expect(editor).toBeVisible();
+      await save.dispatchEvent('click');
+    } finally {
+      release();
+    }
+    await expect(editor.getByRole('alert').filter({ hasText: '課程已變更，請重新確認。' })).toBeVisible();
+    await expect(save).toBeEnabled();
+    expect(puts).toBe(1);
+    await save.click();
+    await expect(editor).toBeHidden();
+    expect(puts).toBe(2);
+  });
 
   test('student with only historical courses has a level-four course heading', async ({ page }) => {
     await openPilot(page, { pageName: 'students', mode: 'history-only', viewport: { width: 390, height: 844 } });

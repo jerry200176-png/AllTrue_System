@@ -757,13 +757,20 @@
     </Dialog>
 
     <!-- Edit Course Modal -->
-    <Dialog :open="showCourseModal && !!editingCourseId && studentsPageActive" @update:open="open => { if (!open) closeCourseModal(); }">
-      <DialogContent aria-modal="true" :class="STUDENT_TOOL_DIALOG" :show-close-button="false">
+    <Dialog :open="courseEditorOpen" @update:open="open => { if (!open) closeCourseModal(); }">
+      <DialogContent
+        v-if="courseEditorOpen"
+        aria-modal="true"
+        :class="STUDENT_TOOL_DIALOG"
+        :show-close-button="false"
+        @escape-key-down="guardCourseDismissal"
+        @interact-outside="guardCourseDismissal"
+      >
         <header :class="STUDENT_TOOL_HEADER">
           <DialogTitle class="tw:text-tpl-list"><span id="course-modal-title">編輯課程</span></DialogTitle>
           <DialogDescription class="tw:sr-only">編輯目前選取的課程設定。</DialogDescription>
         </header>
-        <div :class="STUDENT_TOOL_BODY">
+        <fieldset :class="[STUDENT_TOOL_BODY, 'tw:min-w-0']" :disabled="courseEditSaving">
           <CourseEditForm
             ref="editFormRef"
             v-model="courseForm"
@@ -783,10 +790,13 @@
           <div v-if="courseForm.payment_type === 'session'" class="tw:flex tw:justify-end">
             <button type="button" :class="rowAction.secondaryWrap" @click="goToCourseMgmtOps({ id: editingCourseId, student_id: courseForm.student_id }, selectedStudent?.name)">補課／補登請至課程管理 →</button>
           </div>
-        </div>
+        </fieldset>
+        <p v-if="courseEditError" role="alert" :class="[toneText.danger, 'tw:shrink-0 tw:px-4 tw:py-2 tw:sm:px-6']">{{ courseEditError }}</p>
         <DialogFooter :class="STUDENT_TOOL_FOOTER">
-          <Button type="button" variant="outline" :class="control.row" @click="closeCourseModal">取消</Button>
-          <Button type="button" :class="control.row" :disabled="editFormRef?.hasErrors" @click="submitCourse">儲存</Button>
+          <Button type="button" variant="outline" :class="control.row" :disabled="courseEditSaving" @click="closeCourseModal">取消</Button>
+          <Button type="button" :class="control.row" :disabled="courseEditSaving || editFormRef?.hasErrors" @click="submitCourse">
+            {{ courseEditSaving ? '儲存中…' : '儲存' }}
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
@@ -1248,6 +1258,9 @@ const guardianForm = ref({
 // Course modal
 const showCourseModal = ref(false);
 const editingCourseId = ref(null);
+const courseEditorOpen = computed(() => showCourseModal.value && Boolean(editingCourseId.value) && studentsPageActive.value);
+const courseEditSaving = ref(false);
+const courseEditError = ref('');
 const editingCourseFromLaravel = ref(false);
 const editingCourseRaw = ref(null);
 const editTeacherOptions = computed(() => buildEditTeacherOptions(teachers.value, editingCourseRaw.value));
@@ -2938,6 +2951,7 @@ const openAddCourse = async (student) => {
 };
 
 const proceedOpenAddCourse = (student) => {
+  if (courseEditSaving.value) return;
   showDuplicateInterceptModal.value = false;
   selectedStudent.value = student;
   editingCourseId.value = null;
@@ -3009,6 +3023,8 @@ const interceptGoToPurchase = (conflict) => {
 };
 
 const editCourse = (course) => {
+  if (courseEditSaving.value) return;
+  courseEditError.value = '';
   selectedStudent.value = students.value.find((s) => Number(s?.id) === Number(course?.student_id) || Number(s?._laravelId) === Number(course?.student_id));
   editingCourseId.value = course.id;
   editingCourseRaw.value = course;
@@ -3086,14 +3102,24 @@ const editContextTitle = computed(() => {
   return studentName ? `正在編輯：${subjectLabel} ／ ${studentName}` : `正在編輯：${subjectLabel}`;
 });
 
-const closeCourseModal = () => {
+const resetCourseModal = () => {
   showCourseModal.value = false;
   editingCourseId.value = null;
   editingCourseRaw.value = null;
   editingCourseFromLaravel.value = false;
+  courseEditError.value = '';
+};
+
+const closeCourseModal = () => {
+  if (!courseEditSaving.value) resetCourseModal();
+};
+
+const guardCourseDismissal = (event) => {
+  if (courseEditSaving.value) event.preventDefault();
 };
 
 const handleOpenBillingFromEdit = () => {
+  if (courseEditSaving.value) return;
   const course = editingCourseRaw.value;
   if (!course) return;
   if (courseFormSnapshot.value && JSON.stringify(courseForm.value) !== courseFormSnapshot.value) {
@@ -3191,12 +3217,19 @@ const courseScheduleFingerprint = (form) => {
   });
 };
 
-const submitCourse = async () => {
+const persistCourse = async () => {
   const form = courseForm.value;
   const student = selectedStudent.value;
+  if (!student) {
+    courseEditError.value = '找不到課程所屬學生。請關閉此視窗，再從學生清單開啟課程。';
+    return;
+  }
+  const courseId = editingCourseId.value;
+  const rawCourse = editingCourseRaw.value;
+  const originalSnapshot = courseFormSnapshot.value;
   const laravelStudentId = student._laravelId ?? student.id;
 
-  if (!editingCourseId.value) {
+  if (!courseId) {
     if (!form.first_class_date) {
       alert('請選擇開課日');
       return;
@@ -3270,11 +3303,11 @@ const submitCourse = async () => {
     try {
       const token = await getAccessToken();
       if (!token) {
-        alert('請重新登入後再試');
+        courseEditError.value = '請重新登入後再試。';
         return;
       }
-      const isPackageCourse = isPackageMember(editingCourseRaw.value);
-      const originalForm = courseFormSnapshot.value ? JSON.parse(courseFormSnapshot.value) : null;
+      const isPackageCourse = isPackageMember(rawCourse);
+      const originalForm = originalSnapshot ? JSON.parse(originalSnapshot) : null;
       const scheduleChanged = !originalForm || courseScheduleFingerprint(form) !== courseScheduleFingerprint(originalForm);
       const body = {
         subject: form.subject,
@@ -3311,7 +3344,7 @@ const submitCourse = async () => {
       if (String(form.paid_at || '') !== String(form.original_paid_at || '')) {
         body.paid_at = form.paid_at || null;
       }
-      const res = await authedFetch(`/api/v1/student-classes/${editingCourseId.value}`, {
+      const res = await authedFetch(`/api/v1/student-classes/${courseId}`, {
         method: 'PUT',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
@@ -3346,7 +3379,7 @@ const submitCourse = async () => {
         if (payload?.scope_warning) {
           successMsg += `\n\n⚠️ 學段提示：${payload.scope_warning}`;
         }
-        closeCourseModal();
+        if (editingCourseId.value === courseId) resetCourseModal();
         if (sync?.warning) {
           toastRef.value?.show?.({ title: '部分堂次未同步', description: sync.warning, variant: 'warning', durationMs: 8000 });
         } else {
@@ -3357,17 +3390,12 @@ const submitCourse = async () => {
         return;
       }
       const err = await res.json().catch(() => ({}));
-      toastRef.value?.show?.({ title: '儲存失敗', description: parseApiErrorMessage(err, '更新課程失敗'), variant: 'error', durationMs: 5000 });
+      courseEditError.value = parseApiErrorMessage(err, '更新課程失敗');
       return;
     } catch (error) {
       // A Laravel course must never silently fall through to the legacy
       // Supabase writer after a network or parsing failure.
-      toastRef.value?.show?.({
-        title: '儲存失敗',
-        description: error?.message || '連線失敗，請稍後再試。',
-        variant: 'error',
-        durationMs: 5000,
-      });
+      courseEditError.value = error?.message || '連線失敗，請稍後再試。';
       return;
     }
   }
@@ -3390,14 +3418,25 @@ const submitCourse = async () => {
   const { error } = await supabase
     .from('student-classes')
     .update(base)
-    .eq('id', editingCourseId.value);
+    .eq('id', courseId);
   if (error) {
-    alert('更新課程失敗：' + (error?.message || '請稍後再試'));
+    courseEditError.value = '更新課程失敗：' + (error?.message || '請稍後再試');
     return;
   }
-  closeCourseModal();
+  if (editingCourseId.value === courseId) resetCourseModal();
   alert('課程已更新。');
   await loadAllStudentCourses();
+};
+
+const submitCourse = async () => {
+  if (!courseEditorOpen.value || courseEditSaving.value || editFormRef.value?.hasErrors) return;
+  courseEditError.value = '';
+  courseEditSaving.value = true;
+  try {
+    await persistCourse();
+  } finally {
+    courseEditSaving.value = false;
+  }
 };
 
 const deleteCourse = async (course) => {
