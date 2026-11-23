@@ -247,7 +247,7 @@ for (const viewport of [{ width: 375, height: 844 }, { width: 1280, height: 900 
   });
 }
 
-async function openPilot(page, { pageName, mode, viewport, authProfile = null }) {
+async function openPilot(page, { pageName, mode, viewport, authProfile = null, configure = null }) {
   await page.setViewportSize({ width: viewport.width, height: viewport.height });
   const mocks = await installApiMocks(page, mode, pageName, authProfile, authProfile?.onAuthRequest);
   if (authProfile?.initialActingAs) {
@@ -255,6 +255,7 @@ async function openPilot(page, { pageName, mode, viewport, authProfile = null })
       localStorage.setItem('alltrue_acting_as', actingAs);
     }, authProfile.initialActingAs);
   }
+  if (configure) await configure(page);
   await page.goto(`/pilot-mount.html?page=${pageName}&mode=${mode}`);
   await expect(page.locator('html')).toHaveAttribute('data-pilot-ready', '1', { timeout: 15_000 });
   return mocks;
@@ -626,6 +627,54 @@ test.describe('UI foundation — real Vue page evidence', () => {
     await expect(menu).toBeFocused();
   });
 
+  test('student management grade promotion keeps cohort locks and server errors in the dialog', async ({ page }) => {
+    await openPilot(page, { pageName: 'students', mode: 'normal', viewport: { width: 375, height: 700 } });
+    await page.route('**/api/v1/grade-promotions/preview?*', route => route.fulfill({ json: {
+      admin_date: '2026-08-01',
+      season_year: 2026,
+      data: [
+        { student_id: 1, name: '合成學生甲', from_grade: 'J1', to_grade: 'J2', actionable: true },
+        { student_id: 2, name: '合成學生乙', from_grade: 'J2', to_grade: 'J3', actionable: true },
+        { student_id: 3, name: '合成學生丙', from_grade: 'H3', graduated: true, already_promoted: true },
+      ],
+    } }));
+    let release;
+    const beforeResponse = new Promise(resolve => { release = resolve; });
+    await page.route('**/api/v1/grade-promotions/confirm', async route => {
+      await beforeResponse;
+      await route.fulfill({ status: 409, json: { message: '預覽資料已變動，請重新查詢。' } });
+    });
+    await page.getByRole('button', { name: '年級升級', exact: true }).click();
+    const modal = page.getByRole('dialog', { name: '年級升級' });
+    const first = modal.getByRole('checkbox', { name: '選取 合成學生甲' });
+    const second = modal.getByRole('checkbox', { name: '選取 合成學生乙' });
+    await expect(first).toBeChecked();
+    await expect(second).toBeChecked();
+    await expect(modal.getByRole('row', { name: /合成學生丙/ })).toContainText('本季已升級');
+    await expect(modal.getByRole('row', { name: /合成學生丙/ }).getByRole('checkbox')).toHaveCount(0);
+    await modal.getByRole('group', { name: '只升級這些年級' }).getByRole('button').first().click();
+    await expect(second).toBeDisabled();
+    await expect(second).not.toBeChecked();
+    await first.click();
+    await expect(modal.getByRole('button', { name: '確認升級（0）' })).toBeDisabled();
+    await first.click();
+
+    page.once('dialog', async confirm => { await confirm.accept(); });
+    const posted = page.waitForRequest(request => request.url().endsWith('/grade-promotions/confirm') && request.method() === 'POST');
+    try {
+      await modal.getByRole('button', { name: '確認升級（1）' }).click();
+      expect((await posted).postDataJSON()).toMatchObject({ only_grades: ['J1'], exclude_student_ids: [] });
+      await expect(modal.getByRole('button', { name: '取消', exact: true })).toBeDisabled();
+      await page.keyboard.press('Escape');
+      await expect(modal).toBeVisible();
+    } finally {
+      release();
+    }
+    await expect(modal.getByRole('alert')).toHaveText('預覽資料已變動，請重新查詢。');
+    await modal.getByRole('button', { name: '取消', exact: true }).click();
+    await expect(modal).toBeHidden();
+  });
+
   for (const vp of [
     { name: '375', width: 375, height: 800 },
     { name: '768', width: 768, height: 1024 },
@@ -705,8 +754,70 @@ test.describe('UI foundation — real Vue page evidence', () => {
       await historyToggle.press('Space');
       await expect(historyToggle).toHaveAttribute('aria-expanded', 'false');
       await expect(historyPanel.locator('.sl-history-body')).toBeHidden();
+
+      await workspace.locator('article.student-course-card[data-course-id="5001"]').getByRole('button', { name: '編輯課程', exact: true }).click();
+      const edit = page.getByRole('dialog', { name: '編輯課程', exact: true });
+      await expect(edit).toBeVisible();
+      await expect(edit.getByRole('button', { name: /補課／補登請至課程管理/ })).toBeVisible();
+      await page.keyboard.press('Escape');
+      await expect(edit).toBeHidden();
     });
   }
+
+  test('course editor keeps its target open while saving and allows retry after rejection', async ({ page }) => {
+    await openPilot(page, {
+      pageName: 'students', mode: 'normal', viewport: { width: 375, height: 800 },
+      configure: (fixturePage) => fixturePage.route('**/api/v1/teachers?**', (route) =>
+        route.fulfill({ json: [{ id: 3000, username: '合成老師', branch_id: Number(new URL(route.request().url()).searchParams.get('branch_id')) }] })),
+    });
+    await page.getByTestId('student-row').first().press('Enter');
+    const entry = page.getByTestId('student-course-workspace');
+    await entry.locator('[data-testid="course-picker-item"][data-course-id="5001"] button').click();
+    await entry.locator('article.student-course-card[data-course-id="5001"]')
+      .getByRole('button', { name: '編輯課程', exact: true }).click();
+    const editor = page.getByRole('dialog', { name: '編輯課程', exact: true });
+    await editor.getByRole('combobox', { name: '老師', exact: true }).selectOption('3000');
+    const save = editor.getByRole('button', { name: /儲存/ });
+    const cancel = editor.getByRole('button', { name: '取消', exact: true });
+    await expect(save).toBeEnabled();
+    let release;
+    const hold = new Promise(resolve => { release = resolve; });
+    let puts = 0;
+    await page.route('**/api/v1/student-classes/5001', async route => {
+      if (route.request().method() !== 'PUT') return route.fallback();
+      puts += 1;
+      if (puts === 1) {
+        await hold;
+        return route.fulfill({ status: 409, json: { message: '課程已變更，請重新確認。' } });
+      }
+      return route.fulfill({ json: { ok: true } });
+    });
+    const firstSave = page.waitForRequest(
+      request => request.method() === 'PUT' && request.url().endsWith('/student-classes/5001'),
+      { timeout: 8000 },
+    );
+    try {
+      await save.click();
+      const request = await firstSave;
+      expect(request.postDataJSON()).not.toHaveProperty('paid_at');
+      expect(request.postDataJSON()).not.toHaveProperty('force_rebuild_if_mismatch');
+      await page.keyboard.press('Escape');
+      await expect(editor).toBeVisible();
+      await expect(save).toBeDisabled();
+      await expect(cancel).toBeDisabled();
+      await page.mouse.click(3, 3);
+      await expect(editor).toBeVisible();
+      await save.dispatchEvent('click');
+    } finally {
+      release();
+    }
+    await expect(editor.getByRole('alert').filter({ hasText: '課程已變更，請重新確認。' })).toBeVisible();
+    await expect(save).toBeEnabled();
+    expect(puts).toBe(1);
+    await save.click();
+    await expect(editor).toBeHidden();
+    expect(puts).toBe(2);
+  });
 
   test('student with only historical courses has a level-four course heading', async ({ page }) => {
     await openPilot(page, { pageName: 'students', mode: 'history-only', viewport: { width: 390, height: 844 } });
