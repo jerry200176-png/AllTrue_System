@@ -506,7 +506,7 @@
                     <div v-if="expandedHistoryCourses.has(student.id)" class="sl-history-body tw:divide-y tw:divide-border">
                       <article v-for="hc in getHistoryStudentCourses(student.id)" :key="hc.id" class="sl-history-card tw:min-w-0 tw:px-1 tw:py-4 tw:sm:px-4">
                         <div class="tw:mb-3 tw:flex tw:flex-wrap tw:items-center tw:gap-x-3 tw:gap-y-1.5">
-                          <h5 class="tw:m-0 tw:text-tpl-list tw:font-semibold tw:text-foreground tw:wrap-anywhere">{{ getStudentCourseSubjectDisplayLabel(hc) }}</h5>
+                          <h4 class="tw:m-0 tw:text-tpl-list tw:font-semibold tw:text-foreground tw:wrap-anywhere">{{ getStudentCourseSubjectDisplayLabel(hc) }}</h4>
                           <span :class="dataTable.sub">{{ classTypeLabel(hc.class_type) }}</span>
                           <StatusBadge v-if="isPackageMember(hc)" tone="neutral" :title="hc.PackageName || '多科方案'">方案</StatusBadge>
                           <StatusBadge v-if="effectiveClosedReason(hc) === 'settled_pending' && closedPaymentState(hc) === 'pending'" tone="danger">{{ ENDED_PENDING_LABEL }}</StatusBadge>

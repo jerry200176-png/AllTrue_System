@@ -604,6 +604,16 @@ test.describe('UI foundation — real Vue page evidence', () => {
     });
   }
 
+  test('student with only historical courses has a level-four course heading', async ({ page }) => {
+    await openPilot(page, { pageName: 'students', mode: 'history-only', viewport: { width: 390, height: 844 } });
+    await page.getByTestId('student-row').first().press('Enter');
+    const courseDetails = page.locator('tr.course-detail-row').first();
+    await expect(courseDetails.getByText('目前沒有進行中的課程')).toBeVisible();
+    await courseDetails.getByRole('button', { name: '歷史課程 1 筆' }).press('Enter');
+    const history = courseDetails.locator('.sl-history-card');
+    await expect(history.getByRole('heading', { level: 4 })).toBeVisible();
+  });
+
   test('student active and history dates distinguish load failure from real empty data', async ({ page, context }) => {
     const openStudentWorkspace = async (targetPage, mode) => {
       await openPilot(targetPage, { pageName: 'students', mode, viewport: { width: 1440, height: 900 } });
