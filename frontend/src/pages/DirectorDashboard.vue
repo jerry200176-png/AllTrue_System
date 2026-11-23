@@ -120,6 +120,23 @@
                 </button>
               </li>
             </ol>
+
+            <details v-if="!dashboardLoading && dashboardTopRisks.length" class="director-risk-disclosure tw:mt-2 tw:border-y tw:border-border">
+              <summary>
+                <span>查看為什麼這些工作排在前面</span>
+                <strong>{{ dashboardTopRisks.length }} 項高優先</strong>
+              </summary>
+              <section class="director-top-risks" aria-labelledby="director-top-risks-title">
+                <h3 id="director-top-risks-title">排序依據</h3>
+                <ol>
+                  <li v-for="risk in dashboardTopRisks" :key="`risk-${risk.id}`" :class="`director-top-risks__item director-top-risks__item--${risk.severity}`">
+                    <strong>{{ risk.title }}</strong>
+                    <span>{{ risk.summary }}</span>
+                  </li>
+                </ol>
+              </section>
+            </details>
+
             <button
               v-if="dashboardAdditionalTaskCount"
               type="button"
@@ -183,22 +200,6 @@
             <div><h2 id="director-full-title">完整營運</h2><p>需要查完整課表、案件、帳務與分析時，再從這裡展開。</p></div>
             <span v-if="secondaryLoading" class="director-workbench-v2__updated" role="status">載入營運資料中…</span>
           </header>
-
-          <details v-if="!dashboardLoading && dashboardTopRisks.length" class="director-risk-disclosure">
-            <summary>
-              <span>查看為什麼這些工作排在前面</span>
-              <strong>{{ dashboardTopRisks.length }} 項高優先</strong>
-            </summary>
-            <section class="director-top-risks" aria-labelledby="director-top-risks-title">
-              <h3 id="director-top-risks-title">排序依據</h3>
-              <ol>
-                <li v-for="risk in dashboardTopRisks" :key="`risk-${risk.id}`" :class="`director-top-risks__item director-top-risks__item--${risk.severity}`">
-                  <strong>{{ risk.title }}</strong>
-                  <span>{{ risk.summary }}</span>
-                </li>
-              </ol>
-            </section>
-          </details>
 
           <details class="director-secondary-tools" @toggle="secondaryToolsOpen = $event.currentTarget.open">
             <summary>
@@ -3129,12 +3130,11 @@ onBeforeUnmount(() => {
 .director-state--compact { display: flex; align-items: center; gap: 9px; min-height: 52px; padding: 18px 22px; }
 .director-state--error strong, .director-inline-error { color: var(--ds-danger); }
 .director-inline-error { margin: 0 22px 16px; padding: 10px 12px; border: 1px solid color-mix(in srgb, var(--ds-danger) 35%, var(--ds-hairline)); border-radius: 6px; background: var(--ds-danger-wash); font-size: 12px; }
-.director-risk-disclosure { margin: 0 22px 10px; border-top: 1px solid var(--ds-hairline); border-bottom: 1px solid var(--ds-hairline); }
-.director-risk-disclosure summary { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 42px; color: var(--ds-ink-secondary); font-size: 11px; font-weight: 800; cursor: pointer; list-style: none; }
+.director-risk-disclosure summary { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 44px; color: var(--ds-ink-secondary); font-size: var(--tpl-text-caption); font-weight: 800; cursor: pointer; list-style: none; }
 .director-risk-disclosure summary::-webkit-details-marker { display: none; }
 .director-risk-disclosure summary::after { content: '＋'; color: var(--ds-ink-mute); font-size: 15px; }
 .director-risk-disclosure[open] summary::after { content: '−'; }
-.director-risk-disclosure summary strong { color: var(--ds-warning); font-size: 11px; font-weight: 800; }
+.director-risk-disclosure summary strong { color: var(--ds-warning); font-weight: 800; }
 .director-risk-disclosure summary:focus-visible,
 .director-secondary-tools summary:focus-visible { outline: 3px solid var(--ds-info-wash); outline-offset: 2px; border-radius: 4px; }
 .text-action { display: inline-flex; align-items: center; min-height: 32px; padding: 4px 0; border: 0; border-bottom: 1px solid transparent; background: transparent; color: var(--ds-cta); font-size: 12px; font-weight: 800; }
@@ -3266,7 +3266,6 @@ onBeforeUnmount(() => {
 @media (max-width: 680px) {
   .director-workbench-v2 { padding: 0 0 44px; }
   .director-workbench-v2__focus, .director-workbench-v2__full { padding-top: 16px; }
-  .director-risk-disclosure { margin-inline: 16px; }
   .director-workbench-v2__aside { grid-template-columns: 1fr; gap: 12px; }
   .surface-panel__header { padding: 17px 16px 14px; }
   .director-task-list, .director-schedule-list, .director-evaluation-list, .director-payment-list, .director-notification-list, .director-other-work-list { padding-inline: 16px; }

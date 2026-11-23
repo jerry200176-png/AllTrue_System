@@ -910,13 +910,26 @@ test.describe('UI foundation — real Vue page evidence', () => {
       await expect(ctas.first()).toBeVisible();
       fs.mkdirSync(outDir, { recursive: true });
       await page.locator('.director-workbench-v2').screenshot({ path: path.join(outDir, `vue-director-v2-urgent-focus-${vp.name}.png`) });
+      const riskDisclosure = page.locator('#director-workbench-panel-focus .director-risk-disclosure');
+      const riskSummary = riskDisclosure.locator('summary');
+      await expect(riskSummary).toContainText('查看為什麼這些工作排在前面');
+      if (vp.width === 390) {
+        const standardSize = await riskSummary.evaluate((el) => parseFloat(getComputedStyle(el).fontSize));
+        await page.getByRole('radio', { name: '大', exact: true }).click();
+        expect(await riskSummary.evaluate((el) => parseFloat(getComputedStyle(el).fontSize))).toBeGreaterThan(standardSize);
+      }
+      expect(await riskSummary.evaluate((el) => el.getBoundingClientRect().height)).toBeGreaterThanOrEqual(44);
+      await riskSummary.press('Enter');
+      await expect(riskSummary).toBeFocused();
+      await expect(riskDisclosure.locator('.director-top-risks').getByText('家長請假待主任處理', { exact: true })).toBeVisible();
+      expect(await riskDisclosure.evaluate((el) => el.scrollWidth <= el.clientWidth + 1)).toBe(true);
+      await riskDisclosure.screenshot({ path: path.join(outDir, `vue-director-priority-open-${vp.name}.png`) });
+      await riskSummary.press('Space');
+      await expect(riskDisclosure.locator('.director-top-risks')).toBeHidden();
       const leaveTask = page.getByRole('button', { name: /家長請假/ });
       await leaveTask.click();
       await expect(page.getByText('家長請假', { exact: true })).toBeVisible();
-      const riskDisclosure = page.locator('.director-risk-disclosure');
-      await expect(riskDisclosure.getByText('查看為什麼這些工作排在前面', { exact: true })).toBeVisible();
-      await riskDisclosure.locator('summary').click();
-      await expect(riskDisclosure.locator('.director-top-risks').getByText('家長請假待主任處理', { exact: true })).toBeVisible();
+      await expect(page.locator('#director-workbench-panel-full .director-risk-disclosure')).toHaveCount(0);
       await expect(page.getByRole('button', { name: '尋找補課時段', exact: true })).toBeVisible();
       await page.locator('.director-workbench-v2').screenshot({ path: path.join(outDir, `vue-director-v2-urgent-${vp.name}.png`) });
     });
