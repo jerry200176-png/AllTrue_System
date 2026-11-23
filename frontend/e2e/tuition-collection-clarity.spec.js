@@ -203,7 +203,7 @@ for (const width of [375, 1280]) for (const [size, theme] of [['standard', 'ligh
     const secondReceiptRow = ledger.getByTestId('ledger-receipt-view-802').locator('..');
     await expect(repeated).toBeVisible();
     await expect(repeated).toContainText('合成收據803');
-    await expect(repeated).toHaveAccessibleName(/合成收據803/);
+    await expect(repeated).toHaveAccessibleName('查看對應帳單 · 合成收據803');
     await repeated.press('Enter');
     await expect(ledger.getByTestId('ledger-invoice-toggle-503')).toBeFocused();
     await expect(matchingReceiptRow).not.toContainText('NT$ 700');

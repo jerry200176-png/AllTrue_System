@@ -118,7 +118,7 @@ describe('#4148 bill-linked receipt lookup', () => {
       for (const [reportId, invoiceId] of [[801, 501], [802, 502]]) {
         const compact = w.get(`[data-testid="ledger-receipt-repeated-${reportId}"]`);
         expect(compact.text()).toContain(`R-${reportId}`);
-        expect(compact.attributes('aria-label')).toContain(`R-${reportId}`);
+        expect(compact.attributes('aria-label')).toBeUndefined();
         await compact.trigger('click');
         expect(document.activeElement).toBe(w.get(`[data-testid="ledger-invoice-toggle-${invoiceId}"]`).element);
       }

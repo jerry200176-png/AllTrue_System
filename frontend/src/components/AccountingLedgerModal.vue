@@ -308,7 +308,6 @@
                   type="button"
                   class="ledger-more"
                   :data-testid="`ledger-receipt-repeated-${r.report_id}`"
-                  :aria-label="`查看對應帳單，收據 ${repeatedReceiptFacts.get(Number(r.report_id)).receiptNo}`"
                   @click="focusInvoiceToggle(repeatedReceiptFacts.get(Number(r.report_id)).invoiceId)"
                 >查看對應帳單 · {{ repeatedReceiptFacts.get(Number(r.report_id)).receiptNo }}</button>
                 <template v-else>
