@@ -1,0 +1,14 @@
+updates:
+  - id: staff-2026-11-23-calendar-sixth-week
+    published_at: "2026-11-23"
+    audiences:
+      - director
+      - teacher
+    importance: digest
+    title: 課表可直接跳到月底日期
+    summary: 修正選擇月底日期時，課表停留在上一週的問題。
+    items:
+      - category: fixed
+        text: 可用上方日期欄直接選日，也可用「後一天」跨週。
+    source_refs:
+      - "changelog:2026-11-23:calendar-sixth-week"

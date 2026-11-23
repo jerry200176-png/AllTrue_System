@@ -69,7 +69,7 @@ test('getMondayOfMonthWeek：閏月 2024-02 第1週 → 2024-01-29', () => {
   assert.equal(getMondayOfMonthWeek(2024, 2, 1), '2024-01-29');
 });
 
-// ── getWeekNumberOfDate（星期日 / 跨年首日 / 閏日 / clamp 上限）────
+// ── getWeekNumberOfDate（星期日 / 跨年首日 / 閏日 / 六週月份）────
 test('getWeekNumberOfDate：星期日 2025-06-01 歸入其週一所在週（=1）', () => {
   // 週日 dow=0 → toMonday=-6，應與同週週一同屬第1週，不可溢位成第0或第6週
   assert.equal(getWeekNumberOfDate('2025-06-01'), 1);
@@ -77,11 +77,19 @@ test('getWeekNumberOfDate：星期日 2025-06-01 歸入其週一所在週（=1�
 test('getWeekNumberOfDate：跨年首日 2026-01-01 → 第1週', () => {
   assert.equal(getWeekNumberOfDate('2026-01-01'), 1);
 });
-test('getWeekNumberOfDate：閏日 2024-02-29 → clamp 至第5週', () => {
+test('getWeekNumberOfDate：閏日 2024-02-29 → 第5週', () => {
   assert.equal(getWeekNumberOfDate('2024-02-29'), 5);
 });
-test('getWeekNumberOfDate：月底 2025-05-31 → clamp 至第5週（上限保護）', () => {
+test('getWeekNumberOfDate：月底 2025-05-31 → 第5週', () => {
   assert.equal(getWeekNumberOfDate('2025-05-31'), 5);
+});
+
+test('getWeekNumberOfDate: 11/30 and 8/31 can be in the sixth calendar week', () => {
+  for (const [ymd, year, month] of [['2026-11-30', 2026, 11], ['2026-08-31', 2026, 8]]) {
+    const week = getWeekNumberOfDate(ymd);
+    assert.equal(week, 6, ymd);
+    assert.equal(getMondayOfMonthWeek(year, month, week), ymd);
+  }
 });
 
 // ── getNextWeekdayYmd（與「今天」相關 → 測不變量，非固定值）────────
