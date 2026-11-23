@@ -301,10 +301,19 @@
               <template v-for="r in shownReceipts" :key="r.report_id">
               <p v-if="r.report_id === firstForeignReceiptId" class="ledger-muted ledger-receipts__other" data-testid="ledger-foreign-receipts">其他課程的收款（不算在這門課）</p>
               <div class="ledger-receipt">
-                <strong>{{ formatCurrency(r.amount) }}</strong>
+                <strong v-if="!repeatedReceiptFacts.has(Number(r.report_id))">{{ formatCurrency(r.amount) }}</strong>
                 <small class="ledger-receipt__course" :data-testid="`ledger-receipt-course-${r.report_id}`">{{ receiptCourseLabel(r) }}</small>
-                <span>{{ r.payment_date ? fmtDate(r.payment_date) : '未記錄日期' }}</span>
-                <span>{{ paymentMethodLabel(r.payment_method) }}</span>
+                <button
+                  v-if="repeatedReceiptFacts.has(Number(r.report_id))"
+                  type="button"
+                  class="ledger-more"
+                  :data-testid="`ledger-receipt-repeated-${r.report_id}`"
+                  @click="focusInvoiceToggle(repeatedReceiptFacts.get(Number(r.report_id)).invoiceId)"
+                >查看對應帳單 · {{ repeatedReceiptFacts.get(Number(r.report_id)).receiptNo }}</button>
+                <template v-else>
+                  <span>{{ r.payment_date ? fmtDate(r.payment_date) : '未記錄日期' }}</span>
+                  <span>{{ paymentMethodLabel(r.payment_method) }}</span>
+                </template>
                 <span :class="['ledger-chip', reportStatusClass(r.status)]">{{ reportStatusLabel(r.status) }}</span>
                 <small>{{ formatLedgerReceiptBillLine(r) }}</small>
                 <!-- in-app #425: same 查看收據 as the 帳務中心 收款紀錄 tab, on every confirmed row. -->
@@ -800,8 +809,12 @@ async function showInvoiceDocuments(courseId) {
   if (!invoice) return;
   fold.inv = true;
   if (!isExpanded(invoice.id)) toggleExpand(invoice.id);
+  await focusInvoiceToggle(invoice.id);
+}
+
+async function focusInvoiceToggle(invoiceId) {
   await nextTick();
-  const rowToggle = modalEl.value?.querySelector(`[data-testid="ledger-invoice-toggle-${Number(invoice.id)}"]`);
+  const rowToggle = modalEl.value?.querySelector(`[data-testid="ledger-invoice-toggle-${Number(invoiceId)}"]`);
   rowToggle?.focus({ preventScroll: true });
   rowToggle?.scrollIntoView?.({ block: 'nearest' });
 }
@@ -934,6 +947,59 @@ const shownReceipts = computed(() => {
   return [...list.filter((r) => !isForeignReceipt(r)), ...list.filter(isForeignReceipt)];
 });
 const firstForeignReceiptId = computed(() => shownReceipts.value.find(isForeignReceipt)?.report_id ?? null);
+
+// Suppress facts only for one unambiguous receipt whose details are already visible.
+// Count all claimants, including records the current receipt filter hides.
+const repeatedReceiptFacts = computed(() => {
+  const repeated = new Map();
+  if (!fold.inv || !canManageInvoices()) return repeated;
+
+  const expanded = new Set(displayedInvoices.value
+    .filter(inv => inv.status !== 'void' && (documentsView.value || isExpanded(inv.id)))
+    .map(inv => Number(inv.id)));
+  if (!expanded.size) return repeated;
+
+  const receiptCountsByInvoice = new Map();
+  const receiptCountsByPayment = new Map();
+  for (const receipt of payload.value?.receipts || []) {
+    const invoiceId = Number(receipt.invoice_id);
+    const paymentId = Number(receipt.payment_id);
+    receiptCountsByInvoice.set(invoiceId, (receiptCountsByInvoice.get(invoiceId) || 0) + 1);
+    receiptCountsByPayment.set(paymentId, (receiptCountsByPayment.get(paymentId) || 0) + 1);
+  }
+
+  const byReport = new Map();
+  const paymentCountsByReceiptNo = new Map();
+  for (const invoice of displayedInvoices.value) {
+    for (const payment of invoice.payments || []) {
+      const receiptNo = String(payment.receipt_no ?? '').trim();
+      if (receiptNo) paymentCountsByReceiptNo.set(receiptNo, (paymentCountsByReceiptNo.get(receiptNo) || 0) + 1);
+      const reportId = Number(payment.report_id);
+      if (!Number.isSafeInteger(reportId) || reportId <= 0) continue;
+      byReport.set(reportId, byReport.has(reportId) ? null : { invoice, payment });
+    }
+  }
+  for (const receipt of shownReceipts.value) {
+    if (receipt.status !== 'confirmed' || !isMainReceipt(receipt) || receipt.history_read_only || isForeignReceipt(receipt)) continue;
+    const reportId = Number(receipt.report_id);
+    const linked = byReport.get(reportId);
+    if (!linked) continue;
+
+    const invoiceId = Number(linked.invoice.id);
+    const payment = linked.payment;
+    const paymentId = Number(receipt.payment_id);
+    const receiptNo = String(payment.receipt_no ?? '').trim();
+    if (!receiptNo || paymentCountsByReceiptNo.get(receiptNo) !== 1) continue;
+    if (expanded.has(invoiceId) && invoiceId === Number(receipt.invoice_id) && receiptCountsByInvoice.get(invoiceId) === 1
+      && Number.isSafeInteger(paymentId) && paymentId > 0 && paymentId === Number(payment.id) && receiptCountsByPayment.get(paymentId) === 1
+      && paymentHasReceipt(payment) && Number.isFinite(Number(receipt.amount)) && Number(receipt.amount) === Number(payment.amount)
+      && receipt.payment_date && payment.paid_at && fmtDate(receipt.payment_date) === fmtDate(payment.paid_at)
+      && receipt.payment_method && receipt.payment_method === payment.method) {
+      repeated.set(reportId, { invoiceId, receiptNo });
+    }
+  }
+  return repeated;
+});
 // Which course a receipt belongs to: subject plus the contract's start date (display only).
 function receiptCourseLabel(r) {
   const c = (payload.value?.courses || []).find((x) => Number(x.id) === Number(r.student_class_id));
