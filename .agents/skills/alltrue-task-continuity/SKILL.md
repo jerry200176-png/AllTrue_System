@@ -44,7 +44,8 @@ the existing work; do not replace the goal with the latest investigation.
    Continue independent work from a dated snapshot and mark its limits. Before
    cleanup, check active dependencies and save outstanding work, exclusions and
    next action in the existing checkpoint; follow session disposal policy.
-   If personal login is essential, verify the actual handoff surface first.
+   If personal login is essential, inspect the actual handoff surface for a usable sign-in control or documented
+   authentication redirect. HTTP 200 or a placeholder alone proves only reachability.
    Report completed work, the evidenced gap, the recommended action, the one
    step the user must take and how the original task resumes. Keep passwords
    and tokens out of chat. For authorized writes, compare before/after and read
