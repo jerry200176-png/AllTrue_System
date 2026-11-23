@@ -169,6 +169,14 @@ for (const viewport of [VIEWPORTS[0], VIEWPORTS.at(-1)]) {
     await analysis.locator('summary').press('Space');
     await expect(analysis.getByRole('region', { name: '老師評量完成率' })).toBeHidden();
     await expect(workflows.getByText('收款與核帳', { exact: true })).toBeVisible();
+
+    await analysis.locator('summary').press('Enter');
+    await expect.poll(() => fillRateRequests.length).toBe(2);
+    await page.getByRole('tab', { name: '今天', exact: true }).click();
+    await page.getByRole('tab', { name: '完整營運', exact: true }).click();
+    await expect(analysis).toHaveJSProperty('open', false);
+    await expect(analysis.getByRole('region', { name: '老師評量完成率' })).toHaveCount(0);
+    expect(fillRateRequests).toHaveLength(2);
   });
 }
 

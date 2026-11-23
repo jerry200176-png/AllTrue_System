@@ -513,7 +513,12 @@ const dashboardViewMode = ref('focus');
 
 function setDashboardViewMode(mode) {
   dashboardViewMode.value = mode === 'full' ? 'full' : 'focus';
-  if (dashboardViewMode.value === 'full' && !secondaryLoaded.value) loadSecondaryData();
+  if (dashboardViewMode.value === 'focus') {
+    secondaryToolsOpen.value = false;
+    analysisOpen.value = false;
+  } else if (!secondaryLoaded.value) {
+    loadSecondaryData();
+  }
 }
 
 // Pending-work counts that feed the to-do list (these pages have no sidebar row).
