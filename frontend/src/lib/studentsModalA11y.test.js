@@ -13,7 +13,9 @@ for (const [titleId, condition] of dialogs) {
   assert.match(source, new RegExp(`<h3 id="${titleId}"`));
 }
 
-assert.match(source, /<Dialog :open="showStudentModal && studentsPageActive"/);
+assert.match(source, /const studentEditorOpen = computed\(\(\) => showStudentModal\.value && studentsPageActive\.value\);/);
+assert.match(source, /<Dialog :open="studentEditorOpen"/);
+assert.match(source, /<DialogContent\s+v-if="studentEditorOpen"/);
 assert.match(source, /<DialogTitle[^>]*><span id="student-modal-title">/);
 
 // Identity dialog moved to its own component (#4659); the page must still mount it.

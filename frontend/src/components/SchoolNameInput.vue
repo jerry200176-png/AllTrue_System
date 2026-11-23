@@ -10,6 +10,7 @@
       :aria-expanded="suggestionsVisible ? 'true' : 'false'"
       aria-autocomplete="list"
       :aria-controls="suggestionsVisible ? listId : undefined"
+      :aria-activedescendant="suggestionsVisible && suggestions[highlight] ? optionId(highlight) : undefined"
       role="combobox"
       @input="onInput"
       @focus="onFocus"
@@ -20,12 +21,14 @@
     <ul
       v-if="suggestionsVisible"
       :id="listId"
+      ref="suggestionList"
       class="school-name-suggestions"
       role="listbox"
     >
       <li
         v-for="(item, idx) in suggestions"
         :key="item.id"
+        :id="optionId(idx)"
         role="option"
         :aria-selected="idx === highlight ? 'true' : 'false'"
         :class="{ active: idx === highlight }"
@@ -42,7 +45,7 @@
 </template>
 
 <script setup>
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { trackedFetch } from '../lib/loadingBar';
 
 const props = defineProps({
@@ -59,6 +62,7 @@ const text = ref(props.modelValue || '');
 const suggestions = ref([]);
 const open = ref(false);
 const highlight = ref(-1);
+const suggestionList = ref(null);
 const listId = `${props.inputId}-list`;
 let timer = null;
 let seq = 0;
@@ -76,6 +80,7 @@ watch(text, (v) => {
 
 const showCustomHint = computed(() => text.value.trim().length >= 1);
 const suggestionsVisible = computed(() => open.value && (suggestions.value.length > 0 || showCustomHint.value));
+const optionId = (index) => `${listId}-option-${index}`;
 
 function locationOf(item) {
   const bits = [item.municipality, item.district].filter(Boolean);
@@ -170,11 +175,13 @@ function pick(item) {
   closeSuggestions();
 }
 
-function move(delta) {
+async function move(delta) {
   if (!suggestions.value.length) return;
   open.value = true;
   const n = suggestions.value.length;
   highlight.value = (highlight.value + delta + n) % n;
+  await nextTick();
+  suggestionList.value?.children[highlight.value]?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
 }
 
 function selectHighlighted() {
@@ -205,6 +212,7 @@ onBeforeUnmount(() => clearTimeout(timer));
   flex-direction: column;
   gap: 2px;
   padding: 8px 12px;
+  scroll-margin-block: 2px;
   cursor: pointer;
 }
 .school-name-suggestions li.active,

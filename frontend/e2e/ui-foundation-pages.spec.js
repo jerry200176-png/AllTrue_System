@@ -526,7 +526,9 @@ test.describe('UI foundation — real Vue page evidence', () => {
     const dialog = page.getByRole('dialog', { name: '新增學生', exact: true });
     await expect(dialog).toBeVisible();
     await expect(dialog).toHaveAttribute('aria-modal', 'true');
-    await expect(dialog.getByRole('heading', { name: '新增學生', exact: true }).locator('#student-modal-title')).toBeVisible();
+    await expect(dialog.getByRole('heading', { name: '新增學生', exact: true, level: 2 }).locator('#student-modal-title')).toBeVisible();
+    await expect(dialog.getByRole('heading', { name: '基本資料', exact: true, level: 3 })).toBeVisible();
+    await expect(dialog.getByRole('heading', { name: '家長資訊', exact: true, level: 3 })).toBeVisible();
     await expect(dialog.getByRole('textbox', { name: '姓名', exact: true })).toBeFocused();
     await expect(dialog.getByLabel('年級')).toBeVisible();
     await expect(dialog.getByLabel('家長姓名')).toBeVisible();
@@ -547,6 +549,21 @@ test.describe('UI foundation — real Vue page evidence', () => {
     await expect(school).toHaveValue('合成學校 12');
 
     await school.fill('合成');
+    const options = suggestions.getByRole('option');
+    await expect(options).toHaveCount(schools.length);
+    await expect(options.first()).toHaveAttribute('aria-selected', 'true');
+    for (let index = 1; index < schools.length; index++) await school.press('ArrowDown');
+    const lastSchool = options.last();
+    await expect(lastSchool).toHaveAttribute('aria-selected', 'true');
+    await expect(lastSchool).toBeInViewport({ ratio: 1 });
+    const activeOptionId = await lastSchool.getAttribute('id');
+    expect(activeOptionId).toBeTruthy();
+    await expect(school).toHaveAttribute('aria-activedescendant', activeOptionId ?? '');
+    await school.press('Enter');
+    await expect(school).toHaveValue('合成學校 12');
+    await expect(school).not.toHaveAttribute('aria-activedescendant');
+
+    await school.fill('合成');
     await expect(suggestions.getByRole('option')).toHaveCount(schools.length);
     await school.press('Escape');
     await expect(suggestions).toBeHidden();
@@ -557,6 +574,12 @@ test.describe('UI foundation — real Vue page evidence', () => {
   });
 
   test('student management edit dialog keeps guardian ownership and accessible controls', async ({ page }) => {
+    const writes = [];
+    page.on('request', (request) => {
+      if (request.method() !== 'GET' && /^\/api\/v1\/students(?:\/\d+)?$/.test(new URL(request.url()).pathname)) {
+        writes.push(request.method());
+      }
+    });
     await openPilot(page, { pageName: 'students', mode: 'normal', viewport: { width: 1536, height: 784 } });
     await page.route(/\/api\/v1\/students\/\d+\/guardians$/, route => route.fulfill({
       json: { guardians: [{ id: 1, display_name: '合成主要聯絡人', role: 'mother', is_primary: true }] },
@@ -566,6 +589,8 @@ test.describe('UI foundation — real Vue page evidence', () => {
     await page.getByRole('menuitem', { name: '編輯', exact: true }).click();
 
     const dialog = page.getByRole('dialog', { name: '編輯學生' });
+    await expect(dialog.getByRole('heading', { name: '編輯學生', exact: true, level: 2 })).toBeVisible();
+    await expect(dialog.getByRole('heading', { name: '家長／監護人', exact: true, level: 3 })).toBeVisible();
     await expect(dialog.getByText('合成主要聯絡人 · 媽媽 · 主要聯絡人', { exact: true })).toBeVisible();
     await expect(dialog.getByLabel('家長姓名', { exact: true })).toHaveCount(0);
     await expect(dialog.getByLabel('監護人姓名', { exact: true })).toBeVisible();
@@ -577,6 +602,28 @@ test.describe('UI foundation — real Vue page evidence', () => {
     await expect(dialog.getByRole('button', { name: '前往家長 LINE 綁定' })).toBeVisible();
     await dialog.getByRole('button', { name: '取消', exact: true }).click();
     await expect(dialog).toBeHidden();
+    await expect(menu).toBeFocused();
+
+    await menu.click();
+    await page.getByRole('menuitem', { name: '編輯', exact: true }).click();
+    const save = dialog.getByRole('button', { name: '儲存', exact: true });
+    const bounds = await save.boundingBox();
+    if (!bounds) throw new Error('Expected the edit action to have a visible position');
+    const x = bounds.x + bounds.width / 2;
+    const y = bounds.y + bounds.height / 2;
+    await page.mouse.move(x, y);
+    await page.keyboard.press('Escape');
+    const duringDismissal = await page.getByRole('dialog', { name: '新增學生', exact: true }).count();
+    await page.mouse.click(x, y);
+    await expect(dialog).toBeHidden();
+    expect(duringDismissal).toBe(0);
+    expect(writes).toEqual([]);
+
+    await menu.click();
+    await page.getByRole('menuitem', { name: '編輯', exact: true }).click();
+    await expect(dialog).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(menu).toBeFocused();
   });
 
   for (const vp of [

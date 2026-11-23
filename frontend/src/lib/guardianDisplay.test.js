@@ -13,5 +13,5 @@ assert.doesNotMatch(src, /\{\{ b\.line_user_id_masked \}\}/);
 assert.doesNotMatch(src, /\{\{ b\.bound_at \}\}/);
 assert.match(src, /guardianRoleLabel\(g\.role\)/);
 // Reka dispatches update:open on Escape. The browser fixture verifies Escape in both nested layers.
-assert.match(src, /<Dialog :open="showStudentModal && studentsPageActive" @update:open="[^"]*closeStudentModal\(\)/);
+assert.match(src, /<Dialog :open="studentEditorOpen" @update:open="[^"]*closeStudentModal\(\)/);
 console.log('guardianDisplay.test.js: all assertions passed');

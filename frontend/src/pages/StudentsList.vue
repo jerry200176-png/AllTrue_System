@@ -600,8 +600,10 @@
     </div>
 
     <!-- Add/Edit Student Modal -->
-    <Dialog :open="showStudentModal && studentsPageActive" @update:open="open => { if (!open) closeStudentModal(); }">
+    <Dialog :open="studentEditorOpen" @update:open="open => { if (!open) closeStudentModal(); }">
+      <!-- Unmount the form at logical close to keep the controls and edit state in sync. -->
       <DialogContent
+        v-if="studentEditorOpen"
         aria-modal="true"
         class="tw:flex tw:max-h-[calc(100dvh-2rem)] tw:flex-col tw:gap-0 tw:p-0"
         :show-close-button="false"
@@ -614,7 +616,7 @@
         <div class="tw:min-h-0 tw:overflow-y-auto tw:overscroll-contain tw:px-4 tw:py-4 tw:sm:px-6">
           <div class="tw:space-y-5">
             <section class="tw:grid tw:gap-3">
-              <h4 class="tw:m-0 tw:text-tpl-body tw:font-semibold">基本資料</h4>
+              <h3 class="tw:m-0 tw:text-tpl-body tw:font-semibold">基本資料</h3>
               <div class="tw:grid tw:gap-3 tw:sm:grid-cols-2">
                 <div class="tw:grid tw:gap-1.5">
                   <Label for="student-name">姓名 <span :class="toneText.danger" aria-hidden="true">*</span></Label>
@@ -640,7 +642,7 @@
             </section>
 
             <section v-if="showLegacyParentFields" class="tw:grid tw:gap-3">
-              <h4 class="tw:m-0 tw:text-tpl-body tw:font-semibold">家長資訊</h4>
+              <h3 class="tw:m-0 tw:text-tpl-body tw:font-semibold">家長資訊</h3>
               <div class="tw:grid tw:gap-3 tw:sm:grid-cols-2">
                 <div class="tw:grid tw:gap-1.5">
                   <Label for="student-parent-name">家長姓名</Label>
@@ -654,7 +656,7 @@
             </section>
 
             <section class="tw:grid tw:gap-3">
-              <h4 class="tw:m-0 tw:text-tpl-body tw:font-semibold">RFID 卡片</h4>
+              <h3 class="tw:m-0 tw:text-tpl-body tw:font-semibold">RFID 卡片</h3>
               <div class="tw:grid tw:gap-1.5">
                 <Label for="student-rfid">RFID</Label>
                 <Input id="student-rfid" v-model="studentForm.rfid" readonly :class="[STUDENT_EDITOR_INPUT, 'tw:bg-muted']" placeholder="刷卡後點「綁定卡片」" />
@@ -666,7 +668,7 @@
             </section>
 
             <section v-if="editingStudentId" class="tw:grid tw:justify-items-start tw:gap-3">
-              <h4 class="tw:m-0 tw:text-tpl-body tw:font-semibold">LINE 綁定家長</h4>
+              <h3 class="tw:m-0 tw:text-tpl-body tw:font-semibold">LINE 綁定家長</h3>
               <p v-if="lineBindingsLoading" :class="['tw:m-0', dataTable.sub]" role="status">載入中…</p>
               <p v-else-if="lineBindings.length === 0" :class="['tw:m-0', dataTable.sub]">尚未有家長透過 LINE 綁定此學生</p>
               <ul v-else class="tw:m-0 tw:grid tw:w-full tw:list-none tw:divide-y tw:divide-border tw:p-0">
@@ -679,7 +681,7 @@
             </section>
 
             <section v-if="editingStudentId && multiGuardianEnabled" class="tw:grid tw:gap-3">
-              <h4 class="tw:m-0 tw:text-tpl-body tw:font-semibold">家長／監護人</h4>
+              <h3 class="tw:m-0 tw:text-tpl-body tw:font-semibold">家長／監護人</h3>
               <p :class="['tw:m-0', dataTable.sub]">主要聯絡人的姓名與手機即為本學生家長資訊來源；請在此維護，勿再另填一組家長欄位。</p>
               <p v-if="guardiansLoading" :class="['tw:m-0', dataTable.sub]" role="status">載入中…</p>
               <p v-else-if="guardians.length === 0" :class="['tw:m-0', dataTable.sub]">
@@ -724,7 +726,7 @@
             </section>
 
             <section class="tw:grid tw:gap-3">
-              <h4 class="tw:m-0 tw:text-tpl-body tw:font-semibold">其他</h4>
+              <h3 class="tw:m-0 tw:text-tpl-body tw:font-semibold">其他</h3>
               <div v-if="editingStudentId" class="tw:grid tw:gap-1.5">
                 <Label for="student-edit-status">學生狀態</Label>
                 <select id="student-edit-status" v-model="studentForm.status" :class="STUDENT_EDITOR_SELECT">
@@ -1191,6 +1193,7 @@ const identityError = ref('');
 // Student modal
 const showStudentModal = ref(false);
 const studentsPageActive = ref(true);
+const studentEditorOpen = computed(() => showStudentModal.value && studentsPageActive.value);
 const STUDENT_EDITOR_INPUT = 'tw:h-11 tw:text-tpl-body!';
 const STUDENT_EDITOR_SELECT = 'tw:h-11 tw:w-full tw:min-w-0 tw:rounded-md tw:border tw:border-input tw:bg-background tw:px-3 tw:text-tpl-body tw:text-foreground tw:outline-none tw:focus-visible:ring-3 tw:focus-visible:ring-ring/50';
 const editingStudentId = ref(null);
@@ -2740,6 +2743,7 @@ const unbindStudentRfid = async () => {
 };
 
 const submitStudent = async () => {
+  if (!studentEditorOpen.value) return;
   const trimmedName = (studentForm.value.name || '').trim();
   if (!trimmedName) { alert('姓名不得為空'); return; }
   studentForm.value.name = trimmedName;
