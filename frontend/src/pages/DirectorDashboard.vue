@@ -203,40 +203,14 @@
 
           <details class="director-secondary-tools" @toggle="secondaryToolsOpen = $event.currentTarget.open">
             <summary>
-              <span class="director-secondary-tools__title">營運指標與常用入口</span>
-              <span class="director-secondary-tools__hint">評量完成率、收款、排課與調課</span>
+              <span class="director-secondary-tools__title">常用操作</span>
+              <span class="director-secondary-tools__hint">收款、排課與調課</span>
               <span class="material-symbols-outlined" aria-hidden="true">expand_more</span>
             </summary>
             <div v-if="secondaryToolsOpen" class="director-secondary-tools__body">
-              <section class="surface-panel director-fill-rate-panel" aria-label="老師評量完成率">
-                <TeacherAssessmentFillRateCard
-                  :branch-id="branchId"
-                  :fetch-report="fetchTeacherAssessmentFillRates"
-                  @view-learning="emit('navigate', { target: 'learning' })"
-                />
-              </section>
-              <section v-if="bugSlaSummary" class="surface-panel director-bug-sla-panel" aria-labelledby="director-bug-sla-title">
-                <header class="surface-panel__header">
-                  <div>
-                    <h3 id="director-bug-sla-title">Bug 回報 SLA</h3>
-                    <p>只顯示分校的狀態數量、待處理年齡與分診門檻。</p>
-                  </div>
-                  <span class="surface-panel__count">{{ bugSlaSummary.open_backlog.total }} 件待處理</span>
-                </header>
-                <dl class="director-bug-sla-grid">
-                  <div class="director-bug-sla-stat"><dt>新回報</dt><dd>{{ bugSlaSummary.open_backlog.by_status.new }}</dd></div>
-                  <div class="director-bug-sla-stat"><dt>已分診</dt><dd>{{ bugSlaSummary.open_backlog.by_status.triaged }}</dd></div>
-                  <div class="director-bug-sla-stat"><dt>處理中</dt><dd>{{ bugSlaSummary.open_backlog.by_status.in_progress }}</dd></div>
-                  <div class="director-bug-sla-stat director-bug-sla-stat--alert"><dt>逾期分診</dt><dd>{{ bugSlaSummary.triage_sla.open_breach_total }}</dd></div>
-                </dl>
-                <p class="director-bug-sla-note">目前最久待處理 {{ oldestBugAgeLabel }}；分診 SLA：P1 {{ bugSlaSummary.triage_sla.targets_hours.p1 }} 小時、P2 {{ bugSlaSummary.triage_sla.targets_hours.p2 }} 小時。</p>
-                <p v-if="bugSlaSummary.open_backlog.missing_triaged_at" class="director-bug-sla-warning" role="status">{{ bugSlaSummary.open_backlog.missing_triaged_at }} 筆既有回報缺少分診歷程，年齡未用推算值取代。</p>
-              </section>
               <OperationsQuickStart
                 compact
-                eyebrow="常用流程"
                 heading="直接前往工作入口"
-                description="只在需要時使用，日常待辦請先處理上方案件。"
                 :steps="directorQuickStartSteps"
                 @select="openQuickStart"
               />
@@ -311,10 +285,34 @@
               <section class="surface-panel" aria-labelledby="director-discrepancy-title"><header class="surface-panel__header"><div><h3 id="director-discrepancy-title">課表回報</h3><p>老師回報的差異需要主任留下處理結果。</p></div><span class="surface-panel__count">{{ sdSummary.pending }}</span></header><div v-if="sdLoading" class="director-state director-state--compact" role="status">載入中…</div><div v-else-if="sdSummary.pending" class="director-state director-state--compact"><span>{{ sdSummary.pending }} 筆待確認</span><button type="button" class="text-action" @click="goToScheduleDiscrepancy">查看回報</button></div><div v-else class="director-state director-state--compact"><span class="material-symbols-outlined" aria-hidden="true">task_alt</span><span>目前沒有待確認的課表回報。</span></div></section>
               <section id="notifications-sec" class="surface-panel" aria-labelledby="director-notifications-title"><header class="surface-panel__header"><div><h3 id="director-notifications-title">通知摘要</h3><p>只顯示未讀通知的最新幾筆。</p></div><span class="surface-panel__count">{{ unreadNotificationCount }}</span></header><div v-if="!notificationSummary.length" class="director-state director-state--compact"><span>目前沒有未讀通知。</span></div><div v-else class="director-notification-list"><div v-for="notification in notificationSummary" :key="notification.id"><strong>{{ notification.title }}</strong><span>{{ notification.typeLabel }}</span></div></div><footer class="surface-panel__footer"><button type="button" class="text-action" @click="goToNotifications">前往通知中心</button></footer></section>
               <section v-if="directorTodoCards.length" class="surface-panel" aria-labelledby="director-other-work-title"><header class="surface-panel__header"><div><h3 id="director-other-work-title">其他營運工作</h3><p>需要追蹤的項目，不佔用今天的主佇列。</p></div><span class="surface-panel__count">{{ directorTodoCards.length }}</span></header><div v-if="adoptionTaskLoading" class="director-state director-state--compact" role="status">載入中…</div><div v-else class="director-other-work-list"><button v-for="work in directorTodoCards.slice(0, 6)" :key="work.id" type="button" @click="handleDirectorTodoClick(work)"><span>{{ work.title }}</span><small>{{ work.description }}</small><span class="material-symbols-outlined" aria-hidden="true">arrow_forward</span></button></div></section>
-              <details class="director-analysis" @toggle="analysisOpen = $event.currentTarget.open">
+              <details class="director-analysis" :open="analysisOpen" @toggle="analysisOpen = $event.currentTarget.open">
                 <summary>近期紀錄與分析</summary>
-                <div class="director-analysis__body">
-                  <RecentSubstitutesCard v-if="analysisOpen" :branch-id="branchId" :fetch-recent="fetchRecentSubstitutes" />
+                <div v-if="analysisOpen" class="director-analysis__body">
+                  <RecentSubstitutesCard :branch-id="branchId" :fetch-recent="fetchRecentSubstitutes" />
+                  <div class="surface-panel director-fill-rate-panel">
+                    <TeacherAssessmentFillRateCard
+                      :branch-id="branchId"
+                      :fetch-report="fetchTeacherAssessmentFillRates"
+                      @view-learning="emit('navigate', { target: 'learning' })"
+                    />
+                  </div>
+                  <section v-if="bugSlaSummary" class="surface-panel director-bug-sla-panel" aria-labelledby="director-bug-sla-title">
+                    <header class="surface-panel__header">
+                      <div>
+                        <h3 id="director-bug-sla-title">Bug 回報 SLA</h3>
+                        <p>只顯示分校的狀態數量、待處理年齡與分診門檻。</p>
+                      </div>
+                      <span class="surface-panel__count">{{ bugSlaSummary.open_backlog.total }} 件待處理</span>
+                    </header>
+                    <dl class="director-bug-sla-grid">
+                      <div class="director-bug-sla-stat"><dt>新回報</dt><dd>{{ bugSlaSummary.open_backlog.by_status.new }}</dd></div>
+                      <div class="director-bug-sla-stat"><dt>已分診</dt><dd>{{ bugSlaSummary.open_backlog.by_status.triaged }}</dd></div>
+                      <div class="director-bug-sla-stat"><dt>處理中</dt><dd>{{ bugSlaSummary.open_backlog.by_status.in_progress }}</dd></div>
+                      <div class="director-bug-sla-stat director-bug-sla-stat--alert"><dt>逾期分診</dt><dd>{{ bugSlaSummary.triage_sla.open_breach_total }}</dd></div>
+                    </dl>
+                    <p class="director-bug-sla-note">目前最久待處理 {{ oldestBugAgeLabel }}；分診 SLA：P1 {{ bugSlaSummary.triage_sla.targets_hours.p1 }} 小時、P2 {{ bugSlaSummary.triage_sla.targets_hours.p2 }} 小時。</p>
+                    <p v-if="bugSlaSummary.open_backlog.missing_triaged_at" class="director-bug-sla-warning" role="status">{{ bugSlaSummary.open_backlog.missing_triaged_at }} 筆既有回報缺少分診歷程，年齡未用推算值取代。</p>
+                  </section>
                 </div>
               </details>
             </aside>
@@ -515,7 +513,12 @@ const dashboardViewMode = ref('focus');
 
 function setDashboardViewMode(mode) {
   dashboardViewMode.value = mode === 'full' ? 'full' : 'focus';
-  if (dashboardViewMode.value === 'full' && !secondaryLoaded.value) loadSecondaryData();
+  if (dashboardViewMode.value === 'focus') {
+    secondaryToolsOpen.value = false;
+    analysisOpen.value = false;
+  } else if (!secondaryLoaded.value) {
+    loadSecondaryData();
+  }
 }
 
 // Pending-work counts that feed the to-do list (these pages have no sidebar row).
@@ -3179,7 +3182,6 @@ onBeforeUnmount(() => {
 .director-secondary-tools__title { color: var(--ds-ink); font-size: 13px; font-weight: 800; }
 .director-secondary-tools__hint { overflow: hidden; color: var(--ds-ink-mute); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
 .director-secondary-tools__body { display: grid; gap: 16px; padding: 0 16px 16px; }
-.director-secondary-tools__body .surface-panel { box-shadow: none; }
 .director-secondary-tools__body .operations-quick-start { margin-top: 0; }
 .director-bug-sla-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin: 0 22px; }
 .director-bug-sla-stat { padding: 12px; border: 1px solid var(--ds-hairline); border-radius: 8px; background: var(--ds-canvas-soft); }
@@ -3251,6 +3253,7 @@ onBeforeUnmount(() => {
 .director-analysis { border: 1px solid var(--ds-hairline); border-radius: 10px; background: var(--ds-canvas); }
 .director-analysis summary { padding: 16px 18px; color: var(--ds-ink); font-size: 13px; font-weight: 800; cursor: pointer; }
 .director-analysis__body { display: grid; gap: 12px; padding: 0 18px 18px; color: var(--ds-ink-mute); font-size: 11px; line-height: 1.5; }
+.director-analysis__body > .surface-panel { box-shadow: none; }
 .director-modal-backdrop { position: fixed; inset: 0; z-index: var(--ds-z-modal, 1000); display: grid; place-items: center; padding: 20px; background: rgb(11 24 43 / 42%); }
 .director-modal { position: relative; width: min(100%, 520px); padding: 24px; border: 1px solid var(--ds-hairline); border-radius: 10px; background: var(--ds-canvas); box-shadow: var(--ds-shadow-2); }
 .director-modal h3 { margin: 0; color: var(--ds-ink); font-size: 18px; }
