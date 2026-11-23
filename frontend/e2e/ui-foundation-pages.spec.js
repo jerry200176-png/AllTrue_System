@@ -508,18 +508,122 @@ test.describe('UI foundation — real Vue page evidence', () => {
     await expect(page.getByRole('dialog', { name: '登記收款' })).toHaveCount(0);
   });
 
-  test('student management labels its add-student workspace as a dialog', async ({ page }) => {
+  test('student management opens a labelled add-student dialog and keeps school choices accessible', async ({ page }) => {
     await openPilot(page, {
       pageName: 'students',
       mode: 'normal',
-      viewport: { width: 390, height: 844 },
+      viewport: { width: 375, height: 420 },
     });
+    const schools = Array.from({ length: 12 }, (_, index) => ({
+      id: index + 1,
+      canonical_name: `合成學校 ${index + 1}`,
+      municipality: '測試縣市',
+    }));
+    await page.route('**/api/v1/schools?*', route => route.fulfill({ json: { data: schools } }));
+    const addStudent = page.getByRole('button', { name: '新增學生', exact: true }).first();
+    await addStudent.click();
 
-    await page.getByRole('button', { name: '新增學生', exact: true }).first().click();
     const dialog = page.getByRole('dialog', { name: '新增學生', exact: true });
     await expect(dialog).toBeVisible();
     await expect(dialog).toHaveAttribute('aria-modal', 'true');
-    await expect(dialog.getByRole('heading', { name: '新增學生', exact: true })).toBeVisible();
+    await expect(dialog.getByRole('heading', { name: '新增學生', exact: true, level: 2 }).locator('#student-modal-title')).toBeVisible();
+    await expect(dialog.getByRole('heading', { name: '基本資料', exact: true, level: 3 })).toBeVisible();
+    await expect(dialog.getByRole('heading', { name: '家長資訊', exact: true, level: 3 })).toBeVisible();
+    await expect(dialog.getByRole('textbox', { name: '姓名', exact: true })).toBeFocused();
+    await expect(dialog.getByLabel('年級')).toBeVisible();
+    await expect(dialog.getByLabel('家長姓名')).toBeVisible();
+    await expect(dialog.getByLabel('家長手機')).toBeVisible();
+    await page.keyboard.press('Shift+Tab');
+    await expect(dialog.getByRole('button', { name: '儲存', exact: true })).toBeFocused();
+    const a11y = await new AxeBuilder({ page }).include('[data-slot="dialog-content"]').analyze();
+    expect(a11y.violations.filter((violation) => ['serious', 'critical'].includes(violation.impact))).toEqual([]);
+
+    const school = dialog.getByRole('combobox', { name: '就讀學校' });
+    await school.fill('合成');
+    const suggestions = dialog.getByRole('listbox');
+    await expect(suggestions.getByRole('option')).toHaveCount(schools.length);
+    const listBox = await suggestions.boundingBox();
+    const parentField = await dialog.getByLabel('家長姓名').boundingBox();
+    expect(listBox.y + listBox.height).toBeLessThanOrEqual(parentField.y);
+    await suggestions.getByRole('option', { name: /合成學校 12/ }).click();
+    await expect(school).toHaveValue('合成學校 12');
+
+    await school.fill('合成');
+    const options = suggestions.getByRole('option');
+    await expect(options).toHaveCount(schools.length);
+    await expect(options.first()).toHaveAttribute('aria-selected', 'true');
+    for (let index = 1; index < schools.length; index++) await school.press('ArrowDown');
+    const lastSchool = options.last();
+    await expect(lastSchool).toHaveAttribute('aria-selected', 'true');
+    await expect(lastSchool).toBeInViewport({ ratio: 1 });
+    const activeOptionId = await lastSchool.getAttribute('id');
+    expect(activeOptionId).toBeTruthy();
+    await expect(school).toHaveAttribute('aria-activedescendant', activeOptionId ?? '');
+    await school.press('Enter');
+    await expect(school).toHaveValue('合成學校 12');
+    await expect(school).not.toHaveAttribute('aria-activedescendant');
+
+    await school.fill('合成');
+    await expect(suggestions.getByRole('option')).toHaveCount(schools.length);
+    await school.press('Escape');
+    await expect(suggestions).toBeHidden();
+    await expect(dialog).toBeVisible();
+    await school.press('Escape');
+    await expect(dialog).toBeHidden();
+    await expect(addStudent).toBeFocused();
+  });
+
+  test('student management edit dialog keeps guardian ownership and accessible controls', async ({ page }) => {
+    const writes = [];
+    page.on('request', (request) => {
+      if (request.method() !== 'GET' && /^\/api\/v1\/students(?:\/\d+)?$/.test(new URL(request.url()).pathname)) {
+        writes.push(request.method());
+      }
+    });
+    await openPilot(page, { pageName: 'students', mode: 'normal', viewport: { width: 1536, height: 784 } });
+    await page.route(/\/api\/v1\/students\/\d+\/guardians$/, route => route.fulfill({
+      json: { guardians: [{ id: 1, display_name: '合成主要聯絡人', role: 'mother', is_primary: true }] },
+    }));
+    const menu = page.getByTestId('student-row').first().getByRole('button', { name: /^更多操作/ });
+    await menu.click();
+    await page.getByRole('menuitem', { name: '編輯', exact: true }).click();
+
+    const dialog = page.getByRole('dialog', { name: '編輯學生' });
+    await expect(dialog.getByRole('heading', { name: '編輯學生', exact: true, level: 2 })).toBeVisible();
+    await expect(dialog.getByRole('heading', { name: '家長／監護人', exact: true, level: 3 })).toBeVisible();
+    await expect(dialog.getByText('合成主要聯絡人 · 媽媽 · 主要聯絡人', { exact: true })).toBeVisible();
+    await expect(dialog.getByLabel('家長姓名', { exact: true })).toHaveCount(0);
+    await expect(dialog.getByLabel('監護人姓名', { exact: true })).toBeVisible();
+    await expect(dialog.getByLabel('監護人手機', { exact: true })).toBeVisible();
+    await expect(dialog.getByLabel('關係', { exact: true })).toBeVisible();
+    await dialog.getByText('設為主要聯絡人', { exact: true }).click();
+    await expect(dialog.getByRole('checkbox', { name: '設為主要聯絡人' })).toBeChecked();
+    await expect(dialog.getByLabel('RFID')).toHaveAttribute('readonly', '');
+    await expect(dialog.getByRole('button', { name: '前往家長 LINE 綁定' })).toBeVisible();
+    await dialog.getByRole('button', { name: '取消', exact: true }).click();
+    await expect(dialog).toBeHidden();
+    await expect(menu).toBeFocused();
+
+    await menu.click();
+    await page.getByRole('menuitem', { name: '編輯', exact: true }).click();
+    const save = dialog.getByRole('button', { name: '儲存', exact: true });
+    const bounds = await save.boundingBox();
+    if (!bounds) throw new Error('Expected the edit action to have a visible position');
+    const x = bounds.x + bounds.width / 2;
+    const y = bounds.y + bounds.height / 2;
+    await page.mouse.move(x, y);
+    await page.keyboard.press('Escape');
+    const duringDismissal = await page.getByRole('dialog', { name: '新增學生', exact: true }).count();
+    await page.mouse.click(x, y);
+    await expect(dialog).toBeHidden();
+    expect(duringDismissal).toBe(0);
+    expect(writes).toEqual([]);
+
+    await menu.click();
+    await page.getByRole('menuitem', { name: '編輯', exact: true }).click();
+    await expect(dialog).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(menu).toBeFocused();
   });
 
   for (const vp of [
