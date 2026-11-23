@@ -32,10 +32,24 @@ the existing work; do not replace the goal with the latest investigation.
    For an already approved scope, follow the canonical
    [same-scope approval continuation decision](../../../docs/governance/FOUNDER_STANDING_DECISIONS.md#same-scope-approval-continuation)
    before treating a routine SHA/current-production pin correction as a new decision.
-4. Classify a repeated failure before retrying. A release-download 504 calls for
-   bounded transport recovery, a code failure for a focused regression, and a
-   disputed review for source/schema evidence. After two identical failures,
-   change the evidence or approach; do not simply repeat the same command.
+4. Before declaring a blocker, check the approved goal, objects, action, risk
+   and any binding or expiry against the original decision. Reuse a valid
+   approval. Diagnose tool availability, authentication, role scope and
+   missing business evidence separately. A 401 calls for an authentication
+   check. Inspect documented, authorized entry points and probe the most
+   promising one with a minimal read. When the desktop is occupied, prefer
+   an allowed independent session. Change evidence or strategy before retrying
+   a known failure. For recurring capability gaps, consult official docs and
+   maintained tools before adding a helper.
+   Continue independent work from a dated snapshot and mark its limits. Before
+   cleanup, check active dependencies and save outstanding work, exclusions and
+   next action in the existing checkpoint; follow session disposal policy.
+   If personal login is essential, verify the actual handoff surface first.
+   Report completed work, the evidenced gap, the recommended action, the one
+   step the user must take and how the original task resumes. Keep passwords
+   and tokens out of chat. For authorized writes, compare before/after and read
+   back the result. Missing historical payment links require reconciliation
+   against evidence before creating any financial entry.
 5. Use current tool/model availability, not a bundled model list, as the routing
    limit. Keep deterministic work in scripts. For ambiguous logic use a stronger
    supported effort or an authorized independent reviewer; do not assume Opus or
