@@ -523,8 +523,9 @@ test.describe('UI foundation — real Vue page evidence', () => {
   });
 
   for (const vp of [
-    { name: '390', width: 390, height: 844 },
-    { name: '1440', width: 1440, height: 900 },
+    { name: '375', width: 375, height: 800 },
+    { name: '768', width: 768, height: 1024 },
+    { name: '1536', width: 1536, height: 784 },
   ]) {
     test(`students course overview selects the next action @${vp.name}`, async ({ page }) => {
       const sessionRequests = [];
@@ -571,11 +572,19 @@ test.describe('UI foundation — real Vue page evidence', () => {
       await expect(workspace.locator('article.student-course-card[data-course-id="5002"] button.student-course-card__primary')).toHaveText(/續課/);
       await expect(workspace.locator('article.student-course-card[data-course-id="5002"] button.student-course-card__primary')).toBeVisible();
 
-      const historyToggle = page.locator('tr.course-detail-row').first().locator('.sl-history-toggle');
+      const historyToggle = page.locator('tr.course-detail-row').first().getByRole('button', { name: '歷史課程 1 筆' });
       await expect(historyToggle).toHaveAttribute('aria-expanded', 'false');
-      await historyToggle.click();
+      const historyPanelId = await historyToggle.getAttribute('aria-controls');
+      expect(historyPanelId).toMatch(/^student-history-\d+$/);
+      const historyPanel = page.locator(`[id="${historyPanelId}"]`);
+      await expect(historyPanel).toBeAttached();
+      await expect(historyPanel.locator('.sl-history-body')).toBeHidden();
+      await historyToggle.press('Enter');
       await expect(historyToggle).toHaveAttribute('aria-expanded', 'true');
-      await expect(page.locator('tr.course-detail-row').first().locator('.sl-history-body')).toBeVisible();
+      await expect(historyToggle).toBeFocused();
+      await expect(historyPanel.locator('.sl-history-body')).toBeVisible();
+      await expect(historyPanel.getByRole('button', { name: '編輯', exact: true })).toBeVisible();
+      expect(await historyPanel.evaluate((el) => el.scrollWidth <= el.clientWidth + 1)).toBe(true);
       await expect(page.locator('tr.course-detail-row').first().locator('.student-course-dates--history')).toContainText('2026-08-01（週六） 15:00–17:00');
 
       await math.locator('button').click();
@@ -589,8 +598,21 @@ test.describe('UI foundation — real Vue page evidence', () => {
       await page.locator('.students-page').screenshot({
         path: path.join(outDir, `vue-students-course-overview-${vp.name}.png`),
       });
+      await historyToggle.press('Space');
+      await expect(historyToggle).toHaveAttribute('aria-expanded', 'false');
+      await expect(historyPanel.locator('.sl-history-body')).toBeHidden();
     });
   }
+
+  test('student with only historical courses has a level-four course heading', async ({ page }) => {
+    await openPilot(page, { pageName: 'students', mode: 'history-only', viewport: { width: 390, height: 844 } });
+    await page.getByTestId('student-row').first().press('Enter');
+    const courseDetails = page.locator('tr.course-detail-row').first();
+    await expect(courseDetails.getByText('目前沒有進行中的課程')).toBeVisible();
+    await courseDetails.getByRole('button', { name: '歷史課程 1 筆' }).press('Enter');
+    const history = courseDetails.locator('.sl-history-card');
+    await expect(history.getByRole('heading', { level: 4 })).toBeVisible();
+  });
 
   test('student active and history dates distinguish load failure from real empty data', async ({ page, context }) => {
     const openStudentWorkspace = async (targetPage, mode) => {

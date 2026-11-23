@@ -1,0 +1,14 @@
+updates:
+  - id: staff-2026-11-22-student-course-history
+    published_at: "2026-11-22"
+    audiences:
+      - director
+      - super_admin
+    importance: digest
+    title: 歷史課程明細更好查
+    summary: 學生管理的歷史課程集中顯示老師、費用、堂數及上課日期。
+    items:
+      - category: improved
+        text: 展開歷史課程後，可依與課程查找一致的顏色辨認未收、待核對與已結算。
+    source_refs:
+      - "changelog:2026-11-22:student-course-history"
