@@ -7,7 +7,10 @@
     <p v-if="loading" class="tw:mt-3 tw:mb-0 tw:text-tpl-body" role="status">載入中…</p>
     <p v-else-if="error" class="tw:mt-3 tw:mb-0 tw:text-tpl-body" role="alert" data-testid="aia-error">{{ error }}</p>
     <template v-else-if="report">
-      <p class="tw:mt-3 tw:mb-0 tw:text-tpl-body" data-testid="aia-reads">讀資料 {{ report.reads.total }} 次，其中被擋下 {{ report.reads.refused }} 次。</p>
+      <p class="tw:mt-3 tw:mb-0 tw:text-tpl-body" data-testid="aia-reads">共記錄 {{ report.reads.total }} 次讀取，其中 {{ report.reads.refused }} 次未成功。</p>
+      <ul v-if="failureReasons.length" class="tw:mt-2 tw:mb-0 tw:ps-5 tw:text-tpl-body" aria-label="未成功的原因">
+        <li v-for="reason in failureReasons" :key="reason.key">{{ reason.label }}（{{ reason.count }} 次）。{{ reason.action }}</li>
+      </ul>
       <ul v-if="topSources.length" class="tw:mt-2 tw:mb-0 tw:ps-5 tw:text-tpl-body" data-testid="aia-sources">
         <li v-for="s in topSources" :key="s.name"><span class="tw:font-mono">{{ s.name }}</span>：{{ s.count }} 次</li>
       </ul>
@@ -49,6 +52,19 @@ const report = ref(null);
 const loading = ref(true);
 const error = ref('');
 const topSources = computed(() => (report.value?.reads?.by_source || []).slice(0, 8));
+
+const reasons = [
+  ['access_denied', '權限攔截', '請使用已授權的查詢範圍。'],
+  ['credential', '讀取憑證無效或過期', '請管理員檢查讀取憑證。'],
+  ['not_found', '查無可讀資料', '請確認查詢對象及範圍。'],
+  ['invalid_request', '查詢條件有誤', '請核對輸入的查詢條件。'],
+  ['rate_limited', '查詢過於頻繁', '請稍後再查。'],
+  ['service_error', '服務讀取失敗', '若持續發生，請回報發生時間。'],
+  ['unknown', '其他或原因未記錄', '現有紀錄無法判定原因。'],
+];
+const failureReasons = computed(() => reasons
+  .map(([key, label, action]) => ({ key, label, action, count: report.value?.reads?.failure_counts?.[key] || 0 }))
+  .filter(({ count }) => count > 0));
 
 onMounted(async () => {
   try {
