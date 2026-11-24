@@ -41,6 +41,7 @@ final class AiActivityTest extends TestCase
 
         $this->assertSame([3, 1], [$data['reads']['total'], $data['reads']['refused']]);
         $this->assertSame([['name' => 'Invoice', 'count' => 2], ['name' => 'Payment', 'count' => 1]], $data['reads']['by_source']);
+        $this->assertSame(['invalid_request' => 1], $data['reads']['failure_counts']);
         $this->assertCount(1, $data['reads']['by_day']);
         $this->assertCount(1, $data['operations']);
         $this->assertSame(['billing.period_rekey', 'executed', 1], [$data['operations'][0]['operation'], $data['operations'][0]['status'], $data['operations'][0]['approval_events']]);
@@ -56,6 +57,23 @@ final class AiActivityTest extends TestCase
         $reads = $this->flushHeaders()->withToken($admin)->getJson('/api/v1/admin/ai-activity')->assertOk()->json('data.reads');
 
         $this->assertSame([1, 1], [$reads['total'], $reads['refused']]);
+        $this->assertSame(['access_denied' => 1], $reads['failure_counts']);
+    }
+
+    public function test_only_fixed_failure_categories_are_exposed_including_unknown_history(): void
+    {
+        foreach ([
+            ['reason_code' => 'token_expired'], ['http_status' => 401],
+            ['http_status' => 404], ['http_status' => 429], ['http_status' => 503],
+            [], ['reason_code' => 'private-note-must-not-be-returned'],
+        ] as $metadata) {
+            SecurityAuditEvent::append('triage_token.read', 'failure', [], $metadata, true);
+        }
+        $response = $this->withToken($this->token('S'))->getJson('/api/v1/admin/ai-activity')->assertOk();
+        $counts = $response->json('data.reads.failure_counts');
+        $this->assertEquals(['credential' => 2, 'not_found' => 1, 'rate_limited' => 1, 'service_error' => 1, 'unknown' => 2], $counts);
+        $this->assertSame($response->json('data.reads.refused'), array_sum($counts));
+        $this->assertStringNotContainsString('private-note-must-not-be-returned', $response->getContent());
     }
 
     public function test_is_super_admin_only_and_read_only(): void

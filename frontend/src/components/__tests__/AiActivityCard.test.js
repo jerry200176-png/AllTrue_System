@@ -18,11 +18,25 @@ describe('AI 做了什麼', () => {
     const w = mount(AiActivityCard, { props: { token: 't' } });
     await flushPromises();
     expect(fetchMock.mock.calls[0][0]).toBe('/api/v1/admin/ai-activity');
-    expect(w.get('[data-testid="aia-reads"]').text()).toBe('讀資料 3 次，其中被擋下 1 次。');
+    expect(w.get('[data-testid="aia-reads"]').text()).toBe('共記錄 3 次讀取，其中 1 次未成功。');
+    expect(w.find('details').exists()).toBe(false);
     expect(w.get('[data-testid="aia-sources"]').findAll('li').map((li) => li.text())).toEqual(['Invoice：2 次', 'Payment：1 次']);
     const ops = w.findAll('[data-testid="aia-op"]');
     expect(ops).toHaveLength(1);
     expect(ops[0].findAll('td').map((td) => td.text())).toEqual(['2026-11-17 09:00', 'billing.period_rekey', 'executed', '1']);
+  });
+
+  it('shows counted reasons and actions using only the known labels', async () => {
+    const reads = { ...REPORT.reads, failure_counts: { access_denied: 2, service_error: 1, unknown: 0, unrecognized: 99 } };
+    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, json: async () => ({ data: { ...REPORT, reads } }) })));
+    const w = mount(AiActivityCard, { props: { token: 't' } });
+    await flushPromises();
+    expect(w.get('details').element.open).toBe(false);
+    expect(w.get('summary').text()).toBe('查看原因');
+    expect(w.get('[aria-label="未成功的原因"]').findAll('li').map((li) => li.text())).toEqual([
+      '權限攔截（2 次）。請使用已授權的查詢範圍。',
+      '服務讀取失敗（1 次）。若持續發生，請回報發生時間。',
+    ]);
   });
 
   it('says there were none, and shows a failed request', async () => {
