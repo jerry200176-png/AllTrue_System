@@ -70,11 +70,27 @@ class PartialMakeupDeductionTest extends TestCase
         ])->assertOk();
 
         $this->withToken($token)->postJson('/api/v1/schedules', $slot)->assertCreated();
+        $destination = [...$slot, 'schedule_date' => $newDate, 'day_of_week' => $date->copy()->addDay()->dayOfWeekIso,
+            'start_time' => '16:00', 'end_time' => '18:00'];
+        $this->withToken($token)->postJson('/api/v1/schedules', $destination)
+            ->assertConflict()->assertJsonPath('code', 'makeup_already_scheduled');
         $this->assertDatabaseHas('schedules', ['id' => $sourceId, 'status' => 'rescheduled']);
         $this->assertDatabaseHas('schedules', ['original_schedule_id' => $sourceId, 'status' => 'scheduled', 'schedule_date' => $newDate]);
         $this->assertDatabaseCount('schedules', 3);
         $this->assertDatabaseHas('ClassSession', ['StudentClassID' => $courseId, 'SessionDate' => $date->toDateString(), 'Status' => 'scheduled']);
-        $this->assertDatabaseHas('ClassSession', ['StudentClassID' => $courseId, 'SessionDate' => $newDate, 'Status' => 'scheduled']);
+        $this->assertDatabaseHas('ClassSession', ['StudentClassID' => $courseId, 'SessionDate' => $newDate, 'EndTime' => '17:00:00']);
+
+        $thirdDate = $date->copy()->addDays(2);
+        $this->withToken($token)->postJson('/api/v1/learning-records/reschedule-session', [
+            'student_class_id' => $courseId, 'old_date' => $newDate, 'old_start_time' => '16:00',
+            'new_date' => $thirdDate->toDateString(), 'start_time' => '12:00', 'end_time' => '13:00', 'ensure_schedule_exception' => true,
+        ])->assertOk();
+        $this->withToken($token)->postJson('/api/v1/schedules', [
+            ...$slot, 'schedule_date' => $thirdDate->toDateString(), 'day_of_week' => $thirdDate->dayOfWeekIso,
+            'start_time' => '12:00', 'end_time' => '14:00',
+        ])->assertConflict()->assertJsonPath('code', 'makeup_already_scheduled');
+        $this->withToken($token)->postJson('/api/v1/schedules', $destination)->assertCreated();
+        $this->assertDatabaseHas('ClassSession', ['StudentClassID' => $courseId, 'SessionDate' => $thirdDate->toDateString(), 'EndTime' => '13:00:00']);
     }
 
     public function test_retired_makeup_does_not_block_a_new_booking(): void

@@ -600,20 +600,51 @@ class ScheduleController extends Controller
         $candidates = Schedule::query()
             ->where('student_course_id', $data['student_course_id'])
             ->where('schedule_date', $date)
-            ->where('type', 'extra')
+            ->where(fn ($q) => $q->where('type', 'extra')
+                ->orWhere(fn ($dest) => $dest->where('status', 'scheduled')->where('original_schedule_id', '>', 0)))
             ->whereIn('status', ['scheduled', 'rescheduled'])
             ->whereNotExists(fn ($dest) => $dest->selectRaw('1')->from('schedules as dest')
                 ->where('schedules.status', 'rescheduled')
                 ->whereColumn('dest.student_course_id', 'schedules.student_course_id')
                 ->whereColumn('dest.original_schedule_id', 'schedules.id'))
-            ->get(['student_course_id', 'start_time'])
+            ->get(['student_course_id', 'start_time', 'type', 'original_schedule_id'])
             ->filter(fn ($row) => (ContractSlotParser::normalizeHm($row->start_time) ?? $row->start_time) === $start);
-        if (app(StaleScheduleExceptionFilter::class)->rejectStale($candidates, $date) !== []) {
+        $live = app(StaleScheduleExceptionFilter::class)->rejectStale($candidates, $date);
+        if ($this->includesMakeup($live, (int) $data['student_course_id'])) {
             abort(response()->json([
                 'code' => 'makeup_already_scheduled',
                 'message' => '這門課在同一時間已安排補課。請重新整理課表查看原有的補課時段。',
             ], 409));
         }
+    }
+
+    /** Atomic moves store a normal destination linked to the previous schedule, including after another move. */
+    private function includesMakeup(array $live, int $courseId): bool
+    {
+        $parents = [];
+        foreach ($live as $row) {
+            if ($row->type === 'extra') {
+                return true;
+            }
+            $parents[] = (int) $row->original_schedule_id;
+        }
+        if (!$parents) {
+            return false;
+        }
+
+        // Only an occupied destination needs its lineage. Read links for this course once, even for a long chain.
+        $links = DB::table('schedules')->where('student_course_id', $courseId)
+            ->get(['id', 'type', 'original_schedule_id'])->keyBy('id');
+        while ($parents) {
+            $link = $links->pull(array_pop($parents));
+            if ($link && $link->type === 'extra') {
+                return true;
+            }
+            if ($link && $link->original_schedule_id) {
+                $parents[] = (int) $link->original_schedule_id;
+            }
+        }
+        return false;
     }
 
     public function undoLeave(Request $request, Schedule $schedule)
