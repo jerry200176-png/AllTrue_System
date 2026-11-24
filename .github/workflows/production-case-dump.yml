@@ -13,7 +13,7 @@ on:
           - legacy
           - case5124
       expected_backend_sha:
-        description: 'case5124 only: approved exact current backend SHA; legacy ignores this field'
+        description: 'Exact current backend SHA for case5124 and four_campus_integrity'
         required: false
         default: ''
         type: string
@@ -49,6 +49,7 @@ on:
           - substitute_calendar_xinzhuang
           - substitute_slot_conflicts
           - occurrence_identity_health
+          - four_campus_integrity
           - teacher_scope_probe
           - occurrence_identity_shadow
           - td076_r2_plan_probe
@@ -172,12 +173,16 @@ jobs:
           php -r 'eval(substr(base64_decode(getenv("PREFLIGHT_B64"), true), 5)); Laravel2833Preflight::run(json_decode(base64_decode(getenv("REQUEST_B64"), true), true, 512, JSON_THROW_ON_ERROR));'
           PREFLIGHT
           else
+          if [[ "$CASE_KEY" == four_campus_integrity ]]; then
+            [[ "$READER_PROFILE" == legacy && "$EXPECTED_BACKEND_SHA" =~ ^[a-f0-9]{40}$ ]]
+            [[ -z "$TARGET_STUDENT_ID" && -z "$TARGET_STUDENT_CLASS_ID" && -z "$EXPECTED_TEACHER_IDS" && "$TARGET_SUBJECT_NAME" == "數學" ]]
+          fi
           python3 - <<'PY' > /tmp/production_case_probe.php
           import os
           import json
           case = os.environ['CASE_KEY']
           private_reader = os.environ.get('READER_PROFILE', 'legacy') == 'case5124'
-          if case not in {'inapp_515', 'schedule_241', 'billing_campus9_student', 'fixed_slot_campus9_student', 'billing_campus9_subject', 'parent_student_probe', 'parent_binding', 'transfer_capacity_student', 'course_2817_incident', 'contract_xindian_student', 'contract_muzha_student', 'swipe_line_path', 'monthly_slip_student', 'unpaid_months_muzha', 'unpaid_hidden_candidates', 'unbilled_monthly_sessions', 'inapp_514_coverage_impact', 'f7_prod_discrepancy', 'paid_flag_open_invoice', 'paid_flag_vs_invoice_rows', 'charge_vs_rate_count', 'confirmed_report_void_blocked', 'class_sessions_explain_319', 'substitute_calendar_xinzhuang', 'substitute_slot_conflicts', 'occurrence_identity_health', 'teacher_scope_probe', 'occurrence_identity_shadow', 'td076_r2_plan_probe', 'paid_status_shadow_log', 'paid_status_shadow_courses', 'inapp_333_multi_teacher_templates', 'billing_correction_past_session_impact', 'inapp_414_amount_source', 'xinzhuang_fee_cases', 'contract_4131_stale_teacher', 'migration_4283_preconditions', 'review_4554_4753', 'inapp_458_receipt_courses', 'settled_pending_paid_scan', 'inapp_521_swallowed_receipts', 'inapp_460_payroll_1031', 'inapp_461_464_billing', 'inapp_460_payroll_teacher', 'inapp_466_count_contract', 'billing_student_numbers', 'inapp_468_teacher_calendar', 'inapp_516_projected_slot'}:
+          if case not in {'inapp_515', 'schedule_241', 'billing_campus9_student', 'fixed_slot_campus9_student', 'billing_campus9_subject', 'parent_student_probe', 'parent_binding', 'transfer_capacity_student', 'course_2817_incident', 'contract_xindian_student', 'contract_muzha_student', 'swipe_line_path', 'monthly_slip_student', 'unpaid_months_muzha', 'unpaid_hidden_candidates', 'unbilled_monthly_sessions', 'inapp_514_coverage_impact', 'f7_prod_discrepancy', 'paid_flag_open_invoice', 'paid_flag_vs_invoice_rows', 'charge_vs_rate_count', 'confirmed_report_void_blocked', 'class_sessions_explain_319', 'substitute_calendar_xinzhuang', 'substitute_slot_conflicts', 'occurrence_identity_health', 'four_campus_integrity', 'teacher_scope_probe', 'occurrence_identity_shadow', 'td076_r2_plan_probe', 'paid_status_shadow_log', 'paid_status_shadow_courses', 'inapp_333_multi_teacher_templates', 'billing_correction_past_session_impact', 'inapp_414_amount_source', 'xinzhuang_fee_cases', 'contract_4131_stale_teacher', 'migration_4283_preconditions', 'review_4554_4753', 'inapp_458_receipt_courses', 'settled_pending_paid_scan', 'inapp_521_swallowed_receipts', 'inapp_460_payroll_1031', 'inapp_461_464_billing', 'inapp_460_payroll_teacher', 'inapp_466_count_contract', 'billing_student_numbers', 'inapp_468_teacher_calendar', 'inapp_516_projected_slot'}:
               raise SystemExit('unsupported case')
           target_student_id = os.environ.get('TARGET_STUDENT_ID') or ''
           if target_student_id and not target_student_id.isdigit():
@@ -1006,6 +1011,128 @@ jobs:
                 ->map(fn ($x) => ['class_id' => $refs[$x->subject_ref] ?? null, 'event_type' => (string)$x->event_type, 'outcome' => (string)$x->outcome,
                   'occurred_at' => (string)$x->occurred_at])->values()->all();
             }}
+          }} elseif ($case === 'four_campus_integrity') {{
+            $expected = {json.dumps(os.environ.get('EXPECTED_BACKEND_SHA', ''))};
+            if (!hash_equals($expected, $out['prod_head'])) {{
+              throw new \\RuntimeException('four_campus_runtime_mismatch');
+            }}
+            $conn = $db::connection();
+            $conn->select('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY', [], false);
+            $conn->beginTransaction();
+            try {{
+              $campuses = [9 => 'xindian', 15 => 'daan', 16 => 'muzha', 17 => 'xinglong'];
+              $actual = $conn->table('Campus')->whereIn('id', array_keys($campuses))->where('is_test', false)
+                ->pluck('code', 'id')->all();
+              if ($campuses != $actual) {{
+                throw new \\RuntimeException('four_campus_scope_mismatch');
+              }}
+              $now = now('Asia/Taipei');
+              $from = $now->copy()->startOfYear()->toDateString();
+              $today = $now->toDateString();
+              $statuses = \\App\\Support\\AttendanceStatus::requiresLogSessionStatuses();
+              $score = app(\\App\\Services\\Billing\\BillingDataQuality::class)->run();
+              $billing = collect($score['campuses'])->keyBy('campus_id');
+              $summarize = static function ($query, string $id) use ($conn) {{
+                $count = $conn->query()->fromSub(clone $query, 'matches')->count();
+                $ids = $query->orderBy($id)->limit(50)->pluck($id)->map(fn ($value) => (int) $value)->all();
+                return ['count' => $count, 'ids' => $ids, 'sample_truncated' => count($ids) < $count];
+              }};
+              // Match the identity command's name/contact criteria. Names and phones stay in memory.
+              $memberships = $conn->table('student_identity_members as m')
+                ->join('student_identity_groups as g', 'g.id', '=', 'm.identity_group_id')
+                ->whereIn('m.campus_id', array_keys($campuses))->where('m.status', 'active')->where('g.status', 'active')
+                ->pluck('m.identity_group_id', 'm.student_id');
+              $matches = [];
+              foreach (\\App\\Models\\Student::query()->whereIn('CampusID', array_keys($campuses))
+                ->select('id', 'name', 'CampusID', 'parent_phone', 'Phone')->lazyById(200) as $student) {{
+                $name = mb_strtolower(trim((string) $student->name));
+                $phone = \\App\\Support\\StudentContactPhone::normalizedDigits($student);
+                if ($name === '' || $phone === '') {{
+                  continue;
+                }}
+                $matches[$name][$phone][] = [(int) $student->id, (int) $student->CampusID];
+              }}
+              $identityReviewIds = [];
+              foreach ($matches as $phones) {{
+                foreach ($phones as $rows) {{
+                  if (count(array_unique(array_column($rows, 1))) < 2) {{
+                    continue;
+                  }}
+                  $groups = collect($rows)->map(fn ($row) => $memberships->get($row[0]))->unique()->all();
+                  if (count($groups) === 1 && !in_array(null, $groups, true)) {{
+                    continue;
+                  }}
+                  foreach ($rows as [$studentId, $campusId]) {{
+                    $identityReviewIds[$campusId][] = $studentId;
+                  }}
+                }}
+              }}
+              unset($matches);
+              $out['window'] = [$from, $today];
+              $out['billing_as_of'] = $score['as_of'];
+              $out['campuses'] = [];
+              foreach (array_keys($campuses) as $id) {{
+                $billingCounts = $billing->get($id)['counts'] ?? null;
+                if (!is_array($billingCounts) || count($billingCounts) !== count($score['rules'])) {{
+                  throw new \\RuntimeException('four_campus_billing_incomplete');
+                }}
+                $lessons = $conn->table('ClassSession as cs')
+                  ->join('StudentClass as sc', 'sc.ID', '=', 'cs.StudentClassID')
+                  ->join('Student as st', 'st.id', '=', 'sc.StudentID')
+                  ->where('st.CampusID', $id)->whereBetween('cs.SessionDate', [$from, $today]);
+                $placeholders = implode(', ', array_fill(0, count($statuses), '?'));
+                $taught = (clone $lessons)->whereRaw("LOWER(cs.Status) IN ($placeholders)", $statuses)
+                  ->whereRaw("CONCAT(cs.SessionDate, ' ', COALESCE(cs.StartTime, '00:00:00')) <= CAST(? AS DATETIME)",
+                    [$now->toDateTimeString()]);
+                $signin = static fn ($q) => $q->from('StudentSingIn as a')->whereColumn('a.ClassSessionID', 'cs.id')
+                  ->whereColumn('a.StudentID', 'st.id')->whereNull('a.VoidedAt');
+                $missingSignIn = (clone $taught)->select('cs.id as session_id')
+                  ->whereNotExists(fn ($q) => $signin($q)->selectRaw('1'));
+                $duplicateSignIn = (clone $lessons)->select('cs.id as session_id')
+                  ->whereRaw('(SELECT COUNT(*) FROM StudentSingIn a WHERE a.ClassSessionID = cs.id AND a.StudentID = st.id AND a.VoidedAt IS NULL) > 1');
+                $duplicateDeduction = (clone $lessons)->select('cs.id as session_id')
+                  ->join('session_deduction_ledger as l', function ($join) {{
+                    $join->on('l.class_session_id', '=', 'cs.id')->on('l.student_class_id', '=', 'sc.ID');
+                  }})
+                  ->groupBy('cs.id')
+                  ->havingRaw("SUM(CASE WHEN l.event_type = 'deduct' THEN 1 WHEN l.event_type = 'reverse' THEN -1 ELSE 0 END) > 1");
+                $duplicatePackageDeduction = (clone $lessons)->select('cs.id as session_id')
+                  ->join('package_session_ledger as l', 'l.class_session_id', '=', 'cs.id')
+                  ->join('course_packages as p', 'p.id', '=', 'l.package_id')
+                  ->where('p.campus_id', $id)->groupBy('cs.id', 'l.package_id')
+                  ->havingRaw('SUM(l.delta) < -1');
+                $duplicatePackageSessions = $conn->query()->fromSub($duplicatePackageDeduction, 'package_matches')
+                  ->select('session_id')->distinct();
+                $missingScheduleCourse = $conn->table('schedules as s')
+                  ->leftJoin('StudentClass as sc', 'sc.ID', '=', 's.student_course_id')
+                  ->where('s.branch_id', $id)->whereBetween('s.schedule_date', [$from, $today])
+                  ->where('s.student_course_id', '>', 0)->whereNull('sc.ID')->select('s.id as schedule_id');
+                $identityIds = $identityReviewIds[$id] ?? [];
+                sort($identityIds, SORT_NUMERIC);
+                $campusMismatch = $conn->table('schedules as s')->join('Student as st', 'st.id', '=', 's.student_id')
+                  ->where('st.CampusID', $id)->whereNotNull('s.branch_id')->whereColumn('s.branch_id', '<>', 'st.CampusID')
+                  ->whereBetween('s.schedule_date', [$from, $today])->select('s.id as schedule_id');
+                $out['campuses'][] = [
+                  'campus_id' => $id,
+                  'student_count' => $conn->table('Student')->where('CampusID', $id)->count(),
+                  'lessons_scanned' => $lessons->count(),
+                  'billing_counts' => $billingCounts,
+                  'unlinked_cross_campus_identity_candidates' => [
+                    'count' => count($identityIds), 'ids' => array_slice($identityIds, 0, 50),
+                    'sample_truncated' => count($identityIds) > 50,
+                  ],
+                  'taught_without_live_signin' => $summarize($missingSignIn, 'session_id'),
+                  'multiple_live_signins' => $summarize($duplicateSignIn, 'session_id'),
+                  'multiple_net_session_deductions' => $summarize($duplicateDeduction, 'session_id'),
+                  'multiple_net_package_deductions' => $summarize($duplicatePackageSessions, 'session_id'),
+                  'schedule_references_missing_course' => $summarize($missingScheduleCourse, 'schedule_id'),
+                  'historical_schedule_campus_differs_from_current_student_campus' => $summarize($campusMismatch, 'schedule_id'),
+                ];
+              }}
+            }} finally {{
+              $conn->rollBack();
+            }}
+            $out['snapshot_complete'] = true;
           }} elseif ($case === 'occurrence_identity_health') {{
             // Read-only TD-076 Track B health probe (design §7). Per CampusID; top-level counts are active contracts only, stopped_contract holds Stop = 1 counts.
             // IDs and counts only, no names; id lists capped at 50 per campus. Takes no student_id.
@@ -3495,7 +3622,7 @@ jobs:
               echo 'if timeout --signal=TERM --kill-after=5s 120s php artisan tinker "--execute=require '"'"'$probe_file'"'"';"; then :; else'
               echo '  probe_rc=$?; echo "remote_execution_failed_or_timed_out" >&2; exit "$probe_rc"'
               echo 'fi'
-            elif [[ "$CASE_KEY" == 'xinzhuang_fee_cases' ]]; then
+            elif [[ "$CASE_KEY" == 'xinzhuang_fee_cases' || "$CASE_KEY" == 'four_campus_integrity' ]]; then
               echo 'command -v timeout >/dev/null'
               echo 'timeout --signal=TERM --kill-after=5s 120s php artisan tinker "--execute=require '"'"'$probe_file'"'"';"'
             else
@@ -3514,6 +3641,11 @@ jobs:
           Path('raw/production-case.json').write_text(json.dumps(obj or {'ok': False, 'log_chars': len(text)}, ensure_ascii=False, indent=2), encoding='utf-8')
           if not obj or not obj.get('ok'):
               raise SystemExit('probe did not return ok JSON')
+          if os.environ.get('CASE_KEY') == 'four_campus_integrity':
+              if (obj.get('case') != 'four_campus_integrity' or obj.get('read_only') is not True
+                  or obj.get('snapshot_complete') is not True or obj.get('prod_head') != os.environ['EXPECTED_BACKEND_SHA']
+                  or [row.get('campus_id') for row in obj.get('campuses', [])] != [9, 15, 16, 17]):
+                  raise SystemExit('four-campus probe returned incomplete or out-of-scope evidence')
           if obj.get('case') == 'fixed_slot_campus9_student':
               verification = obj.get('verification') or {}
               if not verification.get('student_found'):

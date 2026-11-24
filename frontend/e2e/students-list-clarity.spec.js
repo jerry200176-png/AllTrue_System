@@ -395,6 +395,16 @@ test.describe('In-App #367 shared-pool ownership', () => {
         await expect(card).not.toContainText('99');
         await expect(card).toContainText('共用方案');
         await expect(card.locator('.student-course-card__primary')).toBeVisible();
+        const payment = card.getByTestId('course-payment-badge');
+        await expect(payment).toHaveAttribute('data-tone', 'danger');
+        await expect(payment).toContainText('未繳');
+        const more = card.locator('summary').filter({ hasText: '更多操作' });
+        expect((await more.boundingBox()).height).toBeGreaterThanOrEqual(44);
+        await more.focus();
+        await page.keyboard.press('Enter');
+        await expect(card.locator('details')).toHaveAttribute('open', '');
+        await page.keyboard.press('Enter');
+        await expect(card.locator('details')).not.toHaveAttribute('open', '');
         await card.getByRole('button', { name: '再顯示 22 堂' }).click();
         await expect(card.locator('.student-course-dates__list li')).toHaveCount(25);
         const bounds = await card.locator('.student-course-card__progress-empty').evaluate((element) => ({
@@ -402,6 +412,8 @@ test.describe('In-App #367 shared-pool ownership', () => {
         }));
         expect(bounds.content).toBeLessThanOrEqual(bounds.width);
       }
+      const factsScan = await new AxeBuilder({ page }).include('.student-course-card__meta').withTags(['wcag2a', 'wcag2aa']).analyze();
+      expect(factsScan.violations.filter(v => ['serious', 'critical'].includes(v.impact))).toEqual([]);
       expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
       expect(requests.every((request) => request.method === 'GET')).toBe(true);
       await page.screenshot({ path: `/tmp/inapp367-shared-pool-${width}${overused ? '-overused-dark' : ''}.png`, fullPage: true });

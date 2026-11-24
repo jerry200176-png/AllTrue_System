@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from datetime import datetime, timedelta, timezone
+import re
 from typing import Any
 
 from .contracts import Checkpoint, DecisionReceipt, EvidenceEnvelope, GoalContract
@@ -16,7 +18,82 @@ from .governance_adapter import (
     validate_evidence,
 )
 from .models import Task
+from .states import TaskState
 from .store import HarnessStore
+
+_WORKER_NEXT = {
+    "founder_required": "Use the existing Founder inbox and scoped decision receipt.",
+    "external_wait_recorded": "Read the external run or PR before deciding whether to resume.",
+    "launcher_deferred": "Check the task worktree and native session before choosing a supported launcher.",
+    "ownership_unknown": "Locate the durable attempt and its leases before starting another writer.",
+    "lease_lost": "Confirm the earlier worker stopped. Re-read the checkpoint, exact head and side-effect receipts before restoring ownership.",
+    "progress_unconfirmed": "Inspect the current worker and checkpoint. A live lease alone does not show progress.",
+}
+
+
+def _observation_time(value: Any) -> datetime | None:
+    if not isinstance(value, str):
+        return None
+    try:
+        timestamp = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return timestamp if timestamp.tzinfo is not None else None
+
+
+def observe_workers(store: HarnessStore, *, now: datetime, stale_after: timedelta) -> list[dict[str, Any]]:
+    """An independent read of durable authority and progress, never a takeover."""
+    leases = {lease["resource_key"]: lease for lease in store.list_leases()}
+    result = []
+    for run in store.list_worker_runs():
+        if run["status"] not in {"starting", "running", "deferred"}:
+            continue
+        task = store.get_task(run["task_id"])
+        attempt = store.get_dispatch_attempt(run["attempt_id"])
+        binding = (attempt or {}).get("payload", {}).get("lease_binding", {})
+        claims = binding.get("bindings", []) if isinstance(binding, dict) else []
+        valid_claims = isinstance(claims, list) and len(claims) > 0 and all(isinstance(claim, dict) for claim in claims)
+        latest_progress = max(
+            (stamp for value in [run.get("updated_at"), task.updated_at if task else None]
+             if (stamp := _observation_time(value)) is not None),
+            default=None,
+        )
+        state = "running"
+        if task and task.status == TaskState.FOUNDER_REQUIRED:
+            state = "founder_required"
+        elif task and task.status in {TaskState.PAUSED, TaskState.DONE}:
+            state = "inactive_task_recorded"
+        elif task and task.status in {TaskState.CI_PENDING, TaskState.STAGING_PENDING, TaskState.PRODUCTION_PENDING}:
+            state = "external_wait_recorded"
+        elif run["status"] == "deferred":
+            state = "launcher_deferred"
+        elif not task or not attempt or attempt.get("task_id") != run["task_id"] or not valid_claims:
+            state = "ownership_unknown"
+        else:
+            for claim in claims:
+                current = leases.get(claim.get("resource_key"), {})
+                expires = _observation_time(current.get("expires_at"))
+                if (current.get("lease_id") != claim.get("lease_id")
+                        or current.get("fencing_token") != claim.get("fencing_token")
+                        or current.get("holder_task_id") != run["task_id"]
+                        or expires is None or expires <= now):
+                    state = "lease_lost"
+                    break
+            if state == "running" and (latest_progress is None or now - latest_progress >= stale_after):
+                state = "progress_unconfirmed"
+        launch = (run.get("payload") or {}).get("launch", {})
+        result.append({
+            **{key: run.get(key) for key in ("run_id", "attempt_id", "task_id", "status",
+                                              "session_id", "worktree_path", "branch")},
+            "observation": state,
+            "task_state": task.status.value if task else None,
+            "last_recorded_progress_at": latest_progress.astimezone(timezone.utc).isoformat() if latest_progress else None,
+            "attention_key": None if state in {"running", "external_wait_recorded", "inactive_task_recorded"}
+                             else f"{run['run_id']}:{state}",
+            "next": _WORKER_NEXT.get(state),
+            "launcher_reason": launch.get("reason") if state == "launcher_deferred" else None,
+        })
+    return result
 
 
 @dataclass
@@ -165,7 +242,14 @@ def resume_from_checkpoint(store: HarnessStore, checkpoint_id: str) -> dict[str,
 def reconcile_ci_sha(
     *, expected_head_sha: str, observed_ci_sha: str, conclusion: str,
 ) -> GovernanceDecision:
-    if expected_head_sha and observed_ci_sha and expected_head_sha != observed_ci_sha:
+    if not all(isinstance(value, str) and re.fullmatch(r"[0-9a-f]{40}", value)
+               for value in (expected_head_sha, observed_ci_sha)):
+        return GovernanceDecision(
+            autonomous=False, founder_required=False, machine_tier="T?",
+            effective_tier="T?", reasons=["ci_head_unverified"],
+            continue_safe=True, drift_codes=("missing_exact_ci_sha",),
+        )
+    if expected_head_sha != observed_ci_sha:
         return GovernanceDecision(
             autonomous=False, founder_required=False, machine_tier="T?",
             effective_tier="T?",

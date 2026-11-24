@@ -21,7 +21,7 @@ createApp({
         ]),
       ];
     }
-    return () => h(PageComponent, { branchId: mode === 'no-branch' ? null : 1, userRole: '' });
+    return () => h(PageComponent, { branchId: mode === 'no-branch' ? null : 1, userRole: mode === 'admin' ? 'super_admin' : '' });
   },
 }).mount('#app');
 

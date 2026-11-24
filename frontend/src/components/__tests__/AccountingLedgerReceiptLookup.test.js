@@ -7,11 +7,11 @@ const payment = (id, reportId, status = 'confirmed', extra = {}) => ({ id, repor
 const invoice = (id, payments) => ({ id, invoice_no: `I-${id}`, student_class_id: 42, status: 'paid', total_amount: 1000, calculated_applied_amount: 1000, outstanding_amount: 0, payments });
 const data = () => ({ student: { id: 5, name: '合成學生' }, scope: { student_class_id: 42 }, summary: {}, courses: [], anomalies: [], invoices: [invoice(501, [payment(71, 801), payment(72, 802)]), invoice(502, [payment(73, 803, 'pending'), payment(74, 804, 'voided', { is_void: true }), payment(75, null)])], receipts: [] });
 
-async function open({ role = 'director', payload = data(), action = 'documents' } = {}) {
+async function open({ role = 'director', payload = data(), action = 'documents', realContracts = false } = {}) {
   localStorage.setItem('alltrue_session', JSON.stringify({ access_token: 'synthetic', user: { role } }));
   const fetchMock = vi.fn(async (url) => ({ ok: true, status: 200, json: async () => String(url).startsWith('/api/v1/accounting/ledger') ? payload : { data: [] } }));
   vi.stubGlobal('fetch', fetchMock);
-  const wrapper = mount(AccountingLedgerModal, { attachTo: document.body, props: { show: true, studentClassId: 42, branchId: 7, initialAction: action }, global: { stubs: { Transition: false, BillingNotesPanel: true, ReceiptModal: Receipt, ContractCard: true } } });
+  const wrapper = mount(AccountingLedgerModal, { attachTo: document.body, props: { show: true, studentClassId: 42, branchId: 7, initialAction: action }, global: { stubs: { Transition: false, BillingNotesPanel: true, ReceiptModal: Receipt, ContractCard: !realContracts } } });
   await flushPromises();
   return { wrapper, fetchMock };
 }
@@ -37,6 +37,115 @@ describe('#4148 bill-linked receipt lookup', () => {
       expect(fetchMock.mock.calls.filter(([u]) => String(u).startsWith('/api/v1/accounting/ledger?'))).toHaveLength(1);
       expect(fetchMock.mock.calls.filter(([u]) => /\/api\/v1\/invoices\//.test(String(u)))).toEqual([]);
       expect(fetchMock.mock.calls.every(([, o]) => !o?.method || o.method === 'GET')).toBe(true);
+    } finally { w.unmount(); }
+  });
+
+  it('keeps exact receipt actions while avoiding repeated facts only beside the expanded matching invoice', async () => {
+    const payload = data();
+    payload.can_reassign_receipt = true;
+    payload.invoices[1].payments.push(payload.invoices[0].payments.pop());
+    payload.receipts = [
+      { report_id: 801, invoice_id: 501, payment_id: 71, student_class_id: 42, amount: 500, payment_date: '2026-11-01', payment_method: 'cash', status: 'confirmed', note: '核對備註' },
+      { report_id: 802, invoice_id: 502, payment_id: 72, student_class_id: 42, amount: 500, payment_date: '2026-11-03', payment_method: 'cash', status: 'confirmed' },
+    ];
+    const { wrapper: w, fetchMock } = await open({ payload });
+    try {
+      expect(w.get('[data-testid="ledger-fold-receipts"]').attributes('aria-expanded')).toBe('true');
+      const first = w.get('[data-testid="ledger-receipt-view-801"]');
+      const second = w.get('[data-testid="ledger-receipt-view-802"]');
+      const repeated = () => w.find('[data-testid="ledger-receipt-repeated-801"]');
+      expect(repeated().exists()).toBe(true);
+      await repeated().trigger('click');
+      expect(document.activeElement).toBe(w.get('[data-testid="ledger-invoice-toggle-501"]').element);
+      expect(first.element.closest('.ledger-receipt').textContent).not.toContain('NT$ 500');
+      expect(first.element.closest('.ledger-receipt').textContent).toContain('核對備註');
+      expect(second.element.closest('.ledger-receipt').textContent).toContain('2026/11/03');
+      expect(w.find('[data-testid="ledger-receipt-repeated-802"]').exists()).toBe(false);
+      expect(w.get('[data-testid="ledger-receipt-move-801"]').isVisible()).toBe(true);
+      await first.trigger('click');
+      expect(w.get('[data-testid="lookup-receipt"]').text()).toContain('801');
+      await w.get('[data-testid="lookup-receipt"] button').trigger('click');
+
+      await w.get('[data-testid="ledger-fold-invoices"]').trigger('click');
+      expect(repeated().exists()).toBe(false);
+      expect(first.element.closest('.ledger-receipt').textContent).toContain('NT$ 500');
+      expect(fetchMock.mock.calls.every(([, options]) => !options?.method || options.method === 'GET')).toBe(true);
+    } finally { w.unmount(); }
+  });
+
+  it('keeps the details distinguishing two receipts paid against the same expanded invoice', async () => {
+    const payload = data();
+    payload.invoices[0].payments[1] = payment(72, 802, 'confirmed', { amount: 900, method: 'transfer', paid_at: '2026-11-03' });
+    payload.receipts = [
+      { report_id: 801, invoice_id: 501, payment_id: 71, student_class_id: 42, amount: 500, payment_date: '2026-11-01', payment_method: 'cash', status: 'confirmed' },
+      { report_id: 802, invoice_id: 501, payment_id: 72, student_class_id: 42, amount: 900, payment_date: '2026-11-03', payment_method: 'transfer', status: 'confirmed' },
+    ];
+    const { wrapper: w } = await open({ payload });
+    try {
+      expect(w.findAll('[data-testid^="ledger-receipt-repeated-"]')).toHaveLength(0);
+      const first = w.get('[data-testid="ledger-receipt-view-801"]');
+      const second = w.get('[data-testid="ledger-receipt-view-802"]');
+      expect(first.element.closest('.ledger-receipt').textContent).toMatch(/NT\$ 500.*2026\/11\/01.*現金/);
+      expect(second.element.closest('.ledger-receipt').textContent).toMatch(/NT\$ 900.*2026\/11\/03.*匯款/);
+      await second.trigger('click');
+      expect(w.get('[data-testid="lookup-receipt"]').text()).toContain('802');
+    } finally { w.unmount(); }
+  });
+
+  it('keeps the full row when a hidden receipt also claims the same payment', async () => {
+    const payload = data();
+    payload.receipts = [
+      { report_id: 801, invoice_id: 501, payment_id: 71, student_class_id: 42, amount: 500, payment_date: '2026-11-01', payment_method: 'cash', status: 'confirmed' },
+      { report_id: 805, invoice_id: 502, payment_id: 71, student_class_id: 42, amount: 500, payment_date: '2026-11-01', payment_method: 'cash', status: 'voided' },
+    ];
+    const { wrapper: w } = await open({ payload });
+    try {
+      expect(w.find('[data-testid="ledger-receipt-view-805"]').exists()).toBe(false);
+      expect(w.find('[data-testid="ledger-receipt-repeated-801"]').exists()).toBe(false);
+      expect(w.get('[data-testid="ledger-receipt-view-801"]').element.closest('.ledger-receipt').textContent).toContain('NT$ 500');
+    } finally { w.unmount(); }
+  });
+
+  it('distinguishes compact receipts from separate invoices of the same course', async () => {
+    const payload = data();
+    payload.invoices[1].payments.push(payload.invoices[0].payments.pop());
+    payload.receipts = [
+      { report_id: 801, invoice_id: 501, payment_id: 71, student_class_id: 42, amount: 500, payment_date: '2026-11-01', payment_method: 'cash', status: 'confirmed' },
+      { report_id: 802, invoice_id: 502, payment_id: 72, student_class_id: 42, amount: 500, payment_date: '2026-11-01', payment_method: 'cash', status: 'confirmed' },
+    ];
+    const { wrapper: w } = await open({ payload });
+    try {
+      for (const [reportId, invoiceId] of [[801, 501], [802, 502]]) {
+        const compact = w.get(`[data-testid="ledger-receipt-repeated-${reportId}"]`);
+        expect(compact.text()).toContain(`R-${reportId}`);
+        expect(compact.attributes('aria-label')).toBeUndefined();
+        await compact.trigger('click');
+        expect(document.activeElement).toBe(w.get(`[data-testid="ledger-invoice-toggle-${invoiceId}"]`).element);
+      }
+    } finally { w.unmount(); }
+  });
+
+  it.each(['', 'R-803'])('retains full details if the visible receipt number is missing or duplicated (%s)', async (receiptNo) => {
+    const payload = data();
+    payload.invoices[0].payments[0].receipt_no = receiptNo;
+    payload.receipts = [{ report_id: 801, invoice_id: 501, payment_id: 71, student_class_id: 42, amount: 500, payment_date: '2026-11-01', payment_method: 'cash', status: 'confirmed' }];
+    const { wrapper: w } = await open({ payload });
+    try {
+      expect(w.find('[data-testid="ledger-receipt-repeated-801"]').exists()).toBe(false);
+      expect(w.get('[data-testid="ledger-receipt-view-801"]').element.closest('.ledger-receipt').textContent).toContain('NT$ 500');
+    } finally { w.unmount(); }
+  });
+
+  it('keeps the full row if a second invoice references the same report', async () => {
+    const payload = data();
+    payload.invoices[1].payments.push(payment(76, 801));
+    payload.receipts = [
+      { report_id: 801, invoice_id: 501, payment_id: 71, student_class_id: 42, amount: 500, payment_date: '2026-11-01', payment_method: 'cash', status: 'confirmed' },
+    ];
+    const { wrapper: w } = await open({ payload });
+    try {
+      expect(w.get('[data-testid="ledger-receipt-view-801"]').element.closest('.ledger-receipt').textContent).toContain('NT$ 500');
+      expect(w.find('[data-testid="ledger-receipt-repeated-801"]').exists()).toBe(false);
     } finally { w.unmount(); }
   });
 
@@ -90,6 +199,57 @@ describe('#4148 bill-linked receipt lookup', () => {
     try {
       await w.get('[data-testid="ledger-receipt-view-900"]').trigger('click');
       expect(w.get('[data-testid="lookup-receipt"]').text()).toContain('900');
+    } finally { w.unmount(); }
+  });
+});
+
+describe('contract invoice shortcut', () => {
+  function withContract(invoices) {
+    return {
+      ...data(),
+      courses: [{ id: 42, subject: '數學', schedule_mode: 'count', paid: true }],
+      invoices,
+    };
+  }
+
+  async function openContractMenu(wrapper) {
+    const trigger = wrapper.get('[data-testid="contract-card-42"] button[aria-haspopup="menu"]');
+    await trigger.trigger('keydown', { key: 'ArrowDown' });
+    await flushPromises();
+    return document.querySelector('[role="menu"] [data-action="invoice-documents"]');
+  }
+
+  it('reopens the invoice fold and focuses the uniquely linked combined bill without opening a receipt or writing data', async () => {
+    const related = { ...invoice(501, [payment(71, 801), payment(72, 802)]), student_class_id: 11, covered_student_class_ids: [11, 42] };
+    const unrelated = { ...invoice(502, [payment(73, 803)]), student_class_id: 77 };
+    const { wrapper: w, fetchMock } = await open({ payload: withContract([unrelated, related]), action: null, realContracts: true });
+    try {
+      await w.get('[data-testid="ledger-fold-invoices"]').trigger('click');
+      const item = await openContractMenu(w);
+      expect(item).not.toBeNull();
+      expect(item?.textContent).toContain('查看帳單與收據');
+      item.click();
+      await flushPromises();
+      const rowToggle = w.get('[data-testid="ledger-invoice-toggle-501"]');
+      expect(rowToggle.attributes('aria-expanded')).toBe('true');
+      expect(document.activeElement).toBe(rowToggle.element);
+      expect(w.get('[data-testid="ledger-invoice-toggle-502"]').attributes('aria-expanded')).toBe('false');
+      expect(w.find('[data-testid="lookup-receipt"]').exists()).toBe(false);
+      await w.get('[data-testid="ledger-payment-receipt-72"]').trigger('click');
+      expect(w.get('[data-testid="lookup-receipt"]').text()).toContain('802');
+      expect(fetchMock.mock.calls.every(([, options]) => !options?.method || options.method === 'GET')).toBe(true);
+    } finally { w.unmount(); }
+  });
+
+  it.each([
+    ['director', [], 'no bill'],
+    ['director', [invoice(501, []), invoice(502, [])], 'more than one bill'],
+    ['teacher', [invoice(501, [])], 'without document permission'],
+  ])('keeps the general documents entry whenever direct lookup is unavailable (%s, %s, %s)', async (role, invoices) => {
+    const { wrapper: w } = await open({ role, payload: withContract(invoices), action: null, realContracts: true });
+    try {
+      expect(await openContractMenu(w)).toBeNull();
+      expect(w.get('[data-testid="ledger-fold-invoices"]').exists()).toBe(true);
     } finally { w.unmount(); }
   });
 });

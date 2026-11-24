@@ -25,6 +25,16 @@ final class PopOperationController extends Controller
         }
     }
 
+    public function previewSettledPackageRetirement(Request $request, \App\Operations\Strategies\SettledPackageRetirementStrategy $strategy)
+    {
+        if (!$request->attributes->get('auth_user') || $request->attributes->get('auth_role') !== 'super_admin') {
+            return response()->json(['message' => 'Forbidden'], 403);
+        }
+        $preview = $strategy->preview();
+
+        return response()->json(['data' => $preview], $preview['ok'] ? 200 : 409);
+    }
+
     public function status(Request $request, string $requestId, PopOperationService $service)
     {
         if (!$request->attributes->get('auth_user')) return response()->json(['message' => 'Unauthenticated'], 401);

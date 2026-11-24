@@ -902,6 +902,10 @@ Route::prefix('v1')->group(function () {
         Route::get('pop/operations/requests/{requestId}/status', [PopOperationController::class, 'status'])->whereUuid('requestId');
     });
 
+    Route::middleware(['role:super_admin', 'require_campus', 'require_password_change'])->group(function () {
+        Route::get('pop/operations/reviewed-settled-package-retirement/preview', [PopOperationController::class, 'previewSettledPackageRetirement'])->middleware('throttle:20,1');
+    });
+
     // Machine control-plane entrypoints only. A POP machine can submit and
     // plan a request within its campus; approvals remain human dual approval.
     Route::middleware(['pop_machine:pop:draft', 'role:pop_machine'])->group(function () {

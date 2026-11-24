@@ -1,0 +1,13 @@
+updates:
+  - id: staff-2026-11-23-director-today-priority-explanation
+    published_at: "2026-11-23"
+    audiences:
+      - director
+    importance: digest
+    title: 今日待辦可看排序依據
+    summary: 在「今天要處理」下方展開說明，即可看到高優先工作及原因。
+    items:
+      - category: improved
+        text: 「完整營運」直接顯示課表、繳費和案件等原有區塊。
+    source_refs:
+      - "changelog:2026-11-23:director-today-priority-explanation"

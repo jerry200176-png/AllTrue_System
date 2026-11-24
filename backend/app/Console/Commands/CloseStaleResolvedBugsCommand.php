@@ -8,7 +8,7 @@ use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Log;
 
 /**
- * Manual by default; `--auto` is the unattended daily run (bug-reporter-timeout.yml schedule).
+ * Manual by default; the production Laravel scheduler invokes `--auto` daily.
  * Owner: Founder / CTO Agent. Cadence: weekly dry-run, then apply.
  * See docs/sop/BUG_REPORTER_TIMEOUT.md
  */

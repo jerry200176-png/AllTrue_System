@@ -47,7 +47,7 @@ describe('isPartialCoursePayment reads the payment status', () => {
 
   it('the page no longer decides 部分 by matching text', () => {
     expect(page).not.toContain("includes('部分')");
-    expect(page).toContain('isPartialCoursePayment(course, { monthlyPeriod: true })');
+    expect(page).toContain('coursePaymentStatusTone(course, { monthlyPeriod: true })');
   });
 });
 

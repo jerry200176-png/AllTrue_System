@@ -23,6 +23,7 @@
 @source "./components/course-management";
 @source "./pages/CourseManagement.vue";
 @source "./pages/StudentsList.vue";
+@source "./components/SchoolNameInput.vue";
 @source "./components/CourseEditForm.vue";
 @source "./components/students/StudentLearningTimeline.vue";
 @source "./components/students/StudentLearningPlanGantt.vue";
@@ -40,6 +41,7 @@
 @source "./pages/TuitionCollectionPage.vue";
 @source "./components/tuition/BillList.vue";
 @source "./components/tuition/BillingGuide.vue";
+@source "./components/tuition/ContractCard.vue";
 @source "./components/tuition/MonthlyRosterPanel.vue";
 @source "./pages/TeacherEligibilityPage.vue";
 @source "./components/CurriculumTemplatesPanel.vue";

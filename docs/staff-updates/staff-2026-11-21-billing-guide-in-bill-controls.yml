@@ -1,0 +1,14 @@
+updates:
+  - id: staff-2026-11-21-billing-guide-in-bill-controls
+    published_at: "2026-11-21"
+    audiences:
+      - director
+      - super_admin
+    importance: digest
+    title: 帳務中心先顯示帳單摘要
+    summary: 進入「帳單與收款」即可在分頁下方看到未收、逾期和待確認入帳。
+    items:
+      - category: improved
+        text: 從帳單搜尋旁的「開始登帳引導」即可逐筆處理待辦。
+    source_refs:
+      - "changelog:2026-11-21:billing-guide-in-bill-controls"

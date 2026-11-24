@@ -38,7 +38,7 @@ describe('Shared package close explanation (#5494)', () => {
   it('keeps the reason visible expanded and collapsed without hiding money or offering a false close', async () => {
     const reason = '共用方案須整包核對，目前不能只結束其中一門課。';
     const w = mount(ContractCard, { props: { focused: true, course: { id: 91, package_id: 81, subject: '合成共用科目' }, outstanding: 800,
-      rowActions: { settle: false, settleBlockedReason: reason } } });
+      rowActions: { settle: false, settleBlockedReason: reason, packageCloseReview: true } } });
     try {
       await flushPromises();
       expect(w.get('[data-testid="contract-package-close"]').text()).toBe(reason);
@@ -47,6 +47,10 @@ describe('Shared package close explanation (#5494)', () => {
       expect(menuItem('settle')).toBeNull();
       await w.get('[data-testid="contract-toggle"]').trigger('click');
       expect(w.get('[data-testid="contract-package-close"]').text()).toBe(reason);
+      const support = w.get('[data-testid="contract-package-close-review"]');
+      expect(support.attributes('aria-describedby')).toBe(w.get('[data-testid="contract-package-close"]').attributes('id'));
+      await support.trigger('click');
+      expect(w.emitted('row-action')).toEqual([['packageCloseReview']]);
     } finally { w.unmount(); }
   });
 });

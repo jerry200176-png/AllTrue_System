@@ -21,9 +21,10 @@
         <StatItem label="學生" :value="summary.students" unit="人" />
         <StatItem v-if="summary.tuition_total != null" label="學收合計" :value="money(summary.tuition_total)" :sub="summary.tuition_unpriced ? `${summary.tuition_unpriced} 門課沒有單價，沒算進來` : ''" />
         <StatItem label="這個月收到" :value="money(summary.paid_this_month)" tone="success" />
-        <StatItem label="未繳" :value="money(summary.outstanding)" :tone="summary.outstanding > 0 ? 'danger' : 'neutral'" />
+        <StatItem :label="outstandingScope ? OUTSTANDING_LABELS.selected_billed : '各期帳款餘額'" :value="money(billedAmount)" :tone="billedAmount > 0 ? 'danger' : 'neutral'" />
         <StatItem label="待確認入帳" :value="summary.pending_reports" unit="筆" :tone="summary.pending_reports > 0 ? 'warning' : 'neutral'" />
       </StatStrip>
+      <p v-if="otherBalances" class="tw:text-tpl-body tw:text-tpl-secondary">{{ otherBalances }}</p>
 
       <Alert v-if="error" tone="danger" class="tw:text-tpl-body">
         <div class="tw:flex tw:flex-wrap tw:items-center tw:gap-3">
@@ -51,9 +52,9 @@
           <TableBody v-for="s in visible" :key="s.student_id" :data-testid="`roster-student-${s.student_id}`">
             <TableRow v-for="(c, i) in s.courses" :key="c.course_id" class="tw:hover:bg-muted/60" :data-testid="`roster-course-${c.course_id}`">
               <TableCell v-if="i === 0" :rowspan="s.courses.length" :class="[t.name, 'tw:pl-5 tw:align-top']">
-                <button type="button" class="tw:cursor-pointer tw:border-0 tw:bg-transparent tw:p-0 tw:text-left tw:font-semibold tw:text-foreground tw:underline-offset-4 tw:hover:underline" :data-testid="`roster-name-${s.student_id}`" :data-student="s.student_id" @click="open(s, c, null)">{{ s.student_name }}</button>
+                <button type="button" class="tw:cursor-pointer tw:border-0 tw:bg-transparent tw:p-0 tw:text-left tw:text-tpl-body tw:font-semibold tw:text-foreground tw:underline-offset-4 tw:hover:underline" :data-testid="`roster-name-${s.student_id}`" :data-student="s.student_id" @click="open(s, c, null)">{{ s.student_name }}</button>
                 <span :class="t.sub">{{ s.school }}</span>
-                <span v-if="s.outstanding > 0" :class="[t.sub, 'tw:text-[var(--ds-danger-text)]']">共欠 {{ money(s.outstanding) }}</span>
+                <span v-if="s.outstanding > 0" :class="t.sub">各期餘額 {{ money(s.outstanding) }}</span>
               </TableCell>
               <TableCell :class="[t.cell, 'tw:min-w-[9em] tw:whitespace-normal']">
                 {{ c.subject }}<span class="tw:text-tpl-secondary">・{{ c.teacher_name || '—' }}</span>
@@ -74,6 +75,7 @@
                   <Button v-if="c.pending_reports" variant="outline" class="tw:min-h-11" :data-testid="`roster-confirm-${c.course_id}`" @click="open(s, c, 'confirm')">確認入帳</Button>
                   <Button v-else-if="c.money.outstanding > 0" variant="outline" class="tw:min-h-11" :data-testid="`roster-record-${c.course_id}`" @click="open(s, c, 'record')">登記收款</Button>
                 </div>
+                <span v-if="c.money.outstanding_by_scope && c.money.outstanding > 0" :class="t.sub">{{ balanceDetails(c.money.outstanding_by_scope) }}</span>
                 <span v-if="c.money.month_total != null && !c.money.month_invoiced" :class="t.sub">本月預估 {{ money(c.money.month_total) }}</span>
                 <span v-for="(p, k) in c.paid_this_month" :key="k" :class="t.sub">{{ md(p.date) }} {{ METHOD[p.method] || p.method }} {{ money(p.amount) }}</span>
               </TableCell>
@@ -99,7 +101,14 @@ import { authedFetch, getAccessToken } from '../../lib/authedFetch';
 const props = defineProps({ branchId: { type: [Number, String], default: null } });
 const emit = defineEmits(['open']);
 
-const FILTERS = [{ key: 'all', label: '全部' }, { key: 'owing', label: '未繳' }, { key: 'pending', label: '待確認入帳' }];
+const FILTERS = [{ key: 'all', label: '全部' }, { key: 'owing', label: '各期待收' }, { key: 'pending', label: '待確認入帳' }];
+const OUTSTANDING_LABELS = {
+  selected_billed: '本月帳單未收',
+  other_billed: '其他月份帳單未收',
+  undated_billed: '月份待核對的帳單未收',
+  unbilled: '未開單合約餘額',
+};
+const OUTSTANDING_KEYS = Object.keys(OUTSTANDING_LABELS);
 // The payment slip's price; null = no price set, or it changed inside this month (the student ledger has both).
 const rateLabel = (c) => (c.rate ? `${money(c.rate)}${c.rate_unit === 'hour' ? '／小時' : ''}` : '—');
 
@@ -118,12 +127,18 @@ const filter = ref('all');
 const students = ref([]);
 const EMPTY_SUMMARY = { students: 0, outstanding: 0, paid_this_month: 0, pending_reports: 0 };
 const summary = ref(EMPTY_SUMMARY);
+const outstandingScope = computed(() => summary.value.outstanding_by_scope);
+const billedAmount = computed(() => outstandingScope.value?.selected_billed ?? summary.value.outstanding);
+const otherBalances = computed(() => outstandingScope.value ? balanceDetails(outstandingScope.value, OUTSTANDING_KEYS.slice(1)) : '');
 const loading = ref(false);
 const error = ref('');
 const campusId = computed(() => (props.branchId == null || props.branchId === '' ? null : Number(props.branchId)));
 let seq = 0; // only the newest request may write: a slow reply for another month or campus is dropped
 
 const money = (n) => `${n < 0 ? '−' : ''}NT$${Math.abs(Number(n || 0)).toLocaleString('en-US')}`;
+function balanceDetails(scope, keys = OUTSTANDING_KEYS) {
+  return keys.filter((key) => scope[key] > 0).map((key) => `${OUTSTANDING_LABELS[key]} ${money(scope[key])}`).join('・');
+}
 const md = (d) => `${Number(d.slice(5, 7))}/${Number(d.slice(8, 10))}`;
 // Each date with its state unless held, e.g. 11/3、11/10（請假或沒上）、11/24（還沒上）: the phone line and the export column.
 const lessonDates = (c) => c.lessons.map((l) => `${md(l.date)}${l.kind === 'held' ? '' : `（${LESSON[l.kind].label}）`}`).join('、');
@@ -133,9 +148,10 @@ const lessonLine = (c) => (c.lessons.length ? `${lessonDates(c)}・已上 ${c.he
 function state(c) {
   if (c.money.status === 'waived') return { tone: 'neutral', label: '已確認不收' }; // ledger: isWaivedContract; the API sends outstanding 0
   if (c.pending_reports) return { tone: 'warning', label: `待確認 ${c.pending_reports} 筆` };
-  // review_required can still carry a balance (BillingPayableResolver::courseStatus); the warning must not hide behind 未繳.
-  if (c.money.status === 'review_required') return { tone: 'warning', label: c.money.outstanding > 0 ? `要核對（未繳 ${money(c.money.outstanding)}）` : '要核對' };
-  if (c.money.outstanding > 0) return { tone: 'danger', label: `未繳 ${money(c.money.outstanding)}` };
+  const hasBalance = c.money.outstanding > 0;
+  const legacyBalance = hasBalance && !c.money.outstanding_by_scope;
+  if (c.money.status === 'review_required') return { tone: 'warning', label: legacyBalance ? `要核對（未繳 ${money(c.money.outstanding)}）` : '要核對' };
+  if (hasBalance) return { tone: 'danger', label: legacyBalance ? `未繳 ${money(c.money.outstanding)}` : '各期尚有餘額' };
   if (c.money.legacy_unverified) return { tone: 'neutral', label: '已收（舊資料）' }; // only the old Paid mark, no bill or payment (Founder 2026-11-17)
   if (c.money.status === 'free') return { tone: 'neutral', label: '不用收費' }; // tutoring or a zero-fee course: nothing was collected (ledger: 不需繳費)
   if (c.money.status === 'paid') return { tone: 'success', label: '已收齊' };
@@ -162,14 +178,18 @@ function shift(step) {
 const CSV_HEADERS = ['科目', '老師', '學校', '學生', '繳費日期', '付費方式', '單價', '已上堂數', '本月預估', '這個月收到', '未繳', '收款狀態', '這個月的課', '月學收'];
 const csvCell = (v) => (typeof v === 'number' ? v : `"${String(v ?? '').replace(/^([=+\-@])/, "'$1").replace(/"/g, '""')}"`); // no spreadsheet formulas from names
 function exportCsv() {
+  const headers = outstandingScope.value
+    ? [...CSV_HEADERS.map((label) => label === '未繳' ? '各期帳款餘額（含未開單）' : label), ...Object.values(OUTSTANDING_LABELS)]
+    : CSV_HEADERS;
   const rows = visible.value.flatMap((s) => s.courses.map((c) => [
     c.subject, c.teacher_name, s.school, s.student_name,
     c.paid_this_month.map((p) => p.date).join('、'), c.paid_this_month.map((p) => METHOD[p.method] || p.method).join('、'),
     rateLabel(c), c.held, c.money.month_total != null && !c.money.month_invoiced ? c.money.month_total : '',
     c.paid_this_month.reduce((n, p) => n + Number(p.amount || 0), 0), c.money.outstanding, state(c).label,
-    lessonDates(c), c.tuition ?? '', // 月學收 last, so the old sheet's columns keep their places
+    lessonDates(c), c.tuition ?? '',
+    ...(outstandingScope.value ? OUTSTANDING_KEYS.map((key) => c.money.outstanding_by_scope?.[key] ?? '') : []),
   ]));
-  const csv = '\ufeff' + [CSV_HEADERS, ...rows].map((r) => r.map(csvCell).join(',')).join('\n');
+  const csv = '\ufeff' + [headers, ...rows].map((r) => r.map(csvCell).join(',')).join('\n');
   const a = document.createElement('a');
   a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8;' }));
   a.download = `月對帳表_${year.value}-${String(month.value).padStart(2, '0')}.csv`;

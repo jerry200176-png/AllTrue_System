@@ -1,0 +1,14 @@
+updates:
+  - id: staff-2026-11-22-contract-invoice-receipt-shortcut
+    published_at: "2026-11-22"
+    audiences:
+      - director
+      - super_admin
+    importance: digest
+    title: 從合約卡查看帳單與收據
+    summary: 合約只有一張可對應的帳單時，從更多操作直接定位。
+    items:
+      - category: improved
+        text: 在合約卡按更多操作，選「查看帳單與收據」，即可跳到對應帳單和收款紀錄，並查看已連結的收據。
+    source_refs:
+      - "changelog:2026-11-22:contract-invoice-receipt-shortcut"

@@ -7,12 +7,25 @@
           <span aria-hidden="true">{{ open ? '▾' : '▸' }}</span>{{ title }}
         </button>
       </h5>
-      <span v-if="!isMonthly && state === 'ready'" class="contract__leftline" data-testid="contract-left-line">剩 {{ upcomingCount }} 堂</span>
+      <span v-if="!open && !isMonthly && state === 'ready'" class="contract__leftline" data-testid="contract-left-line">剩 {{ upcomingCount }} 堂</span>
       <span v-if="pill" :class="['contract__chip', pill.cls]" data-testid="contract-pill">{{ pill.text }}</span>
       <AtButton v-if="primary === 'confirm'" size="sm" shape="rect" :disabled="busy" data-testid="contract-confirm" @click="openConfirm">確認入帳</AtButton>
       <AtButton v-else-if="primary === 'record'" variant="secondary" size="sm" shape="rect" data-testid="contract-record" @click="$emit('record', course)">登記這筆</AtButton>
       <AtButton v-else-if="primary === 'issue'" variant="secondary" size="sm" shape="rect" data-testid="contract-issue" @click="emit('issue', billDraft)">開帳單 {{ money(billDraft.amount) }}</AtButton>
       <ActionMenu v-if="menuGroups.length" :groups="menuGroups" :label="`${course.subject || '課程'} 的更多操作`" trigger-class="contract__more" @select="onMenu" />
+    </div>
+    <div v-if="rowActions?.settleBlockedReason" class="tw:flex tw:flex-wrap tw:items-center tw:gap-2">
+      <p :id="`contract-package-close-${course.id}`" class="contract__warn" data-testid="contract-package-close">{{ rowActions.settleBlockedReason }}</p>
+      <AtButton
+        v-if="rowActions.packageCloseReview"
+        type="button"
+        variant="secondary"
+        size="sm"
+        shape="rect"
+        :aria-describedby="`contract-package-close-${course.id}`"
+        data-testid="contract-package-close-review"
+        @click="emit('row-action', 'packageCloseReview')"
+      >回報給總部</AtButton>
     </div>
     <p v-for="w in (open ? [] : warnings)" :key="w.testid" class="contract__warn" :data-testid="w.testid">{{ w.text }}</p>
     <p v-if="actionError" class="contract__error">{{ actionError }}</p>
@@ -53,7 +66,6 @@
       <span v-if="outsideDates.length" class="contract__muted" data-testid="contract-outside">{{ outsideText }}</span>
       <span v-if="slipReasonShown" :id="`contract-slip-reason-${course.id}`" class="contract__muted" data-testid="contract-slip-reason">{{ slipState.reason }}</span>
     </div>
-    <p v-if="rowActions?.settleBlockedReason" class="contract__warn" data-testid="contract-package-close">{{ rowActions.settleBlockedReason }}</p>
 
     <!-- #4115 / Founder Q2 = A + D3: display only. A different amount alone is no reason to void, so no void action here. -->
     <div v-if="rateNote" class="contract__ratenote" data-testid="contract-rate-note">
@@ -147,6 +159,7 @@ const props = defineProps({
   focused: { type: Boolean, default: false },
   // In-app #425: director/super_admin, same gate as 帳務中心 canViewBillingDocs.
   canViewDocs: { type: Boolean, default: false },
+  hasInvoiceDocuments: { type: Boolean, default: false },
   outstanding: { type: Number, default: 0 },
   pendingReport: { type: Object, default: null },
   // Most recent non-void payment on this contract: { date: 'YYYY-MM-DD', amount }, or { legacyUnverified: true }
@@ -177,7 +190,7 @@ const props = defineProps({
   // Remembered by the drawer so a reload keeps the card open.
   expanded: { type: Boolean, default: false },
 });
-const emit = defineEmits(['changed', 'record', 'issue', 'confirmed', 'slip', 'legacy-backfill', 'row-action', 'toggle']);
+const emit = defineEmits(['changed', 'record', 'issue', 'confirmed', 'slip', 'legacy-backfill', 'row-action', 'toggle', 'show-invoice-documents']);
 
 // Billing redesign PRD v2 D16: whether the money for each lesson is in.
 const PAYMENT_LABELS = { paid: '已收', partial: '繳了一部分', unpaid: '未繳', no_invoice: '還沒開帳單' };
@@ -251,7 +264,8 @@ const amountsLine = computed(() => {
     if (nothingTaught.value) return '';
     return noObligation.value || waived.value || props.lastPayment?.fullDiscount || props.course.free_gift_settled === true || props.course.full_discount_settled === true ? '' : '金額未填';
   }
-  return `本合約帳單 應收 ${money(a.due)}・已收 ${money(a.received)}・未繳 ${money(a.owed)}`;
+  const summary = `本合約帳單 應收 ${money(a.due)}・已收 ${money(a.received)}`;
+  return repeatsUnpaidAmount.value ? summary : `${summary}・未繳 ${money(a.owed)}`;
 });
 const shortDate = (d) => { const p = String(d).slice(5, 10).split('-'); return p.length === 2 ? `${Number(p[0])}/${Number(p[1])}` : ''; };
 // Same source as the printed receipt (confirmed receipts, then non-void invoice payments; never "fixed" here).
@@ -437,6 +451,9 @@ const legacyRef = ref(null);
 const nothingTaught = computed(() => isMonthly.value && state.value === 'ready' && sessions.value.length > 0 && heldCount.value === 0 && upcomingCount.value === 0
   && !(props.outstanding > 0) && !props.pendingReport && !props.billDraft && !props.lastPayment?.date
   && !(props.amounts?.due || props.amounts?.received || props.amounts?.owed));
+// An ordinary unpaid card already shows this exact amount in its expanded money row.
+const repeatsUnpaidAmount = computed(() => !props.pendingReport && !legacyUnverified.value && !noObligation.value && !waived.value
+  && !followerPointer.value && !nothingTaught.value && props.outstanding > 0 && props.amounts?.owed === props.outstanding);
 const canRecord = computed(() => !nothingTaught.value && !props.pendingReport && !followerPointer.value && !outsideDates.value.length && !legacyResolvable.value && !noObligation.value && !waived.value
   && (props.outstanding > 0 || (!props.course.paid && !fullyCollected.value)));
 // Same two places the card used to offer 開帳單: nothing owed on an unpaid bill-less term, or a collected term with a ready renewal draft.
@@ -451,7 +468,10 @@ const pill = computed(() => {
   if (waived.value) return { text: WAIVED_LABEL, cls: '' };
   if (followerPointer.value) return { text: '共用方案', cls: '' };
   if (legacyUnverified.value) return { text: props.outstanding > 0 ? `需核對 ${money(props.outstanding)}` : '需核對', cls: 'tone-warn' };
-  if (props.outstanding > 0) return { text: `${C.unpaid.label} ${money(props.outstanding)}`, cls: 'pay-unpaid' };
+  if (props.outstanding > 0) {
+    const text = open.value && repeatsUnpaidAmount.value ? C.unpaid.label : `${C.unpaid.label} ${money(props.outstanding)}`;
+    return { text, cls: 'pay-unpaid' };
+  }
   if (nothingTaught.value) return { text: '不用繳費', cls: '' };
   if (!props.course.paid && !fullyCollected.value) return { text: '還沒開帳單', cls: '' };
   return { text: C.paid.label, cls: 'pay-paid' };
@@ -460,7 +480,6 @@ const outsideText = computed(() => `需核對：${outsideDates.value.map(md).joi
 const slipReasonShown = computed(() => showSlip.value && !slipState.value.ok);
 // Warnings never hide: a collapsed card keeps them as one warning-tone line each.
 const warnings = computed(() => [
-  props.rowActions?.settleBlockedReason && { testid: 'contract-package-close', text: props.rowActions.settleBlockedReason },
   legacyUnverified.value && { testid: 'contract-legacy-unverified', text: LEGACY_FLAG_UNVERIFIED_HELP },
   outsideDates.value.length && { testid: 'contract-outside', text: outsideText.value },
   slipReasonShown.value && { testid: 'contract-slip-reason', text: slipState.value.reason },
@@ -471,6 +490,7 @@ const menuGroups = computed(() => {
     canRecord.value && primary.value !== 'record' && { id: 'record', label: '登記這筆' },
     canIssue.value && primary.value !== 'issue' && { id: 'issue', label: `開帳單 ${money(props.billDraft.amount)}` },
     showSlip.value && { id: 'slip', label: '繳費單', disabled: !slipState.value.ok, reason: slipState.value.ok ? '' : slipState.value.reason },
+    props.canViewDocs && props.hasInvoiceDocuments && { id: 'invoice-documents', label: '查看帳單與收據' },
     { id: 'memo', label: '改備註' },
   ].filter(Boolean);
   const ra = props.rowActions || {};
@@ -489,6 +509,7 @@ function onMenu(id) {
   else if (id === 'record') emit('record', props.course);
   else if (id === 'issue') emit('issue', props.billDraft);
   else if (id === 'slip') emit('slip', props.course);
+  else if (id === 'invoice-documents') emit('show-invoice-documents');
   else if (id === 'memo') { open.value = true; startEdit(); }
   else if (['waive', 'void', 'settle'].includes(id)) emit('row-action', id);
   else if (id === 'refund') refundOpen.value = true;

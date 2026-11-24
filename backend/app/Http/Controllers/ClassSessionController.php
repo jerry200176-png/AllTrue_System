@@ -1417,6 +1417,10 @@ class ClassSessionController extends Controller
                 return response()->json(['message' => '取消期間同一日期／時段已有其他有效堂次，為避免重複排課，未復原。'], 422);
             }
 
+            if ($previousStatus === 'scheduled' && ($cross = app(ScheduleGuardService::class)->crossCampusConflictForLesson($studentClass,
+                (string) $session->getAttribute('SessionDate'), (string) $session->getAttribute('StartTime'), (string) $session->getAttribute('EndTime')))) {
+                return ScheduleGuardService::crossCampusResponse($cross);
+            }
             $before = $this->sessionSnapshot($session);
             $session->setAttribute('Status', $previousStatus);
             if ($previousStatus === 'scheduled') {
@@ -1614,6 +1618,14 @@ class ClassSessionController extends Controller
         }
         if (!empty($data['end_time'])) {
             $session->EndTime = substr($data['end_time'], 0, 5);
+        }
+        $timesMoved = substr((string) $session->StartTime, 0, 5) !== $oldStartHm || substr((string) $session->EndTime, 0, 5) !== $oldEndHm;
+        if ($timesMoved && !in_array(strtolower((string) $session->Status), \App\Support\SessionStatus::futureReservationExclusionStatuses(), true)
+            && ($course = StudentClass::query()->where('ID', (int) $session->StudentClassID)->first())
+            && ($cross = app(ScheduleGuardService::class)->crossCampusConflictForLesson($course, (string) $session->SessionDate,
+                (string) $session->StartTime, (string) $session->EndTime, $oldStartHm))) {
+            // Same teacher at another campus at the new time; the caller's transaction rolls back.
+            throw new \Illuminate\Http\Exceptions\HttpResponseException(ScheduleGuardService::crossCampusResponse($cross));
         }
         if (array_key_exists('note', $data)) {
             $session->Note = $data['note'] ?? '';
@@ -2561,7 +2573,11 @@ class ClassSessionController extends Controller
         }
 
         // PRD FR-004a：跨分校（物理不可分身）衝堂檢查
-        // 過去堂次（補記）跳過；否則 operator 不可把一個已在別分校上課的老師再指派。
+        // 過去堂次（補記）不擋，只回提醒（#5588）；否則 operator 不可把一個已在別分校上課的老師再指派。
+        if ($isPastSession) {
+            app(ScheduleGuardService::class)->crossCampusConflict($newTeacherId, (int) $campusId, (string) $sessionDate,
+                (string) $startTime, (string) $endTime, $studentId > 0 ? $studentId : null);
+        }
         // 只攔截「其他分校」的物理衝突；同分校衝堂由 ScheduleGuardService 於下方以 409 處理。
         if (!$isPastSession) {
             $excludeSchedIds = [];

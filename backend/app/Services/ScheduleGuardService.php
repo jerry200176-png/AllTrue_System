@@ -14,6 +14,11 @@ class ScheduleGuardService
 {
     public const TEACHER_SLOT_ABSOLUTE_MAX = 3;
 
+    /** Request attribute holding past-lesson cross-campus reminders (attachPastClashHeader sends them back). */
+    public const PAST_CLASH_ATTRIBUTE = 'schedule_past_cross_campus';
+
+    public const PAST_CLASH_HEADER = 'X-Schedule-Warnings';
+
     /** @var array<int, object|null> */
     private array $roomCache = [];
 
@@ -56,6 +61,13 @@ class ScheduleGuardService
             $excludeStudentClassId,
             $excludeStudentId
         ), $startDate, $endDate);
+        $elsewhere = self::templatesActiveInWindow($this->loadTeacherRecurringCourses(
+            $teacherId,
+            $branchId,
+            $excludeStudentClassId,
+            $excludeStudentId,
+            true
+        ), $startDate, $endDate);
         $conflicts = [];
         $selfOverlaps = [];
         // Lock state of the edited course's sessions, loaded once for all slots.
@@ -76,6 +88,9 @@ class ScheduleGuardService
         }
 
         foreach ($slots as $slot) {
+            if ($cross = $this->crossCampusRecurringConflict($elsewhere, $slot, $teacherId, $branchId, $startDate, $endDate, $excludeStudentId)) {
+                $conflicts[] = $cross;
+            }
             $recurringOverlaps = $this->collectRecurringOverlaps($teacherCourses, $slot);
             $concreteOverlaps = $this->collectConcreteRecurringOverlaps(
                 $teacherId,
@@ -219,8 +234,234 @@ class ScheduleGuardService
         if ($roomConflict) {
             $conflicts[] = $roomConflict;
         }
+        if ($cross = $this->crossCampusOccurrenceConflict($teacherId, $branchId, $date, $startTime, $endTime, $excludeScheduleId, $excludeStudentId, $excludeTrialHoldId)) {
+            $conflicts[] = $cross;
+        }
 
         return $conflicts;
+    }
+
+    /**
+     * One teacher cannot be at two campuses at once. Same-campus load is a capacity question (a 1-on-3 slot can
+     * take more students); another campus at an overlapping time is always a conflict. Each other campus is read
+     * with this guard's own live-lesson rules (leave, cancelled, stale and substituted-away rows do not count).
+     * A lesson that already ended is never blocked (backfilling attendance, substitutes or bills must work); its clash
+     * is only noted as a reminder for the response (notePastClash).
+     * ponytail: other campuses are read without locks (no cross-campus lock order to deadlock on), so two campuses
+     * booking the same teacher in the same second can both pass.
+     */
+    private function crossCampusOccurrenceConflict(int $teacherId, int $branchId, string $date, string $start, string $end, ?int $excludeScheduleId, ?int $excludeStudentId, ?int $excludeTrialHoldId): ?array
+    {
+        $ended = Carbon::parse($date . ' ' . $end)->lte(Carbon::now());
+        foreach ($this->otherCampusesOf($teacherId, $branchId) as $campusId) {
+            $entries = $this->buildTeacherDateOccupancyEntries($teacherId, $campusId, $date, $excludeScheduleId, $excludeStudentId,
+                null, $start, $end, false, false, $excludeTrialHoldId);
+            foreach ($entries as $entry) {
+                if (($entry['teacher_occupancy'] ?? true) && $this->timesOverlap($start, $end, (string) $entry['start_time'], (string) $entry['end_time'])) {
+                    $conflict = $this->crossCampusPayload($campusId, $date, (string) $entry['start_time'], (string) $entry['end_time'], $date, $ended);
+                    if (!$ended) {
+                        return $conflict;
+                    }
+                    self::notePastClash($conflict['message']);
+
+                    return null;
+                }
+            }
+        }
+        if ($ended && ($row = $this->pastLessonElsewhere($teacherId, $branchId, $date, $start, $end, $excludeStudentId))) {
+            self::notePastClash($this->crossCampusPayload((int) $row->CampusID, $date, substr((string) $row->StartTime, 0, 5),
+                substr((string) $row->EndTime, 0, 5), $date, true)['message']);
+        }
+
+        return null;
+    }
+
+    /**
+     * A past lesson of the teacher's own course at another campus, including courses settled since (renewals set
+     * Stop=1 on the old period, which the live occupancy read skips). Reminder only.
+     * ponytail: contract teacher only — a past lesson the teacher gave as a substitute on a since-settled course is
+     * missed, and one handed to a substitute may be flagged; fine for a non-blocking reminder.
+     */
+    private function pastLessonElsewhere(int $teacherId, int $branchId, string $date, string $start, string $end, ?int $excludeStudentId): ?object
+    {
+        return DB::table('ClassSession as cs')
+            ->join('StudentClass as sc', 'sc.ID', '=', 'cs.StudentClassID')
+            ->join('Student as st', 'st.id', '=', 'sc.StudentID')
+            ->where('sc.TeacherID', $teacherId)
+            ->where('st.CampusID', '!=', $branchId)
+            ->where('cs.SessionDate', $date) // date column: plain equality keeps the (StudentClassID, SessionDate) index
+            ->whereNotIn('cs.Status', SessionStatus::futureReservationExclusionStatuses())
+            ->where('cs.StartTime', '<', $end . ':00')
+            ->where('cs.EndTime', '>', $start . ':00')
+            ->when($excludeStudentId, fn ($q) => $q->where('sc.StudentID', '!=', $excludeStudentId))
+            ->orderBy('cs.StartTime')
+            ->first(['st.CampusID', 'cs.StartTime', 'cs.EndTime']);
+    }
+
+    /**
+     * A weekly slot that overlaps the teacher at another campus: a weekly course still running in the edited window,
+     * or a concrete future booking there (substitute, makeup, extra lesson, trial hold).
+     */
+    private function crossCampusRecurringConflict(array $elsewhere, array $slot, int $teacherId, int $branchId, ?string $startDate, ?string $endDate, ?int $excludeStudentId): ?array
+    {
+        $day = '每週' . mb_substr('一二三四五六日', (int) $slot['day_of_week'] - 1, 1);
+        $campusOf = [];
+        foreach ($elsewhere as $course) {
+            $campusOf[(int) $course->ID] = (int) $course->CampusID;
+        }
+        foreach ($this->collectRecurringOverlaps($elsewhere, $slot) as $hit) {
+            return $this->crossCampusPayload($campusOf[$hit['source_id']] ?? 0, null, $hit['start_time'], $hit['end_time'], $day);
+        }
+        foreach ($this->otherCampusesOf($teacherId, $branchId) as $campusId) {
+            $unused = [];
+            foreach ($this->collectConcreteRecurringOverlaps($teacherId, $campusId, $slot, null, $startDate, $endDate, $excludeStudentId, [], [], $unused) as $hit) {
+                if ($hit['teacher_occupancy'] ?? true) {
+                    return $this->crossCampusPayload($campusId, (string) $hit['schedule_date'], (string) $hit['start_time'], (string) $hit['end_time'], (string) $hit['schedule_date']);
+                }
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Cross-campus clash for one lesson of $course at $date $start-$end, for write paths that move or revive a single
+     * lesson without the capacity guard (retime, restore). The teacher is whoever teaches that occurrence now
+     * ($occurrenceStart = its current start time). Null when free or already ended.
+     *
+     * @return array<string, mixed>|null
+     */
+    public function crossCampusConflictForLesson(StudentClass $course, string $date, string $start, string $end, ?string $occurrenceStart = null): ?array
+    {
+        $campusId = (int) (DB::table('Student')->where('id', (int) $course->getAttribute('StudentID'))->value('CampusID') ?? 0);
+        $date = Carbon::parse($date)->toDateString();
+        $start = $this->normalizeTime($start);
+        $end = $this->normalizeTime($end);
+        if ($campusId <= 0 || !$start || !$end) {
+            return null;
+        }
+        $teacherId = SubstituteScheduleService::teacherForOccurrence((int) $course->getKey(), $date,
+            (int) $course->getAttribute('TeacherID'), $this->normalizeTime($occurrenceStart) ?? $start);
+
+        return $teacherId > 0
+            ? $this->crossCampusOccurrenceConflict($teacherId, $campusId, $date, $start, $end, null, (int) $course->getAttribute('StudentID') ?: null, null)
+            : null;
+    }
+
+    /**
+     * Cross-campus clash for the weekly slots of a course being created by a path without the capacity guard
+     * (multi-subject package). $slots: day_of_week, start_time, end_time.
+     *
+     * @return array<string, mixed>|null
+     */
+    public function crossCampusWeeklyConflict(int $teacherId, int $branchId, array $slots, ?int $studentId, ?string $startDate, ?string $endDate): ?array
+    {
+        if ($teacherId <= 0 || $branchId <= 0) {
+            return null;
+        }
+        $elsewhere = self::templatesActiveInWindow($this->loadTeacherRecurringCourses($teacherId, $branchId, null, $studentId, true), $startDate, $endDate);
+        foreach ($this->normalizeSlots($slots) as $slot) {
+            if ($cross = $this->crossCampusRecurringConflict($elsewhere, $slot, $teacherId, $branchId, $startDate, $endDate, $studentId)) {
+                return $cross;
+            }
+        }
+
+        return null;
+    }
+
+    /** 409 body every write path returns for a cross-campus clash (same shape as the course-edit conflict). */
+    public static function crossCampusResponse(array $conflict): \Illuminate\Http\JsonResponse
+    {
+        return response()->json([
+            'message' => $conflict['message'],
+            'code' => 'teacher_schedule_conflict',
+            'conflicts' => [$conflict],
+        ], 409);
+    }
+
+    /** @var array<string, int[]> */
+    private array $otherCampusCache = [];
+
+    /**
+     * Campuses other than $branchId where the teacher can have lessons: campus bindings, campuses of the teacher's
+     * running courses (a course can outlive its binding), and of future schedule rows and held trial holds in the
+     * teacher's name (a substitute may teach where they are not bound). A teacher of one campus costs four small
+     * queries and no cross check.
+     * ponytail: a makeup taught only through LearningRecord.TeacherID at an unbound, course-less campus is not found.
+     *
+     * @return int[]
+     */
+    private function otherCampusesOf(int $teacherId, int $branchId): array
+    {
+        $today = Carbon::today()->toDateString();
+
+        return $this->otherCampusCache[$teacherId . '|' . $branchId] ??= DB::table('UserCampus')->where('UserID', $teacherId)->pluck('CampusID')
+            ->merge(DB::table('StudentClass as sc')->join('Student as st', 'st.id', '=', 'sc.StudentID')
+                ->where('sc.TeacherID', $teacherId)->where(fn ($q) => $q->where('sc.Stop', 0)->orWhereNull('sc.Stop'))->distinct()->pluck('st.CampusID'))
+            ->merge(DB::table('schedules')->where('teacher_id', $teacherId)->where('status', 'scheduled')
+                ->where('schedule_date', '>=', $today)->distinct()->pluck('branch_id'))
+            ->merge(DB::table('trial_holds')->where('teacher_id', $teacherId)->where('status', \App\Models\TrialHold::HELD)
+                ->where('hold_date', '>=', $today)->distinct()->pluck('campus_id'))
+            ->map(fn ($id) => (int) $id)->filter(fn ($id) => $id > 0 && $id !== $branchId)->unique()->sort()->values()->all();
+    }
+
+    /**
+     * A successful write that saved a past lesson clashing with another campus carries the reminder in
+     * X-Schedule-Warnings (URL-encoded, one per line, at most 3); the frontend shows it as a warning toast.
+     */
+    public static function attachPastClashHeader(\Illuminate\Http\Request $request, \Symfony\Component\HttpFoundation\Response $response): void
+    {
+        $notes = array_keys((array) $request->attributes->get(self::PAST_CLASH_ATTRIBUTE, []));
+        // Pre-checks (…/check, …preview) save nothing, so "照樣儲存" would be wrong there; the real save repeats it.
+        if ($notes !== [] && !$request->isMethodSafe() && $response->getStatusCode() < 300
+            && !$request->is('api/*/check', 'api/*preview*')) {
+            $response->headers->set(self::PAST_CLASH_HEADER, rawurlencode(implode("\n", array_slice($notes, 0, 3))));
+        }
+    }
+
+    /** Remember a past-lesson clash message for this request (deduped); sent by attachPastClashHeader. */
+    private static function notePastClash(string $message): void
+    {
+        $request = request();
+        $notes = (array) $request->attributes->get(self::PAST_CLASH_ATTRIBUTE, []);
+        $notes[$message] = true;
+        $request->attributes->set(self::PAST_CLASH_ATTRIBUTE, $notes);
+    }
+
+    /**
+     * Cross-campus check for one occurrence by a given teacher, for callers that skip the full guard (a substitute
+     * recorded after the lesson). Future: returns the conflict. Ended: returns null and notes the reminder.
+     *
+     * @return array<string, mixed>|null
+     */
+    public function crossCampusConflict(int $teacherId, int $branchId, string $date, string $start, string $end, ?int $excludeStudentId = null): ?array
+    {
+        $start = $this->normalizeTime($start);
+        $end = $this->normalizeTime($end);
+
+        return $teacherId > 0 && $branchId > 0 && $start && $end
+            ? $this->crossCampusOccurrenceConflict($teacherId, $branchId, Carbon::parse($date)->toDateString(), $start, $end, null, $excludeStudentId, null)
+            : null;
+    }
+
+    /** @param  string  $day  a date, or 每週X for a weekly slot */
+    private function crossCampusPayload(int $campusId, ?string $date, string $start, string $end, string $day, bool $past = false): array
+    {
+        $start = substr($start, 0, 5);
+        $end = substr($end, 0, 5);
+        $campus = (string) (DB::table('Campus')->where('id', $campusId)->value('name') ?? '其他');
+        $campus = str_ends_with($campus, '分校') ? $campus : $campus . '分校';
+
+        return [
+            'type' => 'cross_campus',
+            'campus_id' => $campusId,
+            'schedule_date' => $date,
+            'start_time' => $start,
+            'end_time' => $end,
+            'message' => $past
+                ? sprintf('提醒：這位老師 %s %s~%s 同時在「%s」也有課。已上完的課照樣儲存，請確認哪一邊的紀錄才對。', $day, $start, $end, $campus)
+                : sprintf('這位老師 %s %s~%s 已在「%s」有課，同一時間不能排在兩個分校。請改時段或改老師。', $day, $start, $end, $campus),
+        ];
     }
 
     /**
@@ -488,17 +729,19 @@ class ScheduleGuardService
         int $teacherId,
         int $branchId,
         ?int $excludeStudentClassId = null,
-        ?int $excludeStudentId = null
+        ?int $excludeStudentId = null,
+        bool $otherCampuses = false
     ): array {
         $query = DB::table('StudentClass as sc')
             ->join('Student as st', 'st.id', '=', 'sc.StudentID')
             ->where('sc.TeacherID', $teacherId)
-            ->where('st.CampusID', $branchId)
+            ->where('st.CampusID', $otherCampuses ? '!=' : '=', $branchId)
             // In-app #373: used-up count courses no longer hold a weekly seat (F8 single rule).
             ->tap(fn ($q) => StudentClass::applyHoldsTemplateSeat($q, 'sc'))
             ->select([
                 'sc.ID',
                 'sc.StudentID',
+                'st.CampusID',
                 'sc.ClassType',
                 'sc.room_id',
                 'sc.SessionDuration',

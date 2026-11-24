@@ -93,8 +93,7 @@ describe('CourseManagement student billing tab', () => {
     expect(source).toContain('v-else-if="showsBillingRowNextAction(row.course)"');
     expect(source).toContain('v-if="isTutoringBillingAnomaly(row.course)"');
     expect(source).toContain('輔導課不應產生付款義務');
-    // issue 4989 slice 5: the badge classes became template tones (anomaly = danger, no payment needed = neutral).
-    expect(source).toContain("const PAYMENT_TONE = { anomaly: 'danger', owing: 'danger', settled: 'success', free: 'success', no_payment: 'neutral', neutral: 'neutral' };");
+    expect(source).toContain('coursePaymentStatusTone(course, { monthlyPeriod: true })');
   });
 
   it('uses the persisted rate unit for edit round-trip and course lookup pricing', () => {

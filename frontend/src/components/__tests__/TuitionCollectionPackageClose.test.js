@@ -5,8 +5,8 @@ import TuitionCollectionPage from '../../pages/TuitionCollectionPage.vue';
 
 const json = body => ({ ok: true, status: 200, json: async () => body });
 afterEach(() => { vi.unstubAllGlobals(); localStorage.clear(); });
-async function pageWith(rows) {
-  localStorage.setItem('alltrue_session', JSON.stringify({ access_token: 'synthetic-token', user: { role: 'director' } }));
+async function pageWith(rows, role = 'director') {
+  localStorage.setItem('alltrue_session', JSON.stringify({ access_token: 'synthetic-token', user: { role } }));
   const fetch = vi.fn(async input => json(String(input).includes('/api/v1/alerts/tuition') ? rows : []));
   vi.stubGlobal('fetch', fetch);
   const page = shallowMount(TuitionCollectionPage, { props: { branchId: 1 } });
@@ -36,5 +36,24 @@ describe('Package close boundary from actual alert rows', () => {
       await flushPromises();
       expect(page.find('.tc-overlay').text()).toContain('結案');
     } finally { page.unmount(); }
+  });
+  it.each([['director', true], ['teacher', false]])('opens package review only for a permitted %s role', async (role, allowed) => {
+    const { page, fetch, ledger } = await pageWith([row(31, { package_id: 81 }), row(41)], role);
+    const report = vi.fn();
+    window.addEventListener('alltrue-open-bug-report', report);
+    try {
+      expect(ledger.props('canReportPackageClose')).toBe(allowed);
+      ledger.vm.$emit('report-package-close', { branchId: 1, studentId: 131, courseId: null });
+      expect(report).not.toHaveBeenCalled();
+      ledger.vm.$emit('report-package-close', { branchId: 1, studentId: 131, courseId: 31, packageId: 81 });
+      expect(report).toHaveBeenCalledTimes(allowed ? 1 : 0);
+      if (allowed) {
+        expect(report.mock.calls[0][0].detail.relatedReference).toMatch(/app_page=course-mgmt&branch_id=1&student_id=131&course_id=31 共用方案編號 81$/);
+      }
+      expect(fetch.mock.calls.every(([, options]) => !options?.method || options.method === 'GET')).toBe(true);
+    } finally {
+      window.removeEventListener('alltrue-open-bug-report', report);
+      page.unmount();
+    }
   });
 });

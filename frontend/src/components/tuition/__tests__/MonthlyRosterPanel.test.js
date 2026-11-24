@@ -158,6 +158,38 @@ it('shows 學收合計 and each course\'s 學收, says which have no price, and 
   Object.assign(URL, { createObjectURL: urlFns.create, revokeObjectURL: urlFns.revoke });
 });
 
+it('shows and exports billed balances by month separately from unbilled contracts', async () => {
+  const blobs = [];
+  vi.stubGlobal('Blob', class { constructor(parts) { blobs.push(parts.join('')); } });
+  const urlFns = { create: URL.createObjectURL, revoke: URL.revokeObjectURL };
+  URL.createObjectURL = () => 'blob:x';
+  URL.revokeObjectURL = () => {};
+  const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
+  const scoped = structuredClone(roster);
+  const balances = { selected_billed: 0, other_billed: 3000, undated_billed: 500, unbilled: 1000 };
+  scoped.summary.outstanding_by_scope = balances;
+  scoped.data[0].courses[0].money.outstanding_by_scope = balances;
+  mockFetch.mockImplementation(async () => res(scoped));
+  try {
+    wrapper = mountIt();
+    await flushPromises();
+    expect(wrapper.get('[data-slot="stat-strip"]').text()).toMatch(/本月帳單未收\s*NT\$0/);
+    expect(wrapper.text()).toContain('其他月份帳單未收 NT$3,000・月份待核對的帳單未收 NT$500・未開單合約餘額 NT$1,000');
+    const row = wrapper.get('[data-testid="roster-course-11"]');
+    expect(row.text()).toContain('各期尚有餘額');
+    expect(row.get('[data-testid="roster-record-11"]').text()).toBe('登記收款');
+    await wrapper.get('[data-testid="roster-export"]').trigger('click');
+    const [headers, firstRow] = blobs[0].split('\n');
+    expect(headers).toContain('各期帳款餘額（含未開單）');
+    expect(headers).toMatch(/"本月帳單未收","其他月份帳單未收","月份待核對的帳單未收","未開單合約餘額"$/);
+    expect(firstRow).toMatch(/,0,3000,500,1000$/);
+  } finally {
+    click.mockRestore();
+    vi.unstubAllGlobals();
+    Object.assign(URL, { createObjectURL: urlFns.create, revokeObjectURL: urlFns.revoke });
+  }
+});
+
 it('a balance under review still says 要核對, and the phone line shows the price', async () => {
   const review = { data: [{ student_id: 3, student_name: '陳小安', school: '光復', outstanding: 3000, courses: [
     course(31, { rate: 800, rate_unit: 'hour', money: { status: 'review_required', outstanding: 3000, current_period: null, month_total: null, month_invoiced: false } }),

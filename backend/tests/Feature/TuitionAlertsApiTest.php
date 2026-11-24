@@ -272,6 +272,118 @@ class TuitionAlertsApiTest extends TestCase
         $this->assertSame('2026-05', $row['billing_period']);
     }
 
+    /** in-app #589: a paid monthly course that ended months ago has no next settlement; an unpaid one still shows. */
+    public function test_monthly_paid_excluded_after_end_date_but_unpaid_still_listed(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-11-22', 'Asia/Taipei'));
+
+        $token = $this->createDirectorToken([1]);
+        $student = Student::create([
+            'name' => '月結已結束',
+            'CampusID' => 1,
+            'ClassID' => 1,
+            'enable' => 1,
+            'MDT' => now(),
+            'Notify_Token' => '',
+        ]);
+
+        $endedPaid = $this->createMonthlyClass($student->id, [
+            'settlement_day' => 22,
+            'Paid' => 1,
+            'StartDate' => '2026-04-12',
+            'EndDate' => '2026-04-30',
+        ]);
+        $endedUnpaid = $this->createMonthlyClass($student->id, [
+            'settlement_day' => 22,
+            'Paid' => 0,
+            'StartDate' => '2026-04-12',
+            'EndDate' => '2026-09-14',
+        ]);
+        $runningPaid = $this->createMonthlyClass($student->id, [
+            'settlement_day' => 22,
+            'Paid' => 1,
+            'StartDate' => '2026-04-12',
+            'EndDate' => '2026-12-31',
+        ]);
+
+        // Flag says paid, but the bill has no payment behind it: the billing verdict still owes, so it must stay listed.
+        $endedFlagOnly = $this->createMonthlyClass($student->id, [
+            'settlement_day' => 22,
+            'Paid' => 1,
+            'StartDate' => '2026-08-01',
+            'EndDate' => '2026-09-14',
+        ]);
+        Invoice::create([
+            'StudentID' => $student->id,
+            'StudentClassID' => $endedFlagOnly->ID,
+            'IssueDate' => '2026-08-01',
+            'DueDate' => '2026-08-22',
+            'TotalAmount' => 5000,
+            'PaidAmount' => 5000,
+            'Status' => 'paid',
+            'billing_period' => '2026-08',
+        ]);
+        $paidInvoice = Invoice::create([
+            'StudentID' => $student->id,
+            'StudentClassID' => $endedPaid->ID,
+            'IssueDate' => '2026-04-12',
+            'DueDate' => '2026-04-22',
+            'TotalAmount' => 5000,
+            'PaidAmount' => 5000,
+            'Status' => 'paid',
+            'billing_period' => '2026-04',
+        ]);
+        Payment::create(['InvoiceID' => $paidInvoice->id, 'Amount' => 5000, 'Method' => 'cash', 'PaidAt' => '2026-04-12']);
+
+        $legacyOnly = $this->createMonthlyClass($student->id, [
+            'settlement_day' => 22,
+            'Paid' => 1,
+            'StartDate' => '2026-08-01',
+            'EndDate' => '2026-08-31',
+        ]);
+        $foreignInvoiceCourse = $this->createMonthlyClass($student->id, [
+            'settlement_day' => 22,
+            'Paid' => 1,
+            'StartDate' => '2026-08-01',
+            'EndDate' => '2026-08-31',
+        ]);
+        $otherStudent = Student::create(['name' => '另一位學生', 'CampusID' => 1, 'ClassID' => 1, 'enable' => 1, 'MDT' => now(), 'Notify_Token' => '']);
+        $foreignInvoice = Invoice::create([
+            'StudentID' => $otherStudent->id,
+            'StudentClassID' => $foreignInvoiceCourse->ID,
+            'IssueDate' => '2026-08-01',
+            'DueDate' => '2026-08-22',
+            'TotalAmount' => 5000,
+            'Status' => 'paid',
+            'billing_period' => '2026-08',
+        ]);
+        Payment::create(['InvoiceID' => $foreignInvoice->id, 'Amount' => 5000, 'Method' => 'cash', 'PaidAt' => '2026-08-12']);
+
+        $res = $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->getJson('/api/v1/alerts/tuition?branch_id=1');
+
+        $res->assertOk();
+        $rows = collect($res->json());
+        $this->assertNotNull($rows->firstWhere('id', $endedFlagOnly->ID), 'ended, flag paid, nothing applied: still listed');
+        $this->assertNull($rows->firstWhere('id', $endedPaid->ID), 'ended and paid: no next settlement');
+        $this->assertNotNull($rows->firstWhere('id', $legacyOnly->ID), 'ended with only a legacy paid flag and no invoice must stay listed');
+        $this->assertNotNull($rows->firstWhere('id', $foreignInvoiceCourse->ID), 'a mislinked invoice cannot settle a different student’s course');
+        $this->assertSame('monthly_due_soon', $rows->firstWhere('id', $endedUnpaid->ID)['alert_type'] ?? null, 'ended but unpaid stays listed');
+        $this->assertSame('monthly_due_soon', $rows->firstWhere('id', $runningPaid->ID)['alert_type'] ?? null, 'still running: unchanged');
+
+        PaymentReport::create([
+            'StudentID' => $student->id, 'StudentClassID' => $endedPaid->ID,
+            'reported_by_name' => $student->name, 'payment_date' => Carbon::today(),
+            'payment_method' => 'cash', 'reported_amount' => 5000, 'status' => 'pending',
+            'report_token_hash' => hash('sha256', 'ended-monthly-awaiting-review'),
+            'token_expires_at' => Carbon::now()->addDay(),
+        ]);
+        $pendingRows = collect($this->withToken($token)->getJson('/api/v1/alerts/tuition?branch_id=1')->assertOk()->json());
+        $this->assertSame('pending_report', $pendingRows->firstWhere('id', $endedPaid->ID)['payment_status'] ?? null);
+    }
+
     public function test_monthly_paid_included_when_next_due_within_window(): void
     {
         Carbon::setTestNow(Carbon::parse('2026-05-12', 'Asia/Taipei'));
@@ -453,9 +565,29 @@ class TuitionAlertsApiTest extends TestCase
         $this->assertSame(0, $row['paid_amount']);
         $this->assertSame(8800, $row['outstanding']);
         $this->assertSame('unbilled', $row['payable_status']);
+        $this->assertTrue($row['can_record_unbilled_count']);
         $this->assertNull($row['payable_amount']);
         $this->assertSame(8800, $row['estimated_amount']);
         $this->assertNull($row['latest_payment_report_id']);
+    }
+
+    public function test_an_estimate_without_an_agreed_count_charge_does_not_offer_direct_record(): void
+    {
+        $token = $this->createDirectorToken([1], 'unconfirmed-fee@example.com');
+        $student = Student::create([
+            'name' => '待核對堂數制費用', 'CampusID' => 1, 'ClassID' => 1,
+            'enable' => 1, 'MDT' => now(), 'Notify_Token' => '',
+        ]);
+        $course = $this->createCountModeClass($student->id, [
+            'Paid' => 0, 'RemainingSessions' => 5, 'SessionCount' => 5, 'Rate' => 1000, 'Charge' => 0,
+        ]);
+
+        $response = $this->withToken($token)->getJson('/api/v1/alerts/tuition?branch_id=1')->assertOk();
+        $row = collect($response->json())->firstWhere('id', $course->ID);
+        $this->assertNotNull($row);
+        $this->assertSame('unbilled', $row['payable_status']);
+        $this->assertSame(5000, $row['estimated_amount']);
+        $this->assertFalse($row['can_record_unbilled_count']);
     }
 
     public function test_payment_status_partial_when_invoice_partially_paid(): void
@@ -1134,6 +1266,86 @@ class TuitionAlertsApiTest extends TestCase
         // The status stays renew_needed: it keeps the old contract's 結案 action (Codex P2 on #4887).
         $this->assertSame('renew_needed', $oldRow['payment_status']);
         $this->assertFalse($newRow['has_newer_course']);
+    }
+
+    /** #5494: existing metadata update for an already settled package, not a member close operation. */
+    public function test_inapp573_retiring_an_already_settled_package_removes_only_its_renewal_alert(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-11-21 12:00:00', 'Asia/Taipei'));
+        $token = $this->createDirectorToken([1], 'inapp573-exact-shape@example.com');
+        $student = Student::create([
+            'name' => 'Synthetic settled package', 'CampusID' => 1, 'ClassID' => 1,
+            'enable' => 1, 'MDT' => now(), 'Notify_Token' => '',
+        ]);
+        $package = CoursePackage::create([
+            'student_id' => $student->id, 'campus_id' => 1, 'name' => 'Synthetic exhausted package',
+            'total_sessions' => 3, 'remaining_sessions' => 0, 'used_sessions' => 3,
+            'rate' => 1000, 'rate_unit' => 'session', 'class_type' => 'one_on_one',
+            'billing_mode' => CoursePackage::BILLING_MODE_SESSION,
+            'paid' => true, 'stop' => false, 'enabled' => true,
+        ]);
+        $member = $this->createCountModeClass($student->id, [
+            'Paid' => 1, 'Charge' => 0, 'SessionCount' => 3, 'RemainingSessions' => 0, 'UsedSessions' => 3,
+            'PackageID' => $package->id, 'PackageTotalSessions' => 3, 'PackageName' => $package->name,
+            'Stop' => 1, 'closed_reason' => 'settled',
+        ]);
+        foreach (['2026-11-15', '2026-11-16', '2026-11-17', '2026-11-24', '2026-11-25', '2026-11-26'] as $index => $date) {
+            \Illuminate\Support\Facades\DB::table('ClassSession')->insert([
+                'StudentClassID' => $member->ID, 'SessionDate' => $date,
+                'StartTime' => '16:00', 'EndTime' => '18:00',
+                'Status' => $index < 3 ? 'attended' : 'cancelled',
+            ]);
+        }
+        $invoice = Invoice::create([
+            'StudentID' => $student->id, 'StudentClassID' => $member->ID, 'IssueDate' => '2026-11-15',
+            'TotalAmount' => 3000, 'PaidAmount' => 3000, 'Status' => 'paid',
+        ]);
+        $payment = Payment::create([
+            'InvoiceID' => $invoice->id, 'Amount' => 3000, 'PaidAt' => '2026-11-16', 'Method' => 'cash',
+        ]);
+        PaymentReport::create([
+            'StudentClassID' => $member->ID, 'StudentID' => $student->id, 'InvoiceID' => $invoice->id,
+            'reported_amount' => 3000, 'payment_date' => '2026-11-16', 'status' => 'confirmed',
+            'payment_id' => $payment->id, 'reported_by_name' => $student->name, 'payment_method' => 'cash',
+            'report_token_hash' => hash('sha256', 'synthetic-settled-package'),
+            'token_expires_at' => now()->addDay(),
+        ]);
+
+        $controlStudent = Student::create([
+            'name' => 'Synthetic other open course', 'CampusID' => 1, 'ClassID' => 1,
+            'enable' => 1, 'MDT' => now(), 'Notify_Token' => '',
+        ]);
+        $control = $this->createCountModeClass($controlStudent->id, ['Paid' => 0, 'Charge' => 2000]);
+        $this->withToken($token);
+        $alertsPath = '/api/v1/alerts/tuition?branch_id=1';
+        $before = collect($this->getJson($alertsPath)->assertOk()->json());
+        $target = $before->firstWhere('package_id', $package->id);
+        $this->assertNotNull($target);
+        $this->assertSame('renew_needed', $target['payment_status']);
+        $this->assertSame(0, $target['outstanding']);
+        $this->assertNotNull($before->firstWhere('id', $control->ID));
+        $tables = ['StudentClass', 'ClassSession', 'Invoice', 'Payment', 'payment_reports', 'package_session_ledger'];
+        $snapshot = fn () => collect($tables)->mapWithKeys(
+            fn (string $table) => [$table => \Illuminate\Support\Facades\DB::table($table)->get()->toArray()]
+        )->all();
+        $originalRecords = $snapshot();
+        $packageWithoutStop = fn () => array_diff_key($package->fresh()->getRawOriginal(), ['stop' => true, 'updated_at' => true]);
+        $originalPackageOtherFields = $packageWithoutStop();
+
+        $path = "/api/v1/course-packages/{$package->id}";
+        for ($attempt = 0; $attempt < 2; $attempt++) {
+            $this->putJson($path, ['stop' => true])->assertOk()
+                ->assertJsonPath('package.stop', true)
+                ->assertJsonPath('cancelled_sessions', [])
+                ->assertJsonPath('extended_count', 0);
+            $this->assertTrue($package->fresh()->stop);
+            $this->assertSame($originalPackageOtherFields, $packageWithoutStop());
+            $this->assertEquals($originalRecords, $snapshot());
+        }
+
+        $after = collect($this->getJson($alertsPath)->assertOk()->json());
+        $this->assertNull($after->firstWhere('package_id', $package->id), 'A retired package must stay absent after reloading alerts.');
+        $this->assertSame($before->firstWhere('id', $control->ID), $after->firstWhere('id', $control->ID));
     }
 
     /** #5494: RFC_SHARED_PACKAGE_COLLECTION acceptance40 forbids closing a pool through its member ID. */

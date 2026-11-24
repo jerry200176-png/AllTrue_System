@@ -27,7 +27,10 @@ async function withCourses(courses, assertions) {
     return { ok: true, json: async () => body };
   });
   vi.stubGlobal('fetch', fetchMock);
-  const wrapper = shallowMount(StudentsList, { props: { branchId: 1 }, global: { renderStubDefaultSlot: true } });
+  const wrapper = shallowMount(StudentsList, {
+    props: { branchId: 1 },
+    global: { renderStubDefaultSlot: true, stubs: { CollapsibleGroup: false, StatusBadge: false } },
+  });
   try {
     await flushPromises();
     await wrapper.find('[data-testid="student-row"]').trigger('click');
@@ -41,12 +44,13 @@ async function withCourses(courses, assertions) {
 
 describe('In-App #353: existing course history stays distinct from current balances', () => {
   it.each([
-    ['completed', '歷史 · 已完課'],
-    ['settled', '歷史 · 已結算'],
-    ['settled_pending', '歷史 · 已結束，未收'],
-  ])('labels an existing %s row without hiding its recorded balance or reconciliation task', async (closed_reason, label) => {
+    ['completed', '已完課', 'neutral'],
+    ['settled', '已結算', 'success'],
+    ['settled_pending', '已結束，未收', 'danger'],
+    ['waived', '不收了', 'success'],
+  ])('labels an existing %s row without hiding its recorded balance or reconciliation task', async (closed_reason, label, tone) => {
     await withCourses([{ ...ordinary, closed_reason, history_reason: closed_reason }], async (wrapper) => {
-      if (closed_reason === 'settled_pending') {
+      if (closed_reason === 'settled_pending' || closed_reason === 'waived') {
         expect(wrapper.find(CHIPS).exists()).toBe(false);
         wrapper.findComponent({ name: 'FilterChip' }).vm.$emit('click');
         await flushPromises();
@@ -58,7 +62,11 @@ describe('In-App #353: existing course history stays distinct from current balan
       await wrapper.find('.sl-history-toggle').trigger('click');
       const history = wrapper.find('.sl-history-card');
       expect(history.exists()).toBe(true);
-      expect(history.text()).toContain(label.replace('歷史 · ', ''));
+      const badge = history.find('[data-slot="status-badge"]');
+      expect(badge.text()).toBe(label);
+      expect(badge.attributes('data-tone')).toBe(tone);
+      const actions = history.find('.sl-history-card__actions').text();
+      expect(actions.includes('刪除')).toBe(closed_reason !== 'waived');
     });
   });
 
@@ -71,6 +79,7 @@ describe('In-App #353: existing course history stays distinct from current balan
       await wrapper.find('.sl-history-toggle').trigger('click');
       const tag = wrapper.findAll('.sl-history-card span').find(s => s.text() === '已結束，待核對');
       expect(tag?.attributes('title')).toBe('帳單期間超出合約日期');
+      expect(tag?.attributes('data-tone')).toBe('warning');
     });
   });
 

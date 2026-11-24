@@ -1,0 +1,14 @@
+updates:
+  - id: staff-2026-11-21-billing-guide-close-course
+    published_at: "2026-11-21"
+    audiences:
+      - director
+      - super_admin
+    importance: digest
+    title: 登帳引導可選結案不續報
+    summary: 已繳清的單科若符合結案條件，可以從續課提示直接開啟結案確認。
+    items:
+      - category: improved
+        text: 續課提示旁新增「結案（不續報）」，先看剩餘堂數和排課影響，再確認。
+    source_refs:
+      - "changelog:2026-11-21:billing-guide-close-course"

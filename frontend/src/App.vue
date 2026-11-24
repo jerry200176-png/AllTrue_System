@@ -1746,6 +1746,9 @@ function authorizedNavigationPages() {
 function syncAppPageUrl(page, { mode = 'replace', preserveInboxContext = false, preserveCourseContext = false } = {}) {
   if (typeof window === 'undefined' || !window.history || !page) return;
   const params = new URLSearchParams(window.location.search);
+  if (page !== 'tuition-collect' && ['payments', 'receipts'].includes(params.get('tab'))) {
+    params.delete('tab');
+  }
   if (!preserveInboxContext) {
     INBOX_DEEP_LINK_KEYS.forEach((key) => { if (key !== 'branch_id' || !preserveCourseContext) params.delete(key); });
   }
@@ -1800,6 +1803,13 @@ function applyDeepLinkFromUrl() {
     } else {
       directorFocusSection.value = null;
       directorFocusWorkflowId.value = null;
+    }
+    if (resolvedPage === 'tuition-collect') {
+      const tab = new URLSearchParams(window.location.search).get('tab');
+      if (tab === 'payments' || tab === 'receipts') {
+        clearTuitionNavigationContext();
+        tuitionInitialTab.value = tab;
+      }
     }
     if (resolvedPage) active.value = retiredPageTarget(resolvedPage);
     syncAppPageUrl(active.value, {

@@ -5,8 +5,8 @@ import { test, expect } from '@playwright/test';
 
 test.use({ viewport: { width: 390, height: 844 }, timezoneId: 'Asia/Taipei', serviceWorkers: 'block' });
 
-async function installCalendar(page, context) {
-  await page.clock.install({ time: new Date('2026-11-09T11:00:00Z') });
+async function installCalendar(page, context, { today = '2026-11-09', lessonDate = today } = {}) {
+  await page.clock.install({ time: new Date(today + 'T11:00:00Z') });
   await context.route(url => !['127.0.0.1', 'localhost'].includes(url.hostname), route => route.abort());
   const course = {
     id: 99, student_id: 1, student_name: 'Synthetic Move', teacher_id: 5,
@@ -16,7 +16,7 @@ async function installCalendar(page, context) {
   };
   const other = { ...course, id: 100, student_id: 2, student_name: 'Synthetic Other', teacher_id: 6, start_time: '17:00', end_time: '19:00' };
   let session = { id: 7001, student_class_id: 99, student_id: 1, teacher_id: 5,
-    session_date: '2026-11-09', start_time: '20:00', end_time: '22:00', status: 'scheduled' };
+    session_date: lessonDate, start_time: '20:00', end_time: '22:00', status: 'scheduled' };
   const otherSession = { ...session, id: 7002, student_class_id: 100, student_id: 2, teacher_id: 6, start_time: '17:00', end_time: '19:00' };
   const writes = [];
   const projections = [];
@@ -63,8 +63,10 @@ async function installCalendar(page, context) {
   await expect(page.locator('html')).toHaveAttribute('data-pilot-ready', '1');
   await page.getByRole('button', { name: '週檢視', exact: true }).click();
   const card = page.locator('.course-block').filter({ hasText: 'Synthetic Move' });
-  await expect(card).toHaveCount(1);
-  await expect(card).toHaveAttribute('aria-label', /20:00/);
+  if (lessonDate === today) {
+    await expect(card).toHaveCount(1);
+    await expect(card).toHaveAttribute('aria-label', /20:00/);
+  }
   return { card, writes, projections };
 }
 
@@ -110,6 +112,27 @@ test('528: a cross-week move keeps its identity when the destination week is sho
   await expect(card).toHaveCount(1);
   await expect(card).toHaveAttribute('aria-label', /19:30/);
   expect(writes).toHaveLength(1);
+});
+
+test('597: selecting the sixth calendar week preserves the target date and its lessons', async ({ page, context }) => {
+  const { card, writes } = await installCalendar(page, context, {
+    today: '2026-11-23', lessonDate: '2026-11-30',
+  });
+  await page.getByRole('button', { name: '日檢視', exact: true }).click();
+  const date = page.getByLabel('選擇日期', { exact: true });
+  const activeDate = page.locator('.day-tab.active .day-tab-date');
+  await expect(activeDate).toContainText('11/23');
+  await date.fill('2026-11-30');
+  await expect(activeDate).toContainText('11/30');
+  await expect(card).toHaveCount(1);
+  await expect(card).toHaveAttribute('aria-label', /20:00/);
+
+  await date.fill('2026-11-29');
+  await expect(activeDate).toContainText('11/29');
+  await page.getByRole('button', { name: '後一天', exact: true }).click();
+  await expect(activeDate).toContainText('11/30');
+  await expect(card).toHaveCount(1);
+  expect(writes).toHaveLength(0);
 });
 
 // Same student, cancelled old contract plus rescheduled renewal: no stale second card.
