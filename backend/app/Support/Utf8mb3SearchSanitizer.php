@@ -21,6 +21,15 @@ class Utf8mb3SearchSanitizer
     }
 
     /**
+     * True when the text has a 4-byte (non-BMP) character, which a utf8mb3 column can never hold.
+     * Exact-match lookups must then match nothing rather than strip it (stripping could match another person).
+     */
+    public static function hasFourByte(string $text): bool
+    {
+        return preg_match('/[\x{10000}-\x{10FFFF}]/u', $text) === 1;
+    }
+
+    /**
      * Apply a LIKE filter that utf8mb3 columns can execute.
      * 4-byte-only terms match nothing instead of throwing SQLSTATE 1267 (#1788).
      *
