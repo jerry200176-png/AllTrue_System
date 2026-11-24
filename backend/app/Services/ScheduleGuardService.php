@@ -1181,7 +1181,10 @@ class ScheduleGuardService
             ];
         }
 
-        foreach ($filteredScheduledRows as $row) {
+        // Makeup substitutes can be recorded only on LearningRecord. Their rows use
+        // the same overlap, self-exclusion and deduplication rules as other bookings.
+        $makeups = SubstituteScheduleService::makeupOccurrencesInWindow($teacherId, $branchId, $horizonStart, $endDate, $excludeStudentClassId ? null : $excludeStudentId);
+        foreach (array_merge($filteredScheduledRows, $makeups) as $row) {
             $scheduleDate = substr((string) ($row->schedule_date ?? ''), 0, 10);
             if (!$scheduleDate) {
                 continue;
