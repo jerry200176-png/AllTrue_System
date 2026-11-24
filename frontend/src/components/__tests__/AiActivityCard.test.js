@@ -19,6 +19,7 @@ describe('AI 做了什麼', () => {
     await flushPromises();
     expect(fetchMock.mock.calls[0][0]).toBe('/api/v1/admin/ai-activity');
     expect(w.get('[data-testid="aia-reads"]').text()).toBe('共記錄 3 次讀取，其中 1 次未成功。');
+    expect(w.find('details').exists()).toBe(false);
     expect(w.get('[data-testid="aia-sources"]').findAll('li').map((li) => li.text())).toEqual(['Invoice：2 次', 'Payment：1 次']);
     const ops = w.findAll('[data-testid="aia-op"]');
     expect(ops).toHaveLength(1);
@@ -30,6 +31,8 @@ describe('AI 做了什麼', () => {
     vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, json: async () => ({ data: { ...REPORT, reads } }) })));
     const w = mount(AiActivityCard, { props: { token: 't' } });
     await flushPromises();
+    expect(w.get('details').element.open).toBe(false);
+    expect(w.get('summary').text()).toBe('查看原因');
     expect(w.get('[aria-label="未成功的原因"]').findAll('li').map((li) => li.text())).toEqual([
       '權限攔截（2 次）。請使用已授權的查詢範圍。',
       '服務讀取失敗（1 次）。若持續發生，請回報發生時間。',

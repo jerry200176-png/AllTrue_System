@@ -8,9 +8,12 @@
     <p v-else-if="error" class="tw:mt-3 tw:mb-0 tw:text-tpl-body" role="alert" data-testid="aia-error">{{ error }}</p>
     <template v-else-if="report">
       <p class="tw:mt-3 tw:mb-0 tw:text-tpl-body" data-testid="aia-reads">共記錄 {{ report.reads.total }} 次讀取，其中 {{ report.reads.refused }} 次未成功。</p>
-      <ul v-if="failureReasons.length" class="tw:mt-2 tw:mb-0 tw:ps-5 tw:text-tpl-body" aria-label="未成功的原因">
-        <li v-for="reason in failureReasons" :key="reason.key">{{ reason.label }}（{{ reason.count }} 次）。{{ reason.action }}</li>
-      </ul>
+      <details v-if="failureReasons.length" class="tw:mt-2 tw:text-tpl-body">
+        <summary class="tw:cursor-pointer">查看原因</summary>
+        <ul class="tw:mt-2 tw:mb-0 tw:ps-5" aria-label="未成功的原因">
+          <li v-for="reason in failureReasons" :key="reason.key">{{ reason.label }}（{{ reason.count }} 次）。{{ reason.action }}</li>
+        </ul>
+      </details>
       <ul v-if="topSources.length" class="tw:mt-2 tw:mb-0 tw:ps-5 tw:text-tpl-body" data-testid="aia-sources">
         <li v-for="s in topSources" :key="s.name"><span class="tw:font-mono">{{ s.name }}</span>：{{ s.count }} 次</li>
       </ul>

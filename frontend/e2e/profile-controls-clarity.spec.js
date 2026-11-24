@@ -60,10 +60,18 @@ test.describe('Profile controls real Vue page', () => {
       await expect(page.locator('#profile-panel-security')).toBeVisible();
       const reasons = page.getByRole('list', { name: '未成功的原因' });
       if (mode === 'hq') {
+        await expect(page.getByTestId('aia-reads')).toHaveText('共記錄 5 次讀取，其中 3 次未成功。');
+        await expect(reasons).toBeHidden();
+        const summary = page.getByText('查看原因', { exact: true });
+        await summary.focus();
+        await page.keyboard.press('Enter');
         await expect(reasons.getByRole('listitem')).toHaveText([
           '權限攔截（2 次）。請使用已授權的查詢範圍。',
           '查無可讀資料（1 次）。請確認查詢對象及範圍。',
         ]);
+        await page.keyboard.press('Space');
+        await expect(reasons).toBeHidden();
+        await expect(summary).toBeFocused();
       } else {
         await expect(page.getByTestId('ai-activity')).toHaveCount(0);
       }
