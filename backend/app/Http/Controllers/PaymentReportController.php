@@ -758,10 +758,11 @@ class PaymentReportController extends Controller
                 $expectedAmount = $projection && !$projection['repriceable'] ? (int) $projection['outstanding_amount']
                     : max(0, (int) $billing['charge'] - (int) ($projection['net_applied'] ?? 0));
                 if ((int) $data['amount'] !== $expectedAmount) {
+                    $month = Carbon::createFromFormat('!Y-m', $billingPeriod)->format('Y 年 n 月');
                     return response()->json([
-                        // in-app #432: name the month, so a director collecting month by month sees which one is due.
-                        'message' => sprintf('月結這次要收 %s，應收 NT$%d，請重新載入繳費通知後再登記。',
-                            Carbon::createFromFormat('!Y-m', $billingPeriod)->format('Y 年 n 月'), $expectedAmount),
+                        'message' => $expectedAmount === 0
+                            ? "{$month}沒有應收款。請核對這筆付款的月份。"
+                            : sprintf('月結這次要收 %s，應收 NT$%d，請重新載入繳費通知後再登記。', $month, $expectedAmount),
                         'code' => 'monthly_amount_stale',
                         'expected_amount' => $expectedAmount,
                         'billing_period' => $billingPeriod,
