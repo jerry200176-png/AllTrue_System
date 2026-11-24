@@ -1,11 +1,16 @@
 import { flushPromises, mount } from '@vue/test-utils';
-import { KeepAlive, defineComponent, h, onMounted, ref } from 'vue';
+import { KeepAlive, defineComponent, h, onActivated, onMounted, ref } from 'vue';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { defineAsyncPage } from '../defineAsyncPage.js';
 
 const skeleton = '[data-testid="at-skeleton"]';
 const content = '[data-testid="page"]';
 const Page = { setup: () => () => h('main', { 'data-testid': 'page' }, 'Page') };
+
+// Mount a host so queries follow Vue when its async wrapper replaces its root node.
+function mountPage(AsyncPage, options) {
+  return mount({ render: () => h(AsyncPage) }, options);
+}
 
 function resolvesAfter(ms) {
   return () => new Promise((resolve) => setTimeout(() => resolve({ default: Page }), ms));
@@ -16,7 +21,7 @@ describe('async page skeleton', () => {
   afterEach(() => vi.useRealTimers());
 
   it('skips the skeleton when the page loads in 200 ms', async () => {
-    const wrapper = mount(defineAsyncPage(resolvesAfter(200)));
+    const wrapper = mountPage(defineAsyncPage(resolvesAfter(200)));
     expect(wrapper.find(skeleton).exists()).toBe(false);
 
     await vi.advanceTimersByTimeAsync(199);
@@ -33,7 +38,7 @@ describe('async page skeleton', () => {
   });
 
   it('keeps the skeleton for 300 ms when the page loads in 310 ms', async () => {
-    const wrapper = mount(defineAsyncPage(resolvesAfter(310)));
+    const wrapper = mountPage(defineAsyncPage(resolvesAfter(310)));
     await vi.advanceTimersByTimeAsync(299);
     expect(wrapper.find(skeleton).exists()).toBe(false);
 
@@ -54,7 +59,7 @@ describe('async page skeleton', () => {
     let resolvePage;
     const loader = vi.fn(() => new Promise((resolve) => { resolvePage = resolve; }));
     const AsyncPage = defineAsyncPage(loader);
-    const wrapper = mount(AsyncPage);
+    const wrapper = mountPage(AsyncPage);
     await vi.advanceTimersByTimeAsync(100);
     expect(vi.getTimerCount()).toBe(1);
 
@@ -63,7 +68,7 @@ describe('async page skeleton', () => {
     resolvePage(Page);
     await flushPromises();
 
-    const reopened = mount(AsyncPage);
+    const reopened = mountPage(AsyncPage);
     expect(reopened.find(content).exists()).toBe(true);
     expect(reopened.find(skeleton).exists()).toBe(false);
     expect(loader).toHaveBeenCalledTimes(1);
@@ -72,9 +77,11 @@ describe('async page skeleton', () => {
 
   it('preserves the mounted page when using KeepAlive', async () => {
     const mounted = vi.fn();
+    const activated = vi.fn();
     const loader = vi.fn().mockResolvedValue(defineComponent({
       setup() {
         onMounted(mounted);
+        onActivated(activated);
         return () => h(Page);
       },
     }));
@@ -86,6 +93,7 @@ describe('async page skeleton', () => {
     await flushPromises();
     expect(wrapper.find(content).exists()).toBe(true);
 
+    expect(activated).toHaveBeenCalledTimes(1);
     active.value = false;
     await flushPromises();
     expect(wrapper.find(content).exists()).toBe(false);
@@ -94,6 +102,7 @@ describe('async page skeleton', () => {
     await flushPromises();
     expect(wrapper.find(content).exists()).toBe(true);
     expect(wrapper.find(skeleton).exists()).toBe(false);
+    expect(activated).toHaveBeenCalledTimes(2);
     expect(mounted).toHaveBeenCalledTimes(1);
     expect(loader).toHaveBeenCalledTimes(1);
     wrapper.unmount();
@@ -104,14 +113,14 @@ describe('async page skeleton', () => {
     const loader = vi.fn().mockRejectedValueOnce(error).mockResolvedValueOnce(Page);
     const errorHandler = vi.fn();
     const AsyncPage = defineAsyncPage(loader);
-    const wrapper = mount(AsyncPage, { global: { config: { errorHandler } } });
+    const wrapper = mountPage(AsyncPage, { global: { config: { errorHandler } } });
 
     await flushPromises();
     expect(errorHandler.mock.calls[0][0]).toBe(error);
     expect(vi.getTimerCount()).toBe(0);
     wrapper.unmount();
 
-    const retry = mount(AsyncPage);
+    const retry = mountPage(AsyncPage);
     await flushPromises();
     expect(retry.find(content).exists()).toBe(true);
     expect(loader).toHaveBeenCalledTimes(2);
