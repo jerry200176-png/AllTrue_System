@@ -92,6 +92,27 @@ class MakeupSubstituteBusyV2Test extends TestCase
         $this->assertSame([], $this->guard());
     }
 
+    public function test_recurring_booking_respects_makeup_substitute_date_and_campus(): void
+    {
+        $this->flag(true);
+        DB::table('UserCampus')->insert(['CampusID' => 1, 'UserID' => $this->bId, 'Admin' => 0, 'Approved' => 1]);
+        $payload = [
+            'teacher_id' => $this->bId, 'branch_id' => 2, 'class_type' => 'one_on_one', 'start_date' => '2026-04-18',
+            'slots' => [['day_of_week' => 7, 'start_time' => '10:30', 'end_time' => '11:30']],
+        ];
+        $guard = app(ScheduleGuardService::class);
+        $conflicts = $guard->validateRecurringCourse($payload);
+        $this->assertSame(['cross_campus'], array_column($conflicts, 'type'));
+        $this->assertSame(self::DATE, $conflicts[0]['schedule_date']);
+        $this->assertSame([], $guard->validateRecurringCourse($payload + ['end_date' => '2026-04-18']));
+        $this->assertNotEmpty($guard->validateRecurringCourse(array_replace($payload, ['branch_id' => 1])));
+        $this->flag(false);
+        $this->assertSame([], $guard->validateRecurringCourse($payload));
+        $this->flag(true);
+        DB::table('LearningRecord')->where('TeacherID', $this->bId)->update(['VoidedAt' => now()]);
+        $this->assertSame([], $guard->validateRecurringCourse($payload));
+    }
+
     public function test_flag_off_substitute_on_a_makeup_is_not_busy(): void
     {
         $this->flag(false);

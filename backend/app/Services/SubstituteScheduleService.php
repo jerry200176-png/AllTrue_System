@@ -380,6 +380,17 @@ class SubstituteScheduleService
      */
     public static function makeupOccurrencesTaughtBy(int $teacherId, string $ymd, array $excludeScheduleIds = [], ?int $excludeStudentId = null, ?int $branchId = null, bool $lock = false): array
     {
+        return self::loadMakeupOccurrences($teacherId, $ymd, $ymd, $excludeScheduleIds, $excludeStudentId, $branchId, $lock);
+    }
+
+    /** A recurring edit may have no end date. Query real bookings in its window without scanning one date at a time. */
+    public static function makeupOccurrencesInWindow(int $teacherId, int $branchId, string $startDate, ?string $endDate, ?int $excludeStudentId): array
+    {
+        return self::loadMakeupOccurrences($teacherId, $startDate, $endDate, [], $excludeStudentId, $branchId, false);
+    }
+
+    private static function loadMakeupOccurrences(int $teacherId, string $ymd, ?string $endDate, array $excludeScheduleIds, ?int $excludeStudentId, ?int $branchId, bool $lock): array
+    {
         if ($teacherId <= 0 || !self::anyCampusOn()) {
             return [];
         }
@@ -412,11 +423,12 @@ class SubstituteScheduleService
             : DB::table('schedules as m')
                 ->join('StudentClass as sc', 'sc.ID', '=', 'm.student_course_id')
                 ->join('Student as st', 'st.id', '=', 'sc.StudentID')
-                ->whereDate('m.schedule_date', $ymd)
+                ->where('m.schedule_date', '>=', $ymd)
+                ->when($endDate !== null, fn ($q) => $q->where('m.schedule_date', '<=', $endDate))
                 ->whereExists(fn ($e) => $e->select(DB::raw(1))->from('LearningRecord as lr')
                     ->join('ClassSession as cs', 'cs.id', '=', 'lr.ClassSessionID')
                     ->whereColumn('cs.StudentClassID', 'm.student_course_id')
-                    ->whereDate('cs.SessionDate', $ymd)
+                    ->whereColumn('cs.SessionDate', 'm.schedule_date')
                     ->whereNull('lr.VoidedAt')->where('lr.TeacherID', $teacherId));
         $q->where('m.status', 'scheduled')->where('m.type', 'extra')
             ->where(fn ($t) => $t->whereNull('m.teacher_id')->orWhere('m.teacher_id', '<>', $teacherId))
@@ -430,10 +442,18 @@ class SubstituteScheduleService
         if ($branchId) {
             $q->where('m.branch_id', $branchId);
         }
-        $rows = $q->when($lock, fn ($q) => $q->lockForUpdate())->get([$lock ? DB::raw('STRAIGHT_JOIN m.id') : 'm.id', 'm.start_time', 'm.end_time', 'm.branch_id', 'm.student_course_id', 'sc.TeacherID as contract_teacher_id',
+        $rows = $q->when($lock, fn ($q) => $q->lockForUpdate())->get([$lock ? DB::raw('STRAIGHT_JOIN m.id') : 'm.id', 'm.schedule_date', 'm.start_time', 'm.end_time', 'm.branch_id', 'm.student_course_id', 'sc.TeacherID as contract_teacher_id',
             DB::raw('COALESCE(m.student_id, sc.StudentID) as student_id'), DB::raw("COALESCE(sc.ClassType, 'one_on_one') as class_type")]);
 
-        return $rows->filter(fn ($r) => self::teacherForOccurrence((int) $r->student_course_id, $ymd, (int) $r->contract_teacher_id, (string) $r->start_time, $lock) === $teacherId)->values()->all();
+        if ($lock) {
+            return $rows->filter(fn ($r) => self::teacherForOccurrence((int) $r->student_course_id, $ymd, (int) $r->contract_teacher_id, (string) $r->start_time, true) === $teacherId)->values()->all();
+        }
+        $teachers = self::teachersForOccurrences($rows->map(fn ($r) => [
+            'course_id' => (int) $r->student_course_id, 'date' => (string) $r->schedule_date,
+            'start_time' => (string) $r->start_time, 'contract_teacher_id' => (int) $r->contract_teacher_id,
+        ]));
+
+        return $rows->filter(fn ($r) => $teachers[self::occurrenceKey((int) $r->student_course_id, (string) $r->schedule_date, (string) $r->start_time)] === $teacherId)->values()->all();
     }
 
     private static function legacySubstituteUserId(int $studentClassId, $sessionDate, ?string $startTime, bool $lock = false): ?int
