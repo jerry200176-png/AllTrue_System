@@ -15,7 +15,9 @@ use App\Services\ClassSessionMaterializationService;
 use App\Services\CourseLeaveCascadeService;
 use App\Services\LeaveAttendanceService;
 use App\Services\ScheduleGuardService;
+use App\Services\Scheduling\ContractSlotParser;
 use App\Services\SessionDeductionService;
+use App\Services\StaleScheduleExceptionFilter;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -480,21 +482,14 @@ class ScheduleController extends Controller
         // the parent course prevents concurrent retries from creating another
         // marker. Exact-slot duplicate history is collapsed while distinct
         // same-day lessons remain untouched.
-        if ($status === 'rescheduled' && $courseId > 0 && !empty($data['schedule_date'])) {
-            return DB::transaction(function () use ($courseId, $data, $standaloneMakeup, $ownerStudentId) {
-                // Legacy extra rows use the marker path. Serialize their retries with modern extra bookings.
-                if ($standaloneMakeup) {
-                    self::lockStudentForWrite($ownerStudentId);
-                }
+        if ($status === 'rescheduled' && !$standaloneMakeup && $courseId > 0 && !empty($data['schedule_date'])) {
+            return DB::transaction(function () use ($courseId, $data) {
                 $lockedCourse = DB::table('StudentClass')
                     ->where('ID', $courseId)
                     ->lockForUpdate()
                     ->first();
                 if (!$lockedCourse) {
                     return response()->json(['message' => '找不到對應課程，無法調課'], 422);
-                }
-                if ($standaloneMakeup) {
-                    $this->ensureStandaloneMakeupIsNew($data);
                 }
                 $startHm = substr((string) ($data['start_time'] ?? ''), 0, 5);
 
@@ -599,14 +594,21 @@ class ScheduleController extends Controller
     /** Called under the student write lock, before changing a schedule or its projected lesson. */
     private function ensureStandaloneMakeupIsNew(array $data): void
     {
-        $existing = Schedule::query()
+        $start = ContractSlotParser::normalizeHm($data['start_time']) ?? $data['start_time'];
+        $date = Carbon::parse($data['schedule_date'])->toDateString();
+        // A moved extra becomes a source marker. Its destination, not the marker, owns the booking.
+        $candidates = Schedule::query()
             ->where('student_course_id', $data['student_course_id'])
-            ->whereDate('schedule_date', $data['schedule_date'])
+            ->where('schedule_date', $date)
             ->where('type', 'extra')
             ->whereIn('status', ['scheduled', 'rescheduled'])
-            ->whereRaw('SUBSTRING(start_time, 1, 5) = ?', [substr($data['start_time'], 0, 5)])
-            ->first(['id']);
-        if ($existing) {
+            ->whereNotExists(fn ($dest) => $dest->selectRaw('1')->from('schedules as dest')
+                ->where('schedules.status', 'rescheduled')
+                ->whereColumn('dest.student_course_id', 'schedules.student_course_id')
+                ->whereColumn('dest.original_schedule_id', 'schedules.id'))
+            ->get(['student_course_id', 'start_time'])
+            ->filter(fn ($row) => (ContractSlotParser::normalizeHm($row->start_time) ?? $row->start_time) === $start);
+        if (app(StaleScheduleExceptionFilter::class)->rejectStale($candidates, $date) !== []) {
             abort(response()->json([
                 'code' => 'makeup_already_scheduled',
                 'message' => '這門課在同一時間已安排補課。請重新整理課表查看原有的補課時段。',

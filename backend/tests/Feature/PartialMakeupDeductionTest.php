@@ -24,32 +24,57 @@ class PartialMakeupDeductionTest extends TestCase
     use RefreshDatabase;
 
     #[\PHPUnit\Framework\Attributes\DataProvider('standaloneMakeupRowStatuses')]
-    public function test_retry_preserves_the_original_standalone_makeup(string $existingStatus, string $retryStatus): void
+    public function test_retry_preserves_the_original_standalone_makeup(string $existingStatus, string $retryStatus, string $firstStart, string $retryStart): void
     {
         [$token, $student, $courseId] = $this->seedCourse(120, 4);
         $date = Carbon::tomorrow();
         $slot = [
             'student_id' => $student->id, 'student_course_id' => $courseId,
             'schedule_date' => $date->toDateString(), 'day_of_week' => $date->dayOfWeekIso,
-            'branch_id' => 1, 'start_time' => '14:00', 'end_time' => '15:00',
+            'branch_id' => 1, 'start_time' => $firstStart, 'end_time' => '10:05',
             'type' => 'extra', 'status' => $existingStatus,
         ];
         $this->withToken($token)->postJson('/api/v1/schedules', $slot)->assertCreated();
-        foreach (['15:00', '15:30'] as $end) {
+        foreach (['10:05', '10:35'] as $end) {
             $this->withToken($token)->postJson('/api/v1/schedules', [
-                ...$slot, 'start_time' => '14:00:00', 'end_time' => $end, 'status' => $retryStatus,
+                ...$slot, 'start_time' => $retryStart, 'end_time' => $end, 'status' => $retryStatus,
             ])->assertConflict()->assertJsonPath('code', 'makeup_already_scheduled');
         }
         $this->assertDatabaseCount('schedules', 1);
-        $this->assertDatabaseHas('schedules', ['student_course_id' => $courseId, 'status' => $existingStatus, 'end_time' => '15:00']);
+        $this->assertDatabaseHas('schedules', ['student_course_id' => $courseId, 'status' => $existingStatus, 'end_time' => '10:05']);
         $this->assertDatabaseCount('ClassSession', 1);
-        $this->assertDatabaseHas('ClassSession', ['StudentClassID' => $courseId, 'EndTime' => '15:00:00']);
+        $this->assertDatabaseHas('ClassSession', ['StudentClassID' => $courseId, 'EndTime' => '10:05:00']);
 
         $this->withToken($token)->postJson('/api/v1/schedules', [
             ...$slot, 'start_time' => '16:00', 'end_time' => '17:00', 'status' => 'scheduled',
         ])->assertCreated();
         $this->assertDatabaseCount('schedules', 2);
         $this->assertSame(4, (int) StudentClass::findOrFail($courseId)->RemainingSessions);
+    }
+
+    public function test_an_atomic_move_frees_the_original_makeup_slot(): void
+    {
+        [$token, $student, $courseId] = $this->seedCourse(120, 4);
+        $date = Carbon::tomorrow();
+        $newDate = $date->copy()->addDay()->toDateString();
+        $slot = [
+            'student_id' => $student->id, 'student_course_id' => $courseId,
+            'schedule_date' => $date->toDateString(), 'day_of_week' => $date->dayOfWeekIso,
+            'branch_id' => 1, 'start_time' => '14:00', 'end_time' => '15:00',
+            'type' => 'extra', 'status' => 'scheduled',
+        ];
+        $sourceId = $this->withToken($token)->postJson('/api/v1/schedules', $slot)->assertCreated()->json('id');
+        $this->withToken($token)->postJson('/api/v1/learning-records/reschedule-session', [
+            'student_class_id' => $courseId, 'old_date' => $date->toDateString(), 'old_start_time' => '14:00',
+            'new_date' => $newDate, 'start_time' => '16:00', 'end_time' => '17:00', 'ensure_schedule_exception' => true,
+        ])->assertOk();
+
+        $this->withToken($token)->postJson('/api/v1/schedules', $slot)->assertCreated();
+        $this->assertDatabaseHas('schedules', ['id' => $sourceId, 'status' => 'rescheduled']);
+        $this->assertDatabaseHas('schedules', ['original_schedule_id' => $sourceId, 'status' => 'scheduled', 'schedule_date' => $newDate]);
+        $this->assertDatabaseCount('schedules', 3);
+        $this->assertDatabaseHas('ClassSession', ['StudentClassID' => $courseId, 'SessionDate' => $date->toDateString(), 'Status' => 'scheduled']);
+        $this->assertDatabaseHas('ClassSession', ['StudentClassID' => $courseId, 'SessionDate' => $newDate, 'Status' => 'scheduled']);
     }
 
     public function test_retired_makeup_does_not_block_a_new_booking(): void
@@ -71,8 +96,10 @@ class PartialMakeupDeductionTest extends TestCase
     public static function standaloneMakeupRowStatuses(): array
     {
         return [
-            ['scheduled', 'scheduled'], ['rescheduled', 'scheduled'],
-            ['scheduled', 'rescheduled'], ['rescheduled', 'rescheduled'],
+            ['scheduled', 'scheduled', '9:05', '09:05:00'],
+            ['rescheduled', 'scheduled', '09:05:00', '9:05'],
+            ['scheduled', 'rescheduled', '9:05:10', '09:05'],
+            ['rescheduled', 'rescheduled', '09:05', '9:05:15'],
         ];
     }
 
