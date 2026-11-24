@@ -158,6 +158,29 @@ class FilledAssessmentTeacherLockTest extends TestCase
         $this->api()->postJson("/api/v1/class-sessions/{$s->id}/substitute", ['substitute_teacher_id' => $this->bId])->assertOk();
     }
 
+    public function test_editing_a_teacher_written_body_keeps_the_previous_version_out_of_sight(): void
+    {
+        // TD-074: the old body is kept as history; it is not authorship evidence and not the teacher-change note.
+        [, $lr] = $this->filled();
+        $this->api()->putJson("/api/v1/learning-records/{$lr->id}", ['Content' => '作者自己改'])->assertOk()->assertJsonPath('author_snapshot_count', 0);
+        $this->api()->putJson("/api/v1/learning-records/{$lr->id}", ['Content' => '作者自己改'])->assertOk(); // unchanged body: no new row
+
+        $snaps = LearningRecordAuthorSnapshot::where('learning_record_id', $lr->id)->get();
+        $this->assertCount(1, $snaps);
+        $this->assertSame(['edited', self::BODY, 0], [$snaps[0]->reason, $snaps[0]->payload['Content'], (int) $snaps[0]->new_teacher_id]);
+        $this->api()->getJson("/api/v1/learning-records/{$lr->id}/author-snapshots")->assertOk()->assertExactJson([]);
+    }
+
+    public function test_filling_a_blank_record_keeps_no_history(): void
+    {
+        $s = $this->mkSession();
+        $lr = LearningRecord::create(['StudentClassID' => $s->StudentClassID, 'ClassSessionID' => $s->id, 'TeacherID' => $this->aId, 'Subject' => 'Math',
+            'Content' => '', 'Status' => 'pending', 'SessionDate' => self::DATE, 'StartTime' => '16:00:00', 'EndTime' => '18:00:00']);
+        $lr->update(['Content' => '第一次填寫']);
+        $lr->update(['Status' => 'approved']); // not a body change
+        $this->assertSame(0, LearningRecordAuthorSnapshot::where('learning_record_id', $lr->id)->count());
+    }
+
     public function test_historical_snapshot_pin_still_counts_as_owner_evidence(): void
     {
         // The snapshot-and-clear flow is retired, but rows it wrote earlier keep pinning their new owner.

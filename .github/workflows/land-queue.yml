@@ -53,4 +53,5 @@ jobs:
           # pushes fire pull_request CI natively. Falls back to GITHUB_TOKEN.
           GH_TOKEN: ${{ secrets.LAND_QUEUE_TOKEN || github.token }}
           REPO: ${{ github.repository }}
+          LAND_QUEUE_ATTENTION_MINUTES: ${{ vars.LAND_QUEUE_ATTENTION_MINUTES }}
         run: node .github/scripts/land-queue.mjs

@@ -4,6 +4,7 @@ import { h, KeepAlive, ref } from 'vue';
 import TuitionCollectionPage from '../../pages/TuitionCollectionPage.vue';
 
 const wrappers = [];
+const pageSlots = { renderStubDefaultSlot: true };
 afterEach(() => { wrappers.splice(0).forEach(w => w.unmount()); vi.unstubAllGlobals(); localStorage.clear(); });
 
 function rosterApi() {
@@ -27,7 +28,7 @@ describe('in-app #549 roster status reaches the billing list', () => {
     { student_id: 99, class_id: 42 },
   ])('#4148 routes document lookup to the exact student/course without leaving the bill list: %j', async (row) => {
     const { requests } = rosterApi();
-    const w = shallowMount(TuitionCollectionPage, { props: { branchId: 7 } }); wrappers.push(w);
+    const w = shallowMount(TuitionCollectionPage, { props: { branchId: 7 }, global: pageSlots }); wrappers.push(w);
     await flushPromises();
     const list = w.findComponent({ name: 'BillList' }); const uid = list.vm.$.uid;
     list.vm.$emit('documents', row); await flushPromises();
@@ -39,14 +40,14 @@ describe('in-app #549 roster status reaches the billing list', () => {
   });
   it('passes pause metadata without removing the student from other campus pickers', async () => {
     const { state } = rosterApi(); state.status = 'paused';
-    const w = shallowMount(TuitionCollectionPage, { props: { branchId: 1 } }); wrappers.push(w);
+    const w = shallowMount(TuitionCollectionPage, { props: { branchId: 1 }, global: pageSlots }); wrappers.push(w);
     await flushPromises();
     expect(roster(w)).toEqual([{ id: 99, name: '合成學生', status: 'paused' }]);
   });
 
   it('refreshes roster status with the existing refresh button', async () => {
     const { state, requests } = rosterApi();
-    const w = shallowMount(TuitionCollectionPage, { props: { branchId: 1 }, global: { stubs: { PageHeader: false, Button: false } } }); wrappers.push(w);
+    const w = shallowMount(TuitionCollectionPage, { props: { branchId: 1 }, global: { ...pageSlots, stubs: { PageHeader: false, Button: false } } }); wrappers.push(w);
     await flushPromises(); expect(requests()).toHaveLength(1);
     state.status = 'paused';
     await w.get('[aria-label="重新整理"]').trigger('click'); await flushPromises();
@@ -56,7 +57,7 @@ describe('in-app #549 roster status reaches the billing list', () => {
 
   it('reads the new campus once per switch', async () => {
     const { requests } = rosterApi();
-    const w = shallowMount(TuitionCollectionPage, { props: { branchId: 1 } }); wrappers.push(w);
+    const w = shallowMount(TuitionCollectionPage, { props: { branchId: 1 }, global: pageSlots }); wrappers.push(w);
     await flushPromises(); await w.setProps({ branchId: 2 }); await flushPromises();
     expect(requests().map(url => url.searchParams.get('branch_id'))).toEqual(['1', '2']);
   });

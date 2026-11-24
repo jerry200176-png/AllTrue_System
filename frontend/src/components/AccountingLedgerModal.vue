@@ -8,6 +8,10 @@
         aria-modal="true"
         aria-labelledby="ledger-modal-title"
         tabindex="-1"
+        @pointerdown.capture="keepLedgerPosition"
+        @click.capture="keepLedgerPosition"
+        @wheel.capture.passive="keepLedgerPosition"
+        @keydown.capture="keepLedgerPosition"
         @keydown.esc.stop.prevent="onEsc"
         @keydown.tab="trapTab"
         @keydown="onStepKey"
@@ -101,6 +105,46 @@
             </button>
           </section>
 
+
+          <section v-if="contractCourses.length" class="ledger-section" data-testid="ledger-contracts">
+            <h4>合約（每一堂課與付款）</h4>
+            <p class="ledger-muted">待確認入帳、未繳及待開帳單優先；同科依開課日由新到舊</p>
+            <AtHelpDisclosure v-if="contractCourses.some(hasMultiplePackageBills)" label="共用方案" data-testid="ledger-package-batch-note"><p>共用方案有多門課的帳單待收，請從要處理的課程卡「登記這筆」；不加入下方批次收款。</p></AtHelpDisclosure>
+            <div class="ledger-contracts">
+              <ContractCard
+                v-for="c in displayContractCourses"
+                :key="c.id"
+                :course="c"
+                :focused="isOpenedCourse(c)"
+                :expanded="openCards.has(Number(c.id))"
+                @toggle="(v) => (v ? openCards.add(Number(c.id)) : openCards.delete(Number(c.id)))"
+                :can-view-docs="canManageInvoices()"
+                :has-invoice-documents="Boolean(uniqueInvoiceForCourse(c.id))"
+                @show-invoice-documents="showInvoiceDocuments(c.id)"
+                :outstanding="owedFor(c.id)"
+                :pending-report="packageLead(c) ? pendingReportFor(c.id) : null"
+                :shared-follower="!packageLead(c)"
+                :shared-lead-subject="packageLead(c) ? '' : (packageLeadOf(c)?.subject || '')"
+                :shared-member-subjects="sharedMembersOf(c)"
+                :last-payment="payLineFor(c)"
+                :amounts="amountsFor(c.id)"
+                :month-lines="monthLinesFor(c.id)"
+                :bill-draft="draftFor(c.id)"
+                :rate-note="issuedBillRateNote(c, payload.invoices)"
+                :can-resolve-legacy="canManageInvoices()"
+                :has-confirmed-report="hasConfirmedReportFor(c.id)"
+                :auto-confirm="autoConfirmId === Number(c.id)"
+                :row-actions="actionsForCourse(c)"
+                @row-action="(kind) => onContractRowAction(c, kind)"
+                @record="openEntry"
+                @legacy-backfill="openEntry($event, 'legacy-backfill')"
+                @issue="openIssue"
+                @confirmed="openReceipt"
+                @changed="onPanelChanged"
+                @slip="openSlip"
+              />
+            </div>
+          </section>
 
           <section class="ledger-section">
             <h4><button type="button" class="ledger-fold" :aria-expanded="fold.inv" :aria-controls="fold.inv ? 'ledger-sec-invoices' : undefined" data-testid="ledger-fold-invoices" @click="fold.inv = !fold.inv">帳單（{{ payload.invoices?.length || 0 }}）<span v-if="invoiceWarnCount" class="ledger-fold__warn" data-testid="ledger-fold-warn">需留意 {{ invoiceWarnCount }}</span><span aria-hidden="true">{{ fold.inv ? '▾' : '▸' }}</span></button></h4>
@@ -257,10 +301,19 @@
               <template v-for="r in shownReceipts" :key="r.report_id">
               <p v-if="r.report_id === firstForeignReceiptId" class="ledger-muted ledger-receipts__other" data-testid="ledger-foreign-receipts">其他課程的收款（不算在這門課）</p>
               <div class="ledger-receipt">
-                <strong>{{ formatCurrency(r.amount) }}</strong>
+                <strong v-if="!repeatedReceiptFacts.has(Number(r.report_id))">{{ formatCurrency(r.amount) }}</strong>
                 <small class="ledger-receipt__course" :data-testid="`ledger-receipt-course-${r.report_id}`">{{ receiptCourseLabel(r) }}</small>
-                <span>{{ r.payment_date ? fmtDate(r.payment_date) : '未記錄日期' }}</span>
-                <span>{{ paymentMethodLabel(r.payment_method) }}</span>
+                <button
+                  v-if="repeatedReceiptFacts.has(Number(r.report_id))"
+                  type="button"
+                  class="ledger-more"
+                  :data-testid="`ledger-receipt-repeated-${r.report_id}`"
+                  @click="focusInvoiceToggle(repeatedReceiptFacts.get(Number(r.report_id)).invoiceId)"
+                >查看對應帳單 · {{ repeatedReceiptFacts.get(Number(r.report_id)).receiptNo }}</button>
+                <template v-else>
+                  <span>{{ r.payment_date ? fmtDate(r.payment_date) : '未記錄日期' }}</span>
+                  <span>{{ paymentMethodLabel(r.payment_method) }}</span>
+                </template>
                 <span :class="['ledger-chip', reportStatusClass(r.status)]">{{ reportStatusLabel(r.status) }}</span>
                 <small>{{ formatLedgerReceiptBillLine(r) }}</small>
                 <!-- in-app #425: same 查看收據 as the 帳務中心 收款紀錄 tab, on every confirmed row. -->
@@ -311,44 +364,6 @@
               data-testid="ledger-other-receipts-toggle"
               @click="showOtherReceipts = !showOtherReceipts"
             >{{ showOtherReceipts ? '收合其他紀錄' : `已退回／已撤銷（${otherReceipts.length}）` }}</button>
-          </section>
-
-          <section v-if="contractCourses.length" class="ledger-section">
-            <h4>合約（每一堂課與付款）</h4>
-            <p class="ledger-muted">未繳優先；同科依合約開課日由新到舊</p>
-            <AtHelpDisclosure v-if="contractCourses.some(hasMultiplePackageBills)" label="共用方案" data-testid="ledger-package-batch-note"><p>共用方案有多門課的帳單待收，請從要處理的課程卡「登記這筆」；不加入下方批次收款。</p></AtHelpDisclosure>
-            <div class="ledger-contracts">
-              <ContractCard
-                v-for="c in displayContractCourses"
-                :key="c.id"
-                :course="c"
-                :focused="isOpenedCourse(c)"
-                :expanded="openCards.has(Number(c.id))"
-                @toggle="(v) => (v ? openCards.add(Number(c.id)) : openCards.delete(Number(c.id)))"
-                :can-view-docs="canManageInvoices()"
-                :outstanding="owedFor(c.id)"
-                :pending-report="packageLead(c) ? pendingReportFor(c.id) : null"
-                :shared-follower="!packageLead(c)"
-                :shared-lead-subject="packageLead(c) ? '' : (packageLeadOf(c)?.subject || '')"
-                :shared-member-subjects="sharedMembersOf(c)"
-                :last-payment="payLineFor(c)"
-                :amounts="amountsFor(c.id)"
-                :month-lines="monthLinesFor(c.id)"
-                :bill-draft="draftFor(c.id)"
-                :rate-note="issuedBillRateNote(c, payload.invoices)"
-                :can-resolve-legacy="canManageInvoices()"
-                :has-confirmed-report="hasConfirmedReportFor(c.id)"
-                :auto-confirm="autoConfirmId === Number(c.id)"
-                :row-actions="rowActions[Number(c.id)] || null"
-                @row-action="(kind) => emit('row-action', { kind, courseId: Number(c.id) })"
-                @record="openEntry"
-                @legacy-backfill="openEntry($event, 'legacy-backfill')"
-                @issue="openIssue"
-                @confirmed="openReceipt"
-                @changed="onPanelChanged"
-                @slip="openSlip"
-              />
-            </div>
           </section>
 
           <!-- PRD v2 D5/D18: one 登記收款 for every open contract (allocation step); each card keeps 登記這筆. -->
@@ -468,10 +483,38 @@ const props = defineProps({
   nextOffer: Boolean,
   // F-5a1: { [studentClassId]: { waive, void, settle } } from the page's alert rows (the old table's rules).
   rowActions: { type: Object, default: () => ({}) },
+  canReportPackageClose: Boolean,
 });
 
-const emit = defineEmits(['close', 'changed', 'step', 'row-action', 'save-next']);
+const emit = defineEmits(['close', 'changed', 'step', 'row-action', 'report-package-close', 'save-next']);
 const documentsView = computed(() => props.initialAction === 'documents');
+
+function actionsForCourse(course) {
+  const actions = props.rowActions[Number(course.id)];
+  if (!course.in_package && !course.package_id) return actions || null;
+  // Monthly package members have no shared payment anchor. The ledger supplies membership for every course.
+  return {
+    ...actions,
+    settle: false,
+    settleBlockedReason: actions?.settleBlockedReason || '共用方案須整包核對，目前不能只結束其中一門課。',
+    packageCloseReview: props.canReportPackageClose,
+  };
+}
+
+function onContractRowAction(course, kind) {
+  const courseId = Number(course.id);
+  if (kind !== 'packageCloseReview') {
+    emit('row-action', { kind, courseId });
+    return;
+  }
+  if (!actionsForCourse(course)?.packageCloseReview) return;
+  emit('report-package-close', {
+    branchId: payload.value?.student?.campus_id,
+    studentId: payload.value?.student?.id,
+    courseId,
+    packageId: course.package_id,
+  });
+}
 
 function paymentHasReceipt(p) {
   return !p.is_void && p.report_status === 'confirmed' && Number.isSafeInteger(Number(p.report_id)) && Number(p.report_id) > 0;
@@ -657,9 +700,14 @@ async function loadCoverage(kind, id) {
 }
 
 let ledgerRequestVersion = 0;
+let userMovedInLedger = false;
+function keepLedgerPosition() {
+  userMovedInLedger = true;
+}
 async function loadLedger() {
   closeReason(false); // the reload unmounts the reason field; cancel it rather than leave it hidden
   const requestVersion = ++ledgerRequestVersion;
+  userMovedInLedger = false;
   loading.value = false;
   payload.value = null;
   if (!props.show) return;
@@ -677,6 +725,7 @@ async function loadLedger() {
   showAllExceptions.value = false;
   coverage.value = {};
   expandedReceiptIds.value = new Set();
+  let draftsReady;
   try {
     const token = getToken();
     if (!token) throw new Error('請先登入');
@@ -698,7 +747,8 @@ async function loadLedger() {
     else autoExpandAttention();
     if (documentsView.value) fold.rcpt = true;
     const armed = pendingInitialAction != null;
-    runInitialAction(loadDrafts());
+    draftsReady = loadDrafts(requestVersion);
+    runInitialAction(draftsReady);
     if (armed && !entryOpen.value) ledgerFellBack.value = true; // only the first load decides the fallback
   } catch (e) {
     if (requestVersion !== ledgerRequestVersion) return;
@@ -709,13 +759,24 @@ async function loadLedger() {
   }
   if (requestVersion === ledgerRequestVersion && payload.value) {
     await nextTick();
+    if (requestVersion !== ledgerRequestVersion) return;
     if (documentsView.value) {
       const documents = modalEl.value?.querySelector('[data-testid="ledger-fold-invoices"]');
       documents?.focus({ preventScroll: true });
-      // 帳務重整 §3: contracts sit below 收款紀錄 now. With no bill for the opened course, show its card instead.
-      if (displayedInvoices.value.some((inv) => invoiceCoversCourse(inv, Number(props.studentClassId)))) documents?.scrollIntoView?.({ block: 'start' });
-      else scrollToOpenedContract();
-    } else scrollToOpenedContract();
+      if (displayedInvoices.value.some((inv) => invoiceCoversCourse(inv, Number(props.studentClassId)))) {
+        documents?.scrollIntoView?.({ block: 'start' });
+        return;
+      }
+    }
+    if (props.studentWide || !Number(props.studentClassId || 0)) return;
+    const openedIndex = displayContractCourses.value.findIndex(isOpenedCourse);
+    if (!userMovedInLedger) scrollToOpenedContract();
+    // A ready draft can move the card. Follow only while the director hasn't taken control.
+    void draftsReady?.then(async () => {
+      await nextTick();
+      if (requestVersion !== ledgerRequestVersion || userMovedInLedger) return;
+      if (displayContractCourses.value.findIndex(isOpenedCourse) !== openedIndex) scrollToOpenedContract();
+    });
   }
 }
 
@@ -737,6 +798,27 @@ const invoiceCoversCourse = (inv, id) => {
     ? inv.covered_student_class_ids : [inv?.student_class_id];
   return covered.some((x) => Number(x) === Number(id));
 };
+function uniqueInvoiceForCourse(courseId) {
+  const matches = (payload.value?.invoices || []).filter((invoice) => invoiceCoversCourse(invoice, courseId));
+  return matches.length === 1 ? matches[0] : null;
+}
+
+async function showInvoiceDocuments(courseId) {
+  if (!canManageInvoices()) return;
+  const invoice = uniqueInvoiceForCourse(courseId);
+  if (!invoice) return;
+  fold.inv = true;
+  if (!isExpanded(invoice.id)) toggleExpand(invoice.id);
+  await focusInvoiceToggle(invoice.id);
+}
+
+async function focusInvoiceToggle(invoiceId) {
+  await nextTick();
+  const rowToggle = modalEl.value?.querySelector(`[data-testid="ledger-invoice-toggle-${Number(invoiceId)}"]`);
+  rowToggle?.focus({ preventScroll: true });
+  rowToggle?.scrollIntoView?.({ block: 'nearest' });
+}
+
 // 開啟的是單一課程時，列表裡別的課程的帳單要標「其他課程」（#3894）。
 const isOtherCourseInvoice = (inv) => {
   const scopeId = props.studentWide ? 0 : Number(payload.value?.scope?.student_class_id || 0);
@@ -865,6 +947,59 @@ const shownReceipts = computed(() => {
   return [...list.filter((r) => !isForeignReceipt(r)), ...list.filter(isForeignReceipt)];
 });
 const firstForeignReceiptId = computed(() => shownReceipts.value.find(isForeignReceipt)?.report_id ?? null);
+
+// Suppress facts only for one unambiguous receipt whose details are already visible.
+// Count all claimants, including records the current receipt filter hides.
+const repeatedReceiptFacts = computed(() => {
+  const repeated = new Map();
+  if (!fold.inv || !canManageInvoices()) return repeated;
+
+  const expanded = new Set(displayedInvoices.value
+    .filter(inv => inv.status !== 'void' && (documentsView.value || isExpanded(inv.id)))
+    .map(inv => Number(inv.id)));
+  if (!expanded.size) return repeated;
+
+  const receiptCountsByInvoice = new Map();
+  const receiptCountsByPayment = new Map();
+  for (const receipt of payload.value?.receipts || []) {
+    const invoiceId = Number(receipt.invoice_id);
+    const paymentId = Number(receipt.payment_id);
+    receiptCountsByInvoice.set(invoiceId, (receiptCountsByInvoice.get(invoiceId) || 0) + 1);
+    receiptCountsByPayment.set(paymentId, (receiptCountsByPayment.get(paymentId) || 0) + 1);
+  }
+
+  const byReport = new Map();
+  const paymentCountsByReceiptNo = new Map();
+  for (const invoice of displayedInvoices.value) {
+    for (const payment of invoice.payments || []) {
+      const receiptNo = String(payment.receipt_no ?? '').trim();
+      if (receiptNo) paymentCountsByReceiptNo.set(receiptNo, (paymentCountsByReceiptNo.get(receiptNo) || 0) + 1);
+      const reportId = Number(payment.report_id);
+      if (!Number.isSafeInteger(reportId) || reportId <= 0) continue;
+      byReport.set(reportId, byReport.has(reportId) ? null : { invoice, payment });
+    }
+  }
+  for (const receipt of shownReceipts.value) {
+    if (receipt.status !== 'confirmed' || !isMainReceipt(receipt) || receipt.history_read_only || isForeignReceipt(receipt)) continue;
+    const reportId = Number(receipt.report_id);
+    const linked = byReport.get(reportId);
+    if (!linked) continue;
+
+    const invoiceId = Number(linked.invoice.id);
+    const payment = linked.payment;
+    const paymentId = Number(receipt.payment_id);
+    const receiptNo = String(payment.receipt_no ?? '').trim();
+    if (!receiptNo || paymentCountsByReceiptNo.get(receiptNo) !== 1) continue;
+    if (expanded.has(invoiceId) && invoiceId === Number(receipt.invoice_id) && receiptCountsByInvoice.get(invoiceId) === 1
+      && Number.isSafeInteger(paymentId) && paymentId > 0 && paymentId === Number(payment.id) && receiptCountsByPayment.get(paymentId) === 1
+      && paymentHasReceipt(payment) && Number.isFinite(Number(receipt.amount)) && Number(receipt.amount) === Number(payment.amount)
+      && receipt.payment_date && payment.paid_at && fmtDate(receipt.payment_date) === fmtDate(payment.paid_at)
+      && receipt.payment_method && receipt.payment_method === payment.method) {
+      repeated.set(reportId, { invoiceId, receiptNo });
+    }
+  }
+  return repeated;
+});
 // Which course a receipt belongs to: subject plus the contract's start date (display only).
 function receiptCourseLabel(r) {
   const c = (payload.value?.courses || []).find((x) => Number(x.id) === Number(r.student_class_id));
@@ -970,14 +1105,6 @@ const rateNoteFor = (inv) => {
 };
 // Contracts with money still due come first (PRD v2 §0.3).
 const contractCourses = computed(() => [...(payload.value?.courses || [])].sort((a, b) => owedFor(b.id) - owedFor(a.id)));
-// in-app564: presentation order must not choose a different shared-package payment lead.
-const subjectOrder = new Intl.Collator('zh-Hant', { numeric: true });
-const contractOrderDate = (c) => /^\d{4}-\d{2}-\d{2}(?:$|[ T])/.test(String(c.start_date || '')) ? String(c.start_date).slice(0, 10) : '';
-const displayContractCourses = computed(() => [...contractCourses.value].sort((a, b) =>
-  Number(owedFor(b.id) > 0) - Number(owedFor(a.id) > 0)
-  || subjectOrder.compare(String(a.subject || ''), String(b.subject || ''))
-  || contractOrderDate(b).localeCompare(contractOrderDate(a))
-  || Number(b.id) - Number(a.id)));
 // One card of a shared package carries its single payment action; the other members point to it. Lead = the member
 // holding a pending report, else the first one that still needs payment (mixed states), else the first member.
 // #3892 review: a legacy package whose bills are already open on several members stays actionable per member (each
@@ -1059,7 +1186,7 @@ const { submit: submitRenewal } = useMonthlyRenewal({
   isModalOpen: () => false, currentCourseId: () => null,
 });
 const todayStr = () => ymdInTaipei();
-async function loadDrafts() {
+async function loadDrafts(requestVersion) {
   drafts.value = {};
   try {
     const token = getToken();
@@ -1068,13 +1195,32 @@ async function loadDrafts() {
     if (props.branchId != null && props.branchId !== '') params.set('branch_id', String(Number(props.branchId)));
     const resp = await trackedFetch(`/api/v1/accounting/monthly-drafts?${params}`, { headers: { Accept: 'application/json', Authorization: `Bearer ${token}` } });
     const json = await resp.json().catch(() => ({}));
-    if (!resp.ok || !Array.isArray(json.data)) return;
+    if (requestVersion !== ledgerRequestVersion || !resp.ok || !Array.isArray(json.data)) return;
     drafts.value = Object.fromEntries(json.data
       .filter((r) => r.status === 'ready' && r.proposed_end_date && r.proposed_end_date > todayStr())
       .map((r) => [Number(r.student_class_id), r]));
-  } catch { drafts.value = {}; }
+  } catch { /* The current request starts with no drafts. */ }
 }
 const draftFor = (id) => drafts.value[Number(id)] || null;
+// Display priority never decides which shared contract owns payment or changes the allocation sequence.
+function contractDisplayPriority(course) {
+  if (!packageLead(course)) return 3;
+  if (pendingReportFor(course.id)) return 0;
+  if (owedFor(course.id) > 0) return 1;
+  // The current term can be paid while the next monthly bill is ready to issue.
+  if (draftFor(course.id) && !hasNoObligation(course) && !isWaivedContract(course)) return 2;
+  return 3;
+}
+const subjectOrder = new Intl.Collator('zh-Hant', { numeric: true });
+const contractOrderDate = (c) => /^\d{4}-\d{2}-\d{2}(?:$|[ T])/.test(String(c.start_date || '')) ? String(c.start_date).slice(0, 10) : '';
+const displayContractCourses = computed(() => contractCourses.value
+  .map((course) => ({ course, priority: contractDisplayPriority(course) }))
+  .sort(({ course: a, priority: aPriority }, { course: b, priority: bPriority }) =>
+    aPriority - bPriority
+    || subjectOrder.compare(String(a.subject || ''), String(b.subject || ''))
+    || contractOrderDate(b).localeCompare(contractOrderDate(a))
+    || Number(b.id) - Number(a.id))
+  .map(({ course }) => course));
 const openIssue = (draft) => { issueError.value = ''; issueDraft.value = draft; };
 const closeIssue = () => { issueDraft.value = null; };
 async function submitIssue() {
@@ -1217,8 +1363,13 @@ async function runInitialAction(draftsReady) {
     if (legacy && needsLegacyChoice(legacy)) openEntry(legacy, 'legacy-backfill');
     return;
   }
-  if (action !== 'record') return;
+  if (action !== 'record' && action !== 'record-unbilled') return;
   const course = contractCourses.value.find((c) => Number(c.id) === id);
+  if (action === 'record-unbilled') {
+    if (course && canRecordUnbilledCountCourse(course, id)) openEntry(course);
+    else initialActionNote.value = '課程或帳單狀態已更新，請先核對下方資料後再登記收款。';
+    return;
+  }
   if (!course) return;
   if (needsLegacyChoice(course)) {
     if (hasConfirmedReportFor(course.id)) {
@@ -1234,6 +1385,15 @@ async function runInitialAction(draftsReady) {
   }
   // Say why the form did not open (the same conditions the card uses), instead of falling back silently.
   initialActionNote.value = recordBlockedReason(course);
+}
+function canRecordUnbilledCountCourse(course, id) {
+  const ledger = payload.value;
+  return canManageInvoices() && Number(ledger?.scope?.student_class_id) === id
+    && course.schedule_mode === 'count' && !course.in_package && !course.package_id
+    && !course.stop && !course.paid && !course.amount_pending_confirmation
+    && Number(course.charge) > 0
+    && !ledger.invoices?.some((inv) => inv.status !== 'void' && invoiceCoversCourse(inv, id))
+    && allocContracts.value.some((c) => Number(c.id) === id);
 }
 function recordBlockedReason(c) {
   if (payload.value?.scope?.no_payment_obligation || hasNoObligation(c)) return '輔導課不用繳費，所以沒有打開登記表。';

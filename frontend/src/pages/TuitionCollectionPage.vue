@@ -12,17 +12,17 @@
         v-for="tab in visibleAccountingTabs"
         :key="tab.key"
         type="button"
-        :class="pageTabs.tab(activeAccountingTab === tab.key)"
+        :class="pageTabs.tab(activeTopTab === tab.key)"
         role="tab"
         :id="`tuition-accounting-tab-${tab.key}`"
         :aria-controls="`tuition-accounting-panel-${tab.key}`"
-        :aria-selected="activeAccountingTab === tab.key"
+        :aria-selected="activeTopTab === tab.key"
         @click="activeAccountingTab = tab.key"
       >{{ tab.label }}</button>
     </div>
 
     <!-- 帳單 sits straight on the page (strip, toolbar, one card); the other tabs keep their old white panel until their own PRs. -->
-    <div :class="['students', 'roster'].includes(activeAccountingTab) ? 'tw:contents' : 'tc-page__body'">
+    <div :class="['students', 'roster'].includes(activeTopTab) ? 'tw:contents' : 'tc-page__body'">
     <div v-if="tuitionFocusMessage" class="tc-focus-context" role="status">
       <span class="material-symbols-outlined" aria-hidden="true">my_location</span>
       <span>{{ tuitionFocusMessage }}</span>
@@ -46,23 +46,32 @@
       <MonthlyRosterPanel ref="roster" :branch-id="branchId" @open="openLedgerForStudent" />
     </section>
 
-    <!-- Billing v3: 帳單 = one row per contract that needs something (PRD §0 v3). -->
-    <section v-if="activeAccountingTab === 'students'" id="tuition-accounting-panel-students" role="tabpanel" aria-labelledby="tuition-accounting-tab-students" tabindex="0">
+    <section v-if="activeTopTab === 'students'" id="tuition-accounting-panel-students" role="tabpanel" aria-labelledby="tuition-accounting-tab-students" tabindex="0">
+    <Tabs :model-value="activeAccountingTab" activation-mode="manual" class="tw:gap-3" @update:model-value="activeAccountingTab = $event">
+      <TabsList aria-label="帳單與收款檢視" class="tw:h-auto tw:w-full tw:sm:w-fit">
+        <TabsTrigger value="students" class="tw:min-h-11 tw:px-4">帳單</TabsTrigger>
+        <TabsTrigger value="payments" class="tw:min-h-11 tw:px-4">收款紀錄</TabsTrigger>
+      </TabsList>
+      <!-- Keep the bill search and its filters when switching to receipts and back. -->
+      <TabsContent
+        v-show="activeAccountingTab === 'students'"
+        value="students"
+        force-mount
+      >
       <!-- 智慧登帳引導: the same 要處理 rows, one at a time (the list stays mounted underneath). -->
       <BillingGuide
         v-if="billingGuideOpen"
         :bills="guideBills"
         :branch-id="branchId"
         :can-docs="canWaive"
+        :row-actions="ledgerRowActions"
         :reload="reloadForGuide"
         @close="billingGuideOpen = false"
         @ledger="openBillLedger"
         @reject="(b) => openQuick(b, true)"
         @renew="(b) => onBillAction(b, 'renew')"
+        @settle="(b) => onLedgerRowAction({ kind: 'settle', courseId: b.class_id })"
       />
-      <div v-else-if="guideTodoCount > 0" class="tw:mb-3 tw:flex tw:justify-end">
-        <Button class="tw:min-h-11" data-testid="billing-guide-start" @click="billingGuideOpen = true">開始登帳引導（{{ guideTodoCount }} 筆要處理）</Button>
-      </div>
       <!-- The list has several root nodes, so the wrapper hides it. -->
       <div v-show="!billingGuideOpen">
       <BillList
@@ -84,28 +93,26 @@
         @action="onBillAction"
         @menu="onBillMenu"
         @retry="loadAlerts"
-      />
+      >
+        <template v-if="guideTodoCount > 0" #actions>
+          <Button :class="control.row" data-testid="billing-guide-start" @click="billingGuideOpen = true">開始登帳引導（{{ guideTodoCount }} 筆要處理）</Button>
+        </template>
+      </BillList>
       </div>
-    </section>
     <!-- 已結清課程 keeps its own list (the bill list has no stopped, fully paid contracts); entry is this quiet link. -->
     <nav v-if="activeAccountingTab === 'students'" class="tc-reminders tc-reminders--below tw:m-0 tw:flex tw:flex-wrap tw:gap-2" aria-label="其他清單" data-testid="tc-reminders">
       <FilterChip v-for="v in REMINDER_VIEWS" :key="v.key" :toggle="false" :data-testid="`tc-reminder-${v.key}`" @click="activeAccountingTab = v.key">{{ v.label }}</FilterChip>
     </nav>
+    </TabsContent>
 
-    <!-- 月結 (Square "Recurring series"): the bills still to issue this month, and the monthly bills to check. -->
-    <section v-if="activeAccountingTab === 'monthly'" id="tuition-accounting-panel-monthly" role="tabpanel" aria-labelledby="tuition-accounting-tab-monthly" tabindex="0">
-      <MonthlyDraftsPanel v-if="canVoid" ref="monthlyDrafts" :branch-id="branchId" />
-      <MonthlyBillingReview ref="monthlyReview" :branch-id="branchId" @ledger="openLedgerForClass" @navigate="emit('navigate', $event)" />
-    </section>
-
-    <section
-      v-if="activeAccountingTab === 'payments'"
-      id="tuition-accounting-panel-payments"
-      class="acct-panel"
-      role="tabpanel"
-      aria-labelledby="tuition-accounting-tab-payments"
-      tabindex="0"
+    <TabsContent
+      v-show="activeAccountingTab === 'payments'"
+      force-mount
+      as="section"
+      value="payments"
+      class="acct-panel tc-page__body"
     >
+      <template v-if="activeAccountingTab === 'payments'">
       <div class="acct-filter-card">
         <div class="acct-filter-grid">
           <label>
@@ -320,6 +327,15 @@
           </table>
         </div>
       </template>
+      </template>
+    </TabsContent>
+    </Tabs>
+    </section>
+
+    <!-- 月結: the bills still to issue this month and the monthly bills to check. -->
+    <section v-if="activeAccountingTab === 'monthly'" id="tuition-accounting-panel-monthly" role="tabpanel" aria-labelledby="tuition-accounting-tab-monthly" tabindex="0">
+      <MonthlyDraftsPanel v-if="canVoid" ref="monthlyDrafts" :branch-id="branchId" />
+      <MonthlyBillingReview ref="monthlyReview" :branch-id="branchId" @ledger="openLedgerForClass" @navigate="emit('navigate', $event)" />
     </section>
 
     <section v-if="activeAccountingTab === 'fees' && canVoid" id="tuition-accounting-panel-fees" role="tabpanel" aria-labelledby="tuition-accounting-tab-fees" tabindex="0">
@@ -523,6 +539,7 @@
       :next-offer="ledgerSheetEntry"
       @save-next="onSaveNext"
       :row-actions="ledgerRowActions"
+      :can-report-package-close="canWaive"
       :branch-id="branchId"
       :can-step="ledgerNavStudentId != null"
       :student-wide="ledgerNavStudentId != null && (ledgerInitialAction !== 'documents' || ledgerStudentClassId == null)"
@@ -530,6 +547,7 @@
       @step="stepLedger"
       @changed="onLedgerChanged"
       @row-action="onLedgerRowAction"
+      @report-package-close="openPackageCloseReport"
     />
 
     <BillQuickView
@@ -728,6 +746,7 @@ import BillQuickView from '../components/tuition/BillQuickView.vue';
 import BillingGuide from '../components/tuition/BillingGuide.vue';
 import { guideQueue } from '../lib/billingGuide.js';
 import { billMenuGroups, billRows } from '../lib/billRows.js';
+import { buildCourseFocusUrl } from '../lib/appNavigationHistory.js';
 import { buildStudentsCommercialNav } from '../lib/authoritativeMutationRoutes.js';
 import PaymentSlipModal from '../components/PaymentSlipModal.vue';
 import RefundDialog from '../components/tuition/RefundDialog.vue';
@@ -743,6 +762,7 @@ import AtInlineAlert from '../components/design-system/AtInlineAlert.vue';
 import { CircleHelp, RefreshCw } from '@lucide/vue';
 import { Button } from '@/components/ui/button';
 import { FilterChip, PageHeader, control, pageShell, pageTabs } from '@/components/ui/page';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import AtSkeleton from '../components/design-system/AtSkeleton.vue';
 import { adoptionErrorType, trackWorkflowEvent } from '../lib/adoptionTelemetry.js';
 import {
@@ -772,13 +792,11 @@ const emit = defineEmits(['navigate', 'clear-initial-tab', 'clear-initial-contex
 const loading = ref(false);
 const error = ref('');
 
-// PRD v3 §0: 帳單 (default), 月結, 收款紀錄, 代收代付. 已結清課程 stays reachable from the reminder bar.
 const ACCOUNTING_TABS = [
   // 月對帳表 (Founder 2026-11-17) goes first; 帳單與收款 stays the default until the e2e suites move with it.
   { key: 'roster', label: '月對帳表', icon: 'table_view' },
   { key: 'students', label: '帳單與收款', icon: 'receipt' },
   { key: 'monthly', label: '月結', icon: 'event_repeat' },
-  { key: 'payments', label: '收款紀錄', icon: 'receipt_long' },
   // In-app #439: pass-through fees have their own ledger, so they get their own tab, not a tuition list filter.
   { key: 'fees', label: '代收代付', icon: 'menu_book', directorOnly: true },
 ];
@@ -786,6 +804,7 @@ const REMINDER_VIEWS = [
   { key: 'settled', label: '已結清課程' },
 ];
 const activeAccountingTab = ref('students');
+const activeTopTab = computed(() => activeAccountingTab.value === 'payments' ? 'students' : activeAccountingTab.value);
 const campusStudents = ref([]);
 let campusStudentsSeq = 0; // a slow reply for the previous campus must not refill the picker
 async function loadCampusStudents() {
@@ -1032,7 +1051,11 @@ function confirmBatchPreview() {
   else submitBatchReport();
 }
 
-watch(activeAccountingTab, () => { selectedIds.value = []; batchFromList = false; }); // a pick never outlives the view it was made in
+watch(activeAccountingTab, () => {
+  selectedIds.value = [];
+  billList.value?.clearSelection?.();
+  batchFromList = false;
+});
 
 // F-5a2: batch actions from the student list. Which contracts a student brings follows the table's rules:
 // 回報 = invoiced and still owing with an amount; 確認入帳 = a parent report is waiting.
@@ -1092,17 +1115,18 @@ function onQuickDone({ action, reportId }) {
 // Billing v3 step 3: 登記收款 opens the right-side payment sheet for THAT row's contract. The owing rows in list order are
 // remembered when it opens, so 儲存並看下一筆未繳 follows the list as the director sees it (current filter and sort).
 let recordQueue = [];
-function openBillSheet(b) {
+function openBillSheet(b, kind = 'record') {
   if (b.class_id == null) { openBillLedger(b, 'record'); return; }
-  recordQueue = billList.value?.owingQueue?.() || [];
-  openLedgerForStudent({ student_id: b.student_id, first_class_id: b.class_id }, { kind: 'record', classId: b.class_id });
+  recordQueue = billList.value?.owingQueue?.(kind === 'record-unbilled' ? Number(b.class_id) : null) || [];
+  openLedgerForStudent({ student_id: b.student_id, first_class_id: b.class_id }, { kind, classId: b.class_id });
   ledgerNavStudentId.value = null;
   ledgerSheetEntry.value = true;
 }
 function onSaveNext() {
   const cur = Number(ledgerStudentClassId.value);
   const owing = new Map(billRows(rows.value).filter((x) => x.kind === 'owing').map((x) => [Number(x.class_id), x]));
-  const after = recordQueue.slice(recordQueue.indexOf(cur) + 1);
+  const currentIndex = recordQueue.indexOf(cur);
+  const after = currentIndex < 0 && ledgerInitialAction.value === 'record-unbilled' ? [] : recordQueue.slice(currentIndex + 1);
   const next = after.map((id) => owing.get(Number(id))).find(Boolean);
   if (next) { ledgerInitialAction.value = 'record'; ledgerStudentClassId.value = next.class_id; ledgerReportId.value = null; return; }
   ledgerOpen.value = false;
@@ -1114,7 +1138,7 @@ function onBillAction(b, action) {
     const target = buildStudentsCommercialNav({ id: b.class_id, student_id: b.student_id }, { intent: 'purchase' });
     if (target.studentId && target.courseId) emit('navigate', target);
   } else if (action === 'confirm') onBillQuick(b);
-  else if (action === 'record') openBillSheet(b);
+  else if (action === 'record' || action === 'record-unbilled') openBillSheet(b, action);
   else if (action === 'slip') openBillSlip(b);
   else openBillLedger(b, BILL_LEDGER_ACTION[action]);
 }
@@ -1137,9 +1161,37 @@ function onBillMenu(b, id) {
   if (id === 'student') openBillLedger(b, null);
   else if (id === 'reject') { if (b.class_id == null) openBillLedger(b, null); else openQuick(b, true); }
   else if (id === 'sessions') openSessionDetail(b.src);
+  else if (id === 'report-bill') openBillReport(b);
   else if (id === 'slip') openBillSlip(b);
   else if (id === 'refund') refundCourseId.value = b.class_id;
   else onLedgerRowAction({ kind: id, courseId: b.class_id });
+}
+
+function openBillReport(bill) {
+  openCourseReport({
+    branchId: bill.src.campus_id ?? props.branchId,
+    studentId: bill.student_id,
+    courseId: bill.class_id,
+    packageId: bill.package_id,
+  });
+}
+
+function openPackageCloseReport(course) {
+  openCourseReport({
+    ...course,
+    description: '想處理共用方案中的課程結案，請總部一併核對方案其他課程、已排堂次及剩餘堂數。',
+  });
+}
+
+function openCourseReport({ branchId, studentId, courseId, packageId, description }) {
+  if (!canWaive.value) return;
+  const courseLink = buildCourseFocusUrl(window.location.href, { branchId, studentId, courseId });
+  if (!courseLink) return;
+  const id = Number(packageId);
+  const relatedReference = Number.isSafeInteger(id) && id > 0
+    ? `${courseLink} 共用方案編號 ${id}`
+    : courseLink;
+  window.dispatchEvent(new CustomEvent('alltrue-open-bug-report', { detail: { relatedReference, description } }));
 }
 
 async function submitBatchReport() {
@@ -1988,6 +2040,7 @@ onActivated(() => {
 
 loadAlerts();
 loadCampusStudents();
+if (activeAccountingTab.value === 'payments') loadAccountingPayments();
 </script>
 
 <style scoped>

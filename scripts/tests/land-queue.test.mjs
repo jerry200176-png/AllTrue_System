@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { BATCH_BASE_MESSAGE, BATCH_MAX, batchSerial, guardedSquash, isBatchBase, TRUSTED_AUTHORS, fromPinned, suiteRuns, memberOf, staleReason, batchVerdict, checkStates, decide, marker, memberMessage, neutral, orderQueue, parseMember, planBatch, serialDecision, unresolvedCount } from '../../.github/scripts/land-queue.mjs';
+import { BATCH_BASE_MESSAGE, BATCH_MAX, batchSerial, guardedSquash, isBatchBase, TRUSTED_AUTHORS, fromPinned, suiteRuns, memberOf, staleReason, batchVerdict, canRetryStartup, checkStates, decide, marker, memberMessage, neutral, orderQueue, parseMember, planBatch, queuedAtHead, retryStartup, serialDecision, unresolvedCount, waitingNotice } from '../../.github/scripts/land-queue.mjs';
 import { CODEX_LOGIN, REVIEW_CHECK, automaticMerge, carryChecks, carryRepo, trivialRebase, withCarryRepo, classifyScope, decodeEntities, gateMarker, onlyMainMerged, patchId, reviewGate, reviewMarker, sameDiff, samePatchFor, verdictText } from '../../.github/scripts/review-gate.mjs';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -8,7 +8,7 @@ import { join } from 'node:path';
 import { execFileSync } from 'node:child_process';
 
 const req = ['A', 'B'];
-const ok = [{ name: 'A', conclusion: 'SUCCESS' }, { name: 'B', conclusion: 'SUCCESS' }];
+const ok = ['A', 'B'].map((name) => ({ name, status: 'COMPLETED', conclusion: 'SUCCESS' }));
 const pr = (o = {}) => ({ mergeStateStatus: 'CLEAN', rollup: ok, unresolvedThreads: 0, review: { ok: true, via: 'codex' }, ...o });
 
 test('orderQueue: oldest label first, skips drafts and non-main', () => {
@@ -27,27 +27,103 @@ test('decide: BEHIND updates, DIRTY rejects', () => {
 });
 
 test('decide: failed check names it; latest rerun wins', () => {
-  const d = decide(pr({ rollup: [{ name: 'A', conclusion: 'FAILURE', startedAt: '1' }, ok[1]] }), req);
+  const d = decide(pr({ rollup: [{ ...ok[0], conclusion: 'FAILURE', startedAt: '1' }, ok[1]] }), req);
   assert.equal(d.reason, 'checks');
   assert.match(d.text, /\bA\b/);
-  const rerun = [{ name: 'A', conclusion: 'FAILURE', startedAt: '1' }, { name: 'A', conclusion: 'SUCCESS', startedAt: '2' }, ok[1]];
+  const rerun = [{ ...ok[0], conclusion: 'FAILURE', startedAt: '1' }, { ...ok[0], startedAt: '2' }, ok[1]];
   assert.equal(decide(pr({ rollup: rerun }), req).action, 'merge');
 });
 
-test('decide: failed or cancelled required checks rerun their workflow runs once (#4700)', () => {
-  const cx = (name, conclusion, id) => ({ name, conclusion, startedAt: '1', checkSuite: { workflowRun: id ? { databaseId: id } : null } });
-  const d = decide(pr({ rollup: [cx('A', 'CANCELLED', 7), cx('B', 'CANCELLED', 7)] }), req);
+test('decide: only observed runner startup failures can request an automatic retry', () => {
+  const cx = (name, conclusion, id) => ({ name, status: 'COMPLETED', conclusion, startedAt: '1', checkSuite: { workflowRun: id ? { databaseId: id } : null } });
+  const d = decide(pr({ rollup: [cx('A', 'STARTUP_FAILURE', 7), cx('B', 'STARTUP_FAILURE', 7)] }), req);
   assert.equal(d.action, 'rerun');
   assert.equal(d.reason, 'rerun-once');
   assert.deepEqual(d.runs, [7]); // one workflow run behind both contexts: rerun once
-  assert.deepEqual(decide(pr({ rollup: [cx('A', 'CANCELLED', 7), cx('B', 'FAILURE', 8)] }), req).runs, [7, 8]); // a flaky failure gets one retry too
-  assert.equal(decide(pr({ rollup: [cx('A', 'CANCELLED', null), ok[1]] }), req).reason, 'checks'); // no run to rerun
-  assert.equal(decide(pr({ rollup: [cx('A', 'TIMED_OUT', 7), ok[1]] }), req).reason, 'rerun-once');
+  assert.equal(decide(pr({ rollup: [cx('A', 'STARTUP_FAILURE', 7), cx('B', 'FAILURE', 8)] }), req).reason, 'checks');
+  assert.equal(decide(pr({ rollup: [cx('A', 'STARTUP_FAILURE', null), ok[1]] }), req).reason, 'checks');
+  for (const conclusion of ['FAILURE', 'CANCELLED', 'TIMED_OUT']) {
+    assert.equal(decide(pr({ rollup: [cx('A', conclusion, 7), ok[1]] }), req).action, 'reject');
+  }
   assert.equal(decide(pr({ unresolvedThreads: 1, rollup: [cx('A', 'CANCELLED', 7), ok[1]] }), req).reason, 'threads');
   // The accepted rerun is queued (no startedAt yet): it is the latest attempt, so wait instead of re-judging the cancel.
   const queued = { name: 'A', status: 'QUEUED', conclusion: null, startedAt: null, checkSuite: { workflowRun: { databaseId: 7 } } };
   assert.equal(decide(pr({ rollup: [cx('A', 'CANCELLED', 7), queued, ok[1]] }), req).action, 'wait');
   assert.deepEqual(checkStates([cx('A', 'CANCELLED', 7), queued], ['A']), { A: 'pending' });
+  assert.deepEqual(checkStates([{ ...queued, conclusion: 'SUCCESS' }], ['A']), { A: 'pending' });
+  for (const status of [undefined, null, false, '', 1]) {
+    const incomplete = { ...ok[0], status };
+    assert.equal(decide(pr({ rollup: [incomplete, ok[1]] }), req).action, 'wait');
+    assert.deepEqual(checkStates([{ ...ok[0], startedAt: '1' }, incomplete], ['A']), { A: 'pending' });
+  }
+});
+
+test('startup retry requires the original terminal attempt and exact head', () => {
+  const sha = 'a'.repeat(40);
+  const run = { head_sha: sha, status: 'completed', conclusion: 'failure', run_attempt: 1 };
+  assert.equal(canRetryStartup(run, sha), true);
+  for (const delta of [{ run_attempt: 2 }, { status: 'in_progress' }, { head_sha: 'b'.repeat(40) },
+    { conclusion: 'cancelled' }, { conclusion: 'success' }]) {
+    assert.equal(canRetryStartup({ ...run, ...delta }, sha), false);
+  }
+});
+
+test('a lost rerun response is reconciled and never replays the request', () => {
+  const sha = 'a'.repeat(40);
+  const run = { head_sha: sha, status: 'completed', conclusion: 'startup_failure', run_attempt: 1 };
+  let recorded = false;
+  let reads = 0;
+  let posts = 0;
+  const transport = {
+    readRun: () => { reads++; return run; },
+    hasIntent: () => recorded,
+    recordIntent: () => { recorded = true; },
+    matchesCurrentHead: () => true,
+    request: () => { posts++; assert.equal(recorded, true); throw new Error('lost response'); },
+  };
+  assert.equal(retryStartup(sha, transport), 'unconfirmed');
+  assert.equal(reads, 2);
+  assert.equal(retryStartup(sha, transport), 'ineligible');
+  assert.equal(posts, 1);
+
+  recorded = false;
+  transport.request = () => { posts++; run.run_attempt++; run.status = 'queued'; throw new Error('lost response'); };
+  assert.equal(retryStartup(sha, transport), 'accepted');
+  assert.equal(retryStartup(sha, transport), 'wait');
+  assert.equal(posts, 2);
+});
+
+test('startup retry does not POST if the PR head moved while recording the intent', () => {
+  const sha = 'a'.repeat(40);
+  const current = { head: { sha }, state: 'open', draft: false, base: { ref: 'main' }, labels: [{ name: 'queue' }] };
+  assert.equal(queuedAtHead(current, sha), true);
+  for (const delta of [{ head: null }, { draft: true }, { draft: undefined }, { draft: null },
+    { state: 'closed' }, { base: { ref: 'other' } }, { labels: [] }, { labels: null }]) {
+    assert.equal(queuedAtHead({ ...current, ...delta }, sha), false);
+  }
+  assert.equal(retryStartup(sha, {
+    readRun: () => ({ head_sha: sha, status: 'completed', conclusion: 'startup_failure', run_attempt: 1 }),
+    hasIntent: () => false,
+    recordIntent: () => { current.head.sha = 'b'.repeat(40); },
+    matchesCurrentHead: () => queuedAtHead(current, sha),
+    request: () => assert.fail('must not send a rerun request for the previous head'),
+  }), 'head-moved');
+});
+
+test('waiting notices allow a normal slow check and dedupe by reason and exact head', () => {
+  const sha = 'a'.repeat(40);
+  const labeled = '2026-11-21T08:00:00Z';
+  const started = '2026-11-21T08:55:00Z';
+  const pending = pr({ sha, rollup: [ok[0], { name: 'B', status: 'IN_PROGRESS', startedAt: started }] });
+  const decision = decide(pending, req);
+  assert.equal(waitingNotice(pending, req, decision, labeled, Date.parse('2026-11-21T09:12:00Z'), 60), null);
+  const first = waitingNotice(pending, req, decision, labeled, Date.parse('2026-11-21T10:00:00Z'), 60);
+  const next = waitingNotice(pending, req, decision, labeled, Date.parse('2026-11-21T10:05:00Z'), 60);
+  assert.equal(first.reason, 'checks-waiting-long');
+  assert.match(first.text, /Checks tab.*existing run/);
+  assert.equal(marker(first.reason, sha), marker(next.reason, sha));
+  assert.notEqual(marker(first.reason, sha), marker(next.reason, 'b'.repeat(40)));
+  assert.equal(waitingNotice(pending, req, decision, '', Date.parse('2026-11-21T10:00:00Z'), 60), null);
 });
 
 test('decide: unresolved review threads reject; known zero keeps merge behavior', () => {
@@ -71,7 +147,7 @@ test('decide: unknown thread count never merges (fail closed)', () => {
     assert.equal(d.action, 'wait');
   }
   // Failed checks still reject with their own reason when the thread count is unknown.
-  assert.equal(decide(pr({ unresolvedThreads: null, rollup: [{ name: 'A', conclusion: 'FAILURE' }, ok[1]] }), req).reason, 'checks');
+  assert.equal(decide(pr({ unresolvedThreads: null, rollup: [{ ...ok[0], conclusion: 'FAILURE' }, ok[1]] }), req).reason, 'checks');
 });
 
 test('unresolvedCount: a thread is open until resolved AND replied; otherwise unknown', () => {
@@ -195,7 +271,7 @@ test('suiteRuns: a dispatch-only batch tip (no statusCheckRollup) is judged from
 });
 
 test('fromPinned: only check runs of the pinned app from this repo count, pinned or not', () => {
-  const run = (id, name = 'A', repo = 'o/r') => ({ __typename: 'CheckRun', name, conclusion: 'SUCCESS', checkSuite: { app: { databaseId: id }, repository: { nameWithOwner: repo } } });
+  const run = (id, name = 'A', repo = 'o/r') => ({ __typename: 'CheckRun', name, status: 'COMPLETED', conclusion: 'SUCCESS', checkSuite: { app: { databaseId: id }, repository: { nameWithOwner: repo } } });
   const pins = new Map([['A', 15368], ['U', null]]);
   const kept = fromPinned([run(15368), run(999), { __typename: 'StatusContext', context: 'A', state: 'SUCCESS' }, { __typename: 'CheckRun', name: 'A' }], pins, 'o/r');
   assert.equal(kept.length, 1);
@@ -1002,5 +1078,9 @@ test('serialDecision: batchable PRs are never updated; ready ones wait for the b
   assert.equal(serialDecision(pr({ behindBy: 0 }), req, true).action, 'merge'); // already contains main: merge now, no extra CI
   assert.equal(serialDecision(pr({ behindBy: 2, unresolvedThreads: 1 }), req, true).action, 'reject'); // gates still apply
   assert.equal(serialDecision(pr({ mergeStateStatus: 'DIRTY', behindBy: 2 }), req, true).reason, 'conflict');
-  assert.equal(serialDecision(pr({ behindBy: 2, rollup: [{ name: 'A', conclusion: 'FAILURE', startedAt: '1', checkSuite: { workflowRun: { databaseId: 9 } } }, ok[1]] }), req, true).action, 'rerun');
+  const failed = (conclusion) => pr({ behindBy: 2, rollup: [
+    { ...ok[0], conclusion, startedAt: '1', checkSuite: { workflowRun: { databaseId: 9 } } }, ok[1],
+  ] });
+  assert.equal(serialDecision(failed('STARTUP_FAILURE'), req, true).action, 'rerun');
+  assert.equal(serialDecision(failed('FAILURE'), req, true).action, 'reject');
 });

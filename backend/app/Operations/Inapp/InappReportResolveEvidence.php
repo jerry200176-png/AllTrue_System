@@ -92,14 +92,15 @@ class InappReportResolveEvidence
      * public issue, and such an issue must never be linked to the reporter. $open also requires the issue to still be
      * open (triage links a live tracking issue; a resolve may follow an issue that the fix already closed).
      */
-    public function issueOwnsReport(int $issueNumber, int $bugId, bool $open = false): bool
+    public function issueOwnsReport(int $issueNumber, int $bugId, bool $open = false, bool $completed = false): bool
     {
         $repo = (string) config('pop_inapp.github_repo');
         $issue = $this->github("issues/{$issueNumber}");
         if (!is_array($issue) || isset($issue['pull_request']) || (int) ($issue['number'] ?? 0) !== $issueNumber
             || !str_ends_with((string) ($issue['repository_url'] ?? ''), '/repos/' . $repo)
             || in_array($issue['state_reason'] ?? null, ['duplicate', 'not_planned'], true)
-            || ($open && ($issue['state'] ?? null) !== 'open')) return false;
+            || ($open && ($issue['state'] ?? null) !== 'open')
+            || ($completed && (($issue['state'] ?? null) !== 'closed' || ($issue['state_reason'] ?? null) !== 'completed'))) return false;
         $trusted = fn ($author): bool => in_array($author['login'] ?? null, [explode('/', $repo)[0], 'github-actions[bot]'], true);
         $ref = '/^[ \t>*_#.)0-9`-]*SourceRef\b[^\r\n]*alltrue:bug_report:' . $bugId . '(?!\d)/m';
         foreach ([$issue, ...(array) $this->github("issues/{$issueNumber}/comments", ['per_page' => 100])] as $item) {

@@ -72,8 +72,8 @@ class BillingCourseStatusResolverTest extends TestCase
         $r = $this->resolve($course);
 
         // #3333: unpaid invoice with no net payment => confirmed sessions x rate (5 x 1500), July receipt stays on July.
-        // The period engine's amount_discrepancy review verdict is preserved at course level; period rows keep the facts.
-        $this->assertSame(['review_required', 13500, 6000, 7500], [$r['status'], $r['payable_total'], $r['applied'], $r['outstanding']]);
+        // Founder 2026-11-19: an unpaid bill of an ended period is plainly owed at that total, not a review.
+        $this->assertSame(['unpaid', 13500, 6000, 7500], [$r['status'], $r['payable_total'], $r['applied'], $r['outstanding']]);
         $this->assertSame(['paid', 'unpaid'], array_column($r['periods'], 'status'));
         $this->assertSame($r['periods'][1]['invoice_ids'][0], $r['current_invoice_id']);
     }

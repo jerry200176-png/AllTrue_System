@@ -37,7 +37,10 @@
           <Input v-model="query" type="search" placeholder="搜尋學生或課程編號" aria-label="搜尋學生" class="tw:h-12 tw:rounded-full tw:bg-card tw:pl-11 tw:text-[length:var(--tpl-text-body)] tw:shadow-none" data-testid="bill-search" />
         </div>
         <Button v-if="canDocs" :variant="receiptSearchOpen ? 'default' : 'outline'" :class="[control.row, !receiptSearchOpen && 'tw:text-foreground']" :aria-pressed="receiptSearchOpen" data-testid="bill-find-receipts" @click="receiptSearchOpen = !receiptSearchOpen">{{ receiptSearchOpen ? '回待收清單' : '查收款與收據' }}</Button>
-        <div v-show="!receiptSearchOpen" role="group" aria-label="篩選" class="tw:-mx-4 tw:flex tw:max-w-[100vw] tw:min-w-0 tw:flex-1 tw:items-center tw:gap-2 tw:px-4 tw:md:max-lg:order-3 tw:max-lg:basis-full tw:max-md:overflow-x-auto tw:md:mx-0 tw:md:flex-wrap tw:md:px-0" data-guide="tuition-chips">
+        <slot name="actions" />
+        <div v-show="!receiptSearchOpen" role="group" aria-label="篩選"
+          class="tw:-mx-4 tw:flex tw:max-w-[100vw] tw:min-w-0 tw:flex-1 tw:items-center tw:gap-2 tw:px-4 tw:md:max-lg:order-3 tw:max-lg:basis-full tw:max-md:overflow-x-auto tw:md:mx-0 tw:md:flex-wrap tw:md:px-0"
+          :class="{ 'tw:lg:shrink-0 tw:lg:basis-[min(100%,24rem)]': $slots.actions }" data-guide="tuition-chips">
           <FilterChip
             v-for="c in CHIPS"
             :key="c.key"
@@ -166,7 +169,15 @@
               <TableCell :class="[t.cell, pc, 'tw:pr-4 tw:pl-0 tw:md:pr-5', phoneButton(b) ? 'tw:max-md:col-span-2 tw:max-md:col-start-3 tw:max-md:row-start-2 tw:max-md:justify-self-end tw:max-md:pt-0 tw:max-md:pb-3' : 'tw:max-md:col-start-4 tw:max-md:row-span-2 tw:max-md:row-start-1 tw:max-md:self-center']">
                 <ChevronRight v-if="!phoneButton(b)" :class="['tw:ml-auto tw:size-5 tw:text-tpl-secondary', t.phoneOnly]" :stroke-width="2" aria-hidden="true" />
                 <!-- A row whose main action the quick view cannot do keeps its own button on a phone (and its ⋯ menu). -->
-                <span :class="['bl__actions tw:flex tw:items-center tw:justify-end tw:gap-1', phoneButton(b) ? '' : t.phoneHide]" @click.stop>
+                <span :class="['bl__actions tw:flex tw:items-center tw:justify-end tw:gap-1', phoneButton(b) ? '' : t.phoneHide, canRecordUnbilled(b) && 'tw:flex-wrap']" @click.stop>
+                  <Button
+                    v-if="canRecordUnbilled(b)"
+                    variant="outline"
+                    :class="[control.row, 'tw:max-md:px-3']"
+                    :data-testid="`bill-record-unbilled-${b.key}`"
+                    :aria-label="`登記收款：${b.student_name} ${b.subject}`"
+                    @click="$emit('action', b, 'record-unbilled')"
+                  >登記收款</Button>
                   <Button
                     v-if="primaryOf(b)"
                     :variant="b.kind === 'confirm' ? 'default' : 'outline'"
@@ -269,6 +280,16 @@ function rowTap(b) {
   else emit('quick', b);
 }
 const slipOf = (b) => slipAvailability({ ...b.src, id: b.class_id }, props.canDocs);
+// Enter the same guarded form as an already-issued bill. The ledger still decides
+// whether the exact contract can accept a payment after it loads fresh data.
+function canRecordUnbilled(b) {
+  const src = b.src;
+  return src.can_record_unbilled_count === true
+    && b.kind === 'issue' && Number(b.class_id) > 0 && b.student_id > 0 && !b.package_id
+    && src.schedule_mode === 'count' && src.payable_status === 'unbilled' && src.payment_status === 'unpaid'
+    && !src.stop && !src.closed_reason && !src.renewed_by_newer_course && !src.no_payment_obligation
+    && slipOf(b).ok;
+}
 const SORTS = {
   // D8: owed now first, then what falls due later, then name (the explicit order the label promises).
   amount: { label: '未繳金額', cmp: (a, b) => b.owed - a.owed || b.owed_later - a.owed_later || a.student_name.localeCompare(b.student_name, 'zh-Hant') },
@@ -379,7 +400,9 @@ function neighbor(studentId, dir) {
   const b = i >= 0 && ids[i + dir] != null ? visible.value.find((x) => x.student_id === ids[i + dir]) : null;
   return b ? { student_id: b.student_id, first_class_id: b.class_id } : null;
 }
-// Contract ids of the owing rows in the order and filter on screen (for 儲存並看下一筆未繳).
-const owingQueue = () => visible.value.filter((b) => b.kind === 'owing' && b.class_id != null).map((b) => Number(b.class_id));
+// Preserve the visible order and include the starting row even when it has no bill yet.
+const owingQueue = (anchorId) => visible.value
+  .filter((b) => b.class_id != null && (b.kind === 'owing' || Number(b.class_id) === anchorId))
+  .map((b) => Number(b.class_id));
 defineExpose({ neighbor, clearSelection, owingQueue });
 </script>

@@ -1958,7 +1958,7 @@ class StudentClassController extends Controller
                     // materialize sessions), but don't block on occupancy that already exists.
                     $recurringConflicts = array_values(array_filter(
                         $recurringConflicts,
-                        static fn ($c) => !in_array($c['type'] ?? '', ['teacher_capacity', 'room_capacity'], true)
+                        static fn ($c) => !in_array($c['type'] ?? '', ['teacher_capacity', 'room_capacity', 'cross_campus'], true)
                     ));
                 }
                 if (!empty($recurringConflicts)) {
@@ -4371,6 +4371,24 @@ class StudentClassController extends Controller
         string $nowTime,
         ?StudentClass $studentClass = null
     ): array {
+        // 月結 bills only the lessons inside the contract dates (MonthlyBillingService), so a lesson added outside
+        // them would be saved as taught on this contract and never billed. Same rule as ManualSessionBookingService.
+        if ($studentClass && (string) ($studentClass->ScheduleMode ?? 'count') === 'date'
+            && $studentClass->getAttribute('StartDate') && $studentClass->getAttribute('EndDate')) {
+            $from = Carbon::parse($studentClass->getAttribute('StartDate'))->toDateString();
+            $to = Carbon::parse($studentClass->getAttribute('EndDate'))->toDateString();
+            if ($sessionDate < $from || $sessionDate > $to) {
+                return [
+                    'conflict_type' => 'outside_contract',
+                    'error_code' => 'OUTSIDE_CONTRACT_PERIOD',
+                    'message' => "這堂課的日期不在這份月結合約的期間內（{$from}～{$to}）。請改到那一期的課程補登。",
+                    'suggested_actions' => ['改到包含這一天的那一期月結課程補登', '沒有那一期的課程時，先建立那一期的合約'],
+                    '_existing_session' => null,
+                    '_movable_session' => null,
+                ];
+            }
+        }
+
         $existing = ClassSession::where('StudentClassID', $classId)
             ->whereDate('SessionDate', $sessionDate)
             ->where('StartTime', $startTime)

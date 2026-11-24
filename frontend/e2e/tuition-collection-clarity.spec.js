@@ -19,14 +19,23 @@ for (const width of [390, 1440]) for (const theme of ['light', 'dark']) {
     await installMock(page);
     const c = (id, subject, start_date, paid = true) => ({ id, subject, start_date, schedule_mode: 'count', paid, charge: 1000, stop: false });
     const courses = [c(1, '數學', '2026-08-08'), c(2, '英文', '2026-09-23'), c(3, '數學', '2026-10-08', false),
-      c(4, '化學', '2026-10-02', false), c(5, '英文', '2026-10-07', false), c(6, '數學', '2026-10-09'), c(7, '英文', '2026-01-01', false)];
+      c(4, '化學', '2026-10-02', false), c(5, '英文', '2026-10-07', false), c(6, '數學', '2026-10-09'),
+      c(7, '英文', '2026-01-01', false), { ...c(8, '生物', '2026-10-01'), schedule_mode: 'date' },
+      c(9, '歷史', '2026-10-01', false)];
     await page.route('**/api/v1/students**', (r) => r.fulfill({ json: [{ id: 99, name: '合成排序學生', status: 'active', enable: 1 }] }));
     await page.route('**/api/v1/alerts/tuition**', (r) => r.fulfill({ json: [{ id: openedOldFirst ? 1 : 6, student_id: 99, student_name: '合成排序學生', subject: '數學',
       schedule_mode: 'count', payment_status: 'unpaid', payable_status: 'invoiced', payable_outstanding: 1000 }] }));
     await page.route('**/api/v1/accounting/ledger?**', (r) => r.fulfill({ json: {
-      student: { id: 99, name: '合成排序學生' }, scope: { student_class_id: openedOldFirst ? 1 : 6 }, summary: {}, courses, receipts: [], anomalies: [],
-      invoices: openedOldFirst ? [] : [{ id: 17, student_class_id: 7, status: 'unpaid', total_amount: 1000, outstanding_amount: 1000, calculated_applied_amount: 0, payments: [] }],
+      student: { id: 99, name: '合成排序學生' }, scope: { student_class_id: openedOldFirst ? 1 : 6 }, summary: {}, courses, anomalies: [],
+      receipts: [{ report_id: 15, student_class_id: 9, status: 'pending', amount: 1000 }],
+      invoices: openedOldFirst ? [] : [
+        { id: 17, student_class_id: 7, status: 'unpaid', total_amount: 1000, outstanding_amount: 1000, calculated_applied_amount: 0, payments: [] },
+        { id: 18, student_class_id: 8, status: 'paid', total_amount: 1000, outstanding_amount: 0, calculated_applied_amount: 1000, payments: [] },
+      ],
     } }));
+    await page.route('**/api/v1/accounting/monthly-drafts?**', (r) => r.fulfill({ json: { data: [
+      { student_class_id: 8, status: 'ready', proposed_end_date: '2099-12-31' },
+    ] } }));
     await page.route('**/api/v1/accounting/contracts/*/sessions', (r) => {
       const id = Number(new URL(r.request().url()).pathname.split('/').at(-2));
       return r.fulfill({ json: { ...courses.find((x) => x.id === id), sessions: [] } });
@@ -36,9 +45,15 @@ for (const width of [390, 1440]) for (const theme of ['light', 'dark']) {
     await page.getByTestId('bill-documents-c6').click();
     const ledger = page.getByRole('dialog', { name: '合成排序學生的帳務', exact: true });
     const cards = ledger.locator('.ledger-contracts > [data-testid^="contract-card-"]');
-    await expect(cards).toHaveCount(7);
+    await expect(cards).toHaveCount(9);
     const ids = await cards.evaluateAll((els) => els.map((el) => Number(el.dataset.testid.replace('contract-card-', ''))));
-    expect(ids[0]).toBe(7);
+    expect(ids.slice(0, 3)).toEqual([9, 7, 8]);
+    await expect(ledger.getByTestId('contract-card-8').getByTestId('contract-issue')).toBeVisible();
+    await expect(ledger.getByTestId('ledger-contracts')).toBeVisible();
+    expect(await ledger.getByTestId('ledger-contracts').evaluate((section) =>
+      ['invoices', 'receipts'].every((name) => Boolean(section.compareDocumentPosition(
+        section.parentElement.querySelector(`[data-testid="ledger-fold-${name}"]`),
+      ) & Node.DOCUMENT_POSITION_FOLLOWING)))).toBe(true);
     expect(ids.filter((id) => [1, 3, 6].includes(id))).toEqual([6, 3, 1]);
     expect(ids.filter((id) => [2, 5].includes(id))).toEqual([5, 2]);
     expect(ids.indexOf(1) - ids.indexOf(6)).toBe(2);
@@ -57,6 +72,61 @@ for (const width of [390, 1440]) for (const theme of ['light', 'dark']) {
     await page.getByTestId('bill-documents-c1').click();
     await expect(ledger.getByTestId('contract-card-1').getByTestId('contract-focused')).toBeInViewport();
     expect(writes).toEqual([]); expect(errors).toEqual([]);
+  });
+}
+
+for (const width of [390, 1440]) for (const nav of ['initial target', 'followed invoice']) {
+  test(`in-app #593 delayed drafts preserve the ${nav} @${width}`, async ({ page }) => {
+    const target = { id: 42, student_id: 99, student_name: '合成定位學生', subject: '合成數學',
+      schedule_mode: 'date', start_date: '2026-06-01', charge: 1000, paid: false };
+    const other = Array.from({ length: 22 }, (_, i) => ({ ...target, id: i + 60, paid: true, start_date: '2026-10-01' }));
+    const invoice = { id: 501, student_class_id: 65, status: 'paid', total_amount: 1000, outstanding_amount: 0, calculated_applied_amount: 1000, payments: [] };
+    let releaseDrafts;
+    const draftsReady = new Promise((resolve) => { releaseDrafts = resolve; });
+    await page.setViewportSize({ width, height: 850 });
+    await page.route('**/*', (r) => ['127.0.0.1', 'localhost'].includes(new URL(r.request().url()).hostname) ? r.fallback() : r.abort());
+    await page.route('**/api/v1/**', (r) => r.fulfill({ json: { data: [] } }));
+    await installMock(page);
+    await page.route('**/api/v1/students**', (r) => r.fulfill({ json: [{ id: 99, name: target.student_name, status: 'active', enable: 1 }] }));
+    await page.route('**/api/v1/alerts/tuition**', (r) => r.fulfill({ json: [
+      { ...target, payment_status: 'unpaid', payable_status: 'unbilled' },
+    ] }));
+    await page.route('**/api/v1/accounting/ledger?**', (r) => r.fulfill({ json: {
+      student: { id: 99, name: target.student_name }, scope: { student_class_id: target.id }, summary: {},
+      courses: [...other, target], invoices: [invoice], receipts: [], anomalies: [],
+    } }));
+    await page.route('**/api/v1/accounting/monthly-drafts?**', async (r) => {
+      await draftsReady;
+      await r.fulfill({ json: { data: [{ student_class_id: target.id, status: 'ready', proposed_end_date: '2099-12-31' }] } });
+    });
+
+    await page.goto('/tuition-collection-pilot-mount.html');
+    await page.getByTestId('bill-documents-c42').click();
+    const ledger = page.getByRole('dialog', { name: '合成定位學生的帳務', exact: true });
+    const cards = ledger.locator('.ledger-contracts > [data-testid^="contract-card-"]');
+    const linkedBill = ledger.getByTestId('ledger-invoice-toggle-501');
+    try {
+      await expect(cards.last()).toHaveAttribute('data-testid', 'contract-card-42');
+      await expect(cards.last().getByTestId('contract-focused')).toBeInViewport();
+      if (nav === 'followed invoice') {
+        const menu = ledger.getByTestId('contract-card-65').locator('button[aria-haspopup="menu"]');
+        await menu.press('ArrowDown');
+        const documents = page.getByRole('menuitem', { name: '查看帳單與收據' });
+        await expect(documents).toBeVisible();
+        await documents.press('Enter');
+        await expect(linkedBill).toBeFocused();
+        await expect(linkedBill).toBeInViewport();
+      }
+    } finally {
+      releaseDrafts();
+    }
+    await expect(cards.first()).toHaveAttribute('data-testid', 'contract-card-42');
+    if (nav === 'followed invoice') {
+      await expect(linkedBill).toBeFocused();
+      await expect(linkedBill).toBeInViewport();
+    } else {
+      await expect(cards.first().getByTestId('contract-focused')).toBeInViewport();
+    }
   });
 }
 
@@ -87,11 +157,37 @@ for (const width of [375, 1280]) for (const [size, theme] of [['standard', 'ligh
     await page.route('**/api/v1/accounting/ledger?**', r => {
       const q = new URL(r.request().url()).searchParams; ledgerQueries.push(Object.fromEntries(q));
       const historic = q.get('student_id') === '99';
-      return r.fulfill({ json: { student: { id: historic ? 99 : 5, name: historic ? '合成暫停學生' : '合成學生' }, scope: { student_class_id: historic ? null : 42 }, summary: {}, courses: [], anomalies: [], invoices: historic ? [] : [{ id: 501, invoice_no: '合成帳單501', subject_name: '合成數學', first_session_date: '2026-11-01', billing_period: '2026-11', student_class_id: 42, status: 'partial', total_amount: 2000, calculated_applied_amount: 1000, outstanding_amount: 1000, payments: [71, 72].map((id, i) => ({ id, report_id: 801 + i, report_status: 'confirmed', receipt_no: `合成收據${801 + i}`, amount: 500, applied_amount: 500, application_status: 'applied', method: 'cash', paid_at: '2026-11-01' })) }], receipts: historic ? [{ report_id: 900, invoice_id: null, amount: 200, status: 'confirmed', payment_method: 'cash' }] : [801, 802].map(report_id => ({ report_id, invoice_id: 501, student_class_id: 42, amount: 500, status: 'confirmed', payment_method: 'cash', subject: '合成數學' })) } });
+      const receipts = [
+        [801, 501, 71, 500, '2026-11-01', 'cash'],
+        [802, 501, 72, 900, '2026-11-03', 'transfer'],
+        [803, 503, 73, 700, '2026-11-04', 'cash'],
+      ].map(([report_id, invoice_id, payment_id, amount, payment_date, payment_method]) => ({
+        report_id, invoice_id, payment_id, amount, payment_date, payment_method,
+        student_class_id: 42, status: 'confirmed', subject: '合成數學',
+      }));
+      const invoices = [[501, 2400, 1400], [503, 700, 700]].map(([id, total_amount, applied]) => ({
+        id, invoice_no: `合成帳單${id}`, subject_name: '合成數學', first_session_date: '2026-11-01', billing_period: '2026-11',
+        student_class_id: 42, status: total_amount === applied ? 'paid' : 'partial', total_amount,
+        calculated_applied_amount: applied, outstanding_amount: total_amount - applied,
+        payments: receipts.filter(receipt => receipt.invoice_id === id).map(receipt => ({
+          id: receipt.payment_id, report_id: receipt.report_id, report_status: 'confirmed', receipt_no: `合成收據${receipt.report_id}`,
+          amount: receipt.amount, applied_amount: receipt.amount, application_status: 'applied', method: receipt.payment_method, paid_at: receipt.payment_date,
+        })),
+      }));
+      return r.fulfill({ json: {
+        student: { id: historic ? 99 : 5, name: historic ? '合成暫停學生' : '合成學生' },
+        scope: { student_class_id: historic ? null : 42 }, summary: {}, courses: [], anomalies: [],
+        invoices: historic ? [] : invoices,
+        receipts: historic ? [{ report_id: 900, invoice_id: null, amount: 200, status: 'confirmed', payment_method: 'cash' }] : receipts,
+      } });
     });
     await page.route('**/api/v1/payment-reports/*/receipt', r => {
       const id = Number(new URL(r.request().url()).pathname.split('/').at(-2)); receiptIds.push(id);
-      return r.fulfill({ json: { receipt_no: `合成收據${id}`, amount: 500, payment_date: '2026-11-01', payment_method: 'cash', status: 'confirmed', student_name: '合成學生', subject: '合成數學' } });
+      const transfer = id === 802;
+      return r.fulfill({ json: {
+        receipt_no: `合成收據${id}`, amount: transfer ? 900 : 500, payment_date: transfer ? '2026-11-03' : '2026-11-01',
+        payment_method: transfer ? 'transfer' : 'cash', status: 'confirmed', student_name: '合成學生', subject: '合成數學',
+      } });
     });
     await page.goto('/tuition-collection-pilot-mount.html');
     await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
@@ -101,17 +197,42 @@ for (const width of [375, 1280]) for (const [size, theme] of [['standard', 'ligh
     const ledger = page.getByRole('dialog', { name: '合成學生的帳務', exact: true });
     const linked = page.getByTestId('ledger-invoice-payments-501');
     await expect(linked.getByRole('button', { name: /查看收據/ })).toHaveCount(2);
+    const repeated = ledger.getByTestId('ledger-receipt-repeated-803');
+    const matchingReceiptRow = ledger.getByTestId('ledger-receipt-view-803').locator('..');
+    const firstReceiptRow = ledger.getByTestId('ledger-receipt-view-801').locator('..');
+    const secondReceiptRow = ledger.getByTestId('ledger-receipt-view-802').locator('..');
+    await expect(repeated).toBeVisible();
+    await expect(repeated).toContainText('合成收據803');
+    await expect(repeated).toHaveAccessibleName('查看對應帳單 · 合成收據803');
+    await repeated.press('Enter');
+    await expect(ledger.getByTestId('ledger-invoice-toggle-503')).toBeFocused();
+    await expect(matchingReceiptRow).not.toContainText('NT$ 700');
+    await expect(firstReceiptRow).toContainText(/NT\$ 500.*2026\/11\/01.*現金/);
+    await expect(secondReceiptRow).toContainText(/NT\$ 900.*2026\/11\/03.*匯款/);
+    const invoiceFold = ledger.getByTestId('ledger-fold-invoices');
+    await invoiceFold.click();
+    await expect(repeated).toHaveCount(0);
+    await expect(matchingReceiptRow).toContainText('NT$ 700');
+    await invoiceFold.click();
+    await expect(repeated).toBeVisible();
     await page.getByTestId('ledger-payment-receipt-72').focus(); await page.keyboard.press('Enter');
     const receipt = page.getByTestId('receipt-modal-panel');
     await expect(receipt).toContainText('合成收據802');
     await receipt.locator('button[title="關閉"]').click();
     await expect(page.getByTestId('ledger-payment-receipt-72')).toBeFocused();
+    await firstReceiptRow.getByRole('button', { name: '查看收據', exact: true }).press('Enter');
+    await expect(receipt).toContainText('合成收據801');
+    await receipt.locator('button[title="關閉"]').click();
+    await expect(ledger.getByTestId('ledger-receipt-view-801')).toBeFocused();
     await page.getByTestId('ledger-invoice-501').hover();
-    const scan = await new AxeBuilder({ page }).include('#ledger-sec-invoices').analyze();
+    const scan = await new AxeBuilder({ page }).include('#ledger-sec-invoices, #ledger-sec-receipts').analyze();
     expect(scan.violations.filter(v => ['serious', 'critical'].includes(v.impact))).toEqual([]);
     const linkedShot = info.outputPath(`linked-${width}-${size}-${theme}.png`);
     await ledger.screenshot({ path: linkedShot });
     await info.attach(`linked-${width}-${size}-${theme}`, { path: linkedShot, contentType: 'image/png' });
+    const receiptRowsShot = info.outputPath(`receipt-rows-${width}-${size}-${theme}.png`);
+    await ledger.locator('#ledger-sec-receipts').screenshot({ path: receiptRowsShot });
+    await info.attach(`receipt-rows-${width}-${size}-${theme}`, { path: receiptRowsShot, contentType: 'image/png' });
     await ledger.getByRole('button', { name: '關閉學生帳務', exact: true }).click();
     await expect(page.getByTestId('bill-search')).toHaveValue('合成學生');
     await expect(page.getByTestId('bill-documents-c42')).toBeFocused();
@@ -133,8 +254,70 @@ for (const width of [375, 1280]) for (const [size, theme] of [['standard', 'ligh
     await page.getByTestId('bill-receipt-search').screenshot({ path: historicShot });
     await info.attach(`historic-${width}-${size}-${theme}`, { path: historicShot, contentType: 'image/png' });
     expect(ledgerQueries).toEqual([{ student_class_id: '42', branch_id: '1' }, { student_id: '99', branch_id: '1' }]);
-    expect(receiptIds).toEqual([802, 900]);
+    expect(receiptIds).toEqual([802, 801, 900]);
     expect(coverage).toEqual([]); expect(writes).toEqual([]); expect(errors).toEqual([]);
+  });
+}
+
+for (const width of [390, 1280]) {
+  test(`In-App572 opens a uniquely linked invoice from a contract @${width}`, async ({ page }) => {
+    const unsafeMethods = [];
+    const receiptIds = [];
+    const course = { id: 42, subject: '合成數學', schedule_mode: 'count', paid: true };
+    await page.setViewportSize({ width, height: 900 });
+    await page.route('**/*', (route) => ['127.0.0.1', 'localhost'].includes(new URL(route.request().url()).hostname)
+      ? route.fallback() : route.abort());
+    page.on('request', (request) => {
+      if (new URL(request.url()).pathname.startsWith('/api/v1/') && request.method() !== 'GET') {
+        unsafeMethods.push(request.method());
+      }
+    });
+    await page.route('**/api/v1/**', (route) => route.fulfill({ json: { data: [] } }));
+    await installMock(page);
+    await page.route('**/api/v1/students**', (route) => route.fulfill({
+      json: [{ id: 5, name: '合成學生', status: 'active', enable: 1 }],
+    }));
+    await page.route('**/api/v1/alerts/tuition**', (route) => route.fulfill({
+      json: [{ id: 42, student_id: 5, student_name: '合成學生', subject: course.subject,
+        schedule_mode: 'count', payment_status: 'unpaid', payable_status: 'invoiced', payable_outstanding: 1000 }],
+    }));
+    await page.route('**/api/v1/accounting/contracts/42/sessions', (route) => route.fulfill({ json: { ...course, sessions: [] } }));
+    await page.route('**/api/v1/accounting/ledger?**', (route) => route.fulfill({ json: {
+      student: { id: 5, name: '合成學生' }, scope: { student_class_id: 42 }, summary: {}, courses: [course], receipts: [], anomalies: [],
+      invoices: [{ id: 501, invoice_no: '合成帳單501', student_class_id: 11, covered_student_class_ids: [11, 42],
+        status: 'paid', total_amount: 1000, paid_amount: 1000, calculated_applied_amount: 1000, outstanding_amount: 0,
+        payments: [71, 72].map((id, index) => ({ id, amount: 500, report_id: 801 + index, report_status: 'confirmed',
+          receipt_no: `合成收據${801 + index}`, method: 'cash', paid_at: '2026-11-01' })) }],
+    } }));
+    await page.route('**/api/v1/payment-reports/*/receipt', (route) => {
+      const id = Number(new URL(route.request().url()).pathname.split('/').at(-2));
+      receiptIds.push(id);
+      return route.fulfill({ json: { receipt_no: `合成收據${id}`, amount: 500, payment_date: '2026-11-01',
+        payment_method: 'cash', status: 'confirmed', student_name: '合成學生' } });
+    });
+    await page.goto('/tuition-collection-pilot-mount.html');
+    const openLedger = width < 768 ? 'bill-documents-c42' : 'bill-name-c42';
+    await page.getByTestId(openLedger).click();
+    const ledger = page.getByRole('dialog', { name: '合成學生的帳務', exact: true });
+    await ledger.getByTestId('ledger-fold-invoices').click();
+    const menuTrigger = ledger.getByRole('button', { name: '合成數學 的更多操作' });
+    await menuTrigger.press('ArrowDown');
+    const action = page.getByRole('menuitem', { name: '查看帳單與收據', exact: true });
+    await expect(action).toBeFocused();
+    await action.press('Enter');
+    const toggle = ledger.getByTestId('ledger-invoice-toggle-501');
+    await expect(toggle).toBeFocused();
+    await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+    await expect(toggle).toBeInViewport();
+    expect(receiptIds).toEqual([]);
+    const exactReceipt = ledger.getByTestId('ledger-payment-receipt-72');
+    await exactReceipt.press('Enter');
+    const receipt = page.getByTestId('receipt-modal-panel');
+    await expect(receipt).toContainText('合成收據802');
+    await receipt.locator('button[title="關閉"]').click();
+    await expect(exactReceipt).toBeFocused();
+    expect(receiptIds).toEqual([802]);
+    expect(unsafeMethods).toEqual([]);
   });
 }
 
@@ -318,6 +501,99 @@ async function installMock(page) {
     ] }),
   }));
 }
+
+for (const [width, scenario] of [[390, 'opens the exact form'], [1440, 'opens the exact form'], [390, 'blocks fresh shared terms'], [390, 'save and next never wraps']]) {
+  test(`in-app #592 unbilled shortcut ${scenario} @${width}`, async ({ page }, info) => {
+    const writes = [];
+    const opened = [];
+    const recorded = [];
+    const regrouped = scenario === 'blocks fresh shared terms';
+    const saveNext = scenario === 'save and next never wraps';
+    const course = { id: 42, student_id: 99, student_name: '合成收款學生', subject: '合成數學',
+      schedule_mode: 'count', payment_status: 'unpaid', payable_status: 'unbilled', remaining_sessions: 6, can_record_unbilled_count: true };
+    const unrelated = { ...course, id: 43, subject: '合成英文', latest_payment_report_id: 55, payment_status: 'pending_report' };
+    const estimated = { ...course, id: 44, subject: '合成待確認', charge: 6000, can_record_unbilled_count: false };
+    const earlier = { ...course, id: 52, student_id: 100, student_name: '合成先前學生',
+      payable_status: 'invoiced', payable_outstanding: 1000, can_record_unbilled_count: false };
+    page.on('request', (request) => {
+      if (new URL(request.url()).pathname.startsWith('/api/v1/') && request.method() !== 'GET') writes.push(request.method());
+    });
+    await page.setViewportSize({ width, height: 900 });
+    await page.route('**/*', (route) => ['127.0.0.1', 'localhost'].includes(new URL(route.request().url()).hostname) ? route.fallback() : route.abort());
+    await page.route('**/api/v1/**', (route) => route.fulfill({ json: { data: [] } }));
+    await installMock(page);
+    await page.route('**/api/v1/students**', (route) => route.fulfill({ json: [{ id: 99, name: course.student_name, status: 'active', enable: 1 }] }));
+    await page.route('**/api/v1/alerts/tuition**', (route) => route.fulfill({ json: [
+      ...(saveNext ? [earlier] : []), recorded.length ? { ...course, payment_status: 'pending_report', latest_payment_report_id: 56 } : course,
+      unrelated, estimated,
+    ] }));
+    if (saveNext) await page.route('**/api/v1/payment-reports/director-record', (route) => {
+      recorded.push(route.request().postDataJSON().student_class_id);
+      return route.fulfill({ json: { status: 'pending', report_id: 56 } });
+    });
+    await page.route('**/api/v1/accounting/ledger?**', (route) => {
+      const selected = Number(new URL(route.request().url()).searchParams.get('student_class_id'));
+      opened.push(selected);
+      if (selected === earlier.id) return route.fulfill({ json: {
+        student: { id: 100, name: earlier.student_name }, summary: {}, scope: { student_class_id: selected },
+        courses: [{ ...earlier, paid: false, charge: 1000 }], invoices: [], receipts: [], anomalies: [],
+      } });
+      return route.fulfill({ json: {
+        student: { id: 99, name: course.student_name }, summary: {}, scope: { student_class_id: selected },
+        courses: [
+          { ...course, paid: false, charge: 6000, ...(regrouped ? { package_id: 8, in_package: true } : {}) },
+          { ...unrelated, paid: false, charge: 4000 },
+        ], invoices: [], anomalies: [],
+        receipts: [
+          { report_id: 55, student_class_id: 43, status: 'pending', amount: 4000 },
+          ...(recorded.length ? [{ report_id: 56, student_class_id: 42, status: 'pending', amount: 6000 }] : []),
+        ],
+      } });
+    });
+    await page.goto('/tuition-collection-pilot-mount.html');
+    const row = page.getByTestId('bill-row-c42');
+    await expect(row.getByTestId('bill-action-c42')).toHaveText('繳費單');
+    const button = row.getByTestId('bill-record-unbilled-c42');
+    await expect(button).toBeVisible();
+    await expect(row.getByTestId('bill-action-c42')).toBeVisible();
+    await expect(page.getByTestId('bill-record-unbilled-c43')).toHaveCount(0);
+    await expect(page.getByTestId('bill-row-c44')).toBeVisible();
+    await expect(page.getByTestId('bill-record-unbilled-c44')).toHaveCount(0);
+    const box = await row.boundingBox();
+    expect(box.x + box.width).toBeLessThanOrEqual(width + 1);
+    const screenshot = info.outputPath(`unbilled-record-row-${width}.png`);
+    await row.screenshot({ path: screenshot });
+    await info.attach('unbilled-record-row', { path: screenshot, contentType: 'image/png' });
+    await button.press('Enter');
+    const form = page.getByRole('dialog', { name: '登記收款', exact: true });
+    if (regrouped) {
+      await expect(page.getByTestId('ledger-initial-action-note')).toContainText('請先核對');
+      await expect(form).toHaveCount(0);
+    } else {
+      await expect(form).toBeVisible();
+      await expect(form).toContainText(course.student_name);
+      await expect(form).toContainText(course.subject);
+      await expect(form).toContainText('還沒開帳單');
+    }
+    if (saveNext) {
+      await expect(page.getByTestId('bill-row-c52')).toBeVisible();
+      expect(await row.evaluate((target) => Boolean(target.compareDocumentPosition(
+        target.closest('table').querySelector('[data-testid="bill-row-c52"]'),
+      ) & Node.DOCUMENT_POSITION_PRECEDING))).toBe(true);
+      await form.locator('input[type="number"]').fill('6000');
+      await form.getByTestId('pe-save-next').click();
+      await expect(row).toContainText('待確認入帳');
+      await expect(form).toHaveCount(0);
+      await expect(page.getByTestId('ledger-sheet-loading')).toHaveCount(0);
+      expect(recorded).toEqual([42]);
+      expect(opened).not.toContain(52);
+      expect(writes).toEqual(['POST']);
+      return;
+    }
+    expect(opened).toEqual([42]);
+    expect(writes).toEqual([]);
+  });
+}
 async function expectNoOverflowAndReachableControls(page) {
   // Every control is 44px, with two narrow, explicit exceptions that are asserted below instead:
   //  - a role=checkbox button is a 20px box whose real hit area (its ::after) must be at least 44px;
@@ -341,6 +617,35 @@ async function expectNoOverflowAndReachableControls(page) {
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 2)).toBe(true);
 }
 test.describe('Tuition Collection clarity browser verification', () => {
+  test('monthly roster separates selected-month invoices from balances in other months', async ({ page }) => {
+    await page.setViewportSize({ width: 393, height: 852 });
+    await page.route('**/*', route => ['127.0.0.1', 'localhost'].includes(new URL(route.request().url()).hostname)
+      ? route.fallback() : route.abort());
+    await page.route('**/api/v1/**', route => route.fulfill({ json: { data: [] } }));
+    await installMock(page);
+    const now = new Date();
+    await page.route('**/api/v1/accounting/monthly-roster**', route => {
+      const isCurrentMonth = Number(new URL(route.request().url()).searchParams.get('month')) === now.getMonth() + 1;
+      const balances = { selected_billed: isCurrentMonth ? 0 : 3400, other_billed: isCurrentMonth ? 3400 : 0,
+        undated_billed: 0, unbilled: 5700 };
+      return route.fulfill({ json: {
+        summary: { students: 1, outstanding: 9100, outstanding_by_scope: balances, paid_this_month: 0, pending_reports: 0 },
+        data: [{ student_id: 4, student_name: '合成學生', school: '', outstanding: 9100,
+          courses: [{ course_id: 42, subject: '合成數學', teacher_name: '', lessons: [], held: 0, pending_reports: 0,
+            paid_this_month: [], money: { outstanding: 9100, outstanding_by_scope: balances, status: 'unpaid' } }] }],
+      } });
+    });
+    await page.goto('/tuition-collection-pilot-mount.html');
+    await page.getByRole('tab', { name: '月對帳表', exact: true }).click();
+    const roster = page.getByTestId('monthly-roster');
+    const current = roster.locator('[data-slot="stat-item"]').filter({ hasText: '本月帳單未收' });
+    await expect(current).toContainText('NT$0');
+    await expect(roster.getByText('其他月份帳單未收 NT$3,400・未開單合約餘額 NT$5,700')).toHaveCount(2);
+    await page.getByRole('button', { name: '上一月' }).click();
+    await expect(current).toContainText('NT$3,400');
+    await expect(roster.getByTestId('roster-record-42')).toBeVisible();
+  });
+
   test('uses clear loading, empty, error, and retry feedback', async ({ page }) => {
     await installMock(page);
     await page.setViewportSize({ width: 390, height: 844 });
@@ -396,8 +701,98 @@ test.describe('Tuition Collection clarity browser verification', () => {
     await expect(page.locator('[data-testid="tc-reminder-settled"]')).toHaveText('已結清課程');
     await page.getByRole('tab', { name: '收款紀錄' }).click();
     await expect(page.locator('[data-testid="tc-reminders"]')).toHaveCount(0);
-    await page.getByRole('tab', { name: '帳單' }).click();
+    await page.getByRole('tab', { name: '帳單', exact: true }).click();
     await expect(page.locator('[data-testid="tc-reminder-settled"]')).toBeVisible();
+  });
+
+  for (const width of [390, 1440]) {
+    test(`In-App581: open receipts inside billing and preserve the bill search @${width}`, async ({ page }) => {
+      await installMock(page);
+      await page.setViewportSize({ width, height: 900 });
+      let historyReads = 0;
+      const writes = [];
+      page.on('request', (request) => {
+        if (new URL(request.url()).pathname.startsWith('/api/v1/') && request.method() !== 'GET') {
+          writes.push(request.method());
+        }
+      });
+      await page.route('**/api/v1/accounting/payments?**', (route) => {
+        historyReads++;
+        return route.fulfill({ json: { data: [{ ...accountingRows[0], status: 'confirmed' }] } });
+      });
+      await page.route('**/api/v1/payment-reports/701/receipt', (route) =>
+        route.fulfill({ json: { receipt_no: accountingRows[0].receipt_no, amount: 4200, status: 'confirmed' } }));
+      await page.goto('/tuition-collection-pilot-mount.html');
+      const top = page.getByRole('tablist', { name: '帳務中心分頁' });
+      const billing = top.getByRole('tab', { name: '帳單與收款' });
+      const views = page.getByRole('tablist', { name: '帳單與收款檢視' });
+      const bills = views.getByRole('tab', { name: '帳單', exact: true });
+      const receipts = views.getByRole('tab', { name: '收款紀錄' });
+      await expect(receipts).toHaveAttribute('aria-controls', /.+/);
+      const receiptPanelId = await receipts.getAttribute('aria-controls');
+      await expect(page.locator(`[id="${receiptPanelId}"]`)).toBeAttached();
+      await expect(page.locator(`[id="${receiptPanelId}"]`)).toBeHidden();
+      const search = page.getByTestId('bill-search');
+      const pick = page.getByTestId('bill-pick-c101');
+      await search.fill('林宥辰');
+      await pick.click();
+      await expect(pick).toBeChecked();
+      expect(historyReads).toBe(0);
+      await expect(top.getByRole('tab', { name: '收款紀錄' })).toHaveCount(0);
+
+      await bills.focus();
+      await page.keyboard.press('ArrowRight');
+      await expect(receipts).toBeFocused();
+      await expect(bills).toHaveAttribute('aria-selected', 'true');
+      const opened = page.waitForRequest('**/api/v1/accounting/payments?**');
+      await page.keyboard.press('Enter');
+      const request = await opened;
+      expect(request.method()).toBe('GET');
+      expect(new URL(request.url()).searchParams.get('branch_id')).toBe('1');
+      await expect(billing).toHaveAttribute('aria-selected', 'true');
+      await expect(receipts).toHaveAttribute('aria-selected', 'true');
+      const history = page.getByRole('tabpanel', { name: '收款紀錄' });
+      await expect(history).toBeVisible();
+      await expect(search).toBeHidden();
+      await history.getByRole('button', { name: `查看 ${accountingRows[0].receipt_no}`, exact: true }).click();
+      const receipt = page.getByRole('dialog', { name: '電子收據' });
+      await expect(receipt).toContainText(accountingRows[0].receipt_no);
+      await receipt.press('Escape');
+      await expect(receipt).toBeHidden();
+
+      await bills.click();
+      await expect(search).toHaveValue('林宥辰');
+      await expect(pick).not.toBeChecked();
+      expect(historyReads).toBe(1);
+      expect(writes).toEqual([]);
+    });
+  }
+
+  test('In-App581: existing receipt links select the nested receipt history', async ({ page }) => {
+    const director = { id: 9001, name: '合成主任', role: 'director', campuses: [1], must_change_password: false };
+    await page.addInitScript((user) => {
+      localStorage.setItem('alltrue_session', JSON.stringify({ access_token: 'local-e2e-only', user }));
+      localStorage.setItem('app_branch', '1');
+    }, director);
+    await page.route('**/*', route => ['127.0.0.1', 'localhost'].includes(new URL(route.request().url()).hostname)
+      ? route.fallback() : route.abort());
+    await page.route('**/api/v1/**', route => {
+      const path = new URL(route.request().url()).pathname;
+      if (path === '/api/v1/me') return route.fulfill({ json: director });
+      if (path === '/api/v1/branches' || path === '/api/v1/campuses') {
+        return route.fulfill({ json: [{ id: 1, name: '合成分校', code: 'local' }] });
+      }
+      return route.fulfill({ json: { data: [] } });
+    });
+    await installMock(page);
+    for (const alias of ['payments', 'receipts']) {
+      await page.goto(`/app-pilot-mount.html?app_page=tuition-collect&tab=${alias}`);
+      await expect(page.getByRole('tab', { name: '帳單與收款' })).toHaveAttribute('aria-selected', 'true');
+      await expect(page.getByRole('tab', { name: '收款紀錄' })).toHaveAttribute('aria-selected', 'true');
+      await expect(page.getByRole('tabpanel', { name: '收款紀錄' }).locator('.acct-table')).toBeVisible();
+    }
+    await page.goto('/app-pilot-mount.html?app_page=tuition-collect&tab=unknown');
+    await expect(page.getByRole('tab', { name: '帳單', exact: true })).toHaveAttribute('aria-selected', 'true');
   });
 
   test('captures the accounting tabs without page overflow', async ({ page }) => {
@@ -434,12 +829,13 @@ test.describe('Tuition Collection clarity browser verification', () => {
   test('keeps accounting loading and long Chinese content usable', async ({ page }) => {
     await installMock(page);
     await page.setViewportSize({ width: 390, height: 844 });
+    const history = page.getByRole('tabpanel', { name: '收款紀錄', exact: true });
     await page.goto('/tuition-collection-pilot-mount.html?mode=loading');
     await page.getByRole('tab', { name: '收款紀錄' }).click();
-    await expect(page.getByTestId('at-skeleton')).toBeVisible();
+    await expect(history.getByTestId('at-skeleton')).toBeVisible();
     await page.goto('/tuition-collection-pilot-mount.html?mode=long');
     await page.getByRole('tab', { name: '收款紀錄' }).click();
-    await expect(page.getByText(/很長的學生姓名/).first()).toBeVisible();
+    await expect(history.getByText(/很長的學生姓名/).first()).toBeVisible();
     await expectNoOverflowAndReachableControls(page);
     await page.goto('/tuition-collection-pilot-mount.html?mode=long');
     await page.locator('[data-testid="tc-reminder-settled"]').click();
@@ -497,10 +893,11 @@ for (const width of [375, 1536]) for (const size of ['standard', 'large']) for (
   });
 }
 
-// #5494: headless actual page + existing ledger/card, synthetic package only; no mutation is allowed.
+// #5494 and in-app #578: actual ledger and report form, synthetic package only.
 for (const width of [375, 1280]) {
   test(`5494 package close explains the boundary and preserves single close @${width}`, async ({ page }, info) => {
     const writes = []; const errors = [];
+    let packageRetired = false;
     page.on('pageerror', error => errors.push(error.message));
     page.on('request', request => {
       if (new URL(request.url()).pathname.startsWith('/api/v1/') && request.method() !== 'GET') writes.push(request.method() + ' ' + new URL(request.url()).pathname);
@@ -513,24 +910,44 @@ for (const width of [375, 1280]) {
     const courses = [
       { id: 42, subject: '合成共用數學', package_id: 81 }, { id: 43, subject: '合成共用英文', package_id: 81 },
       { id: 44, subject: '合成單科' },
-    ].map(c => ({ ...c, schedule_mode: 'count', paid: true, charge: 8000, stop: false, start_date: '2026-09-01' }));
+      { id: 45, subject: '合成月結方案成員', in_package: true, schedule_mode: 'date' },
+    ].map(c => ({ schedule_mode: 'count', paid: true, charge: 8000, stop: false, start_date: '2026-09-01', ...c }));
     await page.route('**/api/v1/students**', route => route.fulfill({ json: [{ id: 99, name: '合成結案學生', status: 'active', enable: 1 }] }));
-    await page.route('**/api/v1/alerts/tuition**', route => route.fulfill({ json: [42, 44].map(id => ({
+    await page.route('**/api/v1/alerts/tuition**', route => route.fulfill({ json: [...(packageRetired ? [44] : [42, 44]).map(id => ({
       id, student_id: 99, student_name: '合成結案學生', subject: courses.find(c => c.id === id).subject,
       ...(id === 42 ? { package_id: 81, member_class_ids: [42, 43] } : {}),
       schedule_mode: 'count', payment_status: 'renew_needed', payable_outstanding: 0, remaining_sessions: 0,
-    })) }));
+    })), { id: null, package_id: 82, student_id: 99, student_name: '合成結案學生', subject: '合成月結方案',
+      schedule_mode: 'date', payment_status: 'monthly_due_soon', payable_outstanding: 0 }] }));
     await page.route('**/api/v1/accounting/ledger?**', route => route.fulfill({ json: {
-      student: { id: 99, name: '合成結案學生' }, scope: { student_class_id: 42 }, summary: {}, courses,
+      student: { id: 99, name: '合成結案學生', campus_id: 1 }, scope: { student_class_id: 42 }, summary: {}, courses,
       invoices: [], receipts: [], payments: [], reports: [], anomalies: [],
     } }));
     await page.route('**/api/v1/accounting/contracts/*/sessions', route => route.fulfill({ json: { sessions: [] } }));
-    await page.goto('/tuition-collection-pilot-mount.html');
+    await page.goto('/tuition-collection-pilot-mount.html?with-report-form');
     await page.getByTestId('bill-search').fill('合成結案學生');
+    const report = page.getByRole('dialog', { name: '意見與建議' });
+    for (const id of [42, 44]) {
+      const bill = page.getByTestId(`bill-row-c${id}`);
+      await bill.getByRole('button', { name: /更多操作/ }).click();
+      await page.getByRole('menuitem', { name: '回報這筆帳務' }).click();
+      const reference = await report.getByLabel('相關資料').inputValue();
+      const [url, ...context] = reference.split(' ');
+      expect(Object.fromEntries(new URL(url).searchParams)).toEqual({
+        app_page: 'course-mgmt', branch_id: '1', student_id: '99', course_id: String(id),
+      });
+      expect(context.join(' ')).toBe(id === 42 ? '共用方案編號 81' : '');
+      await expect(report.getByRole('button', { name: '送出意見' })).toBeDisabled();
+      page.once('dialog', dialog => dialog.accept());
+      await report.getByRole('button', { name: '關閉回報視窗' }).click();
+      await expect(report).toBeHidden();
+    }
     await page.getByTestId('bill-documents-c42').click();
     const card = page.getByTestId('contract-card-42');
     const reason = card.getByTestId('contract-package-close');
+    const support = card.getByRole('button', { name: '回報給總部' });
     await expect(reason).toHaveText('共用方案須整包核對，目前不能只結束其中一門課。');
+    await expect(support).toBeVisible();
     await reason.scrollIntoViewIfNeeded();
     await expect(reason).toBeInViewport();
     const box = await reason.boundingBox();
@@ -540,13 +957,121 @@ for (const width of [375, 1280]) {
     await page.keyboard.press('Escape');
     await card.getByTestId('contract-toggle').click();
     await expect(reason).toBeVisible();
+    await expect(support).toBeInViewport({ ratio: 1 });
     const shot = info.outputPath(`package-close-${width}.png`);
-    await reason.screenshot({ path: shot }); await info.attach('package-close-explanation', { path: shot, contentType: 'image/png' });
+    await reason.locator('..').screenshot({ path: shot }); await info.attach('package-close-explanation', { path: shot, contentType: 'image/png' });
+    await support.click();
+    await expect(report.getByLabel('相關資料')).toHaveValue(/app_page=course-mgmt&branch_id=1&student_id=99&course_id=42 共用方案編號 81$/);
+    await expect(report.getByLabel('請告訴我們發生了什麼')).toHaveValue(/請總部一併核對/);
+    const formShot = info.outputPath(`package-close-form-${width}.png`);
+    await report.screenshot({ path: formShot });
+    await info.attach('package-close-report-form', { path: formShot, contentType: 'image/png' });
+    await expect(writes).toEqual([]);
+    page.once('dialog', dialog => dialog.accept());
+    await report.getByRole('button', { name: '關閉回報視窗' }).click();
+    await expect(report).toBeHidden();
+    for (const id of [43, 45]) {
+      const member = page.getByTestId(`contract-card-${id}`);
+      await expect(member.getByTestId('contract-package-close')).toBeVisible();
+      await member.getByRole('button', { name: '回報給總部' }).click();
+      const [url, ...context] = (await report.getByLabel('相關資料').inputValue()).split(' ');
+      expect(Object.fromEntries(new URL(url).searchParams)).toEqual({
+        app_page: 'course-mgmt', branch_id: '1', student_id: '99', course_id: String(id),
+      });
+      expect(context.join(' ')).toBe(id === 43 ? '共用方案編號 81' : '');
+      page.once('dialog', dialog => dialog.accept());
+      await report.getByRole('button', { name: '關閉回報視窗' }).click();
+      await expect(report).toBeHidden();
+    }
     const single = page.getByTestId('contract-card-44');
+    await expect(single.getByRole('button', { name: '回報給總部' })).toHaveCount(0);
     await single.getByRole('button', { name: '合成單科 的更多操作', exact: true }).click();
     await page.getByRole('menuitem', { name: '結案（不續報）', exact: true }).click();
     await expect(page.locator('.tc-overlay')).toContainText('合成單科');
+
+    // #573: reflect the next backend read after retiring a settled package.
+    packageRetired = true;
+    await page.reload();
+    await page.getByTestId('bill-search').fill('合成結案學生');
+    await expect(page.getByTestId('bill-row-c44')).toBeVisible();
+    await expect(page.getByTestId('bill-row-c42')).toHaveCount(0);
     expect(writes).toEqual([]); expect(errors).toEqual([]);
+  });
+}
+
+test('In-App588: the bill summary follows its tabs and the guide stays with bill controls', async ({ page }, info) => {
+  await installMock(page);
+  for (const width of [390, 655, 1024, 1280]) {
+    await page.setViewportSize({ width, height: 900 });
+    await page.goto('/tuition-collection-pilot-mount.html');
+    const tabs = page.getByRole('tablist', { name: '帳單與收款檢視' });
+    const bills = page.getByRole('tabpanel', { name: '帳單', exact: true });
+    const summary = bills.getByTestId('bill-summary');
+    const guide = bills.getByTestId('billing-guide-start');
+    await expect(guide).toBeVisible();
+    const tabBounds = await tabs.boundingBox();
+    const summaryBounds = await summary.boundingBox();
+    const guideBounds = await guide.boundingBox();
+    const summaryGap = summaryBounds.y - (tabBounds.y + tabBounds.height);
+    expect(summaryGap, `summary gap at ${width}px`).toBeLessThanOrEqual(32);
+    expect(guideBounds.y).toBeGreaterThanOrEqual(summaryBounds.y + summaryBounds.height);
+    expect(guideBounds.height).toBeGreaterThanOrEqual(44);
+    await info.attach(`accounting-layout-${width}`, { body: JSON.stringify({ summaryGap, guideHeight: guideBounds.height }), contentType: 'application/json' });
+    if (width === 1024) {
+      const filters = await bills.getByRole('group', { name: '篩選', exact: true }).boundingBox();
+      expect(filters.width).toBeGreaterThanOrEqual(360);
+      expect(filters.height).toBeLessThanOrEqual(112);
+      await info.attach('accounting-filters-1024', { body: JSON.stringify({ width: filters.width, height: filters.height }), contentType: 'application/json' });
+    }
+    await tabs.getByRole('tab', { name: '收款紀錄' }).click();
+    await expect(page.getByRole('tabpanel', { name: '收款紀錄' })).toBeVisible();
+    await expect(guide).toBeHidden();
+    await tabs.getByRole('tab', { name: '帳單', exact: true }).click();
+    await guide.focus();
+    await guide.press('Enter');
+    await expect(bills.getByTestId('bg-step')).toBeVisible();
+  }
+});
+
+for (const width of [375, 1280]) {
+  test(`In-App584: billing guide can close a paid single course @${width}`, async ({ page }, info) => {
+    const writes = [];
+    let closed = false;
+    await page.setViewportSize({ width, height: 950 });
+    await page.route('**/*', route => new URL(route.request().url()).hostname === '127.0.0.1' ? route.fallback() : route.abort());
+    await page.route('**/api/v1/**', route => route.fulfill({ json: { data: [] } }));
+    await installMock(page);
+    const common = { student_id: 99, student_name: '合成續課學生', schedule_mode: 'count',
+      payment_status: 'renew_needed', payable_outstanding: 0, remaining_sessions: 1 };
+    const single = { ...common, id: 42, subject: '合成單科' };
+    const shared = { ...common, id: null, package_id: 81, subject: '合成共用方案' };
+    await page.route('**/api/v1/alerts/tuition**', route => route.fulfill({ json: closed ? [shared] : [single, shared] }));
+    await page.route('**/api/v1/accounting/ledger?**', route => route.fulfill({ json: { courses: [{ id: 42 }], invoices: [], receipts: [] } }));
+    await page.route('**/api/v1/student-classes/42/pause', route => {
+      writes.push({ method: route.request().method(), body: route.request().postDataJSON() });
+      closed = true;
+      return route.fulfill({ json: { message: '已結案' } });
+    });
+    await page.goto('/tuition-collection-pilot-mount.html');
+    await page.getByTestId('billing-guide-start').click();
+    const step = page.getByTestId('bg-step');
+    await expect(step.getByRole('button', { name: '去續課', exact: true })).toBeVisible();
+    const settle = step.getByRole('button', { name: '結案（不續報）', exact: true });
+    await expect(settle).toBeVisible();
+    await step.screenshot({ path: info.outputPath('renewal-actions.png') });
+    const dialog = page.locator('.tc-dialog').filter({ hasText: '確認結案此課程' });
+    await settle.click();
+    await expect(dialog).toContainText('合成單科');
+    await expect(dialog).toContainText('還有 1 堂未上');
+    await dialog.getByRole('button', { name: '取消', exact: true }).click();
+    expect(writes).toEqual([]);
+    await settle.click();
+    await dialog.getByRole('button', { name: '確認結案', exact: true }).click();
+    await expect(step.getByTestId('bg-gone')).toBeVisible();
+    expect(writes).toEqual([{ method: 'POST', body: { action: 'pause', reason: 'settled', forfeit_remaining: true } }]);
+    await page.getByTestId('bg-next').click();
+    await expect(step.getByRole('button', { name: '到學生帳務', exact: true })).toBeVisible();
+    await expect(settle).toHaveCount(0);
   });
 }
 

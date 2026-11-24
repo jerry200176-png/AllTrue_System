@@ -1,11 +1,12 @@
 <template>
   <div v-if="show" class="modal-overlay" @click.self="$emit('close')">
     <div class="modal course-modal" style="max-width: 440px;">
-      <h3 class="modal-title">補課／補登（總堂數不變）</h3>
+      <h3 class="modal-title">{{ form.is_monthly ? '補登已上過的課' : '補課／補登（總堂數不變）' }}</h3>
       <p class="modal-desc">
         {{ form.student_name }} — {{ subjectLabel }}
       </p>
-      <p class="modal-hint">堂數制課程若堂次已排滿，系統會將最後一筆可調整的未來排課移至您選的日期，購買總堂數不會增加。</p>
+      <p v-if="form.is_monthly" class="modal-hint">選這堂課實際上課的日期和時間（要在這份合約的期間內）。那個月的帳單還沒收款：金額會跟著重算（一張帳單含多門課時不會，請自己核對）。已經收過款：金額不會自動變，帳單會標成需核對，差額要另外處理。</p>
+      <p v-else class="modal-hint">堂數制課程若堂次已排滿，系統會將最後一筆可調整的未來排課移至您選的日期，購買總堂數不會增加。</p>
       <div class="form-group">
         <label>本堂日期</label>
         <input v-model="form.session_date" type="date" @change="$emit('check')" />
@@ -27,7 +28,7 @@
       <div class="form-group">
         <label class="hint">
           <input v-model="form.auto_approve" type="checkbox" />
-          若該堂已下課，直接補登並扣堂，評量同時自動核准
+          {{ form.is_monthly ? '評量同時自動核准並寫入點名（不勾＝評量等老師填；這堂一樣算已上課、會計費）' : '若該堂已下課，直接補登並扣堂，評量同時自動核准' }}
         </label>
       </div>
 

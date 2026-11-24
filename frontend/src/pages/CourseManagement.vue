@@ -1201,12 +1201,14 @@
       :checking="manualSessionChecking"
       :submitting="manualSessionSubmitting"
       :is-monthly="isMonthlyMode(manualSessionCourse)"
+      :can-backfill="manualSessionCourse?.status !== 'inactive'"
       :today="todayYmd"
       @close="closeManualSessionModal"
       @check="runManualSessionCheck"
       @submit="submitManualSession"
       @edit-course="editManualSessionCourse"
       @view-history="viewManualSessionHistory"
+      @backfill="backfillFromManualSession"
       @next-period="selectNextMonthlyContract"
       @open-course="openConflictBlockerCourse"
     />
@@ -1322,7 +1324,6 @@
       :time-options="TIME_OPTIONS_30"
       :today-ymd="todayYmd"
       :makeup-loading="makeupLoading"
-      :compute-end-time="computeEndTime"
       :teachers="teachers"
       :feature-substitute-v2="featureSubstituteV2"
       :lesson-picker="lessonPickerView"
@@ -1553,7 +1554,7 @@ import MonthlyCorrectionPreviewModal from '../components/course-management/Month
 import { useMonthlyCorrectionPreview } from '../composables/course-management/useMonthlyCorrectionPreview.js';
 import { loadNextMonthlyContract } from '../lib/nextMonthlyContract.js';
 import {
-  REPORT_STATUS_LABELS, closedReason as effectiveClosedReason, classificationUnknown, isClosedReason, courseHistoryReason, isActiveCourse, isCourseManagementHistory, isLowRemaining, isMonthlyPaymentType, isPackageMember, TUITION_STATUS_CONFIG, ENDED_PENDING_LABEL, ENDED_REVIEW_LABEL, reviewReasonText, WAIVED_LABEL, coursePaymentBadge, isPartialCoursePayment, shortPaymentLabel, isLegacyPaidFlagOnly, LEGACY_FLAG_ACTION_HELP,
+  REPORT_STATUS_LABELS, closedReason as effectiveClosedReason, classificationUnknown, isClosedReason, courseHistoryReason, isActiveCourse, isCourseManagementHistory, isLowRemaining, isMonthlyPaymentType, isPackageMember, TUITION_STATUS_CONFIG, ENDED_PENDING_LABEL, ENDED_REVIEW_LABEL, reviewReasonText, WAIVED_LABEL, coursePaymentBadge, coursePaymentStatusTone, shortPaymentLabel, isLegacyPaidFlagOnly, LEGACY_FLAG_ACTION_HELP,
   ownRemainingSessions, poolTotalSessions, poolUsedSessions, closedPaymentState, PAYMENT_STATUS_LOADING_LABEL, sharedPackageBillingLead,
 } from '../lib/courseMoneyState.js';
 import { nextManualSessionDate } from '../lib/manualSessionDate.js';
@@ -3455,7 +3456,9 @@ function openQuickAddSessionModal(course, prefill = null) {
     if (Number.isFinite(mins) && mins >= 30) durationMinutes = mins;
   }
   quickAddSessionForm.value = {
-    session_date: prefillDate || nextManualSessionDate(course),
+    // 月結補登 is for a lesson already taught: start on today, not on the next future slot.
+    session_date: prefillDate || (isMonthlyMode(course) ? todayYmd.value : nextManualSessionDate(course)),
+    is_monthly: isMonthlyMode(course),
     start_time: prefillStart || normalizeTo30Min(course?.start_time || '16:00'),
     duration_minutes: durationMinutes,
     note: '',
@@ -3637,6 +3640,13 @@ function closeManualSessionModal() {
 
 function openMonthlySessionModal(course) {
   openManualSessionModal(course);
+}
+
+function backfillFromManualSession() {
+  const course = manualSessionCourse.value;
+  if (!course || !isMonthlyMode(course) || course.status === 'inactive' || manualSessionSubmitting.value) return;
+  closeManualSessionModal();
+  openQuickAddSessionModal(course);
 }
 
 function viewManualSessionHistory() {
@@ -4560,11 +4570,7 @@ const courseLensMetrics = computed(() => {
 
 // #4150: label/tone/next action come from the shared coursePaymentBadge; only the CSS class and button text are local.
 const paymentBadge = (course) => coursePaymentBadge(course, { monthlyPeriod: true });
-// Template tones (PAGE_TEMPLATE §6) for the contract rows: owed / anomaly = danger, paid = success, needs a look = warning, the rest neutral.
-const PAYMENT_TONE = { anomaly: 'danger', owing: 'danger', settled: 'success', free: 'success', no_payment: 'neutral', neutral: 'neutral' };
-const isPartialPayment = (course) => isPartialCoursePayment(course, { monthlyPeriod: true });
-// 部分 is warning (PAGE_TEMPLATE §6), 未繳 is danger; the partial case is read off the payment status, never off the label's words.
-const paymentStatusTone = (course) => (isPartialPayment(course) ? 'warning' : (PAYMENT_TONE[paymentBadge(course).tone] || 'warning'));
+const paymentStatusTone = (course) => coursePaymentStatusTone(course, { monthlyPeriod: true });
 // A payment chip of at most this many characters stays on one line; a longer one wraps inside the cell.
 const PAYMENT_CHIP_NOWRAP_MAX = 8;
 // 帳務資料 table: the header stays at the top of the scrolling panel; loading / empty / error lines share one padding.
@@ -4873,8 +4879,6 @@ const {
 } = useSessionEditFlow({
   supabase,
   branchId: computed(() => props.branchId),
-  computeEndTime,
-  normalizeTo30Min,
   dayOfWeekFromDate,
   getSessionDisplayRow,
   getSessionRowsForDate,

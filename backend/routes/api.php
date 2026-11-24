@@ -502,6 +502,8 @@ Route::prefix('v1')->group(function () {
         Route::post('finance/teacher-eligibility/lock', [TeacherEligibilityController::class, 'lock'])->middleware('require_pin');
         Route::post('finance/teacher-eligibility/reopen', [TeacherEligibilityController::class, 'reopen'])->middleware('require_pin');
         Route::get('finance/teacher-eligibility/export', [TeacherEligibilityController::class, 'export'])->middleware('require_pin');
+        // Founder 2026-11-20: full-time teachers' hours of one calendar month, split by campus (JSON, or format=csv).
+        Route::get('finance/teacher-eligibility/campus-hours', [TeacherEligibilityController::class, 'campusHours'])->middleware('require_pin');
 
         // ── Dunning (#400) ──
         Route::get('dunning/rules', [\App\Http\Controllers\DunningController::class, 'rules']);
@@ -900,6 +902,10 @@ Route::prefix('v1')->group(function () {
         Route::get('pop/operations/requests/{requestId}/status', [PopOperationController::class, 'status'])->whereUuid('requestId');
     });
 
+    Route::middleware(['role:super_admin', 'require_campus', 'require_password_change'])->group(function () {
+        Route::get('pop/operations/reviewed-settled-package-retirement/preview', [PopOperationController::class, 'previewSettledPackageRetirement'])->middleware('throttle:20,1');
+    });
+
     // Machine control-plane entrypoints only. A POP machine can submit and
     // plan a request within its campus; approvals remain human dual approval.
     Route::middleware(['pop_machine:pop:draft', 'role:pop_machine'])->group(function () {
@@ -1061,6 +1067,7 @@ Route::prefix('v1')->group(function () {
         // Each call recomputes a whole campus-month, so it has its own, much lower limit than the group's (own
         // prefix: without one it would share the group's counter and count every call twice).
         Route::get('fulltime-payroll', [TriageFulltimePayrollController::class, 'show'])->middleware('throttle:20,1,triage-payroll')->name('triage.fulltime-payroll.report');
+        Route::get('fulltime-campus-hours', [TriageFulltimePayrollController::class, 'campusHours'])->middleware('throttle:20,1,triage-payroll')->name('triage.fulltime-payroll.campus-hours');
         // Founder GO 2026-11-16: rows of the business tables, numbers / dates / status codes only (no names, phones, notes or
         // credentials; sign-in tables unreachable); triage_tokens.db_read_enabled. Own, lower rate limit.
         Route::middleware('throttle:60,1,triage-db')->group(function () {

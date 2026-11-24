@@ -522,7 +522,7 @@ export async function installApiMocks(page, mode, pageName = '', authProfile = n
               history_reason: 'completed',
               is_active_course: false,
             },
-          ],
+          ].filter((course) => mode !== 'history-only' || course.is_active_course === false),
         }),
       });
     }

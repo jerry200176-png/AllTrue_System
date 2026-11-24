@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 /**
- * Canonical fast CI preflight. `npm run ci:preflight` [--json] [--self-test]
+ * Canonical fast CI preflight. `npm run ci:preflight` [--json] [--self-test] [--routes]
+ * --routes: only the route-registration check (lefthook pre-push, when backend/routes changed).
  */
 import { execFileSync, spawnSync } from 'node:child_process';
 import fs from 'node:fs';
@@ -137,8 +138,103 @@ function checkSecrets(errors) {
   }
 }
 
+const routeDiffLines = (diff, sign) => diff.split('\n')
+  .filter((line) => line[0] === sign && line[1] !== sign)
+  .map((line) => line.slice(1).trim());
+
+function authMarkers(args) {
+  const tags = new Set();
+  for (const [, , middleware] of args.matchAll(/(['"])([^'"]+)\1/g)) {
+    const name = middleware.split(':')[0];
+    if (['auth', 'api_key'].includes(name)) tags.add('auth');
+    if (['role', 'require_campus', 'require_pin'].includes(name)) tags.add(name);
+    if (name === 'superadmin') tags.add('role');
+  }
+  if (tags.has('role')) tags.delete('auth');
+  return [...tags].sort().join(',');
+}
+
+// Recognize the literal declarations used here without booting Laravel in a Git hook.
+// CI checks the full generated table, including dynamically registered routes.
+function routeTableSignatures(lines) {
+  return lines.flatMap((line) => {
+    const middlewareChain = line.match(/^(?:Route::|->)middleware\(([^)]*)\)/);
+    if (middlewareChain) {
+      const markers = authMarkers(middlewareChain[1]);
+      return markers ? [`middleware ${markers}`] : [];
+    }
+    const route = line.match(/^Route::(get|post|put|patch|delete|options|any)\(\s*(['"])(.*?)\2\s*,\s*(.*)$/);
+    if (!route) return [];
+    const [, method, , uri, tail] = route;
+    const target = tail.match(/^\[\s*([\w\\]+)::class\s*,\s*(['"])(\w+)\2\s*\]/);
+    const action = target ? `${target[1]}@${target[3]}` : '';
+    const middleware = tail.match(/\)->middleware\(([^)]*)\)(?=(?:->\w+\([^)]*\))*;?$)/);
+    return [`${method} ${uri} ${action} ${authMarkers(middleware?.[1] ?? '')}`];
+  }).sort();
+}
+
+function triageAllowlistGaps(diff, allowlist) {
+  const config = allowlist.replace(/\/\*[\s\S]*?\*\/|\/\/[^\n]*|#[^\n]*/g, '');
+  const allowed = config.match(/(['"])allowed_routes\1\s*=>\s*\[([^\]]*)\]/)?.[2];
+  if (allowed === undefined || !/^(?:\s*(['"])triage\.[\w.-]+\1\s*,)*\s*(?:(['"])triage\.[\w.-]+\2)?\s*$/.test(allowed)) return [];
+  const names = new Set([...allowed.matchAll(/(['"])(triage\.[\w.-]+)\1/g)].map((match) => match[2]));
+  return [...new Set(routeDiffLines(diff, '+').flatMap((line) => {
+    if (!line.startsWith('Route::') && !line.startsWith('->')) return [];
+    // Match the fluent call outside quoted strings and inline comments.
+    const tokens = line.matchAll(/"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|\/\*.*?\*\/|\/\/.*|#.*|->name\(\s*(['"])(triage\.[\w.-]+)\1\s*\)/g);
+    return [...tokens].map((match) => match[2]).filter((name) => name && !names.has(name));
+  }))];
+}
+
+function checkRouteRegistration(errors, warnings) {
+  let diff;
+  let docsDiff;
+  try {
+    const range = `${resolveBase()}...HEAD`;
+    diff = git(['diff', '-U0', range, '--', 'backend/routes/api.php']);
+    if (!diff) return;
+    docsDiff = git(['diff', '--name-only', range, '--', 'docs/REF_API_ROUTES.md']);
+  } catch { return; }
+  const added = routeTableSignatures(routeDiffLines(diff, '+'));
+  const removed = routeTableSignatures(routeDiffLines(diff, '-'));
+  if (!docsDiff && JSON.stringify(added) !== JSON.stringify(removed)) {
+    warnings.push(formatGovError({
+      code: GOV_CODES.GENERATED, message: 'An API route declaration may change the generated reference',
+      actual: 'docs/REF_API_ROUTES.md', policy: 'scripts/generate-ref-api-routes.sh --check (required CI)',
+      fix: 'Check the reference with the existing generator in an isolated development environment', blocking: false,
+    }));
+  }
+  const configPath = 'backend/config/triage_tokens.php';
+  const allowlist = git(['ls-tree', '--name-only', 'HEAD', '--', configPath]) ? git(['show', `HEAD:${configPath}`]) : '';
+  for (const gap of triageAllowlistGaps(diff, allowlist)) {
+    errors.push(formatGovError({
+      code: GOV_CODES.GENERATED,
+      message: `Triage route ${gap} is not in allowed_routes (every token gets 403)`,
+      actual: gap, policy: 'backend/config/triage_tokens.php',
+      fix: `Add '${gap}' to allowed_routes in backend/config/triage_tokens.php`,
+    }));
+  }
+}
+
 async function main() {
   if (selfTest) {
+    const added = "+    Route::get('x', [C::class, 'x'])->name('triage.x');";
+    if (triageAllowlistGaps(added, "'allowed_routes' => ['triage.y']").join() !== 'triage.x') throw new Error('route gaps not detected');
+    if (triageAllowlistGaps(added, "'allowed_routes' => ['triage.x']").length) throw new Error('registered route flagged');
+    const quoted = '+  ->name("triage.x")';
+    if (triageAllowlistGaps(quoted, "'allowed_routes' => [/* 'triage.x' */ 'triage.y']").join() !== 'triage.x') throw new Error('quoted route or commented name bypassed allowlist');
+    const chained = "+  ->whereNumber('id')->name('triage.x');";
+    if (triageAllowlistGaps(chained, "'allowed_routes' => ['triage.y']").join() !== 'triage.x') throw new Error('chained route bypassed allowlist');
+    const annotated = "+Route::get('x', [C::class, 'x']); // ->name('triage.x')";
+    if (triageAllowlistGaps(annotated, "'allowed_routes' => ['triage.y']").length) throw new Error('inline comment mistaken for a route name');
+    const explanation = `+Route::get('x', fn () => "->name('triage.x')");`;
+    if (triageAllowlistGaps(explanation, "'allowed_routes' => ['triage.y']").length) throw new Error('closure response string mistaken for a route name');
+    const edited = "-    Route::get('x', fn () => 'a');\n+    Route::get('x', fn () => 'b');";
+    const before = "Route::get('x', [C::class, 'x']);";
+    const shape = (line) => routeTableSignatures([line]).join();
+    if (shape(before) === shape(before.replace("'x']);", "'y']);"))) throw new Error('controller action change flagged as equivalent');
+    if (shape(before) === shape(before.replace(';', "->middleware('auth');"))) throw new Error('auth change flagged as equivalent');
+    if (routeTableSignatures(routeDiffLines(edited, '+')).join() !== routeTableSignatures(routeDiffLines(edited, '-')).join()) throw new Error('handler-only edit flagged');
     if (classifyStepFailure({ step: 'Branch naming', logSnippet: 'Invalid branch name' }).primary !== 'BRANCH_NAMING_POLICY') throw new Error('taxonomy');
     if (classifySameShaRerun({ earlierConclusion: 'failure', laterConclusion: 'success', headShaSame: true }).kind !== 'flake') throw new Error('flake');
     if (!validateBranchName('sec/x').ok || validateBranchName('agent/x').ok) throw new Error('branch');
@@ -150,6 +246,13 @@ async function main() {
   }
   const errors = [];
   const warnings = [];
+  if (process.argv.includes('--routes')) {
+    checkRouteRegistration(errors, warnings);
+    for (const e of errors) console.log(`FAIL  ${e.code}: ${e.message}\n      fix: ${e.fix}`);
+    for (const w of warnings) console.log(`WARN  ${w.code}: ${w.message}\n      fix: ${w.fix}`);
+    process.exit(errors.length ? 1 : 0);
+  }
+  checkRouteRegistration(errors, warnings);
   checkBranch(errors);
   checkGenerated(errors);
   checkWorkflowYaml(errors);

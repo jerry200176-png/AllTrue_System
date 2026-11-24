@@ -18,9 +18,11 @@ async function withPage(assertions, fixtureRows = rows) {
     return { ok: true, json: async () => ({ data, summary: { total_count: data.filter((r) => r.status === 'confirmed').length, grand_total: data.reduce((n, r) => n + r.total_amount, 0) } }) };
   });
   vi.stubGlobal('fetch', fetchMock);
-  const wrapper = shallowMount(TuitionCollectionPage, { props: { branchId: 1 } });
+  const wrapper = shallowMount(TuitionCollectionPage, {
+    props: { branchId: 1, initialTab: 'receipts' },
+    global: { renderStubDefaultSlot: true },
+  });
   try {
-    await wrapper.findAll('button').find((b) => b.text().includes('收款紀錄')).trigger('click');
     await flushPromises();
     await assertions(wrapper, fetchMock);
     expect(fetchMock.mock.calls.every(([, options]) => !options?.method || options.method === 'GET')).toBe(true);

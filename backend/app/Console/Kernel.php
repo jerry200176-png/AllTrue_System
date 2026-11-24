@@ -3,6 +3,7 @@
 namespace App\Console;
 
 use App\Support\SchedulerEvidence;
+use Illuminate\Console\Scheduling\Event;
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Foundation\Console\Kernel as ConsoleKernel;
 use Illuminate\Support\Facades\Log;
@@ -73,12 +74,15 @@ class Kernel extends ConsoleKernel
         // deleted/disabled students, report students with >3 LINE user bindings.
         $this->scheduleObservedCommand($schedule, 'bindings-cleanup-orphans');
         $this->scheduleObservedCommand($schedule, 'grade-promotion-scheduled-preview');
+        $this->scheduleObservedCommand($schedule, 'bugs-reporter-timeout')
+            ->environments(['production'])
+            ->withoutOverlapping(60);
     }
 
-    private function scheduleObservedCommand(Schedule $schedule, string $job): void
+    private function scheduleObservedCommand(Schedule $schedule, string $job): Event
     {
         $definition = SchedulerEvidence::jobs()[$job];
-        $schedule->command($definition['command'])
+        return $schedule->command($definition['command'])
             ->dailyAt($definition['time'])
             ->timezone(SchedulerEvidence::TIMEZONE)
             ->sendOutputTo(SchedulerEvidence::outputPath($job))

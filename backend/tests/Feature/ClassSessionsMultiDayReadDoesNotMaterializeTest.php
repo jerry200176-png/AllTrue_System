@@ -4,7 +4,9 @@ namespace Tests\Feature;
 
 use App\Models\AuthToken;
 use App\Models\ClassSession;
+use App\Models\LearningRecord;
 use App\Models\Schedule;
+use App\Models\ScheduleAuditLog;
 use App\Models\Student;
 use App\Models\StudentClass;
 use App\Models\User;
@@ -15,7 +17,7 @@ use Tests\TestCase;
 
 /**
  * #5175: the post-deploy acceptance run reads GET /class-sessions/projection on production
- * with a window of two or more days and relies on that read creating nothing
+ * with a window of two or more days and relies on that read preserving scheduling row counts
  * (frontend/e2e/fixtures/classSessionReadResponder.js, nonMaterializingProjectionPath).
  *
  * Read-side materialization is limited to one-day windows
@@ -26,7 +28,7 @@ class ClassSessionsMultiDayReadDoesNotMaterializeTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_multi_day_list_and_projection_reads_create_no_class_session(): void
+    public function test_multi_day_list_and_projection_reads_preserve_scheduling_row_counts(): void
     {
         Carbon::setTestNow(Carbon::parse('2026-06-20 09:00:00', 'Asia/Taipei'));
         try {
@@ -92,12 +94,15 @@ class ClassSessionsMultiDayReadDoesNotMaterializeTest extends TestCase
                 [$directorToken, '/api/v1/class-sessions?branch_id=1&' . $window . '&per_page=100'],
                 [$directorToken, '/api/v1/class-sessions/projection?branch_id=1&' . $window],
             ];
+
+            $this->assertSame(0, ClassSession::count());
+            $before = $this->schedulingRowCounts();
             foreach ($multiDayReads as [$token, $uri]) {
                 $this->withHeaders([
                     'Authorization' => 'Bearer ' . $token,
                     'Accept' => 'application/json',
                 ])->getJson($uri)->assertOk();
-                $this->assertSame(0, ClassSession::count(), 'a multi-day read must not create a class session: ' . $uri);
+                $this->assertSame($before, $this->schedulingRowCounts(), 'a multi-day read must not change scheduling row counts: ' . $uri);
             }
 
             // Control: the same data with a one-day window is materialized, so the loop above
@@ -115,5 +120,15 @@ class ClassSessionsMultiDayReadDoesNotMaterializeTest extends TestCase
         } finally {
             Carbon::setTestNow();
         }
+    }
+
+    private function schedulingRowCounts(): array
+    {
+        return [
+            'class_sessions' => ClassSession::count(),
+            'schedules' => Schedule::count(),
+            'learning_records' => LearningRecord::count(),
+            'schedule_audit_logs' => ScheduleAuditLog::count(),
+        ];
     }
 }

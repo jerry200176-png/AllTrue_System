@@ -170,7 +170,8 @@ class ScheduleGuardCurrentReadTest extends TestCase
             $proposed = new StudentClass(['TeacherID' => $targetTeacher, 'ClassType' => $classType, 'room_id' => $roomId]);
             $this->assertSame($roomId ? 'room_capacity' : 'teacher_capacity', $guard->validateCourseOccurrence($proposed, $campus->id, $date, '13:00', '15:00', true)[0]['type'] ?? null);
             $this->assertSame([], $guard->validateCourseOccurrence($course, $campus->id, $date, '13:00', '15:00', true), 'self exclusion survives current reads');
-            $this->assertSame([], $guard->validateScheduleOccurrence(array_replace($payload, ['branch_id' => $campus->id + 100000]), true), 'campus scope survives current reads');
+            // Another campus's load is never capacity; it can only be the cross-campus clash.
+            $this->assertSame([], array_values(array_diff(array_column($guard->validateScheduleOccurrence(array_replace($payload, ['branch_id' => $campus->id + 100000]), true), 'type'), ['cross_campus'])), 'campus scope survives current reads');
             if ($kind === 'makeup_substitute') {
                 DB::table('LearningRecord')->where('id', $recordId)->update(['TeacherID' => $targetTeacher + 1]);
                 $this->assertSame([], \App\Services\SubstituteScheduleService::makeupOccurrencesTaughtBy($targetTeacher, $date, [], null, $campus->id, true));

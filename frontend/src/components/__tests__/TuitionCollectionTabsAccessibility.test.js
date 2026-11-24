@@ -10,8 +10,7 @@ describe('TuitionCollectionPage top-level tabs', () => {
   it('connects each accounting tab to its controlled panel', () => {
     expect(source).toContain(':id="`tuition-accounting-tab-${tab.key}`"');
     expect(source).toContain(':aria-controls="`tuition-accounting-panel-${tab.key}`"');
-    // v3: 帳單 / 月結 / 收款紀錄 / 代收代付 are the four tabs; the selected one is the active one.
-    expect(source).toContain(':aria-selected="activeAccountingTab === tab.key"');
+    expect(source).toContain(':aria-selected="activeTopTab === tab.key"');
     expect(source).toContain("{ key: 'monthly', label: '月結'");
   });
 
@@ -20,11 +19,10 @@ describe('TuitionCollectionPage top-level tabs', () => {
     expect(source).toContain('v-if="activeAccountingTab === \'payments\'"');
     expect(source).toContain('id="tuition-accounting-panel-students"');
     expect(source).toContain('id="tuition-accounting-panel-monthly"');
-    expect(source).toContain('id="tuition-accounting-panel-payments"');
+    expect(source).toContain('<TabsList aria-label="帳單與收款檢視"');
     expect(source).toContain('id="tuition-accounting-panel-settled"');
     expect(source).toContain('role="tabpanel"');
     expect(source).toContain('aria-labelledby="tuition-accounting-tab-students"');
-    expect(source).toContain('aria-labelledby="tuition-accounting-tab-payments"');
     expect(source).toContain('aria-labelledby="tuition-accounting-tab-settled"');
     expect(source).toContain('tabindex="0"');
   });

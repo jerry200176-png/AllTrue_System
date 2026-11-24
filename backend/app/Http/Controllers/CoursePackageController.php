@@ -411,6 +411,14 @@ class CoursePackageController extends Controller
 
                 if (!empty($scheduleSlots)) {
                     $hasSchedule = true;
+                    $cross = app(\App\Services\ScheduleGuardService::class)->crossCampusWeeklyConflict($teacherId, $branchId,
+                        array_map(fn ($slot) => ['day_of_week' => $slot['weekday'], 'start_time' => $slot['time'],
+                            'end_time' => Carbon::parse($slot['time'])->addMinutes(max(30, $durationMinutes))->format('H:i')], $scheduleSlots),
+                        (int) $data['student_id'], $startDate, $isMonthly ? $pkgEndDate : null);
+                    if ($cross) {
+                        // Rolls back the package and the subjects created so far.
+                        throw new \Illuminate\Http\Exceptions\HttpResponseException(\App\Services\ScheduleGuardService::crossCampusResponse($cross));
+                    }
                     if (count($scheduleSlots) === 1) {
                         $scheduleFields['week'] = $scheduleSlots[0]['weekday'];
                         $scheduleFields['time'] = $scheduleSlots[0]['time'];

@@ -9,7 +9,7 @@ import { fileURLToPath } from 'node:url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const source = readFileSync(resolve(__dirname, '../../pages/StudentsList.vue'), 'utf8');
-const activeCourseSlice = source.slice(source.indexOf('<!-- Phase 2A:'), source.indexOf('<div v-else-if="getHistoryStudentCourses'));
+const activeCourseSlice = source.slice(source.indexOf('<!-- Phase 2A:'), source.indexOf('<p v-else-if="getHistoryStudentCourses'));
 
 // Execute the exact handler (not a duplicated implementation) with the actual
 // authenticated/compatibility wrappers. Browser tests below cover rendered UI.
@@ -97,7 +97,7 @@ describe('StudentsList course summary UX', () => {
   });
 
   it('keeps history as an explicit accessible disclosure below active work', () => {
-    ['sl-history-toggle', ':aria-expanded="expandedHistoryCourses.has(student.id)"', ':aria-controls="`student-history-${student.id}`"', ':id="`student-history-${student.id}`"']
+    ['<CollapsibleGroup', 'sl-history-toggle', ':expanded="expandedHistoryCourses.has(student.id)"', ':controls="`student-history-${student.id}`"', ':id="`student-history-${student.id}`"']
       .forEach((marker) => expect(source).toContain(marker));
   });
 

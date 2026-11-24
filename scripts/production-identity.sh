@@ -5,7 +5,13 @@ set -euo pipefail
 
 REPO="${ALLTRUE_REPO:-jerry200176-png/AllTrue_System}"
 PROD_URL="${ALLTRUE_PROD_URL:-https://daan.lifenet.com.tw}"
+DEPLOY_RUN_ID="${ALLTRUE_DEPLOY_RUN_ID:-}"
 OUT_FORMAT="${1:-json}"
+
+if [[ -n "$DEPLOY_RUN_ID" && ! "$DEPLOY_RUN_ID" =~ ^[1-9][0-9]*$ ]]; then
+    echo 'ALLTRUE_DEPLOY_RUN_ID must be a positive GitHub run ID' >&2
+    exit 2
+fi
 
 need_cmd() { command -v "$1" >/dev/null 2>&1 || { echo "missing $1" >&2; exit 2; }; }
 need_cmd curl
@@ -21,10 +27,15 @@ HEALTH_CODE="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 20 "${PROD_URL
 
 PI_HEALTH_JSON="$(gh run list -R "$REPO" --workflow=pi-health.yml --limit 1 --json databaseId,conclusion,status,createdAt,url,displayTitle 2>/dev/null || echo '[]')"
 DEPLOYMENT_BACKEND_SHA="$(python3 -c 'import json,sys; print((json.loads(sys.stdin.read() or "{}") or {}).get("backend_sha") or "")' <<< "$DEPLOYMENT_RAW" 2>/dev/null || true)"
-DEPLOY_JSON="$(gh run list -R "$REPO" --workflow=deploy.yml --limit 20 --json databaseId,conclusion,status,headSha,createdAt,url,displayTitle 2>/dev/null || echo '[]')"
 MATCHING_DEPLOY_JSON='[]'
-if [[ -n "$DEPLOYMENT_BACKEND_SHA" ]]; then
-    MATCHING_DEPLOY_JSON="$(gh run list -R "$REPO" --workflow=deploy.yml --commit "$DEPLOYMENT_BACKEND_SHA" --limit 20 --json databaseId,conclusion,status,headSha,createdAt,url,displayTitle 2>/dev/null || echo '[]')"
+if [[ -n "$DEPLOY_RUN_ID" ]]; then
+    SELECTED_DEPLOY_JSON="$(gh run view "$DEPLOY_RUN_ID" -R "$REPO" --json databaseId,conclusion,status,headSha,createdAt,url,displayTitle 2>/dev/null || echo '{}')"
+    DEPLOY_JSON="$(python3 -c 'import json, sys; print(json.dumps([json.load(sys.stdin)]))' <<< "$SELECTED_DEPLOY_JSON")"
+else
+    DEPLOY_JSON="$(gh run list -R "$REPO" --workflow=deploy.yml --limit 20 --json databaseId,conclusion,status,headSha,createdAt,url,displayTitle 2>/dev/null || echo '[]')"
+    if [[ -n "$DEPLOYMENT_BACKEND_SHA" ]]; then
+        MATCHING_DEPLOY_JSON="$(gh run list -R "$REPO" --workflow=deploy.yml --commit "$DEPLOYMENT_BACKEND_SHA" --limit 20 --json databaseId,conclusion,status,headSha,createdAt,url,displayTitle 2>/dev/null || echo '[]')"
+    fi
 fi
 COMPARE_JSON='{}'
 if [[ -n "$DEPLOYMENT_BACKEND_SHA" && -n "$REMOTE_MAIN" ]]; then

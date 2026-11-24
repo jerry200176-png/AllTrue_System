@@ -107,7 +107,7 @@ jobs:
           c = cases[0]
           for k in ("operation_id", "parameters_sha256", "idempotency_sha256", "requester_sha256", "approver_sha256", "approval_reference", "valid_until"):
               assert k in c and c[k], k
-          assert c["operation_id"] in ("reviewed-unpaid-invoice-charge-alignment", "reviewed-paid-invoice-charge-alignment")
+          assert c["operation_id"] in ("reviewed-unpaid-invoice-charge-alignment", "reviewed-paid-invoice-charge-alignment", "reviewed-historical-orphan-invoice-closeout", "reviewed-settled-package-retirement")
           print(f"mount_ok label={os.environ.get('CASE_LABEL')} tuples=1 valid_until={c['valid_until']}")
           PY
             ssh -i "$SSH_DIR/deploy_key" -o IdentitiesOnly=yes -o BatchMode=yes -o ConnectTimeout=20 \
@@ -285,7 +285,7 @@ jobs:
           c = cases[0]
           for k in ("operation_id", "parameters_sha256", "idempotency_sha256", "requester_sha256", "approver_sha256", "approval_reference", "valid_until"):
               assert k in c and c[k], k
-          assert c["operation_id"] in ("reviewed-unpaid-invoice-charge-alignment", "reviewed-paid-invoice-charge-alignment")
+          assert c["operation_id"] in ("reviewed-unpaid-invoice-charge-alignment", "reviewed-paid-invoice-charge-alignment", "reviewed-historical-orphan-invoice-closeout", "reviewed-settled-package-retirement")
           print("content_ok", c["valid_until"])
           PY
             then

@@ -22,6 +22,9 @@ const COVERAGE_NOTE = /^[a-z0-9_]+=\d+$/;
 const RULE_NOTE = /^[a-z0-9_]+$/;
 
 const expectedTests = (branchId, scope = 'all') => {
+  if (scope === 'calendar-synthetic' && Number(branchId) !== 9) {
+    throw new Error('the calendar synthetic fixture must use campus 9');
+  }
   const tests = [
     ['calendar-course-consistency.spec.js', 212, 5, 'director desktop: calendar and course management agree'],
     ['calendar-course-consistency.spec.js', 212, 5, 'director mobile: calendar and course management agree'],
@@ -53,6 +56,9 @@ const expectedTests = (branchId, scope = 'all') => {
   const selected = {
     all: tests,
     calendar: tests.filter(([file]) => file === 'calendar-course-consistency.spec.js'),
+    // This inventory validates the Playwright fixture's selection independently.
+    'calendar-synthetic': tests.filter(([file, , , title]) => file === 'calendar-course-consistency.spec.js'
+      && /calendar and course management agree|contracted four-session|in-app 390|in-app 395\/403|in-app 400|in-app 417/.test(title)),
     print: tests.filter(([file]) => file === 'calendar-print-production.spec.js'),
     tutoring: tests.filter(([file]) => file === 'tutoring-free-production.spec.js'),
     feedback: tests.filter(([file]) => file === 'feedback-launcher-production.spec.js'),
@@ -248,6 +254,12 @@ function selfTest() {
   });
   validateReport(makeReport(16), 16);
   validateReport(makeReport(9), 9);
+  const synthetic = makeReport(9, 'calendar-synthetic');
+  if (synthetic.suites[0].specs.length !== 9) throw new Error('unexpected calendar fixture inventory');
+  validateReport(synthetic, 9, 'calendar-synthetic');
+  expectReject('calendar fixture at another campus', () => validateReport(synthetic, 16, 'calendar-synthetic'));
+  synthetic.suites[0].specs[0].tests[0] = { projectName: 'chromium', status: 'skipped', results: [{ status: 'skipped' }] };
+  expectReject('calendar fixture skip', () => validateReport(synthetic, 9, 'calendar-synthetic'));
   for (const scope of ['calendar', 'print', 'tutoring', 'feedback', 'payments']) {
     validateReport(makeReport(16, scope), 16, scope);
   }
