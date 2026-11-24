@@ -15,7 +15,9 @@ use App\Services\ClassSessionMaterializationService;
 use App\Services\CourseLeaveCascadeService;
 use App\Services\LeaveAttendanceService;
 use App\Services\ScheduleGuardService;
+use App\Services\Scheduling\ContractSlotParser;
 use App\Services\SessionDeductionService;
+use App\Services\StaleScheduleExceptionFilter;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -471,12 +473,16 @@ class ScheduleController extends Controller
             }
         }
 
+        $standaloneMakeup = self::isExtraScheduleType($data['type'] ?? null)
+            && !$origId && $courseId > 0 && !empty($data['schedule_date'])
+            && in_array($status, ['scheduled', 'rescheduled'], true);
+
         // Reschedule markers are idempotent per concrete course/date/start slot.
         // The frontend may retry with a stale calendar snapshot; serializing on
         // the parent course prevents concurrent retries from creating another
         // marker. Exact-slot duplicate history is collapsed while distinct
         // same-day lessons remain untouched.
-        if ($status === 'rescheduled' && $courseId > 0 && !empty($data['schedule_date'])) {
+        if ($status === 'rescheduled' && !$standaloneMakeup && $courseId > 0 && !empty($data['schedule_date'])) {
             return DB::transaction(function () use ($courseId, $data) {
                 $lockedCourse = DB::table('StudentClass')
                     ->where('ID', $courseId)
@@ -532,7 +538,7 @@ class ScheduleController extends Controller
 
         // Student mutex -> current covering metadata -> occupancy -> row write/projection, under one retry boundary.
         $courseMeta = $courseMeta ?? null;
-        return DB::transaction(function () use ($status, $courseId, $origId, $data, $ownerStudentId, $courseMeta, $capacityPayload) {
+        return DB::transaction(function () use ($status, $courseId, $origId, $data, $ownerStudentId, $courseMeta, $capacityPayload, $standaloneMakeup) {
             self::lockStudentForWrite($ownerStudentId);
             if (strtolower((string) $data['status']) === 'scheduled') {
                 // Repeat the native capacity decision inside the write transaction. Student locks alone do not
@@ -548,6 +554,10 @@ class ScheduleController extends Controller
                 $conflicts = $this->scheduleGuardService->validateScheduleOccurrence($capacityPayload, true);
                 if ($conflicts !== []) abort(response()->json(['message' => $conflicts[0]['message'], 'conflicts' => $conflicts,
                     'suggested_actions' => $conflicts[0]['suggested_actions'] ?? []], 409));
+            }
+
+            if ($standaloneMakeup) {
+                $this->ensureStandaloneMakeupIsNew($data);
             }
 
             // Prevent duplicate scheduled rows for reschedule/substitute on same course+date+time.
@@ -579,6 +589,67 @@ class ScheduleController extends Controller
                 'write_disposition' => 'created',
             ]), 201);
         }, 3);
+    }
+
+    /** Called under the student write lock, before changing a schedule or its projected lesson. */
+    private function ensureStandaloneMakeupIsNew(array $data): void
+    {
+        $start = ContractSlotParser::normalizeHm($data['start_time']) ?? $data['start_time'];
+        $date = Carbon::parse($data['schedule_date'])->toDateString();
+        // A moved extra becomes a source marker. Its destination, not the marker, owns the booking.
+        $candidates = Schedule::query()
+            ->where('student_course_id', $data['student_course_id'])
+            ->where('schedule_date', $date)
+            ->where(fn ($q) => $q->whereRaw('LOWER(type) = ?', ['extra'])
+                ->orWhere(fn ($dest) => $dest->where('status', 'scheduled')->where('original_schedule_id', '>', 0)))
+            ->whereIn('status', ['scheduled', 'rescheduled'])
+            ->whereNotExists(fn ($dest) => $dest->selectRaw('1')->from('schedules as dest')
+                ->where('schedules.status', 'rescheduled')
+                ->whereColumn('dest.student_course_id', 'schedules.student_course_id')
+                ->whereColumn('dest.original_schedule_id', 'schedules.id'))
+            ->get(['student_course_id', 'start_time', 'type', 'original_schedule_id'])
+            ->filter(fn ($row) => (ContractSlotParser::normalizeHm($row->start_time) ?? $row->start_time) === $start);
+        $live = app(StaleScheduleExceptionFilter::class)->rejectStale($candidates, $date);
+        if ($this->includesMakeup($live, (int) $data['student_course_id'])) {
+            abort(response()->json([
+                'code' => 'makeup_already_scheduled',
+                'message' => '這門課在同一時間已安排補課。請重新整理課表查看原有的補課時段。',
+            ], 409));
+        }
+    }
+
+    private static function isExtraScheduleType(?string $type): bool
+    {
+        return strtolower((string) $type) === 'extra';
+    }
+
+    /** Atomic moves store a normal destination linked to the previous schedule, including after another move. */
+    private function includesMakeup(array $live, int $courseId): bool
+    {
+        $parents = [];
+        foreach ($live as $row) {
+            if (self::isExtraScheduleType($row->type)) {
+                return true;
+            }
+            $parents[] = (int) $row->original_schedule_id;
+        }
+        if (!$parents) {
+            return false;
+        }
+
+        // Only an occupied destination needs its lineage. Read links for this course once, even for a long chain.
+        $links = DB::table('schedules')->where('student_course_id', $courseId)
+            ->get(['id', 'type', 'original_schedule_id'])->keyBy('id');
+        while ($parents) {
+            $link = $links->pull(array_pop($parents));
+            if ($link && self::isExtraScheduleType($link->type)) {
+                return true;
+            }
+            if ($link && $link->original_schedule_id) {
+                $parents[] = (int) $link->original_schedule_id;
+            }
+        }
+        return false;
     }
 
     public function undoLeave(Request $request, Schedule $schedule)
