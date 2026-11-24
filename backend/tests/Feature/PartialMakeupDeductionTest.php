@@ -24,7 +24,7 @@ class PartialMakeupDeductionTest extends TestCase
     use RefreshDatabase;
 
     #[\PHPUnit\Framework\Attributes\DataProvider('standaloneMakeupRowStatuses')]
-    public function test_retry_preserves_the_original_standalone_makeup(string $existingStatus, string $retryStatus, string $firstStart, string $retryStart): void
+    public function test_retry_preserves_the_original_standalone_makeup(string $existingStatus, string $retryStatus, string $firstStart, string $retryStart, string $storedType, string $retryType): void
     {
         [$token, $student, $courseId] = $this->seedCourse(120, 4);
         $date = Carbon::tomorrow();
@@ -32,12 +32,12 @@ class PartialMakeupDeductionTest extends TestCase
             'student_id' => $student->id, 'student_course_id' => $courseId,
             'schedule_date' => $date->toDateString(), 'day_of_week' => $date->dayOfWeekIso,
             'branch_id' => 1, 'start_time' => $firstStart, 'end_time' => '10:05',
-            'type' => 'extra', 'status' => $existingStatus,
+            'type' => $storedType, 'status' => $existingStatus,
         ];
         $this->withToken($token)->postJson('/api/v1/schedules', $slot)->assertCreated();
         foreach (['10:05', '10:35'] as $end) {
             $this->withToken($token)->postJson('/api/v1/schedules', [
-                ...$slot, 'start_time' => $retryStart, 'end_time' => $end, 'status' => $retryStatus,
+                ...$slot, 'start_time' => $retryStart, 'end_time' => $end, 'status' => $retryStatus, 'type' => $retryType,
             ])->assertConflict()->assertJsonPath('code', 'makeup_already_scheduled');
         }
         $this->assertDatabaseCount('schedules', 1);
@@ -52,7 +52,8 @@ class PartialMakeupDeductionTest extends TestCase
         $this->assertSame(4, (int) StudentClass::findOrFail($courseId)->RemainingSessions);
     }
 
-    public function test_an_atomic_move_frees_the_original_makeup_slot(): void
+    #[\PHPUnit\Framework\Attributes\DataProvider('makeupSourceTypes')]
+    public function test_an_atomic_move_frees_the_original_makeup_slot(string $storedType): void
     {
         [$token, $student, $courseId] = $this->seedCourse(120, 4);
         $date = Carbon::tomorrow();
@@ -61,7 +62,7 @@ class PartialMakeupDeductionTest extends TestCase
             'student_id' => $student->id, 'student_course_id' => $courseId,
             'schedule_date' => $date->toDateString(), 'day_of_week' => $date->dayOfWeekIso,
             'branch_id' => 1, 'start_time' => '14:00', 'end_time' => '15:00',
-            'type' => 'extra', 'status' => 'scheduled',
+            'type' => $storedType, 'status' => 'scheduled',
         ];
         $sourceId = $this->withToken($token)->postJson('/api/v1/schedules', $slot)->assertCreated()->json('id');
         $this->withToken($token)->postJson('/api/v1/learning-records/reschedule-session', [
@@ -109,13 +110,18 @@ class PartialMakeupDeductionTest extends TestCase
         $this->assertDatabaseCount('schedules', 2);
     }
 
+    public static function makeupSourceTypes(): array
+    {
+        return [['extra'], ['EXTRA']];
+    }
+
     public static function standaloneMakeupRowStatuses(): array
     {
         return [
-            ['scheduled', 'scheduled', '9:05', '09:05:00'],
-            ['rescheduled', 'scheduled', '09:05:00', '9:05'],
-            ['scheduled', 'rescheduled', '9:05:10', '09:05'],
-            ['rescheduled', 'rescheduled', '09:05', '9:05:15'],
+            ['scheduled', 'scheduled', '9:05', '09:05:00', 'extra', 'EXTRA'],
+            ['rescheduled', 'scheduled', '09:05:00', '9:05', 'EXTRA', 'extra'],
+            ['scheduled', 'rescheduled', '9:05:10', '09:05', 'EXTRA', 'Extra'],
+            ['rescheduled', 'rescheduled', '09:05', '9:05:15', 'eXtRa', 'EXTRA'],
         ];
     }
 

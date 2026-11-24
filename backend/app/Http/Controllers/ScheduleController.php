@@ -473,7 +473,7 @@ class ScheduleController extends Controller
             }
         }
 
-        $standaloneMakeup = strtolower((string) ($data['type'] ?? '')) === 'extra'
+        $standaloneMakeup = self::isExtraScheduleType($data['type'] ?? null)
             && !$origId && $courseId > 0 && !empty($data['schedule_date'])
             && in_array($status, ['scheduled', 'rescheduled'], true);
 
@@ -600,7 +600,7 @@ class ScheduleController extends Controller
         $candidates = Schedule::query()
             ->where('student_course_id', $data['student_course_id'])
             ->where('schedule_date', $date)
-            ->where(fn ($q) => $q->where('type', 'extra')
+            ->where(fn ($q) => $q->whereRaw('LOWER(type) = ?', ['extra'])
                 ->orWhere(fn ($dest) => $dest->where('status', 'scheduled')->where('original_schedule_id', '>', 0)))
             ->whereIn('status', ['scheduled', 'rescheduled'])
             ->whereNotExists(fn ($dest) => $dest->selectRaw('1')->from('schedules as dest')
@@ -618,12 +618,17 @@ class ScheduleController extends Controller
         }
     }
 
+    private static function isExtraScheduleType(?string $type): bool
+    {
+        return strtolower((string) $type) === 'extra';
+    }
+
     /** Atomic moves store a normal destination linked to the previous schedule, including after another move. */
     private function includesMakeup(array $live, int $courseId): bool
     {
         $parents = [];
         foreach ($live as $row) {
-            if ($row->type === 'extra') {
+            if (self::isExtraScheduleType($row->type)) {
                 return true;
             }
             $parents[] = (int) $row->original_schedule_id;
@@ -637,7 +642,7 @@ class ScheduleController extends Controller
             ->get(['id', 'type', 'original_schedule_id'])->keyBy('id');
         while ($parents) {
             $link = $links->pull(array_pop($parents));
-            if ($link && $link->type === 'extra') {
+            if ($link && self::isExtraScheduleType($link->type)) {
                 return true;
             }
             if ($link && $link->original_schedule_id) {
