@@ -227,6 +227,9 @@ test('monthly backfill shows the assessment result on a phone', async ({ page, c
     if (pathname === '/api/v1/me') return route.fulfill({ json: {
       id: 9001, role: 'director', name: 'Synthetic Director', campuses: [1], must_change_password: false,
     } });
+    if (pathname === '/api/v1/campuses' || pathname === '/api/v1/branches') {
+      return route.fulfill({ json: [{ id: 1, name: '合成分校' }] });
+    }
     const data = pathname === '/api/v1/student-classes' ? [monthly] : [];
     return route.fulfill({ json: { data, total: data.length, current_page: 1, last_page: 1 } });
   });
