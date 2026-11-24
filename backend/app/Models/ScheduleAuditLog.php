@@ -37,6 +37,14 @@ class ScheduleAuditLog extends Model
         });
     }
 
+    public function recordsRestorableCancellation(): bool
+    {
+        return (int) $this->operator_id > 0
+            && strtolower((string) data_get($this->new_data, 'Status')) === 'cancelled'
+            && in_array(strtolower((string) data_get($this->old_data, 'Status')),
+                ['scheduled', 'attended', 'completed', 'late', 'absent'], true);
+    }
+
     /** @return \Illuminate\Database\Eloquent\Relations\BelongsTo<ClassSession, $this> */
     public function session()
     {

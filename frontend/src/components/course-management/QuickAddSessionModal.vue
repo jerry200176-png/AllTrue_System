@@ -37,6 +37,7 @@
         <ul v-if="conflict.suggested_actions && conflict.suggested_actions.length" class="conflict-actions">
           <li v-for="action in conflict.suggested_actions" :key="action">{{ action }}</li>
         </ul>
+        <button v-if="conflict.error_code === 'USE_ORIGINAL_SESSION'" type="button" class="ghost" @click="$emit('view-history')">查看本課程堂次</button>
         <button type="button" class="ghost conflict-retry" @click="$emit('check')">重新檢查</button>
       </div>
 
@@ -84,7 +85,7 @@ const props = defineProps({
   conflict: { type: Object, default: null },
   checking: { type: Boolean, default: false },
 });
-const emit = defineEmits(['close', 'submit', 'check']);
+const emit = defineEmits(['close', 'submit', 'check', 'view-history']);
 const subjectLabel = computed(() => getSubjectLabel(props.form?.subject));
 const submitDisabled = computed(() =>
   props.checking || (props.conflict && props.conflict.conflict_type !== 'none')

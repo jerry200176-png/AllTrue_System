@@ -1480,10 +1480,7 @@ class ClassSessionController extends Controller
             ->where('action_type', 'update')
             ->latest('id')
             ->first();
-        $oldStatus = strtolower((string) data_get($audit?->getAttribute('old_data'), 'Status'));
-        $newStatus = strtolower((string) data_get($audit?->getAttribute('new_data'), 'Status'));
-        if (!$audit || !$audit->getAttribute('operator_id') || strtolower((string) $session->getAttribute('Status')) !== 'cancelled'
-            || $newStatus !== 'cancelled' || !in_array($oldStatus, ['scheduled', 'attended', 'completed', 'late', 'absent'], true)) {
+        if (strtolower((string) $session->getAttribute('Status')) !== 'cancelled' || !$audit?->recordsRestorableCancellation()) {
             return null;
         }
         return $audit;

@@ -1,0 +1,14 @@
+updates:
+  - id: staff-2026-11-24-lesson-backfill-recovery
+    published_at: "2026-11-24"
+    audiences:
+      - director
+      - teacher
+    importance: digest
+    title: 補登前可查看原堂次
+    summary: 遇到已請假或由主任取消的堂次，系統會保留原紀錄。
+    items:
+      - category: fixed
+        text: 在補登畫面按「查看本課程堂次」可核對原紀錄。
+    source_refs:
+      - "changelog:2026-11-24:lesson-backfill-recovery"
