@@ -243,6 +243,13 @@ test('monthly backfill shows the assessment result on a phone', async ({ page, c
   await manager.getByTestId('course-manager-schedule-cta').click();
   await page.getByTestId('manual-session-backfill').click();
   const modal = page.locator('.course-modal').filter({ has: page.getByRole('heading', { name: '補登已上過的課' }) });
+  const billingHelp = modal.locator('details');
+  await expect(billingHelp.locator('summary')).toHaveText('補登會計入月結');
+  await expect(billingHelp.locator('p')).not.toBeVisible();
+  await billingHelp.locator('summary').click();
+  await expect(billingHelp.locator('p')).toContainText('評量待填的堂次也會計費');
+  await billingHelp.locator('summary').click();
+  await expect(modal.getByLabel('同時核准評量並登記出席')).not.toBeChecked();
   const messages = [];
   page.on('dialog', async dialog => { messages.push(dialog.message()); await dialog.accept(); });
   await modal.getByRole('button', { name: '確認送出' }).click();
