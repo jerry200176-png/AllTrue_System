@@ -43,14 +43,17 @@ describe('operations quick-start UX contract', () => {
   it('keeps the director first viewport task-first and progressively discloses secondary tools', () => {
     const director = pageSource('DirectorDashboard.vue');
     const focusIndex = director.indexOf('aria-label="今天的主任工作"');
-    const fillRateIndex = director.indexOf('aria-label="老師評量完成率"');
+    const fillRateIndex = director.indexOf('class="surface-panel director-fill-rate-panel"');
     const quickStartIndex = director.indexOf('class="director-secondary-tools"');
+    const analysisIndex = director.indexOf('class="director-analysis"');
 
     expect(focusIndex).toBeGreaterThan(-1);
     expect(quickStartIndex).toBeGreaterThan(focusIndex);
-    expect(fillRateIndex).toBeGreaterThan(quickStartIndex);
+    expect(analysisIndex).toBeGreaterThan(director.indexOf('id="payments-sec"'));
+    expect(fillRateIndex).toBeGreaterThan(analysisIndex);
     expect(director).toContain('查看為什麼這些工作排在前面');
-    expect(director).toContain('營運指標與常用入口');
+    expect(director).toContain('常用操作');
+    expect(director).toContain('v-if="analysisOpen" class="director-analysis__body"');
     expect(director).toContain('@toggle="secondaryToolsOpen = $event.currentTarget.open"');
   });
 

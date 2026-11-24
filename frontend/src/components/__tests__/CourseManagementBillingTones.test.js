@@ -22,7 +22,7 @@ describe('課程查找 帳務資料 table on the page template', () => {
   });
 
   it('reads 部分 off the payment status, not off the label words', () => {
-    expect(page).toContain("const isPartialPayment = (course) => isPartialCoursePayment(course, { monthlyPeriod: true });");
+    expect(page).toContain('coursePaymentStatusTone(course, { monthlyPeriod: true })');
     expect(page).not.toMatch(/includes\('部分'\)/);
   });
 

@@ -19,14 +19,23 @@ for (const width of [390, 1440]) for (const theme of ['light', 'dark']) {
     await installMock(page);
     const c = (id, subject, start_date, paid = true) => ({ id, subject, start_date, schedule_mode: 'count', paid, charge: 1000, stop: false });
     const courses = [c(1, '數學', '2026-08-08'), c(2, '英文', '2026-09-23'), c(3, '數學', '2026-10-08', false),
-      c(4, '化學', '2026-10-02', false), c(5, '英文', '2026-10-07', false), c(6, '數學', '2026-10-09'), c(7, '英文', '2026-01-01', false)];
+      c(4, '化學', '2026-10-02', false), c(5, '英文', '2026-10-07', false), c(6, '數學', '2026-10-09'),
+      c(7, '英文', '2026-01-01', false), { ...c(8, '生物', '2026-10-01'), schedule_mode: 'date' },
+      c(9, '歷史', '2026-10-01', false)];
     await page.route('**/api/v1/students**', (r) => r.fulfill({ json: [{ id: 99, name: '合成排序學生', status: 'active', enable: 1 }] }));
     await page.route('**/api/v1/alerts/tuition**', (r) => r.fulfill({ json: [{ id: openedOldFirst ? 1 : 6, student_id: 99, student_name: '合成排序學生', subject: '數學',
       schedule_mode: 'count', payment_status: 'unpaid', payable_status: 'invoiced', payable_outstanding: 1000 }] }));
     await page.route('**/api/v1/accounting/ledger?**', (r) => r.fulfill({ json: {
-      student: { id: 99, name: '合成排序學生' }, scope: { student_class_id: openedOldFirst ? 1 : 6 }, summary: {}, courses, receipts: [], anomalies: [],
-      invoices: openedOldFirst ? [] : [{ id: 17, student_class_id: 7, status: 'unpaid', total_amount: 1000, outstanding_amount: 1000, calculated_applied_amount: 0, payments: [] }],
+      student: { id: 99, name: '合成排序學生' }, scope: { student_class_id: openedOldFirst ? 1 : 6 }, summary: {}, courses, anomalies: [],
+      receipts: [{ report_id: 15, student_class_id: 9, status: 'pending', amount: 1000 }],
+      invoices: openedOldFirst ? [] : [
+        { id: 17, student_class_id: 7, status: 'unpaid', total_amount: 1000, outstanding_amount: 1000, calculated_applied_amount: 0, payments: [] },
+        { id: 18, student_class_id: 8, status: 'paid', total_amount: 1000, outstanding_amount: 0, calculated_applied_amount: 1000, payments: [] },
+      ],
     } }));
+    await page.route('**/api/v1/accounting/monthly-drafts?**', (r) => r.fulfill({ json: { data: [
+      { student_class_id: 8, status: 'ready', proposed_end_date: '2099-12-31' },
+    ] } }));
     await page.route('**/api/v1/accounting/contracts/*/sessions', (r) => {
       const id = Number(new URL(r.request().url()).pathname.split('/').at(-2));
       return r.fulfill({ json: { ...courses.find((x) => x.id === id), sessions: [] } });
@@ -36,9 +45,15 @@ for (const width of [390, 1440]) for (const theme of ['light', 'dark']) {
     await page.getByTestId('bill-documents-c6').click();
     const ledger = page.getByRole('dialog', { name: '合成排序學生的帳務', exact: true });
     const cards = ledger.locator('.ledger-contracts > [data-testid^="contract-card-"]');
-    await expect(cards).toHaveCount(7);
+    await expect(cards).toHaveCount(9);
     const ids = await cards.evaluateAll((els) => els.map((el) => Number(el.dataset.testid.replace('contract-card-', ''))));
-    expect(ids[0]).toBe(7);
+    expect(ids.slice(0, 3)).toEqual([9, 7, 8]);
+    await expect(ledger.getByTestId('contract-card-8').getByTestId('contract-issue')).toBeVisible();
+    await expect(ledger.getByTestId('ledger-contracts')).toBeVisible();
+    expect(await ledger.getByTestId('ledger-contracts').evaluate((section) =>
+      ['invoices', 'receipts'].every((name) => Boolean(section.compareDocumentPosition(
+        section.parentElement.querySelector(`[data-testid="ledger-fold-${name}"]`),
+      ) & Node.DOCUMENT_POSITION_FOLLOWING)))).toBe(true);
     expect(ids.filter((id) => [1, 3, 6].includes(id))).toEqual([6, 3, 1]);
     expect(ids.filter((id) => [2, 5].includes(id))).toEqual([5, 2]);
     expect(ids.indexOf(1) - ids.indexOf(6)).toBe(2);
@@ -57,6 +72,61 @@ for (const width of [390, 1440]) for (const theme of ['light', 'dark']) {
     await page.getByTestId('bill-documents-c1').click();
     await expect(ledger.getByTestId('contract-card-1').getByTestId('contract-focused')).toBeInViewport();
     expect(writes).toEqual([]); expect(errors).toEqual([]);
+  });
+}
+
+for (const width of [390, 1440]) for (const nav of ['initial target', 'followed invoice']) {
+  test(`in-app #593 delayed drafts preserve the ${nav} @${width}`, async ({ page }) => {
+    const target = { id: 42, student_id: 99, student_name: '合成定位學生', subject: '合成數學',
+      schedule_mode: 'date', start_date: '2026-06-01', charge: 1000, paid: false };
+    const other = Array.from({ length: 22 }, (_, i) => ({ ...target, id: i + 60, paid: true, start_date: '2026-10-01' }));
+    const invoice = { id: 501, student_class_id: 65, status: 'paid', total_amount: 1000, outstanding_amount: 0, calculated_applied_amount: 1000, payments: [] };
+    let releaseDrafts;
+    const draftsReady = new Promise((resolve) => { releaseDrafts = resolve; });
+    await page.setViewportSize({ width, height: 850 });
+    await page.route('**/*', (r) => ['127.0.0.1', 'localhost'].includes(new URL(r.request().url()).hostname) ? r.fallback() : r.abort());
+    await page.route('**/api/v1/**', (r) => r.fulfill({ json: { data: [] } }));
+    await installMock(page);
+    await page.route('**/api/v1/students**', (r) => r.fulfill({ json: [{ id: 99, name: target.student_name, status: 'active', enable: 1 }] }));
+    await page.route('**/api/v1/alerts/tuition**', (r) => r.fulfill({ json: [
+      { ...target, payment_status: 'unpaid', payable_status: 'unbilled' },
+    ] }));
+    await page.route('**/api/v1/accounting/ledger?**', (r) => r.fulfill({ json: {
+      student: { id: 99, name: target.student_name }, scope: { student_class_id: target.id }, summary: {},
+      courses: [...other, target], invoices: [invoice], receipts: [], anomalies: [],
+    } }));
+    await page.route('**/api/v1/accounting/monthly-drafts?**', async (r) => {
+      await draftsReady;
+      await r.fulfill({ json: { data: [{ student_class_id: target.id, status: 'ready', proposed_end_date: '2099-12-31' }] } });
+    });
+
+    await page.goto('/tuition-collection-pilot-mount.html');
+    await page.getByTestId('bill-documents-c42').click();
+    const ledger = page.getByRole('dialog', { name: '合成定位學生的帳務', exact: true });
+    const cards = ledger.locator('.ledger-contracts > [data-testid^="contract-card-"]');
+    const linkedBill = ledger.getByTestId('ledger-invoice-toggle-501');
+    try {
+      await expect(cards.last()).toHaveAttribute('data-testid', 'contract-card-42');
+      await expect(cards.last().getByTestId('contract-focused')).toBeInViewport();
+      if (nav === 'followed invoice') {
+        const menu = ledger.getByTestId('contract-card-65').locator('button[aria-haspopup="menu"]');
+        await menu.press('ArrowDown');
+        const documents = page.getByRole('menuitem', { name: '查看帳單與收據' });
+        await expect(documents).toBeVisible();
+        await documents.press('Enter');
+        await expect(linkedBill).toBeFocused();
+        await expect(linkedBill).toBeInViewport();
+      }
+    } finally {
+      releaseDrafts();
+    }
+    await expect(cards.first()).toHaveAttribute('data-testid', 'contract-card-42');
+    if (nav === 'followed invoice') {
+      await expect(linkedBill).toBeFocused();
+      await expect(linkedBill).toBeInViewport();
+    } else {
+      await expect(cards.first().getByTestId('contract-focused')).toBeInViewport();
+    }
   });
 }
 
@@ -87,11 +157,37 @@ for (const width of [375, 1280]) for (const [size, theme] of [['standard', 'ligh
     await page.route('**/api/v1/accounting/ledger?**', r => {
       const q = new URL(r.request().url()).searchParams; ledgerQueries.push(Object.fromEntries(q));
       const historic = q.get('student_id') === '99';
-      return r.fulfill({ json: { student: { id: historic ? 99 : 5, name: historic ? '合成暫停學生' : '合成學生' }, scope: { student_class_id: historic ? null : 42 }, summary: {}, courses: [], anomalies: [], invoices: historic ? [] : [{ id: 501, invoice_no: '合成帳單501', subject_name: '合成數學', first_session_date: '2026-11-01', billing_period: '2026-11', student_class_id: 42, status: 'partial', total_amount: 2000, calculated_applied_amount: 1000, outstanding_amount: 1000, payments: [71, 72].map((id, i) => ({ id, report_id: 801 + i, report_status: 'confirmed', receipt_no: `合成收據${801 + i}`, amount: 500, applied_amount: 500, application_status: 'applied', method: 'cash', paid_at: '2026-11-01' })) }], receipts: historic ? [{ report_id: 900, invoice_id: null, amount: 200, status: 'confirmed', payment_method: 'cash' }] : [801, 802].map(report_id => ({ report_id, invoice_id: 501, student_class_id: 42, amount: 500, status: 'confirmed', payment_method: 'cash', subject: '合成數學' })) } });
+      const receipts = [
+        [801, 501, 71, 500, '2026-11-01', 'cash'],
+        [802, 501, 72, 900, '2026-11-03', 'transfer'],
+        [803, 503, 73, 700, '2026-11-04', 'cash'],
+      ].map(([report_id, invoice_id, payment_id, amount, payment_date, payment_method]) => ({
+        report_id, invoice_id, payment_id, amount, payment_date, payment_method,
+        student_class_id: 42, status: 'confirmed', subject: '合成數學',
+      }));
+      const invoices = [[501, 2400, 1400], [503, 700, 700]].map(([id, total_amount, applied]) => ({
+        id, invoice_no: `合成帳單${id}`, subject_name: '合成數學', first_session_date: '2026-11-01', billing_period: '2026-11',
+        student_class_id: 42, status: total_amount === applied ? 'paid' : 'partial', total_amount,
+        calculated_applied_amount: applied, outstanding_amount: total_amount - applied,
+        payments: receipts.filter(receipt => receipt.invoice_id === id).map(receipt => ({
+          id: receipt.payment_id, report_id: receipt.report_id, report_status: 'confirmed', receipt_no: `合成收據${receipt.report_id}`,
+          amount: receipt.amount, applied_amount: receipt.amount, application_status: 'applied', method: receipt.payment_method, paid_at: receipt.payment_date,
+        })),
+      }));
+      return r.fulfill({ json: {
+        student: { id: historic ? 99 : 5, name: historic ? '合成暫停學生' : '合成學生' },
+        scope: { student_class_id: historic ? null : 42 }, summary: {}, courses: [], anomalies: [],
+        invoices: historic ? [] : invoices,
+        receipts: historic ? [{ report_id: 900, invoice_id: null, amount: 200, status: 'confirmed', payment_method: 'cash' }] : receipts,
+      } });
     });
     await page.route('**/api/v1/payment-reports/*/receipt', r => {
       const id = Number(new URL(r.request().url()).pathname.split('/').at(-2)); receiptIds.push(id);
-      return r.fulfill({ json: { receipt_no: `合成收據${id}`, amount: 500, payment_date: '2026-11-01', payment_method: 'cash', status: 'confirmed', student_name: '合成學生', subject: '合成數學' } });
+      const transfer = id === 802;
+      return r.fulfill({ json: {
+        receipt_no: `合成收據${id}`, amount: transfer ? 900 : 500, payment_date: transfer ? '2026-11-03' : '2026-11-01',
+        payment_method: transfer ? 'transfer' : 'cash', status: 'confirmed', student_name: '合成學生', subject: '合成數學',
+      } });
     });
     await page.goto('/tuition-collection-pilot-mount.html');
     await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
@@ -101,17 +197,42 @@ for (const width of [375, 1280]) for (const [size, theme] of [['standard', 'ligh
     const ledger = page.getByRole('dialog', { name: '合成學生的帳務', exact: true });
     const linked = page.getByTestId('ledger-invoice-payments-501');
     await expect(linked.getByRole('button', { name: /查看收據/ })).toHaveCount(2);
+    const repeated = ledger.getByTestId('ledger-receipt-repeated-803');
+    const matchingReceiptRow = ledger.getByTestId('ledger-receipt-view-803').locator('..');
+    const firstReceiptRow = ledger.getByTestId('ledger-receipt-view-801').locator('..');
+    const secondReceiptRow = ledger.getByTestId('ledger-receipt-view-802').locator('..');
+    await expect(repeated).toBeVisible();
+    await expect(repeated).toContainText('合成收據803');
+    await expect(repeated).toHaveAccessibleName('查看對應帳單 · 合成收據803');
+    await repeated.press('Enter');
+    await expect(ledger.getByTestId('ledger-invoice-toggle-503')).toBeFocused();
+    await expect(matchingReceiptRow).not.toContainText('NT$ 700');
+    await expect(firstReceiptRow).toContainText(/NT\$ 500.*2026\/11\/01.*現金/);
+    await expect(secondReceiptRow).toContainText(/NT\$ 900.*2026\/11\/03.*匯款/);
+    const invoiceFold = ledger.getByTestId('ledger-fold-invoices');
+    await invoiceFold.click();
+    await expect(repeated).toHaveCount(0);
+    await expect(matchingReceiptRow).toContainText('NT$ 700');
+    await invoiceFold.click();
+    await expect(repeated).toBeVisible();
     await page.getByTestId('ledger-payment-receipt-72').focus(); await page.keyboard.press('Enter');
     const receipt = page.getByTestId('receipt-modal-panel');
     await expect(receipt).toContainText('合成收據802');
     await receipt.locator('button[title="關閉"]').click();
     await expect(page.getByTestId('ledger-payment-receipt-72')).toBeFocused();
+    await firstReceiptRow.getByRole('button', { name: '查看收據', exact: true }).press('Enter');
+    await expect(receipt).toContainText('合成收據801');
+    await receipt.locator('button[title="關閉"]').click();
+    await expect(ledger.getByTestId('ledger-receipt-view-801')).toBeFocused();
     await page.getByTestId('ledger-invoice-501').hover();
-    const scan = await new AxeBuilder({ page }).include('#ledger-sec-invoices').analyze();
+    const scan = await new AxeBuilder({ page }).include('#ledger-sec-invoices, #ledger-sec-receipts').analyze();
     expect(scan.violations.filter(v => ['serious', 'critical'].includes(v.impact))).toEqual([]);
     const linkedShot = info.outputPath(`linked-${width}-${size}-${theme}.png`);
     await ledger.screenshot({ path: linkedShot });
     await info.attach(`linked-${width}-${size}-${theme}`, { path: linkedShot, contentType: 'image/png' });
+    const receiptRowsShot = info.outputPath(`receipt-rows-${width}-${size}-${theme}.png`);
+    await ledger.locator('#ledger-sec-receipts').screenshot({ path: receiptRowsShot });
+    await info.attach(`receipt-rows-${width}-${size}-${theme}`, { path: receiptRowsShot, contentType: 'image/png' });
     await ledger.getByRole('button', { name: '關閉學生帳務', exact: true }).click();
     await expect(page.getByTestId('bill-search')).toHaveValue('合成學生');
     await expect(page.getByTestId('bill-documents-c42')).toBeFocused();
@@ -133,7 +254,7 @@ for (const width of [375, 1280]) for (const [size, theme] of [['standard', 'ligh
     await page.getByTestId('bill-receipt-search').screenshot({ path: historicShot });
     await info.attach(`historic-${width}-${size}-${theme}`, { path: historicShot, contentType: 'image/png' });
     expect(ledgerQueries).toEqual([{ student_class_id: '42', branch_id: '1' }, { student_id: '99', branch_id: '1' }]);
-    expect(receiptIds).toEqual([802, 900]);
+    expect(receiptIds).toEqual([802, 801, 900]);
     expect(coverage).toEqual([]); expect(writes).toEqual([]); expect(errors).toEqual([]);
   });
 }
@@ -379,6 +500,99 @@ async function installMock(page) {
       { id: 802, session_date: '2026-09-10', start_time: '18:00', end_time: '19:30', teacher_name: '李老師', status: 'scheduled' },
     ] }),
   }));
+}
+
+for (const [width, scenario] of [[390, 'opens the exact form'], [1440, 'opens the exact form'], [390, 'blocks fresh shared terms'], [390, 'save and next never wraps']]) {
+  test(`in-app #592 unbilled shortcut ${scenario} @${width}`, async ({ page }, info) => {
+    const writes = [];
+    const opened = [];
+    const recorded = [];
+    const regrouped = scenario === 'blocks fresh shared terms';
+    const saveNext = scenario === 'save and next never wraps';
+    const course = { id: 42, student_id: 99, student_name: '合成收款學生', subject: '合成數學',
+      schedule_mode: 'count', payment_status: 'unpaid', payable_status: 'unbilled', remaining_sessions: 6, can_record_unbilled_count: true };
+    const unrelated = { ...course, id: 43, subject: '合成英文', latest_payment_report_id: 55, payment_status: 'pending_report' };
+    const estimated = { ...course, id: 44, subject: '合成待確認', charge: 6000, can_record_unbilled_count: false };
+    const earlier = { ...course, id: 52, student_id: 100, student_name: '合成先前學生',
+      payable_status: 'invoiced', payable_outstanding: 1000, can_record_unbilled_count: false };
+    page.on('request', (request) => {
+      if (new URL(request.url()).pathname.startsWith('/api/v1/') && request.method() !== 'GET') writes.push(request.method());
+    });
+    await page.setViewportSize({ width, height: 900 });
+    await page.route('**/*', (route) => ['127.0.0.1', 'localhost'].includes(new URL(route.request().url()).hostname) ? route.fallback() : route.abort());
+    await page.route('**/api/v1/**', (route) => route.fulfill({ json: { data: [] } }));
+    await installMock(page);
+    await page.route('**/api/v1/students**', (route) => route.fulfill({ json: [{ id: 99, name: course.student_name, status: 'active', enable: 1 }] }));
+    await page.route('**/api/v1/alerts/tuition**', (route) => route.fulfill({ json: [
+      ...(saveNext ? [earlier] : []), recorded.length ? { ...course, payment_status: 'pending_report', latest_payment_report_id: 56 } : course,
+      unrelated, estimated,
+    ] }));
+    if (saveNext) await page.route('**/api/v1/payment-reports/director-record', (route) => {
+      recorded.push(route.request().postDataJSON().student_class_id);
+      return route.fulfill({ json: { status: 'pending', report_id: 56 } });
+    });
+    await page.route('**/api/v1/accounting/ledger?**', (route) => {
+      const selected = Number(new URL(route.request().url()).searchParams.get('student_class_id'));
+      opened.push(selected);
+      if (selected === earlier.id) return route.fulfill({ json: {
+        student: { id: 100, name: earlier.student_name }, summary: {}, scope: { student_class_id: selected },
+        courses: [{ ...earlier, paid: false, charge: 1000 }], invoices: [], receipts: [], anomalies: [],
+      } });
+      return route.fulfill({ json: {
+        student: { id: 99, name: course.student_name }, summary: {}, scope: { student_class_id: selected },
+        courses: [
+          { ...course, paid: false, charge: 6000, ...(regrouped ? { package_id: 8, in_package: true } : {}) },
+          { ...unrelated, paid: false, charge: 4000 },
+        ], invoices: [], anomalies: [],
+        receipts: [
+          { report_id: 55, student_class_id: 43, status: 'pending', amount: 4000 },
+          ...(recorded.length ? [{ report_id: 56, student_class_id: 42, status: 'pending', amount: 6000 }] : []),
+        ],
+      } });
+    });
+    await page.goto('/tuition-collection-pilot-mount.html');
+    const row = page.getByTestId('bill-row-c42');
+    await expect(row.getByTestId('bill-action-c42')).toHaveText('繳費單');
+    const button = row.getByTestId('bill-record-unbilled-c42');
+    await expect(button).toBeVisible();
+    await expect(row.getByTestId('bill-action-c42')).toBeVisible();
+    await expect(page.getByTestId('bill-record-unbilled-c43')).toHaveCount(0);
+    await expect(page.getByTestId('bill-row-c44')).toBeVisible();
+    await expect(page.getByTestId('bill-record-unbilled-c44')).toHaveCount(0);
+    const box = await row.boundingBox();
+    expect(box.x + box.width).toBeLessThanOrEqual(width + 1);
+    const screenshot = info.outputPath(`unbilled-record-row-${width}.png`);
+    await row.screenshot({ path: screenshot });
+    await info.attach('unbilled-record-row', { path: screenshot, contentType: 'image/png' });
+    await button.press('Enter');
+    const form = page.getByRole('dialog', { name: '登記收款', exact: true });
+    if (regrouped) {
+      await expect(page.getByTestId('ledger-initial-action-note')).toContainText('請先核對');
+      await expect(form).toHaveCount(0);
+    } else {
+      await expect(form).toBeVisible();
+      await expect(form).toContainText(course.student_name);
+      await expect(form).toContainText(course.subject);
+      await expect(form).toContainText('還沒開帳單');
+    }
+    if (saveNext) {
+      await expect(page.getByTestId('bill-row-c52')).toBeVisible();
+      expect(await row.evaluate((target) => Boolean(target.compareDocumentPosition(
+        target.closest('table').querySelector('[data-testid="bill-row-c52"]'),
+      ) & Node.DOCUMENT_POSITION_PRECEDING))).toBe(true);
+      await form.locator('input[type="number"]').fill('6000');
+      await form.getByTestId('pe-save-next').click();
+      await expect(row).toContainText('待確認入帳');
+      await expect(form).toHaveCount(0);
+      await expect(page.getByTestId('ledger-sheet-loading')).toHaveCount(0);
+      expect(recorded).toEqual([42]);
+      expect(opened).not.toContain(52);
+      expect(writes).toEqual(['POST']);
+      return;
+    }
+    expect(opened).toEqual([42]);
+    expect(writes).toEqual([]);
+  });
 }
 async function expectNoOverflowAndReachableControls(page) {
   // Every control is 44px, with two narrow, explicit exceptions that are asserted below instead:

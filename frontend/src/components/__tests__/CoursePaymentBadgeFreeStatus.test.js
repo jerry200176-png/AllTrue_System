@@ -171,7 +171,7 @@ describe('#4150 StudentsList renders a free-gift course without 未繳', () => {
           : url.includes('/class-sessions') ? { byClass: { 7001: [] } } : { data: [] };
       return { ok: true, json: async () => body };
     }));
-    const wrapper = shallowMount(StudentsList, { props: { branchId: 1 } });
+    const wrapper = shallowMount(StudentsList, { props: { branchId: 1 }, global: { stubs: { StatusBadge: false } } });
     await flushPromises();
     await wrapper.find('[data-testid="student-row"]').trigger('click');
     await flushPromises();
@@ -179,16 +179,19 @@ describe('#4150 StudentsList renders a free-gift course without 未繳', () => {
   }
 
   it.each([
-    ['free', M.FREE_GIFT_LABEL, '進行中'],
-    ['something_new', M.UNKNOWN_STATUS_LABEL, '進行中'],
-    ['partial', '繳了一部分', '付款待確認'],
-    ['unpaid', UNPAID, '付款待確認'],
-  ])('%s', async (payment_status, label, attention) => {
+    ['free', M.FREE_GIFT_LABEL, '進行中', 'success'],
+    ['something_new', M.UNKNOWN_STATUS_LABEL, '進行中', 'neutral'],
+    ['partial', '繳了一部分', '付款待確認', 'warning'],
+    ['unpaid', UNPAID, '付款待確認', 'danger'],
+  ])('%s', async (payment_status, label, attention, tone) => {
     const wrapper = await mountWith({ payment_status });
     try {
       const card = wrapper.find('.student-course-card');
-      expect(card.find('.student-course-card__payment').text()).toBe(label);
+      const badge = card.get('[data-testid="course-payment-badge"]');
+      expect(badge.text()).toBe(label);
+      expect(badge.attributes('data-tone')).toBe(tone);
       expect(card.find('.payment-status-badge').text()).toBe(label);
+      expect(card.get('.payment-status-badge').attributes('data-tone')).toBe(tone);
       expect(wrapper.find('.student-course-picker__status').text()).toBe(attention);
       if (payment_status === 'free' || payment_status === 'something_new') {
         expect(card.find('.payment-status-badge').classes()).not.toContain('primary');

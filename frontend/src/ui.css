@@ -23,6 +23,7 @@
 @source "./components/course-management";
 @source "./pages/CourseManagement.vue";
 @source "./pages/StudentsList.vue";
+@source "./components/SchoolNameInput.vue";
 @source "./components/CourseEditForm.vue";
 @source "./components/students/StudentLearningTimeline.vue";
 @source "./components/students/StudentLearningPlanGantt.vue";

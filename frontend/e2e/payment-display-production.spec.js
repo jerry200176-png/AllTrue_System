@@ -389,7 +389,7 @@ test.describe('production acceptance — payment display (#4150)', () => {
         const courseId = Number(await card.getAttribute('data-course-id'));
         const server = pageRows.get(courseId) || courses.find((c) => idOf(c) === courseId);
         if (!server) { counts.cards_unmatched += 1; continue; }
-        const text = (await card.locator('.student-course-card__payment').innerText(SHORT)).trim();
+        const text = (await card.getByTestId('course-payment-badge').innerText(SHORT)).trim();
         counts.cards_checked += 1;
         if (expectsFreeLabel(server)) counts.free_cards_checked += 1;
         const problem = badgeViolation(server, text);

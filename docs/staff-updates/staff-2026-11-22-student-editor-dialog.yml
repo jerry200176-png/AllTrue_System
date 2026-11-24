@@ -1,0 +1,14 @@
+updates:
+  - id: staff-2026-11-22-student-editor-dialog
+    published_at: "2026-11-22"
+    audiences:
+      - director
+      - super_admin
+    importance: digest
+    title: 學生新增與編輯視窗調整
+    summary: 手機上可捲動選擇學校建議，儲存按鈕固定在視窗底部。
+    items:
+      - category: improved
+        text: 學生與監護人欄位有清楚標籤，按 Escape 可先收起學校建議，再關閉視窗。
+    source_refs:
+      - "changelog:2026-11-22:student-editor-dialog"

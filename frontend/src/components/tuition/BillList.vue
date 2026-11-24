@@ -169,7 +169,15 @@
               <TableCell :class="[t.cell, pc, 'tw:pr-4 tw:pl-0 tw:md:pr-5', phoneButton(b) ? 'tw:max-md:col-span-2 tw:max-md:col-start-3 tw:max-md:row-start-2 tw:max-md:justify-self-end tw:max-md:pt-0 tw:max-md:pb-3' : 'tw:max-md:col-start-4 tw:max-md:row-span-2 tw:max-md:row-start-1 tw:max-md:self-center']">
                 <ChevronRight v-if="!phoneButton(b)" :class="['tw:ml-auto tw:size-5 tw:text-tpl-secondary', t.phoneOnly]" :stroke-width="2" aria-hidden="true" />
                 <!-- A row whose main action the quick view cannot do keeps its own button on a phone (and its ⋯ menu). -->
-                <span :class="['bl__actions tw:flex tw:items-center tw:justify-end tw:gap-1', phoneButton(b) ? '' : t.phoneHide]" @click.stop>
+                <span :class="['bl__actions tw:flex tw:items-center tw:justify-end tw:gap-1', phoneButton(b) ? '' : t.phoneHide, canRecordUnbilled(b) && 'tw:flex-wrap']" @click.stop>
+                  <Button
+                    v-if="canRecordUnbilled(b)"
+                    variant="outline"
+                    :class="[control.row, 'tw:max-md:px-3']"
+                    :data-testid="`bill-record-unbilled-${b.key}`"
+                    :aria-label="`登記收款：${b.student_name} ${b.subject}`"
+                    @click="$emit('action', b, 'record-unbilled')"
+                  >登記收款</Button>
                   <Button
                     v-if="primaryOf(b)"
                     :variant="b.kind === 'confirm' ? 'default' : 'outline'"
@@ -272,6 +280,16 @@ function rowTap(b) {
   else emit('quick', b);
 }
 const slipOf = (b) => slipAvailability({ ...b.src, id: b.class_id }, props.canDocs);
+// Enter the same guarded form as an already-issued bill. The ledger still decides
+// whether the exact contract can accept a payment after it loads fresh data.
+function canRecordUnbilled(b) {
+  const src = b.src;
+  return src.can_record_unbilled_count === true
+    && b.kind === 'issue' && Number(b.class_id) > 0 && b.student_id > 0 && !b.package_id
+    && src.schedule_mode === 'count' && src.payable_status === 'unbilled' && src.payment_status === 'unpaid'
+    && !src.stop && !src.closed_reason && !src.renewed_by_newer_course && !src.no_payment_obligation
+    && slipOf(b).ok;
+}
 const SORTS = {
   // D8: owed now first, then what falls due later, then name (the explicit order the label promises).
   amount: { label: '未繳金額', cmp: (a, b) => b.owed - a.owed || b.owed_later - a.owed_later || a.student_name.localeCompare(b.student_name, 'zh-Hant') },
@@ -382,7 +400,9 @@ function neighbor(studentId, dir) {
   const b = i >= 0 && ids[i + dir] != null ? visible.value.find((x) => x.student_id === ids[i + dir]) : null;
   return b ? { student_id: b.student_id, first_class_id: b.class_id } : null;
 }
-// Contract ids of the owing rows in the order and filter on screen (for 儲存並看下一筆未繳).
-const owingQueue = () => visible.value.filter((b) => b.kind === 'owing' && b.class_id != null).map((b) => Number(b.class_id));
+// Preserve the visible order and include the starting row even when it has no bill yet.
+const owingQueue = (anchorId) => visible.value
+  .filter((b) => b.class_id != null && (b.kind === 'owing' || Number(b.class_id) === anchorId))
+  .map((b) => Number(b.class_id));
 defineExpose({ neighbor, clearSelection, owingQueue });
 </script>

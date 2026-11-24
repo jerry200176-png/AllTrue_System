@@ -1,6 +1,6 @@
 // SmartCalendar 純日期工具（#740 Step 1 — Leaf-First / Pure Move 自 SmartCalendar.vue 剝離）。
 // 這些函式 100% 純：輸入 → 輸出，不依賴任何 Vue reactive state，可獨立單元測試。
-// ⚠️ 行為等價：函式體一字未改，僅加上 export。請勿在此微調邏輯（會影響週檢視/排課日期計算）。
+// 日期運算須與週檢視共用同一套週一對齊方式。
 
 /** 依本地時區輸出 YYYY-MM-DD，避免 toISOString() 在 UTC+8 造成日期少一天 */
 export function formatLocalDate(date) {
@@ -45,7 +45,7 @@ export function addDays(ymd, days) {
   return formatLocalDate(d);
 }
 
-/** 給定 YYYY-MM-DD，回傳該日屬於當月第幾週 (1–5)，與週檢視的 displayWeek 定義一致 */
+/** 給定 YYYY-MM-DD，回傳該日屬於當月第幾個日曆週 (1–6)，與週檢視的 displayWeek 定義一致 */
 export function getWeekNumberOfDate(ymd) {
   const d = new Date(ymd + 'T12:00:00');
   const year = d.getFullYear();
@@ -58,5 +58,5 @@ export function getWeekNumberOfDate(ymd) {
   const b = new Date(firstMonday + 'T12:00:00').getTime();
   const diffDays = Math.round((a - b) / (24 * 60 * 60 * 1000));
   const weekNum = Math.floor(diffDays / 7) + 1;
-  return Math.max(1, Math.min(5, weekNum));
+  return Math.max(1, weekNum);
 }

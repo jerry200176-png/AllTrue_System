@@ -247,7 +247,7 @@ for (const viewport of [{ width: 375, height: 844 }, { width: 1280, height: 900 
   });
 }
 
-async function openPilot(page, { pageName, mode, viewport, authProfile = null }) {
+async function openPilot(page, { pageName, mode, viewport, authProfile = null, configure = null }) {
   await page.setViewportSize({ width: viewport.width, height: viewport.height });
   const mocks = await installApiMocks(page, mode, pageName, authProfile, authProfile?.onAuthRequest);
   if (authProfile?.initialActingAs) {
@@ -255,6 +255,7 @@ async function openPilot(page, { pageName, mode, viewport, authProfile = null })
       localStorage.setItem('alltrue_acting_as', actingAs);
     }, authProfile.initialActingAs);
   }
+  if (configure) await configure(page);
   await page.goto(`/pilot-mount.html?page=${pageName}&mode=${mode}`);
   await expect(page.locator('html')).toHaveAttribute('data-pilot-ready', '1', { timeout: 15_000 });
   return mocks;
@@ -508,23 +509,176 @@ test.describe('UI foundation — real Vue page evidence', () => {
     await expect(page.getByRole('dialog', { name: '登記收款' })).toHaveCount(0);
   });
 
-  test('student management labels its add-student workspace as a dialog', async ({ page }) => {
+  test('student management opens a labelled add-student dialog and keeps school choices accessible', async ({ page }) => {
     await openPilot(page, {
       pageName: 'students',
       mode: 'normal',
-      viewport: { width: 390, height: 844 },
+      viewport: { width: 375, height: 420 },
     });
+    const schools = Array.from({ length: 12 }, (_, index) => ({
+      id: index + 1,
+      canonical_name: `合成學校 ${index + 1}`,
+      municipality: '測試縣市',
+    }));
+    await page.route('**/api/v1/schools?*', route => route.fulfill({ json: { data: schools } }));
+    const addStudent = page.getByRole('button', { name: '新增學生', exact: true }).first();
+    await addStudent.click();
 
-    await page.getByRole('button', { name: '新增學生', exact: true }).first().click();
     const dialog = page.getByRole('dialog', { name: '新增學生', exact: true });
     await expect(dialog).toBeVisible();
     await expect(dialog).toHaveAttribute('aria-modal', 'true');
-    await expect(dialog.getByRole('heading', { name: '新增學生', exact: true })).toBeVisible();
+    await expect(dialog.getByRole('heading', { name: '新增學生', exact: true, level: 2 }).locator('#student-modal-title')).toBeVisible();
+    await expect(dialog.getByRole('heading', { name: '基本資料', exact: true, level: 3 })).toBeVisible();
+    await expect(dialog.getByRole('heading', { name: '家長資訊', exact: true, level: 3 })).toBeVisible();
+    await expect(dialog.getByRole('textbox', { name: '姓名', exact: true })).toBeFocused();
+    await expect(dialog.getByLabel('年級')).toBeVisible();
+    await expect(dialog.getByLabel('家長姓名')).toBeVisible();
+    await expect(dialog.getByLabel('家長手機')).toBeVisible();
+    await page.keyboard.press('Shift+Tab');
+    await expect(dialog.getByRole('button', { name: '儲存', exact: true })).toBeFocused();
+    const a11y = await new AxeBuilder({ page }).include('[data-slot="dialog-content"]').analyze();
+    expect(a11y.violations.filter((violation) => ['serious', 'critical'].includes(violation.impact))).toEqual([]);
+
+    const school = dialog.getByRole('combobox', { name: '就讀學校' });
+    await school.fill('合成');
+    const suggestions = dialog.getByRole('listbox');
+    await expect(suggestions.getByRole('option')).toHaveCount(schools.length);
+    const listBox = await suggestions.boundingBox();
+    const parentField = await dialog.getByLabel('家長姓名').boundingBox();
+    expect(listBox.y + listBox.height).toBeLessThanOrEqual(parentField.y);
+    await suggestions.getByRole('option', { name: /合成學校 12/ }).click();
+    await expect(school).toHaveValue('合成學校 12');
+
+    await school.fill('合成');
+    const options = suggestions.getByRole('option');
+    await expect(options).toHaveCount(schools.length);
+    await expect(options.first()).toHaveAttribute('aria-selected', 'true');
+    for (let index = 1; index < schools.length; index++) await school.press('ArrowDown');
+    const lastSchool = options.last();
+    await expect(lastSchool).toHaveAttribute('aria-selected', 'true');
+    await expect(lastSchool).toBeInViewport({ ratio: 1 });
+    const activeOptionId = await lastSchool.getAttribute('id');
+    expect(activeOptionId).toBeTruthy();
+    await expect(school).toHaveAttribute('aria-activedescendant', activeOptionId ?? '');
+    await school.press('Enter');
+    await expect(school).toHaveValue('合成學校 12');
+    await expect(school).not.toHaveAttribute('aria-activedescendant');
+
+    await school.fill('合成');
+    await expect(suggestions.getByRole('option')).toHaveCount(schools.length);
+    await school.press('Escape');
+    await expect(suggestions).toBeHidden();
+    await expect(dialog).toBeVisible();
+    await school.press('Escape');
+    await expect(dialog).toBeHidden();
+    await expect(addStudent).toBeFocused();
+  });
+
+  test('student management edit dialog keeps guardian ownership and accessible controls', async ({ page }) => {
+    const writes = [];
+    page.on('request', (request) => {
+      if (request.method() !== 'GET' && /^\/api\/v1\/students(?:\/\d+)?$/.test(new URL(request.url()).pathname)) {
+        writes.push(request.method());
+      }
+    });
+    await openPilot(page, { pageName: 'students', mode: 'normal', viewport: { width: 1536, height: 784 } });
+    await page.route(/\/api\/v1\/students\/\d+\/guardians$/, route => route.fulfill({
+      json: { guardians: [{ id: 1, display_name: '合成主要聯絡人', role: 'mother', is_primary: true }] },
+    }));
+    const menu = page.getByTestId('student-row').first().getByRole('button', { name: /^更多操作/ });
+    await menu.click();
+    await page.getByRole('menuitem', { name: '編輯', exact: true }).click();
+
+    const dialog = page.getByRole('dialog', { name: '編輯學生' });
+    await expect(dialog.getByRole('heading', { name: '編輯學生', exact: true, level: 2 })).toBeVisible();
+    await expect(dialog.getByRole('heading', { name: '家長／監護人', exact: true, level: 3 })).toBeVisible();
+    await expect(dialog.getByText('合成主要聯絡人 · 媽媽 · 主要聯絡人', { exact: true })).toBeVisible();
+    await expect(dialog.getByLabel('家長姓名', { exact: true })).toHaveCount(0);
+    await expect(dialog.getByLabel('監護人姓名', { exact: true })).toBeVisible();
+    await expect(dialog.getByLabel('監護人手機', { exact: true })).toBeVisible();
+    await expect(dialog.getByLabel('關係', { exact: true })).toBeVisible();
+    await dialog.getByText('設為主要聯絡人', { exact: true }).click();
+    await expect(dialog.getByRole('checkbox', { name: '設為主要聯絡人' })).toBeChecked();
+    await expect(dialog.getByLabel('RFID')).toHaveAttribute('readonly', '');
+    await expect(dialog.getByRole('button', { name: '前往家長 LINE 綁定' })).toBeVisible();
+    await dialog.getByRole('button', { name: '取消', exact: true }).click();
+    await expect(dialog).toBeHidden();
+    await expect(menu).toBeFocused();
+
+    await menu.click();
+    await page.getByRole('menuitem', { name: '編輯', exact: true }).click();
+    const save = dialog.getByRole('button', { name: '儲存', exact: true });
+    const bounds = await save.boundingBox();
+    if (!bounds) throw new Error('Expected the edit action to have a visible position');
+    const x = bounds.x + bounds.width / 2;
+    const y = bounds.y + bounds.height / 2;
+    await page.mouse.move(x, y);
+    await page.keyboard.press('Escape');
+    const duringDismissal = await page.getByRole('dialog', { name: '新增學生', exact: true }).count();
+    await page.mouse.click(x, y);
+    await expect(dialog).toBeHidden();
+    expect(duringDismissal).toBe(0);
+    expect(writes).toEqual([]);
+
+    await menu.click();
+    await page.getByRole('menuitem', { name: '編輯', exact: true }).click();
+    await expect(dialog).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(menu).toBeFocused();
+  });
+
+  test('student management grade promotion keeps cohort locks and server errors in the dialog', async ({ page }) => {
+    await openPilot(page, { pageName: 'students', mode: 'normal', viewport: { width: 375, height: 700 } });
+    await page.route('**/api/v1/grade-promotions/preview?*', route => route.fulfill({ json: {
+      admin_date: '2026-08-01',
+      season_year: 2026,
+      data: [
+        { student_id: 1, name: '合成學生甲', from_grade: 'J1', to_grade: 'J2', actionable: true },
+        { student_id: 2, name: '合成學生乙', from_grade: 'J2', to_grade: 'J3', actionable: true },
+        { student_id: 3, name: '合成學生丙', from_grade: 'H3', graduated: true, already_promoted: true },
+      ],
+    } }));
+    let release;
+    const beforeResponse = new Promise(resolve => { release = resolve; });
+    await page.route('**/api/v1/grade-promotions/confirm', async route => {
+      await beforeResponse;
+      await route.fulfill({ status: 409, json: { message: '預覽資料已變動，請重新查詢。' } });
+    });
+    await page.getByRole('button', { name: '年級升級', exact: true }).click();
+    const modal = page.getByRole('dialog', { name: '年級升級' });
+    const first = modal.getByRole('checkbox', { name: '選取 合成學生甲' });
+    const second = modal.getByRole('checkbox', { name: '選取 合成學生乙' });
+    await expect(first).toBeChecked();
+    await expect(second).toBeChecked();
+    await expect(modal.getByRole('row', { name: /合成學生丙/ })).toContainText('本季已升級');
+    await expect(modal.getByRole('row', { name: /合成學生丙/ }).getByRole('checkbox')).toHaveCount(0);
+    await modal.getByRole('group', { name: '只升級這些年級' }).getByRole('button').first().click();
+    await expect(second).toBeDisabled();
+    await expect(second).not.toBeChecked();
+    await first.click();
+    await expect(modal.getByRole('button', { name: '確認升級（0）' })).toBeDisabled();
+    await first.click();
+
+    page.once('dialog', async confirm => { await confirm.accept(); });
+    const posted = page.waitForRequest(request => request.url().endsWith('/grade-promotions/confirm') && request.method() === 'POST');
+    try {
+      await modal.getByRole('button', { name: '確認升級（1）' }).click();
+      expect((await posted).postDataJSON()).toMatchObject({ only_grades: ['J1'], exclude_student_ids: [] });
+      await expect(modal.getByRole('button', { name: '取消', exact: true })).toBeDisabled();
+      await page.keyboard.press('Escape');
+      await expect(modal).toBeVisible();
+    } finally {
+      release();
+    }
+    await expect(modal.getByRole('alert')).toHaveText('預覽資料已變動，請重新查詢。');
+    await modal.getByRole('button', { name: '取消', exact: true }).click();
+    await expect(modal).toBeHidden();
   });
 
   for (const vp of [
-    { name: '390', width: 390, height: 844 },
-    { name: '1440', width: 1440, height: 900 },
+    { name: '375', width: 375, height: 800 },
+    { name: '768', width: 768, height: 1024 },
+    { name: '1536', width: 1536, height: 784 },
   ]) {
     test(`students course overview selects the next action @${vp.name}`, async ({ page }) => {
       const sessionRequests = [];
@@ -571,11 +725,19 @@ test.describe('UI foundation — real Vue page evidence', () => {
       await expect(workspace.locator('article.student-course-card[data-course-id="5002"] button.student-course-card__primary')).toHaveText(/續課/);
       await expect(workspace.locator('article.student-course-card[data-course-id="5002"] button.student-course-card__primary')).toBeVisible();
 
-      const historyToggle = page.locator('tr.course-detail-row').first().locator('.sl-history-toggle');
+      const historyToggle = page.locator('tr.course-detail-row').first().getByRole('button', { name: '歷史課程 1 筆' });
       await expect(historyToggle).toHaveAttribute('aria-expanded', 'false');
-      await historyToggle.click();
+      const historyPanelId = await historyToggle.getAttribute('aria-controls');
+      expect(historyPanelId).toMatch(/^student-history-\d+$/);
+      const historyPanel = page.locator(`[id="${historyPanelId}"]`);
+      await expect(historyPanel).toBeAttached();
+      await expect(historyPanel.locator('.sl-history-body')).toBeHidden();
+      await historyToggle.press('Enter');
       await expect(historyToggle).toHaveAttribute('aria-expanded', 'true');
-      await expect(page.locator('tr.course-detail-row').first().locator('.sl-history-body')).toBeVisible();
+      await expect(historyToggle).toBeFocused();
+      await expect(historyPanel.locator('.sl-history-body')).toBeVisible();
+      await expect(historyPanel.getByRole('button', { name: '編輯', exact: true })).toBeVisible();
+      expect(await historyPanel.evaluate((el) => el.scrollWidth <= el.clientWidth + 1)).toBe(true);
       await expect(page.locator('tr.course-detail-row').first().locator('.student-course-dates--history')).toContainText('2026-08-01（週六） 15:00–17:00');
 
       await math.locator('button').click();
@@ -589,8 +751,83 @@ test.describe('UI foundation — real Vue page evidence', () => {
       await page.locator('.students-page').screenshot({
         path: path.join(outDir, `vue-students-course-overview-${vp.name}.png`),
       });
+      await historyToggle.press('Space');
+      await expect(historyToggle).toHaveAttribute('aria-expanded', 'false');
+      await expect(historyPanel.locator('.sl-history-body')).toBeHidden();
+
+      await workspace.locator('article.student-course-card[data-course-id="5001"]').getByRole('button', { name: '編輯課程', exact: true }).click();
+      const edit = page.getByRole('dialog', { name: '編輯課程', exact: true });
+      await expect(edit).toBeVisible();
+      await expect(edit.getByRole('button', { name: /補課／補登請至課程管理/ })).toBeVisible();
+      await page.keyboard.press('Escape');
+      await expect(edit).toBeHidden();
     });
   }
+
+  test('course editor keeps its target open while saving and allows retry after rejection', async ({ page }) => {
+    await openPilot(page, {
+      pageName: 'students', mode: 'normal', viewport: { width: 375, height: 800 },
+      configure: (fixturePage) => fixturePage.route('**/api/v1/teachers?**', (route) =>
+        route.fulfill({ json: [{ id: 3000, username: '合成老師', branch_id: Number(new URL(route.request().url()).searchParams.get('branch_id')) }] })),
+    });
+    await page.getByTestId('student-row').first().press('Enter');
+    const entry = page.getByTestId('student-course-workspace');
+    await entry.locator('[data-testid="course-picker-item"][data-course-id="5001"] button').click();
+    await entry.locator('article.student-course-card[data-course-id="5001"]')
+      .getByRole('button', { name: '編輯課程', exact: true }).click();
+    const editor = page.getByRole('dialog', { name: '編輯課程', exact: true });
+    await editor.getByRole('combobox', { name: '老師', exact: true }).selectOption('3000');
+    const save = editor.getByRole('button', { name: /儲存/ });
+    const cancel = editor.getByRole('button', { name: '取消', exact: true });
+    await expect(save).toBeEnabled();
+    let release;
+    const hold = new Promise(resolve => { release = resolve; });
+    let puts = 0;
+    await page.route('**/api/v1/student-classes/5001', async route => {
+      if (route.request().method() !== 'PUT') return route.fallback();
+      puts += 1;
+      if (puts === 1) {
+        await hold;
+        return route.fulfill({ status: 409, json: { message: '課程已變更，請重新確認。' } });
+      }
+      return route.fulfill({ json: { ok: true } });
+    });
+    const firstSave = page.waitForRequest(
+      request => request.method() === 'PUT' && request.url().endsWith('/student-classes/5001'),
+      { timeout: 8000 },
+    );
+    try {
+      await save.click();
+      const request = await firstSave;
+      expect(request.postDataJSON()).not.toHaveProperty('paid_at');
+      expect(request.postDataJSON()).not.toHaveProperty('force_rebuild_if_mismatch');
+      await page.keyboard.press('Escape');
+      await expect(editor).toBeVisible();
+      await expect(save).toBeDisabled();
+      await expect(cancel).toBeDisabled();
+      await page.mouse.click(3, 3);
+      await expect(editor).toBeVisible();
+      await save.dispatchEvent('click');
+    } finally {
+      release();
+    }
+    await expect(editor.getByRole('alert').filter({ hasText: '課程已變更，請重新確認。' })).toBeVisible();
+    await expect(save).toBeEnabled();
+    expect(puts).toBe(1);
+    await save.click();
+    await expect(editor).toBeHidden();
+    expect(puts).toBe(2);
+  });
+
+  test('student with only historical courses has a level-four course heading', async ({ page }) => {
+    await openPilot(page, { pageName: 'students', mode: 'history-only', viewport: { width: 390, height: 844 } });
+    await page.getByTestId('student-row').first().press('Enter');
+    const courseDetails = page.locator('tr.course-detail-row').first();
+    await expect(courseDetails.getByText('目前沒有進行中的課程')).toBeVisible();
+    await courseDetails.getByRole('button', { name: '歷史課程 1 筆' }).press('Enter');
+    const history = courseDetails.locator('.sl-history-card');
+    await expect(history.getByRole('heading', { level: 4 })).toBeVisible();
+  });
 
   test('student active and history dates distinguish load failure from real empty data', async ({ page, context }) => {
     const openStudentWorkspace = async (targetPage, mode) => {
@@ -888,13 +1125,26 @@ test.describe('UI foundation — real Vue page evidence', () => {
       await expect(ctas.first()).toBeVisible();
       fs.mkdirSync(outDir, { recursive: true });
       await page.locator('.director-workbench-v2').screenshot({ path: path.join(outDir, `vue-director-v2-urgent-focus-${vp.name}.png`) });
+      const riskDisclosure = page.locator('#director-workbench-panel-focus .director-risk-disclosure');
+      const riskSummary = riskDisclosure.locator('summary');
+      await expect(riskSummary).toContainText('查看為什麼這些工作排在前面');
+      if (vp.width === 390) {
+        const standardSize = await riskSummary.evaluate((el) => parseFloat(getComputedStyle(el).fontSize));
+        await page.getByRole('radio', { name: '大', exact: true }).click();
+        expect(await riskSummary.evaluate((el) => parseFloat(getComputedStyle(el).fontSize))).toBeGreaterThan(standardSize);
+      }
+      expect(await riskSummary.evaluate((el) => el.getBoundingClientRect().height)).toBeGreaterThanOrEqual(44);
+      await riskSummary.press('Enter');
+      await expect(riskSummary).toBeFocused();
+      await expect(riskDisclosure.locator('.director-top-risks').getByText('家長請假待主任處理', { exact: true })).toBeVisible();
+      expect(await riskDisclosure.evaluate((el) => el.scrollWidth <= el.clientWidth + 1)).toBe(true);
+      await riskDisclosure.screenshot({ path: path.join(outDir, `vue-director-priority-open-${vp.name}.png`) });
+      await riskSummary.press('Space');
+      await expect(riskDisclosure.locator('.director-top-risks')).toBeHidden();
       const leaveTask = page.getByRole('button', { name: /家長請假/ });
       await leaveTask.click();
       await expect(page.getByText('家長請假', { exact: true })).toBeVisible();
-      const riskDisclosure = page.locator('.director-risk-disclosure');
-      await expect(riskDisclosure.getByText('查看為什麼這些工作排在前面', { exact: true })).toBeVisible();
-      await riskDisclosure.locator('summary').click();
-      await expect(riskDisclosure.locator('.director-top-risks').getByText('家長請假待主任處理', { exact: true })).toBeVisible();
+      await expect(page.locator('#director-workbench-panel-full .director-risk-disclosure')).toHaveCount(0);
       await expect(page.getByRole('button', { name: '尋找補課時段', exact: true })).toBeVisible();
       await page.locator('.director-workbench-v2').screenshot({ path: path.join(outDir, `vue-director-v2-urgent-${vp.name}.png`) });
     });

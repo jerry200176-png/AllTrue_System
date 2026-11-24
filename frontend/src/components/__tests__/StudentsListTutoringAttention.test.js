@@ -33,7 +33,7 @@ async function withCourse(overrides, assertions) {
     return { ok: true, json: async () => body };
   });
   vi.stubGlobal('fetch', fetchMock);
-  const wrapper = shallowMount(StudentsList, { props: { branchId: 1 }, global: { stubs: { StatStrip: false, StatItem: false } } });
+  const wrapper = shallowMount(StudentsList, { props: { branchId: 1 }, global: { stubs: { StatStrip: false, StatItem: false, StatusBadge: false } } });
   try {
     await flushPromises();
     await wrapper.find('[data-testid="student-row"]').trigger('click');
@@ -50,7 +50,7 @@ describe('In-App #351: tutoring next steps preserve the no-charge and anomaly co
   it.each(['unpaid', 'overdue', 'pending'])('does not invent a payment task for normal tutoring with %s status', async (payment_status) => {
     await withCourse({ payment_status }, (wrapper) => {
       const card = wrapper.find('.student-course-card');
-      expect(card.text()).toContain('無須繳費');
+      expect(card.get('[data-testid="course-payment-badge"]').text()).toBe('無須繳費');
       expect(card.find('.student-course-card__next-step').text()).toContain('課程資料已齊全');
       expect(card.find('.student-course-card__next-step').text()).not.toContain('付款');
       expect(wrapper.find('.student-course-picker__status').text()).toBe('進行中');

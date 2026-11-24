@@ -38,7 +38,7 @@ async function mountRows() {
   }));
   const wrapper = shallowMount(StudentsList, {
     props: { branchId: 1 },
-    global: { stubs: { StatusBadge: false, ActionMenu: false }, renderStubDefaultSlot: true },
+    global: { stubs: { StatusBadge: false, ActionMenu: false, Input: false }, renderStubDefaultSlot: true },
   });
   await flushPromises();
   return wrapper;
@@ -193,11 +193,13 @@ describe('student table rows', () => {
     const wrapper = await mountRows();
     try {
       const menu = () => rowOf(wrapper, 2001).findComponent(ActionMenu);
-      expect(wrapper.find('#student-modal-title').exists()).toBe(false);
+      const dialog = () => wrapper.findAllComponents({ name: 'Dialog' })[0];
+      expect(dialog().props('open')).toBe(false);
       menu().vm.$emit('select', 'edit');
       await flushPromises();
+      expect(dialog().props('open')).toBe(true);
       expect(wrapper.find('#student-modal-title').text()).toBe('編輯學生');
-      expect(wrapper.find('.modal-overlay input').element.value).toBe('合成學生');
+      expect(wrapper.get('input#student-name').element.value).toBe('合成學生');
       const timeline = () => wrapper.findComponent({ name: 'StudentLearningTimeline' });
       expect(timeline().props('show')).toBe(false);
       menu().vm.$emit('select', 'timeline');

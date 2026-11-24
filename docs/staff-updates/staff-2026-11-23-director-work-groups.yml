@@ -1,0 +1,13 @@
+updates:
+  - id: staff-2026-11-23-director-work-groups
+    published_at: "2026-11-23"
+    audiences:
+      - director
+    importance: digest
+    title: 常用操作與營運分析分開
+    summary: 完整營運的常用操作集中收款、排課和調課。
+    items:
+      - category: improved
+        text: 評量完成率與回報時效可在「近期紀錄與分析」查看。
+    source_refs:
+      - "changelog:2026-11-23:director-work-groups"
