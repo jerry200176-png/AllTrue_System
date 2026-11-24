@@ -19,11 +19,33 @@ export const fromPinned = (nodes, pins, repo) => (nodes || []).filter((c) => {
   return c.checkSuite?.repository?.nameWithOwner === repo;
 });
 
-// A land-queue batch tip is tested only by dispatched runs, and GitHub gives such a commit no statusCheckRollup
-// (null), so the batch waited for its 2-hour timeout although every required check was green. Read the same check
-// runs through the commit's check suites, in the rollup's node shape, so fromPinned applies unchanged.
-export const suiteRuns = (commit) => (commit?.checkSuites?.nodes || []).flatMap((s) =>
-  (s?.checkRuns?.nodes || []).map((r) => ({ __typename: 'CheckRun', ...r, checkSuite: { app: s.app, repository: s.repository } })));
+// A required check or its latest retry can sit on any page. An incomplete
+// connection must not leave the queue using an older, apparently green run.
+export function readCheckPages(first, readNext) {
+  const nodes = [];
+  const cursors = new Set();
+  let page = first;
+  for (;;) {
+    const info = page?.pageInfo;
+    if (!Array.isArray(page?.nodes) || typeof info?.hasNextPage !== 'boolean') {
+      throw new Error('Incomplete GitHub check connection');
+    }
+    nodes.push(...page.nodes);
+    if (!info.hasNextPage) return nodes;
+    const cursor = info.endCursor;
+    if (typeof cursor !== 'string' || !cursor || cursors.has(cursor)) {
+      throw new Error('Missing or repeated GitHub check cursor');
+    }
+    cursors.add(cursor);
+    page = readNext(cursor);
+  }
+}
+
+// A dispatch-only batch tip can have a null statusCheckRollup. Its check
+// suites provide the same source metadata used by the pinned-app filter.
+export const suiteRuns = (suites, readNextRuns) => suites.flatMap((suite) =>
+  readCheckPages(suite.checkRuns, (cursor) => readNextRuns(suite.id, cursor)).map((run) =>
+    ({ __typename: 'CheckRun', ...run, checkSuite: { app: suite.app, repository: suite.repository, workflowRun: suite.workflowRun } })));
 
 // Authors whose branches may be executed by batch CI (dispatch runs PR code with repo secrets).
 export const TRUSTED_AUTHORS = new Set(['OWNER', 'MEMBER', 'COLLABORATOR']);
@@ -261,23 +283,79 @@ function labeledAt(n) {
   return ev.length ? ev[ev.length - 1].created_at : '';
 }
 
+const PAGE_INFO = 'pageInfo{hasNextPage endCursor}';
+const RUN_FIELDS = 'name conclusion status startedAt';
+const CONTEXT_FIELDS = `${PAGE_INFO} nodes{
+  __typename ... on CheckRun{${RUN_FIELDS} checkSuite{app{databaseId} repository{nameWithOwner} workflowRun{databaseId}}}
+  ... on StatusContext{context state createdAt}
+}`;
 const Q = `query($o:String!,$r:String!,$n:Int!){repository(owner:$o,name:$r){pullRequest(number:$n){
   mergeStateStatus headRefName headRefOid authorAssociation
   labels(first:50){nodes{name}}
-  commits(last:1){nodes{commit{statusCheckRollup{contexts(first:100){nodes{
-    __typename ... on CheckRun{name conclusion status startedAt checkSuite{app{databaseId} repository{nameWithOwner} workflowRun{databaseId}}} ... on StatusContext{context state createdAt}}}}}}}}}}`;
+  commits(last:1){nodes{commit{oid statusCheckRollup{contexts(first:100){${CONTEXT_FIELDS}}}}}}
+}}}`;
 
-const QC = `query($o:String!,$r:String!,$s:GitObjectID!){repository(owner:$o,name:$r){object(oid:$s){... on Commit{statusCheckRollup{contexts(first:100){nodes{
-    __typename ... on CheckRun{name conclusion status startedAt checkSuite{app{databaseId} repository{nameWithOwner}}} ... on StatusContext{context state createdAt}}}}}}}}`;
+const QC = `query($o:String!,$r:String!,$s:GitObjectID!,$after:String){
+  repository(owner:$o,name:$r){object(oid:$s){... on Commit{oid statusCheckRollup{contexts(first:100,after:$after){${CONTEXT_FIELDS}}}}}}
+}`;
 
-const QS = `query($o:String!,$r:String!,$s:GitObjectID!){repository(owner:$o,name:$r){object(oid:$s){... on Commit{checkSuites(first:50){nodes{
-    app{databaseId} repository{nameWithOwner} checkRuns(first:100){nodes{name conclusion status startedAt}}}}}}}}`;
+const QS = `query($o:String!,$r:String!,$s:GitObjectID!,$after:String){
+  repository(owner:$o,name:$r){object(oid:$s){... on Commit{oid checkSuites(first:50,after:$after){${PAGE_INFO} nodes{
+    id app{databaseId} repository{nameWithOwner} workflowRun{databaseId}
+    checkRuns(first:100){${PAGE_INFO} nodes{${RUN_FIELDS}}}
+  }}}}}
+}`;
 
-function rollupFor(sha) {
-  const [o, r] = REPO.split('/');
-  const q = (query) => JSON.parse(gh('api', 'graphql', '-f', `query=${query}`, '-F', `o=${o}`, '-F', `r=${r}`, '-F', `s=${sha}`)).data.repository.object;
-  const nodes = q(QC)?.statusCheckRollup?.contexts.nodes ?? suiteRuns(q(QS));
-  return fromPinned(nodes, PINS, REPO);
+const QR = `query($id:ID!,$after:String!){
+  node(id:$id){... on CheckSuite{id commit{oid} checkRuns(first:100,after:$after){${PAGE_INFO} nodes{${RUN_FIELDS}}}}}
+}`;
+
+function readGitHubGraph(query, ...variables) {
+  return JSON.parse(gh('api', 'graphql', '-f', `query=${query}`, ...variables));
+}
+
+function graphData(response) {
+  if (!response?.data || typeof response.data !== 'object' || Array.isArray(response.data)
+      || (response.errors !== undefined && (!Array.isArray(response.errors) || response.errors.length > 0))) {
+    throw new Error('Incomplete GitHub check response');
+  }
+  return response.data;
+}
+
+function commitCheckObject(repo, query, sha, cursor, read = readGitHubGraph) {
+  const [o, r] = repo.split('/');
+  const after = cursor ? ['-f', `after=${cursor}`] : [];
+  const data = graphData(read(query, '-F', `o=${o}`, '-F', `r=${r}`, '-F', `s=${sha}`, ...after));
+  const commit = data.repository?.object;
+  if (commit?.oid !== sha) throw new Error('GitHub check response does not match the requested commit');
+  return commit;
+}
+
+export function contextRuns(sha, commit, readNext = (cursor) => commitCheckObject(REPO, QC, sha, cursor)) {
+  if (commit?.oid !== sha || !commit.statusCheckRollup) return [];
+  return readCheckPages(commit.statusCheckRollup.contexts, (cursor) => {
+    const next = readNext(cursor);
+    if (next?.oid !== sha) throw new Error('GitHub check page does not match the requested commit');
+    return next.statusCheckRollup?.contexts;
+  });
+}
+
+export function rollupFor(sha, read = readGitHubGraph, repo = REPO) {
+  const loadPage = (query, cursor) => commitCheckObject(repo, query, sha, cursor, read);
+  const commit = loadPage(QC);
+  if (commit.statusCheckRollup) {
+    return fromPinned(contextRuns(sha, commit, (cursor) => loadPage(QC, cursor)), PINS, repo);
+  }
+  const suites = readCheckPages(loadPage(QS).checkSuites, (cursor) => loadPage(QS, cursor).checkSuites);
+  const nodes = suiteRuns(suites, (id, cursor) => {
+    if (typeof id !== 'string' || !id) throw new Error('GitHub check suite identity is missing');
+    const { node } = graphData(read(QR, '-f', `id=${id}`, '-f', `after=${cursor}`));
+    if (node?.id !== id || node.commit?.oid !== sha) {
+      throw new Error('GitHub check run page does not match the requested suite and commit');
+    }
+    return node.checkRuns;
+  });
+  return fromPinned(nodes, PINS, repo);
 }
 
 // Separate query so a failure yields "unknown" (no merge) instead of aborting the whole queue run.
@@ -293,13 +371,14 @@ function unresolvedThreads(n) {
 
 export function load(n) {
   const [o, r] = REPO.split('/');
-  const p = JSON.parse(gh('api', 'graphql', '-f', `query=${Q}`, '-F', `o=${o}`, '-F', `r=${r}`, '-F', `n=${n}`)).data.repository.pullRequest;
+  const p = graphData(readGitHubGraph(Q, '-F', `o=${o}`, '-F', `r=${r}`, '-F', `n=${n}`)).repository.pullRequest;
+  const commit = p.commits.nodes[0]?.commit;
   return {
     behindBy: api(`compare/main...${p.headRefOid}`).behind_by,
     mergeStateStatus: p.mergeStateStatus,
     headRefName: p.headRefName,
     sha: p.headRefOid,
-    rollup: fromPinned(p.commits.nodes[0]?.commit.statusCheckRollup?.contexts.nodes, PINS, REPO),
+    rollup: fromPinned(contextRuns(p.headRefOid, commit), PINS, REPO),
     authorAssociation: p.authorAssociation,
     labels: (p.labels?.nodes || []).map((l) => l.name),
     unresolvedThreads: unresolvedThreads(n),
