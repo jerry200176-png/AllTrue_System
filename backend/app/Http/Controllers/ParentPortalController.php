@@ -59,6 +59,21 @@ class ParentPortalController extends Controller
 
     // ── Login: Student ID + Phone OR Student Name + Phone ───────────────────
 
+    /**
+     * #5572: student names live in a legacy 3-byte utf8 column. A name with a character outside the Basic
+     * Multilingual Plane (4-byte UTF-8) can never be stored there, so it matches no one; querying with it
+     * makes MySQL fail with error 1267 (illegal mix of collations) instead of the normal not-found answer.
+     * Never strip the character instead: the remainder could be another student's name.
+     */
+    private function studentsNamed(string $name): \Illuminate\Support\Collection
+    {
+        if (\App\Support\Utf8mb3SearchSanitizer::hasFourByte($name)) {
+            return collect();
+        }
+
+        return Student::whereRaw('TRIM(name) = ?', [$name])->get();
+    }
+
     public function login(Request $request)
     {
         $obs = app(ParentBindingObservability::class);
@@ -115,7 +130,7 @@ class ParentPortalController extends Controller
                 return response()->json(['message' => '此學生尚未設定聯絡手機，請聯繫分校補登後再登入'], 401);
             }
         } else {
-            $allByName = Student::whereRaw('TRIM(name) = ?', [$rawName])->get();
+            $allByName = $this->studentsNamed($rawName);
             // SEC-AUDIT-003 (#972): this branch previously logged student names and
             // phone numbers (Phone / parent_phone / resolved) on every name-based
             // login attempt, ungated. Log a PII-free count only — preserves the
@@ -150,7 +165,7 @@ class ParentPortalController extends Controller
                 }
             } else {
                 // Hint to front desk if name matched but phone didn't for any row with empty phone
-                $nameOnly = Student::whereRaw('TRIM(name) = ?', [$rawName])->get();
+                $nameOnly = $this->studentsNamed($rawName);
                 if ($nameOnly->isNotEmpty() && $nameOnly->contains(fn ($s) => empty(trim($this->resolveContactPhone($s))))) {
                     $obs->observe($cid, ParentBindingCodes::CHANNEL_PORTAL, $method, $obs->classifier()->classifyPortalName($allByName, $phoneNorm), $phoneNorm);
                     return response()->json(['message' => '此學生尚未設定聯絡手機，請聯繫分校補登後再登入'], 401);
