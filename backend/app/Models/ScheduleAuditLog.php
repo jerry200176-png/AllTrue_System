@@ -39,9 +39,13 @@ class ScheduleAuditLog extends Model
 
     public function recordsNamedCancellation(): bool
     {
-        return (int) $this->operator_id > 0
-            && strtolower((string) data_get($this->new_data, 'Status')) === 'cancelled'
-            && strtolower((string) data_get($this->old_data, 'Status')) !== 'cancelled';
+        if (!(int) $this->operator_id || strtolower((string) data_get($this->new_data, 'Status')) !== 'cancelled') {
+            return false;
+        }
+        if ($this->action_type === 'create') {
+            return data_get($this->new_data, 'Note') === ClassSession::PAUSED_PROJECTION_CANCEL_NOTE;
+        }
+        return $this->action_type === 'update' && strtolower((string) data_get($this->old_data, 'Status')) !== 'cancelled';
     }
 
     public function recordsRestorableCancellation(): bool

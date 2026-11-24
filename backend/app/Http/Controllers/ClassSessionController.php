@@ -944,7 +944,7 @@ class ClassSessionController extends Controller
             'StartTime'            => $slot['start_time'],
             'EndTime'              => $slot['end_time'],
             'Status'               => $cancelOnly ? 'cancelled' : 'scheduled',
-            'Note'                 => $cancelOnly ? 'projected-paused-cancelled' : 'projected-monthly-materialized',
+            'Note'                 => $cancelOnly ? ClassSession::PAUSED_PROJECTION_CANCEL_NOTE : 'projected-monthly-materialized',
             // A persisted schedule exception is a one-off occurrence even
             // when its stored slot shares the contract's clock time.
             'IsContractException'  => $scheduledException !== null ? 1 : 0,

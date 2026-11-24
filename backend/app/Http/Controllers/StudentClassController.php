@@ -4403,9 +4403,11 @@ class StudentClassController extends Controller
         // Later note edits keep a cancellation in effect. A restore followed by a system
         // cancellation supersedes the older named cancellation and can use the normal reuse path.
         $cancellation = $cancelledIds->isEmpty() ? null : ScheduleAuditLog::query()
-            ->whereIn('session_id', $cancelledIds)->where('action_type', 'update')
-            ->whereColumn('old_data->Status', '!=', 'new_data->Status')->latest('id')
-            ->get(['id', 'session_id', 'operator_id', 'old_data', 'new_data'])->unique('session_id')
+            ->whereIn('session_id', $cancelledIds)
+            ->where(fn ($q) => $q->where('action_type', 'create')
+                ->orWhere(fn ($update) => $update->where('action_type', 'update')
+                    ->whereColumn('old_data->Status', '!=', 'new_data->Status')))
+            ->latest('id')->get(['id', 'session_id', 'action_type', 'operator_id', 'old_data', 'new_data'])->unique('session_id')
             ->first(fn (ScheduleAuditLog $audit) => $audit->recordsNamedCancellation());
         if ($leave || $cancellation) {
             $message = '這個時段已有請假紀錄，請回到原課程確認請假與順延。';
