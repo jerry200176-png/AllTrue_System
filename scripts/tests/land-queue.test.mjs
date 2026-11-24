@@ -262,6 +262,7 @@ test('required check after 100 contexts is included, and a newer queued run stil
   const run = (fields, source = repo) => ({
     __typename: 'CheckRun',
     name,
+    status: 'COMPLETED',
     checkSuite: { app: { databaseId: 15368 }, repository: { nameWithOwner: source } },
     ...fields,
   });
@@ -285,7 +286,7 @@ test('required check after 100 contexts is included, and a newer queued run stil
 });
 
 test('check pagination refuses incomplete pages, missing cursors, and repeated cursors', () => {
-  const first = checkPage([{ name: 'A', conclusion: 'SUCCESS' }], 'second');
+  const first = checkPage([{ name: 'A', conclusion: 'SUCCESS', status: 'COMPLETED' }], 'second');
   assert.throws(() => readCheckPages(first, () => null), /Incomplete GitHub check connection/);
   assert.throws(() => readCheckPages(first, () => ({ nodes: [] })), /Incomplete GitHub check connection/);
   assert.throws(() => readCheckPages(first, () => ({ nodes: [], pageInfo: {} })), /Incomplete GitHub check connection/);
@@ -336,7 +337,7 @@ test('batch fallback reads both paginations and rejects incomplete or misbound G
     id: 'suite-on-head',
     app: { databaseId: 15368 },
     repository: { nameWithOwner: repo },
-    checkRuns: checkPage([{ name: 'A', conclusion: 'SUCCESS' }], 'next-run'),
+    checkRuns: checkPage([{ name: 'A', conclusion: 'SUCCESS', status: 'COMPLETED' }], 'next-run'),
   };
   const commit = (fields, oid = H) => ({ data: { repository: { object: { oid, ...fields } } } });
   const read = (fault) => (query, ...args) => {
@@ -357,7 +358,7 @@ test('batch fallback reads both paginations and rejects incomplete or misbound G
     return { data: { node: fault === 'missing-suite' ? null : {
       id: fault === 'wrong-suite' ? 'different-suite' : suite.id,
       commit: fault === 'missing-suite-commit' ? null : { oid: fault === 'wrong-suite-commit' ? 'wrong' : H },
-      checkRuns: checkPage([{ name: 'B', conclusion: 'SUCCESS' }]),
+      checkRuns: checkPage([{ name: 'B', conclusion: 'SUCCESS', status: 'COMPLETED' }]),
     } } };
   };
 
