@@ -428,6 +428,21 @@ class ScheduleGuardService
         $request->attributes->set(self::PAST_CLASH_ATTRIBUTE, $notes);
     }
 
+    /** Busy intervals for candidate generation only. Confirmation reads occupancy again. */
+    public function otherCampusBusyIntervals(int $teacherId, int $branchId, string $date, ?int $excludeStudentId): array
+    {
+        $busy = [];
+        foreach ($this->otherCampusesOf($teacherId, $branchId) as $campusId) {
+            foreach ($this->buildTeacherDateOccupancyEntries($teacherId, $campusId, $date, null, $excludeStudentId) as $entry) {
+                if ($entry['teacher_occupancy'] ?? true) {
+                    $busy[] = [$entry['start_time'], $entry['end_time']];
+                }
+            }
+        }
+
+        return $busy;
+    }
+
     /**
      * Cross-campus check for one occurrence by a given teacher, for callers that skip the full guard (a substitute
      * recorded after the lesson). Future: returns the conflict. Ended: returns null and notes the reminder.

@@ -54,6 +54,7 @@ class ExceptionWorkflowCandidateGenerator
         // which makes a multi-day makeup window look artificially narrow.
         $candidateBuckets = [];
         $rank = 1;
+        $now = Carbon::now();
 
         for ($cursor = $start->copy(); $cursor->lte($end); $cursor->addDay()) {
             $date = $cursor->toDateString();
@@ -115,28 +116,31 @@ class ExceptionWorkflowCandidateGenerator
         // Round-robin by date: show at least one option per available day,
         // then fill each day with additional times until the requested limit.
         $candidates = [];
+        $otherCampusBusy = [];
         $added = true;
         while ($added && count($candidates) < $limit) {
             $added = false;
-            foreach ($candidateBuckets as &$dayCandidates) {
+            foreach ($candidateBuckets as $date => &$dayCandidates) {
                 if (count($candidates) >= $limit) {
                     break;
                 }
-                if ($dayCandidates === []) {
-                    continue;
+                while ($dayCandidates !== []) {
+                    $candidate = array_shift($dayCandidates);
+                    if ($teacherId > 0 && (int) $workflow->campus_id > 0 && Carbon::parse($date . ' ' . $candidate['end_time'])->gt($now)) {
+                        $otherCampusBusy[$date] ??= $guard->otherCampusBusyIntervals(
+                            $teacherId, (int) $workflow->campus_id, $date, (int) $workflow->student_id ?: null
+                        );
+                        foreach ($otherCampusBusy[$date] as [$otherStart, $otherEnd]) {
+                            if ($this->overlaps($candidate['start_time'], $candidate['end_time'], $otherStart, $otherEnd)) {
+                                continue 2;
+                            }
+                        }
+                    }
+                    $candidate['rank'] = count($candidates) + 1;
+                    $candidates[] = $candidate;
+                    $added = true;
+                    break;
                 }
-                $candidate = array_shift($dayCandidates);
-                // #5588: occupancy above is this campus only; a time the teacher teaches at another campus would
-                // only fail at confirm. Checked here, on the few times actually offered, not on every slot.
-                if ($teacherId > 0 && $guard->crossCampusConflict($teacherId, (int) $workflow->campus_id,
-                    $candidate['candidate_date'], $candidate['start_time'], $candidate['end_time'], (int) $workflow->student_id ?: null)) {
-                    $added = true; // later times of this day may still fit
-
-                    continue;
-                }
-                $candidate['rank'] = count($candidates) + 1;
-                $candidates[] = $candidate;
-                $added = true;
             }
             unset($dayCandidates);
         }
