@@ -365,6 +365,35 @@ class AddSessionConflictTest extends TestCase
             ->assertJsonPath('student_class_id', $sc->ID);
     }
 
+    /** @dataProvider monthlyBackfillApprovals */
+    public function test_monthly_precheck_and_submission_ignore_a_full_legacy_count(bool $approve, string $message): void
+    {
+        $token = $this->createDirectorToken([1]);
+        $student = $this->createStudent(1);
+        $course = $this->createStudentClass($student->id, [
+            'ScheduleMode' => 'date', 'SessionCount' => 1, 'RemainingSessions' => 0,
+            'StartDate' => today()->subWeek(), 'EndDate' => today(),
+        ]);
+        ClassSession::create([
+            'StudentClassID' => $course->ID, 'SessionDate' => today()->subDays(3),
+            'StartTime' => '10:00', 'EndTime' => '12:00', 'Status' => 'completed',
+        ]);
+        $path = "/api/v1/student-classes/{$course->ID}/add-session";
+        $data = ['session_date' => today()->subDays(2)->toDateString(), 'start_time' => '10:00'];
+        $this->withToken($token)->postJson("{$path}/check", $data)
+            ->assertOk()->assertJsonPath('can_add', true);
+        $this->withToken($token)->postJson($path, $data + ['auto_approve' => $approve])
+            ->assertCreated()->assertJsonPath('message', $message)->assertJsonPath('auto_approved', $approve);
+    }
+
+    public static function monthlyBackfillApprovals(): array
+    {
+        return [
+            [false, '已補登月結堂次，待老師填寫評量'],
+            [true, '已補登月結堂次，評量已核准'],
+        ];
+    }
+
     public function test_shared_package_quick_add_uses_pool_capacity_when_member_is_full(): void
     {
         $token = $this->createDirectorToken([1]);

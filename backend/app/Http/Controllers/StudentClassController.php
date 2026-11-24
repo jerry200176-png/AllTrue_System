@@ -3928,7 +3928,7 @@ class StudentClassController extends Controller
             // positive SessionCount, but that field must not turn a monthly
             // contract into a prepaid capacity check (renewMonthly creates
             // exactly such rows).
-            $isSessionMode = (string) ($studentClass->ScheduleMode ?? 'count') === 'count';
+            $isSessionMode = $this->usesPurchasedSessionCount($studentClass);
             $sessionCount = max(0, (int) ($studentClass->SessionCount ?? 0));
             $movedFromDate = null;
             $todayYmd = Carbon::now()->toDateString();
@@ -4121,10 +4121,17 @@ class StudentClassController extends Controller
                 $record->save();
             }
 
+            $message = $approved
+                ? '已補登加課並扣堂'
+                : ($isEnded ? '已補登堂次，待老師填寫評量' : '已調整加課堂次');
+            if ($studentClass->ScheduleMode === 'date') {
+                $message = $approved
+                    ? '已補登月結堂次，評量已核准'
+                    : ($isEnded ? '已補登月結堂次，待老師填寫評量' : '已調整月結堂次');
+            }
+
             return response()->json([
-                'message' => $approved
-                    ? '已補登加課並扣堂'
-                    : ($isEnded ? '已補登堂次，待老師填寫評量' : '已調整加課堂次'),
+                'message' => $message,
                 'student_class_id' => (int) $studentClass->ID,
                 'class_session_id' => (int) $classSession->id,
                 'session_date' => $sessionDate,
@@ -4161,8 +4168,7 @@ class StudentClassController extends Controller
         $startTime = ContractSessionSchedule::normalizeSessionTime($data['start_time'] ?? null, $studentClass->time ?: '16:00');
 
         $classId = (int) $studentClass->ID;
-        $isSessionMode = ((string) ($studentClass->ScheduleMode ?? 'count') === 'count')
-            || ((int) ($studentClass->SessionCount ?? 0) > 0);
+        $isSessionMode = $this->usesPurchasedSessionCount($studentClass);
         $sessionCount = max(0, (int) ($studentClass->SessionCount ?? 0));
         $todayYmd = Carbon::now()->toDateString();
         $nowTime = Carbon::now()->format('H:i:s');
@@ -4350,6 +4356,11 @@ class StudentClassController extends Controller
         }
 
         return $this->scheduleGuardService->validateCourseOccurrence($studentClass, $branchId, $sessionDate, substr($startTime, 0, 5), substr($endTime, 0, 5));
+    }
+
+    private function usesPurchasedSessionCount(StudentClass $course): bool
+    {
+        return (string) ($course->ScheduleMode ?? 'count') === 'count';
     }
 
     /**

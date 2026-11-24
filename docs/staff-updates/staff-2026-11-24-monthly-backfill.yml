@@ -1,0 +1,14 @@
+updates:
+  - id: staff-2026-11-24-monthly-backfill
+    published_at: "2026-11-24"
+    audiences:
+      - director
+      - teacher
+    importance: digest
+    title: 月結課程可補登已上過的課
+    summary: 月結補登依合約期間檢查，保留舊堂數設定的課程也能補登。
+    items:
+      - category: fixed
+        text: 送出後會顯示評量待填或已核准。
+    source_refs:
+      - "changelog:2026-11-24:monthly-backfill"

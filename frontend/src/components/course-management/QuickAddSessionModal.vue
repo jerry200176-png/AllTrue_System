@@ -5,7 +5,10 @@
       <p class="modal-desc">
         {{ form.student_name }} — {{ subjectLabel }}
       </p>
-      <p v-if="form.is_monthly" class="modal-hint">選這堂課實際上課的日期和時間（要在這份合約的期間內）。那個月的帳單還沒收款：金額會跟著重算（一張帳單含多門課時不會，請自己核對）。已經收過款：金額不會自動變，帳單會標成需核對，差額要另外處理。</p>
+      <details v-if="form.is_monthly" class="modal-hint">
+        <summary>補登會計入月結</summary>
+        <p>請選合約期間內實際上課的日期。未收款的單課帳單會重算，多課合併帳單請另行核對。已收款的帳單會標成需核對，差額另行處理。評量待填的堂次也會計費。</p>
+      </details>
       <p v-else class="modal-hint">堂數制課程若堂次已排滿，系統會將最後一筆可調整的未來排課移至您選的日期，購買總堂數不會增加。</p>
       <div class="form-group">
         <label>本堂日期</label>
@@ -28,7 +31,7 @@
       <div class="form-group">
         <label class="hint">
           <input v-model="form.auto_approve" type="checkbox" />
-          {{ form.is_monthly ? '評量同時自動核准並寫入點名（不勾＝評量等老師填；這堂一樣算已上課、會計費）' : '若該堂已下課，直接補登並扣堂，評量同時自動核准' }}
+          {{ form.is_monthly ? '同時核准評量並登記出席' : '若該堂已下課，直接補登並扣堂，評量同時自動核准' }}
         </label>
       </div>
 
@@ -42,9 +45,9 @@
 
       <div v-else-if="conflict && conflict.existing_session_id" class="existing-session-banner">
         <p class="conflict-msg">
-          這個日期／時段已經有一堂課（未上課）。送出只會更新這一堂，不會重複新增，也不會增加已購堂數。
+          {{ form.is_monthly ? '這個時段已有月結課，送出會更新原堂次。' : '這個日期／時段已經有一堂課。送出只會更新這一堂，不會重複新增，也不會增加已購堂數。' }}
         </p>
-        <p class="existing-session-hint">如果是要完成點名，請在上課後到「出缺勤」處理。</p>
+        <p v-if="!form.is_monthly" class="existing-session-hint">如果是要完成點名，請在上課後到「出缺勤」處理。</p>
       </div>
 
       <div v-if="conflict?.package_planning?.renewal_warning" class="conflict-banner package-planning-banner" role="alert">
