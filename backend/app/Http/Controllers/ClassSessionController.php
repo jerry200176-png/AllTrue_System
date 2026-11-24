@@ -1366,7 +1366,7 @@ class ClassSessionController extends Controller
         if (!$audit) {
             return response()->json([
                 'available' => false,
-                'message' => '這堂課沒有可驗證的最近取消紀錄，系統不提供盲目復原。',
+                'message' => '目前無法直接復原。如需更正，請在「意見與建議」提供課程編號與日期。',
             ]);
         }
 

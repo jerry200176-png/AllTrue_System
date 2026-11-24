@@ -77,6 +77,7 @@ test('blocked backfill opens the cancelled lesson recovery dialog on a phone', a
     if (route.request().method() === 'POST') {
       if (pathname === path + '/check') return route.fulfill({ json: {
         can_add: false, conflict_type: 'original_session', error_code: 'USE_ORIGINAL_SESSION', conflict_session_id: cancelled.id,
+        message: '這堂課已取消，可復原。', suggested_actions: ['查看本課程堂次'],
       } });
       if (pathname.endsWith('/manual-sessions/check')) return route.fulfill({ json: { can_add: true } });
       writes.push(pathname);
@@ -106,7 +107,10 @@ test('blocked backfill opens the cancelled lesson recovery dialog on a phone', a
   await page.getByTestId('manual-session-backfill').click();
   const modal = page.locator('.course-modal').filter({ has: page.getByRole('heading', { name: '補登已上過的課' }) });
   await expect(modal.getByRole('button', { name: '確認送出' })).toBeDisabled();
-  await modal.getByRole('button', { name: '查看本課程堂次' }).click();
+  await expect(modal.getByText('這堂課已取消，可復原。')).toBeVisible();
+  await expect(modal.getByText('查看本課程堂次')).toHaveCount(0);
+  await expect(modal.getByRole('button', { name: '重新檢查' })).toHaveCount(0);
+  await modal.getByRole('button', { name: '查看原堂次' }).click();
   await manager.getByTestId('drawer-restore-cancelled').click();
   await expect(page.getByLabel('復原原因')).toBeVisible();
   expect(writes).toEqual([]);

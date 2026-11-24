@@ -190,7 +190,7 @@ class AddSessionConflictTest extends TestCase
         if ($cancel) {
             $canRestore = $status === 'scheduled' && !$editNote;
             $this->withToken($token)->getJson("{$uri}/recovery")->assertOk()->assertJsonPath('available', $canRestore);
-            $this->assertStringContainsString($canRestore ? '復原選項' : '無法直接復原', $check->json('message'));
+            $this->assertStringContainsString($canRestore ? '可復原' : '無法直接復原', $check->json('message'));
         }
         $this->withToken($token)->postJson($path, $data + ['auto_approve' => true])
             ->assertConflict()->assertJsonPath('error_code', 'USE_ORIGINAL_SESSION');

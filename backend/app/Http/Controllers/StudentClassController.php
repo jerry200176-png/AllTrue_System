@@ -4410,13 +4410,13 @@ class StudentClassController extends Controller
             ->latest('id')->get(['id', 'session_id', 'action_type', 'operator_id', 'old_data', 'new_data'])->unique('session_id')
             ->first(fn (ScheduleAuditLog $audit) => $audit->recordsNamedCancellation());
         if ($leave || $cancellation) {
-            $message = '這個時段已有請假紀錄，請回到原課程確認請假與順延。';
+            $message = '這堂課已請假。';
             if (!$leave) {
                 $latestUpdate = ScheduleAuditLog::where('session_id', $cancellation->session_id)
                     ->where('action_type', 'update')->max('id');
                 $message = $cancellation->recordsRestorableCancellation() && (int) $latestUpdate === (int) $cancellation->id
-                    ? '這個時段的堂次已被取消，請從原堂次查看復原選項。'
-                    : '原堂次有取消紀錄，目前無法直接復原。請先查看原堂次，如需更正，請在「意見與建議」提供課程編號與日期。';
+                    ? '這堂課已取消，可復原。'
+                    : '這堂課已取消，無法直接復原。';
             }
             return [
                 'conflict_type' => 'original_session',
