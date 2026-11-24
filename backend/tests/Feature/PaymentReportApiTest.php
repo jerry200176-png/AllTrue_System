@@ -1685,7 +1685,7 @@ class PaymentReportApiTest extends TestCase
     {
         return [
             'positive monthly balance' => ['attended', 1200, 1, '月結這次要收 2026 年 7 月，應收 NT$1200，請重新載入繳費通知後再登記。'],
-            'no payable amount this month' => ['scheduled', 0, 0, '2026 年 7 月目前沒有可登記的應收，這次未登記收款。請保留實收金額，核對付款涵蓋的月份、該期帳單與實際上課紀錄。'],
+            'no payable amount this month' => ['scheduled', 0, 0, '2026 年 7 月沒有應收款。請核對這筆付款的月份。'],
         ];
     }
 
