@@ -113,6 +113,28 @@ class MakeupSubstituteBusyV2Test extends TestCase
         $this->assertSame([], $guard->validateRecurringCourse($payload));
     }
 
+    #[\PHPUnit\Framework\Attributes\DataProvider('inactiveSessions')]
+    public function test_inactive_makeup_with_live_substitute_record_releases_the_teacher(string $status): void
+    {
+        $this->flag(true);
+        DB::table('UserCampus')->insert(['CampusID' => 1, 'UserID' => $this->bId, 'Admin' => 0, 'Approved' => 1]);
+        ClassSession::whereDate('SessionDate', self::DATE)->update(['Status' => $status]);
+        $this->assertTrue(LearningRecord::where('TeacherID', $this->bId)->whereNull('VoidedAt')->exists());
+        $guard = app(ScheduleGuardService::class);
+        foreach ([1, 2] as $campus) {
+            $this->assertSame([], $guard->validateRecurringCourse([
+                'teacher_id' => $this->bId, 'branch_id' => $campus, 'class_type' => 'one_on_one', 'start_date' => self::DATE,
+                'slots' => [['day_of_week' => 7, 'start_time' => '10:00', 'end_time' => '11:00']],
+            ]));
+        }
+        $this->assertSame([], $this->guard());
+    }
+
+    public static function inactiveSessions(): array
+    {
+        return [['cancelled'], ['leave']];
+    }
+
     public function test_flag_off_substitute_on_a_makeup_is_not_busy(): void
     {
         $this->flag(false);

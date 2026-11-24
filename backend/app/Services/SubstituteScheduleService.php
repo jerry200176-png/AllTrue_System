@@ -448,6 +448,11 @@ class SubstituteScheduleService
         $rows = $q->when($lock, fn ($q) => $q->lockForUpdate())->get([$lock ? DB::raw('STRAIGHT_JOIN m.id') : 'm.id', 'm.schedule_date', 'm.start_time', 'm.end_time', 'm.branch_id', 'm.student_course_id', 'sc.TeacherID as contract_teacher_id',
             DB::raw('COALESCE(m.student_id, sc.StudentID) as student_id'), DB::raw("COALESCE(sc.ClassType, 'one_on_one') as class_type")]);
 
+        // A surviving LearningRecord assigns an instructor, but only a live occurrence reserves their time.
+        $rows = collect(app(StaleScheduleExceptionFilter::class)->rejectStaleBatch(
+            $rows->groupBy('schedule_date')->toArray(), $lock
+        ))->collapse();
+
         if ($lock) {
             return $rows->filter(fn ($r) => self::teacherForOccurrence((int) $r->student_course_id, $ymd, (int) $r->contract_teacher_id, (string) $r->start_time, true) === $teacherId)->values()->all();
         }
