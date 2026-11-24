@@ -198,3 +198,52 @@ test('course planning reads use a canonical GET and decline redirects', async ({
     await new Promise((resolve) => server.close(resolve));
   }
 });
+
+test('monthly backfill shows the assessment result on a phone', async ({ page, context, baseURL }) => {
+  const origin = new URL(baseURL).origin;
+  expect(new URL(origin).hostname).toBe('127.0.0.1');
+  const monthly = { ...course, status: 'active', Stop: 0, closed_reason: null,
+    is_active_course: true, ScheduleMode: 'date', payment_type: 'monthly', end_date: '2026-08-31' };
+  const path = `/api/v1/student-classes/${course.id}/add-session`;
+  const success = '已補登月結堂次，待老師填寫評量';
+  const submissions = [];
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.clock.install({ time: new Date('2026-08-20T20:00:00+08:00') });
+  await context.route((url) => url.origin !== origin, route => route.abort('blockedbyclient'));
+  await installLocalClassSessionReads(context, origin);
+  await context.route((url) => url.origin === origin && url.pathname.startsWith('/api/v1/')
+      && !isKnownStatefulRead(origin, 'GET', url), route => {
+    const { pathname } = new URL(route.request().url());
+    if (route.request().method() === 'POST') {
+      if (pathname === path + '/check') return route.fulfill({ json: { can_add: true, conflict_type: 'none', is_ended: true } });
+      if (pathname === path) {
+        submissions.push(route.request().postDataJSON());
+        return route.fulfill({ status: 201, json: { message: success, no_total_increase: true } });
+      }
+      if (pathname.endsWith('/manual-sessions/check')) return route.fulfill({ json: { can_add: true } });
+      return route.abort('blockedbyclient');
+    }
+    if (route.request().method() !== 'GET') return route.abort('blockedbyclient');
+    if (pathname === '/api/v1/me') return route.fulfill({ json: {
+      id: 9001, role: 'director', name: 'Synthetic Director', campuses: [1], must_change_password: false,
+    } });
+    const data = pathname === '/api/v1/student-classes' ? [monthly] : [];
+    return route.fulfill({ json: { data, total: data.length, current_page: 1, last_page: 1 } });
+  });
+  await installCoursePlanningRead(page, origin, {
+    branchId: 1, courseId: course.id, readWindow: () => ({ materialized: [], projected: [] }),
+  });
+  await page.goto(`/app-pilot-mount.html?app_page=course-mgmt&branch_id=1&student_id=${course.student_id}&course_id=${course.id}`);
+  await dismissOverlays(page);
+  const manager = page.getByTestId('course-manager');
+  await manager.getByRole('tab', { name: '堂次', exact: true }).click();
+  await manager.getByTestId('course-manager-schedule-cta').click();
+  await page.getByTestId('manual-session-backfill').click();
+  const modal = page.locator('.course-modal').filter({ has: page.getByRole('heading', { name: '補登已上過的課' }) });
+  const messages = [];
+  page.on('dialog', async dialog => { messages.push(dialog.message()); await dialog.accept(); });
+  await modal.getByRole('button', { name: '確認送出' }).click();
+  await expect.poll(() => messages).toEqual([success]);
+  expect(submissions).toHaveLength(1);
+  expect(submissions[0].auto_approve).toBe(false);
+});

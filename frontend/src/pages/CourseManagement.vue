@@ -3587,10 +3587,15 @@ async function submitQuickAddSession() {
     closeQuickAddSessionModal();
     quickAddConflict.value = null;
     const movedFrom = String(json?.moved_from_date || '').slice(0, 10);
-    const defaultMsg = movedFrom
-      ? `已補登完成，已將原 ${movedFrom} 的堂次調整到新日期（總堂數不變）。`
-      : (json?.no_total_increase ? '已補登完成（總堂數不變）。' : '已補登完成。');
-    alert(json?.message ? `${json.message}\n${defaultMsg}` : defaultMsg);
+    if (isMonthlyMode(course)) {
+      const message = json?.message || '已更新月結堂次';
+      alert(movedFrom ? `${message}。原 ${movedFrom} 的堂次已移至新日期。` : message);
+    } else {
+      const defaultMsg = movedFrom
+        ? `已補登完成，已將原 ${movedFrom} 的堂次調整到新日期（總堂數不變）。`
+        : (json?.no_total_increase ? '已補登完成（總堂數不變）。' : '已補登完成。');
+      alert(json?.message ? `${json.message}\n${defaultMsg}` : defaultMsg);
+    }
     await loadCourses();
   } catch (e) {
     alert('補課失敗：' + (e?.message || '請稍後再試'));
