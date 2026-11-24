@@ -397,7 +397,10 @@ class SubstituteScheduleService
         if ($lock && (!$branchId || $branchId <= 0)) {
             throw new \InvalidArgumentException('Current makeup occupancy requires a campus');
         }
-        if ($lock && !\App\Helpers\FeatureFlag::enabled(RescheduleSessionService::OCCURRENCE_V2_FLAG, (int) $branchId)) return [];
+        // A rollout at another campus does not add a makeup lookup to this campus's legacy guard.
+        if ($branchId && !\App\Helpers\FeatureFlag::enabled(RescheduleSessionService::OCCURRENCE_V2_FLAG, $branchId)) {
+            return [];
+        }
         // Each discovery read is CURRENT and covering: hold ownership/index keys,
         // not unrelated clustered payload rows. Same PDO includes caller writes.
         $lrIds = [];
