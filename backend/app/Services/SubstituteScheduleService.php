@@ -165,6 +165,39 @@ class SubstituteScheduleService
         return $v2 !== null && $v2[0] > 0 && $v2[0] !== $v2[1];
     }
 
+    /**
+     * Read-side isSubstitutedAway() for calendar rows already joined to their contract and campus.
+     * @param iterable<object> $sessions Rows with course_id, teacher_id, joined_student_id, campus_id, d and start_time.
+     * @return array<string, true> occurrenceKey() of sessions taught by another teacher
+     */
+    public static function substitutedAwayInCalendar(iterable $sessions): array
+    {
+        if (!self::anyCampusOn()) {
+            return [];
+        }
+
+        $enabled = $items = $contracts = [];
+        foreach ($sessions as $row) {
+            $campus = (int) $row->campus_id;
+            if ($row->joined_student_id === null || !($enabled[$campus] ??= OccurrenceAssignmentService::enabledFor($campus))) {
+                continue;
+            }
+            $id = (int) $row->course_id;
+            $key = self::occurrenceKey($id, $row->d, $row->start_time);
+            $contracts[$id] = (int) $row->teacher_id;
+            $items[$key] = ['course_id' => $id, 'date' => $row->d, 'start_time' => $row->start_time,
+                'contract_teacher_id' => $contracts[$id]];
+        }
+
+        $away = [];
+        foreach (self::readOnlyV2Teachers($items, $contracts) as $key => $teacher) {
+            if ($teacher > 0 && $teacher !== $items[$key]['contract_teacher_id']) {
+                $away[$key] = true;
+            }
+        }
+        return $away;
+    }
+
     /** False with no queries unless some `schedule-occurrence-v2` value (global or per campus) is on. */
     public static function anyCampusOn(): bool
     {
