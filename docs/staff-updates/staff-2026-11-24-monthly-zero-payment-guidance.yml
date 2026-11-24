@@ -1,0 +1,13 @@
+updates:
+  - id: staff-2026-11-24-monthly-zero-payment-guidance
+    published_at: "2026-11-24"
+    audiences:
+      - director
+    importance: digest
+    title: 月結沒有可登記應收時，提示核對期別
+    summary: 登記收款遇到應收為零時，會列出系統核對的月份。
+    items:
+      - category: fixed
+        text: 請保留實收金額，先確認付款涵蓋的月份、帳單與上課紀錄。
+    source_refs:
+      - "changelog:2026-11-24:monthly-zero-payment-guidance"

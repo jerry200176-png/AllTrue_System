@@ -1634,7 +1634,10 @@ class PaymentReportApiTest extends TestCase
             ->assertJsonPath('session_dates.0.end_time', '20:00');
     }
 
-    public function test_monthly_director_record_rejects_stale_amount_from_old_notification(): void
+    #[\PHPUnit\Framework\Attributes\DataProvider('monthlyRegistrationRefusals')]
+    public function test_monthly_director_record_rejects_stale_amount_from_old_notification(
+        string $lessonStatus, int $expectedAmount, int $expectedSessions, string $expectedMessage
+    ): void
     {
         Carbon::setTestNow('2026-07-31 12:00:00');
         $token = $this->createDirectorToken([1]);
@@ -1654,7 +1657,7 @@ class PaymentReportApiTest extends TestCase
             'SessionDate' => '2026-07-24',
             'StartTime' => '18:00',
             'EndTime' => '20:00',
-            'Status' => 'attended',
+            'Status' => $lessonStatus,
         ]);
 
         $res = $this->withHeaders([
@@ -1669,9 +1672,21 @@ class PaymentReportApiTest extends TestCase
 
         $res->assertStatus(422)
             ->assertJsonPath('code', 'monthly_amount_stale')
-            ->assertJsonPath('expected_amount', 1200)
-            ->assertJsonPath('period_sessions', 1);
+            ->assertJsonPath('billing_period', '2026-07')
+            ->assertJsonPath('expected_amount', $expectedAmount)
+            ->assertJsonPath('period_sessions', $expectedSessions)
+            ->assertJsonPath('message', $expectedMessage);
         $this->assertSame(0, PaymentReport::query()->count());
+        $this->assertSame(0, Invoice::query()->count());
+        $this->assertSame(0, Payment::query()->count());
+    }
+
+    public static function monthlyRegistrationRefusals(): array
+    {
+        return [
+            'positive monthly balance' => ['attended', 1200, 1, '月結這次要收 2026 年 7 月，應收 NT$1200，請重新載入繳費通知後再登記。'],
+            'no payable amount this month' => ['scheduled', 0, 0, '2026 年 7 月目前沒有可登記的應收，這次未登記收款。請保留實收金額，核對付款涵蓋的月份、該期帳單與實際上課紀錄。'],
+        ];
     }
 
     // (#934) 課程計費模式（堂數制/月結）在開立發票後被變更 → 收據應標示「可能已被取代」
