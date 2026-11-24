@@ -163,7 +163,7 @@ class AddSessionConflictTest extends TestCase
     }
 
     /** @dataProvider originalSessionStates */
-    public function test_backfill_preserves_leave_and_director_cancellation(string $status): void
+    public function test_backfill_preserves_leave_and_director_cancellation(string $status, bool $cancel, bool $editNote): void
     {
         $token = $this->createDirectorToken([1]);
         $student = $this->createStudent(1);
@@ -176,17 +176,25 @@ class AddSessionConflictTest extends TestCase
         // An earlier system cancellation in the same slot must not hide the original.
         ClassSession::create($slot + ['Status' => 'cancelled']);
         $original = ClassSession::create($slot + ['Status' => $status]);
-        if ($status === 'scheduled') {
-            $this->withToken($token)->patchJson("/api/v1/class-sessions/{$original->id}", ['status' => 'cancelled'])->assertOk();
-            $this->withToken($token)->patchJson("/api/v1/class-sessions/{$original->id}", ['status' => 'cancelled', 'note' => '保留原取消紀錄'])->assertOk();
+        $uri = "/api/v1/class-sessions/{$original->id}";
+        if ($cancel) {
+            $this->withToken($token)->patchJson($uri, ['status' => 'cancelled'])->assertOk();
+        }
+        if ($editNote) {
+            $this->withToken($token)->patchJson($uri, ['status' => 'cancelled', 'note' => '保留原取消紀錄'])->assertOk();
         }
         $auditCount = DB::table('schedule_audit_logs')->where('session_id', $original->id)->count();
         $path = "/api/v1/student-classes/{$course->ID}/add-session";
-        $this->withToken($token)->postJson("{$path}/check", $data)
+        $check = $this->withToken($token)->postJson("{$path}/check", $data)
             ->assertOk()->assertJsonPath('can_add', false)->assertJsonPath('conflict_session_id', $original->id);
+        if ($cancel) {
+            $canRestore = $status === 'scheduled' && !$editNote;
+            $this->withToken($token)->getJson("{$uri}/recovery")->assertOk()->assertJsonPath('available', $canRestore);
+            $this->assertStringContainsString($canRestore ? '復原選項' : '無法直接復原', $check->json('message'));
+        }
         $this->withToken($token)->postJson($path, $data + ['auto_approve' => true])
             ->assertConflict()->assertJsonPath('error_code', 'USE_ORIGINAL_SESSION');
-        $this->assertSame($status === 'scheduled' ? 'cancelled' : $status, $original->refresh()->Status);
+        $this->assertSame($cancel ? 'cancelled' : $status, $original->refresh()->Status);
         $this->assertSame($auditCount, DB::table('schedule_audit_logs')->where('session_id', $original->id)->count());
         $this->assertDatabaseMissing('LearningRecord', ['ClassSessionID' => $original->id]);
         $this->assertDatabaseMissing(StudentSignIn::class, ['ClassSessionID' => $original->id]);
@@ -215,7 +223,11 @@ class AddSessionConflictTest extends TestCase
 
     public static function originalSessionStates(): array
     {
-        return [['leave'], ['leave_adjusted'], ['scheduled']];
+        return [
+            ['leave', false, false], ['leave_adjusted', false, false],
+            ['leave', true, false], ['leave_adjusted', true, false],
+            ['scheduled', true, true], ['scheduled', true, false],
+        ];
     }
 
     public function test_check_keeps_manually_voided_learning_record_locked(): void

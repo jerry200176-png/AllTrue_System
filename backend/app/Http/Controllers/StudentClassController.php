@@ -4405,15 +4405,22 @@ class StudentClassController extends Controller
         $cancellation = $cancelledIds->isEmpty() ? null : ScheduleAuditLog::query()
             ->whereIn('session_id', $cancelledIds)->where('action_type', 'update')
             ->whereColumn('old_data->Status', '!=', 'new_data->Status')->latest('id')
-            ->get(['session_id', 'operator_id', 'old_data', 'new_data'])->unique('session_id')
-            ->first(fn (ScheduleAuditLog $audit) => $audit->recordsRestorableCancellation());
+            ->get(['id', 'session_id', 'operator_id', 'old_data', 'new_data'])->unique('session_id')
+            ->first(fn (ScheduleAuditLog $audit) => $audit->recordsNamedCancellation());
         if ($leave || $cancellation) {
+            $message = '這個時段已有請假紀錄，請回到原課程確認請假與順延。';
+            if (!$leave && $cancellation) {
+                $latestUpdate = ScheduleAuditLog::where('session_id', $cancellation->session_id)
+                    ->where('action_type', 'update')->max('id');
+                $message = $cancellation->recordsRestorableCancellation() && (int) $latestUpdate === (int) $cancellation->id
+                    ? '這個時段的堂次已被取消，請從原堂次查看復原選項。'
+                    : '原堂次有取消紀錄，目前無法直接復原。請先查看原堂次，如需更正，請在「意見與建議」提供課程編號與日期。';
+            }
             return [
                 'conflict_type' => 'original_session',
                 'error_code' => 'USE_ORIGINAL_SESSION',
                 'conflict_session_id' => (int) ($leave?->id ?? $cancellation->session_id),
-                'message' => $leave ? '這個時段已有請假紀錄，請回到原課程確認請假與順延。'
-                    : '這個時段的堂次已被取消，請查看原堂次的取消紀錄與復原選項。',
+                'message' => $message,
                 'suggested_actions' => ['查看本課程堂次'],
             ];
         }
