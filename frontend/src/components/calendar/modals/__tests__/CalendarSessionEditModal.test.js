@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { mount } from '@vue/test-utils';
+import { reactive } from 'vue';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import CalendarSessionEditModal from '../CalendarSessionEditModal.vue';
@@ -128,7 +129,7 @@ describe('CalendarSessionEditModal', () => {
 
   it('改到其他合約: lists targets, emits submit only with target + reason', async () => {
     const targets = [{ id: 9, session_count: 8, used_sessions: 8, remaining_sessions: 0, closed: true }];
-    const moveContract = { open: true, loading: false, targetId: '', reason: '', submitting: false, targets };
+    const moveContract = reactive({ open: true, loading: false, targetId: '', reason: '', submitting: false, targets });
     const w = mount(CalendarSessionEditModal, {
       props: { show: true, form, ratePer2h: 2000, session: { ...session, canMoveContract: true, moveContract }, options: {} },
       global: { stubs: { SearchableSelect: true } },
@@ -136,9 +137,13 @@ describe('CalendarSessionEditModal', () => {
     await w.find('[data-testid="calendar-move-contract"]').trigger('click');
     expect(w.emitted('open-move-contract')).toHaveLength(1);
     expect(w.text()).toContain('（已結束）');
+    const submit = w.get('[data-testid="calendar-move-contract-submit"]');
+    expect(submit.element.disabled).toBe(true);
     await w.find('#move-contract-target').setValue(9);
+    expect(submit.element.disabled).toBe(true);
     await w.find('#move-contract-reason').setValue('掛錯合約');
-    await w.find('[data-testid="calendar-move-contract-submit"]').trigger('click');
+    expect(submit.element.disabled).toBe(false);
+    await submit.trigger('click');
     expect(w.emitted('submit-move-contract')).toHaveLength(1);
   });
 
