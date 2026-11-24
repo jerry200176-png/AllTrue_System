@@ -117,7 +117,7 @@ class TeacherClassCalendar
             ->whereNotNull('sc.TeacherID')
             ->whereBetween('cs.SessionDate', [$from, $to])
             ->whereNotIn('cs.Status', $off)
-            ->select('sc.TeacherID as teacher_id', 'cs.StudentClassID as course_id', 'cs.SessionDate as d', 'cs.StartTime as start_time', 'cs.EndTime as end_time', 'st.CampusID as campus_id', 'sc.StudentID as student_id');
+            ->select('sc.TeacherID as teacher_id', 'cs.StudentClassID as course_id', 'cs.SessionDate as d', 'cs.StartTime as start_time', 'cs.EndTime as end_time', 'st.CampusID as campus_id', 'sc.StudentID as student_id', 'st.id as joined_student_id');
         if ($campusIds !== null) {
             $sessionQuery->whereIn('st.CampusID', $campusIds);
         }
@@ -126,10 +126,13 @@ class TeacherClassCalendar
         }
 
         $out = [];
-        foreach ($sessionQuery->get() as $row) {
+        $sessions = $sessionQuery->get();
+        $substitutedAway = SubstituteScheduleService::substitutedAwayInCalendar($sessions);
+        foreach ($sessions as $row) {
+            $key = SubstituteScheduleService::occurrenceKey((int) $row->course_id, $row->d, $row->start_time);
             $subs = $substitutedBy[self::key($row->course_id, $row->d, $row->start_time)] ?? [];
             unset($subs[(int) $row->teacher_id]);
-            if ($subs !== [] || SubstituteScheduleService::isSubstitutedAway((int) $row->course_id, $row->d, (string) $row->start_time)) {
+            if ($subs !== [] || isset($substitutedAway[$key])) {
                 continue;
             }
             self::push($out, $row->teacher_id, $row->d, $row->start_time, $row->end_time, $row->campus_id, $row->student_id, $row->course_id);

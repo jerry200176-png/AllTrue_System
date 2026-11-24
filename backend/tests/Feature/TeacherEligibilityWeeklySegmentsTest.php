@@ -74,6 +74,49 @@ class TeacherEligibilityWeeklySegmentsTest extends TestCase
         $this->assertNull($row['overlaps'][0]['lessons'][1]['course_id']);
     }
 
+    public function test_calendar_query_count_stays_flat_as_more_lessons_are_loaded(): void
+    {
+        config(['feature_flags.values' => ['FEATURE_SCHEDULE_OCCURRENCE_V2_CAMPUS_1' => true]]);
+        $teacher = $this->createTeacher();
+        $date = '2026-08-03';
+        $queryCounts = [];
+        foreach ([[0, 3], [3, 9]] as [$from, $total]) {
+            for ($i = $from; $i < $total; $i++) {
+                $this->createAttendedSession($teacher->id, 'one_on_one', $date, sprintf('%02d:00', 9 + $i), 60);
+            }
+            DB::enableQueryLog();
+            try {
+                $calendar = \App\Services\TeacherClassCalendar::load($date, $date, [1], $teacher->id);
+                $queryCounts[] = count(DB::getQueryLog());
+            } finally {
+                DB::disableQueryLog();
+                DB::flushQueryLog();
+            }
+            $this->assertCount($total, $calendar[$teacher->id][$date]);
+        }
+        $this->assertSame($queryCounts[0], $queryCounts[1], 'Queries for 3 and 9 lessons must match.');
+    }
+
+    public function test_calendar_substitution_uses_each_courses_campus_flag(): void
+    {
+        $contract = $this->createTeacher();
+        $substitute = $this->createTeacher('calendar-substitute@test.com');
+        $other = Campus::factory()->create();
+        config(['feature_flags.values' => ['FEATURE_SCHEDULE_OCCURRENCE_V2_CAMPUS_1' => true]]);
+        $date = '2026-08-03';
+        foreach ([1, $other->id] as $campusId) {
+            $session = $this->createAttendedSession($contract->id, 'one_on_one', $date, '10:00', 60, campusId: $campusId);
+            // A stamped leave row assigns the teacher but is absent from the calendar's scheduled rows.
+            $this->schedule($substitute->id, $date, '10:00', '11:00', [
+                'branch_id' => $campusId, 'student_course_id' => $session->StudentClassID,
+                'status' => 'leave', 'original_schedule_date' => $date, 'original_start_time' => '10:00:00',
+            ]);
+        }
+
+        $calendar = \App\Services\TeacherClassCalendar::load($date, $date, null, $contract->id);
+        $this->assertSame([$other->id], array_column($calendar[$contract->id][$date], 'campus_id'));
+    }
+
     public function test_calendar_counts_one_slot_once_when_older_schedule_rows_were_superseded(): void // Founder 2026-11-20
     {
         $contract = $this->createTeacher();
