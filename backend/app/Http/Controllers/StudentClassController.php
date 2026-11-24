@@ -4411,7 +4411,7 @@ class StudentClassController extends Controller
             ->first(fn (ScheduleAuditLog $audit) => $audit->recordsNamedCancellation());
         if ($leave || $cancellation) {
             $message = '這個時段已有請假紀錄，請回到原課程確認請假與順延。';
-            if (!$leave && $cancellation) {
+            if (!$leave) {
                 $latestUpdate = ScheduleAuditLog::where('session_id', $cancellation->session_id)
                     ->where('action_type', 'update')->max('id');
                 $message = $cancellation->recordsRestorableCancellation() && (int) $latestUpdate === (int) $cancellation->id
@@ -4421,7 +4421,7 @@ class StudentClassController extends Controller
             return [
                 'conflict_type' => 'original_session',
                 'error_code' => 'USE_ORIGINAL_SESSION',
-                'conflict_session_id' => (int) ($leave?->id ?? $cancellation->session_id),
+                'conflict_session_id' => (int) ($leave->id ?? $cancellation->session_id),
                 'message' => $message,
                 'suggested_actions' => ['查看本課程堂次'],
             ];
