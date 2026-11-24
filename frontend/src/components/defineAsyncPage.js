@@ -1,44 +1,40 @@
-import { defineComponent, h, onBeforeMount, ref, shallowRef } from 'vue';
-import { useDelayedLoading } from '../composables/useDelayedLoading.js';
+import { defineAsyncComponent, defineComponent, h, onScopeDispose, ref, watch } from 'vue';
+import { LOADING_DELAY_MS, useDelayedLoading } from '../composables/useDelayedLoading.js';
 import AtSkeleton from './design-system/AtSkeleton.vue';
 
 export function defineAsyncPage(loader) {
-  let request;
-  let resolvedPage;
-
-  function loadPage() {
-    request ??= Promise.resolve().then(loader).then((module) => {
-      resolvedPage = module.default ?? module;
-      return resolvedPage;
-    }).catch((error) => {
-      request = undefined;
-      throw error;
-    });
-    return request;
-  }
-
-  return defineComponent({
-    name: 'AsyncPage',
+  const visibleSkeletons = new Set();
+  const loadingComponent = defineComponent({
     inheritAttrs: false,
-    setup(_, { attrs, slots }) {
-      const page = shallowRef(resolvedPage);
-      const loading = ref(!page.value);
-      const showSkeleton = useDelayedLoading(loading);
-
-      if (loading.value) {
-        onBeforeMount(async () => {
-          try {
-            page.value = await loadPage();
-          } finally {
-            loading.value = false;
-          }
+    setup() {
+      const show = useDelayedLoading(ref(true));
+      let finish;
+      watch(show, (visible) => {
+        if (!visible) return;
+        const minimum = new Promise((resolve) => {
+          const timer = setTimeout(resolve, LOADING_DELAY_MS);
+          finish = () => {
+            clearTimeout(timer);
+            resolve();
+          };
         });
-      }
+        visibleSkeletons.add(minimum);
+        minimum.then(() => visibleSkeletons.delete(minimum));
+      }, { flush: 'sync' });
+      onScopeDispose(() => finish?.());
+      return () => show.value ? h(AtSkeleton, { revealImmediately: true }) : null;
+    },
+  });
 
-      return () => {
-        if (showSkeleton.value) return h(AtSkeleton, { revealImmediately: true });
-        return page.value ? h(page.value, attrs, slots) : null;
-      };
+  return defineAsyncComponent({
+    delay: 0,
+    loadingComponent,
+    errorComponent: () => null,
+    async loader() {
+      const module = await loader();
+      // A second instance can show its skeleton while the first instance finishes.
+      while (visibleSkeletons.size) await Promise.all(visibleSkeletons);
+      return module.default ?? module;
     },
   });
 }
