@@ -21,6 +21,13 @@ abstract class TestCase extends BaseTestCase
     }
 
 
+    /** Return the real manager to Laravel before it disconnects the test's open connections. */
+    protected function restoreDatabaseManagerAfterMocking(): void
+    {
+        $manager = DB::getFacadeRoot();
+        $this->beforeApplicationDestroyed(static fn () => DB::swap($manager));
+    }
+
     private static bool $workerDbReady = false;
 
     /**

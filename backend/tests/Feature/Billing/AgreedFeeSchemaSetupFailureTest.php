@@ -27,6 +27,7 @@ class AgreedFeeSchemaSetupFailureTest extends TestCase
         $connection->shouldReceive('getDriverName')->andReturn('mysql');
         $connection->shouldReceive('getDatabaseName')->andReturn('AllTrue_test');
         $connection->shouldReceive('transactionLevel')->andReturn(0);
+        $this->restoreDatabaseManagerAfterMocking();
         DB::shouldReceive('connection')->andReturn($connection);
         $schema->shouldReceive('hasTable')->with('invoice_corrections')->andReturn(true);
         $schema->shouldReceive('hasTable')->with('Subject')->andReturn(false);
