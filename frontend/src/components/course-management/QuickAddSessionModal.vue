@@ -37,10 +37,15 @@
 
       <div v-if="conflict && conflict.conflict_type !== 'none'" class="conflict-banner">
         <p class="conflict-msg">{{ conflict.message }}</p>
-        <ul v-if="conflict.suggested_actions && conflict.suggested_actions.length" class="conflict-actions">
-          <li v-for="action in conflict.suggested_actions" :key="action">{{ action }}</li>
-        </ul>
-        <button type="button" class="ghost conflict-retry" @click="$emit('check')">重新檢查</button>
+        <button v-if="conflict.error_code === 'USE_ORIGINAL_SESSION'" type="button" class="ghost original-session-link" @click="$emit('view-history')">
+          <History :size="16" aria-hidden="true" /> 查看原堂次
+        </button>
+        <template v-else>
+          <ul v-if="conflict.suggested_actions?.length" class="conflict-actions">
+            <li v-for="action in conflict.suggested_actions" :key="action">{{ action }}</li>
+          </ul>
+          <button type="button" class="ghost conflict-retry" @click="$emit('check')">重新檢查</button>
+        </template>
       </div>
 
       <div v-else-if="conflict && conflict.existing_session_id" class="existing-session-banner">
@@ -77,6 +82,7 @@
 
 <script setup>
 import { computed } from 'vue';
+import { History } from 'lucide-vue-next';
 import { getSubjectLabel } from '../../lib/constants';
 import { askConfirm } from '../../composables/useConfirmDialog';
 
@@ -87,7 +93,7 @@ const props = defineProps({
   conflict: { type: Object, default: null },
   checking: { type: Boolean, default: false },
 });
-const emit = defineEmits(['close', 'submit', 'check']);
+const emit = defineEmits(['close', 'submit', 'check', 'view-history']);
 const subjectLabel = computed(() => getSubjectLabel(props.form?.subject));
 const submitDisabled = computed(() =>
   props.checking || (props.conflict && props.conflict.conflict_type !== 'none')
@@ -108,6 +114,7 @@ async function handleSubmit() {
 </script>
 
 <style scoped>
+.original-session-link { display: inline-flex; align-items: center; gap: 0.35rem; }
 .course-modal { width: 100%; max-width: 560px; max-height: 90vh; overflow-y: auto; }
 .modal-title { font-size: 1.15rem; font-weight: 700; color: var(--text); margin-bottom: 8px; }
 .modal-desc { color: var(--text-light); font-size: 13px; margin-bottom: 4px; line-height: 1.6; }

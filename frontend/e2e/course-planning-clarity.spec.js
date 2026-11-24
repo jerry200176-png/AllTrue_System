@@ -59,6 +59,63 @@ for (const width of [390, 1440]) {
   });
 }
 
+test('blocked backfill opens the cancelled lesson recovery dialog on a phone', async ({ page, context, baseURL }) => {
+  const origin = new URL(baseURL).origin;
+  expect(new URL(origin).hostname).toBe('127.0.0.1');
+  const monthly = { ...course, status: 'active', Stop: 0, closed_reason: null,
+    is_active_course: true, ScheduleMode: 'date', payment_type: 'monthly', end_date: '2026-08-31' };
+  const path = `/api/v1/student-classes/${course.id}/add-session`;
+  const cancelled = { ...sessions[0], status: 'cancelled' };
+  const writes = [];
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.clock.install({ time: new Date('2026-08-20T20:00:00+08:00') });
+  await context.route((url) => url.origin !== origin, route => route.abort('blockedbyclient'));
+  await installLocalClassSessionReads(context, origin);
+  await context.route((url) => url.origin === origin && url.pathname.startsWith('/api/v1/')
+      && !isKnownStatefulRead(origin, 'GET', url), route => {
+    const { pathname } = new URL(route.request().url());
+    if (route.request().method() === 'POST') {
+      if (pathname === path + '/check') return route.fulfill({ json: {
+        can_add: false, conflict_type: 'original_session', error_code: 'USE_ORIGINAL_SESSION', conflict_session_id: cancelled.id,
+        message: '這堂課已取消，可復原。', suggested_actions: ['查看本課程堂次'],
+      } });
+      if (pathname.endsWith('/manual-sessions/check')) return route.fulfill({ json: { can_add: true } });
+      writes.push(pathname);
+      return route.abort('blockedbyclient');
+    }
+    if (route.request().method() !== 'GET') return route.abort('blockedbyclient');
+    if (pathname === `/api/v1/class-sessions/${cancelled.id}/recovery`) {
+      return route.fulfill({ json: { available: true, previous_status: 'scheduled', audit_id: 9 } });
+    }
+    if (pathname === '/api/v1/me') return route.fulfill({ json: {
+      id: 9001, role: 'director', name: 'Synthetic Director', campuses: [1], must_change_password: false,
+    } });
+    if (pathname === '/api/v1/campuses' || pathname === '/api/v1/branches') {
+      return route.fulfill({ json: [{ id: 1, name: '合成分校' }] });
+    }
+    const data = pathname === '/api/v1/student-classes' ? [monthly] : [];
+    return route.fulfill({ json: { data, total: data.length, current_page: 1, last_page: 1 } });
+  });
+  await installCoursePlanningRead(page, origin, {
+    branchId: 1, courseId: course.id, readWindow: () => ({ materialized: [cancelled], projected: [] }),
+  });
+  await page.goto(`/app-pilot-mount.html?app_page=course-mgmt&branch_id=1&student_id=${course.student_id}&course_id=${course.id}`);
+  await dismissOverlays(page);
+  const manager = page.getByTestId('course-manager');
+  await manager.getByRole('tab', { name: '堂次', exact: true }).click();
+  await manager.getByTestId('course-manager-schedule-cta').click();
+  await page.getByTestId('manual-session-backfill').click();
+  const modal = page.locator('.course-modal').filter({ has: page.getByRole('heading', { name: '補登已上過的課' }) });
+  await expect(modal.getByRole('button', { name: '確認送出' })).toBeDisabled();
+  await expect(modal.getByText('這堂課已取消，可復原。')).toBeVisible();
+  await expect(modal.getByText('查看本課程堂次')).toHaveCount(0);
+  await expect(modal.getByRole('button', { name: '重新檢查' })).toHaveCount(0);
+  await modal.getByRole('button', { name: '查看原堂次' }).click();
+  await manager.getByTestId('drawer-restore-cancelled').click();
+  await expect(page.getByLabel('復原原因')).toBeVisible();
+  expect(writes).toEqual([]);
+});
+
 test('moving a one-hour lesson keeps its own duration on a two-hour contract', async ({ page, context, baseURL }) => {
   page.setDefaultTimeout(10_000);
   const origin = new URL(baseURL).origin;

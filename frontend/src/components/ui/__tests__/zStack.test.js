@@ -12,6 +12,11 @@ describe('overlay stack (in-app #518 review: confirm hidden behind the drawer)',
     expect(order).toEqual([...order].sort((a, b) => a - b));
     expect(new Set(order).size).toBe(order.length);
   });
+  it('places the course drawer above mobile navigation and below the lesson dialog', () => {
+    const layer = selector => Number(css.match(new RegExp(selector + '\\s*\\{[^}]*?z-index:\\s*(\\d+)'))[1]);
+    expect(z('overlay')).toBeGreaterThan(layer('\\.more-sheet'));
+    expect(z('overlay')).toBeLessThan(layer('\\.modal-overlay'));
+  });
   it('primitives read the tokens, never a literal z-50 / 1200', () => {
     for (const [f, t] of [['dialog/DialogContent.vue', 'modal'], ['dialog/DialogOverlay.vue', 'modal'], ['sheet/SheetContent.vue', 'modal'],
       ['alert-dialog/AlertDialogContent.vue', 'confirm'], ['dropdown-menu/DropdownMenuContent.vue', 'popover'], ['select/SelectContent.vue', 'popover'], ['tooltip/TooltipContent.vue', 'popover']]) {

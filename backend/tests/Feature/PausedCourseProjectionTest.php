@@ -113,6 +113,28 @@ class PausedCourseProjectionTest extends TestCase
         }
     }
 
+    public function test_explicit_projected_cancellation_cannot_be_reused_by_backfill(): void
+    {
+        [, $token, $courseId] = $this->seed1('date', 1);
+        $id = $this->ensureProjected($token, $courseId, ['cancel' => true])
+            ->assertOk()->json('session.id');
+        $this->withToken($token)->postJson("/api/v1/student-classes/{$courseId}/pause", ['action' => 'resume'])->assertOk();
+        $this->assertDatabaseHas('StudentClass', ['ID' => $courseId, 'Stop' => 0]);
+        $uri = "/api/v1/class-sessions/{$id}";
+        $this->withToken($token)->patchJson($uri, ['status' => 'cancelled', 'note' => '已核對'])->assertOk();
+        $this->withToken($token)->getJson("{$uri}/recovery")->assertOk()->assertJsonPath('available', false);
+        $path = "/api/v1/student-classes/{$courseId}/add-session";
+        $slot = ['session_date' => '2026-06-06', 'start_time' => '10:00'];
+        $this->withToken($token)->postJson("{$path}/check", $slot)->assertOk()
+            ->assertJsonPath('can_add', false)->assertJsonPath('error_code', 'USE_ORIGINAL_SESSION');
+        $this->withToken($token)->postJson($path, $slot)->assertConflict()->assertJsonPath('conflict_session_id', $id);
+        $this->assertDatabaseHas('ClassSession', ['id' => $id, 'Status' => 'cancelled']);
+        $this->assertDatabaseMissing('session_deduction_ledger', ['student_class_id' => $courseId]);
+        $this->assertDatabaseMissing('LearningRecord', ['ClassSessionID' => $id]);
+        $this->assertDatabaseMissing(\App\Models\StudentSignIn::class, ['ClassSessionID' => $id]);
+        $this->assertDatabaseMissing('Invoice', ['StudentClassID' => $courseId]);
+    }
+
     public function test_paused_course_still_refuses_plain_materialization(): void
     {
         [, $token, $courseId] = $this->seed1('date', 1);

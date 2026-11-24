@@ -1190,6 +1190,7 @@
       @close="closeQuickAddSessionModal"
       @submit="submitQuickAddSession"
       @check="runQuickAddCheck"
+      @view-history="viewQuickAddHistory"
     />
 
     <MonthlyCorrectionPreviewModal :show="monthlyCorrectionShow" :candidates="monthlyCorrectionCandidates" :form="monthlyCorrectionForm" :preview="monthlyCorrectionPreview"
@@ -3657,6 +3658,17 @@ function viewManualSessionHistory() {
   const course = manualSessionCourse.value;
   if (!course || !isMonthlyMode(course) || manualSessionSubmitting.value) return;
   closeManualSessionModal();
+  return viewCourseSessionHistory(course);
+}
+
+function viewQuickAddHistory() {
+  const course = quickAddSessionCourse.value;
+  if (!course) return;
+  closeQuickAddSessionModal();
+  return viewCourseSessionHistory(course);
+}
+
+function viewCourseSessionHistory(course) {
   showCancelledSessions.value = new Set([...showCancelledSessions.value, course.id]);
   return openCourseManager(course, 'sessions');
 }

@@ -944,7 +944,7 @@ class ClassSessionController extends Controller
             'StartTime'            => $slot['start_time'],
             'EndTime'              => $slot['end_time'],
             'Status'               => $cancelOnly ? 'cancelled' : 'scheduled',
-            'Note'                 => $cancelOnly ? 'projected-paused-cancelled' : 'projected-monthly-materialized',
+            'Note'                 => $cancelOnly ? ClassSession::PAUSED_PROJECTION_CANCEL_NOTE : 'projected-monthly-materialized',
             // A persisted schedule exception is a one-off occurrence even
             // when its stored slot shares the contract's clock time.
             'IsContractException'  => $scheduledException !== null ? 1 : 0,
@@ -1366,7 +1366,7 @@ class ClassSessionController extends Controller
         if (!$audit) {
             return response()->json([
                 'available' => false,
-                'message' => '這堂課沒有可驗證的最近取消紀錄，系統不提供盲目復原。',
+                'message' => '目前無法直接復原。如需更正，請在「意見與建議」提供課程編號與日期。',
             ]);
         }
 
@@ -1480,10 +1480,7 @@ class ClassSessionController extends Controller
             ->where('action_type', 'update')
             ->latest('id')
             ->first();
-        $oldStatus = strtolower((string) data_get($audit?->getAttribute('old_data'), 'Status'));
-        $newStatus = strtolower((string) data_get($audit?->getAttribute('new_data'), 'Status'));
-        if (!$audit || !$audit->getAttribute('operator_id') || strtolower((string) $session->getAttribute('Status')) !== 'cancelled'
-            || $newStatus !== 'cancelled' || !in_array($oldStatus, ['scheduled', 'attended', 'completed', 'late', 'absent'], true)) {
+        if (strtolower((string) $session->getAttribute('Status')) !== 'cancelled' || !$audit?->recordsRestorableCancellation()) {
             return null;
         }
         return $audit;

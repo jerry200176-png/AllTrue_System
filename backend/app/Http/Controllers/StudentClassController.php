@@ -3953,7 +3953,7 @@ class StudentClassController extends Controller
             $conflict = $this->detectAddSessionConflict(
                 $classId, $sessionDate, $startTime, $isSessionMode, $sessionCount,
                 $lockedSessionIdMap, $approvedSessionIds, $signInSessionIds, $todayYmd, $nowTime,
-                $studentClass
+                $studentClass, true
             );
 
             if ($conflict['conflict_type'] !== 'none') {
@@ -4380,7 +4380,8 @@ class StudentClassController extends Controller
         array $signInSessionIds,
         string $todayYmd,
         string $nowTime,
-        ?StudentClass $studentClass = null
+        ?StudentClass $studentClass = null,
+        bool $lockSlot = false
     ): array {
         // 月結 bills only the lessons inside the contract dates (MonthlyBillingService), so a lesson added outside
         // them would be saved as taught on this contract and never billed. Same rule as ManualSessionBookingService.
@@ -4400,10 +4401,45 @@ class StudentClassController extends Controller
             }
         }
 
-        $existing = ClassSession::where('StudentClassID', $classId)
+        $atSlot = ClassSession::where('StudentClassID', $classId)
             ->whereDate('SessionDate', $sessionDate)
             ->where('StartTime', $startTime)
-            ->first();
+            ->orderBy('id');
+        if ($lockSlot) {
+            $atSlot->lockForUpdate();
+        }
+        $sessions = $atSlot->get();
+        $leave = $sessions->first(fn ($row) => SessionStatus::isLeaveLike($row->Status));
+        $cancelledIds = $sessions->where('Status', SessionStatus::CANCELLED)->pluck('id');
+        // Later note edits keep a cancellation in effect. A restore followed by a system
+        // cancellation supersedes the older named cancellation and can use the normal reuse path.
+        $cancellation = $cancelledIds->isEmpty() ? null : ScheduleAuditLog::query()
+            ->whereIn('session_id', $cancelledIds)
+            ->where(fn ($q) => $q->where('action_type', 'create')
+                ->orWhere(fn ($update) => $update->where('action_type', 'update')
+                    ->whereColumn('old_data->Status', '!=', 'new_data->Status')))
+            ->latest('id')->get(['id', 'session_id', 'action_type', 'operator_id', 'old_data', 'new_data'])->unique('session_id')
+            ->first(fn (ScheduleAuditLog $audit) => $audit->recordsNamedCancellation());
+        if ($leave || $cancellation) {
+            $message = '這堂課已請假。';
+            if (!$leave) {
+                $latestUpdate = ScheduleAuditLog::where('session_id', $cancellation->session_id)
+                    ->where('action_type', 'update')->max('id');
+                $message = $cancellation->recordsRestorableCancellation() && (int) $latestUpdate === (int) $cancellation->id
+                    ? '這堂課已取消，可復原。'
+                    : '這堂課已取消，無法直接復原。';
+            }
+            return [
+                'conflict_type' => 'original_session',
+                'error_code' => 'USE_ORIGINAL_SESSION',
+                'conflict_session_id' => (int) ($leave->id ?? $cancellation->session_id),
+                'message' => $message,
+                'suggested_actions' => ['查看本課程堂次'],
+            ];
+        }
+        $existing = $sessions->first(fn ($row) => isset($lockedSessionIdMap[(int) $row->id]))
+            ?? $sessions->first(fn ($row) => $row->Status !== SessionStatus::CANCELLED)
+            ?? $sessions->first();
 
         if ($existing && isset($lockedSessionIdMap[(int) $existing->id])) {
             $sid = (int) $existing->id;
