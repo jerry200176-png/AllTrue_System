@@ -471,19 +471,30 @@ class ScheduleController extends Controller
             }
         }
 
+        $standaloneMakeup = strtolower((string) ($data['type'] ?? '')) === 'extra'
+            && !$origId && $courseId > 0 && !empty($data['schedule_date'])
+            && in_array($status, ['scheduled', 'rescheduled'], true);
+
         // Reschedule markers are idempotent per concrete course/date/start slot.
         // The frontend may retry with a stale calendar snapshot; serializing on
         // the parent course prevents concurrent retries from creating another
         // marker. Exact-slot duplicate history is collapsed while distinct
         // same-day lessons remain untouched.
         if ($status === 'rescheduled' && $courseId > 0 && !empty($data['schedule_date'])) {
-            return DB::transaction(function () use ($courseId, $data) {
+            return DB::transaction(function () use ($courseId, $data, $standaloneMakeup, $ownerStudentId) {
+                // Legacy extra rows use the marker path. Serialize their retries with modern extra bookings.
+                if ($standaloneMakeup) {
+                    self::lockStudentForWrite($ownerStudentId);
+                }
                 $lockedCourse = DB::table('StudentClass')
                     ->where('ID', $courseId)
                     ->lockForUpdate()
                     ->first();
                 if (!$lockedCourse) {
                     return response()->json(['message' => '找不到對應課程，無法調課'], 422);
+                }
+                if ($standaloneMakeup) {
+                    $this->ensureStandaloneMakeupIsNew($data);
                 }
                 $startHm = substr((string) ($data['start_time'] ?? ''), 0, 5);
 
@@ -532,7 +543,7 @@ class ScheduleController extends Controller
 
         // Student mutex -> current covering metadata -> occupancy -> row write/projection, under one retry boundary.
         $courseMeta = $courseMeta ?? null;
-        return DB::transaction(function () use ($status, $courseId, $origId, $data, $ownerStudentId, $courseMeta, $capacityPayload) {
+        return DB::transaction(function () use ($status, $courseId, $origId, $data, $ownerStudentId, $courseMeta, $capacityPayload, $standaloneMakeup) {
             self::lockStudentForWrite($ownerStudentId);
             if (strtolower((string) $data['status']) === 'scheduled') {
                 // Repeat the native capacity decision inside the write transaction. Student locks alone do not
@@ -548,6 +559,10 @@ class ScheduleController extends Controller
                 $conflicts = $this->scheduleGuardService->validateScheduleOccurrence($capacityPayload, true);
                 if ($conflicts !== []) abort(response()->json(['message' => $conflicts[0]['message'], 'conflicts' => $conflicts,
                     'suggested_actions' => $conflicts[0]['suggested_actions'] ?? []], 409));
+            }
+
+            if ($standaloneMakeup) {
+                $this->ensureStandaloneMakeupIsNew($data);
             }
 
             // Prevent duplicate scheduled rows for reschedule/substitute on same course+date+time.
@@ -579,6 +594,24 @@ class ScheduleController extends Controller
                 'write_disposition' => 'created',
             ]), 201);
         }, 3);
+    }
+
+    /** Called under the student write lock, before changing a schedule or its projected lesson. */
+    private function ensureStandaloneMakeupIsNew(array $data): void
+    {
+        $existing = Schedule::query()
+            ->where('student_course_id', $data['student_course_id'])
+            ->whereDate('schedule_date', $data['schedule_date'])
+            ->where('type', 'extra')
+            ->whereIn('status', ['scheduled', 'rescheduled'])
+            ->whereRaw('SUBSTRING(start_time, 1, 5) = ?', [substr($data['start_time'], 0, 5)])
+            ->first(['id']);
+        if ($existing) {
+            abort(response()->json([
+                'code' => 'makeup_already_scheduled',
+                'message' => '這門課在同一時間已安排補課。請重新整理課表查看原有的補課時段。',
+            ], 409));
+        }
     }
 
     public function undoLeave(Request $request, Schedule $schedule)

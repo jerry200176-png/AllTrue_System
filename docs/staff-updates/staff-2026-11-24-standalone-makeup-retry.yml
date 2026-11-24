@@ -1,0 +1,14 @@
+updates:
+  - id: staff-2026-11-24-standalone-makeup-retry
+    published_at: "2026-11-24"
+    audiences:
+      - director
+      - teacher
+    importance: digest
+    title: 重送補課時保留原排程
+    summary: 同一門課在相同開始時間已有補課時，會提示重新整理課表查看。
+    items:
+      - category: fixed
+        text: 若要安排另一次補課，可選其他開始時間。
+    source_refs:
+      - "changelog:2026-11-24:standalone-makeup-retry"

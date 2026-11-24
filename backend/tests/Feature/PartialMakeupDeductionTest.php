@@ -23,6 +23,59 @@ class PartialMakeupDeductionTest extends TestCase
 {
     use RefreshDatabase;
 
+    #[\PHPUnit\Framework\Attributes\DataProvider('standaloneMakeupRowStatuses')]
+    public function test_retry_preserves_the_original_standalone_makeup(string $existingStatus, string $retryStatus): void
+    {
+        [$token, $student, $courseId] = $this->seedCourse(120, 4);
+        $date = Carbon::tomorrow();
+        $slot = [
+            'student_id' => $student->id, 'student_course_id' => $courseId,
+            'schedule_date' => $date->toDateString(), 'day_of_week' => $date->dayOfWeekIso,
+            'branch_id' => 1, 'start_time' => '14:00', 'end_time' => '15:00',
+            'type' => 'extra', 'status' => $existingStatus,
+        ];
+        $this->withToken($token)->postJson('/api/v1/schedules', $slot)->assertCreated();
+        foreach (['15:00', '15:30'] as $end) {
+            $this->withToken($token)->postJson('/api/v1/schedules', [
+                ...$slot, 'start_time' => '14:00:00', 'end_time' => $end, 'status' => $retryStatus,
+            ])->assertConflict()->assertJsonPath('code', 'makeup_already_scheduled');
+        }
+        $this->assertDatabaseCount('schedules', 1);
+        $this->assertDatabaseHas('schedules', ['student_course_id' => $courseId, 'status' => $existingStatus, 'end_time' => '15:00']);
+        $this->assertDatabaseCount('ClassSession', 1);
+        $this->assertDatabaseHas('ClassSession', ['StudentClassID' => $courseId, 'EndTime' => '15:00:00']);
+
+        $this->withToken($token)->postJson('/api/v1/schedules', [
+            ...$slot, 'start_time' => '16:00', 'end_time' => '17:00', 'status' => 'scheduled',
+        ])->assertCreated();
+        $this->assertDatabaseCount('schedules', 2);
+        $this->assertSame(4, (int) StudentClass::findOrFail($courseId)->RemainingSessions);
+    }
+
+    public function test_retired_makeup_does_not_block_a_new_booking(): void
+    {
+        [$token, $student, $courseId] = $this->seedCourse(120, 4);
+        $date = Carbon::tomorrow();
+        $slot = [
+            'student_id' => $student->id, 'student_course_id' => $courseId,
+            'schedule_date' => $date->toDateString(), 'day_of_week' => $date->dayOfWeekIso,
+            'branch_id' => 1, 'start_time' => '14:00', 'end_time' => '15:00',
+            'type' => 'extra', 'status' => 'scheduled',
+        ];
+        DB::table('schedules')->insert([...$slot, 'status' => 'superseded']);
+
+        $this->withToken($token)->postJson('/api/v1/schedules', $slot)->assertCreated();
+        $this->assertDatabaseCount('schedules', 2);
+    }
+
+    public static function standaloneMakeupRowStatuses(): array
+    {
+        return [
+            ['scheduled', 'scheduled'], ['rescheduled', 'scheduled'],
+            ['scheduled', 'rescheduled'], ['rescheduled', 'rescheduled'],
+        ];
+    }
+
     /** 90 分補課（每堂 120）→ 扣 90 分；4×120−90=390；ROUND_HALF_UP(390/120)=3。 */
     public function test_partial_makeup_attendance_deducts_prorated_minutes(): void
     {
