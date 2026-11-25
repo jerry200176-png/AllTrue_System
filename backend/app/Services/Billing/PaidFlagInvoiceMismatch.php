@@ -8,7 +8,7 @@ use Illuminate\Support\Facades\DB;
 
 /**
  * The nightly invariant `paid_flag_vs_invoice` (bugs:verify-reproductions, G-009) and the read-only row dump that
- * names the contracts it counts (#5187). One predicate feeds both, so the count and the dump cannot drift.
+ * names the contracts it matches (#5187). One predicate feeds both, so the count and the dump cannot drift.
  *
  * Side A: Paid=1 while some live positive bill linked to the contract (header or line) still owes.
  * Side B: Paid=0 while such bills exist and every one is fully covered by Payment rows.
@@ -55,10 +55,27 @@ final class PaidFlagInvoiceMismatch
         return '(sc.Stop = 0 OR sc.Stop IS NULL) AND sc.PackageID IS NULL AND (' . self::sideASql() . ' OR ' . self::sideBSql() . ')';
     }
 
-    /** The nightly count itself (no Student join), shown next to the rows so a gap between them is visible. */
+    /** Every contract the predicate matches (no Student join), before run() sets aside the ones held for review. */
     public function count(): int
     {
         return (int) (DB::selectOne('SELECT COUNT(*) AS c FROM StudentClass sc WHERE ' . self::whereSql())->c ?? 0);
+    }
+
+    /**
+     * The nightly verdict (census contract of bugs:verify-reproductions). A side-B contract the resolver holds as
+     * `review_required` is not a flag mismatch: the writers set Paid=1 only on `paid` (CollectionTarget::settle), and the
+     * contract already sits on the 待核對 list (#5187). Those rows stay in the dump with `under_review` = true.
+     *
+     * @return array{mismatch_count:int,unevaluated:int,truncated:bool,held_for_review:int}
+     */
+    public function run(): array
+    {
+        $total = $this->count();
+        $rows = $this->rows();
+        $held = count(array_filter($rows, static fn (array $r) => $r['side'] === self::SIDE_B && $r['under_review']));
+
+        // ponytail: rows past ROW_LIMIT are counted without asking the resolver, so a truncated run can only over-count.
+        return ['mismatch_count' => $total - $held, 'unevaluated' => 0, 'truncated' => $total > count($rows), 'held_for_review' => $held];
     }
 
     /**

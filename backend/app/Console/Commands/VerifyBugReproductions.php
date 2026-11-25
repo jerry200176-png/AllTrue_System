@@ -192,7 +192,8 @@ class VerifyBugReproductions extends Command
                 // (InvoiceItem.StudentClassID). Package members are skipped (their package owns the paid flag).
                 // The predicate lives in PaidFlagInvoiceMismatch; the read-only row dump (production-case-dump case
                 // `paid_flag_vs_invoice_rows`, encrypted artifact, IDs and booleans only) names the rows this counts (#5187).
-                'sql' => 'SELECT COUNT(*) AS c FROM StudentClass sc WHERE ' . PaidFlagInvoiceMismatch::whereSql(),
+                // No `sql`: PaidFlagInvoiceMismatch::run() leaves out side-B contracts the resolver holds for review.
+                'census' => PaidFlagInvoiceMismatch::class,
             ],
             [
                 // No `sql`: counted by InvoiceAmountParityCensus. Reported first; enforce after 14 nights at 0 (#4991 item 2).
@@ -270,6 +271,8 @@ class VerifyBugReproductions extends Command
             $baseline = config('reproduction_baselines.' . $cond['key'], 0);
             $pending = $cond['enforced'] && $baseline === null;
             $isRegression = $cond['enforced'] && !$pending && $count > (int) $baseline;
+            // An enforced census that could not run proves nothing: fail it instead of reporting 0.
+            $isRegression = $isRegression || ($cond['enforced'] && ($detail['census_error'] ?? 0) > 0);
             if ($isRegression) {
                 $regressed++;
             }
@@ -280,7 +283,7 @@ class VerifyBugReproductions extends Command
                 'count' => $count,
                 'baseline' => $baseline,
                 'state' => $cond['enforced']
-                    ? ($count === 0 ? 'FIXED-OK' : ($pending ? 'BASELINE-PENDING' : ($isRegression ? 'REGRESSED' : 'WITHIN-BASELINE')))
+                    ? ($isRegression ? 'REGRESSED' : ($count === 0 ? 'FIXED-OK' : ($pending ? 'BASELINE-PENDING' : 'WITHIN-BASELINE')))
                     // A census cut short by a bound, or with a bill it could not evaluate, proves nothing about those bills.
                     : ($count > 0 ? 'OPEN' : (($detail['truncated'] ?? false) || ($detail['unevaluated'] ?? 0) > 0 || ($detail['census_error'] ?? 0) > 0 ? 'INCOMPLETE' : 'OPEN-CLEARED')),
                 'label' => $cond['label'],

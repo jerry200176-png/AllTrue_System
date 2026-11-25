@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\Campus;
 use App\Models\Student;
+use App\Services\BillingPayableResolver;
 use App\Services\Billing\PaidFlagInvoiceMismatch;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Artisan;
@@ -103,6 +104,27 @@ class PaidFlagInvoiceMismatchTest extends TestCase
         $this->assertTrue($b['fully_paid']);
         $this->assertSame([], $b['open_invoice_ids']);
         $this->assertSame([$paidBill], $b['linked_invoice_ids']);
+    }
+
+    /** #5187: a covered contract the resolver holds for review stays in the dump but is not a nightly mismatch. */
+    public function test_side_b_contract_held_for_review_is_listed_but_not_counted(): void
+    {
+        [$held] = $this->seedCourse(['Paid' => 0, 'ScheduleMode' => 'date']);
+        $this->seedBill($held, 1000, 1000);
+        [$real] = $this->seedCourse(['Paid' => 0]);
+        $this->seedBill($real, 1000, 1000);
+        [$sideA] = $this->seedCourse(['Paid' => 1]);
+        $this->seedBill($sideA, 1000, 0);
+        $this->mock(BillingPayableResolver::class, function ($mock) use ($held, $real, $sideA) {
+            $mock->shouldReceive('courseStatusesByStudentClassIds')->andReturn([
+                $held => ['status' => 'review_required'], $real => ['status' => 'paid'], $sideA => ['status' => 'review_required'],
+            ]);
+        });
+
+        $rows = array_column((new PaidFlagInvoiceMismatch())->rows(), null, 'student_class_id');
+        $this->assertTrue($rows[$held]['under_review']);
+        $this->assertSame(['mismatch_count' => 2, 'unevaluated' => 0, 'truncated' => false, 'held_for_review' => 1], (new PaidFlagInvoiceMismatch())->run());
+        $this->assertSame(2, $this->nightlyCount()); // side A counts even under review: Paid=1 beside an open bill
     }
 
     public function test_line_linked_shared_bill_is_flagged_and_header_course_is_not_listed_when_clean(): void
