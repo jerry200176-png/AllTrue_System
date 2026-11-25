@@ -20,6 +20,8 @@ use RuntimeException;
  * `to_count` lessons, remaining 0, Charge = Rate x to_count (ContractAmendmentService::chargeForCount) and closed_reason
  * contract_amended; its one header-only bill follows the new Charge, and the bill status and course Paid flag come from the
  * canonical projection. Taught lessons, payments, reports and receipts are read, never written. Amounts come from the row.
+ * No rollback(): POP cannot reach one for this strategy (not native-recovery, not co-committed). The execute snapshot keeps
+ * the before values; undoing is a new Founder-reviewed operation (docs/incidents/RM-UNUSED-LESSONS-CLOSEOUT-5617.md).
  */
 final class UnusedLessonsContractCloseoutStrategy
 {
@@ -129,49 +131,6 @@ final class UnusedLessonsContractCloseoutStrategy
             'checks' => ['lessons_cancelled', 'contract_closed_at_used_lessons', 'invoice_paid_at_new_charge', 'payments_reports_untouched']];
     }
 
-    public function rollback(array $snapshot, array $context): array
-    {
-        $reference = (string) ($snapshot['reference'] ?? '');
-        $m = self::MANIFESTS[$reference] ?? null;
-        if ($m === null || !$this->validSnapshot($m, $snapshot)) {
-            throw new RuntimeException('unused_lessons_closeout_rollback_snapshot_invalid');
-        }
-
-        return DB::transaction(function () use ($m, $snapshot, $reference, $context): array {
-            $this->lock($m);
-            $live = $this->inspect($m);
-            $blocking = array_filter($live['common'], fn (string $e): bool => !preg_match('/^lesson_\d+_activity$/', $e));
-            if ($live['state'] !== 'after' || $blocking !== []) {
-                return ['ok' => false, 'restored' => 0, 'skipped' => 'values_moved_on'];
-            }
-            [$c, $i] = [$snapshot['course'], $snapshot['invoice']];
-            if (DB::table('Invoice')->where('id', $m['invoice_id'])->where('Status', 'paid')
-                ->update(['TotalAmount' => $i['TotalAmount'], 'Status' => $i['Status'], 'updated_at' => $i['updated_at']]) !== 1
-                || DB::table('StudentClass')->where('ID', $m['course_id'])->where('SessionCount', $m['to_count'])
-                    ->where('closed_reason', ContractAmendmentService::CLOSED_REASON)
-                    ->update(['SessionCount' => $c['SessionCount'], 'RemainingSessions' => $c['RemainingSessions'], 'Charge' => $c['Charge'],
-                        'closed_reason' => $c['closed_reason'], 'Paid' => $c['Paid'], 'PayDate' => $c['PayDate']]) !== 1) {
-                throw new RuntimeException('unused_lessons_closeout_rollback_write');
-            }
-            ClassSession::resetSettlementLockCache();
-            $restored = 0;
-            $skipped = [];
-            foreach ($snapshot['lessons'] as $id => $status) {
-                if ($live['lessons'][$id]['activity'] !== 0) { // attendance or records since: leave the lesson alone
-                    $skipped[] = (int) $id;
-                    continue;
-                }
-                if (DB::table('ClassSession')->where('id', $id)->where('Status', 'cancelled')->update(['Status' => $status, 'updated_at' => now()]) !== 1) {
-                    throw new RuntimeException("unused_lessons_closeout_rollback_lesson_{$id}");
-                }
-                $restored++;
-            }
-            $this->audit($m, $reference, (string) ($context['operation_id'] ?? ''), '.rollback', $restored);
-
-            return ['ok' => $skipped === [], 'partial' => $skipped !== [], 'restored' => $restored, 'skipped_ids' => $skipped];
-        }, 3);
-    }
-
     /** Course row first (attendance's own order), then the lessons, then the bill. */
     private function lock(array $m): void
     {
@@ -180,38 +139,19 @@ final class UnusedLessonsContractCloseoutStrategy
         DB::table('Invoice')->where('id', $m['invoice_id'])->lockForUpdate()->first(['id']);
     }
 
-    /** The snapshot must be this manifest's exact before-state (lessons scheduled, contract and bill unchanged). */
-    private function validSnapshot(array $m, array $s): bool
-    {
-        $lessons = $s['lessons'] ?? null;
-        $c = $s['course'] ?? null;
-        $i = $s['invoice'] ?? null;
-        if (!is_array($lessons) || !is_array($c) || !is_array($i)) return false;
-        $ids = array_keys($lessons);
-        sort($ids);
-        $expected = array_keys($m['lessons']);
-        sort($expected);
-
-        return $ids === $expected && array_unique(array_values($lessons)) === ['scheduled']
-            && ($c['SessionCount'] ?? null) === $m['from_count'] && ($c['RemainingSessions'] ?? null) === $m['from_count'] - $m['to_count']
-            && is_int($c['Charge'] ?? null) && $c['Charge'] > 0 && ($c['Paid'] ?? null) === 0 && empty($c['PayDate'] ?? null)
-            && empty($c['closed_reason'] ?? null) && array_key_exists('closed_reason', $c) && array_key_exists('PayDate', $c)
-            && ($i['TotalAmount'] ?? null) === $c['Charge'] && ($i['Status'] ?? null) === 'partial' && array_key_exists('updated_at', $i);
-    }
-
     /**
-     * Live facts with error codes. `common` holds what must hold both before and after; the state is `before` or `after`
+     * Live facts with error codes. `common` must hold both before and after; the state is `before` or `after`
      * when every state-specific check of that side holds, else `drift` (its before-misses are reported).
      *
-     * @return array{state:string,errors:list<string>,common:list<string>,counts:array<string,int>,facts:array,lessons:array,snapshot:array,charges:array{int,int}}
+     * @return array{state:string,errors:list<string>,counts:array<string,int>,facts:array,snapshot:array,charges:array{int,int}}
      */
     private function inspect(array $m): array
     {
         [$cid, $iid, $from, $to] = [$m['course_id'], $m['invoice_id'], $m['from_count'], $m['to_count']];
         $c = DB::table('StudentClass')->where('ID', $cid)->first();
         if (!$c) {
-            return ['state' => 'missing', 'errors' => ['course_missing'], 'common' => ['course_missing'], 'counts' => [],
-                'facts' => [], 'lessons' => [], 'snapshot' => [], 'charges' => [0, 0]];
+            return ['state' => 'missing', 'errors' => ['course_missing'], 'counts' => [],
+                'facts' => [], 'snapshot' => [], 'charges' => [0, 0]];
         }
         $common = [];
         $before = [];
@@ -275,6 +215,8 @@ final class UnusedLessonsContractCloseoutStrategy
         $otherScheduled = DB::table('ClassSession')->where('StudentClassID', $cid)->where('Status', 'scheduled')
             ->whereNotIn('id', array_keys($m['lessons']))->count();
         if ($otherScheduled > 0) $common[] = 'other_scheduled_lessons';
+        // The legacy schedule rows ContractAmendmentService::execute cancels on the same close must not outlive it.
+        if (app(ContractAmendmentService::class)->futureSchedules($cid) !== []) $common[] = 'future_schedule_present';
 
         $charge = (int) ($c->Charge ?? -1);
         $total = $i ? (int) $i->TotalAmount : -1;
@@ -299,7 +241,7 @@ final class UnusedLessonsContractCloseoutStrategy
             'closed_reason' => $c->closed_reason, 'Paid' => (int) $c->Paid, 'PayDate' => $c->PayDate];
         $invoiceFields = ['TotalAmount' => $total, 'Status' => $status, 'updated_at' => $i->updated_at ?? null];
 
-        return ['state' => $state, 'errors' => $errors, 'common' => array_values(array_unique($common)), 'lessons' => $lessons,
+        return ['state' => $state, 'errors' => $errors,
             'counts' => ['lessons' => count($m['lessons']), 'from_count' => $from, 'to_count' => $to, 'ledger_used' => $used,
                 'other_scheduled' => $otherScheduled, 'live_invoices' => count($liveIds)],
             'facts' => [$courseFields, $invoiceFields, (int) $c->UsedSessions, $used, $net, $lessons, $liveIds, $otherScheduled],
@@ -308,16 +250,14 @@ final class UnusedLessonsContractCloseoutStrategy
     }
 
     /** Strict audit: append() swallows insert failures, so confirm the row exists or roll the transaction back. Ids and counts only. */
-    private function audit(array $m, string $reference, string $operationId, string $suffix = '', ?int $rows = null): void
+    private function audit(array $m, string $reference, string $operationId): void
     {
         $correlationId = (string) Str::uuid();
-        $rollback = $suffix !== '';
-        SecurityAuditEvent::append(self::EVENT . $suffix, 'success', ['campus_id' => $m['campus_id'], 'actor_type' => 'pop-runner',
+        SecurityAuditEvent::append(self::EVENT, 'success', ['campus_id' => $m['campus_id'], 'actor_type' => 'pop-runner',
             'subject_type' => 'student_class', 'subject_id' => $m['course_id'], 'correlation_id' => $correlationId],
-            ['reason_code' => $reference, 'pop_operation_id' => $operationId, 'row_count' => $rows ?? count($m['lessons']),
-                'old_session_count' => $rollback ? $m['to_count'] : $m['from_count'], 'new_session_count' => $rollback ? $m['from_count'] : $m['to_count'],
-                'old_remaining_sessions' => $rollback ? 0 : $m['from_count'] - $m['to_count'],
-                'new_remaining_sessions' => $rollback ? $m['from_count'] - $m['to_count'] : 0, 'outcome' => 'success'], true);
+            ['reason_code' => $reference, 'pop_operation_id' => $operationId, 'row_count' => count($m['lessons']),
+                'old_session_count' => $m['from_count'], 'new_session_count' => $m['to_count'],
+                'old_remaining_sessions' => $m['from_count'] - $m['to_count'], 'new_remaining_sessions' => 0, 'outcome' => 'success'], true);
         if (!DB::table('security_audit_events')->where('correlation_id', $correlationId)->exists()) {
             throw new RuntimeException('unused_lessons_closeout_audit_not_persisted');
         }

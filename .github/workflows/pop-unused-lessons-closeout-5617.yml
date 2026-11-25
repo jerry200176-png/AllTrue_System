@@ -2,7 +2,7 @@ name: Founder POP unused lessons contract closeout (#5617)
 # governance-capability: pop-controlled
 # Case adapter for POP operation unused-lessons-contract-closeout-5617 (Founder decision 2026-11-25, GitHub #5617, in-app #594).
 # One manifest in code (UnusedLessonsContractCloseoutStrategy::MANIFESTS): course 2201 keeps its 2 used lessons, six unused past
-# lessons are cancelled, the contract and its one bill follow Rate x 2. Rollback is the strategy snapshot (runbook), not this adapter.
+# lessons are cancelled, the contract and its one bill follow Rate x 2. No rollback adapter: undo is a new reviewed operation (runbook).
 on:
   workflow_dispatch:
     inputs:

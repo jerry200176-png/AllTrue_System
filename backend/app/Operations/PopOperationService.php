@@ -1147,10 +1147,11 @@ final class PopOperationService
             && ($entry['founder_approval_required'] ?? false) === true
             && ($entry['risk'] ?? null) === 'critical'
             && ($entry['blast_radius'] ?? null) === 'exact_manifest_one_course_lessons_count_charge_invoice'
-            && ($entry['reversible'] ?? false) === true
+            // No production rollback adapter (not a native-recovery or co-commit strategy): undo is a new reviewed operation.
+            && ($entry['reversible'] ?? null) === false
             && ($entry['snapshot_required'] ?? false) === true
             && ($entry['transaction_required'] ?? false) === true
-            && ($entry['rollback_supported'] ?? false) === true
+            && ($entry['rollback_supported'] ?? null) === false
             && ($entry['verification_required'] ?? false) === true
             && ($entry['approval_required'] ?? false) === true
             && ($entry['execution_authority'] ?? null) === 'pop-pi-local'

@@ -91,23 +91,6 @@ final class UnusedLessonsContractCloseoutStrategyTest extends TestCase
         self::assertTrue($s->execute($again, [])['already_applied']);
     }
 
-    public function test_rollback_restores_the_exact_before_rows(): void
-    {
-        $s = new UnusedLessonsContractCloseoutStrategy();
-        $before = $this->rows();
-        $result = $s->execute($s->plan(self::REF), ['operation_id' => 'op-5617']);
-        $back = $s->rollback($result['snapshot'], ['operation_id' => 'op-5617']);
-        self::assertSame(['ok' => true, 'partial' => false, 'restored' => 6, 'skipped_ids' => []], $back);
-        $normalize = fn (string $json): string => preg_replace('/"updated_at":"[^"]*"/', '', $json); // lesson updated_at moves
-        self::assertSame($normalize($before), $normalize($this->rows()));
-        self::assertSame('2026-09-05 10:00:00', (string) DB::table('Invoice')->where('id', 2821)->value('updated_at'));
-        self::assertSame(1, DB::table('security_audit_events')->where('event_type', 'pop.unused_lessons_contract_closeout.rollback')->count());
-        self::assertSame('before', $s->plan(self::REF)['state']);
-        self::assertFalse($s->rollback($result['snapshot'], [])['ok'], 'a second rollback finds nothing to restore');
-        $this->expectException(RuntimeException::class);
-        $s->rollback(['reference' => self::REF['decision_reference'], 'lessons' => [50637 => 'scheduled']] + $result['snapshot'], []);
-    }
-
     /** @dataProvider drifts */
     public function test_any_drift_refuses_and_writes_nothing(string $code, callable $arrange): void
     {
@@ -144,6 +127,9 @@ final class UnusedLessonsContractCloseoutStrategyTest extends TestCase
             'invoice not partial' => ['invoice_not_partial', fn () => DB::table('Invoice')->where('id', 2821)->update(['Status' => 'unpaid'])],
             'paid amount is not the new charge' => ['invoice_paid_amount', fn () => DB::table('Invoice')->where('id', 2821)->update(['PaidAmount' => 4500])],
             'course not stopped' => ['not_stopped', fn () => DB::table('StudentClass')->where('ID', 2201)->update(['Stop' => 0])],
+            'future legacy schedule row' => ['future_schedule_present', fn () => DB::table('schedules')->insert(['student_id' => 9201,
+                'branch_id' => 17, 'student_course_id' => 2201, 'day_of_week' => 2, 'schedule_date' => now()->addWeek()->toDateString(),
+                'start_time' => '18:00', 'end_time' => '19:00', 'status' => 'scheduled', 'type' => 'normal', 'deduction' => 1])],
         ];
     }
 }

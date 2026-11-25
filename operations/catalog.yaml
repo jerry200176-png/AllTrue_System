@@ -982,12 +982,12 @@ operations:
     runbook: docs/incidents/RM-UNUSED-LESSONS-CLOSEOUT-5617.md
     alert_group: LINE:ops-data
     escalation_policy: billing-entitlement-critical-escalation
-    capabilities: [repair, plan, dry_run, verify, rollback, snapshot, audit]
+    capabilities: [repair, plan, dry_run, verify, snapshot, audit]
     risk: critical
-    reversible: true
+    reversible: false
     snapshot_required: true
     transaction_required: true
-    rollback_supported: true
+    rollback_supported: false
     verification_required: true
     approval_required: true
     execution_authority: pop-pi-local
@@ -997,7 +997,7 @@ operations:
     strategy_class: App\Operations\Strategies\UnusedLessonsContractCloseoutStrategy
     parameter_keys: [decision_reference]
     tags: [repair, billing, contract, session, issue-5617]
-    notes: Exact manifest of GitHub #5617 (in-app #594, Founder 2026-11-25). StudentClass 2201 keeps the 2 lessons it used. Six past, never-attended scheduled lessons are cancelled; SessionCount 8 to 2, RemainingSessions 0, Charge Rate x 2, closed_reason contract_amended; the one header-only bill 2821 follows the Charge, and its Status and the course Paid flag come from the canonical projection. Payments, reports, receipts and taught lessons are not written. Any other drift fails the whole plan. Pi-local POP only.
+    notes: Exact manifest of GitHub #5617 (in-app #594, Founder 2026-11-25). StudentClass 2201 keeps the 2 lessons it used. Six past, never-attended scheduled lessons are cancelled; SessionCount 8 to 2, RemainingSessions 0, Charge Rate x 2, closed_reason contract_amended; the one header-only bill 2821 follows the Charge, and its Status and the course Paid flag come from the canonical projection. Payments, reports, receipts and taught lessons are not written. Any other drift fails the whole plan. No production rollback adapter: the execute snapshot records the before values, and undoing is a new Founder-reviewed operation (runbook). Pi-local POP only.
 
   shared-pool-trim-overplan-20261101:
     lifecycle: active

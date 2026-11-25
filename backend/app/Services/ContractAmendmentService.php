@@ -206,7 +206,8 @@ final class ContractAmendmentService
                 'end_time' => substr((string) $s->EndTime, 0, 5),
             ])->values()->all();
     }
-    private function futureSchedules(int $classId): array
+    /** Public for the #5617 exact closeout: the same rows execute() cancels must be absent there. */
+    public function futureSchedules(int $classId): array
     {
         return Schedule::query()->where('student_course_id', $classId)->where('status', 'scheduled')
             ->whereDate('schedule_date', '>=', Carbon::today()->toDateString())
