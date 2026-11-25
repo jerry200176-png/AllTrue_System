@@ -4,7 +4,7 @@
 
 All directly executed workflow jobs use `ubuntu-latest` GitHub-hosted runners. This includes CI, presubmit, security scans, documentation checks, deployment, and production health workflows.
 
-The only delegated job is `osv-scanner.yml` → Google's OSV reusable workflow, pinned to immutable commit `a345acffa64b0eaede81a3d9aae6141214d9c8fc` (v2.6.0). The runner is owned by that reviewed reusable workflow, so the exact reference is allow-listed rather than treated as an untracked omission.
+The only delegated job is `osv-scanner.yml` → Google's OSV reusable workflow, pinned to immutable commit `32d3cd482bdadfb38b186c0ad1b031902d55d932` (v2.7.1). Its runner input defaults to `ubuntu-latest`. The caller uses that default, and the topology check allows only this exact workflow revision. The scanner and reporter actions in that revision reference Google's v2.7.1 container tag.
 
 The WSL2 self-hosted runner topology introduced by #867 is historical and is not used by any active workflow. Commit `e3b30511` moved the workflows back to GitHub-hosted runners on 2026-07-14; commit `9fbd8038` added the MySQL 8 service required by PHPUnit.
 
