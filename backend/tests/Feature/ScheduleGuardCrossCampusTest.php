@@ -56,6 +56,34 @@ class ScheduleGuardCrossCampusTest extends TestCase
         $this->assertSame([], $guard->validateCourseOccurrence($mine, 1, $past, '18:00', '20:00'));
     }
 
+    /** #5631 (in-app #596): a makeup taken in the teacher's class at another campus is recorded with 調課 once it is over. */
+    public function test_reschedule_into_an_ended_slot_at_another_campus_saves_with_a_reminder(): void
+    {
+        $teacher = $this->teacher();
+        $past = Carbon::today()->subDays(3)->toDateString();
+        $future = Carbon::today()->addDays(7)->toDateString();
+        $this->lesson($this->course($teacher, 2, '甲', 'one_on_three'), $past, '18:00', '20:00');
+        $mine = $this->course($teacher, 1, '乙');
+        $this->lesson($mine, $future, '19:00', '21:00');
+
+        $director = User::create([
+            'LoginName' => 'cross-campus-director@example.com', 'Name' => '主任測試', 'PSW' => 'secret',
+            'type' => 'A', 'phone' => '0922000001', 'MustChangePassword' => false,
+        ]);
+        UserCampus::create(['CampusID' => 1, 'UserID' => $director->id, 'Admin' => 1, 'Approved' => 1]);
+        \App\Models\AuthToken::create(['user_id' => $director->id, 'token' => 'cross-campus-director-token', 'expires_at' => now()->addDay()]);
+
+        $response = $this->withToken('cross-campus-director-token')->postJson('/api/v1/learning-records/reschedule-session', [
+            'student_class_id' => (int) $mine->ID, 'ensure_schedule_exception' => true,
+            'old_date' => $future, 'old_start_time' => '19:00:00',
+            'new_date' => $past, 'start_time' => '18:00:00', 'end_time' => '20:00:00',
+        ]);
+
+        $response->assertOk();
+        $this->assertSame($past, substr((string) ClassSession::where('StudentClassID', $mine->ID)->value('SessionDate'), 0, 10));
+        $this->assertStringContainsString('也有課', rawurldecode((string) $response->headers->get(ScheduleGuardService::PAST_CLASH_HEADER)));
+    }
+
     public function test_same_campus_load_stays_a_capacity_question(): void
     {
         $teacher = $this->teacher();

@@ -1,0 +1,13 @@
+updates:
+  - id: staff-2026-11-25-cross-campus-join-makeup-hint
+    published_at: "2026-11-25"
+    audiences:
+      - director
+    importance: digest
+    title: 跨分校進班補課怎麼登記
+    summary: 學生到另一分校跟著老師原本的課補課，請上完課後再用調課登記。
+    items:
+      - category: improved
+        text: 事前排課被擋時，畫面會提示這個做法。
+    source_refs:
+      - "changelog:2026-11-25:cross-campus-join-makeup-hint"
