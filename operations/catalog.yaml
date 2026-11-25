@@ -970,6 +970,35 @@ operations:
     tags: [repair, billing, contract, charge, issue-3868]
     notes: Exact manifests of GitHub #3868 (Founder 2026-10-29: contract 2569 Charge 8000 to 4000, contract 3288 Charge 8800 to 1100, both Rate x sessions), #4138 and in-app #472 (Founder 2026-11-04: contract 2525 Charge 88000 to 83600). Writes StudentClass.Charge only; any invoice, payment, report, pricing amendment or per-session charge fails the whole plan, except that 2525 needs its bills paid at exactly Rate x quantity. The reverse manifest restores 8000/8800 through this same operation. Pi-local POP only.
 
+  unused-lessons-contract-closeout-5617:
+    lifecycle: active
+    domain: billing-entitlement
+    business_owner: director-data
+    technical_owner: platform-data
+    owner: platform-ops
+    approver_roles: [super_admin]
+    approval_policy: founder-exact-unused-lessons-closeout
+    founder_approval_required: true
+    runbook: docs/incidents/RM-UNUSED-LESSONS-CLOSEOUT-5617.md
+    alert_group: LINE:ops-data
+    escalation_policy: billing-entitlement-critical-escalation
+    capabilities: [repair, plan, dry_run, verify, rollback, snapshot, audit]
+    risk: critical
+    reversible: true
+    snapshot_required: true
+    transaction_required: true
+    rollback_supported: true
+    verification_required: true
+    approval_required: true
+    execution_authority: pop-pi-local
+    blast_radius: exact_manifest_one_course_lessons_count_charge_invoice
+    estimated_duration: 5m
+    invariant_packs: [billing-entitlement-pack@1.0.0]
+    strategy_class: App\Operations\Strategies\UnusedLessonsContractCloseoutStrategy
+    parameter_keys: [decision_reference]
+    tags: [repair, billing, contract, session, issue-5617]
+    notes: Exact manifest of GitHub #5617 (in-app #594, Founder 2026-11-25). StudentClass 2201 keeps the 2 lessons it used. Six past, never-attended scheduled lessons are cancelled; SessionCount 8 to 2, RemainingSessions 0, Charge Rate x 2, closed_reason contract_amended; the one header-only bill 2821 follows the Charge, and its Status and the course Paid flag come from the canonical projection. Payments, reports, receipts and taught lessons are not written. Any other drift fails the whole plan. Pi-local POP only.
+
   shared-pool-trim-overplan-20261101:
     lifecycle: active
     domain: session

@@ -24,12 +24,12 @@ export const STRUCTURAL_WORDS = Object.freeze([
   // id prefixes: campus, repair round, tech-debt item
   'c', 'r', 'td',
   // operation vocabulary in use on main
-  'attended', 'backlog', 'billing', 'cancel', 'catchup', 'charge', 'closures', 'contract',
+  'attended', 'backlog', 'billing', 'cancel', 'catchup', 'charge', 'closeout', 'closures', 'contract',
   'correction', 'dup', 'duplicate', 'extra', 'financial', 'forward', 'header', 'hidden',
-  'history', 'invoice', 'item', 'ledger', 'lesson', 'mount', 'net', 'occurrence', 'once',
+  'history', 'invoice', 'item', 'ledger', 'lesson', 'lessons', 'mount', 'net', 'occurrence', 'once',
   'overdeduct', 'package', 'past', 'period', 'pin', 'pool', 'reassign', 'rekey', 'repair',
   'repairs', 'resolve', 'reviewed', 'rollback', 'scheduled', 'secret', 'shared', 'signin',
-  'stale', 'taught', 'telegram', 'trim', 'unbilled', 'unpaid', 'values', 'webhook',
+  'stale', 'taught', 'telegram', 'trim', 'unbilled', 'unpaid', 'unused', 'values', 'webhook',
 ]);
 const WORDS = new Set(STRUCTURAL_WORDS);
 

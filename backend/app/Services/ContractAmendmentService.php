@@ -232,8 +232,9 @@ final class ContractAmendmentService
      * Per-lesson contracts only; an hourly contract's amount follows TotalHours, which this flow does not change.
      * A free / gift contract (Charge 0, or a marked 0-元 bill) is never priced here (same lock as chargeCorrection).
      * Paid contracts do follow (Founder 2026-11-04): issued bills and payments stay, any excess reads as 多收.
+     * Public for the #5617 exact closeout, which must price the new count by this same rule.
      */
-    private function chargeForCount(StudentClass $course, int $newCount): ?int
+    public function chargeForCount(StudentClass $course, int $newCount): ?int
     {
         $unit = strtolower(trim((string) ($course->rate_unit ?? 'session')));
         if (($unit !== 'session' && $unit !== '') || (int) ($course->Charge ?? 0) <= 0

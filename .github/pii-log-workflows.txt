@@ -74,6 +74,7 @@ pop-shared-pool-trim.yml
 pop-unbilled-backlog-catchup.yml
 pop-billing-period-rekey.yml
 pop-unpaid-hidden-closures.yml
+pop-unused-lessons-closeout-5617.yml
 production-case-dump.yml
 security-1124-migrate-uploads.yml
 security-1124-restore-recovered-uploads.yml

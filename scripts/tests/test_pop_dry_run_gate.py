@@ -34,6 +34,7 @@ SPLIT = {
     "pop-unbilled-backlog-catchup.yml": "catchup",
     "pop-billing-period-rekey.yml": "rekey",
     "pop-unpaid-hidden-closures.yml": "repair",
+    "pop-unused-lessons-closeout-5617.yml": "repair",
 }
 GATE_IF = "if: ${{ needs.guard.result == 'success' && inputs.mode == 'approve' }}"
 REPAIR_IF = (
