@@ -475,7 +475,9 @@ class ScheduleGuardService
             'end_time' => $end,
             'message' => $past
                 ? sprintf('提醒：這位老師 %s %s~%s 同時在「%s」也有課。已上完的課照樣儲存，請確認哪一邊的紀錄才對。', $day, $start, $end, $campus)
-                : sprintf('這位老師 %s %s~%s 已在「%s」有課，同一時間不能排在兩個分校。請改時段或改老師。', $day, $start, $end, $campus),
+                : sprintf('這位老師 %s %s~%s 已在「%s」有課，同一時間不能排在兩個分校。請改時段或改老師。', $day, $start, $end, $campus)
+                    // #5631 (in-app #596): a student joining the teacher's class at the other campus is recorded after the lesson.
+                    . ($date ? '若學生是到該分校跟著這堂課補課，請上完課後再用「調課」登記。' : ''),
         ];
     }
 
