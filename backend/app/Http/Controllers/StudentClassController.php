@@ -7100,7 +7100,10 @@ class StudentClassController extends Controller
                     $sc->closed_reason = $pendingReconciliation
                         ? 'settled_pending'
                         : 'settled';
-                    $sc->EndDate = $today;
+                    // #5605: closing a course whose end date already passed must not move that date forward.
+                    if (empty($sc->EndDate) || substr((string) $sc->EndDate, 0, 10) > $today) {
+                        $sc->EndDate = $today;
+                    }
                 } else {
                     $sc->closed_reason = null;
                 }
