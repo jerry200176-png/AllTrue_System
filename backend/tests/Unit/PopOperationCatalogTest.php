@@ -254,6 +254,34 @@ final class PopOperationCatalogTest extends TestCase
         $roles->invoke($service, $entry);
     }
 
+    public function test_unused_lessons_closeout_requires_founder_approval_and_exact_pop_policy_shape(): void
+    {
+        $catalog = new PopOperationCatalog(dirname(__DIR__, 3) . '/operations/catalog.yaml');
+        $service = new PopOperationService($catalog);
+        $roles = new ReflectionMethod($service, 'approvalRoles');
+        $founder = new ReflectionMethod($service, 'assertFounderApprovalReference');
+        $entry = $catalog->operation('unused-lessons-contract-closeout-5617');
+        self::assertSame([true, 'pop-pi-local', ['decision_reference'], 'exact_manifest_one_course_lessons_count_charge_invoice'],
+            [$entry['founder_approval_required'], $entry['execution_authority'], $entry['parameter_keys'], $entry['blast_radius']]);
+        self::assertSame(['super_admin'], $roles->invoke($service, $entry));
+        $founder->invoke($service, $entry, 'founder-go-unused-lessons-closeout-5617');
+        try {
+            $founder->invoke($service, $entry, 'director-approval-5617');
+            self::fail('a non founder-go reference must be rejected');
+        } catch (RuntimeException) {
+        }
+        $other = $entry;
+        $other['blast_radius'] = 'exact_manifest_student_class_charge_only';
+        try {
+            $roles->invoke($service, $other);
+            self::fail('another operation\'s blast radius must be rejected');
+        } catch (RuntimeException) {
+        }
+        $entry['founder_approval_required'] = false;
+        $this->expectException(RuntimeException::class);
+        $roles->invoke($service, $entry);
+    }
+
     public function test_founder_scoped_policy_is_supported_only_for_the_safe_course_repair_shape(): void
     {
         $catalog = new PopOperationCatalog(dirname(__DIR__, 3) . '/operations/catalog.yaml');

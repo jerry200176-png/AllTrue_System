@@ -82,6 +82,7 @@ UI 名稱不排除帳務／權限效果；路徑、關鍵字或搜尋 top-k 不�
 | #4455 package ledger 修復 | `docs/incidents/RM-PACKAGE-LEDGER-NET-REPAIR-4455.md`、`docs/changes/*-4455.md` |
 | 合約編號查詢 UI 在哪 | 個人資料 → 安全性（super_admin）；`docs/changes/2026-10-28-superadmin-contract-lookup.md` |
 | 合約 Charge 更正規則（#3868） | `docs/incidents/RM-CONTRACT-CHARGE-CORRECTION-3868.md`、`docs/changes/2026-10-29-pop-contract-charge-correction-3868.md`（Rate × 堂數） |
+| 合約只留已上堂數單案結清（#5617） | `docs/incidents/RM-UNUSED-LESSONS-CLOSEOUT-5617.md`、`docs/changes/2026-11-25-pop-unused-lessons-closeout-5617.md` |
 | Founder 要批的事／誰可 merge | `docs/governance/FOUNDER_STANDING_DECISIONS.md` |
 | 找不到時 | `git grep -n '<關鍵字>' -- docs/changes docs/incidents`（changes 依日期命名） |
 
