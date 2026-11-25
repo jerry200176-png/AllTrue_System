@@ -1,0 +1,14 @@
+updates:
+  - id: staff-2026-11-25-exam-score-dialog-wide
+    published_at: "2026-11-25"
+    audiences:
+      - director
+      - teacher
+    importance: digest
+    title: 登分視窗加寬
+    summary: 段考登分視窗變寬，往右拉時學生姓名固定在左邊。
+    items:
+      - category: improved
+        text: 往下拉時，科目名稱也固定在最上面。
+    source_refs:
+      - "changelog:2026-11-25:exam-score-dialog-wide"
