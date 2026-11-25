@@ -1,0 +1,13 @@
+updates:
+  - id: staff-2026-11-25-close-keeps-past-end-date
+    published_at: "2026-11-25"
+    audiences:
+      - director
+    importance: digest
+    title: 結案保留原結束日
+    summary: 課程結束日已過才按結案時，結束日不會被改成當天。
+    items:
+      - category: fixed
+        text: 提前結案的課程，仍以結案當天為結束日。
+    source_refs:
+      - "changelog:2026-11-25:close-keeps-past-end-date"
