@@ -46,7 +46,6 @@ ops-leave-hc-review-tracker.yml
 ops-leave-vacated-weeks-scan.yml
 ops-move-aug05-to-chinese-renewal.yml
 ops-muzha-gaorui-2026-07-30-containment.yml
-ops-muzha-pop-readonly-verify.yml
 ops-payment-report-1489-reject.yml
 ops-portfolio-td059-leave-audit.yml
 ops-reconcile-transferred-session-ledger.yml
