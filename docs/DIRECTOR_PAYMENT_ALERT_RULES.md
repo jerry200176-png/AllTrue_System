@@ -110,6 +110,8 @@ last_reviewed: 2026-10-15
 
 **暫停中、還沒開始的合約不算欠款（in-app #440，Founder 2026-10-29 回覆「A」）**：F7 S3a 的例外再收窄一格——單純暫停（`Stop=1` 且沒有 `closed_reason`）、**從沒開始**的合約，暫停期間不列入欠款，恢復上課（`Stop=0`）後依一般規則再列入。「從沒開始」＝同時符合：`Paid` 不是 1；沒有任何未作廢帳單；沒有 `pending`／`confirmed` 繳費回報；沒有任何非 `cancelled` 的堂次（已上、已排、請假都算開始過）。已結案（任何 `closed_reason`）、共用方案成員、已有帳單／回報／堂次的暫停，維持 F7 S3a 原規則。唯一判斷：`StudentClass::unstartedPauseIds()`（批次，一次三個查詢），`AlertController::tuition` 與 `AccountingController::settledCourses` 共用；不改任何資料，不需 migration。
 
+**以「待核對」結案、從沒開始的合約同樣不算欠款（in-app #599，Founder 2026-11-26 回覆「A」）**：`closed_reason='settled_pending'` 且沒有有效帳單、沒有待確認或已確認的收款回報、堂次只有取消、也沒有其他上課紀錄的合約，不列入待收，也不列入「已結清 → 待核對」。原因：名單顯示合約金額為待收，但「登記收款」依該期可計費堂次算出 0 元而拒收，主任照名單登記必然被擋。只要有一張有效帳單、一筆收款回報或一堂非取消的堂次，就維持原規則。同一個判斷：`StudentClass::unstartedPauseIds`。
+
 ## 回歸時請測
 
 - 堂數制：已繳但剩 1～2 堂（或 0 堂）仍應出現。

@@ -461,7 +461,9 @@ class StudentClass extends Model
             return [];
         }
         $paused = static::query()->whereIn('ID', $courseIds)->where('Stop', 1)->where('Paid', '!=', 1)
-            ->where(fn ($q) => $q->whereNull('closed_reason')->orWhere('closed_reason', ''))
+            // In-app #599 (Founder 2026-11-26): a contract closed as 待核對 that never started is the same case. The list
+            // showed its contract price as owed while 登記收款 computed NT$0 for the period and refused every amount.
+            ->where(fn ($q) => $q->whereNull('closed_reason')->orWhereIn('closed_reason', ['', 'settled_pending']))
             ->where(fn ($q) => $q->whereNull('PackageID')->orWhere('PackageID', '<=', 0))
             ->pluck('ID')->map(fn ($id) => (int) $id)->all();
         $ids = array_fill_keys($paused, true);
