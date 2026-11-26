@@ -346,6 +346,13 @@ class BugReportController extends Controller
             return response()->json(['message' => 'Not found'], 404);
         }
 
+        // A resolved report rests on its public reply (#3959): hiding one would leave the reporter with
+        // nothing to verify against. Reopen first, or post the correction as a new reply.
+        if ($request->boolean('is_internal_note') && \App\Models\BugReport::query()->where('id', $bugId)->value('status') === 'resolved') {
+            return response()->json(['ok' => false, 'code' => 'cannot_hide_reply_while_resolved',
+                'message' => '回報是「已解決」狀態時不能把公開回覆改成內部備註。'], 422);
+        }
+
         $comment = BugReportService::updateCommentVisibility(
             $bugId,
             $commentIdInt,
