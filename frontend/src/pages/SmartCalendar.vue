@@ -4215,7 +4215,7 @@ onUnmounted(removeContextMenuListeners);
 @media (max-width: 768px) {
   .day-col-header { height: 60px; gap: 1px; }
   .week-overview-grid .col-header-blank { height: 60px; }
-  .day-col-badge { position: static; min-width: 14px; height: 14px; font-size: 9px; }
+  .day-col-badge { position: static; }
   .day-col-today-pill { display: none; }
 }
 </style>
