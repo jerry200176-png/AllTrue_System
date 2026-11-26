@@ -4,8 +4,8 @@ updates:
     audiences:
       - director
     importance: digest
-    title: 整期沒上課的課不再列為待收
-    summary: 已結案但堂次全部取消、沒開帳單也沒收款的課程，不會再出現在待收名單。
+    title: 整期沒上課的月結課不再列為待收
+    summary: 已結案但堂次全部取消、沒開帳單也沒收款的月結課程，不會再出現在待收名單。
     items:
       - category: fixed
         text: 這類課程之前會顯示要收款，登記時卻被擋下。
