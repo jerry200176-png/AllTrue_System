@@ -1232,7 +1232,7 @@ Claude Code 在 2026-04-17 執行多工重構時，**靜默刪除了 `backend/ro
 - **調課後評量表「消失」**（請假 cascade 作廢 LR + 堂次改日後已上）：見下方 **§2026-04-13 — 調課／請假 cascade 後評量表作廢未恢復**
 - **出缺勤「補登」仍列出已暫停課程**：見下方 **§2026-04-13 — 出缺勤補登（`ended-sessions`）須排除 `StudentClass.Stop=1`**
 - **手機出缺勤「請假確認沒反應」**：見下方 **§2026-04-14 — 手機請假確認：彈窗層級 + `leave/excused` 契約 + 非同步確認流程**
-- **智慧排課誤標「取消」**（同日同時段 `cancelled + scheduled`）：見下方 **§2026-04-14 — 智慧排課角標誤判（張正樂 4/15）**
+- **智慧排課誤標「取消」**（同日同時段 `cancelled + scheduled`）：見下方 **§2026-04-14 — 智慧排課角標誤判（學生甲 4/15）**
 - **老師自助註冊 vs 主任待審／Teacher 重複鍵**：見下方 **§2026-04-15 — 老師註冊 Server Error 與 `directors/pending` 誤列老師**
 - **老師管理側欄橘點 vs「待審核」**：見下方 **§2026-04-15 — 側欄 `pending_teachers` 與 `TeachersList`「待審核」不同步**
 - **單堂加課衝突（已有出缺勤/核准評量）**：見下方 **§2026-04-15 — 單堂加課衝突修正**（`detectAddSessionConflict` 共用邏輯、前端預檢、結構化 409）
@@ -1337,8 +1337,8 @@ Claude Code 在 2026-04-17 執行多工重構時，**靜默刪除了 `backend/ro
 
 | 項目 | 說明 |
 |------|------|
-| **曾發生的錯誤** | 老師評量頁（`LearningRecordsPage.vue`）的課表 widget，鄭翔祐 4/15 19:30-21:30 看到張正樂出現兩張「國文 未填」評量卡。 |
-| **根本原因** | 同一 `StudentClassID` 同日同時段存在兩筆 `ClassSession`（`cancelled` + `scheduled`），`buildEvents` 直接迭代所有 `rawSessions` 而無 status 過濾或去重，每筆 ClassSession 都生成一張卡片。此問題與 §2026-04-14 智慧排課角標誤判（張正樂 4/15）**同源**，但 SmartCalendar 的修正（`SESSION_STATUS_PRIORITY` + `pickBestSessionRow`）未同步至 LearningRecordsPage。 |
+| **曾發生的錯誤** | 老師評量頁（`LearningRecordsPage.vue`）的課表 widget，鄭翔祐 4/15 19:30-21:30 看到學生甲出現兩張「國文 未填」評量卡。 |
+| **根本原因** | 同一 `StudentClassID` 同日同時段存在兩筆 `ClassSession`（`cancelled` + `scheduled`），`buildEvents` 直接迭代所有 `rawSessions` 而無 status 過濾或去重，每筆 ClassSession 都生成一張卡片。此問題與 §2026-04-14 智慧排課角標誤判（學生甲 4/15）**同源**，但 SmartCalendar 的修正（`SESSION_STATUS_PRIORITY` + `pickBestSessionRow`）未同步至 LearningRecordsPage。 |
 | **正確行為** | `buildEvents` 對每門課的 rawSessions 先以 `(session_date, start_time)` 分組，同組多筆用統一優先序（`attended/completed/late/absent > scheduled > leave/leave_adjusted/excused > cancelled`；同狀態 `id desc`）只保留最優一筆，再生成卡片。 |
 | **禁止回歸** | **(a)** 勿移除 `buildEvents` 中的 `deduplicateSessionsBySlot` 呼叫。**(b)** 勿把優先序改為 `cancelled` 高於 `scheduled`。**(c)** `SESSION_STATUS_PRIORITY` 與 `pickBestSession` 須與 `SmartCalendar.vue` 的同名常數保持一致。**(d)** 新增其他消費 `sessionDatesByClassId` 的路徑時，同樣必須套用去重。 |
 | **關聯檔案** | `frontend/src/pages/LearningRecordsPage.vue`（`SESSION_STATUS_PRIORITY`、`pickBestSession`、`deduplicateSessionsBySlot`、`buildEvents`）、`frontend/src/pages/SmartCalendar.vue`（同名常數）、`backend/tests/Feature/ClassSessionDuplicateStatusTest.php` |
@@ -1413,11 +1413,11 @@ Claude Code 在 2026-04-17 執行多工重構時，**靜默刪除了 `backend/ro
 
 ---
 
-## 2026-04-14 — 智慧排課角標誤判（張正樂 4/15）
+## 2026-04-14 — 智慧排課角標誤判（學生甲 4/15）
 
 | 項目 | 說明 |
 |------|------|
-| **曾發生的錯誤** | 行事曆同一格有課程卡，但角標顯示「取消」。典型案例：張正樂 4/15（同課程同時段存在 `cancelled` 與 `scheduled` 兩筆 `ClassSession`）。 |
+| **曾發生的錯誤** | 行事曆同一格有課程卡，但角標顯示「取消」。典型案例：學生甲 4/15（同課程同時段存在 `cancelled` 與 `scheduled` 兩筆 `ClassSession`）。 |
 | **根本原因** | `SmartCalendar.vue` 的 `findSessionRowForCell` 只用日期+起始時間 `find()` 第一筆；當資料排序先遇到舊 `cancelled` 列時，會覆蓋掉同格的有效堂次。另有代課 modal 兩處 `sessions.find(...)` 也可能抓到錯列。 |
 | **正確行為** | 同格多筆堂次必須走**統一解析器**：狀態優先序 `attended/completed/late/absent > scheduled > leave/leave_adjusted/excused > cancelled`；同狀態用 `id desc`（較新優先）作 tie-break。`rollCallBadge`、`evalBadge`、tooltip/操作入口與代課 session 選取都要共用同一規則。 |
 | **禁止回歸** | **(a)** 勿把 `findSessionRowForCell` 改回單純 `.find()`。**(b)** 勿在 `rollCallBadge` / `evalBadge` / 右鍵操作各自重寫判斷邏輯（必須共用解析器）。**(c)** 勿在代課 modal 用「同日第一筆」直接取 `session_id`。**(d)** 勿讓 `useCourseSessionsDisplay` 優先顯示 `cancelled` 高於 `scheduled`。 |
