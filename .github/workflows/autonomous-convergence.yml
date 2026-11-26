@@ -95,7 +95,8 @@ jobs:
           now = datetime.now(timezone.utc)
           ci_runs = read(os.environ["CI_JSON_FILE"])
           deploy_runs = read(os.environ["DEPLOY_JSON_FILE"])
-          active = any(run.get("status") in {"queued", "in_progress", "waiting"} for run in ci_runs)
+          # Anything not completed counts: a push run blocked behind the previous main CI sits in "pending" (#5659).
+          active = any(run.get("status") != "completed" for run in ci_runs)
           successful = any(run.get("conclusion") == "success" for run in ci_runs)
           deploy_present = bool(deploy_runs)
           recent_dispatch = False
