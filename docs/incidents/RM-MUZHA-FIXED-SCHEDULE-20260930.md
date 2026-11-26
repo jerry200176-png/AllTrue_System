@@ -1,6 +1,6 @@
 # Repair Manifest — 木柵固定數學課 2026-09-30
 
-Status: POP migration prepared; production execution requires a successful POP dry-run and authenticated database approval.
+Status: executed through POP on 2026-10-01; the lessons have since been attended. The operation was retired on 2026-11-26 (strategy stub only; case manifest, script and read-only verify workflow removed, #3627).
 Risk: R3/T3. The Founder approved the four exact course changes in this conversation; the POP approval event remains a separate runtime gate.
 
 ## Business truth and exact targets
@@ -9,18 +9,18 @@ Effective from Saturday 2026-10-03, for all remaining regular occurrences:
 
 | StudentClass | Student | Current contract | Intended contract | Count / used / remaining |
 | --- | --- | --- | --- | --- |
-| 3428 | 373 張正樂 | Sat 19:30–21:30 | Sat 10:00–12:00 | 8 / 4 / 4 |
-| 3429 | 374 張正甯 | Sat 19:00–21:00 | Sat 10:00–12:00 | 8 / 4 / 4 |
-| 2332 | 155 吳宏逸 | Sat 15:00–17:00 | Sat 15:00–17:00 | 16 / 4 / 12 |
-| 2335 | 156 吳宛庭 | Sat 15:00–17:00 | Sat 15:00–17:00 | 16 / 13 / 3 |
+| 3428 | 373 | Sat 19:30–21:30 | Sat 10:00–12:00 | 8 / 4 / 4 |
+| 3429 | 374 | Sat 19:00–21:00 | Sat 10:00–12:00 | 8 / 4 / 4 |
+| 2332 | 155 | Sat 15:00–17:00 | Sat 15:00–17:00 | 16 / 4 / 12 |
+| 2335 | 156 | Sat 15:00–17:00 | Sat 15:00–17:00 | 16 / 13 / 3 |
 
 All four are 木柵 CampusID 16, math SubjectID 66, TeacherID 29,
 ClassType `one_on_two`, ScheduleMode `count`, Stop 0, and two-hour lessons.
-The two Zhang rows are one pair and the two Wu rows are another. The Wu
+The first two rows are one pair and the last two rows are another. The second pair's
 contract times are already correct, but most of their regular future
 ClassSession times are stale.
 
-The original report spelled 正甯 as 正寗 and 宏逸 as 弘毅. The Founder confirmed
+The Founder confirmed
 these four exact production identities and later approved the fixed Saturday
 times, including both 10/03 afternoon exceptions. Runtime POP approval remains
 required for production execution.

@@ -59,7 +59,7 @@ operations:
     strategy_class: App\Operations\Strategies\MuzhaFixedScheduleStrategy
     parameter_keys: [campus_id, decision_reference]
     tags: [repair, session, scheduling, muzha]
-    notes: Exact four-course case. The strategy embeds all 32 occurrence preconditions and aborts on drift. Pi-local POP only.
+    notes: Retired 2026-11-26. Ran on 2026-10-01; the strategy is a stub that always answers operation_retired. Entry kept so past POP records resolve.
 
   unpaid-hidden-closures-20261005:
     lifecycle: active

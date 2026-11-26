@@ -51,6 +51,8 @@ final class PopOperationCatalogTest extends TestCase
         self::assertSame('pop-pi-local', $entry['execution_authority']);
         self::assertSame(['super_admin'], $method->invoke($service, $entry));
         self::assertSame(['campus_id', 'decision_reference'], $entry['parameter_keys']);
+        // Retired (#3627): the entry stays for past records, the strategy can no longer plan or execute.
+        self::assertSame(['operation_retired'], (new \App\Operations\Strategies\MuzhaFixedScheduleStrategy())->plan([])['errors']);
         $entry['blast_radius'] = 'branch_wide';
         $this->expectException(RuntimeException::class);
         $method->invoke($service, $entry);
