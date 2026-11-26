@@ -105,7 +105,8 @@ jobs:
           # after that green run finished is downstream evidence (#5659). Without a green run the old rule stands.
           green_at = (done[-1].get("updated_at") or "") if successful else ""
           # deploy.yml starts 3-4 seconds after the CI run it follows. A later run tagged with this SHA can come from an older
-          # commit's failed CI and deploys nothing, so only the first 60 seconds count. A needless hand-off is a no-op there.
+          # commit's failed CI and deploys nothing, so only the first 5 minutes count; the hand-off waits out the same 5 minutes,
+          # so a deploy run that GitHub creates late is still seen before anything is sent twice.
           def seconds_after_green(run):
               try:
                   return (datetime.fromisoformat(run["created_at"].replace("Z", "+00:00")) - green_time).total_seconds()
@@ -114,7 +115,7 @@ jobs:
           try:
               green_time = datetime.fromisoformat(green_at.replace("Z", "+00:00"))
               green_age = (now - green_time).total_seconds()
-              deploy_present = any(0 <= seconds_after_green(run) <= 60 for run in deploy_runs)
+              deploy_present = any(0 <= seconds_after_green(run) <= 300 for run in deploy_runs)
           except ValueError:
               green_age = 0
               deploy_present = bool(deploy_runs)
@@ -134,7 +135,7 @@ jobs:
               print("hold")
           elif not successful:
               print("dispatch")
-          elif green_age >= 120:
+          elif green_age >= 300:
               # Green exact-main CI and nothing downstream (the run that dispatched it died first): hand off, do not rerun CI.
               print("handoff")
           else:
