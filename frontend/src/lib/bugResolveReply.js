@@ -10,6 +10,14 @@ export const RESOLVE_REPLY_OUTCOMES = Object.freeze({
   reopen: '問題仍存在',
 });
 
+// Instruction text inside the prefilled reply. It must be replaced before the reply is sent; the backend
+// refuses a resolve while the latest public reply still holds it (BugReportService::RESOLVE_REPLY_PLACEHOLDER).
+export const RESOLVE_REPLY_PLACEHOLDER = '（請用一句話說明修了什麼）';
+
+export function hasResolveReplyPlaceholder(text) {
+  return String(text ?? '').includes(RESOLVE_REPLY_PLACEHOLDER);
+}
+
 function validOutcomes(outcomes) {
   return Boolean(
     outcomes
@@ -24,7 +32,7 @@ export function resolveOutcomeLabels(serverOutcomes) {
 
 export function buildResolveReplyTemplate(serverOutcomes) {
   if (!validOutcomes(serverOutcomes)) return '';
-  return `已修好並上線：（請用一句話說明修了什麼）。請重新整理頁面後確認；若已正常，請按「${serverOutcomes.confirm}」；若仍有問題，請按「${serverOutcomes.reopen}」並簡述，我們會再追。`;
+  return `已修好並上線：${RESOLVE_REPLY_PLACEHOLDER}。請重新整理頁面後確認；若已正常，請按「${serverOutcomes.confirm}」；若仍有問題，請按「${serverOutcomes.reopen}」並簡述，我們會再追。`;
 }
 
 export function missingResolveReplyPhrases(text, serverOutcomes) {

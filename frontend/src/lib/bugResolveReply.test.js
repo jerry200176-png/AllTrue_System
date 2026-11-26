@@ -3,7 +3,9 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import {
   RESOLVE_REPLY_OUTCOMES,
+  RESOLVE_REPLY_PLACEHOLDER,
   buildResolveReplyTemplate,
+  hasResolveReplyPlaceholder,
   missingResolveReplyPhrases,
   resolveOutcomeLabels,
   shouldPrefillResolveReply,
@@ -59,6 +61,19 @@ describe('resolve reply template (GitHub #3750)', () => {
   it('button labels follow the server outcomes and fall back otherwise', () => {
     expect(resolveOutcomeLabels(SERVER)).toBe(SERVER);
     expect(resolveOutcomeLabels(null)).toBe(RESOLVE_REPLY_OUTCOMES);
+  });
+
+  it('the untouched template cannot be sent as a public reply (#3959)', () => {
+    const template = buildResolveReplyTemplate(SERVER);
+    expect(hasResolveReplyPlaceholder(template)).toBe(true);
+    expect(hasResolveReplyPlaceholder(template.replace(RESOLVE_REPLY_PLACEHOLDER, '修正了收款登記'))).toBe(false);
+    expect(hasResolveReplyPlaceholder(null)).toBe(false);
+    // Same text as BugReportService::RESOLVE_REPLY_PLACEHOLDER, which refuses the resolve on the backend.
+    const service = readFileSync(resolve(__dirname, '../../../backend/app/Services/BugReportService.php'), 'utf8');
+    expect(service).toContain(`RESOLVE_REPLY_PLACEHOLDER = '${RESOLVE_REPLY_PLACEHOLDER}'`);
+    expect(pageSource).toContain(':disabled="!newComment.trim() || replyHasPlaceholder"');
+    expect(pageSource).toContain('!activeBug.value || replyHasPlaceholder.value) return;');
+    expect(pageSource).toContain('!commentIsInternal.value && hasResolveReplyPlaceholder(newComment.value)');
   });
 
   it('BugReportsPage wires the server outcomes and keeps the resolve form after a reply', () => {
