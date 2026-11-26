@@ -36,7 +36,7 @@ jobs:
       (github.event_name == 'pull_request_target' && github.event.pull_request.merged == true) ||
       (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success')
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 40
     env:
       GH_TOKEN: ${{ github.token }}
       REPO: ${{ github.repository }}
@@ -93,12 +93,22 @@ jobs:
                   return json.load(handle).get("workflow_runs", [])
 
           now = datetime.now(timezone.utc)
-          ci_runs = read(os.environ["CI_JSON_FILE"])
+          # Only main's own CI is evidence: a pull_request run that happens to share the SHA is not.
+          ci_runs = [run for run in read(os.environ["CI_JSON_FILE"]) if run.get("event") in {"push", "workflow_dispatch"}]
           deploy_runs = read(os.environ["DEPLOY_JSON_FILE"])
           # Anything not completed counts: a push run blocked behind the previous main CI sits in "pending" (#5659).
           active = any(run.get("status") != "completed" for run in ci_runs)
-          successful = any(run.get("conclusion") == "success" for run in ci_runs)
-          deploy_present = bool(deploy_runs)
+          # The newest finished run decides: an older green run does not outvote a later failure.
+          done = sorted((run for run in ci_runs if run.get("status") == "completed"), key=lambda run: run.get("created_at") or "")
+          successful = bool(done) and done[-1].get("conclusion") == "success"
+          # deploy.yml also leaves a no-op run behind a cancelled CI. Once a CI run is green, only a deploy run created at or
+          # after that green run finished is downstream evidence (#5659). Without a green run the old rule stands.
+          green_at = (done[-1].get("updated_at") or "") if successful else ""
+          deploy_present = any((run.get("created_at") or "") >= green_at for run in deploy_runs) if green_at else bool(deploy_runs)
+          try:
+              green_age = (now - datetime.fromisoformat(green_at.replace("Z", "+00:00"))).total_seconds()
+          except ValueError:
+              green_age = 0
           recent_dispatch = False
           for run in ci_runs:
               if run.get("event") != "workflow_dispatch":
@@ -113,8 +123,13 @@ jobs:
 
           if active or recent_dispatch or deploy_present:
               print("hold")
-          else:
+          elif not successful:
               print("dispatch")
+          elif green_age >= 120:
+              # Green exact-main CI and nothing downstream (the run that dispatched it died first): hand off, do not rerun CI.
+              print("handoff")
+          else:
+              print("hold")  # deploy.yml's own workflow_run trigger may still be starting
           print(
               f"main_sha={os.environ['MAIN_SHA']} ci_runs={len(ci_runs)} "
               f"successful_ci={successful} deploy_runs={len(deploy_runs)} "
@@ -124,8 +139,17 @@ jobs:
           )"
 
           echo "$DECISION"
+          handoff() {
+            gh api --method POST "/repos/${REPO}/dispatches" \
+              -f event_type=autonomous-production-deploy \
+              -f "client_payload[target_sha]=${MAIN_SHA}" \
+              -f "client_payload[source]=autonomous-main-convergence"
+            echo "Dispatched autonomous production handoff for exact main SHA ${MAIN_SHA}; deploy.yml remains the only production executor."
+          }
           DISPATCHED_CI=0
-          if [[ "$DECISION" == dispatch$'\n'* ]]; then
+          if [[ "$DECISION" == handoff$'\n'* ]]; then
+            handoff
+          elif [[ "$DECISION" == dispatch$'\n'* ]]; then
             gh workflow run ci.yml --repo "$REPO" --ref main
             DISPATCHED_CI=1
             echo "Dispatched exact-main CI; deploy.yml remains the only production executor."
@@ -134,7 +158,8 @@ jobs:
           fi
 
           if [[ "$DISPATCHED_CI" == "1" ]]; then
-            for _ in {1..60}; do
+            # Main CI takes 10-21 minutes; wait up to 25.
+            for _ in {1..150}; do
               CI_JSON="$(gh api "/repos/${REPO}/actions/workflows/ci.yml/runs?branch=main&head_sha=${MAIN_SHA}&event=workflow_dispatch&per_page=100")"
               CI_STATE="$(CI_JSON="$CI_JSON" python3 - <<'PY'
           import json
@@ -165,9 +190,5 @@ jobs:
               echo "Exact-main CI did not complete within the bounded window; production dispatch refused."
               exit 1
             fi
-            gh api --method POST "/repos/${REPO}/dispatches" \
-              -f event_type=autonomous-production-deploy \
-              -f "client_payload[target_sha]=${MAIN_SHA}" \
-              -f "client_payload[source]=autonomous-main-convergence"
-            echo "Dispatched autonomous production handoff for exact main SHA ${MAIN_SHA}; deploy.yml remains the only production executor."
+            handoff
           fi
