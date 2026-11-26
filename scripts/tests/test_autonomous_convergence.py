@@ -121,6 +121,11 @@ class AutonomousConvergenceTest(unittest.TestCase):
         self.assertEqual(decide(runs, [{"created_at": ago(3050)}, {"created_at": ago(3040)}]), "handoff")
         self.assertIn("handoff$'\\n'*", WORKFLOW.read_text(encoding="utf-8"))
 
+    def test_only_the_newest_trusted_main_ci_run_is_green_evidence(self):
+        self.assertEqual(decide([ci("success", event="pull_request")], []), "dispatch")  # not main's own CI
+        older_green = [ci("success", created=5000, updated=4000), ci("failure", created=3000, updated=2000)]
+        self.assertEqual(decide(older_green, [{"created_at": ago(3990)}]), "hold")
+
 
 if __name__ == "__main__":
     unittest.main()

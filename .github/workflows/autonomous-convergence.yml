@@ -93,14 +93,17 @@ jobs:
                   return json.load(handle).get("workflow_runs", [])
 
           now = datetime.now(timezone.utc)
-          ci_runs = read(os.environ["CI_JSON_FILE"])
+          # Only main's own CI is evidence: a pull_request run that happens to share the SHA is not.
+          ci_runs = [run for run in read(os.environ["CI_JSON_FILE"]) if run.get("event") in {"push", "workflow_dispatch"}]
           deploy_runs = read(os.environ["DEPLOY_JSON_FILE"])
           # Anything not completed counts: a push run blocked behind the previous main CI sits in "pending" (#5659).
           active = any(run.get("status") != "completed" for run in ci_runs)
-          successful = any(run.get("conclusion") == "success" for run in ci_runs)
+          # The newest finished run decides: an older green run does not outvote a later failure.
+          done = sorted((run for run in ci_runs if run.get("status") == "completed"), key=lambda run: run.get("created_at") or "")
+          successful = bool(done) and done[-1].get("conclusion") == "success"
           # deploy.yml also leaves a no-op run behind a cancelled CI. Once a CI run is green, only a deploy run created at or
           # after that green run finished is downstream evidence (#5659). Without a green run the old rule stands.
-          green_at = min((run.get("updated_at") or "" for run in ci_runs if run.get("conclusion") == "success"), default="")
+          green_at = (done[-1].get("updated_at") or "") if successful else ""
           deploy_present = any((run.get("created_at") or "") >= green_at for run in deploy_runs) if green_at else bool(deploy_runs)
           try:
               green_age = (now - datetime.fromisoformat(green_at.replace("Z", "+00:00"))).total_seconds()
