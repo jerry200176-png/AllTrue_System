@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Controllers\Concerns\ChecksCampusAccess;
 use App\Models\Student;
 use App\Services\SchoolMergeService;
 use App\Services\SchoolNameSuggester;
@@ -12,6 +13,8 @@ use Illuminate\Http\Request;
 /** 學校整理 (#517). Reads: campus staff (combobox); suggestions: director. Campus-scoped. */
 class SchoolMergeController extends Controller
 {
+    use ChecksCampusAccess;
+
     public function __construct(private SchoolNameSuggester $suggester, private SchoolMergeService $merger)
     {
     }
@@ -105,16 +108,4 @@ class SchoolMergeController extends Controller
             ->map(fn ($r) => ['name' => (string) $r->name, 'count' => (int) $r->count])->all();
     }
 
-    private function campusAllowed(Request $request, int $campusId): bool
-    {
-        $role = (string) $request->attributes->get('auth_role', '');
-
-        return $campusId > 0 && ($role === 'super_admin'
-            || in_array($campusId, array_map('intval', (array) $request->attributes->get('auth_campus_ids', [])), true));
-    }
-
-    private function isDirector(Request $request): bool
-    {
-        return in_array($request->attributes->get('auth_role'), ['director', 'super_admin'], true);
-    }
 }
