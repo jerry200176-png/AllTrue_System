@@ -1,6 +1,7 @@
 // Tiny local "Sentry User Feedback" context: remember the last few failed
-// /api/ calls so a bug report can say which request broke. Never reads bodies
-// or auth headers; query strings are dropped (may carry PII).
+// /api/ calls so a bug report can say which request broke. Never reads request bodies
+// or auth headers; query strings are dropped (may carry PII). From a 4xx JSON answer it keeps only
+// the machine `code` and the masked `message` the screen showed, so triage does not have to ask the reporter.
 const MAX = 5;
 const failures = [];
 let installed = false;
@@ -11,15 +12,30 @@ function record(input, init, status, headers) {
     const path = new URL(raw, window.location.href).pathname;
     if (!path.startsWith('/api/')) return;
     const method = String(init?.method || input?.method || 'GET').toUpperCase();
-    failures.push({
+    const entry = {
       method,
       path,
       status,
       at: new Date().toISOString(),
       requestId: headers?.get?.('X-Request-Id') || null,
-    });
+    };
+    failures.push(entry);
     if (failures.length > MAX) failures.shift();
-  } catch { /* recording must never break a request */ }
+    return entry;
+  } catch { return null; /* recording must never break a request */ }
+}
+
+// The server's own words for a refused request (422 and friends). Reads a clone, so the caller's body is untouched.
+async function attachReason(entry, res) {
+  try {
+    if (!entry || res.status < 400 || res.status >= 500 || res.status === 401) return;
+    if (!String(res.headers?.get?.('Content-Type') || '').includes('json')) return;
+    const body = await res.clone().json();
+    const code = typeof body?.code === 'string' ? body.code.replace(/[^A-Za-z0-9_.-]/g, '').slice(0, 60) : '';
+    const message = typeof body?.message === 'string' ? cleanText(body.message, 120) : '';
+    if (code) entry.code = code;
+    if (message) entry.message = message;
+  } catch { /* no reason is fine */ }
 }
 
 export function installFetchRecorder() {
@@ -29,7 +45,7 @@ export function installFetchRecorder() {
   window.fetch = async (input, init) => {
     try {
       const res = await orig(input, init);
-      if (!res.ok) record(input, init, res.status, res.headers);
+      if (!res.ok) attachReason(record(input, init, res.status, res.headers), res);
       return res;
     } catch (err) {
       record(input, init, 0, null);
@@ -47,7 +63,7 @@ const clicks = [];
 const messages = [];
 let uiInstalled = false;
 
-const cleanText = (text, max) => String(text || '').replace(/\s+/g, ' ').trim().replace(/\d{4,}/g, '#').slice(0, max);
+function cleanText(text, max) { return String(text || '').replace(/\s+/g, ' ').trim().replace(/\d{4,}/g, '#').slice(0, max); }
 
 export function recordUserMessage(kind, text) {
   // Only problems the user hit: error/warning toasts. Info/success toasts can echo sensitive values.

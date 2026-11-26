@@ -33,6 +33,19 @@ describe('recentApiFailures', () => {
     expect(list[4].path).toBe('/api/v1/n6');
   });
 
+  it('keeps the server code and masked message of a refused request, and leaves the body readable', async () => {
+    const body = JSON.stringify({ code: 'monthly_amount_stale', message: '11 月應收為 0 元，單號 20261124001' });
+    fake.mockResolvedValueOnce(new Response(body, { status: 422, headers: { 'Content-Type': 'application/json' } }));
+    const r = await window.fetch('/api/v1/payment-reports/director-record', { method: 'POST' });
+    expect((await r.json()).code).toBe('monthly_amount_stale');
+    await vi.waitFor(() => expect(getRecentApiFailures()[0].code).toBe('monthly_amount_stale'));
+    expect(getRecentApiFailures()[0].message).toBe('11 月應收為 0 元，單號 #');
+    fake.mockResolvedValueOnce(new Response(JSON.stringify({ message: 'boom' }), { status: 500, headers: { 'Content-Type': 'application/json' } }));
+    await window.fetch('/api/v1/x');
+    await new Promise((done) => setTimeout(done, 0));
+    expect(getRecentApiFailures()[1].message).toBeUndefined();
+  });
+
   it('records network errors and rethrows', async () => {
     fake.mockRejectedValueOnce(new Error('offline'));
     await expect(window.fetch('/api/v1/x')).rejects.toThrow('offline');

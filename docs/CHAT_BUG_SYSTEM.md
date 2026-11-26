@@ -76,7 +76,7 @@ last_reviewed: 2026-11-22
 
 > 分診時每個 in-app issue 要貼**剛好一個** `rootfam:*` 根因家族標籤，依機制不是依畫面選；家族定義見 [#4991 的根因家族留言](https://github.com/jerry200176-png/AllTrue_System/issues/4991#issuecomment-6817263700)，標籤清單見 `.github/labels.yml`。週報會用它算「家族 × 月份」表，沒貼的會列在「未標家族」。
 
-> 分診先讀 `client_info.recentApiFailures`（最近 5 筆失敗請求，含 `requestId` 可對 log 的 `request_id`）與 `client_info.buildSha`、`route`，再問使用者。
+> 分診先讀 `client_info.recentApiFailures`（最近 5 筆失敗請求，含 `requestId` 可對 log 的 `request_id`；4xx 的 JSON 回應另存伺服器的 `code` 與遮罩後的 `message`，就是畫面當時顯示的原因）與 `client_info.buildSha`、`route`，再問使用者。
 > 先以具該分校權限的 [唯讀 HTTPS 或合格既有 artifact](sop/DELIVERY_LIFECYCLE.md#in-app-自動化對照表) 取得證據。逐頁核對留言、狀態歷程和附件。artifact 若缺原圖、文字被截斷或太舊，在結論標明缺口。
 
 1. 核對已附圖檔及附件 ID，閱讀完整留言與狀態歷程，包括最近的使用者補充。
