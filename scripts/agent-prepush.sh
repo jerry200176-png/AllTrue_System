@@ -10,7 +10,8 @@ base="$(git merge-base origin/main HEAD 2>/dev/null)" || { echo "agent-prepush: 
 files="$(git diff --name-only "$base"..HEAD)"
 branch="$(git branch --show-current)"
 log="$(mktemp)"
-trap 'rm -f "$log"' EXIT
+said="$(mktemp)"
+trap 'rm -f "$log" "$said"' EXIT
 fail=0
 touched() { grep -qE "$1" <<<"$files"; }
 bad() { echo "FAIL  $1"; tail -n 25 <"$log"; fail=1; }
@@ -29,6 +30,13 @@ if touched '^(frontend/src/|frontend/eslint-unused-baseline\.json$|frontend/esli
   node scripts/check-eslint-unused-baseline.mjs >"$log" 2>&1 || bad eslint-unused-baseline
 fi
 bash scripts/presubmit-local-declaration.sh >"$log" 2>&1 || bad pr-declaration
+# Presubmit CHECK 0d, before the PR exists: changing a line another PR merged in the last 7 days needs
+# `Rewrites: #N — reason`. CI reads it from the PR body; here a commit message counts too, so the first push
+# can pass. Put the same line in the PR body when you open it.
+git log --format=%B "$base"..HEAD >"$said"
+gh pr view --json body --jq .body >>"$said" 2>/dev/null || :
+python3 scripts/check-recent-work-revert.py --base origin/main --head HEAD --body-file "$said" >"$log" 2>&1 \
+  || bad 'rewrites (add the Rewrites line to a commit message now, and to the PR body)'
 
 [ "$fail" = 0 ] || { echo "agent-prepush: fix the FAIL lines above, commit, push again."; exit 1; }
 echo "agent-prepush: OK"
