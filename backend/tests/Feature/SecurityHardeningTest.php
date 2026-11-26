@@ -342,6 +342,35 @@ class SecurityHardeningTest extends TestCase
         $this->assertNull(\Illuminate\Support\Facades\DB::table('UserCampus')->where('UserID', $teacher->id)->where('CampusID', $this->campus->id)->value('RFID'));
     }
 
+    /** @test #3758: a card refused at one campus leaves the teacher's other campus cards as they were. */
+    public function profile_update_writes_no_teacher_card_when_one_campus_is_refused(): void
+    {
+        [$token, $director] = $this->makeDirectorToken();
+        $otherCampusId = (int) $this->campus->id + 2000;
+        UserCampus::create(['CampusID' => $otherCampusId, 'UserID' => $director->id, 'Admin' => 1, 'Approved' => 1]);
+        $teacher = User::create([
+            'LoginName' => 'teacher-atomic@x.com', 'Name' => 'TeacherAtomic',
+            'PSW' => password_hash('Password1!', PASSWORD_DEFAULT), 'type' => 'T',
+        ]);
+        UserCampus::create(['CampusID' => $this->campus->id, 'UserID' => $teacher->id, 'Admin' => 0, 'Approved' => 1, 'RFID' => 'KEEP-1']);
+        UserCampus::create(['CampusID' => $otherCampusId, 'UserID' => $teacher->id, 'Admin' => 0, 'Approved' => 1, 'RFID' => 'KEEP-2']);
+        $rfid = fn ($cid) => \Illuminate\Support\Facades\DB::table('UserCampus')->where('UserID', $teacher->id)->where('CampusID', $cid)->value('RFID');
+
+        $this->withHeaders(['Authorization' => "Bearer {$token}"])
+            ->putJson("/api/v1/profiles/{$teacher->id}", ['rfid_by_branch' => [
+                (string) $this->campus->id => 'NEW-1', (string) $otherCampusId => str_repeat('9', 33),
+            ]])->assertStatus(422);
+        $this->assertSame('KEEP-1', $rfid($this->campus->id));
+        $this->assertSame('KEEP-2', $rfid($otherCampusId));
+
+        $this->withHeaders(['Authorization' => "Bearer {$token}"])
+            ->putJson("/api/v1/profiles/{$teacher->id}", ['rfid_by_branch' => [
+                (string) $this->campus->id => 'NEW-1', (string) $otherCampusId => '',
+            ]])->assertOk();
+        $this->assertSame('NEW-1', $rfid($this->campus->id));
+        $this->assertNull($rfid($otherCampusId));
+    }
+
     /** @test #3740 review: a campus-A director cannot clear (or set) a teacher's campus-B card. */
     public function profile_update_cannot_touch_teacher_card_of_another_campus(): void
     {
