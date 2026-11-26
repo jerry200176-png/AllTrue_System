@@ -26,8 +26,7 @@ permissions:
 
 concurrency:
   group: autonomous-main-convergence
-  # Queue, never cancel: a run cancelled after it dispatched CI would leave nobody to send the production handoff (#5659).
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   reconcile:
@@ -99,8 +98,14 @@ jobs:
           # Anything not completed counts: a push run blocked behind the previous main CI sits in "pending" (#5659).
           active = any(run.get("status") != "completed" for run in ci_runs)
           successful = any(run.get("conclusion") == "success" for run in ci_runs)
-          # deploy.yml also leaves a no-op run behind a cancelled or failed CI; only a run that followed a green CI is evidence (#5659).
-          deploy_present = bool(deploy_runs) and successful
+          # deploy.yml also leaves a no-op run behind a cancelled CI. Once a CI run is green, only a deploy run created at or
+          # after that green run finished is downstream evidence (#5659). Without a green run the old rule stands.
+          green_at = min((run.get("updated_at") or "" for run in ci_runs if run.get("conclusion") == "success"), default="")
+          deploy_present = any((run.get("created_at") or "") >= green_at for run in deploy_runs) if green_at else bool(deploy_runs)
+          try:
+              green_age = (now - datetime.fromisoformat(green_at.replace("Z", "+00:00"))).total_seconds()
+          except ValueError:
+              green_age = 0
           recent_dispatch = False
           for run in ci_runs:
               if run.get("event") != "workflow_dispatch":
@@ -115,8 +120,13 @@ jobs:
 
           if active or recent_dispatch or deploy_present:
               print("hold")
-          else:
+          elif not successful:
               print("dispatch")
+          elif green_age >= 120:
+              # Green exact-main CI and nothing downstream (the run that dispatched it died first): hand off, do not rerun CI.
+              print("handoff")
+          else:
+              print("hold")  # deploy.yml's own workflow_run trigger may still be starting
           print(
               f"main_sha={os.environ['MAIN_SHA']} ci_runs={len(ci_runs)} "
               f"successful_ci={successful} deploy_runs={len(deploy_runs)} "
@@ -126,8 +136,17 @@ jobs:
           )"
 
           echo "$DECISION"
+          handoff() {
+            gh api --method POST "/repos/${REPO}/dispatches" \
+              -f event_type=autonomous-production-deploy \
+              -f "client_payload[target_sha]=${MAIN_SHA}" \
+              -f "client_payload[source]=autonomous-main-convergence"
+            echo "Dispatched autonomous production handoff for exact main SHA ${MAIN_SHA}; deploy.yml remains the only production executor."
+          }
           DISPATCHED_CI=0
-          if [[ "$DECISION" == dispatch$'\n'* ]]; then
+          if [[ "$DECISION" == handoff$'\n'* ]]; then
+            handoff
+          elif [[ "$DECISION" == dispatch$'\n'* ]]; then
             gh workflow run ci.yml --repo "$REPO" --ref main
             DISPATCHED_CI=1
             echo "Dispatched exact-main CI; deploy.yml remains the only production executor."
@@ -168,9 +187,5 @@ jobs:
               echo "Exact-main CI did not complete within the bounded window; production dispatch refused."
               exit 1
             fi
-            gh api --method POST "/repos/${REPO}/dispatches" \
-              -f event_type=autonomous-production-deploy \
-              -f "client_payload[target_sha]=${MAIN_SHA}" \
-              -f "client_payload[source]=autonomous-main-convergence"
-            echo "Dispatched autonomous production handoff for exact main SHA ${MAIN_SHA}; deploy.yml remains the only production executor."
+            handoff
           fi
