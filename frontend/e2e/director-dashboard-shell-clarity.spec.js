@@ -1,5 +1,6 @@
 // @ts-check
 import { test, expect } from '@playwright/test';
+import { isFontCdn } from './fixtures/fontCdn.js';
 import fs from 'node:fs';
 import path from 'node:path';
 
@@ -185,7 +186,7 @@ for (const viewport of VIEWPORTS) {
     const consoleErrors = [];
     const failedRequests = [];
     page.on('console', (message) => { if (message.type() === 'error') consoleErrors.push(message.text()); });
-    page.on('requestfailed', (request) => failedRequests.push(`${request.method()} ${request.url()}`));
+    page.on('requestfailed', (request) => isFontCdn(request) || failedRequests.push(`${request.method()} ${request.url()}`));
     await openPilot(page, { viewport });
 
     await expect(page.getByRole('heading', { name: '今天', exact: true })).toBeVisible({ timeout: 10_000 });
@@ -242,7 +243,7 @@ for (const viewport of [VIEWPORTS[0], VIEWPORTS[4]]) {
     page.on('console', (message) => {
       if (message.type() === 'error') consoleErrors.push(`${message.text()} @ ${message.location().url}`);
     });
-    page.on('requestfailed', (request) => failedRequests.push(`${request.method()} ${request.url()}`));
+    page.on('requestfailed', (request) => isFontCdn(request) || failedRequests.push(`${request.method()} ${request.url()}`));
 
     await openPilot(page, { mode: 'payment-navigation', pageName: 'app', viewport, paymentAlerts: PAYMENT_NAVIGATION_ALERTS });
 

@@ -1,5 +1,6 @@
 // @ts-check
 import { test, expect } from '@playwright/test';
+import { isFontCdn } from './fixtures/fontCdn.js';
 import { PARENT_DASHBOARD } from './fixtures/ui-foundation/apiMocks.js';
 
 /**
@@ -17,7 +18,7 @@ test('parent portal: mobile home exposes announcements and billing status', asyn
   const errors = [];
   const failedRequests = [];
   page.on('pageerror', (error) => errors.push(String(error)));
-  page.on('requestfailed', (request) => failedRequests.push(`${request.method()} ${request.url()}`));
+  page.on('requestfailed', (request) => isFontCdn(request) || failedRequests.push(`${request.method()} ${request.url()}`));
   await page.route('**/api/v1/**', async (route) => {
     const url = new URL(route.request().url());
     if (url.pathname.includes('/parent/dashboard')) {
@@ -85,7 +86,7 @@ test('parent portal: primary navigation remains usable through loading and error
   const errors = [];
   const failedRequests = [];
   page.on('pageerror', (error) => errors.push(String(error)));
-  page.on('requestfailed', (request) => failedRequests.push(`${request.method()} ${request.url()}`));
+  page.on('requestfailed', (request) => isFontCdn(request) || failedRequests.push(`${request.method()} ${request.url()}`));
   let releaseDashboard;
   const dashboardResponse = new Promise((resolve) => { releaseDashboard = resolve; });
   await page.route('**/api/v1/**', async (route) => {
@@ -125,7 +126,7 @@ async function runPopulatedParentPortal(page, viewport) {
   const errors = [];
   const failedRequests = [];
   page.on('pageerror', (error) => errors.push(String(error)));
-  page.on('requestfailed', (request) => failedRequests.push(`${request.method()} ${request.url()}`));
+  page.on('requestfailed', (request) => isFontCdn(request) || failedRequests.push(`${request.method()} ${request.url()}`));
   let selectedStudentId = 2000;
   let replyPosted = false;
   const recordOne = {
@@ -377,7 +378,7 @@ test('parent portal: header remains clear for empty and long Traditional Chinese
   const errors = [];
   const failedRequests = [];
   await page.on('pageerror', (error) => errors.push(String(error)));
-  await page.on('requestfailed', (request) => failedRequests.push(`${request.method()} ${request.url()}`));
+  await page.on('requestfailed', (request) => isFontCdn(request) || failedRequests.push(`${request.method()} ${request.url()}`));
   await page.route('**/api/v1/**', async (route) => {
     const url = new URL(route.request().url());
     if (url.pathname.includes('/parent/dashboard')) {

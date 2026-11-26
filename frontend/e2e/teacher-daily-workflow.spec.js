@@ -1,5 +1,6 @@
 // @ts-check
 import { test, expect } from '@playwright/test';
+import { isFontCdn } from './fixtures/fontCdn.js';
 
 const session = {
   access_token: 'e2e-teacher-token',
@@ -88,7 +89,7 @@ test.describe('Teacher daily workflow real Vue page', () => {
       page.on('console', (message) => {
         if (message.type() === 'error') consoleErrors.push(message.text());
       });
-      page.on('requestfailed', (request) => failedRequests.push(`${request.method()} ${request.url()}`));
+      page.on('requestfailed', (request) => isFontCdn(request) || failedRequests.push(`${request.method()} ${request.url()}`));
       await installTeacherMocks(page, 'long');
       await page.setViewportSize(viewport);
       await page.goto('/pilot-mount.html?page=teacher&mode=long');

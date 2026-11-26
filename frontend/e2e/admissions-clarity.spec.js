@@ -1,5 +1,6 @@
 // @ts-check
 import { test, expect } from '@playwright/test';
+import { isFontCdn } from './fixtures/fontCdn.js';
 
 const inquiry = {
   id: 7101,
@@ -67,7 +68,7 @@ test.describe('Admissions Director workflow real Vue page', () => {
       page.on('console', (message) => {
         if (message.type() === 'error') consoleErrors.push(message.text());
       });
-      page.on('requestfailed', (request) => failedRequests.push(`${request.method()} ${request.url()}`));
+      page.on('requestfailed', (request) => isFontCdn(request) || failedRequests.push(`${request.method()} ${request.url()}`));
       await installAdmissionMocks(page);
       await page.setViewportSize(viewport);
       await page.goto('/pilot-mount.html?page=admissions&branch=1');
@@ -128,7 +129,7 @@ test.describe('Admissions Director workflow real Vue page', () => {
     page.on('console', (message) => {
       if (message.type() === 'error') consoleErrors.push(message.text());
     });
-    page.on('requestfailed', (request) => failedRequests.push(`${request.method()} ${request.url()}`));
+    page.on('requestfailed', (request) => isFontCdn(request) || failedRequests.push(`${request.method()} ${request.url()}`));
     await installAdmissionMocks(page, 'error');
     await page.setViewportSize({ width: 412, height: 915 });
     await page.goto('/pilot-mount.html?page=admissions&branch=1');

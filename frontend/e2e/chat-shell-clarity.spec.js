@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { isFontCdn } from './fixtures/fontCdn.js';
 
 // This suite mounts a mocked Vue pilot page. Production smoke exercises only
 // deployed endpoints, while the UI-foundation build job owns this matrix.
@@ -24,7 +25,7 @@ async function openChat(page, mode = 'normal') {
   const failedRequests = [];
   let threadAttempts = 0;
   page.on('console', (message) => { if (message.type() === 'error') consoleErrors.push(message.text()); });
-  page.on('requestfailed', (request) => failedRequests.push(`${request.method()} ${request.url()}`));
+  page.on('requestfailed', (request) => isFontCdn(request) || failedRequests.push(`${request.method()} ${request.url()}`));
   await page.route('**/api/v1/profiles*', (route) => route.fulfill({
     status: 200,
     contentType: 'application/json',

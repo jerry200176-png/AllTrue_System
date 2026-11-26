@@ -1,6 +1,7 @@
 // @ts-check
 // 版本更新 on the shadcn-vue template (#4989): the real page on the pilot mount with the real generated notes; it calls no API.
 import { test, expect } from '@playwright/test';
+import { isFontCdn } from './fixtures/fontCdn.js';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -30,7 +31,7 @@ function watchPage(page) {
   const errors = [];
   const failedRequests = [];
   page.on('pageerror', (error) => errors.push(String(error)));
-  page.on('requestfailed', (request) => failedRequests.push(`${request.method()} ${request.url()}`));
+  page.on('requestfailed', (request) => isFontCdn(request) || failedRequests.push(`${request.method()} ${request.url()}`));
   return async () => {
     const layout = await page.evaluate(() => ({
       scrollWidth: document.documentElement.scrollWidth,
