@@ -455,8 +455,9 @@
                 <label v-if="isSuperAdmin" class="checkbox-label">
                   <input type="checkbox" v-model="commentIsInternal" /> 內部備註（回報者不可見）
                 </label>
-                <button class="btn-sm btn-primary" :disabled="!newComment.trim()" @click="doAddComment">送出</button>
+                <button class="btn-sm btn-primary" :disabled="!newComment.trim() || replyHasPlaceholder" @click="doAddComment">送出</button>
               </div>
+              <div v-if="replyHasPlaceholder" class="evidence-hint" role="status">請先把「{{ RESOLVE_REPLY_PLACEHOLDER }}」改成實際修了什麼，再送出。</div>
             </div>
           </div>
 
@@ -545,7 +546,7 @@ import {
   updateBugStatus, updateBugCommentVisibility, reporterVerifyBug,
   getToken,
 } from '../lib/bugReportsApi';
-import { buildResolveReplyTemplate, resolveOutcomeLabels, shouldPrefillResolveReply } from '../lib/bugResolveReply';
+import { RESOLVE_REPLY_PLACEHOLDER, buildResolveReplyTemplate, hasResolveReplyPlaceholder, resolveOutcomeLabels, shouldPrefillResolveReply } from '../lib/bugResolveReply';
 import { bugListDisplay, parseBugReportClientInfo, PRODUCT_DISPOSITION_OPTIONS, dispositionLabel, productLoopPhaseLabel, statusLogDisplayNote } from '../lib/bugReportContext';
 import { reportCourseFocusUrl } from '../lib/appNavigationHistory.js';
 import { getNavigationGroups, getTodoPages, getToolbarItems } from '../lib/navigationRegistry';
@@ -595,6 +596,8 @@ const githubIssueUrl = ref('');
 const githubPrUrl = ref('');
 const newComment = ref('');
 const commentIsInternal = ref(false);
+// The untouched template must not reach the reporter (#3959); an internal note is not shown to them.
+const replyHasPlaceholder = computed(() => !commentIsInternal.value && hasResolveReplyPlaceholder(newComment.value));
 const updatingCommentVisibilityIds = ref(new Set());
 const actionFeedback = ref(null);
 const dispositionOptions = PRODUCT_DISPOSITION_OPTIONS;
@@ -1003,7 +1006,7 @@ async function doUpdateStatus() {
 }
 
 async function doAddComment() {
-  if (!newComment.value.trim() || !activeBug.value) return;
+  if (!newComment.value.trim() || !activeBug.value || replyHasPlaceholder.value) return;
   try {
     await addBugComment(activeBug.value.id, newComment.value.trim(), commentIsInternal.value);
     newComment.value = '';
