@@ -148,7 +148,8 @@
       <p v-if="!filteredStudents.length" class="exam-score-no-match tw:my-2 tw:text-tpl-caption tw:text-tpl-secondary">找不到符合「{{ studentQuery.trim() }}」的學生。</p>
       <!-- Names stay in view while scrolling across subjects; subject names stay in view while scrolling down. -->
       <div v-else class="tw:max-h-[min(60dvh,480px)] tw:overflow-auto tw:rounded-xl tw:border tw:border-solid tw:border-border">
-        <table :class="['exam-score-table tw:w-full tw:border-collapse', dataTable.table]">
+        <!-- While the saved scores reload the table stays on screen but takes no input, so the refresh cannot overwrite typing. -->
+        <table :class="['exam-score-table tw:w-full tw:border-collapse', dataTable.table, studentsLoading && 'tw:opacity-60']" :inert="studentsLoading || undefined" :aria-busy="studentsLoading">
           <thead>
             <tr>
               <th :class="[dataTable.head, 'tw:sticky tw:top-0 tw:left-0 tw:z-2 tw:text-left']">學生</th>
