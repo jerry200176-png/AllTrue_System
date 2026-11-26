@@ -76,7 +76,7 @@ class BugAutoIntakeCommand extends Command
             ->where('b.status', 'in_progress')->where('l.from_status', 'resolved')->where('l.to_status', 'in_progress')
             ->whereColumn('l.changed_by', 'b.reporter_user_id')
             // A reopen stays listed until the report changes again, so a fixed page would starve later ones (Codex on
-            // #4739): read every reopen of the last 14 days (the hourly run sees each one ~336 times), capped at 200;
+            // #4739): read every reopen of the last 14 days (the 10-minute run sees each one ~2016 times), capped at 200;
             // the workflow warns at the cap.
             ->where('l.created_at', '>=', now()->subDays(self::REOPEN_WINDOW_DAYS))
             ->orderBy('l.id')->limit(self::REOPEN_CAP)->get(['l.bug_report_id', 'l.id', 'l.created_at'])

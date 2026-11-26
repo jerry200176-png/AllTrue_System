@@ -10,7 +10,8 @@ name: Bug auto-intake (hourly)
 # Logs carry IDs only (public repo); report text never leaves production.
 on:
   schedule:
-    - cron: '23 * * * *'
+    # Founder 2026-11-26 (option A): reporters rarely answer a late reply, so intake runs every 10 minutes, not hourly.
+    - cron: '3-59/10 * * * *'
   workflow_dispatch:
     inputs:
       dry_run:

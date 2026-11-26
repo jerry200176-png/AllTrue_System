@@ -189,7 +189,7 @@
     "bug-auto-intake.yml": {
       "classification": "in-app-lifecycle-writeback",
       "production_mutation": "confirmed",
-      "trigger": "schedule (hourly) + workflow_dispatch (dry_run default)",
+      "trigger": "schedule (every 10 minutes) + workflow_dispatch (dry_run default)",
       "production_command_or_path": "php artisan bugs:auto-intake --candidates (read) / --ack -> locked transaction: addComment(exact ack text) only; status stays new so triage SLA is not masked",
       "authorization": "Founder GO 6A (Jerry 2026-10-07) for automated ack writes; pinned production SSH trust; IDs-only issue creation with issues: write scoped to one job",
       "concurrency": "Workflow concurrency group bug-auto-intake; command skips reports not in status new; ack deduped by issue URL; issue deduped by SourceRef",

@@ -255,7 +255,7 @@ This metadata only preserves GitHub tracking ownership. It does not resolve the 
 
 | 步 | 做什麼 | 產出 |
 |---|---|---|
-| 1 收件 | `bug-auto-intake.yml` 每小時開或重用 IDs-only issue，自動回覆 M1 | 回報者知道已收到 |
+| 1 收件 | `bug-auto-intake.yml` 每 10 分鐘開或重用 IDs-only issue，自動回覆 M1 | 回報者知道已收到 |
 | 2 分類 | 一則常常混了好幾件事，要**拆開**，每件各自處理（見下表） | 每件一個 `disposition` |
 | 3 先查、不問 | 依 §3.6 與 F15：附件、`client_info`、歷史，必要時查業務資料，自己重現 | 根因或重現步驟 |
 | 4 定優先級 | 嚴重度 × 影響範圍（見下表），SLA 依 DELIVERY_LIFECYCLE 階段 2 | P0–P3，對應 in-app `critical`、`high`、`medium`、`low` |
