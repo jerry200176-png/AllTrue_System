@@ -1,5 +1,6 @@
 // @ts-check
 import { test, expect } from '@playwright/test';
+import { isFontCdn } from './fixtures/fontCdn.js';
 
 const campuses = [
   { id: 4101, name: '台北總校超長分校名稱用來驗證手機版資訊仍然可讀', code: 'taipei-main', SwipeWindowMinutes: 30, active: true, Token: 'token-a', LineNotifyID: '', TelegramToken: '', TelegramChatID: '' },
@@ -37,7 +38,7 @@ test.describe('Branch Management real Vue page', () => {
       page.on('console', (message) => {
         if (message.type() === 'error') consoleErrors.push(message.text());
       });
-      page.on('requestfailed', (request) => failedRequests.push(`${request.method()} ${request.url()}`));
+      page.on('requestfailed', (request) => isFontCdn(request) || failedRequests.push(`${request.method()} ${request.url()}`));
       await installBranchMocks(page, 'long');
       await page.setViewportSize(viewport);
       await page.goto('/pilot-mount.html?page=branch-management&mode=long');

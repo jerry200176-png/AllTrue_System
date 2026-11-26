@@ -76,7 +76,7 @@ last_reviewed: 2026-11-22
 
 > 分診時每個 in-app issue 要貼**剛好一個** `rootfam:*` 根因家族標籤，依機制不是依畫面選；家族定義見 [#4991 的根因家族留言](https://github.com/jerry200176-png/AllTrue_System/issues/4991#issuecomment-6817263700)，標籤清單見 `.github/labels.yml`。週報會用它算「家族 × 月份」表，沒貼的會列在「未標家族」。
 
-> 分診先讀 `client_info.recentApiFailures`（最近 5 筆失敗請求，含 `requestId` 可對 log 的 `request_id`）與 `client_info.buildSha`、`route`，再問使用者。
+> 分診先讀 `client_info.recentApiFailures`（最近 5 筆失敗請求，含 `requestId` 可對 log 的 `request_id`；4xx 的 JSON 回應另存伺服器的 `code`；422 再存遮罩後的 `message`，就是畫面當時顯示的原因）與 `client_info.buildSha`、`route`，再問使用者。
 > 先以具該分校權限的 [唯讀 HTTPS 或合格既有 artifact](sop/DELIVERY_LIFECYCLE.md#in-app-自動化對照表) 取得證據。逐頁核對留言、狀態歷程和附件。artifact 若缺原圖、文字被截斷或太舊，在結論標明缺口。
 
 1. 核對已附圖檔及附件 ID，閱讀完整留言與狀態歷程，包括最近的使用者補充。
@@ -255,7 +255,7 @@ This metadata only preserves GitHub tracking ownership. It does not resolve the 
 
 | 步 | 做什麼 | 產出 |
 |---|---|---|
-| 1 收件 | `bug-auto-intake.yml` 每小時開或重用 IDs-only issue，自動回覆 M1 | 回報者知道已收到 |
+| 1 收件 | `bug-auto-intake.yml` 每 10 分鐘開或重用 IDs-only issue，自動回覆 M1 | 回報者知道已收到 |
 | 2 分類 | 一則常常混了好幾件事，要**拆開**，每件各自處理（見下表） | 每件一個 `disposition` |
 | 3 先查、不問 | 依 §3.6 與 F15：附件、`client_info`、歷史，必要時查業務資料，自己重現 | 根因或重現步驟 |
 | 4 定優先級 | 嚴重度 × 影響範圍（見下表），SLA 依 DELIVERY_LIFECYCLE 階段 2 | P0–P3，對應 in-app `critical`、`high`、`medium`、`low` |

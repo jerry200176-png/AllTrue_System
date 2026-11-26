@@ -6,6 +6,7 @@
  * Static HTML harness under e2e/fixtures is design exploration only.
  */
 import { test, expect } from '@playwright/test';
+import { isFontCdn } from './fixtures/fontCdn.js';
 import AxeBuilder from '@axe-core/playwright';
 import { dismissOverlays } from './fixtures/dismissOverlays.js';
 import { installApiMocks } from './fixtures/ui-foundation/apiMocks.js';
@@ -393,7 +394,7 @@ test.describe('UI foundation — real Vue page evidence', () => {
       page.on('console', (message) => {
         if (message.type() === 'error') consoleErrors.push(message.text());
       });
-      page.on('requestfailed', (request) => {
+      page.on('requestfailed', (request) => { if (isFontCdn(request)) return;
         failedRequests.push(`${request.method()} ${request.url()} — ${request.failure()?.errorText || 'failed'}`);
       });
 
@@ -439,7 +440,7 @@ test.describe('UI foundation — real Vue page evidence', () => {
       page.on('console', (message) => {
         if (message.type() === 'error') consoleErrors.push(message.text());
       });
-      page.on('requestfailed', (request) => failedRequests.push(`${request.method()} ${request.url()}`));
+      page.on('requestfailed', (request) => isFontCdn(request) || failedRequests.push(`${request.method()} ${request.url()}`));
 
       await openPilot(page, {
         pageName: 'inbox',

@@ -264,7 +264,7 @@ jobs:
           import os
 
           runs = json.loads(os.environ["CI_RUNS"]).get("workflow_runs", [])
-          print(sum(1 for run in runs if run.get("name") == "CI — PHPUnit Tests" and run.get("conclusion") == "success"))
+          print(sum(1 for run in runs if run.get("name") == "CI — PHPUnit Tests" and run.get("event") in ("push", "workflow_dispatch") and run.get("conclusion") == "success"))
           PY
           )"
             if [[ "$CI_OK" -lt 1 ]]; then
@@ -1522,7 +1522,7 @@ jobs:
           import os
 
           runs = json.loads(os.environ["CI_RUNS"]).get("workflow_runs", [])
-          print(any(run.get("name") == "CI — PHPUnit Tests" and run.get("conclusion") == "success" for run in runs))
+          print(any(run.get("name") == "CI — PHPUnit Tests" and run.get("event") in ("push", "workflow_dispatch") and run.get("conclusion") == "success" for run in runs))
           PY
           )"
           POLICY_RESULT="$(PYTHONPATH=. WORKFLOW_REF="$WORKFLOW_REF" TARGET_SHA="$TARGET_SHA" MAIN_SHA="$MAIN_SHA" CI_OK="$CI_OK" IN_MAIN="$IN_MAIN" RELEASE_TRAIN="$RELEASE_TRAIN" python3 - <<'PY'
@@ -1803,7 +1803,7 @@ jobs:
           import os
 
           runs = json.loads(os.environ["CI_RUNS"]).get("workflow_runs", [])
-          print(any(run.get("name") == "CI — PHPUnit Tests" and run.get("conclusion") == "success" for run in runs))
+          print(any(run.get("name") == "CI — PHPUnit Tests" and run.get("event") in ("push", "workflow_dispatch") and run.get("conclusion") == "success" for run in runs))
           PY
           )"
           [[ "$CI_OK" == "True" ]] || {
@@ -2276,7 +2276,7 @@ jobs:
           import os
 
           runs = json.loads(os.environ["CI_RUNS"]).get("workflow_runs", [])
-          print(any(run.get("name") == "CI — PHPUnit Tests" and run.get("conclusion") == "success" for run in runs))
+          print(any(run.get("name") == "CI — PHPUnit Tests" and run.get("event") in ("push", "workflow_dispatch") and run.get("conclusion") == "success" for run in runs))
           PY
           )"
           [[ "$CI_OK" == "True" ]] || {

@@ -1,5 +1,6 @@
 // @ts-check
 import { test, expect } from '@playwright/test';
+import { isFontCdn } from './fixtures/fontCdn.js';
 import path from 'node:path';
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -28,7 +29,7 @@ function setupErrorTracking(page) {
   const errors = [];
   page.on('console', (msg) => { if (msg.type() === 'error') errors.push(`Console: ${msg.text()}`); });
   page.on('pageerror', (err) => { errors.push(`Page: ${err.message}`); });
-  page.on('requestfailed', (req) => { errors.push(`Network: ${req.method()} ${req.url()}`); });
+  page.on('requestfailed', (req) => { if (isFontCdn(req)) return; errors.push(`Network: ${req.method()} ${req.url()}`); });
   return errors;
 }
 

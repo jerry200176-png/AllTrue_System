@@ -325,7 +325,7 @@
                   <!-- #740 Step 5：課程卡內容剝離為 presentational 元件（週檢視，含老師標籤） -->
                   <CourseBlockContent
                     :course="course"
-                    :badges="{ rollCall: rollCallBadge(course, getDisplayDateFull(idx + 1)), evalMissing: evalBadge(course, getDisplayDateFull(idx + 1)), teacherTag: weekViewTeacherIds.length !== 1 ? { name: course.teacher_name, color: getTeacherColor(course.teacher_id) } : null }"
+                    :badges="{ rollCall: rollCallBadge(course, getDisplayDateFull(idx + 1)), evalMissing: evalBadge(course, getDisplayDateFull(idx + 1)), teacherTag: !isTeacher && weekViewTeacherIds.length !== 1 ? { name: course.teacher_name, color: getTeacherColor(course.teacher_id) } : null }"
                     :layout="{ compact: false, splitSlot: getCoursesForWeekCell(idx + 1, h).length > 1, splitCount: getCoursesForWeekCell(idx + 1, h).length, firstBadge: null }"
                   />
                 </div>
@@ -4208,7 +4208,14 @@ onUnmounted(removeContextMenuListeners);
   .view-sub-toggle button { padding: 5px 10px; font-size: 12px; }
 }
 @media (max-width: 640px) {
-  .week-overview-grid .col-header-blank { height: 48px; }
   .course-block { min-height: 44px; }
+}
+/* in-app #600: on a phone the lesson count sat on top of the weekday name and the 今天 pill wrapped over the date.
+   The count gets its own row; today is already marked by the column colour. */
+@media (max-width: 768px) {
+  .day-col-header { height: 60px; gap: 1px; }
+  .week-overview-grid .col-header-blank { height: 60px; }
+  .day-col-badge { position: static; }
+  .day-col-today-pill { display: none; }
 }
 </style>

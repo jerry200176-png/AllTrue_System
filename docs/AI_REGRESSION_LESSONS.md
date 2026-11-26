@@ -703,7 +703,7 @@ Intake consolidation regression (2026-10-17): the oldest trusted SourceRef issue
 
 ### R25. 智慧行事曆請假優先於 scheduled 例外
 
-- 同一課程同日可能同時存在 `schedules.status='leave'` 與歷史調課留下的 `scheduled` 例外；若 scheduled 例外先吃掉基底格，請假卡與「假」角標會整格消失（張正樂 4/29）。
+- 同一課程同日可能同時存在 `schedules.status='leave'` 與歷史調課留下的 `scheduled` 例外；若 scheduled 例外先吃掉基底格，請假卡與「假」角標會整格消失（學生甲 4/29）。
 - **強制規則**：`SmartCalendar` 合併例外時，同 course/date 有 `leave` 必須讓請假基底卡優先；`scheduled` 例外不可再 suppress 同時段 base slot，也不可另渲染成正常課。
 - **測試必補**：新增或修改智慧行事曆例外合併邏輯時，必須覆蓋 leave + scheduled 同 course/date 的衝突案例。
 

@@ -1,5 +1,6 @@
 // @ts-check
 import { test, expect } from '@playwright/test';
+import { isFontCdn } from './fixtures/fontCdn.js';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -68,7 +69,7 @@ async function assertNoConsoleOrFailedRequests(page) {
   const consoleErrors = [];
   const failedRequests = [];
   page.on('console', (message) => { if (message.type() === 'error') consoleErrors.push(message.text()); });
-  page.on('requestfailed', (request) => failedRequests.push(`${request.method()} ${request.url()}`));
+  page.on('requestfailed', (request) => isFontCdn(request) || failedRequests.push(`${request.method()} ${request.url()}`));
   return { consoleErrors, failedRequests };
 }
 

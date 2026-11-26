@@ -29,7 +29,7 @@ export function parseBugReportClientInfo(raw) {
   if (buildSha) context.buildSha = buildSha;
   if (Array.isArray(parsed.recentApiFailures)) {
     const lines = parsed.recentApiFailures.slice(-5).map((f) => (f && typeof f === 'object'
-      ? [boundedText(f.method, 10), boundedText(f.path, 120), f.status, boundedText(f.requestId, 64)]
+      ? [boundedText(f.method, 10), boundedText(f.path, 120), f.status, boundedText(f.code, 60), boundedText(f.message, 120), boundedText(f.requestId, 64)]
         .filter((x) => x !== '' && x != null).join(' ')
       : '')).filter(Boolean);
     if (lines.length) context.recentApiFailures = lines;

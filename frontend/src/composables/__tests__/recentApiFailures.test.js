@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import {
-  installFetchRecorder, getRecentApiFailures, resetRecentApiFailuresForTest, fitClientInfo,
+  installFetchRecorder, getRecentApiFailures, resetRecentApiFailuresForTest, fitClientInfo, clearUiBreadcrumbs,
 } from '../../lib/recentApiFailures';
 
 const res = (status, id) => ({ ok: status < 400, status, headers: new Headers(id ? { 'X-Request-Id': id } : {}) });
@@ -31,6 +31,21 @@ describe('recentApiFailures', () => {
     const list = getRecentApiFailures();
     expect(list).toHaveLength(5);
     expect(list[4].path).toBe('/api/v1/n6');
+  });
+
+  it('keeps the server code and masked message of a refused request, and leaves the body readable', async () => {
+    const body = JSON.stringify({ code: 'monthly_amount_stale', message: '11 月應收為 0 元，單號 20261124001' });
+    fake.mockResolvedValueOnce(new Response(body, { status: 422, headers: { 'Content-Type': 'application/json' } }));
+    const r = await window.fetch('/api/v1/payment-reports/director-record', { method: 'POST' });
+    expect((await r.json()).code).toBe('monthly_amount_stale');
+    await vi.waitFor(() => expect(getRecentApiFailures()[0].code).toBe('monthly_amount_stale'));
+    expect(getRecentApiFailures()[0].message).toBe('11 月應收為 0 元，單號 #');
+    fake.mockResolvedValueOnce(new Response(JSON.stringify({ code: 'DUPLICATE_TEACHER_NAME', message: '帳號：someone' }), { status: 409, headers: { 'Content-Type': 'application/json' } }));
+    await window.fetch('/api/v1/x');
+    await vi.waitFor(() => expect(getRecentApiFailures()[1].code).toBe('DUPLICATE_TEACHER_NAME'));
+    expect(getRecentApiFailures()[1].message).toBeUndefined();
+    clearUiBreadcrumbs(); // sign-out / campus switch
+    expect(getRecentApiFailures()).toEqual([]);
   });
 
   it('records network errors and rethrows', async () => {

@@ -848,7 +848,7 @@ Ruth 教的 StudentClasses 恰好是兄弟姊妹（張家 sc#620/#621/#622 同�
 ### Problem
 當一堂課在短時間內「先代課後調課」或「先調課後代課」（老師請假情境最常發生），`CourseManagement` 的 tooltip「授課老師」欄仍顯示原任老師姓名，而非實際代課老師。具體案例：
 - 游家豫數學課（StudentClass=143）4/22：主任先指定陳章華代課，再將時段調至週三 → 課程管理顯示鄭翔祐（原任老師）
-- 先前 4/18 吳宏逸案例（§2026-04-18 Substitute hotfix）已修一部分，但 SmartCalendar 拖曳調課路徑仍會重複觸發此 bug
+- 先前 4/18 學生丙案例（§2026-04-18 Substitute hotfix）已修一部分，但 SmartCalendar 拖曳調課路徑仍會重複觸發此 bug
 
 ### Root Cause
 `SmartCalendar.submitReschedule` 與 `LearningRecordController::syncSchedulesForRescheduledSession` 對「代課 scheduled 行 + 調課新建 scheduled 行」的協作缺少約束：
@@ -933,7 +933,7 @@ Ruth 教的 StudentClasses 恰好是兄弟姊妹（張家 sc#620/#621/#622 同�
 ## 2026-04-18 — Bug Fix：調課代課課表顯示錯誤 & 老師端科目數視野控制（PRD `4a9edeae`）
 
 ### Problem
-1. **調課＋代課後，原時段格仍顯示舊時間、代課老師無點名入口（Bug A）**：黃芝琳老師的學生吳宏逸 10:00–12:00 課程改為李維老師代課、時段挪到 17:00–19:00，`POST /api/v1/learning-records/reschedule-session` 回傳成功，但 `SmartCalendar` / `TeacherHomePage` 仍顯示 10:00–12:00，代課老師看不到新時段，無法點名。
+1. **調課＋代課後，原時段格仍顯示舊時間、代課老師無點名入口（Bug A）**：黃芝琳老師的學生學生丙 10:00–12:00 課程改為李維老師代課、時段挪到 17:00–19:00，`POST /api/v1/learning-records/reschedule-session` 回傳成功，但 `SmartCalendar` / `TeacherHomePage` 仍顯示 10:00–12:00，代課老師看不到新時段，無法點名。
 2. **老師端看到所有同事科目數數字（Bug B）**：`SubjectUnitsPage.vue` 對老師角色完整展示他人的 `one_on_one_hours`、`share_pct`、`subject_count_*` 與分校 totals，屬公司內部敏感資訊。
 
 ### Root Cause
@@ -2502,7 +2502,7 @@ PRD 第 13 節標示的三個 `[TODO: 需確認]` 本次一併處理：
   - 新增 3 個回歸測試：`cancelled+scheduled`、全 `cancelled`、`leave+scheduled`，確認 API rows 與前端解析契約一致。
 
 ### Validation / QA
-- 實際案例驗證：張正樂課程（`StudentClassID=307`）於 `2026-04-15` 同時存在 `cancelled(id=2506)` 與 `scheduled(id=3427)`，新規則正確選取 `scheduled`。
+- 實際案例驗證：學生甲課程（`StudentClassID=307`）於 `2026-04-15` 同時存在 `cancelled(id=2506)` 與 `scheduled(id=3427)`，新規則正確選取 `scheduled`。
 - 觀測查詢：全系統重複組合共 4 組，其中 3 組為案例課程（4/15、4/22、4/29），目前無需啟動破壞性資料清理。
 - 測試結果：`ClassSessionDuplicateStatusTest` **3/3 通過**（`OK (3 tests, 10 assertions)`）。
 - 前端已執行 `cd frontend && npm run deploy`。
@@ -3294,7 +3294,7 @@ PRD 第 13 節標示的三個 `[TODO: 需確認]` 本次一併處理：
 
 ## 2026-04-28 — fix(calendar): 請假卡被調課例外遮蔽
 
-- Fixed 智慧行事曆同課程同日同時存在請假與 scheduled 例外時保留請假卡，避免張正樂 4/29 請假在課表消失
+- Fixed 智慧行事曆同課程同日同時存在請假與 scheduled 例外時保留請假卡，避免學生甲 4/29 請假在課表消失
 
 ---
 

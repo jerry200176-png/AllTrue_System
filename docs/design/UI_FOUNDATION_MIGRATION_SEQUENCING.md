@@ -28,7 +28,8 @@ Leaving `scripts/ui-legacy-pages.json` only means the page no longer imports `At
 | 學生管理 (`StudentsList.vue`) | slices 1-4 merged (#5359) | slices 5-11: course cards, history section, dialogs, child modals, cleanup |
 | 帳務中心 (`TuitionCollectionPage.vue`) | on the template parts in places (direction A: table with a checkbox column, phone = list rows); still in the legacy list | finish after the billing-guide PR #5510 lands; refresh its visual baseline |
 | 當月學收 | migrated in #5270, page removed in #5464 | |
-| 班級行事曆, 出缺勤, 學習評量 / 段考成績, 報表與薪資, 設定 | not started | in the order above |
+| 段考成績 (`ExamGradesPage.vue`) | slice 1: shell, header, round list card, score table on the template parts (Founder asked for this page first, 2026-11-26) | slice 2: the six `AtDialog` overlays and their forms onto `components/ui/dialog`; then the two tab panels |
+| 班級行事曆, 出缺勤, 學習評量, 報表與薪資, 設定 | not started | in the order above |
 | Teacher pages, parent pages | not started (parent step 1: #4987) | after the director pages |
 
 Page layout (shell, header, summary strip, cards, list vs table, name cells, required screenshots) is one contract: [`PAGE_TEMPLATE.md`](PAGE_TEMPLATE.md), taken from 今日工作台. A migration that only swaps components without that layout is not done.

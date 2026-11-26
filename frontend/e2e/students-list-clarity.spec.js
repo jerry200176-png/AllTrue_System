@@ -1,5 +1,6 @@
 // @ts-check
 import { test, expect } from '@playwright/test';
+import { isFontCdn } from './fixtures/fontCdn.js';
 import AxeBuilder from '@axe-core/playwright';
 
 // #544 / #4989 slice 3: exercise recovery and retained rows, not only an empty-page scan.
@@ -307,7 +308,7 @@ test.describe('Students List width acceptance', () => {
       const failedRequests = [];
       const apiRequests = [];
       page.on('console', (message) => { if (message.type() === 'error') consoleErrors.push(message.text()); });
-      page.on('requestfailed', (request) => failedRequests.push(`${request.method()} ${request.url()}`));
+      page.on('requestfailed', (request) => isFontCdn(request) || failedRequests.push(`${request.method()} ${request.url()}`));
       await installStudentMocks(page, apiRequests);
       await page.setViewportSize(viewport);
       await page.goto('/pilot-mount.html?page=students');
