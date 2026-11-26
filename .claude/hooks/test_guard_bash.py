@@ -68,6 +68,9 @@ def run(cmd: str, cwd: str = None, env_extra: dict = None, timeout: int = 5, gua
 
 
 SAFE = [
+    "gh pr create --title t --body \"$(cat <<'EOF'\nRuns `npm test` first\nEOF\n)\"",  # quoted delimiter: literal
+    'cat > /tmp/body.md <<EOF\nno ticks, $(date) is fine, \\`escaped\\` too\nEOF',
+    "cat <<EOF\nplain\nEOF\necho '`not in the heredoc`'",
     # AllTrue: local tests and docs that mention the Pi are fine
     "cd backend && vendor/bin/phpunit tests/Unit",
     "bash scripts/phpunit-isolated.sh",
@@ -119,6 +122,9 @@ SAFE = [
 ]
 
 DANGEROUS = [
+    # Backticks in an unquoted heredoc are run by the shell and drop out of the text (PR bodies lost twice).
+    'gh pr create --title t --body "$(cat <<EOF\nRuns `npm test` first\nEOF\n)"',
+    "cat > /tmp/body.md <<-EOF\n\tsee `x`\n\tEOF",
     # AllTrue production Pi
     "ssh admin@pi.lifenet.com.tw 'cd /home/admin && php artisan test'",
     "ssh -i ~/.ssh/pi admin@pi.lifenet.com.tw",

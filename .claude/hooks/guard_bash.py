@@ -486,6 +486,8 @@ class Walker:
             op = r.get("Op")
             if op in ("<<", "<<-"):
                 parts = (r.get("Hdoc") or {}).get("Parts", [])
+                if any(p.get("Type") == "CmdSubst" and p.get("Backquotes") for p in parts):
+                    raise Deny(HDOC_TICKS)
                 lit = all(p.get("Type") == "Lit" for p in parts)
                 self.fed = ("lit" if lit else "dyn", "".join(p.get("Value", " DYN ") for p in parts))
             elif op == "<<<":
@@ -674,6 +676,14 @@ class Walker:
             raise Deny(f"script {path} cannot be opened to verify (fail closed)")
 
 
+HDOC_TICKS = ("backticks inside an unquoted heredoc: the shell runs them as commands and the words vanish from "
+              "the text (PR bodies lost this way). Quote the delimiter (<<'EOF'), or write the text to a file "
+              "and pass --body-file / -F. A command you really mean to run there: use $(...).")
+# Regex fallback for the same rule: <<EOF or <<-EOF with a bare delimiter, then an unescaped backtick in the body.
+HDOC_TICKS_RE = re.compile(r"<<-?[ \t]*([A-Za-z_]\w*)(?!\w)[^\n]*\n(?:(?![ \t]*\1[ \t]*(?:\n|$)).*\n)*?"
+                           r"(?![ \t]*\1[ \t]*(?:\n|$)).*(?<!\\)`")
+
+
 def verify(cmd, cwd):
     """Every guard check for one command: raises Deny, or the regex fallback emits its own deny and exits."""
     shfmt = find_shfmt()
@@ -687,6 +697,8 @@ def verify(cmd, cwd):
         sys.stderr.write("guard_bash: shfmt not found (scripts/install-shfmt.sh); using regex fallback\n")
     if not ast:
         import guard_bash_regex as rx
+        if HDOC_TICKS_RE.search(cmd):
+            raise Deny(HDOC_TICKS)
         flat = re.sub(r"\\\r?\n", " ", cmd)
         rx.check_all(flat)
         if re.search(rf"\bgit\b{rx.GAP}\bpush\b", rx._strip_non_executed_text(flat)):
