@@ -2,44 +2,33 @@
 # Fast pre-push checks: the one list for lefthook (people) and .claude/hooks/guard_bash.py (agents, on
 # every `git push`, no install needed). Heavy suites (PHPUnit, vitest, vite build) stay in CI.
 # Add a new fast check here, not in the guard. Skip once: LEFTHOOK=0 git push.
+# The guard runs the committed copy, and only if it can verify every command in it: keep commands
+# literal (no "$@", no `bash -c "$var"`, no eval), or the guard skips the whole list.
 set -uo pipefail
 cd "$(git rev-parse --show-toplevel)"
 base="$(git merge-base origin/main HEAD 2>/dev/null)" || { echo "agent-prepush: skip (no origin/main; git fetch origin main)"; exit 0; }
 files="$(git diff --name-only "$base"..HEAD)"
 branch="$(git branch --show-current)"
+log="$(mktemp)"
+trap 'rm -f "$log"' EXIT
 fail=0
+touched() { grep -qE "$1" <<<"$files"; }
+bad() { echo "FAIL  $1"; tail -n 25 <"$log"; fail=1; }
 
-# step <name> <path regex, '' = always> <command...>: run when a changed path matches; show output only on failure.
-step() {
-  local name="$1" pattern="$2" out
-  shift 2
-  if [ -n "$pattern" ] && ! grep -qE "$pattern" <<<"$files"; then return 0; fi
-  if out="$("$@" 2>&1)"; then echo "ok    $name"; else echo "FAIL  $name"; tail -n 25 <<<"$out"; fail=1; fi
-}
-
-size_gate() {
-  # CI's own CHECK 2 body (cannot drift). Without PyYAML the body cannot be read; ci-preflight above
-  # already applied the same size limit, so say so instead of blocking the push.
-  python3 -c 'import yaml' 2>/dev/null || { echo "skip: PyYAML missing (pip install pyyaml)"; return 0; }
-  local body
-  body="$(python3 scripts/presubmit-step.py '[CHECK 2] PR size')" || return 1
-  GITHUB_HEAD_REF="$branch" GITHUB_ENV=/dev/null bash -e -c "$body"
-}
-
-eslint_unused() {
-  [ -d frontend/node_modules ] || { echo "skip: frontend/node_modules missing (npm --prefix frontend ci)"; return 0; }
-  node scripts/check-eslint-unused-baseline.mjs
-}
-
-step preflight '' env AGENT_PREFLIGHT_MODE=ci bash scripts/agent-preflight.sh
-# Branch name, generated release notes (staff card limits), workflow YAML, secrets, PR size, route registration.
-step ci-preflight '' node scripts/ci-preflight.mjs
-step size-gate '' size_gate
-step ui-ratchet '^(frontend/|scripts/ui-legacy-pages\.json$|scripts/check-ui-ratchet\.mjs$)' \
-  node scripts/check-ui-ratchet.mjs --vs-base "$base"
-step ratchet-baselines '^(docs/design-style-baseline\.json|scripts/controller-db-baseline\.json)$' \
-  node scripts/check-ratchet-baseline-touch.mjs --base "$base" --branch "$branch"
-step eslint-unused-baseline '^(frontend/src/|frontend/eslint-unused-baseline\.json$|frontend/eslint\.config\.js$)' eslint_unused
-step pr-declaration '' bash scripts/presubmit-local-declaration.sh
+AGENT_PREFLIGHT_MODE=ci bash scripts/agent-preflight.sh >"$log" 2>&1 || bad preflight
+# Branch name, generated release notes (staff card limits), workflow YAML, secrets, route registration and
+# the PR size limit of presubmit CHECK 2.
+node scripts/ci-preflight.mjs >"$log" 2>&1 || bad ci-preflight
+if touched '^(frontend/|scripts/ui-legacy-pages\.json$|scripts/check-ui-ratchet\.mjs$)'; then
+  node scripts/check-ui-ratchet.mjs --vs-base "$base" >"$log" 2>&1 || bad ui-ratchet
+fi
+if touched '^(docs/design-style-baseline\.json|scripts/controller-db-baseline\.json)$'; then
+  node scripts/check-ratchet-baseline-touch.mjs --base "$base" --branch "$branch" >"$log" 2>&1 || bad ratchet-baselines
+fi
+if touched '^(frontend/src/|frontend/eslint-unused-baseline\.json$|frontend/eslint\.config\.js$)' && [ -d frontend/node_modules ]; then
+  node scripts/check-eslint-unused-baseline.mjs >"$log" 2>&1 || bad eslint-unused-baseline
+fi
+bash scripts/presubmit-local-declaration.sh >"$log" 2>&1 || bad pr-declaration
 
 [ "$fail" = 0 ] || { echo "agent-prepush: fix the FAIL lines above, commit, push again."; exit 1; }
+echo "agent-prepush: OK"

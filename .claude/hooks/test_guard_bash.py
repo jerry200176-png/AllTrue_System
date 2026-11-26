@@ -536,6 +536,8 @@ def test_prepush() -> bool:
     try:
         for repo in (tmp, other):
             subprocess.run(["git", "init", "-q", "-b", "feature/x", repo], check=True)
+            subprocess.run(["git", "-C", repo, "config", "user.email", "t@e.com"], check=True)
+            subprocess.run(["git", "-C", repo, "config", "user.name", "T"], check=True)
             os.makedirs(os.path.join(repo, "scripts"))
         hooks = os.path.join(tmp, ".claude", "hooks")
         shutil.copytree(HERE, hooks, ignore=shutil.ignore_patterns("__pycache__"))
@@ -543,11 +545,16 @@ def test_prepush() -> bool:
         ran = os.path.join(other, "ran")
         with open(os.path.join(other, "scripts", "agent-prepush.sh"), "w") as fh:
             fh.write(f"touch {ran}\nexit 1\n")
+        subprocess.run(["git", "-C", other, "add", "scripts"], check=True)
+        subprocess.run(["git", "-C", other, "commit", "-q", "-m", "x"], check=True)
 
-        def case(body, cmd, want, env=None, cwd=tmp):
+        def case(body, cmd, want, env=None, cwd=tmp, commit=True):
             nonlocal ok
             with open(script, "w") as fh:
                 fh.write(body)
+            if commit:
+                subprocess.run(["git", "-C", tmp, "add", "scripts"], check=True)
+                subprocess.run(["git", "-C", tmp, "commit", "-q", "--allow-empty", "-m", "x"], check=True)
             out = run(cmd, cwd=cwd, env_extra=env, timeout=20, guard=os.path.join(hooks, "guard_bash.py"))
             got = "PREPUSH" if "pre-push checks failed" in out else "DENY" if out else "ALLOW"
             if got != want:
@@ -564,9 +571,21 @@ def test_prepush() -> bool:
             print("FAIL (prepush): a script outside the guard's own checkout was executed")
         # The script must pass the guard itself before it is run.
         case(f"touch {ran}\ngit push --force origin main\n", "git push origin feature/x", "DENY")
+        # Only the committed list runs, and only while scripts/ is clean: here the committed list would
+        # leave a marker file if it ran.
+        with open(script, "w") as fh:
+            fh.write(f"touch {ran}\nexit 1\n")
+        subprocess.run(["git", "-C", tmp, "commit", "-q", "-am", "x"], check=True)
+        with open(os.path.join(tmp, "scripts", "new.sh"), "w") as fh:
+            fh.write("exit 0\n")
+        case(f"touch {ran}\nexit 1\n", "git push origin feature/x", "ALLOW", commit=False)  # untracked file
+        os.remove(os.path.join(tmp, "scripts", "new.sh"))
+        case(f"touch {ran}\nexit 1\n# edited\n", "git push origin feature/x", "ALLOW", commit=False)  # edited list
+        if not FALLBACK:  # a list the AST walk cannot fully verify is not run
+            case(f'run() {{ "$@"; }}\nrun touch {ran}\nexit 1\n', "git push origin feature/x", "ALLOW")
         if os.path.exists(ran):
             ok = False
-            print("FAIL (prepush): a script the guard would deny was executed")
+            print("FAIL (prepush): a list that is denied, uncommitted or unverifiable was executed")
         case(bad, "git push -u origin feature/x", "PREPUSH")
         case(bad, "git add -A && git commit -m x && git push origin HEAD", "PREPUSH")
         case("exit 0\n", "git push -u origin feature/x", "ALLOW")

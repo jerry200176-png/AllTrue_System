@@ -692,36 +692,57 @@ def verify(cmd, cwd):
             PUSHES.append(cwd)
 
 
+class ListWalker(Walker):
+    """Verifies the pre-push list itself. The repo scripts it calls get the Pi check only: prepush() runs
+    the list only while everything under scripts/ is committed."""
+
+    def script(self, path, cwd, depth, strict):
+        super().script(path, cwd, depth, False)
+
+
 def prepush(cmd):
     """Run scripts/agent-prepush.sh before a `git push` from this checkout leaves the machine (the list
-    lefthook runs for people; agents have no lefthook). It can only add a deny: CI is the real gate, so a
-    missing script, a timeout or `LEFTHOOK=0 git push` lets the push through, and a skip is logged.
+    lefthook runs for people; agents have no lefthook). It can only add a deny: CI is the real gate, so
+    every "cannot run it safely" case below lets the push through with a note on stderr.
 
-    This hook runs before the command is approved, so two limits apply. Only this guard's own checkout
-    (ROOT) is used, never a directory the command names. The script must pass the same checks as running
-    it by hand (`bash scripts/agent-prepush.sh`), so it cannot carry a command the guard would deny."""
+    This hook runs before the command is approved, so nothing here may run text nobody could review:
+    - only this guard's own checkout (ROOT), never a directory the command names;
+    - the committed copy (HEAD) of the list, fed to bash on stdin, and only while scripts/ has no
+      uncommitted or untracked file;
+    - only after that exact text passes the guard: every command verified by the AST walk (a list it cannot
+      fully verify is not run), plus the regex scan. Without shfmt the regex scan is the only check."""
+    def note(why):
+        sys.stderr.write(f"guard_bash: pre-push checks not run ({why}); CI still checks\n")
+
     for d in dict.fromkeys(PUSHES):
         try:
             git = lambda *a: subprocess.run(["git", "-C", d, *a], capture_output=True, text=True, timeout=5).stdout.strip()
             top = git("rev-parse", "--show-toplevel")
-            script = os.path.join(top, "scripts", "agent-prepush.sh")
-            if not top or os.path.realpath(top) != ROOT or not os.path.isfile(script):
+            if not top or os.path.realpath(top) != ROOT:
                 continue
-        except (OSError, subprocess.SubprocessError):
-            continue
-        try:
+            body = git("show", "HEAD:scripts/agent-prepush.sh")
+            if not body:
+                continue
             if os.environ.get("LEFTHOOK") == "0" or re.search(r"(?:^|[\s;&|(])LEFTHOOK=0(?=\s)", cmd):
-                sys.stderr.write("guard_bash: pre-push checks skipped (LEFTHOOK=0)\n")
+                note("LEFTHOOK=0")
                 with open(os.path.join(top, git("rev-parse", "--git-common-dir"), "agent-prepush-skips.log"), "a") as fh:
                     fh.write(f"{git('log', '-1', '--format=%cI %H')} {git('branch', '--show-current')}\n")
                 continue
-            verify("bash scripts/agent-prepush.sh", top)  # Deny passes through: not caught below
-            import guard_bash_regex as rx  # the fallback (and a walk cut short) does not read the body
-            with open(script, encoding="utf-8", errors="ignore") as fh:
-                rx.check_all(re.sub(r"\\\r?\n", " ", fh.read(200_000)))
-            r = subprocess.run(["bash", script], cwd=top, capture_output=True, text=True, timeout=PREPUSH_TIMEOUT)
+            if git("status", "--porcelain", "--untracked-files=all", "--", "scripts"):
+                note("uncommitted files under scripts/")
+                continue
+            shfmt = find_shfmt()
+            try:
+                if shfmt:
+                    ListWalker(shfmt).run(body, top)
+            except Unverifiable as e:
+                note(f"scripts/agent-prepush.sh: {e}")
+                continue
+            import guard_bash_regex as rx
+            rx.check_all(re.sub(r"\\\r?\n", " ", body))
+            r = subprocess.run(["bash", "-s"], input=body, cwd=top, capture_output=True, text=True, timeout=PREPUSH_TIMEOUT)
         except (OSError, subprocess.SubprocessError) as e:
-            sys.stderr.write(f"guard_bash: pre-push checks not run ({type(e).__name__}); CI still checks\n")
+            note(type(e).__name__)
             continue
         if r.returncode:
             raise Deny("pre-push checks failed (scripts/agent-prepush.sh). Fix, commit, push again; "
