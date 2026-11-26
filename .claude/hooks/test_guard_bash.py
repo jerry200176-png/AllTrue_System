@@ -596,6 +596,11 @@ def test_prepush() -> bool:
         subprocess.run(["git", "-C", tmp, "add", "-f", "frontend/node_modules/x.js"], check=True)
         case(f"touch {ran}\nexit 1\n", "git push origin feature/x", "SKIP", merged=False)
         subprocess.run(["git", "-C", tmp, "rm", "-q", "-f", "frontend/node_modules/x.js"], check=True)
+        os.makedirs(os.path.join(tmp, "frontend"), exist_ok=True)
+        os.symlink(other, os.path.join(tmp, "frontend", "node_modules"))  # the same, committed as a symlink
+        subprocess.run(["git", "-C", tmp, "add", "-f", "frontend/node_modules"], check=True)
+        case(f"touch {ran}\nexit 1\n", "git push origin feature/x", "SKIP", merged=False)
+        subprocess.run(["git", "-C", tmp, "rm", "-q", "-f", "frontend/node_modules"], check=True)
         if not FALLBACK:  # a list the AST walk cannot fully verify is not run
             case(f'run() {{ "$@"; }}\nrun touch {ran}\nexit 1\n', "git push origin feature/x", "SKIP")
         if os.path.exists(ran):
