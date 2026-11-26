@@ -32,7 +32,8 @@ async function attachReason(entry, res) {
     if (!String(res.headers?.get?.('Content-Type') || '').includes('json')) return;
     const body = await res.clone().json();
     const code = typeof body?.code === 'string' ? body.code.replace(/[^A-Za-z0-9_.-]/g, '').slice(0, 60) : '';
-    const message = typeof body?.message === 'string' ? cleanText(body.message, 120) : '';
+    // Only 422 (a refused operation) keeps its sentence: other 4xx texts can name another account (409 duplicate login).
+    const message = res.status === 422 && typeof body?.message === 'string' ? cleanText(body.message, 120) : '';
     if (code) entry.code = code;
     if (message) entry.message = message;
   } catch { /* no reason is fine */ }

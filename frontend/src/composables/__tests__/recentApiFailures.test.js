@@ -40,9 +40,9 @@ describe('recentApiFailures', () => {
     expect((await r.json()).code).toBe('monthly_amount_stale');
     await vi.waitFor(() => expect(getRecentApiFailures()[0].code).toBe('monthly_amount_stale'));
     expect(getRecentApiFailures()[0].message).toBe('11 月應收為 0 元，單號 #');
-    fake.mockResolvedValueOnce(new Response(JSON.stringify({ message: 'boom' }), { status: 500, headers: { 'Content-Type': 'application/json' } }));
+    fake.mockResolvedValueOnce(new Response(JSON.stringify({ code: 'DUPLICATE_TEACHER_NAME', message: '帳號：someone' }), { status: 409, headers: { 'Content-Type': 'application/json' } }));
     await window.fetch('/api/v1/x');
-    await new Promise((done) => setTimeout(done, 0));
+    await vi.waitFor(() => expect(getRecentApiFailures()[1].code).toBe('DUPLICATE_TEACHER_NAME'));
     expect(getRecentApiFailures()[1].message).toBeUndefined();
     clearUiBreadcrumbs(); // sign-out / campus switch
     expect(getRecentApiFailures()).toEqual([]);
