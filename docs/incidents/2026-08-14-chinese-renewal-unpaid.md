@@ -10,8 +10,8 @@
 
 | Student | ID | Source 國文 batch | Forbidden math/payment batches |
 |---|---|---|---|
-| 張正甯 | 374 | 1681 | 2649 |
-| 張正樂 | 373 | 1682 | 2606, 1324 |
+| 學生乙 | 374 | 1681 | 2649 |
+| 學生甲 | 373 | 1682 | 2606, 1324 |
 
 Contract to create for each student:
 

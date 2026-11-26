@@ -5,7 +5,7 @@ import {
   shouldRenderScheduledException,
 } from './calendarExceptionMerge.js';
 
-const zhangZhengleExceptions = [
+const sampleExceptions = [
   {
     id: 468,
     status: 'scheduled',
@@ -23,19 +23,19 @@ const zhangZhengleExceptions = [
 ];
 
 assert.equal(
-  hasLeaveExceptionForCourseDate(zhangZhengleExceptions, '2026-04-29', 307),
+  hasLeaveExceptionForCourseDate(sampleExceptions, '2026-04-29', 307),
   true,
-  '張正樂 4/29 should be recognized as leave even when a scheduled exception also exists',
+  '學生甲 4/29 should be recognized as leave even when a scheduled exception also exists',
 );
 
 assert.deepEqual(
-  [...scheduledExceptionStartSetForCourseDate(zhangZhengleExceptions, '2026-04-29', 307)],
+  [...scheduledExceptionStartSetForCourseDate(sampleExceptions, '2026-04-29', 307)],
   [],
   'scheduled exception must not hide the base leave card for the same course/date',
 );
 
 assert.equal(
-  shouldRenderScheduledException(zhangZhengleExceptions[0], zhangZhengleExceptions, '2026-04-29'),
+  shouldRenderScheduledException(sampleExceptions[0], sampleExceptions, '2026-04-29'),
   false,
   'scheduled exception row should not render when the same course/date is on leave',
 );

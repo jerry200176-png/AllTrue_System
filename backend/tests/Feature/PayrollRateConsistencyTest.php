@@ -88,7 +88,7 @@ class PayrollRateConsistencyTest extends TestCase
         $dir = $this->createDirector('dir-tolerance@test.com', [1]);
 
         $ruthTid = $this->createPartTimeTeacher(1, 'ruth-group@test.com', 'Ruth蔣');
-        $ruthA   = $this->createStudent(1, '張正樂');
+        $ruthA   = $this->createStudent(1, '學生甲');
         $ruthB   = $this->createStudent(1, '張正嵐');
         $scR_A   = $this->makeStudentClass($ruthA, $ruthTid, 7, 'one_on_two');
         $scR_B   = $this->makeStudentClass($ruthB, $ruthTid, 7, 'one_on_two');
