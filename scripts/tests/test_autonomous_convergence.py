@@ -121,6 +121,17 @@ class AutonomousConvergenceTest(unittest.TestCase):
         self.assertEqual(decide(runs, [{"created_at": ago(3050)}, {"created_at": ago(3040)}]), "handoff")
         self.assertIn("handoff$'\\n'*", WORKFLOW.read_text(encoding="utf-8"))
 
+    def test_late_noop_deploy_run_from_an_older_commits_ci_is_not_evidence(self):
+        # 2026-11-26: a failed rerun of the previous commit's CI created a deploy run tagged with this SHA 14 minutes later.
+        self.assertEqual(decide([ci("success", updated=1800)], [{"created_at": ago(900)}]), "handoff")
+        self.assertEqual(decide([ci("success", updated=1800)], [{"created_at": ago(1796)}]), "hold")
+
+    def test_deploy_workflow_counts_only_main_ci_events_as_green_evidence(self):
+        deploy = (WORKFLOW.parent / "deploy.yml").read_text(encoding="utf-8")
+        trusted = 'run.get("name") == "CI — PHPUnit Tests" and run.get("event") in ("push", "workflow_dispatch") and run.get("conclusion") == "success"'
+        self.assertEqual(deploy.count(trusted), 4)
+        self.assertNotIn('"CI — PHPUnit Tests" and run.get("conclusion")', deploy)
+
     def test_only_the_newest_trusted_main_ci_run_is_green_evidence(self):
         self.assertEqual(decide([ci("success", event="pull_request")], []), "dispatch")  # not main's own CI
         older_green = [ci("success", created=5000, updated=4000), ci("failure", created=3000, updated=2000)]
