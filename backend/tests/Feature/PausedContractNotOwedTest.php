@@ -19,7 +19,8 @@ use Tests\TestCase;
 /**
  * In-app #440, Founder 2026-10-29 (option A): a plain-paused contract (Stop=1, no close reason) that never started - no
  * payment, no bill, no session other than a cancelled one - is not listed as owed while paused and is listed again on resume.
- * Closed contracts and everything that already started keep the F7 S3a rule (docs/DIRECTOR_PAYMENT_ALERT_RULES.md).
+ * In-app #599 (Founder 2026-11-26): a monthly contract closed as 待核對 (settled_pending) that never started is treated the same.
+ * Other closed contracts and everything that already started keep the F7 S3a rule (docs/DIRECTOR_PAYMENT_ALERT_RULES.md).
  */
 class PausedContractNotOwedTest extends TestCase
 {
@@ -78,6 +79,33 @@ class PausedContractNotOwedTest extends TestCase
         $this->assertNull($this->settledRow($c));
         $this->assertSame(0, $this->getJson('/api/v1/accounting/settled-courses?branch_id=1', $this->headers)->json('summary.pending_reconciliation_count'));
         $this->assertTrue($c->isUnstartedPause());
+    }
+
+    /** In-app #599: a monthly contract closed as 待核對 whose every lesson was cancelled, with no bill and no payment. */
+    public function test_a_closed_pending_contract_that_never_started_is_owed_nowhere(): void
+    {
+        $c = $this->paused(['closed_reason' => 'settled_pending', 'ScheduleMode' => 'date', 'StartDate' => '2026-10-15', 'EndDate' => '2026-10-31', 'Charge' => 6000]);
+
+        $this->assertNull($this->listedInTuition($c));
+        $this->assertNull($this->settledRow($c));
+    }
+
+    public function test_a_closed_pending_monthly_contract_with_a_taught_lesson_is_still_owed(): void
+    {
+        $c = $this->paused(['closed_reason' => 'settled_pending', 'ScheduleMode' => 'date', 'StartDate' => '2026-10-15', 'EndDate' => '2026-10-31', 'Charge' => 6000]);
+        $this->addSession($c, '2026-10-31', 'attended');
+
+        $this->assertFalse($c->isUnstartedPause());
+        $this->assertNotNull($this->listedInTuition($c) ?? $this->settledRow($c));
+    }
+
+    /** Count mode keeps the F7 S3a rule: 登記收款 still accepts money on a closed count contract. */
+    public function test_a_closed_pending_count_contract_that_never_started_is_still_listed(): void
+    {
+        $c = $this->paused(['closed_reason' => 'settled_pending']);
+
+        $this->assertFalse($c->isUnstartedPause());
+        $this->assertNotNull($this->listedInTuition($c) ?? $this->settledRow($c));
     }
 
     public function test_it_is_listed_again_on_resume(): void

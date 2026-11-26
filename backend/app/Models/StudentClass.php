@@ -431,15 +431,6 @@ class StudentClass extends Model
     }
 
     /**
-     * In-app #440 (Founder 2026-10-29, option A): a plain pause (Stop=1, no close reason) of a contract that never started is
-     * not owed while paused and is listed again on resume. "Never started" = no payment (Paid flag, bill or payment report), no
-     * session other than a cancelled one (held, scheduled or on leave) and no observed taught lesson (legacy sign-ins, orphan assessments). Closed contracts (any closed_reason) and shared-package
-     * members keep the F7 S3a rule (the package carries the obligation). One batch rule for every list that shows owed money.
-     *
-     * @param int[] $courseIds
-     * @return array<int, true> course id => true
-     */
-    /**
      * Contract Charge after its Rate or quantity changes: Rate × quantity, keeping the manual delta
      * (old Charge − old base) only when the course has per-lesson session_charge adjustments (#798).
      * Shared by course edit and 調整合約總堂數 so the two writers agree (in-app #472). Null = leave Charge as is.
@@ -454,6 +445,16 @@ class StudentClass extends Model
         return max(0, $newBase + ($hasAdjustments ? $oldCharge - $oldBase : 0));
     }
 
+    /**
+     * In-app #440 (Founder 2026-10-29, option A): a plain pause (Stop=1, no close reason) of a contract that never started is
+     * not owed while paused and is listed again on resume. "Never started" = no payment (Paid flag, bill or payment report), no
+     * session other than a cancelled one (held, scheduled or on leave) and no observed taught lesson (legacy sign-ins, orphan assessments). In-app #599: a monthly (ScheduleMode=date) contract closed as
+     * settled_pending that never started is treated the same. Every other closed contract and shared-package
+     * members keep the F7 S3a rule (the package carries the obligation). One batch rule for every list that shows owed money.
+     *
+     * @param int[] $courseIds
+     * @return array<int, true> course id => true
+     */
     public static function unstartedPauseIds(array $courseIds): array
     {
         $courseIds = array_values(array_unique(array_filter(array_map('intval', $courseIds), fn (int $id) => $id > 0)));
@@ -461,7 +462,11 @@ class StudentClass extends Model
             return [];
         }
         $paused = static::query()->whereIn('ID', $courseIds)->where('Stop', 1)->where('Paid', '!=', 1)
-            ->where(fn ($q) => $q->whereNull('closed_reason')->orWhere('closed_reason', ''))
+            // In-app #599 (Founder 2026-11-26): a MONTHLY contract closed as 待核對 that never started is the same case. The list
+            // showed its contract price as owed while 登記收款 computed NT$0 for the period and refused every amount.
+            // Count-mode closures keep the F7 S3a rule (登記收款 still accepts money on them).
+            ->where(fn ($q) => $q->whereNull('closed_reason')->orWhere('closed_reason', '')
+                ->orWhere(fn ($m) => $m->where('closed_reason', 'settled_pending')->where('ScheduleMode', 'date')))
             ->where(fn ($q) => $q->whereNull('PackageID')->orWhere('PackageID', '<=', 0))
             ->pluck('ID')->map(fn ($id) => (int) $id)->all();
         $ids = array_fill_keys($paused, true);
