@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Controllers\Concerns\ChecksCampusAccess;
 use App\Models\SchoolExamPeriod;
 use App\Models\Student;
 use App\Services\SchoolNameGrouper;
@@ -13,6 +14,8 @@ use Illuminate\Validation\Rule;
 /** 各校段考日期 (#4970 step 1). Reads: director+teacher; writes: director. Campus-scoped. */
 class SchoolExamPeriodController extends Controller
 {
+    use ChecksCampusAccess;
+
     public function __construct(private SchoolNameGrouper $grouper)
     {
     }
@@ -173,21 +176,4 @@ class SchoolExamPeriodController extends Controller
         return array_intersect_key($d, array_flip($keys));
     }
 
-    private function campusAllowed(Request $request, int $campusId): bool
-    {
-        $role = (string) $request->attributes->get('auth_role', '');
-
-        return $campusId > 0 && ($role === 'super_admin'
-            || in_array($campusId, array_map('intval', (array) $request->attributes->get('auth_campus_ids', [])), true));
-    }
-
-    private function isDirector(Request $request): bool
-    {
-        return in_array($request->attributes->get('auth_role'), ['director', 'super_admin'], true);
-    }
-
-    private function forbidden(): JsonResponse
-    {
-        return response()->json(['message' => 'Forbidden'], 403);
-    }
 }

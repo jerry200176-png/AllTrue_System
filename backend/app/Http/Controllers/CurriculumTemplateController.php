@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Controllers\Concerns\ChecksCampusAccess;
 use App\Models\CurriculumTemplate;
 use App\Models\CurriculumTemplateUnit;
 use Illuminate\Http\JsonResponse;
@@ -12,6 +13,8 @@ use Illuminate\Validation\Rule;
 /** 教材範本庫 (#4970 step 2). Reads: director+teacher; writes: director. Campus-scoped; archive, never delete. */
 class CurriculumTemplateController extends Controller
 {
+    use ChecksCampusAccess;
+
     private const GRADES = ['P1', 'P2', 'P3', 'P4', 'P5', 'P6', 'J1', 'J2', 'J3', 'H1', 'H2', 'H3'];
 
     public function index(Request $request): JsonResponse
@@ -145,21 +148,4 @@ class CurriculumTemplateController extends Controller
         ]);
     }
 
-    private function campusAllowed(Request $request, int $campusId): bool
-    {
-        $role = (string) $request->attributes->get('auth_role', '');
-
-        return $campusId > 0 && ($role === 'super_admin'
-            || in_array($campusId, array_map('intval', (array) $request->attributes->get('auth_campus_ids', [])), true));
-    }
-
-    private function isDirector(Request $request): bool
-    {
-        return in_array($request->attributes->get('auth_role'), ['director', 'super_admin'], true);
-    }
-
-    private function forbidden(): JsonResponse
-    {
-        return response()->json(['message' => 'Forbidden'], 403);
-    }
 }
