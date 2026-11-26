@@ -76,161 +76,224 @@
       </TabsContent>
     </Tabs>
 
-    <AtDialog :open="!!pendingClose" title="關閉段考" title-id="exam-close-title" @close="pendingClose = null">
-      <p>關閉後老師不能再改分，確定關閉「{{ pendingClose?.title }}」嗎？</p>
-      <p v-if="closeError" class="exam-error">{{ closeError }}</p>
-      <template #actions>
-        <AtButton shape="rect" variant="ghost" :disabled="closing" @click="pendingClose = null">取消</AtButton>
-        <AtButton shape="rect" variant="primary" :loading="closing" @click="confirmCloseRound">確定關閉</AtButton>
-      </template>
-    </AtDialog>
+    <ConfirmDialog
+      :open="!!pendingClose"
+      title="關閉這個段考？"
+      :description="closeDescription"
+      confirm-label="關閉段考"
+      @update:open="onCloseOpen"
+      @confirm="confirmCloseRound"
+    />
 
-    <AtDialog :open="!!pendingDelete" title="刪除段考" title-id="exam-delete-title" @close="pendingDelete = null">
-      <p>確定刪除「{{ pendingDelete?.title }}」嗎？</p>
-      <label v-if="deleteNeedsReason">此段考已有成績，刪除後會隱藏，主任可復原。請填寫原因
-        <input v-model.trim="deleteReason" maxlength="255" />
-      </label>
-      <p v-if="deleteError" class="exam-error">{{ deleteError }}</p>
-      <template #actions>
-        <AtButton shape="rect" variant="ghost" :disabled="deleting" @click="pendingDelete = null">取消</AtButton>
-        <AtButton shape="rect" variant="primary" :loading="deleting" @click="confirmDeleteRound">確定刪除</AtButton>
-      </template>
-    </AtDialog>
+    <ConfirmDialog
+      :open="!!pendingDelete && !deleteNeedsReason"
+      title="刪除這個段考？"
+      :description="deleteDescription"
+      confirm-label="刪除"
+      destructive
+      @update:open="onDeleteOpen"
+      @confirm="confirmDeleteRound"
+    />
 
-    <AtDialog :open="showCreate" :title="editingId ? '編輯段考' : '開新段考'" title-id="exam-create-title" @close="showCreate = false">
-      <label>標題<input v-model.trim="createForm.title" maxlength="120" placeholder="例如：113-1 第一次段考" /></label>
-      <div class="exam-form-grid">
-        <label>考試日<input v-model="createForm.exam_date" type="date" /></label>
-        <label>登分截止<input v-model="createForm.entry_deadline" type="date" /></label>
+    <FormDialog
+      :open="!!pendingDelete && deleteNeedsReason"
+      size="sm"
+      title="填寫刪除原因"
+      :description="`「${pendingDelete?.title || ''}」已有成績，刪除後會隱藏，主任可復原。`"
+      submit-label="刪除"
+      :loading="deleting"
+      :dirty="!!deleteReason"
+      @update:open="onDeleteOpen"
+      @submit="confirmDeleteRound"
+    >
+      <div class="tw:grid tw:gap-2">
+        <Label for="exam-delete-reason" class="tw:text-tpl-body">刪除原因（必填）</Label>
+        <Input id="exam-delete-reason" v-model="deleteReason" maxlength="255" :class="field" />
+        <p v-if="deleteError" class="exam-error tw:m-0 tw:text-tpl-caption tw:text-destructive" role="alert">{{ deleteError }}</p>
       </div>
-      <fieldset class="exam-grade-picker">
-        <legend>適用年級</legend>
-        <label v-for="(g, i) in GRADES" :key="g.value" class="exam-grade-option">
-          <input v-model="createForm.grade_ids" type="checkbox" :value="i + 1" /> {{ g.label }}
-        </label>
-      </fieldset>
-      <fieldset class="exam-subject-editor">
-        <legend>科目{{ editingId ? '' : '（不加則用國英數社自）' }}</legend>
-        <div v-for="(sub, i) in createForm.subjects" :key="i" class="exam-subject-row">
-          <input v-model.trim="sub.name" maxlength="40" :aria-label="`科目 ${i + 1}`" placeholder="例如：國文" />
-          <AtButton shape="rect" size="sm" variant="ghost" @click="createForm.subjects.splice(i, 1)">移除</AtButton>
+    </FormDialog>
+
+    <FormDialog
+      :open="showCreate"
+      :title="editingId ? '編輯段考' : '開新段考'"
+      description="設定場次名稱、日期、適用年級與科目。"
+      :submit-label="editingId ? '儲存' : '建立'"
+      :loading="saving"
+      :dirty="formDirty"
+      @update:open="(v) => { if (!v) showCreate = false; }"
+      @submit="createRound"
+    >
+      <div class="tw:grid tw:gap-4">
+        <div class="tw:grid tw:gap-2">
+          <Label for="exam-form-title" class="tw:text-tpl-body">標題</Label>
+          <Input id="exam-form-title" v-model="createForm.title" maxlength="120" placeholder="例如：113-1 第一次段考" :class="field" />
         </div>
-        <AtButton shape="rect" size="sm" variant="ghost" icon="add" @click="createForm.subjects.push({ id: null, name: '' })">加科目</AtButton>
-      </fieldset>
-      <p v-if="formError" class="exam-error">{{ formError }}</p>
-      <template #actions>
-        <AtButton shape="rect" variant="ghost" @click="showCreate = false">取消</AtButton>
-        <AtButton shape="rect" variant="primary" :loading="saving" @click="createRound">{{ editingId ? '儲存' : '建立' }}</AtButton>
-      </template>
-    </AtDialog>
-
-    <AtDialog :open="!!selected" :title="selected?.title || '登分'" title-id="exam-score-title" size="xl" panel-class="exam-score-dialog" @close="selected = null">
-      <div v-if="studentsLoading && !students.length" aria-busy="true"><Skeleton v-for="i in 3" :key="i" class="tw:my-2 tw:h-14 tw:w-full tw:rounded-xl tw:motion-reduce:animate-none" /></div>
-      <Alert v-else-if="studentsError" tone="danger" title="無法載入學生"><p>{{ studentsError }}</p></Alert>
-      <div v-else-if="!students.length" class="tw:flex tw:flex-col tw:items-center tw:gap-2 tw:py-8 tw:text-center">
-        <UserX :size="32" :stroke-width="1.5" class="tw:text-tpl-secondary" aria-hidden="true" />
-        <p class="tw:m-0 tw:font-semibold">沒有需登分的學生</p>
-        <p class="tw:m-0 tw:text-tpl-caption tw:text-tpl-secondary">此場次沒有符合年級且由你授課的學生。</p>
+        <div class="tw:grid tw:gap-4 tw:sm:grid-cols-2">
+          <div class="tw:grid tw:gap-2">
+            <Label for="exam-form-date" class="tw:text-tpl-body">考試日</Label>
+            <Input id="exam-form-date" v-model="createForm.exam_date" type="date" :class="field" />
+          </div>
+          <div class="tw:grid tw:gap-2">
+            <Label for="exam-form-deadline" class="tw:text-tpl-body">登分截止</Label>
+            <Input id="exam-form-deadline" v-model="createForm.entry_deadline" type="date" :class="field" />
+          </div>
+        </div>
+        <fieldset class="tw:m-0 tw:min-w-0 tw:border-0 tw:p-0">
+          <legend class="tw:mb-2 tw:p-0 tw:text-tpl-body tw:font-medium">適用年級</legend>
+          <div class="tw:grid tw:grid-cols-1 tw:gap-x-4 tw:min-[480px]:grid-cols-2 tw:sm:grid-cols-3">
+            <label v-for="(g, i) in GRADES" :key="g.value" class="exam-grade-option tw:flex tw:min-h-11 tw:items-center tw:gap-2 tw:text-tpl-body tw:whitespace-nowrap">
+              <input v-model="createForm.grade_ids" type="checkbox" :value="i + 1" class="tw:size-5 tw:shrink-0 tw:accent-[var(--ds-ink)]" />{{ g.label }}
+            </label>
+          </div>
+        </fieldset>
+        <fieldset class="tw:m-0 tw:min-w-0 tw:border-0 tw:p-0">
+          <legend class="tw:mb-2 tw:p-0 tw:text-tpl-body tw:font-medium">科目{{ editingId ? '' : '（不加則用國英數社自）' }}</legend>
+          <div class="tw:grid tw:gap-2">
+            <div v-for="(sub, i) in createForm.subjects" :key="i" class="tw:flex tw:items-center tw:gap-2">
+              <Input v-model="sub.name" maxlength="40" :aria-label="`科目 ${i + 1}`" placeholder="例如：國文" :class="field" />
+              <Button type="button" variant="ghost" :class="control.row" @click="createForm.subjects.splice(i, 1)">移除</Button>
+            </div>
+            <Button type="button" variant="outline" :class="[control.row, 'tw:w-fit']" @click="createForm.subjects.push({ id: null, name: '' })"><Plus :size="18" aria-hidden="true" />加科目</Button>
+          </div>
+        </fieldset>
+        <p v-if="formError" class="exam-error tw:m-0 tw:text-tpl-caption tw:text-destructive" role="alert">{{ formError }}</p>
       </div>
-      <template v-else>
-      <div class="tw:mb-3 tw:flex tw:flex-wrap tw:items-center tw:gap-3">
-        <label for="exam-score-search-input" class="tw:sr-only">找學生</label>
-        <Input
-          id="exam-score-search-input"
-          v-model="studentQuery"
-          type="search"
-          class="tw:h-11 tw:flex-1 tw:basis-48 tw:text-[length:var(--tpl-text-body)] tw:md:text-[length:var(--tpl-text-body)]"
-          placeholder="找學生：輸入姓名或編號"
-          autocomplete="off"
-        />
-        <span class="tw:text-tpl-caption tw:text-tpl-secondary tw:tabular-nums" aria-live="polite">顯示 {{ filteredStudents.length }} / {{ students.length }} 位</span>
-      </div>
-      <p v-if="!filteredStudents.length" class="exam-score-no-match tw:my-2 tw:text-tpl-caption tw:text-tpl-secondary">找不到符合「{{ studentQuery.trim() }}」的學生。</p>
-      <!-- Names stay in view while scrolling across subjects; subject names stay in view while scrolling down. -->
-      <div v-else class="tw:max-h-[min(60dvh,480px)] tw:overflow-auto tw:rounded-xl tw:border tw:border-solid tw:border-border">
-        <!-- While the saved scores reload the table stays on screen but takes no input, so the refresh cannot overwrite typing. -->
-        <table :class="['exam-score-table tw:w-full tw:border-collapse', dataTable.table, studentsLoading && 'tw:opacity-60']" :inert="studentsLoading || undefined" :aria-busy="studentsLoading">
-          <thead>
-            <tr>
-              <th :class="[dataTable.head, 'tw:sticky tw:top-0 tw:left-0 tw:z-2 tw:text-left']">學生</th>
-              <th v-for="subject in selected.subjects" :key="subject.id" :class="[dataTable.head, 'tw:sticky tw:top-0 tw:z-1 tw:text-left']">{{ subject.name }}</th>
-              <th :class="[dataTable.head, 'tw:sticky tw:top-0 tw:right-0 tw:z-2']"><span class="tw:sr-only">操作</span></th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="row in filteredStudents" :key="row.student_id">
-              <td :class="stickyName">
-                <span>{{ row.student_name }}</span>
-                <span :class="[dataTable.sub, 'tw:tabular-nums', row.is_complete ? toneText.success : '']">{{ row.is_complete ? '已登完 ' : '' }}{{ row.filled_subject_count }}/{{ row.required_subject_count }}</span>
-              </td>
-              <td v-for="subject in selected.subjects" :key="subject.id" :class="dataTable.cell">
-                <ExamScoreCell
-                  :score="cellOf(row, subject.id).score"
-                  :is-absent="cellOf(row, subject.id).is_absent"
-                  :cleared="cellOf(row, subject.id).clear"
-                  :max="subject.max_score"
-                  :editable="canEditScores"
-                  :edited="cellOf(row, subject.id).edited"
-                  :label="`${row.student_name} ${subject.name}`"
-                  @change="(v) => onCellChange(row, subject.id, v)"
-                  @clear="onCellClear(row, subject.id)"
-                  @history="openHistory(row)"
-                />
-              </td>
-              <td :class="stickySave">
-                <button
-                  v-if="canEditScores"
-                  type="button"
-                  :class="rowAction.secondary"
-                  :disabled="savingStudentId === row.student_id"
-                  :aria-busy="savingStudentId === row.student_id"
-                  :aria-label="`儲存 ${row.student_name}`"
-                  @click="saveStudent(row)"
-                >儲存</button>
-              </td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-      </template>
-      <p v-if="scoreError" class="exam-error">{{ scoreError }}</p>
-      <template #actions>
-        <AtButton shape="rect" variant="ghost" @click="selected = null">關閉</AtButton>
-      </template>
-    </AtDialog>
+    </FormDialog>
 
-    <AtDialog :open="!!reasonFor" title="更正已截止的成績" title-id="exam-reason-title" @close="reasonFor = null">
-      <label>更正原因（必填）<input v-model.trim="reasonText" maxlength="255" placeholder="例如：登錄時打錯" /></label>
-      <template #actions>
-        <AtButton shape="rect" variant="ghost" @click="reasonFor = null">取消</AtButton>
-        <AtButton shape="rect" variant="primary" :disabled="!reasonText" @click="submitScores(reasonFor, reasonText)">確定更正</AtButton>
-      </template>
-    </AtDialog>
+    <Dialog :open="!!selected" @update:open="onScoreOpen">
+      <DialogContent class="exam-score-dialog tw:max-h-[90dvh] tw:grid-rows-[auto_minmax(0,1fr)_auto] tw:gap-0 tw:overflow-hidden tw:p-0 tw:sm:max-w-5xl">
+        <DialogHeader class="tw:p-6 tw:pb-4">
+          <DialogTitle class="tw:pr-8 tw:text-tpl-list">{{ selected?.title || '登分' }}</DialogTitle>
+          <DialogDescription>{{ canEditScores ? '在每位學生的科目欄輸入分數，按「儲存」存下那一列。' : '此場次目前只能查看分數。' }}</DialogDescription>
+        </DialogHeader>
+        <div class="tw:min-h-0 tw:overflow-y-auto tw:px-6 tw:pb-4">
+          <div v-if="studentsLoading && !students.length" aria-busy="true"><Skeleton v-for="i in 3" :key="i" class="tw:my-2 tw:h-14 tw:w-full tw:rounded-xl tw:motion-reduce:animate-none" /></div>
+          <Alert v-else-if="studentsError" tone="danger" title="無法載入學生"><p>{{ studentsError }}</p></Alert>
+          <div v-else-if="!students.length" class="tw:flex tw:flex-col tw:items-center tw:gap-2 tw:py-8 tw:text-center">
+            <UserX :size="32" :stroke-width="1.5" class="tw:text-tpl-secondary" aria-hidden="true" />
+            <p class="tw:m-0 tw:font-semibold">沒有需登分的學生</p>
+            <p class="tw:m-0 tw:text-tpl-caption tw:text-tpl-secondary">此場次沒有符合年級且由你授課的學生。</p>
+          </div>
+          <template v-else>
+            <div class="tw:mb-3 tw:flex tw:flex-wrap tw:items-center tw:gap-3">
+              <label for="exam-score-search-input" class="tw:sr-only">找學生</label>
+              <Input
+                id="exam-score-search-input"
+                v-model="studentQuery"
+                type="search"
+                class="tw:h-11 tw:flex-1 tw:basis-48 tw:text-[length:var(--tpl-text-body)] tw:md:text-[length:var(--tpl-text-body)]"
+                placeholder="找學生：輸入姓名或編號"
+                autocomplete="off"
+              />
+              <span class="tw:text-tpl-caption tw:text-tpl-secondary tw:tabular-nums" aria-live="polite">顯示 {{ filteredStudents.length }} / {{ students.length }} 位</span>
+            </div>
 
-    <AtDialog :open="!!historyRows" :title="`修改紀錄：${historyName}`" title-id="exam-history-title" @close="historyRows = null">
-      <p v-if="!historyRows?.length" class="muted">沒有修改紀錄。</p>
-      <ul v-else class="exam-history">
-        <li v-for="h in historyRows" :key="h.id">
-          <strong>{{ historyActionLabel(h.action) }} {{ subjectName(h.exam_round_subject_id) }}</strong>：{{ describeScore(h.before) }} → {{ describeScore(h.after) }}
-          <small class="muted">{{ (h.created_at || '').slice(0, 16).replace('T', ' ') }}<template v-if="h.reason"> · {{ h.reason }}</template></small>
-        </li>
-      </ul>
-      <template #actions><AtButton shape="rect" variant="ghost" @click="historyRows = null">關閉</AtButton></template>
-    </AtDialog>
+            <!-- Correcting a closed round and the edit history are inline panels, not a second dialog (overlay rules 1 and 7). -->
+            <form v-if="reasonFor" class="exam-reason-panel tw:mb-3 tw:grid tw:gap-3 tw:rounded-xl tw:border tw:border-border tw:bg-muted tw:p-4" @submit.prevent="submitScores(reasonFor, reasonText)">
+              <p class="tw:m-0 tw:text-tpl-body tw:font-semibold">更正已截止的成績</p>
+              <div class="tw:grid tw:gap-2">
+                <Label for="exam-reason-input" class="tw:text-tpl-body">更正原因（必填）</Label>
+                <Input id="exam-reason-input" v-model="reasonText" maxlength="255" placeholder="例如：登錄時打錯" :class="field" />
+              </div>
+              <div class="tw:flex tw:flex-wrap tw:gap-2">
+                <Button type="button" variant="outline" :class="control.row" @click="reasonFor = null">取消</Button>
+                <Button type="submit" :class="control.row" :disabled="!reasonText.trim()">確定更正</Button>
+              </div>
+            </form>
+            <section v-if="historyRows" class="exam-history-panel tw:mb-3 tw:rounded-xl tw:border tw:border-border tw:p-4" aria-labelledby="exam-history-title">
+              <div class="tw:mb-2 tw:flex tw:items-center tw:justify-between tw:gap-3">
+                <h3 id="exam-history-title" class="tw:m-0 tw:text-tpl-body tw:font-semibold">修改紀錄：{{ historyName }}</h3>
+                <Button type="button" variant="outline" :class="control.row" @click="historyRows = null">收起</Button>
+              </div>
+              <p v-if="!historyRows.length" class="tw:m-0 tw:text-tpl-caption tw:text-tpl-secondary">沒有修改紀錄。</p>
+              <ul v-else class="exam-history tw:m-0 tw:grid tw:list-none tw:gap-3 tw:p-0">
+                <li v-for="h in historyRows" :key="h.id" class="tw:text-tpl-body">
+                  <strong>{{ historyActionLabel(h.action) }} {{ subjectName(h.exam_round_subject_id) }}</strong>：{{ describeScore(h.before) }} → {{ describeScore(h.after) }}
+                  <small class="tw:block tw:text-tpl-caption tw:text-tpl-secondary">{{ (h.created_at || '').slice(0, 16).replace('T', ' ') }}<template v-if="h.reason"> · {{ h.reason }}</template></small>
+                </li>
+              </ul>
+            </section>
+
+            <p v-if="!filteredStudents.length" class="exam-score-no-match tw:my-2 tw:text-tpl-caption tw:text-tpl-secondary">找不到符合「{{ studentQuery.trim() }}」的學生。</p>
+            <!-- Names stay in view while scrolling across subjects; subject names stay in view while scrolling down. -->
+            <div v-else class="tw:max-h-[min(60dvh,480px)] tw:overflow-auto tw:rounded-xl tw:border tw:border-solid tw:border-border">
+              <!-- While the saved scores reload the table stays on screen but takes no input, so the refresh cannot overwrite typing. -->
+              <table :class="['exam-score-table tw:w-full tw:border-collapse', dataTable.table, studentsLoading && 'tw:opacity-60']" :inert="studentsLoading || undefined" :aria-busy="studentsLoading">
+                <thead>
+                  <tr>
+                    <th :class="[dataTable.head, 'tw:sticky tw:top-0 tw:left-0 tw:z-2 tw:text-left']">學生</th>
+                    <th v-for="subject in selectedSubjects" :key="subject.id" :class="[dataTable.head, 'tw:sticky tw:top-0 tw:z-1 tw:text-left']">{{ subject.name }}</th>
+                    <th :class="[dataTable.head, 'tw:sticky tw:top-0 tw:right-0 tw:z-2']"><span class="tw:sr-only">操作</span></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="row in filteredStudents" :key="row.student_id">
+                    <td :class="stickyName">
+                      <span>{{ row.student_name }}</span>
+                      <span :class="[dataTable.sub, 'tw:tabular-nums', row.is_complete ? toneText.success : '']">{{ row.is_complete ? '已登完 ' : '' }}{{ row.filled_subject_count }}/{{ row.required_subject_count }}</span>
+                    </td>
+                    <td v-for="subject in selectedSubjects" :key="subject.id" :class="dataTable.cell">
+                      <ExamScoreCell
+                        :score="cellOf(row, subject.id).score"
+                        :is-absent="cellOf(row, subject.id).is_absent"
+                        :cleared="cellOf(row, subject.id).clear"
+                        :max="subject.max_score"
+                        :editable="canEditScores"
+                        :edited="cellOf(row, subject.id).edited"
+                        :label="`${row.student_name} ${subject.name}`"
+                        @change="(v) => onCellChange(row, subject.id, v)"
+                        @clear="onCellClear(row, subject.id)"
+                        @history="openHistory(row)"
+                      />
+                    </td>
+                    <td :class="stickySave">
+                      <button
+                        v-if="canEditScores"
+                        type="button"
+                        :class="rowAction.secondary"
+                        :disabled="savingStudentId === row.student_id"
+                        :aria-busy="savingStudentId === row.student_id"
+                        :aria-label="`儲存 ${row.student_name}`"
+                        @click="saveStudent(row)"
+                      >儲存</button>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </template>
+          <p v-if="scoreError" class="exam-error tw:mt-3 tw:mb-0 tw:text-tpl-caption tw:text-destructive" role="alert">{{ scoreError }}</p>
+        </div>
+        <DialogFooter class="tw:border-t tw:bg-background tw:p-4 tw:sm:px-6">
+          <Button type="button" variant="outline" @click="onScoreOpen(false)">關閉</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+
+    <ConfirmDialog
+      v-model:open="askDiscardScores"
+      title="放棄還沒儲存的分數？"
+      description="關閉後，已輸入但還沒按「儲存」的分數不會保留。"
+      confirm-label="放棄分數"
+      cancel-label="繼續登分"
+      destructive
+      @confirm="discardScores"
+    />
   </section>
 </template>
 
 <script setup>
 import { trackedFetch as fetch } from '../lib/loadingBar';
-import { computed, onMounted, reactive, ref, watch } from 'vue';
+import { computed, nextTick, onMounted, reactive, ref, watch } from 'vue';
 import { ClipboardList, Plus, RefreshCw, UserX } from 'lucide-vue-next';
-import AtButton from '../components/design-system/AtButton.vue';
 import { Alert } from '../components/ui/alert';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Skeleton } from '../components/ui/skeleton';
 import { FilterChip, PageHeader, SectionCard, StatusBadge, control, dataTable, pageShell, rowAction, toneText } from '../components/ui/page';
-import AtDialog from '../components/design-system/AtDialog.vue';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '../components/ui/dialog';
+import { Label } from '../components/ui/label';
+import { ConfirmDialog, FormDialog } from '../components/app-overlay';
 import ActionMenu from '../components/ActionMenu.vue';
 import { GRADES } from '../lib/constants';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
@@ -259,6 +322,9 @@ const saving = ref(false);
 const formError = ref('');
 const createForm = reactive({ title: '', exam_date: '', entry_deadline: '', grade_ids: [], subjects: [] });
 const editingId = ref(null);
+const formSnapshot = ref('');
+const formDirty = computed(() => showCreate.value && JSON.stringify(createForm) !== formSnapshot.value);
+const field = 'tw:h-11 tw:text-[length:var(--tpl-text-body)] tw:md:text-[length:var(--tpl-text-body)]';
 const showVoid = ref(false);
 function toggleVoid() {
   showVoid.value = !showVoid.value;
@@ -276,6 +342,8 @@ const deleteError = ref('');
 const deleting = ref(false);
 
 const selected = ref(null);
+const selectedSubjects = computed(() => selected.value?.subjects || []);
+const askDiscardScores = ref(false);
 const students = ref([]);
 const studentsLoading = ref(false);
 const studentsError = ref('');
@@ -287,6 +355,23 @@ const draftScores = reactive({});
 const pendingClose = ref(null);
 const closing = ref(false);
 const closeError = ref('');
+const closeDescription = computed(() => `關閉後老師不能再改分，確定關閉「${pendingClose.value?.title || ''}」嗎？${closeError.value ? `\n${closeError.value}` : ''}`);
+const deleteDescription = computed(() => `確定刪除「${pendingDelete.value?.title || ''}」嗎？${deleteError.value ? `\n${deleteError.value}` : ''}`);
+// AlertDialogAction closes on click; the dialog has to stay open while the request runs (and after a failure, to show why),
+// so a close request is applied one tick later and only when no request is running.
+const onCloseOpen = (open) => { if (!open) queueMicrotask(() => { if (!closing.value) pendingClose.value = null; }); };
+const onDeleteOpen = (open) => { if (!open) queueMicrotask(() => { if (!deleting.value) pendingDelete.value = null; }); };
+const scoreDirty = computed(() => Object.keys(draftScores).length > 0);
+function onScoreOpen(open) {
+  if (open) return;
+  if (scoreDirty.value) askDiscardScores.value = true;
+  else selected.value = null;
+}
+function discardScores() {
+  askDiscardScores.value = false;
+  Object.keys(draftScores).forEach((k) => delete draftScores[k]);
+  selected.value = null;
+}
 
 async function api(path, options = {}) {
   const { data: { session } } = await supabase.auth.getSession();
@@ -338,6 +423,7 @@ function resetForm() {
 
 function openCreate() {
   resetForm();
+  formSnapshot.value = JSON.stringify(createForm);
   showCreate.value = true;
 }
 
@@ -351,11 +437,14 @@ function openEdit(round) {
     grade_ids: [...(round.grade_ids || [])],
     subjects: (round.subjects || []).map((x) => ({ id: x.id, name: x.name, max_score: x.max_score })),
   });
+  formSnapshot.value = JSON.stringify(createForm);
   showCreate.value = true;
 }
 
 async function createRound() {
   formError.value = '';
+  createForm.title = createForm.title.trim();
+  createForm.subjects.forEach((x) => { x.name = (x.name || '').trim(); });
   const gradeIds = [...createForm.grade_ids].sort((x, y) => x - y);
   if (!createForm.title || !gradeIds.length) {
     formError.value = '請填標題與至少選一個年級';
@@ -410,8 +499,12 @@ async function confirmDeleteRound() {
     pendingDelete.value = null;
     await loadRounds();
   } catch (e) {
-    if (/需填寫原因/.test(e.message || '')) deleteNeedsReason.value = true;
-    deleteError.value = e.message || '刪除失敗';
+    if (/需填寫原因/.test(e.message || '') && !deleteNeedsReason.value) {
+      deleteNeedsReason.value = true;
+      deleteError.value = '';
+    } else {
+      deleteError.value = e.message || '刪除失敗';
+    }
   } finally {
     deleting.value = false;
   }
@@ -557,7 +650,17 @@ async function submitScores(row, reason) {
   }
 }
 
-watch(selected, (round) => { if (!round) studentQuery.value = ''; });
+watch(selected, (round) => {
+  if (round) return;
+  studentQuery.value = '';
+  reasonFor.value = null;
+  historyRows.value = null;
+});
+watch(reasonFor, async (row) => {
+  if (!row) return;
+  await nextTick();
+  document.getElementById('exam-reason-input')?.focus();
+});
 watch(() => props.branchId, loadRounds);
 watch(() => props.focusRoundId, async (id) => {
   if (!id || loading.value) return;
@@ -566,23 +669,3 @@ watch(() => props.focusRoundId, async (id) => {
 });
 onMounted(loadRounds);
 </script>
-
-<style scoped>
-/* Dialog forms only (the six AtDialog overlays move to components/ui/dialog in the next slice). */
-.muted { color: var(--text-light); margin: 4px 0 0; font-size: var(--ds-font-size-sm); }
-.exam-grade-picker, .exam-subject-editor { border: 1px solid var(--border); border-radius: var(--ds-radius-lg); margin: 0 0 10px; padding: 8px 12px; }
-.exam-grade-picker { display: grid; grid-template-columns: repeat(auto-fill, minmax(10rem, 1fr)); gap: 2px 8px; }
-.exam-grade-picker legend { grid-column: 1 / -1; }
-.exam-grade-option { display: flex; align-items: center; gap: 6px; margin: 0; }
-.exam-grade-option input { display: inline; width: auto; margin: 0; }
-.exam-subject-row { display: flex; gap: 8px; align-items: center; margin-bottom: 6px; }
-.exam-form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-.exam-error { color: var(--danger); margin-top: 8px; }
-.exam-history { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; font-size: var(--ds-font-size-lg); }
-.exam-history small { display: block; }
-label { display: block; margin-bottom: 10px; }
-label input, label select, label textarea { display: block; width: 100%; margin-top: 4px; }
-@media (max-width: 720px) {
-  .exam-form-grid { grid-template-columns: 1fr; }
-}
-</style>

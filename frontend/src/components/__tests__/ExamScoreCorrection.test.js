@@ -81,24 +81,20 @@ describe('page: enter wrong score, clear, re-enter', () => {
       await flushPromises();
       const body = document.body;
       const posts = () => fetchMock.mock.calls.filter(([, o]) => o?.method === 'POST').map(([, o]) => JSON.parse(o.body));
-      const saveRow = async (reason) => {
+      const saveRow = async () => {
         [...body.querySelectorAll('.exam-score-table tbody button')].find((b) => b.textContent.trim() === '儲存').click();
         await flushPromises();
-        if (reason) {
-          body.querySelector('#exam-reason-title')?.closest('[role=dialog]')?.querySelector('input').dispatchEvent(new Event('input'));
-        }
       };
       const setReason = async (text) => {
         const input = [...body.querySelectorAll('input')].find((i) => i.placeholder === '例如：登錄時打錯');
         input.value = text;
         input.dispatchEvent(new Event('input'));
         await flushPromises();
-        expect(order('exam-reason-title')).toBeGreaterThan(order('exam-score-title'));
+        // The reason is an inline panel inside the score dialog, not a second dialog on top of it.
+        expect(body.querySelectorAll('[role=dialog]')).toHaveLength(1);
         [...body.querySelectorAll('button')].find((b) => b.textContent.trim() === '確定更正').click();
         await flushPromises();
       };
-      // secondary dialogs must come after the score dialog in the DOM so they stack on top
-      const order = (id) => [...body.querySelectorAll('[role=dialog]')].findIndex((d) => d.querySelector(`#${id}`) || d.getAttribute('aria-labelledby') === id);
       const input = () => body.querySelector('.exam-score-table .exam-score-input');
       const clearBtn = () => body.querySelector('.exam-score-table .score-cell__btn');
 

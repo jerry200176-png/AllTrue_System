@@ -577,6 +577,46 @@ const PAGES = [
     setup: async (page) => { await page.locator('.exam-round-card__actions button', { hasText: '登分' }).first().click(); },
   },
   {
+    // 段考成績 form dialog (slice 2): the 開新段考 form on components/ui/dialog. Inside the viewport at 375 and 1536, focus in the
+    // dialog, nothing sticks out sideways, the footer buttons stay on screen, every field is a 44px target.
+    key: 'exam-grades-create-dialog',
+    url: '/pilot-mount.html?page=exam-grades',
+    names: ['標題', '適用年級'],
+    allNames: false,
+    rows: [],
+    touch: ['[role="dialog"] input:not([type="checkbox"])', '[role="dialog"] .exam-grade-option'],
+    mock: async (page) => {
+      await page.route('**/api/v1/**', (r) => json(r, new URL(r.request().url()).pathname === '/api/v1/exam-rounds' ? { data: EXAM_ROUNDS } : { data: [] }));
+    },
+    setup: async (page) => {
+      await page.getByRole('button', { name: '開新段考' }).click();
+      await expect(page.getByRole('dialog')).toBeVisible();
+      await page.waitForTimeout(400); // open animation
+    },
+    extra: {
+      run: () => {
+        const dialog = document.querySelector('[role="dialog"]');
+        const box = dialog.getBoundingClientRect();
+        const buttons = [...dialog.querySelectorAll('[data-slot="dialog-footer"] button')].map((b) => b.getBoundingClientRect());
+        const sticks = [...dialog.querySelectorAll('*')].filter((el) => { const r = el.getBoundingClientRect(); return r.width > 0 && (r.right > box.right + 1 || r.left < box.left - 1) && getComputedStyle(el).position !== 'absolute'; }).map((el) => `${el.tagName}.${String(el.className).slice(0, 40)}`);
+        return {
+          inView: box.left >= 0 && box.right <= window.innerWidth && box.top >= 0 && box.bottom <= window.innerHeight + 1,
+          focusInside: dialog.contains(document.activeElement),
+          sticks,
+          footerOnScreen: buttons.length === 2 && buttons.every((r) => r.bottom <= window.innerHeight && r.top >= box.top),
+          named: !!dialog.getAttribute('aria-labelledby') && !!dialog.getAttribute('aria-describedby'),
+        };
+      },
+      assert: (r) => {
+        expect(r.inView, 'the dialog sits inside the viewport').toBe(true);
+        expect(r.focusInside, 'focus is inside the dialog').toBe(true);
+        expect(r.sticks, 'nothing inside the dialog sticks out sideways').toEqual([]);
+        expect(r.footerOnScreen, '取消 and 建立 stay on screen').toBe(true);
+        expect(r.named, 'the dialog has a name and a description').toBe(true);
+      },
+    },
+  },
+  {
     // 學生管理, slice 1 (issue 4989): header with four actions, the filter toolbar and the student list card. The header actions are the
     // phone risk (four buttons, 字級 大): none may stick out of the viewport, and the order is 匯入名單, 下載範例, 跨分校身份, then the primary.
     key: 'students',
