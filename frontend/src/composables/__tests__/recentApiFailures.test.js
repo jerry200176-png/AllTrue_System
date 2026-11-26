@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import {
-  installFetchRecorder, getRecentApiFailures, resetRecentApiFailuresForTest, fitClientInfo,
+  installFetchRecorder, getRecentApiFailures, resetRecentApiFailuresForTest, fitClientInfo, clearUiBreadcrumbs,
 } from '../../lib/recentApiFailures';
 
 const res = (status, id) => ({ ok: status < 400, status, headers: new Headers(id ? { 'X-Request-Id': id } : {}) });
@@ -44,6 +44,8 @@ describe('recentApiFailures', () => {
     await window.fetch('/api/v1/x');
     await new Promise((done) => setTimeout(done, 0));
     expect(getRecentApiFailures()[1].message).toBeUndefined();
+    clearUiBreadcrumbs(); // sign-out / campus switch
+    expect(getRecentApiFailures()).toEqual([]);
   });
 
   it('records network errors and rethrows', async () => {

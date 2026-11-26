@@ -102,6 +102,7 @@ export function getRecentMessages() {
 export function clearUiBreadcrumbs() {
   clicks.length = 0;
   messages.length = 0;
+  failures.length = 0; // failures now carry the server's message: never let them cross a sign-out or campus switch
 }
 
 export const resetUiRecorderForTest = clearUiBreadcrumbs;
