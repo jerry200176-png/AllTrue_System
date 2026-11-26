@@ -1821,7 +1821,7 @@ class DeployActivationWorkflowContractTest(unittest.TestCase):
             state = "\n".join(line for line in lines if line.startswith("STANDING_POLICY_FLAG_"))
             call = next(line for line in lines if line.startswith('apply_bool_feature_flag "$STANDING_POLICY_FLAG_MODE"'))
             apply = "apply_bool_feature_flag() {" + rendered.split("apply_bool_feature_flag() {", 1)[1].split("\n}\n", 1)[0]
-            rollback = "rollback_deploy() {" + rendered.split("rollback_deploy() {", 1)[1].split("abort_deploy() {", 1)[0]
+            rollback = "refresh_web_workers() {" + rendered.split("refresh_web_workers() {", 1)[1].split("abort_deploy() {", 1)[0]
             with tempfile.TemporaryDirectory() as tmp:
                 backend, frontend, snapshot = Path(tmp) / "backend.env", Path(tmp) / "frontend.env", Path(tmp) / "applied"
                 backend.write_text(before, encoding="utf-8")
@@ -1991,7 +1991,7 @@ class DeployActivationWorkflowContractTest(unittest.TestCase):
     def _run_flag_restore(self, tail, git_exit=0, composer_exit=0, extra="", state=(), env_text=None):
         import shlex
         script = REMOTE_DEPLOY.read_text(encoding="utf-8")
-        functions = ("rollback_deploy() {" + script.split("rollback_deploy() {", 1)[1].split("abort_deploy() {", 1)[0]
+        functions = ("refresh_web_workers() {" + script.split("refresh_web_workers() {", 1)[1].split("abort_deploy() {", 1)[0]
                      + "abort_deploy() {" + script.split("abort_deploy() {", 1)[1].split("\n}\n", 1)[0] + "\n}\n")
         harness = textwrap.dedent(r"""
             set -u
@@ -2096,6 +2096,33 @@ class DeployActivationWorkflowContractTest(unittest.TestCase):
         self.assertNotIn("PHP artisan", untouched.stdout)
         self.assertEqual([x for x in self.APPLIED_ENV.splitlines() if x], lines)
 
+    def test_flag_hold_refreshes_web_workers_and_the_verification_hold_uses_it(self):
+        # #4478: both holds (exit 13 here, exit 12 in the final stage) restore flags, rebuild, then refresh FPM.
+        php = 'php() { echo "PHP $*"; return 0; }\n'
+        curl = 'curl() { echo CURL; printf \'{"status":"ok","opcache_cleared":true}\'; }\n'
+        for label, tail, rc in (("migration hold", "MIGRATION_RAN=1\nabort_deploy x\n", 13),
+                                ("verification hold", "hold_feature_flags; exit 12\n", 12)):
+            result, lines = self._run_flag_restore(tail, extra=php)
+            out = result.stdout
+            self.assertEqual(rc, result.returncode, label + out + result.stderr)
+            self.assertEqual(self.RESTORED_LINES, lines, label)
+            self.assertLess(out.index("✅ config cache rebuilt from the restored .env"), out.index("PHP artisan opcache:reset"), label)
+            self.assertIn("✅ web workers refreshed after the flag restore", out, label)
+            self.assertNotIn("GIT_CALLED", out, label)
+        failed, _ = self._run_flag_restore("hold_feature_flags; exit 12\n", extra=php + "curl() { return 22; }\n")
+        self.assertEqual(12, failed.returncode)
+        self.assertIn("::error::FPM refresh after the flag restore failed", failed.stdout)
+        self.assertNotIn("✅ web workers refreshed", failed.stdout)
+        # Nothing restored: no refresh either. A requested off stays off on the verification hold too.
+        idle = {k: "0" for k in self.FLAG_STATE if k.endswith("_CHANGED")}
+        untouched, _ = self._run_flag_restore("hold_feature_flags; exit 12\n", extra=php + curl, state=idle)
+        self.assertNotIn("CURL", untouched.stdout)
+        self.assertNotIn("PHP artisan", untouched.stdout)
+        off = {"STANDING_POLICY_FLAG_MODE": "off", "STANDING_POLICY_FLAG_BACKUP": "POP_INAPP_STANDING_POLICY=true"}
+        kept, lines = self._run_flag_restore("hold_feature_flags; exit 12\n", extra=php, state=off)
+        self.assertEqual("POP_INAPP_STANDING_POLICY=false", lines[-1])
+        self.assertIn("kept off: a requested off is never rolled back", kept.stdout)
+
     def test_pop_standing_policy_effective_config_is_read_back_before_fpm_refresh(self):
         script = REMOTE_DEPLOY.read_text(encoding="utf-8")
         start = script.index('if [ "$STANDING_POLICY_FLAG_MODE" = "on" ] || [ "$STANDING_POLICY_FLAG_MODE" = "off" ]; then')
@@ -2151,7 +2178,7 @@ class DeployActivationWorkflowContractTest(unittest.TestCase):
         # Execute the actual committed shell function with bounded interceptors.
         # Composer dependency restoration itself is separately proved using real
         # locked installs; these cases verify failure ordering, not production.
-        function = "rollback_deploy() {" + self.workflow.split("rollback_deploy() {", 1)[1].split("abort_deploy() {", 1)[0]
+        function = "refresh_web_workers() {" + self.workflow.split("refresh_web_workers() {", 1)[1].split("abort_deploy() {", 1)[0]
         with tempfile.TemporaryDirectory(prefix="alltrue-rollback-contract-") as sandbox:
             trace = Path(sandbox) / "trace"
             harness = textwrap.dedent(r"""
@@ -2307,7 +2334,9 @@ class DeployActivationWorkflowContractTest(unittest.TestCase):
             self.assertEqual(b"", missing.stdout)
 
     def test_rollback_refreshes_fpm_workers_before_health(self):
-        function = self.workflow.split("rollback_deploy() {", 1)[1].split("abort_deploy() {", 1)[0]
+        function = self.workflow.split("refresh_web_workers() {", 1)[1].split("abort_deploy() {", 1)[0]
+        self.assertLess(function.index("rollback_failed=1; }"), function.index('echo "Rollback health check..."'))
+        self.assertIn('refresh_web_workers || { echo "❌ rollback FPM refresh failed"; rollback_failed=1; }', function)
         refresh = function.index("https://daan.lifenet.com.tw/api/internal/opcache-reset")
         self.assertLess(function.index("php artisan opcache:reset"), refresh)
         self.assertLess(refresh, function.index('echo "Rollback health check..."'))
@@ -3562,7 +3591,8 @@ class PostDeployVerifyRollbackTest(unittest.TestCase):
         gate = stage.index('python3 -I "$PDV" gate -k --target-sha "$TARGET_SHA" --previous-sha "$PREV_COMMIT"')
         self.assertLess(stage.index('export SMOKE_EXPECTED_BACKEND_SHA="$TARGET_SHA"'), gate)
         self.assertIn('--frontend-changed "$FRONTEND_CHANGED" --migration-ran "$MIG_HARD$MIGRATION_RAN"', stage)
-        self.assertLess(gate, stage.index("case $? in 0) exit 0 ;; 20) ;; *) exit 12 ;; esac"))
+        # #4478: the hold restores the requested flag lines before it exits; it never rolls code back.
+        self.assertLess(gate, stage.index("case $? in 0) exit 0 ;; 20) ;; *) hold_feature_flags; exit 12 ;; esac"))
         self.assertTrue(stage.rstrip().endswith('abort_deploy "health check 或 smoke test 失敗"'))
         self.assertNotIn("migrate:rollback", stage)
         self.assertNotIn("post-merge-smoke.sh", stage)  # the gate runs smoke only after verify passes
@@ -3650,7 +3680,7 @@ class PostDeployVerifyRollbackTest(unittest.TestCase):
                 self.assertEqual(expected, result.stdout.strip().splitlines()[-1], result.stderr)
 
     def test_rollback_reverify_failure_fails_the_rollback(self):
-        function = "rollback_deploy() {" + self.workflow.split("rollback_deploy() {", 1)[1].split("abort_deploy() {", 1)[0]
+        function = "refresh_web_workers() {" + self.workflow.split("refresh_web_workers() {", 1)[1].split("abort_deploy() {", 1)[0]
         harness = textwrap.dedent(r"""
             set -u
             PREV_COMMIT=old; FRONTEND_CHANGED=0; MIGRATION_RAN=0; PDV=/tmp/pdv
