@@ -539,6 +539,8 @@ def test_prepush() -> bool:
             subprocess.run(["git", "-C", repo, "config", "user.email", "t@e.com"], check=True)
             subprocess.run(["git", "-C", repo, "config", "user.name", "T"], check=True)
             os.makedirs(os.path.join(repo, "scripts"))
+        with open(os.path.join(tmp, ".git", "info", "exclude"), "a") as fh:
+            fh.write(".claude/\n")  # the guard copy below is not part of the throwaway repo's worktree state
         hooks = os.path.join(tmp, ".claude", "hooks")
         shutil.copytree(HERE, hooks, ignore=shutil.ignore_patterns("__pycache__"))
         script = os.path.join(tmp, "scripts", "agent-prepush.sh")
@@ -571,7 +573,7 @@ def test_prepush() -> bool:
             print("FAIL (prepush): a script outside the guard's own checkout was executed")
         # The script must pass the guard itself before it is run.
         case(f"touch {ran}\ngit push --force origin main\n", "git push origin feature/x", "DENY")
-        # Only the committed list runs, and only while scripts/ is clean: here the committed list would
+        # Only the committed list runs, and only while the worktree is clean: here the committed list would
         # leave a marker file if it ran.
         with open(script, "w") as fh:
             fh.write(f"touch {ran}\nexit 1\n")

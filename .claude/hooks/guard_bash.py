@@ -694,7 +694,7 @@ def verify(cmd, cwd):
 
 class ListWalker(Walker):
     """Verifies the pre-push list itself. The repo scripts it calls get the Pi check only: prepush() runs
-    the list only while everything under scripts/ is committed."""
+    the list only while the whole worktree is committed."""
 
     def script(self, path, cwd, depth, strict):
         super().script(path, cwd, depth, False)
@@ -707,8 +707,9 @@ def prepush(cmd):
 
     This hook runs before the command is approved, so nothing here may run text nobody could review:
     - only this guard's own checkout (ROOT), never a directory the command names;
-    - the committed copy (HEAD) of the list, fed to bash on stdin, and only while scripts/ has no
-      uncommitted or untracked file;
+    - the committed copy (HEAD) of the list, fed to bash on stdin, and only while the worktree has no
+      uncommitted or untracked file (the programs the list calls are then committed text too; git-ignored
+      files such as node_modules are outside this check);
     - only after that exact text passes the guard: every command verified by the AST walk (a list it cannot
       fully verify is not run), plus the regex scan. Without shfmt the regex scan is the only check."""
     def note(why):
@@ -728,8 +729,8 @@ def prepush(cmd):
                 with open(os.path.join(top, git("rev-parse", "--git-common-dir"), "agent-prepush-skips.log"), "a") as fh:
                     fh.write(f"{git('log', '-1', '--format=%cI %H')} {git('branch', '--show-current')}\n")
                 continue
-            if git("status", "--porcelain", "--untracked-files=all", "--", "scripts"):
-                note("uncommitted files under scripts/")
+            if git("status", "--porcelain", "--untracked-files=all"):
+                note("uncommitted or untracked files; commit first")
                 continue
             shfmt = find_shfmt()
             try:
