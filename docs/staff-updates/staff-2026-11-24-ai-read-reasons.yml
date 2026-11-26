@@ -1,0 +1,13 @@
+updates:
+  - id: staff-2026-11-24-ai-read-reasons
+    published_at: "2026-11-24"
+    audiences:
+      - super_admin
+    importance: digest
+    title: 查看 AI 讀取未成功的原因
+    summary: 總部可在個人管理的「AI 做了什麼」查看各種原因的次數。
+    items:
+      - category: improved
+        text: 權限攔截、憑證問題與查詢失敗各有對應說明。
+    source_refs:
+      - "changelog:2026-11-24:ai-read-reasons"

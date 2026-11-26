@@ -92,6 +92,49 @@ class MakeupSubstituteBusyV2Test extends TestCase
         $this->assertSame([], $this->guard());
     }
 
+    public function test_recurring_booking_respects_makeup_substitute_date_and_campus(): void
+    {
+        $this->flag(true);
+        DB::table('UserCampus')->insert(['CampusID' => 1, 'UserID' => $this->bId, 'Admin' => 0, 'Approved' => 1]);
+        $payload = [
+            'teacher_id' => $this->bId, 'branch_id' => 2, 'class_type' => 'one_on_one', 'start_date' => '2026-04-18',
+            'slots' => [['day_of_week' => 7, 'start_time' => '10:30', 'end_time' => '11:30']],
+        ];
+        $guard = app(ScheduleGuardService::class);
+        $conflicts = $guard->validateRecurringCourse($payload);
+        $this->assertSame(['cross_campus'], array_column($conflicts, 'type'));
+        $this->assertSame(self::DATE, $conflicts[0]['schedule_date']);
+        $this->assertSame([], $guard->validateRecurringCourse($payload + ['end_date' => '2026-04-18']));
+        $this->assertNotEmpty($guard->validateRecurringCourse(array_replace($payload, ['branch_id' => 1])));
+        $this->flag(false);
+        $this->assertSame([], $guard->validateRecurringCourse($payload));
+        $this->flag(true);
+        DB::table('LearningRecord')->where('TeacherID', $this->bId)->update(['VoidedAt' => now()]);
+        $this->assertSame([], $guard->validateRecurringCourse($payload));
+    }
+
+    #[\PHPUnit\Framework\Attributes\DataProvider('inactiveSessions')]
+    public function test_inactive_makeup_with_live_substitute_record_releases_the_teacher(string $status): void
+    {
+        $this->flag(true);
+        DB::table('UserCampus')->insert(['CampusID' => 1, 'UserID' => $this->bId, 'Admin' => 0, 'Approved' => 1]);
+        ClassSession::whereDate('SessionDate', self::DATE)->update(['Status' => $status]);
+        $this->assertTrue(LearningRecord::where('TeacherID', $this->bId)->whereNull('VoidedAt')->exists());
+        $guard = app(ScheduleGuardService::class);
+        foreach ([1, 2] as $campus) {
+            $this->assertSame([], $guard->validateRecurringCourse([
+                'teacher_id' => $this->bId, 'branch_id' => $campus, 'class_type' => 'one_on_one', 'start_date' => self::DATE,
+                'slots' => [['day_of_week' => 7, 'start_time' => '10:00', 'end_time' => '11:00']],
+            ]));
+        }
+        $this->assertSame([], $this->guard());
+    }
+
+    public static function inactiveSessions(): array
+    {
+        return [['cancelled'], ['leave']];
+    }
+
     public function test_flag_off_substitute_on_a_makeup_is_not_busy(): void
     {
         $this->flag(false);

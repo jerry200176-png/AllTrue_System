@@ -20,7 +20,7 @@ jobs:
       - name: Skip notice
         if: env.HAS_TOKEN != 'true'
         run: echo "::notice::PROJECT_TOKEN not set; skipping add-to-project"
-      - uses: actions/add-to-project@5afcf98fcd03f1c2f92c3c83f58ae24323cc57fd # v2.0.0
+      - uses: actions/add-to-project@f2c1f1fa649a891be84948ea89b5dfba1526ef05 # v2.0.1
         if: env.HAS_TOKEN == 'true'
         with:
           project-url: https://github.com/users/jerry200176-png/projects/1

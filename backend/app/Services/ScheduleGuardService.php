@@ -428,6 +428,21 @@ class ScheduleGuardService
         $request->attributes->set(self::PAST_CLASH_ATTRIBUTE, $notes);
     }
 
+    /** Busy intervals for candidate generation only. Confirmation reads occupancy again. */
+    public function otherCampusBusyIntervals(int $teacherId, int $branchId, string $date, ?int $excludeStudentId): array
+    {
+        $busy = [];
+        foreach ($this->otherCampusesOf($teacherId, $branchId) as $campusId) {
+            foreach ($this->buildTeacherDateOccupancyEntries($teacherId, $campusId, $date, null, $excludeStudentId) as $entry) {
+                if ($entry['teacher_occupancy'] ?? true) {
+                    $busy[] = [$entry['start_time'], $entry['end_time']];
+                }
+            }
+        }
+
+        return $busy;
+    }
+
     /**
      * Cross-campus check for one occurrence by a given teacher, for callers that skip the full guard (a substitute
      * recorded after the lesson). Future: returns the conflict. Ended: returns null and notes the reminder.
@@ -460,7 +475,9 @@ class ScheduleGuardService
             'end_time' => $end,
             'message' => $past
                 ? sprintf('提醒：這位老師 %s %s~%s 同時在「%s」也有課。已上完的課照樣儲存，請確認哪一邊的紀錄才對。', $day, $start, $end, $campus)
-                : sprintf('這位老師 %s %s~%s 已在「%s」有課，同一時間不能排在兩個分校。請改時段或改老師。', $day, $start, $end, $campus),
+                : sprintf('這位老師 %s %s~%s 已在「%s」有課，同一時間不能排在兩個分校。請改時段或改老師。', $day, $start, $end, $campus)
+                    // #5631 (in-app #596): a student joining the teacher's class at the other campus is recorded after the lesson.
+                    . ($date ? '若學生是到該分校跟著這堂課補課，請上完課後再用「調課」登記。' : ''),
         ];
     }
 
@@ -1166,7 +1183,10 @@ class ScheduleGuardService
             ];
         }
 
-        foreach ($filteredScheduledRows as $row) {
+        // Makeup substitutes can be recorded only on LearningRecord. Their rows use
+        // the same overlap, self-exclusion and deduplication rules as other bookings.
+        $makeups = SubstituteScheduleService::makeupOccurrencesInWindow($teacherId, $branchId, $horizonStart, $endDate, $excludeStudentClassId ? null : $excludeStudentId);
+        foreach (array_merge($filteredScheduledRows, $makeups) as $row) {
             $scheduleDate = substr((string) ($row->schedule_date ?? ''), 0, 10);
             if (!$scheduleDate) {
                 continue;

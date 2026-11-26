@@ -19,7 +19,7 @@ async function installProfileMocks(page, mode = 'profile') {
         contentType: 'application/json',
         body: JSON.stringify({
           id: 9001,
-          role: 'director',
+          role: mode === 'hq' ? 'super_admin' : 'director',
           name: mode === 'long' ? '測試主任超長姓名用來驗證個人資料表單在手機上仍然可讀且不會推出視窗' : '測試主任',
           email: mode === 'long' ? 'director-with-a-long-login@example.test' : 'director@example.test',
           phone: '0912345678',
@@ -38,6 +38,11 @@ async function installProfileMocks(page, mode = 'profile') {
         }),
       });
     }
+    if (url.pathname === '/api/v1/admin/ai-activity') {
+      return route.fulfill({ json: { data: { days: 30, operations: [], reads: {
+        total: 5, refused: 3, by_source: [], failure_counts: { access_denied: 2, not_found: 1 },
+      } } } });
+    }
     if (url.pathname.endsWith('/notification-preferences') && request.method() === 'GET') {
       return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: {} }) });
     }
@@ -46,6 +51,33 @@ async function installProfileMocks(page, mode = 'profile') {
 }
 
 test.describe('Profile controls real Vue page', () => {
+  for (const mode of ['hq', 'profile']) {
+    test(`AI read reasons in the security tab respect the role (${mode})`, async ({ page }) => {
+      await installProfileMocks(page, mode);
+      await page.setViewportSize({ width: 390, height: 844 });
+      await page.goto('/pilot-mount.html?page=profile');
+      await page.getByRole('tab', { name: '安全性' }).click();
+      await expect(page.locator('#profile-panel-security')).toBeVisible();
+      const reasons = page.getByRole('list', { name: '未成功的原因' });
+      if (mode === 'hq') {
+        await expect(page.getByTestId('aia-reads')).toHaveText('共記錄 5 次讀取，其中 3 次未成功。');
+        await expect(reasons).toBeHidden();
+        const summary = page.getByText('查看原因', { exact: true });
+        await summary.focus();
+        await page.keyboard.press('Enter');
+        await expect(reasons.getByRole('listitem')).toHaveText([
+          '權限攔截（2 次）。請使用已授權的查詢範圍。',
+          '查無可讀資料（1 次）。請確認查詢對象及範圍。',
+        ]);
+        await page.keyboard.press('Space');
+        await expect(reasons).toBeHidden();
+        await expect(summary).toBeFocused();
+      } else {
+        await expect(page.getByTestId('ai-activity')).toHaveCount(0);
+      }
+    });
+  }
+
   const viewports = [
     { name: '390', width: 390, height: 844 },
     { name: '412', width: 412, height: 915 },

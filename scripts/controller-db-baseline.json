@@ -3,7 +3,7 @@
   "backend/app/Http/Controllers/StudentClassController.php": 75,
   "backend/app/Http/Controllers/AttendanceController.php": 38,
   "backend/app/Http/Controllers/ClassSessionController.php": 30,
-  "backend/app/Http/Controllers/FinanceController.php": 21,
+  "backend/app/Http/Controllers/FinanceController.php": 17,
   "backend/app/Http/Controllers/AlertController.php": 7,
   "backend/app/Http/Controllers/SwipeRfidController.php": 1
 }

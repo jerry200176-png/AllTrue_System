@@ -3928,7 +3928,7 @@ class StudentClassController extends Controller
             // positive SessionCount, but that field must not turn a monthly
             // contract into a prepaid capacity check (renewMonthly creates
             // exactly such rows).
-            $isSessionMode = (string) ($studentClass->ScheduleMode ?? 'count') === 'count';
+            $isSessionMode = $this->usesPurchasedSessionCount($studentClass);
             $sessionCount = max(0, (int) ($studentClass->SessionCount ?? 0));
             $movedFromDate = null;
             $todayYmd = Carbon::now()->toDateString();
@@ -3953,7 +3953,7 @@ class StudentClassController extends Controller
             $conflict = $this->detectAddSessionConflict(
                 $classId, $sessionDate, $startTime, $isSessionMode, $sessionCount,
                 $lockedSessionIdMap, $approvedSessionIds, $signInSessionIds, $todayYmd, $nowTime,
-                $studentClass
+                $studentClass, true
             );
 
             if ($conflict['conflict_type'] !== 'none') {
@@ -4121,10 +4121,17 @@ class StudentClassController extends Controller
                 $record->save();
             }
 
+            $message = $approved
+                ? '已補登加課並扣堂'
+                : ($isEnded ? '已補登堂次，待老師填寫評量' : '已調整加課堂次');
+            if ($studentClass->ScheduleMode === 'date') {
+                $message = $approved
+                    ? '已補登月結堂次，評量已核准'
+                    : ($isEnded ? '已補登月結堂次，待老師填寫評量' : '已調整月結堂次');
+            }
+
             return response()->json([
-                'message' => $approved
-                    ? '已補登加課並扣堂'
-                    : ($isEnded ? '已補登堂次，待老師填寫評量' : '已調整加課堂次'),
+                'message' => $message,
                 'student_class_id' => (int) $studentClass->ID,
                 'class_session_id' => (int) $classSession->id,
                 'session_date' => $sessionDate,
@@ -4161,8 +4168,7 @@ class StudentClassController extends Controller
         $startTime = ContractSessionSchedule::normalizeSessionTime($data['start_time'] ?? null, $studentClass->time ?: '16:00');
 
         $classId = (int) $studentClass->ID;
-        $isSessionMode = ((string) ($studentClass->ScheduleMode ?? 'count') === 'count')
-            || ((int) ($studentClass->SessionCount ?? 0) > 0);
+        $isSessionMode = $this->usesPurchasedSessionCount($studentClass);
         $sessionCount = max(0, (int) ($studentClass->SessionCount ?? 0));
         $todayYmd = Carbon::now()->toDateString();
         $nowTime = Carbon::now()->format('H:i:s');
@@ -4352,6 +4358,11 @@ class StudentClassController extends Controller
         return $this->scheduleGuardService->validateCourseOccurrence($studentClass, $branchId, $sessionDate, substr($startTime, 0, 5), substr($endTime, 0, 5));
     }
 
+    private function usesPurchasedSessionCount(StudentClass $course): bool
+    {
+        return (string) ($course->ScheduleMode ?? 'count') === 'count';
+    }
+
     /**
      * Shared conflict detection for add-session and its check endpoint.
      * Returns a structured array; when conflict_type === 'none' the caller
@@ -4369,7 +4380,8 @@ class StudentClassController extends Controller
         array $signInSessionIds,
         string $todayYmd,
         string $nowTime,
-        ?StudentClass $studentClass = null
+        ?StudentClass $studentClass = null,
+        bool $lockSlot = false
     ): array {
         // 月結 bills only the lessons inside the contract dates (MonthlyBillingService), so a lesson added outside
         // them would be saved as taught on this contract and never billed. Same rule as ManualSessionBookingService.
@@ -4389,10 +4401,45 @@ class StudentClassController extends Controller
             }
         }
 
-        $existing = ClassSession::where('StudentClassID', $classId)
+        $atSlot = ClassSession::where('StudentClassID', $classId)
             ->whereDate('SessionDate', $sessionDate)
             ->where('StartTime', $startTime)
-            ->first();
+            ->orderBy('id');
+        if ($lockSlot) {
+            $atSlot->lockForUpdate();
+        }
+        $sessions = $atSlot->get();
+        $leave = $sessions->first(fn ($row) => SessionStatus::isLeaveLike($row->Status));
+        $cancelledIds = $sessions->where('Status', SessionStatus::CANCELLED)->pluck('id');
+        // Later note edits keep a cancellation in effect. A restore followed by a system
+        // cancellation supersedes the older named cancellation and can use the normal reuse path.
+        $cancellation = $cancelledIds->isEmpty() ? null : ScheduleAuditLog::query()
+            ->whereIn('session_id', $cancelledIds)
+            ->where(fn ($q) => $q->where('action_type', 'create')
+                ->orWhere(fn ($update) => $update->where('action_type', 'update')
+                    ->whereColumn('old_data->Status', '!=', 'new_data->Status')))
+            ->latest('id')->get(['id', 'session_id', 'action_type', 'operator_id', 'old_data', 'new_data'])->unique('session_id')
+            ->first(fn (ScheduleAuditLog $audit) => $audit->recordsNamedCancellation());
+        if ($leave || $cancellation) {
+            $message = '這堂課已請假。';
+            if (!$leave) {
+                $latestUpdate = ScheduleAuditLog::where('session_id', $cancellation->session_id)
+                    ->where('action_type', 'update')->max('id');
+                $message = $cancellation->recordsRestorableCancellation() && (int) $latestUpdate === (int) $cancellation->id
+                    ? '這堂課已取消，可復原。'
+                    : '這堂課已取消，無法直接復原。';
+            }
+            return [
+                'conflict_type' => 'original_session',
+                'error_code' => 'USE_ORIGINAL_SESSION',
+                'conflict_session_id' => (int) ($leave->id ?? $cancellation->session_id),
+                'message' => $message,
+                'suggested_actions' => ['查看本課程堂次'],
+            ];
+        }
+        $existing = $sessions->first(fn ($row) => isset($lockedSessionIdMap[(int) $row->id]))
+            ?? $sessions->first(fn ($row) => $row->Status !== SessionStatus::CANCELLED)
+            ?? $sessions->first();
 
         if ($existing && isset($lockedSessionIdMap[(int) $existing->id])) {
             $sid = (int) $existing->id;
@@ -7053,7 +7100,10 @@ class StudentClassController extends Controller
                     $sc->closed_reason = $pendingReconciliation
                         ? 'settled_pending'
                         : 'settled';
-                    $sc->EndDate = $today;
+                    // #5605: closing a course whose end date already passed must not move that date forward.
+                    if (empty($sc->EndDate) || substr((string) $sc->EndDate, 0, 10) > $today) {
+                        $sc->EndDate = $today;
+                    }
                 } else {
                     $sc->closed_reason = null;
                 }

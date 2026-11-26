@@ -115,7 +115,7 @@
       </template>
     </AtDialog>
 
-    <AtDialog :open="!!selected" :title="selected?.title || '登分'" title-id="exam-score-title" panel-class="exam-score-dialog" @close="selected = null">
+    <AtDialog :open="!!selected" :title="selected?.title || '登分'" title-id="exam-score-title" size="xl" panel-class="exam-score-dialog" @close="selected = null">
       <AtSkeleton v-if="studentsLoading" rows="3" />
       <AtInlineAlert v-else-if="studentsError" tone="danger" title="無法載入學生"><p>{{ studentsError }}</p></AtInlineAlert>
       <AtEmpty v-else-if="!students.length" icon="person_off" title="沒有需登分的學生" description="此場次沒有符合年級且由你授課的學生。" />
@@ -563,7 +563,11 @@ onMounted(loadRounds);
 .exam-score-search label { margin: 0; }
 .exam-score-search input { flex: 1 1 12rem; min-height: 40px; padding: 6px 10px; }
 .exam-score-no-match { margin: 8px 0; }
-.exam-score-table-wrap { overflow-x: auto; }
+.exam-score-table-wrap { overflow: auto; max-height: min(60dvh, 480px); }
+/* Names stay in view while scrolling across subjects; subject names stay in view while scrolling down. */
+.exam-score-table th { position: sticky; top: 0; z-index: 1; background: var(--ds-canvas); }
+.exam-score-table th:first-child, .exam-score-table td:first-child { position: sticky; left: 0; background: var(--ds-canvas); white-space: nowrap; }
+.exam-score-table th:first-child { z-index: 2; }
 .exam-score-table { width: 100%; border-collapse: collapse; }
 .exam-score-table th, .exam-score-table td { padding: 8px; border-bottom: 1px solid var(--border); text-align: left; vertical-align: middle; }
 .exam-history { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; font-size: var(--ds-font-size-lg); }

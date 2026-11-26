@@ -217,6 +217,7 @@ final class PopOperationService
             && !$this->isExactLegacyVoidLink($entry)
             && !$this->isExactPackageLedgerNetRepair($entry)
             && !$this->isExactContractChargeCorrection($entry)
+            && !$this->isExactUnusedLessonsCloseout($entry)
             && !$this->isReviewedFinancialCase($entry)
             && $approverId !== null && (string) $request->actor === 'user:' . $approverId) {
             throw new RuntimeException('POP approval requires separation of duties.');
@@ -1142,6 +1143,22 @@ final class PopOperationService
             return $roles;
         }
 
+        if ($this->isExactUnusedLessonsCloseout($entry)
+            && ($entry['founder_approval_required'] ?? false) === true
+            && ($entry['risk'] ?? null) === 'critical'
+            && ($entry['blast_radius'] ?? null) === 'exact_manifest_one_course_lessons_count_charge_invoice'
+            // No production rollback adapter (not a native-recovery or co-commit strategy): undo is a new reviewed operation.
+            && ($entry['reversible'] ?? null) === false
+            && ($entry['snapshot_required'] ?? false) === true
+            && ($entry['transaction_required'] ?? false) === true
+            && ($entry['rollback_supported'] ?? null) === false
+            && ($entry['verification_required'] ?? false) === true
+            && ($entry['approval_required'] ?? false) === true
+            && ($entry['execution_authority'] ?? null) === 'pop-pi-local'
+            && $roles === ['super_admin']) {
+            return $roles;
+        }
+
         if ($this->isExactPackageLedgerNetRepair($entry)
             && ($entry['founder_approval_required'] ?? false) === true
             && ($entry['risk'] ?? null) === 'critical'
@@ -1481,6 +1498,15 @@ final class PopOperationService
         return ($entry['id'] ?? null) === 'contract-charge-correction-3868'
             && ($entry['strategy_class'] ?? null) === \App\Operations\Strategies\ContractChargeCorrectionStrategy::class
             && ($entry['approval_policy'] ?? null) === 'founder-exact-contract-charge-correction'
+            && ($entry['parameter_keys'] ?? null) === ['decision_reference'];
+    }
+
+    /** Same single-super_admin Founder-exact shape (GitHub #5617, one contract closed at its used lessons). */
+    private function isExactUnusedLessonsCloseout(array $entry): bool
+    {
+        return ($entry['id'] ?? null) === 'unused-lessons-contract-closeout-5617'
+            && ($entry['strategy_class'] ?? null) === \App\Operations\Strategies\UnusedLessonsContractCloseoutStrategy::class
+            && ($entry['approval_policy'] ?? null) === 'founder-exact-unused-lessons-closeout'
             && ($entry['parameter_keys'] ?? null) === ['decision_reference'];
     }
 

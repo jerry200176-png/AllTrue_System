@@ -20,6 +20,7 @@ class AgreedFeeSchemaSafetyTest extends TestCase
         $connection->shouldReceive('getConfig')->andReturn($config);
         $connection->shouldReceive('getDriverName')->andReturn('mysql');
         $connection->shouldReceive('getDatabaseName')->andReturn($config['database']);
+        $this->restoreDatabaseManagerAfterMocking();
         DB::shouldReceive('connection')->andReturn($connection);
         $schema->shouldReceive('hasTable')->andThrow(new \LogicException('Schema access before target validation'));
         $this->expectException(\RuntimeException::class);
@@ -57,6 +58,7 @@ class AgreedFeeSchemaSafetyTest extends TestCase
         $connection->shouldReceive('getDriverName')->andReturn('mysql');
         $connection->shouldReceive('getDatabaseName')->andReturn('AllTrue_test');
         $connection->shouldReceive('transactionLevel')->andReturn(1);
+        $this->restoreDatabaseManagerAfterMocking();
         DB::shouldReceive('connection')->andReturn($connection);
         $schema->shouldReceive('hasTable')->with('invoice_corrections')->andReturn(true);
         $schema->shouldReceive('hasColumns')->andReturn(false);

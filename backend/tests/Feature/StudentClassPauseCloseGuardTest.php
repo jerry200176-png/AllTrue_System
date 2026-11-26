@@ -43,6 +43,21 @@ class StudentClassPauseCloseGuardTest extends TestCase
         $this->assertSame('2026-10-16', substr((string) $course->EndDate, 0, 10));
     }
 
+    /** #5605 (in-app #589): closing after the end date keeps the original end date; closing early still ends today. */
+    public function test_close_keeps_an_end_date_that_already_passed(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-10-16 10:00:00'));
+        [$token, $past] = $this->fixture(['ScheduleMode' => 'date', 'EndDate' => '2026-08-31']);
+        [$earlyToken, $early] = $this->fixture(['ScheduleMode' => 'date', 'EndDate' => '2026-12-31']);
+
+        $this->close($token, $past)->assertOk();
+        $this->close($earlyToken, $early)->assertOk();
+
+        $this->assertSame('2026-08-31', substr((string) $past->refresh()->EndDate, 0, 10));
+        $this->assertSame(1, (int) $past->Stop);
+        $this->assertSame('2026-10-16', substr((string) $early->refresh()->EndDate, 0, 10));
+    }
+
     public function test_plain_pause_after_pending_reconciliation_close_is_refused(): void
     {
         Carbon::setTestNow(Carbon::parse('2026-10-16 10:00:00'));

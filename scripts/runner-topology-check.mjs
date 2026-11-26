@@ -6,7 +6,7 @@ import path from 'node:path'
 const WORKFLOW_DIR = path.resolve('.github/workflows')
 const ALLOWED_RUNNER = 'ubuntu-latest'
 const ALLOWED_REUSABLE_WORKFLOWS = new Set([
-  'google/osv-scanner-action/.github/workflows/osv-scanner-reusable.yml@a345acffa64b0eaede81a3d9aae6141214d9c8fc',
+  'google/osv-scanner-action/.github/workflows/osv-scanner-reusable.yml@32d3cd482bdadfb38b186c0ad1b031902d55d932',
 ])
 
 function normalizeUses(value) {
@@ -177,7 +177,7 @@ function selfTest() {
   if (validateJobs(indentlessNeeds).length) throw new Error('self-test failed: legal indentless needs sequence rejected')
   const multiline = collectWorkflowJobs('jobs:\n  test:\n    runs-on:\n      - self-hosted\n')
   const reusable = collectWorkflowJobs('jobs:\n  delegated:\n    uses: owner/repo/.github/workflows/ci.yml@main\n')
-  const pinnedOsv = collectWorkflowJobs('jobs:\n  scan:\n    uses: "google/osv-scanner-action/.github/workflows/osv-scanner-reusable.yml@a345acffa64b0eaede81a3d9aae6141214d9c8fc" # v2.6.0\n')
+  const pinnedOsv = collectWorkflowJobs('jobs:\n  scan:\n    uses: "google/osv-scanner-action/.github/workflows/osv-scanner-reusable.yml@32d3cd482bdadfb38b186c0ad1b031902d55d932" # v2.7.1\n')
 
   // #4426 parser-only reconstruction: preserve the currently reviewed pin.
   const withInputs = (inputs) => collectWorkflowJobs(`jobs:\n  scan:\n    uses: "${pinnedOsv[0].uses}"\n${inputs}\n`)
@@ -217,7 +217,7 @@ function selfTest() {
       throw new Error(`self-test failed: reviewed runner/default rejected: ${inputs}`)
     }
   }
-  for (const pin of ['main', 'v2.6.0', 'b1d267aea5211fa648d9d442fa64b90dbdcbdd36']) {
+  for (const pin of ['main', 'v2.7.1', 'a345acffa64b0eaede81a3d9aae6141214d9c8fc']) {
     if (validateJobs(collectWorkflowJobs(`jobs:\n  scan:\n    uses: google/osv-scanner-action/.github/workflows/osv-scanner-reusable.yml@${pin}\n`)).length !== 1) {
       throw new Error(`self-test failed: unreviewed reusable reference accepted: ${pin}`)
     }

@@ -34,7 +34,7 @@ final class PaymentReportPendingReturnStrategy
                     $p['expected_state_hash'] = $hash;
                     return ['ok' => false, 'errors' => ['preview_confirmation_required'], 'preview_parameters' => $p];
                 }
-                if (!hash_equals($p['expected_state_hash'] ?? '', $hash)) $this->fail('state_changed');
+                if (!hash_equals($p['expected_state_hash'], $hash)) $this->fail('state_changed');
             }
             return ['ok' => true, 'parameters' => $p];
         } catch (Throwable) { return ['ok' => false, 'errors' => ['pending_return_precondition_failed']]; }

@@ -186,6 +186,11 @@ class ExceptionWorkflowApiTest extends TestCase
             'type' => 'student_leave',
             'status' => 'open',
         ]);
+        [, $otherCourse] = $this->makeStudentCourseSession(2, 'Another campus', '0912004215');
+        ClassSession::create([
+            'StudentClassID' => $otherCourse->ID, 'SessionDate' => '2026-05-07',
+            'StartTime' => '09:00', 'EndTime' => '11:00', 'Status' => 'scheduled',
+        ]);
         $token = $this->createDirectorToken([1], 'director-date-spread@example.com');
 
         $res = $this->postJson("/api/v1/exception-workflows/{$workflow->id}/generate-candidates", [
@@ -321,7 +326,16 @@ class ExceptionWorkflowApiTest extends TestCase
         ]);
     }
 
-    public function test_confirm_candidate_rechecks_the_selected_teacher_before_writing(): void
+    public static function newTeacherBookingCases(): array
+    {
+        return [
+            'substitute at this campus' => [1, 2],
+            'original teacher at another campus' => [2, 1],
+        ];
+    }
+
+    /** @dataProvider newTeacherBookingCases */
+    public function test_confirm_candidate_rechecks_the_selected_teacher_before_writing(int $campus, int $teacher): void
     {
         [$student, $course, $session] = $this->makeStudentCourseSession(1, '代課確認學生', '0912004368');
         $workflow = app(ExceptionWorkflowService::class)->createOrGet([
@@ -336,10 +350,10 @@ class ExceptionWorkflowApiTest extends TestCase
             ->assertOk()->json('data.candidates.0');
 
         $candidateModel = ExceptionWorkflowCandidate::findOrFail($candidate['id']);
-        $candidateModel->teacher_id = 2;
+        $candidateModel->teacher_id = $teacher;
         $candidateModel->save();
-        [, $otherCourse] = $this->makeStudentCourseSession(1, '代課既有學生', '0912004369');
-        $otherCourse->TeacherID = 2;
+        [, $otherCourse] = $this->makeStudentCourseSession($campus, '代課既有學生', '0912004369');
+        $otherCourse->TeacherID = $teacher;
         $otherCourse->save();
         ClassSession::create([
             'StudentClassID' => $otherCourse->ID, 'SessionDate' => $candidate['candidate_date'],
@@ -800,7 +814,7 @@ class ExceptionWorkflowApiTest extends TestCase
     }
 
     /** #3639: candidate occupancy follows ScheduleGuardService, not its own rules. */
-    private function candidateStartsWithOtherOccupant(string $status, int $stop = 0, int $otherCampus = 1): array
+    private function candidateStartsWithOtherOccupant(string $status, int $stop = 0, int $otherCampus = 1, int $otherTeacher = 1): array
     {
         [$student, $course, $session] = $this->makeStudentCourseSession(1, '守衛候選學生', '0912003639');
         $workflow = app(ExceptionWorkflowService::class)->createOrGet([
@@ -809,7 +823,7 @@ class ExceptionWorkflowApiTest extends TestCase
             'class_session_id' => $session->id, 'type' => 'student_leave', 'status' => 'open',
         ]);
         [$other, $otherCourse] = $this->makeStudentCourseSession($otherCampus, '守衛佔用學生', '0912003640');
-        $otherCourse->update(['Stop' => $stop]);
+        $otherCourse->update(['Stop' => $stop, 'TeacherID' => $otherTeacher]);
         DB::table('ClassSession')->insert([
             'StudentClassID' => $otherCourse->ID, 'SessionDate' => '2026-05-07',
             'StartTime' => '09:00:00', 'EndTime' => '11:00:00', 'Status' => $status,
@@ -839,9 +853,16 @@ class ExceptionWorkflowApiTest extends TestCase
         $this->assertContains('09:00', $this->candidateStartsWithOtherOccupant('scheduled', 1));
     }
 
-    public function test_candidates_ignore_other_branch_sessions_like_the_guard(): void
+    public function test_candidates_skip_same_teacher_at_another_branch_and_offer_next_free_slot(): void
     {
-        $this->assertContains('09:00', $this->candidateStartsWithOtherOccupant('scheduled', 0, 2));
+        $starts = $this->candidateStartsWithOtherOccupant('scheduled', 0, 2);
+        $this->assertNotContains('09:00', $starts);
+        $this->assertSame('11:00', $starts[0]);
+    }
+
+    public function test_candidates_allow_a_different_teacher_at_another_branch(): void
+    {
+        $this->assertContains('09:00', $this->candidateStartsWithOtherOccupant('scheduled', 0, 2, 2));
     }
 
     public function test_candidate_generation_excludes_a_short_one_on_one_overlap(): void

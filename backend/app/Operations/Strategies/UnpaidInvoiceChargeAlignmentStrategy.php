@@ -35,7 +35,7 @@ class UnpaidInvoiceChargeAlignmentStrategy
                 $parameters['expected_state_hash'] = $preview['state_hash'];
                 return ['ok' => false, 'errors' => ['preview_confirmation_required'], 'preview_parameters' => $parameters];
             }
-            if (!hash_equals($preview['state_hash'], (string) ($parameters['expected_state_hash'] ?? ''))) $this->fail('state_changed');
+            if (!hash_equals($preview['state_hash'], (string) $parameters['expected_state_hash'])) $this->fail('state_changed');
             return ['ok' => true, 'parameters' => $parameters, 'digest' => $preview['state_hash']];
         } catch (RuntimeException) {
             return ['ok' => false, 'errors' => ['invoice_alignment_precondition_failed']];

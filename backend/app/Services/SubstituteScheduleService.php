@@ -165,6 +165,39 @@ class SubstituteScheduleService
         return $v2 !== null && $v2[0] > 0 && $v2[0] !== $v2[1];
     }
 
+    /**
+     * Read-side isSubstitutedAway() for calendar rows already joined to their contract and campus.
+     * @param iterable<object> $sessions Rows with course_id, teacher_id, joined_student_id, campus_id, d and start_time.
+     * @return array<string, true> occurrenceKey() of sessions taught by another teacher
+     */
+    public static function substitutedAwayInCalendar(iterable $sessions): array
+    {
+        if (!self::anyCampusOn()) {
+            return [];
+        }
+
+        $enabled = $items = $contracts = [];
+        foreach ($sessions as $row) {
+            $campus = (int) $row->campus_id;
+            if ($row->joined_student_id === null || !($enabled[$campus] ??= OccurrenceAssignmentService::enabledFor($campus))) {
+                continue;
+            }
+            $id = (int) $row->course_id;
+            $key = self::occurrenceKey($id, $row->d, $row->start_time);
+            $contracts[$id] = (int) $row->teacher_id;
+            $items[$key] = ['course_id' => $id, 'date' => $row->d, 'start_time' => $row->start_time,
+                'contract_teacher_id' => $contracts[$id]];
+        }
+
+        $away = [];
+        foreach (self::readOnlyV2Teachers($items, $contracts) as $key => $teacher) {
+            if ($teacher > 0 && $teacher !== $items[$key]['contract_teacher_id']) {
+                $away[$key] = true;
+            }
+        }
+        return $away;
+    }
+
     /** False with no queries unless some `schedule-occurrence-v2` value (global or per campus) is on. */
     public static function anyCampusOn(): bool
     {
@@ -380,13 +413,27 @@ class SubstituteScheduleService
      */
     public static function makeupOccurrencesTaughtBy(int $teacherId, string $ymd, array $excludeScheduleIds = [], ?int $excludeStudentId = null, ?int $branchId = null, bool $lock = false): array
     {
+        return self::loadMakeupOccurrences($teacherId, $ymd, $ymd, $excludeScheduleIds, $excludeStudentId, $branchId, $lock);
+    }
+
+    /** A recurring edit may have no end date. Query real bookings in its window without scanning one date at a time. */
+    public static function makeupOccurrencesInWindow(int $teacherId, int $branchId, string $startDate, ?string $endDate, ?int $excludeStudentId): array
+    {
+        return self::loadMakeupOccurrences($teacherId, $startDate, $endDate, [], $excludeStudentId, $branchId, false);
+    }
+
+    private static function loadMakeupOccurrences(int $teacherId, string $ymd, ?string $endDate, array $excludeScheduleIds, ?int $excludeStudentId, ?int $branchId, bool $lock): array
+    {
         if ($teacherId <= 0 || !self::anyCampusOn()) {
             return [];
         }
         if ($lock && (!$branchId || $branchId <= 0)) {
             throw new \InvalidArgumentException('Current makeup occupancy requires a campus');
         }
-        if ($lock && !\App\Helpers\FeatureFlag::enabled(RescheduleSessionService::OCCURRENCE_V2_FLAG, (int) $branchId)) return [];
+        // A rollout at another campus does not add a makeup lookup to this campus's legacy guard.
+        if ($branchId && !\App\Helpers\FeatureFlag::enabled(RescheduleSessionService::OCCURRENCE_V2_FLAG, $branchId)) {
+            return [];
+        }
         // Each discovery read is CURRENT and covering: hold ownership/index keys,
         // not unrelated clustered payload rows. Same PDO includes caller writes.
         $lrIds = [];
@@ -412,11 +459,12 @@ class SubstituteScheduleService
             : DB::table('schedules as m')
                 ->join('StudentClass as sc', 'sc.ID', '=', 'm.student_course_id')
                 ->join('Student as st', 'st.id', '=', 'sc.StudentID')
-                ->whereDate('m.schedule_date', $ymd)
+                ->where('m.schedule_date', '>=', $ymd)
+                ->when($endDate !== null, fn ($q) => $q->where('m.schedule_date', '<=', $endDate))
                 ->whereExists(fn ($e) => $e->select(DB::raw(1))->from('LearningRecord as lr')
                     ->join('ClassSession as cs', 'cs.id', '=', 'lr.ClassSessionID')
                     ->whereColumn('cs.StudentClassID', 'm.student_course_id')
-                    ->whereDate('cs.SessionDate', $ymd)
+                    ->whereColumn('cs.SessionDate', 'm.schedule_date')
                     ->whereNull('lr.VoidedAt')->where('lr.TeacherID', $teacherId));
         $q->where('m.status', 'scheduled')->where('m.type', 'extra')
             ->where(fn ($t) => $t->whereNull('m.teacher_id')->orWhere('m.teacher_id', '<>', $teacherId))
@@ -430,10 +478,23 @@ class SubstituteScheduleService
         if ($branchId) {
             $q->where('m.branch_id', $branchId);
         }
-        $rows = $q->when($lock, fn ($q) => $q->lockForUpdate())->get([$lock ? DB::raw('STRAIGHT_JOIN m.id') : 'm.id', 'm.start_time', 'm.end_time', 'm.branch_id', 'm.student_course_id', 'sc.TeacherID as contract_teacher_id',
+        $rows = $q->when($lock, fn ($q) => $q->lockForUpdate())->get([$lock ? DB::raw('STRAIGHT_JOIN m.id') : 'm.id', 'm.schedule_date', 'm.start_time', 'm.end_time', 'm.branch_id', 'm.student_course_id', 'sc.TeacherID as contract_teacher_id',
             DB::raw('COALESCE(m.student_id, sc.StudentID) as student_id'), DB::raw("COALESCE(sc.ClassType, 'one_on_one') as class_type")]);
 
-        return $rows->filter(fn ($r) => self::teacherForOccurrence((int) $r->student_course_id, $ymd, (int) $r->contract_teacher_id, (string) $r->start_time, $lock) === $teacherId)->values()->all();
+        // A surviving LearningRecord assigns an instructor, but only a live occurrence reserves their time.
+        $rows = collect(app(StaleScheduleExceptionFilter::class)->rejectStaleBatch(
+            $rows->groupBy('schedule_date')->toArray(), $lock
+        ))->collapse();
+
+        if ($lock) {
+            return $rows->filter(fn ($r) => self::teacherForOccurrence((int) $r->student_course_id, $ymd, (int) $r->contract_teacher_id, (string) $r->start_time, true) === $teacherId)->values()->all();
+        }
+        $teachers = self::teachersForOccurrences($rows->map(fn ($r) => [
+            'course_id' => (int) $r->student_course_id, 'date' => (string) $r->schedule_date,
+            'start_time' => (string) $r->start_time, 'contract_teacher_id' => (int) $r->contract_teacher_id,
+        ]));
+
+        return $rows->filter(fn ($r) => $teachers[self::occurrenceKey((int) $r->student_course_id, (string) $r->schedule_date, (string) $r->start_time)] === $teacherId)->values()->all();
     }
 
     private static function legacySubstituteUserId(int $studentClassId, $sessionDate, ?string $startTime, bool $lock = false): ?int

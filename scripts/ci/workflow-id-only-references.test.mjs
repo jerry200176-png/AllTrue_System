@@ -64,6 +64,7 @@ test('the failure message never repeats the offending word', () => {
 test('pop workflow file names use the same vocabulary; other workflows are not judged', () => {
   assert.equal(checkWorkflowFileName('pop-invoice1997-stale-values.yml'), null);
   assert.equal(checkWorkflowFileName('pop-contract-charge-correction-3868.yml'), null);
+  assert.equal(checkWorkflowFileName('pop-unused-lessons-closeout-5617.yml'), null);
   assert.equal(checkWorkflowFileName('pop-issue-5201-repair.yaml'), null);
   assert.notEqual(checkWorkflowFileName(`pop-${NAME}-billing-catchup.yml`), null);
   assert.notEqual(checkWorkflowFileName('pop-Invoice-1.yml'), null);

@@ -69,6 +69,62 @@ class CrossCampusWritePathsTest extends TestCase
         $this->assertNull($guard->crossCampusWeeklyConflict($teacher, 2, $slot(3, '17:00'), null, $today, null), 'same campus is not cross-campus');
     }
 
+    public function test_makeup_candidates_skip_times_taught_at_another_campus(): void
+    {
+        $teacher = $this->teacher();
+        $day = Carbon::today()->addDays(7)->toDateString();
+        $this->lesson($this->course($teacher, 2, '甲'), $day, '13:00', '15:00');
+        $mine = $this->course($teacher, 1, '乙');
+        $missed = $this->lesson($mine, Carbon::today()->addDays(6)->toDateString(), '09:00', '11:00');
+        $workflow = \App\Models\ExceptionWorkflow::create([
+            'source_key' => "parent_leave:class_session:{$missed}", 'campus_id' => 1, 'student_id' => $mine->StudentID,
+            'student_class_id' => $mine->ID, 'class_session_id' => $missed, 'type' => 'student_leave', 'status' => 'open',
+        ]);
+
+        $candidates = app(\App\Services\ExceptionWorkflowCandidateGenerator::class)->generate($workflow, $day, $day);
+
+        $this->assertNotEmpty($candidates);
+        foreach ($candidates as $c) {
+            $this->assertFalse($c['start_time'] < '15:00' && $c['end_time'] > '13:00', "offered {$c['start_time']} clashes at campus 2");
+        }
+        $this->assertSame(range(1, count($candidates)), array_column($candidates, 'rank'), 'ranks stay consecutive');
+    }
+
+    public function test_all_day_cross_campus_conflicts_read_schedules_once_per_day(): void
+    {
+        $teacher = $this->teacher();
+        $start = Carbon::today()->addWeek();
+        $other = $this->course($teacher, 2, '甲');
+        for ($offset = 0; $offset < 3; $offset++) {
+            $this->lesson($other, $start->copy()->addDays($offset)->toDateString(), '09:00', '21:00');
+        }
+        $mine = $this->course($teacher, 1, '乙');
+        $missed = $this->lesson($mine, $start->copy()->subDay()->toDateString(), '09:00', '11:00');
+        $workflow = \App\Models\ExceptionWorkflow::create([
+            'source_key' => "parent_leave:class_session:{$missed}", 'campus_id' => 1, 'student_id' => $mine->StudentID,
+            'student_class_id' => $mine->ID, 'class_session_id' => $missed, 'type' => 'student_leave', 'status' => 'open',
+        ]);
+
+        foreach ([1, 3] as $days) {
+            DB::enableQueryLog();
+            DB::flushQueryLog();
+            try {
+                $candidates = app(\App\Services\ExceptionWorkflowCandidateGenerator::class)->generate(
+                    $workflow, $start->toDateString(), $start->copy()->addDays($days - 1)->toDateString(), 1
+                );
+                $queries = DB::getQueryLog();
+            } finally {
+                DB::disableQueryLog();
+                DB::flushQueryLog();
+            }
+            $this->assertSame([], $candidates);
+            $otherCampusReads = array_filter($queries, static fn ($query) =>
+                str_contains($query['query'], 'from `schedules` where `branch_id` = ?')
+                && (int) $query['bindings'][0] === 2);
+            $this->assertCount($days, $otherCampusReads);
+        }
+    }
+
     private function teacher(): int
     {
         $teacher = User::create(['LoginName' => 'write-path-teacher@example.com', 'Name' => '老師', 'PSW' => 'secret',

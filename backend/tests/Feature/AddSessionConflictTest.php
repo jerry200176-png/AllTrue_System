@@ -14,6 +14,7 @@ use App\Models\UserCampus;
 use App\Services\CourseLeaveCascadeService;
 use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
 class AddSessionConflictTest extends TestCase
@@ -159,6 +160,74 @@ class AddSessionConflictTest extends TestCase
         $this->assertSame('completed', (string) $session->fresh()->Status);
         $this->assertSame(1, ClassSession::where('StudentClassID', $sc->ID)->count());
         $this->assertNull(LearningRecord::where('ClassSessionID', $session->id)->value('VoidedAt'));
+    }
+
+    /** @dataProvider originalSessionStates */
+    public function test_backfill_preserves_leave_and_director_cancellation(string $status, bool $cancel, bool $editNote): void
+    {
+        $token = $this->createDirectorToken([1]);
+        $student = $this->createStudent(1);
+        $course = $this->createStudentClass($student->id);
+        $data = ['session_date' => today()->subDay()->toDateString(), 'start_time' => '10:00'];
+        $slot = [
+            'StudentClassID' => $course->ID, 'SessionDate' => $data['session_date'],
+            'StartTime' => '10:00', 'EndTime' => '12:00',
+        ];
+        // An earlier system cancellation in the same slot must not hide the original.
+        ClassSession::create($slot + ['Status' => 'cancelled']);
+        $original = ClassSession::create($slot + ['Status' => $status]);
+        $uri = "/api/v1/class-sessions/{$original->id}";
+        if ($cancel) {
+            $this->withToken($token)->patchJson($uri, ['status' => 'cancelled'])->assertOk();
+        }
+        if ($editNote) {
+            $this->withToken($token)->patchJson($uri, ['status' => 'cancelled', 'note' => '保留原取消紀錄'])->assertOk();
+        }
+        $auditCount = DB::table('schedule_audit_logs')->where('session_id', $original->id)->count();
+        $path = "/api/v1/student-classes/{$course->ID}/add-session";
+        $check = $this->withToken($token)->postJson("{$path}/check", $data)
+            ->assertOk()->assertJsonPath('can_add', false)->assertJsonPath('conflict_session_id', $original->id);
+        if ($cancel) {
+            $canRestore = $status === 'scheduled' && !$editNote;
+            $this->withToken($token)->getJson("{$uri}/recovery")->assertOk()->assertJsonPath('available', $canRestore);
+            $this->assertStringContainsString($canRestore ? '可復原' : '無法直接復原', $check->json('message'));
+        }
+        $this->withToken($token)->postJson($path, $data + ['auto_approve' => true])
+            ->assertConflict()->assertJsonPath('error_code', 'USE_ORIGINAL_SESSION');
+        $this->assertSame($cancel ? 'cancelled' : $status, $original->refresh()->Status);
+        $this->assertSame($auditCount, DB::table('schedule_audit_logs')->where('session_id', $original->id)->count());
+        $this->assertDatabaseMissing('LearningRecord', ['ClassSessionID' => $original->id]);
+        $this->assertDatabaseMissing(StudentSignIn::class, ['ClassSessionID' => $original->id]);
+    }
+
+    public function test_latest_system_cancellation_supersedes_prior_director_cancellation(): void
+    {
+        $token = $this->createDirectorToken([1]);
+        $student = $this->createStudent(1);
+        $course = $this->createStudentClass($student->id);
+        $date = today()->subDay()->toDateString();
+        $session = ClassSession::create([
+            'StudentClassID' => $course->ID, 'SessionDate' => $date, 'StartTime' => '10:00',
+            'EndTime' => '12:00', 'Status' => 'scheduled',
+        ]);
+        $uri = "/api/v1/class-sessions/{$session->id}";
+        $this->withToken($token)->patchJson($uri, ['status' => 'cancelled'])->assertOk();
+        $auditId = $this->withToken($token)->getJson("{$uri}/recovery")->assertOk()->json('audit_id');
+        $this->withToken($token)->postJson("{$uri}/restore", ['expected_audit_id' => $auditId, 'reason' => '恢復原排課'])->assertOk();
+        // Background processing has no operator.
+        request()->attributes->remove('auth_user');
+        $session->refresh()->update(['Status' => 'cancelled']);
+        $this->withToken($token)->postJson("/api/v1/student-classes/{$course->ID}/add-session/check",
+            ['session_date' => $date, 'start_time' => '10:00'])->assertOk()->assertJsonPath('can_add', true);
+    }
+
+    public static function originalSessionStates(): array
+    {
+        return [
+            ['leave', false, false], ['leave_adjusted', false, false],
+            ['leave', true, false], ['leave_adjusted', true, false],
+            ['scheduled', true, true], ['scheduled', true, false],
+        ];
     }
 
     public function test_check_keeps_manually_voided_learning_record_locked(): void
@@ -363,6 +432,35 @@ class AddSessionConflictTest extends TestCase
 
         $res->assertStatus(201)
             ->assertJsonPath('student_class_id', $sc->ID);
+    }
+
+    /** @dataProvider monthlyBackfillApprovals */
+    public function test_monthly_precheck_and_submission_ignore_a_full_legacy_count(bool $approve, string $message): void
+    {
+        $token = $this->createDirectorToken([1]);
+        $student = $this->createStudent(1);
+        $course = $this->createStudentClass($student->id, [
+            'ScheduleMode' => 'date', 'SessionCount' => 1, 'RemainingSessions' => 0,
+            'StartDate' => today()->subWeek(), 'EndDate' => today(),
+        ]);
+        ClassSession::create([
+            'StudentClassID' => $course->ID, 'SessionDate' => today()->subDays(3),
+            'StartTime' => '10:00', 'EndTime' => '12:00', 'Status' => 'completed',
+        ]);
+        $path = "/api/v1/student-classes/{$course->ID}/add-session";
+        $data = ['session_date' => today()->subDays(2)->toDateString(), 'start_time' => '10:00'];
+        $this->withToken($token)->postJson("{$path}/check", $data)
+            ->assertOk()->assertJsonPath('can_add', true);
+        $this->withToken($token)->postJson($path, $data + ['auto_approve' => $approve])
+            ->assertCreated()->assertJsonPath('message', $message)->assertJsonPath('auto_approved', $approve);
+    }
+
+    public static function monthlyBackfillApprovals(): array
+    {
+        return [
+            [false, '已補登月結堂次，待老師填寫評量'],
+            [true, '已補登月結堂次，評量已核准'],
+        ];
     }
 
     public function test_shared_package_quick_add_uses_pool_capacity_when_member_is_full(): void

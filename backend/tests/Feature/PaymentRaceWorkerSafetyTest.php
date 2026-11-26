@@ -51,6 +51,7 @@ class PaymentRaceWorkerSafetyTest extends TestCase
         $connection = \Mockery::mock(\Illuminate\Database\Connection::class);
         $connection->shouldReceive('getDriverName')->andReturn('mysql');
         $connection->shouldReceive('getDatabaseName')->andReturn('AllTrue_test');
+        $this->restoreDatabaseManagerAfterMocking();
         DB::shouldReceive('connection')->andReturn($connection);
         DB::shouldReceive('selectOne')->once()->with('SELECT @@transaction_isolation AS level')
             ->andThrow(new QueryException('mysql', 'SELECT @@transaction_isolation AS level', [], new \PDOException('Unknown system variable')));

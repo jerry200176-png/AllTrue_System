@@ -5,7 +5,7 @@ const baseURL = process.env.TUTORING_CONTINUATION_BASE_URL;
 test.skip(!baseURL, 'Explicit isolated browser target required');
 
 async function install(page, { packageCourse = false, before = false } = {}) {
-  const state = { writes: [], errors: [], dialogs: [], fail: true };
+  const state = { writes: [], errors: [], dialogs: [], fail: true, responseGate: null };
   const course = {
     id: 9001, student_id: 901, subject: 'Math', subject_name: '數學',
     class_type: 'tutoring', payment_type: 'session', payment_status: 'no_payment_required',
@@ -32,7 +32,7 @@ async function install(page, { packageCourse = false, before = false } = {}) {
       if (/adoption|engagement|read/.test(path)) return route.fulfill({ json: { ok: true } });
       state.writes.push({ path, body: request.postDataJSON() });
       if (path === '/api/v1/student-classes/9001/continue-tutoring' && !before) {
-        await new Promise(resolve => setTimeout(resolve, 150));
+        await state.responseGate;
         return state.fail
           ? route.fulfill({ status: 422, json: { message: '下一期時段有衝突，請先調整原課程固定時段。' } })
           : route.fulfill({ status: 201, json: {
@@ -80,9 +80,19 @@ for (const width of [390, 1440]) {
     await modal.locator('input[type=number]').fill('4');
     await modal.locator('input[type=date]').fill('2026-10-01');
     const submit = modal.getByRole('button', { name: '確認建立下一期輔導課', exact: true });
-    await submit.dblclick();
-    await expect.poll(() => state.dialogs.length).toBe(1);
-    await expect(modal).toBeVisible();
+    let release;
+    state.responseGate = new Promise(resolve => { release = resolve; });
+    try {
+      await submit.dblclick();
+      await expect.poll(() => state.writes.length).toBe(1);
+      await expect(modal.getByRole('button', { name: '建立中…', exact: true })).toBeDisabled();
+      await page.keyboard.press('Escape');
+      await expect(modal).toBeVisible();
+    } finally {
+      release();
+    }
+    await expect(modal.getByRole('alert')).toContainText('下一期時段有衝突，請先調整原課程固定時段。');
+    expect(state.dialogs).toEqual([]);
     await expect(modal.locator('input[type=number]')).toHaveValue('4');
     expect(state.writes).toHaveLength(1);
     expect(state.writes[0]).toEqual({ path: '/api/v1/student-classes/9001/continue-tutoring', body: { sessions: 4, start_date: '2026-10-01' } });
@@ -91,9 +101,9 @@ for (const width of [390, 1440]) {
     state.fail = false;
     await submit.click();
     await expect(modal).toHaveCount(0);
-    await expect.poll(() => state.dialogs.length).toBe(2);
-    expect(state.dialogs[1]).toContain('2026-10-01 ～ 2026-10-26；已排 4 堂。');
-    expect(state.dialogs[1]).not.toMatch(/#9001|#9002/);
+    await expect.poll(() => state.dialogs.length).toBe(1);
+    expect(state.dialogs[0]).toContain('2026-10-01 ～ 2026-10-26；已排 4 堂。');
+    expect(state.dialogs[0]).not.toMatch(/#9001|#9002/);
     expect(state.writes).toHaveLength(2);
     expect(state.errors).toEqual([]);
   });

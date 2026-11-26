@@ -118,9 +118,11 @@ class ScheduleMakeupCreatesClassSessionTest extends TestCase
             'student_course_id' => $this->sc->ID,
         ];
 
-        $this->postSchedule($payload)->assertCreated();
-        $this->postSchedule($payload)->assertCreated();
+        $firstId = $this->postSchedule($payload)->assertCreated()->json('id');
+        $this->postSchedule($payload)->assertConflict()->assertJsonPath('code', 'makeup_already_scheduled');
 
+        $this->assertDatabaseCount('schedules', 1);
+        $this->assertDatabaseHas('schedules', ['id' => $firstId, 'student_course_id' => $this->sc->ID]);
         $this->assertDatabaseCount('ClassSession', 1);
     }
 

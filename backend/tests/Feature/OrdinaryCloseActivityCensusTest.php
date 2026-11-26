@@ -279,6 +279,7 @@ class OrdinaryCloseActivityCensusTest extends TestCase
     public function test_requires_transaction(): void
     {
         [$student, $course] = $this->owner();
+        $this->restoreDatabaseManagerAfterMocking();
         DB::shouldReceive('transactionLevel')->once()->andReturn(0);
         try {
             app(OrdinaryCloseActivityCensus::class)->captureLocked($course, $student);
@@ -291,6 +292,7 @@ class OrdinaryCloseActivityCensusTest extends TestCase
     public function test_database_query_failure_is_rethrown_without_sql_details(): void
     {
         [$student, $course] = $this->owner();
+        $this->restoreDatabaseManagerAfterMocking();
         DB::shouldReceive('transactionLevel')->once()->andThrow(
             new QueryException('mysql', 'select * from Student where Phone = ?', ['PRIVATE_PHONE'], new PDOException('PRIVATE_SQL_DETAIL'))
         );

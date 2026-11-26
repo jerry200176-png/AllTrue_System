@@ -43,6 +43,8 @@ use App\Services\ClassSessionMaterializationService;
 
 class ClassSession extends Model
 {
+    public const PAUSED_PROJECTION_CANCEL_NOTE = 'projected-paused-cancelled';
+
     protected $table = 'ClassSession';
 
     private static ?bool $settlementLockColumnExists = null;
