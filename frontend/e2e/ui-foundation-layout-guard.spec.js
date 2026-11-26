@@ -538,7 +538,44 @@ const courseDialogEntry = (d) => ({
 const COURSE_MGMT_DIALOG_ENTRIES = Object.values(COURSE_DIALOGS).map(courseDialogEntry);
 
 /** PAGES: { key, url, mock(page), names (exact texts that must stay on one line), rows (selector groups whose visible members must share a left edge), setup?(page) } */
+const EXAM_SUBJECTS = ['國文', '英文', '數學', '社會', '自然'].map((name, i) => ({ id: 10 + i, name, max_score: 100 }));
+const EXAM_ROUNDS = [
+  { id: 1, title: '115-1 第二次段考', status: 'published', exam_date: '2026-11-27', entry_deadline: '2026-12-05', grade_ids: [7, 8, 9], subjects: EXAM_SUBJECTS },
+  { id: 2, title: '115-1 第三次段考', status: 'draft', exam_date: null, entry_deadline: null, grade_ids: [7, 8, 9], subjects: EXAM_SUBJECTS },
+  { id: 3, title: '115-1 第一次段考', status: 'closed', exam_date: '2026-10-14', entry_deadline: '2026-10-24', grade_ids: [7, 8, 9], subjects: EXAM_SUBJECTS },
+];
+
 const PAGES = [
+  {
+    // 段考成績 (issue 4989): header actions, the round list card (one row per round, status badge, row actions) and the score dialog.
+    // Round titles are the "names": they stay on one line; the title column of every row starts at the same x.
+    key: 'exam-grades',
+    url: '/pilot-mount.html?page=exam-grades',
+    names: EXAM_ROUNDS.map((r) => r.title),
+    allNames: true,
+    rows: ['.exam-round-card > div:first-child'],
+    touch: ['[data-slot="page-actions"] button', '.exam-round-card__actions button'],
+    mock: async (page) => {
+      await page.route('**/api/v1/**', (r) => json(r, new URL(r.request().url()).pathname === '/api/v1/exam-rounds' ? { data: EXAM_ROUNDS } : { data: [] }));
+    },
+  },
+  {
+    // 段考成績 score dialog: the student name column stays on one line and in view; 儲存 is a 44px target; the page body never scrolls sideways.
+    key: 'exam-grades-scores',
+    url: '/pilot-mount.html?page=exam-grades',
+    names: NAMES.slice(0, 8),
+    allNames: true,
+    rows: ['.exam-score-table tbody td:first-child'],
+    touch: ['.exam-score-table tbody button[aria-label^="儲存"]'],
+    mock: async (page) => {
+      const students = NAMES.slice(0, 8).map((name, i) => ({ student_id: 4000 + i, student_name: name, filled_subject_count: i % 6, required_subject_count: 5, is_complete: i % 6 === 5, scores: [] }));
+      await page.route('**/api/v1/**', (r) => {
+        const path = new URL(r.request().url()).pathname;
+        return json(r, path === '/api/v1/exam-rounds' ? { data: EXAM_ROUNDS } : path.endsWith('/students') ? { data: students } : { data: [] });
+      });
+    },
+    setup: async (page) => { await page.locator('.exam-round-card__actions button', { hasText: '登分' }).first().click(); },
+  },
   {
     // 學生管理, slice 1 (issue 4989): header with four actions, the filter toolbar and the student list card. The header actions are the
     // phone risk (four buttons, 字級 大): none may stick out of the viewport, and the order is 匯入名單, 下載範例, 跨分校身份, then the primary.

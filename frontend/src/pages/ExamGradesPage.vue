@@ -1,63 +1,70 @@
 <template>
-  <section class="exam-grades-page">
-    <AtPageHeader
-      title="段考成績"
-      description="主任開段考場次，老師登錄自己學生的學校各科分數。"
-      icon="quiz"
-    >
+  <section :class="[pageShell, 'exam-grades-page']">
+    <PageHeader title="段考成績" context="主任開段考場次，老師登錄自己學生的學校各科分數。">
       <template #actions>
-        <AtButton v-if="isDirector" variant="primary" shape="rect" icon="add" @click="openCreate">開新段考</AtButton>
-        <label v-if="isDirector" class="exam-void-toggle"><input v-model="showVoid" type="checkbox" @change="loadRounds" /> 顯示已刪除</label>
-        <AtButton shape="rect" variant="ghost" icon="refresh" :loading="loading" @click="loadRounds">重新整理</AtButton>
+        <Button variant="outline" :class="control.pageIcon" aria-label="重新整理" :aria-busy="loading" :disabled="loading" @click="loadRounds">
+          <RefreshCw :size="20" :stroke-width="2" aria-hidden="true" :class="{ 'tw:animate-spin tw:motion-reduce:animate-none': loading }" />
+        </Button>
+        <FilterChip v-if="isDirector" class="tw:h-12" :active="showVoid" @click="toggleVoid">顯示已刪除</FilterChip>
+        <Button v-if="isDirector" :class="control.page" @click="openCreate"><Plus :size="20" aria-hidden="true" />開新段考</Button>
       </template>
-    </AtPageHeader>
+    </PageHeader>
 
-    <Tabs v-model="tab" class="tw:gap-3">
+    <Tabs v-model="tab" class="tw:gap-4">
       <TabsList>
         <TabsTrigger value="rounds">段考場次</TabsTrigger>
         <TabsTrigger value="periods">各校段考日期</TabsTrigger>
         <TabsTrigger value="curriculum">教材範本庫</TabsTrigger>
       </TabsList>
       <TabsContent value="rounds">
-      <AtSkeleton v-if="loading" rows="4" />
-      <AtInlineAlert v-else-if="error" tone="danger" title="無法載入段考">
-        <p>{{ error }}</p>
-        <template #action><AtButton shape="rect" size="sm" variant="ghost" @click="loadRounds">重試</AtButton></template>
-      </AtInlineAlert>
-      <AtEmpty
-        v-else-if="!rounds.length"
-        icon="quiz"
-        :title="isDirector ? '還沒有段考場次' : '目前沒有開放中的段考'"
-        :description="isDirector ? '建立場次並發布後，老師工作台會出現待登清單。' : '主任開放後會出現在這裡。'"
-      />
-
-      <div v-else class="exam-round-list">
-        <article v-for="round in rounds" :key="round.id" class="exam-round-card">
-          <div class="exam-round-card__head">
-            <div>
-              <strong>{{ round.title }}</strong>
-              <p class="muted">{{ round.exam_date || '未定考試日' }} · 截止 {{ round.entry_deadline || '未設' }}</p>
-            </div>
-            <span :class="['status-pill', `status-${round.status}`]">{{ statusLabel(round.status) }}</span>
+        <Alert v-if="error" tone="danger" title="無法載入段考" class="tw:mb-4">
+          <p>{{ error }}</p>
+          <button type="button" :class="[rowAction.secondary, 'tw:mt-2']" @click="loadRounds">再試一次</button>
+        </Alert>
+        <SectionCard title="段考場次" :count="loading ? null : rounds.length">
+          <div v-if="loading" class="tw:px-5 tw:pb-4" aria-busy="true">
+            <Skeleton v-for="i in 3" :key="i" class="tw:my-3 tw:h-18 tw:w-full tw:rounded-xl tw:motion-reduce:animate-none" />
           </div>
-          <p class="muted">科目：{{ (round.subjects || []).map((s) => s.name).join('、') || '—' }}</p>
-          <div class="exam-round-card__actions">
-            <AtButton v-if="round.status !== 'void'" shape="rect" size="sm" variant="primary" @click="openRound(round)">
-              {{ examRoundActionLabel(round, isDirector) }}
-            </AtButton>
-            <AtButton v-if="isDirector && round.status === 'void'" shape="rect" size="sm" variant="primary" @click="restoreRound(round)">復原</AtButton>
-            <AtButton v-if="isDirector && round.status === 'draft'" shape="rect" size="sm" variant="ghost" @click="publishRound(round)">發布</AtButton>
-            <AtButton v-if="isDirector && round.status === 'published'" shape="rect" size="sm" variant="ghost" @click="askCloseRound(round)">關閉</AtButton>
-            <ActionMenu
-              v-if="isDirector && round.status !== 'void'"
-              :groups="roundMenuGroups"
-              :label="`更多操作：${round.title}`"
-              @select="(id) => onRoundMenu(round, id)"
-            />
+          <div v-else-if="!rounds.length && !error" class="tw:flex tw:flex-col tw:items-center tw:gap-2 tw:px-5 tw:py-10 tw:text-center">
+            <ClipboardList :size="32" :stroke-width="1.5" class="tw:text-tpl-secondary" aria-hidden="true" />
+            <p class="tw:m-0 tw:font-semibold">{{ isDirector ? '還沒有段考場次' : '目前沒有開放中的段考' }}</p>
+            <p class="tw:m-0 tw:text-tpl-caption tw:text-tpl-secondary">{{ isDirector ? '建立場次並發布後，老師工作台會出現待登清單。' : '主任開放後會出現在這裡。' }}</p>
           </div>
-        </article>
-      </div>
-
+          <ul v-else class="exam-round-list tw:m-0 tw:list-none tw:p-0">
+            <li
+              v-for="round in rounds"
+              :key="round.id"
+              class="exam-round-card tw:flex tw:min-h-18 tw:flex-wrap tw:items-center tw:justify-between tw:gap-x-4 tw:gap-y-3 tw:border-t tw:border-border tw:px-4 tw:py-3 tw:md:px-5"
+            >
+              <div class="tw:min-w-0 tw:flex-1 tw:basis-64">
+                <p class="tw:m-0 tw:flex tw:flex-wrap tw:items-center tw:gap-x-3 tw:gap-y-1 tw:font-semibold">
+                  <span class="tw:min-w-0 tw:break-words">{{ round.title }}</span>
+                  <StatusBadge :tone="round.status === 'published' ? 'success' : 'neutral'">{{ statusLabel(round.status) }}</StatusBadge>
+                </p>
+                <p class="tw:m-0 tw:mt-1 tw:text-tpl-caption tw:text-tpl-secondary">
+                  <span :class="dataTable.fact">考試 {{ round.exam_date || '未定' }}</span>
+                  <span :class="[dataTable.fact, 'tw:ml-3']">截止 {{ round.entry_deadline || '未設' }}</span>
+                  <span class="tw:ml-3">{{ (round.subjects || []).map((s) => s.name).join('、') || '—' }}</span>
+                </p>
+              </div>
+              <div class="exam-round-card__actions tw:flex tw:flex-wrap tw:items-center tw:gap-2 tw:max-md:w-full">
+                <button v-if="isDirector && round.status === 'draft'" type="button" :class="rowAction.secondary" @click="publishRound(round)">發布</button>
+                <button v-if="isDirector && round.status === 'published'" type="button" :class="rowAction.secondary" @click="askCloseRound(round)">關閉</button>
+                <button v-if="round.status !== 'void'" type="button" :class="[rowAction.primary, 'tw:max-md:flex-1']" @click="openRound(round)">
+                  {{ examRoundActionLabel(round, isDirector) }}
+                </button>
+                <button v-if="isDirector && round.status === 'void'" type="button" :class="rowAction.primary" @click="restoreRound(round)">復原</button>
+                <ActionMenu
+                  v-if="isDirector && round.status !== 'void'"
+                  :groups="roundMenuGroups"
+                  :label="`更多操作：${round.title}`"
+                  :trigger-class="rowAction.menu"
+                  @select="(id) => onRoundMenu(round, id)"
+                />
+              </div>
+            </li>
+          </ul>
+        </SectionCard>
       </TabsContent>
       <TabsContent value="periods">
         <SchoolExamPeriodsPanel :branch-id="branchId" :is-director="isDirector" />
@@ -116,38 +123,44 @@
     </AtDialog>
 
     <AtDialog :open="!!selected" :title="selected?.title || '登分'" title-id="exam-score-title" size="xl" panel-class="exam-score-dialog" @close="selected = null">
-      <AtSkeleton v-if="studentsLoading" rows="3" />
-      <AtInlineAlert v-else-if="studentsError" tone="danger" title="無法載入學生"><p>{{ studentsError }}</p></AtInlineAlert>
-      <AtEmpty v-else-if="!students.length" icon="person_off" title="沒有需登分的學生" description="此場次沒有符合年級且由你授課的學生。" />
+      <div v-if="studentsLoading" aria-busy="true"><Skeleton v-for="i in 3" :key="i" class="tw:my-2 tw:h-14 tw:w-full tw:rounded-xl tw:motion-reduce:animate-none" /></div>
+      <Alert v-else-if="studentsError" tone="danger" title="無法載入學生"><p>{{ studentsError }}</p></Alert>
+      <div v-else-if="!students.length" class="tw:flex tw:flex-col tw:items-center tw:gap-2 tw:py-8 tw:text-center">
+        <UserX :size="32" :stroke-width="1.5" class="tw:text-tpl-secondary" aria-hidden="true" />
+        <p class="tw:m-0 tw:font-semibold">沒有需登分的學生</p>
+        <p class="tw:m-0 tw:text-tpl-caption tw:text-tpl-secondary">此場次沒有符合年級且由你授課的學生。</p>
+      </div>
       <template v-else>
-      <div class="exam-score-search">
-        <label for="exam-score-search-input">找學生</label>
-        <input
+      <div class="tw:mb-3 tw:flex tw:flex-wrap tw:items-center tw:gap-3">
+        <label for="exam-score-search-input" class="tw:sr-only">找學生</label>
+        <Input
           id="exam-score-search-input"
           v-model="studentQuery"
           type="search"
-          placeholder="輸入學生姓名或編號"
+          class="tw:h-11 tw:flex-1 tw:basis-48 tw:text-[length:var(--tpl-text-body)]"
+          placeholder="找學生：輸入姓名或編號"
           autocomplete="off"
         />
-        <small class="muted" aria-live="polite">顯示 {{ filteredStudents.length }} / {{ students.length }} 位</small>
+        <span class="tw:text-tpl-caption tw:text-tpl-secondary tw:tabular-nums" aria-live="polite">顯示 {{ filteredStudents.length }} / {{ students.length }} 位</span>
       </div>
-      <p v-if="!filteredStudents.length" class="muted exam-score-no-match">找不到符合「{{ studentQuery.trim() }}」的學生。</p>
-      <div v-else class="exam-score-table-wrap">
-        <table class="exam-score-table">
+      <p v-if="!filteredStudents.length" class="exam-score-no-match tw:my-2 tw:text-tpl-caption tw:text-tpl-secondary">找不到符合「{{ studentQuery.trim() }}」的學生。</p>
+      <!-- Names stay in view while scrolling across subjects; subject names stay in view while scrolling down. -->
+      <div v-else class="tw:max-h-[min(60dvh,480px)] tw:overflow-auto tw:rounded-xl tw:border tw:border-solid tw:border-border">
+        <table :class="['exam-score-table tw:w-full tw:border-collapse', dataTable.table]">
           <thead>
             <tr>
-              <th>學生</th>
-              <th v-for="subject in selected.subjects" :key="subject.id">{{ subject.name }}</th>
-              <th></th>
+              <th :class="[dataTable.head, 'tw:sticky tw:top-0 tw:left-0 tw:z-2 tw:text-left']">學生</th>
+              <th v-for="subject in selected.subjects" :key="subject.id" :class="[dataTable.head, 'tw:sticky tw:top-0 tw:z-1 tw:text-left']">{{ subject.name }}</th>
+              <th :class="[dataTable.head, 'tw:sticky tw:top-0 tw:z-1']"><span class="tw:sr-only">操作</span></th>
             </tr>
           </thead>
           <tbody>
             <tr v-for="row in filteredStudents" :key="row.student_id">
-              <td>
-                <strong>{{ row.student_name }}</strong>
-                <small :class="{ 'exam-complete': row.is_complete }">{{ row.filled_subject_count }}/{{ row.required_subject_count }}</small>
+              <td :class="stickyName">
+                <span>{{ row.student_name }}</span>
+                <span :class="[dataTable.sub, 'tw:tabular-nums', row.is_complete ? toneText.success : '']">{{ row.is_complete ? '已登完 ' : '' }}{{ row.filled_subject_count }}/{{ row.required_subject_count }}</span>
               </td>
-              <td v-for="subject in selected.subjects" :key="subject.id">
+              <td v-for="subject in selected.subjects" :key="subject.id" :class="dataTable.cell">
                 <ExamScoreCell
                   :score="cellOf(row, subject.id).score"
                   :is-absent="cellOf(row, subject.id).is_absent"
@@ -161,15 +174,16 @@
                   @history="openHistory(row)"
                 />
               </td>
-              <td>
-                <AtButton
+              <td :class="dataTable.cell">
+                <button
                   v-if="canEditScores"
-                  shape="rect"
-                  size="sm"
-                  variant="ghost"
-                  :loading="savingStudentId === row.student_id"
+                  type="button"
+                  :class="rowAction.secondary"
+                  :disabled="savingStudentId === row.student_id"
+                  :aria-busy="savingStudentId === row.student_id"
+                  :aria-label="`儲存 ${row.student_name}`"
                   @click="saveStudent(row)"
-                >儲存</AtButton>
+                >儲存</button>
               </td>
             </tr>
           </tbody>
@@ -206,11 +220,13 @@
 <script setup>
 import { trackedFetch as fetch } from '../lib/loadingBar';
 import { computed, onMounted, reactive, ref, watch } from 'vue';
-import AtPageHeader from '../components/design-system/AtPageHeader.vue';
+import { ClipboardList, Plus, RefreshCw, UserX } from 'lucide-vue-next';
 import AtButton from '../components/design-system/AtButton.vue';
-import AtSkeleton from '../components/design-system/AtSkeleton.vue';
-import AtInlineAlert from '../components/design-system/AtInlineAlert.vue';
-import AtEmpty from '../components/design-system/AtEmpty.vue';
+import { Alert } from '../components/ui/alert';
+import { Button } from '../components/ui/button';
+import { Input } from '../components/ui/input';
+import { Skeleton } from '../components/ui/skeleton';
+import { FilterChip, PageHeader, SectionCard, StatusBadge, control, dataTable, pageShell, rowAction, toneText } from '../components/ui/page';
 import AtDialog from '../components/design-system/AtDialog.vue';
 import ActionMenu from '../components/ActionMenu.vue';
 import { GRADES } from '../lib/constants';
@@ -241,6 +257,12 @@ const formError = ref('');
 const createForm = reactive({ title: '', exam_date: '', entry_deadline: '', grade_ids: [], subjects: [] });
 const editingId = ref(null);
 const showVoid = ref(false);
+function toggleVoid() {
+  showVoid.value = !showVoid.value;
+  loadRounds();
+}
+// The name column stays in view while scrolling across subjects: an opaque fill instead of dataTable.name's transparent one.
+const stickyName = 'tw:sticky tw:left-0 tw:z-1 tw:h-14 tw:border-b tw:border-border tw:bg-[var(--ds-canvas)]! tw:px-3 tw:py-2 tw:md:px-4 tw:font-semibold tw:whitespace-nowrap tw:text-foreground';
 const roundMenuGroups = [{ id: 'round', label: '', items: [{ id: 'edit', label: '編輯' }, { id: 'delete', label: '刪除', danger: true }] }];
 const pendingDelete = ref(null);
 const deleteReason = ref('');
@@ -536,21 +558,8 @@ onMounted(loadRounds);
 </script>
 
 <style scoped>
-.exam-round-list { display: grid; gap: 12px; }
-.exam-round-card {
-  border: 1px solid var(--border);
-  border-radius: var(--ds-radius-lg);
-  padding: 14px 16px;
-  background: var(--card-bg);
-}
-.exam-round-card__head { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; }
-.exam-round-card__actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+/* Dialog forms only (the six AtDialog overlays move to components/ui/dialog in the next slice). */
 .muted { color: var(--text-light); margin: 4px 0 0; font-size: var(--ds-font-size-sm); }
-.status-pill { font-size: var(--ds-font-size-xs); padding: 2px 8px; border-radius: var(--ds-radius-pill); background: var(--ds-canvas-soft); }
-.status-published { background: var(--success-bg); }
-.status-void { background: var(--danger-bg, var(--ds-surface-2)); }
-.status-closed { background: var(--ds-surface-2); }
-.exam-void-toggle { display: inline-flex; align-items: center; gap: 6px; margin: 0; font-size: var(--ds-font-size-sm); }
 .exam-grade-picker, .exam-subject-editor { border: 1px solid var(--border); border-radius: var(--ds-radius-lg); margin: 0 0 10px; padding: 8px 12px; }
 .exam-grade-picker { display: grid; grid-template-columns: repeat(auto-fill, minmax(10rem, 1fr)); gap: 2px 8px; }
 .exam-grade-picker legend { grid-column: 1 / -1; }
@@ -559,20 +568,8 @@ onMounted(loadRounds);
 .exam-subject-row { display: flex; gap: 8px; align-items: center; margin-bottom: 6px; }
 .exam-form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .exam-error { color: var(--danger); margin-top: 8px; }
-.exam-score-search { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 10px; }
-.exam-score-search label { margin: 0; }
-.exam-score-search input { flex: 1 1 12rem; min-height: 40px; padding: 6px 10px; }
-.exam-score-no-match { margin: 8px 0; }
-.exam-score-table-wrap { overflow: auto; max-height: min(60dvh, 480px); }
-/* Names stay in view while scrolling across subjects; subject names stay in view while scrolling down. */
-.exam-score-table th { position: sticky; top: 0; z-index: 1; background: var(--ds-canvas); }
-.exam-score-table th:first-child, .exam-score-table td:first-child { position: sticky; left: 0; background: var(--ds-canvas); white-space: nowrap; }
-.exam-score-table th:first-child { z-index: 2; }
-.exam-score-table { width: 100%; border-collapse: collapse; }
-.exam-score-table th, .exam-score-table td { padding: 8px; border-bottom: 1px solid var(--border); text-align: left; vertical-align: middle; }
 .exam-history { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; font-size: var(--ds-font-size-lg); }
 .exam-history small { display: block; }
-.exam-complete { color: var(--success); display: block; }
 label { display: block; margin-bottom: 10px; }
 label input, label select, label textarea { display: block; width: 100%; margin-top: 4px; }
 @media (max-width: 720px) {
