@@ -133,7 +133,7 @@ mysqldump -h 127.0.0.1 -u admin -p"$(grep DB_PASSWORD /home/admin/backend/.env |
 |---|---|---|
 | CHECK 1 | `deploy.yml` 自動回滾區塊完整 | 有人改壞了自動回滾 |
 | CHECK 2 | 全部 migration 有 `down()` | 加了不可逆 migration，`migrate:rollback` 會半途死 |
-| CHECK 3 | 最新 main commit 可乾淨 `git revert`（sandbox abort） | 程式碼回滾會撞衝突，需人工 |
+| CHECK 3 | 最新 main commit 可乾淨 `git revert`（暫時 worktree，不動目前 checkout） | 程式碼回滾會撞衝突，需人工 |
 | CHECK 4 | DB 備份還原驗證 workflow 存在 | 資料層回滾沒有安全網 |
 
 本機隨時可跑：`bash scripts/rollback-readiness.sh`。

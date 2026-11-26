@@ -101,7 +101,6 @@ else
   bad "最新 commit ${HEAD_SHA:0:8} revert 有衝突 — 程式碼回滾需人工處理"
 fi
 git worktree remove --force "$SANDBOX/wt" >/dev/null 2>&1 || true
-git worktree prune >/dev/null 2>&1 || true
 rm -rf "$SANDBOX"
 
 # ── CHECK 4：DB 備份還原驗證安全網存在 ──────────────────────────────
