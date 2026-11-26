@@ -425,7 +425,7 @@ try {
 // F17 auto-intake (#Founder GO 6A, 2026-10-07): hourly, IDs-only, deduped, dry-run on manual dispatch.
 {
   const src = fs.readFileSync('.github/workflows/bug-auto-intake.yml', 'utf8');
-  assert.ok(src.includes("cron: '23 * * * *'"), 'auto-intake runs hourly');
+  assert.ok(src.includes("cron: '3-59/10 * * * *'"), 'auto-intake runs every 10 minutes');
   assert.match(src, /^permissions:\n  contents: read$/m, 'top-level permissions stay read-only');
   assert.equal((src.match(/issues: write/g) || []).length, 1, 'issues: write only on the issue job');
   assert.ok(src.includes('SourceRef: alltrue:bug_report:${id}') && src.includes('.login == $owner or .login == "app/github-actions"')

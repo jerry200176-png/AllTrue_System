@@ -43,7 +43,7 @@ last_reviewed: 2026-11-12
 
 | # | 階段 | 進入條件 | 守門人 | 產出 | 出關條件 | SLA |
 |---|---|---|---|---|---|---|
-| 1 | 收件 | Founder 需求、in-app 回報、工程／維運需求、告警 | 自動 | 帶來源標籤的 issue | issue 已在 Project 1 | 即時（in-app 每小時收件） |
+| 1 | 收件 | Founder 需求、in-app 回報、工程／維運需求、告警 | 自動 | 帶來源標籤的 issue | issue 已在 Project 1 | 即時（in-app 每 10 分鐘收件） |
 | 2 | 分診 | 新 issue | `triage-lead` | 分診留言與標籤；in-app 公開回覆 | `gate:triage` | P0 ≤ 4 小時、P1 ≤ 24 小時、P2 ≤ 168 小時；P3 不設 |
 | 3 | 定義 | 功能，或任何 R3 | `product-manager`（有 UI 加 `product-designer`） | issue 內的規格段 | `gate:pm`（有 UI 加 `gate:design`） | ≤ 2 天 |
 | 4 | 就緒 | 規格或根因已完成 | `tech-lead`＋`qa-lead` | 測試計畫清單 | `gate:ready` | — |
@@ -57,7 +57,7 @@ last_reviewed: 2026-11-12
 
 ### 階段 1：收件
 
-- in-app 回報：`bug-auto-intake.yml` 每小時開或重用 IDs-only issue（SourceRef 去重），留固定的「收到」回覆（見〈In-app 自動化對照表〉）。**現行。**
+- in-app 回報：`bug-auto-intake.yml` 每 10 分鐘開或重用 IDs-only issue（SourceRef 去重），留固定的「收到」回覆（見〈In-app 自動化對照表〉）。**現行。**
 - Founder 需求表單（問題、為什麼、例子、期限）、bug 表單、工程／維運表單：**現行（L2）**，在 `.github/ISSUE_TEMPLATE/*.yml`。
 - 告警與事故：處理走 [`INCIDENT_RUNTIME_LOOP.md`](../INCIDENT_RUNTIME_LOOP.md)；事故後的行動項目開成 issue，回到本階段。
 - `source:` 標籤已在 `.github/labels.yml`（L2）；現行 in-app issue 仍用既有的 `in-app:logged` 等標籤。
@@ -230,7 +230,7 @@ in-app 回報是外來輸入。分診時遇到下列任何一種，標 `safety:r
 
 | 階段 | Workflow（做什麼） | 觸發 | Cloud session（操作者機器禁令優先；見表下說明） |
 |------|--------------------|------|------------------------------------------------|
-| 收件建單 + 收到回覆 | `bug-auto-intake.yml`：每筆 `new` 開／重用 IDs-only GitHub issue（SourceRef 去重）、加 `area:<類別>`、同類提醒、留固定「收到，我們正在查」回覆（Founder 6A）。狀態**維持 `new`**，等 Phase A | schedule 每小時 :23；人工 dispatch 預設 dry-run，`dry_run=false` 會真的建單並寫 production | 自動，不需動作 |
+| 收件建單 + 收到回覆 | `bug-auto-intake.yml`：每筆 `new` 開／重用 IDs-only GitHub issue（SourceRef 去重）、加 `area:<類別>`、同類提醒、留固定「收到，我們正在查」回覆（Founder 6A）。狀態**維持 `new`**，等 Phase A | schedule 每 10 分鐘（:03 起）；人工 dispatch 預設 dry-run，`dry_run=false` 會真的建單並寫 production | 自動，不需動作 |
 | 撈佇列 | `bug-queue-dump.yml`：log 只有 ID／數量；明文 artifact 另含 metadata（嚴重度、分校 ID、page key、時間、回報者 user ID／角色、回饋類型），標題／描述／留言不在其中；文字在加密 `*.full.tar.gz.enc`（#3605；queue 不含描述／留言）；附 in-app ↔ issue reconcile step summary | push request-file `operations/closeout/bug-queue-dump.request.md`；或 dispatch | 受 Pi SSH machine ban 限制者不得觸發（含 request-file 間接觸發）；既有 run 看得到 log 的 ID／數量；artifact 與全文由已授權且具解密 secret 的受控環境下載與解密（見 Cloud decryption custody） |
 | 撈單筆 | `bug-detail-dump.yml`（`summary.json` 明文含分校／page／回報者 metadata；加密 JSON 會截斷：描述 4000、留言 1500、狀態備註 1000 字，超過要標 coverage gap；附件只有 metadata、沒有圖檔） | push request-file `operations/closeout/bug-detail-dump.request.md`（改檔內 `bug_id:` 行）；或 dispatch | 同上 |
 | 即時唯讀（金鑰） | 無 workflow：`GET /api/v1/triage/bug-reports…`，帶 `ALLTRUE_TRIAGE_TOKEN`（見下方「Reading reports with `ALLTRUE_TRIAGE_TOKEN`」） | 直接 HTTPS | 可以：已設定金鑰且網路允許正式站 host 時，讀全文、留言、附件；不能寫 |
