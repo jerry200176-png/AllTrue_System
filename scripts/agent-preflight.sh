@@ -29,7 +29,7 @@ resolve() {
 
 json_get() {
   local key="$1"
-  python3 - "$CONFIG" "$key" <<'PY'
+  python3 -I - "$CONFIG" "$key" <<'PY'
 import json,sys
 cfg=json.load(open(sys.argv[1]))
 key=sys.argv[2]
@@ -54,7 +54,7 @@ if [[ "$MODE" == "ci" ]]; then
   [[ -f "$SCRIPT_DIR/agent-preflight.sh" ]] || fail "preflight script missing"
   [[ -f "$SCRIPT_ROOT/docs/governance/WORKTREE_POLICY.md" ]] || fail "WORKTREE_POLICY.md missing"
   [[ -f "$SCRIPT_DIR/ci/branch-policy.mjs" ]] || fail "branch policy missing"
-  python3 - "$CONFIG" <<'PY'
+  python3 -I - "$CONFIG" <<'PY'
 import json,sys
 cfg=json.load(open(sys.argv[1]))
 assert "/home/jerry/alltrue" in cfg["forbidden_exact"]

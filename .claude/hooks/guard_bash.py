@@ -29,9 +29,13 @@ import subprocess
 import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
+ROOT = os.path.realpath(os.path.join(HERE, "..", ".."))  # the checkout this guard file belongs to
 MAX_COMMAND_CHARS = 12_000
 MAX_DEPTH = 3
 MAX_SCRIPTS = 20
+PREPUSH_TIMEOUT = 150  # seconds (ALLTRUE_PREPUSH_TIMEOUT overrides); settings.json gives the hook 180
+NOTES = []  # why the pre-push checks were not run; main() hands them to the agent as additionalContext
+PUSHES = []  # repo dir of every verified `git push`; main() runs the fast pre-push checks there
 DYN = "\x00"  # placeholder for a non-literal word part
 
 SHELLS = {"bash", "sh", "zsh", "dash", "ksh", "mksh", "yash", "fish", "source", "."}
@@ -360,6 +364,8 @@ def check_git(args, cwd):
             dst = dst[len("refs/heads/"):] if dst.startswith("refs/heads/") else dst
             if dst in ("main", "master"):
                 raise Deny("push to main/master. Push a feature branch and open a PR (CLAUDE.md R3).")
+        if not any(t == "--dry-run" or "n" in shorts(t) for t in texts):
+            PUSHES.append(d)
     elif sub == "reset":
         if any(abbr(t, "--hard") for t in texts):
             raise Deny("git reset --hard. Forbidden - see CLAUDE.md.")
@@ -668,6 +674,100 @@ class Walker:
             raise Deny(f"script {path} cannot be opened to verify (fail closed)")
 
 
+def verify(cmd, cwd):
+    """Every guard check for one command: raises Deny, or the regex fallback emits its own deny and exits."""
+    shfmt = find_shfmt()
+    ast = shfmt is not None
+    if ast:
+        try:
+            Walker(shfmt).run(cmd, cwd)
+        except Unverifiable:
+            ast = False
+    else:
+        sys.stderr.write("guard_bash: shfmt not found (scripts/install-shfmt.sh); using regex fallback\n")
+    if not ast:
+        import guard_bash_regex as rx
+        flat = re.sub(r"\\\r?\n", " ", cmd)
+        rx.check_all(flat)
+        if re.search(rf"\bgit\b{rx.GAP}\bpush\b", rx._strip_non_executed_text(flat)):
+            PUSHES.append(cwd)
+
+
+class ListWalker(Walker):
+    """Verifies the pre-push list itself. The repo scripts it calls get the Pi check only: prepush() runs
+    the list only while the whole worktree is committed."""
+
+    def script(self, path, cwd, depth, strict):
+        super().script(path, cwd, depth, False)
+
+
+def prepush(cmd):
+    """Run scripts/agent-prepush.sh before a `git push` from this checkout leaves the machine (the list
+    lefthook runs for people; agents have no lefthook). It can only add a deny: CI is the real gate, so
+    every "cannot run it safely" case below lets the push through with a note on stderr.
+
+    This hook runs before the command is approved, so nothing here may run text nobody could review:
+    - only this guard's own checkout (ROOT), never a directory the command names;
+    - the committed copy (HEAD) of the list, fed to bash on stdin, and only while the worktree has no
+      uncommitted or untracked file (the programs the list calls are then committed text too; git-ignored
+      files such as node_modules are outside this check). So `git commit ... && git push` in one command is
+      not checked (the tree is still dirty when this hook runs): the agent is told to push on its own;
+    - only while the branch leaves scripts/ as it is on main: a local commit is committed but not reviewed,
+      so a branch that edits the checks (or the list) gets CI only;
+    - only after that exact text passes the guard: every command verified by the AST walk (a list it cannot
+      fully verify is not run), plus the regex scan. Without shfmt the regex scan is the only check."""
+    def note(why):
+        NOTES.append(f"guard_bash: pre-push checks not run ({why}); CI still checks")
+        sys.stderr.write(NOTES[-1] + "\n")
+
+    try:
+        limit = int(os.environ.get("ALLTRUE_PREPUSH_TIMEOUT", ""))
+    except ValueError:
+        limit = PREPUSH_TIMEOUT
+    done = set()
+    for d in dict.fromkeys(PUSHES):
+        try:
+            git = lambda *a: subprocess.run(["git", "-C", d, *a], capture_output=True, text=True, timeout=5).stdout.strip()
+            top = git("rev-parse", "--show-toplevel")
+            if not top or os.path.realpath(top) != ROOT or top in done:
+                continue
+            done.add(top)
+            body = git("show", "HEAD:scripts/agent-prepush.sh")
+            if not body:
+                continue
+            if os.environ.get("LEFTHOOK") == "0" or re.search(r"(?:^|[\s;&|(])LEFTHOOK=0(?=\s)", cmd):
+                note("LEFTHOOK=0")
+                with open(os.path.join(top, git("rev-parse", "--git-common-dir"), "agent-prepush-skips.log"), "a") as fh:
+                    fh.write(f"{git('log', '-1', '--format=%cI %H')} {git('branch', '--show-current')}\n")
+                continue
+            if git("status", "--porcelain", "--untracked-files=all"):
+                note("uncommitted or untracked files; commit, then run `git push` as its own command")
+                continue
+            base = git("merge-base", "origin/main", "HEAD")
+            if not base or subprocess.run(["git", "-C", d, "diff", "--quiet", base, "HEAD", "--", "scripts/",
+                                           "frontend/eslint.config.js",
+                                           ":(glob)**/node_modules/**", ":(glob)**/node_modules"], capture_output=True, timeout=5).returncode:
+                note("this branch changes scripts/ (or commits node_modules) or has no origin/main; only checks already on main run here")
+                continue
+            shfmt = find_shfmt()
+            try:
+                if shfmt:
+                    ListWalker(shfmt).run(body, top)
+            except Unverifiable as e:
+                note(f"scripts/agent-prepush.sh: {e}")
+                continue
+            import guard_bash_regex as rx
+            rx.check_all(re.sub(r"\\\r?\n", " ", body))
+            r = subprocess.run(["bash", "-s"], input=body, cwd=top, capture_output=True, text=True, timeout=limit)
+        except (OSError, subprocess.SubprocessError) as e:
+            note(type(e).__name__)
+            continue
+        if r.returncode:
+            raise Deny("pre-push checks failed (scripts/agent-prepush.sh). Fix, commit, push again; "
+                       "skip once only if the check itself is broken: LEFTHOOK=0 git push\n"
+                       + (r.stdout + r.stderr)[-1500:])
+
+
 def emit_deny(reason):
     out = json.dumps({"hookSpecificOutput": {"hookEventName": "PreToolUse",
                                              "permissionDecision": "deny",
@@ -688,17 +788,10 @@ def main():
         if len(cmd) > MAX_COMMAND_CHARS:
             raise Deny(f"command is {len(cmd)} chars, over the guard's {MAX_COMMAND_CHARS}-char limit. "
                        "Put long text in a file (--body-file / -F) and pass the path.")
-        shfmt = find_shfmt()
-        if shfmt is None:
-            sys.stderr.write("guard_bash: shfmt not found (scripts/install-shfmt.sh); using regex fallback\n")
-            import guard_bash_regex as rx
-            rx.check_all(re.sub(r"\\\r?\n", " ", cmd))
-            return
-        try:
-            Walker(shfmt).run(cmd, os.getcwd())
-        except Unverifiable:
-            import guard_bash_regex as rx
-            rx.check_all(re.sub(r"\\\r?\n", " ", cmd))  # denies via its own emit + exit
+        verify(cmd, os.getcwd())
+        prepush(cmd)
+        if NOTES:
+            print(json.dumps({"hookSpecificOutput": {"hookEventName": "PreToolUse", "additionalContext": "\n".join(NOTES)}}))
     except Deny as e:
         emit_deny(f"Blocked (AST guard): {e}")
     except SystemExit:

@@ -21,7 +21,7 @@
           {
             "type": "command",
             "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/guard_bash.py\"",
-            "timeout": 10
+            "timeout": 180
           }
         ]
       }
