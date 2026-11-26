@@ -422,7 +422,7 @@ try {
   fs.rmSync(tempDir, { recursive: true, force: true });
 }
 
-// F17 auto-intake (#Founder GO 6A, 2026-10-07): hourly, IDs-only, deduped, dry-run on manual dispatch.
+// F17 auto-intake (#Founder GO 6A, 2026-10-07): every 10 minutes, IDs-only, deduped, dry-run on manual dispatch.
 {
   const src = fs.readFileSync('.github/workflows/bug-auto-intake.yml', 'utf8');
   assert.ok(src.includes("cron: '3-59/10 * * * *'"), 'auto-intake runs every 10 minutes');
