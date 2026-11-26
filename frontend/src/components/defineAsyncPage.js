@@ -31,10 +31,13 @@ export function defineAsyncPage(loader) {
     loadingComponent,
     errorComponent: () => null,
     async loader() {
-      const module = await loader();
-      // A second instance can show its skeleton while the first instance finishes.
-      while (visibleSkeletons.size) await Promise.all(visibleSkeletons);
-      return module.default ?? module;
+      try {
+        const module = await loader();
+        return module.default ?? module;
+      } finally {
+        // Wait for visible skeletons on success and failure, including any shown while waiting.
+        while (visibleSkeletons.size) await Promise.all(visibleSkeletons);
+      }
     },
   });
 }

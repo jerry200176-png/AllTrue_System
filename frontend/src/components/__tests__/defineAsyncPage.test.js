@@ -126,4 +126,24 @@ describe('async page skeleton', () => {
     expect(loader).toHaveBeenCalledTimes(2);
     retry.unmount();
   });
+
+  it('lets a visible skeleton finish its minimum display when the load fails', async () => {
+    const error = new Error('chunk failed to load after showing the skeleton');
+    const loader = () => new Promise((_, reject) => setTimeout(() => reject(error), 310));
+    const errorHandler = vi.fn();
+    const wrapper = mountPage(defineAsyncPage(loader), { global: { config: { errorHandler } } });
+
+    await vi.advanceTimersByTimeAsync(300);
+    expect(wrapper.find(skeleton).exists()).toBe(true);
+
+    await vi.advanceTimersByTimeAsync(299);
+    expect(wrapper.find(skeleton).exists()).toBe(true);
+    expect(errorHandler).not.toHaveBeenCalled();
+
+    await vi.advanceTimersByTimeAsync(11);
+    expect(wrapper.find(skeleton).exists()).toBe(false);
+    expect(wrapper.find(content).exists()).toBe(false);
+    expect(errorHandler.mock.calls[0][0]).toBe(error);
+    wrapper.unmount();
+  });
 });
