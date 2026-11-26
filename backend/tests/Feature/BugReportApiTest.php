@@ -1974,6 +1974,90 @@ class BugReportApiTest extends TestCase
         self::assertSame($before + 1, BugReportComment::query()->where('bug_report_id', $bug->id)->count());
     }
 
+    public function test_resolve_rejected_when_the_reporter_wrote_after_the_staff_reply(): void
+    {
+        [$tokenAdmin] = $this->createUserToken([1], 'resAfter@test.com', 'S');
+        [, $reporter] = $this->createUserToken([1], 'resAfterReporter@test.com', 'A');
+        $headers = ['Authorization' => "Bearer {$tokenAdmin}", 'Accept' => 'application/json'];
+        $bug = BugReport::create([
+            'CampusID' => 1, 'reporter_user_id' => $reporter->id,
+            'title' => 'Reporter after reply', 'description' => 'D',
+            'severity' => 'low', 'status' => 'in_progress',
+        ]);
+        $this->withHeaders($headers)->postJson("/api/v1/bugs/{$bug->id}/comments", [
+            'body' => $this->bothOutcomesReply(), 'is_internal_note' => false,
+        ])->assertStatus(201);
+        BugReportComment::create([
+            'bug_report_id' => $bug->id, 'author_user_id' => $reporter->id,
+            'body' => '我這邊還是一樣。', 'is_internal_note' => false, 'created_at' => now(),
+        ]);
+        $resolve = ['status' => 'resolved', 'production_revision' => '662960e5'];
+
+        $res = $this->withHeaders($headers)->postJson("/api/v1/bugs/{$bug->id}/status", $resolve);
+        $res->assertStatus(422)->assertJson(['code' => 'missing_both_outcomes_reply']);
+        $this->assertStringContainsString('回報者', (string) $res->json('message'));
+        $this->assertSame('in_progress', $bug->fresh()->status);
+
+        // Answering the reporter makes the staff reply the latest one again.
+        $this->withHeaders($headers)->postJson("/api/v1/bugs/{$bug->id}/comments", [
+            'body' => $this->bothOutcomesReply(), 'is_internal_note' => false,
+        ])->assertStatus(201);
+        $this->withHeaders($headers)->postJson("/api/v1/bugs/{$bug->id}/status", $resolve)->assertOk();
+        $this->assertSame('resolved', $bug->fresh()->status);
+    }
+
+    public function test_resolve_rejected_while_the_reply_still_holds_the_template_placeholder(): void
+    {
+        [$tokenAdmin, $admin] = $this->createUserToken([1], 'resPlaceholder@test.com', 'S');
+        $headers = ['Authorization' => "Bearer {$tokenAdmin}", 'Accept' => 'application/json'];
+        $bug = BugReport::create([
+            'CampusID' => 1, 'reporter_user_id' => $admin->id,
+            'title' => 'Placeholder', 'description' => 'D',
+            'severity' => 'low', 'status' => 'in_progress',
+        ]);
+        $this->withHeaders($headers)->postJson("/api/v1/bugs/{$bug->id}/comments", [
+            'body' => '已修好並上線：' . BugReportService::RESOLVE_REPLY_PLACEHOLDER . '。' . $this->bothOutcomesReply(),
+            'is_internal_note' => false,
+        ])->assertStatus(201);
+
+        $this->withHeaders($headers)->postJson("/api/v1/bugs/{$bug->id}/status", [
+            'status' => 'resolved', 'production_revision' => '662960e5',
+        ])->assertStatus(422)->assertJson(['ok' => false, 'code' => 'resolve_reply_placeholder']);
+        $this->assertSame('in_progress', $bug->fresh()->status);
+    }
+
+    public function test_public_reply_cannot_be_hidden_while_the_report_is_resolved(): void
+    {
+        [$tokenAdmin, $admin] = $this->createUserToken([1], 'resHide@test.com', 'S');
+        $headers = ['Authorization' => "Bearer {$tokenAdmin}", 'Accept' => 'application/json'];
+        $bug = BugReport::create([
+            'CampusID' => 1, 'reporter_user_id' => $admin->id,
+            'title' => 'Hide reply', 'description' => 'D',
+            'severity' => 'low', 'status' => 'in_progress',
+        ]);
+        $olderId = (int) $this->withHeaders($headers)->postJson("/api/v1/bugs/{$bug->id}/comments", [
+            'body' => '已收到，處理中。', 'is_internal_note' => false,
+        ])->assertStatus(201)->json('id');
+        $commentId = (int) $this->withHeaders($headers)->postJson("/api/v1/bugs/{$bug->id}/comments", [
+            'body' => $this->bothOutcomesReply(), 'is_internal_note' => false,
+        ])->assertStatus(201)->json('id');
+        $this->withHeaders($headers)->postJson("/api/v1/bugs/{$bug->id}/status", [
+            'status' => 'resolved', 'production_revision' => '662960e5',
+        ])->assertOk();
+        $url = "/api/v1/bugs/{$bug->id}/comments/{$commentId}/visibility";
+
+        $this->withHeaders($headers)->patchJson($url, ['is_internal_note' => true])
+            ->assertStatus(422)->assertJson(['code' => 'cannot_hide_reply_while_resolved']);
+        $this->assertFalse((bool) BugReportComment::query()->find($commentId)->is_internal_note);
+        // Only the latest public reply is protected: an older comment can still be hidden.
+        $this->withHeaders($headers)->patchJson("/api/v1/bugs/{$bug->id}/comments/{$olderId}/visibility", ['is_internal_note' => true])->assertOk();
+        // Showing a note is still allowed while resolved; hiding works again once the report is reopened.
+        $this->withHeaders($headers)->patchJson($url, ['is_internal_note' => false])->assertOk();
+        BugReport::query()->whereKey($bug->id)->update(['status' => 'in_progress']);
+        $this->assertSame('in_progress', $bug->fresh()->status);
+        $this->withHeaders($headers)->patchJson($url, ['is_internal_note' => true])->assertOk();
+    }
+
     private function bothOutcomesReply(): string
     {
         $buttons = array_map(

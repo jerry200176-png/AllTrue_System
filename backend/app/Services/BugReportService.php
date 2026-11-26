@@ -58,6 +58,9 @@ class BugReportService
      */
     public const RESOLVE_REPLY_OUTCOMES = ['confirm' => '確認已修好', 'reopen' => '問題仍存在'];
 
+    /** The instruction text inside the prefilled resolve reply (frontend/src/lib/bugResolveReply.js); it must be replaced before sending. */
+    public const RESOLVE_REPLY_PLACEHOLDER = '（請用一句話說明修了什麼）';
+
     public const RESOLVE_REPLY_REQUIRED_PHRASES = [
         self::RESOLVE_REPLY_OUTCOMES['confirm'],
         self::RESOLVE_REPLY_OUTCOMES['reopen'],
@@ -619,14 +622,30 @@ class BugReportService
                 ->max('created_at');
             $reporterId = (int) ($options['reporter_user_id'] ?? 0);
             $resolverId = (int) ($options['resolver_user_id'] ?? 0);
-            $latestPublicBody = (string) BugReportComment::query()
+            $latest = BugReportComment::query()
                 ->where('bug_report_id', $bugId)
                 ->where('is_internal_note', false)
                 ->when($reopenedAt, fn ($q) => $q->where('created_at', '>', $reopenedAt))
-                // The reporter's own question quoting the button labels is not a staff reply.
-                ->when($reporterId > 0 && $reporterId !== $resolverId, fn ($q) => $q->where('author_user_id', '!=', $reporterId))
                 ->orderByDesc('id')
-                ->value('body');
+                ->first(['author_user_id', 'body']);
+            // The reporter's own comment is never the staff reply, even when it quotes the button labels; and
+            // when the reporter wrote after the staff reply, staff must answer that first (#3959).
+            if ($latest && $reporterId > 0 && $reporterId !== $resolverId && (int) $latest->author_user_id === $reporterId) {
+                return [
+                    'ok' => false,
+                    'code' => 'missing_both_outcomes_reply',
+                    'message' => '回報者在最後一則公開回覆之後又留言了。請先回覆這則留言（回覆中要寫出「'
+                        . implode('」與「', self::RESOLVE_REPLY_REQUIRED_PHRASES) . '」），再標記已解決。',
+                ];
+            }
+            $latestPublicBody = (string) ($latest->body ?? '');
+            if (mb_strpos($latestPublicBody, self::RESOLVE_REPLY_PLACEHOLDER) !== false) {
+                return [
+                    'ok' => false,
+                    'code' => 'resolve_reply_placeholder',
+                    'message' => '最新一則公開留言還留著範本文字' . self::RESOLVE_REPLY_PLACEHOLDER . '。請改成實際修了什麼，再標記已解決。',
+                ];
+            }
             $missing = array_values(array_filter(
                 self::RESOLVE_REPLY_REQUIRED_PHRASES,
                 static fn (string $phrase): bool => mb_strpos($latestPublicBody, $phrase) === false
