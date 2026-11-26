@@ -1,5 +1,6 @@
 // @ts-check
 import { test, expect } from '@playwright/test';
+import { isFontCdn } from './fixtures/fontCdn.js';
 
 const viewports = [
   { name: '390', width: 390, height: 844 },
@@ -183,7 +184,7 @@ test('director note dialog keeps one clear action and usable bounds', async ({ p
   page.on('console', (message) => {
     if (message.type() === 'error') consoleErrors.push(message.text());
   });
-  page.on('requestfailed', (request) => failedRequests.push(`${request.method()} ${request.url()}`));
+  page.on('requestfailed', (request) => isFontCdn(request) || failedRequests.push(`${request.method()} ${request.url()}`));
 
   for (const viewport of viewports) {
     await page.setViewportSize({ width: viewport.width, height: viewport.height });

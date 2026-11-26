@@ -1,5 +1,6 @@
 // @ts-check
 import { test, expect } from '@playwright/test';
+import { isFontCdn } from './fixtures/fontCdn.js';
 
 async function installDirectorAccountsMocks(page, mode = 'long') {
   await page.route('**/api/v1/**', async (route) => {
@@ -61,7 +62,7 @@ test.describe('Director Accounts real Vue page', () => {
       page.on('console', (message) => {
         if (message.type() === 'error') consoleErrors.push(message.text());
       });
-      page.on('requestfailed', (request) => failedRequests.push(`${request.method()} ${request.url()}`));
+      page.on('requestfailed', (request) => isFontCdn(request) || failedRequests.push(`${request.method()} ${request.url()}`));
       await installDirectorAccountsMocks(page, 'long');
       await page.setViewportSize(viewport);
       await page.goto('/director-accounts-pilot-mount.html?mode=long');

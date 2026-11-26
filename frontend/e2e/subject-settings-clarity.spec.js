@@ -1,5 +1,6 @@
 // @ts-check
 import { test, expect } from '@playwright/test';
+import { isFontCdn } from './fixtures/fontCdn.js';
 import AxeBuilder from '@axe-core/playwright';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -69,7 +70,7 @@ for (const viewport of VIEWPORTS) {
     const consoleErrors = [];
     const failedRequests = [];
     page.on('console', (message) => { if (message.type() === 'error') consoleErrors.push(message.text()); });
-    page.on('requestfailed', (request) => failedRequests.push(`${request.method()} ${request.url()}`));
+    page.on('requestfailed', (request) => isFontCdn(request) || failedRequests.push(`${request.method()} ${request.url()}`));
     await openPilot(page, { viewport });
 
     await expect(page.getByRole('heading', { name: '科目管理', exact: true })).toBeVisible({ timeout: 10_000 });

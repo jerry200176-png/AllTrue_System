@@ -1,5 +1,6 @@
 // @ts-check
 import { test, expect } from '@playwright/test';
+import { isFontCdn } from './fixtures/fontCdn.js';
 
 async function installProfileMocks(page, mode = 'profile') {
   await page.route('**/api/v1/**', async (route) => {
@@ -93,7 +94,7 @@ test.describe('Profile controls real Vue page', () => {
       page.on('console', (message) => {
         if (message.type() === 'error') consoleErrors.push(message.text());
       });
-      page.on('requestfailed', (request) => failedRequests.push(`${request.method()} ${request.url()}`));
+      page.on('requestfailed', (request) => isFontCdn(request) || failedRequests.push(`${request.method()} ${request.url()}`));
       await installProfileMocks(page, 'long');
       await page.setViewportSize(viewport);
       await page.goto('/pilot-mount.html?page=profile&mode=long');
