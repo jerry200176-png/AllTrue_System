@@ -2053,7 +2053,8 @@ class BugReportApiTest extends TestCase
         $this->withHeaders($headers)->patchJson("/api/v1/bugs/{$bug->id}/comments/{$olderId}/visibility", ['is_internal_note' => true])->assertOk();
         // Showing a note is still allowed while resolved; hiding works again once the report is reopened.
         $this->withHeaders($headers)->patchJson($url, ['is_internal_note' => false])->assertOk();
-        $bug->update(['status' => 'in_progress']);
+        BugReport::query()->whereKey($bug->id)->update(['status' => 'in_progress']);
+        $this->assertSame('in_progress', $bug->fresh()->status);
         $this->withHeaders($headers)->patchJson($url, ['is_internal_note' => true])->assertOk();
     }
 
