@@ -9,10 +9,10 @@ UI_SMOKE_WORKFLOW = Path(__file__).parents[2] / ".github" / "workflows" / "ui-sm
 CI_WORKFLOW = Path(__file__).parents[2] / ".github" / "workflows" / "ci.yml"
 
 
-def should_dispatch(*, active_ci, recent_dispatch, deploy_present):
+def should_dispatch(*, active_ci, recent_dispatch, deploy_present, successful_ci=True):
     """Only request CI when no exact-main run is active or already downstream."""
 
-    return not (active_ci or recent_dispatch or deploy_present)
+    return not (active_ci or recent_dispatch or (deploy_present and successful_ci))
 
 
 class AutonomousConvergenceTest(unittest.TestCase):
@@ -67,7 +67,9 @@ class AutonomousConvergenceTest(unittest.TestCase):
         self.assertNotIn("  schedule:", workflow)
         self.assertNotIn("github.event_name == 'schedule'", workflow)
         self.assertIn("group: autonomous-main-convergence", workflow)
-        self.assertIn("cancel-in-progress: true", workflow)
+        self.assertIn("cancel-in-progress: false", workflow)
+        self.assertIn("timeout-minutes: 40", workflow)
+        self.assertIn("for _ in {1..150}; do", workflow)
 
     def test_ui_smoke_cancels_only_older_runs_for_the_same_pr(self):
         workflow = UI_SMOKE_WORKFLOW.read_text(encoding="utf-8")
@@ -89,6 +91,12 @@ class AutonomousConvergenceTest(unittest.TestCase):
 
     def test_does_not_dispatch_when_deploy_run_exists(self):
         self.assertFalse(should_dispatch(active_ci=False, recent_dispatch=False, deploy_present=True))
+
+    def test_noop_deploy_run_after_a_cancelled_ci_does_not_hold(self):
+        workflow = WORKFLOW.read_text(encoding="utf-8")
+        self.assertIn("deploy_present = bool(deploy_runs) and successful", workflow)
+        self.assertIn('active = any(run.get("status") != "completed" for run in ci_runs)', workflow)
+        self.assertTrue(should_dispatch(active_ci=False, recent_dispatch=False, deploy_present=True, successful_ci=False))
 
 
 if __name__ == "__main__":

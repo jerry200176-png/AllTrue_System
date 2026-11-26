@@ -26,7 +26,8 @@ permissions:
 
 concurrency:
   group: autonomous-main-convergence
-  cancel-in-progress: true
+  # Queue, never cancel: a run cancelled after it dispatched CI would leave nobody to send the production handoff (#5659).
+  cancel-in-progress: false
 
 jobs:
   reconcile:
@@ -36,7 +37,7 @@ jobs:
       (github.event_name == 'pull_request_target' && github.event.pull_request.merged == true) ||
       (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success')
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 40
     env:
       GH_TOKEN: ${{ github.token }}
       REPO: ${{ github.repository }}
@@ -98,7 +99,8 @@ jobs:
           # Anything not completed counts: a push run blocked behind the previous main CI sits in "pending" (#5659).
           active = any(run.get("status") != "completed" for run in ci_runs)
           successful = any(run.get("conclusion") == "success" for run in ci_runs)
-          deploy_present = bool(deploy_runs)
+          # deploy.yml also leaves a no-op run behind a cancelled or failed CI; only a run that followed a green CI is evidence (#5659).
+          deploy_present = bool(deploy_runs) and successful
           recent_dispatch = False
           for run in ci_runs:
               if run.get("event") != "workflow_dispatch":
@@ -134,7 +136,8 @@ jobs:
           fi
 
           if [[ "$DISPATCHED_CI" == "1" ]]; then
-            for _ in {1..60}; do
+            # Main CI takes 10-21 minutes; wait up to 25.
+            for _ in {1..150}; do
               CI_JSON="$(gh api "/repos/${REPO}/actions/workflows/ci.yml/runs?branch=main&head_sha=${MAIN_SHA}&event=workflow_dispatch&per_page=100")"
               CI_STATE="$(CI_JSON="$CI_JSON" python3 - <<'PY'
           import json
