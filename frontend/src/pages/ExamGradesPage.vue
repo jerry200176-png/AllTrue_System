@@ -17,15 +17,17 @@
         <TabsTrigger value="curriculum">教材範本庫</TabsTrigger>
       </TabsList>
       <TabsContent value="rounds">
-        <Alert v-if="error" tone="danger" title="無法載入段考" class="tw:mb-4">
-          <p>{{ error }}</p>
-          <button type="button" :class="[rowAction.secondary, 'tw:mt-2']" @click="loadRounds">再試一次</button>
-        </Alert>
-        <SectionCard title="段考場次" :count="loading ? null : rounds.length">
+        <SectionCard title="段考場次" :count="loading || error ? null : rounds.length">
           <div v-if="loading" class="tw:px-5 tw:pb-4" aria-busy="true">
             <Skeleton v-for="i in 3" :key="i" class="tw:my-3 tw:h-18 tw:w-full tw:rounded-xl tw:motion-reduce:animate-none" />
           </div>
-          <div v-else-if="!rounds.length && !error" class="tw:flex tw:flex-col tw:items-center tw:gap-2 tw:px-5 tw:py-10 tw:text-center">
+          <div v-else-if="error" class="tw:px-5 tw:pb-5">
+            <Alert tone="danger" title="無法載入段考">
+              <p>{{ error }}</p>
+              <button type="button" :class="[rowAction.secondary, 'tw:mt-2']" @click="loadRounds">再試一次</button>
+            </Alert>
+          </div>
+          <div v-else-if="!rounds.length" class="tw:flex tw:flex-col tw:items-center tw:gap-2 tw:px-5 tw:py-10 tw:text-center">
             <ClipboardList :size="32" :stroke-width="1.5" class="tw:text-tpl-secondary" aria-hidden="true" />
             <p class="tw:m-0 tw:font-semibold">{{ isDirector ? '還沒有段考場次' : '目前沒有開放中的段考' }}</p>
             <p class="tw:m-0 tw:text-tpl-caption tw:text-tpl-secondary">{{ isDirector ? '建立場次並發布後，老師工作台會出現待登清單。' : '主任開放後會出現在這裡。' }}</p>
@@ -137,7 +139,7 @@
           id="exam-score-search-input"
           v-model="studentQuery"
           type="search"
-          class="tw:h-11 tw:flex-1 tw:basis-48 tw:text-[length:var(--tpl-text-body)]"
+          class="tw:h-11 tw:flex-1 tw:basis-48 tw:text-[length:var(--tpl-text-body)] tw:md:text-[length:var(--tpl-text-body)]"
           placeholder="找學生：輸入姓名或編號"
           autocomplete="off"
         />
