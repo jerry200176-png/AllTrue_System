@@ -220,7 +220,7 @@
             <!-- Names stay in view while scrolling across subjects; subject names stay in view while scrolling down. -->
             <div v-else class="tw:max-h-[min(60dvh,480px)] tw:overflow-auto tw:rounded-xl tw:border tw:border-solid tw:border-border">
               <!-- While the saved scores reload the table stays on screen but takes no input, so the refresh cannot overwrite typing. -->
-              <table :class="['exam-score-table tw:w-full tw:border-collapse', dataTable.table, studentsLoading && 'tw:opacity-60']" :inert="studentsLoading || undefined" :aria-busy="studentsLoading">
+              <table :class="['exam-score-table tw:w-full tw:border-collapse', dataTable.table, tableBusy && 'tw:opacity-60']" :inert="tableBusy || undefined" :aria-busy="tableBusy">
                 <thead>
                   <tr>
                     <th :class="[dataTable.head, 'tw:sticky tw:top-0 tw:left-0 tw:z-2 tw:text-left']">學生</th>
@@ -353,6 +353,8 @@ const studentQuery = ref('');
 const filteredStudents = computed(() => filterExamStudents(students.value, studentQuery.value));
 const scoreError = ref('');
 const savingStudentId = ref(null);
+// Typing during a save or reload would be wiped when the saved scores are loaded again, so the table takes no input meanwhile.
+const tableBusy = computed(() => studentsLoading.value || savingStudentId.value !== null);
 const draftScores = reactive({});
 const pendingClose = ref(null);
 const closing = ref(false);

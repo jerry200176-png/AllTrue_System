@@ -99,4 +99,33 @@ describe('段考成績 dialogs on the overlay templates', () => {
       wrapper.unmount();
     }
   });
+
+  it('scores: the table takes no input while a row is being saved', async () => {
+    const fetchMock = stub();
+    const wrapper = mountPage();
+    try {
+      await flushPromises();
+      await wrapper.findAll('.exam-round-card__actions button').find((b) => /登分/.test(b.text())).trigger('click');
+      await flushPromises();
+      let release;
+      const gate = new Promise((resolve) => { release = resolve; });
+      const base = fetchMock.getMockImplementation();
+      fetchMock.mockImplementation(async (input, options) => {
+        if (options?.method === 'POST') await gate;
+        return base(input, options);
+      });
+      const input = document.body.querySelector('.exam-score-table .exam-score-input');
+      input.value = '60';
+      input.dispatchEvent(new Event('change'));
+      await flushPromises();
+      [...document.body.querySelectorAll('.exam-score-table tbody button')].find((b) => b.textContent.trim() === '儲存').click();
+      await flushPromises();
+      expect(document.body.querySelector('.exam-score-table').hasAttribute('inert')).toBe(true);
+      release();
+      await flushPromises();
+      expect(document.body.querySelector('.exam-score-table').hasAttribute('inert')).toBe(false);
+    } finally {
+      wrapper.unmount();
+    }
+  });
 });
