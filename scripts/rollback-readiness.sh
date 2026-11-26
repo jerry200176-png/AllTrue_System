@@ -4,7 +4,7 @@
 # 在 GitHub Actions / 本地 checkout 內驗證「萬一要回滾，機制是否健全」：
 #   CHECK 1  deploy.yml 自動回滾區塊完整（PREV_COMMIT 捕捉 + git reset + migration 後 hold（不自動 migrate:rollback）+ 二次 health）
 #   CHECK 2  所有 migration 都有 down()（否則 migrate:rollback 會半途失敗）
-#   CHECK 3  最新 main commit 可乾淨 git revert（程式碼回滾模擬，sandbox 內 revert 後立即 abort）
+#   CHECK 3  最新 main commit 可乾淨 git revert（程式碼回滾模擬，在暫時 worktree 內 revert，不動目前 checkout）
 #   CHECK 4  DB 備份還原驗證 workflow 存在且引用 mysqldump（資料層回滾的安全網）
 #
 # 本機跑：bash scripts/rollback-readiness.sh
@@ -91,13 +91,17 @@ if [ "$PARENTS" -ge 3 ]; then
   REVERT_ARGS+=(-m 1)
   note "  （HEAD 為 merge commit，用 -m 1）"
 fi
-if git revert "${REVERT_ARGS[@]}" "$HEAD_SHA" >/dev/null 2>&1; then
+# A throwaway worktree: the revert never touches this checkout or its uncommitted changes (#4056).
+SANDBOX="$(mktemp -d)"
+if ! git worktree add --detach "$SANDBOX/wt" "$HEAD_SHA" >/dev/null 2>&1; then
+  bad "無法建立 revert 模擬用的暫時 worktree"
+elif git -C "$SANDBOX/wt" revert "${REVERT_ARGS[@]}" "$HEAD_SHA" >/dev/null 2>&1; then
   ok "最新 commit ${HEAD_SHA:0:8} 可乾淨 revert"
-  git revert --abort >/dev/null 2>&1 || git reset --hard "$HEAD_SHA" >/dev/null 2>&1 || true
 else
   bad "最新 commit ${HEAD_SHA:0:8} revert 有衝突 — 程式碼回滾需人工處理"
-  git revert --abort >/dev/null 2>&1 || git reset --hard "$HEAD_SHA" >/dev/null 2>&1 || true
 fi
+git worktree remove --force "$SANDBOX/wt" >/dev/null 2>&1 || true
+rm -rf "$SANDBOX"
 
 # ── CHECK 4：DB 備份還原驗證安全網存在 ──────────────────────────────
 note ""
