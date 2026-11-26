@@ -246,5 +246,8 @@ const metaRowClass = computed(() => ({
 @media (max-width: 640px) {
   .cb-student { font-size: 11px; line-height: 1.15; }
   .cb-detail, .cb-type { font-size: 7px; }
+  /* in-app #600: a full-width card on a phone is ~50px wide; beside the status badge only one character of the
+     name fit. Put the name under the badge and let it wrap, as the side-by-side cards already do. */
+  .cb-student.cbc-has-rc:not(.cbc-split-slot) { padding-right: 0; padding-top: 13px; white-space: normal; word-break: break-all; }
 }
 </style>

@@ -1,0 +1,14 @@
+updates:
+  - id: staff-2026-11-26-phone-week-view-tidy
+    published_at: "2026-11-26"
+    audiences:
+      - director
+      - teacher
+    importance: digest
+    title: 手機週課表整理
+    summary: 手機週課表的堂數不再蓋住星期幾，學生姓名可以多顯示幾個字。
+    items:
+      - category: improved
+        text: 老師看自己的課表時，課程卡不再重複顯示自己的名字。
+    source_refs:
+      - "changelog:2026-11-26:phone-week-view-tidy"
