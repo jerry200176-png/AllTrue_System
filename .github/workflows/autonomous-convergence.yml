@@ -104,11 +104,21 @@ jobs:
           # deploy.yml also leaves a no-op run behind a cancelled CI. Once a CI run is green, only a deploy run created at or
           # after that green run finished is downstream evidence (#5659). Without a green run the old rule stands.
           green_at = (done[-1].get("updated_at") or "") if successful else ""
-          deploy_present = any((run.get("created_at") or "") >= green_at for run in deploy_runs) if green_at else bool(deploy_runs)
+          # deploy.yml starts 3-4 seconds after the CI run it follows. A later run tagged with this SHA can come from an older
+          # commit's failed CI and deploys nothing, so only the first 5 minutes count; the hand-off waits out the same 5 minutes,
+          # so a deploy run that GitHub creates late is still seen before anything is sent twice.
+          def seconds_after_green(run):
+              try:
+                  return (datetime.fromisoformat(run["created_at"].replace("Z", "+00:00")) - green_time).total_seconds()
+              except (KeyError, TypeError, ValueError):
+                  return -1
           try:
-              green_age = (now - datetime.fromisoformat(green_at.replace("Z", "+00:00"))).total_seconds()
+              green_time = datetime.fromisoformat(green_at.replace("Z", "+00:00"))
+              green_age = (now - green_time).total_seconds()
+              deploy_present = any(0 <= seconds_after_green(run) <= 300 for run in deploy_runs)
           except ValueError:
               green_age = 0
+              deploy_present = bool(deploy_runs)
           recent_dispatch = False
           for run in ci_runs:
               if run.get("event") != "workflow_dispatch":
@@ -125,7 +135,7 @@ jobs:
               print("hold")
           elif not successful:
               print("dispatch")
-          elif green_age >= 120:
+          elif green_age >= 300:
               # Green exact-main CI and nothing downstream (the run that dispatched it died first): hand off, do not rerun CI.
               print("handoff")
           else:
