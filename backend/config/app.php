@@ -44,6 +44,16 @@ return [
 
     'deploy_secret' => env('DEPLOY_SECRET', ''),
 
+    // #4056 runtime identity: the release this config was built from. The deploy writes
+    // public/deployment.json and then runs `php artisan optimize`, so the cached value is what the PHP
+    // workers really loaded; /api/v1/health returns it and the post-deploy verifier compares it.
+    'build_sha' => (static function (): ?string {
+        $manifest = json_decode((string) @file_get_contents(__DIR__ . '/../public/deployment.json'), true);
+        $sha = is_array($manifest) ? ($manifest['backend_sha'] ?? null) : null;
+
+        return is_string($sha) && preg_match('/^[0-9a-f]{40}$/', $sha) === 1 ? $sha : null;
+    })(),
+
     // SEC-F1: When set, POST /api/v1/directors/register requires this token.
     // Leave empty to allow open self-registration (default for new installs).
     'director_registration_token' => env('DIRECTOR_REGISTRATION_TOKEN', null),

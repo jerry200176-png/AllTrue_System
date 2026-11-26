@@ -209,9 +209,12 @@ Route::prefix('v1')->group(function () {
     // ── Health (public, minimal) ─────────────────────────────────────
     // SEC-F3: Only status+timestamp exposed publicly. Operational metrics
     // (perf_flags, log_pipeline, sentry details) are on /health/detailed (auth required).
+    // `build` (#4056) is the commit SHA already public in /deployment.json; here it comes from the
+    // config the worker loaded, so the post-deploy verifier can tell a stale worker from a new one.
     Route::get('health', fn() => response()->json([
         'status'    => 'ok',
         'timestamp' => now()->toIso8601String(),
+        'build'     => config('app.build_sha'),
     ]));
 
     // ── RFID 刷卡 (public，供讀卡機呼叫) ─────────────────────────────
