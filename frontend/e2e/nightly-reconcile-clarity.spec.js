@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { isFontCdn } from './fixtures/fontCdn.js';
 
 const widths = [390, 412, 768, 1280, 1440];
 
@@ -25,7 +26,7 @@ async function openPage(page, mode = 'dense') {
   page.on('request', r => { if (r.url().includes('/api/v1/')) apiRequests.push({method:r.method(),path:new URL(r.url()).pathname,body:r.postData()}); });
   let attempts = 0;
   page.on('console', (message) => { if (message.type() === 'error') consoleErrors.push(message.text()); });
-  page.on('requestfailed', (request) => failedRequests.push(`${request.method()} ${request.url()}`));
+  page.on('requestfailed', (request) => isFontCdn(request) || failedRequests.push(`${request.method()} ${request.url()}`));
   await page.route('**/api/v1/admin/reconcile/latest', async (route) => {
     attempts += 1;
     if (mode === 'recover' && attempts === 1) return route.fulfill({status:503,contentType:'application/json',body:JSON.stringify({message:'服務暫時無法使用'})});

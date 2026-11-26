@@ -71,7 +71,16 @@ jobs:
           CI_JSON_FILE="$(mktemp)"
           DEPLOY_JSON_FILE="$(mktemp)"
           trap 'rm -f "$CI_JSON_FILE" "$DEPLOY_JSON_FILE"' EXIT
-          gh api "/repos/${REPO}/actions/workflows/ci.yml/runs?branch=main&head_sha=${MAIN_SHA}&per_page=100" > "$CI_JSON_FILE"
+          # A merge fires this job before GitHub has created the push-triggered CI run. Deciding on that empty list dispatched a
+          # second CI run, which cancelled the push run (same concurrency group) and left only no-op deploy runs behind (#5659).
+          # Give the push run up to 90 seconds to appear before deciding.
+          for _ in {1..6}; do
+            gh api "/repos/${REPO}/actions/workflows/ci.yml/runs?branch=main&head_sha=${MAIN_SHA}&per_page=100" > "$CI_JSON_FILE"
+            if [[ "$(python3 -c 'import json,sys; print(len(json.load(open(sys.argv[1])).get("workflow_runs", [])))' "$CI_JSON_FILE")" != "0" ]]; then
+              break
+            fi
+            sleep 15
+          done
           gh api "/repos/${REPO}/actions/workflows/deploy.yml/runs?branch=main&head_sha=${MAIN_SHA}&per_page=100" > "$DEPLOY_JSON_FILE"
 
           DECISION="$(MAIN_SHA="$MAIN_SHA" CI_JSON_FILE="$CI_JSON_FILE" DEPLOY_JSON_FILE="$DEPLOY_JSON_FILE" python3 - <<'PY'

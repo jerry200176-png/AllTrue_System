@@ -1,5 +1,6 @@
 // @ts-check
 import { test, expect } from '@playwright/test';
+import { isFontCdn } from './fixtures/fontCdn.js';
 import path from 'node:path';
 
 const outDir = process.env.UI_FOUNDATION_SHOT_DIR || '/tmp/alltrue-attendance-after-20260909';
@@ -51,7 +52,7 @@ async function installAttendanceMocks(page, mode) {
   page.on('console', (message) => {
     if (message.type() === 'error') consoleErrors.push(message.text());
   });
-  page.on('requestfailed', (request) => failedRequests.push(`${request.method()} ${request.url()} — ${request.failure()?.errorText || 'failed'}`));
+  page.on('requestfailed', (request) => isFontCdn(request) || failedRequests.push(`${request.method()} ${request.url()} — ${request.failure()?.errorText || 'failed'}`));
 
   await page.route('**/api/v1/**', async (route) => {
     const url = new URL(route.request().url());
