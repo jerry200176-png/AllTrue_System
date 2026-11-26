@@ -6,7 +6,7 @@ command -v gh >/dev/null || { echo "skip: gh not installed"; exit 0; }
 tmp="$(mktemp -d)"; trap 'rm -rf "$tmp"' EXIT
 gh pr view --json body > "$tmp/pr.json" 2>/dev/null || { echo "skip: no open PR for this branch"; exit 0; }
 base="$(git merge-base origin/main HEAD)"
-python3 - "$base" > "$tmp/files.json" <<'PY'
+python3 -I - "$base" > "$tmp/files.json" <<'PY'
 import json, subprocess, sys
 base = sys.argv[1]
 git = lambda *a: subprocess.check_output(["git", *a], text=True)

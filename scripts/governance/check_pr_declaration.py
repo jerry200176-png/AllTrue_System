@@ -10,7 +10,7 @@ import sys
 
 ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
+    sys.path.append(str(ROOT))  # after the stdlib: a repo-root json.py must not shadow it
 
 from scripts.governance.autonomy_gate import validate_declaration
 
