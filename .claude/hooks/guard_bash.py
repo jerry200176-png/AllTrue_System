@@ -29,6 +29,7 @@ import subprocess
 import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
+ROOT = os.path.realpath(os.path.join(HERE, "..", ".."))  # the checkout this guard file belongs to
 MAX_COMMAND_CHARS = 12_000
 MAX_DEPTH = 3
 MAX_SCRIPTS = 20
@@ -672,22 +673,52 @@ class Walker:
             raise Deny(f"script {path} cannot be opened to verify (fail closed)")
 
 
+def verify(cmd, cwd):
+    """Every guard check for one command: raises Deny, or the regex fallback emits its own deny and exits."""
+    shfmt = find_shfmt()
+    ast = shfmt is not None
+    if ast:
+        try:
+            Walker(shfmt).run(cmd, cwd)
+        except Unverifiable:
+            ast = False
+    else:
+        sys.stderr.write("guard_bash: shfmt not found (scripts/install-shfmt.sh); using regex fallback\n")
+    if not ast:
+        import guard_bash_regex as rx
+        flat = re.sub(r"\\\r?\n", " ", cmd)
+        rx.check_all(flat)
+        if re.search(rf"\bgit\b{rx.GAP}\bpush\b", rx._strip_non_executed_text(flat)):
+            PUSHES.append(cwd)
+
+
 def prepush(cmd):
-    """Run scripts/agent-prepush.sh of each pushed repo before a `git push` leaves the machine (the list
+    """Run scripts/agent-prepush.sh before a `git push` from this checkout leaves the machine (the list
     lefthook runs for people; agents have no lefthook). It can only add a deny: CI is the real gate, so a
-    missing script, a timeout or `LEFTHOOK=0 git push` lets the push through, and a skip is logged."""
+    missing script, a timeout or `LEFTHOOK=0 git push` lets the push through, and a skip is logged.
+
+    This hook runs before the command is approved, so two limits apply. Only this guard's own checkout
+    (ROOT) is used, never a directory the command names. The script must pass the same checks as running
+    it by hand (`bash scripts/agent-prepush.sh`), so it cannot carry a command the guard would deny."""
     for d in dict.fromkeys(PUSHES):
         try:
             git = lambda *a: subprocess.run(["git", "-C", d, *a], capture_output=True, text=True, timeout=5).stdout.strip()
             top = git("rev-parse", "--show-toplevel")
             script = os.path.join(top, "scripts", "agent-prepush.sh")
-            if not top or not os.path.isfile(script):
+            if not top or os.path.realpath(top) != ROOT or not os.path.isfile(script):
                 continue
+        except (OSError, subprocess.SubprocessError):
+            continue
+        try:
             if os.environ.get("LEFTHOOK") == "0" or re.search(r"(?:^|[\s;&|(])LEFTHOOK=0(?=\s)", cmd):
                 sys.stderr.write("guard_bash: pre-push checks skipped (LEFTHOOK=0)\n")
                 with open(os.path.join(top, git("rev-parse", "--git-common-dir"), "agent-prepush-skips.log"), "a") as fh:
                     fh.write(f"{git('log', '-1', '--format=%cI %H')} {git('branch', '--show-current')}\n")
                 continue
+            verify("bash scripts/agent-prepush.sh", top)  # Deny passes through: not caught below
+            import guard_bash_regex as rx  # the fallback (and a walk cut short) does not read the body
+            with open(script, encoding="utf-8", errors="ignore") as fh:
+                rx.check_all(re.sub(r"\\\r?\n", " ", fh.read(200_000)))
             r = subprocess.run(["bash", script], cwd=top, capture_output=True, text=True, timeout=PREPUSH_TIMEOUT)
         except (OSError, subprocess.SubprocessError) as e:
             sys.stderr.write(f"guard_bash: pre-push checks not run ({type(e).__name__}); CI still checks\n")
@@ -718,21 +749,7 @@ def main():
         if len(cmd) > MAX_COMMAND_CHARS:
             raise Deny(f"command is {len(cmd)} chars, over the guard's {MAX_COMMAND_CHARS}-char limit. "
                        "Put long text in a file (--body-file / -F) and pass the path.")
-        shfmt = find_shfmt()
-        ast = shfmt is not None
-        if ast:
-            try:
-                Walker(shfmt).run(cmd, os.getcwd())
-            except Unverifiable:
-                ast = False
-        else:
-            sys.stderr.write("guard_bash: shfmt not found (scripts/install-shfmt.sh); using regex fallback\n")
-        if not ast:
-            import guard_bash_regex as rx
-            flat = re.sub(r"\\\r?\n", " ", cmd)
-            rx.check_all(flat)  # denies via its own emit + exit
-            if re.search(rf"\bgit\b{rx.GAP}\bpush\b", rx._strip_non_executed_text(flat)):
-                PUSHES.append(os.getcwd())
+        verify(cmd, os.getcwd())
         prepush(cmd)
     except Deny as e:
         emit_deny(f"Blocked (AST guard): {e}")
