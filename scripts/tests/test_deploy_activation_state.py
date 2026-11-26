@@ -3315,6 +3315,21 @@ class PostDeployVerifyRollbackTest(unittest.TestCase):
             problems = self.pdv.check_once("https://daan.test", self.pdv.DEFAULT_HEALTH_PATHS, self.TARGET, None, 1, False, fetch)
             self.assertTrue(any(expected in p for p in problems), (expected, problems))
 
+    def test_runtime_build_identity_must_match_when_the_release_reports_it(self):
+        # #4056: deployment.json is a static file; `build` is what the PHP workers loaded.
+        def check(body):
+            fetch, _ = self.fake_fetch({**self.healthy(), "/api/v1/health": (200, body)})
+            return self.pdv.check_once("https://daan.test", self.pdv.DEFAULT_HEALTH_PATHS, self.TARGET, None, 1, False, fetch)
+
+        ok = json.dumps({"status": "ok", "build": self.TARGET}).encode()
+        stale = json.dumps({"status": "ok", "build": self.PREV}).encode()
+        self.assertEqual([], check(ok))
+        self.assertEqual([f"/api/v1/health build={self.PREV} expected {self.TARGET} (PHP workers still serve another release)"],
+                         check(stale))
+        # A release from before the field (a rollback target) or a null value: only the manifest decides.
+        self.assertEqual([], check(b'{"status":"ok"}'))
+        self.assertEqual([], check(b'{"status":"ok","build":null}'))
+
     def test_frontend_identity_is_checked_only_when_expected(self):
         fetch, _ = self.fake_fetch(self.healthy(frontend=self.PREV))
         self.assertEqual([], self.pdv.check_once("https://daan.test", ["/api/health"], self.TARGET, None, 1, False, fetch))

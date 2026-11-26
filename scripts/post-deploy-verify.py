@@ -75,8 +75,12 @@ def _fetch(url: str, timeout: float, insecure: bool) -> tuple[int, bytes]:
         return error.code, b""
 
 
-def _health_problem(path: str, status: int, body: bytes) -> str | None:
-    """Healthy = HTTP 200 and a JSON object saying so (an HTML page or PHP source never passes)."""
+def _health_problem(path: str, status: int, body: bytes, expect_build: str | None = None) -> str | None:
+    """Healthy = HTTP 200 and a JSON object saying so (an HTML page or PHP source never passes).
+
+    `build` (#4056) is the SHA the running PHP workers loaded from their cached config: unlike the static
+    deployment.json it proves which release serves requests. A release from before the field has none; then
+    only the manifest is checked."""
     if status != 200:
         return f"{path} returned HTTP {status}"
     try:
@@ -85,6 +89,8 @@ def _health_problem(path: str, status: int, body: bytes) -> str | None:
         return f"{path} returned a non-JSON body"
     if not isinstance(payload, dict):
         return f"{path} returned non-object JSON"
+    if expect_build and isinstance(payload.get("build"), str) and payload["build"] != expect_build:
+        return f"{path} build={payload['build']} expected {expect_build} (PHP workers still serve another release)"
     if "status" in payload:
         return None if payload["status"] == "ok" else f"{path} status={payload['status']!r}"
     if "ok" in payload:
@@ -102,7 +108,7 @@ def check_once(base_url, health_paths, expect_backend, expect_frontend, timeout,
         except Exception as error:  # noqa: BLE001 - any transport fault (incl. http.client.HTTPException) is retryable
             problems.append(f"{path} unreachable: {error.__class__.__name__}")
             continue
-        problem = _health_problem(path, status, body)
+        problem = _health_problem(path, status, body, expect_backend)
         if problem:
             problems.append(problem)
     try:
