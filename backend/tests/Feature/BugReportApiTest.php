@@ -2035,6 +2035,9 @@ class BugReportApiTest extends TestCase
             'title' => 'Hide reply', 'description' => 'D',
             'severity' => 'low', 'status' => 'in_progress',
         ]);
+        $olderId = (int) $this->withHeaders($headers)->postJson("/api/v1/bugs/{$bug->id}/comments", [
+            'body' => '已收到，處理中。', 'is_internal_note' => false,
+        ])->assertStatus(201)->json('id');
         $commentId = (int) $this->withHeaders($headers)->postJson("/api/v1/bugs/{$bug->id}/comments", [
             'body' => $this->bothOutcomesReply(), 'is_internal_note' => false,
         ])->assertStatus(201)->json('id');
@@ -2046,6 +2049,8 @@ class BugReportApiTest extends TestCase
         $this->withHeaders($headers)->patchJson($url, ['is_internal_note' => true])
             ->assertStatus(422)->assertJson(['code' => 'cannot_hide_reply_while_resolved']);
         $this->assertFalse((bool) BugReportComment::query()->find($commentId)->is_internal_note);
+        // Only the latest public reply is protected: an older comment can still be hidden.
+        $this->withHeaders($headers)->patchJson("/api/v1/bugs/{$bug->id}/comments/{$olderId}/visibility", ['is_internal_note' => true])->assertOk();
         // Showing a note is still allowed while resolved; hiding works again once the report is reopened.
         $this->withHeaders($headers)->patchJson($url, ['is_internal_note' => false])->assertOk();
         $bug->update(['status' => 'in_progress']);
