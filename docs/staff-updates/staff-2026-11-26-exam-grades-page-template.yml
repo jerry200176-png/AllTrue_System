@@ -1,0 +1,14 @@
+updates:
+  - id: staff-2026-11-26-exam-grades-page-template
+    published_at: "2026-11-26"
+    audiences:
+      - director
+      - teacher
+    importance: digest
+    title: 段考成績頁換新版面
+    summary: 場次清單和登分表格更好讀，按鈕位置固定在每列右邊；功能不變。
+    items:
+      - category: improved
+        text: 登分時學生姓名固定在左邊，往右捲也看得到。
+    source_refs:
+      - "changelog:2026-11-26:exam-grades-page-template"

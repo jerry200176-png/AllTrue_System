@@ -63,6 +63,7 @@ const pageModules = {
   'branch-health': () => import('../../../src/pages/BranchHealthBoard.vue'),
   'binding-conflicts': () => import('../../../src/pages/BindingConflictReviewPage.vue'),
   'binding-health': () => import('../../../src/pages/BindingHealthDashboard.vue'),
+  'exam-grades': () => import('../../../src/pages/ExamGradesPage.vue'),
 };
 const loadPage = pageModules[page] || pageModules.inbox;
 const PageComponent = (await loadPage()).default;
@@ -150,6 +151,9 @@ createApp({
           window.__pilotLastNavigation = payload;
         },
       });
+    }
+    if (page === 'exam-grades') {
+      return () => h(PageComponent, { branchId: 1, userRole: role });
     }
     if (page === 'teachers') {
       return () => h(PageComponent, { branchId: 1 });
