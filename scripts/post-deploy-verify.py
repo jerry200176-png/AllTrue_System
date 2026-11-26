@@ -57,6 +57,7 @@ RC_ROLLBACK_FAILED = 11
 RC_HELD_MIGRATION = 12
 RC_HELD_PRE_VERIFY = 13  # a step failed after a migration ran (or with one in range), before identity was verified
 RC_GATE_ROLLBACK = 20  # gate -> executor: run rollback_deploy (distinct from a Python crash's 1)
+RC_GATE_HELD_VERIFIED = 21  # gate -> executor: verified runtime held on a Sentry-only breach; exit 12, flags stay (#4478)
 RC_SSH_LOST = 255
 USER_AGENT = "AllTrue-post-deploy-verify/1"
 
@@ -238,7 +239,7 @@ def range_migrations(previous_sha: str, target_sha: str, run=subprocess.run) -> 
 
 def gate(args, verify_fn=None, run=subprocess.run, migrations_fn=range_migrations, additive_fn=None,
          watch_fn=None) -> int:
-    """Executor's final stage: 0 verified, RC_HELD_MIGRATION hold, 20 roll back (caller runs rollback_deploy)."""
+    """Executor's final stage: 0 verified, RC_HELD_MIGRATION hold, 20 roll back (caller runs rollback_deploy), 21 Sentry-only hold."""
     frontend_changed = str(args.frontend_changed).strip() not in ("", "0")
     verify_args = argparse.Namespace(
         base_url=args.base_url, health_path=None, expect_backend_sha=args.target_sha,
@@ -270,7 +271,7 @@ def gate(args, verify_fn=None, run=subprocess.run, migrations_fn=range_migration
             if breach.startswith("Sentry "):
                 # Event fields are client-supplied: a Sentry-only breach holds and alerts, never rolls back.
                 print("::error::Sentry-only breach: held for review; no automatic rollback.")
-                return RC_HELD_MIGRATION
+                return RC_GATE_HELD_VERIFIED
             ok = False
     if ok:
         print("🚀 部署完成 — Health + identity + Smoke test 全通過")

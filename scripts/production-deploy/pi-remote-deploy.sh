@@ -489,5 +489,6 @@ export SMOKE_EXPECTED_BACKEND_SHA="$TARGET_SHA"
 export SMOKE_REQUIRE_DEPLOYMENT_MANIFEST=1
 SENTRY_WATCH="@@DEPLOY_SENTRY_WATCH@@" python3 -I "$PDV" gate -k --target-sha "$TARGET_SHA" --previous-sha "$PREV_COMMIT" --frontend-changed "$FRONTEND_CHANGED" --migration-ran "$MIG_HARD$MIGRATION_RAN" --watch-seconds 1200
 # Hold (no rollback): a requested `on` must not stay in .env and the cached config (#4478).
-case $? in 0) exit 0 ;; 20) ;; *) hold_feature_flags; exit 12 ;; esac
+# 21 = Sentry-only breach on a verified runtime: client-supplied events never undo a verified flag.
+case $? in 0) exit 0 ;; 20) ;; 21) exit 12 ;; *) hold_feature_flags; exit 12 ;; esac
 abort_deploy "health check 或 smoke test 失敗"
