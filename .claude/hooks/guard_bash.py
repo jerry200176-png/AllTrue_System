@@ -32,6 +32,8 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 MAX_COMMAND_CHARS = 12_000
 MAX_DEPTH = 3
 MAX_SCRIPTS = 20
+PREPUSH_TIMEOUT = int(os.environ.get("ALLTRUE_PREPUSH_TIMEOUT", "150"))  # seconds; settings.json gives the hook 180
+PUSHES = []  # repo dir of every verified `git push`; main() runs the fast pre-push checks there
 DYN = "\x00"  # placeholder for a non-literal word part
 
 SHELLS = {"bash", "sh", "zsh", "dash", "ksh", "mksh", "yash", "fish", "source", "."}
@@ -360,6 +362,8 @@ def check_git(args, cwd):
             dst = dst[len("refs/heads/"):] if dst.startswith("refs/heads/") else dst
             if dst in ("main", "master"):
                 raise Deny("push to main/master. Push a feature branch and open a PR (CLAUDE.md R3).")
+        if not any(t == "--dry-run" or "n" in shorts(t) for t in texts):
+            PUSHES.append(d)
     elif sub == "reset":
         if any(abbr(t, "--hard") for t in texts):
             raise Deny("git reset --hard. Forbidden - see CLAUDE.md.")
@@ -668,6 +672,32 @@ class Walker:
             raise Deny(f"script {path} cannot be opened to verify (fail closed)")
 
 
+def prepush(cmd):
+    """Run scripts/agent-prepush.sh of each pushed repo before a `git push` leaves the machine (the list
+    lefthook runs for people; agents have no lefthook). It can only add a deny: CI is the real gate, so a
+    missing script, a timeout or `LEFTHOOK=0 git push` lets the push through, and a skip is logged."""
+    for d in dict.fromkeys(PUSHES):
+        try:
+            git = lambda *a: subprocess.run(["git", "-C", d, *a], capture_output=True, text=True, timeout=5).stdout.strip()
+            top = git("rev-parse", "--show-toplevel")
+            script = os.path.join(top, "scripts", "agent-prepush.sh")
+            if not top or not os.path.isfile(script):
+                continue
+            if os.environ.get("LEFTHOOK") == "0" or re.search(r"(?:^|[\s;&|(])LEFTHOOK=0(?=\s)", cmd):
+                sys.stderr.write("guard_bash: pre-push checks skipped (LEFTHOOK=0)\n")
+                with open(os.path.join(top, git("rev-parse", "--git-common-dir"), "agent-prepush-skips.log"), "a") as fh:
+                    fh.write(f"{git('log', '-1', '--format=%cI %H')} {git('branch', '--show-current')}\n")
+                continue
+            r = subprocess.run(["bash", script], cwd=top, capture_output=True, text=True, timeout=PREPUSH_TIMEOUT)
+        except (OSError, subprocess.SubprocessError) as e:
+            sys.stderr.write(f"guard_bash: pre-push checks not run ({type(e).__name__}); CI still checks\n")
+            continue
+        if r.returncode:
+            raise Deny("pre-push checks failed (scripts/agent-prepush.sh). Fix, commit, push again; "
+                       "skip once only if the check itself is broken: LEFTHOOK=0 git push\n"
+                       + (r.stdout + r.stderr)[-1500:])
+
+
 def emit_deny(reason):
     out = json.dumps({"hookSpecificOutput": {"hookEventName": "PreToolUse",
                                              "permissionDecision": "deny",
@@ -689,16 +719,21 @@ def main():
             raise Deny(f"command is {len(cmd)} chars, over the guard's {MAX_COMMAND_CHARS}-char limit. "
                        "Put long text in a file (--body-file / -F) and pass the path.")
         shfmt = find_shfmt()
-        if shfmt is None:
+        ast = shfmt is not None
+        if ast:
+            try:
+                Walker(shfmt).run(cmd, os.getcwd())
+            except Unverifiable:
+                ast = False
+        else:
             sys.stderr.write("guard_bash: shfmt not found (scripts/install-shfmt.sh); using regex fallback\n")
+        if not ast:
             import guard_bash_regex as rx
-            rx.check_all(re.sub(r"\\\r?\n", " ", cmd))
-            return
-        try:
-            Walker(shfmt).run(cmd, os.getcwd())
-        except Unverifiable:
-            import guard_bash_regex as rx
-            rx.check_all(re.sub(r"\\\r?\n", " ", cmd))  # denies via its own emit + exit
+            flat = re.sub(r"\\\r?\n", " ", cmd)
+            rx.check_all(flat)  # denies via its own emit + exit
+            if re.search(rf"\bgit\b{rx.GAP}\bpush\b", rx._strip_non_executed_text(flat)):
+                PUSHES.append(os.getcwd())
+        prepush(cmd)
     except Deny as e:
         emit_deny(f"Blocked (AST guard): {e}")
     except SystemExit:

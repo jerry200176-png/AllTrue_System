@@ -527,8 +527,48 @@ def test_symlink_credential() -> bool:
     return ok
 
 
+def test_prepush() -> bool:
+    """`git push` runs the pushed repo's scripts/agent-prepush.sh; only a real push with a failing script is denied."""
+    ok = True
+    tmp = tempfile.mkdtemp(prefix="guard-bash-prepush-test-")
+    try:
+        subprocess.run(["git", "init", "-q", "-b", "feature/x", tmp], check=True)
+        os.makedirs(os.path.join(tmp, "scripts"))
+        script = os.path.join(tmp, "scripts", "agent-prepush.sh")
+
+        def case(body, cmd, want_deny, env=None):
+            nonlocal ok
+            with open(script, "w") as fh:
+                fh.write(body)
+            out = run(cmd, cwd=tmp, env_extra=env, timeout=20)
+            denied = "pre-push checks failed" in out
+            if denied != want_deny or (out and not denied):
+                ok = False
+                print(f"FAIL (prepush, expected {'DENY' if want_deny else 'ALLOW'}): {cmd!r}\n  -> {out}")
+
+        bad = "echo 'FAIL  size-gate'\nexit 1\n"
+        case(bad, "git push -u origin feature/x", True)
+        case(bad, "git add -A && git commit -m x && git push origin HEAD", True)
+        case("exit 0\n", "git push -u origin feature/x", False)
+        case(bad, "LEFTHOOK=0 git push -u origin feature/x", False)
+        case(bad, "git push origin feature/x", False, {"LEFTHOOK": "0"})
+        case(bad, "git commit -m 'next step is git push origin feature/x'", False)
+        case(bad, "git status", False)
+        case("sleep 30\n", "git push origin feature/x", False, {"ALLTRUE_PREPUSH_TIMEOUT": "1"})
+        skips = os.path.join(tmp, ".git", "agent-prepush-skips.log")
+        if not os.path.exists(skips) or len(open(skips).read().splitlines()) != 2:
+            ok = False
+            print("FAIL (prepush): each LEFTHOOK=0 skip must add one line to .git/agent-prepush-skips.log")
+        if not FALLBACK:  # the regex fallback cannot tell a dry run from a push; it runs the checks (harmless)
+            case(bad, "git push --dry-run origin feature/x", False)
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+    return ok
+
+
 def main() -> None:
     results = [
+        test_prepush(),
         test_safe_and_dangerous(),
         test_commit_on_branch(),
         test_symlink_credential(),

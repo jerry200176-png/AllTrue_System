@@ -21,7 +21,7 @@ All classes also need the exact final-head review evidence described in [Final-h
 
 When the applicable risk gates and exact-head review pass without a T3/protected boundary, add `queue`; do not wait for a blanket human approval. A changed head needs fresh CI and review; `review-pending` retains the queue label while waiting. Mechanics: [below](#land-queue-and-auto-delivery-mechanics).
 
-Right before adding `queue`, run the repo's CI preflight script `npm run ci:preflight` (`scripts/ci-preflight.mjs`; not the retired local agent preflight). It checks the branch name, `sync-generated --check`, workflow YAML sanity, secret patterns in the diff and the legacy PR-size limit. It does not run `routes --check`, the ratchets, presubmit CHECK 0d or the declaration lint; those remain CI's job.
+Right before adding `queue`, run the repo's CI preflight script `npm run ci:preflight` (`scripts/ci-preflight.mjs`; not the retired local agent preflight). It checks the branch name, `sync-generated --check`, workflow YAML sanity, secret patterns in the diff and the legacy PR-size limit. It does not run `routes --check`, the ratchets, presubmit CHECK 0d or the declaration lint; those remain CI's job. For an agent, `.claude/hooks/guard_bash.py` runs it on every `git push`, together with the other fast pre-push checks listed in `scripts/agent-prepush.sh` (the same list lefthook runs for people); a failing check blocks the push and prints the fix.
 
 ```bash
 gh pr edit <PR-number> --add-label queue
