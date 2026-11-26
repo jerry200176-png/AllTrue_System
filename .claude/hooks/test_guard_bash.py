@@ -550,15 +550,18 @@ def test_prepush() -> bool:
         subprocess.run(["git", "-C", other, "add", "scripts"], check=True)
         subprocess.run(["git", "-C", other, "commit", "-q", "-m", "x"], check=True)
 
-        def case(body, cmd, want, env=None, cwd=tmp, commit=True):
+        def case(body, cmd, want, env=None, cwd=tmp, commit=True, merged=True):
             nonlocal ok
             with open(script, "w") as fh:
                 fh.write(body)
             if commit:
                 subprocess.run(["git", "-C", tmp, "add", "scripts"], check=True)
                 subprocess.run(["git", "-C", tmp, "commit", "-q", "--allow-empty", "-m", "x"], check=True)
+                if merged:  # the list is "already on main": only then may the guard run it
+                    subprocess.run(["git", "-C", tmp, "update-ref", "refs/remotes/origin/main", "HEAD"], check=True)
             out = run(cmd, cwd=cwd, env_extra=env, timeout=20, guard=os.path.join(hooks, "guard_bash.py"))
-            got = "PREPUSH" if "pre-push checks failed" in out else "DENY" if out else "ALLOW"
+            got = ("PREPUSH" if "pre-push checks failed" in out else "DENY" if "permissionDecision" in out
+                   else "SKIP" if "pre-push checks not run" in out else "ALLOW")
             if got != want:
                 ok = False
                 print(f"FAIL (prepush, expected {want}, got {got}): {cmd!r}\n  -> {out}")
@@ -580,22 +583,27 @@ def test_prepush() -> bool:
         subprocess.run(["git", "-C", tmp, "commit", "-q", "-am", "x"], check=True)
         with open(os.path.join(tmp, "scripts", "new.sh"), "w") as fh:
             fh.write("exit 0\n")
-        case(f"touch {ran}\nexit 1\n", "git push origin feature/x", "ALLOW", commit=False)  # untracked file
+        case(f"touch {ran}\nexit 1\n", "git push origin feature/x", "SKIP", commit=False)  # untracked file
         os.remove(os.path.join(tmp, "scripts", "new.sh"))
-        case(f"touch {ran}\nexit 1\n# edited\n", "git push origin feature/x", "ALLOW", commit=False)  # edited list
+        case(f"touch {ran}\nexit 1\n# edited\n", "git push origin feature/x", "SKIP", commit=False)  # edited list
+        # Committed on the branch but not on main (nobody reviewed it): not run.
+        case(f"touch {ran}\nexit 1\n# branch\n", "git push origin feature/x", "SKIP", merged=False)
         if not FALLBACK:  # a list the AST walk cannot fully verify is not run
-            case(f'run() {{ "$@"; }}\nrun touch {ran}\nexit 1\n', "git push origin feature/x", "ALLOW")
+            case(f'run() {{ "$@"; }}\nrun touch {ran}\nexit 1\n', "git push origin feature/x", "SKIP")
         if os.path.exists(ran):
             ok = False
-            print("FAIL (prepush): a list that is denied, uncommitted or unverifiable was executed")
+            print("FAIL (prepush): a list that is denied, uncommitted, branch-only or unverifiable was executed")
         case(bad, "git push -u origin feature/x", "PREPUSH")
-        case(bad, "git add -A && git commit -m x && git push origin HEAD", "PREPUSH")
+        case(bad, "git push origin feature/x && git -C . push", "PREPUSH")
+        # Commit and push in one command: the hook runs before the commit, the tree is dirty, the agent is told.
+        case(bad + "# edit\n", "git add -A && git commit -m x && git push origin HEAD", "SKIP", commit=False)
         case("exit 0\n", "git push -u origin feature/x", "ALLOW")
-        case(bad, "LEFTHOOK=0 git push -u origin feature/x", "ALLOW")
-        case(bad, "git push origin feature/x", "ALLOW", {"LEFTHOOK": "0"})
+        case(bad, "LEFTHOOK=0 git push -u origin feature/x", "SKIP")
+        case(bad, "git push origin feature/x", "SKIP", {"LEFTHOOK": "0"})
+        case(bad, "git push origin feature/x", "PREPUSH", {"ALLTRUE_PREPUSH_TIMEOUT": "abc"})  # bad value: default
         case(bad, "git commit -m 'next step is git push origin feature/x'", "ALLOW")
         case(bad, "git status", "ALLOW")
-        case("sleep 30\n", "git push origin feature/x", "ALLOW", {"ALLTRUE_PREPUSH_TIMEOUT": "1"})
+        case("sleep 30\n", "git push origin feature/x", "SKIP", {"ALLTRUE_PREPUSH_TIMEOUT": "1"})
         skips = os.path.join(tmp, ".git", "agent-prepush-skips.log")
         if not os.path.exists(skips) or len(open(skips).read().splitlines()) != 2:
             ok = False

@@ -33,7 +33,8 @@ ROOT = os.path.realpath(os.path.join(HERE, "..", ".."))  # the checkout this gua
 MAX_COMMAND_CHARS = 12_000
 MAX_DEPTH = 3
 MAX_SCRIPTS = 20
-PREPUSH_TIMEOUT = int(os.environ.get("ALLTRUE_PREPUSH_TIMEOUT", "150"))  # seconds; settings.json gives the hook 180
+PREPUSH_TIMEOUT = 150  # seconds (ALLTRUE_PREPUSH_TIMEOUT overrides); settings.json gives the hook 180
+NOTES = []  # why the pre-push checks were not run; main() hands them to the agent as additionalContext
 PUSHES = []  # repo dir of every verified `git push`; main() runs the fast pre-push checks there
 DYN = "\x00"  # placeholder for a non-literal word part
 
@@ -709,18 +710,28 @@ def prepush(cmd):
     - only this guard's own checkout (ROOT), never a directory the command names;
     - the committed copy (HEAD) of the list, fed to bash on stdin, and only while the worktree has no
       uncommitted or untracked file (the programs the list calls are then committed text too; git-ignored
-      files such as node_modules are outside this check);
+      files such as node_modules are outside this check). So `git commit ... && git push` in one command is
+      not checked (the tree is still dirty when this hook runs): the agent is told to push on its own;
+    - only while the branch leaves scripts/ as it is on main: a local commit is committed but not reviewed,
+      so a branch that edits the checks (or the list) gets CI only;
     - only after that exact text passes the guard: every command verified by the AST walk (a list it cannot
       fully verify is not run), plus the regex scan. Without shfmt the regex scan is the only check."""
     def note(why):
-        sys.stderr.write(f"guard_bash: pre-push checks not run ({why}); CI still checks\n")
+        NOTES.append(f"guard_bash: pre-push checks not run ({why}); CI still checks")
+        sys.stderr.write(NOTES[-1] + "\n")
 
+    try:
+        limit = int(os.environ.get("ALLTRUE_PREPUSH_TIMEOUT", ""))
+    except ValueError:
+        limit = PREPUSH_TIMEOUT
+    done = set()
     for d in dict.fromkeys(PUSHES):
         try:
             git = lambda *a: subprocess.run(["git", "-C", d, *a], capture_output=True, text=True, timeout=5).stdout.strip()
             top = git("rev-parse", "--show-toplevel")
-            if not top or os.path.realpath(top) != ROOT:
+            if not top or os.path.realpath(top) != ROOT or top in done:
                 continue
+            done.add(top)
             body = git("show", "HEAD:scripts/agent-prepush.sh")
             if not body:
                 continue
@@ -730,7 +741,12 @@ def prepush(cmd):
                     fh.write(f"{git('log', '-1', '--format=%cI %H')} {git('branch', '--show-current')}\n")
                 continue
             if git("status", "--porcelain", "--untracked-files=all"):
-                note("uncommitted or untracked files; commit first")
+                note("uncommitted or untracked files; commit, then run `git push` as its own command")
+                continue
+            base = git("merge-base", "origin/main", "HEAD")
+            if not base or subprocess.run(["git", "-C", d, "diff", "--quiet", base, "HEAD", "--", "scripts/",
+                                           "frontend/eslint.config.js"], capture_output=True, timeout=5).returncode:
+                note("this branch changes scripts/ or has no origin/main; only checks already on main run here")
                 continue
             shfmt = find_shfmt()
             try:
@@ -741,7 +757,7 @@ def prepush(cmd):
                 continue
             import guard_bash_regex as rx
             rx.check_all(re.sub(r"\\\r?\n", " ", body))
-            r = subprocess.run(["bash", "-s"], input=body, cwd=top, capture_output=True, text=True, timeout=PREPUSH_TIMEOUT)
+            r = subprocess.run(["bash", "-s"], input=body, cwd=top, capture_output=True, text=True, timeout=limit)
         except (OSError, subprocess.SubprocessError) as e:
             note(type(e).__name__)
             continue
@@ -773,6 +789,8 @@ def main():
                        "Put long text in a file (--body-file / -F) and pass the path.")
         verify(cmd, os.getcwd())
         prepush(cmd)
+        if NOTES:
+            print(json.dumps({"hookSpecificOutput": {"hookEventName": "PreToolUse", "additionalContext": "\n".join(NOTES)}}))
     except Deny as e:
         emit_deny(f"Blocked (AST guard): {e}")
     except SystemExit:
