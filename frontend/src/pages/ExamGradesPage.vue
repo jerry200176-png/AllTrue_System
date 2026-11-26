@@ -44,7 +44,7 @@
                 <p class="tw:m-0 tw:mt-1 tw:text-tpl-caption tw:text-tpl-secondary">
                   <span :class="dataTable.fact">考試 {{ round.exam_date || '未定' }}</span>
                   <span :class="[dataTable.fact, 'tw:ml-3']">截止 {{ round.entry_deadline || '未設' }}</span>
-                  <span class="tw:ml-3">{{ (round.subjects || []).map((s) => s.name).join('、') || '—' }}</span>
+                  <span class="tw:ml-3 tw:[word-break:keep-all]">{{ (round.subjects || []).map((s) => s.name).join('、') || '—' }}</span>
                 </p>
               </div>
               <div class="exam-round-card__actions tw:flex tw:flex-wrap tw:items-center tw:gap-2 tw:max-md:w-full">
