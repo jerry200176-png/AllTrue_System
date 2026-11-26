@@ -588,6 +588,14 @@ def test_prepush() -> bool:
         case(f"touch {ran}\nexit 1\n# edited\n", "git push origin feature/x", "SKIP", commit=False)  # edited list
         # Committed on the branch but not on main (nobody reviewed it): not run.
         case(f"touch {ran}\nexit 1\n# branch\n", "git push origin feature/x", "SKIP", merged=False)
+        # Force-committed node_modules on the branch (eslint would run from it): not run either.
+        case(f"touch {ran}\nexit 1\n", "git status", "ALLOW")  # list now on main
+        os.makedirs(os.path.join(tmp, "frontend", "node_modules"))
+        with open(os.path.join(tmp, "frontend", "node_modules", "x.js"), "w") as fh:
+            fh.write("1\n")
+        subprocess.run(["git", "-C", tmp, "add", "-f", "frontend/node_modules/x.js"], check=True)
+        case(f"touch {ran}\nexit 1\n", "git push origin feature/x", "SKIP", merged=False)
+        subprocess.run(["git", "-C", tmp, "rm", "-q", "-f", "frontend/node_modules/x.js"], check=True)
         if not FALLBACK:  # a list the AST walk cannot fully verify is not run
             case(f'run() {{ "$@"; }}\nrun touch {ran}\nexit 1\n', "git push origin feature/x", "SKIP")
         if os.path.exists(ran):

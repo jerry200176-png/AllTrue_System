@@ -745,8 +745,9 @@ def prepush(cmd):
                 continue
             base = git("merge-base", "origin/main", "HEAD")
             if not base or subprocess.run(["git", "-C", d, "diff", "--quiet", base, "HEAD", "--", "scripts/",
-                                           "frontend/eslint.config.js"], capture_output=True, timeout=5).returncode:
-                note("this branch changes scripts/ or has no origin/main; only checks already on main run here")
+                                           "frontend/eslint.config.js",
+                                           ":(glob)**/node_modules/**"], capture_output=True, timeout=5).returncode:
+                note("this branch changes scripts/ (or commits node_modules) or has no origin/main; only checks already on main run here")
                 continue
             shfmt = find_shfmt()
             try:
