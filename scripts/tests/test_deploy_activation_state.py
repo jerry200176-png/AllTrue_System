@@ -2101,25 +2101,28 @@ class DeployActivationWorkflowContractTest(unittest.TestCase):
         php = 'php() { echo "PHP $*"; return 0; }\n'
         curl = 'curl() { echo CURL; printf \'{"status":"ok","opcache_cleared":true}\'; }\n'
         for label, tail, rc in (("migration hold", "MIGRATION_RAN=1\nabort_deploy x\n", 13),
-                                ("verification hold", "hold_feature_flags; exit 12\n", 12)):
+                                ("verification hold", "HOLD_KEEP_FRONTEND_FLAGS=1; hold_feature_flags; exit 12\n", 12)):
             result, lines = self._run_flag_restore(tail, extra=php)
             out = result.stdout
             self.assertEqual(rc, result.returncode, label + out + result.stderr)
-            self.assertEqual(self.RESTORED_LINES, lines, label)
+            # exit 12 keeps the three frontend-coupled flags as built; only the backend-only flag is restored.
+            kept = [x for x in self.APPLIED_ENV.splitlines() if x and not x.startswith("POP_")] + ["POP_INAPP_STANDING_POLICY=1"]
+            self.assertEqual(self.RESTORED_LINES if rc == 13 else kept, lines, label)
+            self.assertEqual(rc == 13, "✅ admissions flag restored during rollback" in out, label)
             self.assertLess(out.index("✅ config cache rebuilt from the restored .env"), out.index("PHP artisan opcache:reset"), label)
             self.assertIn("✅ web workers refreshed after the flag restore", out, label)
             self.assertNotIn("GIT_CALLED", out, label)
-        failed, _ = self._run_flag_restore("hold_feature_flags; exit 12\n", extra=php + "curl() { return 22; }\n")
+        failed, _ = self._run_flag_restore("HOLD_KEEP_FRONTEND_FLAGS=1; hold_feature_flags; exit 12\n", extra=php + "curl() { return 22; }\n")
         self.assertEqual(12, failed.returncode)
         self.assertIn("::error::FPM refresh after the flag restore failed", failed.stdout)
         self.assertNotIn("✅ web workers refreshed", failed.stdout)
         # Nothing restored: no refresh either. A requested off stays off on the verification hold too.
         idle = {k: "0" for k in self.FLAG_STATE if k.endswith("_CHANGED")}
-        untouched, _ = self._run_flag_restore("hold_feature_flags; exit 12\n", extra=php + curl, state=idle)
+        untouched, _ = self._run_flag_restore("HOLD_KEEP_FRONTEND_FLAGS=1; hold_feature_flags; exit 12\n", extra=php + curl, state=idle)
         self.assertNotIn("CURL", untouched.stdout)
         self.assertNotIn("PHP artisan", untouched.stdout)
         off = {"STANDING_POLICY_FLAG_MODE": "off", "STANDING_POLICY_FLAG_BACKUP": "POP_INAPP_STANDING_POLICY=true"}
-        kept, lines = self._run_flag_restore("hold_feature_flags; exit 12\n", extra=php, state=off)
+        kept, lines = self._run_flag_restore("HOLD_KEEP_FRONTEND_FLAGS=1; hold_feature_flags; exit 12\n", extra=php, state=off)
         self.assertEqual("POP_INAPP_STANDING_POLICY=false", lines[-1])
         self.assertIn("kept off: a requested off is never rolled back", kept.stdout)
 
@@ -3592,7 +3595,7 @@ class PostDeployVerifyRollbackTest(unittest.TestCase):
         self.assertLess(stage.index('export SMOKE_EXPECTED_BACKEND_SHA="$TARGET_SHA"'), gate)
         self.assertIn('--frontend-changed "$FRONTEND_CHANGED" --migration-ran "$MIG_HARD$MIGRATION_RAN"', stage)
         # #4478: the hold restores the requested flag lines before it exits; it never rolls code back.
-        self.assertLess(gate, stage.index("case $? in 0) exit 0 ;; 20) ;; 21) exit 12 ;; *) hold_feature_flags; exit 12 ;; esac"))
+        self.assertLess(gate, stage.index("case $? in 0) exit 0 ;; 20) ;; 21) exit 12 ;; *) HOLD_KEEP_FRONTEND_FLAGS=1; hold_feature_flags; exit 12 ;; esac"))
         self.assertTrue(stage.rstrip().endswith('abort_deploy "health check 或 smoke test 失敗"'))
         self.assertNotIn("migrate:rollback", stage)
         self.assertNotIn("post-merge-smoke.sh", stage)  # the gate runs smoke only after verify passes

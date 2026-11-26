@@ -127,12 +127,16 @@ restore_bool_feature_flag() {
 
 restore_feature_flags() {
   local failed=0
-  restore_bool_feature_flag ADMISSIONS_FUNNEL_V1= "${ADMISSIONS_FLAG_CHANGED:-0}" "${ADMISSIONS_FLAG_WAS_PRESENT:-0}" \
-    "${ADMISSIONS_FLAG_BACKUP:-}" "admissions flag restored during rollback" || failed=1
-  restore_bool_feature_flag COURSE_SESSION_CALENDAR_V1= "${CALENDAR_FLAG_CHANGED:-0}" "${CALENDAR_FLAG_WAS_PRESENT:-0}" \
-    "${CALENDAR_FLAG_BACKUP:-}" "course session calendar flag restored during rollback" || failed=1
-  restore_bool_feature_flag COURSE_MANAGER_V1= "${MANAGER_FLAG_CHANGED:-0}" "${MANAGER_FLAG_WAS_PRESENT:-0}" \
-    "${MANAGER_FLAG_BACKUP:-}" "course manager flag restored during rollback" || failed=1
+  # Verification hold (exit 12): the bundle already carries the VITE_ value of these three, so they stay
+  # as built (frontend and backend agree); only the backend-only flag below is restored (#4478).
+  if [ "${HOLD_KEEP_FRONTEND_FLAGS:-0}" -ne 1 ]; then
+    restore_bool_feature_flag ADMISSIONS_FUNNEL_V1= "${ADMISSIONS_FLAG_CHANGED:-0}" "${ADMISSIONS_FLAG_WAS_PRESENT:-0}" \
+      "${ADMISSIONS_FLAG_BACKUP:-}" "admissions flag restored during rollback" || failed=1
+    restore_bool_feature_flag COURSE_SESSION_CALENDAR_V1= "${CALENDAR_FLAG_CHANGED:-0}" "${CALENDAR_FLAG_WAS_PRESENT:-0}" \
+      "${CALENDAR_FLAG_BACKUP:-}" "course session calendar flag restored during rollback" || failed=1
+    restore_bool_feature_flag COURSE_MANAGER_V1= "${MANAGER_FLAG_CHANGED:-0}" "${MANAGER_FLAG_WAS_PRESENT:-0}" \
+      "${MANAGER_FLAG_BACKUP:-}" "course manager flag restored during rollback" || failed=1
+  fi
   if [ "${STANDING_POLICY_FLAG_MODE:-}" = "off" ]; then
     # Kill switch: a requested off is never undone by a failed deploy, on any path (it is kept off).
     restore_bool_feature_flag POP_INAPP_STANDING_POLICY= 1 1 "POP_INAPP_STANDING_POLICY=false" \
@@ -488,7 +492,7 @@ export SMOKE_BRANCH_ID="@@DEPLOY_SMOKE_BRANCH_ID@@"
 export SMOKE_EXPECTED_BACKEND_SHA="$TARGET_SHA"
 export SMOKE_REQUIRE_DEPLOYMENT_MANIFEST=1
 SENTRY_WATCH="@@DEPLOY_SENTRY_WATCH@@" python3 -I "$PDV" gate -k --target-sha "$TARGET_SHA" --previous-sha "$PREV_COMMIT" --frontend-changed "$FRONTEND_CHANGED" --migration-ran "$MIG_HARD$MIGRATION_RAN" --watch-seconds 1200
-# Hold (no rollback): a requested `on` must not stay in .env and the cached config (#4478).
+# Hold (no rollback): a requested backend-only `on` must not stay in .env and the cached config (#4478).
 # 21 = Sentry-only breach on a verified runtime: client-supplied events never undo a verified flag.
-case $? in 0) exit 0 ;; 20) ;; 21) exit 12 ;; *) hold_feature_flags; exit 12 ;; esac
+case $? in 0) exit 0 ;; 20) ;; 21) exit 12 ;; *) HOLD_KEEP_FRONTEND_FLAGS=1; hold_feature_flags; exit 12 ;; esac
 abort_deploy "health check 或 smoke test 失敗"

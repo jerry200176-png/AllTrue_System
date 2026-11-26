@@ -349,7 +349,7 @@ class WorkflowWiringTest(unittest.TestCase):
 
     def test_executor_gate_maps_a_breach_to_the_existing_rollback(self):
         stage = self.remote.split('echo "=== [6/7]', 1)[1]
-        self.assertIn("case $? in 0) exit 0 ;; 20) ;; 21) exit 12 ;; *) hold_feature_flags; exit 12 ;; esac", stage)
+        self.assertIn("case $? in 0) exit 0 ;; 20) ;; 21) exit 12 ;; *) HOLD_KEEP_FRONTEND_FLAGS=1; hold_feature_flags; exit 12 ;; esac", stage)
         self.assertTrue(stage.rstrip().endswith('abort_deploy "health check 或 smoke test 失敗"'))
 
     def test_incident_job_is_least_privilege_and_only_after_an_executor_failure(self):
