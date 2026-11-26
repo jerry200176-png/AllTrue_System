@@ -81,6 +81,7 @@
       title="關閉這個段考？"
       :description="closeDescription"
       confirm-label="關閉段考"
+      :loading="closing"
       @update:open="onCloseOpen"
       @confirm="confirmCloseRound"
     />
@@ -91,6 +92,7 @@
       :description="deleteDescription"
       confirm-label="刪除"
       destructive
+      :loading="deleting"
       @update:open="onDeleteOpen"
       @confirm="confirmDeleteRound"
     />
@@ -189,7 +191,7 @@
             </div>
 
             <!-- Correcting a closed round and the edit history are inline panels, not a second dialog (overlay rules 1 and 7). -->
-            <form v-if="reasonFor" class="exam-reason-panel tw:mb-3 tw:grid tw:gap-3 tw:rounded-xl tw:border tw:border-border tw:bg-muted tw:p-4" @submit.prevent="submitScores(reasonFor, reasonText)">
+            <form v-if="reasonFor" aria-label="更正已截止的成績" class="exam-reason-panel tw:mb-3 tw:grid tw:gap-3 tw:rounded-xl tw:border tw:border-border tw:bg-muted tw:p-4" @submit.prevent="submitScores(reasonFor, reasonText)">
               <p class="tw:m-0 tw:text-tpl-body tw:font-semibold">更正已截止的成績</p>
               <div class="tw:grid tw:gap-2">
                 <Label for="exam-reason-input" class="tw:text-tpl-body">更正原因（必填）</Label>
@@ -197,12 +199,12 @@
               </div>
               <div class="tw:flex tw:flex-wrap tw:gap-2">
                 <Button type="button" variant="outline" :class="control.row" @click="reasonFor = null">取消</Button>
-                <Button type="submit" :class="control.row" :disabled="!reasonText.trim()">確定更正</Button>
+                <Button type="submit" :class="control.row" :disabled="!reasonText.trim() || savingStudentId !== null">確定更正</Button>
               </div>
             </form>
             <section v-if="historyRows" class="exam-history-panel tw:mb-3 tw:rounded-xl tw:border tw:border-border tw:p-4" aria-labelledby="exam-history-title">
               <div class="tw:mb-2 tw:flex tw:items-center tw:justify-between tw:gap-3">
-                <h3 id="exam-history-title" class="tw:m-0 tw:text-tpl-body tw:font-semibold">修改紀錄：{{ historyName }}</h3>
+                <h3 id="exam-history-title" tabindex="-1" class="tw:m-0 tw:text-tpl-body tw:font-semibold">修改紀錄：{{ historyName }}</h3>
                 <Button type="button" variant="outline" :class="control.row" @click="historyRows = null">收起</Button>
               </div>
               <p v-if="!historyRows.length" class="tw:m-0 tw:text-tpl-caption tw:text-tpl-secondary">沒有修改紀錄。</p>
@@ -495,13 +497,14 @@ async function confirmDeleteRound() {
   deleteError.value = '';
   try {
     // Try without a reason first: a round with no scores is deleted outright; otherwise the API asks for one (422).
-    await api(`/exam-rounds/${round.id}`, { method: 'DELETE', body: JSON.stringify({ reason: deleteReason.value || undefined }) });
+    await api(`/exam-rounds/${round.id}`, { method: 'DELETE', body: JSON.stringify({ reason: deleteReason.value.trim() || undefined }) });
     pendingDelete.value = null;
     await loadRounds();
   } catch (e) {
     if (/需填寫原因/.test(e.message || '') && !deleteNeedsReason.value) {
       deleteNeedsReason.value = true;
       deleteError.value = '';
+      setTimeout(() => document.getElementById('exam-delete-reason')?.focus(), 100);
     } else {
       deleteError.value = e.message || '刪除失敗';
     }
@@ -605,6 +608,10 @@ async function openHistory(row) {
   try {
     historyRows.value = await loadScoreHistory(api, selected.value.id, row.student_id);
     historyName.value = row.student_name;
+    await nextTick();
+    const h = document.getElementById('exam-history-title');
+    h?.focus();
+    h?.scrollIntoView?.({ block: 'nearest' });
   } catch (e) {
     scoreError.value = examErrorMessage(e);
   }
@@ -639,7 +646,7 @@ async function submitScores(row, reason) {
   }
   savingStudentId.value = row.student_id;
   try {
-    await saveScores(api, selected.value.id, scores, reason);
+    await saveScores(api, selected.value.id, scores, (reason || '').trim());
     reasonFor.value = null;
     await openRound(selected.value);
   } catch (e) {
@@ -659,7 +666,9 @@ watch(selected, (round) => {
 watch(reasonFor, async (row) => {
   if (!row) return;
   await nextTick();
-  document.getElementById('exam-reason-input')?.focus();
+  const input = document.getElementById('exam-reason-input');
+  input?.focus();
+  input?.scrollIntoView?.({ block: 'nearest' });
 });
 watch(() => props.branchId, loadRounds);
 watch(() => props.focusRoundId, async (id) => {
