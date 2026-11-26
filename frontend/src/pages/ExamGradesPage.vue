@@ -123,7 +123,7 @@
     </AtDialog>
 
     <AtDialog :open="!!selected" :title="selected?.title || '登分'" title-id="exam-score-title" size="xl" panel-class="exam-score-dialog" @close="selected = null">
-      <div v-if="studentsLoading" aria-busy="true"><Skeleton v-for="i in 3" :key="i" class="tw:my-2 tw:h-14 tw:w-full tw:rounded-xl tw:motion-reduce:animate-none" /></div>
+      <div v-if="studentsLoading && !students.length" aria-busy="true"><Skeleton v-for="i in 3" :key="i" class="tw:my-2 tw:h-14 tw:w-full tw:rounded-xl tw:motion-reduce:animate-none" /></div>
       <Alert v-else-if="studentsError" tone="danger" title="無法載入學生"><p>{{ studentsError }}</p></Alert>
       <div v-else-if="!students.length" class="tw:flex tw:flex-col tw:items-center tw:gap-2 tw:py-8 tw:text-center">
         <UserX :size="32" :stroke-width="1.5" class="tw:text-tpl-secondary" aria-hidden="true" />
@@ -452,7 +452,12 @@ async function confirmCloseRound() {
 }
 
 async function openRound(round) {
-  if (String(selected.value?.id) !== String(round?.id)) studentQuery.value = '';
+  // A different round starts empty (skeleton). Reloading the same round after a save keeps the table on screen, so the search
+  // box, the scroll position and focus stay where they were.
+  if (String(selected.value?.id) !== String(round?.id)) {
+    studentQuery.value = '';
+    students.value = [];
+  }
   selected.value = round;
   studentsLoading.value = true;
   studentsError.value = '';
