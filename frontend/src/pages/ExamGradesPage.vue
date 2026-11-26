@@ -151,7 +151,7 @@
             <tr>
               <th :class="[dataTable.head, 'tw:sticky tw:top-0 tw:left-0 tw:z-2 tw:text-left']">學生</th>
               <th v-for="subject in selected.subjects" :key="subject.id" :class="[dataTable.head, 'tw:sticky tw:top-0 tw:z-1 tw:text-left']">{{ subject.name }}</th>
-              <th :class="[dataTable.head, 'tw:sticky tw:top-0 tw:z-1']"><span class="tw:sr-only">操作</span></th>
+              <th :class="[dataTable.head, 'tw:sticky tw:top-0 tw:right-0 tw:z-2']"><span class="tw:sr-only">操作</span></th>
             </tr>
           </thead>
           <tbody>
@@ -174,7 +174,7 @@
                   @history="openHistory(row)"
                 />
               </td>
-              <td :class="dataTable.cell">
+              <td :class="stickySave">
                 <button
                   v-if="canEditScores"
                   type="button"
@@ -262,6 +262,8 @@ function toggleVoid() {
   loadRounds();
 }
 // The name column stays in view while scrolling across subjects: an opaque fill instead of dataTable.name's transparent one.
+// 儲存 stays in view at the right edge for the same reason.
+const stickySave = 'tw:sticky tw:right-0 tw:z-1 tw:h-14 tw:border-b tw:border-border tw:bg-[var(--ds-canvas)]! tw:px-3 tw:py-2 tw:md:px-4';
 const stickyName = 'tw:sticky tw:left-0 tw:z-1 tw:h-14 tw:border-b tw:border-border tw:bg-[var(--ds-canvas)]! tw:px-3 tw:py-2 tw:md:px-4 tw:font-semibold tw:whitespace-nowrap tw:text-foreground';
 const roundMenuGroups = [{ id: 'round', label: '', items: [{ id: 'edit', label: '編輯' }, { id: 'delete', label: '刪除', danger: true }] }];
 const pendingDelete = ref(null);
