@@ -1042,7 +1042,9 @@ class StudentClassTransferSessionsTest extends TestCase
         $lockLog = [];
         DB::listen(function ($query) use (&$lockLog) {
             $sql = strtolower($query->sql);
-            if (str_contains($sql, 'from `studentclass`') && str_contains($sql, ' for update')) $lockLog[] = $sql;
+            // The route's refund guard (RefuseTerminalClosure) reads closed_reason with a lock outside any transaction,
+            // so that lock is gone before the service starts; only locks held together matter here.
+            if (str_contains($sql, 'from `studentclass`') && str_contains($sql, ' for update') && !str_contains($sql, 'select `closed_reason`')) $lockLog[] = $sql;
         });
         $response = $this->postJson(
             "/api/v1/student-classes/{$source->ID}/recover-transfer-sessions",
