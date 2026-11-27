@@ -59,13 +59,15 @@ export function referenceFor(index, names, year, semester, city = '') {
   let hits = [...new Set(wants.map((w) => w.name))].flatMap((name) => index.byName.get(name) || []);
   if (use) hits = hits.filter((r) => inCity(r[0], use));
   out.sure = !!use && new Set(hits.map((r) => `${r[0]}|${r[1]}`)).size === 1;
+  // Two schools of one city under one name (大同高中 and 私立大同高中): the option says which school it is.
+  const named = new Set(hits.map((r) => `${r[0]}|${r[1]}`)).size > new Set(hits.map((r) => r[0])).size;
   for (const [rowCity, school, grade, exam, seq, start, end] of hits) {
     const variant = /[（(]/.test(exam) ? exam.slice(exam.search(/[（(]/)) : '';
     // `whole`: the date is for every grade of that school. The screen saves an all-grade date, so a date for some
     // grades or one subject (二~六年級, 高三, （英文）) is only ever offered, never filled without a look.
     const kind = normalizeSchool(school).name;
     const whole = !variant && (grade === '全校' || (grade === '一~六年級' && kind.endsWith('國小')) || (grade === '國中' && kind.endsWith('國中')));
-    (out.slots[seq] ||= []).push({ label: `${grade}${variant}`, city: rowCity, whole, start_date: start, end_date: end });
+    (out.slots[seq] ||= []).push({ label: `${named ? `${school} ` : ''}${grade}${variant}`, city: rowCity, whole, start_date: start, end_date: end });
   }
   return out;
 }
