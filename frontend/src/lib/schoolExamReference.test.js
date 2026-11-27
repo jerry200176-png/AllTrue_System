@@ -19,6 +19,7 @@ test('school names written different ways meet at one name', () => {
 
 test('reference rows are well formed and every city is a known one', () => {
   assert.ok(data.rows.length > 1000);
+  assert.deepEqual(buildReferenceIndex(data).cities.sort(), ['新北市', '桃園市', '臺北市']); // the scope the Founder chose
   for (const [city, school, grade, exam, seq, start, end] of data.rows) {
     assert.ok(CITIES.includes(city), `${city} ${school}`);
     assert.ok(school && grade && exam, school);

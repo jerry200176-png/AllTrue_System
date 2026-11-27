@@ -8,7 +8,7 @@ updates:
     summary: 各校段考日期頁會列出參考日期，可以一次帶入，不用自己查。
     items:
       - category: added
-        text: 學校有參考日期時，每一格下面會出現參考按鈕；按一下填入日期，再按儲存。
+        text: 目前有臺北、新北、桃園的學校；有參考日期時每格下面會出現按鈕，按一下填入，再按儲存。
       - category: added
         text: 上方「帶入參考日期」會一次填好並儲存空白的格子；同一格有多個日期的要自己選。
       - category: action_required
