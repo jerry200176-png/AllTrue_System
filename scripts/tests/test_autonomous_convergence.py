@@ -164,6 +164,11 @@ class PatchlessDataFileTest(unittest.TestCase):
             good.replace("  rows: [\n", "  hook: (() => 1)(),\n  rows: [\n", 1),
             good.replace("  source: '", "  source: '' + evil() + '", 1),
             good + "window.x = 1;\n",
+            good.replace("\n", "\u2028fetch('/x');\n", 1),  # U+2028 ends a JS comment line
+            good.replace("\n", "\rfetch('/x');\n", 1),
+            good.replace("\n", "\u2029fetch('/x');\n", 1),
+            good.replace("\n", "\r\n"),
+            "\ufeff" + good,
             good.replace("};\n", "}; // tail\nimport('x');\n"),
             "", None, "x" * 2_000_001,
         ):

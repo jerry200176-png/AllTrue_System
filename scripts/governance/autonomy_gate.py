@@ -1879,6 +1879,10 @@ def exam_reference_data_is_pure(text: object) -> bool:
 
     if not isinstance(text, str) or not 0 < len(text) <= 2_000_000:
         return False
+    # JavaScript also ends a line (and so a `//` comment) at CR, U+2028 and U+2029; Python's split("\n") does not.
+    # No control or line-separator character other than "\n" may appear anywhere.
+    if any(ch != "\n" and (ord(ch) < 32 or ord(ch) == 127 or ch in "\u0085\u2028\u2029\ufeff") for ch in text):
+        return False
     lines = text.split("\n")
     while lines and lines[0].startswith("//"):
         lines.pop(0)
