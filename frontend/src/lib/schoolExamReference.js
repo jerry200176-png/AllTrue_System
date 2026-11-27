@@ -13,7 +13,7 @@ export function normalizeSchool(raw) {
   let city = '';
   const tail = s.match(/[（(]([^（()）]*)[）)]$/);
   if (tail) {
-    if (SHORT.has(tail[1])) city = tail[1];
+    if (SHORT.has(tail[1]) || CITIES.includes(tail[1])) city = tail[1];
     s = s.slice(0, tail.index);
   }
   const head = CITIES.find((c) => s.startsWith(c) && s.length > c.length + 2);

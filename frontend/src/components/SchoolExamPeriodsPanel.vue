@@ -37,7 +37,7 @@
           <input v-model="draft(s, slot.seq).end_date" type="date" :disabled="!isDirector || busy(s, slot.seq)" :aria-label="`${s.school_name} ${slot.short} 結束`" class="tw:h-9 tw:min-w-0 tw:rounded-md tw:border tw:bg-background tw:px-2 tw:text-sm" />
           <div v-if="isDirector && refOptions(s, slot.seq).length" class="tw:col-span-3 tw:flex tw:flex-wrap tw:items-center tw:gap-1 tw:text-xs tw:text-muted-foreground">
             參考
-            <Button v-for="o in refOptions(s, slot.seq)" :key="`${o.city}|${o.label}|${o.start_date}|${o.end_date}`" size="sm" variant="outline" :disabled="busy(s, slot.seq)" @click="useReference(s, slot.seq, o)">
+            <Button v-for="(o, i) in refOptions(s, slot.seq)" :key="i" size="sm" variant="outline" :disabled="busy(s, slot.seq)" @click="useReference(s, slot.seq, o)">
               {{ o.city }} {{ o.label }} {{ shortDate(o.start_date) }}–{{ shortDate(o.end_date) }}
             </Button>
           </div>
@@ -109,7 +109,7 @@ const importNote = ref('');
 const city = ref('');
 const cityKey = () => `sep-ref-city:${props.branchId}`;
 function recallCity() {
-  try { city.value = CITIES.includes(localStorage.getItem(cityKey())) ? localStorage.getItem(cityKey()) : ''; } catch { city.value = ''; }
+  try { city.value = CITIES.includes(localStorage.getItem(cityKey())) ? localStorage.getItem(cityKey()) : ''; } catch { /* storage blocked: keep what is chosen now */ }
 }
 function rememberCity() {
   try { localStorage.setItem(cityKey(), city.value); } catch { /* the choice just lasts for this visit */ }

@@ -8,6 +8,7 @@ test('school names written different ways meet at one name', () => {
   assert.deepEqual(normalizeSchool('台北市大安國中'), { city: '臺北市', name: '大安國中' });
   assert.deepEqual(normalizeSchool(' 中正國中（臺北） '), { city: '臺北', name: '中正國中' });
   assert.deepEqual(normalizeSchool('南榮國中（代用）'), { city: '', name: '南榮國中' });
+  assert.deepEqual(normalizeSchool('中正國中（臺北市）'), { city: '臺北市', name: '中正國中' });
   assert.deepEqual(normalizeSchool('臺北市私立再興中學'), { city: '臺北市', name: '再興中學' });
   assert.deepEqual(normalizeSchool('國立師大附中'), { city: '', name: '師大附中' });
   assert.deepEqual(normalizeSchool('新竹縣立某某國民小學'), { city: '新竹縣', name: '某某國小' });
