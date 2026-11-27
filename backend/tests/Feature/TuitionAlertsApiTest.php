@@ -1179,7 +1179,8 @@ class TuitionAlertsApiTest extends TestCase
         $this->createCountModeClass($student->id, ['Paid' => 1, 'RemainingSessions' => 8, 'Charge' => 8000, 'SubjectID' => 88, 'StartDate' => '2026-11-25']);
         $row = $rowFor();
         $this->assertTrue($row['newer_course_overlap'], 'the real next term behind the add-on is still checked');
-        $this->assertSame('2026-11-25', $row['newer_course_start_date']);
+        $this->assertSame('2026-11-25', $row['newer_course_overlap_start_date']);
+        $this->assertSame('2026-10-20', $row['newer_course_start_date'], 'the settle dialog keeps describing one contract: the add-on');
     }
 
     public function test_newer_course_overlap_false_when_end_date_precedes_newer_course_start(): void

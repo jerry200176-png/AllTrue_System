@@ -519,7 +519,8 @@ class AlertController extends Controller
                     'renewed_by_newer_course'  => (bool) ($newerInfo['renewed'] ?? false),
                     'newer_course_id'          => $newerInfo['newer_id'] ?? null,
                     'newer_course_remaining'   => $newerInfo['remaining'] ?? null,
-                    'newer_course_start_date'  => $newerCourseOverlap ? $newerInfo['overlap_start_date'] : ($newerInfo['start_date'] ?? null),
+                    'newer_course_start_date'  => $newerInfo['start_date'] ?? null,
+                    'newer_course_overlap_start_date' => $newerCourseOverlap ? $newerInfo['overlap_start_date'] : null,
                     'current_course_end_date'  => $currentEndDate,
                     'newer_course_overlap'     => $newerCourseOverlap,
                     'invoice_stored_amount'    => $invoiceProjection['stored_total_amount'] ?? null,
@@ -1212,7 +1213,7 @@ class AlertController extends Controller
 
         $candidates = StudentClass::where('Stop', 0)
             ->whereIn('StudentID', $pairs->pluck('sid')->unique())
-            ->get(['ID', 'StudentID', 'SubjectID', 'RemainingSessions', 'StartDate', 'ClassType', 'Charge', 'Rate', 'ScheduleMode']);
+            ->get(['ID', 'StudentID', 'SubjectID', 'RemainingSessions', 'StartDate', 'ClassType', 'Charge', 'Rate', 'ScheduleMode', 'RemainingMinutes']);
         $byKey = $candidates->groupBy(fn ($c) => $c->StudentID . '-' . $c->SubjectID);
 
         // Listed courses are candidates too (in-app #495). The nearest later course is the overlap
@@ -1226,7 +1227,9 @@ class AlertController extends Controller
             }
             // in-app #601: a later 堂數制 contract with nothing left (a one-lesson add-on used the same day) is not a next
             // term this one can run into; the overlap check reads the nearest later contract that can still hold lessons.
-            $next = $later->first(fn ($c) => ($c->ScheduleMode ?? 'count') === 'date' || (int) ($c->RemainingSessions ?? 0) > 0);
+            // An unset balance (import) or minutes left (actual-duration) still counts as "can hold lessons".
+            $next = $later->first(fn ($c) => ($c->ScheduleMode ?? 'count') === 'date' || $c->RemainingSessions === null
+                || (int) $c->RemainingSessions > 0 || (int) ($c->RemainingMinutes ?? 0) > 0);
             $map[$p['id']] = [
                 'newer_id'   => (int) $newer->ID,
                 'remaining'  => (int) ($newer->RemainingSessions ?? 0),

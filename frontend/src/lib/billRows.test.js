@@ -55,7 +55,7 @@ describe('billRows', () => {
     expect(b.kind).toBe('confirm');
     expect(b.hint).toBe('家長已回報');
     expect(b.warnings).toHaveLength(2);
-    expect(b.warnings[0]).toMatch(/^數學：這一期和下一期的日期疊在一起。/);
+    expect(b.warnings[0]).toMatch(/^數學：這一期到 12\/31 才結束，下一期卻 12\/1 就開課。/);
     expect(b.warnings[1]).toBe('數學：依實際 8 堂計算（原始帳單 NT$ 9,000；實際計算 NT$ 8,800）');
   });
 
