@@ -33,6 +33,7 @@ final class TriageSchoolNamesTest extends TestCase
         ]);
         $student('學生甲', '測試國中');
         $student('學生乙', '測試國中');
+        $student('學生寅', ' 測試國中 '); // same school with stray spaces
         $student('學生丙', '另一國小');
         $student('學生壬', '另一國小');
         $student('學生癸', '王小明國中'); // reads like a school, but only one student typed it
@@ -51,7 +52,7 @@ final class TriageSchoolNamesTest extends TestCase
         $json = $this->getJson(self::URL, $this->bearer())->assertOk()->json();
 
         $this->assertSame(['campus_id', 'schools', 'withheld_student_count', 'periods'], array_keys($json));
-        $this->assertSame([['school_name' => '測試國中', 'student_count' => 2], ['school_name' => '另一國小', 'student_count' => 2]], $json['schools']);
+        $this->assertSame([['school_name' => '測試國中', 'student_count' => 3], ['school_name' => '另一國小', 'student_count' => 2]], $json['schools']);
         $this->assertSame(5, $json['withheld_student_count']);
         $this->assertCount(1, $json['periods']);
         $this->assertSame(['school_name' => '測試國中', 'academic_year' => 115, 'semester' => 1, 'seq' => 2,
