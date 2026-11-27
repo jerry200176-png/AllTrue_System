@@ -1192,6 +1192,9 @@ class ProfileController extends Controller
             if (!is_array($map)) {
                 return response()->json(['message' => 'rfid_by_branch 必須為物件'], 422);
             }
+            // Check every campus first, then write (#3758): a refused card at one campus must not leave the
+            // others already changed.
+            $writes = [];
             foreach ($map as $campusKey => $raw) {
                 $cid = (int) $campusKey;
                 if (!in_array($cid, $allowed, true)) {
@@ -1199,7 +1202,7 @@ class ProfileController extends Controller
                 }
                 $val = $raw === null ? '' : trim((string) $raw);
                 if ($val === '') {
-                    DB::table('UserCampus')->where('UserID', $user->id)->where('CampusID', $cid)->update(['RFID' => null]);
+                    $writes[$cid] = null;
                     continue;
                 }
                 if (strlen($val) > 32) {
@@ -1210,6 +1213,9 @@ class ProfileController extends Controller
 
                     return response()->json(['message' => "RFID「{$val}」在{$label}已被其他老師使用"], 422);
                 }
+                $writes[$cid] = $val;
+            }
+            foreach ($writes as $cid => $val) {
                 DB::table('UserCampus')->where('UserID', $user->id)->where('CampusID', $cid)->update(['RFID' => $val]);
             }
         } elseif (array_key_exists('rfid', $input)) {
