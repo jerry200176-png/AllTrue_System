@@ -9,6 +9,8 @@ PREV_COMMIT=$(git rev-parse HEAD)
 MIGRATION_RAN=0 MIG_HARD=
 TARGET_SHA="@@DEPLOY_TARGET_SHA@@"
 RELEASE_TRAIN="@@DEPLOY_RELEASE_TRAIN@@"
+DEPLOY_RUN_ID="@@DEPLOY_RUN_ID@@"
+DEPLOY_RUN_ATTEMPT="@@DEPLOY_RUN_ATTEMPT@@"
 ADMISSIONS_FLAG_MODE="@@DEPLOY_ADMISSIONS_FUNNEL_V1@@"
 ADMISSIONS_FLAG_CHANGED=0
 ADMISSIONS_FLAG_WAS_PRESENT=0
@@ -28,10 +30,17 @@ STANDING_POLICY_FLAG_BACKUP=""
 FLAGS_RESTORED=0
 
 write_deployment_manifest() {
+  # #3503: record the workflow run. The writer on disk belongs to the checked-out commit (an older target, or the
+  # previous commit during a rollback), so the run flags are passed only when that writer knows them.
+  local run_args=()
+  if grep -q -- '--run-attempt' /home/admin/scripts/write-deployment-manifest.py 2>/dev/null; then
+    run_args=(--run-id "$DEPLOY_RUN_ID" --run-attempt "$DEPLOY_RUN_ATTEMPT")
+  fi
   python3 /home/admin/scripts/write-deployment-manifest.py \
     --target-sha "$1" \
     --version-file /home/admin/backend/public/version.json \
-    --output /home/admin/backend/public/deployment.json
+    --output /home/admin/backend/public/deployment.json \
+    ${run_args[@]+"${run_args[@]}"}
 }
 
 refresh_web_workers() {

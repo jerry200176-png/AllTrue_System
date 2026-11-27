@@ -22,6 +22,8 @@ PLACEHOLDERS = (
     "SMOKE_TEACHER_PASSWORD",
     "SMOKE_BRANCH_ID",
     "SENTRY_WATCH",
+    "RUN_ID",
+    "RUN_ATTEMPT",
 )
 PATTERN = re.compile(r"@@DEPLOY_([A-Z0-9_]+)@@")
 # Feature-flag modes are pasted into the script's *_FLAG_MODE="..." lines: only these values may be.
@@ -37,6 +39,10 @@ def render(template, environ):
     if invalid:
         raise ValueError(f"feature-flag value not unchanged/on/off: {', '.join(invalid)}")
     environ = dict(environ)
+    # The run id and attempt are pasted into double-quoted strings and end up in the public manifest: digits or nothing.
+    for name in ("RUN_ID", "RUN_ATTEMPT"):
+        if not re.fullmatch(r"\d{0,20}", environ.get(f"DEPLOY_{name}", "")):
+            environ[f"DEPLOY_{name}"] = ""
     # Pasted inside a double-quoted shell string on the Pi. The Sentry check is optional: a value that could
     # break out of the quotes is dropped (Sentry skipped), never pasted and never a reason to block the deploy.
     if re.search(r'["$`\\\r\n]', environ.get("DEPLOY_SENTRY_WATCH", "")):

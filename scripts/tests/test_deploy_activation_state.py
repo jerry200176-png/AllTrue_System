@@ -2310,7 +2310,27 @@ class DeployActivationWorkflowContractTest(unittest.TestCase):
                                            "pop_inapp_standing_policy"))
                          | expr("needs.resolve-target.outputs", ("target_sha",))
                          # #3992: a train or a merge run may trail main; the Pi then never downgrades.
-                         | {"DEPLOY_RELEASE_TRAIN": "${{ needs.resolve-target.outputs.may_trail_main }}"}, env)
+                         | {"DEPLOY_RELEASE_TRAIN": "${{ needs.resolve-target.outputs.may_trail_main }}"}
+                         # #3503: the run that activates the target goes into the public manifest.
+                         | expr("github", ("run_id", "run_attempt")), env)
+
+    def test_run_identity_reaches_the_manifest_writer_only_as_digits(self):
+        # #3503: pasted into double-quoted strings on the Pi; a non-digit value renders empty (unknown), never as text.
+        sys.path.insert(0, str(REMOTE_RENDERER.parent))
+        try:
+            import render_pi_remote_deploy as renderer
+        finally:
+            sys.path.pop(0)
+        script = REMOTE_DEPLOY.read_text(encoding="utf-8")
+        good = renderer.render(script, {"DEPLOY_RUN_ID": "45891497284", "DEPLOY_RUN_ATTEMPT": "2"})
+        self.assertIn('DEPLOY_RUN_ID="45891497284"\nDEPLOY_RUN_ATTEMPT="2"\n', good)
+        for bad in ('1"; rm -rf /; "', "$(id)", "12a", "1\n2"):
+            rendered = renderer.render(script, {"DEPLOY_RUN_ID": bad, "DEPLOY_RUN_ATTEMPT": bad})
+            self.assertIn('DEPLOY_RUN_ID=""\nDEPLOY_RUN_ATTEMPT=""\n', rendered)
+        # The writer on the Pi belongs to the checked-out commit: the flags are passed only when it knows them.
+        body = script.split("write_deployment_manifest() {", 1)[1].split("\n}\n", 1)[0]
+        self.assertIn("grep -q -- '--run-attempt' /home/admin/scripts/write-deployment-manifest.py", body)
+        self.assertIn('${run_args[@]+"${run_args[@]}"}', body)
 
     def test_remote_script_renders_like_github_text_substitution(self):
         sys.path.insert(0, str(REMOTE_RENDERER.parent))

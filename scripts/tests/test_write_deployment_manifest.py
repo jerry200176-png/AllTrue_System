@@ -41,8 +41,16 @@ class WriteDeploymentManifestTest(unittest.TestCase):
             decoded = json.loads(output.read_text(encoding="utf-8"))
             self.assertEqual(set(decoded), {
                 "schema", "backend_sha", "frontend_sha", "frontend_build_sha",
-                "frontend_built_at", "deployed_at", "source",
+                "frontend_built_at", "deployed_at", "source", "run_id", "run_attempt",
             })
+
+    def test_run_identity_is_recorded_as_numbers_or_left_unknown(self):
+        # #3503: the run that activated the SHA; anything that is not plain digits is unknown, never copied.
+        manifest = MODULE.build_manifest("sha", {}, "now", "45891497284", "2")
+        self.assertEqual((manifest["run_id"], manifest["run_attempt"]), (45891497284, 2))
+        for bad in (None, "", "12a", "1 2", "-3", "１２", "9" * 21):
+            manifest = MODULE.build_manifest("sha", {}, "now", bad, bad)
+            self.assertEqual((manifest["run_id"], manifest["run_attempt"]), (None, None))
 
 
 if __name__ == "__main__":
