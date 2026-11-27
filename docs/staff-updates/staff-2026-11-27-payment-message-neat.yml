@@ -1,0 +1,13 @@
+updates:
+  - id: staff-2026-11-27-payment-message-neat
+    published_at: "2026-11-27"
+    audiences:
+      - director
+    importance: digest
+    title: 繳費訊息不再出現小數單價
+    summary: 複製給家長的繳費訊息，算不整齊時只顯示待繳金額。
+    items:
+      - category: fixed
+        text: 有折扣或沒設單價的課，不再顯示「1666.67*3」這種算式，改成只寫待繳金額；總額不變。
+    source_refs:
+      - "changelog:2026-11-27:payment-message-neat"

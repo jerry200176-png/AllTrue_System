@@ -1694,7 +1694,11 @@ class ParentPortalController extends Controller
         foreach ($lineItems as $item) {
             $parts[] = (string) $item['subject'];
             $parts[] = "{$item['start_date']}~{$item['session_count']}堂";
-            $parts[] = !empty($item['billed'])
+            // #3521: "單價*堂數" is shown only when it really multiplies out to the amount. A discounted total would
+            // otherwise read 1666.67*3, or 1500*8 = 10,000.
+            $unit = (float) $item['unit_price'];
+            $multipliesOut = abs($unit - round($unit)) < 0.00001 && (int) round($unit * $item['session_count']) === (int) $item['subtotal'];
+            $parts[] = !empty($item['billed']) || !$multipliesOut
                 ? "待繳 *{$this->formatAmount($item['subtotal'])}*"
                 : "{$this->formatAmount($item['unit_price'], false)}*{$item['session_count']} = *{$this->formatAmount($item['subtotal'])}*";
             $parts[] = '';

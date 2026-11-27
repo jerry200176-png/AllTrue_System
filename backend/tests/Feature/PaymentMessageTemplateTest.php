@@ -80,6 +80,30 @@ class PaymentMessageTemplateTest extends TestCase
         $this->assertStringContainsString('再麻煩媽媽 幫我繳款 謝謝你', $message);
     }
 
+    /** #3521: a total that is not unit price x sessions shows the amount only, never a fractional or wrong sum. */
+    public function test_payment_message_drops_the_multiplication_when_it_does_not_add_up(): void
+    {
+        $token = $this->createDirectorToken([1], 'director-neat@example.com');
+        $student = Student::create(['name' => '小數同學', 'CampusID' => 1, 'ClassID' => 1, 'enable' => 1, 'MDT' => now(), 'Notify_Token' => '']);
+        $noRate = Subject::create(['School_id' => 1, 'Grade_no' => 0, 'Subject_Name' => '無單價']);
+        $discount = Subject::create(['School_id' => 1, 'Grade_no' => 0, 'Subject_Name' => '有折扣']);
+        $neat = Subject::create(['School_id' => 1, 'Grade_no' => 0, 'Subject_Name' => '剛好']);
+        $this->createStudentClass($student->id, ['StartDate' => '2026-03-16', 'SessionCount' => 3, 'Rate' => 0, 'Charge' => 5000, 'SubjectID' => $noRate->id]);
+        $this->createStudentClass($student->id, ['StartDate' => '2026-03-16', 'SessionCount' => 8, 'Rate' => 1500, 'Charge' => 10000, 'SubjectID' => $discount->id]);
+        $this->createStudentClass($student->id, ['StartDate' => '2026-03-16', 'SessionCount' => 4, 'Rate' => 0, 'Charge' => 6000, 'SubjectID' => $neat->id]);
+
+        $res = $this->withHeaders(['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])
+            ->getJson("/api/v1/parent/payment-message/{$student->id}");
+
+        $res->assertOk()->assertJsonPath('total_amount', 21000);
+        $message = (string) $res->json('message');
+        $this->assertStringContainsString("無單價\n115.3.16~3堂\n待繳 *5,000*", $message);
+        $this->assertStringContainsString("有折扣\n115.3.16~8堂\n待繳 *10,000*", $message);
+        $this->assertStringContainsString("剛好\n115.3.16~4堂\n1500*4 = *6,000*", $message);
+        $this->assertStringNotContainsString('1666', $message);
+        $this->assertStringNotContainsString('1500*8', $message);
+    }
+
     public function test_payment_message_uses_invoice_outstanding_not_rate_estimate_for_billed_course(): void
     {
         $token = $this->createDirectorToken([1], 'director-billed@example.com');
