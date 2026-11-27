@@ -866,104 +866,116 @@ class ProfileController extends Controller
             $lineId = trim((string) ($input['line_id'] ?? ''));
             $user->LineID = $lineId !== '' ? $lineId : null;
         }
-        DB::transaction(function () use ($request, $user, $endTargetSessions) {
-            $user->save();
-            if ($endTargetSessions) {
-                $this->endSessionsAfterAdminPasswordChange($request, $user, 'admin_password_set', 'profiles.update');
-            }
-        });
-
-        // #4433 (Founder policy 1): a campus link is approved only by that campus's director; super_admin approves any;
-        // nobody approves their own. A campus new to this teacher that the caller may not approve is created pending.
-        $hasApproved = Schema::hasColumn('UserCampus', 'Approved');
-        $superAdmin = (string) $request->attributes->get('auth_role') === 'super_admin';
-        $callerCampusIds = array_map('intval', (array) $request->attributes->get('auth_campus_ids', []));
-        $isSelf = $this->isCaller($request, (int) $user->id);
-        $mayApprove = fn (int $campusId): bool => !$isSelf && ($superAdmin || in_array($campusId, $callerCampusIds, true));
-
-        // Account approval (stored status pending → active) releases the pending links in the caller's campuses. Saving an
-        // already-active teacher's form resends status=active and approves nothing; a link is decided per campus.
-        if ($wasPending && ($input['status'] ?? null) === 'active' && (string) $user->type === 'T' && $hasApproved && !$isSelf) {
-            $release = DB::table('UserCampus')->where('UserID', $user->id)->where('Approved', false);
-            if (!$superAdmin) {
-                $release->whereIn('CampusID', $callerCampusIds);
-            }
-            $released = (clone $release)->pluck('CampusID')->map(fn ($cid) => (int) $cid)->unique()->all();
-            $release->update(['Approved' => true]);
-            foreach ($released as $campusId) {
-                $this->auditCampusLinkDecision($request, (int) $user->id, $campusId, 'approved', 'profiles.update', false);
-            }
-        }
-
-        // A campus the teacher already had keeps its own link (approval, card, Admin), even when the main-campus row moves.
-        $before = DB::table('UserCampus')->where('UserID', $user->id)->get()->keyBy(fn ($row) => (int) $row->CampusID);
-        $linkAttrs = fn (int $campusId): array => $before->has($campusId)
-            ? array_intersect_key((array) $before->get($campusId), array_flip(['Approved', 'RFID', 'Admin']))
-            : ($hasApproved ? ['Approved' => $mayApprove($campusId)] : []);
-
-        $newCampusId = (int) ($input['branch_id'] ?? 0);
-        // A main campus the teacher already has keeps its own link: moving another row onto it would duplicate it.
-        $firstId = (int) ($before->first()->CampusID ?? 0);
-        $mayTouch = fn (int $campusId): bool => $superAdmin || in_array($campusId, $callerCampusIds, true);
-        if (isset($input['branch_id']) && $before->has($newCampusId) && $firstId !== $newCampusId && $mayTouch($firstId) && $mayTouch($newCampusId)) {
-            // Making an already-linked campus the main one swaps it with the first row (each link keeps its own attributes).
-            DB::transaction(function () use ($user, $firstId, $newCampusId, $before) {
-                $row = fn (int $cid) => DB::table('UserCampus')->where('UserID', $user->id)->where('CampusID', $cid);
-                $attrs = fn (int $cid) => array_intersect_key((array) $before->get($cid), array_flip(['Approved', 'RFID', 'Admin']));
-                $row($firstId)->update(['CampusID' => -1]);
-                $row($newCampusId)->update(['CampusID' => $firstId] + $attrs($firstId));
-                $row(-1)->update(['CampusID' => $newCampusId] + $attrs($newCampusId));
+        // One save, one transaction: account fields, campus links, cards, subjects and scopes land together or not at all
+        // (#3758: a refused card used to arrive after the campus links were already changed).
+        DB::beginTransaction();
+        try {
+            DB::transaction(function () use ($request, $user, $endTargetSessions) {
+                $user->save();
+                if ($endTargetSessions) {
+                    $this->endSessionsAfterAdminPasswordChange($request, $user, 'admin_password_set', 'profiles.update');
+                }
             });
-        } elseif (isset($input['branch_id']) && !$before->has($newCampusId)) {
-            // #4433 (Founder 3A): below super_admin only a link at the caller's own campuses may move.
-            $existing = UserCampus::where('UserID', $user->id)
-                ->when(!$superAdmin, fn ($q) => $q->whereIn('CampusID', $callerCampusIds))->first();
-            if ($existing) {
-                $updateData = ['CampusID' => $newCampusId];
-                if ((int) $existing->CampusID !== $newCampusId) {
-                    $updateData += $linkAttrs($newCampusId);
-                }
-                DB::table('UserCampus')->where('UserID', $user->id)->where('CampusID', $existing->CampusID)->update($updateData);
-            } else {
-                UserCampus::create(['UserID' => $user->id, 'CampusID' => $newCampusId] + $linkAttrs($newCampusId));
-            }
-        }
 
-        if (isset($input['multi_branches']) && is_array($input['multi_branches'])) {
-            $mainBranch = $input['branch_id'] ?? UserCampus::where('UserID', $user->id)->value('CampusID');
-            $allBranches = array_values(array_unique(array_filter(array_map('intval', array_merge([$mainBranch], $input['multi_branches'])))));
-            // #4433 (Founder 3A): below super_admin, links (and mirror rows) at campuses the caller doesn't manage are untouched.
-            $inScope = fn ($q, string $col) => $superAdmin ? $q : $q->whereIn($col, $callerCampusIds);
-            if (Schema::hasTable('teacher_branches')) {
-                $inScope(DB::table('teacher_branches')->where('teacher_id', $user->id), 'branch_id')->delete();
+            // #4433 (Founder policy 1): a campus link is approved only by that campus's director; super_admin approves any;
+            // nobody approves their own. A campus new to this teacher that the caller may not approve is created pending.
+            $hasApproved = Schema::hasColumn('UserCampus', 'Approved');
+            $superAdmin = (string) $request->attributes->get('auth_role') === 'super_admin';
+            $callerCampusIds = array_map('intval', (array) $request->attributes->get('auth_campus_ids', []));
+            $isSelf = $this->isCaller($request, (int) $user->id);
+            $mayApprove = fn (int $campusId): bool => !$isSelf && ($superAdmin || in_array($campusId, $callerCampusIds, true));
+
+            // Account approval (stored status pending → active) releases the pending links in the caller's campuses. Saving an
+            // already-active teacher's form resends status=active and approves nothing; a link is decided per campus.
+            if ($wasPending && ($input['status'] ?? null) === 'active' && (string) $user->type === 'T' && $hasApproved && !$isSelf) {
+                $release = DB::table('UserCampus')->where('UserID', $user->id)->where('Approved', false);
+                if (!$superAdmin) {
+                    $release->whereIn('CampusID', $callerCampusIds);
+                }
+                $released = (clone $release)->pluck('CampusID')->map(fn ($cid) => (int) $cid)->unique()->all();
+                $release->update(['Approved' => true]);
+                foreach ($released as $campusId) {
+                    $this->auditCampusLinkDecision($request, (int) $user->id, $campusId, 'approved', 'profiles.update', false);
+                }
             }
-            $inScope(DB::table('UserCampus')->where('UserID', $user->id)->whereNotIn('CampusID', $allBranches), 'CampusID')->delete();
-            foreach ($allBranches as $bid) {
-                if ($bid) {
-                    if (Schema::hasTable('teacher_branches') && ($superAdmin || in_array((int) $bid, $callerCampusIds, true))) {
-                        DB::table('teacher_branches')->insertOrIgnore(['teacher_id' => $user->id, 'branch_id' => (int) $bid]);
+
+            // A campus the teacher already had keeps its own link (approval, card, Admin), even when the main-campus row moves.
+            $before = DB::table('UserCampus')->where('UserID', $user->id)->get()->keyBy(fn ($row) => (int) $row->CampusID);
+            $linkAttrs = fn (int $campusId): array => $before->has($campusId)
+                ? array_intersect_key((array) $before->get($campusId), array_flip(['Approved', 'RFID', 'Admin']))
+                : ($hasApproved ? ['Approved' => $mayApprove($campusId)] : []);
+
+            $newCampusId = (int) ($input['branch_id'] ?? 0);
+            // A main campus the teacher already has keeps its own link: moving another row onto it would duplicate it.
+            $firstId = (int) ($before->first()->CampusID ?? 0);
+            $mayTouch = fn (int $campusId): bool => $superAdmin || in_array($campusId, $callerCampusIds, true);
+            if (isset($input['branch_id']) && $before->has($newCampusId) && $firstId !== $newCampusId && $mayTouch($firstId) && $mayTouch($newCampusId)) {
+                // Making an already-linked campus the main one swaps it with the first row (each link keeps its own attributes).
+                DB::transaction(function () use ($user, $firstId, $newCampusId, $before) {
+                    $row = fn (int $cid) => DB::table('UserCampus')->where('UserID', $user->id)->where('CampusID', $cid);
+                    $attrs = fn (int $cid) => array_intersect_key((array) $before->get($cid), array_flip(['Approved', 'RFID', 'Admin']));
+                    $row($firstId)->update(['CampusID' => -1]);
+                    $row($newCampusId)->update(['CampusID' => $firstId] + $attrs($firstId));
+                    $row(-1)->update(['CampusID' => $newCampusId] + $attrs($newCampusId));
+                });
+            } elseif (isset($input['branch_id']) && !$before->has($newCampusId)) {
+                // #4433 (Founder 3A): below super_admin only a link at the caller's own campuses may move.
+                $existing = UserCampus::where('UserID', $user->id)
+                    ->when(!$superAdmin, fn ($q) => $q->whereIn('CampusID', $callerCampusIds))->first();
+                if ($existing) {
+                    $updateData = ['CampusID' => $newCampusId];
+                    if ((int) $existing->CampusID !== $newCampusId) {
+                        $updateData += $linkAttrs($newCampusId);
                     }
-                    // A row moved away above comes back with that campus's own link, never as a new pending one.
-                    UserCampus::firstOrCreate(['UserID' => $user->id, 'CampusID' => (int) $bid], $linkAttrs((int) $bid));
+                    DB::table('UserCampus')->where('UserID', $user->id)->where('CampusID', $existing->CampusID)->update($updateData);
+                } else {
+                    UserCampus::create(['UserID' => $user->id, 'CampusID' => $newCampusId] + $linkAttrs($newCampusId));
                 }
             }
-        }
 
-        if ($user->type === 'T') {
-            $rfidErr = $this->applyTeacherRfidInput($user, $input);
-            if ($rfidErr !== null) {
-                return $rfidErr;
-            }
-            if (array_key_exists('subject_ids', $input) && Schema::hasTable('teacher_subjects')) {
-                DB::table('teacher_subjects')->where('teacher_id', $user->id)->delete();
-                $ids = is_array($input['subject_ids']) ? array_unique(array_filter($input['subject_ids'])) : [];
-                foreach ($ids as $sid) {
-                    DB::table('teacher_subjects')->insertOrIgnore(['teacher_id' => $user->id, 'subject_id' => (int) $sid]);
+            if (isset($input['multi_branches']) && is_array($input['multi_branches'])) {
+                $mainBranch = $input['branch_id'] ?? UserCampus::where('UserID', $user->id)->value('CampusID');
+                $allBranches = array_values(array_unique(array_filter(array_map('intval', array_merge([$mainBranch], $input['multi_branches'])))));
+                // #4433 (Founder 3A): below super_admin, links (and mirror rows) at campuses the caller doesn't manage are untouched.
+                $inScope = fn ($q, string $col) => $superAdmin ? $q : $q->whereIn($col, $callerCampusIds);
+                if (Schema::hasTable('teacher_branches')) {
+                    $inScope(DB::table('teacher_branches')->where('teacher_id', $user->id), 'branch_id')->delete();
+                }
+                $inScope(DB::table('UserCampus')->where('UserID', $user->id)->whereNotIn('CampusID', $allBranches), 'CampusID')->delete();
+                foreach ($allBranches as $bid) {
+                    if ($bid) {
+                        if (Schema::hasTable('teacher_branches') && ($superAdmin || in_array((int) $bid, $callerCampusIds, true))) {
+                            DB::table('teacher_branches')->insertOrIgnore(['teacher_id' => $user->id, 'branch_id' => (int) $bid]);
+                        }
+                        // A row moved away above comes back with that campus's own link, never as a new pending one.
+                        UserCampus::firstOrCreate(['UserID' => $user->id, 'CampusID' => (int) $bid], $linkAttrs((int) $bid));
+                    }
                 }
             }
-            if (array_key_exists('subject_level_scopes', $input)) {
-                TeacherScopeService::replaceScopes((int) $user->id, (array) ($input['subject_level_scopes'] ?? []));
+
+            if ($user->type === 'T') {
+                $rfidErr = $this->applyTeacherRfidInput($user, $input);
+                if ($rfidErr !== null) {
+                    DB::rollBack(); // a refused card leaves nothing of this save behind (#3758)
+
+                    return $rfidErr;
+                }
+                if (array_key_exists('subject_ids', $input) && Schema::hasTable('teacher_subjects')) {
+                    DB::table('teacher_subjects')->where('teacher_id', $user->id)->delete();
+                    $ids = is_array($input['subject_ids']) ? array_unique(array_filter($input['subject_ids'])) : [];
+                    foreach ($ids as $sid) {
+                        DB::table('teacher_subjects')->insertOrIgnore(['teacher_id' => $user->id, 'subject_id' => (int) $sid]);
+                    }
+                }
+                if (array_key_exists('subject_level_scopes', $input)) {
+                    TeacherScopeService::replaceScopes((int) $user->id, (array) ($input['subject_level_scopes'] ?? []));
+                }
             }
+            DB::commit();
+        } catch (\Throwable $e) {
+            DB::rollBack();
+
+            throw $e;
         }
 
         $campusRows = DB::table('UserCampus')->where('UserID', $user->id)->get();
