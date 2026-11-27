@@ -699,15 +699,20 @@ class AlertController extends Controller
     }
 
     /**
-     * Every issued bill of the course is fully paid. `review_required` counts too (in-app #603/#605/#606): on an ended,
-     * paid contract it means the period engine cannot line the old bill up with the lessons, and asking the director to
-     * issue another bill for it would double-charge. A legacy flag with no bill (source != invoice) never counts.
+     * Every issued bill of the course is fully paid and no lesson is left without a bill. `review_required` counts
+     * (in-app #605/#606) only under the same preconditions as the 已核對 button (`paymentReviewCheck`): no lesson outside
+     * the bills and no month still in review; what is left is a remark such as "the bill's range starts after the
+     * contract's start date", and asking for another bill there would double-charge. A month with lessons and no bill
+     * stays listed. A legacy flag with no bill (source != invoice) never counts.
      */
     private function isInvoiceSettled(?array $verdict): bool
     {
         $status = $verdict['status'] ?? null;
+        $reviewSettled = $status === 'review_required' && ($verdict['payable_total'] ?? 0) > 0
+            && (int) ($verdict['uncovered_sessions'] ?? 1) === 0
+            && !collect($verdict['periods'] ?? [])->contains(fn ($period) => ($period['status'] ?? null) === 'review_required');
 
-        return ($status === 'paid' || ($status === 'review_required' && ($verdict['payable_total'] ?? 0) > 0))
+        return ($status === 'paid' || $reviewSettled)
             && ($verdict['source'] ?? null) === 'invoice'
             && ($verdict['outstanding'] ?? null) === 0;
     }

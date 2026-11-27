@@ -387,9 +387,10 @@ class TuitionAlertsApiTest extends TestCase
     }
 
     /**
-     * in-app #603/#605/#606: an ended monthly contract whose only bill is fully paid came back every month around its
-     * settlement day asking for a new bill, because the period engine could not line the old bill up with the lessons
-     * (bill without a period; contract starting at the end of the previous month). Both shapes are from production.
+     * in-app #605/#606: an ended monthly contract whose only bill is fully paid came back every month around its
+     * settlement day asking for a new bill, because the bill's month starts after the contract's start date (review remark
+     * only). A month with lessons that no bill can be lined up with (in-app #603: bill without a period) is unbilled as far
+     * as the data says, so it stays listed. Both shapes are from production.
      */
     public function test_ended_monthly_with_paid_bill_and_lessons_has_no_settlement_reminder(): void
     {
@@ -423,7 +424,7 @@ class TuitionAlertsApiTest extends TestCase
 
         $rows = collect($this->withToken($token)->getJson('/api/v1/alerts/tuition?branch_id=1')->assertOk()->json());
 
-        $this->assertNull($rows->firstWhere('id', $noPeriod->ID), 'paid bill without a period: nothing left to bill');
+        $this->assertNotNull($rows->firstWhere('id', $noPeriod->ID), 'lessons in a month no bill is attributed to: still listed');
         $this->assertNull($rows->firstWhere('id', $lateStart->ID), 'paid bill, contract started at the end of the previous month');
         $this->assertNotNull($rows->firstWhere('id', $owing->ID), 'a bill with a balance stays listed');
     }
