@@ -861,7 +861,14 @@ jobs:
                   for item in actual_files:
                       path = item.get("filename", "")
                       item_patch = item.get("patch")
-                      if item_patch is None:
+                      # Founder 2026-11-28: GitHub returns no patch for this one large generated data file, which held
+                      # every train that carried it. An in-place edit of exactly this path may ride without one; a
+                      # rename, add or delete of it, and every other path, still fail closed.
+                      patchless_data_file = (
+                          path == "frontend/src/lib/schoolExamReferenceData.generated.js"
+                          and item.get("status") == "modified" and not item.get("previous_filename")
+                      )
+                      if item_patch is None and not patchless_data_file:
                           actual_patch_complete = False
                       actual_patch_parts.append(
                           f"diff --git a/{path} b/{path}\n+++ b/{path}\n{item_patch or ''}"

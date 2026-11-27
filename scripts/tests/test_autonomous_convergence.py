@@ -138,5 +138,20 @@ class AutonomousConvergenceTest(unittest.TestCase):
         self.assertEqual(decide(older_green, [{"created_at": ago(3990)}]), "hold")
 
 
+class PatchlessDataFileTest(unittest.TestCase):
+    """deploy.yml tolerates a missing GitHub patch for exactly one generated data file (Founder 2026-11-28)."""
+
+    def test_only_the_exam_reference_data_file_may_ride_without_a_patch(self):
+        deploy = (WORKFLOW.parent / "deploy.yml").read_text(encoding="utf-8")
+        self.assertEqual(deploy.count("patchless_data_file = ("), 1)
+        self.assertIn('path == "frontend/src/lib/schoolExamReferenceData.generated.js"', deploy)
+        self.assertIn('and item.get("status") == "modified" and not item.get("previous_filename")', deploy)
+        self.assertIn("if item_patch is None and not patchless_data_file:", deploy)
+        self.assertEqual(deploy.count("if item_patch is None"), 1, "no second, unguarded patch check")
+        # The file stays pure data: one export of a JSON literal, nothing executable.
+        data = (WORKFLOW.parents[2] / "frontend/src/lib/schoolExamReferenceData.generated.js").read_text(encoding="utf-8")
+        self.assertNotRegex(data, r"\b(import|require|function|=>|eval|fetch|window|document)\b")
+
+
 if __name__ == "__main__":
     unittest.main()
