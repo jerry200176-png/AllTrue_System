@@ -849,7 +849,7 @@ class ParentPortalController extends Controller
                 // monthly mode：持續進行，不受 RemainingSessions 影響
                 return true;
             })
-            ->map(function ($c) use ($sessionMetrics, $attendedThisMonth, $monthlyBillingPeriods, $monthlyDisplayLabels, $currentMonthLabel, $courseStatuses, $packageMap, $studentCampusMap) {
+            ->map(function ($c) use ($sessionMetrics, $attendedThisMonth, $monthlyBillingPeriods, $monthlyDisplayLabels, $currentMonthLabel, $courseStatuses, $packageMap, $studentCampusMap, $sharedBillHeaders) {
                 $metrics   = $sessionMetrics($c);
                 $isMonthly = (string) ($c->ScheduleMode ?? 'count') !== 'count';
                 $isTutoring = strtolower(trim((string) ($c->ClassType ?? ''))) === 'tutoring';
@@ -2164,13 +2164,6 @@ class ParentPortalController extends Controller
     }
 
     /**
-     * PRD-H：月結課程的預估「每月應繳」金額，給家長端學習情況卡片顯示參考。
-     * 計算邏輯：
-     *   1) 若有 `Charge` 欄位（通常 = 月費或整期總額），先把它當成月費回傳；
-     *   2) 否則 rate × monthly_sessions（rate_unit=session 直接乘；hour 要換算 SessionDuration）。
-     * 僅用於「預估顯示」，不影響實際對帳 / invoice 金額。
-     */
-    /**
      * Courses whose own bill also bills another course on a line. The resolver keeps such a bill's whole total on
      * the header course, so its amount is not that course's own: these keep the stored amounts (#3521, Codex).
      *
@@ -2184,6 +2177,13 @@ class ParentPortalController extends Controller
             ->pluck('StudentClassID')->mapWithKeys(fn ($id) => [(int) $id => true])->all();
     }
 
+    /**
+     * PRD-H：月結課程的預估「每月應繳」金額，給家長端學習情況卡片顯示參考。
+     * 計算邏輯：
+     *   1) 若有 `Charge` 欄位（通常 = 月費或整期總額），先把它當成月費回傳；
+     *   2) 否則 rate × monthly_sessions（rate_unit=session 直接乘；hour 要換算 SessionDuration）。
+     * 僅用於「預估顯示」，不影響實際對帳 / invoice 金額。
+     */
     private function resolveMonthlyFee(StudentClass $class): int
     {
         // 月結課程的「每月應繳」估算：
