@@ -22,10 +22,21 @@ const ROWS = [
   ["Math", "J3", 2, "南一", [["第一章 二次函數", ["1-1 二次函數及其圖形", "1-2 二次函數的最大值或最小值"]], ["第二章 統計與機率", ["2-1 統計數據的分布", "2-2 機率"]], ["第三章 立體幾何圖形", ["3-1 柱體、錐體、空間中的線與平面"]]]],
   ["Math", "J3", 2, "康軒", [["第一章 二次函數", ["1-1 二次函數的圖形與最大值、最小值"]], ["第二章 統計與機率", ["2-1 資料的分析", "2-2 機率"]], ["第三章 生活中的立體圖形", ["3-1 空間中的線、平面與形體"]]]],
   ["Math", "J3", 2, "翰林", [["第一章 二次函數", ["1-1 基本二次函數圖形", "1-2 二次函數圖形與最大值、最小值"]], ["第二章 統計與機率", ["2-1 四分位數與盒狀圖", "2-2 機率"]], ["第三章 立體圖形", ["3-1 角柱與圓柱", "3-2 角錐與圓錐"]]]],
+  // English, grades 7-8 (康軒, 翰林): lesson titles as written in public 115-year school curriculum plans (彰化縣
+  // 課程計畫平台, read 2026-11-27); each title is the one most schools using that publisher agree on (3-11 schools).
+  // Not included: 南一 and grade 9, where too few plans were found to cross-check.
+  ["English", "J1", 1, "康軒", [["", ["Lesson 1 Who's That Young Man?", "Lesson 2 What Are These?", "Lesson 3 Let's Get Some Ideas from RoomGPT", "Lesson 4 I Can Listen to Their Songs Again and Again", "Lesson 5 What Are You Doing?", "Lesson 6 Are There Any Shelves Outside the Door?"]]]],
+  ["English", "J1", 1, "翰林", [["", ["Unit 1 Who's That Handsome Boy?", "Unit 2 Where Are My Pencils?", "Unit 3 Open the magic door", "Unit 4 What Time Is the Concert?", "Unit 5 What's the Date?", "Unit 6 There Are Some Elephants Over There"]]]],
+  ["English", "J1", 2, "康軒", [["", ["Lesson 1 Alan Plays Basketball Every Day", "Lesson 2 How Often Do You Clean Your Room?", "Lesson 3 What's the Date Today?", "Lesson 4 How Much Cake Do You Want?", "Lesson 5 You Helped Me a Lot", "Lesson 6 They Got Lots of People Together and Cleaned Up Bali's Beaches"]]]],
+  ["English", "J1", 2, "翰林", [["", ["Unit 1 What Do You Do in Your Free Time?", "Unit 2 How Often Do You Go to the Library?", "Unit 3 Which Painting Do You Like?", "Unit 4 How Much Flour Do You Need?", "Unit 5 There Was a Lot of Trash in the Sea", "Unit 6 I Took a Trip to India Last Month"]]]],
+  ["English", "J2", 1, "康軒", [["", ["Lesson 1 It Rained a Lot Yesterday", "Lesson 2 Why Didn't You See a Doctor?", "Lesson 3 Tina and Billy Were Looking for Water", "Lesson 4 I Want to Be a YouTuber", "Lesson 5 How Long Will We Stay in Bangkok?", "Lesson 6 How Do We Get to Joe's House?"]]]],
+  ["English", "J2", 1, "翰林", [["", ["Unit 1 How Was the Weather in Australia?", "Unit 2 You Can Learn About Game Design After You Join the Club", "Unit 3 Mom Was Doing the Dishes at Half past Twelve", "Unit 4 What Do You Want to Be in the Future?", "Unit 5 How Do We Go to the Hotel?", "Unit 6 I'll Take Two Pairs of Gloves"]]]],
+  ["English", "J2", 2, "康軒", [["", ["Lesson 1 The Coat Is Lighter Than the Jacket", "Lesson 2 He's the Best Singer in the World", "Lesson 3 Our Food Smells Good", "Lesson 4 Let's Set Up Camp Quickly", "Lesson 5 I Felt the Floor Shaking", "Lesson 6 If We Don't Act Now, There Will Be More Plastic in the Ocean"]]]],
+  ["English", "J2", 2, "翰林", [["", ["Unit 1 The Steak Looks Yummy", "Unit 2 Red Fire Ants Are the Most Dangerous Ants", "Unit 3 The Animals Work Hard", "Unit 4 I Can Hear the Wind Blow", "Unit 5 All of the Food Stands Look Great", "Unit 6 You Can Throw a Ball, Can't You?"]]]],
 ];
 
 const GRADE_NAMES = { J1: '七年級', J2: '八年級', J3: '九年級' };
-const SUBJECT_NAMES = { Math: '數學' };
+const SUBJECT_NAMES = { Math: '數學', English: '英文' };
 
 export const CURRICULUM_CATALOG = ROWS.map(([subject, grade, semester, publisher, chapters]) => ({
   key: `${subject}-${grade}-${semester}-${publisher}`,

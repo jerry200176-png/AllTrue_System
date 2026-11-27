@@ -19,7 +19,13 @@ test('offers only the chosen subject and grade, in book order', () => {
   const j1 = catalogFor('Math', 'J1');
   assert.equal(j1.length, 6);
   assert.ok(j1.every((c) => c.subject === 'Math' && c.grade === 'J1'));
-  assert.deepEqual(catalogFor('English', 'J1'), []);
+  assert.deepEqual(catalogFor('Chinese', 'J1'), []);
+  const en = catalogFor('English', 'J2');
+  assert.deepEqual(en.map((c) => `${c.semester}${c.publisher}`), ['1康軒', '1翰林', '2康軒', '2翰林']);
+  assert.equal(en[0].label, '八年級上學期英文（康軒）');
+  assert.equal(catalogUnits(en[0]).length, 6);
+  assert.deepEqual(catalogUnits(en[0])[1], { title: "Lesson 2 Why Didn't You See a Doctor?", note: '' }); // no chapter level
+  assert.deepEqual(catalogFor('English', 'J3'), []);
   const hanlin = j1.find((c) => c.publisher === '翰林' && c.semester === 1);
   assert.equal(hanlin.label, '七年級上學期數學（翰林）');
   assert.deepEqual(catalogUnits(hanlin)[0], { title: '1-1 正數與負數', note: '第一章 數與數線' });
