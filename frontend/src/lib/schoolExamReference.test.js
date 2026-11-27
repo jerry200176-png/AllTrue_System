@@ -89,3 +89,15 @@ test('other spellings of the school are tried too, and a campus in brackets is p
   assert.deepEqual([campus.sure, campus.slots[3].map((o) => o.start_date)], [true, ['2027-01-14']]);
   assert.deepEqual(referenceFor(sample, '臺中市私立葳格高級中學附設小學', 115, 1).slots, {}); // which campus? not guessed
 });
+
+test('two schools of one city under one name are told apart in the option label', () => {
+  const index = buildReferenceIndex({ year: 115, semester: 1, rows: [
+    ['臺北市', '大同高中', '高三', '期末', 3, '2026-12-29', '2026-12-30'],
+    ['臺北市', '私立大同高中', '高三', '期末', 3, '2027-01-04', '2027-01-05'],
+    ['新北市', '中正國中', '國中', '期末', 3, '2027-01-18', '2027-01-19'],
+  ] });
+  const both = referenceFor(index, ['大同高中'], 115, 1, '臺北市');
+  assert.equal(both.sure, false);
+  assert.deepEqual(both.slots[3].map((o) => o.label), ['大同高中 高三', '私立大同高中 高三']);
+  assert.equal(referenceFor(index, ['中正國中'], 115, 1, '新北市').slots[3][0].label, '國中');
+});

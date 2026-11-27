@@ -4,11 +4,14 @@
 Run once a semester (the page lists one semester):
   1. Save the rendered page https://baxterenglish.com/schools/calendar/ as Markdown text (any renderer that keeps
      the tables; a JSON file with the text under "result" also works).
-  2. python3 scripts/exams/build-school-exam-reference.py PAGE.md 115 1 > frontend/src/lib/schoolExamReferenceData.generated.js
+  2. python3 scripts/exams/build-school-exam-reference.py PAGE.md 115 1 [PAGES_DIR] > frontend/src/lib/schoolExamReferenceData.generated.js
+The page's own tables leave out many schools it links to. PAGES_DIR (optional) holds those schools' own pages, saved
+as <slug>.html (the last part of https://baxterenglish.com/schools/<slug>/); a school without rows is read from there.
 The page is used with the site owner's consent (Founder 2026-11-27). Rows without a date are skipped, and only
 the cities in SCOPE are kept.
 """
 import json
+import os
 import re
 import sys
 
@@ -53,6 +56,26 @@ def parse(text: str, first_year: int) -> list:
     return rows
 
 
+def school_pages(text: str, pages_dir: str, have: set) -> str:
+    """Table lines, in the calendar page's own shape, for linked SCOPE schools that have no rows yet."""
+    out, index = [], text[text.find("## 各校行事曆"):]
+    parts = re.split(r"\n([一-鿿]{2,4}[市縣])（\d+ 校）\n", index)
+    for city, block in zip(parts[1::2], parts[2::2]):
+        if city not in SCOPE:
+            continue
+        out.append(f"{city}（0 校）")
+        for slug, name in re.findall(r'<a href="https://baxterenglish\.com/schools/([a-z0-9-]+)/">([^<]+)</a>', block):
+            if (city, name) in have or not os.path.isfile(os.path.join(pages_dir, slug + ".html")):
+                continue
+            page = open(os.path.join(pages_dir, slug + ".html"), encoding="utf-8", errors="replace").read()
+            table = re.search(r"段考日程表.*?<tbody>(.*?)</tbody>", page, re.S)
+            for row in re.findall(r"<tr>(.*?)</tr>", table.group(1), re.S) if table else []:
+                cells = [re.sub(r"<[^>]+>", "", c).strip() for c in re.findall(r"<t[hd][^>]*>(.*?)</t[hd]>", row, re.S)]
+                if len(cells) == 3 and re.search(r"期中|期末|段考|定期|月考|評量", cells[1]):
+                    out.append(f"| {name} | {cells[0]} | {cells[1]} | {cells[2]} |")
+    return "\n".join(out)
+
+
 def main() -> None:
     path, year, semester = sys.argv[1], int(sys.argv[2]), int(sys.argv[3])
     text = open(path, encoding="utf-8").read()
@@ -61,6 +84,10 @@ def main() -> None:
     except (ValueError, KeyError, TypeError):
         pass
     rows = [r for r in parse(text, year + 1911) if r[0] in SCOPE]
+    if len(sys.argv) > 4:
+        extra = school_pages(text, sys.argv[4], {(r[0], r[1]) for r in rows})
+        rows += [r for r in parse("各校段考日期\n" + extra, year + 1911) if r[0] in SCOPE]
+        rows.sort(key=lambda r: SCOPE.index(r[0]))  # stable: keeps each school's rows together, cities in SCOPE order
     if len(rows) < 500:
         sys.exit(f"only {len(rows)} rows parsed: the page layout probably changed")
     out = [
