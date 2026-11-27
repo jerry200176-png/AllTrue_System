@@ -354,12 +354,20 @@ class SecurityHardeningTest extends TestCase
         ]);
         UserCampus::create(['CampusID' => $this->campus->id, 'UserID' => $teacher->id, 'Admin' => 0, 'Approved' => 1, 'RFID' => 'KEEP-1']);
         UserCampus::create(['CampusID' => $otherCampusId, 'UserID' => $teacher->id, 'Admin' => 0, 'Approved' => 1, 'RFID' => 'KEEP-2']);
+        // The second campus fails the uniqueness check inside applyTeacherRfidInput (a too-long value would be
+        // stopped earlier by request validation and prove nothing).
+        $holder = User::create([
+            'LoginName' => 'teacher-holder@x.com', 'Name' => 'TeacherHolder',
+            'PSW' => password_hash('Password1!', PASSWORD_DEFAULT), 'type' => 'T',
+        ]);
+        UserCampus::create(['CampusID' => $otherCampusId, 'UserID' => $holder->id, 'Admin' => 0, 'Approved' => 1, 'RFID' => 'TAKEN-2']);
         $rfid = fn ($cid) => \Illuminate\Support\Facades\DB::table('UserCampus')->where('UserID', $teacher->id)->where('CampusID', $cid)->value('RFID');
 
-        $this->withHeaders(['Authorization' => "Bearer {$token}"])
+        $refused = $this->withHeaders(['Authorization' => "Bearer {$token}"])
             ->putJson("/api/v1/profiles/{$teacher->id}", ['rfid_by_branch' => [
-                (string) $this->campus->id => 'NEW-1', (string) $otherCampusId => str_repeat('9', 33),
+                (string) $this->campus->id => 'NEW-1', (string) $otherCampusId => 'TAKEN-2',
             ]])->assertStatus(422);
+        $this->assertStringContainsString('已被其他老師使用', (string) $refused->json('message'));
         $this->assertSame('KEEP-1', $rfid($this->campus->id));
         $this->assertSame('KEEP-2', $rfid($otherCampusId));
 
