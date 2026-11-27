@@ -11,11 +11,21 @@ say() { detail="${detail}$1 $2; "; [ "$2" = PASS ] || fails=$((fails + 1)); }
 
 if systemctl is-active --quiet ufw 2>/dev/null && grep -q '^ENABLED=yes' /etc/ufw/ufw.conf 2>/dev/null; then say ufw PASS; else say ufw FAIL; fi
 
-# Effective sshd settings when readable; otherwise the config files in the order sshd reads them (first value wins).
-conf="$(sudo -n sshd -T 2>/dev/null || sshd -T 2>/dev/null || cat /etc/ssh/sshd_config.d/*.conf /etc/ssh/sshd_config 2>/dev/null)"
+# Effective sshd settings when readable. Otherwise the config files in the order sshd reads them (first value wins),
+# but only when they hold no Match block: a conditional setting cannot be judged from flattened files.
+conf="$(sudo -n sshd -T 2>/dev/null || sshd -T 2>/dev/null)"
+if [ -z "$conf" ]; then
+  conf="$(cat /etc/ssh/sshd_config.d/*.conf /etc/ssh/sshd_config 2>/dev/null)"
+  printf '%s\n' "$conf" | grep -qiE '^[[:space:]]*match[[:space:]]' && conf=""
+fi
 first() { printf '%s\n' "$conf" | awk -v k="$1" 'tolower($1) == k { print tolower($2); exit }'; }
-[ "$(first passwordauthentication)" = no ] && say ssh-password-off PASS || say ssh-password-off FAIL
-case "$(first permitrootlogin)" in no | prohibit-password | without-password | '') say ssh-root-off PASS ;; *) say ssh-root-off FAIL ;; esac
+if [ -z "$conf" ]; then
+  say ssh-password-off "FAIL (unverified)"; say ssh-root-off "FAIL (unverified)"
+else
+  [ "$(first passwordauthentication)" = no ] && say ssh-password-off PASS || say ssh-password-off FAIL
+  # Only an explicit "no" passes: prohibit-password (the default) still lets root in with a key.
+  [ "$(first permitrootlogin)" = no ] && say ssh-root-off PASS || say ssh-root-off FAIL
+fi
 
 if systemctl is-active --quiet fail2ban 2>/dev/null; then say fail2ban PASS; else say fail2ban FAIL; fi
 
