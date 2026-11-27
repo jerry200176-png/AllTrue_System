@@ -83,6 +83,24 @@ jobs:
             -o PubkeyAuthentication=yes \
             ${PI_USER}@${PI_HOST} 'bash -s' < scripts/pi-thermal-check.sh
 
+      # #887: daily read-only hardening audit (firewall, SSH settings, fail2ban, listening ports). PASS/FAIL and port
+      # numbers only. A finding is a warning on the run, never a red run, so the other checks keep their signal.
+      - name: Host hardening audit (read-only)
+        if: steps.secrets.outputs.configured == 'true'
+        continue-on-error: true
+        env:
+          PI_HOST: ${{ secrets.PI_HOST }}
+          PI_USER: ${{ secrets.PI_USER }}
+        run: |
+          ssh -i ~/.ssh/pi_key \
+            -o ConnectTimeout=15 \
+            -o BatchMode=yes \
+            -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile=~/.ssh/known_hosts \
+            -o PasswordAuthentication=no \
+            -o PubkeyAuthentication=yes \
+            ${PI_USER}@${PI_HOST} 'bash -s' < scripts/pi-host-hardening-audit.sh | tee -a "$GITHUB_STEP_SUMMARY"
+
       - name: Run health checks on Pi
         if: steps.secrets.outputs.configured == 'true'
         env:

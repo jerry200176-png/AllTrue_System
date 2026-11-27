@@ -8,6 +8,10 @@ last_reviewed: 2026-08-08
 
 > Addresses [#887](https://github.com/jerry200176-png/AllTrue_System/issues/887). Read-only audit of `pi.lifenet.com.tw`, 2026-08-08. **No host configuration was changed** — this is findings + recommendations only, per this repo's own R6 rule (no direct production config changes outside PR/CI).
 
+## Daily automated audit (2026-11-27, #887)
+
+`pi-health.yml` (daily 09:00 Asia/Taipei) runs `scripts/pi-host-hardening-audit.sh` on the host: firewall active, SSH password login off, SSH root login off, fail2ban active, and listening ports limited to 22/80/443. It is read-only, needs no password, and prints PASS/FAIL and port numbers only. A finding shows as a warning on that run and in its summary; it does not turn the run red. Fixing a finding changes the host (`scripts/pi-host-hardening.sh`) and needs a separate Founder go.
+
 ## ⚠️ Most urgent finding: services bound to all interfaces (`0.0.0.0`), not just localhost
 
 ```
