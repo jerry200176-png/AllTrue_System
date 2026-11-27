@@ -34,6 +34,10 @@ final class TriageSchoolNamesTest extends TestCase
         $student('學生甲', '測試國中');
         $student('學生乙', '測試國中');
         $student('學生丙', '另一國小');
+        $student('學生壬', '另一國小');
+        $student('學生癸', '王小明國中'); // reads like a school, but only one student typed it
+        $student('學生子', '很長很長很長很長很長的名字國中');
+        $student('學生丑', '很長很長很長很長很長的名字國中');
         $student('學生丁', '王小明的媽媽 0912345678'); // typed text that is not a school
         $student('學生戊', 'ABC School');
         $student('學生己', '');
@@ -47,13 +51,13 @@ final class TriageSchoolNamesTest extends TestCase
         $json = $this->getJson(self::URL, $this->bearer())->assertOk()->json();
 
         $this->assertSame(['campus_id', 'schools', 'withheld_student_count', 'periods'], array_keys($json));
-        $this->assertSame([['school_name' => '測試國中', 'student_count' => 2], ['school_name' => '另一國小', 'student_count' => 1]], $json['schools']);
-        $this->assertSame(2, $json['withheld_student_count']);
+        $this->assertSame([['school_name' => '測試國中', 'student_count' => 2], ['school_name' => '另一國小', 'student_count' => 2]], $json['schools']);
+        $this->assertSame(5, $json['withheld_student_count']);
         $this->assertCount(1, $json['periods']);
         $this->assertSame(['school_name' => '測試國中', 'academic_year' => 115, 'semester' => 1, 'seq' => 2,
             'start_date' => '2026-11-25', 'end_date' => '2026-11-26', 'grade_ids' => [7]], array_diff_key($json['periods'][0], ['id' => 0]));
         $body = (string) json_encode($json, JSON_UNESCAPED_UNICODE);
-        foreach (['學生', '王小明', '0912345678', 'ABC', '停用', '別校', '備註'] as $forbidden) {
+        foreach (['學生', '王小明', '0912345678', 'ABC', '停用', '別校', '備註', '很長'] as $forbidden) {
             $this->assertStringNotContainsString($forbidden, $body);
         }
     }
