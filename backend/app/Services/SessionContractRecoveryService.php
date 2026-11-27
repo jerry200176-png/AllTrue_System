@@ -24,6 +24,8 @@ final class SessionContractRecoveryService
         ?int $actorUserId = null
     ): array {
         return DB::transaction(function () use ($sourceClassId, $targetClassId, $sessionIds, $reason, $actorUserId) {
+            // Both course locks in ascending ID order first, like payment and transfer-sessions, so the two cannot deadlock.
+            StudentClass::query()->whereIn('ID', [$sourceClassId, $targetClassId])->orderBy('ID')->lockForUpdate()->get();
             $source = StudentClass::query()->where('ID', $sourceClassId)->lockForUpdate()->first();
             $target = StudentClass::query()->where('ID', $targetClassId)->lockForUpdate()->first();
             if (!$source instanceof StudentClass || !$target instanceof StudentClass) {

@@ -11,6 +11,7 @@ use App\Models\StudentSignIn;
 use App\Services\SessionEntitlementTransferService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
 class SessionEntitlementTransferTest extends TestCase
@@ -237,8 +238,19 @@ class SessionEntitlementTransferTest extends TestCase
         ]);
         SessionDeductionLedger::create(['student_class_id' => $source->ID, 'class_session_id' => $session->id, 'event_type' => 'deduct', 'source' => 'attendance']);
 
+        $log = [];
+        DB::listen(function ($query) use (&$log) { $log[] = strtolower($query->sql); });
         $transfer = app(SessionEntitlementTransferService::class)->transfer($source->ID, $target->ID, $session->id, 'test', 'P0-TEST-ROLLBACK');
+        $afterTransfer = count($log);
         app(SessionEntitlementTransferService::class)->rollback($transfer['transfer']->id);
+
+        // #4263: each direction takes both course locks in one ascending-ID query before any single-course lock.
+        $courseLocks = fn (array $sqls) => array_values(array_filter($sqls, fn ($sql) => str_contains($sql, 'from `studentclass`') && str_contains($sql, ' for update')));
+        foreach ([array_slice($log, 0, $afterTransfer), array_slice($log, $afterTransfer)] as $step) {
+            $first = $courseLocks($step)[0] ?? '';
+            $this->assertStringContainsString('`id` in (?, ?)', $first);
+            $this->assertStringContainsString('order by `id` asc for update', $first);
+        }
 
         $this->assertSame($source->ID, (int) $session->refresh()->StudentClassID);
         $this->assertNotNull($transfer['transfer']->fresh()->rolled_back_at);
