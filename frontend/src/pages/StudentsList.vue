@@ -2766,10 +2766,7 @@ const unbindStudentRfid = async () => {
       return;
     }
     studentForm.value.rfid = '';
-    // Keep the fallback mirror in sync, and wait for it, so the reload below cannot read the old card back from it
-    // (#3758). A mirror failure only warns: the card is already released on the server.
-    const warn = (error) => { if (error) console.warn('Supabase mirror rfid clear failed (non-blocking):', error?.message); };
-    await supabase.from('students').update({ rfid: null }).eq('id', editingStudentId.value).then(({ error }) => warn(error), warn);
+    // No second "mirror" write: `supabase` here is the same Laravel API, and the DELETE above already cleared the card (#3758).
     loadStudents();
   } catch (e) {
     alert('解除綁定失敗');
