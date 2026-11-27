@@ -240,7 +240,7 @@ class GateWatchTest(unittest.TestCase):
     def test_a_sentry_only_breach_holds_and_never_rolls_back(self):
         # #4560 review N4: event fields are client-supplied, so they cannot force a rollback.
         rc, _ = self.run_gate(self.gate_args(), "Sentry errors 50 in 5.0 min (10.00/min) exceed 5x baseline")
-        self.assertEqual(PDV.RC_HELD_MIGRATION, rc)
+        self.assertEqual(PDV.RC_GATE_HELD_VERIFIED, rc)  # executor maps it to exit 12 without the flag hold (#4478)
 
     def test_clean_watch_passes(self):
         rc, _ = self.run_gate(self.gate_args(), None)
@@ -349,7 +349,7 @@ class WorkflowWiringTest(unittest.TestCase):
 
     def test_executor_gate_maps_a_breach_to_the_existing_rollback(self):
         stage = self.remote.split('echo "=== [6/7]', 1)[1]
-        self.assertIn("case $? in 0) exit 0 ;; 20) ;; *) exit 12 ;; esac", stage)
+        self.assertIn("case $? in 0) exit 0 ;; 20) ;; 21) exit 12 ;; *) HOLD_KEEP_FRONTEND_FLAGS=1; hold_feature_flags; exit 12 ;; esac", stage)
         self.assertTrue(stage.rstrip().endswith('abort_deploy "health check 或 smoke test 失敗"'))
 
     def test_incident_job_is_least_privilege_and_only_after_an_executor_failure(self):

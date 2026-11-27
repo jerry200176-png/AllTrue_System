@@ -56,13 +56,16 @@ describe('exam round edit / delete (#4970 E1)', () => {
     await flushPromises();
     await openMenu(wrapper, 'delete');
     expect(document.body.textContent).toContain('確定刪除「合成段考」嗎？');
-    const confirm = () => [...document.body.querySelectorAll('button')].find((b) => b.textContent.trim() === '確定刪除');
+    const confirm = () => [...document.body.querySelectorAll('button')].find((b) => b.textContent.trim() === '刪除');
     confirm().click();
     await flushPromises();
-    expect(document.body.textContent).toContain('請填寫原因');
-    const input = [...document.body.querySelectorAll('label')].find((l) => l.textContent.includes('請填寫原因')).querySelector('input');
+    // The confirm gives way to a one-field form (never two overlays at once).
+    expect(document.body.textContent).toContain('填寫刪除原因');
+    expect(document.body.querySelectorAll('[role=dialog], [role=alertdialog]')).toHaveLength(1);
+    const input = document.body.querySelector('#exam-delete-reason');
     input.value = '開錯';
     input.dispatchEvent(new Event('input'));
+    await flushPromises();
     confirm().click();
     await flushPromises();
     const calls = fetchMock.mock.calls.filter(([, o]) => o?.method === 'DELETE');

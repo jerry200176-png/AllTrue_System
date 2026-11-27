@@ -34,6 +34,19 @@ write_deployment_manifest() {
     --output /home/admin/backend/public/deployment.json
 }
 
+refresh_web_workers() {
+  # CLI reset, then 16 web requests: only the web process refreshes the FPM workers' cached config.
+  # Shared by the rollback and the flag hold (#4478). Returns 1 when a request fails.
+  (cd /home/admin/backend && php artisan opcache:reset 2>/dev/null) || echo "⚠️ CLI opcache reset 失敗"
+  local secret response
+  secret="$(grep '^DEPLOY_SECRET=' /home/admin/backend/.env | cut -d= -f2-)"
+  for _ in $(seq 1 16); do
+    if [ -z "$secret" ] || ! response=$(curl -skf --connect-timeout 10 --max-time 30 -X POST -H "X-Deploy-Secret: ${secret}" -H "Connection: close" -H "Content-Type: application/json" https://daan.lifenet.com.tw/api/internal/opcache-reset) || ! echo "$response" | grep -q '"opcache_cleared":true'; then # secret-echo-allow: header to the internal reset endpoint; never printed
+      return 1
+    fi
+  done
+}
+
 rollback_deploy() {
   local rollback_failed=0
   local health2
@@ -76,15 +89,7 @@ rollback_deploy() {
   fi
 
   # Abort after target checkout (e.g. failed migration): refresh FPM like [5/7].
-  (cd /home/admin/backend && php artisan opcache:reset 2>/dev/null) || echo "⚠️ rollback CLI opcache reset 失敗"
-  local rb_secret rb_response
-  rb_secret="$(grep '^DEPLOY_SECRET=' /home/admin/backend/.env | cut -d= -f2-)"
-  for _ in $(seq 1 16); do
-    if [ -z "$rb_secret" ] || ! rb_response=$(curl -skf --connect-timeout 10 --max-time 30 -X POST -H "X-Deploy-Secret: ${rb_secret}" -H "Connection: close" -H "Content-Type: application/json" https://daan.lifenet.com.tw/api/internal/opcache-reset) || ! echo "$rb_response" | grep -q '"opcache_cleared":true'; then # secret-echo-allow: header to the internal reset endpoint; never printed
-      echo "❌ rollback FPM refresh failed"; rollback_failed=1; break
-    fi
-  done
-  unset rb_secret rb_response
+  refresh_web_workers || { echo "❌ rollback FPM refresh failed"; rollback_failed=1; }
 
   echo "Rollback health check..."
   health2=$(curl -sk https://daan.lifenet.com.tw/api/v1/health \
@@ -122,12 +127,16 @@ restore_bool_feature_flag() {
 
 restore_feature_flags() {
   local failed=0
-  restore_bool_feature_flag ADMISSIONS_FUNNEL_V1= "${ADMISSIONS_FLAG_CHANGED:-0}" "${ADMISSIONS_FLAG_WAS_PRESENT:-0}" \
-    "${ADMISSIONS_FLAG_BACKUP:-}" "admissions flag restored during rollback" || failed=1
-  restore_bool_feature_flag COURSE_SESSION_CALENDAR_V1= "${CALENDAR_FLAG_CHANGED:-0}" "${CALENDAR_FLAG_WAS_PRESENT:-0}" \
-    "${CALENDAR_FLAG_BACKUP:-}" "course session calendar flag restored during rollback" || failed=1
-  restore_bool_feature_flag COURSE_MANAGER_V1= "${MANAGER_FLAG_CHANGED:-0}" "${MANAGER_FLAG_WAS_PRESENT:-0}" \
-    "${MANAGER_FLAG_BACKUP:-}" "course manager flag restored during rollback" || failed=1
+  # Verification hold (exit 12): the bundle already carries the VITE_ value of these three, so they stay
+  # as built (frontend and backend agree); only the backend-only flag below is restored (#4478).
+  if [ "${HOLD_KEEP_FRONTEND_FLAGS:-0}" -ne 1 ]; then
+    restore_bool_feature_flag ADMISSIONS_FUNNEL_V1= "${ADMISSIONS_FLAG_CHANGED:-0}" "${ADMISSIONS_FLAG_WAS_PRESENT:-0}" \
+      "${ADMISSIONS_FLAG_BACKUP:-}" "admissions flag restored during rollback" || failed=1
+    restore_bool_feature_flag COURSE_SESSION_CALENDAR_V1= "${CALENDAR_FLAG_CHANGED:-0}" "${CALENDAR_FLAG_WAS_PRESENT:-0}" \
+      "${CALENDAR_FLAG_BACKUP:-}" "course session calendar flag restored during rollback" || failed=1
+    restore_bool_feature_flag COURSE_MANAGER_V1= "${MANAGER_FLAG_CHANGED:-0}" "${MANAGER_FLAG_WAS_PRESENT:-0}" \
+      "${MANAGER_FLAG_BACKUP:-}" "course manager flag restored during rollback" || failed=1
+  fi
   if [ "${STANDING_POLICY_FLAG_MODE:-}" = "off" ]; then
     # Kill switch: a requested off is never undone by a failed deploy, on any path (it is kept off).
     restore_bool_feature_flag POP_INAPP_STANDING_POLICY= 1 1 "POP_INAPP_STANDING_POLICY=false" \
@@ -145,7 +154,10 @@ hold_feature_flags() {
   restore_feature_flags || echo "::error::Feature-flag .env restore failed; fix it by hand."
   [ "${FLAGS_RESTORED:-0}" -eq 1 ] || return 0
   if (cd /home/admin/backend && rm -f bootstrap/cache/packages.php bootstrap/cache/services.php && php artisan optimize); then
-    echo "✅ config cache rebuilt from the restored .env (web workers follow on opcache revalidation or the FPM refresh)"
+    echo "✅ config cache rebuilt from the restored .env"
+    # Timestamp validation is off in production: without this the web workers keep the requested value.
+    refresh_web_workers && echo "✅ web workers refreshed after the flag restore" \
+      || echo "::error::FPM refresh after the flag restore failed; web requests may still serve the requested flag values. Fix it by hand."
   else
     echo "::error::Config cache rebuild after the flag restore failed; the running config may still hold the requested flag values. Fix it by hand."
   fi
@@ -480,5 +492,7 @@ export SMOKE_BRANCH_ID="@@DEPLOY_SMOKE_BRANCH_ID@@"
 export SMOKE_EXPECTED_BACKEND_SHA="$TARGET_SHA"
 export SMOKE_REQUIRE_DEPLOYMENT_MANIFEST=1
 SENTRY_WATCH="@@DEPLOY_SENTRY_WATCH@@" python3 -I "$PDV" gate -k --target-sha "$TARGET_SHA" --previous-sha "$PREV_COMMIT" --frontend-changed "$FRONTEND_CHANGED" --migration-ran "$MIG_HARD$MIGRATION_RAN" --watch-seconds 1200
-case $? in 0) exit 0 ;; 20) ;; *) exit 12 ;; esac
+# Hold (no rollback): a requested backend-only `on` must not stay in .env and the cached config (#4478).
+# 21 = Sentry-only breach on a verified runtime: client-supplied events never undo a verified flag.
+case $? in 0) exit 0 ;; 20) ;; 21) exit 12 ;; *) HOLD_KEEP_FRONTEND_FLAGS=1; hold_feature_flags; exit 12 ;; esac
 abort_deploy "health check 或 smoke test 失敗"
