@@ -1073,6 +1073,8 @@ Route::prefix('v1')->group(function () {
         Route::get('fulltime-campus-hours', [TriageFulltimePayrollController::class, 'campusHours'])->middleware('throttle:20,1,triage-payroll')->name('triage.fulltime-payroll.campus-hours');
         // Founder GO 2026-11-16: rows of the business tables, numbers / dates / status codes only (no names, phones, notes or
         // credentials; sign-in tables unreachable); triage_tokens.db_read_enabled. Own, lower rate limit.
+        // Founder GO 2026-11-27: school names + head counts of ONE campus and its 段考 periods; triage_tokens.school_names_enabled.
+        Route::get('school-names', [\App\Http\Controllers\TriageSchoolNamesController::class, 'show'])->middleware('throttle:20,1,triage-schools')->name('triage.school-names');
         Route::middleware('throttle:60,1,triage-db')->group(function () {
             Route::get('db', [\App\Http\Controllers\TriageDbReadController::class, 'tables'])->name('triage.db.tables');
             Route::get('db/{table}', [\App\Http\Controllers\TriageDbReadController::class, 'rows'])->where('table', '[A-Za-z0-9_]+')->name('triage.db.rows');

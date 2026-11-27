@@ -15,6 +15,7 @@ return [
         'triage.student-classes.billing-snapshot',
         'triage.fulltime-payroll.report', 'triage.fulltime-payroll.campus-hours',
         'triage.db.tables', 'triage.db.rows',
+        'triage.school-names',
     ],
     'list_max_limit' => 100,
     // #4100 kill switch, default OFF (待 Founder 核准): while false the billing snapshot answers 404 even for a live link.
@@ -26,4 +27,7 @@ return [
     // Rows of the business tables, numbers / dates / status codes only; names, phones, notes and credentials never leave
     // and sign-in tables are unreachable (Founder GO 2026-11-16, so on by default). Same switch behaviour as above.
     'db_read_enabled' => (bool) env('TRIAGE_DB_READ_ENABLED', true),
+    // School names + head counts of one campus and its 段考 periods; no student data, non-school text withheld
+    // (Founder GO 2026-11-27, so on by default). Same switch behaviour as above.
+    'school_names_enabled' => (bool) env('TRIAGE_SCHOOL_NAMES_ENABLED', true),
 ];
