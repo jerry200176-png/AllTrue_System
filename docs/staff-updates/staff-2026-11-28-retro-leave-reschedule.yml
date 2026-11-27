@@ -1,0 +1,13 @@
+updates:
+  - id: staff-2026-11-28-retro-leave-reschedule
+    published_at: "2026-11-28"
+    audiences:
+      - director
+    importance: digest
+    title: 補登請假的課不能再調課
+    summary: 補登請假後系統已補一堂；再調那堂請假的課會多排，現在會擋下。
+    items:
+      - category: fixed
+        text: 課表：補登請假的堂次不能再用「調課」改成要上的課，避免比購買堂數多排一堂。請改調整最後補上的那一堂。
+    source_refs:
+      - "changelog:2026-11-28:retro-leave-reschedule"

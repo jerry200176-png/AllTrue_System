@@ -94,14 +94,19 @@ class RescheduleSessionService
 
             // R129 / #5124: block only a move that would reactivate leave without
             // undoing its tail. Ended-slot corrections must keep their existing behavior.
-            if ($session && strtolower(trim((string) $session->Status)) === 'leave') {
+            // #5695: a retro-leave (leave_adjusted) also owns an appended tail and has no undo; moving it to a
+            // live slot would add a lesson beyond the purchased count the same way.
+            $leaveStatus = $session ? strtolower(trim((string) $session->Status)) : '';
+            if (in_array($leaveStatus, ['leave', 'leave_adjusted'], true)) {
                 $targetSession = clone $session;
                 $targetSession->SessionDate = $newDate;
                 $targetSession->StartTime = $startTime;
                 $targetSession->EndTime = $endTime;
                 if ($this->shouldResetToScheduled($targetSession)) {
                     throw new RescheduleSessionException(
-                        '請先使用「取消請假」，系統會同步回復順延堂次；不可直接改成已上或未上。',
+                        $leaveStatus === 'leave_adjusted'
+                            ? '這堂是補登請假，系統已在最後補上一堂；請改調整補上的那一堂，不能把這堂調成要上的課。'
+                            : '請先使用「取消請假」，系統會同步回復順延堂次；不可直接改成已上或未上。',
                         422,
                         'leave_requires_cascade_undo'
                     );
