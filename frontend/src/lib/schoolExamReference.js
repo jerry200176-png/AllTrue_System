@@ -1,20 +1,25 @@
 // Matches a school name typed in AllTrue to the reference exam-date rows (schoolExamReferenceData.generated.js).
 
-const CITY = /^(臺北市|新北市|桃園市|臺中市|臺南市|高雄市|基隆市|新竹市|嘉義市|[一-鿿]{2}縣)/;
+export const CITIES = ['臺北市', '新北市', '基隆市', '桃園市', '新竹市', '新竹縣', '苗栗縣', '臺中市', '彰化縣', '南投縣', '雲林縣',
+  '嘉義市', '嘉義縣', '臺南市', '高雄市', '屏東縣', '宜蘭縣', '花蓮縣', '臺東縣', '澎湖縣', '金門縣', '連江縣'];
+const SHORT = new Set(CITIES.map((c) => c.slice(0, 2)));
 
-/** "臺北市立大安國民中學", "台北市大安國中" and "大安國中（臺北）" all become { city: '臺北', name: '大安國中' } (city '' when not given). */
+/**
+ * "臺北市立大安國民中學" becomes { city: '臺北市', name: '大安國中' }; "大安國中（臺北）" gives city '臺北' (two characters:
+ * the writer did not say 市 or 縣); no city gives ''. Any other trailing bracket, such as （代用）, is dropped.
+ */
 export function normalizeSchool(raw) {
   let s = String(raw || '').replace(/\s+/g, '').replace(/台/g, '臺');
   let city = '';
-  const tail = s.match(/[（(]([一-鿿]{2,3})[）)]$/);
+  const tail = s.match(/[（(]([^（()）]*)[）)]$/);
   if (tail) {
-    city = tail[1];
+    if (SHORT.has(tail[1])) city = tail[1];
     s = s.slice(0, tail.index);
   }
-  const head = s.match(CITY);
-  if (head && s.length > head[0].length + 2) {
-    city = head[0].slice(0, 2);
-    s = s.slice(head[0].length);
+  const head = CITIES.find((c) => s.startsWith(c) && s.length > c.length + 2);
+  if (head) {
+    city = head;
+    s = s.slice(head.length);
   }
   s = s.replace(/^(市立|縣立|國立|私立|立)/, '')
     .replace(/國民中學/g, '國中').replace(/國民小學/g, '國小')
@@ -22,22 +27,36 @@ export function normalizeSchool(raw) {
   return { city, name: s };
 }
 
+/** One pass over the data: normalized school name -> its rows. Build once when the data arrives. */
+export function buildReferenceIndex(data) {
+  const byName = new Map();
+  for (const row of data?.rows || []) {
+    const { name } = normalizeSchool(row[1]);
+    if (!byName.has(name)) byName.set(name, []);
+    byName.get(name).push(row);
+  }
+  return { year: data?.year, semester: data?.semester, byName };
+}
+
+const inCity = (rowCity, city) => rowCity === city || (city.length === 2 && rowCity.startsWith(city));
+
 /**
- * Reference options for one school and term, by slot: { 1: [{ label, start_date, end_date }], 2: [...], 3: [...] }.
- * Empty object when the term differs or no school matches. A name shared by schools in several cities matches
- * only when the typed name says which city; otherwise every candidate is offered with its city in the label.
+ * Reference options for one school and term, by slot: { 1: [{ label, city, start_date, end_date }], ... }.
+ * The city written in the school name decides; otherwise `city` (the one the director picked) does; with neither,
+ * every school of that name is offered. Each option carries its city so the screen can always show it.
+ * `sure` on the result says a city narrowed the match (only then is filling without a look acceptable).
  */
-export function referenceFor(data, schoolName, year, semester) {
-  if (!data || data.year !== year || data.semester !== semester) return {};
+export function referenceFor(index, schoolName, year, semester, city = '') {
+  const out = { sure: false, slots: {} };
+  if (!index || index.year !== year || index.semester !== semester) return out;
   const want = normalizeSchool(schoolName);
-  if (!want.name) return {};
-  let hits = data.rows.filter((r) => normalizeSchool(r[1]).name === want.name);
-  if (want.city) hits = hits.filter((r) => r[0].startsWith(want.city));
-  const cities = new Set(hits.map((r) => r[0]));
-  const out = {};
-  for (const [city, , grade, exam, seq, start, end] of hits) {
-    const label = `${cities.size > 1 ? `${city} ` : ''}${grade}${/[（(]/.test(exam) ? exam.slice(exam.search(/[（(]/)) : ''}`;
-    (out[seq] ||= []).push({ label, start_date: start, end_date: end });
+  const use = want.city || city;
+  let hits = index.byName.get(want.name) || [];
+  if (use) hits = hits.filter((r) => inCity(r[0], use));
+  out.sure = !!use && new Set(hits.map((r) => r[0])).size === 1;
+  for (const [rowCity, , grade, exam, seq, start, end] of hits) {
+    const variant = /[（(]/.test(exam) ? exam.slice(exam.search(/[（(]/)) : '';
+    (out.slots[seq] ||= []).push({ label: `${grade}${variant}`, city: rowCity, start_date: start, end_date: end });
   }
   return out;
 }

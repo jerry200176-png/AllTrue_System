@@ -41,7 +41,11 @@ def parse(text: str, first_year: int) -> list:
             continue
         # Months 8-12 belong to the calendar year the school year starts in, 1-7 to the next one.
         iso = [f"{first_year + (0 if int(m) >= 8 else 1)}-{int(m):02d}-{int(d):02d}" for m, d in days]
-        rows.append([city, school, cells[1].replace("\\~", "~"), cells[2], seq(cells[2]), iso[0], iso[-1]])
+        grade, number = cells[1].replace("\\~", "~"), seq(cells[2])
+        # A school that lists two unnumbered mid-term rows for one grade means a first and a second exam.
+        if number == 1 and "第" not in cells[2] and any(r[:3] == [city, school, grade] and r[4] == 1 and r[5] < iso[0] for r in rows):
+            number = 2
+        rows.append([city, school, grade, cells[2], number, iso[0], iso[-1]])
     return rows
 
 

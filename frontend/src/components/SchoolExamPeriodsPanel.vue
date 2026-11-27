@@ -1,16 +1,23 @@
 <template>
   <div class="tw:space-y-3">
-    <div class="tw:flex tw:items-center tw:gap-2">
+    <div class="tw:flex tw:flex-wrap tw:items-center tw:gap-2">
       <label class="tw:text-sm" for="sep-term">學期</label>
       <select id="sep-term" v-model="term" class="tw:h-9 tw:rounded-md tw:border tw:bg-background tw:px-2 tw:text-sm" @change="load">
         <option v-for="t in terms" :key="t.key" :value="t.key">{{ t.label }}</option>
       </select>
-      <Button v-if="isDirector && importable.length" size="sm" variant="outline" class="tw:ml-auto" :disabled="importing" @click="importAll">
-        帶入參考日期（{{ importable.length }} 格空白）
-      </Button>
+      <template v-if="isDirector && refAvailable">
+        <label class="tw:ml-auto tw:text-sm" for="sep-city">參考縣市</label>
+        <select id="sep-city" v-model="city" class="tw:h-9 tw:rounded-md tw:border tw:bg-background tw:px-2 tw:text-sm" @change="rememberCity">
+          <option value="">全部（不自動帶入）</option>
+          <option v-for="c in CITIES" :key="c" :value="c">{{ c }}</option>
+        </select>
+        <Button size="sm" variant="outline" :disabled="importing || !importable.length" @click="importAll">
+          帶入參考日期（{{ importable.length }} 格）
+        </Button>
+      </template>
     </div>
-    <p v-if="isDirector && hasReference" class="tw:text-xs tw:text-muted-foreground">
-      參考日期來自 {{ refData.source }}，請以學校公告為準。按「帶入」只填還沒登記、而且只有一個參考日期的格子；有多個的請自己選一個再按儲存。
+    <p v-if="isDirector && refAvailable" class="tw:text-xs tw:text-muted-foreground">
+      參考日期來自 {{ refSource }}，請以學校公告為準。先選縣市，「帶入」才會把那個縣市、還沒登記、而且只有一個參考日期的格子填好並儲存；其他的請自己按參考日期再按儲存。
     </p>
     <p v-if="importNote" role="status" class="tw:text-sm">{{ importNote }}</p>
     <p v-if="error" role="alert" class="tw:text-sm tw:text-destructive">{{ error }}</p>
@@ -30,8 +37,8 @@
           <input v-model="draft(s, slot.seq).end_date" type="date" :disabled="!isDirector || busy(s, slot.seq)" :aria-label="`${s.school_name} ${slot.short} 結束`" class="tw:h-9 tw:min-w-0 tw:rounded-md tw:border tw:bg-background tw:px-2 tw:text-sm" />
           <div v-if="isDirector && refOptions(s, slot.seq).length" class="tw:col-span-3 tw:flex tw:flex-wrap tw:items-center tw:gap-1 tw:text-xs tw:text-muted-foreground">
             參考
-            <Button v-for="o in refOptions(s, slot.seq)" :key="`${o.label}|${o.start_date}|${o.end_date}`" size="sm" variant="outline" :disabled="busy(s, slot.seq)" @click="useReference(s, slot.seq, o)">
-              {{ o.label }} {{ shortDate(o.start_date) }}–{{ shortDate(o.end_date) }}
+            <Button v-for="o in refOptions(s, slot.seq)" :key="`${o.city}|${o.label}|${o.start_date}|${o.end_date}`" size="sm" variant="outline" :disabled="busy(s, slot.seq)" @click="useReference(s, slot.seq, o)">
+              {{ o.city }} {{ o.label }} {{ shortDate(o.start_date) }}–{{ shortDate(o.end_date) }}
             </Button>
           </div>
           <div v-if="isDirector" class="tw:col-span-3 tw:flex tw:justify-end tw:gap-2">
@@ -51,7 +58,7 @@ import { Badge } from './ui/badge';
 import { Button } from './ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { currentTerm } from '../lib/schoolExamTerm';
-import { referenceFor } from '../lib/schoolExamReference';
+import { buildReferenceIndex, CITIES, referenceFor } from '../lib/schoolExamReference';
 import { supabase } from '../supabase';
 
 const props = defineProps({
@@ -94,38 +101,54 @@ function dirty(s, seq) {
   return !!d.start_date && !!d.end_date && (d.start_date !== o.start_date || d.end_date !== o.end_date);
 }
 
-// Reference dates (a large static table, loaded on demand). They only fill a draft; saving goes through save().
-const refData = ref(null);
+// Reference dates (a large static table, loaded on demand for directors). They only fill a draft; saving goes through save().
+const refIndex = ref(null);
+const refSource = ref('');
 const importing = ref(false);
 const importNote = ref('');
+const city = ref('');
+const cityKey = () => `sep-ref-city:${props.branchId}`;
+function recallCity() {
+  try { city.value = CITIES.includes(localStorage.getItem(cityKey())) ? localStorage.getItem(cityKey()) : ''; } catch { city.value = ''; }
+}
+function rememberCity() {
+  try { localStorage.setItem(cityKey(), city.value); } catch { /* the choice just lasts for this visit */ }
+}
 const refBySchool = computed(() => Object.fromEntries(schools.value.map((s) => [
-  s.key, referenceFor(refData.value, s.school_name, termObj.value.year, termObj.value.semester),
+  s.key, referenceFor(refIndex.value, s.school_name, termObj.value.year, termObj.value.semester, city.value),
 ])));
-const refOptions = (s, seq) => refBySchool.value[s.key]?.[seq] || [];
-const hasReference = computed(() => Object.values(refBySchool.value).some((r) => Object.keys(r).length > 0));
+const refOptions = (s, seq) => refBySchool.value[s.key]?.slots[seq] || [];
+// The table covers one term. The city choice stays visible for that term even when the chosen city matches nothing,
+// so the director can always change it back.
+const refAvailable = computed(() => !!refIndex.value && schools.value.length > 0
+  && refIndex.value.year === termObj.value.year && refIndex.value.semester === termObj.value.semester);
 const shortDate = (d) => `${Number(d.slice(5, 7))}/${Number(d.slice(8, 10))}`;
 function useReference(s, seq, o) {
   Object.assign(draft(s, seq), { start_date: o.start_date, end_date: o.end_date });
 }
-// Blank slots (nothing saved, nothing typed) with exactly one reference date: safe to fill without a choice.
-const importable = computed(() => schools.value.flatMap((s) => slots
-  .filter((slot) => refOptions(s, slot.seq).length === 1 && !saved[k(s, slot.seq)] && !draft(s, slot.seq).start_date && !draft(s, slot.seq).end_date)
-  .map((slot) => ({ s, slot }))));
+// Safe to fill without a look: the school is pinned to one city, the slot has exactly one reference date, and it is
+// blank (nothing saved, nothing typed).
+const blankWithOneChoice = (s, seq) => !!refBySchool.value[s.key]?.sure && refOptions(s, seq).length === 1
+  && !saved[k(s, seq)] && !draft(s, seq).start_date && !draft(s, seq).end_date;
+const importable = computed(() => schools.value.flatMap((s) => slots.filter((slot) => blankWithOneChoice(s, slot.seq)).map((slot) => ({ s, slot }))));
 async function importAll() {
   if (importing.value) return;
   importing.value = true;
   importNote.value = '';
   const todo = importable.value;
+  const generation = loadSeq; // a campus or term switch reloads the page: stop, never touch what it shows now
   let done = 0;
   try {
     for (const { s, slot } of todo) {
+      if (generation !== loadSeq) break;
+      if (!blankWithOneChoice(s, slot.seq)) continue; // saved or typed into since the click
       useReference(s, slot.seq, refOptions(s, slot.seq)[0]);
       await save(s, slot);
-      if (saved[k(s, slot.seq)]) done += 1;
+      if (generation === loadSeq && saved[k(s, slot.seq)]) done += 1;
     }
   } finally {
     importing.value = false;
-    importNote.value = `已帶入 ${done} 格${done < todo.length ? `，${todo.length - done} 格沒有成功` : ''}。`;
+    if (generation === loadSeq) importNote.value = `已帶入 ${done} 格${done < todo.length ? `，${todo.length - done} 格沒有帶入` : ''}。`;
   }
 }
 
@@ -146,6 +169,8 @@ async function load() {
   const my = ++loadSeq;
   loading.value = true;
   error.value = '';
+  importNote.value = '';
+  recallCity();
   schools.value = [];
   for (const key of Object.keys(drafts)) delete drafts[key];
   for (const key of Object.keys(saved)) delete saved[key];
@@ -232,10 +257,13 @@ async function remove(s, slot) {
 
 onMounted(load);
 onMounted(async () => {
+  if (!props.isDirector) return; // teachers cannot save, so they never download the table
   try {
-    refData.value = (await import('../lib/schoolExamReferenceData.generated.js')).default;
+    const data = (await import('../lib/schoolExamReferenceData.generated.js')).default;
+    refSource.value = data.source;
+    refIndex.value = buildReferenceIndex(data);
   } catch {
-    refData.value = null; // the page works without reference dates
+    refIndex.value = null; // the page works without reference dates
   }
 });
 watch(() => props.branchId, load);
