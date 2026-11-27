@@ -725,6 +725,23 @@ jobs:
               from scripts.governance.gh_api_retry import gh_api_json
               return gh_api_json(path, *extra)
 
+          def patchless_exam_data(item):
+              # Founder 2026-11-28: GitHub returns no patch for the large generated exam-date file, which held every
+              # train that carried it. An in-place edit of exactly that path may ride without one only when this job
+              # reads the committed blob itself and it is pure data. Any doubt or error: fail closed.
+              try:
+                  import base64
+                  from scripts.governance.autonomy_gate import EXAM_REFERENCE_DATA_PATH, exam_reference_data_is_pure
+                  if (item.get("filename") != EXAM_REFERENCE_DATA_PATH or item.get("status") != "modified"
+                          or item.get("previous_filename") or not re.fullmatch(r"[0-9a-f]{40}", str(item.get("sha") or ""))):
+                      return False
+                  blob = gh_api(f"/repos/{repo}/git/blobs/{item['sha']}")
+                  if blob.get("encoding") != "base64" or int(blob.get("size") or 0) > 2_000_000:
+                      return False
+                  return exam_reference_data_is_pure(base64.b64decode(blob.get("content") or "").decode("utf-8"))
+              except Exception:
+                  return False
+
           def pages(value):
               if isinstance(value, list):
                   result = []
@@ -861,7 +878,7 @@ jobs:
                   for item in actual_files:
                       path = item.get("filename", "")
                       item_patch = item.get("patch")
-                      if item_patch is None:
+                      if item_patch is None and not patchless_exam_data(item):
                           actual_patch_complete = False
                       actual_patch_parts.append(
                           f"diff --git a/{path} b/{path}\n+++ b/{path}\n{item_patch or ''}"

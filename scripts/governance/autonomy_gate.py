@@ -1864,6 +1864,45 @@ def decide_r3_auto_activation(
             f"{review.get('reason')}; no deploy freeze"}
 
 
+EXAM_REFERENCE_DATA_PATH = "frontend/src/lib/schoolExamReferenceData.generated.js"
+_EXAM_DATA_HEADER_RE = re.compile(r"  (?:(?:year|semester): \d{1,4}|source: '[^'\\\n]{0,80}'),")
+
+
+def exam_reference_data_is_pure(text: object) -> bool:
+    """Is this exactly what ``scripts/exams/build-school-exam-reference.py`` writes: data and nothing else?
+
+    Founder 2026-11-28: GitHub returns no patch for this large file, so ``deploy.yml`` reads the blob and asks here
+    instead. Leading ``//`` comment lines, ``export default {``, ``year`` / ``semester`` / ``source`` scalars,
+    ``rows: [`` with one flat JSON array of strings and integers per line, then ``],`` and ``};``. Anything else
+    (an expression, a call, a nested value, a comment after the export, an oversized file) is False.
+    """
+
+    if not isinstance(text, str) or not 0 < len(text) <= 2_000_000:
+        return False
+    # JavaScript also ends a line (and so a `//` comment) at CR, U+2028 and U+2029; Python's split("\n") does not.
+    # No control or line-separator character other than "\n" may appear anywhere.
+    if any(ch != "\n" and (ord(ch) < 32 or ord(ch) == 127 or ch in "\u0085\u2028\u2029\ufeff") for ch in text):
+        return False
+    lines = text.split("\n")
+    while lines and lines[0].startswith("//"):
+        lines.pop(0)
+    if lines[-2:] != ["};", ""] or lines[:1] != ["export default {"] or "  rows: [" not in lines:
+        return False
+    rows_at = lines.index("  rows: [")
+    if lines[-3] != "  ]," or not all(_EXAM_DATA_HEADER_RE.fullmatch(line) for line in lines[1:rows_at]):
+        return False
+    for line in lines[rows_at + 1:-3]:
+        if not (line.startswith("    [") and line.endswith("],")):
+            return False
+        try:
+            row = json.loads(line[4:-1])
+        except ValueError:
+            return False
+        if not isinstance(row, list) or not all(type(cell) in (str, int) for cell in row):
+            return False
+    return True
+
+
 def _parse_timestamp(value: object) -> datetime | None:
     if not isinstance(value, str) or not value.strip():
         return None
