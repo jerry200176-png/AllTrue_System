@@ -597,6 +597,7 @@ class ParentPortalController extends Controller
         $classIds = $classes->pluck('ID')->all();
         $observedUsedByClass = SessionDeductionService::batchObservedUsedSessions($classIds);
         $courseStatuses = app(BillingPayableResolver::class)->courseStatusesByStudentClassIds($classIds, $classes);
+        $sharedBillHeaders = $this->sharedBillHeaders($classIds);
 
         // 共用方案（course_packages）：同一池的多科課程，每筆 StudentClass.SessionCount 都 = 池總堂數。
         // 若用 per-member 計算，家長端會看到「每科都顯示總堂數」且總數被重複加總（in-app #158/#162 家族）。
@@ -858,7 +859,7 @@ class ParentPortalController extends Controller
                 // included), not sessions × unit price.
                 $billedPeriod = collect($courseStatuses[(int) $c->ID]['periods'] ?? [])
                     ->firstWhere('billing_period', $monthlyBillingPeriods[(int) $c->ID] ?? null);
-                if ($monthlyFee > 0 && (int) ($billedPeriod['total'] ?? 0) > 0) {
+                if ($monthlyFee > 0 && (int) ($billedPeriod['total'] ?? 0) > 0 && !isset($sharedBillHeaders[(int) $c->ID])) {
                     $monthlyFee = (int) $billedPeriod['total'];
                 }
                 $attended       = $isMonthly ? (int) ($attendedThisMonth[$c->ID] ?? 0) : 0;
@@ -2040,11 +2041,12 @@ class ParentPortalController extends Controller
         // #3521 (Founder 2026-11-27): a course with bills shows what the bills say (total and money received); the
         // stored Charge / Pay columns are only for courses that never had a bill.
         $statuses = app(BillingPayableResolver::class)->courseStatusesByStudentClassIds($classes->pluck('ID')->all(), $classes);
-        $records = $classes->map(function ($course) use ($billingCampusMap, $studentCampusIds, $statuses) {
+        $sharedBillHeaders = $this->sharedBillHeaders($classes->pluck('ID')->all());
+        $records = $classes->map(function ($course) use ($billingCampusMap, $studentCampusIds, $statuses, $sharedBillHeaders) {
             $charge = (int) ($course->Charge ?? 0);
             $paid = (int) ($course->Pay ?? 0);
             $billed = $statuses[(int) $course->ID] ?? [];
-            if (($billed['source'] ?? null) === 'invoice' && (int) ($billed['payable_total'] ?? 0) > 0) {
+            if (($billed['source'] ?? null) === 'invoice' && (int) ($billed['payable_total'] ?? 0) > 0 && !isset($sharedBillHeaders[(int) $course->ID])) {
                 $charge = (int) $billed['payable_total'];
                 $paid = (int) ($billed['applied'] ?? 0);
             }
@@ -2168,6 +2170,20 @@ class ParentPortalController extends Controller
      *   2) 否則 rate × monthly_sessions（rate_unit=session 直接乘；hour 要換算 SessionDuration）。
      * 僅用於「預估顯示」，不影響實際對帳 / invoice 金額。
      */
+    /**
+     * Courses whose own bill also bills another course on a line. The resolver keeps such a bill's whole total on
+     * the header course, so its amount is not that course's own: these keep the stored amounts (#3521, Codex).
+     *
+     * @param int[] $classIds @return array<int, true>
+     */
+    private function sharedBillHeaders(array $classIds): array
+    {
+        return Invoice::query()->notVoided()->whereIn('StudentClassID', $classIds)
+            ->whereHas('items', fn ($item) => $item->whereNotNull('InvoiceItem.StudentClassID')
+                ->whereColumn('InvoiceItem.StudentClassID', '!=', 'Invoice.StudentClassID'))
+            ->pluck('StudentClassID')->mapWithKeys(fn ($id) => [(int) $id => true])->all();
+    }
+
     private function resolveMonthlyFee(StudentClass $class): int
     {
         // 月結課程的「每月應繳」估算：

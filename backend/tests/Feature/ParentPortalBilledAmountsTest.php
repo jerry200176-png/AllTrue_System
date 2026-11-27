@@ -66,4 +66,20 @@ class ParentPortalBilledAmountsTest extends TestCase
         $this->assertSame([6000, 2000, 'partial'], [$rows[$billed->ID]['charge'], $rows[$billed->ID]['paid'], $rows[$billed->ID]['status']]);
         $this->assertSame([6600, 3000, 'partial'], [$rows[$unbilled->ID]['charge'], $rows[$unbilled->ID]['paid'], $rows[$unbilled->ID]['status']]);
     }
+
+    public function test_a_bill_shared_by_two_courses_does_not_put_its_whole_total_on_the_header_course(): void
+    {
+        $student = $this->student();
+        $header = $this->course($student, 1, ['Charge' => 5000]);
+        $member = $this->course($student, 2, ['Charge' => 5000]);
+        $invoice = Invoice::create(['StudentID' => $student->id, 'StudentClassID' => $header->ID, 'IssueDate' => now()->toDateString(),
+            'TotalAmount' => 10000, 'PaidAmount' => 0, 'Status' => 'unpaid']);
+        InvoiceItem::create(['InvoiceID' => $invoice->id, 'StudentClassID' => $header->ID, 'Description' => 'A', 'Amount' => 5000]);
+        InvoiceItem::create(['InvoiceID' => $invoice->id, 'StudentClassID' => $member->ID, 'Description' => 'B', 'Amount' => 5000]);
+
+        $rows = collect($this->getJson('/api/v1/parent/billing-history', $this->bearer($student))->assertOk()->json('records'))
+            ->keyBy('student_class_id');
+
+        $this->assertSame([5000, 5000], [$rows[$header->ID]['charge'], $rows[$member->ID]['charge']], 'NT$10,000 billed once, not 10,000 + 5,000');
+    }
 }
