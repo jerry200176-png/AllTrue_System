@@ -1,0 +1,13 @@
+updates:
+  - id: staff-2026-11-27-parent-billed-amounts
+    published_at: "2026-11-27"
+    audiences:
+      - director
+    importance: digest
+    title: 家長看到的月費改以帳單為準
+    summary: 家長頁月結課程的月費，這個月有帳單時顯示帳單金額。
+    items:
+      - category: improved
+        text: 家長頁：月結課程這個月已開帳單時，月費顯示帳單總額（含折扣）。
+    source_refs:
+      - "changelog:2026-11-27:parent-billed-amounts"
