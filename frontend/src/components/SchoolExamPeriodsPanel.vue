@@ -5,7 +5,14 @@
       <select id="sep-term" v-model="term" class="tw:h-9 tw:rounded-md tw:border tw:bg-background tw:px-2 tw:text-sm" @change="load">
         <option v-for="t in terms" :key="t.key" :value="t.key">{{ t.label }}</option>
       </select>
+      <Button v-if="isDirector && importable.length" size="sm" variant="outline" class="tw:ml-auto" :disabled="importing" @click="importAll">
+        帶入參考日期（{{ importable.length }} 格空白）
+      </Button>
     </div>
+    <p v-if="isDirector && hasReference" class="tw:text-xs tw:text-muted-foreground">
+      參考日期來自 {{ refData.source }}，請以學校公告為準。按「帶入」只填還沒登記、而且只有一個參考日期的格子；有多個的請自己選一個再按儲存。
+    </p>
+    <p v-if="importNote" role="status" class="tw:text-sm">{{ importNote }}</p>
     <p v-if="error" role="alert" class="tw:text-sm tw:text-destructive">{{ error }}</p>
     <p v-if="!loading && !schools.length" class="tw:text-sm tw:text-muted-foreground">還沒有填學校的學生。</p>
     <Card v-for="s in schools" :key="s.key" class="sep-card tw:gap-3 tw:py-4">
@@ -21,6 +28,12 @@
           <span class="tw:text-sm">{{ slot.short }}</span>
           <input v-model="draft(s, slot.seq).start_date" type="date" :disabled="!isDirector || busy(s, slot.seq)" :aria-label="`${s.school_name} ${slot.short} 開始`" class="tw:h-9 tw:min-w-0 tw:rounded-md tw:border tw:bg-background tw:px-2 tw:text-sm" />
           <input v-model="draft(s, slot.seq).end_date" type="date" :disabled="!isDirector || busy(s, slot.seq)" :aria-label="`${s.school_name} ${slot.short} 結束`" class="tw:h-9 tw:min-w-0 tw:rounded-md tw:border tw:bg-background tw:px-2 tw:text-sm" />
+          <div v-if="isDirector && refOptions(s, slot.seq).length" class="tw:col-span-3 tw:flex tw:flex-wrap tw:items-center tw:gap-1 tw:text-xs tw:text-muted-foreground">
+            參考
+            <Button v-for="o in refOptions(s, slot.seq)" :key="`${o.label}|${o.start_date}|${o.end_date}`" size="sm" variant="outline" :disabled="busy(s, slot.seq)" @click="useReference(s, slot.seq, o)">
+              {{ o.label }} {{ shortDate(o.start_date) }}–{{ shortDate(o.end_date) }}
+            </Button>
+          </div>
           <div v-if="isDirector" class="tw:col-span-3 tw:flex tw:justify-end tw:gap-2">
             <Button size="sm" :disabled="busy(s, slot.seq) || !dirty(s, slot.seq)" @click="save(s, slot)">儲存</Button>
             <Button v-if="draft(s, slot.seq).id" size="sm" variant="ghost" :disabled="busy(s, slot.seq)" @click="remove(s, slot)">清除</Button>
@@ -38,6 +51,7 @@ import { Badge } from './ui/badge';
 import { Button } from './ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { currentTerm } from '../lib/schoolExamTerm';
+import { referenceFor } from '../lib/schoolExamReference';
 import { supabase } from '../supabase';
 
 const props = defineProps({
@@ -78,6 +92,41 @@ function dirty(s, seq) {
   const d = draft(s, seq);
   const o = saved[k(s, seq)] || { start_date: '', end_date: '' };
   return !!d.start_date && !!d.end_date && (d.start_date !== o.start_date || d.end_date !== o.end_date);
+}
+
+// Reference dates (a large static table, loaded on demand). They only fill a draft; saving goes through save().
+const refData = ref(null);
+const importing = ref(false);
+const importNote = ref('');
+const refBySchool = computed(() => Object.fromEntries(schools.value.map((s) => [
+  s.key, referenceFor(refData.value, s.school_name, termObj.value.year, termObj.value.semester),
+])));
+const refOptions = (s, seq) => refBySchool.value[s.key]?.[seq] || [];
+const hasReference = computed(() => Object.values(refBySchool.value).some((r) => Object.keys(r).length > 0));
+const shortDate = (d) => `${Number(d.slice(5, 7))}/${Number(d.slice(8, 10))}`;
+function useReference(s, seq, o) {
+  Object.assign(draft(s, seq), { start_date: o.start_date, end_date: o.end_date });
+}
+// Blank slots (nothing saved, nothing typed) with exactly one reference date: safe to fill without a choice.
+const importable = computed(() => schools.value.flatMap((s) => slots
+  .filter((slot) => refOptions(s, slot.seq).length === 1 && !saved[k(s, slot.seq)] && !draft(s, slot.seq).start_date && !draft(s, slot.seq).end_date)
+  .map((slot) => ({ s, slot }))));
+async function importAll() {
+  if (importing.value) return;
+  importing.value = true;
+  importNote.value = '';
+  const todo = importable.value;
+  let done = 0;
+  try {
+    for (const { s, slot } of todo) {
+      useReference(s, slot.seq, refOptions(s, slot.seq)[0]);
+      await save(s, slot);
+      if (saved[k(s, slot.seq)]) done += 1;
+    }
+  } finally {
+    importing.value = false;
+    importNote.value = `已帶入 ${done} 格${done < todo.length ? `，${todo.length - done} 格沒有成功` : ''}。`;
+  }
 }
 
 async function api(path, options = {}) {
@@ -182,5 +231,12 @@ async function remove(s, slot) {
 }
 
 onMounted(load);
+onMounted(async () => {
+  try {
+    refData.value = (await import('../lib/schoolExamReferenceData.generated.js')).default;
+  } catch {
+    refData.value = null; // the page works without reference dates
+  }
+});
 watch(() => props.branchId, load);
 </script>

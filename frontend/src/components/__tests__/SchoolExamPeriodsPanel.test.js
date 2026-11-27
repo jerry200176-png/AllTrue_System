@@ -4,6 +4,15 @@ import { flushPromises, mount } from '@vue/test-utils';
 vi.mock('../../supabase', () => ({
   supabase: { auth: { getSession: async () => ({ data: { session: { access_token: 't' } } }) } },
 }));
+// Reference dates for the term the panel opens on (whatever today is), for a school the other tests do not use.
+vi.mock('../../lib/schoolExamReferenceData.generated.js', async () => {
+  const { currentTerm: term } = await import('../../lib/schoolExamTerm');
+  return { default: { ...term(), source: '測試來源', rows: [
+    ['臺北市', '乙參考國中', '國中', '第一次期中', 1, '2026-10-13', '2026-10-14'],
+    ['臺北市', '乙參考國中', '七、八年級', '期末', 3, '2027-01-18', '2027-01-19'],
+    ['臺北市', '乙參考國中', '九年級', '期末', 3, '2027-01-05', '2027-01-06'],
+  ] } };
+});
 import Panel from '../SchoolExamPeriodsPanel.vue';
 import { currentTerm } from '../../lib/schoolExamTerm';
 
@@ -42,6 +51,46 @@ describe('各校段考日期 panel', () => {
     await flushPromises();
     const post = f.mock.calls.find(([, o]) => o?.method === 'POST');
     expect(JSON.parse(post[1].body)).toMatchObject({ seq: 1, school_name: '甲測試國中', start_date: '2026-10-20', end_date: '2026-10-22' });
+  });
+
+  it('offers reference dates: a chip fills the draft, and the fill button saves only blank slots with one choice', async () => {
+    const f = vi.fn(async (input, options = {}) => {
+      const body = String(input).includes('/schools')
+        ? { data: [{ key: '乙參考國中', school_name: '臺北市立乙參考國民中學', student_count: 2, variants: ['乙參考國中'] }] }
+        : options.method === 'POST' ? { data: { id: 11 } } : { data: [] };
+      return { ok: true, json: async () => body };
+    });
+    vi.stubGlobal('fetch', f);
+    const w = mount(Panel, { props: { branchId: 1, isDirector: true } });
+    await flushPromises();
+    await flushPromises();
+    expect(w.text()).toContain('測試來源');
+    const chips = w.findAll('button').filter((b) => /\d+\/\d+–\d+\/\d+/.test(b.text()));
+    expect(chips.map((b) => b.text().replace(/\s+/g, ' '))).toEqual(['國中 10/13–10/14', '七、八年級 1/18–1/19', '九年級 1/5–1/6']);
+    // 期末 has two choices: a chip only fills the two date boxes, nothing is sent.
+    await chips[2].trigger('click');
+    const dates = w.findAll('input[type="date"]').map((i) => i.element.value);
+    expect(dates.slice(4)).toEqual(['2027-01-05', '2027-01-06']);
+    expect(f.mock.calls.some(([, o]) => o?.method === 'POST')).toBe(false);
+    // The fill button takes the one blank slot that has a single choice (段考一), and leaves 期末 to the director.
+    const fill = w.findAll('button').find((b) => b.text().includes('帶入參考日期'));
+    expect(fill.text()).toContain('1 格空白');
+    await fill.trigger('click');
+    await flushPromises();
+    const posts = f.mock.calls.filter(([, o]) => o?.method === 'POST').map(([, o]) => JSON.parse(o.body));
+    expect(posts).toHaveLength(1);
+    expect(posts[0]).toMatchObject({ seq: 1, school_name: '臺北市立乙參考國民中學', start_date: '2026-10-13', end_date: '2026-10-14' });
+    expect(w.text()).toContain('已帶入 1 格');
+    expect(w.findAll('button').some((b) => b.text().includes('帶入參考日期'))).toBe(false);
+  });
+
+  it('shows no reference controls to a teacher or for a school without reference dates', async () => {
+    stub();
+    const w = mount(Panel, { props: { branchId: 1, isDirector: true } });
+    await flushPromises();
+    await flushPromises();
+    expect(w.text()).not.toContain('測試來源');
+    expect(w.findAll('button').some((b) => b.text().includes('帶入參考日期'))).toBe(false);
   });
 
   it('teacher gets read-only inputs and no save button', async () => {
