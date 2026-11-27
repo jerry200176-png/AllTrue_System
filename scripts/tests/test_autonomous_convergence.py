@@ -139,18 +139,35 @@ class AutonomousConvergenceTest(unittest.TestCase):
 
 
 class PatchlessDataFileTest(unittest.TestCase):
-    """deploy.yml tolerates a missing GitHub patch for exactly one generated data file (Founder 2026-11-28)."""
+    """deploy.yml tolerates a missing GitHub patch for one generated data file, after reading it (Founder 2026-11-28)."""
 
-    def test_only_the_exam_reference_data_file_may_ride_without_a_patch(self):
+    ROOT = WORKFLOW.parents[2]
+
+    def test_deploy_reads_the_blob_and_only_for_the_exam_reference_data_file(self):
         deploy = (WORKFLOW.parent / "deploy.yml").read_text(encoding="utf-8")
-        self.assertEqual(deploy.count("patchless_data_file = ("), 1)
-        self.assertIn('path == "frontend/src/lib/schoolExamReferenceData.generated.js"', deploy)
-        self.assertIn('and item.get("status") == "modified" and not item.get("previous_filename")', deploy)
-        self.assertIn("if item_patch is None and not patchless_data_file:", deploy)
-        self.assertEqual(deploy.count("if item_patch is None"), 1, "no second, unguarded patch check")
-        # The file stays pure data: one export of a JSON literal, nothing executable.
-        data = (WORKFLOW.parents[2] / "frontend/src/lib/schoolExamReferenceData.generated.js").read_text(encoding="utf-8")
-        self.assertNotRegex(data, r"\b(import|require|function|=>|eval|fetch|window|document)\b")
+        self.assertEqual(deploy.count("if item_patch is None"), 1, "one patch check")
+        self.assertIn("if item_patch is None and not patchless_exam_data(item):", deploy)
+        self.assertIn('item.get("filename") != EXAM_REFERENCE_DATA_PATH or item.get("status") != "modified"', deploy)
+        self.assertIn("return exam_reference_data_is_pure(base64.b64decode(", deploy)
+
+    def test_the_committed_file_is_pure_data_and_code_is_refused(self):
+        sys.path.insert(0, str(self.ROOT))
+        from scripts.governance.autonomy_gate import EXAM_REFERENCE_DATA_PATH, exam_reference_data_is_pure as pure
+
+        good = (self.ROOT / EXAM_REFERENCE_DATA_PATH).read_text(encoding="utf-8")
+        self.assertTrue(pure(good))
+        for bad in (
+            good.replace("export default {", "fetch('/x');\nexport default {", 1),
+            good.replace("  rows: [\n", "  rows: [\n    [alert(1)],\n", 1),
+            good.replace("  rows: [\n", "  rows: [\n    [\"a\",[1]],\n", 1),
+            good.replace("  rows: [\n", "  rows: [\n    [\"a\"], x(),\n", 1),
+            good.replace("  rows: [\n", "  hook: (() => 1)(),\n  rows: [\n", 1),
+            good.replace("  source: '", "  source: '' + evil() + '", 1),
+            good + "window.x = 1;\n",
+            good.replace("};\n", "}; // tail\nimport('x');\n"),
+            "", None, "x" * 2_000_001,
+        ):
+            self.assertFalse(pure(bad), str(bad)[:60] if bad else repr(bad))
 
 
 if __name__ == "__main__":
