@@ -8,6 +8,7 @@ test('school names written different ways meet at one name', () => {
   assert.deepEqual(normalizeSchool('台北市大安國中'), { city: '臺北市', name: '大安國中' });
   assert.deepEqual(normalizeSchool(' 中正國中（臺北） '), { city: '臺北', name: '中正國中' });
   assert.deepEqual(normalizeSchool('南榮國中（代用）'), { city: '', name: '南榮國中' });
+  assert.deepEqual(normalizeSchool('臺中市私立葳格高級中學附設小學（北屯校區）'), { city: '臺中市', name: '葳格高中附設小學（北屯校區）' });
   assert.deepEqual(normalizeSchool('中正國中（臺北市）'), { city: '臺北市', name: '中正國中' });
   assert.deepEqual(normalizeSchool('臺北市私立再興中學'), { city: '臺北市', name: '再興中學' });
   assert.deepEqual(normalizeSchool('國立師大附中'), { city: '', name: '師大附中' });
@@ -35,6 +36,9 @@ const sample = buildReferenceIndex({ year: 115, semester: 1, rows: [
   ['屏東縣', '中正國中（屏東）', '國中', '第一次期中', 1, '2026-10-15', '2026-10-16'],
   ['新竹市', '光華國中（新竹）', '國中', '期末', 3, '2027-01-18', '2027-01-19'],
   ['新竹縣', '光華國中', '國中', '期末', 3, '2027-01-14', '2027-01-15'],
+  ['臺北市', '建國中學', '高一二', '期末', 3, '2027-01-18', '2027-01-20'],
+  ['臺中市', '臺中市私立葳格高級中學附設小學（北屯校區）', '全校', '期末', 3, '2027-01-12', '2027-01-13'],
+  ['臺中市', '臺中市私立葳格高級中學附設小學（西屯校區）', '全校', '期末', 3, '2027-01-14', '2027-01-15'],
 ] });
 
 test('a school gets its options per slot, only for the matching term', () => {
@@ -63,4 +67,14 @@ test('a name alone is never sure; the city in the name, or the chosen city, narr
   // A two-character city in brackets cannot tell 市 from 縣: both are offered and it is not sure.
   const loose = referenceFor(sample, '光華國中（新竹）', 115, 1);
   assert.deepEqual([loose.sure, loose.slots[3].length], [false, 2]);
+});
+
+test('other spellings of the school are tried too, and a campus in brackets is part of the name', () => {
+  // The list shows the official name; the table uses the everyday one, which a student typed.
+  assert.deepEqual(referenceFor(sample, '臺北市立建國高級中學', 115, 1).slots, {});
+  const alias = referenceFor(sample, ['臺北市立建國高級中學', '建國中學', '建中'], 115, 1);
+  assert.deepEqual([alias.sure, alias.slots[3].map((o) => o.start_date)], [true, ['2027-01-18']]);
+  const campus = referenceFor(sample, '臺中市私立葳格高級中學附設小學（西屯校區）', 115, 1);
+  assert.deepEqual([campus.sure, campus.slots[3].map((o) => o.start_date)], [true, ['2027-01-14']]);
+  assert.deepEqual(referenceFor(sample, '臺中市私立葳格高級中學附設小學', 115, 1).slots, {}); // which campus? not guessed
 });

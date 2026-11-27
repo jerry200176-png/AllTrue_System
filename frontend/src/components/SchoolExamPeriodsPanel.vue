@@ -7,7 +7,7 @@
       </select>
       <template v-if="isDirector && refAvailable">
         <label class="tw:ml-auto tw:text-sm" for="sep-city">參考縣市</label>
-        <select id="sep-city" v-model="city" class="tw:h-9 tw:rounded-md tw:border tw:bg-background tw:px-2 tw:text-sm" @change="rememberCity">
+        <select id="sep-city" v-model="city" class="tw:h-9 tw:rounded-md tw:border tw:bg-background tw:px-2 tw:text-sm" :disabled="importing" @change="rememberCity">
           <option value="">全部（不自動帶入）</option>
           <option v-for="c in CITIES" :key="c" :value="c">{{ c }}</option>
         </select>
@@ -115,7 +115,7 @@ function rememberCity() {
   try { localStorage.setItem(cityKey(), city.value); } catch { /* the choice just lasts for this visit */ }
 }
 const refBySchool = computed(() => Object.fromEntries(schools.value.map((s) => [
-  s.key, referenceFor(refIndex.value, s.school_name, termObj.value.year, termObj.value.semester, city.value),
+  s.key, referenceFor(refIndex.value, [s.school_name, ...(s.variants || [])], termObj.value.year, termObj.value.semester, city.value),
 ])));
 const refOptions = (s, seq) => refBySchool.value[s.key]?.slots[seq] || [];
 // The table covers one term. The city choice stays visible for that term even when the chosen city matches nothing,

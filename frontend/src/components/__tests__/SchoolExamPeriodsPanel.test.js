@@ -129,6 +129,7 @@ describe('各校段考日期 panel', () => {
     const w = mount(Panel, { props: { branchId: 1, isDirector: true } });
     await vi.waitFor(() => expect(fillBtn(w)?.text()).toContain('1 格'));
     await fillBtn(w).trigger('click');
+    expect(w.find('#sep-city').attributes('disabled')).toBeDefined(); // the city cannot change under a running fill
     await w.setProps({ branchId: 2 });
     await flushPromises();
     release();

@@ -6,14 +6,15 @@ const SHORT = new Set(CITIES.map((c) => c.slice(0, 2)));
 
 /**
  * "臺北市立大安國民中學" becomes { city: '臺北市', name: '大安國中' }; "大安國中（臺北）" gives city '臺北' (two characters:
- * the writer did not say 市 or 縣); no city gives ''. Any other trailing bracket, such as （代用）, is dropped.
+ * the writer did not say 市 or 縣); no city gives ''.
  */
 export function normalizeSchool(raw) {
   let s = String(raw || '').replace(/\s+/g, '').replace(/台/g, '臺');
   let city = '';
   const tail = s.match(/[（(]([^（()）]*)[）)]$/);
-  if (tail) {
-    if (SHORT.has(tail[1]) || CITIES.includes(tail[1])) city = tail[1];
+  // Only a city or （代用） is dropped; anything else, such as （北屯校區）, says which school it is and stays.
+  if (tail && (SHORT.has(tail[1]) || CITIES.includes(tail[1]) || tail[1] === '代用')) {
+    if (tail[1] !== '代用') city = tail[1];
     s = s.slice(0, tail.index);
   }
   const head = CITIES.find((c) => s.startsWith(c) && s.length > c.length + 2);
@@ -42,18 +43,19 @@ const inCity = (rowCity, city) => rowCity === city || (city.length === 2 && rowC
 
 /**
  * Reference options for one school and term, by slot: { 1: [{ label, city, start_date, end_date }], ... }.
- * The city written in the school name decides; otherwise `city` (the one the director picked) does; with neither,
- * every school of that name is offered. Each option carries its city so the screen can always show it.
- * `sure` on the result says a city narrowed the match (only then is filling without a look acceptable).
+ * `names` is the school's name plus the other spellings people typed for it (the list shows a catalogued school under
+ * its official name, e.g. 臺北市立建國高級中學, while the table says 建國中學). The city written in a name decides;
+ * otherwise `city` (the one the director picked) does; with neither, every school of that name is offered.
+ * `sure` says the match is one school in one city (only then is filling without a look acceptable).
  */
-export function referenceFor(index, schoolName, year, semester, city = '') {
+export function referenceFor(index, names, year, semester, city = '') {
   const out = { sure: false, slots: {} };
   if (!index || index.year !== year || index.semester !== semester) return out;
-  const want = normalizeSchool(schoolName);
-  const use = want.city || city;
-  let hits = index.byName.get(want.name) || [];
+  const wants = [names].flat().map(normalizeSchool).filter((w) => w.name);
+  const use = wants.find((w) => w.city)?.city || city;
+  let hits = [...new Set(wants.map((w) => w.name))].flatMap((name) => index.byName.get(name) || []);
   if (use) hits = hits.filter((r) => inCity(r[0], use));
-  out.sure = !!use && new Set(hits.map((r) => r[0])).size === 1;
+  out.sure = !!use && new Set(hits.map((r) => `${r[0]}|${r[1]}`)).size === 1;
   for (const [rowCity, , grade, exam, seq, start, end] of hits) {
     const variant = /[（(]/.test(exam) ? exam.slice(exam.search(/[（(]/)) : '';
     (out.slots[seq] ||= []).push({ label: `${grade}${variant}`, city: rowCity, start_date: start, end_date: end });
