@@ -98,6 +98,7 @@ final class SessionEntitlementTransferService
         $this->assertAuditStringsFit($reason, $decisionReference, $actor);
 
         return DB::transaction(function () use ($sourceClassId, $targetClassId, $sessionId, $reason, $decisionReference, $decidedByUserId, $actor) {
+            $this->lockCoursePair($sourceClassId, $targetClassId);
             $source = $this->lockedStudentClass($sourceClassId);
             $target = $this->lockedStudentClass($targetClassId);
             $session = $this->lockedClassSession($sessionId);
@@ -157,6 +158,7 @@ final class SessionEntitlementTransferService
             $sourceId = (int) $transfer->getAttribute('source_student_class_id');
             $targetId = (int) $transfer->getAttribute('target_student_class_id');
             $sessionId = (int) $transfer->getAttribute('class_session_id');
+            $this->lockCoursePair($sourceId, $targetId);
             $source = $this->lockedStudentClass($sourceId);
             $target = $this->lockedStudentClass($targetId);
             $session = $this->lockedClassSession($sessionId);
@@ -316,6 +318,15 @@ final class SessionEntitlementTransferService
     private function requireClassSession(int $id): ClassSession
     {
         return $this->classSession($id) ?? throw new RuntimeException("ClassSession {$id} not found");
+    }
+
+    /**
+     * Take both course locks in ascending ID order, like every other writer that holds two courses (payment,
+     * transfer-sessions, monthly correction), so a move from the higher ID to the lower one cannot deadlock them.
+     */
+    private function lockCoursePair(int $a, int $b): void
+    {
+        StudentClass::query()->whereIn('ID', [$a, $b])->orderBy('ID')->lockForUpdate()->get();
     }
 
     private function lockedStudentClass(int $id): StudentClass

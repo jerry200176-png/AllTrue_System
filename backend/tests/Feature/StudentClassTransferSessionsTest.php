@@ -1039,6 +1039,13 @@ class StudentClassTransferSessionsTest extends TestCase
             'VoidReason' => '由已上調整狀態',
         ]);
 
+        $lockLog = [];
+        DB::listen(function ($query) use (&$lockLog) {
+            $sql = strtolower($query->sql);
+            // The route's refund guard (RefuseTerminalClosure) reads closed_reason with a lock outside any transaction,
+            // so that lock is gone before the service starts; only locks held together matter here.
+            if (str_contains($sql, 'from `studentclass`') && str_contains($sql, ' for update') && !str_contains($sql, 'select `closed_reason`')) $lockLog[] = $sql;
+        });
         $response = $this->postJson(
             "/api/v1/student-classes/{$source->ID}/recover-transfer-sessions",
             [
@@ -1052,6 +1059,9 @@ class StudentClassTransferSessionsTest extends TestCase
         $response->assertOk()
             ->assertJsonPath('recovered_session_ids.0', $sessionId)
             ->assertJsonPath('transferred_session_ids.0', $sessionId);
+        // #4263: both course locks come first, in one ascending-ID query.
+        $this->assertStringContainsString('`id` in (?, ?)', $lockLog[0] ?? '');
+        $this->assertStringContainsString('order by `id` asc for update', $lockLog[0] ?? '');
         $this->assertSame('attended', DB::table('ClassSession')->where('id', $sessionId)->value('Status'));
         $this->assertSame((int) $target->ID, (int) DB::table('ClassSession')->where('id', $sessionId)->value('StudentClassID'));
         $this->assertSame('取消前已填寫的評量', DB::table('LearningRecord')->where('ClassSessionID', $sessionId)->value('Content'));
