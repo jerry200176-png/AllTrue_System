@@ -20,6 +20,12 @@ class SchoolNameGrouper
         return mb_substr($this->canonical($raw) ?? trim($raw), 0, 64);
     }
 
+    /** True when the text is exactly a catalogued school name or alias. */
+    public function isCatalogued(string $raw): bool
+    {
+        return $this->canonical($raw) !== null;
+    }
+
     private function canonical(string $raw): ?string
     {
         $q = $this->directory->normalize($raw);
