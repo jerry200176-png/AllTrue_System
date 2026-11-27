@@ -25,6 +25,12 @@
       </CardHeader>
       <CardContent class="tw:px-4">
       <fieldset :disabled="saving" class="tw:m-0 tw:min-w-0 tw:space-y-3 tw:border-0 tw:p-0">
+        <label v-if="isDirector && !editor.id && catalogOptions.length" class="tw:flex tw:flex-col tw:gap-1 tw:text-sm">從出版社目錄帶入（選填，會取代下面的單元，帶入後可以再改）
+          <select aria-label="從出版社目錄帶入" :class="FIELD" @change="applyCatalog($event.target.value); $event.target.value = ''">
+            <option value="">不帶入，自己填</option>
+            <option v-for="c in catalogOptions" :key="c.key" :value="c.key">{{ c.label }}</option>
+          </select>
+        </label>
         <div class="tw:grid tw:grid-cols-1 tw:gap-2 tw:sm:grid-cols-2">
           <label class="tw:flex tw:flex-col tw:gap-1 tw:text-sm">範本名稱
             <input v-model.trim="editor.title" maxlength="120" :disabled="!isDirector" :class="FIELD" placeholder="例如：七年級上學期數學" />
@@ -129,6 +135,7 @@ import { Badge } from './ui/badge';
 import { Button } from './ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { GRADES, SUBJECTS } from '../lib/constants';
+import { catalogFor, catalogUnits } from '../lib/curriculumCatalog';
 import ConfirmDialog from './app-overlay/ConfirmDialog.vue';
 import { Skeleton } from './ui/skeleton';
 import { authedFetch } from '../lib/authedFetch';
@@ -206,6 +213,16 @@ function startCreate() {
     id: null, title: '', publisher: '', status: 'draft', units: [],
     subject: filters.subject || SUBJECTS[0].value, grade: filters.grade || GRADES[0].value,
   };
+}
+
+// Publisher tables of contents for the subject and grade being created; picking one only fills the form.
+const catalogOptions = computed(() => (editor.value ? catalogFor(editor.value.subject, editor.value.grade) : []));
+function applyCatalog(key) {
+  const c = catalogOptions.value.find((x) => x.key === key);
+  if (!c) return;
+  editor.value.title = c.label;
+  editor.value.publisher = c.publisher;
+  editor.value.units = catalogUnits(c).map(newUnit);
 }
 
 let openSeq = 0; // a newer open, create or branch switch invalidates a pending detail load

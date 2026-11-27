@@ -68,6 +68,38 @@ describe('教材範本庫 panel', () => {
     expect(w.find('.ctp-editor').exists()).toBe(false);
   });
 
+  it('fills a new template from a publisher catalog entry, still editable, and saves it through the normal save', async () => {
+    const f = stub();
+    const w = mount(Panel, { props: { branchId: 1, isDirector: true } });
+    await flushPromises();
+    await w.find('select[aria-label="科目"]').setValue('Math');
+    await w.find('select[aria-label="年級"]').setValue('J1');
+    await flushPromises();
+    await btn(w, '新增範本').trigger('click');
+    const pick = w.find('select[aria-label="從出版社目錄帶入"]');
+    expect(pick.text()).toContain('七年級上學期數學（康軒）');
+    await pick.setValue('Math-J1-1-翰林');
+    expect(w.find('input[aria-label="單元 1 名稱"]').element.value).toBe('1-1 正數與負數');
+    await w.find('input[aria-label="單元 1 名稱"]').setValue('1-1 我改過');
+    await btn(w, '儲存').trigger('click');
+    await flushPromises();
+    expect(bodyOf(f, 'POST')).toMatchObject({ title: '七年級上學期數學（翰林）', publisher: '翰林', subject: 'Math', grade: 'J1', status: 'draft' });
+    const units = bodyOf(f, 'PUT').units;
+    expect(units.length).toBe(11);
+    expect(units[0]).toEqual({ title: '1-1 我改過', note: '第一章 數與數線', exam_sequence: null });
+  });
+
+  it('offers no catalog picker when the subject and grade have no catalog, or when editing', async () => {
+    stub();
+    const w = mount(Panel, { props: { branchId: 1, isDirector: true } });
+    await flushPromises();
+    await btn(w, '新增範本').trigger('click');
+    expect(w.find('select[aria-label="從出版社目錄帶入"]').exists()).toBe(false); // default subject is 國文
+    await btn(w, '編輯').trigger('click');
+    await flushPromises();
+    expect(w.find('select[aria-label="從出版社目錄帶入"]').exists()).toBe(false);
+  });
+
   it('reorders units with up/down and sends the new order', async () => {
     const f = stub();
     const w = mount(Panel, { props: { branchId: 1, isDirector: true } });
