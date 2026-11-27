@@ -471,9 +471,9 @@ class AlertController extends Controller
                 // changed here, and no session/billing row is touched.
                 $currentEndDate = $sc && $sc->EndDate ? substr((string) $sc->EndDate, 0, 10) : null;
                 $newerCourseOverlap = $newerInfo
-                    && !empty($newerInfo['start_date'])
+                    && !empty($newerInfo['overlap_start_date'])
                     && $currentEndDate !== null
-                    && $currentEndDate >= $newerInfo['start_date'];
+                    && $currentEndDate >= $newerInfo['overlap_start_date'];
 
                 return $row + [
                     'closed_reason'            => $sc?->getAttribute('closed_reason'),
@@ -519,7 +519,7 @@ class AlertController extends Controller
                     'renewed_by_newer_course'  => (bool) ($newerInfo['renewed'] ?? false),
                     'newer_course_id'          => $newerInfo['newer_id'] ?? null,
                     'newer_course_remaining'   => $newerInfo['remaining'] ?? null,
-                    'newer_course_start_date'  => $newerInfo['start_date'] ?? null,
+                    'newer_course_start_date'  => $newerCourseOverlap ? $newerInfo['overlap_start_date'] : ($newerInfo['start_date'] ?? null),
                     'current_course_end_date'  => $currentEndDate,
                     'newer_course_overlap'     => $newerCourseOverlap,
                     'invoice_stored_amount'    => $invoiceProjection['stored_total_amount'] ?? null,
@@ -1193,7 +1193,7 @@ class AlertController extends Controller
      * StudentID + SubjectID but a higher ID.
      *
      * @param  int[]  $studentClassIds
-     * @return array<int, array{newer_id: int, remaining: int, start_date: string|null, renewed: bool}>
+     * @return array<int, array{newer_id: int, remaining: int, start_date: string|null, overlap_start_date: string|null, renewed: bool}>
      */
     public static function newerCourseByStudentClassIds(array $studentClassIds): array
     {
@@ -1212,7 +1212,7 @@ class AlertController extends Controller
 
         $candidates = StudentClass::where('Stop', 0)
             ->whereIn('StudentID', $pairs->pluck('sid')->unique())
-            ->get(['ID', 'StudentID', 'SubjectID', 'RemainingSessions', 'StartDate', 'ClassType', 'Charge', 'Rate']);
+            ->get(['ID', 'StudentID', 'SubjectID', 'RemainingSessions', 'StartDate', 'ClassType', 'Charge', 'Rate', 'ScheduleMode']);
         $byKey = $candidates->groupBy(fn ($c) => $c->StudentID . '-' . $c->SubjectID);
 
         // Listed courses are candidates too (in-app #495). The nearest later course is the overlap
@@ -1224,10 +1224,14 @@ class AlertController extends Controller
             if ($newer === null) {
                 continue;
             }
+            // in-app #601: a later 堂數制 contract with nothing left (a one-lesson add-on used the same day) is not a next
+            // term this one can run into; the overlap check reads the nearest later contract that can still hold lessons.
+            $next = $later->first(fn ($c) => ($c->ScheduleMode ?? 'count') === 'date' || (int) ($c->RemainingSessions ?? 0) > 0);
             $map[$p['id']] = [
                 'newer_id'   => (int) $newer->ID,
                 'remaining'  => (int) ($newer->RemainingSessions ?? 0),
                 'start_date' => $newer->StartDate ? substr($newer->StartDate, 0, 10) : null,
+                'overlap_start_date' => $next?->StartDate ? substr($next->StartDate, 0, 10) : null,
                 // Only a priced, non-tutoring course is a purchased renewal; free tutoring or a free trial is not (Codex P2s on #4887).
                 'renewed'    => $later->contains(fn ($c) => strtolower(trim((string) ($c->ClassType ?? ''))) !== 'tutoring'
                     && ((float) ($c->Charge ?? 0) > 0 || (float) ($c->Rate ?? 0) > 0)),

@@ -1162,6 +1162,26 @@ class TuitionAlertsApiTest extends TestCase
         $this->assertSame('2026-08-05', substr((string) StudentClass::find($courseB->ID)->StartDate, 0, 10), 'read-only flag must not mutate B StartDate');
     }
 
+    /** in-app #601: a one-lesson add-on bought and used inside the running term is not a next term to overlap with. */
+    public function test_newer_course_overlap_ignores_a_finished_add_on_but_not_the_real_next_term(): void
+    {
+        $token = $this->createDirectorToken([1], 'overlap-addon@example.com');
+        $student = Student::create(['name' => '期中加購單堂', 'CampusID' => 1, 'ClassID' => 1, 'enable' => 1, 'MDT' => now(), 'Notify_Token' => '']);
+        $term = $this->createCountModeClass($student->id, ['Paid' => 0, 'RemainingSessions' => 3, 'Charge' => 8000, 'SubjectID' => 88, 'EndDate' => '2026-11-30']);
+        $addOn = $this->createCountModeClass($student->id, ['Paid' => 1, 'RemainingSessions' => 0, 'SessionCount' => 1, 'Charge' => 1000, 'SubjectID' => 88,
+            'StartDate' => '2026-10-20', 'EndDate' => '2026-10-20']);
+        $rowFor = fn () => collect($this->withToken($token)->getJson('/api/v1/alerts/tuition?branch_id=1')->assertOk()->json())->firstWhere('id', $term->ID);
+
+        $row = $rowFor();
+        $this->assertSame($addOn->ID, $row['newer_course_id'], 'the add-on is still the newer contract');
+        $this->assertFalse($row['newer_course_overlap'], 'nothing left on it: not a next term');
+
+        $this->createCountModeClass($student->id, ['Paid' => 1, 'RemainingSessions' => 8, 'Charge' => 8000, 'SubjectID' => 88, 'StartDate' => '2026-11-25']);
+        $row = $rowFor();
+        $this->assertTrue($row['newer_course_overlap'], 'the real next term behind the add-on is still checked');
+        $this->assertSame('2026-11-25', $row['newer_course_start_date']);
+    }
+
     public function test_newer_course_overlap_false_when_end_date_precedes_newer_course_start(): void
     {
         $token = $this->createDirectorToken([1], 'overlap-false@example.com');
