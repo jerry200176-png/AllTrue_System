@@ -198,7 +198,7 @@ export function formatNewerCourseOverlapWarning(row) {
   const what = endDate && startDate ? `這一期到 ${endDate} 才結束，下一期卻 ${startDate} 就開課。` : '這一期和下一期的日期疊在一起。';
   return {
     show: true,
-    primary: `${what}請到課程管理把下一期的開課日往後改。`,
+    primary: `${what}請到課程查找把下一期的開課日往後改。`,
     shortBadge: '期間重疊',
   };
 }
