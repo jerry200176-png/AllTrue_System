@@ -226,6 +226,8 @@ class StudentClassController extends Controller
         $pricingToday = app(\App\Services\StudentClassPricingService::class);
         $todayTaipei = now('Asia/Taipei')->toDateString();
         $paidAtMap = ContractMoneyState::lastPaidAtByStudentClassIds($classIds);
+        // A contract with any Payment row never falls back to the legacy PayDate: a fully reversed receipt has no date (#4150).
+        $paymentHistoryMap = app(\App\Services\BillingPayableResolver::class)->studentClassIdsWithPaymentHistory($classIds);
         $invoiceAggMap = ContractMoneyState::invoiceAggregateByStudentClassIds($classIds);
         $monthlyPayments = app(\App\Services\MonthlyPeriodPaymentService::class)->batch(collect($classes->items()));
         // F7 S3b: one resolver batch per page is the payment_status authority (B7).
@@ -356,7 +358,7 @@ class StudentClassController extends Controller
             }
         }
 
-        $classes->getCollection()->transform(function ($class) use ($pricingToday, $todayTaipei, $monthlyPayments, $courseNames, $subjectNames, $teacherNames, $userStatuses, $observedUsedByClass, $usageDiagnosticsByClass, $sessionSlotsByClassId, $contractExceptionCountByClassId, $paidAtMap, $invoiceAggMap, $pendingReportByClassId, $latestPaymentSummaryByClassId, $packageMap, $packagePlanningMap, $role, $courseStatuses, $paymentEvidence, $arCandidates) {
+        $classes->getCollection()->transform(function ($class) use ($pricingToday, $todayTaipei, $monthlyPayments, $courseNames, $subjectNames, $teacherNames, $userStatuses, $observedUsedByClass, $usageDiagnosticsByClass, $sessionSlotsByClassId, $contractExceptionCountByClassId, $paidAtMap, $paymentHistoryMap, $invoiceAggMap, $pendingReportByClassId, $latestPaymentSummaryByClassId, $packageMap, $packagePlanningMap, $role, $courseStatuses, $paymentEvidence, $arCandidates) {
             $class->setAttribute('subject_name', $courseNames[$class->SubjectID]
                 ?? $subjectNames[$class->SubjectID]
                 ?? null);
@@ -655,7 +657,7 @@ class StudentClassController extends Controller
             $class->setAttribute('latest_payment_report_id', $pendingReportId);
             $class->setAttribute('latest_payment_summary', $latestPaymentSummaryByClassId[(int) $class->ID] ?? null);
             $class->setAttribute('paid_at', $directPaidAt);
-            $class->setAttribute('last_paid_at', $invoicePaidAt ?? $directPaidAt);
+            $class->setAttribute('last_paid_at', $invoicePaidAt ?? (isset($paymentHistoryMap[(int) $class->ID]) ? null : $directPaidAt));
             if (!$isTutoringCourse && isset($monthlyPayments[(int) $class->ID])) {
                 $monthlyPayment = app(\App\Services\MonthlyPeriodPaymentService::class)->forDisplay($monthlyPayments[(int) $class->ID]); // in-app #510: display only
                 // #4798: a director's 已核對 (resolver verdict) settles the period summary too, so course management agrees.
