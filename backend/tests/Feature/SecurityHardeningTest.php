@@ -364,10 +364,12 @@ class SecurityHardeningTest extends TestCase
         $rfid = fn ($cid) => \Illuminate\Support\Facades\DB::table('UserCampus')->where('UserID', $teacher->id)->where('CampusID', $cid)->value('RFID');
 
         $refused = $this->withHeaders(['Authorization' => "Bearer {$token}"])
-            ->putJson("/api/v1/profiles/{$teacher->id}", ['rfid_by_branch' => [
+            ->putJson("/api/v1/profiles/{$teacher->id}", ['username' => 'RenamedAtomic', 'rfid_by_branch' => [
                 (string) $this->campus->id => 'NEW-1', (string) $otherCampusId => 'TAKEN-2',
             ]])->assertStatus(422);
         $this->assertStringContainsString('已被其他老師使用', (string) $refused->json('message'));
+        // #3758: the whole save is one transaction, so the name sent with the refused card is not saved either.
+        $this->assertSame('TeacherAtomic', $teacher->fresh()->Name);
         $this->assertSame('KEEP-1', $rfid($this->campus->id));
         $this->assertSame('KEEP-2', $rfid($otherCampusId));
 
