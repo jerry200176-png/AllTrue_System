@@ -39,10 +39,10 @@
       <template #actions>
         <StatusBadge>{{ s.student_count }} 人</StatusBadge>
       </template>
-      <p v-if="s.variants.length > 1" class="tw:m-0 tw:px-5 tw:pb-3 tw:text-tpl-caption tw:text-tpl-secondary">可能同校：{{ s.variants.join('、') }}</p>
+      <p v-if="s.variants.length > 1" class="tw:m-0 tw:px-4 tw:pb-3 tw:md:px-5 tw:text-tpl-caption tw:text-tpl-secondary">可能同校：{{ s.variants.join('、') }}</p>
       <ul class="tw:m-0 tw:list-none tw:p-0">
         <li v-for="slot in slots" :key="slot.seq" class="sep-row tw:flex tw:min-h-18 tw:flex-wrap tw:items-center tw:gap-x-4 tw:gap-y-2 tw:border-t tw:border-border tw:px-4 tw:py-3 tw:md:px-5">
-          <span class="tw:w-14 tw:shrink-0 tw:font-semibold">{{ slot.short }}</span>
+          <span class="tw:w-16 tw:shrink-0 tw:font-semibold tw:whitespace-nowrap">{{ slot.short }}</span>
           <div class="tw:grid tw:min-w-0 tw:flex-1 tw:basis-72 tw:grid-cols-2 tw:gap-2">
             <Input v-model="draft(s, slot.seq).start_date" type="date" :disabled="!isDirector || busy(s, slot.seq)" :aria-label="`${s.school_name} ${slot.short} 開始`" :class="field" />
             <Input v-model="draft(s, slot.seq).end_date" type="date" :disabled="!isDirector || busy(s, slot.seq)" :aria-label="`${s.school_name} ${slot.short} 結束`" :class="field" />
@@ -82,7 +82,7 @@ const props = defineProps({
 });
 
 const field = 'tw:h-11 tw:text-[length:var(--tpl-text-body)] tw:md:text-[length:var(--tpl-text-body)]';
-const selectClass = 'tw:h-12 tw:w-auto tw:min-w-0 tw:flex-1 tw:rounded-2xl tw:text-tpl-body tw:md:flex-none';
+const selectClass = 'tw:h-12 tw:w-auto tw:min-w-0 tw:flex-1 tw:rounded-full tw:px-4 tw:text-tpl-body tw:md:flex-none';
 const slots = [
   { seq: 1, label: '第一次段考', short: '段考一' },
   { seq: 2, label: '第二次段考', short: '段考二' },
