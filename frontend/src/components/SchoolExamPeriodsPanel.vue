@@ -9,7 +9,7 @@
         <label class="tw:ml-auto tw:text-sm" for="sep-city">參考縣市</label>
         <select id="sep-city" v-model="city" class="tw:h-9 tw:rounded-md tw:border tw:bg-background tw:px-2 tw:text-sm" :disabled="importing" @change="rememberCity">
           <option value="">全部（不自動帶入）</option>
-          <option v-for="c in CITIES" :key="c" :value="c">{{ c }}</option>
+          <option v-for="c in refIndex.cities" :key="c" :value="c">{{ c }}</option>
         </select>
         <Button size="sm" variant="outline" :disabled="importing || !importable.length" @click="importAll">
           帶入參考日期（{{ importable.length }} 格）
@@ -17,7 +17,7 @@
       </template>
     </div>
     <p v-if="isDirector && refAvailable" class="tw:text-xs tw:text-muted-foreground">
-      參考日期來自 {{ refSource }}，請以學校公告為準。先選縣市，「帶入」才會把那個縣市、還沒登記、而且只有一個全校適用的參考日期的格子填好並儲存；其他的請自己按參考日期再按儲存。
+      參考日期來自 {{ refSource }}（目前只有{{ refIndex.cities.join('、') }}），請以學校公告為準。先選縣市，「帶入」才會把那個縣市、還沒登記、而且只有一個全校適用的參考日期的格子填好並儲存；其他的請自己按參考日期再按儲存。
     </p>
     <p v-if="importNote" role="status" class="tw:text-sm">{{ importNote }}</p>
     <p v-if="error" role="alert" class="tw:text-sm tw:text-destructive">{{ error }}</p>

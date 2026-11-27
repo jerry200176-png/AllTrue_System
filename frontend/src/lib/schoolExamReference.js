@@ -29,7 +29,7 @@ export function normalizeSchool(raw) {
   return { city, name: s };
 }
 
-/** One pass over the data: normalized school name -> its rows. Build once when the data arrives. */
+/** One pass over the data: normalized school name -> its rows, and the cities the table covers. Build once. */
 export function buildReferenceIndex(data) {
   const byName = new Map();
   for (const row of data?.rows || []) {
@@ -37,7 +37,7 @@ export function buildReferenceIndex(data) {
     if (!byName.has(name)) byName.set(name, []);
     byName.get(name).push(row);
   }
-  return { year: data?.year, semester: data?.semester, byName };
+  return { year: data?.year, semester: data?.semester, byName, cities: [...new Set((data?.rows || []).map((r) => r[0]))] };
 }
 
 const inCity = (rowCity, city) => rowCity === city || (city.length === 2 && rowCity.startsWith(city));

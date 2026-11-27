@@ -12,6 +12,7 @@ vi.mock('../../lib/schoolExamReferenceData.generated.js', async () => {
     ['臺北市', '乙參考國中', '七、八年級', '期末', 3, '2027-01-18', '2027-01-19'],
     ['臺北市', '乙參考國中', '九年級', '期末', 3, '2027-01-05', '2027-01-06'],
     ['臺北市', '丙部分國中', '九年級', '第一次期中', 1, '2026-10-13', '2026-10-14'],
+    ['新北市', '丁別市國中', '國中', '第一次期中', 1, '2026-10-20', '2026-10-21'],
   ] } };
 });
 import Panel from '../SchoolExamPeriodsPanel.vue';
@@ -94,7 +95,7 @@ describe('各校段考日期 panel', () => {
     const w = mount(Panel, { props: { branchId: 1, isDirector: true } });
     await vi.waitFor(() => expect(chipsOf(w)).toHaveLength(3)); // still offered to look at, with the city shown
     expect(fillBtn(w).attributes('disabled')).toBeDefined();
-    await w.find('#sep-city').setValue('屏東縣');
+    await w.find('#sep-city').setValue('新北市');
     expect(chipsOf(w)).toHaveLength(0);
     expect(fillBtn(w).attributes('disabled')).toBeDefined();
     await w.find('#sep-city').setValue('臺北市'); // the choice stays on screen, so it can be put right

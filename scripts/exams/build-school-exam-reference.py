@@ -5,12 +5,16 @@ Run once a semester (the page lists one semester):
   1. Save the rendered page https://baxterenglish.com/schools/calendar/ as Markdown text (any renderer that keeps
      the tables; a JSON file with the text under "result" also works).
   2. python3 scripts/exams/build-school-exam-reference.py PAGE.md 115 1 > frontend/src/lib/schoolExamReferenceData.generated.js
-The page is used with the site owner's consent (Founder 2026-11-27). Rows without a date are skipped.
+The page is used with the site owner's consent (Founder 2026-11-27). Rows without a date are skipped, and only
+the cities in SCOPE are kept.
 """
 import json
 import re
 import sys
 
+
+# Founder 2026-11-27: start with the cities the campuses serve. Add a city here and rerun to widen.
+SCOPE = ("臺北市", "新北市", "桃園市")
 
 def seq(exam: str) -> int:
     if "期末" in exam or "第三次" in exam or "第3次" in exam:
@@ -56,7 +60,7 @@ def main() -> None:
         text = json.loads(text)["result"]
     except (ValueError, KeyError, TypeError):
         pass
-    rows = parse(text, year + 1911)
+    rows = [r for r in parse(text, year + 1911) if r[0] in SCOPE]
     if len(rows) < 500:
         sys.exit(f"only {len(rows)} rows parsed: the page layout probably changed")
     out = [
