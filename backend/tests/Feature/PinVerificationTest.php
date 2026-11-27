@@ -171,7 +171,7 @@ class PinVerificationTest extends TestCase
         );
         foreach ($events as $event) {
             $this->assertNotEmpty($event->actor_ref);
-            $this->assertSame($event->actor_ref !== null, $event->subject_ref !== null);
+            $this->assertSame($event->actor_ref, $event->subject_ref, 'the user acts on their own PIN');
             // Only metadata is free-form; the other columns are hashes, ids and times (a hash may contain any digits).
             foreach (['2468', '1357', 'account-pass', 'wrong', (string) $this->user->fresh()->pin_hash] as $secret) {
                 $this->assertStringNotContainsString($secret, (string) $event->metadata);
