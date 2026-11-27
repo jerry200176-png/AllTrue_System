@@ -854,6 +854,13 @@ class ParentPortalController extends Controller
                 $isTutoring = strtolower(trim((string) ($c->ClassType ?? ''))) === 'tutoring';
                 $monthlyTarget  = (int) ($c->monthly_sessions ?? 0);
                 $monthlyFee     = $isMonthly && !$isTutoring ? $this->resolveMonthlyFee($c) : 0;
+                // #3521 (Founder 2026-11-27): once this month has a bill, the parent sees the bill's total (discounts
+                // included), not sessions × unit price.
+                $billedPeriod = collect($courseStatuses[(int) $c->ID]['periods'] ?? [])
+                    ->firstWhere('billing_period', $monthlyBillingPeriods[(int) $c->ID] ?? null);
+                if ($monthlyFee > 0 && (int) ($billedPeriod['total'] ?? 0) > 0) {
+                    $monthlyFee = (int) $billedPeriod['total'];
+                }
                 $attended       = $isMonthly ? (int) ($attendedThisMonth[$c->ID] ?? 0) : 0;
                 $paid           = $this->isClassPaid($c, $courseStatuses);
                 $stopped        = (bool) $c->Stop;
@@ -2030,9 +2037,17 @@ class ParentPortalController extends Controller
             ->orderByDesc('StartDate')
             ->get();
 
-        $records = $classes->map(function ($course) use ($billingCampusMap, $studentCampusIds) {
+        // #3521 (Founder 2026-11-27): a course with bills shows what the bills say (total and money received); the
+        // stored Charge / Pay columns are only for courses that never had a bill.
+        $statuses = app(BillingPayableResolver::class)->courseStatusesByStudentClassIds($classes->pluck('ID')->all(), $classes);
+        $records = $classes->map(function ($course) use ($billingCampusMap, $studentCampusIds, $statuses) {
             $charge = (int) ($course->Charge ?? 0);
             $paid = (int) ($course->Pay ?? 0);
+            $billed = $statuses[(int) $course->ID] ?? [];
+            if (($billed['source'] ?? null) === 'invoice' && (int) ($billed['payable_total'] ?? 0) > 0) {
+                $charge = (int) $billed['payable_total'];
+                $paid = (int) ($billed['applied'] ?? 0);
+            }
             $campusId = (int) ($studentCampusIds->get((int) $course->StudentID) ?? 0);
 
             return [
