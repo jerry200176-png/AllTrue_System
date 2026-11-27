@@ -10,7 +10,7 @@ Founder 在對話中回答「都照你推薦做」。提問：最近 24 次被�
 
 1. `deploy.yml` 的範圍分類只對**這一個路徑**、且是**原地修改**（不是新增、刪除、改名）時，允許沒有 patch；其他任何路徑缺 patch 仍然擋下。
 2. 放行前，上線分類那一步會**自己讀取該次提交裡的檔案內容**，由 `autonomy_gate.py` 的 `exam_reference_data_is_pure()` 確認它只有資料（開頭註解、`year`／`semester`／`source`、每行一筆只含字串與整數的陣列、大小 2MB 以內）。不是純資料、讀不到、或任何錯誤，一律照舊擋下。
-3. 其餘不變：PR 仍需 CI 綠與獨立 review；範圍若動到 `deploy.yml`／`autonomy_gate.py`、migration、資料修復、身分／憑證，仍由 Founder 核准（含本 PR 合併後的第一次上線）。#3961 的範圍已由 2026-10-21（二）之二完成並關閉。
+3. 其餘不變：PR 仍需 CI 綠與獨立 review；R3 自動上線與 Founder GO 路徑的既有條件照舊（見 2026-10-21（二）之二）。`deploy.yml` 從 main 執行，本規則在合併後即生效。#3961 的範圍已由 2026-10-21（二）之二完成並關閉。
 
 <a id="inapp-substantive-followup"></a>
 ## 2026-11-17（二）（實質答覆回報者，接續既有驗證與結案；FSD-2026-11-17-INAPP-SUBSTANTIVE-FOLLOWUP）
