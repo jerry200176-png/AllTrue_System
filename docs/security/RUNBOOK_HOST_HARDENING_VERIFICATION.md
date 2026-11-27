@@ -10,7 +10,7 @@ last_reviewed: 2026-08-08
 
 ## Daily automated audit (2026-11-27, #887)
 
-`pi-health.yml` (daily 09:00 Asia/Taipei) runs `scripts/pi-host-hardening-audit.sh` on the host: firewall active, SSH password login off, SSH root login off, fail2ban active, and listening ports limited to 22/80/443. It is read-only, needs no password, and prints PASS/FAIL and port numbers only. A finding shows as a warning on that run and in its summary; it does not turn the run red. Fixing a finding changes the host (`scripts/pi-host-hardening.sh`) and needs a separate Founder go.
+`pi-health.yml` (daily 09:00 Asia/Taipei) runs `scripts/pi-host-hardening-audit.sh` on the host: firewall active, SSH password login off, SSH root login off, fail2ban active, and listening ports limited to 22/80/443. It changes no host setting and needs no password. Because this repository is public, the run log shows only the number of findings; which checks failed and the port list go to the private ops channel, on Mondays while a finding stays open. A finding is a warning on that run; it does not turn the run red. Fixing a finding changes the host (`scripts/pi-host-hardening.sh`) and needs a separate Founder go.
 
 ## ⚠️ Most urgent finding: services bound to all interfaces (`0.0.0.0`), not just localhost
 

@@ -1,11 +1,13 @@
 #!/usr/bin/env bash
-# Read-only host hardening audit (#887). Fed to the Pi over SSH by pi-health.yml; changes nothing and needs no
-# password: sudo is tried with -n only, and every check has a no-sudo fallback. Prints PASS/FAIL and port numbers
-# (no addresses, users or secrets). A FAIL is a GitHub warning, not a red run: the fix (scripts/pi-host-hardening.sh)
-# changes the host and needs its own go.
+# Read-only host hardening audit (#887). Fed to the Pi over SSH by pi-health.yml; changes no host setting and needs
+# no password: sudo is tried with -n only, and every check has a no-sudo fallback.
+# The repo is public, so stdout (the run log) carries only the number of findings. Which checks failed and the port
+# list go to the private ops channel (monitor-alert.sh notify), on Mondays only so an open finding nags weekly, not daily.
+# A finding is a warning, not a red run: the fix (scripts/pi-host-hardening.sh) changes the host and needs its own go.
 set -u
 fails=0
-say() { printf '%-18s %s\n' "$1" "$2"; [ "$2" = PASS ] || { fails=$((fails + 1)); echo "::warning::host hardening: $1 $2"; }; }
+detail=""
+say() { detail="${detail}$1 $2; "; [ "$2" = PASS ] || fails=$((fails + 1)); }
 
 if systemctl is-active --quiet ufw 2>/dev/null && grep -q '^ENABLED=yes' /etc/ufw/ufw.conf 2>/dev/null; then say ufw PASS; else say ufw FAIL; fi
 
@@ -18,8 +20,12 @@ case "$(first permitrootlogin)" in no | prohibit-password | without-password | '
 if systemctl is-active --quiet fail2ban 2>/dev/null; then say fail2ban PASS; else say fail2ban FAIL; fi
 
 ports="$(ss -tlnH 2>/dev/null | awk '{print $4}' | grep -vE '^(127\.|\[::1\])' | sed 's/.*://' | sort -un | tr '\n' ' ' | sed 's/ $//')"
-echo "open-ports         ${ports}"
 extra="$(printf '%s\n' $ports | grep -vxE '22|80|443' | tr '\n' ' ' | sed 's/ $//')"
-[ -z "$extra" ] && say only-22-80-443 PASS || say only-22-80-443 "FAIL (${extra})"
+# An empty list cannot be right (sshd is serving this very connection), so it counts as a finding.
+[ -n "$ports" ] && [ -z "$extra" ] && say only-22-80-443 PASS || say only-22-80-443 "FAIL (open: ${ports:-unreadable})"
 
 echo "host-hardening-audit: ${fails} finding(s)"
+[ "$fails" -eq 0 ] || echo "::warning::host hardening: ${fails} finding(s); details go to the ops channel on Mondays"
+if [ "$fails" -gt 0 ] && [ "$(date +%u)" = 1 ] && [ -f /home/admin/scripts/monitor-alert.sh ]; then
+  bash /home/admin/scripts/monitor-alert.sh notify "🔒 主機安全檢查：${fails} 項未通過。${detail}" >/dev/null 2>&1 || true
+fi
