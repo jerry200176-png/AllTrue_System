@@ -1,62 +1,77 @@
 <template>
-  <div class="tw:space-y-3">
-    <div class="tw:flex tw:flex-wrap tw:items-center tw:gap-2">
-      <label class="tw:text-sm" for="sep-term">學期</label>
-      <select id="sep-term" v-model="term" class="tw:h-9 tw:rounded-md tw:border tw:bg-background tw:px-2 tw:text-sm" @change="load">
-        <option v-for="t in terms" :key="t.key" :value="t.key">{{ t.label }}</option>
-      </select>
-      <template v-if="isDirector && refAvailable">
-        <label class="tw:ml-auto tw:text-sm" for="sep-city">參考縣市</label>
-        <select id="sep-city" v-model="city" class="tw:h-9 tw:rounded-md tw:border tw:bg-background tw:px-2 tw:text-sm" :disabled="importing" @change="rememberCity">
-          <option value="">全部（不自動帶入）</option>
-          <option v-for="c in refIndex.cities" :key="c" :value="c">{{ c }}</option>
+  <div class="sep tw:flex tw:flex-col tw:gap-4">
+    <div class="tw:flex tw:flex-wrap tw:items-center tw:gap-x-3 tw:gap-y-3">
+      <div class="tw:flex tw:items-center tw:gap-3 tw:max-md:w-full">
+        <label class="tw:shrink-0 tw:text-tpl-body tw:font-semibold" for="sep-term">學期</label>
+        <select id="sep-term" v-model="term" :class="selectClass" @change="load">
+          <option v-for="t in terms" :key="t.key" :value="t.key">{{ t.label }}</option>
         </select>
-        <Button size="sm" variant="outline" :disabled="importing || !importable.length" @click="importAll">
+      </div>
+      <template v-if="isDirector && refAvailable">
+        <div class="tw:flex tw:items-center tw:gap-3 tw:max-md:w-full tw:md:ml-auto">
+          <label class="tw:shrink-0 tw:text-tpl-body tw:font-semibold" for="sep-city">參考縣市</label>
+          <select id="sep-city" v-model="city" :class="selectClass" :disabled="importing" @change="rememberCity">
+            <option value="">全部（不自動帶入）</option>
+            <option v-for="c in refIndex.cities" :key="c" :value="c">{{ c }}</option>
+          </select>
+        </div>
+        <Button variant="outline" :class="[control.page, 'tw:max-md:w-full']" :disabled="importing || !importable.length" @click="importAll">
           帶入參考日期（{{ importable.length }} 格）
         </Button>
       </template>
     </div>
-    <p v-if="isDirector && refAvailable" class="tw:text-xs tw:text-muted-foreground">
+    <p v-if="isDirector && refAvailable" class="tw:m-0 tw:text-tpl-caption tw:text-tpl-secondary tw:text-pretty">
       參考日期來自 {{ refSource }}（目前只有{{ refIndex.cities.join('、') }}），請以學校公告為準。先選縣市，「帶入」才會把那個縣市、還沒登記、而且只有一個全校適用的參考日期的格子填好並儲存；其他的請自己按參考日期再按儲存。
     </p>
-    <p v-if="importNote" role="status" class="tw:text-sm">{{ importNote }}</p>
-    <p v-if="error" role="alert" class="tw:text-sm tw:text-destructive">{{ error }}</p>
-    <p v-if="!loading && !schools.length" class="tw:text-sm tw:text-muted-foreground">還沒有填學校的學生。</p>
-    <Card v-for="s in schools" :key="s.key" class="sep-card tw:gap-3 tw:py-4">
-      <CardHeader class="tw:px-4">
-        <CardTitle class="tw:flex tw:flex-wrap tw:items-center tw:gap-2 tw:text-base">
-          {{ s.school_name }}
-          <Badge variant="secondary">{{ s.student_count }} 人</Badge>
-        </CardTitle>
-        <p v-if="s.variants.length > 1" class="tw:text-xs tw:text-muted-foreground">可能同校：{{ s.variants.join('、') }}</p>
-      </CardHeader>
-      <CardContent class="tw:space-y-2 tw:px-4">
-        <div v-for="slot in slots" :key="slot.seq" class="sep-row tw:grid tw:grid-cols-[4.5rem_1fr_1fr] tw:items-center tw:gap-2">
-          <span class="tw:text-sm">{{ slot.short }}</span>
-          <input v-model="draft(s, slot.seq).start_date" type="date" :disabled="!isDirector || busy(s, slot.seq)" :aria-label="`${s.school_name} ${slot.short} 開始`" class="tw:h-9 tw:min-w-0 tw:rounded-md tw:border tw:bg-background tw:px-2 tw:text-sm" />
-          <input v-model="draft(s, slot.seq).end_date" type="date" :disabled="!isDirector || busy(s, slot.seq)" :aria-label="`${s.school_name} ${slot.short} 結束`" class="tw:h-9 tw:min-w-0 tw:rounded-md tw:border tw:bg-background tw:px-2 tw:text-sm" />
-          <div v-if="isDirector && refOptions(s, slot.seq).length" class="tw:col-span-3 tw:flex tw:flex-wrap tw:items-center tw:gap-1 tw:text-xs tw:text-muted-foreground">
+    <Alert v-if="importNote" tone="info"><p>{{ importNote }}</p></Alert>
+    <Alert v-if="error" tone="danger">{{ error }}</Alert>
+    <div v-if="loading" class="tw:grid tw:gap-4" aria-busy="true">
+      <Skeleton v-for="n in 2" :key="n" class="tw:h-56 tw:w-full tw:rounded-3xl tw:motion-reduce:animate-none" />
+    </div>
+    <SectionCard v-else-if="!schools.length && !error">
+      <div class="tw:flex tw:flex-col tw:items-center tw:gap-2 tw:px-5 tw:py-10 tw:text-center">
+        <School :size="32" :stroke-width="1.5" class="tw:text-tpl-secondary" aria-hidden="true" />
+        <p class="tw:m-0 tw:font-semibold">還沒有填學校的學生。</p>
+        <p class="tw:m-0 tw:text-tpl-caption tw:text-tpl-secondary">學生資料填了就讀學校，這裡就會出現可以登記段考日期的學校。</p>
+      </div>
+    </SectionCard>
+    <SectionCard v-for="s in schools" :key="s.key" class="sep-card" :title="s.school_name">
+      <template #actions>
+        <StatusBadge>{{ s.student_count }} 人</StatusBadge>
+      </template>
+      <p v-if="s.variants.length > 1" class="tw:m-0 tw:px-5 tw:pb-3 tw:text-tpl-caption tw:text-tpl-secondary">可能同校：{{ s.variants.join('、') }}</p>
+      <ul class="tw:m-0 tw:list-none tw:p-0">
+        <li v-for="slot in slots" :key="slot.seq" class="sep-row tw:flex tw:min-h-18 tw:flex-wrap tw:items-center tw:gap-x-4 tw:gap-y-2 tw:border-t tw:border-border tw:px-4 tw:py-3 tw:md:px-5">
+          <span class="tw:w-14 tw:shrink-0 tw:font-semibold">{{ slot.short }}</span>
+          <div class="tw:grid tw:min-w-0 tw:flex-1 tw:basis-72 tw:grid-cols-2 tw:gap-2">
+            <Input v-model="draft(s, slot.seq).start_date" type="date" :disabled="!isDirector || busy(s, slot.seq)" :aria-label="`${s.school_name} ${slot.short} 開始`" :class="field" />
+            <Input v-model="draft(s, slot.seq).end_date" type="date" :disabled="!isDirector || busy(s, slot.seq)" :aria-label="`${s.school_name} ${slot.short} 結束`" :class="field" />
+          </div>
+          <div v-if="isDirector" class="tw:flex tw:items-center tw:gap-2 tw:max-md:w-full">
+            <button type="button" :class="[rowAction.primary, 'tw:max-md:flex-1', 'tw:disabled:opacity-50']" :disabled="busy(s, slot.seq) || !dirty(s, slot.seq)" @click="save(s, slot)">儲存</button>
+            <button v-if="draft(s, slot.seq).id" type="button" :class="[rowAction.secondary, 'tw:disabled:opacity-50']" :disabled="busy(s, slot.seq)" @click="remove(s, slot)">清除</button>
+          </div>
+          <div v-if="isDirector && refOptions(s, slot.seq).length" class="tw:flex tw:basis-full tw:flex-wrap tw:items-center tw:gap-2 tw:text-tpl-caption tw:text-tpl-secondary">
             參考
-            <Button v-for="(o, i) in refOptions(s, slot.seq)" :key="i" size="sm" variant="outline" :disabled="busy(s, slot.seq)" @click="useReference(s, slot.seq, o)">
+            <button v-for="(o, i) in refOptions(s, slot.seq)" :key="i" type="button" :class="[rowAction.secondaryWrap, 'tw:disabled:opacity-50']" :disabled="busy(s, slot.seq)" @click="useReference(s, slot.seq, o)">
               {{ o.city }} {{ o.label }} {{ shortDate(o.start_date) }}–{{ shortDate(o.end_date) }}
-            </Button>
+            </button>
           </div>
-          <div v-if="isDirector" class="tw:col-span-3 tw:flex tw:justify-end tw:gap-2">
-            <Button size="sm" :disabled="busy(s, slot.seq) || !dirty(s, slot.seq)" @click="save(s, slot)">儲存</Button>
-            <Button v-if="draft(s, slot.seq).id" size="sm" variant="ghost" :disabled="busy(s, slot.seq)" @click="remove(s, slot)">清除</Button>
-          </div>
-        </div>
-      </CardContent>
-    </Card>
+        </li>
+      </ul>
+    </SectionCard>
   </div>
 </template>
 
 <script setup>
 import { trackedFetch as fetch } from '../lib/loadingBar';
 import { computed, onMounted, reactive, ref, watch } from 'vue';
-import { Badge } from './ui/badge';
+import { School } from 'lucide-vue-next';
+import { Alert } from './ui/alert';
 import { Button } from './ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
+import { Input } from './ui/input';
+import { Skeleton } from './ui/skeleton';
+import { SectionCard, StatusBadge, control, rowAction } from './ui/page';
 import { currentTerm } from '../lib/schoolExamTerm';
 import { buildReferenceIndex, CITIES, referenceFor } from '../lib/schoolExamReference';
 import { supabase } from '../supabase';
@@ -66,6 +81,8 @@ const props = defineProps({
   isDirector: { type: Boolean, default: false },
 });
 
+const field = 'tw:h-11 tw:text-[length:var(--tpl-text-body)] tw:md:text-[length:var(--tpl-text-body)]';
+const selectClass = 'tw:h-12 tw:w-auto tw:min-w-0 tw:flex-1 tw:rounded-2xl tw:text-tpl-body tw:md:flex-none';
 const slots = [
   { seq: 1, label: '第一次段考', short: '段考一' },
   { seq: 2, label: '第二次段考', short: '段考二' },

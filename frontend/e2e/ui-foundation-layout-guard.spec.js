@@ -545,6 +545,11 @@ const EXAM_ROUNDS = [
   { id: 3, title: '115-1 第一次段考', status: 'closed', exam_date: '2026-10-14', entry_deadline: '2026-10-24', grade_ids: [7, 8, 9], subjects: EXAM_SUBJECTS },
 ];
 
+const SCHOOL_PERIOD_SCHOOLS = [
+  { key: '臺北市立建國高級中學', school_name: '臺北市立建國高級中學', student_count: 12, variants: ['臺北市立建國高級中學', '建國中學'] },
+  { key: '新北市立板橋國民中學', school_name: '新北市立板橋國民中學', student_count: 3, variants: ['新北市立板橋國民中學'] },
+];
+
 const PAGES = [
   {
     // 段考成績 (issue 4989): header actions, the round list card (one row per round, status badge, row actions) and the score dialog.
@@ -615,6 +620,25 @@ const PAGES = [
         expect(r.named, 'the dialog has a name and a description').toBe(true);
       },
     },
+  },
+  {
+    // 段考成績 tab 各校段考日期 (slice 3a): one card per school, one row per exam slot with two date fields and 儲存 / 清除.
+    // School names stay on one line; the slot labels start at the same x; date fields and row buttons are 44px targets.
+    key: 'exam-grades-periods',
+    url: '/pilot-mount.html?page=exam-grades',
+    names: SCHOOL_PERIOD_SCHOOLS.map((x) => x.school_name),
+    allNames: true,
+    rows: ['.sep-row > span:first-child'],
+    touch: ['.sep-row input[type="date"]', '.sep-row button'],
+    mock: async (page) => {
+      await page.route('**/api/v1/**', (r) => {
+        const path = new URL(r.request().url()).pathname;
+        if (path === '/api/v1/exam-periods/schools') return json(r, { data: SCHOOL_PERIOD_SCHOOLS });
+        if (path === '/api/v1/exam-periods') return json(r, { data: [{ id: 31, school_key: SCHOOL_PERIOD_SCHOOLS[0].key, seq: 1, start_date: '2026-11-10', end_date: '2026-11-11' }] });
+        return json(r, path === '/api/v1/exam-rounds' ? { data: EXAM_ROUNDS } : { data: [] });
+      });
+    },
+    setup: async (page) => { await page.getByRole('tab', { name: '各校段考日期' }).click(); await expect(page.locator('.sep-card').first()).toBeVisible(); },
   },
   {
     // 學生管理, slice 1 (issue 4989): header with four actions, the filter toolbar and the student list card. The header actions are the
