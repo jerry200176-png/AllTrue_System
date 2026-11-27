@@ -1,0 +1,13 @@
+updates:
+  - id: staff-2026-11-28-ended-monthly-reminder
+    published_at: "2026-11-28"
+    audiences:
+      - director
+    importance: digest
+    title: 已結束已繳清的月結課不再提醒
+    summary: 收學費清單不再出現早已結束、帳單已繳清的月結課。
+    items:
+      - category: fixed
+        text: 收學費：已結束且帳單全數繳清的月結課，不會再在結帳日前出現並要求開帳單。
+    source_refs:
+      - "changelog:2026-11-28:ended-monthly-reminder"

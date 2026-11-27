@@ -698,9 +698,16 @@ class AlertController extends Controller
         return (int) ($pkg->remaining_sessions ?? 0) <= 2 ? 'renew_needed' : 'paid';
     }
 
+    /**
+     * Every issued bill of the course is fully paid. `review_required` counts too (in-app #603/#605/#606): on an ended,
+     * paid contract it means the period engine cannot line the old bill up with the lessons, and asking the director to
+     * issue another bill for it would double-charge. A legacy flag with no bill (source != invoice) never counts.
+     */
     private function isInvoiceSettled(?array $verdict): bool
     {
-        return ($verdict['status'] ?? null) === 'paid'
+        $status = $verdict['status'] ?? null;
+
+        return ($status === 'paid' || ($status === 'review_required' && ($verdict['payable_total'] ?? 0) > 0))
             && ($verdict['source'] ?? null) === 'invoice'
             && ($verdict['outstanding'] ?? null) === 0;
     }

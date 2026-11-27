@@ -3,8 +3,10 @@
 namespace Tests\Feature;
 
 use App\Models\AuthToken;
+use App\Models\ClassSession;
 use App\Models\CoursePackage;
 use App\Models\Invoice;
+use App\Models\InvoiceItem;
 use App\Models\Payment;
 use App\Models\PaymentReport;
 use App\Models\Student;
@@ -382,6 +384,48 @@ class TuitionAlertsApiTest extends TestCase
         ]);
         $pendingRows = collect($this->withToken($token)->getJson('/api/v1/alerts/tuition?branch_id=1')->assertOk()->json());
         $this->assertSame('pending_report', $pendingRows->firstWhere('id', $endedPaid->ID)['payment_status'] ?? null);
+    }
+
+    /**
+     * in-app #603/#605/#606: an ended monthly contract whose only bill is fully paid came back every month around its
+     * settlement day asking for a new bill, because the period engine could not line the old bill up with the lessons
+     * (bill without a period; contract starting at the end of the previous month). Both shapes are from production.
+     */
+    public function test_ended_monthly_with_paid_bill_and_lessons_has_no_settlement_reminder(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-11-27', 'Asia/Taipei'));
+        $token = $this->createDirectorToken([1]);
+        $student = Student::create(['name' => '月結已結束有上課', 'CampusID' => 1, 'ClassID' => 1, 'enable' => 1, 'MDT' => now(), 'Notify_Token' => '']);
+        $terms = ['settlement_day' => 30, 'Paid' => 1, 'Charge' => 4400, 'Rate' => 1100, 'monthly_sessions' => 4, 'ClassType' => 'one_on_three'];
+
+        $noPeriod = $this->createMonthlyClass($student->id, $terms + ['StartDate' => '2026-04-04', 'EndDate' => '2026-04-25', 'PayDate' => '2026-05-05']);
+        foreach (['2026-04-04' => 'attended', '2026-04-11' => 'completed', '2026-04-18' => 'leave_adjusted', '2026-04-25' => 'leave_adjusted'] as $date => $status) {
+            ClassSession::create(['StudentClassID' => $noPeriod->ID, 'SessionDate' => $date, 'StartTime' => '18:00', 'EndTime' => '20:00', 'Status' => $status]);
+        }
+        $bill = Invoice::create(['StudentID' => $student->id, 'StudentClassID' => $noPeriod->ID, 'IssueDate' => '2026-05-05',
+            'TotalAmount' => 2200, 'PaidAmount' => 2200, 'Status' => 'paid']);
+        Payment::create(['InvoiceID' => $bill->id, 'Amount' => 2200, 'Method' => 'transfer', 'PaidAt' => '2026-05-03']);
+
+        $lateStart = $this->createMonthlyClass($student->id, $terms + ['StartDate' => '2026-04-29', 'EndDate' => '2026-05-31', 'PayDate' => '2026-07-10']);
+        foreach (['2026-05-06' => 'attended', '2026-05-13' => 'attended', '2026-05-20' => 'attended', '2026-05-27' => 'attended', '2026-05-09' => 'cancelled', '2026-05-16' => 'cancelled'] as $date => $status) {
+            ClassSession::create(['StudentClassID' => $lateStart->ID, 'SessionDate' => $date, 'StartTime' => '18:00', 'EndTime' => '20:00', 'Status' => $status]);
+        }
+        $bill = Invoice::create(['StudentID' => $student->id, 'StudentClassID' => $lateStart->ID, 'IssueDate' => '2026-05-05', 'DueDate' => '2026-04-30',
+            'TotalAmount' => 4400, 'PaidAmount' => 4400, 'Status' => 'paid', 'billing_period' => '2026-05']);
+        InvoiceItem::create(['InvoiceID' => $bill->id, 'Description' => 'tuition', 'Amount' => 4400]);
+        Payment::create(['InvoiceID' => $bill->id, 'Amount' => 4400, 'Method' => 'transfer', 'PaidAt' => '2026-06-05']);
+
+        // Same shape, but half of the bill is still owed: this one must stay.
+        $owing = $this->createMonthlyClass($student->id, $terms + ['StartDate' => '2026-04-04', 'EndDate' => '2026-04-25']);
+        $bill = Invoice::create(['StudentID' => $student->id, 'StudentClassID' => $owing->ID, 'IssueDate' => '2026-05-05',
+            'TotalAmount' => 4400, 'PaidAmount' => 2200, 'Status' => 'partial']);
+        Payment::create(['InvoiceID' => $bill->id, 'Amount' => 2200, 'Method' => 'transfer', 'PaidAt' => '2026-05-03']);
+
+        $rows = collect($this->withToken($token)->getJson('/api/v1/alerts/tuition?branch_id=1')->assertOk()->json());
+
+        $this->assertNull($rows->firstWhere('id', $noPeriod->ID), 'paid bill without a period: nothing left to bill');
+        $this->assertNull($rows->firstWhere('id', $lateStart->ID), 'paid bill, contract started at the end of the previous month');
+        $this->assertNotNull($rows->firstWhere('id', $owing->ID), 'a bill with a balance stays listed');
     }
 
     public function test_monthly_paid_included_when_next_due_within_window(): void
