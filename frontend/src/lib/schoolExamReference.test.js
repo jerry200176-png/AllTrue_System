@@ -44,10 +44,13 @@ const sample = buildReferenceIndex({ year: 115, semester: 1, rows: [
 
 test('a school gets its options per slot, only for the matching term', () => {
   assert.deepEqual(referenceFor(sample, '臺北市立測試高級中學', 115, 1), { sure: true, slots: {
-    1: [{ label: '高一二', city: '臺北市', start_date: '2026-10-13', end_date: '2026-10-14' }],
-    3: [{ label: '高三', city: '臺北市', start_date: '2026-12-30', end_date: '2026-12-31' },
-      { label: '高一二（英文）', city: '臺北市', start_date: '2027-01-18', end_date: '2027-01-19' }],
+    1: [{ label: '高一二', city: '臺北市', whole: false, start_date: '2026-10-13', end_date: '2026-10-14' }],
+    3: [{ label: '高三', city: '臺北市', whole: false, start_date: '2026-12-30', end_date: '2026-12-31' },
+      { label: '高一二（英文）', city: '臺北市', whole: false, start_date: '2027-01-18', end_date: '2027-01-19' }],
   } });
+  // Only a date for every grade of the school counts as whole: 國中 at a 國中, 全校 anywhere.
+  assert.equal(referenceFor(sample, '臺北市立中正國民中學', 115, 1).slots[1][0].whole, true);
+  assert.equal(referenceFor(sample, '臺中市私立葳格高級中學附設小學（西屯校區）', 115, 1).slots[3][0].whole, true);
   assert.deepEqual(referenceFor(sample, '測試高中', 115, 2), { sure: false, slots: {} });
   assert.deepEqual(referenceFor(sample, '沒有這間國中', 115, 1, '臺北市'), { sure: false, slots: {} });
   assert.deepEqual(referenceFor(null, '測試高中', 115, 1), { sure: false, slots: {} });

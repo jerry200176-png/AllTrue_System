@@ -43,7 +43,7 @@ export function buildReferenceIndex(data) {
 const inCity = (rowCity, city) => rowCity === city || (city.length === 2 && rowCity.startsWith(city));
 
 /**
- * Reference options for one school and term, by slot: { 1: [{ label, city, start_date, end_date }], ... }.
+ * Reference options for one school and term, by slot: { 1: [{ label, city, whole, start_date, end_date }], ... }.
  * `names` is the school's listed name, then the spellings people typed for it (the list shows a catalogued school under
  * its official name, e.g. 臺北市立建國高級中學, while the table says 建國中學). The city written in a name decides;
  * otherwise `city` (the one the director picked) does; with neither, every school of that name is offered.
@@ -59,9 +59,13 @@ export function referenceFor(index, names, year, semester, city = '') {
   let hits = [...new Set(wants.map((w) => w.name))].flatMap((name) => index.byName.get(name) || []);
   if (use) hits = hits.filter((r) => inCity(r[0], use));
   out.sure = !!use && new Set(hits.map((r) => `${r[0]}|${r[1]}`)).size === 1;
-  for (const [rowCity, , grade, exam, seq, start, end] of hits) {
+  for (const [rowCity, school, grade, exam, seq, start, end] of hits) {
     const variant = /[（(]/.test(exam) ? exam.slice(exam.search(/[（(]/)) : '';
-    (out.slots[seq] ||= []).push({ label: `${grade}${variant}`, city: rowCity, start_date: start, end_date: end });
+    // `whole`: the date is for every grade of that school. The screen saves an all-grade date, so a date for some
+    // grades or one subject (二~六年級, 高三, （英文）) is only ever offered, never filled without a look.
+    const kind = normalizeSchool(school).name;
+    const whole = !variant && (grade === '全校' || (grade === '一~六年級' && kind.endsWith('國小')) || (grade === '國中' && kind.endsWith('國中')));
+    (out.slots[seq] ||= []).push({ label: `${grade}${variant}`, city: rowCity, whole, start_date: start, end_date: end });
   }
   return out;
 }

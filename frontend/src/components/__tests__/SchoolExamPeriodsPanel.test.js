@@ -11,6 +11,7 @@ vi.mock('../../lib/schoolExamReferenceData.generated.js', async () => {
     ['臺北市', '乙參考國中', '國中', '第一次期中', 1, '2026-10-13', '2026-10-14'],
     ['臺北市', '乙參考國中', '七、八年級', '期末', 3, '2027-01-18', '2027-01-19'],
     ['臺北市', '乙參考國中', '九年級', '期末', 3, '2027-01-05', '2027-01-06'],
+    ['臺北市', '丙部分國中', '九年級', '第一次期中', 1, '2026-10-13', '2026-10-14'],
   ] } };
 });
 import Panel from '../SchoolExamPeriodsPanel.vue';
@@ -99,6 +100,15 @@ describe('各校段考日期 panel', () => {
     await w.find('#sep-city').setValue('臺北市'); // the choice stays on screen, so it can be put right
     expect(chipsOf(w)).toHaveLength(3);
     expect(fillBtn(w).text()).toContain('1 格');
+    expect(posts(f)).toHaveLength(0);
+  });
+
+  it('offers a date for some grades but never fills it as the whole school', async () => {
+    localStorage.clear();
+    const f = refStub('臺北市立丙部分國民中學');
+    const w = mount(Panel, { props: { branchId: 1, isDirector: true } });
+    await vi.waitFor(() => expect(chipsOf(w)).toHaveLength(1));
+    expect(fillBtn(w).attributes('disabled')).toBeDefined();
     expect(posts(f)).toHaveLength(0);
   });
 

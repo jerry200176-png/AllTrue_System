@@ -17,7 +17,7 @@
       </template>
     </div>
     <p v-if="isDirector && refAvailable" class="tw:text-xs tw:text-muted-foreground">
-      參考日期來自 {{ refSource }}，請以學校公告為準。先選縣市，「帶入」才會把那個縣市、還沒登記、而且只有一個參考日期的格子填好並儲存；其他的請自己按參考日期再按儲存。
+      參考日期來自 {{ refSource }}，請以學校公告為準。先選縣市，「帶入」才會把那個縣市、還沒登記、而且只有一個全校適用的參考日期的格子填好並儲存；其他的請自己按參考日期再按儲存。
     </p>
     <p v-if="importNote" role="status" class="tw:text-sm">{{ importNote }}</p>
     <p v-if="error" role="alert" class="tw:text-sm tw:text-destructive">{{ error }}</p>
@@ -126,9 +126,9 @@ const shortDate = (d) => `${Number(d.slice(5, 7))}/${Number(d.slice(8, 10))}`;
 function useReference(s, seq, o) {
   Object.assign(draft(s, seq), { start_date: o.start_date, end_date: o.end_date });
 }
-// Safe to fill without a look: the school is pinned to one city, the slot has exactly one reference date, and it is
-// blank (nothing saved, nothing typed).
-const blankWithOneChoice = (s, seq) => !!refBySchool.value[s.key]?.sure && refOptions(s, seq).length === 1
+// Safe to fill without a look: the school is pinned to one city, the slot has exactly one reference date, that date
+// is for every grade, and the slot is blank (nothing saved, nothing typed).
+const blankWithOneChoice = (s, seq) => !!refBySchool.value[s.key]?.sure && refOptions(s, seq).length === 1 && refOptions(s, seq)[0].whole
   && !saved[k(s, seq)] && !draft(s, seq).start_date && !draft(s, seq).end_date;
 const importable = computed(() => schools.value.flatMap((s) => slots.filter((slot) => blankWithOneChoice(s, slot.seq)).map((slot) => ({ s, slot }))));
 async function importAll() {
