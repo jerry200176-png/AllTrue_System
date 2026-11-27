@@ -41,7 +41,7 @@ def render(template, environ):
     environ = dict(environ)
     # The run id and attempt are pasted into double-quoted strings and end up in the public manifest: digits or nothing.
     for name in ("RUN_ID", "RUN_ATTEMPT"):
-        if not re.fullmatch(r"\d{0,20}", environ.get(f"DEPLOY_{name}", "")):
+        if not re.fullmatch(r"[0-9]{0,20}", environ.get(f"DEPLOY_{name}", "")):
             environ[f"DEPLOY_{name}"] = ""
     # Pasted inside a double-quoted shell string on the Pi. The Sentry check is optional: a value that could
     # break out of the quotes is dropped (Sentry skipped), never pasted and never a reason to block the deploy.

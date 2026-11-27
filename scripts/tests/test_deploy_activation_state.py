@@ -2324,7 +2324,7 @@ class DeployActivationWorkflowContractTest(unittest.TestCase):
         script = REMOTE_DEPLOY.read_text(encoding="utf-8")
         good = renderer.render(script, {"DEPLOY_RUN_ID": "45891497284", "DEPLOY_RUN_ATTEMPT": "2"})
         self.assertIn('DEPLOY_RUN_ID="45891497284"\nDEPLOY_RUN_ATTEMPT="2"\n', good)
-        for bad in ('1"; rm -rf /; "', "$(id)", "12a", "1\n2"):
+        for bad in ('1"; rm -rf /; "', "$(id)", "12a", "1\n2", "12\n", "１２", "9" * 21):
             rendered = renderer.render(script, {"DEPLOY_RUN_ID": bad, "DEPLOY_RUN_ATTEMPT": bad})
             self.assertIn('DEPLOY_RUN_ID=""\nDEPLOY_RUN_ATTEMPT=""\n', rendered)
         # The writer on the Pi belongs to the checked-out commit: the flags are passed only when it knows them.
