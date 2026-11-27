@@ -137,9 +137,11 @@ const overlapShown = formatNewerCourseOverlapWarning({
   newer_course_start_date: '2026-08-05',
 });
 assert.equal(overlapShown.show, true);
-assert.ok(overlapShown.primary.includes('重疊'));
-assert.ok(overlapShown.primary.includes('順延至 8/8'));
-assert.ok(overlapShown.primary.includes('開課 8/5'));
+assert.ok(formatNewerCourseOverlapWarning({ newer_course_overlap: true }).primary.includes('日期疊在一起'));
+assert.equal(formatNewerCourseOverlapWarning({ newer_course_overlap: true, current_course_end_date: '2026-11-30', newer_course_start_date: '2026-10-20', newer_course_overlap_start_date: '2026-11-25' }).primary.includes('11/25 就開課'), true);
+assert.ok(overlapShown.primary.includes('到 8/8 才結束'));
+assert.ok(overlapShown.primary.includes('8/5 就開課'));
+assert.ok(overlapShown.primary.includes('把下一期的開課日往後改'));
 // in-app #554: a 堂數制 course with no lesson left has nothing that can overlap the next term; one with lessons
 // left, and a monthly course (no lesson count), still warn.
 const finished = { newer_course_overlap: true, current_course_end_date: '2026-11-04', newer_course_start_date: '2026-09-30', schedule_mode: 'count' };

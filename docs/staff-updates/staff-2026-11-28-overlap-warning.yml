@@ -1,0 +1,15 @@
+updates:
+  - id: staff-2026-11-28-overlap-warning
+    published_at: "2026-11-28"
+    audiences:
+      - director
+    importance: digest
+    title: 兩期日期重疊的提醒改好懂
+    summary: 期中加購的單堂課不再誤報重疊；提醒改成直接說怎麼做。
+    items:
+      - category: fixed
+        text: 收學費：期中加購、已上完的單堂課，不會再被當成「下一期」而跳出日期重疊提醒。
+      - category: improved
+        text: 日期重疊提醒改成白話，並寫明做法：把下一期的開課日往後改。
+    source_refs:
+      - "changelog:2026-11-28:overlap-warning"
