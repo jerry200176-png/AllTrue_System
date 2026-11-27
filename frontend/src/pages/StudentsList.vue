@@ -2766,9 +2766,10 @@ const unbindStudentRfid = async () => {
       return;
     }
     studentForm.value.rfid = '';
-    // Keep the fallback mirror in sync so a later fallback load cannot resurrect the old card.
-    supabase.from('students').update({ rfid: null }).eq('id', editingStudentId.value)
-      .then(({ error }) => { if (error) console.warn('Supabase mirror rfid clear failed (non-blocking):', error?.message); });
+    // Keep the fallback mirror in sync, and wait for it, so the reload below cannot read the old card back from it
+    // (#3758). A mirror failure only warns: the card is already released on the server.
+    const warn = (error) => { if (error) console.warn('Supabase mirror rfid clear failed (non-blocking):', error?.message); };
+    await supabase.from('students').update({ rfid: null }).eq('id', editingStudentId.value).then(({ error }) => warn(error), warn);
     loadStudents();
   } catch (e) {
     alert('解除綁定失敗');
