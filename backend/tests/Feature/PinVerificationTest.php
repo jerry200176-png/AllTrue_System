@@ -157,6 +157,28 @@ class PinVerificationTest extends TestCase
         $this->withHeaders($this->authed())->postJson('/api/v1/me/pin/verify', ['pin' => '1357'])->assertOk();
     }
 
+    /** @test #2332 設定與重設 PIN 留下稽核事件，事件內不含 PIN 或密碼 */
+    public function set_and_reset_leave_redacted_audit_events(): void
+    {
+        $this->withHeaders($this->authed())->postJson('/api/v1/me/pin/set', ['pin' => '2468'])->assertOk();
+        $this->withHeaders($this->authed())->postJson('/api/v1/me/pin/reset', ['pin' => '1357', 'password' => 'wrong'])->assertStatus(401);
+        $this->withHeaders($this->authed())->postJson('/api/v1/me/pin/reset', ['pin' => '1357', 'password' => 'account-pass'])->assertOk();
+
+        $events = \Illuminate\Support\Facades\DB::table('security_audit_events')->where('event_type', 'staff.pin.changed')->orderBy('id')->get();
+        $this->assertSame(
+            [['pin_set', 'success'], ['pin_reset_password_invalid', 'failure'], ['pin_reset', 'success']],
+            $events->map(fn ($e) => [json_decode($e->metadata, true)['reason_code'], $e->outcome])->all()
+        );
+        foreach ($events as $event) {
+            $this->assertNotEmpty($event->actor_ref);
+            $this->assertSame($event->actor_ref, $event->subject_ref, 'the user acts on their own PIN');
+            // Only metadata is free-form; the other columns are hashes, ids and times (a hash may contain any digits).
+            foreach (['2468', '1357', 'account-pass', 'wrong', (string) $this->user->fresh()->pin_hash] as $secret) {
+                $this->assertStringNotContainsString($secret, (string) $event->metadata);
+            }
+        }
+    }
+
     /** @test AC8/FR6 require_pin middleware：未設 PIN soft 放行 */
     public function require_pin_soft_passes_when_no_pin(): void
     {
