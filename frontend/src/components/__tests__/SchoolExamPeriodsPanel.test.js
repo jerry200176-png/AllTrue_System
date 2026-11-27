@@ -56,7 +56,7 @@ describe('各校段考日期 panel', () => {
   const refStub = (schoolName) => {
     const f = vi.fn(async (input, options = {}) => {
       const body = String(input).includes('/schools')
-        ? { data: [{ key: '乙參考國中', school_name: schoolName, student_count: 2, variants: ['乙參考國中'] }] }
+        ? { data: [{ key: '乙參考國中', school_name: schoolName, student_count: 2, variants: [schoolName] }] }
         : options.method === 'POST' ? { data: { id: 11 } } : { data: [] };
       return { ok: true, json: async () => body };
     });
@@ -121,7 +121,7 @@ describe('各校段考日期 panel', () => {
     const f = vi.fn(async (input, options = {}) => {
       if (options.method === 'POST') await gate;
       const body = String(input).includes('/schools')
-        ? { data: [{ key: '乙參考國中', school_name: '臺北市立乙參考國民中學', student_count: 2, variants: [] }] }
+        ? { data: [{ key: '乙參考國中', school_name: '臺北市立乙參考國民中學', student_count: 2, variants: ['臺北市立乙參考國民中學'] }] }
         : options.method === 'POST' ? { data: { id: 11 } } : { data: [] };
       return { ok: true, json: async () => body };
     });

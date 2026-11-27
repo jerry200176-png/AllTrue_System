@@ -8,6 +8,7 @@ test('school names written different ways meet at one name', () => {
   assert.deepEqual(normalizeSchool('台北市大安國中'), { city: '臺北市', name: '大安國中' });
   assert.deepEqual(normalizeSchool(' 中正國中（臺北） '), { city: '臺北', name: '中正國中' });
   assert.deepEqual(normalizeSchool('南榮國中（代用）'), { city: '', name: '南榮國中' });
+  assert.deepEqual(normalizeSchool('康橋國中（小）'), { city: '', name: '康橋國中' });
   assert.deepEqual(normalizeSchool('臺中市私立葳格高級中學附設小學（北屯校區）'), { city: '臺中市', name: '葳格高中附設小學（北屯校區）' });
   assert.deepEqual(normalizeSchool('中正國中（臺北市）'), { city: '臺北市', name: '中正國中' });
   assert.deepEqual(normalizeSchool('臺北市私立再興中學'), { city: '臺北市', name: '再興中學' });
@@ -72,8 +73,14 @@ test('a name alone is never sure; the city in the name, or the chosen city, narr
 test('other spellings of the school are tried too, and a campus in brackets is part of the name', () => {
   // The list shows the official name; the table uses the everyday one, which a student typed.
   assert.deepEqual(referenceFor(sample, '臺北市立建國高級中學', 115, 1).slots, {});
+  // ...but nobody typed the city, so it is offered, not sure, until the director picks the city or someone typed it.
   const alias = referenceFor(sample, ['臺北市立建國高級中學', '建國中學', '建中'], 115, 1);
-  assert.deepEqual([alias.sure, alias.slots[3].map((o) => o.start_date)], [true, ['2027-01-18']]);
+  assert.deepEqual([alias.sure, alias.slots[3].map((o) => o.start_date)], [false, ['2027-01-18']]);
+  assert.equal(referenceFor(sample, ['臺北市立建國高級中學', '建國中學'], 115, 1, '臺北市').sure, true);
+  assert.equal(referenceFor(sample, ['臺北市立建國高級中學', '台北市建國中學'], 115, 1).sure, true);
+  // A bare 中正國中 typed at a campus elsewhere is listed under the Taipei school: the chosen city decides, not the listing.
+  const elsewhere = referenceFor(sample, ['臺北市立中正國民中學', '中正國中'], 115, 1, '屏東縣');
+  assert.deepEqual([elsewhere.sure, elsewhere.slots[1].map((o) => o.start_date)], [true, ['2026-10-15']]);
   const campus = referenceFor(sample, '臺中市私立葳格高級中學附設小學（西屯校區）', 115, 1);
   assert.deepEqual([campus.sure, campus.slots[3].map((o) => o.start_date)], [true, ['2027-01-14']]);
   assert.deepEqual(referenceFor(sample, '臺中市私立葳格高級中學附設小學', 115, 1).slots, {}); // which campus? not guessed
