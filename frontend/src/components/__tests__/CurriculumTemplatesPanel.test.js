@@ -79,6 +79,7 @@ describe('教材範本庫 panel', () => {
     const pick = w.find('select[aria-label="從出版社目錄帶入"]');
     expect(pick.text()).toContain('七年級上學期數學（康軒）');
     await pick.setValue('Math-J1-1-翰林');
+    await btn(w, '帶入').trigger('click');
     expect(w.find('input[aria-label="單元 1 名稱"]').element.value).toBe('1-1 正數與負數');
     await w.find('input[aria-label="單元 1 名稱"]').setValue('1-1 我改過');
     await btn(w, '儲存').trigger('click');

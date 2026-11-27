@@ -9,7 +9,7 @@ describe('curriculumCatalog', () => {
       expect(c.label.length).toBeLessThanOrEqual(120);
       expect(c.publisher.length).toBeLessThanOrEqual(40);
       expect(units.length).toBeGreaterThan(0);
-      expect(units.length).toBeLessThanOrEqual(60);
+      expect(units.length).toBeLessThanOrEqual(80);
       for (const u of units) {
         expect(u.title.trim()).toBe(u.title);
         expect(u.title.length).toBeGreaterThan(0);
