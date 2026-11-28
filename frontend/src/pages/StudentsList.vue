@@ -784,6 +784,7 @@
             :branch-id="props.branchId"
             :package-info="editPackageInfo"
             :context-title="editContextTitle"
+            :slot-conflicts="courseEditConflicts"
             @open-billing="handleOpenBillingFromEdit"
           />
 
@@ -1261,6 +1262,7 @@ const editingCourseId = ref(null);
 const courseEditorOpen = computed(() => showCourseModal.value && Boolean(editingCourseId.value) && studentsPageActive.value);
 const courseEditSaving = ref(false);
 const courseEditError = ref('');
+const courseEditConflicts = ref([]); // conflicts of the last failed save, shown under the matching slot row (in-app #613)
 const editingCourseFromLaravel = ref(false);
 const editingCourseRaw = ref(null);
 const editTeacherOptions = computed(() => buildEditTeacherOptions(teachers.value, editingCourseRaw.value));
@@ -3027,6 +3029,7 @@ const interceptGoToPurchase = (conflict) => {
 const editCourse = (course) => {
   if (courseEditSaving.value) return;
   courseEditError.value = '';
+  courseEditConflicts.value = [];
   selectedStudent.value = students.value.find((s) => Number(s?.id) === Number(course?.student_id) || Number(s?._laravelId) === Number(course?.student_id));
   editingCourseId.value = course.id;
   editingCourseRaw.value = course;
@@ -3241,7 +3244,7 @@ const persistCourse = async () => {
       return;
     }
     if (!form.days_of_week || form.days_of_week.length === 0) {
-      alert('請至少選擇一天固定排課');
+      alert('請至少新增一個上課時段');
       return;
     }
     if (!form.teacher_id) {
@@ -3393,6 +3396,7 @@ const persistCourse = async () => {
       }
       const err = await res.json().catch(() => ({}));
       courseEditError.value = parseApiErrorMessage(err, '更新課程失敗');
+      courseEditConflicts.value = Array.isArray(err?.conflicts) ? err.conflicts : [];
       return;
     } catch (error) {
       // A Laravel course must never silently fall through to the legacy
@@ -3433,6 +3437,7 @@ const persistCourse = async () => {
 const submitCourse = async () => {
   if (!courseEditorOpen.value || courseEditSaving.value || editFormRef.value?.hasErrors) return;
   courseEditError.value = '';
+  courseEditConflicts.value = [];
   courseEditSaving.value = true;
   try {
     await persistCourse();

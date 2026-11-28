@@ -218,91 +218,112 @@
       <h4 class="form-section-title">上課時段</h4>
       <div class="form-section-grid">
         <div class="form-group span-full">
-          <label>固定上課日</label>
-          <div class="day-checkbox-group">
-            <label
-              v-for="d in dayOptions"
-              :key="d.value"
-              :class="['day-chip', { selected: selectedDaySet.has(d.value) }]"
-            >
-              <input
-                type="checkbox"
-                :value="d.value"
-                v-model="form.days_of_week"
-                style="position:absolute;opacity:0;width:0;height:0;pointer-events:none;"
-              />
-              {{ d.label }}
-            </label>
-          </div>
-          <TeacherAvailabilityPlanner
-            v-if="!scheduleOnly"
-            :teacher-id="form.teacher_id"
-            :teacher="selectedTeacher"
-            :student-id="form.student_id"
-            :branch-id="branchId"
-            :class-type="form.class_type"
-            :payment-type="form.payment_type"
-            :start-date="form.first_class_date"
-            :end-date="form.end_date"
-            :days-of-week="sortedSelectedDays"
-            :day-time-slots="form.day_time_slots"
-            :duration-hours="form.duration_hours"
-            :time-options="timeOptions"
-            :fetch-availability="fetchAvailability"
-            @apply="applyAvailabilityCandidate"
-          />
-          <div class="day-time-slots">
+          <!-- in-app #613: the rows are the schedule (their weekdays are the course's days); the planner opens on request. -->
+          <div class="tw:flex tw:flex-col tw:gap-3">
+            <p v-if="!(form.day_time_slots || []).length" class="slot-help-text" data-testid="course-slot-empty">還沒有上課時段，按「＋ 新增時段」加一天。</p>
             <div
               v-for="(slot, idx) in (form.day_time_slots || [])"
               :key="`slot-${idx}-${slot.day}-${slot.start_time}`"
-              class="day-time-slot-row per-day-row"
+              class="tw:flex tw:flex-col tw:gap-2 tw:rounded-xl tw:border tw:border-solid tw:border-[var(--ds-hairline)] tw:p-3"
+              data-testid="course-slot-row"
             >
-              <select
-                class="day-inline-select"
-                :aria-label="`第${idx + 1}天星期`"
-                :value="Number(slot.day)"
-                @change="updateSlotDay(idx, $event.target.value)"
+              <div class="tw:flex tw:items-center tw:justify-between tw:gap-2">
+                <strong class="tw:text-tpl-body tw:tabular-nums" data-testid="course-slot-summary">{{ slotSummary(slot) }}</strong>
+                <button
+                  v-if="(form.day_time_slots || []).length > 1"
+                  type="button"
+                  :class="rowAction.secondary"
+                  @click="removeSlot(idx)"
+                >
+                  移除
+                </button>
+              </div>
+              <div class="tw:flex tw:flex-wrap tw:items-center tw:gap-2">
+                <select
+                  :class="SLOT_FIELD"
+                  class="tw:w-24"
+                  :aria-label="`第${idx + 1}天星期`"
+                  :value="Number(slot.day)"
+                  @change="updateSlotDay(idx, $event.target.value)"
+                >
+                  <option v-for="d in dayOptions" :key="`opt-${idx}-${d.value}`" :value="d.value">週{{ d.label }}</option>
+                </select>
+                <select
+                  :ref="(el) => { startSelects[idx] = el; }"
+                  :class="SLOT_FIELD"
+                  class="tw:w-28"
+                  :aria-label="`第${idx + 1}天開始時間`"
+                  :value="String(slot.start_time || form.start_time).slice(0, 5)"
+                  @change="updateSlotTime(idx, $event.target.value)"
+                >
+                  <option v-for="t in timeOptions" :key="`${idx}-${t}`" :value="t">{{ t }}</option>
+                </select>
+                <span class="tw:inline-flex tw:items-center tw:gap-1">
+                  <input
+                    type="number"
+                    :class="SLOT_FIELD"
+                    class="tw:w-16 tw:text-center"
+                    :disabled="scheduleOnly"
+                    :aria-label="`第${idx + 1}天時數`"
+                    :value="Number(slot.duration_hours ?? form.duration_hours)"
+                    min="0.5"
+                    step="0.5"
+                    inputmode="decimal"
+                    @change="updateSlotDuration(idx, $event.target.value)"
+                  />
+                  <span aria-hidden="true">小時</span>
+                </span>
+              </div>
+              <div
+                v-if="slotConflict(slot)"
+                role="alert"
+                class="tw:flex tw:flex-wrap tw:items-center tw:justify-between tw:gap-2 tw:rounded-xl tw:bg-[var(--ds-danger-wash)] tw:p-3 tw:text-[var(--ds-danger-text)]"
+                data-testid="course-slot-conflict"
               >
-                <option v-for="d in dayOptions" :key="`opt-${idx}-${d.value}`" :value="d.value">週{{ d.label }}</option>
-              </select>
-              <select
-                :aria-label="`第${idx + 1}天開始時間`"
-                :value="String(slot.start_time || form.start_time).slice(0, 5)"
-                @change="updateSlotTime(idx, $event.target.value)"
-              >
-                <option v-for="t in timeOptions" :key="`${idx}-${t}`" :value="t">{{ t }}</option>
-              </select>
-              <input
-                type="number"
-                class="per-day-dur"
-                :disabled="scheduleOnly"
-                :aria-label="`第${idx + 1}天時數`"
-                :value="Number(slot.duration_hours ?? form.duration_hours)"
-                min="0.5"
-                step="0.5"
-                inputmode="decimal"
-                @change="updateSlotDuration(idx, $event.target.value)"
-              />
-              <span class="day-time-slot-end">~ {{ computeEndTime(slot.start_time || form.start_time, slot.duration_hours ?? form.duration_hours) || '—' }}</span>
+                <span class="tw:min-w-0 tw:text-pretty">{{ slotConflict(slot).message }}</span>
+                <button type="button" :class="rowAction.secondary" data-testid="course-slot-change-time" @click="focusSlotStart(idx)">換時間</button>
+              </div>
+            </div>
+            <div class="tw:flex tw:flex-wrap tw:gap-2">
               <button
-                v-if="(form.day_time_slots || []).length > 1"
+                v-if="(form.day_time_slots || []).length < 7"
                 type="button"
-                class="btn-remove-slot"
-                @click="removeSlot(idx)"
+                :class="rowAction.secondary"
+                data-testid="course-slot-add"
+                @click="addTimeSlot"
               >
-                移除
+                ＋ 新增時段
+              </button>
+              <button
+                v-if="!scheduleOnly"
+                type="button"
+                :class="rowAction.secondary"
+                :aria-expanded="plannerOpen"
+                data-testid="course-slot-planner-toggle"
+                @click="plannerOpen = !plannerOpen"
+              >
+                找老師空檔
               </button>
             </div>
-            <button
-              v-if="(form.day_time_slots || []).length < 7"
-              type="button"
-              class="btn-add-slot"
-              @click="addTimeSlot"
-            >
-              ＋ 新增時段（同日可排多段，最多 7 段）
-            </button>
+            <TeacherAvailabilityPlanner
+              v-if="!scheduleOnly && plannerOpen"
+              :teacher-id="form.teacher_id"
+              :teacher="selectedTeacher"
+              :student-id="form.student_id"
+              :branch-id="branchId"
+              :class-type="form.class_type"
+              :payment-type="form.payment_type"
+              :start-date="form.first_class_date"
+              :end-date="form.end_date"
+              :days-of-week="sortedSelectedDays"
+              :day-time-slots="form.day_time_slots"
+              :duration-hours="form.duration_hours"
+              :time-options="timeOptions"
+              :fetch-availability="fetchAvailability"
+              @apply="applyAvailabilityCandidate"
+            />
             <p class="slot-help-text">
-              每一列就是一個固定時段，可直接新增一列並選週日；儲存後系統會重排未來未上堂次，已點名／已核准堂次保留原狀。
+              每一列是一個固定時段，同一天可排多段（最多 7 段）。儲存後系統會重排未來未上堂次，已點名／已核准堂次保留原狀。
             </p>
           </div>
         </div>
@@ -331,6 +352,7 @@ import TeacherAvailabilityPlanner from './TeacherAvailabilityPlanner.vue';
 import CoursePaymentDateField from './CoursePaymentDateField.vue';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
+import { rowAction } from '@/components/ui/page';
 import { monthlyScheduleEstimate } from '../lib/monthlyScheduleEstimate.js';
 import { TRIAL_TARGET_CLASS_TYPE_OPTIONS } from '../lib/trialTarget.js';
 import { trackedFetch } from '../lib/loadingBar';
@@ -352,6 +374,8 @@ const props = defineProps({
   contextTitle: { type: String, default: '' },
   editability: { type: Object, default: null },
   paymentStateUnavailable: { type: Boolean, default: false },
+  // Schedule conflicts from the last failed save (`conflicts` of the 409); each shows under the row it is about.
+  slotConflicts: { type: Array, default: () => [] },
 });
 
 const emit = defineEmits(['update:modelValue', 'open-billing']);
@@ -390,7 +414,7 @@ const form = reactive({ ...defaultForm, ...(props.modelValue || {}) });
 const bumpRemaining = (d) => { form.remaining_sessions = Math.max(0, (Number(form.remaining_sessions) || 0) + d); };
 const monthlyOverride = ref(false);
 const monthlyPlan = computed(() => form.payment_type === 'monthly' && form.scheduling_policy !== 'manual_occurrence'
-  ? monthlyScheduleEstimate({ startDate: form.first_class_date, endDate: form.end_date, slots: form.day_time_slots || [], weekdays: form.days_of_week || [] })
+  ? monthlyScheduleEstimate({ startDate: form.first_class_date, endDate: form.end_date, slots: form.day_time_slots || [] })
   : null);
 function useMonthlyPlan() {
   if (!monthlyPlan.value) return;
@@ -437,10 +461,23 @@ const scopeWarning = computed(() => {
 });
 
 const dayLabelMap = { 1: '一', 2: '二', 3: '三', 4: '四', 5: '五', 6: '六', 7: '日' };
+// in-app #613: the course's days are the rows' weekdays (no separate day chips), so they cannot disagree.
 const sortedSelectedDays = computed(() => (
-  [...new Set((form.days_of_week || []).map((d) => Number(d)).filter((d) => d >= 1 && d <= 7))].sort((a, b) => a - b)
+  [...new Set((form.day_time_slots || []).map((s) => Number(s?.day)).filter((d) => d >= 1 && d <= 7))].sort((a, b) => a - b)
 ));
-const selectedDaySet = computed(() => new Set(sortedSelectedDays.value));
+const SLOT_FIELD = 'tw:h-11 tw:rounded-lg tw:border tw:border-solid tw:border-[var(--ds-hairline)] tw:bg-card tw:px-2 tw:text-tpl-body';
+const plannerOpen = ref(false);
+const startSelects = [];
+const slotSummary = (slot) => {
+  const start = String(slot?.start_time || form.start_time || '').slice(0, 5);
+  const hours = Number(slot?.duration_hours ?? form.duration_hours) || 0;
+  return `週${dayLabelMap[Number(slot?.day)] || '？'} ${start}–${computeEndTime(start, hours) || '—'}（${hours} 小時）`;
+};
+// The server names a recurring clash by the edited row's weekday and start time; its message starts with the clash dates.
+const slotConflict = (slot) => (props.slotConflicts || []).find((c) => c?.message
+  && Number(c.day_of_week) === Number(slot?.day)
+  && String(c.start_time || '').slice(0, 5) === String(slot?.start_time || form.start_time || '').slice(0, 5));
+const focusSlotStart = (idx) => startSelects[idx]?.focus();
 const hasPerDayDuration = computed(() => {
   const vals = (form.day_time_slots || [])
     .map((s) => Number(s?.duration_hours || 0))
@@ -536,15 +573,6 @@ watch(monthlyPlan, (plan) => {
 });
 
 watch(
-  () => form.days_of_week,
-  () => {
-    if (syncingFromParent) return;
-    syncDayTimeSlotsFromSelection();
-  },
-  { deep: true }
-);
-
-watch(
   form,
   () => {
     if (syncingFromParent) return;
@@ -628,22 +656,10 @@ function addTimeSlot() {
     start_time: baseTime,
     duration_hours: form.duration_hours || 2,
   }];
-  form.days_of_week = [...new Set([...(form.days_of_week || []).map(Number), day])]
-    .filter((d) => d >= 1 && d <= 7)
-    .sort((a, b) => a - b);
 }
 
 function removeSlot(idx) {
-  const slots = form.day_time_slots || [];
-  const target = slots[idx];
-  if (!target) return;
-  const targetDay = Number(target.day || 0);
-  const sameDayCount = slots.filter((s) => Number(s?.day || 0) === targetDay).length;
-  form.day_time_slots = slots.filter((_, i) => i !== idx);
-  if (sameDayCount <= 1 && targetDay >= 1 && targetDay <= 7) {
-    form.days_of_week = (form.days_of_week || []).filter((d) => Number(d) !== targetDay);
-  }
-  syncDayTimeSlotsFromSelection();
+  form.day_time_slots = (form.day_time_slots || []).filter((_, i) => i !== idx);
 }
 
 function applyAvailabilityCandidate(candidate) {
@@ -651,7 +667,7 @@ function applyAvailabilityCandidate(candidate) {
   const startMinutes = String(candidate.start_time || '').split(':').map(Number);
   const endMinutes = String(candidate.end_time || '').split(':').map(Number);
   const durationHours = ((endMinutes[0] * 60 + endMinutes[1]) - (startMinutes[0] * 60 + startMinutes[1])) / 60;
-  form.days_of_week = [Number(candidate.weekday)];
+  plannerOpen.value = false;
   form.day_time_slots = [{
     day: Number(candidate.weekday),
     start_time: candidate.start_time,
@@ -663,16 +679,9 @@ function applyAvailabilityCandidate(candidate) {
 function updateSlotDay(idx, dayVal) {
   const d = Number(dayVal);
   if (d < 1 || d > 7) return;
-  const currentSlots = form.day_time_slots || [];
-  const oldDay = Number(currentSlots[idx]?.day || 0);
   form.day_time_slots = (form.day_time_slots || []).map((slot, i) => (
     i === idx ? { ...slot, day: d } : slot
   ));
-  const remainingOldDay = form.day_time_slots.some((slot, i) => i !== idx && Number(slot?.day || 0) === oldDay);
-  const nextDays = new Set((form.days_of_week || []).map(Number).filter((day) => day >= 1 && day <= 7));
-  nextDays.add(d);
-  if (oldDay >= 1 && oldDay <= 7 && !remainingOldDay) nextDays.delete(oldDay);
-  form.days_of_week = [...nextDays].sort((a, b) => a - b);
 }
 
 function updateSlotTime(idx, nextTime) {
@@ -827,107 +836,18 @@ function computeEndTime(startRaw, durHours) {
   margin-top: 4px;
 }
 
-.day-checkbox-group {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
 
-.day-chip {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 36px;
-  padding: 6px 10px;
-  border-radius: 999px;
-  border: 1px solid var(--border, var(--ds-canvas-soft));
-  cursor: pointer;
-  user-select: none;
-  font-size: 13px;
-}
 
-.day-chip.selected {
-  background: var(--primary-bg, var(--ds-canvas-soft));
-  border-color: var(--primary, var(--ds-ink-mute));
-  color: var(--ds-primary-text);
-  font-weight: 700;
-}
 
-.day-time-slots {
-  margin-top: 10px;
-  display: grid;
-  gap: 8px;
-}
 
-.day-time-slot-row {
-  display: grid;
-  grid-template-columns: 52px minmax(120px, 170px) auto;
-  align-items: center;
-  gap: 8px;
-}
-.day-time-slot-row.per-day-row {
-  grid-template-columns: minmax(52px, 88px) minmax(100px, 150px) 70px 1fr auto;
-  align-items: center;
-}
-.day-inline-select {
-  max-width: 88px;
-  padding: 6px 8px;
-  border-radius: 8px;
-  border: 1px solid var(--border, var(--ds-canvas-soft));
-  font-size: 13px;
-}
-.btn-add-slot {
-  margin-top: 4px;
-  padding: 8px 12px;
-  border-radius: 8px;
-  border: 1px dashed var(--border, var(--ds-canvas-soft));
-  background: var(--surface-2, var(--ds-canvas-soft));
-  color: var(--ds-primary-text);
-  font-size: 13px;
-  cursor: pointer;
-  width: fit-content;
-}
-.btn-add-slot:hover {
-  border-color: var(--primary, var(--ds-ink-mute));
-  background: var(--primary-bg, var(--ds-canvas-soft));
-}
 .slot-help-text {
   margin: 0;
   color: var(--ds-ink-mute);
   font-size: 12px;
   line-height: 1.5;
 }
-.btn-remove-slot {
-  padding: 4px 10px;
-  font-size: 12px;
-  border: none;
-  border-radius: 6px;
-  background: transparent;
-  color: var(--ds-ink-mute);
-  cursor: pointer;
-}
-.btn-remove-slot:hover {
-  color: var(--ds-danger);
-  background: var(--ds-danger-wash);
-}
-.per-day-dur {
-  width: 70px;
-  text-align: center;
-  padding: 5px 4px;
-  border: 1px solid var(--border, var(--ds-canvas-soft));
-  border-radius: 8px;
-  font-size: 13px;
-}
 
-.day-time-slot-label {
-  font-size: 12px;
-  color: var(--text-light, var(--ds-ink-mute));
-}
 
-.day-time-slot-end {
-  font-size: 12px;
-  color: var(--text-light, var(--ds-ink-mute));
-}
 
 .computed-end-time {
   margin: 0;

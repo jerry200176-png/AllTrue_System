@@ -34,4 +34,33 @@ describe('paid schedule-only editor', () => {
     expect(wrapper.findAll('.form-section-title').map(n => n.text())).toEqual(['基本資料', '費用與繳費', '上課時段']);
     expect(wrapper.find('select[aria-label="科目"]').exists()).toBe(true);
   });
+  it('in-app #613: the rows are the days (no day chips) and adding a row adds its day', async () => {
+    const wrapper = mount(CourseEditForm, { props: props() });
+    await flushPromises();
+    expect(wrapper.find('.day-chip').exists()).toBe(false);
+    expect(wrapper.get('[data-testid="course-slot-summary"]').text()).toBe('週一 20:00–22:00（2 小時）');
+    await wrapper.find('select[aria-label="第1天星期"]').setValue('3'); await flushPromises();
+    expect(wrapper.emitted('update:modelValue').at(-1)[0].days_of_week).toEqual([3]);
+    await wrapper.get('[data-testid="course-slot-add"]').trigger('click'); await flushPromises();
+    const update = wrapper.emitted('update:modelValue').at(-1)[0];
+    expect(update.days_of_week).toEqual([1, 3]);
+    expect(update.day_time_slots.map((s) => s.day)).toEqual([3, 1]);
+  });
+  it('in-app #613: a save clash shows under its row and 換時間 focuses that row', async () => {
+    const message = '1/7 週一 20:00–22:00 老師此時段本分校已有 1 位學生，上限為 1 位學生。';
+    const wrapper = mount(CourseEditForm, { attachTo: document.body, props: { ...props(), slotConflicts: [
+      { type: 'teacher_capacity', day_of_week: 1, start_time: '20:00', message },
+      { type: 'teacher_capacity', day_of_week: 3, start_time: '20:00', message: '別的時段' },
+    ] } });
+    await flushPromises();
+    const alerts = wrapper.findAll('[data-testid="course-slot-conflict"]');
+    expect(alerts).toHaveLength(1);
+    expect(alerts[0].attributes('role')).toBe('alert');
+    expect(alerts[0].text()).toContain(message);
+    await alerts[0].get('[data-testid="course-slot-change-time"]').trigger('click');
+    expect(document.activeElement).toBe(wrapper.find('select[aria-label="第1天開始時間"]').element);
+    await wrapper.find('select[aria-label="第1天開始時間"]').setValue('18:00'); await flushPromises();
+    expect(wrapper.find('[data-testid="course-slot-conflict"]').exists()).toBe(false);
+    wrapper.unmount();
+  });
 });

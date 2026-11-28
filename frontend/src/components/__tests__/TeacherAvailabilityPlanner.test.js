@@ -71,6 +71,8 @@ describe('TeacherAvailabilityPlanner', () => {
       },
     });
 
+    expect(wrapper.find('.coordination-search-button').exists()).toBe(false); // in-app #613: closed until asked
+    await wrapper.get('[data-testid="course-slot-planner-toggle"]').trigger('click');
     await wrapper.get('.coordination-search-button').trigger('click'); await flushPromises();
     await wrapper.get('.coordination-candidate').trigger('click');
     const updates = wrapper.emitted('update:modelValue') || []; expect(updates.at(-1)?.[0]).toMatchObject({ student_id: 42, days_of_week: [weekday], start_time: '16:00' });
