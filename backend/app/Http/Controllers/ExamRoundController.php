@@ -364,8 +364,12 @@ class ExamRoundController extends Controller
             }
             $entry = [
                 'student_id' => $studentId, 'exam_round_subject_id' => $subjectId,
-                'score' => $score, 'is_absent' => $isAbsent, 'notes' => $row['notes'] ?? null,
+                'score' => $score, 'is_absent' => $isAbsent,
             ];
+            // `notes` (internal) is kept when a save leaves it out, like 老師的話 (TD-101): the page never sends it.
+            if (array_key_exists('notes', $row)) {
+                $entry['notes'] = $row['notes'];
+            }
             // 老師的話 is kept when a save leaves it out (a score-only edit must not wipe it); blank clears it.
             if (array_key_exists('parent_comment', $row)) {
                 $comment = trim((string) ($row['parent_comment'] ?? ''));
@@ -441,7 +445,8 @@ class ExamRoundController extends Controller
                 $before = $record->exists
                     ? $record->only(['score', 'is_absent', 'notes', 'parent_comment', 'student_id', 'exam_round_subject_id']) : null;
                 $record->fill([
-                    'score' => $row['score'], 'is_absent' => $row['is_absent'], 'notes' => $row['notes'],
+                    'score' => $row['score'], 'is_absent' => $row['is_absent'],
+                    ...(array_key_exists('notes', $row) ? ['notes' => $row['notes']] : []),
                     'recorded_by_user_id' => $this->userId($request), 'recorded_at' => now(),
                 ] + (array_key_exists('parent_comment', $row) ? ['parent_comment' => $row['parent_comment']] : []))->save();
                 $action = $before === null ? 'score_created' : 'score_updated';
