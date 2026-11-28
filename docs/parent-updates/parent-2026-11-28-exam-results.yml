@@ -1,0 +1,8 @@
+updates:
+  - id: parent-2026-11-28-exam-results
+    published_at: "2026-11-28"
+    expires_at: "2026-12-28"
+    kind: improvement
+    title: 可以看孩子的段考成績和老師的話
+    summary: 在「學習」分頁的讀書任務下面，可以看孩子最近 3 次段考每一科的分數，以及老師寫給您的話。
+    details: 只能查看，不需要操作。分校整理完成績後才會出現；還沒有段考成績時不會顯示。

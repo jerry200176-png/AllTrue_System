@@ -32,6 +32,13 @@ const PARENT_STUDY_TASKS = [
   { id: 4, title: '複習第四單元', kind: 'review', due_date: '2026-11-13', minutes: 20, done_at: null },
   { id: 5, title: '英文單字第 3 回', kind: 'other', due_date: '2026-11-15', minutes: 15, done_at: null },
 ];
+const PARENT_EXAM_RESULTS = [
+  { id: 1, title: '第一次段考', exam_date: '2026-10-15', subjects: [
+    { name: '國文', max_score: 100, score: 86, is_absent: false, parent_comment: '閱讀題進步很多。\n作文可以再多寫一段自己的想法。' },
+    { name: '數學', max_score: 100, score: 72.5, is_absent: false, parent_comment: null },
+    { name: '英文', max_score: 100, score: null, is_absent: true, parent_comment: '這次請假，下週會補做考卷。' },
+  ] },
+];
 const cache = new Map();
 async function handlerFor(mode, page) {
   const key = `${mode}:${page}`;
@@ -60,6 +67,7 @@ export async function previewResponse(url, req) {
     const ws = url.searchParams.get('week_start') || '2026-11-09';
     return ok({ week_start: ws, week_end: ws, data: ws === '2026-11-09' ? PARENT_STUDY_TASKS : [] });
   }
+  if (p === '/parent/exam-results') return ok({ data: PARENT_EXAM_RESULTS });
   // Same endpoint serves different pages: pick the page-specific shared mock from ?app_page=.
   const page = PAGE_BY_APP_PAGE[new URLSearchParams(location.search).get('app_page') || ''] || '';
   const handler = await handlerFor(page ? 'normal' : 'dashboard', page);

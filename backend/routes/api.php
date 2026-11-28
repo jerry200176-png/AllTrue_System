@@ -22,6 +22,7 @@ use App\Http\Controllers\BindingController;
 use App\Http\Controllers\ParentFeedbackController;
 use App\Http\Controllers\ParentPortalController;
 use App\Http\Controllers\ParentStudyTaskController;
+use App\Http\Controllers\ParentExamResultController;
 use App\Http\Controllers\StudentClassController;
 use App\Http\Controllers\StudentClassLookupController;
 use App\Http\Controllers\StudentController;
@@ -974,6 +975,9 @@ Route::prefix('v1')->group(function () {
 
     // ── Parent: this week's study tasks, read only (#5269 step 4; scoping in the controller docblock) ──
     Route::get('parent/study-tasks', [ParentStudyTaskController::class, 'week'])->middleware('throttle:60,1');
+
+    // ── Parent: 段考分數和老師的話, closed rounds only, read only (scoping in the controller docblock) ──
+    Route::get('parent/exam-results', [ParentExamResultController::class, 'index'])->middleware('throttle:60,1');
 
     // ── Parent: 家長建議回饋（parent token 驗證在 Controller 內）────────────────
     Route::post('parent/feedback', [ParentFeedbackController::class, 'store'])

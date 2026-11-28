@@ -1,0 +1,16 @@
+updates:
+  - id: staff-2026-11-28-exam-parent-view
+    published_at: "2026-11-28"
+    audiences:
+      - director
+      - teacher
+    importance: digest
+    title: 家長看得到段考分數和老師的話
+    summary: 家長現在看得到已關閉段考的分數和老師的話。段考還沒關閉前，家長看不到。
+    items:
+      - category: added
+        text: 家長現在看得到已關閉段考的分數和老師的話，在家長入口的「學習」分頁。
+      - category: improved
+        text: 主任關閉段考時，確認視窗會提醒：關閉後家長就看得到。
+    source_refs:
+      - "changelog:2026-11-28:exam-parent-view"

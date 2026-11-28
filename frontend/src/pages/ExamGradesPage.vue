@@ -398,7 +398,7 @@ const openComments = reactive({});
 const pendingClose = ref(null);
 const closing = ref(false);
 const closeError = ref('');
-const closeDescription = computed(() => `關閉後老師不能再改分，確定關閉「${pendingClose.value?.title || ''}」嗎？${closeError.value ? `\n${closeError.value}` : ''}`);
+const closeDescription = computed(() => `關閉後，家長會看到這次段考的分數和老師的話。老師不能再改分，確定關閉「${pendingClose.value?.title || ''}」嗎？${closeError.value ? `\n${closeError.value}` : ''}`);
 const deleteDescription = computed(() => `確定刪除「${pendingDelete.value?.title || ''}」嗎？${deleteError.value ? `\n${deleteError.value}` : ''}`);
 // AlertDialogAction closes on click; the dialog has to stay open while the request runs (and after a failure, to show why),
 // so a close request is applied one tick later and only when no request is running.
