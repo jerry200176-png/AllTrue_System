@@ -1960,12 +1960,12 @@ class ScheduleGuardService
         for ($i = 0; $i < $max; $i++) {
             $parts = [];
             foreach ($groups[$i]['variants'] as $v) {
-                // e.g. 何昀佳（數學，8/1 開始）每週六 13:00–15:00 固定課程
-                $text = implode(' ', array_filter([
+                // e.g. 甲（數學，8/1 開始）每週六 13:00–15:00 固定課程
+                $text = str_replace('） ', '）', implode(' ', array_filter([
                     implode('、', $v['when']),
                     $v['start'] !== '' || $v['end'] !== '' ? $v['start'] . '–' . $v['end'] : '',
                     implode('＋', $v['sources']),
-                ], fn ($s) => $s !== ''));
+                ], fn ($s) => $s !== '')));
                 $parts[] = $v['course'] !== '' ? "（{$v['course']}）{$text}" : $text;
             }
             $joined = implode('、', $parts);
