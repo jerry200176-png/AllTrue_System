@@ -458,6 +458,7 @@ const repeatsUnpaidAmount = computed(() => !props.pendingReport && !legacyUnveri
   && !followerPointer.value && !nothingTaught.value && props.outstanding > 0 && props.amounts?.owed === props.outstanding);
 // The server's director-record refusal (RecordGate). A card that already reads paid does not repeat "已收齊" as a warning.
 const recordBlock = computed(() => (!(props.outstanding > 0) && !(props.course.record_block?.code === 'course_already_paid' && (props.course.paid || fullyCollected.value))
+  && !(props.course.record_block?.code === 'lessons_outside_contract' && outsideDates.value.length)
   && props.course.record_block?.message) || '');
 const canRecord = computed(() => !recordBlock.value && !nothingTaught.value && !props.pendingReport && !followerPointer.value && !outsideDates.value.length && !legacyResolvable.value && !noObligation.value && !waived.value
   && (props.outstanding > 0 || (!props.course.paid && !fullyCollected.value)));

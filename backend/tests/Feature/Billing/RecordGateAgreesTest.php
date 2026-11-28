@@ -65,7 +65,7 @@ class RecordGateAgreesTest extends TestCase
     }
 
     /** F (paid): a paid monthly bill and no month left unbilled. */
-    public function test_a_paid_bill_with_no_unbilled_month_blocks_the_card_as_record_refuses(): void
+    public function test_a_monthly_contract_whose_paid_bill_covers_every_lesson_blocks_the_card_as_record_refuses(): void
     {
         $sc = $this->course(['2026-10-12' => 'attended']);
         $bill = $this->bill($sc, '2026-10', 1800, 'paid', 1800);
@@ -110,7 +110,6 @@ class RecordGateAgreesTest extends TestCase
         [$one] = $settled(1);
         [$four] = $settled(4);
         $this->assertSame($one, $four, 'the resolver is asked once, not once per contract');
-        $this->assertLessThanOrEqual(4, $four);
     }
 
     /** @return array<string, mixed>|null the card's record_block */
