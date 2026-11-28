@@ -512,6 +512,7 @@ final class PopOperationService
         $this->phaseFailure = (string) $entry['strategy_class'] === \App\Operations\Strategies\CourseContractChainRebalanceStrategy::class
             || (string) $entry['strategy_class'] === Strategies\HistoricalOrphanInvoiceCloseoutStrategy::class
             || (string) $entry['strategy_class'] === Strategies\SettledPackageRetirementStrategy::class
+            || $this->dbOnlyExactRepair((string) $entry['strategy_class'])
             || $this->isNativePastScheduledRecovery($request) ? $failed : null;
         try {
             if ($phase === 'execute') {
@@ -568,11 +569,29 @@ final class PopOperationService
     {
         if ($this->isRekeyStrategy($strategy)) return false;
 
-        return $this->atomicFinancialRepair($strategy)
+        return $this->atomicFinancialRepair($strategy) || $this->dbOnlyExactRepair($strategy)
             || ($request !== null && $this->isNativePastScheduledRecovery($request))
-            || in_array(is_object($strategy) ? get_class($strategy) : $strategy, [\App\Operations\Strategies\TaughtLessonSignInRepairStrategy::class,
-                \App\Operations\Strategies\CourseContractChainRebalanceStrategy::class,
+            || in_array(is_object($strategy) ? get_class($strategy) : $strategy, [\App\Operations\Strategies\CourseContractChainRebalanceStrategy::class,
                 \App\Operations\Strategies\InappReportFollowupCommentStrategy::class], true); // self-filed support needs its origin receipt atomically
+    }
+
+    /**
+     * #4458: exact repairs that only write this database (no LINE / HTTP / file). Their data change commits together with its
+     * execute receipt (rollback snapshot) or not at all; any failure rolls the phase back whole and records the failure on its own.
+     * Not listed: the atomicFinancialRepair() set (own recovery rules), the re-key (per-row journal, READ COMMITTED) and the retired Muzha schedule.
+     */
+    private function dbOnlyExactRepair(object|string $strategy): bool
+    {
+        return in_array(is_object($strategy) ? get_class($strategy) : $strategy, [
+            Strategies\UnpaidHiddenClosuresStrategy::class, Strategies\MuzhaChenBillingCatchupStrategy::class,
+            Strategies\UnbilledBacklogCatchupStrategy::class, Strategies\PastScheduledSessionsCancelStrategy::class,
+            Strategies\Invoice1997StaleValuesStrategy::class, Strategies\Td076CollisionKeepersStrategy::class,
+            Strategies\Td076HistoryPinsStrategy::class, Strategies\PackageLedgerNetRepairStrategy::class,
+            Strategies\ContractChargeCorrectionStrategy::class, Strategies\UnusedLessonsContractCloseoutStrategy::class,
+            Strategies\SharedPoolTrimStrategy::class, Strategies\DuplicateHistoryPinRepairStrategy::class,
+            Strategies\TaughtLessonSignInRepairStrategy::class, Strategies\ForwardExtraCancelStrategy::class,
+            Strategies\ForwardOverdeductReassignStrategy::class, Strategies\DuplicateAttendedCancelStrategy::class,
+        ], true);
     }
 
     private function isRekeyStrategy(object|string $strategy): bool
