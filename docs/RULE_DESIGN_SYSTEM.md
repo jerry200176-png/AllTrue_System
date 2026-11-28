@@ -132,6 +132,16 @@ AllTrue 的視覺方向是 **淺色優先、專業可信、為「資料與金流
 | **Table** | 表頭 `--ds-ink-mute` uppercase；金額欄靠右 + tabular；row hover `--ds-canvas-soft`。 |
 | **Dashboard mockup/panel** | 白底細邊框面板，內含表格/圖；陰影 Level-2。 |
 
+### 6.1 狀態、動作、被擋（2026-11-28 起，先用在帳務）
+
+一列資料「現在是什麼狀態、能做什麼、不能做時為什麼」由後端決定，畫面照著顯示。來源：in-app #601–#611 有一半是「畫面說能做、送出被擋」。
+
+1. **能不能做，由後端說。** 畫面不自己組條件決定按鈕。後端在讀取時就回答，用的必須是送出時同一個檢查函式（範例：`Billing/RecordGate` → 帳務抽屜 `record_block`；`Billing/WaiveGate` → 帳務中心 `waive_block`）。新增或修改一個動作時，加一條測試：「讀取時說被擋 ⇔ 送出時用同一個代碼和句子拒絕」。
+2. **被擋要說原因，並給下一步。** 不藏起來、不默默變灰。選單項目用 `disabled` + `reason`（`ActionMenu` 已支援）；單獨的按鈕改成一行原因。原因用後端回傳的句子，不在前端另寫一份。
+3. **狀態用文字＋顏色。** 用 `StatusBadge`（`components/ui/page/StatusBadge.vue` + `tones.js`），不能只靠顏色或圖示。
+4. **細節按需展開，最多收一層。** 金額、主要動作、錯誤和被擋原因不收起來。
+5. **圖示只用 lucide；只有圖示的按鈕要有 `aria-label`，點擊區 ≥44px。**
+
 ## 7. Forbidden Patterns（禁止）
 
 - 純黑 `#000` 內文（用 navy `--ds-ink`）。
@@ -143,6 +153,7 @@ AllTrue 的視覺方向是 **淺色優先、專業可信、為「資料與金流
 - 金額/數字不套 tabular。
 - 硬寫新色票（已有 `--ds-*` token 就用 token）。
 - 頁面自創、無法對回本文件的視覺實驗（Brand/Auth refinement 須 Founder GO）。
+- 畫面顯示一個送出後會被後端拒絕的按鈕（見 §6.1）；或灰掉的按鈕沒有寫原因。
 
 ## 8. Token-level Rebrand 策略（為何能全站統一）
 
