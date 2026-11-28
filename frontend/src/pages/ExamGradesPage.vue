@@ -601,13 +601,14 @@ async function openRound(round) {
     studentQuery.value = '';
     students.value = [];
     Object.keys(openComments).forEach((k) => delete openComments[k]);
+    // Drafts belong to one round. A same-round reload after a row save keeps the other rows' unsaved drafts.
+    Object.keys(draftScores).forEach((k) => delete draftScores[k]);
+    Object.keys(draftComments).forEach((k) => delete draftComments[k]);
   }
   selected.value = round;
   studentsLoading.value = true;
   studentsError.value = '';
   scoreError.value = '';
-  Object.keys(draftScores).forEach((k) => delete draftScores[k]);
-  Object.keys(draftComments).forEach((k) => delete draftComments[k]);
   try {
     const res = await api(`/exam-rounds/${round.id}/students`);
     students.value = res.data || [];
@@ -671,14 +672,13 @@ async function openHistory(row) {
 
 function saveStudent(row) {
   scoreError.value = '';
-  const key = (s) => `${row.student_id}:${s.id}`;
-  if (!(selected.value.subjects || []).some((s) => draftScores[key(s)] || key(s) in draftComments)) {
-    scoreError.value = '沒有改動，請先修改分數';
-    return;
-  }
   const built = rowScores(row);
   if (built.error) {
     scoreError.value = built.error;
+    return;
+  }
+  if (!built.scores.length) {
+    scoreError.value = '沒有改動，請先修改分數';
     return;
   }
   // A director correcting a closed round must give a reason (API 422 otherwise).
@@ -699,7 +699,9 @@ function rowScores(row) {
   for (const subject of selected.value.subjects || []) {
     const key = `${row.student_id}:${subject.id}`;
     const d = draftScores[key];
-    const comment = key in draftComments ? draftComments[key].trim() : undefined;
+    let comment = key in draftComments ? draftComments[key].trim() : undefined;
+    // Back to what is stored (e.g. typed then erased on an empty cell) is no change.
+    if (comment === (serverCell(row, subject.id).parent_comment || '')) comment = undefined;
     if (d?.clear) {
       scores.push({ student_id: row.student_id, exam_round_subject_id: subject.id, clear: true });
       continue;
@@ -734,6 +736,8 @@ async function submitScores(row, reason) {
   try {
     await saveScores(api, selected.value.id, scores, (reason || '').trim());
     reasonFor.value = null;
+    const mine = `${row.student_id}:`;
+    [draftScores, draftComments].forEach((d) => Object.keys(d).filter((k) => k.startsWith(mine)).forEach((k) => delete d[k]));
     await openRound(selected.value);
   } catch (e) {
     reasonFor.value = null;

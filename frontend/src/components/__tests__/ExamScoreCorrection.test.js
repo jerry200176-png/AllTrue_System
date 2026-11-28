@@ -198,4 +198,50 @@ describe('page: enter wrong score, clear, re-enter', () => {
       wrapper.unmount();
     }
   });
+  it('老師的話: saving one row keeps the other rows\' drafts; a comment typed then erased on an empty cell is no change', async () => {
+    const subjects = [{ id: 11, name: '國文', max_score: 100 }, { id: 12, name: '英文', max_score: 100 }];
+    const rounds = [{ id: 5, title: '段考五', status: 'published', subjects }];
+    const cell = (score) => [{ exam_round_subject_id: 11, score, is_absent: false, edited: false, parent_comment: null }];
+    const rows = [
+      { student_id: 503, student_name: '合成丙', filled_subject_count: 1, required_subject_count: 2, scores: cell(70) },
+      { student_id: 504, student_name: '合成丁', filled_subject_count: 1, required_subject_count: 2, scores: cell(60) },
+    ];
+    const fetchMock = vi.fn(async (input) => ({
+      ok: true,
+      json: async () => (String(input).includes('/students') ? { data: rows } : String(input).includes('/scores') ? { data: [] } : { data: rounds }),
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+    const wrapper = mount(ExamGradesPage, { props: { branchId: 1, userRole: 'teacher' }, attachTo: document.body });
+    try {
+      await flushPromises();
+      await wrapper.findAll('.exam-round-card__actions button').find((b) => /登分/.test(b.text())).trigger('click');
+      await flushPromises();
+      const body = document.body;
+      body.querySelectorAll('[data-testid=exam-comment-toggle]').forEach((t) => t.click());
+      await flushPromises();
+      const type = (el, v) => { el.value = v; el.dispatchEvent(new Event('input')); };
+      let boxes = body.querySelectorAll('.exam-comment-input');
+      expect(boxes).toHaveLength(4);
+      type(boxes[2], '加油');
+      type(boxes[3], '先寫');
+      await flushPromises();
+      type(body.querySelectorAll('.exam-comment-input')[3], '');
+      const score = body.querySelectorAll('.exam-score-table .exam-score-input')[0];
+      score.value = '75'; score.dispatchEvent(new Event('change'));
+      await flushPromises();
+      const saves = () => [...body.querySelectorAll('.exam-score-table tbody button')].filter((b) => b.textContent.trim() === '儲存');
+      const posts = () => fetchMock.mock.calls.filter(([, o]) => o?.method === 'POST').map(([, o]) => JSON.parse(o.body));
+      saves()[0].click();
+      await flushPromises();
+      expect(posts()[0]).toEqual({ scores: [{ student_id: 503, exam_round_subject_id: 11, score: 75, is_absent: false }] });
+      boxes = body.querySelectorAll('.exam-comment-input');
+      expect(boxes[2].value).toBe('加油');
+      saves()[1].click();
+      await flushPromises();
+      expect(body.querySelector('.exam-error')).toBeNull();
+      expect(posts()[1]).toEqual({ scores: [{ student_id: 504, exam_round_subject_id: 11, parent_comment: '加油' }] });
+    } finally {
+      wrapper.unmount();
+    }
+  });
 });

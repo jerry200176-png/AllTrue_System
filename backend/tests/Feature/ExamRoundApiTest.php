@@ -311,11 +311,11 @@ class ExamRoundApiTest extends TestCase
         $this->withAuth($c['teacher']['token'])->postJson($url, $row(['parent_comment' => '晚交']))->assertStatus(409);
         $this->withAuth($c['director']['token'])->postJson("/api/v1/exam-rounds/{$c['round']}/close")->assertOk();
         $this->withAuth($c['teacher']['token'])->postJson($url, $row(['parent_comment' => '晚交']))->assertStatus(409);
-        $this->withAuth($c['director']['token'])->postJson($url, $row(['parent_comment' => '主任補充']))
+        $this->withAuth($c['director']['token'])->postJson($url, $only($sid, '主任補充'))
             ->assertStatus(422)->assertJsonPath('errors.reason.0', '更正已截止的段考成績需填寫原因');
-        $this->withAuth($c['director']['token'])->postJson($url, $row(['parent_comment' => '主任補充']) + ['reason' => '補老師的話'])->assertOk();
+        $this->withAuth($c['director']['token'])->postJson($url, $only($sid, '主任補充') + ['reason' => '補老師的話'])->assertOk();
         $audit = $latestAudit();
-        $this->assertSame(['score_comment_updated', '補老師的話', null, '主任補充'], [$audit->action, $audit->reason, $audit->before['parent_comment'], $audit->after['parent_comment']]);
+        $this->assertSame(['score_comment_updated', '補老師的話', '只改老師的話', '主任補充', 90.0], [$audit->action, $audit->reason, $audit->before['parent_comment'], $audit->after['parent_comment'], (float) $audit->after['score']]);
     }
 
     /** @return array{token:string,user:User} */
