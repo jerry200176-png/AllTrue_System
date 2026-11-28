@@ -152,6 +152,20 @@ class BankReconciliationTest extends TestCase
         ]);
     }
 
+    /** #5251: campus 0 is never a real campus, also not for super_admin (shared ChecksCampusAccess). */
+    public function test_super_admin_cannot_import_or_list_campus_zero(): void
+    {
+        $token = $this->seedUser('S', null);
+
+        $this->postJson('/api/v1/bank-reconciliation/import', [
+            'campus_id' => 0,
+            'transactions' => [['date' => '2026-05-01', 'amount' => 5000, 'reference' => 'Z0']],
+        ], $this->bearer($token))->assertForbidden();
+        $this->assertDatabaseCount('bank_transactions', 0);
+
+        $this->getJson('/api/v1/bank-reconciliation?branch_id=0', $this->bearer($token))->assertForbidden();
+    }
+
     public function test_cannot_reconcile_twice(): void
     {
         [$token, $campus] = $this->seedDirector();
@@ -179,6 +193,7 @@ class BankReconciliationTest extends TestCase
         ]);
 
         $this->postJson("/api/v1/bank-reconciliation/{$txn->id}/reconcile", ['student_class_id' => 1], $this->bearer($foreignToken))->assertForbidden();
+        $this->getJson("/api/v1/bank-reconciliation/{$txn->id}/suggest", $this->bearer($foreignToken))->assertForbidden();
         $this->assertSame('unmatched', (string) $txn->fresh()->status);
         $this->postJson('/api/v1/bank-reconciliation/import', [
             'campus_id' => $campus->id, 'transactions' => [['date' => '2026-05-02', 'amount' => 100]],

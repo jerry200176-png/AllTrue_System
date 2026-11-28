@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Controllers\Concerns\ChecksCampusAccess;
 use App\Models\BankTransaction;
 use App\Models\StudentClass;
 use App\Services\BillingPayableResolver;
@@ -12,6 +13,8 @@ use Illuminate\Support\Facades\Schema;
 
 class BankReconciliationController extends Controller
 {
+    use ChecksCampusAccess;
+
     public function index(Request $request): JsonResponse
     {
         if (!Schema::hasTable('bank_transactions')) {
@@ -130,9 +133,7 @@ class BankReconciliationController extends Controller
         }
 
         $txn = BankTransaction::findOrFail($id);
-        $role = $request->attributes->get('auth_role');
-        $campusIds = array_map('intval', (array) $request->attributes->get('auth_campus_ids', []));
-        if ($role !== 'super_admin' && !in_array((int) $txn->campus_id, $campusIds, true)) {
+        if (!$this->campusAllowed($request, (int) $txn->campus_id)) {
             abort(403);
         }
         $amount = (int) $txn->amount;
@@ -220,10 +221,4 @@ class BankReconciliationController extends Controller
         return response()->json(['message' => '勾稽成功']);
     }
 
-    /** Same rule as suggestMatches(): super_admin sees every campus, others only their own. */
-    private function campusAllowed(Request $request, int $campusId): bool
-    {
-        return $request->attributes->get('auth_role') === 'super_admin'
-            || ($campusId > 0 && in_array($campusId, array_map('intval', (array) $request->attributes->get('auth_campus_ids', [])), true));
-    }
 }

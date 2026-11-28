@@ -2,12 +2,15 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Controllers\Concerns\ChecksCampusAccess;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 class SubjectController extends Controller
 {
+    use ChecksCampusAccess;
+
     private const CANONICAL_SUBJECTS = ['國文', '英文', '數學', '社會', '理化', '物理', '化學', '生物'];
 
     public static function normalizeSubjectName(string $name): string
@@ -245,10 +248,4 @@ class SubjectController extends Controller
             ->all();
     }
 
-    /** Campus-specific subjects belong to their campus: super_admin manages all, others only their own (as index() lists). */
-    private function campusAllowed(Request $request, int $campusId): bool
-    {
-        return $request->attributes->get('auth_role') === 'super_admin'
-            || in_array($campusId, array_map('intval', (array) $request->attributes->get('auth_campus_ids', [])), true);
-    }
 }
