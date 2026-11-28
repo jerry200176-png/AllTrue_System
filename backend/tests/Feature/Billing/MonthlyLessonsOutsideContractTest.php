@@ -108,6 +108,9 @@ class MonthlyLessonsOutsideContractTest extends TestCase
         $this->assertSame([], $billing->lessonsOnlyOutsideContract($sc));
         $block = $billing->partlyBilledMonth($sc);
         $this->assertSame(['month_partly_billed', '2026-10', ['2026-09-29']], [$block['code'], $block['billing_period'], $block['lesson_dates']]);
+        // 更正帳單 cannot add a lesson before the contract start: the message only says 請回報.
+        $this->assertStringContainsString('請回報', $block['message']);
+        $this->assertStringNotContainsString('更正帳單', $block['message']);
 
         $before = [Invoice::query()->get()->toArray(), Payment::query()->get()->toArray()];
         $this->record($sc, 1800)->assertStatus(422)->assertJsonPath('code', 'month_partly_billed')->assertJsonPath('lesson_dates', ['2026-09-29']);
@@ -159,6 +162,25 @@ class MonthlyLessonsOutsideContractTest extends TestCase
         $this->assertNotSame('lessons_outside_contract', $this->record($sc, 3600)->json('code'));
         // An edit that strands nothing new is allowed although 10/3 was already outside.
         $this->api('putJson', "/api/v1/student-classes/{$sc->ID}", ['end_date' => '2026-09-29'])->assertOk();
+    }
+
+    /** Review HIGH: a lesson moved in from the previous term (#5198) sits between a free pre-start lesson and the start. */
+    public function test_a_covered_lesson_inside_the_pre_start_range_keeps_the_start_and_is_never_charged_twice(): void
+    {
+        $sc = $this->course(['2026-08-25' => 'attended', '2026-09-22' => 'attended']);
+        $previous = StudentClass::create(array_merge($sc->only(['StudentID', 'GradeID', 'SubjectID', 'TeacherID', 'by1', 'Period', 'TotalHours', 'Rate', 'ClassType']),
+            ['StartDate' => '2026-09-01', 'EndDate' => '2026-09-30', 'Charge' => 1800, 'Paid' => 0, 'Stop' => 1, 'ScheduleMode' => 'date',
+             'SessionCount' => 0, 'RemainingSessions' => 0, 'UsedSessions' => 0, 'SessionDuration' => 120, 'MDate' => now()]));
+        Invoice::create(['StudentID' => $sc->StudentID, 'StudentClassID' => $previous->ID, 'IssueDate' => '2026-09-01',
+            'TotalAmount' => 1800, 'PaidAmount' => 0, 'Status' => 'unpaid', 'billing_period' => '2026-09']);
+        $billing = app(MonthlyBillingService::class);
+
+        $this->assertSame('2026-10-10', $billing->billingStart($sc), '9/22 is on the September bill: October must not start at 8/25');
+        $this->assertSame(0, $billing->summarizePeriod($sc, '2026-10')['period_sessions']);
+        $block = $billing->partlyBilledMonth($sc);
+        $this->assertSame(['month_partly_billed', ['2026-08-25']], [$block['code'], $block['lesson_dates']]);
+        $this->record($sc, 1800)->assertStatus(422)->assertJsonPath('code', 'month_partly_billed');
+        $this->assertSame([1, 0], [Invoice::count(), Payment::count()]);
     }
 
     public function test_lessons_whose_month_a_catch_up_billed_do_not_block_collection(): void

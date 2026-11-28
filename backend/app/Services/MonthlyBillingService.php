@@ -169,7 +169,14 @@ class MonthlyBillingService
         }
         $free = array_values(array_diff($before, \App\Services\Billing\BillingPeriod::datesCoveredByBills($course, $before, $firstBills->modelKeys())));
 
-        $result = [min([$start, ...$held, ...($open ? $free : [])]), $free];
+        $pulled = [...$held, ...($open ? $free : [])];
+        $from = min([$start, ...$pulled]);
+        // The windows bill the whole from..StartDate range: a lesson in it neither held nor pulled (another bill covers it, #5198
+        // moved lesson) would be charged twice, so keep StartDate and let month_partly_billed hold the pre-start lessons.
+        if (array_diff(array_filter($before, fn (string $d) => $d >= $from), $pulled) !== []) {
+            $from = $start;
+        }
+        $result = [$from, $free];
         if (isset($this->preloadedSessions[$id])) {
             $this->preStartMemo[$id] = $result;
         }
@@ -207,10 +214,14 @@ class MonthlyBillingService
             return null;
         }
         $dates = implode('、', array_map(fn (string $d) => Carbon::parse($d)->format('n/j'), $month['lesson_dates']));
+        $start = substr((string) $course->getAttribute('StartDate'), 0, 10);
+        // 更正帳單 (BillCorrection::gap) only adds lessons after a line's PeriodEnd, never before the contract start.
+        $message = max($month['lesson_dates']) < $start
+            ? '%s 是合約開始日前上的課，還沒算進任何帳單，系統不能自動補進 %d 月的帳單，所以這裡不能登記，請回報。沒有登記任何款項。'
+            : '%s 的課還沒算進任何帳單，但 %d 月已有其他堂算在原本的帳單裡，同一個月不會再開第二張，所以這裡不能登記。請把這幾堂補進原帳單：學生帳務有「更正帳單」的分校在那裡更正，沒有的請回報。沒有登記任何款項。';
 
         return ['code' => 'month_partly_billed', 'billing_period' => $month['billing_period'], 'lesson_dates' => $month['lesson_dates'],
-            'message' => sprintf('%s 的課還沒算進任何帳單，但 %d 月已有其他堂算在原本的帳單裡，同一個月不會再開第二張，所以這裡不能登記。請把這幾堂補進原帳單：學生帳務有「更正帳單」的分校在那裡更正，沒有的請回報。沒有登記任何款項。',
-                $dates, (int) substr($month['billing_period'], 5, 2))];
+            'message' => sprintf($message, $dates, (int) substr($month['billing_period'], 5, 2))];
     }
 
     /**
@@ -251,7 +262,8 @@ class MonthlyBillingService
             }
 
             return ['billing_period' => (string) $month, 'lesson_dates' => $open->all(),
-                'clean' => $open->count() === $monthDates->count() && !collect($ranges)->contains(fn ($r) => $r[0] === $month)];
+                'clean' => $open->count() === $monthDates->count() && !collect($ranges)->contains(fn ($r) => $r[0] === $month)
+                    && !$open->contains(fn (string $date) => $date < $billFrom)]; // a pre-start lesson the first month cannot take
         }
 
         return null;
