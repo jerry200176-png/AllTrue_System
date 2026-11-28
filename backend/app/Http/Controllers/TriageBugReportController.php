@@ -6,7 +6,6 @@ use App\Models\BugReport;
 use App\Models\BugReportAttachment;
 use App\Services\BugReportService;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Validator;
 
 /** Read-only bug report access for a triage token (GET only); AuthenticateTriageToken audits, RestrictAccessTokenScope closes every other route. */
@@ -83,8 +82,8 @@ class TriageBugReportController extends Controller
             return response()->json(['message' => 'Not found'], 404);
         }
         $path = (string) $attachment->getAttribute('stored_path');
-        $disk = Storage::disk('public');
-        if ($path === '' || str_contains($path, '..') || !$disk->exists($path)) {
+        $disk = BugReportService::resolveAttachmentDisk($path);
+        if ($disk === null) {
             return response()->json(['message' => 'Not found'], 404);
         }
         $contents = (string) $disk->get($path);

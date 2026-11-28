@@ -180,6 +180,12 @@
 |--------|-----|--------|------|
 | GET | `api/v1/branches` | `CampusController@listPublic` | public |
 
+## /api/v1/bug-reports
+
+| Method | URI | Action | Auth |
+|--------|-----|--------|------|
+| GET | `api/v1/bug-reports/{bugReport}/attachments/{attachment}` | `BugReportController@showAttachment` | public |
+
 ## /api/v1/bugs
 
 | Method | URI | Action | Auth |

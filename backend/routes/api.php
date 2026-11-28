@@ -232,6 +232,11 @@ Route::prefix('v1')->group(function () {
         ->whereNumber('campus')
         ->where('file', '[0-9a-f-]{36}\.(jpg|png)')
         ->name('swipe-photo.show');
+    // 公開但需相對簽章（30 分鐘過期），供錯誤回報截圖／附件私有讀取（#889）。
+    Route::get('bug-reports/{bugReport}/attachments/{attachment}', [BugReportController::class, 'showAttachment'])
+        ->whereNumber(['bugReport', 'attachment'])
+        ->middleware('throttle:120,1')
+        ->name('bug-reports.attachment.show');
     // SEC-002: 10 req/IP/10 min — prevents bulk account creation.
     Route::post('auth/register', [AuthController::class, 'register'])
         ->middleware('throttle:10,10');

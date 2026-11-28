@@ -16,11 +16,14 @@ use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\URL;
 use Illuminate\Support\Str;
 
 class BugReportService
 {
     public const MAX_ATTACHMENTS = 5;
+
+    public const ATTACHMENT_URL_TTL_MINUTES = 30;
 
     public const REPORTER_TIMEOUT_MIN_DAYS = 7;
 
@@ -119,7 +122,7 @@ class BugReportService
             try {
                 $ownedPath = $directory.'/'.$file->hashName();
                 $ownedPaths[] = $ownedPath;
-                $storedPath = $file->store($directory, 'public');
+                $storedPath = $file->store($directory, 'local');
                 if ($storedPath !== $ownedPath) {
                     throw new \RuntimeException('Attachment storage did not complete');
                 }
@@ -199,12 +202,21 @@ class BugReportService
         if ($paths === []) {
             return true;
         }
-        try {
-            if (Storage::disk('public')->delete($paths)) {
-                return true;
+        $ok = true;
+        foreach (['local', 'public'] as $diskName) {
+            try {
+                $disk = Storage::disk($diskName);
+                $existing = array_values(array_filter($paths, static fn (string $p): bool => $disk->exists($p)));
+                if ($existing !== [] && !$disk->delete($existing)) {
+                    $ok = false;
+                }
+            } catch (\Throwable $e) {
+                $ok = false;
+                // The report/accepted metadata remains intact; cleanup failure is observable.
             }
-        } catch (\Throwable $e) {
-            // The report/accepted metadata remains intact; cleanup failure is observable.
+        }
+        if ($ok) {
+            return true;
         }
         Log::warning('[BugReport] attachment cleanup failed', ['bug_id' => $bug->id]);
         return false;
@@ -285,11 +297,11 @@ class BugReportService
             'created_at' => $l->created_at?->toIso8601String(),
         ])->all();
 
-        // Root-relative URL so images load on the same host the browser uses (LAN IP, etc.).
-        // Storage::disk('public')->url() bakes in APP_URL and breaks when APP_URL ≠ page origin.
+        // Root-relative temporary signed URL so images load on the same host the browser uses
+        // (LAN IP / reverse proxy) while keeping attachments off the public web disk (#889).
         $attachments = $bug->attachments()->orderBy('id')->get()->map(fn ($a) => [
             'id' => $a->id,
-            'url' => self::publicDiskBrowserUrl($a->stored_path),
+            'url' => self::signedAttachmentUrl((int) $bug->id, (int) $a->id),
             'original_name' => $a->original_name,
             'mime_type' => $a->mime_type,
         ])->all();
@@ -928,18 +940,34 @@ class BugReportService
     }
 
     /**
-     * Browser URL for a path on the public disk (same idea as ChatService::mediaUrl).
+     * Root-relative temporary signed URL for a bug report attachment (#889).
      */
-    private static function publicDiskBrowserUrl(?string $storedPath): string
+    public static function signedAttachmentUrl(int $bugId, int $attachmentId): string
     {
-        if (!$storedPath) {
-            return '';
+        return URL::temporarySignedRoute(
+            'bug-reports.attachment.show',
+            now()->addMinutes(self::ATTACHMENT_URL_TTL_MINUTES),
+            ['bugReport' => $bugId, 'attachment' => $attachmentId],
+            false
+        );
+    }
+
+    /**
+     * Locate a stored attachment on the private local disk first, falling back to legacy public disk.
+     */
+    public static function resolveAttachmentDisk(string $storedPath): ?\Illuminate\Contracts\Filesystem\Filesystem
+    {
+        if ($storedPath === '' || str_contains($storedPath, '..') || str_starts_with($storedPath, '/')) {
+            return null;
         }
-        if (str_starts_with($storedPath, '/')) {
-            return $storedPath;
+        foreach (['local', 'public'] as $diskName) {
+            $disk = Storage::disk($diskName);
+            if ($disk->exists($storedPath)) {
+                return $disk;
+            }
         }
 
-        return '/storage/' . ltrim(str_replace('\\', '/', $storedPath), '/');
+        return null;
     }
 
     /** 列表用摘要：說明第一個非空行、純文字、最多 60 字。 */
