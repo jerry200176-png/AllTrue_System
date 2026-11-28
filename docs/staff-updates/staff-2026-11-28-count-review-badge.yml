@@ -1,0 +1,13 @@
+updates:
+  - id: staff-2026-11-28-count-review-badge
+    published_at: "2026-11-28"
+    audiences:
+      - director
+    importance: digest
+    title: 待核對的課不再寫已收
+    summary: 按堂數的課系統判定要核對時，列表改寫「狀態待確認」。
+    items:
+      - category: fixed
+        text: 學生管理、課程管理：按堂數的課如果帳要核對（例如共用帳單還欠錢），不再顯示「已收」或「未繳」。
+    source_refs:
+      - "changelog:2026-11-28:count-review-badge"
