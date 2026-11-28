@@ -277,6 +277,15 @@ class VerifyBugReproductionsTest extends TestCase
         $bill($b, '2026-08', 'unpaid', 0);  // a NT$0 bill is not a charge
         $bill($a, '2026-08');
         $this->assertSame(1, $this->condition('monthly_period_billed_twice')['count']);
+        // A shared bill headed by another subject's contract that also charges contract $a for September (two lines, one bill).
+        $other = DB::table('StudentClass')->insertGetId(['StudentID' => DB::table('StudentClass')->where('ID', $a)->value('StudentID'),
+            'GradeID' => 1, 'SubjectID' => 67, 'TeacherID' => 1, 'by1' => 1, 'Period' => 4, 'StartDate' => now(), 'TotalHours' => 8,
+            'MDate' => now(), 'Stop' => 0] + $monthly);
+        $sharedBill = $bill($other, '2026-09');
+        foreach ([1, 2] as $line) {
+            DB::table('InvoiceItem')->insert(['InvoiceID' => $sharedBill, 'StudentClassID' => $a, 'Amount' => 2200, 'Description' => 'x', 'created_at' => now(), 'updated_at' => now()]);
+        }
+        $this->assertSame(2, $this->condition('monthly_period_billed_twice')['count']);
 
         // Missed charge: taught in September and October, only September billed.
         $c = $this->course($monthly);

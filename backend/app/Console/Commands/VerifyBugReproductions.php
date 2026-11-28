@@ -234,17 +234,24 @@ class VerifyBugReproductions extends Command
             [
                 // Founder 2026-11-28 (monthly billing: "charged twice or missed?"): candidates only, a person decides.
                 // One student + subject + month on two live positive bills. A catch-up bill beside the month's own bill
-                // is counted too; that is the point of looking. Observe-only: never enforced.
+                // is counted too; that is the point of looking. A bill counts for the contract it heads and for each contract
+                // on its lines (shared bill); two lines of one bill are one bill. Observe-only: never enforced.
                 'key' => 'monthly_period_billed_twice',
                 'label' => 'Monthly contracts: one student, subject and billing month on more than one live bill (possible double charge)',
                 'issue' => '#5708', 'enforced' => false,
                 'sql' => "SELECT COUNT(*) AS c FROM (
-                            SELECT sc.StudentID, sc.SubjectID, i.billing_period
-                            FROM Invoice i JOIN StudentClass sc ON sc.ID = i.StudentClassID
-                            WHERE sc.ScheduleMode = 'date' AND i.StudentID = sc.StudentID
-                              AND i.billing_period IS NOT NULL AND i.TotalAmount > 0
-                              AND (i.Status IS NULL OR i.Status NOT IN ('void', 'cancelled'))
-                            GROUP BY sc.StudentID, sc.SubjectID, i.billing_period HAVING COUNT(*) > 1) t",
+                            SELECT sc.StudentID, sc.SubjectID, b.billing_period
+                            FROM (SELECT i.id, i.StudentID, i.billing_period, i.StudentClassID AS course_id FROM Invoice i
+                                  WHERE i.billing_period IS NOT NULL AND i.TotalAmount > 0
+                                    AND (i.Status IS NULL OR i.Status NOT IN ('void', 'cancelled'))
+                                  UNION
+                                  SELECT i.id, i.StudentID, i.billing_period, ii.StudentClassID FROM Invoice i
+                                  JOIN InvoiceItem ii ON ii.InvoiceID = i.id
+                                  WHERE i.billing_period IS NOT NULL AND i.TotalAmount > 0
+                                    AND (i.Status IS NULL OR i.Status NOT IN ('void', 'cancelled'))) b
+                            JOIN StudentClass sc ON sc.ID = b.course_id
+                            WHERE sc.ScheduleMode = 'date' AND b.StudentID = sc.StudentID
+                            GROUP BY sc.StudentID, sc.SubjectID, b.billing_period HAVING COUNT(DISTINCT b.id) > 1) t",
             ],
             [
                 // A finished month (from 2026-08, when bills started to carry their month) in which a priced monthly
