@@ -146,4 +146,14 @@ describe('async page skeleton', () => {
     expect(errorHandler.mock.calls[0][0]).toBe(error);
     wrapper.unmount();
   });
+
+  it('shows a message and a reload button instead of an empty page when the load fails', async () => {
+    const wrapper = mountPage(defineAsyncPage(() => Promise.reject(new Error('offline'))), { global: { config: { errorHandler: () => {} } } });
+    await flushPromises();
+    const box = wrapper.get('[data-testid="page-load-error"]');
+    expect(box.attributes('role')).toBe('alert');
+    expect(box.text()).toContain('頁面載入失敗');
+    expect(box.get('button').text()).toBe('重新整理');
+    wrapper.unmount();
+  });
 });
