@@ -345,6 +345,13 @@ class StudentController extends Controller
             'StudentClass' => 0,
             'ClassSession' => 0,
             'LearningRecord' => 0,
+            'learning_record_teacher_comments' => 0,
+            'learning_record_feedbacks' => 0,
+            'learning_record_feedback_replies' => 0,
+            'feedback_push_log' => 0,
+            'parent_feedback' => 0,
+            'parent_feedback_replies' => 0,
+            'student_line_bindings' => 0,
             'StudentSingIn' => 0,
             'schedules' => 0,
             'Invoice' => 0,
@@ -357,7 +364,25 @@ class StudentController extends Controller
         static $tableExists = null;
         if ($tableExists === null) {
             $tableExists = [];
-            foreach (['StudentClass', 'ClassSession', 'LearningRecord', 'StudentSingIn', 'schedules', 'Invoice', 'InvoiceItem', 'Payment', 'ParentSession', 'Student'] as $table) {
+            foreach ([
+                'StudentClass',
+                'ClassSession',
+                'LearningRecord',
+                'learning_record_teacher_comments',
+                'learning_record_feedbacks',
+                'learning_record_feedback_replies',
+                'feedback_push_log',
+                'parent_feedback',
+                'parent_feedback_replies',
+                'student_line_bindings',
+                'StudentSingIn',
+                'schedules',
+                'Invoice',
+                'InvoiceItem',
+                'Payment',
+                'ParentSession',
+                'Student',
+            ] as $table) {
                 $tableExists[$table] = Schema::hasTable($table);
             }
         }
@@ -385,9 +410,81 @@ class StudentController extends Controller
                     ->all();
             }
 
+            $learningRecordIds = [];
+            if ($tableExists['LearningRecord'] && !empty($studentClassIds)) {
+                $learningRecordIds = DB::table('LearningRecord')
+                    ->whereIn('StudentClassID', $studentClassIds)
+                    ->pluck('id')
+                    ->map(fn ($id) => (int) $id)
+                    ->all();
+            }
+
+            if ($tableExists['learning_record_feedbacks']) {
+                $lrFeedbackQuery = DB::table('learning_record_feedbacks')->where('student_id', $studentId);
+                if (!empty($learningRecordIds)) {
+                    $lrFeedbackQuery->orWhereIn('learning_record_id', $learningRecordIds);
+                }
+                $lrFeedbackIds = $lrFeedbackQuery->pluck('id')->map(fn ($id) => (int) $id)->all();
+
+                if (!empty($lrFeedbackIds) && $tableExists['learning_record_feedback_replies']) {
+                    $deleted['learning_record_feedback_replies'] = DB::table('learning_record_feedback_replies')
+                        ->whereIn('feedback_id', $lrFeedbackIds)
+                        ->delete();
+                }
+
+                if (!empty($lrFeedbackIds) && $tableExists['feedback_push_log']) {
+                    $deleted['feedback_push_log'] = DB::table('feedback_push_log')
+                        ->whereIn('feedback_id', $lrFeedbackIds)
+                        ->delete();
+                }
+
+                if (!empty($lrFeedbackIds)) {
+                    $deleted['learning_record_feedbacks'] = DB::table('learning_record_feedbacks')
+                        ->whereIn('id', $lrFeedbackIds)
+                        ->delete();
+                }
+            }
+
+            if ($tableExists['learning_record_teacher_comments']) {
+                $deleted['learning_record_teacher_comments'] = DB::table('learning_record_teacher_comments')
+                    ->where(function ($q) use ($studentId, $learningRecordIds) {
+                        $q->where('student_id', $studentId);
+                        if (!empty($learningRecordIds)) {
+                            $q->orWhereIn('learning_record_id', $learningRecordIds);
+                        }
+                    })
+                    ->delete();
+            }
+
             if ($tableExists['LearningRecord'] && !empty($studentClassIds)) {
                 $deleted['LearningRecord'] = DB::table('LearningRecord')
                     ->whereIn('StudentClassID', $studentClassIds)
+                    ->delete();
+            }
+
+            if ($tableExists['parent_feedback']) {
+                $parentFeedbackIds = DB::table('parent_feedback')
+                    ->where('student_id', $studentId)
+                    ->pluck('id')
+                    ->map(fn ($id) => (int) $id)
+                    ->all();
+
+                if (!empty($parentFeedbackIds) && $tableExists['parent_feedback_replies']) {
+                    $deleted['parent_feedback_replies'] = DB::table('parent_feedback_replies')
+                        ->whereIn('feedback_id', $parentFeedbackIds)
+                        ->delete();
+                }
+
+                if (!empty($parentFeedbackIds)) {
+                    $deleted['parent_feedback'] = DB::table('parent_feedback')
+                        ->whereIn('id', $parentFeedbackIds)
+                        ->delete();
+                }
+            }
+
+            if ($tableExists['student_line_bindings']) {
+                $deleted['student_line_bindings'] = DB::table('student_line_bindings')
+                    ->where('student_id', $studentId)
                     ->delete();
             }
 
@@ -524,6 +621,13 @@ class StudentController extends Controller
             'StudentClass' => 0,
             'ClassSession' => 0,
             'LearningRecord' => 0,
+            'learning_record_teacher_comments' => 0,
+            'learning_record_feedbacks' => 0,
+            'learning_record_feedback_replies' => 0,
+            'feedback_push_log' => 0,
+            'parent_feedback' => 0,
+            'parent_feedback_replies' => 0,
+            'student_line_bindings' => 0,
             'StudentSingIn' => 0,
             'schedules' => 0,
             'Invoice' => 0,
