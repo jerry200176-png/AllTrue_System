@@ -8,11 +8,11 @@
 
 ## 1. 影響分析
 
-### #189 — 陳品承加課重複入帳（新店，回報者黃芝琳）
+### #189 — 學生丁加課重複入帳（新店，回報者黃芝琳）
 
 | 項目 | 內容 |
 |------|------|
-| 學生 | 2144 陳品承 |
+| 學生 | 2144 學生丁 |
 | 主課程 | SC **1946**（理化，8 堂，Teacher 67） |
 | 幽靈殼 | SC **2264**（SessionCount=0，StartDate=EndDate=2026-06-13，同師同生） |
 | 實體衝突 | 6/13、6/20 各有一堂 **17:00–18:00 attended** 记在 SC2264，同時 SC1946 仍有 17:00–19:00 相關列（含 attended / cancelled placeholder） |
@@ -225,8 +225,8 @@ ROWS_AFFECTED: 2 sessions, 0 invoices, 1 student_class (stop flag)
 
 | 學生 | 日期 | 時間 | class_ids | session_ids | statuses |
 |------|------|------|-----------|-------------|----------|
-| 陳品承 | 2026-06-13 | 17:00 | 1946, 2264 | 15636, 18569 | attended, attended |
-| 陳品承 | 2026-06-20 | 17:00 | 1946, 2264 | 15633, 18602 | attended, attended |
+| 學生丁 | 2026-06-13 | 17:00 | 1946, 2264 | 15636, 18569 | attended, attended |
+| 學生丁 | 2026-06-20 | 17:00 | 1946, 2264 | 15633, 18602 | attended, attended |
 
 **§2.2 consumed > SessionCount**：全系統 **15+** 筆；#191 案例 SC395 需個別驗證（見下）。
 
@@ -272,7 +272,7 @@ ROWS_AFFECTED: 2 sessions, 0 invoices, 1 student_class (stop flag)
 1. 執行前腳本寫入 `repair-snapshots/*.json`（含 ClassSession 列完整欄位）
 2. 回滾：`php artisan repair:duplicate-sessions --rollback --snapshot=<file>`
 3. 驗證：`SELECT id, Status, Note FROM ClassSession WHERE id IN (...)` 與 snapshot 一致
-4. 抽樣：陳品承 SC1946 評量待填數恢復修復前水準
+4. 抽樣：學生丁 SC1946 評量待填數恢復修復前水準
 
 ### 7.7 暫時替代：Pi 唯讀 audit 一鍵腳本（直到 artisan 實作）
 

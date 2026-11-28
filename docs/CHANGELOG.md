@@ -2320,7 +2320,7 @@
 
 - `Invoice` 新增 `ScheduleModeAtIssue`（開立當下的計費模式快照，純新增欄位，舊資料 NULL，不回填）。
 - 課程計費模式（堂數制/月結）事後變更時，收據 API 會標示 `billing_mode_changed`，前端顯示提醒；不自動作廢、不改動任何金額或已結帳資料。
-- 範圍縮小：只修「舊收據看起來仍有效」的顯示問題；黃玟睿本案實際應收金額仍待校方確認，不由本次變更決定。
+- 範圍縮小：只修「舊收據看起來仍有效」的顯示問題；學生乙本案實際應收金額仍待校方確認，不由本次變更決定。
 
 ## 2026-08-15 — chore(schedule): TD-076 Phase 3 回填命令（預設 dry-run）
 
@@ -2616,7 +2616,7 @@
 
 ## 2026-08-06 — docs+chore(billing): 「已繳費」判斷全專案盤點，收斂 AlertController 內部重複，TD-073 調升 P1
 
-- **背景**：使用者要求何昀佳繳費狀態案不能只點修，還要對照大公司軟體看核心問題、從根本解決。
+- **背景**：使用者要求學生甲繳費狀態案不能只點修，還要對照大公司軟體看核心問題、從根本解決。
 - **盤點結果**：`backend/app` 至少 8 個檔案（`StudentClassController`、`AlertController` 內部另兩處、`NotificationSyncService`、`DunningService`、`PaymentReportController`、`ParentPortalController`、`NotificationController`、`AccountingController`、`SendTuitionReminders`）各自獨立重新判斷「這筆課程是否已繳費」，至少 4 種互不相同的變體並存；`StudentClass`／`Invoice` model 完全沒有集中的 `isPaid()` 存取器。這是 `TD-073`（重複業務邏輯無自動偵測）論點同一天第三次驗證。
 - **本次收斂範圍**：`AlertController.php` 內部原本重複兩次的同一組條件（`computePaymentStatus()`、`computePackageCountPaymentStatus()`）抽成單一私有方法 `isFullyPaid()`；**未**跨檔案大改其餘 8 處——那需要逐一取得產品方核准（`DunningService.php` 已被明文凍結），列為 TD-073 子項待後續分批清償。
 - **文件**：`docs/SYSTEM_TECH_GUIDE.md` §12.5（新增，業界對照：Stripe `Invoice.status`／Shopify `Order.financial_status` 單一權威實作模式）、`docs/TECH_DEBT.md` TD-073（P2→P1）、`docs/AI_REGRESSION_LESSONS.md` R95（新增）。
@@ -2637,7 +2637,7 @@
 
 ## 2026-08-06 — chore(hardening): 請假 VoidReason 業務字串收斂成單一常數，並補業界作法對照文件
 
-- **背景**：回顧當天修的 6 個 in-app bug 與陳禹慈堂數超排案，發現全部落在同一組業界有名字的反模式下（授權範圍判斷分散、業務字串未收斂、狀態機不對稱、集合資料整包覆蓋、同一規則重複實作）。詳見 `docs/SYSTEM_TECH_GUIDE.md` 第 12 節逐一對照與加固守則。
+- **背景**：回顧當天修的 6 個 in-app bug 與學生丙堂數超排案，發現全部落在同一組業界有名字的反模式下（授權範圍判斷分散、業務字串未收斂、狀態機不對稱、集合資料整包覆蓋、同一規則重複實作）。詳見 `docs/SYSTEM_TECH_GUIDE.md` 第 12 節逐一對照與加固守則。
 - **本則實際變更**：`一般請假`（撤銷請假比對用的 VoidReason 字面值，#217/#218 就是這個字串的其中一份被打壞才炸掉）在 `CourseLeaveCascadeService.php` 裡以字面值重複寫了 6 次，`LearningRecordResurrectionPolicy.php` 的系統可復活白名單又各自抄了一份。新增 `CourseLeaveCascadeService::VOID_REASON_LEAVE` 常數，7 處使用點全部改成引用同一個常數，未來只可能改壞一份、也只需要改一處。
 - **測試**：leave/session/attendance/schedule/learning-record 相關 572 個測試、2415 個 assertions 全綠；PHPStan 對兩個變更檔案無新增錯誤。
 
@@ -3404,7 +3404,7 @@ Fixed：主任儀表板「可信度」決策卡現在會直接標出涉及學生
 
 ## 2026-07-09 — fix: 重複堂次清理完成 + 加課/跨約重複資料修正（PCR-R2 執行）
 
-- **Fixed**：課表與評量中「同一堂課出現兩筆」的重複堂次已全部清理（21 組），評量「未填」誤提醒與收據日期錯位一併修正（陳品承 6/13、6/20；吳夏妍 5/14）。
+- **Fixed**：課表與評量中「同一堂課出現兩筆」的重複堂次已全部清理（21 組），評量「未填」誤提醒與收據日期錯位一併修正（學生丁 6/13、6/20；吳夏妍 5/14）。
 - 開發備註：PCR-2026-07-09-957-D1-R2 A1+B 獲 CEO GO 後執行；audit intra=0；snapshot + 表級備份齊備；執行紀錄見 `docs/runbooks/957-d1-r2-execution-record.md`。
 - 開發備註：unique slot index 重設計為 active-only（`ActiveSlotFlag` generated column，PR #1121）；placeholder PCR 取消。deploy migration 失敗不再被吞（PR #1120，R67）。
 - 開發備註：治理批次——issues 94→81（含證據關閉）；remote branches 35→22（tag-then-delete 可逆）；in-app #171/#172/#175/#189/#191/#195 收尾。
@@ -3445,7 +3445,7 @@ Fixed：登記請假後，課程詳情的「上課日期」若出現半透明的
 
 Fixed：家長送出請假但主任尚未審核時，這堂課在「出缺勤管理」會消失、卻在「課表與評量」被列成待填評量。已統一：兩邊都會顯示「請假(待審)」，不需點名也不需填評量；若審核退回，堂次會自動恢復待點名/待填。
 
-開發備註：ParentPortal 請假流程只把 `ClassSession.Status` 設為 `leave_requested`（不建 StudentSingIn 列）；出缺勤管理把該狀態整列過濾掉、`sessionConsistency` 與 `LearningRecord::scopeExcludeLeaveSessionPendingReview` 只認 `leave`/`excused` → 兩畫面認定分歧（in-app #194／GitHub #1099，陳品承 7/4 案例）。修正 = `leave_requested` 進 NON_FILLABLE + 統一 label「請假(待審)」+ attendance statusRows 顯示 + 後端 scope 補 session-status 分支。回歸測試 `sessionConsistency.test.js` + `LearningRecordLeaveExclusionTest::test_pending_lr_on_leave_requested_session_is_excluded`。
+開發備註：ParentPortal 請假流程只把 `ClassSession.Status` 設為 `leave_requested`（不建 StudentSingIn 列）；出缺勤管理把該狀態整列過濾掉、`sessionConsistency` 與 `LearningRecord::scopeExcludeLeaveSessionPendingReview` 只認 `leave`/`excused` → 兩畫面認定分歧（in-app #194／GitHub #1099，學生丁 7/4 案例）。修正 = `leave_requested` 進 NON_FILLABLE + 統一 label「請假(待審)」+ attendance statusRows 顯示 + 後端 scope 補 session-status 分支。回歸測試 `sessionConsistency.test.js` + `LearningRecordLeaveExclusionTest::test_pending_lr_on_leave_requested_session_is_excluded`。
 
 
 ## 2026-07-08 — fix: 週日課程的月結金額不再算成 0 元

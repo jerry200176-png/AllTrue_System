@@ -162,7 +162,7 @@ class ClassSessionsHideStoppedScheduledTest extends TestCase
         AuthToken::create(['user_id' => $teacher->id, 'token' => $token, 'expires_at' => now()->addDay()]);
 
         $student = Student::create([
-            'name' => '王品方測試', 'CampusID' => $campusId, 'ClassID' => 1,
+            'name' => '學生戊測試', 'CampusID' => $campusId, 'ClassID' => 1,
             'enable' => 1, 'MDT' => now(), 'Notify_Token' => '',
         ]);
 

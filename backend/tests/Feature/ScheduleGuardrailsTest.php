@@ -445,7 +445,7 @@ class ScheduleGuardrailsTest extends TestCase
 
         DB::table('Subject')->insertOrIgnore(['id' => 1, 'Subject_Name' => '理化']);
 
-        $studentB = $this->createStudent(1, '王品方');
+        $studentB = $this->createStudent(1, '學生戊');
         $studentC = $this->createStudent(1, '欲補課學生');
 
         $date = '2026-08-29'; // Saturday
@@ -484,10 +484,10 @@ class ScheduleGuardrailsTest extends TestCase
 
         // Still correctly blocked — the "old" course is a genuine, still-active occupant.
         $res->assertStatus(409)
-            ->assertJsonPath('conflicts.0.overlap_details.0.student_name', '王品方')
+            ->assertJsonPath('conflicts.0.overlap_details.0.student_name', '學生戊')
             ->assertJsonPath('conflicts.0.overlap_details.0.subject_name', '理化');
         $message = (string) $res->json('message');
-        $this->assertStringContainsString('王品方', $message);
+        $this->assertStringContainsString('學生戊', $message);
         $this->assertStringContainsString('理化', $message);
         $this->assertNotEmpty($res->json('suggested_actions'));
         $this->assertNotEmpty($res->json('conflicts.0.suggested_actions'));
@@ -551,7 +551,7 @@ class ScheduleGuardrailsTest extends TestCase
     public function test_validate_recurring_course_excludes_same_student_occupancy(): void
     {
         $teacherId = $this->createTeacher(1, 'teacher-guard-recurring-self@example.com');
-        $selfStudent = $this->createStudent(1, '王品方');
+        $selfStudent = $this->createStudent(1, '學生戊');
         $otherStudent = $this->createStudent(1, '其他學生');
 
         $selfCourseId = (int) StudentClass::query()->insertGetId([
