@@ -1277,7 +1277,6 @@ class AccountingController extends Controller
         })->filter()->values()->all();
     }
 
-    /** Tutoring has no payment obligation (PaymentReportController::tutoringPaymentBlocked); one rule for scope and courses[]. */
     /**
      * Ledger only: a bill paid by moved credit (轉課 transfer_in) has no cash receipt, so the resolver's last-paid rule (which
      * drives the list's 最後繳費) gives none. The card still shows the latest transfer_in while the bill's moved credit nets above 0.
@@ -1294,6 +1293,7 @@ class AccountingController extends Controller
         return $net > 0 && $latest ? ['paid_at' => substr((string) $latest->PaidAt, 0, 10), 'amount' => min($net, (int) $latest->Amount), 'method' => 'transfer_in'] : null;
     }
 
+    /** Tutoring has no payment obligation (PaymentReportController::tutoringPaymentBlocked); one rule for scope and courses[]. */
     private function hasNoPaymentObligation(StudentClass $class): bool
     {
         return strtolower(trim((string) $class->getAttribute('ClassType'))) === 'tutoring';
