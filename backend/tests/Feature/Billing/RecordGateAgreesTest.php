@@ -74,6 +74,20 @@ class RecordGateAgreesTest extends TestCase
         $this->assertAgrees($sc, 1800, true);
     }
 
+    /**
+     * F (legacy Paid flag, no bill): Paid=1 on a count contract with an empty Charge column and a positive Rate. The resolver
+     * skips its legacy-flag "paid" (that needs Charge > 0) and reads review_required, so D passes and F's Paid==1 branch refuses.
+     */
+    public function test_a_paid_flag_with_no_bill_the_resolver_does_not_read_as_paid_blocks_the_card_as_record_refuses(): void
+    {
+        $sc = $this->course([], ['ScheduleMode' => 'count', 'SessionCount' => 4, 'RemainingSessions' => 4, 'Charge' => 0, 'Rate' => 800, 'Paid' => 1]);
+        $status = app(\App\Services\BillingPayableResolver::class)->courseStatusesByStudentClassIds([(int) $sc->ID])[(int) $sc->ID]['status'];
+        $this->assertNotContains($status, ['paid', 'free'], 'fixture must pass D, so F decides');
+
+        $block = $this->assertAgrees($sc, 800, true);
+        $this->assertSame(['course_already_paid', '這門課的款項已收齊，不需要再登記；若收錯了，請先作廢原收款再重新登記。'], [$block['code'], $block['message']]);
+    }
+
     /** Positive: an unbilled month (monthly) and an unbilled count contract: no block, and the record is accepted. */
     public function test_an_unbilled_month_and_an_unbilled_count_contract_have_no_block_and_record(): void
     {
