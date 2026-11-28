@@ -502,7 +502,7 @@ const menuGroups = computed(() => {
   ].filter(Boolean);
   const ra = props.rowActions || {};
   const risky = [
-    ra.waive && { id: 'waive', label: `改成「${WAIVED_LABEL}」`, danger: true },
+    ra.waive && { id: 'waive', label: `改成「${WAIVED_LABEL}」`, danger: true, disabled: Boolean(ra.waiveBlock), reason: ra.waiveBlock || '' },
     ra.void && { id: 'void', label: '撤銷收款', danger: true },
     ra.settle && { id: 'settle', label: '結案（不續報）', danger: true },
     canRefund.value && { id: 'refund', label: '退費', danger: true },
