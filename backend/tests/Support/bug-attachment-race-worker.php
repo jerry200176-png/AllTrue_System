@@ -15,7 +15,7 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 
-config(['cache.stores.file.path' => $data['cache_root'], 'filesystems.disks.public' => [
+config(['cache.stores.file.path' => $data['cache_root'], 'filesystems.disks.local' => [
     'driver' => 'local', 'root' => $data['storage_root'], 'throw' => true,
 ]]);
 Carbon::setTestNow(Carbon::parse($data['clock']));
@@ -40,7 +40,7 @@ if (($data['mode'] ?? '') === 'pending-admission') {
         } else {
             usleep(200000);
         }
-        return Storage::disk('public')->exists($data['attachment']['stored_path']);
+        return Storage::disk('local')->exists($data['attachment']['stored_path']);
     });
     echo json_encode(['status' => 200, 'retained_before_commit' => $retained], JSON_THROW_ON_ERROR);
     exit;

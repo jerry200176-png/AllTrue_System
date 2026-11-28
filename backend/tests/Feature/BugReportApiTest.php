@@ -206,7 +206,7 @@ class BugReportApiTest extends TestCase
 
     public function test_submit_bug_report_with_screenshot(): void
     {
-        Storage::fake('public');
+        Storage::fake('local');
 
         [$token, $user] = $this->createUserToken([1], 'bugImg@test.com', 'T');
 
@@ -266,7 +266,7 @@ class BugReportApiTest extends TestCase
     /** @dataProvider invalidAttachmentValues */
     public function test_attachment_validation_rejects_non_file_entries(bool $mixed, string $value): void
     {
-        Storage::fake('public');
+        Storage::fake('local');
         [$token] = $this->createUserToken([1], 'bugInvalidFile@test.com', 'T');
         $attachments = ['not_file' => $value];
         if ($mixed) $attachments['valid'] = UploadedFile::fake()->image('valid.png');
@@ -287,7 +287,7 @@ class BugReportApiTest extends TestCase
 
     public function test_attachment_limits_remain_enforced(): void
     {
-        Storage::fake('public');
+        Storage::fake('local');
         [$token] = $this->createUserToken([1], 'bugLimits@test.com', 'T');
         $headers = ['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'];
         $payload = ['title' => '附件限制', 'description' => 'existing limits', 'branch_id' => 1];
@@ -306,15 +306,15 @@ class BugReportApiTest extends TestCase
      */
     public function test_submit_bug_report_with_screenshot_returns_201_even_when_storage_fails(): void
     {
-        Storage::fake('public');
+        Storage::fake('local');
 
-        // Replace the 'public' disk with a mock that throws on every write.
+        // Replace the 'local' disk with a mock that throws on every write.
         $throwingDisk = \Mockery::mock(\Illuminate\Contracts\Filesystem\Filesystem::class);
         $throwingDisk->shouldReceive('putFileAs')->andThrow(new \RuntimeException('Simulated disk failure'));
         // Allow any other calls (e.g. exists) to succeed silently.
         $throwingDisk->shouldReceive('exists')->andReturn(false);
         $throwingDisk->shouldIgnoreMissing();
-        Storage::set('public', $throwingDisk);
+        Storage::set('local', $throwingDisk);
 
         [$token] = $this->createUserToken([1], 'bugStorageFail@test.com', 'T');
 

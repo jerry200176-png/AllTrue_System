@@ -133,6 +133,23 @@ else
   log "WARN: uploads dir ${UPLOADS_DIR} not found — nothing to sync"
 fi
 
+# ── 私有錯誤回報附件 → private-uploads/bug-reports/（#889，排除 host-local storage/app/private）──
+sleep 5
+BUG_REPORTS_DIR="/home/admin/backend/storage/app/bug-reports"
+if [ -d "$BUG_REPORTS_DIR" ]; then
+  log "Syncing private bug-reports (${BUG_REPORTS_DIR}) to ${REMOTE}/private-uploads/bug-reports/ ..."
+  "$RCLONE" copy \
+    --transfers 2 \
+    --retries 5 \
+    --retries-sleep 30s \
+    --low-level-retries 10 \
+    --log-level ERROR \
+    "$BUG_REPORTS_DIR" \
+    "${REMOTE}/private-uploads/bug-reports/" 2>&1 | tee -a "$LOG" || { log "WARN: private bug-reports sync had errors (non-fatal)"; SYNC_ERRORS=$((SYNC_ERRORS+1)); }
+else
+  log "No private bug-reports dir yet — nothing to sync"
+fi
+
 # ── 修復腳本回滾快照 → repair-snapshots/（同款漏洞，順手補上）──
 sleep 5
 SNAPSHOTS_DIR="/home/admin/backend/storage/app/repair-snapshots"

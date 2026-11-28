@@ -107,7 +107,7 @@ class BugReportAbuseLimitsTest extends TestCase
 
     public function test_retry_keeps_screenshots_when_the_first_save_had_none(): void
     {
-        Storage::fake('public');
+        Storage::fake('local');
         [$h] = $this->actor('a@x');
         $first = $this->report($h, 1)->assertCreated(); // row saved, screenshot storage failed
         $send = fn () => $this->withHeaders($h)->post('/api/v1/bugs', ['title' => 't1', 'description' => 'd1', 'branch_id' => 1,
@@ -133,7 +133,7 @@ class BugReportAbuseLimitsTest extends TestCase
 
     public function test_5090_stale_retry_cannot_append_to_existing_attachments_or_delete_their_file(): void
     {
-        Storage::fake('public');
+        Storage::fake('local');
         [$h] = $this->actor('attachment-existing@x');
         $id = $this->report($h, 1)->json('id');
         $bug = BugReport::findOrFail($id);
@@ -142,13 +142,13 @@ class BugReportAbuseLimitsTest extends TestCase
         $accepted = $bug->attachments()->firstOrFail()->stored_path;
         $this->assertSame(0, BugReportService::attachUploadedFiles($bug, [$file]));
         $this->assertSame(1, $bug->attachments()->count(), 'repeat the authoritative empty-report check inside the lock');
-        Storage::disk('public')->assertExists($accepted);
-        $this->assertCount(1, Storage::disk('public')->allFiles());
+        Storage::disk('local')->assertExists($accepted);
+        $this->assertCount(1, Storage::disk('local')->allFiles());
     }
 
     public function test_5090_metadata_rollback_cleans_owned_files_and_leaves_retry_possible(): void
     {
-        Storage::fake('public');
+        Storage::fake('local');
         [$h] = $this->actor('attachment-rollback@x');
         $bug = BugReport::findOrFail($this->report($h, 1)->json('id'));
         $attempt = 0;
@@ -165,15 +165,15 @@ class BugReportAbuseLimitsTest extends TestCase
         }
         $this->assertSame(2, $errors);
         $this->assertSame(0, $bug->attachments()->count());
-        $this->assertSame([], Storage::disk('public')->allFiles());
+        $this->assertSame([], Storage::disk('local')->allFiles());
         $this->assertSame(0, BugReportService::attachUploadedFiles($bug, [UploadedFile::fake()->create('retry.png', 1, 'image/png')]));
         $this->assertSame(1, $bug->attachments()->count());
-        $this->assertCount(1, Storage::disk('public')->allFiles());
+        $this->assertCount(1, Storage::disk('local')->allFiles());
     }
 
     public function test_5090_partial_storage_failure_cleans_its_file_and_keeps_successful_evidence(): void
     {
-        Storage::fake('public');
+        Storage::fake('local');
         [$h] = $this->actor('attachment-storage@x');
         $bug = BugReport::findOrFail($this->report($h, 1)->json('id'));
         $temp = tempnam(sys_get_temp_dir(), 'bug-upload-');
@@ -181,7 +181,7 @@ class BugReportAbuseLimitsTest extends TestCase
         $broken = new class($temp, 'broken.png', 'image/png', null, true) extends UploadedFile {
             public function store($path = '', $options = [])
             {
-                Storage::disk('public')->put($path.'/'.$this->hashName(), 'partial write');
+                Storage::disk('local')->put($path.'/'.$this->hashName(), 'partial write');
                 throw new \RuntimeException('synthetic storage failure after partial write');
             }
         };
@@ -191,7 +191,7 @@ class BugReportAbuseLimitsTest extends TestCase
             ]));
             $this->assertSame(1, $bug->attachments()->count());
             $this->assertSame('kept.png', $bug->attachments()->firstOrFail()->original_name);
-            $this->assertCount(1, Storage::disk('public')->allFiles());
+            $this->assertCount(1, Storage::disk('local')->allFiles());
         } finally {
             @unlink($temp);
         }
