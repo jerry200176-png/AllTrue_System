@@ -231,6 +231,52 @@ class VerifyBugReproductions extends Command
                             AND cs.SessionDate >= CAST(:app_today AS DATE)
                             AND LOWER(COALESCE(cs.Status, '')) NOT IN ({$freeingStatuses})",
             ],
+            [
+                // Founder 2026-11-28 (monthly billing: "charged twice or missed?"): candidates only, a person decides.
+                // One student + subject + month on two live positive bills. A catch-up bill beside the month's own bill
+                // is counted too; that is the point of looking. A bill counts for the contract it heads and for each contract
+                // on its lines (shared bill); two lines of one bill are one bill. Observe-only: never enforced.
+                'key' => 'monthly_period_billed_twice',
+                'label' => 'Monthly contracts: one student, subject and billing month on more than one live bill (possible double charge)',
+                'issue' => '#5708', 'enforced' => false,
+                'sql' => "SELECT COUNT(*) AS c FROM (
+                            SELECT sc.StudentID, sc.SubjectID, b.billing_period
+                            FROM (SELECT i.id, i.StudentID, i.billing_period, i.StudentClassID AS course_id FROM Invoice i
+                                  WHERE i.billing_period IS NOT NULL AND i.TotalAmount > 0
+                                    AND (i.Status IS NULL OR i.Status NOT IN ('void', 'cancelled'))
+                                  UNION
+                                  SELECT i.id, i.StudentID, i.billing_period, ii.StudentClassID FROM Invoice i
+                                  JOIN InvoiceItem ii ON ii.InvoiceID = i.id
+                                  WHERE i.billing_period IS NOT NULL AND i.TotalAmount > 0
+                                    AND (i.Status IS NULL OR i.Status NOT IN ('void', 'cancelled'))) b
+                            JOIN StudentClass sc ON sc.ID = b.course_id
+                            WHERE sc.ScheduleMode = 'date' AND b.StudentID = sc.StudentID
+                            GROUP BY sc.StudentID, sc.SubjectID, b.billing_period HAVING COUNT(DISTINCT b.id) > 1) t",
+            ],
+            [
+                // A finished month (from 2026-08, when bills started to carry their month) in which a priced monthly
+                // contract taught a lesson but has no live bill labelled with that month. A bill labelled with the
+                // neighbouring month that covers the lesson by date is counted too (label mismatch). A bill counts for a contract it
+                // heads or names on a line (shared bill). Observe-only.
+                'key' => 'monthly_lessons_without_bill',
+                'label' => 'Monthly contracts: finished months with a taught lesson and no live bill for that month (possible missed charge)',
+                'issue' => '#5708', 'enforced' => false,
+                'sql' => "SELECT COUNT(*) AS c FROM (
+                            SELECT cs.StudentClassID, DATE_FORMAT(cs.SessionDate, '%Y-%m') AS ym
+                            FROM ClassSession cs JOIN StudentClass sc ON sc.ID = cs.StudentClassID
+                            WHERE sc.ScheduleMode = 'date' AND COALESCE(sc.PackageID, 0) = 0
+                              AND LOWER(TRIM(COALESCE(sc.ClassType, ''))) <> 'tutoring'
+                              AND (COALESCE(sc.Charge, 0) > 0 OR COALESCE(sc.Rate, 0) > 0)
+                              AND COALESCE(sc.closed_reason, '') NOT IN ('waived', 'refunded')
+                              AND LOWER(COALESCE(cs.Status, '')) IN ('attended', 'completed', 'late')
+                              AND cs.SessionDate >= '2026-08-01'
+                              AND cs.SessionDate < DATE_FORMAT(CAST(:app_today AS DATE), '%Y-%m-01')
+                              AND NOT EXISTS (SELECT 1 FROM Invoice i WHERE (i.StudentClassID = cs.StudentClassID
+                                  OR EXISTS (SELECT 1 FROM InvoiceItem ii WHERE ii.InvoiceID = i.id AND ii.StudentClassID = cs.StudentClassID))
+                                AND (i.Status IS NULL OR i.Status NOT IN ('void', 'cancelled'))
+                                AND i.billing_period = DATE_FORMAT(cs.SessionDate, '%Y-%m'))
+                            GROUP BY cs.StudentClassID, DATE_FORMAT(cs.SessionDate, '%Y-%m')) t",
+            ],
         ];
     }
 

@@ -254,6 +254,66 @@ class VerifyBugReproductionsTest extends TestCase
         $this->assertSame(2, $this->condition($key)['count']);
     }
 
+    /** Founder 2026-11-28: nightly candidates for a month charged twice and for a taught month never billed. */
+    public function test_monthly_billing_candidates_double_bill_and_lessons_without_bill(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-11-28 04:00', 'Asia/Taipei'));
+        $bill = fn (int $sc, string $period, string $status = 'unpaid', int $total = 4400): int => DB::table('Invoice')->insertGetId([
+            'StudentID' => (int) DB::table('StudentClass')->where('ID', $sc)->value('StudentID'), 'StudentClassID' => $sc,
+            'IssueDate' => $period . '-01', 'TotalAmount' => $total, 'PaidAmount' => 0, 'Status' => $status,
+            'billing_period' => $period, 'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $monthly = ['ScheduleMode' => 'date', 'Charge' => 4400, 'Rate' => 1100];
+
+        // Double bill: the same student, subject and month on two live bills, here across two contracts.
+        $a = $this->course($monthly);
+        $b = DB::table('StudentClass')->insertGetId(['StudentID' => DB::table('StudentClass')->where('ID', $a)->value('StudentID'),
+            'GradeID' => 1, 'SubjectID' => 66, 'TeacherID' => 1, 'by1' => 1, 'Period' => 4, 'StartDate' => now(), 'TotalHours' => 8,
+            'MDate' => now(), 'Stop' => 0] + $monthly);
+        $bill($a, '2026-10');
+        $bill($b, '2026-10');
+        $bill($a, '2026-09');
+        $bill($b, '2026-09', 'void');       // a voided bill is not a second charge
+        $bill($b, '2026-08', 'unpaid', 0);  // a NT$0 bill is not a charge
+        $bill($a, '2026-08');
+        $this->assertSame(1, $this->condition('monthly_period_billed_twice')['count']);
+        // A shared bill headed by another subject's contract that also charges contract $a for September (two lines, one bill).
+        $other = DB::table('StudentClass')->insertGetId(['StudentID' => DB::table('StudentClass')->where('ID', $a)->value('StudentID'),
+            'GradeID' => 1, 'SubjectID' => 67, 'TeacherID' => 1, 'by1' => 1, 'Period' => 4, 'StartDate' => now(), 'TotalHours' => 8,
+            'MDate' => now(), 'Stop' => 0] + $monthly);
+        $sharedBill = $bill($other, '2026-09');
+        foreach ([1, 2] as $line) {
+            DB::table('InvoiceItem')->insert(['InvoiceID' => $sharedBill, 'StudentClassID' => $a, 'Amount' => 2200, 'Description' => 'x', 'created_at' => now(), 'updated_at' => now()]);
+        }
+        $this->assertSame(2, $this->condition('monthly_period_billed_twice')['count']);
+
+        // Missed charge: taught in September and October, only September billed.
+        $c = $this->course($monthly);
+        $bill($c, '2026-09');
+        $this->classSession($c, 'attended', '2026-09-12');
+        $this->classSession($c, 'attended', '2026-10-03');
+        $this->classSession($c, 'completed', '2026-10-17');
+        // Not counted: the running month, a month before 2026-08, a lesson not taught, free / tutoring / waived contracts.
+        $this->classSession($c, 'attended', '2026-11-07');
+        $this->classSession($c, 'attended', '2026-07-18');
+        $this->classSession($c, 'leave', '2026-08-08');
+        $this->classSession($this->course(['ScheduleMode' => 'date', 'Charge' => 0, 'Rate' => 0]), 'attended', '2026-10-03');
+        $this->classSession($this->course($monthly + ['ClassType' => 'tutoring']), 'attended', '2026-10-03');
+        $this->classSession($this->course($monthly + ['closed_reason' => 'waived', 'Stop' => 1]), 'attended', '2026-10-03');
+        $this->classSession($this->course($monthly + ['closed_reason' => 'refunded', 'Stop' => 1]), 'attended', '2026-10-03');
+        $this->classSession($this->course($monthly + ['PackageID' => $this->package()]), 'attended', '2026-10-03');
+        $this->classSession($this->course(['Charge' => 4400]), 'attended', '2026-10-03'); // lesson-count contract
+        // A shared bill: headed by another contract, this one is a line on it.
+        $shared = $this->course($monthly);
+        $this->classSession($shared, 'attended', '2026-09-12');
+        DB::table('InvoiceItem')->insert(['InvoiceID' => DB::table('Invoice')->where('StudentClassID', $c)->where('billing_period', '2026-09')->value('id'),
+            'StudentClassID' => $shared, 'Amount' => 4400, 'Description' => 'x', 'created_at' => now(), 'updated_at' => now()]);
+        $row = $this->condition('monthly_lessons_without_bill');
+        $this->assertSame(1, $row['count']);
+        $this->assertFalse($row['enforced']);
+        $this->assertSame('OPEN', $row['state']);
+    }
+
     public function test_package_over_debit_flags_used_beyond_taught_and_not_a_balanced_ledger(): void
     {
         $pkg = $this->package();
