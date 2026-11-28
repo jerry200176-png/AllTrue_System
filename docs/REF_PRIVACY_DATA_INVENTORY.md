@@ -19,7 +19,7 @@
 |---|---|---|
 | `Student.parent_name` / `parent_phone` | 監護人識別資料 | 沒有獨立的緊急聯絡人表；隨學生刪除一起清除。 |
 | `student_line_bindings` | `line_user_id`、`student_id`、`campus_id`、`verified_at` | 家長 LINE 帳號綁定學生，用於通知。**⚠️ 未包含在 `purgeStudentRecords()` 內——刪除學生後綁定紀錄可能孤立殘留。** |
-| `parent_binding_attempts` | `phone_fingerprint`、`student_id`、`campus_id` 等 | 家長綁定嘗試的 append-only 觀察紀錄（migration 註解明確標示「非驗證真相」）。無清除機制，無限成長。 |
+| `parent_binding_attempts` | `phone_fingerprint`、`student_id`、`campus_id` 等 | 家長綁定嘗試的 append-only 觀察紀錄（migration 註解明確標示「非驗證真相」）。✅ `#5421` 起由 `privacy:prune-logs` 每日清除逾 90 天紀錄。 |
 | `ParentSession` | `StudentID`、`TokenHash`、`ExpiresAt` | 家長入口 session token。已包含在 purge 流程內；`2026_07_24_130000` migration 也已全域過期未驗證的 session（已修復的 P0 隱私事故先例）。 |
 
 ## 3. 上傳檔案（頭像／bug 附件／聊天附件）
@@ -29,9 +29,9 @@
 | `User.AvatarUrl` | 路徑字串 | `Storage::disk('public')` | ⚠️ **公開 disk，路徑對外可讀，無簽章 URL、無存取驗證** |
 | `bug_report_attachments` | `stored_path`、`original_name`、`mime_type`、`size` | 檔案路徑（非 DB blob），`BugReportService.php:53` 存到 `'public'` disk | ⚠️ 同樣公開——bug 回報截圖經常直接顯示學生姓名/資料，任何人拿到路徑就能讀取 |
 | `chat_messages.media_url` | 路徑字串 | `ChatService.php:408` 存到 `'public'` disk | ⚠️ 同樣公開——聊天附件可能含證件/作業等含個資內容 |
-| `LearningRecord.AttachmentUrl` | 路徑字串 | 未在本輪逐一確認實際 disk 呼叫，暫列為同樣風險待驗證 | 待確認 |
+| `LearningRecord.AttachmentUrl` | 路徑字串 | ✅ 已驗證（2026-11-28）：`LearningRecordController.php` 僅存驗證過的 `https?://` 或站內相對 URL 字串，未透過 `Storage::disk('public')` 上傳本機檔案 | 非檔案上傳（URL 驗證已覆蓋，見 #3824） |
 
-**這四項全部是檔案路徑、非 DB blob，且全部沒有發現使用私有/簽章 URL disk。這是本次盤點中最具體、最值得優先處理的儲存層發現。**
+**前三大項（頭像、bug 附件、聊天附件）為本機 `public` disk 檔案路徑、非 DB blob，且未經簽章 URL 或存取驗證。這是本次盤點中最具體、最值得優先處理的儲存層發現。**
 
 ## 4. 敏感操作資料
 
@@ -39,7 +39,7 @@
 |---|---|---|
 | `StudentSingIn` / `TeacherSingIn` | RFID 刷卡時間戳、`Memo` 自由文字 | 僅隨學生/老師刪除清除，無獨立保存期限 |
 | `PendingSwipe` | `RFID`、`Payload` | ✅ **有保存機制**：`PrunePendingSwipes` command 清除 30 天以上舊資料——這是全庫唯一的排程式資料保存政策，可作為其他表的範本 |
-| `chat_messages` | `body`、`media_url` | 全庫**唯一**有 soft-delete 的表（手動維護的 `deleted_at`，非 Eloquent `SoftDeletes`），但軟刪除後無排程硬清除 |
+| `chat_messages` | `body`、`media_url` | 全庫**唯一**有 soft-delete 的表（手動維護的 `deleted_at`，非 Eloquent `SoftDeletes`）；✅ `#5421` 起軟刪除逾 30 天由 `privacy:prune-logs` 清除文字與附件檔 |
 | `LearningRecord.Content`/`Progress`/`Comment` 等 | 老師對特定學生的自由文字備註 | 僅隨學生刪除清除 |
 | `learning_record_teacher_comments`、`learning_record_feedbacks`、`parent_feedback` 等 | 綁定 `student_id` 的自由文字互動紀錄 | ⚠️ **確認缺口：這些表都不在 `purgeStudentRecords()` 範圍內**，刪除學生後這些含個資的回饋文字會殘留孤兒資料 |
 | `Invoice`/`InvoiceItem`/`Payment` | `Amount`、`Note` | 已包含在刪除流程，但無獨立的財務紀錄法定保存政策 |
@@ -51,8 +51,8 @@
 | `User.PSW` | 密碼雜湊 | `2026_02_14_000001_add_security_improvements.php` 曾**批次把既有明文密碼轉雜湊**——歷史上真的發生過明文密碼事故，現已修復，僅作為先例記錄 |
 | `User.pin_hash` 等 | 二次 PIN 驗證（敏感頁面） | 見 #769；鎖定計數器故意存 DB 而非 cache |
 | `auth_tokens` | Bearer token、`expires_at` | session/auth token store |
-| `password_reset_requests` | `account_input`、`requested_ip`、`request_note` | 含原始帳號 + IP（本身即個資），無清除機制，無限成長 |
-| `user_login_activities` | `ip_address`、`user_agent`、`device_label` | 登入稽核軌跡（IP/裝置指紋屬多數隱私法規定義的個資），無保存政策 |
+| `password_reset_requests` | `account_input`、`requested_ip`、`request_note` | 含原始帳號 + IP（本身即個資）；✅ `#5421` 起由 `privacy:prune-logs` 每日清除逾 30 天紀錄 |
+| `user_login_activities` | `ip_address`、`user_agent`、`device_label` | 登入稽核軌跡（IP/裝置指紋屬多數隱私法規定義的個資）；✅ `#5421` 起由 `privacy:prune-logs` 每日清除逾 1 年紀錄 |
 
 ## 跨分校資料範圍（洩漏風險）
 
@@ -68,7 +68,7 @@
 | 資料 | 保存 | 到期做什麼 | 執行 |
 |---|---|---|---|
 | 帳單、收款、收據 | 10 年（商業會計法：帳簿 10 年、憑證 5 年） | 不刪 | — |
-| 學生姓名、電話、家長、LINE | 停課滿 2 年 | 去識別化，帳務紀錄留著 | 未做：先試跑名單給 Founder 核准 |
+| 學生姓名、電話、家長、LINE | 停課滿 2 年 | 去識別化，帳務紀錄留著 | 2026-11-17 試跑 0 人符合（最早 2027-10），2027-09 前實作並先送試跑名單給 Founder 核准 |
 | 登入紀錄 `user_login_activities` | 1 年 | 刪除 | `privacy:prune-logs` 每天 03:05 |
 | 密碼重設 `password_reset_requests` | 30 天 | 刪除 | 同上 |
 | 家長綁定嘗試 `parent_binding_attempts` | 90 天（`parent-binding:report` 最多查 90 天） | 刪除 | 同上 |
@@ -79,7 +79,7 @@
 
 1. **上傳檔案走公開 disk**（頭像、bug 附件、聊天附件）——任何人取得路徑即可讀取，含學生個資的截圖/附件曝險，**本次盤點中最具體、最該優先修的一項**。
 2. **學生刪除流程不完整**——`purgeStudentRecords()` 遺漏 `student_line_bindings`、`parent_feedback`（含回覆）、`learning_record_teacher_comments`/`learning_record_feedbacks`（含回覆），刪除學生後這些個資變孤兒資料，不算真正刪除乾淨。
-3. **（2026-11-17 已定，見上方「保存期限」；學生個資那列未做）完全沒有保存期限政策**——全庫唯一的排程清除是 `PrunePendingSwipes`（30 天 RFID 佇列）；登入活動、密碼重設請求、家長綁定嘗試記錄、聊天訊息/附件、學習紀錄自由文字全部無限累積。
+3. **保存期限政策（2026-11-17 已定案並上線第一階段 `#5421`）**——登入活動（1 年）、密碼重設（30 天）、家長綁定嘗試（90 天）、已刪聊天（30 天）已由 `privacy:prune-logs` 每日自動清除；剩餘學生個資去識別化（停課滿 2 年）預計於 2027-09 前實作（2026-11-17 試跑 0 人符合）。
 4. **沒有「退班/退學」封存流程**——目前只有「硬刪除」或「不刪除」兩種選項，沒有中間的封存/去識別化選項。
 5. **跨分校範圍靠慣例而非框架保證**——每個個資 endpoint 都需要個別稽核，沒有單一可信賴的隔離機制。
 6. 一個正面先例：`2026_07_24_130000_require_verified_parent_line_bindings.php` 顯示團隊已經執行過一次真正的 P0 隱私圍堵修復（讓未驗證的家長 session 全域過期）——未來的保存/補救 migration 可以參考這個做法的寫法。
