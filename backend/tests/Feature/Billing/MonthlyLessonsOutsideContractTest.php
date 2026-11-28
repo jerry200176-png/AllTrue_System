@@ -207,9 +207,10 @@ class MonthlyLessonsOutsideContractTest extends TestCase
 
         $this->assertSame('2026-10-10', $billing->billingStart($sc), '9/22 is on the September bill: October must not start at 9/05');
         $this->assertSame(0, $billing->summarizePeriod($sc, '2026-10')['period_sessions']);
-        $block = $billing->partlyBilledMonth($sc);
-        $this->assertSame(['month_partly_billed', ['2026-09-05']], [$block['code'], $block['lesson_dates']]);
-        $this->record($sc, 1800)->assertStatus(422)->assertJsonPath('code', 'month_partly_billed');
+        // No first-month bill of its own: 9/05 stays a lesson outside the dates, exactly as on main.
+        $this->assertNull($billing->partlyBilledMonth($sc));
+        $this->assertSame(['2026-09-05'], $billing->lessonsOnlyOutsideContract($sc));
+        $this->record($sc, 1800)->assertStatus(422)->assertJsonPath('code', 'lessons_outside_contract');
         $this->assertSame([1, 0], [Invoice::count(), Payment::count()]);
     }
 
@@ -222,10 +223,10 @@ class MonthlyLessonsOutsideContractTest extends TestCase
         $sc = $this->course(['2026-08-31' => 'attended', '2026-09-29' => 'attended']);
         $this->assertSame('2026-10-10', $billing->billingStart($sc), '8/31 is too old, so 9/29 is not pulled either');
         $this->assertSame(0, $billing->summarizePeriod($sc, '2026-10')['period_sessions']);
-        $block = $billing->partlyBilledMonth($sc);
-        $this->assertSame(['month_partly_billed', '2026-10', ['2026-08-31', '2026-09-29']], [$block['code'], $block['billing_period'], $block['lesson_dates']]);
-        $this->assertStringNotContainsString('更正帳單', $block['message']);
-        $this->record($sc, 1800)->assertStatus(422)->assertJsonPath('code', 'month_partly_billed');
+        // No bill yet: the unpulled lessons keep main's answer (outside the dates; a legacy-flag backfill is not refused for "the first bill").
+        $this->assertNull($billing->partlyBilledMonth($sc), 'no first-month bill to look at');
+        $this->assertSame(['2026-08-31', '2026-09-29'], $billing->lessonsOnlyOutsideContract($sc));
+        $this->record($sc, 1800)->assertStatus(422)->assertJsonPath('code', 'lessons_outside_contract');
         $this->assertSame([0, 0], [Invoice::count(), Payment::count()]);
     }
 

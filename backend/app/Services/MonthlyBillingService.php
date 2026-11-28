@@ -107,8 +107,9 @@ class MonthlyBillingService
      */
     public function lessonsOnlyOutsideContract(Model $course): array
     {
-        // #5702: a pre-start lesson belongs to the first month (billed with it, or blocked as #5703), so it is not "outside" here.
-        $outside = array_values(array_diff($this->taughtLessonsOutsideContract($course), $this->preStartLessons($course)[1]));
+        // #5702: a pre-start lesson the first month pulls in is billed with it, so it is not "outside" here; the others stay as on main.
+        [$billFrom, $free] = $this->preStartLessons($course);
+        $outside = array_values(array_diff($this->taughtLessonsOutsideContract($course), array_filter($free, fn (string $d) => $d >= $billFrom)));
         $covered = \App\Services\Billing\BillingPeriod::datesCoveredByBills($course, $outside);
         $open = array_values(array_diff($outside, $covered));
         $rest = $this->countableLessonDates($course)->reject(fn (string $d) => in_array($d, $covered, true));
@@ -140,17 +141,17 @@ class MonthlyBillingService
         return $this->preStartLessons($course)[0];
     }
 
-    /** @return array{0: ?string, 1: list<string>} billingStart(), and the pre-start dates that belong to the first month (no other bill covers them) */
+    /** @return array{0: ?string, 1: list<string>, 2: bool} billingStart(), the pre-start dates no other bill covers, and whether a live first-month bill exists */
     private function preStartLessons(Model $course): array
     {
         $start = $course->getAttribute('StartDate') ? Carbon::parse($course->getAttribute('StartDate'))->toDateString() : null;
         if (!$start || (string) $course->getAttribute('ScheduleMode') !== 'date' || (int) ($course->getAttribute('PackageID') ?? 0) > 0
             || strtolower(trim((string) $course->getAttribute('ClassType'))) === 'tutoring') {
-            return [$start, []];
+            return [$start, [], false];
         }
         $before = $this->countableLessonDates($course)->filter(fn (string $d) => $d < $start)->unique()->sort()->values()->all();
         if ($before === []) {
-            return [$start, []];
+            return [$start, [], false];
         }
         $id = (int) $course->getKey();
         if (isset($this->preloadedSessions[$id], $this->preStartMemo[$id])) {
@@ -179,7 +180,7 @@ class MonthlyBillingService
         if (array_diff(array_filter($before, fn (string $d) => $d >= $from), $pulled) !== []) {
             $from = $start;
         }
-        $result = [$from, $free];
+        $result = [$from, $free, $firstBills->isNotEmpty()];
         if (isset($this->preloadedSessions[$id])) {
             $this->preStartMemo[$id] = $result;
         }
@@ -232,12 +233,12 @@ class MonthlyBillingService
                 $dates, (int) substr($month['billing_period'], 5, 2))];
     }
 
-    /** @return list<string> pre-start lessons no bill covers that billingStart() does not pull in (#5702) */
+    /** @return list<string> pre-start lessons no bill covers that billingStart() does not pull in, while a live first-month bill exists (#5702) */
     private function unpulledPreStartLessons(Model $course): array
     {
-        [$billFrom, $free] = $this->preStartLessons($course);
+        [$billFrom, $free, $firstBill] = $this->preStartLessons($course);
 
-        return array_values(array_filter($free, fn (string $d) => $d < $billFrom));
+        return $firstBill ? array_values(array_filter($free, fn (string $d) => $d < $billFrom)) : [];
     }
 
     /**
@@ -506,7 +507,7 @@ class MonthlyBillingService
     /** @var array<int, Collection<int, ClassSession>>|null course id => all its sessions, set only while a caller batches many invoices. */
     private ?array $preloadedSessions = null;
 
-    /** @var array<int, array{0: ?string, 1: list<string>}> preStartLessons() per course, kept only for the same read-only preload window. */
+    /** @var array<int, array{0: ?string, 1: list<string>, 2: bool}> preStartLessons() per course, kept only for the same read-only preload window. */
     private array $preStartMemo = [];
 
     /** One query for every listed course's sessions; summarizePeriod then filters in memory. Pair with forgetPreloadedSessions(). */
