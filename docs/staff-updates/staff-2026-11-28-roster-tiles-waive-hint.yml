@@ -10,6 +10,6 @@ updates:
       - category: improved
         text: 月對帳表：「這個月收到」含補繳前幾期和預繳，所以可能比「學收合計」多。
       - category: improved
-        text: 課程刪不掉時，會告訴您到「收學費」的「•••」把費用改成「不收了」。
+        text: 課程刪不掉時，會告訴您在「帳務中心」那一列的「•••」選「改成不收」。
     source_refs:
       - "changelog:2026-11-28:roster-tiles-waive-hint"
