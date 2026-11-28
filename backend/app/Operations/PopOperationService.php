@@ -558,7 +558,9 @@ final class PopOperationService
                 $actor, $approval, $commitSha, $this->durationMs($startedAt));
             return $this->coCommitsWithRecord($strategy, $request)
                 ? DB::transaction($complete, 3) : $complete();
-        } catch (Throwable) {
+        } catch (Throwable $error) {
+            // #4458 review: a nested deadlock is not retried by the strategy's own transaction; let run()'s outer one retry it.
+            if ($this->phaseFailure !== null && $this->dbOnlyExactRepair((string) $entry['strategy_class']) && \App\Support\DeadlockRetry::causedBy($error)) throw $error;
             if ($this->phaseFailure !== null) throw new PopPhaseAborted($failed);
             return $failed();
         }
