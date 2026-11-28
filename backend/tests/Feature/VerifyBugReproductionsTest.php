@@ -334,6 +334,7 @@ class VerifyBugReproductionsTest extends TestCase
         $this->classSession($early, 'leave', '2026-08-21');                       // not taught
         $this->classSession($this->course(['StartDate' => '2026-09-01']), 'attended', '2026-08-28'); // lesson-count contract
         $this->classSession($this->course($monthly + ['ClassType' => 'tutoring']), 'attended', '2026-08-28'); // tutoring is never billed
+        $this->classSession($this->course($monthly + ['closed_reason' => 'waived']), 'attended', '2026-08-28'); // fees written off
         $this->assertSame(1, $this->condition('lesson_before_start_unbilled')['count']);
         // Shared bill: a line covers the contract it is linked to, whoever heads the bill. Headed by $shared, linked to $early:
         // $early is covered, $shared is not.
@@ -359,6 +360,12 @@ class VerifyBugReproductionsTest extends TestCase
         $whole = $this->course($monthly);
         $bill($whole, '2026-09');                                  // no dated line: covers its whole month
         $this->classSession($whole, 'attended', '2026-09-29');
+        // A sibling contract's bill with no dated line covers its whole month for a lesson that moved to this contract.
+        $sibling = $this->course($monthly);
+        DB::table('StudentClass')->where('ID', $sibling)->update(['StudentID' => DB::table('StudentClass')->where('ID', $whole)->value('StudentID'),
+            'SubjectID' => DB::table('StudentClass')->where('ID', $whole)->value('SubjectID')]);
+        $bill($sibling, '2026-09', ['2026-09-01', '2026-09-07']);
+        $this->classSession($sibling, 'attended', '2026-09-22');
         $voided = $this->course($monthly);
         $bill($voided, '2026-09', ['2026-09-01', '2026-09-27'], 'void');
         $this->classSession($voided, 'attended', '2026-09-29');

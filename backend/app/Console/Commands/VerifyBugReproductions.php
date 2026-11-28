@@ -57,6 +57,7 @@ class VerifyBugReproductions extends Command
         $usageLocks = $quoted(StudentClass::USAGE_LOCK_CLOSURES);
         // Shared by the two lesson-vs-bill shapes below (aliases cs / sc / i).
         $monthlyTaught = "sc.ScheduleMode = 'date' AND COALESCE(sc.PackageID, 0) = 0 AND LOWER(TRIM(COALESCE(sc.ClassType, ''))) <> 'tutoring'
+            AND COALESCE(sc.closed_reason, '') NOT IN ('waived', 'refunded')
             AND LOWER(COALESCE(cs.Status, '')) IN ('attended', 'completed', 'late')";
         $liveBill = "(i.Status IS NULL OR i.Status NOT IN ('void', 'cancelled'))";
         // Line ownership as BillingPeriod::datesCoveredByBills: a line linked to any contract of the same student and subject (under any
@@ -311,10 +312,10 @@ class VerifyBugReproductions extends Command
                             AND NOT EXISTS (SELECT 1 FROM InvoiceItem ii JOIN Invoice i ON i.id = ii.InvoiceID
                               WHERE {$liveBill} AND {$ownLine}
                                 AND DATE(cs.SessionDate) BETWEEN DATE(ii.PeriodStart) AND DATE(ii.PeriodEnd))
-                            AND NOT EXISTS (SELECT 1 FROM Invoice i WHERE i.StudentClassID = cs.StudentClassID AND {$liveBill}
+                            AND NOT EXISTS (SELECT 1 FROM Invoice i WHERE i.StudentClassID IN {$mine} AND {$liveBill}
                               AND i.billing_period = DATE_FORMAT(cs.SessionDate, '%Y-%m') AND NOT EXISTS (SELECT 1 FROM InvoiceItem ii
                                 WHERE ii.InvoiceID = i.id AND ii.PeriodStart IS NOT NULL AND ii.PeriodEnd IS NOT NULL))
-                            AND (EXISTS (SELECT 1 FROM Invoice i WHERE i.StudentClassID = cs.StudentClassID AND {$liveBill}
+                            AND (EXISTS (SELECT 1 FROM Invoice i WHERE i.StudentClassID IN {$mine} AND {$liveBill}
                                 AND i.billing_period = DATE_FORMAT(cs.SessionDate, '%Y-%m'))
                               OR EXISTS (SELECT 1 FROM InvoiceItem ii JOIN Invoice i ON i.id = ii.InvoiceID WHERE {$liveBill} AND {$ownLine}
                                 AND DATE(ii.PeriodStart) <= LAST_DAY(cs.SessionDate) AND DATE(ii.PeriodEnd) >= DATE_FORMAT(cs.SessionDate, '%Y-%m-01')))",
