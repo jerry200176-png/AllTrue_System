@@ -37,6 +37,8 @@ final class SchedulerEvidence
         'unpaid_charge_vs_rate_count', 'paid_flag_vs_invoice', 'screen_amount_vs_resolver', 'lesson_teacher_disagreement',
         'lesson_before_contract_start',
         'seat_held_by_finished_contract',
+        'monthly_period_billed_twice', 'monthly_lessons_without_bill',
+        'lesson_before_start_unbilled', 'lesson_uncovered_in_billed_month',
     ];
     public const BUG_CONDITION_STATES = [
         'FIXED-OK', 'BASELINE-PENDING', 'REGRESSED', 'WITHIN-BASELINE', 'OPEN-CLEARED', 'OPEN', 'INCOMPLETE',

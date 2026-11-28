@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\AuthToken;
+use App\Models\SecurityAuditEvent;
 use App\Models\User;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
@@ -63,6 +64,7 @@ class PinVerificationController extends Controller
         $user->pin_failed_attempts = 0;
         $user->pin_locked_until = null;
         $user->save();
+        $this->audit($request, $user, 'pin_set', 'success');
 
         $this->unlockSession($request);
 
@@ -115,6 +117,8 @@ class PinVerificationController extends Controller
 
         $password = (string) $request->input('password', '');
         if (empty($user->PSW) || !password_verify($password, $user->PSW)) {
+            $this->audit($request, $user, 'pin_reset_password_invalid', 'failure');
+
             return response()->json(['message' => '帳號密碼錯誤', 'code' => 'password_invalid'], 401);
         }
 
@@ -128,6 +132,7 @@ class PinVerificationController extends Controller
         $user->pin_failed_attempts = 0;
         $user->pin_locked_until = null;
         $user->save();
+        $this->audit($request, $user, 'pin_reset', 'success');
 
         $this->unlockSession($request);
 
@@ -151,6 +156,18 @@ class PinVerificationController extends Controller
     }
 
     // ── helpers ───────────────────────────────────────────────────────
+
+    /**
+     * #2332: who set or reset a PIN, and when. Ids are stored hashed; the PIN, its hash and the password never
+     * enter the event. Best effort, like the other self-service auth events: a missing evidence table must not
+     * turn a PIN change into a 500.
+     */
+    private function audit(Request $request, User $user, string $reasonCode, string $outcome): void
+    {
+        SecurityAuditEvent::append('staff.pin.changed', $outcome, [
+            'actor_type' => 'user', 'actor_id' => $user->id, 'subject_type' => 'user', 'subject_id' => $user->id,
+        ], ['reason_code' => $reasonCode, 'method' => (string) $request->attributes->get('auth_role'), 'source' => 'me.pin']);
+    }
 
     private function authUser(Request $request): ?User
     {

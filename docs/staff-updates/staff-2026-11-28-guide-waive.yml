@@ -1,0 +1,13 @@
+updates:
+  - id: staff-2026-11-28-guide-waive
+    published_at: "2026-11-28"
+    audiences:
+      - director
+    importance: digest
+    title: 登帳引導可直接改成不收
+    summary: 已結束、不打算收的合約，在引導裡就能按「改成不收」。
+    items:
+      - category: improved
+        text: 收學費：登帳引導遇到已結束、還沒收的合約，下方多一顆「改成不收」，填原因後就會從清單消失。
+    source_refs:
+      - "changelog:2026-11-28:guide-waive"

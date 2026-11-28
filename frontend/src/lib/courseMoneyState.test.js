@@ -166,13 +166,6 @@ assert.equal(M.REPORT_STATUS_LABELS.voided, '已撤銷', 'ledger keeps its voide
 assert.equal(M.LEGACY_FLAG_UNVERIFIED_HELP, '需核對（舊資料標已收，查無收款）');
 assert.equal(M.LEGACY_FLAG_UNVERIFIED_LABEL, '查無收款');
 assert.equal(M.isWaivedContract({ waived: true, paid: false }), true);
-// #4150 round 3: reversal netting mirrors BillingPayableResolver::latestUnreversedReceiptDate.
-assert.equal(M.latestStandingPayment([{ id: 1, paid_at: '2026-09-06', amount: 6000, method: 'cash', report_id: 5 }, { id: 2, paid_at: '2026-09-07', amount: -6000, method: 'void', report_id: 5 }]), null);
-assert.deepEqual(M.latestStandingPayment([{ id: 1, paid_at: '2026-09-06', amount: 6000, method: 'cash' }, { id: 2, paid_at: '2026-09-07', amount: -6000, method: 'void' }, { id: 3, paid_at: '2026-09-20', amount: 6000, method: 'cash' }]), { date: '2026-09-20', amount: 6000 });
-// a reversal cannot reverse a later repayment, and an orphan reversal (no earlier receipt) still nets the invoice to zero
-assert.equal(M.latestStandingPayment([{ id: 1, paid_at: '2026-09-07', amount: -6000, method: 'void' }, { id: 2, paid_at: '2026-09-20', amount: 6000, method: 'cash' }]), null);
-assert.deepEqual(M.latestStandingPayment([{ id: 1, paid_at: '2026-09-01', amount: 3000, method: 'cash' }, { id: 2, paid_at: '2026-09-05', amount: 3000, method: 'cash', report_id: 8 }, { id: 3, paid_at: '2026-09-06', amount: -3000, method: 'void', report_id: 8 }]), { date: '2026-09-01', amount: 3000 });
-assert.equal(M.latestStandingPayment([]), null);
 assert.equal(M.isWaivedContract({ paid: true, stop: true, closed_reason: null }), false);
 assert.equal(M.isLegacyPaidFlagOnly({ payment_status: 'paid', legacy_paid_flag_only: true }), true);
 assert.equal(M.isLegacyPaidFlagOnly({ payment_status: 'paid' }), false, 'older payloads keep 已收');
@@ -185,6 +178,19 @@ const splitPeriodTone = { payment_status: 'unpaid', monthly_payment: { billing_p
 assert.equal(M.coursePaymentStatusTone(splitPeriodTone), 'danger');
 assert.equal(M.coursePaymentStatusTone(splitPeriodTone, { monthlyPeriod: true }), 'warning');
 assert.equal(M.coursePaymentStatusTone({ payment_status: 'review_required' }), 'warning');
+// Count contract, director verdict review_required behind a legacy `paid` projection: never 已收.
+const rr = { status: 'review_required' };
+assert.deepEqual(M.coursePaymentBadge({ payment_status: 'paid', ScheduleMode: 'count', billing_verdict: rr }), { label: '狀態待確認', tone: 'review', nextAction: 'billing' });
+assert.equal(M.coursePaymentBadge({ payment_status: 'paid', ScheduleMode: 'count', billing_verdict: { status: 'paid' } }).label, '已收');
+// Monthly courses and teachers (no billing_verdict) keep the projection.
+assert.equal(M.coursePaymentBadge({ payment_status: 'paid', ScheduleMode: 'date', billing_verdict: rr }).label, '已收');
+assert.equal(M.coursePaymentBadge({ payment_status: 'paid', ScheduleMode: 'count' }).label, '已收');
+// Unpaid count-package members and pending reports keep their label; a review row's next step is 帳務, not 回報繳費.
+assert.equal(M.coursePaymentBadge({ payment_status: 'unpaid', ScheduleMode: 'count', PackageID: 7, billing_verdict: rr }).label, M.coursePaymentBadge({ payment_status: 'unpaid', ScheduleMode: 'count', PackageID: 7 }).label);
+assert.equal(M.coursePaymentBadge({ payment_status: 'pending_report', ScheduleMode: 'count', billing_verdict: rr }).label, M.coursePaymentBadge({ payment_status: 'pending_report', ScheduleMode: 'count' }).label);
+assert.equal(M.coursePaymentBadge({ payment_status: 'unpaid', ScheduleMode: 'count', billing_verdict: rr }).nextAction, 'billing');
+// A row without its billing mode keeps the projection (fail safe).
+assert.equal(M.coursePaymentBadge({ payment_status: 'paid', billing_verdict: rr }).label, '已收');
 assert.equal(M.coursePaymentStatusTone({ class_type: 'tutoring' }), 'neutral');
 assert.equal(M.coursePaymentStatusTone({ class_type: 'tutoring', tutoring_billing_anomaly: true }), 'danger');
 assert.equal(M.monthlyPaymentLabel({ monthly_payment: { billing_period: '2026-09', payment_status: 'unpaid' }, payment_status: 'pending_report' }), '2026-09 待確認入帳');

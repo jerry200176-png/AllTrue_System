@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { billCounts, billRows } from './billRows.js';
+import { billCounts, billMenuGroups, billRows } from './billRows.js';
 
 const T = '2026-11-05';
 const r = (o) => ({ id: 1, student_id: 1, student_name: 'S', subject: '數學', schedule_mode: 'count', remaining_sessions: 4, payment_status: 'unpaid', payable_status: 'invoiced', payable_outstanding: 1000, ...o });
@@ -55,7 +55,7 @@ describe('billRows', () => {
     expect(b.kind).toBe('confirm');
     expect(b.hint).toBe('家長已回報');
     expect(b.warnings).toHaveLength(2);
-    expect(b.warnings[0]).toMatch(/^數學：本期順延與下一期重疊，請調整/);
+    expect(b.warnings[0]).toMatch(/^數學：這一期到 12\/31 才結束，下一期卻 12\/1 就開課。/);
     expect(b.warnings[1]).toBe('數學：依實際 8 堂計算（原始帳單 NT$ 9,000；實際計算 NT$ 8,800）');
   });
 
@@ -98,5 +98,15 @@ describe('billRows 已收 regressions (#4114)', () => {
     expect(b.warnings[0]).toMatch(/^數學：需核對：合約後段沒有帳單涵蓋。怎麼處理：/);
     // No reasons from the server: nothing is invented.
     expect(billRows([r({ payment_status: 'amount_review', amount_pending_confirmation: true })], T)[0].warnings).toEqual([]);
+  });
+});
+
+describe('billMenuGroups 改成不收 (#5721)', () => {
+  it('shows a refused waive as a disabled item with the server reason, and a clear one as enabled', () => {
+    const b = billRows([r({ id: 5, payment_status: 'pending_reconciliation', closed_reason: 'settled_pending', stop: 1 })], T)[0];
+    const waive = (a) => billMenuGroups(b, { rowActions: { 5: a } }).flatMap((g) => g.items).find((i) => i.id === 'waive');
+    expect(waive({ waive: true, waiveBlock: '此合約已有收款紀錄，請先到帳務更正後再處理' })).toMatchObject({ disabled: true, reason: '此合約已有收款紀錄，請先到帳務更正後再處理' });
+    expect(waive({ waive: true, waiveBlock: '' })).toMatchObject({ disabled: false, reason: '' });
+    expect(waive({ waive: false, waiveBlock: 'x' })).toBeUndefined();
   });
 });

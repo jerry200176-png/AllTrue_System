@@ -173,6 +173,8 @@ for (const width of [375, 1280]) for (const [size, theme] of [['standard', 'ligh
           id: receipt.payment_id, report_id: receipt.report_id, report_status: 'confirmed', receipt_no: `合成收據${receipt.report_id}`,
           amount: receipt.amount, applied_amount: receipt.amount, application_status: 'applied', method: receipt.payment_method, paid_at: receipt.payment_date,
         })),
+        // server: the latest receipt still standing, capped by what the bill has applied
+        standing_payment: { 501: { paid_at: '2026-11-03', amount: 900 }, 503: { paid_at: '2026-11-04', amount: 700 } }[id],
       }));
       return r.fulfill({ json: {
         student: { id: historic ? 99 : 5, name: historic ? '合成暫停學生' : '合成學生' },
@@ -287,7 +289,8 @@ for (const width of [390, 1280]) {
       invoices: [{ id: 501, invoice_no: '合成帳單501', student_class_id: 11, covered_student_class_ids: [11, 42],
         status: 'paid', total_amount: 1000, paid_amount: 1000, calculated_applied_amount: 1000, outstanding_amount: 0,
         payments: [71, 72].map((id, index) => ({ id, amount: 500, report_id: 801 + index, report_status: 'confirmed',
-          receipt_no: `合成收據${801 + index}`, method: 'cash', paid_at: '2026-11-01' })) }],
+          receipt_no: `合成收據${801 + index}`, method: 'cash', paid_at: '2026-11-01' })),
+        standing_payment: { paid_at: '2026-11-01', amount: 500 } }],
     } }));
     await page.route('**/api/v1/payment-reports/*/receipt', (route) => {
       const id = Number(new URL(route.request().url()).pathname.split('/').at(-2));
@@ -869,7 +872,8 @@ for (const width of [375, 1536]) for (const size of ['standard', 'large']) for (
       student: { id: 99, name: '合成跨期學生' }, scope: { student_class_id: 9 }, summary: {}, courses: [course], receipts: [], anomalies: [],
       invoices: [{ id: 31, student_class_id: 9, billing_period: '2024-01', period_start: '2024-01-01', period_end: '2024-02-28',
         status: 'partial', total_amount: 1200, calculated_applied_amount: 300, outstanding_amount: 900,
-        payments: [{ id: 41, amount: 300, applied_amount: 300, application_status: 'applied', paid_at: '2024-02-20', method: 'cash' }] }],
+        payments: [{ id: 41, amount: 300, applied_amount: 300, application_status: 'applied', paid_at: '2024-02-20', method: 'cash' }],
+        standing_payment: { paid_at: '2024-02-20', amount: 300 } }],
     } }));
     await page.route('**/api/v1/accounting/contracts/9/sessions', (r) => r.fulfill({ json: { ...course, unscheduled_count: 0,
       sessions: ['2024-01-06', '2024-01-13', '2024-02-03', '2024-02-10'].map((date, i) => ({ class_session_id: i + 1, date, status: 'attended', payment: i ? 'unpaid' : 'paid' })),

@@ -20,6 +20,7 @@ use App\Services\Billing\FirstBillAutoVoid;
 use App\Services\Billing\MonthlyBillFreeze;
 use App\Services\Billing\PackagePaidMarks;
 use App\Services\Billing\CollectionTarget;
+use App\Services\Billing\RecordGate;
 use App\Services\Billing\ContractMoneyState;
 use App\Services\MonthlyBillingService;
 use App\Services\PaymentReportTokenService;
@@ -34,7 +35,7 @@ use Illuminate\Support\Facades\Log;
 
 class PaymentReportController extends Controller
 {
-    public function __construct(private MonthlyBillingService $monthlyBilling)
+    public function __construct(private MonthlyBillingService $monthlyBilling, private RecordGate $recordGate)
     {
     }
 
@@ -415,7 +416,7 @@ class PaymentReportController extends Controller
             $package = $sc ? $this->lockPackageForCourse($sc) : null;
 
             if ($sc && !$legacyFlagBackfill && ($blockReason = $this->courseMoneyBlockReason((int) $sc->getKey(), (int) ($sc->getAttribute('Paid') ?? 0)))) {
-                return $this->duplicateCoursePaymentResponse($blockReason);
+                return $this->duplicateCoursePaymentResponse($blockReason, $sc);
             }
             if ($sc && !$legacyFlagBackfill && ($over = $this->amountExceedsOutstandingResponse((int) $sc->getKey(), (float) $report->reported_amount))) {
                 return $over;
@@ -462,8 +463,11 @@ class PaymentReportController extends Controller
                     ->exists();
             }
 
+            if (! $invoice && $sc && !$legacyFlagBackfill && ($partly = $this->monthlyBilling->partlyBilledMonth($sc))) {
+                return response()->json($partly, 422); // #5703: same rule as directorRecord
+            }
             if (! $invoice && $sc && !$legacyFlagBackfill && ((int) ($sc->Paid ?? 0) === 1 || $hasPaidInvoice) && !$this->unbilledMonthStillOwed($sc, $hasPaidInvoice)) {
-                return $this->duplicateCoursePaymentResponse('paid');
+                return $this->duplicateCoursePaymentResponse('paid', $sc);
             }
 
             $monthlyProjection = null;
@@ -696,8 +700,9 @@ class PaymentReportController extends Controller
             if ($shared = $this->sharedBillRefusal($lockedCourse, $data)) {
                 return $shared;
             }
-            if ($blockReason = $this->courseMoneyBlockReason((int) $sc->getKey(), (int) ($sc->getAttribute('Paid') ?? 0))) {
-                return $this->duplicateCoursePaymentResponse($blockReason);
+            // RecordGate (D, E, F): the same refusals the ledger shows as record_block; the amount checks stay between them.
+            if ($refusal = $this->recordGate->courseRefusal($lockedCourse, (int) ($sc->getAttribute('Paid') ?? 0))) {
+                return $refusal;
             }
             if ($over = $this->amountExceedsOutstandingResponse((int) $sc->getKey(), (float) $data['amount'])) {
                 return $over;
@@ -723,31 +728,20 @@ class PaymentReportController extends Controller
 
             // 沒指定帳單：用名單上顯示的那張（月結＝最早未繳清的一期；Founder 2026-10-13，取代 FR-006 當月優先）
             if (! $invoice) {
-                $invoice = $this->pickOpenInvoice((int) $sc->ID, $lockedCourse);
+                $invoice = $this->recordGate->pickOpenInvoice((int) $sc->ID, $lockedCourse, true);
             }
 
-            if ($invoice && $this->invoiceCoveredByPayments($invoice, $lockedCourse)) {
-                return $this->invoiceAlreadyCoveredResponse($invoice);
+            if ($invoice && ($covered = $this->recordGate->coveredRefusal($invoice, $lockedCourse, true))) {
+                return $covered;
             }
             if ($over = $this->amountExceedsInvoiceResponse($invoice, $lockedCourse, (float) $data['amount'])) {
                 return $over;
             }
-
-            $hasPaidInvoice = false;
-            if (! $invoice) {
-                $hasPaidInvoice = Invoice::where('StudentClassID', $sc->ID)
-                    ->where('Status', 'paid')
-                    ->exists();
-            }
-
-            if (! $invoice && ((int) ($sc->Paid ?? 0) === 1 || $hasPaidInvoice) && !$this->unbilledMonthStillOwed($lockedCourse, $hasPaidInvoice)) {
-                return $this->duplicateCoursePaymentResponse('paid');
+            if (! $invoice && ($refusal = $this->recordGate->noBillRefusal($lockedCourse, (int) ($sc->Paid ?? 0)))) {
+                return $refusal;
             }
 
             if ($sc->getAttribute('ScheduleMode') === 'date') {
-                if (!$invoice && ($outside = $this->lessonsOutsideContractRefusal($lockedCourse))) {
-                    return $outside;
-                }
                 $billingPeriod = $invoice && preg_match('/^\d{4}-\d{2}$/', (string) $invoice->billing_period)
                     ? (string) $invoice->billing_period
                     : $this->monthlyBilling->collectionPeriodFor($lockedCourse, $data['payment_date']);
@@ -852,6 +846,10 @@ class PaymentReportController extends Controller
                 return response()->json(['message' => '補登金額必須大於 0，請填實際收到的金額。沒有登記任何款項。', 'code' => 'zero_amount_with_balance'], 422);
             }
             if ($course->getAttribute('ScheduleMode') === 'date' && $this->pickOpenInvoice($courseId, $course) === null) {
+                // #5703: a month that already has a bill gets no second one; say so instead of capping at a whole-month charge.
+                if ($partly = $this->monthlyBilling->partlyBilledMonth($course)) {
+                    return response()->json($partly, 422);
+                }
                 // No bill to cap the amount (confirm() caps only session-based periods): a new bill never exceeds the charge of the
                 // month confirm() will bill (the same collectionPeriodFor: oldest unbilled month, else the payment date's).
                 $limit = (int) $this->monthlyBilling->summarizePeriod($course, $this->monthlyBilling->collectionPeriodFor($course, $data['payment_date']))['charge'];
@@ -1362,14 +1360,9 @@ class PaymentReportController extends Controller
         ], $accepted === count($results) ? 200 : 207);
     }
 
-    /**
-     * in-app #432 (Founder 2026-10-28, option A): a paid monthly bill does not settle another calendar month whose
-     * countable lessons no bill covers yet, so "already paid" must not refuse that month. A legacy Paid flag with no
-     * paid bill keeps refusing (nothing shows which months it settled).
-     */
     private function unbilledMonthStillOwed(StudentClass $sc, bool $hasPaidInvoice): bool
     {
-        return $hasPaidInvoice && $this->monthlyBilling->unbilledPeriodFor($sc) !== null;
+        return $this->recordGate->unbilledMonthStillOwed($sc, $hasPaidInvoice);
     }
 
     /**
@@ -1426,31 +1419,9 @@ class PaymentReportController extends Controller
         return [$courses->get($courseId), $report, $courses];
     }
 
-    /**
-     * F7 S6 (B9): duplicate-payment guard on the BillingPayableResolver, not "any paid invoice" / raw Charge / SUM(PaidAmount).
-     * Blocks `paid` and `free`; partial (the remainder may be recorded), unbilled, review_required and a plain unpaid
-     * course may take a payment. Package members follow the resolver (a paid package counts while no non-void invoice exists).
-     * Fail closed: no resolver answer (error, unknown course) blocks.
-     * Founder Q2 (2026-10-11): the R28 carve-out is gone. Invoices + Payment rows are the truth; a Paid=1 flag beside an
-     * unpaid/partial invoice does not block, so the owed amount can be recorded.
-     *
-     * Why it blocks (null = it allows): paid | free |
-     * unknown (no resolver answer). The decision is the guard's; the reason only picks the sentence the director reads.
-     */
     private function courseMoneyBlockReason(int $studentClassId, int $coursePaid): ?string
     {
-        try {
-            $status = app(BillingPayableResolver::class)->courseStatusesByStudentClassIds([$studentClassId])[$studentClassId]['status'] ?? null;
-        } catch (\Throwable) {
-            return 'unknown';
-        }
-
-        return match (true) {
-            $status === null => 'unknown',
-            $status === 'paid' => 'paid',
-            $status === 'free' => 'free',
-            default => null,
-        };
+        return $this->recordGate->courseMoneyBlockReason($studentClassId, $coursePaid);
     }
 
     /**
@@ -1557,33 +1528,14 @@ class PaymentReportController extends Controller
         return CollectionTarget::packagePrice($package);
     }
 
-    /**
-     * R28 invariant (Founder Q2 coordination): a payment may only be recorded against a bill that still owes. A bill whose
-     * Payment rows already cover its total is refused even when its stored Status is stale ("unpaid"), whatever the Paid flag says.
-     */
     private function invoiceCoveredByPayments(Invoice $invoice, ?StudentClass $sc): bool
     {
-        $projection = $this->invoiceProjection($invoice, $sc);
-
-        return $this->packagePaidHold($invoice) || ((int) $projection['total_amount'] > 0 && (int) $projection['outstanding_amount'] <= 0);
+        return $this->recordGate->invoiceCoveredByPayments($invoice, $sc, true);
     }
 
-    /** As Invoice::mayOweSql (#3891): a PAID package member's stored-paid bill stays settled (待核對); an unpaid package holds nothing. */
-    private function packagePaidHold(Invoice $invoice): bool
-    {
-        return CollectionTarget::packagePaidHold((int) $invoice->StudentClassID, (string) $invoice->Status);
-    }
-
-    /**
-     * The invoice's money from its Payment rows (re-read with a locking read so a concurrent confirm's committed row
-     * counts), never the stored PaidAmount/Status. Callers already hold the course row lock.
-     */
     private function invoiceProjection(Invoice $invoice, ?StudentClass $sc): array
     {
-        $invoice->setRelation('payments', $invoice->payments()->lockForUpdate()->get());
-        $invoice->loadMissing('items');
-
-        return app(InvoiceAmountReconciliationService::class)->resolve($invoice, $sc);
+        return $this->recordGate->invoiceProjection($invoice, $sc, true);
     }
 
     /**
@@ -1603,32 +1555,14 @@ class PaymentReportController extends Controller
         return preg_match('/^\d{4}-\d{2}$/', $open) ? $open : $this->monthlyBilling->collectionPeriodFor($sc);
     }
 
-    /** #4765: lessons already taught outside the contract dates are invisible to billing; never price such a month from the stored Charge. */
     private function lessonsOutsideContractRefusal(\Illuminate\Database\Eloquent\Model $course): ?JsonResponse
     {
-        $dates = $this->monthlyBilling->lessonsOnlyOutsideContract($course);
-        if ($dates === []) {
-            return null;
-        }
-
-        return response()->json([
-            'message' => sprintf('這份合約已上過 %s 的課，但不在合約日期（%s–%s）內，系統算不出這期該收多少。請先把合約日期改成包含這些課，再登記收款。沒有登記任何款項。',
-                implode('、', array_map(fn (string $d) => Carbon::parse($d)->format('n/j'), $dates)),
-                Carbon::parse($course->getAttribute('StartDate'))->format('n/j'), Carbon::parse($course->getAttribute('EndDate'))->format('n/j')),
-            'code' => 'lessons_outside_contract', 'lesson_dates' => $dates,
-            'contract_start' => Carbon::parse($course->getAttribute('StartDate'))->toDateString(),
-            'contract_end' => Carbon::parse($course->getAttribute('EndDate'))->toDateString(),
-        ], 422);
+        return $this->recordGate->lessonsOutsideContractRefusal($course);
     }
 
     private function pickOpenInvoice(int $studentClassId, ?StudentClass $sc): ?Invoice
     {
-        $live = app(BillingPayableResolver::class)->collectionOrder(Invoice::where('StudentClassID', $studentClassId)
-            ->where(fn ($q) => $q->whereNull('Status')->orWhere('Status', '!=', 'void'))
-            ->orderBy('id')->lockForUpdate()->get(), $sc);
-
-        return $live->first(fn (Invoice $i) => !$this->packagePaidHold($i) && (int) $this->invoiceProjection($i, $sc)['outstanding_amount'] > 0)
-            ?? $live->first(fn (Invoice $i) => (string) $i->Status !== 'paid');
+        return $this->recordGate->pickOpenInvoice($studentClassId, $sc, true);
     }
 
     /**
@@ -1694,29 +1628,14 @@ class PaymentReportController extends Controller
         return $id === null ? [] : ['correctable_invoice_id' => $id];
     }
 
-    /** The target bill is settled by its Payment rows: warn and block; the money is never moved to another bill. */
     private function invoiceAlreadyCoveredResponse(Invoice $invoice)
     {
-        return response()->json([
-            'message' => $this->packagePaidHold($invoice) ? '這張套餐帳單已標記繳清，收款紀錄待核對，不能在這裡登記；請在學生帳務核對套餐收款。沒有登記任何款項。'
-                : '這張帳單依收款紀錄已繳清，不能再登記，也不會改記到其他帳單。請重新整理名單；若帳單狀態對不上，請在學生帳務核對收款紀錄，作廢重複或錯誤的帳單。沒有登記任何款項。',
-            'code' => 'course_already_paid',
-            'invoice_id' => (int) $invoice->id,
-        ], 422);
+        return $this->recordGate->invoiceAlreadyCoveredResponse($invoice);
     }
 
-    private function duplicateCoursePaymentResponse(string $reason)
+    private function duplicateCoursePaymentResponse(string $reason, ?\Illuminate\Database\Eloquent\Model $course = null)
     {
-        // Same code and status for every reason; only the sentence differs so the director knows what to do next.
-        return response()->json([
-            'message' => match ($reason) {
-                'free' => '這門課是免費課程（輔導、試上或 0 元），不需要收款。',
-                'paid' => '這門課的款項已收齊，不需要再登記；若收錯了，請先作廢原收款再重新登記。',
-                // Any other/unknown reason is the safe sentence, never "已收齊".
-                default => '暫時無法確認這門課的繳費狀態，沒有登記任何款項。請稍後再試；一直失敗請回報。',
-            },
-            'code'    => 'course_already_paid',
-        ], 422);
+        return $this->recordGate->duplicateCoursePaymentResponse($reason, $course);
     }
 
     /**

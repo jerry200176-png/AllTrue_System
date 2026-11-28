@@ -384,6 +384,9 @@ class AlertController extends Controller
             ];
         })->filter()->values();
 
+        // #5721: why 改成不收 would be refused, from the waive endpoint's own checks (WaiveGate, batched over these rows).
+        $waiveBlocks = (new \App\Services\Billing\WaiveGate())->refusals($pendingSettlementResults);
+
         $rows = collect()
             ->merge(
                 $countResults
@@ -403,7 +406,7 @@ class AlertController extends Controller
             ->merge(
                 $pendingSettlementResults->map(fn ($c) => $this->mapPendingSettlementAlert($c, $subjectNameMap))
             )
-            ->map(function ($row) use ($paidAtMap, $paymentHistoryMap, $allResults, $invoiceAggMap, $pendingReportMap, $newerCourseMap, $today, $openMonthlyInvoiceMap, $payableMap, $stoppedStatuses, $courseStatuses) {
+            ->map(function ($row) use ($paidAtMap, $paymentHistoryMap, $allResults, $invoiceAggMap, $pendingReportMap, $newerCourseMap, $today, $openMonthlyInvoiceMap, $payableMap, $stoppedStatuses, $courseStatuses, $waiveBlocks) {
                 $classId = (int) $row['id'];
                 $sc = $allResults->get($classId);
                 $directPaidAt = ($sc && $sc->PayDate) ? substr($sc->PayDate, 0, 10) : null;
@@ -471,9 +474,9 @@ class AlertController extends Controller
                 // changed here, and no session/billing row is touched.
                 $currentEndDate = $sc && $sc->EndDate ? substr((string) $sc->EndDate, 0, 10) : null;
                 $newerCourseOverlap = $newerInfo
-                    && !empty($newerInfo['start_date'])
+                    && !empty($newerInfo['overlap_start_date'])
                     && $currentEndDate !== null
-                    && $currentEndDate >= $newerInfo['start_date'];
+                    && $currentEndDate >= $newerInfo['overlap_start_date'];
 
                 return $row + [
                     'closed_reason'            => $sc?->getAttribute('closed_reason'),
@@ -511,6 +514,8 @@ class AlertController extends Controller
                             ->values()->all()
                         : [],
                     'payment_status'           => $paymentStatus,
+                    // Set on every stopped-and-owing row (a pending_report row is not offered 改成不收, but would be refused the same way).
+                    'waive_block'              => $row['alert_type'] === 'pending_reconciliation' ? ($waiveBlocks[$classId] ?? null) : null,
                     'amount_pending_confirmation' => $amountPendingConfirmation,
                     'review_reasons' => $reviewReasons,
                     'pending_confirmation_amount' => $amountPendingConfirmation ? $outstanding : 0,
@@ -520,6 +525,7 @@ class AlertController extends Controller
                     'newer_course_id'          => $newerInfo['newer_id'] ?? null,
                     'newer_course_remaining'   => $newerInfo['remaining'] ?? null,
                     'newer_course_start_date'  => $newerInfo['start_date'] ?? null,
+                    'newer_course_overlap_start_date' => $newerCourseOverlap ? $newerInfo['overlap_start_date'] : null,
                     'current_course_end_date'  => $currentEndDate,
                     'newer_course_overlap'     => $newerCourseOverlap,
                     'invoice_stored_amount'    => $invoiceProjection['stored_total_amount'] ?? null,
@@ -698,9 +704,21 @@ class AlertController extends Controller
         return (int) ($pkg->remaining_sessions ?? 0) <= 2 ? 'renew_needed' : 'paid';
     }
 
+    /**
+     * Every issued bill of the course is fully paid and no lesson is left without a bill. `review_required` counts
+     * (in-app #605/#606) only under the same preconditions as the 已核對 button (`paymentReviewCheck`): no lesson outside
+     * the bills and no month still in review; what is left is a remark such as "the bill's range starts after the
+     * contract's start date", and asking for another bill there would double-charge. A month with lessons and no bill
+     * stays listed. A legacy flag with no bill (source != invoice) never counts.
+     */
     private function isInvoiceSettled(?array $verdict): bool
     {
-        return ($verdict['status'] ?? null) === 'paid'
+        $status = $verdict['status'] ?? null;
+        $reviewSettled = $status === 'review_required' && ($verdict['payable_total'] ?? 0) > 0
+            && (int) ($verdict['uncovered_sessions'] ?? 1) === 0
+            && !collect($verdict['periods'] ?? [])->contains(fn ($period) => ($period['status'] ?? null) === 'review_required');
+
+        return ($status === 'paid' || $reviewSettled)
             && ($verdict['source'] ?? null) === 'invoice'
             && ($verdict['outstanding'] ?? null) === 0;
     }
@@ -1193,7 +1211,7 @@ class AlertController extends Controller
      * StudentID + SubjectID but a higher ID.
      *
      * @param  int[]  $studentClassIds
-     * @return array<int, array{newer_id: int, remaining: int, start_date: string|null, renewed: bool}>
+     * @return array<int, array{newer_id: int, remaining: int, start_date: string|null, overlap_start_date: string|null, renewed: bool}>
      */
     public static function newerCourseByStudentClassIds(array $studentClassIds): array
     {
@@ -1212,7 +1230,7 @@ class AlertController extends Controller
 
         $candidates = StudentClass::where('Stop', 0)
             ->whereIn('StudentID', $pairs->pluck('sid')->unique())
-            ->get(['ID', 'StudentID', 'SubjectID', 'RemainingSessions', 'StartDate', 'ClassType', 'Charge', 'Rate']);
+            ->get(['ID', 'StudentID', 'SubjectID', 'RemainingSessions', 'StartDate', 'ClassType', 'Charge', 'Rate', 'ScheduleMode', 'RemainingMinutes']);
         $byKey = $candidates->groupBy(fn ($c) => $c->StudentID . '-' . $c->SubjectID);
 
         // Listed courses are candidates too (in-app #495). The nearest later course is the overlap
@@ -1224,10 +1242,16 @@ class AlertController extends Controller
             if ($newer === null) {
                 continue;
             }
+            // in-app #601: a later 堂數制 contract with nothing left (a one-lesson add-on used the same day) is not a next
+            // term this one can run into; the overlap check reads the nearest later contract that can still hold lessons.
+            // An unset balance (import) or minutes left (actual-duration) still counts as "can hold lessons".
+            $next = $later->first(fn ($c) => ($c->ScheduleMode ?? 'count') === 'date' || $c->RemainingSessions === null
+                || (int) $c->RemainingSessions > 0 || (int) ($c->RemainingMinutes ?? 0) > 0);
             $map[$p['id']] = [
                 'newer_id'   => (int) $newer->ID,
                 'remaining'  => (int) ($newer->RemainingSessions ?? 0),
                 'start_date' => $newer->StartDate ? substr($newer->StartDate, 0, 10) : null,
+                'overlap_start_date' => $next?->StartDate ? substr($next->StartDate, 0, 10) : null,
                 // Only a priced, non-tutoring course is a purchased renewal; free tutoring or a free trial is not (Codex P2s on #4887).
                 'renewed'    => $later->contains(fn ($c) => strtolower(trim((string) ($c->ClassType ?? ''))) !== 'tutoring'
                     && ((float) ($c->Charge ?? 0) > 0 || (float) ($c->Rate ?? 0) > 0)),

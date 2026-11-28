@@ -132,7 +132,7 @@ export function billMenuGroups(b, { rowActions = {}, canDocs = false } = {}) {
     ...(canDocs && b.class_id > 0 && b.student_id > 0 ? [{ id: 'report-bill', label: '回報這筆帳務' }] : []),
   ];
   const danger = [
-    ...(a.waive ? [{ id: 'waive', label: '改成不收', danger: true }] : []),
+    ...(a.waive ? [{ id: 'waive', label: '改成不收', danger: true, disabled: Boolean(a.waiveBlock), reason: a.waiveBlock || '' }] : []),
     ...(a.void ? [{ id: 'void', label: '撤銷收款', danger: true }] : []),
     ...(a.settle ? [{ id: 'settle', label: '結案', danger: true }] : []),
     ...(canRefund ? [{ id: 'refund', label: '退費', danger: true }] : []),

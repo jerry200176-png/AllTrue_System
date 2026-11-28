@@ -99,6 +99,46 @@ final class BillingPeriodRekeyStrategyTest extends TestCase
         $this->assertSame('2026-04', DB::table('payment_reports')->where('id', 1)->value('billing_period'));
     }
 
+    /** in-app #603: a bill with no month and no lines on a one-month contract gets that month; its number and money stay. */
+    public function test_a_monthless_lineless_bill_on_a_one_month_contract_is_filled_and_restorable(): void
+    {
+        $this->cycle(900, 1, 9, '2026-04-04', '2026-04-25', '2026-04', []);   // id 801: the case
+        $this->cycle(901, 2, 9, '2026-04-10', '2026-05-31', '2026-04', []);   // id 802: contract spans two months -> never guessed
+        $this->cycle(902, 1, 8, '2026-04-04', '2026-04-25', '2026-04', []);   // id 803: still has a line -> never guessed
+        $this->cycle(903, 2, 8, '2026-04-04', '2026-04-25', '2026-04', []);   // id 804: NT$0 bill -> never guessed
+        $this->cycle(904, 3, 8, '2026-04-04', '2026-04-25', '2026-04', []);   // id 805: the contract has a second live bill -> never guessed
+        DB::table('Invoice')->insert(['id' => 899, 'StudentID' => 3, 'StudentClassID' => 904, 'IssueDate' => '2026-04-04', 'TotalAmount' => 500, 'PaidAmount' => 0,
+            'Status' => 'unpaid', 'Note' => '', 'billing_period' => null, 'created_at' => now(), 'updated_at' => now()]);
+        DB::table('Invoice')->whereIn('id', [801, 802, 803, 804, 805])->update(['billing_period' => null, 'IssueDate' => '2026-05-05', 'Status' => 'paid', 'PaidAmount' => 7500]);
+        DB::table('Invoice')->where('id', 804)->update(['TotalAmount' => 0, 'PaidAmount' => 0]);
+        $this->cycle(905, 5, 8, '2026-04-04', '2026-04-25', '2026-04', []);   // id 806: issued as a lesson-count bill before a conversion -> never guessed
+        DB::table('Invoice')->where('id', 806)->update(['billing_period' => null, 'ScheduleModeAtIssue' => 'count']);
+        DB::table('InvoiceItem')->where('InvoiceID', 806)->delete();
+        DB::table('InvoiceItem')->whereIn('InvoiceID', [801, 802, 804, 805])->delete();
+        // A report filed against April before the run: the restore must leave it alone.
+        DB::table('payment_reports')->insert(['id' => 9, 'StudentID' => 1, 'StudentClassID' => 900, 'InvoiceID' => 801, 'billing_period' => '2026-04',
+            'reported_by_name' => 'x', 'payment_date' => '2026-05-01', 'reported_amount' => 100, 'report_token_hash' => 'h9', 'token_expires_at' => now()]);
+        $before = \App\Services\Billing\InvoiceNumber::for(\App\Models\Invoice::findOrFail(801));
+
+        $s = new BillingPeriodRekeyStrategy;
+        $dry = $s->plan($this->params('all'));
+        $rows = collect($dry['manifest'])->keyBy('invoice_id');
+        $this->assertSame(['', '2026-04', 'ready', '2026-05'], [$rows[801]['from'], $rows[801]['to'], $rows[801]['status'], $rows[801]['tag']]);
+        foreach ([802, 803, 804, 805, 806, 899] as $never) $this->assertFalse($rows->has($never), "bill {$never}");
+
+        $plan = $s->plan($this->params('all', $dry['digest']));
+        $result = $s->execute($plan, ['operation_id' => 'req-9']);
+        $inv = \App\Models\Invoice::findOrFail(801);
+        $this->assertSame(['2026-04', 7500, 7500, 'paid'], [$inv->billing_period, (int) $inv->TotalAmount, (int) $inv->PaidAmount, $inv->Status]);
+        $this->assertSame($before, \App\Services\Billing\InvoiceNumber::for($inv), 'an issued number never changes');
+        $this->assertTrue($s->verify($plan, $result)['ok']);
+
+        $s->rollback($result['snapshot'], ['operation_id' => 'req-9']);
+        $inv->refresh();
+        $this->assertSame([null, ''], [$inv->billing_period, (string) $inv->Note]);
+        $this->assertSame('2026-04', DB::table('payment_reports')->where('id', 9)->value('billing_period'));
+    }
+
     public function test_changed_state_or_wrong_digest_never_executes(): void
     {
         $s = new BillingPeriodRekeyStrategy;

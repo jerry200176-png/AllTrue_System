@@ -3,6 +3,15 @@
 > 本 repo 對 Founder 常設決定的**唯一**定義。`AGENTS.md`、`CLAUDE.md` 只放指向本檔的連結，不得另寫摘要或複本。
 > 艦隊層權威表：portfolio-ops `governance/AUTONOMY_POLICY.md`（portfolio-ops#134）。兩者不一致時開 PR 修正本檔；**較嚴格的規則優先**：艦隊層只能放寬本檔未另加限制之處，不得削弱本 repo 較嚴格的本地規則或安全規則（例如聚焦回歸測試、權威紀錄核對、產品 P0／紅線）。
 
+<a id="patchless-exam-data-file"></a>
+## 2026-11-28（六）（段考參考日期資料檔不因缺少 patch 而卡住上線）
+
+Founder 在對話中回答「都照你推薦做」。提問：最近 24 次被擋下的自動上線裡，有 8 次只因為 `frontend/src/lib/schoolExamReferenceData.generated.js` 太大，GitHub API 不回傳它的 patch，`deploy.yml` 因此判定「application patch evidence is incomplete」並保守擋下。選項 A（推薦）：只對這一個檔案放行；選項 B：不改，每次更新資料 Founder 按一次。Founder 選 A。
+
+1. `deploy.yml` 的範圍分類只對**這一個路徑**、且是**原地修改**（不是新增、刪除、改名）時，允許沒有 patch；其他任何路徑缺 patch 仍然擋下。
+2. 放行前，上線分類那一步會**自己讀取該次提交裡的檔案內容**，由 `autonomy_gate.py` 的 `exam_reference_data_is_pure()` 確認它只有資料（開頭註解、`year`／`semester`／`source`、每行一筆只含字串與整數的陣列、大小 2MB 以內）。不是純資料、讀不到、或任何錯誤，一律照舊擋下。
+3. 其餘不變：PR 仍需 CI 綠與獨立 review；R3 自動上線與 Founder GO 路徑的既有條件照舊（見 2026-10-21（二）之二）。`deploy.yml` 從 main 執行，本規則在合併後即生效。#3961 的範圍已由 2026-10-21（二）之二完成並關閉。
+
 <a id="inapp-substantive-followup"></a>
 ## 2026-11-17（二）（實質答覆回報者，接續既有驗證與結案；FSD-2026-11-17-INAPP-SUBSTANTIVE-FOLLOWUP）
 

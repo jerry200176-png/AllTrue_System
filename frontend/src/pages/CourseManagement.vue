@@ -1285,6 +1285,7 @@
       :courses="courses"
       @close="showBulkLeaveModal = false; bulkLeaveResult = null"
       @submit="submitBulkLeave"
+      @shift="shiftSkippedBulkLeave"
     />
 
     <RescheduleModal
@@ -1440,7 +1441,7 @@
             {{ confirmDeleteTarget.subject_name || confirmDeleteTarget.subject }}<template v-if="confirmDeleteTarget.student_name"> — {{ confirmDeleteTarget.student_name }}</template>
           </p>
           <p v-if="deleteCourseError" class="tw:m-0 tw:text-tpl-body tw:text-pretty" role="alert" data-testid="delete-course-refusal">{{ deleteCourseError.message }}</p>
-          <p v-if="deleteCourseError?.code === 'course_has_history'" class="tw:m-0 tw:text-tpl-body tw:text-tpl-secondary">結束課程會取消未來排課，已上課與收款紀錄仍保留；尚未收款的費用不會自動免除。</p>
+          <p v-if="deleteCourseError?.code === 'course_has_history'" class="tw:m-0 tw:text-tpl-body tw:text-tpl-secondary">結束課程會取消未來排課，已上課與收款紀錄仍保留；尚未收款的費用不會自動免除。還有沒收的錢，課程會留在「帳務中心」，狀態是「已結束，未收」；確定不收，在那一列的「•••」選「改成不收」。</p>
           <p v-else class="tw:m-0 tw:text-tpl-body tw:font-semibold tw:text-[var(--ds-danger-text)]">刪除後無法復原，所有堂次紀錄將一併移除，未繳帳單會一併作廢。</p>
         </template>
         <DialogFooter>
@@ -1586,7 +1587,7 @@ import {
 } from '../composables/course-management/useCourseSessionCalendar.js';
 import perfFlags from '../lib/perfFlags.js';
 import LeaveModal from '../components/course-management/LeaveModal.vue';
-import { previewSuccessorLeave, applySuccessorLeave, successorImpactItems } from '../lib/leaveSuccessorShift.js';
+import { previewSuccessorLeave, applySuccessorLeave, successorImpactItems, leaveWithRenewalShift } from '../lib/leaveSuccessorShift.js';
 import BulkLeaveModal from '../components/course-management/BulkLeaveModal.vue';
 import RescheduleModal from '../components/course-management/RescheduleModal.vue';
 import MakeupSlotsModal from '../components/course-management/MakeupSlotsModal.vue';
@@ -4182,6 +4183,26 @@ async function submitLeave() {
     alert('請假登記失敗：' + (e?.message || '請稍後再試'));
     return;
   } finally { leaveSubmitting.value = false; }
+}
+
+// A bulk-leave row skipped because its make-up lesson lands on the renewal: the same preview, confirm, apply as a single leave.
+async function shiftSkippedBulkLeave(skip) {
+  if (skip.shiftPending) return;
+  skip.shiftPending = true;
+  skip.shiftNote = '';
+  try {
+    const outcome = await leaveWithRenewalShift({
+      role: props.userRole, sessionId: skip.class_session_id, token: await getAccessToken(),
+      ask: (message) => askConfirm({ title: '改用續約順延？', message, confirmLabel: '確認順延' }),
+      onBlocked: (plan) => { skip.shiftNote = '這堂不能續約順延，沒有變更：' + plan.blockers.map((b) => b.message).join('；'); },
+    });
+    if (outcome === 'ordinary') skip.shiftNote = '這堂不適用續約順延，沒有變更。請改用單堂請假或調課。';
+    if (outcome === 'done') { skip.shifted = true; await loadCourses(); }
+  } catch (e) {
+    skip.shiftNote = '續約順延失敗，沒有變更：' + (e?.message || '請稍後再試');
+  } finally {
+    skip.shiftPending = false;
+  }
 }
 
 // ----- Reschedule (調課) -----

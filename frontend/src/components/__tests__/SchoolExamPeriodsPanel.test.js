@@ -4,6 +4,17 @@ import { flushPromises, mount } from '@vue/test-utils';
 vi.mock('../../supabase', () => ({
   supabase: { auth: { getSession: async () => ({ data: { session: { access_token: 't' } } }) } },
 }));
+// Reference dates for the term the panel opens on (whatever today is), for a school the other tests do not use.
+vi.mock('../../lib/schoolExamReferenceData.generated.js', async () => {
+  const { currentTerm: term } = await import('../../lib/schoolExamTerm');
+  return { default: { ...term(), source: '測試來源', rows: [
+    ['臺北市', '乙參考國中', '國中', '第一次期中', 1, '2026-10-13', '2026-10-14'],
+    ['臺北市', '乙參考國中', '七、八年級', '期末', 3, '2027-01-18', '2027-01-19'],
+    ['臺北市', '乙參考國中', '九年級', '期末', 3, '2027-01-05', '2027-01-06'],
+    ['臺北市', '丙部分國中', '九年級', '第一次期中', 1, '2026-10-13', '2026-10-14'],
+    ['新北市', '丁別市國中', '國中', '第一次期中', 1, '2026-10-20', '2026-10-21'],
+  ] } };
+});
 import Panel from '../SchoolExamPeriodsPanel.vue';
 import { currentTerm } from '../../lib/schoolExamTerm';
 
@@ -42,6 +53,120 @@ describe('各校段考日期 panel', () => {
     await flushPromises();
     const post = f.mock.calls.find(([, o]) => o?.method === 'POST');
     expect(JSON.parse(post[1].body)).toMatchObject({ seq: 1, school_name: '甲測試國中', start_date: '2026-10-20', end_date: '2026-10-22' });
+  });
+
+  const refStub = (schoolName) => {
+    const f = vi.fn(async (input, options = {}) => {
+      const body = String(input).includes('/schools')
+        ? { data: [{ key: '乙參考國中', school_name: schoolName, student_count: 2, variants: [schoolName] }] }
+        : options.method === 'POST' ? { data: { id: 11 } } : { data: [] };
+      return { ok: true, json: async () => body };
+    });
+    vi.stubGlobal('fetch', f);
+    return f;
+  };
+  const chipsOf = (w) => w.findAll('button').filter((b) => /\d+\/\d+–\d+\/\d+/.test(b.text()));
+  const fillBtn = (w) => w.findAll('button').find((b) => b.text().includes('帶入參考日期'));
+  const posts = (f) => f.mock.calls.filter(([, o]) => o?.method === 'POST').map(([, o]) => JSON.parse(o.body));
+
+  it('offers reference dates: a chip fills the draft, and the fill button saves only blank slots with one choice', async () => {
+    localStorage.clear();
+    const f = refStub('臺北市立乙參考國民中學');
+    const w = mount(Panel, { props: { branchId: 1, isDirector: true } });
+    await vi.waitFor(() => expect(w.text()).toContain('測試來源'));
+    expect(chipsOf(w).map((b) => b.text().replace(/\s+/g, ' '))).toEqual(['臺北市 國中 10/13–10/14', '臺北市 七、八年級 1/18–1/19', '臺北市 九年級 1/5–1/6']);
+    // 期末 has two choices: a chip only fills the two date boxes, nothing is sent.
+    await chipsOf(w)[2].trigger('click');
+    expect(w.findAll('input[type="date"]').map((i) => i.element.value).slice(4)).toEqual(['2027-01-05', '2027-01-06']);
+    expect(posts(f)).toHaveLength(0);
+    // The school name carries its city, so the one blank slot with a single choice (段考一) can be filled; 期末 is left alone.
+    expect(fillBtn(w).text()).toContain('1 格');
+    await fillBtn(w).trigger('click');
+    await flushPromises();
+    expect(posts(f)).toHaveLength(1);
+    expect(posts(f)[0]).toMatchObject({ seq: 1, school_name: '臺北市立乙參考國民中學', start_date: '2026-10-13', end_date: '2026-10-14' });
+    expect(w.text()).toContain('已帶入 1 格');
+    expect(fillBtn(w).attributes('disabled')).toBeDefined();
+  });
+
+  it('never fills on a name alone: the director first picks the city, and a wrong city offers nothing', async () => {
+    localStorage.clear();
+    const f = refStub('乙參考國中');
+    const w = mount(Panel, { props: { branchId: 1, isDirector: true } });
+    await vi.waitFor(() => expect(chipsOf(w)).toHaveLength(3)); // still offered to look at, with the city shown
+    expect(fillBtn(w).attributes('disabled')).toBeDefined();
+    await w.find('#sep-city').setValue('新北市');
+    expect(chipsOf(w)).toHaveLength(0);
+    expect(fillBtn(w).attributes('disabled')).toBeDefined();
+    await w.find('#sep-city').setValue('臺北市'); // the choice stays on screen, so it can be put right
+    expect(chipsOf(w)).toHaveLength(3);
+    expect(fillBtn(w).text()).toContain('1 格');
+    expect(posts(f)).toHaveLength(0);
+  });
+
+  it('offers a date for some grades but never fills it as the whole school', async () => {
+    localStorage.clear();
+    const f = refStub('臺北市立丙部分國民中學');
+    const w = mount(Panel, { props: { branchId: 1, isDirector: true } });
+    await vi.waitFor(() => expect(chipsOf(w)).toHaveLength(1));
+    expect(fillBtn(w).attributes('disabled')).toBeDefined();
+    expect(posts(f)).toHaveLength(0);
+  });
+
+  it('remembers the chosen city per campus and fills once it pins the school down', async () => {
+    localStorage.clear();
+    localStorage.setItem('sep-ref-city:1', '臺北市');
+    const f = refStub('乙參考國中');
+    const w = mount(Panel, { props: { branchId: 1, isDirector: true } });
+    await vi.waitFor(() => expect(fillBtn(w)?.text()).toContain('1 格'));
+    expect(w.find('#sep-city').element.value).toBe('臺北市');
+    await fillBtn(w).trigger('click');
+    await flushPromises();
+    expect(posts(f)).toHaveLength(1);
+  });
+
+  it('stops filling when the campus changes mid-way and never saves into the new campus', async () => {
+    localStorage.clear();
+    let release;
+    const gate = new Promise((done) => { release = done; });
+    const f = vi.fn(async (input, options = {}) => {
+      if (options.method === 'POST') await gate;
+      const body = String(input).includes('/schools')
+        ? { data: [{ key: '乙參考國中', school_name: '臺北市立乙參考國民中學', student_count: 2, variants: ['臺北市立乙參考國民中學'] }] }
+        : options.method === 'POST' ? { data: { id: 11 } } : { data: [] };
+      return { ok: true, json: async () => body };
+    });
+    vi.stubGlobal('fetch', f);
+    const w = mount(Panel, { props: { branchId: 1, isDirector: true } });
+    await vi.waitFor(() => expect(fillBtn(w)?.text()).toContain('1 格'));
+    await fillBtn(w).trigger('click');
+    expect(w.find('#sep-city').attributes('disabled')).toBeDefined(); // the city cannot change under a running fill
+    await w.setProps({ branchId: 2 });
+    await flushPromises();
+    release();
+    await flushPromises();
+    expect(posts(f)).toHaveLength(1); // the one already in flight, for campus 1
+    expect(posts(f)[0].campus_id).toBe(1);
+    expect(f.mock.calls.some(([, o]) => o?.method === 'PATCH')).toBe(false);
+    expect(w.text()).not.toContain('已帶入');
+    expect(w.findAll('input[type="date"]').map((i) => i.element.value)).toEqual(['', '', '', '', '', '']);
+  });
+
+  it('offers nothing for a school without reference dates, and a teacher never loads them', async () => {
+    stub();
+    const w = mount(Panel, { props: { branchId: 1, isDirector: true } });
+    await flushPromises();
+    await flushPromises();
+    expect(w.text()).toContain('測試來源'); // the table is there for this term, but this school is not in it
+    expect(chipsOf(w)).toHaveLength(0);
+    expect(fillBtn(w).attributes('disabled')).toBeDefined();
+    refStub('臺北市立乙參考國民中學');
+    const t = mount(Panel, { props: { branchId: 1, isDirector: false } });
+    await flushPromises();
+    await flushPromises();
+    expect(t.text()).toContain('乙參考');
+    expect(t.text()).not.toContain('測試來源');
+    expect(chipsOf(t)).toHaveLength(0);
   });
 
   it('teacher gets read-only inputs and no save button', async () => {

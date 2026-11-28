@@ -193,11 +193,12 @@ export function formatNewerCourseOverlapWarning(row) {
     return { show: false, primary: '', shortBadge: '' };
   }
   const endDate = formatStudentClassOpenDate(row?.current_course_end_date);
-  const startDate = formatStudentClassOpenDate(row?.newer_course_start_date);
-  const dates = endDate && startDate ? `（本期順延至 ${endDate}，新期開課 ${startDate}）` : '';
+  const startDate = formatStudentClassOpenDate(row?.newer_course_overlap_start_date ?? row?.newer_course_start_date);
+  // in-app #601: say what is wrong and what to do, in the reader's words.
+  const what = endDate && startDate ? `這一期到 ${endDate} 才結束，下一期卻 ${startDate} 就開課。` : '這一期和下一期的日期疊在一起。';
   return {
     show: true,
-    primary: `本期順延與下一期重疊，請調整${dates}`,
+    primary: `${what}請到課程查找把下一期的開課日往後改。`,
     shortBadge: '期間重疊',
   };
 }

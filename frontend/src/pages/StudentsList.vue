@@ -2149,6 +2149,8 @@ const loadStudentCourses = async (studentId) => {
           tutoring_billing_anomaly: c.tutoring_billing_anomaly === true,
           tutoring_billing_anomaly_reasons: c.tutoring_billing_anomaly_reasons || [],
           payment_status: c.payment_status ?? null,
+          billing_verdict: c.billing_verdict ?? null,
+          ScheduleMode: c.ScheduleMode ?? c.schedule_mode ?? null,
           monthly_payment: c.monthly_payment ?? null,
           rate_per_30min: c.rate_per_30min,
           current_unit_price: c.current_unit_price ?? null,
@@ -2241,6 +2243,8 @@ const loadAllStudentCourses = async () => {
             tutoring_billing_anomaly: c.tutoring_billing_anomaly === true,
             tutoring_billing_anomaly_reasons: c.tutoring_billing_anomaly_reasons || [],
             payment_status: c.payment_status ?? null,
+            billing_verdict: c.billing_verdict ?? null,
+            ScheduleMode: c.ScheduleMode ?? c.schedule_mode ?? null,
             monthly_payment: c.monthly_payment ?? null,
             rate_per_30min: c.rate_per_30min,
             current_unit_price: c.current_unit_price ?? null,
@@ -2766,9 +2770,7 @@ const unbindStudentRfid = async () => {
       return;
     }
     studentForm.value.rfid = '';
-    // Keep the fallback mirror in sync so a later fallback load cannot resurrect the old card.
-    supabase.from('students').update({ rfid: null }).eq('id', editingStudentId.value)
-      .then(({ error }) => { if (error) console.warn('Supabase mirror rfid clear failed (non-blocking):', error?.message); });
+    // No second "mirror" write: `supabase` here is the same Laravel API, and the DELETE above already cleared the card (#3758).
     loadStudents();
   } catch (e) {
     alert('解除綁定失敗');

@@ -441,7 +441,7 @@ import {
 } from '../lib/studentClassDisplay.js';
 import { humanizeApiErrorMessage } from '../lib/humanizeApiErrorMessage.js';
 import { confirmReport, voidReport as voidReportAction, voidInvoice as voidInvoiceAction } from '../lib/paymentActions.js';
-import { FREE_GIFT_LABEL, INVOICE_STATUS_LABELS, REPORT_STATUS_LABELS, ZERO_REASON_FREE_GIFT, LEGACY_CONFIRMED_REPORT_HELP, canResolveLegacyPaidFlag, isWaivedContract, latestStandingPayment } from '../lib/courseMoneyState.js';
+import { FREE_GIFT_LABEL, INVOICE_STATUS_LABELS, REPORT_STATUS_LABELS, ZERO_REASON_FREE_GIFT, LEGACY_CONFIRMED_REPORT_HELP, canResolveLegacyPaidFlag, isWaivedContract } from '../lib/courseMoneyState.js';
 import LedgerCoverageDates from './LedgerCoverageDates.vue';
 import BillingNotesPanel from './BillingNotesPanel.vue';
 import ContractCard from './tuition/ContractCard.vue';
@@ -1043,8 +1043,9 @@ const owedFor = (id) => (payload.value?.invoices || [])
   .reduce((sum, inv) => sum + Number(inv.outstanding_amount || 0), 0);
 const courseInvoices = (id) => (payload.value?.invoices || [])
   .filter((inv) => Number(inv.student_class_id) === Number(id) && inv.status !== 'void');
-// Reversals are netted per invoice (latestStandingPayment, same rule as the server's last-paid resolver), never filtered by row.
-const lastInvoicePayment = (ids) => ids.flatMap((id) => courseInvoices(id)).map((inv) => latestStandingPayment(inv.payments))
+// The server nets reversals per invoice (standing_payment = BillingPayableResolver::latestStandingReceipt); the screen only reads it.
+const standingPayment = (inv) => (inv.standing_payment ? { date: String(inv.standing_payment.paid_at), amount: Number(inv.standing_payment.amount) } : null);
+const lastInvoicePayment = (ids) => ids.flatMap((id) => courseInvoices(id)).map(standingPayment)
   .filter(Boolean).sort((a, b) => b.date.localeCompare(a.date))[0] || null;
 // Pay line (spec 2.3): latest confirmed receipt = same source as the printed receipt; invoice payments next.
 // #4150: the contract's PayDate / Charge / Paid flag are legacy metadata, not proof of a payment, so they never
@@ -1078,7 +1079,7 @@ const amountsFor = (id) => {
 };
 const monthLinesFor = (id) => Object.fromEntries(courseInvoices(id).map((inv) => {
   const key = String(inv.billing_period || inv.period_start || '').slice(0, 7);
-  const paid = latestStandingPayment(inv.payments);
+  const paid = standingPayment(inv);
   return [key, { due: Number(inv.total_amount || 0), paidDate: paid ? paid.date : '', paidAmount: Number(inv.calculated_applied_amount || 0),
     periodStart: inv.period_start, periodEnd: inv.period_end }];
 }).filter(([k]) => k));
@@ -1367,7 +1368,7 @@ async function runInitialAction(draftsReady) {
   const course = contractCourses.value.find((c) => Number(c.id) === id);
   if (action === 'record-unbilled') {
     if (course && canRecordUnbilledCountCourse(course, id)) openEntry(course);
-    else initialActionNote.value = '課程或帳單狀態已更新，請先核對下方資料後再登記收款。';
+    else initialActionNote.value = course?.record_block?.message || '課程或帳單狀態已更新，請先核對下方資料後再登記收款。';
     return;
   }
   if (!course) return;
@@ -1392,6 +1393,7 @@ function canRecordUnbilledCountCourse(course, id) {
     && course.schedule_mode === 'count' && !course.in_package && !course.package_id
     && !course.stop && !course.paid && !course.amount_pending_confirmation
     && Number(course.charge) > 0
+    && !course.record_block // the server would refuse this record (RecordGate)
     && !ledger.invoices?.some((inv) => inv.status !== 'void' && invoiceCoversCourse(inv, id))
     && allocContracts.value.some((c) => Number(c.id) === id);
 }
@@ -1400,6 +1402,7 @@ function recordBlockedReason(c) {
   if (pendingReportFor(c.id)) return '這門課已有待確認入帳的回報，請在下面的課程卡按「確認入帳」，或從「⋯」退回。';
   if (isWaivedContract(c)) return '這門課已確認不收，所以沒有打開登記表。';
   if (c.package_id) return '這是共用方案，請在下面的課程卡處理收款。';
+  if (c.record_block?.message) return c.record_block.message; // the server's own refusal (RecordGate)
   return '這門課目前沒有要收的款，所以沒有打開登記表。';
 }
 

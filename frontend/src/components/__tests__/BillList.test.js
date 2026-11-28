@@ -196,7 +196,7 @@ describe('BillList', () => {
       row({ id: 1, payment_status: 'pending_report', latest_payment_report_id: 9, newer_course_overlap: true }),
       row({ id: 4, payment_status: 'amount_review', amount_pending_confirmation: true, pending_confirmation_amount: 3400 }),
     ] });
-    expect(w.get('[data-testid="bill-warn-c1"]').text()).toContain('本期順延與下一期重疊');
+    expect(w.get('[data-testid="bill-warn-c1"]').text()).toContain('這一期和下一期的日期疊在一起');
     expect(w.get('[data-testid="bill-review-c4"]').text()).toBe('需核對金額 NT$ 3,400');
   });
 

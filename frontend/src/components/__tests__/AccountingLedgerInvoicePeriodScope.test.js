@@ -7,7 +7,8 @@ afterEach(() => { wrappers.splice(0).forEach((w) => w.unmount()); vi.unstubAllGl
 async function open(range = {}, paid = false) {
   const invoice = { id: 31, student_class_id: 9, billing_period: '2024-01', total_amount: 1200,
     calculated_applied_amount: paid ? 300 : 0, outstanding_amount: paid ? 900 : 1200, status: paid ? 'partial' : 'unpaid',
-    payments: paid ? [{ id: 41, amount: 300, applied_amount: 300, application_status: 'applied', paid_at: '2024-02-20', method: 'cash' }] : [], ...range };
+    payments: paid ? [{ id: 41, amount: 300, applied_amount: 300, application_status: 'applied', paid_at: '2024-02-20', method: 'cash' }] : [],
+    standing_payment: paid ? { paid_at: '2024-02-20', amount: 300 } : null, ...range };
   const course = { id: 9, subject: '合成數學', schedule_mode: 'date', paid: false, package_id: null,
     start_date: '2024-01-01', end_date: '2024-02-28', charge: 1200, rate: 300 };
   const payload = { student: { id: 91, name: '合成學生' }, scope: { student_class_id: 9 }, summary: {},

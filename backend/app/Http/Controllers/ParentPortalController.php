@@ -597,6 +597,7 @@ class ParentPortalController extends Controller
         $classIds = $classes->pluck('ID')->all();
         $observedUsedByClass = SessionDeductionService::batchObservedUsedSessions($classIds);
         $courseStatuses = app(BillingPayableResolver::class)->courseStatusesByStudentClassIds($classIds, $classes);
+        $sharedBillHeaders = $this->sharedBillHeaders($classIds);
 
         // 共用方案（course_packages）：同一池的多科課程，每筆 StudentClass.SessionCount 都 = 池總堂數。
         // 若用 per-member 計算，家長端會看到「每科都顯示總堂數」且總數被重複加總（in-app #158/#162 家族）。
@@ -848,12 +849,19 @@ class ParentPortalController extends Controller
                 // monthly mode：持續進行，不受 RemainingSessions 影響
                 return true;
             })
-            ->map(function ($c) use ($sessionMetrics, $attendedThisMonth, $monthlyBillingPeriods, $monthlyDisplayLabels, $currentMonthLabel, $courseStatuses, $packageMap, $studentCampusMap) {
+            ->map(function ($c) use ($sessionMetrics, $attendedThisMonth, $monthlyBillingPeriods, $monthlyDisplayLabels, $currentMonthLabel, $courseStatuses, $packageMap, $studentCampusMap, $sharedBillHeaders) {
                 $metrics   = $sessionMetrics($c);
                 $isMonthly = (string) ($c->ScheduleMode ?? 'count') !== 'count';
                 $isTutoring = strtolower(trim((string) ($c->ClassType ?? ''))) === 'tutoring';
                 $monthlyTarget  = (int) ($c->monthly_sessions ?? 0);
                 $monthlyFee     = $isMonthly && !$isTutoring ? $this->resolveMonthlyFee($c) : 0;
+                // #3521 (Founder 2026-11-27): once this month has a bill, the parent sees the bill's total (discounts
+                // included), not sessions × unit price.
+                $billedPeriod = collect($courseStatuses[(int) $c->ID]['periods'] ?? [])
+                    ->firstWhere('billing_period', $monthlyBillingPeriods[(int) $c->ID] ?? null);
+                if ($monthlyFee > 0 && (int) ($billedPeriod['total'] ?? 0) > 0 && !isset($sharedBillHeaders[(int) $c->ID])) {
+                    $monthlyFee = (int) $billedPeriod['total'];
+                }
                 $attended       = $isMonthly ? (int) ($attendedThisMonth[$c->ID] ?? 0) : 0;
                 $paid           = $this->isClassPaid($c, $courseStatuses);
                 $stopped        = (bool) $c->Stop;
@@ -1694,7 +1702,11 @@ class ParentPortalController extends Controller
         foreach ($lineItems as $item) {
             $parts[] = (string) $item['subject'];
             $parts[] = "{$item['start_date']}~{$item['session_count']}堂";
-            $parts[] = !empty($item['billed'])
+            // #3521: "單價*堂數" is shown only when it really multiplies out to the amount. A discounted total would
+            // otherwise read 1666.67*3, or 1500*8 = 10,000.
+            $unit = (float) $item['unit_price'];
+            $multipliesOut = abs($unit - round($unit)) < 0.00001 && (int) round($unit * $item['session_count']) === (int) $item['subtotal'];
+            $parts[] = !empty($item['billed']) || !$multipliesOut
                 ? "待繳 *{$this->formatAmount($item['subtotal'])}*"
                 : "{$this->formatAmount($item['unit_price'], false)}*{$item['session_count']} = *{$this->formatAmount($item['subtotal'])}*";
             $parts[] = '';
@@ -2026,9 +2038,18 @@ class ParentPortalController extends Controller
             ->orderByDesc('StartDate')
             ->get();
 
-        $records = $classes->map(function ($course) use ($billingCampusMap, $studentCampusIds) {
+        // #3521 (Founder 2026-11-27): a course with bills shows what the bills say (total and money received); the
+        // stored Charge / Pay columns are only for courses that never had a bill.
+        $statuses = app(BillingPayableResolver::class)->courseStatusesByStudentClassIds($classes->pluck('ID')->all(), $classes);
+        $sharedBillHeaders = $this->sharedBillHeaders($classes->pluck('ID')->all());
+        $records = $classes->map(function ($course) use ($billingCampusMap, $studentCampusIds, $statuses, $sharedBillHeaders) {
             $charge = (int) ($course->Charge ?? 0);
             $paid = (int) ($course->Pay ?? 0);
+            $billed = $statuses[(int) $course->ID] ?? [];
+            if (($billed['source'] ?? null) === 'invoice' && (int) ($billed['payable_total'] ?? 0) > 0 && !isset($sharedBillHeaders[(int) $course->ID])) {
+                $charge = (int) $billed['payable_total'];
+                $paid = (int) ($billed['applied'] ?? 0);
+            }
             $campusId = (int) ($studentCampusIds->get((int) $course->StudentID) ?? 0);
 
             return [
@@ -2140,6 +2161,20 @@ class ParentPortalController extends Controller
     private function studentCampusId(int $studentId): int
     {
         return (int) ($this->portalStudents()->where('id', $studentId)->value('CampusID') ?? 0);
+    }
+
+    /**
+     * Courses whose own bill also bills another course on a line. The resolver keeps such a bill's whole total on
+     * the header course, so its amount is not that course's own: these keep the stored amounts (#3521, Codex).
+     *
+     * @param int[] $classIds @return array<int, true>
+     */
+    private function sharedBillHeaders(array $classIds): array
+    {
+        return Invoice::query()->notVoided()->whereIn('StudentClassID', $classIds)
+            ->whereHas('items', fn ($item) => $item->whereNotNull('InvoiceItem.StudentClassID')
+                ->whereColumn('InvoiceItem.StudentClassID', '!=', 'Invoice.StudentClassID'))
+            ->pluck('StudentClassID')->mapWithKeys(fn ($id) => [(int) $id => true])->all();
     }
 
     /**

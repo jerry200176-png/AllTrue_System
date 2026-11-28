@@ -1,0 +1,15 @@
+updates:
+  - id: staff-2026-11-27-curriculum-publisher-catalog
+    published_at: "2026-11-27"
+    audiences:
+      - director
+    importance: digest
+    title: 教材範本帶入出版社目錄
+    summary: 新增範本時，國中數學可直接帶入翰林、康軒、南一的章節。
+    items:
+      - category: added
+        text: 新增範本選數學和七到九年級，可從出版社目錄帶入名稱與單元，帶入後可再改。
+      - category: improved
+        text: 單元對應哪次段考不會自動填，請自己選。
+    source_refs:
+      - "changelog:2026-11-27:curriculum-publisher-catalog"

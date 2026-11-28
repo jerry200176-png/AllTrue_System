@@ -53,7 +53,7 @@ def _feature_repo() -> str:
 FALLBACK = os.environ.get("GUARD_TEST_FALLBACK") == "1"
 
 
-def run(cmd: str, cwd: str = None, env_extra: dict = None, timeout: int = 5) -> str:
+def run(cmd: str, cwd: str = None, env_extra: dict = None, timeout: int = 5, guard: str = GUARD) -> str:
     payload = json.dumps({"tool_name": "Bash", "tool_input": {"command": cmd}})
     env = dict(os.environ, **(env_extra or {}))
     if FALLBACK:
@@ -61,13 +61,16 @@ def run(cmd: str, cwd: str = None, env_extra: dict = None, timeout: int = 5) -> 
         env["PATH"] = os.pathsep.join(d for d in env["PATH"].split(os.pathsep)
                                       if not os.path.exists(os.path.join(d, "shfmt")))
     out = subprocess.run(
-        [sys.executable, GUARD], input=payload, capture_output=True, text=True, env=env,
+        [sys.executable, guard], input=payload, capture_output=True, text=True, env=env,
         cwd=cwd or _feature_repo(), timeout=timeout,  # hook timeout = fail open; catch regex blowups
     )
     return out.stdout.strip()
 
 
 SAFE = [
+    "gh pr create --title t --body \"$(cat <<'EOF'\nRuns `npm test` first\nEOF\n)\"",  # quoted delimiter: literal
+    'cat > /tmp/body.md <<EOF\nno ticks, $(date) is fine, \\`escaped\\` too\nEOF',
+    "cat <<EOF\nplain\nEOF\necho '`not in the heredoc`'",
     # AllTrue: local tests and docs that mention the Pi are fine
     "cd backend && vendor/bin/phpunit tests/Unit",
     "bash scripts/phpunit-isolated.sh",
@@ -119,6 +122,9 @@ SAFE = [
 ]
 
 DANGEROUS = [
+    # Backticks in an unquoted heredoc are run by the shell and drop out of the text (PR bodies lost twice).
+    'gh pr create --title t --body "$(cat <<EOF\nRuns `npm test` first\nEOF\n)"',
+    "cat > /tmp/body.md <<-EOF\n\tsee `x`\n\tEOF",
     # AllTrue production Pi
     "ssh admin@pi.lifenet.com.tw 'cd /home/admin && php artisan test'",
     "ssh -i ~/.ssh/pi admin@pi.lifenet.com.tw",
@@ -527,8 +533,111 @@ def test_symlink_credential() -> bool:
     return ok
 
 
+def test_prepush() -> bool:
+    """`git push` runs scripts/agent-prepush.sh of the guard's own checkout; only a real push with a failing
+    script is denied. The guard is copied into a throwaway repo, so that repo is its checkout."""
+    ok = True
+    tmp = os.path.realpath(tempfile.mkdtemp(prefix="guard-bash-prepush-test-"))
+    other = os.path.realpath(tempfile.mkdtemp(prefix="guard-bash-prepush-other-"))
+    try:
+        for repo in (tmp, other):
+            subprocess.run(["git", "init", "-q", "-b", "feature/x", repo], check=True)
+            subprocess.run(["git", "-C", repo, "config", "user.email", "t@e.com"], check=True)
+            subprocess.run(["git", "-C", repo, "config", "user.name", "T"], check=True)
+            os.makedirs(os.path.join(repo, "scripts"))
+        with open(os.path.join(tmp, ".git", "info", "exclude"), "a") as fh:
+            fh.write(".claude/\n")  # the guard copy below is not part of the throwaway repo's worktree state
+        hooks = os.path.join(tmp, ".claude", "hooks")
+        shutil.copytree(HERE, hooks, ignore=shutil.ignore_patterns("__pycache__"))
+        script = os.path.join(tmp, "scripts", "agent-prepush.sh")
+        ran = os.path.join(other, "ran")
+        with open(os.path.join(other, "scripts", "agent-prepush.sh"), "w") as fh:
+            fh.write(f"touch {ran}\nexit 1\n")
+        subprocess.run(["git", "-C", other, "add", "scripts"], check=True)
+        subprocess.run(["git", "-C", other, "commit", "-q", "-m", "x"], check=True)
+
+        def case(body, cmd, want, env=None, cwd=tmp, commit=True, merged=True):
+            nonlocal ok
+            with open(script, "w") as fh:
+                fh.write(body)
+            if commit:
+                subprocess.run(["git", "-C", tmp, "add", "scripts"], check=True)
+                subprocess.run(["git", "-C", tmp, "commit", "-q", "--allow-empty", "-m", "x"], check=True)
+                if merged:  # the list is "already on main": only then may the guard run it
+                    subprocess.run(["git", "-C", tmp, "update-ref", "refs/remotes/origin/main", "HEAD"], check=True)
+            out = run(cmd, cwd=cwd, env_extra=env, timeout=20, guard=os.path.join(hooks, "guard_bash.py"))
+            got = ("PREPUSH" if "pre-push checks failed" in out else "DENY" if "permissionDecision" in out
+                   else "SKIP" if "pre-push checks not run" in out else "ALLOW")
+            if got != want:
+                ok = False
+                print(f"FAIL (prepush, expected {want}, got {got}): {cmd!r}\n  -> {out}")
+
+        bad = "echo 'FAIL  size-gate'\nexit 1\n"
+        # Another checkout's script never runs (this hook fires before the command is approved).
+        # (The regex fallback does not read -C: it runs the guard's own checkout's script instead.)
+        case(bad, f"git -C {other} push origin feature/x", "PREPUSH" if FALLBACK else "ALLOW")
+        case(bad, "git push origin feature/x", "ALLOW", cwd=other)
+        if os.path.exists(ran):
+            ok = False
+            print("FAIL (prepush): a script outside the guard's own checkout was executed")
+        # The script must pass the guard itself before it is run.
+        case(f"touch {ran}\ngit push --force origin main\n", "git push origin feature/x", "DENY")
+        # Only the committed list runs, and only while the worktree is clean: here the committed list would
+        # leave a marker file if it ran.
+        with open(script, "w") as fh:
+            fh.write(f"touch {ran}\nexit 1\n")
+        subprocess.run(["git", "-C", tmp, "commit", "-q", "-am", "x"], check=True)
+        with open(os.path.join(tmp, "scripts", "new.sh"), "w") as fh:
+            fh.write("exit 0\n")
+        case(f"touch {ran}\nexit 1\n", "git push origin feature/x", "SKIP", commit=False)  # untracked file
+        os.remove(os.path.join(tmp, "scripts", "new.sh"))
+        case(f"touch {ran}\nexit 1\n# edited\n", "git push origin feature/x", "SKIP", commit=False)  # edited list
+        # Committed on the branch but not on main (nobody reviewed it): not run.
+        case(f"touch {ran}\nexit 1\n# branch\n", "git push origin feature/x", "SKIP", merged=False)
+        # Force-committed node_modules on the branch (eslint would run from it): not run either.
+        case(f"touch {ran}\nexit 1\n", "git status", "ALLOW")  # list now on main
+        os.makedirs(os.path.join(tmp, "frontend", "node_modules"))
+        with open(os.path.join(tmp, "frontend", "node_modules", "x.js"), "w") as fh:
+            fh.write("1\n")
+        subprocess.run(["git", "-C", tmp, "add", "-f", "frontend/node_modules/x.js"], check=True)
+        case(f"touch {ran}\nexit 1\n", "git push origin feature/x", "SKIP", merged=False)
+        subprocess.run(["git", "-C", tmp, "rm", "-q", "-f", "frontend/node_modules/x.js"], check=True)
+        os.makedirs(os.path.join(tmp, "frontend"), exist_ok=True)
+        os.symlink(other, os.path.join(tmp, "frontend", "node_modules"))  # the same, committed as a symlink
+        subprocess.run(["git", "-C", tmp, "add", "-f", "frontend/node_modules"], check=True)
+        case(f"touch {ran}\nexit 1\n", "git push origin feature/x", "SKIP", merged=False)
+        subprocess.run(["git", "-C", tmp, "rm", "-q", "-f", "frontend/node_modules"], check=True)
+        if not FALLBACK:  # a list the AST walk cannot fully verify is not run
+            case(f'run() {{ "$@"; }}\nrun touch {ran}\nexit 1\n', "git push origin feature/x", "SKIP")
+        if os.path.exists(ran):
+            ok = False
+            print("FAIL (prepush): a list that is denied, uncommitted, branch-only or unverifiable was executed")
+        case(bad, "git push -u origin feature/x", "PREPUSH")
+        case(bad, "git push origin feature/x && git -C . push", "PREPUSH")
+        # Commit and push in one command: the hook runs before the commit, the tree is dirty, the agent is told.
+        case(bad + "# edit\n", "git add -A && git commit -m x && git push origin HEAD", "SKIP", commit=False)
+        case("exit 0\n", "git push -u origin feature/x", "ALLOW")
+        case(bad, "LEFTHOOK=0 git push -u origin feature/x", "SKIP")
+        case(bad, "git push origin feature/x", "SKIP", {"LEFTHOOK": "0"})
+        case(bad, "git push origin feature/x", "PREPUSH", {"ALLTRUE_PREPUSH_TIMEOUT": "abc"})  # bad value: default
+        case(bad, "git commit -m 'next step is git push origin feature/x'", "ALLOW")
+        case(bad, "git status", "ALLOW")
+        case("sleep 30\n", "git push origin feature/x", "SKIP", {"ALLTRUE_PREPUSH_TIMEOUT": "1"})
+        skips = os.path.join(tmp, ".git", "agent-prepush-skips.log")
+        if not os.path.exists(skips) or len(open(skips).read().splitlines()) != 2:
+            ok = False
+            print("FAIL (prepush): each LEFTHOOK=0 skip must add one line to .git/agent-prepush-skips.log")
+        if not FALLBACK:  # the regex fallback cannot tell a dry run from a push; it runs the checks (harmless)
+            case(bad, "git push --dry-run origin feature/x", "ALLOW")
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+        shutil.rmtree(other, ignore_errors=True)
+    return ok
+
+
 def main() -> None:
     results = [
+        test_prepush(),
         test_safe_and_dangerous(),
         test_commit_on_branch(),
         test_symlink_credential(),

@@ -1,0 +1,50 @@
+// Publisher tables of contents offered when a director creates a 教材範本. Reference data only: a director picks
+// one, the form is filled, and everything stays editable before saving. Chapter and section names follow each
+// publisher's 108-curriculum junior-high textbooks (checked 2026-11 against a public per-publisher course index);
+// publishers revise them, so the school's own book wins. Extend by adding rows; no code change needed.
+// Row: [subject, grade, semester, publisher, [[chapter, [sections]]]]
+const ROWS = [
+  ["Math", "J1", 1, "南一", [["第一章 整數運算與科學記號", ["1-1 數與數線", "1-2 整數的加減運算", "1-3 整數的乘除運算", "1-4 指數記法與科學記號"]], ["第二章 因數分解與分數運算", ["2-1 質因數分解", "2-2 公因數與公倍數", "2-3 分數的四則運算", "2-4 指數律"]], ["第三章 一元一次方程式", ["3-1 以符號列式與運算", "3-2 一元一次方程式的列式與求解", "3-3 一元一次方程式的應用"]]]],
+  ["Math", "J1", 1, "康軒", [["第一章 整數的運算", ["1-1 負數與數線", "1-2 整數的加減", "1-3 整數的乘除與四則運算", "1-4 指數記法與科學記號"]], ["第二章 分數的運算", ["2-1 因數與倍數", "2-2 最大公因數與最小公倍數", "2-3 分數的四則運算", "2-4 指數律"]], ["第三章 一元一次方程式", ["3-1 代數式的化簡", "3-2 一元一次方程式", "3-3 應用問題"]]]],
+  ["Math", "J1", 1, "翰林", [["第一章 數與數線", ["1-1 正數與負數", "1-2 正負數的加減", "1-3 正負數的乘除", "1-4 指數記法與科學記號"]], ["第二章 標準分解式與分數運算", ["2-1 質因數分解", "2-2 最大公因數與最小公倍數", "2-3 分數的四則運算", "2-4 指數律"]], ["第三章 一元一次方程式", ["3-1 式子的運算", "3-2 解一元一次方程式", "3-3 應用問題"]]]],
+  ["Math", "J1", 2, "南一", [["第一章 二元一次聯立方程式", ["1-1 二元一次方程式", "1-2 解二元一次聯立方程式", "1-3 二元一次聯立方程式的應用"]], ["第二章 平面直角坐標系", ["2-1 直角坐標平面", "2-2 二元一次方程式的圖形"]], ["第三章 比例", ["3-1 比例式", "3-2 正比與反比"]], ["第四章 一元一次不等式", ["4-1 一元一次不等式及其解", "4-2 解一元一次不等式及其應用"]], ["第五章 統計圖表與資料分析", ["5-1 統計圖表與平均數、中位數、眾數"]], ["第六章 生活中的幾何圖形", ["6-1 幾何圖形、線對稱與三視圖"]]]],
+  ["Math", "J1", 2, "康軒", [["第一章 二元一次聯立方程式", ["1-1 二元一次方程式", "1-2 解二元一次聯立方程式", "1-3 應用問題"]], ["第二章 直角坐標與二元一次方程式的圖形", ["2-1 直角坐標平面", "2-2 二元一次方程式的圖形"]], ["第三章 比與比例式", ["3-1 比例式", "3-2 正比與反比"]], ["第四章 一元一次不等式", ["4-1 認識一元一次不等式", "4-2 解一元一次不等式"]], ["第五章 統計", ["5-1 統計圖表與資料分析"]], ["第六章 生活中的幾何", ["6-1 垂直、線對稱與三視圖"]]]],
+  ["Math", "J1", 2, "翰林", [["第一章 二元一次聯立方程式", ["1-1 二元一次方程式", "1-2 解二元一次聯立方程式", "1-3 應用問題"]], ["第二章 直角坐標與二元一次方程式的圖形", ["2-1 直角坐標平面", "2-2 二元一次方程式的圖形"]], ["第三章 比例", ["3-1 比例式", "3-2 正比與反比"]], ["第四章 一元一次不等式", ["4-1 一元一次不等式的解及圖示", "4-2 解一元一次不等式及其應用"]], ["第五章 統計圖表與統計數據", ["第五章 統計圖表與統計數據"]], ["第六章 線對稱與三視圖", ["第六章 線對稱與三視圖"]]]],
+  ["Math", "J2", 1, "南一", [["第一章 乘法公式與多項式", ["1-1 乘法公式", "1-2 多項式的加法與減法", "1-3 多項式的乘法與除法"]], ["第二章 平方根與畢氏定理", ["2-1 平方根與近似值", "2-2 根式的運算", "2-3 畢氏定理"]], ["第三章 因式分解", ["3-1 提公因式法與乘法公式因式分解", "3-2 利用十字交乘法因式分解"]], ["第四章 一元二次方程式", ["4-1 因式分解法解一元二次方程式", "4-2 配方法與一元二次方程式的公式解", "4-3 一元二次方程式的應用"]], ["第五章 統計資料處理與圖表", ["5-1 相對與累積次數分配圖表"]]]],
+  ["Math", "J2", 1, "康軒", [["第一章 乘法公式與多項式", ["1-1 乘法公式", "1-2 多項式與其加減運算", "1-3 多項式的乘除運算"]], ["第二章 平方根與畢氏定理", ["2-1 平方根與近似值", "2-2 根式的運算", "2-3 畢氏定理"]], ["第三章 因式分解", ["3-1 利用提公因式與乘法公式做因式分解", "3-2 利用十字交乘法做因式分解"]], ["第四章 一元二次方程式", ["4-1 因式分解解一元二次方程式", "4-2 配方法與公式解", "4-3 應用問題"]], ["第五章 統計資料處理", ["5-1 資料整理與統計圖表"]]]],
+  ["Math", "J2", 1, "翰林", [["第一章 乘法公式與多項式", ["1-1 乘法公式", "1-2 多項式的加減", "1-3 多項式的乘除"]], ["第二章 平方根與畢氏定理", ["2-1 平方根的意義", "2-2 根式的運算", "2-3 畢氏定理"]], ["第三章 因式分解", ["3-1 提公因式與乘法公式作因式分解", "3-2 利用十字交乘法因式分解"]], ["第四章 一元二次方程式", ["4-1 因式分解法解一元二次方程式", "4-2 配方法與公式解", "4-3 應用問題"]], ["第五章 統計資料處理", ["5-1 統計資料處理"]]]],
+  ["Math", "J2", 2, "南一", [["第一章 數列與等差級數", ["1-1 等差數列", "1-2 等差級數", "1-3 等比數列"]], ["第二章 函數及其圖形", ["2-1 一次函數"]], ["第三章 三角形的性質與尺規作圖", ["3-1 內角與外角", "3-2 基本尺規作圖", "3-3 三角形全等", "3-4 全等三角形的應用", "3-5 三角形的邊角關係"]], ["第四章 平行與四邊形", ["4-1 平行線", "4-2 平行四邊形", "4-3 特殊的四邊形"]]]],
+  ["Math", "J2", 2, "康軒", [["第一章 數列與級數", ["1-1 等差數列", "1-2 等差級數", "1-3 等比數列"]], ["第二章 函數", ["2-1 函數與函數圖形"]], ["第三章 三角形的基本性質", ["3-1 三角形與多邊形的內角與外角", "3-2 尺規作圖", "3-3 三角形的全等性質", "3-4 垂直平分線與角平分線的性質", "3-5 三角形的邊角關係"]], ["第四章 平行與四邊形", ["4-1 平行", "4-2 平行四邊形", "4-3 特殊四邊形的性質"]]]],
+  ["Math", "J2", 2, "翰林", [["第一章 數列與級數", ["1-1 認識數列與等差數列", "1-2 等差級數", "1-3 等比數列"]], ["第二章 線型函數與其圖形", ["2-1 線型函數與其圖形"]], ["第三章 三角形的基本性質", ["3-1 內角與外角", "3-2 基本的尺規作圖", "3-3 三角形的全等性質", "3-4 中垂線與角平分線性質", "3-5 三角形的邊角關係"]], ["第四章 平行與四邊形", ["4-1 平行線與截角性質", "4-2 平行四邊形", "4-3 特殊四邊形"]]]],
+  ["Math", "J3", 1, "南一", [["第一章 比例線段與相似形", ["1-1 連比", "1-2 比例線段", "1-3 相似形", "1-4 相似三角形的應用"]], ["第二章 圓的性質", ["2-1 圓形及點、直線、圓之間的關係", "2-2 弧與圓周角"]], ["第三章 推理證明與三角形的心", ["3-1 推理與證明", "3-2 三角形的外心、內心與重心"]]]],
+  ["Math", "J3", 1, "康軒", [["第一章 相似形", ["1-1 連比例", "1-2 比例線段", "1-3 縮放與相似", "1-4 相似三角形的應用"]], ["第二章 圓", ["2-1 點、直線與圓之間的位置關係", "2-2 圓心角、圓周角與弧的關係"]], ["第三章 幾何與證明", ["3-1 證明與推理", "3-2 三角形的外心、內心與重心"]]]],
+  ["Math", "J3", 1, "翰林", [["第一章 相似形與三角比", ["1-1 連比", "1-2 比例線段", "1-3 相似多邊形", "1-4 相似三角形的應用與三角比"]], ["第二章 圓形", ["2-1 點、線、圓", "2-2 圓心角與圓周角"]], ["第三章 推理證明與三角形的心", ["3-1 推理證明", "3-2 三角形的外心、內心與重心"]]]],
+  ["Math", "J3", 2, "南一", [["第一章 二次函數", ["1-1 二次函數及其圖形", "1-2 二次函數的最大值或最小值"]], ["第二章 統計與機率", ["2-1 統計數據的分布", "2-2 機率"]], ["第三章 立體幾何圖形", ["3-1 柱體、錐體、空間中的線與平面"]]]],
+  ["Math", "J3", 2, "康軒", [["第一章 二次函數", ["1-1 二次函數的圖形與最大值、最小值"]], ["第二章 統計與機率", ["2-1 資料的分析", "2-2 機率"]], ["第三章 生活中的立體圖形", ["3-1 空間中的線、平面與形體"]]]],
+  ["Math", "J3", 2, "翰林", [["第一章 二次函數", ["1-1 基本二次函數圖形", "1-2 二次函數圖形與最大值、最小值"]], ["第二章 統計與機率", ["2-1 四分位數與盒狀圖", "2-2 機率"]], ["第三章 立體圖形", ["3-1 角柱與圓柱", "3-2 角錐與圓錐"]]]],
+  // English, grades 7-8 (康軒, 翰林): lesson titles as written in public 115-year school curriculum plans (彰化縣
+  // 課程計畫平台, read 2026-11-27); each title is the one most schools using that publisher agree on (3-11 schools).
+  // Not included: 南一 and grade 9, where too few plans were found to cross-check.
+  ["English", "J1", 1, "康軒", [["", ["Lesson 1 Who's That Young Man?", "Lesson 2 What Are These?", "Lesson 3 Let's Get Some Ideas from RoomGPT", "Lesson 4 I Can Listen to Their Songs Again and Again", "Lesson 5 What Are You Doing?", "Lesson 6 Are There Any Shelves Outside the Door?"]]]],
+  ["English", "J1", 1, "翰林", [["", ["Unit 1 Who's That Handsome Boy?", "Unit 2 Where Are My Pencils?", "Unit 3 Open the magic door", "Unit 4 What Time Is the Concert?", "Unit 5 What's the Date?", "Unit 6 There Are Some Elephants Over There"]]]],
+  ["English", "J1", 2, "康軒", [["", ["Lesson 1 Alan Plays Basketball Every Day", "Lesson 2 How Often Do You Clean Your Room?", "Lesson 3 What's the Date Today?", "Lesson 4 How Much Cake Do You Want?", "Lesson 5 You Helped Me a Lot", "Lesson 6 They Got Lots of People Together and Cleaned Up Bali's Beaches"]]]],
+  ["English", "J1", 2, "翰林", [["", ["Unit 1 What Do You Do in Your Free Time?", "Unit 2 How Often Do You Go to the Library?", "Unit 3 Which Painting Do You Like?", "Unit 4 How Much Flour Do You Need?", "Unit 5 There Was a Lot of Trash in the Sea", "Unit 6 I Took a Trip to India Last Month"]]]],
+  ["English", "J2", 1, "康軒", [["", ["Lesson 1 It Rained a Lot Yesterday", "Lesson 2 Why Didn't You See a Doctor?", "Lesson 3 Tina and Billy Were Looking for Water", "Lesson 4 I Want to Be a YouTuber", "Lesson 5 How Long Will We Stay in Bangkok?", "Lesson 6 How Do We Get to Joe's House?"]]]],
+  ["English", "J2", 1, "翰林", [["", ["Unit 1 How Was the Weather in Australia?", "Unit 2 You Can Learn About Game Design After You Join the Club", "Unit 3 Mom Was Doing the Dishes at Half past Twelve", "Unit 4 What Do You Want to Be in the Future?", "Unit 5 How Do We Go to the Hotel?", "Unit 6 I'll Take Two Pairs of Gloves"]]]],
+  ["English", "J2", 2, "康軒", [["", ["Lesson 1 The Coat Is Lighter Than the Jacket", "Lesson 2 He's the Best Singer in the World", "Lesson 3 Our Food Smells Good", "Lesson 4 Let's Set Up Camp Quickly", "Lesson 5 I Felt the Floor Shaking", "Lesson 6 If We Don't Act Now, There Will Be More Plastic in the Ocean"]]]],
+  ["English", "J2", 2, "翰林", [["", ["Unit 1 The Steak Looks Yummy", "Unit 2 Red Fire Ants Are the Most Dangerous Ants", "Unit 3 The Animals Work Hard", "Unit 4 I Can Hear the Wind Blow", "Unit 5 All of the Food Stands Look Great", "Unit 6 You Can Throw a Ball, Can't You?"]]]],
+];
+
+const GRADE_NAMES = { J1: '七年級', J2: '八年級', J3: '九年級' };
+const SUBJECT_NAMES = { Math: '數學', English: '英文' };
+
+export const CURRICULUM_CATALOG = ROWS.map(([subject, grade, semester, publisher, chapters]) => ({
+  key: `${subject}-${grade}-${semester}-${publisher}`,
+  subject, grade, semester, publisher, chapters,
+  label: `${GRADE_NAMES[grade]}${semester === 1 ? '上' : '下'}學期${SUBJECT_NAMES[subject]}（${publisher}）`,
+}));
+
+export const catalogFor = (subject, grade) => CURRICULUM_CATALOG.filter((c) => c.subject === subject && c.grade === grade);
+
+/** One unit per section, in book order; the chapter name goes in the note (a chapter listed without sections is one unit). */
+export const catalogUnits = (entry) => entry.chapters.flatMap(([chapter, sections]) => sections.map((title) => ({ title, note: title === chapter ? '' : chapter })));

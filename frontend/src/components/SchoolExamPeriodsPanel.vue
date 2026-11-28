@@ -1,43 +1,79 @@
 <template>
-  <div class="tw:space-y-3">
-    <div class="tw:flex tw:items-center tw:gap-2">
-      <label class="tw:text-sm" for="sep-term">學期</label>
-      <select id="sep-term" v-model="term" class="tw:h-9 tw:rounded-md tw:border tw:bg-background tw:px-2 tw:text-sm" @change="load">
-        <option v-for="t in terms" :key="t.key" :value="t.key">{{ t.label }}</option>
-      </select>
-    </div>
-    <p v-if="error" role="alert" class="tw:text-sm tw:text-destructive">{{ error }}</p>
-    <p v-if="!loading && !schools.length" class="tw:text-sm tw:text-muted-foreground">還沒有填學校的學生。</p>
-    <Card v-for="s in schools" :key="s.key" class="sep-card tw:gap-3 tw:py-4">
-      <CardHeader class="tw:px-4">
-        <CardTitle class="tw:flex tw:flex-wrap tw:items-center tw:gap-2 tw:text-base">
-          {{ s.school_name }}
-          <Badge variant="secondary">{{ s.student_count }} 人</Badge>
-        </CardTitle>
-        <p v-if="s.variants.length > 1" class="tw:text-xs tw:text-muted-foreground">可能同校：{{ s.variants.join('、') }}</p>
-      </CardHeader>
-      <CardContent class="tw:space-y-2 tw:px-4">
-        <div v-for="slot in slots" :key="slot.seq" class="sep-row tw:grid tw:grid-cols-[4.5rem_1fr_1fr] tw:items-center tw:gap-2">
-          <span class="tw:text-sm">{{ slot.short }}</span>
-          <input v-model="draft(s, slot.seq).start_date" type="date" :disabled="!isDirector || busy(s, slot.seq)" :aria-label="`${s.school_name} ${slot.short} 開始`" class="tw:h-9 tw:min-w-0 tw:rounded-md tw:border tw:bg-background tw:px-2 tw:text-sm" />
-          <input v-model="draft(s, slot.seq).end_date" type="date" :disabled="!isDirector || busy(s, slot.seq)" :aria-label="`${s.school_name} ${slot.short} 結束`" class="tw:h-9 tw:min-w-0 tw:rounded-md tw:border tw:bg-background tw:px-2 tw:text-sm" />
-          <div v-if="isDirector" class="tw:col-span-3 tw:flex tw:justify-end tw:gap-2">
-            <Button size="sm" :disabled="busy(s, slot.seq) || !dirty(s, slot.seq)" @click="save(s, slot)">儲存</Button>
-            <Button v-if="draft(s, slot.seq).id" size="sm" variant="ghost" :disabled="busy(s, slot.seq)" @click="remove(s, slot)">清除</Button>
-          </div>
+  <div class="sep tw:flex tw:flex-col tw:gap-4">
+    <div class="tw:flex tw:flex-wrap tw:items-center tw:gap-x-3 tw:gap-y-3">
+      <div class="tw:flex tw:items-center tw:gap-3 tw:max-md:w-full">
+        <label class="tw:shrink-0 tw:text-tpl-body tw:font-semibold" for="sep-term">學期</label>
+        <select id="sep-term" v-model="term" :class="selectClass" @change="load">
+          <option v-for="t in terms" :key="t.key" :value="t.key">{{ t.label }}</option>
+        </select>
+      </div>
+      <template v-if="isDirector && refAvailable">
+        <div class="tw:flex tw:items-center tw:gap-3 tw:max-md:w-full tw:md:ml-auto">
+          <label class="tw:shrink-0 tw:text-tpl-body tw:font-semibold" for="sep-city">參考縣市</label>
+          <select id="sep-city" v-model="city" :class="selectClass" :disabled="importing" @change="rememberCity">
+            <option value="">全部（不自動帶入）</option>
+            <option v-for="c in refIndex.cities" :key="c" :value="c">{{ c }}</option>
+          </select>
         </div>
-      </CardContent>
-    </Card>
+        <Button variant="outline" :class="[control.page, 'tw:max-md:w-full']" :disabled="importing || !importable.length" @click="importAll">
+          帶入參考日期（{{ importable.length }} 格）
+        </Button>
+      </template>
+    </div>
+    <p v-if="isDirector && refAvailable" class="tw:m-0 tw:text-tpl-caption tw:text-tpl-secondary tw:text-pretty">
+      參考日期來自 {{ refSource }}（目前只有{{ refIndex.cities.join('、') }}），請以學校公告為準。先選縣市，「帶入」才會把那個縣市、還沒登記、而且只有一個全校適用的參考日期的格子填好並儲存；其他的請自己按參考日期再按儲存。
+    </p>
+    <Alert v-if="importNote" tone="info"><p>{{ importNote }}</p></Alert>
+    <Alert v-if="error" tone="danger">{{ error }}</Alert>
+    <div v-if="loading" class="tw:grid tw:gap-4" aria-busy="true">
+      <Skeleton v-for="n in 2" :key="n" class="tw:h-56 tw:w-full tw:rounded-3xl tw:motion-reduce:animate-none" />
+    </div>
+    <SectionCard v-else-if="!schools.length && !error">
+      <div class="tw:flex tw:flex-col tw:items-center tw:gap-2 tw:px-5 tw:py-10 tw:text-center">
+        <School :size="32" :stroke-width="1.5" class="tw:text-tpl-secondary" aria-hidden="true" />
+        <p class="tw:m-0 tw:font-semibold">還沒有填學校的學生。</p>
+        <p class="tw:m-0 tw:text-tpl-caption tw:text-tpl-secondary">學生資料填了就讀學校，這裡就會出現可以登記段考日期的學校。</p>
+      </div>
+    </SectionCard>
+    <SectionCard v-for="s in schools" :key="s.key" class="sep-card" :title="s.school_name">
+      <template #actions>
+        <StatusBadge>{{ s.student_count }} 人</StatusBadge>
+      </template>
+      <p v-if="s.variants.length > 1" class="tw:m-0 tw:px-4 tw:pb-3 tw:md:px-5 tw:text-tpl-caption tw:text-tpl-secondary">可能同校：{{ s.variants.join('、') }}</p>
+      <ul class="tw:m-0 tw:list-none tw:p-0">
+        <li v-for="slot in slots" :key="slot.seq" class="sep-row tw:flex tw:min-h-18 tw:flex-wrap tw:items-center tw:gap-x-4 tw:gap-y-2 tw:border-t tw:border-border tw:px-4 tw:py-3 tw:md:px-5">
+          <span class="tw:w-16 tw:shrink-0 tw:font-semibold tw:whitespace-nowrap">{{ slot.short }}</span>
+          <div class="tw:grid tw:min-w-0 tw:flex-1 tw:basis-72 tw:grid-cols-2 tw:gap-2">
+            <Input v-model="draft(s, slot.seq).start_date" type="date" :disabled="!isDirector || busy(s, slot.seq)" :aria-label="`${s.school_name} ${slot.short} 開始`" :class="field" />
+            <Input v-model="draft(s, slot.seq).end_date" type="date" :disabled="!isDirector || busy(s, slot.seq)" :aria-label="`${s.school_name} ${slot.short} 結束`" :class="field" />
+          </div>
+          <div v-if="isDirector" class="tw:flex tw:items-center tw:gap-2 tw:max-md:w-full">
+            <button type="button" :class="[rowAction.primary, 'tw:max-md:flex-1', 'tw:disabled:opacity-50']" :disabled="busy(s, slot.seq) || !dirty(s, slot.seq)" @click="save(s, slot)">儲存</button>
+            <button v-if="draft(s, slot.seq).id" type="button" :class="[rowAction.secondary, 'tw:disabled:opacity-50']" :disabled="busy(s, slot.seq)" @click="remove(s, slot)">清除</button>
+          </div>
+          <div v-if="isDirector && refOptions(s, slot.seq).length" class="tw:flex tw:basis-full tw:flex-wrap tw:items-center tw:gap-2 tw:text-tpl-caption tw:text-tpl-secondary">
+            參考
+            <button v-for="(o, i) in refOptions(s, slot.seq)" :key="i" type="button" :class="[rowAction.secondaryWrap, 'tw:disabled:opacity-50']" :disabled="busy(s, slot.seq)" @click="useReference(s, slot.seq, o)">
+              {{ o.city }} {{ o.label }} {{ shortDate(o.start_date) }}–{{ shortDate(o.end_date) }}
+            </button>
+          </div>
+        </li>
+      </ul>
+    </SectionCard>
   </div>
 </template>
 
 <script setup>
 import { trackedFetch as fetch } from '../lib/loadingBar';
 import { computed, onMounted, reactive, ref, watch } from 'vue';
-import { Badge } from './ui/badge';
+import { School } from 'lucide-vue-next';
+import { Alert } from './ui/alert';
 import { Button } from './ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
+import { Input } from './ui/input';
+import { Skeleton } from './ui/skeleton';
+import { SectionCard, StatusBadge, control, rowAction } from './ui/page';
 import { currentTerm } from '../lib/schoolExamTerm';
+import { buildReferenceIndex, CITIES, referenceFor } from '../lib/schoolExamReference';
 import { supabase } from '../supabase';
 
 const props = defineProps({
@@ -45,6 +81,8 @@ const props = defineProps({
   isDirector: { type: Boolean, default: false },
 });
 
+const field = 'tw:h-11 tw:text-[length:var(--tpl-text-body)] tw:md:text-[length:var(--tpl-text-body)]';
+const selectClass = 'tw:h-12 tw:w-auto tw:min-w-0 tw:flex-1 tw:rounded-full tw:px-4 tw:text-tpl-body tw:md:flex-none';
 const slots = [
   { seq: 1, label: '第一次段考', short: '段考一' },
   { seq: 2, label: '第二次段考', short: '段考二' },
@@ -80,6 +118,57 @@ function dirty(s, seq) {
   return !!d.start_date && !!d.end_date && (d.start_date !== o.start_date || d.end_date !== o.end_date);
 }
 
+// Reference dates (a large static table, loaded on demand for directors). They only fill a draft; saving goes through save().
+const refIndex = ref(null);
+const refSource = ref('');
+const importing = ref(false);
+const importNote = ref('');
+const city = ref('');
+const cityKey = () => `sep-ref-city:${props.branchId}`;
+function recallCity() {
+  try { city.value = CITIES.includes(localStorage.getItem(cityKey())) ? localStorage.getItem(cityKey()) : ''; } catch { /* storage blocked: keep what is chosen now */ }
+}
+function rememberCity() {
+  try { localStorage.setItem(cityKey(), city.value); } catch { /* the choice just lasts for this visit */ }
+}
+const refBySchool = computed(() => Object.fromEntries(schools.value.map((s) => [
+  s.key, referenceFor(refIndex.value, [s.school_name, ...(s.variants || [])], termObj.value.year, termObj.value.semester, city.value),
+])));
+const refOptions = (s, seq) => refBySchool.value[s.key]?.slots[seq] || [];
+// The table covers one term. The city choice stays visible for that term even when the chosen city matches nothing,
+// so the director can always change it back.
+const refAvailable = computed(() => !!refIndex.value && schools.value.length > 0
+  && refIndex.value.year === termObj.value.year && refIndex.value.semester === termObj.value.semester);
+const shortDate = (d) => `${Number(d.slice(5, 7))}/${Number(d.slice(8, 10))}`;
+function useReference(s, seq, o) {
+  Object.assign(draft(s, seq), { start_date: o.start_date, end_date: o.end_date });
+}
+// Safe to fill without a look: the school is pinned to one city, the slot has exactly one reference date, that date
+// is for every grade, and the slot is blank (nothing saved, nothing typed).
+const blankWithOneChoice = (s, seq) => !!refBySchool.value[s.key]?.sure && refOptions(s, seq).length === 1 && refOptions(s, seq)[0].whole
+  && !saved[k(s, seq)] && !draft(s, seq).start_date && !draft(s, seq).end_date;
+const importable = computed(() => schools.value.flatMap((s) => slots.filter((slot) => blankWithOneChoice(s, slot.seq)).map((slot) => ({ s, slot }))));
+async function importAll() {
+  if (importing.value) return;
+  importing.value = true;
+  importNote.value = '';
+  const todo = importable.value;
+  const generation = loadSeq; // a campus or term switch reloads the page: stop, never touch what it shows now
+  let done = 0;
+  try {
+    for (const { s, slot } of todo) {
+      if (generation !== loadSeq) break;
+      if (!blankWithOneChoice(s, slot.seq)) continue; // saved or typed into since the click
+      useReference(s, slot.seq, refOptions(s, slot.seq)[0]);
+      await save(s, slot);
+      if (generation === loadSeq && saved[k(s, slot.seq)]) done += 1;
+    }
+  } finally {
+    importing.value = false;
+    if (generation === loadSeq) importNote.value = `已帶入 ${done} 格${done < todo.length ? `，${todo.length - done} 格沒有帶入` : ''}。`;
+  }
+}
+
 async function api(path, options = {}) {
   const { data: { session } } = await supabase.auth.getSession();
   const token = session?.access_token;
@@ -97,6 +186,8 @@ async function load() {
   const my = ++loadSeq;
   loading.value = true;
   error.value = '';
+  importNote.value = '';
+  recallCity();
   schools.value = [];
   for (const key of Object.keys(drafts)) delete drafts[key];
   for (const key of Object.keys(saved)) delete saved[key];
@@ -182,5 +273,15 @@ async function remove(s, slot) {
 }
 
 onMounted(load);
+onMounted(async () => {
+  if (!props.isDirector) return; // teachers cannot save, so they never download the table
+  try {
+    const data = (await import('../lib/schoolExamReferenceData.generated.js')).default;
+    refSource.value = data.source;
+    refIndex.value = buildReferenceIndex(data);
+  } catch {
+    refIndex.value = null; // the page works without reference dates
+  }
+});
 watch(() => props.branchId, load);
 </script>

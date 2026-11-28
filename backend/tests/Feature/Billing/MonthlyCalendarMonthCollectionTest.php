@@ -443,6 +443,39 @@ class MonthlyCalendarMonthCollectionTest extends TestCase
         $this->assertSame('2026-09', $billing->collectionPeriodFor($sc, '2026-10-23'));
     }
 
+    /** in-app #608 / #5703: lessons left out of a month's bill get no second bill; the refusal names them instead of "已收齊". */
+    public function test_a_partly_billed_month_is_refused_with_its_lessons_and_the_ledger_says_so(): void
+    {
+        $sc = $this->course('2026-08-28', '2026-09-30', ['2026-08-31' => 'attended', '2026-09-07' => 'attended', '2026-09-29' => 'attended']);
+        $bill = Invoice::create(['StudentID' => $sc->StudentID, 'StudentClassID' => $sc->ID, 'IssueDate' => '2026-08-28', 'TotalAmount' => 3300,
+            'PaidAmount' => 3300, 'Status' => 'paid', 'billing_period' => '2026-08']);
+        $bill->items()->create(['StudentClassID' => $sc->ID, 'Description' => 'cycle', 'Amount' => 3300, 'PeriodStart' => '2026-08-28', 'PeriodEnd' => '2026-09-27']);
+        \App\Models\Payment::create(['InvoiceID' => $bill->id, 'Amount' => 3300, 'PaidAt' => '2026-08-28', 'Method' => 'cash']);
+
+        $block = app(MonthlyBillingService::class)->partlyBilledMonth($sc);
+        $this->assertSame(['month_partly_billed', '2026-09', ['2026-09-29']], [$block['code'], $block['billing_period'], $block['lesson_dates']]);
+        $this->assertStringContainsString('9/29', $block['message']);
+
+        $refused = $this->record($sc, 1650)->assertStatus(422)->assertJsonPath('code', 'month_partly_billed')->assertJsonPath('lesson_dates', ['2026-09-29']);
+        $this->assertStringNotContainsString('已收齊', $refused->json('message'));
+        $this->assertSame([['2026-08', 3300]], $this->bills($sc));
+        $this->assertSame(0, PaymentReport::query()->where('StudentClassID', $sc->ID)->count());
+
+        $course = collect($this->api('getJson', "/api/v1/accounting/ledger?branch_id=1&student_class_id={$sc->ID}")->assertOk()->json('courses'))->firstWhere('id', $sc->ID);
+        $this->assertSame('month_partly_billed', $course['record_block']['code']);
+        $this->assertNull($course['collection_period']);
+
+        // The stored paid marks do not decide: without them the lessons are still refused, and no second bill appears.
+        $bill->update(['Status' => 'unpaid', 'PaidAmount' => 0]);
+        $this->record($sc, 1650)->assertStatus(422);
+        $this->assertSame([['2026-08', 3300]], $this->bills($sc));
+
+        // A month no bill touches is still collected the normal way (no block).
+        $clean = $this->course('2026-08-31', '2026-09-30', ['2026-08-31' => 'attended', '2026-09-07' => 'attended']);
+        $this->assertNull(app(MonthlyBillingService::class)->partlyBilledMonth($clean));
+        $this->assertSame('2026-08', app(MonthlyBillingService::class)->unbilledPeriodFor($clean));
+    }
+
     public function test_confirm_refuses_when_the_collection_month_moved_after_record(): void
     {
         // #4574: record checks September (August has no countable lesson yet); an August lesson is then marked attended.

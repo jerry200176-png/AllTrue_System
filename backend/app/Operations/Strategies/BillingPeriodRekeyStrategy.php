@@ -102,13 +102,13 @@ class BillingPeriodRekeyStrategy
             $invoice = $this->lockContractThenBill((int) $r['invoice_id']);
             $journaled = collect($this->journalRows($operationId))->firstWhere('invoice_id', $r['invoice_id']);
             if ($journaled) return $journaled; // idempotent: this request already re-keyed this bill
-            if (!$invoice || strtolower((string) $invoice->Status) === 'void' || $invoice->billing_period !== $r['from']) return 'drifted';
+            if (!$invoice || strtolower((string) $invoice->Status) === 'void' || (string) $invoice->billing_period !== $r['from']) return 'drifted';
             $fresh = collect($this->build([], [(int) $r['invoice_id']]))->first();
-            if (!$fresh || $fresh['from'] !== $r['from'] || $fresh['to'] !== $r['to'] || $fresh['class_id'] !== $r['class_id']) return 'drifted';
+            if (!$fresh || $fresh['from'] !== $r['from'] || $fresh['to'] !== $r['to'] || $fresh['class_id'] !== $r['class_id'] || ($fresh['tag'] ?? null) !== ($r['tag'] ?? null)) return 'drifted';
             if ($fresh['status'] !== 'ready') return $fresh['reason'] === 'period_taken' ? 'retry' : (string) $fresh['reason'];
             $note = (string) $invoice->Note;
             $added = !str_contains($note, '[' . self::TAG . ':'); // a bill re-keyed before keeps its first (original) number tag
-            $tagged = \App\Services\Billing\InvoiceNumber::withTag($note, $r['from']);
+            $tagged = \App\Services\Billing\InvoiceNumber::withTag($note, $r['tag'] ?? $r['from']);
             if ($tagged === null) return 'note_full';
             DB::table('Invoice')->where('id', $r['invoice_id'])->update(['billing_period' => $r['to'], 'Note' => $added ? $tagged : $note, 'updated_at' => now()]);
             $reportIds = DB::table('payment_reports')->where('InvoiceID', $r['invoice_id'])->where('billing_period', $r['from'])->pluck('id')->map(fn ($v) => (int) $v)->all();
@@ -117,7 +117,7 @@ class BillingPeriodRekeyStrategy
                 'period_from' => $r['from'], 'period_to' => $r['to'], 'report_count' => count($reportIds), 'outcome' => 'success']);
 
             $row = ['invoice_id' => $r['invoice_id'], 'class_id' => $r['class_id'], 'campus_id' => $r['campus_id'], 'from' => $r['from'], 'to' => $r['to'],
-                'report_ids' => $reportIds, 'tag_added' => $added];
+                'report_ids' => $reportIds, 'tag_added' => $added] + (isset($r['tag']) ? ['tag' => $r['tag']] : []);
             $this->journal('rekey-row', $operationId, $row, $actor); // same transaction as the write: both commit, or neither
 
             return $row;
@@ -159,7 +159,7 @@ class BillingPeriodRekeyStrategy
             if (in_array($j['invoice_id'], $exclude, true) || ($campuses && !in_array((int) $j['campus_id'], $campuses, true))) continue;
             if (DB::table('Invoice')->where('id', $j['invoice_id'])->value('billing_period') !== $j['to']) continue;
             $out[] = ['invoice_id' => (int) $j['invoice_id'], 'class_id' => (int) $j['class_id'], 'campus_id' => (int) $j['campus_id'],
-                'from' => $j['from'], 'to' => $j['to'], 'status' => 'ready', 'reason' => null];
+                'from' => $j['from'], 'to' => $j['to'], 'status' => 'ready', 'reason' => null] + (isset($j['tag']) ? ['tag' => $j['tag']] : []);
         }
 
         return $out;
@@ -172,7 +172,7 @@ class BillingPeriodRekeyStrategy
         if (!array_key_exists('campus_ids', $plan)) $errors[] = 'verify_plan_missing';
         foreach ($result['snapshot']['rows'] ?? [] as $r) {
             $inv = DB::table('Invoice')->where('id', $r['invoice_id'])->first();
-            $tag = '[' . self::TAG . ':' . (($r['tag_added'] ?? true) ? $r['from'] . ']' : '');
+            $tag = '[' . self::TAG . ':' . (($r['tag_added'] ?? true) ? ($r['tag'] ?? $r['from']) . ']' : '');
             if (!$inv || $inv->billing_period !== $r['to'] || !str_contains((string) $inv->Note, $tag)) $errors[] = "rekey_missing_{$r['invoice_id']}";
             if ($r['report_ids'] && DB::table('payment_reports')->whereIn('id', $r['report_ids'])->where('billing_period', '!=', $r['to'])->exists()) $errors[] = "report_period_{$r['invoice_id']}";
         }
@@ -223,8 +223,9 @@ class BillingPeriodRekeyStrategy
         return DB::transaction(function () use ($r, $operationId, $actor): ?bool {
             $inv = $this->lockContractThenBill((int) $r['invoice_id']);
             $added = $r['tag_added'] ?? true;
-            $tag = ' [' . self::TAG . ':' . $r['from'] . ']';
-            if ($inv && $inv->billing_period === $r['from'] && (!$added || !str_contains((string) $inv->Note, trim($tag)))) return null; // an earlier partial rollback did it
+            $tag = ' [' . self::TAG . ':' . ($r['tag'] ?? $r['from']) . ']';
+            $from = $r['from'] === '' ? null : $r['from']; // '' = the bill had no month stored
+            if ($inv && (string) $inv->billing_period === $r['from'] && (!$added || !str_contains((string) $inv->Note, trim($tag)))) return null; // an earlier partial rollback did it
             $ours = $inv && $inv->billing_period === $r['to'] && strtolower((string) $inv->Status) !== 'void'
                 && str_contains((string) $inv->Note, $added ? trim($tag) : '[' . self::TAG . ':');
             if (!$ours) return false;
@@ -234,15 +235,22 @@ class BillingPeriodRekeyStrategy
                 ->where('o.billing_period', $r['from'])->where('o.id', '!=', $inv->id)
                 ->where(fn ($q) => $q->whereNull('o.Status')->orWhere('o.Status', '<>', 'void'))->exists();
             if ($held) return false;
-            DB::table('Invoice')->where('id', $inv->id)->update(['billing_period' => $r['from'],
+            DB::table('Invoice')->where('id', $inv->id)->update(['billing_period' => $from,
                 'Note' => $added ? trim(str_replace([$tag, trim($tag)], '', (string) $inv->Note)) : (string) $inv->Note, 'updated_at' => now()]);
-            DB::table('payment_reports')->where('InvoiceID', $inv->id)->where('billing_period', $r['to'])->update(['billing_period' => $r['from']]);
+            // A bill that had no month moved no reports (rekeyOne), so its restore moves none either.
+            if ($from !== null) DB::table('payment_reports')->where('InvoiceID', $inv->id)->where('billing_period', $r['to'])->update(['billing_period' => $from]);
             $this->audit((int) $inv->id, $r['campus_id'] ?? null, ['reason_code' => self::REF, 'pop_operation_id' => $operationId,
                 'period_from' => $r['to'], 'period_to' => $r['from'], 'outcome' => 'success'], '.rollback');
             $this->journal('rekey-row-undone', $operationId, $r, $actor);
 
             return true;
         });
+    }
+
+    /** The month a bill with no stored month was numbered by (InvoiceNumber::for falls back to IssueDate), or null when unreadable. */
+    private static function issuedMonth(object $inv): ?string
+    {
+        return preg_match('/^\d{4}-(0[1-9]|1[0-2])/', (string) $inv->IssueDate, $m) ? $m[0] : null;
     }
 
     /** @return list<int>|null [] = every campus ('all'); null = invalid input */
@@ -279,11 +287,11 @@ class BillingPeriodRekeyStrategy
     {
         $q = DB::table('Invoice as inv')->join('StudentClass as sc', 'sc.ID', '=', 'inv.StudentClassID')->join('Student as st', 'st.id', '=', 'sc.StudentID')
             ->where('sc.ScheduleMode', 'date')->whereNotNull('sc.StartDate')->whereNotNull('sc.EndDate')
-            ->whereRaw("inv.billing_period REGEXP '^[0-9]{4}-(0[1-9]|1[0-2])$'")
+            ->where(fn ($w) => $w->whereNull('inv.billing_period')->orWhereRaw("inv.billing_period REGEXP '^[0-9]{4}-(0[1-9]|1[0-2])$'"))
             ->where(fn ($w) => $w->whereNull('inv.Status')->orWhere('inv.Status', '<>', 'void'));
         if ($campuses) $q->whereIn('st.CampusID', $campuses);
         if ($onlyInvoices !== null) $q->whereIn('inv.id', $onlyInvoices);
-        $invoices = $q->orderBy('inv.id')->get(['inv.id', 'inv.StudentClassID as class_id', 'inv.billing_period', 'inv.Note', 'sc.StudentID', 'sc.SubjectID',
+        $invoices = $q->orderBy('inv.id')->get(['inv.id', 'inv.StudentClassID as class_id', 'inv.billing_period', 'inv.IssueDate', 'inv.TotalAmount', 'inv.ScheduleModeAtIssue', 'inv.Note', 'sc.StudentID', 'sc.SubjectID', 'sc.PackageID',
             'sc.StartDate', 'sc.EndDate', 'st.CampusID as campus_id']);
         if ($invoices->isEmpty()) return [];
         $ids = $invoices->pluck('id')->all();
@@ -296,6 +304,19 @@ class BillingPeriodRekeyStrategy
         $candidates = [];
         foreach ($invoices as $inv) {
             $own = $items->get($inv->id, collect());
+            if ($inv->billing_period === null) {
+                // in-app #603 (Founder GO 2026-11-28): an old bill with no month and no lines, on a contract that lies inside one
+                // calendar month, can only be that month's bill. Anything less certain is left for a person.
+                // Only a positive tuition bill that is the contract's single live bill, never a package member, and never a bill
+                // kept from before a count-to-monthly conversion (ScheduleModeAtIssue = count): that one was a lesson-count bill.
+                $month = substr((string) $inv->StartDate, 0, 7);
+                if ($own->isEmpty() && $month === substr((string) $inv->EndDate, 0, 7) && self::issuedMonth($inv) !== null
+                    && (int) $inv->TotalAmount > 0 && (int) ($inv->PackageID ?? 0) === 0 && (string) $inv->ScheduleModeAtIssue !== 'count'
+                    && DB::table('Invoice')->where('StudentClassID', $inv->class_id)->where(fn ($w) => $w->whereNull('Status')->orWhere('Status', '<>', 'void'))->count() === 1) {
+                    $candidates[] = [$inv, $month];
+                }
+                continue;
+            }
             $one = $own->count() === 1 ? $own->first() : null;
             if (!$one || !$one->PeriodStart || !$one->PeriodEnd) continue; // needs exactly one dated item: the cycle this bill covers
             $start = substr((string) $one->PeriodStart, 0, 10);
@@ -318,12 +339,13 @@ class BillingPeriodRekeyStrategy
                 $key = $inv->StudentID . '|' . $inv->SubjectID . '|' . $to;
                 $reason = match (true) {
                     isset($taken[$key]) => 'period_taken',
-                    \App\Services\Billing\InvoiceNumber::withTag((string) $inv->Note, (string) $inv->billing_period) === null => 'note_full',
+                    \App\Services\Billing\InvoiceNumber::withTag((string) $inv->Note, $inv->billing_period ?? (string) self::issuedMonth($inv)) === null => 'note_full',
                     default => null,
                 };
                 if (!$reason) { $taken[$key] = true; $now[(int) $inv->id] = true; }
                 $rows[] = ['invoice_id' => (int) $inv->id, 'class_id' => (int) $inv->class_id, 'campus_id' => (int) $inv->campus_id,
-                    'from' => (string) $inv->billing_period, 'to' => $to, 'status' => $reason ? 'skipped' : 'ready', 'reason' => $reason];
+                    'from' => (string) $inv->billing_period, 'to' => $to, 'status' => $reason ? 'skipped' : 'ready', 'reason' => $reason]
+                    + ($inv->billing_period === null ? ['tag' => self::issuedMonth($inv)] : []); // '' = no month stored; its number used the issue month
             }
             if ($now === $moving) break;
             $moving = $now;

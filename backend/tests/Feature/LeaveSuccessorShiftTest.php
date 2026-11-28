@@ -230,6 +230,19 @@ class LeaveSuccessorShiftTest extends TestCase
         $this->assertSame($before, $this->fingerprint(), 'capability preview must not write or alter plan identity');
     }
 
+    /** A closure-day bulk leave skips the lesson whose tail lands on the renewal, and says 續約順延 can be tried for it. */
+    public function test_bulk_leave_marks_a_lesson_skipped_for_the_renewal_slot_as_shiftable(): void
+    {
+        $before = $this->fingerprint();
+        $skipped = $this->withHeaders(['Authorization' => 'Bearer ' . $this->token])
+            ->postJson('/api/v1/schedules/bulk-leave', ['branch_id' => 1, 'start_date' => '2026-11-24', 'end_date' => '2026-11-24'])
+            ->assertOk()->assertJsonPath('processed_count', 0)->json('skipped');
+        $this->assertSame([[$this->old, $this->sessions['2026-11-24'], true]],
+            array_map(fn (array $s) => [$s['course_id'], $s['class_session_id'], $s['renewal_shift']], $skipped));
+        $this->assertSame($before, $this->fingerprint(), 'nothing is written');
+        $this->shift('preview', ['class_session_id' => $skipped[0]['class_session_id']])->assertOk()->assertJsonPath('eligible', true);
+    }
+
     /** In-app #433: a plain leave/cancel of the last lesson whose tail lands on the renewal said 「改選其他日期／時間」. */
     public function test_plain_leave_or_cancel_into_the_renewal_slot_explains_the_tail(): void
     {

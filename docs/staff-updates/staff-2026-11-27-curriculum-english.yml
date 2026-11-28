@@ -1,0 +1,15 @@
+updates:
+  - id: staff-2026-11-27-curriculum-english
+    published_at: "2026-11-27"
+    audiences:
+      - director
+    importance: digest
+    title: 教材範本可帶入英文目錄
+    summary: 新增教材範本時，國一、國二英文可直接帶入康軒或翰林的課名。
+    items:
+      - category: added
+        text: 科目選英文、年級選國一或國二，就能從出版社目錄帶入每一課的課名。
+      - category: action_required
+        text: 課名整理自公開的學校課程計畫，請以手上的課本為準，帶入後可以改。
+    source_refs:
+      - "changelog:2026-11-27:curriculum-english"

@@ -519,6 +519,25 @@ class StudentClassPaidStatusTest extends TestCase
         $this->assertSame('paid', $match['payment_status'], 'payment_status should be paid when invoice has payment');
     }
 
+    /** #4150: a receipt that was fully reversed leaves no 最近繳費 date, even though the legacy PayDate still holds one. */
+    public function test_index_shows_no_last_paid_date_after_the_receipt_was_fully_reversed(): void
+    {
+        $token = $this->createDirectorToken([1]);
+        $student = $this->createStudent();
+        $reversed = $this->createStudentClass($student->id, ['Paid' => 0, 'PayDate' => '2026-04-15', 'Charge' => 16500]);
+        $legacyOnly = $this->createStudentClass($student->id, ['Paid' => 1, 'PayDate' => '2026-03-10', 'Charge' => 16500]);
+        $invoice = \App\Models\Invoice::create(['StudentID' => $student->id, 'StudentClassID' => $reversed->ID,
+            'IssueDate' => '2026-04-15', 'TotalAmount' => 16500, 'PaidAmount' => 0, 'Status' => 'unpaid']);
+        \App\Models\Payment::create(['InvoiceID' => $invoice->id, 'Amount' => 16500, 'PaidAt' => '2026-04-15', 'Method' => 'cash']);
+        \App\Models\Payment::create(['InvoiceID' => $invoice->id, 'Amount' => -16500, 'PaidAt' => '2026-04-16', 'Method' => 'cash']);
+
+        $res = $this->getJson('/api/v1/student-classes?branch_id=1', ['Authorization' => "Bearer {$token}"])->assertOk();
+        $rows = collect($res->json('data') ?? $res->json())->keyBy(fn ($c) => (int) ($c['ID'] ?? $c['id'] ?? 0));
+        $this->assertNull($rows[(int) $reversed->ID]['last_paid_at']);
+        $this->assertSame('2026-04-15', $rows[(int) $reversed->ID]['paid_at'], 'the stored legacy date itself is still reported');
+        $this->assertSame('2026-03-10', $rows[(int) $legacyOnly->ID]['last_paid_at'], 'no Payment rows: the legacy date still shows');
+    }
+
     /** #4114 (Founder Q3): course management marks a `paid` resting on the legacy flag alone; payment_status is unchanged. */
     public function test_index_marks_paid_flag_without_payment_record(): void
     {

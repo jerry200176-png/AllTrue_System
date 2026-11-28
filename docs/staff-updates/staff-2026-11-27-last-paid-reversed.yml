@@ -1,0 +1,13 @@
+updates:
+  - id: staff-2026-11-27-last-paid-reversed
+    published_at: "2026-11-27"
+    audiences:
+      - director
+    importance: digest
+    title: 作廢的收款不再顯示繳費日
+    summary: 收款全部作廢後，課程列表的最近繳費日會變空白。
+    items:
+      - category: fixed
+        text: 課程管理與學生列表：收款作廢後，不再顯示那筆已作廢收款的日期。
+    source_refs:
+      - "changelog:2026-11-27:last-paid-reversed"

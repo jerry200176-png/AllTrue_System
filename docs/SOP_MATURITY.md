@@ -28,55 +28,55 @@
 
 **既有自動化**（`.github/workflows/deploy.yml`）：health-check（`/api/v1/health`）→ post-merge smoke → 失敗**自動 rollback**（前端重 build + `migrate:rollback` + rollback health check）。Sentry DSN 已接、dependabot 已設、CI raw-hex guard 已上。
 
-## 仍缺的下一層（M4，對標大廠，已開 issue）
+## 仍缺的下一層（M4，對標大廠，已開 issue；2026-11-28 核對 GitHub 狀態）
 
-| # | 缺口 | 大廠對標 |
-|---|---|---|
-| #868 | **staging/pre-prod 環境**（目前合併後直上 prod Pi） | GitHub Flow、Heroku pipelines、dev/prod parity |
-| #869 | **Feature flags**（解耦 deploy 與 release、kill-switch） | Unleash、LaunchDarkly、dark launch |
-| #870 | **CI 高可用**（降低 hosted capacity / billing 單點風險並補用量告警） | path-aware jobs、用量告警、備援設計 |
-| #871 | **Merge Queue**（消除 up-to-date 競態、免手動 update-branch） | GitHub Merge Queue、Bors/Mergify |
-| #872 | **DORA 四指標儀表板** | Google DORA / Four Keys |
-| #873 | **Blameless postmortem 範本 + 行動項追蹤**（正式化事故 A–F） | Google SRE Postmortem Culture |
+| # | 狀態 | 缺口 | 大廠對標 |
+|---|---|---|---|
+| #868 | ✅ 已結案 | **staging/pre-prod 環境** | GitHub Flow、Heroku pipelines、dev/prod parity |
+| #869 | ✅ 已結案 | **Feature flags**（解耦 deploy 與 release、kill-switch） | Unleash、LaunchDarkly、dark launch |
+| #870 | ✅ 已結案 | **CI 高可用**（降低 hosted capacity / billing 單點風險並補用量告警） | path-aware jobs、用量告警、備援設計 |
+| #871 | ⏳ 進行中 | **Land / Merge Queue**（驗證多 PR 合併與最新 main CI，收斂 up-to-date 競態） | GitHub Merge Queue、Bors/Mergify |
+| #872 | ✅ 已結案 | **DORA 四指標儀表板** | Google DORA / Four Keys |
+| #873 | ✅ 已結案 | **Blameless postmortem 範本 + 行動項追蹤**（正式化事故 A–F） | Google SRE Postmortem Culture |
 
-## GitHub 治理缺口（M6，除 Actions minutes 之外）
+## GitHub 治理缺口（M6，除 Actions minutes 之外；#875–#880 皆已結案）
 
-GitHub 基礎治理已具備：branch protection、required checks、PR template、issue templates、CODEOWNERS、release tags、Security/Dependency workflows、Project board。下一層不是再堆更多 CI，而是讓 GitHub 本身更像大公司工程系統：部署環境、審核責任、看板自動化、版本追溯與安全治理。
+GitHub 基礎治理已具備：branch protection、required checks、PR template、issue templates、CODEOWNERS、release tags、Security/Dependency workflows、Project board。M6 六項（#875–#880）皆已結案。
 
-| # | 缺口 | 大廠對標 |
-|---|---|---|
-| #875 | **GitHub Environments**：production/staging secrets 與 deployment protection | GitHub Environments、GitLab Environments、Heroku Pipelines |
-| #876 | **CODEOWNERS / review ownership**：從提醒升級為可執行審核責任 | Google/Meta ownership、two-person review |
-| #877 | **Project automation**：issue/PR 自動進 Roadmap，Status/Milestone 同步 | Linear/Jira/GitHub Projects automation |
-| #878 | **Release / Deploy / In-app traceability**：版本、部署、回寫三者可追溯 | Change management、release train |
-| #879 | **Security Advisory / private vulnerability reporting / secret rotation drill** | GitHub Security Advisory、SLSA、quarterly secret rotation |
-| #880 | **Repository ruleset / merge policy hygiene**：branch protection 演進到可版本化治理 | Policy-as-code、protected tags、repository rulesets |
+| # | 狀態 | 缺口 | 大廠對標 |
+|---|---|---|---|
+| #875 | ✅ 已結案 | **GitHub Environments**：production/staging secrets 與 deployment protection | GitHub Environments、GitLab Environments、Heroku Pipelines |
+| #876 | ✅ 已結案 | **CODEOWNERS / review ownership**：從提醒升級為可執行審核責任 | Google/Meta ownership、two-person review |
+| #877 | ✅ 已結案 | **Project automation**：issue/PR 自動進 Roadmap，Status/Milestone 同步 | Linear/Jira/GitHub Projects automation |
+| #878 | ✅ 已結案 | **Release / Deploy / In-app traceability**：版本、部署、回寫三者可追溯 | Change management、release train |
+| #879 | ✅ 已結案 | **Security Advisory / private vulnerability reporting / secret rotation drill** | GitHub Security Advisory、SLSA、quarterly secret rotation |
+| #880 | ✅ 已結案 | **Repository ruleset / merge policy hygiene**：branch protection 演進到可版本化治理 | Policy-as-code、protected tags、repository rulesets |
 
-## 系統維護 / SRE 營運缺口（M7）
+## 系統維護 / SRE 營運缺口（M7；#881–#886 皆已結案）
 
-維運基礎已具備：UptimeRobot、health endpoint、Pi health、slow-query report、nightly/sixhour/monthly + Google Drive 備份、manifest、monthly restore drill、rollback runbook、SLO policy。下一層缺口不是再多寫功能，而是把「事故前預防、事故中指揮、事故後恢復」制度化。
+維運基礎已具備：UptimeRobot、health endpoint、Pi health、slow-query report、nightly/sixhour/monthly + Google Drive 備份、manifest、monthly restore drill、rollback runbook、SLO policy。M7 六項（#881–#886）皆已結案。
 
-| # | 缺口 | 大廠對標 |
-|---|---|---|
-| #881 | **MySQL PITR / binlog point-in-time recovery**：降低兩次備份間資料損失 | RDS PITR、MySQL binlog restore、data recovery drill |
-| #882 | **Full server DR tabletop**：全新 Pi 從零重建到可服務 | Disaster Recovery tabletop、AWS Well-Architected Operational Excellence |
-| #883 | **On-call / incident response**：分級、升級、通報與演練節奏 | PagerDuty、Google SRE incident command |
-| #884 | **Observability 補強**：集中 log、指標、trace 與告警降噪 | Sentry release health、Datadog/New Relic、alert fatigue control |
-| #885 | **Capacity management**：Pi 磁碟/CPU/RAM/DB 成長預測與預警 | Capacity planning、SRE resource budget、FinOps |
-| #886 | **Maintenance window / status page**：例行維護、公告與使用者可見狀態 | Statuspage.io、GitHub Status、maintenance window policy |
+| # | 狀態 | 缺口 | 大廠對標 |
+|---|---|---|---|
+| #881 | ✅ 已結案 | **MySQL PITR / binlog point-in-time recovery**：降低兩次備份間資料損失 | RDS PITR、MySQL binlog restore、data recovery drill |
+| #882 | ✅ 已結案 | **Full server DR tabletop**：全新 Pi 從零重建到可服務 | Disaster Recovery tabletop、AWS Well-Architected Operational Excellence |
+| #883 | ✅ 已結案 | **On-call / incident response**：分級、升級、通報與演練節奏 | PagerDuty、Google SRE incident command |
+| #884 | ✅ 已結案 | **Observability 補強**：集中 log、指標、trace 與告警降噪 | Sentry release health、Datadog/New Relic、alert fatigue control |
+| #885 | ✅ 已結案 | **Capacity management**：Pi 磁碟/CPU/RAM/DB 成長預測與預警 | Capacity planning、SRE resource budget、FinOps |
+| #886 | ✅ 已結案 | **Maintenance window / status page**：例行維護、公告與使用者可見狀態 | Statuspage.io、GitHub Status、maintenance window policy |
 
-## 資安 / 隱私 / 合規缺口（M8）
+## 資安 / 隱私 / 合規缺口（M8；3 項進行中、3 項已結案）
 
 資安基礎已具備：`SECURITY.md` 事故紀錄、gitleaks/OSV/Dependency workflows、PIN gate、PII dump 防再犯、PR Threat Note。下一層要從「修單點漏洞」升級為「持續合規與風險治理」。
 
-| # | 缺口 | 大廠對標 |
-|---|---|---|
-| #887 | **Production host hardening verification**：UFW/SSH/fail2ban/服務暴露定期稽核 | CIS Benchmark、NIST CSF Protect |
-| #888 | **IAM / access review**：App/GitHub/Pi/第三方高權限盤點 | SOC2 access review、least privilege、JML 流程 |
-| #889 | **PII data inventory / retention**：學生個資資料地圖與保存刪除政策 | GDPR/PDPA data inventory、data minimization |
-| #890 | **Sensitive action audit log coverage**：高風險操作稽核覆蓋率盤點 | SOX/SOC2 audit trail、admin activity logs |
-| #891 | **Threat modeling / ASVS review cadence**：T3 功能上線前資安設計審查 | Microsoft SDL、OWASP ASVS、STRIDE |
-| #892 | **Third-party / vendor risk register**：LINE/Sentry/GitHub/UptimeRobot/Drive 依賴盤點 | Vendor risk management、SOC2 vendor inventory |
+| # | 狀態 | 缺口 | 大廠對標 |
+|---|---|---|---|
+| #887 | ⏳ 進行中 | **Production host hardening verification**：UFW/SSH/fail2ban/服務暴露定期稽核 | CIS Benchmark、NIST CSF Protect |
+| #888 | ⏳ 進行中 | **IAM / access review**：App/GitHub/Pi/第三方高權限盤點 | SOC2 access review、least privilege、JML 流程 |
+| #889 | ⏳ 進行中 | **PII data inventory / retention**：學生個資資料地圖與保存刪除政策（2026-11-17 已定保存表、`#5421` 已上系統表每日清除；待收斂上傳附件保護與刪除完整性） | GDPR/PDPA data inventory、data minimization |
+| #890 | ✅ 已結案 | **Sensitive action audit log coverage**：高風險操作稽核覆蓋率盤點（含 `#1810`–`#1813`） | SOX/SOC2 audit trail、admin activity logs |
+| #891 | ✅ 已結案 | **Threat modeling / ASVS review cadence**：T3 功能上線前資安設計審查 | Microsoft SDL、OWASP ASVS、STRIDE |
+| #892 | ✅ 已結案 | **Third-party / vendor risk register**：LINE/Sentry/GitHub/UptimeRobot/Drive 依賴盤點 | Vendor risk management、SOC2 vendor inventory |
 
 ## 工作流程 / 組織營運 SOP 缺口（M9）
 

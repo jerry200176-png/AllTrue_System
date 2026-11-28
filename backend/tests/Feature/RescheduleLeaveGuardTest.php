@@ -103,6 +103,24 @@ class RescheduleLeaveGuardTest extends TestCase
         $this->assertSame($before, $this->businessSnapshot());
     }
 
+    /** #5695: a retro-leave lesson already has its make-up at the tail; moving it to a live slot would add a lesson. */
+    public function test_retro_leave_cannot_be_rescheduled_into_an_extra_billable_lesson(): void
+    {
+        [$token, $courseId, $session] = $this->fixture(3);
+        DB::table('ClassSession')->where('id', $session->id)->update(['Status' => 'leave_adjusted', 'SessionDate' => '2026-11-18']);
+        $before = $this->businessSnapshot();
+        $billable = $this->billableCount($courseId);
+        $payload = $this->payload($courseId);
+        $payload['old_date'] = '2026-11-18';
+
+        $this->postJson('/api/v1/learning-records/reschedule-session', $payload, [
+            'Authorization' => "Bearer {$token}",
+        ])->assertStatus(422)->assertJsonPath('code', 'leave_requires_cascade_undo');
+
+        $this->assertSame($billable, $this->billableCount($courseId));
+        $this->assertSame($before, $this->businessSnapshot());
+    }
+
     /** @dataProvider endedLeaveTargets */
     public function test_ended_target_keeps_leave_and_does_not_add_billable_lessons(string $date, string $start, string $end, bool $atomic): void
     {

@@ -545,6 +545,11 @@ const EXAM_ROUNDS = [
   { id: 3, title: '115-1 第一次段考', status: 'closed', exam_date: '2026-10-14', entry_deadline: '2026-10-24', grade_ids: [7, 8, 9], subjects: EXAM_SUBJECTS },
 ];
 
+const SCHOOL_PERIOD_SCHOOLS = [
+  { key: '臺北市立建國高級中學', school_name: '臺北市立建國高級中學', student_count: 12, variants: ['臺北市立建國高級中學', '建國中學'] },
+  { key: '新北市立板橋國民中學', school_name: '新北市立板橋國民中學', student_count: 3, variants: ['新北市立板橋國民中學'] },
+];
+
 const PAGES = [
   {
     // 段考成績 (issue 4989): header actions, the round list card (one row per round, status badge, row actions) and the score dialog.
@@ -575,6 +580,65 @@ const PAGES = [
       });
     },
     setup: async (page) => { await page.locator('.exam-round-card__actions button', { hasText: '登分' }).first().click(); },
+  },
+  {
+    // 段考成績 form dialog (slice 2): the 開新段考 form on components/ui/dialog. Inside the viewport at 375 and 1536, focus in the
+    // dialog, nothing sticks out sideways, the footer buttons stay on screen, every field is a 44px target.
+    key: 'exam-grades-create-dialog',
+    url: '/pilot-mount.html?page=exam-grades',
+    names: ['標題', '適用年級'],
+    allNames: false,
+    rows: [],
+    touch: ['[role="dialog"] input:not([type="checkbox"])', '[role="dialog"] .exam-grade-option'],
+    mock: async (page) => {
+      await page.route('**/api/v1/**', (r) => json(r, new URL(r.request().url()).pathname === '/api/v1/exam-rounds' ? { data: EXAM_ROUNDS } : { data: [] }));
+    },
+    setup: async (page) => {
+      await page.getByRole('button', { name: '開新段考' }).click();
+      await expect(page.getByRole('dialog')).toBeVisible();
+      await page.waitForTimeout(400); // open animation
+    },
+    extra: {
+      run: () => {
+        const dialog = document.querySelector('[role="dialog"]');
+        const box = dialog.getBoundingClientRect();
+        const buttons = [...dialog.querySelectorAll('[data-slot="dialog-footer"] button')].map((b) => b.getBoundingClientRect());
+        const sticks = [...dialog.querySelectorAll('*')].filter((el) => { const r = el.getBoundingClientRect(); return r.width > 0 && (r.right > box.right + 1 || r.left < box.left - 1) && getComputedStyle(el).position !== 'absolute'; }).map((el) => `${el.tagName}.${String(el.className).slice(0, 40)}`);
+        return {
+          inView: box.left >= 0 && box.right <= window.innerWidth && box.top >= 0 && box.bottom <= window.innerHeight + 1,
+          focusInside: dialog.contains(document.activeElement),
+          sticks,
+          footerOnScreen: buttons.length === 2 && buttons.every((r) => r.bottom <= window.innerHeight && r.top >= box.top),
+          named: !!dialog.getAttribute('aria-labelledby') && !!dialog.getAttribute('aria-describedby'),
+        };
+      },
+      assert: (r) => {
+        expect(r.inView, 'the dialog sits inside the viewport').toBe(true);
+        expect(r.focusInside, 'focus is inside the dialog').toBe(true);
+        expect(r.sticks, 'nothing inside the dialog sticks out sideways').toEqual([]);
+        expect(r.footerOnScreen, '取消 and 建立 stay on screen').toBe(true);
+        expect(r.named, 'the dialog has a name and a description').toBe(true);
+      },
+    },
+  },
+  {
+    // 段考成績 tab 各校段考日期 (slice 3a): one card per school, one row per exam slot with two date fields and 儲存 / 清除.
+    // School names stay on one line; the slot labels start at the same x; date fields and row buttons are 44px targets.
+    key: 'exam-grades-periods',
+    url: '/pilot-mount.html?page=exam-grades',
+    names: SCHOOL_PERIOD_SCHOOLS.map((x) => x.school_name),
+    allNames: true,
+    rows: ['.sep-row > span:first-child'],
+    touch: ['.sep-row input[type="date"]', '.sep-row button'],
+    mock: async (page) => {
+      await page.route('**/api/v1/**', (r) => {
+        const path = new URL(r.request().url()).pathname;
+        if (path === '/api/v1/exam-periods/schools') return json(r, { data: SCHOOL_PERIOD_SCHOOLS });
+        if (path === '/api/v1/exam-periods') return json(r, { data: [{ id: 31, school_key: SCHOOL_PERIOD_SCHOOLS[0].key, seq: 1, start_date: '2026-11-10', end_date: '2026-11-11' }] });
+        return json(r, path === '/api/v1/exam-rounds' ? { data: EXAM_ROUNDS } : { data: [] });
+      });
+    },
+    setup: async (page) => { await page.getByRole('tab', { name: '各校段考日期' }).click(); await expect(page.locator('.sep-card').first()).toBeVisible(); },
   },
   {
     // 學生管理, slice 1 (issue 4989): header with four actions, the filter toolbar and the student list card. The header actions are the

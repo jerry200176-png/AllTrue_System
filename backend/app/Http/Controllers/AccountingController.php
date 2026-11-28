@@ -336,42 +336,15 @@ class AccountingController extends Controller
                 return $denied;
             }
 
-            if ($course->isPartOfPackage()) {
-                return response()->json(['message' => '套裝課程請到套裝處理'], 422);
+            // #5721: the same refusals the 帳務中心 list shows as waive_block (WaiveGate), in the same order.
+            if ($refused = (new \App\Services\Billing\WaiveGate())->refusals(collect([$course]), lock: true)[(int) $course->getKey()] ?? null) {
+                return response()->json(['message' => $refused], 422);
             }
 
             $closedReason = (string) ($course->closed_reason ?? '');
-            $unpaid = (int) ($course->Paid ?? 0) !== 1;
-            $pending = $closedReason === 'settled_pending' || ($closedReason === 'contract_amended' && $unpaid);
-            if ((int) $course->Stop !== 1 || !$pending || !$unpaid) {
-                return response()->json(['message' => '只有「課已結束，尚未收款」且還沒繳清的合約，才能改成「不收了」'], 422);
-            }
-
             $invoices = Invoice::with(['studentClass', 'items', 'payments'])
                 ->where('StudentClassID', $id)
                 ->where(fn ($q) => $q->whereNull('Status')->orWhere('Status', '!=', 'void'))->lockForUpdate()->get();
-            // 已有收款的帳單不在此處理，避免作廢帳單蓋住已收的錢。
-            if ($invoices->contains(fn ($i) => $i->payments->isNotEmpty() || (int) ($i->PaidAmount ?? 0) !== 0)) {
-                return response()->json(['message' => '此合約已有收款紀錄，請先到帳務更正後再處理'], 422);
-            }
-            // A waiver may only touch invoices that belong to this course alone. Any non-void invoice involving this
-            // course (as anchor or line) that also involves another course, or has no anchor, needs accounting first.
-            $involved = DB::table('Invoice')->where(fn ($q) => $q->whereNull('Status')->orWhere('Status', '!=', 'void'))
-                ->where(fn ($q) => $q->where('StudentClassID', $id)
-                    ->orWhereIn('id', DB::table('InvoiceItem')->where('StudentClassID', $id)->select('InvoiceID')))
-                ->get(['id', 'StudentClassID']);
-            $shared = $involved->contains(fn ($inv) => (int) ($inv->StudentClassID ?? 0) !== $id)
-                || ($involved->isNotEmpty() && DB::table('InvoiceItem')->whereIn('InvoiceID', $involved->pluck('id')->all())
-                    ->whereNotNull('StudentClassID')->where('StudentClassID', '!=', $id)->exists());
-            if ($shared) {
-                return response()->json(['message' => '此合約在合併帳單中，請先到帳務處理該帳單'], 422);
-            }
-            if (PaymentReport::query()->where('StudentClassID', $id)->where('status', 'confirmed')->exists()) {
-                return response()->json(['message' => '此合約已有確認過的繳費回報，請先到帳務更正後再處理'], 422);
-            }
-            if (PaymentReport::query()->where('StudentClassID', $id)->where('status', 'pending')->exists()) {
-                return response()->json(['message' => '有待確認的繳費回報，請先確認或退回'], 422);
-            }
             $toVoid = $invoices->filter(fn ($i) => (string) ($i->Status ?? '') !== 'paid');
             $outstanding = $this->waivableAmount($course, $invoices);
             // The director must confirm the exact amount being written off (the dialog sends what it showed).
@@ -511,7 +484,8 @@ class AccountingController extends Controller
 
         // 更正帳單: the key is only present on rows of a campus where it is on (absent = no button).
         $correctCampusOn = \App\Services\Billing\BillCorrection::campusOn((int) $student->CampusID);
-        $invoiceRows = $invoices->map(function (Invoice $invoice) use ($correctCampusOn, $restatedPaymentIds, $reportsByPaymentId, $reportsById, $reportsByInvoiceId, $firstSessionDates, $subjectNames, &$anomalies) {
+        $resolver = app(BillingPayableResolver::class);
+        $invoiceRows = $invoices->map(function (Invoice $invoice) use ($correctCampusOn, $restatedPaymentIds, $reportsByPaymentId, $reportsById, $reportsByInvoiceId, $firstSessionDates, $subjectNames, &$anomalies, $resolver) {
             $invoiceStudentClassId = (int) $invoice->getAttribute('StudentClassID');
             $invoiceStudentClass = $invoice->getRelationValue('studentClass');
             $historical = $invoiceStudentClass === null;
@@ -681,6 +655,16 @@ class AccountingController extends Controller
             }
 
             $anomalies = array_merge($anomalies, $invoiceAnomalies);
+            /** @var \Illuminate\Support\Collection<int, \stdClass> $standingRows */
+            $standingRows = $payments->map(fn ($p) => (object) [
+                'id' => (int) $p->id, 'Amount' => $p->Amount, 'Method' => $p->Method, 'PaidAt' => $p->PaidAt, 'payment_report_id' => $p->payment_report_id,
+                'report_payment_id' => $p->payment_report_id === null ? null : $reportsById->get((int) $p->payment_report_id)?->payment_id,
+            ]);
+            $standingPayment = $resolver->latestStandingReceipt($standingRows) ?? $this->standingCreditMovement($payments);
+            // The line never shows more than the bill still has applied (refunds and moved-out credit net it; the resolver's
+            // cash-receipt rule does not see them).
+            $standingPayment = $standingPayment === null || $appliedAmount <= 0 ? null
+                : array_replace($standingPayment, ['amount' => min((int) $standingPayment['amount'], $appliedAmount)]);
 
             return [
                 'id' => (int) $invoice->id,
@@ -711,6 +695,8 @@ class AccountingController extends Controller
                 'overpaid_amount' => $overpaidAmount,
                 'outstanding_amount' => $outstanding,
                 'status' => $status,
+                // 繳費日 line: the latest receipt still standing after reversals, by the resolver's own last-paid rule (no queries).
+                'standing_payment' => $standingPayment,
                 'can_direct_void' => !$historical && (!in_array($status, ['paid', 'partial', 'void'], true) || ($status === 'paid' && $invoice->zero_amount_reason !== null && $paymentRows->isEmpty())
                         // An unmarked NT$0 bill marked paid with no confirmed receipt left (an old 「0 元」 登記); same rule as BillingController::voidInvoice.
                         || ($status === 'paid' && $invoice->zero_amount_reason === null && (int) $totalAmount === 0 && !$invoiceReports->contains(fn ($r) => in_array($r['status'], ['confirmed', 'pending'], true))
@@ -823,6 +809,8 @@ class AccountingController extends Controller
 
         $outsideContract = [];
         $collectionPeriods = $this->collectionPeriods($classes, $invoices, $invoiceRows, $outsideContract);
+        $recordBlocks = $this->recordBlocks($classes, $invoices, $invoiceRows, $reports);
+        $collectionPeriods = array_diff_key($collectionPeriods, $recordBlocks); // never offer a whole-month amount for a blocked month
 
         return response()->json([
             'student' => [
@@ -851,7 +839,7 @@ class AccountingController extends Controller
             // #4041: notes of invoices voided when their course was deleted; read-only, outside the invoice table.
             'voided_invoice_notes' => $this->deletedCourseInvoiceNotes($student),
             // #3991 review: a course settled by a 免費／贈送 NT$0 bill has nothing left to record.
-            'courses' => $classes->map(function (StudentClass $class) use ($subjectNames, $invoices, $firstSessionDates, $amountPendingIds, $collectionPeriods, $outsideContract) {
+            'courses' => $classes->map(function (StudentClass $class) use ($subjectNames, $invoices, $firstSessionDates, $amountPendingIds, $collectionPeriods, $outsideContract, $recordBlocks) {
                 // #3991: a 免費／贈送 mark settles the course only while it holds (Invoice::freeGiftHolds) for the current term.
                 $zeroSettled = fn (bool $freeGiftOnly) => $invoices->contains(fn (Invoice $i) => (int) $i->StudentClassID === (int) $class->ID
                     && (string) $i->Status !== 'void' && (!$freeGiftOnly || $i->isMarkedFreeGift()) && $i->freeGiftHolds($class) && !$invoices->contains(fn (Invoice $o) => (int) $o->StudentClassID === (int) $class->ID && (string) $o->Status !== 'void' && (int) $o->TotalAmount > 0 && in_array((string) $o->Status, ['unpaid', 'partial'], true)) && ($i->billing_period === null || $i->billing_period >= app(\App\Services\MonthlyBillingService::class)->defaultPeriodFor($class)));
@@ -903,6 +891,8 @@ class AccountingController extends Controller
                 'collection_period' => $collectionPeriods[(int) $class->ID] ?? null,
                 // #4765: dates of taught lessons outside the contract dates (no bill to collect against); the card says 需核對, offers no 登記這筆.
                 'lessons_outside_contract' => $outsideContract[(int) $class->ID] ?? [],
+                // #5703: why 登記收款 would be refused although lessons are unbilled (their month already has a bill); null = no block.
+                'record_block' => $recordBlocks[(int) $class->ID] ?? null,
                 'end_date' => $class->EndDate ? substr((string) $class->EndDate, 0, 10) : null,
                 ];
             })->values()->all(),
@@ -912,6 +902,32 @@ class AccountingController extends Controller
             // 收據移到正確帳單 (#5113): the key is only present where the flag is on for this student's campus (absent = no button).
             ...(\App\Helpers\FeatureFlag::enabled(\App\Services\Billing\ReceiptReassignService::FLAG, (int) $student->CampusID) ? ['can_reassign_receipt' => true] : []),
         ]);
+    }
+
+    /**
+     * Server decides, screen obeys: for a contract with no bill still owing, the refusal director-record (no bill named)
+     * would answer (RecordGate::refusal: D/E/F, same code, sentence and fields), so the card never offers 登記這筆 that
+     * the server refuses. Tutoring, waived, package members and contracts with a pending report are left to their own card
+     * states. Read-only, no row locks.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    private function recordBlocks(\Illuminate\Support\Collection $classes, \Illuminate\Support\Collection $invoices, \Illuminate\Support\Collection $invoiceRows, \Illuminate\Support\Collection $reports): array
+    {
+        $owing = $invoiceRows->filter(fn (array $row) => (int) $row['outstanding_amount'] > 0)->pluck('student_class_id')->map(fn ($id) => (int) $id)->all();
+        $pending = $reports->where('status', 'pending')->pluck('StudentClassID')->map(fn ($id) => (int) $id)->all();
+        $candidates = $classes->filter(fn (StudentClass $c) => !$this->hasNoPaymentObligation($c) && !ContractMoneyState::isWaived($c) && !$c->isPartOfPackage()
+            && !in_array((int) $c->ID, $owing, true) && !in_array((int) $c->ID, $pending, true));
+        if ($candidates->isEmpty()) {
+            return [];
+        }
+        $billing = app(MonthlyBillingService::class);
+        $billing->preloadSessions($candidates->pluck('ID')->all());
+        // One resolver read for every candidate; each course's own loaded bills feed the partly-billed scan.
+        $out = array_map(fn ($refusal) => $refusal->getData(true), (new \App\Services\Billing\RecordGate($billing))->refusals($candidates->values(), $invoices));
+        $billing->forgetPreloadedSessions();
+
+        return $out;
     }
 
     /**
@@ -1266,6 +1282,22 @@ class AccountingController extends Controller
                 'notes' => $entries,
             ];
         })->filter()->values()->all();
+    }
+
+    /**
+     * Ledger only: a bill paid by moved credit (轉課 transfer_in) has no cash receipt, so the resolver's last-paid rule (which
+     * drives the list's 最後繳費) gives none. The card still shows the latest transfer_in while the bill's moved credit nets above 0.
+     *
+     * @return array{paid_at: string, amount: int, method: string}|null
+     */
+    private function standingCreditMovement(\Illuminate\Support\Collection $payments): ?array
+    {
+        $credit = $payments->filter(fn ($p) => Payment::isCreditMovement($p));
+        $net = (int) $credit->sum(fn ($p) => (int) $p->Amount);
+        $latest = $credit->filter(fn ($p) => (string) $p->Method === 'transfer_in' && (string) ($p->PaidAt ?? '') !== '')
+            ->sortBy(fn ($p) => [(string) $p->PaidAt, (int) $p->id])->last();
+
+        return $net > 0 && $latest ? ['paid_at' => substr((string) $latest->PaidAt, 0, 10), 'amount' => min($net, (int) $latest->Amount), 'method' => 'transfer_in'] : null;
     }
 
     /** Tutoring has no payment obligation (PaymentReportController::tutoringPaymentBlocked); one rule for scope and courses[]. */

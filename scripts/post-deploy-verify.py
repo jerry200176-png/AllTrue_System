@@ -57,6 +57,7 @@ RC_ROLLBACK_FAILED = 11
 RC_HELD_MIGRATION = 12
 RC_HELD_PRE_VERIFY = 13  # a step failed after a migration ran (or with one in range), before identity was verified
 RC_GATE_ROLLBACK = 20  # gate -> executor: run rollback_deploy (distinct from a Python crash's 1)
+RC_GATE_HELD_VERIFIED = 21  # gate -> executor: verified runtime held on a Sentry-only breach; exit 12, flags stay (#4478)
 RC_SSH_LOST = 255
 USER_AGENT = "AllTrue-post-deploy-verify/1"
 
@@ -74,8 +75,12 @@ def _fetch(url: str, timeout: float, insecure: bool) -> tuple[int, bytes]:
         return error.code, b""
 
 
-def _health_problem(path: str, status: int, body: bytes) -> str | None:
-    """Healthy = HTTP 200 and a JSON object saying so (an HTML page or PHP source never passes)."""
+def _health_problem(path: str, status: int, body: bytes, expect_build: str | None = None) -> str | None:
+    """Healthy = HTTP 200 and a JSON object saying so (an HTML page or PHP source never passes).
+
+    `build` (#4056) is the SHA the running PHP workers loaded from their cached config: unlike the static
+    deployment.json it proves which release serves requests. A release from before the field has none; then
+    only the manifest is checked."""
     if status != 200:
         return f"{path} returned HTTP {status}"
     try:
@@ -84,6 +89,8 @@ def _health_problem(path: str, status: int, body: bytes) -> str | None:
         return f"{path} returned a non-JSON body"
     if not isinstance(payload, dict):
         return f"{path} returned non-object JSON"
+    if expect_build and isinstance(payload.get("build"), str) and payload["build"] != expect_build:
+        return f"{path} build={payload['build']} expected {expect_build} (PHP workers still serve another release)"
     if "status" in payload:
         return None if payload["status"] == "ok" else f"{path} status={payload['status']!r}"
     if "ok" in payload:
@@ -101,7 +108,7 @@ def check_once(base_url, health_paths, expect_backend, expect_frontend, timeout,
         except Exception as error:  # noqa: BLE001 - any transport fault (incl. http.client.HTTPException) is retryable
             problems.append(f"{path} unreachable: {error.__class__.__name__}")
             continue
-        problem = _health_problem(path, status, body)
+        problem = _health_problem(path, status, body, expect_backend)
         if problem:
             problems.append(problem)
     try:
@@ -238,7 +245,7 @@ def range_migrations(previous_sha: str, target_sha: str, run=subprocess.run) -> 
 
 def gate(args, verify_fn=None, run=subprocess.run, migrations_fn=range_migrations, additive_fn=None,
          watch_fn=None) -> int:
-    """Executor's final stage: 0 verified, RC_HELD_MIGRATION hold, 20 roll back (caller runs rollback_deploy)."""
+    """Executor's final stage: 0 verified, RC_HELD_MIGRATION hold, 20 roll back (caller runs rollback_deploy), 21 Sentry-only hold."""
     frontend_changed = str(args.frontend_changed).strip() not in ("", "0")
     verify_args = argparse.Namespace(
         base_url=args.base_url, health_path=None, expect_backend_sha=args.target_sha,
@@ -270,7 +277,7 @@ def gate(args, verify_fn=None, run=subprocess.run, migrations_fn=range_migration
             if breach.startswith("Sentry "):
                 # Event fields are client-supplied: a Sentry-only breach holds and alerts, never rolls back.
                 print("::error::Sentry-only breach: held for review; no automatic rollback.")
-                return RC_HELD_MIGRATION
+                return RC_GATE_HELD_VERIFIED
             ok = False
     if ok:
         print("🚀 部署完成 — Health + identity + Smoke test 全通過")

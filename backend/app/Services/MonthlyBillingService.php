@@ -137,6 +137,79 @@ class MonthlyBillingService
      */
     public function unbilledPeriodFor(Model $course, ?Collection $invoices = null): ?string
     {
+        $month = $this->oldestUncoveredMonth($course, $invoices);
+
+        return $month && $month['clean'] ? $month['billing_period'] : null;
+    }
+
+    /**
+     * #5703 (Founder 2026-11-28, option A): the oldest month that still has countable lessons no bill covers, when that month
+     * is ALREADY partly covered by, or labelled on, a bill. No second bill is opened for it, so 登記收款 has nothing to collect against; the caller refuses
+     * with this plain reason instead of "已收齊". Null when there is no such month or coverage is unreadable.
+     *
+     * @param  Collection<int, Invoice>|null  $invoices  this contract's non-void bills with items, when already loaded
+     * @return array{code:string,message:string,billing_period:string,lesson_dates:list<string>}|null
+     */
+    public function partlyBilledMonth(Model $course, ?Collection $invoices = null): ?array
+    {
+        $month = $this->oldestUncoveredMonth($course, $invoices);
+        if (!$month) {
+            return $this->lessonsBeforeStartNote($course, $invoices);
+        }
+        if ($month['clean']) {
+            return null;
+        }
+        $dates = implode('、', array_map(fn (string $d) => Carbon::parse($d)->format('n/j'), $month['lesson_dates']));
+
+        return ['code' => 'month_partly_billed', 'billing_period' => $month['billing_period'], 'lesson_dates' => $month['lesson_dates'],
+            'message' => sprintf('%s 的課還沒算進任何帳單，但 %d 月已有其他堂算在原本的帳單裡，同一個月不會再開第二張，所以這裡不能登記。請把這幾堂補進原帳單：學生帳務有「更正帳單」的分校在那裡更正，沒有的請回報。沒有登記任何款項。',
+                $dates, (int) substr($month['billing_period'], 5, 2))];
+    }
+
+    /**
+     * in-app #607 / #5702 (Founder 2026-11-28, small fix): nothing inside the contract dates is left to collect, the contract has
+     * bills, and a taught lesson dated before StartDate lies inside no bill's dates. Billing bounds a month by the contract, so
+     * 登記收款 can never reach it; say so and name the existing way out (move the start date earlier). A bill's dates are not proof
+     * the lesson is unpaid (some totals already include it), so the sentence asks the director to check first. No amount changes.
+     *
+     * @param  Collection<int, Invoice>|null  $invoices
+     * @return array{code:string,message:string,billing_period:string,lesson_dates:list<string>}|null
+     */
+    private function lessonsBeforeStartNote(Model $course, ?Collection $invoices): ?array
+    {
+        $start = substr((string) $course->getAttribute('StartDate'), 0, 10);
+        $before = array_values(array_filter($this->taughtLessonsOutsideContract($course), fn (string $d) => $d < $start));
+        if ($before === []) {
+            return null;
+        }
+        $invoices ??= Invoice::query()->where('StudentClassID', (int) $course->getKey())
+            ->where(fn ($q) => $q->whereNull('Status')->orWhere('Status', '!=', 'void'))->get();
+        // No bill yet keeps today's paths (first bill, legacy backfill); an unreadable month keeps the scan's "cannot tell".
+        if ($invoices->isEmpty() || $invoices->contains(fn ($i) => !preg_match('/^\d{4}-(0[1-9]|1[0-2])$/', (string) $i->billing_period))) {
+            return null;
+        }
+        $open = array_values(array_diff($before, \App\Services\Billing\BillingPeriod::datesCoveredByBills($course, $before)));
+        if ($open === []) {
+            return null;
+        }
+        $day = fn (string $d) => Carbon::parse($d)->format('n/j');
+        // A lesson in a month that already has a bill would only become month_partly_billed after a start-date move: report instead.
+        $billedMonth = collect($open)->contains(fn (string $d) => $invoices->contains(fn ($i) => (string) $i->billing_period === substr($d, 0, 7)));
+        $remedy = $billedMonth
+            ? '沒含的話，那個月已經開過帳單、不會再開第二張，請回報。'
+            : sprintf('沒含、而且這堂確實屬於這份合約，才到課程管理把開始日往前改到 %s 再登記。不確定請回報。', $day($open[0]));
+
+        return ['code' => 'lesson_before_contract_start', 'billing_period' => substr($start, 0, 7), 'lesson_dates' => $open,
+            'message' => sprintf('%s 的課在合約開始日（%s）之前，不在任何帳單的日期內，所以這裡不能登記。請先看第一張帳單的金額是否已含這幾堂：已含就不用處理；%s沒有登記任何款項。',
+                implode('、', array_map($day, $open)), $day($start), $remedy)];
+    }
+
+    /**
+     * @param  Collection<int, Invoice>|null  $invoices
+     * @return array{billing_period:string,lesson_dates:list<string>,clean:bool}|null  clean = no bill touches that month
+     */
+    private function oldestUncoveredMonth(Model $course, ?Collection $invoices = null): ?array
+    {
         $id = (int) $course->getKey();
         $start = $course->getAttribute('StartDate') ? Carbon::parse($course->getAttribute('StartDate'))->toDateString() : null;
         $end = $course->getAttribute('EndDate') ? Carbon::parse($course->getAttribute('EndDate'))->toDateString() : null;
@@ -161,12 +234,13 @@ class MonthlyBillingService
             : ClassSession::query()->where('StudentClassID', $id)->whereIn('Status', self::BILLABLE_STATUSES)->pluck('SessionDate'))
             ->map(fn ($date) => substr((string) $date, 0, 10))->filter(fn (string $date) => $date >= $start && $date <= $end)->sort();
         foreach ($dates->groupBy(fn (string $date) => substr($date, 0, 7))->sortKeys() as $month => $monthDates) {
-            $covered = $monthDates->filter(fn (string $date) => collect($ranges)->contains(fn ($r) => $date >= $r[1] && $date <= $r[2]))->count();
-            if ($covered === $monthDates->count()) {
+            $open = $monthDates->reject(fn (string $date) => collect($ranges)->contains(fn ($r) => $date >= $r[1] && $date <= $r[2]))->values();
+            if ($open->isEmpty()) {
                 continue;
             }
 
-            return $covered === 0 && !collect($ranges)->contains(fn ($r) => $r[0] === $month) ? (string) $month : null;
+            return ['billing_period' => (string) $month, 'lesson_dates' => $open->all(),
+                'clean' => $open->count() === $monthDates->count() && !collect($ranges)->contains(fn ($r) => $r[0] === $month)];
         }
 
         return null;

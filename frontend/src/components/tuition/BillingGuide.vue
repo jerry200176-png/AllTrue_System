@@ -73,7 +73,8 @@
         </template>
 
         <template v-else-if="bill.class_id == null">
-          <p class="tw:m-0 tw:font-bold">這是共用方案，請到學生帳務處理。</p>
+          <p class="tw:m-0 tw:font-bold">這是共用方案，帳單和收款在各門成員課上，請到學生帳務處理。</p>
+          <p v-if="bill.src?.schedule_mode === 'date' && Number(bill.src?.monthly_sessions) === 0" class="tw:m-0 tw:text-tpl-secondary" data-testid="bg-plan-no-lessons">預估 NT$ 0，是因為這個月還沒有點名紀錄。</p>
           <Button class="tw:min-h-11 tw:justify-self-start" data-testid="bg-open-ledger" @click="$emit('ledger', bill, null)">到學生帳務</Button>
         </template>
 
@@ -127,6 +128,9 @@
 
       <footer class="tw:flex tw:flex-wrap tw:justify-end tw:gap-2">
         <template v-if="!confirmedId && !gone">
+          <!-- in-app #606: an ended contract that will not be collected. Same rule and dialog as the bill list's 改成不收. -->
+          <p v-if="rowActions[bill.class_id]?.waive && rowActions[bill.class_id].waiveBlock" class="tw:m-0 tw:mr-auto tw:self-center tw:text-tpl-secondary" data-testid="bg-waive-block">現在不能改成不收：{{ rowActions[bill.class_id].waiveBlock }}</p>
+          <Button v-else-if="rowActions[bill.class_id]?.waive" variant="outline" class="tw:min-h-11 tw:mr-auto" :disabled="busy || exporting" data-testid="bg-waive" @click="$emit('waive', bill)">改成不收</Button>
           <Button variant="ghost" class="tw:min-h-11" :disabled="busy || exporting" data-testid="bg-later" @click="advance('later')">稍後處理</Button>
           <Button variant="ghost" class="tw:min-h-11" :disabled="busy || exporting" data-testid="bg-skip" @click="advance('done')">略過</Button>
         </template>
@@ -167,7 +171,7 @@ const props = defineProps({
   rowActions: { type: Object, default: () => ({}) },
   reload: { type: Function, default: async () => true }, // the page rereads /alerts/tuition; false = it failed
 });
-defineEmits(['close', 'ledger', 'reject', 'renew', 'settle']);
+defineEmits(['close', 'ledger', 'reject', 'renew', 'settle', 'waive']);
 
 const money = (v) => `NT$ ${Number(v || 0).toLocaleString('zh-TW')}`;
 const done = reactive(new Set());

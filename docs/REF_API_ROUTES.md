@@ -966,6 +966,7 @@
 | GET | `api/v1/triage/db/{table}` | `TriageDbReadController@rows` | auth |
 | GET | `api/v1/triage/fulltime-campus-hours` | `TriageFulltimePayrollController@campusHours` | auth |
 | GET | `api/v1/triage/fulltime-payroll` | `TriageFulltimePayrollController@show` | auth |
+| GET | `api/v1/triage/school-names` | `TriageSchoolNamesController@show` | auth |
 | GET | `api/v1/triage/student-classes/{id}/billing-snapshot` | `TriageBillingSnapshotController@show` | auth |
 
 ## /api/v1/trial-holds

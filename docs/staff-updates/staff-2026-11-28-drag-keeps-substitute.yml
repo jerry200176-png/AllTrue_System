@@ -1,0 +1,13 @@
+updates:
+  - id: staff-2026-11-28-drag-keeps-substitute
+    published_at: "2026-11-28"
+    audiences:
+      - director
+    importance: digest
+    title: 代課的課可以拖動調課了
+    summary: 已換代課老師的課，拖動調課時改用代課老師檢查時段。
+    items:
+      - category: fixed
+        text: 行事曆：已換代課的課拖去別的時段，會用代課老師檢查衝突，調完仍由代課老師上。
+    source_refs:
+      - "changelog:2026-11-28:drag-keeps-substitute"

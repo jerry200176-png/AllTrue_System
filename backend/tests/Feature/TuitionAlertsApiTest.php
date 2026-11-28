@@ -3,8 +3,10 @@
 namespace Tests\Feature;
 
 use App\Models\AuthToken;
+use App\Models\ClassSession;
 use App\Models\CoursePackage;
 use App\Models\Invoice;
+use App\Models\InvoiceItem;
 use App\Models\Payment;
 use App\Models\PaymentReport;
 use App\Models\Student;
@@ -382,6 +384,49 @@ class TuitionAlertsApiTest extends TestCase
         ]);
         $pendingRows = collect($this->withToken($token)->getJson('/api/v1/alerts/tuition?branch_id=1')->assertOk()->json());
         $this->assertSame('pending_report', $pendingRows->firstWhere('id', $endedPaid->ID)['payment_status'] ?? null);
+    }
+
+    /**
+     * in-app #605/#606: an ended monthly contract whose only bill is fully paid came back every month around its
+     * settlement day asking for a new bill, because the bill's month starts after the contract's start date (review remark
+     * only). A month with lessons that no bill can be lined up with (in-app #603: bill without a period) is unbilled as far
+     * as the data says, so it stays listed. Both shapes are from production.
+     */
+    public function test_ended_monthly_with_paid_bill_and_lessons_has_no_settlement_reminder(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-11-27', 'Asia/Taipei'));
+        $token = $this->createDirectorToken([1]);
+        $student = Student::create(['name' => '月結已結束有上課', 'CampusID' => 1, 'ClassID' => 1, 'enable' => 1, 'MDT' => now(), 'Notify_Token' => '']);
+        $terms = ['settlement_day' => 30, 'Paid' => 1, 'Charge' => 4400, 'Rate' => 1100, 'monthly_sessions' => 4, 'ClassType' => 'one_on_three'];
+
+        $noPeriod = $this->createMonthlyClass($student->id, $terms + ['StartDate' => '2026-04-04', 'EndDate' => '2026-04-25', 'PayDate' => '2026-05-05']);
+        foreach (['2026-04-04' => 'attended', '2026-04-11' => 'completed', '2026-04-18' => 'leave_adjusted', '2026-04-25' => 'leave_adjusted'] as $date => $status) {
+            ClassSession::create(['StudentClassID' => $noPeriod->ID, 'SessionDate' => $date, 'StartTime' => '18:00', 'EndTime' => '20:00', 'Status' => $status]);
+        }
+        $bill = Invoice::create(['StudentID' => $student->id, 'StudentClassID' => $noPeriod->ID, 'IssueDate' => '2026-05-05',
+            'TotalAmount' => 2200, 'PaidAmount' => 2200, 'Status' => 'paid']);
+        Payment::create(['InvoiceID' => $bill->id, 'Amount' => 2200, 'Method' => 'transfer', 'PaidAt' => '2026-05-03']);
+
+        $lateStart = $this->createMonthlyClass($student->id, $terms + ['StartDate' => '2026-04-29', 'EndDate' => '2026-05-31', 'PayDate' => '2026-07-10']);
+        foreach (['2026-05-06' => 'attended', '2026-05-13' => 'attended', '2026-05-20' => 'attended', '2026-05-27' => 'attended', '2026-05-09' => 'cancelled', '2026-05-16' => 'cancelled'] as $date => $status) {
+            ClassSession::create(['StudentClassID' => $lateStart->ID, 'SessionDate' => $date, 'StartTime' => '18:00', 'EndTime' => '20:00', 'Status' => $status]);
+        }
+        $bill = Invoice::create(['StudentID' => $student->id, 'StudentClassID' => $lateStart->ID, 'IssueDate' => '2026-05-05', 'DueDate' => '2026-04-30',
+            'TotalAmount' => 4400, 'PaidAmount' => 4400, 'Status' => 'paid', 'billing_period' => '2026-05']);
+        InvoiceItem::create(['InvoiceID' => $bill->id, 'Description' => 'tuition', 'Amount' => 4400]);
+        Payment::create(['InvoiceID' => $bill->id, 'Amount' => 4400, 'Method' => 'transfer', 'PaidAt' => '2026-06-05']);
+
+        // Same shape, but half of the bill is still owed: this one must stay.
+        $owing = $this->createMonthlyClass($student->id, $terms + ['StartDate' => '2026-04-04', 'EndDate' => '2026-04-25']);
+        $bill = Invoice::create(['StudentID' => $student->id, 'StudentClassID' => $owing->ID, 'IssueDate' => '2026-05-05',
+            'TotalAmount' => 4400, 'PaidAmount' => 2200, 'Status' => 'partial']);
+        Payment::create(['InvoiceID' => $bill->id, 'Amount' => 2200, 'Method' => 'transfer', 'PaidAt' => '2026-05-03']);
+
+        $rows = collect($this->withToken($token)->getJson('/api/v1/alerts/tuition?branch_id=1')->assertOk()->json());
+
+        $this->assertNotNull($rows->firstWhere('id', $noPeriod->ID), 'lessons in a month no bill is attributed to: still listed');
+        $this->assertNull($rows->firstWhere('id', $lateStart->ID), 'paid bill, contract started at the end of the previous month');
+        $this->assertNotNull($rows->firstWhere('id', $owing->ID), 'a bill with a balance stays listed');
     }
 
     public function test_monthly_paid_included_when_next_due_within_window(): void
@@ -1160,6 +1205,27 @@ class TuitionAlertsApiTest extends TestCase
 
         $this->assertSame('2026-08-08', substr((string) StudentClass::find($courseA->ID)->EndDate, 0, 10), 'read-only flag must not mutate A EndDate');
         $this->assertSame('2026-08-05', substr((string) StudentClass::find($courseB->ID)->StartDate, 0, 10), 'read-only flag must not mutate B StartDate');
+    }
+
+    /** in-app #601: a one-lesson add-on bought and used inside the running term is not a next term to overlap with. */
+    public function test_newer_course_overlap_ignores_a_finished_add_on_but_not_the_real_next_term(): void
+    {
+        $token = $this->createDirectorToken([1], 'overlap-addon@example.com');
+        $student = Student::create(['name' => '期中加購單堂', 'CampusID' => 1, 'ClassID' => 1, 'enable' => 1, 'MDT' => now(), 'Notify_Token' => '']);
+        $term = $this->createCountModeClass($student->id, ['Paid' => 0, 'RemainingSessions' => 3, 'Charge' => 8000, 'SubjectID' => 88, 'EndDate' => '2026-11-30']);
+        $addOn = $this->createCountModeClass($student->id, ['Paid' => 1, 'RemainingSessions' => 0, 'SessionCount' => 1, 'Charge' => 1000, 'SubjectID' => 88,
+            'StartDate' => '2026-10-20', 'EndDate' => '2026-10-20']);
+        $rowFor = fn () => collect($this->withToken($token)->getJson('/api/v1/alerts/tuition?branch_id=1')->assertOk()->json())->firstWhere('id', $term->ID);
+
+        $row = $rowFor();
+        $this->assertSame($addOn->ID, $row['newer_course_id'], 'the add-on is still the newer contract');
+        $this->assertFalse($row['newer_course_overlap'], 'nothing left on it: not a next term');
+
+        $this->createCountModeClass($student->id, ['Paid' => 1, 'RemainingSessions' => 8, 'Charge' => 8000, 'SubjectID' => 88, 'StartDate' => '2026-11-25']);
+        $row = $rowFor();
+        $this->assertTrue($row['newer_course_overlap'], 'the real next term behind the add-on is still checked');
+        $this->assertSame('2026-11-25', $row['newer_course_overlap_start_date']);
+        $this->assertSame('2026-10-20', $row['newer_course_start_date'], 'the settle dialog keeps describing one contract: the add-on');
     }
 
     public function test_newer_course_overlap_false_when_end_date_precedes_newer_course_start(): void

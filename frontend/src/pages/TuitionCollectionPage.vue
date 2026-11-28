@@ -71,6 +71,7 @@
         @reject="(b) => openQuick(b, true)"
         @renew="(b) => onBillAction(b, 'renew')"
         @settle="(b) => onLedgerRowAction({ kind: 'settle', courseId: b.class_id })"
+        @waive="(b) => onLedgerRowAction({ kind: 'waive', courseId: b.class_id })"
       />
       <!-- The list has several root nodes, so the wrapper hides it. -->
       <div v-show="!billingGuideOpen">
@@ -1798,6 +1799,8 @@ const ledgerRowActions = computed(() => Object.fromEntries(rows.value.filter((r)
   const paidGroup = ['paid', 'renew_needed', 'monthly_due_soon'].includes(r.payment_status);
   return [Number(r.id), {
     waive: canWaive.value && r.payment_status === 'pending_reconciliation' && Boolean(r.closed_reason),
+    // Issue 5721: the waive endpoint's own refusal (server WaiveGate); shown as a disabled item with this reason.
+    waiveBlock: r.waive_block || '',
     void: canVoid.value && paidGroup && hasVoidableReceipt(r),
     settle: !r.package_id && (r.payment_status === 'renew_needed' || r.payment_status === 'monthly_due_soon'),
     settleBlockedReason: r.package_id ? '共用方案須整包核對，目前不能只結束其中一門課。' : '',
@@ -1805,7 +1808,7 @@ const ledgerRowActions = computed(() => Object.fromEntries(rows.value.filter((r)
 })));
 function onLedgerRowAction({ kind, courseId }) {
   const row = rows.value.find((r) => Number(r.id) === Number(courseId));
-  if (!row || !ledgerRowActions.value[Number(courseId)]?.[kind]) return;
+  if (!row || !ledgerRowActions.value[Number(courseId)]?.[kind] || (kind === 'waive' && ledgerRowActions.value[Number(courseId)].waiveBlock)) return;
   if (kind === 'waive') openWaiveDialog(row);
   else if (kind === 'void') openVoidDialog(row);
   else if (kind === 'settle') openSettleDialog(row);

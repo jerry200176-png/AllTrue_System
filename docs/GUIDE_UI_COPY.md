@@ -61,6 +61,11 @@ Empty state 元件：用 `AtEmpty`（#688），圖示用 `material-symbols-outli
 | 權限不足 | 403 Forbidden | 您沒有執行此操作的權限。 |
 | 網路逾時 | Request timeout | 網路連線逾時，請確認網路後重試。 |
 
+**拒絕訊息（後端回 422／409）**：`{ code, message }`，`message` 用同一個公式，並說「沒有登記任何款項」這類**沒有發生什麼**，讓人放心重試。
+- ✅ 「7/3 的課在合約開始日（7/10）之前，不在任何帳單的日期內，所以這裡不能登記。請先看第一張帳單的金額是否已含這幾堂……沒有登記任何款項。」
+- 同一句話也用在讀取時的「被擋原因」（`RULE_DESIGN_SYSTEM.md` §6.1），不要在前端另寫一份。
+- 只寫真的可行的下一步；畫面名稱、按鈕名稱要和畫面上一字不差（例：「帳務中心」「改成不收」）。
+
 **禁止**：
 - `Oops`、`Something went wrong`、`Unexpected error`（英文 UI 字串）
 - 直接暴露欄位名（`rate_unit`）、Controller 路徑（`XxxController::method`）、SQL

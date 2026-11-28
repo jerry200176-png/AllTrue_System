@@ -79,6 +79,15 @@ describe('BillingGuide', () => {
     expect(w.get('[data-testid="bg-progress"]').text()).toBe('第 2 筆／共 2 筆');
   });
 
+  it('offers 改成不收 only where the page allows a waiver, and hands the bill back to the page (in-app #606)', async () => {
+    const ended = row({ payment_status: 'pending_reconciliation', closed_reason: 'settled_pending' });
+    const w = await mountGuide([ended], { rowActions: { 7: { waive: true } } });
+    await w.get('[data-testid="bg-waive"]').trigger('click');
+    expect(w.emitted('waive')[0][0].class_id).toBe(7);
+    expect(writes()).toEqual([]);
+    expect((await mountGuide([ended])).find('[data-testid="bg-waive"]').exists()).toBe(false);
+  });
+
   it('稍後處理 comes back after the others; 略過 does not', async () => {
     const w = await mountGuide(TWO);
     await w.get('[data-testid="bg-later"]').trigger('click');
@@ -114,6 +123,17 @@ describe('BillingGuide', () => {
     expect(w.get('[data-testid="bg-money"]').text()).toContain('金額需核對');
     await w.get('[data-testid="bg-review"]').trigger('click');
     expect(w.emitted('ledger')[0][1]).toBeNull();
+  });
+
+  it('a shared monthly plan says where its bills are and why the estimate is 0 (in-app #604)', async () => {
+    const plan = row({ id: null, package_id: 5, schedule_mode: 'date', remaining_sessions: null, payable_status: 'unbilled', payable_invoice_id: null, payable_amount: null, payable_outstanding: null, monthly_sessions: 0, estimated_amount: 0, charge: 0, outstanding: 0 });
+    const w = await mountGuide([plan]);
+    expect(w.text()).toContain('帳單和收款在各門成員課上');
+    expect(w.get('[data-testid="bg-plan-no-lessons"]').text()).toContain('這個月還沒有點名紀錄');
+    await w.get('[data-testid="bg-open-ledger"]').trigger('click');
+    expect(w.emitted('ledger')[0][1]).toBeNull();
+    const taught = await mountGuide([{ ...plan, monthly_sessions: 2, estimated_amount: 3000 }]);
+    expect(taught.find('[data-testid="bg-plan-no-lessons"]').exists()).toBe(false);
   });
 
   it('a contract with no bill yet says so and opens the existing 開帳單 entry', async () => {
