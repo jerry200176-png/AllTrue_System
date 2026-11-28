@@ -1,0 +1,13 @@
+updates:
+  - id: staff-2026-11-28-month-partly-billed
+    published_at: "2026-11-28"
+    audiences:
+      - director
+    importance: digest
+    title: 同月已開帳單不再顯示登記
+    summary: 同一個月已開過帳單、還有課沒算進去時，畫面會直接說原因。
+    items:
+      - category: fixed
+        text: 學生帳務：同月已開過帳單時不再出現按了沒用的「登記這筆」，改顯示是哪幾堂，請更正原帳單。
+    source_refs:
+      - "changelog:2026-11-28:month-partly-billed"

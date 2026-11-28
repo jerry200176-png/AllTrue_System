@@ -823,6 +823,8 @@ class AccountingController extends Controller
 
         $outsideContract = [];
         $collectionPeriods = $this->collectionPeriods($classes, $invoices, $invoiceRows, $outsideContract);
+        $recordBlocks = $this->recordBlocks($classes, $invoices, $invoiceRows);
+        $collectionPeriods = array_diff_key($collectionPeriods, $recordBlocks); // never offer a whole-month amount for a blocked month
 
         return response()->json([
             'student' => [
@@ -851,7 +853,7 @@ class AccountingController extends Controller
             // #4041: notes of invoices voided when their course was deleted; read-only, outside the invoice table.
             'voided_invoice_notes' => $this->deletedCourseInvoiceNotes($student),
             // #3991 review: a course settled by a 免費／贈送 NT$0 bill has nothing left to record.
-            'courses' => $classes->map(function (StudentClass $class) use ($subjectNames, $invoices, $firstSessionDates, $amountPendingIds, $collectionPeriods, $outsideContract) {
+            'courses' => $classes->map(function (StudentClass $class) use ($subjectNames, $invoices, $firstSessionDates, $amountPendingIds, $collectionPeriods, $outsideContract, $recordBlocks) {
                 // #3991: a 免費／贈送 mark settles the course only while it holds (Invoice::freeGiftHolds) for the current term.
                 $zeroSettled = fn (bool $freeGiftOnly) => $invoices->contains(fn (Invoice $i) => (int) $i->StudentClassID === (int) $class->ID
                     && (string) $i->Status !== 'void' && (!$freeGiftOnly || $i->isMarkedFreeGift()) && $i->freeGiftHolds($class) && !$invoices->contains(fn (Invoice $o) => (int) $o->StudentClassID === (int) $class->ID && (string) $o->Status !== 'void' && (int) $o->TotalAmount > 0 && in_array((string) $o->Status, ['unpaid', 'partial'], true)) && ($i->billing_period === null || $i->billing_period >= app(\App\Services\MonthlyBillingService::class)->defaultPeriodFor($class)));
@@ -903,6 +905,8 @@ class AccountingController extends Controller
                 'collection_period' => $collectionPeriods[(int) $class->ID] ?? null,
                 // #4765: dates of taught lessons outside the contract dates (no bill to collect against); the card says 需核對, offers no 登記這筆.
                 'lessons_outside_contract' => $outsideContract[(int) $class->ID] ?? [],
+                // #5703: why 登記收款 would be refused although lessons are unbilled (their month already has a bill); null = no block.
+                'record_block' => $recordBlocks[(int) $class->ID] ?? null,
                 'end_date' => $class->EndDate ? substr((string) $class->EndDate, 0, 10) : null,
                 ];
             })->values()->all(),
@@ -912,6 +916,32 @@ class AccountingController extends Controller
             // 收據移到正確帳單 (#5113): the key is only present where the flag is on for this student's campus (absent = no button).
             ...(\App\Helpers\FeatureFlag::enabled(\App\Services\Billing\ReceiptReassignService::FLAG, (int) $student->CampusID) ? ['can_reassign_receipt' => true] : []),
         ]);
+    }
+
+    /**
+     * #5703: monthly contracts with no bill still owing whose oldest uncovered lessons sit in an already billed month
+     * (MonthlyBillingService::partlyBilledMonth, the same answer directorRecord refuses with). Read-only; any Paid flag.
+     *
+     * @return array<int, array{code:string,message:string,billing_period:string,lesson_dates:list<string>}>
+     */
+    private function recordBlocks(\Illuminate\Support\Collection $classes, \Illuminate\Support\Collection $invoices, \Illuminate\Support\Collection $invoiceRows): array
+    {
+        $owing = $invoiceRows->filter(fn (array $row) => (int) $row['outstanding_amount'] > 0)->pluck('student_class_id')->map(fn ($id) => (int) $id)->all();
+        $candidates = $classes->filter(fn (StudentClass $c) => (string) $c->ScheduleMode === 'date' && !$c->isPartOfPackage() && !in_array((int) $c->ID, $owing, true));
+        if ($candidates->isEmpty()) {
+            return [];
+        }
+        $billing = app(MonthlyBillingService::class);
+        $billing->preloadSessions($candidates->pluck('ID')->all());
+        $out = [];
+        foreach ($candidates as $c) {
+            $own = $invoices->filter(fn (Invoice $i) => (int) $i->StudentClassID === (int) $c->ID && (string) $i->Status !== 'void')->values();
+            if ($block = $billing->partlyBilledMonth($c, $own)) {
+                $out[(int) $c->ID] = $block;
+            }
+        }
+
+        return $out;
     }
 
     /**
