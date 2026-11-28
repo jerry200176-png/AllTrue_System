@@ -143,7 +143,7 @@ it('shows 學收合計 and each course\'s 學收, says which have no price, and 
   await flushPromises();
   const stat = wrapper.findAll('[data-slot="stat-item"]').find((n) => n.text().includes('學收合計'));
   expect(stat.text()).toContain('NT$1,500');
-  expect(stat.text()).toContain('1 門課沒有單價，沒算進來');
+  expect(stat.text()).toContain('1 門課沒單價，未計入');
   expect(wrapper.get('[data-testid="roster-course-41"]').text()).toContain('已上 1 堂・學收 1 堂 NT$1,500');
   expect(wrapper.get('[data-testid="roster-course-42"]').text()).toContain('學收 —');
 
