@@ -314,6 +314,46 @@ class VerifyBugReproductionsTest extends TestCase
         $this->assertSame('OPEN', $row['state']);
     }
 
+    /** in-app #607 / #608: nightly counts of the two lesson-vs-bill shapes, so a recurrence shows up without a report. */
+    public function test_lesson_before_start_and_lesson_left_out_of_a_billed_month_are_counted(): void
+    {
+        $bill = function (int $sc, string $period, ?array $range = null, string $status = 'paid'): void {
+            $id = DB::table('Invoice')->insertGetId(['StudentID' => (int) DB::table('StudentClass')->where('ID', $sc)->value('StudentID'), 'StudentClassID' => $sc,
+                'IssueDate' => $period . '-01', 'TotalAmount' => 3300, 'PaidAmount' => 3300, 'Status' => $status, 'billing_period' => $period,
+                'created_at' => now(), 'updated_at' => now()]);
+            if ($range) {
+                DB::table('InvoiceItem')->insert(['InvoiceID' => $id, 'StudentClassID' => $sc, 'Amount' => 3300, 'Description' => 'x',
+                    'PeriodStart' => $range[0], 'PeriodEnd' => $range[1], 'created_at' => now(), 'updated_at' => now()]);
+            }
+        };
+        $monthly = ['ScheduleMode' => 'date', 'StartDate' => '2026-09-01', 'EndDate' => '2026-10-31'];
+
+        // #607: taught on 8/28, before the 9/1 start; no bill line holds that day. A line that holds it clears it.
+        $early = $this->course($monthly);
+        $this->classSession($early, 'attended', '2026-08-28');
+        $this->classSession($early, 'leave', '2026-08-21');                       // not taught
+        $this->classSession($this->course(['StartDate' => '2026-09-01']), 'attended', '2026-08-28'); // lesson-count contract
+        $this->assertSame(1, $this->condition('lesson_before_start_unbilled')['count']);
+        $bill($early, '2026-09', ['2026-08-28', '2026-09-30']);
+        $row = $this->condition('lesson_before_start_unbilled');
+        $this->assertSame([0, false], [$row['count'], $row['enforced']]);
+
+        // #608: the September bill covers 9/1–9/27; the 9/29 lesson is left out of a month that has a bill.
+        $partly = $this->course($monthly);
+        $bill($partly, '2026-09', ['2026-09-01', '2026-09-27']);
+        $this->classSession($partly, 'attended', '2026-09-07');   // covered
+        $this->classSession($partly, 'attended', '2026-09-29');   // left out
+        $this->classSession($partly, 'attended', '2026-10-06');   // October has no bill at all: a clean month, not this shape
+        $whole = $this->course($monthly);
+        $bill($whole, '2026-09');                                  // no dated line: covers its whole month
+        $this->classSession($whole, 'attended', '2026-09-29');
+        $voided = $this->course($monthly);
+        $bill($voided, '2026-09', ['2026-09-01', '2026-09-27'], 'void');
+        $this->classSession($voided, 'attended', '2026-09-29');
+        $row = $this->condition('lesson_uncovered_in_billed_month');
+        $this->assertSame([1, false, 'OPEN'], [$row['count'], $row['enforced'], $row['state']]);
+    }
+
     public function test_package_over_debit_flags_used_beyond_taught_and_not_a_balanced_ledger(): void
     {
         $pkg = $this->package();
