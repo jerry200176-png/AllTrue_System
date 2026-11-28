@@ -584,7 +584,7 @@ class BillingPayableResolver
 
         $latest = null;
         foreach ($receipts as $receipt) {
-            if ($receipt['left'] > 0 && $receipt['paid_at'] !== '' && ($latest === null || $receipt['paid_at'] > $latest['paid_at'])) {
+            if ($receipt['left'] > 0 && $receipt['paid_at'] !== '' && ($latest === null || $receipt['paid_at'] >= $latest['paid_at'])) { // same date: the later-written one
                 $latest = $receipt;
             }
         }

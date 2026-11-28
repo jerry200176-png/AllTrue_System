@@ -58,6 +58,11 @@ class LatestStandingReceiptTest extends TestCase
             ['id' => 1, 'PaidAt' => '2026-09-01', 'Amount' => 5000],
             ['id' => 2, 'PaidAt' => '2026-09-02', 'Amount' => -3000, 'Method' => 'void', 'payment_report_id' => 9, 'report_payment_id' => 1],
         ]));
+        // same date: the later-written receipt stands (the date is the same either way)
+        $this->assertSame(['paid_at' => '2026-09-05', 'amount' => 2000], $this->standing([
+            ['id' => 1, 'PaidAt' => '2026-09-05', 'Amount' => 1000],
+            ['id' => 2, 'PaidAt' => '2026-09-05', 'Amount' => 2000],
+        ]));
         // rows arrive in any order: reversals still apply in write (id) order
         $this->assertSame(['paid_at' => '2026-09-20', 'amount' => 6000], $this->standing([
             ['id' => 3, 'PaidAt' => '2026-09-20', 'Amount' => 6000],
@@ -67,6 +72,33 @@ class LatestStandingReceiptTest extends TestCase
     }
 
     public function test_ledger_invoice_carries_the_same_answer_as_the_last_paid_date(): void
+    {
+        [$sc, $bill, $token] = $this->paidBill();
+        Payment::create(['InvoiceID' => $bill->id, 'Amount' => 6000, 'PaidAt' => '2026-09-06', 'Method' => 'cash']);
+        Payment::create(['InvoiceID' => $bill->id, 'Amount' => -6000, 'PaidAt' => '2026-09-07', 'Method' => 'void']);
+        Payment::create(['InvoiceID' => $bill->id, 'Amount' => 6000, 'PaidAt' => '2026-09-20', 'Method' => 'transfer']);
+
+        $invoice = $this->ledgerInvoice($sc, $bill, $token);
+        $this->assertSame(['paid_at' => '2026-09-20', 'amount' => 6000], $invoice['standing_payment']);
+        $this->assertSame($invoice['standing_payment']['paid_at'], app(BillingPayableResolver::class)->lastPaidAtByStudentClassIds([(int) $sc->ID])[(int) $sc->ID]);
+    }
+
+    /** Paid only by moved credit (轉課): the card shows the transfer date; the list's 最後繳費 (cash receipts only) stays empty. */
+    public function test_a_bill_paid_only_by_moved_credit_shows_the_transfer_date_on_the_ledger_only(): void
+    {
+        [$sc, $bill, $token] = $this->paidBill();
+        Payment::create(['InvoiceID' => $bill->id, 'Amount' => 6000, 'PaidAt' => '2026-09-12', 'Method' => 'transfer_in']);
+
+        $this->assertSame(['paid_at' => '2026-09-12', 'amount' => 6000, 'method' => 'transfer_in'], $this->ledgerInvoice($sc, $bill, $token)['standing_payment']);
+        $this->assertArrayNotHasKey((int) $sc->ID, app(BillingPayableResolver::class)->lastPaidAtByStudentClassIds([(int) $sc->ID]));
+
+        // moved back out: nothing stands
+        Payment::create(['InvoiceID' => $bill->id, 'Amount' => -6000, 'PaidAt' => '2026-09-13', 'Method' => 'transfer_reversal_out']);
+        $this->assertNull($this->ledgerInvoice($sc, $bill, $token)['standing_payment']);
+    }
+
+    /** @return array{0: StudentClass, 1: Invoice, 2: string} */
+    private function paidBill(): array
     {
         $user = User::create(['LoginName' => 'standing@test.com', 'Name' => 'd', 'PSW' => 'x', 'type' => 'A', 'phone' => 912345678]);
         UserCampus::create(['CampusID' => 1, 'UserID' => $user->id, 'Admin' => 1, 'Approved' => 1]);
@@ -80,14 +112,13 @@ class LatestStandingReceiptTest extends TestCase
         ]);
         $bill = Invoice::create(['StudentID' => $student->id, 'StudentClassID' => $sc->ID, 'IssueDate' => '2026-09-01', 'DueDate' => '2026-09-15',
             'TotalAmount' => 6000, 'PaidAmount' => 6000, 'Status' => 'paid']);
-        Payment::create(['InvoiceID' => $bill->id, 'Amount' => 6000, 'PaidAt' => '2026-09-06', 'Method' => 'cash']);
-        Payment::create(['InvoiceID' => $bill->id, 'Amount' => -6000, 'PaidAt' => '2026-09-07', 'Method' => 'void']);
-        Payment::create(['InvoiceID' => $bill->id, 'Amount' => 6000, 'PaidAt' => '2026-09-20', 'Method' => 'transfer']);
 
-        $invoice = collect($this->withHeaders(['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])
+        return [$sc, $bill, $token];
+    }
+
+    private function ledgerInvoice(StudentClass $sc, Invoice $bill, string $token): array
+    {
+        return collect($this->withHeaders(['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])
             ->getJson("/api/v1/accounting/ledger?branch_id=1&student_class_id={$sc->ID}")->assertOk()->json('invoices'))->firstWhere('id', $bill->id);
-
-        $this->assertSame(['paid_at' => '2026-09-20', 'amount' => 6000], $invoice['standing_payment']);
-        $this->assertSame($invoice['standing_payment']['paid_at'], app(BillingPayableResolver::class)->lastPaidAtByStudentClassIds([(int) $sc->ID])[(int) $sc->ID]);
     }
 }

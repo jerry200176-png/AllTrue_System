@@ -484,7 +484,8 @@ class AccountingController extends Controller
 
         // 更正帳單: the key is only present on rows of a campus where it is on (absent = no button).
         $correctCampusOn = \App\Services\Billing\BillCorrection::campusOn((int) $student->CampusID);
-        $invoiceRows = $invoices->map(function (Invoice $invoice) use ($correctCampusOn, $restatedPaymentIds, $reportsByPaymentId, $reportsById, $reportsByInvoiceId, $firstSessionDates, $subjectNames, &$anomalies) {
+        $resolver = app(BillingPayableResolver::class);
+        $invoiceRows = $invoices->map(function (Invoice $invoice) use ($correctCampusOn, $restatedPaymentIds, $reportsByPaymentId, $reportsById, $reportsByInvoiceId, $firstSessionDates, $subjectNames, &$anomalies, $resolver) {
             $invoiceStudentClassId = (int) $invoice->getAttribute('StudentClassID');
             $invoiceStudentClass = $invoice->getRelationValue('studentClass');
             $historical = $invoiceStudentClass === null;
@@ -685,10 +686,10 @@ class AccountingController extends Controller
                 'outstanding_amount' => $outstanding,
                 'status' => $status,
                 // 繳費日 line: the latest receipt still standing after reversals, by the resolver's own last-paid rule (no queries).
-                'standing_payment' => app(BillingPayableResolver::class)->latestStandingReceipt($payments->map(fn ($p) => (object) [
+                'standing_payment' => $resolver->latestStandingReceipt($payments->map(fn ($p) => (object) [
                     'id' => (int) $p->id, 'Amount' => $p->Amount, 'Method' => $p->Method, 'PaidAt' => $p->PaidAt, 'payment_report_id' => $p->payment_report_id,
                     'report_payment_id' => $p->payment_report_id === null ? null : $reportsById->get((int) $p->payment_report_id)?->payment_id,
-                ])),
+                ])) ?? $this->standingCreditMovement($payments),
                 'can_direct_void' => !$historical && (!in_array($status, ['paid', 'partial', 'void'], true) || ($status === 'paid' && $invoice->zero_amount_reason !== null && $paymentRows->isEmpty())
                         // An unmarked NT$0 bill marked paid with no confirmed receipt left (an old 「0 元」 登記); same rule as BillingController::voidInvoice.
                         || ($status === 'paid' && $invoice->zero_amount_reason === null && (int) $totalAmount === 0 && !$invoiceReports->contains(fn ($r) => in_array($r['status'], ['confirmed', 'pending'], true))
@@ -1277,6 +1278,22 @@ class AccountingController extends Controller
     }
 
     /** Tutoring has no payment obligation (PaymentReportController::tutoringPaymentBlocked); one rule for scope and courses[]. */
+    /**
+     * Ledger only: a bill paid by moved credit (轉課 transfer_in) has no cash receipt, so the resolver's last-paid rule (which
+     * drives the list's 最後繳費) gives none. The card still shows the latest transfer_in while the bill's moved credit nets above 0.
+     *
+     * @return array{paid_at: string, amount: int, method: string}|null
+     */
+    private function standingCreditMovement(\Illuminate\Support\Collection $payments): ?array
+    {
+        $credit = $payments->filter(fn ($p) => Payment::isCreditMovement($p));
+        $net = (int) $credit->sum(fn ($p) => (int) $p->Amount);
+        $latest = $credit->filter(fn ($p) => (string) $p->Method === 'transfer_in' && (string) ($p->PaidAt ?? '') !== '')
+            ->sortBy(fn ($p) => [(string) $p->PaidAt, (int) $p->id])->last();
+
+        return $net > 0 && $latest ? ['paid_at' => substr((string) $latest->PaidAt, 0, 10), 'amount' => min($net, (int) $latest->Amount), 'method' => 'transfer_in'] : null;
+    }
+
     private function hasNoPaymentObligation(StudentClass $class): bool
     {
         return strtolower(trim((string) $class->getAttribute('ClassType'))) === 'tutoring';
