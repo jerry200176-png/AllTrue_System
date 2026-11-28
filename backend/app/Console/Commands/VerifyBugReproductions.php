@@ -55,6 +55,16 @@ class VerifyBugReproductions extends Command
         ));
         $freeingStatuses = $quoted(SessionStatus::futureReservationExclusionStatuses());
         $usageLocks = $quoted(StudentClass::USAGE_LOCK_CLOSURES);
+        // Shared by the two lesson-vs-bill shapes below (aliases cs / sc / i).
+        $monthlyTaught = "sc.ScheduleMode = 'date' AND COALESCE(sc.PackageID, 0) = 0 AND LOWER(TRIM(COALESCE(sc.ClassType, ''))) <> 'tutoring'
+            AND COALESCE(sc.closed_reason, '') NOT IN ('waived', 'refunded')
+            AND LOWER(COALESCE(cs.Status, '')) IN ('attended', 'completed', 'late')";
+        $liveBill = "(i.Status IS NULL OR i.Status NOT IN ('void', 'cancelled'))";
+        // Line ownership as BillingPeriod::datesCoveredByBills: a line linked to any contract of the same student and subject (under any
+        // bill header), else the lone unowned line of a bill headed by one of them.
+        $mine = "(SELECT sib.ID FROM StudentClass sib WHERE sib.StudentID = sc.StudentID AND sib.SubjectID = sc.SubjectID)";
+        $ownLine = "(ii.StudentClassID IN {$mine} OR (COALESCE(ii.StudentClassID, 0) = 0 AND i.StudentClassID IN {$mine}
+            AND (SELECT COUNT(*) FROM InvoiceItem x WHERE x.InvoiceID = i.id) = 1))";
         return [
             [
                 'key' => 'attended_session_without_learning_record',
@@ -276,6 +286,39 @@ class VerifyBugReproductions extends Command
                                 AND (i.Status IS NULL OR i.Status NOT IN ('void', 'cancelled'))
                                 AND i.billing_period = DATE_FORMAT(cs.SessionDate, '%Y-%m'))
                             GROUP BY cs.StudentClassID, DATE_FORMAT(cs.SessionDate, '%Y-%m')) t",
+            ],
+            [
+                // in-app #607 (#5702): a taught lesson of a monthly contract dated before its StartDate that no live bill's dated
+                // line covers. Billing bounds a month by the contract, so nothing could collect it. Observe-only.
+                'key' => 'lesson_before_start_unbilled',
+                'label' => 'Monthly contracts: taught lessons dated before the contract start that no bill line covers',
+                'issue' => '#5702', 'enforced' => false,
+                'sql' => "SELECT COUNT(*) AS c FROM ClassSession cs JOIN StudentClass sc ON sc.ID = cs.StudentClassID
+                          WHERE {$monthlyTaught} AND " . ContractPeriod::SQL_BEFORE_START . "
+                            AND NOT EXISTS (SELECT 1 FROM InvoiceItem ii JOIN Invoice i ON i.id = ii.InvoiceID
+                              WHERE {$liveBill} AND {$ownLine}
+                                AND DATE(cs.SessionDate) BETWEEN DATE(ii.PeriodStart) AND DATE(ii.PeriodEnd))",
+            ],
+            [
+                // in-app #608 (#5703): a taught lesson inside the contract dates that no live bill covers (dated line holding the
+                // day; a bill with no dated line covers its billing_period month), in a month that already has a bill (labelled
+                // with it, or a line overlapping it). No second bill is opened for that month, so it needs a person. Observe-only.
+                'key' => 'lesson_uncovered_in_billed_month',
+                'label' => 'Monthly contracts: taught lessons left out of the bill of a month that already has one',
+                'issue' => '#5703', 'enforced' => false,
+                'sql' => "SELECT COUNT(*) AS c FROM ClassSession cs JOIN StudentClass sc ON sc.ID = cs.StudentClassID
+                          WHERE {$monthlyTaught} AND sc.StartDate IS NOT NULL AND sc.EndDate IS NOT NULL
+                            AND DATE(cs.SessionDate) BETWEEN DATE(sc.StartDate) AND DATE(sc.EndDate)
+                            AND NOT EXISTS (SELECT 1 FROM InvoiceItem ii JOIN Invoice i ON i.id = ii.InvoiceID
+                              WHERE {$liveBill} AND {$ownLine}
+                                AND DATE(cs.SessionDate) BETWEEN DATE(ii.PeriodStart) AND DATE(ii.PeriodEnd))
+                            AND NOT EXISTS (SELECT 1 FROM Invoice i WHERE i.StudentClassID IN {$mine} AND {$liveBill}
+                              AND i.billing_period = DATE_FORMAT(cs.SessionDate, '%Y-%m') AND NOT EXISTS (SELECT 1 FROM InvoiceItem ii
+                                WHERE ii.InvoiceID = i.id AND ii.PeriodStart IS NOT NULL AND ii.PeriodEnd IS NOT NULL))
+                            AND (EXISTS (SELECT 1 FROM Invoice i WHERE i.StudentClassID IN {$mine} AND {$liveBill}
+                                AND i.billing_period = DATE_FORMAT(cs.SessionDate, '%Y-%m'))
+                              OR EXISTS (SELECT 1 FROM InvoiceItem ii JOIN Invoice i ON i.id = ii.InvoiceID WHERE {$liveBill} AND {$ownLine}
+                                AND DATE(ii.PeriodStart) <= LAST_DAY(cs.SessionDate) AND DATE(ii.PeriodEnd) >= DATE_FORMAT(cs.SessionDate, '%Y-%m-01')))",
             ],
         ];
     }
