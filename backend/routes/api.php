@@ -232,6 +232,11 @@ Route::prefix('v1')->group(function () {
         ->whereNumber('campus')
         ->where('file', '[0-9a-f-]{36}\.(jpg|png)')
         ->name('swipe-photo.show');
+    // 公開但需相對簽章（30 分鐘過期），供聊天室附件私有讀取（#889）。
+    Route::get('chat/threads/{threadId}/messages/{messageId}/attachment', [ChatController::class, 'showAttachment'])
+        ->whereNumber(['threadId', 'messageId'])
+        ->middleware('throttle:120,1')
+        ->name('chat.attachment.show');
     // SEC-002: 10 req/IP/10 min — prevents bulk account creation.
     Route::post('auth/register', [AuthController::class, 'register'])
         ->middleware('throttle:10,10');

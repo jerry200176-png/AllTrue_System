@@ -3,11 +3,13 @@
 namespace App\Http\Controllers;
 
 use App\Events\ChatMessageCreated;
+use App\Models\ChatMessage;
 use App\Models\ChatThread;
 use App\Models\ChatThreadMember;
 use App\Models\User;
 use App\Services\ChatService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\URL;
 
 class ChatController extends Controller
 {
@@ -266,6 +268,53 @@ class ChatController extends Controller
         }
 
         return response()->json($payload, 201);
+    }
+
+    /**
+     * GET /api/v1/chat/threads/{threadId}/messages/{messageId}/attachment?expires=&signature=
+     * Signed chat attachment preview/download (#889): serves from private local disk with legacy public fallback.
+     */
+    public function showAttachment(Request $request, int $threadId, int $messageId)
+    {
+        if (!URL::hasValidSignature($request, false)) {
+            abort(403);
+        }
+
+        $message = ChatMessage::query()
+            ->where('thread_id', $threadId)
+            ->whereKey($messageId)
+            ->whereNull('deleted_at')
+            ->first();
+        if (!$message instanceof ChatMessage) {
+            abort(404);
+        }
+
+        $path = (string) ($message->media_url ?? '');
+        $disk = ChatService::resolveAttachmentDisk($path);
+        if ($disk === null) {
+            abort(404);
+        }
+
+        $fullPath = $disk->path($path);
+        $detectedMime = @mime_content_type($fullPath) ?: (string) ($message->media_type ?? '');
+        $safeInlineImages = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+        $headers = [
+            'X-Content-Type-Options' => 'nosniff',
+        ];
+
+        if (!in_array(strtolower($detectedMime), $safeInlineImages, true)) {
+            $ext = preg_replace('/[^A-Za-z0-9]/', '', (string) pathinfo($path, PATHINFO_EXTENSION));
+            $filename = "chat-{$threadId}-message-{$messageId}" . ($ext !== '' ? ".{$ext}" : '');
+            $headers['Content-Type'] = 'application/octet-stream';
+            $headers['Content-Disposition'] = "attachment; filename=\"{$filename}\"";
+        } else {
+            $headers['Content-Type'] = strtolower($detectedMime);
+        }
+
+        $response = response()->file($fullPath, $headers);
+        $response->setPrivate()->setMaxAge(300);
+
+        return $response;
     }
 
     // ── Mark read ──────────────────────────────────────────────────
