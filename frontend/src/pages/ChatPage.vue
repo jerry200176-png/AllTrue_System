@@ -742,8 +742,23 @@ async function openImagePreview(msg) {
 }
 
 async function openFileAttachment(msg) {
-  const url = await resolveFreshMediaUrl(msg);
-  if (url) window.open(url, '_blank', 'noopener,noreferrer');
+  if (!msg?.media_url) return;
+  if (!isSignedUrlExpiring(msg.media_url)) {
+    window.open(msg.media_url, '_blank', 'noopener,noreferrer');
+    return;
+  }
+  const win = window.open('about:blank', '_blank');
+  if (win) win.opener = null;
+  const url = await resolveFreshMediaUrl(msg, true);
+  if (!url) {
+    win?.close();
+    return;
+  }
+  if (win && !win.closed) {
+    win.location.href = url;
+  } else {
+    window.open(url, '_blank', 'noopener,noreferrer');
+  }
 }
 
 async function refreshExpiredImage(msg) {
@@ -762,8 +777,9 @@ async function pollNewMessages(threadId) {
     for (const m of incoming) {
       const existing = existingById.get(m.id);
       if (existing) {
-        if (m.media_url && existing.media_url !== m.media_url) {
+        if (m.media_url && (!existing.media_url || isSignedUrlExpiring(existing.media_url))) {
           existing.media_url = m.media_url;
+          refreshedImageErrors.delete(existing.id);
         }
       } else {
         newMsgs.push(m);

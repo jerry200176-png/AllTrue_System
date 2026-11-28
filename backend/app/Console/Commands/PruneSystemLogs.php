@@ -57,7 +57,7 @@ class PruneSystemLogs extends Command
                         $failedDelete = false;
                         foreach (['local', 'public'] as $diskName) {
                             $disk = Storage::disk($diskName);
-                            if ($disk->exists($path) && !$disk->delete($path) && $disk->exists($path)) {
+                            if (!$disk->delete($path) && $disk->exists($path)) {
                                 $failedDelete = true;
                             }
                         }

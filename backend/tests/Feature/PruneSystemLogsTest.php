@@ -56,6 +56,7 @@ final class PruneSystemLogsTest extends TestCase
     public function test_an_attachment_that_cannot_be_deleted_keeps_its_row_for_the_next_run(): void
     {
         $emptyDisk = \Mockery::mock(\Illuminate\Contracts\Filesystem\Filesystem::class);
+        $emptyDisk->shouldReceive('delete')->andReturnTrue();
         $emptyDisk->shouldReceive('exists')->andReturnFalse();
         $stuckDisk = \Mockery::mock(\Illuminate\Contracts\Filesystem\Filesystem::class);
         $stuckDisk->shouldReceive('delete')->andReturnFalse();
