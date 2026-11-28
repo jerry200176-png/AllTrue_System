@@ -5410,7 +5410,10 @@ const submitEdit = async () => {
           : '';
         editSaveError.value = {
           code: err?.code || '',
-          message: err?.message || '更新失敗，請檢查欄位後再試。',
+          // The clash itself shows under its slot row; this alert only points there.
+          message: (Array.isArray(err?.conflicts) && err.conflicts.some((c) => c?.day_of_week != null && c?.message))
+            ? '時段已滿，原因寫在上面撞到的那一段下面。'
+            : (err?.message || '更新失敗，請檢查欄位後再試。'),
           details,
           hint: editabilityNextStepLabel(editabilityNextStepForError(err)),
           nextStep: editabilityNextStepForError(err),

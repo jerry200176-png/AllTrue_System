@@ -276,11 +276,11 @@
               </div>
               <div
                 v-if="slotConflict(slot)"
-                role="alert"
+                role="status"
                 class="tw:flex tw:flex-wrap tw:items-center tw:justify-between tw:gap-2 tw:rounded-xl tw:bg-[var(--ds-danger-wash)] tw:p-3 tw:text-[var(--ds-danger-text)]"
                 data-testid="course-slot-conflict"
               >
-                <span class="tw:min-w-0 tw:text-pretty">{{ slotConflict(slot).message }}</span>
+                <span class="tw:min-w-0 tw:text-pretty">{{ slotConflict(slot) }}</span>
                 <button type="button" :class="rowAction.secondary" data-testid="course-slot-change-time" @click="focusSlotStart(idx)">換時間</button>
               </div>
             </div>
@@ -474,9 +474,11 @@ const slotSummary = (slot) => {
   return `週${dayLabelMap[Number(slot?.day)] || '？'} ${start}–${computeEndTime(start, hours) || '—'}（${hours} 小時）`;
 };
 // The server names a recurring clash by the edited row's weekday and start time; its message starts with the clash dates.
-const slotConflict = (slot) => (props.slotConflicts || []).find((c) => c?.message
+// A row can clash on teacher and room at once, so every matching message is shown.
+const slotConflict = (slot) => (props.slotConflicts || []).filter((c) => c?.message
   && Number(c.day_of_week) === Number(slot?.day)
-  && String(c.start_time || '').slice(0, 5) === String(slot?.start_time || form.start_time || '').slice(0, 5));
+  && String(c.start_time || '').slice(0, 5) === String(slot?.start_time || form.start_time || '').slice(0, 5))
+  .map((c) => c.message).join(' ');
 const focusSlotStart = (idx) => startSelects[idx]?.focus();
 const hasPerDayDuration = computed(() => {
   const vals = (form.day_time_slots || [])

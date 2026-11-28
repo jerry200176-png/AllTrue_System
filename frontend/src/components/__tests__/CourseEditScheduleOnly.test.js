@@ -51,12 +51,15 @@ describe('paid schedule-only editor', () => {
     const wrapper = mount(CourseEditForm, { attachTo: document.body, props: { ...props(), slotConflicts: [
       { type: 'teacher_capacity', day_of_week: 1, start_time: '20:00', message },
       { type: 'teacher_capacity', day_of_week: 3, start_time: '20:00', message: '別的時段' },
+      { type: 'room_capacity', day_of_week: 1, start_time: '20:00', message: '教室也滿了' },
     ] } });
     await flushPromises();
     const alerts = wrapper.findAll('[data-testid="course-slot-conflict"]');
     expect(alerts).toHaveLength(1);
-    expect(alerts[0].attributes('role')).toBe('alert');
+    expect(alerts[0].attributes('role')).toBe('status');
     expect(alerts[0].text()).toContain(message);
+    expect(alerts[0].text()).toContain('教室也滿了');
+    expect(alerts[0].text()).not.toContain('別的時段');
     await alerts[0].get('[data-testid="course-slot-change-time"]').trigger('click');
     expect(document.activeElement).toBe(wrapper.find('select[aria-label="第1天開始時間"]').element);
     await wrapper.find('select[aria-label="第1天開始時間"]').setValue('18:00'); await flushPromises();

@@ -3395,8 +3395,11 @@ const persistCourse = async () => {
         return;
       }
       const err = await res.json().catch(() => ({}));
-      courseEditError.value = parseApiErrorMessage(err, '更新課程失敗');
       courseEditConflicts.value = Array.isArray(err?.conflicts) ? err.conflicts : [];
+      // The clash itself shows under its slot row; the footer only points there.
+      courseEditError.value = courseEditConflicts.value.some((c) => c?.day_of_week != null && c?.message)
+        ? '時段已滿，原因寫在上面撞到的那一段下面。'
+        : parseApiErrorMessage(err, '更新課程失敗');
       return;
     } catch (error) {
       // A Laravel course must never silently fall through to the legacy
