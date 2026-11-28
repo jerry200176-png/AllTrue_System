@@ -1047,6 +1047,7 @@ import { ref, onMounted, onActivated, onDeactivated, watch, computed, nextTick }
 import { supabase } from '../supabase';
 import { authedFetch, getAccessToken } from '../lib/authedFetch';
 import { humanizeApiErrorMessage } from '../lib/humanizeApiErrorMessage.js';
+import { slotSaveErrorMessage } from '../lib/scheduleDisplay.js';
 import { isCourseSettled, isPaymentNoticeStatus } from '../lib/paymentStatus.js';
 import {
   closedReason as effectiveClosedReason, courseHistoryReason, courseProgress, isLowRemaining, isMonthlyPaymentType, isPackageMember, isSessionPaymentLow,
@@ -3397,9 +3398,7 @@ const persistCourse = async () => {
       const err = await res.json().catch(() => ({}));
       courseEditConflicts.value = Array.isArray(err?.conflicts) ? err.conflicts : [];
       // The clash itself shows under its slot row; the footer only points there.
-      courseEditError.value = courseEditConflicts.value.some((c) => c?.day_of_week != null && c?.message)
-        ? '時段已滿，原因寫在上面撞到的那一段下面。'
-        : parseApiErrorMessage(err, '更新課程失敗');
+      courseEditError.value = slotSaveErrorMessage(courseEditConflicts.value, form.day_time_slots, parseApiErrorMessage(err, '更新課程失敗'));
       return;
     } catch (error) {
       // A Laravel course must never silently fall through to the legacy

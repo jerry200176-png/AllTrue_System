@@ -1488,6 +1488,7 @@ const dialogField = {
 };
 import { ChevronRight, Focus, Info, Plus, UserSearch } from 'lucide-vue-next';
 import { isCourseSettled, isPaymentNoticeStatus } from '../lib/paymentStatus.js';
+import { slotSaveErrorMessage } from '../lib/scheduleDisplay.js';
 import { formatCourseRef, formatCoursePeriod, courseNumberFromSearch } from '../lib/studentBillingRows.js';
 import { clearRowCachesForWinningRequest, createListLoadOutcome, fallbackListRows, isCurrentListRequest } from '../lib/listRefreshState.js';
 import { studentSchoolGradeLabel } from '../lib/studentSchoolGrade.js';
@@ -5411,9 +5412,7 @@ const submitEdit = async () => {
         editSaveError.value = {
           code: err?.code || '',
           // The clash itself shows under its slot row; this alert only points there.
-          message: (Array.isArray(err?.conflicts) && err.conflicts.some((c) => c?.day_of_week != null && c?.message))
-            ? '時段已滿，原因寫在上面撞到的那一段下面。'
-            : (err?.message || '更新失敗，請檢查欄位後再試。'),
+          message: slotSaveErrorMessage(err?.conflicts, form.day_time_slots, err?.message || '更新失敗，請檢查欄位後再試。'),
           details,
           hint: editabilityNextStepLabel(editabilityNextStepForError(err)),
           nextStep: editabilityNextStepForError(err),
