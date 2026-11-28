@@ -456,7 +456,10 @@ const nothingTaught = computed(() => isMonthly.value && state.value === 'ready' 
 // An ordinary unpaid card already shows this exact amount in its expanded money row.
 const repeatsUnpaidAmount = computed(() => !props.pendingReport && !legacyUnverified.value && !noObligation.value && !waived.value
   && !followerPointer.value && !nothingTaught.value && props.outstanding > 0 && props.amounts?.owed === props.outstanding);
-const recordBlock = computed(() => (!(props.outstanding > 0) && props.course.record_block?.message) || '');
+// The server's director-record refusal (RecordGate). A card that already reads paid does not repeat "已收齊" as a warning.
+const recordBlock = computed(() => (!(props.outstanding > 0) && !(props.course.record_block?.code === 'course_already_paid' && (props.course.paid || fullyCollected.value))
+  && !(props.course.record_block?.code === 'lessons_outside_contract' && outsideDates.value.length)
+  && props.course.record_block?.message) || '');
 const canRecord = computed(() => !recordBlock.value && !nothingTaught.value && !props.pendingReport && !followerPointer.value && !outsideDates.value.length && !legacyResolvable.value && !noObligation.value && !waived.value
   && (props.outstanding > 0 || (!props.course.paid && !fullyCollected.value)));
 // Same two places the card used to offer 開帳單: nothing owed on an unpaid bill-less term, or a collected term with a ready renewal draft.
