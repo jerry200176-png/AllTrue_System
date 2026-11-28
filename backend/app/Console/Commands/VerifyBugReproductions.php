@@ -59,8 +59,10 @@ class VerifyBugReproductions extends Command
         $monthlyTaught = "sc.ScheduleMode = 'date' AND COALESCE(sc.PackageID, 0) = 0 AND LOWER(TRIM(COALESCE(sc.ClassType, ''))) <> 'tutoring'
             AND LOWER(COALESCE(cs.Status, '')) IN ('attended', 'completed', 'late')";
         $liveBill = "(i.Status IS NULL OR i.Status NOT IN ('void', 'cancelled'))";
-        // Line ownership as BillingPeriod::datesCoveredByBills: a line linked to the contract (under any bill header), else the lone unowned line of its own bill.
-        $ownLine = "(ii.StudentClassID = cs.StudentClassID OR (COALESCE(ii.StudentClassID, 0) = 0 AND i.StudentClassID = cs.StudentClassID
+        // Line ownership as BillingPeriod::datesCoveredByBills: a line linked to any contract of the same student and subject (under any
+        // bill header), else the lone unowned line of a bill headed by one of them.
+        $mine = "(SELECT sib.ID FROM StudentClass sib WHERE sib.StudentID = sc.StudentID AND sib.SubjectID = sc.SubjectID)";
+        $ownLine = "(ii.StudentClassID IN {$mine} OR (COALESCE(ii.StudentClassID, 0) = 0 AND i.StudentClassID IN {$mine}
             AND (SELECT COUNT(*) FROM InvoiceItem x WHERE x.InvoiceID = i.id) = 1))";
         return [
             [

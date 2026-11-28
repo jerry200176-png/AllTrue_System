@@ -342,6 +342,11 @@ class VerifyBugReproductionsTest extends TestCase
         $bill($shared, '2026-09', ['2026-08-28', '2026-09-30'], 'paid', $early);
         $this->assertSame(1, $this->condition('lesson_before_start_unbilled')['count']);
         $bill($shared, '2026-09', ['2026-08-28', '2026-09-30']);
+        // A lesson moved to another contract of the same student and subject stays covered by the first contract's line.
+        $moved = $this->course($monthly);
+        DB::table('StudentClass')->where('ID', $moved)->update(['StudentID' => DB::table('StudentClass')->where('ID', $early)->value('StudentID'),
+            'SubjectID' => DB::table('StudentClass')->where('ID', $early)->value('SubjectID')]);
+        $this->classSession($moved, 'attended', '2026-08-29');
         $row = $this->condition('lesson_before_start_unbilled');
         $this->assertSame([0, false], [$row['count'], $row['enforced']]);
 
