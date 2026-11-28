@@ -465,6 +465,11 @@ class MonthlyCalendarMonthCollectionTest extends TestCase
         $this->assertSame('month_partly_billed', $course['record_block']['code']);
         $this->assertNull($course['collection_period']);
 
+        // The stored paid marks do not decide: without them the lessons are still refused, and no second bill appears.
+        $bill->update(['Status' => 'unpaid', 'PaidAmount' => 0]);
+        $this->record($sc, 1650)->assertStatus(422);
+        $this->assertSame([['2026-08', 3300]], $this->bills($sc));
+
         // A month no bill touches is still collected the normal way (no block).
         $clean = $this->course('2026-08-31', '2026-09-30', ['2026-08-31' => 'attended', '2026-09-07' => 'attended']);
         $this->assertNull(app(MonthlyBillingService::class)->partlyBilledMonth($clean));

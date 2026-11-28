@@ -462,6 +462,9 @@ class PaymentReportController extends Controller
                     ->exists();
             }
 
+            if (! $invoice && $sc && !$legacyFlagBackfill && ($partly = $this->monthlyBilling->partlyBilledMonth($sc))) {
+                return response()->json($partly, 422); // #5703: same rule as directorRecord
+            }
             if (! $invoice && $sc && !$legacyFlagBackfill && ((int) ($sc->Paid ?? 0) === 1 || $hasPaidInvoice) && !$this->unbilledMonthStillOwed($sc, $hasPaidInvoice)) {
                 return $this->duplicateCoursePaymentResponse('paid', $sc);
             }
@@ -740,6 +743,10 @@ class PaymentReportController extends Controller
                     ->exists();
             }
 
+            // #5703: with no open bill, a month that already has one gets no second bill, whatever the stored paid marks say.
+            if (! $invoice && ($partly = $this->monthlyBilling->partlyBilledMonth($lockedCourse))) {
+                return response()->json($partly, 422);
+            }
             if (! $invoice && ((int) ($sc->Paid ?? 0) === 1 || $hasPaidInvoice) && !$this->unbilledMonthStillOwed($lockedCourse, $hasPaidInvoice)) {
                 return $this->duplicateCoursePaymentResponse('paid', $lockedCourse);
             }

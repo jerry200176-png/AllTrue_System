@@ -144,7 +144,7 @@ class MonthlyBillingService
 
     /**
      * #5703 (Founder 2026-11-28, option A): the oldest month that still has countable lessons no bill covers, when that month
-     * ALREADY carries a bill. No second bill is opened for it, so 登記收款 has nothing to collect against; the caller refuses
+     * is ALREADY partly covered by, or labelled on, a bill. No second bill is opened for it, so 登記收款 has nothing to collect against; the caller refuses
      * with this plain reason instead of "已收齊". Null when there is no such month or coverage is unreadable.
      *
      * @param  Collection<int, Invoice>|null  $invoices  this contract's non-void bills with items, when already loaded
@@ -159,7 +159,7 @@ class MonthlyBillingService
         $dates = implode('、', array_map(fn (string $d) => Carbon::parse($d)->format('n/j'), $month['lesson_dates']));
 
         return ['code' => 'month_partly_billed', 'billing_period' => $month['billing_period'], 'lesson_dates' => $month['lesson_dates'],
-            'message' => sprintf('%s 的課還沒算進帳單，但 %d 月已經開過帳單，同一個月不會再開第二張，所以這裡不能登記。請到學生帳務更正那張帳單；不能更正時請回報。沒有登記任何款項。',
+            'message' => sprintf('%s 的課還沒算進任何帳單，但 %d 月已有其他堂算在原本的帳單裡，同一個月不會再開第二張，所以這裡不能登記。請把這幾堂補進原帳單：學生帳務有「更正帳單」的分校在那裡更正，沒有的請回報。沒有登記任何款項。',
                 $dates, (int) substr($month['billing_period'], 5, 2))];
     }
 
