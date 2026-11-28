@@ -416,7 +416,10 @@ final class PopOperationService
         if (!in_array($phase, ['execute', 'verify', 'rollback'], true) || !$this->coCommitsWithRecord((string) $request->strategy_id, $request)) return $run();
         $this->phaseFailure = null;
         $level = DB::transactionLevel();
+        $isolation = $this->readCommittedForExactRepair((string) $request->strategy_id);
+        try {
         try { return DB::transaction(function () use ($requestId, $phase, $run): array {
+            $this->phaseFailure = null; // each retry starts clean: a refusal before the phase begins is never a failed receipt
             DB::table('pop_operation_requests')->where('id', $requestId)->lockForUpdate()->first();
             if ($phase === 'verify' && DB::table('pop_execution_records')->where('operation_id', $requestId)->where('phase', 'rollback')->exists()) throw new RuntimeException('POP verification is blocked after rollback begins.');
             $result = $run();
@@ -433,6 +436,24 @@ final class PopOperationService
             if (DB::transactionLevel() > $level) DB::rollBack($level);
             return DB::transaction(function () use ($requestId, $record): array { DB::table('pop_operation_requests')->where('id', $requestId)->lockForUpdate()->first(); return $record(); });
         }
+        } finally {
+            if ($isolation !== null) DB::statement('SET SESSION TRANSACTION ISOLATION LEVEL ' . $isolation);
+        }
+    }
+
+    /**
+     * #4458 Codex P1: these repairs lock their rows inside run()'s outer transaction, then read. Under REPEATABLE READ the
+     * snapshot is taken before those locks, so a write committed while they waited stays invisible to the checks. READ
+     * COMMITTED (session-wide, so every retry gets it) keeps each read current; returns the level to restore after, or null.
+     */
+    private function readCommittedForExactRepair(string $strategy): ?string
+    {
+        if (!$this->dbOnlyExactRepair($strategy) || DB::transactionLevel() !== 0 || !in_array(DB::getDriverName(), ['mysql', 'mariadb'], true)) return null;
+        DB::statement('SET SESSION TRANSACTION ISOLATION LEVEL READ COMMITTED');
+
+        // config/database.php sets no isolation level, so the connection runs at the InnoDB default (MariaDB names the
+        // session variable differently from MySQL 8, so it is not read back).
+        return 'REPEATABLE READ';
     }
 
     private function runPhase(string $requestId, string $phase, ?string $token = null, ?string $commitSha = null, string $actor = 'pop-runner', ?int $actorId = null, ?string $actorRole = null, ?array $context = null): array
@@ -512,6 +533,7 @@ final class PopOperationService
         $this->phaseFailure = (string) $entry['strategy_class'] === \App\Operations\Strategies\CourseContractChainRebalanceStrategy::class
             || (string) $entry['strategy_class'] === Strategies\HistoricalOrphanInvoiceCloseoutStrategy::class
             || (string) $entry['strategy_class'] === Strategies\SettledPackageRetirementStrategy::class
+            || $this->dbOnlyExactRepair((string) $entry['strategy_class'])
             || $this->isNativePastScheduledRecovery($request) ? $failed : null;
         try {
             if ($phase === 'execute') {
@@ -557,7 +579,9 @@ final class PopOperationService
                 $actor, $approval, $commitSha, $this->durationMs($startedAt));
             return $this->coCommitsWithRecord($strategy, $request)
                 ? DB::transaction($complete, 3) : $complete();
-        } catch (Throwable) {
+        } catch (Throwable $error) {
+            // #4458 review: a nested deadlock is not retried by the strategy's own transaction; let run()'s outer one retry it.
+            if ($this->phaseFailure !== null && $this->dbOnlyExactRepair((string) $entry['strategy_class']) && \App\Support\DeadlockRetry::causedBy($error)) throw $error;
             if ($this->phaseFailure !== null) throw new PopPhaseAborted($failed);
             return $failed();
         }
@@ -568,11 +592,29 @@ final class PopOperationService
     {
         if ($this->isRekeyStrategy($strategy)) return false;
 
-        return $this->atomicFinancialRepair($strategy)
+        return $this->atomicFinancialRepair($strategy) || $this->dbOnlyExactRepair($strategy)
             || ($request !== null && $this->isNativePastScheduledRecovery($request))
-            || in_array(is_object($strategy) ? get_class($strategy) : $strategy, [\App\Operations\Strategies\TaughtLessonSignInRepairStrategy::class,
-                \App\Operations\Strategies\CourseContractChainRebalanceStrategy::class,
+            || in_array(is_object($strategy) ? get_class($strategy) : $strategy, [\App\Operations\Strategies\CourseContractChainRebalanceStrategy::class,
                 \App\Operations\Strategies\InappReportFollowupCommentStrategy::class], true); // self-filed support needs its origin receipt atomically
+    }
+
+    /**
+     * #4458: exact repairs that only write this database (no LINE / HTTP / file). Their data change commits together with its
+     * execute receipt (rollback snapshot) or not at all; any failure rolls the phase back whole and records the failure on its own.
+     * Not listed: the atomicFinancialRepair() set (own recovery rules), the re-key (per-row journal, READ COMMITTED) and the retired Muzha schedule.
+     */
+    private function dbOnlyExactRepair(object|string $strategy): bool
+    {
+        return in_array(is_object($strategy) ? get_class($strategy) : $strategy, [
+            Strategies\UnpaidHiddenClosuresStrategy::class, Strategies\MuzhaChenBillingCatchupStrategy::class,
+            Strategies\UnbilledBacklogCatchupStrategy::class, Strategies\PastScheduledSessionsCancelStrategy::class,
+            Strategies\Invoice1997StaleValuesStrategy::class, Strategies\Td076CollisionKeepersStrategy::class,
+            Strategies\Td076HistoryPinsStrategy::class, Strategies\PackageLedgerNetRepairStrategy::class,
+            Strategies\ContractChargeCorrectionStrategy::class, Strategies\UnusedLessonsContractCloseoutStrategy::class,
+            Strategies\SharedPoolTrimStrategy::class, Strategies\DuplicateHistoryPinRepairStrategy::class,
+            Strategies\TaughtLessonSignInRepairStrategy::class, Strategies\ForwardExtraCancelStrategy::class,
+            Strategies\ForwardOverdeductReassignStrategy::class, Strategies\DuplicateAttendedCancelStrategy::class,
+        ], true);
     }
 
     private function isRekeyStrategy(object|string $strategy): bool

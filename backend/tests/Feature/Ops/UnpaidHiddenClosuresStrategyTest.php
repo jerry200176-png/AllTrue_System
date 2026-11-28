@@ -2,6 +2,8 @@
 
 namespace Tests\Feature\Ops;
 
+use App\Operations\PopOperationCatalog;
+use App\Operations\PopOperationService;
 use App\Operations\Strategies\UnpaidHiddenClosuresManifest;
 use App\Operations\Strategies\UnpaidHiddenClosuresStrategy;
 use App\Models\PaymentReport;
@@ -136,5 +138,30 @@ final class UnpaidHiddenClosuresStrategyTest extends TestCase
         self::assertTrue($out['partial']);
         self::assertSame('settled', $this->reason(9101));
         self::assertSame('settled_pending', $this->reason(9102));
+    }
+
+    public function test_execute_receipt_failure_rolls_back_the_closure_flips(): void
+    {
+        // #4458: a DB-only exact repair commits with its execute receipt (snapshot) or not at all.
+        $service = new PopOperationService(new PopOperationCatalog(dirname(__DIR__, 4) . '/operations/catalog.yaml'));
+        $sha = str_repeat('e', 40);
+        $id = (string) $service->createDraft('unpaid-hidden-closures-20261005', self::PARAMS, 'uhc-test-' . bin2hex(random_bytes(4)), 'user:1', 'super_admin', [], 1)['id'];
+        $service->runDryRun($id, 'user:1', 1, 'super_admin', []);
+        $token = $service->approve($id, 'founder-go-unpaid-hidden-test-' . substr($id, 0, 8), 'user:2', 'super_admin', $sha, 2, [], 15)['token'];
+        $injected = false;
+        DB::connection()->beforeExecuting(function ($query, $bindings) use (&$injected): void {
+            if (!$injected && str_starts_with(strtolower($query), 'insert') && str_contains($query, '`pop_execution_records`') && in_array('execute', $bindings, true)) {
+                $injected = true;
+                throw new \RuntimeException('synthetic execute receipt persistence failure');
+            }
+        });
+        $run = $service->run($id, 'execute', $token, $sha, 'pop-pi-local');
+        self::assertTrue($injected);
+        self::assertSame(['execution_failed'], $run['errors']);
+        self::assertSame(['settled', 'completed'], [$this->reason(9101), $this->reason(9102)]);
+        $receipts = DB::table('pop_execution_records')->where('operation_id', $id)->where('phase', 'execute')->get();
+        self::assertSame(['failed'], $receipts->pluck('result')->all());
+        self::assertNull($receipts->first()->snapshot);
+        self::assertSame('failed', DB::table('pop_operation_requests')->where('id', $id)->value('status'));
     }
 }
