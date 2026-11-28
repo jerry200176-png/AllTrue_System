@@ -549,7 +549,7 @@ class BillingPayableResolver
      * The receipt latestUnreversedReceiptDate dates, with what of it still stands: the ledger's per-invoice 繳費日 line.
      * Rows: id, Amount, Method, PaidAt, payment_report_id, report_payment_id (the reversed report's payment_id), any order.
      *
-     * @param  Collection<int, object>  $payments
+     * @param  Collection<int, \stdClass>  $payments
      * @return array{paid_at: string, amount: int}|null
      */
     public function latestStandingReceipt(Collection $payments): ?array
