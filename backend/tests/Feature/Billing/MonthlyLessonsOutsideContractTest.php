@@ -154,6 +154,16 @@ class MonthlyLessonsOutsideContractTest extends TestCase
         $card = collect($this->api('getJson', "/api/v1/accounting/ledger?branch_id=1&student_class_id={$sc->ID}")->assertOk()->json('courses'))->firstWhere('id', $sc->ID);
         $this->assertSame('lesson_before_contract_start', $card['record_block']['code']);
 
+        // A pre-start lesson in the month the bill is labelled with cannot be fixed by moving the start (it would become a partly billed month).
+        $same = $this->course(['2026-10-05' => 'attended', '2026-10-12' => 'attended']);
+        $sameBill = Invoice::create(['StudentID' => $same->StudentID, 'StudentClassID' => $same->ID, 'IssueDate' => '2026-10-10', 'TotalAmount' => 1800,
+            'PaidAmount' => 1800, 'Status' => 'paid', 'billing_period' => '2026-10']);
+        $sameBill->items()->create(['StudentClassID' => $same->ID, 'Description' => 'oct', 'Amount' => 1800, 'PeriodStart' => '2026-10-10', 'PeriodEnd' => '2026-10-31']);
+        $sameNote = $billing->partlyBilledMonth($same);
+        $this->assertSame(['2026-10-05'], $sameNote['lesson_dates']);
+        $this->assertStringContainsString('請回報', $sameNote['message']);
+        $this->assertStringNotContainsString('開始日往前改', $sameNote['message']);
+
         // A later month with a lesson no bill covers is still collected the normal way: the note never blocks it.
         ClassSession::create(['StudentClassID' => $sc->ID, 'SessionDate' => '2026-11-09', 'StartTime' => '18:00', 'EndTime' => '20:00', 'Status' => 'attended']);
         $this->assertNull($billing->partlyBilledMonth($sc));
