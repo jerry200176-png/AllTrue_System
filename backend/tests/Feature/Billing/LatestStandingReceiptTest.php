@@ -97,10 +97,26 @@ class LatestStandingReceiptTest extends TestCase
         $this->assertNull($this->ledgerInvoice($sc, $bill, $token)['standing_payment']);
     }
 
+    /** Codex P2: the card line never shows more than the bill still has applied (refund, credit moved out). */
+    public function test_the_ledger_line_is_capped_by_what_the_bill_still_has_applied(): void
+    {
+        // moved credit, then refunded: nothing stands
+        [$sc, $bill, $token] = $this->paidBill();
+        Payment::create(['InvoiceID' => $bill->id, 'Amount' => 6000, 'PaidAt' => '2026-09-12', 'Method' => 'transfer_in']);
+        Payment::create(['InvoiceID' => $bill->id, 'Amount' => -6000, 'PaidAt' => '2026-09-14', 'Method' => 'refund']);
+        $this->assertNull($this->ledgerInvoice($sc, $bill, $token)['standing_payment']);
+
+        // a cash receipt, then 4000 of it moved to another contract: 2000 stands, same date
+        [$sc, $bill, $token] = $this->paidBill();
+        Payment::create(['InvoiceID' => $bill->id, 'Amount' => 6000, 'PaidAt' => '2026-09-06', 'Method' => 'cash']);
+        Payment::create(['InvoiceID' => $bill->id, 'Amount' => -4000, 'PaidAt' => '2026-09-10', 'Method' => 'transfer_out']);
+        $this->assertSame(['paid_at' => '2026-09-06', 'amount' => 2000], $this->ledgerInvoice($sc, $bill, $token)['standing_payment']);
+    }
+
     /** @return array{0: StudentClass, 1: Invoice, 2: string} */
     private function paidBill(): array
     {
-        $user = User::create(['LoginName' => 'standing@test.com', 'Name' => 'd', 'PSW' => 'x', 'type' => 'A', 'phone' => 912345678]);
+        $user = User::create(['LoginName' => 'standing-' . uniqid() . '@test.com', 'Name' => 'd', 'PSW' => 'x', 'type' => 'A', 'phone' => '09' . random_int(10000000, 99999999)]);
         UserCampus::create(['CampusID' => 1, 'UserID' => $user->id, 'Admin' => 1, 'Approved' => 1]);
         $token = bin2hex(random_bytes(16));
         AuthToken::create(['user_id' => $user->id, 'token' => $token, 'expires_at' => now()->addDay()]);
