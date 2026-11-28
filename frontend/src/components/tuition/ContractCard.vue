@@ -8,7 +8,7 @@
         </button>
       </h5>
       <span v-if="!open && !isMonthly && state === 'ready'" class="contract__leftline" data-testid="contract-left-line">剩 {{ upcomingCount }} 堂</span>
-      <span v-if="pill" :class="['contract__chip', pill.cls]" data-testid="contract-pill">{{ pill.text }}</span>
+      <StatusBadge v-if="pill" :tone="pill.tone" :class="pill.tone === 'success' && QUIET" data-testid="contract-pill">{{ pill.text }}</StatusBadge>
       <AtButton v-if="primary === 'confirm'" size="sm" shape="rect" :disabled="busy" data-testid="contract-confirm" @click="openConfirm">確認入帳</AtButton>
       <AtButton v-else-if="primary === 'record'" variant="secondary" size="sm" shape="rect" data-testid="contract-record" @click="$emit('record', course)">登記這筆</AtButton>
       <AtButton v-else-if="primary === 'issue'" variant="secondary" size="sm" shape="rect" data-testid="contract-issue" @click="emit('issue', billDraft)">開帳單 {{ money(billDraft.amount) }}</AtButton>
@@ -61,7 +61,7 @@
       <span v-else-if="outstanding > 0">未繳 <strong class="due">{{ money(outstanding) }}</strong></span>
       <span v-else-if="!course.paid && !fullyCollected" class="contract__muted">還沒開帳單</span>
       <span v-else-if="!legacyUnverified">已收</span>
-      <span v-if="pendingReport" class="contract__chip pay-partial">待確認入帳 {{ money(pendingReport.amount) }}{{ pendingReport.date ? `（${shortDate(pendingReport.date)} 家長回報）` : '' }}</span>
+      <StatusBadge v-if="pendingReport" tone="warning" class="tw:whitespace-normal">待確認入帳 {{ money(pendingReport.amount) }}{{ pendingReport.date ? `（${shortDate(pendingReport.date)} 家長回報）` : '' }}</StatusBadge>
       <!-- #4765: taught lessons fall outside the contract dates; billing cannot price them, so no 登記這筆 / 繳費單 until the dates are fixed. -->
       <span v-if="outsideDates.length" class="contract__muted" data-testid="contract-outside">{{ outsideText }}</span>
       <!-- #5703: the server will refuse 登記 (these lessons' month already has a bill); show its reason, offer no 登記這筆. -->
@@ -108,8 +108,8 @@
             <span class="contract__date">{{ formatSessionDate(s.date) }}</span>
             <span class="contract__time">{{ s.start_time || '' }}</span>
             <span v-if="s.numberText" class="contract__num" data-testid="contract-session-no">{{ s.numberText }}</span>
-            <span :class="['contract__chip', `tone-${statusTone(s.status)}`]">{{ STATUS_ZH[s.status] || '' }}</span>
-            <span v-if="!noObligation && !(s.payment === 'no_invoice' && !billable(s))" :class="['contract__chip', `pay-${s.payment}`]">{{ PAYMENT_LABELS[s.payment] }}</span>
+            <StatusBadge :tone="SESSION_TONES[statusTone(s.status)]">{{ STATUS_ZH[s.status] || '' }}</StatusBadge>
+            <StatusBadge v-if="!noObligation && !(s.payment === 'no_invoice' && !billable(s))" :tone="PAY_TONES[s.payment]" :class="s.payment === 'paid' && QUIET" data-testid="contract-session-pay">{{ PAYMENT_LABELS[s.payment] }}</StatusBadge>
           </li>
         </ol>
       </section>
@@ -147,6 +147,7 @@ import AtSubmitButton from '../design-system/AtSubmitButton.vue';
 import AtDialog from '../design-system/AtDialog.vue';
 import AtTextarea from '../design-system/AtTextarea.vue';
 import ActionMenu from '../ActionMenu.vue';
+import { StatusBadge } from '@/components/ui/page';
 import RefundDialog from './RefundDialog.vue';
 import LegacyPaidFlagActions from './LegacyPaidFlagActions.vue';
 import { confirmReport, rejectReport } from '../../lib/paymentActions.js';
@@ -196,6 +197,10 @@ const emit = defineEmits(['changed', 'record', 'issue', 'confirmed', 'slip', 'le
 
 // Billing redesign PRD v2 D16: whether the money for each lesson is in.
 const PAYMENT_LABELS = { paid: '已收', partial: '繳了一部分', unpaid: '未繳', no_invoice: '還沒開帳單' };
+const PAY_TONES = { paid: 'success', partial: 'warning', unpaid: 'danger' };
+const SESSION_TONES = { done: 'success', warn: 'warning' };
+// 已收 stays quiet (text + dot, no wash): StatusBadge has no quiet variant, so the wash and padding are dropped here.
+const QUIET = 'tw:bg-transparent tw:px-0';
 const HELD = ['attended', 'completed', 'late', 'absent'];
 const UPCOMING = ['scheduled', 'rescheduled', 'expected'];
 // A leave / cancelled lesson is not billable, so it never reads 還沒開帳單.
@@ -469,18 +474,18 @@ const canIssue = computed(() => !!props.billDraft && (fullyCollected.value
 const primary = computed(() => (props.pendingReport ? 'confirm' : canRecord.value && (props.outstanding > 0 || !canIssue.value) ? 'record' : canIssue.value ? 'issue' : ''));
 const pill = computed(() => {
   const C = TUITION_STATUS_CONFIG;
-  if (props.pendingReport) return { text: `${C.pending_report.label} ${money(props.pendingReport.amount)}`, cls: 'pay-partial' };
-  if (noObligation.value) return { text: '輔導課', cls: '' };
-  if (waived.value) return { text: WAIVED_LABEL, cls: '' };
-  if (followerPointer.value) return { text: '共用方案', cls: '' };
-  if (legacyUnverified.value) return { text: props.outstanding > 0 ? `需核對 ${money(props.outstanding)}` : '需核對', cls: 'tone-warn' };
+  if (props.pendingReport) return { text: `${C.pending_report.label} ${money(props.pendingReport.amount)}`, tone: 'warning' };
+  if (noObligation.value) return { text: '輔導課' };
+  if (waived.value) return { text: WAIVED_LABEL };
+  if (followerPointer.value) return { text: '共用方案' };
+  if (legacyUnverified.value) return { text: props.outstanding > 0 ? `需核對 ${money(props.outstanding)}` : '需核對', tone: 'warning' };
   if (props.outstanding > 0) {
     const text = open.value && repeatsUnpaidAmount.value ? C.unpaid.label : `${C.unpaid.label} ${money(props.outstanding)}`;
-    return { text, cls: 'pay-unpaid' };
+    return { text, tone: 'danger' };
   }
-  if (nothingTaught.value) return { text: '不用繳費', cls: '' };
-  if (!props.course.paid && !fullyCollected.value) return { text: '還沒開帳單', cls: '' };
-  return { text: C.paid.label, cls: 'pay-paid' };
+  if (nothingTaught.value) return { text: '不用繳費' };
+  if (!props.course.paid && !fullyCollected.value) return { text: '還沒開帳單' };
+  return { text: C.paid.label, tone: 'success' };
 });
 const outsideText = computed(() => `需核對：${outsideDates.value.map(md).join('、')} 的課不在合約日期（${[md(props.course.start_date), md(props.course.end_date)].join('–')}）內，請先改合約日期`);
 const slipReasonShown = computed(() => showSlip.value && !slipState.value.ok);
@@ -567,11 +572,6 @@ onMounted(() => { if (props.autoConfirm && props.pendingReport) openConfirm(); }
 .contract__date{min-width:110px;font-variant-numeric:tabular-nums}
 .contract__time{min-width:44px;color:var(--ds-ink-mute);font-variant-numeric:tabular-nums}
 .contract__num{font-size:12px;font-weight:700;font-variant-numeric:tabular-nums}
-.contract__chip{display:inline-flex;border-radius:6px;padding:1px 7px;font-size:12px;font-weight:700;background:var(--ds-canvas-soft);color:var(--ds-ink-mute)}
-.contract__chip.pay-paid{background:none;color:var(--ds-success-text);padding:1px 0;font-weight:600}
-.contract__chip.tone-done{background:var(--ds-success-wash);color:var(--ds-success-text)}
-.contract__chip.tone-warn,.contract__chip.pay-partial{background:var(--ds-warning-wash);color:var(--ds-warning-text)}
-.contract__chip.pay-unpaid{background:var(--ds-danger-wash);color:var(--ds-danger-text)}
 .contract__muted{margin:0;font-size:13px;color:var(--ds-ink-mute)}
 .contract__error{margin:0;font-size:13px;color:var(--ds-danger-text)}
 .contract__link{border:0;background:transparent;color:var(--ds-primary-text);font-size:13px;font-weight:600;cursor:pointer;padding:0;justify-self:start}

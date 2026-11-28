@@ -562,7 +562,9 @@ describe('billing panel visual tokens (spec B-PR2)', () => {
     await flushPromises();
     const rows = w.findAll('[data-testid="contract-session"]');
     expect(rows.every((r) => /已收|未繳/.test(r.text()))).toBe(true);
-    expect(rows[0].find('.pay-paid').exists()).toBe(true);
+    const pay = rows[0].get('[data-testid="contract-session-pay"]');
+    expect(pay.attributes('data-tone')).toBe('success');
+    expect(pay.classes()).toContain('tw:bg-transparent'); // quiet: no wash behind 已收
   });
 });
 
