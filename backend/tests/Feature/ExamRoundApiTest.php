@@ -264,6 +264,60 @@ class ExamRoundApiTest extends TestCase
         $this->assertDatabaseHas('exam_score_audit_logs', ['exam_round_id' => $c['round'], 'action' => 'score_deleted', 'reason' => '打錯']);
     }
 
+    public function test_parent_comment_saves_reads_back_is_audited_and_follows_score_rules(): void
+    {
+        $c = $this->seedRound();
+        $sid = $c['subjects'][0]['id'];
+        $url = "/api/v1/exam-rounds/{$c['round']}/scores";
+        $row = fn (array $extra) => ['scores' => [['student_id' => $c['student']->id, 'exam_round_subject_id' => $sid, 'score' => 80] + $extra]];
+        $latestAudit = fn () => \App\Models\ExamScoreAuditLog::query()->where('exam_round_id', $c['round'])->orderByDesc('id')->first();
+
+        $this->putScore($c, 'teacher', 0, 80)->assertOk();
+        $this->withAuth($c['teacher']['token'])->postJson($url, $row(['parent_comment' => '  計算題進步很多  ']))
+            ->assertOk()->assertJsonPath('data.0.parent_comment', '計算題進步很多');
+        // Comment-only change: its own action, listed in history, and no 改過 badge on the score.
+        $this->withAuth($c['teacher']['token'])->getJson("/api/v1/exam-rounds/{$c['round']}/students")
+            ->assertOk()->assertJsonPath('data.0.scores.0.parent_comment', '計算題進步很多')
+            ->assertJsonPath('data.0.scores.0.edited', false)
+            ->assertJsonPath('data.0.scores.1.parent_comment', null);
+        $this->assertSame(['score_comment_updated', '計算題進步很多'], [$latestAudit()->action, $latestAudit()->after['parent_comment']]);
+        $this->withAuth($c['teacher']['token'])->getJson("/api/v1/exam-rounds/{$c['round']}/history?student_id={$c['student']->id}")
+            ->assertOk()->assertJsonPath('data.0.action', 'score_comment_updated');
+
+        // A score-only save leaves the comment alone, and is a score change (badge on).
+        $this->putScore($c, 'teacher', 0, 81)->assertOk();
+        $this->assertDatabaseHas('exam_scores', ['exam_round_id' => $c['round'], 'exam_round_subject_id' => $sid, 'parent_comment' => '計算題進步很多']);
+        $this->assertSame('score_updated', $latestAudit()->action);
+        $this->withAuth($c['teacher']['token'])->getJson("/api/v1/exam-rounds/{$c['round']}/students")
+            ->assertOk()->assertJsonPath('data.0.scores.0.edited', true);
+
+        $this->withAuth($c['teacher']['token'])->postJson($url, $row(['parent_comment' => str_repeat('好', 501)]))
+            ->assertStatus(422)->assertJsonValidationErrors('scores.0.parent_comment');
+        $this->withAuth($c['teacher']['token'])->postJson($url, $row(['parent_comment' => str_repeat('好', 500)]))->assertOk();
+        $this->withAuth($c['teacher']['token'])->postJson($url, $row(['parent_comment' => '   ']))
+            ->assertOk()->assertJsonPath('data.0.parent_comment', null);
+
+        // Comment only (no score sent): a stale page cannot write an old score back; an empty cell still needs a score.
+        $this->putScore($c, 'teacher', 0, 90)->assertOk();
+        $only = fn (int $subjectId, string $text) => ['scores' => [['student_id' => $c['student']->id, 'exam_round_subject_id' => $subjectId, 'parent_comment' => $text]]];
+        $this->withAuth($c['teacher']['token'])->postJson($url, $only($sid, '只改老師的話'))
+            ->assertOk()->assertJsonPath('data.0.score', fn ($v) => (float) $v === 90.0)->assertJsonPath('data.0.parent_comment', '只改老師的話');
+        $this->assertDatabaseHas('exam_scores', ['exam_round_id' => $c['round'], 'exam_round_subject_id' => $sid, 'score' => 90, 'parent_comment' => '只改老師的話']);
+        $this->assertSame('score_comment_updated', $latestAudit()->action);
+        $this->withAuth($c['teacher']['token'])->postJson($url, $only($c['subjects'][1]['id'], '沒有分數'))->assertStatus(422);
+
+        // Outside the entry window a teacher cannot write it; after close the director needs a reason.
+        \Illuminate\Support\Facades\DB::table('exam_rounds')->where('id', $c['round'])->update(['entry_deadline' => now()->subDays(2)->toDateString()]);
+        $this->withAuth($c['teacher']['token'])->postJson($url, $row(['parent_comment' => '晚交']))->assertStatus(409);
+        $this->withAuth($c['director']['token'])->postJson("/api/v1/exam-rounds/{$c['round']}/close")->assertOk();
+        $this->withAuth($c['teacher']['token'])->postJson($url, $row(['parent_comment' => '晚交']))->assertStatus(409);
+        $this->withAuth($c['director']['token'])->postJson($url, $only($sid, '主任補充'))
+            ->assertStatus(422)->assertJsonPath('errors.reason.0', '更正已截止的段考成績需填寫原因');
+        $this->withAuth($c['director']['token'])->postJson($url, $only($sid, '主任補充') + ['reason' => '補老師的話'])->assertOk();
+        $audit = $latestAudit();
+        $this->assertSame(['score_comment_updated', '補老師的話', '只改老師的話', '主任補充', 90.0], [$audit->action, $audit->reason, $audit->before['parent_comment'], $audit->after['parent_comment'], (float) $audit->after['score']]);
+    }
+
     /** @return array{token:string,user:User} */
     private function makeStaff(string $type, string $login, int $campus): array
     {

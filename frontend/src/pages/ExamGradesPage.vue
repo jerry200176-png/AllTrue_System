@@ -210,7 +210,7 @@
               <p v-if="!historyRows.length" class="tw:m-0 tw:text-tpl-caption tw:text-tpl-secondary">沒有修改紀錄。</p>
               <ul v-else class="exam-history tw:m-0 tw:grid tw:list-none tw:gap-3 tw:p-0">
                 <li v-for="h in historyRows" :key="h.id" class="tw:text-tpl-body">
-                  <strong>{{ historyActionLabel(h.action) }} {{ subjectName(h.exam_round_subject_id) }}</strong>：{{ describeScore(h.before) }} → {{ describeScore(h.after) }}
+                  <strong>{{ historyActionLabel(h.action) }} {{ subjectName(h.exam_round_subject_id) }}</strong><template v-if="h.action !== 'score_comment_updated'">：{{ describeScore(h.before) }} → {{ describeScore(h.after) }}</template>
                   <small class="tw:block tw:text-tpl-caption tw:text-tpl-secondary">{{ (h.created_at || '').slice(0, 16).replace('T', ' ') }}<template v-if="h.reason"> · {{ h.reason }}</template></small>
                 </li>
               </ul>
@@ -229,10 +229,11 @@
                   </tr>
                 </thead>
                 <tbody>
-                  <tr v-for="row in filteredStudents" :key="row.student_id">
+                  <template v-for="row in filteredStudents" :key="row.student_id">
+                  <tr>
                     <td :class="stickyName">
                       <span>{{ row.student_name }}</span>
-                      <span :class="[dataTable.sub, 'tw:tabular-nums', row.is_complete ? toneText.success : '']">{{ row.is_complete ? '已登完 ' : '' }}{{ row.filled_subject_count }}/{{ row.required_subject_count }}</span>
+                      <span :class="[dataTable.sub, 'tw:tabular-nums', row.is_complete ? toneText.success : '']">{{ row.is_complete ? '已登完 ' : '' }}{{ row.filled_subject_count }}/{{ row.required_subject_count }}<template v-if="commentCount(row)"> · 已寫 {{ commentCount(row) }} 科</template></span>
                     </td>
                     <td v-for="subject in selectedSubjects" :key="subject.id" :class="dataTable.cell">
                       <ExamScoreCell
@@ -249,17 +250,51 @@
                       />
                     </td>
                     <td :class="stickySave">
-                      <button
-                        v-if="canEditScores"
-                        type="button"
-                        :class="rowAction.secondary"
-                        :disabled="savingStudentId === row.student_id"
-                        :aria-busy="savingStudentId === row.student_id"
-                        :aria-label="`儲存 ${row.student_name}`"
-                        @click="saveStudent(row)"
-                      >儲存</button>
+                      <div class="tw:flex tw:items-center tw:justify-end tw:gap-2">
+                        <button
+                          v-if="canEditScores || commentCount(row)"
+                          type="button"
+                          :class="rowAction.secondary"
+                          :aria-expanded="!!openComments[row.student_id]"
+                          :aria-controls="`exam-comments-${row.student_id}`"
+                          :aria-label="`${row.student_name} 老師的話`"
+                          data-testid="exam-comment-toggle"
+                          @click="openComments[row.student_id] = !openComments[row.student_id]"
+                        >老師的話</button>
+                        <button
+                          v-if="canEditScores"
+                          type="button"
+                          :class="rowAction.secondary"
+                          :disabled="savingStudentId === row.student_id"
+                          :aria-busy="savingStudentId === row.student_id"
+                          :aria-label="`儲存 ${row.student_name}`"
+                          @click="saveStudent(row)"
+                        >儲存</button>
+                      </div>
                     </td>
                   </tr>
+                  <!-- 老師的話: one box per subject, saved with the row's 儲存. Pinned to the left edge so it stays in view at 390px. -->
+                  <tr v-if="openComments[row.student_id]" :id="`exam-comments-${row.student_id}`" data-testid="exam-comment-row">
+                    <td :colspan="selectedSubjects.length + 2" class="tw:border-b tw:border-border tw:bg-muted tw:p-0">
+                      <div class="tw:sticky tw:left-0 tw:grid tw:w-[min(100%,calc(100dvw-3rem))] tw:max-w-2xl tw:gap-3 tw:p-3 tw:md:px-4">
+                        <p class="tw:m-0 tw:text-tpl-caption tw:text-tpl-secondary">每科寫給家長的話，最多 500 字。</p>
+                        <div v-for="subject in selectedSubjects" :key="subject.id" class="tw:grid tw:gap-1">
+                          <Label :for="`exam-comment-${row.student_id}-${subject.id}`">{{ subject.name }}</Label>
+                          <Textarea
+                            :id="`exam-comment-${row.student_id}-${subject.id}`"
+                            :model-value="commentOf(row, subject.id)"
+                            maxlength="500"
+                            rows="2"
+                            :readonly="!canEditScores"
+                            class="exam-comment-input tw:min-h-11 tw:bg-background tw:text-[length:var(--tpl-text-body)] tw:md:text-[length:var(--tpl-text-body)]"
+                            @update:model-value="(v) => (draftComments[`${row.student_id}:${subject.id}`] = String(v ?? ''))"
+                          />
+                          <span class="tw:text-right tw:text-tpl-caption tw:text-tpl-secondary tw:tabular-nums">{{ commentOf(row, subject.id).length }}/500</span>
+                        </div>
+                      </div>
+                    </td>
+                  </tr>
+                  </template>
                 </tbody>
               </table>
             </div>
@@ -295,6 +330,7 @@ import { Skeleton } from '../components/ui/skeleton';
 import { FilterChip, PageHeader, SectionCard, StatusBadge, control, dataTable, pageShell, rowAction, toneText } from '../components/ui/page';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '../components/ui/dialog';
 import { Label } from '../components/ui/label';
+import { Textarea } from '../components/ui/textarea';
 import { ConfirmDialog, FormDialog } from '../components/app-overlay';
 import ActionMenu from '../components/ActionMenu.vue';
 import { GRADES } from '../lib/constants';
@@ -356,6 +392,9 @@ const savingStudentId = ref(null);
 // Typing during a save or reload would be wiped when the saved scores are loaded again, so the table takes no input meanwhile.
 const tableBusy = computed(() => studentsLoading.value || savingStudentId.value !== null);
 const draftScores = reactive({});
+// 老師的話 typed but not saved, by `${student_id}:${subject_id}`; which rows have the boxes open, by student_id.
+const draftComments = reactive({});
+const openComments = reactive({});
 const pendingClose = ref(null);
 const closing = ref(false);
 const closeError = ref('');
@@ -365,7 +404,7 @@ const deleteDescription = computed(() => `確定刪除「${pendingDelete.value?.
 // so a close request is applied one tick later and only when no request is running.
 const onCloseOpen = (open) => { if (!open) queueMicrotask(() => { if (!closing.value) pendingClose.value = null; }); };
 const onDeleteOpen = (open) => { if (!open) queueMicrotask(() => { if (!deleting.value) pendingDelete.value = null; }); };
-const scoreDirty = computed(() => Object.keys(draftScores).length > 0);
+const scoreDirty = computed(() => Object.keys(draftScores).length > 0 || Object.keys(draftComments).length > 0);
 function onScoreOpen(open) {
   if (open) return;
   if (scoreDirty.value) askDiscardScores.value = true;
@@ -374,6 +413,7 @@ function onScoreOpen(open) {
 function discardScores() {
   askDiscardScores.value = false;
   Object.keys(draftScores).forEach((k) => delete draftScores[k]);
+  Object.keys(draftComments).forEach((k) => delete draftComments[k]);
   selected.value = null;
 }
 
@@ -560,12 +600,15 @@ async function openRound(round) {
   if (String(selected.value?.id) !== String(round?.id)) {
     studentQuery.value = '';
     students.value = [];
+    Object.keys(openComments).forEach((k) => delete openComments[k]);
+    // Drafts belong to one round. A same-round reload after a row save keeps the other rows' unsaved drafts.
+    Object.keys(draftScores).forEach((k) => delete draftScores[k]);
+    Object.keys(draftComments).forEach((k) => delete draftComments[k]);
   }
   selected.value = round;
   studentsLoading.value = true;
   studentsError.value = '';
   scoreError.value = '';
-  Object.keys(draftScores).forEach((k) => delete draftScores[k]);
   try {
     const res = await api(`/exam-rounds/${round.id}/students`);
     students.value = res.data || [];
@@ -585,7 +628,15 @@ function cellOf(row, subjectId) {
 
 function serverCell(row, subjectId) {
   const f = (row.scores || []).find((s) => Number(s.exam_round_subject_id) === Number(subjectId));
-  return { score: f?.score ?? null, is_absent: !!f?.is_absent, edited: !!f?.edited, clear: false };
+  return { score: f?.score ?? null, is_absent: !!f?.is_absent, edited: !!f?.edited, clear: false, parent_comment: f?.parent_comment ?? '' };
+}
+
+function commentOf(row, subjectId) {
+  return draftComments[`${row.student_id}:${subjectId}`] ?? serverCell(row, subjectId).parent_comment;
+}
+
+function commentCount(row) {
+  return selectedSubjects.value.filter((s) => commentOf(row, s.id).trim()).length;
 }
 
 function onCellChange(row, subjectId, v) {
@@ -621,7 +672,12 @@ async function openHistory(row) {
 
 function saveStudent(row) {
   scoreError.value = '';
-  if (!(selected.value.subjects || []).some((s) => draftScores[`${row.student_id}:${s.id}`])) {
+  const built = rowScores(row);
+  if (built.error) {
+    scoreError.value = built.error;
+    return;
+  }
+  if (!built.scores.length) {
     scoreError.value = '沒有改動，請先修改分數';
     return;
   }
@@ -634,22 +690,54 @@ function saveStudent(row) {
   return submitScores(row, '');
 }
 
-async function submitScores(row, reason) {
+const noScore = (c) => !c.is_absent && (c.score === null || c.score === undefined || c.score === '');
+
+// One row's changes as the API payload. A comment on an untouched cell is sent alone (the server keeps the stored
+// score, so a stale page never writes an old score back); the API keeps a comment only on a scored or 缺考 cell.
+function rowScores(row) {
   const scores = [];
   for (const subject of selected.value.subjects || []) {
-    const d = draftScores[`${row.student_id}:${subject.id}`];
+    const key = `${row.student_id}:${subject.id}`;
+    const d = draftScores[key];
+    let comment = key in draftComments ? draftComments[key].trim() : undefined;
+    // Back to what is stored (e.g. typed then erased on an empty cell) is no change.
+    if (comment === (serverCell(row, subject.id).parent_comment || '')) comment = undefined;
+    if (d?.clear) {
+      scores.push({ student_id: row.student_id, exam_round_subject_id: subject.id, clear: true });
+      continue;
+    }
     // A typed-then-erased (or ticked-then-unticked 缺考) cell is no entry: skip it, as before E2; only 清除 deletes.
-    if (!d || (!d.clear && !d.is_absent && (d.score === null || d.score === undefined || d.score === ''))) continue;
+    const typed = d && !noScore(d) ? d : null;
+    if (!typed && comment === undefined) continue;
+    const cell = typed || serverCell(row, subject.id);
+    if (noScore(cell)) return { error: `「${subject.name}」要先填分數或勾缺考，才能存老師的話` };
+    if (!typed) {
+      scores.push({ student_id: row.student_id, exam_round_subject_id: subject.id, parent_comment: comment });
+      continue;
+    }
     scores.push({
       student_id: row.student_id,
       exam_round_subject_id: subject.id,
-      ...(d.clear ? { clear: true } : { score: d.is_absent ? null : d.score, is_absent: d.is_absent }),
+      score: cell.is_absent ? null : cell.score,
+      is_absent: cell.is_absent,
+      ...(comment === undefined ? {} : { parent_comment: comment }),
     });
+  }
+  return { scores };
+}
+
+async function submitScores(row, reason) {
+  const { scores = [], error } = rowScores(row);
+  if (error) {
+    scoreError.value = error;
+    return;
   }
   savingStudentId.value = row.student_id;
   try {
     await saveScores(api, selected.value.id, scores, (reason || '').trim());
     reasonFor.value = null;
+    const mine = `${row.student_id}:`;
+    [draftScores, draftComments].forEach((d) => Object.keys(d).filter((k) => k.startsWith(mine)).forEach((k) => delete d[k]));
     await openRound(selected.value);
   } catch (e) {
     reasonFor.value = null;

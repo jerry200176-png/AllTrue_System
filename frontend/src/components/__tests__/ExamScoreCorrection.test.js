@@ -7,7 +7,7 @@ vi.mock('../../supabase', () => ({
 import ExamGradesPage from '../../pages/ExamGradesPage.vue';
 import ExamScoreCell from '../exams/ExamScoreCell.vue';
 import { canEditExamRound } from '../../lib/examScoreStudentFilter';
-import { examErrorMessage } from '../../lib/examScoresApi';
+import { examErrorMessage, historyActionLabel } from '../../lib/examScoresApi';
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -49,6 +49,12 @@ describe('canEditExamRound with deadline', () => {
     expect(canEditExamRound({ status: 'published', entry_deadline: '2026-11-01' }, true, now)).toBe(true);
     expect(canEditExamRound({ status: 'closed', entry_deadline: '2026-11-01' }, true, now)).toBe(true);
     expect(canEditExamRound({ status: 'draft' }, true, now)).toBe(false);
+  });
+});
+
+describe('historyActionLabel', () => {
+  it('a comment-only change reads 老師的話已更新', () => {
+    expect(historyActionLabel('score_comment_updated')).toBe('老師的話已更新');
   });
 });
 
@@ -136,6 +142,104 @@ describe('page: enter wrong score, clear, re-enter', () => {
       await flushPromises();
       const posts = fetchMock.mock.calls.filter(([, o]) => o?.method === 'POST').map(([, o]) => JSON.parse(o.body));
       expect(posts[0].scores).toEqual([{ student_id: 502, exam_round_subject_id: 11, score: 80, is_absent: false }]);
+    } finally {
+      wrapper.unmount();
+    }
+  });
+
+  it('老師的話: the toggle opens one box per subject; a comment rides with the score on the row 儲存', async () => {
+    const subjects = [{ id: 11, name: '國文', max_score: 100 }, { id: 12, name: '英文', max_score: 100 }];
+    const rounds = [{ id: 4, title: '段考四', status: 'published', subjects }];
+    const rows = [{ student_id: 503, student_name: '合成丙', filled_subject_count: 1, required_subject_count: 2, scores: [{ exam_round_subject_id: 11, score: 70, is_absent: false, edited: false, parent_comment: null }] }];
+    const fetchMock = vi.fn(async (input) => ({
+      ok: true,
+      json: async () => (String(input).includes('/students') ? { data: rows } : String(input).includes('/scores') ? { data: [] } : { data: rounds }),
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+    const wrapper = mount(ExamGradesPage, { props: { branchId: 1, userRole: 'teacher' }, attachTo: document.body });
+    try {
+      await flushPromises();
+      await wrapper.findAll('.exam-round-card__actions button').find((b) => /登分/.test(b.text())).trigger('click');
+      await flushPromises();
+      const body = document.body;
+      const toggle = body.querySelector('[data-testid=exam-comment-toggle]');
+      expect(toggle.getAttribute('aria-expanded')).toBe('false');
+      expect(body.querySelector('[data-testid=exam-comment-row]')).toBeNull();
+      toggle.click();
+      await flushPromises();
+      expect(toggle.getAttribute('aria-expanded')).toBe('true');
+      const boxes = body.querySelectorAll('.exam-comment-input');
+      expect(boxes).toHaveLength(2);
+      expect([...body.querySelectorAll('[data-testid=exam-comment-row] label')].map((l) => l.textContent.trim())).toEqual(['國文', '英文']);
+      expect(boxes[0].getAttribute('maxlength')).toBe('500');
+
+      boxes[0].value = ' 進步很多 ';
+      boxes[0].dispatchEvent(new Event('input'));
+      await flushPromises();
+      expect(body.querySelector('[data-testid=exam-comment-row]').textContent).toContain('6/500');
+      expect(body.querySelector('.exam-score-table tbody').textContent).toContain('已寫 1 科');
+      const save = () => [...body.querySelectorAll('.exam-score-table tbody button')].find((b) => b.textContent.trim() === '儲存').click();
+      save();
+      await flushPromises();
+      const posts = () => fetchMock.mock.calls.filter(([, o]) => o?.method === 'POST').map(([, o]) => JSON.parse(o.body));
+      // An untouched score is not resent with the comment (the server keeps the stored one).
+      expect(posts()[0]).toEqual({ scores: [{ student_id: 503, exam_round_subject_id: 11, parent_comment: '進步很多' }] });
+
+      // A comment on a subject with no score yet is not sent; the teacher is told to fill the score first.
+      const [, english] = body.querySelectorAll('.exam-comment-input');
+      english.value = '單字要背';
+      english.dispatchEvent(new Event('input'));
+      await flushPromises();
+      save();
+      await flushPromises();
+      expect(posts()).toHaveLength(1);
+      expect(body.querySelector('.exam-error').textContent).toContain('「英文」要先填分數或勾缺考');
+    } finally {
+      wrapper.unmount();
+    }
+  });
+  it('老師的話: saving one row keeps the other rows\' drafts; a comment typed then erased on an empty cell is no change', async () => {
+    const subjects = [{ id: 11, name: '國文', max_score: 100 }, { id: 12, name: '英文', max_score: 100 }];
+    const rounds = [{ id: 5, title: '段考五', status: 'published', subjects }];
+    const cell = (score) => [{ exam_round_subject_id: 11, score, is_absent: false, edited: false, parent_comment: null }];
+    const rows = [
+      { student_id: 503, student_name: '合成丙', filled_subject_count: 1, required_subject_count: 2, scores: cell(70) },
+      { student_id: 504, student_name: '合成丁', filled_subject_count: 1, required_subject_count: 2, scores: cell(60) },
+    ];
+    const fetchMock = vi.fn(async (input) => ({
+      ok: true,
+      json: async () => (String(input).includes('/students') ? { data: rows } : String(input).includes('/scores') ? { data: [] } : { data: rounds }),
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+    const wrapper = mount(ExamGradesPage, { props: { branchId: 1, userRole: 'teacher' }, attachTo: document.body });
+    try {
+      await flushPromises();
+      await wrapper.findAll('.exam-round-card__actions button').find((b) => /登分/.test(b.text())).trigger('click');
+      await flushPromises();
+      const body = document.body;
+      body.querySelectorAll('[data-testid=exam-comment-toggle]').forEach((t) => t.click());
+      await flushPromises();
+      const type = (el, v) => { el.value = v; el.dispatchEvent(new Event('input')); };
+      let boxes = body.querySelectorAll('.exam-comment-input');
+      expect(boxes).toHaveLength(4);
+      type(boxes[2], '加油');
+      type(boxes[3], '先寫');
+      await flushPromises();
+      type(body.querySelectorAll('.exam-comment-input')[3], '');
+      const score = body.querySelectorAll('.exam-score-table .exam-score-input')[0];
+      score.value = '75'; score.dispatchEvent(new Event('change'));
+      await flushPromises();
+      const saves = () => [...body.querySelectorAll('.exam-score-table tbody button')].filter((b) => b.textContent.trim() === '儲存');
+      const posts = () => fetchMock.mock.calls.filter(([, o]) => o?.method === 'POST').map(([, o]) => JSON.parse(o.body));
+      saves()[0].click();
+      await flushPromises();
+      expect(posts()[0]).toEqual({ scores: [{ student_id: 503, exam_round_subject_id: 11, score: 75, is_absent: false }] });
+      boxes = body.querySelectorAll('.exam-comment-input');
+      expect(boxes[2].value).toBe('加油');
+      saves()[1].click();
+      await flushPromises();
+      expect(body.querySelector('.exam-error')).toBeNull();
+      expect(posts()[1]).toEqual({ scores: [{ student_id: 504, exam_round_subject_id: 11, parent_comment: '加油' }] });
     } finally {
       wrapper.unmount();
     }

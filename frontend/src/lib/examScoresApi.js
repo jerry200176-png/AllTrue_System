@@ -38,7 +38,7 @@ export async function loadScoreHistory(api, roundId, studentId) {
   return res.data || [];
 }
 
-const ACTION_LABELS = { score_created: '新增', score_updated: '修改', score_corrected: '主任更正', score_deleted: '清除' };
+const ACTION_LABELS = { score_created: '新增', score_updated: '修改', score_corrected: '主任更正', score_deleted: '清除', score_comment_updated: '老師的話已更新' };
 export const historyActionLabel = (a) => ACTION_LABELS[a] || a;
 
 export function describeScore(v) {

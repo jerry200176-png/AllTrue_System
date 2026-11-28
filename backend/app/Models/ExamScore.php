@@ -13,6 +13,7 @@ use Illuminate\Database\Eloquent\Model;
  * @property float|string|null $score
  * @property bool $is_absent
  * @property string|null $notes
+ * @property string|null $parent_comment
  * @property int|null $recorded_by_user_id
  * @property \Carbon\Carbon|null $recorded_at
  */
@@ -22,7 +23,7 @@ class ExamScore extends Model
 
     protected $fillable = [
         'exam_round_id', 'exam_round_subject_id', 'student_id',
-        'score', 'is_absent', 'notes', 'recorded_by_user_id', 'recorded_at',
+        'score', 'is_absent', 'notes', 'parent_comment', 'recorded_by_user_id', 'recorded_at',
     ];
 
     protected $casts = [
