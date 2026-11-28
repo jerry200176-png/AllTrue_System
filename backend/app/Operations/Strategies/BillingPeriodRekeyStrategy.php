@@ -104,7 +104,7 @@ class BillingPeriodRekeyStrategy
             if ($journaled) return $journaled; // idempotent: this request already re-keyed this bill
             if (!$invoice || strtolower((string) $invoice->Status) === 'void' || (string) $invoice->billing_period !== $r['from']) return 'drifted';
             $fresh = collect($this->build([], [(int) $r['invoice_id']]))->first();
-            if (!$fresh || $fresh['from'] !== $r['from'] || $fresh['to'] !== $r['to'] || $fresh['class_id'] !== $r['class_id']) return 'drifted';
+            if (!$fresh || $fresh['from'] !== $r['from'] || $fresh['to'] !== $r['to'] || $fresh['class_id'] !== $r['class_id'] || ($fresh['tag'] ?? null) !== ($r['tag'] ?? null)) return 'drifted';
             if ($fresh['status'] !== 'ready') return $fresh['reason'] === 'period_taken' ? 'retry' : (string) $fresh['reason'];
             $note = (string) $invoice->Note;
             $added = !str_contains($note, '[' . self::TAG . ':'); // a bill re-keyed before keeps its first (original) number tag
@@ -237,7 +237,8 @@ class BillingPeriodRekeyStrategy
             if ($held) return false;
             DB::table('Invoice')->where('id', $inv->id)->update(['billing_period' => $from,
                 'Note' => $added ? trim(str_replace([$tag, trim($tag)], '', (string) $inv->Note)) : (string) $inv->Note, 'updated_at' => now()]);
-            DB::table('payment_reports')->where('InvoiceID', $inv->id)->where('billing_period', $r['to'])->update(['billing_period' => $from]);
+            // A bill that had no month moved no reports (rekeyOne), so its restore moves none either.
+            if ($from !== null) DB::table('payment_reports')->where('InvoiceID', $inv->id)->where('billing_period', $r['to'])->update(['billing_period' => $from]);
             $this->audit((int) $inv->id, $r['campus_id'] ?? null, ['reason_code' => self::REF, 'pop_operation_id' => $operationId,
                 'period_from' => $r['to'], 'period_to' => $r['from'], 'outcome' => 'success'], '.rollback');
             $this->journal('rekey-row-undone', $operationId, $r, $actor);
@@ -290,7 +291,7 @@ class BillingPeriodRekeyStrategy
             ->where(fn ($w) => $w->whereNull('inv.Status')->orWhere('inv.Status', '<>', 'void'));
         if ($campuses) $q->whereIn('st.CampusID', $campuses);
         if ($onlyInvoices !== null) $q->whereIn('inv.id', $onlyInvoices);
-        $invoices = $q->orderBy('inv.id')->get(['inv.id', 'inv.StudentClassID as class_id', 'inv.billing_period', 'inv.IssueDate', 'inv.Note', 'sc.StudentID', 'sc.SubjectID',
+        $invoices = $q->orderBy('inv.id')->get(['inv.id', 'inv.StudentClassID as class_id', 'inv.billing_period', 'inv.IssueDate', 'inv.TotalAmount', 'inv.Note', 'sc.StudentID', 'sc.SubjectID', 'sc.PackageID',
             'sc.StartDate', 'sc.EndDate', 'st.CampusID as campus_id']);
         if ($invoices->isEmpty()) return [];
         $ids = $invoices->pluck('id')->all();
@@ -306,8 +307,13 @@ class BillingPeriodRekeyStrategy
             if ($inv->billing_period === null) {
                 // in-app #603 (Founder GO 2026-11-28): an old bill with no month and no lines, on a contract that lies inside one
                 // calendar month, can only be that month's bill. Anything less certain is left for a person.
+                // Only a positive tuition bill that is the contract's single live bill, never a package member.
                 $month = substr((string) $inv->StartDate, 0, 7);
-                if ($own->isEmpty() && $month === substr((string) $inv->EndDate, 0, 7) && self::issuedMonth($inv) !== null) $candidates[] = [$inv, $month];
+                if ($own->isEmpty() && $month === substr((string) $inv->EndDate, 0, 7) && self::issuedMonth($inv) !== null
+                    && (int) $inv->TotalAmount > 0 && (int) ($inv->PackageID ?? 0) === 0
+                    && DB::table('Invoice')->where('StudentClassID', $inv->class_id)->where(fn ($w) => $w->whereNull('Status')->orWhere('Status', '<>', 'void'))->count() === 1) {
+                    $candidates[] = [$inv, $month];
+                }
                 continue;
             }
             $one = $own->count() === 1 ? $own->first() : null;
