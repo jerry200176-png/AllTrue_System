@@ -106,9 +106,9 @@ assert.ok(!conflict.includes('學生 #'));
 
 // #2006：同學生有多筆課程重疊時，帶出科目/期別避免與請假中的另一筆課程混淆
 const conflictWithSubject = formatRescheduleConflictStudents([
-  { student_name: '王品方', subject_name: '理化', course_period: '7/11期' },
+  { student_name: '學生戊', subject_name: '理化', course_period: '7/11期' },
 ]);
-assert.equal(conflictWithSubject, '此時段已有：王品方（理化・7/11期）');
+assert.equal(conflictWithSubject, '此時段已有：學生戊（理化，7/11 開始）');
 
 assert.equal(
   humanizeRescheduleFailure('無法寫入原堂次紀錄'),
@@ -133,4 +133,13 @@ assert.equal(formatRescheduleConflictStudents([
   { student_id: 432601, student_name: 'S-B', subject_name: 'Math' },
   { student_id: 432601, student_name: 'S-B', subject_name: 'English' },
 ]), '此時段已有：S-B（Math）、S-B（English）');
+{
+  const { slotSaveErrorMessage } = await import('./scheduleDisplay.js');
+  const slots = [{ day: 6, start_time: '13:00' }];
+  const cap = { day_of_week: 6, start_time: '13:00:00', message: '12/5 週六 老師已滿' };
+  const cross = { type: 'cross_campus', message: '另一分校同時段有課' };
+  assert.equal(slotSaveErrorMessage([cross, cap], slots, 'x'), '時段已滿，原因寫在上面撞到的那一段下面。 另一分校同時段有課');
+  assert.equal(slotSaveErrorMessage([cap], [{ day: 6, start_time: '14:00' }], '原訊息'), '原訊息');
+  assert.equal(slotSaveErrorMessage([], slots, '原訊息'), '原訊息');
+}
 console.log('scheduleDisplay.test.js: all assertions passed');

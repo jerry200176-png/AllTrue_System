@@ -854,10 +854,10 @@
 
 <script setup>
 import { getActiveSpan, getRootSpan } from '@sentry/vue';
-import { computed, defineAsyncComponent, nextTick, ref, watch, onMounted, onBeforeUnmount } from 'vue';
+import { computed, nextTick, ref, watch, onMounted, onBeforeUnmount } from 'vue';
 import { isDirectorRole } from './lib/roleCapabilities.js';
 import TextSizeToggle from './components/TextSizeToggle.vue';
-import AtSkeleton from './components/design-system/AtSkeleton.vue';
+import { defineAsyncPage } from './components/defineAsyncPage.js';
 import { supabase } from './supabase';
 import { useDirectorBranchAuthorization } from './lib/directorBranchAuthorization';
 import {
@@ -889,8 +889,7 @@ import directorMissionSceneUrl from './assets/onboarding/director-daily-control-
 import Login from './pages/Login.vue';
 import ParentPortal from './pages/ParentPortal.vue';
 
-// 頁面 chunk 載入時顯示骨架，150ms 內載入完成則不閃爍
-const asyncPage = (loader) => defineAsyncComponent({ loader: trackLoader(loader), loadingComponent: AtSkeleton, delay: 150 });
+const asyncPage = (loader) => defineAsyncPage(trackLoader(loader));
 const AdmissionInquiriesPage = asyncPage(() => import('./pages/AdmissionInquiriesPage.vue'));
 const TrueFitApp = asyncPage(() => import('./pages/TrueFitApp.vue'));
 const StudentsList          = asyncPage(() => import('./pages/StudentsList.vue'));

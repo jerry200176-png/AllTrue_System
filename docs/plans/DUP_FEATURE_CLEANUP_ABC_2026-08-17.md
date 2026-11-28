@@ -73,7 +73,7 @@ isFullyPaid = (Paid == 1) OR (charge > 0 AND paid_amount >= charge)
 
 ### 驗收（每批）
 
-- 何昀佳類回歸：足額收款 → 帳務中心與課程管理同為已繳
+- 學生甲類回歸：足額收款 → 帳務中心與課程管理同為已繳
 - `partial` 不誤變 `paid`
 - 催繳列入條件 query 不變（除非 B3 明示）
 
@@ -97,7 +97,7 @@ isFullyPaid = (Paid == 1) OR (charge > 0 AND paid_amount >= charge)
 ### C2 — 對齊尾端策略（行為可能變）
 
 - 僅在 C0 裁定後，把非權威路徑改為權威 cascade
-- 必備：Repair Manifest 思維、堂數不超 `SessionCount` 鎖測（陳禹慈類）
+- 必備：Repair Manifest 思維、堂數不超 `SessionCount` 鎖測（學生丙類）
 
 ### C3 — TD-012（可與 C1 同 PR 或緊接）
 

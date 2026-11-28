@@ -15,7 +15,7 @@ use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
 /**
- * Regression coverage for the in-app director report (2026-08-06, student 陳禹慈):
+ * Regression coverage for the in-app director report (2026-08-06, student 學生丙):
  * an 8-session purchased course had drifted to 11+ live (non-cancelled) dated
  * sessions, tripping the system's own overbooking guard. Root cause: two
  * independent implementations of "auto-append a compensating session after

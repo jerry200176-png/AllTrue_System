@@ -22,6 +22,9 @@ class ScheduleGuardService
     /** @var array<int, object|null> */
     private array $roomCache = [];
 
+    /** ISO weekday (1 = Monday) to its Chinese name, for director-facing conflict text (in-app #613). */
+    private const WEEKDAY_LABELS = [1 => '一', 2 => '二', 3 => '三', 4 => '四', 5 => '五', 6 => '六', 7 => '日'];
+
     /**
      * Validate recurring course slots against existing teacher/room load.
      *
@@ -112,11 +115,14 @@ class ScheduleGuardService
             }
             $teacherConflict = null;
             $roomConflict = null;
-            foreach ($byDate ?: [[]] as $dateOverlaps) {
+            $teacherDates = [];
+            $roomDates = [];
+            foreach ($byDate ?: [[]] as $conflictDate => $dateOverlaps) {
                 $overlaps = array_merge($recurringOverlaps, $dateOverlaps);
                 $tc = $this->buildTeacherCapacityConflict($classType, $slot, $overlaps, $trialTarget);
                 if ($tc) {
                     $tc = $this->nameOwnRetainedLesson($tc, $classType, $slot, $overlaps, $excludeStudentClassId, $excludeStudentId, $trialTarget);
+                    $teacherDates[] = (string) $conflictDate;
                 }
                 if ($tc && (!$teacherConflict || ($tc['current_students'] ?? 0) > ($teacherConflict['current_students'] ?? 0))) {
                     $teacherConflict = $tc;
@@ -124,16 +130,29 @@ class ScheduleGuardService
                 $rc = $this->buildRoomCapacityConflict($roomId, $slot, $overlaps);
                 if ($rc) {
                     $rc = $this->nameOwnRetainedLesson($rc, $classType, $slot, $overlaps, $excludeStudentClassId, $excludeStudentId, $trialTarget);
+                    $roomDates[] = (string) $conflictDate;
                 }
                 if ($rc && (!$roomConflict || ($rc['current_students'] ?? 0) > ($roomConflict['current_students'] ?? 0))) {
                     $roomConflict = $rc;
                 }
             }
+            // in-app #613: once the weekly templates alone fill the slot, every week clashes, not only the dated ones.
+            // The prefix starts at the earlier of the first dated clash and the first start at which they fill it.
             if ($teacherConflict) {
-                $conflicts[] = $teacherConflict;
+                $teacherTemplates = array_values(array_filter($recurringOverlaps, fn ($e) => $e['teacher_occupancy'] ?? true));
+                $from = $this->firstFullWeek($startDate, $teacherTemplates, fn (array $t) => !$this->teacherCapacityDecision($classType, $slot, $this->withTrialTargets($t), $trialTarget)['allowed']);
+                $conflicts[] = $from === null
+                    ? $this->withConflictDates($teacherConflict, $teacherDates, $slot, $startDate)
+                    : $this->withConflictDates($teacherConflict, [], $slot, $this->earlierDate($from, $teacherDates));
             }
             if ($roomConflict) {
-                $conflicts[] = $roomConflict;
+                $room = $this->loadRoom((int) $roomId);
+                $seats = max(0, (int) ($room->capacity ?? 0) - 1); // buildRoomCapacityConflict's rule: one seat is the teacher's
+                $roomTemplates = array_values(array_filter($recurringOverlaps, fn ($e) => (int) ($e['room_id'] ?? 0) === (int) $roomId));
+                $from = $this->firstFullWeek($startDate, $roomTemplates, fn (array $t) => $this->countDistinctStudents($t) >= $seats);
+                $conflicts[] = $from === null
+                    ? $this->withConflictDates($roomConflict, $roomDates, $slot, $startDate)
+                    : $this->withConflictDates($roomConflict, [], $slot, $this->earlierDate($from, $roomDates));
             }
         }
         // Keyed by date, so slots sharing a weekday report each date once.
@@ -220,7 +239,7 @@ class ScheduleGuardService
 
         $teacherConflict = $this->buildTeacherCapacityConflict($classType, $slot, $overlaps, $this->trialTargetFrom($payload));
         if ($teacherConflict) {
-            $conflicts[] = $teacherConflict;
+            $conflicts[] = $this->withConflictDates($teacherConflict, [$date], $slot);
         }
 
         $roomOverlaps = $overlaps;
@@ -232,7 +251,7 @@ class ScheduleGuardService
         }
         $roomConflict = $this->buildRoomCapacityConflict($roomId, $slot, $roomOverlaps, $lock);
         if ($roomConflict) {
-            $conflicts[] = $roomConflict;
+            $conflicts[] = $this->withConflictDates($roomConflict, [$date], $slot);
         }
         if ($cross = $this->crossCampusOccurrenceConflict($teacherId, $branchId, $date, $startTime, $endTime, $excludeScheduleId, $excludeStudentId, $excludeTrialHoldId)) {
             $conflicts[] = $cross;
@@ -845,11 +864,13 @@ class ScheduleGuardService
                 $overlaps[] = [
                     'source' => 'student_class',
                     'source_id' => (int) ($course->ID ?? 0),
+                    'day_of_week' => (int) $existingSlot['day_of_week'],
                     'student_id' => (int) ($course->StudentID ?? 0),
                     'class_type' => (string) ($course->ClassType ?? 'one_on_one'),
                     'room_id' => $course->room_id ? (int) $course->room_id : null,
                     'start_time' => (string) $existingSlot['start_time'],
                     'end_time' => (string) $existingSlot['end_time'],
+                    'course_start_date' => $course->StartDate ? substr((string) $course->StartDate, 0, 10) : null,
                 ];
             }
         }
@@ -1350,7 +1371,7 @@ class ScheduleGuardService
 
         return $this->finalizeCapacityConflict([
             ...$decision['conflict'],
-            ...$this->overlapPayload($overlaps),
+            ...$this->overlapPayload($overlaps, $slot['schedule_date'] ?? null),
         ]);
     }
 
@@ -1547,7 +1568,7 @@ class ScheduleGuardService
                     $totalCapacity,
                     $studentCapacity
                 ),
-                ...$this->overlapPayload(array_values($sameRoomOverlaps)),
+                ...$this->overlapPayload(array_values($sameRoomOverlaps), $slot['schedule_date'] ?? null),
             ]);
         }
 
@@ -1568,9 +1589,9 @@ class ScheduleGuardService
      * @param  array<int, array<string, mixed>>  $overlaps
      * @return array{overlap_summary: mixed, overlap_details: mixed}
      */
-    private function overlapPayload(array $overlaps): array
+    private function overlapPayload(array $overlaps, ?string $date = null): array
     {
-        $details = $this->buildOverlapDetails($overlaps);
+        $details = $this->buildOverlapDetails($overlaps, $date);
 
         return ['overlap_summary' => $this->buildOverlapSummary($details), 'overlap_details' => $details];
     }
@@ -1590,6 +1611,73 @@ class ScheduleGuardService
             '到課程管理搜尋提示中的學生／科目，確認是否為舊合約未結束、代課或調課列',
             '依情況改期、請假、結束舊合約，或改選其他時段後再排',
         ];
+
+        return $conflict;
+    }
+
+    /**
+     * First date (not before the window start) at which the weekly templates already begun fill the slot; null if they never do.
+     *
+     * @param  array<int, array<string, mixed>>  $templates
+     */
+    private function firstFullWeek(?string $windowStart, array $templates, callable $fills): ?string
+    {
+        $window = $windowStart ? substr($windowStart, 0, 10) : '';
+        $starts = array_unique(array_map(fn ($t) => max($window, (string) ($t['course_start_date'] ?? '')), $templates));
+        sort($starts);
+        foreach ($starts as $d) {
+            if ($fills(array_values(array_filter($templates, fn ($t) => (string) ($t['course_start_date'] ?? '') <= $d)))) {
+                return $d; // '' = no known start: already full today
+            }
+        }
+
+        return null;
+    }
+
+    /** @param  array<int, string>  $dates */
+    private function earlierDate(string $from, array $dates): string
+    {
+        $dates = array_filter($dates);
+
+        return $dates ? min($from, min($dates)) : $from;
+    }
+
+    /**
+     * in-app #613: start a capacity message with the dates it is about (a contract start date in the summary read as a lesson date).
+     * No date known: from the first matching weekday on/after max(today, window start), every week. Text only; the decision is unchanged.
+     *
+     * @param  array<string, mixed>  $conflict
+     * @param  array<int, string>  $dates  Y-m-d
+     * @param  array<string, mixed>  $slot
+     * @return array<string, mixed>
+     */
+    private function withConflictDates(array $conflict, array $dates, array $slot, ?string $windowStart = null): array
+    {
+        $message = (string) ($conflict['message'] ?? '');
+        // Only the capacity sentences; e.g. the own-retained-lesson note already names its date.
+        if (!str_starts_with($message, '老師') && !str_starts_with($message, '教室')) {
+            return $conflict;
+        }
+        $dates = array_values(array_unique(array_filter($dates)));
+        sort($dates);
+        $dow = (int) ($slot['day_of_week'] ?? 0);
+        $time = (string) ($slot['start_time'] ?? '') . '–' . (string) ($slot['end_time'] ?? '');
+        $weekday = '週' . (self::WEEKDAY_LABELS[$dow] ?? '');
+        if ($dates === []) {
+            $today = Carbon::today()->toDateString();
+            $from = Carbon::parse($windowStart && substr($windowStart, 0, 10) > $today ? substr($windowStart, 0, 10) : $today);
+            for ($i = 0; $i < 6 && $dow >= 1 && $from->dayOfWeekIso !== $dow; $i++) {
+                $from->addDay();
+            }
+            $when = sprintf('從 %s 起每%s %s', $from->format('n/j'), $weekday, $time);
+        } else {
+            $n = count($dates);
+            $shown = implode('、', array_map(fn ($d) => Carbon::parse($d)->format('n/j'), array_slice($dates, 0, 5)));
+            $count = $n > 5 ? " 等 {$n} 天" : ($n === 2 ? ' 這兩天' : ($n > 2 ? " 這 {$n} 天" : ' '));
+            $when = $shown . $count . $weekday . ' ' . $time;
+        }
+        $conflict['conflict_dates'] = $dates;
+        $conflict['message'] = $when . ' ' . $message;
 
         return $conflict;
     }
@@ -1748,7 +1836,7 @@ class ScheduleGuardService
      * @param  array<int, array<string, mixed>>  $entries
      * @return array<int, array<string, mixed>>
      */
-    private function buildOverlapDetails(array $entries): array
+    private function buildOverlapDetails(array $entries, ?string $date = null): array
     {
         if (empty($entries)) {
             return [];
@@ -1768,7 +1856,7 @@ class ScheduleGuardService
 
         // #2006：衝突訊息只有姓名時，主任分不出「同一堂」還是同學生的另一筆課程
         // （例如續約舊課程未關閉，跟新課程同時段並存）。補上科目名稱與課程起始日
-        // 讓「此時段已有：王品方（理化・7/11期）」講清楚是哪一筆。
+        // 讓「此時段已有：學生戊（理化，7/11 開始）」講清楚是哪一筆。
         $courseIds = array_values(array_unique(array_filter(array_map(function ($entry) {
             return (int) ($entry['course_id'] ?? $entry['source_id'] ?? 0);
         }, $entries))));
@@ -1777,7 +1865,7 @@ class ScheduleGuardService
         if (!empty($courseIds)) {
             $courseMetaMap = DB::table('StudentClass')
                 ->whereIn('ID', $courseIds)
-                ->select(['ID', 'SubjectID', 'StartDate'])
+                ->select(['ID', 'SubjectID', 'StartDate', 'EndDate', 'ScheduleMode'])
                 ->get()
                 ->keyBy('ID')
                 ->toArray();
@@ -1813,6 +1901,7 @@ class ScheduleGuardService
             $seen[$key] = true;
 
             $meta = $courseMetaMap[$courseId] ?? null;
+            $isTemplate = ($entry['source'] ?? '') === 'student_class';
             $subjectName = '';
             if ($meta) {
                 $subjectName = (string) ($subjectNameMap[(int) ($meta->SubjectID ?? 0)] ?? '');
@@ -1833,6 +1922,12 @@ class ScheduleGuardService
                 'room_id' => !empty($entry['room_id']) ? (int) $entry['room_id'] : null,
                 'start_time' => (string) ($entry['start_time'] ?? ''),
                 'end_time' => (string) ($entry['end_time'] ?? ''),
+                // in-app #613: the dates the row occupies. A weekly template has its weekday, plus its end date only for a
+                // date-mode contract (a count-mode end date is an estimate); a lesson has its own date.
+                'schedule_date' => $isTemplate ? null : (($entry['schedule_date'] ?? null) ?: $date),
+                'day_of_week' => $isTemplate && !empty($entry['day_of_week']) ? (int) $entry['day_of_week'] : null,
+                'course_end_date' => $isTemplate && $meta && $meta->EndDate && trim((string) ($meta->ScheduleMode ?? '')) === 'date'
+                    ? substr((string) $meta->EndDate, 0, 10) : null,
             ];
         }
 
@@ -1858,15 +1953,16 @@ class ScheduleGuardService
             $sid = (int) ($row['student_id'] ?? 0);
             $studentLabel = $name !== '' ? $name : ($sid > 0 ? ('#' . $sid) : (($row['source'] ?? '') === 'trial_hold' ? '尚未建立學生' : '未綁定學生'));
             $subjectName = (string) ($row['subject_name'] ?? '');
-            $coursePeriod = (string) ($row['course_period'] ?? '');
-            $courseLabel = trim($subjectName . ($coursePeriod !== '' ? '・' . $coursePeriod : ''));
+            // in-app #613: "9/1期" read as a lesson date; it is when the contract starts.
+            $courseStart = (string) preg_replace('/期$/u', '', (string) ($row['course_period'] ?? ''));
+            $courseLabel = $subjectName . ($courseStart !== '' ? ($subjectName !== '' ? '，' : '') . $courseStart . ' 開始' : '');
             $start = (string) ($row['start_time'] ?? '');
             $end = (string) ($row['end_time'] ?? '');
             // Human summary only; overlap_details retains the diagnostic source enum.
             $source = (string) ($row['source'] ?? '');
             $sourceLabel = match ($source) {
                 'student_class' => '固定課程',
-                'class_session' => '課堂紀錄',
+                'class_session' => '已排的課',
                 'schedule' => '排課紀錄',
                 'trial_hold' => '試聽暫留',
                 default => $source,
@@ -1876,11 +1972,19 @@ class ScheduleGuardService
                 : 'anon:' . $source . ':' . (string) ($row['source_id'] ?? '') . '|' . $studentLabel;
             // The course id keeps two duplicate contracts apart; a contract and its own sessions share it.
             $variant = (string) ($row['course_id'] ?? '') . '|' . $courseLabel . '|' . $start . '|' . $end;
+            $dow = (int) ($row['day_of_week'] ?? 0);
+            $when = $source === 'student_class'
+                ? (isset(self::WEEKDAY_LABELS[$dow]) ? '每週' . self::WEEKDAY_LABELS[$dow]
+                    . (!empty($row['course_end_date']) ? '（到 ' . Carbon::parse((string) $row['course_end_date'])->format('n/j') . '）' : '') : '')
+                : (!empty($row['schedule_date']) ? Carbon::parse((string) $row['schedule_date'])->format('n/j') : '');
             if (!isset($groups[$occupant])) {
                 $groups[$occupant] = ['student' => $studentLabel, 'variants' => []];
             }
             if (!isset($groups[$occupant]['variants'][$variant])) {
-                $groups[$occupant]['variants'][$variant] = ['course' => $courseLabel, 'start' => $start, 'end' => $end, 'sources' => []];
+                $groups[$occupant]['variants'][$variant] = ['course' => $courseLabel, 'start' => $start, 'end' => $end, 'when' => [], 'sources' => []];
+            }
+            if ($when !== '' && !in_array($when, $groups[$occupant]['variants'][$variant]['when'], true)) {
+                $groups[$occupant]['variants'][$variant]['when'][] = $when;
             }
             if ($sourceLabel !== '' && !in_array($sourceLabel, $groups[$occupant]['variants'][$variant]['sources'], true)) {
                 $groups[$occupant]['variants'][$variant]['sources'][] = $sourceLabel;
@@ -1893,15 +1997,16 @@ class ScheduleGuardService
         for ($i = 0; $i < $max; $i++) {
             $parts = [];
             foreach ($groups[$i]['variants'] as $v) {
-                $parts[] = sprintf(
-                    '%s(%s-%s,%s)',
-                    $v['course'] !== '' ? "（{$v['course']}）" : '',
-                    $v['start'],
-                    $v['end'],
-                    implode('＋', $v['sources'])
-                );
+                // e.g. 甲（數學，8/1 開始）每週六 13:00–15:00 固定課程
+                $text = str_replace('） ', '）', implode(' ', array_filter([
+                    implode('、', $v['when']),
+                    $v['start'] !== '' || $v['end'] !== '' ? $v['start'] . '–' . $v['end'] : '',
+                    implode('＋', $v['sources']),
+                ], fn ($s) => $s !== '')));
+                $parts[] = $v['course'] !== '' ? "（{$v['course']}）{$text}" : $text;
             }
-            $segments[] = $groups[$i]['student'] . implode('、', $parts);
+            $joined = implode('、', $parts);
+            $segments[] = $groups[$i]['student'] . ($joined === '' || str_starts_with($joined, '（') ? '' : ' ') . $joined;
         }
 
         if (count($groups) > $max) {

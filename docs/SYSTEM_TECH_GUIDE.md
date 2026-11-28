@@ -482,7 +482,7 @@ backfill 補建的 StudentSingIn `SignInDT` 設為 session.StartTime（非實際
 
 ## 12. 2026-08-06 bug 群回顧：業界作法對照與已落地的架構加固
 
-2026-08-06 一天內修的 6 個 in-app bug（#216–#221）＋ 1 個主任直接回報的架構問題（陳禹慈案，堂數超排），逐一對照後發現全部落在同一組、業界成熟工程團隊有明確對策的反模式（anti-pattern）之下。本節記錄對照結果與**已經落地**的加固，供之後改動這幾塊程式碼時參考，避免重蹈覆轍。
+2026-08-06 一天內修的 6 個 in-app bug（#216–#221）＋ 1 個主任直接回報的架構問題（學生丙案，堂數超排），逐一對照後發現全部落在同一組、業界成熟工程團隊有明確對策的反模式（anti-pattern）之下。本節記錄對照結果與**已經落地**的加固，供之後改動這幾塊程式碼時參考，避免重蹈覆轍。
 
 ### 12.1 逐一對照
 
@@ -492,7 +492,7 @@ backfill 補建的 StudentSingIn `SignInDT` 設為 session.StartTime（非實際
 | #217/#218 VoidReason 亂碼比對 | 業務關鍵字串（'一般請假'）在同一份程式碼裡被重複打了 6 次字面值，其中一份被手殘/編碼問題打壞就永久失配 | **消滅 magic string**（Google styleguide、Stripe 工程部落格都明確要求：跨檔案比對用的業務常數只能定義一次）——本專案自己在 `NON_BILLABLE_STATUSES` 已經示範過這個做法，但 VoidReason 字串沒跟上 | 新增 `CourseLeaveCascadeService::VOID_REASON_LEAVE` 常數，6 處使用點與 `LearningRecordResurrectionPolicy`（本身就在文件裡警告過「同一個決策被複製兩份，一份可能悄悄比較寬鬆」）全部改成引用同一個常數（本次） |
 | #219 暫停/恢復未還原 | 狀態機只寫了「取消」半邊，沒對稱補「恢復」半邊 | **對稱狀態轉移**（symmetric state transitions）——凡是設計「A→B」的動作，狀態機設計規範要求同時交付「B→A」並各自測試，不能假設使用者不會走回頭路 | `StudentClassController::restorePauseCancelledSessions()`（PR #1639），resume 動作明確找回 pause 動作打的標記並還原 |
 | #220/#221 行事曆快取整包覆蓋 | 前端把「切換週次抓到的新資料」直接覆蓋整個快取物件，而不是按 key 合併 | **正規化狀態存放 + 按 key 合併**（normalized store，Redux/Vuex 系官方文件的核心建議：集合類資料要用 id 當 key 存放，新資料進來是 merge 不是 replace） | `mergeSessionsByCourse()`（PR #1641，本來就是専案裡現成、之前沒被用到的函式，此次接上） |
-| 陳禹慈案（堂數超排） | 同一條業務規則（「請假/取消後自動補一堂」）被兩支程式各自獨立重寫一份，兩份對「已計入堂數」的定義不同步 | **單一權威實作 / DRY**（Don't Repeat Yourself；金流/計費系統尤其嚴格——Stripe 的 idempotency + ledger 設計核心精神就是「任何會影響餘額的操作只能有一個入口」，不允許兩條路徑各自算一次） | `ClassSessionController::tryExtendOnLeave()` 改為純委派 `CourseLeaveCascadeService::appendTailAfterLeave()`，並把原本只存在其中一份的 Stop=1 防呆搬進共用服務（PR #1644） |
+| 學生丙案（堂數超排） | 同一條業務規則（「請假/取消後自動補一堂」）被兩支程式各自獨立重寫一份，兩份對「已計入堂數」的定義不同步 | **單一權威實作 / DRY**（Don't Repeat Yourself；金流/計費系統尤其嚴格——Stripe 的 idempotency + ledger 設計核心精神就是「任何會影響餘額的操作只能有一個入口」，不允許兩條路徑各自算一次） | `ClassSessionController::tryExtendOnLeave()` 改為純委派 `CourseLeaveCascadeService::appendTailAfterLeave()`，並把原本只存在其中一份的 Stop=1 防呆搬進共用服務（PR #1644） |
 
 ### 12.2 共通結論
 
@@ -524,7 +524,7 @@ backfill 補建的 StudentSingIn `SignInDT` 設為 session.StartTime（非實際
 
 12.4 寫完當天，同一組反模式又出現一次——這次落在金流顯示邏輯，比前兩次更能說明問題的規模。
 
-**這次的 bug**：主任回報何昀佳的課程在課程管理頁面正確顯示「已繳費」，帳務中心卻仍列「未繳費」——課程已用帳單收款紀錄結清（`paid_amount === charge`），但 `AlertController::computePaymentStatus()` 只看 `StudentClass.Paid` 這個旗標，沒把「帳單足額收款」算進去。修好之後（PR #1648）盤點了一次「這個判斷到底在幾個地方被重寫」，結果比預期嚴重：
+**這次的 bug**：主任回報學生甲的課程在課程管理頁面正確顯示「已繳費」，帳務中心卻仍列「未繳費」——課程已用帳單收款紀錄結清（`paid_amount === charge`），但 `AlertController::computePaymentStatus()` 只看 `StudentClass.Paid` 這個旗標，沒把「帳單足額收款」算進去。修好之後（PR #1648）盤點了一次「這個判斷到底在幾個地方被重寫」，結果比預期嚴重：
 
 - `backend/app/Models/StudentClass.php`、`Invoice.php` 完全沒有 `isPaid()`／`isFullyPaid()` 這類集中的存取器或方法。
 - 至少 **8 個檔案**各自獨立判斷「這筆課程是否已繳費」：`StudentClassController`（課程管理，`Paid==1` 或**任一筆**收款存在）、`AlertController` 自己內部另外兩處（`mapCountModeAlert`／`monthlyAlertRow`，只認 `Paid==1`，但這兩處是刻意保留給「列入提醒條件」用、依 `docs/DIRECTOR_PAYMENT_ALERT_RULES.md` 明文規定不可與顯示用的 `payment_status` 混為一談）、`NotificationSyncService`、`DunningService`（明文凍結，需核准才能改）、`PaymentReportController`、`ParentPortalController`（同一個檔案內部就有三種寫法）、`NotificationController`、`AccountingController`、`SendTuitionReminders`。
@@ -593,7 +593,7 @@ backfill 補建的 StudentSingIn `SignInDT` 設為 session.StartTime（非實際
 | 2026-04-23 | 初版建立：Identity、Attendance、ClassSession、Swipe Flow、Gotchas | PR #23 |
 | 2026-05-09 | 新增 Adoption v1.1：SLA 分級、每日摘要與週對比口徑 | - |
 | 2026-05-09 | 主任雙檢視（focus/full）+ 家長 Progress Hub 與 `progress_summary` 摘要 | - |
-| 2026-08-06 | 新增第 12 節：6 個 in-app bug + 陳禹慈堂數超排案的業界作法對照與加固守則 | PR #1638/#1639/#1640/#1641/#1644 |
+| 2026-08-06 | 新增第 12 節：6 個 in-app bug + 學生丙堂數超排案的業界作法對照與加固守則 | PR #1638/#1639/#1640/#1641/#1644 |
 | 2026-08-06 | 第 12 節新增 12.4 更深層根因分析（為什麼是這裡、大公司靠什麼機制避免），並登記 TD-073 | PR #1646 |
 | 2026-08-06 | 第 12 節新增 12.5：同一天第三個「重複實作」實例（帳務中心繳費狀態 R94），盤點出 8 個檔案、4 種變體重複判斷「已繳費」，TD-073 調升為 P1 | PR #1648 |
 | 2026-08-06 | 第 12 節新增 12.6：同一天第四個實例（in-app #222，「資料可得性」誤當「業務資格」判斷） | PR #1651 |

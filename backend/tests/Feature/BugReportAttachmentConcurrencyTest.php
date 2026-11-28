@@ -85,7 +85,7 @@ class BugReportAttachmentConcurrencyTest extends TestCase
     {
         $this->raceAssertMysqlRr();
         $this->artisan('migrate:fresh', ['--force' => true]);
-        Storage::fake('public');
+        Storage::fake('local');
         $campus = Campus::factory()->create();
         $bug = BugReport::create(['CampusID' => $campus->id, 'reporter_user_id' => 900002,
             'title' => 'synthetic commit acknowledgement', 'description' => 'synthetic', 'severity' => 'low', 'status' => 'new']);
@@ -98,8 +98,8 @@ class BugReportAttachmentConcurrencyTest extends TestCase
             Event::forget('eloquent.created: '.BugReportAttachment::class);
         }
         $this->assertSame(1, $bug->attachments()->count(), 'SQL really committed before the exception');
-        Storage::disk('public')->assertExists($bug->attachments()->firstOrFail()->stored_path);
-        $this->assertCount(1, Storage::disk('public')->allFiles());
+        Storage::disk('local')->assertExists($bug->attachments()->firstOrFail()->stored_path);
+        $this->assertCount(1, Storage::disk('local')->allFiles());
     }
 
     public static function settlementOutcomes(): array
@@ -112,7 +112,7 @@ class BugReportAttachmentConcurrencyTest extends TestCase
     {
         $this->raceAssertMysqlRr();
         $this->artisan('migrate:fresh', ['--force' => true]);
-        Storage::fake('public');
+        Storage::fake('local');
         $campus = Campus::factory()->create();
         $bug = BugReport::create(['CampusID' => $campus->id, 'reporter_user_id' => 900003,
             'title' => 'synthetic pending commit', 'description' => 'synthetic', 'severity' => 'low', 'status' => 'new']);
@@ -132,7 +132,7 @@ class BugReportAttachmentConcurrencyTest extends TestCase
             if ($metadata === null || $holder !== null) return;
             $holder = $this->raceSpawn(base_path('tests/Support/bug-attachment-race-worker.php'), [
                 'mode' => 'pending-admission', 'bug_id' => $bug->id, 'attachment' => $metadata,
-                'storage_root' => Storage::disk('public')->path(''), 'cache_root' => storage_path('framework/testing/unused-cache'),
+                'storage_root' => Storage::disk('local')->path(''), 'cache_root' => storage_path('framework/testing/unused-cache'),
                 'clock' => '2026-11-08T12:00:00+08:00', 'ready' => $ready, 'cleanup_attempt' => $attempt,
                 'hold_until' => $timeout ? $release : null,
             ]);
@@ -148,13 +148,13 @@ class BugReportAttachmentConcurrencyTest extends TestCase
             $this->assertSame(1, $errors);
             if ($timeout) {
                 $this->assertSame(0, $bug->attachments()->count(), 'peer admission is still pending after the barrier timeout');
-                Storage::disk('public')->assertExists($metadata['stored_path']);
+                Storage::disk('local')->assertExists($metadata['stored_path']);
             }
             touch($release);
             $result = $this->raceFinish($holder);
             $this->assertTrue($result['retained_before_commit'], 'cleanup cannot delete while admission is still pending');
             $this->assertSame(1, $bug->attachments()->count());
-            Storage::disk('public')->assertExists($bug->attachments()->firstOrFail()->stored_path);
+            Storage::disk('local')->assertExists($bug->attachments()->firstOrFail()->stored_path);
         } finally {
             touch($attempt);
             touch($release);
@@ -168,7 +168,7 @@ class BugReportAttachmentConcurrencyTest extends TestCase
     {
         $this->raceAssertMysqlRr();
         $this->artisan('migrate:fresh', ['--force' => true]);
-        Storage::fake('public');
+        Storage::fake('local');
         $campus = Campus::factory()->create();
         $bug = BugReport::create(['CampusID' => $campus->id, 'reporter_user_id' => 900004,
             'title' => 'synthetic old read view', 'description' => 'synthetic', 'severity' => 'low', 'status' => 'new']);
@@ -182,11 +182,11 @@ class BugReportAttachmentConcurrencyTest extends TestCase
         DB::connection()->beforeExecuting(function ($sql) use ($bug, $attempt, $ready, &$injected, &$oldSnapshotCount) {
             if ($injected || !str_contains(strtolower($sql), 'for update') || !str_contains($sql, 'bug_reports')) return;
             $injected = true;
-            $paths = Storage::disk('public')->allFiles();
+            $paths = Storage::disk('local')->allFiles();
             $holder = $this->raceSpawn(base_path('tests/Support/bug-attachment-race-worker.php'), [
                 'mode' => 'pending-admission', 'bug_id' => $bug->id,
                 'attachment' => ['bug_report_id' => $bug->id, 'stored_path' => $paths[0], 'original_name' => 'settled.png'],
-                'storage_root' => Storage::disk('public')->path(''), 'cache_root' => storage_path('framework/testing/unused-cache'),
+                'storage_root' => Storage::disk('local')->path(''), 'cache_root' => storage_path('framework/testing/unused-cache'),
                 'clock' => '2026-11-08T12:00:00+08:00', 'ready' => $ready, 'cleanup_attempt' => $attempt,
             ]);
             $this->raceFinish($holder); // This different connection actually commits before compensation.
@@ -198,7 +198,7 @@ class BugReportAttachmentConcurrencyTest extends TestCase
             $this->assertTrue($injected);
             $this->assertSame(0, $oldSnapshotCount, 'ordinary writer SELECT really still sees the old RR snapshot');
             $current = $bug->attachments()->lockForUpdate()->firstOrFail();
-            Storage::disk('public')->assertExists($current->stored_path);
+            Storage::disk('local')->assertExists($current->stored_path);
         } finally {
             DB::rollBack();
             $this->raceTerminateAllWorkers();
@@ -209,7 +209,7 @@ class BugReportAttachmentConcurrencyTest extends TestCase
     {
         $this->raceAssertMysqlRr();
         $this->artisan('migrate:fresh', ['--force' => true]);
-        Storage::fake('public');
+        Storage::fake('local');
         $campus = Campus::factory()->create();
         $bug = BugReport::create(['CampusID' => $campus->id, 'reporter_user_id' => 900005,
             'title' => 'synthetic normal admission read view', 'description' => 'synthetic', 'severity' => 'low', 'status' => 'new']);
@@ -218,14 +218,14 @@ class BugReportAttachmentConcurrencyTest extends TestCase
             $this->assertSame(0, $bug->attachments()->count()); // Pin an actual outer RR snapshot.
             $peer = $this->raceSpawn(base_path('tests/Support/bug-attachment-race-worker.php'), [
                 'bug_id' => $bug->id, 'worker' => 'P', 'clock' => '2026-11-08T12:00:00+08:00',
-                'storage_root' => Storage::disk('public')->path(''),
+                'storage_root' => Storage::disk('local')->path(''),
                 'cache_root' => storage_path('framework/testing/normal-view-'.Str::uuid()),
                 'lock_name' => 'bug-submit:synthetic-normal-'.$bug->id,
             ]);
             $result = $this->raceFinish($peer); // Public service on a different connection commits five real rows/files.
             $this->assertSame(0, $result['attachment_errors']);
             $this->assertSame(0, $bug->attachments()->count(), 'the caller really still sees its pre-peer RR snapshot');
-            $peerPaths = Storage::disk('public')->allFiles();
+            $peerPaths = Storage::disk('local')->allFiles();
             $this->assertCount(5, $peerPaths);
             $this->assertSame(0, BugReportService::attachUploadedFiles($bug, [
                 UploadedFile::fake()->create('must-not-append.png', 1, 'image/png'),
@@ -233,8 +233,8 @@ class BugReportAttachmentConcurrencyTest extends TestCase
             $current = $bug->attachments()->lockForUpdate()->get();
             $this->assertCount(5, $current, 'normal admission cannot mistake an old snapshot for an empty report');
             $this->assertTrue($current->every(fn ($attachment) => str_starts_with($attachment->original_name, 'P-')));
-            foreach ($peerPaths as $path) Storage::disk('public')->assertExists($path);
-            $this->assertCount(5, Storage::disk('public')->allFiles(), 'reject and clean only this caller\'s extra staged file');
+            foreach ($peerPaths as $path) Storage::disk('local')->assertExists($path);
+            $this->assertCount(5, Storage::disk('local')->allFiles(), 'reject and clean only this caller\'s extra staged file');
         } finally {
             DB::rollBack();
             $this->raceTerminateAllWorkers();

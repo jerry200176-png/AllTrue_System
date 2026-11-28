@@ -648,7 +648,7 @@
 | 狀態 | Partly done 2026-11-19：(2) 已由架構檢查做到。FIT-5 擋狀態字面值重複；FIT-1/6/7/16/18/19 擋扣堂、付款、學費計算等業務邏輯在多處重寫；當初出事的 `一般請假` 已收成 `CourseLeaveCascadeService::VOID_REASON_LEAVE`。剩 (1) 通用複製貼上偵測：建議的 `phpcpd` 上游已封存、不再維護；若要做，改用 `jscpd`（支援 PHP，可設門檻、輸出 baseline）。降為 P3，等再出現同類事故再做。 |
 | 優先級 | P1（原 P2，2026-08-06 因第三個實例落在金流顯示邏輯而調升，見下） |
 | 發現日期 | 2026-08-06 |
-| 發現來源 | 陳禹慈堂數超排案（主任直接回報）根因調查：`CourseLeaveCascadeService::appendTailAfterLeave()` 與 `ClassSessionController::tryExtendOnLeave()` 是同一條業務規則的兩份獨立實作，各自對「已計入堂數」的定義不同步，交替呼叫時會讓已排堂次數悄悄超過購買堂數（PR #1644 修正）；同一批調查也發現 `一般請假` VoidReason 字面值在 `CourseLeaveCascadeService.php` 被重複打了 6 次、`LearningRecordResurrectionPolicy.php` 又獨立抄一份，其中一份被打壞正是 #217/#218 server error 的根因（PR #1645 修正）。詳見 `docs/SYSTEM_TECH_GUIDE.md` §12.4 根因分析。**第三個實例（同日）**：何昀佳帳務中心繳費狀態不一致案（主任直接回報）——`AlertController::computePaymentStatus()` 只認 `StudentClass.Paid` 旗標，沒把「帳單足額收款」算進已繳費判斷，跟課程管理頁面的邏輯不同步（PR #1648 修正，R94）。修復後的盤點掃出這不是單一巧合：`backend/app` 至少 **8 個檔案**（`StudentClassController`、`AlertController` 自身另外兩處、`NotificationSyncService`、`DunningService`、`PaymentReportController`、`ParentPortalController`、`NotificationController`、`AccountingController`、`SendTuitionReminders`）各自獨立重新實作「這筆課程是否已繳費」，且彼此條件互不相同（`Paid` 旗標單一判斷 / `Paid` 或任一筆收款 / `Paid` 或足額收款 / 舊制 `Pay>=Charge` 欄位比較，四種變體並存），`StudentClass`／`Invoice` model 完全沒有任何集中的 `isPaid()`／`isFullyPaid()` 存取器——每個呼叫點都是從零重寫。詳見 `docs/SYSTEM_TECH_GUIDE.md` §12.5。 |
+| 發現來源 | 學生丙堂數超排案（主任直接回報）根因調查：`CourseLeaveCascadeService::appendTailAfterLeave()` 與 `ClassSessionController::tryExtendOnLeave()` 是同一條業務規則的兩份獨立實作，各自對「已計入堂數」的定義不同步，交替呼叫時會讓已排堂次數悄悄超過購買堂數（PR #1644 修正）；同一批調查也發現 `一般請假` VoidReason 字面值在 `CourseLeaveCascadeService.php` 被重複打了 6 次、`LearningRecordResurrectionPolicy.php` 又獨立抄一份，其中一份被打壞正是 #217/#218 server error 的根因（PR #1645 修正）。詳見 `docs/SYSTEM_TECH_GUIDE.md` §12.4 根因分析。**第三個實例（同日）**：學生甲帳務中心繳費狀態不一致案（主任直接回報）——`AlertController::computePaymentStatus()` 只認 `StudentClass.Paid` 旗標，沒把「帳單足額收款」算進已繳費判斷，跟課程管理頁面的邏輯不同步（PR #1648 修正，R94）。修復後的盤點掃出這不是單一巧合：`backend/app` 至少 **8 個檔案**（`StudentClassController`、`AlertController` 自身另外兩處、`NotificationSyncService`、`DunningService`、`PaymentReportController`、`ParentPortalController`、`NotificationController`、`AccountingController`、`SendTuitionReminders`）各自獨立重新實作「這筆課程是否已繳費」，且彼此條件互不相同（`Paid` 旗標單一判斷 / `Paid` 或任一筆收款 / `Paid` 或足額收款 / 舊制 `Pay>=Charge` 欄位比較，四種變體並存），`StudentClass`／`Invoice` model 完全沒有任何集中的 `isPaid()`／`isFullyPaid()` 存取器——每個呼叫點都是從零重寫。詳見 `docs/SYSTEM_TECH_GUIDE.md` §12.5。 |
 | 影響模組 | 全 `backend/app/` — 這是 CI pipeline 缺口，不是特定模組的問題；歷史上已知至少 **3 類** 實例（本節描述的兩處 + 繳費狀態判斷），其中繳費狀態判斷單一概念就橫跨至少 8 個檔案、4 種互不相同的變體，推測還有未發現的其他實例。`DunningService.php` 中的重複實例已被 `docs/DIRECTOR_PAYMENT_ALERT_RULES.md` 明文凍結、需產品方核准才能改動，尚未一併清償。 |
 | 描述 | 目前 CI 的 `PHPStan Advisory` 只抓型別/明顯錯誤，抓不到「兩支函式語意重複」或「同一個業務字串被複製貼上多份」這類問題；這類問題目前完全仰賴 code review 肉眼發現，而本專案是單人 repo（見 `.github/pull_request_template.md` 的「單人 repo Review Gate」說明），沒有第二位人類 reviewer 天然扮演「這是不是已經做過」的守門角色。根因分析（§12.4）認為成熟工程組織能避免這類 bug，關鍵在於把「找找看是不是已經有人做過」從仰賴個人記性的文件建議，變成合併前機器會擋下來的門檻。 |
 | 建議做法 | 分階段：(1) 導入 `phpcpd`（PHP Copy/Paste Detector）或等效工具掃 `backend/app/`，先以 advisory 模式跑一輪盤點既有重複，比照 `phpstan-baseline.neon` 模式建 baseline（只擋新增，不強制清歷史債）。(2) 針對「業務字面值被多處比對」這類更窄但更常見的模式（如 `->where('VoidReason', '...')`、`->where('Status', '...')` 等字串比對），寫一個輕量 grep-based presubmit 檢查，偵測同一個中文/業務字面值在 `>=2` 個檔案或 `>=3` 個位置被直接使用（而非引用常數），達門檻即警告或擋下。(3) 中長期評估是否比照 SonarQube/CodeClimate 等重複程式碼偵測服務。 |
@@ -1009,3 +1009,17 @@
 | 建議做法 | 把兩個旗標改成呼叫端點用的同一個函式（`RecordGate`／`WaiveGate` 的做法，見 `RULE_DESIGN_SYSTEM.md` §6.1）；③ 確認沒人讀後直接刪掉那兩個欄位。 |
 | 清償成本估計 | 小（半天，含一致性測試） |
 | 不做的代價 | 極少數舊資料上，畫面可能顯示「更正並作廢」但送出被擋（擋下時不會寫入任何資料）。 |
+
+### TD-100：時段額滿訊息的日期還有四個小缺口（P3）
+
+| 欄位 | 內容 |
+|---|---|
+| 狀態 | Open |
+| 優先級 | P3 |
+| 發現日期 | 2026-11-28 |
+| 發現來源 | in-app #613 修正（PR #5737）的獨立審查 |
+| 影響模組 | `ScheduleGuardService::withConflictDates()`、`buildOverlapSummary()` |
+| 描述 | ① 教室額滿沒有「每週都撞」的判斷，固定課已把教室占滿時只列出幾個有單堂的日期。② 「從 X 起每週」取今天與編輯期間開始的較晚者，沒看占位課程自己的開始日。③ 訊息列出所有撞到的日期，名單卻只列最滿那天的學生。④ 沒有測試涵蓋「每週都撞」、超過 5 天、教室訊息、依 `ScheduleMode` 判斷結束日。 |
+| 建議做法 | ① 教室照老師的 `$everyWeek` 做一次只看固定課的判斷；② 取占位固定課的最晚開始日；④ 補一支 feature test。③ 只是文字，可不做。 |
+| 清償成本估計 | 小（半天） |
+| 不做的代價 | 少數情況下列出的日期不完整或起始日偏早；誰算名額、能不能存都不受影響。 |

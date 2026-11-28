@@ -2,11 +2,13 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\BugReportAttachment;
 use App\Providers\AppServiceProvider;
 use App\Services\BugReportService;
 use Illuminate\Contracts\Cache\LockTimeoutException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\URL;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\ValidationException;
 
@@ -177,6 +179,52 @@ class BugReportController extends Controller
         }
 
         return response()->json($detail);
+    }
+
+    /**
+     * GET /api/v1/bug-reports/{bugReport}/attachments/{attachment}?expires=&signature=
+     * Signed attachment download/preview (#889): serves from private local disk with legacy public fallback.
+     */
+    public function showAttachment(Request $request, int $bugReport, int $attachment)
+    {
+        if (!URL::hasValidSignature($request, false)) {
+            abort(403);
+        }
+
+        $record = BugReportAttachment::query()
+            ->where('bug_report_id', $bugReport)
+            ->whereKey($attachment)
+            ->first();
+        if (!$record instanceof BugReportAttachment) {
+            abort(404);
+        }
+
+        $path = (string) $record->getAttribute('stored_path');
+        $disk = BugReportService::resolveAttachmentDisk($path);
+        if ($disk === null) {
+            abort(404);
+        }
+
+        $fullPath = $disk->path($path);
+        $detectedMime = @mime_content_type($fullPath) ?: (string) $record->getAttribute('mime_type');
+        $safeInlineImages = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+        $headers = [
+            'X-Content-Type-Options' => 'nosniff',
+        ];
+
+        if (!in_array(strtolower($detectedMime), $safeInlineImages, true)) {
+            $ext = preg_replace('/[^A-Za-z0-9]/', '', (string) pathinfo($path, PATHINFO_EXTENSION));
+            $filename = "bug-{$bugReport}-attachment-{$attachment}" . ($ext !== '' ? ".{$ext}" : '');
+            $headers['Content-Type'] = 'application/octet-stream';
+            $headers['Content-Disposition'] = "attachment; filename=\"{$filename}\"";
+        } else {
+            $headers['Content-Type'] = strtolower($detectedMime);
+        }
+
+        $response = response()->file($fullPath, $headers);
+        $response->setPrivate()->setMaxAge(300);
+
+        return $response;
     }
 
     /** F13: own unfinished reports on this page, shown in the form before a duplicate is sent. */

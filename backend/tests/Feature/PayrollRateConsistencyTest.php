@@ -97,7 +97,7 @@ class PayrollRateConsistencyTest extends TestCase
 
         $youTid = $this->createPartTimeTeacher(1, 'you-staggered@test.com', '游靜鈴');
         $youA   = $this->createStudent(1, '謝欣彤');
-        $youB   = $this->createStudent(1, '李昀霈');
+        $youB   = $this->createStudent(1, '學生壬');
         $scY_A  = $this->makeStudentClass($youA, $youTid, 7, 'one_on_three');
         $scY_B  = $this->makeStudentClass($youB, $youTid, 7, 'one_on_three');
         $this->makeApprovedLR($scY_A, $youTid, '2026-04-05', '09:30', '11:30');

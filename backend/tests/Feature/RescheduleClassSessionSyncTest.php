@@ -95,7 +95,7 @@ class RescheduleClassSessionSyncTest extends TestCase
         UserCampus::create(['CampusID' => 1, 'UserID' => $teacher->id, 'Admin' => 0, 'Approved' => 1]);
 
         $student = Student::create([
-            'name' => '王品方-' . uniqid(),
+            'name' => '學生戊-' . uniqid(),
             'CampusID' => 1,
             'ClassID' => 1,
             'SchoolName' => 'TestSchool',
