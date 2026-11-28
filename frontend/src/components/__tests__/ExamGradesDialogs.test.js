@@ -36,6 +36,7 @@ describe('段考成績 dialogs on the overlay templates', () => {
       await wrapper.findAll('.exam-round-card__actions button').find((b) => b.text() === '關閉').trigger('click');
       await flushPromises();
       expect(document.body.querySelector('[role=alertdialog]').textContent).toContain('關閉這個段考？');
+      expect(document.body.querySelector('[role=alertdialog]').textContent).toContain('關閉後老師不能再改分，確定關閉「合成段考」嗎？');
       button('關閉段考').click();
       await flushPromises();
       expect(document.body.querySelector('[role=alertdialog]').textContent).toContain('伺服器忙碌');

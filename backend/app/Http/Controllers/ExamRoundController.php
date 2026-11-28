@@ -274,6 +274,7 @@ class ExamRoundController extends Controller
                     'score' => $s && $s->score !== null ? (float) $s->score : null,
                     'is_absent' => $s ? (bool) $s->is_absent : false,
                     'notes' => $s->notes ?? null,
+                    'parent_comment' => $s->parent_comment ?? null,
                     'edited' => isset($edited[$row['student_id'] . ':' . $sid]),
                 ];
             }
@@ -314,6 +315,7 @@ class ExamRoundController extends Controller
             'scores.*.is_absent' => ['sometimes', 'boolean'],
             'scores.*.clear' => ['sometimes', 'boolean'],
             'scores.*.notes' => ['nullable', 'string', 'max:255'],
+            'scores.*.parent_comment' => ['nullable', 'string', 'max:500'],
             'reason' => ['nullable', 'string', 'max:255'],
         ]);
         $subjectMap = $examRound->subjects()->get()->keyBy('id');
@@ -353,10 +355,16 @@ class ExamRoundController extends Controller
                     throw ValidationException::withMessages(['scores' => ["Score must be between 0 and {$max}"]]);
                 }
             }
-            $normalized[] = [
+            $entry = [
                 'student_id' => $studentId, 'exam_round_subject_id' => $subjectId,
                 'score' => $score, 'is_absent' => $isAbsent, 'notes' => $row['notes'] ?? null,
             ];
+            // 老師的話 is kept when a save leaves it out (a score-only edit must not wipe it); blank clears it.
+            if (array_key_exists('parent_comment', $row)) {
+                $comment = trim((string) ($row['parent_comment'] ?? ''));
+                $entry['parent_comment'] = $comment === '' ? null : $comment;
+            }
+            $normalized[] = $entry;
         }
         $saved = [];
         DB::transaction(function () use ($normalized, $examRound, $request, $isDirector, $payload, &$saved) {
@@ -385,14 +393,14 @@ class ExamRoundController extends Controller
                 if (!empty($row['clear'])) {
                     if ($record) {
                         $this->audit($request, $locked, (int) $record->id, 'score_deleted',
-                            $record->only(['score', 'is_absent', 'notes', 'student_id', 'exam_round_subject_id']),
+                            $record->only(['score', 'is_absent', 'notes', 'parent_comment', 'student_id', 'exam_round_subject_id']),
                             null, $payload['reason'] ?? null);
                         $record->delete();
                     }
                     $saved[] = [
                         'exam_round_id' => (int) $locked->id, 'exam_round_subject_id' => $row['exam_round_subject_id'],
                         'student_id' => $row['student_id'], 'score' => null, 'is_absent' => false, 'notes' => null,
-                        'cleared' => true,
+                        'parent_comment' => null, 'cleared' => true,
                     ];
                     continue;
                 }
@@ -403,18 +411,25 @@ class ExamRoundController extends Controller
                     ]);
                 }
                 $before = $record->exists
-                    ? $record->only(['score', 'is_absent', 'notes', 'student_id', 'exam_round_subject_id']) : null;
+                    ? $record->only(['score', 'is_absent', 'notes', 'parent_comment', 'student_id', 'exam_round_subject_id']) : null;
                 $record->fill([
                     'score' => $row['score'], 'is_absent' => $row['is_absent'], 'notes' => $row['notes'],
                     'recorded_by_user_id' => $this->userId($request), 'recorded_at' => now(),
-                ])->save();
+                ] + (array_key_exists('parent_comment', $row) ? ['parent_comment' => $row['parent_comment']] : []))->save();
                 $action = $before === null ? 'score_created' : 'score_updated';
                 if ($isDirector && $locked->status === 'closed') {
                     $action = 'score_corrected';
                 }
+                // Only 老師的話 changed: its own action, so the 改過 badge (score changes only) stays off. Keeps the
+                // `score_` prefix so history() still lists it.
+                $scoreSame = $before !== null && (bool) $before['is_absent'] === $row['is_absent']
+                    && ($before['score'] === null ? $row['score'] === null : $row['score'] !== null && (float) $before['score'] === (float) $row['score']);
+                if ($scoreSame && array_key_exists('parent_comment', $row) && $before['parent_comment'] !== $row['parent_comment']) {
+                    $action = 'score_comment_updated';
+                }
                 $this->audit(
                     $request, $locked, $record->id, $action, $before,
-                    $record->only(['score', 'is_absent', 'notes', 'student_id', 'exam_round_subject_id']),
+                    $record->only(['score', 'is_absent', 'notes', 'parent_comment', 'student_id', 'exam_round_subject_id']),
                     $payload['reason'] ?? null
                 );
                 $saved[] = [
@@ -423,6 +438,7 @@ class ExamRoundController extends Controller
                     'student_id' => (int) $record->student_id,
                     'score' => $record->score !== null ? (float) $record->score : null,
                     'is_absent' => (bool) $record->is_absent, 'notes' => $record->notes,
+                    'parent_comment' => $record->parent_comment,
                 ];
             }
         });

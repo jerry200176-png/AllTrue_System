@@ -1,0 +1,16 @@
+updates:
+  - id: staff-2026-11-28-exam-parent-comment
+    published_at: "2026-11-28"
+    audiences:
+      - director
+      - teacher
+    importance: digest
+    title: 段考每科可寫「老師的話」
+    summary: 登分時每科可以寫幾句給家長的話，跟分數一起儲存。家長畫面會在之後的更新上線。
+    items:
+      - category: added
+        text: 登分表每位學生有「老師的話」按鈕，每科一格，跟分數一起按「儲存」。
+      - category: improved
+        text: 段考關閉後只有主任能改老師的話，要填原因；家長畫面之後上線。
+    source_refs:
+      - "changelog:2026-11-28:exam-parent-comment"
