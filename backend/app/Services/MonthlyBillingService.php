@@ -137,6 +137,38 @@ class MonthlyBillingService
      */
     public function unbilledPeriodFor(Model $course, ?Collection $invoices = null): ?string
     {
+        $month = $this->oldestUncoveredMonth($course, $invoices);
+
+        return $month && $month['clean'] ? $month['billing_period'] : null;
+    }
+
+    /**
+     * #5703 (Founder 2026-11-28, option A): the oldest month that still has countable lessons no bill covers, when that month
+     * ALREADY carries a bill. No second bill is opened for it, so 登記收款 has nothing to collect against; the caller refuses
+     * with this plain reason instead of "已收齊". Null when there is no such month or coverage is unreadable.
+     *
+     * @param  Collection<int, Invoice>|null  $invoices  this contract's non-void bills with items, when already loaded
+     * @return array{code:string,message:string,billing_period:string,lesson_dates:list<string>}|null
+     */
+    public function partlyBilledMonth(Model $course, ?Collection $invoices = null): ?array
+    {
+        $month = $this->oldestUncoveredMonth($course, $invoices);
+        if (!$month || $month['clean']) {
+            return null;
+        }
+        $dates = implode('、', array_map(fn (string $d) => Carbon::parse($d)->format('n/j'), $month['lesson_dates']));
+
+        return ['code' => 'month_partly_billed', 'billing_period' => $month['billing_period'], 'lesson_dates' => $month['lesson_dates'],
+            'message' => sprintf('%s 的課還沒算進帳單，但 %d 月已經開過帳單，同一個月不會再開第二張，所以這裡不能登記。請到學生帳務更正那張帳單；不能更正時請回報。沒有登記任何款項。',
+                $dates, (int) substr($month['billing_period'], 5, 2))];
+    }
+
+    /**
+     * @param  Collection<int, Invoice>|null  $invoices
+     * @return array{billing_period:string,lesson_dates:list<string>,clean:bool}|null  clean = no bill touches that month
+     */
+    private function oldestUncoveredMonth(Model $course, ?Collection $invoices = null): ?array
+    {
         $id = (int) $course->getKey();
         $start = $course->getAttribute('StartDate') ? Carbon::parse($course->getAttribute('StartDate'))->toDateString() : null;
         $end = $course->getAttribute('EndDate') ? Carbon::parse($course->getAttribute('EndDate'))->toDateString() : null;
@@ -161,12 +193,13 @@ class MonthlyBillingService
             : ClassSession::query()->where('StudentClassID', $id)->whereIn('Status', self::BILLABLE_STATUSES)->pluck('SessionDate'))
             ->map(fn ($date) => substr((string) $date, 0, 10))->filter(fn (string $date) => $date >= $start && $date <= $end)->sort();
         foreach ($dates->groupBy(fn (string $date) => substr($date, 0, 7))->sortKeys() as $month => $monthDates) {
-            $covered = $monthDates->filter(fn (string $date) => collect($ranges)->contains(fn ($r) => $date >= $r[1] && $date <= $r[2]))->count();
-            if ($covered === $monthDates->count()) {
+            $open = $monthDates->reject(fn (string $date) => collect($ranges)->contains(fn ($r) => $date >= $r[1] && $date <= $r[2]))->values();
+            if ($open->isEmpty()) {
                 continue;
             }
 
-            return $covered === 0 && !collect($ranges)->contains(fn ($r) => $r[0] === $month) ? (string) $month : null;
+            return ['billing_period' => (string) $month, 'lesson_dates' => $open->all(),
+                'clean' => $open->count() === $monthDates->count() && !collect($ranges)->contains(fn ($r) => $r[0] === $month)];
         }
 
         return null;

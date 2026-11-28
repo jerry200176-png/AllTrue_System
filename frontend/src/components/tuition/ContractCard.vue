@@ -64,6 +64,8 @@
       <span v-if="pendingReport" class="contract__chip pay-partial">待確認入帳 {{ money(pendingReport.amount) }}{{ pendingReport.date ? `（${shortDate(pendingReport.date)} 家長回報）` : '' }}</span>
       <!-- #4765: taught lessons fall outside the contract dates; billing cannot price them, so no 登記這筆 / 繳費單 until the dates are fixed. -->
       <span v-if="outsideDates.length" class="contract__muted" data-testid="contract-outside">{{ outsideText }}</span>
+      <!-- #5703: the server will refuse 登記 (these lessons' month already has a bill); show its reason, offer no 登記這筆. -->
+      <span v-if="recordBlock" class="contract__muted" data-testid="contract-record-block">{{ recordBlock }}</span>
       <span v-if="slipReasonShown" :id="`contract-slip-reason-${course.id}`" class="contract__muted" data-testid="contract-slip-reason">{{ slipState.reason }}</span>
     </div>
 
@@ -454,7 +456,8 @@ const nothingTaught = computed(() => isMonthly.value && state.value === 'ready' 
 // An ordinary unpaid card already shows this exact amount in its expanded money row.
 const repeatsUnpaidAmount = computed(() => !props.pendingReport && !legacyUnverified.value && !noObligation.value && !waived.value
   && !followerPointer.value && !nothingTaught.value && props.outstanding > 0 && props.amounts?.owed === props.outstanding);
-const canRecord = computed(() => !nothingTaught.value && !props.pendingReport && !followerPointer.value && !outsideDates.value.length && !legacyResolvable.value && !noObligation.value && !waived.value
+const recordBlock = computed(() => (!(props.outstanding > 0) && props.course.record_block?.message) || '');
+const canRecord = computed(() => !recordBlock.value && !nothingTaught.value && !props.pendingReport && !followerPointer.value && !outsideDates.value.length && !legacyResolvable.value && !noObligation.value && !waived.value
   && (props.outstanding > 0 || (!props.course.paid && !fullyCollected.value)));
 // Same two places the card used to offer 開帳單: nothing owed on an unpaid bill-less term, or a collected term with a ready renewal draft.
 const canIssue = computed(() => !!props.billDraft && (fullyCollected.value
@@ -482,6 +485,7 @@ const slipReasonShown = computed(() => showSlip.value && !slipState.value.ok);
 const warnings = computed(() => [
   legacyUnverified.value && { testid: 'contract-legacy-unverified', text: LEGACY_FLAG_UNVERIFIED_HELP },
   outsideDates.value.length && { testid: 'contract-outside', text: outsideText.value },
+  recordBlock.value && { testid: 'contract-record-block', text: recordBlock.value },
   slipReasonShown.value && { testid: 'contract-slip-reason', text: slipState.value.reason },
 ].filter(Boolean));
 const menuGroups = computed(() => {

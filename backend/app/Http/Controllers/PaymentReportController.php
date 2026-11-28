@@ -415,7 +415,7 @@ class PaymentReportController extends Controller
             $package = $sc ? $this->lockPackageForCourse($sc) : null;
 
             if ($sc && !$legacyFlagBackfill && ($blockReason = $this->courseMoneyBlockReason((int) $sc->getKey(), (int) ($sc->getAttribute('Paid') ?? 0)))) {
-                return $this->duplicateCoursePaymentResponse($blockReason);
+                return $this->duplicateCoursePaymentResponse($blockReason, $sc);
             }
             if ($sc && !$legacyFlagBackfill && ($over = $this->amountExceedsOutstandingResponse((int) $sc->getKey(), (float) $report->reported_amount))) {
                 return $over;
@@ -463,7 +463,7 @@ class PaymentReportController extends Controller
             }
 
             if (! $invoice && $sc && !$legacyFlagBackfill && ((int) ($sc->Paid ?? 0) === 1 || $hasPaidInvoice) && !$this->unbilledMonthStillOwed($sc, $hasPaidInvoice)) {
-                return $this->duplicateCoursePaymentResponse('paid');
+                return $this->duplicateCoursePaymentResponse('paid', $sc);
             }
 
             $monthlyProjection = null;
@@ -697,7 +697,7 @@ class PaymentReportController extends Controller
                 return $shared;
             }
             if ($blockReason = $this->courseMoneyBlockReason((int) $sc->getKey(), (int) ($sc->getAttribute('Paid') ?? 0))) {
-                return $this->duplicateCoursePaymentResponse($blockReason);
+                return $this->duplicateCoursePaymentResponse($blockReason, $lockedCourse);
             }
             if ($over = $this->amountExceedsOutstandingResponse((int) $sc->getKey(), (float) $data['amount'])) {
                 return $over;
@@ -741,7 +741,7 @@ class PaymentReportController extends Controller
             }
 
             if (! $invoice && ((int) ($sc->Paid ?? 0) === 1 || $hasPaidInvoice) && !$this->unbilledMonthStillOwed($lockedCourse, $hasPaidInvoice)) {
-                return $this->duplicateCoursePaymentResponse('paid');
+                return $this->duplicateCoursePaymentResponse('paid', $lockedCourse);
             }
 
             if ($sc->getAttribute('ScheduleMode') === 'date') {
@@ -852,6 +852,10 @@ class PaymentReportController extends Controller
                 return response()->json(['message' => '補登金額必須大於 0，請填實際收到的金額。沒有登記任何款項。', 'code' => 'zero_amount_with_balance'], 422);
             }
             if ($course->getAttribute('ScheduleMode') === 'date' && $this->pickOpenInvoice($courseId, $course) === null) {
+                // #5703: a month that already has a bill gets no second one; say so instead of capping at a whole-month charge.
+                if ($partly = $this->monthlyBilling->partlyBilledMonth($course)) {
+                    return response()->json($partly, 422);
+                }
                 // No bill to cap the amount (confirm() caps only session-based periods): a new bill never exceeds the charge of the
                 // month confirm() will bill (the same collectionPeriodFor: oldest unbilled month, else the payment date's).
                 $limit = (int) $this->monthlyBilling->summarizePeriod($course, $this->monthlyBilling->collectionPeriodFor($course, $data['payment_date']))['charge'];
@@ -1705,8 +1709,12 @@ class PaymentReportController extends Controller
         ], 422);
     }
 
-    private function duplicateCoursePaymentResponse(string $reason)
+    private function duplicateCoursePaymentResponse(string $reason, ?\Illuminate\Database\Eloquent\Model $course = null)
     {
+        // #5703: "已收齊" is false when taught lessons sit in a month whose bill does not cover them; name those lessons instead.
+        if ($reason === 'paid' && $course && ($partly = $this->monthlyBilling->partlyBilledMonth($course))) {
+            return response()->json($partly, 422);
+        }
         // Same code and status for every reason; only the sentence differs so the director knows what to do next.
         return response()->json([
             'message' => match ($reason) {

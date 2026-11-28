@@ -388,6 +388,18 @@ describe('ContractCard fully paid monthly contract (in-app #457)', () => {
     expect(w.findAll('[data-testid="contract-session"]')[1].text()).not.toContain('還沒開帳單');
   });
 
+  it('obeys the server record_block: shows its reason and offers no 登記這筆 although a lesson has no bill (in-app #608)', async () => {
+    authedFetch.mockResolvedValueOnce(monthly([
+      { class_session_id: 1, date: '2026-09-07', status: 'attended', payment: 'paid' },
+      { class_session_id: 2, date: '2026-09-29', status: 'attended', payment: 'no_invoice' },
+    ]));
+    const record_block = { code: 'month_partly_billed', message: '9/29 的課還沒算進帳單，但 9 月已經開過帳單。' };
+    const w = mount(ContractCard, { props: { focused: true, course: { id: 9, paid: false, schedule_mode: 'date', record_block }, outstanding: 0, amounts } });
+    await flushPromises();
+    expect(w.find('[data-testid="contract-record"]').exists()).toBe(false);
+    expect(w.find('[data-testid="contract-record-block"]').text()).toContain('9/29');
+  });
+
   it('still offers 開帳單 for a ready next-period draft once the current period is collected', async () => {
     authedFetch.mockResolvedValueOnce(monthly([{ class_session_id: 1, date: '2026-10-10', status: 'attended', payment: 'paid' }]));
     const w = mount(ContractCard, { props: { focused: true, course: { id: 9, paid: false, schedule_mode: 'date' }, outstanding: 0, amounts, billDraft: { amount: 3600 } } });
