@@ -92,7 +92,7 @@ describe('student conflict notice (in-app #530)', () => {
   it('names the lesson holding the slot and which contract it belongs to', () => {
     const other = mount(ManualSessionModal, { props: studentProps(false) });
     const item = other.find('.manual-session-blockers li');
-    expect(item.text()).toContain('測試學生・英文（10/1期），2026-10-14 16:00–17:00（另一份合約的課）');
+    expect(item.text()).toContain('測試學生・英文（10/1 開始），2026-10-14 16:00–17:00（另一份合約的課）');
     expect(other.text().match(/請改選其他時段/g)).toHaveLength(1);
     expect(other.find('.manual-session-open-blocker').exists()).toBe(true);
     other.unmount();
