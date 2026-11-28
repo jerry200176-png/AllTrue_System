@@ -142,12 +142,20 @@
                           :src="msg.media_url"
                           class="msg-image"
                           alt="圖片"
-                          @click="previewImageUrl = msg.media_url"
+                          @click="openImagePreview(msg)"
+                          @error="refreshExpiredImage(msg)"
                         />
                       </template>
                       <!-- File -->
                       <template v-else-if="msg.message_type === 'file'">
-                        <a :href="msg.media_url" :download="msg.media_name" class="msg-file-link" target="_blank">
+                        <a
+                          :href="msg.media_url"
+                          :download="msg.media_name"
+                          class="msg-file-link"
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          @click.prevent="openFileAttachment(msg)"
+                        >
                           <span class="material-symbols-outlined">attach_file</span>
                           {{ msg.media_name }}
                         </a>
@@ -431,7 +439,7 @@ import AtTabs from '../components/design-system/AtTabs.vue';
 import {
   fetchThreads, createDm, createGroup, fetchMessages,
   sendMessage, markThreadRead, fetchStaffList,
-  deleteMessage, deleteThread, uploadAttachment,
+  deleteMessage, deleteThread, uploadAttachment, fetchChatAttachmentUrl,
   fetchThreadMembers, updateThreadName, addThreadMembers,
   removeThreadMember, leaveThread, transferOwner, pinThread,
 } from '../lib/chatApi';
@@ -697,11 +705,70 @@ async function retryMessages() {
   if (activeThread.value) await loadMessagesForThread(activeThread.value);
 }
 
+const refreshedImageErrors = new Set();
+
+function isSignedUrlExpiring(url) {
+  if (!url || typeof url !== 'string' || !url.includes('expires=')) return false;
+  try {
+    const parsed = new URL(url, window.location.origin);
+    const expires = Number(parsed.searchParams.get('expires'));
+    if (!Number.isFinite(expires)) return false;
+    return expires * 1000 - Date.now() < 120000;
+  } catch {
+    return false;
+  }
+}
+
+async function resolveFreshMediaUrl(msg, force = false) {
+  if (!msg?.media_url) return null;
+  if (!force && !isSignedUrlExpiring(msg.media_url)) return msg.media_url;
+  const tid = msg.thread_id || activeThread.value?.id;
+  if (!tid || !msg.id) return msg.media_url;
+  try {
+    const res = await fetchChatAttachmentUrl(tid, msg.id);
+    if (res?.url) {
+      msg.media_url = res.url;
+      return res.url;
+    }
+  } catch (e) {
+    console.error('[Chat] refresh attachment url:', e);
+  }
+  return msg.media_url;
+}
+
+async function openImagePreview(msg) {
+  const url = await resolveFreshMediaUrl(msg);
+  if (url) previewImageUrl.value = url;
+}
+
+async function openFileAttachment(msg) {
+  const url = await resolveFreshMediaUrl(msg);
+  if (url) window.open(url, '_blank', 'noopener,noreferrer');
+}
+
+async function refreshExpiredImage(msg) {
+  if (!msg?.id || refreshedImageErrors.has(msg.id)) return;
+  refreshedImageErrors.add(msg.id);
+  await resolveFreshMediaUrl(msg, true);
+}
+
 async function pollNewMessages(threadId) {
   if (!activeThread.value || activeThread.value.id !== threadId) return;
   try {
-    const data    = await fetchMessages(threadId, null, 20);
-    const newMsgs = (data.data || []).filter(m => !messages.value.find(em => em.id === m.id));
+    const data = await fetchMessages(threadId, null, 20);
+    const incoming = data.data || [];
+    const existingById = new Map(messages.value.map(em => [em.id, em]));
+    const newMsgs = [];
+    for (const m of incoming) {
+      const existing = existingById.get(m.id);
+      if (existing) {
+        if (m.media_url && existing.media_url !== m.media_url) {
+          existing.media_url = m.media_url;
+        }
+      } else {
+        newMsgs.push(m);
+      }
+    }
     if (newMsgs.length) {
       messages.value.push(...newMsgs);
       nextTick(() => scrollToBottom());

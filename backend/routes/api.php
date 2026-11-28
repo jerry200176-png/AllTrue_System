@@ -1013,6 +1013,8 @@ Route::prefix('v1')->group(function () {
         Route::get('chat/threads/{threadId}/messages', [ChatController::class, 'messages']);
         Route::post('chat/threads/{threadId}/messages', [ChatController::class, 'sendMessage']);
         Route::post('chat/threads/{threadId}/attachments', [ChatController::class, 'uploadAttachment']);
+        Route::get('chat/threads/{threadId}/messages/{messageId}/attachment-url', [ChatController::class, 'attachmentUrl'])
+            ->whereNumber(['threadId', 'messageId']);
         Route::post('chat/threads/{threadId}/read', [ChatController::class, 'markRead']);
         Route::delete('chat/threads/{threadId}', [ChatController::class, 'deleteThread']);
         Route::get('chat/threads/{threadId}/members', [ChatController::class, 'getMembers']);

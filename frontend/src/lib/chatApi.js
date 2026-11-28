@@ -107,6 +107,13 @@ export async function uploadAttachment(threadId, file) {
   return json(res);
 }
 
+export async function fetchChatAttachmentUrl(threadId, messageId) {
+  const res = await fetch(`${API}/chat/threads/${threadId}/messages/${messageId}/attachment-url`, {
+    headers: headers(),
+  });
+  return json(res);
+}
+
 export async function markThreadRead(threadId, messageId = null) {
   const res = await fetch(`${API}/chat/threads/${threadId}/read`, {
     method: 'POST',

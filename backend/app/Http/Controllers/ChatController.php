@@ -271,6 +271,42 @@ class ChatController extends Controller
     }
 
     /**
+     * GET /api/v1/chat/threads/{threadId}/messages/{messageId}/attachment-url
+     * Issue a fresh short-lived signed attachment URL for an authorized thread member (#889).
+     */
+    public function attachmentUrl(Request $request, $threadId, $messageId)
+    {
+        $userId = $this->resolveUserId($request);
+        if (!$userId) {
+            return response()->json(['message' => 'Unauthorized'], 401);
+        }
+
+        $campusIds = $this->resolveCampusIds($request);
+        $threadId  = (int) $threadId;
+        $messageId = (int) $messageId;
+
+        if (!ChatService::threadInCampus($threadId, $campusIds)) {
+            return response()->json(['message' => 'Not found'], 404);
+        }
+        if (!ChatService::isMember($threadId, $userId)) {
+            return response()->json(['message' => 'Forbidden'], 403);
+        }
+
+        $message = ChatMessage::query()
+            ->where('thread_id', $threadId)
+            ->whereKey($messageId)
+            ->whereNull('deleted_at')
+            ->first();
+        if (!$message instanceof ChatMessage || empty($message->media_url)) {
+            return response()->json(['message' => 'Not found'], 404);
+        }
+
+        return response()->json([
+            'url' => ChatService::mediaUrl((string) $message->media_url, $threadId, $messageId),
+        ]);
+    }
+
+    /**
      * GET /api/v1/chat/threads/{threadId}/messages/{messageId}/attachment?expires=&signature=
      * Signed chat attachment preview/download (#889): serves from private local disk with legacy public fallback.
      */

@@ -88,9 +88,25 @@ class ChatPrivateAttachmentTest extends TestCase
         $cross = ChatService::signedAttachmentUrl((int) $otherThread->id, $msgId);
         $this->get($cross)->assertNotFound();
 
-        // Soft-deleting the message immediately blocks access even with a still-valid signed URL.
+        // Authorized member can refresh a fresh signed URL; non-member is rejected with 403.
+        $refreshed = $this->withHeaders($headersA)
+            ->getJson("/api/v1/chat/threads/{$threadId}/messages/{$msgId}/attachment-url")
+            ->assertOk()
+            ->json('url');
+        $this->assertStringStartsWith("/api/v1/chat/threads/{$threadId}/messages/{$msgId}/attachment?", (string) $refreshed);
+        $this->get((string) $refreshed)->assertOk();
+
+        [$headersOutsider] = $this->createUserHeaders('chat-priv-outsider@example.com');
+        $this->withHeaders($headersOutsider)
+            ->getJson("/api/v1/chat/threads/{$threadId}/messages/{$msgId}/attachment-url")
+            ->assertForbidden();
+
+        // Soft-deleting the message immediately blocks both attachment download and URL refresh.
         ChatService::softDeleteMessage($msgId, $userA->id);
         $this->get($signedUrl)->assertNotFound();
+        $this->withHeaders($headersA)
+            ->getJson("/api/v1/chat/threads/{$threadId}/messages/{$msgId}/attachment-url")
+            ->assertNotFound();
     }
 
     public function test_legacy_public_disk_chat_file_is_readable_as_download_and_pruner_cleans_local_disk(): void
