@@ -1,0 +1,13 @@
+updates:
+  - id: staff-2026-11-28-conflict-dates
+    published_at: "2026-11-28"
+    audiences:
+      - director
+    importance: digest
+    title: 時段額滿會寫出撞到的日期
+    summary: 排課被擋「老師此時段已滿」時，訊息會寫出是哪幾天撞到、每位學生是固定課還是哪天的課。
+    items:
+      - category: improved
+        text: 排課被擋「老師時段已滿」時，寫出撞到的日期；「8/1期」改寫「8/1 開始」。
+    source_refs:
+      - "changelog:2026-11-28:conflict-dates"

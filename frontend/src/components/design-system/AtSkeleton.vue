@@ -3,12 +3,14 @@ defineProps({
   rows: { type: Number, default: 3 },
   width: { type: String, default: '100%' },
   height: { type: String, default: '14px' },
+  revealImmediately: { type: Boolean, default: false },
 });
 </script>
 
 <template>
   <div
     class="at-skeleton"
+    :class="{ 'at-skeleton--delayed': !revealImmediately }"
     role="status"
     aria-live="polite"
     aria-busy="true"
@@ -30,6 +32,9 @@ defineProps({
   flex-direction: column;
   gap: var(--ds-space-2);
   padding: var(--ds-space-2) 0;
+}
+
+.at-skeleton--delayed {
   /* Fast loads never flash: stay invisible (but laid out, no shift) for the first 300ms. */
   opacity: 0;
   animation: at-skeleton-reveal 0s linear 300ms forwards;

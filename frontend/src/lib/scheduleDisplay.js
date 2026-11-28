@@ -186,7 +186,7 @@ export function formatRescheduleConflictStudents(details) {
       if (!name || name === '名單上的學生') return '';
       // #2006：只顯示姓名時，主任分不出是「同一堂」還是這位學生的另一筆課程
       // （常見於續約時舊課程沒關閉，跟新課程同時段並存）。補上科目/期別。
-      const courseLabel = [d?.subject_name, d?.course_period].filter(Boolean).join('・');
+      const courseLabel = [d?.subject_name, periodStart(d?.course_period)].filter(Boolean).join('，');
       const label = courseLabel ? `${name}（${courseLabel}）` : name;
       // Only authoritative student IDs identify duplicate projections. Keep
       // different course variants and never merge different students by name.
@@ -204,6 +204,9 @@ export function formatRescheduleConflictStudents(details) {
   return '';
 }
 
+/** in-app #613: 「8/1期」 reads as an August lesson; it is the contract start date. */
+const periodStart = (p) => (p ? String(p).replace(/期$/, ' 開始') : '');
+
 /**
  * Lessons that hold the slot (overlap_details of the server's schedule conflicts), one per source row.
  * Shared by the manual-lesson modal and the session edit modal (#4991 line 3).
@@ -219,7 +222,7 @@ export function uniqueScheduleBlockers(conflicts) {
 export function scheduleBlockerLabel(b, date) {
   const time = `${String(b.start_time ?? '').slice(0, 5)}–${String(b.end_time ?? '').slice(0, 5)}`;
   const contract = b.same_contract === undefined ? '' : (b.same_contract ? '（本合約的課）' : '（另一份合約的課）');
-  return `${b.student_name || '另一位學生'}${b.subject_name ? `・${b.subject_name}` : ''}${b.course_period ? `（${b.course_period}）` : ''}，${date || ''} ${time}${contract}`;
+  return `${b.student_name || '另一位學生'}${b.subject_name ? `・${b.subject_name}` : ''}${b.course_period ? `（${periodStart(b.course_period)}）` : ''}，${date || ''} ${time}${contract}`;
 }
 
 /** Server summaries are complete; append details only for legacy responses. */

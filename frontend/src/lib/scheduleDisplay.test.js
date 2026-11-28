@@ -108,7 +108,7 @@ assert.ok(!conflict.includes('學生 #'));
 const conflictWithSubject = formatRescheduleConflictStudents([
   { student_name: '學生戊', subject_name: '理化', course_period: '7/11期' },
 ]);
-assert.equal(conflictWithSubject, '此時段已有：學生戊（理化・7/11期）');
+assert.equal(conflictWithSubject, '此時段已有：學生戊（理化，7/11 開始）');
 
 assert.equal(
   humanizeRescheduleFailure('無法寫入原堂次紀錄'),
