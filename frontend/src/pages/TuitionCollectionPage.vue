@@ -71,6 +71,7 @@
         @reject="(b) => openQuick(b, true)"
         @renew="(b) => onBillAction(b, 'renew')"
         @settle="(b) => onLedgerRowAction({ kind: 'settle', courseId: b.class_id })"
+        @waive="(b) => onLedgerRowAction({ kind: 'waive', courseId: b.class_id })"
       />
       <!-- The list has several root nodes, so the wrapper hides it. -->
       <div v-show="!billingGuideOpen">

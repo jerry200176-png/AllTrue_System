@@ -127,6 +127,8 @@
 
       <footer class="tw:flex tw:flex-wrap tw:justify-end tw:gap-2">
         <template v-if="!confirmedId && !gone">
+          <!-- in-app #606: an ended contract that will not be collected. Same rule and dialog as the bill list's 改成不收. -->
+          <Button v-if="rowActions[bill.class_id]?.waive" variant="outline" class="tw:min-h-11 tw:mr-auto" :disabled="busy || exporting" data-testid="bg-waive" @click="$emit('waive', bill)">改成不收</Button>
           <Button variant="ghost" class="tw:min-h-11" :disabled="busy || exporting" data-testid="bg-later" @click="advance('later')">稍後處理</Button>
           <Button variant="ghost" class="tw:min-h-11" :disabled="busy || exporting" data-testid="bg-skip" @click="advance('done')">略過</Button>
         </template>
@@ -167,7 +169,7 @@ const props = defineProps({
   rowActions: { type: Object, default: () => ({}) },
   reload: { type: Function, default: async () => true }, // the page rereads /alerts/tuition; false = it failed
 });
-defineEmits(['close', 'ledger', 'reject', 'renew', 'settle']);
+defineEmits(['close', 'ledger', 'reject', 'renew', 'settle', 'waive']);
 
 const money = (v) => `NT$ ${Number(v || 0).toLocaleString('zh-TW')}`;
 const done = reactive(new Set());
