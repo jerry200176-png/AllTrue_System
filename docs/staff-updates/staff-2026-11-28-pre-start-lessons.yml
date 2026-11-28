@@ -8,6 +8,6 @@ updates:
     summary: 月結合約開始日前上過的課，會算進第一個月的帳單一起收。
     items:
       - category: fixed
-        text: 月結課：開始日前一個月內上的課併入第一個月帳單與學收；更早的或首月已收款的，畫面請你回報。
+        text: 月結課：開始日前一個月內上的課併入首月帳單與學收；沒併入的不擋收款，請核對首月帳單。
     source_refs:
       - "changelog:2026-11-28:pre-start-lessons"

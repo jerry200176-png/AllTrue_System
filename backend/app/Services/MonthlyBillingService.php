@@ -158,13 +158,13 @@ class MonthlyBillingService
         }
         $held = [];
         $open = true;
-        $firstBills = Invoice::query()->notVoided()->with(['items', 'payments'])->where('StudentClassID', $id)->where('billing_period', substr($start, 0, 7))->get();
+        $firstBills = Invoice::query()->notVoided()->with('items')->withCount('payments')->where('StudentClassID', $id)->where('billing_period', substr($start, 0, 7))->get();
         foreach ($firstBills as $bill) {
             // Held: the lessons its first payment priced (MonthlyBillFreeze evidence). Open: priced now from its month's lessons
             // (today's repricing): no frozen evidence, no money (stored or Payment rows), no dated line, no other course's line.
             $listed = collect($bill->billing_snapshot['sessions'] ?? [])->pluck('date')->map(fn ($d) => substr((string) $d, 0, 10))->all();
             $held = [...$held, ...array_intersect($before, $listed)];
-            $open = $open && empty($bill->billing_snapshot) && (string) ($bill->Status ?? 'unpaid') === 'unpaid' && (int) $bill->PaidAmount === 0 && $bill->payments->isEmpty()
+            $open = $open && empty($bill->billing_snapshot) && (string) ($bill->Status ?? 'unpaid') === 'unpaid' && (int) $bill->PaidAmount === 0 && (int) $bill->payments_count === 0
                 && $this->serviceRangeForCourse($bill, $id)[0] === null && $bill->items->every(fn ($i) => (int) ($i->StudentClassID ?? $id) === $id);
         }
         $free = array_values(array_diff($before, \App\Services\Billing\BillingPeriod::datesCoveredByBills($course, $before, $firstBills->modelKeys())));
@@ -213,18 +213,31 @@ class MonthlyBillingService
     public function partlyBilledMonth(Model $course, ?Collection $invoices = null): ?array
     {
         $month = $this->oldestUncoveredMonth($course, $invoices);
+        if ($month === null && ($orphans = $this->unpulledPreStartLessons($course)) !== []) {
+            // #5702: pre-start lessons the first month did not take. Line dates do not prove them unpaid (a total may already
+            // include them), so they hold 登記收款 only when nothing else is left to collect; 更正帳單 cannot add them (BillCorrection::gap).
+            $period = substr((string) $course->getAttribute('StartDate'), 0, 7);
+
+            return ['code' => 'month_partly_billed', 'billing_period' => $period, 'lesson_dates' => $orphans,
+                'message' => sprintf('%s 是合約開始日前上的課，不在任何帳單的日期內。請看 %d 月的第一張帳單是否已經含這幾堂；沒有的話請回報。沒有登記任何款項。',
+                    implode('、', array_map(fn (string $d) => Carbon::parse($d)->format('n/j'), $orphans)), (int) substr($period, 5, 2))];
+        }
         if (!$month || $month['clean']) {
             return null;
         }
         $dates = implode('、', array_map(fn (string $d) => Carbon::parse($d)->format('n/j'), $month['lesson_dates']));
-        $start = substr((string) $course->getAttribute('StartDate'), 0, 10);
-        // 更正帳單 (BillCorrection::gap) only adds lessons after a line's PeriodEnd, never before the contract start.
-        $message = min($month['lesson_dates']) < $start
-            ? '%s 是合約開始日前上的課，還沒算進任何帳單，系統不能自動補進 %d 月的帳單，所以這裡不能登記，請回報。沒有登記任何款項。'
-            : '%s 的課還沒算進任何帳單，但 %d 月已有其他堂算在原本的帳單裡，同一個月不會再開第二張，所以這裡不能登記。請把這幾堂補進原帳單：學生帳務有「更正帳單」的分校在那裡更正，沒有的請回報。沒有登記任何款項。';
 
         return ['code' => 'month_partly_billed', 'billing_period' => $month['billing_period'], 'lesson_dates' => $month['lesson_dates'],
-            'message' => sprintf($message, $dates, (int) substr($month['billing_period'], 5, 2))];
+            'message' => sprintf('%s 的課還沒算進任何帳單，但 %d 月已有其他堂算在原本的帳單裡，同一個月不會再開第二張，所以這裡不能登記。請把這幾堂補進原帳單：學生帳務有「更正帳單」的分校在那裡更正，沒有的請回報。沒有登記任何款項。',
+                $dates, (int) substr($month['billing_period'], 5, 2))];
+    }
+
+    /** @return list<string> pre-start lessons no bill covers that billingStart() does not pull in (#5702) */
+    private function unpulledPreStartLessons(Model $course): array
+    {
+        [$billFrom, $free] = $this->preStartLessons($course);
+
+        return array_values(array_filter($free, fn (string $d) => $d < $billFrom));
     }
 
     /**
@@ -241,7 +254,7 @@ class MonthlyBillingService
         }
         $invoices ??= Invoice::query()->where('StudentClassID', $id)
             ->where(fn ($q) => $q->whereNull('Status')->orWhere('Status', '!=', 'void'))->with('items')->get();
-        [$billFrom, $preStart] = $this->preStartLessons($course); // #5702: these pre-start lessons belong to StartDate's month
+        $billFrom = $this->billingStart($course) ?? $start; // #5702: only lessons it pulls in count, under StartDate's month
         $ranges = [];
         foreach ($invoices as $invoice) {
             $period = (string) $invoice->billing_period;
@@ -257,7 +270,7 @@ class MonthlyBillingService
         $dates = ($preloaded !== null
             ? $preloaded->filter(fn (ClassSession $s) => in_array(strtolower(rtrim((string) $s->Status)), self::BILLABLE_STATUSES, true))->pluck('SessionDate')
             : ClassSession::query()->where('StudentClassID', $id)->whereIn('Status', self::BILLABLE_STATUSES)->pluck('SessionDate'))
-            ->map(fn ($date) => substr((string) $date, 0, 10))->filter(fn (string $date) => ($date >= $start || in_array($date, $preStart, true)) && $date <= $end)->sort();
+            ->map(fn ($date) => substr((string) $date, 0, 10))->filter(fn (string $date) => $date >= $billFrom && $date <= $end)->sort();
         foreach ($dates->groupBy(fn (string $date) => substr(max($date, $start), 0, 7))->sortKeys() as $month => $monthDates) {
             $open = $monthDates->reject(fn (string $date) => collect($ranges)->contains(fn ($r) => $date >= $r[1] && $date <= $r[2]))->values();
             if ($open->isEmpty()) {
@@ -265,8 +278,7 @@ class MonthlyBillingService
             }
 
             return ['billing_period' => (string) $month, 'lesson_dates' => $open->all(),
-                'clean' => $open->count() === $monthDates->count() && !collect($ranges)->contains(fn ($r) => $r[0] === $month)
-                    && !$open->contains(fn (string $date) => $date < $billFrom)]; // a pre-start lesson the first month cannot take
+                'clean' => $open->count() === $monthDates->count() && !collect($ranges)->contains(fn ($r) => $r[0] === $month)];
         }
 
         return null;

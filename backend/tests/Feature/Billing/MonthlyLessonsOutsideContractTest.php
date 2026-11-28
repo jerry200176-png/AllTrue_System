@@ -118,6 +118,33 @@ class MonthlyLessonsOutsideContractTest extends TestCase
         $this->assertSame(0, PaymentReport::count());
     }
 
+    /** Review #3: a pre-start lesson the paid first month did not take never blocks a later month; it shows only when nothing else is due. */
+    public function test_an_unpulled_pre_start_lesson_leaves_later_months_collectable_and_shows_only_when_nothing_else_is_due(): void
+    {
+        $sc = $this->course(['2026-09-29' => 'attended', '2026-10-12' => 'attended', '2026-11-09' => 'attended'], ['EndDate' => '2026-11-30']);
+        $bill = Invoice::create(['StudentID' => $sc->StudentID, 'StudentClassID' => $sc->ID, 'IssueDate' => '2026-10-12', 'TotalAmount' => 1800,
+            'PaidAmount' => 1800, 'Status' => 'paid', 'billing_period' => '2026-10', 'billing_snapshot' => ['version' => 1, 'source' => 'monthly_billable_sessions',
+                'billing_period' => '2026-10', 'period_start' => '2026-10-01', 'period_end' => '2026-10-31', 'period_sessions' => 1, 'charge' => 1800,
+                'sessions' => [['class_session_id' => 0, 'date' => '2026-10-12']]]]);
+        Payment::create(['InvoiceID' => $bill->id, 'Amount' => 1800, 'PaidAt' => '2026-10-12', 'Method' => 'cash']);
+        $billing = app(MonthlyBillingService::class);
+
+        $this->assertNull($billing->partlyBilledMonth($sc), 'November is still due: 9/29 does not hold it');
+        $this->record($sc, 999)->assertStatus(422)->assertJsonPath('code', 'monthly_amount_stale')
+            ->assertJsonPath('billing_period', '2026-11')->assertJsonPath('expected_amount', 1800);
+        $this->api('putJson', '/api/v1/payment-reports/' . $this->record($sc, 1800)->assertOk()->json('report_id') . '/confirm')->assertOk();
+        $this->assertSame('2026-11', (string) Invoice::query()->where('StudentClassID', $sc->ID)->whereKeyNot($bill->id)->sole()->billing_period);
+
+        // Nothing else due: 9/29 now shows, without claiming it is unpaid, and nothing is written.
+        $block = $billing->partlyBilledMonth($sc->fresh());
+        $this->assertSame(['month_partly_billed', '2026-10', ['2026-09-29']], [$block['code'], $block['billing_period'], $block['lesson_dates']]);
+        $this->assertStringContainsString('不在任何帳單的日期內', $block['message']);
+        $this->assertStringNotContainsString('還沒算進任何帳單', $block['message']);
+        $before = [Invoice::query()->get()->toArray(), Payment::query()->get()->toArray(), PaymentReport::count()];
+        $this->record($sc->fresh(), 1800)->assertStatus(422)->assertJsonPath('code', 'month_partly_billed');
+        $this->assertSame($before, [Invoice::query()->get()->toArray(), Payment::query()->get()->toArray(), PaymentReport::count()]);
+    }
+
     public function test_update_refuses_stranding_a_taught_lesson_but_allows_covering_dates(): void
     {
         $sc = $this->course([], ['StartDate' => '2026-09-29', 'EndDate' => '2026-10-31']);
