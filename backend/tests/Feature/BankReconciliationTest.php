@@ -193,6 +193,7 @@ class BankReconciliationTest extends TestCase
         ]);
 
         $this->postJson("/api/v1/bank-reconciliation/{$txn->id}/reconcile", ['student_class_id' => 1], $this->bearer($foreignToken))->assertForbidden();
+        $this->getJson("/api/v1/bank-reconciliation/{$txn->id}/suggest", $this->bearer($foreignToken))->assertForbidden();
         $this->assertSame('unmatched', (string) $txn->fresh()->status);
         $this->postJson('/api/v1/bank-reconciliation/import', [
             'campus_id' => $campus->id, 'transactions' => [['date' => '2026-05-02', 'amount' => 100]],
