@@ -36,6 +36,8 @@
           略過（請必要時改用單堂請假）：
           <span v-for="(s, i) in result.skipped" :key="i" style="display:block;font-size:12px;color:var(--ds-ink-mute);">
             {{ skippedLine(s) }}
+            <template v-if="s.shifted">（已改用續約順延完成）</template>
+            <button v-else-if="s.renewal_shift && s.class_session_id" type="button" class="ghost" data-testid="bulk-leave-shift" @click="$emit('shift', s)">改用續約順延</button>
           </span>
         </p>
       </div>
@@ -68,7 +70,7 @@ const props = defineProps({
   /** Already-loaded CourseManagement rows — used only to humanize skipped lines. */
   courses: { type: Array, default: () => [] },
 });
-defineEmits(['close', 'submit']);
+defineEmits(['close', 'submit', 'shift']);
 
 const impactAccepted = ref(false);
 const previewTitle = computed(() => props.impactPreview?.title || '批次請假影響預覽');

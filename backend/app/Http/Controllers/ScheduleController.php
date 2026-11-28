@@ -1185,6 +1185,10 @@ class ScheduleController extends Controller
                     'course_id' => $courseId,
                     'session_date' => $sessionDate,
                     'reason' => $e->getMessage(),
+                    // The make-up lesson landed on the student's other lesson (usually the renewal): the page can offer
+                    // the existing 續約順延 preview for this one lesson. The preview decides; this is only the hint.
+                    'class_session_id' => (int) $row->session_id,
+                    'renewal_shift' => $e instanceof \App\Exceptions\SlotOccupiedException && $e->responseCode === 'student_slot_conflict',
                 ];
             }
         }

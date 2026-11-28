@@ -1,0 +1,13 @@
+updates:
+  - id: staff-2026-11-28-bulk-leave-renewal-shift
+    published_at: "2026-11-28"
+    audiences:
+      - director
+    importance: digest
+    title: 批次請假可改用續約順延
+    summary: 連假批次請假被略過、撞到續約的堂次，可以直接改用續約順延。
+    items:
+      - category: improved
+        text: 課程管理：連假批次請假的略過清單，撞到續約的堂次多了「改用續約順延」，先預覽再確認。
+    source_refs:
+      - "changelog:2026-11-28:bulk-leave-renewal-shift"
