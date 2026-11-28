@@ -45,7 +45,7 @@ load();
           <span v-if="formatMd(r.exam_date)" class="tw:text-tpl-caption tw:font-normal tw:text-tpl-secondary tw:tabular-nums">{{ formatMd(r.exam_date) }}</span>
         </h4>
         <ul class="tw:m-0 tw:flex tw:list-none tw:flex-col tw:p-0">
-          <li v-for="s in r.subjects" :key="s.name" class="tw:flex tw:flex-col tw:gap-1 tw:border-t tw:border-border tw:py-3" data-testid="exam-subject">
+          <li v-for="(s, i) in r.subjects" :key="i" class="tw:flex tw:flex-col tw:gap-1 tw:border-t tw:border-border tw:py-3" data-testid="exam-subject">
             <p class="tw:m-0 tw:flex tw:items-baseline tw:justify-between tw:gap-3 tw:text-tpl-body">
               <span class="tw:font-semibold tw:break-words">{{ s.name }}</span>
               <span class="tw:whitespace-nowrap tw:tabular-nums" :class="s.is_absent ? 'tw:text-tpl-secondary' : 'tw:font-semibold'">{{ scoreText(s) }}</span>
