@@ -79,6 +79,15 @@ describe('BillingGuide', () => {
     expect(w.get('[data-testid="bg-progress"]').text()).toBe('第 2 筆／共 2 筆');
   });
 
+  it('offers 改成不收 only where the page allows a waiver, and hands the bill back to the page (in-app #606)', async () => {
+    const ended = row({ payment_status: 'pending_reconciliation', closed_reason: 'settled_pending' });
+    const w = await mountGuide([ended], { rowActions: { 7: { waive: true } } });
+    await w.get('[data-testid="bg-waive"]').trigger('click');
+    expect(w.emitted('waive')[0][0].class_id).toBe(7);
+    expect(writes()).toEqual([]);
+    expect((await mountGuide([ended])).find('[data-testid="bg-waive"]').exists()).toBe(false);
+  });
+
   it('稍後處理 comes back after the others; 略過 does not', async () => {
     const w = await mountGuide(TWO);
     await w.get('[data-testid="bg-later"]').trigger('click');
