@@ -74,7 +74,7 @@
 
         <template v-else-if="bill.class_id == null">
           <p class="tw:m-0 tw:font-bold">這是共用方案，帳單和收款在各門成員課上，請到學生帳務處理。</p>
-          <p v-if="bill.src?.schedule_mode === 'date' && Number(bill.src?.monthly_sessions) === 0" class="tw:m-0 tw:text-tpl-secondary" data-testid="bg-plan-no-lessons">預估 NT$0，是因為這個月還沒上過課。</p>
+          <p v-if="bill.src?.schedule_mode === 'date' && Number(bill.src?.monthly_sessions) === 0" class="tw:m-0 tw:text-tpl-secondary" data-testid="bg-plan-no-lessons">預估 NT$ 0，是因為這個月還沒有點名紀錄。</p>
           <Button class="tw:min-h-11 tw:justify-self-start" data-testid="bg-open-ledger" @click="$emit('ledger', bill, null)">到學生帳務</Button>
         </template>
 

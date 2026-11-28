@@ -129,9 +129,9 @@ describe('BillingGuide', () => {
     const plan = row({ id: null, package_id: 5, schedule_mode: 'date', remaining_sessions: null, payable_status: 'unbilled', payable_invoice_id: null, payable_amount: null, payable_outstanding: null, monthly_sessions: 0, estimated_amount: 0, charge: 0, outstanding: 0 });
     const w = await mountGuide([plan]);
     expect(w.text()).toContain('帳單和收款在各門成員課上');
-    expect(w.get('[data-testid="bg-plan-no-lessons"]').text()).toContain('這個月還沒上過課');
+    expect(w.get('[data-testid="bg-plan-no-lessons"]').text()).toContain('這個月還沒有點名紀錄');
     await w.get('[data-testid="bg-open-ledger"]').trigger('click');
-    expect(w.emitted('ledger')).toBeTruthy();
+    expect(w.emitted('ledger')[0][1]).toBeNull();
     const taught = await mountGuide([{ ...plan, monthly_sessions: 2, estimated_amount: 3000 }]);
     expect(taught.find('[data-testid="bg-plan-no-lessons"]').exists()).toBe(false);
   });
