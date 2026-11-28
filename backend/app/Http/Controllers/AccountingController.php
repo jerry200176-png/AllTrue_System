@@ -853,7 +853,7 @@ class AccountingController extends Controller
             // #4041: notes of invoices voided when their course was deleted; read-only, outside the invoice table.
             'voided_invoice_notes' => $this->deletedCourseInvoiceNotes($student),
             // #3991 review: a course settled by a 免費／贈送 NT$0 bill has nothing left to record.
-            'courses' => $classes->map(function (StudentClass $class) use ($subjectNames, $invoices, $firstSessionDates, $amountPendingIds, $collectionPeriods, $outsideContract) {
+            'courses' => $classes->map(function (StudentClass $class) use ($subjectNames, $invoices, $firstSessionDates, $amountPendingIds, $collectionPeriods, $outsideContract, $recordBlocks) {
                 // #3991: a 免費／贈送 mark settles the course only while it holds (Invoice::freeGiftHolds) for the current term.
                 $zeroSettled = fn (bool $freeGiftOnly) => $invoices->contains(fn (Invoice $i) => (int) $i->StudentClassID === (int) $class->ID
                     && (string) $i->Status !== 'void' && (!$freeGiftOnly || $i->isMarkedFreeGift()) && $i->freeGiftHolds($class) && !$invoices->contains(fn (Invoice $o) => (int) $o->StudentClassID === (int) $class->ID && (string) $o->Status !== 'void' && (int) $o->TotalAmount > 0 && in_array((string) $o->Status, ['unpaid', 'partial'], true)) && ($i->billing_period === null || $i->billing_period >= app(\App\Services\MonthlyBillingService::class)->defaultPeriodFor($class)));
