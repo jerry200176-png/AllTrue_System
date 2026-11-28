@@ -317,12 +317,12 @@ class VerifyBugReproductionsTest extends TestCase
     /** in-app #607 / #608: nightly counts of the two lesson-vs-bill shapes, so a recurrence shows up without a report. */
     public function test_lesson_before_start_and_lesson_left_out_of_a_billed_month_are_counted(): void
     {
-        $bill = function (int $sc, string $period, ?array $range = null, string $status = 'paid'): void {
+        $bill = function (int $sc, string $period, ?array $range = null, string $status = 'paid', ?int $lineOwner = null): void {
             $id = DB::table('Invoice')->insertGetId(['StudentID' => (int) DB::table('StudentClass')->where('ID', $sc)->value('StudentID'), 'StudentClassID' => $sc,
                 'IssueDate' => $period . '-01', 'TotalAmount' => 3300, 'PaidAmount' => 3300, 'Status' => $status, 'billing_period' => $period,
                 'created_at' => now(), 'updated_at' => now()]);
             if ($range) {
-                DB::table('InvoiceItem')->insert(['InvoiceID' => $id, 'StudentClassID' => $sc, 'Amount' => 3300, 'Description' => 'x',
+                DB::table('InvoiceItem')->insert(['InvoiceID' => $id, 'StudentClassID' => $lineOwner ?? $sc, 'Amount' => 3300, 'Description' => 'x',
                     'PeriodStart' => $range[0], 'PeriodEnd' => $range[1], 'created_at' => now(), 'updated_at' => now()]);
             }
         };
@@ -333,8 +333,15 @@ class VerifyBugReproductionsTest extends TestCase
         $this->classSession($early, 'attended', '2026-08-28');
         $this->classSession($early, 'leave', '2026-08-21');                       // not taught
         $this->classSession($this->course(['StartDate' => '2026-09-01']), 'attended', '2026-08-28'); // lesson-count contract
+        $this->classSession($this->course($monthly + ['ClassType' => 'tutoring']), 'attended', '2026-08-28'); // tutoring is never billed
         $this->assertSame(1, $this->condition('lesson_before_start_unbilled')['count']);
-        $bill($early, '2026-09', ['2026-08-28', '2026-09-30']);
+        // Shared bill: a line covers the contract it is linked to, whoever heads the bill. Headed by $shared, linked to $early:
+        // $early is covered, $shared is not.
+        $shared = $this->course($monthly);
+        $this->classSession($shared, 'attended', '2026-08-28');
+        $bill($shared, '2026-09', ['2026-08-28', '2026-09-30'], 'paid', $early);
+        $this->assertSame(1, $this->condition('lesson_before_start_unbilled')['count']);
+        $bill($shared, '2026-09', ['2026-08-28', '2026-09-30']);
         $row = $this->condition('lesson_before_start_unbilled');
         $this->assertSame([0, false], [$row['count'], $row['enforced']]);
 

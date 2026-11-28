@@ -56,8 +56,12 @@ class VerifyBugReproductions extends Command
         $freeingStatuses = $quoted(SessionStatus::futureReservationExclusionStatuses());
         $usageLocks = $quoted(StudentClass::USAGE_LOCK_CLOSURES);
         // Shared by the two lesson-vs-bill shapes below (aliases cs / sc / i).
-        $monthlyTaught = "sc.ScheduleMode = 'date' AND COALESCE(sc.PackageID, 0) = 0 AND LOWER(COALESCE(cs.Status, '')) IN ('attended', 'completed', 'late')";
+        $monthlyTaught = "sc.ScheduleMode = 'date' AND COALESCE(sc.PackageID, 0) = 0 AND LOWER(TRIM(COALESCE(sc.ClassType, ''))) <> 'tutoring'
+            AND LOWER(COALESCE(cs.Status, '')) IN ('attended', 'completed', 'late')";
         $liveBill = "(i.Status IS NULL OR i.Status NOT IN ('void', 'cancelled'))";
+        // Line ownership as BillingPeriod::datesCoveredByBills: a line linked to the contract (under any bill header), else the lone unowned line of its own bill.
+        $ownLine = "(ii.StudentClassID = cs.StudentClassID OR (COALESCE(ii.StudentClassID, 0) = 0 AND i.StudentClassID = cs.StudentClassID
+            AND (SELECT COUNT(*) FROM InvoiceItem x WHERE x.InvoiceID = i.id) = 1))";
         return [
             [
                 'key' => 'attended_session_without_learning_record',
@@ -288,8 +292,8 @@ class VerifyBugReproductions extends Command
                 'issue' => '#5702', 'enforced' => false,
                 'sql' => "SELECT COUNT(*) AS c FROM ClassSession cs JOIN StudentClass sc ON sc.ID = cs.StudentClassID
                           WHERE {$monthlyTaught} AND " . ContractPeriod::SQL_BEFORE_START . "
-                            AND NOT EXISTS (SELECT 1 FROM Invoice i JOIN InvoiceItem ii ON ii.InvoiceID = i.id
-                              WHERE i.StudentClassID = cs.StudentClassID AND {$liveBill}
+                            AND NOT EXISTS (SELECT 1 FROM InvoiceItem ii JOIN Invoice i ON i.id = ii.InvoiceID
+                              WHERE {$liveBill} AND {$ownLine}
                                 AND DATE(cs.SessionDate) BETWEEN DATE(ii.PeriodStart) AND DATE(ii.PeriodEnd))",
             ],
             [
@@ -302,15 +306,16 @@ class VerifyBugReproductions extends Command
                 'sql' => "SELECT COUNT(*) AS c FROM ClassSession cs JOIN StudentClass sc ON sc.ID = cs.StudentClassID
                           WHERE {$monthlyTaught} AND sc.StartDate IS NOT NULL AND sc.EndDate IS NOT NULL
                             AND DATE(cs.SessionDate) BETWEEN DATE(sc.StartDate) AND DATE(sc.EndDate)
-                            AND NOT EXISTS (SELECT 1 FROM Invoice i WHERE i.StudentClassID = cs.StudentClassID AND {$liveBill} AND (
-                              EXISTS (SELECT 1 FROM InvoiceItem ii WHERE ii.InvoiceID = i.id
+                            AND NOT EXISTS (SELECT 1 FROM InvoiceItem ii JOIN Invoice i ON i.id = ii.InvoiceID
+                              WHERE {$liveBill} AND {$ownLine}
                                 AND DATE(cs.SessionDate) BETWEEN DATE(ii.PeriodStart) AND DATE(ii.PeriodEnd))
-                              OR (i.billing_period = DATE_FORMAT(cs.SessionDate, '%Y-%m') AND NOT EXISTS (SELECT 1 FROM InvoiceItem ii
-                                WHERE ii.InvoiceID = i.id AND ii.PeriodStart IS NOT NULL AND ii.PeriodEnd IS NOT NULL))))
-                            AND EXISTS (SELECT 1 FROM Invoice i WHERE i.StudentClassID = cs.StudentClassID AND {$liveBill} AND (
-                              i.billing_period = DATE_FORMAT(cs.SessionDate, '%Y-%m')
-                              OR EXISTS (SELECT 1 FROM InvoiceItem ii WHERE ii.InvoiceID = i.id
-                                AND DATE(ii.PeriodStart) <= LAST_DAY(cs.SessionDate) AND DATE(ii.PeriodEnd) >= DATE_FORMAT(cs.SessionDate, '%Y-%m-01'))))",
+                            AND NOT EXISTS (SELECT 1 FROM Invoice i WHERE i.StudentClassID = cs.StudentClassID AND {$liveBill}
+                              AND i.billing_period = DATE_FORMAT(cs.SessionDate, '%Y-%m') AND NOT EXISTS (SELECT 1 FROM InvoiceItem ii
+                                WHERE ii.InvoiceID = i.id AND ii.PeriodStart IS NOT NULL AND ii.PeriodEnd IS NOT NULL))
+                            AND (EXISTS (SELECT 1 FROM Invoice i WHERE i.StudentClassID = cs.StudentClassID AND {$liveBill}
+                                AND i.billing_period = DATE_FORMAT(cs.SessionDate, '%Y-%m'))
+                              OR EXISTS (SELECT 1 FROM InvoiceItem ii JOIN Invoice i ON i.id = ii.InvoiceID WHERE {$liveBill} AND {$ownLine}
+                                AND DATE(ii.PeriodStart) <= LAST_DAY(cs.SessionDate) AND DATE(ii.PeriodEnd) >= DATE_FORMAT(cs.SessionDate, '%Y-%m-01')))",
             ],
         ];
     }
