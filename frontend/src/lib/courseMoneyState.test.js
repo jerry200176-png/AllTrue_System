@@ -189,6 +189,8 @@ assert.equal(M.coursePaymentBadge({ payment_status: 'paid', ScheduleMode: 'count
 assert.equal(M.coursePaymentBadge({ payment_status: 'unpaid', ScheduleMode: 'count', PackageID: 7, billing_verdict: rr }).label, M.coursePaymentBadge({ payment_status: 'unpaid', ScheduleMode: 'count', PackageID: 7 }).label);
 assert.equal(M.coursePaymentBadge({ payment_status: 'pending_report', ScheduleMode: 'count', billing_verdict: rr }).label, M.coursePaymentBadge({ payment_status: 'pending_report', ScheduleMode: 'count' }).label);
 assert.equal(M.coursePaymentBadge({ payment_status: 'unpaid', ScheduleMode: 'count', billing_verdict: rr }).nextAction, 'billing');
+// A row without its billing mode keeps the projection (fail safe).
+assert.equal(M.coursePaymentBadge({ payment_status: 'paid', billing_verdict: rr }).label, '已收');
 assert.equal(M.coursePaymentStatusTone({ class_type: 'tutoring' }), 'neutral');
 assert.equal(M.coursePaymentStatusTone({ class_type: 'tutoring', tutoring_billing_anomaly: true }), 'danger');
 assert.equal(M.monthlyPaymentLabel({ monthly_payment: { billing_period: '2026-09', payment_status: 'unpaid' }, payment_status: 'pending_report' }), '2026-09 待確認入帳');
