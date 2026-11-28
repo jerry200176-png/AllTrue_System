@@ -1799,7 +1799,7 @@ const ledgerRowActions = computed(() => Object.fromEntries(rows.value.filter((r)
   const paidGroup = ['paid', 'renew_needed', 'monthly_due_soon'].includes(r.payment_status);
   return [Number(r.id), {
     waive: canWaive.value && r.payment_status === 'pending_reconciliation' && Boolean(r.closed_reason),
-    // #5721: the waive endpoint's own refusal (server WaiveGate); shown as a disabled item with this reason.
+    // Issue 5721: the waive endpoint's own refusal (server WaiveGate); shown as a disabled item with this reason.
     waiveBlock: r.waive_block || '',
     void: canVoid.value && paidGroup && hasVoidableReceipt(r),
     settle: !r.package_id && (r.payment_status === 'renew_needed' || r.payment_status === 'monthly_due_soon'),
