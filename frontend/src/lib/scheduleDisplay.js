@@ -204,13 +204,13 @@ export function formatRescheduleConflictStudents(details) {
   return '';
 }
 
+/** in-app #613: 「8/1期」 reads as an August lesson; it is the contract start date. */
+const periodStart = (p) => (p ? String(p).replace(/期$/, ' 開始') : '');
+
 /**
  * Lessons that hold the slot (overlap_details of the server's schedule conflicts), one per source row.
  * Shared by the manual-lesson modal and the session edit modal (#4991 line 3).
  */
-/** in-app #613: 「8/1期」 reads as an August lesson; it is the contract start date. */
-const periodStart = (p) => (p ? String(p).replace(/期$/, ' 開始') : '');
-
 export function uniqueScheduleBlockers(conflicts) {
   const seen = new Set();
   return (Array.isArray(conflicts) ? conflicts : []).flatMap((c) => c?.overlap_details || []).filter((b) => {
