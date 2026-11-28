@@ -55,7 +55,7 @@ class RepairScheduledCrossScTest extends TestCase
     {
         $studentId = 97001;
         DB::table('Student')->insert([
-            'id' => $studentId, 'name' => '陳品承修測', 'CampusID' => 9, 'ClassID' => 1, 'enable' => 1,
+            'id' => $studentId, 'name' => '學生丁修測', 'CampusID' => 9, 'ClassID' => 1, 'enable' => 1,
         ]);
         $keepSc = (int) DB::table('StudentClass')->insertGetId([
             'StudentID' => $studentId, 'GradeID' => 1, 'SubjectID' => 1, 'TeacherID' => 67,

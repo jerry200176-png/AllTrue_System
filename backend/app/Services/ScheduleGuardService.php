@@ -1856,7 +1856,7 @@ class ScheduleGuardService
 
         // #2006：衝突訊息只有姓名時，主任分不出「同一堂」還是同學生的另一筆課程
         // （例如續約舊課程未關閉，跟新課程同時段並存）。補上科目名稱與課程起始日
-        // 讓「此時段已有：王品方（理化・7/11期）」講清楚是哪一筆。
+        // 讓「此時段已有：學生戊（理化，7/11 開始）」講清楚是哪一筆。
         $courseIds = array_values(array_unique(array_filter(array_map(function ($entry) {
             return (int) ($entry['course_id'] ?? $entry['source_id'] ?? 0);
         }, $entries))));

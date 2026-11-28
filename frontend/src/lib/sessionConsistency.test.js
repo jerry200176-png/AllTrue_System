@@ -99,7 +99,7 @@ const attendance = classifyAttendanceSessionRows([
     id: 10269,
     student_id: 89,
     student_class_id: 1272,
-    student_name: '王品方',
+    student_name: '學生戊',
     subject_name: '數學',
     teacher_name: '黃芝琳',
     session_date: '2026-05-16',
@@ -130,11 +130,11 @@ assert.equal(leaveRequestedState.fillLockReason, '請假申請審核中，暫不
 
 const leaveRequestedAttendance = classifyAttendanceSessionRows([
   {
-    // Exact #194 shape: 陳品承 週六 15-17 1v2, leave submitted awaiting review
+    // Exact #194 shape: 學生丁 週六 15-17 1v2, leave submitted awaiting review
     id: 15635,
     student_id: 2144,
     student_class_id: 1946,
-    student_name: '陳品承',
+    student_name: '學生丁',
     subject_name: '理化',
     teacher_name: '黃芝琳',
     session_date: '2026-07-04',
@@ -166,7 +166,7 @@ assert.equal(
   1,
   'leave_requested student must remain VISIBLE as a status row (was silently dropped — #194)',
 );
-assert.equal(leaveRequestedAttendance.statusRows[0].student_name, '陳品承');
+assert.equal(leaveRequestedAttendance.statusRows[0].student_name, '學生丁');
 assert.equal(leaveRequestedAttendance.statusRows[0].status_label, '請假(待審)');
 assert.equal(
   leaveRequestedAttendance.totalCount,
@@ -199,7 +199,7 @@ assert.equal(
   'attended session must not surface the leave-deferral provenance note (#555)',
 );
 
-// 2026-07-18 Xindian: 黃芝琳出缺勤「王品方／陳品承各兩堂」— API 回跨 SC 同 student+date+start
+// 2026-07-18 Xindian: 黃芝琳出缺勤「學生戊／學生丁各兩堂」— API 回跨 SC 同 student+date+start
 // 兩筆 scheduled 時，pending 必須只留一列（對齊 TeacherHome student-slot dedupe；R20/#189）。
 const crossScPending = classifyAttendanceSessionRows([
   {
@@ -207,7 +207,7 @@ const crossScPending = classifyAttendanceSessionRows([
     student_id: 89,
     student_class_id: 787,
     course_stop: 1,
-    student_name: '王品方',
+    student_name: '學生戊',
     subject_name: '數學',
     teacher_name: '黃芝琳',
     session_date: '2026-07-18',
@@ -220,7 +220,7 @@ const crossScPending = classifyAttendanceSessionRows([
     student_id: 89,
     student_class_id: 1272,
     course_stop: 0,
-    student_name: '王品方',
+    student_name: '學生戊',
     subject_name: '數學',
     teacher_name: '黃芝琳',
     session_date: '2026-07-18',
@@ -234,7 +234,7 @@ const crossScPending = classifyAttendanceSessionRows([
     student_class_id: 1946,
     course_stop: 0,
     course_session_count: 8,
-    student_name: '陳品承',
+    student_name: '學生丁',
     subject_name: '理化',
     teacher_name: '黃芝琳',
     session_date: '2026-07-18',
@@ -248,7 +248,7 @@ const crossScPending = classifyAttendanceSessionRows([
     student_class_id: 2264,
     course_stop: 0,
     course_session_count: 0,
-    student_name: '陳品承',
+    student_name: '學生丁',
     subject_name: '理化',
     teacher_name: '黃芝琳',
     session_date: '2026-07-18',
@@ -259,9 +259,9 @@ const crossScPending = classifyAttendanceSessionRows([
 ]);
 assert.equal(crossScPending.pending.length, 2, 'one pending row per student slot');
 assert.equal(crossScPending.totalCount, 2);
-const pinFang = crossScPending.pending.find((r) => r.student_name === '王品方');
-assert.equal(pinFang.student_class_id, 1272, 'prefer Stop=0 course over Stop=1 orphan');
-assert.equal(pinFang.class_session_id, 30002);
-const pinCheng = crossScPending.pending.find((r) => r.student_name === '陳品承');
-assert.equal(pinCheng.student_class_id, 1946, 'prefer real contract over SessionCount=0 ghost shell (#189)');
-assert.equal(pinCheng.class_session_id, 30003);
+const studentWu = crossScPending.pending.find((r) => r.student_name === '學生戊');
+assert.equal(studentWu.student_class_id, 1272, 'prefer Stop=0 course over Stop=1 orphan');
+assert.equal(studentWu.class_session_id, 30002);
+const studentDing = crossScPending.pending.find((r) => r.student_name === '學生丁');
+assert.equal(studentDing.student_class_id, 1946, 'prefer real contract over SessionCount=0 ghost shell (#189)');
+assert.equal(studentDing.class_session_id, 30003);

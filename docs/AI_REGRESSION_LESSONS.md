@@ -663,7 +663,7 @@ Intake consolidation regression (2026-10-17): the oldest trusted SourceRef issue
 - **資料修復守則**：修單筆殘留堂次前先備份 DB + code；UPDATE 必須鎖定 `ClassSession.id`、`StudentClassID`、日期、時間與 `Status='scheduled'`，只改成 `cancelled` 並保留 Note 稽核，不可刪 row。
 - **強制規則**：任何入口把課程改為 inactive / settled / completed，都必須共用「取消未來 scheduled 堂次」邏輯；不可只更新 `StudentClass`。
 - **測試必補**：直接 `PUT /student-classes/{id}` with `status=inactive` 與 `/pause` endpoint 都要驗證 future scheduled 變 `cancelled`，歷史 attended 不變。
-- **2026-07-18 延伸（新店黃芝琳／王品方／陳品承）**：出缺勤 pending 去重必須用 `student_id|date|start`（不可只用 `student_class_id`）；`GET /api/v1/class-sessions` 預設排除 `Stop=1`+`scheduled`；forward-gen 遇跨 SC 同 slot 必須 skip + `cross_sc_slot_conflict` log；digest 監控 `scheduled_cross_sc` / `orphan_stop_scheduled`。TeacherHome 已用 student-slot 去重，故同 bug 可能只在出缺勤爆。
+- **2026-07-18 延伸（新店黃芝琳／學生戊／學生丁）**：出缺勤 pending 去重必須用 `student_id|date|start`（不可只用 `student_class_id`）；`GET /api/v1/class-sessions` 預設排除 `Stop=1`+`scheduled`；forward-gen 遇跨 SC 同 slot 必須 skip + `cross_sc_slot_conflict` log；digest 監控 `scheduled_cross_sc` / `orphan_stop_scheduled`。TeacherHome 已用 student-slot 去重，故同 bug 可能只在出缺勤爆。
 
 ---
 
@@ -1036,7 +1036,7 @@ Intake consolidation regression (2026-10-17): the oldest trusted SourceRef issue
 
 ### R65. 新增 session 狀態值必須同步全部消費端（`leave_requested` 兩畫面認定分歧）
 
-- **觸發情境**：家長入口送出請假、主任未審核期間（`ClassSession.Status='leave_requested'`，**無** `StudentSingIn` 列）：出缺勤管理把整列過濾掉（看起來已請假），課表與評量／今日待填卻列為待填評量（in-app #194／GitHub #1099，陳品承 7/4 週六 15-17 案例）。
+- **觸發情境**：家長入口送出請假、主任未審核期間（`ClassSession.Status='leave_requested'`，**無** `StudentSingIn` 列）：出缺勤管理把整列過濾掉（看起來已請假），課表與評量／今日待填卻列為待填評量（in-app #194／GitHub #1099，學生丁 7/4 週六 15-17 案例）。
 - **根因**：請假審核流（#690）新增 `leave_requested` 狀態時，只改了寫入端與審核端；讀取端各自維護狀態白名單——`AttendancePage` 的 skip 集合有它、`sessionConsistency.NON_FILLABLE_LEARNING_STATUSES` 沒有它、`LearningRecord::scopeExcludeLeaveSessionPendingReview` 只認 sign-in 列的 `leave/excused`（此流程根本不建 sign-in 列）→ 各消費端對同一狀態的語意解讀不一致。
 - **強制規則**：
   1. 任何人新增/擴充 `ClassSession.Status` 或 `StudentSingIn.Status` 枚舉值時，必須 grep 全部狀態白名單消費端並逐一決策：`sessionConsistency.js`（NON_FILLABLE + 兩個 label fn + classifyAttendanceSessionRows）、`LearningRecord` scopes、`AttendancePage`、`TeacherHomePage`、`LearningRecordsPage`、`ClassSessionController` 各 index filter。
@@ -1387,7 +1387,7 @@ Intake consolidation regression (2026-10-17): the oldest trusted SourceRef issue
 
 ### R71. 調課不可由前端串三次寫入並吞掉最後一步錯誤
 
-- **觸發情境**：2026-07-18 王品方 7/14 未上課，但課程管理顯示「已上」且待點名／評量仍存在；應改至 7/18 13:00–15:00。畫面可同時出現原日已上、另一時段取消與待處理，無法判斷是系統或人工作業。
+- **觸發情境**：2026-07-18 學生戊 7/14 未上課，但課程管理顯示「已上」且待點名／評量仍存在；應改至 7/18 13:00–15:00。畫面可同時出現原日已上、另一時段取消與待處理，無法判斷是系統或人工作業。
 - **根因**：三個前端入口先後寫 `rescheduled`、`scheduled`，再呼叫 `reschedule-session`；最後一步曾 `.catch(() => {})`，即使 ClassSession 沒移動仍關 modal 並顯示成功。這是 F1 狀態收尾缺口，並與 R13/R43/R47/R52 的多來源漂移同族。
 - **強制規則**：調課必須由單一後端 domain service 在同一交易更新 schedule chain、ClassSession 與衍生評量／點名／扣堂；前端不得直寫兩張 schedule 後自行補償。只有 API 明確回 `committed=true` 才能顯示成功。
 - **定位規則**：必傳 `old_date + old_start_time`；同課程同日多堂時不可 date-only 猜第一筆。相同請求重試必須冪等，不可新增第二個 anchor/target。
@@ -1747,7 +1747,7 @@ Intake consolidation regression (2026-10-17): the oldest trusted SourceRef issue
 
 ### R115. 堂數制↔月結轉換必須封存未入帳帳單，且不可沖銷已確認收款（GitHub #934，2026-08-17）
 
-- **現象**：課程改計費模式後，舊發票／收據仍顯示轉換前金額（黃玟睿 8000 vs 4000）。#1804 已在收據標 `billing_mode_changed`，但未入帳帳單與待確認回報仍留在畫面上；舊列 `ScheduleModeAtIssue` 為 NULL 時也不會亮燈。
+- **現象**：課程改計費模式後，舊發票／收據仍顯示轉換前金額（學生乙 8000 vs 4000）。#1804 已在收據標 `billing_mode_changed`，但未入帳帳單與待確認回報仍留在畫面上；舊列 `ScheduleModeAtIssue` 為 NULL 時也不會亮燈。
 - **強制規則**：
   1. `StudentClass.ScheduleMode` 真正變更時，未入帳且無收款的 Invoice 作廢；`pending` PaymentReport 標 `voided`。
   2. `confirmed` 回報、已 paid／partial／有 Payment 的帳單**禁止**自動作廢或寫負向 Payment；`StudentClass.Paid` 與金額不變（G-009）。

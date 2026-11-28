@@ -13,7 +13,7 @@ php artisan repair:duplicate-sessions --case=scheduled-cross-sc
 → DRY RUN actions=32
 ```
 
-本案相關（王品方／黃芝琳）：
+本案相關（學生戊／黃芝琳）：
 
 | WOULD cancel cs.id | SC (drop) | keep SC | keep cs.id | slot |
 |-------------------:|----------:|--------:|-----------:|------|
@@ -44,14 +44,14 @@ ALLOW_PROD_REPAIR=1 php artisan repair:duplicate-sessions \
 
 ```bash
 php artisan repair:duplicate-sessions --case=scheduled-cross-sc   # expect actions=0
-# 黃芝琳出缺勤：王品方／陳品承同日同時段各一列
+# 黃芝琳出缺勤：學生戊／學生丁同日同時段各一列
 curl -sk https://daan.lifenet.com.tw/api/v1/health | python3 -m json.tool
 ```
 
 ## 5. Out of scope（需另案）
 
-- 2026-07-18 **陳品承雙 attended**（cs 24112 SC1946 + cs 20205 SC2399）— 非 scheduled case；可能已雙扣堂，需帳務／RemainingSessions 對帳後再修。
-- 王品方 07-18 兩筆 leave（10274/24111）— 歷史狀態，scheduled-cross-sc 不改。
+- 2026-07-18 **學生丁雙 attended**（cs 24112 SC1946 + cs 20205 SC2399）— 非 scheduled case；可能已雙扣堂，需帳務／RemainingSessions 對帳後再修。
+- 學生戊 07-18 兩筆 leave（10274/24111）— 歷史狀態，scheduled-cross-sc 不改。
 
 ## 6. Rollback
 
