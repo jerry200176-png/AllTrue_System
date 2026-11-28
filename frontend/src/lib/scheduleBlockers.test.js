@@ -11,6 +11,6 @@ describe('schedule blockers (#4991 line 3)', () => {
 
   it('labels the blocker with the date, time and contract', () => {
     expect(scheduleBlockerLabel({ student_name: '甲', course_period: '9/1期', start_time: '16:00:00', end_time: '17:00:00', same_contract: false }, '2026-11-20'))
-      .toBe('甲（9/1期），2026-11-20 16:00–17:00（另一份合約的課）');
+      .toBe('甲（9/1 開始），2026-11-20 16:00–17:00（另一份合約的課）');
   });
 });
