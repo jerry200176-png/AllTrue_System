@@ -133,9 +133,7 @@ class BankReconciliationController extends Controller
         }
 
         $txn = BankTransaction::findOrFail($id);
-        $role = $request->attributes->get('auth_role');
-        $campusIds = array_map('intval', (array) $request->attributes->get('auth_campus_ids', []));
-        if ($role !== 'super_admin' && !in_array((int) $txn->campus_id, $campusIds, true)) {
+        if (!$this->campusAllowed($request, (int) $txn->campus_id)) {
             abort(403);
         }
         $amount = (int) $txn->amount;
