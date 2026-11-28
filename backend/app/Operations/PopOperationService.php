@@ -416,6 +416,8 @@ final class PopOperationService
         if (!in_array($phase, ['execute', 'verify', 'rollback'], true) || !$this->coCommitsWithRecord((string) $request->strategy_id, $request)) return $run();
         $this->phaseFailure = null;
         $level = DB::transactionLevel();
+        $isolation = $this->readCommittedForExactRepair((string) $request->strategy_id);
+        try {
         try { return DB::transaction(function () use ($requestId, $phase, $run): array {
             $this->phaseFailure = null; // each retry starts clean: a refusal before the phase begins is never a failed receipt
             DB::table('pop_operation_requests')->where('id', $requestId)->lockForUpdate()->first();
@@ -434,6 +436,24 @@ final class PopOperationService
             if (DB::transactionLevel() > $level) DB::rollBack($level);
             return DB::transaction(function () use ($requestId, $record): array { DB::table('pop_operation_requests')->where('id', $requestId)->lockForUpdate()->first(); return $record(); });
         }
+        } finally {
+            if ($isolation !== null) DB::statement('SET SESSION TRANSACTION ISOLATION LEVEL ' . $isolation);
+        }
+    }
+
+    /**
+     * #4458 Codex P1: these repairs lock their rows inside run()'s outer transaction, then read. Under REPEATABLE READ the
+     * snapshot is taken before those locks, so a write committed while they waited stays invisible to the checks. READ
+     * COMMITTED (session-wide, so every retry gets it) keeps each read current; returns the level to restore after, or null.
+     */
+    private function readCommittedForExactRepair(string $strategy): ?string
+    {
+        if (!$this->dbOnlyExactRepair($strategy) || DB::transactionLevel() !== 0 || !in_array(DB::getDriverName(), ['mysql', 'mariadb'], true)) return null;
+        DB::statement('SET SESSION TRANSACTION ISOLATION LEVEL READ COMMITTED');
+
+        // config/database.php sets no isolation level, so the connection runs at the InnoDB default (MariaDB names the
+        // session variable differently from MySQL 8, so it is not read back).
+        return 'REPEATABLE READ';
     }
 
     private function runPhase(string $requestId, string $phase, ?string $token = null, ?string $commitSha = null, string $actor = 'pop-runner', ?int $actorId = null, ?string $actorRole = null, ?array $context = null): array
