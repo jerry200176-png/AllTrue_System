@@ -542,6 +542,19 @@ class BillingPayableResolver
      */
     private function latestUnreversedReceiptDate(Collection $payments): ?string
     {
+        return $this->latestStandingReceipt($payments)['paid_at'] ?? null;
+    }
+
+    /**
+     * The receipt latestUnreversedReceiptDate dates, with what of it still stands: the ledger's per-invoice 繳費日 line.
+     * Rows: id, Amount, Method, PaidAt, payment_report_id, report_payment_id (the reversed report's payment_id), any order.
+     *
+     * @param  Collection<int, object>  $payments
+     * @return array{paid_at: string, amount: int}|null
+     */
+    public function latestStandingReceipt(Collection $payments): ?array
+    {
+        $payments = $payments->sortBy(fn ($p) => (int) $p->id)->values(); // reversals apply in write order
         $payments = $payments->reject(fn ($p) => Payment::isCreditMovement($p)); // Carry-over/compensation never changes the cash-receipt date.
         $isReversal = fn ($p) => (int) ($p->Amount ?? 0) < 0 || (string) ($p->Method ?? '') === 'void';
         $receipts = $payments->filter(fn ($p) => !$isReversal($p) && (int) ($p->Amount ?? 0) > 0)
@@ -571,12 +584,12 @@ class BillingPayableResolver
 
         $latest = null;
         foreach ($receipts as $receipt) {
-            if ($receipt['left'] > 0 && $receipt['paid_at'] !== '' && ($latest === null || $receipt['paid_at'] > $latest)) {
-                $latest = $receipt['paid_at'];
+            if ($receipt['left'] > 0 && $receipt['paid_at'] !== '' && ($latest === null || $receipt['paid_at'] > $latest['paid_at'])) {
+                $latest = $receipt;
             }
         }
 
-        return $latest === null ? null : substr($latest, 0, 10);
+        return $latest === null ? null : ['paid_at' => substr($latest['paid_at'], 0, 10), 'amount' => $latest['left']];
     }
 
     /**

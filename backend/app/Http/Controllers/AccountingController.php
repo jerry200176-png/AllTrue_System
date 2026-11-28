@@ -684,6 +684,11 @@ class AccountingController extends Controller
                 'overpaid_amount' => $overpaidAmount,
                 'outstanding_amount' => $outstanding,
                 'status' => $status,
+                // 繳費日 line: the latest receipt still standing after reversals, by the resolver's own last-paid rule (no queries).
+                'standing_payment' => app(BillingPayableResolver::class)->latestStandingReceipt($payments->map(fn ($p) => (object) [
+                    'id' => (int) $p->id, 'Amount' => $p->Amount, 'Method' => $p->Method, 'PaidAt' => $p->PaidAt, 'payment_report_id' => $p->payment_report_id,
+                    'report_payment_id' => $p->payment_report_id === null ? null : $reportsById->get((int) $p->payment_report_id)?->payment_id,
+                ])),
                 'can_direct_void' => !$historical && (!in_array($status, ['paid', 'partial', 'void'], true) || ($status === 'paid' && $invoice->zero_amount_reason !== null && $paymentRows->isEmpty())
                         // An unmarked NT$0 bill marked paid with no confirmed receipt left (an old 「0 元」 登記); same rule as BillingController::voidInvoice.
                         || ($status === 'paid' && $invoice->zero_amount_reason === null && (int) $totalAmount === 0 && !$invoiceReports->contains(fn ($r) => in_array($r['status'], ['confirmed', 'pending'], true))

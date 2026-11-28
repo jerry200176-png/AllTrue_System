@@ -21,7 +21,7 @@ async function ledger({ invoices = [], course = {} }) {
 }
 const invoice = (extra = {}) => ({ id: 31, student_class_id: 7, status: 'partial', total_amount: 8800, stored_total_amount: 8800,
   calculated_applied_amount: 8000, outstanding_amount: 800, paid_amount: 8000, amount_source: 'invoice_total',
-  payments: [{ id: 1, amount: 8000, method: 'cash', paid_at: '2026-01-10' }], ...extra });
+  payments: [{ id: 1, amount: 8000, method: 'cash', paid_at: '2026-01-10' }], standing_payment: { paid_at: '2026-01-10', amount: 8000 }, ...extra });
 afterEach(() => { vi.unstubAllGlobals(); localStorage.clear(); });
 describe('amount-source synthetic characterization', () => {
   it('issued8800 paid8000 due800 is ledger arithmetic', async () => {

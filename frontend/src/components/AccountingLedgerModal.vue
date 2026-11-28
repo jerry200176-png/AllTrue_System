@@ -441,7 +441,7 @@ import {
 } from '../lib/studentClassDisplay.js';
 import { humanizeApiErrorMessage } from '../lib/humanizeApiErrorMessage.js';
 import { confirmReport, voidReport as voidReportAction, voidInvoice as voidInvoiceAction } from '../lib/paymentActions.js';
-import { FREE_GIFT_LABEL, INVOICE_STATUS_LABELS, REPORT_STATUS_LABELS, ZERO_REASON_FREE_GIFT, LEGACY_CONFIRMED_REPORT_HELP, canResolveLegacyPaidFlag, isWaivedContract, latestStandingPayment } from '../lib/courseMoneyState.js';
+import { FREE_GIFT_LABEL, INVOICE_STATUS_LABELS, REPORT_STATUS_LABELS, ZERO_REASON_FREE_GIFT, LEGACY_CONFIRMED_REPORT_HELP, canResolveLegacyPaidFlag, isWaivedContract } from '../lib/courseMoneyState.js';
 import LedgerCoverageDates from './LedgerCoverageDates.vue';
 import BillingNotesPanel from './BillingNotesPanel.vue';
 import ContractCard from './tuition/ContractCard.vue';
@@ -1043,8 +1043,9 @@ const owedFor = (id) => (payload.value?.invoices || [])
   .reduce((sum, inv) => sum + Number(inv.outstanding_amount || 0), 0);
 const courseInvoices = (id) => (payload.value?.invoices || [])
   .filter((inv) => Number(inv.student_class_id) === Number(id) && inv.status !== 'void');
-// Reversals are netted per invoice (latestStandingPayment, same rule as the server's last-paid resolver), never filtered by row.
-const lastInvoicePayment = (ids) => ids.flatMap((id) => courseInvoices(id)).map((inv) => latestStandingPayment(inv.payments))
+// The server nets reversals per invoice (standing_payment = BillingPayableResolver::latestStandingReceipt); the screen only reads it.
+const standingPayment = (inv) => (inv.standing_payment ? { date: String(inv.standing_payment.paid_at), amount: Number(inv.standing_payment.amount) } : null);
+const lastInvoicePayment = (ids) => ids.flatMap((id) => courseInvoices(id)).map(standingPayment)
   .filter(Boolean).sort((a, b) => b.date.localeCompare(a.date))[0] || null;
 // Pay line (spec 2.3): latest confirmed receipt = same source as the printed receipt; invoice payments next.
 // #4150: the contract's PayDate / Charge / Paid flag are legacy metadata, not proof of a payment, so they never
@@ -1078,7 +1079,7 @@ const amountsFor = (id) => {
 };
 const monthLinesFor = (id) => Object.fromEntries(courseInvoices(id).map((inv) => {
   const key = String(inv.billing_period || inv.period_start || '').slice(0, 7);
-  const paid = latestStandingPayment(inv.payments);
+  const paid = standingPayment(inv);
   return [key, { due: Number(inv.total_amount || 0), paidDate: paid ? paid.date : '', paidAmount: Number(inv.calculated_applied_amount || 0),
     periodStart: inv.period_start, periodEnd: inv.period_end }];
 }).filter(([k]) => k));

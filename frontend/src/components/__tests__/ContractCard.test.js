@@ -848,7 +848,7 @@ describe('AccountingLedgerModal legacy payment display (#4150)', () => {
         { id: 1, paid_at: '2026-09-01', amount: 6000, method: 'cash', is_void: false, report_id: 4 },
         { id: 2, paid_at: '2026-09-02', amount: -6000, method: 'void', is_void: true, report_id: 4 },
         { id: 3, paid_at: '2026-09-05', amount: 6000, method: 'cash', is_void: false },
-      ] })],
+      ], standing_payment: { paid_at: '2026-09-05', amount: 6000 } })],
       receipts: [{ report_id: 4, student_class_id: 2, status: 'voided', amount: 6000, payment_date: '2026-09-20' }],
     });
     expect(card(w).find('[data-testid="contract-last-payment"]').text()).toBe('繳費日 2026/09/05　NT$ 6,000');
@@ -918,7 +918,7 @@ describe('AccountingLedgerModal legacy payment display (#4150)', () => {
     const w = await mountWith({
       courses: [pkg({ id: 2 }), pkg({ id: 3, subject: '英文' })],
       receipts: [{ report_id: 5, student_class_id: 2, status: 'confirmed', amount: 6000, payment_date: '2026-09-05' }],
-      invoices: [inv({ calculated_applied_amount: 6000, outstanding_amount: 0, status: 'paid', payments: [{ id: 1, paid_at: '2026-09-05', amount: 6000 }] })],
+      invoices: [inv({ calculated_applied_amount: 6000, outstanding_amount: 0, status: 'paid', payments: [{ id: 1, paid_at: '2026-09-05', amount: 6000 }], standing_payment: { paid_at: '2026-09-05', amount: 6000 } })],
     });
     const sib = w.find('[data-testid="contract-card-3"]');
     expect(sib.find('[data-testid="contract-legacy-unverified"]').exists()).toBe(false);
@@ -928,7 +928,7 @@ describe('AccountingLedgerModal legacy payment display (#4150)', () => {
     // Payment only (no receipt) on the collecting member: the sibling still reads it.
     const w2 = await mountWith({
       courses: [pkg({ id: 2 }), pkg({ id: 3, subject: '英文' })],
-      invoices: [inv({ calculated_applied_amount: 6000, outstanding_amount: 0, status: 'paid', payments: [{ id: 1, paid_at: '2026-09-06', amount: 6000 }] })],
+      invoices: [inv({ calculated_applied_amount: 6000, outstanding_amount: 0, status: 'paid', payments: [{ id: 1, paid_at: '2026-09-06', amount: 6000 }], standing_payment: { paid_at: '2026-09-06', amount: 6000 } })],
     });
     expect(w2.find('[data-testid="contract-card-3"] [data-testid="contract-last-payment"]').text()).toBe('繳費日 2026/09/06　NT$ 6,000');
     expect(w2.find('[data-testid="contract-card-3"] [data-testid="contract-legacy-unverified"]').exists()).toBe(false);
@@ -937,7 +937,7 @@ describe('AccountingLedgerModal legacy payment display (#4150)', () => {
     // A course outside the package never borrows a member's payment.
     const w3 = await mountWith({
       courses: [pkg({ id: 2 }), { id: 4, subject: '國文', paid: true, paid_at: '2026-09-05', charge: 6000, package_id: null }],
-      invoices: [inv({ calculated_applied_amount: 6000, outstanding_amount: 0, status: 'paid', payments: [{ id: 1, paid_at: '2026-09-06', amount: 6000 }] })],
+      invoices: [inv({ calculated_applied_amount: 6000, outstanding_amount: 0, status: 'paid', payments: [{ id: 1, paid_at: '2026-09-06', amount: 6000 }], standing_payment: { paid_at: '2026-09-06', amount: 6000 } })],
     });
     expect(w3.find('[data-testid="contract-card-4"] [data-testid="contract-legacy-unverified"]').text()).toBe(LEGACY);
     w3.unmount(); vi.unstubAllGlobals();
@@ -967,11 +967,12 @@ describe('AccountingLedgerModal legacy payment display (#4150)', () => {
   describe('review round 3: reversals are netted (Codex characterization, #4201 comment 6214846821)', () => {
     // Package 7, members 2 and 3; open bill on member 2; +6000 cash then a -6000 Method=void reversal, same report_id; receipt voided.
     const pkg = (o) => ({ subject: '數學', paid_at: null, charge: 6000, package_id: 7, ...o });
+    // standing_payment is the server's netting (BillingPayableResolver::latestStandingReceipt, tested in PHP): the screen only reads it.
     const reversedBill = (extra = []) => inv({ total_amount: 6000, outstanding_amount: 6000, calculated_applied_amount: 0, status: 'unpaid', payments: [
       { id: 1, paid_at: '2026-09-06', amount: 6000, method: 'cash', is_void: false, report_id: 5 },
       { id: 2, paid_at: '2026-09-07', amount: -6000, method: 'void', is_void: true, report_id: 5 },
       ...extra,
-    ] });
+    ], standing_payment: extra.length ? { paid_at: extra[0].paid_at, amount: extra[0].amount } : null });
     const body = (paid, extra) => ({
       courses: [pkg({ id: 2, paid }), pkg({ id: 3, subject: '英文', paid })],
       invoices: [reversedBill(extra)],
