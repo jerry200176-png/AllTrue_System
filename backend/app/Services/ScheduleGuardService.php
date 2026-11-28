@@ -136,14 +136,20 @@ class ScheduleGuardService
                     $roomConflict = $rc;
                 }
             }
-            // in-app #613: when the weekly templates alone fill the slot, every week clashes, not only the dated ones.
-            $everyWeek = $teacherConflict && !$this->teacherCapacityDecision($classType, $slot,
-                $this->withTrialTargets(array_values(array_filter($recurringOverlaps, fn ($e) => $e['teacher_occupancy'] ?? true))), $trialTarget)['allowed'];
+            // in-app #613: when the weekly templates alone fill the slot, every week clashes, not only the dated ones,
+            // starting once all of them have begun (the latest start among them; never earlier than a real clash).
+            $teacherTemplates = array_values(array_filter($recurringOverlaps, fn ($e) => $e['teacher_occupancy'] ?? true));
+            $everyWeek = $teacherConflict && !$this->teacherCapacityDecision($classType, $slot, $this->withTrialTargets($teacherTemplates), $trialTarget)['allowed'];
             if ($teacherConflict) {
-                $conflicts[] = $this->withConflictDates($teacherConflict, $everyWeek ? [] : $teacherDates, $slot, $startDate);
+                $conflicts[] = $everyWeek
+                    ? $this->withConflictDates($teacherConflict, [], $slot, $this->latestStart($startDate, $teacherTemplates))
+                    : $this->withConflictDates($teacherConflict, $teacherDates, $slot, $startDate);
             }
             if ($roomConflict) {
-                $conflicts[] = $this->withConflictDates($roomConflict, $roomDates, $slot, $startDate);
+                $roomTemplates = array_values(array_filter($recurringOverlaps, fn ($e) => (int) ($e['room_id'] ?? 0) === (int) $roomId));
+                $conflicts[] = $this->buildRoomCapacityConflict($roomId, $slot, $roomTemplates)
+                    ? $this->withConflictDates($roomConflict, [], $slot, $this->latestStart($startDate, $roomTemplates))
+                    : $this->withConflictDates($roomConflict, $roomDates, $slot, $startDate);
             }
         }
         // Keyed by date, so slots sharing a weekday report each date once.
@@ -861,6 +867,7 @@ class ScheduleGuardService
                     'room_id' => $course->room_id ? (int) $course->room_id : null,
                     'start_time' => (string) $existingSlot['start_time'],
                     'end_time' => (string) $existingSlot['end_time'],
+                    'course_start_date' => $course->StartDate ? substr((string) $course->StartDate, 0, 10) : null,
                 ];
             }
         }
@@ -1603,6 +1610,14 @@ class ScheduleGuardService
         ];
 
         return $conflict;
+    }
+
+    /** @param  array<int, array<string, mixed>>  $templates */
+    private function latestStart(?string $windowStart, array $templates): ?string
+    {
+        $dates = array_filter([$windowStart ? substr($windowStart, 0, 10) : null, ...array_column($templates, 'course_start_date')]);
+
+        return $dates ? max($dates) : null;
     }
 
     /**

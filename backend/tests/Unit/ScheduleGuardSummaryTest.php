@@ -168,6 +168,11 @@ class ScheduleGuardSummaryTest extends TestCase
             $saturday = ['day_of_week' => 6] + $sunday;
             self::assertStringStartsWith('從 12/5 起每週六 13:00–15:00 老師', $dates->invoke(new ScheduleGuardService(), $conflict, [], $saturday, '2026-12-01')['message']);
             self::assertStringStartsWith('從 11/28 起每週六', $dates->invoke(new ScheduleGuardService(), $conflict, [], $saturday, null)['message']);
+            // Codex P2: the weekly prefix starts once every blocking course has begun, not before.
+            $latest = new ReflectionMethod(ScheduleGuardService::class, 'latestStart');
+            $from = $latest->invoke(new ScheduleGuardService(), '2026-11-28', [['course_start_date' => '2026-12-05'], ['course_start_date' => '2026-08-01'], ['course_start_date' => null]]);
+            self::assertSame('2026-12-05', $from);
+            self::assertStringStartsWith('從 12/12 起每週六', $dates->invoke(new ScheduleGuardService(), $conflict, [], $saturday, $latest->invoke(new ScheduleGuardService(), null, [['course_start_date' => '2026-12-12']]))['message']);
         } finally {
             Carbon::setTestNow();
         }
