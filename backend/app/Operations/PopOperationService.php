@@ -417,6 +417,7 @@ final class PopOperationService
         $this->phaseFailure = null;
         $level = DB::transactionLevel();
         try { return DB::transaction(function () use ($requestId, $phase, $run): array {
+            $this->phaseFailure = null; // each retry starts clean: a refusal before the phase begins is never a failed receipt
             DB::table('pop_operation_requests')->where('id', $requestId)->lockForUpdate()->first();
             if ($phase === 'verify' && DB::table('pop_execution_records')->where('operation_id', $requestId)->where('phase', 'rollback')->exists()) throw new RuntimeException('POP verification is blocked after rollback begins.');
             $result = $run();
