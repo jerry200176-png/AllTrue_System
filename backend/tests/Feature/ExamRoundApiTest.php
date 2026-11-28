@@ -297,6 +297,15 @@ class ExamRoundApiTest extends TestCase
         $this->withAuth($c['teacher']['token'])->postJson($url, $row(['parent_comment' => '   ']))
             ->assertOk()->assertJsonPath('data.0.parent_comment', null);
 
+        // Comment only (no score sent): a stale page cannot write an old score back; an empty cell still needs a score.
+        $this->putScore($c, 'teacher', 0, 90)->assertOk();
+        $only = fn (int $subjectId, string $text) => ['scores' => [['student_id' => $c['student']->id, 'exam_round_subject_id' => $subjectId, 'parent_comment' => $text]]];
+        $this->withAuth($c['teacher']['token'])->postJson($url, $only($sid, '只改老師的話'))
+            ->assertOk()->assertJsonPath('data.0.score', fn ($v) => (float) $v === 90.0)->assertJsonPath('data.0.parent_comment', '只改老師的話');
+        $this->assertDatabaseHas('exam_scores', ['exam_round_id' => $c['round'], 'exam_round_subject_id' => $sid, 'score' => 90, 'parent_comment' => '只改老師的話']);
+        $this->assertSame('score_comment_updated', $latestAudit()->action);
+        $this->withAuth($c['teacher']['token'])->postJson($url, $only($c['subjects'][1]['id'], '沒有分數'))->assertStatus(422);
+
         // Outside the entry window a teacher cannot write it; after close the director needs a reason.
         \Illuminate\Support\Facades\DB::table('exam_rounds')->where('id', $c['round'])->update(['entry_deadline' => now()->subDays(2)->toDateString()]);
         $this->withAuth($c['teacher']['token'])->postJson($url, $row(['parent_comment' => '晚交']))->assertStatus(409);

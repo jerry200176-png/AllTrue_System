@@ -692,8 +692,8 @@ function saveStudent(row) {
 
 const noScore = (c) => !c.is_absent && (c.score === null || c.score === undefined || c.score === '');
 
-// One row's changes as the API payload. A changed 老師的話 rides with the cell's score (typed or saved): the API keeps a
-// comment only on a scored or 缺考 cell.
+// One row's changes as the API payload. A comment on an untouched cell is sent alone (the server keeps the stored
+// score, so a stale page never writes an old score back); the API keeps a comment only on a scored or 缺考 cell.
 function rowScores(row) {
   const scores = [];
   for (const subject of selected.value.subjects || []) {
@@ -709,6 +709,10 @@ function rowScores(row) {
     if (!typed && comment === undefined) continue;
     const cell = typed || serverCell(row, subject.id);
     if (noScore(cell)) return { error: `「${subject.name}」要先填分數或勾缺考，才能存老師的話` };
+    if (!typed) {
+      scores.push({ student_id: row.student_id, exam_round_subject_id: subject.id, parent_comment: comment });
+      continue;
+    }
     scores.push({
       student_id: row.student_id,
       exam_round_subject_id: subject.id,

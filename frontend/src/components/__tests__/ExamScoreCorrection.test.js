@@ -182,7 +182,8 @@ describe('page: enter wrong score, clear, re-enter', () => {
       save();
       await flushPromises();
       const posts = () => fetchMock.mock.calls.filter(([, o]) => o?.method === 'POST').map(([, o]) => JSON.parse(o.body));
-      expect(posts()[0]).toEqual({ scores: [{ student_id: 503, exam_round_subject_id: 11, score: 70, is_absent: false, parent_comment: '進步很多' }] });
+      // An untouched score is not resent with the comment (the server keeps the stored one).
+      expect(posts()[0]).toEqual({ scores: [{ student_id: 503, exam_round_subject_id: 11, parent_comment: '進步很多' }] });
 
       // A comment on a subject with no score yet is not sent; the teacher is told to fill the score first.
       const [, english] = body.querySelectorAll('.exam-comment-input');

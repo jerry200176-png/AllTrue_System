@@ -342,6 +342,13 @@ class ExamRoundController extends Controller
                 $normalized[] = ['student_id' => $studentId, 'exam_round_subject_id' => $subjectId, 'clear' => true];
                 continue;
             }
+            // Comment only (no score, no 缺考 sent): keep the stored score, so a stale page can't write an old one back.
+            if (array_key_exists('parent_comment', $row) && !array_key_exists('score', $row) && !array_key_exists('is_absent', $row)) {
+                $comment = trim((string) ($row['parent_comment'] ?? ''));
+                $normalized[] = ['student_id' => $studentId, 'exam_round_subject_id' => $subjectId, 'comment_only' => true,
+                    'parent_comment' => $comment === '' ? null : $comment];
+                continue;
+            }
             $isAbsent = (bool) ($row['is_absent'] ?? false);
             $score = array_key_exists('score', $row) ? $row['score'] : null;
             if ($isAbsent) {
@@ -401,6 +408,27 @@ class ExamRoundController extends Controller
                         'exam_round_id' => (int) $locked->id, 'exam_round_subject_id' => $row['exam_round_subject_id'],
                         'student_id' => $row['student_id'], 'score' => null, 'is_absent' => false, 'notes' => null,
                         'parent_comment' => null, 'cleared' => true,
+                    ];
+                    continue;
+                }
+                if (!empty($row['comment_only'])) {
+                    if (!$record) {
+                        throw ValidationException::withMessages(['scores' => ['Score is required unless marked absent']]);
+                    }
+                    $before = $record->only(['score', 'is_absent', 'notes', 'parent_comment', 'student_id', 'exam_round_subject_id']);
+                    $record->fill(['parent_comment' => $row['parent_comment']])->save();
+                    if ($before['parent_comment'] !== $row['parent_comment']) {
+                        $this->audit($request, $locked, (int) $record->id, 'score_comment_updated', $before,
+                            $record->only(['score', 'is_absent', 'notes', 'parent_comment', 'student_id', 'exam_round_subject_id']),
+                            $payload['reason'] ?? null);
+                    }
+                    $saved[] = [
+                        'id' => (int) $record->id, 'exam_round_id' => (int) $record->exam_round_id,
+                        'exam_round_subject_id' => (int) $record->exam_round_subject_id,
+                        'student_id' => (int) $record->student_id,
+                        'score' => $record->score !== null ? (float) $record->score : null,
+                        'is_absent' => (bool) $record->is_absent, 'notes' => $record->notes,
+                        'parent_comment' => $record->parent_comment,
                     ];
                     continue;
                 }

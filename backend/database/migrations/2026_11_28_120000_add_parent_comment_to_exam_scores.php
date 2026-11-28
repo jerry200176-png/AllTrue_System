@@ -23,6 +23,9 @@ return new class extends Migration
 
     public function down(): void
     {
+        if (!Schema::hasColumn('exam_scores', 'parent_comment')) {
+            return;
+        }
         Schema::table('exam_scores', function (Blueprint $table) {
             $table->dropColumn('parent_comment');
         });
