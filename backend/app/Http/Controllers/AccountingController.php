@@ -823,7 +823,7 @@ class AccountingController extends Controller
 
         $outsideContract = [];
         $collectionPeriods = $this->collectionPeriods($classes, $invoices, $invoiceRows, $outsideContract);
-        $recordBlocks = $this->recordBlocks($classes, $invoices, $invoiceRows);
+        $recordBlocks = $this->recordBlocks($classes, $invoices, $invoiceRows, $reports);
         $collectionPeriods = array_diff_key($collectionPeriods, $recordBlocks); // never offer a whole-month amount for a blocked month
 
         return response()->json([
@@ -919,27 +919,27 @@ class AccountingController extends Controller
     }
 
     /**
-     * #5703: monthly contracts with no bill still owing whose oldest uncovered lessons sit in an already billed month
-     * (MonthlyBillingService::partlyBilledMonth, the same answer directorRecord refuses with). Read-only; any Paid flag.
+     * Server decides, screen obeys: for a contract with no bill still owing, the refusal director-record (no bill named)
+     * would answer (RecordGate::refusal: D/E/F, same code, sentence and fields), so the card never offers 登記這筆 that
+     * the server refuses. Tutoring, waived, package members and contracts with a pending report are left to their own card
+     * states. Read-only, no row locks.
      *
-     * @return array<int, array{code:string,message:string,billing_period:string,lesson_dates:list<string>}>
+     * @return array<int, array<string, mixed>>
      */
-    private function recordBlocks(\Illuminate\Support\Collection $classes, \Illuminate\Support\Collection $invoices, \Illuminate\Support\Collection $invoiceRows): array
+    private function recordBlocks(\Illuminate\Support\Collection $classes, \Illuminate\Support\Collection $invoices, \Illuminate\Support\Collection $invoiceRows, \Illuminate\Support\Collection $reports): array
     {
         $owing = $invoiceRows->filter(fn (array $row) => (int) $row['outstanding_amount'] > 0)->pluck('student_class_id')->map(fn ($id) => (int) $id)->all();
-        $candidates = $classes->filter(fn (StudentClass $c) => (string) $c->ScheduleMode === 'date' && !$c->isPartOfPackage() && !in_array((int) $c->ID, $owing, true));
+        $pending = $reports->where('status', 'pending')->pluck('StudentClassID')->map(fn ($id) => (int) $id)->all();
+        $candidates = $classes->filter(fn (StudentClass $c) => !$this->hasNoPaymentObligation($c) && !ContractMoneyState::isWaived($c) && !$c->isPartOfPackage()
+            && !in_array((int) $c->ID, $owing, true) && !in_array((int) $c->ID, $pending, true));
         if ($candidates->isEmpty()) {
             return [];
         }
         $billing = app(MonthlyBillingService::class);
         $billing->preloadSessions($candidates->pluck('ID')->all());
-        $out = [];
-        foreach ($candidates as $c) {
-            $own = $invoices->filter(fn (Invoice $i) => (int) $i->StudentClassID === (int) $c->ID && (string) $i->Status !== 'void')->values();
-            if ($block = $billing->partlyBilledMonth($c, $own)) {
-                $out[(int) $c->ID] = $block;
-            }
-        }
+        // One resolver read for every candidate; each course's own loaded bills feed the partly-billed scan.
+        $out = array_map(fn ($refusal) => $refusal->getData(true), (new \App\Services\Billing\RecordGate($billing))->refusals($candidates->values(), $invoices));
+        $billing->forgetPreloadedSessions();
 
         return $out;
     }

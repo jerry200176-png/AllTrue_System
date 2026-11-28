@@ -1367,7 +1367,7 @@ async function runInitialAction(draftsReady) {
   const course = contractCourses.value.find((c) => Number(c.id) === id);
   if (action === 'record-unbilled') {
     if (course && canRecordUnbilledCountCourse(course, id)) openEntry(course);
-    else initialActionNote.value = '課程或帳單狀態已更新，請先核對下方資料後再登記收款。';
+    else initialActionNote.value = course?.record_block?.message || '課程或帳單狀態已更新，請先核對下方資料後再登記收款。';
     return;
   }
   if (!course) return;
@@ -1392,6 +1392,7 @@ function canRecordUnbilledCountCourse(course, id) {
     && course.schedule_mode === 'count' && !course.in_package && !course.package_id
     && !course.stop && !course.paid && !course.amount_pending_confirmation
     && Number(course.charge) > 0
+    && !course.record_block // the server would refuse this record (RecordGate)
     && !ledger.invoices?.some((inv) => inv.status !== 'void' && invoiceCoversCourse(inv, id))
     && allocContracts.value.some((c) => Number(c.id) === id);
 }
@@ -1400,6 +1401,7 @@ function recordBlockedReason(c) {
   if (pendingReportFor(c.id)) return '這門課已有待確認入帳的回報，請在下面的課程卡按「確認入帳」，或從「⋯」退回。';
   if (isWaivedContract(c)) return '這門課已確認不收，所以沒有打開登記表。';
   if (c.package_id) return '這是共用方案，請在下面的課程卡處理收款。';
+  if (c.record_block?.message) return c.record_block.message; // the server's own refusal (RecordGate)
   return '這門課目前沒有要收的款，所以沒有打開登記表。';
 }
 

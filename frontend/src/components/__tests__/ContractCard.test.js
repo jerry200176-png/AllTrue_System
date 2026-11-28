@@ -400,6 +400,15 @@ describe('ContractCard fully paid monthly contract (in-app #457)', () => {
     expect(w.find('[data-testid="contract-record-block"]').text()).toContain('9/29');
   });
 
+  it('a card that already reads paid does not repeat the server "已收齊" block as a warning, and still offers no 登記這筆', async () => {
+    authedFetch.mockResolvedValueOnce(monthly([{ class_session_id: 1, date: '2026-10-10', status: 'attended', payment: 'paid' }]));
+    const record_block = { code: 'course_already_paid', message: '這門課的款項已收齊，不需要再登記；若收錯了，請先作廢原收款再重新登記。' };
+    const w = mount(ContractCard, { props: { focused: true, course: { id: 9, paid: true, schedule_mode: 'date', record_block }, outstanding: 0, amounts } });
+    await flushPromises();
+    expect(w.find('[data-testid="contract-record-block"]').exists()).toBe(false);
+    expect(w.find('[data-testid="contract-record"]').exists()).toBe(false);
+  });
+
   it('still offers 開帳單 for a ready next-period draft once the current period is collected', async () => {
     authedFetch.mockResolvedValueOnce(monthly([{ class_session_id: 1, date: '2026-10-10', status: 'attended', payment: 'paid' }]));
     const w = mount(ContractCard, { props: { focused: true, course: { id: 9, paid: false, schedule_mode: 'date' }, outstanding: 0, amounts, billDraft: { amount: 3600 } } });
