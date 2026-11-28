@@ -1028,7 +1028,7 @@
 
 | 欄位 | 內容 |
 |---|---|
-| 狀態 | Open |
+| 狀態 | Resolved 2026-11-28（儲存沒帶 `notes` 時保留原值；`test_notes_are_kept_when_a_save_leaves_them_out`） |
 | 優先級 | P3 |
 | 發現日期 | 2026-11-28 |
 | 發現來源 | 段考「老師的話」設計盤點 |

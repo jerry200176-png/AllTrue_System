@@ -318,6 +318,20 @@ class ExamRoundApiTest extends TestCase
         $this->assertSame(['score_comment_updated', '補老師的話', '只改老師的話', '主任補充', 90.0], [$audit->action, $audit->reason, $audit->before['parent_comment'], $audit->after['parent_comment'], (float) $audit->after['score']]);
     }
 
+    public function test_notes_are_kept_when_a_save_leaves_them_out(): void
+    {
+        // TD-101: the page never sends `notes`, so a score save must not wipe an internal note written through the API.
+        $c = $this->seedRound();
+        $sid = $c['subjects'][0]['id'];
+        $url = "/api/v1/exam-rounds/{$c['round']}/scores";
+        $where = ['exam_round_id' => $c['round'], 'exam_round_subject_id' => $sid, 'student_id' => $c['student']->id];
+        $this->withAuth($c['teacher']['token'])->postJson($url, ['scores' => [['student_id' => $c['student']->id, 'exam_round_subject_id' => $sid, 'score' => 80, 'notes' => '內部備註']]])->assertOk();
+        $this->putScore($c, 'teacher', 0, 85)->assertOk()->assertJsonPath('data.0.notes', '內部備註');
+        $this->assertDatabaseHas('exam_scores', $where + ['score' => 85, 'notes' => '內部備註']);
+        $this->withAuth($c['teacher']['token'])->postJson($url, ['scores' => [['student_id' => $c['student']->id, 'exam_round_subject_id' => $sid, 'score' => 85, 'notes' => null]]])->assertOk();
+        $this->assertDatabaseHas('exam_scores', $where + ['notes' => null]);
+    }
+
     /** @return array{token:string,user:User} */
     private function makeStaff(string $type, string $login, int $campus): array
     {
