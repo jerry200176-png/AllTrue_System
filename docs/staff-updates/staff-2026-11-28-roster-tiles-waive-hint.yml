@@ -1,0 +1,15 @@
+updates:
+  - id: staff-2026-11-28-roster-tiles-waive-hint
+    published_at: "2026-11-28"
+    audiences:
+      - director
+    importance: digest
+    title: 月對帳表數字有說明了
+    summary: 月對帳表兩個數字加上一行說明；刪不掉課時會說去哪裡改成不收。
+    items:
+      - category: improved
+        text: 月對帳表：「這個月收到」含補繳前幾期和預繳，所以可能比「學收合計」多。
+      - category: improved
+        text: 課程刪不掉時，會告訴您到「收學費」的「•••」把費用改成「不收了」。
+    source_refs:
+      - "changelog:2026-11-28:roster-tiles-waive-hint"

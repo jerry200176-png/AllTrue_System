@@ -5107,7 +5107,7 @@ class StudentClassController extends Controller
                 $list = implode('、', array_map(fn ($r) => $words[$r] ?? '其他', $reasons));
 
                 return response()->json([
-                    'message' => "這門課已有{$list}紀錄，紀錄要保留，所以不能刪除。不再上課請用「結束課程」：會取消未來排課，保留既有上課與帳務紀錄；尚未收款的費用不會自動免除。",
+                    'message' => "這門課已有{$list}紀錄，紀錄要保留，所以不能刪除。不再上課請用「結束課程」：會取消未來排課，保留既有上課與帳務紀錄；尚未收款的費用不會自動免除，確定不收的話，到「收學費」找到這門課，在「•••」選「改成「不收了」」；沒有這個選項請回報。",
                     'code' => 'course_has_history',
                     'reasons' => $reasons,
                 ], 422);

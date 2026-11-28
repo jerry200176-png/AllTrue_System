@@ -19,8 +19,8 @@
 
       <StatStrip class="tw:flex tw:flex-wrap tw:[&>[data-slot=stat-item]]:min-w-max tw:[&>[data-slot=stat-item]]:flex-1">
         <StatItem label="學生" :value="summary.students" unit="人" />
-        <StatItem v-if="summary.tuition_total != null" label="學收合計" :value="money(summary.tuition_total)" :sub="summary.tuition_unpriced ? `${summary.tuition_unpriced} 門課沒有單價，沒算進來` : ''" />
-        <StatItem label="這個月收到" :value="money(summary.paid_this_month)" tone="success" />
+        <StatItem v-if="summary.tuition_total != null" label="學收合計" :value="money(summary.tuition_total)" :sub="summary.tuition_unpriced ? `這個月上的課該收多少；${summary.tuition_unpriced} 門課沒有單價，沒算進來` : '這個月上的課該收多少'" />
+        <StatItem label="這個月收到" :value="money(summary.paid_this_month)" sub="這個月收進來的錢，含補繳前幾期、預繳下期" tone="success" />
         <StatItem :label="outstandingScope ? OUTSTANDING_LABELS.selected_billed : '各期帳款餘額'" :value="money(billedAmount)" :tone="billedAmount > 0 ? 'danger' : 'neutral'" />
         <StatItem label="待確認入帳" :value="summary.pending_reports" unit="筆" :tone="summary.pending_reports > 0 ? 'warning' : 'neutral'" />
       </StatStrip>
