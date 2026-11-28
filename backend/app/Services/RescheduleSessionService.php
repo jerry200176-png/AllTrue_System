@@ -431,6 +431,9 @@ class RescheduleSessionService
         $classId = (int) $course->ID;
         $branchId = (int) $student->CampusID;
         $contractTeacherId = (int) ($course->TeacherID ?? 0);
+        // In-app #611: who teaches the occurrence being moved (ADR-EFFECTIVE-TEACHER), read before the #2001 fallback
+        // below turns its live row into the anchor. A lesson moved, then substituted, has no anchor at its current slot.
+        $occurrenceTeacherId = SubstituteScheduleService::teacherForOccurrence($classId, $oldDate, $contractTeacherId, $oldStartTime, lock: true);
 
         $anchor = Schedule::where('student_course_id', $classId)
             ->whereDate('schedule_date', $oldDate)
@@ -485,9 +488,10 @@ class RescheduleSessionService
             ->orderByDesc('id')
             ->get();
         $target = $targets->first();
+        $targetTeacherId = (int) ($target->teacher_id ?? 0);
         $effectiveTeacherId = ($requestedTeacherId ?? 0) > 0
             ? (int) $requestedTeacherId
-            : (int) ($target->teacher_id ?? $contractTeacherId);
+            : ($targetTeacherId > 0 && $targetTeacherId !== $contractTeacherId ? $targetTeacherId : $occurrenceTeacherId);
 
         $conflicts = $this->scheduleGuardService->validateScheduleOccurrence([
             'teacher_id' => $effectiveTeacherId,
