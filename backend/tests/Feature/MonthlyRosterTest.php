@@ -298,6 +298,21 @@ final class MonthlyRosterTest extends TestCase
         $this->assertSame(8900, $res->json('summary.tuition_total'));
     }
 
+    /** #5702 (Founder-delegated 2026-11-28): a pre-start lesson the first month bills is that month's 學收, not its own month's. */
+    public function test_a_pre_start_lesson_counts_in_the_first_month_tuition_not_its_own_month(): void
+    {
+        $monthly = $this->course($this->student(1), ['ScheduleMode' => 'date', 'StartDate' => '2026-09-01', 'EndDate' => '2026-09-30', 'SessionCount' => 0]);
+        $this->lesson($monthly, '2026-08-28', 'attended');
+        $this->lesson($monthly, '2026-09-08', 'attended');
+        $token = $this->director(1);
+        $row = fn (int $month) => collect($this->withToken($token)->getJson("/api/v1/accounting/monthly-roster?year=2026&month={$month}")->assertOk()->json('data'))
+            ->flatMap(fn ($s) => $s['courses'])->firstWhere('course_id', $monthly->ID);
+
+        $this->assertSame([0, 0], [$row(8)['tuition_lessons'], $row(8)['tuition']]);
+        $this->assertSame([2, 3000], [$row(9)['tuition_lessons'], $row(9)['tuition']]);
+        $this->assertSame((int) app(\App\Services\MonthlyBillingService::class)->summarizePeriod($monthly->fresh(), '2026-09')['charge'], $row(9)['tuition']);
+    }
+
     public function test_tuition_prices_an_hourly_package_by_length_and_a_course_priced_by_its_total_without_rounding_each_lesson(): void
     {
         // A monthly package priced by the hour, as the monthly bill prices it: one 2-hour lesson at 700/hour = 1,400.

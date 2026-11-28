@@ -141,7 +141,7 @@ final class MonthlyRosterController extends Controller
             // 學收 (the old 當月學收 report's figure), priced by the bill engine; the rows carry the calendar's status.
             $tuition = $this->billing->monthTuition($c, ClassSession::hydrate(collect($sessions[$id] ?? [])
                 ->map(fn ($l) => ['id' => $l->id, 'StudentClassID' => $l->StudentClassID, 'SessionDate' => $l->session_date, 'StartTime' => $l->start_time,
-                    'EndTime' => $l->end_time, 'Status' => $l->effective_status, 'session_charge' => $l->session_charge])->values()->all()));
+                    'EndTime' => $l->end_time, 'Status' => $l->effective_status, 'session_charge' => $l->session_charge])->values()->all()), $period);
             // Credit moved between contracts is not money coming in; a reversal counts negative however it was stored.
             $payments = ($paid[$id] ?? collect())->reject(fn ($p) => Payment::isCreditMovement($p))->map(fn ($p) => [
                 'date' => substr((string) $p->PaidAt, 0, 10),

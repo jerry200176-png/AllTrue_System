@@ -257,6 +257,9 @@ final class UnbilledBacklogCatchupStrategy
             $billed = fn ($d) => ($d >= $first && $d < $start) || $this->covered($d, $invoices, $own);
             $covered = count(array_filter($dates, $billed));
             $other = count(array_filter($dates, fn ($d) => $billed($d) || $this->otherCovers($d, $c, $own, $studentInvoices, $subjects, $dated)));
+            // #5702 (Founder-delegated 2026-11-28): a live first-month bill that did not take a pre-start lesson gets no second bill here.
+            $firstBill = $invoices->contains(fn ($inv) => (int) $inv->getAttribute('StudentClassID') === (int) $cid && (string) $inv->getAttribute('billing_period') === substr($start, 0, 7));
+            $missed = $firstBill ? count(array_filter($dates, fn ($d) => $d < $start && !$billed($d))) : 0;
             $rates = array_map(fn ($d) => $pricing->forDate($c, $d), $dates);
             $lessonCount = count($dates);
             $afterCount = count($after);
@@ -267,7 +270,7 @@ final class UnbilledBacklogCatchupStrategy
                 (int) $c->getAttribute('Stop') !== 0 && $c->getAttribute('closed_reason') !== 'settled_pending' => 'contract_closed',
                 $covered === $lessonCount => 'already_billed',
                 $other === $lessonCount => 'other_contract_covers_month',
-                $other > 0 => 'partially_billed',
+                $other > 0 || $missed > 0 => 'partially_billed',
                 $after && $afterCount !== $lessonCount => 'lessons_on_both_sides',
                 default => null,
             };

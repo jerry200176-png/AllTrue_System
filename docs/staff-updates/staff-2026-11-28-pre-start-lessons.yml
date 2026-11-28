@@ -1,0 +1,13 @@
+updates:
+  - id: staff-2026-11-28-pre-start-lessons
+    published_at: "2026-11-28"
+    audiences:
+      - director
+    importance: digest
+    title: 開始日前的課併入第一個月
+    summary: 月結合約開始日前上過的課，會算進第一個月的帳單一起收。
+    items:
+      - category: fixed
+        text: 月結課：開始日前一個月內上的課併入第一個月帳單與學收；更早的或首月已收款的，畫面請你回報。
+    source_refs:
+      - "changelog:2026-11-28:pre-start-lessons"

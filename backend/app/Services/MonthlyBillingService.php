@@ -169,7 +169,10 @@ class MonthlyBillingService
         }
         $free = array_values(array_diff($before, \App\Services\Billing\BillingPeriod::datesCoveredByBills($course, $before, $firstBills->modelKeys())));
 
-        $pulled = [...$held, ...($open ? $free : [])];
+        // One-month limit (Founder-delegated, 2026-11-28): pull only from the 1st of the month before StartDate's month; an older
+        // uncovered lesson pulls none of them (one rule, no partial range) and stays for month_partly_billed.
+        $limit = Carbon::parse($start)->startOfMonth()->subMonthNoOverflow()->toDateString();
+        $pulled = [...$held, ...($open && ($free === [] || $free[0] >= $limit) ? $free : [])];
         $from = min([$start, ...$pulled]);
         // The windows bill the whole from..StartDate range: a lesson in it neither held nor pulled (another bill covers it, #5198
         // moved lesson) would be charged twice, so keep StartDate and let month_partly_billed hold the pre-start lessons.
@@ -216,7 +219,7 @@ class MonthlyBillingService
         $dates = implode('、', array_map(fn (string $d) => Carbon::parse($d)->format('n/j'), $month['lesson_dates']));
         $start = substr((string) $course->getAttribute('StartDate'), 0, 10);
         // 更正帳單 (BillCorrection::gap) only adds lessons after a line's PeriodEnd, never before the contract start.
-        $message = max($month['lesson_dates']) < $start
+        $message = min($month['lesson_dates']) < $start
             ? '%s 是合約開始日前上的課，還沒算進任何帳單，系統不能自動補進 %d 月的帳單，所以這裡不能登記，請回報。沒有登記任何款項。'
             : '%s 的課還沒算進任何帳單，但 %d 月已有其他堂算在原本的帳單裡，同一個月不會再開第二張，所以這裡不能登記。請把這幾堂補進原帳單：學生帳務有「更正帳單」的分校在那裡更正，沒有的請回報。沒有登記任何款項。';
 
@@ -407,20 +410,23 @@ class MonthlyBillingService
      * 到班/遲到/補課; not 值班, 試聽, 輔導), each priced as reviewSessions() prices it. A 輔導 course owes nothing (#325);
      * a monthly package member is priced at the package's rate and unit unless a price amendment of its own is in force
      * that day (as forDate() prices it for the bill); a monthly contract counts only lessons inside
-     * its dates (#2451); a course priced by its total (Rate 0, no amendment) at Charge ÷ SessionCount, rounded once.
+     * its dates (#2451), its StartDate month also the pre-start lessons its first bill pulls in (#5702); a course priced by its total (Rate 0, no amendment) at Charge ÷ SessionCount, rounded once.
      *
      * @param  Collection<int, ClassSession>  $sessions  the month's lessons, Status = the status the calendar shows
      * @return array{lessons: int, amount: int|null}  amount null = a lesson has no known price
      */
-    public function monthTuition(StudentClass $course, Collection $sessions): array
+    public function monthTuition(StudentClass $course, Collection $sessions, string $period): array
     {
         if (strtolower(trim((string) $course->ClassType)) === 'tutoring') {
             return ['lessons' => 0, 'amount' => 0];
         }
         $dated = (string) $course->ScheduleMode === 'date';
         [$from, $to] = [substr((string) $course->StartDate, 0, 10), substr((string) $course->EndDate, 0, 10)];
-        if ($dated && $from !== '' && $sessions->contains(fn (ClassSession $s) => substr((string) $s->SessionDate, 0, 10) < $from)) {
-            $from = $this->billingStart($course) ?? $from; // #5702: pre-start lessons the first-month bill charges
+        // #5702: pre-start lessons the first-month bill charges are that month's 學收, never their own calendar month's.
+        if ($dated && $from !== '' && substr($from, 0, 7) === $period && ($billFrom = $this->billingStart($course) ?? $from) < $from) {
+            $sessions = $billFrom >= "{$period}-01" ? $sessions : $sessions->concat(ClassSession::query()->where('StudentClassID', $course->ID)
+                ->whereIn('Status', self::BILLABLE_STATUSES)->where('SessionDate', '>=', $billFrom)->where('SessionDate', '<', "{$period}-01")->get());
+            $from = $billFrom;
         }
         $lessons = $sessions->whereIn('Status', self::BILLABLE_STATUSES)->filter(fn (ClassSession $s) => !$dated
             || (($from === '' || substr((string) $s->SessionDate, 0, 10) >= $from) && ($to === '' || substr((string) $s->SessionDate, 0, 10) <= $to)))->values();
