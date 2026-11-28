@@ -99,6 +99,35 @@ final class BillingPeriodRekeyStrategyTest extends TestCase
         $this->assertSame('2026-04', DB::table('payment_reports')->where('id', 1)->value('billing_period'));
     }
 
+    /** in-app #603: a bill with no month and no lines on a one-month contract gets that month; its number and money stay. */
+    public function test_a_monthless_lineless_bill_on_a_one_month_contract_is_filled_and_restorable(): void
+    {
+        $this->cycle(900, 1, 9, '2026-04-04', '2026-04-25', '2026-04', []);   // id 801: the case
+        $this->cycle(901, 2, 9, '2026-04-10', '2026-05-31', '2026-04', []);   // id 802: contract spans two months -> never guessed
+        $this->cycle(902, 1, 8, '2026-04-04', '2026-04-25', '2026-04', []);   // id 803: still has a line -> never guessed
+        DB::table('Invoice')->whereIn('id', [801, 802, 803])->update(['billing_period' => null, 'IssueDate' => '2026-05-05', 'Status' => 'paid', 'PaidAmount' => 7500]);
+        DB::table('InvoiceItem')->whereIn('InvoiceID', [801, 802])->delete();
+        $before = \App\Services\Billing\InvoiceNumber::for(\App\Models\Invoice::findOrFail(801));
+
+        $s = new BillingPeriodRekeyStrategy;
+        $dry = $s->plan($this->params('all'));
+        $rows = collect($dry['manifest'])->keyBy('invoice_id');
+        $this->assertSame(['', '2026-04', 'ready', '2026-05'], [$rows[801]['from'], $rows[801]['to'], $rows[801]['status'], $rows[801]['tag']]);
+        $this->assertFalse($rows->has(802));
+        $this->assertFalse($rows->has(803));
+
+        $plan = $s->plan($this->params('all', $dry['digest']));
+        $result = $s->execute($plan, ['operation_id' => 'req-9']);
+        $inv = \App\Models\Invoice::findOrFail(801);
+        $this->assertSame(['2026-04', 7500, 7500, 'paid'], [$inv->billing_period, (int) $inv->TotalAmount, (int) $inv->PaidAmount, $inv->Status]);
+        $this->assertSame($before, \App\Services\Billing\InvoiceNumber::for($inv), 'an issued number never changes');
+        $this->assertTrue($s->verify($plan, $result)['ok']);
+
+        $s->rollback($result['snapshot'], ['operation_id' => 'req-9']);
+        $inv->refresh();
+        $this->assertSame([null, ''], [$inv->billing_period, (string) $inv->Note]);
+    }
+
     public function test_changed_state_or_wrong_digest_never_executes(): void
     {
         $s = new BillingPeriodRekeyStrategy;
