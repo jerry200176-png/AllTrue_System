@@ -1,0 +1,13 @@
+updates:
+  - id: staff-2026-11-28-lesson-before-start-note
+    published_at: "2026-11-28"
+    audiences:
+      - director
+    importance: digest
+    title: 開始日前的課會說明做法
+    summary: 合約開始日前上過的課，畫面會說明原因和怎麼處理。
+    items:
+      - category: fixed
+        text: 學生帳務：合約開始日前的課不再出現按了沒用的「登記這筆」，改提示把開始日往前改。
+    source_refs:
+      - "changelog:2026-11-28:lesson-before-start-note"

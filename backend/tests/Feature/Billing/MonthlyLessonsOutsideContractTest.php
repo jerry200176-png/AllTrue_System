@@ -131,6 +131,34 @@ class MonthlyLessonsOutsideContractTest extends TestCase
         $this->assertNotSame('lessons_outside_contract', $this->record($sc, 1800)->json('code'));
     }
 
+    /** in-app #607: a taught lesson before the start, beside a settled contract, gets a reason and a way out instead of a dead 登記. */
+    public function test_a_lesson_before_the_start_beside_a_settled_contract_is_explained_and_never_blocks_other_months(): void
+    {
+        $billing = app(MonthlyBillingService::class);
+        $sc = $this->course(['2026-09-29' => 'attended', '2026-10-12' => 'attended'], ['EndDate' => '2026-11-30']);
+        $this->assertNull($billing->partlyBilledMonth($sc), 'no bill yet: the first bill and the old paths are unchanged');
+        $this->assertSame('2026-10', $billing->unbilledPeriodFor($sc));
+
+        $bill = Invoice::create(['StudentID' => $sc->StudentID, 'StudentClassID' => $sc->ID, 'IssueDate' => '2026-10-10', 'TotalAmount' => 1800,
+            'PaidAmount' => 1800, 'Status' => 'paid', 'billing_period' => '2026-10']);
+        $bill->items()->create(['StudentClassID' => $sc->ID, 'Description' => 'oct', 'Amount' => 1800, 'PeriodStart' => '2026-10-10', 'PeriodEnd' => '2026-10-31']);
+        Payment::create(['InvoiceID' => $bill->id, 'Amount' => 1800, 'PaidAt' => '2026-10-12', 'Method' => 'cash']);
+
+        $note = $billing->partlyBilledMonth($sc);
+        $this->assertSame(['lesson_before_contract_start', ['2026-09-29']], [$note['code'], $note['lesson_dates']]);
+        $this->assertStringContainsString('合約開始日往前改到 9/29', $note['message']);
+        $this->record($sc, 1800)->assertStatus(422)->assertJsonPath('code', 'lesson_before_contract_start');
+        $this->assertSame(1, Invoice::query()->where('StudentClassID', $sc->ID)->count());
+        $this->assertSame(0, PaymentReport::query()->where('StudentClassID', $sc->ID)->count());
+        $card = collect($this->api('getJson', "/api/v1/accounting/ledger?branch_id=1&student_class_id={$sc->ID}")->assertOk()->json('courses'))->firstWhere('id', $sc->ID);
+        $this->assertSame('lesson_before_contract_start', $card['record_block']['code']);
+
+        // A later month with a lesson no bill covers is still collected the normal way: the note never blocks it.
+        ClassSession::create(['StudentClassID' => $sc->ID, 'SessionDate' => '2026-11-09', 'StartTime' => '18:00', 'EndTime' => '20:00', 'Status' => 'attended']);
+        $this->assertNull($billing->partlyBilledMonth($sc));
+        $this->assertSame('2026-11', $billing->unbilledPeriodFor($sc));
+    }
+
     private function course(array $lessons = ['2026-09-29' => 'attended', '2026-09-30' => 'attended'], array $overrides = []): StudentClass
     {
         $student = Student::create(['name' => 's'.uniqid(), 'CampusID' => 1, 'ClassID' => 1, 'enable' => 1, 'Phone' => '0912345678', 'MDT' => now(), 'Notify_Token' => '']);
