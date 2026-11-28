@@ -52,11 +52,19 @@ class PruneSystemLogs extends Command
             ->chunkById(500, function ($messages) use (&$scrubbed, &$stuck): void {
                 foreach ($messages as $message) {
                     $path = (string) $message->media_url;
-                    // ponytail: a legacy absolute media path (leading '/') is not on the public disk; only its link is cleared.
-                    if ($path !== '' && !str_starts_with($path, '/')
-                        && !Storage::disk('public')->delete($path) && Storage::disk('public')->exists($path)) {
-                        $stuck++;
-                        continue;
+                    // ponytail: a legacy absolute media path (leading '/') is not on either disk; only its link is cleared.
+                    if ($path !== '' && !str_starts_with($path, '/')) {
+                        $failedDelete = false;
+                        foreach (['local', 'public'] as $diskName) {
+                            $disk = Storage::disk($diskName);
+                            if (!$disk->delete($path) && $disk->exists($path)) {
+                                $failedDelete = true;
+                            }
+                        }
+                        if ($failedDelete) {
+                            $stuck++;
+                            continue;
+                        }
                     }
                     $message->forceFill(['body' => '', 'media_url' => null, 'media_name' => null])->save();
                     $scrubbed++;

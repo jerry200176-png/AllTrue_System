@@ -237,6 +237,11 @@ Route::prefix('v1')->group(function () {
         ->whereNumber(['bugReport', 'attachment'])
         ->middleware('throttle:120,1')
         ->name('bug-reports.attachment.show');
+    // 公開但需相對簽章（30 分鐘過期），供聊天室附件私有讀取（#889）。
+    Route::get('chat/threads/{threadId}/messages/{messageId}/attachment', [ChatController::class, 'showAttachment'])
+        ->whereNumber(['threadId', 'messageId'])
+        ->middleware('throttle:120,1')
+        ->name('chat.attachment.show');
     // SEC-002: 10 req/IP/10 min — prevents bulk account creation.
     Route::post('auth/register', [AuthController::class, 'register'])
         ->middleware('throttle:10,10');
@@ -1013,6 +1018,8 @@ Route::prefix('v1')->group(function () {
         Route::get('chat/threads/{threadId}/messages', [ChatController::class, 'messages']);
         Route::post('chat/threads/{threadId}/messages', [ChatController::class, 'sendMessage']);
         Route::post('chat/threads/{threadId}/attachments', [ChatController::class, 'uploadAttachment']);
+        Route::get('chat/threads/{threadId}/messages/{messageId}/attachment-url', [ChatController::class, 'attachmentUrl'])
+            ->whereNumber(['threadId', 'messageId']);
         Route::post('chat/threads/{threadId}/read', [ChatController::class, 'markRead']);
         Route::delete('chat/threads/{threadId}', [ChatController::class, 'deleteThread']);
         Route::get('chat/threads/{threadId}/members', [ChatController::class, 'getMembers']);

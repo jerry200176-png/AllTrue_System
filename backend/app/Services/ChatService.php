@@ -11,10 +11,12 @@ use Carbon\Carbon;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\URL;
 use Illuminate\Support\Str;
 
 class ChatService
 {
+    public const ATTACHMENT_URL_TTL_MINUTES = 30;
     // ── Avatar URL helpers ─────────────────────────────────────────
 
     public static function publicAvatarUrl(?string $avatar): ?string
@@ -23,13 +25,46 @@ class ChatService
     }
 
     /**
-     * Convert a storage-relative media path to a root-relative browser URL.
-     * e.g. "chat-attachments/3/abc.jpg" → "/storage/chat-attachments/3/abc.jpg"
+     * Root-relative temporary signed URL for a chat attachment (#889).
      */
-    public static function mediaUrl(?string $path): ?string
+    public static function signedAttachmentUrl(int $threadId, int $messageId): string
+    {
+        return URL::temporarySignedRoute(
+            'chat.attachment.show',
+            now()->addMinutes(self::ATTACHMENT_URL_TTL_MINUTES),
+            ['threadId' => $threadId, 'messageId' => $messageId],
+            false
+        );
+    }
+
+    /**
+     * Locate a stored chat attachment on the private local disk first, falling back to legacy public disk.
+     */
+    public static function resolveAttachmentDisk(string $storedPath): ?\Illuminate\Contracts\Filesystem\Filesystem
+    {
+        if ($storedPath === '' || str_contains($storedPath, '..') || str_starts_with($storedPath, '/')) {
+            return null;
+        }
+        foreach (['local', 'public'] as $diskName) {
+            $disk = Storage::disk($diskName);
+            if ($disk->exists($storedPath)) {
+                return $disk;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Convert a storage-relative media path to a browser URL (signed route when message IDs are present).
+     */
+    public static function mediaUrl(?string $path, ?int $threadId = null, ?int $messageId = null): ?string
     {
         if (!$path) return null;
         if (str_starts_with($path, '/')) return $path;
+        if ($threadId !== null && $messageId !== null) {
+            return self::signedAttachmentUrl($threadId, $messageId);
+        }
         return '/storage/' . $path;
     }
 
@@ -61,7 +96,7 @@ class ChatService
             'sender_avatar_url'    => $senderAvatarUrl,
             'body'                 => $isDeleted ? null : $m->body,
             'message_type'         => $m->message_type,
-            'media_url'            => $isDeleted ? null : self::mediaUrl($m->media_url),
+            'media_url'            => $isDeleted ? null : self::mediaUrl($m->media_url, (int) $m->thread_id, (int) $m->id),
             'media_type'           => $isDeleted ? null : $m->media_type,
             'media_name'           => $isDeleted ? null : $m->media_name,
             'reply_to_message_id'  => $m->reply_to_message_id,
@@ -409,7 +444,7 @@ class ChatService
         // be served from /storage as text/html (stored XSS).
         $ext      = $file->extension();
         $filename = time() . '_' . Str::random(8) . ($ext ? '.' . $ext : '');
-        $path     = $file->storeAs("chat-attachments/{$threadId}", $filename, 'public');
+        $path     = $file->storeAs("chat-attachments/{$threadId}", $filename, 'local');
 
         $mime        = $file->getMimeType() ?? '';
         $messageType = str_starts_with($mime, 'image/') ? 'image' : 'file';

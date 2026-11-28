@@ -55,10 +55,14 @@ final class PruneSystemLogsTest extends TestCase
 
     public function test_an_attachment_that_cannot_be_deleted_keeps_its_row_for_the_next_run(): void
     {
-        $disk = \Mockery::mock(\Illuminate\Contracts\Filesystem\Filesystem::class);
-        $disk->shouldReceive('delete')->andReturnFalse();
-        $disk->shouldReceive('exists')->andReturnTrue();
-        Storage::shouldReceive('disk')->with('public')->andReturn($disk);
+        $emptyDisk = \Mockery::mock(\Illuminate\Contracts\Filesystem\Filesystem::class);
+        $emptyDisk->shouldReceive('delete')->andReturnTrue();
+        $emptyDisk->shouldReceive('exists')->andReturnFalse();
+        $stuckDisk = \Mockery::mock(\Illuminate\Contracts\Filesystem\Filesystem::class);
+        $stuckDisk->shouldReceive('delete')->andReturnFalse();
+        $stuckDisk->shouldReceive('exists')->andReturnTrue();
+        Storage::shouldReceive('disk')->with('local')->andReturn($emptyDisk);
+        Storage::shouldReceive('disk')->with('public')->andReturn($stuckDisk);
         $thread = DB::table('chat_threads')->insertGetId(['CampusID' => 1, 'created_by' => 1]);
         $id = DB::table('chat_messages')->insertGetId(['thread_id' => $thread, 'sender_user_id' => 1, 'sender_name_snapshot' => 'A',
             'body' => 'a.jpg', 'created_at' => now()->subDays(60), 'deleted_at' => now()->subDays(31), 'media_url' => 'chat-attachments/1/a.jpg']);

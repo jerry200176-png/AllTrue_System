@@ -224,6 +224,8 @@
 | DELETE | `api/v1/chat/threads/{threadId}/members/{userId}` | `ChatController@removeMember` | role+campus |
 | GET | `api/v1/chat/threads/{threadId}/messages` | `ChatController@messages` | role+campus |
 | POST | `api/v1/chat/threads/{threadId}/messages` | `ChatController@sendMessage` | role+campus |
+| GET | `api/v1/chat/threads/{threadId}/messages/{messageId}/attachment` | `ChatController@showAttachment` | public |
+| GET | `api/v1/chat/threads/{threadId}/messages/{messageId}/attachment-url` | `ChatController@attachmentUrl` | role+campus |
 | POST | `api/v1/chat/threads/{threadId}/pin` | `ChatController@pinThread` | role+campus |
 | POST | `api/v1/chat/threads/{threadId}/read` | `ChatController@markRead` | role+campus |
 | POST | `api/v1/chat/threads/{threadId}/transfer-owner` | `ChatController@transferOwner` | role+campus |

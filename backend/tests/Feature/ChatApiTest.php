@@ -57,7 +57,7 @@ class ChatApiTest extends TestCase
 
     public function test_attachment_stored_with_content_extension_not_client_extension(): void
     {
-        \Illuminate\Support\Facades\Storage::fake('public');
+        \Illuminate\Support\Facades\Storage::fake('local');
         [$tokenA] = $this->createUserToken([1], 'upA@test.com', 'A');
         [, $userB] = $this->createUserToken([1], 'upB@test.com', 'T');
         $headers = ['Authorization' => "Bearer {$tokenA}", 'Accept' => 'application/json'];
