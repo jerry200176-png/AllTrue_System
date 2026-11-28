@@ -195,7 +195,7 @@ class MonthlyBillingService
         $day = fn (string $d) => Carbon::parse($d)->format('n/j');
 
         return ['code' => 'lesson_before_contract_start', 'billing_period' => substr($start, 0, 7), 'lesson_dates' => $open,
-            'message' => sprintf('%s 的課在合約開始日（%s）之前，不在任何帳單的日期內，所以這裡不能登記。請先確認第一張帳單是否已經含這幾堂；沒有的話，到課程管理把合約開始日往前改到 %s，再回來登記。不能改時請回報。沒有登記任何款項。',
+            'message' => sprintf('%s 的課在合約開始日（%s）之前，不在任何帳單的日期內，所以這裡不能登記。請先看第一張帳單的金額是否已含這幾堂：已含就不用處理；沒含、而且這堂確實屬於這份合約，才到課程管理把開始日往前改到 %s 再登記。不確定請回報。沒有登記任何款項。',
                 implode('、', array_map($day, $open)), $day($start), $day($open[0]))];
     }
 

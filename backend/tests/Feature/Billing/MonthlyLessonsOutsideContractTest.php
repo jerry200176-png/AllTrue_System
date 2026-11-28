@@ -146,7 +146,8 @@ class MonthlyLessonsOutsideContractTest extends TestCase
 
         $note = $billing->partlyBilledMonth($sc);
         $this->assertSame(['lesson_before_contract_start', ['2026-09-29']], [$note['code'], $note['lesson_dates']]);
-        $this->assertStringContainsString('合約開始日往前改到 9/29', $note['message']);
+        $this->assertStringContainsString('已含就不用處理', $note['message']);
+        $this->assertStringContainsString('開始日往前改到 9/29', $note['message']);
         $this->record($sc, 1800)->assertStatus(422)->assertJsonPath('code', 'lesson_before_contract_start');
         $this->assertSame(1, Invoice::query()->where('StudentClassID', $sc->ID)->count());
         $this->assertSame(0, PaymentReport::query()->where('StudentClassID', $sc->ID)->count());
