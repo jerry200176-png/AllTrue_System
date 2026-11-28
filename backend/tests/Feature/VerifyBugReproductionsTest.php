@@ -291,6 +291,8 @@ class VerifyBugReproductionsTest extends TestCase
         $this->classSession($this->course(['ScheduleMode' => 'date', 'Charge' => 0, 'Rate' => 0]), 'attended', '2026-10-03');
         $this->classSession($this->course($monthly + ['ClassType' => 'tutoring']), 'attended', '2026-10-03');
         $this->classSession($this->course($monthly + ['closed_reason' => 'waived', 'Stop' => 1]), 'attended', '2026-10-03');
+        $this->classSession($this->course($monthly + ['closed_reason' => 'refunded', 'Stop' => 1]), 'attended', '2026-10-03');
+        $this->classSession($this->course($monthly + ['PackageID' => $this->package()]), 'attended', '2026-10-03');
         $this->classSession($this->course(['Charge' => 4400]), 'attended', '2026-10-03'); // lesson-count contract
         $row = $this->condition('monthly_lessons_without_bill');
         $this->assertSame(1, $row['count']);

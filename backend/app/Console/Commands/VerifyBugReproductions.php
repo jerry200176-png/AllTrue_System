@@ -256,10 +256,10 @@ class VerifyBugReproductions extends Command
                 'sql' => "SELECT COUNT(*) AS c FROM (
                             SELECT cs.StudentClassID, DATE_FORMAT(cs.SessionDate, '%Y-%m') AS ym
                             FROM ClassSession cs JOIN StudentClass sc ON sc.ID = cs.StudentClassID
-                            WHERE sc.ScheduleMode = 'date' AND sc.PackageID IS NULL
+                            WHERE sc.ScheduleMode = 'date' AND COALESCE(sc.PackageID, 0) = 0
                               AND LOWER(TRIM(COALESCE(sc.ClassType, ''))) <> 'tutoring'
                               AND (COALESCE(sc.Charge, 0) > 0 OR COALESCE(sc.Rate, 0) > 0)
-                              AND COALESCE(sc.closed_reason, '') <> 'waived'
+                              AND COALESCE(sc.closed_reason, '') NOT IN ('waived', 'refunded')
                               AND LOWER(COALESCE(cs.Status, '')) IN ('attended', 'completed', 'late')
                               AND cs.SessionDate >= '2026-08-01'
                               AND cs.SessionDate < DATE_FORMAT(CAST(:app_today AS DATE), '%Y-%m-01')
