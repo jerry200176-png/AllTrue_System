@@ -3,6 +3,7 @@
 namespace Tests\Unit;
 
 use App\Services\ScheduleGuardService;
+use Carbon\Carbon;
 use PHPUnit\Framework\TestCase;
 use ReflectionMethod;
 
@@ -14,7 +15,7 @@ class ScheduleGuardSummaryTest extends TestCase
         $details = [$this->detail($source)];
         $summary = $this->invoke('buildOverlapSummary', $details);
 
-        self::assertSame('測試學生（數學・9/1期）(16:00-18:00,'.$label.')', $summary);
+        self::assertSame('測試學生（數學，9/1 開始）16:00–18:00 '.$label, $summary);
         self::assertStringNotContainsString($source, $summary);
         self::assertSame($source, $details[0]['source']);
     }
@@ -23,14 +24,14 @@ class ScheduleGuardSummaryTest extends TestCase
     {
         return [
             ['student_class', '固定課程'],
-            ['class_session', '課堂紀錄'],
+            ['class_session', '已排的課'],
             ['schedule', '排課紀錄'],
         ];
     }
 
     public function test_unknown_source_is_retained_without_inventing_its_meaning(): void
     {
-        self::assertStringContainsString(',future_source)', $this->invoke('buildOverlapSummary', [$this->detail('future_source')]));
+        self::assertStringEndsWith('16:00–18:00 future_source', $this->invoke('buildOverlapSummary', [$this->detail('future_source')]));
         self::assertSame('', $this->invoke('buildOverlapSummary', []));
     }
 
@@ -41,9 +42,9 @@ class ScheduleGuardSummaryTest extends TestCase
         $row['student_id'] = 7;
         $row['subject_name'] = '';
         $row['course_period'] = '';
-        self::assertSame('#7(16:00-18:00,)', $this->invoke('buildOverlapSummary', [$row]));
+        self::assertSame('#7 16:00–18:00', $this->invoke('buildOverlapSummary', [$row]));
         $row['student_id'] = 0;
-        self::assertSame('未綁定學生(16:00-18:00,)', $this->invoke('buildOverlapSummary', [$row]));
+        self::assertSame('未綁定學生 16:00–18:00', $this->invoke('buildOverlapSummary', [$row]));
     }
 
     public function test_summary_limit_preserves_order_and_omitted_count(): void
@@ -56,8 +57,8 @@ class ScheduleGuardSummaryTest extends TestCase
         }
         $summary = $this->invoke('buildOverlapSummary', $rows);
         self::assertSame(5, substr_count($summary, '排課紀錄'));
-        self::assertStringStartsWith('測試1（數學・9/1期）', $summary);
-        self::assertStringContainsString('測試5（數學・9/1期）', $summary);
+        self::assertStringStartsWith('測試1（數學，9/1 開始）', $summary);
+        self::assertStringContainsString('測試5（數學，9/1 開始）', $summary);
         self::assertStringEndsWith('；...其餘 2 筆', $summary);
         self::assertStringNotContainsString('測試6', $summary);
     }
@@ -72,7 +73,7 @@ class ScheduleGuardSummaryTest extends TestCase
             'overlap_summary' => $this->invoke('buildOverlapSummary', $details),
         ];
         $result = $this->invoke('finalizeCapacityConflict', $conflict);
-        self::assertStringContainsString('課堂紀錄', $result['message']);
+        self::assertStringContainsString('已排的課', $result['message']);
         self::assertStringNotContainsString('class_session', $result['message']);
         self::assertSame($details, $result['overlap_details']);
         foreach (['type', 'current_students', 'allowed_students', 'overlap_summary'] as $key) {
@@ -89,7 +90,7 @@ class ScheduleGuardSummaryTest extends TestCase
         $rows = [$this->detail('student_class'), $other, $this->detail('class_session')];
 
         self::assertSame(
-            '測試學生（數學・9/1期）(16:00-18:00,固定課程＋課堂紀錄)；另一位（數學・9/1期）(16:00-18:00,固定課程)',
+            '測試學生（數學，9/1 開始）16:00–18:00 固定課程＋已排的課；另一位（數學，9/1 開始）16:00–18:00 固定課程',
             $this->invoke('buildOverlapSummary', $rows)
         );
     }
@@ -101,7 +102,7 @@ class ScheduleGuardSummaryTest extends TestCase
         $drifted['end_time'] = '18:30';
 
         self::assertSame(
-            '測試學生（數學・9/1期）(16:00-18:00,固定課程)、（數學・9/1期）(16:30-18:30,課堂紀錄)',
+            '測試學生（數學，9/1 開始）16:00–18:00 固定課程、（數學，9/1 開始）16:30–18:30 已排的課',
             $this->invoke('buildOverlapSummary', [$this->detail('student_class'), $drifted])
         );
     }
@@ -112,7 +113,7 @@ class ScheduleGuardSummaryTest extends TestCase
         $renewal['course_period'] = '12/1期';
 
         self::assertSame(
-            '測試學生（數學・9/1期）(16:00-18:00,固定課程)、（數學・12/1期）(16:00-18:00,固定課程)',
+            '測試學生（數學，9/1 開始）16:00–18:00 固定課程、（數學，12/1 開始）16:00–18:00 固定課程',
             $this->invoke('buildOverlapSummary', [$this->detail('student_class'), $renewal])
         );
     }
@@ -141,6 +142,37 @@ class ScheduleGuardSummaryTest extends TestCase
         }
 
         self::assertSame(2, substr_count($this->invoke('buildOverlapSummary', $rows), '未綁定學生'));
+    }
+
+    public function test_inapp_613_summary_and_message_name_the_clashing_dates(): void
+    {
+        $weekly = ['day_of_week' => 6, 'course_period' => '8/1期', 'start_time' => '13:00', 'end_time' => '15:00'] + $this->detail('student_class');
+        $lesson = ['student_id' => 8, 'student_name' => '另一位', 'subject_name' => '理化', 'course_period' => '7/4期', 'schedule_date' => '2026-12-06',
+            'start_time' => '13:00', 'end_time' => '15:00'] + $this->detail('class_session');
+        $dated = ['student_id' => 9, 'student_name' => '第三位', 'course_end_date' => '2026-12-31'] + $weekly;
+        self::assertSame(
+            '測試學生（數學，8/1 開始）每週六 13:00–15:00 固定課程；另一位（理化，7/4 開始）12/6 13:00–15:00 已排的課；第三位（數學，8/1 開始）每週六（到 12/31）13:00–15:00 固定課程',
+            $this->invoke('buildOverlapSummary', [$weekly, $lesson, $dated])
+        );
+
+        $dates = new ReflectionMethod(ScheduleGuardService::class, 'withConflictDates');
+        $conflict = ['message' => '老師此時段本分校已有 3 位學生，上限為 3 位學生。'];
+        $sunday = ['day_of_week' => 7, 'start_time' => '13:00', 'end_time' => '15:00'];
+        $two = $dates->invoke(new ScheduleGuardService(), $conflict, ['2026-12-13', '2026-12-06'], $sunday);
+        self::assertSame('12/6、12/13 這兩天週日 13:00–15:00 老師此時段本分校已有 3 位學生，上限為 3 位學生。', $two['message']);
+        self::assertSame(['2026-12-06', '2026-12-13'], $two['conflict_dates']);
+        self::assertStringStartsWith('12/6 週日 13:00–15:00 老師', $dates->invoke(new ScheduleGuardService(), $conflict, ['2026-12-06'], $sunday)['message']);
+
+        Carbon::setTestNow('2026-11-28 10:00:00');
+        try {
+            $saturday = ['day_of_week' => 6] + $sunday;
+            self::assertStringStartsWith('從 12/5 起每週六 13:00–15:00 老師', $dates->invoke(new ScheduleGuardService(), $conflict, [], $saturday, '2026-12-01')['message']);
+            self::assertStringStartsWith('從 11/28 起每週六', $dates->invoke(new ScheduleGuardService(), $conflict, [], $saturday, null)['message']);
+        } finally {
+            Carbon::setTestNow();
+        }
+        $own = ['message' => '這門課自己在 2026-12-06 還有一堂 13:00-15:00 沒有跟著改'];
+        self::assertSame($own, $dates->invoke(new ScheduleGuardService(), $own, ['2026-12-06'], $sunday));
     }
 
     private function detail(string $source): array
