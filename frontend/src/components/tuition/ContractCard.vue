@@ -61,7 +61,7 @@
       <span v-else-if="outstanding > 0">未繳 <strong class="due">{{ money(outstanding) }}</strong></span>
       <span v-else-if="!course.paid && !fullyCollected" class="contract__muted">還沒開帳單</span>
       <span v-else-if="!legacyUnverified">已收</span>
-      <StatusBadge v-if="pendingReport" tone="warning">待確認入帳 {{ money(pendingReport.amount) }}{{ pendingReport.date ? `（${shortDate(pendingReport.date)} 家長回報）` : '' }}</StatusBadge>
+      <StatusBadge v-if="pendingReport" tone="warning" class="tw:whitespace-normal">待確認入帳 {{ money(pendingReport.amount) }}{{ pendingReport.date ? `（${shortDate(pendingReport.date)} 家長回報）` : '' }}</StatusBadge>
       <!-- #4765: taught lessons fall outside the contract dates; billing cannot price them, so no 登記這筆 / 繳費單 until the dates are fixed. -->
       <span v-if="outsideDates.length" class="contract__muted" data-testid="contract-outside">{{ outsideText }}</span>
       <!-- #5703: the server will refuse 登記 (these lessons' month already has a bill); show its reason, offer no 登記這筆. -->
