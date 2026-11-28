@@ -1441,7 +1441,7 @@
             {{ confirmDeleteTarget.subject_name || confirmDeleteTarget.subject }}<template v-if="confirmDeleteTarget.student_name"> — {{ confirmDeleteTarget.student_name }}</template>
           </p>
           <p v-if="deleteCourseError" class="tw:m-0 tw:text-tpl-body tw:text-pretty" role="alert" data-testid="delete-course-refusal">{{ deleteCourseError.message }}</p>
-          <p v-if="deleteCourseError?.code === 'course_has_history'" class="tw:m-0 tw:text-tpl-body tw:text-tpl-secondary">結束課程會取消未來排課，已上課與收款紀錄仍保留；尚未收款的費用不會自動免除。</p>
+          <p v-if="deleteCourseError?.code === 'course_has_history'" class="tw:m-0 tw:text-tpl-body tw:text-tpl-secondary">結束課程會取消未來排課，已上課與收款紀錄仍保留；尚未收款的費用不會自動免除。還有沒收的錢，課程會留在「帳務中心」，狀態是「已結束，未收」；確定不收，在那一列的「•••」選「改成不收」。</p>
           <p v-else class="tw:m-0 tw:text-tpl-body tw:font-semibold tw:text-[var(--ds-danger-text)]">刪除後無法復原，所有堂次紀錄將一併移除，未繳帳單會一併作廢。</p>
         </template>
         <DialogFooter>
