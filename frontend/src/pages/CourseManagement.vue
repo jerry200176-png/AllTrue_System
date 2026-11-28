@@ -4187,16 +4187,21 @@ async function submitLeave() {
 
 // A bulk-leave row skipped because its make-up lesson lands on the renewal: the same preview, confirm, apply as a single leave.
 async function shiftSkippedBulkLeave(skip) {
+  if (skip.shiftPending) return;
+  skip.shiftPending = true;
+  skip.shiftNote = '';
   try {
     const outcome = await leaveWithRenewalShift({
       role: props.userRole, sessionId: skip.class_session_id, token: await getAccessToken(),
       ask: (message) => askConfirm({ title: '改用續約順延？', message, confirmLabel: '確認順延' }),
-      onBlocked: (plan) => alert('這堂不能續約順延，沒有變更：\n' + plan.blockers.map((b) => b.message).join('\n')),
+      onBlocked: (plan) => { skip.shiftNote = '這堂不能續約順延，沒有變更：' + plan.blockers.map((b) => b.message).join('；'); },
     });
-    if (outcome === 'ordinary') alert('這堂不適用續約順延，沒有變更。請改用單堂請假或調課。');
+    if (outcome === 'ordinary') skip.shiftNote = '這堂不適用續約順延，沒有變更。請改用單堂請假或調課。';
     if (outcome === 'done') { skip.shifted = true; await loadCourses(); }
   } catch (e) {
-    alert('續約順延失敗，沒有變更：' + (e?.message || '請稍後再試'));
+    skip.shiftNote = '續約順延失敗，沒有變更：' + (e?.message || '請稍後再試');
+  } finally {
+    skip.shiftPending = false;
   }
 }
 

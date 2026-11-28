@@ -37,7 +37,8 @@
           <span v-for="(s, i) in result.skipped" :key="i" style="display:block;font-size:12px;color:var(--ds-ink-mute);">
             {{ skippedLine(s) }}
             <template v-if="s.shifted">（已改用續約順延完成）</template>
-            <button v-else-if="s.renewal_shift && s.class_session_id" type="button" class="ghost" data-testid="bulk-leave-shift" @click="$emit('shift', s)">改用續約順延</button>
+            <button v-else-if="s.renewal_shift && s.class_session_id" type="button" class="ghost" data-testid="bulk-leave-shift" :disabled="s.shiftPending" @click="$emit('shift', s)">改用續約順延</button>
+            <span v-if="s.shiftNote" role="status" data-testid="bulk-leave-shift-note" style="display:block;">{{ s.shiftNote }}</span>
           </span>
         </p>
       </div>
