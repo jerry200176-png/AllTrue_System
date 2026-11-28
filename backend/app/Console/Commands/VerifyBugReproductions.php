@@ -249,7 +249,8 @@ class VerifyBugReproductions extends Command
             [
                 // A finished month (from 2026-08, when bills started to carry their month) in which a priced monthly
                 // contract taught a lesson but has no live bill labelled with that month. A bill labelled with the
-                // neighbouring month that covers the lesson by date is counted too (label mismatch). Observe-only.
+                // neighbouring month that covers the lesson by date is counted too (label mismatch). A bill counts for a contract it
+                // heads or names on a line (shared bill). Observe-only.
                 'key' => 'monthly_lessons_without_bill',
                 'label' => 'Monthly contracts: finished months with a taught lesson and no live bill for that month (possible missed charge)',
                 'issue' => '#5708', 'enforced' => false,
@@ -263,7 +264,8 @@ class VerifyBugReproductions extends Command
                               AND LOWER(COALESCE(cs.Status, '')) IN ('attended', 'completed', 'late')
                               AND cs.SessionDate >= '2026-08-01'
                               AND cs.SessionDate < DATE_FORMAT(CAST(:app_today AS DATE), '%Y-%m-01')
-                              AND NOT EXISTS (SELECT 1 FROM Invoice i WHERE i.StudentClassID = cs.StudentClassID
+                              AND NOT EXISTS (SELECT 1 FROM Invoice i WHERE (i.StudentClassID = cs.StudentClassID
+                                  OR EXISTS (SELECT 1 FROM InvoiceItem ii WHERE ii.InvoiceID = i.id AND ii.StudentClassID = cs.StudentClassID))
                                 AND (i.Status IS NULL OR i.Status NOT IN ('void', 'cancelled'))
                                 AND i.billing_period = DATE_FORMAT(cs.SessionDate, '%Y-%m'))
                             GROUP BY cs.StudentClassID, DATE_FORMAT(cs.SessionDate, '%Y-%m')) t",
