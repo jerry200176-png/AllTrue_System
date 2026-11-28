@@ -1,6 +1,6 @@
 # 交接狀態 Handoff（活的；每個 milestone 由 coordinator 更新）
 
-Updated: 2026-11-18 03:20 UTC（正式站 backend edf3e9e17；release train 44187222051、re-key 44228381229 等 Founder Approve）
+Updated: 2026-11-28 06:15 UTC（`origin/main` `d770d50e3`；deploy run `46113075733` 已上線，無 waiting approve train）
 Source SHA: main（以 GitHub 為準）
 Owner: coordinator（每個 milestone、PR merge、deploy 後更新；完成的項目直接刪除）
 
@@ -18,21 +18,17 @@ The trackers hold the full detail: flow is #4953 and UI is #4989. This file only
 
 | 項目 | 狀態 | 下一步（誰） | 去哪看 |
 |---|---|---|---|
-| Release | 正式站 backend `edf3e9e17`（#5461）。Train run 44187222051 目標 `72b61839f`（含 #5462、#5464、#5465、#5466、#5468，R3），等 Founder Approve。較早的 44156043246 在 11-17 21:56Z 被這次較新的 dispatch 取代（`alltrue-production-activation-gate` 是 cancel-in-progress：只留最新一班等按）。 | Founder 按 Approve | run 44156043246、`deployment.json` |
-| in-app 佇列（11-17） | 收件：每小時的 intake routine `trig_011i7BkXFqHr4TAUCz6Jos9r`（11-17 補上 repo source；之後卡住會推播 Founder）。**上線後結案：closeout routine `trig_015gK3HdmnGPFGEiQjHwJ7E5`**（台北 09:00／14:00／21:00；只結「修正已在正式站＋有上線後 smoke」的件，POP 每日 20 件上限）。11-17 已上線待結：565（#5440）、566／567（#5444）、562（#5391）。自動結案改成每次先結最舊 20 件（#5447）。不能結：550／551（舊合約資料未修）、563（還有 2 項）、569（根因見 #5446，要總部補開帳單）。553 已上線、issue 已關。514（原課程已由主任作廢重開到 5 月）、555（#5046 body 補 `Refs #5374`）交給 closeout routine。**還有 9 張舊帳單月份放錯**（11/7 前開立、合約日期事後改過，舊修復不收）：#5456 讓修復改看帳單自己的日期 → 上線後 Claude 跑 `pop-billing-period-rekey.yml` dry-run → 清單應正好 9 張 → Founder approve。568（#5439）資料沒有重複，疑似畫面沒重新載入，要在 staging 重現。530（#5151）要在 staging 重現。修 in-app 前先在 intake issue 留 `Claimed by`（DELIVERY_LIFECYCLE 階段 5）。 | routine 自動；個案看各 issue | 分診 API、各 issue |
-| 帳務中心重整 | 計畫 11-17 核准（月對帳表）；PR1–PR4 已上線（#5414、#5428、#5430、#5435、#5441、#5448）。**11-18 當月學收併進月對帳表**（Founder：一頁、一套規則、不用 PIN）：學收由帳單引擎算 #5462（等上線）、畫面 #5463（已上線）、舊頁導向月對帳表 #5464、刪舊 API #5466（都已合併）。之後：合約卡只留堂數與時間、拆檔。新店舊 Excel 對帳暫停。 | Claude；上線後用唯讀分診 API 比對新舊學收合計（只回報筆數與差額） | #5407 |
-| UI 改版 (#4989) | 依 tracker 順序進行。 | 見 tracker | #4989 最新留言 |
-| 學習／讀書計畫 | — | 見 tracker | #4970、#5269 |
-| 其餘 in-app 個案 | 514／524／527 (#5124)、521 (#5162)、522 (#5113)、540 (#5231)。 | 各 issue 最新留言 | 各 issue |
-| Dependabot | #5417（composer）11-17 合併（先由 #5434 清掉 PHPStan baseline）；#5418（npm）仍紅；minimatch 安全警告 #80（中）兩個 PR 都沒修到。 | 規則見 MERGE_SOP §Dependabot PRs | #5417、#5418 |
-| DB 時鐘 (#5276) | 摘要與排課生成仍用資料庫時鐘。 | 需正式 DB 時區查詢結果 | #5276 |
-| 資料保存期限 (#889) | 全庫只有 RFID 待處理刷卡有 30 天清除；其他都沒有期限。 | 等 Founder 定保存表 | #889 |
-| GitHub 整理 | 11-17 刪 87 條「PR 已關閉」的分支（可在 PR 頁還原）；剩 45 條沒有 PR 的分支未動（可能是進行中工作）。復發家族標籤只用 `.github/labels.yml` 的 slug（`rootfam:money` 等）；字母碼 `rootfam:M`／`rootfam:R` 11-17 已刪、議題已改標。 | — | `.github/labels.yml` |
-| 資料修復總表 | 合約 812／課堂 7211 的帳本缺口仍在。 | — | #5162 |
+| Release | `origin/main` `d770d50e3`（#5722）已由 `deploy.yml` run `46113075733` 成功部署；目前無 `status=waiting` 的 release train。 | 正常持續交付 | `gh run list --workflow deploy.yml --status waiting` |
+| 進行中 PR | `#5723`（登帳引導共用方案）、`#5672`（Dependabot GitHub Actions）、`#5627`（skeleton flash）。 | 依 CI / review 收尾 | `gh pr list --state open` |
+| 工程治理 / 成熟度（M4–M8） | `#868`–`#870`、`#872`–`#873`、`#875`–`#886`、`#890`–`#892` 皆已結案；仍開：**`#871`（Land queue）、`#887`（主機硬化）、`#888`（IAM 盤點）、`#889`（個資與保存）**。 | 聚焦剩餘 4 項與 `SOP_MATURITY.md` | `docs/SOP_MATURITY.md` |
+| 資料保存期限與個資（#889） | Founder 2026-11-17 已定保存期限表；`#5421`（`privacy:prune-logs`）已上線；學生 2 年去識別化試跑 0 人符合（2027-09 前再做）。尚待收斂：`purgeStudentRecords()` 補清孤兒個資表、上傳附件由 `public` disk 轉受保護存取。 | 拆小 PR 依序收斂 | `#889`、`docs/REF_PRIVACY_DATA_INVENTORY.md` |
+| 四校資料治理（2026-11-23） | 四校唯讀掃描與 12 項帳務指標、簽到補登 POP 預演（寫入與待審均為 0）已完成。剩餘：新店 2 筆作廢帳單收據 + 1 筆已付清課程旗標未同步（F2，待精確重驗與核准）、717 筆排課關聯候選預演、以及 1–10 月未涵蓋帳單等總部回填確認。 | 總部回填 + 工程準備精確 POP 證據包 | 本地私有證據目錄（不進公開 repo） |
+| DB 時鐘 (#5276) | 摘要與排課生成仍用資料庫時鐘。 | 需正式 DB 時區查詢結果 | `#5276` |
+| UI 改版 (#4989) & OSS 正確性 (#4991) | 依 tracker 順序持續推進。 | 見 tracker 最新留言 | `#4989`、`#4991` |
 
-**等 Founder：** release train run 44187222051 的 Approve（先按 re-key 44228381229，再按 release）；帳單月份 re-key 的 approve（dry-run 44172995817，10 張，digest `d245c11a…`，見 #5124）；其餘看 `needs-founder` 標籤（`gh issue list --label needs-founder`）。
+**等 Founder：** 目前無 waiting `deploy.yml` train；其餘看 `needs-founder` 標籤（`#5475`、`#4261`、`#3419`：`gh issue list --label needs-founder`）。
 
-**Founder 已定：** 2026-11-13：全站單一設計模板（#4989）；536 用 A（#5198）；共用堂數池先到先用（#5151）；學生 30 不修、主任 7 天內可自行復原非金額操作（#5162）；自動進度回覆、彙總使用計數、依校區切換課堂身分模型（#4991）；沒人用的功能移除不改版。2026-11-17：帳務計畫 4 項照推薦；in-app 546 教材匯入先不做（#5329）。
+**Founder 已定（近況摘要，權威定義見 `docs/governance/FOUNDER_STANDING_DECISIONS.md`）：** 2026-11-17：`#889` 保存期限表選項 A；帳務計畫 4 項照推薦。2026-11-27：AI 唯讀金鑰可讀分校學校名稱與人數（`#5681`）。2026-11-28：`schoolExamReferenceData.generated.js` 原地修改且通過純資料驗證時不因缺 patch 卡住自動上線（`#5706`）。
 
 **Founder-only：**
 - production Approve（release train 的 run 頁面）
