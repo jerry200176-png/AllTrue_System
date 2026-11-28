@@ -174,8 +174,8 @@ operations:
     invariant_packs: [billing-entitlement-pack@1.0.0]
     strategy_class: App\Operations\Strategies\BillingPeriodRekeyStrategy
     parameter_keys: [campus_ids, decision_reference, expected_digest]
-    tags: [repair, billing, in-app-514]
-    notes: Re-keys renewal bills (one dated item = whole cycle) whose billing_period differs from the month of the cycle's first lesson (in-app #514). Writes only Invoice.billing_period, that invoice's payment_reports.billing_period and a [invno_period] Note tag that freezes the invoice number; no amount, status, item or session. campus_ids is a list or ['all']; execute is pinned to the dry-run digest; a collision with a live bill of the same student and subject is refused. Restore by request id. Pi-local POP only.
+    tags: [repair, billing, in-app-514, in-app-603]
+    notes: Re-keys renewal bills (one dated item = whole cycle) whose billing_period differs from the month of the cycle's first lesson (in-app #514). Also fills the month of a positive, item-less bill with no billing_period that is the only live bill of a non-package contract inside one calendar month (in-app #603). Writes only Invoice.billing_period, that invoice's payment_reports.billing_period and a [invno_period] Note tag that freezes the invoice number; no amount, status, item or session. campus_ids is a list or ['all']; execute is pinned to the dry-run digest; a collision with a live bill of the same student and subject is refused. Restore by request id. Pi-local POP only.
 
   cancel-past-scheduled-course2942-20261008:
     lifecycle: active
