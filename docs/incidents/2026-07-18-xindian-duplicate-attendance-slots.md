@@ -55,9 +55,9 @@
 |------|-----|
 | `scheduled-cross-sc` dry-run actions | **32** |
 | 跨分校 scheduled 雙約組（top50 列表） | **32** 組 |
-| Campus 9 組數 | 朱以翔×2、周宥均×3、學生戊×2 = **7** |
+| Campus 9 組數 | 學生庚×2、學生辛×3、學生戊×2 = **7** |
 | Stop=1 orphan scheduled | **0**（`fix:orphan-scheduled-sessions` clean） |
-| 涉及學生（系統列表） | ≥14（含學生戊、朱以翔、周宥均、學生丙、學生丁、李昀霈…） |
+| 涉及學生（系統列表） | ≥14（含學生戊、學生庚、學生辛、學生丙、學生丁、李昀霈…） |
 | 涉及分校 CampusID | 2, 9, 11, 13, 16, 17 |
 
 ## Code（已上線 #1294）

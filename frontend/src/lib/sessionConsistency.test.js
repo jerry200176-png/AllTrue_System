@@ -259,9 +259,9 @@ const crossScPending = classifyAttendanceSessionRows([
 ]);
 assert.equal(crossScPending.pending.length, 2, 'one pending row per student slot');
 assert.equal(crossScPending.totalCount, 2);
-const pinFang = crossScPending.pending.find((r) => r.student_name === '學生戊');
-assert.equal(pinFang.student_class_id, 1272, 'prefer Stop=0 course over Stop=1 orphan');
-assert.equal(pinFang.class_session_id, 30002);
-const pinCheng = crossScPending.pending.find((r) => r.student_name === '學生丁');
-assert.equal(pinCheng.student_class_id, 1946, 'prefer real contract over SessionCount=0 ghost shell (#189)');
-assert.equal(pinCheng.class_session_id, 30003);
+const studentWu = crossScPending.pending.find((r) => r.student_name === '學生戊');
+assert.equal(studentWu.student_class_id, 1272, 'prefer Stop=0 course over Stop=1 orphan');
+assert.equal(studentWu.class_session_id, 30002);
+const studentDing = crossScPending.pending.find((r) => r.student_name === '學生丁');
+assert.equal(studentDing.student_class_id, 1946, 'prefer real contract over SessionCount=0 ghost shell (#189)');
+assert.equal(studentDing.class_session_id, 30003);

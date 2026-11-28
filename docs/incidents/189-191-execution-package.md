@@ -10,7 +10,7 @@
 
 | 項目 | 內容 |
 |------|------|
-| In-app | #189 學生丁、#191 吳夏妍 |
+| In-app | #189 學生丁、#191 學生己 |
 | Batch | **Batch 0 only**（3 session cancel + 1 StudentClass Stop） |
 | Out of scope | P1-ghost 8 組、P2 63 組、收據重開（#191 R-000200） |
 | 程式 | `repair:duplicate-sessions --case=batch0`（PR feat/957-d1-unique-slot-index） |
@@ -40,7 +40,7 @@
 | ClassSession | 15636 | SC1946, 6/13 17:00 attended | **不變（保留）** |
 | ClassSession | 15633 | SC1946, 6/20 15:00 attended | **不變（保留）** |
 
-### 3.2 #191 — 吳夏妍
+### 3.2 #191 — 學生己
 
 | 實體 | id | Before | After |
 |------|-----|--------|-------|
@@ -115,7 +115,7 @@ SQL
 [ ] StudentClass 2264 → Stop=1
 [ ] ClassSession 15636, 15633, 13302 仍為 attended/completed
 [ ] SC395 consumed 計數 = 9（唯讀查詢）
-[ ] 學生丁 / 吳夏妍 行事曆無雙重出席格
+[ ] 學生丁 / 學生己 行事曆無雙重出席格
 [ ] in-app #189 #191 → resolved + 公開回覆（白話）
 ```
 
@@ -147,7 +147,7 @@ echo 'SC2264 Stop='.DB::table('StudentClass')->where('ID',2264)->value('Stop').P
 |------|------|
 | 執行時間 | < 2 分鐘 |
 | Downtime | 0 |
-| 使用者影響 | 學生丁、吳夏妍 歷史出席檢視可能少 1 筆重複列；主任儀表板堂數統計更正 |
+| 使用者影響 | 學生丁、學生己 歷史出席檢視可能少 1 筆重複列；主任儀表板堂數統計更正 |
 
 ---
 
