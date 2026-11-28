@@ -175,6 +175,19 @@ final class UnbilledBacklogCatchupStrategyTest extends TestCase
         self::assertSame('ready', $this->rows((new UnbilledBacklogCatchupStrategy())->plan($this->params([9])))['200|2026-07']['status']);
     }
 
+    public function test_a_pre_start_lesson_the_first_month_bill_charges_is_not_caught_up(): void
+    {
+        // #5702: contract 200 starts 07-01; its 06-20 lesson goes on the (open or not yet issued) July bill, never a catch-up.
+        DB::table('Student')->insert(['id' => 8, 'name' => 's8', 'CampusID' => 9, 'ClassID' => 1, 'enable' => 1]);
+        $this->course(200, 8, ['Rate' => 1000, 'StartDate' => '2026-07-01', 'EndDate' => '2026-07-31']);
+        $this->lesson(200, '2026-06-20');
+        self::assertSame('already_billed', $this->rows((new UnbilledBacklogCatchupStrategy())->plan($this->params([9])))['200|2026-06']['reason']);
+        // A paid July bill that did not price it leaves the lesson to catch-up.
+        DB::table('Invoice')->insert(['id' => 6, 'StudentID' => 8, 'StudentClassID' => 200, 'IssueDate' => '2026-07-01', 'TotalAmount' => 1000,
+            'PaidAmount' => 1000, 'Status' => 'paid', 'Note' => '', 'billing_period' => '2026-07', 'created_at' => now(), 'updated_at' => now()]);
+        self::assertSame('ready', $this->rows((new UnbilledBacklogCatchupStrategy())->plan($this->params([9])))['200|2026-06']['status']);
+    }
+
     public function test_mid_month_contract_with_dated_items_does_not_hide_earlier_lessons(): void
     {
         DB::table('Student')->insert(['id' => 8, 'name' => 's8', 'CampusID' => 9, 'ClassID' => 1, 'enable' => 1]);

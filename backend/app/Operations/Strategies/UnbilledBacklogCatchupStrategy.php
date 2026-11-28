@@ -6,6 +6,7 @@ use App\Models\Invoice;
 use App\Models\InvoiceItem;
 use App\Models\SecurityAuditEvent;
 use App\Models\StudentClass;
+use App\Services\MonthlyBillingService;
 use App\Services\StudentClassPricingService;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -252,8 +253,10 @@ final class UnbilledBacklogCatchupStrategy
             $from = $after ? max($monthStart, Carbon::parse($end)->addDay()->toDateString()) : $monthStart;
             $to = $after ? $monthEnd : min($monthEnd, Carbon::parse($start)->subDay()->toDateString());
             $own = [(int) $cid, ...($owners[(int) $cid] ?? [])];
-            $covered = count(array_filter($dates, fn ($d) => $this->covered($d, $invoices, $own)));
-            $other = count(array_filter($dates, fn ($d) => $this->covered($d, $invoices, $own) || $this->otherCovers($d, $c, $own, $studentInvoices, $subjects, $dated)));
+            $first = app(MonthlyBillingService::class)->billingStart($c) ?? $start; // #5702: the first-month bill charges these
+            $billed = fn ($d) => ($d >= $first && $d < $start) || $this->covered($d, $invoices, $own);
+            $covered = count(array_filter($dates, $billed));
+            $other = count(array_filter($dates, fn ($d) => $billed($d) || $this->otherCovers($d, $c, $own, $studentInvoices, $subjects, $dated)));
             $rates = array_map(fn ($d) => $pricing->forDate($c, $d), $dates);
             $lessonCount = count($dates);
             $afterCount = count($after);

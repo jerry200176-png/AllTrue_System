@@ -278,7 +278,7 @@ final class MonthlyRosterTest extends TestCase
         $byTotal = $this->course($this->student(1), ['Rate' => 0, 'Charge' => 6000, 'SessionCount' => 4]);
         $this->lesson($byTotal, '2026-11-04', 'attended');
         $monthly = $this->course($this->student(1), ['ScheduleMode' => 'date', 'StartDate' => '2026-11-10', 'EndDate' => '2026-11-30', 'SessionCount' => 0]);
-        $this->lesson($monthly, '2026-11-02', 'attended'); // before the contract: not this contract's lesson
+        $this->lesson($monthly, '2026-11-02', 'attended'); // before the contract, no bill yet: the first month charges it (#5702)
         $this->lesson($monthly, '2026-11-16', 'attended');
         $member = $this->student(1);
         $package = CoursePackage::create(['student_id' => $member->id, 'campus_id' => 1, 'name' => 'P', 'billing_mode' => CoursePackage::BILLING_MODE_MONTHLY,
@@ -292,8 +292,10 @@ final class MonthlyRosterTest extends TestCase
         $res = $this->withToken($token)->getJson('/api/v1/accounting/monthly-roster?year=2026&month=11')->assertOk();
 
         $rows = collect($res->json('data'))->flatMap(fn ($s) => $s['courses'])->keyBy('course_id');
-        $this->assertSame([3000, 1500, 1500, 1400], [$rows[$byRate->ID]['tuition'], $rows[$byTotal->ID]['tuition'], $rows[$monthly->ID]['tuition'], $rows[$inPackage->ID]['tuition']]);
-        $this->assertSame(7400, $res->json('summary.tuition_total'));
+        $this->assertSame([3000, 1500, 3000, 1400], [$rows[$byRate->ID]['tuition'], $rows[$byTotal->ID]['tuition'], $rows[$monthly->ID]['tuition'], $rows[$inPackage->ID]['tuition']]);
+        // 學收 and the first-month bill count the same lessons (#5702).
+        $this->assertSame((int) app(\App\Services\MonthlyBillingService::class)->summarizePeriod($monthly->fresh(), '2026-11')['charge'], $rows[$monthly->ID]['tuition']);
+        $this->assertSame(8900, $res->json('summary.tuition_total'));
     }
 
     public function test_tuition_prices_an_hourly_package_by_length_and_a_course_priced_by_its_total_without_rounding_each_lesson(): void

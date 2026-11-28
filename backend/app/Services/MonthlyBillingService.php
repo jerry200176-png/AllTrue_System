@@ -153,6 +153,9 @@ class MonthlyBillingService
             return [$start, []];
         }
         $id = (int) $course->getKey();
+        if (isset($this->preloadedSessions[$id], $this->preStartMemo[$id])) {
+            return $this->preStartMemo[$id];
+        }
         $held = [];
         $open = true;
         $firstBills = Invoice::query()->notVoided()->with(['items', 'payments'])->where('StudentClassID', $id)->where('billing_period', substr($start, 0, 7))->get();
@@ -166,7 +169,12 @@ class MonthlyBillingService
         }
         $free = array_values(array_diff($before, \App\Services\Billing\BillingPeriod::datesCoveredByBills($course, $before, $firstBills->modelKeys())));
 
-        return [min([$start, ...$held, ...($open ? $free : [])]), $free];
+        $result = [min([$start, ...$held, ...($open ? $free : [])]), $free];
+        if (isset($this->preloadedSessions[$id])) {
+            $this->preStartMemo[$id] = $result;
+        }
+
+        return $result;
     }
 
     /**
@@ -399,6 +407,9 @@ class MonthlyBillingService
         }
         $dated = (string) $course->ScheduleMode === 'date';
         [$from, $to] = [substr((string) $course->StartDate, 0, 10), substr((string) $course->EndDate, 0, 10)];
+        if ($dated && $from !== '' && $sessions->contains(fn (ClassSession $s) => substr((string) $s->SessionDate, 0, 10) < $from)) {
+            $from = $this->billingStart($course) ?? $from; // #5702: pre-start lessons the first-month bill charges
+        }
         $lessons = $sessions->whereIn('Status', self::BILLABLE_STATUSES)->filter(fn (ClassSession $s) => !$dated
             || (($from === '' || substr((string) $s->SessionDate, 0, 10) >= $from) && ($to === '' || substr((string) $s->SessionDate, 0, 10) <= $to)))->values();
         $n = $lessons->count();
@@ -465,6 +476,9 @@ class MonthlyBillingService
     /** @var array<int, Collection<int, ClassSession>>|null course id => all its sessions, set only while a caller batches many invoices. */
     private ?array $preloadedSessions = null;
 
+    /** @var array<int, array{0: ?string, 1: list<string>}> preStartLessons() per course, kept only for the same read-only preload window. */
+    private array $preStartMemo = [];
+
     /** One query for every listed course's sessions; summarizePeriod then filters in memory. Pair with forgetPreloadedSessions(). */
     public function preloadSessions(array $courseIds): void
     {
@@ -473,6 +487,7 @@ class MonthlyBillingService
             ->get(['id', 'StudentClassID', 'SessionDate', 'StartTime', 'EndTime', 'Status', 'session_charge'])
             ->groupBy(fn (ClassSession $session) => (int) $session->StudentClassID);
         $this->preloadedSessions = [];
+        $this->preStartMemo = [];
         foreach ($ids as $id) {
             $this->preloadedSessions[$id] = $grouped->get($id, collect());
         }
@@ -481,6 +496,7 @@ class MonthlyBillingService
     public function forgetPreloadedSessions(): void
     {
         $this->preloadedSessions = null;
+        $this->preStartMemo = [];
     }
 
     /** Same rows as periodSessionQuery() (month window, date-mode contract bounds), or null when this course was not preloaded. */
