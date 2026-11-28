@@ -8,6 +8,7 @@ use App\Models\Payment;
 use App\Models\Student;
 use App\Models\StudentClass;
 use App\Services\Billing\ContractMoneyVerdict;
+use App\Services\MonthlyBillingService;
 use App\Services\SessionDeductionService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -61,6 +62,14 @@ class ContractMoneyVerdictInvariantsTest extends TestCase
         $out = [];
         $svc = app(ContractMoneyVerdict::class);
         $v = $svc->forCourse($course);
+        // #5702 (option A), read before step 4 adds money: the first month (StartDate's, 2026-07 here) also carries the June
+        // lessons taught before StartDate when billingStart() pulls them in.
+        $billing = app(MonthlyBillingService::class);
+        $start = substr((string) $course->StartDate, 0, 10);
+        $billingStart = $date ? $billing->billingStart($course) : $start;
+        $pulled = $billingStart < $start ? ($perMonth['2026-06'] ?? 0) : 0;
+        $first = $date ? $billing->summarizePeriod($course, substr($start, 0, 7)) : null;
+        $juneBill = Invoice::where('StudentClassID', $course->ID)->where('billing_period', '2026-06')->where('Status', '!=', 'void')->exists();
 
         // 1. paid + outstanding == amount due
         if ($v->applied + $v->outstanding !== $v->owed) {
@@ -101,13 +110,26 @@ class ContractMoneyVerdictInvariantsTest extends TestCase
         if (get_object_vars($svc->forCourse($course->fresh())) !== $before) {
             $out[] = 'I4 a void invoice / voided payment changed the verdict';
         }
-        // 5. monthly: each month's invoice == that month's lessons x price
+        // 5. monthly: each month's invoice == that month's lessons x price (the first month with its pulled pre-start lessons, #5702)
         if ($date) {
             foreach ($v->periods as $p) {
-                $n = $perMonth[$p['billing_period']] ?? 0;
+                $n = ($perMonth[$p['billing_period']] ?? 0) + ($p['billing_period'] === substr($start, 0, 7) ? $pulled : 0);
                 if ($n > 0 && $p['invoice_ids'] !== [] && (int) $p['total'] !== $n * self::RATE) {
                     $out[] = "I5 {$p['billing_period']} invoice {$p['total']} != $n lessons x " . self::RATE;
                 }
+            }
+        }
+        // 7. #5702: a pre-start lesson is billed once: the month before StartDate never prices it, and the first month pulls
+        // it in only while no live bill of that earlier month covers it.
+        if ($date) {
+            if ($billing->summarizePeriod($course->fresh(), '2026-06')['period_sessions'] !== 0) {
+                $out[] = 'I7 the month before StartDate priced a lesson';
+            }
+            if ($pulled > 0 && $juneBill) {
+                $out[] = "I7 June lessons pulled into the first month (from $billingStart) although a live June bill covers them";
+            }
+            if ($pulled > 0 && $first['period_start'] !== $billingStart) {
+                $out[] = "I7 first month dated {$first['period_start']}, not from its first lesson $billingStart";
             }
         }
         // 6. count mode: held + remaining == purchased (counters recomputed from the lesson ledger)

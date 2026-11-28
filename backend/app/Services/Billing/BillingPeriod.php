@@ -67,9 +67,9 @@ final class BillingPeriod
      * contracts holds the date (MonthlyBillingService::serviceRangeForCourse ownership, but a lone item only while it has no owner; item ranges are not merged, so a gap stays uncovered), or, when the bill has no dated item at all, its billing_period month does. The label alone never covers a
      * date outside a bill's own range, and another subject's item on a shared bill never covers this subject's lesson.
      *
-     * @param list<string> $dates @return list<string>
+     * @param list<string> $dates @param list<int> $exceptInvoiceIds bills left out (#5702: the contract's own first-month bills) @return list<string>
      */
-    public static function datesCoveredByBills(\Illuminate\Database\Eloquent\Model $course, array $dates): array
+    public static function datesCoveredByBills(\Illuminate\Database\Eloquent\Model $course, array $dates, array $exceptInvoiceIds = []): array
     {
         if ($dates === []) {
             return [];
@@ -77,7 +77,8 @@ final class BillingPeriod
         $mine = StudentClass::query()->where('StudentID', $course->getAttribute('StudentID'))->where('SubjectID', $course->getAttribute('SubjectID'))
             ->pluck('ID')->map(fn ($id) => (int) $id)->all();
         $invoices = \App\Models\Invoice::query()->notVoided()->with('items')
-            ->where(fn ($q) => $q->whereIn('StudentClassID', $mine)->orWhereHas('items', fn ($i) => $i->whereIn('StudentClassID', $mine)))->get();
+            ->where(fn ($q) => $q->whereIn('StudentClassID', $mine)->orWhereHas('items', fn ($i) => $i->whereIn('StudentClassID', $mine)))
+            ->when($exceptInvoiceIds !== [], fn ($q) => $q->whereNotIn('id', $exceptInvoiceIds))->get();
         $spans = [];   // individual owned item ranges: a gap between two items stays uncovered
         $labels = [];  // months of bills with no dated item
         foreach ($invoices as $inv) {

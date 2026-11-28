@@ -107,7 +107,8 @@ class MonthlyBillingService
      */
     public function lessonsOnlyOutsideContract(Model $course): array
     {
-        $outside = $this->taughtLessonsOutsideContract($course);
+        // #5702: a pre-start lesson belongs to the first month (billed with it, or blocked as #5703), so it is not "outside" here.
+        $outside = array_values(array_diff($this->taughtLessonsOutsideContract($course), $this->preStartLessons($course)[1]));
         $covered = \App\Services\Billing\BillingPeriod::datesCoveredByBills($course, $outside);
         $open = array_values(array_diff($outside, $covered));
         $rest = $this->countableLessonDates($course)->reject(fn (string $d) => in_array($d, $covered, true));
@@ -125,6 +126,47 @@ class MonthlyBillingService
             : ClassSession::query()->where('StudentClassID', $id)->whereIn('Status', self::BILLABLE_STATUSES)->pluck('SessionDate');
 
         return $dates->map(fn ($d) => substr((string) $d, 0, 10))->values();
+    }
+
+    /**
+     * #5702 (Founder 2026-11-28, option A): the first day a monthly contract's first month (the one holding StartDate) bills
+     * from. A countable lesson taught before StartDate is billed with that month, so the month before never sees it. Not
+     * pulled in: a lesson another live bill already covers (e.g. moved in from the previous term, #5198), and any lesson
+     * while the first month's bill has a fixed amount that does not hold it (paid, partly paid, priced, dated or shared):
+     * that lesson is then the #5703 shape, never a second bill. Count mode, package members and tutoring keep StartDate.
+     */
+    public function billingStart(Model $course): ?string
+    {
+        return $this->preStartLessons($course)[0];
+    }
+
+    /** @return array{0: ?string, 1: list<string>} billingStart(), and the pre-start dates that belong to the first month (no other bill covers them) */
+    private function preStartLessons(Model $course): array
+    {
+        $start = $course->getAttribute('StartDate') ? Carbon::parse($course->getAttribute('StartDate'))->toDateString() : null;
+        if (!$start || (string) $course->getAttribute('ScheduleMode') !== 'date' || (int) ($course->getAttribute('PackageID') ?? 0) > 0
+            || strtolower(trim((string) $course->getAttribute('ClassType'))) === 'tutoring') {
+            return [$start, []];
+        }
+        $before = $this->countableLessonDates($course)->filter(fn (string $d) => $d < $start)->unique()->sort()->values()->all();
+        if ($before === []) {
+            return [$start, []];
+        }
+        $id = (int) $course->getKey();
+        $held = [];
+        $open = true;
+        $firstBills = Invoice::query()->notVoided()->with(['items', 'payments'])->where('StudentClassID', $id)->where('billing_period', substr($start, 0, 7))->get();
+        foreach ($firstBills as $bill) {
+            // Held: the lessons its first payment priced (MonthlyBillFreeze evidence). Open: priced now from its month's lessons
+            // (today's repricing): no frozen evidence, no money (stored or Payment rows), no dated line, no other course's line.
+            $listed = collect($bill->billing_snapshot['sessions'] ?? [])->pluck('date')->map(fn ($d) => substr((string) $d, 0, 10))->all();
+            $held = [...$held, ...array_intersect($before, $listed)];
+            $open = $open && empty($bill->billing_snapshot) && (string) ($bill->Status ?? 'unpaid') === 'unpaid' && (int) $bill->PaidAmount === 0 && $bill->payments->isEmpty()
+                && $this->serviceRangeForCourse($bill, $id)[0] === null && $bill->items->every(fn ($i) => (int) ($i->StudentClassID ?? $id) === $id);
+        }
+        $free = array_values(array_diff($before, \App\Services\Billing\BillingPeriod::datesCoveredByBills($course, $before, $firstBills->modelKeys())));
+
+        return [min([$start, ...$held, ...($open ? $free : [])]), $free];
     }
 
     /**
@@ -177,6 +219,7 @@ class MonthlyBillingService
         }
         $invoices ??= Invoice::query()->where('StudentClassID', $id)
             ->where(fn ($q) => $q->whereNull('Status')->orWhere('Status', '!=', 'void'))->with('items')->get();
+        [$billFrom, $preStart] = $this->preStartLessons($course); // #5702: these pre-start lessons belong to StartDate's month
         $ranges = [];
         foreach ($invoices as $invoice) {
             $period = (string) $invoice->billing_period;
@@ -185,14 +228,15 @@ class MonthlyBillingService
             }
             $month = Carbon::createFromFormat('!Y-m', $period);
             [$from, $to] = $this->serviceRangeForCourse($invoice, $id);
-            $ranges[] = [$period, $from ?? $month->copy()->startOfMonth()->toDateString(), $to ?? $month->copy()->endOfMonth()->toDateString()];
+            $labelFrom = $month->copy()->startOfMonth()->toDateString();
+            $ranges[] = [$period, $from ?? ($period === substr($start, 0, 7) ? min($labelFrom, $billFrom) : $labelFrom), $to ?? $month->copy()->endOfMonth()->toDateString()];
         }
         $preloaded = $this->preloadedSessions[$id] ?? null;
         $dates = ($preloaded !== null
             ? $preloaded->filter(fn (ClassSession $s) => in_array(strtolower(rtrim((string) $s->Status)), self::BILLABLE_STATUSES, true))->pluck('SessionDate')
             : ClassSession::query()->where('StudentClassID', $id)->whereIn('Status', self::BILLABLE_STATUSES)->pluck('SessionDate'))
-            ->map(fn ($date) => substr((string) $date, 0, 10))->filter(fn (string $date) => $date >= $start && $date <= $end)->sort();
-        foreach ($dates->groupBy(fn (string $date) => substr($date, 0, 7))->sortKeys() as $month => $monthDates) {
+            ->map(fn ($date) => substr((string) $date, 0, 10))->filter(fn (string $date) => ($date >= $start || in_array($date, $preStart, true)) && $date <= $end)->sort();
+        foreach ($dates->groupBy(fn (string $date) => substr(max($date, $start), 0, 7))->sortKeys() as $month => $monthDates) {
             $open = $monthDates->reject(fn (string $date) => collect($ranges)->contains(fn ($r) => $date >= $r[1] && $date <= $r[2]))->values();
             if ($open->isEmpty()) {
                 continue;
@@ -228,6 +272,10 @@ class MonthlyBillingService
 
         $periodStart = $anchor->copy()->startOfMonth()->toDateString();
         $periodEnd = $anchor->copy()->endOfMonth()->toDateString();
+        if (strtolower((string) ($course->getAttribute('ScheduleMode') ?? 'count')) === 'date'
+            && ($floor = $this->firstMonthFloor($course, $periodStart, $periodEnd)) !== null) {
+            $periodStart = min($periodStart, $floor); // #5702: the first month is dated from its earliest pre-start lesson
+        }
         $storedCharge = max(0, (int) ($course->getAttribute('Charge') ?? 0));
 
         // A count package is one shared obligation billed at the package level. A monthly ('date') package member is
@@ -450,9 +498,8 @@ class MonthlyBillingService
         $from = $anchor->copy()->startOfMonth()->toDateString();
         $to = $anchor->copy()->endOfMonth()->toDateString();
         if (strtolower((string) ($course->getAttribute('ScheduleMode') ?? 'count')) === 'date') {
-            $courseStart = $course->getAttribute('StartDate') ? Carbon::parse($course->getAttribute('StartDate'))->toDateString() : $from;
-            $courseEnd = $course->getAttribute('EndDate') ? Carbon::parse($course->getAttribute('EndDate'))->toDateString() : $to;
-            [$from, $to] = [max($from, $courseStart), min($to, $courseEnd)];
+            $floor = $this->firstMonthFloor($course, $from, $to);
+            [$from, $to] = self::boundByContract($course, $floor !== null ? min($from, $floor) : $from, $to, $floor);
         }
 
         return $all->filter(fn (ClassSession $session) => substr((string) $session->SessionDate, 0, 10) >= $from && substr((string) $session->SessionDate, 0, 10) <= $to)->values();
@@ -482,10 +529,15 @@ class MonthlyBillingService
             ? Carbon::parse($serviceEnd)->toDateString()
             : $anchor->copy()->endOfMonth()->toDateString();
 
+        $floor = strtolower((string) ($course->getAttribute('ScheduleMode') ?? 'count')) === 'date' ? $this->firstMonthFloor($course, $periodStart, $periodEnd) : null;
+        if ($floor !== null && !$hasServiceRange) {
+            $periodStart = min($periodStart, $floor); // #5702: the first month opens at its earliest pre-start lesson; a bill's own service range stays its window
+        }
+
         $query = ClassSession::query();
         $query->where('StudentClassID', (int) $course->getKey())
             ->whereBetween('SessionDate', [$periodStart, $periodEnd])
-            ->where(function ($query) use ($course, $periodStart, $periodEnd) {
+            ->where(function ($query) use ($course, $periodStart, $periodEnd, $floor) {
                 // Monthly/date-mode courses are bounded by their contract
                 // interval even when legacy ClassSession rows exist outside it.
                 // Count-based courses retain their purchased-session behavior.
@@ -493,22 +545,30 @@ class MonthlyBillingService
                     return;
                 }
 
-                $query->whereBetween('SessionDate', self::boundByContract($course, $periodStart, $periodEnd));
+                $query->whereBetween('SessionDate', self::boundByContract($course, $periodStart, $periodEnd, $floor));
             });
         return $query;
     }
 
+    /** #5702: billingStart() for a window that holds StartDate (the first contract month), else null; the month before stays empty. */
+    private function firstMonthFloor(Model $course, string $from, string $to): ?string
+    {
+        $start = $course->getAttribute('StartDate') ? Carbon::parse($course->getAttribute('StartDate'))->toDateString() : null;
+
+        return $start !== null && $from <= $start && $to >= $start ? $this->billingStart($course) : null;
+    }
+
     /**
-     * A date-mode contract bounds the lessons it bills to its StartDate..EndDate; other contracts keep the window as given.
+     * A date-mode contract bounds the lessons it bills to its StartDate (or $billingStart, #5702)..EndDate; other contracts keep the window as given.
      *
      * @return array{0: string, 1: string} Y-m-d from, to
      */
-    public static function boundByContract(Model $course, string $from, string $to): array
+    public static function boundByContract(Model $course, string $from, string $to, ?string $billingStart = null): array
     {
         if (strtolower((string) ($course->getAttribute('ScheduleMode') ?? 'count')) !== 'date') {
             return [$from, $to];
         }
-        $courseStart = $course->getAttribute('StartDate') ? Carbon::parse($course->getAttribute('StartDate'))->toDateString() : $from;
+        $courseStart = $billingStart ?? ($course->getAttribute('StartDate') ? Carbon::parse($course->getAttribute('StartDate'))->toDateString() : $from);
         $courseEnd = $course->getAttribute('EndDate') ? Carbon::parse($course->getAttribute('EndDate'))->toDateString() : $to;
 
         return [max($from, $courseStart), min($to, $courseEnd)];

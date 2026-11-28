@@ -19,6 +19,7 @@ use Tests\TestCase;
 /**
  * #4765 (in-app #453/#454): a monthly contract whose two taught lessons (9/29, 9/30) lie outside its own dates
  * (10/10-10/31) was priced from the stored Charge as an empty October. Shared predicate + write guard + collection guard + ledger.
+ * #5702 (in-app #607, Founder 2026-11-28 option A): lessons before StartDate are now billed with the first month (October).
  */
 class MonthlyLessonsOutsideContractTest extends TestCase
 {
@@ -51,25 +52,67 @@ class MonthlyLessonsOutsideContractTest extends TestCase
         $this->assertSame([], $billing->taughtLessonsOutsideContract($this->course(['2026-09-29' => 'attended'], ['ScheduleMode' => 'count'])));
     }
 
-    public function test_director_record_refuses_and_writes_nothing(): void
+    /** #5702 (in-app #607, Founder 2026-11-28 option A): lessons taught before StartDate are billed with the first month, once. */
+    public function test_pre_start_lessons_are_collected_with_the_first_month_once(): void
     {
         $sc = $this->course();
-        $res = $this->record($sc, 3600)->assertStatus(422)->assertJsonPath('code', 'lessons_outside_contract')
-            ->assertJsonPath('lesson_dates', ['2026-09-29', '2026-09-30'])
-            ->assertJsonPath('contract_start', '2026-10-10')->assertJsonPath('contract_end', '2026-10-31');
-        $this->assertStringContainsString('沒有登記任何款項。', $res->json('message'));
-        // The stored Charge (1800) is not accepted as an October amount either.
-        $this->record($sc, 1800)->assertStatus(422)->assertJsonPath('code', 'lessons_outside_contract');
+        $billing = app(MonthlyBillingService::class);
+        $this->assertSame('2026-09-29', $billing->billingStart($sc));
+        $this->assertSame([], $billing->lessonsOnlyOutsideContract($sc));
+        $this->assertSame('2026-10', $billing->unbilledPeriodFor($sc));
+        $october = $billing->summarizePeriod($sc, '2026-10');
+        $this->assertSame([3600, 2, '2026-09-29'], [$october['charge'], $october['period_sessions'], $october['period_start']]);
+        $this->assertSame(0, $billing->summarizePeriod($sc, '2026-09')['period_sessions'], 'the month before never bills them');
+
+        // The stored Charge (1800) is not the October amount; the two lessons are.
+        $this->record($sc, 1800)->assertStatus(422)->assertJsonPath('code', 'monthly_amount_stale')->assertJsonPath('expected_amount', 3600);
         $this->assertSame([0, 0, 0], [Invoice::count(), Payment::count(), PaymentReport::count()]);
+        $this->api('putJson', '/api/v1/payment-reports/' . $this->record($sc, 3600)->assertOk()->json('report_id') . '/confirm')->assertOk();
+
+        $bill = Invoice::query()->where('StudentClassID', $sc->ID)->sole();
+        $this->assertSame(['2026-10', 3600], [(string) $bill->billing_period, (int) $bill->TotalAmount]);
+        $this->assertSame('2026-09-29', $bill->billing_snapshot['period_start'], 'the bill is dated from the first lesson');
+        $this->assertSame(['2026-09-29', '2026-09-30'], array_column($bill->billing_snapshot['sessions'], 'date'));
+        // Paid and frozen: still the same two lessons, nothing left to collect, and no second bill.
+        $this->assertSame('2026-09-29', $billing->billingStart($sc->fresh()));
+        $this->assertNull($billing->unbilledPeriodFor($sc->fresh()));
+        $this->assertNull($billing->partlyBilledMonth($sc->fresh()));
+        $this->assertSame(3600, $billing->summarizePeriod($sc->fresh(), '2026-10')['charge']);
+        $this->record($sc->fresh(), 1800)->assertStatus(422);
+        $this->assertSame([1, 1], [Invoice::count(), Payment::count()]);
     }
 
-    public function test_ledger_card_lists_the_dates_and_no_collection_amount(): void
+    public function test_ledger_card_offers_the_first_month_with_its_pre_start_lessons(): void
     {
         $sc = $this->course();
         $card = collect($this->api('getJson', "/api/v1/accounting/ledger?student_class_id={$sc->ID}")->assertOk()->json('courses'))->firstWhere('id', $sc->ID);
-        $this->assertSame(['2026-09-29', '2026-09-30'], $card['lessons_outside_contract']);
-        $this->assertNull($card['collection_period']);
+        $this->assertSame([], $card['lessons_outside_contract']);
+        $this->assertSame(['billing_period' => '2026-10', 'amount' => 3600], $card['collection_period']);
+        $this->assertNull($card['record_block']);
         $this->assertSame('2026-10-31', $card['end_date']);
+    }
+
+    /** #5702 + #5703: a first-month bill already paid without the pre-start lesson is not repriced and gets no second bill. */
+    public function test_a_paid_first_month_bill_without_the_pre_start_lesson_blocks_and_writes_nothing(): void
+    {
+        $sc = $this->course(['2026-09-29' => 'attended', '2026-10-12' => 'attended']);
+        $bill = Invoice::create(['StudentID' => $sc->StudentID, 'StudentClassID' => $sc->ID, 'IssueDate' => '2026-10-12', 'TotalAmount' => 1800,
+            'PaidAmount' => 1800, 'Status' => 'paid', 'billing_period' => '2026-10', 'billing_snapshot' => ['version' => 1, 'source' => 'monthly_billable_sessions',
+                'billing_period' => '2026-10', 'period_start' => '2026-10-01', 'period_end' => '2026-10-31', 'period_sessions' => 1, 'charge' => 1800,
+                'sessions' => [['class_session_id' => 0, 'date' => '2026-10-12']]]]);
+        Payment::create(['InvoiceID' => $bill->id, 'Amount' => 1800, 'PaidAt' => '2026-10-12', 'Method' => 'cash']);
+        $billing = app(MonthlyBillingService::class);
+
+        $this->assertSame('2026-10-10', $billing->billingStart($sc), 'a frozen bill that did not price it keeps the contract start');
+        $this->assertSame(1, $billing->summarizePeriod($sc, '2026-10')['period_sessions']);
+        $this->assertSame([], $billing->lessonsOnlyOutsideContract($sc));
+        $block = $billing->partlyBilledMonth($sc);
+        $this->assertSame(['month_partly_billed', '2026-10', ['2026-09-29']], [$block['code'], $block['billing_period'], $block['lesson_dates']]);
+
+        $before = [Invoice::query()->get()->toArray(), Payment::query()->get()->toArray()];
+        $this->record($sc, 1800)->assertStatus(422)->assertJsonPath('code', 'month_partly_billed')->assertJsonPath('lesson_dates', ['2026-09-29']);
+        $this->assertSame($before, [Invoice::query()->get()->toArray(), Payment::query()->get()->toArray()]);
+        $this->assertSame(0, PaymentReport::count());
     }
 
     public function test_update_refuses_stranding_a_taught_lesson_but_allows_covering_dates(): void
@@ -107,6 +150,9 @@ class MonthlyLessonsOutsideContractTest extends TestCase
         $billing = app(MonthlyBillingService::class);
         $this->assertSame(['2026-10-03'], $billing->taughtLessonsOutsideContract($sc));
         $this->assertSame([], $billing->lessonsOnlyOutsideContract($sc));
+        // #5702 is about lessons before the start only: a makeup after the end keeps today's rule (not priced in September).
+        $this->assertSame('2026-09-01', $billing->billingStart($sc));
+        $this->assertSame(2, $billing->summarizePeriod($sc, '2026-09')['period_sessions']);
 
         $card = collect($this->api('getJson', "/api/v1/accounting/ledger?student_class_id={$sc->ID}")->assertOk()->json('courses'))->firstWhere('id', $sc->ID);
         $this->assertSame([], $card['lessons_outside_contract']);
@@ -123,11 +169,16 @@ class MonthlyLessonsOutsideContractTest extends TestCase
             ['StartDate' => '2026-09-16', 'EndDate' => '2026-09-30', 'Charge' => 1000, 'Paid' => 0, 'Stop' => 1, 'ScheduleMode' => 'date',
              'SessionCount' => 0, 'RemainingSessions' => 0, 'UsedSessions' => 0, 'SessionDuration' => 120, 'MDate' => now()]));
         $billing = app(MonthlyBillingService::class);
-        $this->assertSame(['2026-09-29', '2026-09-30'], $billing->lessonsOnlyOutsideContract($sc), 'unbilled: still blocks');
+        // #5702: unbilled, the pre-start lessons belong to this contract's first month (they used to block as outside the dates).
+        $this->assertSame([], $billing->lessonsOnlyOutsideContract($sc));
+        $this->assertSame(2, $billing->summarizePeriod($sc, '2026-10')['period_sessions']);
         Invoice::create(['StudentID' => $sc->StudentID, 'StudentClassID' => $catchUp->ID, 'IssueDate' => '2026-10-01',
             'TotalAmount' => 1000, 'PaidAmount' => 0, 'Status' => 'unpaid', 'billing_period' => '2026-09']);
 
         $this->assertSame([], $billing->lessonsOnlyOutsideContract($sc));
+        // Their money lives on the catch-up bill: the first month does not bill them a second time.
+        $this->assertSame('2026-10-10', $billing->billingStart($sc));
+        $this->assertSame(0, $billing->summarizePeriod($sc, '2026-10')['period_sessions']);
         $this->assertNotSame('lessons_outside_contract', $this->record($sc, 1800)->json('code'));
     }
 

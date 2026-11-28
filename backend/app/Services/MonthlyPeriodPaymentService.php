@@ -59,6 +59,10 @@ final class MonthlyPeriodPaymentService
         $ambiguous = false;
         $attributionAmbiguous = false;
         $reasons = [];
+        $contractStart = substr((string) $course->getAttribute('StartDate'), 0, 10);
+        // #5702 (Founder A): lessons from billingStart() up to StartDate are billed with the first month (asked only when one exists).
+        $billFrom = $contractStart !== '' && $sessions->contains(fn ($s) => substr((string) $s->SessionDate, 0, 10) < $contractStart)
+            ? (string) $this->billing->billingStart($course) : $contractStart;
         foreach ($invoices as $invoice) {
             $period = (string) $invoice->billing_period;
             // IssueDate is the invoice creation date, not proof of service period.
@@ -80,11 +84,12 @@ final class MonthlyPeriodPaymentService
                 // A paid bill still needs its own lines to run without a gap (Aug + Oct lines leave September unbilled).
                 if (!$fullyPaid || !$this->itemRangesContinuous($items)) { $ambiguous = true; $reasons[] = 'shared_or_multi_line_bill'; }
             }
-            $start = $items->whereNotNull('PeriodStart')->min('PeriodStart') ?: $month->copy()->startOfMonth()->toDateString();
+            $start = $items->whereNotNull('PeriodStart')->min('PeriodStart')
+                ?: ($contractStart !== '' && $period === substr($contractStart, 0, 7) ? min($month->copy()->startOfMonth()->toDateString(), $billFrom) : $month->copy()->startOfMonth()->toDateString());
             $end = $items->whereNotNull('PeriodEnd')->max('PeriodEnd') ?: $month->copy()->endOfMonth()->toDateString();
-            $contractStart = substr((string) $course->getAttribute('StartDate'), 0, 10);
-            // #4799 (Founder A): a mid-month start billed for that whole first month is normal; an item that starts in an earlier month is not.
-            if ($start > $end || ($items->isNotEmpty() && (($start < $contractStart && substr($start, 0, 7) !== substr($contractStart, 0, 7))
+            // #4799 (Founder A): a mid-month start billed for that whole first month is normal; an item that starts in an earlier month is not,
+            // unless it starts at a pre-start lesson the first month bills (#5702).
+            if ($start > $end || ($items->isNotEmpty() && (($start < $billFrom && substr($start, 0, 7) !== substr($contractStart, 0, 7))
                 || $end > substr((string) $course->getAttribute('EndDate'), 0, 10)))) { $ambiguous = true; $reasons[] = 'item_period_outside_contract'; }
             $existing = $periods[$period] ?? ['billing_period' => $period, 'period_start' => $start, 'period_end' => $end,
                 'charge' => 0, 'paid_amount' => 0, 'invoice_ids' => [], 'source' => 'invoice', 'amount_discrepancy' => false];
@@ -122,7 +127,7 @@ final class MonthlyPeriodPaymentService
         foreach ($sessions as $session) {
             $date = substr((string) $session->SessionDate, 0, 10);
             $covered = collect($periods)->contains(fn ($period) => $date >= $period['period_start'] && $date <= $period['period_end']);
-            if (!$covered) $uncoveredMonths[substr($date, 0, 7)] = true;
+            if (!$covered) $uncoveredMonths[substr($date >= $billFrom ? max($date, $contractStart) : $date, 0, 7)] = true; // #5702: first month
         }
         $start = substr((string) $course->getAttribute('StartDate'), 0, 10);
         $end = substr((string) $course->getAttribute('EndDate'), 0, 10);
@@ -165,7 +170,7 @@ final class MonthlyPeriodPaymentService
         unset($period);
         $rows = array_values($periods);
         $sessionReview = $sessions->groupBy(fn ($session) => substr((string) $session->SessionDate, 0, 7))
-            ->map(function ($monthlySessions, $month) use ($course, $rows, $start, $end) {
+            ->map(function ($monthlySessions, $month) use ($course, $rows, $billFrom, $end) {
                 $estimate = $this->billing->reviewSessions($course, $monthlySessions);
                 $estimate['calendar_month'] = $month;
                 $estimate['uncovered_sessions'] = $monthlySessions->filter(function ($session) use ($rows) {
@@ -173,9 +178,9 @@ final class MonthlyPeriodPaymentService
                     return !collect($rows)->contains(fn ($row) => $row['invoice_ids'] !== []
                         && $date >= $row['period_start'] && $date <= $row['period_end']);
                 })->count();
-                $estimate['outside_contract_sessions'] = $monthlySessions->filter(function ($session) use ($start, $end) {
+                $estimate['outside_contract_sessions'] = $monthlySessions->filter(function ($session) use ($billFrom, $end) {
                     $date = substr((string) $session->SessionDate, 0, 10);
-                    return ($start && $date < $start) || ($end && $date > $end);
+                    return ($billFrom && $date < $billFrom) || ($end && $date > $end);
                 })->count();
                 return $estimate;
             })->values()->all();
