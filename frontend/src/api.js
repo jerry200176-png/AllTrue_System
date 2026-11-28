@@ -86,6 +86,14 @@ export async function getParentStudyTasks(token, weekStart) {
   return readParentResponse(res, '無法讀取讀書任務');
 }
 
+// 家長端：孩子最近 3 次已關閉段考的分數和老師的話，唯讀。
+export async function getParentExamResults(token) {
+  const res = await fetch(`${API_BASE}/parent/exam-results`, {
+    headers: { Accept: 'application/json', Authorization: `Bearer ${token}` },
+  });
+  return readParentResponse(res, '無法讀取段考成績');
+}
+
 export async function getParentNotificationPreferences(token) {
   const res = await fetch(`${API_BASE}/parent/notification-preferences`, {
     headers: { Accept: 'application/json', Authorization: `Bearer ${token}` },

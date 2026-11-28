@@ -603,6 +603,7 @@
 | GET | `api/v1/parent/billing-history` | `ParentPortalController@billingHistory` | public |
 | GET | `api/v1/parent/dashboard` | `ParentPortalController@dashboard` | public |
 | POST | `api/v1/parent/events` | `ParentPortalController@recordParentEvent` | public |
+| GET | `api/v1/parent/exam-results` | `ParentExamResultController@index` | public |
 | POST | `api/v1/parent/feedback` | `ParentFeedbackController@store` | public |
 | GET | `api/v1/parent/learning-records/{learningRecord}/feedback` | `LearningRecordFeedbackController@parentShow` | public |
 | PUT | `api/v1/parent/learning-records/{learningRecord}/feedback` | `LearningRecordFeedbackController@parentUpsert` | public |
