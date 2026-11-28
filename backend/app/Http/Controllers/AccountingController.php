@@ -686,7 +686,7 @@ class AccountingController extends Controller
                 'outstanding_amount' => $outstanding,
                 'status' => $status,
                 // 繳費日 line: the latest receipt still standing after reversals, by the resolver's own last-paid rule (no queries).
-                'standing_payment' => $resolver->latestStandingReceipt($payments->map(fn ($p) => (object) [
+                'standing_payment' => $resolver->latestStandingReceipt($payments->map(fn ($p): \stdClass => (object) [
                     'id' => (int) $p->id, 'Amount' => $p->Amount, 'Method' => $p->Method, 'PaidAt' => $p->PaidAt, 'payment_report_id' => $p->payment_report_id,
                     'report_payment_id' => $p->payment_report_id === null ? null : $reportsById->get((int) $p->payment_report_id)?->payment_id,
                 ])) ?? $this->standingCreditMovement($payments),
