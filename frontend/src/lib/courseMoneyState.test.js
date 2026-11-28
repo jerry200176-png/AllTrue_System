@@ -185,6 +185,10 @@ assert.equal(M.coursePaymentBadge({ payment_status: 'paid', ScheduleMode: 'count
 // Monthly courses and teachers (no billing_verdict) keep the projection.
 assert.equal(M.coursePaymentBadge({ payment_status: 'paid', ScheduleMode: 'date', billing_verdict: rr }).label, '已收');
 assert.equal(M.coursePaymentBadge({ payment_status: 'paid', ScheduleMode: 'count' }).label, '已收');
+// Unpaid count-package members and pending reports keep their label; a review row's next step is 帳務, not 回報繳費.
+assert.equal(M.coursePaymentBadge({ payment_status: 'unpaid', ScheduleMode: 'count', PackageID: 7, billing_verdict: rr }).label, M.coursePaymentBadge({ payment_status: 'unpaid', ScheduleMode: 'count', PackageID: 7 }).label);
+assert.equal(M.coursePaymentBadge({ payment_status: 'pending_report', ScheduleMode: 'count', billing_verdict: rr }).label, M.coursePaymentBadge({ payment_status: 'pending_report', ScheduleMode: 'count' }).label);
+assert.equal(M.coursePaymentBadge({ payment_status: 'unpaid', ScheduleMode: 'count', billing_verdict: rr }).nextAction, 'billing');
 assert.equal(M.coursePaymentStatusTone({ class_type: 'tutoring' }), 'neutral');
 assert.equal(M.coursePaymentStatusTone({ class_type: 'tutoring', tutoring_billing_anomaly: true }), 'danger');
 assert.equal(M.monthlyPaymentLabel({ monthly_payment: { billing_period: '2026-09', payment_status: 'unpaid' }, payment_status: 'pending_report' }), '2026-09 待確認入帳');

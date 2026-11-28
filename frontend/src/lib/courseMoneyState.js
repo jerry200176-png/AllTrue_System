@@ -329,8 +329,11 @@ export const coursePaymentBadge = (course, { monthlyPeriod = false } = {}) => {
   const tone = BADGE_TONES[status] || 'neutral';
   // Count contracts: the director-only server verdict review_required outranks the list's legacy paid/unpaid projection
   // (e.g. own bill paid, shared bill still owes). Monthly courses keep the projection; their review comes through monthly_payment.
-  if (course.billing_verdict?.status === 'review_required' && status !== 'review_required'
-    && String(course.ScheduleMode ?? course.schedule_mode ?? 'count') !== 'date') return { label: UNKNOWN_STATUS_LABEL, tone: 'review', nextAction };
+  // Package members (their bill sits on the anchor course) and pending reports keep their own label.
+  if (course.billing_verdict?.status === 'review_required' && !['review_required', 'pending_report'].includes(status)
+    && String(course.ScheduleMode ?? course.schedule_mode ?? 'count') !== 'date' && !isPackageMember(course)) {
+    return { label: UNKNOWN_STATUS_LABEL, tone: 'review', nextAction: 'billing' };
+  }
   // The free/gift verdict outranks the period label: its NT$0 period reads 已收 or review (Codex P2 on #4204).
   const monthly = monthlyPeriod && status !== 'free' ? monthlyPaymentLabel(course) : null;
   if (monthly) return { label: monthly, tone: course.monthly_payment.review_required ? 'review' : tone, nextAction };
