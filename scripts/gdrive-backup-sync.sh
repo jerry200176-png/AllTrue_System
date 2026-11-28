@@ -133,6 +133,23 @@ else
   log "WARN: uploads dir ${UPLOADS_DIR} not found — nothing to sync"
 fi
 
+# ── 私有聊天附件 → private-uploads/chat-attachments/（#889，排除 host-local storage/app/private）──
+sleep 5
+CHAT_ATTACHMENTS_DIR="/home/admin/backend/storage/app/chat-attachments"
+if [ -d "$CHAT_ATTACHMENTS_DIR" ]; then
+  log "Syncing private chat-attachments (${CHAT_ATTACHMENTS_DIR}) to ${REMOTE}/private-uploads/chat-attachments/ ..."
+  "$RCLONE" copy \
+    --transfers 2 \
+    --retries 5 \
+    --retries-sleep 30s \
+    --low-level-retries 10 \
+    --log-level ERROR \
+    "$CHAT_ATTACHMENTS_DIR" \
+    "${REMOTE}/private-uploads/chat-attachments/" 2>&1 | tee -a "$LOG" || { log "WARN: private chat-attachments sync had errors (non-fatal)"; SYNC_ERRORS=$((SYNC_ERRORS+1)); }
+else
+  log "No private chat-attachments dir yet — nothing to sync"
+fi
+
 # ── 修復腳本回滾快照 → repair-snapshots/（同款漏洞，順手補上）──
 sleep 5
 SNAPSHOTS_DIR="/home/admin/backend/storage/app/repair-snapshots"
