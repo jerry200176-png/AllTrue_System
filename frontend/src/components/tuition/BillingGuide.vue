@@ -128,7 +128,8 @@
       <footer class="tw:flex tw:flex-wrap tw:justify-end tw:gap-2">
         <template v-if="!confirmedId && !gone">
           <!-- in-app #606: an ended contract that will not be collected. Same rule and dialog as the bill list's 改成不收. -->
-          <Button v-if="rowActions[bill.class_id]?.waive" variant="outline" class="tw:min-h-11 tw:mr-auto" :disabled="busy || exporting" data-testid="bg-waive" @click="$emit('waive', bill)">改成不收</Button>
+          <p v-if="rowActions[bill.class_id]?.waive && rowActions[bill.class_id].waiveBlock" class="tw:m-0 tw:mr-auto tw:self-center tw:text-tpl-secondary" data-testid="bg-waive-block">現在不能改成不收：{{ rowActions[bill.class_id].waiveBlock }}</p>
+          <Button v-else-if="rowActions[bill.class_id]?.waive" variant="outline" class="tw:min-h-11 tw:mr-auto" :disabled="busy || exporting" data-testid="bg-waive" @click="$emit('waive', bill)">改成不收</Button>
           <Button variant="ghost" class="tw:min-h-11" :disabled="busy || exporting" data-testid="bg-later" @click="advance('later')">稍後處理</Button>
           <Button variant="ghost" class="tw:min-h-11" :disabled="busy || exporting" data-testid="bg-skip" @click="advance('done')">略過</Button>
         </template>

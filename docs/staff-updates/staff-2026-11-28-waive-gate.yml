@@ -1,0 +1,13 @@
+updates:
+  - id: staff-2026-11-28-waive-gate
+    published_at: "2026-11-28"
+    audiences:
+      - director
+    importance: digest
+    title: 不能改成不收時直接說原因
+    summary: 帳務中心不能改成不收的那一筆，選單會變灰並寫原因。
+    items:
+      - category: fixed
+        text: 帳務中心：「改成不收」不能用時會變灰並寫原因，不會按了才被擋。
+    source_refs:
+      - "changelog:2026-11-28:waive-gate"

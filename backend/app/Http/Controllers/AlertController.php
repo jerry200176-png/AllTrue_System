@@ -384,6 +384,9 @@ class AlertController extends Controller
             ];
         })->filter()->values();
 
+        // #5721: why 改成不收 would be refused, from the waive endpoint's own checks (WaiveGate, batched over these rows).
+        $waiveBlocks = (new \App\Services\Billing\WaiveGate())->refusals($pendingSettlementResults);
+
         $rows = collect()
             ->merge(
                 $countResults
@@ -403,7 +406,7 @@ class AlertController extends Controller
             ->merge(
                 $pendingSettlementResults->map(fn ($c) => $this->mapPendingSettlementAlert($c, $subjectNameMap))
             )
-            ->map(function ($row) use ($paidAtMap, $paymentHistoryMap, $allResults, $invoiceAggMap, $pendingReportMap, $newerCourseMap, $today, $openMonthlyInvoiceMap, $payableMap, $stoppedStatuses, $courseStatuses) {
+            ->map(function ($row) use ($paidAtMap, $paymentHistoryMap, $allResults, $invoiceAggMap, $pendingReportMap, $newerCourseMap, $today, $openMonthlyInvoiceMap, $payableMap, $stoppedStatuses, $courseStatuses, $waiveBlocks) {
                 $classId = (int) $row['id'];
                 $sc = $allResults->get($classId);
                 $directPaidAt = ($sc && $sc->PayDate) ? substr($sc->PayDate, 0, 10) : null;
@@ -511,6 +514,8 @@ class AlertController extends Controller
                             ->values()->all()
                         : [],
                     'payment_status'           => $paymentStatus,
+                    // Set on every stopped-and-owing row (a pending_report row is not offered 改成不收, but would be refused the same way).
+                    'waive_block'              => $row['alert_type'] === 'pending_reconciliation' ? ($waiveBlocks[$classId] ?? null) : null,
                     'amount_pending_confirmation' => $amountPendingConfirmation,
                     'review_reasons' => $reviewReasons,
                     'pending_confirmation_amount' => $amountPendingConfirmation ? $outstanding : 0,

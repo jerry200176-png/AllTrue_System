@@ -336,42 +336,15 @@ class AccountingController extends Controller
                 return $denied;
             }
 
-            if ($course->isPartOfPackage()) {
-                return response()->json(['message' => '套裝課程請到套裝處理'], 422);
+            // #5721: the same refusals the 帳務中心 list shows as waive_block (WaiveGate), in the same order.
+            if ($refused = (new \App\Services\Billing\WaiveGate())->refusals(collect([$course]), lock: true)[(int) $course->getKey()] ?? null) {
+                return response()->json(['message' => $refused], 422);
             }
 
             $closedReason = (string) ($course->closed_reason ?? '');
-            $unpaid = (int) ($course->Paid ?? 0) !== 1;
-            $pending = $closedReason === 'settled_pending' || ($closedReason === 'contract_amended' && $unpaid);
-            if ((int) $course->Stop !== 1 || !$pending || !$unpaid) {
-                return response()->json(['message' => '只有「課已結束，尚未收款」且還沒繳清的合約，才能改成「不收了」'], 422);
-            }
-
             $invoices = Invoice::with(['studentClass', 'items', 'payments'])
                 ->where('StudentClassID', $id)
                 ->where(fn ($q) => $q->whereNull('Status')->orWhere('Status', '!=', 'void'))->lockForUpdate()->get();
-            // 已有收款的帳單不在此處理，避免作廢帳單蓋住已收的錢。
-            if ($invoices->contains(fn ($i) => $i->payments->isNotEmpty() || (int) ($i->PaidAmount ?? 0) !== 0)) {
-                return response()->json(['message' => '此合約已有收款紀錄，請先到帳務更正後再處理'], 422);
-            }
-            // A waiver may only touch invoices that belong to this course alone. Any non-void invoice involving this
-            // course (as anchor or line) that also involves another course, or has no anchor, needs accounting first.
-            $involved = DB::table('Invoice')->where(fn ($q) => $q->whereNull('Status')->orWhere('Status', '!=', 'void'))
-                ->where(fn ($q) => $q->where('StudentClassID', $id)
-                    ->orWhereIn('id', DB::table('InvoiceItem')->where('StudentClassID', $id)->select('InvoiceID')))
-                ->get(['id', 'StudentClassID']);
-            $shared = $involved->contains(fn ($inv) => (int) ($inv->StudentClassID ?? 0) !== $id)
-                || ($involved->isNotEmpty() && DB::table('InvoiceItem')->whereIn('InvoiceID', $involved->pluck('id')->all())
-                    ->whereNotNull('StudentClassID')->where('StudentClassID', '!=', $id)->exists());
-            if ($shared) {
-                return response()->json(['message' => '此合約在合併帳單中，請先到帳務處理該帳單'], 422);
-            }
-            if (PaymentReport::query()->where('StudentClassID', $id)->where('status', 'confirmed')->exists()) {
-                return response()->json(['message' => '此合約已有確認過的繳費回報，請先到帳務更正後再處理'], 422);
-            }
-            if (PaymentReport::query()->where('StudentClassID', $id)->where('status', 'pending')->exists()) {
-                return response()->json(['message' => '有待確認的繳費回報，請先確認或退回'], 422);
-            }
             $toVoid = $invoices->filter(fn ($i) => (string) ($i->Status ?? '') !== 'paid');
             $outstanding = $this->waivableAmount($course, $invoices);
             // The director must confirm the exact amount being written off (the dialog sends what it showed).
