@@ -125,6 +125,17 @@ describe('BillingGuide', () => {
     expect(w.emitted('ledger')[0][1]).toBeNull();
   });
 
+  it('a shared monthly plan says where its bills are and why the estimate is 0 (in-app #604)', async () => {
+    const plan = row({ id: null, package_id: 5, schedule_mode: 'date', remaining_sessions: null, payable_status: 'unbilled', payable_invoice_id: null, payable_amount: null, payable_outstanding: null, monthly_sessions: 0, estimated_amount: 0, charge: 0, outstanding: 0 });
+    const w = await mountGuide([plan]);
+    expect(w.text()).toContain('帳單和收款在各門成員課上');
+    expect(w.get('[data-testid="bg-plan-no-lessons"]').text()).toContain('這個月還沒上過課');
+    await w.get('[data-testid="bg-open-ledger"]').trigger('click');
+    expect(w.emitted('ledger')).toBeTruthy();
+    const taught = await mountGuide([{ ...plan, monthly_sessions: 2, estimated_amount: 3000 }]);
+    expect(taught.find('[data-testid="bg-plan-no-lessons"]').exists()).toBe(false);
+  });
+
   it('a contract with no bill yet says so and opens the existing 開帳單 entry', async () => {
     const w = await mountGuide([row({ schedule_mode: 'date', remaining_sessions: null, payable_status: 'unbilled', payable_invoice_id: null, payable_amount: null, payable_outstanding: null, estimated_amount: 7200, billing_period_start: null, billing_period_end: null, payment_status: 'monthly_due_soon' })]);
     expect(w.get('[data-testid="bg-facts"]').text()).toContain('本次帳單計費期間還沒開帳單');
