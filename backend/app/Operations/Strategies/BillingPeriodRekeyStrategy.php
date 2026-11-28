@@ -291,7 +291,7 @@ class BillingPeriodRekeyStrategy
             ->where(fn ($w) => $w->whereNull('inv.Status')->orWhere('inv.Status', '<>', 'void'));
         if ($campuses) $q->whereIn('st.CampusID', $campuses);
         if ($onlyInvoices !== null) $q->whereIn('inv.id', $onlyInvoices);
-        $invoices = $q->orderBy('inv.id')->get(['inv.id', 'inv.StudentClassID as class_id', 'inv.billing_period', 'inv.IssueDate', 'inv.TotalAmount', 'inv.Note', 'sc.StudentID', 'sc.SubjectID', 'sc.PackageID',
+        $invoices = $q->orderBy('inv.id')->get(['inv.id', 'inv.StudentClassID as class_id', 'inv.billing_period', 'inv.IssueDate', 'inv.TotalAmount', 'inv.ScheduleModeAtIssue', 'inv.Note', 'sc.StudentID', 'sc.SubjectID', 'sc.PackageID',
             'sc.StartDate', 'sc.EndDate', 'st.CampusID as campus_id']);
         if ($invoices->isEmpty()) return [];
         $ids = $invoices->pluck('id')->all();
@@ -307,10 +307,11 @@ class BillingPeriodRekeyStrategy
             if ($inv->billing_period === null) {
                 // in-app #603 (Founder GO 2026-11-28): an old bill with no month and no lines, on a contract that lies inside one
                 // calendar month, can only be that month's bill. Anything less certain is left for a person.
-                // Only a positive tuition bill that is the contract's single live bill, never a package member.
+                // Only a positive tuition bill that is the contract's single live bill, never a package member, and never a bill
+                // kept from before a count-to-monthly conversion (ScheduleModeAtIssue = count): that one was a lesson-count bill.
                 $month = substr((string) $inv->StartDate, 0, 7);
                 if ($own->isEmpty() && $month === substr((string) $inv->EndDate, 0, 7) && self::issuedMonth($inv) !== null
-                    && (int) $inv->TotalAmount > 0 && (int) ($inv->PackageID ?? 0) === 0
+                    && (int) $inv->TotalAmount > 0 && (int) ($inv->PackageID ?? 0) === 0 && (string) $inv->ScheduleModeAtIssue !== 'count'
                     && DB::table('Invoice')->where('StudentClassID', $inv->class_id)->where(fn ($w) => $w->whereNull('Status')->orWhere('Status', '<>', 'void'))->count() === 1) {
                     $candidates[] = [$inv, $month];
                 }

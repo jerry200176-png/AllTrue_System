@@ -15,7 +15,7 @@ Candidates: live (non-void) Invoice on a `ScheduleMode=date` class with exactly 
 (a whole-cycle renewal bill). Catch-up, split and multi-item bills are never touched: their calendar month is the point.
 Target = month of the cycle's first non-cancelled lesson, else the cycle start month. A row exists only when stored != target.
 Also a candidate since 2026-11-28 (in-app #603, GitHub #5696; Founder GO in conversation 2026-11-28 「改帳單go」): a live bill with **no**
-`billing_period` and **no** items, TotalAmount > 0, the only live bill of a non-package `ScheduleMode=date` class whose StartDate and
+`billing_period` and **no** items, TotalAmount > 0, not stamped `ScheduleModeAtIssue = count`, the only live bill of a non-package `ScheduleMode=date` class whose StartDate and
 EndDate fall in the same calendar month. Target = that month. Its payment reports are not touched, in either direction. Its manifest row has `from: ""` and `tag: <IssueDate month>`: the Note tag freezes the number the bill was issued under
 (`InvoiceNumber::for` fell back to the issue month). A period-less bill on a contract that spans months, or one that has items, is never
 guessed; a person decides those. Restore puts `billing_period` back to NULL.

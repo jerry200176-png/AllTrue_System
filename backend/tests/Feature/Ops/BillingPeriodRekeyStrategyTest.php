@@ -111,6 +111,9 @@ final class BillingPeriodRekeyStrategyTest extends TestCase
             'Status' => 'unpaid', 'Note' => '', 'billing_period' => null, 'created_at' => now(), 'updated_at' => now()]);
         DB::table('Invoice')->whereIn('id', [801, 802, 803, 804, 805])->update(['billing_period' => null, 'IssueDate' => '2026-05-05', 'Status' => 'paid', 'PaidAmount' => 7500]);
         DB::table('Invoice')->where('id', 804)->update(['TotalAmount' => 0, 'PaidAmount' => 0]);
+        $this->cycle(905, 5, 8, '2026-04-04', '2026-04-25', '2026-04', []);   // id 806: issued as a lesson-count bill before a conversion -> never guessed
+        DB::table('Invoice')->where('id', 806)->update(['billing_period' => null, 'ScheduleModeAtIssue' => 'count']);
+        DB::table('InvoiceItem')->where('InvoiceID', 806)->delete();
         DB::table('InvoiceItem')->whereIn('InvoiceID', [801, 802, 804, 805])->delete();
         // A report filed against April before the run: the restore must leave it alone.
         DB::table('payment_reports')->insert(['id' => 9, 'StudentID' => 1, 'StudentClassID' => 900, 'InvoiceID' => 801, 'billing_period' => '2026-04',
@@ -121,7 +124,7 @@ final class BillingPeriodRekeyStrategyTest extends TestCase
         $dry = $s->plan($this->params('all'));
         $rows = collect($dry['manifest'])->keyBy('invoice_id');
         $this->assertSame(['', '2026-04', 'ready', '2026-05'], [$rows[801]['from'], $rows[801]['to'], $rows[801]['status'], $rows[801]['tag']]);
-        foreach ([802, 803, 804, 805, 899] as $never) $this->assertFalse($rows->has($never), "bill {$never}");
+        foreach ([802, 803, 804, 805, 806, 899] as $never) $this->assertFalse($rows->has($never), "bill {$never}");
 
         $plan = $s->plan($this->params('all', $dry['digest']));
         $result = $s->execute($plan, ['operation_id' => 'req-9']);
