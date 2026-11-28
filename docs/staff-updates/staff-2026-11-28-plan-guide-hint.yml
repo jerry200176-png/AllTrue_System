@@ -5,9 +5,9 @@ updates:
       - director
     importance: digest
     title: 共用方案會說去哪裡處理
-    summary: 登帳引導遇到共用方案時，會說帳單在成員課上，以及預估 0 元的原因。
+    summary: 登帳引導遇到共用方案時，會說帳單在成員課上，以及預估為零的原因。
     items:
       - category: improved
-        text: 登帳引導：共用方案說明帳單在各門成員課上；這個月還沒上課時說明預估為 0 的原因。
+        text: 登帳引導：共用方案說明帳單在各門成員課上；這個月還沒上課時說明預估為零的原因。
     source_refs:
       - "changelog:2026-11-28:plan-guide-hint"
