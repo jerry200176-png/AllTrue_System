@@ -94,7 +94,7 @@ class ParentExamResultApiTest extends TestCase
         $data = $this->asParentOf($child)->getJson(self::URL . "?student_id={$other->id}")->assertOk()->json('data');
 
         $this->assertSame(['同一場'], array_column($data, 'title'));
-        $this->assertSame([['name' => '國文', 'max_score' => 100.0, 'score' => 70.0, 'is_absent' => false, 'parent_comment' => null]], $data[0]['subjects']);
+        $this->assertEquals([['name' => '國文', 'max_score' => 100, 'score' => 70, 'is_absent' => false, 'parent_comment' => null]], $data[0]['subjects']);
         $this->assertStringNotContainsString('別人的話', json_encode($data, JSON_UNESCAPED_UNICODE));
     }
 
@@ -110,7 +110,7 @@ class ParentExamResultApiTest extends TestCase
 
         $this->assertSame(['B 校段考'], array_column($this->asParentOf($child)->getJson(self::URL)->assertOk()->json('data'), 'title'));
 
-        $this->getJson(self::URL, ['Accept' => 'application/json'])->assertStatus(401);
+        $this->flushHeaders()->getJson(self::URL, ['Accept' => 'application/json'])->assertStatus(401);
         $director = User::create(['LoginName' => 'dr' . random_int(1, 99999) . '@example.com', 'Name' => 'Staff', 'PSW' => 'secret',
             'type' => 'A', 'phone' => (string) random_int(900000000, 999999999), 'MustChangePassword' => false]);
         UserCampus::create(['CampusID' => $campusA, 'UserID' => $director->id, 'Admin' => 1, 'Approved' => 1]);

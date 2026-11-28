@@ -31,7 +31,7 @@ describe('ParentExamResults', () => {
     expect(round.find('h4').text()).toContain('第一次段考');
     expect(round.find('h4').text()).toContain('10/15');
     const subjects = w.findAll('[data-testid="exam-subject"]');
-    expect(subjects.map((s) => s.find('p').text().replace(/\s+/g, ' '))).toEqual(['國文 85 / 100', '英文 缺考']);
+    expect(subjects.map((s) => s.findAll('p span').map((x) => x.text()))).toEqual([['國文', '85 / 100'], ['英文', '缺考']]);
     const comment = w.find('[data-testid="exam-comment"]');
     expect(comment.element.textContent).toBe('老師的話：閱讀進步。\n作文再加油。');
     expect(comment.classes()).toContain('tw:whitespace-pre-line');
