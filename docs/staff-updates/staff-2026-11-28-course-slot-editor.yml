@@ -1,0 +1,15 @@
+updates:
+  - id: staff-2026-11-28-course-slot-editor
+    published_at: "2026-11-28"
+    audiences:
+      - director
+    importance: digest
+    title: 上課時段設定變簡單
+    summary: 課程設定的上課時段改成一段一列，撞課原因直接寫在那一段下面。
+    items:
+      - category: improved
+        text: 上課時段一段一列，例如「週六 13:00–15:00（2 小時）」；找老師空檔改成按了才打開。
+      - category: improved
+        text: 時段已滿時，原因寫在撞到的那一段下面，可按「換時間」直接改。
+    source_refs:
+      - "changelog:2026-11-28:course-slot-editor"

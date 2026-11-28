@@ -248,3 +248,16 @@ export function humanizeRescheduleFailure(raw) {
   }
   return s;
 }
+
+/**
+ * Save-failure text for the course form footer (in-app #613). Clashes that land on a sent slot row are shown under
+ * that row, so the footer only points there; clashes on no row (cross-campus, self-overlap, unmatched times) keep
+ * their own text here.
+ */
+export function slotSaveErrorMessage(conflicts, slots, fallback) {
+  const onRow = (c) => (slots || []).some((s) => Number(s?.day) === Number(c.day_of_week)
+    && String(s?.start_time || '').slice(0, 5) === String(c.start_time || '').slice(0, 5));
+  const withMsg = (Array.isArray(conflicts) ? conflicts : []).filter((c) => c?.message);
+  const rest = withMsg.filter((c) => !onRow(c)).map((c) => c.message);
+  return withMsg.length > rest.length ? ['時段已滿，原因寫在上面撞到的那一段下面。', ...rest].join(' ') : fallback;
+}

@@ -892,7 +892,7 @@
             <button v-if="canOpenEditabilityAction(reason.next_step)" type="button" class="ghost small editability-action-row__button" @click="openEditabilityAction(reason.next_step)">{{ editabilityActionLabel(reason.next_step) }} <span aria-hidden="true">→</span></button>
           </div>
         </section>
-        <CourseEditForm ref="editFormRef" v-model="editForm" :branch-id="props.branchId" :teachers="editTeacherOptions" :rooms="rooms" :subjects="subjectOptions" :day-options="DAY_OPTIONS" :time-options="TIME_OPTIONS_30" :settlement-day-options="settlementDayOptions" :show-remaining="true" :schedule-only="editScheduleOnly" :package-info="editPackageInfo" :context-title="editContextTitle" :editability="editability" :payment-state-unavailable="editabilityLoading || !!editabilityError" @open-billing="openEditabilityAction('void_payment')" />
+        <CourseEditForm ref="editFormRef" v-model="editForm" :branch-id="props.branchId" :teachers="editTeacherOptions" :rooms="rooms" :subjects="subjectOptions" :day-options="DAY_OPTIONS" :time-options="TIME_OPTIONS_30" :settlement-day-options="settlementDayOptions" :show-remaining="true" :schedule-only="editScheduleOnly" :package-info="editPackageInfo" :context-title="editContextTitle" :editability="editability" :payment-state-unavailable="editabilityLoading || !!editabilityError" :slot-conflicts="editSaveError?.conflicts || []" @open-billing="openEditabilityAction('void_payment')" />
         <div class="cm-settings-footer">
           <div class="cm-settings-footer__primary form-actions">
             <button type="button" class="ghost" data-testid="course-manager-settings-back" @click="leaveCourseManagerSettings">返回總覽</button>
@@ -974,6 +974,7 @@
               :context-title="editContextTitle"
               :editability="editability"
               :payment-state-unavailable="editabilityLoading || !!editabilityError"
+              :slot-conflicts="editSaveError?.conflicts || []"
               @open-billing="openEditabilityAction('void_payment')"
             />
           </div>
@@ -1487,6 +1488,7 @@ const dialogField = {
 };
 import { ChevronRight, Focus, Info, Plus, UserSearch } from 'lucide-vue-next';
 import { isCourseSettled, isPaymentNoticeStatus } from '../lib/paymentStatus.js';
+import { slotSaveErrorMessage } from '../lib/scheduleDisplay.js';
 import { formatCourseRef, formatCoursePeriod, courseNumberFromSearch } from '../lib/studentBillingRows.js';
 import { clearRowCachesForWinningRequest, createListLoadOutcome, fallbackListRows, isCurrentListRequest } from '../lib/listRefreshState.js';
 import { studentSchoolGradeLabel } from '../lib/studentSchoolGrade.js';
@@ -5409,11 +5411,13 @@ const submitEdit = async () => {
           : '';
         editSaveError.value = {
           code: err?.code || '',
-          message: err?.message || '更新失敗，請檢查欄位後再試。',
+          // The clash itself shows under its slot row; this alert only points there.
+          message: slotSaveErrorMessage(err?.conflicts, form.day_time_slots, err?.message || '更新失敗，請檢查欄位後再試。'),
           details,
           hint: editabilityNextStepLabel(editabilityNextStepForError(err)),
           nextStep: editabilityNextStepForError(err),
           transferPrefill: transferPrefillFromBlockedEdit(err, form, JSON.parse(editFormSnapshot.value || '{}')),
+          conflicts: Array.isArray(err?.conflicts) ? err.conflicts : [], // shown under the matching slot row (in-app #613)
         };
         toastRef.value?.show?.({
           title: '儲存失敗',
