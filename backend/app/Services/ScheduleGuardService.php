@@ -136,20 +136,23 @@ class ScheduleGuardService
                     $roomConflict = $rc;
                 }
             }
-            // in-app #613: when the weekly templates alone fill the slot, every week clashes, not only the dated ones,
-            // starting once all of them have begun (the latest start among them; never earlier than a real clash).
-            $teacherTemplates = array_values(array_filter($recurringOverlaps, fn ($e) => $e['teacher_occupancy'] ?? true));
-            $everyWeek = $teacherConflict && !$this->teacherCapacityDecision($classType, $slot, $this->withTrialTargets($teacherTemplates), $trialTarget)['allowed'];
+            // in-app #613: once the weekly templates alone fill the slot, every week clashes, not only the dated ones.
+            // The prefix starts at the earlier of the first dated clash and the first start at which they fill it.
             if ($teacherConflict) {
-                $conflicts[] = $everyWeek
-                    ? $this->withConflictDates($teacherConflict, [], $slot, $this->latestStart($startDate, $teacherTemplates))
-                    : $this->withConflictDates($teacherConflict, $teacherDates, $slot, $startDate);
+                $teacherTemplates = array_values(array_filter($recurringOverlaps, fn ($e) => $e['teacher_occupancy'] ?? true));
+                $from = $this->firstFullWeek($startDate, $teacherTemplates, fn (array $t) => !$this->teacherCapacityDecision($classType, $slot, $this->withTrialTargets($t), $trialTarget)['allowed']);
+                $conflicts[] = $from === null
+                    ? $this->withConflictDates($teacherConflict, $teacherDates, $slot, $startDate)
+                    : $this->withConflictDates($teacherConflict, [], $slot, $this->earlierDate($from, $teacherDates));
             }
             if ($roomConflict) {
+                $room = $this->loadRoom((int) $roomId);
+                $seats = max(0, (int) ($room->capacity ?? 0) - 1); // buildRoomCapacityConflict's rule: one seat is the teacher's
                 $roomTemplates = array_values(array_filter($recurringOverlaps, fn ($e) => (int) ($e['room_id'] ?? 0) === (int) $roomId));
-                $conflicts[] = $this->buildRoomCapacityConflict($roomId, $slot, $roomTemplates)
-                    ? $this->withConflictDates($roomConflict, [], $slot, $this->latestStart($startDate, $roomTemplates))
-                    : $this->withConflictDates($roomConflict, $roomDates, $slot, $startDate);
+                $from = $this->firstFullWeek($startDate, $roomTemplates, fn (array $t) => $this->countDistinctStudents($t) >= $seats);
+                $conflicts[] = $from === null
+                    ? $this->withConflictDates($roomConflict, $roomDates, $slot, $startDate)
+                    : $this->withConflictDates($roomConflict, [], $slot, $this->earlierDate($from, $roomDates));
             }
         }
         // Keyed by date, so slots sharing a weekday report each date once.
@@ -1612,12 +1615,31 @@ class ScheduleGuardService
         return $conflict;
     }
 
-    /** @param  array<int, array<string, mixed>>  $templates */
-    private function latestStart(?string $windowStart, array $templates): ?string
+    /**
+     * First date (not before the window start) at which the weekly templates already begun fill the slot; null if they never do.
+     *
+     * @param  array<int, array<string, mixed>>  $templates
+     */
+    private function firstFullWeek(?string $windowStart, array $templates, callable $fills): ?string
     {
-        $dates = array_filter([$windowStart ? substr($windowStart, 0, 10) : null, ...array_column($templates, 'course_start_date')]);
+        $window = $windowStart ? substr($windowStart, 0, 10) : '';
+        $starts = array_unique(array_map(fn ($t) => max($window, (string) ($t['course_start_date'] ?? '')), $templates));
+        sort($starts);
+        foreach ($starts as $d) {
+            if ($fills(array_values(array_filter($templates, fn ($t) => (string) ($t['course_start_date'] ?? '') <= $d)))) {
+                return $d; // '' = no known start: already full today
+            }
+        }
 
-        return $dates ? max($dates) : null;
+        return null;
+    }
+
+    /** @param  array<int, string>  $dates */
+    private function earlierDate(string $from, array $dates): string
+    {
+        $dates = array_filter($dates);
+
+        return $dates ? min($from, min($dates)) : $from;
     }
 
     /**

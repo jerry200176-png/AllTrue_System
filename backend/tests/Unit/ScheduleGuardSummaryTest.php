@@ -168,11 +168,17 @@ class ScheduleGuardSummaryTest extends TestCase
             $saturday = ['day_of_week' => 6] + $sunday;
             self::assertStringStartsWith('從 12/5 起每週六 13:00–15:00 老師', $dates->invoke(new ScheduleGuardService(), $conflict, [], $saturday, '2026-12-01')['message']);
             self::assertStringStartsWith('從 11/28 起每週六', $dates->invoke(new ScheduleGuardService(), $conflict, [], $saturday, null)['message']);
-            // Codex P2: the weekly prefix starts once every blocking course has begun, not before.
-            $latest = new ReflectionMethod(ScheduleGuardService::class, 'latestStart');
-            $from = $latest->invoke(new ScheduleGuardService(), '2026-11-28', [['course_start_date' => '2026-12-05'], ['course_start_date' => '2026-08-01'], ['course_start_date' => null]]);
-            self::assertSame('2026-12-05', $from);
-            self::assertStringStartsWith('從 12/12 起每週六', $dates->invoke(new ScheduleGuardService(), $conflict, [], $saturday, $latest->invoke(new ScheduleGuardService(), null, [['course_start_date' => '2026-12-12']]))['message']);
+            // Codex P2: the weekly prefix starts at the first start at which the begun courses fill the slot.
+            $first = new ReflectionMethod(ScheduleGuardService::class, 'firstFullWeek');
+            $svc = new ScheduleGuardService();
+            $three = fn (array $t) => count($t) >= 3;
+            $rows = [['course_start_date' => '2026-08-01'], ['course_start_date' => '2026-12-12'], ['course_start_date' => '2026-12-05'], ['course_start_date' => null]];
+            self::assertSame('2026-12-05', $first->invoke($svc, '2026-11-28', $rows, $three));
+            self::assertSame('2026-11-28', $first->invoke($svc, '2026-11-28', $rows, fn (array $t) => count($t) >= 2));
+            self::assertNull($first->invoke($svc, '2026-11-28', $rows, fn (array $t) => count($t) >= 5));
+            $earlier = new ReflectionMethod(ScheduleGuardService::class, 'earlierDate');
+            self::assertSame('2026-12-01', $earlier->invoke($svc, '2026-12-05', ['', '2026-12-01']));
+            self::assertStringStartsWith('從 12/5 起每週六', $dates->invoke($svc, $conflict, [], $saturday, $first->invoke($svc, null, $rows, $three))['message']);
         } finally {
             Carbon::setTestNow();
         }
